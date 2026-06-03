@@ -228,9 +228,25 @@
 
   /* CHATBOT */
   .chat-bubble { position: fixed; bottom: 2rem; right: 2rem; z-index: 500; }
-  .chat-toggle { width: 56px; height: 56px; border-radius: 50%; background: var(--brown-dark); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; box-shadow: 0 4px 16px rgba(0,0,0,0.3); transition: transform 0.2s; }
-  .chat-toggle:hover { transform: scale(1.08); }
-  .chat-notif { position: absolute; top: -4px; right: -4px; width: 18px; height: 18px; background: #c0392b; border-radius: 50%; border: 2px solid #fff; display: none; }
+  .chat-toggle { width: 62px; height: 62px; border-radius: 50%; background: linear-gradient(135deg, #3b2314, #6b3a2a); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; box-shadow: 0 4px 20px rgba(59,35,20,0.5), 0 0 0 0 rgba(160,103,58,0.4); transition: transform 0.2s; animation: pulse 2s infinite; position: relative; overflow: visible; }
+  .chat-toggle:hover { transform: scale(1.12); }
+  @keyframes pulse {
+    0% { box-shadow: 0 4px 20px rgba(59,35,20,0.5), 0 0 0 0 rgba(160,103,58,0.5); }
+    70% { box-shadow: 0 4px 20px rgba(59,35,20,0.5), 0 0 0 14px rgba(160,103,58,0); }
+    100% { box-shadow: 0 4px 20px rgba(59,35,20,0.5), 0 0 0 0 rgba(160,103,58,0); }
+  }
+  .steam { position: absolute; top: -18px; display: flex; gap: 4px; left: 50%; transform: translateX(-50%); }
+  .steam span { display: block; width: 4px; height: 12px; background: rgba(255,255,255,0.6); border-radius: 999px; animation: steam 1.5s ease-in-out infinite; }
+  .steam span:nth-child(2) { animation-delay: 0.3s; height: 16px; }
+  .steam span:nth-child(3) { animation-delay: 0.6s; }
+  @keyframes steam {
+    0% { transform: translateY(0) scaleX(1); opacity: 0.6; }
+    50% { transform: translateY(-8px) scaleX(1.3); opacity: 0.3; }
+    100% { transform: translateY(-16px) scaleX(0.8); opacity: 0; }
+  }
+  .chat-notif { position: absolute; top: -4px; right: -4px; width: 18px; height: 18px; background: #c0392b; border-radius: 50%; border: 2px solid #fff; display: none; animation: notifBounce 0.8s ease infinite alternate; }
+  @keyframes notifBounce { from { transform: scale(1); } to { transform: scale(1.25); } }
+  .chat-toggle-label { position: absolute; bottom: -22px; left: 50%; transform: translateX(-50%); font-size: 0.6rem; color: rgba(59,35,20,0.7); white-space: nowrap; font-family: 'Inter', sans-serif; letter-spacing: 0.05em; font-weight: 500; background: rgba(245,239,230,0.9); padding: 0.15rem 0.5rem; border-radius: 999px; }
   .chat-window { position: fixed; bottom: 6rem; right: 2rem; width: 330px; max-height: 480px; background: #fff; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); display: none; flex-direction: column; z-index: 500; overflow: hidden; }
   .chat-window.open { display: flex; }
   .chat-header { background: var(--brown-dark); padding: 1rem 1.25rem; display: flex; align-items: center; justify-content: space-between; }
@@ -790,8 +806,12 @@
 
 <!-- CHATBOT -->
 <div class="chat-bubble">
-  <button class="chat-toggle" onclick="toggleChat()">☕</button>
+  <button class="chat-toggle" onclick="toggleChat()">
+    <div class="steam"><span></span><span></span><span></span></div>
+    ☕
+  </button>
   <div class="chat-notif" id="chatNotif"></div>
+  <div class="chat-toggle-label">Chat with us!</div>
 </div>
 <div class="chat-window" id="chatWindow">
   <div class="chat-header">
