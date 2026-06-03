@@ -655,8 +655,10 @@
           </div>
         </div>
         <button class="btn-reserve" style="margin-top:1rem;" onclick="submitFeedback()">Send Feedback</button>
-        <div id="fbConfirm" style="display:none; margin-top:1rem; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:1rem; text-align:center;">
-          <p style="color:var(--cream); font-size:0.95rem;">💛 Thank you! Your feedback is being sent via WhatsApp. If it didn't open automatically, message us at <strong>0927 692 4831</strong>.</p>
+        <div id="fbConfirm" style="display:none; margin-top:1rem; background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.3); border-radius:8px; padding:1.25rem; text-align:center;">
+          <p style="color:#fff; font-size:1rem; margin-bottom:0.5rem; line-height:1.6;">💛 Thank you! Your feedback is being sent via WhatsApp. If it didn't open automatically, message us at <strong>0927 692 4831</strong>.</p>
+          <p id="fbCountdown" style="color:rgba(255,255,255,0.7); font-size:0.8rem; margin-bottom:0.75rem;">📸 This message will disappear in <strong id="fbSeconds">20</strong> seconds — take a screenshot or note our number!</p>
+          <button onclick="clearInterval(window.fbTimer); document.getElementById('fbConfirm').style.display='none'" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3);border-radius:6px;padding:0.4rem 1.2rem;color:#fff;font-size:0.82rem;cursor:pointer;font-family:'Inter',sans-serif;">OK, Got it ✓</button>
         </div>
       </div>
       <div class="feedback-info">
@@ -798,7 +800,7 @@
       <button class="admin-tab active" onclick="switchTab('orders',this)">📋 Orders</button>
       <button class="admin-tab" onclick="switchTab('reservations',this)">📅 Reservations</button>
       <button class="admin-tab" onclick="switchTab('reviews',this)">⭐ Reviews</button>
-      <button class="admin-tab" onclick="switchTab('feedback',this)">📩 Feedback <span id="fbBadge" style="display:none;background:#c0392b;color:#fff;border-radius:999px;font-size:0.65rem;padding:0.1rem 0.4rem;margin-left:0.3rem;"></span></button>
+
       <button class="admin-tab" onclick="switchTab('payment',this)">💳 Payment Details</button>
     </div>
     <div id="tab-orders" class="admin-tab-content"><div id="ordersList"></div></div>
@@ -1219,7 +1221,7 @@ function submitFeedback() {
   document.getElementById('fbMessage').value = '';
   document.getElementById('fbType').value = 'Complaint';
   document.getElementById('fbConfirm').style.display = 'block';
-  setTimeout(() => document.getElementById('fbConfirm').style.display = 'none', 3000);
+  setTimeout(() => document.getElementById('fbConfirm').style.display = 'none', 6000);
   renderFeedback();
 }
 
