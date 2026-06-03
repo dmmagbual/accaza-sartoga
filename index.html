@@ -1069,9 +1069,16 @@ function renderAvailability() {
   el.innerHTML = html;
 }
 
-function toggleAvailability(name, avail) {
+function toggleAvailability(name, checkbox) {
+  const avail = checkbox.checked;
   availability[name] = avail;
-  renderAvailability();
+  const row = checkbox.closest('.avail-row');
+  const nameEl = row.querySelector('.avail-row-name');
+  const statusEl = row.querySelector('.avail-status');
+  nameEl.style.textDecoration = avail ? 'none' : 'line-through';
+  nameEl.style.opacity = avail ? '1' : '0.5';
+  statusEl.textContent = avail ? 'Available' : 'Not Available';
+  statusEl.style.color = avail ? '#2d9e5f' : '#c0392b';
   filterMenu('all');
   filterOrder('all', document.querySelector('.otab'));
 }
