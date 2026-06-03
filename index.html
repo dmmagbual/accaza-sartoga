@@ -621,7 +621,10 @@
         </div>
         <div class="res-field">
           <label class="res-label">Your Message</label>
-          <textarea id="fbMessage" rows="5" placeholder="Tell us what's on your mind — we read every message..."></textarea>
+          <textarea id="fbMessage" rows="5" maxlength="300" placeholder="Tell us what's on your mind — we read every message..." oninput="updateFbCounter()"></textarea>
+          <div style="display:flex; justify-content:flex-end; margin-top:0.3rem;">
+            <span id="fbCounter" style="font-size:0.72rem; color:rgba(245,239,230,0.5);">0 / 300</span>
+          </div>
         </div>
         <button class="btn-reserve" style="margin-top:1rem;" onclick="submitFeedback()">Send Feedback</button>
         <div id="fbConfirm" style="display:none; margin-top:1rem; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:1rem; text-align:center;">
@@ -735,7 +738,7 @@
       <button class="admin-tab active" onclick="switchTab('orders',this)">📋 Orders</button>
       <button class="admin-tab" onclick="switchTab('reservations',this)">📅 Reservations</button>
       <button class="admin-tab" onclick="switchTab('reviews',this)">⭐ Reviews</button>
-      <button class="admin-tab" onclick="switchTab('feedback',this)">📩 Feedback</button>
+      <button class="admin-tab" onclick="switchTab('feedback',this)">📩 Feedback <span id="fbBadge" style="display:none;background:#c0392b;color:#fff;border-radius:999px;font-size:0.65rem;padding:0.1rem 0.4rem;margin-left:0.3rem;"></span></button>
       <button class="admin-tab" onclick="switchTab('payment',this)">💳 Payment Details</button>
     </div>
     <div id="tab-orders" class="admin-tab-content"><div id="ordersList"></div></div>
@@ -1033,6 +1036,13 @@ function submitContact() {
   document.querySelector('#contact .btn-reserve').style.opacity = '0.5';
 }
 
+function updateFbCounter() {
+  const len = document.getElementById('fbMessage').value.length;
+  const counter = document.getElementById('fbCounter');
+  counter.textContent = `${len} / 300`;
+  counter.style.color = len >= 270 ? '#ff8080' : len >= 200 ? '#f39c12' : 'rgba(245,239,230,0.5)';
+}
+
 // ── FEEDBACK ──
 let feedbacks = [];
 
@@ -1054,31 +1064,34 @@ function submitFeedback() {
 }
 
 function renderFeedback() {
+  const tab = document.getElementById('tab-feedback');
   const el = document.getElementById('feedbackList');
-  if (!el) return;
+  if (!tab || !el) return;
+  tab.style.display = 'block';
+  tab.style.background = '#fff';
+  tab.style.padding = '1.25rem';
+  tab.style.border = '1px solid #e8dcc8';
+  tab.style.borderRadius = '8px';
   if (!feedbacks.length) {
-    el.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-light);font-size:0.88rem;">📩 No feedback submitted yet.</div>';
+    el.innerHTML = '<div style="text-align:center;padding:2rem;color:#8a6a55;font-size:0.88rem;">📩 No feedback submitted yet.</div>';
     return;
   }
   const typeIcon = { Complaint:'😞', Suggestion:'💡', Compliment:'❤️', Other:'💬' };
   const typeColor = { Complaint:'#c0392b', Suggestion:'#f39c12', Compliment:'#2d9e5f', Other:'#888' };
   let html = '';
   feedbacks.forEach((f,i) => {
-    html += `<div class="order-admin-card" style="border-left:4px solid ${typeColor[f.type]}; margin-bottom:0.75rem;">
-      <div class="order-admin-top">
+    html += `<div style="border:1px solid #e8dcc8;border-left:4px solid ${typeColor[f.type]};border-radius:6px;padding:1rem;margin-bottom:0.75rem;background:#fff;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;">
         <div>
-          <div class="order-admin-name">${typeIcon[f.type]} ${f.name} <span style="font-size:0.75rem;color:var(--text-light);">${f.type}</span></div>
-          <div class="order-admin-meta">${f.contact?f.contact+' · ':''}${f.date}</div>
+          <div style="font-weight:500;font-size:0.9rem;color:#3b2314;">${typeIcon[f.type]} ${f.name} <span style="font-size:0.75rem;color:#8a6a55;">${f.type}</span></div>
+          <div style="font-size:0.78rem;color:#8a6a55;margin-top:0.1rem;">${f.contact?f.contact+' · ':''}${f.date}</div>
         </div>
-        <span class="badge" style="background:${f.status==='Resolved'?'#d4edda':'#fef3cd'};color:${f.status==='Resolved'?'#155724':'#856404'};">${f.status}</span>
+        <span style="display:inline-block;font-size:0.7rem;padding:0.2rem 0.6rem;border-radius:999px;font-weight:500;background:${f.status==='Resolved'?'#d4edda':'#fef3cd'};color:${f.status==='Resolved'?'#155724':'#856404'};">${f.status}</span>
       </div>
-      <div class="order-admin-items" style="font-style:italic; margin:0.5rem 0;">"${f.message}"</div>
-      <div class="order-admin-footer">
-        <span></span>
-        <div style="display:flex;gap:0.5rem;">
-          ${f.status==='Unread'?`<button onclick="markResolved(${i})" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#2d6a4f;cursor:pointer;font-family:'Inter',sans-serif;">✅ Mark Resolved</button>`:''}
-          ${f.status==='Resolved'?`<button onclick="confirmDeleteFeedback(${i})" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;font-family:'Inter',sans-serif;">🗑️ Delete</button>`:''}
-        </div>
+      <div style="font-size:0.82rem;color:#5c3d2e;font-style:italic;margin:0.4rem 0;">"${f.message}"</div>
+      <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:0.5rem;">
+        ${f.status==='Unread'?`<button onclick="markResolved(${i})" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#2d6a4f;cursor:pointer;font-family:Inter,sans-serif;">✅ Mark Resolved</button>`:''}
+        ${f.status==='Resolved'?`<button onclick="confirmDeleteFeedback(${i})" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;font-family:Inter,sans-serif;">🗑️ Delete</button>`:''}
       </div>
     </div>`;
   });
