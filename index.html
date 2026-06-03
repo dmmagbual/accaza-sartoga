@@ -1055,26 +1055,34 @@ function submitFeedback() {
 
 function renderFeedback() {
   const el = document.getElementById('feedbackList');
-  if (!feedbacks.length) { el.innerHTML = '<div class="empty-state">No feedback yet.</div>'; return; }
+  if (!el) return;
+  if (!feedbacks.length) {
+    el.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-light);font-size:0.88rem;">📩 No feedback submitted yet.</div>';
+    return;
+  }
   const typeIcon = { Complaint:'😞', Suggestion:'💡', Compliment:'❤️', Other:'💬' };
-  el.innerHTML = feedbacks.map((f,i) => `
-    <div class="order-admin-card" style="border-left:4px solid ${f.type==='Complaint'?'#c0392b':f.type==='Compliment'?'#2d9e5f':f.type==='Suggestion'?'#f39c12':'#888'};">
+  const typeColor = { Complaint:'#c0392b', Suggestion:'#f39c12', Compliment:'#2d9e5f', Other:'#888' };
+  let html = '';
+  feedbacks.forEach((f,i) => {
+    html += `<div class="order-admin-card" style="border-left:4px solid ${typeColor[f.type]}; margin-bottom:0.75rem;">
       <div class="order-admin-top">
         <div>
           <div class="order-admin-name">${typeIcon[f.type]} ${f.name} <span style="font-size:0.75rem;color:var(--text-light);">${f.type}</span></div>
-          <div class="order-admin-meta">${f.contact ? f.contact+' · ' : ''}${f.date}</div>
+          <div class="order-admin-meta">${f.contact?f.contact+' · ':''}${f.date}</div>
         </div>
         <span class="badge" style="background:${f.status==='Resolved'?'#d4edda':'#fef3cd'};color:${f.status==='Resolved'?'#155724':'#856404'};">${f.status}</span>
       </div>
-      <div class="order-admin-items" style="font-style:italic;">"${f.message}"</div>
+      <div class="order-admin-items" style="font-style:italic; margin:0.5rem 0;">"${f.message}"</div>
       <div class="order-admin-footer">
         <span></span>
-        <div style="display:flex;gap:0.5rem;align-items:center;">
-          ${f.status==='Unread' ? `<button onclick="markResolved(${i})" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#2d6a4f;cursor:pointer;font-family:'Inter',sans-serif;">✅ Mark Resolved</button>` : ''}
-          ${f.status==='Resolved' ? `<button onclick="confirmDeleteFeedback(${i})" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;font-family:'Inter',sans-serif;">🗑️ Delete</button>` : ''}
+        <div style="display:flex;gap:0.5rem;">
+          ${f.status==='Unread'?`<button onclick="markResolved(${i})" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#2d6a4f;cursor:pointer;font-family:'Inter',sans-serif;">✅ Mark Resolved</button>`:''}
+          ${f.status==='Resolved'?`<button onclick="confirmDeleteFeedback(${i})" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;font-family:'Inter',sans-serif;">🗑️ Delete</button>`:''}
         </div>
       </div>
-    </div>`).join('');
+    </div>`;
+  });
+  el.innerHTML = html;
 }
 
 function markResolved(i) {
