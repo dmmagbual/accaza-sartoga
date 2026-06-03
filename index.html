@@ -1,291 +1,290 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
+<meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Accaza Coffee</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Inter:wght@300;400;500&display=swap" rel="stylesheet"/>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root {
-    --brown-dark: #3b2314; --brown-mid: #6b3a2a; --brown-light: #a0673a;
-    --cream: #f5efe6; --cream-dark: #e8dcc8;
-    --text-dark: #2c1a0e; --text-mid: #5c3d2e; --text-light: #8a6a55;
-  }
-  body { font-family: 'Inter', sans-serif; background: var(--cream); color: var(--text-dark); overflow-x: hidden; }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bd:#3b2314;--bm:#6b3a2a;--bl:#a0673a;
+  --cr:#f5efe6;--cd:#e8dcc8;
+  --td:#2c1a0e;--tm:#5c3d2e;--tl:#8a6a55;
+}
+body{font-family:'Inter',sans-serif;background:var(--cr);color:var(--td);overflow-x:hidden;}
 
-  /* NAV */
-  nav { position: fixed; top: 0; width: 100%; z-index: 100; background: rgba(59,35,20,0.95); backdrop-filter: blur(8px); padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; }
-  .nav-logo { font-family: 'Playfair Display', serif; font-size: 1.4rem; color: var(--cream); letter-spacing: 0.05em; }
-  .nav-links { display: flex; gap: 2rem; list-style: none; flex-wrap: wrap; }
-  .nav-links a { color: var(--cream-dark); text-decoration: none; font-size: 0.85rem; letter-spacing: 0.08em; text-transform: uppercase; transition: color 0.2s; }
-  .nav-links a:hover { color: #fff; }
+/* NAV */
+nav{position:fixed;top:0;width:100%;z-index:200;background:rgba(59,35,20,0.96);backdrop-filter:blur(8px);padding:1rem 2rem;display:flex;align-items:center;justify-content:space-between;}
+.nav-logo{font-family:'Playfair Display',serif;font-size:1.4rem;color:var(--cr);letter-spacing:0.05em;}
+.nav-links{display:flex;gap:1.5rem;list-style:none;flex-wrap:wrap;}
+.nav-links a{color:var(--cd);text-decoration:none;font-size:0.82rem;letter-spacing:0.08em;text-transform:uppercase;transition:color 0.2s;}
+.nav-links a:hover{color:#fff;}
 
-  /* HERO */
-  .hero { min-height: 100vh; position: relative; display: flex; align-items: center; justify-content: center; text-align: center; padding: 6rem 2rem 4rem; overflow: hidden; }
-  .hero-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
-  .hero-bg img { width: 100%; height: 100%; object-fit: cover; object-position: center; display: block; }
-  .hero-overlay { position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(15,7,3,0.65) 0%, rgba(15,7,3,0.45) 50%, rgba(15,7,3,0.75) 100%); z-index: 1; }
-  .hero-badge { display: inline-block; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: var(--cream-dark); font-size: 0.75rem; letter-spacing: 0.15em; text-transform: uppercase; padding: 0.4rem 1.2rem; border-radius: 999px; margin-bottom: 1.5rem; }
-  .hero h1 { font-family: 'Playfair Display', serif; font-size: clamp(3rem, 8vw, 5.5rem); color: #fff; line-height: 1.1; margin-bottom: 1rem; }
-  .hero h1 span { color: #c9956a; }
-  .hero p { font-size: 1.1rem; color: rgba(245,239,230,0.8); max-width: 480px; margin: 0 auto 2.5rem; line-height: 1.7; font-weight: 300; }
-  .hero-btns { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
-  .btn-primary { background: var(--brown-light); color: #fff; border: none; padding: 0.85rem 2rem; border-radius: 4px; font-size: 0.9rem; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; transition: background 0.2s; text-decoration: none; display: inline-block; }
-  .btn-primary:hover { background: #b8784a; }
-  .btn-outline { background: transparent; color: var(--cream); border: 1px solid rgba(255,255,255,0.35); padding: 0.85rem 2rem; border-radius: 4px; font-size: 0.9rem; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; transition: all 0.2s; text-decoration: none; display: inline-block; }
-  .btn-outline:hover { background: rgba(255,255,255,0.08); }
-  .scroll-cue { position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 0.4rem; color: rgba(255,255,255,0.4); font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; animation: bounce 2s infinite; z-index: 2; }
-  .scroll-cue svg { width: 20px; height: 20px; }
-  @keyframes bounce { 0%, 100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(6px); } }
+/* HERO */
+.hero{min-height:100vh;position:relative;display:flex;align-items:center;justify-content:center;text-align:center;padding:6rem 2rem 4rem;overflow:hidden;}
+.hero-bg{position:absolute;inset:0;z-index:0;overflow:hidden;}
+.hero-bg img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;}
+.hero-overlay{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(15,7,3,0.65) 0%,rgba(15,7,3,0.45) 50%,rgba(15,7,3,0.75) 100%);z-index:1;}
+.hero-content{position:relative;z-index:2;}
+.hero-badge{display:inline-block;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:var(--cd);font-size:0.75rem;letter-spacing:0.15em;text-transform:uppercase;padding:0.4rem 1.2rem;border-radius:999px;margin-bottom:1.5rem;}
+.hero h1{font-family:'Playfair Display',serif;font-size:clamp(3rem,8vw,5.5rem);color:#fff;line-height:1.1;margin-bottom:1rem;}
+.hero h1 span{color:#c9956a;}
+.hero p{font-size:1.1rem;color:rgba(245,239,230,0.8);max-width:480px;margin:0 auto 2.5rem;line-height:1.7;font-weight:300;}
+.hero-btns{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;}
+.btn-primary{background:var(--bl);color:#fff;border:none;padding:0.85rem 2rem;border-radius:4px;font-size:0.9rem;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;transition:background 0.2s;text-decoration:none;display:inline-block;}
+.btn-primary:hover{background:#b8784a;}
+.btn-outline{background:transparent;color:var(--cr);border:1px solid rgba(255,255,255,0.35);padding:0.85rem 2rem;border-radius:4px;font-size:0.9rem;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;transition:all 0.2s;text-decoration:none;display:inline-block;}
+.btn-outline:hover{background:rgba(255,255,255,0.08);}
+.scroll-cue{position:absolute;bottom:2rem;left:50%;transform:translateX(-50%);z-index:2;display:flex;flex-direction:column;align-items:center;gap:0.4rem;color:rgba(255,255,255,0.4);font-size:0.7rem;letter-spacing:0.12em;text-transform:uppercase;animation:bounce 2s infinite;}
+.scroll-cue svg{width:20px;height:20px;}
+@keyframes bounce{0%,100%{transform:translateX(-50%) translateY(0);}50%{transform:translateX(-50%) translateY(6px);}}
 
-  /* ABOUT */
-  .about { background: var(--cream); padding: 6rem 2rem; }
-  .about-inner { max-width: 1000px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 5rem; align-items: center; }
-  .section-label { font-size: 0.75rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--brown-light); margin-bottom: 0.75rem; }
-  .about h2 { font-family: 'Playfair Display', serif; font-size: clamp(2rem, 4vw, 2.8rem); color: var(--brown-dark); line-height: 1.2; margin-bottom: 1.5rem; }
-  .about p { color: var(--text-mid); line-height: 1.8; margin-bottom: 1rem; font-size: 0.97rem; }
-  .about-values { margin-top: 2rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-  .value-card { background: var(--cream-dark); border-radius: 6px; padding: 1rem 1.1rem; }
-  .value-card h4 { font-family: 'Playfair Display', serif; font-size: 1rem; color: var(--brown-dark); margin-bottom: 0.3rem; }
-  .value-card p { font-size: 0.82rem; color: var(--text-light); margin: 0; }
-  .about-visual { display: flex; flex-direction: column; gap: 1.2rem; }
-  .visual-main { background: var(--brown-dark); border-radius: 8px; height: 260px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
-  .visual-main::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at 60% 40%, rgba(160,103,58,0.4) 0%, transparent 60%); }
-  .cup-icon { font-size: 5rem; position: relative; z-index: 1; opacity: 0.9; }
-  .visual-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.8rem; }
-  .stat-box { background: var(--brown-dark); border-radius: 6px; padding: 1rem; text-align: center; }
-  .stat-box .num { font-family: 'Playfair Display', serif; font-size: 1.6rem; color: #c9956a; display: block; }
-  .stat-box .lbl { font-size: 0.72rem; color: rgba(245,239,230,0.6); text-transform: uppercase; letter-spacing: 0.08em; }
+/* ABOUT */
+.about{background:var(--cr);padding:6rem 2rem;}
+.about-inner{max-width:1000px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:5rem;align-items:center;}
+.section-label{font-size:0.75rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--bl);margin-bottom:0.75rem;}
+.about h2{font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);line-height:1.2;margin-bottom:1.5rem;}
+.about p{color:var(--tm);line-height:1.8;margin-bottom:1rem;font-size:0.97rem;}
+.about-values{margin-top:2rem;display:grid;grid-template-columns:1fr 1fr;gap:1rem;}
+.value-card{background:var(--cd);border-radius:6px;padding:1rem 1.1rem;}
+.value-card h4{font-family:'Playfair Display',serif;font-size:1rem;color:var(--bd);margin-bottom:0.3rem;}
+.value-card p{font-size:0.82rem;color:var(--tl);margin:0;}
+.about-visual{display:flex;flex-direction:column;gap:1.2rem;}
+.visual-main{background:var(--bd);border-radius:8px;height:260px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;}
+.visual-main::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 60% 40%,rgba(160,103,58,0.4) 0%,transparent 60%);}
+.cup-icon{font-size:5rem;position:relative;z-index:1;}
+.visual-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.8rem;}
+.stat-box{background:var(--bd);border-radius:6px;padding:1rem;text-align:center;}
+.stat-box .num{font-family:'Playfair Display',serif;font-size:1.6rem;color:#c9956a;display:block;}
+.stat-box .lbl{font-size:0.72rem;color:rgba(245,239,230,0.6);text-transform:uppercase;letter-spacing:0.08em;}
 
-  /* REEL */
-  .reel-section { background: var(--brown-dark); padding: 6rem 2rem; }
-  .reel-inner { max-width: 700px; margin: 0 auto; }
-  .reel-embed-wrap { display: flex; justify-content: center; align-items: center; }
+/* REEL */
+.reel-section{background:var(--bd);padding:6rem 2rem;}
+.reel-inner{max-width:700px;margin:0 auto;}
+.reel-embed-wrap{display:flex;justify-content:center;}
 
-  /* MENU */
-  .menu { background: var(--brown-dark); padding: 6rem 2rem; }
-  .menu-inner { max-width: 1000px; margin: 0 auto; }
-  .menu-tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; margin-bottom: 2.5rem; }
-  .tab-btn { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); color: rgba(245,239,230,0.7); padding: 0.45rem 1.1rem; border-radius: 999px; font-size: 0.82rem; cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif; }
-  .tab-btn:hover { background: rgba(255,255,255,0.12); color: var(--cream); }
-  .tab-btn.active { background: var(--brown-light); border-color: var(--brown-light); color: #fff; }
-  .menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
-  .menu-card { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 1.2rem; transition: all 0.2s; cursor: pointer; }
-  .menu-card:hover { background: rgba(255,255,255,0.13); transform: translateY(-2px); border-color: rgba(201,149,106,0.5); }
-  .unavailable-card { opacity: 0.45; cursor: not-allowed; }
-  .unavailable-card:hover { transform: none !important; background: rgba(255,255,255,0.06) !important; border-color: rgba(255,255,255,0.1) !important; }
-  .menu-card .cat-tag { font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--brown-light); margin-bottom: 0.5rem; display: block; }
-  .menu-card h4 { font-family: 'Playfair Display', serif; color: var(--cream); font-size: 1rem; margin-bottom: 0.3rem; }
-  .menu-card p { font-size: 0.78rem; color: rgba(245,239,230,0.5); line-height: 1.5; margin-bottom: 0.8rem; }
-  .menu-card .price { font-size: 0.95rem; font-weight: 500; color: #c9956a; }
+/* MENU */
+.menu{background:var(--bd);padding:6rem 2rem;}
+.menu-inner{max-width:1000px;margin:0 auto;}
+.menu-tabs{display:flex;flex-wrap:wrap;gap:0.5rem;justify-content:center;margin-bottom:2.5rem;}
+.tab-btn{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:rgba(245,239,230,0.7);padding:0.45rem 1.1rem;border-radius:999px;font-size:0.82rem;cursor:pointer;transition:all 0.2s;font-family:'Inter',sans-serif;}
+.tab-btn:hover{background:rgba(255,255,255,0.12);color:var(--cr);}
+.tab-btn.active{background:var(--bl);border-color:var(--bl);color:#fff;}
+.menu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem;}
+.menu-card{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:1.2rem;transition:all 0.2s;cursor:pointer;}
+.menu-card:hover{background:rgba(255,255,255,0.13);transform:translateY(-2px);border-color:rgba(201,149,106,0.5);}
+.unavailable-card{opacity:0.45;cursor:not-allowed;}
+.unavailable-card:hover{transform:none!important;background:rgba(255,255,255,0.06)!important;border-color:rgba(255,255,255,0.1)!important;}
+.menu-card .cat-tag{font-size:0.68rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--bl);margin-bottom:0.5rem;display:block;}
+.menu-card h4{font-family:'Playfair Display',serif;color:var(--cr);font-size:1rem;margin-bottom:0.3rem;}
+.menu-card p{font-size:0.78rem;color:rgba(245,239,230,0.5);line-height:1.5;margin-bottom:0.8rem;}
+.menu-card .price{font-size:0.95rem;font-weight:500;color:#c9956a;}
 
-  /* ORDER */
-  .order-section { background: var(--cream); padding: 6rem 2rem; }
-  .order-inner { max-width: 1000px; margin: 0 auto; }
-  .order-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem; align-items: start; }
-  .order-section-title { font-family: 'Playfair Display', serif; font-size: 1.05rem; color: var(--brown-dark); margin-bottom: 0.85rem; }
-  .order-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem; }
-  .otab { background: var(--cream-dark); border: none; border-radius: 999px; padding: 0.35rem 0.9rem; font-size: 0.78rem; cursor: pointer; color: var(--text-mid); font-family: 'Inter', sans-serif; transition: all 0.2s; }
-  .otab:hover { background: var(--brown-light); color: #fff; }
-  .otab.active { background: var(--brown-dark); color: var(--cream); }
-  .item-list { display: flex; flex-direction: column; gap: 0.5rem; max-height: 360px; overflow-y: auto; padding-right: 4px; }
-  .item-row { display: flex; align-items: center; justify-content: space-between; background: #fff; border: 1px solid var(--cream-dark); border-radius: 6px; padding: 0.65rem 0.85rem; }
-  .item-row-info h5 { font-size: 0.88rem; color: var(--brown-dark); margin-bottom: 0.1rem; }
-  .item-row-info span { font-size: 0.75rem; color: var(--text-light); }
-  .item-row-right { display: flex; align-items: center; gap: 0.5rem; }
-  .item-price { font-size: 0.88rem; font-weight: 500; color: var(--brown-light); min-width: 42px; text-align: right; }
-  .qty-btn { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--cream-dark); background: var(--cream); font-size: 1rem; cursor: pointer; color: var(--brown-dark); display: flex; align-items: center; justify-content: center; font-family: 'Inter', sans-serif; transition: background 0.15s; }
-  .qty-btn:hover { background: var(--brown-light); color: #fff; border-color: var(--brown-light); }
-  .qty-display { font-size: 0.85rem; font-weight: 500; min-width: 18px; text-align: center; color: var(--brown-dark); }
-  .cart-box { background: #fff; border: 1px solid var(--cream-dark); border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; }
-  .cart-item-line { display: flex; justify-content: space-between; font-size: 0.83rem; color: var(--text-mid); padding: 0.3rem 0; border-bottom: 1px solid var(--cream-dark); }
-  .cart-total { display: flex; justify-content: space-between; font-weight: 500; font-size: 0.95rem; color: var(--brown-dark); margin-top: 0.75rem; }
-  .form-box { background: #fff; border: 1px solid var(--cream-dark); border-radius: 8px; padding: 1.25rem; }
-  .field-label { display: block; font-size: 0.78rem; color: var(--text-light); margin-bottom: 0.3rem; letter-spacing: 0.04em; text-transform: uppercase; }
-  .order-type-btns { display: flex; gap: 0.5rem; }
-  .type-btn { flex: 1; padding: 0.6rem; border-radius: 6px; border: 1px solid var(--cream-dark); background: var(--cream); font-size: 0.83rem; cursor: pointer; font-family: 'Inter', sans-serif; color: var(--text-mid); transition: all 0.2s; }
-  .type-btn:hover { border-color: var(--brown-light); color: var(--brown-light); }
-  .type-btn.active { background: var(--brown-dark); border-color: var(--brown-dark); color: var(--cream); }
-  .payment-info { margin-top: 1rem; background: var(--cream); border: 1px solid var(--cream-dark); border-radius: 6px; padding: 1rem; }
-  .pay-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-light); }
-  .pay-value { font-size: 1rem; font-weight: 500; color: var(--brown-dark); }
-  .btn-place-order { width: 100%; margin-top: 1.25rem; background: var(--brown-dark); color: var(--cream); border: none; border-radius: 6px; padding: 0.9rem; font-size: 0.9rem; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; font-family: 'Inter', sans-serif; transition: background 0.2s; }
-  .btn-place-order:hover { background: var(--brown-mid); }
-  input[type=text], input[type=date], input[type=password], select, textarea { background: var(--cream); border: 1px solid var(--cream-dark); border-radius: 6px; padding: 0.6rem 0.85rem; font-family: 'Inter', sans-serif; font-size: 0.88rem; color: var(--text-dark); width: 100%; }
+/* ORDER */
+.order-section{background:var(--cr);padding:6rem 2rem;}
+.order-inner{max-width:1000px;margin:0 auto;}
+.order-layout{display:grid;grid-template-columns:1fr 1fr;gap:2.5rem;align-items:start;}
+.order-section-title{font-family:'Playfair Display',serif;font-size:1.05rem;color:var(--bd);margin-bottom:0.85rem;}
+.order-tabs{display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:1rem;}
+.otab{background:var(--cd);border:none;border-radius:999px;padding:0.35rem 0.9rem;font-size:0.78rem;cursor:pointer;color:var(--tm);font-family:'Inter',sans-serif;transition:all 0.2s;}
+.otab:hover{background:var(--bl);color:#fff;}
+.otab.active{background:var(--bd);color:var(--cr);}
+.item-list{display:flex;flex-direction:column;gap:0.5rem;max-height:360px;overflow-y:auto;padding-right:4px;}
+.item-row{display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.65rem 0.85rem;}
+.item-row-info h5{font-size:0.88rem;color:var(--bd);margin-bottom:0.1rem;}
+.item-row-info span{font-size:0.75rem;color:var(--tl);}
+.item-row-right{display:flex;align-items:center;gap:0.5rem;}
+.item-price{font-size:0.88rem;font-weight:500;color:var(--bl);min-width:42px;text-align:right;}
+.qty-btn{width:26px;height:26px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:1rem;cursor:pointer;color:var(--bd);display:flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif;transition:background 0.15s;}
+.qty-btn:hover{background:var(--bl);color:#fff;border-color:var(--bl);}
+.qty-display{font-size:0.85rem;font-weight:500;min-width:18px;text-align:center;color:var(--bd);}
+.cart-box{background:#fff;border:1px solid var(--cd);border-radius:8px;padding:1.25rem;margin-bottom:1rem;}
+.cart-item-line{display:flex;justify-content:space-between;font-size:0.83rem;color:var(--tm);padding:0.3rem 0;border-bottom:1px solid var(--cd);}
+.cart-total{display:flex;justify-content:space-between;font-weight:500;font-size:0.95rem;color:var(--bd);margin-top:0.75rem;}
+.form-box{background:#fff;border:1px solid var(--cd);border-radius:8px;padding:1.25rem;}
+.field-label{display:block;font-size:0.78rem;color:var(--tl);margin-bottom:0.3rem;letter-spacing:0.04em;text-transform:uppercase;}
+.order-type-btns{display:flex;gap:0.5rem;}
+.type-btn{flex:1;padding:0.6rem;border-radius:6px;border:1px solid var(--cd);background:var(--cr);font-size:0.83rem;cursor:pointer;font-family:'Inter',sans-serif;color:var(--tm);transition:all 0.2s;}
+.type-btn:hover{border-color:var(--bl);color:var(--bl);}
+.type-btn.active{background:var(--bd);border-color:var(--bd);color:var(--cr);}
+.payment-info{margin-top:1rem;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:1rem;}
+.pay-label{font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--tl);}
+.pay-value{font-size:1rem;font-weight:500;color:var(--bd);}
+.btn-place-order{width:100%;margin-top:1.25rem;background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.9rem;font-size:0.9rem;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;font-family:'Inter',sans-serif;transition:background 0.2s;}
+.btn-place-order:hover{background:var(--bm);}
+input[type=text],input[type=date],input[type=password],select,textarea{background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.6rem 0.85rem;font-family:'Inter',sans-serif;font-size:0.88rem;color:var(--td);width:100%;}
 
-  /* RESERVATIONS */
-  .reservations { background: var(--brown-mid); padding: 6rem 2rem; }
-  .res-inner { max-width: 1000px; margin: 0 auto; }
-  .res-layout { display: grid; grid-template-columns: 1.4fr 1fr; gap: 2.5rem; align-items: start; }
-  .res-form-box { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 1.75rem; }
-  .res-field-group { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
-  .res-field { display: flex; flex-direction: column; }
-  .res-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(245,239,230,0.55); margin-bottom: 0.35rem; }
-  .res-form-box input, .res-form-box select, .res-form-box textarea { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 0.6rem 0.85rem; color: var(--cream); font-family: 'Inter', sans-serif; font-size: 0.88rem; width: 100%; }
-  .res-form-box input::placeholder, .res-form-box textarea::placeholder { color: rgba(245,239,230,0.3); }
-  .res-form-box select option { background: var(--brown-mid); color: var(--cream); }
-  .res-form-box textarea { resize: none; }
-  .btn-reserve { width: 100%; margin-top: 1.25rem; background: var(--brown-light); color: #fff; border: none; border-radius: 6px; padding: 0.9rem; font-size: 0.9rem; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; font-family: 'Inter', sans-serif; transition: background 0.2s; }
-  .btn-reserve:hover { background: #b8784a; }
-  .res-info { display: flex; flex-direction: column; gap: 1rem; }
-  .res-info-card { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 1.25rem; }
-  .res-info-icon { font-size: 1.5rem; margin-bottom: 0.5rem; }
-  .res-info-card h4 { font-family: 'Playfair Display', serif; color: var(--cream); font-size: 1rem; margin-bottom: 0.4rem; }
-  .res-info-card p { font-size: 0.82rem; color: rgba(245,239,230,0.6); line-height: 1.5; }
-  .res-time { color: #c9956a !important; font-weight: 500; }
+/* RESERVATIONS */
+.reservations{background:var(--bm);padding:6rem 2rem;}
+.res-inner{max-width:1000px;margin:0 auto;}
+.res-layout{display:grid;grid-template-columns:1.4fr 1fr;gap:2.5rem;align-items:start;}
+.res-form-box{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:1.75rem;}
+.res-field-group{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;}
+.res-field{display:flex;flex-direction:column;}
+.res-label{font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(245,239,230,0.55);margin-bottom:0.35rem;}
+.res-form-box input,.res-form-box select,.res-form-box textarea{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:0.6rem 0.85rem;color:var(--cr);font-family:'Inter',sans-serif;font-size:0.88rem;width:100%;}
+.res-form-box input::placeholder,.res-form-box textarea::placeholder{color:rgba(245,239,230,0.3);}
+.res-form-box select option{background:var(--bm);color:var(--cr);}
+.res-form-box textarea{resize:none;}
+.btn-reserve{width:100%;margin-top:1.25rem;background:var(--bl);color:#fff;border:none;border-radius:6px;padding:0.9rem;font-size:0.9rem;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;font-family:'Inter',sans-serif;transition:background 0.2s;}
+.btn-reserve:hover{background:#b8784a;}
+.res-info{display:flex;flex-direction:column;gap:1rem;}
+.res-info-card{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:1.25rem;}
+.res-info-icon{font-size:1.5rem;margin-bottom:0.5rem;}
+.res-info-card h4{font-family:'Playfair Display',serif;color:var(--cr);font-size:1rem;margin-bottom:0.4rem;}
+.res-info-card p{font-size:0.82rem;color:rgba(245,239,230,0.6);line-height:1.5;}
+.res-time{color:#c9956a!important;font-weight:500;}
 
-  /* REVIEWS */
-  .reviews-section { background: var(--cream-dark); padding: 6rem 2rem; }
-  .reviews-inner { max-width: 1000px; margin: 0 auto; }
-  .reviews-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.25rem; }
-  .review-card { background: #fff; border-radius: 10px; padding: 1.5rem; border: 1px solid rgba(0,0,0,0.06); box-shadow: 0 2px 12px rgba(0,0,0,0.05); transition: transform 0.2s; }
-  .review-card:hover { transform: translateY(-3px); }
-  .review-stars { font-size: 1rem; margin-bottom: 0.6rem; }
-  .review-text { font-size: 0.88rem; color: var(--text-mid); line-height: 1.7; margin-bottom: 1rem; font-style: italic; }
-  .review-author { display: flex; align-items: center; gap: 0.75rem; }
-  .review-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--brown-dark); color: var(--cream); display: flex; align-items: center; justify-content: center; font-family: 'Playfair Display', serif; font-size: 0.9rem; font-weight: 600; flex-shrink: 0; }
-  .review-name { font-size: 0.85rem; font-weight: 500; color: var(--brown-dark); }
-  .review-date { font-size: 0.72rem; color: var(--text-light); }
+/* REVIEWS */
+.reviews-section{background:var(--cd);padding:6rem 2rem;}
+.reviews-inner{max-width:1000px;margin:0 auto;}
+.reviews-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.25rem;}
+.review-card{background:#fff;border-radius:10px;padding:1.5rem;border:1px solid rgba(0,0,0,0.06);box-shadow:0 2px 12px rgba(0,0,0,0.05);transition:transform 0.2s;}
+.review-card:hover{transform:translateY(-3px);}
+.review-stars{font-size:1rem;margin-bottom:0.6rem;}
+.review-text{font-size:0.88rem;color:var(--tm);line-height:1.7;margin-bottom:1rem;font-style:italic;}
+.review-author{display:flex;align-items:center;gap:0.75rem;}
+.review-avatar{width:36px;height:36px;border-radius:50%;background:var(--bd);color:var(--cr);display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:0.9rem;font-weight:600;flex-shrink:0;}
+.review-name{font-size:0.85rem;font-weight:500;color:var(--bd);}
+.review-date{font-size:0.72rem;color:var(--tl);}
 
-  /* GALLERY */
-  .gallery-section { background: var(--cream); padding: 6rem 2rem; }
-  .gallery-inner { max-width: 1000px; margin: 0 auto; }
-  .gallery-grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 220px; gap: 1rem; }
-  .gallery-card { border-radius: 8px; overflow: hidden; }
-  .gallery-card.tall { grid-row: span 2; }
-  .gallery-card img { width: 100%; height: 100%; object-fit: cover; object-position: center; border-radius: 8px; display: block; }
+/* FEEDBACK */
+.feedback-section{background:var(--bm);padding:6rem 2rem;}
+.feedback-inner{max-width:1000px;margin:0 auto;}
+.feedback-layout{display:grid;grid-template-columns:1.4fr 1fr;gap:2.5rem;align-items:start;}
+.feedback-form-box{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:1.75rem;}
+.feedback-form-box input,.feedback-form-box select,.feedback-form-box textarea{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:0.6rem 0.85rem;color:var(--cr);font-family:'Inter',sans-serif;font-size:0.88rem;width:100%;}
+.feedback-form-box input::placeholder,.feedback-form-box textarea::placeholder{color:rgba(245,239,230,0.3);}
+.feedback-form-box select option{background:var(--bm);color:var(--cr);}
+.feedback-form-box textarea{resize:none;}
+.feedback-info{display:flex;flex-direction:column;gap:1rem;}
 
-  /* FEEDBACK */
-  .feedback-section { background: var(--brown-mid); padding: 6rem 2rem; }
-  .feedback-inner { max-width: 1000px; margin: 0 auto; }
-  .feedback-layout { display: grid; grid-template-columns: 1.4fr 1fr; gap: 2.5rem; align-items: start; }
-  .feedback-form-box { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 1.75rem; }
-  .feedback-form-box input, .feedback-form-box select, .feedback-form-box textarea { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 0.6rem 0.85rem; color: var(--cream); font-family: 'Inter', sans-serif; font-size: 0.88rem; width: 100%; }
-  .feedback-form-box input::placeholder, .feedback-form-box textarea::placeholder { color: rgba(245,239,230,0.3); }
-  .feedback-form-box select option { background: var(--brown-mid); color: var(--cream); }
-  .feedback-form-box textarea { resize: none; }
-  .feedback-info { display: flex; flex-direction: column; gap: 1rem; }
+/* GALLERY */
+.gallery-section{background:var(--cr);padding:6rem 2rem;}
+.gallery-inner{max-width:1000px;margin:0 auto;}
+.gallery-grid{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:220px;gap:1rem;}
+.gallery-card{border-radius:8px;overflow:hidden;}
+.gallery-card.tall{grid-row:span 2;}
+.gallery-card img{width:100%;height:100%;object-fit:cover;object-position:center;border-radius:8px;display:block;}
 
-  /* CONTACT */
-  .contact-section { background: var(--brown-dark); padding: 6rem 2rem; }
-  .contact-inner { max-width: 1000px; margin: 0 auto; }
-  .contact-layout { display: grid; grid-template-columns: 1.3fr 1fr; gap: 3rem; align-items: start; }
-  .contact-form-box { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 1.75rem; }
-  .contact-form-box input, .contact-form-box textarea { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 0.6rem 0.85rem; color: var(--cream); font-family: 'Inter', sans-serif; font-size: 0.88rem; width: 100%; }
-  .contact-form-box input::placeholder, .contact-form-box textarea::placeholder { color: rgba(245,239,230,0.3); }
-  .contact-form-box textarea { resize: none; }
-  .contact-info { display: flex; flex-direction: column; gap: 1.5rem; }
-  .contact-info-item { display: flex; gap: 1rem; align-items: flex-start; }
-  .contact-icon { font-size: 1.4rem; margin-top: 0.1rem; }
-  .contact-info-item h4 { font-family: 'Playfair Display', serif; color: var(--cream); font-size: 0.95rem; margin-bottom: 0.3rem; }
-  .contact-info-item p { font-size: 0.83rem; color: rgba(245,239,230,0.6); line-height: 1.6; }
+/* CONTACT */
+.contact-section{background:var(--bd);padding:6rem 2rem;}
+.contact-inner{max-width:1000px;margin:0 auto;}
+.contact-layout{display:grid;grid-template-columns:1.3fr 1fr;gap:3rem;align-items:start;}
+.contact-form-box{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:1.75rem;}
+.contact-form-box input,.contact-form-box textarea{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:0.6rem 0.85rem;color:var(--cr);font-family:'Inter',sans-serif;font-size:0.88rem;width:100%;}
+.contact-form-box input::placeholder,.contact-form-box textarea::placeholder{color:rgba(245,239,230,0.3);}
+.contact-form-box textarea{resize:none;}
+.contact-info{display:flex;flex-direction:column;gap:1.5rem;}
+.contact-info-item{display:flex;gap:1rem;align-items:flex-start;}
+.contact-icon{font-size:1.4rem;margin-top:0.1rem;}
+.contact-info-item h4{font-family:'Playfair Display',serif;color:var(--cr);font-size:0.95rem;margin-bottom:0.3rem;}
+.contact-info-item p{font-size:0.83rem;color:rgba(245,239,230,0.6);line-height:1.6;}
 
-  /* FOOTER */
-  .footer { background: #1a0d06; padding: 2.5rem 2rem; text-align: center; }
-  .footer-inner { max-width: 700px; margin: 0 auto; }
-  .footer-logo { font-family: 'Playfair Display', serif; font-size: 1.3rem; color: var(--cream); margin-bottom: 0.5rem; }
-  .footer-logo span { font-size: 0.85rem; opacity: 0.6; font-weight: 300; }
-  .footer p { font-size: 0.8rem; color: rgba(245,239,230,0.4); margin-bottom: 1rem; }
-  .footer-links { display: flex; gap: 1.5rem; justify-content: center; margin-bottom: 1rem; flex-wrap: wrap; }
-  .footer-links a { font-size: 0.78rem; color: rgba(245,239,230,0.5); text-decoration: none; letter-spacing: 0.08em; text-transform: uppercase; transition: color 0.2s; }
-  .footer-links a:hover { color: var(--cream); }
-  .footer-copy { font-size: 0.72rem; color: rgba(245,239,230,0.25); margin: 0; }
+/* FOOTER */
+.footer{background:#1a0d06;padding:2.5rem 2rem;text-align:center;}
+.footer-inner{max-width:700px;margin:0 auto;}
+.footer-logo{font-family:'Playfair Display',serif;font-size:1.3rem;color:var(--cr);margin-bottom:0.5rem;}
+.footer-logo span{font-size:0.85rem;opacity:0.6;font-weight:300;}
+.footer p{font-size:0.8rem;color:rgba(245,239,230,0.4);margin-bottom:1rem;}
+.footer-links{display:flex;gap:1.5rem;justify-content:center;margin-bottom:1rem;flex-wrap:wrap;}
+.footer-links a{font-size:0.78rem;color:rgba(245,239,230,0.5);text-decoration:none;letter-spacing:0.08em;text-transform:uppercase;transition:color 0.2s;}
+.footer-links a:hover{color:var(--cr);}
+.footer-copy{font-size:0.72rem;color:rgba(245,239,230,0.25);margin:0;}
 
-  /* ADMIN */
-  #admin { background: var(--cream); min-height: 100vh; padding: 5rem 1rem 3rem; }
-  .admin-wrap { max-width: 1000px; margin: 0 auto; padding: 2rem; }
-  .admin-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; }
-  .admin-logo { font-family: 'Playfair Display', serif; font-size: 1.4rem; color: var(--brown-dark); }
-  .admin-logo span { font-size: 0.8rem; font-weight: 300; color: var(--text-light); margin-left: 0.3rem; }
-  .admin-logout { background: none; border: 1px solid var(--cream-dark); border-radius: 6px; padding: 0.4rem 0.9rem; font-size: 0.8rem; cursor: pointer; color: var(--text-mid); font-family: 'Inter', sans-serif; }
-  .admin-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 1rem; margin-bottom: 2rem; }
-  .admin-stat-card { background: #fff; border: 1px solid var(--cream-dark); border-radius: 8px; padding: 1.1rem; text-align: center; }
-  .stat-num { display: block; font-family: 'Playfair Display', serif; font-size: 1.8rem; color: var(--brown-dark); }
-  .stat-lbl { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-light); }
-  .admin-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--cream-dark); flex-wrap: wrap; }
-  .admin-tab { background: none; border: none; border-bottom: 2px solid transparent; padding: 0.6rem 1.1rem; font-size: 0.85rem; cursor: pointer; font-family: 'Inter', sans-serif; color: var(--text-light); transition: all 0.2s; margin-bottom: -1px; }
-  .admin-tab.active { color: var(--brown-dark); border-bottom-color: var(--brown-dark); font-weight: 500; }
-  .admin-tab-content { background: #fff; border: 1px solid var(--cream-dark); border-radius: 8px; padding: 1.25rem; }
-  .order-admin-card { border: 1px solid var(--cream-dark); border-radius: 6px; padding: 1rem; margin-bottom: 0.75rem; }
-  .order-admin-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem; }
-  .order-admin-name { font-weight: 500; font-size: 0.9rem; color: var(--brown-dark); }
-  .order-admin-meta { font-size: 0.78rem; color: var(--text-light); margin-top: 0.1rem; }
-  .order-admin-items { font-size: 0.82rem; color: var(--text-mid); margin: 0.4rem 0; line-height: 1.6; }
-  .order-admin-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; }
-  .order-total-tag { font-weight: 500; color: var(--brown-light); font-size: 0.9rem; }
-  .status-select { border: 1px solid var(--cream-dark); border-radius: 4px; padding: 0.3rem 0.6rem; font-size: 0.78rem; font-family: 'Inter', sans-serif; color: var(--text-mid); cursor: pointer; }
-  .payment-edit-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; }
-  .payment-edit-card { background: var(--cream); border: 1px solid var(--cream-dark); border-radius: 8px; padding: 1.25rem; }
-  .payment-edit-card h4 { font-family: 'Playfair Display', serif; font-size: 1rem; color: var(--brown-dark); margin-bottom: 0.85rem; }
-  .btn-save { margin-top: 1rem; width: 100%; background: var(--brown-dark); color: var(--cream); border: none; border-radius: 6px; padding: 0.65rem; font-size: 0.8rem; cursor: pointer; font-family: 'Inter', sans-serif; }
-  .badge { display: inline-block; font-size: 0.7rem; padding: 0.2rem 0.6rem; border-radius: 999px; font-weight: 500; }
-  .badge-pending { background: #fef3cd; color: #856404; }
-  .badge-confirmed { background: #d1ecf1; color: #0c5460; }
-  .badge-preparing { background: #fff3cd; color: #664d03; }
-  .badge-completed { background: #d4edda; color: #155724; }
-  .empty-state { text-align: center; padding: 2rem; color: var(--text-light); font-size: 0.88rem; }
+/* ADMIN */
+#adminDash{background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;}
+.admin-wrap{max-width:1000px;margin:0 auto;padding:2rem;}
+.admin-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2rem;}
+.admin-logo{font-family:'Playfair Display',serif;font-size:1.4rem;color:var(--bd);}
+.admin-logo span{font-size:0.8rem;font-weight:300;color:var(--tl);margin-left:0.3rem;}
+.admin-logout{background:none;border:1px solid var(--cd);border-radius:6px;padding:0.4rem 0.9rem;font-size:0.8rem;cursor:pointer;color:var(--tm);font-family:'Inter',sans-serif;}
+.admin-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:2rem;}
+.admin-stat-card{background:#fff;border:1px solid var(--cd);border-radius:8px;padding:1.1rem;text-align:center;}
+.stat-num{display:block;font-family:'Playfair Display',serif;font-size:1.8rem;color:var(--bd);}
+.stat-lbl{font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--tl);}
+.admin-tabs{display:flex;gap:0.5rem;margin-bottom:1.5rem;border-bottom:1px solid var(--cd);flex-wrap:wrap;}
+.admin-tab{background:none;border:none;border-bottom:2px solid transparent;padding:0.6rem 1.1rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;color:var(--tl);transition:all 0.2s;margin-bottom:-1px;}
+.admin-tab.active{color:var(--bd);border-bottom-color:var(--bd);font-weight:500;}
+.admin-tab-content{background:#fff;border:1px solid var(--cd);border-radius:8px;padding:1.25rem;}
+.order-admin-card{border:1px solid var(--cd);border-radius:6px;padding:1rem;margin-bottom:0.75rem;}
+.order-admin-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;}
+.order-admin-name{font-weight:500;font-size:0.9rem;color:var(--bd);}
+.order-admin-meta{font-size:0.78rem;color:var(--tl);margin-top:0.1rem;}
+.order-admin-items{font-size:0.82rem;color:var(--tm);margin:0.4rem 0;line-height:1.6;}
+.order-admin-footer{display:flex;justify-content:space-between;align-items:center;margin-top:0.5rem;}
+.order-total-tag{font-weight:500;color:var(--bl);font-size:0.9rem;}
+.status-select{border:1px solid var(--cd);border-radius:4px;padding:0.3rem 0.6rem;font-size:0.78rem;font-family:'Inter',sans-serif;color:var(--tm);cursor:pointer;}
+.payment-edit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;}
+.payment-edit-card{background:var(--cr);border:1px solid var(--cd);border-radius:8px;padding:1.25rem;}
+.payment-edit-card h4{font-family:'Playfair Display',serif;font-size:1rem;color:var(--bd);margin-bottom:0.85rem;}
+.btn-save{margin-top:1rem;width:100%;background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.65rem;font-size:0.8rem;cursor:pointer;font-family:'Inter',sans-serif;}
+.badge{display:inline-block;font-size:0.7rem;padding:0.2rem 0.6rem;border-radius:999px;font-weight:500;}
+.badge-pending{background:#fef3cd;color:#856404;}
+.badge-confirmed{background:#d1ecf1;color:#0c5460;}
+.badge-preparing{background:#fff3cd;color:#664d03;}
+.badge-completed{background:#d4edda;color:#155724;}
+.empty-state{text-align:center;padding:2rem;color:var(--tl);font-size:0.88rem;}
 
-  /* CHATBOT */
-  .chat-bubble { position: fixed; bottom: 2rem; right: 2rem; z-index: 500; }
-  .chat-toggle { width: 62px; height: 62px; border-radius: 50%; background: linear-gradient(135deg, #3b2314, #6b3a2a); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; box-shadow: 0 4px 20px rgba(59,35,20,0.5), 0 0 0 0 rgba(160,103,58,0.4); transition: transform 0.2s; animation: pulse 2s infinite; position: relative; overflow: visible; }
-  .chat-toggle:hover { transform: scale(1.12); }
-  @keyframes pulse {
-    0% { box-shadow: 0 4px 20px rgba(59,35,20,0.5), 0 0 0 0 rgba(160,103,58,0.5); }
-    70% { box-shadow: 0 4px 20px rgba(59,35,20,0.5), 0 0 0 14px rgba(160,103,58,0); }
-    100% { box-shadow: 0 4px 20px rgba(59,35,20,0.5), 0 0 0 0 rgba(160,103,58,0); }
-  }
-  .steam { position: absolute; top: -18px; display: flex; gap: 4px; left: 50%; transform: translateX(-50%); }
-  .steam span { display: block; width: 4px; height: 12px; background: rgba(255,255,255,0.6); border-radius: 999px; animation: steam 1.5s ease-in-out infinite; }
-  .steam span:nth-child(2) { animation-delay: 0.3s; height: 16px; }
-  .steam span:nth-child(3) { animation-delay: 0.6s; }
-  @keyframes steam {
-    0% { transform: translateY(0) scaleX(1); opacity: 0.6; }
-    50% { transform: translateY(-8px) scaleX(1.3); opacity: 0.3; }
-    100% { transform: translateY(-16px) scaleX(0.8); opacity: 0; }
-  }
-  .chat-notif { position: absolute; top: -4px; right: -4px; width: 18px; height: 18px; background: #c0392b; border-radius: 50%; border: 2px solid #fff; display: none; animation: notifBounce 0.8s ease infinite alternate; }
-  @keyframes notifBounce { from { transform: scale(1); } to { transform: scale(1.25); } }
-  .chat-toggle-label { position: absolute; bottom: -22px; left: 50%; transform: translateX(-50%); font-size: 0.6rem; color: rgba(59,35,20,0.7); white-space: nowrap; font-family: 'Inter', sans-serif; letter-spacing: 0.05em; font-weight: 500; background: rgba(245,239,230,0.9); padding: 0.15rem 0.5rem; border-radius: 999px; }
-  .chat-window { position: fixed; bottom: 6rem; right: 2rem; width: 330px; max-height: 480px; background: #fff; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); display: none; flex-direction: column; z-index: 500; overflow: hidden; }
-  .chat-window.open { display: flex; }
-  .chat-header { background: var(--brown-dark); padding: 1rem 1.25rem; display: flex; align-items: center; justify-content: space-between; }
-  .chat-header-info { display: flex; align-items: center; gap: 0.75rem; }
-  .chat-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--brown-light); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; }
-  .chat-header h4 { font-family: 'Playfair Display', serif; color: var(--cream); font-size: 0.95rem; margin: 0; }
-  .chat-header p { color: rgba(245,239,230,0.6); font-size: 0.72rem; margin: 0; }
-  .chat-close { background: none; border: none; color: var(--cream); font-size: 1.2rem; cursor: pointer; opacity: 0.7; }
-  .chat-messages { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; background: #f9f6f2; }
-  .chat-msg { max-width: 80%; padding: 0.6rem 0.85rem; border-radius: 12px; font-size: 0.83rem; line-height: 1.5; }
-  .chat-msg.bot { background: #fff; color: var(--text-dark); border: 1px solid var(--cream-dark); border-bottom-left-radius: 2px; align-self: flex-start; }
-  .chat-msg.user { background: var(--brown-dark); color: var(--cream); border-bottom-right-radius: 2px; align-self: flex-end; }
-  .chat-quick { padding: 0.75rem 1rem; background: #fff; border-top: 1px solid var(--cream-dark); display: flex; flex-wrap: wrap; gap: 0.4rem; }
-  .chat-quick-btn { background: var(--cream); border: 1px solid var(--cream-dark); border-radius: 999px; padding: 0.3rem 0.75rem; font-size: 0.75rem; cursor: pointer; color: var(--text-mid); font-family: 'Inter', sans-serif; transition: all 0.2s; }
-  .chat-quick-btn:hover { background: var(--brown-light); color: #fff; border-color: var(--brown-light); }
-  .chat-input-row { display: flex; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid var(--cream-dark); background: #fff; }
-  .chat-input { flex: 1; border: 1px solid var(--cream-dark); border-radius: 999px; padding: 0.5rem 0.9rem; font-size: 0.83rem; font-family: 'Inter', sans-serif; outline: none; color: var(--text-dark); background: var(--cream); }
-  .chat-send { width: 34px; height: 34px; border-radius: 50%; background: var(--brown-dark); border: none; cursor: pointer; color: #fff; font-size: 0.9rem; flex-shrink: 0; }
+/* AVAIL TOGGLE */
+.avail-toggle{-webkit-appearance:none;appearance:none;width:44px;height:24px;background:#ccc;border-radius:999px;cursor:pointer;position:relative;transition:background 0.2s;flex-shrink:0;border:none;outline:none;}
+.avail-toggle:checked{background:#2d9e5f;}
+.avail-toggle::after{content:'';position:absolute;width:18px;height:18px;background:#fff;border-radius:50%;top:3px;left:3px;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);}
+.avail-toggle:checked::after{left:23px;}
 
-  /* LOGIN OVERLAY */
-  .login-overlay { display: none; position: fixed; inset: 0; background: rgba(30,15,5,0.97); z-index: 9999; align-items: center; justify-content: center; }
-  .login-overlay.active { display: flex; }
-  .login-box { background: var(--cream); border-radius: 10px; padding: 2.5rem; width: 90%; max-width: 360px; }
+/* CHATBOT */
+.chat-bubble{position:fixed;bottom:2rem;right:2rem;z-index:300;}
+.chat-toggle-btn{width:62px;height:62px;border-radius:50%;background:linear-gradient(135deg,#3b2314,#6b3a2a);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1.6rem;box-shadow:0 4px 20px rgba(59,35,20,0.5);animation:chatPulse 2s infinite;position:relative;}
+.chat-toggle-btn:hover{transform:scale(1.1);}
+@keyframes chatPulse{0%{box-shadow:0 4px 20px rgba(59,35,20,0.5),0 0 0 0 rgba(160,103,58,0.5);}70%{box-shadow:0 4px 20px rgba(59,35,20,0.5),0 0 0 14px rgba(160,103,58,0);}100%{box-shadow:0 4px 20px rgba(59,35,20,0.5),0 0 0 0 rgba(160,103,58,0);}}
+.steam{position:absolute;top:-20px;left:50%;transform:translateX(-50%);display:flex;gap:4px;}
+.steam span{display:block;width:4px;height:12px;background:rgba(255,255,255,0.6);border-radius:999px;animation:steamUp 1.5s ease-in-out infinite;}
+.steam span:nth-child(2){animation-delay:0.3s;height:16px;}
+.steam span:nth-child(3){animation-delay:0.6s;}
+@keyframes steamUp{0%{transform:translateY(0) scaleX(1);opacity:0.6;}50%{transform:translateY(-8px) scaleX(1.3);opacity:0.3;}100%{transform:translateY(-16px) scaleX(0.8);opacity:0;}}
+.chat-notif{position:absolute;top:-4px;right:-4px;width:18px;height:18px;background:#c0392b;border-radius:50%;border:2px solid #fff;display:none;animation:notifBounce 0.8s ease infinite alternate;}
+@keyframes notifBounce{from{transform:scale(1);}to{transform:scale(1.25);}}
+.chat-label{position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);font-size:0.6rem;color:rgba(59,35,20,0.7);white-space:nowrap;font-family:'Inter',sans-serif;font-weight:500;background:rgba(245,239,230,0.9);padding:0.15rem 0.5rem;border-radius:999px;}
+.chat-window{position:fixed;bottom:6.5rem;right:2rem;width:330px;max-height:480px;background:#fff;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:none;flex-direction:column;z-index:300;overflow:hidden;}
+.chat-window.open{display:flex;}
+.chat-header{background:var(--bd);padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;}
+.chat-header-info{display:flex;align-items:center;gap:0.75rem;}
+.chat-avatar{width:36px;height:36px;border-radius:50%;background:var(--bl);display:flex;align-items:center;justify-content:center;font-size:1.1rem;}
+.chat-header h4{font-family:'Playfair Display',serif;color:var(--cr);font-size:0.95rem;margin:0;}
+.chat-header p{color:rgba(245,239,230,0.6);font-size:0.72rem;margin:0;}
+.chat-close-btn{background:none;border:none;color:var(--cr);font-size:1.2rem;cursor:pointer;opacity:0.7;padding:0;}
+.chat-close-btn:hover{opacity:1;}
+.chat-messages{flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:0.75rem;background:#f9f6f2;}
+.chat-msg{max-width:80%;padding:0.6rem 0.85rem;border-radius:12px;font-size:0.83rem;line-height:1.5;}
+.chat-msg.bot{background:#fff;color:var(--td);border:1px solid var(--cd);border-bottom-left-radius:2px;align-self:flex-start;}
+.chat-msg.user{background:var(--bd);color:var(--cr);border-bottom-right-radius:2px;align-self:flex-end;}
+.chat-quick{padding:0.75rem 1rem;background:#fff;border-top:1px solid var(--cd);display:flex;flex-wrap:wrap;gap:0.4rem;}
+.chat-quick-btn{background:var(--cr);border:1px solid var(--cd);border-radius:999px;padding:0.3rem 0.75rem;font-size:0.75rem;cursor:pointer;color:var(--tm);font-family:'Inter',sans-serif;transition:all 0.2s;}
+.chat-quick-btn:hover{background:var(--bl);color:#fff;border-color:var(--bl);}
+.chat-input-row{display:flex;gap:0.5rem;padding:0.75rem 1rem;border-top:1px solid var(--cd);background:#fff;}
+.chat-input{flex:1;border:1px solid var(--cd);border-radius:999px;padding:0.5rem 0.9rem;font-size:0.83rem;font-family:'Inter',sans-serif;outline:none;color:var(--td);background:var(--cr);}
+.chat-send{width:34px;height:34px;border-radius:50%;background:var(--bd);border:none;cursor:pointer;color:#fff;font-size:0.9rem;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
 
-  /* AVAIL TOGGLE */
-  .avail-toggle { -webkit-appearance: none; appearance: none; width: 44px; height: 24px; background: #ccc; border-radius: 999px; cursor: pointer; position: relative; transition: background 0.2s; flex-shrink: 0; border: none; outline: none; }
-  .avail-toggle:checked { background: #2d9e5f; }
-  .avail-toggle::after { content: ''; position: absolute; width: 18px; height: 18px; background: #fff; border-radius: 50%; top: 3px; left: 3px; transition: left 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
-  .avail-toggle:checked::after { left: 23px; }
+/* LOGIN OVERLAY */
+.login-overlay{display:none;position:fixed;inset:0;background:rgba(30,15,5,0.97);z-index:9999;align-items:center;justify-content:center;}
+.login-overlay.show{display:flex;}
+.login-box{background:var(--cr);border-radius:10px;padding:2.5rem;width:90%;max-width:360px;}
 
-  @media (max-width: 680px) {
-    .about-inner, .order-layout, .res-layout, .contact-layout, .feedback-layout { grid-template-columns: 1fr; gap: 2rem; }
-    .nav-links { display: none; }
-    .about-values { grid-template-columns: 1fr; }
-    .admin-stats { grid-template-columns: 1fr 1fr; }
-    .payment-edit-grid { grid-template-columns: 1fr; }
-    .gallery-grid { grid-template-columns: 1fr 1fr; grid-auto-rows: auto; }
-    .gallery-card.tall { grid-row: auto; }
-  }
+/* POPUPS */
+.popup-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9998;align-items:center;justify-content:center;}
+.popup-overlay.show{display:flex;}
+.popup-box{background:#fff;border-radius:12px;padding:2rem;max-width:380px;width:90%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.2);}
+
+@media(max-width:680px){
+  .about-inner,.order-layout,.res-layout,.contact-layout,.feedback-layout{grid-template-columns:1fr;gap:2rem;}
+  .nav-links{display:none;}
+  .about-values{grid-template-columns:1fr;}
+  .admin-stats{grid-template-columns:1fr 1fr;}
+  .payment-edit-grid{grid-template-columns:1fr;}
+  .gallery-grid{grid-template-columns:1fr 1fr;grid-auto-rows:auto;}
+  .gallery-card.tall{grid-row:auto;}
+}
 </style>
 </head>
 <body>
@@ -303,8 +302,8 @@
     <li><a href="#feedback">Feedback</a></li>
     <li><a href="#gallery">Gallery</a></li>
     <li><a href="#contact">Contact</a></li>
-    <li id="adminNavItem" style="display:none;"><a href="#availability" style="color:#c9956a;font-weight:500;">🔄 Availability</a></li>
-    <li id="commentsNavItem" style="display:none;"><a href="#commentsAdmin" style="color:#c9956a;font-weight:500;">📩 Comments</a></li>
+    <li id="navAvail" style="display:none;"><a href="#availSection" style="color:#c9956a;font-weight:500;">🔄 Availability</a></li>
+    <li id="navComments" style="display:none;"><a href="#commentsSection" style="color:#c9956a;font-weight:500;">📩 Comments</a></li>
   </ul>
 </nav>
 
@@ -312,7 +311,7 @@
 <section class="hero" id="home">
   <div class="hero-bg"><img src="https://i.postimg.cc/0jcfLdkR/wall-paper.jpg" alt="Accaza Coffee"/></div>
   <div class="hero-overlay"></div>
-  <div style="position:relative;z-index:2;">
+  <div class="hero-content">
     <div class="hero-badge">☕ Saratoga Ave, La Mediterranea, Dasmariñas, Cavite</div>
     <h1>Where Every Cup<br/>Tells a <span>Story</span></h1>
     <p style="font-family:'Playfair Display',serif;font-size:1.05rem;color:rgba(201,149,106,0.9);letter-spacing:0.06em;margin-bottom:0.5rem;">Accaza Coffee &nbsp;·&nbsp; Cafe Sartoga</p>
@@ -358,12 +357,12 @@
 <section class="reel-section" id="reel">
   <div class="reel-inner">
     <div style="text-align:center;margin-bottom:2.5rem;">
-      <p class="section-label" style="color:var(--brown-light);">See It For Yourself</p>
-      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cream);margin-bottom:0.75rem;">Feel the Accaza Vibe</h2>
+      <p class="section-label" style="color:var(--bl);">See It For Yourself</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cr);margin-bottom:0.75rem;">Feel the Accaza Vibe</h2>
       <p style="color:rgba(245,239,230,0.65);max-width:480px;margin:0 auto;font-size:0.95rem;">A glimpse into the warm, cozy world of Accaza Coffee.</p>
     </div>
     <div class="reel-embed-wrap">
-      <iframe src="https://www.facebook.com/plugins/video.php?href=https%3A%2F%2Fwww.facebook.com%2Freel%2F716824994597405&show_text=false&width=560&autoplay=false" width="560" height="700" style="border:none;overflow:hidden;border-radius:12px;" scrolling="no" frameborder="0" allowfullscreen="true" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe>
+      <iframe src="https://www.facebook.com/plugins/video.php?href=https%3A%2F%2Fwww.facebook.com%2Freel%2F716824994597405&show_text=false&width=560&autoplay=false" width="560" height="700" style="border:none;overflow:hidden;border-radius:12px;" scrolling="no" frameborder="0" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe>
     </div>
   </div>
 </section>
@@ -372,20 +371,20 @@
 <section class="menu" id="menu">
   <div class="menu-inner">
     <div style="text-align:center;margin-bottom:3rem;">
-      <p class="section-label" style="color:var(--brown-light);">What We Serve</p>
-      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cream);margin-bottom:0.75rem;">Our Menu</h2>
+      <p class="section-label" style="color:var(--bl);">What We Serve</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cr);margin-bottom:0.75rem;">Our Menu</h2>
       <p style="color:rgba(245,239,230,0.65);max-width:480px;margin:0 auto;font-size:0.95rem;">From your morning brew to a full meal — crafted fresh, served with love.</p>
     </div>
     <div class="menu-tabs">
-      <button class="tab-btn active" onclick="filterMenu('all')">All</button>
-      <button class="tab-btn" onclick="filterMenu('coffee')">☕ Coffee</button>
-      <button class="tab-btn" onclick="filterMenu('frappe')">🥤 Frappes</button>
-      <button class="tab-btn" onclick="filterMenu('nonfrappe')">🍵 Non-Coffee Frappes</button>
-      <button class="tab-btn" onclick="filterMenu('noncaf')">🌿 Non-Caffeine</button>
-      <button class="tab-btn" onclick="filterMenu('tea')">🍵 Tea & Refreshments</button>
-      <button class="tab-btn" onclick="filterMenu('food')">🍞 Pastries</button>
-      <button class="tab-btn" onclick="filterMenu('meals')">🍽️ Meals</button>
-      <button class="tab-btn" onclick="filterMenu('desserts')">🍰 Desserts</button>
+      <button class="tab-btn active" onclick="filterMenu('all',this)">All</button>
+      <button class="tab-btn" onclick="filterMenu('coffee',this)">☕ Coffee</button>
+      <button class="tab-btn" onclick="filterMenu('frappe',this)">🥤 Frappes</button>
+      <button class="tab-btn" onclick="filterMenu('nonfrappe',this)">🍵 Non-Coffee Frappes</button>
+      <button class="tab-btn" onclick="filterMenu('noncaf',this)">🌿 Non-Caffeine</button>
+      <button class="tab-btn" onclick="filterMenu('tea',this)">🍵 Tea & Refreshments</button>
+      <button class="tab-btn" onclick="filterMenu('food',this)">🍞 Pastries</button>
+      <button class="tab-btn" onclick="filterMenu('meals',this)">🍽️ Meals</button>
+      <button class="tab-btn" onclick="filterMenu('desserts',this)">🍰 Desserts</button>
     </div>
     <div class="menu-grid" id="menuGrid"></div>
   </div>
@@ -395,9 +394,9 @@
 <section class="order-section" id="order">
   <div class="order-inner">
     <div style="text-align:center;margin-bottom:3rem;">
-      <p class="section-label" style="color:var(--brown-light);">Place Your Order</p>
-      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--brown-dark);margin-bottom:0.75rem;">Order Online</h2>
-      <p style="color:var(--text-mid);max-width:480px;margin:0 auto;font-size:0.95rem;">Pick your items, choose delivery or pick-up, then pay via GCash or bank transfer.</p>
+      <p class="section-label" style="color:var(--bl);">Place Your Order</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.75rem;">Order Online</h2>
+      <p style="color:var(--tm);max-width:480px;margin:0 auto;font-size:0.95rem;">Pick your items, choose delivery or pick-up, then pay via GCash or bank transfer.</p>
     </div>
     <div class="order-layout">
       <div>
@@ -418,7 +417,7 @@
       <div>
         <div class="cart-box">
           <h3 class="order-section-title">2. Your Order</h3>
-          <div id="cartItems"><p style="color:var(--text-light);font-size:0.85rem;">No items added yet.</p></div>
+          <div id="cartItems"><p style="color:var(--tl);font-size:0.85rem;">No items added yet.</p></div>
           <div class="cart-total" id="cartTotal" style="display:none;"><span>Total</span><span id="totalAmt">₱0</span></div>
         </div>
         <div class="form-box">
@@ -453,11 +452,11 @@
               <p class="pay-label" style="margin-top:0.5rem;">UnionBank Account</p><p class="pay-value" id="bankNum2">1093-3237-9862</p>
               <p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="bankAccName">MARIA DANIELA M.</p>
             </div>
-            <p style="font-size:0.75rem;color:var(--text-light);margin-top:0.75rem;line-height:1.5;">After placing your order, send payment and screenshot your receipt. We'll confirm once verified. ✅</p>
+            <p style="font-size:0.75rem;color:var(--tl);margin-top:0.75rem;line-height:1.5;">After placing your order, send payment and screenshot your receipt. We'll confirm once verified. ✅</p>
           </div>
           <button class="btn-place-order" onclick="placeOrder()">Place Order</button>
           <div id="orderConfirm" style="display:none;margin-top:1rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:1rem;text-align:center;">
-            <p style="color:#2d6a4f;font-weight:500;font-size:0.95rem;">🎉 Order placed! We'll confirm once payment is received.</p>
+            <p style="color:#2d6a4f;font-weight:500;">🎉 Order placed! We'll confirm once payment is received.</p>
           </div>
         </div>
       </div>
@@ -469,8 +468,8 @@
 <section class="reservations" id="reserve">
   <div class="res-inner">
     <div style="text-align:center;margin-bottom:3rem;">
-      <p class="section-label" style="color:var(--brown-light);">Book a Seat</p>
-      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cream);margin-bottom:0.75rem;">Reserve a Table</h2>
+      <p class="section-label" style="color:var(--bl);">Book a Seat</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cr);margin-bottom:0.75rem;">Reserve a Table</h2>
       <p style="color:rgba(245,239,230,0.65);max-width:480px;margin:0 auto;font-size:0.95rem;">Secure your spot at Accaza Coffee — we'd love to have you.</p>
     </div>
     <div class="res-layout">
@@ -500,10 +499,10 @@
             <select id="resOccasion"><option value="">None / Regular visit</option><option>Birthday</option><option>Anniversary</option><option>Business Meeting</option><option>Date</option><option>Family Gathering</option><option>Other</option></select>
           </div>
         </div>
-        <div class="res-field" style="margin-top:0.25rem;"><label class="res-label">Special Requests (optional)</label><textarea id="resNotes" rows="2" placeholder="e.g. window seat, high chair needed, allergies..."></textarea></div>
+        <div class="res-field" style="margin-top:0.25rem;"><label class="res-label">Special Requests (optional)</label><textarea id="resNotes" rows="2" placeholder="e.g. window seat, allergies..."></textarea></div>
         <button class="btn-reserve" onclick="submitReservation()">Confirm Reservation</button>
         <div id="resConfirm" style="display:none;margin-top:1rem;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:1rem;text-align:center;">
-          <p style="color:var(--cream);font-size:0.95rem;">🎉 Reservation received! We'll confirm via your phone number shortly.</p>
+          <p style="color:var(--cr);">🎉 Reservation received! We'll confirm via your phone number shortly.</p>
         </div>
       </div>
       <div class="res-info">
@@ -519,19 +518,19 @@
 <section class="reviews-section" id="reviews">
   <div class="reviews-inner">
     <div style="text-align:center;margin-bottom:3rem;">
-      <p class="section-label" style="color:var(--brown-light);">What People Say</p>
-      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--brown-dark);margin-bottom:0.75rem;">Customer Reviews</h2>
-      <p style="color:var(--text-mid);max-width:480px;margin:0 auto;font-size:0.95rem;">Real experiences from our valued guests.</p>
+      <p class="section-label" style="color:var(--bl);">What People Say</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.75rem;">Customer Reviews</h2>
+      <p style="color:var(--tm);max-width:480px;margin:0 auto;font-size:0.95rem;">Real experiences from our valued guests.</p>
     </div>
     <div class="reviews-grid">
       <div class="review-card">
         <div class="review-stars">⭐⭐⭐⭐⭐</div>
-        <p class="review-text">"A Hidden Gem Right Along the Road to SM Dasmariñas! Conveniently located right along the roadside near SM Dasmariñas, this place is incredibly easy to find. Surprisingly spacious, calm, and serene inside. The coffee is absolutely outstanding — each cup carries a distinct, well-crafted flavor. Whether you're a student or a professional, Accaza Coffee House is exactly where you need to be. ☕✨ Highly, highly recommended."</p>
+        <p class="review-text">"A Hidden Gem Right Along the Road to SM Dasmariñas! Conveniently located right along the roadside, this place is incredibly easy to find. Surprisingly spacious, calm, and serene inside. The coffee is absolutely outstanding. Whether you're a student or a professional, Accaza Coffee House is exactly where you need to be. ☕✨ Highly, highly recommended."</p>
         <div class="review-author"><div class="review-avatar">M</div><div><div class="review-name">Molina Page</div><div class="review-date">June 2026</div></div></div>
       </div>
       <div class="review-card">
         <div class="review-stars">⭐⭐⭐⭐⭐</div>
-        <p class="review-text">"Nasa may highway ang coffee shop, ngunit nakakubli ang ganda nitong hindi mo mamamalas kung hindi sasadyain. Mukha siyang maliit sa labas, subalit malaki ang espasyo pagpasok. Gusto ko mang ipagdamot ang lugar — tingin ko'y kasalanan ito sa mga mahilig sa kape kung hindi ito maibabahagi sa iba. ☕ Cosy atmosphere · Good for working · Relaxing atmosphere · Best coffee"</p>
+        <p class="review-text">"Nasa may highway ang coffee shop, ngunit nakakubli ang ganda nitong hindi mo mamamalas kung hindi sasadyain. Mukha siyang maliit sa labas, subalit malaki ang espasyo pagpasok. ☕ Cosy atmosphere · Good for working · Relaxing atmosphere · Best coffee"</p>
         <div class="review-author"><div class="review-avatar">C</div><div><div class="review-name">Camilla Andrea</div><div class="review-date">April 2026</div></div></div>
       </div>
       <div class="review-card">
@@ -547,8 +546,8 @@
 <section class="feedback-section" id="feedback">
   <div class="feedback-inner">
     <div style="text-align:center;margin-bottom:3rem;">
-      <p class="section-label" style="color:var(--brown-light);">We'd Love to Hear From You</p>
-      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cream);margin-bottom:0.75rem;">Feedback</h2>
+      <p class="section-label" style="color:var(--bl);">We'd Love to Hear From You</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cr);margin-bottom:0.75rem;">Feedback</h2>
       <p style="color:rgba(245,239,230,0.65);max-width:520px;margin:0 auto;font-size:0.95rem;line-height:1.7;">We are committed to improving our service, and we would also be glad to hear if you enjoyed your experience with us. Whether it's a concern, a suggestion, or simply kind words — we would love to hear your feedback. Every message matters to us. 💛</p>
     </div>
     <div class="feedback-layout">
@@ -569,9 +568,7 @@
         <div class="res-field">
           <label class="res-label">Your Message <span style="font-size:0.68rem;opacity:0.6;">(max 800 characters)</span></label>
           <textarea id="fbMessage" rows="5" maxlength="800" placeholder="Tell us what's on your mind — we read every message..." oninput="updateFbCounter()"></textarea>
-          <div style="display:flex;justify-content:flex-end;margin-top:0.3rem;">
-            <span id="fbCounter" style="font-size:0.72rem;color:rgba(245,239,230,0.5);">0 / 800</span>
-          </div>
+          <div style="display:flex;justify-content:flex-end;margin-top:0.3rem;"><span id="fbCounter" style="font-size:0.72rem;color:rgba(245,239,230,0.5);">0 / 800</span></div>
         </div>
         <button class="btn-reserve" style="margin-top:1rem;" onclick="submitFeedback()">Send Feedback</button>
         <div id="fbConfirm" style="display:none;margin-top:1rem;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:1.25rem;text-align:center;">
@@ -591,9 +588,9 @@
 <section class="gallery-section" id="gallery">
   <div class="gallery-inner">
     <div style="text-align:center;margin-bottom:3rem;">
-      <p class="section-label" style="color:var(--brown-light);">Our Space</p>
-      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--brown-dark);margin-bottom:0.75rem;">A Peek Inside</h2>
-      <p style="color:var(--text-mid);max-width:480px;margin:0 auto;font-size:0.95rem;">Warm corners, good coffee, and moments worth remembering.</p>
+      <p class="section-label" style="color:var(--bl);">Our Space</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.75rem;">A Peek Inside</h2>
+      <p style="color:var(--tm);max-width:480px;margin:0 auto;font-size:0.95rem;">Warm corners, good coffee, and moments worth remembering.</p>
     </div>
     <div class="gallery-grid">
       <div class="gallery-card tall"><img src="https://i.postimg.cc/g0qrJsnX/6.jpg" alt="Accaza Coffee"/></div>
@@ -634,8 +631,8 @@
 <section class="contact-section" id="contact">
   <div class="contact-inner">
     <div style="text-align:center;margin-bottom:3rem;">
-      <p class="section-label" style="color:var(--brown-light);">Get in Touch</p>
-      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cream);margin-bottom:0.75rem;">Contact Us</h2>
+      <p class="section-label" style="color:var(--bl);">Get in Touch</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cr);margin-bottom:0.75rem;">Contact Us</h2>
       <p style="color:rgba(245,239,230,0.65);max-width:480px;margin:0 auto;font-size:0.95rem;">Have a question? We'd love to hear from you.</p>
     </div>
     <div class="contact-layout">
@@ -648,7 +645,7 @@
         <div class="res-field"><label class="res-label" style="color:rgba(245,239,230,0.55);">Message</label><textarea id="conMessage" rows="4" placeholder="Write your message here..."></textarea></div>
         <button class="btn-reserve" style="margin-top:1rem;" onclick="submitContact()">Send Message</button>
         <div id="conConfirm" style="display:none;margin-top:1rem;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:1rem;text-align:center;">
-          <p style="color:var(--cream);font-size:0.95rem;">✅ Message sent! We'll get back to you shortly.</p>
+          <p style="color:var(--cr);">✅ Message sent! We'll get back to you shortly.</p>
         </div>
       </div>
       <div class="contact-info">
@@ -670,54 +667,44 @@
       <a href="#menu">Menu</a><a href="#order">Order</a><a href="#reserve">Reserve</a>
       <a href="#reviews">Reviews</a><a href="#feedback">Feedback</a><a href="#gallery">Gallery</a><a href="#contact">Contact</a>
     </div>
-    <p class="footer-copy">© 2026 Accaza Coffee (Cafe Sartoga). All rights reserved. &nbsp;·&nbsp; <a href="#" onclick="openAdmin()" style="color:rgba(245,239,230,0.2);text-decoration:none;font-size:0.7rem;">Admin</a></p>
+    <p class="footer-copy">© 2026 Accaza Coffee (Cafe Sartoga). All rights reserved. &nbsp;·&nbsp;
+      <a href="#" onclick="openAdmin();return false;" style="color:rgba(245,239,230,0.2);text-decoration:none;font-size:0.7rem;">Admin</a>
+    </p>
   </div>
 </footer>
 
-<!-- AVAILABILITY SECTION (Admin Only) -->
-<section id="availability" style="display:none;background:var(--cream);padding:6rem 2rem;">
+<!-- AVAILABILITY (Admin Only) -->
+<section id="availSection" style="display:none;background:var(--cr);padding:6rem 2rem;">
   <div style="max-width:800px;margin:0 auto;">
     <div style="text-align:center;margin-bottom:2.5rem;">
       <p class="section-label">Staff Only</p>
-      <h2 style="font-family:'Playfair Display',serif;font-size:2.5rem;color:var(--brown-dark);margin-bottom:0.5rem;">Menu Availability</h2>
-      <p style="color:var(--text-mid);font-size:0.95rem;">Toggle items on or off. Customers cannot click items marked as Not Available.</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:2.5rem;color:var(--bd);margin-bottom:0.5rem;">Menu Availability</h2>
+      <p style="color:var(--tm);font-size:0.95rem;">Toggle items on or off. Customers cannot click unavailable items.</p>
     </div>
-    <div id="availSection"></div>
+    <div id="availList"></div>
   </div>
 </section>
 
-<!-- COMMENTS SECTION (Admin Only) -->
-<section id="commentsAdmin" style="display:none;background:var(--cream-dark);padding:6rem 2rem;">
+<!-- COMMENTS (Admin Only) -->
+<section id="commentsSection" style="display:none;background:var(--cd);padding:6rem 2rem;">
   <div style="max-width:800px;margin:0 auto;">
     <div style="text-align:center;margin-bottom:2.5rem;">
       <p class="section-label">Staff Only</p>
-      <h2 style="font-family:'Playfair Display',serif;font-size:2.5rem;color:var(--brown-dark);margin-bottom:0.5rem;">Comments</h2>
-      <p style="color:var(--text-mid);font-size:0.95rem;">All feedback submitted by customers, grouped by type.</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:2.5rem;color:var(--bd);margin-bottom:0.5rem;">Comments</h2>
+      <p style="color:var(--tm);font-size:0.95rem;">All customer feedback grouped by type.</p>
     </div>
-    <div style="margin-bottom:2rem;">
-      <h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#c0392b;margin-bottom:0.75rem;padding-bottom:0.3rem;border-bottom:2px solid #f5c6c6;">😞 Complaints</h3>
-      <div id="fbListComplaint"><p style="color:var(--text-light);font-size:0.85rem;padding:1rem;background:#fff;border-radius:8px;text-align:center;">No complaints yet. 🎉</p></div>
-    </div>
-    <div style="margin-bottom:2rem;">
-      <h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#f39c12;margin-bottom:0.75rem;padding-bottom:0.3rem;border-bottom:2px solid #fde8b0;">💡 Suggestions</h3>
-      <div id="fbListSuggestion"><p style="color:var(--text-light);font-size:0.85rem;padding:1rem;background:#fff;border-radius:8px;text-align:center;">No suggestions yet.</p></div>
-    </div>
-    <div style="margin-bottom:2rem;">
-      <h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#2d9e5f;margin-bottom:0.75rem;padding-bottom:0.3rem;border-bottom:2px solid #a8d5b5;">❤️ Compliments</h3>
-      <div id="fbListCompliment"><p style="color:var(--text-light);font-size:0.85rem;padding:1rem;background:#fff;border-radius:8px;text-align:center;">No compliments yet.</p></div>
-    </div>
-    <div style="margin-bottom:2rem;">
-      <h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#888;margin-bottom:0.75rem;padding-bottom:0.3rem;border-bottom:2px solid #ddd;">💬 Other</h3>
-      <div id="fbListOther"><p style="color:var(--text-light);font-size:0.85rem;padding:1rem;background:#fff;border-radius:8px;text-align:center;">No other feedback yet.</p></div>
-    </div>
+    <div style="margin-bottom:2rem;"><h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#c0392b;margin-bottom:0.75rem;padding-bottom:0.3rem;border-bottom:2px solid #f5c6c6;">😞 Complaints</h3><div id="fbListComplaint"><p style="color:var(--tl);padding:1rem;background:#fff;border-radius:8px;text-align:center;font-size:0.85rem;">No complaints yet. 🎉</p></div></div>
+    <div style="margin-bottom:2rem;"><h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#f39c12;margin-bottom:0.75rem;padding-bottom:0.3rem;border-bottom:2px solid #fde8b0;">💡 Suggestions</h3><div id="fbListSuggestion"><p style="color:var(--tl);padding:1rem;background:#fff;border-radius:8px;text-align:center;font-size:0.85rem;">No suggestions yet.</p></div></div>
+    <div style="margin-bottom:2rem;"><h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#2d9e5f;margin-bottom:0.75rem;padding-bottom:0.3rem;border-bottom:2px solid #a8d5b5;">❤️ Compliments</h3><div id="fbListCompliment"><p style="color:var(--tl);padding:1rem;background:#fff;border-radius:8px;text-align:center;font-size:0.85rem;">No compliments yet.</p></div></div>
+    <div style="margin-bottom:2rem;"><h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#888;margin-bottom:0.75rem;padding-bottom:0.3rem;border-bottom:2px solid #ddd;">💬 Other</h3><div id="fbListOther"><p style="color:var(--tl);padding:1rem;background:#fff;border-radius:8px;text-align:center;font-size:0.85rem;">No other feedback yet.</p></div></div>
   </div>
 </section>
 
 <!-- ADMIN DASHBOARD -->
-<section id="admin" style="display:none;">
+<section id="adminDash">
   <div class="admin-wrap">
     <div class="admin-header">
-      <div><div class="admin-logo">Accaza Coffee <span>Admin</span></div><p style="font-size:0.78rem;color:var(--text-light);">Manage orders, reservations & payment details</p></div>
+      <div><div class="admin-logo">Accaza Coffee <span>Admin</span></div><p style="font-size:0.78rem;color:var(--tl);">Manage orders, reservations & payment details</p></div>
       <button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button>
     </div>
     <div class="admin-stats">
@@ -735,83 +722,77 @@
     <div id="tab-orders" class="admin-tab-content"><div id="ordersList"></div></div>
     <div id="tab-reservations" class="admin-tab-content" style="display:none;"><div id="resList"></div></div>
     <div id="tab-reviews" class="admin-tab-content" style="display:none;">
-      <h3 style="font-family:'Playfair Display',serif;font-size:1.05rem;color:var(--brown-dark);margin-bottom:1rem;">Add a New Review</h3>
+      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:1rem;">Add a New Review</h3>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:0.75rem;">
         <div><label class="field-label">Customer Name</label><input type="text" id="newReviewName" placeholder="e.g. Maria Santos"/></div>
         <div><label class="field-label">Rating</label>
-          <select id="newReviewStars">
-            <option value="5">⭐⭐⭐⭐⭐ — 5 Stars</option>
-            <option value="4">⭐⭐⭐⭐ — 4 Stars</option>
-            <option value="3">⭐⭐⭐ — 3 Stars</option>
-            <option value="2">⭐⭐ — 2 Stars</option>
-            <option value="1">⭐ — 1 Star</option>
-          </select>
+          <select id="newReviewStars"><option value="5">⭐⭐⭐⭐⭐</option><option value="4">⭐⭐⭐⭐</option><option value="3">⭐⭐⭐</option><option value="2">⭐⭐</option><option value="1">⭐</option></select>
         </div>
       </div>
       <label class="field-label">Review Message</label>
-      <textarea id="newReviewText" rows="3" placeholder="e.g. Amazing coffee and cozy atmosphere!..." style="margin-bottom:0.75rem;"></textarea>
+      <textarea id="newReviewText" rows="3" placeholder="Amazing coffee and cozy atmosphere!..." style="margin-bottom:0.75rem;"></textarea>
       <button class="btn-save" style="max-width:200px;" onclick="addReview()">+ Add Review</button>
       <div id="reviewAddConfirm" style="display:none;margin-top:0.75rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.6rem 1rem;"><p style="color:#2d6a4f;font-size:0.85rem;">✅ Review added!</p></div>
-      <h3 style="font-family:'Playfair Display',serif;font-size:1.05rem;color:var(--brown-dark);margin:1.5rem 0 1rem;">All Reviews (<span id="reviewCount">0</span>)</h3>
+      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin:1.5rem 0 1rem;">All Reviews (<span id="reviewCount">0</span>)</h3>
       <div id="adminReviewsList"></div>
     </div>
     <div id="tab-payment" class="admin-tab-content" style="display:none;">
       <div class="payment-edit-grid">
-        <div class="payment-edit-card"><h4>📱 GCash</h4><label class="field-label">GCash Number</label><input type="text" id="editGcashNum" value="0927 692 4831"/><label class="field-label" style="margin-top:0.75rem;">Account Name</label><input type="text" id="editGcashName" value="MARIA DANIELA M."/><button class="btn-save" onclick="savePayment()">Save GCash</button></div>
-        <div class="payment-edit-card"><h4>🏦 BDO</h4><label class="field-label">Account Number</label><input type="text" id="editBdoNum" value="0068-2050-9919"/><label class="field-label" style="margin-top:0.75rem;">Account Name</label><input type="text" id="editBdoName" value="MARIA DANIELA M."/><button class="btn-save" onclick="savePayment()">Save BDO</button></div>
-        <div class="payment-edit-card"><h4>🏦 UnionBank</h4><label class="field-label">Account Number</label><input type="text" id="editUbNum" value="1093-3237-9862"/><label class="field-label" style="margin-top:0.75rem;">Account Name</label><input type="text" id="editUbName" value="MARIA DANIELA M."/><button class="btn-save" onclick="savePayment()">Save UnionBank</button></div>
+        <div class="payment-edit-card"><h4>📱 GCash</h4><label class="field-label">Number</label><input type="text" id="editGcashNum" value="0927 692 4831"/><label class="field-label" style="margin-top:0.75rem;">Name</label><input type="text" id="editGcashName" value="MARIA DANIELA M."/><button class="btn-save" onclick="savePayment()">Save GCash</button></div>
+        <div class="payment-edit-card"><h4>🏦 BDO</h4><label class="field-label">Account No.</label><input type="text" id="editBdoNum" value="0068-2050-9919"/><label class="field-label" style="margin-top:0.75rem;">Name</label><input type="text" id="editBdoName" value="MARIA DANIELA M."/><button class="btn-save" onclick="savePayment()">Save BDO</button></div>
+        <div class="payment-edit-card"><h4>🏦 UnionBank</h4><label class="field-label">Account No.</label><input type="text" id="editUbNum" value="1093-3237-9862"/><label class="field-label" style="margin-top:0.75rem;">Name</label><input type="text" id="editUbName" value="MARIA DANIELA M."/><button class="btn-save" onclick="savePayment()">Save UnionBank</button></div>
       </div>
-      <div id="saveConfirm" style="display:none;margin-top:1rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.75rem 1rem;"><p style="color:#2d6a4f;font-size:0.88rem;">✅ Payment details updated!</p></div>
+      <div id="saveConfirm" style="display:none;margin-top:1rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.75rem 1rem;"><p style="color:#2d6a4f;">✅ Payment details updated!</p></div>
     </div>
   </div>
 </section>
 
 <!-- LOGIN OVERLAY -->
-<div class="login-overlay" id="adminLogin">
+<div class="login-overlay" id="loginOverlay">
   <div class="login-box">
-    <div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:var(--brown-dark);margin-bottom:0.25rem;text-align:center;">Accaza Coffee</div>
-    <p style="font-size:0.8rem;color:var(--text-light);margin-bottom:1.5rem;text-align:center;">Admin Access Only 🔐</p>
+    <div style="text-align:center;font-family:'Playfair Display',serif;font-size:1.5rem;color:var(--bd);margin-bottom:0.25rem;">Accaza Coffee</div>
+    <p style="text-align:center;font-size:0.8rem;color:var(--tl);margin-bottom:1.5rem;">Admin Access Only 🔐</p>
     <label class="field-label">Password</label>
-    <input type="password" id="adminPass" placeholder="Enter admin password" style="margin-bottom:1rem;" onkeydown="if(event.key==='Enter') checkLogin()"/>
-    <button class="btn-primary" style="width:100%;text-align:center;" onclick="checkLogin()">Log In</button>
+    <input type="password" id="adminPass" placeholder="Enter admin password" style="margin-bottom:1rem;" onkeydown="if(event.key==='Enter')checkLogin()"/>
+    <button class="btn-primary" style="width:100%;" onclick="checkLogin()">Log In</button>
     <p id="loginErr" style="display:none;color:#c0392b;font-size:0.8rem;margin-top:0.75rem;text-align:center;">❌ Incorrect password. Try again.</p>
-    <button onclick="document.getElementById('adminLogin').classList.remove('active')" style="margin-top:1rem;background:none;border:none;font-size:0.78rem;color:var(--text-light);cursor:pointer;width:100%;text-align:center;">← Back to website</button>
+    <button onclick="closeAdmin()" style="margin-top:1rem;background:none;border:none;font-size:0.78rem;color:var(--tl);cursor:pointer;width:100%;text-align:center;">← Back to website</button>
   </div>
 </div>
 
 <!-- UNAVAILABLE POPUP -->
-<div id="unavailPopup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:998;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:12px;padding:2rem;max-width:340px;width:90%;text-align:center;">
+<div class="popup-overlay" id="unavailPopup">
+  <div class="popup-box">
     <div style="font-size:2.5rem;margin-bottom:0.75rem;">😔</div>
-    <h3 style="font-family:'Playfair Display',serif;color:var(--brown-dark);margin-bottom:0.5rem;">Item Not Available</h3>
-    <p style="font-size:0.88rem;color:var(--text-mid);margin-bottom:1.25rem;"><strong id="unavailItemName"></strong> is currently not available. Please choose another item.</p>
-    <button onclick="document.getElementById('unavailPopup').style.display='none'" style="background:var(--brown-dark);color:#fff;border:none;border-radius:6px;padding:0.7rem 2rem;font-size:0.88rem;cursor:pointer;font-family:'Inter',sans-serif;">Got it</button>
+    <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:0.5rem;">Item Not Available</h3>
+    <p style="font-size:0.88rem;color:var(--tm);margin-bottom:1.25rem;"><strong id="unavailName"></strong> is currently not available. Please choose another item.</p>
+    <button onclick="document.getElementById('unavailPopup').classList.remove('show')" style="background:var(--bd);color:#fff;border:none;border-radius:6px;padding:0.7rem 2rem;font-size:0.88rem;cursor:pointer;">Got it</button>
   </div>
 </div>
 
 <!-- DELETE POPUP -->
-<div id="deletePopup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:998;align-items:center;justify-content:center;">
-  <div style="background:#fff;border-radius:12px;padding:2rem;max-width:380px;width:90%;text-align:center;">
+<div class="popup-overlay" id="deletePopup">
+  <div class="popup-box">
     <div style="font-size:2.5rem;margin-bottom:0.75rem;">🗑️</div>
-    <h3 style="font-family:'Playfair Display',serif;color:var(--brown-dark);margin-bottom:0.5rem;">Delete?</h3>
-    <p style="font-size:0.85rem;color:var(--text-mid);margin-bottom:0.35rem;">You are about to delete:</p>
-    <p style="font-size:0.82rem;color:var(--brown-dark);font-weight:500;margin-bottom:1.25rem;background:var(--cream);padding:0.6rem;border-radius:6px;" id="deletePopupName"></p>
-    <p style="font-size:0.8rem;color:var(--text-light);margin-bottom:1.5rem;">This action cannot be undone.</p>
+    <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:0.5rem;">Confirm Delete</h3>
+    <p style="font-size:0.85rem;color:var(--tm);margin-bottom:0.5rem;">You are about to delete:</p>
+    <p id="deleteLabel" style="font-size:0.82rem;color:var(--bd);font-weight:500;background:var(--cr);padding:0.6rem;border-radius:6px;margin-bottom:1rem;"></p>
+    <p style="font-size:0.8rem;color:var(--tl);margin-bottom:1.5rem;">This cannot be undone.</p>
     <div style="display:flex;gap:0.75rem;justify-content:center;">
-      <button onclick="document.getElementById('deletePopup').style.display='none'" style="flex:1;background:var(--cream);border:1px solid var(--cream-dark);border-radius:6px;padding:0.7rem;font-size:0.88rem;cursor:pointer;font-family:'Inter',sans-serif;color:var(--text-mid);">Cancel</button>
-      <button id="deletePopupBtn" style="flex:1;background:#c0392b;color:#fff;border:none;border-radius:6px;padding:0.7rem;font-size:0.88rem;cursor:pointer;font-family:'Inter',sans-serif;">Yes, Delete</button>
+      <button onclick="document.getElementById('deletePopup').classList.remove('show')" style="flex:1;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.7rem;font-size:0.88rem;cursor:pointer;color:var(--tm);">Cancel</button>
+      <button id="deleteConfirmBtn" style="flex:1;background:#c0392b;color:#fff;border:none;border-radius:6px;padding:0.7rem;font-size:0.88rem;cursor:pointer;">Yes, Delete</button>
     </div>
   </div>
 </div>
 
 <!-- CHATBOT -->
 <div class="chat-bubble">
-  <button class="chat-toggle" onclick="toggleChat()">
+  <button class="chat-toggle-btn" id="chatToggleBtn" onclick="toggleChat()">
     <div class="steam"><span></span><span></span><span></span></div>
     ☕
   </button>
   <div class="chat-notif" id="chatNotif"></div>
-  <div class="chat-toggle-label">Chat with us!</div>
+  <div class="chat-label">Chat with us!</div>
 </div>
 <div class="chat-window" id="chatWindow">
   <div class="chat-header">
@@ -819,7 +800,7 @@
       <div class="chat-avatar">🦁</div>
       <div><h4>Accaza Coffee</h4><p>🟢 We typically reply instantly</p></div>
     </div>
-    <button class="chat-close" onclick="toggleChat()">✕</button>
+    <button class="chat-close-btn" onclick="toggleChat()">✕</button>
   </div>
   <div class="chat-messages" id="chatMessages"></div>
   <div class="chat-quick">
@@ -831,22 +812,24 @@
     <button class="chat-quick-btn" onclick="quickMsg('What is on your menu?')">🍽️ Menu</button>
   </div>
   <div class="chat-input-row">
-    <input type="text" class="chat-input" id="chatInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter') sendChat()"/>
+    <input type="text" class="chat-input" id="chatInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendChat()"/>
     <button class="chat-send" onclick="sendChat()">➤</button>
   </div>
 </div>
 
 <script>
-// ── DATA ──
+// ── CONSTANTS ──
 const ADMIN_PASS = 'accaza2026';
-let cart = {}, orderType = 'pickup', paymentType = 'gcash';
-let reviews = [], adminOrders = [], adminReservations = [], feedbacks = [];
-let chatOpen = false, chatStarted = false;
+const catLabels = {coffee:'Coffee',frappe:'Blended Frappe',nonfrappe:'Non-Coffee Frappe',noncaf:'Non-Caffeine',tea:'Tea & Refreshments',food:'Pastries',meals:'Meals',desserts:'Desserts'};
 
-const catLabels = { coffee:'Coffee', frappe:'Blended Frappe', nonfrappe:'Non-Coffee Frappe', noncaf:'Non-Caffeine', tea:'Tea & Refreshments', food:'Pastries', meals:'Meals', desserts:'Desserts' };
-let availability = {};
+// ── STATE ──
+let cart={}, orderType='pickup', paymentType='gcash';
+let reviews=[], adminOrders=[], adminReservations=[], feedbacks=[];
+let chatOpen=false, chatStarted=false;
+let availability={};
 
-const menuItems = [
+// ── MENU DATA ──
+const menuItems=[
   {cat:'coffee',name:'Spanish Latte',desc:'Rich and creamy blend of espresso, milk and sweet condensed milk.',price:'₱245'},
   {cat:'coffee',name:'Sea Salt Latte',desc:'A rich, velvety coffee with a perfect balance of bold, creamy, and subtly salty notes.',price:'₱245'},
   {cat:'coffee',name:'Sea Salt Caramel Latte',desc:'Sweet and salty caramel espresso with a smooth creamy finish.',price:'₱245'},
@@ -863,17 +846,17 @@ const menuItems = [
   {cat:'frappe',name:'Caramel Frappe',desc:'Espresso blended with caramel to a smooth, icy finish, topped with whipped cream.',price:'₱255'},
   {cat:'frappe',name:'White Mocha Frappe',desc:'Espresso blended with creamy white chocolate, topped with whipped cream.',price:'₱255'},
   {cat:'frappe',name:'Dark Mocha Frappe',desc:'Espresso blended with rich dark chocolate, topped with whipped cream.',price:'₱265'},
-  {cat:'frappe',name:'Caramel Cream Frappe',desc:'Espresso blended with caramel and vanilla to a smooth, icy finish, topped with whipped cream.',price:'₱255'},
-  {cat:'frappe',name:'Toffee Nut Frappe',desc:'Espresso infused with toffee nut, blended to a smooth, icy finish, topped with whipped cream.',price:'₱235'},
-  {cat:'frappe',name:'Butterscotch Frappe',desc:'Espresso blended with butterscotch to a smooth, icy finish, topped with whipped cream.',price:'₱245'},
-  {cat:'frappe',name:'Cappuccino Frappe',desc:'Espresso and milk blended to a smooth icy finish, topped with whipped cream.',price:'₱235'},
+  {cat:'frappe',name:'Caramel Cream Frappe',desc:'Espresso blended with caramel and vanilla, topped with whipped cream.',price:'₱255'},
+  {cat:'frappe',name:'Toffee Nut Frappe',desc:'Espresso infused with toffee nut, blended to smooth icy finish.',price:'₱235'},
+  {cat:'frappe',name:'Butterscotch Frappe',desc:'Espresso blended with butterscotch, topped with whipped cream.',price:'₱245'},
+  {cat:'frappe',name:'Cappuccino Frappe',desc:'Espresso and milk blended to a smooth icy finish.',price:'₱235'},
   {cat:'nonfrappe',name:'Dark Chocolate',desc:'Ice blended rich dark chocolate, topped with whipped cream.',price:'₱255'},
   {cat:'nonfrappe',name:'Nougat',desc:'Ice blended coconut and toffee nut, topped with whipped cream.',price:'₱255'},
-  {cat:'nonfrappe',name:'Matcha Cream',desc:'Ice blended matcha with milk, topped with whipped cream and matcha dust.',price:'₱245'},
+  {cat:'nonfrappe',name:'Matcha Cream',desc:'Ice blended matcha with milk, topped with whipped cream.',price:'₱245'},
   {cat:'nonfrappe',name:'Strawberry',desc:'Ice blended strawberry, topped with whipped cream.',price:'₱255'},
   {cat:'nonfrappe',name:'Vanilla',desc:'Ice blended vanilla and milk, topped with whipped cream.',price:'₱235'},
   {cat:'noncaf',name:'Dark Chocolate',desc:'Rich dark chocolate with milk and condensed milk.',price:'₱255'},
-  {cat:'noncaf',name:'Banana Oat',desc:'Oat milk and banana flavor fusion, perfectly sweetened with condensed milk.',price:'₱245'},
+  {cat:'noncaf',name:'Banana Oat',desc:'Oat milk and banana flavor fusion, sweetened with condensed milk.',price:'₱245'},
   {cat:'noncaf',name:'Cinnamon Oat',desc:'Oat milk infused with cinnamon and sweetened with condensed milk.',price:'₱235'},
   {cat:'noncaf',name:'Matcha Latte',desc:'Matcha with milk, perfectly sweetened with condensed milk.',price:'₱235'},
   {cat:'noncaf',name:'White Chocolate',desc:'White chocolate with milk and condensed milk.',price:'₱235'},
@@ -899,210 +882,197 @@ const menuItems = [
   {cat:'desserts',name:'Tiramisu',desc:'Classic Italian coffee & mascarpone dessert.',price:'₱135'},
 ];
 
+// Init availability
 menuItems.forEach(i => availability[i.name] = true);
-function isAvailable(name) { return availability[name] !== false; }
+function isAvail(name){ return availability[name] !== false; }
 
 // ── MENU ──
-function filterMenu(cat) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  event.target.classList.add('active');
-  const grid = document.getElementById('menuGrid');
-  const filtered = cat === 'all' ? menuItems : menuItems.filter(i => i.cat === cat);
-  grid.innerHTML = filtered.map(i => {
-    const avail = isAvailable(i.name);
-    return `<div class="menu-card ${!avail?'unavailable-card':''}" onclick="${avail?`addToOrderFromMenu('${i.name.replace(/'/g,"\\'")}','${i.price}')` : `showUnavail('${i.name.replace(/'/g,"\\'")}')` }">
+function filterMenu(cat, btn){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  const filtered = cat==='all' ? menuItems : menuItems.filter(i=>i.cat===cat);
+  document.getElementById('menuGrid').innerHTML = filtered.map(i=>{
+    const ok = isAvail(i.name);
+    return `<div class="menu-card ${ok?'':'unavailable-card'}" onclick="${ok?`addFromMenu('${i.name.replace(/'/g,"\\'")}','${i.price}')`:`showUnavail('${i.name.replace(/'/g,"\\'")}')`}">
       <span class="cat-tag">${catLabels[i.cat]}</span>
-      <h4 style="${!avail?'text-decoration:line-through;opacity:0.6;':''}">${i.name}</h4>
+      <h4 style="${ok?'':'text-decoration:line-through;opacity:0.6;'}">${i.name}</h4>
       <p>${i.desc}</p>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-top:0.5rem;">
         <span class="price">${i.price}</span>
-        <span style="font-size:0.72rem;${avail?'color:rgba(201,149,106,0.7);':'color:#ff8080;font-style:italic;'}">${avail?'+ Tap to order':'Not Available'}</span>
+        <span style="font-size:0.72rem;${ok?'color:rgba(201,149,106,0.7);':'color:#ff8080;font-style:italic;'}">${ok?'+ Tap to order':'Not Available'}</span>
       </div>
     </div>`;
   }).join('');
 }
 
-function showUnavail(name) {
-  document.getElementById('unavailItemName').textContent = name;
-  const p = document.getElementById('unavailPopup');
-  p.style.display = 'flex';
+function showUnavail(name){
+  document.getElementById('unavailName').textContent = name;
+  document.getElementById('unavailPopup').classList.add('show');
 }
 
-function addToOrderFromMenu(name, priceStr) {
-  if (!isAvailable(name)) { showUnavail(name); return; }
-  const numPrice = parseInt(priceStr.replace('₱','').replace(',',''));
-  if (!cart[name]) cart[name] = {qty:0, price:numPrice};
-  cart[name].qty += 1;
+function addFromMenu(name, priceStr){
+  if(!isAvail(name)){showUnavail(name);return;}
+  const p = parseInt(priceStr.replace('₱','').replace(',',''));
+  if(!cart[name]) cart[name]={qty:0,price:p};
+  cart[name].qty++;
   updateCart();
-  document.getElementById('order').scrollIntoView({behavior:'smooth', block:'start'});
-  setTimeout(() => {
-    const cb = document.querySelector('.cart-box');
-    cb.style.transition = 'box-shadow 0.3s';
-    cb.style.boxShadow = '0 0 0 3px rgba(160,103,58,0.5)';
-    setTimeout(() => cb.style.boxShadow = 'none', 1000);
-  }, 600);
+  document.getElementById('order').scrollIntoView({behavior:'smooth',block:'start'});
+  setTimeout(()=>{
+    const cb=document.querySelector('.cart-box');
+    cb.style.transition='box-shadow 0.3s';
+    cb.style.boxShadow='0 0 0 3px rgba(160,103,58,0.5)';
+    setTimeout(()=>cb.style.boxShadow='none',1000);
+  },600);
 }
 
 // ── ORDER ──
-function filterOrder(cat, btn) {
-  if (!btn) return;
-  document.querySelectorAll('.otab').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  const list = document.getElementById('orderItemList');
-  const filtered = cat === 'all' ? menuItems : menuItems.filter(i => i.cat === cat);
-  list.innerHTML = filtered.map(i => {
-    const avail = isAvailable(i.name);
-    const qty = cart[i.name] ? cart[i.name].qty : 0;
-    return `<div class="item-row" style="${!avail?'opacity:0.45;pointer-events:none;':''}">
+function filterOrder(cat, btn){
+  document.querySelectorAll('.otab').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  const filtered = cat==='all' ? menuItems : menuItems.filter(i=>i.cat===cat);
+  document.getElementById('orderItemList').innerHTML = filtered.map(i=>{
+    const ok=isAvail(i.name);
+    const qty=cart[i.name]?cart[i.name].qty:0;
+    const sid='qty_'+i.name.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
+    return `<div class="item-row" style="${ok?'':'opacity:0.45;pointer-events:none;'}">
       <div class="item-row-info">
-        <h5 style="${!avail?'text-decoration:line-through;':''}">${i.name}</h5>
-        <span style="font-size:0.72rem;color:${!avail?'#c0392b':'var(--text-light)'};">${!avail?'Not Available':catLabels[i.cat]}</span>
+        <h5 style="${ok?'':'text-decoration:line-through;'}">${i.name}</h5>
+        <span style="color:${ok?'var(--tl)':'#c0392b'};font-size:0.72rem;">${ok?catLabels[i.cat]:'Not Available'}</span>
       </div>
       <div class="item-row-right">
         <span class="item-price">${i.price}</span>
-        <button class="qty-btn" onclick="changeQty('${i.name.replace(/'/g,"\\'")}','${i.price}',-1)">−</button>
-        <span class="qty-display" id="qty_${i.name.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,'')}">${qty}</span>
-        <button class="qty-btn" onclick="changeQty('${i.name.replace(/'/g,"\\'")}','${i.price}',1)">+</button>
+        <button class="qty-btn" onclick="chQty('${i.name.replace(/'/g,"\\'")}','${i.price}',-1)">−</button>
+        <span class="qty-display" id="${sid}">${qty}</span>
+        <button class="qty-btn" onclick="chQty('${i.name.replace(/'/g,"\\'")}','${i.price}',1)">+</button>
       </div>
     </div>`;
   }).join('');
 }
 
-function changeQty(name, priceStr, delta) {
-  const numPrice = parseInt(priceStr.replace('₱','').replace(',',''));
-  if (!cart[name]) cart[name] = {qty:0, price:numPrice};
-  cart[name].qty = Math.max(0, cart[name].qty + delta);
-  if (cart[name].qty === 0) delete cart[name];
-  const el = document.getElementById('qty_'+name.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,''));
-  if (el) el.textContent = cart[name] ? cart[name].qty : 0;
+function chQty(name, priceStr, delta){
+  const p=parseInt(priceStr.replace('₱','').replace(',',''));
+  if(!cart[name]) cart[name]={qty:0,price:p};
+  cart[name].qty=Math.max(0,cart[name].qty+delta);
+  if(cart[name].qty===0) delete cart[name];
+  const el=document.getElementById('qty_'+name.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,''));
+  if(el) el.textContent=cart[name]?cart[name].qty:0;
   updateCart();
 }
 
-function updateCart() {
-  const box = document.getElementById('cartItems');
-  const totalEl = document.getElementById('cartTotal');
-  const keys = Object.keys(cart);
-  if (!keys.length) { box.innerHTML = '<p style="color:var(--text-light);font-size:0.85rem;">No items added yet.</p>'; totalEl.style.display = 'none'; return; }
-  let total = 0;
-  box.innerHTML = keys.map(k => { const line = cart[k].qty * cart[k].price; total += line; return `<div class="cart-item-line"><span>${k} x${cart[k].qty}</span><span>₱${line.toLocaleString()}</span></div>`; }).join('');
-  document.getElementById('totalAmt').textContent = '₱'+total.toLocaleString();
-  totalEl.style.display = 'flex';
+function updateCart(){
+  const box=document.getElementById('cartItems');
+  const tot=document.getElementById('cartTotal');
+  const keys=Object.keys(cart);
+  if(!keys.length){box.innerHTML='<p style="color:var(--tl);font-size:0.85rem;">No items added yet.</p>';tot.style.display='none';return;}
+  let total=0;
+  box.innerHTML=keys.map(k=>{const l=cart[k].qty*cart[k].price;total+=l;return`<div class="cart-item-line"><span>${k} x${cart[k].qty}</span><span>₱${l.toLocaleString()}</span></div>`;}).join('');
+  document.getElementById('totalAmt').textContent='₱'+total.toLocaleString();
+  tot.style.display='flex';
 }
 
-function setType(t) {
-  orderType = t;
-  document.getElementById('btnPickup').classList.toggle('active', t==='pickup');
-  document.getElementById('btnDelivery').classList.toggle('active', t==='delivery');
-  document.getElementById('deliveryField').style.display = t==='delivery'?'block':'none';
+function setType(t){
+  orderType=t;
+  document.getElementById('btnPickup').classList.toggle('active',t==='pickup');
+  document.getElementById('btnDelivery').classList.toggle('active',t==='delivery');
+  document.getElementById('deliveryField').style.display=t==='delivery'?'block':'none';
 }
 
-function setPayment(p) {
-  paymentType = p;
-  document.getElementById('btnGcash').classList.toggle('active', p==='gcash');
-  document.getElementById('btnBank').classList.toggle('active', p==='bank');
-  document.getElementById('gcashInfo').style.display = p==='gcash'?'block':'none';
-  document.getElementById('bankInfo').style.display = p==='bank'?'block':'none';
+function setPayment(p){
+  paymentType=p;
+  document.getElementById('btnGcash').classList.toggle('active',p==='gcash');
+  document.getElementById('btnBank').classList.toggle('active',p==='bank');
+  document.getElementById('gcashInfo').style.display=p==='gcash'?'block':'none';
+  document.getElementById('bankInfo').style.display=p==='bank'?'block':'none';
 }
 
-function placeOrder() {
-  const name = document.getElementById('custName').value.trim();
-  const phone = document.getElementById('custPhone').value.trim();
-  if (!Object.keys(cart).length) { alert('Please add at least one item.'); return; }
-  if (!name || !phone) { alert('Please enter your name and phone number.'); return; }
-  if (orderType==='delivery' && !document.getElementById('deliveryAddr').value.trim()) { alert('Please enter your delivery address.'); return; }
-  const items = Object.keys(cart).map(k => `${k} x${cart[k].qty}`).join(', ');
-  const total = Object.keys(cart).reduce((s,k) => s+cart[k].qty*cart[k].price, 0);
-  const now = new Date();
-  const time = now.toLocaleTimeString('en-PH', {hour:'2-digit', minute:'2-digit'});
-  const addr = orderType==='delivery' ? document.getElementById('deliveryAddr').value.trim() : '';
-  const orderId = 'ORD-'+String(adminOrders.length+1).padStart(3,'0');
-  adminOrders.unshift({id:orderId, name, phone, type:orderType==='delivery'?'Delivery':'Pick-up', address:addr, payment:paymentType==='gcash'?'GCash':'Bank Transfer', items, total, notes:document.getElementById('custNotes').value.trim(), status:'Pending', time});
-  updateStats(); renderOrders();
-  document.getElementById('orderConfirm').style.display = 'block';
-  document.querySelector('.btn-place-order').disabled = true;
-  document.querySelector('.btn-place-order').style.opacity = '0.5';
-  cart = {}; updateCart();
-  document.getElementById('custName').value = '';
-  document.getElementById('custPhone').value = '';
-  document.getElementById('custNotes').value = '';
-  filterOrder('all', document.querySelector('.otab'));
-  setTimeout(() => {
-    document.querySelector('.btn-place-order').disabled = false;
-    document.querySelector('.btn-place-order').style.opacity = '1';
-    document.getElementById('orderConfirm').style.display = 'none';
-  }, 3000);
+function placeOrder(){
+  const name=document.getElementById('custName').value.trim();
+  const phone=document.getElementById('custPhone').value.trim();
+  if(!Object.keys(cart).length){alert('Please add at least one item.');return;}
+  if(!name||!phone){alert('Please enter your name and phone number.');return;}
+  if(orderType==='delivery'&&!document.getElementById('deliveryAddr').value.trim()){alert('Please enter your delivery address.');return;}
+  const items=Object.keys(cart).map(k=>`${k} x${cart[k].qty}`).join(', ');
+  const total=Object.keys(cart).reduce((s,k)=>s+cart[k].qty*cart[k].price,0);
+  const time=new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'});
+  adminOrders.unshift({id:'ORD-'+String(adminOrders.length+1).padStart(3,'0'),name,phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':'Bank Transfer',items,total,notes:document.getElementById('custNotes').value.trim(),status:'Pending',time});
+  updateStats();renderOrders();
+  document.getElementById('orderConfirm').style.display='block';
+  document.querySelector('.btn-place-order').disabled=true;
+  document.querySelector('.btn-place-order').style.opacity='0.5';
+  cart={};updateCart();
+  document.getElementById('custName').value='';
+  document.getElementById('custPhone').value='';
+  document.getElementById('custNotes').value='';
+  if(document.getElementById('deliveryAddr')) document.getElementById('deliveryAddr').value='';
+  filterOrder('all',document.querySelector('.otab'));
+  setTimeout(()=>{
+    document.querySelector('.btn-place-order').disabled=false;
+    document.querySelector('.btn-place-order').style.opacity='1';
+    document.getElementById('orderConfirm').style.display='none';
+  },3000);
 }
 
-// ── RESERVATIONS ──
-function submitReservation() {
-  const name = document.getElementById('resName').value.trim();
-  const phone = document.getElementById('resPhone').value.trim();
-  const date = document.getElementById('resDate').value;
-  const time = document.getElementById('resTime').value;
-  if (!name || !phone || !date || !time) { alert('Please fill in your name, phone, date, and time.'); return; }
-  document.getElementById('resConfirm').style.display = 'block';
-  document.querySelector('.btn-reserve').disabled = true;
-  document.querySelector('.btn-reserve').style.opacity = '0.5';
+// ── FORMS ──
+function submitReservation(){
+  if(!document.getElementById('resName').value.trim()||!document.getElementById('resPhone').value.trim()||!document.getElementById('resDate').value||!document.getElementById('resTime').value){alert('Please fill in name, phone, date, and time.');return;}
+  document.getElementById('resConfirm').style.display='block';
+  document.querySelector('.btn-reserve').disabled=true;
+  document.querySelector('.btn-reserve').style.opacity='0.5';
 }
 
-// ── CONTACT ──
-function submitContact() {
-  const name = document.getElementById('conName').value.trim();
-  const contact = document.getElementById('conContact').value.trim();
-  const message = document.getElementById('conMessage').value.trim();
-  if (!name || !contact || !message) { alert('Please fill in your name, contact, and message.'); return; }
-  document.getElementById('conConfirm').style.display = 'block';
-  document.querySelector('#contact .btn-reserve').disabled = true;
-  document.querySelector('#contact .btn-reserve').style.opacity = '0.5';
+function submitContact(){
+  if(!document.getElementById('conName').value.trim()||!document.getElementById('conContact').value.trim()||!document.getElementById('conMessage').value.trim()){alert('Please fill in name, contact, and message.');return;}
+  document.getElementById('conConfirm').style.display='block';
+  document.querySelector('#contact .btn-reserve').disabled=true;
+  document.querySelector('#contact .btn-reserve').style.opacity='0.5';
 }
 
 // ── FEEDBACK ──
-function updateFbCounter() {
-  const len = document.getElementById('fbMessage').value.length;
-  const counter = document.getElementById('fbCounter');
-  counter.textContent = `${len} / 800`;
-  counter.style.color = len >= 720 ? '#ff8080' : len >= 560 ? '#f39c12' : 'rgba(245,239,230,0.5)';
+function updateFbCounter(){
+  const len=document.getElementById('fbMessage').value.length;
+  const c=document.getElementById('fbCounter');
+  c.textContent=`${len} / 800`;
+  c.style.color=len>=720?'#ff8080':len>=560?'#f39c12':'rgba(245,239,230,0.5)';
 }
 
-function submitFeedback() {
-  const name = document.getElementById('fbName').value.trim();
-  const contact = document.getElementById('fbContact').value.trim();
-  const type = document.getElementById('fbType').value;
-  const message = document.getElementById('fbMessage').value.trim();
-  if (!name || !message) { alert('Please enter your name and message.'); return; }
-  const date = new Date().toLocaleDateString('en-PH', {year:'numeric', month:'long', day:'numeric'});
-  feedbacks.unshift({name, contact, type, message, date, status:'Unread'});
-  if (document.getElementById('commentsAdmin').style.display !== 'none') renderCommentsAdmin();
-  document.getElementById('fbName').value = '';
-  document.getElementById('fbContact').value = '';
-  document.getElementById('fbMessage').value = '';
-  document.getElementById('fbType').value = 'Complaint';
-  document.getElementById('fbCounter').textContent = '0 / 800';
-  const confirmMessages = {
-    Complaint: '🙏 Thank you for bringing this to our attention. We sincerely apologize for any inconvenience caused. Rest assured, we will look into this right away and do our best to make things right. Your experience matters deeply to us.',
-    Suggestion: '💡 Thank you for your wonderful suggestion! We truly value ideas from our customers. We will seriously consider your input as we continue to grow and improve Accaza Coffee. You are part of making us better!',
-    Compliment: '❤️ Oh, this made our day! Thank you so much for your kind words — it means the world to our team. We pour our heart into everything we do, and knowing you felt that warmth makes it all worthwhile. We can\'t wait to see you again! ☕🦁',
-    Other: '💛 Thank you for reaching out! We have received your message and truly appreciate you taking the time to share your thoughts with us. We will get back to you if needed!'
+function submitFeedback(){
+  const name=document.getElementById('fbName').value.trim();
+  const contact=document.getElementById('fbContact').value.trim();
+  const type=document.getElementById('fbType').value;
+  const message=document.getElementById('fbMessage').value.trim();
+  if(!name||!message){alert('Please enter your name and message.');return;}
+  const date=new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'});
+  feedbacks.unshift({name,contact,type,message,date,status:'Unread'});
+  if(document.getElementById('commentsSection').style.display!=='none') renderComments();
+  document.getElementById('fbName').value='';
+  document.getElementById('fbContact').value='';
+  document.getElementById('fbMessage').value='';
+  document.getElementById('fbType').value='Complaint';
+  document.getElementById('fbCounter').textContent='0 / 800';
+  const msgs={
+    Complaint:'🙏 Thank you for bringing this to our attention. We sincerely apologize for any inconvenience caused. Rest assured, we will look into this right away and do our best to make things right. Your experience matters deeply to us.',
+    Suggestion:'💡 Thank you for your wonderful suggestion! We truly value ideas from our customers. We will seriously consider your input as we continue to grow and improve Accaza Coffee. You are part of making us better!',
+    Compliment:'❤️ Oh, this made our day! Thank you so much for your kind words — it means the world to our team. We pour our heart into everything we do, and knowing you felt that warmth makes it all worthwhile. We can\'t wait to see you again! ☕🦁',
+    Other:'💛 Thank you for reaching out! We truly appreciate you taking the time to share your thoughts with us.'
   };
-  const type = document.getElementById('fbType').value;
-  document.getElementById('fbConfirmMsg').textContent = confirmMessages[type] || confirmMessages['Other'];
-  document.getElementById('fbConfirm').style.display = 'block';
-  setTimeout(() => document.getElementById('fbConfirm').style.display = 'none', 6000);
+  document.getElementById('fbConfirmMsg').textContent=msgs[type]||msgs.Other;
+  document.getElementById('fbConfirm').style.display='block';
+  setTimeout(()=>document.getElementById('fbConfirm').style.display='none',6000);
 }
 
 // ── COMMENTS ADMIN ──
-function renderCommentsAdmin() {
-  const types = ['Complaint','Suggestion','Compliment','Other'];
-  const empty = {Complaint:'No complaints yet. 🎉', Suggestion:'No suggestions yet.', Compliment:'No compliments yet.', Other:'No other feedback yet.'};
-  const color = {Complaint:'#c0392b', Suggestion:'#f39c12', Compliment:'#2d9e5f', Other:'#888'};
-  types.forEach(type => {
-    const el = document.getElementById('fbList'+type);
-    if (!el) return;
-    const items = feedbacks.filter(f => f.type === type);
-    if (!items.length) { el.innerHTML = `<p style="color:var(--text-light);font-size:0.85rem;padding:1rem;background:#fff;border-radius:8px;text-align:center;">${empty[type]}</p>`; return; }
-    el.innerHTML = items.map(f => {
-      const gi = feedbacks.indexOf(f);
-      return `<div style="background:#fff;border:1px solid #e8dcc8;border-left:4px solid ${color[type]};border-radius:8px;padding:1rem;margin-bottom:0.75rem;">
+function renderComments(){
+  const types=['Complaint','Suggestion','Compliment','Other'];
+  const empty={Complaint:'No complaints yet. 🎉',Suggestion:'No suggestions yet.',Compliment:'No compliments yet.',Other:'No other feedback yet.'};
+  const color={Complaint:'#c0392b',Suggestion:'#f39c12',Compliment:'#2d9e5f',Other:'#888'};
+  types.forEach(type=>{
+    const el=document.getElementById('fbList'+type);
+    if(!el) return;
+    const items=feedbacks.filter(f=>f.type===type);
+    if(!items.length){el.innerHTML=`<p style="color:var(--tl);padding:1rem;background:#fff;border-radius:8px;text-align:center;font-size:0.85rem;">${empty[type]}</p>`;return;}
+    el.innerHTML=items.map(f=>{
+      const gi=feedbacks.indexOf(f);
+      return`<div style="background:#fff;border:1px solid #e8dcc8;border-left:4px solid ${color[type]};border-radius:8px;padding:1rem;margin-bottom:0.75rem;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;">
           <div><div style="font-weight:500;font-size:0.9rem;color:#3b2314;">${f.name}</div>
           <div style="font-size:0.75rem;color:#8a6a55;">${f.contact?f.contact+' · ':''}${f.date}</div></div>
@@ -1110,133 +1080,128 @@ function renderCommentsAdmin() {
         </div>
         <p style="font-size:0.85rem;color:#5c3d2e;font-style:italic;margin:0.4rem 0;">"${f.message}"</p>
         <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:0.75rem;">
-          ${f.status==='Unread'?`<button onclick="markFbResolved(${gi})" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#2d6a4f;cursor:pointer;font-family:Inter,sans-serif;">✅ Mark Resolved</button>`:''}
-          ${f.status==='Resolved'?`<button onclick="deleteFb(${gi})" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#c0392b;cursor:pointer;font-family:Inter,sans-serif;">🗑️ Delete</button>`:''}
+          ${f.status==='Unread'?`<button onclick="markFb(${gi})" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#2d6a4f;cursor:pointer;">✅ Mark Resolved</button>`:''}
+          ${f.status==='Resolved'?`<button onclick="delFb(${gi})" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>`:''}
         </div>
       </div>`;
     }).join('');
   });
 }
 
-function markFbResolved(i) { feedbacks[i].status='Resolved'; renderCommentsAdmin(); }
-function deleteFb(i) {
-  showDeletePopup(feedbacks[i].name + ' — "' + feedbacks[i].message.substring(0,50) + '..."', () => {
-    feedbacks.splice(i,1); renderCommentsAdmin();
-  });
-}
+function markFb(i){feedbacks[i].status='Resolved';renderComments();}
+function delFb(i){showDeletePopup(feedbacks[i].name,()=>{feedbacks.splice(i,1);renderComments();});}
 
 // ── DELETE POPUP ──
-function showDeletePopup(label, onConfirm) {
-  document.getElementById('deletePopupName').textContent = label;
-  document.getElementById('deletePopupBtn').onclick = () => { onConfirm(); document.getElementById('deletePopup').style.display='none'; };
-  document.getElementById('deletePopup').style.display = 'flex';
+function showDeletePopup(label, onConfirm){
+  document.getElementById('deleteLabel').textContent=label;
+  document.getElementById('deleteConfirmBtn').onclick=()=>{onConfirm();document.getElementById('deletePopup').classList.remove('show');};
+  document.getElementById('deletePopup').classList.add('show');
 }
 
 // ── REVIEWS ──
-function renderReviewsPublic() {}
-function renderAdminReviews() {
-  const el = document.getElementById('adminReviewsList');
-  document.getElementById('reviewCount').textContent = reviews.length;
-  if (!reviews.length) { el.innerHTML = '<div class="empty-state">No reviews added yet.</div>'; return; }
-  el.innerHTML = reviews.map((r,i) => `
+function renderAdminReviews(){
+  const el=document.getElementById('adminReviewsList');
+  document.getElementById('reviewCount').textContent=reviews.length;
+  if(!reviews.length){el.innerHTML='<div class="empty-state">No reviews added yet.</div>';return;}
+  el.innerHTML=reviews.map((r,i)=>`
     <div class="order-admin-card" style="display:flex;justify-content:space-between;align-items:flex-start;">
       <div><div class="order-admin-name">${r.name} ${'⭐'.repeat(r.stars)}</div>
       <div class="order-admin-meta">${r.date}</div>
       <div class="order-admin-items">"${r.text}"</div></div>
-      <button onclick="deleteReview(${i})" style="background:none;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.6rem;font-size:0.75rem;color:#c0392b;cursor:pointer;margin-left:1rem;">Remove</button>
+      <button onclick="delReview(${i})" style="background:none;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.6rem;font-size:0.75rem;color:#c0392b;cursor:pointer;margin-left:1rem;flex-shrink:0;">Remove</button>
     </div>`).join('');
 }
 
-function addReview() {
-  const name = document.getElementById('newReviewName').value.trim();
-  const stars = parseInt(document.getElementById('newReviewStars').value);
-  const text = document.getElementById('newReviewText').value.trim();
-  if (!name || !text) { alert('Please enter a name and review.'); return; }
-  const date = new Date().toLocaleDateString('en-PH', {year:'numeric', month:'long', day:'numeric'});
-  reviews.unshift({name, stars, text, date});
-  document.getElementById('newReviewName').value = '';
-  document.getElementById('newReviewText').value = '';
-  document.getElementById('reviewAddConfirm').style.display = 'block';
-  setTimeout(() => document.getElementById('reviewAddConfirm').style.display='none', 2500);
+function addReview(){
+  const name=document.getElementById('newReviewName').value.trim();
+  const stars=parseInt(document.getElementById('newReviewStars').value);
+  const text=document.getElementById('newReviewText').value.trim();
+  if(!name||!text){alert('Please enter name and review.');return;}
+  reviews.unshift({name,stars,text,date:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'})});
+  document.getElementById('newReviewName').value='';
+  document.getElementById('newReviewText').value='';
+  document.getElementById('reviewAddConfirm').style.display='block';
+  setTimeout(()=>document.getElementById('reviewAddConfirm').style.display='none',2500);
   renderAdminReviews();
 }
 
-function deleteReview(i) {
-  showDeletePopup(reviews[i].name, () => { reviews.splice(i,1); renderAdminReviews(); });
-}
+function delReview(i){showDeletePopup(reviews[i].name,()=>{reviews.splice(i,1);renderAdminReviews();});}
 
 // ── ADMIN ──
-function openAdmin() {
-  document.getElementById('adminLogin').classList.add('active');
-  setTimeout(() => document.getElementById('adminPass').focus(), 100);
+function openAdmin(){
+  document.getElementById('loginOverlay').classList.add('show');
+  setTimeout(()=>document.getElementById('adminPass').focus(),150);
 }
 
-function checkLogin() {
-  const pass = document.getElementById('adminPass').value;
-  if (pass === ADMIN_PASS) {
-    document.getElementById('adminLogin').classList.remove('active');
-    document.getElementById('admin').style.display = 'block';
-    document.getElementById('adminNavItem').style.display = 'block';
-    document.getElementById('commentsNavItem').style.display = 'block';
-    document.getElementById('availability').style.display = 'block';
-    document.getElementById('commentsAdmin').style.display = 'block';
-    buildAvailSection();
-    renderCommentsAdmin();
-    window.scrollTo(0,0);
+function closeAdmin(){
+  document.getElementById('loginOverlay').classList.remove('show');
+  document.getElementById('loginErr').style.display='none';
+  document.getElementById('adminPass').value='';
+}
+
+function checkLogin(){
+  const pass=document.getElementById('adminPass').value;
+  if(pass===ADMIN_PASS){
+    closeAdmin();
+    document.getElementById('adminDash').style.display='block';
+    document.getElementById('availSection').style.display='block';
+    document.getElementById('commentsSection').style.display='block';
+    document.getElementById('navAvail').style.display='block';
+    document.getElementById('navComments').style.display='block';
+    buildAvail();
+    renderComments();
     loadAdminData();
+    window.scrollTo(0,0);
   } else {
-    document.getElementById('loginErr').style.display = 'block';
-    document.getElementById('adminPass').value = '';
+    document.getElementById('loginErr').style.display='block';
+    document.getElementById('adminPass').value='';
   }
 }
 
-function logoutAdmin() {
-  document.getElementById('admin').style.display = 'none';
-  document.getElementById('adminNavItem').style.display = 'none';
-  document.getElementById('commentsNavItem').style.display = 'none';
-  document.getElementById('availability').style.display = 'none';
-  document.getElementById('commentsAdmin').style.display = 'none';
-  document.getElementById('adminPass').value = '';
+function logoutAdmin(){
+  document.getElementById('adminDash').style.display='none';
+  document.getElementById('availSection').style.display='none';
+  document.getElementById('commentsSection').style.display='none';
+  document.getElementById('navAvail').style.display='none';
+  document.getElementById('navComments').style.display='none';
   window.scrollTo(0,0);
 }
 
-function switchTab(tab, btn) {
-  document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
+function switchTab(tab, btn){
+  document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  document.querySelectorAll('.admin-tab-content').forEach(t => t.style.display='none');
-  document.getElementById('tab-'+tab).style.display = 'block';
-  if (tab==='reviews') renderAdminReviews();
+  document.querySelectorAll('.admin-tab-content').forEach(t=>t.style.display='none');
+  document.getElementById('tab-'+tab).style.display='block';
+  if(tab==='reviews') renderAdminReviews();
 }
 
-function loadAdminData() {
-  adminOrders = [
-    {id:'ORD-001',name:'Maria Santos',phone:'0917-123-4567',type:'Delivery',address:'123 Maharlika St, Dasma',payment:'GCash',items:'Cappuccino x2, Banana Bread x1',total:255,status:'Pending',time:'3:15 PM'},
-    {id:'ORD-002',name:'Juan dela Cruz',phone:'0928-987-6543',type:'Pick-up',address:'',payment:'BDO',items:'Beef Burger & Fries x1, Mango Smoothie x1',total:315,status:'Confirmed',time:'4:02 PM'},
-    {id:'ORD-003',name:'Ana Reyes',phone:'0912-555-4321',type:'Delivery',address:'456 Aguinaldo Hwy, Dasma',payment:'GCash',items:'Mocha x1, Tiramisu x1, Pasta Carbonara x1',total:425,status:'Preparing',time:'5:30 PM'},
+function loadAdminData(){
+  adminOrders=[
+    {id:'ORD-001',name:'Maria Santos',phone:'0917-123-4567',type:'Delivery',address:'123 Maharlika St, Dasma',payment:'GCash',items:'Cappuccino x2',total:470,status:'Pending',time:'3:15 PM'},
+    {id:'ORD-002',name:'Juan dela Cruz',phone:'0928-987-6543',type:'Pick-up',address:'',payment:'BDO',items:'Beef Burger & Fries x1',total:230,status:'Confirmed',time:'4:02 PM'},
   ];
-  adminReservations = [
+  adminReservations=[
     {id:'RES-001',name:'Jose Mercado',phone:'0915-222-3344',date:'2026-06-05',time:'4:00 PM',guests:'3 guests',occasion:'Birthday',notes:'Window seat please',status:'Confirmed'},
-    {id:'RES-002',name:'Pia Gonzales',phone:'0923-444-5566',date:'2026-06-06',time:'7:00 PM',guests:'2 guests',occasion:'Date',notes:'',status:'Pending'},
   ];
-  updateStats(); renderOrders(); renderReservations(); renderAdminReviews();
+  updateStats();renderOrders();renderReservations();renderAdminReviews();
 }
 
-function updateStats() {
-  const pending = adminOrders.filter(o => o.status==='Pending').length;
-  const revenue = adminOrders.reduce((s,o) => s+o.total, 0);
-  document.getElementById('statOrders').textContent = adminOrders.length;
-  document.getElementById('statPending').textContent = pending;
-  document.getElementById('statReservations').textContent = adminReservations.length;
-  document.getElementById('statRevenue').textContent = '₱'+revenue.toLocaleString();
+function updateStats(){
+  const pending=adminOrders.filter(o=>o.status==='Pending').length;
+  const revenue=adminOrders.reduce((s,o)=>s+o.total,0);
+  document.getElementById('statOrders').textContent=adminOrders.length;
+  document.getElementById('statPending').textContent=pending;
+  document.getElementById('statReservations').textContent=adminReservations.length;
+  document.getElementById('statRevenue').textContent='₱'+revenue.toLocaleString();
 }
 
-function renderOrders() {
-  const el = document.getElementById('ordersList');
-  if (!adminOrders.length) { el.innerHTML = '<div class="empty-state">No orders yet.</div>'; return; }
-  el.innerHTML = adminOrders.map((o,i) => `
+function renderOrders(){
+  const el=document.getElementById('ordersList');
+  if(!adminOrders.length){el.innerHTML='<div class="empty-state">No orders yet.</div>';return;}
+  el.innerHTML=adminOrders.map((o,i)=>`
     <div class="order-admin-card">
       <div class="order-admin-top">
-        <div><div class="order-admin-name">${o.name} <span style="font-size:0.75rem;color:var(--text-light);">#${o.id}</span></div>
+        <div><div class="order-admin-name">${o.name} <span style="font-size:0.75rem;color:var(--tl);">#${o.id}</span></div>
         <div class="order-admin-meta">${o.phone} · ${o.type}${o.address?' · '+o.address:''} · ${o.time}</div></div>
         <span class="badge badge-${o.status.toLowerCase()}">${o.status}</span>
       </div>
@@ -1250,26 +1215,22 @@ function renderOrders() {
             <option ${o.status==='Preparing'?'selected':''}>Preparing</option>
             <option ${o.status==='Completed'?'selected':''}>Completed</option>
           </select>
-          ${o.status==='Completed'?`<button onclick="confirmDeleteOrder(${i})" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;font-family:'Inter',sans-serif;">🗑️ Delete</button>`:''}
+          ${o.status==='Completed'?`<button onclick="delOrder(${i})" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>`:''}
         </div>
       </div>
     </div>`).join('');
 }
 
-function updateOrderStatus(i,val) { adminOrders[i].status=val; updateStats(); renderOrders(); }
-function confirmDeleteOrder(i) {
-  showDeletePopup(`${adminOrders[i].name} — ${adminOrders[i].items}`, () => {
-    adminOrders.splice(i,1); updateStats(); renderOrders();
-  });
-}
+function updateOrderStatus(i,val){adminOrders[i].status=val;updateStats();renderOrders();}
+function delOrder(i){showDeletePopup(`${adminOrders[i].name} — ${adminOrders[i].items}`,()=>{adminOrders.splice(i,1);updateStats();renderOrders();});}
 
-function renderReservations() {
-  const el = document.getElementById('resList');
-  if (!adminReservations.length) { el.innerHTML = '<div class="empty-state">No reservations yet.</div>'; return; }
-  el.innerHTML = adminReservations.map((r,i) => `
+function renderReservations(){
+  const el=document.getElementById('resList');
+  if(!adminReservations.length){el.innerHTML='<div class="empty-state">No reservations yet.</div>';return;}
+  el.innerHTML=adminReservations.map((r,i)=>`
     <div class="order-admin-card">
       <div class="order-admin-top">
-        <div><div class="order-admin-name">${r.name} <span style="font-size:0.75rem;color:var(--text-light);">#${r.id}</span></div>
+        <div><div class="order-admin-name">${r.name} <span style="font-size:0.75rem;color:var(--tl);">#${r.id}</span></div>
         <div class="order-admin-meta">${r.phone} · ${r.date} · ${r.time} · ${r.guests}${r.occasion?' · '+r.occasion:''}</div></div>
         <span class="badge badge-${r.status.toLowerCase()}">${r.status}</span>
       </div>
@@ -1284,123 +1245,124 @@ function renderReservations() {
     </div>`).join('');
 }
 
-function updateResStatus(i,val) { adminReservations[i].status=val; renderReservations(); }
+function updateResStatus(i,val){adminReservations[i].status=val;renderReservations();}
 
-function savePayment() {
-  document.getElementById('gcashNum').textContent = document.getElementById('editGcashNum').value;
-  document.getElementById('gcashName').textContent = document.getElementById('editGcashName').value;
-  document.getElementById('bankNum').textContent = document.getElementById('editBdoNum').value;
-  document.getElementById('bankNum2').textContent = document.getElementById('editUbNum').value;
-  document.getElementById('saveConfirm').style.display = 'block';
-  setTimeout(() => document.getElementById('saveConfirm').style.display='none', 3000);
+function savePayment(){
+  document.getElementById('gcashNum').textContent=document.getElementById('editGcashNum').value;
+  document.getElementById('gcashName').textContent=document.getElementById('editGcashName').value;
+  document.getElementById('bankNum').textContent=document.getElementById('editBdoNum').value;
+  document.getElementById('bankNum2').textContent=document.getElementById('editUbNum').value;
+  document.getElementById('saveConfirm').style.display='block';
+  setTimeout(()=>document.getElementById('saveConfirm').style.display='none',3000);
 }
 
 // ── AVAILABILITY ──
-function buildAvailSection() {
-  const groups = [
-    {cat:'☕ Coffee', items:['Spanish Latte','Sea Salt Latte','Sea Salt Caramel Latte','Caramel Macchiato','White Mocha','Mocha Latte','French Vanilla Latte','Banana Oat Latte','Cinnamon Oat Latte','Cafe Latte','Cappuccino','Americano']},
-    {cat:'🥤 Blended Frappes', items:['Java Chip','Caramel Frappe','White Mocha Frappe','Dark Mocha Frappe','Caramel Cream Frappe','Toffee Nut Frappe','Butterscotch Frappe','Cappuccino Frappe']},
-    {cat:'🍵 Non-Coffee Frappes', items:['Dark Chocolate','Nougat','Matcha Cream','Strawberry','Vanilla']},
-    {cat:'🌿 Non-Caffeine', items:['Banana Oat','Cinnamon Oat','Matcha Latte','White Chocolate']},
-    {cat:'🍵 Tea & Refreshments', items:['Peach Black Tea','Lychee','Passionfruit','Pink Guava','Tahitian Lime']},
-    {cat:'🍞 Pastries', items:['Buttered Croissant','Croffle','Matcha Croffle','Dark Chocolate Croffle','White Chocolate Croffle','Pain Au Chocolat','Cinnamon Roll']},
+function buildAvail(){
+  const groups=[
+    {cat:'☕ Coffee',items:['Spanish Latte','Sea Salt Latte','Sea Salt Caramel Latte','Caramel Macchiato','White Mocha','Mocha Latte','French Vanilla Latte','Banana Oat Latte','Cinnamon Oat Latte','Cafe Latte','Cappuccino','Americano']},
+    {cat:'🥤 Blended Frappes',items:['Java Chip','Caramel Frappe','White Mocha Frappe','Dark Mocha Frappe','Caramel Cream Frappe','Toffee Nut Frappe','Butterscotch Frappe','Cappuccino Frappe']},
+    {cat:'🍵 Non-Coffee Frappes',items:['Dark Chocolate','Nougat','Matcha Cream','Strawberry','Vanilla']},
+    {cat:'🌿 Non-Caffeine',items:['Banana Oat','Cinnamon Oat','Matcha Latte','White Chocolate']},
+    {cat:'🍵 Tea & Refreshments',items:['Peach Black Tea','Lychee','Passionfruit','Pink Guava','Tahitian Lime']},
+    {cat:'🍞 Pastries',items:['Buttered Croissant','Croffle','Matcha Croffle','Dark Chocolate Croffle','White Chocolate Croffle','Pain Au Chocolat','Cinnamon Roll']},
   ];
-  const el = document.getElementById('availSection');
-  let html = '';
-  groups.forEach(g => {
-    html += `<div style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--brown-dark);margin:1.5rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:2px solid var(--cream-dark);">${g.cat}</div>`;
-    g.items.forEach(name => {
-      const avail = isAvailable(name);
-      const sid = 'avs_'+name.replace(/[\s']/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
-      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:0.85rem 1.2rem;margin-bottom:0.5rem;background:#fff;border:1px solid var(--cream-dark);border-radius:8px;">
-        <div style="font-size:0.95rem;font-weight:500;color:var(--brown-dark);${!avail?'text-decoration:line-through;opacity:0.5;':''}" id="${sid}_n">${name}</div>
+  let html='';
+  groups.forEach(g=>{
+    html+=`<div style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--bd);margin:1.5rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:2px solid var(--cd);">${g.cat}</div>`;
+    g.items.forEach(name=>{
+      const ok=isAvail(name);
+      const sid='av_'+name.replace(/[\s']/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
+      html+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:0.85rem 1.2rem;margin-bottom:0.5rem;background:#fff;border:1px solid var(--cd);border-radius:8px;">
+        <div style="font-size:0.95rem;font-weight:500;color:var(--bd);${ok?'':'text-decoration:line-through;opacity:0.5;'}" id="${sid}_n">${name}</div>
         <div style="display:flex;align-items:center;gap:1rem;">
-          <span id="${sid}_l" style="font-size:0.82rem;font-weight:600;padding:0.25rem 0.75rem;border-radius:999px;background:${avail?'#d4edda':'#fde8e8'};color:${avail?'#155724':'#721c24'};">${avail?'✅ Available':'❌ Not Available'}</span>
-          <input type="checkbox" class="avail-toggle" ${avail?'checked':''} onchange="toggleItem('${name.replace(/'/g,"\\'")}','${sid}',this.checked)"/>
+          <span id="${sid}_l" style="font-size:0.82rem;font-weight:600;padding:0.25rem 0.75rem;border-radius:999px;background:${ok?'#d4edda':'#fde8e8'};color:${ok?'#155724':'#721c24'};">${ok?'✅ Available':'❌ Not Available'}</span>
+          <input type="checkbox" class="avail-toggle" ${ok?'checked':''} onchange="toggleAvail('${name.replace(/'/g,"\\'")}','${sid}',this.checked)"/>
         </div>
       </div>`;
     });
   });
-  el.innerHTML = html;
+  document.getElementById('availList').innerHTML=html;
 }
 
-function toggleItem(name, sid, avail) {
-  availability[name] = avail;
-  const n = document.getElementById(sid+'_n');
-  const l = document.getElementById(sid+'_l');
-  if (n) { n.style.textDecoration=avail?'none':'line-through'; n.style.opacity=avail?'1':'0.5'; }
-  if (l) { l.textContent=avail?'✅ Available':'❌ Not Available'; l.style.background=avail?'#d4edda':'#fde8e8'; l.style.color=avail?'#155724':'#721c24'; }
-  filterMenu('all'); filterOrder('all', document.querySelector('.otab'));
+function toggleAvail(name, sid, ok){
+  availability[name]=ok;
+  const n=document.getElementById(sid+'_n');
+  const l=document.getElementById(sid+'_l');
+  if(n){n.style.textDecoration=ok?'none':'line-through';n.style.opacity=ok?'1':'0.5';}
+  if(l){l.textContent=ok?'✅ Available':'❌ Not Available';l.style.background=ok?'#d4edda':'#fde8e8';l.style.color=ok?'#155724':'#721c24';}
+  filterMenu('all',null);filterOrder('all',document.querySelector('.otab'));
 }
 
 // ── CHATBOT ──
-const botResponses = [
+const botReplies=[
   {keys:['hour','open','close','time','schedule'],reply:'🕐 We are open every day — <strong>Monday to Sunday, 3:00 PM to 12:00 Midnight</strong>. Come visit us anytime! ☕'},
-  {keys:['location','address','where','find','directions'],reply:'📍 We are at <strong>Saratoga Avenue, La Mediterranea Subdivision, Governor\'s Drive, Dasmariñas, Cavite</strong>. Right along the highway near SM Dasmariñas! 😊'},
-  {keys:['gcash','pay','payment','bank','bdo','unionbank'],reply:'💳 Yes! We accept <strong>GCash, BDO, and UnionBank</strong>. Our GCash number is <strong>0927 692 4831</strong> under MARIA DANIELA M.'},
-  {keys:['delivery','deliver'],reply:'🛵 Yes, we offer <strong>delivery and pick-up</strong>! Place your order in our Order section. 😊'},
-  {keys:['menu','food','drink','coffee','frappe','pastry'],reply:'🍽️ We have <strong>Signature Coffees, Blended Frappes, Non-Coffee Frappes, Non-Caffeine drinks, Tea & Refreshments, and Pastries</strong>. Check our full menu above! ☕'},
-  {keys:['reserve','reservation','book','table'],reply:'📅 Reserve through our <strong>Reservations section</strong> on this website! Fill in your name, date, time, and guests. 😊'},
-  {keys:['wifi','password','internet'],reply:'📶 Yes, we have free WiFi! Ask our staff for the password when you arrive. 😊'},
-  {keys:['price','cost','how much'],reply:'💰 Prices start from <strong>₱140 for pastries</strong> and <strong>₱215 for coffee</strong>. Check our full menu for all prices! ☕'},
-  {keys:['parking','park'],reply:'🚗 Yes, we have parking available! 😊'},
-  {keys:['hello','hi','hey','kumusta','musta'],reply:'Hello! 👋 Welcome to <strong>Accaza Coffee</strong>! How can I help you today? ☕'},
-  {keys:['thank','thanks','salamat'],reply:'You\'re welcome! 😊 Looking forward to seeing you at Accaza Coffee! ☕🦁'},
-  {keys:['feedback','complaint','suggestion'],reply:'💛 Scroll down to our <strong>Feedback</strong> section and leave us a message. We read every one! 😊'},
+  {keys:['location','address','where','find','direction'],reply:'📍 We are at <strong>Saratoga Avenue, La Mediterranea Subdivision, Governor\'s Drive, Dasmariñas, Cavite</strong>. Right along the highway near SM Dasmariñas! 😊'},
+  {keys:['gcash','pay','payment','bank','bdo','union'],reply:'💳 Yes! We accept <strong>GCash, BDO, and UnionBank</strong>. Our GCash number is <strong>0927 692 4831</strong> under MARIA DANIELA M.'},
+  {keys:['delivery','deliver','send'],reply:'🛵 Yes, we offer <strong>delivery and pick-up</strong>! Place your order through our Order section. 😊'},
+  {keys:['menu','food','drink','coffee','frappe','pastry','eat'],reply:'🍽️ We have <strong>Signature Coffees, Blended Frappes, Non-Coffee Frappes, Non-Caffeine drinks, Tea & Refreshments, and Pastries</strong>. Check our full menu above! ☕'},
+  {keys:['reserve','reservation','book','table','seat'],reply:'📅 Reserve through our <strong>Reservations section</strong> on this website! Fill in your name, date, time, and guests. 😊'},
+  {keys:['wifi','internet','password'],reply:'📶 Yes, we have free WiFi! Ask our staff for the password when you arrive. 😊'},
+  {keys:['price','cost','how much','cheap'],reply:'💰 Prices start from <strong>₱140 for pastries</strong> and <strong>₱215 for coffee</strong>. Check our full menu! ☕'},
+  {keys:['parking','park','car'],reply:'🚗 Yes, we have parking available for our customers! 😊'},
+  {keys:['hello','hi','hey','kumusta','musta','good'],reply:'Hello! 👋 Welcome to <strong>Accaza Coffee</strong>! How can I help you today? ☕'},
+  {keys:['thank','thanks','salamat'],reply:'You\'re very welcome! 😊 We look forward to seeing you at Accaza Coffee! ☕🦁'},
+  {keys:['feedback','complaint','suggestion','compliment'],reply:'💛 We\'d love to hear from you! Scroll down to our <strong>Feedback</strong> section and leave us a message. 😊'},
+  {keys:['order','buy','purchase'],reply:'🛒 Scroll up to our <strong>Order Online</strong> section, pick your items, and choose GCash or bank transfer for payment. 😊'},
 ];
 
-function getBotReply(msg) {
-  const lower = msg.toLowerCase();
-  for (const r of botResponses) { if (r.keys.some(k => lower.includes(k))) return r.reply; }
+function getBotReply(msg){
+  const l=msg.toLowerCase();
+  for(const r of botReplies){if(r.keys.some(k=>l.includes(k))) return r.reply;}
   return null;
 }
 
-function toggleChat() {
-  chatOpen = !chatOpen;
-  document.getElementById('chatWindow').classList.toggle('open', chatOpen);
-  document.getElementById('chatNotif').style.display = 'none';
-  if (chatOpen && !chatStarted) {
-    chatStarted = true;
-    setTimeout(() => addBotMsg('👋 Hi there! Welcome to <strong>Accaza Coffee</strong>! Ask me about our hours, location, menu, delivery, payment, and more! ☕'), 400);
+function toggleChat(){
+  chatOpen=!chatOpen;
+  document.getElementById('chatWindow').classList.toggle('open',chatOpen);
+  document.getElementById('chatNotif').style.display='none';
+  if(chatOpen&&!chatStarted){
+    chatStarted=true;
+    setTimeout(()=>addBotMsg('👋 Hi there! Welcome to <strong>Accaza Coffee (Cafe Sartoga)</strong>! I\'m here to help. Ask me about our hours, location, menu, delivery, payment, and more! ☕'),400);
   }
 }
 
-function addBotMsg(text) {
-  const msgs = document.getElementById('chatMessages');
-  const div = document.createElement('div');
-  div.className = 'chat-msg bot'; div.innerHTML = text;
-  msgs.appendChild(div); msgs.scrollTop = msgs.scrollHeight;
+function addBotMsg(text){
+  const msgs=document.getElementById('chatMessages');
+  const d=document.createElement('div');
+  d.className='chat-msg bot';d.innerHTML=text;
+  msgs.appendChild(d);msgs.scrollTop=msgs.scrollHeight;
 }
 
-function addUserMsg(text) {
-  const msgs = document.getElementById('chatMessages');
-  const div = document.createElement('div');
-  div.className = 'chat-msg user'; div.textContent = text;
-  msgs.appendChild(div); msgs.scrollTop = msgs.scrollHeight;
+function addUserMsg(text){
+  const msgs=document.getElementById('chatMessages');
+  const d=document.createElement('div');
+  d.className='chat-msg user';d.textContent=text;
+  msgs.appendChild(d);msgs.scrollTop=msgs.scrollHeight;
 }
 
-function sendChat() {
-  const input = document.getElementById('chatInput');
-  const msg = input.value.trim();
-  if (!msg) return;
-  input.value = '';
+function sendChat(){
+  const input=document.getElementById('chatInput');
+  const msg=input.value.trim();
+  if(!msg) return;
+  input.value='';
   addUserMsg(msg);
-  const typing = document.createElement('div');
-  typing.className = 'chat-msg bot'; typing.id = 'typing'; typing.innerHTML = '<span style="letter-spacing:2px;">•••</span>';
+  const typing=document.createElement('div');
+  typing.className='chat-msg bot';typing.id='typing';typing.innerHTML='<span style="letter-spacing:2px;">•••</span>';
   document.getElementById('chatMessages').appendChild(typing);
-  document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
-  setTimeout(() => {
-    const t = document.getElementById('typing'); if (t) t.remove();
-    const reply = getBotReply(msg);
-    addBotMsg(reply || '🤔 I\'m not sure about that one. Please contact us directly:<br/><br/>📱 <strong>0927 692 4831</strong> (GCash / Viber / WhatsApp)<br/><br/>Our team will be happy to help! 😊');
-  }, 900);
+  document.getElementById('chatMessages').scrollTop=document.getElementById('chatMessages').scrollHeight;
+  setTimeout(()=>{
+    const t=document.getElementById('typing');if(t)t.remove();
+    addBotMsg(getBotReply(msg)||'🤔 That\'s a great question! For more specific queries, please contact us directly:<br/><br/>📱 <strong>0927 692 4831</strong> (GCash / Viber / WhatsApp)<br/><br/>Our team will be happy to help! 😊');
+  },900);
 }
 
-function quickMsg(msg) { document.getElementById('chatInput').value = msg; sendChat(); }
-setTimeout(() => { if (!chatOpen) document.getElementById('chatNotif').style.display = 'block'; }, 3000);
+function quickMsg(msg){document.getElementById('chatInput').value=msg;sendChat();}
+
+// Show notification after 3 seconds
+setTimeout(()=>{if(!chatOpen)document.getElementById('chatNotif').style.display='block';},3000);
 
 // ── INIT ──
-filterMenu('all');
+filterMenu('all', document.querySelector('.tab-btn'));
 filterOrder('all', document.querySelector('.otab'));
 </script>
 </body>
