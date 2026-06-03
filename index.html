@@ -297,6 +297,7 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
     <li><a href="#reel">Reel</a></li>
     <li><a href="#menu">Menu</a></li>
     <li><a href="#order">Order</a></li>
+    <li><a href="#checkstatus">Track Order</a></li>
     <li><a href="#reserve">Reserve</a></li>
     <li><a href="#reviews">Reviews</a></li>
     <li><a href="#feedback">Feedback</a></li>
@@ -470,14 +471,46 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
             </div>
           </div>
           <input type="file" id="paymentProof" accept="image/*" style="display:none;" onchange="previewProof(this)"/>
+
+          <h3 class="order-section-title" style="margin-top:1.5rem;">7. Preferred Contact for Confirmation</h3>
+          <p style="font-size:0.78rem;color:var(--tl);margin-bottom:0.75rem;">How should we contact you to confirm your order?</p>
+          <div class="order-type-btns" style="flex-wrap:wrap;gap:0.4rem;margin-bottom:0.75rem;">
+            <button class="type-btn active" id="btnWhatsapp" onclick="setContact('whatsapp')" style="flex:none;padding:0.5rem 0.9rem;font-size:0.8rem;">📱 WhatsApp</button>
+            <button class="type-btn" id="btnViber" onclick="setContact('viber')" style="flex:none;padding:0.5rem 0.9rem;font-size:0.8rem;">💬 Viber</button>
+            <button class="type-btn" id="btnCall" onclick="setContact('call')" style="flex:none;padding:0.5rem 0.9rem;font-size:0.8rem;">📞 Call</button>
+            <button class="type-btn" id="btnEmail" onclick="setContact('email')" style="flex:none;padding:0.5rem 0.9rem;font-size:0.8rem;">📧 Email</button>
+          </div>
+          <input type="text" id="custContact" placeholder="Enter your WhatsApp number" style="margin-bottom:0.25rem;"/>
+          <p style="font-size:0.72rem;color:var(--tl);">We will use this to send you your order confirmation. 😊</p>
           <button class="btn-place-order" onclick="placeOrder()">Place Order</button>
           <button onclick="resetOrder()" style="width:100%;margin-top:0.5rem;background:transparent;color:var(--tl);border:1px solid var(--cd);border-radius:6px;padding:0.7rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;transition:all 0.2s;" onmouseover="this.style.borderColor='var(--bl)';this.style.color='var(--bl)'" onmouseout="this.style.borderColor='var(--cd)';this.style.color='var(--tl)'">🔄 Reset Order</button>
-          <div id="orderConfirm" style="display:none;margin-top:1rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:1rem;text-align:center;">
-            <p style="color:#2d6a4f;font-weight:500;">🎉 Order placed! We'll confirm once payment is received.</p>
+          <div id="orderConfirm" style="display:none;margin-top:1rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:8px;padding:1.25rem;text-align:center;">
+            <p style="font-size:1.1rem;font-weight:600;color:#2d6a4f;margin-bottom:0.5rem;">🎉 Order Placed Successfully!</p>
+            <p style="font-size:0.85rem;color:#2d6a4f;margin-bottom:0.75rem;">Your Order ID is:</p>
+            <div style="background:#fff;border:2px solid #a8d5b5;border-radius:8px;padding:0.75rem 1.5rem;display:inline-block;margin-bottom:0.75rem;">
+              <span id="displayOrderId" style="font-family:'Playfair Display',serif;font-size:1.6rem;color:var(--bd);font-weight:600;letter-spacing:0.1em;"></span>
+            </div>
+            <p style="font-size:0.82rem;color:var(--tm);line-height:1.6;margin-bottom:0.5rem;">📱 We will contact you via your preferred method to confirm your order.</p>
+            <p style="font-size:0.78rem;color:#856404;background:#fef3cd;border-radius:6px;padding:0.5rem 0.75rem;line-height:1.5;">⚠️ <strong>Important:</strong> Save your Order ID! To check your order status, use the <strong>Check Order Status</strong> section below — on this same device and browser.</p>
           </div>
         </div>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- ORDER STATUS CHECKER -->
+<section style="background:var(--cd);padding:4rem 2rem;" id="checkstatus">
+  <div style="max-width:500px;margin:0 auto;text-align:center;">
+    <p class="section-label" style="color:var(--bl);">Track Your Order</p>
+    <h2 style="font-family:'Playfair Display',serif;font-size:clamp(1.8rem,4vw,2.5rem);color:var(--bd);margin-bottom:0.75rem;">Check Order Status</h2>
+    <p style="color:var(--tm);font-size:0.9rem;margin-bottom:0.5rem;">Enter your Order ID to see the latest status of your order.</p>
+    <p style="font-size:0.78rem;color:#856404;background:#fef3cd;border-radius:6px;padding:0.5rem 0.75rem;margin-bottom:1.5rem;line-height:1.5;">⚠️ Please use the <strong>same device and browser</strong> you used when placing your order.</p>
+    <div style="display:flex;gap:0.5rem;margin-bottom:1.5rem;">
+      <input type="text" id="statusOrderId" placeholder="e.g. ORD-001" style="flex:1;text-align:center;font-family:'Playfair Display',serif;font-size:1rem;letter-spacing:0.1em;text-transform:uppercase;"/>
+      <button onclick="checkOrderStatus()" style="background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.6rem 1.25rem;font-size:0.88rem;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;">Check Status</button>
+    </div>
+    <div id="statusResult" style="display:none;"></div>
   </div>
 </section>
 
@@ -896,6 +929,57 @@ function removeProof(e){
   document.getElementById('uploadPreview').style.display='none';
   document.getElementById('uploadBox').style.borderColor='var(--cd)';
   document.getElementById('uploadBox').style.borderStyle='dashed';
+}
+
+let contactMethod='whatsapp';
+
+function setContact(type){
+  contactMethod=type;
+  ['whatsapp','viber','call','email'].forEach(t=>{
+    document.getElementById('btn'+t.charAt(0).toUpperCase()+t.slice(1)).classList.toggle('active',t===type);
+  });
+  const placeholders={whatsapp:'Enter your WhatsApp number',viber:'Enter your Viber number',call:'Enter your phone number',email:'Enter your email address'};
+  document.getElementById('custContact').placeholder=placeholders[type];
+}
+
+function checkOrderStatus(){
+  const id=document.getElementById('statusOrderId').value.trim().toUpperCase();
+  const result=document.getElementById('statusResult');
+  if(!id){alert('Please enter your Order ID.');return;}
+  const order=adminOrders.find(o=>o.id===id);
+  if(!order){
+    result.style.display='block';
+    result.innerHTML=`<div style="background:#fff;border:1px solid var(--cd);border-radius:8px;padding:1.5rem;text-align:center;">
+      <div style="font-size:2rem;margin-bottom:0.5rem;">🔍</div>
+      <p style="font-weight:500;color:var(--bd);margin-bottom:0.25rem;">Order Not Found</p>
+      <p style="font-size:0.82rem;color:var(--tl);">No order found with ID <strong>${id}</strong>. Please check your Order ID and make sure you're using the same device and browser.</p>
+    </div>`;
+    return;
+  }
+  const statusConfig={
+    Pending:{icon:'🟡',color:'#856404',bg:'#fef3cd',msg:'Your order has been received and is awaiting confirmation from our staff. We will contact you shortly!'},
+    Confirmed:{icon:'🔵',color:'#0c5460',bg:'#d1ecf1',msg:'Great news! Your order has been confirmed. We will start preparing it soon!'},
+    Preparing:{icon:'🟠',color:'#664d03',bg:'#fff3cd',msg:'Your order is currently being prepared by our team. It will be ready soon! ☕'},
+    Completed:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your order is ready! Thank you for choosing Accaza Coffee. We hope you enjoy it! ☕🦁'},
+  };
+  const s=statusConfig[order.status]||statusConfig.Pending;
+  result.style.display='block';
+  result.innerHTML=`<div style="background:#fff;border:1px solid var(--cd);border-radius:8px;padding:1.5rem;text-align:left;">
+    <div style="text-align:center;margin-bottom:1rem;">
+      <div style="font-size:2.5rem;margin-bottom:0.5rem;">${s.icon}</div>
+      <span style="background:${s.bg};color:${s.color};font-size:0.85rem;font-weight:600;padding:0.3rem 1rem;border-radius:999px;">${order.status}</span>
+    </div>
+    <p style="font-size:0.85rem;color:var(--tm);text-align:center;margin-bottom:1rem;line-height:1.6;">${s.msg}</p>
+    <div style="border-top:1px solid var(--cd);padding-top:0.75rem;">
+      <div style="display:flex;justify-content:space-between;font-size:0.82rem;color:var(--tl);margin-bottom:0.3rem;"><span>Order ID</span><span style="font-weight:500;color:var(--bd);">${order.id}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:0.82rem;color:var(--tl);margin-bottom:0.3rem;"><span>Name</span><span style="font-weight:500;color:var(--bd);">${order.name}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:0.82rem;color:var(--tl);margin-bottom:0.3rem;"><span>Items</span><span style="font-weight:500;color:var(--bd);text-align:right;max-width:60%;">${order.items}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:0.82rem;color:var(--tl);margin-bottom:0.3rem;"><span>Total</span><span style="font-weight:500;color:var(--bl);">₱${order.total.toLocaleString()}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:0.82rem;color:var(--tl);margin-bottom:0.3rem;"><span>Type</span><span style="font-weight:500;color:var(--bd);">${order.type}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:0.82rem;color:var(--tl);"><span>Payment</span><span style="font-weight:500;color:var(--bd);">${order.payment}</span></div>
+    </div>
+    <p style="font-size:0.72rem;color:var(--tl);text-align:center;margin-top:1rem;">Last updated: ${new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})} · Refresh to see latest status</p>
+  </div>`;
 }
 
 // ── RESET ORDER ──
@@ -1342,7 +1426,7 @@ function renderOrders(){
     <div class="order-admin-card">
       <div class="order-admin-top">
         <div><div class="order-admin-name">${o.name} <span style="font-size:0.75rem;color:var(--tl);">#${o.id}</span></div>
-        <div class="order-admin-meta">${o.phone} · ${o.type}${o.address?' · '+o.address:''} · ${o.time}</div></div>
+        <div class="order-admin-meta">${o.phone} · ${o.contact?o.contact:''} · ${o.type}${o.address?' · '+o.address:''} · ${o.time}</div></div>
         <span class="badge badge-${o.status.toLowerCase()}">${o.status}</span>
       </div>
       <div class="order-admin-items">🛒 ${o.items}</div>
