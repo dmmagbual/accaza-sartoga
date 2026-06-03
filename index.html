@@ -832,12 +832,12 @@
 </section>
 
 <!-- LOGIN OVERLAY -->
-<div id="adminLogin" style="display:none; position:fixed; inset:0; background:rgba(30,15,5,0.97); z-index:999; align-items:center; justify-content:center;">
-  <div class="login-box">
-    <div style="font-family:'Playfair Display',serif; font-size:1.5rem; color:var(--brown-dark); margin-bottom:0.25rem;">Accaza Coffee</div>
-    <p style="font-size:0.8rem; color:var(--text-light); margin-bottom:1.5rem;">Admin Access Only</p>
+<div id="adminLogin" style="display:none; position:fixed; inset:0; background:rgba(30,15,5,0.97); z-index:9999; align-items:center; justify-content:center;">
+  <div class="login-box" style="background:var(--cream); border-radius:10px; padding:2.5rem; width:100%; max-width:360px;">
+    <div style="font-family:'Playfair Display',serif; font-size:1.5rem; color:var(--brown-dark); margin-bottom:0.25rem; text-align:center;">Accaza Coffee</div>
+    <p style="font-size:0.8rem; color:var(--text-light); margin-bottom:1.5rem; text-align:center;">Admin Access Only 🔐</p>
     <label class="field-label" style="color:var(--text-light);">Password</label>
-    <input type="password" id="adminPass" placeholder="Enter admin password" style="margin-bottom:1rem;" onkeydown="if(event.key==='Enter') checkLogin()"/>
+    <input type="password" id="adminPass" placeholder="Enter admin password" style="margin-bottom:1rem; width:100%;" onkeydown="if(event.key==='Enter') checkLogin()"/>
     <button class="btn-primary" style="width:100%; text-align:center;" onclick="checkLogin()">Log In</button>
     <p id="loginErr" style="display:none; color:#c0392b; font-size:0.8rem; margin-top:0.75rem; text-align:center;">❌ Incorrect password. Try again.</p>
     <button onclick="document.getElementById('adminLogin').style.display='none'" style="margin-top:1rem; background:none; border:none; font-size:0.78rem; color:var(--text-light); cursor:pointer; width:100%; text-align:center;">← Back to website</button>
@@ -1378,6 +1378,12 @@ function deleteReview(i) {
 function openAdmin() {
   const el = document.getElementById('adminLogin');
   el.style.display = 'flex';
+  el.style.position = 'fixed';
+  el.style.inset = '0';
+  el.style.background = 'rgba(30,15,5,0.97)';
+  el.style.zIndex = '9999';
+  el.style.alignItems = 'center';
+  el.style.justifyContent = 'center';
   setTimeout(() => document.getElementById('adminPass').focus(), 100);
 }
 
