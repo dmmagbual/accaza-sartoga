@@ -290,9 +290,9 @@
     <li><a href="#reserve">Reserve</a></li>
     <li><a href="#reviews">Reviews</a></li>
     <li><a href="#gallery">Gallery</a></li>
-    <li><a href="#feedback">Feedback</a></li>
     <li><a href="#contact">Contact</a></li>
     <li id="adminNavItem" style="display:none;"><a href="#availability" style="color:#c9956a; font-weight:500;">🔄 Availability</a></li>
+    <li id="feedbackNavItem" style="display:none;"><a href="#feedbackAdmin" style="color:#c9956a; font-weight:500;">📩 Feedback</a></li>
   </ul>
 </nav>
 
@@ -1225,7 +1225,49 @@ function submitFeedback() {
   renderFeedback();
 }
 
-function renderFeedback() {
+function renderFeedbackAdmin() {
+  const types = ['Complaint','Suggestion','Compliment','Other'];
+  const emptyMsg = { Complaint:'No complaints yet. 🎉', Suggestion:'No suggestions yet.', Compliment:'No compliments yet.', Other:'No other feedback yet.' };
+  const borderColor = { Complaint:'#c0392b', Suggestion:'#f39c12', Compliment:'#2d9e5f', Other:'#888' };
+  types.forEach(type => {
+    const el = document.getElementById('fbList'+type);
+    if (!el) return;
+    const items = feedbacks.filter(f => f.type === type);
+    if (!items.length) {
+      el.innerHTML = `<div style="color:#8a6a55;font-size:0.85rem;padding:1rem;background:#fff;border-radius:8px;text-align:center;">${emptyMsg[type]}</div>`;
+      return;
+    }
+    el.innerHTML = items.map((f,i) => {
+      const globalIndex = feedbacks.indexOf(f);
+      return `<div style="background:#fff;border:1px solid #e8dcc8;border-left:4px solid ${borderColor[type]};border-radius:8px;padding:1rem;margin-bottom:0.75rem;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;">
+          <div>
+            <div style="font-weight:500;font-size:0.9rem;color:#3b2314;">${f.name}</div>
+            <div style="font-size:0.75rem;color:#8a6a55;">${f.contact?f.contact+' · ':''}${f.date}</div>
+          </div>
+          <span style="font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:999px;font-weight:500;background:${f.status==='Resolved'?'#d4edda':'#fef3cd'};color:${f.status==='Resolved'?'#155724':'#856404'};">${f.status}</span>
+        </div>
+        <p style="font-size:0.85rem;color:#5c3d2e;font-style:italic;margin:0.4rem 0;">"${f.message}"</p>
+        <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:0.75rem;">
+          ${f.status==='Unread'?`<button onclick="markFbResolved(${globalIndex})" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#2d6a4f;cursor:pointer;font-family:Inter,sans-serif;">✅ Mark Resolved</button>`:''}
+          ${f.status==='Resolved'?`<button onclick="deleteFbItem(${globalIndex})" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#c0392b;cursor:pointer;font-family:Inter,sans-serif;">🗑️ Delete</button>`:'<span style="font-size:0.75rem;color:#8a6a55;font-style:italic;">Awaiting action</span>'}
+        </div>
+      </div>`;
+    }).join('');
+  });
+}
+
+function markFbResolved(i) {
+  feedbacks[i].status = 'Resolved';
+  renderFeedbackAdmin();
+}
+
+function deleteFbItem(i) {
+  if (confirm('Delete this feedback? This cannot be undone.')) {
+    feedbacks.splice(i, 1);
+    renderFeedbackAdmin();
+  }
+}
   const tab = document.getElementById('tab-feedback');
   const el = document.getElementById('feedbackList');
   if (!tab || !el) return;
@@ -1350,8 +1392,11 @@ function checkLogin() {
     document.getElementById('adminLogin').style.display = 'none';
     document.getElementById('admin').style.display = 'block';
     document.getElementById('adminNavItem').style.display = 'block';
+    document.getElementById('feedbackNavItem').style.display = 'block';
     document.getElementById('availability').style.display = 'block';
+    document.getElementById('feedbackAdmin').style.display = 'block';
     buildAvailSection();
+    renderFeedbackAdmin();
     window.scrollTo(0,0);
     loadAdminData();
   } else {
@@ -1363,7 +1408,9 @@ function checkLogin() {
 function logoutAdmin() {
   document.getElementById('admin').style.display = 'none';
   document.getElementById('adminNavItem').style.display = 'none';
+  document.getElementById('feedbackNavItem').style.display = 'none';
   document.getElementById('availability').style.display = 'none';
+  document.getElementById('feedbackAdmin').style.display = 'none';
   document.getElementById('adminPass').value = '';
   window.scrollTo(0,0);
 }
