@@ -799,15 +799,24 @@ function filterOrder(cat, btn) {
   const list = document.getElementById('orderItemList');
   const filtered = cat === 'all' ? menuItems : menuItems.filter(i => i.cat === cat);
   list.innerHTML = filtered.map(i => {
+    const avail = isAvailable(i.name);
     const qty = cart[i.name] ? cart[i.name].qty : 0;
-    return `<div class="item-row">
-      <div class="item-row-info"><h5>${i.name}</h5><span>${catLabels[i.cat]}</span></div>
+    return `<div class="item-row" style="${!avail ? 'opacity:0.5;' : ''}">
+      <div class="item-row-info">
+        <h5>${i.name}</h5>
+        <span style="color:${avail ? 'var(--text-light)' : '#c0392b'}; font-size:0.72rem;">
+          ${avail ? catLabels[i.cat] : '❌ Not Available'}
+        </span>
+      </div>
       <div class="item-row-right">
         <span class="item-price">${i.price}</span>
+        ${avail ? `
         <button class="qty-btn" onclick="changeQty('${i.name.replace(/'/g,"\\'")}','${i.price}',-1)">−</button>
         <span class="qty-display" id="qty_${i.name.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,'')}">${qty}</span>
         <button class="qty-btn" onclick="changeQty('${i.name.replace(/'/g,"\\'")}','${i.price}',1)">+</button>
-      </div></div>`;
+        ` : '<span style="font-size:0.72rem; color:#c0392b; font-style:italic;">Unavailable</span>'}
+      </div>
+    </div>`;
   }).join('');
 }
 
@@ -1029,15 +1038,25 @@ function renderAvailability() {
           <span class="avail-row-name">${i.name}</span>
           <span class="avail-row-cat">${i.price}</span>
         </div>
-        <input type="checkbox" class="avail-toggle" ${isAvailable(i.name) ? 'checked' : ''}
-          onchange="toggleAvailability('${i.name.replace(/'/g,"\\'")}', this.checked)"
-          title="${isAvailable(i.name) ? 'Available' : 'Not Available'}"/>
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+          <span id="lbl_${i.name.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,'')}" style="font-size:0.75rem; color:${isAvailable(i.name)?'#2d9e5f':'#c0392b'}; font-weight:500; min-width:80px; text-align:right;">
+            ${isAvailable(i.name) ? '✅ Available' : '❌ Not Available'}
+          </span>
+          <input type="checkbox" class="avail-toggle" ${isAvailable(i.name) ? 'checked' : ''}
+            onchange="toggleAvailability('${i.name.replace(/'/g,"\\'")}', this.checked)"/>
+        </div>
       </div>`).join('')}
   `).join('');
 }
 
 function toggleAvailability(name, avail) {
   availability[name] = avail;
+  const id = 'lbl_' + name.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
+  const lbl = document.getElementById(id);
+  if (lbl) {
+    lbl.textContent = avail ? '✅ Available' : '❌ Not Available';
+    lbl.style.color = avail ? '#2d9e5f' : '#c0392b';
+  }
   filterMenu('all');
   filterOrder('all', document.querySelector('.otab'));
 }
