@@ -398,6 +398,9 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
       <p class="section-label" style="color:var(--bl);">Place Your Order</p>
       <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.75rem;">Order Online</h2>
       <p style="color:var(--tm);max-width:480px;margin:0 auto;font-size:0.95rem;">Pick your items, choose delivery or pick-up, then pay via GCash or bank transfer.</p>
+      <div style="background:#fff3cd;border:1px solid #f0ad4e;border-radius:8px;padding:0.85rem 1.25rem;margin-top:1rem;max-width:600px;margin-left:auto;margin-right:auto;">
+        <p style="font-size:0.85rem;color:#856404;line-height:1.6;text-align:center;">🛵 <strong>Delivery Notice:</strong> We only deliver within <strong>Dasmariñas, Cavite</strong>. For orders outside Dasmariñas, please order through <strong>🟠 foodpanda</strong> or <strong>🟢 GrabFood</strong>.</p>
+      </div>
     </div>
     <div class="order-layout">
       <div>
@@ -1589,7 +1592,7 @@ const botReplies=[
   {keys:['hour','open','close','time','schedule'],reply:'🕐 We are open every day — <strong>Monday to Sunday, 3:00 PM to 12:00 Midnight</strong>. Come visit us anytime! ☕'},
   {keys:['location','address','where','find','direction'],reply:'📍 We are at <strong>Saratoga Avenue, La Mediterranea Subdivision, Governor\'s Drive, Dasmariñas, Cavite</strong>. Right along the highway near SM Dasmariñas! 😊'},
   {keys:['gcash','pay','payment','bank','bdo','union'],reply:'💳 Yes! We accept <strong>GCash, BDO, and UnionBank</strong>. Our GCash number is <strong>0927 692 4831</strong> under MARIA DANIELA M.'},
-  {keys:['delivery','deliver','send'],reply:'🛵 Yes, we offer <strong>delivery and pick-up</strong>! Place your order through our Order section. 😊'},
+  {keys:['delivery','deliver','send'],reply:'🛵 Yes, we offer <strong>delivery and pick-up</strong>! Place your order through our Order section.<br/><br/>⚠️ <strong>Please note:</strong> We only deliver within <strong>Dasmariñas, Cavite</strong>. If you are outside Dasmariñas, please order through <strong>🟠 foodpanda</strong> or <strong>🟢 GrabFood</strong>. 😊'},
   {keys:['menu','food','drink','coffee','frappe','pastry','eat'],reply:'🍽️ We have <strong>Signature Coffees, Blended Frappes, Non-Coffee Frappes, Non-Caffeine drinks, Tea & Refreshments, and Pastries</strong>. Check our full menu above! ☕'},
   {keys:['reserve','reservation','book','table','seat'],reply:'📅 Reserve through our <strong>Reservations section</strong> on this website! Fill in your name, date, time, and guests. 😊'},
   {keys:['wifi','internet','password'],reply:'📶 Yes, we have free WiFi! Ask our staff for the password when you arrive. 😊'},
@@ -1597,7 +1600,7 @@ const botReplies=[
   {keys:['parking','park','car'],reply:'🚗 Yes, we have parking available for our customers! 😊'},
   {keys:['hello','hi','hey','kumusta','musta','good'],reply:'Hello! 👋 Welcome to <strong>Accaza Coffee</strong>! How can I help you today? ☕'},
   {keys:['thank','thanks','salamat'],reply:'You\'re very welcome! 😊 We look forward to seeing you at Accaza Coffee! ☕🦁'},
-  {keys:['feedback','complaint','suggestion','compliment'],reply:'💛 We\'d love to hear from you! Scroll down to our <strong>Feedback</strong> section and leave us a message. 😊'},
+  {keys:['foodpanda','grabfood','grab','panda','outside','delivery app','app'],reply:'🟠🟢 For orders <strong>outside Dasmariñas</strong>, you can order from us through <strong>foodpanda</strong> or <strong>GrabFood</strong>! Search for <strong>Accaza Coffee</strong> or <strong>Cafe Sartoga</strong> on either app. 😊'},
   {keys:['order','buy','purchase'],reply:'🛒 Scroll up to our <strong>Order Online</strong> section, pick your items, and choose GCash or bank transfer for payment. 😊'},
 ];
 
