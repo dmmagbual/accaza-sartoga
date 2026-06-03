@@ -885,6 +885,7 @@ function placeOrder() {
   };
 
   adminOrders.unshift(newOrder);
+  renderAvailability();
   updateStats();
   renderOrders();
 
@@ -1031,25 +1032,27 @@ function switchTab(tab, btn) {
 
 function renderAvailability() {
   const el = document.getElementById('availabilityList');
+  if (!el) return;
   const cats = [...new Set(menuItems.map(i => i.cat))];
-  el.innerHTML = cats.map(cat => `
-    <div class="avail-cat-header">${catLabels[cat]}</div>
-    ${menuItems.filter(i => i.cat === cat).map(i => `
-      <div class="avail-row">
+  let html = '';
+  cats.forEach(cat => {
+    html += `<div class="avail-cat-header">${catLabels[cat]}</div>`;
+    menuItems.filter(i => i.cat === cat).forEach(i => {
+      const avail = isAvailable(i.name);
+      const safeName = i.name.replace(/'/g, "\\'");
+      html += `<div class="avail-row">
         <div class="avail-row-info">
-          <span class="avail-row-name" style="${!isAvailable(i.name) ? 'text-decoration:line-through; opacity:0.5;' : ''}">${i.name}</span>
+          <span class="avail-row-name" style="${!avail ? 'text-decoration:line-through;opacity:0.5;' : ''}">${i.name}</span>
           <span class="avail-row-cat">${i.price}</span>
         </div>
-        <div style="display:flex; align-items:center; gap:0.6rem;">
-          <span style="font-size:0.75rem; font-weight:500; color:${isAvailable(i.name) ? '#2d9e5f' : '#c0392b'};">
-            ${isAvailable(i.name) ? 'Available' : 'Not Available'}
-          </span>
-          <input type="checkbox" class="avail-toggle" 
-            ${isAvailable(i.name) ? 'checked' : ''}
-            onchange="toggleAvailability('${i.name.replace(/'/g,"\\'")}', this.checked)"/>
+        <div style="display:flex;align-items:center;gap:0.6rem;">
+          <span style="font-size:0.75rem;font-weight:500;color:${avail ? '#2d9e5f' : '#c0392b'};">${avail ? 'Available' : 'Not Available'}</span>
+          <input type="checkbox" class="avail-toggle" ${avail ? 'checked' : ''} onchange="toggleAvailability('${safeName}',this.checked)"/>
         </div>
-      </div>`).join('')}
-  `).join('');
+      </div>`;
+    });
+  });
+  el.innerHTML = html;
 }
 
 function toggleAvailability(name, avail) {
@@ -1070,7 +1073,6 @@ function loadAdminData() {
     { id:'RES-002', name:'Pia Gonzales', phone:'0923-444-5566', date:'2026-06-06', time:'7:00 PM', guests:'2 guests', occasion:'Date', notes:'', status:'Pending' },
   ];
   renderAvailability();
-  updateStats();
   renderOrders();
   renderReservations();
   renderAdminReviews();
