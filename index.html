@@ -113,6 +113,17 @@
   .btn-place-order:hover { background: var(--brown-mid); }
   input[type=text], input[type=date], input[type=password], select, textarea { background: var(--cream); border: 1px solid var(--cream-dark); border-radius: 6px; padding: 0.6rem 0.85rem; font-family: 'Inter', sans-serif; font-size: 0.88rem; color: var(--text-dark); width: 100%; }
 
+  /* FEEDBACK */
+  .feedback-section { background: var(--brown-mid); padding: 6rem 2rem; }
+  .feedback-inner { max-width: 1000px; margin: 0 auto; }
+  .feedback-layout { display: grid; grid-template-columns: 1.4fr 1fr; gap: 2.5rem; align-items: start; }
+  .feedback-form-box { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 1.75rem; }
+  .feedback-form-box input, .feedback-form-box select, .feedback-form-box textarea { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 0.6rem 0.85rem; color: var(--cream); font-family: 'Inter', sans-serif; font-size: 0.88rem; width: 100%; }
+  .feedback-form-box input::placeholder, .feedback-form-box textarea::placeholder { color: rgba(245,239,230,0.3); }
+  .feedback-form-box select option { background: var(--brown-mid); color: var(--cream); }
+  .feedback-form-box textarea { resize: none; }
+  .feedback-info { display: flex; flex-direction: column; gap: 1rem; }
+
   /* RESERVATIONS */
   .reservations { background: var(--brown-mid); padding: 6rem 2rem; }
   .res-inner { max-width: 1000px; margin: 0 auto; }
@@ -251,6 +262,7 @@
     <li><a href="#reserve">Reserve</a></li>
     <li><a href="#reviews">Reviews</a></li>
     <li><a href="#gallery">Gallery</a></li>
+    <li><a href="#feedback">Feedback</a></li>
     <li><a href="#contact">Contact</a></li>
     <li id="adminNavItem" style="display:none;"><a href="#availability" style="color:#c9956a; font-weight:500;">🔄 Availability</a></li>
   </ul>
@@ -578,6 +590,65 @@
   </div>
 </section>
 
+<!-- FEEDBACK -->
+<section class="feedback-section" id="feedback">
+  <div class="feedback-inner">
+    <div style="text-align:center; margin-bottom:3rem;">
+      <p class="section-label" style="color:var(--brown-light);">We'd Love to Hear From You</p>
+      <h2 style="font-family:'Playfair Display',serif; font-size:clamp(2rem,4vw,2.8rem); color:var(--cream); margin-bottom:0.75rem;">Share Your Feedback</h2>
+      <p style="color:rgba(245,239,230,0.65); max-width:520px; margin:0 auto; font-size:0.95rem; line-height:1.7;">We are committed to improving our service, and we would also be glad to hear if you enjoyed your experience with us. Whether it's a concern, a suggestion, or simply kind words — we would love to hear your feedback. Every message matters to us. 💛</p>
+    </div>
+    <div class="feedback-layout">
+      <div class="feedback-form-box">
+        <div class="res-field-group">
+          <div class="res-field">
+            <label class="res-label">Your Name</label>
+            <input type="text" id="fbName" placeholder="e.g. Maria Santos"/>
+          </div>
+          <div class="res-field">
+            <label class="res-label">Phone / Email (optional)</label>
+            <input type="text" id="fbContact" placeholder="So we can follow up"/>
+          </div>
+        </div>
+        <div class="res-field" style="margin-bottom:1rem;">
+          <label class="res-label">Type of Feedback</label>
+          <select id="fbType">
+            <option value="Complaint">😞 Complaint</option>
+            <option value="Suggestion">💡 Suggestion</option>
+            <option value="Compliment">❤️ Compliment</option>
+            <option value="Other">💬 Other</option>
+          </select>
+        </div>
+        <div class="res-field">
+          <label class="res-label">Your Message</label>
+          <textarea id="fbMessage" rows="5" placeholder="Tell us what's on your mind — we read every message..."></textarea>
+        </div>
+        <button class="btn-reserve" style="margin-top:1rem;" onclick="submitFeedback()">Send Feedback</button>
+        <div id="fbConfirm" style="display:none; margin-top:1rem; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:1rem; text-align:center;">
+          <p style="color:var(--cream); font-size:0.95rem;">💛 Thank you! We've received your feedback and will take it to heart.</p>
+        </div>
+      </div>
+      <div class="feedback-info">
+        <div class="res-info-card">
+          <div style="font-size:2rem; margin-bottom:0.75rem;">😞</div>
+          <h4>Complaints</h4>
+          <p>Had a bad experience? Tell us what went wrong so we can make it right.</p>
+        </div>
+        <div class="res-info-card">
+          <div style="font-size:2rem; margin-bottom:0.75rem;">💡</div>
+          <h4>Suggestions</h4>
+          <p>Have an idea to improve our menu, service, or space? We're all ears!</p>
+        </div>
+        <div class="res-info-card">
+          <div style="font-size:2rem; margin-bottom:0.75rem;">❤️</div>
+          <h4>Compliments</h4>
+          <p>Loved your experience? Let us know — it means the world to our team!</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- CONTACT -->
 <section class="contact-section" id="contact">
   <div class="contact-inner">
@@ -664,6 +735,7 @@
       <button class="admin-tab active" onclick="switchTab('orders',this)">📋 Orders</button>
       <button class="admin-tab" onclick="switchTab('reservations',this)">📅 Reservations</button>
       <button class="admin-tab" onclick="switchTab('reviews',this)">⭐ Reviews</button>
+      <button class="admin-tab" onclick="switchTab('feedback',this)">📩 Feedback</button>
       <button class="admin-tab" onclick="switchTab('payment',this)">💳 Payment Details</button>
     </div>
     <div id="tab-orders" class="admin-tab-content"><div id="ordersList"></div></div>
@@ -912,6 +984,7 @@ function placeOrder() {
   };
 
   adminOrders.unshift(newOrder);
+  renderFeedback();
   renderAvailability();
   updateStats();
   renderOrders();
@@ -958,6 +1031,67 @@ function submitContact() {
   document.getElementById('conConfirm').style.display = 'block';
   document.querySelector('#contact .btn-reserve').disabled = true;
   document.querySelector('#contact .btn-reserve').style.opacity = '0.5';
+}
+
+// ── FEEDBACK ──
+let feedbacks = [];
+
+function submitFeedback() {
+  const name = document.getElementById('fbName').value.trim();
+  const contact = document.getElementById('fbContact').value.trim();
+  const type = document.getElementById('fbType').value;
+  const message = document.getElementById('fbMessage').value.trim();
+  if (!name || !message) { alert('Please enter your name and message.'); return; }
+  const date = new Date().toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' });
+  feedbacks.unshift({ name, contact, type, message, date, status:'Unread' });
+  document.getElementById('fbName').value = '';
+  document.getElementById('fbContact').value = '';
+  document.getElementById('fbMessage').value = '';
+  document.getElementById('fbType').value = 'Complaint';
+  document.getElementById('fbConfirm').style.display = 'block';
+  setTimeout(() => document.getElementById('fbConfirm').style.display = 'none', 3000);
+  renderFeedback();
+}
+
+function renderFeedback() {
+  const el = document.getElementById('feedbackList');
+  if (!feedbacks.length) { el.innerHTML = '<div class="empty-state">No feedback yet.</div>'; return; }
+  const typeIcon = { Complaint:'😞', Suggestion:'💡', Compliment:'❤️', Other:'💬' };
+  el.innerHTML = feedbacks.map((f,i) => `
+    <div class="order-admin-card" style="border-left:4px solid ${f.type==='Complaint'?'#c0392b':f.type==='Compliment'?'#2d9e5f':f.type==='Suggestion'?'#f39c12':'#888'};">
+      <div class="order-admin-top">
+        <div>
+          <div class="order-admin-name">${typeIcon[f.type]} ${f.name} <span style="font-size:0.75rem;color:var(--text-light);">${f.type}</span></div>
+          <div class="order-admin-meta">${f.contact ? f.contact+' · ' : ''}${f.date}</div>
+        </div>
+        <span class="badge" style="background:${f.status==='Resolved'?'#d4edda':'#fef3cd'};color:${f.status==='Resolved'?'#155724':'#856404'};">${f.status}</span>
+      </div>
+      <div class="order-admin-items" style="font-style:italic;">"${f.message}"</div>
+      <div class="order-admin-footer">
+        <span></span>
+        <div style="display:flex;gap:0.5rem;align-items:center;">
+          ${f.status==='Unread' ? `<button onclick="markResolved(${i})" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#2d6a4f;cursor:pointer;font-family:'Inter',sans-serif;">✅ Mark Resolved</button>` : ''}
+          ${f.status==='Resolved' ? `<button onclick="confirmDeleteFeedback(${i})" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;font-family:'Inter',sans-serif;">🗑️ Delete</button>` : ''}
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function markResolved(i) {
+  feedbacks[i].status = 'Resolved';
+  renderFeedback();
+}
+
+function confirmDeleteFeedback(i) {
+  const f = feedbacks[i];
+  const popup = document.getElementById('deleteOrderPopup');
+  document.getElementById('deleteOrderName').textContent = `${f.name} — "${f.message.substring(0,60)}..."`;
+  document.getElementById('confirmDeleteBtn').onclick = () => {
+    feedbacks.splice(i, 1);
+    renderFeedback();
+    popup.style.display = 'none';
+  };
+  popup.style.display = 'flex';
 }
 
 // ── REVIEWS ──
