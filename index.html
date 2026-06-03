@@ -297,8 +297,7 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
     <li><a href="#reel">Reel</a></li>
     <li><a href="#menu">Menu</a></li>
     <li><a href="#order">Order</a></li>
-    <li><a href="#activeOrdersBox" id="navActiveOrders" style="display:none;color:#c9956a;font-weight:500;">📋 My Orders</a></li>
-    <li><a href="#checkstatus">Track Order</a></li>
+    <li><a href="#orderTracker" id="navActiveOrders" style="color:#c9956a;font-weight:500;">📋 Track Order</a></li>
     <li><a href="#reserve">Reserve</a></li>
     <li><a href="#reviews">Reviews</a></li>
     <li><a href="#feedback">Feedback</a></li>
@@ -503,44 +502,47 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
   </div>
 </section>
 
-<!-- ORDER STATUS DISPLAY (always visible if active orders exist) -->
-<div id="activeOrdersBox" style="display:none; background:var(--cr); padding:3rem 2rem; border-top:2px solid var(--cd);">
+<!-- ORDER TRACKER -->
+<section id="orderTracker" style="background:var(--cd);padding:5rem 2rem;">
   <div style="max-width:1000px;margin:0 auto;">
-    <div style="text-align:center;margin-bottom:1.5rem;">
+    <div style="text-align:center;margin-bottom:2rem;">
       <p class="section-label" style="color:var(--bl);">Your Orders</p>
-      <h2 style="font-family:'Playfair Display',serif;font-size:2rem;color:var(--bd);margin-bottom:0.5rem;">Order Tracker</h2>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.5rem;">Order Tracker</h2>
+      <p style="color:var(--tm);font-size:0.9rem;">⚠️ Use the same device and browser you used when placing your order.</p>
     </div>
-    <!-- TABS -->
-    <div style="display:flex;gap:0;margin-bottom:1.5rem;border-bottom:2px solid var(--cd);">
-      <button id="tabActive" onclick="switchOrderTab('active')" style="flex:1;padding:0.75rem;font-family:'Playfair Display',serif;font-size:0.95rem;border:none;background:var(--bd);color:var(--cr);cursor:pointer;border-radius:8px 0 0 0;font-weight:500;">🟢 Active Orders</button>
-      <button id="tabHistory" onclick="switchOrderTab('history')" style="flex:1;padding:0.75rem;font-family:'Playfair Display',serif;font-size:0.95rem;border:none;background:var(--cd);color:var(--tm);cursor:pointer;border-radius:0 8px 0 0;font-weight:500;">📜 Order History</button>
-    </div>
-    <!-- ACTIVE TAB -->
-    <div id="activeTab">
-      <div id="activeOrdersList"></div>
-    </div>
-    <!-- HISTORY TAB -->
-    <div id="historyTab" style="display:none;">
-      <div id="historyOrdersList"></div>
-    </div>
-    <p style="font-size:0.72rem;color:var(--tl);text-align:center;margin-top:1rem;">⚠️ Orders are tracked on this device and browser only.</p>
-  </div>
-</div>
 
-<!-- ORDER STATUS CHECKER -->
-<section style="background:var(--cd);padding:4rem 2rem;" id="checkstatus">
-  <div style="max-width:500px;margin:0 auto;text-align:center;">
-    <p class="section-label" style="color:var(--bl);">Track Your Order</p>
-    <h2 style="font-family:'Playfair Display',serif;font-size:clamp(1.8rem,4vw,2.5rem);color:var(--bd);margin-bottom:0.75rem;">Check Order Status</h2>
-    <p style="color:var(--tm);font-size:0.9rem;margin-bottom:0.5rem;">Enter your Order ID to see the latest status of your order.</p>
-    <p style="font-size:0.78rem;color:#856404;background:#fef3cd;border-radius:6px;padding:0.5rem 0.75rem;margin-bottom:1.5rem;line-height:1.5;">⚠️ Please use the <strong>same device and browser</strong> you used when placing your order.</p>
-    <div style="display:flex;gap:0.5rem;margin-bottom:1.5rem;">
-      <input type="text" id="statusOrderId" placeholder="e.g. ORD-001" style="flex:1;text-align:center;font-family:'Playfair Display',serif;font-size:1rem;letter-spacing:0.1em;text-transform:uppercase;"/>
-      <button onclick="checkOrderStatus()" style="background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.6rem 1.25rem;font-size:0.88rem;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;">Check Status</button>
+    <!-- TABS -->
+    <div style="display:flex;border-bottom:2px solid var(--cd);margin-bottom:1.5rem;">
+      <button id="tabBtnActive" onclick="switchOrderTab('active')" style="flex:1;padding:0.85rem;font-family:'Playfair Display',serif;font-size:1rem;border:none;background:var(--bd);color:var(--cr);cursor:pointer;border-radius:8px 0 0 0;transition:all 0.2s;">🟢 Active Orders</button>
+      <button id="tabBtnHistory" onclick="switchOrderTab('history')" style="flex:1;padding:0.85rem;font-family:'Playfair Display',serif;font-size:1rem;border:none;background:#fff;color:var(--tm);cursor:pointer;border-radius:0 8px 0 0;transition:all 0.2s;">📜 Order History</button>
     </div>
-    <div id="statusResult" style="display:none;"></div>
+
+    <!-- ACTIVE TAB -->
+    <div id="tabActive">
+      <div id="activeOrdersList">
+        <div style="text-align:center;padding:3rem;color:var(--tl);">
+          <p style="font-size:2.5rem;margin-bottom:0.75rem;">☕</p>
+          <p style="font-size:0.95rem;font-weight:500;color:var(--bd);margin-bottom:0.3rem;">No active orders yet</p>
+          <p style="font-size:0.85rem;">Place an order above and it will appear here automatically!</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- HISTORY TAB -->
+    <div id="tabHistory" style="display:none;">
+      <div id="historyOrdersList">
+        <div style="text-align:center;padding:3rem;color:var(--tl);">
+          <p style="font-size:2.5rem;margin-bottom:0.75rem;">📜</p>
+          <p style="font-size:0.95rem;font-weight:500;color:var(--bd);margin-bottom:0.3rem;">No order history yet</p>
+          <p style="font-size:0.85rem;">Completed and received orders will appear here.</p>
+        </div>
+      </div>
+    </div>
+
   </div>
 </section>
+
+<!-- RESERVATIONS -->
 
 <!-- RESERVATIONS -->
 <section class="reservations" id="reserve">
@@ -1557,15 +1559,23 @@ function updateStats(){
 function renderOrders(){
   const el=document.getElementById('ordersList');
   if(!adminOrders.length){el.innerHTML='<div class="empty-state">No orders yet.</div>';return;}
-  el.innerHTML=adminOrders.map((o,i)=>`
-    <div class="order-admin-card">
+  el.innerHTML=adminOrders.map((o,i)=>{
+    const isDelivery=o.type==='Delivery';
+    return`<div class="order-admin-card">
       <div class="order-admin-top">
-        <div><div class="order-admin-name">${o.name} <span style="font-size:0.75rem;color:var(--tl);">#${o.id}</span></div>
-        <div class="order-admin-meta">${o.phone} · ${o.contact?o.contact:''} · ${o.type}${o.address?' · '+o.address:''} · ${o.time}</div></div>
-        <span class="badge badge-${o.status.toLowerCase()}">${o.status}</span>
+        <div>
+          <div class="order-admin-name">${o.name} <span style="font-size:0.75rem;color:var(--tl);">#${o.id}</span></div>
+          <div class="order-admin-meta">${o.phone}${o.contact?' · '+o.contact:''} · ${o.time}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;">
+          <span class="badge badge-${o.status.toLowerCase()}">${o.status}</span>
+          <span style="font-size:0.72rem;font-weight:600;padding:0.2rem 0.6rem;border-radius:999px;background:${isDelivery?'#d1ecf1':'#d4edda'};color:${isDelivery?'#0c5460':'#155724'};">${isDelivery?'🛵 Delivery':'🏠 Pick-up'}</span>
+        </div>
       </div>
       <div class="order-admin-items">🛒 ${o.items}</div>
-      ${o.proof?`<div style="margin:0.5rem 0;"><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;">📎 Proof of Payment:</p><img src="${o.proof}" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid var(--cd);cursor:pointer;" onclick="window.open('${o.proof}','_blank')" title="Click to view full size"/></div>`:'<p style="font-size:0.75rem;color:#c0392b;margin:0.3rem 0;">⚠️ No proof of payment attached</p>'}
+      ${o.address?`<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📍 ${o.address}</div>`:''}
+      ${o.notes?`<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📝 ${o.notes}</div>`:''}
+      ${o.proof?`<div style="margin:0.5rem 0;"><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;">📎 Proof of Payment:</p><img src="${o.proof}" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid var(--cd);cursor:pointer;" onclick="window.open('${o.proof}','_blank')" title="Click to view full size"/></div>`:'<p style="font-size:0.75rem;color:#c0392b;margin:0.3rem 0;">⚠️ No proof of payment</p>'}
       <div class="order-admin-footer">
         <span class="order-total-tag">₱${o.total.toLocaleString()} · ${o.payment}</span>
         <div style="display:flex;align-items:center;gap:0.5rem;">
@@ -1578,7 +1588,8 @@ function renderOrders(){
           ${o.status==='Completed'?`<button onclick="delOrder(${i})" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>`:''}
         </div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function updateOrderStatus(i,val){adminOrders[i].status=val;updateStats();renderOrders();saveData();}
