@@ -454,6 +454,22 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
             </div>
             <p style="font-size:0.75rem;color:var(--tl);margin-top:0.75rem;line-height:1.5;">After placing your order, send payment and screenshot your receipt. We'll confirm once verified. ✅</p>
           </div>
+
+          <h3 class="order-section-title" style="margin-top:1.5rem;">6. Proof of Payment</h3>
+          <div style="background:var(--cr);border:2px dashed var(--cd);border-radius:8px;padding:1.25rem;text-align:center;cursor:pointer;transition:border-color 0.2s;" onclick="document.getElementById('paymentProof').click()" id="uploadBox">
+            <div id="uploadPlaceholder">
+              <div style="font-size:2rem;margin-bottom:0.5rem;">📎</div>
+              <p style="font-size:0.85rem;color:var(--tm);font-weight:500;">Click to attach screenshot</p>
+              <p style="font-size:0.75rem;color:var(--tl);margin-top:0.25rem;">GCash or bank transfer receipt (JPG, PNG)</p>
+            </div>
+            <div id="uploadPreview" style="display:none;">
+              <img id="proofImg" style="max-width:100%;max-height:180px;border-radius:6px;margin-bottom:0.5rem;" alt="Payment proof"/>
+              <p style="font-size:0.75rem;color:#2d9e5f;font-weight:500;">✅ Receipt attached!</p>
+              <p style="font-size:0.72rem;color:var(--tl);margin-top:0.2rem;" id="proofFileName"></p>
+              <button onclick="removeProof(event)" style="margin-top:0.5rem;background:none;border:1px solid #e0b0b0;border-radius:4px;padding:0.2rem 0.6rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">Remove</button>
+            </div>
+          </div>
+          <input type="file" id="paymentProof" accept="image/*" style="display:none;" onchange="previewProof(this)"/>
           <button class="btn-place-order" onclick="placeOrder()">Place Order</button>
           <button onclick="resetOrder()" style="width:100%;margin-top:0.5rem;background:transparent;color:var(--tl);border:1px solid var(--cd);border-radius:6px;padding:0.7rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;transition:all 0.2s;" onmouseover="this.style.borderColor='var(--bl)';this.style.color='var(--bl)'" onmouseout="this.style.borderColor='var(--cd)';this.style.color='var(--tl)'">🔄 Reset Order</button>
           <div id="orderConfirm" style="display:none;margin-top:1rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:1rem;text-align:center;">
@@ -818,6 +834,21 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
 </div>
 
 <script>
+// Init availability from localStorage
+function loadAvailability(){
+  try{
+    const saved=localStorage.getItem('accaza_availability');
+    if(saved){
+      const parsed=JSON.parse(saved);
+      Object.keys(parsed).forEach(k=>availability[k]=parsed[k]);
+    }
+  }catch(e){}
+}
+
+function saveAvailability(){
+  try{ localStorage.setItem('accaza_availability',JSON.stringify(availability)); }catch(e){}
+}
+
 // ── PERSISTENCE ──
 function saveData(){
   try{
@@ -839,6 +870,32 @@ function loadData(){
     if(f) feedbacks=JSON.parse(f);
     if(rv) reviews=JSON.parse(rv);
   }catch(e){}
+}
+
+function previewProof(input){
+  if(!input.files||!input.files[0]) return;
+  const file=input.files[0];
+  const reader=new FileReader();
+  reader.onload=e=>{
+    document.getElementById('proofImg').src=e.target.result;
+    document.getElementById('proofFileName').textContent=file.name;
+    document.getElementById('uploadPlaceholder').style.display='none';
+    document.getElementById('uploadPreview').style.display='block';
+    document.getElementById('uploadBox').style.borderColor='#2d9e5f';
+    document.getElementById('uploadBox').style.borderStyle='solid';
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeProof(e){
+  e.stopPropagation();
+  document.getElementById('paymentProof').value='';
+  document.getElementById('proofImg').src='';
+  document.getElementById('proofFileName').textContent='';
+  document.getElementById('uploadPlaceholder').style.display='block';
+  document.getElementById('uploadPreview').style.display='none';
+  document.getElementById('uploadBox').style.borderColor='var(--cd)';
+  document.getElementById('uploadBox').style.borderStyle='dashed';
 }
 
 // ── RESET ORDER ──
@@ -1035,11 +1092,15 @@ function placeOrder(){
   if(!Object.keys(cart).length){alert('Please add at least one item.');return;}
   if(!name||!phone){alert('Please enter your name and phone number.');return;}
   if(orderType==='delivery'&&!document.getElementById('deliveryAddr').value.trim()){alert('Please enter your delivery address.');return;}
+  const proofFile=document.getElementById('paymentProof').files[0];
+  if(!proofFile){alert('Please attach your proof of payment (screenshot of GCash or bank transfer).');return;}
+  const proofSrc=document.getElementById('proofImg').src;
   const items=Object.keys(cart).map(k=>`${k} x${cart[k].qty}`).join(', ');
   const total=Object.keys(cart).reduce((s,k)=>s+cart[k].qty*cart[k].price,0);
   const time=new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'});
-  adminOrders.unshift({id:'ORD-'+String(adminOrders.length+1).padStart(3,'0'),name,phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':'Bank Transfer',items,total,notes:document.getElementById('custNotes').value.trim(),status:'Pending',time});
+  adminOrders.unshift({id:'ORD-'+String(adminOrders.length+1).padStart(3,'0'),name,phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':'Bank Transfer',items,total,notes:document.getElementById('custNotes').value.trim(),status:'Pending',time,proof:proofSrc});
   updateStats();renderOrders();saveData();
+  removeProof({stopPropagation:()=>{}});
   document.getElementById('orderConfirm').style.display='block';
   document.querySelector('.btn-place-order').disabled=true;
   document.querySelector('.btn-place-order').style.opacity='0.5';
@@ -1256,6 +1317,7 @@ function renderOrders(){
         <span class="badge badge-${o.status.toLowerCase()}">${o.status}</span>
       </div>
       <div class="order-admin-items">🛒 ${o.items}</div>
+      ${o.proof?`<div style="margin:0.5rem 0;"><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;">📎 Proof of Payment:</p><img src="${o.proof}" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid var(--cd);cursor:pointer;" onclick="window.open('${o.proof}','_blank')" title="Click to view full size"/></div>`:'<p style="font-size:0.75rem;color:#c0392b;margin:0.3rem 0;">⚠️ No proof of payment attached</p>'}
       <div class="order-admin-footer">
         <span class="order-total-tag">₱${o.total.toLocaleString()} · ${o.payment}</span>
         <div style="display:flex;align-items:center;gap:0.5rem;">
@@ -1336,6 +1398,7 @@ function buildAvail(){
 
 function toggleAvail(name, sid, ok){
   availability[name]=ok;
+  saveAvailability();
   const n=document.getElementById(sid+'_n');
   const l=document.getElementById(sid+'_l');
   if(n){n.style.textDecoration=ok?'none':'line-through';n.style.opacity=ok?'1':'0.5';}
@@ -1413,6 +1476,7 @@ setTimeout(()=>{if(!chatOpen)document.getElementById('chatNotif').style.display=
 
 // ── INIT ──
 loadData();
+loadAvailability();
 filterMenu('all', document.querySelector('.tab-btn'));
 filterOrder('all', document.querySelector('.otab'));
 </script>
