@@ -1064,11 +1064,40 @@ function updateCart(){
   const box=document.getElementById('cartItems');
   const tot=document.getElementById('cartTotal');
   const keys=Object.keys(cart);
-  if(!keys.length){box.innerHTML='<p style="color:var(--tl);font-size:0.85rem;">No items added yet.</p>';tot.style.display='none';return;}
+  if(!keys.length){
+    box.innerHTML='<p style="color:var(--tl);font-size:0.85rem;">No items added yet.</p>';
+    tot.style.display='none';
+    return;
+  }
   let total=0;
-  box.innerHTML=keys.map(k=>{const l=cart[k].qty*cart[k].price;total+=l;return`<div class="cart-item-line"><span>${k} x${cart[k].qty}</span><span>₱${l.toLocaleString()}</span></div>`;}).join('');
+  box.innerHTML=keys.map(k=>{
+    const line=cart[k].qty*cart[k].price;
+    total+=line;
+    return`<div style="display:flex;align-items:center;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid var(--cd);">
+      <div style="flex:1;">
+        <div style="font-size:0.85rem;color:var(--bd);font-weight:500;">${k}</div>
+        <div style="font-size:0.75rem;color:var(--tl);">₱${cart[k].price.toLocaleString()} each</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.4rem;flex-shrink:0;">
+        <button onclick="cartQty('${k.replace(/'/g,"\\'")}', -1)" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:0.9rem;cursor:pointer;color:var(--bd);display:flex;align-items:center;justify-content:center;">−</button>
+        <span style="font-size:0.85rem;font-weight:500;min-width:18px;text-align:center;color:var(--bd);">${cart[k].qty}</span>
+        <button onclick="cartQty('${k.replace(/'/g,"\\'")}', 1)" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:0.9rem;cursor:pointer;color:var(--bd);display:flex;align-items:center;justify-content:center;">+</button>
+        <span style="font-size:0.85rem;font-weight:500;color:var(--bl);min-width:55px;text-align:right;">₱${line.toLocaleString()}</span>
+      </div>
+    </div>`;
+  }).join('');
   document.getElementById('totalAmt').textContent='₱'+total.toLocaleString();
   tot.style.display='flex';
+}
+
+function cartQty(name, delta){
+  if(!cart[name]) return;
+  cart[name].qty=Math.max(0,cart[name].qty+delta);
+  if(cart[name].qty===0) delete cart[name];
+  // Sync with order list qty display
+  const el=document.getElementById('qty_'+name.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,''));
+  if(el) el.textContent=cart[name]?cart[name].qty:0;
+  updateCart();
 }
 
 function setType(t){
