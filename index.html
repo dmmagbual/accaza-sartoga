@@ -1196,8 +1196,8 @@ function submitContact() {
 function updateFbCounter() {
   const len = document.getElementById('fbMessage').value.length;
   const counter = document.getElementById('fbCounter');
-  counter.textContent = `${len} / 300`;
-  counter.style.color = len >= 270 ? '#ff8080' : len >= 200 ? '#f39c12' : 'rgba(245,239,230,0.5)';
+  counter.textContent = `${len} / 1000`;
+  counter.style.color = len >= 900 ? '#ff8080' : len >= 700 ? '#f39c12' : 'rgba(245,239,230,0.5)';
 }
 
 // ── FEEDBACK ──
