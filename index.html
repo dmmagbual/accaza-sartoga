@@ -559,9 +559,7 @@
         </div>
         <button class="btn-reserve" style="margin-top:1rem;" onclick="submitFeedback()">Send Feedback</button>
         <div id="fbConfirm" style="display:none;margin-top:1rem;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:1.25rem;text-align:center;">
-          <p style="color:#fff;font-size:1rem;margin-bottom:0.5rem;line-height:1.6;">💛 Thank you! Your feedback is being sent via WhatsApp. If it didn't open automatically, message us at <strong>0927 692 4831</strong>.</p>
-          <p id="fbCountdown" style="color:rgba(255,255,255,0.7);font-size:0.8rem;margin-bottom:0.75rem;">📸 This message will disappear in <strong id="fbSeconds">20</strong> seconds — take a screenshot or note our number!</p>
-          <button onclick="clearInterval(window.fbTimer);document.getElementById('fbConfirm').style.display='none'" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3);border-radius:6px;padding:0.4rem 1.2rem;color:#fff;font-size:0.82rem;cursor:pointer;font-family:'Inter',sans-serif;">OK, Got it ✓</button>
+          <p id="fbConfirmMsg" style="color:#fff;font-size:0.95rem;line-height:1.7;"></p>
         </div>
       </div>
       <div class="feedback-info">
@@ -1055,22 +1053,21 @@ function submitFeedback() {
   const date = new Date().toLocaleDateString('en-PH', {year:'numeric', month:'long', day:'numeric'});
   feedbacks.unshift({name, contact, type, message, date, status:'Unread'});
   if (document.getElementById('commentsAdmin').style.display !== 'none') renderCommentsAdmin();
-  const waText = `*New ${type} from Accaza Coffee Website*%0A%0A*Name:* ${encodeURIComponent(name)}%0A*Contact:* ${encodeURIComponent(contact||'Not provided')}%0A*Type:* ${type}%0A*Message:* ${encodeURIComponent(message)}`;
-  window.open(`https://wa.me/639276924831?text=${waText}`, '_blank');
   document.getElementById('fbName').value = '';
   document.getElementById('fbContact').value = '';
   document.getElementById('fbMessage').value = '';
   document.getElementById('fbType').value = 'Complaint';
   document.getElementById('fbCounter').textContent = '0 / 800';
+  const confirmMessages = {
+    Complaint: '🙏 Thank you for bringing this to our attention. We sincerely apologize for any inconvenience caused. Rest assured, we will look into this right away and do our best to make things right. Your experience matters deeply to us.',
+    Suggestion: '💡 Thank you for your wonderful suggestion! We truly value ideas from our customers. We will seriously consider your input as we continue to grow and improve Accaza Coffee. You are part of making us better!',
+    Compliment: '❤️ Oh, this made our day! Thank you so much for your kind words — it means the world to our team. We pour our heart into everything we do, and knowing you felt that warmth makes it all worthwhile. We can\'t wait to see you again! ☕🦁',
+    Other: '💛 Thank you for reaching out! We have received your message and truly appreciate you taking the time to share your thoughts with us. We will get back to you if needed!'
+  };
+  const type = document.getElementById('fbType').value;
+  document.getElementById('fbConfirmMsg').textContent = confirmMessages[type] || confirmMessages['Other'];
   document.getElementById('fbConfirm').style.display = 'block';
-  let secs = 20;
-  document.getElementById('fbSeconds').textContent = secs;
-  window.fbTimer = setInterval(() => {
-    secs--;
-    const el = document.getElementById('fbSeconds');
-    if (el) el.textContent = secs;
-    if (secs <= 0) { clearInterval(window.fbTimer); const c = document.getElementById('fbConfirm'); if (c) c.style.display = 'none'; }
-  }, 1000);
+  setTimeout(() => document.getElementById('fbConfirm').style.display = 'none', 6000);
 }
 
 // ── COMMENTS ADMIN ──
