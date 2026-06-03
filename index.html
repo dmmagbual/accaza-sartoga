@@ -297,6 +297,7 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
     <li><a href="#reel">Reel</a></li>
     <li><a href="#menu">Menu</a></li>
     <li><a href="#order">Order</a></li>
+    <li><a href="#activeOrdersBox" id="navActiveOrders" style="display:none;color:#c9956a;font-weight:500;">📋 My Orders</a></li>
     <li><a href="#checkstatus">Track Order</a></li>
     <li><a href="#reserve">Reserve</a></li>
     <li><a href="#reviews">Reviews</a></li>
@@ -494,15 +495,37 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
               <span id="displayOrderId" style="font-family:'Playfair Display',serif;font-size:1.6rem;color:var(--bd);font-weight:600;letter-spacing:0.1em;"></span>
             </div>
             <p style="font-size:0.82rem;color:var(--tm);line-height:1.6;margin-bottom:0.5rem;">📱 We will contact you via your preferred method to confirm your order.</p>
-            <p style="font-size:0.78rem;color:#856404;background:#fef3cd;border-radius:6px;padding:0.5rem 0.75rem;line-height:1.5;">⚠️ Your Order ID is saved below. Use this same device to track your order status.</p>
+            <p style="font-size:0.78rem;color:#856404;background:#fef3cd;border-radius:6px;padding:0.5rem 0.75rem;line-height:1.5;">⬇️ Your order tracking card has been saved below this form. Scroll down to track your order status anytime — even after closing and reopening this page.</p>
           </div>
-          <!-- ACTIVE ORDERS BOX -->
-          <div id="activeOrdersBox" style="display:none;"></div>
         </div>
       </div>
     </div>
   </div>
 </section>
+
+<!-- ORDER STATUS DISPLAY (always visible if active orders exist) -->
+<div id="activeOrdersBox" style="display:none; background:var(--cr); padding:3rem 2rem; border-top:2px solid var(--cd);">
+  <div style="max-width:1000px;margin:0 auto;">
+    <div style="text-align:center;margin-bottom:1.5rem;">
+      <p class="section-label" style="color:var(--bl);">Your Orders</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:2rem;color:var(--bd);margin-bottom:0.5rem;">Order Tracker</h2>
+    </div>
+    <!-- TABS -->
+    <div style="display:flex;gap:0;margin-bottom:1.5rem;border-bottom:2px solid var(--cd);">
+      <button id="tabActive" onclick="switchOrderTab('active')" style="flex:1;padding:0.75rem;font-family:'Playfair Display',serif;font-size:0.95rem;border:none;background:var(--bd);color:var(--cr);cursor:pointer;border-radius:8px 0 0 0;font-weight:500;">🟢 Active Orders</button>
+      <button id="tabHistory" onclick="switchOrderTab('history')" style="flex:1;padding:0.75rem;font-family:'Playfair Display',serif;font-size:0.95rem;border:none;background:var(--cd);color:var(--tm);cursor:pointer;border-radius:0 8px 0 0;font-weight:500;">📜 Order History</button>
+    </div>
+    <!-- ACTIVE TAB -->
+    <div id="activeTab">
+      <div id="activeOrdersList"></div>
+    </div>
+    <!-- HISTORY TAB -->
+    <div id="historyTab" style="display:none;">
+      <div id="historyOrdersList"></div>
+    </div>
+    <p style="font-size:0.72rem;color:var(--tl);text-align:center;margin-top:1rem;">⚠️ Orders are tracked on this device and browser only.</p>
+  </div>
+</div>
 
 <!-- ORDER STATUS CHECKER -->
 <section style="background:var(--cd);padding:4rem 2rem;" id="checkstatus">
@@ -1705,6 +1728,11 @@ loadCustomerOrders();
 loadAvailability();
 filterMenu('all', document.querySelector('.tab-btn'));
 filterOrder('all', document.querySelector('.otab'));
+// Show active orders and nav link if any exist
+const activeOrders=customerOrders.filter(o=>!o.receivedByCustomer);
+if(activeOrders.length){
+  document.getElementById('navActiveOrders').style.display='block';
+}
 renderCustomerOrders();
 </script>
 </body>
