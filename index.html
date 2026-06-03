@@ -455,6 +455,7 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
             <p style="font-size:0.75rem;color:var(--tl);margin-top:0.75rem;line-height:1.5;">After placing your order, send payment and screenshot your receipt. We'll confirm once verified. ✅</p>
           </div>
           <button class="btn-place-order" onclick="placeOrder()">Place Order</button>
+          <button onclick="resetOrder()" style="width:100%;margin-top:0.5rem;background:transparent;color:var(--tl);border:1px solid var(--cd);border-radius:6px;padding:0.7rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;transition:all 0.2s;" onmouseover="this.style.borderColor='var(--bl)';this.style.color='var(--bl)'" onmouseout="this.style.borderColor='var(--cd)';this.style.color='var(--tl)'">🔄 Reset Order</button>
           <div id="orderConfirm" style="display:none;margin-top:1rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:1rem;text-align:center;">
             <p style="color:#2d6a4f;font-weight:500;">🎉 Order placed! We'll confirm once payment is received.</p>
           </div>
@@ -622,7 +623,6 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
       <div class="gallery-card"><img src="https://i.postimg.cc/FH0nYkmW/image.png" alt="Accaza Coffee"/></div>
       <div class="gallery-card"><img src="https://i.postimg.cc/qqt14zjg/image.png" alt="Accaza Coffee"/></div>
       <div class="gallery-card"><img src="https://i.postimg.cc/PqtKN6SP/image.png" alt="Accaza Coffee"/></div>
-      <div class="gallery-card"><img src="https://i.postimg.cc/RC6rMF3X/image.png" alt="Accaza Coffee"/></div>
     </div>
   </div>
 </section>
@@ -818,6 +818,50 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
 </div>
 
 <script>
+// ── PERSISTENCE ──
+function saveData(){
+  try{
+    localStorage.setItem('accaza_orders', JSON.stringify(adminOrders));
+    localStorage.setItem('accaza_reservations', JSON.stringify(adminReservations));
+    localStorage.setItem('accaza_feedbacks', JSON.stringify(feedbacks));
+    localStorage.setItem('accaza_reviews', JSON.stringify(reviews));
+  }catch(e){}
+}
+
+function loadData(){
+  try{
+    const o=localStorage.getItem('accaza_orders');
+    const r=localStorage.getItem('accaza_reservations');
+    const f=localStorage.getItem('accaza_feedbacks');
+    const rv=localStorage.getItem('accaza_reviews');
+    if(o) adminOrders=JSON.parse(o);
+    if(r) adminReservations=JSON.parse(r);
+    if(f) feedbacks=JSON.parse(f);
+    if(rv) reviews=JSON.parse(rv);
+  }catch(e){}
+}
+
+// ── RESET ORDER ──
+function resetOrder(){
+  if(!Object.keys(cart).length && !document.getElementById('custName').value && !document.getElementById('custPhone').value){
+    alert('Your order is already empty!'); return;
+  }
+  if(confirm('Reset your order? All selected items and details will be cleared.')){
+    cart={};
+    updateCart();
+    document.getElementById('custName').value='';
+    document.getElementById('custPhone').value='';
+    document.getElementById('custNotes').value='';
+    if(document.getElementById('deliveryAddr')) document.getElementById('deliveryAddr').value='';
+    setType('pickup');
+    setPayment('gcash');
+    filterOrder('all',document.querySelector('.otab'));
+    document.getElementById('orderConfirm').style.display='none';
+    document.querySelector('.btn-place-order').disabled=false;
+    document.querySelector('.btn-place-order').style.opacity='1';
+  }
+}
+
 // ── CONSTANTS ──
 const ADMIN_PASS = 'accaza2026';
 const catLabels = {coffee:'Coffee',frappe:'Blended Frappe',nonfrappe:'Non-Coffee Frappe',noncaf:'Non-Caffeine',tea:'Tea & Refreshments',food:'Pastries',meals:'Meals',desserts:'Desserts'};
@@ -995,7 +1039,7 @@ function placeOrder(){
   const total=Object.keys(cart).reduce((s,k)=>s+cart[k].qty*cart[k].price,0);
   const time=new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'});
   adminOrders.unshift({id:'ORD-'+String(adminOrders.length+1).padStart(3,'0'),name,phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':'Bank Transfer',items,total,notes:document.getElementById('custNotes').value.trim(),status:'Pending',time});
-  updateStats();renderOrders();
+  updateStats();renderOrders();saveData();
   document.getElementById('orderConfirm').style.display='block';
   document.querySelector('.btn-place-order').disabled=true;
   document.querySelector('.btn-place-order').style.opacity='0.5';
@@ -1044,6 +1088,7 @@ function submitFeedback(){
   const date=new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'});
   feedbacks.unshift({name,contact,type,message,date,status:'Unread'});
   if(document.getElementById('commentsSection').style.display!=='none') renderComments();
+  saveData();
   document.getElementById('fbName').value='';
   document.getElementById('fbContact').value='';
   document.getElementById('fbMessage').value='';
@@ -1176,13 +1221,18 @@ function switchTab(tab, btn){
 }
 
 function loadAdminData(){
-  adminOrders=[
-    {id:'ORD-001',name:'Maria Santos',phone:'0917-123-4567',type:'Delivery',address:'123 Maharlika St, Dasma',payment:'GCash',items:'Cappuccino x2',total:470,status:'Pending',time:'3:15 PM'},
-    {id:'ORD-002',name:'Juan dela Cruz',phone:'0928-987-6543',type:'Pick-up',address:'',payment:'BDO',items:'Beef Burger & Fries x1',total:230,status:'Confirmed',time:'4:02 PM'},
-  ];
-  adminReservations=[
-    {id:'RES-001',name:'Jose Mercado',phone:'0915-222-3344',date:'2026-06-05',time:'4:00 PM',guests:'3 guests',occasion:'Birthday',notes:'Window seat please',status:'Confirmed'},
-  ];
+  // Only load sample data if no saved data exists
+  if(!adminOrders.length){
+    adminOrders=[
+      {id:'ORD-001',name:'Maria Santos',phone:'0917-123-4567',type:'Delivery',address:'123 Maharlika St, Dasma',payment:'GCash',items:'Cappuccino x2',total:470,status:'Pending',time:'3:15 PM'},
+      {id:'ORD-002',name:'Juan dela Cruz',phone:'0928-987-6543',type:'Pick-up',address:'',payment:'BDO',items:'Beef Burger & Fries x1',total:230,status:'Confirmed',time:'4:02 PM'},
+    ];
+  }
+  if(!adminReservations.length){
+    adminReservations=[
+      {id:'RES-001',name:'Jose Mercado',phone:'0915-222-3344',date:'2026-06-05',time:'4:00 PM',guests:'3 guests',occasion:'Birthday',notes:'Window seat please',status:'Confirmed'},
+    ];
+  }
   updateStats();renderOrders();renderReservations();renderAdminReviews();
 }
 
@@ -1221,8 +1271,8 @@ function renderOrders(){
     </div>`).join('');
 }
 
-function updateOrderStatus(i,val){adminOrders[i].status=val;updateStats();renderOrders();}
-function delOrder(i){showDeletePopup(`${adminOrders[i].name} — ${adminOrders[i].items}`,()=>{adminOrders.splice(i,1);updateStats();renderOrders();});}
+function updateOrderStatus(i,val){adminOrders[i].status=val;updateStats();renderOrders();saveData();}
+function delOrder(i){showDeletePopup(`${adminOrders[i].name} — ${adminOrders[i].items}`,()=>{adminOrders.splice(i,1);updateStats();renderOrders();saveData();});}
 
 function renderReservations(){
   const el=document.getElementById('resList');
@@ -1245,7 +1295,7 @@ function renderReservations(){
     </div>`).join('');
 }
 
-function updateResStatus(i,val){adminReservations[i].status=val;renderReservations();}
+function updateResStatus(i,val){adminReservations[i].status=val;renderReservations();saveData();}
 
 function savePayment(){
   document.getElementById('gcashNum').textContent=document.getElementById('editGcashNum').value;
@@ -1362,6 +1412,7 @@ function quickMsg(msg){document.getElementById('chatInput').value=msg;sendChat()
 setTimeout(()=>{if(!chatOpen)document.getElementById('chatNotif').style.display='block';},3000);
 
 // ── INIT ──
+loadData();
 filterMenu('all', document.querySelector('.tab-btn'));
 filterOrder('all', document.querySelector('.otab'));
 </script>
