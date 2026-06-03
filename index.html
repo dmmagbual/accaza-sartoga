@@ -824,6 +824,21 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
   </div>
 </div>
 
+<!-- CONFIRM RECEIVED POPUP -->
+<div class="popup-overlay" id="confirmReceivedPopup">
+  <div class="popup-box">
+    <div style="font-size:2.5rem;margin-bottom:0.75rem;">✅</div>
+    <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:0.5rem;">Confirm Receipt</h3>
+    <p style="font-size:0.85rem;color:var(--tm);margin-bottom:0.3rem;">You are confirming receipt of order:</p>
+    <p id="receivedOrderId" style="font-family:'Playfair Display',serif;font-size:1.4rem;color:var(--bd);font-weight:600;margin-bottom:0.5rem;"></p>
+    <p style="font-size:0.82rem;color:var(--tl);margin-bottom:1.5rem;line-height:1.5;">Once confirmed, this order will be removed from your active orders list. Please make sure you have received your order before confirming.</p>
+    <div style="display:flex;gap:0.75rem;justify-content:center;">
+      <button onclick="document.getElementById('confirmReceivedPopup').classList.remove('show')" style="flex:1;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.7rem;font-size:0.88rem;cursor:pointer;color:var(--tm);">Not Yet</button>
+      <button id="confirmReceivedBtn" style="flex:1;background:#2d9e5f;color:#fff;border:none;border-radius:6px;padding:0.7rem;font-size:0.88rem;cursor:pointer;font-weight:500;">Yes, Received ✓</button>
+    </div>
+  </div>
+</div>
+
 <!-- DELETE POPUP -->
 <div class="popup-overlay" id="deletePopup">
   <div class="popup-box">
@@ -925,42 +940,71 @@ function loadCustomerOrders(){
 function renderCustomerOrders(){
   const box=document.getElementById('activeOrdersBox');
   if(!box) return;
-  // Filter active orders (not completed+received)
   const active=customerOrders.filter(o=>!o.receivedByCustomer);
   if(!active.length){ box.style.display='none'; return; }
   box.style.display='block';
+
   const statusConfig={
-    Pending:{icon:'🟡',color:'#856404',bg:'#fef3cd',msg:'Awaiting confirmation from our staff.'},
-    Confirmed:{icon:'🔵',color:'#0c5460',bg:'#d1ecf1',msg:'Your order is confirmed! Preparing soon.'},
-    Preparing:{icon:'🟠',color:'#664d03',bg:'#fff3cd',msg:'Being prepared by our team! ☕'},
-    Completed:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your order is ready!'},
+    Pending:  {icon:'🟡', color:'#856404', bg:'#fef3cd', msg:'Your order has been received and is awaiting confirmation from our staff. We will contact you shortly!'},
+    Confirmed:{icon:'🔵', color:'#0c5460', bg:'#d1ecf1', msg:'Great news! Your order has been confirmed. We will start preparing it soon!'},
+    Preparing:{icon:'🟠', color:'#664d03', bg:'#fff3cd', msg:'Your order is currently being prepared by our team. It will be ready soon! ☕'},
+    Completed:{icon:'🟢', color:'#155724', bg:'#d4edda', msg:'Your order is ready! Please confirm once you have received it below.'},
   };
-  box.innerHTML=`
-    <div style="background:#f0faf4;border:2px solid #a8d5b5;border-radius:12px;padding:1.5rem;margin-top:1rem;">
-      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1.1rem;margin-bottom:1rem;text-align:center;">📋 Your Active Orders</h3>
-      ${active.map((o,i)=>{
-        const s=statusConfig[o.status]||statusConfig.Pending;
-        // Find latest status from adminOrders
+
+  box.innerHTML = `
+    <div style="margin-top:1.5rem;">
+      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1.15rem;margin-bottom:1rem;text-align:center;padding-bottom:0.5rem;border-bottom:2px solid var(--cd);">📋 Your Active Orders</h3>
+      ${active.map(o=>{
+        // Get latest status from adminOrders
         const adminOrder=adminOrders.find(a=>a.id===o.id);
         const currentStatus=adminOrder?adminOrder.status:o.status;
-        const cs=statusConfig[currentStatus]||statusConfig.Pending;
-        return`<div style="background:#fff;border:1px solid #a8d5b5;border-radius:8px;padding:1rem;margin-bottom:0.75rem;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
-            <span style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--bd);font-weight:600;">${o.id}</span>
-            <span style="background:${cs.bg};color:${cs.color};font-size:0.78rem;font-weight:600;padding:0.25rem 0.75rem;border-radius:999px;">${cs.icon} ${currentStatus}</span>
+        const s=statusConfig[currentStatus]||statusConfig.Pending;
+        return`
+        <div style="background:#fff;border:2px solid #a8d5b5;border-radius:12px;overflow:hidden;margin-bottom:1.25rem;box-shadow:0 2px 12px rgba(0,0,0,0.06);">
+          
+          <!-- ORDER ID BOX -->
+          <div style="background:var(--bd);padding:1rem 1.25rem;text-align:center;">
+            <p style="font-size:0.72rem;color:rgba(245,239,230,0.6);letter-spacing:0.15em;text-transform:uppercase;margin-bottom:0.25rem;">Order ID</p>
+            <p style="font-family:'Playfair Display',serif;font-size:1.8rem;color:#fff;font-weight:600;letter-spacing:0.15em;">${o.id}</p>
+            <p style="font-size:0.72rem;color:rgba(245,239,230,0.5);margin-top:0.25rem;">🛒 ${o.items}</p>
+            <p style="font-size:0.75rem;color:#c9956a;margin-top:0.15rem;">💰 ₱${o.total.toLocaleString()} · ${o.payment}</p>
           </div>
-          <p style="font-size:0.82rem;color:var(--tm);margin-bottom:0.4rem;">🛒 ${o.items}</p>
-          <p style="font-size:0.82rem;color:var(--tl);margin-bottom:0.4rem;">💰 ₱${o.total.toLocaleString()} · ${o.payment}</p>
-          <p style="font-size:0.82rem;color:${cs.color};background:${cs.bg};padding:0.4rem 0.6rem;border-radius:4px;margin-bottom:0.6rem;">${cs.msg}</p>
-          ${currentStatus==='Completed'?`
-          <div style="background:#f9f6f2;border:1px solid var(--cd);border-radius:6px;padding:0.75rem;text-align:center;margin-top:0.5rem;">
-            <p style="font-size:0.82rem;color:var(--tm);margin-bottom:0.5rem;">✅ Your order is complete! Did you receive your order?</p>
-            <button onclick="confirmReceived('${o.id}')" style="background:#2d9e5f;color:#fff;border:none;border-radius:6px;padding:0.5rem 1.25rem;font-size:0.82rem;cursor:pointer;font-family:Inter,sans-serif;">Yes, I received my order ✓</button>
-          </div>`:''}
+
+          <!-- STATUS BOX -->
+          <div style="padding:1rem 1.25rem;background:${s.bg};border-bottom:1px solid rgba(0,0,0,0.06);">
+            <p style="font-size:0.7rem;letter-spacing:0.15em;text-transform:uppercase;color:${s.color};margin-bottom:0.4rem;font-weight:600;">Order Status</p>
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">
+              <span style="font-size:1.3rem;">${s.icon}</span>
+              <span style="font-size:1rem;font-weight:700;color:${s.color};">${currentStatus}</span>
+            </div>
+            <p style="font-size:0.82rem;color:${s.color};line-height:1.5;">${s.msg}</p>
+          </div>
+
+          <!-- RECEIVED BOX -->
+          <div style="padding:1rem 1.25rem;background:#f9f6f2;text-align:center;">
+            <p style="font-size:0.7rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--tl);margin-bottom:0.5rem;font-weight:600;">Confirm Receipt</p>
+            ${currentStatus==='Completed'
+              ?`<p style="font-size:0.82rem;color:var(--tm);margin-bottom:0.75rem;line-height:1.5;">Have you received your order? Please confirm below.</p>
+                <button onclick="askConfirmReceived('${o.id}')" style="background:#2d9e5f;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:pointer;font-family:'Inter',sans-serif;font-weight:500;width:100%;">✅ Yes, I Received My Order</button>`
+              :`<p style="font-size:0.82rem;color:var(--tl);line-height:1.5;">This button will be enabled once your order is marked <strong>Completed</strong> by our staff.</p>
+                <button disabled style="background:#ccc;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:not-allowed;font-family:'Inter',sans-serif;font-weight:500;width:100%;margin-top:0.5rem;opacity:0.6;">Waiting for Completion...</button>`
+            }
+          </div>
+
         </div>`;
       }).join('')}
-      <p style="font-size:0.72rem;color:var(--tl);text-align:center;margin-top:0.5rem;">⚠️ Keep this page open or return to this device to track your orders.</p>
+      <p style="font-size:0.72rem;color:var(--tl);text-align:center;margin-top:0.25rem;">⚠️ Use the same device and browser to track your orders.</p>
     </div>`;
+}
+
+// Popup confirmation before marking received
+function askConfirmReceived(orderId){
+  document.getElementById('receivedOrderId').textContent = orderId;
+  document.getElementById('confirmReceivedPopup').classList.add('show');
+  document.getElementById('confirmReceivedBtn').onclick = ()=>{
+    confirmReceived(orderId);
+    document.getElementById('confirmReceivedPopup').classList.remove('show');
+  };
 }
 
 function confirmReceived(orderId){
