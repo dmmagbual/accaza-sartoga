@@ -1024,10 +1024,24 @@ function switchTab(tab, btn) {
   btn.classList.add('active');
   document.querySelectorAll('.admin-tab-content').forEach(t => t.style.display = 'none');
   document.getElementById('tab-'+tab).style.display = 'block';
-  if (tab === 'availability') renderAvailability();
-  if (tab === 'orders') renderOrders();
-  if (tab === 'reservations') renderReservations();
-  if (tab === 'reviews') renderAdminReviews();
+  if (tab === 'availability') {
+    const el = document.getElementById('availabilityList');
+    let html = '';
+    menuItems.forEach(i => {
+      const avail = availability[i.name] !== false;
+      html += `<div class="avail-row">
+        <div class="avail-row-info">
+          <span class="avail-row-name" style="${!avail?'text-decoration:line-through;opacity:0.5;':''}">${i.name}</span>
+          <span class="avail-row-cat">${catLabels[i.cat]} &nbsp;·&nbsp; ${i.price}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.6rem;">
+          <span style="font-size:0.75rem;font-weight:500;color:${avail?'#2d9e5f':'#c0392b'};">${avail?'Available':'Not Available'}</span>
+          <input type="checkbox" class="avail-toggle" ${avail?'checked':''} onchange="toggleAvailability('${i.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}',this.checked)"/>
+        </div>
+      </div>`;
+    });
+    el.innerHTML = html || '<p>No items found</p>';
+  }
 }
 
 function renderAvailability() {
