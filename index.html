@@ -252,6 +252,7 @@
     <li><a href="#reviews">Reviews</a></li>
     <li><a href="#gallery">Gallery</a></li>
     <li><a href="#contact">Contact</a></li>
+    <li id="adminNavItem" style="display:none;"><a href="#availability" style="color:#c9956a; font-weight:500;">🔄 Availability</a></li>
   </ul>
 </nav>
 
@@ -519,6 +520,18 @@
       </div>
 
     </div>
+  </div>
+</section>
+
+<!-- AVAILABILITY SECTION (Admin Only) -->
+<section id="availability" style="display:none; background:var(--cream); padding:6rem 2rem;">
+  <div style="max-width:800px; margin:0 auto;">
+    <div style="text-align:center; margin-bottom:2.5rem;">
+      <p style="font-size:0.75rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--brown-light);margin-bottom:0.75rem;">Staff Only</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:2.5rem;color:var(--brown-dark);margin-bottom:0.5rem;">Menu Availability</h2>
+      <p style="color:var(--text-mid);font-size:0.95rem;">Toggle items on or off. Customers cannot click items marked as Not Available.</p>
+    </div>
+    <div id="availSection"></div>
   </div>
 </section>
 
@@ -1005,6 +1018,9 @@ function checkLogin() {
   if (pass === ADMIN_PASS) {
     document.getElementById('adminLogin').style.display = 'none';
     document.getElementById('admin').style.display = 'block';
+    document.getElementById('adminNavItem').style.display = 'block';
+    document.getElementById('availability').style.display = 'block';
+    buildAvailSection();
     window.scrollTo(0,0);
     loadAdminData();
   } else {
@@ -1015,8 +1031,56 @@ function checkLogin() {
 
 function logoutAdmin() {
   document.getElementById('admin').style.display = 'none';
+  document.getElementById('adminNavItem').style.display = 'none';
+  document.getElementById('availability').style.display = 'none';
   document.getElementById('adminPass').value = '';
   window.scrollTo(0,0);
+}
+
+function buildAvailSection() {
+  const groups = [
+    {cat:'☕ Coffee', items:['Spanish Latte','Sea Salt Latte','Sea Salt Caramel Latte','Caramel Macchiato','White Mocha','Mocha Latte','French Vanilla Latte','Banana Oat Latte','Cinnamon Oat Latte','Cafe Latte','Cappuccino','Americano']},
+    {cat:'🥤 Blended Frappes', items:['Java Chip','Caramel Frappe','White Mocha Frappe','Dark Mocha Frappe','Caramel Cream Frappe','Toffee Nut Frappe','Butterscotch Frappe','Cappuccino Frappe']},
+    {cat:'🍵 Non-Coffee Frappes', items:['Dark Chocolate','Nougat','Matcha Cream','Strawberry','Vanilla']},
+    {cat:'🌿 Non-Caffeine', items:['Banana Oat','Cinnamon Oat','Matcha Latte','White Chocolate']},
+    {cat:'🍵 Tea & Refreshments', items:['Peach Black Tea','Lychee','Passionfruit','Pink Guava','Tahitian Lime']},
+    {cat:'🍞 Pastries', items:['Buttered Croissant','Croffle','Matcha Croffle','Dark Chocolate Croffle','White Chocolate Croffle','Pain Au Chocolat','Cinnamon Roll']},
+  ];
+  const el = document.getElementById('availSection');
+  let html = '';
+  groups.forEach(g => {
+    html += `<div style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--brown-dark);margin:1.5rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:2px solid var(--cream-dark);">${g.cat}</div>`;
+    g.items.forEach(name => {
+      const avail = availability[name] !== false;
+      const sid = 'avs_' + name.replace(/[\s']/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
+      html += `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:0.85rem 1.2rem;margin-bottom:0.5rem;background:#fff;border:1px solid var(--cream-dark);border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
+        <div style="font-size:0.95rem;font-weight:500;color:var(--brown-dark);" id="${sid}_n">${name}</div>
+        <div style="display:flex;align-items:center;gap:1rem;">
+          <span id="${sid}_l" style="font-size:0.82rem;font-weight:600;padding:0.25rem 0.75rem;border-radius:999px;background:${avail?'#d4edda':'#fde8e8'};color:${avail?'#155724':'#721c24'};">${avail?'✅ Available':'❌ Not Available'}</span>
+          <label style="position:relative;display:inline-block;width:50px;height:26px;">
+            <input type="checkbox" ${avail?'checked':''} onchange="toggleItem('${name.replace(/'/g,"\\'")}','${sid}',this.checked)" style="opacity:0;width:0;height:0;position:absolute;"/>
+            <span id="${sid}_t" style="position:absolute;cursor:pointer;inset:0;background:${avail?'#2d9e5f':'#ccc'};border-radius:999px;transition:0.2s;">
+              <span style="position:absolute;width:20px;height:20px;background:#fff;border-radius:50%;top:3px;left:${avail?'27px':'3px'};transition:0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></span>
+            </span>
+          </label>
+        </div>
+      </div>`;
+    });
+  });
+  el.innerHTML = html;
+}
+
+function toggleItem(name, sid, avail) {
+  availability[name] = avail;
+  const n = document.getElementById(sid+'_n');
+  const l = document.getElementById(sid+'_l');
+  const t = document.getElementById(sid+'_t');
+  if (n) { n.style.textDecoration = avail?'none':'line-through'; n.style.opacity = avail?'1':'0.5'; }
+  if (l) { l.textContent = avail?'✅ Available':'❌ Not Available'; l.style.background = avail?'#d4edda':'#fde8e8'; l.style.color = avail?'#155724':'#721c24'; }
+  if (t) { t.style.background = avail?'#2d9e5f':'#ccc'; t.querySelector('span').style.left = avail?'27px':'3px'; }
+  filterMenu('all');
+  filterOrder('all', document.querySelector('.otab'));
 }
 
 function switchTab(tab, btn) {
