@@ -491,8 +491,10 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
               <span id="displayOrderId" style="font-family:'Playfair Display',serif;font-size:1.6rem;color:var(--bd);font-weight:600;letter-spacing:0.1em;"></span>
             </div>
             <p style="font-size:0.82rem;color:var(--tm);line-height:1.6;margin-bottom:0.5rem;">📱 We will contact you via your preferred method to confirm your order.</p>
-            <p style="font-size:0.78rem;color:#856404;background:#fef3cd;border-radius:6px;padding:0.5rem 0.75rem;line-height:1.5;">⚠️ <strong>Important:</strong> Save your Order ID! To check your order status, use the <strong>Check Order Status</strong> section below — on this same device and browser.</p>
+            <p style="font-size:0.78rem;color:#856404;background:#fef3cd;border-radius:6px;padding:0.5rem 0.75rem;line-height:1.5;">⚠️ Your Order ID is saved below. Use this same device to track your order status.</p>
           </div>
+          <!-- ACTIVE ORDERS BOX -->
+          <div id="activeOrdersBox" style="display:none;"></div>
         </div>
       </div>
     </div>
@@ -905,6 +907,68 @@ function loadData(){
   }catch(e){ console.log('Load error:',e); }
 }
 
+// ── CUSTOMER ORDERS (separate from admin orders) ──
+function saveCustomerOrders(){
+  try{ localStorage.setItem('accaza_customer_orders', JSON.stringify(customerOrders)); }catch(e){}
+}
+
+function loadCustomerOrders(){
+  try{
+    const c=localStorage.getItem('accaza_customer_orders');
+    if(c) customerOrders=JSON.parse(c);
+  }catch(e){}
+}
+
+function renderCustomerOrders(){
+  const box=document.getElementById('activeOrdersBox');
+  if(!box) return;
+  // Filter active orders (not completed+received)
+  const active=customerOrders.filter(o=>!o.receivedByCustomer);
+  if(!active.length){ box.style.display='none'; return; }
+  box.style.display='block';
+  const statusConfig={
+    Pending:{icon:'🟡',color:'#856404',bg:'#fef3cd',msg:'Awaiting confirmation from our staff.'},
+    Confirmed:{icon:'🔵',color:'#0c5460',bg:'#d1ecf1',msg:'Your order is confirmed! Preparing soon.'},
+    Preparing:{icon:'🟠',color:'#664d03',bg:'#fff3cd',msg:'Being prepared by our team! ☕'},
+    Completed:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your order is ready!'},
+  };
+  box.innerHTML=`
+    <div style="background:#f0faf4;border:2px solid #a8d5b5;border-radius:12px;padding:1.5rem;margin-top:1rem;">
+      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1.1rem;margin-bottom:1rem;text-align:center;">📋 Your Active Orders</h3>
+      ${active.map((o,i)=>{
+        const s=statusConfig[o.status]||statusConfig.Pending;
+        // Find latest status from adminOrders
+        const adminOrder=adminOrders.find(a=>a.id===o.id);
+        const currentStatus=adminOrder?adminOrder.status:o.status;
+        const cs=statusConfig[currentStatus]||statusConfig.Pending;
+        return`<div style="background:#fff;border:1px solid #a8d5b5;border-radius:8px;padding:1rem;margin-bottom:0.75rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+            <span style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--bd);font-weight:600;">${o.id}</span>
+            <span style="background:${cs.bg};color:${cs.color};font-size:0.78rem;font-weight:600;padding:0.25rem 0.75rem;border-radius:999px;">${cs.icon} ${currentStatus}</span>
+          </div>
+          <p style="font-size:0.82rem;color:var(--tm);margin-bottom:0.4rem;">🛒 ${o.items}</p>
+          <p style="font-size:0.82rem;color:var(--tl);margin-bottom:0.4rem;">💰 ₱${o.total.toLocaleString()} · ${o.payment}</p>
+          <p style="font-size:0.82rem;color:${cs.color};background:${cs.bg};padding:0.4rem 0.6rem;border-radius:4px;margin-bottom:0.6rem;">${cs.msg}</p>
+          ${currentStatus==='Completed'?`
+          <div style="background:#f9f6f2;border:1px solid var(--cd);border-radius:6px;padding:0.75rem;text-align:center;margin-top:0.5rem;">
+            <p style="font-size:0.82rem;color:var(--tm);margin-bottom:0.5rem;">✅ Your order is complete! Did you receive your order?</p>
+            <button onclick="confirmReceived('${o.id}')" style="background:#2d9e5f;color:#fff;border:none;border-radius:6px;padding:0.5rem 1.25rem;font-size:0.82rem;cursor:pointer;font-family:Inter,sans-serif;">Yes, I received my order ✓</button>
+          </div>`:''}
+        </div>`;
+      }).join('')}
+      <p style="font-size:0.72rem;color:var(--tl);text-align:center;margin-top:0.5rem;">⚠️ Keep this page open or return to this device to track your orders.</p>
+    </div>`;
+}
+
+function confirmReceived(orderId){
+  const idx=customerOrders.findIndex(o=>o.id===orderId);
+  if(idx>-1){
+    customerOrders[idx].receivedByCustomer=true;
+    saveCustomerOrders();
+    renderCustomerOrders();
+  }
+}
+
 function previewProof(input){
   if(!input.files||!input.files[0]) return;
   const file=input.files[0];
@@ -930,8 +994,6 @@ function removeProof(e){
   document.getElementById('uploadBox').style.borderColor='var(--cd)';
   document.getElementById('uploadBox').style.borderStyle='dashed';
 }
-
-let contactMethod='whatsapp';
 
 function setContact(type){
   contactMethod=type;
@@ -1008,8 +1070,8 @@ const ADMIN_PASS = 'accaza2026';
 const catLabels = {coffee:'Coffee',frappe:'Blended Frappe',nonfrappe:'Non-Coffee Frappe',noncaf:'Non-Caffeine',tea:'Tea & Refreshments',food:'Pastries',meals:'Meals',desserts:'Desserts'};
 
 // ── STATE ──
-let cart={}, orderType='pickup', paymentType='gcash';
-let reviews=[], adminOrders=[], adminReservations=[], feedbacks=[];
+let cart={}, orderType='pickup', paymentType='gcash', contactMethod='whatsapp';
+let reviews=[], adminOrders=[], adminReservations=[], feedbacks=[], customerOrders=[];
 let chatOpen=false, chatStarted=false;
 let availability={};
 
@@ -1592,9 +1654,11 @@ setTimeout(()=>{if(!chatOpen)document.getElementById('chatNotif').style.display=
 
 // ── INIT ──
 loadData();
+loadCustomerOrders();
 loadAvailability();
 filterMenu('all', document.querySelector('.tab-btn'));
 filterOrder('all', document.querySelector('.otab'));
+renderCustomerOrders();
 </script>
 </body>
 </html>
