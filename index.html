@@ -889,7 +889,7 @@ function saveData(){
     localStorage.setItem('accaza_reservations', JSON.stringify(adminReservations));
     localStorage.setItem('accaza_feedbacks', JSON.stringify(feedbacks));
     localStorage.setItem('accaza_reviews', JSON.stringify(reviews));
-  }catch(e){}
+  }catch(e){ console.log('Save error:',e); }
 }
 
 function loadData(){
@@ -902,7 +902,7 @@ function loadData(){
     if(r) adminReservations=JSON.parse(r);
     if(f) feedbacks=JSON.parse(f);
     if(rv) reviews=JSON.parse(rv);
-  }catch(e){}
+  }catch(e){ console.log('Load error:',e); }
 }
 
 function previewProof(input){
@@ -1261,8 +1261,8 @@ function submitFeedback(){
   if(!name||!message){alert('Please enter your name and message.');return;}
   const date=new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'});
   feedbacks.unshift({name,contact,type,message,date,status:'Unread'});
-  if(document.getElementById('commentsSection').style.display!=='none') renderComments();
   saveData();
+  if(document.getElementById('commentsSection').style.display!=='none') renderComments();
   document.getElementById('fbName').value='';
   document.getElementById('fbContact').value='';
   document.getElementById('fbMessage').value='';
@@ -1362,6 +1362,9 @@ function checkLogin(){
   const pass=document.getElementById('adminPass').value;
   if(pass===ADMIN_PASS){
     closeAdmin();
+    // Reload latest data from localStorage before displaying
+    loadData();
+    loadAvailability();
     document.getElementById('adminDash').style.display='block';
     document.getElementById('availSection').style.display='block';
     document.getElementById('commentsSection').style.display='block';
