@@ -1023,6 +1023,10 @@ function switchTab(tab, btn) {
   btn.classList.add('active');
   document.querySelectorAll('.admin-tab-content').forEach(t => t.style.display = 'none');
   document.getElementById('tab-'+tab).style.display = 'block';
+  if (tab === 'availability') renderAvailability();
+  if (tab === 'orders') renderOrders();
+  if (tab === 'reservations') renderReservations();
+  if (tab === 'reviews') renderAdminReviews();
 }
 
 function renderAvailability() {
