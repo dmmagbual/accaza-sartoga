@@ -9,15 +9,15 @@
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
     --brown-dark: #3b2314; --brown-mid: #6b3a2a; --brown-light: #a0673a;
-    --cream: #f5efe6; --cream-dark: #e8dcc8; --green-muted: #5a6b4b;
+    --cream: #f5efe6; --cream-dark: #e8dcc8;
     --text-dark: #2c1a0e; --text-mid: #5c3d2e; --text-light: #8a6a55;
   }
   body { font-family: 'Inter', sans-serif; background: var(--cream); color: var(--text-dark); overflow-x: hidden; }
 
   /* NAV */
   nav { position: fixed; top: 0; width: 100%; z-index: 100; background: rgba(59,35,20,0.95); backdrop-filter: blur(8px); padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; }
-  .nav-logo { font-family: 'Playfair Display', serif; font-size: 1.4rem; color: var(--cream); letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.6rem; }
-  .nav-links { display: flex; gap: 2rem; list-style: none; }
+  .nav-logo { font-family: 'Playfair Display', serif; font-size: 1.4rem; color: var(--cream); letter-spacing: 0.05em; }
+  .nav-links { display: flex; gap: 2rem; list-style: none; flex-wrap: wrap; }
   .nav-links a { color: var(--cream-dark); text-decoration: none; font-size: 0.85rem; letter-spacing: 0.08em; text-transform: uppercase; transition: color 0.2s; }
   .nav-links a:hover { color: #fff; }
 
@@ -35,7 +35,7 @@
   .btn-primary:hover { background: #b8784a; }
   .btn-outline { background: transparent; color: var(--cream); border: 1px solid rgba(255,255,255,0.35); padding: 0.85rem 2rem; border-radius: 4px; font-size: 0.9rem; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; transition: all 0.2s; text-decoration: none; display: inline-block; }
   .btn-outline:hover { background: rgba(255,255,255,0.08); }
-  .scroll-cue { position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 0.4rem; color: rgba(255,255,255,0.4); font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; animation: bounce 2s infinite; }
+  .scroll-cue { position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 0.4rem; color: rgba(255,255,255,0.4); font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; animation: bounce 2s infinite; z-index: 2; }
   .scroll-cue svg { width: 20px; height: 20px; }
   @keyframes bounce { 0%, 100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(6px); } }
 
@@ -67,19 +67,20 @@
   .menu { background: var(--brown-dark); padding: 6rem 2rem; }
   .menu-inner { max-width: 1000px; margin: 0 auto; }
   .menu-tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; margin-bottom: 2.5rem; }
-  .tab-btn { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); color: rgba(245,239,230,0.7); padding: 0.45rem 1.1rem; border-radius: 999px; font-size: 0.82rem; cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif; letter-spacing: 0.04em; }
+  .tab-btn { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); color: rgba(245,239,230,0.7); padding: 0.45rem 1.1rem; border-radius: 999px; font-size: 0.82rem; cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif; }
   .tab-btn:hover { background: rgba(255,255,255,0.12); color: var(--cream); }
   .tab-btn.active { background: var(--brown-light); border-color: var(--brown-light); color: #fff; }
   .menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
-  .menu-card { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 1.2rem; transition: all 0.2s; cursor: pointer; position: relative; }
+  .menu-card { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 1.2rem; transition: all 0.2s; cursor: pointer; }
   .menu-card:hover { background: rgba(255,255,255,0.13); transform: translateY(-2px); border-color: rgba(201,149,106,0.5); }
+  .unavailable-card { opacity: 0.45; cursor: not-allowed; }
+  .unavailable-card:hover { transform: none !important; background: rgba(255,255,255,0.06) !important; border-color: rgba(255,255,255,0.1) !important; }
   .menu-card .cat-tag { font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--brown-light); margin-bottom: 0.5rem; display: block; }
   .menu-card h4 { font-family: 'Playfair Display', serif; color: var(--cream); font-size: 1rem; margin-bottom: 0.3rem; }
   .menu-card p { font-size: 0.78rem; color: rgba(245,239,230,0.5); line-height: 1.5; margin-bottom: 0.8rem; }
   .menu-card .price { font-size: 0.95rem; font-weight: 500; color: #c9956a; }
-  .menu-card-hint { font-size: 0.7rem; color: rgba(201,149,106,0.7); margin-top: 0.4rem; letter-spacing: 0.04em; }
 
-  /* ORDER SECTION */
+  /* ORDER */
   .order-section { background: var(--cream); padding: 6rem 2rem; }
   .order-inner { max-width: 1000px; margin: 0 auto; }
   .order-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem; align-items: start; }
@@ -94,7 +95,7 @@
   .item-row-info span { font-size: 0.75rem; color: var(--text-light); }
   .item-row-right { display: flex; align-items: center; gap: 0.5rem; }
   .item-price { font-size: 0.88rem; font-weight: 500; color: var(--brown-light); min-width: 42px; text-align: right; }
-  .qty-btn { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--cream-dark); background: var(--cream); font-size: 1rem; line-height: 1; cursor: pointer; color: var(--brown-dark); display: flex; align-items: center; justify-content: center; font-family: 'Inter', sans-serif; transition: background 0.15s; }
+  .qty-btn { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--cream-dark); background: var(--cream); font-size: 1rem; cursor: pointer; color: var(--brown-dark); display: flex; align-items: center; justify-content: center; font-family: 'Inter', sans-serif; transition: background 0.15s; }
   .qty-btn:hover { background: var(--brown-light); color: #fff; border-color: var(--brown-light); }
   .qty-display { font-size: 0.85rem; font-weight: 500; min-width: 18px; text-align: center; color: var(--brown-dark); }
   .cart-box { background: #fff; border: 1px solid var(--cream-dark); border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; }
@@ -112,45 +113,6 @@
   .btn-place-order { width: 100%; margin-top: 1.25rem; background: var(--brown-dark); color: var(--cream); border: none; border-radius: 6px; padding: 0.9rem; font-size: 0.9rem; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; font-family: 'Inter', sans-serif; transition: background 0.2s; }
   .btn-place-order:hover { background: var(--brown-mid); }
   input[type=text], input[type=date], input[type=password], select, textarea { background: var(--cream); border: 1px solid var(--cream-dark); border-radius: 6px; padding: 0.6rem 0.85rem; font-family: 'Inter', sans-serif; font-size: 0.88rem; color: var(--text-dark); width: 100%; }
-
-  /* CHATBOT */
-  .chat-bubble { position: fixed; bottom: 2rem; right: 2rem; z-index: 500; }
-  .chat-toggle { width: 56px; height: 56px; border-radius: 50%; background: var(--brown-dark); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; box-shadow: 0 4px 16px rgba(0,0,0,0.3); transition: transform 0.2s; }
-  .chat-toggle:hover { transform: scale(1.08); }
-  .chat-notif { position: absolute; top: -4px; right: -4px; width: 18px; height: 18px; background: #c0392b; border-radius: 50%; border: 2px solid #fff; }
-  .chat-window { position: fixed; bottom: 6rem; right: 2rem; width: 330px; max-height: 480px; background: #fff; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); display: none; flex-direction: column; z-index: 500; overflow: hidden; }
-  .chat-window.open { display: flex; }
-  .chat-header { background: var(--brown-dark); padding: 1rem 1.25rem; display: flex; align-items: center; justify-content: space-between; }
-  .chat-header-info { display: flex; align-items: center; gap: 0.75rem; }
-  .chat-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--brown-light); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; }
-  .chat-header h4 { font-family: 'Playfair Display', serif; color: var(--cream); font-size: 0.95rem; margin: 0; }
-  .chat-header p { color: rgba(245,239,230,0.6); font-size: 0.72rem; margin: 0; }
-  .chat-close { background: none; border: none; color: var(--cream); font-size: 1.2rem; cursor: pointer; opacity: 0.7; }
-  .chat-close:hover { opacity: 1; }
-  .chat-messages { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; background: #f9f6f2; }
-  .chat-msg { max-width: 80%; padding: 0.6rem 0.85rem; border-radius: 12px; font-size: 0.83rem; line-height: 1.5; }
-  .chat-msg.bot { background: #fff; color: var(--text-dark); border: 1px solid var(--cream-dark); border-bottom-left-radius: 2px; align-self: flex-start; }
-  .chat-msg.user { background: var(--brown-dark); color: var(--cream); border-bottom-right-radius: 2px; align-self: flex-end; }
-  .chat-msg.typing { background: #fff; border: 1px solid var(--cream-dark); align-self: flex-start; padding: 0.75rem 1rem; }
-  .chat-quick { padding: 0.75rem 1rem; background: #fff; border-top: 1px solid var(--cream-dark); display: flex; flex-wrap: wrap; gap: 0.4rem; }
-  .chat-quick-btn { background: var(--cream); border: 1px solid var(--cream-dark); border-radius: 999px; padding: 0.3rem 0.75rem; font-size: 0.75rem; cursor: pointer; color: var(--text-mid); font-family: 'Inter', sans-serif; transition: all 0.2s; white-space: nowrap; }
-  .chat-quick-btn:hover { background: var(--brown-light); color: #fff; border-color: var(--brown-light); }
-  .chat-input-row { display: flex; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid var(--cream-dark); background: #fff; }
-  .chat-input { flex: 1; border: 1px solid var(--cream-dark); border-radius: 999px; padding: 0.5rem 0.9rem; font-size: 0.83rem; font-family: 'Inter', sans-serif; outline: none; color: var(--text-dark); background: var(--cream); }
-  .chat-input:focus { border-color: var(--brown-light); }
-  .chat-send { width: 34px; height: 34px; border-radius: 50%; background: var(--brown-dark); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.9rem; flex-shrink: 0; }
-  .chat-send:hover { background: var(--brown-mid); }
-
-  /* FEEDBACK */
-  .feedback-section { background: var(--brown-mid); padding: 6rem 2rem; }
-  .feedback-inner { max-width: 1000px; margin: 0 auto; }
-  .feedback-layout { display: grid; grid-template-columns: 1.4fr 1fr; gap: 2.5rem; align-items: start; }
-  .feedback-form-box { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 1.75rem; }
-  .feedback-form-box input, .feedback-form-box select, .feedback-form-box textarea { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 0.6rem 0.85rem; color: var(--cream); font-family: 'Inter', sans-serif; font-size: 0.88rem; width: 100%; }
-  .feedback-form-box input::placeholder, .feedback-form-box textarea::placeholder { color: rgba(245,239,230,0.3); }
-  .feedback-form-box select option { background: var(--brown-mid); color: var(--cream); }
-  .feedback-form-box textarea { resize: none; }
-  .feedback-info { display: flex; flex-direction: column; gap: 1rem; }
 
   /* RESERVATIONS */
   .reservations { background: var(--brown-mid); padding: 6rem 2rem; }
@@ -179,7 +141,7 @@
   .reviews-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.25rem; }
   .review-card { background: #fff; border-radius: 10px; padding: 1.5rem; border: 1px solid rgba(0,0,0,0.06); box-shadow: 0 2px 12px rgba(0,0,0,0.05); transition: transform 0.2s; }
   .review-card:hover { transform: translateY(-3px); }
-  .review-stars { font-size: 1rem; margin-bottom: 0.6rem; letter-spacing: 0.05em; }
+  .review-stars { font-size: 1rem; margin-bottom: 0.6rem; }
   .review-text { font-size: 0.88rem; color: var(--text-mid); line-height: 1.7; margin-bottom: 1rem; font-style: italic; }
   .review-author { display: flex; align-items: center; gap: 0.75rem; }
   .review-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--brown-dark); color: var(--cream); display: flex; align-items: center; justify-content: center; font-family: 'Playfair Display', serif; font-size: 0.9rem; font-weight: 600; flex-shrink: 0; }
@@ -189,16 +151,21 @@
   /* GALLERY */
   .gallery-section { background: var(--cream); padding: 6rem 2rem; }
   .gallery-inner { max-width: 1000px; margin: 0 auto; }
-  .gallery-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    grid-auto-rows: 220px;
-    gap: 1rem;
-  }
+  .gallery-grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 220px; gap: 1rem; }
   .gallery-card { border-radius: 8px; overflow: hidden; }
   .gallery-card.tall { grid-row: span 2; }
-  .gallery-card.wide { grid-column: span 2; }
   .gallery-card img { width: 100%; height: 100%; object-fit: cover; object-position: center; border-radius: 8px; display: block; }
+
+  /* FEEDBACK */
+  .feedback-section { background: var(--brown-mid); padding: 6rem 2rem; }
+  .feedback-inner { max-width: 1000px; margin: 0 auto; }
+  .feedback-layout { display: grid; grid-template-columns: 1.4fr 1fr; gap: 2.5rem; align-items: start; }
+  .feedback-form-box { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 1.75rem; }
+  .feedback-form-box input, .feedback-form-box select, .feedback-form-box textarea { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 0.6rem 0.85rem; color: var(--cream); font-family: 'Inter', sans-serif; font-size: 0.88rem; width: 100%; }
+  .feedback-form-box input::placeholder, .feedback-form-box textarea::placeholder { color: rgba(245,239,230,0.3); }
+  .feedback-form-box select option { background: var(--brown-mid); color: var(--cream); }
+  .feedback-form-box textarea { resize: none; }
+  .feedback-info { display: flex; flex-direction: column; gap: 1rem; }
 
   /* CONTACT */
   .contact-section { background: var(--brown-dark); padding: 6rem 2rem; }
@@ -226,20 +193,18 @@
   .footer-copy { font-size: 0.72rem; color: rgba(245,239,230,0.25); margin: 0; }
 
   /* ADMIN */
-  .admin-wrap { max-width: 1000px; margin: 0 auto; padding: 2rem; }
   #admin { background: var(--cream); min-height: 100vh; padding: 5rem 1rem 3rem; }
+  .admin-wrap { max-width: 1000px; margin: 0 auto; padding: 2rem; }
   .admin-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; }
   .admin-logo { font-family: 'Playfair Display', serif; font-size: 1.4rem; color: var(--brown-dark); }
   .admin-logo span { font-size: 0.8rem; font-weight: 300; color: var(--text-light); margin-left: 0.3rem; }
   .admin-logout { background: none; border: 1px solid var(--cream-dark); border-radius: 6px; padding: 0.4rem 0.9rem; font-size: 0.8rem; cursor: pointer; color: var(--text-mid); font-family: 'Inter', sans-serif; }
-  .admin-logout:hover { background: var(--cream-dark); }
   .admin-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 1rem; margin-bottom: 2rem; }
   .admin-stat-card { background: #fff; border: 1px solid var(--cream-dark); border-radius: 8px; padding: 1.1rem; text-align: center; }
   .stat-num { display: block; font-family: 'Playfair Display', serif; font-size: 1.8rem; color: var(--brown-dark); }
   .stat-lbl { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-light); }
   .admin-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--cream-dark); flex-wrap: wrap; }
   .admin-tab { background: none; border: none; border-bottom: 2px solid transparent; padding: 0.6rem 1.1rem; font-size: 0.85rem; cursor: pointer; font-family: 'Inter', sans-serif; color: var(--text-light); transition: all 0.2s; margin-bottom: -1px; }
-  .admin-tab:hover { color: var(--brown-dark); }
   .admin-tab.active { color: var(--brown-dark); border-bottom-color: var(--brown-dark); font-weight: 500; }
   .admin-tab-content { background: #fff; border: 1px solid var(--cream-dark); border-radius: 8px; padding: 1.25rem; }
   .order-admin-card { border: 1px solid var(--cream-dark); border-radius: 6px; padding: 1rem; margin-bottom: 0.75rem; }
@@ -253,27 +218,57 @@
   .payment-edit-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; }
   .payment-edit-card { background: var(--cream); border: 1px solid var(--cream-dark); border-radius: 8px; padding: 1.25rem; }
   .payment-edit-card h4 { font-family: 'Playfair Display', serif; font-size: 1rem; color: var(--brown-dark); margin-bottom: 0.85rem; }
-  .payment-edit-card input { width: 100%; margin-bottom: 0.25rem; }
-  .btn-save { margin-top: 1rem; width: 100%; background: var(--brown-dark); color: var(--cream); border: none; border-radius: 6px; padding: 0.65rem; font-size: 0.8rem; cursor: pointer; font-family: 'Inter', sans-serif; letter-spacing: 0.05em; }
-  .btn-save:hover { background: var(--brown-mid); }
-  .login-box { background: var(--cream); border-radius: 10px; padding: 2.5rem; width: 100%; max-width: 360px; }
+  .btn-save { margin-top: 1rem; width: 100%; background: var(--brown-dark); color: var(--cream); border: none; border-radius: 6px; padding: 0.65rem; font-size: 0.8rem; cursor: pointer; font-family: 'Inter', sans-serif; }
   .badge { display: inline-block; font-size: 0.7rem; padding: 0.2rem 0.6rem; border-radius: 999px; font-weight: 500; }
   .badge-pending { background: #fef3cd; color: #856404; }
   .badge-confirmed { background: #d1ecf1; color: #0c5460; }
   .badge-preparing { background: #fff3cd; color: #664d03; }
   .badge-completed { background: #d4edda; color: #155724; }
   .empty-state { text-align: center; padding: 2rem; color: var(--text-light); font-size: 0.88rem; }
-  .review-add-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+
+  /* CHATBOT */
+  .chat-bubble { position: fixed; bottom: 2rem; right: 2rem; z-index: 500; }
+  .chat-toggle { width: 56px; height: 56px; border-radius: 50%; background: var(--brown-dark); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; box-shadow: 0 4px 16px rgba(0,0,0,0.3); transition: transform 0.2s; }
+  .chat-toggle:hover { transform: scale(1.08); }
+  .chat-notif { position: absolute; top: -4px; right: -4px; width: 18px; height: 18px; background: #c0392b; border-radius: 50%; border: 2px solid #fff; display: none; }
+  .chat-window { position: fixed; bottom: 6rem; right: 2rem; width: 330px; max-height: 480px; background: #fff; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); display: none; flex-direction: column; z-index: 500; overflow: hidden; }
+  .chat-window.open { display: flex; }
+  .chat-header { background: var(--brown-dark); padding: 1rem 1.25rem; display: flex; align-items: center; justify-content: space-between; }
+  .chat-header-info { display: flex; align-items: center; gap: 0.75rem; }
+  .chat-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--brown-light); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; }
+  .chat-header h4 { font-family: 'Playfair Display', serif; color: var(--cream); font-size: 0.95rem; margin: 0; }
+  .chat-header p { color: rgba(245,239,230,0.6); font-size: 0.72rem; margin: 0; }
+  .chat-close { background: none; border: none; color: var(--cream); font-size: 1.2rem; cursor: pointer; opacity: 0.7; }
+  .chat-messages { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; background: #f9f6f2; }
+  .chat-msg { max-width: 80%; padding: 0.6rem 0.85rem; border-radius: 12px; font-size: 0.83rem; line-height: 1.5; }
+  .chat-msg.bot { background: #fff; color: var(--text-dark); border: 1px solid var(--cream-dark); border-bottom-left-radius: 2px; align-self: flex-start; }
+  .chat-msg.user { background: var(--brown-dark); color: var(--cream); border-bottom-right-radius: 2px; align-self: flex-end; }
+  .chat-quick { padding: 0.75rem 1rem; background: #fff; border-top: 1px solid var(--cream-dark); display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .chat-quick-btn { background: var(--cream); border: 1px solid var(--cream-dark); border-radius: 999px; padding: 0.3rem 0.75rem; font-size: 0.75rem; cursor: pointer; color: var(--text-mid); font-family: 'Inter', sans-serif; transition: all 0.2s; }
+  .chat-quick-btn:hover { background: var(--brown-light); color: #fff; border-color: var(--brown-light); }
+  .chat-input-row { display: flex; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid var(--cream-dark); background: #fff; }
+  .chat-input { flex: 1; border: 1px solid var(--cream-dark); border-radius: 999px; padding: 0.5rem 0.9rem; font-size: 0.83rem; font-family: 'Inter', sans-serif; outline: none; color: var(--text-dark); background: var(--cream); }
+  .chat-send { width: 34px; height: 34px; border-radius: 50%; background: var(--brown-dark); border: none; cursor: pointer; color: #fff; font-size: 0.9rem; flex-shrink: 0; }
+
+  /* LOGIN OVERLAY */
+  .login-overlay { display: none; position: fixed; inset: 0; background: rgba(30,15,5,0.97); z-index: 9999; align-items: center; justify-content: center; }
+  .login-overlay.active { display: flex; }
+  .login-box { background: var(--cream); border-radius: 10px; padding: 2.5rem; width: 90%; max-width: 360px; }
+
+  /* AVAIL TOGGLE */
+  .avail-toggle { -webkit-appearance: none; appearance: none; width: 44px; height: 24px; background: #ccc; border-radius: 999px; cursor: pointer; position: relative; transition: background 0.2s; flex-shrink: 0; border: none; outline: none; }
+  .avail-toggle:checked { background: #2d9e5f; }
+  .avail-toggle::after { content: ''; position: absolute; width: 18px; height: 18px; background: #fff; border-radius: 50%; top: 3px; left: 3px; transition: left 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+  .avail-toggle:checked::after { left: 23px; }
 
   @media (max-width: 680px) {
-    .about-inner, .order-layout, .res-layout, .contact-layout { grid-template-columns: 1fr; gap: 2rem; }
+    .about-inner, .order-layout, .res-layout, .contact-layout, .feedback-layout { grid-template-columns: 1fr; gap: 2rem; }
     .nav-links { display: none; }
-    .about-values, .review-add-grid { grid-template-columns: 1fr; }
-    .visual-stats, .admin-stats { grid-template-columns: 1fr 1fr; }
-    .res-field-group { grid-template-columns: 1fr; }
+    .about-values { grid-template-columns: 1fr; }
+    .admin-stats { grid-template-columns: 1fr 1fr; }
     .payment-edit-grid { grid-template-columns: 1fr; }
-    .gallery-grid { grid-template-columns: 1fr 1fr; grid-template-rows: auto; }
-    .gallery-card.tall, .gallery-card.wide { grid-row: auto; grid-column: auto; }
+    .gallery-grid { grid-template-columns: 1fr 1fr; grid-auto-rows: auto; }
+    .gallery-card.tall { grid-row: auto; }
   }
 </style>
 </head>
@@ -281,7 +276,7 @@
 
 <!-- NAV -->
 <nav>
-  <div class="nav-logo">Accaza Coffee <span style="font-size:0.75rem; font-weight:300; opacity:0.7; letter-spacing:0.04em;">(Cafe Sartoga)</span></div>
+  <div class="nav-logo">Accaza Coffee <span style="font-size:0.75rem;font-weight:300;opacity:0.7;">(Cafe Sartoga)</span></div>
   <ul class="nav-links">
     <li><a href="#home">Home</a></li>
     <li><a href="#reel">Reel</a></li>
@@ -289,11 +284,11 @@
     <li><a href="#order">Order</a></li>
     <li><a href="#reserve">Reserve</a></li>
     <li><a href="#reviews">Reviews</a></li>
-    <li><a href="#gallery">Gallery</a></li>
     <li><a href="#feedback">Feedback</a></li>
+    <li><a href="#gallery">Gallery</a></li>
     <li><a href="#contact">Contact</a></li>
-    <li id="adminNavItem" style="display:none;"><a href="#availability" style="color:#c9956a; font-weight:500;">🔄 Availability</a></li>
-    <li id="feedbackNavItem" style="display:none;"><a href="#feedbackAdmin" style="color:#c9956a; font-weight:500;">📩 Comments</a></li>
+    <li id="adminNavItem" style="display:none;"><a href="#availability" style="color:#c9956a;font-weight:500;">🔄 Availability</a></li>
+    <li id="commentsNavItem" style="display:none;"><a href="#commentsAdmin" style="color:#c9956a;font-weight:500;">📩 Comments</a></li>
   </ul>
 </nav>
 
@@ -301,17 +296,17 @@
 <section class="hero" id="home">
   <div class="hero-bg"><img src="https://i.postimg.cc/0jcfLdkR/wall-paper.jpg" alt="Accaza Coffee"/></div>
   <div class="hero-overlay"></div>
-  <div style="position:relative; z-index:2;">
+  <div style="position:relative;z-index:2;">
     <div class="hero-badge">☕ Saratoga Ave, La Mediterranea, Dasmariñas, Cavite</div>
     <h1>Where Every Cup<br/>Tells a <span>Story</span></h1>
-    <p style="font-family:'Playfair Display',serif; font-size:1.05rem; color:rgba(201,149,106,0.9); letter-spacing:0.06em; margin-bottom:0.5rem;">Accaza Coffee &nbsp;·&nbsp; Cafe Sartoga</p>
+    <p style="font-family:'Playfair Display',serif;font-size:1.05rem;color:rgba(201,149,106,0.9);letter-spacing:0.06em;margin-bottom:0.5rem;">Accaza Coffee &nbsp;·&nbsp; Cafe Sartoga</p>
     <p>Handcrafted coffee, warm spaces, and flavors that linger — welcome to Accaza Coffee, your cozy corner of the city.</p>
     <div class="hero-btns">
       <a href="#menu" class="btn-primary">View Our Menu</a>
       <a href="#reserve" class="btn-outline">Reserve a Table</a>
     </div>
   </div>
-  <div class="scroll-cue" style="z-index:2;">
+  <div class="scroll-cue">
     <span>Scroll</span>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
   </div>
@@ -346,21 +341,13 @@
 <!-- REEL -->
 <section class="reel-section" id="reel">
   <div class="reel-inner">
-    <div style="text-align:center; margin-bottom:2.5rem;">
+    <div style="text-align:center;margin-bottom:2.5rem;">
       <p class="section-label" style="color:var(--brown-light);">See It For Yourself</p>
-      <h2 style="font-family:'Playfair Display',serif; font-size:clamp(2rem,4vw,2.8rem); color:var(--cream); margin-bottom:0.75rem;">Feel the Accaza Vibe</h2>
-      <p style="color:rgba(245,239,230,0.65); max-width:480px; margin:0 auto; font-size:0.95rem;">A glimpse into the warm, cozy world of Accaza Coffee.</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cream);margin-bottom:0.75rem;">Feel the Accaza Vibe</h2>
+      <p style="color:rgba(245,239,230,0.65);max-width:480px;margin:0 auto;font-size:0.95rem;">A glimpse into the warm, cozy world of Accaza Coffee.</p>
     </div>
     <div class="reel-embed-wrap">
-      <iframe
-        src="https://www.facebook.com/plugins/video.php?href=https%3A%2F%2Fwww.facebook.com%2Freel%2F716824994597405&show_text=false&width=560&autoplay=false"
-        width="560" height="700"
-        style="border:none; overflow:hidden; border-radius:12px;"
-        scrolling="no"
-        frameborder="0"
-        allowfullscreen="true"
-        allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share">
-      </iframe>
+      <iframe src="https://www.facebook.com/plugins/video.php?href=https%3A%2F%2Fwww.facebook.com%2Freel%2F716824994597405&show_text=false&width=560&autoplay=false" width="560" height="700" style="border:none;overflow:hidden;border-radius:12px;" scrolling="no" frameborder="0" allowfullscreen="true" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe>
     </div>
   </div>
 </section>
@@ -368,12 +355,12 @@
 <!-- MENU -->
 <section class="menu" id="menu">
   <div class="menu-inner">
-    <div style="text-align:center; margin-bottom:3rem;">
+    <div style="text-align:center;margin-bottom:3rem;">
       <p class="section-label" style="color:var(--brown-light);">What We Serve</p>
-      <h2 style="font-family:'Playfair Display',serif; font-size:clamp(2rem,4vw,2.8rem); color:var(--cream); margin-bottom:0.75rem;">Our Menu</h2>
-      <p style="color:rgba(245,239,230,0.65); max-width:480px; margin:0 auto; font-size:0.95rem;">From your morning brew to a full meal — crafted fresh, served with love.</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cream);margin-bottom:0.75rem;">Our Menu</h2>
+      <p style="color:rgba(245,239,230,0.65);max-width:480px;margin:0 auto;font-size:0.95rem;">From your morning brew to a full meal — crafted fresh, served with love.</p>
     </div>
-    <div class="menu-tabs" id="menuTabs">
+    <div class="menu-tabs">
       <button class="tab-btn active" onclick="filterMenu('all')">All</button>
       <button class="tab-btn" onclick="filterMenu('coffee')">☕ Coffee</button>
       <button class="tab-btn" onclick="filterMenu('frappe')">🥤 Frappes</button>
@@ -391,31 +378,31 @@
 <!-- ORDER -->
 <section class="order-section" id="order">
   <div class="order-inner">
-    <div style="text-align:center; margin-bottom:3rem;">
+    <div style="text-align:center;margin-bottom:3rem;">
       <p class="section-label" style="color:var(--brown-light);">Place Your Order</p>
-      <h2 style="font-family:'Playfair Display',serif; font-size:clamp(2rem,4vw,2.8rem); color:var(--brown-dark); margin-bottom:0.75rem;">Order Online</h2>
-      <p style="color:var(--text-mid); max-width:480px; margin:0 auto; font-size:0.95rem;">Pick your items, choose delivery or pick-up, then pay via GCash or bank transfer.</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--brown-dark);margin-bottom:0.75rem;">Order Online</h2>
+      <p style="color:var(--text-mid);max-width:480px;margin:0 auto;font-size:0.95rem;">Pick your items, choose delivery or pick-up, then pay via GCash or bank transfer.</p>
     </div>
     <div class="order-layout">
-      <div class="order-left">
+      <div>
         <h3 class="order-section-title">1. Choose Your Items</h3>
-        <div class="order-tabs" id="orderTabs">
+        <div class="order-tabs">
           <button class="otab active" onclick="filterOrder('all',this)">All</button>
           <button class="otab" onclick="filterOrder('coffee',this)">☕ Coffee</button>
           <button class="otab" onclick="filterOrder('frappe',this)">🥤 Frappes</button>
-          <button class="otab" onclick="filterOrder('nonfrappe',this)">🍵 Non-Coffee Frappes</button>
+          <button class="otab" onclick="filterOrder('nonfrappe',this)">🍵 Non-Coffee</button>
           <button class="otab" onclick="filterOrder('noncaf',this)">🌿 Non-Caffeine</button>
-          <button class="otab" onclick="filterOrder('tea',this)">🍵 Tea & Refreshments</button>
+          <button class="otab" onclick="filterOrder('tea',this)">🍵 Tea</button>
           <button class="otab" onclick="filterOrder('food',this)">🍞 Pastries</button>
           <button class="otab" onclick="filterOrder('meals',this)">🍽️ Meals</button>
           <button class="otab" onclick="filterOrder('desserts',this)">🍰 Desserts</button>
         </div>
         <div class="item-list" id="orderItemList"></div>
       </div>
-      <div class="order-right">
+      <div>
         <div class="cart-box">
           <h3 class="order-section-title">2. Your Order</h3>
-          <div id="cartItems"><p style="color:var(--text-light); font-size:0.85rem;">No items added yet.</p></div>
+          <div id="cartItems"><p style="color:var(--text-light);font-size:0.85rem;">No items added yet.</p></div>
           <div class="cart-total" id="cartTotal" style="display:none;"><span>Total</span><span id="totalAmt">₱0</span></div>
         </div>
         <div class="form-box">
@@ -424,7 +411,7 @@
             <button class="type-btn active" id="btnPickup" onclick="setType('pickup')">🏠 Pick-up</button>
             <button class="type-btn" id="btnDelivery" onclick="setType('delivery')">🛵 Delivery</button>
           </div>
-          <div id="deliveryField" style="display:none; margin-top:1rem;">
+          <div id="deliveryField" style="display:none;margin-top:1rem;">
             <label class="field-label">Delivery Address</label>
             <textarea id="deliveryAddr" rows="2" placeholder="Enter your full delivery address..."></textarea>
           </div>
@@ -440,26 +427,21 @@
             <button class="type-btn active" id="btnGcash" onclick="setPayment('gcash')">📱 GCash</button>
             <button class="type-btn" id="btnBank" onclick="setPayment('bank')">🏦 Bank Transfer</button>
           </div>
-          <div class="payment-info" id="paymentInfo">
+          <div class="payment-info">
             <div id="gcashInfo">
-              <p class="pay-label">GCash Number</p>
-              <p class="pay-value" id="gcashNum">0927 692 4831</p>
-              <p class="pay-label" style="margin-top:0.5rem;">Account Name</p>
-              <p class="pay-value" id="gcashName">MARIA DANIELA M.</p>
+              <p class="pay-label">GCash Number</p><p class="pay-value" id="gcashNum">0927 692 4831</p>
+              <p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="gcashName">MARIA DANIELA M.</p>
             </div>
             <div id="bankInfo" style="display:none;">
-              <p class="pay-label">BDO Account</p>
-              <p class="pay-value" id="bankNum">0068-2050-9919</p>
-              <p class="pay-label" style="margin-top:0.5rem;">UnionBank Account</p>
-              <p class="pay-value" id="bankNum2">1093-3237-9862</p>
-              <p class="pay-label" style="margin-top:0.5rem;">Account Name</p>
-              <p class="pay-value" id="bankAccName">MARIA DANIELA M.</p>
+              <p class="pay-label">BDO Account</p><p class="pay-value" id="bankNum">0068-2050-9919</p>
+              <p class="pay-label" style="margin-top:0.5rem;">UnionBank Account</p><p class="pay-value" id="bankNum2">1093-3237-9862</p>
+              <p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="bankAccName">MARIA DANIELA M.</p>
             </div>
-            <p style="font-size:0.75rem; color:var(--text-light); margin-top:0.75rem; line-height:1.5;">After placing your order, please send your payment to the details above and screenshot your receipt. We'll confirm your order once payment is verified. ✅</p>
+            <p style="font-size:0.75rem;color:var(--text-light);margin-top:0.75rem;line-height:1.5;">After placing your order, send payment and screenshot your receipt. We'll confirm once verified. ✅</p>
           </div>
           <button class="btn-place-order" onclick="placeOrder()">Place Order</button>
-          <div id="orderConfirm" style="display:none; margin-top:1rem; background:#f0faf4; border:1px solid #a8d5b5; border-radius:6px; padding:1rem; text-align:center;">
-            <p style="color:#2d6a4f; font-weight:500; font-size:0.95rem;">🎉 Order placed! We'll confirm once payment is received.</p>
+          <div id="orderConfirm" style="display:none;margin-top:1rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:1rem;text-align:center;">
+            <p style="color:#2d6a4f;font-weight:500;font-size:0.95rem;">🎉 Order placed! We'll confirm once payment is received.</p>
           </div>
         </div>
       </div>
@@ -470,10 +452,10 @@
 <!-- RESERVATIONS -->
 <section class="reservations" id="reserve">
   <div class="res-inner">
-    <div style="text-align:center; margin-bottom:3rem;">
+    <div style="text-align:center;margin-bottom:3rem;">
       <p class="section-label" style="color:var(--brown-light);">Book a Seat</p>
-      <h2 style="font-family:'Playfair Display',serif; font-size:clamp(2rem,4vw,2.8rem); color:var(--cream); margin-bottom:0.75rem;">Reserve a Table</h2>
-      <p style="color:rgba(245,239,230,0.65); max-width:480px; margin:0 auto; font-size:0.95rem;">Secure your spot at Accaza Coffee — we'd love to have you.</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cream);margin-bottom:0.75rem;">Reserve a Table</h2>
+      <p style="color:rgba(245,239,230,0.65);max-width:480px;margin:0 auto;font-size:0.95rem;">Secure your spot at Accaza Coffee — we'd love to have you.</p>
     </div>
     <div class="res-layout">
       <div class="res-form-box">
@@ -483,8 +465,7 @@
         </div>
         <div class="res-field-group">
           <div class="res-field"><label class="res-label">Date</label><input type="date" id="resDate"/></div>
-          <div class="res-field">
-            <label class="res-label">Time</label>
+          <div class="res-field"><label class="res-label">Time</label>
             <select id="resTime">
               <option value="">Select a time</option>
               <option>3:00 PM</option><option>3:30 PM</option><option>4:00 PM</option><option>4:30 PM</option>
@@ -496,19 +477,17 @@
           </div>
         </div>
         <div class="res-field-group">
-          <div class="res-field">
-            <label class="res-label">Number of Guests</label>
+          <div class="res-field"><label class="res-label">Number of Guests</label>
             <select id="resGuests"><option>1 guest</option><option>2 guests</option><option>3 guests</option><option>4 guests</option><option>5 guests</option><option>6 guests</option><option>7 guests</option><option>8+ guests</option></select>
           </div>
-          <div class="res-field">
-            <label class="res-label">Occasion (optional)</label>
+          <div class="res-field"><label class="res-label">Occasion (optional)</label>
             <select id="resOccasion"><option value="">None / Regular visit</option><option>Birthday</option><option>Anniversary</option><option>Business Meeting</option><option>Date</option><option>Family Gathering</option><option>Other</option></select>
           </div>
         </div>
         <div class="res-field" style="margin-top:0.25rem;"><label class="res-label">Special Requests (optional)</label><textarea id="resNotes" rows="2" placeholder="e.g. window seat, high chair needed, allergies..."></textarea></div>
         <button class="btn-reserve" onclick="submitReservation()">Confirm Reservation</button>
-        <div id="resConfirm" style="display:none; margin-top:1rem; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:1rem; text-align:center;">
-          <p style="color:var(--cream); font-size:0.95rem;">🎉 Reservation received! We'll confirm via your phone number shortly.</p>
+        <div id="resConfirm" style="display:none;margin-top:1rem;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:1rem;text-align:center;">
+          <p style="color:var(--cream);font-size:0.95rem;">🎉 Reservation received! We'll confirm via your phone number shortly.</p>
         </div>
       </div>
       <div class="res-info">
@@ -523,66 +502,84 @@
 <!-- REVIEWS -->
 <section class="reviews-section" id="reviews">
   <div class="reviews-inner">
-    <div style="text-align:center; margin-bottom:3rem;">
+    <div style="text-align:center;margin-bottom:3rem;">
       <p class="section-label" style="color:var(--brown-light);">What People Say</p>
-      <h2 style="font-family:'Playfair Display',serif; font-size:clamp(2rem,4vw,2.8rem); color:var(--brown-dark); margin-bottom:0.75rem;">Customer Reviews</h2>
-      <p style="color:var(--text-mid); max-width:480px; margin:0 auto; font-size:0.95rem;">Real experiences from our valued guests.</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--brown-dark);margin-bottom:0.75rem;">Customer Reviews</h2>
+      <p style="color:var(--text-mid);max-width:480px;margin:0 auto;font-size:0.95rem;">Real experiences from our valued guests.</p>
     </div>
-    <div class="reviews-grid" id="reviewsGrid">
-
-      <!-- Review 1 -->
+    <div class="reviews-grid">
       <div class="review-card">
         <div class="review-stars">⭐⭐⭐⭐⭐</div>
         <p class="review-text">"A Hidden Gem Right Along the Road to SM Dasmariñas! Conveniently located right along the roadside near SM Dasmariñas, this place is incredibly easy to find. Surprisingly spacious, calm, and serene inside. The coffee is absolutely outstanding — each cup carries a distinct, well-crafted flavor. Whether you're a student or a professional, Accaza Coffee House is exactly where you need to be. ☕✨ Highly, highly recommended."</p>
-        <div class="review-author">
-          <div class="review-avatar">M</div>
-          <div><div class="review-name">Molina Page</div><div class="review-date">June 2026</div></div>
-        </div>
+        <div class="review-author"><div class="review-avatar">M</div><div><div class="review-name">Molina Page</div><div class="review-date">June 2026</div></div></div>
       </div>
-
-      <!-- Review 2 -->
       <div class="review-card">
         <div class="review-stars">⭐⭐⭐⭐⭐</div>
         <p class="review-text">"Nasa may highway ang coffee shop, ngunit nakakubli ang ganda nitong hindi mo mamamalas kung hindi sasadyain. Mukha siyang maliit sa labas, subalit malaki ang espasyo pagpasok. Gusto ko mang ipagdamot ang lugar — tingin ko'y kasalanan ito sa mga mahilig sa kape kung hindi ito maibabahagi sa iba. ☕ Cosy atmosphere · Good for working · Relaxing atmosphere · Best coffee"</p>
-        <div class="review-author">
-          <div class="review-avatar">C</div>
-          <div><div class="review-name">Camilla Andrea</div><div class="review-date">April 2026</div></div>
-        </div>
+        <div class="review-author"><div class="review-avatar">C</div><div><div class="review-name">Camilla Andrea</div><div class="review-date">April 2026</div></div></div>
       </div>
-
-      <!-- Review 3 -->
       <div class="review-card">
         <div class="review-stars">⭐⭐⭐⭐⭐</div>
         <p class="review-text">"10/10 would recommend!! we will surely come back 🤌"</p>
-        <div class="review-author">
-          <div class="review-avatar">C</div>
-          <div><div class="review-name">Cess Borja</div><div class="review-date">July 2025</div></div>
-        </div>
+        <div class="review-author"><div class="review-avatar">C</div><div><div class="review-name">Cess Borja</div><div class="review-date">July 2025</div></div></div>
       </div>
-
     </div>
   </div>
 </section>
 
-<!-- AVAILABILITY SECTION (Admin Only) -->
-<section id="availability" style="display:none; background:var(--cream); padding:6rem 2rem;">
-  <div style="max-width:800px; margin:0 auto;">
-    <div style="text-align:center; margin-bottom:2.5rem;">
-      <p style="font-size:0.75rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--brown-light);margin-bottom:0.75rem;">Staff Only</p>
-      <h2 style="font-family:'Playfair Display',serif;font-size:2.5rem;color:var(--brown-dark);margin-bottom:0.5rem;">Menu Availability</h2>
-      <p style="color:var(--text-mid);font-size:0.95rem;">Toggle items on or off. Customers cannot click items marked as Not Available.</p>
+<!-- FEEDBACK -->
+<section class="feedback-section" id="feedback">
+  <div class="feedback-inner">
+    <div style="text-align:center;margin-bottom:3rem;">
+      <p class="section-label" style="color:var(--brown-light);">We'd Love to Hear From You</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cream);margin-bottom:0.75rem;">Feedback</h2>
+      <p style="color:rgba(245,239,230,0.65);max-width:520px;margin:0 auto;font-size:0.95rem;line-height:1.7;">We are committed to improving our service, and we would also be glad to hear if you enjoyed your experience with us. Whether it's a concern, a suggestion, or simply kind words — we would love to hear your feedback. Every message matters to us. 💛</p>
     </div>
-    <div id="availSection"></div>
+    <div class="feedback-layout">
+      <div class="feedback-form-box">
+        <div class="res-field-group">
+          <div class="res-field"><label class="res-label">Your Name</label><input type="text" id="fbName" placeholder="e.g. Maria Santos"/></div>
+          <div class="res-field"><label class="res-label">Phone / Email (optional)</label><input type="text" id="fbContact" placeholder="So we can follow up"/></div>
+        </div>
+        <div class="res-field" style="margin-bottom:1rem;">
+          <label class="res-label">Type of Feedback</label>
+          <select id="fbType">
+            <option value="Complaint">😞 Complaint</option>
+            <option value="Suggestion">💡 Suggestion</option>
+            <option value="Compliment">❤️ Compliment</option>
+            <option value="Other">💬 Other</option>
+          </select>
+        </div>
+        <div class="res-field">
+          <label class="res-label">Your Message <span style="font-size:0.68rem;opacity:0.6;">(max 800 characters)</span></label>
+          <textarea id="fbMessage" rows="5" maxlength="800" placeholder="Tell us what's on your mind — we read every message..." oninput="updateFbCounter()"></textarea>
+          <div style="display:flex;justify-content:flex-end;margin-top:0.3rem;">
+            <span id="fbCounter" style="font-size:0.72rem;color:rgba(245,239,230,0.5);">0 / 800</span>
+          </div>
+        </div>
+        <button class="btn-reserve" style="margin-top:1rem;" onclick="submitFeedback()">Send Feedback</button>
+        <div id="fbConfirm" style="display:none;margin-top:1rem;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:1.25rem;text-align:center;">
+          <p style="color:#fff;font-size:1rem;margin-bottom:0.5rem;line-height:1.6;">💛 Thank you! Your feedback is being sent via WhatsApp. If it didn't open automatically, message us at <strong>0927 692 4831</strong>.</p>
+          <p id="fbCountdown" style="color:rgba(255,255,255,0.7);font-size:0.8rem;margin-bottom:0.75rem;">📸 This message will disappear in <strong id="fbSeconds">20</strong> seconds — take a screenshot or note our number!</p>
+          <button onclick="clearInterval(window.fbTimer);document.getElementById('fbConfirm').style.display='none'" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3);border-radius:6px;padding:0.4rem 1.2rem;color:#fff;font-size:0.82rem;cursor:pointer;font-family:'Inter',sans-serif;">OK, Got it ✓</button>
+        </div>
+      </div>
+      <div class="feedback-info">
+        <div class="res-info-card"><div style="font-size:2rem;margin-bottom:0.75rem;">😞</div><h4>Complaints</h4><p>Had a bad experience? Tell us what went wrong so we can make it right.</p></div>
+        <div class="res-info-card"><div style="font-size:2rem;margin-bottom:0.75rem;">💡</div><h4>Suggestions</h4><p>Have an idea to improve our menu, service, or space? We're all ears!</p></div>
+        <div class="res-info-card"><div style="font-size:2rem;margin-bottom:0.75rem;">❤️</div><h4>Compliments</h4><p>Loved your experience? Let us know — it means the world to our team!</p></div>
+      </div>
+    </div>
   </div>
 </section>
 
 <!-- GALLERY -->
 <section class="gallery-section" id="gallery">
   <div class="gallery-inner">
-    <div style="text-align:center; margin-bottom:3rem;">
+    <div style="text-align:center;margin-bottom:3rem;">
       <p class="section-label" style="color:var(--brown-light);">Our Space</p>
-      <h2 style="font-family:'Playfair Display',serif; font-size:clamp(2rem,4vw,2.8rem); color:var(--brown-dark); margin-bottom:0.75rem;">A Peek Inside</h2>
-      <p style="color:var(--text-mid); max-width:480px; margin:0 auto; font-size:0.95rem;">Warm corners, good coffee, and moments worth remembering.</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--brown-dark);margin-bottom:0.75rem;">A Peek Inside</h2>
+      <p style="color:var(--text-mid);max-width:480px;margin:0 auto;font-size:0.95rem;">Warm corners, good coffee, and moments worth remembering.</p>
     </div>
     <div class="gallery-grid">
       <div class="gallery-card tall"><img src="https://i.postimg.cc/g0qrJsnX/6.jpg" alt="Accaza Coffee"/></div>
@@ -619,71 +616,13 @@
   </div>
 </section>
 
-<!-- FEEDBACK -->
-<section class="feedback-section" id="feedback">
-  <div class="feedback-inner">
-    <div style="text-align:center; margin-bottom:3rem;">
-      <p class="section-label" style="color:var(--brown-light);">We'd Love to Hear From You</p>
-      <h2 style="font-family:'Playfair Display',serif; font-size:clamp(2rem,4vw,2.8rem); color:var(--cream); margin-bottom:0.75rem;">Feedback</h2>
-      <p style="color:rgba(245,239,230,0.65); max-width:520px; margin:0 auto; font-size:0.95rem; line-height:1.7;">We are committed to improving our service, and we would also be glad to hear if you enjoyed your experience with us. Whether it's a concern, a suggestion, or simply kind words — we would love to hear your feedback. Every message matters to us. 💛</p>
-    </div>
-    <div class="feedback-layout">
-      <div class="feedback-form-box">
-        <div class="res-field-group">
-          <div class="res-field">
-            <label class="res-label">Your Name</label>
-            <input type="text" id="fbName" placeholder="e.g. Maria Santos"/>
-          </div>
-          <div class="res-field">
-            <label class="res-label">Phone / Email (optional)</label>
-            <input type="text" id="fbContact" placeholder="So we can follow up"/>
-          </div>
-        </div>
-        <div class="res-field" style="margin-bottom:1rem;">
-          <label class="res-label">Type of Feedback</label>
-          <select id="fbType">
-            <option value="Complaint">😞 Complaint</option>
-            <option value="Suggestion">💡 Suggestion</option>
-            <option value="Compliment">❤️ Compliment</option>
-            <option value="Other">💬 Other</option>
-          </select>
-        </div>
-
-        <button class="btn-reserve" style="margin-top:1rem;" onclick="submitFeedback()">Send Feedback</button>
-        <div id="fbConfirm" style="display:none; margin-top:1rem; background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.3); border-radius:8px; padding:1.25rem; text-align:center;">
-          <p style="color:#fff; font-size:1rem; margin-bottom:0.5rem; line-height:1.6;">💛 Thank you! Your feedback is being sent via WhatsApp. If it didn't open automatically, message us at <strong>0927 692 4831</strong>.</p>
-          <p id="fbCountdown" style="color:rgba(255,255,255,0.7); font-size:0.8rem; margin-bottom:0.75rem;">📸 This message will disappear in <strong id="fbSeconds">20</strong> seconds — take a screenshot or note our number!</p>
-          <button onclick="clearInterval(window.fbTimer); document.getElementById('fbConfirm').style.display='none'" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3);border-radius:6px;padding:0.4rem 1.2rem;color:#fff;font-size:0.82rem;cursor:pointer;font-family:'Inter',sans-serif;">OK, Got it ✓</button>
-        </div>
-      </div>
-      <div class="feedback-info">
-        <div class="res-info-card">
-          <div style="font-size:2rem; margin-bottom:0.75rem;">😞</div>
-          <h4>Complaints</h4>
-          <p>Had a bad experience? Tell us what went wrong so we can make it right.</p>
-        </div>
-        <div class="res-info-card">
-          <div style="font-size:2rem; margin-bottom:0.75rem;">💡</div>
-          <h4>Suggestions</h4>
-          <p>Have an idea to improve our menu, service, or space? We're all ears!</p>
-        </div>
-        <div class="res-info-card">
-          <div style="font-size:2rem; margin-bottom:0.75rem;">❤️</div>
-          <h4>Compliments</h4>
-          <p>Loved your experience? Let us know — it means the world to our team!</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
 <!-- CONTACT -->
 <section class="contact-section" id="contact">
   <div class="contact-inner">
-    <div style="text-align:center; margin-bottom:3rem;">
+    <div style="text-align:center;margin-bottom:3rem;">
       <p class="section-label" style="color:var(--brown-light);">Get in Touch</p>
-      <h2 style="font-family:'Playfair Display',serif; font-size:clamp(2rem,4vw,2.8rem); color:var(--cream); margin-bottom:0.75rem;">Contact Us</h2>
-      <p style="color:rgba(245,239,230,0.65); max-width:480px; margin:0 auto; font-size:0.95rem;">Have a question? We'd love to hear from you.</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cream);margin-bottom:0.75rem;">Contact Us</h2>
+      <p style="color:rgba(245,239,230,0.65);max-width:480px;margin:0 auto;font-size:0.95rem;">Have a question? We'd love to hear from you.</p>
     </div>
     <div class="contact-layout">
       <div class="contact-form-box">
@@ -694,15 +633,15 @@
         <div class="res-field" style="margin-bottom:1rem;"><label class="res-label" style="color:rgba(245,239,230,0.55);">Subject</label><input type="text" id="conSubject" placeholder="e.g. catering inquiry, feedback..."/></div>
         <div class="res-field"><label class="res-label" style="color:rgba(245,239,230,0.55);">Message</label><textarea id="conMessage" rows="4" placeholder="Write your message here..."></textarea></div>
         <button class="btn-reserve" style="margin-top:1rem;" onclick="submitContact()">Send Message</button>
-        <div id="conConfirm" style="display:none; margin-top:1rem; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:1rem; text-align:center;">
-          <p style="color:var(--cream); font-size:0.95rem;">✅ Message sent! We'll get back to you shortly.</p>
+        <div id="conConfirm" style="display:none;margin-top:1rem;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:1rem;text-align:center;">
+          <p style="color:var(--cream);font-size:0.95rem;">✅ Message sent! We'll get back to you shortly.</p>
         </div>
       </div>
       <div class="contact-info">
         <div class="contact-info-item"><div class="contact-icon">📍</div><div><h4>Address</h4><p>Saratoga Avenue, La Mediterranea Subdivision,<br/>Governor's Drive, Dasmariñas, Cavite, Philippines</p></div></div>
-        <div class="contact-info-item"><div class="contact-icon">🕐</div><div><h4>Opening Hours</h4><p>Monday – Sunday<br/><span style="color:#c9956a; font-weight:500;">3:00 PM – 12:00 Midnight</span></p></div></div>
+        <div class="contact-info-item"><div class="contact-icon">🕐</div><div><h4>Opening Hours</h4><p>Monday – Sunday<br/><span style="color:#c9956a;font-weight:500;">3:00 PM – 12:00 Midnight</span></p></div></div>
         <div class="contact-info-item"><div class="contact-icon">📱</div><div><h4>GCash / Viber / WhatsApp</h4><p>0927 692 4831</p></div></div>
-        <div class="contact-info-item"><div class="contact-icon">💳</div><div><h4>Online Payment</h4><p>GCash · BDO · UnionBank<br/><span style="color:rgba(245,239,230,0.5); font-size:0.8rem;">All under MARIA DANIELA M.</span></p></div></div>
+        <div class="contact-info-item"><div class="contact-icon">💳</div><div><h4>Online Payment</h4><p>GCash · BDO · UnionBank<br/><span style="color:rgba(245,239,230,0.5);font-size:0.8rem;">All under MARIA DANIELA M.</span></p></div></div>
       </div>
     </div>
   </div>
@@ -717,32 +656,137 @@
       <a href="#menu">Menu</a><a href="#order">Order</a><a href="#reserve">Reserve</a>
       <a href="#reviews">Reviews</a><a href="#feedback">Feedback</a><a href="#gallery">Gallery</a><a href="#contact">Contact</a>
     </div>
-    <p class="footer-copy">© 2026 Accaza Coffee (Cafe Sartoga). All rights reserved. &nbsp;·&nbsp; <a href="#" onclick="openAdmin()" style="color:rgba(245,239,230,0.2); text-decoration:none; font-size:0.7rem;">Admin</a></p>
+    <p class="footer-copy">© 2026 Accaza Coffee (Cafe Sartoga). All rights reserved. &nbsp;·&nbsp; <a href="#" onclick="openAdmin()" style="color:rgba(245,239,230,0.2);text-decoration:none;font-size:0.7rem;">Admin</a></p>
   </div>
 </footer>
 
-<!-- DELETE ORDER POPUP -->
-<div id="deleteOrderPopup" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:999; align-items:center; justify-content:center;">
-  <div style="background:#fff; border-radius:12px; padding:2rem; max-width:380px; width:90%; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.2);">
-    <div style="font-size:2.5rem; margin-bottom:0.75rem;">🗑️</div>
-    <h3 style="font-family:'Playfair Display',serif; color:var(--brown-dark); margin-bottom:0.5rem;">Delete Order?</h3>
-    <p style="font-size:0.85rem; color:var(--text-mid); margin-bottom:0.35rem;">You are about to delete:</p>
-    <p style="font-size:0.82rem; color:var(--brown-dark); font-weight:500; margin-bottom:1.25rem; background:var(--cream); padding:0.6rem; border-radius:6px;" id="deleteOrderName"></p>
-    <p style="font-size:0.8rem; color:var(--text-light); margin-bottom:1.5rem;">This action cannot be undone.</p>
-    <div style="display:flex; gap:0.75rem; justify-content:center;">
-      <button onclick="document.getElementById('deleteOrderPopup').style.display='none'" style="flex:1; background:var(--cream); border:1px solid var(--cream-dark); border-radius:6px; padding:0.7rem; font-size:0.88rem; cursor:pointer; font-family:'Inter',sans-serif; color:var(--text-mid);">Cancel</button>
-      <button id="confirmDeleteBtn" style="flex:1; background:#c0392b; color:#fff; border:none; border-radius:6px; padding:0.7rem; font-size:0.88rem; cursor:pointer; font-family:'Inter',sans-serif;">Yes, Delete</button>
+<!-- AVAILABILITY SECTION (Admin Only) -->
+<section id="availability" style="display:none;background:var(--cream);padding:6rem 2rem;">
+  <div style="max-width:800px;margin:0 auto;">
+    <div style="text-align:center;margin-bottom:2.5rem;">
+      <p class="section-label">Staff Only</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:2.5rem;color:var(--brown-dark);margin-bottom:0.5rem;">Menu Availability</h2>
+      <p style="color:var(--text-mid);font-size:0.95rem;">Toggle items on or off. Customers cannot click items marked as Not Available.</p>
     </div>
+    <div id="availSection"></div>
+  </div>
+</section>
+
+<!-- COMMENTS SECTION (Admin Only) -->
+<section id="commentsAdmin" style="display:none;background:var(--cream-dark);padding:6rem 2rem;">
+  <div style="max-width:800px;margin:0 auto;">
+    <div style="text-align:center;margin-bottom:2.5rem;">
+      <p class="section-label">Staff Only</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:2.5rem;color:var(--brown-dark);margin-bottom:0.5rem;">Comments</h2>
+      <p style="color:var(--text-mid);font-size:0.95rem;">All feedback submitted by customers, grouped by type.</p>
+    </div>
+    <div style="margin-bottom:2rem;">
+      <h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#c0392b;margin-bottom:0.75rem;padding-bottom:0.3rem;border-bottom:2px solid #f5c6c6;">😞 Complaints</h3>
+      <div id="fbListComplaint"><p style="color:var(--text-light);font-size:0.85rem;padding:1rem;background:#fff;border-radius:8px;text-align:center;">No complaints yet. 🎉</p></div>
+    </div>
+    <div style="margin-bottom:2rem;">
+      <h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#f39c12;margin-bottom:0.75rem;padding-bottom:0.3rem;border-bottom:2px solid #fde8b0;">💡 Suggestions</h3>
+      <div id="fbListSuggestion"><p style="color:var(--text-light);font-size:0.85rem;padding:1rem;background:#fff;border-radius:8px;text-align:center;">No suggestions yet.</p></div>
+    </div>
+    <div style="margin-bottom:2rem;">
+      <h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#2d9e5f;margin-bottom:0.75rem;padding-bottom:0.3rem;border-bottom:2px solid #a8d5b5;">❤️ Compliments</h3>
+      <div id="fbListCompliment"><p style="color:var(--text-light);font-size:0.85rem;padding:1rem;background:#fff;border-radius:8px;text-align:center;">No compliments yet.</p></div>
+    </div>
+    <div style="margin-bottom:2rem;">
+      <h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#888;margin-bottom:0.75rem;padding-bottom:0.3rem;border-bottom:2px solid #ddd;">💬 Other</h3>
+      <div id="fbListOther"><p style="color:var(--text-light);font-size:0.85rem;padding:1rem;background:#fff;border-radius:8px;text-align:center;">No other feedback yet.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ADMIN DASHBOARD -->
+<section id="admin" style="display:none;">
+  <div class="admin-wrap">
+    <div class="admin-header">
+      <div><div class="admin-logo">Accaza Coffee <span>Admin</span></div><p style="font-size:0.78rem;color:var(--text-light);">Manage orders, reservations & payment details</p></div>
+      <button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button>
+    </div>
+    <div class="admin-stats">
+      <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Total Orders</span></div>
+      <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
+      <div class="admin-stat-card"><span class="stat-num" id="statReservations">0</span><span class="stat-lbl">Reservations</span></div>
+      <div class="admin-stat-card"><span class="stat-num" id="statRevenue">₱0</span><span class="stat-lbl">Est. Revenue</span></div>
+    </div>
+    <div class="admin-tabs">
+      <button class="admin-tab active" onclick="switchTab('orders',this)">📋 Orders</button>
+      <button class="admin-tab" onclick="switchTab('reservations',this)">📅 Reservations</button>
+      <button class="admin-tab" onclick="switchTab('reviews',this)">⭐ Reviews</button>
+      <button class="admin-tab" onclick="switchTab('payment',this)">💳 Payment Details</button>
+    </div>
+    <div id="tab-orders" class="admin-tab-content"><div id="ordersList"></div></div>
+    <div id="tab-reservations" class="admin-tab-content" style="display:none;"><div id="resList"></div></div>
+    <div id="tab-reviews" class="admin-tab-content" style="display:none;">
+      <h3 style="font-family:'Playfair Display',serif;font-size:1.05rem;color:var(--brown-dark);margin-bottom:1rem;">Add a New Review</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:0.75rem;">
+        <div><label class="field-label">Customer Name</label><input type="text" id="newReviewName" placeholder="e.g. Maria Santos"/></div>
+        <div><label class="field-label">Rating</label>
+          <select id="newReviewStars">
+            <option value="5">⭐⭐⭐⭐⭐ — 5 Stars</option>
+            <option value="4">⭐⭐⭐⭐ — 4 Stars</option>
+            <option value="3">⭐⭐⭐ — 3 Stars</option>
+            <option value="2">⭐⭐ — 2 Stars</option>
+            <option value="1">⭐ — 1 Star</option>
+          </select>
+        </div>
+      </div>
+      <label class="field-label">Review Message</label>
+      <textarea id="newReviewText" rows="3" placeholder="e.g. Amazing coffee and cozy atmosphere!..." style="margin-bottom:0.75rem;"></textarea>
+      <button class="btn-save" style="max-width:200px;" onclick="addReview()">+ Add Review</button>
+      <div id="reviewAddConfirm" style="display:none;margin-top:0.75rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.6rem 1rem;"><p style="color:#2d6a4f;font-size:0.85rem;">✅ Review added!</p></div>
+      <h3 style="font-family:'Playfair Display',serif;font-size:1.05rem;color:var(--brown-dark);margin:1.5rem 0 1rem;">All Reviews (<span id="reviewCount">0</span>)</h3>
+      <div id="adminReviewsList"></div>
+    </div>
+    <div id="tab-payment" class="admin-tab-content" style="display:none;">
+      <div class="payment-edit-grid">
+        <div class="payment-edit-card"><h4>📱 GCash</h4><label class="field-label">GCash Number</label><input type="text" id="editGcashNum" value="0927 692 4831"/><label class="field-label" style="margin-top:0.75rem;">Account Name</label><input type="text" id="editGcashName" value="MARIA DANIELA M."/><button class="btn-save" onclick="savePayment()">Save GCash</button></div>
+        <div class="payment-edit-card"><h4>🏦 BDO</h4><label class="field-label">Account Number</label><input type="text" id="editBdoNum" value="0068-2050-9919"/><label class="field-label" style="margin-top:0.75rem;">Account Name</label><input type="text" id="editBdoName" value="MARIA DANIELA M."/><button class="btn-save" onclick="savePayment()">Save BDO</button></div>
+        <div class="payment-edit-card"><h4>🏦 UnionBank</h4><label class="field-label">Account Number</label><input type="text" id="editUbNum" value="1093-3237-9862"/><label class="field-label" style="margin-top:0.75rem;">Account Name</label><input type="text" id="editUbName" value="MARIA DANIELA M."/><button class="btn-save" onclick="savePayment()">Save UnionBank</button></div>
+      </div>
+      <div id="saveConfirm" style="display:none;margin-top:1rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.75rem 1rem;"><p style="color:#2d6a4f;font-size:0.88rem;">✅ Payment details updated!</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- LOGIN OVERLAY -->
+<div class="login-overlay" id="adminLogin">
+  <div class="login-box">
+    <div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:var(--brown-dark);margin-bottom:0.25rem;text-align:center;">Accaza Coffee</div>
+    <p style="font-size:0.8rem;color:var(--text-light);margin-bottom:1.5rem;text-align:center;">Admin Access Only 🔐</p>
+    <label class="field-label">Password</label>
+    <input type="password" id="adminPass" placeholder="Enter admin password" style="margin-bottom:1rem;" onkeydown="if(event.key==='Enter') checkLogin()"/>
+    <button class="btn-primary" style="width:100%;text-align:center;" onclick="checkLogin()">Log In</button>
+    <p id="loginErr" style="display:none;color:#c0392b;font-size:0.8rem;margin-top:0.75rem;text-align:center;">❌ Incorrect password. Try again.</p>
+    <button onclick="document.getElementById('adminLogin').classList.remove('active')" style="margin-top:1rem;background:none;border:none;font-size:0.78rem;color:var(--text-light);cursor:pointer;width:100%;text-align:center;">← Back to website</button>
   </div>
 </div>
 
 <!-- UNAVAILABLE POPUP -->
-<div id="unavailPopup" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:999; align-items:center; justify-content:center;">
-  <div style="background:#fff; border-radius:12px; padding:2rem; max-width:340px; width:90%; text-align:center; box-shadow:0 8px 32px rgba(0,0,0,0.2);">
-    <div style="font-size:2.5rem; margin-bottom:0.75rem;">😔</div>
-    <h3 style="font-family:'Playfair Display',serif; color:var(--brown-dark); margin-bottom:0.5rem;">Item Not Available</h3>
-    <p style="font-size:0.88rem; color:var(--text-mid); margin-bottom:1.25rem;"><strong id="unavailItemName"></strong> is currently not available. Please choose another item from our menu.</p>
-    <button onclick="document.getElementById('unavailPopup').style.display='none'" style="background:var(--brown-dark); color:#fff; border:none; border-radius:6px; padding:0.7rem 2rem; font-size:0.88rem; cursor:pointer; font-family:'Inter',sans-serif;">Got it</button>
+<div id="unavailPopup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:998;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:12px;padding:2rem;max-width:340px;width:90%;text-align:center;">
+    <div style="font-size:2.5rem;margin-bottom:0.75rem;">😔</div>
+    <h3 style="font-family:'Playfair Display',serif;color:var(--brown-dark);margin-bottom:0.5rem;">Item Not Available</h3>
+    <p style="font-size:0.88rem;color:var(--text-mid);margin-bottom:1.25rem;"><strong id="unavailItemName"></strong> is currently not available. Please choose another item.</p>
+    <button onclick="document.getElementById('unavailPopup').style.display='none'" style="background:var(--brown-dark);color:#fff;border:none;border-radius:6px;padding:0.7rem 2rem;font-size:0.88rem;cursor:pointer;font-family:'Inter',sans-serif;">Got it</button>
+  </div>
+</div>
+
+<!-- DELETE POPUP -->
+<div id="deletePopup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:998;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:12px;padding:2rem;max-width:380px;width:90%;text-align:center;">
+    <div style="font-size:2.5rem;margin-bottom:0.75rem;">🗑️</div>
+    <h3 style="font-family:'Playfair Display',serif;color:var(--brown-dark);margin-bottom:0.5rem;">Delete?</h3>
+    <p style="font-size:0.85rem;color:var(--text-mid);margin-bottom:0.35rem;">You are about to delete:</p>
+    <p style="font-size:0.82rem;color:var(--brown-dark);font-weight:500;margin-bottom:1.25rem;background:var(--cream);padding:0.6rem;border-radius:6px;" id="deletePopupName"></p>
+    <p style="font-size:0.8rem;color:var(--text-light);margin-bottom:1.5rem;">This action cannot be undone.</p>
+    <div style="display:flex;gap:0.75rem;justify-content:center;">
+      <button onclick="document.getElementById('deletePopup').style.display='none'" style="flex:1;background:var(--cream);border:1px solid var(--cream-dark);border-radius:6px;padding:0.7rem;font-size:0.88rem;cursor:pointer;font-family:'Inter',sans-serif;color:var(--text-mid);">Cancel</button>
+      <button id="deletePopupBtn" style="flex:1;background:#c0392b;color:#fff;border:none;border-radius:6px;padding:0.7rem;font-size:0.88rem;cursor:pointer;font-family:'Inter',sans-serif;">Yes, Delete</button>
+    </div>
   </div>
 </div>
 
@@ -751,20 +795,16 @@
   <button class="chat-toggle" onclick="toggleChat()">☕</button>
   <div class="chat-notif" id="chatNotif"></div>
 </div>
-
 <div class="chat-window" id="chatWindow">
   <div class="chat-header">
     <div class="chat-header-info">
       <div class="chat-avatar">🦁</div>
-      <div>
-        <h4>Accaza Coffee</h4>
-        <p>🟢 We typically reply instantly</p>
-      </div>
+      <div><h4>Accaza Coffee</h4><p>🟢 We typically reply instantly</p></div>
     </div>
     <button class="chat-close" onclick="toggleChat()">✕</button>
   </div>
   <div class="chat-messages" id="chatMessages"></div>
-  <div class="chat-quick" id="chatQuick">
+  <div class="chat-quick">
     <button class="chat-quick-btn" onclick="quickMsg('Opening hours?')">🕐 Hours</button>
     <button class="chat-quick-btn" onclick="quickMsg('Where are you located?')">📍 Location</button>
     <button class="chat-quick-btn" onclick="quickMsg('Do you accept GCash?')">💳 Payment</button>
@@ -778,275 +818,110 @@
   </div>
 </div>
 
-<!-- ADMIN DASHBOARD -->
-<section id="admin" style="display:none;">
-  <div class="admin-wrap">
-    <div class="admin-header">
-      <div><div class="admin-logo">Accaza Coffee <span>Admin</span></div><p style="font-size:0.78rem; color:var(--text-light);">Manage orders, reservations & payment details</p></div>
-      <button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button>
-    </div>
-    <div class="admin-stats">
-      <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Total Orders</span></div>
-      <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
-      <div class="admin-stat-card"><span class="stat-num" id="statReservations">0</span><span class="stat-lbl">Reservations</span></div>
-      <div class="admin-stat-card"><span class="stat-num" id="statRevenue">₱0</span><span class="stat-lbl">Est. Revenue</span></div>
-    </div>
-    <div class="admin-tabs">
-      <button class="admin-tab active" onclick="switchTab('orders',this)">📋 Orders</button>
-      <button class="admin-tab" onclick="switchTab('reservations',this)">📅 Reservations</button>
-      <button class="admin-tab" onclick="switchTab('reviews',this)">⭐ Reviews</button>
-
-      <button class="admin-tab" onclick="switchTab('payment',this)">💳 Payment Details</button>
-    </div>
-    <div id="tab-orders" class="admin-tab-content"><div id="ordersList"></div></div>
-    <div id="tab-reservations" class="admin-tab-content" style="display:none;"><div id="resList"></div></div>
-    <div id="tab-reviews" class="admin-tab-content" style="display:none;">
-      <h3 class="order-section-title" style="margin-bottom:1rem;">Add a New Review</h3>
-      <div class="review-add-grid">
-        <div class="res-field"><label class="res-label" style="color:var(--text-light);">Customer Name</label><input type="text" id="newReviewName" placeholder="e.g. Maria Santos"/></div>
-        <div class="res-field"><label class="res-label" style="color:var(--text-light);">Rating</label>
-          <select id="newReviewStars">
-            <option value="5">⭐⭐⭐⭐⭐ — 5 Stars</option>
-            <option value="4">⭐⭐⭐⭐ — 4 Stars</option>
-            <option value="3">⭐⭐⭐ — 3 Stars</option>
-            <option value="2">⭐⭐ — 2 Stars</option>
-            <option value="1">⭐ — 1 Star</option>
-          </select>
-        </div>
-      </div>
-      <div class="res-field" style="margin-top:0.75rem;"><label class="res-label" style="color:var(--text-light);">Review Message</label><textarea id="newReviewText" rows="3" placeholder="e.g. Amazing coffee and cozy atmosphere!..."></textarea></div>
-      <button class="btn-save" style="margin-top:1rem; max-width:200px;" onclick="addReview()">+ Add Review</button>
-      <div id="reviewAddConfirm" style="display:none; margin-top:0.75rem; background:#f0faf4; border:1px solid #a8d5b5; border-radius:6px; padding:0.6rem 1rem;"><p style="color:#2d6a4f; font-size:0.85rem;">✅ Review added successfully!</p></div>
-      <h3 class="order-section-title" style="margin:1.75rem 0 1rem;">All Reviews (<span id="reviewCount">0</span>)</h3>
-      <div id="adminReviewsList"></div>
-    </div>
-    <div id="tab-payment" class="admin-tab-content" style="display:none;">
-      <div class="payment-edit-grid">
-        <div class="payment-edit-card"><h4>📱 GCash</h4><label class="res-label">GCash Number</label><input type="text" id="editGcashNum" value="0927 692 4831"/><label class="res-label" style="margin-top:0.75rem;">Account Name</label><input type="text" id="editGcashName" value="MARIA DANIELA M."/><button class="btn-save" onclick="savePayment()">Save GCash Details</button></div>
-        <div class="payment-edit-card"><h4>🏦 BDO</h4><label class="res-label">Account Number</label><input type="text" id="editBdoNum" value="0068-2050-9919"/><label class="res-label" style="margin-top:0.75rem;">Account Name</label><input type="text" id="editBdoName" value="MARIA DANIELA M."/><button class="btn-save" onclick="savePayment()">Save BDO Details</button></div>
-        <div class="payment-edit-card"><h4>🏦 UnionBank</h4><label class="res-label">Account Number</label><input type="text" id="editUbNum" value="1093-3237-9862"/><label class="res-label" style="margin-top:0.75rem;">Account Name</label><input type="text" id="editUbName" value="MARIA DANIELA M."/><button class="btn-save" onclick="savePayment()">Save UnionBank Details</button></div>
-      </div>
-      <div id="saveConfirm" style="display:none; margin-top:1rem; background:#f0faf4; border:1px solid #a8d5b5; border-radius:6px; padding:0.75rem 1rem;"><p style="color:#2d6a4f; font-size:0.88rem;">✅ Payment details updated successfully!</p></div>
-    </div>
-  </div>
-</section>
-
-<!-- LOGIN OVERLAY -->
-<div id="adminLogin" style="display:none; position:fixed; inset:0; background:rgba(30,15,5,0.97); z-index:9999; align-items:center; justify-content:center;">
-  <div class="login-box" style="background:var(--cream); border-radius:10px; padding:2.5rem; width:100%; max-width:360px;">
-    <div style="font-family:'Playfair Display',serif; font-size:1.5rem; color:var(--brown-dark); margin-bottom:0.25rem; text-align:center;">Accaza Coffee</div>
-    <p style="font-size:0.8rem; color:var(--text-light); margin-bottom:1.5rem; text-align:center;">Admin Access Only 🔐</p>
-    <label class="field-label" style="color:var(--text-light);">Password</label>
-    <input type="password" id="adminPass" placeholder="Enter admin password" style="margin-bottom:1rem; width:100%;" onkeydown="if(event.key==='Enter') checkLogin()"/>
-    <button class="btn-primary" style="width:100%; text-align:center;" onclick="checkLogin()">Log In</button>
-    <p id="loginErr" style="display:none; color:#c0392b; font-size:0.8rem; margin-top:0.75rem; text-align:center;">❌ Incorrect password. Try again.</p>
-    <button onclick="document.getElementById('adminLogin').style.display='none'" style="margin-top:1rem; background:none; border:none; font-size:0.78rem; color:var(--text-light); cursor:pointer; width:100%; text-align:center;">← Back to website</button>
-  </div>
-</div>
-
 <script>
 // ── DATA ──
 const ADMIN_PASS = 'accaza2026';
-let cart = {};
-let orderType = 'pickup';
-let paymentType = 'gcash';
-let reviews = [];
-let adminOrders = [];
-let adminReservations = [];
+let cart = {}, orderType = 'pickup', paymentType = 'gcash';
+let reviews = [], adminOrders = [], adminReservations = [], feedbacks = [];
+let chatOpen = false, chatStarted = false;
 
 const catLabels = { coffee:'Coffee', frappe:'Blended Frappe', nonfrappe:'Non-Coffee Frappe', noncaf:'Non-Caffeine', tea:'Tea & Refreshments', food:'Pastries', meals:'Meals', desserts:'Desserts' };
+let availability = {};
 
 const menuItems = [
-  { cat:'coffee', name:'Spanish Latte', desc:'Rich and creamy blend of espresso, milk and sweet condensed milk.', price:'₱245' },
-  { cat:'coffee', name:'Sea Salt Latte', desc:'A rich, velvety coffee with a perfect balance of bold, creamy, and subtly salty notes.', price:'₱245' },
-  { cat:'coffee', name:'Sea Salt Caramel Latte', desc:'Sweet and salty caramel espresso with a smooth creamy finish.', price:'₱245' },
-  { cat:'coffee', name:'Caramel Macchiato', desc:'Layers of espresso, vanilla, and caramel with a smooth milk base.', price:'₱265' },
-  { cat:'coffee', name:'White Mocha', desc:'Smooth espresso with sweet white chocolate and milk.', price:'₱245' },
-  { cat:'coffee', name:'Mocha Latte', desc:'Classic dark chocolate and espresso combination with milk.', price:'₱255' },
-  { cat:'coffee', name:'French Vanilla Latte', desc:'Espresso with french vanilla flavor, milk, and condensed milk.', price:'₱245' },
-  { cat:'coffee', name:'Banana Oat Latte', desc:'Creamy oat milk latte with espresso and subtle banana sweetness.', price:'₱255' },
-  { cat:'coffee', name:'Cinnamon Oat Latte', desc:'Cinnamon spice blended with condensed milk, espresso and oat milk.', price:'₱245' },
-  { cat:'coffee', name:'Cafe Latte', desc:'Smooth espresso paired with milk for a creamy, balanced finish.', price:'₱235' },
-  { cat:'coffee', name:'Cappuccino', desc:'Espresso with milk and light, creamy cold foam.', price:'₱235' },
-  { cat:'coffee', name:'Americano', desc:'Bold espresso, rounded out with water.', price:'₱215' },
-  { cat:'coffee', name:'Java Chip Iced Blended', desc:'Espresso and dark chocolate blended with chocolate chips, topped with whipped cream.', price:'₱275' },
-  { cat:'frappe', name:'Java Chip', desc:'Espresso and dark chocolate blended with chocolate chips, topped with whipped cream.', price:'₱275' },
-  { cat:'frappe', name:'Caramel Frappe', desc:'Espresso blended with caramel to a smooth, icy finish, topped with whipped cream.', price:'₱255' },
-  { cat:'frappe', name:'White Mocha Frappe', desc:'Espresso blended with creamy white chocolate, topped with whipped cream.', price:'₱255' },
-  { cat:'frappe', name:'Dark Mocha Frappe', desc:'Espresso blended with rich dark chocolate, topped with whipped cream.', price:'₱265' },
-  { cat:'frappe', name:'Caramel Cream Frappe', desc:'Espresso blended with caramel and vanilla to a smooth, icy finish, topped with whipped cream.', price:'₱255' },
-  { cat:'frappe', name:'Toffee Nut Frappe', desc:'Espresso infused with toffee nut, blended to a smooth, icy finish, topped with whipped cream.', price:'₱235' },
-  { cat:'frappe', name:'Butterscotch Frappe', desc:'Espresso blended with butterscotch to a smooth, icy finish, topped with whipped cream.', price:'₱245' },
-  { cat:'frappe', name:'Cappuccino Frappe', desc:'Espresso and milk blended to a smooth icy finish, topped with whipped cream.', price:'₱235' },
-  { cat:'nonfrappe', name:'Dark Chocolate', desc:'Ice blended rich dark chocolate, topped with whipped cream.', price:'₱255' },
-  { cat:'nonfrappe', name:'Nougat', desc:'Ice blended coconut and toffee nut, topped with whipped cream.', price:'₱255' },
-  { cat:'nonfrappe', name:'Matcha Cream', desc:'Ice blended matcha with milk, topped with whipped cream and matcha dust.', price:'₱245' },
-  { cat:'nonfrappe', name:'Strawberry', desc:'Ice blended strawberry, topped with whipped cream.', price:'₱255' },
-  { cat:'nonfrappe', name:'Vanilla', desc:'Ice blended vanilla and milk, topped with whipped cream.', price:'₱235' },
-  { cat:'noncaf', name:'Dark Chocolate', desc:'Rich dark chocolate with milk and condensed milk.', price:'₱255' },
-  { cat:'noncaf', name:'Banana Oat', desc:'Oat milk and banana flavor fusion, perfectly sweetened with condensed milk.', price:'₱245' },
-  { cat:'noncaf', name:'Cinnamon Oat', desc:'Oat milk infused with cinnamon and sweetened with condensed milk.', price:'₱235' },
-  { cat:'noncaf', name:'Matcha Latte', desc:'Matcha with milk, perfectly sweetened with condensed milk.', price:'₱235' },
-  { cat:'noncaf', name:'White Chocolate', desc:'White chocolate with milk and condensed milk.', price:'₱235' },
-  { cat:'tea', name:'Peach Black Tea', desc:'Peach & Black Tea flavored soda-based refresher topped with dried lemon.', price:'₱245' },
-  { cat:'tea', name:'Lychee', desc:'Lychee-flavored soda-based refresher topped with dried lemon.', price:'₱245' },
-  { cat:'tea', name:'Passionfruit', desc:'Passionfruit-flavored soda-based refresher topped with dried lemon.', price:'₱245' },
-  { cat:'tea', name:'Pink Guava', desc:'Guava-flavored soda-based refresher topped with dried lemon.', price:'₱245' },
-  { cat:'tea', name:'Tahitian Lime', desc:'Tahitian Lime-flavored soda-based refresher topped with dried lemon.', price:'₱235' },
-  { cat:'food', name:'Buttered Croissant', desc:'Classic buttered croissant.', price:'₱140' },
-  { cat:'food', name:'Croffle', desc:'Buttery croissant pressed in a waffle.', price:'₱185' },
-  { cat:'food', name:'Matcha Croffle', desc:'Buttery croissant pressed into a waffle topped with whipped cream and matcha.', price:'₱255' },
-  { cat:'food', name:'Dark Chocolate Croffle', desc:'Buttery croissant pressed into a waffle topped with whipped cream and dark chocolate.', price:'₱255' },
-  { cat:'food', name:'White Chocolate Croffle', desc:'Buttery croissant pressed into a waffle topped with whipped cream and white chocolate.', price:'₱255' },
-  { cat:'food', name:'Pain Au Chocolat', desc:'Croissant filled with chocolate.', price:'₱160' },
-  { cat:'food', name:'Cinnamon Roll', desc:'Flaky cinnamon roll topped with cinnamon cream cheese sauce.', price:'₱205' },
-  { cat:'meals', name:'Big Breakfast Plate', desc:'Eggs, sausage, toast, beans & tomato.', price:'₱210' },
-  { cat:'meals', name:'Grilled Chicken Rice', desc:'Seasoned chicken with garlic fried rice.', price:'₱185' },
-  { cat:'meals', name:'Pasta Carbonara', desc:'Creamy pasta with bacon & parmesan.', price:'₱175' },
-  { cat:'meals', name:'Beef Burger & Fries', desc:'Juicy beef patty, lettuce, tomato & fries.', price:'₱230' },
-  { cat:'desserts', name:'Chocolate Lava Cake', desc:'Warm cake with a gooey chocolate centre.', price:'₱125' },
-  { cat:'desserts', name:'Mango Cheesecake', desc:'Creamy cheesecake with fresh mango topping.', price:'₱115' },
-  { cat:'desserts', name:'Vanilla Ice Cream', desc:'Two scoops of smooth Madagascar vanilla.', price:'₱85' },
-  { cat:'desserts', name:'Tiramisu', desc:'Classic Italian coffee & mascarpone dessert.', price:'₱135' },
+  {cat:'coffee',name:'Spanish Latte',desc:'Rich and creamy blend of espresso, milk and sweet condensed milk.',price:'₱245'},
+  {cat:'coffee',name:'Sea Salt Latte',desc:'A rich, velvety coffee with a perfect balance of bold, creamy, and subtly salty notes.',price:'₱245'},
+  {cat:'coffee',name:'Sea Salt Caramel Latte',desc:'Sweet and salty caramel espresso with a smooth creamy finish.',price:'₱245'},
+  {cat:'coffee',name:'Caramel Macchiato',desc:'Layers of espresso, vanilla, and caramel with a smooth milk base.',price:'₱265'},
+  {cat:'coffee',name:'White Mocha',desc:'Smooth espresso with sweet white chocolate and milk.',price:'₱245'},
+  {cat:'coffee',name:'Mocha Latte',desc:'Classic dark chocolate and espresso combination with milk.',price:'₱255'},
+  {cat:'coffee',name:'French Vanilla Latte',desc:'Espresso with french vanilla flavor, milk, and condensed milk.',price:'₱245'},
+  {cat:'coffee',name:'Banana Oat Latte',desc:'Creamy oat milk latte with espresso and subtle banana sweetness.',price:'₱255'},
+  {cat:'coffee',name:'Cinnamon Oat Latte',desc:'Cinnamon spice blended with condensed milk, espresso and oat milk.',price:'₱245'},
+  {cat:'coffee',name:'Cafe Latte',desc:'Smooth espresso paired with milk for a creamy, balanced finish.',price:'₱235'},
+  {cat:'coffee',name:'Cappuccino',desc:'Espresso with milk and light, creamy cold foam.',price:'₱235'},
+  {cat:'coffee',name:'Americano',desc:'Bold espresso, rounded out with water.',price:'₱215'},
+  {cat:'frappe',name:'Java Chip',desc:'Espresso and dark chocolate blended with chocolate chips, topped with whipped cream.',price:'₱275'},
+  {cat:'frappe',name:'Caramel Frappe',desc:'Espresso blended with caramel to a smooth, icy finish, topped with whipped cream.',price:'₱255'},
+  {cat:'frappe',name:'White Mocha Frappe',desc:'Espresso blended with creamy white chocolate, topped with whipped cream.',price:'₱255'},
+  {cat:'frappe',name:'Dark Mocha Frappe',desc:'Espresso blended with rich dark chocolate, topped with whipped cream.',price:'₱265'},
+  {cat:'frappe',name:'Caramel Cream Frappe',desc:'Espresso blended with caramel and vanilla to a smooth, icy finish, topped with whipped cream.',price:'₱255'},
+  {cat:'frappe',name:'Toffee Nut Frappe',desc:'Espresso infused with toffee nut, blended to a smooth, icy finish, topped with whipped cream.',price:'₱235'},
+  {cat:'frappe',name:'Butterscotch Frappe',desc:'Espresso blended with butterscotch to a smooth, icy finish, topped with whipped cream.',price:'₱245'},
+  {cat:'frappe',name:'Cappuccino Frappe',desc:'Espresso and milk blended to a smooth icy finish, topped with whipped cream.',price:'₱235'},
+  {cat:'nonfrappe',name:'Dark Chocolate',desc:'Ice blended rich dark chocolate, topped with whipped cream.',price:'₱255'},
+  {cat:'nonfrappe',name:'Nougat',desc:'Ice blended coconut and toffee nut, topped with whipped cream.',price:'₱255'},
+  {cat:'nonfrappe',name:'Matcha Cream',desc:'Ice blended matcha with milk, topped with whipped cream and matcha dust.',price:'₱245'},
+  {cat:'nonfrappe',name:'Strawberry',desc:'Ice blended strawberry, topped with whipped cream.',price:'₱255'},
+  {cat:'nonfrappe',name:'Vanilla',desc:'Ice blended vanilla and milk, topped with whipped cream.',price:'₱235'},
+  {cat:'noncaf',name:'Dark Chocolate',desc:'Rich dark chocolate with milk and condensed milk.',price:'₱255'},
+  {cat:'noncaf',name:'Banana Oat',desc:'Oat milk and banana flavor fusion, perfectly sweetened with condensed milk.',price:'₱245'},
+  {cat:'noncaf',name:'Cinnamon Oat',desc:'Oat milk infused with cinnamon and sweetened with condensed milk.',price:'₱235'},
+  {cat:'noncaf',name:'Matcha Latte',desc:'Matcha with milk, perfectly sweetened with condensed milk.',price:'₱235'},
+  {cat:'noncaf',name:'White Chocolate',desc:'White chocolate with milk and condensed milk.',price:'₱235'},
+  {cat:'tea',name:'Peach Black Tea',desc:'Peach & Black Tea flavored soda-based refresher topped with dried lemon.',price:'₱245'},
+  {cat:'tea',name:'Lychee',desc:'Lychee-flavored soda-based refresher topped with dried lemon.',price:'₱245'},
+  {cat:'tea',name:'Passionfruit',desc:'Passionfruit-flavored soda-based refresher topped with dried lemon.',price:'₱245'},
+  {cat:'tea',name:'Pink Guava',desc:'Guava-flavored soda-based refresher topped with dried lemon.',price:'₱245'},
+  {cat:'tea',name:'Tahitian Lime',desc:'Tahitian Lime-flavored soda-based refresher topped with dried lemon.',price:'₱235'},
+  {cat:'food',name:'Buttered Croissant',desc:'Classic buttered croissant.',price:'₱140'},
+  {cat:'food',name:'Croffle',desc:'Buttery croissant pressed in a waffle.',price:'₱185'},
+  {cat:'food',name:'Matcha Croffle',desc:'Buttery croissant pressed into a waffle topped with whipped cream and matcha.',price:'₱255'},
+  {cat:'food',name:'Dark Chocolate Croffle',desc:'Buttery croissant pressed into a waffle topped with whipped cream and dark chocolate.',price:'₱255'},
+  {cat:'food',name:'White Chocolate Croffle',desc:'Buttery croissant pressed into a waffle topped with whipped cream and white chocolate.',price:'₱255'},
+  {cat:'food',name:'Pain Au Chocolat',desc:'Croissant filled with chocolate.',price:'₱160'},
+  {cat:'food',name:'Cinnamon Roll',desc:'Flaky cinnamon roll topped with cinnamon cream cheese sauce.',price:'₱205'},
+  {cat:'meals',name:'Big Breakfast Plate',desc:'Eggs, sausage, toast, beans & tomato.',price:'₱210'},
+  {cat:'meals',name:'Grilled Chicken Rice',desc:'Seasoned chicken with garlic fried rice.',price:'₱185'},
+  {cat:'meals',name:'Pasta Carbonara',desc:'Creamy pasta with bacon & parmesan.',price:'₱175'},
+  {cat:'meals',name:'Beef Burger & Fries',desc:'Juicy beef patty, lettuce, tomato & fries.',price:'₱230'},
+  {cat:'desserts',name:'Chocolate Lava Cake',desc:'Warm cake with a gooey chocolate centre.',price:'₱125'},
+  {cat:'desserts',name:'Mango Cheesecake',desc:'Creamy cheesecake with fresh mango topping.',price:'₱115'},
+  {cat:'desserts',name:'Vanilla Ice Cream',desc:'Two scoops of smooth Madagascar vanilla.',price:'₱85'},
+  {cat:'desserts',name:'Tiramisu',desc:'Classic Italian coffee & mascarpone dessert.',price:'₱135'},
 ];
 
-// ── CHATBOT ──
-let chatOpen = false;
-let chatStarted = false;
-
-const botResponses = [
-  { keys: ['hour','open','close','time','schedule'], reply: '🕐 We are open every day — <strong>Monday to Sunday, 3:00 PM to 12:00 Midnight</strong>. Come visit us anytime! ☕' },
-  { keys: ['location','address','where','find','directions','map'], reply: '📍 We are located at <strong>Saratoga Avenue, La Mediterranea Subdivision, Governor\'s Drive, Dasmariñas, Cavite, Philippines</strong>. Right along the highway near SM Dasmariñas — easy to find! 😊' },
-  { keys: ['gcash','pay','payment','bank','bdo','unionbank','cashless'], reply: '💳 Yes! We accept <strong>GCash, BDO, and UnionBank</strong> for online payments. You can also pay in cash when you visit. Our GCash number is <strong>0927 692 4831</strong> under MARIA DANIELA M.' },
-  { keys: ['delivery','deliver','send'], reply: '🛵 Yes, we offer <strong>delivery and pick-up</strong>! You can place your order online through our Order section and choose your preferred option. 😊' },
-  { keys: ['menu','food','drink','coffee','frappe','pastry','eat'], reply: '🍽️ We have a wide selection including <strong>Signature Coffees, Blended Frappes, Non-Coffee Frappes, Non-Caffeine drinks, Tea & Refreshments, and Pastries</strong>. Check out our full menu above! ☕' },
-  { keys: ['reserve','reservation','book','table','seat'], reply: '📅 You can reserve a table through our <strong>Reservations section</strong> on this website! Just fill in your name, date, time, and number of guests. We\'ll confirm via your phone number. 😊' },
-  { keys: ['wifi','password','internet'], reply: '📶 Yes, we have free WiFi! Please ask our staff for the password when you arrive. 😊' },
-  { keys: ['price','cost','how much','cheap','expensive'], reply: '💰 Our prices start from <strong>₱140 for pastries</strong> and <strong>₱215 for coffee</strong>. Check our full menu for all prices! Great value for a cozy café experience. ☕' },
-  { keys: ['parking','park','car'], reply: '🚗 Yes, we have parking available for our customers! 😊' },
-  { keys: ['pet','dog','cat','animal'], reply: '🐾 We love pets! Please contact us directly at <strong>0927 692 4831</strong> for our latest pet-friendly policy. 😊' },
-  { keys: ['hello','hi','hey','good morning','good afternoon','good evening','kumusta','musta'], reply: 'Hello! 👋 Welcome to <strong>Accaza Coffee (Cafe Sartoga)</strong>! How can I help you today? Feel free to ask about our menu, hours, location, or anything else! ☕' },
-  { keys: ['thank','thanks','salamat'], reply: 'You\'re welcome! 😊 We\'re happy to help. Looking forward to seeing you at Accaza Coffee! ☕🦁' },
-  { keys: ['feedback','complaint','suggestion','compliment'], reply: '💛 We\'d love to hear from you! Please scroll down to our <strong>Share Your Feedback</strong> section and leave us a message. We read every one! 😊' },
-  { keys: ['order','buy','purchase'], reply: '🛒 You can place your order right here on our website! Just scroll up to the <strong>Order Online</strong> section, pick your items, and choose GCash or bank transfer for payment. 😊' },
-];
-
-function getBotReply(msg) {
-  const lower = msg.toLowerCase();
-  for (const r of botResponses) {
-    if (r.keys.some(k => lower.includes(k))) return r.reply;
-  }
-  return null;
-}
-
-function toggleChat() {
-  chatOpen = !chatOpen;
-  document.getElementById('chatWindow').classList.toggle('open', chatOpen);
-  document.getElementById('chatNotif').style.display = 'none';
-  if (chatOpen && !chatStarted) {
-    chatStarted = true;
-    setTimeout(() => addBotMsg('👋 Hi there! Welcome to <strong>Accaza Coffee (Cafe Sartoga)</strong>! I\'m here to help. You can ask me about our hours, location, menu, delivery, payment, and more! ☕'), 400);
-  }
-}
-
-function addBotMsg(text) {
-  const msgs = document.getElementById('chatMessages');
-  const div = document.createElement('div');
-  div.className = 'chat-msg bot';
-  div.innerHTML = text;
-  msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
-}
-
-function addUserMsg(text) {
-  const msgs = document.getElementById('chatMessages');
-  const div = document.createElement('div');
-  div.className = 'chat-msg user';
-  div.textContent = text;
-  msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
-}
-
-function showTyping() {
-  const msgs = document.getElementById('chatMessages');
-  const div = document.createElement('div');
-  div.className = 'chat-msg typing';
-  div.id = 'typingIndicator';
-  div.innerHTML = '<span style="letter-spacing:2px;">•••</span>';
-  msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
-}
-
-function removeTyping() {
-  const t = document.getElementById('typingIndicator');
-  if (t) t.remove();
-}
-
-function sendChat() {
-  const input = document.getElementById('chatInput');
-  const msg = input.value.trim();
-  if (!msg) return;
-  input.value = '';
-  addUserMsg(msg);
-  showTyping();
-  setTimeout(() => {
-    removeTyping();
-    const reply = getBotReply(msg);
-    if (reply) {
-      addBotMsg(reply);
-    } else {
-      addBotMsg('🤔 That\'s a great question! I\'m not sure about that one. For more specific queries, please contact us directly:<br/><br/>📱 <strong>0927 692 4831</strong> (GCash / Viber / WhatsApp)<br/><br/>Our team will be happy to assist you! 😊');
-    }
-  }, 900);
-}
-
-function quickMsg(msg) {
-  document.getElementById('chatInput').value = msg;
-  sendChat();
-}
-
-// Show chat notification after 3 seconds
-setTimeout(() => {
-  if (!chatOpen) document.getElementById('chatNotif').style.display = 'block';
-}, 3000);
-
-// ── AVAILABILITY ──
-let availability = {};
 menuItems.forEach(i => availability[i.name] = true);
-
 function isAvailable(name) { return availability[name] !== false; }
+
+// ── MENU ──
 function filterMenu(cat) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   event.target.classList.add('active');
   const grid = document.getElementById('menuGrid');
   const filtered = cat === 'all' ? menuItems : menuItems.filter(i => i.cat === cat);
-  grid.innerHTML = filtered.map(i => `
-    <div class="menu-card" onclick="addToOrderFromMenu('${i.name.replace(/'/g,"\\'")}','${i.price}')">
+  grid.innerHTML = filtered.map(i => {
+    const avail = isAvailable(i.name);
+    return `<div class="menu-card ${!avail?'unavailable-card':''}" onclick="${avail?`addToOrderFromMenu('${i.name.replace(/'/g,"\\'")}','${i.price}')` : `showUnavail('${i.name.replace(/'/g,"\\'")}')` }">
       <span class="cat-tag">${catLabels[i.cat]}</span>
-      <h4>${i.name}</h4>
+      <h4 style="${!avail?'text-decoration:line-through;opacity:0.6;':''}">${i.name}</h4>
       <p>${i.desc}</p>
-      <span class="price">${i.price}</span>
-      <div class="menu-card-hint">+ Tap to order</div>
-    </div>`).join('');
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:0.5rem;">
+        <span class="price">${i.price}</span>
+        <span style="font-size:0.72rem;${avail?'color:rgba(201,149,106,0.7);':'color:#ff8080;font-style:italic;'}">${avail?'+ Tap to order':'Not Available'}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function showUnavail(name) {
+  document.getElementById('unavailItemName').textContent = name;
+  const p = document.getElementById('unavailPopup');
+  p.style.display = 'flex';
 }
 
 function addToOrderFromMenu(name, priceStr) {
-  if (!isAvailable(name)) {
-    const popup = document.getElementById('unavailPopup');
-    document.getElementById('unavailItemName').textContent = name;
-    popup.style.display = 'flex';
-    return;
-  }
+  if (!isAvailable(name)) { showUnavail(name); return; }
   const numPrice = parseInt(priceStr.replace('₱','').replace(',',''));
-  if (!cart[name]) cart[name] = { qty: 0, price: numPrice };
+  if (!cart[name]) cart[name] = {qty:0, price:numPrice};
   cart[name].qty += 1;
   updateCart();
-  document.getElementById('order').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.getElementById('order').scrollIntoView({behavior:'smooth', block:'start'});
   setTimeout(() => {
-    const cartBox = document.querySelector('.cart-box');
-    cartBox.style.transition = 'box-shadow 0.3s';
-    cartBox.style.boxShadow = '0 0 0 3px rgba(160,103,58,0.5)';
-    setTimeout(() => cartBox.style.boxShadow = 'none', 1000);
+    const cb = document.querySelector('.cart-box');
+    cb.style.transition = 'box-shadow 0.3s';
+    cb.style.boxShadow = '0 0 0 3px rgba(160,103,58,0.5)';
+    setTimeout(() => cb.style.boxShadow = 'none', 1000);
   }, 600);
 }
 
@@ -1060,12 +935,10 @@ function filterOrder(cat, btn) {
   list.innerHTML = filtered.map(i => {
     const avail = isAvailable(i.name);
     const qty = cart[i.name] ? cart[i.name].qty : 0;
-    return `<div class="item-row" style="${!avail ? 'opacity:0.45; pointer-events:none;' : ''}">
+    return `<div class="item-row" style="${!avail?'opacity:0.45;pointer-events:none;':''}">
       <div class="item-row-info">
-        <h5 style="${!avail ? 'text-decoration:line-through;' : ''}">${i.name}</h5>
-        <span style="font-size:0.72rem; color:${!avail ? '#c0392b' : 'var(--text-light)'};">
-          ${!avail ? 'Not Available' : catLabels[i.cat]}
-        </span>
+        <h5 style="${!avail?'text-decoration:line-through;':''}">${i.name}</h5>
+        <span style="font-size:0.72rem;color:${!avail?'#c0392b':'var(--text-light)'};">${!avail?'Not Available':catLabels[i.cat]}</span>
       </div>
       <div class="item-row-right">
         <span class="item-price">${i.price}</span>
@@ -1079,11 +952,10 @@ function filterOrder(cat, btn) {
 
 function changeQty(name, priceStr, delta) {
   const numPrice = parseInt(priceStr.replace('₱','').replace(',',''));
-  if (!cart[name]) cart[name] = { qty: 0, price: numPrice };
+  if (!cart[name]) cart[name] = {qty:0, price:numPrice};
   cart[name].qty = Math.max(0, cart[name].qty + delta);
   if (cart[name].qty === 0) delete cart[name];
-  const id = 'qty_' + name.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
-  const el = document.getElementById(id);
+  const el = document.getElementById('qty_'+name.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,''));
   if (el) el.textContent = cart[name] ? cart[name].qty : 0;
   updateCart();
 }
@@ -1091,12 +963,11 @@ function changeQty(name, priceStr, delta) {
 function updateCart() {
   const box = document.getElementById('cartItems');
   const totalEl = document.getElementById('cartTotal');
-  const amtEl = document.getElementById('totalAmt');
   const keys = Object.keys(cart);
-  if (!keys.length) { box.innerHTML = '<p style="color:var(--text-light); font-size:0.85rem;">No items added yet.</p>'; totalEl.style.display = 'none'; return; }
+  if (!keys.length) { box.innerHTML = '<p style="color:var(--text-light);font-size:0.85rem;">No items added yet.</p>'; totalEl.style.display = 'none'; return; }
   let total = 0;
   box.innerHTML = keys.map(k => { const line = cart[k].qty * cart[k].price; total += line; return `<div class="cart-item-line"><span>${k} x${cart[k].qty}</span><span>₱${line.toLocaleString()}</span></div>`; }).join('');
-  amtEl.textContent = '₱' + total.toLocaleString();
+  document.getElementById('totalAmt').textContent = '₱'+total.toLocaleString();
   totalEl.style.display = 'flex';
 }
 
@@ -1104,65 +975,39 @@ function setType(t) {
   orderType = t;
   document.getElementById('btnPickup').classList.toggle('active', t==='pickup');
   document.getElementById('btnDelivery').classList.toggle('active', t==='delivery');
-  document.getElementById('deliveryField').style.display = t==='delivery' ? 'block' : 'none';
+  document.getElementById('deliveryField').style.display = t==='delivery'?'block':'none';
 }
 
 function setPayment(p) {
   paymentType = p;
   document.getElementById('btnGcash').classList.toggle('active', p==='gcash');
   document.getElementById('btnBank').classList.toggle('active', p==='bank');
-  document.getElementById('gcashInfo').style.display = p==='gcash' ? 'block' : 'none';
-  document.getElementById('bankInfo').style.display = p==='bank' ? 'block' : 'none';
+  document.getElementById('gcashInfo').style.display = p==='gcash'?'block':'none';
+  document.getElementById('bankInfo').style.display = p==='bank'?'block':'none';
 }
 
 function placeOrder() {
   const name = document.getElementById('custName').value.trim();
   const phone = document.getElementById('custPhone').value.trim();
-  const notes = document.getElementById('custNotes').value.trim();
   if (!Object.keys(cart).length) { alert('Please add at least one item.'); return; }
   if (!name || !phone) { alert('Please enter your name and phone number.'); return; }
   if (orderType==='delivery' && !document.getElementById('deliveryAddr').value.trim()) { alert('Please enter your delivery address.'); return; }
-
-  // Build order
   const items = Object.keys(cart).map(k => `${k} x${cart[k].qty}`).join(', ');
-  const total = Object.keys(cart).reduce((s,k) => s + cart[k].qty * cart[k].price, 0);
+  const total = Object.keys(cart).reduce((s,k) => s+cart[k].qty*cart[k].price, 0);
   const now = new Date();
-  const time = now.toLocaleTimeString('en-PH', { hour:'2-digit', minute:'2-digit' });
+  const time = now.toLocaleTimeString('en-PH', {hour:'2-digit', minute:'2-digit'});
   const addr = orderType==='delivery' ? document.getElementById('deliveryAddr').value.trim() : '';
-  const orderId = 'ORD-' + String(adminOrders.length + 1).padStart(3,'0');
-
-  const newOrder = {
-    id: orderId,
-    name, phone,
-    type: orderType === 'delivery' ? 'Delivery' : 'Pick-up',
-    address: addr,
-    payment: paymentType === 'gcash' ? 'GCash' : 'Bank Transfer',
-    items, total,
-    notes,
-    status: 'Pending',
-    time
-  };
-
-  adminOrders.unshift(newOrder);
-  renderFeedback();
-  renderAvailability();
-  updateStats();
-  renderOrders();
-
+  const orderId = 'ORD-'+String(adminOrders.length+1).padStart(3,'0');
+  adminOrders.unshift({id:orderId, name, phone, type:orderType==='delivery'?'Delivery':'Pick-up', address:addr, payment:paymentType==='gcash'?'GCash':'Bank Transfer', items, total, notes:document.getElementById('custNotes').value.trim(), status:'Pending', time});
+  updateStats(); renderOrders();
   document.getElementById('orderConfirm').style.display = 'block';
   document.querySelector('.btn-place-order').disabled = true;
   document.querySelector('.btn-place-order').style.opacity = '0.5';
-
-  // Reset cart
-  cart = {};
-  updateCart();
+  cart = {}; updateCart();
   document.getElementById('custName').value = '';
   document.getElementById('custPhone').value = '';
   document.getElementById('custNotes').value = '';
-  document.getElementById('deliveryAddr') && (document.getElementById('deliveryAddr').value = '');
   filterOrder('all', document.querySelector('.otab'));
-
-  // Re-enable button after 3 seconds for next order
   setTimeout(() => {
     document.querySelector('.btn-place-order').disabled = false;
     document.querySelector('.btn-place-order').style.opacity = '1';
@@ -1193,6 +1038,7 @@ function submitContact() {
   document.querySelector('#contact .btn-reserve').style.opacity = '0.5';
 }
 
+// ── FEEDBACK ──
 function updateFbCounter() {
   const len = document.getElementById('fbMessage').value.length;
   const counter = document.getElementById('fbCounter');
@@ -1200,157 +1046,87 @@ function updateFbCounter() {
   counter.style.color = len >= 720 ? '#ff8080' : len >= 560 ? '#f39c12' : 'rgba(245,239,230,0.5)';
 }
 
-// ── FEEDBACK ──
-let feedbacks = [];
-
 function submitFeedback() {
   const name = document.getElementById('fbName').value.trim();
   const contact = document.getElementById('fbContact').value.trim();
   const type = document.getElementById('fbType').value;
   const message = document.getElementById('fbMessage').value.trim();
   if (!name || !message) { alert('Please enter your name and message.'); return; }
-  const date = new Date().toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' });
-  feedbacks.unshift({ name, contact, type, message, date, status:'Unread' });
+  const date = new Date().toLocaleDateString('en-PH', {year:'numeric', month:'long', day:'numeric'});
+  feedbacks.unshift({name, contact, type, message, date, status:'Unread'});
+  if (document.getElementById('commentsAdmin').style.display !== 'none') renderCommentsAdmin();
+  const waText = `*New ${type} from Accaza Coffee Website*%0A%0A*Name:* ${encodeURIComponent(name)}%0A*Contact:* ${encodeURIComponent(contact||'Not provided')}%0A*Type:* ${type}%0A*Message:* ${encodeURIComponent(message)}`;
+  window.open(`https://wa.me/639276924831?text=${waText}`, '_blank');
   document.getElementById('fbName').value = '';
   document.getElementById('fbContact').value = '';
   document.getElementById('fbMessage').value = '';
   document.getElementById('fbType').value = 'Complaint';
+  document.getElementById('fbCounter').textContent = '0 / 800';
   document.getElementById('fbConfirm').style.display = 'block';
-  setTimeout(() => document.getElementById('fbConfirm').style.display = 'none', 6000);
-  renderFeedback();
+  let secs = 20;
+  document.getElementById('fbSeconds').textContent = secs;
+  window.fbTimer = setInterval(() => {
+    secs--;
+    const el = document.getElementById('fbSeconds');
+    if (el) el.textContent = secs;
+    if (secs <= 0) { clearInterval(window.fbTimer); const c = document.getElementById('fbConfirm'); if (c) c.style.display = 'none'; }
+  }, 1000);
 }
 
-function renderFeedbackAdmin() {
+// ── COMMENTS ADMIN ──
+function renderCommentsAdmin() {
   const types = ['Complaint','Suggestion','Compliment','Other'];
-  const emptyMsg = { Complaint:'No complaints yet. 🎉', Suggestion:'No suggestions yet.', Compliment:'No compliments yet.', Other:'No other feedback yet.' };
-  const borderColor = { Complaint:'#c0392b', Suggestion:'#f39c12', Compliment:'#2d9e5f', Other:'#888' };
+  const empty = {Complaint:'No complaints yet. 🎉', Suggestion:'No suggestions yet.', Compliment:'No compliments yet.', Other:'No other feedback yet.'};
+  const color = {Complaint:'#c0392b', Suggestion:'#f39c12', Compliment:'#2d9e5f', Other:'#888'};
   types.forEach(type => {
     const el = document.getElementById('fbList'+type);
     if (!el) return;
     const items = feedbacks.filter(f => f.type === type);
-    if (!items.length) {
-      el.innerHTML = `<div style="color:#8a6a55;font-size:0.85rem;padding:1rem;background:#fff;border-radius:8px;text-align:center;">${emptyMsg[type]}</div>`;
-      return;
-    }
-    el.innerHTML = items.map((f,i) => {
-      const globalIndex = feedbacks.indexOf(f);
-      return `<div style="background:#fff;border:1px solid #e8dcc8;border-left:4px solid ${borderColor[type]};border-radius:8px;padding:1rem;margin-bottom:0.75rem;">
+    if (!items.length) { el.innerHTML = `<p style="color:var(--text-light);font-size:0.85rem;padding:1rem;background:#fff;border-radius:8px;text-align:center;">${empty[type]}</p>`; return; }
+    el.innerHTML = items.map(f => {
+      const gi = feedbacks.indexOf(f);
+      return `<div style="background:#fff;border:1px solid #e8dcc8;border-left:4px solid ${color[type]};border-radius:8px;padding:1rem;margin-bottom:0.75rem;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;">
-          <div>
-            <div style="font-weight:500;font-size:0.9rem;color:#3b2314;">${f.name}</div>
-            <div style="font-size:0.75rem;color:#8a6a55;">${f.contact?f.contact+' · ':''}${f.date}</div>
-          </div>
+          <div><div style="font-weight:500;font-size:0.9rem;color:#3b2314;">${f.name}</div>
+          <div style="font-size:0.75rem;color:#8a6a55;">${f.contact?f.contact+' · ':''}${f.date}</div></div>
           <span style="font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:999px;font-weight:500;background:${f.status==='Resolved'?'#d4edda':'#fef3cd'};color:${f.status==='Resolved'?'#155724':'#856404'};">${f.status}</span>
         </div>
         <p style="font-size:0.85rem;color:#5c3d2e;font-style:italic;margin:0.4rem 0;">"${f.message}"</p>
         <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:0.75rem;">
-          ${f.status==='Unread'?`<button onclick="markFbResolved(${globalIndex})" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#2d6a4f;cursor:pointer;font-family:Inter,sans-serif;">✅ Mark Resolved</button>`:''}
-          ${f.status==='Resolved'?`<button onclick="deleteFbItem(${globalIndex})" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#c0392b;cursor:pointer;font-family:Inter,sans-serif;">🗑️ Delete</button>`:'<span style="font-size:0.75rem;color:#8a6a55;font-style:italic;">Awaiting action</span>'}
+          ${f.status==='Unread'?`<button onclick="markFbResolved(${gi})" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#2d6a4f;cursor:pointer;font-family:Inter,sans-serif;">✅ Mark Resolved</button>`:''}
+          ${f.status==='Resolved'?`<button onclick="deleteFb(${gi})" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#c0392b;cursor:pointer;font-family:Inter,sans-serif;">🗑️ Delete</button>`:''}
         </div>
       </div>`;
     }).join('');
   });
 }
 
-function markFbResolved(i) {
-  feedbacks[i].status = 'Resolved';
-  renderFeedbackAdmin();
-}
-
-function deleteFbItem(i) {
-  if (confirm('Delete this feedback? This cannot be undone.')) {
-    feedbacks.splice(i, 1);
-    renderFeedbackAdmin();
-  }
-}
-  const tab = document.getElementById('tab-feedback');
-  const el = document.getElementById('feedbackList');
-  if (!tab || !el) return;
-  tab.style.display = 'block';
-  tab.style.background = '#fff';
-  tab.style.padding = '1.25rem';
-  tab.style.border = '1px solid #e8dcc8';
-  tab.style.borderRadius = '8px';
-  if (!feedbacks.length) {
-    el.innerHTML = '<div style="text-align:center;padding:2rem;color:#8a6a55;font-size:0.88rem;">📩 No feedback submitted yet.</div>';
-    return;
-  }
-  const typeIcon = { Complaint:'😞', Suggestion:'💡', Compliment:'❤️', Other:'💬' };
-  const typeColor = { Complaint:'#c0392b', Suggestion:'#f39c12', Compliment:'#2d9e5f', Other:'#888' };
-  let html = '';
-  feedbacks.forEach((f,i) => {
-    html += `<div style="border:1px solid #e8dcc8;border-left:4px solid ${typeColor[f.type]};border-radius:6px;padding:1rem;margin-bottom:0.75rem;background:#fff;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;">
-        <div>
-          <div style="font-weight:500;font-size:0.9rem;color:#3b2314;">${typeIcon[f.type]} ${f.name} <span style="font-size:0.75rem;color:#8a6a55;">${f.type}</span></div>
-          <div style="font-size:0.78rem;color:#8a6a55;margin-top:0.1rem;">${f.contact?f.contact+' · ':''}${f.date}</div>
-        </div>
-        <span style="display:inline-block;font-size:0.7rem;padding:0.2rem 0.6rem;border-radius:999px;font-weight:500;background:${f.status==='Resolved'?'#d4edda':'#fef3cd'};color:${f.status==='Resolved'?'#155724':'#856404'};">${f.status}</span>
-      </div>
-      <div style="font-size:0.82rem;color:#5c3d2e;font-style:italic;margin:0.4rem 0;">"${f.message}"</div>
-      <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:0.5rem;">
-        ${f.status==='Unread'?`<button onclick="markResolved(${i})" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#2d6a4f;cursor:pointer;font-family:Inter,sans-serif;">✅ Mark Resolved</button>`:''}
-        ${f.status==='Resolved'?`<button onclick="confirmDeleteFeedback(${i})" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;font-family:Inter,sans-serif;">🗑️ Delete</button>`:''}
-      </div>
-    </div>`;
+function markFbResolved(i) { feedbacks[i].status='Resolved'; renderCommentsAdmin(); }
+function deleteFb(i) {
+  showDeletePopup(feedbacks[i].name + ' — "' + feedbacks[i].message.substring(0,50) + '..."', () => {
+    feedbacks.splice(i,1); renderCommentsAdmin();
   });
-  el.innerHTML = html;
 }
 
-function markResolved(i) {
-  feedbacks[i].status = 'Resolved';
-  renderFeedback();
-}
-
-function confirmDeleteFeedback(i) {
-  const f = feedbacks[i];
-  const popup = document.getElementById('deleteOrderPopup');
-  document.getElementById('deleteOrderName').textContent = `${f.name} — "${f.message.substring(0,60)}..."`;
-  document.getElementById('confirmDeleteBtn').onclick = () => {
-    feedbacks.splice(i, 1);
-    renderFeedback();
-    popup.style.display = 'none';
-  };
-  popup.style.display = 'flex';
+// ── DELETE POPUP ──
+function showDeletePopup(label, onConfirm) {
+  document.getElementById('deletePopupName').textContent = label;
+  document.getElementById('deletePopupBtn').onclick = () => { onConfirm(); document.getElementById('deletePopup').style.display='none'; };
+  document.getElementById('deletePopup').style.display = 'flex';
 }
 
 // ── REVIEWS ──
-function renderReviewsPublic() {
-  const grid = document.getElementById('reviewsGrid');
-  const empty = document.getElementById('emptyReviews');
-  if (!reviews.length) {
-    grid.innerHTML = '';
-    empty.style.display = 'block';
-    return;
-  }
-  empty.style.display = 'none';
-  grid.style.display = 'grid';
-  grid.innerHTML = reviews.map(r => `
-    <div class="review-card">
-      <div class="review-stars">${'⭐'.repeat(Number(r.stars))}</div>
-      <p class="review-text">"${r.text}"</p>
-      <div class="review-author">
-        <div class="review-avatar">${r.name.charAt(0).toUpperCase()}</div>
-        <div>
-          <div class="review-name">${r.name}</div>
-          <div class="review-date">${r.date}</div>
-        </div>
-      </div>
-    </div>`).join('');
-}
-
+function renderReviewsPublic() {}
 function renderAdminReviews() {
   const el = document.getElementById('adminReviewsList');
   document.getElementById('reviewCount').textContent = reviews.length;
   if (!reviews.length) { el.innerHTML = '<div class="empty-state">No reviews added yet.</div>'; return; }
   el.innerHTML = reviews.map((r,i) => `
-    <div class="order-admin-card" style="display:flex; justify-content:space-between; align-items:flex-start;">
-      <div>
-        <div class="order-admin-name">${r.name} &nbsp; ${'⭐'.repeat(r.stars)}</div>
-        <div class="order-admin-meta">${r.date}</div>
-        <div class="order-admin-items" style="margin-top:0.35rem;">"${r.text}"</div>
-      </div>
-      <button onclick="deleteReview(${i})" style="background:none; border:1px solid #e0b0b0; border-radius:4px; padding:0.3rem 0.6rem; font-size:0.75rem; color:#c0392b; cursor:pointer; flex-shrink:0; margin-left:1rem;">Remove</button>
+    <div class="order-admin-card" style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <div><div class="order-admin-name">${r.name} ${'⭐'.repeat(r.stars)}</div>
+      <div class="order-admin-meta">${r.date}</div>
+      <div class="order-admin-items">"${r.text}"</div></div>
+      <button onclick="deleteReview(${i})" style="background:none;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.6rem;font-size:0.75rem;color:#c0392b;cursor:pointer;margin-left:1rem;">Remove</button>
     </div>`).join('');
 }
 
@@ -1358,46 +1134,37 @@ function addReview() {
   const name = document.getElementById('newReviewName').value.trim();
   const stars = parseInt(document.getElementById('newReviewStars').value);
   const text = document.getElementById('newReviewText').value.trim();
-  if (!name || !text) { alert('Please enter a name and review message.'); return; }
-  const date = new Date().toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' });
-  reviews.unshift({ name, stars, text, date });
+  if (!name || !text) { alert('Please enter a name and review.'); return; }
+  const date = new Date().toLocaleDateString('en-PH', {year:'numeric', month:'long', day:'numeric'});
+  reviews.unshift({name, stars, text, date});
   document.getElementById('newReviewName').value = '';
   document.getElementById('newReviewText').value = '';
-  document.getElementById('newReviewStars').value = '5';
   document.getElementById('reviewAddConfirm').style.display = 'block';
-  setTimeout(() => document.getElementById('reviewAddConfirm').style.display = 'none', 2500);
-  renderReviewsPublic();
+  setTimeout(() => document.getElementById('reviewAddConfirm').style.display='none', 2500);
   renderAdminReviews();
 }
 
 function deleteReview(i) {
-  if (confirm('Remove this review?')) { reviews.splice(i,1); renderReviewsPublic(); renderAdminReviews(); }
+  showDeletePopup(reviews[i].name, () => { reviews.splice(i,1); renderAdminReviews(); });
 }
 
 // ── ADMIN ──
 function openAdmin() {
-  const el = document.getElementById('adminLogin');
-  el.style.display = 'flex';
-  el.style.position = 'fixed';
-  el.style.inset = '0';
-  el.style.background = 'rgba(30,15,5,0.97)';
-  el.style.zIndex = '9999';
-  el.style.alignItems = 'center';
-  el.style.justifyContent = 'center';
+  document.getElementById('adminLogin').classList.add('active');
   setTimeout(() => document.getElementById('adminPass').focus(), 100);
 }
 
 function checkLogin() {
   const pass = document.getElementById('adminPass').value;
   if (pass === ADMIN_PASS) {
-    document.getElementById('adminLogin').style.display = 'none';
+    document.getElementById('adminLogin').classList.remove('active');
     document.getElementById('admin').style.display = 'block';
     document.getElementById('adminNavItem').style.display = 'block';
-    document.getElementById('feedbackNavItem').style.display = 'block';
+    document.getElementById('commentsNavItem').style.display = 'block';
     document.getElementById('availability').style.display = 'block';
-    document.getElementById('feedbackAdmin').style.display = 'block';
+    document.getElementById('commentsAdmin').style.display = 'block';
     buildAvailSection();
-    renderFeedbackAdmin();
+    renderCommentsAdmin();
     window.scrollTo(0,0);
     loadAdminData();
   } else {
@@ -1409,137 +1176,32 @@ function checkLogin() {
 function logoutAdmin() {
   document.getElementById('admin').style.display = 'none';
   document.getElementById('adminNavItem').style.display = 'none';
-  document.getElementById('feedbackNavItem').style.display = 'none';
+  document.getElementById('commentsNavItem').style.display = 'none';
   document.getElementById('availability').style.display = 'none';
-  document.getElementById('feedbackAdmin').style.display = 'none';
+  document.getElementById('commentsAdmin').style.display = 'none';
   document.getElementById('adminPass').value = '';
   window.scrollTo(0,0);
-}
-
-function buildAvailSection() {
-  const groups = [
-    {cat:'☕ Coffee', items:['Spanish Latte','Sea Salt Latte','Sea Salt Caramel Latte','Caramel Macchiato','White Mocha','Mocha Latte','French Vanilla Latte','Banana Oat Latte','Cinnamon Oat Latte','Cafe Latte','Cappuccino','Americano']},
-    {cat:'🥤 Blended Frappes', items:['Java Chip','Caramel Frappe','White Mocha Frappe','Dark Mocha Frappe','Caramel Cream Frappe','Toffee Nut Frappe','Butterscotch Frappe','Cappuccino Frappe']},
-    {cat:'🍵 Non-Coffee Frappes', items:['Dark Chocolate','Nougat','Matcha Cream','Strawberry','Vanilla']},
-    {cat:'🌿 Non-Caffeine', items:['Banana Oat','Cinnamon Oat','Matcha Latte','White Chocolate']},
-    {cat:'🍵 Tea & Refreshments', items:['Peach Black Tea','Lychee','Passionfruit','Pink Guava','Tahitian Lime']},
-    {cat:'🍞 Pastries', items:['Buttered Croissant','Croffle','Matcha Croffle','Dark Chocolate Croffle','White Chocolate Croffle','Pain Au Chocolat','Cinnamon Roll']},
-  ];
-  const el = document.getElementById('availSection');
-  let html = '';
-  groups.forEach(g => {
-    html += `<div style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--brown-dark);margin:1.5rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:2px solid var(--cream-dark);">${g.cat}</div>`;
-    g.items.forEach(name => {
-      const avail = availability[name] !== false;
-      const sid = 'avs_' + name.replace(/[\s']/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
-      html += `
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:0.85rem 1.2rem;margin-bottom:0.5rem;background:#fff;border:1px solid var(--cream-dark);border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
-        <div style="font-size:0.95rem;font-weight:500;color:var(--brown-dark);" id="${sid}_n">${name}</div>
-        <div style="display:flex;align-items:center;gap:1rem;">
-          <span id="${sid}_l" style="font-size:0.82rem;font-weight:600;padding:0.25rem 0.75rem;border-radius:999px;background:${avail?'#d4edda':'#fde8e8'};color:${avail?'#155724':'#721c24'};">${avail?'✅ Available':'❌ Not Available'}</span>
-          <label style="position:relative;display:inline-block;width:50px;height:26px;">
-            <input type="checkbox" ${avail?'checked':''} onchange="toggleItem('${name.replace(/'/g,"\\'")}','${sid}',this.checked)" style="opacity:0;width:0;height:0;position:absolute;"/>
-            <span id="${sid}_t" style="position:absolute;cursor:pointer;inset:0;background:${avail?'#2d9e5f':'#ccc'};border-radius:999px;transition:0.2s;">
-              <span style="position:absolute;width:20px;height:20px;background:#fff;border-radius:50%;top:3px;left:${avail?'27px':'3px'};transition:0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></span>
-            </span>
-          </label>
-        </div>
-      </div>`;
-    });
-  });
-  el.innerHTML = html;
-}
-
-function toggleItem(name, sid, avail) {
-  availability[name] = avail;
-  const n = document.getElementById(sid+'_n');
-  const l = document.getElementById(sid+'_l');
-  const t = document.getElementById(sid+'_t');
-  if (n) { n.style.textDecoration = avail?'none':'line-through'; n.style.opacity = avail?'1':'0.5'; }
-  if (l) { l.textContent = avail?'✅ Available':'❌ Not Available'; l.style.background = avail?'#d4edda':'#fde8e8'; l.style.color = avail?'#155724':'#721c24'; }
-  if (t) { t.style.background = avail?'#2d9e5f':'#ccc'; t.querySelector('span').style.left = avail?'27px':'3px'; }
-  filterMenu('all');
-  filterOrder('all', document.querySelector('.otab'));
 }
 
 function switchTab(tab, btn) {
   document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  document.querySelectorAll('.admin-tab-content').forEach(t => t.style.display = 'none');
+  document.querySelectorAll('.admin-tab-content').forEach(t => t.style.display='none');
   document.getElementById('tab-'+tab).style.display = 'block';
-  if (tab === 'availability') {
-    const el = document.getElementById('availabilityList');
-    let html = '';
-    menuItems.forEach(i => {
-      const avail = availability[i.name] !== false;
-      html += `<div class="avail-row">
-        <div class="avail-row-info">
-          <span class="avail-row-name" style="${!avail?'text-decoration:line-through;opacity:0.5;':''}">${i.name}</span>
-          <span class="avail-row-cat">${catLabels[i.cat]} &nbsp;·&nbsp; ${i.price}</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:0.6rem;">
-          <span style="font-size:0.75rem;font-weight:500;color:${avail?'#2d9e5f':'#c0392b'};">${avail?'Available':'Not Available'}</span>
-          <input type="checkbox" class="avail-toggle" ${avail?'checked':''} onchange="toggleAvailability('${i.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}',this.checked)"/>
-        </div>
-      </div>`;
-    });
-    el.innerHTML = html || '<p>No items found</p>';
-  }
-}
-
-function renderAvailability() {
-  const el = document.getElementById('availabilityList');
-  if (!el) return;
-  const cats = [...new Set(menuItems.map(i => i.cat))];
-  let html = '';
-  cats.forEach(cat => {
-    html += `<div class="avail-cat-header">${catLabels[cat]}</div>`;
-    menuItems.filter(i => i.cat === cat).forEach(i => {
-      const avail = isAvailable(i.name);
-      const safeName = i.name.replace(/'/g, "\\'");
-      html += `<div class="avail-row">
-        <div class="avail-row-info">
-          <span class="avail-row-name" style="${!avail ? 'text-decoration:line-through;opacity:0.5;' : ''}">${i.name}</span>
-          <span class="avail-row-cat">${i.price}</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:0.6rem;">
-          <span style="font-size:0.75rem;font-weight:500;color:${avail ? '#2d9e5f' : '#c0392b'};">${avail ? 'Available' : 'Not Available'}</span>
-          <input type="checkbox" class="avail-toggle" ${avail ? 'checked' : ''} onchange="toggleAvailability('${safeName}',this.checked)"/>
-        </div>
-      </div>`;
-    });
-  });
-  el.innerHTML = html;
-}
-
-function toggleAvailability(name, checkbox) {
-  const avail = checkbox.checked;
-  availability[name] = avail;
-  const row = checkbox.closest('.avail-row');
-  const nameEl = row.querySelector('.avail-row-name');
-  const statusEl = row.querySelector('.avail-status');
-  nameEl.style.textDecoration = avail ? 'none' : 'line-through';
-  nameEl.style.opacity = avail ? '1' : '0.5';
-  statusEl.textContent = avail ? 'Available' : 'Not Available';
-  statusEl.style.color = avail ? '#2d9e5f' : '#c0392b';
-  filterMenu('all');
-  filterOrder('all', document.querySelector('.otab'));
+  if (tab==='reviews') renderAdminReviews();
 }
 
 function loadAdminData() {
   adminOrders = [
-    { id:'ORD-001', name:'Maria Santos', phone:'0917-123-4567', type:'Delivery', address:'123 Maharlika St, Dasma', payment:'GCash', items:'Cappuccino x2, Banana Bread x1', total:255, status:'Pending', time:'3:15 PM' },
-    { id:'ORD-002', name:'Juan dela Cruz', phone:'0928-987-6543', type:'Pick-up', address:'', payment:'BDO', items:'Beef Burger & Fries x1, Mango Smoothie x1', total:315, status:'Confirmed', time:'4:02 PM' },
-    { id:'ORD-003', name:'Ana Reyes', phone:'0912-555-4321', type:'Delivery', address:'456 Aguinaldo Hwy, Dasma', payment:'GCash', items:'Mocha x1, Tiramisu x1, Pasta Carbonara x1', total:425, status:'Preparing', time:'5:30 PM' },
+    {id:'ORD-001',name:'Maria Santos',phone:'0917-123-4567',type:'Delivery',address:'123 Maharlika St, Dasma',payment:'GCash',items:'Cappuccino x2, Banana Bread x1',total:255,status:'Pending',time:'3:15 PM'},
+    {id:'ORD-002',name:'Juan dela Cruz',phone:'0928-987-6543',type:'Pick-up',address:'',payment:'BDO',items:'Beef Burger & Fries x1, Mango Smoothie x1',total:315,status:'Confirmed',time:'4:02 PM'},
+    {id:'ORD-003',name:'Ana Reyes',phone:'0912-555-4321',type:'Delivery',address:'456 Aguinaldo Hwy, Dasma',payment:'GCash',items:'Mocha x1, Tiramisu x1, Pasta Carbonara x1',total:425,status:'Preparing',time:'5:30 PM'},
   ];
   adminReservations = [
-    { id:'RES-001', name:'Jose Mercado', phone:'0915-222-3344', date:'2026-06-05', time:'4:00 PM', guests:'3 guests', occasion:'Birthday', notes:'Window seat please', status:'Confirmed' },
-    { id:'RES-002', name:'Pia Gonzales', phone:'0923-444-5566', date:'2026-06-06', time:'7:00 PM', guests:'2 guests', occasion:'Date', notes:'', status:'Pending' },
+    {id:'RES-001',name:'Jose Mercado',phone:'0915-222-3344',date:'2026-06-05',time:'4:00 PM',guests:'3 guests',occasion:'Birthday',notes:'Window seat please',status:'Confirmed'},
+    {id:'RES-002',name:'Pia Gonzales',phone:'0923-444-5566',date:'2026-06-06',time:'7:00 PM',guests:'2 guests',occasion:'Date',notes:'',status:'Pending'},
   ];
-  renderAvailability();
-  renderOrders();
-  renderReservations();
-  renderAdminReviews();
+  updateStats(); renderOrders(); renderReservations(); renderAdminReviews();
 }
 
 function updateStats() {
@@ -1557,40 +1219,32 @@ function renderOrders() {
   el.innerHTML = adminOrders.map((o,i) => `
     <div class="order-admin-card">
       <div class="order-admin-top">
-        <div><div class="order-admin-name">${o.name} <span style="font-size:0.75rem; color:var(--text-light);">#${o.id}</span></div>
+        <div><div class="order-admin-name">${o.name} <span style="font-size:0.75rem;color:var(--text-light);">#${o.id}</span></div>
         <div class="order-admin-meta">${o.phone} · ${o.type}${o.address?' · '+o.address:''} · ${o.time}</div></div>
         <span class="badge badge-${o.status.toLowerCase()}">${o.status}</span>
       </div>
       <div class="order-admin-items">🛒 ${o.items}</div>
       <div class="order-admin-footer">
         <span class="order-total-tag">₱${o.total.toLocaleString()} · ${o.payment}</span>
-        <div style="display:flex; align-items:center; gap:0.5rem;">
+        <div style="display:flex;align-items:center;gap:0.5rem;">
           <select class="status-select" onchange="updateOrderStatus(${i},this.value)">
             <option ${o.status==='Pending'?'selected':''}>Pending</option>
             <option ${o.status==='Confirmed'?'selected':''}>Confirmed</option>
             <option ${o.status==='Preparing'?'selected':''}>Preparing</option>
             <option ${o.status==='Completed'?'selected':''}>Completed</option>
           </select>
-          ${o.status==='Completed' ? `<button onclick="confirmDeleteOrder(${i})" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;font-family:'Inter',sans-serif;">🗑️ Delete</button>` : ''}
+          ${o.status==='Completed'?`<button onclick="confirmDeleteOrder(${i})" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;font-family:'Inter',sans-serif;">🗑️ Delete</button>`:''}
         </div>
       </div>
     </div>`).join('');
 }
 
-function confirmDeleteOrder(i) {
-  const o = adminOrders[i];
-  const popup = document.getElementById('deleteOrderPopup');
-  document.getElementById('deleteOrderName').textContent = `${o.name} — ${o.items}`;
-  document.getElementById('confirmDeleteBtn').onclick = () => {
-    adminOrders.splice(i, 1);
-    updateStats();
-    renderOrders();
-    popup.style.display = 'none';
-  };
-  popup.style.display = 'flex';
-}
-
 function updateOrderStatus(i,val) { adminOrders[i].status=val; updateStats(); renderOrders(); }
+function confirmDeleteOrder(i) {
+  showDeletePopup(`${adminOrders[i].name} — ${adminOrders[i].items}`, () => {
+    adminOrders.splice(i,1); updateStats(); renderOrders();
+  });
+}
 
 function renderReservations() {
   const el = document.getElementById('resList');
@@ -1598,7 +1252,7 @@ function renderReservations() {
   el.innerHTML = adminReservations.map((r,i) => `
     <div class="order-admin-card">
       <div class="order-admin-top">
-        <div><div class="order-admin-name">${r.name} <span style="font-size:0.75rem; color:var(--text-light);">#${r.id}</span></div>
+        <div><div class="order-admin-name">${r.name} <span style="font-size:0.75rem;color:var(--text-light);">#${r.id}</span></div>
         <div class="order-admin-meta">${r.phone} · ${r.date} · ${r.time} · ${r.guests}${r.occasion?' · '+r.occasion:''}</div></div>
         <span class="badge badge-${r.status.toLowerCase()}">${r.status}</span>
       </div>
@@ -1621,35 +1275,116 @@ function savePayment() {
   document.getElementById('bankNum').textContent = document.getElementById('editBdoNum').value;
   document.getElementById('bankNum2').textContent = document.getElementById('editUbNum').value;
   document.getElementById('saveConfirm').style.display = 'block';
-  setTimeout(() => document.getElementById('saveConfirm').style.display = 'none', 3000);
+  setTimeout(() => document.getElementById('saveConfirm').style.display='none', 3000);
 }
 
-// ── INIT ──
-reviews = [
-  {
-    name: 'Molina Page',
-    stars: 5,
-    text: 'A Hidden Gem Right Along the Road to SM Dasmariñas! If you haven\'t discovered Accaza Coffee House yet, you\'re genuinely missing out. Conveniently located right along the roadside near SM Dasmariñas, this place is incredibly easy to find. From the moment you step inside, you\'ll immediately feel the difference — surprisingly spacious, calm, and serene. The coffee is absolutely outstanding; each cup carries a distinct, well-crafted flavor that sets it apart from your typical café. Whether you\'re a student pulling a study session or a businessman chasing a deadline, Accaza Coffee House is exactly where you need to be. ☕✨ Highly, highly recommended.',
-    date: 'June 2026'
-  },
-  {
-    name: 'Camilla Andrea',
-    stars: 5,
-    text: 'Nasa may highway ang coffee shop, ngunit nakakubli ang ganda nitong hindi mo mamamalas kung hindi sasadyain. Mukha siyang maliit sa labas, subalit malaki ang espasyo pagpasok, na tila napunta ka na sa ibang lugar. Gusto ko mang ipagdamot ang lugar para patuloy akong makatambay nang matiwasay, subalit tingin ko\'y kasalanan ito sa mga mahilig sa kape (at sa may-ari na rin) kung hindi ito maibabahagi sa iba. ☕ Cosy atmosphere · Good for working · Relaxing atmosphere · Best coffee',
-    date: 'April 2026'
-  },
-  {
-    name: 'Cess Borja',
-    stars: 5,
-    text: '10/10 would recommend!! we will surely come back 🤌',
-    date: 'July 2025'
-  }
+// ── AVAILABILITY ──
+function buildAvailSection() {
+  const groups = [
+    {cat:'☕ Coffee', items:['Spanish Latte','Sea Salt Latte','Sea Salt Caramel Latte','Caramel Macchiato','White Mocha','Mocha Latte','French Vanilla Latte','Banana Oat Latte','Cinnamon Oat Latte','Cafe Latte','Cappuccino','Americano']},
+    {cat:'🥤 Blended Frappes', items:['Java Chip','Caramel Frappe','White Mocha Frappe','Dark Mocha Frappe','Caramel Cream Frappe','Toffee Nut Frappe','Butterscotch Frappe','Cappuccino Frappe']},
+    {cat:'🍵 Non-Coffee Frappes', items:['Dark Chocolate','Nougat','Matcha Cream','Strawberry','Vanilla']},
+    {cat:'🌿 Non-Caffeine', items:['Banana Oat','Cinnamon Oat','Matcha Latte','White Chocolate']},
+    {cat:'🍵 Tea & Refreshments', items:['Peach Black Tea','Lychee','Passionfruit','Pink Guava','Tahitian Lime']},
+    {cat:'🍞 Pastries', items:['Buttered Croissant','Croffle','Matcha Croffle','Dark Chocolate Croffle','White Chocolate Croffle','Pain Au Chocolat','Cinnamon Roll']},
+  ];
+  const el = document.getElementById('availSection');
+  let html = '';
+  groups.forEach(g => {
+    html += `<div style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--brown-dark);margin:1.5rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:2px solid var(--cream-dark);">${g.cat}</div>`;
+    g.items.forEach(name => {
+      const avail = isAvailable(name);
+      const sid = 'avs_'+name.replace(/[\s']/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
+      html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:0.85rem 1.2rem;margin-bottom:0.5rem;background:#fff;border:1px solid var(--cream-dark);border-radius:8px;">
+        <div style="font-size:0.95rem;font-weight:500;color:var(--brown-dark);${!avail?'text-decoration:line-through;opacity:0.5;':''}" id="${sid}_n">${name}</div>
+        <div style="display:flex;align-items:center;gap:1rem;">
+          <span id="${sid}_l" style="font-size:0.82rem;font-weight:600;padding:0.25rem 0.75rem;border-radius:999px;background:${avail?'#d4edda':'#fde8e8'};color:${avail?'#155724':'#721c24'};">${avail?'✅ Available':'❌ Not Available'}</span>
+          <input type="checkbox" class="avail-toggle" ${avail?'checked':''} onchange="toggleItem('${name.replace(/'/g,"\\'")}','${sid}',this.checked)"/>
+        </div>
+      </div>`;
+    });
+  });
+  el.innerHTML = html;
+}
+
+function toggleItem(name, sid, avail) {
+  availability[name] = avail;
+  const n = document.getElementById(sid+'_n');
+  const l = document.getElementById(sid+'_l');
+  if (n) { n.style.textDecoration=avail?'none':'line-through'; n.style.opacity=avail?'1':'0.5'; }
+  if (l) { l.textContent=avail?'✅ Available':'❌ Not Available'; l.style.background=avail?'#d4edda':'#fde8e8'; l.style.color=avail?'#155724':'#721c24'; }
+  filterMenu('all'); filterOrder('all', document.querySelector('.otab'));
+}
+
+// ── CHATBOT ──
+const botResponses = [
+  {keys:['hour','open','close','time','schedule'],reply:'🕐 We are open every day — <strong>Monday to Sunday, 3:00 PM to 12:00 Midnight</strong>. Come visit us anytime! ☕'},
+  {keys:['location','address','where','find','directions'],reply:'📍 We are at <strong>Saratoga Avenue, La Mediterranea Subdivision, Governor\'s Drive, Dasmariñas, Cavite</strong>. Right along the highway near SM Dasmariñas! 😊'},
+  {keys:['gcash','pay','payment','bank','bdo','unionbank'],reply:'💳 Yes! We accept <strong>GCash, BDO, and UnionBank</strong>. Our GCash number is <strong>0927 692 4831</strong> under MARIA DANIELA M.'},
+  {keys:['delivery','deliver'],reply:'🛵 Yes, we offer <strong>delivery and pick-up</strong>! Place your order in our Order section. 😊'},
+  {keys:['menu','food','drink','coffee','frappe','pastry'],reply:'🍽️ We have <strong>Signature Coffees, Blended Frappes, Non-Coffee Frappes, Non-Caffeine drinks, Tea & Refreshments, and Pastries</strong>. Check our full menu above! ☕'},
+  {keys:['reserve','reservation','book','table'],reply:'📅 Reserve through our <strong>Reservations section</strong> on this website! Fill in your name, date, time, and guests. 😊'},
+  {keys:['wifi','password','internet'],reply:'📶 Yes, we have free WiFi! Ask our staff for the password when you arrive. 😊'},
+  {keys:['price','cost','how much'],reply:'💰 Prices start from <strong>₱140 for pastries</strong> and <strong>₱215 for coffee</strong>. Check our full menu for all prices! ☕'},
+  {keys:['parking','park'],reply:'🚗 Yes, we have parking available! 😊'},
+  {keys:['hello','hi','hey','kumusta','musta'],reply:'Hello! 👋 Welcome to <strong>Accaza Coffee</strong>! How can I help you today? ☕'},
+  {keys:['thank','thanks','salamat'],reply:'You\'re welcome! 😊 Looking forward to seeing you at Accaza Coffee! ☕🦁'},
+  {keys:['feedback','complaint','suggestion'],reply:'💛 Scroll down to our <strong>Feedback</strong> section and leave us a message. We read every one! 😊'},
 ];
 
+function getBotReply(msg) {
+  const lower = msg.toLowerCase();
+  for (const r of botResponses) { if (r.keys.some(k => lower.includes(k))) return r.reply; }
+  return null;
+}
+
+function toggleChat() {
+  chatOpen = !chatOpen;
+  document.getElementById('chatWindow').classList.toggle('open', chatOpen);
+  document.getElementById('chatNotif').style.display = 'none';
+  if (chatOpen && !chatStarted) {
+    chatStarted = true;
+    setTimeout(() => addBotMsg('👋 Hi there! Welcome to <strong>Accaza Coffee</strong>! Ask me about our hours, location, menu, delivery, payment, and more! ☕'), 400);
+  }
+}
+
+function addBotMsg(text) {
+  const msgs = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = 'chat-msg bot'; div.innerHTML = text;
+  msgs.appendChild(div); msgs.scrollTop = msgs.scrollHeight;
+}
+
+function addUserMsg(text) {
+  const msgs = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = 'chat-msg user'; div.textContent = text;
+  msgs.appendChild(div); msgs.scrollTop = msgs.scrollHeight;
+}
+
+function sendChat() {
+  const input = document.getElementById('chatInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  addUserMsg(msg);
+  const typing = document.createElement('div');
+  typing.className = 'chat-msg bot'; typing.id = 'typing'; typing.innerHTML = '<span style="letter-spacing:2px;">•••</span>';
+  document.getElementById('chatMessages').appendChild(typing);
+  document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
+  setTimeout(() => {
+    const t = document.getElementById('typing'); if (t) t.remove();
+    const reply = getBotReply(msg);
+    addBotMsg(reply || '🤔 I\'m not sure about that one. Please contact us directly:<br/><br/>📱 <strong>0927 692 4831</strong> (GCash / Viber / WhatsApp)<br/><br/>Our team will be happy to help! 😊');
+  }, 900);
+}
+
+function quickMsg(msg) { document.getElementById('chatInput').value = msg; sendChat(); }
+setTimeout(() => { if (!chatOpen) document.getElementById('chatNotif').style.display = 'block'; }, 3000);
+
+// ── INIT ──
 filterMenu('all');
 filterOrder('all', document.querySelector('.otab'));
-window.addEventListener('DOMContentLoaded', renderReviewsPublic);
-setTimeout(renderReviewsPublic, 100);
 </script>
 </body>
 </html>
