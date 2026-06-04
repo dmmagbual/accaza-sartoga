@@ -385,6 +385,13 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
           <button class="otab" onclick="filterOrder('desserts',this)">🍰 Desserts</button>
         </div>
         <div class="item-list" id="orderItemList"></div>
+
+        <!-- QR Code -->
+        <div style="margin-top:1.5rem;background:#fff;border:1px solid var(--cd);border-radius:10px;padding:1.25rem;text-align:center;">
+          <p style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--bd);margin-bottom:0.75rem;letter-spacing:0.05em;">📲 Scan to Pay</p>
+          <img src="https://i.postimg.cc/90hqFFdt/QR-CODE.jpg" alt="Scan to Pay QR Code" style="width:100%;max-width:320px;border-radius:8px;display:block;margin:0 auto;"/>
+          <p style="font-size:0.75rem;color:var(--tl);margin-top:0.75rem;line-height:1.6;">Scan the QR code above to pay via <strong>GCash</strong> or <strong>BDO InstaPay</strong>.<br/>Then attach your screenshot as proof of payment below. ✅</p>
+        </div>
       </div>
       <div>
         <div class="cart-box">
@@ -474,7 +481,7 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
     <div style="text-align:center;margin-bottom:2rem;">
       <p class="section-label" style="color:var(--bl);">Your Orders</p>
       <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.5rem;">Order Tracker</h2>
-      <p style="color:var(--tm);font-size:0.9rem;">Updates in real-time — place an order above to track it here.</p>
+      <p style="color:var(--tm);font-size:0.9rem;">Updates in real-time — place an order above to track it here. If your order is not shown below, please refresh your browser.</p>
     </div>
 
     <div id="activeOrdersList"><div style="text-align:center;padding:3rem;color:var(--tl);"><p style="font-size:2.5rem;margin-bottom:0.75rem;">☕</p><p style="font-size:0.95rem;font-weight:500;color:var(--bd);margin-bottom:0.3rem;">No active orders yet</p><p style="font-size:0.85rem;">Place an order above and it will appear here!</p></div></div>
