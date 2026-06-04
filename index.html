@@ -1651,6 +1651,9 @@ window.switchTab=function(tab,btn){
 window.updateStats=updateStats;
 
 // ── CHATBOT ───────────────────────────────────────────────────
+const CAFE_PHONE='639276924831';
+const CAFE_EMAIL='mariadaniela@gmail.com';
+
 const botReplies=[
   {keys:['hour','open','close','time','schedule'],reply:'🕐 We are open every day — <strong>Monday to Sunday, 3:00 PM to 12:00 Midnight</strong>. Come visit us anytime! ☕'},
   {keys:['location','address','where','find','direction'],reply:"📍 We are at <strong>Saratoga Avenue, La Mediterranea Subdivision, Governor's Drive, Dasmariñas, Cavite</strong>. Right along the highway near SM Dasmariñas! 😊"},
@@ -1665,20 +1668,108 @@ const botReplies=[
   {keys:['thank','thanks','salamat'],reply:"You're very welcome! 😊 We look forward to seeing you at Accaza Coffee! ☕🦁"},
   {keys:['order','buy','purchase'],reply:'🛒 Scroll up to our <strong>Order Online</strong> section, pick your items, and pay via GCash or bank transfer. 😊'},
 ];
+
 function getBotReply(msg){const l=msg.toLowerCase();for(const r of botReplies){if(r.keys.some(k=>l.includes(k)))return r.reply;}return null;}
+
+// ── CONTACT POPUP (when bot can't answer) ─────────────────────
+function showContactOptions(msg){
+  const encoded=encodeURIComponent('Hi Accaza Coffee! I have a question: '+msg);
+  const waLink=`https://wa.me/${CAFE_PHONE}?text=${encoded}`;
+  const vbLink=`viber://chat?number=%2B${CAFE_PHONE}&text=${encoded}`;
+  const smsLink=`sms:+${CAFE_PHONE}?body=${encoded}`;
+  const emailLink=`mailto:${CAFE_EMAIL}?subject=Customer Inquiry&body=${encoded}`;
+
+  const d=document.createElement('div');
+  d.className='chat-msg bot';
+  d.innerHTML=`
+    <p style="margin-bottom:0.6rem;">🤔 Sorry, I'm not sure about that one! How would you like to send your question to us directly?</p>
+    <div style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.75rem;">
+      <button onclick="openLink('${waLink}','whatsapp')" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;text-align:left;">💬 WhatsApp</button>
+      <button onclick="openLink('${vbLink}','viber')" style="background:#7360f2;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;text-align:left;">📱 Viber</button>
+      <button onclick="openLink('${smsLink}','sms')" style="background:#5c3d2e;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;text-align:left;">📩 SMS / Text</button>
+      <a href="${emailLink}" style="background:#a0673a;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;text-align:left;text-decoration:none;display:block;">📧 Email</a>
+    </div>
+    <p style="font-size:0.72rem;color:#8a6a55;line-height:1.5;border-top:1px solid #e8dcc8;padding-top:0.5rem;">📱 <strong>WhatsApp, Viber & SMS</strong> work best on mobile.<br/>💻 On <strong>desktop</strong>? We recommend sending us an <strong>Email</strong> instead.</p>`;
+  document.getElementById('chatMessages').appendChild(d);
+  document.getElementById('chatMessages').scrollTop=document.getElementById('chatMessages').scrollHeight;
+}
+
+// ── OPEN LINK WITH FALLBACK POPUP ────────────────────────────
+window.openLink=function(url, type){
+  if(type==='sms'){
+    // SMS is mobile only
+    const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if(!isMobile){showAppPopup('SMS / Text Message','SMS only works on mobile devices. Please try WhatsApp, Viber, or Email instead.', false);return;}
+    window.location.href=url;return;
+  }
+  if(type==='whatsapp'){
+    // Use wa.me which works on both mobile (app) and desktop (WhatsApp Web)
+    window.open(url,'_blank');return;
+  }
+  if(type==='viber'){
+    // Viber has no web version — try to open app, fallback if not installed
+    const start=Date.now();
+    window.location.href=url;
+    setTimeout(()=>{
+      if(Date.now()-start<2000){
+        showAppPopup('Viber','Viber does not appear to be installed on your device.', true);
+      }
+    },1500);
+  }
+};
+
+function showAppPopup(appName, message, showInstall){
+  // Remove any existing popup
+  const existing=document.getElementById('chatAppPopup');
+  if(existing) existing.remove();
+  const installUrl=appName==='Viber'?'https://www.viber.com/en/download/':'';
+  const overlay=document.createElement('div');
+  overlay.id='chatAppPopup';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML=`
+    <div style="background:#fff;border-radius:12px;padding:1.75rem;max-width:320px;width:90%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+      <div style="font-size:2rem;margin-bottom:0.5rem;">📵</div>
+      <h4 style="font-family:'Playfair Display',serif;color:#3b2314;margin-bottom:0.5rem;">${appName} Not Found</h4>
+      <p style="font-size:0.83rem;color:#5c3d2e;line-height:1.6;margin-bottom:1.25rem;">${message}</p>
+      <div style="display:flex;flex-direction:column;gap:0.5rem;">
+        ${showInstall?`<a href="${installUrl}" target="_blank" style="background:#7360f2;color:#fff;border:none;border-radius:6px;padding:0.65rem;font-size:0.85rem;cursor:pointer;text-decoration:none;display:block;">📥 Install ${appName}</a>`:''}
+        <button onclick="document.getElementById('chatAppPopup').remove();document.getElementById('chatInput').value='';sendChatSMS();" style="background:#5c3d2e;color:#fff;border:none;border-radius:6px;padding:0.65rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;">📩 Try SMS Instead</button>
+        <button onclick="document.getElementById('chatAppPopup').remove()" style="background:#f5efe6;border:1px solid #e8dcc8;border-radius:6px;padding:0.65rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;color:#8a6a55;">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+window.sendChatSMS=function(){
+  const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  if(!isMobile){showAppPopup('SMS / Text Message','SMS only works on mobile devices. Please use Email instead.',false);return;}
+  window.location.href=`sms:+${CAFE_PHONE}?body=${encodeURIComponent('Hi Accaza Coffee! I have a question.')}`;
+};
+
 window.toggleChat=function(){
   chatOpen=!chatOpen;
   document.getElementById('chatWindow').classList.toggle('open',chatOpen);
   document.getElementById('chatNotif').style.display='none';
   if(chatOpen&&!chatStarted){chatStarted=true;setTimeout(()=>addBotMsg("👋 Hi there! Welcome to <strong>Accaza Coffee (Cafe Sartoga)</strong>! Ask me about our hours, location, menu, delivery, payment, and more! ☕"),400);}
 };
+// Expose all functions that are called from HTML onclick attributes
+window.addBotMsg=addBotMsg;
+window.addUserMsg=addUserMsg;
+window.getBotReply=getBotReply;
+window.showContactOptions=showContactOptions;
+window.showAppPopup=showAppPopup;
 function addBotMsg(text){const m=document.getElementById('chatMessages');const d=document.createElement('div');d.className='chat-msg bot';d.innerHTML=text;m.appendChild(d);m.scrollTop=m.scrollHeight;}
 function addUserMsg(text){const m=document.getElementById('chatMessages');const d=document.createElement('div');d.className='chat-msg user';d.textContent=text;m.appendChild(d);m.scrollTop=m.scrollHeight;}
 window.sendChat=function(){
   const input=document.getElementById('chatInput');const msg=input.value.trim();if(!msg)return;input.value='';addUserMsg(msg);
   const typing=document.createElement('div');typing.className='chat-msg bot';typing.id='typing';typing.innerHTML='<span style="letter-spacing:2px;">•••</span>';
   document.getElementById('chatMessages').appendChild(typing);document.getElementById('chatMessages').scrollTop=document.getElementById('chatMessages').scrollHeight;
-  setTimeout(()=>{const t=document.getElementById('typing');if(t)t.remove();addBotMsg(getBotReply(msg)||'🤔 For specific queries, contact us directly:<br/><br/>📱 <strong>0927 692 4831</strong> (GCash / Viber / WhatsApp)<br/><br/>Our team will be happy to help! 😊');},900);
+  setTimeout(()=>{
+    const t=document.getElementById('typing');if(t)t.remove();
+    const reply=getBotReply(msg);
+    if(reply) addBotMsg(reply);
+    else showContactOptions(msg);
+  },900);
 };
 window.quickMsg=function(msg){document.getElementById('chatInput').value=msg;sendChat();};
 setTimeout(()=>{if(!chatOpen)document.getElementById('chatNotif').style.display='block';},3000);
