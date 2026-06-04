@@ -1008,13 +1008,13 @@ window.filterMenu=function(cat,btn){
   const filtered=cat==='all'?menuItems:menuItems.filter(i=>i.cat===cat);
   document.getElementById('menuGrid').innerHTML=filtered.map(i=>{
     const ok=isAvail(i.name);
-    return`<div class="menu-card ${ok?'':'unavailable-card'}" onclick="${ok?`addFromMenu('${i.name.replace(/'/g,"\\'")}','${i.price}')`:`showUnavail('${i.name.replace(/'/g,"\\'")}')`}">
+    return`<div class="menu-card" style="cursor:default;">
       <span class="cat-tag">${catLabels[i.cat]}</span>
       <h4 style="${ok?'':'text-decoration:line-through;opacity:0.6;'}">${i.name}</h4>
       <p>${i.desc}</p>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-top:0.5rem;">
-        <span class="price">${i.price}</span>
-        <span style="font-size:0.72rem;${ok?'color:rgba(201,149,106,0.7);':'color:#ff8080;font-style:italic;'}">${ok?'+ Tap to order':'Not Available'}</span>
+        <span class="price" style="${ok?'':'opacity:0.5;'}">${i.price}</span>
+        <span style="font-size:0.72rem;font-weight:600;padding:0.2rem 0.6rem;border-radius:999px;background:${ok?'rgba(45,158,95,0.15)':'rgba(192,57,43,0.12)'};color:${ok?'#2d9e5f':'#c0392b'};">${ok?'✅ Available':'❌ Unavailable'}</span>
       </div>
     </div>`;
   }).join('');
