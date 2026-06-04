@@ -209,6 +209,8 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
 .steam span:nth-child(2){animation-delay:0.3s;height:16px;}
 .steam span:nth-child(3){animation-delay:0.6s;}
 @keyframes steamUp{0%{transform:translateY(0) scaleX(1);opacity:0.6;}50%{transform:translateY(-8px) scaleX(1.3);opacity:0.3;}100%{transform:translateY(-16px) scaleX(0.8);opacity:0;}}
+@keyframes steamRise{0%{height:8px;opacity:0;transform:translateY(0) scaleX(1);}40%{opacity:0.7;transform:translateY(-16px) scaleX(1.4);}100%{height:48px;opacity:0;transform:translateY(-40px) scaleX(0.6);}}
+@keyframes heartBeat{0%,100%{transform:scale(1);}15%{transform:scale(1.35);}30%{transform:scale(1);}45%{transform:scale(1.2);}60%{transform:scale(1);}}
 .chat-notif{position:absolute;top:-4px;right:-4px;width:18px;height:18px;background:#c0392b;border-radius:50%;border:2px solid #fff;display:none;animation:notifBounce 0.8s ease infinite alternate;}
 @keyframes notifBounce{from{transform:scale(1);}to{transform:scale(1.25);}}
 .chat-label{position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);font-size:0.6rem;color:rgba(59,35,20,0.7);white-space:nowrap;font-family:'Inter',sans-serif;font-weight:500;background:rgba(245,239,230,0.9);padding:0.15rem 0.5rem;border-radius:999px;}
@@ -312,11 +314,28 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
       </div>
     </div>
     <div class="about-visual">
-      <div class="visual-main"><div class="cup-icon">☕</div></div>
+      <div class="visual-main" style="overflow:hidden;padding:0;position:relative;">
+        <img src="https://i.postimg.cc/cJJyKV7X/coffe-latte.jpg" alt="Accaza Coffee Latte" style="width:100%;height:100%;object-fit:cover;object-position:center;display:block;border-radius:8px;"/>
+        <!-- Animated Steam overlay -->
+        <div style="position:absolute;top:8px;left:50%;transform:translateX(-50%);display:flex;gap:8px;align-items:flex-end;height:48px;">
+          <div style="width:5px;background:linear-gradient(to top,rgba(255,255,255,0.7),transparent);border-radius:999px;animation:steamRise 2s ease-in-out infinite;animation-delay:0s;"></div>
+          <div style="width:5px;background:linear-gradient(to top,rgba(255,255,255,0.7),transparent);border-radius:999px;animation:steamRise 2s ease-in-out infinite;animation-delay:0.4s;"></div>
+          <div style="width:5px;background:linear-gradient(to top,rgba(255,255,255,0.7),transparent);border-radius:999px;animation:steamRise 2s ease-in-out infinite;animation-delay:0.8s;"></div>
+          <div style="width:5px;background:linear-gradient(to top,rgba(255,255,255,0.7),transparent);border-radius:999px;animation:steamRise 2s ease-in-out infinite;animation-delay:1.2s;"></div>
+          <div style="width:5px;background:linear-gradient(to top,rgba(255,255,255,0.7),transparent);border-radius:999px;animation:steamRise 2s ease-in-out infinite;animation-delay:0.6s;"></div>
+        </div>
+        <!-- Freshly Brewed label -->
+        <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,rgba(59,35,20,0.75),transparent);padding:1rem;text-align:center;">
+          <p style="font-size:0.75rem;color:rgba(245,239,230,0.9);letter-spacing:0.2em;text-transform:uppercase;font-family:'Inter',sans-serif;font-weight:500;">Freshly Brewed</p>
+        </div>
+      </div>
       <div class="visual-stats">
         <div class="stat-box"><span class="num">50+</span><span class="lbl">Menu Items</span></div>
         <div class="stat-box"><span class="num">100%</span><span class="lbl">Fresh Daily</span></div>
-        <div class="stat-box"><span class="num">❤️</span><span class="lbl">Made with Love</span></div>
+        <div class="stat-box" style="position:relative;overflow:hidden;">
+          <span class="num" style="animation:heartBeat 1.2s ease-in-out infinite;display:inline-block;">❤️</span>
+          <span class="lbl">Made with Love</span>
+        </div>
       </div>
     </div>
   </div>
