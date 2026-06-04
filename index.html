@@ -58,10 +58,7 @@ nav{position:fixed;top:0;width:100%;z-index:200;background:rgba(59,35,20,0.96);b
 .tab-btn:hover{background:rgba(255,255,255,0.12);color:var(--cr);}
 .tab-btn.active{background:var(--bl);border-color:var(--bl);color:#fff;}
 .menu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem;}
-.menu-card{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:1.2rem;transition:all 0.2s;cursor:pointer;}
-.menu-card:hover{background:rgba(255,255,255,0.13);transform:translateY(-2px);border-color:rgba(201,149,106,0.5);}
-.unavailable-card{opacity:0.45;cursor:not-allowed;}
-.unavailable-card:hover{transform:none!important;background:rgba(255,255,255,0.06)!important;border-color:rgba(255,255,255,0.1)!important;}
+.menu-card{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:1.2rem;cursor:default;}
 .menu-card .cat-tag{font-size:0.68rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--bl);margin-bottom:0.5rem;display:block;}
 .menu-card h4{font-family:'Playfair Display',serif;color:var(--cr);font-size:1rem;margin-bottom:0.3rem;}
 .menu-card p{font-size:0.78rem;color:rgba(245,239,230,0.5);line-height:1.5;margin-bottom:0.8rem;}
@@ -97,12 +94,50 @@ nav{position:fixed;top:0;width:100%;z-index:200;background:rgba(59,35,20,0.96);b
 .btn-place-order{width:100%;margin-top:1.25rem;background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.9rem;font-size:0.9rem;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;font-family:'Inter',sans-serif;transition:background 0.2s;}
 .btn-place-order:hover{background:var(--bm);}
 input[type=text],input[type=date],input[type=password],select,textarea{background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.6rem 0.85rem;font-family:'Inter',sans-serif;font-size:0.88rem;color:var(--td);width:100%;}
+
+/* ── RESERVATION CALENDAR ── */
 .reservations{background:var(--bm);padding:6rem 2rem;}
 .res-inner{max-width:1000px;margin:0 auto;}
-.res-layout{display:grid;grid-template-columns:1.4fr 1fr;gap:2.5rem;align-items:start;}
+.res-layout{display:grid;grid-template-columns:1fr 1fr;gap:2.5rem;align-items:start;}
+
+/* Calendar */
+.cal-wrap{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:1.5rem;}
+.cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;}
+.cal-title{font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--cr);}
+.cal-nav{background:rgba(255,255,255,0.1);border:none;color:var(--cr);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;transition:background 0.2s;}
+.cal-nav:hover{background:rgba(255,255,255,0.2);}
+.cal-nav:disabled{opacity:0.3;cursor:not-allowed;}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+.cal-day-label{text-align:center;font-size:0.68rem;color:rgba(245,239,230,0.5);padding:0.3rem 0;text-transform:uppercase;letter-spacing:0.08em;}
+.cal-day{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:0.82rem;cursor:pointer;font-family:'Inter',sans-serif;font-weight:500;transition:all 0.15s;position:relative;border:2px solid transparent;}
+.cal-day.empty{cursor:default;}
+.cal-day.past{color:rgba(245,239,230,0.2);cursor:not-allowed;background:rgba(255,255,255,0.03);}
+.cal-day.open{background:rgba(45,158,95,0.2);color:#a5d6a7;border-color:rgba(45,158,95,0.3);}
+.cal-day.open:hover{background:rgba(45,158,95,0.35);border-color:rgba(45,158,95,0.6);}
+.cal-day.partial{background:rgba(243,156,18,0.2);color:#fdd835;border-color:rgba(243,156,18,0.3);}
+.cal-day.partial:hover{background:rgba(243,156,18,0.35);}
+.cal-day.blocked{background:rgba(255,255,255,0.05);color:rgba(245,239,230,0.25);cursor:not-allowed;border-color:transparent;}
+.cal-day.selected{background:var(--bl);color:#fff;border-color:#c9956a;box-shadow:0 0 0 3px rgba(201,149,106,0.3);}
+.cal-day.today{border-color:rgba(201,149,106,0.6);}
+
+/* Calendar Legend */
+.cal-legend{display:flex;gap:1rem;flex-wrap:wrap;margin-top:1rem;}
+.cal-legend-item{display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;color:rgba(245,239,230,0.6);}
+.cal-legend-dot{width:10px;height:10px;border-radius:50%;}
+
+/* Time slots */
+.time-slots-wrap{margin-top:1rem;}
+.time-slots-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem;margin-top:0.75rem;}
+.time-slot{padding:0.5rem 0.25rem;border-radius:6px;font-size:0.78rem;text-align:center;cursor:pointer;font-family:'Inter',sans-serif;font-weight:500;transition:all 0.15s;border:1px solid transparent;}
+.time-slot.available{background:rgba(45,158,95,0.15);color:#a5d6a7;border-color:rgba(45,158,95,0.3);}
+.time-slot.available:hover{background:rgba(45,158,95,0.3);}
+.time-slot.blocked{background:rgba(255,255,255,0.04);color:rgba(245,239,230,0.2);cursor:not-allowed;}
+.time-slot.selected{background:var(--bl);color:#fff;border-color:#c9956a;}
+
+/* Booking Form */
 .res-form-box{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:1.75rem;}
 .res-field-group{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;}
-.res-field{display:flex;flex-direction:column;}
+.res-field{display:flex;flex-direction:column;margin-bottom:0.75rem;}
 .res-label{font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(245,239,230,0.55);margin-bottom:0.35rem;}
 .res-form-box input,.res-form-box select,.res-form-box textarea{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:0.6rem 0.85rem;color:var(--cr);font-family:'Inter',sans-serif;font-size:0.88rem;width:100%;}
 .res-form-box input::placeholder,.res-form-box textarea::placeholder{color:rgba(245,239,230,0.3);}
@@ -110,12 +145,41 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
 .res-form-box textarea{resize:none;}
 .btn-reserve{width:100%;margin-top:1.25rem;background:var(--bl);color:#fff;border:none;border-radius:6px;padding:0.9rem;font-size:0.9rem;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;font-family:'Inter',sans-serif;transition:background 0.2s;}
 .btn-reserve:hover{background:#b8784a;}
+
+/* Deposit notice */
+.deposit-notice{background:rgba(243,156,18,0.15);border:1px solid rgba(243,156,18,0.3);border-radius:8px;padding:1rem;margin-top:0.75rem;}
+.deposit-notice p{font-size:0.82rem;color:#fdd835;line-height:1.6;}
+
+/* Booking type badge */
+.booking-type-badge{display:inline-block;font-size:0.75rem;font-weight:600;padding:0.3rem 0.85rem;border-radius:999px;margin-top:0.5rem;}
+
 .res-info{display:flex;flex-direction:column;gap:1rem;}
 .res-info-card{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:1.25rem;}
 .res-info-icon{font-size:1.5rem;margin-bottom:0.5rem;}
 .res-info-card h4{font-family:'Playfair Display',serif;color:var(--cr);font-size:1rem;margin-bottom:0.4rem;}
 .res-info-card p{font-size:0.82rem;color:rgba(245,239,230,0.6);line-height:1.5;}
 .res-time{color:#c9956a!important;font-weight:500;}
+
+/* Admin Calendar Manager */
+.admin-cal-wrap{background:#fff;border:1px solid var(--cd);border-radius:10px;padding:1.5rem;}
+.admin-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+.admin-cal-day{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:0.82rem;cursor:pointer;font-family:'Inter',sans-serif;font-weight:500;transition:all 0.15s;border:2px solid transparent;}
+.admin-cal-day.empty{cursor:default;}
+.admin-cal-day.past{color:rgba(0,0,0,0.2);cursor:not-allowed;background:#f5f5f5;}
+.admin-cal-day.open{background:#d4edda;color:#155724;border-color:#a8d5b5;}
+.admin-cal-day.open:hover{background:#b8dfc4;}
+.admin-cal-day.partial{background:#fff3cd;color:#664d03;border-color:#fde8b0;}
+.admin-cal-day.blocked{background:#fde8e8;color:#721c24;border-color:#f5c6c6;}
+.admin-cal-day.selected{background:var(--bd);color:#fff;border-color:var(--bl);}
+.admin-cal-day.today{border-color:var(--bl);}
+
+/* Time slot manager */
+.slot-manager{background:var(--cr);border:1px solid var(--cd);border-radius:8px;padding:1.25rem;margin-top:1rem;}
+.slot-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0.5rem;margin-top:0.75rem;}
+.slot-item{padding:0.5rem;border-radius:6px;font-size:0.78rem;text-align:center;cursor:pointer;font-family:'Inter',sans-serif;font-weight:500;transition:all 0.15s;border:1px solid var(--cd);}
+.slot-item.open{background:#d4edda;color:#155724;}
+.slot-item.blocked{background:#fde8e8;color:#721c24;}
+
 .reviews-section{background:var(--cd);padding:6rem 2rem;}
 .reviews-inner{max-width:1000px;margin:0 auto;}
 .reviews-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1.25rem;}
@@ -194,6 +258,7 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
 .badge-confirmed{background:#d1ecf1;color:#0c5460;}
 .badge-preparing{background:#fff3cd;color:#664d03;}
 .badge-completed{background:#d4edda;color:#155724;}
+.badge-declined{background:#fde8e8;color:#721c24;}
 .badge-received{background:#c8e6c9;color:#1b5e20;}
 .empty-state{text-align:center;padding:2rem;color:var(--tl);font-size:0.88rem;}
 .avail-toggle{-webkit-appearance:none;appearance:none;width:44px;height:24px;background:#ccc;border-radius:999px;cursor:pointer;position:relative;transition:background 0.2s;flex-shrink:0;border:none;outline:none;}
@@ -209,8 +274,6 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
 .steam span:nth-child(2){animation-delay:0.3s;height:16px;}
 .steam span:nth-child(3){animation-delay:0.6s;}
 @keyframes steamUp{0%{transform:translateY(0) scaleX(1);opacity:0.6;}50%{transform:translateY(-8px) scaleX(1.3);opacity:0.3;}100%{transform:translateY(-16px) scaleX(0.8);opacity:0;}}
-@keyframes steamRise{0%{height:8px;opacity:0;transform:translateY(0) scaleX(1);}40%{opacity:0.7;transform:translateY(-16px) scaleX(1.4);}100%{height:48px;opacity:0;transform:translateY(-40px) scaleX(0.6);}}
-@keyframes heartBeat{0%,100%{transform:scale(1);}15%{transform:scale(1.35);}30%{transform:scale(1);}45%{transform:scale(1.2);}60%{transform:scale(1);}}
 .chat-notif{position:absolute;top:-4px;right:-4px;width:18px;height:18px;background:#c0392b;border-radius:50%;border:2px solid #fff;display:none;animation:notifBounce 0.8s ease infinite alternate;}
 @keyframes notifBounce{from{transform:scale(1);}to{transform:scale(1.25);}}
 .chat-label{position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);font-size:0.6rem;color:rgba(59,35,20,0.7);white-space:nowrap;font-family:'Inter',sans-serif;font-weight:500;background:rgba(245,239,230,0.9);padding:0.15rem 0.5rem;border-radius:999px;}
@@ -239,24 +302,25 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
 .popup-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9998;align-items:center;justify-content:center;}
 .popup-overlay.show{display:flex;}
 .popup-box{background:#fff;border-radius:12px;padding:2rem;max-width:380px;width:90%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.2);}
-/* Firebase sync indicator */
 .fb-sync{position:fixed;top:70px;right:1rem;z-index:150;font-size:0.72rem;padding:0.3rem 0.75rem;border-radius:999px;font-family:'Inter',sans-serif;display:none;}
 .fb-sync.online{background:#d4edda;color:#155724;display:block;}
-.fb-sync.offline{background:#fde8e8;color:#721c24;display:block;}
+@keyframes steamRise{0%{height:8px;opacity:0;transform:translateY(0) scaleX(1);}40%{opacity:0.7;transform:translateY(-16px) scaleX(1.4);}100%{height:48px;opacity:0;transform:translateY(-40px) scaleX(0.6);}}
+@keyframes heartBeat{0%,100%{transform:scale(1);}15%{transform:scale(1.35);}30%{transform:scale(1);}45%{transform:scale(1.2);}60%{transform:scale(1);}}
 @media(max-width:680px){
   .about-inner,.order-layout,.res-layout,.contact-layout,.feedback-layout{grid-template-columns:1fr;gap:2rem;}
   .nav-links{display:none;}
-  .about-values{grid-template-columns:1fr;}
+  .about-values,.res-field-group{grid-template-columns:1fr;}
   .admin-stats{grid-template-columns:1fr 1fr;}
   .payment-edit-grid{grid-template-columns:1fr;}
   .gallery-grid{grid-template-columns:1fr 1fr;grid-auto-rows:auto;}
   .gallery-card.tall{grid-row:auto;}
+  .time-slots-grid{grid-template-columns:repeat(2,1fr);}
+  .slot-grid{grid-template-columns:repeat(3,1fr);}
 }
 </style>
 </head>
 <body>
 
-<!-- Firebase sync badge -->
 <div class="fb-sync" id="fbSync">🔥 Firebase Connected</div>
 
 <!-- NAV -->
@@ -316,7 +380,6 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
     <div class="about-visual">
       <div class="visual-main" style="overflow:hidden;padding:0;position:relative;">
         <img src="https://i.postimg.cc/8zM97Trf/coffe-latte1.jpg" alt="Accaza Coffee Latte" style="width:100%;height:100%;object-fit:cover;object-position:center top;display:block;border-radius:8px;"/>
-        <!-- Animated Steam overlay -->
         <div style="position:absolute;top:8px;left:50%;transform:translateX(-50%);display:flex;gap:6px;align-items:flex-end;height:60px;">
           <div style="width:5px;background:linear-gradient(to top,rgba(255,255,255,0.7),transparent);border-radius:999px;animation:steamRise 2s ease-in-out infinite;animation-delay:0s;"></div>
           <div style="width:4px;background:linear-gradient(to top,rgba(255,255,255,0.6),transparent);border-radius:999px;animation:steamRise 2.2s ease-in-out infinite;animation-delay:0.3s;"></div>
@@ -328,7 +391,6 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
           <div style="width:4px;background:linear-gradient(to top,rgba(255,255,255,0.6),transparent);border-radius:999px;animation:steamRise 2.3s ease-in-out infinite;animation-delay:1.0s;"></div>
           <div style="width:5px;background:linear-gradient(to top,rgba(255,255,255,0.7),transparent);border-radius:999px;animation:steamRise 2.1s ease-in-out infinite;animation-delay:1.5s;"></div>
         </div>
-        <!-- Freshly Brewed label -->
         <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,rgba(59,35,20,0.75),transparent);padding:1rem;text-align:center;">
           <p style="font-size:0.75rem;color:rgba(245,239,230,0.9);letter-spacing:0.2em;text-transform:uppercase;font-family:'Inter',sans-serif;font-weight:500;">Freshly Brewed</p>
         </div>
@@ -336,10 +398,7 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
       <div class="visual-stats">
         <div class="stat-box"><span class="num">50+</span><span class="lbl">Menu Items</span></div>
         <div class="stat-box"><span class="num">100%</span><span class="lbl">Fresh Daily</span></div>
-        <div class="stat-box" style="position:relative;overflow:hidden;">
-          <span class="num" style="animation:heartBeat 1.2s ease-in-out infinite;display:inline-block;">❤️</span>
-          <span class="lbl">Made with Love</span>
-        </div>
+        <div class="stat-box"><span class="num" style="animation:heartBeat 1.2s ease-in-out infinite;display:inline-block;">❤️</span><span class="lbl">Made with Love</span></div>
       </div>
     </div>
   </div>
@@ -408,17 +467,12 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
           <button class="otab" onclick="filterOrder('desserts',this)">🍰 Desserts</button>
         </div>
         <div class="item-list" id="orderItemList"></div>
-
         <!-- QR Codes -->
         <div style="margin-top:1.5rem;background:#fff;border:1px solid var(--cd);border-radius:10px;padding:1.25rem;text-align:center;">
           <p style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--bd);margin-bottom:1rem;letter-spacing:0.05em;">📲 Scan to Pay</p>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
-            <div>
-              <img src="https://i.postimg.cc/JzD6kpwZ/GCASH-QR-CODE.jpg" alt="GCash QR Code" style="width:100%;border-radius:8px;display:block;"/>
-            </div>
-            <div>
-              <img src="https://i.postimg.cc/Hnk3s24z/BDO-QR-CODE.jpg" alt="BDO QR Code" style="width:100%;border-radius:8px;display:block;"/>
-            </div>
+            <div><img src="https://i.postimg.cc/JzD6kpwZ/GCASH-QR-CODE.jpg" alt="GCash QR Code" style="width:100%;border-radius:8px;display:block;"/></div>
+            <div><img src="https://i.postimg.cc/Hnk3s24z/BDO-QR-CODE.jpg" alt="BDO QR Code" style="width:100%;border-radius:8px;display:block;"/></div>
           </div>
           <p style="font-size:0.75rem;color:var(--tl);margin-top:0.75rem;line-height:1.6;">Scan to pay via <strong>GCash</strong> or <strong>BDO InstaPay</strong>, then attach your screenshot as proof of payment below. ✅</p>
         </div>
@@ -465,17 +519,8 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
           </div>
           <h3 class="order-section-title" style="margin-top:1.5rem;">6. Proof of Payment</h3>
           <div style="background:var(--cr);border:2px dashed var(--cd);border-radius:8px;padding:1.25rem;text-align:center;cursor:pointer;" onclick="document.getElementById('paymentProof').click()" id="uploadBox">
-            <div id="uploadPlaceholder">
-              <div style="font-size:2rem;margin-bottom:0.5rem;">📎</div>
-              <p style="font-size:0.85rem;color:var(--tm);font-weight:500;">Click to attach screenshot</p>
-              <p style="font-size:0.75rem;color:var(--tl);margin-top:0.25rem;">GCash or bank transfer receipt (JPG, PNG)</p>
-            </div>
-            <div id="uploadPreview" style="display:none;">
-              <img id="proofImg" style="max-width:100%;max-height:180px;border-radius:6px;margin-bottom:0.5rem;" alt="Payment proof"/>
-              <p style="font-size:0.75rem;color:#2d9e5f;font-weight:500;">✅ Receipt attached!</p>
-              <p style="font-size:0.72rem;color:var(--tl);margin-top:0.2rem;" id="proofFileName"></p>
-              <button onclick="removeProof(event)" style="margin-top:0.5rem;background:none;border:1px solid #e0b0b0;border-radius:4px;padding:0.2rem 0.6rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">Remove</button>
-            </div>
+            <div id="uploadPlaceholder"><div style="font-size:2rem;margin-bottom:0.5rem;">📎</div><p style="font-size:0.85rem;color:var(--tm);font-weight:500;">Click to attach screenshot</p><p style="font-size:0.75rem;color:var(--tl);margin-top:0.25rem;">GCash or bank transfer receipt (JPG, PNG)</p></div>
+            <div id="uploadPreview" style="display:none;"><img id="proofImg" style="max-width:100%;max-height:180px;border-radius:6px;margin-bottom:0.5rem;" alt="Payment proof"/><p style="font-size:0.75rem;color:#2d9e5f;font-weight:500;">✅ Receipt attached!</p><p style="font-size:0.72rem;color:var(--tl);margin-top:0.2rem;" id="proofFileName"></p><button onclick="removeProof(event)" style="margin-top:0.5rem;background:none;border:1px solid #e0b0b0;border-radius:4px;padding:0.2rem 0.6rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">Remove</button></div>
           </div>
           <input type="file" id="paymentProof" accept="image/*" style="display:none;" onchange="previewProof(this)"/>
           <h3 class="order-section-title" style="margin-top:1.5rem;">7. Preferred Contact for Confirmation</h3>
@@ -493,9 +538,7 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
           <div id="orderConfirm" style="display:none;margin-top:1rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:8px;padding:1.25rem;text-align:center;">
             <p style="font-size:1.1rem;font-weight:600;color:#2d6a4f;margin-bottom:0.5rem;">🎉 Order Placed Successfully!</p>
             <p style="font-size:0.85rem;color:#2d6a4f;margin-bottom:0.75rem;">Your Order ID is:</p>
-            <div style="background:#fff;border:2px solid #a8d5b5;border-radius:8px;padding:0.75rem 1.5rem;display:inline-block;margin-bottom:0.75rem;">
-              <span id="displayOrderId" style="font-family:'Playfair Display',serif;font-size:1.6rem;color:var(--bd);font-weight:600;letter-spacing:0.1em;"></span>
-            </div>
+            <div style="background:#fff;border:2px solid #a8d5b5;border-radius:8px;padding:0.75rem 1.5rem;display:inline-block;margin-bottom:0.75rem;"><span id="displayOrderId" style="font-family:'Playfair Display',serif;font-size:1.6rem;color:var(--bd);font-weight:600;letter-spacing:0.1em;"></span></div>
             <p style="font-size:0.82rem;color:var(--tm);line-height:1.6;margin-bottom:0.5rem;">📱 We will contact you via your preferred method to confirm your order.</p>
             <p style="font-size:0.78rem;color:#856404;background:#fef3cd;border-radius:6px;padding:0.5rem 0.75rem;line-height:1.5;">⬇️ Scroll down to the Order Tracker to see your live order status from any device!</p>
           </div>
@@ -513,7 +556,6 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
       <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.5rem;">Order Tracker</h2>
       <p style="color:var(--tm);font-size:0.9rem;">Updates in real-time — place an order above to track it here. If your order is not shown below, please refresh your browser.</p>
     </div>
-
     <div id="activeOrdersList"><div style="text-align:center;padding:3rem;color:var(--tl);"><p style="font-size:2.5rem;margin-bottom:0.75rem;">☕</p><p style="font-size:0.95rem;font-weight:500;color:var(--bd);margin-bottom:0.3rem;">No active orders yet</p><p style="font-size:0.85rem;">Place an order above and it will appear here!</p></div></div>
   </div>
 </section>
@@ -527,42 +569,109 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
       <p style="color:rgba(245,239,230,0.65);max-width:480px;margin:0 auto;font-size:0.95rem;">Secure your spot at Accaza Coffee — we'd love to have you.</p>
     </div>
     <div class="res-layout">
-      <div class="res-form-box">
-        <div class="res-field-group">
-          <div class="res-field"><label class="res-label">Full Name</label><input type="text" id="resName" placeholder="e.g. Maria Santos"/></div>
-          <div class="res-field"><label class="res-label">Phone Number</label><input type="text" id="resPhone" placeholder="e.g. 0917 123 4567"/></div>
-        </div>
-        <div class="res-field-group">
-          <div class="res-field"><label class="res-label">Date</label><input type="date" id="resDate"/></div>
-          <div class="res-field"><label class="res-label">Time</label>
-            <select id="resTime">
-              <option value="">Select a time</option>
-              <option>3:00 PM</option><option>3:30 PM</option><option>4:00 PM</option><option>4:30 PM</option>
-              <option>5:00 PM</option><option>5:30 PM</option><option>6:00 PM</option><option>6:30 PM</option>
-              <option>7:00 PM</option><option>7:30 PM</option><option>8:00 PM</option><option>8:30 PM</option>
-              <option>9:00 PM</option><option>9:30 PM</option><option>10:00 PM</option><option>10:30 PM</option>
-              <option>11:00 PM</option><option>11:30 PM</option><option>12:00 Midnight</option>
-            </select>
+      <!-- LEFT: Calendar + Form -->
+      <div>
+        <!-- Calendar -->
+        <div class="cal-wrap" style="margin-bottom:1.5rem;">
+          <div class="cal-header">
+            <button class="cal-nav" id="calPrev" onclick="calNavigate(-1)">‹</button>
+            <span class="cal-title" id="calTitle">June 2026</span>
+            <button class="cal-nav" id="calNext" onclick="calNavigate(1)">›</button>
+          </div>
+          <div class="cal-grid" id="calGrid"></div>
+          <div class="cal-legend">
+            <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#2d9e5f;"></div>Available</div>
+            <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#f39c12;"></div>Partially Booked</div>
+            <div class="cal-legend-item"><div class="cal-legend-dot" style="background:#555;"></div>Unavailable</div>
           </div>
         </div>
-        <div class="res-field-group">
-          <div class="res-field"><label class="res-label">Number of Guests</label>
-            <select id="resGuests"><option>1 guest</option><option>2 guests</option><option>3 guests</option><option>4 guests</option><option>5 guests</option><option>6 guests</option><option>7 guests</option><option>8+ guests</option></select>
-          </div>
-          <div class="res-field"><label class="res-label">Occasion (optional)</label>
-            <select id="resOccasion"><option value="">None / Regular visit</option><option>Birthday</option><option>Anniversary</option><option>Business Meeting</option><option>Date</option><option>Family Gathering</option><option>Other</option></select>
-          </div>
+
+        <!-- Time Slots -->
+        <div class="cal-wrap" id="timeSlotsWrap" style="display:none;margin-bottom:1.5rem;">
+          <p style="font-size:0.8rem;color:rgba(245,239,230,0.7);margin-bottom:0.5rem;">Select a time for <strong id="selectedDateLabel" style="color:var(--cr);"></strong></p>
+          <div class="time-slots-grid" id="timeSlotsGrid"></div>
         </div>
-        <div class="res-field" style="margin-top:0.25rem;"><label class="res-label">Special Requests (optional)</label><textarea id="resNotes" rows="2" placeholder="e.g. window seat, allergies..."></textarea></div>
-        <button class="btn-reserve" onclick="submitReservation()">Confirm Reservation</button>
-        <div id="resConfirm" style="display:none;margin-top:1rem;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:1rem;text-align:center;">
-          <p style="color:var(--cr);">🎉 Reservation received! We'll confirm via your phone number shortly.</p>
+
+        <!-- Booking Form -->
+        <div class="res-form-box" id="resFormWrap" style="display:none;">
+          <p style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--cr);margin-bottom:1rem;">📋 Your Booking Details</p>
+
+          <!-- Selected date/time summary -->
+          <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:0.85rem 1rem;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <p style="font-size:0.72rem;color:rgba(245,239,230,0.5);text-transform:uppercase;letter-spacing:0.1em;">Date & Time</p>
+              <p style="font-size:0.95rem;color:var(--cr);font-weight:500;" id="resSummaryDateTime">—</p>
+            </div>
+            <button onclick="resetResSelection()" style="background:none;border:1px solid rgba(255,255,255,0.2);color:rgba(245,239,230,0.6);border-radius:6px;padding:0.3rem 0.75rem;font-size:0.75rem;cursor:pointer;font-family:'Inter',sans-serif;">Change</button>
+          </div>
+
+          <div class="res-field-group">
+            <div class="res-field"><label class="res-label">Full Name</label><input type="text" id="resName" placeholder="e.g. Maria Santos"/></div>
+            <div class="res-field"><label class="res-label">Phone Number</label><input type="text" id="resPhone" placeholder="e.g. 0917 123 4567"/></div>
+          </div>
+          <div class="res-field-group">
+            <div class="res-field"><label class="res-label">Number of Guests</label>
+              <select id="resGuests" onchange="updateBookingType()">
+                <option value="1">1 guest</option><option value="2">2 guests</option><option value="3">3 guests</option>
+                <option value="4">4 guests</option><option value="5">5 guests</option><option value="6">6 guests</option>
+                <option value="7">7 guests</option><option value="8">8 guests</option><option value="9">9 guests</option>
+                <option value="10">10 guests</option><option value="15">15 guests</option><option value="20">20 guests</option>
+                <option value="25">25 guests</option><option value="30">30 guests</option><option value="40">40 guests</option>
+                <option value="50">50 guests (max)</option>
+              </select>
+            </div>
+            <div class="res-field"><label class="res-label">Occasion (optional)</label>
+              <select id="resOccasion"><option value="">None / Regular visit</option><option>Birthday</option><option>Anniversary</option><option>Business Meeting</option><option>Date</option><option>Family Gathering</option><option>Other</option></select>
+            </div>
+          </div>
+
+          <!-- Booking type indicator -->
+          <div id="bookingTypeInfo" style="margin-bottom:1rem;"></div>
+
+          <!-- Deposit section (shown for groups 3+) -->
+          <div id="depositSection" style="display:none;">
+            <div class="deposit-notice">
+              <p>💳 <strong>Deposit Required</strong> — A reservation deposit is required for group bookings. Please send payment via GCash or BDO and upload your proof below.</p>
+              <p style="margin-top:0.5rem;">GCash: <strong>0927 692 4831</strong> (MARIA DANIELA M.)<br/>BDO: <strong>0068-2050-9919</strong> (MARIA DANIELA M.)</p>
+            </div>
+            <div style="margin-top:0.75rem;background:rgba(255,255,255,0.06);border:2px dashed rgba(255,255,255,0.2);border-radius:8px;padding:1rem;text-align:center;cursor:pointer;" onclick="document.getElementById('resProofInput').click()" id="resUploadBox">
+              <div id="resUploadPlaceholder"><div style="font-size:1.5rem;margin-bottom:0.4rem;">📎</div><p style="font-size:0.82rem;color:rgba(245,239,230,0.7);">Click to attach deposit proof</p></div>
+              <div id="resUploadPreview" style="display:none;"><img id="resProofImg" style="max-width:100%;max-height:120px;border-radius:6px;" alt="Deposit proof"/><p style="font-size:0.75rem;color:#a5d6a7;margin-top:0.4rem;">✅ Deposit proof attached!</p><button onclick="removeResProof(event)" style="margin-top:0.4rem;background:none;border:1px solid rgba(255,255,255,0.2);border-radius:4px;padding:0.2rem 0.6rem;font-size:0.72rem;color:rgba(245,239,230,0.6);cursor:pointer;">Remove</button></div>
+            </div>
+            <input type="file" id="resProofInput" accept="image/*" style="display:none;" onchange="previewResProof(this)"/>
+          </div>
+
+          <div class="res-field" style="margin-top:0.75rem;"><label class="res-label">Special Requests (optional)</label><textarea id="resNotes" rows="2" placeholder="e.g. window seat, allergies, birthday setup..."></textarea></div>
+
+          <!-- Preferred contact -->
+          <p style="font-size:0.75rem;color:rgba(245,239,230,0.55);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.5rem;margin-top:0.75rem;">Preferred Contact for Confirmation</p>
+          <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.75rem;">
+            <button class="type-btn active" id="resBtnWa" onclick="setResContact('whatsapp')" style="flex:none;padding:0.45rem 0.8rem;font-size:0.78rem;">📱 WhatsApp</button>
+            <button class="type-btn" id="resBtnVb" onclick="setResContact('viber')" style="flex:none;padding:0.45rem 0.8rem;font-size:0.78rem;">💬 Viber</button>
+            <button class="type-btn" id="resBtnCall" onclick="setResContact('call')" style="flex:none;padding:0.45rem 0.8rem;font-size:0.78rem;">📞 Call</button>
+            <button class="type-btn" id="resBtnEmail" onclick="setResContact('email')" style="flex:none;padding:0.45rem 0.8rem;font-size:0.78rem;">📧 Email</button>
+          </div>
+          <input type="text" id="resContact" placeholder="Enter your WhatsApp number" style="margin-bottom:0.75rem;"/>
+
+          <button class="btn-reserve" onclick="submitReservation()">Confirm Reservation</button>
+          <div id="resConfirm" style="display:none;margin-top:1rem;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:1rem;text-align:center;">
+            <p style="color:var(--cr);">🎉 Reservation received! We'll confirm via your preferred contact shortly.</p>
+          </div>
         </div>
       </div>
+
+      <!-- RIGHT: Info cards -->
       <div class="res-info">
-        <div class="res-info-card"><div class="res-info-icon">🕐</div><h4>Opening Hours</h4><p>Monday – Sunday</p><p class="res-time">3:00 PM – 12:00 Midnight</p></div>
+        <div class="res-info-card"><div class="res-info-icon">🕐</div><h4>Opening Hours</h4><p>Monday – Sunday</p><p class="res-time">9:00 AM – 12:00 Midnight</p></div>
         <div class="res-info-card"><div class="res-info-icon">📍</div><h4>Find Us</h4><p>Saratoga Avenue, La Mediterranea Subdivision, Governor's Drive</p><p class="res-time">Dasmariñas, Cavite, Philippines</p></div>
         <div class="res-info-card"><div class="res-info-icon">📞</div><h4>Call or Message</h4><p>GCash / Viber / WhatsApp</p><p class="res-time">0927 692 4831</p></div>
+        <div class="res-info-card">
+          <div class="res-info-icon">👥</div><h4>Booking Guidelines</h4>
+          <p style="margin-bottom:0.4rem;">👤 <strong style="color:rgba(245,239,230,0.8);">Individual/Couple</strong> — Same day booking, no deposit</p>
+          <p style="margin-bottom:0.4rem;">👨‍👩‍👧 <strong style="color:rgba(245,239,230,0.8);">Small Group (3–5)</strong> — Same day, deposit required</p>
+          <p style="margin-bottom:0.4rem;">👥 <strong style="color:rgba(245,239,230,0.8);">Medium Group (6–20)</strong> — 7 days advance, deposit required</p>
+          <p>🎉 <strong style="color:rgba(245,239,230,0.8);">Large Group (21–50)</strong> — 7 days advance, deposit + admin callback</p>
+        </div>
       </div>
     </div>
   </div>
@@ -575,7 +684,7 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
       <p class="section-label" style="color:var(--bl);">What People Say</p>
       <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.75rem;">Customer Reviews</h2>
     </div>
-    <div class="reviews-grid" id="reviewsGrid">
+    <div class="reviews-grid">
       <div class="review-card"><div class="review-stars">⭐⭐⭐⭐⭐</div><p class="review-text">"A Hidden Gem Right Along the Road to SM Dasmariñas! Conveniently located right along the roadside, this place is incredibly easy to find. Surprisingly spacious, calm, and serene inside. The coffee is absolutely outstanding."</p><div class="review-author"><div class="review-avatar">M</div><div><div class="review-name">Molina Page</div><div class="review-date">June 2026</div></div></div></div>
       <div class="review-card"><div class="review-stars">⭐⭐⭐⭐⭐</div><p class="review-text">"Nasa may highway ang coffee shop, ngunit nakakubli ang ganda nitong hindi mo mamamalas kung hindi sasadyain. Cosy atmosphere · Good for working · Relaxing atmosphere · Best coffee"</p><div class="review-author"><div class="review-avatar">C</div><div><div class="review-name">Camilla Andrea</div><div class="review-date">April 2026</div></div></div></div>
       <div class="review-card"><div class="review-stars">⭐⭐⭐⭐⭐</div><p class="review-text">"10/10 would recommend!! we will surely come back 🤌"</p><div class="review-author"><div class="review-avatar">C</div><div><div class="review-name">Cess Borja</div><div class="review-date">July 2025</div></div></div></div>
@@ -589,7 +698,7 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
     <div style="text-align:center;margin-bottom:3rem;">
       <p class="section-label" style="color:var(--bl);">We'd Love to Hear From You</p>
       <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cr);margin-bottom:0.75rem;">Feedback</h2>
-      <p style="color:rgba(245,239,230,0.65);max-width:520px;margin:0 auto;font-size:0.95rem;line-height:1.7;">Whether it's a concern, a suggestion, or simply kind words — we would love to hear your feedback. Every message matters to us. 💛</p>
+      <p style="color:rgba(245,239,230,0.65);max-width:520px;margin:0 auto;font-size:0.95rem;line-height:1.7;">Whether it's a concern, a suggestion, or simply kind words — every message matters to us. 💛</p>
     </div>
     <div class="feedback-layout">
       <div class="feedback-form-box">
@@ -597,8 +706,7 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
           <div class="res-field"><label class="res-label">Your Name</label><input type="text" id="fbName" placeholder="e.g. Maria Santos"/></div>
           <div class="res-field"><label class="res-label">Phone / Email (optional)</label><input type="text" id="fbContact" placeholder="So we can follow up"/></div>
         </div>
-        <div class="res-field" style="margin-bottom:1rem;">
-          <label class="res-label">Type of Feedback</label>
+        <div class="res-field" style="margin-bottom:1rem;"><label class="res-label">Type of Feedback</label>
           <select id="fbType"><option value="Complaint">😞 Complaint</option><option value="Suggestion">💡 Suggestion</option><option value="Compliment">❤️ Compliment</option><option value="Other">💬 Other</option></select>
         </div>
         <div class="res-field">
@@ -607,9 +715,7 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
           <div style="display:flex;justify-content:flex-end;margin-top:0.3rem;"><span id="fbCounter" style="font-size:0.72rem;color:rgba(245,239,230,0.5);">0 / 800</span></div>
         </div>
         <button class="btn-reserve" style="margin-top:1rem;" onclick="submitFeedback()">Send Feedback</button>
-        <div id="fbConfirm" style="display:none;margin-top:1rem;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:1.25rem;text-align:center;">
-          <p id="fbConfirmMsg" style="color:#fff;font-size:0.95rem;line-height:1.7;"></p>
-        </div>
+        <div id="fbConfirm" style="display:none;margin-top:1rem;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:1.25rem;text-align:center;"><p id="fbConfirmMsg" style="color:#fff;font-size:0.95rem;line-height:1.7;"></p></div>
       </div>
       <div class="feedback-info">
         <div class="res-info-card"><div style="font-size:2rem;margin-bottom:0.75rem;">😞</div><h4>Complaints</h4><p>Had a bad experience? Tell us what went wrong so we can make it right.</p></div>
@@ -674,12 +780,10 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
           <div class="res-field"><label class="res-label" style="color:rgba(245,239,230,0.55);">Your Name</label><input type="text" id="conName" placeholder="e.g. Juan dela Cruz"/></div>
           <div class="res-field"><label class="res-label" style="color:rgba(245,239,230,0.55);">Phone / Email</label><input type="text" id="conContact" placeholder="09XX or email@email.com"/></div>
         </div>
-        <div class="res-field" style="margin-bottom:1rem;"><label class="res-label" style="color:rgba(245,239,230,0.55);">Subject</label><input type="text" id="conSubject" placeholder="e.g. catering inquiry, feedback..."/></div>
+        <div class="res-field" style="margin-bottom:1rem;"><label class="res-label" style="color:rgba(245,239,230,0.55);">Subject</label><input type="text" id="conSubject" placeholder="e.g. catering inquiry..."/></div>
         <div class="res-field"><label class="res-label" style="color:rgba(245,239,230,0.55);">Message</label><textarea id="conMessage" rows="4" placeholder="Write your message here..."></textarea></div>
         <button class="btn-reserve" style="margin-top:1rem;" onclick="submitContact()">Send Message</button>
-        <div id="conConfirm" style="display:none;margin-top:1rem;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:1rem;text-align:center;">
-          <p style="color:var(--cr);">✅ Message sent! We'll get back to you shortly.</p>
-        </div>
+        <div id="conConfirm" style="display:none;margin-top:1rem;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:1rem;text-align:center;"><p style="color:var(--cr);">✅ Message sent! We'll get back to you shortly.</p></div>
       </div>
       <div class="contact-info">
         <div class="contact-info-item"><div class="contact-icon">📍</div><div><h4>Address</h4><p>Saratoga Avenue, La Mediterranea Subdivision,<br/>Governor's Drive, Dasmariñas, Cavite, Philippines</p></div></div>
@@ -736,7 +840,7 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
     <div class="admin-header">
-      <div><div class="admin-logo">Accaza Coffee <span>Admin</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB — all changes sync instantly</p></div>
+      <div><div class="admin-logo">Accaza Coffee <span>Admin</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div>
       <button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button>
     </div>
     <div class="admin-stats">
@@ -748,11 +852,48 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
     <div class="admin-tabs">
       <button class="admin-tab active" onclick="switchTab('orders',this)">📋 Orders</button>
       <button class="admin-tab" onclick="switchTab('reservations',this)">📅 Reservations</button>
+      <button class="admin-tab" onclick="switchTab('calendar',this)">🗓️ Calendar</button>
       <button class="admin-tab" onclick="switchTab('reviews',this)">⭐ Reviews</button>
       <button class="admin-tab" onclick="switchTab('payment',this)">💳 Payment Details</button>
     </div>
-    <div id="tab-orders" class="admin-tab-content"><div id="ordersList"><p style="color:var(--tl);text-align:center;padding:2rem;">Loading orders from Firebase...</p></div></div>
+    <div id="tab-orders" class="admin-tab-content"><div id="ordersList"><p style="color:var(--tl);text-align:center;padding:2rem;">Loading orders...</p></div></div>
     <div id="tab-reservations" class="admin-tab-content" style="display:none;"><div id="resList"></div></div>
+
+    <!-- CALENDAR TAB -->
+    <div id="tab-calendar" class="admin-tab-content" style="display:none;">
+      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:0.5rem;">🗓️ Reservation Calendar Manager</h3>
+      <p style="font-size:0.85rem;color:var(--tl);margin-bottom:1.5rem;">Click a date to block/unblock the entire day or manage individual time slots.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start;">
+        <!-- Admin Calendar -->
+        <div class="admin-cal-wrap">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+            <button onclick="adminCalNavigate(-1)" style="background:var(--cd);border:none;border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:1rem;color:var(--bd);">‹</button>
+            <span id="adminCalTitle" style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--bd);font-weight:600;"></span>
+            <button onclick="adminCalNavigate(1)" style="background:var(--cd);border:none;border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:1rem;color:var(--bd);">›</button>
+          </div>
+          <div class="admin-cal-grid" id="adminCalGrid"></div>
+          <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:1rem;">
+            <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;color:var(--tl);"><div style="width:10px;height:10px;border-radius:50%;background:#2d9e5f;"></div>Open</div>
+            <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;color:var(--tl);"><div style="width:10px;height:10px;border-radius:50%;background:#f39c12;"></div>Partial</div>
+            <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;color:var(--tl);"><div style="width:10px;height:10px;border-radius:50%;background:#c0392b;"></div>Blocked</div>
+          </div>
+        </div>
+
+        <!-- Slot Manager -->
+        <div id="adminSlotManager" style="display:none;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
+            <h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;" id="adminSlotTitle">Slots</h4>
+            <div style="display:flex;gap:0.5rem;">
+              <button onclick="blockAllSlots()" style="background:#fde8e8;border:1px solid #f5c6c6;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.75rem;color:#721c24;cursor:pointer;font-family:'Inter',sans-serif;">❌ Block All</button>
+              <button onclick="openAllSlots()" style="background:#d4edda;border:1px solid #a8d5b5;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.75rem;color:#155724;cursor:pointer;font-family:'Inter',sans-serif;">✅ Open All</button>
+            </div>
+          </div>
+          <p style="font-size:0.78rem;color:var(--tl);margin-bottom:0.75rem;">Click a slot to toggle open/blocked.</p>
+          <div class="slot-grid" id="adminSlotGrid"></div>
+        </div>
+      </div>
+    </div>
+
     <div id="tab-reviews" class="admin-tab-content" style="display:none;">
       <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:1rem;">Add a New Review</h3>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:0.75rem;">
@@ -807,7 +948,7 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
     <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:0.5rem;">Confirm Receipt</h3>
     <p style="font-size:0.85rem;color:var(--tm);margin-bottom:0.3rem;">You are confirming receipt of order:</p>
     <p id="receivedOrderId" style="font-family:'Playfair Display',serif;font-size:1.4rem;color:var(--bd);font-weight:600;margin-bottom:0.5rem;"></p>
-    <p style="font-size:0.82rem;color:var(--tl);margin-bottom:1.5rem;line-height:1.5;">Once confirmed, the admin will be notified and this order will move to history.</p>
+    <p style="font-size:0.82rem;color:var(--tl);margin-bottom:1.5rem;line-height:1.5;">Once confirmed, the admin will be notified.</p>
     <div style="display:flex;gap:0.75rem;justify-content:center;">
       <button onclick="document.getElementById('confirmReceivedPopup').classList.remove('show')" style="flex:1;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.7rem;font-size:0.88rem;cursor:pointer;color:var(--tm);">Not Yet</button>
       <button id="confirmReceivedBtn" style="flex:1;background:#2d9e5f;color:#fff;border:none;border-radius:6px;padding:0.7rem;font-size:0.88rem;cursor:pointer;font-weight:500;">Yes, Received ✓</button>
@@ -861,10 +1002,9 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
 <!-- Firebase SDK -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, get, push, update, remove, onValue, off }
+import { getDatabase, ref, set, get, push, update, remove, onValue }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-// ── FIREBASE CONFIG ──────────────────────────────────────────
 const firebaseConfig = {
   apiKey: "AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",
   authDomain: "accaza-sartoga.firebaseapp.com",
@@ -874,38 +1014,394 @@ const firebaseConfig = {
   messagingSenderId: "315522485228",
   appId: "1:315522485228:web:64ed3b7facef5a39148ec9"
 };
-// ─────────────────────────────────────────────────────────────
 
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
 
-// Refs
-const ordersRef       = ref(db, 'orders');
-const reservationsRef = ref(db, 'reservations');
-const feedbacksRef    = ref(db, 'feedbacks');
-const reviewsRef      = ref(db, 'reviews');
-const availRef        = ref(db, 'availability');
-const paymentRef      = ref(db, 'payment');
+const ordersRef       = ref(db,'orders');
+const reservationsRef = ref(db,'reservations');
+const feedbacksRef    = ref(db,'feedbacks');
+const reviewsRef      = ref(db,'reviews');
+const availRef        = ref(db,'availability');
+const paymentRef      = ref(db,'payment');
+const calBlocksRef    = ref(db,'calBlocks'); // NEW: calendar blocks
 
-// ── CONSTANTS ────────────────────────────────────────────────
-const ADMIN_PASS = 'accaza2026';
-const catLabels  = {coffee:'Coffee',frappe:'Blended Frappe',nonfrappe:'Non-Coffee Frappe',noncaf:'Non-Caffeine',tea:'Tea & Refreshments',food:'Pastries',meals:'Meals',desserts:'Desserts'};
+const ADMIN_PASS='accaza2026';
+const CAFE_PHONE='639276924831';
+const CAFE_EMAIL='mariadaniela@gmail.com';
+const catLabels={coffee:'Coffee',frappe:'Blended Frappe',nonfrappe:'Non-Coffee Frappe',noncaf:'Non-Caffeine',tea:'Tea & Refreshments',food:'Pastries',meals:'Meals',desserts:'Desserts'};
 
-// ── STATE ────────────────────────────────────────────────────
-let cart={}, orderType='pickup', paymentType='gcash', contactMethod='whatsapp';
-let adminOrdersMap={}, adminResMap={}, feedbacksMap={}, reviewsMap={};
-let chatOpen=false, chatStarted=false;
+// Time slots: 9AM - 12MN every hour
+const TIME_SLOTS=['9:00 AM','10:00 AM','11:00 AM','12:00 PM','1:00 PM','2:00 PM','3:00 PM','4:00 PM','5:00 PM','6:00 PM','7:00 PM','8:00 PM','9:00 PM','10:00 PM','11:00 PM','12:00 Midnight'];
+
+let cart={},orderType='pickup',paymentType='gcash',contactMethod='whatsapp';
+let adminOrdersMap={},adminResMap={},feedbacksMap={},reviewsMap={};
+let chatOpen=false,chatStarted=false;
 let availability={};
-let myOrderIds = JSON.parse(localStorage.getItem('accaza_my_orders')||'[]');
+let myOrderIds=JSON.parse(localStorage.getItem('accaza_my_orders')||'[]');
 let adminLoggedIn=false;
+let calBlocks={}; // {dateKey: {blocked:true} or {slots:{...}}}
 
-// ── FIREBASE ONLINE INDICATOR ─────────────────────────────────
+// Calendar state
+let calYear,calMonth,selectedDate=null,selectedTime=null;
+let adminCalYear,adminCalMonth,adminSelectedDate=null;
+let resContactMethod='whatsapp';
+
+// Init calendar to current month
+const now=new Date();
+calYear=now.getFullYear(); calMonth=now.getMonth();
+adminCalYear=now.getFullYear(); adminCalMonth=now.getMonth();
+
+// ── FIREBASE SYNC BADGE ──
 const syncBadge=document.getElementById('fbSync');
 syncBadge.classList.add('online');
-syncBadge.textContent='🔥 Firebase Connected';
 setTimeout(()=>syncBadge.style.display='none',4000);
 
-// ── MENU DATA ────────────────────────────────────────────────
+// ── FIREBASE LISTENERS ──
+onValue(ordersRef,snap=>{
+  adminOrdersMap=snap.val()||{};
+  if(adminLoggedIn) renderOrders();
+  updateStats(); renderCustomerOrders();
+});
+onValue(reservationsRef,snap=>{
+  adminResMap=snap.val()||{};
+  if(adminLoggedIn) renderReservations();
+  updateStats();
+});
+onValue(feedbacksRef,snap=>{ feedbacksMap=snap.val()||{}; if(adminLoggedIn) renderComments(); });
+onValue(reviewsRef,snap=>{ reviewsMap=snap.val()||{}; if(adminLoggedIn) renderAdminReviews(); });
+onValue(availRef,snap=>{
+  const saved=snap.val();
+  if(saved) Object.keys(saved).forEach(k=>availability[k]=saved[k]);
+  filterMenu('all',null);
+  filterOrder('all',document.querySelector('.otab'));
+  if(adminLoggedIn) buildAvail();
+});
+onValue(paymentRef,snap=>{
+  const p=snap.val(); if(!p) return;
+  if(p.gcashNum) document.getElementById('gcashNum').textContent=p.gcashNum;
+  if(p.gcashName) document.getElementById('gcashName').textContent=p.gcashName;
+  if(p.bdoNum) document.getElementById('bankNum').textContent=p.bdoNum;
+  if(p.ubNum) document.getElementById('bankNum2').textContent=p.ubNum;
+  if(p.gcashNum) document.getElementById('editGcashNum').value=p.gcashNum;
+  if(p.gcashName) document.getElementById('editGcashName').value=p.gcashName;
+  if(p.bdoNum) document.getElementById('editBdoNum').value=p.bdoNum;
+  if(p.ubNum) document.getElementById('editUbNum').value=p.ubNum;
+});
+onValue(calBlocksRef,snap=>{
+  calBlocks=snap.val()||{};
+  renderCustomerCalendar();
+  if(adminLoggedIn) renderAdminCalendar();
+});
+
+// ── DATE KEY HELPER ──
+function dateKey(y,m,d){ return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
+function getDateStatus(y,m,d){
+  const k=dateKey(y,m,d);
+  const block=calBlocks[k];
+  if(!block) return 'open';
+  if(block.blocked) return 'blocked';
+  if(block.slots){
+    const total=TIME_SLOTS.length;
+    const blockedCount=Object.values(block.slots).filter(v=>v===false).length;
+    if(blockedCount===0) return 'open';
+    if(blockedCount>=total) return 'blocked';
+    return 'partial';
+  }
+  return 'open';
+}
+function isSlotBlocked(dateK,slot){
+  const block=calBlocks[dateK];
+  if(!block) return false;
+  if(block.blocked) return true;
+  if(block.slots && block.slots[slot]===false) return true;
+  return false;
+}
+
+// ── CUSTOMER CALENDAR ──
+function renderCustomerCalendar(){
+  const title=new Date(calYear,calMonth).toLocaleDateString('en-PH',{month:'long',year:'numeric'});
+  document.getElementById('calTitle').textContent=title;
+  const today=new Date(); today.setHours(0,0,0,0);
+  const maxDate=new Date(today); maxDate.setMonth(maxDate.getMonth()+5);
+  const prevBtn=document.getElementById('calPrev');
+  const nextBtn=document.getElementById('calNext');
+  const curFirst=new Date(calYear,calMonth,1);
+  prevBtn.disabled=curFirst<=new Date(today.getFullYear(),today.getMonth(),1);
+  nextBtn.disabled=curFirst>=new Date(maxDate.getFullYear(),maxDate.getMonth(),1);
+  const firstDay=new Date(calYear,calMonth,1).getDay();
+  const daysInMonth=new Date(calYear,calMonth+1,0).getDate();
+  const days=['Su','Mo','Tu','We','Th','Fr','Sa'];
+  let html=days.map(d=>`<div class="cal-day-label">${d}</div>`).join('');
+  for(let i=0;i<firstDay;i++) html+=`<div class="cal-day empty"></div>`;
+  for(let d=1;d<=daysInMonth;d++){
+    const date=new Date(calYear,calMonth,d); date.setHours(0,0,0,0);
+    const isPast=date<today;
+    const isToday=date.getTime()===today.getTime();
+    const status=getDateStatus(calYear,calMonth,d);
+    const k=dateKey(calYear,calMonth,d);
+    let cls='cal-day';
+    if(isPast) cls+=' past';
+    else if(status==='blocked') cls+=' blocked';
+    else if(status==='partial') cls+=' partial';
+    else cls+=' open';
+    if(isToday) cls+=' today';
+    if(selectedDate===k) cls+=' selected';
+    const clickable=!isPast&&status!=='blocked';
+    html+=`<div class="${cls}" ${clickable?`onclick="selectCalDate(${calYear},${calMonth},${d})"`:''}>${d}</div>`;
+  }
+  document.getElementById('calGrid').innerHTML=html;
+}
+
+window.calNavigate=function(dir){
+  calMonth+=dir;
+  if(calMonth>11){calMonth=0;calYear++;}
+  if(calMonth<0){calMonth=11;calYear--;}
+  renderCustomerCalendar();
+};
+
+window.selectCalDate=function(y,m,d){
+  selectedDate=dateKey(y,m,d);
+  selectedTime=null;
+  renderCustomerCalendar();
+  // Show time slots
+  const wrap=document.getElementById('timeSlotsWrap');
+  wrap.style.display='block';
+  const label=new Date(y,m,d).toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  document.getElementById('selectedDateLabel').textContent=label;
+  renderTimeSlots();
+  document.getElementById('resFormWrap').style.display='none';
+  wrap.scrollIntoView({behavior:'smooth',block:'nearest'});
+};
+
+function renderTimeSlots(){
+  const grid=document.getElementById('timeSlotsGrid');
+  grid.innerHTML=TIME_SLOTS.map(slot=>{
+    const blocked=isSlotBlocked(selectedDate,slot);
+    const sel=selectedTime===slot;
+    let cls='time-slot';
+    if(blocked) cls+=' blocked';
+    else if(sel) cls+=' selected';
+    else cls+=' available';
+    return`<div class="${cls}" ${!blocked?`onclick="selectTimeSlot('${slot}')"`:''}>${slot}</div>`;
+  }).join('');
+}
+
+window.selectTimeSlot=function(slot){
+  selectedTime=slot;
+  renderTimeSlots();
+  // Show form
+  const formWrap=document.getElementById('resFormWrap');
+  formWrap.style.display='block';
+  const label=new Date(selectedDate+'T00:00:00').toLocaleDateString('en-PH',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+  document.getElementById('resSummaryDateTime').textContent=`${label} · ${slot}`;
+  updateBookingType();
+  formWrap.scrollIntoView({behavior:'smooth',block:'nearest'});
+};
+
+window.resetResSelection=function(){
+  selectedTime=null;
+  document.getElementById('resFormWrap').style.display='none';
+  document.getElementById('timeSlotsWrap').scrollIntoView({behavior:'smooth',block:'nearest'});
+};
+
+// ── BOOKING TYPE LOGIC ──
+window.updateBookingType=function(){
+  const guests=parseInt(document.getElementById('resGuests').value)||1;
+  const infoEl=document.getElementById('bookingTypeInfo');
+  const depositEl=document.getElementById('depositSection');
+  let type,color,bg,icon,msg,requireDeposit=false,requireAdvance=false;
+  if(guests<=2){
+    type='Individual / Couple';icon='💑';color='#155724';bg='#d4edda';
+    msg='Same-day booking accepted. No deposit required.';requireDeposit=false;
+  } else if(guests<=5){
+    type='Small Group';icon='👨‍👩‍👧';color='#664d03';bg='#fff3cd';
+    msg='Same-day booking accepted. Deposit required.';requireDeposit=true;
+  } else if(guests<=20){
+    type='Medium Group';icon='👥';color='#0c5460';bg:'#d1ecf1';
+    msg='Booking must be at least 7 days in advance. Deposit required.';requireDeposit=true;requireAdvance=true;
+  } else {
+    type='Large Group';icon='🎉';color='#721c24';bg='#fde8e8';
+    msg='Booking must be at least 7 days in advance. Deposit required. Admin will call you to discuss details.';requireDeposit=true;requireAdvance=true;
+  }
+  infoEl.innerHTML=`<div style="background:${bg};border-radius:8px;padding:0.75rem 1rem;display:flex;align-items:flex-start;gap:0.6rem;">
+    <span style="font-size:1.2rem;">${icon}</span>
+    <div><p style="font-size:0.82rem;font-weight:600;color:${color};">${type}</p><p style="font-size:0.78rem;color:${color};line-height:1.5;margin-top:0.2rem;">${msg}</p></div>
+  </div>`;
+  depositEl.style.display=requireDeposit?'block':'none';
+
+  // Validate 7-day advance for medium/large
+  if(requireAdvance&&selectedDate){
+    const today=new Date(); today.setHours(0,0,0,0);
+    const bookDate=new Date(selectedDate+'T00:00:00');
+    const diffDays=Math.ceil((bookDate-today)/(1000*60*60*24));
+    if(diffDays<7){
+      infoEl.innerHTML+=`<div style="background:#fde8e8;border:1px solid #f5c6c6;border-radius:6px;padding:0.6rem 0.85rem;margin-top:0.5rem;"><p style="font-size:0.78rem;color:#721c24;">⚠️ This booking requires at least <strong>7 days advance notice</strong>. Please select a later date.</p></div>`;
+    }
+  }
+};
+
+window.setResContact=function(type){
+  resContactMethod=type;
+  ['Wa','Vb','Call','Email'].forEach(t=>{
+    const id='resBtnWa,resBtnVb,resBtnCall,resBtnEmail'.split(',');
+    const types=['whatsapp','viber','call','email'];
+    id.forEach((bid,i)=>document.getElementById(bid).classList.toggle('active',types[i]===type));
+  });
+  const ph={whatsapp:'Enter your WhatsApp number',viber:'Enter your Viber number',call:'Enter your phone number',email:'Enter your email address'};
+  document.getElementById('resContact').placeholder=ph[type];
+};
+
+window.previewResProof=function(input){
+  if(!input.files||!input.files[0])return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    document.getElementById('resProofImg').src=e.target.result;
+    document.getElementById('resUploadPlaceholder').style.display='none';
+    document.getElementById('resUploadPreview').style.display='block';
+  };
+  reader.readAsDataURL(input.files[0]);
+};
+window.removeResProof=function(e){
+  e.stopPropagation();
+  document.getElementById('resProofInput').value='';
+  document.getElementById('resProofImg').src='';
+  document.getElementById('resUploadPlaceholder').style.display='block';
+  document.getElementById('resUploadPreview').style.display='none';
+};
+
+// ── SUBMIT RESERVATION ──
+window.submitReservation=async function(){
+  const name=document.getElementById('resName').value.trim();
+  const phone=document.getElementById('resPhone').value.trim();
+  if(!selectedDate||!selectedTime){alert('Please select a date and time.');return;}
+  if(!name||!phone){alert('Please enter your name and phone number.');return;}
+  const guests=parseInt(document.getElementById('resGuests').value)||1;
+  const requireDeposit=guests>=3;
+  if(requireDeposit){
+    const proofSrc=document.getElementById('resProofImg').src;
+    if(!proofSrc||proofSrc===window.location.href){alert('Please attach your deposit proof of payment.');return;}
+  }
+  // 7-day check
+  if(guests>=6){
+    const today=new Date(); today.setHours(0,0,0,0);
+    const bookDate=new Date(selectedDate+'T00:00:00');
+    const diffDays=Math.ceil((bookDate-today)/(1000*60*60*24));
+    if(diffDays<7){alert('Group bookings of 6 or more require at least 7 days advance notice. Please select a later date.');return;}
+  }
+  const proofSrc=requireDeposit?document.getElementById('resProofImg').src:'';
+  const count=Object.keys(adminResMap).length+1;
+  const id='RES-'+String(count).padStart(3,'0');
+  const res={
+    id, name, phone,
+    date:selectedDate, time:selectedTime,
+    guests:document.getElementById('resGuests').value,
+    occasion:document.getElementById('resOccasion').value,
+    notes:document.getElementById('resNotes').value.trim(),
+    contact:document.getElementById('resContact').value.trim(),
+    contactMethod:resContactMethod,
+    depositProof:proofSrc,
+    status:'Pending', timestamp:Date.now()
+  };
+  try{
+    await set(ref(db,'reservations/'+id),res);
+    document.getElementById('resConfirm').style.display='block';
+    document.querySelector('.btn-reserve').disabled=true;
+    document.querySelector('.btn-reserve').style.opacity='0.5';
+    setTimeout(()=>{
+      document.getElementById('resConfirm').style.display='none';
+      document.querySelector('.btn-reserve').disabled=false;
+      document.querySelector('.btn-reserve').style.opacity='1';
+      // Reset form
+      document.getElementById('resName').value='';
+      document.getElementById('resPhone').value='';
+      document.getElementById('resNotes').value='';
+      document.getElementById('resContact').value='';
+      selectedDate=null; selectedTime=null;
+      document.getElementById('resFormWrap').style.display='none';
+      document.getElementById('timeSlotsWrap').style.display='none';
+      renderCustomerCalendar();
+    },3000);
+  }catch(e){alert('Could not submit reservation. Check your connection.');}
+};
+
+// ── ADMIN CALENDAR ──
+function renderAdminCalendar(){
+  const title=new Date(adminCalYear,adminCalMonth).toLocaleDateString('en-PH',{month:'long',year:'numeric'});
+  document.getElementById('adminCalTitle').textContent=title;
+  const today=new Date(); today.setHours(0,0,0,0);
+  const firstDay=new Date(adminCalYear,adminCalMonth,1).getDay();
+  const daysInMonth=new Date(adminCalYear,adminCalMonth+1,0).getDate();
+  const days=['Su','Mo','Tu','We','Th','Fr','Sa'];
+  let html=days.map(d=>`<div style="text-align:center;font-size:0.68rem;color:var(--tl);padding:0.3rem 0;text-transform:uppercase;">${d}</div>`).join('');
+  for(let i=0;i<firstDay;i++) html+=`<div class="admin-cal-day empty"></div>`;
+  for(let d=1;d<=daysInMonth;d++){
+    const date=new Date(adminCalYear,adminCalMonth,d); date.setHours(0,0,0,0);
+    const isPast=date<today;
+    const isToday=date.getTime()===today.getTime();
+    const k=dateKey(adminCalYear,adminCalMonth,d);
+    const status=getDateStatus(adminCalYear,adminCalMonth,d);
+    let cls='admin-cal-day';
+    if(isPast) cls+=' past';
+    else if(status==='blocked') cls+=' blocked';
+    else if(status==='partial') cls+=' partial';
+    else cls+=' open';
+    if(isToday) cls+=' today';
+    if(adminSelectedDate===k) cls+=' selected';
+    html+=`<div class="${cls}" onclick="adminSelectDate('${k}',${d})">${d}</div>`;
+  }
+  document.getElementById('adminCalGrid').innerHTML=html;
+}
+
+window.adminCalNavigate=function(dir){
+  adminCalMonth+=dir;
+  if(adminCalMonth>11){adminCalMonth=0;adminCalYear++;}
+  if(adminCalMonth<0){adminCalMonth=11;adminCalYear--;}
+  renderAdminCalendar();
+};
+
+window.adminSelectDate=function(k,d){
+  adminSelectedDate=k;
+  renderAdminCalendar();
+  // Show slot manager
+  const mgr=document.getElementById('adminSlotManager');
+  mgr.style.display='block';
+  const parts=k.split('-');
+  const label=new Date(parseInt(parts[0]),parseInt(parts[1])-1,parseInt(parts[2])).toLocaleDateString('en-PH',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+  document.getElementById('adminSlotTitle').textContent=label;
+  renderAdminSlots(k);
+};
+
+function renderAdminSlots(k){
+  const grid=document.getElementById('adminSlotGrid');
+  grid.innerHTML=TIME_SLOTS.map(slot=>{
+    const blocked=isSlotBlocked(k,slot);
+    return`<div class="slot-item ${blocked?'blocked':'open'}" onclick="toggleAdminSlot('${k}','${slot}',${blocked})">${slot}</div>`;
+  }).join('');
+}
+
+window.toggleAdminSlot=async function(k,slot,currentlyBlocked){
+  const newVal=!currentlyBlocked;
+  await update(ref(db,`calBlocks/${k}/slots`),{[slot]:newVal?undefined:false});
+  // If all slots are open, remove the key entirely
+  const snap=await get(ref(db,`calBlocks/${k}`));
+  const data=snap.val();
+  if(data&&data.slots){
+    const allOpen=Object.values(data.slots).every(v=>v!==false);
+    if(allOpen) await remove(ref(db,`calBlocks/${k}`));
+  }
+};
+
+window.blockAllSlots=async function(){
+  if(!adminSelectedDate)return;
+  await set(ref(db,`calBlocks/${adminSelectedDate}`),{blocked:true});
+};
+window.openAllSlots=async function(){
+  if(!adminSelectedDate)return;
+  await remove(ref(db,`calBlocks/${adminSelectedDate}`));
+};
+
+// ── MENU DATA ──
 const menuItems=[
   {cat:'coffee',name:'Spanish Latte',desc:'Rich and creamy blend of espresso, milk and sweet condensed milk.',price:'₱245'},
   {cat:'coffee',name:'Sea Salt Latte',desc:'A rich, velvety coffee with a perfect balance of bold, creamy, and subtly salty notes.',price:'₱245'},
@@ -962,76 +1458,7 @@ const menuItems=[
 menuItems.forEach(i=>availability[i.name]=true);
 function isAvail(n){return availability[n]!==false;}
 
-// ── FIREBASE LISTENERS ───────────────────────────────────────
-
-// Orders — real-time listener
-onValue(ordersRef, snap=>{
-  adminOrdersMap = snap.val()||{};
-  if(adminLoggedIn) renderOrders();
-  updateStats();
-  renderCustomerOrders();
-});
-
-// Reservations
-onValue(reservationsRef, snap=>{
-  adminResMap = snap.val()||{};
-  if(adminLoggedIn) renderReservations();
-  updateStats();
-});
-
-// Feedbacks
-onValue(feedbacksRef, snap=>{
-  feedbacksMap = snap.val()||{};
-  if(adminLoggedIn) renderComments();
-});
-
-// Reviews
-onValue(reviewsRef, snap=>{
-  reviewsMap = snap.val()||{};
-  if(adminLoggedIn) renderAdminReviews();
-});
-
-// Availability
-onValue(availRef, snap=>{
-  const saved=snap.val();
-  if(saved) Object.keys(saved).forEach(k=>availability[k]=saved[k]);
-  filterMenu('all',null);
-  filterOrder('all',document.querySelector('.otab'));
-  if(adminLoggedIn) buildAvail();
-});
-
-// Payment details
-onValue(paymentRef, snap=>{
-  const p=snap.val();
-  if(!p) return;
-  if(p.gcashNum) document.getElementById('gcashNum').textContent=p.gcashNum;
-  if(p.gcashName) document.getElementById('gcashName').textContent=p.gcashName;
-  if(p.bdoNum) document.getElementById('bankNum').textContent=p.bdoNum;
-  if(p.ubNum) document.getElementById('bankNum2').textContent=p.ubNum;
-  if(p.gcashNum) document.getElementById('editGcashNum').value=p.gcashNum;
-  if(p.gcashName) document.getElementById('editGcashName').value=p.gcashName;
-  if(p.bdoNum) document.getElementById('editBdoNum').value=p.bdoNum;
-  if(p.ubNum) document.getElementById('editUbNum').value=p.ubNum;
-});
-
-// ── HELPER: generate order number ────────────────────────────
-function genOrderId(){
-  const count=Object.keys(adminOrdersMap).length+1;
-  return 'ORD-'+String(count).padStart(3,'0');
-}
-
-// ── STATS ─────────────────────────────────────────────────────
-function updateStats(){
-  const orders=Object.values(adminOrdersMap);
-  const pending=orders.filter(o=>o.status==='Pending').length;
-  const revenue=orders.reduce((s,o)=>s+(o.total||0),0);
-  document.getElementById('statOrders').textContent=orders.length;
-  document.getElementById('statPending').textContent=pending;
-  document.getElementById('statReservations').textContent=Object.keys(adminResMap).length;
-  document.getElementById('statRevenue').textContent='₱'+revenue.toLocaleString();
-}
-
-// ── MENU ──────────────────────────────────────────────────────
+// ── MENU ──
 window.filterMenu=function(cat,btn){
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   if(btn) btn.classList.add('active');
@@ -1050,11 +1477,7 @@ window.filterMenu=function(cat,btn){
   }).join('');
 };
 
-window.showUnavail=function(name){
-  document.getElementById('unavailName').textContent=name;
-  document.getElementById('unavailPopup').classList.add('show');
-};
-
+window.showUnavail=function(name){document.getElementById('unavailName').textContent=name;document.getElementById('unavailPopup').classList.add('show');};
 window.addFromMenu=function(name,priceStr){
   if(!isAvail(name)){showUnavail(name);return;}
   const p=parseInt(priceStr.replace('₱','').replace(',',''));
@@ -1065,7 +1488,6 @@ window.addFromMenu=function(name,priceStr){
   setTimeout(()=>{const cb=document.querySelector('.cart-box');cb.style.transition='box-shadow 0.3s';cb.style.boxShadow='0 0 0 3px rgba(160,103,58,0.5)';setTimeout(()=>cb.style.boxShadow='none',1000);},600);
 };
 
-// ── ORDER FORM ────────────────────────────────────────────────
 window.filterOrder=function(cat,btn){
   document.querySelectorAll('.otab').forEach(b=>b.classList.remove('active'));
   if(btn) btn.classList.add('active');
@@ -1134,7 +1556,6 @@ window.setType=function(t){
   document.getElementById('btnDelivery').classList.toggle('active',t==='delivery');
   document.getElementById('deliveryField').style.display=t==='delivery'?'block':'none';
 };
-
 window.setPayment=function(p){
   paymentType=p;
   document.getElementById('btnGcash').classList.toggle('active',p==='gcash');
@@ -1142,14 +1563,12 @@ window.setPayment=function(p){
   document.getElementById('gcashInfo').style.display=p==='gcash'?'block':'none';
   document.getElementById('bankInfo').style.display=p==='bank'?'block':'none';
 };
-
 window.setContact=function(type){
   contactMethod=type;
   ['whatsapp','viber','call','email'].forEach(t=>document.getElementById('btn'+t.charAt(0).toUpperCase()+t.slice(1)).classList.toggle('active',t===type));
   const ph={whatsapp:'Enter your WhatsApp number',viber:'Enter your Viber number',call:'Enter your phone number',email:'Enter your email address'};
   document.getElementById('custContact').placeholder=ph[type];
 };
-
 window.previewProof=function(input){
   if(!input.files||!input.files[0])return;
   const reader=new FileReader();
@@ -1163,7 +1582,6 @@ window.previewProof=function(input){
   };
   reader.readAsDataURL(input.files[0]);
 };
-
 window.removeProof=function(e){
   e.stopPropagation();
   document.getElementById('paymentProof').value='';
@@ -1175,7 +1593,6 @@ window.removeProof=function(e){
   document.getElementById('uploadBox').style.borderStyle='dashed';
 };
 
-// ── PLACE ORDER → FIREBASE ────────────────────────────────────
 window.placeOrder=async function(){
   const name=document.getElementById('custName').value.trim();
   const phone=document.getElementById('custPhone').value.trim();
@@ -1187,53 +1604,30 @@ window.placeOrder=async function(){
   const proofSrc=document.getElementById('proofImg').src;
   const items=Object.keys(cart).map(k=>`${k} x${cart[k].qty}`).join(', ');
   const total=Object.keys(cart).reduce((s,k)=>s+cart[k].qty*cart[k].price,0);
-  const orderId=genOrderId();
-  const newOrder={
-    id:orderId, name, phone,
-    type:orderType==='delivery'?'Delivery':'Pick-up',
-    address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',
-    payment:paymentType==='gcash'?'GCash':'Bank Transfer',
-    contact:document.getElementById('custContact').value.trim(),
-    contactMethod,
-    items, total,
-    notes:document.getElementById('custNotes').value.trim(),
-    status:'Pending',
-    receivedByCustomer:false,
-    time:new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),
-    timestamp:Date.now(),
-    proof:proofSrc
-  };
+  const orderId='ORD-'+String(Object.keys(adminOrdersMap).length+1).padStart(3,'0');
+  const newOrder={id:orderId,name,phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':'Bank Transfer',contact:document.getElementById('custContact').value.trim(),contactMethod,items,total,notes:document.getElementById('custNotes').value.trim(),status:'Pending',receivedByCustomer:false,time:new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),timestamp:Date.now(),proof:proofSrc};
   try{
-    await set(ref(db,'orders/'+orderId), newOrder);
-    // Track this order on this device
+    await set(ref(db,'orders/'+orderId),newOrder);
     myOrderIds.push(orderId);
-    localStorage.setItem('accaza_my_orders', JSON.stringify(myOrderIds));
+    localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));
     document.getElementById('displayOrderId').textContent=orderId;
     document.getElementById('orderConfirm').style.display='block';
     document.querySelector('.btn-place-order').disabled=true;
     document.querySelector('.btn-place-order').style.opacity='0.5';
     cart={};updateCart();
-    document.getElementById('custName').value='';
-    document.getElementById('custPhone').value='';
-    document.getElementById('custNotes').value='';
+    document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';
     if(document.getElementById('deliveryAddr')) document.getElementById('deliveryAddr').value='';
     removeProof({stopPropagation:()=>{}});
     filterOrder('all',document.querySelector('.otab'));
-    setTimeout(()=>{
-      document.querySelector('.btn-place-order').disabled=false;
-      document.querySelector('.btn-place-order').style.opacity='1';
-      document.getElementById('orderConfirm').style.display='none';
-    },3000);
+    setTimeout(()=>{document.querySelector('.btn-place-order').disabled=false;document.querySelector('.btn-place-order').style.opacity='1';document.getElementById('orderConfirm').style.display='none';},3000);
   }catch(e){alert('Could not place order. Please check your connection.');}
 };
 
 window.resetOrder=function(){
   if(!Object.keys(cart).length&&!document.getElementById('custName').value){alert('Your order is already empty!');return;}
-  if(confirm('Reset your order? All selected items and details will be cleared.')){
+  if(confirm('Reset your order?')){
     cart={};updateCart();
-    document.getElementById('custName').value='';
-    document.getElementById('custPhone').value='';
-    document.getElementById('custNotes').value='';
+    document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';
     if(document.getElementById('deliveryAddr')) document.getElementById('deliveryAddr').value='';
     setType('pickup');setPayment('gcash');
     filterOrder('all',document.querySelector('.otab'));
@@ -1243,24 +1637,24 @@ window.resetOrder=function(){
   }
 };
 
-// ── CUSTOMER ORDER TRACKER ────────────────────────────────────
+// ── CUSTOMER ORDER TRACKER ──
 const statusConfig={
-  Pending:  {icon:'🟡',color:'#856404',bg:'#fef3cd',msg:'Your order has been received and is awaiting confirmation from our staff. We will contact you shortly!'},
+  Pending:{icon:'🟡',color:'#856404',bg:'#fef3cd',msg:'Your order has been received and is awaiting confirmation from our staff. We will contact you shortly!'},
   Confirmed:{icon:'🔵',color:'#0c5460',bg:'#d1ecf1',msg:'Great news! Your order has been confirmed. We will start preparing it soon!'},
   Preparing:{icon:'🟠',color:'#664d03',bg:'#fff3cd',msg:'Your order is currently being prepared by our team. It will be ready soon! ☕'},
   Completed:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your order is ready! Please confirm once you have received it below.'},
-  Received: {icon:'✅',color:'#1b5e20',bg:'#c8e6c9',msg:'You have confirmed receipt of this order. Thank you! ☕🦁'},
+  Received:{icon:'✅',color:'#1b5e20',bg:'#c8e6c9',msg:'You have confirmed receipt of this order. Thank you! ☕🦁'},
 };
 
 function renderCustomerOrders(){
   const myOrders=myOrderIds.map(id=>adminOrdersMap[id]).filter(Boolean);
   const active=myOrders.filter(o=>o.status!=='Received'&&!o.receivedByCustomer);
-  const activeEl=document.getElementById('activeOrdersList');
+  const el=document.getElementById('activeOrdersList');
   if(!active.length){
-    activeEl.innerHTML=`<div style="text-align:center;padding:3rem;color:var(--tl);"><p style="font-size:2.5rem;margin-bottom:0.75rem;">☕</p><p style="font-size:0.95rem;font-weight:500;color:var(--bd);margin-bottom:0.3rem;">No active orders yet</p><p style="font-size:0.85rem;">Place an order above and it will appear here!</p></div>`;
+    el.innerHTML=`<div style="text-align:center;padding:3rem;color:var(--tl);"><p style="font-size:2.5rem;margin-bottom:0.75rem;">☕</p><p style="font-size:0.95rem;font-weight:500;color:var(--bd);margin-bottom:0.3rem;">No active orders yet</p><p style="font-size:0.85rem;">Place an order above and it will appear here!</p></div>`;
     return;
   }
-  activeEl.innerHTML=active.map(o=>{
+  el.innerHTML=active.map(o=>{
     const s=statusConfig[o.status]||statusConfig.Pending;
     const isDelivery=o.type==='Delivery';
     return`<div style="background:#fff;border:2px solid #a8d5b5;border-radius:12px;overflow:hidden;margin-bottom:1.25rem;box-shadow:0 2px 12px rgba(0,0,0,0.06);">
@@ -1279,99 +1673,23 @@ function renderCustomerOrders(){
       <div style="padding:1rem 1.25rem;background:#f9f6f2;text-align:center;">
         <p style="font-size:0.7rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--tl);margin-bottom:0.5rem;font-weight:600;">Confirm Receipt</p>
         ${o.status==='Completed'
-          ?`<p style="font-size:0.82rem;color:var(--tm);margin-bottom:0.75rem;line-height:1.5;">Have you received your order? Confirming will notify the admin.</p>
-            <button onclick="askConfirmReceived('${o.id}')" style="background:#2d9e5f;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:pointer;font-family:'Inter',sans-serif;font-weight:500;width:100%;">✅ Yes, I Received My Order</button>`
-          :`<p style="font-size:0.82rem;color:var(--tl);line-height:1.5;">This button will be enabled once your order is marked <strong>Completed</strong> by our staff.</p>
-            <button disabled style="background:#ccc;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:not-allowed;font-family:'Inter',sans-serif;font-weight:500;width:100%;margin-top:0.5rem;opacity:0.6;">Waiting for Completion...</button>`
+          ?`<p style="font-size:0.82rem;color:var(--tm);margin-bottom:0.75rem;">Have you received your order?</p><button onclick="askConfirmReceived('${o.id}')" style="background:#2d9e5f;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:pointer;font-family:'Inter',sans-serif;font-weight:500;width:100%;">✅ Yes, I Received My Order</button>`
+          :`<p style="font-size:0.82rem;color:var(--tl);line-height:1.5;">This button will be enabled once your order is marked <strong>Completed</strong>.</p><button disabled style="background:#ccc;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:not-allowed;font-family:'Inter',sans-serif;font-weight:500;width:100%;margin-top:0.5rem;opacity:0.6;">Waiting for Completion...</button>`
         }
       </div>
     </div>`;
   }).join('')+`<p style="font-size:0.72rem;color:var(--tl);text-align:center;margin-top:0.25rem;">🔥 Status updates in real-time via Firebase.</p>`;
 }
 
-window.switchOrderTab=function(tab){
-  const isActive=tab==='active';
-  document.getElementById('tabActive').style.display=isActive?'block':'none';
-  document.getElementById('tabHistory').style.display=isActive?'none':'block';
-  document.getElementById('tabBtnActive').style.background=isActive?'var(--bd)':'#fff';
-  document.getElementById('tabBtnActive').style.color=isActive?'var(--cr)':'var(--tm)';
-  document.getElementById('tabBtnHistory').style.background=isActive?'#fff':'var(--bd)';
-  document.getElementById('tabBtnHistory').style.color=isActive?'var(--tm)':'var(--cr)';
-};
-
-// ── CONFIRM RECEIVED ──────────────────────────────────────────
 window.askConfirmReceived=function(orderId){
   document.getElementById('receivedOrderId').textContent=orderId;
   document.getElementById('confirmReceivedPopup').classList.add('show');
-  document.getElementById('confirmReceivedBtn').onclick=()=>{
-    confirmReceived(orderId);
-    document.getElementById('confirmReceivedPopup').classList.remove('show');
-  };
+  document.getElementById('confirmReceivedBtn').onclick=()=>{confirmReceived(orderId);document.getElementById('confirmReceivedPopup').classList.remove('show');};
 };
-
 async function confirmReceived(orderId){
-  // Update Firebase: mark receivedByCustomer=true AND status='Received'
-  try{
-    await update(ref(db,'orders/'+orderId),{
-      receivedByCustomer:true,
-      status:'Received'
-    });
-  }catch(e){alert('Could not confirm receipt. Check your connection.');}
+  try{await update(ref(db,'orders/'+orderId),{receivedByCustomer:true,status:'Received'});}
+  catch(e){alert('Could not confirm receipt. Check your connection.');}
 }
-
-// ── ORDER STATUS LOOKUP ───────────────────────────────────────
-window.checkOrderStatus=function(){
-  const id=document.getElementById('statusOrderId').value.trim().toUpperCase();
-  const result=document.getElementById('statusResult');
-  if(!id){alert('Please enter your Order ID.');return;}
-  const order=adminOrdersMap[id];
-  if(!order){
-    result.style.display='block';
-    result.innerHTML=`<div style="background:#fff;border:1px solid var(--cd);border-radius:8px;padding:1.5rem;text-align:center;"><div style="font-size:2rem;margin-bottom:0.5rem;">🔍</div><p style="font-weight:500;color:var(--bd);margin-bottom:0.25rem;">Order Not Found</p><p style="font-size:0.82rem;color:var(--tl);">No order found with ID <strong>${id}</strong>.</p></div>`;
-    return;
-  }
-  const s=statusConfig[order.status]||statusConfig.Pending;
-  const isDelivery=order.type==='Delivery';
-  result.style.display='block';
-  result.innerHTML=`<div style="background:#fff;border:1px solid var(--cd);border-radius:8px;padding:1.5rem;">
-    <div style="text-align:center;margin-bottom:1rem;"><div style="font-size:2.5rem;margin-bottom:0.5rem;">${s.icon}</div>
-    <span style="background:${s.bg};color:${s.color};font-size:0.85rem;font-weight:600;padding:0.3rem 1rem;border-radius:999px;">${order.status}</span></div>
-    <p style="font-size:0.85rem;color:var(--tm);text-align:center;margin-bottom:1rem;line-height:1.6;">${s.msg}</p>
-    <div style="border-top:1px solid var(--cd);padding-top:0.75rem;">
-      <div style="display:flex;justify-content:space-between;font-size:0.82rem;color:var(--tl);margin-bottom:0.3rem;"><span>Order ID</span><span style="font-weight:500;color:var(--bd);">${order.id}</span></div>
-      <div style="display:flex;justify-content:space-between;font-size:0.82rem;color:var(--tl);margin-bottom:0.3rem;"><span>Name</span><span style="font-weight:500;color:var(--bd);">${order.name}</span></div>
-      <div style="display:flex;justify-content:space-between;font-size:0.82rem;color:var(--tl);margin-bottom:0.3rem;"><span>Items</span><span style="font-weight:500;color:var(--bd);text-align:right;max-width:60%;">${order.items}</span></div>
-      <div style="display:flex;justify-content:space-between;font-size:0.82rem;color:var(--tl);margin-bottom:0.3rem;"><span>Total</span><span style="font-weight:500;color:var(--bl);">₱${order.total.toLocaleString()}</span></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.82rem;color:var(--tl);margin-bottom:0.3rem;">
-        <span>Type</span>
-        <span style="font-weight:600;padding:0.2rem 0.6rem;border-radius:999px;background:${isDelivery?'#d1ecf1':'#d4edda'};color:${isDelivery?'#0c5460':'#155724'};">${isDelivery?'🛵 For Delivery':'🏠 For Pick-up'}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:0.82rem;color:var(--tl);"><span>Payment</span><span style="font-weight:500;color:var(--bd);">${order.payment}</span></div>
-    </div>
-  </div>`;
-};
-
-// ── RESERVATIONS ──────────────────────────────────────────────
-window.submitReservation=async function(){
-  const name=document.getElementById('resName').value.trim();
-  const phone=document.getElementById('resPhone').value.trim();
-  const date=document.getElementById('resDate').value;
-  const time=document.getElementById('resTime').value;
-  if(!name||!phone||!date||!time){alert('Please fill in name, phone, date, and time.');return;}
-  const count=Object.keys(adminResMap).length+1;
-  const id='RES-'+String(count).padStart(3,'0');
-  const res={id,name,phone,date,time,
-    guests:document.getElementById('resGuests').value,
-    occasion:document.getElementById('resOccasion').value,
-    notes:document.getElementById('resNotes').value.trim(),
-    status:'Pending',timestamp:Date.now()};
-  try{
-    await set(ref(db,'reservations/'+id),res);
-    document.getElementById('resConfirm').style.display='block';
-    document.querySelector('.btn-reserve').disabled=true;
-    document.querySelector('.btn-reserve').style.opacity='0.5';
-  }catch(e){alert('Could not submit reservation. Check your connection.');}
-};
 
 window.submitContact=function(){
   if(!document.getElementById('conName').value.trim()||!document.getElementById('conContact').value.trim()||!document.getElementById('conMessage').value.trim()){alert('Please fill in name, contact, and message.');return;}
@@ -1380,40 +1698,27 @@ window.submitContact=function(){
   document.querySelector('#contact .btn-reserve').style.opacity='0.5';
 };
 
-// ── FEEDBACK ──────────────────────────────────────────────────
 window.updateFbCounter=function(){
   const len=document.getElementById('fbMessage').value.length;
   const c=document.getElementById('fbCounter');
   c.textContent=`${len} / 800`;
   c.style.color=len>=720?'#ff8080':len>=560?'#f39c12':'rgba(245,239,230,0.5)';
 };
-
 window.submitFeedback=async function(){
   const name=document.getElementById('fbName').value.trim();
   const contact=document.getElementById('fbContact').value.trim();
   const type=document.getElementById('fbType').value;
   const message=document.getElementById('fbMessage').value.trim();
   if(!name||!message){alert('Please enter your name and message.');return;}
-  const fb={name,contact,type,message,status:'Unread',
-    date:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),
-    timestamp:Date.now()};
+  const fb={name,contact,type,message,status:'Unread',date:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
   try{
     await push(feedbacksRef,fb);
-    document.getElementById('fbName').value='';
-    document.getElementById('fbContact').value='';
-    document.getElementById('fbMessage').value='';
-    document.getElementById('fbType').value='Complaint';
-    document.getElementById('fbCounter').textContent='0 / 800';
-    const msgs={
-      Complaint:'🙏 Thank you for bringing this to our attention. We sincerely apologize for any inconvenience caused. Rest assured, we will look into this right away and do our best to make things right.',
-      Suggestion:'💡 Thank you for your wonderful suggestion! We truly value ideas from our customers. We will seriously consider your input as we continue to grow and improve Accaza Coffee.',
-      Compliment:"❤️ Oh, this made our day! Thank you so much for your kind words — it means the world to our team. We can't wait to see you again! ☕🦁",
-      Other:'💛 Thank you for reaching out! We truly appreciate you taking the time to share your thoughts with us.'
-    };
+    document.getElementById('fbName').value='';document.getElementById('fbContact').value='';document.getElementById('fbMessage').value='';document.getElementById('fbType').value='Complaint';document.getElementById('fbCounter').textContent='0 / 800';
+    const msgs={Complaint:'🙏 Thank you for bringing this to our attention. We sincerely apologize for any inconvenience caused. Rest assured, we will look into this right away.',Suggestion:'💡 Thank you for your wonderful suggestion! We will seriously consider your input as we continue to grow and improve Accaza Coffee.',Compliment:"❤️ Oh, this made our day! Thank you so much for your kind words — it means the world to our team. We can't wait to see you again! ☕🦁",Other:'💛 Thank you for reaching out! We truly appreciate you taking the time to share your thoughts with us.'};
     document.getElementById('fbConfirmMsg').textContent=msgs[type]||msgs.Other;
     document.getElementById('fbConfirm').style.display='block';
     setTimeout(()=>document.getElementById('fbConfirm').style.display='none',6000);
-  }catch(e){alert('Could not submit feedback. Check your connection.');}
+  }catch(e){alert('Could not submit feedback.');}
 };
 
 function renderComments(){
@@ -1427,8 +1732,7 @@ function renderComments(){
     el.innerHTML=items.map(([key,f])=>`
       <div style="background:#fff;border:1px solid #e8dcc8;border-left:4px solid ${color[type]};border-radius:8px;padding:1rem;margin-bottom:0.75rem;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;">
-          <div><div style="font-weight:500;font-size:0.9rem;color:#3b2314;">${f.name}</div>
-          <div style="font-size:0.75rem;color:#8a6a55;">${f.contact?f.contact+' · ':''}${f.date}</div></div>
+          <div><div style="font-weight:500;font-size:0.9rem;color:#3b2314;">${f.name}</div><div style="font-size:0.75rem;color:#8a6a55;">${f.contact?f.contact+' · ':''}${f.date}</div></div>
           <span style="font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:999px;font-weight:500;background:${f.status==='Resolved'?'#d4edda':'#fef3cd'};color:${f.status==='Resolved'?'#155724':'#856404'};">${f.status}</span>
         </div>
         <p style="font-size:0.85rem;color:#5c3d2e;font-style:italic;margin:0.4rem 0;">"${f.message}"</p>
@@ -1439,32 +1743,55 @@ function renderComments(){
       </div>`).join('');
   });
 }
+window.markFb=async function(key){await update(ref(db,'feedbacks/'+key),{status:'Resolved'});};
+window.delFb=function(key,name){showDeletePopup(name,async()=>{await remove(ref(db,'feedbacks/'+key));});};
 
-window.markFb=async function(key){
-  await update(ref(db,'feedbacks/'+key),{status:'Resolved'});
+function renderAdminReviews(){
+  const el=document.getElementById('adminReviewsList');
+  const entries=Object.entries(reviewsMap);
+  if(!entries.length){el.innerHTML='<div class="empty-state">No reviews added yet.</div>';return;}
+  el.innerHTML=entries.map(([key,r])=>`
+    <div class="order-admin-card" style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <div><div class="order-admin-name">${r.name} ${'⭐'.repeat(r.stars)}</div><div class="order-admin-meta">${r.date}</div><div class="order-admin-items">"${r.text}"</div></div>
+      <button onclick="delReview('${key}','${r.name}')" style="background:none;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.6rem;font-size:0.75rem;color:#c0392b;cursor:pointer;margin-left:1rem;flex-shrink:0;">Remove</button>
+    </div>`).join('');
+}
+window.addReview=async function(){
+  const name=document.getElementById('newReviewName').value.trim();
+  const stars=parseInt(document.getElementById('newReviewStars').value);
+  const text=document.getElementById('newReviewText').value.trim();
+  if(!name||!text){alert('Please enter name and review.');return;}
+  await push(reviewsRef,{name,stars,text,date:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'})});
+  document.getElementById('newReviewName').value='';document.getElementById('newReviewText').value='';
+  document.getElementById('reviewAddConfirm').style.display='block';
+  setTimeout(()=>document.getElementById('reviewAddConfirm').style.display='none',2500);
 };
-window.delFb=function(key,name){
-  showDeletePopup(name,async()=>{ await remove(ref(db,'feedbacks/'+key)); });
-};
+window.delReview=function(key,name){showDeletePopup(name,async()=>{await remove(ref(db,'reviews/'+key));});};
 
-// ── ADMIN ORDERS RENDER ───────────────────────────────────────
+function updateStats(){
+  const orders=Object.values(adminOrdersMap);
+  const pending=orders.filter(o=>o.status==='Pending').length;
+  const revenue=orders.reduce((s,o)=>s+(o.total||0),0);
+  document.getElementById('statOrders').textContent=orders.length;
+  document.getElementById('statPending').textContent=pending;
+  document.getElementById('statReservations').textContent=Object.keys(adminResMap).length;
+  document.getElementById('statRevenue').textContent='₱'+revenue.toLocaleString();
+}
+
 function renderOrders(){
   const el=document.getElementById('ordersList');
   const orders=Object.values(adminOrdersMap).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
   if(!orders.length){el.innerHTML='<div class="empty-state">No orders yet.</div>';return;}
-  el.innerHTML=orders.map((o,idx)=>{
+  el.innerHTML=orders.map((o)=>{
     const isDelivery=o.type==='Delivery';
-    // 5th status badge — delivery or pickup
     const modeBadge=isDelivery
       ?`<span style="font-size:0.72rem;font-weight:600;padding:0.2rem 0.6rem;border-radius:999px;background:#d1ecf1;color:#0c5460;">🛵 For Delivery</span>`
       :`<span style="font-size:0.72rem;font-weight:600;padding:0.2rem 0.6rem;border-radius:999px;background:#d4edda;color:#155724;">🏠 For Pick-up</span>`;
     const isReceived=o.status==='Received';
     return`<div class="order-admin-card" style="${isReceived?'opacity:0.7;':''}">
       <div class="order-admin-top">
-        <div>
-          <div class="order-admin-name">${o.name} <span style="font-size:0.75rem;color:var(--tl);">#${o.id}</span></div>
-          <div class="order-admin-meta">${o.phone}${o.contact?' · '+o.contact:''} · ${o.time||''}</div>
-        </div>
+        <div><div class="order-admin-name">${o.name} <span style="font-size:0.75rem;color:var(--tl);">#${o.id}</span></div>
+        <div class="order-admin-meta">${o.phone}${o.contact?' · '+o.contact:''} · ${o.time||''}</div></div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;">
           <span class="badge badge-${(o.status||'pending').toLowerCase().replace(' ','-')}">${o.status}</span>
           ${modeBadge}
@@ -1474,7 +1801,7 @@ function renderOrders(){
       <div class="order-admin-items">🛒 ${o.items}</div>
       ${o.address?`<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📍 ${o.address}</div>`:''}
       ${o.notes?`<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📝 ${o.notes}</div>`:''}
-      ${o.proof?`<div style="margin:0.5rem 0;"><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;">📎 Proof of Payment:</p><img src="${o.proof}" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid var(--cd);cursor:pointer;" onclick="window.open('${o.proof}','_blank')" title="Click to view full size"/></div>`:'<p style="font-size:0.75rem;color:#c0392b;margin:0.3rem 0;">⚠️ No proof of payment</p>'}
+      ${o.proof?`<div style="margin:0.5rem 0;"><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;">📎 Proof of Payment:</p><img src="${o.proof}" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid var(--cd);cursor:pointer;" onclick="window.open('${o.proof}','_blank')"/></div>`:'<p style="font-size:0.75rem;color:#c0392b;margin:0.3rem 0;">⚠️ No proof of payment</p>'}
       <div class="order-admin-footer">
         <span class="order-total-tag">₱${(o.total||0).toLocaleString()} · ${o.payment}</span>
         <div style="display:flex;align-items:center;gap:0.5rem;">
@@ -1493,91 +1820,52 @@ function renderOrders(){
     </div>`;
   }).join('');
 }
-
-window.updateOrderStatus=async function(orderId,val){
-  await update(ref(db,'orders/'+orderId),{status:val});
-  // Firebase listener will update both admin & customer views automatically
-};
-
-window.delOrder=function(orderId,label){
-  showDeletePopup(label,async()=>{
-    await remove(ref(db,'orders/'+orderId));
-    // Remove from myOrderIds if present
-    myOrderIds=myOrderIds.filter(id=>id!==orderId);
-    localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));
-  });
-};
+window.updateOrderStatus=async function(orderId,val){await update(ref(db,'orders/'+orderId),{status:val});};
+window.delOrder=function(orderId,label){showDeletePopup(label,async()=>{await remove(ref(db,'orders/'+orderId));myOrderIds=myOrderIds.filter(id=>id!==orderId);localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));});};
 
 function renderReservations(){
   const el=document.getElementById('resList');
   const reservations=Object.values(adminResMap).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
   if(!reservations.length){el.innerHTML='<div class="empty-state">No reservations yet.</div>';return;}
-  el.innerHTML=reservations.map(r=>`
-    <div class="order-admin-card">
+  el.innerHTML=reservations.map(r=>{
+    const guests=parseInt(r.guests)||1;
+    const bookType=guests<=2?'💑 Individual/Couple':guests<=5?'👨‍👩‍👧 Small Group':guests<=20?'👥 Medium Group':'🎉 Large Group';
+    return`<div class="order-admin-card">
       <div class="order-admin-top">
         <div><div class="order-admin-name">${r.name} <span style="font-size:0.75rem;color:var(--tl);">#${r.id}</span></div>
         <div class="order-admin-meta">${r.phone} · ${r.date} · ${r.time} · ${r.guests}${r.occasion?' · '+r.occasion:''}</div></div>
-        <span class="badge badge-${(r.status||'pending').toLowerCase()}">${r.status}</span>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;">
+          <span class="badge badge-${(r.status||'pending').toLowerCase()}">${r.status}</span>
+          <span style="font-size:0.7rem;color:var(--tl);">${bookType}</span>
+        </div>
       </div>
       ${r.notes?`<div class="order-admin-items">📝 ${r.notes}</div>`:''}
+      ${r.contact?`<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📱 ${r.contact} (${r.contactMethod||''})</div>`:''}
+      ${r.depositProof?`<div style="margin:0.5rem 0;"><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;">💳 Deposit Proof:</p><img src="${r.depositProof}" style="max-width:200px;max-height:100px;border-radius:6px;border:1px solid var(--cd);cursor:pointer;" onclick="window.open('${r.depositProof}','_blank')"/></div>`:''}
       <div class="order-admin-footer"><span></span>
-        <select class="status-select" onchange="updateResStatus('${r.id}',this.value)">
-          <option ${r.status==='Pending'?'selected':''}>Pending</option>
-          <option ${r.status==='Confirmed'?'selected':''}>Confirmed</option>
-          <option ${r.status==='Completed'?'selected':''}>Completed</option>
-        </select>
+        <div style="display:flex;gap:0.5rem;align-items:center;">
+          <select class="status-select" onchange="updateResStatus('${r.id}',this.value)">
+            <option ${r.status==='Pending'?'selected':''}>Pending</option>
+            <option ${r.status==='Confirmed'?'selected':''}>Confirmed</option>
+            <option ${r.status==='Declined'?'selected':''}>Declined</option>
+            <option ${r.status==='Completed'?'selected':''}>Completed</option>
+          </select>
+          ${r.status==='Completed'||r.status==='Declined'?`<button onclick="delRes('${r.id}','${r.name}')" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>`:''}
+        </div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
+window.updateResStatus=async function(id,val){await update(ref(db,'reservations/'+id),{status:val});};
+window.delRes=function(id,name){showDeletePopup(name,async()=>{await remove(ref(db,'reservations/'+id));});};
 
-window.updateResStatus=async function(id,val){
-  await update(ref(db,'reservations/'+id),{status:val});
-};
-
-// ── REVIEWS ───────────────────────────────────────────────────
-function renderAdminReviews(){
-  const el=document.getElementById('adminReviewsList');
-  const entries=Object.entries(reviewsMap);
-  if(!entries.length){el.innerHTML='<div class="empty-state">No reviews added yet.</div>';return;}
-  el.innerHTML=entries.map(([key,r])=>`
-    <div class="order-admin-card" style="display:flex;justify-content:space-between;align-items:flex-start;">
-      <div><div class="order-admin-name">${r.name} ${'⭐'.repeat(r.stars)}</div>
-      <div class="order-admin-meta">${r.date}</div>
-      <div class="order-admin-items">"${r.text}"</div></div>
-      <button onclick="delReview('${key}','${r.name}')" style="background:none;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.6rem;font-size:0.75rem;color:#c0392b;cursor:pointer;margin-left:1rem;flex-shrink:0;">Remove</button>
-    </div>`).join('');
-}
-
-window.addReview=async function(){
-  const name=document.getElementById('newReviewName').value.trim();
-  const stars=parseInt(document.getElementById('newReviewStars').value);
-  const text=document.getElementById('newReviewText').value.trim();
-  if(!name||!text){alert('Please enter name and review.');return;}
-  await push(reviewsRef,{name,stars,text,date:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'})});
-  document.getElementById('newReviewName').value='';
-  document.getElementById('newReviewText').value='';
-  document.getElementById('reviewAddConfirm').style.display='block';
-  setTimeout(()=>document.getElementById('reviewAddConfirm').style.display='none',2500);
-};
-
-window.delReview=function(key,name){
-  showDeletePopup(name,async()=>{ await remove(ref(db,'reviews/'+key)); });
-};
-
-// ── PAYMENT ───────────────────────────────────────────────────
 window.savePayment=async function(){
-  const data={
-    gcashNum:document.getElementById('editGcashNum').value,
-    gcashName:document.getElementById('editGcashName').value,
-    bdoNum:document.getElementById('editBdoNum').value,
-    ubNum:document.getElementById('editUbNum').value
-  };
+  const data={gcashNum:document.getElementById('editGcashNum').value,gcashName:document.getElementById('editGcashName').value,bdoNum:document.getElementById('editBdoNum').value,ubNum:document.getElementById('editUbNum').value};
   await set(paymentRef,data);
   document.getElementById('saveConfirm').style.display='block';
   setTimeout(()=>document.getElementById('saveConfirm').style.display='none',3000);
 };
 
-// ── AVAILABILITY ──────────────────────────────────────────────
 function buildAvail(){
   const groups=[
     {cat:'☕ Coffee',items:['Spanish Latte','Sea Salt Latte','Sea Salt Caramel Latte','Caramel Macchiato','White Mocha','Mocha Latte','French Vanilla Latte','Banana Oat Latte','Cinnamon Oat Latte','Cafe Latte','Cappuccino','Americano']},
@@ -1604,57 +1892,35 @@ function buildAvail(){
   });
   document.getElementById('availList').innerHTML=html;
 }
-
 window.toggleAvail=async function(name,sid,ok){
   availability[name]=ok;
-  // Update local UI immediately
-  const n=document.getElementById(sid+'_n');
-  const l=document.getElementById(sid+'_l');
+  const n=document.getElementById(sid+'_n');const l=document.getElementById(sid+'_l');
   if(n){n.style.textDecoration=ok?'none':'line-through';n.style.opacity=ok?'1':'0.5';}
   if(l){l.textContent=ok?'✅ Available':'❌ Not Available';l.style.background=ok?'#d4edda':'#fde8e8';l.style.color=ok?'#155724':'#721c24';}
-  filterMenu('all',null);
-  filterOrder('all',document.querySelector('.otab'));
-  // Persist to Firebase
+  filterMenu('all',null);filterOrder('all',document.querySelector('.otab'));
   await update(availRef,{[name]:ok});
 };
 
-// ── DELETE POPUP ──────────────────────────────────────────────
 function showDeletePopup(label,onConfirm){
   document.getElementById('deleteLabel').textContent=label;
   document.getElementById('deleteConfirmBtn').onclick=()=>{onConfirm();document.getElementById('deletePopup').classList.remove('show');};
   document.getElementById('deletePopup').classList.add('show');
 }
 
-// ── ADMIN AUTH ────────────────────────────────────────────────
-window.openAdmin=function(){
-  document.getElementById('loginOverlay').classList.add('show');
-  setTimeout(()=>document.getElementById('adminPass').focus(),150);
-};
-window.closeAdmin=function(){
-  document.getElementById('loginOverlay').classList.remove('show');
-  document.getElementById('loginErr').style.display='none';
-  document.getElementById('adminPass').value='';
-};
+window.openAdmin=function(){document.getElementById('loginOverlay').classList.add('show');setTimeout(()=>document.getElementById('adminPass').focus(),150);};
+window.closeAdmin=function(){document.getElementById('loginOverlay').classList.remove('show');document.getElementById('loginErr').style.display='none';document.getElementById('adminPass').value='';};
 window.checkLogin=function(){
   const pass=document.getElementById('adminPass').value;
   if(pass===ADMIN_PASS){
-    adminLoggedIn=true;
-    closeAdmin();
+    adminLoggedIn=true;closeAdmin();
     document.getElementById('adminDash').style.display='block';
     document.getElementById('availSection').style.display='block';
     document.getElementById('commentsSection').style.display='block';
     document.getElementById('navAvail').style.display='block';
     document.getElementById('navComments').style.display='block';
-    buildAvail();
-    renderComments();
-    renderOrders();
-    renderReservations();
-    renderAdminReviews();
+    buildAvail();renderComments();renderOrders();renderReservations();renderAdminReviews();renderAdminCalendar();
     window.scrollTo(0,0);
-  }else{
-    document.getElementById('loginErr').style.display='block';
-    document.getElementById('adminPass').value='';
-  }
+  }else{document.getElementById('loginErr').style.display='block';document.getElementById('adminPass').value='';}
 };
 window.logoutAdmin=function(){
   adminLoggedIn=false;
@@ -1670,20 +1936,19 @@ window.switchTab=function(tab,btn){
   document.querySelectorAll('.admin-tab-content').forEach(t=>t.style.display='none');
   document.getElementById('tab-'+tab).style.display='block';
   if(tab==='reviews') renderAdminReviews();
+  if(tab==='calendar') renderAdminCalendar();
 };
-window.updateStats=updateStats;
 
-// ── CHATBOT ───────────────────────────────────────────────────
-const CAFE_PHONE='639276924831';
-const CAFE_EMAIL='mariadaniela@gmail.com';
-
+// ── CHATBOT ──
+const CAFE_PHONE_='639276924831';
+const CAFE_EMAIL_='mariadaniela@gmail.com';
 const botReplies=[
-  {keys:['hour','open','close','time','schedule'],reply:'🕐 We are open every day — <strong>Monday to Sunday, 3:00 PM to 12:00 Midnight</strong>. Come visit us anytime! ☕'},
+  {keys:['hour','open','close','time','schedule'],reply:'🕐 We are open every day — <strong>Monday to Sunday, 3:00 PM to 12:00 Midnight</strong>. For reservations, we accept bookings from <strong>9:00 AM</strong>. ☕'},
   {keys:['location','address','where','find','direction'],reply:"📍 We are at <strong>Saratoga Avenue, La Mediterranea Subdivision, Governor's Drive, Dasmariñas, Cavite</strong>. Right along the highway near SM Dasmariñas! 😊"},
   {keys:['gcash','pay','payment','bank','bdo','union'],reply:'💳 Yes! We accept <strong>GCash, BDO, and UnionBank</strong>. Our GCash number is <strong>0927 692 4831</strong> under MARIA DANIELA M.'},
   {keys:['delivery','deliver','send'],reply:'🛵 Yes! We deliver within <strong>Dasmariñas, Cavite</strong> only. Outside Dasmariñas? Order via <strong>🟠 foodpanda</strong> or <strong>🟢 GrabFood</strong>. 😊'},
   {keys:['menu','food','drink','coffee','frappe','pastry','eat'],reply:'🍽️ We have <strong>Signature Coffees, Blended Frappes, Non-Coffee Frappes, Non-Caffeine, Tea & Refreshments, and Pastries</strong>. Check our menu above! ☕'},
-  {keys:['reserve','reservation','book','table','seat'],reply:'📅 Use our <strong>Reservations section</strong> on this page! Fill in your name, date, time, and guests. 😊'},
+  {keys:['reserve','reservation','book','table','seat'],reply:'📅 Use our <strong>Reservations section</strong> — pick a date from the calendar, choose a time slot, and fill in your details. 😊'},
   {keys:['wifi','internet'],reply:'📶 Yes, we have free WiFi! Ask our staff for the password. 😊'},
   {keys:['price','cost','how much'],reply:'💰 Prices start from <strong>₱140 for pastries</strong> and <strong>₱215 for coffee</strong>. Check our menu! ☕'},
   {keys:['parking','park','car'],reply:'🚗 Yes, we have parking available! 😊'},
@@ -1691,21 +1956,17 @@ const botReplies=[
   {keys:['thank','thanks','salamat'],reply:"You're very welcome! 😊 We look forward to seeing you at Accaza Coffee! ☕🦁"},
   {keys:['order','buy','purchase'],reply:'🛒 Scroll up to our <strong>Order Online</strong> section, pick your items, and pay via GCash or bank transfer. 😊'},
 ];
-
 function getBotReply(msg){const l=msg.toLowerCase();for(const r of botReplies){if(r.keys.some(k=>l.includes(k)))return r.reply;}return null;}
 
-// ── CONTACT POPUP (when bot can't answer) ─────────────────────
 function showContactOptions(msg){
   const encoded=encodeURIComponent('Hi Accaza Coffee! I have a question: '+msg);
-  const waLink=`https://wa.me/${CAFE_PHONE}?text=${encoded}`;
-  const vbLink=`viber://chat?number=%2B${CAFE_PHONE}&text=${encoded}`;
-  const smsLink=`sms:+${CAFE_PHONE}?body=${encoded}`;
-  const emailLink=`mailto:${CAFE_EMAIL}?subject=Customer Inquiry&body=${encoded}`;
-
+  const waLink=`https://wa.me/${CAFE_PHONE_}?text=${encoded}`;
+  const vbLink=`viber://chat?number=%2B${CAFE_PHONE_}&text=${encoded}`;
+  const smsLink=`sms:+${CAFE_PHONE_}?body=${encoded}`;
+  const emailLink=`mailto:${CAFE_EMAIL_}?subject=Customer Inquiry&body=${encoded}`;
   const d=document.createElement('div');
   d.className='chat-msg bot';
-  d.innerHTML=`
-    <p style="margin-bottom:0.6rem;">🤔 Sorry, I'm not sure about that one! How would you like to send your question to us directly?</p>
+  d.innerHTML=`<p style="margin-bottom:0.6rem;">🤔 Sorry, I'm not sure about that one! How would you like to send your question to us directly?</p>
     <div style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.75rem;">
       <button onclick="openLink('${waLink}','whatsapp')" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;text-align:left;">💬 WhatsApp</button>
       <button onclick="openLink('${vbLink}','viber')" style="background:#7360f2;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;text-align:left;">📱 Viber</button>
@@ -1717,89 +1978,43 @@ function showContactOptions(msg){
   document.getElementById('chatMessages').scrollTop=document.getElementById('chatMessages').scrollHeight;
 }
 
-// ── OPEN LINK WITH FALLBACK POPUP ────────────────────────────
-window.openLink=function(url, type){
-  if(type==='sms'){
-    // SMS is mobile only
-    const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if(!isMobile){showAppPopup('SMS / Text Message','SMS only works on mobile devices. Please try WhatsApp, Viber, or Email instead.', false);return;}
-    window.location.href=url;return;
-  }
-  if(type==='whatsapp'){
-    // Use wa.me which works on both mobile (app) and desktop (WhatsApp Web)
-    window.open(url,'_blank');return;
-  }
-  if(type==='viber'){
-    // Viber has no web version — try to open app, fallback if not installed
-    const start=Date.now();
-    window.location.href=url;
-    setTimeout(()=>{
-      if(Date.now()-start<2000){
-        showAppPopup('Viber','Viber does not appear to be installed on your device.', true);
-      }
-    },1500);
-  }
+window.openLink=function(url,type){
+  if(type==='sms'){const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);if(!isMobile){showAppPopup('SMS / Text Message','SMS only works on mobile devices. Please try WhatsApp, Viber, or Email instead.',false);return;}window.location.href=url;return;}
+  if(type==='whatsapp'){window.open(url,'_blank');return;}
+  if(type==='viber'){const start=Date.now();window.location.href=url;setTimeout(()=>{if(Date.now()-start<2000)showAppPopup('Viber','Viber does not appear to be installed on your device.',true);},1500);}
 };
-
-function showAppPopup(appName, message, showInstall){
-  // Remove any existing popup
-  const existing=document.getElementById('chatAppPopup');
-  if(existing) existing.remove();
+function showAppPopup(appName,message,showInstall){
+  const existing=document.getElementById('chatAppPopup');if(existing)existing.remove();
   const installUrl=appName==='Viber'?'https://www.viber.com/en/download/':'';
-  const overlay=document.createElement('div');
-  overlay.id='chatAppPopup';
+  const overlay=document.createElement('div');overlay.id='chatAppPopup';
   overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
-  overlay.innerHTML=`
-    <div style="background:#fff;border-radius:12px;padding:1.75rem;max-width:320px;width:90%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
-      <div style="font-size:2rem;margin-bottom:0.5rem;">📵</div>
-      <h4 style="font-family:'Playfair Display',serif;color:#3b2314;margin-bottom:0.5rem;">${appName} Not Found</h4>
-      <p style="font-size:0.83rem;color:#5c3d2e;line-height:1.6;margin-bottom:1.25rem;">${message}</p>
-      <div style="display:flex;flex-direction:column;gap:0.5rem;">
-        ${showInstall?`<a href="${installUrl}" target="_blank" style="background:#7360f2;color:#fff;border:none;border-radius:6px;padding:0.65rem;font-size:0.85rem;cursor:pointer;text-decoration:none;display:block;">📥 Install ${appName}</a>`:''}
-        <button onclick="document.getElementById('chatAppPopup').remove();document.getElementById('chatInput').value='';sendChatSMS();" style="background:#5c3d2e;color:#fff;border:none;border-radius:6px;padding:0.65rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;">📩 Try SMS Instead</button>
-        <button onclick="document.getElementById('chatAppPopup').remove()" style="background:#f5efe6;border:1px solid #e8dcc8;border-radius:6px;padding:0.65rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;color:#8a6a55;">Cancel</button>
-      </div>
-    </div>`;
+  overlay.innerHTML=`<div style="background:#fff;border-radius:12px;padding:1.75rem;max-width:320px;width:90%;text-align:center;">
+    <div style="font-size:2rem;margin-bottom:0.5rem;">📵</div>
+    <h4 style="font-family:'Playfair Display',serif;color:#3b2314;margin-bottom:0.5rem;">${appName} Not Found</h4>
+    <p style="font-size:0.83rem;color:#5c3d2e;line-height:1.6;margin-bottom:1.25rem;">${message}</p>
+    <div style="display:flex;flex-direction:column;gap:0.5rem;">
+      ${showInstall?`<a href="${installUrl}" target="_blank" style="background:#7360f2;color:#fff;border:none;border-radius:6px;padding:0.65rem;font-size:0.85rem;cursor:pointer;text-decoration:none;display:block;">📥 Install ${appName}</a>`:''}
+      <button onclick="document.getElementById('chatAppPopup').remove();sendChatSMS();" style="background:#5c3d2e;color:#fff;border:none;border-radius:6px;padding:0.65rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;">📩 Try SMS Instead</button>
+      <button onclick="document.getElementById('chatAppPopup').remove()" style="background:#f5efe6;border:1px solid #e8dcc8;border-radius:6px;padding:0.65rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;color:#8a6a55;">Cancel</button>
+    </div>
+  </div>`;
   document.body.appendChild(overlay);
 }
+window.sendChatSMS=function(){const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);if(!isMobile){showAppPopup('SMS / Text Message','SMS only works on mobile devices. Please use Email instead.',false);return;}window.location.href=`sms:+${CAFE_PHONE_}?body=${encodeURIComponent('Hi Accaza Coffee! I have a question.')}`;};
 
-window.sendChatSMS=function(){
-  const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-  if(!isMobile){showAppPopup('SMS / Text Message','SMS only works on mobile devices. Please use Email instead.',false);return;}
-  window.location.href=`sms:+${CAFE_PHONE}?body=${encodeURIComponent('Hi Accaza Coffee! I have a question.')}`;
-};
-
-window.toggleChat=function(){
-  chatOpen=!chatOpen;
-  document.getElementById('chatWindow').classList.toggle('open',chatOpen);
-  document.getElementById('chatNotif').style.display='none';
-  if(chatOpen&&!chatStarted){chatStarted=true;setTimeout(()=>addBotMsg("👋 Hi there! Welcome to <strong>Accaza Coffee (Cafe Sartoga)</strong>! Ask me about our hours, location, menu, delivery, payment, and more! ☕"),400);}
-};
-// Expose all functions that are called from HTML onclick attributes
-window.addBotMsg=addBotMsg;
-window.addUserMsg=addUserMsg;
-window.getBotReply=getBotReply;
-window.showContactOptions=showContactOptions;
-window.showAppPopup=showAppPopup;
+window.toggleChat=function(){chatOpen=!chatOpen;document.getElementById('chatWindow').classList.toggle('open',chatOpen);document.getElementById('chatNotif').style.display='none';if(chatOpen&&!chatStarted){chatStarted=true;setTimeout(()=>addBotMsg("👋 Hi there! Welcome to <strong>Accaza Coffee (Cafe Sartoga)</strong>! Ask me about our hours, location, menu, delivery, payment, reservations, and more! ☕"),400);}};
 function addBotMsg(text){const m=document.getElementById('chatMessages');const d=document.createElement('div');d.className='chat-msg bot';d.innerHTML=text;m.appendChild(d);m.scrollTop=m.scrollHeight;}
 function addUserMsg(text){const m=document.getElementById('chatMessages');const d=document.createElement('div');d.className='chat-msg user';d.textContent=text;m.appendChild(d);m.scrollTop=m.scrollHeight;}
-window.sendChat=function(){
-  const input=document.getElementById('chatInput');const msg=input.value.trim();if(!msg)return;input.value='';addUserMsg(msg);
-  const typing=document.createElement('div');typing.className='chat-msg bot';typing.id='typing';typing.innerHTML='<span style="letter-spacing:2px;">•••</span>';
-  document.getElementById('chatMessages').appendChild(typing);document.getElementById('chatMessages').scrollTop=document.getElementById('chatMessages').scrollHeight;
-  setTimeout(()=>{
-    const t=document.getElementById('typing');if(t)t.remove();
-    const reply=getBotReply(msg);
-    if(reply) addBotMsg(reply);
-    else showContactOptions(msg);
-  },900);
-};
+window.sendChat=function(){const input=document.getElementById('chatInput');const msg=input.value.trim();if(!msg)return;input.value='';addUserMsg(msg);const typing=document.createElement('div');typing.className='chat-msg bot';typing.id='typing';typing.innerHTML='<span style="letter-spacing:2px;">•••</span>';document.getElementById('chatMessages').appendChild(typing);document.getElementById('chatMessages').scrollTop=document.getElementById('chatMessages').scrollHeight;setTimeout(()=>{const t=document.getElementById('typing');if(t)t.remove();const reply=getBotReply(msg);if(reply)addBotMsg(reply);else showContactOptions(msg);},900);};
 window.quickMsg=function(msg){document.getElementById('chatInput').value=msg;sendChat();};
+window.addBotMsg=addBotMsg;window.addUserMsg=addUserMsg;window.getBotReply=getBotReply;window.showContactOptions=showContactOptions;window.showAppPopup=showAppPopup;
 setTimeout(()=>{if(!chatOpen)document.getElementById('chatNotif').style.display='block';},3000);
 
-// ── INIT ─────────────────────────────────────────────────────
+// ── INIT ──
 filterMenu('all',document.querySelector('.tab-btn'));
 filterOrder('all',document.querySelector('.otab'));
+renderCustomerCalendar();
+renderCustomerOrders();
 </script>
 </body>
 </html>
