@@ -29,11 +29,11 @@ nav{position:fixed;top:0;width:100%;z-index:200;background:rgba(59,35,20,0.96);b
 .btn-outline{background:transparent;color:var(--cr);border:1px solid rgba(255,255,255,0.35);padding:0.85rem 2rem;border-radius:4px;font-size:0.9rem;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;transition:all 0.2s;text-decoration:none;display:inline-block;}
 .btn-outline:hover{background:rgba(255,255,255,0.08);}
 
-/* ── SOCIAL MEDIA ── */
+/* ── SOCIAL MEDIA FOLLOW ── */
 .hero-social{margin-top:2rem;display:flex;flex-direction:column;align-items:center;gap:0.75rem;}
-.hero-social-label{font-size:0.72rem;letter-spacing:0.2em;text-transform:uppercase;color:rgba(255,255,255,0.5);font-family:'Inter',sans-serif;}
-.hero-social-icons{display:flex;align-items:center;justify-content:center;gap:1.25rem;}
-.social-icon-btn{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);cursor:pointer;transition:all 0.25s;text-decoration:none;}
+.hero-social-label{font-size:0.72rem;letter-spacing:0.22em;text-transform:uppercase;color:rgba(255,255,255,0.5);font-family:'Inter',sans-serif;}
+.hero-social-icons{display:flex;gap:1.25rem;align-items:center;justify-content:center;}
+.social-icon-btn{display:flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);transition:all 0.25s;cursor:pointer;text-decoration:none;}
 .social-icon-btn:hover{background:rgba(255,255,255,0.2);border-color:rgba(255,255,255,0.4);transform:translateY(-2px);}
 .social-icon-btn svg{display:block;}
 
@@ -188,6 +188,7 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
 .feedback-form-box input::placeholder,.feedback-form-box textarea::placeholder{color:rgba(245,239,230,0.3);}
 .feedback-form-box select option{background:var(--bm);color:var(--cr);}
 .feedback-form-box textarea{resize:none;}
+.feedback-info{display:flex;flex-direction:column;gap:1rem;}
 .gallery-section{background:var(--cr);padding:6rem 2rem;}
 .gallery-inner{max-width:1000px;margin:0 auto;}
 .gallery-grid{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:220px;gap:1rem;}
@@ -344,47 +345,32 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
       <a href="#reserve" class="btn-outline">Reserve a Table</a>
     </div>
 
-    <!-- SOCIAL MEDIA -->
+    <!-- SOCIAL MEDIA FOLLOW -->
     <div class="hero-social">
-      <p class="hero-social-label">Follow Us</p>
+      <span class="hero-social-label">Follow Us</span>
       <div class="hero-social-icons">
-        <!-- Instagram -->
-        <a class="social-icon-btn" href="#" title="Instagram">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <linearGradient id="ig-grad" x1="0%" y1="100%" x2="100%" y2="0%">
-                <stop offset="0%" style="stop-color:#f09433"/>
-                <stop offset="25%" style="stop-color:#e6683c"/>
-                <stop offset="50%" style="stop-color:#dc2743"/>
-                <stop offset="75%" style="stop-color:#cc2366"/>
-                <stop offset="100%" style="stop-color:#bc1888"/>
-              </linearGradient>
-            </defs>
-            <rect x="2" y="2" width="20" height="20" rx="5" ry="5" fill="url(#ig-grad)"/>
-            <circle cx="12" cy="12" r="4.5" stroke="white" stroke-width="1.8" fill="none"/>
-            <circle cx="17.5" cy="6.5" r="1.2" fill="white"/>
+        <!-- Facebook -->
+        <a href="#" class="social-icon-btn" title="Facebook" aria-label="Facebook">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M18 2H15C13.6739 2 12.4021 2.52678 11.4645 3.46447C10.5268 4.40215 10 5.67392 10 7V10H7V14H10V22H14V14H17L18 10H14V7C14 6.73478 14.1054 6.48043 14.2929 6.29289C14.4804 6.10536 14.7348 6 15 6H18V2Z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </a>
-        <!-- Facebook -->
-        <a class="social-icon-btn" href="#" title="Facebook">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect width="24" height="24" rx="5" fill="#1877F2"/>
-            <path d="M15.5 8H13.5C13.2 8 13 8.2 13 8.5V10H15.5L15.1 12.5H13V19H10.5V12.5H9V10H10.5V8.5C10.5 6.6 11.8 5 14 5H15.5V8Z" fill="white"/>
+        <!-- Instagram -->
+        <a href="#" class="social-icon-btn" title="Instagram" aria-label="Instagram">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="2" y="2" width="20" height="20" rx="5" ry="5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37Z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </a>
         <!-- Threads -->
-        <a class="social-icon-btn" href="#" title="Threads">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect width="24" height="24" rx="5" fill="#000000"/>
-            <path d="M16.5 10.8c-.1-.1-.3-.1-.4-.2-.7-3.4-3.1-4.1-4.6-4.1-2.5 0-4.5 2-4.5 5s2 5 4.5 5c1.8 0 3.2-1 3.9-2.6" stroke="white" stroke-width="1.3" stroke-linecap="round" fill="none"/>
-            <path d="M14 11c.2.4.3.9.3 1.5 0 1.9-1.2 3-2.8 3s-2.8-1.1-2.8-3 1.2-3 2.8-3c.5 0 1 .1 1.4.4" stroke="white" stroke-width="1.3" stroke-linecap="round" fill="none"/>
-            <path d="M16.5 10.8c.1.5.2 1.1.2 1.7 0 3.1-2.1 5-4.7 5" stroke="white" stroke-width="1.3" stroke-linecap="round" fill="none"/>
+        <a href="#" class="social-icon-btn" title="Threads" aria-label="Threads">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M19 7.5C18.5 5.5 16.5 3 12.5 3C8 3 5 6.5 5 12C5 17.5 8 21 12.5 21C16.5 21 19.5 18.5 19.5 15C19.5 11.5 17 10 14 10C11 10 10 11.5 10 13C10 14.5 11 15.5 12.5 15.5C14 15.5 15 14.5 15 13" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </a>
       </div>
     </div>
-    <!-- END SOCIAL MEDIA -->
-
   </div>
   <div class="scroll-cue">
     <span>Scroll</span>
@@ -946,7 +932,7 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
   </div>
 </div>
 
-<!-- POPUPS -->
+<!-- UNAVAILABLE POPUP -->
 <div class="popup-overlay" id="unavailPopup">
   <div class="popup-box">
     <div style="font-size:2.5rem;margin-bottom:0.75rem;">😔</div>
@@ -955,6 +941,8 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
     <button onclick="document.getElementById('unavailPopup').classList.remove('show')" style="background:var(--bd);color:#fff;border:none;border-radius:6px;padding:0.7rem 2rem;font-size:0.88rem;cursor:pointer;">Got it</button>
   </div>
 </div>
+
+<!-- CONFIRM RECEIVED POPUP -->
 <div class="popup-overlay" id="confirmReceivedPopup">
   <div class="popup-box">
     <div style="font-size:2.5rem;margin-bottom:0.75rem;">✅</div>
@@ -968,6 +956,8 @@ input[type=text],input[type=date],input[type=password],select,textarea{backgroun
     </div>
   </div>
 </div>
+
+<!-- DELETE POPUP -->
 <div class="popup-overlay" id="deletePopup">
   <div class="popup-box">
     <div style="font-size:2.5rem;margin-bottom:0.75rem;">🗑️</div>
@@ -1042,6 +1032,7 @@ const ADMIN_PASS='accaza2026';
 const CAFE_PHONE='639276924831';
 const CAFE_EMAIL='mariadaniela@gmail.com';
 const catLabels={coffee:'Coffee',frappe:'Blended Frappe',nonfrappe:'Non-Coffee Frappe',noncaf:'Non-Caffeine',tea:'Tea & Refreshments',food:'Pastries',meals:'Meals',desserts:'Desserts'};
+
 const TIME_SLOTS=['9:00 AM','10:00 AM','11:00 AM','12:00 PM','1:00 PM','2:00 PM','3:00 PM','4:00 PM','5:00 PM','6:00 PM','7:00 PM','8:00 PM','9:00 PM','10:00 PM','11:00 PM','12:00 Midnight'];
 const FULL_DAY_OPTION='Full Day Booking';
 
@@ -1052,6 +1043,7 @@ let availability={};
 let myOrderIds=JSON.parse(localStorage.getItem('accaza_my_orders')||'[]');
 let adminLoggedIn=false;
 let calBlocks={};
+
 let calYear,calMonth,selectedDate=null,selectedTime=null;
 let adminCalYear,adminCalMonth,adminSelectedDate=null;
 let resContactMethod='whatsapp';
@@ -1064,28 +1056,96 @@ const syncBadge=document.getElementById('fbSync');
 syncBadge.classList.add('online');
 setTimeout(()=>syncBadge.style.display='none',4000);
 
-onValue(ordersRef,snap=>{adminOrdersMap=snap.val()||{};if(adminLoggedIn)renderOrders();updateStats();renderCustomerOrders();});
-onValue(reservationsRef,snap=>{adminResMap=snap.val()||{};if(adminLoggedIn)renderReservations();updateStats();renderCustomerCalendar();if(adminLoggedIn)renderAdminCalendar();});
-onValue(feedbacksRef,snap=>{feedbacksMap=snap.val()||{};if(adminLoggedIn)renderComments();});
-onValue(reviewsRef,snap=>{reviewsMap=snap.val()||{};if(adminLoggedIn)renderAdminReviews();});
-onValue(availRef,snap=>{const saved=snap.val();if(saved)Object.keys(saved).forEach(k=>availability[k]=saved[k]);filterMenu('all',null);filterOrder('all',document.querySelector('.otab'));if(adminLoggedIn)buildAvail();});
-onValue(paymentRef,snap=>{const p=snap.val();if(!p)return;if(p.gcashNum)document.getElementById('gcashNum').textContent=p.gcashNum;if(p.gcashName)document.getElementById('gcashName').textContent=p.gcashName;if(p.bdoNum)document.getElementById('bankNum').textContent=p.bdoNum;if(p.ubNum)document.getElementById('bankNum2').textContent=p.ubNum;if(p.gcashNum)document.getElementById('editGcashNum').value=p.gcashNum;if(p.gcashName)document.getElementById('editGcashName').value=p.gcashName;if(p.bdoNum)document.getElementById('editBdoNum').value=p.bdoNum;if(p.ubNum)document.getElementById('editUbNum').value=p.ubNum;});
-onValue(calBlocksRef,snap=>{calBlocks=snap.val()||{};renderCustomerCalendar();if(adminLoggedIn)renderAdminCalendar();});
+onValue(ordersRef,snap=>{
+  adminOrdersMap=snap.val()||{};
+  if(adminLoggedIn) renderOrders();
+  updateStats(); renderCustomerOrders();
+});
+onValue(reservationsRef,snap=>{
+  adminResMap=snap.val()||{};
+  if(adminLoggedIn) renderReservations();
+  updateStats();
+  renderCustomerCalendar();
+  if(adminLoggedIn) renderAdminCalendar();
+});
+onValue(feedbacksRef,snap=>{ feedbacksMap=snap.val()||{}; if(adminLoggedIn) renderComments(); });
+onValue(reviewsRef,snap=>{ reviewsMap=snap.val()||{}; if(adminLoggedIn) renderAdminReviews(); });
+onValue(availRef,snap=>{
+  const saved=snap.val();
+  if(saved) Object.keys(saved).forEach(k=>availability[k]=saved[k]);
+  filterMenu('all',null);
+  filterOrder('all',document.querySelector('.otab'));
+  if(adminLoggedIn) buildAvail();
+});
+onValue(paymentRef,snap=>{
+  const p=snap.val(); if(!p) return;
+  if(p.gcashNum) document.getElementById('gcashNum').textContent=p.gcashNum;
+  if(p.gcashName) document.getElementById('gcashName').textContent=p.gcashName;
+  if(p.bdoNum) document.getElementById('bankNum').textContent=p.bdoNum;
+  if(p.ubNum) document.getElementById('bankNum2').textContent=p.ubNum;
+  if(p.gcashNum) document.getElementById('editGcashNum').value=p.gcashNum;
+  if(p.gcashName) document.getElementById('editGcashName').value=p.gcashName;
+  if(p.bdoNum) document.getElementById('editBdoNum').value=p.bdoNum;
+  if(p.ubNum) document.getElementById('editUbNum').value=p.ubNum;
+});
+onValue(calBlocksRef,snap=>{
+  calBlocks=snap.val()||{};
+  renderCustomerCalendar();
+  if(adminLoggedIn) renderAdminCalendar();
+});
 
-function getConfirmedGuestsForDate(dateK){return Object.values(adminResMap).filter(r=>r.date===dateK&&r.status==='Confirmed').reduce((sum,r)=>sum+(parseInt(r.guests)||0),0);}
-function getConfirmedSlotsForDate(dateK){const slots=new Set();Object.values(adminResMap).filter(r=>r.date===dateK&&r.status==='Confirmed').forEach(r=>slots.add(r.time));return slots;}
-function dateKey(y,m,d){return`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;}
-function getDateStatus(y,m,d){const k=dateKey(y,m,d);const block=calBlocks[k];if(block&&block.blocked)return'blocked';const guestCount=getConfirmedGuestsForDate(k);if(guestCount>=MAX_GUESTS_PER_DAY)return'blocked';if(guestCount>0)return'partial';if(block&&block.slots&&Object.values(block.slots).some(v=>v===false))return'partial';return'open';}
-function isSlotBlocked(dateK,slot){const block=calBlocks[dateK];if(block&&block.blocked)return true;if(block&&block.slots&&block.slots[slot]===false)return true;return false;}
-function isSlotConfirmed(dateK,slot){return Object.values(adminResMap).some(r=>r.date===dateK&&r.time===slot&&r.status==='Confirmed');}
-function isSlotAvailable(dateK,slot){if(isSlotBlocked(dateK,slot))return false;const guestCount=getConfirmedGuestsForDate(dateK);if(guestCount>=MAX_GUESTS_PER_DAY)return false;return true;}
+function getConfirmedGuestsForDate(dateK){
+  return Object.values(adminResMap)
+    .filter(r=>r.date===dateK && r.status==='Confirmed')
+    .reduce((sum,r)=>sum+(parseInt(r.guests)||0),0);
+}
+function getConfirmedSlotsForDate(dateK){
+  const slots=new Set();
+  Object.values(adminResMap)
+    .filter(r=>r.date===dateK && r.status==='Confirmed')
+    .forEach(r=>slots.add(r.time));
+  return slots;
+}
+
+function dateKey(y,m,d){ return `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; }
+
+function getDateStatus(y,m,d){
+  const k=dateKey(y,m,d);
+  const block=calBlocks[k];
+  if(block && block.blocked) return 'blocked';
+  const guestCount=getConfirmedGuestsForDate(k);
+  if(guestCount>=MAX_GUESTS_PER_DAY) return 'blocked';
+  if(guestCount>0) return 'partial';
+  if(block && block.slots && Object.values(block.slots).some(v=>v===false)) return 'partial';
+  return 'open';
+}
+
+function isSlotBlocked(dateK,slot){
+  const block=calBlocks[dateK];
+  if(block && block.blocked) return true;
+  if(block && block.slots && block.slots[slot]===false) return true;
+  return false;
+}
+
+function isSlotConfirmed(dateK,slot){
+  return Object.values(adminResMap)
+    .some(r=>r.date===dateK && r.time===slot && r.status==='Confirmed');
+}
+
+function isSlotAvailable(dateK,slot){
+  if(isSlotBlocked(dateK,slot)) return false;
+  const guestCount=getConfirmedGuestsForDate(dateK);
+  if(guestCount>=MAX_GUESTS_PER_DAY) return false;
+  return true;
+}
 
 function renderCustomerCalendar(){
   const title=new Date(calYear,calMonth).toLocaleDateString('en-PH',{month:'long',year:'numeric'});
   document.getElementById('calTitle').textContent=title;
-  const today=new Date();today.setHours(0,0,0,0);
-  const maxDate=new Date(today);maxDate.setMonth(maxDate.getMonth()+5);
-  const prevBtn=document.getElementById('calPrev');const nextBtn=document.getElementById('calNext');
+  const today=new Date(); today.setHours(0,0,0,0);
+  const maxDate=new Date(today); maxDate.setMonth(maxDate.getMonth()+5);
+  const prevBtn=document.getElementById('calPrev');
+  const nextBtn=document.getElementById('calNext');
   const curFirst=new Date(calYear,calMonth,1);
   prevBtn.disabled=curFirst<=new Date(today.getFullYear(),today.getMonth(),1);
   nextBtn.disabled=curFirst>=new Date(maxDate.getFullYear(),maxDate.getMonth(),1);
@@ -1093,22 +1153,45 @@ function renderCustomerCalendar(){
   const daysInMonth=new Date(calYear,calMonth+1,0).getDate();
   const days=['Su','Mo','Tu','We','Th','Fr','Sa'];
   let html=days.map(d=>`<div class="cal-day-label">${d}</div>`).join('');
-  for(let i=0;i<firstDay;i++)html+=`<div class="cal-day empty"></div>`;
+  for(let i=0;i<firstDay;i++) html+=`<div class="cal-day empty"></div>`;
   for(let d=1;d<=daysInMonth;d++){
-    const date=new Date(calYear,calMonth,d);date.setHours(0,0,0,0);
-    const isPast=date<today;const isToday=date.getTime()===today.getTime();
-    const status=getDateStatus(calYear,calMonth,d);const k=dateKey(calYear,calMonth,d);
+    const date=new Date(calYear,calMonth,d); date.setHours(0,0,0,0);
+    const isPast=date<today;
+    const isToday=date.getTime()===today.getTime();
+    const status=getDateStatus(calYear,calMonth,d);
+    const k=dateKey(calYear,calMonth,d);
     let cls='cal-day';
-    if(isPast)cls+=' past';else if(status==='blocked')cls+=' blocked';else if(status==='partial')cls+=' partial';else cls+=' open';
-    if(isToday)cls+=' today';if(selectedDate===k)cls+=' selected';
+    if(isPast) cls+=' past';
+    else if(status==='blocked') cls+=' blocked';
+    else if(status==='partial') cls+=' partial';
+    else cls+=' open';
+    if(isToday) cls+=' today';
+    if(selectedDate===k) cls+=' selected';
     const clickable=!isPast&&status!=='blocked';
     html+=`<div class="${cls}" ${clickable?`onclick="selectCalDate(${calYear},${calMonth},${d})"`:''}>${d}</div>`;
   }
   document.getElementById('calGrid').innerHTML=html;
 }
 
-window.calNavigate=function(dir){calMonth+=dir;if(calMonth>11){calMonth=0;calYear++;}if(calMonth<0){calMonth=11;calYear--;}renderCustomerCalendar();};
-window.selectCalDate=function(y,m,d){selectedDate=dateKey(y,m,d);selectedTime=null;renderCustomerCalendar();const wrap=document.getElementById('timeSlotsWrap');wrap.style.display='block';const label=new Date(y,m,d).toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric',year:'numeric'});document.getElementById('selectedDateLabel').textContent=label;renderTimeSlots();document.getElementById('resFormWrap').style.display='none';wrap.scrollIntoView({behavior:'smooth',block:'nearest'});};
+window.calNavigate=function(dir){
+  calMonth+=dir;
+  if(calMonth>11){calMonth=0;calYear++;}
+  if(calMonth<0){calMonth=11;calYear--;}
+  renderCustomerCalendar();
+};
+
+window.selectCalDate=function(y,m,d){
+  selectedDate=dateKey(y,m,d);
+  selectedTime=null;
+  renderCustomerCalendar();
+  const wrap=document.getElementById('timeSlotsWrap');
+  wrap.style.display='block';
+  const label=new Date(y,m,d).toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  document.getElementById('selectedDateLabel').textContent=label;
+  renderTimeSlots();
+  document.getElementById('resFormWrap').style.display='none';
+  wrap.scrollIntoView({behavior:'smooth',block:'nearest'});
+};
 
 function renderTimeSlots(){
   const grid=document.getElementById('timeSlotsGrid');
@@ -1117,89 +1200,212 @@ function renderTimeSlots(){
   const fullDayBlocked=isSlotBlocked(selectedDate,FULL_DAY_OPTION)||dayFull;
   const fullDayConfirmed=isSlotConfirmed(selectedDate,FULL_DAY_OPTION);
   const fullDaySel=selectedTime===FULL_DAY_OPTION;
-  let fullDayCls='time-slot';let fullDayStyle='grid-column:1/-1;font-weight:600;';
-  if(fullDaySel)fullDayCls+=' selected';else if(fullDayBlocked)fullDayCls+=' blocked';else if(fullDayConfirmed)fullDayStyle+='background:rgba(13,110,253,0.15);color:#1565c0;border-color:rgba(13,110,253,0.3);cursor:pointer;';else fullDayCls+=' available';
+  let fullDayCls='time-slot';
+  let fullDayStyle='grid-column:1/-1;font-weight:600;';
+  if(fullDaySel) fullDayCls+=' selected';
+  else if(fullDayBlocked) fullDayCls+=' blocked';
+  else if(fullDayConfirmed) fullDayStyle+='background:rgba(13,110,253,0.15);color:#1565c0;border-color:rgba(13,110,253,0.3);cursor:pointer;';
+  else fullDayCls+=' available';
   let html=`<div class="${fullDayCls}" style="${fullDayStyle}" ${!fullDayBlocked?`onclick="selectTimeSlot('${FULL_DAY_OPTION}')"`:''}
     >📅 Full Day Booking${fullDayConfirmed&&!fullDayBlocked?'<br/><span style="font-size:0.62rem;opacity:0.7;">booked</span>':''}</div>`;
   html+=TIME_SLOTS.map(slot=>{
-    const manualBlocked=isSlotBlocked(selectedDate,slot);const confirmed=confirmedSlots.has(slot);const available=isSlotAvailable(selectedDate,slot);const sel=selectedTime===slot;
-    let cls='time-slot';let style='';
-    if(sel)cls+=' selected';else if(manualBlocked||dayFull)cls+=' blocked';else if(confirmed){style='background:rgba(13,110,253,0.15);color:#1565c0;border-color:rgba(13,110,253,0.3);cursor:pointer;';}else cls+=' available';
+    const manualBlocked=isSlotBlocked(selectedDate,slot);
+    const confirmed=confirmedSlots.has(slot);
+    const available=isSlotAvailable(selectedDate,slot);
+    const sel=selectedTime===slot;
+    let cls='time-slot';
+    let style='';
+    if(sel) cls+=' selected';
+    else if(manualBlocked||dayFull) cls+=' blocked';
+    else if(confirmed){style='background:rgba(13,110,253,0.15);color:#1565c0;border-color:rgba(13,110,253,0.3);cursor:pointer;';}
+    else cls+=' available';
     const clickable=available&&!sel;
     return`<div class="${cls}" style="${style}" ${clickable?`onclick="selectTimeSlot('${slot}')"`:''}>${slot}${confirmed&&!manualBlocked&&!dayFull?'<br/><span style="font-size:0.62rem;opacity:0.7;">booked</span>':''}</div>`;
   }).join('');
   grid.innerHTML=html;
 }
 
-window.selectTimeSlot=function(slot){selectedTime=slot;renderTimeSlots();const formWrap=document.getElementById('resFormWrap');formWrap.style.display='block';const label=new Date(selectedDate+'T00:00:00').toLocaleDateString('en-PH',{weekday:'short',month:'short',day:'numeric',year:'numeric'});document.getElementById('resSummaryDateTime').textContent=`${label} · ${slot}`;updateBookingType();formWrap.scrollIntoView({behavior:'smooth',block:'nearest'});};
-window.resetResSelection=function(){selectedTime=null;document.getElementById('resFormWrap').style.display='none';document.getElementById('timeSlotsWrap').scrollIntoView({behavior:'smooth',block:'nearest'});};
+window.selectTimeSlot=function(slot){
+  selectedTime=slot;
+  renderTimeSlots();
+  const formWrap=document.getElementById('resFormWrap');
+  formWrap.style.display='block';
+  const label=new Date(selectedDate+'T00:00:00').toLocaleDateString('en-PH',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+  document.getElementById('resSummaryDateTime').textContent=`${label} · ${slot}`;
+  updateBookingType();
+  formWrap.scrollIntoView({behavior:'smooth',block:'nearest'});
+};
+
+window.resetResSelection=function(){
+  selectedTime=null;
+  document.getElementById('resFormWrap').style.display='none';
+  document.getElementById('timeSlotsWrap').scrollIntoView({behavior:'smooth',block:'nearest'});
+};
 
 window.updateBookingType=function(){
   const guests=parseInt(document.getElementById('resGuests').value)||1;
-  const infoEl=document.getElementById('bookingTypeInfo');const depositEl=document.getElementById('depositSection');
+  const infoEl=document.getElementById('bookingTypeInfo');
+  const depositEl=document.getElementById('depositSection');
   let type,color,bg,icon,msg,requireDeposit=false,requireAdvance=false;
   if(guests<=2){type='Individual / Couple';icon='💑';color='#155724';bg='#d4edda';msg='Same-day booking accepted. No deposit required.';requireDeposit=false;}
   else if(guests<=5){type='Small Group';icon='👨‍👩‍👧';color='#664d03';bg='#fff3cd';msg='Same-day booking accepted. A deposit will be discussed upon confirmation.';requireDeposit=true;}
   else if(guests<=20){type='Medium Group';icon='👥';color='#0c5460';bg='#d1ecf1';msg='Booking must be at least 7 days in advance. A deposit will be discussed upon confirmation.';requireDeposit=true;requireAdvance=true;}
   else{type='Large Group';icon='🎉';color='#721c24';bg='#fde8e8';msg='Booking must be at least 7 days in advance. A deposit will be discussed upon confirmation. Our admin will call you to discuss details.';requireDeposit=true;requireAdvance=true;}
-  infoEl.innerHTML=`<div style="background:${bg};border-radius:8px;padding:0.75rem 1rem;display:flex;align-items:flex-start;gap:0.6rem;"><span style="font-size:1.2rem;">${icon}</span><div><p style="font-size:0.82rem;font-weight:600;color:${color};">${type}</p><p style="font-size:0.78rem;color:${color};line-height:1.5;margin-top:0.2rem;">${msg}</p></div></div>`;
+  infoEl.innerHTML=`<div style="background:${bg};border-radius:8px;padding:0.75rem 1rem;display:flex;align-items:flex-start;gap:0.6rem;">
+    <span style="font-size:1.2rem;">${icon}</span>
+    <div><p style="font-size:0.82rem;font-weight:600;color:${color};">${type}</p><p style="font-size:0.78rem;color:${color};line-height:1.5;margin-top:0.2rem;">${msg}</p></div>
+  </div>`;
   depositEl.style.display=requireDeposit?'block':'none';
-  if(requireAdvance&&selectedDate){const today=new Date();today.setHours(0,0,0,0);const bookDate=new Date(selectedDate+'T00:00:00');const diffDays=Math.ceil((bookDate-today)/(1000*60*60*24));if(diffDays<7){infoEl.innerHTML+=`<div style="background:#fde8e8;border:1px solid #f5c6c6;border-radius:6px;padding:0.75rem 0.85rem;margin-top:0.5rem;"><p style="font-size:0.78rem;color:#721c24;line-height:1.6;">⚠️ <strong>This booking requires at least 7 days advance notice.</strong> Please select a later date — <strong>OR</strong> call Accaza Coffee directly at <strong>0927 692 4831</strong> to check if they can still accommodate your booking within this short notice.</p></div>`;}}
+  if(requireAdvance&&selectedDate){
+    const today=new Date(); today.setHours(0,0,0,0);
+    const bookDate=new Date(selectedDate+'T00:00:00');
+    const diffDays=Math.ceil((bookDate-today)/(1000*60*60*24));
+    if(diffDays<7){
+      infoEl.innerHTML+=`<div style="background:#fde8e8;border:1px solid #f5c6c6;border-radius:6px;padding:0.75rem 0.85rem;margin-top:0.5rem;">
+        <p style="font-size:0.78rem;color:#721c24;line-height:1.6;">⚠️ <strong>This booking requires at least 7 days advance notice.</strong> Please select a later date — <strong>OR</strong> call Accaza Coffee directly at <strong>0927 692 4831</strong> to check if they can still accommodate your booking within this short notice.</p>
+      </div>`;
+    }
+  }
 };
 
-window.setResContact=function(type){resContactMethod=type;['Wa','Vb','Call','Email'].forEach(t=>{const id='resBtnWa,resBtnVb,resBtnCall,resBtnEmail'.split(',');const types=['whatsapp','viber','call','email'];id.forEach((bid,i)=>document.getElementById(bid).classList.toggle('active',types[i]===type));});const ph={whatsapp:'Enter your WhatsApp number',viber:'Enter your Viber number',call:'Enter your phone number',email:'Enter your email address'};document.getElementById('resContact').placeholder=ph[type];};
-window.previewResProof=function(input){if(!input.files||!input.files[0])return;const reader=new FileReader();reader.onload=e=>{document.getElementById('resProofImg').src=e.target.result;document.getElementById('resUploadPlaceholder').style.display='none';document.getElementById('resUploadPreview').style.display='block';};reader.readAsDataURL(input.files[0]);};
-window.removeResProof=function(e){e.stopPropagation();document.getElementById('resProofInput').value='';document.getElementById('resProofImg').src='';document.getElementById('resUploadPlaceholder').style.display='block';document.getElementById('resUploadPreview').style.display='none';};
+window.setResContact=function(type){
+  resContactMethod=type;
+  ['Wa','Vb','Call','Email'].forEach(t=>{
+    const id='resBtnWa,resBtnVb,resBtnCall,resBtnEmail'.split(',');
+    const types=['whatsapp','viber','call','email'];
+    id.forEach((bid,i)=>document.getElementById(bid).classList.toggle('active',types[i]===type));
+  });
+  const ph={whatsapp:'Enter your WhatsApp number',viber:'Enter your Viber number',call:'Enter your phone number',email:'Enter your email address'};
+  document.getElementById('resContact').placeholder=ph[type];
+};
+
+window.previewResProof=function(input){
+  if(!input.files||!input.files[0])return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    document.getElementById('resProofImg').src=e.target.result;
+    document.getElementById('resUploadPlaceholder').style.display='none';
+    document.getElementById('resUploadPreview').style.display='block';
+  };
+  reader.readAsDataURL(input.files[0]);
+};
+window.removeResProof=function(e){
+  e.stopPropagation();
+  document.getElementById('resProofInput').value='';
+  document.getElementById('resProofImg').src='';
+  document.getElementById('resUploadPlaceholder').style.display='block';
+  document.getElementById('resUploadPreview').style.display='none';
+};
 
 window.submitReservation=async function(){
-  const name=document.getElementById('resName').value.trim();const phone=document.getElementById('resPhone').value.trim();
+  const name=document.getElementById('resName').value.trim();
+  const phone=document.getElementById('resPhone').value.trim();
   if(!selectedDate||!selectedTime){alert('Please select a date and time.');return;}
   if(!name||!phone){alert('Please enter your name and phone number.');return;}
   const guests=parseInt(document.getElementById('resGuests').value)||1;
-  if(guests>=6){const today=new Date();today.setHours(0,0,0,0);const bookDate=new Date(selectedDate+'T00:00:00');const diffDays=Math.ceil((bookDate-today)/(1000*60*60*24));if(diffDays<7){if(!confirm('This booking requires at least 7 days advance notice. Do you still want to proceed? Our staff will contact you to confirm if we can accommodate your request.')){return;}}}
-  const count=Object.keys(adminResMap).length+1;const id='RES-'+String(count).padStart(3,'0');
+  if(guests>=6){
+    const today=new Date(); today.setHours(0,0,0,0);
+    const bookDate=new Date(selectedDate+'T00:00:00');
+    const diffDays=Math.ceil((bookDate-today)/(1000*60*60*24));
+    if(diffDays<7){if(!confirm('This booking requires at least 7 days advance notice. Do you still want to proceed? Our staff will contact you to confirm if we can accommodate your request.')){return;}}
+  }
+  const count=Object.keys(adminResMap).length+1;
+  const id='RES-'+String(count).padStart(3,'0');
   const res={id,name,phone,date:selectedDate,time:selectedTime,guests:document.getElementById('resGuests').value,occasion:document.getElementById('resOccasion').value,notes:document.getElementById('resNotes').value.trim(),contact:document.getElementById('resContact').value.trim(),contactMethod:resContactMethod,status:'Pending',timestamp:Date.now()};
-  try{await set(ref(db,'reservations/'+id),res);document.getElementById('resConfirm').style.display='block';document.querySelector('.btn-reserve').disabled=true;document.querySelector('.btn-reserve').style.opacity='0.5';setTimeout(()=>{document.getElementById('resConfirm').style.display='none';document.querySelector('.btn-reserve').disabled=false;document.querySelector('.btn-reserve').style.opacity='1';document.getElementById('resName').value='';document.getElementById('resPhone').value='';document.getElementById('resNotes').value='';document.getElementById('resContact').value='';selectedDate=null;selectedTime=null;document.getElementById('resFormWrap').style.display='none';document.getElementById('timeSlotsWrap').style.display='none';renderCustomerCalendar();},3000);}catch(e){alert('Could not submit reservation. Check your connection.');}
+  try{
+    await set(ref(db,'reservations/'+id),res);
+    document.getElementById('resConfirm').style.display='block';
+    document.querySelector('.btn-reserve').disabled=true;
+    document.querySelector('.btn-reserve').style.opacity='0.5';
+    setTimeout(()=>{
+      document.getElementById('resConfirm').style.display='none';
+      document.querySelector('.btn-reserve').disabled=false;
+      document.querySelector('.btn-reserve').style.opacity='1';
+      document.getElementById('resName').value='';
+      document.getElementById('resPhone').value='';
+      document.getElementById('resNotes').value='';
+      document.getElementById('resContact').value='';
+      selectedDate=null; selectedTime=null;
+      document.getElementById('resFormWrap').style.display='none';
+      document.getElementById('timeSlotsWrap').style.display='none';
+      renderCustomerCalendar();
+    },3000);
+  }catch(e){alert('Could not submit reservation. Check your connection.');}
 };
 
 function renderAdminCalendar(){
   const title=new Date(adminCalYear,adminCalMonth).toLocaleDateString('en-PH',{month:'long',year:'numeric'});
   document.getElementById('adminCalTitle').textContent=title;
-  const today=new Date();today.setHours(0,0,0,0);
-  const firstDay=new Date(adminCalYear,adminCalMonth,1).getDay();const daysInMonth=new Date(adminCalYear,adminCalMonth+1,0).getDate();
+  const today=new Date(); today.setHours(0,0,0,0);
+  const firstDay=new Date(adminCalYear,adminCalMonth,1).getDay();
+  const daysInMonth=new Date(adminCalYear,adminCalMonth+1,0).getDate();
   const days=['Su','Mo','Tu','We','Th','Fr','Sa'];
   let html=days.map(d=>`<div style="text-align:center;font-size:0.68rem;color:var(--tl);padding:0.3rem 0;text-transform:uppercase;">${d}</div>`).join('');
-  for(let i=0;i<firstDay;i++)html+=`<div class="admin-cal-day empty"></div>`;
+  for(let i=0;i<firstDay;i++) html+=`<div class="admin-cal-day empty"></div>`;
   for(let d=1;d<=daysInMonth;d++){
-    const date=new Date(adminCalYear,adminCalMonth,d);date.setHours(0,0,0,0);
-    const isPast=date<today;const isToday=date.getTime()===today.getTime();
-    const k=dateKey(adminCalYear,adminCalMonth,d);const status=getDateStatus(adminCalYear,adminCalMonth,d);
+    const date=new Date(adminCalYear,adminCalMonth,d); date.setHours(0,0,0,0);
+    const isPast=date<today;
+    const isToday=date.getTime()===today.getTime();
+    const k=dateKey(adminCalYear,adminCalMonth,d);
+    const status=getDateStatus(adminCalYear,adminCalMonth,d);
     let cls='admin-cal-day';
-    if(isPast)cls+=' past';else if(status==='blocked')cls+=' blocked';else if(status==='partial')cls+=' partial';else cls+=' open';
-    if(isToday)cls+=' today';if(adminSelectedDate===k)cls+=' selected';
+    if(isPast) cls+=' past';
+    else if(status==='blocked') cls+=' blocked';
+    else if(status==='partial') cls+=' partial';
+    else cls+=' open';
+    if(isToday) cls+=' today';
+    if(adminSelectedDate===k) cls+=' selected';
     html+=`<div class="${cls}" onclick="adminSelectDate('${k}',${d})">${d}</div>`;
   }
   document.getElementById('adminCalGrid').innerHTML=html;
 }
 
-window.adminCalNavigate=function(dir){adminCalMonth+=dir;if(adminCalMonth>11){adminCalMonth=0;adminCalYear++;}if(adminCalMonth<0){adminCalMonth=11;adminCalYear--;}renderAdminCalendar();};
-window.adminSelectDate=function(k,d){adminSelectedDate=k;renderAdminCalendar();const mgr=document.getElementById('adminSlotManager');mgr.style.display='block';const parts=k.split('-');const label=new Date(parseInt(parts[0]),parseInt(parts[1])-1,parseInt(parts[2])).toLocaleDateString('en-PH',{weekday:'short',month:'short',day:'numeric',year:'numeric'});document.getElementById('adminSlotTitle').textContent=label;renderAdminSlots(k);};
+window.adminCalNavigate=function(dir){
+  adminCalMonth+=dir;
+  if(adminCalMonth>11){adminCalMonth=0;adminCalYear++;}
+  if(adminCalMonth<0){adminCalMonth=11;adminCalYear--;}
+  renderAdminCalendar();
+};
+
+window.adminSelectDate=function(k,d){
+  adminSelectedDate=k;
+  renderAdminCalendar();
+  const mgr=document.getElementById('adminSlotManager');
+  mgr.style.display='block';
+  const parts=k.split('-');
+  const label=new Date(parseInt(parts[0]),parseInt(parts[1])-1,parseInt(parts[2])).toLocaleDateString('en-PH',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+  document.getElementById('adminSlotTitle').textContent=label;
+  renderAdminSlots(k);
+};
 
 function renderAdminSlots(k){
-  const grid=document.getElementById('adminSlotGrid');const confirmedSlots=getConfirmedSlotsForDate(k);const guestCount=getConfirmedGuestsForDate(k);const dayFull=guestCount>=MAX_GUESTS_PER_DAY;
+  const grid=document.getElementById('adminSlotGrid');
+  const confirmedSlots=getConfirmedSlotsForDate(k);
+  const guestCount=getConfirmedGuestsForDate(k);
+  const dayFull=guestCount>=MAX_GUESTS_PER_DAY;
   const countColor=guestCount>=MAX_GUESTS_PER_DAY?'#c0392b':guestCount>=20?'#f39c12':'#2d9e5f';
-  document.getElementById('adminSlotTitle').innerHTML=document.getElementById('adminSlotTitle').textContent.split('·')[0].trim()+` · <span style="font-size:0.82rem;font-weight:600;color:${countColor};">${guestCount}/${MAX_GUESTS_PER_DAY} guests confirmed</span>`;
+  document.getElementById('adminSlotTitle').innerHTML=
+    document.getElementById('adminSlotTitle').textContent.split('·')[0].trim()+
+    ` · <span style="font-size:0.82rem;font-weight:600;color:${countColor};">${guestCount}/${MAX_GUESTS_PER_DAY} guests confirmed</span>`;
   grid.innerHTML=TIME_SLOTS.map(slot=>{
-    const manualBlocked=isSlotBlocked(k,slot);const hasConfirmed=confirmedSlots.has(slot);
+    const manualBlocked=isSlotBlocked(k,slot);
+    const hasConfirmed=confirmedSlots.has(slot);
     const slotGuests=Object.values(adminResMap).filter(r=>r.date===k&&r.time===slot&&r.status==='Confirmed').reduce((s,r)=>s+(parseInt(r.guests)||0),0);
     if(hasConfirmed){return`<div class="slot-item" style="background:#dbeafe;color:#1565c0;border-color:#93c5fd;cursor:default;">📅 ${slot}${slotGuests?`<br/><span style="font-size:0.65rem;">${slotGuests} guests</span>`:''}</div>`;}
     else if(manualBlocked){return`<div class="slot-item blocked" onclick="toggleAdminSlot('${k}','${slot}',true)">❌ ${slot}</div>`;}
     else{return`<div class="slot-item open" onclick="toggleAdminSlot('${k}','${slot}',false)">✅ ${slot}</div>`;}
   }).join('');
-  if(dayFull){grid.innerHTML=`<div style="grid-column:1/-1;background:#fde8e8;border:1px solid #f5c6c6;border-radius:8px;padding:0.75rem;text-align:center;font-size:0.82rem;color:#721c24;margin-bottom:0.5rem;">⛔ Day is full (${guestCount}+ guests confirmed). Date automatically blocked for customers.</div>`+grid.innerHTML;}
+  if(dayFull){grid.innerHTML=`<div style="grid-column:1/-1;background:#fde8e8;border:1px solid #f5c6c6;border-radius:8px;padding:0.75rem;text-align:center;font-size:0.82rem;color:#721c24;margin-bottom:0.5rem;">⛔ Day is full (${guestCount}+ guests confirmed).</div>`+grid.innerHTML;}
 }
 
-window.toggleAdminSlot=async function(k,slot,currentlyBlocked){const newVal=!currentlyBlocked;await update(ref(db,`calBlocks/${k}/slots`),{[slot]:newVal?undefined:false});const snap=await get(ref(db,`calBlocks/${k}`));const data=snap.val();if(data&&data.slots){const allOpen=Object.values(data.slots).every(v=>v!==false);if(allOpen)await remove(ref(db,`calBlocks/${k}`));}};
+window.toggleAdminSlot=async function(k,slot,currentlyBlocked){
+  const newVal=!currentlyBlocked;
+  await update(ref(db,`calBlocks/${k}/slots`),{[slot]:newVal?undefined:false});
+  const snap=await get(ref(db,`calBlocks/${k}`));
+  const data=snap.val();
+  if(data&&data.slots){const allOpen=Object.values(data.slots).every(v=>v!==false);if(allOpen) await remove(ref(db,`calBlocks/${k}`));}
+};
+
 window.blockAllSlots=async function(){if(!adminSelectedDate)return;await set(ref(db,`calBlocks/${adminSelectedDate}`),{blocked:true});};
 window.openAllSlots=async function(){if(!adminSelectedDate)return;await remove(ref(db,`calBlocks/${adminSelectedDate}`));};
 
@@ -1260,128 +1466,465 @@ menuItems.forEach(i=>availability[i.name]=true);
 function isAvail(n){return availability[n]!==false;}
 
 window.filterMenu=function(cat,btn){
-  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));if(btn)btn.classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
   const filtered=cat==='all'?menuItems:menuItems.filter(i=>i.cat===cat);
-  document.getElementById('menuGrid').innerHTML=filtered.map(i=>{const ok=isAvail(i.name);return`<div class="menu-card"><span class="cat-tag">${catLabels[i.cat]}</span><h4 style="${ok?'':'text-decoration:line-through;opacity:0.6;'}">${i.name}</h4><p>${i.desc}</p><div style="display:flex;align-items:center;justify-content:space-between;margin-top:0.5rem;"><span class="price" style="${ok?'':'opacity:0.5;'}">${i.price}</span><span style="font-size:0.72rem;font-weight:600;padding:0.2rem 0.6rem;border-radius:999px;background:${ok?'rgba(45,158,95,0.15)':'rgba(192,57,43,0.12)'};color:${ok?'#2d9e5f':'#c0392b'};">${ok?'✅ Available':'❌ Unavailable'}</span></div></div>`;}).join('');
+  document.getElementById('menuGrid').innerHTML=filtered.map(i=>{
+    const ok=isAvail(i.name);
+    return`<div class="menu-card"><span class="cat-tag">${catLabels[i.cat]}</span>
+      <h4 style="${ok?'':'text-decoration:line-through;opacity:0.6;'}">${i.name}</h4>
+      <p>${i.desc}</p>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:0.5rem;">
+        <span class="price" style="${ok?'':'opacity:0.5;'}">${i.price}</span>
+        <span style="font-size:0.72rem;font-weight:600;padding:0.2rem 0.6rem;border-radius:999px;background:${ok?'rgba(45,158,95,0.15)':'rgba(192,57,43,0.12)'};color:${ok?'#2d9e5f':'#c0392b'};">${ok?'✅ Available':'❌ Unavailable'}</span>
+      </div>
+    </div>`;
+  }).join('');
 };
 
 window.showUnavail=function(name){document.getElementById('unavailName').textContent=name;document.getElementById('unavailPopup').classList.add('show');};
 
 window.filterOrder=function(cat,btn){
-  document.querySelectorAll('.otab').forEach(b=>b.classList.remove('active'));if(btn)btn.classList.add('active');
+  document.querySelectorAll('.otab').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
   const filtered=cat==='all'?menuItems:menuItems.filter(i=>i.cat===cat);
-  document.getElementById('orderItemList').innerHTML=filtered.map(i=>{const ok=isAvail(i.name);const qty=cart[i.name]?cart[i.name].qty:0;const sid='qty_'+i.name.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,'');return`<div class="item-row" style="${ok?'':'opacity:0.45;pointer-events:none;'}"><div class="item-row-info"><h5 style="${ok?'':'text-decoration:line-through;'}">${i.name}</h5><span style="color:${ok?'var(--tl)':'#c0392b'};font-size:0.72rem;">${ok?catLabels[i.cat]:'Not Available'}</span></div><div class="item-row-right"><span class="item-price">${i.price}</span><button class="qty-btn" onclick="chQty('${i.name.replace(/'/g,"\\'")}','${i.price}',-1)">−</button><span class="qty-display" id="${sid}">${qty}</span><button class="qty-btn" onclick="chQty('${i.name.replace(/'/g,"\\'")}','${i.price}',1)">+</button></div></div>`;}).join('');
+  document.getElementById('orderItemList').innerHTML=filtered.map(i=>{
+    const ok=isAvail(i.name);
+    const qty=cart[i.name]?cart[i.name].qty:0;
+    const sid='qty_'+i.name.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
+    return`<div class="item-row" style="${ok?'':'opacity:0.45;pointer-events:none;'}">
+      <div class="item-row-info"><h5 style="${ok?'':'text-decoration:line-through;'}">${i.name}</h5>
+      <span style="color:${ok?'var(--tl)':'#c0392b'};font-size:0.72rem;">${ok?catLabels[i.cat]:'Not Available'}</span></div>
+      <div class="item-row-right">
+        <span class="item-price">${i.price}</span>
+        <button class="qty-btn" onclick="chQty('${i.name.replace(/'/g,"\\'")}','${i.price}',-1)">−</button>
+        <span class="qty-display" id="${sid}">${qty}</span>
+        <button class="qty-btn" onclick="chQty('${i.name.replace(/'/g,"\\'")}','${i.price}',1)">+</button>
+      </div>
+    </div>`;
+  }).join('');
 };
 
-window.chQty=function(name,priceStr,delta){const p=parseInt(priceStr.replace('₱','').replace(',',''));if(!cart[name])cart[name]={qty:0,price:p};cart[name].qty=Math.max(0,cart[name].qty+delta);if(cart[name].qty===0)delete cart[name];const el=document.getElementById('qty_'+name.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,''));if(el)el.textContent=cart[name]?cart[name].qty:0;updateCart();};
+window.chQty=function(name,priceStr,delta){
+  const p=parseInt(priceStr.replace('₱','').replace(',',''));
+  if(!cart[name]) cart[name]={qty:0,price:p};
+  cart[name].qty=Math.max(0,cart[name].qty+delta);
+  if(cart[name].qty===0) delete cart[name];
+  const el=document.getElementById('qty_'+name.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,''));
+  if(el) el.textContent=cart[name]?cart[name].qty:0;
+  updateCart();
+};
 
 function updateCart(){
-  const box=document.getElementById('cartItems');const tot=document.getElementById('cartTotal');const keys=Object.keys(cart);
+  const box=document.getElementById('cartItems');
+  const tot=document.getElementById('cartTotal');
+  const keys=Object.keys(cart);
   if(!keys.length){box.innerHTML='<p style="color:var(--tl);font-size:0.85rem;">No items added yet.</p>';tot.style.display='none';return;}
   let total=0;
-  box.innerHTML=keys.map(k=>{const line=cart[k].qty*cart[k].price;total+=line;return`<div style="display:flex;align-items:center;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid var(--cd);"><div style="flex:1;"><div style="font-size:0.85rem;color:var(--bd);font-weight:500;">${k}</div><div style="font-size:0.75rem;color:var(--tl);">₱${cart[k].price.toLocaleString()} each</div></div><div style="display:flex;align-items:center;gap:0.4rem;flex-shrink:0;"><button onclick="cartQty('${k.replace(/'/g,"\\'")}', -1)" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:0.9rem;cursor:pointer;color:var(--bd);display:flex;align-items:center;justify-content:center;">−</button><span style="font-size:0.85rem;font-weight:500;min-width:18px;text-align:center;color:var(--bd);">${cart[k].qty}</span><button onclick="cartQty('${k.replace(/'/g,"\\'")}', 1)" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:0.9rem;cursor:pointer;color:var(--bd);display:flex;align-items:center;justify-content:center;">+</button><span style="font-size:0.85rem;font-weight:500;color:var(--bl);min-width:55px;text-align:right;">₱${line.toLocaleString()}</span></div></div>`;}).join('');
-  document.getElementById('totalAmt').textContent='₱'+total.toLocaleString();tot.style.display='flex';
+  box.innerHTML=keys.map(k=>{
+    const line=cart[k].qty*cart[k].price;total+=line;
+    return`<div style="display:flex;align-items:center;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid var(--cd);">
+      <div style="flex:1;"><div style="font-size:0.85rem;color:var(--bd);font-weight:500;">${k}</div><div style="font-size:0.75rem;color:var(--tl);">₱${cart[k].price.toLocaleString()} each</div></div>
+      <div style="display:flex;align-items:center;gap:0.4rem;flex-shrink:0;">
+        <button onclick="cartQty('${k.replace(/'/g,"\\'")}', -1)" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:0.9rem;cursor:pointer;color:var(--bd);display:flex;align-items:center;justify-content:center;">−</button>
+        <span style="font-size:0.85rem;font-weight:500;min-width:18px;text-align:center;color:var(--bd);">${cart[k].qty}</span>
+        <button onclick="cartQty('${k.replace(/'/g,"\\'")}', 1)" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:0.9rem;cursor:pointer;color:var(--bd);display:flex;align-items:center;justify-content:center;">+</button>
+        <span style="font-size:0.85rem;font-weight:500;color:var(--bl);min-width:55px;text-align:right;">₱${line.toLocaleString()}</span>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('totalAmt').textContent='₱'+total.toLocaleString();
+  tot.style.display='flex';
 }
 
-window.cartQty=function(name,delta){if(!cart[name])return;cart[name].qty=Math.max(0,cart[name].qty+delta);if(cart[name].qty===0)delete cart[name];const el=document.getElementById('qty_'+name.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,''));if(el)el.textContent=cart[name]?cart[name].qty:0;updateCart();};
-window.setType=function(t){orderType=t;document.getElementById('btnPickup').classList.toggle('active',t==='pickup');document.getElementById('btnDelivery').classList.toggle('active',t==='delivery');document.getElementById('deliveryField').style.display=t==='delivery'?'block':'none';};
-window.setPayment=function(p){paymentType=p;document.getElementById('btnGcash').classList.toggle('active',p==='gcash');document.getElementById('btnBank').classList.toggle('active',p==='bank');document.getElementById('gcashInfo').style.display=p==='gcash'?'block':'none';document.getElementById('bankInfo').style.display=p==='bank'?'block':'none';};
-window.setContact=function(type){contactMethod=type;['whatsapp','viber','call','email'].forEach(t=>document.getElementById('btn'+t.charAt(0).toUpperCase()+t.slice(1)).classList.toggle('active',t===type));const ph={whatsapp:'Enter your WhatsApp number',viber:'Enter your Viber number',call:'Enter your phone number',email:'Enter your email address'};document.getElementById('custContact').placeholder=ph[type];};
-window.previewProof=function(input){if(!input.files||!input.files[0])return;const reader=new FileReader();reader.onload=e=>{document.getElementById('proofImg').src=e.target.result;document.getElementById('proofFileName').textContent=input.files[0].name;document.getElementById('uploadPlaceholder').style.display='none';document.getElementById('uploadPreview').style.display='block';document.getElementById('uploadBox').style.borderColor='#2d9e5f';document.getElementById('uploadBox').style.borderStyle='solid';};reader.readAsDataURL(input.files[0]);};
-window.removeProof=function(e){e.stopPropagation();document.getElementById('paymentProof').value='';document.getElementById('proofImg').src='';document.getElementById('proofFileName').textContent='';document.getElementById('uploadPlaceholder').style.display='block';document.getElementById('uploadPreview').style.display='none';document.getElementById('uploadBox').style.borderColor='var(--cd)';document.getElementById('uploadBox').style.borderStyle='dashed';};
+window.cartQty=function(name,delta){
+  if(!cart[name])return;
+  cart[name].qty=Math.max(0,cart[name].qty+delta);
+  if(cart[name].qty===0) delete cart[name];
+  const el=document.getElementById('qty_'+name.replace(/\s/g,'_').replace(/[^a-zA-Z0-9_]/g,''));
+  if(el) el.textContent=cart[name]?cart[name].qty:0;
+  updateCart();
+};
+
+window.setType=function(t){
+  orderType=t;
+  document.getElementById('btnPickup').classList.toggle('active',t==='pickup');
+  document.getElementById('btnDelivery').classList.toggle('active',t==='delivery');
+  document.getElementById('deliveryField').style.display=t==='delivery'?'block':'none';
+};
+window.setPayment=function(p){
+  paymentType=p;
+  document.getElementById('btnGcash').classList.toggle('active',p==='gcash');
+  document.getElementById('btnBank').classList.toggle('active',p==='bank');
+  document.getElementById('gcashInfo').style.display=p==='gcash'?'block':'none';
+  document.getElementById('bankInfo').style.display=p==='bank'?'block':'none';
+};
+window.setContact=function(type){
+  contactMethod=type;
+  ['whatsapp','viber','call','email'].forEach(t=>document.getElementById('btn'+t.charAt(0).toUpperCase()+t.slice(1)).classList.toggle('active',t===type));
+  const ph={whatsapp:'Enter your WhatsApp number',viber:'Enter your Viber number',call:'Enter your phone number',email:'Enter your email address'};
+  document.getElementById('custContact').placeholder=ph[type];
+};
+window.previewProof=function(input){
+  if(!input.files||!input.files[0])return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    document.getElementById('proofImg').src=e.target.result;
+    document.getElementById('proofFileName').textContent=input.files[0].name;
+    document.getElementById('uploadPlaceholder').style.display='none';
+    document.getElementById('uploadPreview').style.display='block';
+    document.getElementById('uploadBox').style.borderColor='#2d9e5f';
+    document.getElementById('uploadBox').style.borderStyle='solid';
+  };
+  reader.readAsDataURL(input.files[0]);
+};
+window.removeProof=function(e){
+  e.stopPropagation();
+  document.getElementById('paymentProof').value='';
+  document.getElementById('proofImg').src='';
+  document.getElementById('proofFileName').textContent='';
+  document.getElementById('uploadPlaceholder').style.display='block';
+  document.getElementById('uploadPreview').style.display='none';
+  document.getElementById('uploadBox').style.borderColor='var(--cd)';
+  document.getElementById('uploadBox').style.borderStyle='dashed';
+};
 
 window.placeOrder=async function(){
-  const name=document.getElementById('custName').value.trim();const phone=document.getElementById('custPhone').value.trim();
+  const name=document.getElementById('custName').value.trim();
+  const phone=document.getElementById('custPhone').value.trim();
   if(!Object.keys(cart).length){alert('Please add at least one item.');return;}
   if(!name||!phone){alert('Please enter your name and phone number.');return;}
   if(orderType==='delivery'&&!document.getElementById('deliveryAddr').value.trim()){alert('Please enter your delivery address.');return;}
-  const proofFile=document.getElementById('paymentProof').files[0];if(!proofFile){alert('Please attach your proof of payment.');return;}
+  const proofFile=document.getElementById('paymentProof').files[0];
+  if(!proofFile){alert('Please attach your proof of payment.');return;}
   const proofSrc=document.getElementById('proofImg').src;
   const items=Object.keys(cart).map(k=>`${k} x${cart[k].qty}`).join(', ');
   const total=Object.keys(cart).reduce((s,k)=>s+cart[k].qty*cart[k].price,0);
   const orderId='ORD-'+String(Object.keys(adminOrdersMap).length+1).padStart(3,'0');
   const newOrder={id:orderId,name,phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':'Bank Transfer',contact:document.getElementById('custContact').value.trim(),contactMethod,items,total,notes:document.getElementById('custNotes').value.trim(),status:'Pending',receivedByCustomer:false,time:new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),timestamp:Date.now(),proof:proofSrc};
-  try{await set(ref(db,'orders/'+orderId),newOrder);myOrderIds.push(orderId);localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));document.getElementById('displayOrderId').textContent=orderId;document.getElementById('orderConfirm').style.display='block';document.querySelector('.btn-place-order').disabled=true;document.querySelector('.btn-place-order').style.opacity='0.5';cart={};updateCart();document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';if(document.getElementById('deliveryAddr'))document.getElementById('deliveryAddr').value='';removeProof({stopPropagation:()=>{}});filterOrder('all',document.querySelector('.otab'));setTimeout(()=>{document.querySelector('.btn-place-order').disabled=false;document.querySelector('.btn-place-order').style.opacity='1';document.getElementById('orderConfirm').style.display='none';},3000);}catch(e){alert('Could not place order. Please check your connection.');}
+  try{
+    await set(ref(db,'orders/'+orderId),newOrder);
+    myOrderIds.push(orderId);
+    localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));
+    document.getElementById('displayOrderId').textContent=orderId;
+    document.getElementById('orderConfirm').style.display='block';
+    document.querySelector('.btn-place-order').disabled=true;
+    document.querySelector('.btn-place-order').style.opacity='0.5';
+    cart={};updateCart();
+    document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';
+    if(document.getElementById('deliveryAddr')) document.getElementById('deliveryAddr').value='';
+    removeProof({stopPropagation:()=>{}});
+    filterOrder('all',document.querySelector('.otab'));
+    setTimeout(()=>{document.querySelector('.btn-place-order').disabled=false;document.querySelector('.btn-place-order').style.opacity='1';document.getElementById('orderConfirm').style.display='none';},3000);
+  }catch(e){alert('Could not place order. Please check your connection.');}
 };
 
-window.resetOrder=function(){if(!Object.keys(cart).length&&!document.getElementById('custName').value){alert('Your order is already empty!');return;}if(confirm('Reset your order?')){cart={};updateCart();document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';if(document.getElementById('deliveryAddr'))document.getElementById('deliveryAddr').value='';setType('pickup');setPayment('gcash');filterOrder('all',document.querySelector('.otab'));document.getElementById('orderConfirm').style.display='none';document.querySelector('.btn-place-order').disabled=false;document.querySelector('.btn-place-order').style.opacity='1';}};
+window.resetOrder=function(){
+  if(!Object.keys(cart).length&&!document.getElementById('custName').value){alert('Your order is already empty!');return;}
+  if(confirm('Reset your order?')){
+    cart={};updateCart();
+    document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';
+    if(document.getElementById('deliveryAddr')) document.getElementById('deliveryAddr').value='';
+    setType('pickup');setPayment('gcash');
+    filterOrder('all',document.querySelector('.otab'));
+    document.getElementById('orderConfirm').style.display='none';
+    document.querySelector('.btn-place-order').disabled=false;
+    document.querySelector('.btn-place-order').style.opacity='1';
+  }
+};
 
-const statusConfig={Pending:{icon:'🟡',color:'#856404',bg:'#fef3cd',msg:'Your order has been received and is awaiting confirmation from our staff. We will contact you shortly!'},Confirmed:{icon:'🔵',color:'#0c5460',bg:'#d1ecf1',msg:'Great news! Your order has been confirmed. We will start preparing it soon!'},Preparing:{icon:'🟠',color:'#664d03',bg:'#fff3cd',msg:'Your order is currently being prepared by our team. It will be ready soon! ☕'},Completed:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your order is ready! Please confirm once you have received it below.'},Received:{icon:'✅',color:'#1b5e20',bg:'#c8e6c9',msg:'You have confirmed receipt of this order. Thank you! ☕🦁'}};
+const statusConfig={
+  Pending:{icon:'🟡',color:'#856404',bg:'#fef3cd',msg:'Your order has been received and is awaiting confirmation from our staff. We will contact you shortly!'},
+  Confirmed:{icon:'🔵',color:'#0c5460',bg:'#d1ecf1',msg:'Great news! Your order has been confirmed. We will start preparing it soon!'},
+  Preparing:{icon:'🟠',color:'#664d03',bg:'#fff3cd',msg:'Your order is currently being prepared by our team. It will be ready soon! ☕'},
+  Completed:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your order is ready! Please confirm once you have received it below.'},
+  Received:{icon:'✅',color:'#1b5e20',bg:'#c8e6c9',msg:'You have confirmed receipt of this order. Thank you! ☕🦁'},
+};
 
 function renderCustomerOrders(){
   const myOrders=myOrderIds.map(id=>adminOrdersMap[id]).filter(Boolean);
   const active=myOrders.filter(o=>o.status!=='Received'&&!o.receivedByCustomer);
   const el=document.getElementById('activeOrdersList');
-  if(!active.length){el.innerHTML=`<div style="text-align:center;padding:3rem;color:var(--tl);"><p style="font-size:2.5rem;margin-bottom:0.75rem;">☕</p><p style="font-size:0.95rem;font-weight:500;color:var(--bd);margin-bottom:0.3rem;">No active orders yet</p><p style="font-size:0.85rem;">Place an order above and it will appear here!</p></div>`;return;}
-  el.innerHTML=active.map(o=>{const s=statusConfig[o.status]||statusConfig.Pending;const isDelivery=o.type==='Delivery';return`<div style="background:#fff;border:2px solid #a8d5b5;border-radius:12px;overflow:hidden;margin-bottom:1.25rem;box-shadow:0 2px 12px rgba(0,0,0,0.06);"><div style="background:var(--bd);padding:1rem 1.25rem;text-align:center;"><p style="font-size:0.72rem;color:rgba(245,239,230,0.6);letter-spacing:0.15em;text-transform:uppercase;margin-bottom:0.25rem;">Order ID</p><p style="font-family:'Playfair Display',serif;font-size:1.8rem;color:#fff;font-weight:600;letter-spacing:0.15em;">${o.id}</p><p style="font-size:0.72rem;color:rgba(245,239,230,0.5);margin-top:0.25rem;">🛒 ${o.items}</p><p style="font-size:0.75rem;color:#c9956a;margin-top:0.15rem;">💰 ₱${o.total.toLocaleString()} · ${o.payment}</p><p style="font-size:0.75rem;margin-top:0.3rem;padding:0.25rem 0.75rem;display:inline-block;border-radius:999px;background:${isDelivery?'rgba(13,110,253,0.2)':'rgba(45,158,95,0.2)'};color:${isDelivery?'#90caf9':'#a5d6a7'};">${isDelivery?'🛵 For Delivery':'🏠 For Pick-up'}</p></div><div style="padding:1rem 1.25rem;background:${s.bg};border-bottom:1px solid rgba(0,0,0,0.06);"><p style="font-size:0.7rem;letter-spacing:0.15em;text-transform:uppercase;color:${s.color};margin-bottom:0.4rem;font-weight:600;">Order Status</p><div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;"><span style="font-size:1.3rem;">${s.icon}</span><span style="font-size:1rem;font-weight:700;color:${s.color};">${o.status}</span></div><p style="font-size:0.82rem;color:${s.color};line-height:1.5;">${s.msg}</p></div><div style="padding:1rem 1.25rem;background:#f9f6f2;text-align:center;"><p style="font-size:0.7rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--tl);margin-bottom:0.5rem;font-weight:600;">Confirm Receipt</p>${o.status==='Completed'?`<p style="font-size:0.82rem;color:var(--tm);margin-bottom:0.75rem;">Have you received your order?</p><button onclick="askConfirmReceived('${o.id}')" style="background:#2d9e5f;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:pointer;font-family:'Inter',sans-serif;font-weight:500;width:100%;">✅ Yes, I Received My Order</button>`:`<p style="font-size:0.82rem;color:var(--tl);line-height:1.5;">This button will be enabled once your order is marked <strong>Completed</strong>.</p><button disabled style="background:#ccc;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:not-allowed;font-family:'Inter',sans-serif;font-weight:500;width:100%;margin-top:0.5rem;opacity:0.6;">Waiting for Completion...</button>`}</div></div>`;}).join('')+`<p style="font-size:0.72rem;color:var(--tl);text-align:center;margin-top:0.25rem;">🔥 Status updates in real-time via Firebase.</p>`;
+  if(!active.length){
+    el.innerHTML=`<div style="text-align:center;padding:3rem;color:var(--tl);"><p style="font-size:2.5rem;margin-bottom:0.75rem;">☕</p><p style="font-size:0.95rem;font-weight:500;color:var(--bd);margin-bottom:0.3rem;">No active orders yet</p><p style="font-size:0.85rem;">Place an order above and it will appear here!</p></div>`;
+    return;
+  }
+  el.innerHTML=active.map(o=>{
+    const s=statusConfig[o.status]||statusConfig.Pending;
+    const isDelivery=o.type==='Delivery';
+    return`<div style="background:#fff;border:2px solid #a8d5b5;border-radius:12px;overflow:hidden;margin-bottom:1.25rem;box-shadow:0 2px 12px rgba(0,0,0,0.06);">
+      <div style="background:var(--bd);padding:1rem 1.25rem;text-align:center;">
+        <p style="font-size:0.72rem;color:rgba(245,239,230,0.6);letter-spacing:0.15em;text-transform:uppercase;margin-bottom:0.25rem;">Order ID</p>
+        <p style="font-family:'Playfair Display',serif;font-size:1.8rem;color:#fff;font-weight:600;letter-spacing:0.15em;">${o.id}</p>
+        <p style="font-size:0.72rem;color:rgba(245,239,230,0.5);margin-top:0.25rem;">🛒 ${o.items}</p>
+        <p style="font-size:0.75rem;color:#c9956a;margin-top:0.15rem;">💰 ₱${o.total.toLocaleString()} · ${o.payment}</p>
+        <p style="font-size:0.75rem;margin-top:0.3rem;padding:0.25rem 0.75rem;display:inline-block;border-radius:999px;background:${isDelivery?'rgba(13,110,253,0.2)':'rgba(45,158,95,0.2)'};color:${isDelivery?'#90caf9':'#a5d6a7'};">${isDelivery?'🛵 For Delivery':'🏠 For Pick-up'}</p>
+      </div>
+      <div style="padding:1rem 1.25rem;background:${s.bg};border-bottom:1px solid rgba(0,0,0,0.06);">
+        <p style="font-size:0.7rem;letter-spacing:0.15em;text-transform:uppercase;color:${s.color};margin-bottom:0.4rem;font-weight:600;">Order Status</p>
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;"><span style="font-size:1.3rem;">${s.icon}</span><span style="font-size:1rem;font-weight:700;color:${s.color};">${o.status}</span></div>
+        <p style="font-size:0.82rem;color:${s.color};line-height:1.5;">${s.msg}</p>
+      </div>
+      <div style="padding:1rem 1.25rem;background:#f9f6f2;text-align:center;">
+        <p style="font-size:0.7rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--tl);margin-bottom:0.5rem;font-weight:600;">Confirm Receipt</p>
+        ${o.status==='Completed'
+          ?`<p style="font-size:0.82rem;color:var(--tm);margin-bottom:0.75rem;">Have you received your order?</p><button onclick="askConfirmReceived('${o.id}')" style="background:#2d9e5f;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:pointer;font-family:'Inter',sans-serif;font-weight:500;width:100%;">✅ Yes, I Received My Order</button>`
+          :`<p style="font-size:0.82rem;color:var(--tl);line-height:1.5;">This button will be enabled once your order is marked <strong>Completed</strong>.</p><button disabled style="background:#ccc;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:not-allowed;font-family:'Inter',sans-serif;font-weight:500;width:100%;margin-top:0.5rem;opacity:0.6;">Waiting for Completion...</button>`
+        }
+      </div>
+    </div>`;
+  }).join('')+`<p style="font-size:0.72rem;color:var(--tl);text-align:center;margin-top:0.25rem;">🔥 Status updates in real-time via Firebase.</p>`;
 }
 
-window.askConfirmReceived=function(orderId){document.getElementById('receivedOrderId').textContent=orderId;document.getElementById('confirmReceivedPopup').classList.add('show');document.getElementById('confirmReceivedBtn').onclick=()=>{confirmReceived(orderId);document.getElementById('confirmReceivedPopup').classList.remove('show');};};
-async function confirmReceived(orderId){try{await update(ref(db,'orders/'+orderId),{receivedByCustomer:true,status:'Received'});}catch(e){alert('Could not confirm receipt. Check your connection.');}}
+window.askConfirmReceived=function(orderId){
+  document.getElementById('receivedOrderId').textContent=orderId;
+  document.getElementById('confirmReceivedPopup').classList.add('show');
+  document.getElementById('confirmReceivedBtn').onclick=()=>{confirmReceived(orderId);document.getElementById('confirmReceivedPopup').classList.remove('show');};
+};
+async function confirmReceived(orderId){
+  try{await update(ref(db,'orders/'+orderId),{receivedByCustomer:true,status:'Received'});}
+  catch(e){alert('Could not confirm receipt. Check your connection.');}
+}
 
-window.submitContact=function(){if(!document.getElementById('conName').value.trim()||!document.getElementById('conContact').value.trim()||!document.getElementById('conMessage').value.trim()){alert('Please fill in name, contact, and message.');return;}document.getElementById('conConfirm').style.display='block';document.querySelector('#contact .btn-reserve').disabled=true;document.querySelector('#contact .btn-reserve').style.opacity='0.5';};
-window.updateFbCounter=function(){const len=document.getElementById('fbMessage').value.length;const c=document.getElementById('fbCounter');c.textContent=`${len} / 800`;c.style.color=len>=720?'#ff8080':len>=560?'#f39c12':'rgba(245,239,230,0.5)';};
+window.submitContact=function(){
+  if(!document.getElementById('conName').value.trim()||!document.getElementById('conContact').value.trim()||!document.getElementById('conMessage').value.trim()){alert('Please fill in name, contact, and message.');return;}
+  document.getElementById('conConfirm').style.display='block';
+  document.querySelector('#contact .btn-reserve').disabled=true;
+  document.querySelector('#contact .btn-reserve').style.opacity='0.5';
+};
 
+window.updateFbCounter=function(){
+  const len=document.getElementById('fbMessage').value.length;
+  const c=document.getElementById('fbCounter');
+  c.textContent=`${len} / 800`;
+  c.style.color=len>=720?'#ff8080':len>=560?'#f39c12':'rgba(245,239,230,0.5)';
+};
 window.submitFeedback=async function(){
-  const name=document.getElementById('fbName').value.trim();const contact=document.getElementById('fbContact').value.trim();const type=document.getElementById('fbType').value;const message=document.getElementById('fbMessage').value.trim();
+  const name=document.getElementById('fbName').value.trim();
+  const contact=document.getElementById('fbContact').value.trim();
+  const type=document.getElementById('fbType').value;
+  const message=document.getElementById('fbMessage').value.trim();
   if(!name||!message){alert('Please enter your name and message.');return;}
   const fb={name,contact,type,message,status:'Unread',date:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
-  try{await push(feedbacksRef,fb);document.getElementById('fbName').value='';document.getElementById('fbContact').value='';document.getElementById('fbMessage').value='';document.getElementById('fbType').value='Complaint';document.getElementById('fbCounter').textContent='0 / 800';const msgs={Complaint:'🙏 Thank you for bringing this to our attention. We sincerely apologize for any inconvenience caused. Rest assured, we will look into this right away.',Suggestion:'💡 Thank you for your wonderful suggestion! We will seriously consider your input as we continue to grow and improve Accaza Coffee.',Compliment:"❤️ Oh, this made our day! Thank you so much for your kind words — it means the world to our team. We can't wait to see you again! ☕🦁",Other:'💛 Thank you for reaching out! We truly appreciate you taking the time to share your thoughts with us.'};document.getElementById('fbConfirmMsg').textContent=msgs[type]||msgs.Other;document.getElementById('fbConfirm').style.display='block';setTimeout(()=>document.getElementById('fbConfirm').style.display='none',6000);}catch(e){alert('Could not submit feedback.');}
+  try{
+    await push(feedbacksRef,fb);
+    document.getElementById('fbName').value='';document.getElementById('fbContact').value='';document.getElementById('fbMessage').value='';document.getElementById('fbType').value='Complaint';document.getElementById('fbCounter').textContent='0 / 800';
+    const msgs={Complaint:'🙏 Thank you for bringing this to our attention. We sincerely apologize for any inconvenience caused. Rest assured, we will look into this right away.',Suggestion:'💡 Thank you for your wonderful suggestion! We will seriously consider your input as we continue to grow and improve Accaza Coffee.',Compliment:"❤️ Oh, this made our day! Thank you so much for your kind words — it means the world to our team. We can't wait to see you again! ☕🦁",Other:'💛 Thank you for reaching out! We truly appreciate you taking the time to share your thoughts with us.'};
+    document.getElementById('fbConfirmMsg').textContent=msgs[type]||msgs.Other;
+    document.getElementById('fbConfirm').style.display='block';
+    setTimeout(()=>document.getElementById('fbConfirm').style.display='none',6000);
+  }catch(e){alert('Could not submit feedback.');}
 };
 
 function renderComments(){
-  const types=['Complaint','Suggestion','Compliment','Other'];const empty={Complaint:'No complaints yet. 🎉',Suggestion:'No suggestions yet.',Compliment:'No compliments yet.',Other:'No other feedback yet.'};const color={Complaint:'#c0392b',Suggestion:'#f39c12',Compliment:'#2d9e5f',Other:'#888'};
-  types.forEach(type=>{const el=document.getElementById('fbList'+type);if(!el)return;const items=Object.entries(feedbacksMap).filter(([,f])=>f.type===type);if(!items.length){el.innerHTML=`<p style="color:var(--tl);padding:1rem;background:#fff;border-radius:8px;text-align:center;font-size:0.85rem;">${empty[type]}</p>`;return;}el.innerHTML=items.map(([key,f])=>`<div style="background:#fff;border:1px solid #e8dcc8;border-left:4px solid ${color[type]};border-radius:8px;padding:1rem;margin-bottom:0.75rem;"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;"><div><div style="font-weight:500;font-size:0.9rem;color:#3b2314;">${f.name}</div><div style="font-size:0.75rem;color:#8a6a55;">${f.contact?f.contact+' · ':''}${f.date}</div></div><span style="font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:999px;font-weight:500;background:${f.status==='Resolved'?'#d4edda':'#fef3cd'};color:${f.status==='Resolved'?'#155724':'#856404'};">${f.status}</span></div><p style="font-size:0.85rem;color:#5c3d2e;font-style:italic;margin:0.4rem 0;">"${f.message}"</p><div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:0.75rem;">${f.status==='Unread'?`<button onclick="markFb('${key}')" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#2d6a4f;cursor:pointer;">✅ Mark Resolved</button>`:''}${f.status==='Resolved'?`<button onclick="delFb('${key}','${f.name}')" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>`:''}</div></div>`).join('');});
+  const types=['Complaint','Suggestion','Compliment','Other'];
+  const empty={Complaint:'No complaints yet. 🎉',Suggestion:'No suggestions yet.',Compliment:'No compliments yet.',Other:'No other feedback yet.'};
+  const color={Complaint:'#c0392b',Suggestion:'#f39c12',Compliment:'#2d9e5f',Other:'#888'};
+  types.forEach(type=>{
+    const el=document.getElementById('fbList'+type);if(!el)return;
+    const items=Object.entries(feedbacksMap).filter(([,f])=>f.type===type);
+    if(!items.length){el.innerHTML=`<p style="color:var(--tl);padding:1rem;background:#fff;border-radius:8px;text-align:center;font-size:0.85rem;">${empty[type]}</p>`;return;}
+    el.innerHTML=items.map(([key,f])=>`
+      <div style="background:#fff;border:1px solid #e8dcc8;border-left:4px solid ${color[type]};border-radius:8px;padding:1rem;margin-bottom:0.75rem;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;">
+          <div><div style="font-weight:500;font-size:0.9rem;color:#3b2314;">${f.name}</div><div style="font-size:0.75rem;color:#8a6a55;">${f.contact?f.contact+' · ':''}${f.date}</div></div>
+          <span style="font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:999px;font-weight:500;background:${f.status==='Resolved'?'#d4edda':'#fef3cd'};color:${f.status==='Resolved'?'#155724':'#856404'};">${f.status}</span>
+        </div>
+        <p style="font-size:0.85rem;color:#5c3d2e;font-style:italic;margin:0.4rem 0;">"${f.message}"</p>
+        <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:0.75rem;">
+          ${f.status==='Unread'?`<button onclick="markFb('${key}')" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#2d6a4f;cursor:pointer;">✅ Mark Resolved</button>`:''}
+          ${f.status==='Resolved'?`<button onclick="delFb('${key}','${f.name}')" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>`:''}
+        </div>
+      </div>`).join('');
+  });
 }
 window.markFb=async function(key){await update(ref(db,'feedbacks/'+key),{status:'Resolved'});};
 window.delFb=function(key,name){showDeletePopup(name,async()=>{await remove(ref(db,'feedbacks/'+key));});};
 
 function renderAdminReviews(){
-  const el=document.getElementById('adminReviewsList');const entries=Object.entries(reviewsMap);
+  const el=document.getElementById('adminReviewsList');
+  const entries=Object.entries(reviewsMap);
   if(!entries.length){el.innerHTML='<div class="empty-state">No reviews added yet.</div>';return;}
-  el.innerHTML=entries.map(([key,r])=>`<div class="order-admin-card" style="display:flex;justify-content:space-between;align-items:flex-start;"><div><div class="order-admin-name">${r.name} ${'⭐'.repeat(r.stars)}</div><div class="order-admin-meta">${r.date}</div><div class="order-admin-items">"${r.text}"</div></div><button onclick="delReview('${key}','${r.name}')" style="background:none;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.6rem;font-size:0.75rem;color:#c0392b;cursor:pointer;margin-left:1rem;flex-shrink:0;">Remove</button></div>`).join('');
+  el.innerHTML=entries.map(([key,r])=>`
+    <div class="order-admin-card" style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <div><div class="order-admin-name">${r.name} ${'⭐'.repeat(r.stars)}</div><div class="order-admin-meta">${r.date}</div><div class="order-admin-items">"${r.text}"</div></div>
+      <button onclick="delReview('${key}','${r.name}')" style="background:none;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.6rem;font-size:0.75rem;color:#c0392b;cursor:pointer;margin-left:1rem;flex-shrink:0;">Remove</button>
+    </div>`).join('');
 }
-window.addReview=async function(){const name=document.getElementById('newReviewName').value.trim();const stars=parseInt(document.getElementById('newReviewStars').value);const text=document.getElementById('newReviewText').value.trim();if(!name||!text){alert('Please enter name and review.');return;}await push(reviewsRef,{name,stars,text,date:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'})});document.getElementById('newReviewName').value='';document.getElementById('newReviewText').value='';document.getElementById('reviewAddConfirm').style.display='block';setTimeout(()=>document.getElementById('reviewAddConfirm').style.display='none',2500);};
+window.addReview=async function(){
+  const name=document.getElementById('newReviewName').value.trim();
+  const stars=parseInt(document.getElementById('newReviewStars').value);
+  const text=document.getElementById('newReviewText').value.trim();
+  if(!name||!text){alert('Please enter name and review.');return;}
+  await push(reviewsRef,{name,stars,text,date:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'})});
+  document.getElementById('newReviewName').value='';document.getElementById('newReviewText').value='';
+  document.getElementById('reviewAddConfirm').style.display='block';
+  setTimeout(()=>document.getElementById('reviewAddConfirm').style.display='none',2500);
+};
 window.delReview=function(key,name){showDeletePopup(name,async()=>{await remove(ref(db,'reviews/'+key));});};
 
-function updateStats(){const orders=Object.values(adminOrdersMap);const pending=orders.filter(o=>o.status==='Pending').length;const revenue=orders.reduce((s,o)=>s+(o.total||0),0);document.getElementById('statOrders').textContent=orders.length;document.getElementById('statPending').textContent=pending;document.getElementById('statReservations').textContent=Object.keys(adminResMap).length;document.getElementById('statRevenue').textContent='₱'+revenue.toLocaleString();}
+function updateStats(){
+  const orders=Object.values(adminOrdersMap);
+  const pending=orders.filter(o=>o.status==='Pending').length;
+  const revenue=orders.reduce((s,o)=>s+(o.total||0),0);
+  document.getElementById('statOrders').textContent=orders.length;
+  document.getElementById('statPending').textContent=pending;
+  document.getElementById('statReservations').textContent=Object.keys(adminResMap).length;
+  document.getElementById('statRevenue').textContent='₱'+revenue.toLocaleString();
+}
 
 function renderOrders(){
-  const el=document.getElementById('ordersList');const orders=Object.values(adminOrdersMap).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
+  const el=document.getElementById('ordersList');
+  const orders=Object.values(adminOrdersMap).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
   if(!orders.length){el.innerHTML='<div class="empty-state">No orders yet.</div>';return;}
-  el.innerHTML=orders.map(o=>{const isDelivery=o.type==='Delivery';const modeBadge=isDelivery?`<span style="font-size:0.72rem;font-weight:600;padding:0.2rem 0.6rem;border-radius:999px;background:#d1ecf1;color:#0c5460;">🛵 For Delivery</span>`:`<span style="font-size:0.72rem;font-weight:600;padding:0.2rem 0.6rem;border-radius:999px;background:#d4edda;color:#155724;">🏠 For Pick-up</span>`;const isReceived=o.status==='Received';return`<div class="order-admin-card" style="${isReceived?'opacity:0.7;':''}"><div class="order-admin-top"><div><div class="order-admin-name">${o.name} <span style="font-size:0.75rem;color:var(--tl);">#${o.id}</span></div><div class="order-admin-meta">${o.phone}${o.contact?' · '+o.contact:''} · ${o.time||''}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;"><span class="badge badge-${(o.status||'pending').toLowerCase().replace(' ','-')}">${o.status}</span>${modeBadge}${o.receivedByCustomer?`<span style="font-size:0.7rem;font-weight:600;padding:0.2rem 0.6rem;border-radius:999px;background:#c8e6c9;color:#1b5e20;">✅ Customer Confirmed</span>`:''}</div></div><div class="order-admin-items">🛒 ${o.items}</div>${o.address?`<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📍 ${o.address}</div>`:''} ${o.notes?`<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📝 ${o.notes}</div>`:''}${o.proof?`<div style="margin:0.5rem 0;"><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;">📎 Proof of Payment:</p><img src="${o.proof}" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid var(--cd);cursor:pointer;" onclick="window.open('${o.proof}','_blank')"/></div>`:'<p style="font-size:0.75rem;color:#c0392b;margin:0.3rem 0;">⚠️ No proof of payment</p>'}<div class="order-admin-footer"><span class="order-total-tag">₱${(o.total||0).toLocaleString()} · ${o.payment}</span><div style="display:flex;align-items:center;gap:0.5rem;">${isReceived?`<span style="font-size:0.8rem;color:#1b5e20;font-weight:500;">✅ Order Received</span>`:`<select class="status-select" onchange="updateOrderStatus('${o.id}',this.value)"><option ${o.status==='Pending'?'selected':''}>Pending</option><option ${o.status==='Confirmed'?'selected':''}>Confirmed</option><option ${o.status==='Preparing'?'selected':''}>Preparing</option><option ${o.status==='Completed'?'selected':''}>Completed</option></select>`}${(o.status==='Completed'||o.status==='Received')?`<button onclick="delOrder('${o.id}','${o.name} — ${o.items}')" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>`:''}</div></div></div>`;}).join('');
+  el.innerHTML=orders.map((o)=>{
+    const isDelivery=o.type==='Delivery';
+    const modeBadge=isDelivery?`<span style="font-size:0.72rem;font-weight:600;padding:0.2rem 0.6rem;border-radius:999px;background:#d1ecf1;color:#0c5460;">🛵 For Delivery</span>`:`<span style="font-size:0.72rem;font-weight:600;padding:0.2rem 0.6rem;border-radius:999px;background:#d4edda;color:#155724;">🏠 For Pick-up</span>`;
+    const isReceived=o.status==='Received';
+    return`<div class="order-admin-card" style="${isReceived?'opacity:0.7;':''}">
+      <div class="order-admin-top">
+        <div><div class="order-admin-name">${o.name} <span style="font-size:0.75rem;color:var(--tl);">#${o.id}</span></div>
+        <div class="order-admin-meta">${o.phone}${o.contact?' · '+o.contact:''} · ${o.time||''}</div></div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;">
+          <span class="badge badge-${(o.status||'pending').toLowerCase().replace(' ','-')}">${o.status}</span>
+          ${modeBadge}
+          ${o.receivedByCustomer?`<span style="font-size:0.7rem;font-weight:600;padding:0.2rem 0.6rem;border-radius:999px;background:#c8e6c9;color:#1b5e20;">✅ Customer Confirmed</span>`:''}
+        </div>
+      </div>
+      <div class="order-admin-items">🛒 ${o.items}</div>
+      ${o.address?`<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📍 ${o.address}</div>`:''}
+      ${o.notes?`<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📝 ${o.notes}</div>`:''}
+      ${o.proof?`<div style="margin:0.5rem 0;"><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;">📎 Proof of Payment:</p><img src="${o.proof}" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid var(--cd);cursor:pointer;" onclick="window.open('${o.proof}','_blank')"/></div>`:'<p style="font-size:0.75rem;color:#c0392b;margin:0.3rem 0;">⚠️ No proof of payment</p>'}
+      <div class="order-admin-footer">
+        <span class="order-total-tag">₱${(o.total||0).toLocaleString()} · ${o.payment}</span>
+        <div style="display:flex;align-items:center;gap:0.5rem;">
+          ${isReceived?`<span style="font-size:0.8rem;color:#1b5e20;font-weight:500;">✅ Order Received</span>`:`<select class="status-select" onchange="updateOrderStatus('${o.id}',this.value)"><option ${o.status==='Pending'?'selected':''}>Pending</option><option ${o.status==='Confirmed'?'selected':''}>Confirmed</option><option ${o.status==='Preparing'?'selected':''}>Preparing</option><option ${o.status==='Completed'?'selected':''}>Completed</option></select>`}
+          ${(o.status==='Completed'||o.status==='Received')?`<button onclick="delOrder('${o.id}','${o.name} — ${o.items}')" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>`:''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
 }
 window.updateOrderStatus=async function(orderId,val){await update(ref(db,'orders/'+orderId),{status:val});};
 window.delOrder=function(orderId,label){showDeletePopup(label,async()=>{await remove(ref(db,'orders/'+orderId));myOrderIds=myOrderIds.filter(id=>id!==orderId);localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));});};
 
 function renderReservations(){
-  const el=document.getElementById('resList');const reservations=Object.values(adminResMap).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
+  const el=document.getElementById('resList');
+  const reservations=Object.values(adminResMap).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
   if(!reservations.length){el.innerHTML='<div class="empty-state">No reservations yet.</div>';return;}
-  el.innerHTML=reservations.map(r=>{const guests=parseInt(r.guests)||1;const bookType=guests<=2?'💑 Individual/Couple':guests<=5?'👨‍👩‍👧 Small Group':guests<=20?'👥 Medium Group':'🎉 Large Group';return`<div class="order-admin-card"><div class="order-admin-top"><div><div class="order-admin-name">${r.name} <span style="font-size:0.75rem;color:var(--tl);">#${r.id}</span></div><div class="order-admin-meta">${r.phone} · ${r.date} · ${r.time} · ${r.guests}${r.occasion?' · '+r.occasion:''}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;"><span class="badge badge-${(r.status||'pending').toLowerCase()}">${r.status}</span><span style="font-size:0.7rem;color:var(--tl);">${bookType}</span></div></div>${r.notes?`<div class="order-admin-items">📝 ${r.notes}</div>`:''}${r.contact?`<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📱 ${r.contact} (${r.contactMethod||''})</div>`:''}${r.depositProof?`<div style="margin:0.5rem 0;"><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;">💳 Deposit Proof:</p><img src="${r.depositProof}" style="max-width:200px;max-height:100px;border-radius:6px;border:1px solid var(--cd);cursor:pointer;" onclick="window.open('${r.depositProof}','_blank')"/></div>`:''}<div class="order-admin-footer"><span></span><div style="display:flex;gap:0.5rem;align-items:center;"><select class="status-select" onchange="updateResStatus('${r.id}',this.value)"><option ${r.status==='Pending'?'selected':''}>Pending</option><option ${r.status==='Confirmed'?'selected':''}>Confirmed</option><option ${r.status==='Declined'?'selected':''}>Declined</option><option ${r.status==='Completed'?'selected':''}>Completed</option></select>${r.status==='Completed'||r.status==='Declined'?`<button onclick="delRes('${r.id}','${r.name}')" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>`:''}</div></div></div>`;}).join('');
+  el.innerHTML=reservations.map(r=>{
+    const guests=parseInt(r.guests)||1;
+    const bookType=guests<=2?'💑 Individual/Couple':guests<=5?'👨‍👩‍👧 Small Group':guests<=20?'👥 Medium Group':'🎉 Large Group';
+    return`<div class="order-admin-card">
+      <div class="order-admin-top">
+        <div><div class="order-admin-name">${r.name} <span style="font-size:0.75rem;color:var(--tl);">#${r.id}</span></div>
+        <div class="order-admin-meta">${r.phone} · ${r.date} · ${r.time} · ${r.guests}${r.occasion?' · '+r.occasion:''}</div></div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;">
+          <span class="badge badge-${(r.status||'pending').toLowerCase()}">${r.status}</span>
+          <span style="font-size:0.7rem;color:var(--tl);">${bookType}</span>
+        </div>
+      </div>
+      ${r.notes?`<div class="order-admin-items">📝 ${r.notes}</div>`:''}
+      ${r.contact?`<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📱 ${r.contact} (${r.contactMethod||''})</div>`:''}
+      <div class="order-admin-footer"><span></span>
+        <div style="display:flex;gap:0.5rem;align-items:center;">
+          <select class="status-select" onchange="updateResStatus('${r.id}',this.value)">
+            <option ${r.status==='Pending'?'selected':''}>Pending</option>
+            <option ${r.status==='Confirmed'?'selected':''}>Confirmed</option>
+            <option ${r.status==='Declined'?'selected':''}>Declined</option>
+            <option ${r.status==='Completed'?'selected':''}>Completed</option>
+          </select>
+          ${r.status==='Completed'||r.status==='Declined'?`<button onclick="delRes('${r.id}','${r.name}')" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>`:''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
 }
 window.updateResStatus=async function(id,val){await update(ref(db,'reservations/'+id),{status:val});};
 window.delRes=function(id,name){showDeletePopup(name,async()=>{await remove(ref(db,'reservations/'+id));});};
 
-window.savePayment=async function(){const data={gcashNum:document.getElementById('editGcashNum').value,gcashName:document.getElementById('editGcashName').value,bdoNum:document.getElementById('editBdoNum').value,ubNum:document.getElementById('editUbNum').value};await set(paymentRef,data);document.getElementById('saveConfirm').style.display='block';setTimeout(()=>document.getElementById('saveConfirm').style.display='none',3000);};
+window.savePayment=async function(){
+  const data={gcashNum:document.getElementById('editGcashNum').value,gcashName:document.getElementById('editGcashName').value,bdoNum:document.getElementById('editBdoNum').value,ubNum:document.getElementById('editUbNum').value};
+  await set(paymentRef,data);
+  document.getElementById('saveConfirm').style.display='block';
+  setTimeout(()=>document.getElementById('saveConfirm').style.display='none',3000);
+};
 
 function buildAvail(){
-  const groups=[{cat:'☕ Coffee',items:['Spanish Latte','Sea Salt Latte','Sea Salt Caramel Latte','Caramel Macchiato','White Mocha','Mocha Latte','French Vanilla Latte','Banana Oat Latte','Cinnamon Oat Latte','Cafe Latte','Cappuccino','Americano']},{cat:'🥤 Blended Frappes',items:['Java Chip','Caramel Frappe','White Mocha Frappe','Dark Mocha Frappe','Caramel Cream Frappe','Toffee Nut Frappe','Butterscotch Frappe','Cappuccino Frappe']},{cat:'🍵 Non-Coffee Frappes',items:['Dark Chocolate','Nougat','Matcha Cream','Strawberry','Vanilla']},{cat:'🌿 Non-Caffeine',items:['Banana Oat','Cinnamon Oat','Matcha Latte','White Chocolate']},{cat:'🍵 Tea & Refreshments',items:['Peach Black Tea','Lychee','Passionfruit','Pink Guava','Tahitian Lime']},{cat:'🍞 Pastries',items:['Buttered Croissant','Croffle','Matcha Croffle','Dark Chocolate Croffle','White Chocolate Croffle','Pain Au Chocolat','Cinnamon Roll']}];
+  const groups=[
+    {cat:'☕ Coffee',items:['Spanish Latte','Sea Salt Latte','Sea Salt Caramel Latte','Caramel Macchiato','White Mocha','Mocha Latte','French Vanilla Latte','Banana Oat Latte','Cinnamon Oat Latte','Cafe Latte','Cappuccino','Americano']},
+    {cat:'🥤 Blended Frappes',items:['Java Chip','Caramel Frappe','White Mocha Frappe','Dark Mocha Frappe','Caramel Cream Frappe','Toffee Nut Frappe','Butterscotch Frappe','Cappuccino Frappe']},
+    {cat:'🍵 Non-Coffee Frappes',items:['Dark Chocolate','Nougat','Matcha Cream','Strawberry','Vanilla']},
+    {cat:'🌿 Non-Caffeine',items:['Banana Oat','Cinnamon Oat','Matcha Latte','White Chocolate']},
+    {cat:'🍵 Tea & Refreshments',items:['Peach Black Tea','Lychee','Passionfruit','Pink Guava','Tahitian Lime']},
+    {cat:'🍞 Pastries',items:['Buttered Croissant','Croffle','Matcha Croffle','Dark Chocolate Croffle','White Chocolate Croffle','Pain Au Chocolat','Cinnamon Roll']},
+  ];
   let html='';
-  groups.forEach(g=>{html+=`<div style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--bd);margin:1.5rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:2px solid var(--cd);">${g.cat}</div>`;g.items.forEach(name=>{const ok=isAvail(name);const sid='av_'+name.replace(/[\s']/g,'_').replace(/[^a-zA-Z0-9_]/g,'');html+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:0.85rem 1.2rem;margin-bottom:0.5rem;background:#fff;border:1px solid var(--cd);border-radius:8px;"><div style="font-size:0.95rem;font-weight:500;color:var(--bd);${ok?'':'text-decoration:line-through;opacity:0.5;'}" id="${sid}_n">${name}</div><div style="display:flex;align-items:center;gap:1rem;"><span id="${sid}_l" style="font-size:0.82rem;font-weight:600;padding:0.25rem 0.75rem;border-radius:999px;background:${ok?'#d4edda':'#fde8e8'};color:${ok?'#155724':'#721c24'};">${ok?'✅ Available':'❌ Not Available'}</span><input type="checkbox" class="avail-toggle" ${ok?'checked':''} onchange="toggleAvail('${name.replace(/'/g,"\\'")}','${sid}',this.checked)"/></div></div>`;});});
+  groups.forEach(g=>{
+    html+=`<div style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--bd);margin:1.5rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:2px solid var(--cd);">${g.cat}</div>`;
+    g.items.forEach(name=>{
+      const ok=isAvail(name);
+      const sid='av_'+name.replace(/[\s']/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
+      html+=`<div style="display:flex;align-items:center;justify-content:space-between;padding:0.85rem 1.2rem;margin-bottom:0.5rem;background:#fff;border:1px solid var(--cd);border-radius:8px;">
+        <div style="font-size:0.95rem;font-weight:500;color:var(--bd);${ok?'':'text-decoration:line-through;opacity:0.5;'}" id="${sid}_n">${name}</div>
+        <div style="display:flex;align-items:center;gap:1rem;">
+          <span id="${sid}_l" style="font-size:0.82rem;font-weight:600;padding:0.25rem 0.75rem;border-radius:999px;background:${ok?'#d4edda':'#fde8e8'};color:${ok?'#155724':'#721c24'};">${ok?'✅ Available':'❌ Not Available'}</span>
+          <input type="checkbox" class="avail-toggle" ${ok?'checked':''} onchange="toggleAvail('${name.replace(/'/g,"\\'")}','${sid}',this.checked)"/>
+        </div>
+      </div>`;
+    });
+  });
   document.getElementById('availList').innerHTML=html;
 }
-window.toggleAvail=async function(name,sid,ok){availability[name]=ok;const n=document.getElementById(sid+'_n');const l=document.getElementById(sid+'_l');if(n){n.style.textDecoration=ok?'none':'line-through';n.style.opacity=ok?'1':'0.5';}if(l){l.textContent=ok?'✅ Available':'❌ Not Available';l.style.background=ok?'#d4edda':'#fde8e8';l.style.color=ok?'#155724':'#721c24';}filterMenu('all',null);filterOrder('all',document.querySelector('.otab'));await update(availRef,{[name]:ok});};
+window.toggleAvail=async function(name,sid,ok){
+  availability[name]=ok;
+  const n=document.getElementById(sid+'_n');const l=document.getElementById(sid+'_l');
+  if(n){n.style.textDecoration=ok?'none':'line-through';n.style.opacity=ok?'1':'0.5';}
+  if(l){l.textContent=ok?'✅ Available':'❌ Not Available';l.style.background=ok?'#d4edda':'#fde8e8';l.style.color=ok?'#155724':'#721c24';}
+  filterMenu('all',null);filterOrder('all',document.querySelector('.otab'));
+  await update(availRef,{[name]:ok});
+};
 
-function showDeletePopup(label,onConfirm){document.getElementById('deleteLabel').textContent=label;document.getElementById('deleteConfirmBtn').onclick=()=>{onConfirm();document.getElementById('deletePopup').classList.remove('show');};document.getElementById('deletePopup').classList.add('show');}
+function showDeletePopup(label,onConfirm){
+  document.getElementById('deleteLabel').textContent=label;
+  document.getElementById('deleteConfirmBtn').onclick=()=>{onConfirm();document.getElementById('deletePopup').classList.remove('show');};
+  document.getElementById('deletePopup').classList.add('show');
+}
 
 window.openAdmin=function(){document.getElementById('loginOverlay').classList.add('show');setTimeout(()=>document.getElementById('adminPass').focus(),150);};
 window.closeAdmin=function(){document.getElementById('loginOverlay').classList.remove('show');document.getElementById('loginErr').style.display='none';document.getElementById('adminPass').value='';};
-window.checkLogin=function(){const pass=document.getElementById('adminPass').value;if(pass===ADMIN_PASS){adminLoggedIn=true;closeAdmin();document.getElementById('adminDash').style.display='block';document.getElementById('availSection').style.display='block';document.getElementById('commentsSection').style.display='block';document.getElementById('navAvail').style.display='block';document.getElementById('navComments').style.display='block';buildAvail();renderComments();renderOrders();renderReservations();renderAdminReviews();renderAdminCalendar();window.scrollTo(0,0);}else{document.getElementById('loginErr').style.display='block';document.getElementById('adminPass').value='';}};
-window.logoutAdmin=function(){adminLoggedIn=false;document.getElementById('adminDash').style.display='none';document.getElementById('availSection').style.display='none';document.getElementById('commentsSection').style.display='none';document.getElementById('navAvail').style.display='none';document.getElementById('navComments').style.display='none';window.scrollTo(0,0);};
-window.switchTab=function(tab,btn){document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));btn.classList.add('active');document.querySelectorAll('.admin-tab-content').forEach(t=>t.style.display='none');document.getElementById('tab-'+tab).style.display='block';if(tab==='reviews')renderAdminReviews();if(tab==='calendar')renderAdminCalendar();};
+window.checkLogin=function(){
+  const pass=document.getElementById('adminPass').value;
+  if(pass===ADMIN_PASS){
+    adminLoggedIn=true;closeAdmin();
+    document.getElementById('adminDash').style.display='block';
+    document.getElementById('availSection').style.display='block';
+    document.getElementById('commentsSection').style.display='block';
+    document.getElementById('navAvail').style.display='block';
+    document.getElementById('navComments').style.display='block';
+    buildAvail();renderComments();renderOrders();renderReservations();renderAdminReviews();renderAdminCalendar();
+    window.scrollTo(0,0);
+  }else{document.getElementById('loginErr').style.display='block';document.getElementById('adminPass').value='';}
+};
+window.logoutAdmin=function(){
+  adminLoggedIn=false;
+  document.getElementById('adminDash').style.display='none';
+  document.getElementById('availSection').style.display='none';
+  document.getElementById('commentsSection').style.display='none';
+  document.getElementById('navAvail').style.display='none';
+  document.getElementById('navComments').style.display='none';
+  window.scrollTo(0,0);
+};
+window.switchTab=function(tab,btn){
+  document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));btn.classList.add('active');
+  document.querySelectorAll('.admin-tab-content').forEach(t=>t.style.display='none');
+  document.getElementById('tab-'+tab).style.display='block';
+  if(tab==='reviews') renderAdminReviews();
+  if(tab==='calendar') renderAdminCalendar();
+};
 
-// ── CHATBOT ──
-const CAFE_PHONE_='639276924831';const CAFE_EMAIL_='mariadaniela@gmail.com';
+const CAFE_PHONE_='639276924831';
+const CAFE_EMAIL_='mariadaniela@gmail.com';
 const botReplies=[
   {keys:['hour','open','close','time','schedule'],reply:'🕐 We are open every day — <strong>Monday to Sunday, 3:00 PM to 12:00 Midnight</strong>. For reservations, we accept bookings from <strong>9:00 AM</strong>. ☕'},
   {keys:['location','address','where','find','direction'],reply:"📍 We are at <strong>Saratoga Avenue, La Mediterranea Subdivision, Governor's Drive, Dasmariñas, Cavite</strong>. Right along the highway near SM Dasmariñas! 😊"},
@@ -1404,13 +1947,42 @@ function showContactOptions(msg){
   const vbLink=`viber://chat?number=%2B${CAFE_PHONE_}&text=${encoded}`;
   const smsLink=`sms:+${CAFE_PHONE_}?body=${encoded}`;
   const emailLink=`mailto:${CAFE_EMAIL_}?subject=Customer Inquiry&body=${encoded}`;
-  const d=document.createElement('div');d.className='chat-msg bot';
-  d.innerHTML=`<p style="margin-bottom:0.6rem;">🤔 Sorry, I'm not sure about that one! How would you like to send your question to us directly?</p><div style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.75rem;"><button onclick="openLink('${waLink}','whatsapp')" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;text-align:left;">💬 WhatsApp</button><button onclick="openLink('${vbLink}','viber')" style="background:#7360f2;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;text-align:left;">📱 Viber</button><button onclick="openLink('${smsLink}','sms')" style="background:#5c3d2e;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;text-align:left;">📩 SMS / Text</button><a href="${emailLink}" style="background:#a0673a;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;text-align:left;text-decoration:none;display:block;">📧 Email</a></div><p style="font-size:0.72rem;color:#8a6a55;line-height:1.5;border-top:1px solid #e8dcc8;padding-top:0.5rem;">📱 <strong>WhatsApp, Viber & SMS</strong> work best on mobile.<br/>💻 On <strong>desktop</strong>? We recommend sending us an <strong>Email</strong> instead.</p>`;
-  document.getElementById('chatMessages').appendChild(d);document.getElementById('chatMessages').scrollTop=document.getElementById('chatMessages').scrollHeight;
+  const d=document.createElement('div');
+  d.className='chat-msg bot';
+  d.innerHTML=`<p style="margin-bottom:0.6rem;">🤔 Sorry, I'm not sure about that one! How would you like to send your question to us directly?</p>
+    <div style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.75rem;">
+      <button onclick="openLink('${waLink}','whatsapp')" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;text-align:left;">💬 WhatsApp</button>
+      <button onclick="openLink('${vbLink}','viber')" style="background:#7360f2;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;text-align:left;">📱 Viber</button>
+      <button onclick="openLink('${smsLink}','sms')" style="background:#5c3d2e;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;text-align:left;">📩 SMS / Text</button>
+      <a href="${emailLink}" style="background:#a0673a;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;text-align:left;text-decoration:none;display:block;">📧 Email</a>
+    </div>
+    <p style="font-size:0.72rem;color:#8a6a55;line-height:1.5;border-top:1px solid #e8dcc8;padding-top:0.5rem;">📱 <strong>WhatsApp, Viber & SMS</strong> work best on mobile.<br/>💻 On <strong>desktop</strong>? We recommend sending us an <strong>Email</strong> instead.</p>`;
+  document.getElementById('chatMessages').appendChild(d);
+  document.getElementById('chatMessages').scrollTop=document.getElementById('chatMessages').scrollHeight;
 }
 
-window.openLink=function(url,type){if(type==='sms'){const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);if(!isMobile){showAppPopup('SMS / Text Message','SMS only works on mobile devices. Please try WhatsApp, Viber, or Email instead.',false);return;}window.location.href=url;return;}if(type==='whatsapp'){window.open(url,'_blank');return;}if(type==='viber'){const start=Date.now();window.location.href=url;setTimeout(()=>{if(Date.now()-start<2000)showAppPopup('Viber','Viber does not appear to be installed on your device.',true);},1500);}};
-function showAppPopup(appName,message,showInstall){const existing=document.getElementById('chatAppPopup');if(existing)existing.remove();const installUrl=appName==='Viber'?'https://www.viber.com/en/download/':'';const overlay=document.createElement('div');overlay.id='chatAppPopup';overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';overlay.innerHTML=`<div style="background:#fff;border-radius:12px;padding:1.75rem;max-width:320px;width:90%;text-align:center;"><div style="font-size:2rem;margin-bottom:0.5rem;">📵</div><h4 style="font-family:'Playfair Display',serif;color:#3b2314;margin-bottom:0.5rem;">${appName} Not Found</h4><p style="font-size:0.83rem;color:#5c3d2e;line-height:1.6;margin-bottom:1.25rem;">${message}</p><div style="display:flex;flex-direction:column;gap:0.5rem;">${showInstall?`<a href="${installUrl}" target="_blank" style="background:#7360f2;color:#fff;border:none;border-radius:6px;padding:0.65rem;font-size:0.85rem;cursor:pointer;text-decoration:none;display:block;">📥 Install ${appName}</a>`:''}<button onclick="document.getElementById('chatAppPopup').remove();sendChatSMS();" style="background:#5c3d2e;color:#fff;border:none;border-radius:6px;padding:0.65rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;">📩 Try SMS Instead</button><button onclick="document.getElementById('chatAppPopup').remove()" style="background:#f5efe6;border:1px solid #e8dcc8;border-radius:6px;padding:0.65rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;color:#8a6a55;">Cancel</button></div></div>`;document.body.appendChild(overlay);}
+window.openLink=function(url,type){
+  if(type==='sms'){const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);if(!isMobile){showAppPopup('SMS / Text Message','SMS only works on mobile devices. Please try WhatsApp, Viber, or Email instead.',false);return;}window.location.href=url;return;}
+  if(type==='whatsapp'){window.open(url,'_blank');return;}
+  if(type==='viber'){const start=Date.now();window.location.href=url;setTimeout(()=>{if(Date.now()-start<2000)showAppPopup('Viber','Viber does not appear to be installed on your device.',true);},1500);}
+};
+function showAppPopup(appName,message,showInstall){
+  const existing=document.getElementById('chatAppPopup');if(existing)existing.remove();
+  const installUrl=appName==='Viber'?'https://www.viber.com/en/download/':'';
+  const overlay=document.createElement('div');overlay.id='chatAppPopup';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML=`<div style="background:#fff;border-radius:12px;padding:1.75rem;max-width:320px;width:90%;text-align:center;">
+    <div style="font-size:2rem;margin-bottom:0.5rem;">📵</div>
+    <h4 style="font-family:'Playfair Display',serif;color:#3b2314;margin-bottom:0.5rem;">${appName} Not Found</h4>
+    <p style="font-size:0.83rem;color:#5c3d2e;line-height:1.6;margin-bottom:1.25rem;">${message}</p>
+    <div style="display:flex;flex-direction:column;gap:0.5rem;">
+      ${showInstall?`<a href="${installUrl}" target="_blank" style="background:#7360f2;color:#fff;border:none;border-radius:6px;padding:0.65rem;font-size:0.85rem;cursor:pointer;text-decoration:none;display:block;">📥 Install ${appName}</a>`:''}
+      <button onclick="document.getElementById('chatAppPopup').remove();sendChatSMS();" style="background:#5c3d2e;color:#fff;border:none;border-radius:6px;padding:0.65rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;">📩 Try SMS Instead</button>
+      <button onclick="document.getElementById('chatAppPopup').remove()" style="background:#f5efe6;border:1px solid #e8dcc8;border-radius:6px;padding:0.65rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;color:#8a6a55;">Cancel</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+}
 window.sendChatSMS=function(){const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);if(!isMobile){showAppPopup('SMS / Text Message','SMS only works on mobile devices. Please use Email instead.',false);return;}window.location.href=`sms:+${CAFE_PHONE_}?body=${encodeURIComponent('Hi Accaza Coffee! I have a question.')}`;};
 
 window.toggleChat=function(){chatOpen=!chatOpen;document.getElementById('chatWindow').classList.toggle('open',chatOpen);document.getElementById('chatNotif').style.display='none';if(chatOpen&&!chatStarted){chatStarted=true;setTimeout(()=>addBotMsg("👋 Hi there! Welcome to <strong>Accaza Coffee (Cafe Sartoga)</strong>! Ask me about our hours, location, menu, delivery, payment, reservations, and more! ☕"),400);}};
