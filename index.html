@@ -4,11 +4,11 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Accaza Coffee House</title>
-<meta name="description" content="Accaza Coffee House in Dasmariñas, Cavite — handcrafted coffee, cozy atmosphere, online ordering, and table reservations. Open daily 3PM–12MN.">
-<meta name="keywords" content="Accaza Coffee, coffee shop Dasmariñas, café Cavite, coffee house Philippines, online coffee order, table reservation Dasmariñas">
+<meta name="description" content="Accaza Coffee House in Dasmariñas, Cavite...">
+<meta name="keywords" content="Accaza Coffee, coffee shop Dasmariñas...">
 <meta name="author" content="Accaza Coffee House">
 <meta property="og:title" content="Accaza Coffee House">
-<meta property="og:description" content="Handcrafted coffee, warm spaces, and flavors that linger — welcome to Accaza Coffee, your cozy corner of Dasmariñas, Cavite.">
+<meta property="og:description" content="Handcrafted coffee, warm spaces...">
 <meta property="og:image" content="https://i.postimg.cc/0jcfLdkR/wall-paper.jpg">
 <meta property="og:url" content="https://accaza-sartoga.com/">
 <meta property="og:type" content="website">
@@ -364,6 +364,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 .fb-sync.online{background:#d4edda;color:#155724;display:block;}
 @keyframes steamRise{0%{height:8px;opacity:0;transform:translateY(0) scaleX(1);}40%{opacity:0.7;transform:translateY(-16px) scaleX(1.4);}100%{height:48px;opacity:0;transform:translateY(-40px) scaleX(0.6);}}
 @keyframes heartBeat{0%,100%{transform:scale(1);}15%{transform:scale(1.35);}30%{transform:scale(1);}45%{transform:scale(1.2);}60%{transform:scale(1);}}
+@media(max-width:900px){#menuGrid{grid-template-columns:repeat(2,1fr)!important;}}
 @media(max-width:680px){
 .about-inner,.order-layout,.res-layout,.contact-layout,.feedback-layout{grid-template-columns:1fr;gap:2rem;}
 .nav-links{display:none;}
@@ -377,6 +378,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 .avail-add-grid{grid-template-columns:1fr;}
 .avail-add-prices{grid-template-columns:1fr 1fr;}
 .archive-summary{grid-template-columns:1fr;}
+#menuGrid{grid-template-columns:1fr!important;}
 }
 </style>
 </head>
@@ -501,13 +503,18 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
       <button class="tab-btn" onclick="filterMenu('soda',this)">🍋 Soda Refreshers</button>
       <button class="tab-btn" onclick="filterMenu('pastry',this)">🍞 Pastries</button>
     </div>
-    <div id="menuGrid">
-      <div class="menu-empty-state">
-        <span class="big-icon">☕</span>
-        <h3>What are you craving today?</h3>
-        <p>Choose a category above to explore our handcrafted drinks and pastries.</p>
-      </div>
+    <div style="text-align:center;margin-bottom:1.5rem;">
+      <p style="font-size:1rem;color:rgba(245,239,230,0.75);font-style:italic;">What are you craving today? ☕ Choose a category below to explore our handcrafted drinks and pastries.</p>
     </div>
+    <div class="menu-tabs">
+      <button class="tab-btn" id="menuTabCoffee" onclick="filterMenu('coffee',this)">☕ Coffee</button>
+      <button class="tab-btn" onclick="filterMenu('noncaf',this)">🌿 Non-Coffee</button>
+      <button class="tab-btn" onclick="filterMenu('frappe',this)">🥤 Iced Blended Coffee</button>
+      <button class="tab-btn" onclick="filterMenu('nonfrappe',this)">🧊 Iced Blended Non-Coffee</button>
+      <button class="tab-btn" onclick="filterMenu('soda',this)">🍋 Soda Refreshers</button>
+      <button class="tab-btn" onclick="filterMenu('pastry',this)">🍞 Pastries</button>
+    </div>
+    <div id="menuGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;"></div>
   </div>
 </section>
 
@@ -1187,7 +1194,7 @@ function isAvail(name){return availability[name]!==false;}
 function isDrink(cat){return DRINK_CATS.includes(cat);}
 function formatPrice(item){if(item.priceM&&item.priceL)return`S ₱${item.priceS} · M ₱${item.priceM} · L ₱${item.priceL}`;return`₱${item.priceS}`;}
 
-let menuFilter=null;
+let menuFilter='coffee';
 window.filterMenu=function(cat,btn){
   menuFilter=cat;
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
@@ -1195,13 +1202,12 @@ window.filterMenu=function(cat,btn){
   renderMenuSection();
 };
 function renderMenuSection(){
-  if(!menuFilter){document.getElementById('menuGrid').innerHTML='<div class="menu-empty-state"><span class="big-icon">☕</span><h3>What are you craving today?</h3><p>Choose a category above to explore our handcrafted drinks and pastries.</p></div>';return;}
   const items=getMenuItems().filter(i=>i.cat===menuFilter);
   document.getElementById('menuGrid').innerHTML=items.map(i=>{
     const ok=isAvail(i.name);
     const imgHtml=i.img?`<img src="${i.img}" alt="${i.name}" class="menu-card-img" style="${ok?'':'opacity:0.5;'}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"/><div class="menu-card-img-placeholder" style="display:none;">${catIcons[i.cat]||'☕'}</div>`:`<div class="menu-card-img-placeholder">${catIcons[i.cat]||'☕'}</div>`;
     return`<div class="menu-card">${imgHtml}<div class="menu-card-body"><span class="cat-tag">${catLabels[i.cat]||i.cat}</span><h4 style="${ok?'':'text-decoration:line-through;opacity:0.6;'}">${i.name}</h4><p class="desc">${i.desc||''}</p><div class="price-row">${i.priceM&&i.priceL?`<span class="price-badge">S ₱${i.priceS}</span><span class="price-badge">M ₱${i.priceM}</span><span class="price-badge">L ₱${i.priceL}</span>`:`<span class="price-single">₱${i.priceS}</span>`}</div><span class="avail-badge ${ok?'avail-yes':'avail-no'}">${ok?'✅ Available':'❌ Unavailable'}</span></div></div>`;
-  }).join('')||`<div class="menu-empty-state"><span class="big-icon">${catIcons[menuFilter]||'☕'}</span><h3>No items in this category yet.</h3><p>Check back soon!</p></div>`;
+  }).join('')||`<div style="grid-column:1/-1;text-align:center;padding:3rem;color:rgba(245,239,230,0.5);"><p style="font-size:2rem;margin-bottom:0.5rem;">${catIcons[menuFilter]||'☕'}</p><p>No items in this category yet.</p></div>`;
 }
 
 let orderFilter=null;
@@ -1536,6 +1542,12 @@ window.toggleAvail=async function(name,sid,ok){
   renderMenuSection();renderOrderSection();await update(availRef,{[name]:ok});
 };
 window.delMenuItem=function(key,name){showDeletePopup(name,async()=>{await remove(ref(db,'menuItems/'+key));});};
+window.saveItemImg=async function(key,sid){
+  const input=document.getElementById(sid+'_img');if(!input)return;
+  const imgUrl=input.value.trim();
+  await update(ref(db,'menuItems/'+key),{img:imgUrl||null});
+  input.style.borderColor='#2d9e5f';setTimeout(()=>input.style.borderColor='var(--cd)',1500);
+};
 
 function showDeletePopup(label,onConfirm){
   document.getElementById('deleteLabel').textContent=label;
@@ -1592,6 +1604,8 @@ setTimeout(()=>{if(!chatOpen)document.getElementById('chatNotif').style.display=
 
 renderCustomerCalendar();
 renderCustomerOrders();
+// Set Coffee as default menu tab on load
+setTimeout(()=>{const coffeeBtn=document.getElementById('menuTabCoffee');if(coffeeBtn){coffeeBtn.classList.add('active');renderMenuSection();}},800);
 </script>
 </body>
 </html>
