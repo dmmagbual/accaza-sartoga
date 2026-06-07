@@ -524,7 +524,14 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     <div class="order-layout">
       <div>
         <h3 class="order-section-title">1. Choose Your Items</h3>
-        <div class="order-tabs" id="orderTabsRow"></div>
+        <div class="order-tabs" id="orderTabsRow">
+          <button class="otab" id="otab_coffee" onclick="filterOrder('coffee',this)">☕ Coffee</button>
+          <button class="otab" id="otab_noncaf" onclick="filterOrder('noncaf',this)">🌿 Non-Coffee</button>
+          <button class="otab" id="otab_frappe" onclick="filterOrder('frappe',this)">🥤 Iced Coffee</button>
+          <button class="otab" id="otab_nonfrappe" onclick="filterOrder('nonfrappe',this)">🧊 Iced Non-Coffee</button>
+          <button class="otab" id="otab_soda" onclick="filterOrder('soda',this)">🍋 Soda</button>
+          <button class="otab" id="otab_pastry" onclick="filterOrder('pastry',this)">🍞 Pastries</button>
+        </div>
         <div class="item-list" id="orderItemList">
           <div class="order-empty-state">
             <span class="big-icon">☕</span>
@@ -836,9 +843,9 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
       <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--bd);margin-bottom:1rem;">🗂️ Manage Categories</h3>
       <div id="categoryList" style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1rem;"></div>
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;">
-        <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Icon (emoji)</label><input type="text" id="newCatIcon" placeholder="☕" style="width:70px;"/></div>
-        <div style="flex:1;min-width:150px;"><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Category Name</label><input type="text" id="newCatLabel" placeholder="e.g. Meals, Desserts..."/></div>
-        <button onclick="addCategory()" style="background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.6rem 1.2rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;height:38px;">➕ Add</button>
+        <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Icon (emoji)</label><input type="text" id="newCatIcon" placeholder="☕" style="width:70px;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem;font-family:'Inter',sans-serif;font-size:0.88rem;color:var(--td);"/></div>
+        <div style="flex:1;min-width:150px;"><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Category Name</label><input type="text" id="newCatLabel" placeholder="e.g. Meals, Desserts..." style="background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.85rem;font-family:'Inter',sans-serif;font-size:0.88rem;color:var(--td);width:100%;"/></div>
+        <button id="addCatBtn" style="background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.6rem 1.2rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;height:38px;">➕ Add</button>
       </div>
       <div id="catAddConfirm" style="display:none;margin-top:0.5rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.5rem 1rem;"><p style="color:#2d6a4f;font-size:0.83rem;">✅ Category added!</p></div>
     </div>
@@ -846,7 +853,16 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
       <h3>➕ Add New Menu Item</h3>
       <div class="avail-add-grid">
         <div><label>Item Name</label><input type="text" id="newItemName" placeholder="e.g. Lavender Latte"/></div>
-        <div><label>Category</label><select id="newItemCat"></select></div>
+        <div><label>Category</label>
+          <select id="newItemCat">
+            <option value="coffee">☕ Coffee Based</option>
+            <option value="noncaf">🌿 Non-Coffee Based</option>
+            <option value="frappe">🥤 Iced Blended Coffee</option>
+            <option value="nonfrappe">🧊 Iced Blended Non-Coffee</option>
+            <option value="soda">🍋 Soda-Based Refreshers</option>
+            <option value="pastry">🍞 Pastries</option>
+          </select>
+        </div>
         <div style="grid-column:1/-1;"><label>Description</label><textarea id="newItemDesc" rows="2" placeholder="Brief description..."></textarea></div>
         <div style="grid-column:1/-1;"><label>Image URL (optional)</label><input type="text" id="newItemImg" placeholder="https://i.postimg.cc/..."/></div>
       </div>
@@ -1188,9 +1204,20 @@ const defaultMenu=[
 
 onValue(menuRef, snap=>{
   const saved=snap.val();
-  if(saved){menuItemsMap=saved;}
-  else{const seed={};defaultMenu.forEach((item,i)=>{seed['item_'+String(i).padStart(3,'0')]=item;});set(menuRef,seed);menuItemsMap=seed;}
-  renderMenuSection();renderOrderSection();if(adminLoggedIn)buildAvail();
+  if(saved){
+    menuItemsMap=saved;
+  } else {
+    const seed={};
+    defaultMenu.forEach((item,i)=>{seed['item_'+String(i).padStart(3,'0')]=item;});
+    set(menuRef,seed);
+    menuItemsMap=seed;
+  }
+  renderMenuSection();
+  renderOrderSection();
+  if(adminLoggedIn){
+    buildAvail();
+    updateAddItemCatDropdown();
+  }
 });
 onValue(ordersRef,snap=>{adminOrdersMap=snap.val()||{};if(adminLoggedIn){renderOrders();renderDashboard();}updateStats();renderCustomerOrders();});
 onValue(archivedRef,snap=>{archivedOrdersMap=snap.val()||{};if(adminLoggedIn){renderDashboard();if(document.getElementById('archivePanel').style.display!=='none')renderArchive();}});
@@ -1902,11 +1929,23 @@ window.checkLogin=function(){
     document.getElementById('commentsSection').style.display='block';
     document.getElementById('navAvail').style.display='block';
     document.getElementById('navComments').style.display='block';
-    updateAddItemCatDropdown();buildAvail();renderCategoryManager();
-    renderComments();renderOrders();renderReservations();renderAdminReviews();renderAdminCalendar();
-    renderDashboard();
+    // These depend on data already loaded — call with small delay to ensure Firebase data is ready
+    setTimeout(()=>{
+      updateAddItemCatDropdown();
+      buildAvail();
+      renderCategoryManager();
+      renderComments();
+      renderOrders();
+      renderReservations();
+      renderAdminReviews();
+      renderAdminCalendar();
+      renderDashboard();
+    },300);
     window.scrollTo(0,0);
-  }else{document.getElementById('loginErr').style.display='block';document.getElementById('adminPass').value='';}
+  }else{
+    document.getElementById('loginErr').style.display='block';
+    document.getElementById('adminPass').value='';
+  }
 };
 window.logoutAdmin=function(){adminLoggedIn=false;['adminDash','availSection','commentsSection'].forEach(id=>document.getElementById(id).style.display='none');['navAvail','navComments'].forEach(id=>document.getElementById(id).style.display='none');window.scrollTo(0,0);};
 window.switchTab=function(tab,btn){
