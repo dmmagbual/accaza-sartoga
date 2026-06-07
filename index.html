@@ -504,7 +504,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
       <button class="tab-btn" onclick="filterMenu('pastry',this)">🍞 Pastries</button>
     </div>
     <div style="text-align:center;margin-bottom:1.25rem;">
-      <p style="font-size:0.97rem;color:rgba(245,239,230,0.72);font-style:italic;">What are you craving today? ☕ Choose a category below to explore our handcrafted drinks and pastries.</p>
+      <p style="font-size:0.97rem;color:rgba(245,239,230,0.72);font-style:italic;">What are you craving today? ☕ Choose a category above to explore our handcrafted drinks and pastries.</p>
     </div>
     <div class="menu-tabs" id="menuTabsRow"></div>
     <div id="menuGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;"></div>
@@ -1210,14 +1210,14 @@ function formatPrice(item){if(item.priceM&&item.priceL)return`S ₱${item.priceS
 function renderMenuTabs(){
   const row=document.getElementById('menuTabsRow');if(!row)return;
   const cats=getCats();
-  row.innerHTML=cats.map((c,i)=>`<button class="tab-btn${i===0?' active':''}" onclick="filterMenu('${c.id}',this)">${c.icon} ${c.label}</button>`).join('');
-  menuFilter=cats[0]?cats[0].id:'coffee';
+  row.innerHTML=cats.map((c,i)=>`<button class="tab-btn${menuFilter===c.id?' active':''}" onclick="filterMenu('${c.id}',this)">${c.icon} ${c.label}</button>`).join('');
+  if(!menuFilter&&cats.length>0)menuFilter=cats[0].id;
 }
+
 function renderOrderTabs(){
   const row=document.getElementById('orderTabsRow');if(!row)return;
   const cats=getCats();
-  row.innerHTML=cats.map(c=>`<button class="otab" onclick="filterOrder('${c.id}',this)">${c.icon} ${c.label}</button>`).join('');
-  orderFilter=null;
+  row.innerHTML=cats.map(c=>`<button class="otab${orderFilter===c.id?' active':''}" onclick="filterOrder('${c.id}',this)">${c.icon} ${c.label}</button>`).join('');
 }
 
 let menuFilter='coffee';
