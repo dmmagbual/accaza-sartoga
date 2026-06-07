@@ -503,17 +503,10 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
       <button class="tab-btn" onclick="filterMenu('soda',this)">🍋 Soda Refreshers</button>
       <button class="tab-btn" onclick="filterMenu('pastry',this)">🍞 Pastries</button>
     </div>
-    <div style="text-align:center;margin-bottom:1.5rem;">
-      <p style="font-size:1rem;color:rgba(245,239,230,0.75);font-style:italic;">What are you craving today? ☕ Choose a category below to explore our handcrafted drinks and pastries.</p>
+    <div style="text-align:center;margin-bottom:1.25rem;">
+      <p style="font-size:0.97rem;color:rgba(245,239,230,0.72);font-style:italic;">What are you craving today? ☕ Choose a category below to explore our handcrafted drinks and pastries.</p>
     </div>
-    <div class="menu-tabs">
-      <button class="tab-btn" id="menuTabCoffee" onclick="filterMenu('coffee',this)">☕ Coffee</button>
-      <button class="tab-btn" onclick="filterMenu('noncaf',this)">🌿 Non-Coffee</button>
-      <button class="tab-btn" onclick="filterMenu('frappe',this)">🥤 Iced Blended Coffee</button>
-      <button class="tab-btn" onclick="filterMenu('nonfrappe',this)">🧊 Iced Blended Non-Coffee</button>
-      <button class="tab-btn" onclick="filterMenu('soda',this)">🍋 Soda Refreshers</button>
-      <button class="tab-btn" onclick="filterMenu('pastry',this)">🍞 Pastries</button>
-    </div>
+    <div class="menu-tabs" id="menuTabsRow"></div>
     <div id="menuGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;"></div>
   </div>
 </section>
@@ -531,14 +524,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     <div class="order-layout">
       <div>
         <h3 class="order-section-title">1. Choose Your Items</h3>
-        <div class="order-tabs">
-          <button class="otab" onclick="filterOrder('coffee',this)">☕ Coffee</button>
-          <button class="otab" onclick="filterOrder('noncaf',this)">🌿 Non-Coffee</button>
-          <button class="otab" onclick="filterOrder('frappe',this)">🥤 Iced Coffee</button>
-          <button class="otab" onclick="filterOrder('nonfrappe',this)">🧊 Iced Non-Coffee</button>
-          <button class="otab" onclick="filterOrder('soda',this)">🍋 Soda</button>
-          <button class="otab" onclick="filterOrder('pastry',this)">🍞 Pastries</button>
-        </div>
+        <div class="order-tabs" id="orderTabsRow"></div>
         <div class="item-list" id="orderItemList">
           <div class="order-empty-state">
             <span class="big-icon">☕</span>
@@ -632,7 +618,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     <div style="text-align:center;margin-bottom:2rem;">
       <p class="section-label" style="color:var(--bl);">Your Orders</p>
       <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.5rem;">Order Tracker</h2>
-      <p style="color:var(--tm);font-size:0.9rem;">Updates in real-time — place an order above to track it here.</p>
+      <p style="color:var(--tm);font-size:0.9rem;">Your order will appear here automatically once placed — no refresh needed! 🔥</p>
     </div>
     <div id="activeOrdersList"><div style="text-align:center;padding:3rem;color:var(--tl);"><p style="font-size:2.5rem;margin-bottom:0.75rem;">☕</p><p style="font-size:0.95rem;font-weight:500;color:var(--bd);margin-bottom:0.3rem;">No active orders yet</p><p style="font-size:0.85rem;">Place an order above and it will appear here!</p></div></div>
   </div>
@@ -665,7 +651,10 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
         </div>
         <div class="cal-wrap" id="timeSlotsWrap" style="display:none;margin-bottom:1.5rem;">
           <p style="font-size:0.8rem;color:rgba(245,239,230,0.7);margin-bottom:0.5rem;">Select a time for <strong id="selectedDateLabel" style="color:var(--cr);"></strong></p>
-          <div class="time-slots-grid" id="timeSlotsGrid"></div>
+          <div style="margin-bottom:0.6rem;">
+          <div class="time-slot available" id="fullDaySlot" onclick="selectTimeSlot('Full Day Booking')" style="background:rgba(201,149,106,0.2);border-color:rgba(201,149,106,0.5);color:#c9956a;font-weight:700;padding:0.65rem;font-size:0.85rem;">📅 Full Day Booking</div>
+        </div>
+        <div class="time-slots-grid" id="timeSlotsGrid"></div>
         </div>
         <div class="res-form-box" id="resFormWrap" style="display:none;">
           <p style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--cr);margin-bottom:1rem;">📋 Your Booking Details</p>
@@ -840,22 +829,24 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     <div style="text-align:center;margin-bottom:2.5rem;">
       <p class="section-label">Staff Only</p>
       <h2 style="font-family:'Playfair Display',serif;font-size:2.5rem;color:var(--bd);margin-bottom:0.5rem;">Menu Availability</h2>
-      <p style="color:var(--tm);font-size:0.95rem;">Add, edit, or remove menu items. Toggle availability on or off.</p>
+      <p style="color:var(--tm);font-size:0.95rem;">Manage categories and menu items. Toggle availability on or off.</p>
+    </div>
+    <!-- CATEGORY MANAGER -->
+    <div style="background:#fff;border:1px solid var(--cd);border-radius:10px;padding:1.5rem;margin-bottom:2rem;">
+      <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--bd);margin-bottom:1rem;">🗂️ Manage Categories</h3>
+      <div id="categoryList" style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1rem;"></div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;">
+        <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Icon (emoji)</label><input type="text" id="newCatIcon" placeholder="☕" style="width:70px;"/></div>
+        <div style="flex:1;min-width:150px;"><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Category Name</label><input type="text" id="newCatLabel" placeholder="e.g. Meals, Desserts..."/></div>
+        <button onclick="addCategory()" style="background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.6rem 1.2rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;height:38px;">➕ Add</button>
+      </div>
+      <div id="catAddConfirm" style="display:none;margin-top:0.5rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.5rem 1rem;"><p style="color:#2d6a4f;font-size:0.83rem;">✅ Category added!</p></div>
     </div>
     <div class="avail-add-form">
       <h3>➕ Add New Menu Item</h3>
       <div class="avail-add-grid">
         <div><label>Item Name</label><input type="text" id="newItemName" placeholder="e.g. Lavender Latte"/></div>
-        <div><label>Category</label>
-          <select id="newItemCat">
-            <option value="coffee">☕ Coffee Based</option>
-            <option value="noncaf">🌿 Non-Coffee Based</option>
-            <option value="frappe">🥤 Iced Blended Coffee</option>
-            <option value="nonfrappe">🧊 Iced Blended Non-Coffee</option>
-            <option value="soda">🍋 Soda-Based Refreshers</option>
-            <option value="pastry">🍞 Pastries</option>
-          </select>
-        </div>
+        <div><label>Category</label><select id="newItemCat"></select></div>
         <div style="grid-column:1/-1;"><label>Description</label><textarea id="newItemDesc" rows="2" placeholder="Brief description..."></textarea></div>
         <div style="grid-column:1/-1;"><label>Image URL (optional)</label><input type="text" id="newItemImg" placeholder="https://i.postimg.cc/..."/></div>
       </div>
@@ -897,7 +888,8 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
       <div class="admin-stat-card"><span class="stat-num" id="statRevenue">₱0</span><span class="stat-lbl">Est. Revenue (Active)</span></div>
     </div>
     <div class="admin-tabs">
-      <button class="admin-tab active" onclick="switchTab('orders',this)">📋 Orders</button>
+      <button class="admin-tab active" onclick="switchTab('dashboard',this)">📊 Dashboard</button>
+      <button class="admin-tab" onclick="switchTab('orders',this)">📋 Orders</button>
       <button class="admin-tab" onclick="switchTab('reservations',this)">📅 Reservations</button>
       <button class="admin-tab" onclick="switchTab('calendar',this)">🗓️ Calendar</button>
       <button class="admin-tab" onclick="switchTab('reviews',this)">⭐ Reviews</button>
@@ -912,7 +904,14 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
       <div class="archive-section" id="archivePanel" style="display:none;">
         <div class="archive-header">
           <h3>📦 Order Archive</h3>
-          <button style="background:var(--cd);border:none;border-radius:6px;padding:0.4rem 0.9rem;font-size:0.78rem;cursor:pointer;color:var(--tm);font-family:'Inter',sans-serif;" onclick="toggleArchivePanel()">✕ Close Archive</button>
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+            <input type="date" id="archiveFrom" style="font-size:0.78rem;padding:0.3rem 0.6rem;border:1px solid var(--cd);border-radius:6px;background:var(--cr);color:var(--td);"/>
+            <span style="font-size:0.78rem;color:var(--tl);">to</span>
+            <input type="date" id="archiveTo" style="font-size:0.78rem;padding:0.3rem 0.6rem;border:1px solid var(--cd);border-radius:6px;background:var(--cr);color:var(--td);"/>
+            <button onclick="renderArchive()" style="background:var(--bl);color:#fff;border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;">Filter</button>
+            <button onclick="downloadArchivePDF()" style="background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;">⬇️ Download PDF</button>
+            <button style="background:var(--cd);border:none;border-radius:6px;padding:0.4rem 0.9rem;font-size:0.78rem;cursor:pointer;color:var(--tm);font-family:'Inter',sans-serif;" onclick="toggleArchivePanel()">✕ Close</button>
+          </div>
         </div>
         <div class="archive-summary" id="archiveSummary"></div>
         <div id="archiveList"><p style="color:var(--tl);text-align:center;padding:1.5rem;">Loading archive...</p></div>
@@ -1084,6 +1083,7 @@ const availRef        = ref(db,'availability');
 const paymentRef      = ref(db,'payment');
 const calBlocksRef    = ref(db,'calBlocks');
 const menuRef         = ref(db,'menuItems');
+const categoriesRef   = ref(db,'categories');
 
 const ADMIN_PASS='accaza2026';
 const CAFE_PHONE='639276924831';
@@ -1091,8 +1091,20 @@ const CAFE_EMAIL='mariadaniela@gmail.com';
 const MAX_GUESTS=30;
 const TIME_SLOTS=['9:00 AM','10:00 AM','11:00 AM','12:00 PM','1:00 PM','2:00 PM','3:00 PM','4:00 PM','5:00 PM','6:00 PM','7:00 PM','8:00 PM','9:00 PM','10:00 PM','11:00 PM','12:00 Midnight'];
 
-const catLabels={coffee:'Coffee Based',noncaf:'Non-Coffee Based',frappe:'Iced Blended Coffee',nonfrappe:'Iced Blended Non-Coffee',soda:'Soda-Based Refreshers',pastry:'Pastries'};
-const catIcons={coffee:'☕',noncaf:'🌿',frappe:'🥤',nonfrappe:'🧊',soda:'🍋',pastry:'🍞'};
+const DEFAULT_CATS=[
+  {id:'coffee',label:'Coffee Based',icon:'☕',order:0},
+  {id:'noncaf',label:'Non-Coffee Based',icon:'🌿',order:1},
+  {id:'frappe',label:'Iced Blended Coffee',icon:'🥤',order:2},
+  {id:'nonfrappe',label:'Iced Blended Non-Coffee',icon:'🧊',order:3},
+  {id:'soda',label:'Soda-Based Refreshers',icon:'🍋',order:4},
+  {id:'pastry',label:'Pastries',icon:'🍞',order:5},
+];
+let categoriesMap={};
+function getCats(){return Object.values(categoriesMap).sort((a,b)=>(a.order||0)-(b.order||0));}
+function catLabel(id){const c=categoriesMap[id];return c?`${c.icon} ${c.label}`:id;}
+function catIcon(id){const c=categoriesMap[id];return c?c.icon:'☕';}
+
+// Legacy static defs kept for customize logic
 const DRINK_CATS=['coffee','noncaf','frappe','nonfrappe','soda'];
 const TEMP_CATS=['coffee','noncaf'];
 const MILK_CATS=['coffee','noncaf','frappe','nonfrappe'];
@@ -1174,14 +1186,14 @@ const defaultMenu=[
   {cat:'pastry',name:'Cinnamon Roll',desc:'Flaky cinnamon roll topped with cinnamon cream cheese sauce.',priceS:155},
 ];
 
-onValue(menuRef,snap=>{
+onValue(menuRef, snap=>{
   const saved=snap.val();
   if(saved){menuItemsMap=saved;}
   else{const seed={};defaultMenu.forEach((item,i)=>{seed['item_'+String(i).padStart(3,'0')]=item;});set(menuRef,seed);menuItemsMap=seed;}
   renderMenuSection();renderOrderSection();if(adminLoggedIn)buildAvail();
 });
-onValue(ordersRef,snap=>{adminOrdersMap=snap.val()||{};if(adminLoggedIn)renderOrders();updateStats();renderCustomerOrders();});
-onValue(archivedRef,snap=>{archivedOrdersMap=snap.val()||{};if(adminLoggedIn&&document.getElementById('archivePanel').style.display!=='none')renderArchive();});
+onValue(ordersRef,snap=>{adminOrdersMap=snap.val()||{};if(adminLoggedIn){renderOrders();renderDashboard();}updateStats();renderCustomerOrders();});
+onValue(archivedRef,snap=>{archivedOrdersMap=snap.val()||{};if(adminLoggedIn){renderDashboard();if(document.getElementById('archivePanel').style.display!=='none')renderArchive();}});
 onValue(reservationsRef,snap=>{adminResMap=snap.val()||{};if(adminLoggedIn)renderReservations();updateStats();renderCustomerCalendar();if(adminLoggedIn)renderAdminCalendar();});
 onValue(feedbacksRef,snap=>{feedbacksMap=snap.val()||{};if(adminLoggedIn)renderComments();});
 onValue(reviewsRef,snap=>{reviewsMap=snap.val()||{};if(adminLoggedIn)renderAdminReviews();});
@@ -1194,6 +1206,20 @@ function isAvail(name){return availability[name]!==false;}
 function isDrink(cat){return DRINK_CATS.includes(cat);}
 function formatPrice(item){if(item.priceM&&item.priceL)return`S ₱${item.priceS} · M ₱${item.priceM} · L ₱${item.priceL}`;return`₱${item.priceS}`;}
 
+// ── DYNAMIC TABS ──
+function renderMenuTabs(){
+  const row=document.getElementById('menuTabsRow');if(!row)return;
+  const cats=getCats();
+  row.innerHTML=cats.map((c,i)=>`<button class="tab-btn${i===0?' active':''}" onclick="filterMenu('${c.id}',this)">${c.icon} ${c.label}</button>`).join('');
+  menuFilter=cats[0]?cats[0].id:'coffee';
+}
+function renderOrderTabs(){
+  const row=document.getElementById('orderTabsRow');if(!row)return;
+  const cats=getCats();
+  row.innerHTML=cats.map(c=>`<button class="otab" onclick="filterOrder('${c.id}',this)">${c.icon} ${c.label}</button>`).join('');
+  orderFilter=null;
+}
+
 let menuFilter='coffee';
 window.filterMenu=function(cat,btn){
   menuFilter=cat;
@@ -1205,9 +1231,9 @@ function renderMenuSection(){
   const items=getMenuItems().filter(i=>i.cat===menuFilter);
   document.getElementById('menuGrid').innerHTML=items.map(i=>{
     const ok=isAvail(i.name);
-    const imgHtml=i.img?`<img src="${i.img}" alt="${i.name}" class="menu-card-img" style="${ok?'':'opacity:0.5;'}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"/><div class="menu-card-img-placeholder" style="display:none;">${catIcons[i.cat]||'☕'}</div>`:`<div class="menu-card-img-placeholder">${catIcons[i.cat]||'☕'}</div>`;
-    return`<div class="menu-card">${imgHtml}<div class="menu-card-body"><span class="cat-tag">${catLabels[i.cat]||i.cat}</span><h4 style="${ok?'':'text-decoration:line-through;opacity:0.6;'}">${i.name}</h4><p class="desc">${i.desc||''}</p><div class="price-row">${i.priceM&&i.priceL?`<span class="price-badge">S ₱${i.priceS}</span><span class="price-badge">M ₱${i.priceM}</span><span class="price-badge">L ₱${i.priceL}</span>`:`<span class="price-single">₱${i.priceS}</span>`}</div><span class="avail-badge ${ok?'avail-yes':'avail-no'}">${ok?'✅ Available':'❌ Unavailable'}</span></div></div>`;
-  }).join('')||`<div style="grid-column:1/-1;text-align:center;padding:3rem;color:rgba(245,239,230,0.5);"><p style="font-size:2rem;margin-bottom:0.5rem;">${catIcons[menuFilter]||'☕'}</p><p>No items in this category yet.</p></div>`;
+    const imgHtml=i.img?`<img src="${i.img}" alt="${i.name}" class="menu-card-img" style="${ok?'':'opacity:0.5;'}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"/><div class="menu-card-img-placeholder" style="display:none;">${catIcon(i.cat)}</div>`:`<div class="menu-card-img-placeholder">${catIcon(i.cat)}</div>`;
+    return`<div class="menu-card">${imgHtml}<div class="menu-card-body"><span class="cat-tag">${catLabel(i.cat)}</span><h4 style="${ok?'':'text-decoration:line-through;opacity:0.6;'}">${i.name}</h4><p class="desc">${i.desc||''}</p><div class="price-row">${i.priceM&&i.priceL?`<span class="price-badge">S ₱${i.priceS}</span><span class="price-badge">M ₱${i.priceM}</span><span class="price-badge">L ₱${i.priceL}</span>`:`<span class="price-single">₱${i.priceS}</span>`}</div><span class="avail-badge ${ok?'avail-yes':'avail-no'}">${ok?'✅ Available':'❌ Unavailable'}</span></div></div>`;
+  }).join('')||`<div style="grid-column:1/-1;text-align:center;padding:3rem;color:rgba(245,239,230,0.5);"><p style="font-size:2rem;margin-bottom:0.5rem;">${catIcon(menuFilter)}</p><p>No items in this category yet.</p></div>`;
 }
 
 let orderFilter=null;
@@ -1223,9 +1249,9 @@ function renderOrderSection(){
   document.getElementById('orderItemList').innerHTML=items.map(i=>{
     const ok=isAvail(i.name);
     const cartQtyTotal=Object.values(cart).filter(c=>c.name===i.name||c.name.startsWith(i.name+' (')).reduce((s,c)=>s+c.qty,0);
-    const imgHtml=i.img?`<img src="${i.img}" alt="${i.name}" class="item-row-img" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"/><div class="item-row-img-placeholder" style="display:none;">${catIcons[i.cat]||'☕'}</div>`:`<div class="item-row-img-placeholder">${catIcons[i.cat]||'☕'}</div>`;
-    return`<div class="item-row" style="${ok?'':'opacity:0.45;pointer-events:none;'}">${imgHtml}<div class="item-row-info"><h5 style="${ok?'':'text-decoration:line-through;'}">${i.name}</h5><span class="item-cat">${ok?catLabels[i.cat]:'Not Available'}</span><span class="item-prices">${formatPrice(i)}</span></div><div class="item-row-right">${cartQtyTotal>0?`<span style="font-size:0.78rem;font-weight:600;color:var(--bl);background:rgba(160,103,58,0.1);padding:0.2rem 0.5rem;border-radius:999px;">${cartQtyTotal} in cart</span>`:''}<button class="qty-btn" style="background:var(--bd);color:#fff;border-color:var(--bd);" onclick="openCustomize('${i.key}')">+</button></div></div>`;
-  }).join('')||`<div class="order-empty-state"><span class="big-icon">${catIcons[orderFilter]||'☕'}</span><h3>No items available.</h3><p>Check back soon!</p></div>`;
+    const imgHtml=i.img?`<img src="${i.img}" alt="${i.name}" class="item-row-img" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"/><div class="item-row-img-placeholder" style="display:none;">${catIcon(i.cat)}</div>`:`<div class="item-row-img-placeholder">${catIcon(i.cat)}</div>`;
+    return`<div class="item-row" style="${ok?'':'opacity:0.45;pointer-events:none;'}">${imgHtml}<div class="item-row-info"><h5 style="${ok?'':'text-decoration:line-through;'}">${i.name}</h5><span class="item-cat">${ok?catLabel(i.cat):'Not Available'}</span><span class="item-prices">${formatPrice(i)}</span></div><div class="item-row-right">${cartQtyTotal>0?`<span style="font-size:0.78rem;font-weight:600;color:var(--bl);background:rgba(160,103,58,0.1);padding:0.2rem 0.5rem;border-radius:999px;">${cartQtyTotal} in cart</span>`:''}<button class="qty-btn" style="background:var(--bd);color:#fff;border-color:var(--bd);" onclick="openCustomize('${i.key}')">+</button></div></div>`;
+  }).join('')||`<div class="order-empty-state"><span class="big-icon">${catIcon(orderFilter)}</span><h3>No items available.</h3><p>Check back soon!</p></div>`;
 }
 
 window.openCustomize=function(itemKey){
@@ -1316,6 +1342,8 @@ window.placeOrder=async function(){
     document.getElementById('displayOrderId').textContent=orderId;document.getElementById('orderConfirm').style.display='block';
     document.querySelector('.btn-place-order').disabled=true;document.querySelector('.btn-place-order').style.opacity='0.5';
     cart={};updateCartDisplay();renderOrderSection();
+    // Instantly show in tracker without needing a refresh
+    renderCustomerOrders();
     document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';
     if(document.getElementById('deliveryAddr'))document.getElementById('deliveryAddr').value='';
     removeProof({stopPropagation:()=>{}});
@@ -1331,7 +1359,7 @@ function renderCustomerOrders(){
   const active=myOrders.filter(o=>o.status!=='Received'&&!o.receivedByCustomer);
   const el=document.getElementById('activeOrdersList');
   if(!active.length){el.innerHTML=`<div style="text-align:center;padding:3rem;color:var(--tl);"><p style="font-size:2.5rem;margin-bottom:0.75rem;">☕</p><p style="font-size:0.95rem;font-weight:500;color:var(--bd);margin-bottom:0.3rem;">No active orders yet</p><p style="font-size:0.85rem;">Place an order above and it will appear here!</p></div>`;return;}
-  el.innerHTML=active.map(o=>{const s=statusConfig[o.status]||statusConfig.Pending;const isDelivery=o.type==='Delivery';return`<div style="background:#fff;border:2px solid #a8d5b5;border-radius:12px;overflow:hidden;margin-bottom:1.25rem;box-shadow:0 2px 12px rgba(0,0,0,0.06);"><div style="background:var(--bd);padding:1rem 1.25rem;text-align:center;"><p style="font-size:0.72rem;color:rgba(245,239,230,0.6);letter-spacing:0.15em;text-transform:uppercase;margin-bottom:0.25rem;">Order ID</p><p style="font-family:'Playfair Display',serif;font-size:1.8rem;color:#fff;font-weight:600;letter-spacing:0.1em;">${o.id}</p><p style="font-size:0.72rem;color:rgba(245,239,230,0.5);margin-top:0.25rem;">🛒 ${o.items}</p><p style="font-size:0.75rem;color:#c9956a;margin-top:0.15rem;">💰 ₱${o.total.toLocaleString()} · ${o.payment}</p><p style="font-size:0.75rem;margin-top:0.3rem;padding:0.25rem 0.75rem;display:inline-block;border-radius:999px;background:${isDelivery?'rgba(13,110,253,0.2)':'rgba(45,158,95,0.2)'};color:${isDelivery?'#90caf9':'#a5d6a7'};">${isDelivery?'🛵 For Delivery':'🏠 For Pick-up'}</p></div><div style="padding:1rem 1.25rem;background:${s.bg};border-bottom:1px solid rgba(0,0,0,0.06);"><p style="font-size:0.7rem;letter-spacing:0.15em;text-transform:uppercase;color:${s.color};margin-bottom:0.4rem;font-weight:600;">Order Status</p><div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;"><span style="font-size:1.3rem;">${s.icon}</span><span style="font-size:1rem;font-weight:700;color:${s.color};">${o.status}</span></div><p style="font-size:0.82rem;color:${s.color};line-height:1.5;">${s.msg}</p></div><div style="padding:1rem 1.25rem;background:#f9f6f2;text-align:center;">${o.status==='Completed'?`<p style="font-size:0.82rem;color:var(--tm);margin-bottom:0.75rem;">Have you received your order?</p><button onclick="askConfirmReceived('${o.id}')" style="background:#2d9e5f;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:pointer;font-family:'Inter',sans-serif;font-weight:500;width:100%;">✅ Yes, I Received My Order</button>`:`<p style="font-size:0.82rem;color:var(--tl);line-height:1.5;">This button will be enabled once your order is marked <strong>Completed</strong>.</p><button disabled style="background:#ccc;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:not-allowed;font-family:'Inter',sans-serif;font-weight:500;width:100%;margin-top:0.5rem;opacity:0.6;">Waiting for Completion...</button>`}</div></div>`;}).join('')+`<p style="font-size:0.72rem;color:var(--tl);text-align:center;margin-top:0.25rem;">🔥 Status updates in real-time via Firebase.</p>`;
+      el.innerHTML=active.map(o=>{const s=statusConfig[o.status]||statusConfig.Pending;const isDelivery=o.type==='Delivery';return`<div style="background:#fff;border:2px solid #a8d5b5;border-radius:12px;overflow:hidden;margin-bottom:1.25rem;box-shadow:0 2px 12px rgba(0,0,0,0.06);"><div style="background:var(--bd);padding:1rem 1.25rem;text-align:center;"><p style="font-size:0.72rem;color:rgba(245,239,230,0.6);letter-spacing:0.15em;text-transform:uppercase;margin-bottom:0.25rem;">Order ID</p><p style="font-family:'Playfair Display',serif;font-size:1.8rem;color:#fff;font-weight:600;letter-spacing:0.1em;">${o.id}</p><p style="font-size:0.72rem;color:rgba(245,239,230,0.5);margin-top:0.25rem;">🛒 ${o.items}</p><p style="font-size:0.75rem;color:#c9956a;margin-top:0.15rem;">💰 ₱${o.total.toLocaleString()} · ${o.payment}</p><p style="font-size:0.75rem;margin-top:0.3rem;padding:0.25rem 0.75rem;display:inline-block;border-radius:999px;background:${isDelivery?'rgba(13,110,253,0.2)':'rgba(45,158,95,0.2)'};color:${isDelivery?'#90caf9':'#a5d6a7'};">${isDelivery?'🛵 For Delivery':'🏠 For Pick-up'}</p></div><div style="padding:1rem 1.25rem;background:${s.bg};border-bottom:1px solid rgba(0,0,0,0.06);"><p style="font-size:0.7rem;letter-spacing:0.15em;text-transform:uppercase;color:${s.color};margin-bottom:0.4rem;font-weight:600;">Order Status</p><div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;"><span style="font-size:1.3rem;">${s.icon}</span><span style="font-size:1rem;font-weight:700;color:${s.color};">${o.status}</span></div><p style="font-size:0.82rem;color:${s.color};line-height:1.5;">${s.msg}</p></div><div style="padding:1rem 1.25rem;background:#f9f6f2;text-align:center;">${o.status==='Completed'?`<p style="font-size:0.82rem;color:var(--tm);margin-bottom:0.75rem;">Have you received your order?</p><button onclick="askConfirmReceived('${o.id}')" style="background:#2d9e5f;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:pointer;font-family:'Inter',sans-serif;font-weight:500;width:100%;">✅ Yes, I Received My Order</button>`:`<p style="font-size:0.82rem;color:var(--tl);line-height:1.5;">This button will be enabled once your order is marked <strong>Completed</strong>.</p><button disabled style="background:#ccc;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:not-allowed;font-family:'Inter',sans-serif;font-weight:500;width:100%;margin-top:0.5rem;opacity:0.6;">Waiting for Completion...</button>`}</div></div>`;}).join('')+`<p style="font-size:0.72rem;color:var(--tl);text-align:center;margin-top:0.25rem;">🔥 Your order status updates automatically — no refresh needed!</p>`;
 }
 window.askConfirmReceived=function(orderId){document.getElementById('receivedOrderId').textContent=orderId;document.getElementById('confirmReceivedPopup').classList.add('show');document.getElementById('confirmReceivedBtn').onclick=()=>{confirmReceived(orderId);document.getElementById('confirmReceivedPopup').classList.remove('show');};};
 async function confirmReceived(orderId){try{await update(ref(db,'orders/'+orderId),{receivedByCustomer:true,status:'Received'});}catch(e){alert('Could not confirm receipt.');}}
@@ -1372,7 +1400,17 @@ function renderTimeSlots(){
   const grid=document.getElementById('timeSlotsGrid');const confirmedSlots=getConfirmedSlotsForDate(selectedDate);const dayFull=getConfirmedGuestsForDate(selectedDate)>=MAX_GUESTS;
   grid.innerHTML=TIME_SLOTS.map(slot=>{const blocked=isSlotBlocked(selectedDate,slot)||dayFull;const confirmed=confirmedSlots.has(slot);const sel=selectedTime===slot;const cls='time-slot '+(sel?'selected':blocked?'blocked':'available');return`<div class="${cls}" ${!blocked?`onclick="selectTimeSlot('${slot}')"`:''}>${slot}${confirmed&&!blocked?'<br/><span style="font-size:0.62rem;opacity:0.7;">booked</span>':''}</div>`;}).join('');
 }
-window.selectTimeSlot=function(slot){selectedTime=slot;renderTimeSlots();const fw=document.getElementById('resFormWrap');fw.style.display='block';const label=new Date(selectedDate+'T00:00:00').toLocaleDateString('en-PH',{weekday:'short',month:'short',day:'numeric',year:'numeric'});document.getElementById('resSummaryDateTime').textContent=`${label} · ${slot}`;updateBookingType();fw.scrollIntoView({behavior:'smooth',block:'nearest'});};
+window.selectTimeSlot=function(slot){
+  selectedTime=slot;
+  // Update full day button style
+  const fdBtn=document.getElementById('fullDaySlot');
+  if(fdBtn){fdBtn.classList.toggle('selected',slot==='Full Day Booking');fdBtn.style.background=slot==='Full Day Booking'?'var(--bl)':'rgba(201,149,106,0.2)';fdBtn.style.color=slot==='Full Day Booking'?'#fff':'#c9956a';}
+  renderTimeSlots();
+  const fw=document.getElementById('resFormWrap');fw.style.display='block';
+  const label=new Date(selectedDate+'T00:00:00').toLocaleDateString('en-PH',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+  document.getElementById('resSummaryDateTime').textContent=`${label} · ${slot}`;
+  updateBookingType();fw.scrollIntoView({behavior:'smooth',block:'nearest'});
+};
 window.resetResSelection=function(){selectedTime=null;document.getElementById('resFormWrap').style.display='none';document.getElementById('timeSlotsWrap').scrollIntoView({behavior:'smooth',block:'nearest'});};
 window.updateBookingType=function(){
   const guests=parseInt(document.getElementById('resGuests').value)||1;
@@ -1505,21 +1543,306 @@ function renderArchive(){
 }
 
 function renderReservations(){
-  const el=document.getElementById('resList');const reservations=Object.values(adminResMap).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
+  const el=document.getElementById('resList');
+  const reservations=Object.values(adminResMap).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
+  // Today's banner
+  const todayStr=new Date().toISOString().slice(0,10);
+  const todayRes=reservations.filter(r=>r.date===todayStr&&r.status!=='Declined'&&r.status!=='Completed');
+  const banner=document.getElementById('todayResBanner');
+  const bannerText=document.getElementById('todayResText');
+  if(banner&&todayRes.length>0){banner.style.display='flex';bannerText.textContent=`⚠️ ${todayRes.length} reservation${todayRes.length>1?'s':''} today!`;}
+  else if(banner){banner.style.display='none';}
   if(!reservations.length){el.innerHTML='<div class="empty-state">No reservations yet.</div>';return;}
-  el.innerHTML=reservations.map(r=>{const guests=parseInt(r.guests)||1;const bookType=guests<=2?'💑 Individual':guests<=5?'👨‍👩‍👧 Small':guests<=20?'👥 Medium':'🎉 Large';return`<div class="order-admin-card"><div class="order-admin-top"><div><div class="order-admin-name">${r.name} <span style="font-size:0.75rem;color:var(--tl);">#${r.id}</span></div><div class="order-admin-meta">${r.phone} · ${r.date} · ${r.time} · ${r.guests} guests${r.occasion?' · '+r.occasion:''}</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;"><span class="badge badge-${(r.status||'pending').toLowerCase()}">${r.status}</span><span style="font-size:0.7rem;color:var(--tl);">${bookType}</span></div></div>${r.notes?`<div class="order-admin-items">📝 ${r.notes}</div>`:''}${r.contact?`<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📱 ${r.contact} (${r.contactMethod||''})</div>`:''}<div class="order-admin-footer"><span></span><div style="display:flex;gap:0.5rem;"><select class="status-select" onchange="updateResStatus('${r.id}',this.value)"><option ${r.status==='Pending'?'selected':''}>Pending</option><option ${r.status==='Confirmed'?'selected':''}>Confirmed</option><option ${r.status==='Declined'?'selected':''}>Declined</option><option ${r.status==='Completed'?'selected':''}>Completed</option></select>${r.status==='Completed'||r.status==='Declined'?`<button onclick="delRes('${r.id}','${r.name}')" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>`:''}</div></div></div>`;}).join('');
+  el.innerHTML=reservations.map(r=>{
+    const guests=parseInt(r.guests)||1;
+    const bookType=guests<=2?'💑 Individual':guests<=5?'👨‍👩‍👧 Small':guests<=20?'👥 Medium':'🎉 Large';
+    const isFullDay=r.time==='Full Day Booking';
+    const confirmMsg=encodeURIComponent(`Hi ${r.name}! 😊 Your reservation at Accaza Coffee House has been confirmed!\n\n📅 Date: ${r.date}\n🕐 Time: ${r.time}\n👥 Guests: ${r.guests}${r.occasion?' · '+r.occasion:''}\n📍 Saratoga Ave, La Mediterranea, Dasmariñas, Cavite\n\nWe look forward to seeing you! ☕🦁\n\n— Accaza Coffee House`);
+    const waLink=`https://wa.me/${r.phone?r.phone.replace(/\D/g,''):CAFE_PHONE.replace(/\D/g,'')}?text=${confirmMsg}`;
+    const vbLink=`viber://chat?number=%2B63${r.phone?r.phone.replace(/\D/g,'').replace(/^0/,''):CAFE_PHONE}&text=${confirmMsg}`;
+    const smsLink=`sms:+63${r.phone?r.phone.replace(/\D/g,'').replace(/^0/,''):CAFE_PHONE}?body=${confirmMsg}`;
+    return`<div class="order-admin-card">
+      <div class="order-admin-top">
+        <div>
+          <div class="order-admin-name">${r.name} <span style="font-size:0.75rem;color:var(--tl);">#${r.id}</span>${isFullDay?'<span style="font-size:0.7rem;font-weight:600;padding:0.15rem 0.5rem;border-radius:999px;background:#fff3cd;color:#664d03;margin-left:0.4rem;">📅 Full Day</span>':''}</div>
+          <div class="order-admin-meta">${r.phone} · ${r.date} · ${r.time} · ${r.guests} guests${r.occasion?' · '+r.occasion:''}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;">
+          <span class="badge badge-${(r.status||'pending').toLowerCase()}">${r.status}</span>
+          <span style="font-size:0.7rem;color:var(--tl);">${bookType}</span>
+        </div>
+      </div>
+      ${r.notes?`<div class="order-admin-items">📝 ${r.notes}</div>`:''}
+      ${r.contact?`<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📱 ${r.contact} (${r.contactMethod||''})</div>`:''}
+      ${r.status==='Confirmed'?`<div style="margin:0.6rem 0;padding:0.75rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:8px;">
+        <p style="font-size:0.75rem;font-weight:600;color:#2d6a4f;margin-bottom:0.5rem;">📨 Send Confirmation Message via:</p>
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+          <a href="${waLink}" target="_blank" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.75rem;text-decoration:none;display:inline-block;">💬 WhatsApp</a>
+          <a href="${vbLink}" style="background:#7360f2;color:#fff;border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.75rem;text-decoration:none;display:inline-block;">📱 Viber</a>
+          <a href="${smsLink}" style="background:#5c3d2e;color:#fff;border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.75rem;text-decoration:none;display:inline-block;">📩 SMS</a>
+        </div>
+      </div>`:''}
+      <div class="order-admin-footer"><span></span>
+        <div style="display:flex;gap:0.5rem;">
+          <select class="status-select" onchange="updateResStatus('${r.id}',this.value)">
+            <option ${r.status==='Pending'?'selected':''}>Pending</option>
+            <option ${r.status==='Confirmed'?'selected':''}>Confirmed</option>
+            <option ${r.status==='Declined'?'selected':''}>Declined</option>
+            <option ${r.status==='Completed'?'selected':''}>Completed</option>
+          </select>
+          ${r.status==='Completed'||r.status==='Declined'?`<button onclick="delRes('${r.id}','${r.name}')" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>`:''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
 }
-window.updateResStatus=async function(id,val){await update(ref(db,'reservations/'+id),{status:val});};
+window.updateResStatus=async function(id,val){
+  await update(ref(db,'reservations/'+id),{status:val});
+  const res=adminResMap[id];
+  if(res&&res.date){
+    if(val==='Confirmed'&&res.time==='Full Day Booking'){
+      // Block all slots for that date (preserving confirmed slots)
+      const snap=await get(ref(db,`calBlocks/${res.date}`));
+      const existing=snap.val()||{};
+      const slots={};
+      TIME_SLOTS.forEach(s=>slots[s]=false);
+      await set(ref(db,`calBlocks/${res.date}`),{...existing,slots,fullDayReservationId:id});
+    }
+    if(val==='Completed'&&res.time==='Full Day Booking'){
+      const snap=await get(ref(db,`calBlocks/${res.date}`));
+      const data=snap.val();
+      if(data&&data.fullDayReservationId===id){await remove(ref(db,`calBlocks/${res.date}`));}
+    }
+  }
+};
 window.delRes=function(id,name){showDeletePopup(name,async()=>{await remove(ref(db,'reservations/'+id));});};
 window.savePayment=async function(){const data={gcashNum:document.getElementById('editGcashNum').value,gcashName:document.getElementById('editGcashName').value,bdoNum:document.getElementById('editBdoNum').value,ubNum:document.getElementById('editUbNum').value};await set(paymentRef,data);document.getElementById('saveConfirm').style.display='block';setTimeout(()=>document.getElementById('saveConfirm').style.display='none',3000);};
 
 window.addMenuItem=async function(){
-  const name=document.getElementById('newItemName').value.trim();const cat=document.getElementById('newItemCat').value;const desc=document.getElementById('newItemDesc').value.trim();const img=document.getElementById('newItemImg').value.trim();const priceS=parseInt(document.getElementById('newItemPriceS').value)||0;const priceM=parseInt(document.getElementById('newItemPriceM').value)||0;const priceL=parseInt(document.getElementById('newItemPriceL').value)||0;
+  const name=document.getElementById('newItemName').value.trim();
+  const cat=document.getElementById('newItemCat').value;
+  const desc=document.getElementById('newItemDesc').value.trim();
+  const img=document.getElementById('newItemImg').value.trim();
+  const priceS=parseInt(document.getElementById('newItemPriceS').value)||0;
+  const priceM=parseInt(document.getElementById('newItemPriceM').value)||0;
+  const priceL=parseInt(document.getElementById('newItemPriceL').value)||0;
   if(!name||!priceS){alert('Please enter item name and small/single price.');return;}
-  const newItem={cat,name,desc,priceS};if(priceM)newItem.priceM=priceM;if(priceL)newItem.priceL=priceL;if(img)newItem.img=img;
+  const catItems=getMenuItems().filter(i=>i.cat===cat);
+  const newItem={cat,name,desc,priceS,order:catItems.length};
+  if(priceM)newItem.priceM=priceM;if(priceL)newItem.priceL=priceL;if(img)newItem.img=img;
   await set(ref(db,'menuItems/item_'+Date.now()),newItem);
   document.getElementById('newItemName').value='';document.getElementById('newItemDesc').value='';document.getElementById('newItemImg').value='';document.getElementById('newItemPriceS').value='';document.getElementById('newItemPriceM').value='';document.getElementById('newItemPriceL').value='';
   document.getElementById('addItemConfirm').style.display='block';setTimeout(()=>document.getElementById('addItemConfirm').style.display='none',2500);
+};
+
+// Update the Add Item category dropdown dynamically
+function updateAddItemCatDropdown(){
+  const sel=document.getElementById('newItemCat');if(!sel)return;
+  const cats=getCats();
+  sel.innerHTML=cats.map(c=>`<option value="${c.id}">${c.icon} ${c.label}</option>`).join('');
+}
+
+// ── SALES DASHBOARD ──
+function renderDashboard(){
+  const archived=Object.values(archivedOrdersMap);
+  const now=new Date();
+  const todayStr=now.toISOString().slice(0,10);
+  const startOfWeek=new Date(now);startOfWeek.setDate(now.getDate()-now.getDay());startOfWeek.setHours(0,0,0,0);
+  const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
+
+  function sumOrders(arr){return{rev:arr.reduce((s,o)=>s+(o.total||0),0),cnt:arr.length};}
+  const todayOrders=archived.filter(o=>(o.archivedDate||'').includes(todayStr)||new Date(o.archivedAt||0).toISOString().slice(0,10)===todayStr);
+  const weekOrders=archived.filter(o=>new Date(o.archivedAt||0)>=startOfWeek);
+  const monthOrders=archived.filter(o=>new Date(o.archivedAt||0)>=startOfMonth);
+
+  const t=sumOrders(todayOrders),w=sumOrders(weekOrders),m=sumOrders(monthOrders),a=sumOrders(archived);
+  const setCard=(id,rev,cnt)=>{const el=document.getElementById(id);if(el)el.textContent='₱'+rev.toLocaleString();const cel=document.getElementById(id+'Count');if(cel)cel.textContent=cnt+' order'+(cnt!==1?'s':'');};
+  setCard('dashToday',t.rev,t.cnt);setCard('dashWeek',w.rev,w.cnt);setCard('dashMonth',m.rev,m.cnt);setCard('dashAllTime',a.rev,a.cnt);
+
+  // Payment split pie
+  const gcash=archived.filter(o=>o.payment==='GCash').length;
+  const bank=archived.filter(o=>o.payment==='Bank Transfer').length;
+  const total=gcash+bank||1;
+  drawPaymentPie(gcash/total,bank/total);
+  const gp=document.getElementById('gcashPct');const bp=document.getElementById('bankPct');
+  if(gp)gp.textContent=`GCash ${Math.round(gcash/total*100)}%`;
+  if(bp)bp.textContent=`Bank ${Math.round(bank/total*100)}%`;
+
+  // Last 30 days bar chart
+  drawRevenueChart(archived);
+
+  // Top 5 items
+  const itemCount={};
+  archived.forEach(o=>{
+    if(!o.items)return;
+    o.items.split(',').forEach(s=>{
+      const name=s.trim().replace(/\s*\(.*?\)\s*/g,'').replace(/\s*x\d+\s*$/,'').trim();
+      const qty=parseInt((s.match(/x(\d+)/)||[])[1]||1);
+      if(name)itemCount[name]=(itemCount[name]||0)+qty;
+    });
+  });
+  const top5=Object.entries(itemCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const topEl=document.getElementById('topItemsList');
+  if(topEl){
+    topEl.innerHTML=top5.length?top5.map(([name,qty],i)=>`
+      <div style="display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0;border-bottom:1px solid var(--cd);">
+        <span style="font-family:'Playfair Display',serif;font-size:1rem;color:${i===0?'#c9956a':i===1?'#888':i===2?'#a0673a':'var(--tl)'};min-width:20px;text-align:center;">${['🥇','🥈','🥉','4','5'][i]}</span>
+        <span style="flex:1;font-size:0.83rem;color:var(--bd);">${name}</span>
+        <span style="font-size:0.8rem;font-weight:600;color:var(--bl);">${qty} sold</span>
+      </div>`).join(''):'<p style="color:var(--tl);font-size:0.83rem;text-align:center;padding:1rem;">No archived orders yet.</p>';
+  }
+
+  // Status breakdown (active orders)
+  const allActive=Object.values(adminOrdersMap);
+  const statuses=['Pending','Confirmed','Preparing','Completed','Received'];
+  const statusColors={Pending:'#856404',Confirmed:'#0c5460',Preparing:'#664d03',Completed:'#155724',Received:'#1b5e20'};
+  const statusBg={Pending:'#fef3cd',Confirmed:'#d1ecf1',Preparing:'#fff3cd',Completed:'#d4edda',Received:'#c8e6c9'};
+  const stEl=document.getElementById('statusBreakdown');
+  if(stEl){
+    stEl.innerHTML=statuses.map(s=>{
+      const cnt=allActive.filter(o=>o.status===s).length;
+      return`<div style="display:flex;align-items:center;justify-content:space-between;padding:0.45rem 0.75rem;background:${statusBg[s]};border-radius:6px;margin-bottom:0.4rem;">
+        <span style="font-size:0.82rem;font-weight:500;color:${statusColors[s]};">${s}</span>
+        <span style="font-size:0.9rem;font-weight:700;color:${statusColors[s]};">${cnt}</span>
+      </div>`;
+    }).join('')+`<div style="margin-top:0.5rem;padding:0.45rem 0.75rem;background:#e2e3e5;border-radius:6px;display:flex;justify-content:space-between;"><span style="font-size:0.82rem;font-weight:500;color:#41464b;">Archived</span><span style="font-size:0.9rem;font-weight:700;color:#41464b;">${Object.keys(archivedOrdersMap).length}</span></div>`;
+  }
+}
+
+function drawPaymentPie(gcashRatio,bankRatio){
+  const canvas=document.getElementById('paymentChart');if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  const s=canvas.offsetWidth||200;canvas.width=s;canvas.height=s;
+  const cx=s/2,cy=s/2,r=s*0.42;
+  ctx.clearRect(0,0,s,s);
+  if(gcashRatio+bankRatio===0){ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fillStyle='#e8dcc8';ctx.fill();return;}
+  const startAngle=-Math.PI/2;
+  [[gcashRatio,'#a0673a'],[bankRatio,'#3b8fd4']].forEach(([ratio,color],i)=>{
+    const end=startAngle+(i===0?gcashRatio:1)*Math.PI*2;
+    const start=i===0?startAngle:startAngle+gcashRatio*Math.PI*2;
+    ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,start,end);ctx.closePath();
+    ctx.fillStyle=color;ctx.fill();
+  });
+}
+
+function drawRevenueChart(archived){
+  const canvas=document.getElementById('revenueChart');if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  const W=canvas.offsetWidth||500,H=180;canvas.width=W;canvas.height=H;
+  ctx.clearRect(0,0,W,H);
+  // Build last 30 days
+  const days=[];const today=new Date();
+  for(let i=29;i>=0;i--){const d=new Date(today);d.setDate(today.getDate()-i);days.push(d.toISOString().slice(0,10));}
+  const revByDay={},cntByDay={};
+  days.forEach(d=>{revByDay[d]=0;cntByDay[d]=0;});
+  archived.forEach(o=>{
+    const d=new Date(o.archivedAt||0).toISOString().slice(0,10);
+    if(revByDay[d]!==undefined){revByDay[d]+=(o.total||0);cntByDay[d]++;}
+  });
+  const revVals=days.map(d=>revByDay[d]);
+  const cntVals=days.map(d=>cntByDay[d]);
+  const maxRev=Math.max(...revVals,1);
+  const maxCnt=Math.max(...cntVals,1);
+  const pad={l:40,r:10,t:10,b:30};
+  const chartW=W-pad.l-pad.r,chartH=H-pad.t-pad.b;
+  const barW=chartW/days.length*0.6,gap=chartW/days.length;
+  // Grid lines
+  ctx.strokeStyle='rgba(0,0,0,0.07)';ctx.lineWidth=1;
+  [0,0.25,0.5,0.75,1].forEach(pct=>{
+    const y=pad.t+chartH*(1-pct);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();
+    ctx.fillStyle='#8a6a55';ctx.font='10px Inter,sans-serif';ctx.textAlign='right';
+    ctx.fillText('₱'+(maxRev*pct/1000).toFixed(0)+'k',pad.l-4,y+3);
+  });
+  // Revenue bars
+  revVals.forEach((val,i)=>{
+    const x=pad.l+i*gap+gap*0.2;
+    const bh=val/maxRev*chartH;
+    ctx.fillStyle='rgba(160,103,58,0.75)';
+    ctx.fillRect(x,pad.t+chartH-bh,barW,bh);
+  });
+  // Order count line
+  ctx.strokeStyle='#3b8fd4';ctx.lineWidth=2;ctx.beginPath();
+  cntVals.forEach((val,i)=>{
+    const x=pad.l+i*gap+gap*0.5;
+    const y=pad.t+chartH*(1-val/maxCnt);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+  // Dots
+  ctx.fillStyle='#3b8fd4';
+  cntVals.forEach((val,i)=>{
+    const x=pad.l+i*gap+gap*0.5;const y=pad.t+chartH*(1-val/maxCnt);
+    ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fill();
+  });
+  // X axis labels (every 5 days)
+  ctx.fillStyle='#8a6a55';ctx.font='9px Inter,sans-serif';ctx.textAlign='center';
+  days.forEach((d,i)=>{if(i%5===0||i===29){ctx.fillText(d.slice(5),pad.l+i*gap+gap*0.5,H-8);}});
+}
+
+// ── ARCHIVE PDF DOWNLOAD (Canvas) ──
+window.downloadArchivePDF=function(){
+  const fromVal=document.getElementById('archiveFrom').value;
+  const toVal=document.getElementById('archiveTo').value;
+  let orders=Object.values(archivedOrdersMap).sort((a,b)=>(b.archivedAt||0)-(a.archivedAt||0));
+  if(fromVal)orders=orders.filter(o=>new Date(o.archivedAt||0)>=new Date(fromVal));
+  if(toVal)orders=orders.filter(o=>new Date(o.archivedAt||0)<=new Date(toVal+'T23:59:59'));
+  if(!orders.length){alert('No archived orders found for the selected date range.');return;}
+  const totalRev=orders.reduce((s,o)=>s+(o.total||0),0);
+  const gcashCnt=orders.filter(o=>o.payment==='GCash').length;
+  const bankCnt=orders.filter(o=>o.payment==='Bank Transfer').length;
+  const rowH=52,headerH=220,footerH=40,pageW=800;
+  const totalH=headerH+orders.length*rowH+footerH+60;
+  const canvas=document.createElement('canvas');canvas.width=pageW;canvas.height=totalH;
+  const ctx=canvas.getContext('2d');
+  // Background
+  ctx.fillStyle='#f5efe6';ctx.fillRect(0,0,pageW,totalH);
+  // Header bar
+  ctx.fillStyle='#3b2314';ctx.fillRect(0,0,pageW,headerH);
+  ctx.fillStyle='#c9956a';ctx.font='bold 28px Georgia,serif';ctx.textAlign='center';ctx.fillText('Accaza Coffee House',pageW/2,55);
+  ctx.fillStyle='rgba(245,239,230,0.7)';ctx.font='14px Inter,sans-serif';ctx.fillText('Saratoga Ave, La Mediterranea, Dasmariñas, Cavite',pageW/2,82);
+  ctx.fillStyle='#fff';ctx.font='bold 18px Georgia,serif';ctx.fillText('Order Archive Report',pageW/2,118);
+  const dateRange=fromVal&&toVal?`${fromVal} to ${toVal}`:fromVal?`From ${fromVal}`:toVal?`Up to ${toVal}`:'All Time';
+  ctx.fillStyle='rgba(245,239,230,0.6)';ctx.font='12px Inter,sans-serif';ctx.fillText(dateRange,pageW/2,140);
+  // Summary row
+  ctx.fillStyle='rgba(255,255,255,0.1)';ctx.fillRect(40,156,pageW-80,48);
+  ctx.fillStyle='#c9956a';ctx.font='bold 14px Inter,sans-serif';ctx.textAlign='left';
+  ctx.fillText(`Total Orders: ${orders.length}`,60,178);ctx.textAlign='center';
+  ctx.fillText(`Total Revenue: ₱${totalRev.toLocaleString()}`,pageW/2,178);ctx.textAlign='right';
+  ctx.fillText(`GCash: ${gcashCnt} · Bank: ${bankCnt}`,pageW-60,178);
+  ctx.fillStyle='rgba(245,239,230,0.4)';ctx.font='11px Inter,sans-serif';ctx.textAlign='center';
+  ctx.fillText(`Generated: ${new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'})}`,pageW/2,198);
+  // Column headers
+  let y=headerH+16;
+  ctx.fillStyle='#3b2314';ctx.font='bold 11px Inter,sans-serif';ctx.textAlign='left';
+  ['Order ID','Customer','Items','Total','Payment','Type','Date'].forEach((h,i)=>{
+    const x=[40,120,240,530,610,680,730][i];ctx.fillText(h,x,y);
+  });
+  ctx.strokeStyle='#e8dcc8';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(40,y+8);ctx.lineTo(pageW-40,y+8);ctx.stroke();
+  y+=rowH*0.6;
+  // Rows
+  orders.forEach((o,idx)=>{
+    if(idx%2===0){ctx.fillStyle='rgba(160,103,58,0.06)';}else{ctx.fillStyle='transparent';}
+    ctx.fillRect(40,y-14,pageW-80,rowH);
+    ctx.fillStyle='#2c1a0e';ctx.font='11px Inter,sans-serif';ctx.textAlign='left';
+    const itemsShort=(o.items||'').length>35?o.items.slice(0,35)+'…':o.items||'—';
+    ctx.fillText(o.id||'—',40,y+4);
+    ctx.fillText((o.name||'—').slice(0,14),120,y+4);
+    ctx.fillText(itemsShort,240,y+4);
+    ctx.fillStyle='#a0673a';ctx.font='bold 11px Inter,sans-serif';
+    ctx.fillText('₱'+(o.total||0).toLocaleString(),530,y+4);
+    ctx.fillStyle='#2c1a0e';ctx.font='11px Inter,sans-serif';
+    ctx.fillText(o.payment==='GCash'?'GCash':'Bank',610,y+4);
+    ctx.fillText(o.type||'—',680,y+4);
+    ctx.fillText(o.archivedDate||'—',730,y+4);
+    ctx.strokeStyle='#e8dcc8';ctx.lineWidth=0.5;ctx.beginPath();ctx.moveTo(40,y+rowH-14);ctx.lineTo(pageW-40,y+rowH-14);ctx.stroke();
+    y+=rowH;
+  });
+  // Footer
+  ctx.fillStyle='#3b2314';ctx.fillRect(0,totalH-footerH,pageW,footerH);
+  ctx.fillStyle='rgba(245,239,230,0.5)';ctx.font='11px Inter,sans-serif';ctx.textAlign='center';
+  ctx.fillText('Accaza Coffee House · Confidential · For internal use only',pageW/2,totalH-footerH/2+4);
+  // Download
+  const link=document.createElement('a');link.download=`Accaza_Archive_${new Date().toISOString().slice(0,10)}.png`;link.href=canvas.toDataURL('image/png');link.click();
 };
 function buildAvail(){
   const items=getMenuItems();const groups={};items.forEach(i=>{if(!groups[i.cat])groups[i.cat]=[];groups[i.cat].push(i);});
@@ -1562,11 +1885,29 @@ window.openAdmin=function(){document.getElementById('loginOverlay').classList.ad
 window.closeAdmin=function(){document.getElementById('loginOverlay').classList.remove('show');document.getElementById('loginErr').style.display='none';document.getElementById('adminPass').value='';};
 window.checkLogin=function(){
   const pass=document.getElementById('adminPass').value;
-  if(pass===ADMIN_PASS){adminLoggedIn=true;closeAdmin();document.getElementById('adminDash').style.display='block';document.getElementById('availSection').style.display='block';document.getElementById('commentsSection').style.display='block';document.getElementById('navAvail').style.display='block';document.getElementById('navComments').style.display='block';buildAvail();renderComments();renderOrders();renderReservations();renderAdminReviews();renderAdminCalendar();window.scrollTo(0,0);}
-  else{document.getElementById('loginErr').style.display='block';document.getElementById('adminPass').value='';}
+  if(pass===ADMIN_PASS){
+    adminLoggedIn=true;closeAdmin();
+    document.getElementById('adminDash').style.display='block';
+    document.getElementById('availSection').style.display='block';
+    document.getElementById('commentsSection').style.display='block';
+    document.getElementById('navAvail').style.display='block';
+    document.getElementById('navComments').style.display='block';
+    updateAddItemCatDropdown();buildAvail();renderCategoryManager();
+    renderComments();renderOrders();renderReservations();renderAdminReviews();renderAdminCalendar();
+    renderDashboard();
+    window.scrollTo(0,0);
+  }else{document.getElementById('loginErr').style.display='block';document.getElementById('adminPass').value='';}
 };
 window.logoutAdmin=function(){adminLoggedIn=false;['adminDash','availSection','commentsSection'].forEach(id=>document.getElementById(id).style.display='none');['navAvail','navComments'].forEach(id=>document.getElementById(id).style.display='none');window.scrollTo(0,0);};
-window.switchTab=function(tab,btn){document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));btn.classList.add('active');document.querySelectorAll('.admin-tab-content').forEach(t=>t.style.display='none');document.getElementById('tab-'+tab).style.display='block';if(tab==='reviews')renderAdminReviews();if(tab==='calendar')renderAdminCalendar();};
+window.switchTab=function(tab,btn){
+  document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  document.querySelectorAll('.admin-tab-content').forEach(t=>t.style.display='none');
+  document.getElementById('tab-'+tab).style.display='block';
+  if(tab==='reviews')renderAdminReviews();
+  if(tab==='calendar')renderAdminCalendar();
+  if(tab==='dashboard')renderDashboard();
+};
 
 const botReplies=[
   {keys:['hour','open','close','time','schedule'],reply:'🕐 We are open every day — <strong>Monday to Sunday, 3:00 PM to 12:00 Midnight</strong>. ☕'},
@@ -1604,8 +1945,14 @@ setTimeout(()=>{if(!chatOpen)document.getElementById('chatNotif').style.display=
 
 renderCustomerCalendar();
 renderCustomerOrders();
-// Set Coffee as default menu tab on load
-setTimeout(()=>{const coffeeBtn=document.getElementById('menuTabCoffee');if(coffeeBtn){coffeeBtn.classList.add('active');renderMenuSection();}},800);
+// Default archive date range to current month
+const archFrom=document.getElementById('archiveFrom');
+const archTo=document.getElementById('archiveTo');
+if(archFrom&&archTo){
+  const nm=new Date();
+  archFrom.value=new Date(nm.getFullYear(),nm.getMonth(),1).toISOString().slice(0,10);
+  archTo.value=nm.toISOString().slice(0,10);
+}
 </script>
 </body>
 </html>
