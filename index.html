@@ -1209,15 +1209,21 @@ function formatPrice(item){if(item.priceM&&item.priceL)return`S ₱${item.priceS
 // ── DYNAMIC TABS ──
 function renderMenuTabs(){
   const row=document.getElementById('menuTabsRow');if(!row)return;
-  const cats=getCats();
-  row.innerHTML=cats.map((c,i)=>`<button class="tab-btn${menuFilter===c.id?' active':''}" onclick="filterMenu('${c.id}',this)">${c.icon} ${c.label}</button>`).join('');
-  if(!menuFilter&&cats.length>0)menuFilter=cats[0].id;
+  const cats=getCats();if(!cats.length)return;
+  // Default to first cat if menuFilter not set or not found
+  if(!menuFilter||!cats.find(c=>c.id===menuFilter))menuFilter=cats[0].id;
+  row.innerHTML=cats.map(c=>`<button class="tab-btn${menuFilter===c.id?' active':''}" onclick="filterMenu('${c.id}',this)">${c.icon} ${c.label}</button>`).join('');
 }
 
 function renderOrderTabs(){
   const row=document.getElementById('orderTabsRow');if(!row)return;
-  const cats=getCats();
+  const cats=getCats();if(!cats.length)return;
   row.innerHTML=cats.map(c=>`<button class="otab${orderFilter===c.id?' active':''}" onclick="filterOrder('${c.id}',this)">${c.icon} ${c.label}</button>`).join('');
+  if(!row.innerHTML.trim())return;
+  // Show prompt if nothing selected yet
+  if(!orderFilter){
+    document.getElementById('orderItemList').innerHTML=`<div class="order-empty-state"><span class="big-icon">☕</span><h3>What are you craving today?</h3><p>Choose a category above to explore our handcrafted drinks and pastries.</p></div>`;
+  }
 }
 
 let menuFilter='coffee';
@@ -1635,11 +1641,15 @@ window.addMenuItem=async function(){
   document.getElementById('addItemConfirm').style.display='block';setTimeout(()=>document.getElementById('addItemConfirm').style.display='none',2500);
 };
 
-// Update the Add Item category dropdown dynamically
 function updateAddItemCatDropdown(){
-  const sel=document.getElementById('newItemCat');if(!sel)return;
+  const sel=document.getElementById('newItemCat');
+  if(!sel)return;
   const cats=getCats();
+  if(!cats.length)return;
+  const current=sel.value;
   sel.innerHTML=cats.map(c=>`<option value="${c.id}">${c.icon} ${c.label}</option>`).join('');
+  // Restore previously selected value if still valid
+  if(current&&cats.find(c=>c.id===current))sel.value=current;
 }
 
 // ── SALES DASHBOARD ──
