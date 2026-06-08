@@ -12,8 +12,10 @@
 <meta property="og:image" content="https://i.postimg.cc/0jcfLdkR/wall-paper.jpg">
 <meta property="og:url" content="https://accaza-sartoga.com/">
 <meta property="og:type" content="website">
-</head>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☕</text></svg>"/>
+<link rel="canonical" href="https://accaza-sartoga.com/"/>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Inter:wght@300;400;500&display=swap" rel="stylesheet"/>
+</head>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 :root{--bd:#3b2314;--bm:#6b3a2a;--bl:#a0673a;--cr:#f5efe6;--cd:#e8dcc8;--td:#2c1a0e;--tm:#5c3d2e;--tl:#8a6a55;}
@@ -23,6 +25,15 @@ nav{position:fixed;top:0;width:100%;z-index:200;background:rgba(59,35,20,0.96);b
 .nav-links{display:flex;gap:1.5rem;list-style:none;flex-wrap:wrap;}
 .nav-links a{color:var(--cd);text-decoration:none;font-size:0.82rem;letter-spacing:0.08em;text-transform:uppercase;transition:color 0.2s;}
 .nav-links a:hover{color:#fff;}
+.hamburger{display:none;flex-direction:column;gap:5px;background:none;border:none;cursor:pointer;padding:4px;z-index:201;}
+.hamburger span{display:block;width:24px;height:2px;background:var(--cr);border-radius:2px;transition:all 0.3s;}
+.hamburger.open span:nth-child(1){transform:translateY(7px) rotate(45deg);}
+.hamburger.open span:nth-child(2){opacity:0;}
+.hamburger.open span:nth-child(3){transform:translateY(-7px) rotate(-45deg);}
+.nav-links.nav-open{display:flex !important;flex-direction:column;position:fixed;top:56px;left:0;right:0;background:rgba(59,35,20,0.98);backdrop-filter:blur(8px);z-index:199;padding:1rem 2rem 1.5rem;gap:0.75rem;}
+.nav-links.nav-open a{color:var(--cd);font-size:0.9rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.4rem 0;border-bottom:1px solid rgba(255,255,255,0.08);text-decoration:none;}
+@media(max-width:680px){.hamburger{display:flex;}}
+
 .hero{min-height:100vh;position:relative;display:flex;align-items:center;justify-content:center;text-align:center;padding:6rem 2rem 4rem;overflow:hidden;}
 .hero-bg{position:absolute;inset:0;z-index:0;overflow:hidden;}
 .hero-bg img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;}
@@ -236,6 +247,34 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 .gallery-section{background:var(--cr);padding:6rem 2rem;}
 .gallery-inner{max-width:1000px;margin:0 auto;}
 .gallery-grid{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:220px;gap:1rem;}
+
+/* ── Gallery Lightbox ───────────────────────────────────────── */
+.gallery-card{cursor:pointer;position:relative;overflow:hidden;}
+.gallery-card::after{content:'🔍';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) scale(0);
+  font-size:2rem;background:rgba(0,0,0,0.55);border-radius:50%;width:56px;height:56px;
+  display:flex;align-items:center;justify-content:center;transition:transform 0.2s,opacity 0.2s;opacity:0;}
+.gallery-card:hover::after{transform:translate(-50%,-50%) scale(1);opacity:1;}
+.gallery-card img{transition:transform 0.3s;}
+.gallery-card:hover img{transform:scale(1.04);}
+
+#lightbox{display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.92);
+  align-items:center;justify-content:center;padding:1rem;}
+#lightbox.open{display:flex;}
+#lightbox-img{max-width:90vw;max-height:88vh;object-fit:contain;border-radius:8px;
+  box-shadow:0 8px 40px rgba(0,0,0,0.6);user-select:none;}
+#lightbox-close{position:fixed;top:18px;right:22px;background:rgba(255,255,255,0.12);
+  border:none;color:#fff;font-size:1.6rem;width:42px;height:42px;border-radius:50%;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:background 0.2s;z-index:9001;}
+#lightbox-close:hover{background:rgba(255,255,255,0.25);}
+#lightbox-prev,#lightbox-next{position:fixed;top:50%;transform:translateY(-50%);
+  background:rgba(255,255,255,0.12);border:none;color:#fff;font-size:1.5rem;
+  width:46px;height:46px;border-radius:50%;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:background 0.2s;z-index:9001;}
+#lightbox-prev{left:14px;}#lightbox-next{right:14px;}
+#lightbox-prev:hover,#lightbox-next:hover{background:rgba(255,255,255,0.28);}
+#lightbox-counter{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+  color:rgba(255,255,255,0.6);font-size:0.82rem;letter-spacing:0.05em;z-index:9001;}
 .gallery-card{border-radius:8px;overflow:hidden;}
 .gallery-card.tall{grid-row:span 2;}
 .gallery-card img{width:100%;height:100%;object-fit:cover;border-radius:8px;display:block;}
@@ -381,6 +420,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     <li id="navAvail" style="display:none;"><a href="#availSection" style="color:#c9956a;font-weight:500;">🔄 Availability</a></li>
     <li id="navComments" style="display:none;"><a href="#commentsSection" style="color:#c9956a;font-weight:500;">📩 Comments</a></li>
   </ul>
+  <button class="hamburger" id="hamburgerBtn" onclick="toggleNav()" aria-label="Open menu"><span></span><span></span><span></span></button>
 </nav>
 
 <!-- HERO -->
@@ -396,10 +436,10 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     <div class="hero-social">
       <p class="hero-social-label">Follow Us</p>
       <div class="hero-social-icons">
-        <a class="social-icon-btn" href="#" title="Instagram"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><defs><linearGradient id="ig" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" style="stop-color:#f09433"/><stop offset="50%" style="stop-color:#dc2743"/><stop offset="100%" style="stop-color:#bc1888"/></linearGradient></defs><rect x="2" y="2" width="20" height="20" rx="5" fill="url(#ig)"/><circle cx="12" cy="12" r="4.5" stroke="white" stroke-width="1.8" fill="none"/><circle cx="17.5" cy="6.5" r="1.2" fill="white"/></svg></a>
-        <a class="social-icon-btn" href="#" title="Facebook"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="5" fill="#1877F2"/><path d="M15.5 8H13.5C13.2 8 13 8.2 13 8.5V10H15.5L15.1 12.5H13V19H10.5V12.5H9V10H10.5V8.5C10.5 6.6 11.8 5 14 5H15.5V8Z" fill="white"/></svg></a>
-        <a class="social-icon-btn" href="#" title="TikTok"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="5" fill="#000"/><path d="M16.6 5.82s.51.5 0 0A4.278 4.278 0 0 1 15.54 3h-3.09v12.4a2.592 2.592 0 0 1-2.59 2.5 2.592 2.592 0 0 1-2.59-2.5 2.592 2.592 0 0 1 2.59-2.5c.28 0 .54.04.79.1V9.39a5.629 5.629 0 0 0-.79-.05A5.654 5.654 0 0 0 4.12 15a5.654 5.654 0 0 0 5.65 5.65 5.654 5.654 0 0 0 5.65-5.65V8.01a7.35 7.35 0 0 0 4.34 1.4V6.34s-2.07.11-3.16-0.52z" fill="white"/></svg></a>
-        <a class="social-icon-btn" href="#" title="Threads"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="5" fill="#000"/><path d="M16.5 10.8c-.1-.1-.3-.1-.4-.2-.7-3.4-3.1-4.1-4.6-4.1-2.5 0-4.5 2-4.5 5s2 5 4.5 5c1.8 0 3.2-1 3.9-2.6" stroke="white" stroke-width="1.3" stroke-linecap="round" fill="none"/><path d="M14 11c.2.4.3.9.3 1.5 0 1.9-1.2 3-2.8 3s-2.8-1.1-2.8-3 1.2-3 2.8-3c.5 0 1 .1 1.4.4" stroke="white" stroke-width="1.3" stroke-linecap="round" fill="none"/><path d="M16.5 10.8c.1.5.2 1.1.2 1.7 0 3.1-2.1 5-4.7 5" stroke="white" stroke-width="1.3" stroke-linecap="round" fill="none"/></svg></a>
+        <a class="social-icon-btn" href="https://www.instagram.com/accazacoffeehouse" target="_blank" rel="noopener noreferrer" title="Instagram"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><defs><linearGradient id="ig" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" style="stop-color:#f09433"/><stop offset="50%" style="stop-color:#dc2743"/><stop offset="100%" style="stop-color:#bc1888"/></linearGradient></defs><rect x="2" y="2" width="20" height="20" rx="5" fill="url(#ig)"/><circle cx="12" cy="12" r="4.5" stroke="white" stroke-width="1.8" fill="none"/><circle cx="17.5" cy="6.5" r="1.2" fill="white"/></svg></a>
+        <a class="social-icon-btn" href="https://www.facebook.com/accazacoffee" target="_blank" rel="noopener noreferrer" title="Facebook"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="5" fill="#1877F2"/><path d="M15.5 8H13.5C13.2 8 13 8.2 13 8.5V10H15.5L15.1 12.5H13V19H10.5V12.5H9V10H10.5V8.5C10.5 6.6 11.8 5 14 5H15.5V8Z" fill="white"/></svg></a>
+        <a class="social-icon-btn" href="https://www.tiktok.com/@accazacoffee" target="_blank" rel="noopener noreferrer" title="TikTok"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="5" fill="#000"/><path d="M16.6 5.82s.51.5 0 0A4.278 4.278 0 0 1 15.54 3h-3.09v12.4a2.592 2.592 0 0 1-2.59 2.5 2.592 2.592 0 0 1-2.59-2.5 2.592 2.592 0 0 1 2.59-2.5c.28 0 .54.04.79.1V9.39a5.629 5.629 0 0 0-.79-.05A5.654 5.654 0 0 0 4.12 15a5.654 5.654 0 0 0 5.65 5.65 5.654 5.654 0 0 0 5.65-5.65V8.01a7.35 7.35 0 0 0 4.34 1.4V6.34s-2.07.11-3.16-0.52z" fill="white"/></svg></a>
+        <a class="social-icon-btn" href="https://www.threads.net/@accazacoffee" target="_blank" rel="noopener noreferrer" title="Threads"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect width="24" height="24" rx="5" fill="#000"/><path d="M16.5 10.8c-.1-.1-.3-.1-.4-.2-.7-3.4-3.1-4.1-4.6-4.1-2.5 0-4.5 2-4.5 5s2 5 4.5 5c1.8 0 3.2-1 3.9-2.6" stroke="white" stroke-width="1.3" stroke-linecap="round" fill="none"/><path d="M14 11c.2.4.3.9.3 1.5 0 1.9-1.2 3-2.8 3s-2.8-1.1-2.8-3 1.2-3 2.8-3c.5 0 1 .1 1.4.4" stroke="white" stroke-width="1.3" stroke-linecap="round" fill="none"/><path d="M16.5 10.8c.1.5.2 1.1.2 1.7 0 3.1-2.1 5-4.7 5" stroke="white" stroke-width="1.3" stroke-linecap="round" fill="none"/></svg></a>
       </div>
     </div>
   </div>
@@ -423,7 +463,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     </div>
     <div class="about-visual">
       <div class="visual-main" style="overflow:hidden;padding:0;position:relative;">
-        <img src="https://i.postimg.cc/8zM97Trf/coffe-latte1.jpg" alt="Accaza Coffee" style="width:100%;height:100%;object-fit:cover;display:block;border-radius:8px;"/>
+        <img src="https://i.postimg.cc/8zM97Trf/coffe-latte1.jpg" alt="Accaza Coffee latte art" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;border-radius:8px;"/>
         <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,rgba(59,35,20,0.75),transparent);padding:1rem;text-align:center;"><p style="font-size:0.75rem;color:rgba(245,239,230,0.9);letter-spacing:0.2em;text-transform:uppercase;font-family:'Inter',sans-serif;">Freshly Brewed</p></div>
       </div>
       <div class="visual-stats">
@@ -442,7 +482,15 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
       <p class="section-label" style="color:var(--bl);">See It For Yourself</p>
       <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cr);margin-bottom:0.75rem;">Feel the Accaza Vibe</h2>
     </div>
-    <div class="reel-embed-wrap"><iframe src="https://www.facebook.com/plugins/video.php?href=https%3A%2F%2Fwww.facebook.com%2Freel%2F716824994597405&show_text=false&width=560&autoplay=false" width="560" height="700" style="border:none;overflow:hidden;border-radius:12px;" scrolling="no" frameborder="0" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe></div>
+    <div class="reel-embed-wrap" style="text-align:center;">
+      <div style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:3rem 2rem;max-width:480px;margin:0 auto;">
+        <div style="font-size:3rem;margin-bottom:1rem;">🎬</div>
+        <p style="font-family:'Playfair Display',serif;font-size:1.3rem;color:var(--cr);">Watch Our Latest Reel</p>
+        <p style="font-size:0.88rem;color:rgba(245,239,230,0.6);margin-bottom:1.75rem;line-height:1.6;">See the Accaza vibe — the cozy space, the craft, and the community that makes us home.</p>
+        <a href="https://www.facebook.com/reel/716824994597405" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:0.6rem;background:var(--bl);color:#fff;text-decoration:none;padding:0.9rem 2rem;border-radius:6px;font-size:0.9rem;letter-spacing:0.06em;text-transform:uppercase;" onmouseover="this.style.background='#b8784a'" onmouseout="this.style.background='var(--bl)'">Watch on Facebook</a>
+        <p style="font-size:0.72rem;color:rgba(245,239,230,0.35);margin-top:1.25rem;">Opens Facebook in a new tab</p>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -479,8 +527,8 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
         <div style="margin-top:1.5rem;background:#fff;border:1px solid var(--cd);border-radius:10px;padding:1.25rem;text-align:center;">
           <p style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--bd);margin-bottom:1rem;">📲 Scan to Pay</p>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
-            <div><img src="https://i.postimg.cc/JzD6kpwZ/GCASH-QR-CODE.jpg" alt="GCash QR" style="width:100%;border-radius:8px;"/></div>
-            <div><img src="https://i.postimg.cc/Hnk3s24z/BDO-QR-CODE.jpg" alt="BDO QR" style="width:100%;border-radius:8px;"/></div>
+            <div><img src="https://i.postimg.cc/JzD6kpwZ/GCASH-QR-CODE.jpg" alt="GCash QR Code" loading="lazy" style="width:100%;border-radius:8px;"/></div>
+            <div><img src="https://i.postimg.cc/Hnk3s24z/BDO-QR-CODE.jpg" alt="BDO QR Code" loading="lazy" style="width:100%;border-radius:8px;"/></div>
           </div>
           <p style="font-size:0.75rem;color:var(--tl);margin-top:0.75rem;line-height:1.6;">Scan to pay via <strong>GCash</strong> or <strong>BDO InstaPay</strong>, then attach your screenshot as proof of payment below. ✅</p>
         </div>
@@ -533,6 +581,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
           <button onclick="resetOrder()" style="width:100%;margin-top:0.5rem;background:transparent;color:var(--tl);border:1px solid var(--cd);border-radius:6px;padding:0.7rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;">🔄 Reset Order</button>
           <div id="orderConfirm" style="display:none;margin-top:1rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:8px;padding:1.25rem;text-align:center;">
             <p style="font-size:1.1rem;font-weight:600;color:#2d6a4f;margin-bottom:0.5rem;">🎉 Order Placed Successfully!</p>
+            <p style="font-size:0.8rem;color:#4a7c59;margin-bottom:0.5rem;">📸 Tag us <strong>@accazacoffeehouse</strong> &amp; use <strong>#AccazaCoffee</strong> to be featured!</p>
             <p style="font-size:0.85rem;color:#2d6a4f;margin-bottom:0.75rem;">Your Order ID is:</p>
             <div style="background:#fff;border:2px solid #a8d5b5;border-radius:8px;padding:0.75rem 1.5rem;display:inline-block;margin-bottom:0.75rem;"><span id="displayOrderId" style="font-family:'Playfair Display',serif;font-size:1.6rem;color:var(--bd);font-weight:600;letter-spacing:0.1em;"></span></div>
             <p style="font-size:0.82rem;color:var(--tm);line-height:1.6;margin-bottom:0.5rem;">📱 We will contact you via your preferred method to confirm your order.</p>
@@ -573,7 +622,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
         </div>
         <div class="cal-wrap" id="timeSlotsWrap" style="display:none;margin-bottom:1.5rem;">
           <p style="font-size:0.8rem;color:rgba(245,239,230,0.7);margin-bottom:0.75rem;">Select a time for <strong id="selectedDateLabel" style="color:var(--cr);"></strong></p>
-          <div style="margin-bottom:0.6rem;"><div class="time-slot available" id="fullDaySlot" onclick="selectTimeSlot('Full Day Booking')" style="background:rgba(45,158,95,0.2);border-color:rgba(45,158,95,0.4);color:#a5d6a7;font-weight:700;padding:0.65rem;font-size:0.85rem;text-align:center;border-radius:6px;cursor:pointer;">📅 Full Day Booking</div></div>
+          <div style="margin-bottom:0.6rem;"><div class="time-slot available" id="fullDaySlot" onclick="selectTimeSlot('Full Day Booking')" style="font-weight:700;padding:0.65rem;font-size:0.85rem;text-align:center;border-radius:6px;cursor:pointer;">📅 Full Day Booking</div></div>
           <div class="time-slots-grid" id="timeSlotsGrid"></div>
         </div>
         <div class="res-form-box" id="resFormWrap" style="display:none;">
@@ -618,12 +667,21 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 <section class="reviews-section" id="reviews">
   <div class="reviews-inner">
     <div style="text-align:center;margin-bottom:3rem;"><p class="section-label" style="color:var(--bl);">What People Say</p><h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.75rem;">Customer Reviews</h2></div>
-    <div class="review-card" style="margin-bottom:1.25rem;"><div class="review-stars">⭐⭐⭐⭐⭐</div><p style="font-weight:600;color:var(--bd);margin-bottom:0.75rem;font-size:0.95rem;">— A Hidden Gem Right Along the Road to SM Dasmariñas!</p><p class="review-text">"If you haven't discovered Accaza Coffee House yet, you're genuinely missing out. Conveniently located right along the roadside near SM Dasmariñas, this place is incredibly easy to find — whether you're commuting, driving, or just passing through the area. No need to hunt for it deep inside a subdivision or tucked away in an alley. It's right there, welcoming you in.<br/><br/>From the moment you step inside, you'll immediately feel the difference. The shop is surprisingly spacious — a breath of fresh air compared to the cramped, overcrowded cafés that have become all too common. There's plenty of room to settle in, spread out your things, and actually breathe. The aura of the place is calm and serene, with an atmosphere that quietly tells you: slow down, you're in the right place.<br/><br/>And the coffee? Absolutely outstanding. Accaza takes their brews seriously — each cup carries a distinct, well-crafted flavor that sets it apart from your typical run-of-the-mill café. Whether you prefer something bold and rich or smooth and mellow, their menu delivers a coffee experience worth coming back for, again and again.<br/><br/>What truly makes Accaza special, though, is how perfectly suited it is for students and professionals alike. Working on a school assignment? Need to finalize that business proposal or prep for a client presentation? This is your spot. The comfortable seating, the peaceful ambiance, and the overall tranquility of the space create the kind of environment where your mind can truly focus and thrive. No unnecessary noise, no chaos — just you, your work, and a great cup of coffee.<br/><br/>The comfort here gives you genuine peace of mind. It's the kind of place where hours pass without you noticing, because everything around you supports concentration and calm. Accaza Coffee House isn't just a café — it's a productive sanctuary in the heart of Dasmariñas.<br/><br/>Highly, highly recommended. Whether you're a student pulling a study session or a businessman chasing a deadline, Accaza Coffee House is exactly where you need to be. ☕✨"</p><div class="review-author"><div class="review-avatar">M</div><div><div class="review-name">Maria Theresa & Quinn Isabella Margaux</div><div class="review-date">June 2, 2026</div></div></div></div>
+    <div class="review-card" style="margin-bottom:1.25rem;"><div class="review-stars">⭐⭐⭐⭐⭐</div><p style="font-weight:600;color:var(--bd);margin-bottom:0.75rem;font-size:0.95rem;">Accaza Coffee House — A Productive Sanctuary in Dasmariñas ⭐⭐⭐⭐⭐</p><p class="review-text">Accaza Coffee House is a hidden gem right along the roadside near SM Dasmariñas — easy to find whether you're commuting or driving. Inside, it's surprisingly spacious with a calm, serene atmosphere that's rare among today's cramped cafés.<br><br>The coffee is outstanding, with well-crafted flavors from bold to smooth. But what truly sets Accaza apart is how perfectly it serves both students and professionals — it's a productive sanctuary where you can focus, study, or work in peace. Comfortable seating, peaceful ambiance, and a space that lets hours pass without distraction.<br><br>Highly recommended for anyone looking for great coffee and a place to get things done. ☕✨</p><div class="review-author"><div class="review-avatar">M</div><div><div class="review-name">Maria Theresa &amp; Quinn Isabella Margaux</div><div class="review-date">June 2, 2026</div></div></div></div>
     <div class="reviews-grid" id="reviewsGrid">
-      <div class="review-card"><div class="review-stars">⭐⭐⭐⭐⭐</div><p class="review-text">"A Hidden Gem! Surprisingly spacious, calm, and serene inside."</p><div class="review-author"><div class="review-avatar">M</div><div><div class="review-name">Molina Page</div><div class="review-date">June 2026</div></div></div></div>
-      <div class="review-card"><div class="review-stars">⭐⭐⭐⭐⭐</div><p class="review-text">"Cosy atmosphere · Good for working · Best coffee"</p><div class="review-author"><div class="review-avatar">C</div><div><div class="review-name">Camilla Andrea</div><div class="review-date">April 2026</div></div></div></div>
+      <div class="review-card"><div class="review-stars">⭐⭐⭐⭐⭐</div><p class="review-text">The coffee was absolutely delightful — perfectly brewed, rich in flavor, and made with genuine care. Every sip spoke to your passion and quality.<br><br>Beyond the coffee, your staff made the visit truly special. From the warm greeting to the attentive service, everyone made me feel genuinely valued. It's rare to find a team so professional yet so kind and approachable.</p><div class="review-author"><div class="review-avatar">M</div><div><div class="review-name">Molina Page</div><div class="review-date">June 2026</div></div></div></div>
+      <div class="review-card"><div class="review-stars">⭐⭐⭐⭐⭐</div><p class="review-text">Nasa may highway ang coffee shop, ngunit nakakubli ang ganda nitong hindi mo mamamalas kung hindi sasadyain. Mukha siyang maliit sa labas, subalit malaki ang espasyo pagpasok, na tila napunta ka na sa ibang lugar.<br><br>Gusto ko mang ipagdamot ang lugar para patuloy akong makatambay nang matiwasay, subalit tingin ko'y kasalanan ito sa mga mahilig sa kape (at sa may-ari na rin) kung hindi ito maibabahagi sa iba.</p><div class="review-author"><div class="review-avatar">C</div><div><div class="review-name"><a href="https://www.facebook.com/writercamillaandrea" target="_blank" rel="noopener noreferrer" style="color:var(--bl);text-decoration:none;">Camilla Andrea</a></div><div class="review-date">April 6, 2026 · via Facebook</div></div></div></div>
       <div class="review-card"><div class="review-stars">⭐⭐⭐⭐⭐</div><p class="review-text">"10/10 would recommend!! we will surely come back 🤌"</p><div class="review-author"><div class="review-avatar">C</div><div><div class="review-name">Cess Borja</div><div class="review-date">July 2025</div></div></div></div>
     </div>
+  </div>
+
+  <div style="text-align:center;padding-bottom:2.5rem;">
+    <a href="https://search.google.com/local/writereview?placeid=PLACEHOLDER" target="_blank" rel="noopener noreferrer"
+       style="display:inline-block;background:var(--bd);color:#fff;padding:0.75rem 2rem;
+              border-radius:2rem;font-weight:600;text-decoration:none;font-size:0.95rem;
+              box-shadow:0 2px 10px rgba(0,0,0,0.2);"
+       onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">⭐ Leave Us a Google Review</a>
+    <p style="margin-top:0.75rem;font-size:0.82rem;color:#aaa;">Your review means the world to us ☕</p>
   </div>
 </section>
 
@@ -651,19 +709,19 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 <!-- GALLERY -->
 <section class="gallery-section" id="gallery">
   <div class="gallery-inner">
-    <div style="text-align:center;margin-bottom:3rem;"><p class="section-label" style="color:var(--bl);">Our Space</p><h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.75rem;">A Peek Inside</h2></div>
+    <div style="text-align:center;margin-bottom:3rem;"><p class="section-label" style="color:var(--bl);">Our Space</p><h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.5rem;">A Peek Inside</h2><p style="color:rgba(245,239,230,0.45);font-size:0.82rem;letter-spacing:0.04em;">Click any photo for a closer look</p></div>
     <div class="gallery-grid">
-      <div class="gallery-card tall"><img src="https://i.postimg.cc/g0qrJsnX/6.jpg" alt="Accaza"/></div>
-      <div class="gallery-card"><img src="https://i.postimg.cc/TwtsR8Gd/image.png" alt="Accaza"/></div>
-      <div class="gallery-card"><img src="https://i.postimg.cc/5yPsM8BH/image.png" alt="Accaza"/></div>
-      <div class="gallery-card"><img src="https://i.postimg.cc/wMbQrgz3/image.png" alt="Accaza"/></div>
-      <div class="gallery-card"><img src="https://i.postimg.cc/BvGckmr5/image.png" alt="Accaza"/></div>
-      <div class="gallery-card"><img src="https://i.postimg.cc/sXJJz5YV/image.png" alt="Accaza"/></div>
-      <div class="gallery-card"><img src="https://i.postimg.cc/B6mT84jW/image.png" alt="Accaza"/></div>
-      <div class="gallery-card"><img src="https://i.postimg.cc/yxJZk9qq/image.png" alt="Accaza"/></div>
-      <div class="gallery-card"><img src="https://i.postimg.cc/CxpqxzcB/image.png" alt="Accaza"/></div>
-      <div class="gallery-card"><img src="https://i.postimg.cc/Pq2pyKTr/image.png" alt="Accaza"/></div>
-      <div class="gallery-card"><img src="https://i.postimg.cc/sxZMVrSZ/image.png" alt="Accaza"/></div>
+      <div onclick="openLightbox(0)" class="gallery-card tall"><img src="https://i.postimg.cc/g0qrJsnX/6.jpg" alt="Accaza Coffee House gallery" loading="lazy"/></div>
+      <div onclick="openLightbox(1)" class="gallery-card"><img src="https://i.postimg.cc/TwtsR8Gd/image.png" alt="Accaza"/></div>
+      <div onclick="openLightbox(2)" class="gallery-card"><img src="https://i.postimg.cc/5yPsM8BH/image.png" alt="Accaza"/></div>
+      <div onclick="openLightbox(3)" class="gallery-card"><img src="https://i.postimg.cc/wMbQrgz3/image.png" alt="Accaza"/></div>
+      <div onclick="openLightbox(4)" class="gallery-card"><img src="https://i.postimg.cc/BvGckmr5/image.png" alt="Accaza"/></div>
+      <div onclick="openLightbox(5)" class="gallery-card"><img src="https://i.postimg.cc/sXJJz5YV/image.png" alt="Accaza"/></div>
+      <div onclick="openLightbox(6)" class="gallery-card"><img src="https://i.postimg.cc/B6mT84jW/image.png" alt="Accaza"/></div>
+      <div onclick="openLightbox(7)" class="gallery-card"><img src="https://i.postimg.cc/yxJZk9qq/image.png" alt="Accaza"/></div>
+      <div onclick="openLightbox(8)" class="gallery-card"><img src="https://i.postimg.cc/CxpqxzcB/image.png" alt="Accaza"/></div>
+      <div onclick="openLightbox(9)" class="gallery-card"><img src="https://i.postimg.cc/Pq2pyKTr/image.png" alt="Accaza"/></div>
+      <div onclick="openLightbox(10)" class="gallery-card"><img src="https://i.postimg.cc/sxZMVrSZ/image.png" alt="Frappe and cold drinks at Accaza" loading="lazy"/></div>
     </div>
   </div>
 </section>
@@ -682,6 +740,11 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
       </div>
       <div class="contact-info">
         <div class="contact-info-item"><div class="contact-icon">📍</div><div><h4>Address</h4><p>Saratoga Avenue, La Mediterranea Subdivision,<br/>Governor's Drive, Dasmariñas, Cavite, Philippines</p></div></div>
+        <div style="margin-top:1.25rem;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.2);">
+          <iframe src="https://maps.google.com/maps?q=14.2990898,120.9607271&z=17&output=embed"
+            width="100%" height="280" style="border:0;display:block;" allowfullscreen="" loading="lazy"
+            referrerpolicy="no-referrer-when-downgrade" title="Accaza Coffee House — La Mediterranea, Dasmariñas, Cavite"></iframe>
+        </div>
         <div class="contact-info-item"><div class="contact-icon">🕐</div><div><h4>Opening Hours</h4><p>Monday – Sunday<br/><span style="color:#c9956a;font-weight:500;">3:00 PM – 12:00 Midnight</span></p></div></div>
         <div class="contact-info-item"><div class="contact-icon">📱</div><div><h4>GCash / Viber / WhatsApp / SMS</h4><p>0927 692 4831</p></div></div>
         <div class="contact-info-item"><div class="contact-icon">💳</div><div><h4>Online Payment</h4><p>GCash · BDO · UnionBank<br/><span style="color:rgba(245,239,230,0.5);font-size:0.8rem;">All under ACCAZA</span></p></div></div>
@@ -913,8 +976,8 @@ const db=getDatabase(app);
 // DB refs
 const ordersRef=ref(db,'orders'),archivedRef=ref(db,'archivedOrders'),reservationsRef=ref(db,'reservations'),feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),calBlocksRef=ref(db,'calBlocks'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories');
 
-const ADMIN_PASS='accaza2026',CAFE_PHONE='639276924831',CAFE_EMAIL='mariadaniela@gmail.com',MAX_GUESTS=30;
-const TIME_SLOTS=['9:00 AM','10:00 AM','11:00 AM','12:00 PM','1:00 PM','2:00 PM','3:00 PM','4:00 PM','5:00 PM','6:00 PM','7:00 PM','8:00 PM','9:00 PM','10:00 PM','11:00 PM','12:00 Midnight'];
+const ADMIN_PASS_HASH='af19bbe08d782cb4e94bafef235e69784598a1caa79b384e20ef02c4c5d37e6c',CAFE_PHONE='639276924831',CAFE_EMAIL='mariadaniela@gmail.com',MAX_GUESTS=30;
+const TIME_SLOTS=['3:00 PM','4:00 PM','5:00 PM','6:00 PM','7:00 PM','8:00 PM','9:00 PM','10:00 PM','11:00 PM','12:00 Midnight'];
 
 const DEFAULT_CATS=[
   {id:'coffee',label:'Coffee Based',icon:'☕',order:0},
@@ -1405,7 +1468,7 @@ function selectCalDate(y,m,d){
 function renderTimeSlots(){
   const confirmedSlots=getConfirmedSlotsForDate(selectedDate),dayFull=getConfirmedGuestsForDate(selectedDate)>=MAX_GUESTS;
   const fdBtn=document.getElementById('fullDaySlot');
-  if(fdBtn){const fdSel=selectedTime==='Full Day Booking';fdBtn.style.background=fdSel?'var(--bl)':'rgba(201,149,106,0.2)';fdBtn.style.color=fdSel?'#fff':'#c9956a';fdBtn.style.borderColor=fdSel?'#c9956a':'rgba(201,149,106,0.5)';}
+  if(fdBtn){const fdSel=selectedTime==='Full Day Booking';fdBtn.style.background=fdSel?'rgba(45,158,95,0.5)':'rgba(45,158,95,0.15)';fdBtn.style.color=fdSel?'#fff':'#a5d6a7';fdBtn.style.borderColor=fdSel?'rgba(45,158,95,0.8)':'rgba(45,158,95,0.3)';}
   const grid=document.getElementById('timeSlotsGrid');
   grid.innerHTML=TIME_SLOTS.map(function(slot){
     const blocked=isSlotBlocked(selectedDate,slot)||dayFull,confirmed=confirmedSlots.has(slot),sel=selectedTime===slot;
@@ -1522,7 +1585,7 @@ function renderOrders(){
       +(o.proof?'<div style="margin:0.5rem 0;"><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;">📎 Proof:</p><img src="'+o.proof+'" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid var(--cd);cursor:pointer;" onclick="window.open(\''+o.proof+'\',\'_blank\')"/></div>':'<p style="font-size:0.75rem;color:#c0392b;margin:0.3rem 0;">⚠️ No proof of payment</p>')
       +'<div class="order-admin-footer"><span class="order-total-tag">₱'+(o.total||0).toLocaleString()+' · '+o.payment+'</span><div style="display:flex;align-items:center;gap:0.5rem;">'
       +(isReceived?'<span style="font-size:0.8rem;color:#1b5e20;font-weight:500;">✅ Received</span>':'<select class="status-select" data-orderid="'+o.id+'"><option'+(o.status==='Pending'?' selected':'')+'>Pending</option><option'+(o.status==='Confirmed'?' selected':'')+'>Confirmed</option><option'+(o.status==='Preparing'?' selected':'')+'>Preparing</option><option'+(o.status==='Completed'?' selected':'')+'>Completed</option></select>')
-      +(canArchive?'<button data-archive="'+o.id+'" style="background:#e2e3e5;border:1px solid #bbb;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#41464b;cursor:pointer;">📦 Archive</button>':'')
+      +(canArchive?'<button data-archive="'+o.id+'" style="background:#e2e3e5;border:1px solid #bbb;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#41464b;cursor:pointer;">📦 Archive</button>':'')+'<button onclick="printOrder(\''+o.id+'\')" style="background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#e65100;cursor:pointer;font-weight:600;">🖨️ Print</button>'
       +'</div></div></div>';
   }).join('');
   el.querySelectorAll('.status-select[data-orderid]').forEach(function(sel){sel.addEventListener('change',function(){update(ref(db,'orders/'+this.dataset.orderid),{status:this.value});});});
@@ -1544,7 +1607,7 @@ function renderReservations(){
     return'<div class="order-admin-card"><div class="order-admin-top"><div><div class="order-admin-name">'+r.name+' <span style="font-size:0.75rem;color:var(--tl);">#'+r.id+'</span>'+(isFullDay?'<span class="badge" style="background:#fff3cd;color:#664d03;margin-left:0.4rem;">📅 Full Day</span>':'')+'</div><div class="order-admin-meta">'+r.phone+' · '+r.date+' · '+r.time+' · '+r.guests+' guests'+(r.occasion?' · '+r.occasion:'')+'</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;"><span class="badge badge-'+(r.status||'pending').toLowerCase()+'">'+r.status+'</span><span style="font-size:0.7rem;color:var(--tl);">'+bookType+'</span></div></div>'
       +(r.notes?'<div class="order-admin-items">📝 '+r.notes+'</div>':'')
       +(r.contact?'<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📱 '+r.contact+' ('+r.contactMethod+')</div>':'')
-      +(r.status==='Confirmed'?'<div style="margin:0.6rem 0;padding:0.75rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:8px;"><p style="font-size:0.75rem;font-weight:600;color:#2d6a4f;margin-bottom:0.5rem;">📨 Send Confirmation Message via:</p><div style="display:flex;gap:0.4rem;flex-wrap:wrap;"><a href="https://wa.me/63'+phone+'?text='+msg+'" target="_blank" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.75rem;text-decoration:none;">💬 WhatsApp</a><a href="viber://chat?number=%2B63'+phone+'&text='+msg+'" style="background:#7360f2;color:#fff;border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.75rem;text-decoration:none;">📱 Viber</a><a href="sms:+63'+phone+'?body='+msg+'" style="background:#5c3d2e;color:#fff;border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.75rem;text-decoration:none;">📩 SMS</a></div></div>':'')
+      +(r.status==='Confirmed'?'<div style="margin:0.6rem 0;padding:0.75rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:8px;"><p style="font-size:0.75rem;font-weight:600;color:#2d6a4f;margin-bottom:0.5rem;">📨 Send Confirmation Message via:</p><div style="display:flex;gap:0.4rem;flex-wrap:wrap;"><a href="https://wa.me/63'+phone+'?text='+msg+'" target="_blank" rel="noopener noreferrer" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.75rem;text-decoration:none;">💬 WhatsApp</a><a href="viber://chat?number=%2B63'+phone+'&text='+msg+'" style="background:#7360f2;color:#fff;border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.75rem;text-decoration:none;">📱 Viber</a><a href="sms:+63'+phone+'?body='+msg+'" style="background:#5c3d2e;color:#fff;border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.75rem;text-decoration:none;">📩 SMS</a></div></div>':'')
       +'<div class="order-admin-footer"><span></span><div style="display:flex;gap:0.5rem;"><select class="status-select" data-resid="'+r.id+'"><option'+(r.status==='Pending'?' selected':'')+'>Pending</option><option'+(r.status==='Confirmed'?' selected':'')+'>Confirmed</option><option'+(r.status==='Declined'?' selected':'')+'>Declined</option><option'+(r.status==='Completed'?' selected':'')+'>Completed</option></select>'+(r.status==='Completed'||r.status==='Declined'?'<button data-resid="'+r.id+'" data-resname="'+r.name+'" class="del-res-btn" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>':'')+'</div></div></div>';
   }).join('');
   el.querySelectorAll('.status-select[data-resid]').forEach(function(sel){
@@ -1859,9 +1922,11 @@ function showDeletePopup(label,onConfirm){
 
 window.openAdmin=function(){document.getElementById('loginOverlay').classList.add('show');setTimeout(function(){document.getElementById('adminPass').focus();},150);};
 window.closeAdmin=function(){document.getElementById('loginOverlay').classList.remove('show');document.getElementById('loginErr').style.display='none';document.getElementById('adminPass').value='';};
-window.checkLogin=function(){
+window.checkLogin=async function(){
   const pass=document.getElementById('adminPass').value;
-  if(pass===ADMIN_PASS){
+  const hashBuf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pass));
+  const hashHex=Array.from(new Uint8Array(hashBuf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  if(hashHex===ADMIN_PASS_HASH){
     adminLoggedIn=true;closeAdmin();
     ['adminDash','availSection','commentsSection'].forEach(function(id){document.getElementById(id).style.display='block';});
     ['navAvail','navComments'].forEach(function(id){document.getElementById(id).style.display='block';});
@@ -1903,7 +1968,7 @@ function showContactOptions(msg){
   const d=document.createElement('div');d.className='chat-msg bot';
   d.innerHTML='<p style="margin-bottom:0.6rem;">🤔 Sorry, I\'m not sure about that! Reach us directly:</p>'
     +'<div style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.75rem;">'
-    +'<a href="https://wa.me/'+CAFE_PHONE+'?text='+encoded+'" target="_blank" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">💬 WhatsApp</a>'
+    +'<a href="https://wa.me/'+CAFE_PHONE+'?text='+encoded+'" target="_blank" rel="noopener noreferrer" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">💬 WhatsApp</a>'
     +'<a href="viber://chat?number=%2B'+CAFE_PHONE+'&text='+encoded+'" style="background:#7360f2;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">📱 Viber</a>'
     +'<a href="sms:+'+CAFE_PHONE+'?body='+encoded+'" style="background:#5c3d2e;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">📩 SMS</a>'
     +'<a href="mailto:'+CAFE_EMAIL+'?subject=Customer Inquiry&body='+encoded+'" style="background:#a0673a;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">📧 Email</a>'
@@ -1924,6 +1989,112 @@ if(archFrom)archFrom.value=new Date(nm.getFullYear(),nm.getMonth(),1).toISOStrin
 if(archTo)archTo.value=nm.toISOString().slice(0,10);
 // Trigger initial menu render after short delay for Firebase
 setTimeout(function(){if(Object.keys(menuItemsMap).length)renderMenuSection();},1000);
+// ── Gallery Lightbox ────────────────────────────────────────────────────────
+(function(){
+  var GALLERY = ["https://i.postimg.cc/g0qrJsnX/6.jpg", "https://i.postimg.cc/TwtsR8Gd/image.png", "https://i.postimg.cc/5yPsM8BH/image.png", "https://i.postimg.cc/wMbQrgz3/image.png", "https://i.postimg.cc/BvGckmr5/image.png", "https://i.postimg.cc/sXJJz5YV/image.png", "https://i.postimg.cc/B6mT84jW/image.png", "https://i.postimg.cc/yxJZk9qq/image.png", "https://i.postimg.cc/CxpqxzcB/image.png", "https://i.postimg.cc/Pq2pyKTr/image.png", "https://i.postimg.cc/sxZMVrSZ/image.png"];
+  var current = 0;
+  function show(idx) {
+    current = (idx + GALLERY.length) % GALLERY.length;
+    var img = document.getElementById('lightbox-img');
+    img.src = GALLERY[current];
+    document.getElementById('lightbox-counter').textContent = (current + 1) + ' / ' + GALLERY.length;
+  }
+  window.openLightbox = function(idx) {
+    show(idx);
+    var lb = document.getElementById('lightbox');
+    lb.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  };
+  window.closeLightbox = function() {
+    document.getElementById('lightbox').classList.remove('open');
+    document.body.style.overflow = '';
+  };
+  window.shiftLightbox = function(dir) { show(current + dir); };
+  document.addEventListener('keydown', function(e) {
+    var lb = document.getElementById('lightbox');
+    if (!lb || !lb.classList.contains('open')) return;
+    if (e.key === 'Escape')     closeLightbox();
+    if (e.key === 'ArrowLeft')  shiftLightbox(-1);
+    if (e.key === 'ArrowRight') shiftLightbox(1);
+  });
+})();
+// ── Hamburger menu ──────────────────────────────────────────────────────────
+window.toggleNav = function() {
+  var nl = document.querySelector('.nav-links');
+  var hb = document.getElementById('hamburgerBtn');
+  if (nl) { nl.classList.toggle('nav-open'); }
+  if (hb) { hb.classList.toggle('open'); var open = nl && nl.classList.contains('nav-open'); hb.setAttribute('aria-expanded', open); }
+};
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.nav-links a').forEach(function(a) {
+    a.addEventListener('click', function() {
+      var nl = document.querySelector('.nav-links');
+      var hb = document.getElementById('hamburgerBtn');
+      if (nl) nl.classList.remove('nav-open');
+      if (hb) { hb.classList.remove('open'); hb.setAttribute('aria-expanded','false'); }
+    });
+  });
+});
+// ── Print Order as Kitchen Ticket ──────────────────────────────────────────
+window.printOrder = function(orderId) {
+  var o = adminOrdersMap[orderId];
+  if (!o) return;
+  var isDelivery = o.type === 'Delivery';
+  var now = new Date();
+  var printTime = now.toLocaleString('en-PH', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit', hour12:true });
+  var itemsHtml = (o.items || '').split(',').map(function(s){ return '<div>' + s.trim() + '</div>'; }).join('');
+  var addrRow = (isDelivery && o.address) ? '<div class="row"><span class="lbl">Address</span><span>' + o.address + '</span></div>' : '';
+  var schedRow = (o.date || o.time) ? '<div class="row"><span class="lbl">Schedule</span><span>' + (o.date||'') + ' ' + (o.time||'') + '</span></div>' : '';
+  var notesRow = o.notes ? '<div class="row"><span class="lbl">Notes</span><span>' + o.notes + '</span></div><hr/>' : '';
+  var ticketHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Order #' + o.id + ' — Kitchen Ticket</title>'
+    + '<style>'
+    + '* { box-sizing:border-box; margin:0; padding:0; }'
+    + 'body { font-family:"Courier New",Courier,monospace; font-size:13px; color:#000; background:#fff; padding:12px 16px; max-width:380px; }'
+    + '.logo { font-size:18px; font-weight:bold; text-align:center; letter-spacing:2px; margin-bottom:2px; }'
+    + '.sub  { text-align:center; font-size:10px; margin-bottom:10px; color:#555; }'
+    + 'hr    { border:none; border-top:1px dashed #000; margin:8px 0; }'
+    + '.row  { display:flex; justify-content:space-between; margin:3px 0; font-size:12px; }'
+    + '.lbl  { font-weight:bold; }'
+    + '.items { margin:4px 0; line-height:1.6; font-size:12px; }'
+    + '.total { font-size:16px; font-weight:bold; text-align:right; margin-top:6px; }'
+    + '.badge { display:inline-block; padding:2px 8px; border:1px solid #000; border-radius:3px; font-weight:bold; font-size:12px; margin-bottom:4px; }'
+    + '.footer { text-align:center; font-size:10px; margin-top:14px; color:#555; }'
+    + '@media print { body { max-width:none; } @page { margin:6mm; } }'
+    + '</style></head><body>'
+    + '<div class="logo">☕ ACCAZA</div>'
+    + '<div class="sub">Coffee House — Kitchen Ticket</div>'
+    + '<hr/>'
+    + '<div class="row"><span class="lbl">Order #</span><span>' + o.id + '</span></div>'
+    + '<div class="row"><span class="lbl">Printed</span><span>' + printTime + '</span></div>'
+    + '<hr/>'
+    + '<div class="row"><span class="lbl">Customer</span><span>' + (o.name||'—') + '</span></div>'
+    + '<div class="row"><span class="lbl">Contact</span><span>' + (o.phone||'—') + (o.contact?' / '+o.contact:'') + '</span></div>'
+    + '<div class="badge">' + (isDelivery ? '🛵 DELIVERY' : '🏠 PICK-UP') + '</div>'
+    + addrRow + schedRow
+    + '<hr/>'
+    + '<div class="lbl">Items:</div>'
+    + '<div class="items">' + itemsHtml + '</div>'
+    + '<hr/>'
+    + notesRow
+    + '<div class="row"><span class="lbl">Payment</span><span>' + (o.payment||'—') + '</span></div>'
+    + '<div class="total">TOTAL: ₱' + (o.total||0).toLocaleString() + '</div>'
+    + '<hr/>'
+    + '<div class="footer">— Thank you! Pass this to the kitchen. —</div>'
+    + '</body></html>';
+  var win = window.open('', '_blank', 'width=440,height=640');
+  win.document.write(ticketHtml);
+  win.document.close();
+  win.focus();
+  setTimeout(function() { win.print(); }, 400);
+};
 </script>
+<!-- Lightbox -->
+<div id="lightbox" role="dialog" aria-modal="true" aria-label="Image viewer" onclick="if(event.target===this)closeLightbox()">
+  <button id="lightbox-close" onclick="closeLightbox()" aria-label="Close">✕</button>
+  <button id="lightbox-prev"  onclick="shiftLightbox(-1)" aria-label="Previous">‹</button>
+  <img id="lightbox-img" src="" alt="Gallery photo"/>
+  <button id="lightbox-next"  onclick="shiftLightbox(1)"  aria-label="Next">›</button>
+  <div id="lightbox-counter"></div>
+</div>
 </body>
 </html>
