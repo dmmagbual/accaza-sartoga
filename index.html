@@ -850,7 +850,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     </div>
     <!-- ORDERS -->
     <div id="tab-orders" class="admin-tab-content" style="display:none;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;"><h3 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;">Active Orders</h3><button onclick="toggleArchivePanel()" style="background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.45rem 1rem;font-size:0.82rem;cursor:pointer;font-family:'Inter',sans-serif;">📦 View Archive</button></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;"><h3 id="ordersHeading" style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;">Active Orders</h3><button id="archiveToggleBtn" onclick="toggleArchivePanel()" style="background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.45rem 1rem;font-size:0.82rem;cursor:pointer;font-family:'Inter',sans-serif;">📦 View Archive</button></div>
       <div id="ordersList"><p style="color:var(--tl);text-align:center;padding:2rem;">Loading orders...</p></div>
       <div class="archive-section" id="archivePanel" style="display:none;">
         <div class="archive-header"><h3 style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--bd);">📦 Order Archive</h3>
@@ -1898,7 +1898,7 @@ window.savePayment=async function(){
 };
 
 let archivePanelOpen=false;
-window.toggleArchivePanel=function(){archivePanelOpen=!archivePanelOpen;document.getElementById('archivePanel').style.display=archivePanelOpen?'block':'none';if(archivePanelOpen)renderArchive();};
+window.toggleArchivePanel=function(){archivePanelOpen=!archivePanelOpen;document.getElementById('archivePanel').style.display=archivePanelOpen?'block':'none';document.getElementById('ordersList').style.display=archivePanelOpen?'none':'block';var btn=document.getElementById('archiveToggleBtn');var hdg=document.getElementById('ordersHeading');if(btn){btn.textContent=archivePanelOpen?'← Back to Orders':'📦 View Archive';}if(hdg){hdg.textContent=archivePanelOpen?'Order Archive':'Active Orders';}if(archivePanelOpen)renderArchive();};
 function renderArchive(){
   const el=document.getElementById('archiveList'),sumEl=document.getElementById('archiveSummary');
   const fromVal=document.getElementById('archiveFrom').value,toVal=document.getElementById('archiveTo').value;
