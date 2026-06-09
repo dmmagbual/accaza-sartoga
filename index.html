@@ -92,6 +92,7 @@ nav{position:fixed;top:0;width:100%;z-index:200;background:rgba(59,35,20,0.96);b
 .price-single{font-size:0.95rem;font-weight:500;color:#c9956a;}
 .avail-badge{font-size:0.72rem;font-weight:600;padding:0.2rem 0.6rem;border-radius:999px;display:inline-block;}
 .avail-yes{background:rgba(45,158,95,0.15);color:#2d9e5f;}
+.staff-mode .staff-hide{display:none!important;}
 .avail-no{background:rgba(192,57,43,0.12);color:#c0392b;}
 .order-section{background:var(--cr);padding:6rem 2rem;}
 .order-inner{max-width:1100px;margin:0 auto;}
@@ -322,7 +323,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 .status-select{border:1px solid var(--cd);border-radius:4px;padding:0.3rem 0.6rem;font-size:0.78rem;font-family:'Inter',sans-serif;color:var(--tm);cursor:pointer;}
 .payment-edit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;}
 .payment-edit-card{background:var(--cr);border:1px solid var(--cd);border-radius:8px;padding:1.25rem;}
-.payment-edit-card h4{font-family:'Playfair Display',serif;font-size:1rem;color:var(--bd);margin-bottom:0.85rem;}
+.payment-edit-card h4{font-family:'Playfair Display',serif;font-size:1rem;color:var(--bd);margin-bottom:0.5rem;}.pay-toggle-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:0.85rem;}.pay-toggle-row h4{margin-bottom:0;}.pay-switch{position:relative;display:inline-block;width:40px;height:22px;flex-shrink:0;}.pay-switch input{opacity:0;width:0;height:0;}.pay-slider{position:absolute;cursor:pointer;inset:0;background:#ccc;border-radius:22px;transition:.3s;}.pay-slider:before{position:absolute;content:'';height:16px;width:16px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s;}.pay-switch input:checked+.pay-slider{background:var(--bd);}.pay-switch input:checked+.pay-slider:before{transform:translateX(18px);}.pay-disabled-note{font-size:0.72rem;color:#c0392b;margin-bottom:0.5rem;display:none;}
 .btn-save{margin-top:1rem;width:100%;background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.65rem;font-size:0.8rem;cursor:pointer;font-family:'Inter',sans-serif;}
 .badge{display:inline-block;font-size:0.7rem;padding:0.2rem 0.6rem;border-radius:999px;font-weight:500;}
 .badge-pending{background:#fef3cd;color:#856404;}
@@ -524,13 +525,13 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
         <div class="item-list" id="orderItemList">
           <div class="order-empty-state"><span class="big-icon">☕</span><h3>What are you craving today?</h3><p>Choose a category above to explore our handcrafted drinks and pastries.</p></div>
         </div>
-        <div style="margin-top:1.5rem;background:#fff;border:1px solid var(--cd);border-radius:10px;padding:1.25rem;text-align:center;">
+        <div id="qrSection" style="margin-top:1.5rem;background:#fff;border:1px solid var(--cd);border-radius:10px;padding:1.25rem;text-align:center;">
           <p style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--bd);margin-bottom:1rem;">📲 Scan to Pay</p>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
-            <div><img src="https://i.postimg.cc/JzD6kpwZ/GCASH-QR-CODE.jpg" alt="GCash QR Code" loading="lazy" style="width:100%;border-radius:8px;"/></div>
-            <div><img src="https://i.postimg.cc/Hnk3s24z/BDO-QR-CODE.jpg" alt="BDO QR Code" loading="lazy" style="width:100%;border-radius:8px;"/></div>
+            <div id="qrGcash"><img src="https://i.postimg.cc/JzD6kpwZ/GCASH-QR-CODE.jpg" alt="GCash QR Code" loading="lazy" style="width:100%;border-radius:8px;"/></div>
+            <div id="qrBdo"><img src="https://i.postimg.cc/Hnk3s24z/BDO-QR-CODE.jpg" alt="BDO QR Code" loading="lazy" style="width:100%;border-radius:8px;"/></div>
           </div>
-          <p style="font-size:0.75rem;color:var(--tl);margin-top:0.75rem;line-height:1.6;">Scan to pay via <strong>GCash</strong> or <strong>BDO InstaPay</strong>, then attach your screenshot as proof of payment below. ✅</p>
+          <p style="font-size:0.75rem;color:var(--tl);margin-top:0.75rem;line-height:1.6;">Scan and pay using your preferred payment channel, then attach your receipt below as proof of payment. ✅</p>
         </div>
       </div>
       <div>
@@ -553,11 +554,13 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
           <h3 class="order-section-title" style="margin-top:1.5rem;">5. Payment Method</h3>
           <div class="order-type-btns">
             <button class="type-btn active" id="btnGcash" onclick="setPayment('gcash')">📱 GCash</button>
+            <button class="type-btn" id="btnMaya" onclick="setPayment('maya')" style="display:none;">💜 PayMaya</button>
             <button class="type-btn" id="btnBank" onclick="setPayment('bank')">🏦 Bank Transfer</button>
           </div>
           <div class="payment-info">
             <div id="gcashInfo"><p class="pay-label">GCash Number</p><p class="pay-value" id="gcashNum">0927 692 4831</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="gcashName">ACCAZA</p></div>
-            <div id="bankInfo" style="display:none;"><p class="pay-label">BDO Account</p><p class="pay-value" id="bankNum">0068-2050-9919</p><p class="pay-label" style="margin-top:0.5rem;">UnionBank Account</p><p class="pay-value" id="bankNum2">1093-3237-9862</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="bankAccName">ACCAZA</p></div>
+            <div id="mayaInfo" style="display:none;"><p class="pay-label">PayMaya Number</p><p class="pay-value" id="mayaNum">—</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="mayaName">—</p></div>
+            <div id="bankInfo" style="display:none;"><div id="bdoRow"><p class="pay-label">BDO Account</p><p class="pay-value" id="bankNum">0068-2050-9919</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="bankAccName">ACCAZA</p></div><div id="ubRow" style="margin-top:0.5rem;"><p class="pay-label">UnionBank Account</p><p class="pay-value" id="bankNum2">1093-3237-9862</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="bankAccName2">ACCAZA</p></div><div id="bank3Row" style="display:none;"><p class="pay-label" style="margin-top:0.5rem;" id="bank3LabelDisp">Other Bank Account</p><p class="pay-value" id="bank3Num">—</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="bank3AccName">—</p></div><div id="bank4Row" style="display:none;"><p class="pay-label" style="margin-top:0.5rem;" id="bank4LabelDisp">Other Bank Account</p><p class="pay-value" id="bank4Num">—</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="bank4AccName">—</p></div></div>
             <p style="font-size:0.75rem;color:var(--tl);margin-top:0.75rem;line-height:1.5;">After placing your order, send payment and screenshot your receipt. We'll confirm once verified. ✅</p>
           </div>
           <h3 class="order-section-title" style="margin-top:1.5rem;">6. Proof of Payment</h3>
@@ -667,12 +670,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 <section class="reviews-section" id="reviews">
   <div class="reviews-inner">
     <div style="text-align:center;margin-bottom:3rem;"><p class="section-label" style="color:var(--bl);">What People Say</p><h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.75rem;">Customer Reviews</h2></div>
-    <div class="review-card" style="margin-bottom:1.25rem;"><div class="review-stars">⭐⭐⭐⭐⭐</div><p style="font-weight:600;color:var(--bd);margin-bottom:0.75rem;font-size:0.95rem;">Accaza Coffee House — A Productive Sanctuary in Dasmariñas ⭐⭐⭐⭐⭐</p><p class="review-text">Accaza Coffee House is a hidden gem right along the roadside near SM Dasmariñas — easy to find whether you're commuting or driving. Inside, it's surprisingly spacious with a calm, serene atmosphere that's rare among today's cramped cafés.<br><br>The coffee is outstanding, with well-crafted flavors from bold to smooth. But what truly sets Accaza apart is how perfectly it serves both students and professionals — it's a productive sanctuary where you can focus, study, or work in peace. Comfortable seating, peaceful ambiance, and a space that lets hours pass without distraction.<br><br>Highly recommended for anyone looking for great coffee and a place to get things done. ☕✨</p><div class="review-author"><div class="review-avatar">M</div><div><div class="review-name">Maria Theresa &amp; Quinn Isabella Margaux</div><div class="review-date">June 2, 2026</div></div></div></div>
-    <div class="reviews-grid" id="reviewsGrid">
-      <div class="review-card"><div class="review-stars">⭐⭐⭐⭐⭐</div><p class="review-text">The coffee was absolutely delightful — perfectly brewed, rich in flavor, and made with genuine care. Every sip spoke to your passion and quality.<br><br>Beyond the coffee, your staff made the visit truly special. From the warm greeting to the attentive service, everyone made me feel genuinely valued. It's rare to find a team so professional yet so kind and approachable.</p><div class="review-author"><div class="review-avatar">M</div><div><div class="review-name">Molina Page</div><div class="review-date">June 2026</div></div></div></div>
-      <div class="review-card"><div class="review-stars">⭐⭐⭐⭐⭐</div><p class="review-text">Nasa may highway ang coffee shop, ngunit nakakubli ang ganda nitong hindi mo mamamalas kung hindi sasadyain. Mukha siyang maliit sa labas, subalit malaki ang espasyo pagpasok, na tila napunta ka na sa ibang lugar.<br><br>Gusto ko mang ipagdamot ang lugar para patuloy akong makatambay nang matiwasay, subalit tingin ko'y kasalanan ito sa mga mahilig sa kape (at sa may-ari na rin) kung hindi ito maibabahagi sa iba.</p><div class="review-author"><div class="review-avatar">C</div><div><div class="review-name"><a href="https://www.facebook.com/writercamillaandrea" target="_blank" rel="noopener noreferrer" style="color:var(--bl);text-decoration:none;">Camilla Andrea</a></div><div class="review-date">April 6, 2026 · via Facebook</div></div></div></div>
-      <div class="review-card"><div class="review-stars">⭐⭐⭐⭐⭐</div><p class="review-text">"10/10 would recommend!! we will surely come back 🤌"</p><div class="review-author"><div class="review-avatar">C</div><div><div class="review-name">Cess Borja</div><div class="review-date">July 2025</div></div></div></div>
-    </div>
+    <div id="publicReviewsContainer"><p style="text-align:center;color:var(--tl);padding:2rem;">Loading reviews...</p></div>
   </div>
 
   <div style="text-align:center;padding-bottom:2.5rem;">
@@ -843,11 +841,15 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     </div>
     <div class="admin-tabs">
       <button class="admin-tab active" onclick="switchTab('dashboard',this)">📊 Dashboard</button>
+      <button class="admin-tab" onclick="switchTab('changepw',this)">🔑 Change Password</button>
       <button class="admin-tab" onclick="switchTab('orders',this)">📋 Orders</button>
       <button class="admin-tab" onclick="switchTab('reservations',this)">📅 Reservations</button>
       <button class="admin-tab" onclick="switchTab('calendar',this)">🗓️ Calendar</button>
       <button class="admin-tab" onclick="switchTab('reviews',this)">⭐ Reviews</button>
+      
       <button class="admin-tab" onclick="switchTab('payment',this)">💳 Payment Details</button>
+      <button class="admin-tab" onclick="switchTab('staffaccounts',this)">👥 Staff Accounts</button>
+      <button class="admin-tab" id="tabBtnAdminAccounts" style="display:none;" onclick="switchTab('adminaccounts',this)">👑 Admin Accounts</button>
     </div>
     <!-- DASHBOARD -->
     <div id="tab-dashboard" class="admin-tab-content">
@@ -917,20 +919,22 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     </div>
     <!-- REVIEWS -->
     <div id="tab-reviews" class="admin-tab-content" style="display:none;">
+      <div id="reviewAddSection">
       <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:1rem;">Add a New Review</h3>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:0.75rem;"><div><label class="field-label">Customer Name</label><input type="text" id="newReviewName" placeholder="e.g. Maria Santos"/></div><div><label class="field-label">Rating</label><select id="newReviewStars"><option value="5">⭐⭐⭐⭐⭐</option><option value="4">⭐⭐⭐⭐</option><option value="3">⭐⭐⭐</option><option value="2">⭐⭐</option><option value="1">⭐</option></select></div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:0.75rem;"><div><label class="field-label">Customer Name</label><input type="text" id="newReviewName" placeholder="e.g. Maria Santos"/></div><div><label class="field-label">Rating</label><select id="newReviewStars"><option value="5">⭐⭐⭐⭐⭐</option><option value="4">⭐⭐⭐⭐</option><option value="3">⭐⭐⭐</option><option value="2">⭐⭐</option><option value="1">⭐</option></select></div></div><div style="margin-bottom:0.75rem;"><label class="field-label">Date <span style="font-weight:400;color:var(--tl);font-size:0.78rem;">(optional — leave blank to use today)</span></label><input type="text" id="newReviewDate" placeholder="e.g. June 2026 · via Facebook" style="width:100%;"/></div>
       <label class="field-label">Review Message</label><textarea id="newReviewText" rows="3" placeholder="Amazing coffee and cozy atmosphere!..." style="margin-bottom:0.75rem;"></textarea>
       <button class="btn-save" style="max-width:200px;" onclick="addReview()">+ Add Review</button>
       <div id="reviewAddConfirm" style="display:none;margin-top:0.75rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.6rem 1rem;"><p style="color:#2d6a4f;font-size:0.85rem;">✅ Review added!</p></div>
       <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin:1.5rem 0 1rem;">All Reviews</h3>
+      </div>
       <div id="adminReviewsList"></div>
     </div>
     <!-- PAYMENT -->
     <div id="tab-payment" class="admin-tab-content" style="display:none;">
       <div class="payment-edit-grid">
-        <div class="payment-edit-card"><h4>📱 GCash</h4><label class="field-label">Number</label><input type="text" id="editGcashNum" value="0927 692 4831"/><label class="field-label" style="margin-top:0.75rem;">Name</label><input type="text" id="editGcashName" value="ACCAZA"/><button class="btn-save" onclick="savePayment()">Save GCash</button></div>
-        <div class="payment-edit-card"><h4>🏦 BDO</h4><label class="field-label">Account No.</label><input type="text" id="editBdoNum" value="0068-2050-9919"/><label class="field-label" style="margin-top:0.75rem;">Name</label><input type="text" id="editBdoName" value="ACCAZA"/><button class="btn-save" onclick="savePayment()">Save BDO</button></div>
-        <div class="payment-edit-card"><h4>🏦 UnionBank</h4><label class="field-label">Account No.</label><input type="text" id="editUbNum" value="1093-3237-9862"/><label class="field-label" style="margin-top:0.75rem;">Name</label><input type="text" id="editUbName" value="ACCAZA"/><button class="btn-save" onclick="savePayment()">Save UnionBank</button></div>
+        <div class="payment-edit-card"><div class="pay-toggle-row"><h4>📱 GCash</h4><label class="pay-switch" title="Enable/Disable for customers"><input type="checkbox" id="chkGcash" onchange="savePayment()" checked/><span class="pay-slider"></span></label></div><p class="pay-disabled-note" id="chkGcashNote">⚠️ Hidden from customers</p><label class="field-label">Number</label><input type="text" id="editGcashNum" value="0927 692 4831"/><label class="field-label" style="margin-top:0.75rem;">Name</label><input type="text" id="editGcashName" value="ACCAZA"/><button class="btn-save" onclick="savePayment()">Save GCash</button></div>
+        <div class="payment-edit-card"><div class="pay-toggle-row"><h4>🏦 BDO</h4><label class="pay-switch" title="Enable/Disable for customers"><input type="checkbox" id="chkBdo" onchange="savePayment()" checked/><span class="pay-slider"></span></label></div><p class="pay-disabled-note" id="chkBdoNote">⚠️ Hidden from customers</p><label class="field-label">Account No.</label><input type="text" id="editBdoNum" value="0068-2050-9919"/><label class="field-label" style="margin-top:0.75rem;">Name</label><input type="text" id="editBdoName" value="ACCAZA"/><button class="btn-save" onclick="savePayment()">Save BDO</button></div>
+        <div class="payment-edit-card"><div class="pay-toggle-row"><h4>🏦 UnionBank</h4><label class="pay-switch" title="Enable/Disable for customers"><input type="checkbox" id="chkUb" onchange="savePayment()" checked/><span class="pay-slider"></span></label></div><p class="pay-disabled-note" id="chkUbNote">⚠️ Hidden from customers</p><label class="field-label">Account No.</label><input type="text" id="editUbNum" value="1093-3237-9862"/><label class="field-label" style="margin-top:0.75rem;">Name</label><input type="text" id="editUbName" value="ACCAZA"/><button class="btn-save" onclick="savePayment()">Save UnionBank</button></div><div class="payment-edit-card"><div class="pay-toggle-row"><h4>💜 PayMaya</h4><label class="pay-switch" title="Enable/Disable for customers"><input type="checkbox" id="chkMaya" onchange="savePayment()" checked/><span class="pay-slider"></span></label></div><p class="pay-disabled-note" id="chkMayaNote">⚠️ Hidden from customers</p><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.75rem;">Leave blank to hide from customers.</p><label class="field-label">Number</label><input type="text" id="editMayaNum" placeholder="e.g. 0917 XXX XXXX"/><label class="field-label" style="margin-top:0.75rem;">Name</label><input type="text" id="editMayaName" placeholder="e.g. ACCAZA"/><button class="btn-save" onclick="savePayment()">Save PayMaya</button></div><div class="payment-edit-card"><div class="pay-toggle-row"><h4>🏦 Extra Bank</h4><label class="pay-switch" title="Enable/Disable for customers"><input type="checkbox" id="chkBank3" onchange="savePayment()" checked/><span class="pay-slider"></span></label></div><p class="pay-disabled-note" id="chkBank3Note">⚠️ Hidden from customers</p><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.75rem;">Leave blank to hide from customers.</p><label class="field-label">Bank Name</label><input type="text" id="editBank3Label" placeholder="e.g. Metrobank"/><label class="field-label" style="margin-top:0.75rem;">Account No.</label><input type="text" id="editBank3Num" placeholder="e.g. 1234-5678-9012"/><label class="field-label" style="margin-top:0.75rem;">Account Name</label><input type="text" id="editBank3Name" placeholder="e.g. ACCAZA"/><button class="btn-save" onclick="savePayment()">Save Extra Bank</button></div><div class="payment-edit-card"><div class="pay-toggle-row"><h4>🏦 Extra Bank 2</h4><label class="pay-switch" title="Enable/Disable for customers"><input type="checkbox" id="chkBank4" onchange="savePayment()" checked/><span class="pay-slider"></span></label></div><p class="pay-disabled-note" id="chkBank4Note">⚠️ Hidden from customers</p><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.75rem;">Leave blank to hide from customers.</p><label class="field-label">Bank Name</label><input type="text" id="editBank4Label" placeholder="e.g. BPI"/><label class="field-label" style="margin-top:0.75rem;">Account No.</label><input type="text" id="editBank4Num" placeholder="e.g. 1234-5678-9012"/><label class="field-label" style="margin-top:0.75rem;">Account Name</label><input type="text" id="editBank4Name" placeholder="e.g. ACCAZA"/><button class="btn-save" onclick="savePayment()">Save Extra Bank 2</button></div>
       </div>
       <div id="saveConfirm" style="display:none;margin-top:1rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.75rem 1rem;"><p style="color:#2d6a4f;">✅ Payment details updated!</p></div>
     </div>
@@ -941,11 +945,30 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 <div class="login-overlay" id="loginOverlay">
   <div class="login-box">
     <div style="text-align:center;font-family:'Playfair Display',serif;font-size:1.5rem;color:var(--bd);margin-bottom:0.25rem;">Accaza Coffee</div>
-    <p style="text-align:center;font-size:0.8rem;color:var(--tl);margin-bottom:1.5rem;">Admin Access Only 🔐</p>
-    <label class="field-label">Password</label>
-    <input type="password" id="adminPass" placeholder="Enter admin password" style="margin-bottom:1rem;" onkeydown="if(event.key==='Enter')checkLogin()"/>
-    <button class="btn-primary" style="width:100%;" onclick="checkLogin()">Log In</button>
-    <p id="loginErr" style="display:none;color:#c0392b;font-size:0.8rem;margin-top:0.75rem;text-align:center;">❌ Incorrect password. Try again.</p>
+    <p style="text-align:center;font-size:0.8rem;color:var(--tl);margin-bottom:1.25rem;">🔐 Staff &amp; Admin Portal</p>
+    <!-- Role selector -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:1.25rem;">
+      <button id="roleAdminBtn" onclick="selectLoginRole('admin')" style="padding:0.6rem;border:2px solid var(--cd);border-radius:8px;background:#fff;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);font-weight:500;transition:all 0.2s;">👑 Admin</button>
+      <button id="roleStaffBtn" onclick="selectLoginRole('staff')" style="padding:0.6rem;border:2px solid var(--cd);border-radius:8px;background:#fff;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);font-weight:500;transition:all 0.2s;">👤 Staff</button>
+    </div>
+    <!-- Login form -->
+    <div id="loginForm" style="display:none;">
+      <label class="field-label">Username</label>
+      <input type="text" id="adminUser" placeholder="Enter username" style="margin-bottom:0.75rem;" onkeydown="if(event.key==='Enter')document.getElementById('adminPass').focus()"/>
+      <label class="field-label">Password</label>
+      <input type="password" id="adminPass" placeholder="Enter password" style="margin-bottom:1rem;" onkeydown="if(event.key==='Enter')checkLogin()"/>
+      <button class="btn-primary" style="width:100%;" onclick="checkLogin()">Log In</button>
+      <p id="loginErr" style="display:none;color:#c0392b;font-size:0.8rem;margin-top:0.75rem;text-align:center;">❌ Incorrect credentials. Try again.</p>
+      <p style="text-align:center;margin-top:0.5rem;">
+        <button id="forgotPwBtn" onclick="toggleForgotPw()" style="display:none;background:none;border:none;font-size:0.76rem;color:var(--tl);cursor:pointer;text-decoration:underline;">Forgot password?</button>
+      </p>
+      <div id="forgotPwPanel" style="display:none;margin-top:0.75rem;padding:0.85rem;background:#f9f6f2;border:1px solid var(--cd);border-radius:8px;">
+        <p style="font-size:0.78rem;color:var(--tl);margin-bottom:0.6rem;text-align:center;">Enter your <strong>original recovery password</strong> to reset.</p>
+        <input type="password" id="recoveryPass" placeholder="Original recovery password" style="margin-bottom:0.6rem;" onkeydown="if(event.key==='Enter')resetAdminPassword()"/>
+        <button class="btn-primary" style="width:100%;font-size:0.82rem;" onclick="resetAdminPassword()">🔑 Reset Password</button>
+        <p id="recoveryMsg" style="display:none;font-size:0.78rem;margin-top:0.5rem;text-align:center;"></p>
+      </div>
+    </div>
     <button onclick="closeAdmin()" style="margin-top:1rem;background:none;border:none;font-size:0.78rem;color:var(--tl);cursor:pointer;width:100%;text-align:center;">← Back to website</button>
   </div>
 </div>
@@ -996,9 +1019,10 @@ const app=initializeApp(firebaseConfig);
 const db=getDatabase(app);
 
 // DB refs
-const ordersRef=ref(db,'orders'),archivedRef=ref(db,'archivedOrders'),reservationsRef=ref(db,'reservations'),feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),calBlocksRef=ref(db,'calBlocks'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories');
+const settingsRef=ref(db,'settings'),staffAccountsRef=ref(db,'staffAccounts'),adminAccountsRef=ref(db,'adminAccounts'),ordersRef=ref(db,'orders'),archivedRef=ref(db,'archivedOrders'),reservationsRef=ref(db,'reservations'),feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),calBlocksRef=ref(db,'calBlocks'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories');
 
-const ADMIN_PASS_HASH='af19bbe08d782cb4e94bafef235e69784598a1caa79b384e20ef02c4c5d37e6c',CAFE_PHONE='639276924831',CAFE_EMAIL='mariadaniela@gmail.com',MAX_GUESTS=30;
+let currentAdminHash=null,staffAccountsMap={},adminAccountsMap={},staffLoggedIn=false,superAdminLoggedIn=false,currentUser=null,currentLoginRole=null;
+const ADMIN_PASS_HASH='2fbc8eab665a40385a692e111f01d6a8572baa7b161f5b17d4d9977b20913921',SUPER_ADMIN_USERNAME='superadmin',CAFE_PHONE='639276924831',CAFE_EMAIL='mariadaniela@gmail.com',MAX_GUESTS=30;
 const TIME_SLOTS=['3:00 PM','4:00 PM','5:00 PM','6:00 PM','7:00 PM','8:00 PM','9:00 PM','10:00 PM','11:00 PM','12:00 Midnight'];
 
 const DEFAULT_CATS=[
@@ -1090,6 +1114,21 @@ onValue(categoriesRef,snap=>{
   if(adminLoggedIn){buildAvail();renderCategoryManager();}
 });
 
+onValue(settingsRef,snap=>{
+  const s=snap.val()||{};
+  if(s.adminPasswordHash) currentAdminHash=s.adminPasswordHash;
+});
+
+onValue(staffAccountsRef,snap=>{
+  staffAccountsMap=snap.val()||{};
+  if(adminLoggedIn||superAdminLoggedIn) renderStaffAccounts();
+});
+
+onValue(adminAccountsRef,snap=>{
+  adminAccountsMap=snap.val()||{};
+  if(superAdminLoggedIn) renderAdminAccounts();
+});
+
 onValue(menuRef,snap=>{
   const saved=snap.val();
   if(saved){menuItemsMap=saved;}
@@ -1152,15 +1191,114 @@ onValue(menuRef,snap=>{
   renderMenuSection();
   renderOrderSection();
   if(adminLoggedIn)buildAvail();
+  if(staffLoggedIn)renderStaffMenu();
 });
 
-onValue(ordersRef,snap=>{adminOrdersMap=snap.val()||{};if(adminLoggedIn){renderOrders();renderDashboard();}updateStats();renderCustomerOrders();});
+onValue(ordersRef,snap=>{adminOrdersMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn){renderOrders();renderDashboard();}updateStats();renderCustomerOrders();});
 onValue(archivedRef,snap=>{archivedOrdersMap=snap.val()||{};if(adminLoggedIn)renderDashboard();});
-onValue(reservationsRef,snap=>{adminResMap=snap.val()||{};if(adminLoggedIn)renderReservations();updateStats();renderCustomerCalendar();if(adminLoggedIn)renderAdminCalendar();});
-onValue(feedbacksRef,snap=>{feedbacksMap=snap.val()||{};if(adminLoggedIn)renderComments();});
-onValue(reviewsRef,snap=>{reviewsMap=snap.val()||{};if(adminLoggedIn)renderAdminReviews();});
+onValue(reservationsRef,snap=>{adminResMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderReservations();updateStats();renderCustomerCalendar();if(adminLoggedIn||staffLoggedIn)renderAdminCalendar();});
+onValue(feedbacksRef,snap=>{feedbacksMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderComments();});
+onValue(reviewsRef,snap=>{
+  const saved=snap.val();
+  if(saved){reviewsMap=saved;}
+  else{
+    const seed={
+      'rev_001':{name:'Maria Theresa & Quinn Isabella Margaux',stars:5,date:'June 2, 2026',text:'Accaza Coffee House is a hidden gem right along the roadside near SM Dasmariñas — easy to find whether you\'re commuting or driving. Inside, it\'s surprisingly spacious with a calm, serene atmosphere that\'s rare among today\'s cramped cafés.\n\nThe coffee is outstanding, with well-crafted flavors from bold to smooth. But what truly sets Accaza apart is how perfectly it serves both students and professionals — it\'s a productive sanctuary where you can focus, study, or work in peace.\n\nHighly recommended for anyone looking for great coffee and a place to get things done. ☕✨'},
+      'rev_002':{name:'Molina Page',stars:5,date:'June 2026',text:'The coffee was absolutely delightful — perfectly brewed, rich in flavor, and made with genuine care. Every sip spoke to your passion and quality.\n\nBeyond the coffee, your staff made the visit truly special. From the warm greeting to the attentive service, everyone made me feel genuinely valued. It\'s rare to find a team so professional yet so kind and approachable.'},
+      'rev_003':{name:'Camilla Andrea',stars:5,date:'April 6, 2026 · via Facebook',text:'Nasa may highway ang coffee shop, ngunit nakakubli ang ganda nitong hindi mo mamamalas kung hindi sasadyain. Mukha siyang maliit sa labas, subalit malaki ang espasyo pagpasok, na tila napunta ka na sa ibang lugar.\n\nGusto ko mang ipagdamot ang lugar para patuloy akong makatambay nang matiwasay, subalit tingin ko\'y kasalanan ito sa mga mahilig sa kape (at sa may-ari rin) kung hindi ito maibabahagi sa iba.'},
+      'rev_004':{name:'Cess Borja',stars:5,date:'July 2025',text:'"10/10 would recommend!! we will surely come back 🤌"'}
+    };
+    set(reviewsRef,seed);reviewsMap=seed;
+  }
+  renderPublicReviews();
+  if(adminLoggedIn||staffLoggedIn)renderAdminReviews();
+});
 onValue(availRef,snap=>{const s=snap.val();if(s)Object.keys(s).forEach(k=>availability[k]=s[k]);renderMenuSection();renderOrderSection();if(adminLoggedIn)buildAvail();});
-onValue(paymentRef,snap=>{const p=snap.val();if(!p)return;if(p.gcashNum)document.getElementById('gcashNum').textContent=p.gcashNum;if(p.gcashName)document.getElementById('gcashName').textContent=p.gcashName;if(p.bdoNum)document.getElementById('bankNum').textContent=p.bdoNum;if(p.ubNum)document.getElementById('bankNum2').textContent=p.ubNum;if(p.gcashNum)document.getElementById('editGcashNum').value=p.gcashNum;if(p.gcashName)document.getElementById('editGcashName').value=p.gcashName;if(p.bdoNum)document.getElementById('editBdoNum').value=p.bdoNum;if(p.ubNum)document.getElementById('editUbNum').value=p.ubNum;});
+onValue(paymentRef,snap=>{
+  const p=snap.val();if(!p)return;
+  if(p.gcashNum)document.getElementById('gcashNum').textContent=p.gcashNum;
+  if(p.gcashName)document.getElementById('gcashName').textContent=p.gcashName;
+  if(p.bdoNum)document.getElementById('bankNum').textContent=p.bdoNum;
+  if(p.ubNum)document.getElementById('bankNum2').textContent=p.ubNum;
+  if(p.gcashNum)document.getElementById('editGcashNum').value=p.gcashNum;
+  if(p.gcashName)document.getElementById('editGcashName').value=p.gcashName;
+  if(p.bdoNum)document.getElementById('editBdoNum').value=p.bdoNum;
+  if(p.ubNum)document.getElementById('editUbNum').value=p.ubNum;
+  // Enabled flags → update admin toggles
+  function setChk(id,val){var el=document.getElementById(id);if(el){el.checked=(val!==false);}}
+  setChk('chkGcash',p.gcashEnabled!==false);
+  setChk('chkBdo',p.bdoEnabled!==false);
+  setChk('chkUb',p.ubEnabled!==false);
+  setChk('chkMaya',p.mayaEnabled!==false);
+  setChk('chkBank3',p.bank3Enabled!==false);
+  setChk('chkBank4',p.bank4Enabled!==false);
+  // Show/hide individual bank rows in customer panel
+  var bdoRow=document.getElementById('bdoRow');
+  var ubRow=document.getElementById('ubRow');
+  if(bdoRow)bdoRow.style.display=p.bdoEnabled!==false?'block':'none';
+  if(ubRow)ubRow.style.display=p.ubEnabled!==false?'block':'none';
+  // QR codes
+  var qrGcash=document.getElementById('qrGcash');
+  var qrBdo=document.getElementById('qrBdo');
+  var qrSection=document.getElementById('qrSection');
+  if(qrGcash)qrGcash.style.display=p.gcashEnabled!==false?'block':'none';
+  if(qrBdo)qrBdo.style.display=p.bdoEnabled!==false?'block':'none';
+  // Hide whole QR box if both GCash and BDO are off
+  if(qrSection)qrSection.style.display=(p.gcashEnabled!==false||p.bdoEnabled!==false)?'block':'none';
+  ['Gcash','Bdo','Ub','Maya','Bank3','Bank4'].forEach(function(k){
+    var note=document.getElementById('chk'+k+'Note');
+    var chk=document.getElementById('chk'+k);
+    if(note&&chk)note.style.display=chk.checked?'none':'block';
+  });
+  // GCash customer button
+  var gcashBtn=document.getElementById('btnGcash');
+  if(gcashBtn)gcashBtn.style.display=p.gcashEnabled!==false?'':'none';
+  // Bank Transfer button (show if any bank enabled)
+  var bankBtn=document.getElementById('btnBank');
+  if(bankBtn)bankBtn.style.display=(p.bdoEnabled!==false||p.ubEnabled!==false||p.bank3Enabled!==false||p.bank4Enabled!==false)?'':'none';
+  // Auto-select first visible payment method
+  (function(){
+    var gcashOk=p.gcashEnabled!==false;
+    var mayaOk=!!(p.mayaNum&&p.mayaEnabled!==false);
+    var bankOk=(p.bdoEnabled!==false||p.ubEnabled!==false||p.bank3Enabled!==false||p.bank4Enabled!==false);
+    var needSwitch=(paymentType==='gcash'&&!gcashOk)||(paymentType==='maya'&&!mayaOk)||(paymentType==='bank'&&!bankOk);
+    if(needSwitch){
+      var first=gcashOk?'gcash':mayaOk?'maya':bankOk?'bank':null;
+      if(first)setPayment(first);
+    }
+  })();
+  // PayMaya
+  var mayaBtn=document.getElementById('btnMaya');
+  if(p.mayaNum){document.getElementById('mayaNum').textContent=p.mayaNum;
+    if(p.mayaName)document.getElementById('mayaName').textContent=p.mayaName;
+    if(document.getElementById('editMayaNum'))document.getElementById('editMayaNum').value=p.mayaNum;
+    if(document.getElementById('editMayaName'))document.getElementById('editMayaName').value=p.mayaName||'';
+    if(mayaBtn)mayaBtn.style.display=(p.mayaEnabled!==false)?'':'';
+  }else{if(mayaBtn)mayaBtn.style.display='none';}
+  if(mayaBtn&&p.mayaNum)mayaBtn.style.display=(p.mayaEnabled!==false)?'':'none';
+  // Extra Bank
+  var b3row=document.getElementById('bank3Row');
+  if(p.bank3Num){
+    document.getElementById('bank3Num').textContent=p.bank3Num;
+    document.getElementById('bank3AccName').textContent=p.bank3Name||'ACCAZA';
+    if(p.bank3Label){document.getElementById('bank3LabelDisp').textContent=p.bank3Label+' Account';}
+    if(document.getElementById('editBank3Label'))document.getElementById('editBank3Label').value=p.bank3Label||'';
+    if(document.getElementById('editBank3Num'))document.getElementById('editBank3Num').value=p.bank3Num;
+    if(document.getElementById('editBank3Name'))document.getElementById('editBank3Name').value=p.bank3Name||'';
+    if(b3row)b3row.style.display=p.bank3Enabled!==false?'block':'none';
+  }else{if(b3row)b3row.style.display='none';}
+  // Extra Bank 2
+  var b4row=document.getElementById('bank4Row');
+  if(p.bank4Num){
+    document.getElementById('bank4Num').textContent=p.bank4Num;
+    document.getElementById('bank4AccName').textContent=p.bank4Name||'ACCAZA';
+    if(p.bank4Label){document.getElementById('bank4LabelDisp').textContent=p.bank4Label+' Account';}
+    if(document.getElementById('editBank4Label'))document.getElementById('editBank4Label').value=p.bank4Label||'';
+    if(document.getElementById('editBank4Num'))document.getElementById('editBank4Num').value=p.bank4Num;
+    if(document.getElementById('editBank4Name'))document.getElementById('editBank4Name').value=p.bank4Name||'';
+    if(b4row)b4row.style.display=p.bank4Enabled!==false?'block':'none';
+  }else{if(b4row)b4row.style.display='none';}
+});
 onValue(calBlocksRef,snap=>{calBlocks=snap.val()||{};renderCustomerCalendar();if(adminLoggedIn)renderAdminCalendar();});
 
 // ── WIRE BUTTONS VIA addEventListener (avoids ES module scope issues) ──
@@ -1410,7 +1548,15 @@ function updateCartDisplay(){
 }
 
 window.setType=function(t){orderType=t;document.getElementById('btnPickup').classList.toggle('active',t==='pickup');document.getElementById('btnDelivery').classList.toggle('active',t==='delivery');document.getElementById('deliveryField').style.display=t==='delivery'?'block':'none';};
-window.setPayment=function(p){paymentType=p;document.getElementById('btnGcash').classList.toggle('active',p==='gcash');document.getElementById('btnBank').classList.toggle('active',p==='bank');document.getElementById('gcashInfo').style.display=p==='gcash'?'block':'none';document.getElementById('bankInfo').style.display=p==='bank'?'block':'none';};
+window.setPayment=function(p){paymentType=p;
+  document.getElementById('btnGcash').classList.toggle('active',p==='gcash');
+  document.getElementById('btnBank').classList.toggle('active',p==='bank');
+  var mayaBtn=document.getElementById('btnMaya');
+  if(mayaBtn)mayaBtn.classList.toggle('active',p==='maya');
+  document.getElementById('gcashInfo').style.display=p==='gcash'?'block':'none';
+  document.getElementById('mayaInfo').style.display=p==='maya'?'block':'none';
+  document.getElementById('bankInfo').style.display=p==='bank'?'block':'none';
+};
 window.setContact=function(type){contactMethod=type;['Whatsapp','Viber','Sms','Call','Email'].forEach(function(t){const el=document.getElementById('btn'+t);if(el)el.classList.toggle('active',t.toLowerCase()===type);});const ph={whatsapp:'Enter your WhatsApp number',viber:'Enter your Viber number',sms:'Enter your phone number for SMS',call:'Enter your phone number',email:'Enter your email address'};document.getElementById('custContact').placeholder=ph[type]||'Enter your contact';};
 window.previewProof=function(input){if(!input.files||!input.files[0])return;const r=new FileReader();r.onload=function(e){document.getElementById('proofImg').src=e.target.result;document.getElementById('proofFileName').textContent=input.files[0].name;document.getElementById('uploadPlaceholder').style.display='none';document.getElementById('uploadPreview').style.display='block';document.getElementById('uploadBox').style.borderColor='#2d9e5f';};r.readAsDataURL(input.files[0]);};
 window.removeProof=function(e){e.stopPropagation();document.getElementById('paymentProof').value='';document.getElementById('proofImg').src='';document.getElementById('uploadPlaceholder').style.display='block';document.getElementById('uploadPreview').style.display='none';document.getElementById('uploadBox').style.borderColor='var(--cd)';};
@@ -1425,7 +1571,7 @@ window.placeOrder=async function(){
   const total=Object.values(cart).reduce((s,c)=>s+c.qty*c.unitTotal,0);
   const itemsArr=Object.values(cart).map(c=>c.name+(c.details?' ('+c.details+')':'')+' x'+c.qty);
   const orderId='ORD-'+Date.now().toString().slice(-6);
-  const newOrder={id:orderId,name,phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':'Bank Transfer',contact:document.getElementById('custContact').value.trim(),contactMethod,items:itemsArr.join(', '),total,notes:document.getElementById('custNotes').value.trim(),status:'Pending',receivedByCustomer:false,time:new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now(),proof:proofSrc};
+  const newOrder={id:orderId,name,phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':paymentType==='maya'?'PayMaya':'Bank Transfer',contact:document.getElementById('custContact').value.trim(),contactMethod,items:itemsArr.join(', '),total,notes:document.getElementById('custNotes').value.trim(),status:'Pending',receivedByCustomer:false,time:new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now(),proof:proofSrc};
   try{
     await set(ref(db,'orders/'+orderId),newOrder);
     myOrderIds.push(orderId);localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));
@@ -1437,7 +1583,7 @@ window.placeOrder=async function(){
     setTimeout(function(){document.querySelector('.btn-place-order').disabled=false;document.querySelector('.btn-place-order').style.opacity='1';document.getElementById('orderConfirm').style.display='none';},5000);
   }catch(e){alert('Could not place order: '+e.message);}
 };
-window.resetOrder=function(){if(!Object.keys(cart).length&&!document.getElementById('custName').value){alert('Your order is already empty!');return;}if(confirm('Reset your order?')){cart={};updateCartDisplay();renderOrderSection();document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';setType('pickup');setPayment('gcash');document.getElementById('orderConfirm').style.display='none';document.querySelector('.btn-place-order').disabled=false;document.querySelector('.btn-place-order').style.opacity='1';}};
+window.resetOrder=function(){if(!Object.keys(cart).length&&!document.getElementById('custName').value){alert('Your order is already empty!');return;}if(confirm('Reset your order?')){cart={};updateCartDisplay();renderOrderSection();document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';setType('pickup');(function(){var gBtn=document.getElementById('btnGcash');var mBtn=document.getElementById('btnMaya');var bBtn=document.getElementById('btnBank');var first=gBtn&&gBtn.style.display!=='none'?'gcash':mBtn&&mBtn.style.display!=='none'?'maya':'bank';setPayment(first);})();document.getElementById('orderConfirm').style.display='none';document.querySelector('.btn-place-order').disabled=false;document.querySelector('.btn-place-order').style.opacity='1';}};
 
 // ── ORDER TRACKER ──
 const statusConfig={Pending:{icon:'🟡',color:'#856404',bg:'#fef3cd',msg:'Your order has been received and is awaiting confirmation from our staff.'},Confirmed:{icon:'🔵',color:'#0c5460',bg:'#d1ecf1',msg:'Your order has been confirmed. We will start preparing it soon!'},Preparing:{icon:'🟠',color:'#664d03',bg:'#fff3cd',msg:'Your order is currently being prepared. ☕'},Completed:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your order is ready! Please confirm once you have received it below.'},Received:{icon:'✅',color:'#1b5e20',bg:'#c8e6c9',msg:'You have confirmed receipt. Thank you! ☕🦁'}};
@@ -1717,6 +1863,236 @@ function renderCategoryManager(){
   });
 }
 
+// ── CHANGE PASSWORD ────────────────────────────────────────
+window.togglePwVis=function(inputId,btn){var inp=document.getElementById(inputId);if(!inp)return;var show=inp.type==='password';inp.type=show?'text':'password';btn.textContent=show?'🙈':'👁️';};
+window.changeAdminPassword=async function(){
+  var cur=document.getElementById('cpCurrent').value;
+  var nw=document.getElementById('cpNew').value;
+  var conf=document.getElementById('cpConfirm').value;
+  var msg=document.getElementById('cpMsg');
+  function showMsg(text,ok){
+    msg.textContent=text;
+    msg.style.display='block';
+    msg.style.background=ok?'rgba(45,158,95,0.12)':'rgba(192,57,57,0.1)';
+    msg.style.color=ok?'#1a7a45':'#c0392b';
+    msg.style.border='1px solid '+(ok?'rgba(45,158,95,0.3)':'rgba(192,57,57,0.3)');
+  }
+  if(!cur||!nw||!conf){showMsg('Please fill in all fields.', false);return;}
+  if(nw!==conf){showMsg('New passwords do not match.', false);return;}
+  if(nw.length<6){showMsg('New password must be at least 6 characters.', false);return;}
+  async function hashPass(p){
+    const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(p));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+  var curHash=await hashPass(cur);
+  var activeHash;
+  if(!currentUser||currentUser.role==='superadmin'){activeHash=currentAdminHash||ADMIN_PASS_HASH;}
+  else if(currentUser.role==='admin'){activeHash=adminAccountsMap[currentUser.uid]?adminAccountsMap[currentUser.uid].passwordHash:'';}
+  else if(currentUser.role==='staff'){activeHash=staffAccountsMap[currentUser.uid]?staffAccountsMap[currentUser.uid].passwordHash:'';}
+  if(curHash!==activeHash){showMsg('Current password is incorrect.', false);return;}
+  var newHash=await hashPass(nw);
+  try{
+    if(!currentUser||currentUser.role==='superadmin'){
+      await update(settingsRef,{adminPasswordHash:newHash});currentAdminHash=newHash;
+    }else if(currentUser.role==='admin'){
+      await update(ref(db,'adminAccounts/'+currentUser.uid),{passwordHash:newHash});
+      adminAccountsMap[currentUser.uid].passwordHash=newHash;
+    }else if(currentUser.role==='staff'){
+      await update(ref(db,'staffAccounts/'+currentUser.uid),{passwordHash:newHash});
+      staffAccountsMap[currentUser.uid].passwordHash=newHash;
+    }
+    document.getElementById('cpCurrent').value='';
+    document.getElementById('cpNew').value='';
+    document.getElementById('cpConfirm').value='';
+    showMsg('✅ Password updated successfully!', true);
+  }catch(e){showMsg('Error: '+e.message, false);}
+};
+
+
+// ── FORGOT PASSWORD ────────────────────────────────────────
+window.toggleForgotPw=function(){
+  var p=document.getElementById('forgotPwPanel');
+  if(!p)return;
+  p.style.display=(p.style.display==='none'||!p.style.display)?'block':'none';
+  if(p.style.display==='block'){
+    document.getElementById('recoveryPass').focus();
+    document.getElementById('recoveryMsg').style.display='none';
+  }
+};
+window.resetAdminPassword=async function(){
+  var pass=document.getElementById('recoveryPass').value;
+  var msg=document.getElementById('recoveryMsg');
+  if(!pass){msg.textContent='Please enter your recovery password.';msg.style.color='#c0392b';msg.style.display='block';return;}
+  var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pass));
+  var hex=Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  if(hex!==ADMIN_PASS_HASH){
+    msg.textContent='❌ Incorrect recovery password.';msg.style.color='#c0392b';msg.style.display='block';
+    document.getElementById('recoveryPass').value='';return;
+  }
+  try{
+    await update(settingsRef,{adminPasswordHash:null});
+    currentAdminHash=null;
+    document.getElementById('recoveryPass').value='';
+    msg.textContent='✅ Password reset! You can now log in with your original password.';
+    msg.style.color='#1a7a45';msg.style.display='block';
+    setTimeout(function(){window.toggleForgotPw();msg.style.display='none';},3000);
+  }catch(e){msg.textContent='Error: '+e.message;msg.style.color='#c0392b';msg.style.display='block';}
+};
+
+// ── STAFF ACCOUNTS ─────────────────────────────────────────
+function renderStaffAccounts(){
+  var el=document.getElementById('staffList');if(!el)return;
+  var keys=Object.keys(staffAccountsMap);
+  if(!keys.length){el.innerHTML='<p style="font-size:0.85rem;color:var(--tl);">No staff accounts yet.</p>';return;}
+  el.innerHTML=keys.map(function(uid){
+    var acc=staffAccountsMap[uid];
+    return'<div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid var(--cd);border-radius:8px;padding:0.7rem 1rem;margin-bottom:0.5rem;">'
+      +'<div><span style="font-size:0.9rem;font-weight:500;color:var(--bd);">👤 '+escHtml(acc.username)+'</span>'
+      +'<span style="font-size:0.72rem;color:var(--tl);display:block;margin-top:0.1rem;">Staff · Password protected</span></div>'
+      +'<button data-delstaff="'+uid+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">🗑️ Remove</button>'
+      +'</div>';
+  }).join('');
+  el.querySelectorAll('[data-delstaff]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var uid=this.dataset.delstaff;
+      var name=staffAccountsMap[uid]?staffAccountsMap[uid].username:'this account';
+      showDeletePopup('staff account for '+name,async function(){
+        await remove(ref(db,'staffAccounts/'+uid));
+      });
+    });
+  });
+}
+window.addStaffAccount=async function(){
+  var username=(document.getElementById('staffUsername').value||'').trim().toLowerCase();
+  var password=document.getElementById('staffPassword').value;
+  var msg=document.getElementById('staffAddMsg');
+  function showMsg(text,ok){
+    msg.textContent=text;msg.style.display='block';
+    msg.style.background=ok?'rgba(45,158,95,0.12)':'rgba(192,57,57,0.1)';
+    msg.style.color=ok?'#1a7a45':'#c0392b';
+    msg.style.border='1px solid '+(ok?'rgba(45,158,95,0.3)':'rgba(192,57,57,0.3)');
+  }
+  if(!username){showMsg('Username is required.',false);return;}
+  if(!password||password.length<4){showMsg('Password must be at least 4 characters.',false);return;}
+  // Check username not already taken
+  var taken=Object.values(staffAccountsMap).some(function(a){return a.username===username;});
+  if(taken){showMsg('Username "'+username+'" is already taken.',false);return;}
+  var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(password));
+  var hashHex=Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  var uid='staff_'+Date.now();
+  try{
+    await set(ref(db,'staffAccounts/'+uid),{username,passwordHash:hashHex});
+    document.getElementById('staffUsername').value='';
+    document.getElementById('staffPassword').value='';
+    showMsg('✅ Staff account "'+username+'" created.',true);
+  }catch(e){showMsg('Error: '+e.message,false);}
+};
+
+
+// ── ADMIN ACCOUNTS ─────────────────────────────────────────
+function renderAdminAccounts(){
+  var el=document.getElementById('adminAccList');if(!el)return;
+  var keys=Object.keys(adminAccountsMap);
+  if(!keys.length){el.innerHTML='<p style="font-size:0.85rem;color:var(--tl);">No admin accounts yet.</p>';return;}
+  el.innerHTML=keys.map(function(uid){
+    var acc=adminAccountsMap[uid];
+    return'<div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid var(--cd);border-radius:8px;padding:0.7rem 1rem;margin-bottom:0.5rem;">'
+      +'<div><span style="font-size:0.9rem;font-weight:500;color:var(--bd);">🔑 '+escHtml(acc.username)+'</span>'
+      +'<span style="font-size:0.72rem;color:var(--tl);display:block;margin-top:0.1rem;">Admin · Full access</span></div>'
+      +'<button data-deladmin="'+uid+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">🗑️ Remove</button>'
+      +'</div>';
+  }).join('');
+  el.querySelectorAll('[data-deladmin]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var uid=this.dataset.deladmin;
+      var name=adminAccountsMap[uid]?adminAccountsMap[uid].username:'this account';
+      showDeletePopup('admin account for '+name,async function(){
+        await remove(ref(db,'adminAccounts/'+uid));
+      });
+    });
+  });
+}
+window.addAdminAccount=async function(){
+  var username=(document.getElementById('adminAccUsername').value||'').trim().toLowerCase();
+  var password=document.getElementById('adminAccPassword').value;
+  var msg=document.getElementById('adminAccMsg');
+  function showMsg(text,ok){
+    msg.textContent=text;msg.style.display='block';
+    msg.style.background=ok?'rgba(45,158,95,0.12)':'rgba(192,57,57,0.1)';
+    msg.style.color=ok?'#1a7a45':'#c0392b';
+    msg.style.border='1px solid '+(ok?'rgba(45,158,95,0.3)':'rgba(192,57,57,0.3)');
+  }
+  if(!username){showMsg('Username is required.',false);return;}
+  if(username===SUPER_ADMIN_USERNAME){showMsg('"'+username+'" is reserved.',false);return;}
+  if(!password||password.length<4){showMsg('Password must be at least 4 characters.',false);return;}
+  var taken=Object.values(adminAccountsMap).some(function(a){return a.username===username;});
+  if(taken){showMsg('Username "'+username+'" already taken.',false);return;}
+  var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(password));
+  var hashHex=Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  try{
+    await set(ref(db,'adminAccounts/'+('admin_'+Date.now())),{username,passwordHash:hashHex});
+    document.getElementById('adminAccUsername').value='';
+    document.getElementById('adminAccPassword').value='';
+    showMsg('✅ Admin account "'+username+'" created.',true);
+  }catch(e){showMsg('Error: '+e.message,false);}
+};
+
+// ── STAFF MENU (read-only view) ─────────────────────────────
+function renderStaffMenu(){
+  var el=document.getElementById('staffMenuContainer');if(!el)return;
+  var cats=getCats();var items=getMenuItems();
+  if(!cats.length){el.innerHTML='<p style="color:var(--tl);">No menu items yet.</p>';return;}
+  el.innerHTML=cats.map(function(cat){
+    var catItems=items.filter(function(i){return i.cat===cat.id;}).sort(function(a,b){return(a.order||0)-(b.order||0);});
+    if(!catItems.length)return'';
+    return'<div style="margin-bottom:1.5rem;">'
+      +'<div style="font-family:\'Playfair Display\',serif;font-size:1rem;color:var(--bd);margin-bottom:0.6rem;padding-bottom:0.3rem;border-bottom:1px solid var(--cd);">'+cat.icon+' '+cat.label+'</div>'
+      +catItems.map(function(item){
+        var priceStr=item.priceM&&item.priceL?'S ₱'+item.priceS+' · M ₱'+item.priceM+' · L ₱'+item.priceL
+          :item.priceL&&item.labelS&&item.labelL?item.labelS+' ₱'+item.priceS+' · '+item.labelL+' ₱'+item.priceL
+          :'₱'+item.priceS;
+        return'<div style="display:flex;align-items:center;gap:0.75rem;padding:0.55rem 0;border-bottom:1px solid rgba(0,0,0,0.04);">'
+          +(item.img?'<img src="'+item.img+'" style="width:38px;height:38px;border-radius:6px;object-fit:cover;flex-shrink:0;" onerror="this.style.display=\'none\'"/>'
+            :'<div style="width:38px;height:38px;border-radius:6px;background:linear-gradient(135deg,var(--cd),var(--bl));display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;">'+cat.icon+'</div>')
+          +'<div style="flex:1;min-width:0;"><div style="font-size:0.88rem;font-weight:500;color:var(--bd);">'+item.name+'</div>'
+          +(item.desc?'<div style="font-size:0.75rem;color:var(--tl);margin-top:0.1rem;">'+item.desc+'</div>':'')
+          +'<div style="font-size:0.78rem;color:#c9956a;margin-top:0.15rem;">'+priceStr+'</div></div>'
+          +'<span style="font-size:0.7rem;padding:0.15rem 0.5rem;border-radius:999px;flex-shrink:0;background:'+(isAvail(item.name)?'rgba(45,158,95,0.12)':'rgba(192,57,57,0.1)')+';color:'+(isAvail(item.name)?'#2d9e5f':'#c0392b')+';">'+(isAvail(item.name)?'✅':'❌')+'</span>'
+          +'</div>';
+      }).join('')
+      +'</div>';
+  }).join('');
+}
+
+// ── PUBLIC REVIEWS (dynamic) ────────────────────────────────
+function renderPublicReviews(){
+  var el=document.getElementById('publicReviewsContainer');if(!el)return;
+  var entries=Object.entries(reviewsMap);
+  if(!entries.length){el.innerHTML='<p style="text-align:center;color:var(--tl);padding:2rem;">No reviews yet.</p>';return;}
+  function stars(n){return'⭐'.repeat(Math.max(1,Math.min(5,parseInt(n)||5)));}
+  function card(r,featured){
+    var initials=(r.name||'?').split(' ').map(function(w){return w[0];}).join('').substring(0,2).toUpperCase();
+    return'<div class="review-card"'+(featured?' style="margin-bottom:1.25rem;"':'')+'>'+
+      '<div class="review-stars">'+stars(r.stars)+'</div>'+
+      (r.title?'<p style="font-weight:600;color:var(--bd);margin-bottom:0.75rem;font-size:0.95rem;">'+r.title+'</p>':'')+
+      '<p class="review-text">'+r.text.replace(/\n/g,'<br>')+'</p>'+
+      '<div class="review-author"><div class="review-avatar">'+initials+'</div>'+
+      '<div><div class="review-name">'+r.name+'</div>'+
+      '<div class="review-date">'+r.date+'</div></div></div></div>';
+  }
+  var html2='';
+  if(entries.length===1){
+    html2=card(entries[0][1],true);
+  }else{
+    html2=card(entries[0][1],true);
+    html2+='<div class="reviews-grid">';
+    for(var i=1;i<entries.length;i++)html2+=card(entries[i][1],false);
+    html2+='</div>';
+  }
+  el.innerHTML=html2;
+}
+
+
 // ── EDIT ITEM HELPERS ──────────────────────────────────────
 function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 window.toggleEditPanel=function(key){
@@ -1881,6 +2257,15 @@ function buildAvail(){
     row.appendChild(panel);
   });
  
+  // Staff mode: hide edit/delete/drag/toggle/imageURL controls
+  if(staffLoggedIn){
+    el.querySelectorAll('.avail-toggle').forEach(function(t){t.style.display='none';});
+    el.querySelectorAll('[data-delitem]').forEach(function(b){b.style.display='none';});
+    el.querySelectorAll('button[onclick*="toggleEditPanel"]').forEach(function(b){b.style.display='none';});
+    el.querySelectorAll('[draggable]').forEach(function(r){r.removeAttribute('draggable');});
+    el.querySelectorAll('[style*="cursor:grab"]').forEach(function(s){s.style.display='none';});
+    el.querySelectorAll('[data-saveimg]').forEach(function(b){b.closest('div').style.display='none';});
+  }
   // Wire toggles
   el.querySelectorAll('.avail-toggle').forEach(function(chk){
     chk.addEventListener('change',async function(){
@@ -2048,7 +2433,7 @@ function renderComments(){
     const el=document.getElementById('fbList'+type);if(!el)return;
     const items=Object.entries(feedbacksMap).filter(function(e){return e[1].type===type;});
     if(!items.length){el.innerHTML='<p style="color:var(--tl);padding:1rem;background:#fff;border-radius:8px;text-align:center;font-size:0.85rem;">'+empty[type]+'</p>';return;}
-    el.innerHTML=items.map(function(e){const f=e[1],key=e[0];return'<div style="background:#fff;border:1px solid #e8dcc8;border-left:4px solid '+color[type]+';border-radius:8px;padding:1rem;margin-bottom:0.75rem;"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;"><div><div style="font-weight:500;font-size:0.9rem;color:#3b2314;">'+f.name+'</div><div style="font-size:0.75rem;color:#8a6a55;">'+(f.contact?f.contact+' · ':'')+f.date+'</div></div><span style="font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:999px;font-weight:500;background:'+(f.status==='Resolved'?'#d4edda':'#fef3cd')+';color:'+(f.status==='Resolved'?'#155724':'#856404')+';">'+f.status+'</span></div><p style="font-size:0.85rem;color:#5c3d2e;font-style:italic;margin:0.4rem 0;">"'+f.message+'"</p><div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:0.75rem;">'+(f.status==='Unread'?'<button data-markfb="'+key+'" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#2d6a4f;cursor:pointer;">✅ Mark Resolved</button>':'')+(f.status==='Resolved'?'<button data-delfb="'+key+'" data-delfbname="'+f.name+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>':'')+'</div></div>';}).join('');
+    el.innerHTML=items.map(function(e){const f=e[1],key=e[0];return'<div style="background:#fff;border:1px solid #e8dcc8;border-left:4px solid '+color[type]+';border-radius:8px;padding:1rem;margin-bottom:0.75rem;"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;"><div><div style="font-weight:500;font-size:0.9rem;color:#3b2314;">'+f.name+'</div><div style="font-size:0.75rem;color:#8a6a55;">'+(f.contact?f.contact+' · ':'')+f.date+'</div></div><span style="font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:999px;font-weight:500;background:'+(f.status==='Resolved'?'#d4edda':'#fef3cd')+';color:'+(f.status==='Resolved'?'#155724':'#856404')+';">'+f.status+'</span></div><p style="font-size:0.85rem;color:#5c3d2e;font-style:italic;margin:0.4rem 0;">"'+f.message+'"</p><div class="staff-hide" style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:0.75rem;">'+(f.status==='Unread'?'<button data-markfb="'+key+'" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#2d6a4f;cursor:pointer;">✅ Mark Resolved</button>':'')+(f.status==='Resolved'?'<button data-delfb="'+key+'" data-delfbname="'+f.name+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>':'')+'</div></div>';}).join('');
     el.querySelectorAll('button[data-markfb]').forEach(function(btn){btn.addEventListener('click',function(){update(ref(db,'feedbacks/'+this.dataset.markfb),{status:'Resolved'});});});
     el.querySelectorAll('button[data-delfb]').forEach(function(btn){btn.addEventListener('click',function(){showDeletePopup(this.dataset.delfbname,async function(){await remove(ref(db,'feedbacks/'+btn.dataset.delfb));});});});
   });
@@ -2064,13 +2449,20 @@ function renderAdminReviews(){
 window.addReview=async function(){
   const name=document.getElementById('newReviewName').value.trim(),stars=parseInt(document.getElementById('newReviewStars').value),text=document.getElementById('newReviewText').value.trim();
   if(!name||!text){alert('Please enter name and review.');return;}
-  await push(reviewsRef,{name,stars,text,date:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'})});
-  document.getElementById('newReviewName').value='';document.getElementById('newReviewText').value='';
+  var dateVal=document.getElementById('newReviewDate').value.trim()||new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'});
+  await push(reviewsRef,{name,stars,text,date:dateVal});
+  document.getElementById('newReviewName').value='';document.getElementById('newReviewDate').value='';document.getElementById('newReviewText').value='';
   document.getElementById('reviewAddConfirm').style.display='block';setTimeout(function(){document.getElementById('reviewAddConfirm').style.display='none';},2500);
 };
 
 window.savePayment=async function(){
-  const data={gcashNum:document.getElementById('editGcashNum').value,gcashName:document.getElementById('editGcashName').value,bdoNum:document.getElementById('editBdoNum').value,ubNum:document.getElementById('editUbNum').value};
+  function getChk(id){var el=document.getElementById(id);return el?el.checked:true;}
+  // Update disabled notes
+  ['Gcash','Bdo','Ub','Maya','Bank3','Bank4'].forEach(function(k){
+    var note=document.getElementById('chk'+k+'Note');
+    if(note)note.style.display=getChk('chk'+k)?'none':'block';
+  });
+  const data={gcashNum:document.getElementById('editGcashNum').value,gcashName:document.getElementById('editGcashName').value,bdoNum:document.getElementById('editBdoNum').value,bdoName:document.getElementById('editBdoName')?document.getElementById('editBdoName').value:'',ubNum:document.getElementById('editUbNum').value,ubName:document.getElementById('editUbName')?document.getElementById('editUbName').value:'',mayaNum:document.getElementById('editMayaNum').value,mayaName:document.getElementById('editMayaName').value,bank3Label:document.getElementById('editBank3Label').value,bank3Num:document.getElementById('editBank3Num').value,bank3Name:document.getElementById('editBank3Name').value,bank4Label:document.getElementById('editBank4Label').value,bank4Num:document.getElementById('editBank4Num').value,bank4Name:document.getElementById('editBank4Name').value,gcashEnabled:getChk('chkGcash'),bdoEnabled:getChk('chkBdo'),ubEnabled:getChk('chkUb'),mayaEnabled:getChk('chkMaya'),bank3Enabled:getChk('chkBank3'),bank4Enabled:getChk('chkBank4')};
   await set(paymentRef,data);document.getElementById('saveConfirm').style.display='block';setTimeout(function(){document.getElementById('saveConfirm').style.display='none';},3000);
 };
 
@@ -2099,19 +2491,129 @@ function showDeletePopup(label,onConfirm){
 
 window.openAdmin=function(){document.getElementById('loginOverlay').classList.add('show');setTimeout(function(){document.getElementById('adminPass').focus();},150);};
 window.closeAdmin=function(){document.getElementById('loginOverlay').classList.remove('show');document.getElementById('loginErr').style.display='none';document.getElementById('adminPass').value='';};
-window.checkLogin=async function(){
-  const pass=document.getElementById('adminPass').value;
-  const hashBuf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pass));
-  const hashHex=Array.from(new Uint8Array(hashBuf)).map(b=>b.toString(16).padStart(2,'0')).join('');
-  if(hashHex===ADMIN_PASS_HASH){
-    adminLoggedIn=true;closeAdmin();
+
+// ── ROLE SELECTOR ──────────────────────────────────────────
+window.selectLoginRole=function(role){
+  currentLoginRole=role;
+  document.getElementById('loginForm').style.display='block';
+  var aBtn=document.getElementById('roleAdminBtn'),sBtn=document.getElementById('roleStaffBtn');
+  aBtn.style.background=role==='admin'?'var(--bd)':'#fff';
+  aBtn.style.color=role==='admin'?'#fff':'var(--td)';
+  aBtn.style.borderColor=role==='admin'?'var(--bd)':'var(--cd)';
+  sBtn.style.background=role==='staff'?'var(--bl)':'#fff';
+  sBtn.style.color=role==='staff'?'#fff':'var(--td)';
+  sBtn.style.borderColor=role==='staff'?'var(--bl)':'var(--cd)';
+  var fBtn=document.getElementById('forgotPwBtn');
+  if(fBtn)fBtn.style.display=role==='admin'?'inline':'none';
+  document.getElementById('forgotPwPanel').style.display='none';
+  document.getElementById('loginErr').style.display='none';
+  setTimeout(function(){document.getElementById('adminUser').focus();},100);
+};
+
+// ── LOGIN SUCCESS ───────────────────────────────────────────
+async function loginSuccess(role,username,uid){
+  currentUser={role,username,uid};
+  document.getElementById('adminUser').value='';
+  document.getElementById('adminPass').value='';
+  closeAdmin();
+  document.body.classList.remove('staff-mode');
+  // Reset tab visibility
+  document.querySelectorAll('.admin-tab').forEach(function(t){t.style.removeProperty('display');});
+  var aaccTab=document.getElementById('tabBtnAdminAccounts');
+  if(aaccTab)aaccTab.style.display='none';
+
+  if(role==='superadmin'||role==='admin'){
+    adminLoggedIn=true;superAdminLoggedIn=(role==='superadmin');staffLoggedIn=false;
     ['adminDash','availSection','commentsSection'].forEach(function(id){document.getElementById(id).style.display='block';});
     ['navAvail','navComments'].forEach(function(id){document.getElementById(id).style.display='block';});
-    setTimeout(function(){buildAvail();renderCategoryManager();renderComments();renderOrders();renderReservations();renderAdminReviews();renderAdminCalendar();renderDashboard();},300);
-    window.scrollTo(0,0);
-  }else{document.getElementById('loginErr').style.display='block';document.getElementById('adminPass').value='';}
+    if(superAdminLoggedIn&&aaccTab)aaccTab.style.removeProperty('display');
+    var hdr=document.querySelector('#adminDash .admin-header p');
+    if(hdr)hdr.textContent=(superAdminLoggedIn?'👑 Super Admin':'🔑 Admin')+': '+username;
+    setTimeout(function(){
+      buildAvail();renderCategoryManager();renderComments();renderOrders();renderReservations();
+      renderAdminReviews();renderAdminCalendar();renderDashboard();renderStaffAccounts();
+      if(superAdminLoggedIn)renderAdminAccounts();
+    },300);
+  }else{
+    // Staff
+    staffLoggedIn=true;adminLoggedIn=false;superAdminLoggedIn=false;
+    document.body.classList.add('staff-mode');
+    document.getElementById('adminDash').style.display='block';
+    document.getElementById('commentsSection').style.display='block';
+    ['availSection','navAvail'].forEach(function(id){document.getElementById(id).style.display='none';});
+    // Hide tabs not for staff
+    document.querySelectorAll('.admin-tab').forEach(function(btn){
+      var oc=btn.getAttribute('onclick')||'';
+      var hides=['payment','staffaccounts','adminaccounts'];
+      if(hides.some(function(t){return oc.indexOf("'"+t+"'")!==-1;})){btn.style.display='none';}
+    });
+    var hdr=document.querySelector('#adminDash .admin-header p');
+    if(hdr)hdr.textContent='👤 Staff: '+username;
+    setTimeout(function(){
+      renderOrders();renderReservations();renderAdminCalendar();renderDashboard();
+      renderAdminReviews();renderComments();renderStaffMenu();
+    },300);
+  }
+  window.scrollTo(0,0);
+}
+
+// ── CHECK LOGIN ─────────────────────────────────────────────
+window.checkLogin=async function(){
+  var username=(document.getElementById('adminUser').value||'').trim().toLowerCase();
+  var pass=document.getElementById('adminPass').value;
+  if(!username||!pass){document.getElementById('loginErr').style.display='block';return;}
+  var hashBuf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pass));
+  var hashHex=Array.from(new Uint8Array(hashBuf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  document.getElementById('loginErr').style.display='none';
+
+  if(currentLoginRole==='admin'){
+    // Check super admin
+    if(username===SUPER_ADMIN_USERNAME&&hashHex===(currentAdminHash||ADMIN_PASS_HASH)){
+      await loginSuccess('superadmin','superadmin',null);
+    }else{
+      // Check admin accounts
+      var match=null;
+      for(var uid in adminAccountsMap){
+        if(adminAccountsMap[uid].username===username&&adminAccountsMap[uid].passwordHash===hashHex){
+          match={uid,username:adminAccountsMap[uid].username};break;
+        }
+      }
+      if(match){await loginSuccess('admin',match.username,match.uid);}
+      else{document.getElementById('loginErr').style.display='block';document.getElementById('adminPass').value='';}
+    }
+  }else if(currentLoginRole==='staff'){
+    var smatch=null;
+    for(var suid in staffAccountsMap){
+      if(staffAccountsMap[suid].username===username&&staffAccountsMap[suid].passwordHash===hashHex){
+        smatch={uid:suid,username:staffAccountsMap[suid].username};break;
+      }
+    }
+    if(smatch){await loginSuccess('staff',smatch.username,smatch.uid);}
+    else{document.getElementById('loginErr').style.display='block';document.getElementById('adminPass').value='';}
+  }else{
+    document.getElementById('loginErr').style.display='block';
+  }
 };
-window.logoutAdmin=function(){adminLoggedIn=false;['adminDash','availSection','commentsSection'].forEach(function(id){document.getElementById(id).style.display='none';});['navAvail','navComments'].forEach(function(id){document.getElementById(id).style.display='none';});window.scrollTo(0,0);};
+
+window.logoutAdmin=function(){
+  adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;currentUser=null;currentLoginRole=null;
+  document.body.classList.remove('staff-mode');
+  // Hide all tab content panels (they live outside adminDash)
+  document.querySelectorAll('.admin-tab-content').forEach(function(el){el.style.display='none';});
+  ['adminDash','availSection','commentsSection'].forEach(function(id){document.getElementById(id).style.display='none';});
+  ['navAvail','navComments'].forEach(function(id){document.getElementById(id).style.display='none';});
+  document.querySelectorAll('.admin-tab').forEach(function(t){t.style.removeProperty('display');});
+  var aaccTab=document.getElementById('tabBtnAdminAccounts');
+  if(aaccTab)aaccTab.style.display='none';
+  // Reset login form
+  document.getElementById('loginForm').style.display='none';
+  var aBtn=document.getElementById('roleAdminBtn'),sBtn=document.getElementById('roleStaffBtn');
+  if(aBtn){aBtn.style.background='#fff';aBtn.style.color='var(--td)';aBtn.style.borderColor='var(--cd)';}
+  if(sBtn){sBtn.style.background='#fff';sBtn.style.color='var(--td)';sBtn.style.borderColor='var(--cd)';}
+  var hdr=document.querySelector('#adminDash .admin-header p');
+  if(hdr)hdr.textContent='🔥 Firebase Realtime DB';
+  window.scrollTo(0,0);
+};
 window.switchTab=function(tab,btn){
   document.querySelectorAll('.admin-tab').forEach(function(b){b.classList.remove('active');});
   if(btn)btn.classList.add('active');
@@ -2293,3 +2795,60 @@ window.printOrder = function(orderId) {
 </div>
 </body>
 </html>
+
+    <!-- ADMIN ACCOUNTS TAB (super admin only) -->
+    <div id="tab-adminaccounts" class="admin-tab-content" style="display:none;">
+      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:1.5rem;font-size:1.2rem;">👑 Admin Accounts</h3>
+      <div style="max-width:480px;margin-bottom:2rem;">
+        <div style="font-size:0.82rem;font-weight:600;color:var(--bd);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Add New Admin</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.5rem;">
+          <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Username</label>
+          <input type="text" id="adminAccUsername" placeholder="e.g. manager" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.7rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);"/></div>
+          <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Password</label>
+          <input type="password" id="adminAccPassword" placeholder="Set password" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.7rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);"/></div>
+        </div>
+        <button onclick="addAdminAccount()" style="background:var(--bd);color:#fff;border:none;border-radius:6px;padding:0.5rem 1.2rem;font-size:0.85rem;font-family:'Inter',sans-serif;font-weight:500;cursor:pointer;">➕ Add Admin Account</button>
+        <div id="adminAccMsg" style="display:none;margin-top:0.6rem;padding:0.45rem 0.75rem;border-radius:6px;font-size:0.8rem;font-family:'Inter',sans-serif;"></div>
+      </div>
+      <div style="font-size:0.82rem;font-weight:600;color:var(--bd);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Current Admins</div>
+      <div id="adminAccList"><p style="font-size:0.85rem;color:var(--tl);">No admin accounts yet.</p></div>
+    </div>
+
+    <!-- STAFF ACCOUNTS TAB -->
+    <div id="tab-staffaccounts" class="admin-tab-content" style="display:none;">
+      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:1.5rem;font-size:1.2rem;">👥 Staff Accounts</h3>
+      <div style="max-width:480px;margin-bottom:2rem;">
+        <div style="font-size:0.82rem;font-weight:600;color:var(--bd);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Add New Staff</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.5rem;">
+          <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Username</label>
+          <input type="text" id="staffUsername" placeholder="e.g. juan" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.7rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);"/></div>
+          <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Password</label>
+          <input type="password" id="staffPassword" placeholder="Set password" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.7rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);"/></div>
+        </div>
+        <button onclick="addStaffAccount()" style="background:var(--bd);color:#fff;border:none;border-radius:6px;padding:0.5rem 1.2rem;font-size:0.85rem;font-family:'Inter',sans-serif;font-weight:500;cursor:pointer;">➕ Add Staff Account</button>
+        <div id="staffAddMsg" style="display:none;margin-top:0.6rem;padding:0.45rem 0.75rem;border-radius:6px;font-size:0.8rem;font-family:'Inter',sans-serif;"></div>
+      </div>
+      <div style="font-size:0.82rem;font-weight:600;color:var(--bd);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Current Staff</div>
+      <div id="staffList"><p style="font-size:0.85rem;color:var(--tl);">No staff accounts yet.</p></div>
+    </div>
+
+    <!-- CHANGE PASSWORD TAB -->
+    <div id="tab-changepw" class="admin-tab-content" style="display:none;">
+      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:1.5rem;font-size:1.2rem;">🔑 Change Password</h3>
+      <div style="max-width:420px;">
+        <div style="margin-bottom:0.75rem;">
+          <label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.06em;">Current Password</label>
+          <div style="position:relative;"><input type="password" id="cpCurrent" placeholder="Enter current password" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.55rem 2.4rem 0.55rem 0.75rem;font-family:'Inter',sans-serif;font-size:0.88rem;color:var(--td);"/><button type="button" onclick="togglePwVis('cpCurrent',this)" style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1rem;padding:0;line-height:1;color:var(--tl);">👁️</button></div>
+        </div>
+        <div style="margin-bottom:0.75rem;">
+          <label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.06em;">New Password</label>
+          <div style="position:relative;"><input type="password" id="cpNew" placeholder="Enter new password" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.55rem 2.4rem 0.55rem 0.75rem;font-family:'Inter',sans-serif;font-size:0.88rem;color:var(--td);"/><button type="button" onclick="togglePwVis('cpNew',this)" style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1rem;padding:0;line-height:1;color:var(--tl);">👁️</button></div>
+        </div>
+        <div style="margin-bottom:1rem;">
+          <label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.06em;">Confirm New Password</label>
+          <div style="position:relative;"><input type="password" id="cpConfirm" placeholder="Confirm new password" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.55rem 2.4rem 0.55rem 0.75rem;font-family:'Inter',sans-serif;font-size:0.88rem;color:var(--td);" onkeydown="if(event.key==='Enter')changeAdminPassword()"/><button type="button" onclick="togglePwVis('cpConfirm',this)" style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1rem;padding:0;line-height:1;color:var(--tl);">👁️</button></div>
+        </div>
+        <button onclick="changeAdminPassword()" style="background:var(--bd);color:#fff;border:none;border-radius:6px;padding:0.6rem 1.4rem;font-size:0.88rem;font-family:'Inter',sans-serif;font-weight:500;cursor:pointer;">🔑 Update Password</button>
+        <div id="cpMsg" style="display:none;margin-top:0.75rem;padding:0.55rem 0.85rem;border-radius:6px;font-size:0.82rem;font-family:'Inter',sans-serif;"></div>
+      </div>
+    </div>
