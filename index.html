@@ -786,10 +786,21 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
         <div style="grid-column:1/-1;"><label>Description</label><textarea id="newItemDesc" rows="2" placeholder="Brief description..."></textarea></div>
         <div style="grid-column:1/-1;"><label>Image URL (optional)</label><input type="text" id="newItemImg" placeholder="https://i.postimg.cc/..."/></div>
       </div>
-      <div class="avail-add-prices">
+      <div style="margin-bottom:0.75rem;">
+        <label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.06em;">Pricing Type</label>
+        <div style="display:flex;gap:0.5rem;">
+          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.85rem;color:var(--td);text-transform:none;letter-spacing:0;"><input type="radio" name="pricingType" id="pricingTypeSized" value="sized" checked onchange="setPricingType('sized')" style="width:auto;accent-color:var(--bl);"/> Sized (S / M / L)</label>
+          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.85rem;color:var(--td);text-transform:none;letter-spacing:0;"><input type="radio" name="pricingType" id="pricingTypeFlat" value="flat" onchange="setPricingType('flat')" style="width:auto;accent-color:var(--bl);"/> Flat Price</label>
+        </div>
+      </div>
+<div class="avail-add-prices" id="priceSizedFields">
         <div><label>Small (₱)</label><input type="number" id="newItemPriceS" placeholder="e.g. 205"/></div>
         <div><label>Medium (₱)</label><input type="number" id="newItemPriceM" placeholder="e.g. 215"/></div>
         <div><label>Large (₱)</label><input type="number" id="newItemPriceL" placeholder="e.g. 225"/></div>
+      </div>
+<div id="priceFlatField" style="display:none;margin-bottom:0.75rem;">
+        <label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Price (₱)</label>
+        <input type="number" id="newItemPriceFlat" placeholder="e.g. 95" style="background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.75rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);width:100%;max-width:180px;"/>
       </div>
       <button id="btnAddItem" style="background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.7rem 1.5rem;font-size:0.88rem;cursor:pointer;font-family:'Inter',sans-serif;margin-top:0.5rem;">➕ Add Item</button>
       <div id="addItemConfirm" style="display:none;margin-top:0.75rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.6rem 1rem;"><p style="color:#2d6a4f;font-size:0.85rem;">✅ Item added successfully!</p></div>
@@ -1161,10 +1172,12 @@ document.getElementById('btnAddItem').addEventListener('click',async function(){
   const cat=document.getElementById('newItemCat').value;
   const desc=document.getElementById('newItemDesc').value.trim();
   const img=document.getElementById('newItemImg').value.trim();
-  const priceS=parseInt(document.getElementById('newItemPriceS').value)||0;
-  const priceM=parseInt(document.getElementById('newItemPriceM').value)||0;
-  const priceL=parseInt(document.getElementById('newItemPriceL').value)||0;
-  if(!name||!priceS){alert('Please enter item name and small/single price.');return;}
+  const isFlat=document.getElementById('pricingTypeFlat')&&document.getElementById('pricingTypeFlat').checked;
+  const priceFlat=parseInt(document.getElementById('newItemPriceFlat').value)||0;
+  const priceS=isFlat?priceFlat:(parseInt(document.getElementById('newItemPriceS').value)||0);
+  const priceM=isFlat?0:(parseInt(document.getElementById('newItemPriceM').value)||0);
+  const priceL=isFlat?0:(parseInt(document.getElementById('newItemPriceL').value)||0);
+  if(!name||!priceS){alert('Please enter item name and price.');return;}
   const catItems=getMenuItems().filter(i=>i.cat===cat);
   const newItem={cat,name,desc,priceS,order:catItems.length};
   if(priceM)newItem.priceM=priceM;if(priceL)newItem.priceL=priceL;if(img)newItem.img=img;
@@ -1989,6 +2002,23 @@ if(archFrom)archFrom.value=new Date(nm.getFullYear(),nm.getMonth(),1).toISOStrin
 if(archTo)archTo.value=nm.toISOString().slice(0,10);
 // Trigger initial menu render after short delay for Firebase
 setTimeout(function(){if(Object.keys(menuItemsMap).length)renderMenuSection();},1000);
+// ── Pricing Type Toggle ─────────────────────────────────────────────────────
+window.setPricingType = function(type) {
+  var sized = document.getElementById('priceSizedFields');
+  var flat  = document.getElementById('priceFlatField');
+  if (type === 'flat') {
+    sized.style.display = 'none';
+    flat.style.display  = 'block';
+    // clear sized fields
+    ['newItemPriceS','newItemPriceM','newItemPriceL'].forEach(function(id){
+      var el = document.getElementById(id); if(el) el.value = '';
+    });
+  } else {
+    sized.style.display = 'grid';
+    flat.style.display  = 'none';
+    var el = document.getElementById('newItemPriceFlat'); if(el) el.value = '';
+  }
+};
 // ── Gallery Lightbox ────────────────────────────────────────────────────────
 (function(){
   var GALLERY = ["https://i.postimg.cc/g0qrJsnX/6.jpg", "https://i.postimg.cc/TwtsR8Gd/image.png", "https://i.postimg.cc/5yPsM8BH/image.png", "https://i.postimg.cc/wMbQrgz3/image.png", "https://i.postimg.cc/BvGckmr5/image.png", "https://i.postimg.cc/sXJJz5YV/image.png", "https://i.postimg.cc/B6mT84jW/image.png", "https://i.postimg.cc/yxJZk9qq/image.png", "https://i.postimg.cc/CxpqxzcB/image.png", "https://i.postimg.cc/Pq2pyKTr/image.png", "https://i.postimg.cc/sxZMVrSZ/image.png"];
