@@ -841,7 +841,6 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     </div>
     <div class="admin-tabs">
       <button class="admin-tab active" onclick="switchTab('dashboard',this)">📊 Dashboard</button>
-      <button class="admin-tab" onclick="switchTab('changepw',this)">🔑 Change Password</button>
       <button class="admin-tab" onclick="switchTab('orders',this)">📋 Orders</button>
       <button class="admin-tab" onclick="switchTab('reservations',this)">📅 Reservations</button>
       <button class="admin-tab" onclick="switchTab('calendar',this)">🗓️ Calendar</button>
@@ -850,6 +849,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
       <button class="admin-tab" onclick="switchTab('payment',this)">💳 Payment Details</button>
       <button class="admin-tab" onclick="switchTab('staffaccounts',this)">👥 Staff Accounts</button>
       <button class="admin-tab" id="tabBtnAdminAccounts" style="display:none;" onclick="switchTab('adminaccounts',this)">👑 Admin Accounts</button>
+      <button class="admin-tab" onclick="switchTab('changepw',this)">🔑 Change Password</button>
     </div>
     <!-- DASHBOARD -->
     <div id="tab-dashboard" class="admin-tab-content">
@@ -919,7 +919,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     </div>
     <!-- REVIEWS -->
     <div id="tab-reviews" class="admin-tab-content" style="display:none;">
-      <div id="reviewAddSection">
+      <div id="reviewAddSection" class="staff-hide">
       <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:1rem;">Add a New Review</h3>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:0.75rem;"><div><label class="field-label">Customer Name</label><input type="text" id="newReviewName" placeholder="e.g. Maria Santos"/></div><div><label class="field-label">Rating</label><select id="newReviewStars"><option value="5">⭐⭐⭐⭐⭐</option><option value="4">⭐⭐⭐⭐</option><option value="3">⭐⭐⭐</option><option value="2">⭐⭐</option><option value="1">⭐</option></select></div></div><div style="margin-bottom:0.75rem;"><label class="field-label">Date <span style="font-weight:400;color:var(--tl);font-size:0.78rem;">(optional — leave blank to use today)</span></label><input type="text" id="newReviewDate" placeholder="e.g. June 2026 · via Facebook" style="width:100%;"/></div>
       <label class="field-label">Review Message</label><textarea id="newReviewText" rows="3" placeholder="Amazing coffee and cozy atmosphere!..." style="margin-bottom:0.75rem;"></textarea>
@@ -938,6 +938,65 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
       </div>
       <div id="saveConfirm" style="display:none;margin-top:1rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.75rem 1rem;"><p style="color:#2d6a4f;">✅ Payment details updated!</p></div>
     </div>
+
+    <!-- ADMIN ACCOUNTS TAB (super admin only) -->
+    <div id="tab-adminaccounts" class="admin-tab-content" style="display:none;">
+      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:1.5rem;font-size:1.2rem;">👑 Admin Accounts</h3>
+      <div style="max-width:480px;margin-bottom:2rem;">
+        <div style="font-size:0.82rem;font-weight:600;color:var(--bd);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Add New Admin</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.5rem;">
+          <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Username</label>
+          <input type="text" id="adminAccUsername" placeholder="e.g. manager" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.7rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);"/></div>
+          <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Password</label>
+          <input type="password" id="adminAccPassword" placeholder="Set password" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.7rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);"/></div>
+        </div>
+        <button onclick="addAdminAccount()" style="background:var(--bd);color:#fff;border:none;border-radius:6px;padding:0.5rem 1.2rem;font-size:0.85rem;font-family:'Inter',sans-serif;font-weight:500;cursor:pointer;">➕ Add Admin Account</button>
+        <div id="adminAccMsg" style="display:none;margin-top:0.6rem;padding:0.45rem 0.75rem;border-radius:6px;font-size:0.8rem;font-family:'Inter',sans-serif;"></div>
+      </div>
+      <div style="font-size:0.82rem;font-weight:600;color:var(--bd);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Current Admins</div>
+      <div id="adminAccList"><p style="font-size:0.85rem;color:var(--tl);">No admin accounts yet.</p></div>
+    </div>
+
+    <!-- STAFF ACCOUNTS TAB -->
+    <div id="tab-staffaccounts" class="admin-tab-content" style="display:none;">
+      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:1.5rem;font-size:1.2rem;">👥 Staff Accounts</h3>
+      <div style="max-width:480px;margin-bottom:2rem;">
+        <div style="font-size:0.82rem;font-weight:600;color:var(--bd);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Add New Staff</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.5rem;">
+          <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Username</label>
+          <input type="text" id="staffUsername" placeholder="e.g. juan" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.7rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);"/></div>
+          <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Password</label>
+          <input type="password" id="staffPassword" placeholder="Set password" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.7rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);"/></div>
+        </div>
+        <button onclick="addStaffAccount()" style="background:var(--bd);color:#fff;border:none;border-radius:6px;padding:0.5rem 1.2rem;font-size:0.85rem;font-family:'Inter',sans-serif;font-weight:500;cursor:pointer;">➕ Add Staff Account</button>
+        <div id="staffAddMsg" style="display:none;margin-top:0.6rem;padding:0.45rem 0.75rem;border-radius:6px;font-size:0.8rem;font-family:'Inter',sans-serif;"></div>
+      </div>
+      <div style="font-size:0.82rem;font-weight:600;color:var(--bd);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Current Staff</div>
+      <div id="staffList"><p style="font-size:0.85rem;color:var(--tl);">No staff accounts yet.</p></div>
+    </div>
+
+    <!-- CHANGE PASSWORD TAB -->
+    <div id="tab-changepw" class="admin-tab-content" style="display:none;">
+      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:1.5rem;font-size:1.2rem;">🔑 Change Password</h3>
+      <div style="max-width:420px;">
+        <div style="margin-bottom:0.75rem;">
+          <label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.06em;">Current Password</label>
+          <div style="position:relative;"><input type="password" id="cpCurrent" placeholder="Enter current password" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.55rem 2.4rem 0.55rem 0.75rem;font-family:'Inter',sans-serif;font-size:0.88rem;color:var(--td);"/><button type="button" onclick="togglePwVis('cpCurrent',this)" style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1rem;padding:0;line-height:1;color:var(--tl);">👁️</button></div>
+        </div>
+        <div style="margin-bottom:0.75rem;">
+          <label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.06em;">New Password</label>
+          <div style="position:relative;"><input type="password" id="cpNew" placeholder="Enter new password" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.55rem 2.4rem 0.55rem 0.75rem;font-family:'Inter',sans-serif;font-size:0.88rem;color:var(--td);"/><button type="button" onclick="togglePwVis('cpNew',this)" style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1rem;padding:0;line-height:1;color:var(--tl);">👁️</button></div>
+        </div>
+        <div style="margin-bottom:1rem;">
+          <label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.06em;">Confirm New Password</label>
+          <div style="position:relative;"><input type="password" id="cpConfirm" placeholder="Confirm new password" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.55rem 2.4rem 0.55rem 0.75rem;font-family:'Inter',sans-serif;font-size:0.88rem;color:var(--td);" onkeydown="if(event.key==='Enter')changeAdminPassword()"/><button type="button" onclick="togglePwVis('cpConfirm',this)" style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1rem;padding:0;line-height:1;color:var(--tl);">👁️</button></div>
+        </div>
+        <button onclick="changeAdminPassword()" style="background:var(--bd);color:#fff;border:none;border-radius:6px;padding:0.6rem 1.4rem;font-size:0.88rem;font-family:'Inter',sans-serif;font-weight:500;cursor:pointer;">🔑 Update Password</button>
+        <div id="cpMsg" style="display:none;margin-top:0.75rem;padding:0.55rem 0.85rem;border-radius:6px;font-size:0.82rem;font-family:'Inter',sans-serif;"></div>
+      </div>
+    </div>
+
+
   </div>
 </section>
 
@@ -2442,7 +2501,7 @@ function renderComments(){
 function renderAdminReviews(){
   const el=document.getElementById('adminReviewsList'),entries=Object.entries(reviewsMap);
   if(!entries.length){el.innerHTML='<div class="empty-state">No reviews added yet.</div>';return;}
-  el.innerHTML=entries.map(function(e){const key=e[0],r=e[1];return'<div class="order-admin-card" style="display:flex;justify-content:space-between;align-items:flex-start;"><div><div class="order-admin-name">'+r.name+' '+'⭐'.repeat(r.stars)+'</div><div class="order-admin-meta">'+r.date+'</div><div class="order-admin-items">"'+r.text+'"</div></div><button data-delrev="'+key+'" data-delrevname="'+r.name+'" style="background:none;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.6rem;font-size:0.75rem;color:#c0392b;cursor:pointer;margin-left:1rem;flex-shrink:0;">Remove</button></div>';}).join('');
+  el.innerHTML=entries.map(function(e){const key=e[0],r=e[1];return'<div class="order-admin-card" style="display:flex;justify-content:space-between;align-items:flex-start;">'+'<div><div class="order-admin-name">'+r.name+' '+'⭐'.repeat(r.stars)+'</div>'+'<div class="order-admin-meta">'+r.date+'</div>'+'<div class="order-admin-items">"'+r.text+'"</div></div>'+(staffLoggedIn?'':'<button data-delrev="'+key+'" data-delrevname="'+r.name+'" style="background:none;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.6rem;font-size:0.75rem;color:#c0392b;cursor:pointer;margin-left:1rem;flex-shrink:0;">Remove</button>')+'</div>';}).join('');
   el.querySelectorAll('button[data-delrev]').forEach(function(btn){btn.addEventListener('click',function(){showDeletePopup(this.dataset.delrevname,async function(){await remove(ref(db,'reviews/'+btn.dataset.delrev));});});});
 }
 
@@ -2795,60 +2854,3 @@ window.printOrder = function(orderId) {
 </div>
 </body>
 </html>
-
-    <!-- ADMIN ACCOUNTS TAB (super admin only) -->
-    <div id="tab-adminaccounts" class="admin-tab-content" style="display:none;">
-      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:1.5rem;font-size:1.2rem;">👑 Admin Accounts</h3>
-      <div style="max-width:480px;margin-bottom:2rem;">
-        <div style="font-size:0.82rem;font-weight:600;color:var(--bd);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Add New Admin</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.5rem;">
-          <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Username</label>
-          <input type="text" id="adminAccUsername" placeholder="e.g. manager" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.7rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);"/></div>
-          <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Password</label>
-          <input type="password" id="adminAccPassword" placeholder="Set password" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.7rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);"/></div>
-        </div>
-        <button onclick="addAdminAccount()" style="background:var(--bd);color:#fff;border:none;border-radius:6px;padding:0.5rem 1.2rem;font-size:0.85rem;font-family:'Inter',sans-serif;font-weight:500;cursor:pointer;">➕ Add Admin Account</button>
-        <div id="adminAccMsg" style="display:none;margin-top:0.6rem;padding:0.45rem 0.75rem;border-radius:6px;font-size:0.8rem;font-family:'Inter',sans-serif;"></div>
-      </div>
-      <div style="font-size:0.82rem;font-weight:600;color:var(--bd);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Current Admins</div>
-      <div id="adminAccList"><p style="font-size:0.85rem;color:var(--tl);">No admin accounts yet.</p></div>
-    </div>
-
-    <!-- STAFF ACCOUNTS TAB -->
-    <div id="tab-staffaccounts" class="admin-tab-content" style="display:none;">
-      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:1.5rem;font-size:1.2rem;">👥 Staff Accounts</h3>
-      <div style="max-width:480px;margin-bottom:2rem;">
-        <div style="font-size:0.82rem;font-weight:600;color:var(--bd);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Add New Staff</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.5rem;">
-          <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Username</label>
-          <input type="text" id="staffUsername" placeholder="e.g. juan" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.7rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);"/></div>
-          <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Password</label>
-          <input type="password" id="staffPassword" placeholder="Set password" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.7rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);"/></div>
-        </div>
-        <button onclick="addStaffAccount()" style="background:var(--bd);color:#fff;border:none;border-radius:6px;padding:0.5rem 1.2rem;font-size:0.85rem;font-family:'Inter',sans-serif;font-weight:500;cursor:pointer;">➕ Add Staff Account</button>
-        <div id="staffAddMsg" style="display:none;margin-top:0.6rem;padding:0.45rem 0.75rem;border-radius:6px;font-size:0.8rem;font-family:'Inter',sans-serif;"></div>
-      </div>
-      <div style="font-size:0.82rem;font-weight:600;color:var(--bd);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Current Staff</div>
-      <div id="staffList"><p style="font-size:0.85rem;color:var(--tl);">No staff accounts yet.</p></div>
-    </div>
-
-    <!-- CHANGE PASSWORD TAB -->
-    <div id="tab-changepw" class="admin-tab-content" style="display:none;">
-      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:1.5rem;font-size:1.2rem;">🔑 Change Password</h3>
-      <div style="max-width:420px;">
-        <div style="margin-bottom:0.75rem;">
-          <label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.06em;">Current Password</label>
-          <div style="position:relative;"><input type="password" id="cpCurrent" placeholder="Enter current password" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.55rem 2.4rem 0.55rem 0.75rem;font-family:'Inter',sans-serif;font-size:0.88rem;color:var(--td);"/><button type="button" onclick="togglePwVis('cpCurrent',this)" style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1rem;padding:0;line-height:1;color:var(--tl);">👁️</button></div>
-        </div>
-        <div style="margin-bottom:0.75rem;">
-          <label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.06em;">New Password</label>
-          <div style="position:relative;"><input type="password" id="cpNew" placeholder="Enter new password" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.55rem 2.4rem 0.55rem 0.75rem;font-family:'Inter',sans-serif;font-size:0.88rem;color:var(--td);"/><button type="button" onclick="togglePwVis('cpNew',this)" style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1rem;padding:0;line-height:1;color:var(--tl);">👁️</button></div>
-        </div>
-        <div style="margin-bottom:1rem;">
-          <label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.06em;">Confirm New Password</label>
-          <div style="position:relative;"><input type="password" id="cpConfirm" placeholder="Confirm new password" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.55rem 2.4rem 0.55rem 0.75rem;font-family:'Inter',sans-serif;font-size:0.88rem;color:var(--td);" onkeydown="if(event.key==='Enter')changeAdminPassword()"/><button type="button" onclick="togglePwVis('cpConfirm',this)" style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1rem;padding:0;line-height:1;color:var(--tl);">👁️</button></div>
-        </div>
-        <button onclick="changeAdminPassword()" style="background:var(--bd);color:#fff;border:none;border-radius:6px;padding:0.6rem 1.4rem;font-size:0.88rem;font-family:'Inter',sans-serif;font-weight:500;cursor:pointer;">🔑 Update Password</button>
-        <div id="cpMsg" style="display:none;margin-top:0.75rem;padding:0.55rem 0.85rem;border-radius:6px;font-size:0.82rem;font-family:'Inter',sans-serif;"></div>
-      </div>
-    </div>
