@@ -1353,15 +1353,19 @@ function playChime(){
     if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();
     if(audioCtx.state==='suspended')audioCtx.resume();
     var t=audioCtx.currentTime;
-    [[880,0],[1108.73,0.18],[1318.51,0.36]].forEach(function(n){
+    // Urgent two-tone alert: 6 alternating pulses, ~1.8s total
+    for(var i=0;i<6;i++){
       var o=audioCtx.createOscillator(),gn=audioCtx.createGain();
-      o.type='sine';o.frequency.value=n[0];
-      gn.gain.setValueAtTime(0.0001,t+n[1]);
-      gn.gain.exponentialRampToValueAtTime(0.5,t+n[1]+0.03);
-      gn.gain.exponentialRampToValueAtTime(0.0001,t+n[1]+0.7);
+      o.type='triangle';
+      o.frequency.value=(i%2===0)?988:740;
+      var st=t+i*0.3;
+      gn.gain.setValueAtTime(0.0001,st);
+      gn.gain.exponentialRampToValueAtTime(0.55,st+0.02);
+      gn.gain.setValueAtTime(0.55,st+0.22);
+      gn.gain.exponentialRampToValueAtTime(0.0001,st+0.3);
       o.connect(gn);gn.connect(audioCtx.destination);
-      o.start(t+n[1]);o.stop(t+n[1]+0.75);
-    });
+      o.start(st);o.stop(st+0.32);
+    }
   }catch(e){}
 }
 function clearOrderAlert(){
@@ -1380,7 +1384,7 @@ function notifyNewOrders(fresh){
   if(b){b.textContent=unseenOrders;b.style.display='inline-block';}
   playChime();
   if(orderChimeTimer)clearInterval(orderChimeTimer);
-  orderChimeTimer=setInterval(playChime,10000);
+  orderChimeTimer=setInterval(playChime,3800);
 }
 window.ackNewOrders=function(){
   clearOrderAlert();
