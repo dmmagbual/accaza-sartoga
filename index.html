@@ -413,10 +413,21 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 .archive-summary{grid-template-columns:1fr;}
 #menuGrid{grid-template-columns:1fr!important;}
 }
+/* New order toast */
+.order-toast{position:fixed;top:84px;right:18px;z-index:6000;background:#1a7a45;color:#fff;border-radius:12px;padding:0.9rem 1.2rem;box-shadow:0 10px 30px rgba(0,0,0,0.35);display:none;align-items:center;gap:0.8rem;cursor:pointer;max-width:340px;animation:toastIn 0.4s ease;}
+.order-toast:hover{background:#16693b;}
+@keyframes toastIn{from{transform:translateX(120%);opacity:0;}to{transform:translateX(0);opacity:1;}}
+.order-toast .ot-bell{font-size:1.5rem;animation:bellRing 1.1s ease infinite;transform-origin:top center;display:inline-block;}
+@keyframes bellRing{0%,100%{transform:rotate(0);}15%{transform:rotate(14deg);}30%{transform:rotate(-12deg);}45%{transform:rotate(8deg);}60%{transform:rotate(-6deg);}75%{transform:rotate(3deg);}}
 </style>
 </head>
 <body>
 <div class="fb-sync" id="fbSync">🔥 Firebase Connected</div>
+<div class="order-toast" id="orderToast" onclick="ackNewOrders()">
+  <span class="ot-bell">🔔</span>
+  <div><div style="font-weight:600;font-size:0.92rem;" id="orderToastTitle">New order received!</div>
+  <div style="font-size:0.8rem;opacity:0.85;" id="orderToastSub">Tap to view orders</div></div>
+</div>
 <nav>
   <div class="nav-logo">Accaza Coffee House</div>
   <ul class="nav-links">
@@ -426,6 +437,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     <li><a href="#feedback">Feedback</a></li><li><a href="#gallery">Gallery</a></li><li><a href="#contact">Contact</a></li>
     <li id="navAvail" style="display:none;"><a href="#availSection" style="color:#c9956a;font-weight:500;">🔄 Availability</a></li>
     <li id="navComments" style="display:none;"><a href="#commentsSection" style="color:#c9956a;font-weight:500;">📩 Comments</a></li>
+    <li id="navAdminPanel" style="display:none;"><a href="#adminDash" id="navAdminPanelLink" style="color:#c9956a;font-weight:600;">🔐 Admin Panel</a></li>
   </ul>
   <button class="hamburger" id="hamburgerBtn" onclick="toggleNav()" aria-label="Open menu"><span></span><span></span><span></span></button>
 </nav>
@@ -494,8 +506,8 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
         <div style="font-size:3rem;margin-bottom:1rem;">🎬</div>
         <p style="font-family:'Playfair Display',serif;font-size:1.3rem;color:var(--cr);">Watch Our Latest Reel</p>
         <p style="font-size:0.88rem;color:rgba(245,239,230,0.6);margin-bottom:1.75rem;line-height:1.6;">See the Accaza vibe — the cozy space, the craft, and the community that makes us home.</p>
-        <a href="https://www.facebook.com/reel/716824994597405" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:0.6rem;background:var(--bl);color:#fff;text-decoration:none;padding:0.9rem 2rem;border-radius:6px;font-size:0.9rem;letter-spacing:0.06em;text-transform:uppercase;" onmouseover="this.style.background='#b8784a'" onmouseout="this.style.background='var(--bl)'">Watch on Facebook</a>
-        <p style="font-size:0.72rem;color:rgba(245,239,230,0.35);margin-top:1.25rem;">Opens Facebook in a new tab</p>
+        <a href="https://www.tiktok.com/@accazacoffee" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:0.6rem;background:var(--bl);color:#fff;text-decoration:none;padding:0.9rem 2rem;border-radius:6px;font-size:0.9rem;letter-spacing:0.06em;text-transform:uppercase;" onmouseover="this.style.background='#b8784a'" onmouseout="this.style.background='var(--bl)'">Watch on TikTok</a>
+        <p style="font-size:0.72rem;color:rgba(245,239,230,0.35);margin-top:1.25rem;">Opens TikTok in a new tab</p>
       </div>
     </div>
   </div>
@@ -781,6 +793,19 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
       </div>
       <div id="catAddConfirm" style="display:none;margin-top:0.5rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.5rem 1rem;"><p style="color:#2d6a4f;font-size:0.83rem;">✅ Category added!</p></div>
     </div>
+    <!-- OPTION GROUPS MANAGER -->
+    <div style="background:#fff;border:1px solid var(--cd);border-radius:10px;padding:1.5rem;margin-bottom:2rem;">
+      <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--bd);margin-bottom:0.4rem;">🧩 Item Options (Variations)</h3>
+      <p style="font-size:0.8rem;color:var(--tl);margin-bottom:1rem;">Create options like Temperature (Hot / Cold) or Sweetness (1 Sugar / 2 Sugars). Each choice has its own price — leave it 0 to show as "Free". Assign options per item in the Add Item form or each item's ✏️ Edit panel.</p>
+      <div id="optGroupList"><p style="color:var(--tl);font-size:0.85rem;">Loading options...</p></div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;margin-top:1rem;padding-top:1rem;border-top:1px dashed var(--cd);">
+        <div style="flex:1;min-width:170px;"><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;">New Option Name</label><input type="text" id="newOgName" placeholder="e.g. Temperature, Spice Level" style="background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.85rem;font-family:'Inter',sans-serif;font-size:0.88rem;color:var(--td);width:100%;"/></div>
+        <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;">Selection</label><select id="newOgType" style="background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.55rem 0.6rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);"><option value="single">Choose one</option><option value="multi">Choose many</option></select></div>
+        <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.8rem;color:var(--td);cursor:pointer;padding-bottom:0.6rem;"><input type="checkbox" id="newOgReq" checked style="width:auto;accent-color:var(--bl);"/> Required</label>
+        <button onclick="addOptionGroup()" style="background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.6rem 1.2rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;">➕ Add Option</button>
+      </div>
+      <div id="ogAddConfirm" style="display:none;margin-top:0.5rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.5rem 1rem;"><p style="color:#2d6a4f;font-size:0.83rem;">✅ Option added! Edit its choices above, then Save.</p></div>
+    </div>
     <!-- ADD ITEM FORM -->
     <div class="avail-add-form">
       <h3>➕ Add New Menu Item</h3>
@@ -789,6 +814,10 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
         <div><label>Category</label><select id="newItemCat"></select></div>
         <div style="grid-column:1/-1;"><label>Description</label><textarea id="newItemDesc" rows="2" placeholder="Brief description..."></textarea></div>
         <div style="grid-column:1/-1;"><label>Image URL (optional)</label><input type="text" id="newItemImg" placeholder="https://i.postimg.cc/..."/></div>
+      </div>
+      <div style="margin-bottom:0.75rem;">
+        <label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.06em;">Item Options <span style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--tl);">— tick everything this item should offer</span></label>
+        <div id="newItemOptions" style="display:flex;flex-wrap:wrap;gap:0.4rem;"></div>
       </div>
       <div style="margin-bottom:0.75rem;">
         <label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.06em;">Pricing Type</label>
@@ -847,7 +876,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     </div>
     <div class="admin-tabs">
       <button class="admin-tab active" onclick="switchTab('dashboard',this)">📊 Dashboard</button>
-      <button class="admin-tab" onclick="switchTab('orders',this)">📋 Orders</button>
+      <button class="admin-tab" id="tabBtnOrders" onclick="switchTab('orders',this)">📋 Orders <span id="ordersBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
       <button class="admin-tab" onclick="switchTab('reservations',this)">📅 Reservations</button>
       <button class="admin-tab" onclick="switchTab('calendar',this)">🗓️ Calendar</button>
       <button class="admin-tab" onclick="switchTab('reviews',this)">⭐ Reviews</button>
@@ -956,6 +985,11 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
           <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Password</label>
           <input type="password" id="adminAccPassword" placeholder="Set password" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.7rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);"/></div>
         </div>
+        <div style="margin-bottom:0.75rem;"><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Access Level</label>
+          <select id="adminAccAccess" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.7rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);">
+            <option value="full">✅ Full access — all functionalities</option>
+            <option value="nopay">🔒 All except Payment Details</option>
+          </select></div>
         <button onclick="addAdminAccount()" style="background:var(--bd);color:#fff;border:none;border-radius:6px;padding:0.5rem 1.2rem;font-size:0.85rem;font-family:'Inter',sans-serif;font-weight:500;cursor:pointer;">➕ Add Admin Account</button>
         <div id="adminAccMsg" style="display:none;margin-top:0.6rem;padding:0.45rem 0.75rem;border-radius:6px;font-size:0.8rem;font-family:'Inter',sans-serif;"></div>
       </div>
@@ -1084,7 +1118,7 @@ const app=initializeApp(firebaseConfig);
 const db=getDatabase(app);
 
 // DB refs
-const settingsRef=ref(db,'settings'),staffAccountsRef=ref(db,'staffAccounts'),adminAccountsRef=ref(db,'adminAccounts'),ordersRef=ref(db,'orders'),archivedRef=ref(db,'archivedOrders'),reservationsRef=ref(db,'reservations'),feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),calBlocksRef=ref(db,'calBlocks'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories');
+const settingsRef=ref(db,'settings'),staffAccountsRef=ref(db,'staffAccounts'),adminAccountsRef=ref(db,'adminAccounts'),ordersRef=ref(db,'orders'),archivedRef=ref(db,'archivedOrders'),reservationsRef=ref(db,'reservations'),feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),calBlocksRef=ref(db,'calBlocks'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups');
 
 let currentAdminHash=null,staffAccountsMap={},adminAccountsMap={},staffLoggedIn=false,superAdminLoggedIn=false,currentUser=null,currentLoginRole=null;
 const ADMIN_PASS_HASH='2fbc8eab665a40385a692e111f01d6a8572baa7b161f5b17d4d9977b20913921',SUPER_ADMIN_USERNAME='superadmin',CAFE_PHONE='639276924831',CAFE_EMAIL='mariadaniela@gmail.com',MAX_GUESTS=30;
@@ -1107,15 +1141,41 @@ const SHOT_CATS=['coffee','frappe'];
 const SYRUP_CATS=['coffee','noncaf','frappe','nonfrappe'];
 const TOPPING_CATS=['coffee','noncaf','frappe','nonfrappe','soda'];
 
+// ── OPTION GROUPS (data-driven item variations) ─────────────
+const DEFAULT_OPTION_GROUPS={
+  og_temp:{name:'Temperature',type:'single',required:true,order:0,choices:[{label:'Hot',price:0},{label:'Cold (Chilled, no ice)',price:0},{label:'Iced (with ice)',price:0}]},
+  og_sweet:{name:'Sweetness',type:'single',required:true,order:1,choices:[{label:'Not Sweet',price:0},{label:'Less Sweet',price:0},{label:'Regular',price:0}]},
+  og_milk:{name:'Choice of Milk',type:'single',required:true,order:2,choices:[{label:'Whole Milk',price:0},{label:'Goodmate Sub Oat',price:65}]},
+  og_shot:{name:'Add Espresso Shot',type:'multi',required:false,order:3,choices:[{label:'Add 1 Shot',price:55}]},
+  og_syrup:{name:'Add Syrup',type:'multi',required:false,order:4,choices:[{label:'Sugar Syrup',price:25},{label:'Sea Salt Caramel Syrup',price:40},{label:'White Chocolate Syrup',price:40},{label:'Toffee Nut Syrup',price:40},{label:'Hazelnut Syrup',price:40}]},
+  og_top:{name:'Toppings',type:'multi',required:false,order:5,choices:[{label:'Sea Salt Cold Foam',price:35},{label:'Whipped Cream',price:35},{label:'Chocolate Chip',price:35}]}
+};
+function legacyOptionIdsFor(cat){
+  var ids=[];
+  if(TEMP_CATS.includes(cat))ids.push('og_temp');
+  if(DRINK_CATS.includes(cat))ids.push('og_sweet');
+  if(MILK_CATS.includes(cat))ids.push('og_milk');
+  if(SHOT_CATS.includes(cat))ids.push('og_shot');
+  if(SYRUP_CATS.includes(cat))ids.push('og_syrup');
+  if(TOPPING_CATS.includes(cat))ids.push('og_top');
+  return ids;
+}
+function getEffectiveOptionIds(item){return item.options?item.options:(item.optionsSet?[]:legacyOptionIdsFor(item.cat));}
+function getItemOptionGroups(item){
+  return getEffectiveOptionIds(item).map(function(id){var g=optionGroupsMap[id];return g?Object.assign({},g,{id:id}):null;}).filter(Boolean).sort(function(a,b){return(a.order||0)-(b.order||0);});
+}
+
 // State
 let categoriesMap={},menuItemsMap={},adminOrdersMap={},archivedOrdersMap={},adminResMap={},feedbacksMap={},reviewsMap={},availability={},cart={};
+let optionGroupsMap={},optSeedStarted=false,itemOptMigrated=false;
+let knownOrderIds=null,unseenOrders=0,orderChimeTimer=null,audioCtx=null;
 let orderType='pickup',paymentType='gcash',contactMethod='whatsapp',resContactMethod='whatsapp';
 let myOrderIds=JSON.parse(localStorage.getItem('accaza_my_orders')||'[]');
 let adminLoggedIn=false,calBlocks={};
 let calYear,calMonth,selectedDate=null,selectedTime=null;
 let adminCalYear,adminCalMonth,adminSelectedDate=null;
 let chatOpen=false,chatStarted=false;
-let custItem=null,custSize=null,custTemp=null,custSweet=null,custMilk=null,custShot=false,custSyrups=[],custToppings=[],custQty=1;
+let custItem=null,custSize=null,custSel={},custQty=1;
 let menuFilter='coffee',orderFilter=null;
 
 const now=new Date();
@@ -1194,6 +1254,33 @@ onValue(adminAccountsRef,snap=>{
   if(superAdminLoggedIn) renderAdminAccounts();
 });
 
+function migrateItemOptions(){
+  if(itemOptMigrated)return;
+  if(!Object.keys(menuItemsMap).length||!Object.keys(optionGroupsMap).length)return;
+  var updates={};
+  Object.keys(menuItemsMap).forEach(function(k){
+    var it=menuItemsMap[k];
+    if(it&&!it.optionsSet){
+      var ids=legacyOptionIdsFor(it.cat);
+      updates['menuItems/'+k+'/optionsSet']=true;
+      if(ids.length)updates['menuItems/'+k+'/options']=ids;
+    }
+  });
+  itemOptMigrated=true;
+  if(Object.keys(updates).length)update(ref(db),updates).catch(function(){});
+}
+onValue(optionGroupsRef,snap=>{
+  if(snap.exists()){optionGroupsMap=snap.val();}
+  else if(!optSeedStarted){
+    optSeedStarted=true;
+    optionGroupsMap=DEFAULT_OPTION_GROUPS;
+    set(optionGroupsRef,DEFAULT_OPTION_GROUPS).catch(function(){});
+  }
+  migrateItemOptions();
+  if(adminLoggedIn)renderOptionManager();
+  renderNewItemOptionChecklist();
+});
+
 onValue(menuRef,snap=>{
   const saved=snap.val();
   if(saved){menuItemsMap=saved;}
@@ -1253,13 +1340,65 @@ onValue(menuRef,snap=>{
     defaultMenu.forEach((item,i)=>{seed['item_'+String(i).padStart(3,'0')]=item;});
     set(menuRef,seed);menuItemsMap=seed;
   }
+  migrateItemOptions();
   renderMenuSection();
   renderOrderSection();
-  if(adminLoggedIn)buildAvail();
+  if(adminLoggedIn){buildAvail();renderOptionManager();}
   if(staffLoggedIn)renderStaffMenu();
 });
 
-onValue(ordersRef,snap=>{adminOrdersMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn){renderOrders();renderDashboard();}updateStats();renderCustomerOrders();});
+// ── NEW ORDER ALERTS (admin/staff) ──────────────────────────
+function playChime(){
+  try{
+    if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state==='suspended')audioCtx.resume();
+    var t=audioCtx.currentTime;
+    [[880,0],[1108.73,0.18],[1318.51,0.36]].forEach(function(n){
+      var o=audioCtx.createOscillator(),gn=audioCtx.createGain();
+      o.type='sine';o.frequency.value=n[0];
+      gn.gain.setValueAtTime(0.0001,t+n[1]);
+      gn.gain.exponentialRampToValueAtTime(0.5,t+n[1]+0.03);
+      gn.gain.exponentialRampToValueAtTime(0.0001,t+n[1]+0.7);
+      o.connect(gn);gn.connect(audioCtx.destination);
+      o.start(t+n[1]);o.stop(t+n[1]+0.75);
+    });
+  }catch(e){}
+}
+function clearOrderAlert(){
+  unseenOrders=0;
+  if(orderChimeTimer){clearInterval(orderChimeTimer);orderChimeTimer=null;}
+  var t=document.getElementById('orderToast');if(t)t.style.display='none';
+  var b=document.getElementById('ordersBadge');if(b)b.style.display='none';
+}
+function notifyNewOrders(fresh){
+  unseenOrders+=fresh.length;
+  var last=fresh[fresh.length-1];
+  document.getElementById('orderToastTitle').textContent=unseenOrders>1?unseenOrders+' new orders received!':'New order from '+(last&&last.name?last.name:'a customer')+'!';
+  document.getElementById('orderToastSub').textContent=(last&&last.total?'₱'+last.total.toLocaleString()+' · ':'')+'Tap to view orders';
+  document.getElementById('orderToast').style.display='flex';
+  var b=document.getElementById('ordersBadge');
+  if(b){b.textContent=unseenOrders;b.style.display='inline-block';}
+  playChime();
+  if(orderChimeTimer)clearInterval(orderChimeTimer);
+  orderChimeTimer=setInterval(playChime,10000);
+}
+window.ackNewOrders=function(){
+  clearOrderAlert();
+  var ob=document.getElementById('tabBtnOrders');if(ob)ob.click();
+  var ad=document.getElementById('adminDash');if(ad)ad.scrollIntoView({behavior:'smooth'});
+};
+onValue(ordersRef,snap=>{
+  var prevIds=knownOrderIds;
+  adminOrdersMap=snap.val()||{};
+  var ids=Object.keys(adminOrdersMap);
+  if(prevIds&&(adminLoggedIn||staffLoggedIn)){
+    var fresh=ids.filter(function(id){return prevIds.indexOf(id)===-1;}).map(function(id){return adminOrdersMap[id];});
+    if(fresh.length)notifyNewOrders(fresh);
+  }
+  knownOrderIds=ids;
+  if(adminLoggedIn||staffLoggedIn){renderOrders();renderDashboard();}
+  updateStats();renderCustomerOrders();
+});
 onValue(archivedRef,snap=>{archivedOrdersMap=snap.val()||{};if(adminLoggedIn)renderDashboard();});
 onValue(reservationsRef,snap=>{adminResMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderReservations();updateStats();renderCustomerCalendar();if(adminLoggedIn||staffLoggedIn)renderAdminCalendar();});
 onValue(feedbacksRef,snap=>{feedbacksMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderComments();});
@@ -1400,7 +1539,9 @@ document.getElementById('btnAddItem').addEventListener('click',async function(){
   if(isTwo&&(!priceTwoS||!priceTwoL)){alert('Please enter both option prices.');return;}
   if(!name||!priceS){alert('Please enter item name and price.');return;}
   const catItems=getMenuItems().filter(i=>i.cat===cat);
-  const newItem={cat,name,desc,priceS,order:catItems.length};
+  const newItem={cat,name,desc,priceS,order:catItems.length,optionsSet:true};
+  var selOgs=[];document.querySelectorAll('#newItemOptions input[data-ogid]:checked').forEach(function(c){selOgs.push(c.dataset.ogid);});
+  if(selOgs.length)newItem.options=selOgs;
   if(priceM)newItem.priceM=priceM;
   if(priceL)newItem.priceL=priceL;
   if(isTwo&&labelS)newItem.labelS=labelS;
@@ -1413,6 +1554,7 @@ document.getElementById('btnAddItem').addEventListener('click',async function(){
     document.getElementById('newItemPriceM').value='';document.getElementById('newItemPriceL').value='';
     document.getElementById('newItemPriceFlat').value='';
     ['newItemPriceTwoS','newItemPriceTwoL','newItemLabelS','newItemLabelL'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+    document.querySelectorAll('#newItemOptions input[data-ogid]').forEach(function(c){c.checked=false;c.parentElement.style.background='#fff';});
     document.getElementById('pricingTypeSized').checked=true;setPricingType('sized');
     const c=document.getElementById('addItemConfirm');c.style.display='block';setTimeout(()=>c.style.display='none',2500);
   }catch(e){alert('Error: '+e.message);}
@@ -1482,7 +1624,7 @@ function renderOrderSection(){
 window.openCustomize=function(itemKey){
   const itemData=menuItemsMap[itemKey];if(!itemData)return;
   custItem={...itemData,key:itemKey};
-  custSize=null;custTemp=null;custSweet=null;custMilk=null;custShot=false;custSyrups=[];custToppings=[];custQty=1;
+  custSize=null;custSel={};custQty=1;
   document.getElementById('custItemName').textContent=custItem.name;
   const imgWrap=document.getElementById('custItemImgWrap');
   imgWrap.innerHTML=custItem.img?'<img src="'+custItem.img+'" style="width:100%;height:160px;object-fit:cover;" onerror="this.style.display=\'none\'"/>'
@@ -1500,77 +1642,79 @@ window.openCustomize=function(itemKey){
       +'<label class="cust-option" data-action="size" data-val="L" data-price="'+custItem.priceL+'"><input type="radio" name="custSize"/><span class="cust-option-label">Large</span><span class="cust-option-price">₱'+custItem.priceL+'</span></label>'
       +'</div></div>';
   }
-  if(TEMP_CATS.includes(custItem.cat)){
-    html+='<div class="cust-section"><div class="cust-section-title">Temperature <span class="cust-badge cust-badge-required">Required</span></div><div class="cust-options">'
-      +['Hot','Cold (Chilled, no ice)','Iced (with ice)'].map(t=>'<label class="cust-option" data-action="temp" data-val="'+t.split(' ')[0]+'"><input type="radio" name="custTemp"/><span class="cust-option-label">'+t+'</span><span class="cust-option-price">Free</span></label>').join('')
+  var itemGroups=getItemOptionGroups(custItem);
+  itemGroups.forEach(function(g){
+    var isMulti=g.type==='multi';
+    var req=!isMulti&&g.required!==false;
+    html+='<div class="cust-section"><div class="cust-section-title">'+escHtml(g.name)+' <span class="cust-badge '+(req?'cust-badge-required':'cust-badge-optional')+'">'+(req?'Required':'Optional')+'</span></div><div class="cust-options">'
+      +(g.choices||[]).map(function(c,ci){
+        var pp=parseInt(c.price)||0;
+        return '<label class="cust-option" data-action="'+(isMulti?'optcheck':'optradio')+'" data-group="'+g.id+'" data-idx="'+ci+'"><input type="'+(isMulti?'checkbox':'radio')+'" name="og_'+g.id+'"/><span class="cust-option-label">'+escHtml(c.label)+'</span><span class="cust-option-price">'+(pp>0?'+₱'+pp:'Free')+'</span></label>';
+      }).join('')
       +'</div></div>';
-  }
-  if(isDrink(custItem.cat)){
-    html+='<div class="cust-section"><div class="cust-section-title">Sweetness <span class="cust-badge cust-badge-required">Required</span></div><div class="cust-options">'
-      +['Not Sweet','Less Sweet','Regular'].map(s=>'<label class="cust-option" data-action="sweet" data-val="'+s+'"><input type="radio" name="custSweet"/><span class="cust-option-label">'+s+'</span><span class="cust-option-price">Free</span></label>').join('')
-      +'</div></div>';
-  }
-  if(MILK_CATS.includes(custItem.cat)){
-    html+='<div class="cust-section"><div class="cust-section-title">Choice of Milk <span class="cust-badge cust-badge-required">Required</span></div><div class="cust-options">'
-      +'<label class="cust-option" data-action="milk" data-val="Whole Milk" data-price="0"><input type="radio" name="custMilk"/><span class="cust-option-label">Whole Milk</span><span class="cust-option-price">Free</span></label>'
-      +'<label class="cust-option" data-action="milk" data-val="Goodmate Sub Oat" data-price="65"><input type="radio" name="custMilk"/><span class="cust-option-label">Goodmate Sub Oat</span><span class="cust-option-price">+₱65</span></label>'
-      +'</div></div>';
-  }
-  if(SHOT_CATS.includes(custItem.cat)){
-    html+='<div class="cust-section"><div class="cust-section-title">Add Espresso Shot <span class="cust-badge cust-badge-optional">Optional</span></div><div class="cust-options">'
-      +'<label class="cust-option" data-action="shot"><input type="checkbox"/><span class="cust-option-label">Add 1 Shot</span><span class="cust-option-price">+₱55</span></label>'
-      +'</div></div>';
-  }
-  if(SYRUP_CATS.includes(custItem.cat)){
-    const syrups=[{n:'Sugar Syrup',p:25},{n:'Sea Salt Caramel Syrup',p:40},{n:'White Chocolate Syrup',p:40},{n:'Toffee Nut Syrup',p:40},{n:'Hazelnut Syrup',p:40}];
-    html+='<div class="cust-section"><div class="cust-section-title">Add Syrup <span class="cust-badge cust-badge-optional">Optional</span></div><div class="cust-options">'
-      +syrups.map(s=>'<label class="cust-option" data-action="syrup" data-name="'+s.n+'" data-price="'+s.p+'"><input type="checkbox"/><span class="cust-option-label">'+s.n+'</span><span class="cust-option-price">+₱'+s.p+'</span></label>').join('')
-      +'</div></div>';
-  }
-  if(TOPPING_CATS.includes(custItem.cat)){
-    const tops=[{n:'Sea Salt Cold Foam',p:35},{n:'Whipped Cream',p:35},{n:'Chocolate Chip',p:35}];
-    html+='<div class="cust-section"><div class="cust-section-title">Toppings <span class="cust-badge cust-badge-optional">Optional</span></div><div class="cust-options">'
-      +tops.map(t=>'<label class="cust-option" data-action="topping" data-name="'+t.n+'" data-price="'+t.p+'"><input type="checkbox"/><span class="cust-option-label">'+t.n+'</span><span class="cust-option-price">+₱'+t.p+'</span></label>').join('')
-      +'</div></div>';
-  }
+  });
   html+='<div class="cust-section"><div class="cust-section-title">Quantity</div><div class="cust-qty"><button class="cust-qty-btn" id="custQtyMinus">−</button><span class="cust-qty-num" id="custQtyNum">1</span><button class="cust-qty-btn" id="custQtyPlus">+</button></div></div>';
   const body=document.getElementById('custBody');
   body.innerHTML=html;
-  // Wire option clicks via event delegation
-  body.addEventListener('click',function(e){
+  // Wire option clicks via event delegation (onclick = no stacked listeners)
+  body.onclick=function(e){
     const opt=e.target.closest('.cust-option');if(!opt)return;
     const action=opt.dataset.action;
     if(action==='size'){custSize=opt.dataset.val;custItem._selectedPrice=parseInt(opt.dataset.price);opt.closest('.cust-options').querySelectorAll('.cust-option').forEach(o=>o.classList.remove('selected'));opt.classList.add('selected');opt.querySelector('input').checked=true;}
-    else if(action==='temp'){custTemp=opt.dataset.val;opt.closest('.cust-options').querySelectorAll('.cust-option').forEach(o=>o.classList.remove('selected'));opt.classList.add('selected');opt.querySelector('input').checked=true;}
-    else if(action==='sweet'){custSweet=opt.dataset.val;opt.closest('.cust-options').querySelectorAll('.cust-option').forEach(o=>o.classList.remove('selected'));opt.classList.add('selected');opt.querySelector('input').checked=true;}
-    else if(action==='milk'){custMilk={name:opt.dataset.val,price:parseInt(opt.dataset.price)};opt.closest('.cust-options').querySelectorAll('.cust-option').forEach(o=>o.classList.remove('selected'));opt.classList.add('selected');opt.querySelector('input').checked=true;}
-    else if(action==='shot'){const chk=opt.querySelector('input');custShot=chk.checked;opt.classList.toggle('selected',custShot);}
-    else if(action==='syrup'){const chk=opt.querySelector('input');const n=opt.dataset.name,p=parseInt(opt.dataset.price);const idx=custSyrups.findIndex(s=>s.name===n);if(chk.checked){if(idx===-1)custSyrups.push({name:n,price:p});}else{if(idx>-1)custSyrups.splice(idx,1);}opt.classList.toggle('selected',chk.checked);}
-    else if(action==='topping'){const chk=opt.querySelector('input');const n=opt.dataset.name,p=parseInt(opt.dataset.price);const idx=custToppings.findIndex(t=>t.name===n);if(chk.checked){if(idx===-1)custToppings.push({name:n,price:p});}else{if(idx>-1)custToppings.splice(idx,1);}opt.classList.toggle('selected',chk.checked);}
+    else if(action==='optradio'){
+      var g=optionGroupsMap[opt.dataset.group];if(!g)return;
+      var c=(g.choices||[])[parseInt(opt.dataset.idx)];if(!c)return;
+      custSel[opt.dataset.group]={label:c.label,price:parseInt(c.price)||0};
+      opt.closest('.cust-options').querySelectorAll('.cust-option').forEach(o=>o.classList.remove('selected'));
+      opt.classList.add('selected');opt.querySelector('input').checked=true;
+    }
+    else if(action==='optcheck'){
+      var g2=optionGroupsMap[opt.dataset.group];if(!g2)return;
+      var c2=(g2.choices||[])[parseInt(opt.dataset.idx)];if(!c2)return;
+      var chk=opt.querySelector('input');
+      var arr=custSel[opt.dataset.group]||[];
+      var ix=arr.findIndex(function(x){return x.label===c2.label;});
+      if(chk.checked){if(ix===-1)arr.push({label:c2.label,price:parseInt(c2.price)||0});}
+      else{if(ix>-1)arr.splice(ix,1);}
+      custSel[opt.dataset.group]=arr;
+      opt.classList.toggle('selected',chk.checked);
+    }
     updateCustTotal();
-  });
-  document.getElementById('custQtyMinus').addEventListener('click',function(){custQty=Math.max(1,custQty-1);document.getElementById('custQtyNum').textContent=custQty;updateCustTotal();});
+  };
+    document.getElementById('custQtyMinus').addEventListener('click',function(){custQty=Math.max(1,custQty-1);document.getElementById('custQtyNum').textContent=custQty;updateCustTotal();});
   document.getElementById('custQtyPlus').addEventListener('click',function(){custQty++;document.getElementById('custQtyNum').textContent=custQty;updateCustTotal();});
   updateCustTotal();
   document.getElementById('customizePopup').classList.add('show');
 };
 
-function calcCustUnitTotal(){return(custItem._selectedPrice||custItem.priceS||0)+(custMilk?custMilk.price:0)+(custShot?55:0)+custSyrups.reduce((s,x)=>s+x.price,0)+custToppings.reduce((s,x)=>s+x.price,0);}
+function calcCustUnitTotal(){
+  var t=custItem._selectedPrice||custItem.priceS||0;
+  Object.keys(custSel).forEach(function(gid){
+    var v=custSel[gid];if(!v)return;
+    if(Array.isArray(v)){v.forEach(function(c){t+=c.price||0;});}
+    else{t+=v.price||0;}
+  });
+  return t;
+}
 function updateCustTotal(){document.getElementById('custTotalDisplay').textContent='₱'+(calcCustUnitTotal()*custQty).toLocaleString();}
 
 function addCustomizedToCart(){
   const item=custItem;if(!item)return;
   if(item.priceM&&item.priceL&&!custSize){alert('Please select a size.');return;}
-  if(TEMP_CATS.includes(item.cat)&&!custTemp){alert('Please select a temperature.');return;}
-  if(isDrink(item.cat)&&!custSweet){alert('Please select a sweetness level.');return;}
-  if(MILK_CATS.includes(item.cat)&&!custMilk){alert('Please select a choice of milk.');return;}
+  if(item.labelS&&item.labelL&&item.priceL&&!custSize){alert('Please select a serving option.');return;}
+  var itemGroups=getItemOptionGroups(item);
+  for(var gi=0;gi<itemGroups.length;gi++){
+    var gg=itemGroups[gi];
+    if(gg.type!=='multi'&&gg.required!==false&&!custSel[gg.id]){alert('Please select: '+gg.name);return;}
+  }
   const unit=calcCustUnitTotal();
   const sizeLabel=custSize?' ('+custSize+')':'';
   const details=[];
-  if(custTemp)details.push(custTemp);if(custSweet)details.push(custSweet);
-  if(custMilk&&custMilk.name!=='Whole Milk')details.push(custMilk.name);
-  if(custShot)details.push('+1 Shot');
-  custSyrups.forEach(s=>details.push('+'+s.name));custToppings.forEach(t=>details.push('+'+t.name));
+  itemGroups.forEach(function(gg){
+    var v=custSel[gg.id];if(!v)return;
+    if(Array.isArray(v)){v.forEach(function(c){details.push('+'+c.label);});}
+    else{details.push(v.label);}
+  });
   const cartKey=Date.now()+'_'+Math.random().toString(36).substr(2,5);
   cart[cartKey]={name:item.name+sizeLabel,details:details.join(', '),qty:custQty,unitTotal:unit,cat:item.cat};
   closeCustomize();updateCartDisplay();renderOrderSection();
@@ -2061,11 +2205,17 @@ function renderAdminAccounts(){
   if(!keys.length){el.innerHTML='<p style="font-size:0.85rem;color:var(--tl);">No admin accounts yet.</p>';return;}
   el.innerHTML=keys.map(function(uid){
     var acc=adminAccountsMap[uid];
-    return'<div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid var(--cd);border-radius:8px;padding:0.7rem 1rem;margin-bottom:0.5rem;">'
+    var noPay=acc.access==='nopay';
+    return'<div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;flex-wrap:wrap;background:#fff;border:1px solid var(--cd);border-radius:8px;padding:0.7rem 1rem;margin-bottom:0.5rem;">'
       +'<div><span style="font-size:0.9rem;font-weight:500;color:var(--bd);">🔑 '+escHtml(acc.username)+'</span>'
-      +'<span style="font-size:0.72rem;color:var(--tl);display:block;margin-top:0.1rem;">Admin · Full access</span></div>'
+      +'<span style="font-size:0.72rem;color:'+(noPay?'#b07a2a':'var(--tl)')+';display:block;margin-top:0.1rem;">'+(noPay?'Admin · All except Payment Details':'Admin · Full access')+'</span></div>'
+      +'<div style="display:flex;align-items:center;gap:0.5rem;">'
+      +'<select data-accessuid="'+uid+'" title="Access level" style="background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.3rem 0.5rem;font-size:0.75rem;font-family:\'Inter\',sans-serif;color:var(--td);cursor:pointer;">'
+      +'<option value="full"'+(noPay?'':' selected')+'>✅ Full access</option>'
+      +'<option value="nopay"'+(noPay?' selected':'')+'>🔒 No Payment Details</option>'
+      +'</select>'
       +'<button data-deladmin="'+uid+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">🗑️ Remove</button>'
-      +'</div>';
+      +'</div></div>';
   }).join('');
   el.querySelectorAll('[data-deladmin]').forEach(function(btn){
     btn.addEventListener('click',function(){
@@ -2074,6 +2224,11 @@ function renderAdminAccounts(){
       showDeletePopup('admin account for '+name,async function(){
         await remove(ref(db,'adminAccounts/'+uid));
       });
+    });
+  });
+  el.querySelectorAll('[data-accessuid]').forEach(function(sel){
+    sel.addEventListener('change',async function(){
+      await update(ref(db,'adminAccounts/'+this.dataset.accessuid),{access:this.value});
     });
   });
 }
@@ -2095,11 +2250,126 @@ window.addAdminAccount=async function(){
   var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(password));
   var hashHex=Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
   try{
-    await set(ref(db,'adminAccounts/'+('admin_'+Date.now())),{username,passwordHash:hashHex});
+    var access=(document.getElementById('adminAccAccess')||{}).value||'full';
+    await set(ref(db,'adminAccounts/'+('admin_'+Date.now())),{username,passwordHash:hashHex,access});
     document.getElementById('adminAccUsername').value='';
     document.getElementById('adminAccPassword').value='';
+    var accSel=document.getElementById('adminAccAccess');if(accSel)accSel.value='full';
     showMsg('✅ Admin account "'+username+'" created.',true);
   }catch(e){showMsg('Error: '+e.message,false);}
+};
+
+// ── OPTION GROUPS MANAGER (admin) ───────────────────────────
+function buildOptionChecklistHtml(selectedIds){
+  var ids=Object.keys(optionGroupsMap);
+  if(!ids.length)return '<span style="font-size:0.78rem;color:var(--tl);">No option groups yet — create them in the 🧩 Item Options panel.</span>';
+  return ids.sort(function(a,b){return(optionGroupsMap[a].order||0)-(optionGroupsMap[b].order||0);}).map(function(id){
+    var g=optionGroupsMap[id];
+    var on=selectedIds.indexOf(id)!==-1;
+    return '<label style="display:inline-flex;align-items:center;gap:0.35rem;background:'+(on?'#f5ead9':'#fff')+';border:1px solid var(--cd);border-radius:999px;padding:0.3rem 0.8rem;font-size:0.78rem;color:var(--td);cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;"><input type="checkbox" data-ogid="'+id+'"'+(on?' checked':'')+' style="width:auto;accent-color:var(--bl);margin:0;" onchange="this.parentElement.style.background=this.checked?\'#f5ead9\':\'#fff\'"/>'+escHtml(g.name)+'</label>';
+  }).join('');
+}
+function renderNewItemOptionChecklist(){
+  var el=document.getElementById('newItemOptions');if(!el)return;
+  var checked=[];el.querySelectorAll('input[data-ogid]:checked').forEach(function(c){checked.push(c.dataset.ogid);});
+  el.innerHTML=buildOptionChecklistHtml(checked);
+}
+var OG_INP='background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.35rem 0.55rem;font-size:0.8rem;color:var(--td);font-family:\'Inter\',sans-serif;';
+function ogChoiceRowHtml(label,price){
+  return '<div style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.35rem;" data-ogchoicerow>'
+    +'<input type="text" value="'+escHtml(label)+'" data-choicelabel placeholder="Choice label (e.g. Hot, 1 Sugar)" style="flex:1;min-width:0;'+OG_INP+'"/>'
+    +'<span style="font-size:0.78rem;color:var(--tl);">₱</span>'
+    +'<input type="number" value="'+(parseInt(price)||0)+'" data-choiceprice min="0" title="Extra price — 0 shows as Free" style="width:84px;'+OG_INP+'"/>'
+    +'<button data-removechoice title="Remove choice" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.3rem 0.55rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">✖</button>'
+    +'</div>';
+}
+function wireOgChoiceRow(row){
+  row.querySelector('[data-removechoice]').addEventListener('click',function(){row.remove();});
+}
+function renderOptionManager(){
+  var el=document.getElementById('optGroupList');if(!el)return;
+  var ids=Object.keys(optionGroupsMap).sort(function(a,b){return(optionGroupsMap[a].order||0)-(optionGroupsMap[b].order||0);});
+  if(!ids.length){el.innerHTML='<p style="font-size:0.85rem;color:var(--tl);">No option groups yet. Add your first one below.</p>';return;}
+  var items=getMenuItems();
+  el.innerHTML=ids.map(function(id){
+    var g=optionGroupsMap[id];
+    var used=items.filter(function(i){return getEffectiveOptionIds(i).indexOf(id)!==-1;}).length;
+    var choiceRows=(g.choices||[]).map(function(c){return ogChoiceRowHtml(c.label,c.price);}).join('');
+    return '<div data-ogcard="'+id+'" style="background:var(--cr);border:1px solid var(--cd);border-radius:8px;padding:1rem;margin-bottom:0.75rem;">'
+      +'<div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:0.6rem;">'
+      +'<div style="flex:1;min-width:150px;"><label style="font-size:0.7rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Option Name</label>'
+      +'<input type="text" value="'+escHtml(g.name)+'" data-ogname style="width:100%;'+OG_INP+'"/></div>'
+      +'<div><label style="font-size:0.7rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Selection</label>'
+      +'<select data-ogtype style="'+OG_INP+'">'
+      +'<option value="single"'+(g.type!=='multi'?' selected':'')+'>Choose one</option>'
+      +'<option value="multi"'+(g.type==='multi'?' selected':'')+'>Choose many</option>'
+      +'</select></div>'
+      +'<label style="display:flex;align-items:center;gap:0.3rem;font-size:0.78rem;color:var(--td);cursor:pointer;padding-bottom:0.45rem;text-transform:none;letter-spacing:0;font-weight:400;"><input type="checkbox" data-ogreq'+(g.required!==false?' checked':'')+' style="width:auto;accent-color:var(--bl);"/> Required</label>'
+      +'</div>'
+      +'<div style="font-size:0.7rem;color:var(--tl);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.35rem;">Choices — price 0 = Free</div>'
+      +'<div data-ogchoices>'+choiceRows+'</div>'
+      +'<button data-addchoice style="background:#fff;border:1px dashed var(--cd);border-radius:6px;padding:0.35rem 0.8rem;font-size:0.78rem;color:var(--tm);cursor:pointer;margin-top:0.2rem;">➕ Add Choice</button>'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.75rem;flex-wrap:wrap;gap:0.5rem;">'
+      +'<span style="font-size:0.72rem;color:var(--tl);">Used by '+used+' item'+(used===1?'':'s')+'</span>'
+      +'<div style="display:flex;gap:0.5rem;">'
+      +'<button data-delog="'+id+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.35rem 0.8rem;font-size:0.78rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>'
+      +'<button data-saveog="'+id+'" style="background:var(--bd);color:#fff;border:none;border-radius:6px;padding:0.35rem 1rem;font-size:0.78rem;cursor:pointer;font-weight:500;">💾 Save</button>'
+      +'</div></div></div>';
+  }).join('');
+  el.querySelectorAll('[data-ogchoicerow]').forEach(wireOgChoiceRow);
+  el.querySelectorAll('[data-addchoice]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var wrap=this.closest('[data-ogcard]').querySelector('[data-ogchoices]');
+      var tmp=document.createElement('div');
+      tmp.innerHTML=ogChoiceRowHtml('',0);
+      var row=tmp.firstChild;
+      wrap.appendChild(row);
+      wireOgChoiceRow(row);
+      row.querySelector('[data-choicelabel]').focus();
+    });
+  });
+  el.querySelectorAll('[data-saveog]').forEach(function(btn){
+    btn.addEventListener('click',async function(){
+      var id=this.dataset.saveog,card=el.querySelector('[data-ogcard="'+id+'"]'),self=this;
+      var name=(card.querySelector('[data-ogname]').value||'').trim();
+      if(!name){alert('Please enter the option name.');return;}
+      var type=card.querySelector('[data-ogtype]').value;
+      var required=card.querySelector('[data-ogreq]').checked;
+      var choices=[];
+      card.querySelectorAll('[data-ogchoicerow]').forEach(function(r){
+        var lbl=(r.querySelector('[data-choicelabel]').value||'').trim();
+        var pr=parseInt(r.querySelector('[data-choiceprice]').value)||0;
+        if(lbl)choices.push({label:lbl,price:pr});
+      });
+      if(!choices.length){alert('Please add at least one choice.');return;}
+      try{
+        await update(ref(db,'optionGroups/'+id),{name:name,type:type,required:required,choices:choices});
+        self.textContent='✅ Saved';setTimeout(function(){self.textContent='💾 Save';},1500);
+      }catch(e){alert('Error: '+e.message);}
+    });
+  });
+  el.querySelectorAll('[data-delog]').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var id=this.dataset.delog;
+      var g=optionGroupsMap[id];if(!g)return;
+      var used=getMenuItems().filter(function(i){return getEffectiveOptionIds(i).indexOf(id)!==-1;}).length;
+      showDeletePopup('option "'+g.name+'"'+(used?' (used by '+used+' item'+(used===1?'':'s')+')':''),async function(){
+        await remove(ref(db,'optionGroups/'+id));
+      });
+    });
+  });
+}
+window.addOptionGroup=async function(){
+  var name=(document.getElementById('newOgName').value||'').trim();
+  if(!name){alert('Please enter an option name (e.g. Temperature).');return;}
+  var type=document.getElementById('newOgType').value;
+  var required=document.getElementById('newOgReq').checked;
+  var id='og_'+Date.now();
+  try{
+    await set(ref(db,'optionGroups/'+id),{name:name,type:type,required:required,order:Object.keys(optionGroupsMap).length,choices:[{label:'Option 1',price:0}]});
+    document.getElementById('newOgName').value='';
+    var c=document.getElementById('ogAddConfirm');c.style.display='block';setTimeout(function(){c.style.display='none';},2500);
+  }catch(e){alert('Error: '+e.message);}
 };
 
 // ── STAFF MENU (read-only view) ─────────────────────────────
@@ -2186,7 +2456,10 @@ window.saveEditItem=async function(key){
   var newImg=imgEl?(imgEl.value.trim()||null):null;
   var pType=ptRadio.value;
   if(!newName){alert('Name is required.');return;}
-  var updates={cat:newCat,name:newName,desc:newDesc||null,img:newImg};
+  var updates={cat:newCat,name:newName,desc:newDesc||null,img:newImg,optionsSet:true};
+  var selOg=[];var epnl=document.getElementById('ep_'+key);
+  if(epnl)epnl.querySelectorAll('input[data-ogid]:checked').forEach(function(c){selOg.push(c.dataset.ogid);});
+  updates.options=selOg.length?selOg:null;
   if(pType==='sized'){
     var pS=parseInt(document.getElementById('ep_'+key+'_priceS').value)||0;
     var pM=parseInt(document.getElementById('ep_'+key+'_priceM').value)||0;
@@ -2311,6 +2584,9 @@ function buildAvail(){
       +'<label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Price (₱)</label>'
       +'<input type="number" id="ep_'+key+'_priceFlat" value="'+(pType==='flat'?(item.priceS||''):'')+'" placeholder="e.g. 195" style="width:100%;background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.42rem 0.55rem;font-size:0.8rem;color:var(--td);font-family:\'Inter\',sans-serif;"/>'
       +'</div>'
+      // Item options
+      +'<div style="margin-bottom:0.7rem;"><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.05em;">Item Options — tick everything this item should offer</label>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:0.4rem;">'+buildOptionChecklistHtml(getEffectiveOptionIds(item))+'</div></div>'
       // Image URL
       +'<div style="margin-bottom:0.7rem;"><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Image URL</label>'
       +'<input type="text" id="ep_'+key+'_img" value="'+escHtml(item.img||'')+'" placeholder="https://i.postimg.cc/..." style="width:100%;background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.42rem 0.55rem;font-size:0.8rem;color:var(--td);font-family:\'Inter\',sans-serif;"/></div>'
@@ -2578,6 +2854,7 @@ window.selectLoginRole=function(role){
 // ── LOGIN SUCCESS ───────────────────────────────────────────
 async function loginSuccess(role,username,uid){
   currentUser={role,username,uid};
+  try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}
   document.getElementById('adminUser').value='';
   document.getElementById('adminPass').value='';
   closeAdmin();
@@ -2590,12 +2867,22 @@ async function loginSuccess(role,username,uid){
   if(role==='superadmin'||role==='admin'){
     adminLoggedIn=true;superAdminLoggedIn=(role==='superadmin');staffLoggedIn=false;
     ['adminDash','availSection','commentsSection'].forEach(function(id){document.getElementById(id).style.display='block';});
-    ['navAvail','navComments'].forEach(function(id){document.getElementById(id).style.display='block';});
+    ['navAvail','navComments','navAdminPanel'].forEach(function(id){document.getElementById(id).style.display='block';});
+    document.getElementById('navAdminPanelLink').textContent='🔐 Admin Panel';
     if(superAdminLoggedIn&&aaccTab)aaccTab.style.removeProperty('display');
     var hdr=document.querySelector('#adminDash .admin-header p');
     if(hdr)hdr.textContent=(superAdminLoggedIn?'👑 Super Admin':'🔑 Admin')+': '+username;
+    // Restrict Payment Details for limited admins
+    if(role==='admin'&&uid&&adminAccountsMap[uid]&&adminAccountsMap[uid].access==='nopay'){
+      document.querySelectorAll('.admin-tab').forEach(function(btn){
+        var oc=btn.getAttribute('onclick')||'';
+        if(oc.indexOf("'payment'")!==-1)btn.style.display='none';
+      });
+      var tpay=document.getElementById('tab-payment');if(tpay)tpay.style.display='none';
+      if(hdr)hdr.textContent='🔑 Admin: '+username+' · Limited access';
+    }
     setTimeout(function(){
-      buildAvail();renderCategoryManager();renderComments();renderOrders();renderReservations();
+      buildAvail();renderCategoryManager();renderOptionManager();renderNewItemOptionChecklist();renderComments();renderOrders();renderReservations();
       renderAdminReviews();renderAdminCalendar();renderDashboard();renderStaffAccounts();
       if(superAdminLoggedIn)renderAdminAccounts();
     },300);
@@ -2606,6 +2893,8 @@ async function loginSuccess(role,username,uid){
     document.getElementById('adminDash').style.display='block';
     document.getElementById('commentsSection').style.display='block';
     ['availSection','navAvail'].forEach(function(id){document.getElementById(id).style.display='none';});
+    document.getElementById('navAdminPanel').style.display='block';
+    document.getElementById('navAdminPanelLink').textContent='🔐 Staff Panel';
     // Hide tabs not for staff
     document.querySelectorAll('.admin-tab').forEach(function(btn){
       var oc=btn.getAttribute('onclick')||'';
@@ -2662,11 +2951,12 @@ window.checkLogin=async function(){
 
 window.logoutAdmin=function(){
   adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;currentUser=null;currentLoginRole=null;
+  clearOrderAlert();
   document.body.classList.remove('staff-mode');
   // Hide all tab content panels (they live outside adminDash)
   document.querySelectorAll('.admin-tab-content').forEach(function(el){el.style.display='none';});
   ['adminDash','availSection','commentsSection'].forEach(function(id){document.getElementById(id).style.display='none';});
-  ['navAvail','navComments'].forEach(function(id){document.getElementById(id).style.display='none';});
+  ['navAvail','navComments','navAdminPanel'].forEach(function(id){document.getElementById(id).style.display='none';});
   document.querySelectorAll('.admin-tab').forEach(function(t){t.style.removeProperty('display');});
   var aaccTab=document.getElementById('tabBtnAdminAccounts');
   if(aaccTab)aaccTab.style.display='none';
@@ -2680,10 +2970,12 @@ window.logoutAdmin=function(){
   window.scrollTo(0,0);
 };
 window.switchTab=function(tab,btn){
+  if(tab==='payment'&&currentUser&&currentUser.role==='admin'&&currentUser.uid&&adminAccountsMap[currentUser.uid]&&adminAccountsMap[currentUser.uid].access==='nopay'){alert('⛔ You do not have access to Payment Details.');return;}
   document.querySelectorAll('.admin-tab').forEach(function(b){b.classList.remove('active');});
   if(btn)btn.classList.add('active');
   document.querySelectorAll('.admin-tab-content').forEach(function(t){t.style.display='none';});
   document.getElementById('tab-'+tab).style.display='block';
+  if(tab==='orders')clearOrderAlert();
   if(tab==='reviews')renderAdminReviews();
   if(tab==='calendar')renderAdminCalendar();
   if(tab==='dashboard')renderDashboard();
