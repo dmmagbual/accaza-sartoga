@@ -24,9 +24,9 @@
 </head>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-:root{--bd:#3b2314;--bm:#6b3a2a;--bl:#a0673a;--cr:#f5efe6;--cd:#e8dcc8;--td:#2c1a0e;--tm:#5c3d2e;--tl:#8a6a55;}
+:root{--bd:#19241b;--bm:#243528;--bl:#b08d57;--cr:#e0d4c6;--cd:#cdbda7;--td:#1c2420;--tm:#44523f;--tl:#79806f;}
 body{font-family:'Inter',sans-serif;background:var(--cr);color:var(--td);overflow-x:hidden;}
-nav{position:fixed;top:0;width:100%;z-index:200;background:rgba(59,35,20,0.96);backdrop-filter:blur(8px);padding:1rem 2rem;display:flex;align-items:center;justify-content:space-between;}
+nav{position:fixed;top:0;width:100%;z-index:200;background:rgba(25,36,27,0.96);backdrop-filter:blur(8px);padding:1rem 2rem;display:flex;align-items:center;justify-content:space-between;}
 .nav-logo{font-family:'Playfair Display',serif;font-size:1.4rem;color:var(--cr);letter-spacing:0.05em;}
 .nav-links{display:flex;gap:1.5rem;list-style:none;flex-wrap:wrap;}
 .nav-links a{color:var(--cd);text-decoration:none;font-size:0.82rem;letter-spacing:0.08em;text-transform:uppercase;transition:color 0.2s;}
@@ -36,7 +36,7 @@ nav{position:fixed;top:0;width:100%;z-index:200;background:rgba(59,35,20,0.96);b
 .hamburger.open span:nth-child(1){transform:translateY(7px) rotate(45deg);}
 .hamburger.open span:nth-child(2){opacity:0;}
 .hamburger.open span:nth-child(3){transform:translateY(-7px) rotate(-45deg);}
-.nav-links.nav-open{display:flex !important;flex-direction:column;position:fixed;top:56px;left:0;right:0;background:rgba(59,35,20,0.98);backdrop-filter:blur(8px);z-index:199;padding:1rem 2rem 1.5rem;gap:0.75rem;}
+.nav-links.nav-open{display:flex !important;flex-direction:column;position:fixed;top:56px;left:0;right:0;background:rgba(25,36,27,0.98);backdrop-filter:blur(8px);z-index:199;padding:1rem 2rem 1.5rem;gap:0.75rem;}
 .nav-links.nav-open a{color:var(--cd);font-size:0.9rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.4rem 0;border-bottom:1px solid rgba(255,255,255,0.08);text-decoration:none;}
 @media(max-width:680px){.hamburger{display:flex;}}
 
@@ -47,8 +47,8 @@ nav{position:fixed;top:0;width:100%;z-index:200;background:rgba(59,35,20,0.96);b
 .hero-content{position:relative;z-index:2;}
 .hero-badge{display:inline-block;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:var(--cd);font-size:0.75rem;letter-spacing:0.15em;text-transform:uppercase;padding:0.4rem 1.2rem;border-radius:999px;margin-bottom:1.5rem;}
 .hero h1{font-family:'Playfair Display',serif;font-size:clamp(3rem,8vw,5.5rem);color:#fff;line-height:1.1;margin-bottom:1rem;}
-.hero h1 span{color:#c9956a;}
-.hero p{font-size:1.1rem;color:rgba(245,239,230,0.8);max-width:480px;margin:0 auto 2.5rem;line-height:1.7;font-weight:300;}
+.hero h1 span{color:#c9a36a;}
+.hero p{font-size:1.1rem;color:rgba(224,212,198,0.8);max-width:480px;margin:0 auto 2.5rem;line-height:1.7;font-weight:300;}
 .hero-btns{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;}
 .btn-primary{background:var(--bl);color:#fff;border:none;padding:0.85rem 2rem;border-radius:4px;font-size:0.9rem;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;transition:background 0.2s;text-decoration:none;display:inline-block;}
 .btn-primary:hover{background:#b8784a;}
@@ -75,27 +75,27 @@ nav{position:fixed;top:0;width:100%;z-index:200;background:rgba(59,35,20,0.96);b
 .visual-main{background:var(--bd);border-radius:8px;height:460px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;}
 .visual-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.8rem;}
 .stat-box{background:var(--bd);border-radius:6px;padding:1rem;text-align:center;}
-.stat-box .num{font-family:'Playfair Display',serif;font-size:1.6rem;color:#c9956a;display:block;}
-.stat-box .lbl{font-size:0.72rem;color:rgba(245,239,230,0.6);text-transform:uppercase;letter-spacing:0.08em;}
+.stat-box .num{font-family:'Playfair Display',serif;font-size:1.6rem;color:#c9a36a;display:block;}
+.stat-box .lbl{font-size:0.72rem;color:rgba(224,212,198,0.6);text-transform:uppercase;letter-spacing:0.08em;}
 .reel-section{background:var(--bd);padding:6rem 2rem;}
 .reel-inner{max-width:700px;margin:0 auto;}
 .reel-embed-wrap{display:flex;justify-content:center;}
 .menu{background:var(--bd);padding:6rem 2rem;}
 .menu-inner{max-width:1000px;margin:0 auto;}
 .menu-tabs{display:flex;flex-wrap:wrap;gap:0.5rem;justify-content:center;margin-bottom:2.5rem;}
-.tab-btn{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:rgba(245,239,230,0.7);padding:0.45rem 1.1rem;border-radius:999px;font-size:0.82rem;cursor:pointer;transition:all 0.2s;font-family:'Inter',sans-serif;}
+.tab-btn{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:rgba(224,212,198,0.7);padding:0.45rem 1.1rem;border-radius:999px;font-size:0.82rem;cursor:pointer;transition:all 0.2s;font-family:'Inter',sans-serif;}
 .tab-btn:hover{background:rgba(255,255,255,0.12);color:var(--cr);}
 .tab-btn.active{background:var(--bl);border-color:var(--bl);color:#fff;}
 .menu-card{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;overflow:hidden;cursor:default;display:flex;flex-direction:column;}
 .menu-card-img{width:100%;height:140px;object-fit:cover;object-position:center;display:block;background:var(--bd);}
-.menu-card-img-placeholder{width:100%;height:140px;background:linear-gradient(135deg,rgba(160,103,58,0.3),rgba(59,35,20,0.6));display:flex;align-items:center;justify-content:center;font-size:2.5rem;}
+.menu-card-img-placeholder{width:100%;height:140px;background:linear-gradient(135deg,rgba(176,141,87,0.3),rgba(25,36,27,0.6));display:flex;align-items:center;justify-content:center;font-size:2.5rem;}
 .menu-card-body{padding:1rem;flex:1;display:flex;flex-direction:column;}
 .menu-card .cat-tag{font-size:0.68rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--bl);margin-bottom:0.4rem;display:block;}
 .menu-card h4{font-family:'Playfair Display',serif;color:var(--cr);font-size:0.98rem;margin-bottom:0.25rem;}
-.menu-card .desc{font-size:0.76rem;color:rgba(245,239,230,0.5);line-height:1.5;margin-bottom:0.75rem;flex:1;}
+.menu-card .desc{font-size:0.76rem;color:rgba(224,212,198,0.5);line-height:1.5;margin-bottom:0.75rem;flex:1;}
 .menu-card .price-row{display:flex;flex-wrap:wrap;gap:0.35rem;margin-bottom:0.6rem;}
-.price-badge{font-size:0.72rem;font-weight:600;padding:0.2rem 0.5rem;border-radius:6px;background:rgba(201,149,106,0.15);color:#c9956a;border:1px solid rgba(201,149,106,0.3);}
-.price-single{font-size:0.95rem;font-weight:500;color:#c9956a;}
+.price-badge{font-size:0.72rem;font-weight:600;padding:0.2rem 0.5rem;border-radius:6px;background:rgba(201,163,106,0.15);color:#c9a36a;border:1px solid rgba(201,163,106,0.3);}
+.price-single{font-size:0.95rem;font-weight:500;color:#c9a36a;}
 .avail-badge{font-size:0.72rem;font-weight:600;padding:0.2rem 0.6rem;border-radius:999px;display:inline-block;}
 .avail-yes{background:rgba(45,158,95,0.15);color:#2d9e5f;}
 .staff-mode .staff-hide{display:none!important;}
@@ -154,8 +154,8 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 .cust-badge-optional{background:#e8f4fd;color:#0c5460;}
 .cust-options{display:flex;flex-direction:column;gap:0.4rem;}
 .cust-option{display:flex;align-items:center;justify-content:space-between;padding:0.6rem 0.85rem;border:2px solid var(--cd);border-radius:8px;cursor:pointer;transition:all 0.15s;}
-.cust-option:hover{border-color:var(--bl);background:rgba(160,103,58,0.05);}
-.cust-option.selected{border-color:var(--bl);background:rgba(160,103,58,0.1);}
+.cust-option:hover{border-color:var(--bl);background:rgba(176,141,87,0.05);}
+.cust-option.selected{border-color:var(--bl);background:rgba(176,141,87,0.1);}
 .cust-option input[type=radio],.cust-option input[type=checkbox]{accent-color:var(--bl);width:16px;height:16px;flex-shrink:0;}
 .cust-option-label{font-size:0.85rem;color:var(--td);flex:1;margin:0 0.75rem;}
 .cust-option-price{font-size:0.82rem;font-weight:600;color:var(--bl);}
@@ -180,31 +180,31 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 .cal-nav:hover{background:rgba(255,255,255,0.2);}
 .cal-nav:disabled{opacity:0.3;cursor:not-allowed;}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
-.cal-day-label{text-align:center;font-size:0.68rem;color:rgba(245,239,230,0.5);padding:0.3rem 0;text-transform:uppercase;letter-spacing:0.08em;}
+.cal-day-label{text-align:center;font-size:0.68rem;color:rgba(224,212,198,0.5);padding:0.3rem 0;text-transform:uppercase;letter-spacing:0.08em;}
 .cal-day{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:0.82rem;cursor:pointer;font-family:'Inter',sans-serif;font-weight:500;transition:all 0.15s;border:2px solid transparent;}
 .cal-day.empty{cursor:default;}
-.cal-day.past{color:rgba(245,239,230,0.2);cursor:not-allowed;background:rgba(255,255,255,0.03);}
+.cal-day.past{color:rgba(224,212,198,0.2);cursor:not-allowed;background:rgba(255,255,255,0.03);}
 .cal-day.open{background:rgba(45,158,95,0.2);color:#a5d6a7;border-color:rgba(45,158,95,0.3);}
 .cal-day.open:hover{background:rgba(45,158,95,0.35);}
 .cal-day.partial{background:rgba(243,156,18,0.2);color:#fdd835;border-color:rgba(243,156,18,0.3);}
-.cal-day.blocked{background:rgba(255,255,255,0.05);color:rgba(245,239,230,0.25);cursor:not-allowed;}
-.cal-day.selected{background:var(--bl);color:#fff;border-color:#c9956a;box-shadow:0 0 0 3px rgba(201,149,106,0.3);}
-.cal-day.today{border-color:rgba(201,149,106,0.6);}
+.cal-day.blocked{background:rgba(255,255,255,0.05);color:rgba(224,212,198,0.25);cursor:not-allowed;}
+.cal-day.selected{background:var(--bl);color:#fff;border-color:#c9a36a;box-shadow:0 0 0 3px rgba(201,163,106,0.3);}
+.cal-day.today{border-color:rgba(201,163,106,0.6);}
 .cal-legend{display:flex;gap:1rem;flex-wrap:wrap;margin-top:1rem;}
-.cal-legend-item{display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;color:rgba(245,239,230,0.6);}
+.cal-legend-item{display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;color:rgba(224,212,198,0.6);}
 .cal-legend-dot{width:10px;height:10px;border-radius:50%;}
 .time-slots-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem;margin-top:0.75rem;}
 .time-slot{padding:0.5rem 0.25rem;border-radius:6px;font-size:0.78rem;text-align:center;cursor:pointer;font-family:'Inter',sans-serif;font-weight:500;transition:all 0.15s;border:1px solid transparent;}
 .time-slot.available{background:rgba(45,158,95,0.15);color:#a5d6a7;border-color:rgba(45,158,95,0.3);}
 .time-slot.available:hover{background:rgba(45,158,95,0.3);}
-.time-slot.blocked{background:rgba(255,255,255,0.04);color:rgba(245,239,230,0.2);cursor:not-allowed;}
-.time-slot.selected{background:var(--bl);color:#fff;border-color:#c9956a;}
+.time-slot.blocked{background:rgba(255,255,255,0.04);color:rgba(224,212,198,0.2);cursor:not-allowed;}
+.time-slot.selected{background:var(--bl);color:#fff;border-color:#c9a36a;}
 .res-form-box{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:1.75rem;}
 .res-field-group{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;}
 .res-field{display:flex;flex-direction:column;margin-bottom:0.75rem;}
-.res-label{font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(245,239,230,0.55);margin-bottom:0.35rem;}
+.res-label{font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(224,212,198,0.55);margin-bottom:0.35rem;}
 .res-form-box input,.res-form-box select,.res-form-box textarea{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:0.6rem 0.85rem;color:var(--cr);font-family:'Inter',sans-serif;font-size:0.88rem;width:100%;}
-.res-form-box input::placeholder,.res-form-box textarea::placeholder{color:rgba(245,239,230,0.3);}
+.res-form-box input::placeholder,.res-form-box textarea::placeholder{color:rgba(224,212,198,0.3);}
 .res-form-box select option{background:var(--bm);color:var(--cr);}
 .res-form-box textarea{resize:none;}
 .btn-reserve{width:100%;margin-top:1.25rem;background:var(--bl);color:#fff;border:none;border-radius:6px;padding:0.9rem;font-size:0.9rem;letter-spacing:0.06em;text-transform:uppercase;cursor:pointer;font-family:'Inter',sans-serif;transition:background 0.2s;}
@@ -213,8 +213,8 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 .res-info-card{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:1.25rem;}
 .res-info-icon{font-size:1.5rem;margin-bottom:0.5rem;}
 .res-info-card h4{font-family:'Playfair Display',serif;color:var(--cr);font-size:1rem;margin-bottom:0.4rem;}
-.res-info-card p{font-size:0.82rem;color:rgba(245,239,230,0.6);line-height:1.5;}
-.res-time{color:#c9956a!important;font-weight:500;}
+.res-info-card p{font-size:0.82rem;color:rgba(224,212,198,0.6);line-height:1.5;}
+.res-time{color:#c9a36a!important;font-weight:500;}
 .admin-cal-wrap{background:#fff;border:1px solid var(--cd);border-radius:10px;padding:1.5rem;}
 .admin-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
 .admin-cal-day{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:0.82rem;cursor:pointer;font-family:'Inter',sans-serif;font-weight:500;transition:all 0.15s;border:2px solid transparent;}
@@ -248,7 +248,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 .feedback-layout{display:grid;grid-template-columns:1.4fr 1fr;gap:2.5rem;align-items:start;}
 .feedback-form-box{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:1.75rem;}
 .feedback-form-box input,.feedback-form-box select,.feedback-form-box textarea{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:0.6rem 0.85rem;color:var(--cr);font-family:'Inter',sans-serif;font-size:0.88rem;width:100%;}
-.feedback-form-box input::placeholder,.feedback-form-box textarea::placeholder{color:rgba(245,239,230,0.3);}
+.feedback-form-box input::placeholder,.feedback-form-box textarea::placeholder{color:rgba(224,212,198,0.3);}
 .feedback-form-box select option{background:var(--bm);color:var(--cr);}
 .feedback-form-box textarea{resize:none;}
 .gallery-section{background:var(--cr);padding:6rem 2rem;}
@@ -290,21 +290,21 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 .contact-layout{display:grid;grid-template-columns:1.3fr 1fr;gap:3rem;align-items:start;}
 .contact-form-box{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:1.75rem;}
 .contact-form-box input,.contact-form-box textarea{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:0.6rem 0.85rem;color:var(--cr);font-family:'Inter',sans-serif;font-size:0.88rem;width:100%;}
-.contact-form-box input::placeholder,.contact-form-box textarea::placeholder{color:rgba(245,239,230,0.3);}
+.contact-form-box input::placeholder,.contact-form-box textarea::placeholder{color:rgba(224,212,198,0.3);}
 .contact-form-box textarea{resize:none;}
 .contact-info{display:flex;flex-direction:column;gap:1.5rem;}
 .contact-info-item{display:flex;gap:1rem;align-items:flex-start;}
 .contact-icon{font-size:1.4rem;margin-top:0.1rem;}
 .contact-info-item h4{font-family:'Playfair Display',serif;color:var(--cr);font-size:0.95rem;margin-bottom:0.3rem;}
-.contact-info-item p{font-size:0.83rem;color:rgba(245,239,230,0.6);line-height:1.6;}
+.contact-info-item p{font-size:0.83rem;color:rgba(224,212,198,0.6);line-height:1.6;}
 .footer{background:#1a0d06;padding:2.5rem 2rem;text-align:center;}
 .footer-inner{max-width:700px;margin:0 auto;}
 .footer-logo{font-family:'Playfair Display',serif;font-size:1.3rem;color:var(--cr);margin-bottom:0.5rem;}
-.footer p{font-size:0.8rem;color:rgba(245,239,230,0.4);margin-bottom:1rem;}
+.footer p{font-size:0.8rem;color:rgba(224,212,198,0.4);margin-bottom:1rem;}
 .footer-links{display:flex;gap:1.5rem;justify-content:center;margin-bottom:1rem;flex-wrap:wrap;}
-.footer-links a{font-size:0.78rem;color:rgba(245,239,230,0.5);text-decoration:none;letter-spacing:0.08em;text-transform:uppercase;}
+.footer-links a{font-size:0.78rem;color:rgba(224,212,198,0.5);text-decoration:none;letter-spacing:0.08em;text-transform:uppercase;}
 .footer-links a:hover{color:var(--cr);}
-.footer-copy{font-size:0.72rem;color:rgba(245,239,230,0.25);margin:0;}
+.footer-copy{font-size:0.72rem;color:rgba(224,212,198,0.25);margin:0;}
 #adminDash{background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;}
 .admin-wrap{max-width:1100px;margin:0 auto;padding:2rem;}
 .admin-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2rem;}
@@ -337,6 +337,8 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 .badge-preparing{background:#fff3cd;color:#664d03;}
 .badge-completed{background:#d4edda;color:#155724;}
 .badge-declined{background:#fde8e8;color:#721c24;}
+.badge-accepted{background:#d1ecf1;color:#0c5460;}
+.badge-rejected{background:#f8d7da;color:#721c24;}
 .badge-received{background:#c8e6c9;color:#1b5e20;}
 .badge-archived{background:#e2e3e5;color:#41464b;}
 .empty-state{text-align:center;padding:2rem;color:var(--tl);font-size:0.88rem;}
@@ -351,16 +353,16 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 .avail-toggle:checked{background:#2d9e5f;}
 .avail-toggle::after{content:'';position:absolute;width:18px;height:18px;background:#fff;border-radius:50%;top:3px;left:3px;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);}
 .avail-toggle:checked::after{left:23px;}
-.archive-section{background:#f9f6f2;border:1px solid var(--cd);border-radius:8px;padding:1.25rem;margin-top:1.5rem;}
+.archive-section{background:#ece4d8;border:1px solid var(--cd);border-radius:8px;padding:1.25rem;margin-top:1.5rem;}
 .archive-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;}
 .archive-card{border:1px solid #ddd;border-radius:6px;padding:0.85rem 1rem;margin-bottom:0.5rem;background:#fff;}
 .archive-summary{background:var(--cr);border:1px solid var(--cd);border-radius:8px;padding:1rem;margin-bottom:1rem;display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;text-align:center;}
 .archive-sum-num{font-family:'Playfair Display',serif;font-size:1.4rem;color:var(--bd);display:block;}
 .archive-sum-lbl{font-size:0.68rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--tl);}
 .chat-bubble{position:fixed;bottom:2rem;right:2rem;z-index:300;}
-.chat-toggle-btn{width:62px;height:62px;border-radius:50%;background:linear-gradient(135deg,#3b2314,#6b3a2a);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1.6rem;box-shadow:0 4px 20px rgba(59,35,20,0.5);animation:chatPulse 2s infinite;position:relative;}
+.chat-toggle-btn{width:62px;height:62px;border-radius:50%;background:linear-gradient(135deg,#19241b,#243528);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1.6rem;box-shadow:0 4px 20px rgba(25,36,27,0.5);animation:chatPulse 2s infinite;position:relative;}
 .chat-toggle-btn:hover{transform:scale(1.1);}
-@keyframes chatPulse{0%{box-shadow:0 4px 20px rgba(59,35,20,0.5),0 0 0 0 rgba(160,103,58,0.5);}70%{box-shadow:0 4px 20px rgba(59,35,20,0.5),0 0 0 14px rgba(160,103,58,0);}100%{box-shadow:0 4px 20px rgba(59,35,20,0.5),0 0 0 0 rgba(160,103,58,0);}}
+@keyframes chatPulse{0%{box-shadow:0 4px 20px rgba(25,36,27,0.5),0 0 0 0 rgba(176,141,87,0.5);}70%{box-shadow:0 4px 20px rgba(25,36,27,0.5),0 0 0 14px rgba(176,141,87,0);}100%{box-shadow:0 4px 20px rgba(25,36,27,0.5),0 0 0 0 rgba(176,141,87,0);}}
 .steam{position:absolute;top:-20px;left:50%;transform:translateX(-50%);display:flex;gap:4px;}
 .steam span{display:block;width:4px;height:12px;background:rgba(255,255,255,0.6);border-radius:999px;animation:steamUp 1.5s ease-in-out infinite;}
 .steam span:nth-child(2){animation-delay:0.3s;height:16px;}
@@ -368,16 +370,16 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 @keyframes steamUp{0%{transform:translateY(0) scaleX(1);opacity:0.6;}50%{transform:translateY(-8px) scaleX(1.3);opacity:0.3;}100%{transform:translateY(-16px) scaleX(0.8);opacity:0;}}
 .chat-notif{position:absolute;top:-4px;right:-4px;width:18px;height:18px;background:#c0392b;border-radius:50%;border:2px solid #fff;display:none;animation:notifBounce 0.8s ease infinite alternate;}
 @keyframes notifBounce{from{transform:scale(1);}to{transform:scale(1.25);}}
-.chat-label{position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);font-size:0.6rem;color:rgba(59,35,20,0.7);white-space:nowrap;font-family:'Inter',sans-serif;font-weight:500;background:rgba(245,239,230,0.9);padding:0.15rem 0.5rem;border-radius:999px;}
+.chat-label{position:absolute;bottom:-22px;left:50%;transform:translateX(-50%);font-size:0.6rem;color:rgba(25,36,27,0.7);white-space:nowrap;font-family:'Inter',sans-serif;font-weight:500;background:rgba(224,212,198,0.9);padding:0.15rem 0.5rem;border-radius:999px;}
 .chat-window{position:fixed;bottom:6.5rem;right:2rem;width:330px;max-height:480px;background:#fff;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.2);display:none;flex-direction:column;z-index:300;overflow:hidden;}
 .chat-window.open{display:flex;}
 .chat-header{background:var(--bd);padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;}
 .chat-header-info{display:flex;align-items:center;gap:0.75rem;}
 .chat-avatar{width:36px;height:36px;border-radius:50%;background:var(--bl);display:flex;align-items:center;justify-content:center;font-size:1.1rem;}
 .chat-header h4{font-family:'Playfair Display',serif;color:var(--cr);font-size:0.95rem;margin:0;}
-.chat-header p{color:rgba(245,239,230,0.6);font-size:0.72rem;margin:0;}
+.chat-header p{color:rgba(224,212,198,0.6);font-size:0.72rem;margin:0;}
 .chat-close-btn{background:none;border:none;color:var(--cr);font-size:1.2rem;cursor:pointer;opacity:0.7;padding:0;}
-.chat-messages{flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:0.75rem;background:#f9f6f2;}
+.chat-messages{flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:0.75rem;background:#ece4d8;}
 .chat-msg{max-width:80%;padding:0.6rem 0.85rem;border-radius:12px;font-size:0.83rem;line-height:1.5;}
 .chat-msg.bot{background:#fff;color:var(--td);border:1px solid var(--cd);border-bottom-left-radius:2px;align-self:flex-start;}
 .chat-msg.user{background:var(--bd);color:var(--cr);border-bottom-right-radius:2px;align-self:flex-end;}
@@ -435,9 +437,9 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     <li><a href="#order">Order</a></li><li><a href="#orderTracker">📋 Track Order</a></li>
     <li><a href="#reserve">Reserve</a></li><li><a href="#reviews">Reviews</a></li>
     <li><a href="#feedback">Feedback</a></li><li><a href="#gallery">Gallery</a></li><li><a href="#contact">Contact</a></li>
-    <li id="navAvail" style="display:none;"><a href="#availSection" style="color:#c9956a;font-weight:500;">🔄 Availability</a></li>
-    <li id="navComments" style="display:none;"><a href="#commentsSection" style="color:#c9956a;font-weight:500;">📩 Comments</a></li>
-    <li id="navAdminPanel" style="display:none;"><a href="#adminDash" id="navAdminPanelLink" style="color:#c9956a;font-weight:600;">🔐 Admin Panel</a></li>
+    <li id="navAvail" style="display:none;"><a href="#availSection" style="color:#c9a36a;font-weight:500;">🔄 Availability</a></li>
+    <li id="navComments" style="display:none;"><a href="#commentsSection" style="color:#c9a36a;font-weight:500;">📩 Comments</a></li>
+    <li id="navAdminPanel" style="display:none;"><a href="#adminDash" id="navAdminPanelLink" style="color:#c9a36a;font-weight:600;">🔐 Admin Panel</a></li>
   </ul>
   <button class="hamburger" id="hamburgerBtn" onclick="toggleNav()" aria-label="Open menu"><span></span><span></span><span></span></button>
 </nav>
@@ -449,7 +451,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
   <div class="hero-content">
     <div class="hero-badge">☕ Saratoga Ave, La Mediterranea, Dasmariñas, Cavite</div>
     <h1>Where Every Cup<br/>Tells a <span>Story</span></h1>
-    <p style="font-family:'Playfair Display',serif;font-size:1.05rem;color:rgba(201,149,106,0.9);letter-spacing:0.06em;margin-bottom:0.5rem;">Accaza Coffee House</p>
+    <p style="font-family:'Playfair Display',serif;font-size:1.05rem;color:rgba(201,163,106,0.9);letter-spacing:0.06em;margin-bottom:0.5rem;">Accaza Coffee House</p>
     <p>Handcrafted coffee, warm spaces, and flavors that linger — welcome to Accaza Coffee, your cozy corner of the city.</p>
     <div class="hero-btns"><a href="#menu" class="btn-primary">View Our Menu</a><a href="#reserve" class="btn-outline">Reserve a Table</a></div>
     <div class="hero-social">
@@ -483,7 +485,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     <div class="about-visual">
       <div class="visual-main" style="overflow:hidden;padding:0;position:relative;">
         <img src="https://i.postimg.cc/8zM97Trf/coffe-latte1.jpg" alt="Accaza Coffee latte art" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;border-radius:8px;"/>
-        <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,rgba(59,35,20,0.75),transparent);padding:1rem;text-align:center;"><p style="font-size:0.75rem;color:rgba(245,239,230,0.9);letter-spacing:0.2em;text-transform:uppercase;font-family:'Inter',sans-serif;">Freshly Brewed</p></div>
+        <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,rgba(25,36,27,0.75),transparent);padding:1rem;text-align:center;"><p style="font-size:0.75rem;color:rgba(224,212,198,0.9);letter-spacing:0.2em;text-transform:uppercase;font-family:'Inter',sans-serif;">Freshly Brewed</p></div>
       </div>
       <div class="visual-stats">
         <div class="stat-box"><span class="num">50+</span><span class="lbl">Menu Items</span></div>
@@ -505,9 +507,9 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
       <div style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:3rem 2rem;max-width:480px;margin:0 auto;">
         <div style="font-size:3rem;margin-bottom:1rem;">🎬</div>
         <p style="font-family:'Playfair Display',serif;font-size:1.3rem;color:var(--cr);">Watch Our Latest Reel</p>
-        <p style="font-size:0.88rem;color:rgba(245,239,230,0.6);margin-bottom:1.75rem;line-height:1.6;">See the Accaza vibe — the cozy space, the craft, and the community that makes us home.</p>
+        <p style="font-size:0.88rem;color:rgba(224,212,198,0.6);margin-bottom:1.75rem;line-height:1.6;">See the Accaza vibe — the cozy space, the craft, and the community that makes us home.</p>
         <a href="https://www.tiktok.com/@accazacoffee" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:0.6rem;background:var(--bl);color:#fff;text-decoration:none;padding:0.9rem 2rem;border-radius:6px;font-size:0.9rem;letter-spacing:0.06em;text-transform:uppercase;" onmouseover="this.style.background='#b8784a'" onmouseout="this.style.background='var(--bl)'">Watch on TikTok</a>
-        <p style="font-size:0.72rem;color:rgba(245,239,230,0.35);margin-top:1.25rem;">Opens TikTok in a new tab</p>
+        <p style="font-size:0.72rem;color:rgba(224,212,198,0.35);margin-top:1.25rem;">Opens TikTok in a new tab</p>
       </div>
     </div>
   </div>
@@ -519,9 +521,9 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     <div style="text-align:center;margin-bottom:2rem;">
       <p class="section-label" style="color:var(--bl);">What We Serve</p>
       <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cr);margin-bottom:0.75rem;">Our Menu</h2>
-      <p style="text-align:center;margin-bottom:1.25rem;"><p style="font-size:0.95rem;color:rgba(245,239,230,0.7);">From your morning brew to a full day — crafted fresh, served with love.</p>
+      <p style="text-align:center;margin-bottom:1.25rem;"><p style="font-size:0.95rem;color:rgba(224,212,198,0.7);">From your morning brew to a full day — crafted fresh, served with love.</p>
     </div>
-    <div style="text-align:center;margin-bottom:1.25rem;"><p style="font-size:0.95rem;color:rgba(245,239,230,0.7);font-style:italic;">What are you craving today? ☕ Choose a category below to explore our handcrafted drinks and pastries.</p></div>
+    <div style="text-align:center;margin-bottom:1.25rem;"><p style="font-size:0.95rem;color:rgba(224,212,198,0.7);font-style:italic;">What are you craving today? ☕ Choose a category below to explore our handcrafted drinks and pastries.</p></div>
     <div class="menu-tabs" id="menuTabsRow"></div>
     <div id="menuGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-top:1rem;"></div>
   </div>
@@ -632,7 +634,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     <div style="text-align:center;margin-bottom:3rem;">
       <p class="section-label" style="color:var(--bl);">Book a Seat</p>
       <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cr);margin-bottom:0.75rem;">Reserve a Table</h2>
-      <div style="background:rgba(201,149,106,0.15);border:1px solid rgba(201,149,106,0.3);border-radius:8px;padding:1rem 1.5rem;margin-top:1rem;max-width:620px;margin-left:auto;margin-right:auto;"><p style="font-size:0.9rem;color:#c9956a;line-height:1.7;text-align:center;">📋 <strong>All reservations are subject to confirmation.</strong><br/>One of our staff will reach out to your contact number to discuss the details of your booking and confirm your reservation. For faster assistance, call or message us at <strong>0927 692 4831</strong>. 😊</p></div>
+      <div style="background:rgba(201,163,106,0.15);border:1px solid rgba(201,163,106,0.3);border-radius:8px;padding:1rem 1.5rem;margin-top:1rem;max-width:620px;margin-left:auto;margin-right:auto;"><p style="font-size:0.9rem;color:#c9a36a;line-height:1.7;text-align:center;">📋 <strong>All reservations are subject to confirmation.</strong><br/>One of our staff will reach out to your contact number to discuss the details of your booking and confirm your reservation. For faster assistance, call or message us at <strong>0927 692 4831</strong>. 😊</p></div>
     </div>
     <div class="res-layout">
       <div>
@@ -642,13 +644,13 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
           <div class="cal-legend"><div class="cal-legend-item"><div class="cal-legend-dot" style="background:#2d9e5f;"></div>Available</div><div class="cal-legend-item"><div class="cal-legend-dot" style="background:#f39c12;"></div>Partially Booked</div><div class="cal-legend-item"><div class="cal-legend-dot" style="background:#555;"></div>Unavailable</div></div>
         </div>
         <div class="cal-wrap" id="timeSlotsWrap" style="display:none;margin-bottom:1.5rem;">
-          <p style="font-size:0.8rem;color:rgba(245,239,230,0.7);margin-bottom:0.75rem;">Select a time for <strong id="selectedDateLabel" style="color:var(--cr);"></strong></p>
+          <p style="font-size:0.8rem;color:rgba(224,212,198,0.7);margin-bottom:0.75rem;">Select a time for <strong id="selectedDateLabel" style="color:var(--cr);"></strong></p>
           <div style="margin-bottom:0.6rem;"><div class="time-slot available" id="fullDaySlot" onclick="selectTimeSlot('Full Day Booking')" style="font-weight:700;padding:0.65rem;font-size:0.85rem;text-align:center;border-radius:6px;cursor:pointer;">📅 Full Day Booking</div></div>
           <div class="time-slots-grid" id="timeSlotsGrid"></div>
         </div>
         <div class="res-form-box" id="resFormWrap" style="display:none;">
           <p style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--cr);margin-bottom:1rem;">📋 Your Booking Details</p>
-          <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:0.85rem 1rem;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;"><div><p style="font-size:0.72rem;color:rgba(245,239,230,0.5);text-transform:uppercase;letter-spacing:0.1em;">Date & Time</p><p style="font-size:0.95rem;color:var(--cr);font-weight:500;" id="resSummaryDateTime">—</p></div><button onclick="resetResSelection()" style="background:none;border:1px solid rgba(255,255,255,0.2);color:rgba(245,239,230,0.6);border-radius:6px;padding:0.3rem 0.75rem;font-size:0.75rem;cursor:pointer;font-family:'Inter',sans-serif;">Change</button></div>
+          <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:0.85rem 1rem;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;"><div><p style="font-size:0.72rem;color:rgba(224,212,198,0.5);text-transform:uppercase;letter-spacing:0.1em;">Date & Time</p><p style="font-size:0.95rem;color:var(--cr);font-weight:500;" id="resSummaryDateTime">—</p></div><button onclick="resetResSelection()" style="background:none;border:1px solid rgba(255,255,255,0.2);color:rgba(224,212,198,0.6);border-radius:6px;padding:0.3rem 0.75rem;font-size:0.75rem;cursor:pointer;font-family:'Inter',sans-serif;">Change</button></div>
           <div class="res-field-group"><div class="res-field"><label class="res-label">Full Name</label><input type="text" id="resName" placeholder="e.g. Maria Santos"/></div><div class="res-field"><label class="res-label">Phone Number</label><input type="text" id="resPhone" placeholder="e.g. 0917 123 4567"/></div></div>
           <div class="res-field-group">
             <div class="res-field"><label class="res-label">Number of Guests</label><select id="resGuests" onchange="updateBookingType()"><option value="1">1 guest</option><option value="2">2 guests</option><option value="3">3 guests</option><option value="4">4 guests</option><option value="5">5 guests</option><option value="6">6 guests</option><option value="7">7 guests</option><option value="8">8 guests</option><option value="9">9 guests</option><option value="10">10 guests</option><option value="15">15 guests</option><option value="20">20 guests</option><option value="25">25 guests</option><option value="30">30 guests</option><option value="40">40 guests</option><option value="50">50 guests (max)</option></select></div>
@@ -656,7 +658,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
           </div>
           <div id="bookingTypeInfo" style="margin-bottom:1rem;"></div>
           <div class="res-field" style="margin-top:0.75rem;"><label class="res-label">Special Requests (optional)</label><textarea id="resNotes" rows="2" placeholder="e.g. window seat, allergies, birthday setup..."></textarea></div>
-          <p style="font-size:0.75rem;color:rgba(245,239,230,0.55);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.5rem;margin-top:0.75rem;">Preferred Contact</p>
+          <p style="font-size:0.75rem;color:rgba(224,212,198,0.55);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.5rem;margin-top:0.75rem;">Preferred Contact</p>
           <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.75rem;">
             <button class="type-btn active" id="resBtnWa" onclick="setResContact('whatsapp')" style="flex:none;padding:0.45rem 0.8rem;font-size:0.78rem;">📱 WhatsApp</button>
             <button class="type-btn" id="resBtnVb" onclick="setResContact('viber')" style="flex:none;padding:0.45rem 0.8rem;font-size:0.78rem;">💬 Viber</button>
@@ -672,12 +674,12 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
       <div class="res-info">
         <div class="res-info-card"><div class="res-info-icon">🕐</div><h4>Opening Hours</h4><p>Monday – Sunday</p><p class="res-time">3:00 PM – 12:00 Midnight</p></div>
         <div class="res-info-card"><div class="res-info-icon">📍</div><h4>Find Us</h4><p>Saratoga Avenue, La Mediterranea Subdivision, Governor's Drive</p><p class="res-time">Dasmariñas, Cavite, Philippines</p></div>
-        <div class="res-info-card"><div class="res-info-icon">📞</div><h4>Call or Message</h4><p>GCash / Viber / WhatsApp / SMS</p><p class="res-time">0927 692 4831</p></div>
+        <div class="res-info-card"><div class="res-info-icon">📞</div><h4>Call or Message</h4><p>Viber / WhatsApp / SMS</p><p class="res-time">0927 692 4831</p></div>
         <div class="res-info-card"><div class="res-info-icon">👥</div><h4>Booking Guidelines, Admin to Confirm</h4>
-          <p style="margin-bottom:0.4rem;">💑 <strong style="color:rgba(245,239,230,0.8);">Individual/Couple</strong> — Same day, no deposit</p>
-          <p style="margin-bottom:0.4rem;">👨‍👩‍👧 <strong style="color:rgba(245,239,230,0.8);">Small Group (3–5)</strong> — Same day, deposit discussed</p>
-          <p style="margin-bottom:0.4rem;">👥 <strong style="color:rgba(245,239,230,0.8);">Medium Group (6–20)</strong> — 7 days advance booking</p>
-          <p>🎉 <strong style="color:rgba(245,239,230,0.8);">Large Group (21–50)</strong> — 7 days advance booking</p>
+          <p style="margin-bottom:0.4rem;">💑 <strong style="color:rgba(224,212,198,0.8);">Individual/Couple</strong> — Same day, no deposit</p>
+          <p style="margin-bottom:0.4rem;">👨‍👩‍👧 <strong style="color:rgba(224,212,198,0.8);">Small Group (3–5)</strong> — Same day, deposit discussed</p>
+          <p style="margin-bottom:0.4rem;">👥 <strong style="color:rgba(224,212,198,0.8);">Medium Group (6–20)</strong> — 7 days advance booking</p>
+          <p>🎉 <strong style="color:rgba(224,212,198,0.8);">Large Group (21–50)</strong> — 7 days advance booking</p>
         </div>
       </div>
     </div>
@@ -709,7 +711,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
       <div class="feedback-form-box">
         <div class="res-field-group"><div class="res-field"><label class="res-label">Your Name</label><input type="text" id="fbName" placeholder="e.g. Maria Santos"/></div><div class="res-field"><label class="res-label">Phone / Email (optional)</label><input type="text" id="fbContact" placeholder="So we can follow up"/></div></div>
         <div class="res-field" style="margin-bottom:1rem;"><label class="res-label">Type of Feedback</label><select id="fbType"><option value="Complaint">😞 Complaint</option><option value="Suggestion">💡 Suggestion</option><option value="Compliment">❤️ Compliment</option><option value="Other">💬 Other</option></select></div>
-        <div class="res-field"><label class="res-label">Your Message <span style="font-size:0.68rem;opacity:0.6;">(max 800 characters)</span></label><textarea id="fbMessage" rows="5" maxlength="800" placeholder="Tell us what's on your mind..." oninput="updateFbCounter()"></textarea><div style="display:flex;justify-content:flex-end;margin-top:0.3rem;"><span id="fbCounter" style="font-size:0.72rem;color:rgba(245,239,230,0.5);">0 / 800</span></div></div>
+        <div class="res-field"><label class="res-label">Your Message <span style="font-size:0.68rem;opacity:0.6;">(max 800 characters)</span></label><textarea id="fbMessage" rows="5" maxlength="800" placeholder="Tell us what's on your mind..." oninput="updateFbCounter()"></textarea><div style="display:flex;justify-content:flex-end;margin-top:0.3rem;"><span id="fbCounter" style="font-size:0.72rem;color:rgba(224,212,198,0.5);">0 / 800</span></div></div>
         <button class="btn-reserve" style="margin-top:1rem;" onclick="submitFeedback()">Send Feedback</button>
         <div id="fbConfirm" style="display:none;margin-top:1rem;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:1.25rem;text-align:center;"><p id="fbConfirmMsg" style="color:#fff;font-size:0.95rem;line-height:1.7;"></p></div>
       </div>
@@ -725,7 +727,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 <!-- GALLERY -->
 <section class="gallery-section" id="gallery">
   <div class="gallery-inner">
-    <div style="text-align:center;margin-bottom:3rem;"><p class="section-label" style="color:var(--bl);">Our Space</p><h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.5rem;">A Peek Inside</h2><p style="color:rgba(245,239,230,0.45);font-size:0.82rem;letter-spacing:0.04em;">Click any photo for a closer look</p></div>
+    <div style="text-align:center;margin-bottom:3rem;"><p class="section-label" style="color:var(--bl);">Our Space</p><h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.5rem;">A Peek Inside</h2><p style="color:rgba(224,212,198,0.45);font-size:0.82rem;letter-spacing:0.04em;">Click any photo for a closer look</p></div>
     <div class="gallery-grid">
       <div onclick="openLightbox(0)" class="gallery-card tall"><img src="https://i.postimg.cc/g0qrJsnX/6.jpg" alt="Accaza Coffee House gallery" loading="lazy"/></div>
       <div onclick="openLightbox(1)" class="gallery-card"><img src="https://i.postimg.cc/TwtsR8Gd/image.png" alt="Accaza"/></div>
@@ -748,9 +750,9 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     <div style="text-align:center;margin-bottom:3rem;"><p class="section-label" style="color:var(--bl);">Get in Touch</p><h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cr);margin-bottom:0.75rem;">Contact Us</h2></div>
     <div class="contact-layout">
       <div class="contact-form-box">
-        <div class="res-field-group"><div class="res-field"><label class="res-label" style="color:rgba(245,239,230,0.55);">Your Name</label><input type="text" id="conName" placeholder="e.g. Juan dela Cruz"/></div><div class="res-field"><label class="res-label" style="color:rgba(245,239,230,0.55);">Phone / Email</label><input type="text" id="conContact" placeholder="09XX or email@email.com"/></div></div>
-        <div class="res-field" style="margin-bottom:1rem;"><label class="res-label" style="color:rgba(245,239,230,0.55);">Subject</label><input type="text" id="conSubject" placeholder="e.g. catering inquiry..."/></div>
-        <div class="res-field"><label class="res-label" style="color:rgba(245,239,230,0.55);">Message</label><textarea id="conMessage" rows="4" placeholder="Write your message here..."></textarea></div>
+        <div class="res-field-group"><div class="res-field"><label class="res-label" style="color:rgba(224,212,198,0.55);">Your Name</label><input type="text" id="conName" placeholder="e.g. Juan dela Cruz"/></div><div class="res-field"><label class="res-label" style="color:rgba(224,212,198,0.55);">Phone / Email</label><input type="text" id="conContact" placeholder="09XX or email@email.com"/></div></div>
+        <div class="res-field" style="margin-bottom:1rem;"><label class="res-label" style="color:rgba(224,212,198,0.55);">Subject</label><input type="text" id="conSubject" placeholder="e.g. catering inquiry..."/></div>
+        <div class="res-field"><label class="res-label" style="color:rgba(224,212,198,0.55);">Message</label><textarea id="conMessage" rows="4" placeholder="Write your message here..."></textarea></div>
         <button class="btn-reserve" style="margin-top:1rem;" onclick="submitContact()">Send Message</button>
         <div id="conConfirm" style="display:none;margin-top:1rem;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:1rem;text-align:center;"><p style="color:var(--cr);">✅ Message sent! We'll get back to you shortly.</p></div>
       </div>
@@ -761,9 +763,9 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
             width="100%" height="280" style="border:0;display:block;" allowfullscreen="" loading="lazy"
             referrerpolicy="no-referrer-when-downgrade" title="Accaza Coffee House — La Mediterranea, Dasmariñas, Cavite"></iframe>
         </div>
-        <div class="contact-info-item"><div class="contact-icon">🕐</div><div><h4>Opening Hours</h4><p>Monday – Sunday<br/><span style="color:#c9956a;font-weight:500;">3:00 PM – 12:00 Midnight</span></p></div></div>
+        <div class="contact-info-item"><div class="contact-icon">🕐</div><div><h4>Opening Hours</h4><p>Monday – Sunday<br/><span style="color:#c9a36a;font-weight:500;">3:00 PM – 12:00 Midnight</span></p></div></div>
         <div class="contact-info-item"><div class="contact-icon">📱</div><div><h4>Viber / WhatsApp / SMS</h4><p>0927 692 4831</p></div></div>
-        <div class="contact-info-item"><div class="contact-icon">💳</div><div><h4>Online Payment</h4><p>GCash · BDO · UnionBank<br/><span style="color:rgba(245,239,230,0.5);font-size:0.8rem;">All under ACCAZA</span></p></div></div>
+        <div class="contact-info-item"><div class="contact-icon">💳</div><div><h4>Online Payment</h4><p>GCash · BDO · UnionBank<br/><span style="color:rgba(224,212,198,0.5);font-size:0.8rem;">All under ACCAZA</span></p></div></div>
       </div>
     </div>
   </div>
@@ -774,7 +776,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     <div class="footer-logo">Accaza Coffee House</div>
     <p>Saratoga Ave, La Mediterranea, Dasmariñas, Cavite · Open daily 3PM–12MN</p>
     <div class="footer-links"><a href="#menu">Menu</a><a href="#order">Order</a><a href="#reserve">Reserve</a><a href="#reviews">Reviews</a><a href="#feedback">Feedback</a><a href="#gallery">Gallery</a><a href="#contact">Contact</a></div>
-    <p class="footer-copy">© 2026 Accaza Coffee House. All rights reserved. &nbsp;·&nbsp;<a href="#" onclick="openAdmin();return false;" style="color:rgba(245,239,230,0.2);text-decoration:none;font-size:0.7rem;">Admin</a></p>
+    <p class="footer-copy">© 2026 Accaza Coffee House. All rights reserved. &nbsp;·&nbsp;<a href="#" onclick="openAdmin();return false;" style="color:rgba(224,212,198,0.2);text-decoration:none;font-size:0.7rem;">Admin</a></p>
   </div>
 </footer>
 
@@ -893,14 +895,14 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
         <button onclick="document.querySelector('.admin-tab:nth-child(3)').click()" style="background:#856404;color:#fff;border:none;border-radius:6px;padding:0.45rem 1rem;font-size:0.8rem;cursor:pointer;font-family:'Inter',sans-serif;">View Reservations →</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.5rem;">
-        <div style="background:linear-gradient(135deg,#3b2314,#6b3a2a);border-radius:10px;padding:1.25rem;text-align:center;"><div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(245,239,230,0.6);margin-bottom:0.4rem;">Today</div><div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#c9956a;" id="dashToday">₱0</div><div style="font-size:0.72rem;color:rgba(245,239,230,0.5);" id="dashTodayCount">0 orders</div></div>
-        <div style="background:linear-gradient(135deg,#3b2314,#6b3a2a);border-radius:10px;padding:1.25rem;text-align:center;"><div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(245,239,230,0.6);margin-bottom:0.4rem;">This Week</div><div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#c9956a;" id="dashWeek">₱0</div><div style="font-size:0.72rem;color:rgba(245,239,230,0.5);" id="dashWeekCount">0 orders</div></div>
-        <div style="background:linear-gradient(135deg,#3b2314,#6b3a2a);border-radius:10px;padding:1.25rem;text-align:center;"><div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(245,239,230,0.6);margin-bottom:0.4rem;">This Month</div><div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#c9956a;" id="dashMonth">₱0</div><div style="font-size:0.72rem;color:rgba(245,239,230,0.5);" id="dashMonthCount">0 orders</div></div>
-        <div style="background:linear-gradient(135deg,#3b2314,#6b3a2a);border-radius:10px;padding:1.25rem;text-align:center;"><div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(245,239,230,0.6);margin-bottom:0.4rem;">All Time</div><div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#c9956a;" id="dashAllTime">₱0</div><div style="font-size:0.72rem;color:rgba(245,239,230,0.5);" id="dashAllTimeCount">0 orders</div></div>
+        <div style="background:linear-gradient(135deg,#19241b,#243528);border-radius:10px;padding:1.25rem;text-align:center;"><div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(224,212,198,0.6);margin-bottom:0.4rem;">Today</div><div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#c9a36a;" id="dashToday">₱0</div><div style="font-size:0.72rem;color:rgba(224,212,198,0.5);" id="dashTodayCount">0 orders</div></div>
+        <div style="background:linear-gradient(135deg,#19241b,#243528);border-radius:10px;padding:1.25rem;text-align:center;"><div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(224,212,198,0.6);margin-bottom:0.4rem;">This Week</div><div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#c9a36a;" id="dashWeek">₱0</div><div style="font-size:0.72rem;color:rgba(224,212,198,0.5);" id="dashWeekCount">0 orders</div></div>
+        <div style="background:linear-gradient(135deg,#19241b,#243528);border-radius:10px;padding:1.25rem;text-align:center;"><div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(224,212,198,0.6);margin-bottom:0.4rem;">This Month</div><div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#c9a36a;" id="dashMonth">₱0</div><div style="font-size:0.72rem;color:rgba(224,212,198,0.5);" id="dashMonthCount">0 orders</div></div>
+        <div style="background:linear-gradient(135deg,#19241b,#243528);border-radius:10px;padding:1.25rem;text-align:center;"><div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(224,212,198,0.6);margin-bottom:0.4rem;">All Time</div><div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#c9a36a;" id="dashAllTime">₱0</div><div style="font-size:0.72rem;color:rgba(224,212,198,0.5);" id="dashAllTimeCount">0 orders</div></div>
       </div>
       <div style="display:grid;grid-template-columns:2fr 1fr;gap:1rem;margin-bottom:1.25rem;">
-        <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;"><h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;">📈 Last 30 Days</h4><div style="display:flex;gap:1rem;font-size:0.72rem;"><span style="display:flex;align-items:center;gap:0.3rem;"><span style="width:12px;height:12px;border-radius:2px;background:#a0673a;display:inline-block;"></span>Revenue</span><span style="display:flex;align-items:center;gap:0.3rem;"><span style="width:12px;height:12px;border-radius:2px;background:#3b8fd4;display:inline-block;"></span>Orders</span></div></div><canvas id="revenueChart" height="180" style="width:100%;display:block;"></canvas></div>
-        <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;margin-bottom:1rem;">💳 Payment Split</h4><canvas id="paymentChart" width="160" height="160" style="display:block;margin:0 auto;"></canvas><div style="display:flex;justify-content:center;gap:1.5rem;margin-top:0.75rem;font-size:0.78rem;"><span style="display:flex;align-items:center;gap:0.35rem;"><span style="width:12px;height:12px;border-radius:50%;background:#a0673a;display:inline-block;"></span><span id="gcashPct">GCash 0%</span></span><span style="display:flex;align-items:center;gap:0.35rem;"><span style="width:12px;height:12px;border-radius:50%;background:#3b8fd4;display:inline-block;"></span><span id="bankPct">Bank 0%</span></span></div></div>
+        <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;"><h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;">📈 Last 30 Days</h4><div style="display:flex;gap:1rem;font-size:0.72rem;"><span style="display:flex;align-items:center;gap:0.3rem;"><span style="width:12px;height:12px;border-radius:2px;background:#b08d57;display:inline-block;"></span>Revenue</span><span style="display:flex;align-items:center;gap:0.3rem;"><span style="width:12px;height:12px;border-radius:2px;background:#3b8fd4;display:inline-block;"></span>Orders</span></div></div><canvas id="revenueChart" height="180" style="width:100%;display:block;"></canvas></div>
+        <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;margin-bottom:1rem;">💳 Payment Split</h4><canvas id="paymentChart" width="160" height="160" style="display:block;margin:0 auto;"></canvas><div style="display:flex;justify-content:center;gap:1.5rem;margin-top:0.75rem;font-size:0.78rem;"><span style="display:flex;align-items:center;gap:0.35rem;"><span style="width:12px;height:12px;border-radius:50%;background:#b08d57;display:inline-block;"></span><span id="gcashPct">GCash 0%</span></span><span style="display:flex;align-items:center;gap:0.35rem;"><span style="width:12px;height:12px;border-radius:50%;background:#3b8fd4;display:inline-block;"></span><span id="bankPct">Bank 0%</span></span></div></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
         <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;margin-bottom:1rem;">🏆 Top 5 Best Sellers</h4><div id="topItemsList"></div></div>
@@ -927,7 +929,23 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
       </div>
     </div>
     <!-- RESERVATIONS -->
-    <div id="tab-reservations" class="admin-tab-content" style="display:none;"><div id="resList"></div></div>
+    <div id="tab-reservations" class="admin-tab-content" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;"><h3 id="resHeading" style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;">Reservations</h3><button id="resArchiveToggleBtn" onclick="toggleResArchivePanel()" style="background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.45rem 1rem;font-size:0.82rem;cursor:pointer;font-family:'Inter',sans-serif;">📦 View Archive</button></div>
+      <div id="resList"></div>
+      <div class="archive-section" id="resArchivePanel" style="display:none;">
+        <div class="archive-header"><h3 style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--bd);">📦 Reservation Archive</h3>
+          <div style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
+            <input type="date" id="resArchiveFrom" style="font-size:0.78rem;padding:0.3rem 0.6rem;border:1px solid var(--cd);border-radius:6px;background:var(--cr);color:var(--td);"/>
+            <input type="date" id="resArchiveTo" style="font-size:0.78rem;padding:0.3rem 0.6rem;border:1px solid var(--cd);border-radius:6px;background:var(--cr);color:var(--td);"/>
+            <button onclick="renderResArchive()" style="background:var(--bl);color:#fff;border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;">Filter</button>
+            <button onclick="printResArchive()" style="background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;">🖨️ Print</button>
+            <button onclick="toggleResArchivePanel()" style="background:var(--cd);border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.78rem;cursor:pointer;color:var(--tm);font-family:'Inter',sans-serif;">✕ Close</button>
+          </div>
+        </div>
+        <div class="archive-summary" id="resArchiveSummary"></div>
+        <div id="resArchiveList"></div>
+      </div>
+    </div>
     <!-- CALENDAR -->
     <div id="tab-calendar" class="admin-tab-content" style="display:none;">
       <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:0.5rem;">🗓️ Reservation Calendar Manager</h3>
@@ -1061,7 +1079,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
       <p style="text-align:center;margin-top:0.5rem;">
         <button id="forgotPwBtn" onclick="toggleForgotPw()" style="display:none;background:none;border:none;font-size:0.76rem;color:var(--tl);cursor:pointer;text-decoration:underline;">Forgot password?</button>
       </p>
-      <div id="forgotPwPanel" style="display:none;margin-top:0.75rem;padding:0.85rem;background:#f9f6f2;border:1px solid var(--cd);border-radius:8px;">
+      <div id="forgotPwPanel" style="display:none;margin-top:0.75rem;padding:0.85rem;background:#ece4d8;border:1px solid var(--cd);border-radius:8px;">
         <p style="font-size:0.78rem;color:var(--tl);margin-bottom:0.6rem;text-align:center;">Enter your <strong>original recovery password</strong> to reset.</p>
         <input type="password" id="recoveryPass" placeholder="Original recovery password" style="margin-bottom:0.6rem;" onkeydown="if(event.key==='Enter')resetAdminPassword()"/>
         <button class="btn-primary" style="width:100%;font-size:0.82rem;" onclick="resetAdminPassword()">🔑 Reset Password</button>
@@ -1073,6 +1091,9 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 </div>
 <div class="popup-overlay" id="confirmReceivedPopup">
   <div class="popup-box"><div style="font-size:2.5rem;margin-bottom:0.75rem;">✅</div><h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:0.5rem;">Confirm Receipt</h3><p style="font-size:0.85rem;color:var(--tm);margin-bottom:0.3rem;">Confirming receipt of order:</p><p id="receivedOrderId" style="font-family:'Playfair Display',serif;font-size:1.4rem;color:var(--bd);font-weight:600;margin-bottom:1.5rem;"></p><div style="display:flex;gap:0.75rem;justify-content:center;"><button onclick="document.getElementById('confirmReceivedPopup').classList.remove('show')" style="flex:1;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.7rem;font-size:0.88rem;cursor:pointer;color:var(--tm);">Not Yet</button><button id="confirmReceivedBtn" style="flex:1;background:#2d9e5f;color:#fff;border:none;border-radius:6px;padding:0.7rem;font-size:0.88rem;cursor:pointer;font-weight:500;">Yes, Received ✓</button></div></div>
+</div>
+<div class="popup-overlay" id="resContactPopup">
+  <div class="popup-box" style="max-width:430px;"><div style="font-size:2.5rem;margin-bottom:0.75rem;">📨</div><h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:0.5rem;">Reservation Accepted!</h3><p style="font-size:0.85rem;color:var(--tm);margin-bottom:0.75rem;">Please contact the customer now to confirm the booking details — use their preferred method below.</p><div id="resContactInfo" style="background:var(--cr);border:1px solid var(--cd);border-radius:8px;padding:0.75rem;margin-bottom:1rem;font-size:0.85rem;color:var(--td);text-align:left;line-height:1.6;"></div><div id="resContactBtns" style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;margin-bottom:1.25rem;"></div><button onclick="document.getElementById('resContactPopup').classList.remove('show')" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.7rem;font-size:0.88rem;cursor:pointer;color:var(--tm);">Done</button></div>
 </div>
 <div class="popup-overlay" id="deletePopup">
   <div class="popup-box"><div style="font-size:2.5rem;margin-bottom:0.75rem;">🗑️</div><h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:0.5rem;">Confirm Action</h3><p style="font-size:0.85rem;color:var(--tm);margin-bottom:0.5rem;">You are about to:</p><p id="deleteLabel" style="font-size:0.82rem;color:var(--bd);font-weight:500;background:var(--cr);padding:0.6rem;border-radius:6px;margin-bottom:1rem;"></p><p style="font-size:0.8rem;color:var(--tl);margin-bottom:1.5rem;">This cannot be undone.</p><div style="display:flex;gap:0.75rem;justify-content:center;"><button onclick="document.getElementById('deletePopup').classList.remove('show')" style="flex:1;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.7rem;font-size:0.88rem;cursor:pointer;color:var(--tm);">Cancel</button><button id="deleteConfirmBtn" style="flex:1;background:#c0392b;color:#fff;border:none;border-radius:6px;padding:0.7rem;font-size:0.88rem;cursor:pointer;">Confirm</button></div></div>
@@ -1118,7 +1139,7 @@ const app=initializeApp(firebaseConfig);
 const db=getDatabase(app);
 
 // DB refs
-const settingsRef=ref(db,'settings'),staffAccountsRef=ref(db,'staffAccounts'),adminAccountsRef=ref(db,'adminAccounts'),ordersRef=ref(db,'orders'),archivedRef=ref(db,'archivedOrders'),reservationsRef=ref(db,'reservations'),feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),calBlocksRef=ref(db,'calBlocks'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups');
+const settingsRef=ref(db,'settings'),staffAccountsRef=ref(db,'staffAccounts'),adminAccountsRef=ref(db,'adminAccounts'),ordersRef=ref(db,'orders'),archivedRef=ref(db,'archivedOrders'),archivedResRef=ref(db,'archivedReservations'),reservationsRef=ref(db,'reservations'),feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),calBlocksRef=ref(db,'calBlocks'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups');
 
 let currentAdminHash=null,staffAccountsMap={},adminAccountsMap={},staffLoggedIn=false,superAdminLoggedIn=false,currentUser=null,currentLoginRole=null;
 const ADMIN_PASS_HASH='2fbc8eab665a40385a692e111f01d6a8572baa7b161f5b17d4d9977b20913921',SUPER_ADMIN_USERNAME='superadmin',CAFE_PHONE='639276924831',CAFE_EMAIL='mariadaniela@gmail.com',MAX_GUESTS=30;
@@ -1166,7 +1187,7 @@ function getItemOptionGroups(item){
 }
 
 // State
-let categoriesMap={},menuItemsMap={},adminOrdersMap={},archivedOrdersMap={},adminResMap={},feedbacksMap={},reviewsMap={},availability={},cart={};
+let categoriesMap={},menuItemsMap={},adminOrdersMap={},archivedOrdersMap={},archivedResMap={},adminResMap={},feedbacksMap={},reviewsMap={},availability={},cart={};
 let optionGroupsMap={},optSeedStarted=false,itemOptMigrated=false;
 let knownOrderIds=null,unseenOrders=0,orderChimeTimer=null,audioCtx=null;
 let orderType='pickup',paymentType='gcash',contactMethod='whatsapp',resContactMethod='whatsapp';
@@ -1404,6 +1425,7 @@ onValue(ordersRef,snap=>{
   updateStats();renderCustomerOrders();
 });
 onValue(archivedRef,snap=>{archivedOrdersMap=snap.val()||{};if(adminLoggedIn)renderDashboard();});
+onValue(archivedResRef,snap=>{archivedResMap=snap.val()||{};if((adminLoggedIn||staffLoggedIn)&&resArchiveOpen)renderResArchive();});
 onValue(reservationsRef,snap=>{adminResMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderReservations();updateStats();renderCustomerCalendar();if(adminLoggedIn||staffLoggedIn)renderAdminCalendar();});
 onValue(feedbacksRef,snap=>{feedbacksMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderComments();});
 onValue(reviewsRef,snap=>{
@@ -1584,7 +1606,7 @@ function renderMenuSection(){
   const el=document.getElementById('menuGrid');if(!el)return;
   if(!menuFilter){el.innerHTML='';return;}
   const items=getMenuItems().filter(i=>i.cat===menuFilter).sort((a,b)=>(a.order||0)-(b.order||0));
-  if(!items.length){el.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:3rem;color:rgba(245,239,230,0.5);"><p style="font-size:2rem;">'+getCatIcon(menuFilter)+'</p><p style="margin-top:0.5rem;">No items yet.</p></div>';return;}
+  if(!items.length){el.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:3rem;color:rgba(224,212,198,0.5);"><p style="font-size:2rem;">'+getCatIcon(menuFilter)+'</p><p style="margin-top:0.5rem;">No items yet.</p></div>';return;}
   el.innerHTML=items.map(function(i){
     const ok=isAvail(i.name);
     const imgHtml=i.img?'<img src="'+i.img+'" class="menu-card-img" style="'+(ok?'':'opacity:0.5;')+'" onerror="this.style.display=\'none\'"/>'
@@ -1614,7 +1636,7 @@ function renderOrderSection(){
       +'<span class="item-cat">'+(ok?getCatLabel(i.cat):'Not Available')+'</span>'
       +'<span class="item-prices">'+formatPrice(i)+'</span></div>'
       +'<div class="item-row-right">'
-      +(cartQty>0?'<span style="font-size:0.78rem;font-weight:600;color:var(--bl);background:rgba(160,103,58,0.1);padding:0.2rem 0.5rem;border-radius:999px;">'+cartQty+' in cart</span>':'')
+      +(cartQty>0?'<span style="font-size:0.78rem;font-weight:600;color:var(--bl);background:rgba(176,141,87,0.1);padding:0.2rem 0.5rem;border-radius:999px;">'+cartQty+' in cart</span>':'')
       +'<button class="qty-btn" style="background:var(--bd);color:#fff;border-color:var(--bd);" data-key="'+i.key+'">+</button>'
       +'</div></div>';
   }).join('');
@@ -1723,7 +1745,7 @@ function addCustomizedToCart(){
   cart[cartKey]={name:item.name+sizeLabel,details:details.join(', '),qty:custQty,unitTotal:unit,cat:item.cat};
   closeCustomize();updateCartDisplay();renderOrderSection();
   document.getElementById('order').scrollIntoView({behavior:'smooth',block:'start'});
-  setTimeout(function(){const cb=document.querySelector('.cart-box');cb.style.transition='box-shadow 0.3s';cb.style.boxShadow='0 0 0 3px rgba(160,103,58,0.5)';setTimeout(()=>cb.style.boxShadow='none',1000);},400);
+  setTimeout(function(){const cb=document.querySelector('.cart-box');cb.style.transition='box-shadow 0.3s';cb.style.boxShadow='0 0 0 3px rgba(176,141,87,0.5)';setTimeout(()=>cb.style.boxShadow='none',1000);},400);
 }
 window.closeCustomize=function(){document.getElementById('customizePopup').classList.remove('show');custItem=null;};
 
@@ -1799,7 +1821,7 @@ window.placeOrder=async function(){
 window.resetOrder=function(){if(!Object.keys(cart).length&&!document.getElementById('custName').value){alert('Your order is already empty!');return;}if(confirm('Reset your order?')){cart={};updateCartDisplay();renderOrderSection();document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';setType('pickup');(function(){var gBtn=document.getElementById('btnGcash');var mBtn=document.getElementById('btnMaya');var bBtn=document.getElementById('btnBank');var first=gBtn&&gBtn.style.display!=='none'?'gcash':mBtn&&mBtn.style.display!=='none'?'maya':'bank';setPayment(first);})();document.getElementById('orderConfirm').style.display='none';document.querySelector('.btn-place-order').disabled=false;document.querySelector('.btn-place-order').style.opacity='1';}};
 
 // ── ORDER TRACKER ──
-const statusConfig={Pending:{icon:'🟡',color:'#856404',bg:'#fef3cd',msg:'Your order has been received and is awaiting confirmation from our staff.'},Confirmed:{icon:'🔵',color:'#0c5460',bg:'#d1ecf1',msg:'Your order has been confirmed. We will start preparing it soon!'},Preparing:{icon:'🟠',color:'#664d03',bg:'#fff3cd',msg:'Your order is currently being prepared. ☕'},Completed:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your order is ready! Please confirm once you have received it below.'},Received:{icon:'✅',color:'#1b5e20',bg:'#c8e6c9',msg:'You have confirmed receipt. Thank you! ☕🦁'}};
+const statusConfig={Pending:{icon:'🟡',color:'#856404',bg:'#fef3cd',msg:'Your order has been received and is awaiting confirmation from our staff.'},Confirmed:{icon:'🔵',color:'#0c5460',bg:'#d1ecf1',msg:'Your order has been confirmed. We will start preparing it soon!'},Preparing:{icon:'🟠',color:'#664d03',bg:'#fff3cd',msg:'Your order is currently being prepared. ☕'},Completed:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your order is ready! Please confirm once you have received it below.'},Received:{icon:'✅',color:'#1b5e20',bg:'#c8e6c9',msg:'You have confirmed receipt. Thank you! ☕🦁'},Rejected:{icon:'🔴',color:'#721c24',bg:'#f8d7da',msg:'Unfortunately, we could not verify your payment in our account, so this order has been rejected. If you believe this is a mistake, please contact us at 0927 692 4831 with your payment reference.'}};
 function renderCustomerOrders(){
   const myOrders=myOrderIds.map(id=>adminOrdersMap[id]).filter(Boolean);
   const active=myOrders.filter(o=>o.status!=='Received'&&!o.receivedByCustomer);
@@ -1808,15 +1830,15 @@ function renderCustomerOrders(){
   el.innerHTML=active.map(function(o){const s=statusConfig[o.status]||statusConfig.Pending;const isDelivery=o.type==='Delivery';
     return'<div style="background:#fff;border:2px solid #a8d5b5;border-radius:12px;overflow:hidden;margin-bottom:1.25rem;">'
       +'<div style="background:var(--bd);padding:1rem 1.25rem;text-align:center;">'
-      +'<p style="font-size:0.72rem;color:rgba(245,239,230,0.6);text-transform:uppercase;letter-spacing:0.15em;margin-bottom:0.25rem;">Order ID</p>'
+      +'<p style="font-size:0.72rem;color:rgba(224,212,198,0.6);text-transform:uppercase;letter-spacing:0.15em;margin-bottom:0.25rem;">Order ID</p>'
       +'<p style="font-family:\'Playfair Display\',serif;font-size:1.8rem;color:#fff;font-weight:600;">'+o.id+'</p>'
-      +'<p style="font-size:0.72rem;color:rgba(245,239,230,0.5);margin-top:0.25rem;">🛒 '+o.items+'</p>'
-      +'<p style="font-size:0.75rem;color:#c9956a;">💰 ₱'+o.total.toLocaleString()+' · '+o.payment+'</p>'
+      +'<p style="font-size:0.72rem;color:rgba(224,212,198,0.5);margin-top:0.25rem;">🛒 '+o.items+'</p>'
+      +'<p style="font-size:0.75rem;color:#c9a36a;">💰 ₱'+o.total.toLocaleString()+' · '+o.payment+'</p>'
       +'<p style="font-size:0.75rem;margin-top:0.3rem;padding:0.25rem 0.75rem;display:inline-block;border-radius:999px;background:'+(isDelivery?'rgba(13,110,253,0.2)':'rgba(45,158,95,0.2)')+';color:'+(isDelivery?'#90caf9':'#a5d6a7')+';">'+(isDelivery?'🛵 For Delivery':'🏠 For Pick-up')+'</p></div>'
       +'<div style="padding:1rem 1.25rem;background:'+s.bg+';"><p style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.15em;color:'+s.color+';margin-bottom:0.4rem;font-weight:600;">Order Status</p>'
       +'<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;"><span style="font-size:1.3rem;">'+s.icon+'</span><span style="font-size:1rem;font-weight:700;color:'+s.color+';">'+o.status+'</span></div>'
       +'<p style="font-size:0.82rem;color:'+s.color+';line-height:1.5;">'+s.msg+'</p></div>'
-      +'<div style="padding:1rem 1.25rem;background:#f9f6f2;text-align:center;">'
+      +'<div style="padding:1rem 1.25rem;background:#ece4d8;text-align:center;">'
       +(o.status==='Completed'?'<button data-orderid="'+o.id+'" class="confirm-recv-btn" style="background:#2d9e5f;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:pointer;width:100%;">✅ Yes, I Received My Order</button>'
         :'<p style="font-size:0.82rem;color:var(--tl);">This button will be enabled once your order is marked <strong>Completed</strong>.</p><button disabled style="background:#ccc;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:not-allowed;width:100%;margin-top:0.5rem;opacity:0.6;">Waiting for Completion...</button>')
       +'</div></div>';
@@ -1832,8 +1854,8 @@ function renderCustomerOrders(){
 }
 
 // ── RESERVATIONS ──
-function getConfirmedGuestsForDate(k){return Object.values(adminResMap).filter(r=>r.date===k&&r.status==='Confirmed').reduce((s,r)=>s+(parseInt(r.guests)||0),0);}
-function getConfirmedSlotsForDate(k){const s=new Set();Object.values(adminResMap).filter(r=>r.date===k&&r.status==='Confirmed').forEach(r=>s.add(r.time));return s;}
+function getConfirmedGuestsForDate(k){return Object.values(adminResMap).filter(r=>r.date===k&&(r.status==='Accepted'||r.status==='Confirmed')).reduce((s,r)=>s+(parseInt(r.guests)||0),0);}
+function getConfirmedSlotsForDate(k){const s=new Set();Object.values(adminResMap).filter(r=>r.date===k&&(r.status==='Accepted'||r.status==='Confirmed')).forEach(r=>s.add(r.time));return s;}
 function dateKey(y,m,d){return y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');}
 function getDateStatus(y,m,d){const k=dateKey(y,m,d);const bl=calBlocks[k];if(bl&&bl.blocked)return'blocked';const g=getConfirmedGuestsForDate(k);if(g>=MAX_GUESTS)return'blocked';if(g>0)return'partial';if(bl&&bl.slots&&Object.values(bl.slots).some(v=>v===false))return'partial';return'open';}
 function isSlotBlocked(k,slot){const b=calBlocks[k];if(b&&b.blocked)return true;if(b&&b.slots&&b.slots[slot]===false)return true;return false;}
@@ -1964,7 +1986,7 @@ window.openAllSlots=async function(){if(!adminSelectedDate)return;await remove(r
 
 // ── FEEDBACK ──
 window.submitContact=function(){if(!document.getElementById('conName').value.trim()||!document.getElementById('conMessage').value.trim()){alert('Please fill in name and message.');return;}document.getElementById('conConfirm').style.display='block';};
-window.updateFbCounter=function(){const len=document.getElementById('fbMessage').value.length;const c=document.getElementById('fbCounter');c.textContent=len+' / 800';c.style.color=len>=720?'#ff8080':len>=560?'#f39c12':'rgba(245,239,230,0.5)';};
+window.updateFbCounter=function(){const len=document.getElementById('fbMessage').value.length;const c=document.getElementById('fbCounter');c.textContent=len+' / 800';c.style.color=len>=720?'#ff8080':len>=560?'#f39c12':'rgba(224,212,198,0.5)';};
 window.submitFeedback=async function(){
   const name=document.getElementById('fbName').value.trim(),message=document.getElementById('fbMessage').value.trim(),type=document.getElementById('fbType').value;
   if(!name||!message){alert('Please enter your name and message.');return;}
@@ -1975,13 +1997,13 @@ window.submitFeedback=async function(){
 };
 
 // ── ADMIN FUNCTIONS ──
-function updateStats(){const orders=Object.values(adminOrdersMap),active=orders.filter(o=>o.status!=='Received');document.getElementById('statOrders').textContent=active.length;document.getElementById('statPending').textContent=active.filter(o=>o.status==='Pending').length;document.getElementById('statReservations').textContent=Object.keys(adminResMap).length;document.getElementById('statRevenue').textContent='₱'+active.reduce((s,o)=>s+(o.total||0),0).toLocaleString();}
+function updateStats(){const orders=Object.values(adminOrdersMap),active=orders.filter(o=>o.status!=='Received');document.getElementById('statOrders').textContent=active.length;document.getElementById('statPending').textContent=active.filter(o=>o.status==='Pending').length;document.getElementById('statReservations').textContent=Object.keys(adminResMap).length;document.getElementById('statRevenue').textContent='₱'+active.filter(o=>o.status!=='Rejected').reduce((s,o)=>s+(o.total||0),0).toLocaleString();}
 
 function renderOrders(){
   const el=document.getElementById('ordersList'),orders=Object.values(adminOrdersMap).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
   if(!orders.length){el.innerHTML='<div class="empty-state">No active orders yet.</div>';return;}
   el.innerHTML=orders.map(function(o){
-    const isDelivery=o.type==='Delivery',isReceived=o.status==='Received',canArchive=o.status==='Completed'||o.status==='Received';
+    const isDelivery=o.type==='Delivery',isReceived=o.status==='Received',canArchive=o.status==='Completed'||o.status==='Received'||o.status==='Rejected';
     const modeBadge=isDelivery?'<span class="badge" style="background:#d1ecf1;color:#0c5460;">🛵 Delivery</span>':'<span class="badge" style="background:#d4edda;color:#155724;">🏠 Pick-up</span>';
     return'<div class="order-admin-card" style="'+(isReceived?'opacity:0.75;':'')+'"><div class="order-admin-top"><div><div class="order-admin-name">'+o.name+' <span style="font-size:0.75rem;color:var(--tl);">#'+o.id+'</span></div><div class="order-admin-meta">'+o.phone+(o.contact?' · '+o.contact:'')+' · '+(o.date||'')+' '+(o.time||'')+'</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;"><span class="badge badge-'+(o.status||'pending').toLowerCase().replace(' ','-')+'">'+o.status+'</span>'+modeBadge+(o.receivedByCustomer?'<span class="badge" style="background:#c8e6c9;color:#1b5e20;">✅ Customer Confirmed</span>':'')+'</div></div>'
       +'<div class="order-admin-items">🛒 '+o.items+'</div>'
@@ -1989,12 +2011,12 @@ function renderOrders(){
       +(o.notes?'<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📝 '+o.notes+'</div>':'')
       +(o.proof?'<div style="margin:0.5rem 0;"><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;">📎 Proof:</p><img src="'+o.proof+'" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid var(--cd);cursor:pointer;" onclick="window.open(\''+o.proof+'\',\'_blank\')"/></div>':'<p style="font-size:0.75rem;color:#c0392b;margin:0.3rem 0;">⚠️ No proof of payment</p>')
       +'<div class="order-admin-footer"><span class="order-total-tag">₱'+(o.total||0).toLocaleString()+' · '+o.payment+'</span><div style="display:flex;align-items:center;gap:0.5rem;">'
-      +(isReceived?'<span style="font-size:0.8rem;color:#1b5e20;font-weight:500;">✅ Received</span>':'<select class="status-select" data-orderid="'+o.id+'"><option'+(o.status==='Pending'?' selected':'')+'>Pending</option><option'+(o.status==='Confirmed'?' selected':'')+'>Confirmed</option><option'+(o.status==='Preparing'?' selected':'')+'>Preparing</option><option'+(o.status==='Completed'?' selected':'')+'>Completed</option></select>')
+      +(isReceived?'<span style="font-size:0.8rem;color:#1b5e20;font-weight:500;">✅ Received</span>':'<select class="status-select" data-orderid="'+o.id+'"><option'+(o.status==='Pending'?' selected':'')+'>Pending</option><option'+(o.status==='Confirmed'?' selected':'')+'>Confirmed</option><option'+(o.status==='Preparing'?' selected':'')+'>Preparing</option><option'+(o.status==='Completed'?' selected':'')+'>Completed</option><option'+(o.status==='Rejected'?' selected':'')+' style="color:#c0392b;">Rejected</option></select>')
       +(canArchive?'<button data-archive="'+o.id+'" style="background:#e2e3e5;border:1px solid #bbb;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#41464b;cursor:pointer;">📦 Archive</button>':'')+'<button onclick="printOrder(\''+o.id+'\')" style="background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#e65100;cursor:pointer;font-weight:600;">🖨️ Print</button>'
       +'</div></div></div>';
   }).join('');
   el.querySelectorAll('.status-select[data-orderid]').forEach(function(sel){sel.addEventListener('change',function(){update(ref(db,'orders/'+this.dataset.orderid),{status:this.value});});});
-  el.querySelectorAll('button[data-archive]').forEach(function(btn){btn.addEventListener('click',function(){const oid=this.dataset.archive,o=adminOrdersMap[oid];if(!o)return;showDeletePopup('Archive order from '+o.name,async function(){await set(ref(db,'archivedOrders/'+oid),{...o,status:'Archived',archivedAt:Date.now(),archivedDate:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'})});await remove(ref(db,'orders/'+oid));});});});
+  el.querySelectorAll('button[data-archive]').forEach(function(btn){btn.addEventListener('click',function(){const oid=this.dataset.archive,o=adminOrdersMap[oid];if(!o)return;showDeletePopup('Archive order from '+o.name,async function(){await set(ref(db,'archivedOrders/'+oid),{...o,status:'Archived',prevStatus:o.status,archivedAt:Date.now(),archivedDate:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'})});await remove(ref(db,'orders/'+oid));});});});
 }
 
 function renderReservations(){
@@ -2007,26 +2029,27 @@ function renderReservations(){
   el.innerHTML=reservations.map(function(r){
     const guests=parseInt(r.guests)||1,bookType=guests<=2?'💑 Individual':guests<=5?'👨‍👩‍👧 Small':guests<=20?'👥 Medium':'🎉 Large';
     const isFullDay=r.time==='Full Day Booking';
-    const phone=(r.phone||'').replace(/\D/g,'').replace(/^0/,'');
-    const msg=encodeURIComponent('Hi '+r.name+'! 😊 Your reservation at Accaza Coffee House has been confirmed!\n\n📅 Date: '+r.date+'\n🕐 Time: '+r.time+'\n👥 Guests: '+r.guests+(r.occasion?' · '+r.occasion:'')+'\n📍 Saratoga Ave, La Mediterranea, Dasmariñas, Cavite\n\nWe look forward to seeing you! ☕🦁\n— Accaza Coffee House');
-    return'<div class="order-admin-card"><div class="order-admin-top"><div><div class="order-admin-name">'+r.name+' <span style="font-size:0.75rem;color:var(--tl);">#'+r.id+'</span>'+(isFullDay?'<span class="badge" style="background:#fff3cd;color:#664d03;margin-left:0.4rem;">📅 Full Day</span>':'')+'</div><div class="order-admin-meta">'+r.phone+' · '+r.date+' · '+r.time+' · '+r.guests+' guests'+(r.occasion?' · '+r.occasion:'')+'</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;"><span class="badge badge-'+(r.status||'pending').toLowerCase()+'">'+r.status+'</span><span style="font-size:0.7rem;color:var(--tl);">'+bookType+'</span></div></div>'
+    const st=r.status==='Confirmed'?'Accepted':(r.status||'Pending');
+    return'<div class="order-admin-card"><div class="order-admin-top"><div><div class="order-admin-name">'+r.name+' <span style="font-size:0.75rem;color:var(--tl);">#'+r.id+'</span>'+(isFullDay?'<span class="badge" style="background:#fff3cd;color:#664d03;margin-left:0.4rem;">📅 Full Day</span>':'')+'</div><div class="order-admin-meta">'+r.phone+' · '+r.date+' · '+r.time+' · '+r.guests+' guests'+(r.occasion?' · '+r.occasion:'')+'</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;"><span class="badge badge-'+st.toLowerCase()+'">'+st+'</span><span style="font-size:0.7rem;color:var(--tl);">'+bookType+'</span></div></div>'
       +(r.notes?'<div class="order-admin-items">📝 '+r.notes+'</div>':'')
-      +(r.contact?'<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📱 '+r.contact+' ('+r.contactMethod+')</div>':'')
-      +(r.status==='Confirmed'?'<div style="margin:0.6rem 0;padding:0.75rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:8px;"><p style="font-size:0.75rem;font-weight:600;color:#2d6a4f;margin-bottom:0.5rem;">📨 Send Confirmation Message via:</p><div style="display:flex;gap:0.4rem;flex-wrap:wrap;"><a href="https://wa.me/63'+phone+'?text='+msg+'" target="_blank" rel="noopener noreferrer" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.75rem;text-decoration:none;">💬 WhatsApp</a><a href="viber://chat?number=%2B63'+phone+'&text='+msg+'" style="background:#7360f2;color:#fff;border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.75rem;text-decoration:none;">📱 Viber</a><a href="sms:+63'+phone+'?body='+msg+'" style="background:#5c3d2e;color:#fff;border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.75rem;text-decoration:none;">📩 SMS</a></div></div>':'')
-      +'<div class="order-admin-footer"><span></span><div style="display:flex;gap:0.5rem;"><select class="status-select" data-resid="'+r.id+'"><option'+(r.status==='Pending'?' selected':'')+'>Pending</option><option'+(r.status==='Confirmed'?' selected':'')+'>Confirmed</option><option'+(r.status==='Declined'?' selected':'')+'>Declined</option><option'+(r.status==='Completed'?' selected':'')+'>Completed</option></select>'+(r.status==='Completed'||r.status==='Declined'?'<button data-resid="'+r.id+'" data-resname="'+r.name+'" class="del-res-btn" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>':'')+'</div></div></div>';
+      +(r.contact?'<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📱 '+r.contact+' · prefers <strong>'+(r.contactMethod||'phone')+'</strong></div>':'')
+      +(st==='Accepted'?'<div style="margin:0.6rem 0;padding:0.6rem 0.75rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;"><p style="font-size:0.75rem;font-weight:600;color:#2d6a4f;">📨 Contact the customer to confirm booking details</p><button data-contactres="'+r.id+'" style="background:#2d9e5f;color:#fff;border:none;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.75rem;cursor:pointer;">📨 Contact Options</button></div>':'')
+      +'<div class="order-admin-footer"><span></span><div style="display:flex;gap:0.5rem;"><select class="status-select" data-resid="'+r.id+'"><option'+(st==='Pending'?' selected':'')+'>Pending</option><option'+(st==='Accepted'?' selected':'')+'>Accepted</option><option'+(st==='Declined'?' selected':'')+'>Declined</option><option'+(st==='Completed'?' selected':'')+'>Completed</option></select>'+(st==='Completed'||st==='Declined'?'<button data-resid="'+r.id+'" class="arch-res-btn" style="background:#e2e3e5;border:1px solid #bbb;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#41464b;cursor:pointer;">📦 Archive</button>':'')+'</div></div></div>';
   }).join('');
   el.querySelectorAll('.status-select[data-resid]').forEach(function(sel){
     sel.addEventListener('change',async function(){
       const id=this.dataset.resid,val=this.value;
       await update(ref(db,'reservations/'+id),{status:val});
       const r=adminResMap[id];
-      if(r&&r.date){
-        if(val==='Confirmed'&&r.time==='Full Day Booking'){const slots={};TIME_SLOTS.forEach(s=>slots[s]=false);await update(ref(db,'calBlocks/'+r.date),{slots,fullDayReservationId:id});}
-        if(val==='Completed'&&r.time==='Full Day Booking'){const snap=await get(ref(db,'calBlocks/'+r.date));const data=snap.val();if(data&&data.fullDayReservationId===id)await remove(ref(db,'calBlocks/'+r.date));}
+      if(r&&r.date&&r.time==='Full Day Booking'){
+        if(val==='Accepted'){const slots={};TIME_SLOTS.forEach(s=>slots[s]=false);await update(ref(db,'calBlocks/'+r.date),{slots,fullDayReservationId:id});}
+        if(val==='Completed'||val==='Declined'){const snap=await get(ref(db,'calBlocks/'+r.date));const data=snap.val();if(data&&data.fullDayReservationId===id)await remove(ref(db,'calBlocks/'+r.date));}
       }
+      if(val==='Accepted')openResContactPopup(id);
     });
   });
-  el.querySelectorAll('.del-res-btn').forEach(function(btn){btn.addEventListener('click',function(){showDeletePopup(this.dataset.resname,async function(){await remove(ref(db,'reservations/'+btn.dataset.resid));});});});
+  el.querySelectorAll('button[data-contactres]').forEach(function(btn){btn.addEventListener('click',function(){openResContactPopup(this.dataset.contactres);});});
+  el.querySelectorAll('.arch-res-btn').forEach(function(btn){btn.addEventListener('click',function(){const id=this.dataset.resid,r=adminResMap[id];if(!r)return;showDeletePopup('Archive reservation for '+r.name,async function(){const pst=r.status==='Confirmed'?'Accepted':r.status;await set(ref(db,'archivedReservations/'+id),{...r,status:'Archived',prevStatus:pst,archivedAt:Date.now(),archivedDate:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'})});await remove(ref(db,'reservations/'+id));});});});
 }
 
 // ── AVAILABILITY & CATEGORY MANAGER ──
@@ -2395,7 +2418,7 @@ function renderStaffMenu(){
             :'<div style="width:38px;height:38px;border-radius:6px;background:linear-gradient(135deg,var(--cd),var(--bl));display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;">'+cat.icon+'</div>')
           +'<div style="flex:1;min-width:0;"><div style="font-size:0.88rem;font-weight:500;color:var(--bd);">'+item.name+'</div>'
           +(item.desc?'<div style="font-size:0.75rem;color:var(--tl);margin-top:0.1rem;">'+item.desc+'</div>':'')
-          +'<div style="font-size:0.78rem;color:#c9956a;margin-top:0.15rem;">'+priceStr+'</div></div>'
+          +'<div style="font-size:0.78rem;color:#c9a36a;margin-top:0.15rem;">'+priceStr+'</div></div>'
           +'<span style="font-size:0.7rem;padding:0.15rem 0.5rem;border-radius:999px;flex-shrink:0;background:'+(isAvail(item.name)?'rgba(45,158,95,0.12)':'rgba(192,57,57,0.1)')+';color:'+(isAvail(item.name)?'#2d9e5f':'#c0392b')+';">'+(isAvail(item.name)?'✅':'❌')+'</span>'
           +'</div>';
       }).join('')
@@ -2525,7 +2548,7 @@ function buildAvail(){
         +'<button onclick="toggleEditPanel(\''+item.key+'\')" style="background:#fff8e1;border:1px solid #f0d080;border-radius:6px;padding:0.3rem 0.6rem;font-size:0.75rem;color:#7a5c00;cursor:pointer;">✏️</button>'
         +'<button data-delitem="'+item.key+'" data-delname="'+item.name+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.3rem 0.6rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">🗑️</button>'
         +'</div></div>'
-        +'<div style="margin-top:0.6rem;display:flex;align-items:center;gap:0.5rem;background:#f9f6f2;border:1px solid var(--cd);border-radius:6px;padding:0.45rem 0.7rem;">'
+        +'<div style="margin-top:0.6rem;display:flex;align-items:center;gap:0.5rem;background:#ece4d8;border:1px solid var(--cd);border-radius:6px;padding:0.45rem 0.7rem;">'
         +'<span style="font-size:0.72rem;color:var(--tl);white-space:nowrap;flex-shrink:0;">🖼️ Image URL:</span>'
         +'<input type="text" id="'+sid+'_img" value="'+imgSrc+'" placeholder="https://i.postimg.cc/..." style="flex:1;font-size:0.75rem;padding:0.25rem 0.5rem;border:1px solid var(--cd);border-radius:4px;background:#fff;color:var(--td);font-family:\'Inter\',sans-serif;"/>'
         +'<button data-saveimg="'+item.key+'" data-sid="'+sid+'" style="background:var(--bd);color:#fff;border:none;border-radius:4px;padding:0.28rem 0.7rem;font-size:0.72rem;cursor:pointer;font-family:\'Inter\',sans-serif;white-space:nowrap;flex-shrink:0;">💾 Save</button>'
@@ -2682,9 +2705,9 @@ function renderDashboard(){
   if(topEl)topEl.innerHTML=top5.length?top5.map(function(entry,i){const medals=['🥇','🥈','🥉','4','5'];return'<div style="display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0;border-bottom:1px solid var(--cd);"><span style="font-size:1rem;min-width:20px;text-align:center;">'+medals[i]+'</span><span style="flex:1;font-size:0.83rem;color:var(--bd);">'+entry[0]+'</span><span style="font-size:0.8rem;font-weight:600;color:var(--bl);">'+entry[1]+' sold</span></div>';}).join(''):'<p style="color:var(--tl);font-size:0.83rem;text-align:center;padding:1rem;">No archived orders yet.</p>';
   // Status breakdown
   const allActive=Object.values(adminOrdersMap);
-  const statuses=['Pending','Confirmed','Preparing','Completed','Received'];
-  const statusColors={Pending:'#856404',Confirmed:'#0c5460',Preparing:'#664d03',Completed:'#155724',Received:'#1b5e20'};
-  const statusBg={Pending:'#fef3cd',Confirmed:'#d1ecf1',Preparing:'#fff3cd',Completed:'#d4edda',Received:'#c8e6c9'};
+  const statuses=['Pending','Confirmed','Preparing','Completed','Received','Rejected'];
+  const statusColors={Pending:'#856404',Confirmed:'#0c5460',Preparing:'#664d03',Completed:'#155724',Received:'#1b5e20',Rejected:'#721c24'};
+  const statusBg={Pending:'#fef3cd',Confirmed:'#d1ecf1',Preparing:'#fff3cd',Completed:'#d4edda',Received:'#c8e6c9',Rejected:'#f8d7da'};
   const stEl=document.getElementById('statusBreakdown');
   if(stEl)stEl.innerHTML=statuses.map(function(s){const cnt=allActive.filter(o=>o.status===s).length;return'<div style="display:flex;align-items:center;justify-content:space-between;padding:0.45rem 0.75rem;background:'+statusBg[s]+';border-radius:6px;margin-bottom:0.4rem;"><span style="font-size:0.82rem;font-weight:500;color:'+statusColors[s]+';">'+s+'</span><span style="font-size:0.9rem;font-weight:700;color:'+statusColors[s]+';">'+cnt+'</span></div>';}).join('')+'<div style="margin-top:0.5rem;padding:0.45rem 0.75rem;background:#e2e3e5;border-radius:6px;display:flex;justify-content:space-between;"><span style="font-size:0.82rem;font-weight:500;color:#41464b;">Archived</span><span style="font-size:0.9rem;font-weight:700;color:#41464b;">'+Object.keys(archivedOrdersMap).length+'</span></div>';
 }
@@ -2694,9 +2717,9 @@ function drawPaymentPie(gcashR,bankR){
   const size=160;canvas.width=size;canvas.height=size;
   const ctx=canvas.getContext('2d'),cx=size/2,cy=size/2,r=size*0.42;
   ctx.clearRect(0,0,size,size);
-  if(gcashR+bankR===0){ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fillStyle='#e8dcc8';ctx.fill();return;}
+  if(gcashR+bankR===0){ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fillStyle='#cdbda7';ctx.fill();return;}
   const start=-Math.PI/2;
-  [[gcashR,'#a0673a'],[bankR,'#3b8fd4']].forEach(function(pair,i){
+  [[gcashR,'#b08d57'],[bankR,'#3b8fd4']].forEach(function(pair,i){
     const s=i===0?start:start+gcashR*Math.PI*2,e=i===0?start+gcashR*Math.PI*2:start+Math.PI*2;
     ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,s,e);ctx.closePath();ctx.fillStyle=pair[1];ctx.fill();
   });
@@ -2709,17 +2732,17 @@ function drawRevenueChart(archived){
   const days=[],today2=new Date();
   for(let i=29;i>=0;i--){const d=new Date(today2);d.setDate(today2.getDate()-i);days.push(d.toISOString().slice(0,10));}
   const revByDay={},cntByDay={};days.forEach(d=>{revByDay[d]=0;cntByDay[d]=0;});
-  archived.forEach(function(o){const d=new Date(o.archivedAt||0).toISOString().slice(0,10);if(revByDay[d]!==undefined){revByDay[d]+=(o.total||0);cntByDay[d]++;}});
+  archived.filter(o=>o.prevStatus!=='Rejected').forEach(function(o){const d=new Date(o.archivedAt||0).toISOString().slice(0,10);if(revByDay[d]!==undefined){revByDay[d]+=(o.total||0);cntByDay[d]++;}});
   const revVals=days.map(d=>revByDay[d]),cntVals=days.map(d=>cntByDay[d]);
   const maxRev=Math.max(...revVals,1),maxCnt=Math.max(...cntVals,1);
   const pad={l:40,r:10,t:10,b:30},chartW=W-pad.l-pad.r,chartH=H-pad.t-pad.b,gap=chartW/days.length,barW=gap*0.6;
   ctx.strokeStyle='rgba(0,0,0,0.07)';ctx.lineWidth=1;
-  [0,0.25,0.5,0.75,1].forEach(function(pct){const y=pad.t+chartH*(1-pct);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();ctx.fillStyle='#8a6a55';ctx.font='10px Inter,sans-serif';ctx.textAlign='right';ctx.fillText('₱'+(maxRev*pct/1000).toFixed(0)+'k',pad.l-4,y+3);});
-  revVals.forEach(function(val,i){const x=pad.l+i*gap+gap*0.2,bh=val/maxRev*chartH;ctx.fillStyle='rgba(160,103,58,0.75)';ctx.fillRect(x,pad.t+chartH-bh,barW,bh);});
+  [0,0.25,0.5,0.75,1].forEach(function(pct){const y=pad.t+chartH*(1-pct);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();ctx.fillStyle='#79806f';ctx.font='10px Inter,sans-serif';ctx.textAlign='right';ctx.fillText('₱'+(maxRev*pct/1000).toFixed(0)+'k',pad.l-4,y+3);});
+  revVals.forEach(function(val,i){const x=pad.l+i*gap+gap*0.2,bh=val/maxRev*chartH;ctx.fillStyle='rgba(176,141,87,0.75)';ctx.fillRect(x,pad.t+chartH-bh,barW,bh);});
   ctx.strokeStyle='#3b8fd4';ctx.lineWidth=2;ctx.beginPath();
   cntVals.forEach(function(val,i){const x=pad.l+i*gap+gap*0.5,y=pad.t+chartH*(1-val/maxCnt);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});ctx.stroke();
   ctx.fillStyle='#3b8fd4';cntVals.forEach(function(val,i){const x=pad.l+i*gap+gap*0.5,y=pad.t+chartH*(1-val/maxCnt);ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fill();});
-  ctx.fillStyle='#8a6a55';ctx.font='9px Inter,sans-serif';ctx.textAlign='center';
+  ctx.fillStyle='#79806f';ctx.font='9px Inter,sans-serif';ctx.textAlign='center';
   days.forEach(function(d,i){if(i%5===0||i===29)ctx.fillText(d.slice(5),pad.l+i*gap+gap*0.5,H-8);});
 }
 
@@ -2730,42 +2753,42 @@ window.downloadArchivePDF=function(){
   if(fromVal)orders=orders.filter(o=>new Date(o.archivedAt||0)>=new Date(fromVal));
   if(toVal)orders=orders.filter(o=>new Date(o.archivedAt||0)<=new Date(toVal+'T23:59:59'));
   if(!orders.length){alert('No archived orders found for the selected date range.');return;}
-  const totalRev=orders.reduce((s,o)=>s+(o.total||0),0);
+  const rejCnt=orders.filter(o=>o.prevStatus==='Rejected').length;const totalRev=orders.filter(o=>o.prevStatus!=='Rejected').reduce((s,o)=>s+(o.total||0),0);
   const gcashCnt=orders.filter(o=>o.payment==='GCash').length,bankCnt=orders.filter(o=>o.payment==='Bank Transfer').length;
   const rowH=52,headerH=220,pageW=800,totalH=headerH+orders.length*rowH+80;
   const canvas=document.createElement('canvas');canvas.width=pageW;canvas.height=totalH;
   const ctx=canvas.getContext('2d');
-  ctx.fillStyle='#f5efe6';ctx.fillRect(0,0,pageW,totalH);
-  ctx.fillStyle='#3b2314';ctx.fillRect(0,0,pageW,headerH);
-  ctx.fillStyle='#c9956a';ctx.font='bold 28px Georgia,serif';ctx.textAlign='center';ctx.fillText('Accaza Coffee House',pageW/2,55);
-  ctx.fillStyle='rgba(245,239,230,0.7)';ctx.font='14px Inter,sans-serif';ctx.fillText('Saratoga Ave, La Mediterranea, Dasmariñas, Cavite',pageW/2,82);
+  ctx.fillStyle='#e0d4c6';ctx.fillRect(0,0,pageW,totalH);
+  ctx.fillStyle='#19241b';ctx.fillRect(0,0,pageW,headerH);
+  ctx.fillStyle='#c9a36a';ctx.font='bold 28px Georgia,serif';ctx.textAlign='center';ctx.fillText('Accaza Coffee House',pageW/2,55);
+  ctx.fillStyle='rgba(224,212,198,0.7)';ctx.font='14px Inter,sans-serif';ctx.fillText('Saratoga Ave, La Mediterranea, Dasmariñas, Cavite',pageW/2,82);
   ctx.fillStyle='#fff';ctx.font='bold 18px Georgia,serif';ctx.fillText('Order Archive Report',pageW/2,118);
   const dateRange=fromVal&&toVal?fromVal+' to '+toVal:fromVal?'From '+fromVal:toVal?'Up to '+toVal:'All Time';
-  ctx.fillStyle='rgba(245,239,230,0.6)';ctx.font='12px Inter,sans-serif';ctx.fillText(dateRange,pageW/2,140);
+  ctx.fillStyle='rgba(224,212,198,0.6)';ctx.font='12px Inter,sans-serif';ctx.fillText(dateRange,pageW/2,140);
   ctx.fillStyle='rgba(255,255,255,0.1)';ctx.fillRect(40,156,pageW-80,48);
-  ctx.fillStyle='#c9956a';ctx.font='bold 14px Inter,sans-serif';ctx.textAlign='left';ctx.fillText('Total Orders: '+orders.length,60,178);
+  ctx.fillStyle='#c9a36a';ctx.font='bold 14px Inter,sans-serif';ctx.textAlign='left';ctx.fillText('Total Orders: '+orders.length,60,178);
   ctx.textAlign='center';ctx.fillText('Total Revenue: ₱'+totalRev.toLocaleString(),pageW/2,178);
-  ctx.textAlign='right';ctx.fillText('GCash: '+gcashCnt+' · Bank: '+bankCnt,pageW-60,178);
-  ctx.fillStyle='rgba(245,239,230,0.4)';ctx.font='11px Inter,sans-serif';ctx.textAlign='center';ctx.fillText('Generated: '+new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}),pageW/2,198);
+  ctx.textAlign='right';ctx.fillText('GCash: '+gcashCnt+' · Bank: '+bankCnt+(rejCnt?' · Rejected: '+rejCnt:''),pageW-60,178);
+  ctx.fillStyle='rgba(224,212,198,0.4)';ctx.font='11px Inter,sans-serif';ctx.textAlign='center';ctx.fillText('Generated: '+new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}),pageW/2,198);
   let y=headerH+16;
-  ctx.fillStyle='#3b2314';ctx.font='bold 11px Inter,sans-serif';ctx.textAlign='left';
+  ctx.fillStyle='#19241b';ctx.font='bold 11px Inter,sans-serif';ctx.textAlign='left';
   ['Order ID','Customer','Items','Total','Payment','Type','Date'].forEach(function(h,i){ctx.fillText(h,[40,120,240,530,610,680,730][i],y);});
-  ctx.strokeStyle='#e8dcc8';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(40,y+8);ctx.lineTo(pageW-40,y+8);ctx.stroke();
+  ctx.strokeStyle='#cdbda7';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(40,y+8);ctx.lineTo(pageW-40,y+8);ctx.stroke();
   y+=rowH*0.6;
   orders.forEach(function(o,idx){
-    if(idx%2===0){ctx.fillStyle='rgba(160,103,58,0.06)';ctx.fillRect(40,y-14,pageW-80,rowH);}
-    ctx.fillStyle='#2c1a0e';ctx.font='11px Inter,sans-serif';ctx.textAlign='left';
+    if(idx%2===0){ctx.fillStyle='rgba(176,141,87,0.06)';ctx.fillRect(40,y-14,pageW-80,rowH);}
+    ctx.fillStyle='#1c2420';ctx.font='11px Inter,sans-serif';ctx.textAlign='left';
     ctx.fillText((o.id||'—'),40,y+4);
     ctx.fillText((o.name||'—').slice(0,14),120,y+4);
     ctx.fillText(((o.items||'').length>35?o.items.slice(0,35)+'…':o.items||'—'),240,y+4);
-    ctx.fillStyle='#a0673a';ctx.font='bold 11px Inter,sans-serif';ctx.fillText('₱'+(o.total||0).toLocaleString(),530,y+4);
-    ctx.fillStyle='#2c1a0e';ctx.font='11px Inter,sans-serif';
+    ctx.fillStyle=o.prevStatus==='Rejected'?'#c0392b':'#b08d57';ctx.font='bold 11px Inter,sans-serif';ctx.fillText((o.prevStatus==='Rejected'?'✗ ':'')+'₱'+(o.total||0).toLocaleString(),530,y+4);
+    ctx.fillStyle='#1c2420';ctx.font='11px Inter,sans-serif';
     ctx.fillText(o.payment==='GCash'?'GCash':'Bank',610,y+4);ctx.fillText(o.type||'—',680,y+4);ctx.fillText(o.archivedDate||'—',730,y+4);
-    ctx.strokeStyle='#e8dcc8';ctx.lineWidth=0.5;ctx.beginPath();ctx.moveTo(40,y+rowH-14);ctx.lineTo(pageW-40,y+rowH-14);ctx.stroke();
+    ctx.strokeStyle='#cdbda7';ctx.lineWidth=0.5;ctx.beginPath();ctx.moveTo(40,y+rowH-14);ctx.lineTo(pageW-40,y+rowH-14);ctx.stroke();
     y+=rowH;
   });
-  ctx.fillStyle='#3b2314';ctx.fillRect(0,totalH-40,pageW,40);
-  ctx.fillStyle='rgba(245,239,230,0.5)';ctx.font='11px Inter,sans-serif';ctx.textAlign='center';ctx.fillText('Accaza Coffee House · Confidential · For internal use only',pageW/2,totalH-14);
+  ctx.fillStyle='#19241b';ctx.fillRect(0,totalH-40,pageW,40);
+  ctx.fillStyle='rgba(224,212,198,0.5)';ctx.font='11px Inter,sans-serif';ctx.textAlign='center';ctx.fillText('Accaza Coffee House · Confidential · For internal use only',pageW/2,totalH-14);
   const link=document.createElement('a');link.download='Accaza_Archive_'+new Date().toISOString().slice(0,10)+'.png';link.href=canvas.toDataURL('image/png');link.click();
 };
 
@@ -2778,7 +2801,7 @@ function renderComments(){
     const el=document.getElementById('fbList'+type);if(!el)return;
     const items=Object.entries(feedbacksMap).filter(function(e){return e[1].type===type;});
     if(!items.length){el.innerHTML='<p style="color:var(--tl);padding:1rem;background:#fff;border-radius:8px;text-align:center;font-size:0.85rem;">'+empty[type]+'</p>';return;}
-    el.innerHTML=items.map(function(e){const f=e[1],key=e[0];return'<div style="background:#fff;border:1px solid #e8dcc8;border-left:4px solid '+color[type]+';border-radius:8px;padding:1rem;margin-bottom:0.75rem;"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;"><div><div style="font-weight:500;font-size:0.9rem;color:#3b2314;">'+f.name+'</div><div style="font-size:0.75rem;color:#8a6a55;">'+(f.contact?f.contact+' · ':'')+f.date+'</div></div><span style="font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:999px;font-weight:500;background:'+(f.status==='Resolved'?'#d4edda':'#fef3cd')+';color:'+(f.status==='Resolved'?'#155724':'#856404')+';">'+f.status+'</span></div><p style="font-size:0.85rem;color:#5c3d2e;font-style:italic;margin:0.4rem 0;">"'+f.message+'"</p><div class="staff-hide" style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:0.75rem;">'+(f.status==='Unread'?'<button data-markfb="'+key+'" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#2d6a4f;cursor:pointer;">✅ Mark Resolved</button>':'')+(f.status==='Resolved'?'<button data-delfb="'+key+'" data-delfbname="'+f.name+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>':'')+'</div></div>';}).join('');
+    el.innerHTML=items.map(function(e){const f=e[1],key=e[0];return'<div style="background:#fff;border:1px solid #cdbda7;border-left:4px solid '+color[type]+';border-radius:8px;padding:1rem;margin-bottom:0.75rem;"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;"><div><div style="font-weight:500;font-size:0.9rem;color:#19241b;">'+f.name+'</div><div style="font-size:0.75rem;color:#79806f;">'+(f.contact?f.contact+' · ':'')+f.date+'</div></div><span style="font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:999px;font-weight:500;background:'+(f.status==='Resolved'?'#d4edda':'#fef3cd')+';color:'+(f.status==='Resolved'?'#155724':'#856404')+';">'+f.status+'</span></div><p style="font-size:0.85rem;color:#44523f;font-style:italic;margin:0.4rem 0;">"'+f.message+'"</p><div class="staff-hide" style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:0.75rem;">'+(f.status==='Unread'?'<button data-markfb="'+key+'" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#2d6a4f;cursor:pointer;">✅ Mark Resolved</button>':'')+(f.status==='Resolved'?'<button data-delfb="'+key+'" data-delfbname="'+f.name+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>':'')+'</div></div>';}).join('');
     el.querySelectorAll('button[data-markfb]').forEach(function(btn){btn.addEventListener('click',function(){update(ref(db,'feedbacks/'+this.dataset.markfb),{status:'Resolved'});});});
     el.querySelectorAll('button[data-delfb]').forEach(function(btn){btn.addEventListener('click',function(){showDeletePopup(this.dataset.delfbname,async function(){await remove(ref(db,'feedbacks/'+btn.dataset.delfb));});});});
   });
@@ -2819,11 +2842,97 @@ function renderArchive(){
   let orders=Object.values(archivedOrdersMap).sort((a,b)=>(b.archivedAt||0)-(a.archivedAt||0));
   if(fromVal)orders=orders.filter(o=>new Date(o.archivedAt||0)>=new Date(fromVal));
   if(toVal)orders=orders.filter(o=>new Date(o.archivedAt||0)<=new Date(toVal+'T23:59:59'));
-  const totalRev=orders.reduce((s,o)=>s+(o.total||0),0),gcashCnt=orders.filter(o=>o.payment==='GCash').length,bankCnt=orders.filter(o=>o.payment==='Bank Transfer').length;
-  sumEl.innerHTML='<div><span class="archive-sum-num">'+orders.length+'</span><span class="archive-sum-lbl">Orders</span></div><div><span class="archive-sum-num">₱'+totalRev.toLocaleString()+'</span><span class="archive-sum-lbl">Revenue</span></div><div><span class="archive-sum-num">'+gcashCnt+'G / '+bankCnt+'B</span><span class="archive-sum-lbl">GCash / Bank</span></div>';
+  const rejCnt=orders.filter(o=>o.prevStatus==='Rejected').length;const totalRev=orders.filter(o=>o.prevStatus!=='Rejected').reduce((s,o)=>s+(o.total||0),0),gcashCnt=orders.filter(o=>o.payment==='GCash').length,bankCnt=orders.filter(o=>o.payment==='Bank Transfer').length;
+  sumEl.innerHTML='<div><span class="archive-sum-num">'+orders.length+(rejCnt?' <span style="font-size:0.7rem;color:#721c24;">('+rejCnt+' ✗)</span>':'')+'</span><span class="archive-sum-lbl">Orders</span></div><div><span class="archive-sum-num">₱'+totalRev.toLocaleString()+'</span><span class="archive-sum-lbl">Revenue</span></div><div><span class="archive-sum-num">'+gcashCnt+'G / '+bankCnt+'B</span><span class="archive-sum-lbl">GCash / Bank</span></div>';
   if(!orders.length){el.innerHTML='<p style="color:var(--tl);text-align:center;padding:1.5rem;font-size:0.88rem;">No archived orders for selected range.</p>';return;}
-  el.innerHTML=orders.map(function(o){return'<div class="archive-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.4rem;"><div><div style="font-weight:500;font-size:0.88rem;color:var(--bd);">'+o.name+' <span style="font-size:0.72rem;color:var(--tl);">#'+o.id+'</span></div><div style="font-size:0.75rem;color:var(--tl);">'+(o.date||'')+' · '+(o.time||'')+'</div></div><span class="badge badge-archived">📦 Archived</span></div><div style="font-size:0.8rem;color:var(--tm);margin:0.3rem 0;">🛒 '+o.items+'</div><div style="font-size:0.78rem;color:var(--tl);">₱'+(o.total||0).toLocaleString()+' · '+o.payment+' · '+o.type+'</div><div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;">Archived: '+(o.archivedDate||'—')+'</div></div>';}).join('');
+  el.innerHTML=orders.map(function(o){return'<div class="archive-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.4rem;"><div><div style="font-weight:500;font-size:0.88rem;color:var(--bd);">'+o.name+' <span style="font-size:0.72rem;color:var(--tl);">#'+o.id+'</span></div><div style="font-size:0.75rem;color:var(--tl);">'+(o.date||'')+' · '+(o.time||'')+'</div></div>'+(o.prevStatus==='Rejected'?'<span class="badge badge-rejected">🔴 Rejected</span>':'<span class="badge badge-archived">📦 Archived</span>')+'</div><div style="font-size:0.8rem;color:var(--tm);margin:0.3rem 0;">🛒 '+o.items+'</div><div style="font-size:0.78rem;color:var(--tl);">₱'+(o.total||0).toLocaleString()+' · '+o.payment+' · '+o.type+'</div><div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;">Archived: '+(o.archivedDate||'—')+'</div></div>';}).join('');
 }
+
+window.openResContactPopup=function(id){
+  const r=adminResMap[id];if(!r)return;
+  const pref=(r.contactMethod||'call').toLowerCase();
+  const prefLabels={whatsapp:'💬 WhatsApp',viber:'📱 Viber',sms:'📩 SMS',call:'📞 Phone Call',email:'📧 Email'};
+  const contactRaw=r.contact||r.phone||'';
+  const phone=(contactRaw.includes('@')?(r.phone||''):contactRaw).replace(/\D/g,'').replace(/^0/,'');
+  const msg=encodeURIComponent('Hi '+r.name+'! 😊 Your reservation at Accaza Coffee House has been accepted!\n\n📅 Date: '+r.date+'\n🕐 Time: '+r.time+'\n👥 Guests: '+r.guests+(r.occasion?' · '+r.occasion:'')+'\n📍 Saratoga Ave, La Mediterranea, Dasmariñas, Cavite\n\nWe look forward to seeing you! ☕🦁\n— Accaza Coffee House');
+  document.getElementById('resContactInfo').innerHTML='<p><strong>'+r.name+'</strong> · '+r.guests+' guests · '+r.date+' · '+r.time+'</p><p>📱 '+(contactRaw||r.phone)+'</p><p style="color:#2d6a4f;font-weight:600;">⭐ Preferred contact: '+(prefLabels[pref]||'📞 Phone')+'</p>';
+  const hl=function(m){return pref===m?'box-shadow:0 0 0 3px rgba(45,158,95,0.55);':'opacity:0.85;';};
+  let btns='';
+  btns+='<a href="https://wa.me/63'+phone+'?text='+msg+'" target="_blank" rel="noopener noreferrer" style="'+hl('whatsapp')+'background:#25D366;color:#fff;border-radius:6px;padding:0.5rem 0.9rem;font-size:0.8rem;text-decoration:none;">💬 WhatsApp'+(pref==='whatsapp'?' ⭐':'')+'</a>';
+  btns+='<a href="viber://chat?number=%2B63'+phone+'&text='+msg+'" style="'+hl('viber')+'background:#7360f2;color:#fff;border-radius:6px;padding:0.5rem 0.9rem;font-size:0.8rem;text-decoration:none;">📱 Viber'+(pref==='viber'?' ⭐':'')+'</a>';
+  btns+='<a href="sms:+63'+phone+'?body='+msg+'" style="'+hl('sms')+'background:#44523f;color:#fff;border-radius:6px;padding:0.5rem 0.9rem;font-size:0.8rem;text-decoration:none;">📩 SMS'+(pref==='sms'?' ⭐':'')+'</a>';
+  btns+='<a href="tel:+63'+phone+'" style="'+hl('call')+'background:#0c5460;color:#fff;border-radius:6px;padding:0.5rem 0.9rem;font-size:0.8rem;text-decoration:none;">📞 Call'+(pref==='call'?' ⭐':'')+'</a>';
+  if(contactRaw.includes('@'))btns+='<a href="mailto:'+contactRaw+'?subject=Your%20Accaza%20Reservation&body='+msg+'" style="'+hl('email')+'background:#856404;color:#fff;border-radius:6px;padding:0.5rem 0.9rem;font-size:0.8rem;text-decoration:none;">📧 Email'+(pref==='email'?' ⭐':'')+'</a>';
+  document.getElementById('resContactBtns').innerHTML=btns;
+  document.getElementById('resContactPopup').classList.add('show');
+};
+
+let resArchiveOpen=false;
+window.toggleResArchivePanel=function(){resArchiveOpen=!resArchiveOpen;document.getElementById('resArchivePanel').style.display=resArchiveOpen?'block':'none';document.getElementById('resList').style.display=resArchiveOpen?'none':'block';var btn=document.getElementById('resArchiveToggleBtn'),hdg=document.getElementById('resHeading');if(btn)btn.textContent=resArchiveOpen?'← Back to Reservations':'📦 View Archive';if(hdg)hdg.textContent=resArchiveOpen?'Reservation Archive':'Reservations';if(resArchiveOpen)renderResArchive();};
+
+function filteredResArchive(){
+  const fromVal=document.getElementById('resArchiveFrom').value,toVal=document.getElementById('resArchiveTo').value;
+  let list=Object.values(archivedResMap).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  if(fromVal)list=list.filter(r=>(r.date||'')>=fromVal);
+  if(toVal)list=list.filter(r=>(r.date||'')<=toVal);
+  return list;
+}
+window.renderResArchive=function(){
+  const el=document.getElementById('resArchiveList'),sumEl=document.getElementById('resArchiveSummary');
+  const list=filteredResArchive();
+  const totalGuests=list.filter(r=>r.prevStatus!=='Declined').reduce((s,r)=>s+(parseInt(r.guests)||0),0);
+  const declinedCnt=list.filter(r=>r.prevStatus==='Declined').length;
+  sumEl.innerHTML='<div><span class="archive-sum-num">'+list.length+'</span><span class="archive-sum-lbl">Reservations</span></div><div><span class="archive-sum-num">'+totalGuests+'</span><span class="archive-sum-lbl">Guests Served</span></div><div><span class="archive-sum-num">'+declinedCnt+'</span><span class="archive-sum-lbl">Declined</span></div>';
+  if(!list.length){el.innerHTML='<p style="color:var(--tl);text-align:center;padding:1.5rem;font-size:0.88rem;">No archived reservations for selected range.</p>';return;}
+  el.innerHTML=list.map(function(r){return'<div class="archive-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.4rem;"><div><div style="font-weight:500;font-size:0.88rem;color:var(--bd);">'+r.name+' <span style="font-size:0.72rem;color:var(--tl);">#'+r.id+'</span></div><div style="font-size:0.75rem;color:var(--tl);">'+(r.date||'')+' · '+(r.time||'')+' · '+(r.guests||'?')+' guests'+(r.occasion?' · '+r.occasion:'')+'</div></div>'+(r.prevStatus==='Declined'?'<span class="badge badge-declined">Declined</span>':'<span class="badge badge-archived">📦 Archived</span>')+'</div>'+(r.notes?'<div style="font-size:0.8rem;color:var(--tm);margin:0.3rem 0;">📝 '+r.notes+'</div>':'')+'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;">Archived: '+(r.archivedDate||'—')+'</div></div>';}).join('');
+};
+window.printResArchive=function(){
+  const fromVal=document.getElementById('resArchiveFrom').value,toVal=document.getElementById('resArchiveTo').value;
+  const list=filteredResArchive().slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  if(!list.length){alert('No archived reservations found for the selected date range.');return;}
+  const totalGuests=list.filter(r=>r.prevStatus!=='Declined').reduce((s,r)=>s+(parseInt(r.guests)||0),0);
+  const declinedCnt=list.filter(r=>r.prevStatus==='Declined').length;
+  const rowH=44,headerH=220,pageW=800,totalH=headerH+list.length*rowH+80;
+  const canvas=document.createElement('canvas');canvas.width=pageW;canvas.height=totalH;
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle='#e0d4c6';ctx.fillRect(0,0,pageW,totalH);
+  ctx.fillStyle='#19241b';ctx.fillRect(0,0,pageW,headerH);
+  ctx.fillStyle='#c9a36a';ctx.font='bold 28px Georgia,serif';ctx.textAlign='center';ctx.fillText('Accaza Coffee House',pageW/2,55);
+  ctx.fillStyle='rgba(224,212,198,0.7)';ctx.font='14px Inter,sans-serif';ctx.fillText('Saratoga Ave, La Mediterranea, Dasmariñas, Cavite',pageW/2,82);
+  ctx.fillStyle='#fff';ctx.font='bold 18px Georgia,serif';ctx.fillText('Reservation Archive Report',pageW/2,118);
+  const dateRange=fromVal&&toVal?fromVal+' to '+toVal:fromVal?'From '+fromVal:toVal?'Up to '+toVal:'All Time';
+  ctx.fillStyle='rgba(224,212,198,0.6)';ctx.font='12px Inter,sans-serif';ctx.fillText(dateRange,pageW/2,140);
+  ctx.fillStyle='rgba(255,255,255,0.1)';ctx.fillRect(40,156,pageW-80,48);
+  ctx.fillStyle='#c9a36a';ctx.font='bold 14px Inter,sans-serif';ctx.textAlign='left';ctx.fillText('Total Reservations: '+list.length,60,178);
+  ctx.textAlign='center';ctx.fillText('Guests Served: '+totalGuests,pageW/2,178);
+  ctx.textAlign='right';ctx.fillText('Declined: '+declinedCnt,pageW-60,178);
+  ctx.fillStyle='rgba(224,212,198,0.4)';ctx.font='11px Inter,sans-serif';ctx.textAlign='center';ctx.fillText('Generated: '+new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}),pageW/2,198);
+  let y=headerH+16;
+  ctx.fillStyle='#19241b';ctx.font='bold 11px Inter,sans-serif';ctx.textAlign='left';
+  ['Res ID','Name','Date','Time','Guests','Occasion','Status'].forEach(function(h,i){ctx.fillText(h,[40,140,300,400,500,560,690][i],y);});
+  ctx.strokeStyle='#cdbda7';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(40,y+8);ctx.lineTo(pageW-40,y+8);ctx.stroke();
+  y+=rowH*0.6;
+  list.forEach(function(r,idx){
+    if(idx%2===0){ctx.fillStyle='rgba(176,141,87,0.06)';ctx.fillRect(40,y-14,pageW-80,rowH);}
+    ctx.fillStyle='#1c2420';ctx.font='11px Inter,sans-serif';ctx.textAlign='left';
+    ctx.fillText((r.id||'—'),40,y+4);
+    ctx.fillText((r.name||'—').slice(0,18),140,y+4);
+    ctx.fillText((r.date||'—'),300,y+4);
+    ctx.fillText((r.time||'—').slice(0,14),400,y+4);
+    ctx.fillText(String(r.guests||'—'),500,y+4);
+    ctx.fillText((r.occasion||'—').slice(0,16),560,y+4);
+    ctx.fillStyle=r.prevStatus==='Declined'?'#c0392b':'#155724';ctx.font='bold 11px Inter,sans-serif';
+    ctx.fillText(r.prevStatus||'Completed',690,y+4);
+    ctx.strokeStyle='#cdbda7';ctx.lineWidth=0.5;ctx.beginPath();ctx.moveTo(40,y+rowH-14);ctx.lineTo(pageW-40,y+rowH-14);ctx.stroke();
+    y+=rowH;
+  });
+  ctx.fillStyle='#19241b';ctx.fillRect(0,totalH-40,pageW,40);
+  ctx.fillStyle='rgba(224,212,198,0.5)';ctx.font='11px Inter,sans-serif';ctx.textAlign='center';ctx.fillText('Accaza Coffee House · Confidential · For internal use only',pageW/2,totalH-14);
+  const w=window.open('','_blank');
+  if(!w){const link=document.createElement('a');link.download='Accaza_Reservations_'+new Date().toISOString().slice(0,10)+'.png';link.href=canvas.toDataURL('image/png');link.click();return;}
+  w.document.write('<html><head><title>Reservation Archive — Accaza Coffee House</title></head><body style="margin:0;"><img src="'+canvas.toDataURL('image/png')+'" style="width:100%;" onload="setTimeout(function(){window.print();},400);"/></body></html>');
+  w.document.close();
+};
 
 function showDeletePopup(label,onConfirm){
   document.getElementById('deleteLabel').textContent=label;
@@ -3010,9 +3119,9 @@ function showContactOptions(msg){
     +'<div style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.75rem;">'
     +'<a href="https://wa.me/'+CAFE_PHONE+'?text='+encoded+'" target="_blank" rel="noopener noreferrer" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">💬 WhatsApp</a>'
     +'<a href="viber://chat?number=%2B'+CAFE_PHONE+'&text='+encoded+'" style="background:#7360f2;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">📱 Viber</a>'
-    +'<a href="sms:+'+CAFE_PHONE+'?body='+encoded+'" style="background:#5c3d2e;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">📩 SMS</a>'
-    +'<a href="mailto:'+CAFE_EMAIL+'?subject=Customer Inquiry&body='+encoded+'" style="background:#a0673a;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">📧 Email</a>'
-    +'</div><p style="font-size:0.72rem;color:#8a6a55;border-top:1px solid #e8dcc8;padding-top:0.5rem;">📱 WhatsApp, Viber & SMS work best on mobile. On desktop? Use Email.</p>';
+    +'<a href="sms:+'+CAFE_PHONE+'?body='+encoded+'" style="background:#44523f;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">📩 SMS</a>'
+    +'<a href="mailto:'+CAFE_EMAIL+'?subject=Customer Inquiry&body='+encoded+'" style="background:#b08d57;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">📧 Email</a>'
+    +'</div><p style="font-size:0.72rem;color:#79806f;border-top:1px solid #cdbda7;padding-top:0.5rem;">📱 WhatsApp, Viber & SMS work best on mobile. On desktop? Use Email.</p>';
   document.getElementById('chatMessages').appendChild(d);document.getElementById('chatMessages').scrollTop=document.getElementById('chatMessages').scrollHeight;
 }
 window.toggleChat=function(){chatOpen=!chatOpen;document.getElementById('chatWindow').classList.toggle('open',chatOpen);document.getElementById('chatNotif').style.display='none';if(chatOpen&&!chatStarted){chatStarted=true;setTimeout(function(){addBotMsg("👋 Hi! Welcome to <strong>Accaza Coffee House</strong>! Ask me about our hours, menu, delivery, reservations, and more! ☕");},400);}};
