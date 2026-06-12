@@ -1839,6 +1839,7 @@ window.previewProof=function(input){if(!input.files||!input.files[0])return;cons
 window.removeProof=function(e){e.stopPropagation();document.getElementById('paymentProof').value='';document.getElementById('proofImg').src='';document.getElementById('uploadPlaceholder').style.display='block';document.getElementById('uploadPreview').style.display='none';document.getElementById('uploadBox').style.borderColor='var(--cd)';};
 
 window.placeOrder=async function(){
+  if(window._placingOrder)return;
   const name=document.getElementById('custName').value.trim(),phone=document.getElementById('custPhone').value.trim();
   if(!Object.keys(cart).length){alert('Please add at least one item.');return;}
   if(!name||!phone){alert('Please enter your name and phone number.');return;}
@@ -1847,18 +1848,23 @@ window.placeOrder=async function(){
   const proofSrc=document.getElementById('proofImg').src;
   const total=Object.values(cart).reduce((s,c)=>s+c.qty*c.unitTotal,0);
   const itemsArr=Object.values(cart).map(c=>c.name+(c.details?' ('+c.details+')':'')+' x'+c.qty);
+  const _sig=phone+'|'+itemsArr.join('~')+'|'+total;
+  if(window._lastOrderSig===_sig&&Date.now()-(window._lastOrderTime||0)<30000){alert('Looks like you just placed this exact order — please try again after 30 seconds.');return;}
+  window._placingOrder=true;
+  const _btn=document.querySelector('.btn-place-order');_btn.disabled=true;_btn.style.opacity='0.5';_btn.textContent='⏳ Placing order…';
   const orderId='ORD-'+Date.now().toString().slice(-6);
   const newOrder={id:orderId,name,phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':paymentType==='maya'?'PayMaya':'Bank Transfer',contact:document.getElementById('custContact').value.trim(),contactMethod,items:itemsArr.join(', '),total,notes:document.getElementById('custNotes').value.trim(),status:'Pending',receivedByCustomer:false,time:new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now(),proof:proofSrc};
   try{
     await set(ref(db,'orders/'+orderId),newOrder);
+    window._lastOrderSig=_sig;window._lastOrderTime=Date.now();window._placingOrder=false;_btn.textContent='✅ Order Placed!';
     myOrderIds.push(orderId);localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));
     document.getElementById('displayOrderId').textContent=orderId;document.getElementById('orderConfirm').style.display='block';
     document.querySelector('.btn-place-order').disabled=true;document.querySelector('.btn-place-order').style.opacity='0.5';
     cart={};updateCartDisplay();renderOrderSection();renderCustomerOrders();
     document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';
     removeProof({stopPropagation:function(){}});
-    setTimeout(function(){document.querySelector('.btn-place-order').disabled=false;document.querySelector('.btn-place-order').style.opacity='1';document.getElementById('orderConfirm').style.display='none';},5000);
-  }catch(e){alert('Could not place order: '+e.message);}
+    setTimeout(function(){var b=document.querySelector('.btn-place-order');b.disabled=false;b.style.opacity='1';b.textContent='Place Order';document.getElementById('orderConfirm').style.display='none';},5000);
+  }catch(e){window._placingOrder=false;_btn.disabled=false;_btn.style.opacity='1';_btn.textContent='Place Order';alert('Could not place order: '+e.message);}
 };
 window.resetOrder=function(){if(!Object.keys(cart).length&&!document.getElementById('custName').value){alert('Your order is already empty!');return;}if(confirm('Reset your order?')){cart={};updateCartDisplay();renderOrderSection();document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';setType('pickup');(function(){var gBtn=document.getElementById('btnGcash');var mBtn=document.getElementById('btnMaya');var bBtn=document.getElementById('btnBank');var first=gBtn&&gBtn.style.display!=='none'?'gcash':mBtn&&mBtn.style.display!=='none'?'maya':'bank';setPayment(first);})();document.getElementById('orderConfirm').style.display='none';document.querySelector('.btn-place-order').disabled=false;document.querySelector('.btn-place-order').style.opacity='1';}};
 
@@ -1967,17 +1973,21 @@ window.updateBookingType=function(){
 };
 window.setResContact=function(type){resContactMethod=type;['Wa','Vb','Sms','Call','Email'].forEach(function(_,i){const ids=['resBtnWa','resBtnVb','resBtnSms','resBtnCall','resBtnEmail'],types=['whatsapp','viber','sms','call','email'];const el=document.getElementById(ids[i]);if(el)el.classList.toggle('active',types[i]===type);});const ph={whatsapp:'Enter your WhatsApp number',viber:'Enter your Viber number',sms:'Enter your phone number for SMS',call:'Enter your phone number',email:'Enter your email address'};document.getElementById('resContact').placeholder=ph[type]||'Enter your contact';};
 window.submitReservation=async function(){
+  if(window._placingRes)return;
   const name=document.getElementById('resName').value.trim(),phone=document.getElementById('resPhone').value.trim();
   if(!selectedDate||!selectedTime){alert('Please select a date and time.');return;}
   if(!name||!phone){alert('Please enter your name and phone number.');return;}
   const guests=parseInt(document.getElementById('resGuests').value)||1;
   if(guests>=6){const today=new Date();today.setHours(0,0,0,0);const diff=Math.ceil((new Date(selectedDate+'T00:00:00')-today)/(1000*60*60*24));if(diff<7&&!confirm('This booking typically requires 7 days advance notice. Proceed anyway?'))return;}
   const id='RES-'+String(Object.keys(adminResMap).length+1).padStart(3,'0');
+  window._placingRes=true;
+  const _rbtn=document.querySelector('.btn-reserve');_rbtn.disabled=true;_rbtn.style.opacity='0.5';_rbtn.textContent='⏳ Submitting…';
   try{
     await set(ref(db,'reservations/'+id),{id,name,phone,date:selectedDate,time:selectedTime,guests:document.getElementById('resGuests').value,occasion:document.getElementById('resOccasion').value,notes:document.getElementById('resNotes').value.trim(),contact:document.getElementById('resContact').value.trim(),contactMethod:resContactMethod,status:'Pending',timestamp:Date.now()});
-    document.getElementById('resConfirm').style.display='block';document.querySelector('.btn-reserve').disabled=true;document.querySelector('.btn-reserve').style.opacity='0.5';
-    setTimeout(function(){document.getElementById('resConfirm').style.display='none';document.querySelector('.btn-reserve').disabled=false;document.querySelector('.btn-reserve').style.opacity='1';document.getElementById('resName').value='';document.getElementById('resPhone').value='';document.getElementById('resNotes').value='';document.getElementById('resContact').value='';selectedDate=null;selectedTime=null;document.getElementById('resFormWrap').style.display='none';document.getElementById('timeSlotsWrap').style.display='none';renderCustomerCalendar();},5000);
-  }catch(e){alert('Could not submit: '+e.message);}
+    window._placingRes=false;_rbtn.textContent='✅ Request Sent!';
+    document.getElementById('resConfirm').style.display='block';
+    setTimeout(function(){document.getElementById('resConfirm').style.display='none';var rb=document.querySelector('.btn-reserve');rb.disabled=false;rb.style.opacity='1';rb.textContent='Submit Reservation Request';document.getElementById('resName').value='';document.getElementById('resPhone').value='';document.getElementById('resNotes').value='';document.getElementById('resContact').value='';selectedDate=null;selectedTime=null;document.getElementById('resFormWrap').style.display='none';document.getElementById('timeSlotsWrap').style.display='none';renderCustomerCalendar();},5000);
+  }catch(e){window._placingRes=false;_rbtn.disabled=false;_rbtn.style.opacity='1';_rbtn.textContent='Submit Reservation Request';alert('Could not submit: '+e.message);}
 };
 
 // ── ADMIN CALENDAR ──
