@@ -28,7 +28,7 @@
 <script>(function(){var sa=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;if(sa&&location.search.indexOf('full=1')===-1)document.documentElement.classList.add('app-mode');})();</script>
 <style>
 #appTabBar{display:none;}
-.app-mode #appTabBar{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:9000;background:#19241b;border-top:1px solid rgba(176,141,87,0.35);justify-content:space-around;padding:0.4rem 0 calc(0.4rem + env(safe-area-inset-bottom));}
+.app-mode #appTabBar{display:flex;position:fixed;top:auto;bottom:0;left:0;right:0;width:auto;height:auto;z-index:9000;background:#19241b;border-top:1px solid rgba(176,141,87,0.35);justify-content:space-around;padding:0.4rem 0 calc(0.4rem + env(safe-area-inset-bottom));}
 #appTabBar a{display:flex;flex-direction:column;align-items:center;gap:0.15rem;color:#e0d4c6;text-decoration:none;font-size:1.15rem;flex:1;padding:0.2rem 0;font-family:'Inter',sans-serif;transition:color 0.15s;}
 #appTabBar a span{font-size:0.58rem;letter-spacing:0.06em;text-transform:uppercase;opacity:0.85;}
 #appTabBar a.active{color:#b08d57;}
@@ -3303,13 +3303,13 @@ window.printOrder = function(orderId) {
   <button id="lightbox-next"  onclick="shiftLightbox(1)"  aria-label="Next">›</button>
   <div id="lightbox-counter"></div>
 </div>
-<nav id="appTabBar">
+<div id="appTabBar">
   <a href="#home" class="active">🏠<span>Home</span></a>
   <a href="#menu">☕<span>Menu</span></a>
   <a href="#order">🛒<span>Order</span></a>
   <a href="#orderTracker">📦<span>Track</span></a>
   <a href="#contact">📞<span>Contact</span></a>
-</nav>
+</div>
 <script>
 (function(){var tabs=document.querySelectorAll('#appTabBar a');tabs.forEach(function(t){t.addEventListener('click',function(){tabs.forEach(function(x){x.classList.remove('active');});this.classList.add('active');});});})();
 if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').then(function(reg){reg.update();}).catch(function(){});});}
