@@ -3312,7 +3312,7 @@ window.printOrder = function(orderId) {
 </nav>
 <script>
 (function(){var tabs=document.querySelectorAll('#appTabBar a');tabs.forEach(function(t){t.addEventListener('click',function(){tabs.forEach(function(x){x.classList.remove('active');});this.classList.add('active');});});})();
-if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){});});}
+if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').then(function(reg){reg.update();}).catch(function(){});});}
 (function(){
   var deferred=null;
   var isStandalone=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;
