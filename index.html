@@ -25,6 +25,25 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="Accaza"/>
+<script>(function(){var sa=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;if(sa&&location.search.indexOf('full=1')===-1)document.documentElement.classList.add('app-mode');})();</script>
+<style>
+#appTabBar{display:none;}
+.app-mode #appTabBar{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:9000;background:#19241b;border-top:1px solid rgba(176,141,87,0.35);justify-content:space-around;padding:0.4rem 0 calc(0.4rem + env(safe-area-inset-bottom));}
+#appTabBar a{display:flex;flex-direction:column;align-items:center;gap:0.15rem;color:#e0d4c6;text-decoration:none;font-size:1.15rem;flex:1;padding:0.2rem 0;font-family:'Inter',sans-serif;transition:color 0.15s;}
+#appTabBar a span{font-size:0.58rem;letter-spacing:0.06em;text-transform:uppercase;opacity:0.85;}
+#appTabBar a.active{color:#b08d57;}
+.app-mode body{padding-bottom:72px;}
+.app-mode #about,.app-mode #reel,.app-mode #reviews,.app-mode #feedback,.app-mode #gallery{display:none!important;}
+.app-mode .nav-links,.app-mode .hamburger{display:none!important;}
+.app-mode .admin-footer-link{display:none!important;}
+.app-mode #reserve>*{display:none!important;}
+.app-mode #reserve .app-reserve-note{display:block!important;}
+.menu-card.clickable{cursor:pointer;transition:transform 0.15s,box-shadow 0.15s,border-color 0.15s;}
+.menu-card.clickable:hover{transform:translateY(-3px);box-shadow:0 8px 20px rgba(0,0,0,0.3);border-color:rgba(176,141,87,0.55);}
+.tap-hint{font-size:0.68rem;color:#b08d57;margin-top:0.45rem;display:block;letter-spacing:0.08em;text-transform:uppercase;}
+.item-glow{border-color:#b08d57!important;animation:itemGlow 1.1s ease-in-out 2;}
+@keyframes itemGlow{0%,100%{box-shadow:0 0 0 0 rgba(176,141,87,0);}50%{box-shadow:0 0 0 5px rgba(176,141,87,0.55);}}
+</style>
 <link rel="canonical" href="https://accaza-sartoga.com/"/>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Inter:wght@300;400;500&display=swap" rel="stylesheet"/>
 </head>
@@ -636,6 +655,12 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 
 <!-- RESERVATIONS -->
 <section class="reservations" id="reserve">
+<div class="app-reserve-note" style="display:none;max-width:560px;margin:0 auto;text-align:center;background:rgba(255,255,255,0.06);border:1px solid rgba(176,141,87,0.4);border-radius:12px;padding:2rem 1.5rem;">
+  <div style="font-size:2.2rem;margin-bottom:0.75rem;">📅</div>
+  <h3 style="font-family:'Playfair Display',serif;color:#e0d4c6;font-size:1.3rem;margin-bottom:0.75rem;">Planning a Visit?</h3>
+  <p style="color:#c9a36a;font-size:0.95rem;line-height:1.7;letter-spacing:0.04em;">FOR RESERVATIONS, VISIT OUR WEBSITE AT</p>
+  <a href="https://accaza-sartoga.com/?full=1#reserve" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:0.75rem;background:#b08d57;color:#fff;text-decoration:none;border-radius:8px;padding:0.7rem 1.5rem;font-size:0.9rem;letter-spacing:0.05em;">ACCAZA-SARTOGA.COM</a>
+</div>
   <div class="res-inner">
     <div style="text-align:center;margin-bottom:3rem;">
       <p class="section-label" style="color:var(--bl);">Book a Seat</p>
@@ -782,7 +807,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     <div class="footer-logo">Accaza Coffee House</div>
     <p>Saratoga Ave, La Mediterranea, Dasmariñas, Cavite · Open daily 3PM–12MN</p>
     <div class="footer-links"><a href="#menu">Menu</a><a href="#order">Order</a><a href="#reserve">Reserve</a><a href="#reviews">Reviews</a><a href="#feedback">Feedback</a><a href="#gallery">Gallery</a><a href="#contact">Contact</a></div>
-    <p class="footer-copy">© 2026 Accaza Coffee House. All rights reserved. &nbsp;·&nbsp;<a href="#" onclick="openAdmin();return false;" style="color:rgba(224,212,198,0.2);text-decoration:none;font-size:0.7rem;">Admin</a></p>
+    <p class="footer-copy">© 2026 Accaza Coffee House. All rights reserved. &nbsp;·&nbsp;<a href="#" class="admin-footer-link" onclick="openAdmin();return false;" style="color:rgba(224,212,198,0.2);text-decoration:none;font-size:0.7rem;">Admin</a></p>
   </div>
 </footer>
 
@@ -1608,6 +1633,14 @@ window.filterOrder=function(cat,btn){
   renderOrderSection();
 };
 
+window.goToOrderItem=function(cat,key){
+  const btn=document.querySelector('#orderTabsRow .otab[data-cat="'+cat+'"]');
+  filterOrder(cat,btn);
+  const row=document.querySelector('#orderItemList .item-row[data-itemkey="'+key+'"]');
+  if(row){row.scrollIntoView({behavior:'smooth',block:'center'});row.classList.add('item-glow');setTimeout(function(){row.classList.remove('item-glow');},2400);}
+  else{const sec=document.getElementById('order');if(sec)sec.scrollIntoView({behavior:'smooth'});}
+};
+
 function renderMenuSection(){
   const el=document.getElementById('menuGrid');if(!el)return;
   if(!menuFilter){el.innerHTML='';return;}
@@ -1622,8 +1655,9 @@ function renderMenuSection(){
       :i.priceL&&i.labelS&&i.labelL
       ?'<span class="price-badge">'+(i.labelS||'Opt 1')+' ₱'+i.priceS+'</span><span class="price-badge">'+(i.labelL||'Opt 2')+' ₱'+i.priceL+'</span>'
       :'<span class="price-single">₱'+i.priceS+'</span>';
-    return'<div class="menu-card">'+imgHtml+'<div class="menu-card-body"><span class="cat-tag">'+getCatLabel(i.cat)+'</span><h4 style="'+(ok?'':'text-decoration:line-through;opacity:0.6;')+'">'+i.name+'</h4><p class="desc">'+(i.desc||'')+'</p><div class="price-row">'+priceHtml+'</div><span class="avail-badge '+(ok?'avail-yes':'avail-no')+'">'+(ok?'✅ Available':'❌ Unavailable')+'</span></div></div>';
+    return'<div class="menu-card'+(ok?' clickable':'')+'"'+(ok?' data-goorder="'+i.key+'" data-gocat="'+i.cat+'"':'')+'>'+imgHtml+'<div class="menu-card-body"><span class="cat-tag">'+getCatLabel(i.cat)+'</span><h4 style="'+(ok?'':'text-decoration:line-through;opacity:0.6;')+'">'+i.name+'</h4><p class="desc">'+(i.desc||'')+'</p><div class="price-row">'+priceHtml+'</div><span class="avail-badge '+(ok?'avail-yes':'avail-no')+'">'+(ok?'✅ Available':'❌ Unavailable')+'</span>'+(ok?'<span class="tap-hint">🛒 Tap to order</span>':'')+'</div></div>';
   }).join('');
+  el.querySelectorAll('.menu-card[data-goorder]').forEach(function(card){card.addEventListener('click',function(){goToOrderItem(this.dataset.gocat,this.dataset.goorder);});});
 }
 
 function renderOrderSection(){
@@ -1636,7 +1670,7 @@ function renderOrderSection(){
     const cartQty=Object.values(cart).filter(c=>c.name===i.name||c.name.startsWith(i.name+' (')).reduce((s,c)=>s+c.qty,0);
     const imgHtml=i.img?'<img src="'+i.img+'" class="item-row-img" onerror="this.style.display=\'none\'"/>'
       :'<div class="item-row-img-placeholder">'+getCatIcon(i.cat)+'</div>';
-    return'<div class="item-row" style="'+(ok?'':'opacity:0.45;pointer-events:none;')+'">'
+    return'<div class="item-row" data-itemkey="'+i.key+'" style="'+(ok?'':'opacity:0.45;pointer-events:none;')+'">'
       +imgHtml
       +'<div class="item-row-info"><h5 style="'+(ok?'':'text-decoration:line-through;')+'">'+i.name+'</h5>'
       +'<span class="item-cat">'+(ok?getCatLabel(i.cat):'Not Available')+'</span>'
@@ -3269,7 +3303,15 @@ window.printOrder = function(orderId) {
   <button id="lightbox-next"  onclick="shiftLightbox(1)"  aria-label="Next">›</button>
   <div id="lightbox-counter"></div>
 </div>
+<nav id="appTabBar">
+  <a href="#home" class="active">🏠<span>Home</span></a>
+  <a href="#menu">☕<span>Menu</span></a>
+  <a href="#order">🛒<span>Order</span></a>
+  <a href="#orderTracker">📦<span>Track</span></a>
+  <a href="#contact">📞<span>Contact</span></a>
+</nav>
 <script>
+(function(){var tabs=document.querySelectorAll('#appTabBar a');tabs.forEach(function(t){t.addEventListener('click',function(){tabs.forEach(function(x){x.classList.remove('active');});this.classList.add('active');});});})();
 if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){});});}
 (function(){
   var deferred=null;
