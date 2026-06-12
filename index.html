@@ -37,6 +37,7 @@
 .app-mode #about,.app-mode #reel,.app-mode #reviews,.app-mode #feedback,.app-mode #gallery{display:none!important;}
 .app-mode .nav-links,.app-mode .hamburger{display:none!important;}
 .app-mode .admin-footer-link,.app-mode .footer-links{display:none!important;}
+.app-mode .chat-bubble,.app-mode .chat-window{display:none!important;}
 .app-mode #reserve>*{display:none!important;}
 .app-mode #reserve .app-reserve-note{display:block!important;}
 .menu-card.clickable{cursor:pointer;transition:transform 0.15s,box-shadow 0.15s,border-color 0.15s;}
@@ -164,7 +165,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 .order-empty-state h3{font-family:'Playfair Display',serif;color:var(--bd);font-size:1.2rem;margin-bottom:0.5rem;}
 .order-empty-state p{font-size:0.88rem;color:var(--tm);line-height:1.7;}
 /* CUSTOMIZE */
-.customize-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:5000;align-items:center;justify-content:center;padding:1rem;}
+.customize-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9500;align-items:center;justify-content:center;padding:1rem;}
 .customize-overlay.show{display:flex;}
 .customize-box{background:#fff;border-radius:14px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;}
 .customize-header{background:var(--bd);padding:1.25rem 1.5rem;border-radius:14px 14px 0 0;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:1;}
@@ -706,7 +707,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
       <div class="res-info">
         <div class="res-info-card"><div class="res-info-icon">🕐</div><h4>Opening Hours</h4><p>Monday – Sunday</p><p class="res-time">3:00 PM – 12:00 Midnight</p></div>
         <div class="res-info-card"><div class="res-info-icon">📍</div><h4>Find Us</h4><p>Saratoga Avenue, La Mediterranea Subdivision, Governor's Drive</p><p class="res-time">Dasmariñas, Cavite, Philippines</p></div>
-        <div class="res-info-card"><div class="res-info-icon">📞</div><h4>Call or Message</h4><p>GCash / Viber / WhatsApp / SMS</p><p class="res-time">0927 692 4831</p></div>
+        <div class="res-info-card"><div class="res-info-icon">📞</div><h4>Call or Message</h4><p>Viber / WhatsApp / SMS</p><p class="res-time">0927 692 4831</p></div>
         <div class="res-info-card"><div class="res-info-icon">👥</div><h4>Booking Guidelines, Admin to Confirm</h4>
           <p style="margin-bottom:0.4rem;">💑 <strong style="color:rgba(224,212,198,0.8);">Individual/Couple</strong> — Same day, no deposit</p>
           <p style="margin-bottom:0.4rem;">👨‍👩‍👧 <strong style="color:rgba(224,212,198,0.8);">Small Group (3–5)</strong> — Same day, deposit discussed</p>
