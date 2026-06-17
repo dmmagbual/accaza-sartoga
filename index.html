@@ -1214,7 +1214,7 @@ const db=getDatabase(app);
 const settingsRef=ref(db,'settings'),staffAccountsRef=ref(db,'staffAccounts'),adminAccountsRef=ref(db,'adminAccounts'),ordersRef=ref(db,'orders'),archivedRef=ref(db,'archivedOrders'),archivedResRef=ref(db,'archivedReservations'),reservationsRef=ref(db,'reservations'),feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),calBlocksRef=ref(db,'calBlocks'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups');
 
 let currentAdminHash=null,staffAccountsMap={},adminAccountsMap={},staffLoggedIn=false,superAdminLoggedIn=false,currentUser=null,currentLoginRole=null;
-const ADMIN_PASS_HASH='2fbc8eab665a40385a692e111f01d6a8572baa7b161f5b17d4d9977b20913921',SUPER_ADMIN_USERNAME='superadmin',CAFE_PHONE='639276924831',CAFE_EMAIL='mariadaniela@gmail.com',MAX_GUESTS=30;
+const SUPER_ADMIN_USERNAME='superadmin',CAFE_PHONE='639276924831',CAFE_EMAIL='mariadaniela@gmail.com',MAX_GUESTS=30;
 const TIME_SLOTS=['3:00 PM','4:00 PM','5:00 PM','6:00 PM','7:00 PM','8:00 PM','9:00 PM','10:00 PM','11:00 PM','12:00 Midnight'];
 
 const DEFAULT_CATS=[
@@ -2213,7 +2213,7 @@ window.changeAdminPassword=async function(){
   }
   var curHash=await hashPass(cur);
   var activeHash;
-  if(!currentUser||currentUser.role==='superadmin'){activeHash=currentAdminHash||ADMIN_PASS_HASH;}
+  if(!currentUser||currentUser.role==='superadmin'){activeHash=currentAdminHash;}
   else if(currentUser.role==='admin'){activeHash=adminAccountsMap[currentUser.uid]?adminAccountsMap[currentUser.uid].passwordHash:'';}
   else if(currentUser.role==='staff'){activeHash=staffAccountsMap[currentUser.uid]?staffAccountsMap[currentUser.uid].passwordHash:'';}
   if(curHash!==activeHash){showMsg('Current password is incorrect.', false);return;}
@@ -2252,7 +2252,7 @@ window.resetAdminPassword=async function(){
   if(!pass){msg.textContent='Please enter your recovery password.';msg.style.color='#c0392b';msg.style.display='block';return;}
   var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pass));
   var hex=Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
-  if(hex!==ADMIN_PASS_HASH){
+  if(!currentAdminHash||hex!==currentAdminHash){
     msg.textContent='❌ Incorrect recovery password.';msg.style.color='#c0392b';msg.style.display='block';
     document.getElementById('recoveryPass').value='';return;
   }
@@ -3126,7 +3126,7 @@ window.checkLogin=async function(){
 
   if(currentLoginRole==='admin'){
     // Check super admin
-    if(username===SUPER_ADMIN_USERNAME&&hashHex===(currentAdminHash||ADMIN_PASS_HASH)){
+    if(username===SUPER_ADMIN_USERNAME&&hashHex===currentAdminHash){
       await loginSuccess('superadmin','superadmin',null);
     }else{
       // Check admin accounts
