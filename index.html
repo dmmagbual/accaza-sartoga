@@ -1142,7 +1142,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
     </div>
     <!-- Login form -->
     <div id="loginForm" style="display:none;">
-      <label class="field-label" id="adminUserLabel">Username</label>
+      <label class="field-label">Username</label>
       <input type="text" id="adminUser" placeholder="Enter username" style="margin-bottom:0.75rem;" onkeydown="if(event.key==='Enter')document.getElementById('adminPass').focus()"/>
       <label class="field-label">Password</label>
       <input type="password" id="adminPass" placeholder="Enter password" style="margin-bottom:1rem;" onkeydown="if(event.key==='Enter')checkLogin()"/>
@@ -1152,9 +1152,9 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
         <button id="forgotPwBtn" onclick="toggleForgotPw()" style="display:none;background:none;border:none;font-size:0.76rem;color:var(--tl);cursor:pointer;text-decoration:underline;">Forgot password?</button>
       </p>
       <div id="forgotPwPanel" style="display:none;margin-top:0.75rem;padding:0.85rem;background:#ece4d8;border:1px solid var(--cd);border-radius:8px;">
-        <p style="font-size:0.78rem;color:var(--tl);margin-bottom:0.6rem;text-align:center;">Enter your <strong>admin email</strong> and we'll send a reset link.</p>
-        <input type="email" id="recoveryEmail" placeholder="Admin email address" style="margin-bottom:0.6rem;" onkeydown="if(event.key==='Enter')resetAdminPassword()"/>
-        <button class="btn-primary" style="width:100%;font-size:0.82rem;" onclick="resetAdminPassword()">📧 Send Reset Link</button>
+        <p style="font-size:0.78rem;color:var(--tl);margin-bottom:0.6rem;text-align:center;">Enter your <strong>original recovery password</strong> to reset.</p>
+        <input type="password" id="recoveryPass" placeholder="Original recovery password" style="margin-bottom:0.6rem;" onkeydown="if(event.key==='Enter')resetAdminPassword()"/>
+        <button class="btn-primary" style="width:100%;font-size:0.82rem;" onclick="resetAdminPassword()">🔑 Reset Password</button>
         <p id="recoveryMsg" style="display:none;font-size:0.78rem;margin-top:0.5rem;text-align:center;"></p>
       </div>
     </div>
@@ -1205,18 +1205,16 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import{getDatabase,ref,set,get,push,update,remove,onValue}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-import{getAuth,signInWithEmailAndPassword,signOut,updatePassword,reauthenticateWithCredential,EmailAuthProvider,sendPasswordResetEmail}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 const app=initializeApp(firebaseConfig);
 const db=getDatabase(app);
-const auth=getAuth(app);
 
 // DB refs
 const settingsRef=ref(db,'settings'),staffAccountsRef=ref(db,'staffAccounts'),adminAccountsRef=ref(db,'adminAccounts'),ordersRef=ref(db,'orders'),archivedRef=ref(db,'archivedOrders'),archivedResRef=ref(db,'archivedReservations'),reservationsRef=ref(db,'reservations'),feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),calBlocksRef=ref(db,'calBlocks'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups');
 
-let currentAdminHash=null,staffAccountsMap={},adminAccountsMap={},staffLoggedIn=false,superAdminLoggedIn=false,currentUser=null,currentLoginRole=null,superAdminEmail=null;
-const CAFE_PHONE='639276924831',CAFE_EMAIL='mariadaniela@gmail.com',MAX_GUESTS=30;
+let currentAdminHash=null,staffAccountsMap={},adminAccountsMap={},staffLoggedIn=false,superAdminLoggedIn=false,currentUser=null,currentLoginRole=null;
+const ADMIN_PASS_HASH='2fbc8eab665a40385a692e111f01d6a8572baa7b161f5b17d4d9977b20913921',SUPER_ADMIN_USERNAME='superadmin',CAFE_PHONE='639276924831',CAFE_EMAIL='mariadaniela@gmail.com',MAX_GUESTS=30;
 const TIME_SLOTS=['3:00 PM','4:00 PM','5:00 PM','6:00 PM','7:00 PM','8:00 PM','9:00 PM','10:00 PM','11:00 PM','12:00 Midnight'];
 
 const DEFAULT_CATS=[
@@ -2213,32 +2211,17 @@ window.changeAdminPassword=async function(){
     const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(p));
     return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
   }
-  // Superadmin: use Firebase Auth (no hash stored in code)
-  if(!currentUser||currentUser.role==='superadmin'){
-    try{
-      var fbUser=auth.currentUser;
-      if(!fbUser){showMsg('Session expired. Please log in again.',false);return;}
-      var fbCred2=EmailAuthProvider.credential(superAdminEmail,cur);
-      await reauthenticateWithCredential(fbUser,fbCred2);
-      await updatePassword(fbUser,nw);
-      document.getElementById('cpCurrent').value='';
-      document.getElementById('cpNew').value='';
-      document.getElementById('cpConfirm').value='';
-      showMsg('✅ Password updated successfully!',true);
-    }catch(e){
-      if(e.code==='auth/wrong-password'||e.code==='auth/invalid-credential'){showMsg('Current password is incorrect.',false);}
-      else{showMsg('Error: '+e.message,false);}
-    }
-    return;
-  }
   var curHash=await hashPass(cur);
   var activeHash;
-  if(currentUser.role==='admin'){activeHash=adminAccountsMap[currentUser.uid]?adminAccountsMap[currentUser.uid].passwordHash:'';}
+  if(!currentUser||currentUser.role==='superadmin'){activeHash=currentAdminHash||ADMIN_PASS_HASH;}
+  else if(currentUser.role==='admin'){activeHash=adminAccountsMap[currentUser.uid]?adminAccountsMap[currentUser.uid].passwordHash:'';}
   else if(currentUser.role==='staff'){activeHash=staffAccountsMap[currentUser.uid]?staffAccountsMap[currentUser.uid].passwordHash:'';}
-  if(curHash!==activeHash){showMsg('Current password is incorrect.',false);return;}
+  if(curHash!==activeHash){showMsg('Current password is incorrect.', false);return;}
   var newHash=await hashPass(nw);
   try{
-    if(currentUser.role==='admin'){
+    if(!currentUser||currentUser.role==='superadmin'){
+      await update(settingsRef,{adminPasswordHash:newHash});currentAdminHash=newHash;
+    }else if(currentUser.role==='admin'){
       await update(ref(db,'adminAccounts/'+currentUser.uid),{passwordHash:newHash});
       adminAccountsMap[currentUser.uid].passwordHash=newHash;
     }else if(currentUser.role==='staff'){
@@ -2264,19 +2247,23 @@ window.toggleForgotPw=function(){
   }
 };
 window.resetAdminPassword=async function(){
-  var email=document.getElementById('recoveryEmail').value.trim();
+  var pass=document.getElementById('recoveryPass').value;
   var msg=document.getElementById('recoveryMsg');
-  if(!email){msg.textContent='Please enter your admin email.';msg.style.color='#c0392b';msg.style.display='block';return;}
-  try{
-    await sendPasswordResetEmail(auth,email);
-    document.getElementById('recoveryEmail').value='';
-    msg.textContent='✅ Reset link sent! Check your email inbox.';
-    msg.style.color='#1a7a45';msg.style.display='block';
-    setTimeout(function(){window.toggleForgotPw();msg.style.display='none';},4000);
-  }catch(e){
-    msg.textContent='❌ '+(e.code==='auth/user-not-found'?'Email not registered.':e.message);
-    msg.style.color='#c0392b';msg.style.display='block';
+  if(!pass){msg.textContent='Please enter your recovery password.';msg.style.color='#c0392b';msg.style.display='block';return;}
+  var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pass));
+  var hex=Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  if(hex!==ADMIN_PASS_HASH){
+    msg.textContent='❌ Incorrect recovery password.';msg.style.color='#c0392b';msg.style.display='block';
+    document.getElementById('recoveryPass').value='';return;
   }
+  try{
+    await update(settingsRef,{adminPasswordHash:null});
+    currentAdminHash=null;
+    document.getElementById('recoveryPass').value='';
+    msg.textContent='✅ Password reset! You can now log in with your original password.';
+    msg.style.color='#1a7a45';msg.style.display='block';
+    setTimeout(function(){window.toggleForgotPw();msg.style.display='none';},3000);
+  }catch(e){msg.textContent='Error: '+e.message;msg.style.color='#c0392b';msg.style.display='block';}
 };
 
 // ── STAFF ACCOUNTS ─────────────────────────────────────────
@@ -3063,9 +3050,6 @@ window.selectLoginRole=function(role){
   sBtn.style.borderColor=role==='staff'?'var(--bl)':'var(--cd)';
   var fBtn=document.getElementById('forgotPwBtn');
   if(fBtn)fBtn.style.display=role==='admin'?'inline':'none';
-  var uLabel=document.getElementById('adminUserLabel');
-  if(uLabel)uLabel.textContent=role==='admin'?'Email':'Username';
-  document.getElementById('adminUser').placeholder=role==='admin'?'Enter admin email':'Enter username';
   document.getElementById('forgotPwPanel').style.display='none';
   document.getElementById('loginErr').style.display='none';
   setTimeout(function(){document.getElementById('adminUser').focus();},100);
@@ -3141,19 +3125,11 @@ window.checkLogin=async function(){
   document.getElementById('loginErr').style.display='none';
 
   if(currentLoginRole==='admin'){
-    var isEmailLogin=username.indexOf('@')!==-1;
-    if(isEmailLogin){
-      // Firebase Authentication (superadmin)
-      try{
-        var fbCred=await signInWithEmailAndPassword(auth,username,pass);
-        superAdminEmail=fbCred.user.email;
-        await loginSuccess('superadmin','superadmin',null);
-      }catch(authErr){
-        document.getElementById('loginErr').style.display='block';
-        document.getElementById('adminPass').value='';
-      }
+    // Check super admin
+    if(username===SUPER_ADMIN_USERNAME&&hashHex===(currentAdminHash||ADMIN_PASS_HASH)){
+      await loginSuccess('superadmin','superadmin',null);
     }else{
-      // Check admin accounts stored in Firebase DB
+      // Check admin accounts
       var match=null;
       for(var uid in adminAccountsMap){
         if(adminAccountsMap[uid].username===username&&adminAccountsMap[uid].passwordHash===hashHex){
@@ -3178,8 +3154,6 @@ window.checkLogin=async function(){
 };
 
 window.logoutAdmin=function(){
-  if(auth&&auth.currentUser){signOut(auth).catch(function(){});}
-  superAdminEmail=null;
   adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;currentUser=null;currentLoginRole=null;
   clearOrderAlert();
   document.body.classList.remove('staff-mode');
