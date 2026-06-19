@@ -89,11 +89,11 @@
   </ul>
   <button class="hamburger" id="hamburgerBtn" aria-label="Open menu"><span></span><span></span><span></span></button>
 </nav>
-<header class="page-hero">
+<header class="page-hero"><div class="ph-inner">
   <p class="section-label">Visit Us</p>
   <h1>Contact &amp; Location</h1>
   <p>We're easy to find along Governor's Drive near SM Dasmariñas — whether you're commuting or driving.</p>
-</header>
+</div></header>
 <main style="background:var(--cr);">
   <div class="menu-wrap">
     <div class="info-grid reveal">
@@ -117,6 +117,17 @@
     <p class="footer-copy">&copy; <span id="yr">2026</span> Accaza Coffee House. All rights reserved.</p>
   </div>
 </footer>
-<script src="site.js"></script>
+<script>
+(function(){
+  var ham=document.getElementById('hamburgerBtn'),links=document.querySelector('.nav-links');
+  if(ham&&links){ham.addEventListener('click',function(){links.classList.toggle('nav-open');ham.classList.toggle('open');});links.querySelectorAll('a').forEach(function(a){a.addEventListener('click',function(){links.classList.remove('nav-open');ham.classList.remove('open');});});}
+  var nav=document.querySelector('nav');
+  var tt=document.createElement('button');tt.id='toTop';tt.setAttribute('aria-label','Back to top');tt.innerHTML='&#8593;';tt.onclick=function(){window.scrollTo({top:0,behavior:'smooth'});};document.body.appendChild(tt);
+  function onScroll(){var y=window.pageYOffset||document.documentElement.scrollTop||0;if(nav){if(y>40)nav.classList.add('nav-shrink');else nav.classList.remove('nav-shrink');}if(y>500)tt.classList.add('show');else tt.classList.remove('show');}
+  window.addEventListener('scroll',onScroll,{passive:true});onScroll();
+  if('IntersectionObserver' in window){var io=new IntersectionObserver(function(en){en.forEach(function(x){if(x.isIntersecting){x.target.classList.add('in');io.unobserve(x.target);}});},{threshold:0.08,rootMargin:'0px 0px -40px 0px'});document.querySelectorAll('.reveal').forEach(function(e){io.observe(e);});}
+  var yr=document.getElementById('yr');if(yr)yr.textContent=new Date().getFullYear();
+})();
+</script>
 </body>
 </html>
