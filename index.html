@@ -101,6 +101,7 @@
 (function(){var GA_ID='G-T4ZZ6HWHJK';if(!GA_ID||GA_ID.indexOf('XXXX')>-1)return;var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id='+GA_ID;document.head.appendChild(s);window.dataLayer=window.dataLayer||[];window.gtag=function(){window.dataLayer.push(arguments);};gtag('js',new Date());gtag('config',GA_ID);})();
 </script>
 
+<style>[data-oghandle]{cursor:grab;}[data-oghandle]:active{cursor:grabbing;}.og-dragging{opacity:0.45;box-shadow:0 8px 24px rgba(0,0,0,0.25);}[data-ogcard]{transition:box-shadow .15s;}</style>
 </head>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -2520,6 +2521,7 @@ function renderOptionManager(){
     var used=items.filter(function(i){return getEffectiveOptionIds(i).indexOf(id)!==-1;}).length;
     var choiceRows=(g.choices||[]).map(function(c){return ogChoiceRowHtml(c.label,c.price);}).join('');
     return '<div data-ogcard="'+id+'" style="background:var(--cr);border:1px solid var(--cd);border-radius:8px;padding:1rem;margin-bottom:0.75rem;">'
+      +'<div data-oghandle title="Drag to reorder" style="cursor:grab;user-select:none;color:var(--tl);font-size:0.95rem;line-height:1;margin-bottom:0.5rem;display:flex;align-items:center;gap:0.4rem;">\u283f<span style="font-size:0.64rem;text-transform:uppercase;letter-spacing:0.08em;">Drag to reorder</span></div>'
       +'<div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:0.6rem;">'
       +'<div style="flex:1;min-width:150px;"><label style="font-size:0.7rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Option Name</label>'
       +'<input type="text" value="'+escHtml(g.name)+'" data-ogname style="width:100%;'+OG_INP+'"/></div>'
@@ -2582,6 +2584,22 @@ function renderOptionManager(){
       });
     });
   });
+  wireOgDragReorder(el);
+}
+function wireOgDragReorder(el){
+  function getAfter(y){var cards=[].slice.call(el.querySelectorAll('[data-ogcard]:not(.og-dragging)'));var best={off:-Infinity,node:null};cards.forEach(function(c){var r=c.getBoundingClientRect();var off=y-(r.top+r.height/2);if(off<0&&off>best.off){best={off:off,node:c};}});return best.node;}
+  el.querySelectorAll('[data-ogcard]').forEach(function(card){
+    var handle=card.querySelector('[data-oghandle]');
+    if(handle){handle.addEventListener('mousedown',function(){card.setAttribute('draggable','true');});handle.addEventListener('mouseup',function(){card.removeAttribute('draggable');});}
+    card.addEventListener('dragstart',function(e){if(card.getAttribute('draggable')!=='true'){e.preventDefault();return;}el._dragId=card.getAttribute('data-ogcard');card.classList.add('og-dragging');try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',el._dragId);}catch(_){}});
+    card.addEventListener('dragend',function(){card.classList.remove('og-dragging');card.removeAttribute('draggable');el._dragId=null;saveOgOrder(el);});
+  });
+  if(!el._ogDnd){el._ogDnd=true;el.addEventListener('dragover',function(e){if(!el._dragId)return;e.preventDefault();var dragging=el.querySelector('.og-dragging');if(!dragging)return;var after=getAfter(e.clientY);if(after==null)el.appendChild(dragging);else el.insertBefore(dragging,after);});}
+}
+function saveOgOrder(el){
+  var cards=[].slice.call(el.querySelectorAll('[data-ogcard]'));var updates={},changed=false;
+  cards.forEach(function(c,i){var id=c.getAttribute('data-ogcard');var g=optionGroupsMap[id];if(g&&(g.order||0)!==i){g.order=i;updates[id+'/order']=i;changed=true;}});
+  if(changed)update(ref(db,'optionGroups'),updates).catch(function(){});
 }
 window.addOptionGroup=async function(){
   var name=(document.getElementById('newOgName').value||'').trim();
