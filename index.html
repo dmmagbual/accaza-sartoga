@@ -1332,7 +1332,7 @@ const app=initializeApp(firebaseConfig);
 const db=getDatabase(app);
 // ===================== WEB PUSH (FCM) =====================
 // Paste your Web Push certificate key here (Firebase Console > Project settings > Cloud Messaging > Web Push certificates).
-const VAPID_KEY="PASTE_YOUR_WEB_PUSH_CERTIFICATE_KEY_HERE";
+const VAPID_KEY="BIIVf-1RYIQger0yqeYlyV6-tQpH8YfytIgQK6-7IJg87HVITcNkYv4RYcKjyCmJBJKR1EXjJqRuiHzkFJjSvlE";
 function _pushToastWire(messaging){onMessage(messaging,function(payload){var d=(payload&&(payload.data||payload.notification))||{};try{(window.accazaToast||function(){})((d.title?d.title+': ':'')+(d.body||'New notification'),'ok');}catch(e){}});}
 async function registerPushToken(){
   try{
