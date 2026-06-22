@@ -1355,7 +1355,7 @@ async function registerPushToken(){
     var reg=await navigator.serviceWorker.ready;
     var messaging=getMessaging(app);
     var token=await getToken(messaging,{vapidKey:VAPID_KEY,serviceWorkerRegistration:reg});
-    if(token){var u=getAppUser();if(u&&u.phone){var k=u.phone.replace(/[^0-9]/g,'');if(k){try{await update(ref(db,'appCustomers/'+k),{pushToken:token,pushTokenAt:Date.now()});}catch(e){}}}}
+    if(token){var u=getAppUser();if(u&&u.phone){var k=u.phone.replace(/[^0-9]/g,'');if(k){try{await update(ref(db,'appCustomers/'+k),{pushToken:token,pushTokenAt:Date.now()});if(!window.__pushToasted){window.__pushToasted=true;(window.accazaToast||function(){})('🔔 Notifications on for this device','ok');}}catch(e){}}}}
     _pushToastWire(messaging);
   }catch(e){}
 }
@@ -1662,14 +1662,32 @@ var _ordersSeeded=false,_readyTimer=null,_readyStop=null;
 function _saveReadyAlerted(){try{localStorage.setItem('accaza_ready_alerted',JSON.stringify(Array.from(_readyAlerted)));}catch(e){}}
 function stopReadyAlert(){if(_readyTimer){clearInterval(_readyTimer);_readyTimer=null;}if(_readyStop){clearTimeout(_readyStop);_readyStop=null;}}
 window.dismissReadyAlert=function(){stopReadyAlert();var el=document.getElementById('orderReadyAlert');if(el)el.style.display='none';};
+function playReadyChime(){
+  try{
+    if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state==='suspended')audioCtx.resume();
+    var t=audioCtx.currentTime;
+    var notes=[523.25,659.25,783.99,1046.5]; // C5 E5 G5 C6 — cheerful ascending arpeggio
+    notes.forEach(function(f,i){
+      var o=audioCtx.createOscillator(),gn=audioCtx.createGain();
+      o.type='sine';o.frequency.value=f;
+      var st=t+i*0.16;
+      gn.gain.setValueAtTime(0.0001,st);
+      gn.gain.exponentialRampToValueAtTime(0.5,st+0.02);
+      gn.gain.exponentialRampToValueAtTime(0.0001,st+0.38);
+      o.connect(gn);gn.connect(audioCtx.destination);
+      o.start(st);o.stop(st+0.42);
+    });
+  }catch(e){}
+}
 function triggerReadyAlert(o){
   var el=document.getElementById('orderReadyAlert');if(!el)return;
   var sub=document.getElementById('orderReadySub');
   if(sub)sub.textContent='Order #'+(o.id||'')+' \u2014 '+((o.type==='Delivery')?'ready for delivery':'ready for pick-up');
   el.style.display='flex';
-  try{playChime();}catch(e){}
+  try{playReadyChime();}catch(e){}
   stopReadyAlert();
-  _readyTimer=setInterval(function(){try{playChime();}catch(e){}try{if(navigator.vibrate)navigator.vibrate([500,200,500]);}catch(e){}},3800);
+  _readyTimer=setInterval(function(){try{playReadyChime();}catch(e){}try{if(navigator.vibrate)navigator.vibrate([500,200,500]);}catch(e){}},3800);
   try{if(navigator.vibrate)navigator.vibrate([500,200,500,200,500]);}catch(e){}
   _readyStop=setTimeout(stopReadyAlert,45000);
 }
