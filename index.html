@@ -572,7 +572,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
     <li><a href="#home">Home</a></li><li><a href="#reel">Reel</a></li><li><a href="#menu">Menu</a></li>
     <li><a href="#order">Order</a></li><li><a href="#orderTracker">📋 Track Order</a></li>
     <li><a href="#reserve">Reserve</a></li><li><a href="#reviews">Reviews</a></li>
-    <li><a href="#feedback">Feedback</a></li><li><a href="#gallery">Gallery</a></li><li><a href="about.html">About</a></li><li><a href="#contact">Contact</a></li>
+    <li><a href="#feedback">Feedback</a></li><li><a href="#gallery">Gallery</a></li><li><a href="#about">About</a></li><li><a href="#contact">Contact</a></li>
     <li id="navAvail" style="display:none;"><a href="#availSection" style="color:#c9a36a;font-weight:500;">🔄 Availability</a></li>
     <li id="navComments" style="display:none;"><a href="#commentsSection" style="color:#c9a36a;font-weight:500;">📩 Comments</a></li>
     <li id="navAdminPanel" style="display:none;"><a href="#adminDash" id="navAdminPanelLink" style="color:#c9a36a;font-weight:600;">🔐 Admin Panel</a></li>
@@ -683,8 +683,12 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
         <div style="font-size:3rem;margin-bottom:1rem;">🎬</div>
         <p style="font-family:'Playfair Display',serif;font-size:1.3rem;color:var(--cr);">Watch Our Latest Reel</p>
         <p style="font-size:0.88rem;color:rgba(224,212,198,0.6);margin-bottom:1.75rem;line-height:1.6;">See the Accaza vibe — the cozy space, the craft, and the community that makes us home.</p>
-        <a href="https://www.tiktok.com/@accazacoffee" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:0.6rem;background:var(--bl);color:#fff;text-decoration:none;padding:0.9rem 2rem;border-radius:6px;font-size:0.9rem;letter-spacing:0.06em;text-transform:uppercase;" onmouseover="this.style.background='#b8784a'" onmouseout="this.style.background='var(--bl)'">Watch on TikTok</a>
-        <p style="font-size:0.72rem;color:rgba(224,212,198,0.35);margin-top:1.25rem;">Opens TikTok in a new tab</p>
+        <div style="display:flex;justify-content:center;gap:0.6rem;flex-wrap:wrap;">
+          <a href="https://www.tiktok.com/@accazacoffee" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:0.45rem;background:#000;color:#fff;text-decoration:none;padding:0.8rem 1.4rem;border-radius:6px;font-size:0.8rem;font-weight:500;letter-spacing:0.05em;text-transform:uppercase;">🎵 TikTok</a>
+          <a href="https://web.facebook.com/accazacoffeehouse" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:0.45rem;background:#1877F2;color:#fff;text-decoration:none;padding:0.8rem 1.4rem;border-radius:6px;font-size:0.8rem;font-weight:500;letter-spacing:0.05em;text-transform:uppercase;">📘 Facebook</a>
+          <a href="https://www.instagram.com/accaza.coffee" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:0.45rem;background:linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888);color:#fff;text-decoration:none;padding:0.8rem 1.4rem;border-radius:6px;font-size:0.8rem;font-weight:500;letter-spacing:0.05em;text-transform:uppercase;">📸 Instagram</a>
+        </div>
+        <p style="font-size:0.72rem;color:rgba(224,212,198,0.35);margin-top:1.25rem;">Opens in a new tab</p>
       </div>
     </div>
   </div>
@@ -3401,6 +3405,7 @@ async function loginSuccess(role,username,uid){
     document.getElementById('commentsSection').style.display='block';
     ['availSection','navAvail'].forEach(function(id){document.getElementById(id).style.display='none';});
     document.getElementById('navAdminPanel').style.display='block';
+    document.getElementById('navComments').style.display='block';
     document.getElementById('navAdminPanelLink').textContent='🔐 Staff Panel';
     // Hide tabs not for staff
     document.querySelectorAll('.admin-tab').forEach(function(btn){
