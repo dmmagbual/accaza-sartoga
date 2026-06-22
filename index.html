@@ -27,7 +27,6 @@
 <meta name="twitter:description" content="Handcrafted coffee, warm spaces & dine-in reservations in Dasmariñas, Cavite. Order online or book a table.">
 <meta name="twitter:image" content="https://accazacoffee.com/accaza_og_image.jpg">
 <link rel="icon" type="image/x-icon" href="/favicon.ico"/>
-<link rel="icon" type="image/png" href="/favicon_32x32.png"/> 
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon_32x32.png"/>
 <link rel="apple-touch-icon" sizes="180x180" href="/favicon_180x180.png"/>
 <link rel="icon" type="image/png" sizes="192x192" href="/favicon_192x192.png"/>
@@ -53,6 +52,9 @@
 .app-mode .chat-bubble,.app-mode .chat-window{display:none!important;}
 .app-mode #reserve>*{display:none!important;}
 .app-mode #reserve .app-reserve-note{display:block!important;}
+.pay-qr-app{display:none;}
+.app-mode .pay-qr-app{display:block!important;}
+.app-mode #qrSection{display:none!important;}
 .menu-card.clickable{cursor:pointer;transition:transform 0.15s,box-shadow 0.15s,border-color 0.15s;}
 .menu-card.clickable:hover{transform:translateY(-3px);box-shadow:0 8px 20px rgba(0,0,0,0.3);border-color:rgba(176,141,87,0.55);}
 .tap-hint{font-size:0.68rem;color:#b08d57;margin-top:0.45rem;display:block;letter-spacing:0.08em;text-transform:uppercase;}
@@ -102,7 +104,6 @@
 (function(){var GA_ID='G-T4ZZ6HWHJK';if(!GA_ID||GA_ID.indexOf('XXXX')>-1)return;var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id='+GA_ID;document.head.appendChild(s);window.dataLayer=window.dataLayer||[];window.gtag=function(){window.dataLayer.push(arguments);};gtag('js',new Date());gtag('config',GA_ID);})();
 </script>
 
-<style>[data-oghandle]{cursor:grab;}[data-oghandle]:active{cursor:grabbing;}.og-dragging{opacity:0.45;box-shadow:0 8px 24px rgba(0,0,0,0.25);}[data-ogcard]{transition:box-shadow .15s;}</style>
 </head>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -752,9 +753,9 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
             <button class="type-btn" id="btnBank" onclick="setPayment('bank')">🏦 Bank Transfer</button>
           </div>
           <div class="payment-info">
-            <div id="gcashInfo"><p class="pay-label">GCash Number</p><p class="pay-value" id="gcashNum">0927 692 4831</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="gcashName">ACCAZA</p></div>
+            <div id="gcashInfo"><div style="display:flex;gap:1rem;align-items:flex-start;flex-wrap:wrap;"><div style="flex:1;min-width:150px;"><p class="pay-label">GCash Number</p><p class="pay-value" id="gcashNum">0927 692 4831</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="gcashName">ACCAZA</p></div><div class="pay-qr-app" style="flex:0 0 auto;text-align:center;"><img src="https://i.postimg.cc/JzD6kpwZ/GCASH-QR-CODE.jpg" alt="GCash QR Code" loading="lazy" style="width:150px;max-width:45vw;border-radius:8px;border:1px solid var(--cd);"/><p style="font-size:0.7rem;color:var(--tl);margin-top:0.35rem;">📲 Scan to pay</p></div></div></div>
             <div id="mayaInfo" style="display:none;"><p class="pay-label">PayMaya Number</p><p class="pay-value" id="mayaNum">—</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="mayaName">—</p></div>
-            <div id="bankInfo" style="display:none;"><div id="bdoRow"><p class="pay-label">BDO Account</p><p class="pay-value" id="bankNum">0068-2050-9919</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="bankAccName">ACCAZA</p></div><div id="ubRow" style="margin-top:0.5rem;"><p class="pay-label">UnionBank Account</p><p class="pay-value" id="bankNum2">1093-3237-9862</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="bankAccName2">ACCAZA</p></div><div id="bank3Row" style="display:none;"><p class="pay-label" style="margin-top:0.5rem;" id="bank3LabelDisp">Other Bank Account</p><p class="pay-value" id="bank3Num">—</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="bank3AccName">—</p></div><div id="bank4Row" style="display:none;"><p class="pay-label" style="margin-top:0.5rem;" id="bank4LabelDisp">Other Bank Account</p><p class="pay-value" id="bank4Num">—</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="bank4AccName">—</p></div></div>
+            <div id="bankInfo" style="display:none;"><div style="display:flex;gap:1rem;align-items:flex-start;flex-wrap:wrap;"><div style="flex:1;min-width:150px;"><div id="bdoRow"><p class="pay-label">BDO Account</p><p class="pay-value" id="bankNum">0068-2050-9919</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="bankAccName">ACCAZA</p></div><div id="ubRow" style="margin-top:0.5rem;"><p class="pay-label">UnionBank Account</p><p class="pay-value" id="bankNum2">1093-3237-9862</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="bankAccName2">ACCAZA</p></div><div id="bank3Row" style="display:none;"><p class="pay-label" style="margin-top:0.5rem;" id="bank3LabelDisp">Other Bank Account</p><p class="pay-value" id="bank3Num">—</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="bank3AccName">—</p></div><div id="bank4Row" style="display:none;"><p class="pay-label" style="margin-top:0.5rem;" id="bank4LabelDisp">Other Bank Account</p><p class="pay-value" id="bank4Num">—</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="bank4AccName">—</p></div></div><div class="pay-qr-app" style="flex:0 0 auto;text-align:center;"><img src="https://i.postimg.cc/Hnk3s24z/BDO-QR-CODE.jpg" alt="BDO QR Code" loading="lazy" style="width:150px;max-width:45vw;border-radius:8px;border:1px solid var(--cd);"/><p style="font-size:0.7rem;color:var(--tl);margin-top:0.35rem;">📲 Scan to pay (BDO)</p></div></div></div>
             <p style="font-size:0.75rem;color:var(--tl);margin-top:0.75rem;line-height:1.5;">After placing your order, send payment and screenshot your receipt. We'll confirm once verified. ✅</p>
           </div>
           <h3 class="order-section-title" style="margin-top:1.5rem;">6. Proof of Payment</h3>
@@ -2522,7 +2523,6 @@ function renderOptionManager(){
     var used=items.filter(function(i){return getEffectiveOptionIds(i).indexOf(id)!==-1;}).length;
     var choiceRows=(g.choices||[]).map(function(c){return ogChoiceRowHtml(c.label,c.price);}).join('');
     return '<div data-ogcard="'+id+'" style="background:var(--cr);border:1px solid var(--cd);border-radius:8px;padding:1rem;margin-bottom:0.75rem;">'
-      +'<div data-oghandle title="Drag to reorder" style="cursor:grab;user-select:none;color:var(--tl);font-size:0.95rem;line-height:1;margin-bottom:0.5rem;display:flex;align-items:center;gap:0.4rem;">\u283f<span style="font-size:0.64rem;text-transform:uppercase;letter-spacing:0.08em;">Drag to reorder</span></div>'
       +'<div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:0.6rem;">'
       +'<div style="flex:1;min-width:150px;"><label style="font-size:0.7rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Option Name</label>'
       +'<input type="text" value="'+escHtml(g.name)+'" data-ogname style="width:100%;'+OG_INP+'"/></div>'
@@ -2585,22 +2585,6 @@ function renderOptionManager(){
       });
     });
   });
-  wireOgDragReorder(el);
-}
-function wireOgDragReorder(el){
-  function getAfter(y){var cards=[].slice.call(el.querySelectorAll('[data-ogcard]:not(.og-dragging)'));var best={off:-Infinity,node:null};cards.forEach(function(c){var r=c.getBoundingClientRect();var off=y-(r.top+r.height/2);if(off<0&&off>best.off){best={off:off,node:c};}});return best.node;}
-  el.querySelectorAll('[data-ogcard]').forEach(function(card){
-    var handle=card.querySelector('[data-oghandle]');
-    if(handle){handle.addEventListener('mousedown',function(){card.setAttribute('draggable','true');});handle.addEventListener('mouseup',function(){card.removeAttribute('draggable');});}
-    card.addEventListener('dragstart',function(e){if(card.getAttribute('draggable')!=='true'){e.preventDefault();return;}el._dragId=card.getAttribute('data-ogcard');card.classList.add('og-dragging');try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',el._dragId);}catch(_){}});
-    card.addEventListener('dragend',function(){card.classList.remove('og-dragging');card.removeAttribute('draggable');el._dragId=null;saveOgOrder(el);});
-  });
-  if(!el._ogDnd){el._ogDnd=true;el.addEventListener('dragover',function(e){if(!el._dragId)return;e.preventDefault();var dragging=el.querySelector('.og-dragging');if(!dragging)return;var after=getAfter(e.clientY);if(after==null)el.appendChild(dragging);else el.insertBefore(dragging,after);});}
-}
-function saveOgOrder(el){
-  var cards=[].slice.call(el.querySelectorAll('[data-ogcard]'));var updates={},changed=false;
-  cards.forEach(function(c,i){var id=c.getAttribute('data-ogcard');var g=optionGroupsMap[id];if(g&&(g.order||0)!==i){g.order=i;updates[id+'/order']=i;changed=true;}});
-  if(changed)update(ref(db,'optionGroups'),updates).catch(function(){});
 }
 window.addOptionGroup=async function(){
   var name=(document.getElementById('newOgName').value||'').trim();
