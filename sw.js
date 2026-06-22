@@ -9,7 +9,12 @@ fcm.onBackgroundMessage(function(payload){
     body:d.body||'',
     icon:'/favicon_192x192.png',
     badge:'/favicon_192x192.png',
-    data:{link:(d.link||'/')}
+    vibrate:[400,150,400,150,400,150,400],
+    requireInteraction:true,
+    renotify:true,
+    tag:'accaza-order',
+    data:{link:(d.link||'/')},
+    actions:[{action:'view',title:'View order'}]
   });
 });
 self.addEventListener('notificationclick',function(e){
@@ -22,7 +27,7 @@ self.addEventListener('notificationclick',function(e){
 });
 
 /* App shell cache (network-first) */
-const CACHE='accaza-v4';
+const CACHE='accaza-v5';
 const ASSETS=['/','/index.html','/favicon_192x192.png','/favicon_512x512.png'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));self.skipWaiting();});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));self.clients.claim();});
