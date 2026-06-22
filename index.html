@@ -730,10 +730,11 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
         </div>
       </div>
       <div>
-        <div class="cart-box">
+        <div class="cart-box" onclick="goToCheckout(event)" style="cursor:pointer;">
           <h3 class="order-section-title">2. Your Order</h3>
           <div id="cartItems"><p style="color:var(--tl);font-size:0.85rem;">No items added yet.</p></div>
           <div class="cart-total" id="cartTotal" style="display:none;"><span>Total</span><span id="totalAmt">₱0</span></div>
+          <button id="cartCheckoutBtn" onclick="goToCheckout(event)" style="display:none;width:100%;margin-top:0.85rem;background:var(--bd);color:#fff;border:none;border-radius:8px;padding:0.85rem;font-size:0.95rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;">Proceed to Checkout ↓</button>
         </div>
         <div class="form-box">
           <h3 class="order-section-title">3. Delivery or Pick-up?</h3>
@@ -2015,8 +2016,7 @@ function addCustomizedToCart(){
   const cartKey=Date.now()+'_'+Math.random().toString(36).substr(2,5);
   cart[cartKey]={name:item.name+sizeLabel,details:details.join(', '),qty:custQty,unitTotal:unit,cat:item.cat};
   closeCustomize();updateCartDisplay();renderOrderSection();
-  document.getElementById('order').scrollIntoView({behavior:'smooth',block:'start'});
-  setTimeout(function(){const cb=document.querySelector('.cart-box');cb.style.transition='box-shadow 0.3s';cb.style.boxShadow='0 0 0 3px rgba(176,141,87,0.5)';setTimeout(()=>cb.style.boxShadow='none',1000);},400);
+  setTimeout(function(){const cb=document.querySelector('.cart-box');if(cb){cb.style.transition='box-shadow 0.3s';cb.style.boxShadow='0 0 0 3px rgba(176,141,87,0.5)';setTimeout(()=>cb.style.boxShadow='none',1000);}},400);
 }
 window.closeCustomize=function(){document.getElementById('customizePopup').classList.remove('show');custItem=null;};
 
@@ -2024,7 +2024,7 @@ window.closeCustomize=function(){document.getElementById('customizePopup').class
 function updateCartDisplay(){
   const box=document.getElementById('cartItems'),tot=document.getElementById('cartTotal');
   const keys=Object.keys(cart);
-  if(!keys.length){box.innerHTML='<p style="color:var(--tl);font-size:0.85rem;">No items added yet.</p>';tot.style.display='none';return;}
+  if(!keys.length){box.innerHTML='<p style="color:var(--tl);font-size:0.85rem;">No items added yet.</p>';tot.style.display='none';var _cb0=document.getElementById('cartCheckoutBtn');if(_cb0)_cb0.style.display='none';return;}
   let total=0;
   box.innerHTML=keys.map(function(k){
     const item=cart[k],line=item.qty*item.unitTotal;total+=line;
@@ -2042,7 +2042,7 @@ function updateCartDisplay(){
   }).join('');
   // Wire cart qty buttons
   box.querySelectorAll('button[data-cartkey]').forEach(function(btn){
-    btn.addEventListener('click',function(){
+    btn.addEventListener('click',function(e){if(e&&e.stopPropagation)e.stopPropagation();
       const k=this.dataset.cartkey,d=parseInt(this.dataset.delta);
       if(!cart[k])return;cart[k].qty=Math.max(0,cart[k].qty+d);
       if(cart[k].qty===0)delete cart[k];
@@ -2051,8 +2051,10 @@ function updateCartDisplay(){
   });
   document.getElementById('totalAmt').textContent='₱'+total.toLocaleString();
   tot.style.display='flex';
+  var _cb1=document.getElementById('cartCheckoutBtn');if(_cb1)_cb1.style.display='block';
 }
 
+window.goToCheckout=function(e){if(e&&e.stopPropagation)e.stopPropagation();if(!Object.keys(cart).length)return;var f=document.querySelector('.form-box');if(f)f.scrollIntoView({behavior:'smooth',block:'start'});};
 window.setType=function(t){orderType=t;document.getElementById('btnPickup').classList.toggle('active',t==='pickup');document.getElementById('btnDelivery').classList.toggle('active',t==='delivery');document.getElementById('deliveryField').style.display=t==='delivery'?'block':'none';};
 window.setPayment=function(p){paymentType=p;
   document.getElementById('btnGcash').classList.toggle('active',p==='gcash');
