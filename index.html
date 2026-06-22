@@ -2120,7 +2120,7 @@ window.appLoginSubmit=async function(){
   setupPush();
 };
 window.appLogout=function(){try{localStorage.removeItem('accaza_app_user');}catch(e){}location.reload();};
-function appLoginInit(){if(!isAppMode())return;var ov=document.getElementById('appLoginOverlay');var u=getAppUser();if(!u){if(ov)ov.style.display='flex';}else{prefillAppUser();registerPushToken();refreshNotifyPrompt();}}
+function appLoginInit(){if(!isAppMode())return;var ov=document.getElementById('appLoginOverlay');var u=getAppUser();if(!u){if(ov)ov.style.display='flex';}else{prefillAppUser();setupPush();refreshNotifyPrompt();}}
 window.renderAppCustomers=function(){
   var body=document.getElementById('appCustBody');if(!body)return;
   var arr=Object.keys(appCustomersMap).map(function(k){var v=appCustomersMap[k]||{};return {name:v.name||'\u2014',phone:v.phone||k,orders:v.orders||0,firstSeen:v.firstSeen,lastOrder:v.lastOrder};});
