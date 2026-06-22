@@ -742,7 +742,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
             <button class="type-btn" id="btnDelivery" onclick="setType('delivery')">🛵 Delivery</button>
           </div>
           <div id="deliveryField" style="display:none;margin-top:1rem;"><label class="field-label">Delivery Address</label><textarea id="deliveryAddr" rows="2" placeholder="Enter your full delivery address..."></textarea><p style="font-size:0.78rem;color:#856404;background:#fff3cd;border:1px solid #f0ad4e;border-radius:6px;padding:0.55rem 0.85rem;margin-top:0.5rem;line-height:1.5;">📦 Delivery fees shall be shouldered by the customer. You may arrange delivery through your preferred courier service.</p></div>
-          <h3 class="order-section-title" style="margin-top:1.5rem;">4. Your Details</h3><div id="appUserIndicator" style="display:none;background:rgba(176,141,87,0.12);border:1px solid rgba(176,141,87,0.4);border-radius:8px;padding:0.55rem 0.85rem;margin-bottom:0.75rem;font-size:0.8rem;color:var(--tm);">👋 Signed in as <strong id="appUserName"></strong> <a onclick="appLogout()" style="color:var(--bd);cursor:pointer;text-decoration:underline;margin-left:0.35rem;">Not you?</a></div>
+          <h3 class="order-section-title" style="margin-top:1.5rem;">4. Your Details</h3><div id="appUserIndicator" style="display:none;background:rgba(176,141,87,0.12);border:1px solid rgba(176,141,87,0.4);border-radius:8px;padding:0.55rem 0.85rem;margin-bottom:0.75rem;font-size:0.8rem;color:var(--tm);">👋 Signed in as <strong id="appUserName"></strong> <a onclick="appLogout()" style="color:var(--bd);cursor:pointer;text-decoration:underline;margin-left:0.35rem;">Not you?</a></div><button id="enableNotifyBtn" onclick="enableNotifications()" style="display:none;width:100%;margin-bottom:0.75rem;background:#19241b;color:#fff;border:none;border-radius:8px;padding:0.6rem 0.9rem;font-size:0.82rem;cursor:pointer;font-family:'Inter',sans-serif;">🔔 Enable order-ready notifications</button>
           <label class="field-label">Full Name</label><input type="text" id="custName" placeholder="e.g. Maria Santos" style="margin-bottom:0.75rem;"/>
           <label class="field-label">Phone Number</label><input type="text" id="custPhone" placeholder="e.g. 09XX XXX XXXX" style="margin-bottom:0.75rem;"/>
           <label class="field-label">Notes (optional)</label><input type="text" id="custNotes" placeholder="e.g. extra hot, no ice..."/>
@@ -1324,11 +1324,51 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import{getDatabase,ref,set,get,push,update,remove,onValue}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import{getDatabase,ref,set,get,push,update,remove,onValue,runTransaction}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import{getMessaging,getToken,onMessage,isSupported}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
 
 const firebaseConfig={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 const app=initializeApp(firebaseConfig);
 const db=getDatabase(app);
+// ===================== WEB PUSH (FCM) =====================
+// Paste your Web Push certificate key here (Firebase Console > Project settings > Cloud Messaging > Web Push certificates).
+const VAPID_KEY="PASTE_YOUR_WEB_PUSH_CERTIFICATE_KEY_HERE";
+function _pushToastWire(messaging){onMessage(messaging,function(payload){var d=(payload&&(payload.data||payload.notification))||{};try{(window.accazaToast||function(){})((d.title?d.title+': ':'')+(d.body||'New notification'),'ok');}catch(e){}});}
+async function registerPushToken(){
+  try{
+    if(!VAPID_KEY||VAPID_KEY.indexOf('PASTE_')===0)return;
+    if(!('serviceWorker' in navigator)||!('Notification' in window))return;
+    if(Notification.permission!=='granted')return;
+    if(!(await isSupported()))return;
+    var reg=await navigator.serviceWorker.ready;
+    var messaging=getMessaging(app);
+    var token=await getToken(messaging,{vapidKey:VAPID_KEY,serviceWorkerRegistration:reg});
+    if(token){var u=getAppUser();if(u&&u.phone){var k=u.phone.replace(/[^0-9]/g,'');if(k){try{await update(ref(db,'appCustomers/'+k),{pushToken:token,pushTokenAt:Date.now()});}catch(e){}}}}
+    _pushToastWire(messaging);
+  }catch(e){}
+}
+async function setupPush(){
+  try{
+    if(!('Notification' in window))return;
+    if(Notification.permission==='default'){try{await Notification.requestPermission();}catch(e){}}
+    if(Notification.permission==='granted'){await registerPushToken();}
+  }catch(e){}
+  refreshNotifyPrompt();
+}
+function refreshNotifyPrompt(){
+  var b=document.getElementById('enableNotifyBtn');if(!b)return;
+  if(!isAppMode()||!('Notification' in window)){b.style.display='none';return;}
+  if(Notification.permission==='granted'){b.style.display='none';return;}
+  b.style.display='block';
+  b.textContent=(Notification.permission==='denied')?'🔔 Notifications blocked — tap for help':'🔔 Enable order-ready notifications';
+}
+window.enableNotifications=async function(){
+  if(!('Notification' in window))return;
+  if(Notification.permission==='denied'){(window.accazaToast||window.alert)('Notifications are turned off for Accaza. Please enable them in your browser/app settings (Site settings → Notifications), then reopen the app.');return;}
+  await setupPush();
+  refreshNotifyPrompt();
+};
+window.__setupPush=setupPush;
 
 // DB refs
 const settingsRef=ref(db,'settings'),staffAccountsRef=ref(db,'staffAccounts'),adminAccountsRef=ref(db,'adminAccounts'),ordersRef=ref(db,'orders'),archivedRef=ref(db,'archivedOrders'),archivedResRef=ref(db,'archivedReservations'),reservationsRef=ref(db,'reservations'),feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),calBlocksRef=ref(db,'calBlocks'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups'),appCustomersRef=ref(db,'appCustomers');
@@ -2015,9 +2055,10 @@ window.appLoginSubmit=async function(){
   try{var k=digits;var snap=await get(ref(db,'appCustomers/'+k));var cur=snap.val()||{};await update(ref(db,'appCustomers/'+k),{name:n,phone:p,orders:cur.orders||0,firstSeen:cur.firstSeen||Date.now(),lastSeen:Date.now()});}catch(e){}
   var ov=document.getElementById('appLoginOverlay');if(ov)ov.style.display='none';
   prefillAppUser();
+  setupPush();
 };
 window.appLogout=function(){try{localStorage.removeItem('accaza_app_user');}catch(e){}location.reload();};
-function appLoginInit(){if(!isAppMode())return;var ov=document.getElementById('appLoginOverlay');var u=getAppUser();if(!u){if(ov)ov.style.display='flex';}else{prefillAppUser();}}
+function appLoginInit(){if(!isAppMode())return;var ov=document.getElementById('appLoginOverlay');var u=getAppUser();if(!u){if(ov)ov.style.display='flex';}else{prefillAppUser();registerPushToken();refreshNotifyPrompt();}}
 window.renderAppCustomers=function(){
   var body=document.getElementById('appCustBody');if(!body)return;
   var arr=Object.keys(appCustomersMap).map(function(k){var v=appCustomersMap[k]||{};return {name:v.name||'\u2014',phone:v.phone||k,orders:v.orders||0,firstSeen:v.firstSeen,lastOrder:v.lastOrder};});
@@ -2039,6 +2080,28 @@ window.exportAppCustomers=function(){
 };
 onValue(appCustomersRef,function(snap){appCustomersMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderAppCustomers();});
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',appLoginInit);else appLoginInit();
+window.notifyCustomer=function(oid){
+  var o=adminOrdersMap[oid]; if(!o)return;
+  var first=((o.name||'').trim().split(' ')[0])||'there';
+  var isDel=o.type==='Delivery';
+  var msg=isDel
+    ?'Hi '+first+'! \u2615 Your Accaza order #'+oid+' is ready for delivery. Kindly let us know once you\u2019ve booked your preferred delivery/courier service so we can hand it over. Maraming salamat! \u2014 Accaza Coffee House'
+    :'Hi '+first+'! \u2615 Your Accaza order #'+oid+' is now ready for pick-up. See you soon at Saratoga Ave, La Mediterranea Subd., Governor\u2019s Drive, Dasmari\u00f1as. \u2014 Accaza Coffee House';
+  var raw=((o.contact||o.phone||'')+'').replace(/[^0-9]/g,'');
+  var intl=raw; if(intl.indexOf('0')===0){intl='63'+intl.slice(1);} else if(intl.indexOf('63')!==0&&intl.length===10&&intl.charAt(0)==='9'){intl='63'+intl;}
+  var method=((o.contactMethod||'')+'').toLowerCase();
+  try{if(navigator.clipboard)navigator.clipboard.writeText(msg);}catch(e){}
+  function go(url,blank){var a=document.createElement('a');a.href=url;if(blank){a.target='_blank';a.rel='noopener';}document.body.appendChild(a);a.click();a.remove();}
+  var enc=encodeURIComponent(msg);
+  var t=window.accazaToast||function(){};
+  if(method==='whatsapp'&&intl){go('https://wa.me/'+intl+'?text='+enc,true);t('Opening WhatsApp\u2026','ok');}
+  else if(method==='sms'&&raw){go('sms:'+raw+'?&body='+enc,false);t('Opening Messages\u2026','ok');}
+  else if(method==='viber'&&intl){go('viber://chat?number=%2B'+intl,false);t('Viber opened \u2014 message copied, just paste & send','ok');}
+  else if(method==='email'&&o.contact){go('mailto:'+encodeURIComponent(o.contact)+'?subject='+encodeURIComponent('Your Accaza Order #'+oid)+'&body='+enc,false);t('Opening email\u2026','ok');}
+  else if(intl){go('https://wa.me/'+intl+'?text='+enc,true);t('Opening WhatsApp \u2014 message copied','ok');}
+  else{t('Message copied to clipboard','ok');}
+};
+function _hashSig(s){var h=0,i;for(i=0;i<s.length;i++){h=((h<<5)-h+s.charCodeAt(i))|0;}return (h>>>0).toString(36);}
 window.placeOrder=async function(){
   if(window._placingOrder)return;
   const name=document.getElementById('custName').value.trim(),phone=document.getElementById('custPhone').value.trim();
@@ -2050,15 +2113,21 @@ window.placeOrder=async function(){
   const total=Object.values(cart).reduce((s,c)=>s+c.qty*c.unitTotal,0);
   const itemsArr=Object.values(cart).map(c=>c.name+(c.details?' ('+c.details+')':'')+' x'+c.qty);
   const _sig=phone+'|'+itemsArr.join('~')+'|'+total;
-  if(window._lastOrderSig===_sig&&Date.now()-(window._lastOrderTime||0)<30000){alert('Looks like you just placed this exact order — please try again after 30 seconds.');return;}
+  var _persist=(function(){try{var v=localStorage.getItem('accaza_lastsig');if(!v)return null;var ix=v.lastIndexOf('@@');return {sig:v.slice(0,ix),t:parseInt(v.slice(ix+2))||0};}catch(e){return null;}})();
+  if((window._lastOrderSig===_sig&&Date.now()-(window._lastOrderTime||0)<30000)||(_persist&&_persist.sig===_sig&&Date.now()-_persist.t<30000)){alert('Looks like you just placed this exact order — please try again after 30 seconds.');return;}
   window._placingOrder=true;
   const _btn=document.querySelector('.btn-place-order');_btn.disabled=true;_btn.style.opacity='0.5';_btn.textContent='⏳ Placing order…';
+  try{
+    var _sigKey=phone.replace(/[^0-9]/g,'')+'_'+_hashSig(_sig);
+    var _lock=await runTransaction(ref(db,'orderLocks/'+_sigKey),function(cur){var now=Date.now();if(cur&&(now-(cur.t||0)<90000))return;return {t:Date.now(),id:'pending'};});
+    if(_lock&&_lock.committed===false){window._placingOrder=false;_btn.disabled=false;_btn.style.opacity='1';_btn.textContent='Place Order';alert('This looks like a duplicate of an order you just placed. If it is intentional, please wait a minute and try again.');return;}
+  }catch(_le){/* offline or transaction error: allow order to proceed */}
   const orderId='ORD-'+Date.now().toString().slice(-6);
   const newOrder={id:orderId,name,phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':paymentType==='maya'?'PayMaya':'Bank Transfer',contact:document.getElementById('custContact').value.trim(),contactMethod,items:itemsArr.join(', '),total,notes:document.getElementById('custNotes').value.trim(),status:'Pending',receivedByCustomer:false,time:new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now(),proof:proofSrc};
   try{
     await set(ref(db,'orders/'+orderId),newOrder);
     try{ if(isAppMode()){ var _u=getAppUser(); var _ph=(_u&&_u.phone)||phone; var _k=_ph.replace(/[^0-9]/g,''); if(_k){ var _snap=await get(ref(db,'appCustomers/'+_k)); var _c=_snap.val()||{}; await update(ref(db,'appCustomers/'+_k),{name:(_u&&_u.name)||name,phone:_ph,orders:(_c.orders||0)+1,firstSeen:_c.firstSeen||Date.now(),lastOrder:Date.now(),lastOrderId:orderId}); } } }catch(_e){}
-    window._lastOrderSig=_sig;window._lastOrderTime=Date.now();window._placingOrder=false;_btn.textContent='✅ Order Placed!';
+    window._lastOrderSig=_sig;window._lastOrderTime=Date.now();window._placingOrder=false;_btn.textContent='✅ Order Placed!';try{localStorage.setItem('accaza_lastsig',_sig+'@@'+Date.now());}catch(e){}
     myOrderIds.push(orderId);localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));
     document.getElementById('displayOrderId').textContent=orderId;document.getElementById('orderConfirm').style.display='block';
     document.querySelector('.btn-place-order').disabled=true;document.querySelector('.btn-place-order').style.opacity='0.5';
@@ -2266,10 +2335,11 @@ function renderOrders(){
       +(o.proof?'<div style="margin:0.5rem 0;"><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;">📎 Proof:</p><img src="'+o.proof+'" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid var(--cd);cursor:pointer;" onclick="window.open(\''+o.proof+'\',\'_blank\')"/></div>':'<p style="font-size:0.75rem;color:#c0392b;margin:0.3rem 0;">⚠️ No proof of payment</p>')
       +'<div class="order-admin-footer"><span class="order-total-tag">₱'+(o.total||0).toLocaleString()+' · '+o.payment+'</span><div style="display:flex;align-items:center;gap:0.5rem;">'
       +(isReceived?'<span style="font-size:0.8rem;color:#1b5e20;font-weight:500;">✅ Received</span>':'<select class="status-select" data-orderid="'+o.id+'"><option'+(o.status==='Pending'?' selected':'')+'>Pending</option><option'+(o.status==='Confirmed'?' selected':'')+'>Confirmed</option><option'+(o.status==='Preparing'?' selected':'')+'>Preparing</option><option'+(o.status==='Completed'?' selected':'')+'>Completed</option><option'+(o.status==='Rejected'?' selected':'')+' style="color:#c0392b;">Rejected</option></select>')
-      +(canArchive?'<button data-archive="'+o.id+'" style="background:#e2e3e5;border:1px solid #bbb;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#41464b;cursor:pointer;">📦 Archive</button>':'')+'<button onclick="printOrder(\''+o.id+'\')" style="background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#e65100;cursor:pointer;font-weight:600;">🖨️ Print</button>'
+      +(canArchive?'<button data-archive="'+o.id+'" style="background:#e2e3e5;border:1px solid #bbb;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#41464b;cursor:pointer;">📦 Archive</button>':'')+(o.status!=='Received'?'<button data-notify="'+o.id+'" style="background:#e7f5ec;border:1px solid #8fd0a8;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#1b7a43;cursor:pointer;font-weight:600;">🔔 Notify</button>':'')+'<button onclick="printOrder(\''+o.id+'\')" style="background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#e65100;cursor:pointer;font-weight:600;">🖨️ Print</button>'
       +'</div></div></div>';
   }).join('');
   el.querySelectorAll('.status-select[data-orderid]').forEach(function(sel){sel.addEventListener('change',function(){update(ref(db,'orders/'+this.dataset.orderid),{status:this.value});});});
+  el.querySelectorAll('button[data-notify]').forEach(function(b){b.addEventListener('click',function(){notifyCustomer(this.dataset.notify);});});
   el.querySelectorAll('button[data-archive]').forEach(function(btn){btn.addEventListener('click',function(){const oid=this.dataset.archive,o=adminOrdersMap[oid];if(!o)return;showDeletePopup('Archive order from '+o.name,async function(){await set(ref(db,'archivedOrders/'+oid),{...o,status:'Archived',prevStatus:o.status,archivedAt:Date.now(),archivedDate:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'})});await remove(ref(db,'orders/'+oid));});});});
 }
 
@@ -3749,3 +3819,4 @@ function heroInstallClick(){
 </div>
 </body>
 </html>
+    
