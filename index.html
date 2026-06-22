@@ -572,7 +572,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
     <li><a href="#home">Home</a></li><li><a href="#reel">Reel</a></li><li><a href="#menu">Menu</a></li>
     <li><a href="#order">Order</a></li><li><a href="#orderTracker">📋 Track Order</a></li>
     <li><a href="#reserve">Reserve</a></li><li><a href="#reviews">Reviews</a></li>
-    <li><a href="#feedback">Feedback</a></li><li><a href="#gallery">Gallery</a></li><li><a href="#about">About</a></li><li><a href="#contact">Contact</a></li>
+    <li><a href="#feedback">Feedback</a></li><li><a href="#gallery">Gallery</a></li><li><a href="about.html">About</a></li><li><a href="#contact">Contact</a></li>
     <li id="navAvail" style="display:none;"><a href="#availSection" style="color:#c9a36a;font-weight:500;">🔄 Availability</a></li>
     <li id="navComments" style="display:none;"><a href="#commentsSection" style="color:#c9a36a;font-weight:500;">📩 Comments</a></li>
     <li id="navAdminPanel" style="display:none;"><a href="#adminDash" id="navAdminPanelLink" style="color:#c9a36a;font-weight:600;">🔐 Admin Panel</a></li>
@@ -2067,6 +2067,7 @@ function updateCartDisplay(){
 
 window.goToCheckout=function(e){if(e&&e.stopPropagation)e.stopPropagation();if(!Object.keys(cart).length)return;var f=document.querySelector('.form-box');if(f)f.scrollIntoView({behavior:'smooth',block:'start'});};
 window.setType=function(t){orderType=t;document.getElementById('btnPickup').classList.toggle('active',t==='pickup');document.getElementById('btnDelivery').classList.toggle('active',t==='delivery');document.getElementById('deliveryField').style.display=t==='delivery'?'block':'none';};
+window.showProof=function(src){var m=document.getElementById('proofModal');var im=document.getElementById('proofModalImg');if(im)im.src=src;if(m)m.style.display='flex';};
 window.setPayment=function(p){paymentType=p;
   document.getElementById('btnGcash').classList.toggle('active',p==='gcash');
   document.getElementById('btnBank').classList.toggle('active',p==='bank');
@@ -2406,7 +2407,7 @@ function renderOrders(){
       +'<div class="order-admin-items">🛒 '+o.items+'</div>'
       +(o.address?'<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📍 '+o.address+'</div>':'')
       +(o.notes?'<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📝 '+o.notes+'</div>':'')
-      +(o.proof?'<div style="margin:0.5rem 0;"><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;">📎 Proof:</p><img src="'+o.proof+'" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid var(--cd);cursor:pointer;" onclick="window.open(\''+o.proof+'\',\'_blank\')"/></div>':'<p style="font-size:0.75rem;color:#c0392b;margin:0.3rem 0;">⚠️ No proof of payment</p>')
+      +(o.proof?'<div style="margin:0.5rem 0;"><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;">📎 Proof:</p><img src="'+o.proof+'" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid var(--cd);cursor:pointer;" onclick="showProof(this.src)"/></div>':'<p style="font-size:0.75rem;color:#c0392b;margin:0.3rem 0;">⚠️ No proof of payment</p>')
       +'<div class="order-admin-footer"><span class="order-total-tag">₱'+(o.total||0).toLocaleString()+' · '+o.payment+'</span><div style="display:flex;align-items:center;gap:0.5rem;">'
       +(isReceived?'<span style="font-size:0.8rem;color:#1b5e20;font-weight:500;">✅ Received</span>':'<select class="status-select" data-orderid="'+o.id+'"><option'+(o.status==='Pending'?' selected':'')+'>Pending</option><option'+(o.status==='Confirmed'?' selected':'')+'>Confirmed</option><option'+(o.status==='Preparing'?' selected':'')+'>Preparing</option><option'+(o.status==='Completed'?' selected':'')+'>Completed</option><option'+(o.status==='Rejected'?' selected':'')+' style="color:#c0392b;">Rejected</option></select>')
       +(canArchive?'<button data-archive="'+o.id+'" style="background:#e2e3e5;border:1px solid #bbb;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#41464b;cursor:pointer;">📦 Archive</button>':'')+(o.status!=='Received'?'<button data-notify="'+o.id+'" style="background:#e7f5ec;border:1px solid #8fd0a8;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#1b7a43;cursor:pointer;font-weight:600;">🔔 Notify</button>':'')+'<button onclick="printOrder(\''+o.id+'\')" style="background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#e65100;cursor:pointer;font-weight:600;">🖨️ Print</button>'
@@ -3365,6 +3366,7 @@ window.selectLoginRole=function(role){
 // ── LOGIN SUCCESS ───────────────────────────────────────────
 async function loginSuccess(role,username,uid){
   currentUser={role,username,uid};
+  try{localStorage.setItem('accaza_admin_session',JSON.stringify({role:role,username:username,uid:uid||null}));}catch(e){}
   try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}
   document.getElementById('adminUser').value='';
   document.getElementById('adminPass').value='';
@@ -3424,6 +3426,8 @@ async function loginSuccess(role,username,uid){
 }
 
 // ── CHECK LOGIN ─────────────────────────────────────────────
+// Restore admin/staff session across page loads
+(function(){try{var _ss=JSON.parse(localStorage.getItem('accaza_admin_session')||'null');if(!_ss||!_ss.role)return;var _go=function(){try{loginSuccess(_ss.role,_ss.username,_ss.uid);}catch(e){}if(location.hash){setTimeout(function(){var t=document.getElementById(location.hash.slice(1));if(t)t.scrollIntoView();},450);}};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',_go);else _go();}catch(e){}})();
 window.checkLogin=async function(){
   var username=(document.getElementById('adminUser').value||'').trim().toLowerCase();
   var pass=document.getElementById('adminPass').value;
@@ -3463,6 +3467,7 @@ window.checkLogin=async function(){
 
 window.logoutAdmin=function(){
   adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;currentUser=null;currentLoginRole=null;
+  try{localStorage.removeItem('accaza_admin_session');}catch(e){}
   clearOrderAlert();
   document.body.classList.remove('staff-mode');
   // Hide all tab content panels (they live outside adminDash)
@@ -3897,6 +3902,10 @@ function heroInstallClick(){
   <h2 style="font-family:'Playfair Display',serif;font-size:1.6rem;margin:0 0 0.4rem;">Your order is ready!</h2>
   <p id="orderReadySub" style="font-size:0.95rem;color:rgba(255,255,255,0.8);margin:0 0 1.5rem;"></p>
   <button onclick="dismissReadyAlert()" style="background:#b08d57;color:#fff;border:none;border-radius:10px;padding:0.85rem 2.2rem;font-size:1rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;">Got it 🎉</button>
+</div>
+<div id="proofModal" onclick="this.style.display='none'" style="display:none;position:fixed;inset:0;z-index:100002;background:rgba(0,0,0,0.9);align-items:center;justify-content:center;padding:1rem;cursor:zoom-out;flex-direction:column;gap:0.75rem;">
+  <img id="proofModalImg" src="" alt="Proof of payment" style="max-width:96vw;max-height:88vh;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,0.6);"/>
+  <p style="color:rgba(255,255,255,0.7);font-size:0.8rem;font-family:'Inter',sans-serif;">Tap anywhere to close</p>
 </div>
 </body>
 </html>

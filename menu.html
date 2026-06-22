@@ -13,8 +13,7 @@
 <meta property="og:url" content="https://accazacoffee.com/menu.html"><meta property="og:type" content="website">
 <meta property="og:site_name" content="Accaza Coffee House"><meta property="og:locale" content="en_PH">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" type="image/x-icon" href="/favicon.ico"/> 
-<link rel="icon" type="image/png" href="/favicon_32X32.png"/>
+<link rel="icon" type="image/x-icon" href="/favicon.ico"/>
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon_32x32.png"/>
 <link rel="apple-touch-icon" sizes="180x180" href="/favicon_180x180.png"/>
 <meta name="theme-color" content="#19241b"/>
@@ -562,6 +561,9 @@
   <ul class="nav-links">
     <li><a href="index.html">Home</a></li><li><a href="menu.html" class="active">Menu</a></li><li><a href="reservations.html">Reservations</a></li><li><a href="about.html">About</a></li><li><a href="contact.html">Contact</a></li>
     <li><a class="nav-cta" href="index.html#order">Order Now</a></li>
+    <li id="navAvail" style="display:none;"><a href="index.html#availSection" style="color:#c9a36a;font-weight:500;">🔄 Availability</a></li>
+    <li id="navComments" style="display:none;"><a href="index.html#commentsSection" style="color:#c9a36a;font-weight:500;">📩 Comments</a></li>
+    <li id="navAdminPanel" style="display:none;"><a href="index.html#adminDash" id="navAdminPanelLink" style="color:#c9a36a;font-weight:600;">🔐 Admin Panel</a></li>
   </ul>
   <button class="hamburger" id="hamburgerBtn" aria-label="Open menu"><span></span><span></span><span></span></button>
 </nav>
@@ -602,6 +604,12 @@
   pills.forEach(function(p){p.addEventListener('click',function(){showCat(this.getAttribute('data-target'));});});
   var yr=document.getElementById('yr');if(yr)yr.textContent=new Date().getFullYear();
 })();
+</script>
+<script>
+(function(){try{var ss=JSON.parse(localStorage.getItem("accaza_admin_session")||"null");if(!ss||!ss.role)return;
+["navAvail","navComments","navAdminPanel"].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display="";});
+if(ss.role==="staff"){var a=document.getElementById("navAvail");if(a)a.style.display="none";var l=document.getElementById("navAdminPanelLink");if(l)l.textContent="🔐 Staff Panel";}
+}catch(e){}})();
 </script>
 </body>
 </html>
