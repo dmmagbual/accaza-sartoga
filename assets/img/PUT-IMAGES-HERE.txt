@@ -1,0 +1,7 @@
+Place site images here:
+- logo.png (nav/footer logo)
+- favicon.png
+- og-image.jpg (social share)
+- video-poster.jpg
+- before.jpg / after.jpg (services before/after slider)
+- client logos
