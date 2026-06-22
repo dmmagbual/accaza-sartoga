@@ -742,7 +742,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
             <button class="type-btn" id="btnDelivery" onclick="setType('delivery')">🛵 Delivery</button>
           </div>
           <div id="deliveryField" style="display:none;margin-top:1rem;"><label class="field-label">Delivery Address</label><textarea id="deliveryAddr" rows="2" placeholder="Enter your full delivery address..."></textarea><p style="font-size:0.78rem;color:#856404;background:#fff3cd;border:1px solid #f0ad4e;border-radius:6px;padding:0.55rem 0.85rem;margin-top:0.5rem;line-height:1.5;">📦 Delivery fees shall be shouldered by the customer. You may arrange delivery through your preferred courier service.</p></div>
-          <h3 class="order-section-title" style="margin-top:1.5rem;">4. Your Details</h3>
+          <h3 class="order-section-title" style="margin-top:1.5rem;">4. Your Details</h3><div id="appUserIndicator" style="display:none;background:rgba(176,141,87,0.12);border:1px solid rgba(176,141,87,0.4);border-radius:8px;padding:0.55rem 0.85rem;margin-bottom:0.75rem;font-size:0.8rem;color:var(--tm);">👋 Signed in as <strong id="appUserName"></strong> <a onclick="appLogout()" style="color:var(--bd);cursor:pointer;text-decoration:underline;margin-left:0.35rem;">Not you?</a></div>
           <label class="field-label">Full Name</label><input type="text" id="custName" placeholder="e.g. Maria Santos" style="margin-bottom:0.75rem;"/>
           <label class="field-label">Phone Number</label><input type="text" id="custPhone" placeholder="e.g. 09XX XXX XXXX" style="margin-bottom:0.75rem;"/>
           <label class="field-label">Notes (optional)</label><input type="text" id="custNotes" placeholder="e.g. extra hot, no ice..."/>
@@ -1063,6 +1063,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
       <button class="admin-tab" onclick="switchTab('reservations',this)">📅 Reservations</button>
       <button class="admin-tab" onclick="switchTab('calendar',this)">🗓️ Calendar</button>
       <button class="admin-tab" onclick="switchTab('reviews',this)">⭐ Reviews</button>
+      <button class="admin-tab" onclick="switchTab('appcustomers',this)">👥 App Customers</button>
       
       <button class="admin-tab" onclick="switchTab('payment',this)">💳 Payment Details</button>
       <button class="admin-tab" onclick="switchTab('staffaccounts',this)">👥 Staff Accounts</button>
@@ -1164,6 +1165,16 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
       <div id="adminReviewsList"></div>
     </div>
     <!-- PAYMENT -->
+    <div id="tab-appcustomers" class="admin-tab-content" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.6rem;margin-bottom:1rem;">
+        <div><h3 style="margin:0;font-family:'Playfair Display',serif;color:var(--bd);">App Customers</h3><p style="font-size:0.8rem;color:var(--tl);margin:0.2rem 0 0;">Customers who signed in on the installed app, ranked by orders — for marketing &amp; promos.</p></div>
+        <div style="display:flex;gap:0.6rem;align-items:center;"><span id="appCustSummary" style="font-size:0.8rem;color:var(--tm);"></span><button onclick="exportAppCustomers()" style="background:#19241b;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.95rem;font-size:0.8rem;cursor:pointer;font-family:'Inter',sans-serif;">⬇ Export CSV</button></div>
+      </div>
+      <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+        <thead><tr style="text-align:left;border-bottom:2px solid var(--cd);color:var(--tm);"><th style="padding:0.55rem;">#</th><th style="padding:0.55rem;">Name</th><th style="padding:0.55rem;">Phone</th><th style="padding:0.55rem;text-align:center;">App Orders</th><th style="padding:0.55rem;">First Seen</th><th style="padding:0.55rem;">Last Order</th></tr></thead>
+        <tbody id="appCustBody"><tr><td colspan="6" style="padding:1rem;color:var(--tl);text-align:center;">No app customers yet.</td></tr></tbody>
+      </table></div>
+    </div>
     <div id="tab-payment" class="admin-tab-content" style="display:none;">
       <div class="payment-edit-grid">
         <div class="payment-edit-card"><div class="pay-toggle-row"><h4>📱 GCash</h4><label class="pay-switch" title="Enable/Disable for customers"><input type="checkbox" id="chkGcash" onchange="savePayment()" checked/><span class="pay-slider"></span></label></div><p class="pay-disabled-note" id="chkGcashNote">⚠️ Hidden from customers</p><label class="field-label">Number</label><input type="text" id="editGcashNum" value="0927 692 4831"/><label class="field-label" style="margin-top:0.75rem;">Name</label><input type="text" id="editGcashName" value="ACCAZA"/><button class="btn-save" onclick="savePayment()">Save GCash</button></div>
@@ -1320,7 +1331,7 @@ const app=initializeApp(firebaseConfig);
 const db=getDatabase(app);
 
 // DB refs
-const settingsRef=ref(db,'settings'),staffAccountsRef=ref(db,'staffAccounts'),adminAccountsRef=ref(db,'adminAccounts'),ordersRef=ref(db,'orders'),archivedRef=ref(db,'archivedOrders'),archivedResRef=ref(db,'archivedReservations'),reservationsRef=ref(db,'reservations'),feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),calBlocksRef=ref(db,'calBlocks'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups');
+const settingsRef=ref(db,'settings'),staffAccountsRef=ref(db,'staffAccounts'),adminAccountsRef=ref(db,'adminAccounts'),ordersRef=ref(db,'orders'),archivedRef=ref(db,'archivedOrders'),archivedResRef=ref(db,'archivedReservations'),reservationsRef=ref(db,'reservations'),feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),calBlocksRef=ref(db,'calBlocks'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups'),appCustomersRef=ref(db,'appCustomers');
 
 let currentAdminHash=null,staffAccountsMap={},adminAccountsMap={},staffLoggedIn=false,superAdminLoggedIn=false,currentUser=null,currentLoginRole=null;
 const SUPER_ADMIN_USERNAME='superadmin',CAFE_PHONE='639276924831',CAFE_EMAIL='mariadaniela@gmail.com',MAX_GUESTS=30;
@@ -1986,6 +1997,48 @@ window.setContact=function(type){contactMethod=type;['Whatsapp','Viber','Sms','C
 window.previewProof=function(input){if(!input.files||!input.files[0])return;const r=new FileReader();r.onload=function(e){document.getElementById('proofImg').src=e.target.result;document.getElementById('proofFileName').textContent=input.files[0].name;document.getElementById('uploadPlaceholder').style.display='none';document.getElementById('uploadPreview').style.display='block';document.getElementById('uploadBox').style.borderColor='#2d9e5f';};r.readAsDataURL(input.files[0]);};
 window.removeProof=function(e){e.stopPropagation();document.getElementById('paymentProof').value='';document.getElementById('proofImg').src='';document.getElementById('uploadPlaceholder').style.display='block';document.getElementById('uploadPreview').style.display='none';document.getElementById('uploadBox').style.borderColor='var(--cd)';};
 
+// ===================== APP CUSTOMER LOGIN + TRACKING =====================
+let appCustomersMap={};
+function isAppMode(){return document.documentElement.classList.contains('app-mode')||window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;}
+function getAppUser(){try{return JSON.parse(localStorage.getItem('accaza_app_user')||'null');}catch(e){return null;}}
+function prefillAppUser(){var u=getAppUser();if(!u)return;var n=document.getElementById('custName'),p=document.getElementById('custPhone');if(n&&!n.value)n.value=u.name;if(p&&!p.value)p.value=u.phone;var ind=document.getElementById('appUserIndicator');if(ind){var nm=document.getElementById('appUserName');if(nm)nm.textContent=u.name;ind.style.display='block';}}
+window.appLoginSubmit=async function(){
+  var n=(document.getElementById('appLoginName').value||'').trim();
+  var p=(document.getElementById('appLoginPhone').value||'').trim();
+  var err=document.getElementById('appLoginErr');
+  if(n.length<2){err.textContent='Please enter your full name.';err.style.display='block';return;}
+  var digits=p.replace(/[^0-9]/g,'');
+  if(digits.length<10){err.textContent='Please enter a valid phone number.';err.style.display='block';return;}
+  err.style.display='none';
+  var user={name:n,phone:p,since:Date.now()};
+  try{localStorage.setItem('accaza_app_user',JSON.stringify(user));}catch(e){}
+  try{var k=digits;var snap=await get(ref(db,'appCustomers/'+k));var cur=snap.val()||{};await update(ref(db,'appCustomers/'+k),{name:n,phone:p,orders:cur.orders||0,firstSeen:cur.firstSeen||Date.now(),lastSeen:Date.now()});}catch(e){}
+  var ov=document.getElementById('appLoginOverlay');if(ov)ov.style.display='none';
+  prefillAppUser();
+};
+window.appLogout=function(){try{localStorage.removeItem('accaza_app_user');}catch(e){}location.reload();};
+function appLoginInit(){if(!isAppMode())return;var ov=document.getElementById('appLoginOverlay');var u=getAppUser();if(!u){if(ov)ov.style.display='flex';}else{prefillAppUser();}}
+window.renderAppCustomers=function(){
+  var body=document.getElementById('appCustBody');if(!body)return;
+  var arr=Object.keys(appCustomersMap).map(function(k){var v=appCustomersMap[k]||{};return {name:v.name||'\u2014',phone:v.phone||k,orders:v.orders||0,firstSeen:v.firstSeen,lastOrder:v.lastOrder};});
+  arr.sort(function(a,b){return (b.orders-a.orders)||((b.lastOrder||0)-(a.lastOrder||0));});
+  var sum=document.getElementById('appCustSummary');var total=arr.reduce(function(s,c){return s+c.orders;},0);
+  if(sum)sum.textContent=arr.length+' customers \u00b7 '+total+' app orders';
+  function d(ts){if(!ts)return '\u2014';try{return new Date(ts).toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'});}catch(e){return '\u2014';}}
+  if(!arr.length){body.innerHTML='<tr><td colspan="6" style="padding:1rem;color:var(--tl);text-align:center;">No app customers yet.</td></tr>';return;}
+  body.innerHTML=arr.map(function(c,i){return '<tr style="border-bottom:1px solid var(--cr);"><td style="padding:0.55rem;color:var(--tl);">'+(i+1)+'</td><td style="padding:0.55rem;font-weight:500;">'+escHtml(c.name)+'</td><td style="padding:0.55rem;">'+escHtml(c.phone)+'</td><td style="padding:0.55rem;text-align:center;font-weight:700;color:var(--bd);">'+c.orders+'</td><td style="padding:0.55rem;color:var(--tm);">'+d(c.firstSeen)+'</td><td style="padding:0.55rem;color:var(--tm);">'+d(c.lastOrder)+'</td></tr>';}).join('');
+};
+window.exportAppCustomers=function(){
+  var arr=Object.keys(appCustomersMap).map(function(k){return appCustomersMap[k]||{};});
+  arr.sort(function(a,b){return (b.orders||0)-(a.orders||0);});
+  function d(ts){if(!ts)return '';try{return new Date(ts).toLocaleDateString('en-PH');}catch(e){return '';}}
+  var rows=[['Name','Phone','App Orders','First Seen','Last Order']];
+  arr.forEach(function(c){rows.push([c.name||'',c.phone||'',c.orders||0,d(c.firstSeen),d(c.lastOrder)]);});
+  var csv=rows.map(function(r){return r.map(function(x){return '"'+String(x).replace(/"/g,'""')+'"';}).join(',');}).join(String.fromCharCode(10));
+  var blob=new Blob([csv],{type:'text/csv'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='accaza-app-customers.csv';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+};
+onValue(appCustomersRef,function(snap){appCustomersMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderAppCustomers();});
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',appLoginInit);else appLoginInit();
 window.placeOrder=async function(){
   if(window._placingOrder)return;
   const name=document.getElementById('custName').value.trim(),phone=document.getElementById('custPhone').value.trim();
@@ -2004,6 +2057,7 @@ window.placeOrder=async function(){
   const newOrder={id:orderId,name,phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':paymentType==='maya'?'PayMaya':'Bank Transfer',contact:document.getElementById('custContact').value.trim(),contactMethod,items:itemsArr.join(', '),total,notes:document.getElementById('custNotes').value.trim(),status:'Pending',receivedByCustomer:false,time:new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now(),proof:proofSrc};
   try{
     await set(ref(db,'orders/'+orderId),newOrder);
+    try{ if(isAppMode()){ var _u=getAppUser(); var _ph=(_u&&_u.phone)||phone; var _k=_ph.replace(/[^0-9]/g,''); if(_k){ var _snap=await get(ref(db,'appCustomers/'+_k)); var _c=_snap.val()||{}; await update(ref(db,'appCustomers/'+_k),{name:(_u&&_u.name)||name,phone:_ph,orders:(_c.orders||0)+1,firstSeen:_c.firstSeen||Date.now(),lastOrder:Date.now(),lastOrderId:orderId}); } } }catch(_e){}
     window._lastOrderSig=_sig;window._lastOrderTime=Date.now();window._placingOrder=false;_btn.textContent='✅ Order Placed!';
     myOrderIds.push(orderId);localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));
     document.getElementById('displayOrderId').textContent=orderId;document.getElementById('orderConfirm').style.display='block';
@@ -3292,6 +3346,7 @@ window.switchTab=function(tab,btn){
   if(tab==='reviews')renderAdminReviews();
   if(tab==='calendar')renderAdminCalendar();
   if(tab==='dashboard')renderDashboard();
+  if(tab==='appcustomers')renderAppCustomers();
 };
 
 // ── CHATBOT ──
@@ -3680,5 +3735,17 @@ function heroInstallClick(){
 })();
 </script>
 
+<div id="appLoginOverlay" style="display:none;position:fixed;inset:0;z-index:99999;background:#19241b;color:#e0d4c6;flex-direction:column;align-items:center;justify-content:center;padding:1.5rem;font-family:'Inter',sans-serif;">
+  <div style="max-width:360px;width:100%;text-align:center;">
+    <div style="font-size:2.4rem;margin-bottom:0.4rem;">☕</div>
+    <h2 style="font-family:'Playfair Display',serif;color:#fff;margin:0 0 0.4rem;">Welcome to Accaza</h2>
+    <p style="font-size:0.85rem;color:rgba(224,212,198,0.75);margin:0 0 1.4rem;">Please sign in to start ordering.</p>
+    <input id="appLoginName" type="text" placeholder="Full Name" autocomplete="name" style="width:100%;box-sizing:border-box;padding:0.8rem 1rem;margin-bottom:0.7rem;border:1px solid rgba(176,141,87,0.5);border-radius:8px;background:#11190f;color:#fff;font-size:0.95rem;"/>
+    <input id="appLoginPhone" type="tel" placeholder="Phone Number (09XX XXX XXXX)" autocomplete="tel" style="width:100%;box-sizing:border-box;padding:0.8rem 1rem;margin-bottom:0.5rem;border:1px solid rgba(176,141,87,0.5);border-radius:8px;background:#11190f;color:#fff;font-size:0.95rem;"/>
+    <p id="appLoginErr" style="display:none;color:#ff9b9b;font-size:0.78rem;margin:0 0 0.6rem;"></p>
+    <button onclick="appLoginSubmit()" style="width:100%;padding:0.85rem;border:none;border-radius:8px;background:#b08d57;color:#fff;font-size:0.95rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;">Enter App</button>
+    <p style="font-size:0.7rem;color:rgba(224,212,198,0.5);margin-top:1rem;line-height:1.5;">We use your name and number only to serve you better and keep your order history.</p>
+  </div>
+</div>
 </body>
 </html>
