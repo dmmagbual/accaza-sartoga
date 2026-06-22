@@ -1644,6 +1644,36 @@ window.ackNewOrders=function(){
   var ob=document.getElementById('tabBtnOrders');if(ob)ob.click();
   var ad=document.getElementById('adminDash');if(ad)ad.scrollIntoView({behavior:'smooth'});
 };
+// ===== CUSTOMER 'ORDER READY' IN-APP ALERT (free; works while the app is open) =====
+var _readyAlerted;try{_readyAlerted=new Set(JSON.parse(localStorage.getItem('accaza_ready_alerted')||'[]'));}catch(e){_readyAlerted=new Set();}
+var _ordersSeeded=false,_readyTimer=null,_readyStop=null;
+function _saveReadyAlerted(){try{localStorage.setItem('accaza_ready_alerted',JSON.stringify(Array.from(_readyAlerted)));}catch(e){}}
+function stopReadyAlert(){if(_readyTimer){clearInterval(_readyTimer);_readyTimer=null;}if(_readyStop){clearTimeout(_readyStop);_readyStop=null;}}
+window.dismissReadyAlert=function(){stopReadyAlert();var el=document.getElementById('orderReadyAlert');if(el)el.style.display='none';};
+function triggerReadyAlert(o){
+  var el=document.getElementById('orderReadyAlert');if(!el)return;
+  var sub=document.getElementById('orderReadySub');
+  if(sub)sub.textContent='Order #'+(o.id||'')+' \u2014 '+((o.type==='Delivery')?'ready for delivery':'ready for pick-up');
+  el.style.display='flex';
+  try{playChime();}catch(e){}
+  stopReadyAlert();
+  _readyTimer=setInterval(function(){try{playChime();}catch(e){}try{if(navigator.vibrate)navigator.vibrate([500,200,500]);}catch(e){}},3800);
+  try{if(navigator.vibrate)navigator.vibrate([500,200,500,200,500]);}catch(e){}
+  _readyStop=setTimeout(stopReadyAlert,45000);
+}
+function checkMyReadyOrders(){
+  try{
+    myOrderIds.forEach(function(id){
+      var o=adminOrdersMap[id];if(!o)return;
+      if(o.status==='Completed'){
+        if(!_ordersSeeded){_readyAlerted.add(id);}
+        else if(!_readyAlerted.has(id)){_readyAlerted.add(id);_saveReadyAlerted();triggerReadyAlert(o);}
+      }else if(_readyAlerted.has(id)){_readyAlerted.delete(id);_saveReadyAlerted();}
+    });
+    if(!_ordersSeeded){_ordersSeeded=true;_saveReadyAlerted();}
+  }catch(e){}
+}
+(function(){var un=function(){try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}document.removeEventListener('touchstart',un);document.removeEventListener('click',un);};document.addEventListener('touchstart',un,{passive:true});document.addEventListener('click',un);})();
 onValue(ordersRef,snap=>{
   var prevIds=knownOrderIds;
   adminOrdersMap=snap.val()||{};
@@ -1654,7 +1684,7 @@ onValue(ordersRef,snap=>{
   }
   knownOrderIds=ids;
   if(adminLoggedIn||staffLoggedIn){renderOrders();renderDashboard();}
-  updateStats();renderCustomerOrders();
+  updateStats();renderCustomerOrders();checkMyReadyOrders();
 });
 onValue(archivedRef,snap=>{archivedOrdersMap=snap.val()||{};if(adminLoggedIn)renderDashboard();});
 onValue(archivedResRef,snap=>{archivedResMap=snap.val()||{};if((adminLoggedIn||staffLoggedIn)&&resArchiveOpen)renderResArchive();});
@@ -3816,6 +3846,12 @@ function heroInstallClick(){
     <button onclick="appLoginSubmit()" style="width:100%;padding:0.85rem;border:none;border-radius:8px;background:#b08d57;color:#fff;font-size:0.95rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;">Enter App</button>
     <p style="font-size:0.7rem;color:rgba(224,212,198,0.5);margin-top:1rem;line-height:1.5;">We use your name and number only to serve you better and keep your order history.</p>
   </div>
+</div>
+<div id="orderReadyAlert" style="display:none;position:fixed;inset:0;z-index:100000;background:rgba(10,15,10,0.92);color:#fff;flex-direction:column;align-items:center;justify-content:center;padding:1.5rem;text-align:center;font-family:'Inter',sans-serif;">
+  <div style="font-size:3.2rem;margin-bottom:0.5rem;">✅</div>
+  <h2 style="font-family:'Playfair Display',serif;font-size:1.6rem;margin:0 0 0.4rem;">Your order is ready!</h2>
+  <p id="orderReadySub" style="font-size:0.95rem;color:rgba(255,255,255,0.8);margin:0 0 1.5rem;"></p>
+  <button onclick="dismissReadyAlert()" style="background:#b08d57;color:#fff;border:none;border-radius:10px;padding:0.85rem 2.2rem;font-size:1rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;">Got it 🎉</button>
 </div>
 </body>
 </html>
