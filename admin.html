@@ -3144,23 +3144,24 @@ function buildAvail(){
 // ── DASHBOARD ──
 function renderDashboard(){
   const archived=Object.values(archivedOrdersMap);
-  const now2=new Date(),todayStr=now2.toISOString().slice(0,10);
-  const startOfWeek=new Date(now2);startOfWeek.setDate(now2.getDate()-now2.getDay());startOfWeek.setHours(0,0,0,0);
-  const startOfMonth=new Date(now2.getFullYear(),now2.getMonth(),1);
+  function _isSale(o){if(!o||o.voided)return false;if(o.source==='pos')return true;var r=['Completed','Received'];if(r.indexOf(o.status)>-1)return true;if(o.status==='Archived'&&r.indexOf(o.prevStatus)>-1)return true;return false;}
+  function _tsOf(o){return o.timestamp||Date.parse(o.date)||o.archivedAt||0;}
+  const sales=Object.values(adminOrdersMap).concat(archived).filter(_isSale);
+  const now2=new Date();
+  const startToday=new Date(now2.getFullYear(),now2.getMonth(),now2.getDate()).getTime();
+  const _sow=new Date(now2);_sow.setDate(now2.getDate()-now2.getDay());_sow.setHours(0,0,0,0);const startWeek=_sow.getTime();
+  const startMonth=new Date(now2.getFullYear(),now2.getMonth(),1).getTime();
   function sumOrders(arr){return{rev:arr.reduce((s,o)=>s+(o.total||0),0),cnt:arr.length};}
-  const todayOrders=archived.filter(o=>new Date(o.archivedAt||0).toISOString().slice(0,10)===todayStr);
-  const weekOrders=archived.filter(o=>new Date(o.archivedAt||0)>=startOfWeek);
-  const monthOrders=archived.filter(o=>new Date(o.archivedAt||0)>=startOfMonth);
-  const t=sumOrders(todayOrders),w=sumOrders(weekOrders),m=sumOrders(monthOrders),a=sumOrders(archived);
+  const t=sumOrders(sales.filter(o=>_tsOf(o)>=startToday)),w=sumOrders(sales.filter(o=>_tsOf(o)>=startWeek)),m=sumOrders(sales.filter(o=>_tsOf(o)>=startMonth)),a=sumOrders(sales);
   function setCard(id,rev,cnt){const el=document.getElementById(id);if(el)el.textContent='₱'+rev.toLocaleString();const cel=document.getElementById(id+'Count');if(cel)cel.textContent=cnt+' order'+(cnt!==1?'s':'');}
   setCard('dashToday',t.rev,t.cnt);setCard('dashWeek',w.rev,w.cnt);setCard('dashMonth',m.rev,m.cnt);setCard('dashAllTime',a.rev,a.cnt);
-  const gcash=archived.filter(o=>o.payment==='GCash').length,bank=archived.filter(o=>o.payment==='Bank Transfer').length,total2=gcash+bank||1;
+  const gcash=sales.filter(o=>o.payment==='GCash').length,bank=sales.filter(o=>o.payment==='Bank Transfer').length,total2=gcash+bank||1;
   const gp=document.getElementById('gcashPct'),bp=document.getElementById('bankPct');
   if(gp)gp.textContent='GCash '+Math.round(gcash/total2*100)+'%';if(bp)bp.textContent='Bank '+Math.round(bank/total2*100)+'%';
-  drawPaymentPie(gcash/total2,bank/total2);drawRevenueChart(archived);
+  drawPaymentPie(gcash/total2,bank/total2);drawRevenueChart(sales);
   // Top 5
   const itemCount={};
-  archived.forEach(function(o){if(!o.items)return;o.items.split(',').forEach(function(s){const name=s.trim().replace(/\s*\(.*?\)\s*/g,'').replace(/\s*x\d+\s*$/,'').trim();const qty=parseInt((s.match(/x(\d+)/)||[])[1]||1);if(name)itemCount[name]=(itemCount[name]||0)+qty;});});
+  sales.forEach(function(o){if(!o.items)return;o.items.split(',').forEach(function(s){const name=s.trim().replace(/\s*\(.*?\)\s*/g,'').replace(/\s*x\d+\s*$/,'').trim();const qty=parseInt((s.match(/x(\d+)/)||[])[1]||1);if(name)itemCount[name]=(itemCount[name]||0)+qty;});});
   const top5=Object.entries(itemCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const topEl=document.getElementById('topItemsList');
   if(topEl)topEl.innerHTML=top5.length?top5.map(function(entry,i){const medals=['🥇','🥈','🥉','4','5'];return'<div style="display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0;border-bottom:1px solid var(--cd);"><span style="font-size:1rem;min-width:20px;text-align:center;">'+medals[i]+'</span><span style="flex:1;font-size:0.83rem;color:var(--bd);">'+entry[0]+'</span><span style="font-size:0.8rem;font-weight:600;color:var(--bl);">'+entry[1]+' sold</span></div>';}).join(''):'<p style="color:var(--tl);font-size:0.83rem;text-align:center;padding:1rem;">No archived orders yet.</p>';
@@ -3193,7 +3194,7 @@ function drawRevenueChart(archived){
   const days=[],today2=new Date();
   for(let i=29;i>=0;i--){const d=new Date(today2);d.setDate(today2.getDate()-i);days.push(d.toISOString().slice(0,10));}
   const revByDay={},cntByDay={};days.forEach(d=>{revByDay[d]=0;cntByDay[d]=0;});
-  archived.filter(o=>o.prevStatus!=='Rejected').forEach(function(o){const d=new Date(o.archivedAt||0).toISOString().slice(0,10);if(revByDay[d]!==undefined){revByDay[d]+=(o.total||0);cntByDay[d]++;}});
+  archived.filter(o=>o&&!o.voided&&o.prevStatus!=='Rejected'&&o.status!=='Rejected').forEach(function(o){const _t=o.timestamp||Date.parse(o.date)||o.archivedAt||0;const d=new Date(_t).toISOString().slice(0,10);if(revByDay[d]!==undefined){revByDay[d]+=(o.total||0);cntByDay[d]++;}});
   const revVals=days.map(d=>revByDay[d]),cntVals=days.map(d=>cntByDay[d]);
   const maxRev=Math.max(...revVals,1),maxCnt=Math.max(...cntVals,1);
   const pad={l:40,r:10,t:10,b:30},chartW=W-pad.l-pad.r,chartH=H-pad.t-pad.b,gap=chartW/days.length,barW=gap*0.6;
