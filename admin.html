@@ -1300,7 +1300,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
       <button class="btn-primary" style="width:100%;" onclick="checkLogin()">Log In</button>
       <p id="loginErr" style="display:none;color:#c0392b;font-size:0.8rem;margin-top:0.75rem;text-align:center;">❌ Incorrect credentials. Try again.</p>
       <p style="text-align:center;margin-top:0.5rem;">
-        <button id="forgotPwBtn" onclick="toggleForgotPw()" style="display:none;background:none;border:none;font-size:0.76rem;color:var(--tl);cursor:pointer;text-decoration:underline;">Forgot password?</button>
+        <button id="forgotPwBtn" onclick="__fbForgot()" style="display:none;background:none;border:none;font-size:0.76rem;color:var(--tl);cursor:pointer;text-decoration:underline;">Forgot password?</button>
       </p>
       <div id="forgotPwPanel" style="display:none;margin-top:0.75rem;padding:0.85rem;background:#ece4d8;border:1px solid var(--cd);border-radius:8px;">
         <p style="font-size:0.78rem;color:var(--tl);margin-bottom:0.6rem;text-align:center;">Enter your <strong>original recovery password</strong> to reset.</p>
@@ -1357,11 +1357,12 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import{getDatabase,ref,set,get,push,update,remove,onValue,runTransaction}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import{getMessaging,getToken,onMessage,isSupported}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
-import{getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import{getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 const app=initializeApp(firebaseConfig);
 const db=getDatabase(app);const auth=getAuth(app);window.__accazaAuth=auth;
+window.__fbForgot=async function(){var em=(document.getElementById('adminUser').value||'').trim();if(!em||em.indexOf('@')<0){em=(prompt('Enter your account email for a reset link:')||'').trim();}if(!em||em.indexOf('@')<0){alert('Please enter a valid email.');return;}try{await sendPasswordResetEmail(auth,em);alert('Password reset link sent to '+em+'. Check inbox and spam.');}catch(e){alert('Could not send reset: '+((e&&e.code)||e));}};
 // ===================== WEB PUSH (FCM) =====================
 // Paste your Web Push certificate key here (Firebase Console > Project settings > Cloud Messaging > Web Push certificates).
 const VAPID_KEY="BIIVf-1RYIQger0yqeYlyV6-tQpH8YfytIgQK6-7IJg87HVITcNkYv4RYcKjyCmJBJKR1EXjJqRuiHzkFJjSvlE";
@@ -2563,6 +2564,14 @@ window.changeAdminPassword=async function(){
     msg.style.color=ok?'#1a7a45':'#c0392b';
     msg.style.border='1px solid '+(ok?'rgba(45,158,95,0.3)':'rgba(192,57,57,0.3)');
   }
+  if(auth.currentUser){
+    if(!nw||!conf){showMsg('Please fill in the new password fields.',false);return;}
+    if(nw!==conf){showMsg('New passwords do not match.',false);return;}
+    if(nw.length<6){showMsg('New password must be at least 6 characters.',false);return;}
+    try{ await updatePassword(auth.currentUser,nw); showMsg('\u2705 Password updated.',true); document.getElementById('cpCurrent').value='';document.getElementById('cpNew').value='';document.getElementById('cpConfirm').value=''; }
+    catch(e){ if(e&&e.code==='auth/requires-recent-login'){ try{ if(!cur){showMsg('Enter your CURRENT password to confirm the change.',false);return;} var _c=EmailAuthProvider.credential(auth.currentUser.email,cur); await reauthenticateWithCredential(auth.currentUser,_c); await updatePassword(auth.currentUser,nw); showMsg('\u2705 Password updated.',true); }catch(e2){ showMsg('Current password is incorrect.',false); } } else { showMsg('Error: '+((e&&e.code)||e),false); } }
+    return;
+  }
   if(!cur||!nw||!conf){showMsg('Please fill in all fields.', false);return;}
   if(nw!==conf){showMsg('New passwords do not match.', false);return;}
   if(nw.length<6){showMsg('New password must be at least 6 characters.', false);return;}
@@ -3489,7 +3498,7 @@ window.checkLogin=async function(){
       var _cred=await signInWithEmailAndPassword(auth,username,pass);
       var _uid=_cred.user.uid;
       var _as=await get(ref(db,'admins/'+_uid));
-      if(_as.exists()){ try{localStorage.setItem('accaza_admin_session',JSON.stringify({role:'admin',username:username,uid:_uid}));}catch(_s){} location.reload(); }
+      if(_as.exists()){ var _rv=_as.val(); var _role=(_rv==='staff')?'staff':'admin'; try{localStorage.setItem('accaza_admin_session',JSON.stringify({role:_role,username:username,uid:_uid}));}catch(_s){} location.reload(); }
       else{ await signOut(auth); _le.textContent='Signed in, but this UID is not in admins: '+_uid; _le.style.display='block'; _le.style.whiteSpace='normal'; document.getElementById('adminPass').value=''; }
     }catch(_e){ console.error('ACCAZA AUTH ERROR',_e); _le.textContent='Auth error: '+((_e&&_e.code)||(_e&&_e.message)||_e); _le.style.display='block'; _le.style.whiteSpace='normal'; document.getElementById('adminPass').value=''; }
     return;
