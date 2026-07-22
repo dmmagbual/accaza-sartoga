@@ -107,7 +107,7 @@
 <style id="admin-portal">
 /* Admin portal view: hide customer-facing sections (elements stay in DOM so JS is unaffected) */
 #home,#about,#reel,#menu,#order,#orderTracker,#reserve,#reviews,#feedback,#gallery,#contact,.footer{display:none!important;}
-nav{display:none!important;}
+nav .nav-links > li{display:none;}
 </style>
 </head>
 <style>
@@ -578,9 +578,9 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
     <li><a href="#order">Order</a></li><li><a href="#orderTracker">📋 Track Order</a></li>
     <li><a href="#reserve">Reserve</a></li><li><a href="#reviews">Reviews</a></li>
     <li><a href="#feedback">Feedback</a></li><li><a href="#gallery">Gallery</a></li><li><a href="about.html">About</a></li><li><a href="#contact">Contact</a></li>
+    <li id="navAdminPanel" style="display:none;"><a href="#adminDash" id="navAdminPanelLink" style="color:#c9a36a;font-weight:600;">🔐 Admin Panel</a></li>
     <li id="navAvail" style="display:none;"><a href="#availSection" style="color:#c9a36a;font-weight:500;">🔄 Availability</a></li>
     <li id="navComments" style="display:none;"><a href="#commentsSection" style="color:#c9a36a;font-weight:500;">📩 Comments</a></li>
-    <li id="navAdminPanel" style="display:none;"><a href="#adminDash" id="navAdminPanelLink" style="color:#c9a36a;font-weight:600;">🔐 Admin Panel</a></li>
   </ul>
   <button class="hamburger" id="hamburgerBtn" onclick="toggleNav()" aria-label="Open menu"><span></span><span></span><span></span></button>
 </nav>
@@ -1061,7 +1061,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;"><button id="jumpAvail" onclick="document.getElementById('availSection').scrollIntoView({behavior:'smooth'})" style="background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.4rem 0.8rem;font-size:0.8rem;cursor:pointer;color:var(--bd);font-family:'Inter',sans-serif;white-space:nowrap;">🔄 Availability</button><button id="jumpComments" onclick="document.getElementById('commentsSection').scrollIntoView({behavior:'smooth'})" style="background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.4rem 0.8rem;font-size:0.8rem;cursor:pointer;color:var(--bd);font-family:'Inter',sans-serif;white-space:nowrap;">📩 Comments</button><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -3437,8 +3437,8 @@ function applyStaffPerms(perms){
   });
   var av=document.getElementById('availSection'); if(av)av.style.display=perms.availability?'block':'none';
   var cm=document.getElementById('commentsSection'); if(cm)cm.style.display=perms.comments?'block':'none';
-  var ja=document.getElementById('jumpAvail'); if(ja)ja.style.display=perms.availability?'':'none';
-  var jc=document.getElementById('jumpComments'); if(jc)jc.style.display=perms.comments?'':'none';
+  var na=document.getElementById('navAvail'); if(na)na.style.display=perms.availability?'block':'none';
+  var nc=document.getElementById('navComments'); if(nc)nc.style.display=perms.comments?'block':'none';
 }
 async function loginSuccess(role,username,uid){
   currentUser={role,username,uid};
