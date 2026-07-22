@@ -1070,6 +1070,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
       <button class="admin-tab" onclick="posSwitchTab('recipes',this)">🧪 Recipes</button>
       <button class="admin-tab" onclick="posSwitchTab('analytics',this)">📊 Analytics</button>
       <button class="admin-tab" onclick="posSwitchTab('pnl',this)">💰 P&amp;L</button>
+      <button class="admin-tab" onclick="posSwitchTab('ops',this)">🧾 Register Ops</button>
       <button class="admin-tab" id="tabBtnOrders" onclick="switchTab('orders',this)">📋 Orders <span id="ordersBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
       <button class="admin-tab" onclick="switchTab('reservations',this)">📅 Reservations</button>
       <button class="admin-tab" onclick="switchTab('calendar',this)">🗓️ Calendar</button>
@@ -1269,6 +1270,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
     <div id="tab-recipes" class="admin-tab-content" style="display:none;"><div id="recipesRoot"></div></div>
     <div id="tab-analytics" class="admin-tab-content" style="display:none;"><div id="analyticsRoot"></div></div>
     <div id="tab-pnl" class="admin-tab-content" style="display:none;"><div id="pnlRoot"></div></div>
+    <div id="tab-ops" class="admin-tab-content" style="display:none;"><div id="opsRoot"></div></div>
 
 
   </div>
@@ -4252,54 +4254,93 @@ function pzAddToCart(){
 }
 function renderPosCart(){
   var p=document.getElementById('posCartPanel'); if(!p)return;
+  var shift=window.__posShift||null;
   var keys=Object.keys(posCart);
   var sub=keys.reduce(function(s,k){return s+posCart[k].qty*posCart[k].unitTotal;},0);
   var lines=keys.map(function(k){var c=posCart[k];return '<div style="display:flex;justify-content:space-between;gap:0.5rem;padding:0.4rem 0;border-bottom:1px solid var(--cd);font-size:0.82rem;">'
       +'<div style="flex:1;"><b>'+esc(c.name)+'</b> ×'+c.qty+(c.details?'<div style="font-size:0.7rem;color:var(--tl);">'+esc(c.details)+'</div>':'')+'</div>'
       +'<div style="text-align:right;white-space:nowrap;">'+peso(c.qty*c.unitTotal)+'<br><button class="pz-btn warn" style="padding:0.1rem 0.4rem;font-size:0.7rem;" data-rm="'+k+'">remove</button></div></div>';}).join('');
-  var vat=posMeta.vat?sub-(sub/(1+(posMeta.vatRate||12)/100)):0;
+  var shiftBar=shift
+    ? '<div style="background:#e8f5ec;border:1px solid #b8dfc4;border-radius:6px;padding:0.4rem 0.6rem;font-size:0.76rem;color:#155724;margin-bottom:0.6rem;">🟢 Shift open · Cashier <b>'+esc(shift.staff)+'</b></div>'
+    : '<div style="background:#fde8e8;border:1px solid #f5c6c6;border-radius:6px;padding:0.4rem 0.6rem;font-size:0.76rem;color:#721c24;margin-bottom:0.6rem;">🔴 No open shift — open one in <b>Register Ops</b> to start selling.</div>';
   p.innerHTML=
-    '<div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">🛒 Current sale</div>'
+    shiftBar
+    +'<div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">🛒 Current sale</div>'
     +(keys.length?lines:'<p class="pz-sub" style="margin:0.5rem 0;">Tap items to add them.</p>')
     +'<div style="margin-top:0.6rem;">'
       +'<div style="display:flex;justify-content:space-between;font-size:0.82rem;margin-bottom:0.3rem;"><span>Subtotal</span><span>'+peso(sub)+'</span></div>'
       +'<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.82rem;margin-bottom:0.3rem;"><span>Discount ₱</span><input class="pz-in" id="posDisc" type="number" step="any" style="width:100px;text-align:right;" value="0"/></div>'
-      +(posMeta.vat?'<div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;"><span>VAT ('+(posMeta.vatRate||12)+'%) incl.</span><span>'+peso(vat)+'</span></div>':'')
+      +(posMeta.cashRounding?'<div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;"><span>Cash rounding</span><span id="posRound">₱0.00</span></div>':'')
       +'<div style="display:flex;justify-content:space-between;font-weight:700;color:var(--bd);font-size:1rem;border-top:1px solid var(--cd);padding-top:0.4rem;"><span>Total</span><span id="posTotal">'+peso(sub)+'</span></div>'
     +'</div>'
-    +'<div style="margin-top:0.7rem;"><span class="pz-lbl">Payment</span>'
-      +'<select class="pz-in" id="posPay"><option value="Cash">Cash</option><option value="GCash">GCash (QR)</option><option value="Bank Transfer">Bank / BDO (QR)</option></select></div>'
-    +'<div id="posCashWrap" style="margin-top:0.5rem;"><span class="pz-lbl">Cash tendered ₱</span><input class="pz-in" id="posTender" type="number" step="any" placeholder="0"/><div id="posChange" style="font-size:0.82rem;color:var(--bd);font-weight:600;margin-top:0.3rem;"></div></div>'
+    +'<div style="margin-top:0.7rem;display:flex;justify-content:space-between;align-items:center;"><span class="pz-lbl" style="margin:0;">Payment</span><label style="font-size:0.74rem;color:var(--tl);cursor:pointer;"><input type="checkbox" id="posSplitChk"/> Split</label></div>'
+    +'<div id="posPaySingle"><select class="pz-in" id="posPay" style="margin-top:0.3rem;"><option value="Cash">Cash</option><option value="GCash">GCash (QR)</option><option value="Bank Transfer">Bank / BDO (QR)</option></select>'
+      +'<div id="posCashWrap" style="margin-top:0.5rem;"><span class="pz-lbl">Cash tendered ₱</span><input class="pz-in" id="posTender" type="number" step="any" placeholder="0"/><div id="posChange" style="font-size:0.82rem;color:var(--bd);font-weight:600;margin-top:0.3rem;"></div></div></div>'
+    +'<div id="posPaySplit" style="display:none;margin-top:0.4rem;"><div id="posSplitRows"></div><button class="pz-btn sec" id="posAddPay" style="padding:0.25rem 0.6rem;">+ payment</button><div id="posSplitInfo" style="font-size:0.76rem;color:var(--tl);margin-top:0.3rem;"></div></div>'
     +'<div style="margin-top:0.5rem;"><span class="pz-lbl">Customer (optional)</span><input class="pz-in" id="posCust" placeholder="Walk-in"/></div>'
-    +'<button class="pz-btn ok" id="posCharge" style="width:100%;margin-top:0.8rem;padding:0.7rem;font-size:0.95rem;"'+(keys.length?'':' disabled')+'>Charge &amp; Complete</button>'
-    +'<button class="pz-btn sec" id="posClear" style="width:100%;margin-top:0.4rem;"'+(keys.length?'':' disabled')+'>Clear</button>';
+    +'<button class="pz-btn ok" id="posCharge" style="width:100%;margin-top:0.8rem;padding:0.7rem;font-size:0.95rem;"'+((keys.length&&shift)?'':' disabled')+'>Charge &amp; Complete</button>'
+    +'<div style="display:flex;gap:0.4rem;margin-top:0.4rem;">'
+      +'<button class="pz-btn sec" id="posHold" style="flex:1;"'+(keys.length?'':' disabled')+'>Hold</button>'
+      +'<button class="pz-btn sec" id="posClear" style="flex:1;"'+(keys.length?'':' disabled')+'>Clear</button>'
+    +'</div>';
   p.querySelectorAll('[data-rm]').forEach(function(b){b.onclick=function(){delete posCart[b.getAttribute('data-rm')];renderPosCart();};});
-  var disc=document.getElementById('posDisc'), tender=document.getElementById('posTender'), pay=document.getElementById('posPay');
-  function recalc(){ var d=Number(disc.value)||0; var tot=Math.max(0,sub-d); document.getElementById('posTotal').textContent=peso(tot); var t=Number(tender.value)||0; document.getElementById('posChange').textContent=t?('Change: '+peso(Math.max(0,t-tot))):''; return tot; }
-  disc.oninput=recalc; tender.oninput=recalc;
+  var disc=document.getElementById('posDisc');
+  var splitRows=[];
+  function grandTotal(){ var d=Number(disc.value)||0; var tot=Math.max(0,sub-d); if(posMeta.cashRounding){var r=Math.round(tot); var pr=document.getElementById('posRound'); if(pr)pr.textContent=peso(r-tot); tot=r;} document.getElementById('posTotal').textContent=peso(tot); return tot; }
+  function refreshSingle(){ var tot=grandTotal(); var tender=document.getElementById('posTender'); var t=Number(tender&&tender.value)||0; var ch=document.getElementById('posChange'); if(ch)ch.textContent=t?('Change: '+peso(Math.max(0,t-tot))):''; }
+  var pay=document.getElementById('posPay');
   pay.onchange=function(){document.getElementById('posCashWrap').style.display=(pay.value==='Cash')?'block':'none';};
+  var tender0=document.getElementById('posTender'); if(tender0)tender0.oninput=refreshSingle;
+  var splitChk=document.getElementById('posSplitChk');
+  function renderSplit(){
+    var tot=grandTotal(); if(!splitRows.length)splitRows=[{method:'Cash',amount:tot}];
+    var cont=document.getElementById('posSplitRows');
+    cont.innerHTML=splitRows.map(function(r,i){return '<div style="display:flex;gap:0.3rem;margin-bottom:0.3rem;"><select class="pz-in" data-pm="'+i+'" style="flex:1;"><option'+(r.method==='Cash'?' selected':'')+'>Cash</option><option'+(r.method==='GCash'?' selected':'')+'>GCash</option><option'+(r.method==='Bank Transfer'?' selected':'')+'>Bank Transfer</option></select><input class="pz-in" data-pa="'+i+'" type="number" step="any" style="width:100px;" value="'+r.amount+'"/>'+(splitRows.length>1?'<button class="pz-btn warn" data-pd="'+i+'" style="padding:0.2rem 0.45rem;">✕</button>':'')+'</div>';}).join('');
+    var assigned=splitRows.reduce(function(s,r){return s+(Number(r.amount)||0);},0);
+    document.getElementById('posSplitInfo').innerHTML='Assigned '+peso(assigned)+' / Total '+peso(tot)+' · '+(Math.abs(assigned-tot)<0.01?'<span style="color:#2a9d5c;">balanced</span>':'<span style="color:#e63946;">off by '+peso(tot-assigned)+'</span>');
+    cont.querySelectorAll('[data-pm]').forEach(function(s){s.onchange=function(){splitRows[+s.getAttribute('data-pm')].method=s.value;};});
+    cont.querySelectorAll('[data-pa]').forEach(function(inp){inp.oninput=function(){splitRows[+inp.getAttribute('data-pa')].amount=Number(inp.value)||0;renderSplit();};});
+    cont.querySelectorAll('[data-pd]').forEach(function(b){b.onclick=function(){splitRows.splice(+b.getAttribute('data-pd'),1);renderSplit();};});
+  }
+  disc.oninput=function(){ if(splitChk.checked)renderSplit(); else refreshSingle(); };
+  splitChk.onchange=function(){ document.getElementById('posPaySingle').style.display=this.checked?'none':'block'; document.getElementById('posPaySplit').style.display=this.checked?'block':'none'; if(this.checked){splitRows=[];renderSplit();} else refreshSingle(); };
+  document.getElementById('posAddPay').onclick=function(){splitRows.push({method:'GCash',amount:0});renderSplit();};
+  refreshSingle();
   document.getElementById('posClear').onclick=function(){if(Object.keys(posCart).length&&confirm('Clear this sale?')){posCart={};renderPosCart();}};
-  document.getElementById('posCharge').onclick=function(){ chargeSale(sub,recalc()); };
+  document.getElementById('posHold').onclick=function(){ if(!Object.keys(posCart).length)return; var a=A(); a.set(a.ref(a.db,'heldOrders/'+uid('hold_')),{cart:posCart,ts:Date.now(),staff:(window.__posShift&&window.__posShift.staff)||'—',note:(document.getElementById('posCust').value||'').trim()}); posCart={}; renderPosCart(); alert('Order held. Recall it from Register Ops.'); };
+  document.getElementById('posCharge').onclick=function(){
+    if(!window.__posShift){alert('Open a shift first (Register Ops tab).');return;}
+    var tot=grandTotal();
+    var d=Number(disc.value)||0;
+    if(d>0&&window.__posIsManagerPin){ var pin=prompt('Manager PIN required to approve a ₱'+d+' discount:'); if(pin===null)return; if(!window.__posIsManagerPin(pin)){alert('Invalid manager PIN — discount not approved.');return;} }
+    var payments;
+    if(splitChk.checked){ var assigned=splitRows.reduce(function(s,r){return s+(Number(r.amount)||0);},0); if(Math.abs(assigned-tot)>0.01){alert('Split payments must add up to the total.');return;} payments=splitRows.map(function(r){return {method:r.method,amount:Number(r.amount)||0};}); }
+    else { var m=pay.value; var tv=Number(document.getElementById('posTender').value)||0; if(m==='Cash'&&tv&&tv<tot){alert('Cash tendered is less than the total.');return;} payments=[{method:m,amount:tot,tendered:m==='Cash'?tv:0,change:m==='Cash'&&tv?Math.max(0,tv-tot):0}]; }
+    chargeSale(sub,tot,payments);
+  };
 }
-function chargeSale(sub,total){
+function chargeSale(sub,total,payments){
   var keys=Object.keys(posCart); if(!keys.length)return;
-  var pay=document.getElementById('posPay').value;
-  var tender=Number(document.getElementById('posTender').value)||0;
-  if(pay==='Cash'&&tender&&tender<total){alert('Cash tendered is less than the total.');return;}
+  var shift=window.__posShift; if(!shift){alert('Open a shift first.');return;}
   var cust=(document.getElementById('posCust').value||'').trim()||'Walk-in';
   var disc=Number(document.getElementById('posDisc').value)||0;
-  var a=A(); var u=a.currentUser; var staff=(u&&(u.name||u.username||u.email))||'Staff';
+  var a=A(); var staff=shift.staff||'Staff';
   var oid='POS-'+Date.now().toString().slice(-6);
   var lineItems=keys.map(function(k){var c=posCart[k];return {itemKey:c.itemKey,name:c.name,size:c.size,optLabels:c.optLabels,qty:c.qty,unitTotal:c.unitTotal};});
   var itemsStr=keys.map(function(k){var c=posCart[k];return c.name+(c.details?' ('+c.details+')':'')+' x'+c.qty;}).join(', ');
+  var cash=(payments||[]).filter(function(x){return x.method==='Cash';});
+  var tendered=cash.reduce(function(s,x){return s+(Number(x.tendered)||0);},0);
+  var change=cash.reduce(function(s,x){return s+(Number(x.change)||0);},0);
+  var payLabel=payments.length>1?'Split':payments[0].method;
   var now=new Date();
-  var order={id:oid,name:cust,phone:'',type:'Walk-in',address:'',payment:pay,contact:'',contactMethod:'',items:itemsStr,lineItems:lineItems,subtotal:sub,discount:disc,total:total,tendered:pay==='Cash'?tender:0,change:pay==='Cash'&&tender?Math.max(0,tender-total):0,notes:'',status:'Completed',source:'pos',staff:staff,receivedByCustomer:true,time:now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:now.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
+  var order={id:oid,name:cust,phone:'',type:'Walk-in',address:'',payment:payLabel,payments:payments,contact:'',contactMethod:'',items:itemsStr,lineItems:lineItems,subtotal:sub,discount:disc,total:total,tendered:tendered,change:change,notes:'',status:'Completed',source:'pos',staff:staff,shiftId:shift.id,receivedByCustomer:true,time:now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:now.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
   document.getElementById('posCharge').disabled=true;
   a.set(a.ref(a.db,'orders/'+oid),order).then(function(){
-    var receipt=Object.assign({},order);
-    posCart={}; renderPosCart(); showReceipt(receipt);
+    if(window.__posLog)window.__posLog('sale',oid,'₱'+total+' · '+payLabel);
+    var receipt=Object.assign({},order); posCart={}; renderPosCart(); showReceipt(receipt);
   }).catch(function(e){alert('Could not save sale: '+e);document.getElementById('posCharge').disabled=false;});
 }
+window.__pos={render:function(){if(document.getElementById('posCartPanel'))renderPosCart();},loadCart:function(c){posCart=c||{};if(window.switchTab)window.switchTab('pos',document.querySelector('.admin-tab'));buildPOS();},hasItems:function(){return Object.keys(posCart).length>0;}};
 
 /* ══════════ DEDUCTION ENGINE ══════════ */
 function computeUsage(lineItems){
@@ -4631,6 +4672,172 @@ function exportPnl(cur,prev,pmk){
   rows.push(['Net profit',cur.net.toFixed(2),prev.net.toFixed(2)]);
   var csv=rows.map(function(r){return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"';}).join(',');}).join('\n');
   var blob=new Blob([csv],{type:'text/csv'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='accaza-pnl-'+pnlMonth+'.csv';a.click();URL.revokeObjectURL(url);
+}
+})();
+</script>
+<!-- ═══════════════════ ACCAZA REGISTER OPS · shift / Z-report / void / refund (isolated) ═══════════════════ -->
+<script id="accaza-regops">
+(function(){
+'use strict';
+var staffList={},activeShift=null,shiftsMap={},activityMap={},heldMap={},ordersMap={};
+function A(){return window.__accaza;}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function peso(n){n=Number(n)||0;return '₱'+n.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5);}
+function isTab(n){var el=document.getElementById('tab-'+n);return el&&el.style.display!=='none';}
+function paysOf(o){return(o.payments&&o.payments.length)?o.payments:[{method:o.payment||'—',amount:Number(o.total)||0}];}
+
+var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
+function init(){
+  var a=A();
+  a.onValue(a.ref(a.db,'posStaff'),function(s){staffList=s.val()||{};if(isTab('ops'))renderOps();});
+  a.onValue(a.ref(a.db,'posActiveShift'),function(s){activeShift=s.val()||null;window.__posShift=activeShift;if(window.__pos)window.__pos.render();if(isTab('ops'))renderOps();});
+  a.onValue(a.ref(a.db,'shifts'),function(s){shiftsMap=s.val()||{};});
+  a.onValue(a.ref(a.db,'activityLog'),function(s){activityMap=s.val()||{};if(isTab('ops'))renderOps();});
+  a.onValue(a.ref(a.db,'heldOrders'),function(s){heldMap=s.val()||{};if(isTab('ops'))renderOps();});
+  a.onValue(a.ref(a.db,'orders'),function(s){ordersMap=s.val()||{};if(isTab('ops'))renderOps();});
+}
+// shared hooks used by the POS script
+window.__posLog=function(action,ref,detail){var a=A();var id=uid('log_');a.set(a.ref(a.db,'activityLog/'+id),{ts:Date.now(),action:action,ref:ref||'',detail:detail||'',staff:(activeShift&&activeShift.staff)||'—'});};
+window.__posIsManagerPin=function(pin){return Object.keys(staffList).some(function(k){var s=staffList[k];return s.role==='manager'&&String(s.pin)===String(pin);});};
+var _prev=window.posSwitchTab;
+window.posSwitchTab=function(name,btn){ if(_prev)_prev(name,btn); else if(window.switchTab)window.switchTab(name,btn); if(name==='ops')renderOps(); };
+
+function staffArr(){return Object.keys(staffList).map(function(k){return Object.assign({id:k},staffList[k]);}).sort(function(a,b){return(a.name||'').localeCompare(b.name||'');});}
+
+/* ---------- Z-report computation ---------- */
+function computeZ(shift){
+  var sales=[],voids=[],z={tx:0,gross:0,discounts:0,refunds:0,net:0,byMethod:{},cashSales:0,voidCount:0,voidAmt:0};
+  Object.keys(ordersMap).forEach(function(id){var o=ordersMap[id];if(!o||o.shiftId!==shift.id)return;
+    if(o.voided){z.voidCount++;z.voidAmt+=Number(o.total)||0;return;}
+    var gross=(o.subtotal!=null?Number(o.subtotal):Number(o.total))||0;var disc=Number(o.discount)||0;var ref=Number(o.refundAmount)||0;
+    z.tx++;z.gross+=gross;z.discounts+=disc;z.refunds+=ref;z.net+=gross-disc-ref;
+    paysOf(o).forEach(function(p){z.byMethod[p.method]=(z.byMethod[p.method]||0)+(Number(p.amount)||0);});
+  });
+  z.cashSales=z.byMethod['Cash']||0;
+  z.expectedCash=(Number(shift.openingFloat)||0)+z.cashSales-z.refunds;
+  return z;
+}
+
+/* ---------- render ---------- */
+function renderOps(){
+  var root=document.getElementById('opsRoot');if(!root)return;
+  var html='<div class="pz-h">🧾 Register Ops</div><p class="pz-sub">Shift control, cash reconciliation, voids &amp; refunds — all logged. Cashiers ring sales; a manager PIN approves voids, refunds, and discounts.</p>';
+  // SHIFT
+  html+='<div class="pz-card" style="margin-bottom:1rem;">';
+  if(activeShift){
+    var z=computeZ(activeShift);
+    html+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;"><div><span style="color:#2a9d5c;font-weight:700;">🟢 Shift open</span> · Cashier <b>'+esc(activeShift.staff)+'</b> · since '+new Date(activeShift.openAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})+'</div><button class="pz-btn warn" id="opsClose">Close shift &amp; Z-report</button></div>';
+    html+='<div class="az-kpis" style="margin-top:0.8rem;">'+kpi('Sales',z.tx)+kpi('Net',peso(z.net))+kpi('Cash in',peso(z.cashSales))+kpi('Expected drawer',peso(z.expectedCash))+kpi('Voids',z.voidCount)+kpi('Refunds',peso(z.refunds))+'</div>';
+  } else {
+    var opts=staffArr().map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+' ('+esc(s.role||'cashier')+')</option>';}).join('');
+    html+='<div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Open a shift</div>'
+      +(staffArr().length?'<div style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap;"><div><span class="pz-lbl">Cashier</span><select class="pz-in" id="opsStaff" style="min-width:160px;">'+opts+'</select></div><div><span class="pz-lbl">Opening cash float ₱</span><input class="pz-in" id="opsFloat" type="number" step="any" value="0" style="width:130px;"/></div><button class="pz-btn ok" id="opsOpen">Open shift</button></div>'
+        :'<p class="az-note">Add at least one staff member with a PIN below first.</p>');
+  }
+  html+='</div>';
+  // HELD ORDERS
+  var held=Object.keys(heldMap).map(function(k){return Object.assign({id:k},heldMap[k]);}).sort(function(a,b){return(b.ts||0)-(a.ts||0);});
+  if(held.length){
+    html+='<div class="az-sec">Held orders ('+held.length+')</div><div class="pz-card">'+held.map(function(h){var n=Object.keys(h.cart||{}).length;return '<div style="display:flex;justify-content:space-between;align-items:center;padding:0.35rem 0;border-bottom:1px solid var(--cd);font-size:0.83rem;"><span>'+n+' item(s)'+(h.note?' · '+esc(h.note):'')+' · '+new Date(h.ts).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})+'</span><span><button class="pz-btn ok" style="padding:0.2rem 0.6rem;" data-recall="'+h.id+'">Recall</button> <button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-hdisc="'+h.id+'">✕</button></span></div>';}).join('')+'</div>';
+  }
+  // VOID / REFUND recent sales
+  var recent=Object.keys(ordersMap).map(function(k){return ordersMap[k];}).filter(function(o){return o&&(o.status==='Completed'||o.status==='Received');}).sort(function(a,b){return(b.timestamp||0)-(a.timestamp||0);}).slice(0,25);
+  html+='<div class="az-sec">Recent sales — void / refund</div><div class="pz-card"><table class="pz-tbl"><thead><tr><th>Order</th><th>Time</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>'
+    +(recent.length?recent.map(function(o){var st=o.voided?'<span style="color:#e63946;">VOID</span>':(Number(o.refundAmount)>0?'<span style="color:#e67e00;">Refunded '+peso(o.refundAmount)+'</span>':'OK');return '<tr><td>'+esc(o.id)+'<div style="font-size:0.7rem;color:var(--tl);">'+esc((o.staff||''))+'</div></td><td>'+esc(o.time||'')+'</td><td>'+peso(o.total)+'</td><td>'+st+'</td><td style="white-space:nowrap;">'+(o.voided?'':'<button class="pz-btn sec" style="padding:0.2rem 0.5rem;" data-refund="'+o.id+'">Refund</button> <button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-void="'+o.id+'">Void</button>')+'</td></tr>';}).join(''):'<tr><td colspan="5" class="az-note" style="padding:0.8rem;">No sales yet.</td></tr>')
+    +'</tbody></table></div>';
+  // STAFF & PINS
+  html+='<div class="az-sec">Staff &amp; PINs</div><div class="pz-card" style="margin-bottom:1rem;"><div style="display:grid;grid-template-columns:1.5fr 1fr 1fr auto;gap:0.5rem;align-items:end;">'
+    +'<div><span class="pz-lbl">Name</span><input class="pz-in" id="stName" placeholder="e.g. Maria"/></div>'
+    +'<div><span class="pz-lbl">4-digit PIN</span><input class="pz-in" id="stPin" inputmode="numeric" maxlength="6" placeholder="1234"/></div>'
+    +'<div><span class="pz-lbl">Role</span><select class="pz-in" id="stRole"><option value="cashier">Cashier</option><option value="manager">Manager</option></select></div>'
+    +'<button class="pz-btn" id="stAdd">Add</button></div>'
+    +'<table class="pz-tbl" style="margin-top:0.6rem;"><tbody>'+(staffArr().length?staffArr().map(function(s){return '<tr><td>'+esc(s.name)+'</td><td>'+esc(s.role||'cashier')+'</td><td style="color:var(--tl);">PIN ••••</td><td><button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-stdel="'+s.id+'">✕</button></td></tr>';}).join(''):'<tr><td class="az-note" style="padding:0.5rem;">No staff yet.</td></tr>')+'</tbody></table></div>';
+  // SETTINGS + ACTIVITY
+  var cr=(window.__accaza&&false);
+  html+='<div class="az-sec">Settings</div><div class="pz-card" style="margin-bottom:1rem;"><label style="font-size:0.85rem;cursor:pointer;"><input type="checkbox" id="opsRound"/> Round cash totals to the nearest peso</label></div>';
+  var acts=Object.keys(activityMap).map(function(k){return activityMap[k];}).sort(function(a,b){return(b.ts||0)-(a.ts||0);}).slice(0,20);
+  html+='<div class="az-sec">Activity log</div><div class="pz-card"><table class="pz-tbl"><tbody>'
+    +(acts.length?acts.map(function(x){return '<tr><td style="white-space:nowrap;color:var(--tl);font-size:0.75rem;">'+new Date(x.ts).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+'</td><td><b>'+esc(x.action)+'</b> '+esc(x.ref||'')+'</td><td>'+esc(x.detail||'')+'</td><td style="color:var(--tl);">'+esc(x.staff||'')+'</td></tr>';}).join(''):'<tr><td class="az-note" style="padding:0.5rem;">No activity yet.</td></tr>')
+    +'</tbody></table></div>';
+  root.innerHTML=html;
+  // wire
+  var oOpen=document.getElementById('opsOpen');if(oOpen)oOpen.onclick=openShift;
+  var oClose=document.getElementById('opsClose');if(oClose)oClose.onclick=closeShift;
+  document.getElementById('stAdd').onclick=addStaff;
+  root.querySelectorAll('[data-stdel]').forEach(function(b){b.onclick=function(){if(confirm('Remove this staff?')){var a=A();a.remove(a.ref(a.db,'posStaff/'+b.getAttribute('data-stdel')));}};});
+  root.querySelectorAll('[data-void]').forEach(function(b){b.onclick=function(){voidSale(b.getAttribute('data-void'));};});
+  root.querySelectorAll('[data-refund]').forEach(function(b){b.onclick=function(){refundSale(b.getAttribute('data-refund'));};});
+  root.querySelectorAll('[data-recall]').forEach(function(b){b.onclick=function(){var h=heldMap[b.getAttribute('data-recall')];if(h&&window.__pos){window.__pos.loadCart(h.cart);var a=A();a.remove(a.ref(a.db,'heldOrders/'+b.getAttribute('data-recall')));}};});
+  root.querySelectorAll('[data-hdisc]').forEach(function(b){b.onclick=function(){if(confirm('Discard this held order?')){var a=A();a.remove(a.ref(a.db,'heldOrders/'+b.getAttribute('data-hdisc')));}};});
+  var rc=document.getElementById('opsRound');if(rc){var a=A();a.get(a.ref(a.db,'posSettings')).then(function(s){var v=s.val()||{};rc.checked=!!v.cashRounding;});rc.onchange=function(){var a=A();a.update(a.ref(a.db,'posSettings'),{cashRounding:rc.checked});};}
+}
+function kpi(l,v){return '<div class="az-kpi"><div class="v">'+v+'</div><div class="l">'+esc(l)+'</div></div>';}
+
+function addStaff(){var name=(document.getElementById('stName').value||'').trim();var pin=(document.getElementById('stPin').value||'').trim();var role=document.getElementById('stRole').value;if(!name||!pin){alert('Enter name and PIN.');return;}if(!/^[0-9]{4,6}$/.test(pin)){alert('PIN must be 4-6 digits.');return;}var a=A();a.set(a.ref(a.db,'posStaff/'+uid('st_')),{name:name,pin:pin,role:role,ts:Date.now()});document.getElementById('stName').value='';document.getElementById('stPin').value='';}
+
+function openShift(){
+  var sid=document.getElementById('opsStaff').value;var s=staffList[sid];if(!s){alert('Pick a cashier.');return;}
+  var pin=prompt('Enter '+s.name+"'s PIN to open the shift:");if(pin===null)return;if(String(s.pin)!==String(pin)){alert('Wrong PIN.');return;}
+  var float=Number(document.getElementById('opsFloat').value)||0;
+  var id='SH-'+Date.now().toString().slice(-6);var a=A();
+  var rec={id:id,staff:s.name,staffId:sid,openingFloat:float,openAt:Date.now(),status:'open'};
+  a.set(a.ref(a.db,'shifts/'+id),rec).then(function(){a.set(a.ref(a.db,'posActiveShift'),{id:id,staff:s.name,staffId:sid,openingFloat:float,openAt:Date.now()});window.__posLog('shift-open',id,'float '+peso(float));});
+}
+function closeShift(){
+  if(!activeShift)return;var shift=activeShift;
+  var counted=prompt('Count the drawer. Enter total cash counted ₱:');if(counted===null)return;counted=Number(counted)||0;
+  var z=computeZ(shift);z.countedCash=counted;z.variance=counted-z.expectedCash;
+  var a=A();
+  a.update(a.ref(a.db,'shifts/'+shift.id),{status:'closed',closeAt:Date.now(),openingFloat:shift.openingFloat,tx:z.tx,gross:z.gross,discounts:z.discounts,refunds:z.refunds,net:z.net,byMethod:z.byMethod,voidCount:z.voidCount,voidAmt:z.voidAmt,expectedCash:z.expectedCash,countedCash:counted,variance:z.variance});
+  a.remove(a.ref(a.db,'posActiveShift'));
+  window.__posLog('shift-close',shift.id,'variance '+peso(z.variance));
+  showZ(shift,z);
+}
+function showZ(shift,z){
+  var w=window.open('','_blank','width=380,height=680');if(!w){alert('Shift closed. Allow pop-ups to print the Z-report.');return;}
+  var methods=Object.keys(z.byMethod).map(function(m){return '<tr><td>'+esc(m)+'</td><td style="text-align:right;">'+peso(z.byMethod[m])+'</td></tr>';}).join('');
+  w.document.write('<html><head><title>Z-Report '+esc(shift.id)+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2,h3{text-align:center;margin:2px 0;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
+    +'<h2>Accaza Coffee House</h2><h3>SHIFT Z-REPORT</h3><hr>'
+    +'<div>Shift: '+esc(shift.id)+'</div><div>Cashier: '+esc(shift.staff)+'</div><div>Open: '+new Date(shift.openAt).toLocaleString('en-PH')+'</div><div>Close: '+new Date().toLocaleString('en-PH')+'</div><hr>'
+    +'<table><tr><td>Transactions</td><td style="text-align:right;">'+z.tx+'</td></tr>'
+    +'<tr><td>Gross sales</td><td style="text-align:right;">'+peso(z.gross)+'</td></tr>'
+    +'<tr><td>Discounts</td><td style="text-align:right;">-'+peso(z.discounts)+'</td></tr>'
+    +'<tr><td>Refunds</td><td style="text-align:right;">-'+peso(z.refunds)+'</td></tr>'
+    +'<tr><td><b>Net sales</b></td><td style="text-align:right;"><b>'+peso(z.net)+'</b></td></tr></table><hr>'
+    +'<div><b>By payment method</b></div><table>'+methods+'</table><hr>'
+    +'<table><tr><td>Voids</td><td style="text-align:right;">'+z.voidCount+' ('+peso(z.voidAmt)+')</td></tr>'
+    +'<tr><td>Opening float</td><td style="text-align:right;">'+peso(shift.openingFloat)+'</td></tr>'
+    +'<tr><td>Cash sales</td><td style="text-align:right;">'+peso(z.cashSales)+'</td></tr>'
+    +'<tr><td>Expected drawer</td><td style="text-align:right;">'+peso(z.expectedCash)+'</td></tr>'
+    +'<tr><td>Counted cash</td><td style="text-align:right;">'+peso(z.countedCash)+'</td></tr>'
+    +'<tr><td><b>Variance</b></td><td style="text-align:right;"><b>'+peso(z.variance)+'</b></td></tr></table><hr>'
+    +'<div style="font-size:9px;text-align:center;">Expected drawer = float + cash sales − refunds. Management report, not a BIR document.</div>'
+    +'<div style="text-align:center;margin-top:8px;"><button onclick="window.print()">Print</button></div></body></html>');
+  w.document.close();
+}
+function reverseInv(o){var a=A();var u=o.inventoryUsage||{};Object.keys(u).forEach(function(ing){a.runTransaction(a.ref(a.db,'inventory/'+ing+'/stock'),function(cur){return(Number(cur)||0)+u[ing];});});}
+function voidSale(oid){
+  var o=ordersMap[oid];if(!o)return;
+  var pin=prompt('Manager PIN to VOID '+oid+':');if(pin===null)return;if(!window.__posIsManagerPin(pin)){alert('Invalid manager PIN.');return;}
+  var reason=prompt('Reason for void:')||'';
+  var restock=o.inventoryUsage&&!o.inventoryReversed?confirm('Return this order\'s ingredients to stock?\nOK = restock · Cancel = treat as wastage (keep deducted).'):false;
+  var a=A();a.update(a.ref(a.db,'orders/'+oid),{voided:true,voidReason:reason,voidedAt:Date.now()});
+  if(restock){reverseInv(o);a.update(a.ref(a.db,'orders/'+oid),{inventoryReversed:true});}
+  window.__posLog('void',oid,reason||'—');
+}
+function refundSale(oid){
+  var o=ordersMap[oid];if(!o)return;
+  var pin=prompt('Manager PIN to REFUND '+oid+':');if(pin===null)return;if(!window.__posIsManagerPin(pin)){alert('Invalid manager PIN.');return;}
+  var max=Number(o.total)||0;var already=Number(o.refundAmount)||0;
+  var amt=prompt('Refund amount (remaining refundable ₱'+(max-already)+'):',(max-already));if(amt===null)return;amt=Number(amt)||0;if(amt<=0){return;}
+  if(amt>max-already+0.01){alert('Refund exceeds the refundable amount.');return;}
+  var reason=prompt('Refund reason:')||'';
+  var full=(already+amt)>=max-0.01;
+  var restock=full&&o.inventoryUsage&&!o.inventoryReversed?confirm('Full refund. Return ingredients to stock?\nOK = restock · Cancel = wastage.'):false;
+  var a=A();a.update(a.ref(a.db,'orders/'+oid),{refundAmount:already+amt,refundReason:reason,refundedAt:Date.now(),refunded:true});
+  if(restock){reverseInv(o);a.update(a.ref(a.db,'orders/'+oid),{inventoryReversed:true});}
+  window.__posLog('refund',oid,peso(amt)+' · '+(reason||'—'));
 }
 })();
 </script>
