@@ -1074,7 +1074,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
       <button class="admin-tab" onclick="posSwitchTab('inventory',this)">📦 Inventory <span id="lowStockBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
       <button class="admin-tab" onclick="posSwitchTab('recipes',this)">🧪 Recipes</button>
       <button class="admin-tab" onclick="posSwitchTab('analytics',this)">📊 Analytics</button>
-      <button class="admin-tab" onclick="posSwitchTab('pnl',this)">💰 P&amp;L</button>
+      <button class="admin-tab" onclick="posSwitchTab('pnl',this)">💰 Profit &amp; Loss</button>
       <button class="admin-tab" onclick="posSwitchTab('ops',this)">🧾 Register Ops</button>
       <button class="admin-tab" id="tabBtnOrders" onclick="switchTab('orders',this)">📋 Orders <span id="ordersBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
       <button class="admin-tab" onclick="switchTab('reservations',this)">📅 Reservations</button>
@@ -4450,7 +4450,7 @@ function showReceipt(o){
 <script id="accaza-analytics">
 (function(){
 'use strict';
-var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},funnelMap={};
+var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},funnelMap={},expItems={},monthlyExp={};
 var azRange='7d', azFrom=null, azTo=null, pnlMonth=null;
 function A(){return window.__accaza;}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -4470,8 +4470,8 @@ function init(){
   a.onValue(a.ref(a.db,'appCustomers'),function(s){custMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
   a.onValue(a.ref(a.db,'inventory'),function(s){invMap=s.val()||{};});
   a.onValue(a.ref(a.db,'recipes'),function(s){recMap=s.val()||{};});
-  a.onValue(a.ref(a.db,'expenses'),function(s){expMap=s.val()||{};if(isTab('pnl'))renderPnl();});
-  a.onValue(a.ref(a.db,'expenseCategories'),function(s){expCatMap=s.val()||{};if(isTab('pnl'))renderPnl();});
+  a.onValue(a.ref(a.db,'expenseItems'),function(s){expItems=s.val()||{};if(isTab('pnl'))renderPnl();});
+  a.onValue(a.ref(a.db,'monthlyExpenses'),function(s){monthlyExp=s.val()||{};if(isTab('pnl'))renderPnl();});
   a.onValue(a.ref(a.db,'analyticsFunnel'),function(s){funnelMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
 }
 // extend the POS tab switcher to also render our tabs
@@ -4636,64 +4636,60 @@ function pnlFor(mk){
   var revenue=sales.reduce(function(s,x){return s+x.net;},0);
   var cogs=0,uncovered=0;sales.forEach(function(x){if(x.lineItems){var r=orderCOGS(x.o);cogs+=r.cost;if(!r.covered)uncovered++;}else uncovered++;});
   var gp=revenue-cogs;
-  var exp=Object.values(expMap).filter(function(e){return(e.date||'').slice(0,7)===mk;});
-  var byCat={};exp.forEach(function(e){var c=catName(e.category);byCat[c]=(byCat[c]||0)+(Number(e.amount)||0);});
-  var opex=exp.reduce(function(s,e){return s+(Number(e.amount)||0);},0);
-  return{revenue:revenue,cogs:cogs,gp:gp,margin:revenue>0?gp/revenue*100:0,byCat:byCat,opex:opex,net:gp-opex,uncovered:uncovered,tx:sales.length};
+  var m=monthlyExp[mk]||{};var amounts=m.amounts||{};
+  var byItem={},opex=0;
+  Object.keys(expItems).forEach(function(id){var amt=Number(amounts[id])||0;byItem[id]={name:expItems[id].name,amount:amt};opex+=amt;});
+  return{revenue:revenue,cogs:cogs,gp:gp,margin:revenue>0?gp/revenue*100:0,byItem:byItem,opex:opex,net:gp-opex,uncovered:uncovered,tx:sales.length,locked:!!m.locked};
 }
-function catName(id){return(expCatMap[id]&&expCatMap[id].name)||id;}
+function itemIdsSorted(){return Object.keys(expItems).sort(function(a,b){return((expItems[a].order||0)-(expItems[b].order||0))||(expItems[a].name||'').localeCompare(expItems[b].name||'');});}
 function renderPnl(){
   var root=document.getElementById('pnlRoot');if(!root)return;
   if(!pnlMonth)pnlMonth=monthKey(Date.now());
   var cur=pnlFor(pnlMonth), pmk=prevMonthKey(pnlMonth), prev=pnlFor(pmk);
-  function vrow(label,c,p,bold){var dv=c-p;var dp=p!==0?dv/Math.abs(p)*100:(c!==0?100:0);return '<tr'+(bold?' class="tot"':'')+'><td>'+esc(label)+'</td><td class="r">'+peso(c)+'</td><td class="r">'+peso(p)+'</td><td class="r '+(dv>0?'az-up':dv<0?'az-down':'az-flat')+'">'+(p!==0||c!==0?pct(dp):'—')+'</td></tr>';}
-  var catRows=Object.keys(cur.byCat).sort().map(function(c){return vrow('   '+c,cur.byCat[c]||0,prev.byCat[c]||0);}).join('');
-  var html='<div class="pz-h">💰 Profit &amp; Loss</div><p class="pz-sub">Management P&amp;L (cash-basis). Revenue = net sales · COGS from recipe costs · overheads entered below. Netsuite/Xero remain the books of record.</p>';
-  html+='<div style="margin-bottom:1rem;display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;"><span class="pz-lbl" style="margin:0;">Month</span><input type="month" class="pz-in" id="pnlMonth" value="'+pnlMonth+'" style="width:auto;"/><button class="pz-btn sec" id="pnlExport" style="padding:0.35rem 0.8rem;">⬇ Export CSV</button></div>';
+  var locked=cur.locked, ids=itemIdsSorted();
+  function vrow(label,c,p,bold){var dv=c-p;var dp=p!==0?dv/Math.abs(p)*100:(c!==0?100:0);return '<tr'+(bold?' class="tot"':'')+'><td>'+esc(label)+'</td><td class="r">'+peso(c)+'</td><td class="r">'+peso(p)+'</td><td class="r '+(dv>0?'az-up':dv<0?'az-down':'az-flat')+'">'+(p!==0||c!==0?pct(dp):'\u2014')+'</td></tr>';}
+  var oveRows=ids.map(function(id){return vrow('   '+expItems[id].name,(cur.byItem[id]&&cur.byItem[id].amount)||0,(prev.byItem[id]&&prev.byItem[id].amount)||0);}).join('');
+  var html='<div class="pz-h">\ud83d\udcb0 Profit &amp; Loss</div><p class="pz-sub">Management P&amp;L (cash-basis). Revenue = net sales \u00b7 COGS from recipe costs \u00b7 overhead expenses entered per month below. Netsuite/Xero remain the books of record.</p>';
+  html+='<div style="margin-bottom:1rem;display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;"><span class="pz-lbl" style="margin:0;">Month</span><input type="month" class="pz-in" id="pnlMonth" value="'+pnlMonth+'" style="width:auto;"/>'+(locked?'<span style="font-size:0.75rem;color:#2a9d5c;font-weight:600;">\ud83d\udd12 Saved</span>':'<span style="font-size:0.75rem;color:#e67e00;font-weight:600;">\u270f\ufe0f Draft \u2014 not saved</span>')+'<button class="pz-btn sec" id="pnlExport" style="padding:0.35rem 0.8rem;margin-left:auto;">\u2b07 Export CSV</button></div>';
   html+='<div class="pz-card" style="margin-bottom:1.2rem;"><table class="pnl-tbl"><thead><tr><th>'+esc(monthLabel(pnlMonth))+'</th><th>This month</th><th>'+esc(monthLabel(pmk))+'</th><th>Var</th></tr></thead><tbody>'
     +vrow('Net sales (revenue)',cur.revenue,prev.revenue)
     +vrow('Cost of goods sold',-cur.cogs,-prev.cogs)
-    +'<tr class="head"><td>Gross profit</td><td class="r">'+peso(cur.gp)+'</td><td class="r">'+peso(prev.gp)+'</td><td class="r">'+(prev.gp!==0?pct((cur.gp-prev.gp)/Math.abs(prev.gp)*100):'—')+'</td></tr>'
+    +'<tr class="head"><td>Gross profit</td><td class="r">'+peso(cur.gp)+'</td><td class="r">'+peso(prev.gp)+'</td><td class="r">'+(prev.gp!==0?pct((cur.gp-prev.gp)/Math.abs(prev.gp)*100):'\u2014')+'</td></tr>'
     +'<tr><td style="color:var(--tl);font-size:0.78rem;">Gross margin</td><td class="r" style="color:var(--tl);">'+(Math.round(cur.margin*10)/10)+'%</td><td class="r" style="color:var(--tl);">'+(Math.round(prev.margin*10)/10)+'%</td><td></td></tr>'
-    +'<tr class="head"><td>Operating expenses</td><td class="r">'+peso(-cur.opex)+'</td><td class="r">'+peso(-prev.opex)+'</td><td></td></tr>'
-    +catRows
+    +'<tr class="head"><td>Overhead expenses</td><td class="r">'+peso(-cur.opex)+'</td><td class="r">'+peso(-prev.opex)+'</td><td></td></tr>'
+    +oveRows
     +vrow('Net profit',cur.net,prev.net,true)
     +'</tbody></table>'
-    +(cur.uncovered>0?'<p class="az-note" style="margin-top:0.5rem;">⚠️ '+cur.uncovered+' sale(s) this month have items without a costed recipe — COGS is understated for those. Complete recipes for full accuracy.</p>':'')
+    +(cur.uncovered>0?'<p class="az-note" style="margin-top:0.5rem;">\u26a0\ufe0f '+cur.uncovered+' sale(s) this month have items without a costed recipe \u2014 COGS is understated for those.</p>':'')
     +'</div>';
-  // expenses manager
-  var cats=Object.keys(expCatMap).map(function(k){return{id:k,name:expCatMap[k].name};}).sort(function(a,b){return a.name.localeCompare(b.name);});
-  html+='<div class="az-sec">Overhead expenses</div>';
-  html+='<div class="pz-card" style="margin-bottom:1rem;"><div style="display:grid;grid-template-columns:1.4fr 1.4fr 1fr 1fr auto;gap:0.5rem;align-items:end;">'
-    +'<div><span class="pz-lbl">Category</span><select class="pz-in" id="exCat">'+(cats.length?cats.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+'</option>';}).join(''):'<option value="">— add a category first —</option>')+'</select></div>'
-    +'<div><span class="pz-lbl">Item</span><input class="pz-in" id="exItem" placeholder="e.g. Electricity"/></div>'
-    +'<div><span class="pz-lbl">Amount ₱</span><input class="pz-in" id="exAmt" type="number" step="any"/></div>'
-    +'<div><span class="pz-lbl">Date</span><input class="pz-in" id="exDate" type="date"/></div>'
-    +'<button class="pz-btn" id="exAdd">Add</button></div>'
-    +'<div style="margin-top:0.6rem;display:flex;gap:0.5rem;align-items:end;"><div><span class="pz-lbl">New category</span><input class="pz-in" id="exNewCat" placeholder="e.g. Utilities" style="width:180px;"/></div><button class="pz-btn sec" id="exAddCat">+ Category</button></div>'
-    +'</div>';
-  var monthExp=Object.keys(expMap).map(function(k){return Object.assign({id:k},expMap[k]);}).filter(function(e){return(e.date||'').slice(0,7)===pnlMonth;}).sort(function(a,b){return(b.date||'').localeCompare(a.date||'');});
-  html+='<div class="pz-card"><table class="pz-tbl"><thead><tr><th>Date</th><th>Category</th><th>Item</th><th>Amount</th><th></th></tr></thead><tbody>'
-    +(monthExp.length?monthExp.map(function(e){return '<tr><td>'+esc(e.date||'')+'</td><td>'+esc(catName(e.category))+'</td><td>'+esc(e.item||'')+'</td><td>'+peso(e.amount)+'</td><td><button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-exdel="'+e.id+'">✕</button></td></tr>';}).join(''):'<tr><td colspan="5" class="az-note" style="padding:0.8rem;">No expenses recorded for '+esc(monthLabel(pnlMonth))+'.</td></tr>')
-    +'</tbody></table></div>';
+  html+='<div class="az-sec">Overhead expenses \u2014 '+esc(monthLabel(pnlMonth))+(locked?' <span style="color:#2a9d5c;font-size:0.8rem;">(saved)</span>':'')+'</div>';
+  html+='<div class="pz-card"><table class="pz-tbl"><thead><tr><th>Expense item</th><th style="width:170px;">Amount \u20b1</th><th></th></tr></thead><tbody>'
+    +(ids.length?ids.map(function(id){var amt=(cur.byItem[id]&&cur.byItem[id].amount)||0;return '<tr><td>'+esc(expItems[id].name)+'</td><td><input class="pz-in" type="number" step="any" data-amt="'+id+'" value="'+(amt||'')+'"'+(locked?' disabled':'')+' style="text-align:right;"/></td><td><button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-itemdel="'+id+'"'+(locked?' disabled':'')+'>\u2715</button></td></tr>';}).join(''):'<tr><td colspan="3" class="az-note" style="padding:0.8rem;">No expense items yet. Add your overhead items below (e.g. Rent, Electricity, Salaries).</td></tr>')
+    +'<tr class="tot"><td>Total overhead</td><td class="r" id="ovTotal">'+peso(cur.opex)+'</td><td></td></tr>'
+    +'</tbody></table>'
+    +'<div style="margin-top:0.7rem;display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap;">'
+    +'<div><span class="pz-lbl">Add expense item</span><input class="pz-in" id="newItemName" placeholder="e.g. Electricity" style="width:200px;"'+(locked?' disabled':'')+'/></div><button class="pz-btn sec" id="addItemBtn"'+(locked?' disabled':'')+'>+ Add item</button>'
+    +'<div style="margin-left:auto;">'+(locked?'<button class="pz-btn" id="reopenBtn">\ud83d\udd13 Re-open to amend</button>':'<button class="pz-btn ok" id="saveBtn">\ud83d\udcbe Save month</button>')+'</div>'
+    +'</div></div>';
   root.innerHTML=html;
   document.getElementById('pnlMonth').onchange=function(){pnlMonth=this.value;renderPnl();};
-  var ex=document.getElementById('exDate');if(ex&&!ex.value)ex.value=new Date().toISOString().slice(0,10);
-  document.getElementById('exAdd').onclick=addExpense;
-  document.getElementById('exAddCat').onclick=addCat;
-  document.getElementById('pnlExport').onclick=function(){exportPnl(cur,prev,pmk);};
-  root.querySelectorAll('[data-exdel]').forEach(function(b){b.onclick=function(){var a=A();if(confirm('Delete this expense?'))a.remove(a.ref(a.db,'expenses/'+b.getAttribute('data-exdel')));};});
+  document.getElementById('pnlExport').onclick=function(){exportPnl(cur,prev,pmk,ids);};
+  function recalcTotal(){var t=0;root.querySelectorAll('[data-amt]').forEach(function(i){t+=Number(i.value)||0;});var el=document.getElementById('ovTotal');if(el)el.textContent=peso(t);}
+  root.querySelectorAll('[data-amt]').forEach(function(i){i.oninput=recalcTotal;});
+  var addB=document.getElementById('addItemBtn');if(addB)addB.onclick=function(){var nm=(document.getElementById('newItemName').value||'').trim();if(!nm)return;var a=A();a.set(a.ref(a.db,'expenseItems/'+uid('ei_')),{name:nm,order:Object.keys(expItems).length,ts:Date.now()});};
+  var saveB=document.getElementById('saveBtn');if(saveB)saveB.onclick=function(){var amounts={};root.querySelectorAll('[data-amt]').forEach(function(i){amounts[i.getAttribute('data-amt')]=Number(i.value)||0;});var a=A();a.set(a.ref(a.db,'monthlyExpenses/'+pnlMonth),{locked:true,amounts:amounts,savedAt:Date.now()}).then(function(){renderPnl();});};
+  var reB=document.getElementById('reopenBtn');if(reB)reB.onclick=function(){if(!confirm('Re-open '+monthLabel(pnlMonth)+' to amend the figures?'))return;var a=A();a.update(a.ref(a.db,'monthlyExpenses/'+pnlMonth),{locked:false}).then(function(){renderPnl();});};
+  root.querySelectorAll('[data-itemdel]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-itemdel');if(!confirm('Remove "'+(expItems[id]?expItems[id].name:'')+'" from the item list? It is removed from every month.'))return;var a=A();a.remove(a.ref(a.db,'expenseItems/'+id));};});
 }
-function addCat(){var n=(document.getElementById('exNewCat').value||'').trim();if(!n)return;var a=A();a.set(a.ref(a.db,'expenseCategories/'+uid('ec_')),{name:n,ts:Date.now()});}
-function addExpense(){var cat=document.getElementById('exCat').value;var item=(document.getElementById('exItem').value||'').trim();var amt=Number(document.getElementById('exAmt').value)||0;var date=document.getElementById('exDate').value;if(!cat){alert('Add a category first.');return;}if(!item||!amt||!date){alert('Enter item, amount and date.');return;}var a=A();a.set(a.ref(a.db,'expenses/'+uid('ex_')),{category:cat,item:item,amount:amt,date:date,ts:Date.now()});document.getElementById('exItem').value='';document.getElementById('exAmt').value='';}
-function exportPnl(cur,prev,pmk){
-  var rows=[['Accaza P&L',monthLabel(pnlMonth)],[''],['Line','This month','Last month ('+monthLabel(pmk)+')']];
+function exportPnl(cur,prev,pmk,ids){
+  var rows=[['Accaza Profit & Loss',monthLabel(pnlMonth)],[''],['Line','This month','Last month ('+monthLabel(pmk)+')']];
   rows.push(['Net sales',cur.revenue.toFixed(2),prev.revenue.toFixed(2)]);
   rows.push(['COGS',(-cur.cogs).toFixed(2),(-prev.cogs).toFixed(2)]);
   rows.push(['Gross profit',cur.gp.toFixed(2),prev.gp.toFixed(2)]);
   rows.push(['Gross margin %',(Math.round(cur.margin*10)/10),(Math.round(prev.margin*10)/10)]);
-  Object.keys(cur.byCat).sort().forEach(function(c){rows.push(['  '+c,(-cur.byCat[c]).toFixed(2),(-(prev.byCat[c]||0)).toFixed(2)]);});
-  rows.push(['Total opex',(-cur.opex).toFixed(2),(-prev.opex).toFixed(2)]);
+  rows.push(['Overhead expenses','','']);
+  (ids||Object.keys(cur.byItem)).forEach(function(id){var nm=(cur.byItem[id]&&cur.byItem[id].name)||id;rows.push(['  '+nm,(-((cur.byItem[id]&&cur.byItem[id].amount)||0)).toFixed(2),(-((prev.byItem[id]&&prev.byItem[id].amount)||0)).toFixed(2)]);});
+  rows.push(['Total overhead',(-cur.opex).toFixed(2),(-prev.opex).toFixed(2)]);
   rows.push(['Net profit',cur.net.toFixed(2),prev.net.toFixed(2)]);
   var csv=rows.map(function(r){return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"';}).join(',');}).join('\n');
   var blob=new Blob([csv],{type:'text/csv'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='accaza-pnl-'+pnlMonth+'.csv';a.click();URL.revokeObjectURL(url);
