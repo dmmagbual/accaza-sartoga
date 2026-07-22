@@ -1294,7 +1294,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
     <!-- Login form -->
     <div id="loginForm" style="display:none;">
       <label class="field-label">Username</label>
-      <input type="text" id="adminUser" placeholder="Enter username" style="margin-bottom:0.75rem;" onkeydown="if(event.key==='Enter')document.getElementById('adminPass').focus()"/>
+      <input type="text" id="adminUser" placeholder="Username or email" style="margin-bottom:0.75rem;" onkeydown="if(event.key==='Enter')document.getElementById('adminPass').focus()"/>
       <label class="field-label">Password</label>
       <input type="password" id="adminPass" placeholder="Enter password" style="margin-bottom:1rem;" onkeydown="if(event.key==='Enter')checkLogin()"/>
       <button class="btn-primary" style="width:100%;" onclick="checkLogin()">Log In</button>
@@ -1357,10 +1357,11 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import{getDatabase,ref,set,get,push,update,remove,onValue,runTransaction}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import{getMessaging,getToken,onMessage,isSupported}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
+import{getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 const app=initializeApp(firebaseConfig);
-const db=getDatabase(app);
+const db=getDatabase(app);const auth=getAuth(app);window.__accazaAuth=auth;
 // ===================== WEB PUSH (FCM) =====================
 // Paste your Web Push certificate key here (Firebase Console > Project settings > Cloud Messaging > Web Push certificates).
 const VAPID_KEY="BIIVf-1RYIQger0yqeYlyV6-tQpH8YfytIgQK6-7IJg87HVITcNkYv4RYcKjyCmJBJKR1EXjJqRuiHzkFJjSvlE";
@@ -3379,11 +3380,7 @@ window.printResArchive=function(){
   ctx.fillStyle='rgba(224,212,198,0.5)';ctx.font='11px Inter,sans-serif';ctx.textAlign='center';ctx.fillText('Accaza Coffee House · Confidential · For internal use only',pageW/2,totalH-14);
   const w=window.open('','_blank');
   if(!w){const link=document.createElement('a');link.download='Accaza_Reservations_'+new Date().toISOString().slice(0,10)+'.png';link.href=canvas.toDataURL('image/png');link.click();return;}
-  w.document.write('<html><head><title>Reservation Archive — Accaza Coffee House</title></head><body style="margin:0;"><img src="'+canvas.toDataURL('image/png')+'" style="width:100%;" onload="setTimeout(function(){window.print();},400);"/><script id="admin-portal-boot">
-/* On admin.html, if no active session, show the login gate immediately. */
-setTimeout(function(){try{var ss=JSON.parse(localStorage.getItem('accaza_admin_session')||'null');if((!ss||!ss.role)&&window.openAdmin){window.openAdmin();}}catch(e){if(window.openAdmin)window.openAdmin();}},500);
-</script>
-</body></html>');
+  w.document.write('<html><head><title>Reservation Archive — Accaza Coffee House</title></head><body style="margin:0;"><img src="'+canvas.toDataURL('image/png')+'" style="width:100%;" onload="setTimeout(function(){window.print();},400);"/></body></html>');
   w.document.close();
 };
 
@@ -3486,6 +3483,16 @@ window.checkLogin=async function(){
   var username=(document.getElementById('adminUser').value||'').trim().toLowerCase();
   var pass=document.getElementById('adminPass').value;
   if(!username||!pass){document.getElementById('loginErr').style.display='block';return;}
+  if(username.indexOf('@')>-1){
+    var _le=document.getElementById('loginErr');_le.style.display='none';
+    try{
+      var _cred=await signInWithEmailAndPassword(auth,username,pass);
+      var _as=await get(ref(db,'admins/'+_cred.user.uid));
+      if(_as.exists()){ await loginSuccess('admin',username,_cred.user.uid); }
+      else{ await signOut(auth); _le.textContent='\u274c This account is not authorized.'; _le.style.display='block'; document.getElementById('adminPass').value=''; }
+    }catch(_e){ _le.textContent='\u274c Wrong email or password.'; _le.style.display='block'; document.getElementById('adminPass').value=''; }
+    return;
+  }
   var hashBuf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pass));
   var hashHex=Array.from(new Uint8Array(hashBuf)).map(b=>b.toString(16).padStart(2,'0')).join('');
   document.getElementById('loginErr').style.display='none';
@@ -4849,6 +4856,9 @@ function refundSale(oid){
   window.__posLog('refund',oid,peso(amt)+' · '+(reason||'—'));
 }
 })();
+</script>
+<script id="admin-portal-boot">
+setTimeout(function(){try{var ss=JSON.parse(localStorage.getItem('accaza_admin_session')||'null');if((!ss||!ss.role)&&window.openAdmin){window.openAdmin();}}catch(e){if(window.openAdmin)window.openAdmin();}},500);
 </script>
 </body>
 </html>
