@@ -3487,10 +3487,11 @@ window.checkLogin=async function(){
     var _le=document.getElementById('loginErr');_le.style.display='none';
     try{
       var _cred=await signInWithEmailAndPassword(auth,username,pass);
-      var _as=await get(ref(db,'admins/'+_cred.user.uid));
-      if(_as.exists()){ await loginSuccess('admin',username,_cred.user.uid); }
-      else{ await signOut(auth); _le.textContent='\u274c This account is not authorized.'; _le.style.display='block'; document.getElementById('adminPass').value=''; }
-    }catch(_e){ _le.textContent='\u274c Wrong email or password.'; _le.style.display='block'; document.getElementById('adminPass').value=''; }
+      var _uid=_cred.user.uid;
+      var _as=await get(ref(db,'admins/'+_uid));
+      if(_as.exists()){ await loginSuccess('admin',username,_uid); }
+      else{ await signOut(auth); _le.textContent='Signed in, but this UID is not in admins: '+_uid; _le.style.display='block'; _le.style.whiteSpace='normal'; document.getElementById('adminPass').value=''; }
+    }catch(_e){ console.error('ACCAZA AUTH ERROR',_e); _le.textContent='Auth error: '+((_e&&_e.code)||(_e&&_e.message)||_e); _le.style.display='block'; _le.style.whiteSpace='normal'; document.getElementById('adminPass').value=''; }
     return;
   }
   var hashBuf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pass));
