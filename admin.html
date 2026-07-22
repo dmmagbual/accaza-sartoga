@@ -3551,25 +3551,10 @@ window.checkLogin=async function(){
 };
 
 window.logoutAdmin=function(){
-  adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;currentUser=null;currentLoginRole=null;
   try{localStorage.removeItem('accaza_admin_session');}catch(e){}
-  clearOrderAlert();
-  document.body.classList.remove('staff-mode');
-  // Hide all tab content panels (they live outside adminDash)
-  document.querySelectorAll('.admin-tab-content').forEach(function(el){el.style.display='none';});
-  ['adminDash','availSection','commentsSection'].forEach(function(id){document.getElementById(id).style.display='none';});
-  ['navAvail','navComments','navAdminPanel'].forEach(function(id){document.getElementById(id).style.display='none';});
-  document.querySelectorAll('.admin-tab').forEach(function(t){t.style.removeProperty('display');});
-  var aaccTab=document.getElementById('tabBtnAdminAccounts');
-  if(aaccTab)aaccTab.style.display='none';
-  // Reset login form
-  document.getElementById('loginForm').style.display='none';
-  var aBtn=document.getElementById('roleAdminBtn'),sBtn=document.getElementById('roleStaffBtn');
-  if(aBtn){aBtn.style.background='#fff';aBtn.style.color='var(--td)';aBtn.style.borderColor='var(--cd)';}
-  if(sBtn){sBtn.style.background='#fff';sBtn.style.color='var(--td)';sBtn.style.borderColor='var(--cd)';}
-  var hdr=document.querySelector('#adminDash .admin-header p');
-  if(hdr)hdr.textContent='🔥 Firebase Realtime DB';
-  window.scrollTo(0,0);
+  adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;currentUser=null;currentLoginRole=null;
+  var _go=function(){window.location.href='index.html';};
+  try{ signOut(auth).then(_go).catch(_go); }catch(e){ _go(); }
 };
 window.switchTab=function(tab,btn){
   if(tab==='payment'&&currentUser&&currentUser.role==='admin'&&currentUser.uid&&adminAccountsMap[currentUser.uid]&&adminAccountsMap[currentUser.uid].access==='nopay'){alert('⛔ You do not have access to Payment Details.');return;}
