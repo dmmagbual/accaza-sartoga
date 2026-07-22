@@ -104,6 +104,10 @@
 (function(){var GA_ID='G-T4ZZ6HWHJK';if(!GA_ID||GA_ID.indexOf('XXXX')>-1)return;var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id='+GA_ID;document.head.appendChild(s);window.dataLayer=window.dataLayer||[];window.gtag=function(){window.dataLayer.push(arguments);};gtag('js',new Date());gtag('config',GA_ID);})();
 </script>
 
+<style id="retire-old-admin">
+/* The admin now lives entirely in admin.html. Permanently hide every old-admin element on the public site. */
+#adminDash,#availSection,#commentsSection,#navAdminPanel,#navAvail,#navComments,#loginOverlay{display:none!important;}
+</style>
 </head>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -565,6 +569,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 </style>
 </head>
 <body>
+<!-- accaza-index build v29 -->
 <div class="fb-sync" id="fbSync">🔥 Firebase Connected</div>
 <div class="order-toast" id="orderToast" onclick="ackNewOrders()">
   <span class="ot-bell">🔔</span>
@@ -3467,7 +3472,7 @@ async function loginSuccess(role,username,uid){
 
 // ── CHECK LOGIN ─────────────────────────────────────────────
 // Restore admin/staff session across page loads
-(function(){try{var _ss=JSON.parse(localStorage.getItem('accaza_admin_session')||'null');if(!_ss||!_ss.role)return;var _go=function(){try{loginSuccess(_ss.role,_ss.username,_ss.uid);}catch(e){}if(location.hash){setTimeout(function(){var t=document.getElementById(location.hash.slice(1));if(t)t.scrollIntoView();},450);}};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',_go);else _go();}catch(e){}})();
+(function(){/* old admin auto-login disabled - admin now lives on admin.html */})();
 window.checkLogin=async function(){
   var username=(document.getElementById('adminUser').value||'').trim().toLowerCase();
   var pass=document.getElementById('adminPass').value;
