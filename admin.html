@@ -1359,7 +1359,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import{getDatabase,ref,set,get,push,update,remove,onValue,runTransaction}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import{getMessaging,getToken,onMessage,isSupported}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
-import{getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import{getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider,setPersistence,browserSessionPersistence}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 const app=initializeApp(firebaseConfig);
@@ -3298,8 +3298,9 @@ window.savePayment=async function(){
 
 let archivePanelOpen=false;
 window.toggleArchivePanel=function(){archivePanelOpen=!archivePanelOpen;document.getElementById('archivePanel').style.display=archivePanelOpen?'block':'none';document.getElementById('ordersList').style.display=archivePanelOpen?'none':'block';var btn=document.getElementById('archiveToggleBtn');var hdg=document.getElementById('ordersHeading');if(btn){btn.textContent=archivePanelOpen?'← Back to Orders':'📦 View Archive';}if(hdg){hdg.textContent=archivePanelOpen?'Order Archive':'Active Orders';}if(archivePanelOpen)renderArchive();};
-function renderArchive(){
-  const el=document.getElementById('archiveList'),sumEl=document.getElementById('archiveSummary');
+function renderArchive(){get(ref(db,'archivedOrders')).then(function(sn){archivedOrdersMap=sn.val()||{};_paintArchive();}).catch(function(e){console.warn('archive read',e);_paintArchive();});}
+function _paintArchive(){
+  const el=document.getElementById('archiveList'),sumEl=document.getElementById('archiveSummary');if(!el)return;
   const fromVal=document.getElementById('archiveFrom').value,toVal=document.getElementById('archiveTo').value;
   let orders=Object.values(archivedOrdersMap).sort((a,b)=>(b.archivedAt||0)-(a.archivedAt||0));
   if(fromVal)orders=orders.filter(o=>new Date(o.archivedAt||0)>=new Date(fromVal));
@@ -3448,7 +3449,7 @@ function applyStaffPerms(perms){
 }
 async function loginSuccess(role,username,uid){
   currentUser={role,username,uid};
-  try{localStorage.setItem('accaza_admin_session',JSON.stringify({role:role,username:username,uid:uid||null}));}catch(e){}
+  try{sessionStorage.setItem('accaza_admin_session',JSON.stringify({role:role,username:username,uid:uid||null}));}catch(e){}
   try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}
   document.getElementById('adminUser').value='';
   document.getElementById('adminPass').value='';
@@ -3502,7 +3503,7 @@ async function loginSuccess(role,username,uid){
 
 // ── CHECK LOGIN ─────────────────────────────────────────────
 // Restore admin/staff session across page loads
-(function(){try{var _ss=JSON.parse(localStorage.getItem('accaza_admin_session')||'null');if(!_ss||!_ss.role)return;var _go=function(){try{loginSuccess(_ss.role,_ss.username,_ss.uid);}catch(e){}if(location.hash){setTimeout(function(){var t=document.getElementById(location.hash.slice(1));if(t)t.scrollIntoView();},450);}};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',_go);else _go();}catch(e){}})();
+(function(){try{var _ss=JSON.parse(sessionStorage.getItem('accaza_admin_session')||'null');if(!_ss||!_ss.role)return;var _go=function(){try{loginSuccess(_ss.role,_ss.username,_ss.uid);}catch(e){}if(location.hash){setTimeout(function(){var t=document.getElementById(location.hash.slice(1));if(t)t.scrollIntoView();},450);}};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',_go);else _go();}catch(e){}})();
 window.checkLogin=async function(){
   var username=(document.getElementById('adminUser').value||'').trim().toLowerCase();
   var pass=document.getElementById('adminPass').value;
@@ -3510,10 +3511,11 @@ window.checkLogin=async function(){
   if(username.indexOf('@')>-1){
     var _le=document.getElementById('loginErr');_le.style.display='none';
     try{
+      try{await setPersistence(auth,browserSessionPersistence);}catch(_p){}
       var _cred=await signInWithEmailAndPassword(auth,username,pass);
       var _uid=_cred.user.uid;
       var _as=await get(ref(db,'admins/'+_uid));
-      if(_as.exists()){ var _rv=_as.val(); var _role=(_rv==='staff')?'staff':'admin'; try{localStorage.setItem('accaza_admin_session',JSON.stringify({role:_role,username:username,uid:_uid}));}catch(_s){} location.reload(); }
+      if(_as.exists()){ var _rv=_as.val(); var _role=(_rv==='staff')?'staff':'admin'; try{sessionStorage.setItem('accaza_admin_session',JSON.stringify({role:_role,username:username,uid:_uid}));}catch(_s){} location.reload(); }
       else{ await signOut(auth); _le.textContent='Signed in, but this UID is not in admins: '+_uid; _le.style.display='block'; _le.style.whiteSpace='normal'; document.getElementById('adminPass').value=''; }
     }catch(_e){ console.error('ACCAZA AUTH ERROR',_e); _le.textContent='Auth error: '+((_e&&_e.code)||(_e&&_e.message)||_e); _le.style.display='block'; _le.style.whiteSpace='normal'; document.getElementById('adminPass').value=''; }
     return;
@@ -3552,7 +3554,7 @@ window.checkLogin=async function(){
 };
 
 window.logoutAdmin=function(){
-  try{localStorage.removeItem('accaza_admin_session');}catch(e){}
+  try{sessionStorage.removeItem('accaza_admin_session');}catch(e){}
   adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;currentUser=null;currentLoginRole=null;
   var _go=function(){window.location.href='index.html';};
   try{ signOut(auth).then(_go).catch(_go); }catch(e){ _go(); }
@@ -4864,7 +4866,7 @@ function refundSale(oid){
 })();
 </script>
 <script id="admin-portal-boot">
-setTimeout(function(){try{var ss=JSON.parse(localStorage.getItem('accaza_admin_session')||'null');if((!ss||!ss.role)&&window.openAdmin){window.openAdmin();}}catch(e){if(window.openAdmin)window.openAdmin();}},500);
+setTimeout(function(){try{var ss=JSON.parse(sessionStorage.getItem('accaza_admin_session')||'null');if((!ss||!ss.role)&&window.openAdmin){window.openAdmin();}}catch(e){if(window.openAdmin)window.openAdmin();}},500);
 </script>
 <script id="accaza-staffaccess">
 (function(){
