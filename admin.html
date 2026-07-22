@@ -4668,7 +4668,7 @@ function renderPnl(){
     +'<tr class="tot"><td>Total overhead</td><td class="r" id="ovTotal">'+peso(cur.opex)+'</td><td></td></tr>'
     +'</tbody></table>'
     +'<div style="margin-top:0.7rem;display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap;">'
-    +'<div><span class="pz-lbl">Add expense item</span><input class="pz-in" id="newItemName" placeholder="e.g. Electricity" style="width:200px;"'+(locked?' disabled':'')+'/></div><button class="pz-btn sec" id="addItemBtn"'+(locked?' disabled':'')+'>+ Add item</button>'
+    +'<div><span class="pz-lbl">Add expense item</span><input class="pz-in" id="newItemName" placeholder="e.g. Electricity" style="width:200px;"/></div><button class="pz-btn sec" id="addItemBtn">+ Add item</button>'
     +'<div style="margin-left:auto;">'+(locked?'<button class="pz-btn" id="reopenBtn">\ud83d\udd13 Re-open to amend</button>':'<button class="pz-btn ok" id="saveBtn">\ud83d\udcbe Save month</button>')+'</div>'
     +'</div></div>';
   root.innerHTML=html;
@@ -4676,8 +4676,8 @@ function renderPnl(){
   document.getElementById('pnlExport').onclick=function(){exportPnl(cur,prev,pmk,ids);};
   function recalcTotal(){var t=0;root.querySelectorAll('[data-amt]').forEach(function(i){t+=Number(i.value)||0;});var el=document.getElementById('ovTotal');if(el)el.textContent=peso(t);}
   root.querySelectorAll('[data-amt]').forEach(function(i){i.oninput=recalcTotal;});
-  var addB=document.getElementById('addItemBtn');if(addB)addB.onclick=function(){var nm=(document.getElementById('newItemName').value||'').trim();if(!nm)return;var a=A();a.set(a.ref(a.db,'expenseItems/'+uid('ei_')),{name:nm,order:Object.keys(expItems).length,ts:Date.now()});};
-  var saveB=document.getElementById('saveBtn');if(saveB)saveB.onclick=function(){var amounts={};root.querySelectorAll('[data-amt]').forEach(function(i){amounts[i.getAttribute('data-amt')]=Number(i.value)||0;});var a=A();a.set(a.ref(a.db,'monthlyExpenses/'+pnlMonth),{locked:true,amounts:amounts,savedAt:Date.now()}).then(function(){renderPnl();});};
+  var addB=document.getElementById('addItemBtn');if(addB)addB.onclick=function(){var nm=(document.getElementById('newItemName').value||'').trim();if(!nm){alert('Type an item name first.');return;}var a=A();a.set(a.ref(a.db,'expenseItems/'+uid('ei_')),{name:nm,order:Object.keys(expItems).length,ts:Date.now()}).then(function(){document.getElementById('newItemName').value='';}).catch(function(e){alert('Could not add item: '+((e&&e.code)||e)+'. If PERMISSION_DENIED: re-publish the database rules and log in with your EMAIL, not the old username.');});};
+  var saveB=document.getElementById('saveBtn');if(saveB)saveB.onclick=function(){var amounts={};root.querySelectorAll('[data-amt]').forEach(function(i){amounts[i.getAttribute('data-amt')]=Number(i.value)||0;});var a=A();a.set(a.ref(a.db,'monthlyExpenses/'+pnlMonth),{locked:true,amounts:amounts,savedAt:Date.now()}).then(function(){renderPnl();}).catch(function(e){alert('Could not save: '+((e&&e.code)||e)+'. If PERMISSION_DENIED: re-publish the database rules and log in with your EMAIL.');});};
   var reB=document.getElementById('reopenBtn');if(reB)reB.onclick=function(){if(!confirm('Re-open '+monthLabel(pnlMonth)+' to amend the figures?'))return;var a=A();a.update(a.ref(a.db,'monthlyExpenses/'+pnlMonth),{locked:false}).then(function(){renderPnl();});};
   root.querySelectorAll('[data-itemdel]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-itemdel');if(!confirm('Remove "'+(expItems[id]?expItems[id].name:'')+'" from the item list? It is removed from every month.'))return;var a=A();a.remove(a.ref(a.db,'expenseItems/'+id));};});
 }
