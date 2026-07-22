@@ -1061,12 +1061,12 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v25</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v27</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statReservations">0</span><span class="stat-lbl">Reservations</span></div>
-      <div class="admin-stat-card"><span class="stat-num" id="statRevenue">₱0</span><span class="stat-lbl">Est. Revenue</span></div>
+      <div class="admin-stat-card"><span class="stat-num" id="statRevenue">₱0</span><span class="stat-lbl">Active Order Value</span></div>
     </div>
     <div class="admin-tabs">
       <button class="admin-tab active" onclick="switchTab('dashboard',this)">📊 Dashboard</button>
@@ -2449,7 +2449,7 @@ window.submitFeedback=async function(){
 };
 
 // ── ADMIN FUNCTIONS ──
-function updateStats(){const orders=Object.values(adminOrdersMap),active=orders.filter(o=>o.status!=='Received');document.getElementById('statOrders').textContent=active.length;document.getElementById('statPending').textContent=active.filter(o=>o.status==='Pending').length;document.getElementById('statReservations').textContent=Object.keys(adminResMap).length;function _rSale(o){if(!o||o.voided)return false;if(o.source==='pos')return true;var r=['Completed','Received'];if(r.indexOf(o.status)>-1)return true;if(o.status==='Archived'&&r.indexOf(o.prevStatus)>-1)return true;return false;}var _rev=orders.concat(Object.values(archivedOrdersMap)).filter(_rSale).reduce((s,o)=>s+(o.total||0),0);document.getElementById('statRevenue').textContent='₱'+_rev.toLocaleString();}
+function updateStats(){const orders=Object.values(adminOrdersMap),active=orders.filter(o=>o.status!=='Received');document.getElementById('statOrders').textContent=active.length;document.getElementById('statPending').textContent=active.filter(o=>o.status==='Pending').length;document.getElementById('statReservations').textContent=Object.keys(adminResMap).length;document.getElementById('statRevenue').textContent='₱'+active.filter(o=>o.status!=='Rejected').reduce((s,o)=>s+(o.total||0),0).toLocaleString();}
 
 function renderOrders(){
   const el=document.getElementById('ordersList'),orders=Object.values(adminOrdersMap).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
