@@ -1061,7 +1061,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v28</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v29</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1073,6 +1073,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
       <button class="admin-tab" onclick="posSwitchTab('pos',this)" style="color:#8a5a2b;font-weight:600;">🧾 POS</button>
       <button class="admin-tab" onclick="posSwitchTab('inventory',this)">📦 Inventory <span id="lowStockBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
       <button class="admin-tab" onclick="posSwitchTab('recipes',this)">🧪 Recipes</button>
+      <button class="admin-tab" onclick="posSwitchTab('packages',this)">🎁 Packages</button>
       <button class="admin-tab" onclick="posSwitchTab('analytics',this)">📊 Analytics</button>
       <button class="admin-tab" onclick="posSwitchTab('pnl',this)">💰 Profit &amp; Loss</button>
       <button class="admin-tab" onclick="posSwitchTab('ops',this)">🧾 Register Ops</button>
@@ -1274,6 +1275,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
     <div id="tab-pos" class="admin-tab-content" style="display:none;"><div id="posRoot"></div></div>
     <div id="tab-inventory" class="admin-tab-content" style="display:none;"><div id="inventoryRoot"></div></div>
     <div id="tab-recipes" class="admin-tab-content" style="display:none;"><div id="recipesRoot"></div></div>
+    <div id="tab-packages" class="admin-tab-content" style="display:none;"><div id="packagesRoot"></div></div>
     <div id="tab-analytics" class="admin-tab-content" style="display:none;"><div id="analyticsRoot"></div></div>
     <div id="tab-pnl" class="admin-tab-content" style="display:none;"><div id="pnlRoot"></div></div>
     <div id="tab-ops" class="admin-tab-content" style="display:none;"><div id="opsRoot"></div></div>
@@ -3431,7 +3433,7 @@ window.selectLoginRole=function(role){
 // ── LOGIN SUCCESS ───────────────────────────────────────────
 var DEFAULT_STAFF_PERMS={orders:true,reservations:true,pos:true,inventory:true,recipes:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false};
 var _permTabMap={"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'recipes'":'recipes',"'analytics'":'analytics',"'pnl'":'pnl',"'ops'":'registerOps'};
-var _permAlwaysHide=["'payment'","'staffaccounts'","'adminaccounts'","'staffaccess'"];
+var _permAlwaysHide=["'payment'","'staffaccounts'","'adminaccounts'","'staffaccess'","'packages'"];
 window.showAdminSection=function(id){
   var av=document.getElementById('availSection'),cm=document.getElementById('commentsSection');
   if(id==='availSection'){ if(cm)cm.style.display='none'; if(av)av.style.display='block'; if(typeof buildAvail==='function')buildAvail(); if(av)av.scrollIntoView({behavior:'smooth'}); }
@@ -4293,7 +4295,7 @@ function renderPosCart(){
     : '<div style="background:#fde8e8;border:1px solid #f5c6c6;border-radius:6px;padding:0.4rem 0.6rem;font-size:0.76rem;color:#721c24;margin-bottom:0.6rem;">🔴 No open shift — open one in <b>Register Ops</b> to start selling.</div>';
   p.innerHTML=
     shiftBar
-    +'<div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">🛒 Current sale</div>'
+    +(shift?'<button class="pz-btn sec" id="posPkgBtn" style="width:100%;margin-bottom:0.6rem;">🎁 Add Package / Promo</button>':'')+'<div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">🛒 Current sale</div>'
     +(keys.length?lines:'<p class="pz-sub" style="margin:0.5rem 0;">Tap items to add them.</p>')
     +'<div style="margin-top:0.6rem;">'
       +'<div style="display:flex;justify-content:space-between;font-size:0.82rem;margin-bottom:0.3rem;"><span>Subtotal</span><span>'+peso(sub)+'</span></div>'
@@ -4334,8 +4336,9 @@ function renderPosCart(){
   splitChk.onchange=function(){ document.getElementById('posPaySingle').style.display=this.checked?'none':'block'; document.getElementById('posPaySplit').style.display=this.checked?'block':'none'; if(this.checked){splitRows=[];renderSplit();} else refreshSingle(); };
   document.getElementById('posAddPay').onclick=function(){splitRows.push({method:'GCash',amount:0});renderSplit();};
   refreshSingle();
-  document.getElementById('posClear').onclick=function(){if(Object.keys(posCart).length&&confirm('Clear this sale?')){posCart={};renderPosCart();}};
-  document.getElementById('posHold').onclick=function(){ if(!Object.keys(posCart).length)return; var a=A(); a.set(a.ref(a.db,'heldOrders/'+uid('hold_')),{cart:posCart,ts:Date.now(),staff:(window.__posShift&&window.__posShift.staff)||'—',note:(document.getElementById('posCust').value||'').trim()}); posCart={}; renderPosCart(); alert('Order held. Recall it from Register Ops.'); };
+  var _pb=document.getElementById('posPkgBtn');if(_pb)_pb.onclick=function(){ if(window.__openPackagePicker)window.__openPackagePicker(); else alert('Packages module still loading \u2014 try again.'); };
+  document.getElementById('posClear').onclick=function(){if(Object.keys(posCart).length&&confirm('Clear this sale?')){posCart={};window.__posPkgs=[];renderPosCart();}};
+  document.getElementById('posHold').onclick=function(){ if(!Object.keys(posCart).length)return; var a=A(); a.set(a.ref(a.db,'heldOrders/'+uid('hold_')),{cart:posCart,ts:Date.now(),staff:(window.__posShift&&window.__posShift.staff)||'—',note:(document.getElementById('posCust').value||'').trim()}); posCart={}; window.__posPkgs=[]; renderPosCart(); alert('Order held. Recall it from Register Ops.'); };
   document.getElementById('posCharge').onclick=function(){
     if(!window.__posShift){alert('Open a shift first (Register Ops tab).');return;}
     var tot=grandTotal();
@@ -4354,21 +4357,22 @@ function chargeSale(sub,total,payments){
   var disc=Number(document.getElementById('posDisc').value)||0;
   var a=A(); var staff=shift.staff||'Staff';
   var oid='POS-'+Date.now().toString().slice(-6);
-  var lineItems=keys.map(function(k){var c=posCart[k];return {itemKey:c.itemKey,name:c.name,size:c.size,optLabels:c.optLabels,qty:c.qty,unitTotal:c.unitTotal};});
+  var lineItems=keys.map(function(k){var c=posCart[k];return {itemKey:c.itemKey,name:c.name,size:c.size,optLabels:c.optLabels,qty:c.qty,unitTotal:c.unitTotal,stream:c.stream||null,pkg:c.pkgId||null};});
+  var _pkgs=window.__posPkgs||[];var _extra=_pkgs.reduce(function(s,pp){return s+(Number(pp.extraCost)||0);},0);
   var itemsStr=keys.map(function(k){var c=posCart[k];return c.name+(c.details?' ('+c.details+')':'')+' x'+c.qty;}).join(', ');
   var cash=(payments||[]).filter(function(x){return x.method==='Cash';});
   var tendered=cash.reduce(function(s,x){return s+(Number(x.tendered)||0);},0);
   var change=cash.reduce(function(s,x){return s+(Number(x.change)||0);},0);
   var payLabel=payments.length>1?'Split':payments[0].method;
   var now=new Date();
-  var order={id:oid,name:cust,phone:'',type:'Walk-in',address:'',payment:payLabel,payments:payments,contact:'',contactMethod:'',items:itemsStr,lineItems:lineItems,subtotal:sub,discount:disc,total:total,tendered:tendered,change:change,notes:'',status:'Completed',source:'pos',staff:staff,shiftId:shift.id,receivedByCustomer:true,time:now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:now.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
+  var order={id:oid,name:cust,phone:'',type:'Walk-in',address:'',payment:payLabel,payments:payments,contact:'',contactMethod:'',items:itemsStr,lineItems:lineItems,subtotal:sub,discount:disc,total:total,tendered:tendered,change:change,notes:'',status:'Completed',source:'pos',staff:staff,shiftId:shift.id,packages:_pkgs,extraCost:_extra,receivedByCustomer:true,time:now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:now.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
   document.getElementById('posCharge').disabled=true;
   a.set(a.ref(a.db,'orders/'+oid),order).then(function(){
     if(window.__posLog)window.__posLog('sale',oid,'₱'+total+' · '+payLabel);
-    var receipt=Object.assign({},order); posCart={}; renderPosCart(); showReceipt(receipt);
+    var receipt=Object.assign({},order); posCart={}; window.__posPkgs=[]; renderPosCart(); showReceipt(receipt);
   }).catch(function(e){alert('Could not save sale: '+e);document.getElementById('posCharge').disabled=false;});
 }
-window.__pos={render:function(){if(document.getElementById('posCartPanel'))renderPosCart();},loadCart:function(c){posCart=c||{};if(window.switchTab)window.switchTab('pos',document.querySelector('.admin-tab'));buildPOS();},hasItems:function(){return Object.keys(posCart).length>0;}};
+window.__pos={render:function(){if(document.getElementById('posCartPanel'))renderPosCart();},loadCart:function(c){posCart=c||{};if(window.switchTab)window.switchTab('pos',document.querySelector('.admin-tab'));buildPOS();},hasItems:function(){return Object.keys(posCart).length>0;},addPackage:function(components,meta){(components||[]).forEach(function(c){var key=uid('pc_');posCart[key]={itemKey:c.itemKey,name:c.name,size:c.size||null,optLabels:c.optLabels||[],details:c.details||('pkg: '+meta.name),qty:c.qty,unitTotal:c.unitTotal,stream:(meta.type==='promo'?'promo':'events'),pkgId:meta.id};});window.__posPkgs=window.__posPkgs||[];window.__posPkgs.push(meta);renderPosCart();}};
 
 /* ══════════ DEDUCTION ENGINE ══════════ */
 function computeUsage(lineItems){
@@ -4488,7 +4492,7 @@ function captureCompletedAt(all){var a=A();Object.keys(all).forEach(function(id)
 function isSale(o){if(!o||o.voided)return false;var r=['Completed','Received'];if(o.source==='pos')return true;if(r.indexOf(o.status)>-1)return true;if(o.status==='Archived'&&r.indexOf(o.prevStatus)>-1)return true;return false;}
 function allOrders(){var out=[];[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){out.push(m[k]);});});return out;}
 function itemCost(li){var rec=recMap[li.itemKey];if(!rec)return null;var mult=(rec.sizeMult&&rec.sizeMult[li.size]!=null)?rec.sizeMult[li.size]:1;var c=0;(rec.base||[]).forEach(function(b){var ing=invMap[b.ing];if(ing)c+=(Number(b.qty)||0)*mult*(Number(ing.cost)||0);});var labels=li.optLabels||[];(rec.options||[]).forEach(function(o){if(o.label&&o.ing&&labels.indexOf(o.label)>-1){var ing=invMap[o.ing];if(ing)c+=(Number(o.qty)||0)*(Number(ing.cost)||0);}});return c*(Number(li.qty)||1);}
-function orderCOGS(o){if(!o.lineItems)return{cost:0,covered:false};var cost=0,any=false,all=true;o.lineItems.forEach(function(li){var c=itemCost(li);if(c==null)all=false;else{cost+=c;any=true;}});return{cost:cost,covered:any&&all};}
+function orderCOGS(o){var _x=Number(o.extraCost)||0;if(!o.lineItems)return{cost:_x,covered:false};var cost=0,any=false,all=true;o.lineItems.forEach(function(li){var c=itemCost(li);if(c==null)all=false;else{cost+=c;any=true;}});return{cost:cost+_x,covered:any&&all};}
 function saleFields(o){var gross=(o.subtotal!=null?Number(o.subtotal):Number(o.total))||0;var disc=Number(o.discount)||0;var ref=Number(o.refundAmount)||0;return{ts:o.timestamp||Date.parse(o.date)||0,gross:gross,discount:disc,refund:ref,net:gross-disc-ref,payment:o.payment||'—',type:o.type||'—',lineItems:o.lineItems||null,phone:(o.phone||'').replace(/[^0-9]/g,''),name:o.name||'Walk-in',o:o};}
 function salesBetween(from,to){return allOrders().filter(isSale).map(saleFields).filter(function(s){return s.ts>=from&&s.ts<to;});}
 function dayStart(d){d=new Date(d);d.setHours(0,0,0,0);return d.getTime();}
@@ -4589,8 +4593,10 @@ function renderAnalytics(){
   html+='<div><div class="az-sec">Payment mix</div><div class="pz-card">'+chartObj(byPay)+'</div></div>';
   html+='<div><div class="az-sec">Order type</div><div class="pz-card">'+chartObj(byType)+'</div></div>';
   html+='</div>';
-  var walkInRev=0,onlineRev=0;cur.forEach(function(x){if((x.o&&x.o.source==='pos')||x.type==='Walk-in')walkInRev+=x.net;else onlineRev+=x.net;});var chTot=walkInRev+onlineRev||1;
-  html+='<div class="az-sec">Sales channel \u2014 walk-in vs online</div><div class="pz-card"><div class="az-kpis" style="margin:0;">'+kpi('Walk-in (counter)',peso0(walkInRev)+' \u00b7 '+Math.round(walkInRev/chTot*100)+'%')+kpi('Online (pick-up + delivery)',peso0(onlineRev)+' \u00b7 '+Math.round(onlineRev/chTot*100)+'%')+'</div><div class="az-note">Share of revenue through online ordering vs the counter \u2014 watch this to gauge online adoption.</div></div>';
+  var walkInRev=0,onlineRev=0,eventRev=0,promoRev=0;
+  cur.forEach(function(x){var lis=x.lineItems||[];if(!lis.length){if((x.o&&x.o.source==='pos')||x.type==='Walk-in')walkInRev+=x.net;else onlineRev+=x.net;return;}lis.forEach(function(li){var rev=(Number(li.qty)||0)*(Number(li.unitTotal)||0);if(li.stream==='events')eventRev+=rev;else if(li.stream==='promo')promoRev+=rev;else if((x.o&&x.o.source==='pos')||x.type==='Walk-in')walkInRev+=rev;else onlineRev+=rev;});});
+  var chTot=walkInRev+onlineRev+eventRev+promoRev||1;
+  html+='<div class="az-sec">Sales channel</div><div class="pz-card"><div class="az-kpis" style="margin:0;">'+kpi('Walk-in (counter)',peso0(walkInRev)+' · '+Math.round(walkInRev/chTot*100)+'%')+kpi('Online',peso0(onlineRev)+' · '+Math.round(onlineRev/chTot*100)+'%')+kpi('Events',peso0(eventRev)+' · '+Math.round(eventRev/chTot*100)+'%')+kpi('Promos',peso0(promoRev)+' · '+Math.round(promoRev/chTot*100)+'%')+'</div><div class="az-note">Revenue share by channel — walk-in, online, event packages, promos.</div></div>';
   // items
   html+='<div class="az-sec">Top items by revenue</div><div class="pz-card"><table class="pz-tbl"><thead><tr><th>Item</th><th>Units</th><th>Revenue</th><th>Trend</th></tr></thead><tbody>'
     +topByRev.slice(0,10).map(function(i){var pv=pItems[i.name]||0;var tr=pv>0?(i.units-pv)/pv*100:(i.units>0?100:0);return '<tr><td>'+esc(i.name)+'</td><td>'+i.units+'</td><td>'+peso0(i.rev)+'</td><td class="'+(tr>0?'az-up':tr<0?'az-down':'az-flat')+'">'+(pv>0||i.units>0?pct(tr):'—')+'</td></tr>';}).join('')
@@ -4912,6 +4918,152 @@ function render(){
     card.querySelector('[data-all]').onclick=function(){card.querySelectorAll('[data-perm]').forEach(function(c){c.checked=true;});};
     card.querySelector('[data-none]').onclick=function(){card.querySelectorAll('[data-perm]').forEach(function(c){c.checked=false;});};
   });
+}
+})();
+</script>
+<!-- ═══════════════════ ACCAZA PACKAGES & PROMOS (isolated) ═══════════════════ -->
+<script id="accaza-packages">
+(function(){
+'use strict';
+var pkgMap={};
+function A(){return window.__accaza;}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function peso(n){n=Number(n)||0;return '₱'+n.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5);}
+function isTab(n){var el=document.getElementById('tab-'+n);return el&&el.style.display!=='none';}
+function cats(){return A().getCats?A().getCats():[];}
+function catLabel(id){return A().getCatLabel?A().getCatLabel(id):id;}
+function menuItems(){return A().getMenuItems?A().getMenuItems():[];}
+function eligibleItems(catId){return menuItems().filter(function(it){return it.cat===catId;});}
+function hasSizes(it){return it.priceM&&it.priceL;}
+function itemPrice(it,size){if(size==='L'&&it.priceL)return Number(it.priceL)||0;if(size==='M'&&it.priceM)return Number(it.priceM)||0;if(size==='S')return Number(it.priceS)||0;return Number(it.priceM||it.priceS)||0;}
+
+var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
+function init(){var a=A();a.onValue(a.ref(a.db,'packages'),function(s){pkgMap=s.val()||{};if(isTab('packages'))renderPackages();});ensurePickerModal();}
+var _prev=window.posSwitchTab;
+window.posSwitchTab=function(name,btn){ if(_prev)_prev(name,btn); else if(window.switchTab)window.switchTab(name,btn); if(name==='packages')renderPackages(); };
+
+/* ---------- management ---------- */
+var editingId=null;
+function renderPackages(){
+  var root=document.getElementById('packagesRoot');if(!root)return;
+  var list=Object.keys(pkgMap).map(function(k){return Object.assign({id:k},pkgMap[k]);}).sort(function(a,b){return(a.name||'').localeCompare(b.name||'');});
+  var catOpts=cats().map(function(c){return '<option value="'+esc(c.id)+'">'+esc((c.icon||'')+' '+c.label)+'</option>';}).join('');
+  var html='<div class="pz-h">🎁 Packages &amp; Promos</div><p class="pz-sub">Define event packages and promos. At the register, tap <b>Add Package / Promo</b>, pick the customer\'s items from the eligible category, and the system prices each item, applies the deal, and costs it from recipes. Revenue lands in the Events/Promo stream.</p>';
+  html+='<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.6rem;">'+(editingId?'✏️ Edit':'➕ Add')+' package / promo</div>'
+    +'<div style="display:grid;grid-template-columns:1.4fr 1fr 1.3fr;gap:0.6rem;">'
+    +'<div><span class="pz-lbl">Name</span><input class="pz-in" id="pkName" placeholder="e.g. Event Package A"/></div>'
+    +'<div><span class="pz-lbl">Type</span><select class="pz-in" id="pkType"><option value="package">Package (fixed set)</option><option value="promo">Promo (buy X + free)</option></select></div>'
+    +'<div><span class="pz-lbl">Eligible category</span><select class="pz-in" id="pkCat">'+catOpts+'</select></div>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:0.6rem;margin-top:0.6rem;">'
+    +'<div><span class="pz-lbl" id="pkQtyLbl">Items (qty)</span><input class="pz-in" id="pkQty" type="number" min="1" value="10"/></div>'
+    +'<div><span class="pz-lbl">Free items <span id="pkFreeHint" style="color:var(--tl);">(promo)</span></span><input class="pz-in" id="pkFree" type="number" min="0" value="0"/></div>'
+    +'<div><span class="pz-lbl">Discount</span><select class="pz-in" id="pkDiscT"><option value="none">None</option><option value="fixed">₱ off</option><option value="percent">% off</option></select></div>'
+    +'<div><span class="pz-lbl">Discount value</span><input class="pz-in" id="pkDiscV" type="number" step="any" value="0"/></div>'
+    +'<div><span class="pz-lbl">Extra flat cost ₱ <span style="color:var(--tl);">labour/rental</span></span><input class="pz-in" id="pkExtra" type="number" step="any" value="0"/></div>'
+    +'</div>'
+    +'<div style="margin-top:0.7rem;display:flex;gap:0.5rem;"><button class="pz-btn ok" id="pkSave">'+(editingId?'Save changes':'Add')+'</button>'+(editingId?'<button class="pz-btn sec" id="pkCancel">Cancel</button>':'')+'</div>'
+    +'</div>';
+  html+='<div class="pz-card"><table class="pz-tbl"><thead><tr><th>Name</th><th>Type</th><th>Eligible</th><th>Deal</th><th>Extra cost</th><th></th></tr></thead><tbody>'
+    +(list.length?list.map(function(pk){
+        var deal=pk.type==='promo'?('Buy '+pk.qty+' + '+(pk.freeQty||0)+' free'):(pk.qty+' items'+(pk.discType==='fixed'?' · ₱'+pk.discValue+' off':pk.discType==='percent'?' · '+pk.discValue+'% off':''));
+        return '<tr><td>'+esc(pk.name)+'</td><td>'+esc(pk.type)+'</td><td>'+esc(catLabel(pk.eligibleCat))+'</td><td>'+esc(deal)+'</td><td>'+(pk.extraCost?peso(pk.extraCost):'—')+'</td><td style="white-space:nowrap;"><button class="pz-btn sec" style="padding:0.2rem 0.5rem;" data-pkedit="'+pk.id+'">Edit</button> <button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-pkdel="'+pk.id+'">✕</button></td></tr>';
+      }).join(''):'<tr><td colspan="6" class="az-note" style="padding:0.8rem;">No packages yet. Add one above.</td></tr>')
+    +'</tbody></table></div>';
+  root.innerHTML=html;
+  if(editingId&&pkgMap[editingId]){var e=pkgMap[editingId];document.getElementById('pkName').value=e.name||'';document.getElementById('pkType').value=e.type||'package';document.getElementById('pkCat').value=e.eligibleCat||'';document.getElementById('pkQty').value=e.qty||10;document.getElementById('pkFree').value=e.freeQty||0;document.getElementById('pkDiscT').value=e.discType||'none';document.getElementById('pkDiscV').value=e.discValue||0;document.getElementById('pkExtra').value=e.extraCost||0;}
+  document.getElementById('pkSave').onclick=savePkg;
+  var cc=document.getElementById('pkCancel');if(cc)cc.onclick=function(){editingId=null;renderPackages();};
+  root.querySelectorAll('[data-pkedit]').forEach(function(b){b.onclick=function(){editingId=b.getAttribute('data-pkedit');renderPackages();};});
+  root.querySelectorAll('[data-pkdel]').forEach(function(b){b.onclick=function(){if(confirm('Delete this package/promo?')){var a=A();a.remove(a.ref(a.db,'packages/'+b.getAttribute('data-pkdel')));}};});
+}
+function savePkg(){
+  var name=(document.getElementById('pkName').value||'').trim();if(!name){alert('Enter a name.');return;}
+  var obj={name:name,type:document.getElementById('pkType').value,eligibleCat:document.getElementById('pkCat').value,qty:Math.max(1,parseInt(document.getElementById('pkQty').value)||1),freeQty:Math.max(0,parseInt(document.getElementById('pkFree').value)||0),discType:document.getElementById('pkDiscT').value,discValue:Number(document.getElementById('pkDiscV').value)||0,extraCost:Number(document.getElementById('pkExtra').value)||0,ts:Date.now()};
+  if(!obj.eligibleCat){alert('Pick an eligible category.');return;}
+  var a=A();a.set(a.ref(a.db,'packages/'+(editingId||uid('pkg_'))),obj).then(function(){editingId=null;renderPackages();});
+}
+
+/* ---------- sell-time picker ---------- */
+var pickState=null;
+function ensurePickerModal(){
+  if(document.getElementById('pkgMask'))return;
+  var m=document.createElement('div');m.className='pz-mask';m.id='pkgMask';
+  m.innerHTML='<div class="pz-modal" style="max-width:520px;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;"><div class="pz-h" id="pkgTitle" style="margin:0;">Package</div><button class="pz-btn sec" id="pkgClose" style="padding:0.2rem 0.6rem;">✕</button></div><div id="pkgBody"></div></div>';
+  document.body.appendChild(m);
+  document.getElementById('pkgClose').onclick=function(){m.classList.remove('show');};
+  m.onclick=function(e){if(e.target===m)m.classList.remove('show');};
+}
+window.__openPackagePicker=function(){
+  ensurePickerModal();
+  var active=Object.keys(pkgMap).map(function(k){return Object.assign({id:k},pkgMap[k]);});
+  var body=document.getElementById('pkgBody');
+  document.getElementById('pkgTitle').textContent='Choose a package / promo';
+  if(!active.length){body.innerHTML='<p class="az-note">No packages set up yet. Add them in the Packages tab.</p>';document.getElementById('pkgMask').classList.add('show');return;}
+  body.innerHTML=active.map(function(pk){var deal=pk.type==='promo'?('Buy '+pk.qty+' + '+(pk.freeQty||0)+' free'):(pk.qty+' items'+(pk.discType==='fixed'?' · ₱'+pk.discValue+' off':pk.discType==='percent'?' · '+pk.discValue+'% off':''));return '<button class="pz-item" style="width:100%;margin-bottom:0.5rem;" data-pk="'+esc(pk.id)+'"><div class="n">'+esc(pk.name)+'</div><div class="p">'+esc(deal)+' · from '+esc(catLabel(pk.eligibleCat))+'</div></button>';}).join('');
+  body.querySelectorAll('[data-pk]').forEach(function(b){b.onclick=function(){openPicker(b.getAttribute('data-pk'));};});
+  document.getElementById('pkgMask').classList.add('show');
+};
+function openPicker(pkId){
+  var pk=pkgMap[pkId];if(!pk)return;
+  var items=eligibleItems(pk.eligibleCat);
+  var anySize=items.some(hasSizes);
+  pickState={pk:Object.assign({id:pkId},pk),size:anySize?'M':'S',paid:{},free:{}};
+  drawPicker();
+}
+function drawPicker(){
+  var pk=pickState.pk;var items=eligibleItems(pk.eligibleCat);var anySize=items.some(hasSizes);
+  document.getElementById('pkgTitle').textContent=pk.name;
+  var isPromo=pk.type==='promo';
+  function counts(m){return Object.keys(m).reduce(function(s,k){return s+(m[k]||0);},0);}
+  var paidN=counts(pickState.paid),freeN=counts(pickState.free);
+  function rows(mapName,target){
+    return items.map(function(it){
+      var q=pickState[mapName][it.key]||0;var pr=itemPrice(it,pickState.size);
+      return '<div style="display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0;border-bottom:1px solid var(--cd);font-size:0.83rem;"><span style="flex:1;">'+esc(it.name)+' <span style="color:var(--tl);">'+peso(pr)+'</span></span>'
+        +'<button class="pz-btn sec" style="padding:0.1rem 0.5rem;" data-dec="'+mapName+'|'+esc(it.key)+'">−</button><span style="min-width:20px;text-align:center;">'+q+'</span><button class="pz-btn sec" style="padding:0.1rem 0.5rem;" data-inc="'+mapName+'|'+esc(it.key)+'">+</button></div>';
+    }).join('');
+  }
+  var gross=0;Object.keys(pickState.paid).forEach(function(k){var it=A().menuItemsMap[k];if(it)gross+=itemPrice(it,pickState.size)*pickState.paid[k];});
+  var freeVal=0;Object.keys(pickState.free).forEach(function(k){var it=A().menuItemsMap[k];if(it)freeVal+=itemPrice(it,pickState.size)*pickState.free[k];});
+  var disc=0;if(!isPromo){disc=pk.discType==='percent'?gross*(Number(pk.discValue)||0)/100:pk.discType==='fixed'?(Number(pk.discValue)||0):0;}
+  var net=isPromo?gross:Math.max(0,gross-disc);
+  var body=document.getElementById('pkgBody');
+  var sizeSel=anySize?'<div style="margin-bottom:0.6rem;"><span class="pz-lbl">Size (all items)</span><select class="pz-in" id="pkgSize" style="width:auto;"><option value="S"'+(pickState.size==='S'?' selected':'')+'>Small</option><option value="M"'+(pickState.size==='M'?' selected':'')+'>Medium</option><option value="L"'+(pickState.size==='L'?' selected':'')+'>Large</option></select></div>':'';
+  var html=sizeSel
+    +'<div class="pz-lbl">'+(isPromo?'Paid items':'Items')+' — pick '+pk.qty+' <span style="color:'+(paidN===pk.qty?'#2a9d5c':'#e63946')+';">('+paidN+'/'+pk.qty+')</span></div>'
+    +'<div class="pz-card" style="margin-bottom:0.6rem;max-height:190px;overflow:auto;">'+rows('paid',pk.qty)+'</div>';
+  if(isPromo&&pk.freeQty>0){
+    html+='<div class="pz-lbl">Free items — pick '+pk.freeQty+' <span style="color:'+(freeN===pk.freeQty?'#2a9d5c':'#e63946')+';">('+freeN+'/'+pk.freeQty+')</span></div>'
+      +'<div class="pz-card" style="margin-bottom:0.6rem;max-height:150px;overflow:auto;">'+rows('free',pk.freeQty)+'</div>';
+  }
+  html+='<div style="font-size:0.85rem;border-top:1px solid var(--cd);padding-top:0.5rem;">'
+    +'<div style="display:flex;justify-content:space-between;"><span>Items value</span><span>'+peso(gross+ (isPromo?freeVal:0))+'</span></div>'
+    +(isPromo?('<div style="display:flex;justify-content:space-between;color:#e67e00;"><span>Free items</span><span>-'+peso(freeVal)+'</span></div>'):(disc?'<div style="display:flex;justify-content:space-between;color:#e67e00;"><span>Discount</span><span>-'+peso(disc)+'</span></div>':''))
+    +(pk.extraCost?'<div style="display:flex;justify-content:space-between;color:var(--tl);font-size:0.78rem;"><span>Extra cost (labour/rental, not charged)</span><span>'+peso(pk.extraCost)+'</span></div>':'')
+    +'<div style="display:flex;justify-content:space-between;font-weight:700;color:var(--bd);"><span>Customer pays</span><span>'+peso(net)+'</span></div></div>'
+    +'<button class="pz-btn ok" id="pkgConfirm" style="width:100%;margin-top:0.7rem;"'+((paidN===pk.qty&&(!isPromo||!pk.freeQty||freeN===pk.freeQty))?'':' disabled')+'>Add to sale</button>';
+  body.innerHTML=html;
+  var ss=document.getElementById('pkgSize');if(ss)ss.onchange=function(){pickState.size=this.value;drawPicker();};
+  body.querySelectorAll('[data-inc]').forEach(function(b){b.onclick=function(){var pr=b.getAttribute('data-inc').split('|');var mn=pr[0],ik=pr[1];var tgt=mn==='paid'?pk.qty:pk.freeQty;if(counts(pickState[mn])>=tgt){return;}pickState[mn][ik]=(pickState[mn][ik]||0)+1;drawPicker();};});
+  body.querySelectorAll('[data-dec]').forEach(function(b){b.onclick=function(){var pr=b.getAttribute('data-dec').split('|');var mn=pr[0],ik=pr[1];pickState[mn][ik]=Math.max(0,(pickState[mn][ik]||0)-1);if(!pickState[mn][ik])delete pickState[mn][ik];drawPicker();};});
+  var cf=document.getElementById('pkgConfirm');if(cf)cf.onclick=confirmPicker;
+}
+function confirmPicker(){
+  var pk=pickState.pk;var size=pickState.size;
+  var gross=0;Object.keys(pickState.paid).forEach(function(k){var it=A().menuItemsMap[k];if(it)gross+=itemPrice(it,size)*pickState.paid[k];});
+  var isPromo=pk.type==='promo';
+  var disc=0;if(!isPromo){disc=pk.discType==='percent'?gross*(Number(pk.discValue)||0)/100:pk.discType==='fixed'?(Number(pk.discValue)||0):0;}
+  var net=isPromo?gross:Math.max(0,gross-disc);
+  var factor=(!isPromo&&gross>0)?net/gross:1;
+  var comps=[];
+  Object.keys(pickState.paid).forEach(function(k){var it=A().menuItemsMap[k];if(!it)return;var pr=itemPrice(it,size);comps.push({itemKey:k,name:it.name+(size&&hasSizes(it)?' ('+size+')':''),size:(hasSizes(it)?size:null),qty:pickState.paid[k],unitTotal:Math.round(pr*factor*100)/100,details:pk.name});});
+  if(isPromo){Object.keys(pickState.free).forEach(function(k){var it=A().menuItemsMap[k];if(!it)return;comps.push({itemKey:k,name:it.name+(size&&hasSizes(it)?' ('+size+')':'')+' (FREE)',size:(hasSizes(it)?size:null),qty:pickState.free[k],unitTotal:0,details:pk.name+' free'});});}
+  var freeVal=0;if(isPromo)Object.keys(pickState.free).forEach(function(k){var it=A().menuItemsMap[k];if(it)freeVal+=itemPrice(it,size)*pickState.free[k];});
+  var meta={id:pk.id,name:pk.name,type:pk.type,gross:isPromo?(gross+freeVal):gross,discount:isPromo?freeVal:disc,extraCost:Number(pk.extraCost)||0};
+  if(window.__pos&&window.__pos.addPackage){window.__pos.addPackage(comps,meta);document.getElementById('pkgMask').classList.remove('show');pickState=null;}
+  else{alert('POS not ready.');}
 }
 })();
 </script>
