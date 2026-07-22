@@ -1061,7 +1061,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;"><button id="jumpAvail" onclick="document.getElementById('availSection').scrollIntoView({behavior:'smooth'})" style="background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.4rem 0.8rem;font-size:0.8rem;cursor:pointer;color:var(--bd);font-family:'Inter',sans-serif;white-space:nowrap;">🔄 Availability</button><button id="jumpComments" onclick="document.getElementById('commentsSection').scrollIntoView({behavior:'smooth'})" style="background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.4rem 0.8rem;font-size:0.8rem;cursor:pointer;color:var(--bd);font-family:'Inter',sans-serif;white-space:nowrap;">📩 Comments</button><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -3465,7 +3465,7 @@ async function loginSuccess(role,username,uid){
     document.body.classList.add('staff-mode');
     document.getElementById('adminDash').style.display='block';
     document.getElementById('commentsSection').style.display='block';
-    ['availSection','navAvail'].forEach(function(id){document.getElementById(id).style.display='none';});
+    ['availSection','navAvail'].forEach(function(id){document.getElementById(id).style.display='block';});
     document.getElementById('navAdminPanel').style.display='block';
     document.getElementById('navComments').style.display='block';
     document.getElementById('navAdminPanelLink').textContent='🔐 Staff Panel';
