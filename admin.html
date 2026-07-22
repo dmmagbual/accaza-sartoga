@@ -578,9 +578,9 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
     <li><a href="#order">Order</a></li><li><a href="#orderTracker">📋 Track Order</a></li>
     <li><a href="#reserve">Reserve</a></li><li><a href="#reviews">Reviews</a></li>
     <li><a href="#feedback">Feedback</a></li><li><a href="#gallery">Gallery</a></li><li><a href="about.html">About</a></li><li><a href="#contact">Contact</a></li>
-    <li id="navAdminPanel" style="display:none;"><a href="#adminDash" id="navAdminPanelLink" style="color:#c9a36a;font-weight:600;">🔐 Admin Panel</a></li>
-    <li id="navAvail" style="display:none;"><a href="#availSection" style="color:#c9a36a;font-weight:500;">🔄 Availability</a></li>
-    <li id="navComments" style="display:none;"><a href="#commentsSection" style="color:#c9a36a;font-weight:500;">📩 Comments</a></li>
+    <li id="navAdminPanel" style="display:none;"><a href="#" onclick="showAdminSection('adminDash');return false;" id="navAdminPanelLink" style="color:#c9a36a;font-weight:600;">🔐 Admin Panel</a></li>
+    <li id="navAvail" style="display:none;"><a href="#" onclick="showAdminSection('availSection');return false;" style="color:#c9a36a;font-weight:500;">🔄 Availability</a></li>
+    <li id="navComments" style="display:none;"><a href="#" onclick="showAdminSection('commentsSection');return false;" style="color:#c9a36a;font-weight:500;">📩 Comments</a></li>
   </ul>
   <button class="hamburger" id="hamburgerBtn" onclick="toggleNav()" aria-label="Open menu"><span></span><span></span><span></span></button>
 </nav>
@@ -3430,14 +3430,18 @@ window.selectLoginRole=function(role){
 var DEFAULT_STAFF_PERMS={orders:true,reservations:true,pos:true,inventory:true,recipes:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false};
 var _permTabMap={"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'recipes'":'recipes',"'analytics'":'analytics',"'pnl'":'pnl',"'ops'":'registerOps'};
 var _permAlwaysHide=["'payment'","'staffaccounts'","'adminaccounts'","'staffaccess'"];
+window.showAdminSection=function(id){
+  var av=document.getElementById('availSection'),cm=document.getElementById('commentsSection');
+  if(id==='availSection'){ if(cm)cm.style.display='none'; if(av)av.style.display='block'; if(typeof buildAvail==='function')buildAvail(); if(av)av.scrollIntoView({behavior:'smooth'}); }
+  else if(id==='commentsSection'){ if(av)av.style.display='none'; if(cm)cm.style.display='block'; if(typeof renderComments==='function')renderComments(); if(cm)cm.scrollIntoView({behavior:'smooth'}); }
+  else { if(av)av.style.display='none'; if(cm)cm.style.display='none'; window.scrollTo({top:0,behavior:'smooth'}); }
+};
 function applyStaffPerms(perms){
   document.querySelectorAll('.admin-tab').forEach(function(btn){
     var oc=btn.getAttribute('onclick')||'';
     if(_permAlwaysHide.some(function(t){return oc.indexOf(t)!==-1;})){btn.style.display='none';return;}
     for(var k in _permTabMap){ if(oc.indexOf(k)!==-1){ btn.style.display=perms[_permTabMap[k]]?'':'none'; return; } }
   });
-  var av=document.getElementById('availSection'); if(av)av.style.display=perms.availability?'block':'none';
-  var cm=document.getElementById('commentsSection'); if(cm)cm.style.display=perms.comments?'block':'none';
   var na=document.getElementById('navAvail'); if(na)na.style.display=perms.availability?'block':'none';
   var nc=document.getElementById('navComments'); if(nc)nc.style.display=perms.comments?'block':'none';
 }
@@ -3456,7 +3460,7 @@ async function loginSuccess(role,username,uid){
 
   if(role==='superadmin'||role==='admin'){
     adminLoggedIn=true;superAdminLoggedIn=(role==='superadmin');staffLoggedIn=false;
-    ['adminDash','availSection','commentsSection'].forEach(function(id){document.getElementById(id).style.display='block';});
+    document.getElementById('adminDash').style.display='block';
     ['navAvail','navComments','navAdminPanel'].forEach(function(id){document.getElementById(id).style.display='block';});
     document.getElementById('navAdminPanelLink').textContent='🔐 Admin Panel';
     if(superAdminLoggedIn&&aaccTab)aaccTab.style.removeProperty('display');
