@@ -3489,7 +3489,7 @@ window.checkLogin=async function(){
       var _cred=await signInWithEmailAndPassword(auth,username,pass);
       var _uid=_cred.user.uid;
       var _as=await get(ref(db,'admins/'+_uid));
-      if(_as.exists()){ await loginSuccess('admin',username,_uid); }
+      if(_as.exists()){ try{localStorage.setItem('accaza_admin_session',JSON.stringify({role:'admin',username:username,uid:_uid}));}catch(_s){} location.reload(); }
       else{ await signOut(auth); _le.textContent='Signed in, but this UID is not in admins: '+_uid; _le.style.display='block'; _le.style.whiteSpace='normal'; document.getElementById('adminPass').value=''; }
     }catch(_e){ console.error('ACCAZA AUTH ERROR',_e); _le.textContent='Auth error: '+((_e&&_e.code)||(_e&&_e.message)||_e); _le.style.display='block'; _le.style.whiteSpace='normal'; document.getElementById('adminPass').value=''; }
     return;
