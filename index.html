@@ -120,6 +120,11 @@ nav{position:fixed;top:0;width:100%;z-index:200;background:rgba(25,36,27,0.96);b
 .hamburger.open span:nth-child(2){opacity:0;}
 .hamburger.open span:nth-child(3){transform:translateY(-7px) rotate(-45deg);}
 .nav-links.nav-open{display:flex !important;flex-direction:column;position:fixed;top:56px;left:0;right:0;background:rgba(25,36,27,0.98);backdrop-filter:blur(8px);z-index:199;padding:1rem 2rem 1.5rem;gap:0.75rem;}
+.nav-has-sub{position:relative;}
+.nav-sub{display:none;list-style:none;margin:0;padding:0;}
+.nav-has-sub:hover .nav-sub{display:block;position:absolute;top:100%;left:0;background:rgba(25,36,27,0.98);backdrop-filter:blur(8px);min-width:170px;border-radius:8px;padding:0.4rem 0;box-shadow:0 8px 24px rgba(0,0,0,0.25);z-index:200;}
+.nav-sub a{display:block;padding:0.5rem 1rem;white-space:nowrap;text-transform:uppercase;}
+.nav-links.nav-open .nav-sub{display:block;position:static;background:transparent;box-shadow:none;padding:0.25rem 0 0.4rem 1rem;}
 .nav-links.nav-open a{color:var(--cd);font-size:0.9rem;letter-spacing:0.08em;text-transform:uppercase;padding:0.4rem 0;border-bottom:1px solid rgba(255,255,255,0.08);text-decoration:none;}
 @media(max-width:680px){.hamburger{display:flex;}}
 
@@ -569,10 +574,19 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <nav>
   <div class="nav-logo">Accaza Coffee House</div>
   <ul class="nav-links">
-    <li><a href="#home">Home</a></li><li><a href="#reel">Reel</a></li><li><a href="#menu">Menu</a></li>
+    <li><a href="#home">Home</a></li><li><a href="#menu">Menu</a></li>
     <li><a href="#order">Order</a></li><li><a href="#orderTracker">📋 Track Order</a></li>
-    <li><a href="#reserve">Reserve</a></li><li><a href="#reviews">Reviews</a></li>
-    <li><a href="#feedback">Feedback</a></li><li><a href="#gallery">Gallery</a></li><li><a href="about.html">About</a></li><li><a href="#contact">Contact</a></li>
+    <li><a href="#reserve">Reserve</a></li>
+    <li class="nav-has-sub"><a href="about.html">About ▾</a>
+      <ul class="nav-sub">
+        <li><a href="about.html">About Us</a></li>
+        <li><a href="#reel">Reel</a></li>
+        <li><a href="#reviews">Reviews</a></li>
+        <li><a href="#feedback">Feedback</a></li>
+        <li><a href="#gallery">Gallery</a></li>
+      </ul>
+    </li>
+    <li><a href="#contact">Contact</a></li>
     <li id="navAvail" style="display:none;"><a href="#availSection" style="color:#c9a36a;font-weight:500;">🔄 Availability</a></li>
     <li id="navComments" style="display:none;"><a href="#commentsSection" style="color:#c9a36a;font-weight:500;">📩 Comments</a></li>
     <li id="navAdminPanel" style="display:none;"><a href="#adminDash" id="navAdminPanelLink" style="color:#c9a36a;font-weight:600;">🔐 Admin Panel</a></li>
@@ -963,7 +977,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
     <div class="footer-logo">Accaza Coffee House</div>
     <p>Saratoga Ave, La Mediterranea, Dasmariñas, Cavite · Open daily 3PM–12MN</p>
     <div class="footer-links"><a href="#menu">Menu</a><a href="#order">Order</a><a href="#reserve">Reserve</a><a href="#reviews">Reviews</a><a href="#feedback">Feedback</a><a href="#gallery">Gallery</a><a href="#contact">Contact</a><a href="menu.html">Menu</a><a href="about.html">About</a><a href="reservations.html">Reservations</a><a href="contact.html">Visit</a></div>
-    <p class="footer-copy">© 2026 Accaza Coffee House. All rights reserved. &nbsp;·&nbsp;<a href="#" class="admin-footer-link" onclick="openAdmin();return false;" style="color:rgba(224,212,198,0.2);text-decoration:none;font-size:0.7rem;">Admin</a></p>
+    <p class="footer-copy">© 2026 Accaza Coffee House. All rights reserved.</p>
   </div>
 </footer>
 
