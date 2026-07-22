@@ -1061,7 +1061,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v27</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v28</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1102,7 +1102,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
       </div>
       <div style="display:grid;grid-template-columns:2fr 1fr;gap:1rem;margin-bottom:1.25rem;">
         <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;"><h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;">📈 Last 30 Days</h4><div style="display:flex;gap:1rem;font-size:0.72rem;"><span style="display:flex;align-items:center;gap:0.3rem;"><span style="width:12px;height:12px;border-radius:2px;background:#b08d57;display:inline-block;"></span>Revenue</span><span style="display:flex;align-items:center;gap:0.3rem;"><span style="width:12px;height:12px;border-radius:2px;background:#3b8fd4;display:inline-block;"></span>Orders</span></div></div><canvas id="revenueChart" height="180" style="width:100%;display:block;"></canvas></div>
-        <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;margin-bottom:1rem;">💳 Payment Split</h4><canvas id="paymentChart" width="160" height="160" style="display:block;margin:0 auto;"></canvas><div style="display:flex;justify-content:center;gap:1.5rem;margin-top:0.75rem;font-size:0.78rem;"><span style="display:flex;align-items:center;gap:0.35rem;"><span style="width:12px;height:12px;border-radius:50%;background:#b08d57;display:inline-block;"></span><span id="gcashPct">GCash 0%</span></span><span style="display:flex;align-items:center;gap:0.35rem;"><span style="width:12px;height:12px;border-radius:50%;background:#3b8fd4;display:inline-block;"></span><span id="bankPct">Bank 0%</span></span></div></div>
+        <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;margin-bottom:1rem;">💳 Payment Split</h4><div id="payMixList" style="margin-top:0.5rem;"></div></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
         <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;margin-bottom:1rem;">🏆 Top 5 Best Sellers</h4><div id="topItemsList"></div></div>
@@ -3155,10 +3155,10 @@ function renderDashboard(){
   const t=sumOrders(sales.filter(o=>_tsOf(o)>=startToday)),w=sumOrders(sales.filter(o=>_tsOf(o)>=startWeek)),m=sumOrders(sales.filter(o=>_tsOf(o)>=startMonth)),a=sumOrders(sales);
   function setCard(id,rev,cnt){const el=document.getElementById(id);if(el)el.textContent='₱'+rev.toLocaleString();const cel=document.getElementById(id+'Count');if(cel)cel.textContent=cnt+' order'+(cnt!==1?'s':'');}
   setCard('dashToday',t.rev,t.cnt);setCard('dashWeek',w.rev,w.cnt);setCard('dashMonth',m.rev,m.cnt);setCard('dashAllTime',a.rev,a.cnt);
-  const gcash=sales.filter(o=>o.payment==='GCash').length,bank=sales.filter(o=>o.payment==='Bank Transfer').length,total2=gcash+bank||1;
-  const gp=document.getElementById('gcashPct'),bp=document.getElementById('bankPct');
-  if(gp)gp.textContent='GCash '+Math.round(gcash/total2*100)+'%';if(bp)bp.textContent='Bank '+Math.round(bank/total2*100)+'%';
-  drawPaymentPie(gcash/total2,bank/total2);drawRevenueChart(sales);
+  var payMix={};sales.forEach(function(o){var pays=(o.payments&&o.payments.length)?o.payments:[{method:o.payment||'Other',amount:o.total||0}];pays.forEach(function(pp){var mm=pp.method||'Other';payMix[mm]=(payMix[mm]||0)+(Number(pp.amount)||0);});});
+  var _pmk=Object.keys(payMix).sort(function(a,b){return payMix[b]-payMix[a];});var _pmt=_pmk.reduce(function(x,k){return x+payMix[k];},0)||1;var _pmc={'Cash':'#2a9d5c','GCash':'#b08d57','Bank Transfer':'#3b8fd4','PayMaya':'#7360f2','Split':'#e67e00'};
+  var _pml=document.getElementById('payMixList');if(_pml)_pml.innerHTML=_pmk.length?_pmk.map(function(k){var pv=Math.round(payMix[k]/_pmt*100);return '<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.45rem;font-size:0.82rem;"><span style="width:12px;height:12px;border-radius:50%;background:'+(_pmc[k]||'#999')+';flex-shrink:0;"></span><span style="flex:1;color:var(--tm);">'+k+'</span><span style="font-weight:600;color:var(--bd);">₱'+payMix[k].toLocaleString()+' ('+pv+'%)</span></div>';}).join(''):'<p style="font-size:0.8rem;color:var(--tl);text-align:center;padding:0.5rem;">No sales yet.</p>';
+  drawRevenueChart(sales);
   // Top 5
   const itemCount={};
   sales.forEach(function(o){if(!o.items)return;o.items.split(',').forEach(function(s){const name=s.trim().replace(/\s*\(.*?\)\s*/g,'').replace(/\s*x\d+\s*$/,'').trim();const qty=parseInt((s.match(/x(\d+)/)||[])[1]||1);if(name)itemCount[name]=(itemCount[name]||0)+qty;});});
@@ -4589,6 +4589,8 @@ function renderAnalytics(){
   html+='<div><div class="az-sec">Payment mix</div><div class="pz-card">'+chartObj(byPay)+'</div></div>';
   html+='<div><div class="az-sec">Order type</div><div class="pz-card">'+chartObj(byType)+'</div></div>';
   html+='</div>';
+  var walkInRev=0,onlineRev=0;cur.forEach(function(x){if((x.o&&x.o.source==='pos')||x.type==='Walk-in')walkInRev+=x.net;else onlineRev+=x.net;});var chTot=walkInRev+onlineRev||1;
+  html+='<div class="az-sec">Sales channel \u2014 walk-in vs online</div><div class="pz-card"><div class="az-kpis" style="margin:0;">'+kpi('Walk-in (counter)',peso0(walkInRev)+' \u00b7 '+Math.round(walkInRev/chTot*100)+'%')+kpi('Online (pick-up + delivery)',peso0(onlineRev)+' \u00b7 '+Math.round(onlineRev/chTot*100)+'%')+'</div><div class="az-note">Share of revenue through online ordering vs the counter \u2014 watch this to gauge online adoption.</div></div>';
   // items
   html+='<div class="az-sec">Top items by revenue</div><div class="pz-card"><table class="pz-tbl"><thead><tr><th>Item</th><th>Units</th><th>Revenue</th><th>Trend</th></tr></thead><tbody>'
     +topByRev.slice(0,10).map(function(i){var pv=pItems[i.name]||0;var tr=pv>0?(i.units-pv)/pv*100:(i.units>0?100:0);return '<tr><td>'+esc(i.name)+'</td><td>'+i.units+'</td><td>'+peso0(i.rev)+'</td><td class="'+(tr>0?'az-up':tr<0?'az-down':'az-flat')+'">'+(pv>0||i.units>0?pct(tr):'—')+'</td></tr>';}).join('')
