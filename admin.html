@@ -1750,7 +1750,7 @@ onValue(ordersRef,snap=>{
   if(adminLoggedIn||staffLoggedIn){renderOrders();renderDashboard();renderAppCustomers();}
   updateStats();renderCustomerOrders();checkMyReadyOrders();
 });
-onValue(archivedRef,snap=>{archivedOrdersMap=snap.val()||{};if(adminLoggedIn)renderDashboard();if(adminLoggedIn||staffLoggedIn)renderAppCustomers();});
+onValue(archivedRef,snap=>{archivedOrdersMap=snap.val()||{};if(adminLoggedIn)renderDashboard();if(adminLoggedIn||staffLoggedIn)renderAppCustomers();var _ap=document.getElementById('archivePanel');if(_ap&&_ap.style.display!=='none'){try{renderArchive();}catch(e){}}});
 onValue(archivedResRef,snap=>{archivedResMap=snap.val()||{};if((adminLoggedIn||staffLoggedIn)&&resArchiveOpen)renderResArchive();});
 onValue(reservationsRef,snap=>{adminResMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderReservations();updateStats();renderCustomerCalendar();if(adminLoggedIn||staffLoggedIn)renderAdminCalendar();});
 onValue(feedbacksRef,snap=>{feedbacksMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderComments();});
