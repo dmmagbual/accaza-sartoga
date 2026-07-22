@@ -4463,8 +4463,8 @@ function isTab(n){var el=document.getElementById('tab-'+n);return el&&el.style.d
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
 function init(){
   var a=A();
-  a.onValue(a.ref(a.db,'orders'),function(s){ordersMap=s.val()||{};captureCompletedAt(ordersMap);if(isTab('analytics'))renderAnalytics();if(isTab('pnl'))renderPnl();});
-  a.onValue(a.ref(a.db,'archivedOrders'),function(s){archMap=s.val()||{};if(isTab('analytics'))renderAnalytics();if(isTab('pnl'))renderPnl();});
+  a.onValue(a.ref(a.db,'orders'),function(s){ordersMap=s.val()||{};captureCompletedAt(ordersMap);if(isTab('analytics'))renderAnalytics();});
+  a.onValue(a.ref(a.db,'archivedOrders'),function(s){archMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
   a.onValue(a.ref(a.db,'reviews'),function(s){reviewsMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
   a.onValue(a.ref(a.db,'feedbacks'),function(s){feedbacksMap=s.val()||{};});
   a.onValue(a.ref(a.db,'appCustomers'),function(s){custMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
