@@ -1,0 +1,69 @@
+{
+  "//": "ACCAZA — TARGET Firebase Realtime Database rules. DO NOT PASTE THIS YET.",
+  "//2": "Apply ONLY after the Firebase Auth code changes are in place (see FIREBASE_AUTH_SETUP.md), otherwise the app will lose access. Test in the Rules Playground first.",
+  "//3": "isAdmin check = the signed-in user's uid exists under /admins. Anonymous customers are auth!=null but NOT in /admins.",
+  "rules": {
+
+    "//public-catalog": "Anyone may READ (the customer site needs these). Only admins may WRITE.",
+    "menuItems":    { ".read": true, ".write": "root.child('admins').child(auth.uid).exists()" },
+    "categories":   { ".read": true, ".write": "root.child('admins').child(auth.uid).exists()" },
+    "optionGroups": { ".read": true, ".write": "root.child('admins').child(auth.uid).exists()" },
+    "availability": { ".read": true, ".write": "root.child('admins').child(auth.uid).exists()" },
+    "calBlocks":    { ".read": true, ".write": "root.child('admins').child(auth.uid).exists()" },
+    "reviews":      { ".read": true, ".write": "root.child('admins').child(auth.uid).exists()" },
+    "payment":      { ".read": true, ".write": "root.child('admins').child(auth.uid).exists()" },
+    "settings":     { ".read": true, ".write": "root.child('admins').child(auth.uid).exists()" },
+    "posSettings":  { ".read": true, ".write": "root.child('admins').child(auth.uid).exists()" },
+
+    "//customer-submissions": "Any signed-in visitor (incl. anonymous) may CREATE. Admins read/list & modify. Customers can read a single order by id (order tracker).",
+    "orders": {
+      ".read": "root.child('admins').child(auth.uid).exists()",
+      "$oid": {
+        ".read": "auth != null",
+        ".write": "auth != null && (!data.exists() || root.child('admins').child(auth.uid).exists())"
+      }
+    },
+    "orderLocks": { ".read": true, ".write": "auth != null" },
+    "reservations": {
+      ".read": "root.child('admins').child(auth.uid).exists()",
+      "$id": { ".write": "auth != null && (!data.exists() || root.child('admins').child(auth.uid).exists())" }
+    },
+    "feedbacks": {
+      ".read": "root.child('admins').child(auth.uid).exists()",
+      "$id": { ".write": "auth != null" }
+    },
+    "appCustomers": {
+      ".read": "root.child('admins').child(auth.uid).exists()",
+      "$phone": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+
+    "//back-office-only": "Staff/admin (uid in /admins) exclusively — no public access at all.",
+    "inventory":          { ".read": "root.child('admins').child(auth.uid).exists()", ".write": "root.child('admins').child(auth.uid).exists()" },
+    "recipes":            { ".read": "root.child('admins').child(auth.uid).exists()", ".write": "root.child('admins').child(auth.uid).exists()" },
+    "expenses":           { ".read": "root.child('admins').child(auth.uid).exists()", ".write": "root.child('admins').child(auth.uid).exists()" },
+    "expenseCategories":  { ".read": "root.child('admins').child(auth.uid).exists()", ".write": "root.child('admins').child(auth.uid).exists()" },
+    "posStaff":           { ".read": "root.child('admins').child(auth.uid).exists()", ".write": "root.child('admins').child(auth.uid).exists()" },
+    "posActiveShift":     { ".read": "root.child('admins').child(auth.uid).exists()", ".write": "root.child('admins').child(auth.uid).exists()" },
+    "shifts":             { ".read": "root.child('admins').child(auth.uid).exists()", ".write": "root.child('admins').child(auth.uid).exists()" },
+    "activityLog":        { ".read": "root.child('admins').child(auth.uid).exists()", ".write": "root.child('admins').child(auth.uid).exists()" },
+    "heldOrders":         { ".read": "root.child('admins').child(auth.uid).exists()", ".write": "root.child('admins').child(auth.uid).exists()" },
+    "analyticsFunnel":    { ".read": "root.child('admins').child(auth.uid).exists()", ".write": "root.child('admins').child(auth.uid).exists()" },
+    "archivedOrders":     { ".read": "root.child('admins').child(auth.uid).exists()", ".write": "root.child('admins').child(auth.uid).exists()" },
+    "archivedReservations": { ".read": "root.child('admins').child(auth.uid).exists()", ".write": "root.child('admins').child(auth.uid).exists()" },
+    "staffAccounts":      { ".read": "root.child('admins').child(auth.uid).exists()", ".write": "root.child('admins').child(auth.uid).exists()" },
+    "adminAccounts":      { ".read": "root.child('admins').child(auth.uid).exists()", ".write": "root.child('admins').child(auth.uid).exists()" },
+
+    "//admins-list": "Who is staff/admin. Readable by admins; only editable from the Firebase console (locked from the app).",
+    "admins": {
+      ".read": "root.child('admins').child(auth.uid).exists()",
+      ".write": false
+    },
+
+    "//default": "Everything not listed above is denied.",
+    ".read": false,
+    ".write": false
+  }
+}
