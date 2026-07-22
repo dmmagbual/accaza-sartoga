@@ -1061,7 +1061,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v29</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v31</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4935,6 +4935,7 @@ function cats(){return A().getCats?A().getCats():[];}
 function catLabel(id){return A().getCatLabel?A().getCatLabel(id):id;}
 function menuItems(){return A().getMenuItems?A().getMenuItems():[];}
 function eligibleItems(catId){return menuItems().filter(function(it){return it.cat===catId;});}
+function pkgEligible(pk){var out={};menuItems().forEach(function(it){if(pk.eligibleCat&&it.cat===pk.eligibleCat)out[it.key]=it;if((pk.eligibleItems||[]).indexOf(it.key)>-1)out[it.key]=it;});return Object.keys(out).map(function(k){return out[k];});}
 function hasSizes(it){return it.priceM&&it.priceL;}
 function itemPrice(it,size){if(size==='L'&&it.priceL)return Number(it.priceL)||0;if(size==='M'&&it.priceM)return Number(it.priceM)||0;if(size==='S')return Number(it.priceS)||0;return Number(it.priceM||it.priceS)||0;}
 
@@ -4948,7 +4949,8 @@ var editingId=null;
 function renderPackages(){
   var root=document.getElementById('packagesRoot');if(!root)return;
   var list=Object.keys(pkgMap).map(function(k){return Object.assign({id:k},pkgMap[k]);}).sort(function(a,b){return(a.name||'').localeCompare(b.name||'');});
-  var catOpts=cats().map(function(c){return '<option value="'+esc(c.id)+'">'+esc((c.icon||'')+' '+c.label)+'</option>';}).join('');
+  var catOpts='<option value="">— none (use specific items) —</option>'+cats().map(function(c){return '<option value="'+esc(c.id)+'">'+esc((c.icon||'')+' '+c.label)+'</option>';}).join('');
+  var itemChecks=menuItems().slice().sort(function(a,b){return (a.cat||'').localeCompare(b.cat||'')||(a.name||'').localeCompare(b.name||'');}).map(function(it){return '<label style="display:inline-flex;align-items:center;gap:0.3rem;font-size:0.78rem;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.2rem 0.45rem;cursor:pointer;"><input type="checkbox" data-pkgitem="'+esc(it.key)+'"/> '+esc(it.name)+'</label>';}).join(' ');
   var html='<div class="pz-h">🎁 Packages &amp; Promos</div><p class="pz-sub">Define event packages and promos. At the register, tap <b>Add Package / Promo</b>, pick the customer\'s items from the eligible category, and the system prices each item, applies the deal, and costs it from recipes. Revenue lands in the Events/Promo stream.</p>';
   html+='<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.6rem;">'+(editingId?'✏️ Edit':'➕ Add')+' package / promo</div>'
     +'<div style="display:grid;grid-template-columns:1.4fr 1fr 1.3fr;gap:0.6rem;">'
@@ -4956,23 +4958,24 @@ function renderPackages(){
     +'<div><span class="pz-lbl">Type</span><select class="pz-in" id="pkType"><option value="package">Package (fixed set)</option><option value="promo">Promo (buy X + free)</option></select></div>'
     +'<div><span class="pz-lbl">Eligible category</span><select class="pz-in" id="pkCat">'+catOpts+'</select></div>'
     +'</div>'
+    +'<div style="margin-top:0.6rem;"><span class="pz-lbl">Or pick specific items (optional — combined with the category)</span><div style="display:flex;flex-wrap:wrap;gap:0.35rem;max-height:120px;overflow:auto;padding:0.35rem;border:1px solid var(--cd);border-radius:6px;">'+(itemChecks||'<span class="az-note">No menu items yet.</span>')+'</div></div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:0.6rem;margin-top:0.6rem;">'
     +'<div><span class="pz-lbl" id="pkQtyLbl">Items (qty)</span><input class="pz-in" id="pkQty" type="number" min="1" value="10"/></div>'
     +'<div><span class="pz-lbl">Free items <span id="pkFreeHint" style="color:var(--tl);">(promo)</span></span><input class="pz-in" id="pkFree" type="number" min="0" value="0"/></div>'
     +'<div><span class="pz-lbl">Discount</span><select class="pz-in" id="pkDiscT"><option value="none">None</option><option value="fixed">₱ off</option><option value="percent">% off</option></select></div>'
     +'<div><span class="pz-lbl">Discount value</span><input class="pz-in" id="pkDiscV" type="number" step="any" value="0"/></div>'
-    +'<div><span class="pz-lbl">Extra flat cost ₱ <span style="color:var(--tl);">labour/rental</span></span><input class="pz-in" id="pkExtra" type="number" step="any" value="0"/></div>'
+    +'<div><span class="pz-lbl">Extra flat cost ₱</span><input class="pz-in" id="pkExtra" type="number" step="any" value="0"/></div>'
     +'</div>'
     +'<div style="margin-top:0.7rem;display:flex;gap:0.5rem;"><button class="pz-btn ok" id="pkSave">'+(editingId?'Save changes':'Add')+'</button>'+(editingId?'<button class="pz-btn sec" id="pkCancel">Cancel</button>':'')+'</div>'
     +'</div>';
   html+='<div class="pz-card"><table class="pz-tbl"><thead><tr><th>Name</th><th>Type</th><th>Eligible</th><th>Deal</th><th>Extra cost</th><th></th></tr></thead><tbody>'
     +(list.length?list.map(function(pk){
         var deal=pk.type==='promo'?('Buy '+pk.qty+' + '+(pk.freeQty||0)+' free'):(pk.qty+' items'+(pk.discType==='fixed'?' · ₱'+pk.discValue+' off':pk.discType==='percent'?' · '+pk.discValue+'% off':''));
-        return '<tr><td>'+esc(pk.name)+'</td><td>'+esc(pk.type)+'</td><td>'+esc(catLabel(pk.eligibleCat))+'</td><td>'+esc(deal)+'</td><td>'+(pk.extraCost?peso(pk.extraCost):'—')+'</td><td style="white-space:nowrap;"><button class="pz-btn sec" style="padding:0.2rem 0.5rem;" data-pkedit="'+pk.id+'">Edit</button> <button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-pkdel="'+pk.id+'">✕</button></td></tr>';
+        return '<tr><td>'+esc(pk.name)+'</td><td>'+esc(pk.type)+'</td><td>'+esc((pk.eligibleCat?catLabel(pk.eligibleCat):'')+((pk.eligibleItems&&pk.eligibleItems.length)?((pk.eligibleCat?' + ':'')+pk.eligibleItems.length+' item(s)'):''))+'</td><td>'+esc(deal)+'</td><td>'+(pk.extraCost?peso(pk.extraCost):'—')+'</td><td style="white-space:nowrap;"><button class="pz-btn sec" style="padding:0.2rem 0.5rem;" data-pkedit="'+pk.id+'">Edit</button> <button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-pkdel="'+pk.id+'">✕</button></td></tr>';
       }).join(''):'<tr><td colspan="6" class="az-note" style="padding:0.8rem;">No packages yet. Add one above.</td></tr>')
     +'</tbody></table></div>';
   root.innerHTML=html;
-  if(editingId&&pkgMap[editingId]){var e=pkgMap[editingId];document.getElementById('pkName').value=e.name||'';document.getElementById('pkType').value=e.type||'package';document.getElementById('pkCat').value=e.eligibleCat||'';document.getElementById('pkQty').value=e.qty||10;document.getElementById('pkFree').value=e.freeQty||0;document.getElementById('pkDiscT').value=e.discType||'none';document.getElementById('pkDiscV').value=e.discValue||0;document.getElementById('pkExtra').value=e.extraCost||0;}
+  if(editingId&&pkgMap[editingId]){var e=pkgMap[editingId];document.getElementById('pkName').value=e.name||'';document.getElementById('pkType').value=e.type||'package';document.getElementById('pkCat').value=e.eligibleCat||'';document.getElementById('pkQty').value=e.qty||10;document.getElementById('pkFree').value=e.freeQty||0;document.getElementById('pkDiscT').value=e.discType||'none';document.getElementById('pkDiscV').value=e.discValue||0;document.getElementById('pkExtra').value=e.extraCost||0;(e.eligibleItems||[]).forEach(function(k){var cb=document.querySelector('[data-pkgitem="'+k+'"]');if(cb)cb.checked=true;});}
   document.getElementById('pkSave').onclick=savePkg;
   var cc=document.getElementById('pkCancel');if(cc)cc.onclick=function(){editingId=null;renderPackages();};
   root.querySelectorAll('[data-pkedit]').forEach(function(b){b.onclick=function(){editingId=b.getAttribute('data-pkedit');renderPackages();};});
@@ -4980,8 +4983,9 @@ function renderPackages(){
 }
 function savePkg(){
   var name=(document.getElementById('pkName').value||'').trim();if(!name){alert('Enter a name.');return;}
-  var obj={name:name,type:document.getElementById('pkType').value,eligibleCat:document.getElementById('pkCat').value,qty:Math.max(1,parseInt(document.getElementById('pkQty').value)||1),freeQty:Math.max(0,parseInt(document.getElementById('pkFree').value)||0),discType:document.getElementById('pkDiscT').value,discValue:Number(document.getElementById('pkDiscV').value)||0,extraCost:Number(document.getElementById('pkExtra').value)||0,ts:Date.now()};
-  if(!obj.eligibleCat){alert('Pick an eligible category.');return;}
+  var _ei=[];document.querySelectorAll('[data-pkgitem]:checked').forEach(function(c){_ei.push(c.getAttribute('data-pkgitem'));});
+  var obj={name:name,type:document.getElementById('pkType').value,eligibleCat:document.getElementById('pkCat').value,eligibleItems:_ei,qty:Math.max(1,parseInt(document.getElementById('pkQty').value)||1),freeQty:Math.max(0,parseInt(document.getElementById('pkFree').value)||0),discType:document.getElementById('pkDiscT').value,discValue:Number(document.getElementById('pkDiscV').value)||0,extraCost:Number(document.getElementById('pkExtra').value)||0,ts:Date.now()};
+  if(!obj.eligibleCat&&!_ei.length){alert('Pick a category or at least one specific item.');return;}
   var a=A();a.set(a.ref(a.db,'packages/'+(editingId||uid('pkg_'))),obj).then(function(){editingId=null;renderPackages();});
 }
 
@@ -5007,13 +5011,13 @@ window.__openPackagePicker=function(){
 };
 function openPicker(pkId){
   var pk=pkgMap[pkId];if(!pk)return;
-  var items=eligibleItems(pk.eligibleCat);
+  var items=pkgEligible(pk);
   var anySize=items.some(hasSizes);
   pickState={pk:Object.assign({id:pkId},pk),size:anySize?'M':'S',paid:{},free:{}};
   drawPicker();
 }
 function drawPicker(){
-  var pk=pickState.pk;var items=eligibleItems(pk.eligibleCat);var anySize=items.some(hasSizes);
+  var pk=pickState.pk;var items=pkgEligible(pk);var anySize=items.some(hasSizes);
   document.getElementById('pkgTitle').textContent=pk.name;
   var isPromo=pk.type==='promo';
   function counts(m){return Object.keys(m).reduce(function(s,k){return s+(m[k]||0);},0);}
