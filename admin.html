@@ -1061,7 +1061,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v31</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v33</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -2453,6 +2453,17 @@ window.submitFeedback=async function(){
 // ── ADMIN FUNCTIONS ──
 function updateStats(){const orders=Object.values(adminOrdersMap),active=orders.filter(o=>o.status!=='Received');document.getElementById('statOrders').textContent=active.length;document.getElementById('statPending').textContent=active.filter(o=>o.status==='Pending').length;document.getElementById('statReservations').textContent=Object.keys(adminResMap).length;document.getElementById('statRevenue').textContent='₱'+active.filter(o=>o.status!=='Rejected').reduce((s,o)=>s+(o.total||0),0).toLocaleString();}
 
+window.__markOrderCompleted=function(oid){update(ref(db,'orders/'+oid),{status:'Completed'});};
+function orderStatusCtl(o){
+  if(o.voided)return '<span style="font-size:0.8rem;color:#c0392b;font-weight:600;">\uD83D\uDEAB Voided</span>';
+  if(o.status==='Completed'||o.status==='Received'){
+    var lbl=(o.status==='Received'?'\u2705 Received':'\u2705 Completed')+(Number(o.refundAmount)>0?' \u00b7 \u21a9 \u20b1'+(Number(o.refundAmount)||0).toLocaleString()+' refunded':'')+' \uD83D\uDD12';
+    return '<span style="font-size:0.8rem;color:#155724;font-weight:600;">'+lbl+'</span>'
+      +'<button onclick="if(window.__posRefund)window.__posRefund(\''+o.id+'\')" style="background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#e65100;cursor:pointer;font-weight:600;">\u21a9 Refund</button>'
+      +'<button onclick="if(window.__posVoid)window.__posVoid(\''+o.id+'\')" style="background:#fdecea;border:1px solid #f5c6c6;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;font-weight:600;">\uD83D\uDEAB Void</button>';
+  }
+  return '<select class="status-select" data-orderid="'+o.id+'"><option'+(o.status==='Pending'?' selected':'')+'>Pending</option><option'+(o.status==='Confirmed'?' selected':'')+'>Confirmed</option><option'+(o.status==='Preparing'?' selected':'')+'>Preparing</option><option'+(o.status==='Rejected'?' selected':'')+' style="color:#c0392b;">Rejected</option></select>'+'<button onclick="if(confirm(\'Mark this order COMPLETED? This finalizes the sale, deducts stock, and locks the order.\'))window.__markOrderCompleted(\''+o.id+'\')" style="background:#d4edda;border:1px solid #a8d5b5;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#155724;cursor:pointer;font-weight:600;">\u2705 Mark Completed</button>';
+}
 function renderOrders(){
   const el=document.getElementById('ordersList'),orders=Object.values(adminOrdersMap).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
   if(!orders.length){el.innerHTML='<div class="empty-state">No active orders yet.</div>';return;}
@@ -2465,7 +2476,7 @@ function renderOrders(){
       +(o.notes?'<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📝 '+o.notes+'</div>':'')
       +(o.proof?'<div style="margin:0.5rem 0;"><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;">📎 Proof:</p><img src="'+o.proof+'" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid var(--cd);cursor:pointer;" onclick="showProof(this.src)"/></div>':'<p style="font-size:0.75rem;color:#c0392b;margin:0.3rem 0;">⚠️ No proof of payment</p>')
       +'<div class="order-admin-footer"><span class="order-total-tag">₱'+(o.total||0).toLocaleString()+' · '+o.payment+'</span><div style="display:flex;align-items:center;gap:0.5rem;">'
-      +(isReceived?'<span style="font-size:0.8rem;color:#1b5e20;font-weight:500;">✅ Received</span>':'<select class="status-select" data-orderid="'+o.id+'"><option'+(o.status==='Pending'?' selected':'')+'>Pending</option><option'+(o.status==='Confirmed'?' selected':'')+'>Confirmed</option><option'+(o.status==='Preparing'?' selected':'')+'>Preparing</option><option'+(o.status==='Completed'?' selected':'')+'>Completed</option><option'+(o.status==='Rejected'?' selected':'')+' style="color:#c0392b;">Rejected</option></select>')
+      +orderStatusCtl(o)
       +(canArchive?'<button data-archive="'+o.id+'" style="background:#e2e3e5;border:1px solid #bbb;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#41464b;cursor:pointer;">📦 Archive</button>':'')+(o.status!=='Received'?'<button data-notify="'+o.id+'" style="background:#e7f5ec;border:1px solid #8fd0a8;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#1b7a43;cursor:pointer;font-weight:600;">🔔 Notify</button>':'')+'<button onclick="printOrder(\''+o.id+'\')" style="background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#e65100;cursor:pointer;font-weight:600;">🖨️ Print</button>'
       +'</div></div></div>';
   }).join('');
@@ -4732,6 +4743,7 @@ function init(){
 // shared hooks used by the POS script
 window.__posLog=function(action,ref,detail){var a=A();var id=uid('log_');a.set(a.ref(a.db,'activityLog/'+id),{ts:Date.now(),action:action,ref:ref||'',detail:detail||'',staff:(activeShift&&activeShift.staff)||'—'});};
 window.__posIsManagerPin=function(pin){return Object.keys(staffList).some(function(k){var s=staffList[k];return s.role==='manager'&&String(s.pin)===String(pin);});};
+window.__posVoid=function(oid){voidSale(oid);};window.__posRefund=function(oid){refundSale(oid);};
 var _prev=window.posSwitchTab;
 window.posSwitchTab=function(name,btn){ if(_prev)_prev(name,btn); else if(window.switchTab)window.switchTab(name,btn); if(name==='ops')renderOps(); };
 
