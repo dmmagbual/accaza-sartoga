@@ -1061,7 +1061,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v36</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v38</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4290,7 +4290,7 @@ function drawRecipeEditor(item){
   var grand=baseTotal+optTotal+consTotal;
   ed.innerHTML=
     '<div class="pz-card" style="margin-bottom:1rem;">'
-      +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.6rem;"><div style="font-weight:600;color:var(--bd);">Recipe for “'+esc(item.name)+'”'+(cat?' · <span style="color:var(--tl);font-size:0.82rem;">'+esc(cat)+(ct?' ('+ct+')':'')+'</span>':'')+'</div><div><span class="pz-lbl" style="display:inline;margin-right:0.4rem;">Cost for size</span>'+sizeBtns+'</div></div>'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.6rem;"><div style="font-weight:600;color:var(--bd);">Recipe for “'+esc(item.name)+'”'+(cat?' · <span style="color:var(--tl);font-size:0.82rem;">'+esc(A().getCatLabel?A().getCatLabel(cat):cat)+(ct?' ('+ct+')':'')+'</span>':'')+'</div><div><span class="pz-lbl" style="display:inline;margin-right:0.4rem;">Cost for size</span>'+sizeBtns+'</div></div>'
       +(ings().length?'':'<p class="pz-low" style="font-size:0.8rem;">Add items in the Inventory tab first.</p>')
       +'<span class="pz-lbl">1 · Base ingredients — enter qty per size</span>'
       +'<table class="pz-tbl" style="margin-bottom:0.4rem;"><thead><tr><th>Ingredient</th><th>Unit</th><th>S</th><th>M</th><th>L</th><th>Amount ('+size+')</th></tr></thead><tbody>'+(baseRows||'<tr><td colspan="6" style="color:var(--tl);padding:0.5rem;">No base ingredients yet.</td></tr>')+'</tbody></table>'
@@ -4370,10 +4370,11 @@ function renderOptionsMaster(){
 }
 function renderConsumables(){
   var root=document.getElementById('consumRoot'); if(!root)return;
-  var catSet={}; menuList().forEach(function(it){if(it.cat)catSet[it.cat]=1;}); var cats=Object.keys(catSet).sort();
+  var cats=(A().getCats?A().getCats():[]).map(function(c){return c.id;});
+  if(!cats.length){var catSet={};menuList().forEach(function(it){if(it.cat)catSet[it.cat]=1;});cats=Object.keys(catSet).sort();}
   var ctMap=(window.__posSettings&&window.__posSettings.catType)||{};
-  var catRows=cats.length?cats.map(function(nm){var t=ctMap[nm]||'';
-    return '<tr><td>'+esc(nm)+'</td><td><select class="pz-in" data-cattype="'+esc(nm)+'"><option value=""'+(t===''?' selected':'')+'>— untagged —</option><option'+(t==='drink'?' selected':'')+'>drink</option><option'+(t==='food'?' selected':'')+'>food</option></select></td></tr>';
+  var catRows=cats.length?cats.map(function(nm){var t=ctMap[nm]||'';var label=(A().getCatLabel?A().getCatLabel(nm):nm);
+    return '<tr><td>'+esc(label)+'</td><td><select class="pz-in" data-cattype="'+esc(nm)+'"><option value=""'+(t===''?' selected':'')+'>— untagged —</option><option'+(t==='drink'?' selected':'')+'>drink</option><option'+(t==='food'?' selected':'')+'>food</option></select></td></tr>';
   }).join(''):'<tr><td colspan="2" style="color:var(--tl);padding:0.6rem;">No categories found.</td></tr>';
   var cons=ingsByType('consumable');
   var cRows=cons.length?cons.map(function(i){return '<tr><td>'+esc(i.name)+'</td><td>'+esc(i.serves||'both')+'</td><td>'+esc(i.size||'all')+'</td><td>'+num(i.qtyPerOrder||1)+' '+esc(i.unit||'')+'</td><td>'+(i.cost?peso(i.cost):'—')+'</td><td style="font-weight:600;">'+peso((Number(i.qtyPerOrder)||1)*(Number(i.cost)||0))+'</td></tr>';}).join(''):'<tr><td colspan="6" style="color:var(--tl);padding:0.6rem;">No consumables yet — add them in the Inventory tab with Type = Consumable.</td></tr>';
@@ -4847,6 +4848,13 @@ function pnlFor(mk){
   return{revenue:revenue,cogs:cogs,variance:variance,totalCogs:totalCogs,gp:gp,margin:revenue>0?gp/revenue*100:0,byItem:byItem,opex:opex,net:gp-opex,uncovered:uncovered,tx:sales.length,locked:!!m.locked};
 }
 function itemIdsSorted(){return Object.keys(expItems).sort(function(a,b){return((expItems[a].order||0)-(expItems[b].order||0))||(expItems[a].name||'').localeCompare(expItems[b].name||'');});}
+function varianceDetailHtml(mk){
+  function fq(n){n=Number(n)||0;return (Math.round(n*1000)/1000).toLocaleString('en-PH');}
+  var list=Object.keys(adjMap).map(function(k){return adjMap[k];}).filter(function(x){return x&&monthKey(x.ts)===mk;}).sort(function(a,b){return (b.ts||0)-(a.ts||0);});
+  if(!list.length)return '<div style="padding:0.6rem 0.9rem;color:var(--tl);font-size:0.8rem;">No stock adjustments recorded this month.</div>';
+  var rows=list.map(function(x){var d=new Date(x.ts);var dl=d.toLocaleDateString('en-PH',{month:'short',day:'numeric'});return '<tr><td style="padding:0.25rem 0.5rem;">'+dl+'</td><td style="padding:0.25rem 0.5rem;">'+esc(x.name||'')+'</td><td style="padding:0.25rem 0.5rem;text-align:right;">'+((Number(x.delta)||0)>0?'+':'')+fq(x.delta)+' '+esc(x.unit||'')+'</td><td style="padding:0.25rem 0.5rem;">'+esc(x.reason||'')+'</td><td style="padding:0.25rem 0.5rem;text-align:right;font-weight:600;">'+peso(x.varianceValue)+'</td></tr>';}).join('');
+  return '<div style="background:#faf7f2;padding:0.4rem 0.6rem;"><table style="width:100%;border-collapse:collapse;font-size:0.76rem;"><thead><tr style="color:var(--tl);text-align:left;"><th style="padding:0.25rem 0.5rem;">Date</th><th style="padding:0.25rem 0.5rem;">Item</th><th style="padding:0.25rem 0.5rem;text-align:right;">Qty Δ</th><th style="padding:0.25rem 0.5rem;">Reason</th><th style="padding:0.25rem 0.5rem;text-align:right;">COGS impact</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
 function renderPnl(){
   var root=document.getElementById('pnlRoot');if(!root)return;
   if(!pnlMonth)pnlMonth=monthKey(Date.now());
@@ -4859,7 +4867,8 @@ function renderPnl(){
   html+='<div class="pz-card" style="margin-bottom:1.2rem;"><table class="pnl-tbl"><thead><tr><th>'+esc(monthLabel(pnlMonth))+'</th><th>This month</th><th>'+esc(monthLabel(pmk))+'</th><th>Var</th></tr></thead><tbody>'
     +vrow('Net sales (revenue)',cur.revenue,prev.revenue)
     +vrow('Cost of goods sold (recipes)',-cur.cogs,-prev.cogs)
-    +vrow('Consumption variance &amp; wastage',-cur.variance,-prev.variance)
+    +'<tr><td>Consumption variance <button class="pz-btn sec" id="pnlVarBtn" style="padding:0.05rem 0.5rem;font-size:0.72rem;margin-left:0.4rem;">details</button></td><td class="r">'+peso(-cur.variance)+'</td><td class="r">'+peso(-prev.variance)+'</td><td class="r">'+((cur.variance!==0||prev.variance!==0)?pct(prev.variance!==0?((cur.variance-prev.variance)/Math.abs(prev.variance)*100):(cur.variance!==0?100:0)):'—')+'</td></tr>'
+    +'<tr id="pnlVarDetail" style="display:none;"><td colspan="4" style="padding:0;">'+varianceDetailHtml(pnlMonth)+'</td></tr>'
     +'<tr class="head"><td>Gross profit</td><td class="r">'+peso(cur.gp)+'</td><td class="r">'+peso(prev.gp)+'</td><td class="r">'+(prev.gp!==0?pct((cur.gp-prev.gp)/Math.abs(prev.gp)*100):'\u2014')+'</td></tr>'
     +'<tr><td style="color:var(--tl);font-size:0.78rem;">Gross margin</td><td class="r" style="color:var(--tl);">'+(Math.round(cur.margin*10)/10)+'%</td><td class="r" style="color:var(--tl);">'+(Math.round(prev.margin*10)/10)+'%</td><td></td></tr>'
     +'<tr class="head"><td>Overhead expenses</td><td class="r">'+peso(-cur.opex)+'</td><td class="r">'+peso(-prev.opex)+'</td><td></td></tr>'
@@ -4878,6 +4887,7 @@ function renderPnl(){
     +'<div style="margin-left:auto;">'+(locked?'<button class="pz-btn" id="reopenBtn">\ud83d\udd13 Re-open to amend</button>':'<button class="pz-btn ok" id="saveBtn">\ud83d\udcbe Save month</button>')+'</div>'
     +'</div></div>';
   root.innerHTML=html;
+  var _vb=document.getElementById('pnlVarBtn'); if(_vb)_vb.onclick=function(){var d=document.getElementById('pnlVarDetail'); if(d)d.style.display=(d.style.display==='none'?'table-row':'none');};
   document.getElementById('pnlMonth').onchange=function(){pnlMonth=this.value;renderPnl();};
   document.getElementById('pnlExport').onclick=function(){exportPnl(cur,prev,pmk,ids);};
   function recalcTotal(){var t=0;root.querySelectorAll('[data-amt]').forEach(function(i){t+=Number(i.value)||0;});var el=document.getElementById('ovTotal');if(el)el.textContent=peso(t);}
