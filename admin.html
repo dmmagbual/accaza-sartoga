@@ -1061,7 +1061,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v35</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v36</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4032,8 +4032,8 @@ function heroInstallClick(){
 <script id="accaza-pos">
 (function(){
 'use strict';
-var inventoryMap={}, recipesMap={}, posMeta={vat:false,vatRate:12};
-var posCart={}, posCat='ALL', posBuilt=false, recipeEditing=false, curRecipeKey=null, recipeDraft=null;
+var inventoryMap={}, recipesMap={}, posMeta={vat:false,vatRate:12}, optRecipesMap={};
+var posCart={}, posCat='ALL', posBuilt=false, recipeEditing=false, curRecipeKey=null, recipeDraft=null, recSub='base', recSize='M';
 
 function A(){return window.__accaza;}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -4043,6 +4043,35 @@ function uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slic
 function ings(){return Object.keys(inventoryMap).map(function(k){return Object.assign({id:k},inventoryMap[k]);}).sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});}
 function ingName(id){var i=inventoryMap[id];return i?i.name:'(deleted)';}
 function ingUnit(id){var i=inventoryMap[id];return i?(i.unit||''):'';}
+function ingCost(id){var i=inventoryMap[id];return i?(Number(i.cost)||0):0;}
+function ingType(i){return (i&&i.type)||'base';}
+function ingsByType(t){return ings().filter(function(i){return ingType(i)===t;});}
+/* consumables applicable to a menu category+size */
+function catType(cat){var m=(window.__posSettings&&window.__posSettings.catType)||{};return m[cat]||'';}
+function consumablesFor(cat,size){
+  var t=catType(cat); if(t!=='drink'&&t!=='food')return [];
+  return ings().filter(function(i){
+    if(ingType(i)!=='consumable')return false;
+    var sv=i.serves||'both';
+    if(t==='drink'&&sv==='food')return false;
+    if(t==='food'&&sv==='drink')return false;
+    if(i.size&&i.size!==size)return false;   /* size-specific (e.g. cups) only fire for their size */
+    return true;
+  });
+}
+/* per-size base quantity, with legacy (qty × sizeMult) fallback */
+function baseQtyForSize(rec,b,size){
+  var per=b['qty'+size];
+  if(per!=null&&per!=='')return Number(per)||0;
+  var mult=(rec&&rec.sizeMult&&rec.sizeMult[size]!=null)?rec.sizeMult[size]:1;
+  return (Number(b.qty)||0)*mult;
+}
+/* option → {ing,qty}: prefer legacy per-recipe option, else global optionRecipes by label */
+function optRecipeFor(rec,label){
+  if(rec&&rec.options){var m=rec.options.filter(function(o){return o.label===label;})[0];if(m&&m.ing)return m;}
+  var g=optRecipesMap[label]; if(g&&g.ing)return g;
+  return null;
+}
 
 // ---- boot (wait for bridge) ----
 var tries=0,iv=setInterval(function(){ if(window.__accaza){clearInterval(iv);init();} else if(++tries>150){clearInterval(iv);} },100);
@@ -4070,6 +4099,7 @@ function init(){
   flushOfflineQueue();
   a.onValue(a.ref(a.db,'inventory'), function(s){ inventoryMap=s.val()||{}; if(isTab('inventory'))renderInventory(); if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateLowStockBadge(); });
   a.onValue(a.ref(a.db,'recipes'), function(s){ recipesMap=s.val()||{}; if(isTab('recipes')&&!recipeEditing)renderRecipes(); });
+  a.onValue(a.ref(a.db,'optionRecipes'), function(s){ var raw=s.val()||{}; var m={}; Object.keys(raw).forEach(function(k){var v=raw[k]||{}; var lb=v.label||k; m[lb]=v;}); optRecipesMap=m; if(isTab('recipes')&&!recipeEditing)renderRecipes(); });
   a.onValue(a.ref(a.db,'posSettings'), function(s){ var v=s.val(); if(v)posMeta=Object.assign({vat:false,vatRate:12},v); });
   a.onValue(a.ref(a.db,'orders'), function(s){ var all=s.val()||{}; Object.keys(all).forEach(function(oid){ var o=all[oid]; if(o&&o.status==='Completed'&&!o.inventoryDeducted&&o.lineItems)tryDeduct(oid,o); }); });
   ensureModals();
@@ -4082,46 +4112,77 @@ window.posSwitchTab=function(name,btn){ if(window.switchTab)window.switchTab(nam
 function renderInventory(){
   var root=document.getElementById('inventoryRoot'); if(!root)return;
   var list=ings();
-  var low=list.filter(function(i){return Number(i.stock)<=Number(i.reorder||0);});
+  var low=list.filter(function(i){return Number(i.stock)<=Number(i.reorder||0)&&Number(i.stock)>=0;});
+  var neg=list.filter(function(i){return Number(i.stock)<0;});
   var rows=list.map(function(i){
-    var isLow=Number(i.stock)<=Number(i.reorder||0);
+    var st=Number(i.stock)||0; var isLow=st<=Number(i.reorder||0)&&st>=0; var isNeg=st<0;
+    var ty=ingType(i);
+    var tyBadge=ty==='consumable'?('🧻 Consumable'+(i.serves&&i.serves!=='both'?' · '+esc(i.serves):'')+(i.size?' · '+esc(i.size):'')):(ty==='option'?'➕ Option':'🧪 Base');
     return '<tr>'
       +'<td>'+esc(i.name)+'</td>'
-      +'<td class="'+(isLow?'pz-low':'')+'">'+num(i.stock)+' '+esc(i.unit||'')+(isLow?' ⚠️':'')+'</td>'
+      +'<td style="font-size:0.78rem;color:var(--tl);">'+tyBadge+'</td>'
+      +'<td class="'+((isNeg||isLow)?'pz-low':'')+'">'+num(st)+' '+esc(i.unit||'')+(isNeg?' 🔴 NEGATIVE':(isLow?' ⚠️':''))+'</td>'
       +'<td>'+num(i.reorder||0)+'</td>'
       +'<td>'+(i.cost?peso(i.cost):'—')+'</td>'
       +'<td style="white-space:nowrap;">'
         +'<button class="pz-btn ok" style="padding:0.3rem 0.6rem;" data-inv-receive="'+i.id+'">+ Stock</button> '
+        +'<button class="pz-btn sec" style="padding:0.3rem 0.6rem;" data-inv-adjust="'+i.id+'">Adjust</button> '
         +'<button class="pz-btn sec" style="padding:0.3rem 0.6rem;" data-inv-edit="'+i.id+'">Edit</button> '
         +'<button class="pz-btn warn" style="padding:0.3rem 0.55rem;" data-inv-del="'+i.id+'">✕</button>'
       +'</td></tr>';
   }).join('');
   root.innerHTML=
     '<div class="pz-h">📦 Inventory</div>'
-    +'<p class="pz-sub">Raw ingredients tracked in real time. Each completed order auto-deducts stock based on its recipe. Items at or below their reorder level are flagged.'+(low.length?' <b class="pz-low">'+low.length+' low.</b>':'')+'</p>'
+    +'<p class="pz-sub">Every item is tagged Base / Option / Consumable. Completed orders auto-deduct by recipe (base per size), selected options and category consumables. Stock may go negative — flagged 🔴 so you can count &amp; adjust; the variance posts to COGS.'+(low.length?' <b class="pz-low">'+low.length+' low.</b>':'')+(neg.length?' <b class="pz-low">'+neg.length+' negative.</b>':'')+'</p>'
     +'<div class="pz-card" style="margin-bottom:1rem;">'
-      +'<div style="font-weight:600;color:var(--bd);margin-bottom:0.6rem;font-size:0.9rem;">➕ Add ingredient</div>'
-      +'<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr auto;gap:0.5rem;align-items:end;">'
+      +'<div style="font-weight:600;color:var(--bd);margin-bottom:0.6rem;font-size:0.9rem;">➕ Add item</div>'
+      +'<div style="display:grid;grid-template-columns:2fr 1fr 1.2fr 1fr 1fr 1fr auto;gap:0.5rem;align-items:end;">'
         +'<div><span class="pz-lbl">Name</span><input class="pz-in" id="invName" placeholder="e.g. Espresso beans"/></div>'
-        +'<div><span class="pz-lbl">Unit</span><select class="pz-in" id="invUnit"><option>g</option><option>ml</option><option>pcs</option><option>shot</option><option>pump</option><option>ea</option></select></div>'
+        +'<div><span class="pz-lbl">Unit</span><select class="pz-in" id="invUnit"><option>g</option><option>ml</option><option>oz</option><option>pcs</option><option>shot</option><option>pump</option><option>ea</option></select></div>'
+        +'<div><span class="pz-lbl">Type</span><select class="pz-in" id="invType"><option value="base">Base</option><option value="option">Option</option><option value="consumable">Consumable</option></select></div>'
         +'<div><span class="pz-lbl">Stock</span><input class="pz-in" id="invStock" type="number" step="any" placeholder="0"/></div>'
-        +'<div><span class="pz-lbl">Reorder at</span><input class="pz-in" id="invReorder" type="number" step="any" placeholder="0"/></div>'
+        +'<div><span class="pz-lbl">Reorder</span><input class="pz-in" id="invReorder" type="number" step="any" placeholder="0"/></div>'
         +'<div><span class="pz-lbl">Cost/unit ₱</span><input class="pz-in" id="invCost" type="number" step="any" placeholder="opt."/></div>'
         +'<button class="pz-btn" id="invAddBtn">Add</button>'
       +'</div>'
+      +'<div id="invConsumRow" style="display:none;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;margin-top:0.5rem;">'
+        +'<div><span class="pz-lbl">Consumable serves</span><select class="pz-in" id="invServes"><option value="both">Both</option><option value="drink">Drinks only</option><option value="food">Food only</option></select></div>'
+        +'<div><span class="pz-lbl">Cup size (blank = all)</span><select class="pz-in" id="invSize"><option value="">— all sizes —</option><option>S</option><option>M</option><option>L</option></select></div>'
+        +'<div><span class="pz-lbl">Qty per order</span><input class="pz-in" id="invQPO" type="number" step="any" value="1"/></div>'
+      +'</div>'
     +'</div>'
-    +'<div class="pz-card"><table class="pz-tbl"><thead><tr><th>Ingredient</th><th>In stock</th><th>Reorder</th><th>Cost</th><th>Actions</th></tr></thead><tbody>'
-      +(rows||'<tr><td colspan="5" style="color:var(--tl);padding:1rem;">No ingredients yet. Add your first above.</td></tr>')
+    +'<div class="pz-card"><table class="pz-tbl"><thead><tr><th>Item</th><th>Type</th><th>In stock</th><th>Reorder</th><th>Cost</th><th>Actions</th></tr></thead><tbody>'
+      +(rows||'<tr><td colspan="6" style="color:var(--tl);padding:1rem;">No items yet. Add your first above.</td></tr>')
     +'</tbody></table></div>';
   document.getElementById('invAddBtn').onclick=addIngredient;
+  var _it=document.getElementById('invType'); if(_it)_it.onchange=function(){document.getElementById('invConsumRow').style.display=(_it.value==='consumable')?'grid':'none';};
   root.querySelectorAll('[data-inv-receive]').forEach(function(b){b.onclick=function(){receiveStock(b.getAttribute('data-inv-receive'));};});
+  root.querySelectorAll('[data-inv-adjust]').forEach(function(b){b.onclick=function(){adjustStock(b.getAttribute('data-inv-adjust'));};});
   root.querySelectorAll('[data-inv-edit]').forEach(function(b){b.onclick=function(){editIngredient(b.getAttribute('data-inv-edit'));};});
   root.querySelectorAll('[data-inv-del]').forEach(function(b){b.onclick=function(){delIngredient(b.getAttribute('data-inv-del'));};});
 }
 function addIngredient(){
   var name=(document.getElementById('invName').value||'').trim(); if(!name){alert('Enter an ingredient name.');return;}
-  var o={name:name,unit:document.getElementById('invUnit').value,stock:Number(document.getElementById('invStock').value)||0,reorder:Number(document.getElementById('invReorder').value)||0,cost:Number(document.getElementById('invCost').value)||0,updatedAt:Date.now()};
+  var type=(document.getElementById('invType')||{}).value||'base';
+  var o={name:name,unit:document.getElementById('invUnit').value,type:type,stock:Number(document.getElementById('invStock').value)||0,reorder:Number(document.getElementById('invReorder').value)||0,cost:Number(document.getElementById('invCost').value)||0,updatedAt:Date.now()};
+  if(type==='consumable'){ o.serves=(document.getElementById('invServes')||{}).value||'both'; o.size=(document.getElementById('invSize')||{}).value||''; o.qtyPerOrder=Number((document.getElementById('invQPO')||{}).value)||1; }
   var a=A();a.set(a.ref(a.db,'inventory/'+uid('ing_')),o);
+}
+function adjustStock(id){
+  var i=inventoryMap[id]; if(!i)return;
+  var byCount=confirm('Adjust "'+i.name+'".\n\nOK = enter PHYSICAL COUNT (system computes the variance)\nCancel = enter a +/- ADJUSTMENT (e.g. -3 wastage)');
+  var before=Number(i.stock)||0, after, delta;
+  if(byCount){ var p=prompt('Physical count now in '+(i.unit||'units')+'  ·  book shows '+num(before)+':'); if(p==null)return; after=Number(p)||0; delta=after-before; }
+  else { var d=prompt('Adjustment +/- in '+(i.unit||'units')+'  (negative = used/wasted):'); if(d==null)return; delta=Number(d)||0; after=before+delta; }
+  if(!delta){alert('No change entered.');return;}
+  var reason=prompt('Reason:  count-variance / wastage / staff-drink / extra-cup / comp / other','count-variance')||'other';
+  var cost=Number(i.cost)||0; var varianceValue=-delta*cost;  /* stock down = +COGS */
+  var a=A();
+  a.runTransaction(a.ref(a.db,'inventory/'+id+'/stock'),function(cur){return (Number(cur)||0)+delta;});
+  a.set(a.ref(a.db,'inventoryAdjustments/'+uid('adj_')),{ing:id,name:i.name,unit:i.unit||'',delta:delta,before:before,after:after,reason:reason,unitCost:cost,varianceValue:varianceValue,ts:Date.now()});
+  a.update(a.ref(a.db,'inventory/'+id),{updatedAt:Date.now()});
+  if(window.__posLog)window.__posLog('inv-adjust',i.name,(delta>0?'+':'')+num(delta)+' '+(i.unit||'')+' · '+reason+' · COGS '+peso(varianceValue));
+  alert('Adjusted '+i.name+' to '+num(after)+' '+(i.unit||'')+'.\nVariance to COGS: '+peso(varianceValue)+' ('+reason+').');
 }
 function receiveStock(id){
   var i=inventoryMap[id]; if(!i)return;
@@ -4132,10 +4193,17 @@ function receiveStock(id){
 }
 function editIngredient(id){
   var i=inventoryMap[id]; if(!i)return;
-  var name=prompt('Ingredient name:',i.name); if(name==null)return;
+  var name=prompt('Item name:',i.name); if(name==null)return;
+  var type=prompt('Type:  base / option / consumable',ingType(i)); if(type==null)return; type=(type||'base').trim().toLowerCase(); if(['base','option','consumable'].indexOf(type)<0)type='base';
   var reorder=prompt('Reorder level ('+(i.unit||'')+'):',i.reorder||0); if(reorder==null)return;
   var cost=prompt('Cost per '+(i.unit||'unit')+' (₱, blank = none):',i.cost||''); if(cost==null)return;
-  var a=A();a.update(a.ref(a.db,'inventory/'+id),{name:name.trim()||i.name,reorder:Number(reorder)||0,cost:Number(cost)||0,updatedAt:Date.now()});
+  var upd={name:name.trim()||i.name,type:type,reorder:Number(reorder)||0,cost:Number(cost)||0,updatedAt:Date.now()};
+  if(type==='consumable'){
+    var sv=prompt('Consumable serves:  both / drink / food',i.serves||'both'); if(sv==null)return; upd.serves=(['both','drink','food'].indexOf((sv||'').trim().toLowerCase())>=0)?(sv.trim().toLowerCase()):'both';
+    var sz=prompt('Cup size (S / M / L, blank = all sizes):',i.size||''); if(sz==null)return; sz=(sz||'').trim().toUpperCase(); upd.size=(['S','M','L'].indexOf(sz)>=0)?sz:'';
+    var qp=prompt('Qty consumed per order:',i.qtyPerOrder!=null?i.qtyPerOrder:1); if(qp==null)return; upd.qtyPerOrder=Number(qp)||1;
+  }
+  var a=A();a.update(a.ref(a.db,'inventory/'+id),upd);
 }
 function delIngredient(id){
   var i=inventoryMap[id]; if(!i)return;
@@ -4152,17 +4220,25 @@ function updateLowStockBadge(){
 function menuList(){ return (A().getMenuItems?A().getMenuItems():[]).slice().sort(function(a,b){return (a.cat||'').localeCompare(b.cat||'')||(a.name||'').localeCompare(b.name||'');}); }
 function renderRecipes(){
   var root=document.getElementById('recipesRoot'); if(!root)return;
-  var items=menuList();
-  var opts=items.map(function(it){var has=!!recipesMap[it.key];return '<option value="'+esc(it.key)+'"'+(it.key===curRecipeKey?' selected':'')+'>'+(has?'✓ ':'○ ')+esc(it.name)+'</option>';}).join('');
-  var covered=items.filter(function(it){return !!recipesMap[it.key];}).length;
-  root.innerHTML=
-    '<div class="pz-h">🧪 Recipes (auto-deduction rules)</div>'
-    +'<p class="pz-sub">Define what each menu item consumes. Deduction = <b>base × size multiplier × qty</b>, plus any option add-ons. Enter your real grams / ml / pumps — these numbers drive stock accuracy. <b>'+covered+' of '+items.length+'</b> items have a recipe (○ = none yet).</p>'
-    +'<div class="pz-card" style="margin-bottom:1rem;"><span class="pz-lbl">Menu item</span>'
+  var tabs=[['base','1 · Base ingredients'],['options','2 · Optional ingredients'],['consumables','3 · Consumables']];
+  var nav='<div style="display:flex;gap:0.4rem;margin:0.4rem 0 1rem;flex-wrap:wrap;">'+tabs.map(function(t){return '<button class="pz-btn '+(recSub===t[0]?'ok':'sec')+'" data-recsub="'+t[0]+'" style="padding:0.4rem 0.9rem;">'+t[1]+'</button>';}).join('')+'</div>';
+  var body;
+  if(recSub==='options'){ body='<div id="optMasterRoot"></div>'; }
+  else if(recSub==='consumables'){ body='<div id="consumRoot"></div>'; }
+  else {
+    var items=menuList();
+    var opts=items.map(function(it){var has=!!recipesMap[it.key];return '<option value="'+esc(it.key)+'"'+(it.key===curRecipeKey?' selected':'')+'>'+(has?'✓ ':'○ ')+esc(it.name)+'</option>';}).join('');
+    var covered=items.filter(function(it){return !!recipesMap[it.key];}).length;
+    body='<p class="pz-sub">Enter the real quantity per serving size (S / M / L) in the item’s unit. The <b>Amount</b> column and totals follow the size you select. Options and consumables below are auto-listed for a costing preview — real deduction follows what the customer actually picks. <b>'+covered+' of '+items.length+'</b> items have a recipe.</p>'
+      +'<div class="pz-card" style="margin-bottom:1rem;"><span class="pz-lbl">Menu item</span>'
       +'<select class="pz-in" id="recPick" style="max-width:420px;"><option value="">— choose an item —</option>'+opts+'</select></div>'
-    +'<div id="recEditor"></div>';
-  document.getElementById('recPick').onchange=function(){ curRecipeKey=this.value||null; openRecipe(curRecipeKey); };
-  if(curRecipeKey)openRecipe(curRecipeKey);
+      +'<div id="recEditor"></div>';
+  }
+  root.innerHTML='<div class="pz-h">🧪 Recipe &amp; Costing</div>'+nav+body;
+  root.querySelectorAll('[data-recsub]').forEach(function(b){b.onclick=function(){recSub=b.getAttribute('data-recsub');recipeEditing=false;renderRecipes();};});
+  if(recSub==='options'){ renderOptionsMaster(); }
+  else if(recSub==='consumables'){ renderConsumables(); }
+  else { var rp=document.getElementById('recPick'); if(rp)rp.onchange=function(){ curRecipeKey=this.value||null; openRecipe(curRecipeKey); }; if(curRecipeKey)openRecipe(curRecipeKey); }
 }
 function optLabelsForItem(item){
   var groups=A().getItemOptionGroups?A().getItemOptionGroups(item):[]; var out=[];
@@ -4175,76 +4251,142 @@ function openRecipe(key){
   var item=A().menuItemsMap[key]; if(!item){ed.innerHTML='<p class="pz-sub">Item not found.</p>';return;}
   recipeEditing=true;
   var saved=recipesMap[key]||{};
+  var sm=saved.sizeMult||{S:1,M:1.3,L:1.6};
   recipeDraft={
-    sizeMult:Object.assign({S:1,M:1.3,L:1.6}, saved.sizeMult||{}),
-    base:(saved.base?saved.base.slice():[]),
-    options:(saved.options?saved.options.slice():[])
+    base:(saved.base?saved.base.map(function(b){
+      if(b.qtyS!=null||b.qtyM!=null||b.qtyL!=null)return Object.assign({},b);
+      var q=Number(b.qty)||0; /* migrate legacy qty × sizeMult into explicit per-size */
+      return {ing:b.ing,qtyS:q*(sm.S!=null?sm.S:1),qtyM:q*(sm.M!=null?sm.M:1),qtyL:q*(sm.L!=null?sm.L:1)};
+    }):[]),
+    _optPreview:[]
   };
   drawRecipeEditor(item);
 }
 function drawRecipeEditor(item){
   var ed=document.getElementById('recEditor'); if(!ed)return;
-  var hasSizes=(item.priceM&&item.priceL)||(item.labelS&&item.labelL&&item.priceL);
-  var d=recipeDraft;
-  function ingSelect(val,attr){return '<select class="pz-in" '+attr+' style="min-width:150px;"><option value="">— ingredient —</option>'+ings().map(function(i){return '<option value="'+i.id+'"'+(i.id===val?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+')</option>';}).join('')+'</select>';}
+  var d=recipeDraft; var size=recSize||'M';
+  var cat=item.cat||''; var ct=catType(cat);
+  function ingSelect(val,attr){return '<select class="pz-in" '+attr+' style="min-width:150px;"><option value="">— ingredient —</option>'+ingsByType('base').concat(ingsByType('option')).map(function(i){return '<option value="'+i.id+'"'+(i.id===val?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+')</option>';}).join('')+'</select>';}
+  var baseTotal=0;
   var baseRows=d.base.map(function(r,ix){
+    var unit=ingUnit(r.ing); var amt=(Number(r['qty'+size])||0)*ingCost(r.ing); baseTotal+=amt;
+    function qc(sz){return '<input class="pz-in" type="number" step="any" style="width:66px;" value="'+(r['qty'+sz]!=null&&r['qty'+sz]!==''?r['qty'+sz]:'')+'" data-brow="'+ix+'" data-bfield="qty'+sz+'" placeholder="0"/>';}
     return '<tr><td>'+ingSelect(r.ing,'data-brow="'+ix+'" data-bfield="ing"')+'</td>'
-      +'<td><input class="pz-in" type="number" step="any" style="width:90px;" value="'+(r.qty!=null?r.qty:'')+'" data-brow="'+ix+'" data-bfield="qty" placeholder="qty"/></td>'
-      +'<td>'+esc(ingUnit(r.ing))+'</td>'
-      +'<td><button class="pz-btn warn" style="padding:0.25rem 0.5rem;" data-brem="'+ix+'">✕</button></td></tr>';
+      +'<td style="color:var(--tl);">'+esc(unit)+'</td>'
+      +'<td>'+qc('S')+'</td><td>'+qc('M')+'</td><td>'+qc('L')+'</td>'
+      +'<td style="white-space:nowrap;font-weight:600;">'+peso(amt)+' <button class="pz-btn warn" style="padding:0.2rem 0.45rem;font-weight:400;" data-brem="'+ix+'">✕</button></td></tr>';
   }).join('');
-  var optChoices=optLabelsForItem(item);
-  var optSelect=function(val,attr){return '<select class="pz-in" '+attr+' style="min-width:150px;"><option value="">— option —</option>'+optChoices.map(function(o){return '<option value="'+esc(o.label)+'"'+(o.label===val?' selected':'')+'>'+esc(o.group)+': '+esc(o.label)+'</option>';}).join('')+'</select>';};
-  var optRows=d.options.map(function(r,ix){
-    return '<tr><td>'+optSelect(r.label,'data-orow="'+ix+'" data-ofield="label"')+'</td>'
-      +'<td>'+ingSelect(r.ing,'data-orow="'+ix+'" data-ofield="ing"')+'</td>'
-      +'<td><input class="pz-in" type="number" step="any" style="width:90px;" value="'+(r.qty!=null?r.qty:'')+'" data-orow="'+ix+'" data-ofield="qty" placeholder="qty"/></td>'
-      +'<td>'+esc(ingUnit(r.ing))+'</td>'
-      +'<td><button class="pz-btn warn" style="padding:0.25rem 0.5rem;" data-orem="'+ix+'">✕</button></td></tr>';
-  }).join('');
+  var sizeBtns=['S','M','L'].map(function(sz){return '<button class="pz-btn '+(sz===size?'ok':'sec')+'" data-recsize="'+sz+'" style="padding:0.25rem 0.8rem;">'+sz+'</button>';}).join(' ');
+  var itemLabels=(optLabelsForItem(item)||[]).map(function(o){return o.label;});
+  var optKeys=Object.keys(optRecipesMap).filter(function(lb){return itemLabels.indexOf(lb)>-1;}).sort();
+  var optTotal=0;
+  var optRows=optKeys.length?optKeys.map(function(lb){
+    var o=optRecipesMap[lb]; var cost=(Number(o.qty)||0)*ingCost(o.ing); var checked=(d._optPreview||[]).indexOf(lb)>-1; if(checked)optTotal+=cost;
+    return '<tr><td style="width:26px;"><input type="checkbox" data-optprev="'+esc(lb)+'"'+(checked?' checked':'')+'/></td><td>'+esc(lb)+'</td><td style="color:var(--tl);font-size:0.8rem;">'+esc(ingName(o.ing))+' · '+num(o.qty)+' '+esc(ingUnit(o.ing))+'</td><td style="text-align:right;">'+peso(cost)+'</td></tr>';
+  }).join(''):'<tr><td colspan="4" style="color:var(--tl);padding:0.5rem;">No options yet — define them in the “Optional ingredients” sub-tab.</td></tr>';
+  var consList=consumablesFor(cat,size); var consTotal=0; var consRows;
+  if(ct==='drink'||ct==='food'){ consRows=consList.length?consList.map(function(c){var cost=(Number(c.qtyPerOrder)||1)*ingCost(c);consTotal+=cost;return '<tr><td>'+esc(c.name)+'</td><td style="color:var(--tl);font-size:0.8rem;">'+num(c.qtyPerOrder||1)+' '+esc(c.unit||'')+(c.size?' · size '+esc(c.size):'')+'</td><td style="text-align:right;">'+peso(cost)+'</td></tr>';}).join(''):'<tr><td colspan="3" style="color:var(--tl);padding:0.5rem;">No consumables match this '+ct+'.</td></tr>'; }
+  else { consRows='<tr><td colspan="3" class="pz-low" style="padding:0.5rem;">Category “'+esc(cat||'—')+'” isn’t tagged Drink/Food yet. Set it in the “Consumables” sub-tab so cups/stirrers cost correctly.</td></tr>'; }
+  var grand=baseTotal+optTotal+consTotal;
   ed.innerHTML=
     '<div class="pz-card" style="margin-bottom:1rem;">'
-      +'<div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Recipe for “'+esc(item.name)+'”</div>'
-      +(ings().length?'':'<p class="pz-low" style="font-size:0.8rem;">Add ingredients in the Inventory tab first.</p>')
-      +(hasSizes?('<div style="margin-bottom:0.9rem;"><span class="pz-lbl">Size multipliers (base × this)</span><div style="display:flex;gap:0.6rem;flex-wrap:wrap;">'
-          +['S','M','L'].map(function(s){return '<label style="font-size:0.8rem;">'+s+' <input class="pz-in" type="number" step="any" style="width:80px;display:inline-block;" value="'+(d.sizeMult[s]!=null?d.sizeMult[s]:1)+'" data-mult="'+s+'"/></label>';}).join('')
-          +'</div><div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;">Tip: if a Medium uses 30% more than the base, set M = 1.3.</div></div>'):'<input type="hidden" data-mult="S" value="1"/>')
-      +'<span class="pz-lbl">Base ingredients (per drink)</span>'
-      +'<table class="pz-tbl" style="margin-bottom:0.4rem;"><tbody>'+(baseRows||'<tr><td style="color:var(--tl);padding:0.5rem;">No base ingredients yet.</td></tr>')+'</tbody></table>'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.6rem;"><div style="font-weight:600;color:var(--bd);">Recipe for “'+esc(item.name)+'”'+(cat?' · <span style="color:var(--tl);font-size:0.82rem;">'+esc(cat)+(ct?' ('+ct+')':'')+'</span>':'')+'</div><div><span class="pz-lbl" style="display:inline;margin-right:0.4rem;">Cost for size</span>'+sizeBtns+'</div></div>'
+      +(ings().length?'':'<p class="pz-low" style="font-size:0.8rem;">Add items in the Inventory tab first.</p>')
+      +'<span class="pz-lbl">1 · Base ingredients — enter qty per size</span>'
+      +'<table class="pz-tbl" style="margin-bottom:0.4rem;"><thead><tr><th>Ingredient</th><th>Unit</th><th>S</th><th>M</th><th>L</th><th>Amount ('+size+')</th></tr></thead><tbody>'+(baseRows||'<tr><td colspan="6" style="color:var(--tl);padding:0.5rem;">No base ingredients yet.</td></tr>')+'</tbody></table>'
       +'<button class="pz-btn sec" id="recAddBase" style="padding:0.3rem 0.7rem;">+ base ingredient</button>'
-      +'<div style="height:1rem;"></div>'
-      +'<span class="pz-lbl">Option add-ons (extra consumption when an option is chosen)</span>'
-      +'<table class="pz-tbl" style="margin-bottom:0.4rem;"><tbody>'+(optRows||'<tr><td style="color:var(--tl);padding:0.5rem;">No option add-ons.</td></tr>')+'</tbody></table>'
-      +'<button class="pz-btn sec" id="recAddOpt" style="padding:0.3rem 0.7rem;">+ option add-on</button>'
+      +'<div style="text-align:right;font-weight:600;margin-top:0.3rem;">Base ('+size+'): '+peso(baseTotal)+'</div>'
+      +'<div style="height:0.8rem;"></div>'
+      +'<span class="pz-lbl">2 · Optional ingredients — tick to include in this costing preview</span>'
+      +'<table class="pz-tbl" style="margin-bottom:0.2rem;"><thead><tr><th></th><th>Option</th><th>Uses</th><th style="text-align:right;">Cost/order</th></tr></thead><tbody>'+optRows+'</tbody></table>'
+      +'<div style="text-align:right;font-weight:600;">Options ticked: '+peso(optTotal)+'</div>'
+      +'<div style="height:0.8rem;"></div>'
+      +'<span class="pz-lbl">3 · Consumables — auto by category ('+size+' cup where size-specific)</span>'
+      +'<table class="pz-tbl" style="margin-bottom:0.2rem;"><thead><tr><th>Consumable</th><th>Per order</th><th style="text-align:right;">Cost</th></tr></thead><tbody>'+consRows+'</tbody></table>'
+      +'<div style="text-align:right;font-weight:600;">Consumables: '+peso(consTotal)+'</div>'
+      +'<div style="border-top:2px solid var(--bd);margin-top:0.8rem;padding-top:0.6rem;display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:var(--bd);">TOTAL cost / '+size+(optTotal?' (with ticked options)':'')+'</span><span style="font-weight:700;font-size:1.1rem;color:var(--bd);">'+peso(grand)+'</span></div>'
       +'<div style="margin-top:1rem;display:flex;gap:0.5rem;">'
         +'<button class="pz-btn ok" id="recSave">💾 Save recipe</button>'
         +'<button class="pz-btn sec" id="recClose">Close</button>'
         +(recipesMap[item.key]?'<button class="pz-btn warn" id="recDel" style="margin-left:auto;">Delete recipe</button>':'')
       +'</div>'
     +'</div>';
-  // sync helpers read DOM into draft
+  // sync DOM into draft
   function syncDraft(){
-    d.sizeMult={}; ed.querySelectorAll('[data-mult]').forEach(function(el){d.sizeMult[el.getAttribute('data-mult')]=Number(el.value)||0;});
-    var base=[]; d.base.forEach(function(_,ix){ var ing=ed.querySelector('[data-brow="'+ix+'"][data-bfield="ing"]'); var qty=ed.querySelector('[data-brow="'+ix+'"][data-bfield="qty"]'); if(ing)base[ix]={ing:ing.value,qty:qty?Number(qty.value)||0:0};});
+    var base=[]; d.base.forEach(function(_,ix){ var ing=ed.querySelector('[data-brow="'+ix+'"][data-bfield="ing"]'); if(!ing)return; var row={ing:ing.value}; ['S','M','L'].forEach(function(sz){var q=ed.querySelector('[data-brow="'+ix+'"][data-bfield="qty'+sz+'"]'); row['qty'+sz]=q?(q.value===''?'':(Number(q.value)||0)):'';}); base[ix]=row;});
     d.base=base.filter(function(x){return x;});
-    var op=[]; d.options.forEach(function(_,ix){ var lb=ed.querySelector('[data-orow="'+ix+'"][data-ofield="label"]'); var ing=ed.querySelector('[data-orow="'+ix+'"][data-ofield="ing"]'); var qty=ed.querySelector('[data-orow="'+ix+'"][data-ofield="qty"]'); if(lb)op[ix]={label:lb.value,ing:ing?ing.value:'',qty:qty?Number(qty.value)||0:0};});
-    d.options=op.filter(function(x){return x;});
+    var prev=[]; ed.querySelectorAll('[data-optprev]').forEach(function(c){if(c.checked)prev.push(c.getAttribute('data-optprev'));}); d._optPreview=prev;
   }
-  document.getElementById('recAddBase').onclick=function(){syncDraft();d.base.push({ing:'',qty:''});drawRecipeEditor(item);};
-  document.getElementById('recAddOpt').onclick=function(){syncDraft();d.options.push({label:'',ing:'',qty:''});drawRecipeEditor(item);};
+  document.getElementById('recAddBase').onclick=function(){syncDraft();d.base.push({ing:'',qtyS:'',qtyM:'',qtyL:''});drawRecipeEditor(item);};
+  ed.querySelectorAll('[data-recsize]').forEach(function(b){b.onclick=function(){syncDraft();recSize=b.getAttribute('data-recsize');drawRecipeEditor(item);};});
+  ed.querySelectorAll('[data-optprev]').forEach(function(c){c.onchange=function(){syncDraft();drawRecipeEditor(item);};});
   ed.querySelectorAll('[data-brem]').forEach(function(b){b.onclick=function(){syncDraft();d.base.splice(Number(b.getAttribute('data-brem')),1);drawRecipeEditor(item);};});
-  ed.querySelectorAll('[data-orem]').forEach(function(b){b.onclick=function(){syncDraft();d.options.splice(Number(b.getAttribute('data-orem')),1);drawRecipeEditor(item);};});
-  ed.querySelectorAll('select[data-brow],select[data-orow]').forEach(function(s){s.onchange=function(){syncDraft();drawRecipeEditor(item);};});
+  ed.querySelectorAll('select[data-brow]').forEach(function(s){s.onchange=function(){syncDraft();drawRecipeEditor(item);};});
   document.getElementById('recSave').onclick=function(){ syncDraft(); saveRecipe(item.key); };
   document.getElementById('recClose').onclick=function(){ recipeEditing=false; curRecipeKey=null; renderRecipes(); };
   if(document.getElementById('recDel'))document.getElementById('recDel').onclick=function(){ if(!confirm('Delete this recipe? '+esc(item.name)+' will no longer deduct stock.'))return; var a=A();a.remove(a.ref(a.db,'recipes/'+item.key));recipeEditing=false;curRecipeKey=null;setTimeout(renderRecipes,200);};
 }
 function saveRecipe(key){
   var d=recipeDraft;
-  var base=(d.base||[]).filter(function(r){return r.ing&&r.qty;});
-  var options=(d.options||[]).filter(function(r){return r.label&&r.ing&&r.qty;});
-  var rec={sizeMult:d.sizeMult||{S:1},base:base,options:options,updatedAt:Date.now()};
+  var base=(d.base||[]).filter(function(r){return r.ing&&((r.qtyS!=null&&r.qtyS!=='')||(r.qtyM!=null&&r.qtyM!=='')||(r.qtyL!=null&&r.qtyL!==''));}).map(function(r){
+    return {ing:r.ing,qtyS:(r.qtyS===''||r.qtyS==null)?null:Number(r.qtyS)||0,qtyM:(r.qtyM===''||r.qtyM==null)?null:Number(r.qtyM)||0,qtyL:(r.qtyL===''||r.qtyL==null)?null:Number(r.qtyL)||0};
+  });
+  var rec={base:base,updatedAt:Date.now()};
+  var saved=recipesMap[key]; if(saved&&saved.options)rec.options=saved.options; /* keep legacy per-recipe options if any */
   var a=A();a.set(a.ref(a.db,'recipes/'+key),rec).then(function(){ recipeEditing=false; alert('Recipe saved for '+(A().menuItemsMap[key]?A().menuItemsMap[key].name:key)+'.'); curRecipeKey=key; setTimeout(function(){renderRecipes();},150); });
+}
+function optKey(label){return String(label).replace(/[.#$\[\]\/]/g,'_');}
+function allOptionLabels(){
+  var seen={},out=[];
+  menuList().forEach(function(it){ (optLabelsForItem(it)||[]).forEach(function(o){ if(o.label&&!seen[o.label]){seen[o.label]=1;out.push(o);} }); });
+  return out.sort(function(a,b){return (a.label||'').localeCompare(b.label||'');});
+}
+function renderOptionsMaster(){
+  var root=document.getElementById('optMasterRoot'); if(!root)return;
+  var labels=allOptionLabels();
+  var baseOpts=ingsByType('base').concat(ingsByType('option'));
+  function ingSel(id){return '<select class="pz-in" data-oing style="min-width:150px;"><option value="">— ingredient —</option>'+baseOpts.map(function(i){return '<option value="'+i.id+'"'+(i.id===id?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+')</option>';}).join('')+'</select>';}
+  var rows=labels.length?labels.map(function(o){
+    var g=optRecipesMap[o.label]||{}; var cost=(Number(g.qty)||0)*ingCost(g.ing);
+    return '<tr data-optlabel="'+esc(o.label)+'"><td>'+esc(o.group)+': <b>'+esc(o.label)+'</b></td>'
+      +'<td>'+ingSel(g.ing)+'</td>'
+      +'<td><input class="pz-in" type="number" step="any" style="width:80px;" data-oqty value="'+(g.qty!=null?g.qty:'')+'" placeholder="qty"/></td>'
+      +'<td style="text-align:right;font-weight:600;">'+peso(cost)+'</td>'
+      +'<td><button class="pz-btn ok" data-osave style="padding:0.25rem 0.6rem;">Save</button></td></tr>';
+  }).join(''):'<tr><td colspan="5" style="color:var(--tl);padding:0.6rem;">No menu options found. Add option groups to your menu items first.</td></tr>';
+  root.innerHTML='<p class="pz-sub">Map each customer option to the inventory item it consumes and the qty per order — one costing for all sizes. This drives real deduction &amp; COGS when a customer picks the option, and feeds the tick-boxes in the Base sub-tab.</p>'
+    +'<div class="pz-card"><table class="pz-tbl"><thead><tr><th>Option</th><th>Consumes</th><th>Qty/order</th><th style="text-align:right;">Cost/order</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  root.querySelectorAll('tr[data-optlabel]').forEach(function(tr){
+    var save=tr.querySelector('[data-osave]'); if(!save)return;
+    save.onclick=function(){
+      var label=tr.getAttribute('data-optlabel');
+      var ing=tr.querySelector('[data-oing]').value; var qty=Number(tr.querySelector('[data-oqty]').value)||0;
+      var a=A();
+      if(!ing||!qty){ a.remove(a.ref(a.db,'optionRecipes/'+optKey(label))); }
+      else { a.set(a.ref(a.db,'optionRecipes/'+optKey(label)),{label:label,ing:ing,qty:qty,updatedAt:Date.now()}); }
+      save.textContent='✓ Saved';
+    };
+  });
+}
+function renderConsumables(){
+  var root=document.getElementById('consumRoot'); if(!root)return;
+  var catSet={}; menuList().forEach(function(it){if(it.cat)catSet[it.cat]=1;}); var cats=Object.keys(catSet).sort();
+  var ctMap=(window.__posSettings&&window.__posSettings.catType)||{};
+  var catRows=cats.length?cats.map(function(nm){var t=ctMap[nm]||'';
+    return '<tr><td>'+esc(nm)+'</td><td><select class="pz-in" data-cattype="'+esc(nm)+'"><option value=""'+(t===''?' selected':'')+'>— untagged —</option><option'+(t==='drink'?' selected':'')+'>drink</option><option'+(t==='food'?' selected':'')+'>food</option></select></td></tr>';
+  }).join(''):'<tr><td colspan="2" style="color:var(--tl);padding:0.6rem;">No categories found.</td></tr>';
+  var cons=ingsByType('consumable');
+  var cRows=cons.length?cons.map(function(i){return '<tr><td>'+esc(i.name)+'</td><td>'+esc(i.serves||'both')+'</td><td>'+esc(i.size||'all')+'</td><td>'+num(i.qtyPerOrder||1)+' '+esc(i.unit||'')+'</td><td>'+(i.cost?peso(i.cost):'—')+'</td><td style="font-weight:600;">'+peso((Number(i.qtyPerOrder)||1)*(Number(i.cost)||0))+'</td></tr>';}).join(''):'<tr><td colspan="6" style="color:var(--tl);padding:0.6rem;">No consumables yet — add them in the Inventory tab with Type = Consumable.</td></tr>';
+  root.innerHTML=
+    '<p class="pz-sub">Tag each category Drink or Food; items in it then auto-consume the matching consumables per order. Cups are size-aware (set a cup’s size = S/M/L); stirrers, sleeves, tissue stay size-independent. Extra water cups = an inventory Adjustment (variance), not a sale.</p>'
+    +'<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Category types (drink / food)</div><table class="pz-tbl"><thead><tr><th>Category</th><th>Type</th></tr></thead><tbody>'+catRows+'</tbody></table></div>'
+    +'<div class="pz-card"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Consumable items</div><table class="pz-tbl"><thead><tr><th>Item</th><th>Serves</th><th>Size</th><th>Per order</th><th>Cost</th><th>Cost/order</th></tr></thead><tbody>'+cRows+'</tbody></table><p class="pz-sub" style="margin-top:0.5rem;">Add or edit these in the Inventory tab (Type = Consumable). A drink order pulls its size-cup + all non-size drink/both consumables; food pulls food/both consumables (no stirrer).</p></div>';
+  root.querySelectorAll('[data-cattype]').forEach(function(sel){sel.onchange=function(){
+    var nm=sel.getAttribute('data-cattype'); var v=sel.value; var a=A();
+    var cur=Object.assign({},(window.__posSettings&&window.__posSettings.catType)||{});
+    if(v)cur[nm]=v; else delete cur[nm];
+    a.update(a.ref(a.db,'posSettings'),{catType:cur});
+  };});
 }
 
 /* ══════════ POS REGISTER ══════════ */
@@ -4421,13 +4563,14 @@ window.__pos={render:function(){if(document.getElementById('posCartPanel'))rende
 
 /* ══════════ DEDUCTION ENGINE ══════════ */
 function computeUsage(lineItems){
-  var usage={};
+  var usage={}; var mim=(A()&&A().menuItemsMap)||{};
   (lineItems||[]).forEach(function(li){
-    if(!li||!li.itemKey)return; var rec=recipesMap[li.itemKey]; if(!rec)return;
-    var mult=(rec.sizeMult&&rec.sizeMult[li.size]!=null)?rec.sizeMult[li.size]:1; var qty=Number(li.qty)||1;
-    (rec.base||[]).forEach(function(b){ if(!b.ing)return; usage[b.ing]=(usage[b.ing]||0)+(Number(b.qty)||0)*mult*qty; });
-    var labels=li.optLabels||[];
-    (rec.options||[]).forEach(function(o){ if(o.label&&o.ing&&labels.indexOf(o.label)>-1){ usage[o.ing]=(usage[o.ing]||0)+(Number(o.qty)||0)*qty; } });
+    if(!li||!li.itemKey)return; var qty=Number(li.qty)||1; var size=li.size||'M';
+    var rec=recipesMap[li.itemKey];
+    if(rec){ (rec.base||[]).forEach(function(b){ if(!b.ing)return; usage[b.ing]=(usage[b.ing]||0)+baseQtyForSize(rec,b,size)*qty; }); }
+    (li.optLabels||[]).forEach(function(lb){ var o=optRecipeFor(rec,lb); if(o&&o.ing){ usage[o.ing]=(usage[o.ing]||0)+(Number(o.qty)||0)*qty; } });
+    var it=mim[li.itemKey]; var cat=it?it.cat:'';
+    consumablesFor(cat,size).forEach(function(c){ usage[c.id]=(usage[c.id]||0)+(Number(c.qtyPerOrder)||1)*qty; });
   });
   return usage;
 }
@@ -4438,9 +4581,10 @@ function tryDeduct(oid,o){
     if(!res.committed||!(res.snapshot&&res.snapshot.val()===true))return;
     // double-check we actually won (previous was falsy): if another writer set it we still guard by usage flag below
     var usage=computeUsage(o.lineItems);
-    var ids=Object.keys(usage); if(!ids.length){ a.update(a.ref(a.db,'orders/'+oid),{inventoryUsage:{},inventoryNote:'no matching recipes'});return; }
-    ids.forEach(function(ing){ a.runTransaction(a.ref(a.db,'inventory/'+ing+'/stock'),function(cur){ return (Number(cur)||0)-usage[ing]; }); });
-    a.update(a.ref(a.db,'orders/'+oid),{inventoryUsage:usage,inventoryDeductedAt:Date.now()});
+    var ids=Object.keys(usage); if(!ids.length){ a.update(a.ref(a.db,'orders/'+oid),{inventoryUsage:{},inventoryNote:'no matching recipes',cogsSnapshot:0,cogsCovered:false});return; }
+    var cogs=0,missing=false;
+    ids.forEach(function(ing){ var inv=inventoryMap[ing]; var c=inv?(Number(inv.cost)||0):0; if(!c)missing=true; cogs+=usage[ing]*c; a.runTransaction(a.ref(a.db,'inventory/'+ing+'/stock'),function(cur){ return (Number(cur)||0)-usage[ing]; }); });
+    a.update(a.ref(a.db,'orders/'+oid),{inventoryUsage:usage,inventoryDeductedAt:Date.now(),cogsSnapshot:cogs,cogsCovered:!missing});
   }).catch(function(){});
 }
 
@@ -4502,7 +4646,7 @@ function showReceipt(o){
 <script id="accaza-analytics">
 (function(){
 'use strict';
-var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},funnelMap={},expItems={},monthlyExp={};
+var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},funnelMap={},expItems={},monthlyExp={},adjMap={};
 var azRange='7d', azFrom=null, azTo=null, pnlMonth=null;
 function A(){return window.__accaza;}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -4524,6 +4668,7 @@ function init(){
   a.onValue(a.ref(a.db,'recipes'),function(s){recMap=s.val()||{};});
   a.onValue(a.ref(a.db,'expenseItems'),function(s){expItems=s.val()||{};if(isTab('pnl'))renderPnl();});
   a.onValue(a.ref(a.db,'monthlyExpenses'),function(s){monthlyExp=s.val()||{};if(isTab('pnl'))renderPnl();});
+  a.onValue(a.ref(a.db,'inventoryAdjustments'),function(s){adjMap=s.val()||{};if(isTab('pnl'))renderPnl();});
   a.onValue(a.ref(a.db,'analyticsFunnel'),function(s){funnelMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
 }
 // extend the POS tab switcher to also render our tabs
@@ -4536,8 +4681,10 @@ function captureCompletedAt(all){var a=A();Object.keys(all).forEach(function(id)
 /* ---------- sales model ---------- */
 function isSale(o){if(!o||o.voided)return false;var r=['Completed','Received'];if(o.source==='pos')return true;if(r.indexOf(o.status)>-1)return true;if(o.status==='Archived'&&r.indexOf(o.prevStatus)>-1)return true;return false;}
 function allOrders(){var out=[];[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){out.push(m[k]);});});return out;}
-function itemCost(li){var rec=recMap[li.itemKey];if(!rec)return null;var mult=(rec.sizeMult&&rec.sizeMult[li.size]!=null)?rec.sizeMult[li.size]:1;var c=0;(rec.base||[]).forEach(function(b){var ing=invMap[b.ing];if(ing)c+=(Number(b.qty)||0)*mult*(Number(ing.cost)||0);});var labels=li.optLabels||[];(rec.options||[]).forEach(function(o){if(o.label&&o.ing&&labels.indexOf(o.label)>-1){var ing=invMap[o.ing];if(ing)c+=(Number(o.qty)||0)*(Number(ing.cost)||0);}});return c*(Number(li.qty)||1);}
-function orderCOGS(o){var _x=Number(o.extraCost)||0;if(!o.lineItems)return{cost:_x,covered:false};var cost=0,any=false,all=true;o.lineItems.forEach(function(li){var c=itemCost(li);if(c==null)all=false;else{cost+=c;any=true;}});return{cost:cost+_x,covered:any&&all};}
+function itemCost(li){var rec=recMap[li.itemKey];if(!rec)return null;var mult=(rec.sizeMult&&rec.sizeMult[li.size]!=null)?rec.sizeMult[li.size]:1;var c=0;(rec.base||[]).forEach(function(b){var ing=invMap[b.ing];if(!ing)return;var per=b['qty'+(li.size||'M')];var q=(per!=null&&per!=='')?(Number(per)||0):(Number(b.qty)||0)*mult;c+=q*(Number(ing.cost)||0);});var labels=li.optLabels||[];(rec.options||[]).forEach(function(o){if(o.label&&o.ing&&labels.indexOf(o.label)>-1){var ing=invMap[o.ing];if(ing)c+=(Number(o.qty)||0)*(Number(ing.cost)||0);}});return c*(Number(li.qty)||1);}
+function orderCOGS(o){var _x=Number(o.extraCost)||0;
+  if(o.cogsSnapshot!=null)return{cost:(Number(o.cogsSnapshot)||0)+_x,covered:o.cogsCovered!==false};
+  if(!o.lineItems)return{cost:_x,covered:false};var cost=0,any=false,all=true;o.lineItems.forEach(function(li){var c=itemCost(li);if(c==null)all=false;else{cost+=c;any=true;}});return{cost:cost+_x,covered:any&&all};}
 function saleFields(o){var gross=(o.subtotal!=null?Number(o.subtotal):Number(o.total))||0;var disc=Number(o.discount)||0;var ref=Number(o.refundAmount)||0;return{ts:o.timestamp||Date.parse(o.date)||0,gross:gross,discount:disc,refund:ref,net:gross-disc-ref,payment:o.payment||'—',type:o.type||'—',lineItems:o.lineItems||null,phone:(o.phone||'').replace(/[^0-9]/g,''),name:o.name||'Walk-in',o:o};}
 function salesBetween(from,to){return allOrders().filter(isSale).map(saleFields).filter(function(s){return s.ts>=from&&s.ts<to;});}
 function dayStart(d){d=new Date(d);d.setHours(0,0,0,0);return d.getTime();}
@@ -4691,11 +4838,13 @@ function pnlFor(mk){
   var sales=allOrders().filter(isSale).map(saleFields).filter(function(s){return monthKey(s.ts)===mk;});
   var revenue=sales.reduce(function(s,x){return s+x.net;},0);
   var cogs=0,uncovered=0;sales.forEach(function(x){if(x.lineItems){var r=orderCOGS(x.o);cogs+=r.cost;if(!r.covered)uncovered++;}else uncovered++;});
-  var gp=revenue-cogs;
+  var variance=0;Object.keys(adjMap).forEach(function(k){var adj=adjMap[k];if(adj&&monthKey(adj.ts)===mk)variance+=Number(adj.varianceValue)||0;});
+  var totalCogs=cogs+variance;
+  var gp=revenue-totalCogs;
   var m=monthlyExp[mk]||{};var amounts=m.amounts||{};
   var byItem={},opex=0;
   Object.keys(expItems).forEach(function(id){var amt=Number(amounts[id])||0;byItem[id]={name:expItems[id].name,amount:amt};opex+=amt;});
-  return{revenue:revenue,cogs:cogs,gp:gp,margin:revenue>0?gp/revenue*100:0,byItem:byItem,opex:opex,net:gp-opex,uncovered:uncovered,tx:sales.length,locked:!!m.locked};
+  return{revenue:revenue,cogs:cogs,variance:variance,totalCogs:totalCogs,gp:gp,margin:revenue>0?gp/revenue*100:0,byItem:byItem,opex:opex,net:gp-opex,uncovered:uncovered,tx:sales.length,locked:!!m.locked};
 }
 function itemIdsSorted(){return Object.keys(expItems).sort(function(a,b){return((expItems[a].order||0)-(expItems[b].order||0))||(expItems[a].name||'').localeCompare(expItems[b].name||'');});}
 function renderPnl(){
@@ -4709,7 +4858,8 @@ function renderPnl(){
   html+='<div style="margin-bottom:1rem;display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;"><span class="pz-lbl" style="margin:0;">Month</span><input type="month" class="pz-in" id="pnlMonth" value="'+pnlMonth+'" style="width:auto;"/>'+(locked?'<span style="font-size:0.75rem;color:#2a9d5c;font-weight:600;">\ud83d\udd12 Saved</span>':'<span style="font-size:0.75rem;color:#e67e00;font-weight:600;">\u270f\ufe0f Draft \u2014 not saved</span>')+'<button class="pz-btn sec" id="pnlExport" style="padding:0.35rem 0.8rem;margin-left:auto;">\u2b07 Export CSV</button></div>';
   html+='<div class="pz-card" style="margin-bottom:1.2rem;"><table class="pnl-tbl"><thead><tr><th>'+esc(monthLabel(pnlMonth))+'</th><th>This month</th><th>'+esc(monthLabel(pmk))+'</th><th>Var</th></tr></thead><tbody>'
     +vrow('Net sales (revenue)',cur.revenue,prev.revenue)
-    +vrow('Cost of goods sold',-cur.cogs,-prev.cogs)
+    +vrow('Cost of goods sold (recipes)',-cur.cogs,-prev.cogs)
+    +vrow('Consumption variance &amp; wastage',-cur.variance,-prev.variance)
     +'<tr class="head"><td>Gross profit</td><td class="r">'+peso(cur.gp)+'</td><td class="r">'+peso(prev.gp)+'</td><td class="r">'+(prev.gp!==0?pct((cur.gp-prev.gp)/Math.abs(prev.gp)*100):'\u2014')+'</td></tr>'
     +'<tr><td style="color:var(--tl);font-size:0.78rem;">Gross margin</td><td class="r" style="color:var(--tl);">'+(Math.round(cur.margin*10)/10)+'%</td><td class="r" style="color:var(--tl);">'+(Math.round(prev.margin*10)/10)+'%</td><td></td></tr>'
     +'<tr class="head"><td>Overhead expenses</td><td class="r">'+peso(-cur.opex)+'</td><td class="r">'+peso(-prev.opex)+'</td><td></td></tr>'
