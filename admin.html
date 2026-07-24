@@ -109,6 +109,7 @@
 #home,#about,#reel,#menu,#order,#orderTracker,#reserve,#reviews,#feedback,#gallery,#contact,.footer{display:none!important;}
 nav .nav-links > li{display:none;}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -1061,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v38</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v40</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4134,6 +4135,12 @@ function renderInventory(){
   root.innerHTML=
     '<div class="pz-h">📦 Inventory</div>'
     +'<p class="pz-sub">Every item is tagged Base / Option / Consumable. Completed orders auto-deduct by recipe (base per size), selected options and category consumables. Stock may go negative — flagged 🔴 so you can count &amp; adjust; the variance posts to COGS.'+(low.length?' <b class="pz-low">'+low.length+' low.</b>':'')+(neg.length?' <b class="pz-low">'+neg.length+' negative.</b>':'')+'</p>'
+    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">'
+      +'<button class="pz-btn sec" id="invExport">⬇ Export Excel</button>'
+      +'<button class="pz-btn sec" id="invTemplate">⬇ Import template</button>'
+      +'<button class="pz-btn ok" id="invImportBtn">⬆ Import Excel</button>'
+      +'<input type="file" id="invImportFile" accept=".xlsx,.xls,.csv" style="display:none;"/>'
+    +'</div>'
     +'<div class="pz-card" style="margin-bottom:1rem;">'
       +'<div style="font-weight:600;color:var(--bd);margin-bottom:0.6rem;font-size:0.9rem;">➕ Add item</div>'
       +'<div style="display:grid;grid-template-columns:2fr 1fr 1.2fr 1fr 1fr 1fr auto;gap:0.5rem;align-items:end;">'
@@ -4155,6 +4162,10 @@ function renderInventory(){
       +(rows||'<tr><td colspan="6" style="color:var(--tl);padding:1rem;">No items yet. Add your first above.</td></tr>')
     +'</tbody></table></div>';
   document.getElementById('invAddBtn').onclick=addIngredient;
+  var _ex=document.getElementById('invExport'); if(_ex)_ex.onclick=exportInventoryXlsx;
+  var _tp=document.getElementById('invTemplate'); if(_tp)_tp.onclick=downloadInventoryTemplate;
+  var _ib=document.getElementById('invImportBtn'), _if=document.getElementById('invImportFile');
+  if(_ib&&_if){ _ib.onclick=function(){_if.value='';_if.click();}; _if.onchange=function(){ if(_if.files&&_if.files[0])importInventoryXlsx(_if.files[0]); }; }
   var _it=document.getElementById('invType'); if(_it)_it.onchange=function(){document.getElementById('invConsumRow').style.display=(_it.value==='consumable')?'grid':'none';};
   root.querySelectorAll('[data-inv-receive]').forEach(function(b){b.onclick=function(){receiveStock(b.getAttribute('data-inv-receive'));};});
   root.querySelectorAll('[data-inv-adjust]').forEach(function(b){b.onclick=function(){adjustStock(b.getAttribute('data-inv-adjust'));};});
@@ -4183,6 +4194,186 @@ function adjustStock(id){
   a.update(a.ref(a.db,'inventory/'+id),{updatedAt:Date.now()});
   if(window.__posLog)window.__posLog('inv-adjust',i.name,(delta>0?'+':'')+num(delta)+' '+(i.unit||'')+' · '+reason+' · COGS '+peso(varianceValue));
   alert('Adjusted '+i.name+' to '+num(after)+' '+(i.unit||'')+'.\nVariance to COGS: '+peso(varianceValue)+' ('+reason+').');
+}
+/* ---------- Recipe Excel export / import ---------- */
+function recipesToAOA(){
+  var aoa=[['itemKey','itemName','ingredient','unit','qtyS','qtyM','qtyL']];
+  menuList().forEach(function(it){ var rec=recipesMap[it.key]; if(!rec||!rec.base||!rec.base.length)return;
+    rec.base.forEach(function(b){ var inv=inventoryMap[b.ing]||{};
+      aoa.push([it.key,it.name||'',inv.name||'',inv.unit||'',(b.qtyS!=null?b.qtyS:''),(b.qtyM!=null?b.qtyM:''),(b.qtyL!=null?b.qtyL:'')]);
+    });
+  });
+  return aoa;
+}
+function optionsToAOA(){
+  var aoa=[['option','ingredient','qty','unit']];
+  Object.keys(optRecipesMap).sort().forEach(function(lb){ var o=optRecipesMap[lb]||{}; var inv=inventoryMap[o.ing]||{}; aoa.push([lb,inv.name||'',(o.qty!=null?o.qty:''),inv.unit||'']); });
+  return aoa;
+}
+function exportRecipesXlsx(){
+  if(!window.XLSX){alert('Excel library is still loading — try again in a moment.');return;}
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(recipesToAOA()),'Recipes');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(optionsToAOA()),'Options');
+  XLSX.writeFile(wb,'accaza-recipes-'+new Date().toISOString().slice(0,10)+'.xlsx');
+}
+function downloadRecipeTemplate(){
+  if(!window.XLSX){alert('Excel library is still loading — try again in a moment.');return;}
+  var aoa=[['itemKey','itemName','ingredient','unit','qtyS','qtyM','qtyL']];
+  menuList().forEach(function(it){ aoa.push([it.key,it.name||'','','','','','']); aoa.push([it.key,it.name||'','','','','','']); });
+  if(aoa.length===1){ aoa.push(['','Latte','Espresso beans','g',18,20,24]); aoa.push(['','Latte','Fresh milk','ml',150,200,250]); }
+  var oaoa=[['option','ingredient','qty','unit']];
+  allOptionLabels().forEach(function(o){ oaoa.push([o.label,'','','']); });
+  if(oaoa.length===1){ oaoa.push(['Extra shot','Espresso beans',9,'g']); }
+  var notes=[['Accaza — Recipe import template'],[''],
+    ['SHEET "Recipes" = base ingredients per menu item (one row per ingredient).'],
+    ['  itemKey  = leave as pre-filled (or blank to match by itemName).'],
+    ['  itemName = the exact menu item name.'],
+    ['  ingredient = the exact Inventory item name (add it in Inventory first).'],
+    ['  qtyS / qtyM / qtyL = quantity used for each size, in that ingredient unit. Blank = none for that size.'],
+    ['  Rows are pre-filled with all your menu items (2 blank ingredient rows each) — just type ingredient + quantities.'],
+    ['  Importing REPLACES the base list of any item that has at least one filled row. Items with no filled row are left as-is.'],
+    [''],
+    ['SHEET "Options" = one costing per option, for all sizes.'],
+    ['  option = the customer option label (pre-filled from your menu).'],
+    ['  ingredient = the Inventory item it consumes ; qty = amount per order.'],
+    ['  Blank ingredient/qty rows are ignored (they will NOT delete an existing option).'],
+    [''],
+    ['Consumables (cups, stirrers) are NOT here — they auto-apply by category. Manage them in Inventory + the Consumables sub-tab.']
+  ];
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'Recipes');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(oaoa),'Options');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(notes),'Instructions');
+  XLSX.writeFile(wb,'accaza-recipes-template.xlsx');
+}
+function importRecipesXlsx(file){
+  if(!window.XLSX){alert('Excel library is still loading — try again.');return;}
+  var rd=new FileReader();
+  rd.onload=function(e){
+    try{
+      var wb=XLSX.read(e.target.result,{type:'array'});
+      var ingByName={}; ings().forEach(function(i){ingByName[(i.name||'').trim().toLowerCase()]=i.id;});
+      var itemByName={}; menuList().forEach(function(it){itemByName[(it.name||'').trim().toLowerCase()]=it.key;});
+      var mim=A().menuItemsMap||{}; var a=A();
+      var recCount=0,recRows=0,optCount=0,missIng={},missItem={};
+      var rsh=wb.Sheets['Recipes'];
+      if(rsh){
+        var grouped={};
+        XLSX.utils.sheet_to_json(rsh,{defval:''}).forEach(function(r){
+          var key=String(r.itemKey||'').trim();
+          if(!key){ var nm=String(r.itemName||'').trim().toLowerCase(); key=nm?(itemByName[nm]||''):''; }
+          if(!key||!mim[key]){ if(String(r.itemName||'').trim())missItem[String(r.itemName).trim()]=1; return; }
+          var ingName=String(r.ingredient||'').trim(); if(!ingName)return;
+          var ingId=ingByName[ingName.toLowerCase()]; if(!ingId){missIng[ingName]=1;return;}
+          function q(v){return (v===''||v==null)?null:(Number(v)||0);}
+          (grouped[key]=grouped[key]||[]).push({ing:ingId,qtyS:q(r.qtyS),qtyM:q(r.qtyM),qtyL:q(r.qtyL)}); recRows++;
+        });
+        Object.keys(grouped).forEach(function(key){
+          var rec={base:grouped[key],updatedAt:Date.now()};
+          var saved=recipesMap[key]; if(saved&&saved.options)rec.options=saved.options;
+          a.set(a.ref(a.db,'recipes/'+key),rec); recCount++;
+        });
+      }
+      var osh=wb.Sheets['Options'];
+      if(osh){
+        XLSX.utils.sheet_to_json(osh,{defval:''}).forEach(function(r){
+          var label=String(r.option||'').trim(); if(!label)return;
+          var ingName=String(r.ingredient||'').trim(); var qty=Number(r.qty)||0;
+          if(!ingName||!qty)return;
+          var ingId=ingByName[ingName.toLowerCase()]; if(!ingId){missIng[ingName]=1;return;}
+          a.set(a.ref(a.db,'optionRecipes/'+optKey(label)),{label:label,ing:ingId,qty:qty,updatedAt:Date.now()}); optCount++;
+        });
+      }
+      var msg='Recipes imported.\nMenu items updated: '+recCount+' ('+recRows+' ingredient rows)\nOptions set: '+optCount;
+      var mi=Object.keys(missItem),mg=Object.keys(missIng);
+      if(mi.length)msg+='\n\nUnknown menu items (skipped): '+mi.slice(0,8).join(', ')+(mi.length>8?' …':'');
+      if(mg.length)msg+='\n\nUnknown ingredients — add in Inventory first: '+mg.slice(0,8).join(', ')+(mg.length>8?' …':'');
+      alert(msg);
+    }catch(err){alert('Could not read that file: '+err);}
+  };
+  rd.readAsArrayBuffer(file);
+}
+/* ---------- Inventory Excel export / import ---------- */
+function invColumns(){return ['id','name','type','unit','stock','reorder','cost','serves','size','qtyPerOrder'];}
+function invToAOA(){
+  var cols=invColumns(); var aoa=[cols];
+  ings().forEach(function(i){ var c=ingType(i)==='consumable';
+    aoa.push([i.id,i.name||'',ingType(i),i.unit||'',Number(i.stock)||0,Number(i.reorder)||0,(i.cost!=null&&i.cost!==''?Number(i.cost):''),(c?(i.serves||'both'):''),(c?(i.size||''):''),(c?(i.qtyPerOrder!=null?i.qtyPerOrder:1):'')]);
+  });
+  return aoa;
+}
+function exportInventoryXlsx(){
+  if(!window.XLSX){alert('Excel library is still loading — try again in a moment.');return;}
+  var ws=XLSX.utils.aoa_to_sheet(invToAOA());
+  var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Inventory');
+  XLSX.writeFile(wb,'accaza-inventory-'+new Date().toISOString().slice(0,10)+'.xlsx');
+}
+function downloadInventoryTemplate(){
+  if(!window.XLSX){alert('Excel library is still loading — try again in a moment.');return;}
+  var ex=[invColumns(),
+    ['','Espresso beans','base','g','',0,0.9,'','',''],
+    ['','Fresh milk','base','ml','',0,0.06,'','',''],
+    ['','Vanilla syrup','option','pump','',0,3.5,'','',''],
+    ['','Medium paper cup','consumable','pcs','',0,2.2,'drink','M',1],
+    ['','Stirrer','consumable','pcs','',0,0.3,'drink','',1],
+    ['','Pastry box','consumable','pcs','',0,4,'food','',1]
+  ];
+  var ws=XLSX.utils.aoa_to_sheet(ex);
+  var notes=[['Accaza — Inventory import template'],[''],
+    ['HOW TO USE'],
+    ['1. One row per item. Leave the id column BLANK for new items (fill it only when re-importing an exported file to update exact rows).'],
+    ['2. name = required. type = base / option / consumable.'],
+    ['3. unit = g, ml, oz, pcs, shot, pump, ea — use the SAME unit for cost and for recipe quantities.'],
+    ['4. cost = price per ONE unit (per g, per ml, per pc). Blank = 0.'],
+    ['5. serves / size / qtyPerOrder apply to CONSUMABLES only:'],
+    ['      serves = both / drink / food ;  size = S / M / L for cups (blank = all sizes) ;  qtyPerOrder default 1.'],
+    ['6. Import matches by id first, else by name (case-insensitive). Blank cells on an EXISTING item are left unchanged (so you will not wipe live stock).'],
+    ['7. Delete these example rows, fill your own, Save As .xlsx, then use "⬆ Import Excel" in the Inventory tab.']
+  ];
+  var wsN=XLSX.utils.aoa_to_sheet(notes);
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Inventory');
+  XLSX.utils.book_append_sheet(wb,wsN,'Instructions');
+  XLSX.writeFile(wb,'accaza-inventory-template.xlsx');
+}
+function importInventoryXlsx(file){
+  if(!window.XLSX){alert('Excel library is still loading — try again.');return;}
+  var rd=new FileReader();
+  rd.onload=function(e){
+    try{
+      var wb=XLSX.read(e.target.result,{type:'array'});
+      var sh=wb.Sheets['Inventory']||wb.Sheets[wb.SheetNames[0]];
+      var rows=XLSX.utils.sheet_to_json(sh,{defval:''});
+      if(!rows.length){alert('No rows found on the Inventory sheet.');return;}
+      var byId={},byName={};
+      ings().forEach(function(i){byId[i.id]=i;byName[(i.name||'').trim().toLowerCase()]=i;});
+      var created=0,updated=0,skipped=0; var a=A();
+      rows.forEach(function(r){
+        var name=String(r.name||'').trim(); if(!name){skipped++;return;}
+        var id=String(r.id||'').trim();
+        var match=(id&&byId[id])||byName[name.toLowerCase()];
+        function has(k){return r[k]!==''&&r[k]!=null;}
+        var type=has('type')?String(r.type).trim().toLowerCase():(match?ingType(match):'base'); if(['base','option','consumable'].indexOf(type)<0)type='base';
+        var o=match?{}:{stock:0,reorder:0,cost:0};
+        o.name=name; o.type=type;
+        if(has('unit'))o.unit=String(r.unit).trim();
+        if(has('stock'))o.stock=Number(r.stock)||0;
+        if(has('reorder'))o.reorder=Number(r.reorder)||0;
+        if(has('cost'))o.cost=Number(r.cost)||0;
+        if(type==='consumable'){
+          o.serves=has('serves')?String(r.serves).trim().toLowerCase():((match&&match.serves)||'both'); if(['both','drink','food'].indexOf(o.serves)<0)o.serves='both';
+          o.size=has('size')?String(r.size).trim().toUpperCase():((match&&match.size)||''); if(['S','M','L'].indexOf(o.size)<0)o.size='';
+          o.qtyPerOrder=has('qtyPerOrder')?(Number(r.qtyPerOrder)||1):((match&&match.qtyPerOrder!=null)?match.qtyPerOrder:1);
+        }
+        o.updatedAt=Date.now();
+        if(match){ a.update(a.ref(a.db,'inventory/'+match.id),o); updated++; byId[match.id]=Object.assign({},match,o); byName[name.toLowerCase()]=byId[match.id]; }
+        else { var nid=uid('ing_'); a.set(a.ref(a.db,'inventory/'+nid),o); created++; var no=Object.assign({id:nid},o); byId[nid]=no; byName[name.toLowerCase()]=no; }
+      });
+      alert('Import complete.\nCreated: '+created+'\nUpdated: '+updated+(skipped?'\nSkipped (no name): '+skipped:''));
+    }catch(err){ alert('Could not read that file: '+err); }
+  };
+  rd.readAsArrayBuffer(file);
 }
 function receiveStock(id){
   var i=inventoryMap[id]; if(!i)return;
@@ -4234,8 +4425,18 @@ function renderRecipes(){
       +'<select class="pz-in" id="recPick" style="max-width:420px;"><option value="">— choose an item —</option>'+opts+'</select></div>'
       +'<div id="recEditor"></div>';
   }
-  root.innerHTML='<div class="pz-h">🧪 Recipe &amp; Costing</div>'+nav+body;
+  var tools='<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">'
+    +'<button class="pz-btn sec" id="recExport">⬇ Export Excel</button>'
+    +'<button class="pz-btn sec" id="recTemplate">⬇ Import template</button>'
+    +'<button class="pz-btn ok" id="recImportBtn">⬆ Import Excel</button>'
+    +'<input type="file" id="recImportFile" accept=".xlsx,.xls,.csv" style="display:none;"/>'
+    +'</div>';
+  root.innerHTML='<div class="pz-h">🧪 Recipe &amp; Costing</div>'+nav+tools+body;
   root.querySelectorAll('[data-recsub]').forEach(function(b){b.onclick=function(){recSub=b.getAttribute('data-recsub');recipeEditing=false;renderRecipes();};});
+  var _re=document.getElementById('recExport'); if(_re)_re.onclick=exportRecipesXlsx;
+  var _rt=document.getElementById('recTemplate'); if(_rt)_rt.onclick=downloadRecipeTemplate;
+  var _rb=document.getElementById('recImportBtn'), _rf=document.getElementById('recImportFile');
+  if(_rb&&_rf){ _rb.onclick=function(){_rf.value='';_rf.click();}; _rf.onchange=function(){ if(_rf.files&&_rf.files[0])importRecipesXlsx(_rf.files[0]); }; }
   if(recSub==='options'){ renderOptionsMaster(); }
   else if(recSub==='consumables'){ renderConsumables(); }
   else { var rp=document.getElementById('recPick'); if(rp)rp.onchange=function(){ curRecipeKey=this.value||null; openRecipe(curRecipeKey); }; if(curRecipeKey)openRecipe(curRecipeKey); }
