@@ -569,7 +569,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 </style>
 </head>
 <body>
-<!-- accaza-index build v33 -->
+<!-- accaza-index build v34 -->
 <div class="fb-sync" id="fbSync">🔥 Firebase Connected</div>
 <div class="order-toast" id="orderToast" onclick="ackNewOrders()">
   <span class="ot-bell">🔔</span>
@@ -1720,7 +1720,7 @@ function triggerReadyAlert(o){
   stopReadyAlert();
   _readyTimer=setInterval(function(){try{playReadyChime();}catch(e){}try{if(navigator.vibrate)navigator.vibrate([500,200,500]);}catch(e){}},3800);
   try{if(navigator.vibrate)navigator.vibrate([500,200,500,200,500]);}catch(e){}
-  _readyStop=setTimeout(stopReadyAlert,45000);
+  _readyStop=setTimeout(function(){if(window.dismissReadyAlert)window.dismissReadyAlert();},45000);
 }
 function checkMyReadyOrders(){
   try{
@@ -1729,7 +1729,7 @@ function checkMyReadyOrders(){
       if(o.status==='Ready'){
         if(!_ordersSeeded){_readyAlerted.add(id);}
         else if(!_readyAlerted.has(id)){_readyAlerted.add(id);_saveReadyAlerted();triggerReadyAlert(o);}
-      }else if(_readyAlerted.has(id)){_readyAlerted.delete(id);_saveReadyAlerted();}
+      }else if(_readyAlerted.has(id)){_readyAlerted.delete(id);_saveReadyAlerted();if(window.dismissReadyAlert)window.dismissReadyAlert();}
     });
     if(!_ordersSeeded){_ordersSeeded=true;_saveReadyAlerted();}
   }catch(e){}
