@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v52</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v53</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -5627,7 +5627,7 @@ function renderOps(){
   if(activeShift){
     var z=computeZ(activeShift);
     html+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;"><div><span style="color:#2a9d5c;font-weight:700;">🟢 Shift open</span> · Cashier <b>'+esc(activeShift.staff)+'</b> · since '+new Date(activeShift.openAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})+'</div><button class="pz-btn warn" id="opsClose">Close shift &amp; Z-report</button></div>';
-    html+='<div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap;"><button class="pz-btn sec" id="opsCashOut">💵 Cash out (pay-out)</button><button class="pz-btn sec" id="opsCashIn">➕ Cash in</button></div>';
+    html+='<div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap;align-items:center;"><button class="pz-btn sec" id="opsCashIn">➕ Cash in</button><span style="font-size:0.72rem;color:var(--tl);">For expenses, top up <b>Petty Cash</b> (Replenish → from register) and disburse with a voucher — no direct cash-out from the drawer.</span></div>';
     html+='<div class="az-kpis" style="margin-top:0.8rem;">'+kpi('Sales',z.tx)+kpi('Net',peso(z.net))+kpi('Cash in',peso(z.cashSales))+kpi('Expected drawer',peso(z.expectedCash))+kpi('Voids',z.voidCount)+kpi('Refunds',peso(z.refunds))+kpi('⏳ Unverified',peso(z.pending)+(z.pendingCount?' ('+z.pendingCount+')':''))+'</div>';
   } else {
     var opts=staffArr().map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+' ('+esc(s.role||'cashier')+')</option>';}).join('');
@@ -5667,7 +5667,6 @@ function renderOps(){
   var oOpen=document.getElementById('opsOpen');if(oOpen)oOpen.onclick=openShift;
   if(document.getElementById('opsOpenDenom_total'))wireDenom('opsOpenDenom');
   var oClose=document.getElementById('opsClose');if(oClose)oClose.onclick=closeShift;
-  var oCout=document.getElementById('opsCashOut');if(oCout)oCout.onclick=function(){cashMove('out');};
   var oCin=document.getElementById('opsCashIn');if(oCin)oCin.onclick=function(){cashMove('in');};
   document.getElementById('stAdd').onclick=addStaff;
   root.querySelectorAll('[data-stpin]').forEach(function(b){b.onclick=function(){changeStaffPin(b.getAttribute('data-stpin'));};});
