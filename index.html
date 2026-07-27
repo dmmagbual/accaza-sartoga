@@ -569,7 +569,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 </style>
 </head>
 <body>
-<!-- accaza-index build v31 -->
+<!-- accaza-index build v32 -->
 <div class="fb-sync" id="fbSync">🔥 Firebase Connected</div>
 <div class="order-toast" id="orderToast" onclick="ackNewOrders()">
   <span class="ot-bell">🔔</span>
@@ -3864,8 +3864,8 @@ function heroInstallClick(){
 <script>
 /* ===================== LIVE ORDER STATUS ===================== */
 (function(){
-  var STEPS=[['Pending','Placed'],['Confirmed','Confirmed'],['Preparing','Preparing'],['Completed','Ready'],['Received','Received']];
-  var WORDS=['Pending','Confirmed','Preparing','Completed','Received','Rejected'];
+  var STEPS=[['Pending','Placed'],['Confirmed','Confirmed'],['Preparing','Preparing'],['Ready','Ready'],['Received','Received']];
+  var WORDS=['Pending','Confirmed','Preparing','Ready','Completed','Received','Rejected'];
   var sessionStatus={};   // orderId -> last status seen THIS session (alerts only on live change)
   var audioCtx=null, gestureDone=false;
 
@@ -3895,6 +3895,7 @@ function heroInstallClick(){
 
   function stepperHTML(status){
     if(status==='Rejected')return '<div class="acz-rejected">⚠ Order rejected — please contact us at 0927 692 4831</div>';
+    if(status==='Completed')status='Received';
     var idx=0;for(var i=0;i<STEPS.length;i++){if(STEPS[i][0]===status){idx=i;break;}}
     var h='<div class="acz-steps">';
     for(var j=0;j<STEPS.length;j++){var cls='acz-step'+(j<idx?' done':(j===idx?' active':''));h+='<div class="'+cls+'"><div class="acz-dot">'+(j<idx?'✓':(j+1))+'</div><div class="acz-lbl">'+STEPS[j][1]+'</div></div>';}
@@ -3903,7 +3904,8 @@ function heroInstallClick(){
 
   function alertChange(id,status){
     var msg;
-    if(status==='Completed')msg='🎉 Order '+id+' is READY! Please proceed to pick it up / receive it.';
+    if(status==='Ready')msg='🎉 Order '+id+' is READY! Please proceed to pick it up / receive it.';
+    else if(status==='Completed'||status==='Received')msg='🎉 Thank you! Order '+id+' is complete.';
     else if(status==='Preparing')msg='👨‍🍳 Order '+id+' is now being prepared.';
     else if(status==='Confirmed')msg='✅ Order '+id+' has been confirmed!';
     else if(status==='Rejected')msg='⚠ Order '+id+' was rejected. Please contact us at 0927 692 4831.';
