@@ -1062,36 +1062,60 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v53</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v54</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statReservations">0</span><span class="stat-lbl">Reservations</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statRevenue">₱0</span><span class="stat-lbl">Active Order Value</span></div>
     </div>
-    <div class="admin-tabs">
-      <button class="admin-tab active" onclick="switchTab('dashboard',this)">📊 Dashboard</button>
-      <button class="admin-tab" id="tabBtnOrders" onclick="switchTab('orders',this)">📋 Orders <span id="ordersBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
-      <button class="admin-tab" onclick="posSwitchTab('pos',this)" style="color:#8a5a2b;font-weight:600;">🧾 POS</button>
-      <button class="admin-tab" onclick="posSwitchTab('ops',this)">🧾 Register Ops</button>
-      <button class="admin-tab" onclick="posSwitchTab('inventory',this)">📦 Inventory <span id="lowStockBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
-      <button class="admin-tab" onclick="posSwitchTab('recipes',this)">🧪 Recipes</button>
-      <button class="admin-tab" onclick="posSwitchTab('usage',this)">🍽️ Internal Usage</button>
-      <button class="admin-tab" onclick="posSwitchTab('discrepancy',this)">🚩 Discrepancies <span id="discBadge" style="display:none;background:#e63946;color:#fff;border-radius:10px;padding:0 0.4rem;font-size:0.7rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
-      <button class="admin-tab" onclick="posSwitchTab('petty',this)">💷 Petty Cash</button>
-      <button class="admin-tab" onclick="posSwitchTab('packages',this)">🎁 Packages</button>
-      <button class="admin-tab" onclick="posSwitchTab('analytics',this)">📊 Analytics</button>
-      <button class="admin-tab" onclick="posSwitchTab('pnl',this)">💰 Profit &amp; Loss</button>
-      <button class="admin-tab" onclick="switchTab('reservations',this)">📅 Reservations</button>
-      <button class="admin-tab" onclick="switchTab('calendar',this)">🗓️ Calendar</button>
-      <button class="admin-tab" onclick="switchTab('reviews',this)">⭐ Reviews</button>
-      <button class="admin-tab" onclick="switchTab('appcustomers',this)">👥 App Customers</button>
-      
-      <button class="admin-tab" onclick="switchTab('payment',this)">💳 Payment Details</button>
-      <button class="admin-tab" onclick="switchTab('staffaccounts',this)">👥 Staff Accounts</button>
-      <button class="admin-tab" onclick="posSwitchTab('staffaccess',this)">🔐 Staff Access</button>
-      <button class="admin-tab" id="tabBtnAdminAccounts" style="display:none;" onclick="switchTab('adminaccounts',this)">👑 Admin Accounts</button>
-      <button class="admin-tab" onclick="switchTab('changepw',this)">🔑 Change Password</button>
+    <style>
+      .admin-group{padding:0.45rem 0.95rem;border-radius:8px;border:1px solid #d8cdbf;background:#efe7dd;color:#5b4636;font-weight:700;font-size:0.9rem;cursor:pointer;}
+      .admin-group.active{background:#6F4E37;color:#fff;border-color:#6F4E37;}
+      .tabgrp{display:flex;flex-wrap:wrap;gap:0.35rem;}
+    </style>
+    <div class="admin-tabs" style="display:block;">
+      <div id="adminGroups" style="display:flex;flex-wrap:wrap;gap:0.35rem;margin-bottom:0.55rem;border-bottom:1px solid #e6ddd2;padding-bottom:0.5rem;">
+        <button class="admin-group active" data-grp="overview" onclick="showTabGroup('overview',this)">📊 Overview</button>
+        <button class="admin-group" data-grp="sell" onclick="showTabGroup('sell',this)">🧾 Sell</button>
+        <button class="admin-group" data-grp="stock" onclick="showTabGroup('stock',this)">📦 Stock &amp; Recipes</button>
+        <button class="admin-group" data-grp="finance" onclick="showTabGroup('finance',this)">💰 Finance</button>
+        <button class="admin-group" data-grp="customers" onclick="showTabGroup('customers',this)">💬 Customers</button>
+        <button class="admin-group" data-grp="settings" onclick="showTabGroup('settings',this)">⚙️ Settings</button>
+      </div>
+      <div class="tabgrp" data-grp="overview">
+        <button class="admin-tab active" onclick="switchTab('dashboard',this)">📊 Dashboard</button>
+        <button class="admin-tab" id="tabBtnOrders" onclick="switchTab('orders',this)">📋 Orders <span id="ordersBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
+        <button class="admin-tab" onclick="switchTab('reservations',this)">📅 Reservations</button>
+        <button class="admin-tab" onclick="switchTab('calendar',this)">🗓️ Calendar</button>
+      </div>
+      <div class="tabgrp" data-grp="sell" style="display:none;">
+        <button class="admin-tab" onclick="posSwitchTab('pos',this)" style="color:#8a5a2b;font-weight:600;">🧾 POS</button>
+        <button class="admin-tab" onclick="posSwitchTab('ops',this)">🧾 Register Ops</button>
+        <button class="admin-tab" onclick="posSwitchTab('petty',this)">💷 Petty Cash</button>
+        <button class="admin-tab" onclick="posSwitchTab('packages',this)">🎁 Packages</button>
+      </div>
+      <div class="tabgrp" data-grp="stock" style="display:none;">
+        <button class="admin-tab" onclick="posSwitchTab('inventory',this)">📦 Inventory <span id="lowStockBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
+        <button class="admin-tab" onclick="posSwitchTab('recipes',this)">🧪 Recipes</button>
+        <button class="admin-tab" onclick="posSwitchTab('usage',this)">🍽️ Internal Usage</button>
+      </div>
+      <div class="tabgrp" data-grp="finance" style="display:none;">
+        <button class="admin-tab" onclick="posSwitchTab('analytics',this)">📊 Analytics</button>
+        <button class="admin-tab" onclick="posSwitchTab('pnl',this)">💰 Profit &amp; Loss</button>
+        <button class="admin-tab" onclick="posSwitchTab('discrepancy',this)">🚩 Discrepancies <span id="discBadge" style="display:none;background:#e63946;color:#fff;border-radius:10px;padding:0 0.4rem;font-size:0.7rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
+      </div>
+      <div class="tabgrp" data-grp="customers" style="display:none;">
+        <button class="admin-tab" onclick="switchTab('reviews',this)">⭐ Reviews</button>
+        <button class="admin-tab" onclick="switchTab('appcustomers',this)">👥 App Customers</button>
+      </div>
+      <div class="tabgrp" data-grp="settings" style="display:none;">
+        <button class="admin-tab" onclick="switchTab('payment',this)">💳 Payment Details</button>
+        <button class="admin-tab" onclick="switchTab('staffaccounts',this)">👥 Staff Accounts</button>
+        <button class="admin-tab" onclick="posSwitchTab('staffaccess',this)">🔐 Staff Access</button>
+        <button class="admin-tab" id="tabBtnAdminAccounts" style="display:none;" onclick="switchTab('adminaccounts',this)">👑 Admin Accounts</button>
+        <button class="admin-tab" onclick="switchTab('changepw',this)">🔑 Change Password</button>
+      </div>
     </div>
     <!-- DASHBOARD -->
     <div id="tab-dashboard" class="admin-tab-content">
@@ -3472,6 +3496,10 @@ function applyStaffPerms(perms){
   });
   var na=document.getElementById('navAvail'); if(na)na.style.display=perms.availability?'block':'none';
   var nc=document.getElementById('navComments'); if(nc)nc.style.display=perms.comments?'block':'none';
+  // hide any group whose tabs are all hidden, then land on the first visible group
+  document.querySelectorAll('.admin-group').forEach(function(gb){var g=gb.getAttribute('data-grp');var row=document.querySelector('.tabgrp[data-grp="'+g+'"]');var vis=false;if(row)row.querySelectorAll('.admin-tab').forEach(function(b){if(b.style.display!=='none')vis=true;});gb.style.display=vis?'':'none';});
+  var curG=document.querySelector('.admin-group.active');
+  if(!curG||curG.style.display==='none'){var fg=null;document.querySelectorAll('.admin-group').forEach(function(gb){if(!fg&&gb.style.display!=='none')fg=gb;});if(fg)window.showTabGroup(fg.getAttribute('data-grp'),fg);}
 }
 async function loginSuccess(role,username,uid){
   currentUser={role,username,uid};
@@ -3596,6 +3624,14 @@ window.switchTab=function(tab,btn){
   if(tab==='calendar')renderAdminCalendar();
   if(tab==='dashboard')renderDashboard();
   if(tab==='appcustomers')renderAppCustomers();
+  try{var _ab=document.querySelector('.admin-tab.active'); if(_ab){var _g=_ab.closest('.tabgrp'); if(_g){var _gn=_g.getAttribute('data-grp'); document.querySelectorAll('.tabgrp').forEach(function(r){r.style.display=(r===_g)?'flex':'none';}); document.querySelectorAll('.admin-group').forEach(function(x){x.classList.toggle('active', x.getAttribute('data-grp')===_gn);}); }}}catch(e){}
+};
+window.showTabGroup=function(g,btn){
+  document.querySelectorAll('.admin-group').forEach(function(b){b.classList.remove('active');});
+  if(btn)btn.classList.add('active'); else {var gb=document.querySelector('.admin-group[data-grp="'+g+'"]'); if(gb)gb.classList.add('active');}
+  document.querySelectorAll('.tabgrp').forEach(function(r){r.style.display=(r.getAttribute('data-grp')===g)?'flex':'none';});
+  var row=document.querySelector('.tabgrp[data-grp="'+g+'"]'); if(!row)return;
+  if(!row.querySelector('.admin-tab.active')){ var first=null; row.querySelectorAll('.admin-tab').forEach(function(b){ if(!first && b.style.display!=='none') first=b; }); if(first)first.click(); }
 };
 
 // ── CHATBOT ──
