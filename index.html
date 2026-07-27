@@ -569,7 +569,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 </style>
 </head>
 <body>
-<!-- accaza-index build v35 -->
+<!-- accaza-index build v36 -->
 <div class="fb-sync" id="fbSync">🔥 Firebase Connected</div>
 <div class="order-toast" id="orderToast" onclick="ackNewOrders()">
   <span class="ot-bell">🔔</span>
@@ -3965,6 +3965,9 @@ function heroInstallClick(){
 <style id="cust-pkg-style">
 #custPkgWrap .cpk-h{font-family:'Playfair Display',serif;color:#19241b;font-size:1.15rem;margin:0 0 0.6rem;}
 .cpk-title{font-family:'Playfair Display',serif;font-size:1.15rem;color:#19241b;}
+@keyframes cpkPulse{0%,100%{transform:scale(1);text-shadow:0 0 0 rgba(176,141,87,0);color:#19241b;}50%{transform:scale(1.045);text-shadow:0 0 16px rgba(176,141,87,0.6);color:#8a5a2b;}}
+#custPkgWrap .cpk-h,#custPkgWrap .cpk-title{animation:cpkPulse 1.9s ease-in-out infinite;transform-origin:left center;display:inline-block;will-change:transform;}
+@media(prefers-reduced-motion:reduce){#custPkgWrap .cpk-h,#custPkgWrap .cpk-title{animation:none;}}
 .cpk-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0.8rem;}
 .cpk-card{background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:12px;padding:1rem;cursor:pointer;text-align:left;transition:box-shadow .15s,transform .15s;}
 .cpk-card:hover{box-shadow:0 6px 18px rgba(0,0,0,0.1);transform:translateY(-2px);}
