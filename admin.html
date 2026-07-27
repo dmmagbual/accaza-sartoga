@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v54</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v55</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -5626,21 +5626,36 @@ function exportPetty(){
   var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'PettyCash');
   XLSX.writeFile(wb,'accaza-petty-cash-'+new Date().toISOString().slice(0,10)+'.xlsx');
 }
+function archiveOldActivity(){
+  var cutoff=Date.now()-60*24*3600*1000;
+  var old=Object.keys(activityMap).filter(function(k){return (activityMap[k].ts||0)<cutoff;});
+  if(!old.length){alert('No activity-log entries older than 60 days.');return;}
+  if(!confirm('Move '+old.length+' entr'+(old.length>1?'ies':'y')+' older than 60 days to the archive?\nThey stay in the database (activityLogArchive) and can still be exported — just removed from this live list.'))return;
+  var a=A(); var upd={};
+  old.forEach(function(k){ upd['activityLogArchive/'+k]=activityMap[k]; upd['activityLog/'+k]=null; });
+  a.update(a.ref(a.db),upd).then(function(){alert('Archived '+old.length+' entries.');}).catch(function(e){alert('Could not archive: '+e);});
+}
 function cashMove(dir){
   if(!activeShift){alert('Open a shift first.');return;}
-  var amt=Number(prompt(dir==='out'?'Cash OUT from drawer — amount ₱:':'Cash IN to drawer — amount ₱:'))||0;
-  if(!amt||amt<0){return;}
-  var reason=dir==='out'
-    ? (prompt('Reason:  Emergency purchase / Supplier COD / Bank deposit / Owner draw / Other','Emergency purchase')||'Other')
-    : (prompt('Reason:  Owner top-up / Return / Other','Owner top-up')||'Other');
-  var pin=prompt('Manager PIN to authorise this '+(dir==='out'?'pay-out':'pay-in')+' of '+peso(amt)+':'); if(pin===null)return;
-  var mgr=managerByPin(pin); if(!mgr){alert('Invalid manager PIN.');return;}
-  var a=A(); var key=dir==='out'?'payOuts':'payIns';
-  var arr=(activeShift[key]||[]).slice(); arr.push({amount:amt,reason:reason,by:mgr.name,ts:Date.now()});
-  var upd={}; upd[key]=arr;
-  a.update(a.ref(a.db,'shifts/'+activeShift.id),upd); a.update(a.ref(a.db,'posActiveShift'),upd);
-  window.__posLog(dir==='out'?'cash-out':'cash-in',reason,peso(amt)+' by '+mgr.name);
-  alert('Recorded. Expected drawer '+(dir==='out'?'reduced':'increased')+' by '+peso(amt)+'.\nAttach the receipt/voucher for the audit trail.');
+  var mask=document.createElement('div'); mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
+  mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:400px;width:100%;padding:1.2rem;">'
+    +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.5rem;">Cash in — add to drawer</div>'
+    +'<div><span class="pz-lbl">Amount ₱</span><input class="pz-in" id="cmAmt" type="number" step="any"/></div>'
+    +'<div style="margin-top:0.5rem;"><span class="pz-lbl">Reason</span><select class="pz-in" id="cmReason"><option>Owner top-up</option><option>Change float</option><option>Return</option><option>Other</option></select></div>'
+    +'<div style="margin-top:0.5rem;"><span class="pz-lbl">Manager PIN</span><input class="pz-in" id="cmPin" type="password" inputmode="numeric"/></div>'
+    +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="cmSubmit">Add to drawer</button><button class="pz-btn sec" id="cmCancel">Cancel</button></div></div>';
+  document.body.appendChild(mask);
+  mask.querySelector('#cmCancel').onclick=function(){document.body.removeChild(mask);};
+  mask.querySelector('#cmSubmit').onclick=function(){
+    var amt=Number(mask.querySelector('#cmAmt').value)||0; if(!amt||amt<0){alert('Enter a valid amount.');return;}
+    var reason=mask.querySelector('#cmReason').value||'Other';
+    var mgr=managerByPin(mask.querySelector('#cmPin').value||''); if(!mgr){alert('Invalid manager PIN.');return;}
+    var a=A(); var arr=(activeShift.payIns||[]).slice(); arr.push({amount:amt,reason:reason,by:mgr.name,ts:Date.now()});
+    a.update(a.ref(a.db,'shifts/'+activeShift.id),{payIns:arr}); a.update(a.ref(a.db,'posActiveShift'),{payIns:arr});
+    window.__posLog('cash-in',reason,peso(amt)+' by '+mgr.name);
+    document.body.removeChild(mask);
+    alert('Recorded. Expected drawer increased by '+peso(amt)+'.');
+  };
 }
 function pendingPanel(){
   var list=Object.keys(ordersMap).map(function(k){return Object.assign({id:k},ordersMap[k]);}).filter(function(o){return o.paymentStatus==='pending'&&!o.voided;}).sort(function(a,b){return (a.timestamp||0)-(b.timestamp||0);});
@@ -5694,12 +5709,13 @@ function renderOps(){
   var cr=(window.__accaza&&false);
   html+='<div class="az-sec">Settings</div><div class="pz-card" style="margin-bottom:1rem;"><label style="font-size:0.85rem;cursor:pointer;"><input type="checkbox" id="opsRound"/> Round cash totals to the nearest peso</label></div>'+'<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">💳 Payment methods</div><div id="payMethodsBox"></div></div>';
   var acts=Object.keys(activityMap).map(function(k){return activityMap[k];}).sort(function(a,b){return(b.ts||0)-(a.ts||0);}).slice(0,20);
-  html+='<div class="az-sec">Activity log</div><div class="pz-card"><table class="pz-tbl"><tbody>'
+  html+='<div class="az-sec" style="display:flex;justify-content:space-between;align-items:center;">Activity log <button class="pz-btn sec" id="opsArchiveLog" style="padding:0.2rem 0.6rem;font-size:0.72rem;font-weight:400;">Archive entries &gt; 60 days</button></div><div class="pz-card"><table class="pz-tbl"><tbody>'
     +(acts.length?acts.map(function(x){return '<tr><td style="white-space:nowrap;color:var(--tl);font-size:0.75rem;">'+new Date(x.ts).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+'</td><td><b>'+esc(x.action)+'</b> '+esc(x.ref||'')+'</td><td>'+esc(x.detail||'')+'</td><td style="color:var(--tl);">'+esc(x.staff||'')+'</td></tr>';}).join(''):'<tr><td class="az-note" style="padding:0.5rem;">No activity yet.</td></tr>')
     +'</tbody></table></div>';
   root.innerHTML=html;
   // wire
   root.querySelectorAll('[data-verify]').forEach(function(b){b.onclick=function(){window.__posVerify(b.getAttribute('data-verify'));};});
+  var _al=document.getElementById('opsArchiveLog'); if(_al)_al.onclick=archiveOldActivity;
   var oOpen=document.getElementById('opsOpen');if(oOpen)oOpen.onclick=openShift;
   if(document.getElementById('opsOpenDenom_total'))wireDenom('opsOpenDenom');
   var oClose=document.getElementById('opsClose');if(oClose)oClose.onclick=closeShift;
@@ -5719,16 +5735,28 @@ function kpi(l,v){return '<div class="az-kpi"><div class="v">'+v+'</div><div cla
 function addStaff(){var name=(document.getElementById('stName').value||'').trim();var pin=(document.getElementById('stPin').value||'').trim();var role=document.getElementById('stRole').value;if(!name||!pin){alert('Enter name and PIN.');return;}if(!/^[0-9]{4,6}$/.test(pin)){alert('PIN must be 4-6 digits.');return;}var a=A();a.set(a.ref(a.db,'posStaff/'+uid('st_')),{name:name,pin:pin,role:role,ts:Date.now()});document.getElementById('stName').value='';document.getElementById('stPin').value='';}
 function changeStaffPin(id){
   var s=staffList[id]; if(!s)return;
-  var cur=prompt('Change PIN for '+s.name+'.\n\nEnter your CURRENT PIN:'); if(cur===null)return;
-  if(String(cur).trim()!==String(s.pin)){alert('Current PIN is incorrect.');return;}
-  var n1=prompt('Enter your NEW PIN (4–6 digits):'); if(n1===null)return; n1=String(n1).trim();
-  if(!/^[0-9]{4,6}$/.test(n1)){alert('PIN must be 4–6 digits.');return;}
-  var n2=prompt('Re-enter the NEW PIN to confirm:'); if(n2===null)return;
-  if(n1!==String(n2).trim()){alert('The two PINs do not match.');return;}
-  if(Object.keys(staffList).some(function(k){return k!==id&&String(staffList[k].pin)===n1;})){alert('That PIN is already used by another staff — choose a different one.');return;}
-  var a=A();a.update(a.ref(a.db,'posStaff/'+id),{pin:n1});
-  if(window.__posLog)window.__posLog('pin-change',s.name,'');
-  alert('PIN updated for '+s.name+'.');
+  var mask=document.createElement('div'); mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
+  mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:380px;width:100%;padding:1.2rem;">'
+    +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.5rem;">Change PIN — '+esc(s.name)+'</div>'
+    +'<div><span class="pz-lbl">Current PIN</span><input class="pz-in" id="cpCur" type="password" inputmode="numeric"/></div>'
+    +'<div style="margin-top:0.5rem;"><span class="pz-lbl">New PIN (4–6 digits)</span><input class="pz-in" id="cpN1" type="password" inputmode="numeric"/></div>'
+    +'<div style="margin-top:0.5rem;"><span class="pz-lbl">Confirm new PIN</span><input class="pz-in" id="cpN2" type="password" inputmode="numeric"/></div>'
+    +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="cpSubmit">Update PIN</button><button class="pz-btn sec" id="cpCancel">Cancel</button></div></div>';
+  document.body.appendChild(mask);
+  mask.querySelector('#cpCancel').onclick=function(){document.body.removeChild(mask);};
+  mask.querySelector('#cpSubmit').onclick=function(){
+    var cur=String(mask.querySelector('#cpCur').value||'').trim();
+    if(cur!==String(s.pin)){alert('Current PIN is incorrect.');return;}
+    var n1=String(mask.querySelector('#cpN1').value||'').trim();
+    if(!/^[0-9]{4,6}$/.test(n1)){alert('New PIN must be 4–6 digits.');return;}
+    var n2=String(mask.querySelector('#cpN2').value||'').trim();
+    if(n1!==n2){alert('The two PINs do not match.');return;}
+    if(Object.keys(staffList).some(function(k){return k!==id&&String(staffList[k].pin)===n1;})){alert('That PIN is already used by another staff — choose a different one.');return;}
+    var a=A();a.update(a.ref(a.db,'posStaff/'+id),{pin:n1});
+    if(window.__posLog)window.__posLog('pin-change',s.name,'');
+    document.body.removeChild(mask);
+    alert('PIN updated for '+s.name+'.');
+  };
 }
 
 function openShift(){
