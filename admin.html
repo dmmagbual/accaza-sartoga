@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v48</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v50</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4816,7 +4816,7 @@ function openDiscountModal(){
       +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.8rem;"><span style="font-weight:700;">Total discount: '+peso(scopedDiscTotal())+'</span><button class="pz-btn ok" id="dscDone">Done</button></div>'
       +'</div>';
     var ts=mask.querySelector('#dscType'); if(ts)ts.onchange=draw;
-    mask.querySelectorAll('[data-dscapply]').forEach(function(b){b.onclick=function(){ if(applyScoped(b.getAttribute('data-dscapply'),type,idNum.trim(),nm.trim()))draw(); };});
+    mask.querySelectorAll('[data-dscapply]').forEach(function(b){b.onclick=function(){ var liveId=((mask.querySelector('#dscId')||{}).value||'').trim(); var liveNm=((mask.querySelector('#dscName')||{}).value||'').trim(); if(applyScoped(b.getAttribute('data-dscapply'),type,liveId,liveNm))draw(); };});
     mask.querySelectorAll('[data-dscrm]').forEach(function(b){b.onclick=function(){posScopedDisc.splice(+b.getAttribute('data-dscrm'),1);draw();};});
     mask.querySelector('#dscDone').onclick=function(){document.body.removeChild(mask);renderPosCart();};
   }
@@ -5636,7 +5636,7 @@ function renderOps(){
     +'<div><span class="pz-lbl">4-digit PIN</span><input class="pz-in" id="stPin" inputmode="numeric" maxlength="6" placeholder="1234"/></div>'
     +'<div><span class="pz-lbl">Role</span><select class="pz-in" id="stRole"><option value="cashier">Cashier</option><option value="manager">Manager</option></select></div>'
     +'<button class="pz-btn" id="stAdd">Add</button></div>'
-    +'<table class="pz-tbl" style="margin-top:0.6rem;"><tbody>'+(staffArr().length?staffArr().map(function(s){return '<tr><td>'+esc(s.name)+'</td><td>'+esc(s.role||'cashier')+'</td><td style="color:var(--tl);">PIN ••••</td><td><button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-stdel="'+s.id+'">✕</button></td></tr>';}).join(''):'<tr><td class="az-note" style="padding:0.5rem;">No staff yet.</td></tr>')+'</tbody></table></div>';
+    +'<table class="pz-tbl" style="margin-top:0.6rem;"><tbody>'+(staffArr().length?staffArr().map(function(s){return '<tr><td>'+esc(s.name)+'</td><td>'+esc(s.role||'cashier')+'</td><td style="color:var(--tl);">PIN ••••</td><td style="white-space:nowrap;"><button class="pz-btn sec" style="padding:0.2rem 0.5rem;" data-stpin="'+s.id+'">Change PIN</button> <button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-stdel="'+s.id+'">✕</button></td></tr>';}).join(''):'<tr><td class="az-note" style="padding:0.5rem;">No staff yet.</td></tr>')+'</tbody></table></div>';
   // SETTINGS + ACTIVITY
   var cr=(window.__accaza&&false);
   html+='<div class="az-sec">Settings</div><div class="pz-card" style="margin-bottom:1rem;"><label style="font-size:0.85rem;cursor:pointer;"><input type="checkbox" id="opsRound"/> Round cash totals to the nearest peso</label></div>'+'<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">💳 Payment methods</div><div id="payMethodsBox"></div></div>';
@@ -5653,6 +5653,7 @@ function renderOps(){
   var oCout=document.getElementById('opsCashOut');if(oCout)oCout.onclick=function(){cashMove('out');};
   var oCin=document.getElementById('opsCashIn');if(oCin)oCin.onclick=function(){cashMove('in');};
   document.getElementById('stAdd').onclick=addStaff;
+  root.querySelectorAll('[data-stpin]').forEach(function(b){b.onclick=function(){changeStaffPin(b.getAttribute('data-stpin'));};});
   root.querySelectorAll('[data-stdel]').forEach(function(b){b.onclick=function(){if(confirm('Remove this staff?')){var a=A();a.remove(a.ref(a.db,'posStaff/'+b.getAttribute('data-stdel')));}};});
   root.querySelectorAll('[data-void]').forEach(function(b){b.onclick=function(){voidSale(b.getAttribute('data-void'));};});
   root.querySelectorAll('[data-refund]').forEach(function(b){b.onclick=function(){refundSale(b.getAttribute('data-refund'));};});
@@ -5664,6 +5665,19 @@ function renderOps(){
 function kpi(l,v){return '<div class="az-kpi"><div class="v">'+v+'</div><div class="l">'+esc(l)+'</div></div>';}
 
 function addStaff(){var name=(document.getElementById('stName').value||'').trim();var pin=(document.getElementById('stPin').value||'').trim();var role=document.getElementById('stRole').value;if(!name||!pin){alert('Enter name and PIN.');return;}if(!/^[0-9]{4,6}$/.test(pin)){alert('PIN must be 4-6 digits.');return;}var a=A();a.set(a.ref(a.db,'posStaff/'+uid('st_')),{name:name,pin:pin,role:role,ts:Date.now()});document.getElementById('stName').value='';document.getElementById('stPin').value='';}
+function changeStaffPin(id){
+  var s=staffList[id]; if(!s)return;
+  var cur=prompt('Change PIN for '+s.name+'.\n\nEnter your CURRENT PIN:'); if(cur===null)return;
+  if(String(cur).trim()!==String(s.pin)){alert('Current PIN is incorrect.');return;}
+  var n1=prompt('Enter your NEW PIN (4–6 digits):'); if(n1===null)return; n1=String(n1).trim();
+  if(!/^[0-9]{4,6}$/.test(n1)){alert('PIN must be 4–6 digits.');return;}
+  var n2=prompt('Re-enter the NEW PIN to confirm:'); if(n2===null)return;
+  if(n1!==String(n2).trim()){alert('The two PINs do not match.');return;}
+  if(Object.keys(staffList).some(function(k){return k!==id&&String(staffList[k].pin)===n1;})){alert('That PIN is already used by another staff — choose a different one.');return;}
+  var a=A();a.update(a.ref(a.db,'posStaff/'+id),{pin:n1});
+  if(window.__posLog)window.__posLog('pin-change',s.name,'');
+  alert('PIN updated for '+s.name+'.');
+}
 
 function openShift(){
   var sid=document.getElementById('opsStaff').value;var s=staffList[sid];if(!s){alert('Pick a cashier.');return;}
