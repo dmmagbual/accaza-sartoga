@@ -569,7 +569,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 </style>
 </head>
 <body>
-<!-- accaza-index build v34 -->
+<!-- accaza-index build v35 -->
 <div class="fb-sync" id="fbSync">🔥 Firebase Connected</div>
 <div class="order-toast" id="orderToast" onclick="ackNewOrders()">
   <span class="ot-bell">🔔</span>
@@ -2295,7 +2295,7 @@ function renderCustomerOrders(){
       const oid=this.dataset.orderid;
       document.getElementById('receivedOrderId').textContent=oid;
       document.getElementById('confirmReceivedPopup').classList.add('show');
-      document.getElementById('confirmReceivedBtn').onclick=function(){update(ref(db,'orders/'+oid),{receivedByCustomer:true,status:'Received'});document.getElementById('confirmReceivedPopup').classList.remove('show');};
+      document.getElementById('confirmReceivedBtn').onclick=function(){update(ref(db,'orders/'+oid),{receivedByCustomer:true,status:'Received'});document.getElementById('confirmReceivedPopup').classList.remove('show');if(window.dismissReadyAlert)window.dismissReadyAlert();};
     });
   });
 }
