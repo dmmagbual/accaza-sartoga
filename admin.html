@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v57</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v58</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4825,6 +4825,23 @@ function pzAddToCart(){
   document.getElementById('pzItemMask').classList.remove('show');
   renderPosCart();
 }
+/* ---------- cash denomination tracking (checkout) ---------- */
+var POS_DENOMS=[
+  {k:'b1000',v:1000,lbl:'₱1000'},{k:'b500',v:500,lbl:'₱500'},{k:'b200',v:200,lbl:'₱200'},{k:'b100',v:100,lbl:'₱100'},{k:'b50',v:50,lbl:'₱50'},{k:'b20',v:20,lbl:'₱20b'},
+  {k:'c20',v:20,lbl:'₱20c'},{k:'c10',v:10,lbl:'₱10'},{k:'c5',v:5,lbl:'₱5'},{k:'c1',v:1,lbl:'₱1'},{k:'c25',v:0.25,lbl:'25¢'},{k:'c10s',v:0.10,lbl:'10¢'},{k:'c5s',v:0.05,lbl:'5¢'}
+];
+function denomTrackingOn(){return !!(window.__posSettings&&window.__posSettings.denomTracking);}
+function shiftDrawer(){var sh=window.__posShift;return (sh&&sh.drawer)?Object.assign({},sh.drawer):{};}
+function posRcvRead(){var counts={},total=0;document.querySelectorAll('[data-prd]').forEach(function(inp){var q=Number(inp.value)||0;if(q>0){counts[inp.getAttribute('data-prd')]=q;total+=q*(Number(inp.getAttribute('data-prv'))||0);}});return {counts:counts,total:Math.round(total*100)/100};}
+function mergeDenoms(a,b){var o=Object.assign({},a||{});Object.keys(b||{}).forEach(function(k){o[k]=(Number(o[k])||0)+(Number(b[k])||0);});return o;}
+function makeChange(amount,avail){var rem=Math.round(amount*100);var give={};POS_DENOMS.forEach(function(d){if(rem<=0)return;var cents=Math.round(d.v*100);var have=Number(avail[d.k])||0;var use=Math.min(Math.floor(rem/cents),have);if(use>0){give[d.k]=use;rem-=use*cents;}});return {denoms:give,ok:rem<=0,short:rem/100};}
+function changeStr(denoms){var m={};POS_DENOMS.forEach(function(d){m[d.k]=d.lbl;});return Object.keys(denoms||{}).map(function(k){return denoms[k]+'×'+m[k];}).join(', ')||'—';}
+function posDenomPadHtml(){
+  return '<span class="pz-lbl">Cash received — enter note/coin counts</span>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:0.3rem;margin-top:0.3rem;">'
+    +POS_DENOMS.map(function(d){return '<label style="font-size:0.68rem;color:var(--tm);display:flex;flex-direction:column;gap:0.1rem;">'+d.lbl+'<input class="pz-in" type="number" min="0" step="1" data-prd="'+d.k+'" data-prv="'+d.v+'" placeholder="0" style="padding:0.2rem 0.3rem;"/></label>';}).join('')
+    +'</div><div id="posDenomInfo" style="font-size:0.8rem;font-weight:600;margin-top:0.45rem;"></div>';
+}
 /* ---------- scoped line-item discounts (Feature A) ---------- */
 function lineCat(key){var c=posCart[key];if(!c)return '';var it=(A().menuItemsMap||{})[c.itemKey];return it?catType(it.cat):'';}
 function discountedUnits(key){return posScopedDisc.filter(function(d){return d.key===key;}).length;}
@@ -4903,7 +4920,7 @@ function renderPosCart(){
     +'</div>'
     +'<div style="margin-top:0.7rem;display:flex;justify-content:space-between;align-items:center;"><span class="pz-lbl" style="margin:0;">Payment</span><label style="font-size:0.74rem;color:var(--tl);cursor:pointer;"><input type="checkbox" id="posSplitChk"/> Split</label></div>'
     +'<div id="posPaySingle"><select class="pz-in" id="posPay" style="margin-top:0.3rem;">'+posActiveMethods().map(function(m){return '<option value="'+m.name+'">'+m.name+'</option>';}).join('')+'</select>'
-      +'<div id="posCashWrap" style="margin-top:0.5rem;"><span class="pz-lbl">Cash tendered ₱</span><input class="pz-in" id="posTender" type="number" step="any" placeholder="0"/><div id="posChange" style="font-size:0.82rem;color:var(--bd);font-weight:600;margin-top:0.3rem;"></div></div>'
+      +'<div id="posCashWrap" style="margin-top:0.5rem;">'+(denomTrackingOn()?posDenomPadHtml():'<span class="pz-lbl">Cash tendered ₱</span><input class="pz-in" id="posTender" type="number" step="any" placeholder="0"/><div id="posChange" style="font-size:0.82rem;color:var(--bd);font-weight:600;margin-top:0.3rem;"></div>')+'</div>'
       +'<div id="posRefWrap" style="display:none;margin-top:0.5rem;"><span class="pz-lbl">Ref no. (GCash / bank) — required</span><input class="pz-in" id="posPayRef" placeholder="e.g. GCash ref / bank txn ref"/><div style="font-size:0.72rem;color:var(--tl);margin-top:0.2rem;">Marks the sale <b>pending</b> until a manager verifies the money landed.</div></div></div>'
     +'<div id="posPaySplit" style="display:none;margin-top:0.4rem;"><div id="posSplitRows"></div><button class="pz-btn sec" id="posAddPay" style="padding:0.25rem 0.6rem;">+ payment</button><div id="posSplitInfo" style="font-size:0.76rem;color:var(--tl);margin-top:0.3rem;"></div></div>'
     +'<div style="margin-top:0.5rem;"><span class="pz-lbl">Customer (optional)</span><input class="pz-in" id="posCust" placeholder="Walk-in"/></div>'
@@ -4921,6 +4938,15 @@ function renderPosCart(){
   pay.onchange=function(){var isc=isCashMethod(pay.value);document.getElementById('posCashWrap').style.display=isc?'block':'none';var rw=document.getElementById('posRefWrap');if(rw)rw.style.display=isc?'none':'block';};
   pay.onchange();
   var tender0=document.getElementById('posTender'); if(tender0)tender0.oninput=refreshSingle;
+  function refreshDenom(){ var tot=grandTotal(); var r=posRcvRead(); var el=document.getElementById('posDenomInfo'); if(!el)return;
+    if(r.total<tot-0.001){ el.innerHTML='<span style="color:var(--tl);">Received '+peso(r.total)+' · '+peso(tot-r.total)+' more needed</span>'; window.__posChange=null; return; }
+    var change=Math.round((r.total-tot)*100)/100;
+    if(change<=0.001){ el.innerHTML='<span style="color:#155724;">Exact — no change.</span>'; window.__posChange={amount:0,denoms:{}}; return; }
+    var mc=makeChange(change, mergeDenoms(shiftDrawer(), r.counts));
+    if(mc.ok){ el.innerHTML='<span style="color:#155724;">Change '+peso(change)+' → '+changeStr(mc.denoms)+'</span>'; window.__posChange={amount:change,denoms:mc.denoms,short:0}; }
+    else{ el.innerHTML='<span style="color:#c0392b;">⚠ No exact change for '+peso(change)+' (short '+peso(mc.short)+'). Ask for the exact amount &amp; edit the counts above.</span>'; window.__posChange={amount:change,denoms:mc.denoms,short:mc.short}; }
+  }
+  if(denomTrackingOn()){ document.querySelectorAll('[data-prd]').forEach(function(inp){inp.oninput=refreshDenom;}); refreshDenom(); }
   var splitChk=document.getElementById('posSplitChk');
   function renderSplit(){
     var tot=grandTotal(); if(!splitRows.length)splitRows=[{method:'Cash',amount:tot}];
@@ -4949,7 +4975,11 @@ function renderPosCart(){
     if(d>0&&window.__posIsManagerPin){ var pin=prompt('Manager PIN required to approve a ₱'+d+' discount:'); if(pin===null)return; if(!window.__posIsManagerPin(pin)){alert('Invalid manager PIN — discount not approved.');return;} }
     var payments;
     if(splitChk.checked){ var assigned=splitRows.reduce(function(s,r){return s+(Number(r.amount)||0);},0); if(Math.abs(assigned-tot)>0.01){alert('Split payments must add up to the total.');return;} if(splitRows.some(function(r){return !isCashMethod(r.method)&&!String(r.ref||'').trim();})){alert('Enter a reference number for every GCash/bank payment before charging.');return;} payments=splitRows.map(function(r){return {method:r.method,amount:Number(r.amount)||0,ref:isCashMethod(r.method)?'':String(r.ref||'').trim()};}); }
-    else { var m=pay.value; var isc=isCashMethod(m); var tv=Number(document.getElementById('posTender').value)||0; if(isc&&tv&&tv<tot){alert('Cash tendered is less than the total.');return;} var ref1=''; if(!isc){ ref1=(document.getElementById('posPayRef').value||'').trim(); if(!ref1){alert('Enter the '+m+' reference number before charging.');return;} } payments=[{method:m,amount:tot,tendered:isc?tv:0,change:isc&&tv?Math.max(0,tv-tot):0,ref:ref1}]; }
+    else { var m=pay.value; var isc=isCashMethod(m);
+      if(!isc){ var ref1=(document.getElementById('posPayRef').value||'').trim(); if(!ref1){alert('Enter the '+m+' reference number before charging.');return;} payments=[{method:m,amount:tot,tendered:0,change:0,ref:ref1}]; }
+      else if(denomTrackingOn()){ var r=posRcvRead(); if(r.total<tot-0.001){alert('Cash received ('+peso(r.total)+') is less than the total ('+peso(tot)+').');return;} var chg=Math.round((r.total-tot)*100)/100; var mc=makeChange(chg, mergeDenoms(shiftDrawer(),r.counts)); payments=[{method:m,amount:tot,tendered:r.total,change:chg,ref:'',cashReceived:r.counts,cashChange:mc.denoms,changeShort:mc.ok?0:mc.short}]; }
+      else { var tv=Number((document.getElementById('posTender')||{}).value)||0; if(tv&&tv<tot){alert('Cash tendered is less than the total.');return;} payments=[{method:m,amount:tot,tendered:tv,change:tv?Math.max(0,tv-tot):0,ref:''}]; }
+    }
     chargeSale(sub,tot,payments);
   };
 }
@@ -4971,6 +5001,12 @@ function chargeSale(sub,total,payments){
   var _pendingPay=(payments||[]).some(function(p){return !isCashMethod(p.method);});
   var now=new Date();
   var order={id:oid,name:cust,phone:'',type:'Walk-in',address:'',payment:payLabel,payments:payments,contact:'',contactMethod:'',items:itemsStr,lineItems:lineItems,subtotal:sub,discount:disc,discountLines:_scoped,total:total,tendered:tendered,change:change,notes:'',status:'Completed',source:'pos',staff:staff,shiftId:shift.id,packages:_pkgs,extraCost:_extra,paymentStatus:(_pendingPay?'pending':'confirmed'),receivedByCustomer:true,time:now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:now.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
+  var _cp=(payments||[]).filter(function(p){return p.cashReceived;})[0];
+  if(_cp){ order.cashReceived=_cp.cashReceived; order.cashChange=_cp.cashChange||{}; order.changeShort=_cp.changeShort||0;
+    var _sh=window.__posShift;
+    if(_sh){ var nd=mergeDenoms(shiftDrawer(), _cp.cashReceived); Object.keys(order.cashChange).forEach(function(k){ nd[k]=(Number(nd[k])||0)-(Number(order.cashChange[k])||0); });
+      a.update(a.ref(a.db,'shifts/'+_sh.id),{drawer:nd}); a.update(a.ref(a.db,'posActiveShift'),{drawer:nd}); }
+  }
   if(window.__online===false && (payments||[]).some(function(pp){return pp.method!=='Cash';})){
     alert("You're offline. Only CASH sales can be rung until the Wi-Fi/connection returns. Take this as cash, or wait to reconnect for G-Cash/bank.");
     return;
@@ -5707,7 +5743,7 @@ function renderOps(){
     +'<table class="pz-tbl" style="margin-top:0.6rem;"><tbody>'+(staffArr().length?staffArr().map(function(s){return '<tr><td>'+esc(s.name)+'</td><td>'+esc(s.role||'cashier')+'</td><td style="color:var(--tl);">PIN ••••</td><td style="white-space:nowrap;"><button class="pz-btn sec" style="padding:0.2rem 0.5rem;" data-stpin="'+s.id+'">Change PIN</button> <button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-stdel="'+s.id+'">✕</button></td></tr>';}).join(''):'<tr><td class="az-note" style="padding:0.5rem;">No staff yet.</td></tr>')+'</tbody></table></div>';
   // SETTINGS + ACTIVITY
   var cr=(window.__accaza&&false);
-  html+='<div class="az-sec">Settings</div><div class="pz-card" style="margin-bottom:1rem;"><label style="font-size:0.85rem;cursor:pointer;"><input type="checkbox" id="opsRound"/> Round cash totals to the nearest peso</label></div>'+'<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">💳 Payment methods</div><div id="payMethodsBox"></div></div>';
+  html+='<div class="az-sec">Settings</div><div class="pz-card" style="margin-bottom:1rem;"><label style="font-size:0.85rem;cursor:pointer;display:block;"><input type="checkbox" id="opsRound"/> Round cash totals to the nearest peso</label><label style="font-size:0.85rem;cursor:pointer;display:block;margin-top:0.5rem;"><input type="checkbox" id="opsDenom"/> Track cash by denomination at checkout (running drawer + per-denomination shift reconciliation)</label></div>'+'<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">💳 Payment methods</div><div id="payMethodsBox"></div></div>';
   var acts=Object.keys(activityMap).map(function(k){return activityMap[k];}).sort(function(a,b){return(b.ts||0)-(a.ts||0);}).slice(0,20);
   html+='<div class="az-sec" style="display:flex;justify-content:space-between;align-items:center;">Activity log <button class="pz-btn sec" id="opsArchiveLog" style="padding:0.2rem 0.6rem;font-size:0.72rem;font-weight:400;">Archive entries &gt; 60 days</button></div><div class="pz-card"><table class="pz-tbl"><tbody>'
     +(acts.length?acts.map(function(x){return '<tr><td style="white-space:nowrap;color:var(--tl);font-size:0.75rem;">'+new Date(x.ts).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+'</td><td><b>'+esc(x.action)+'</b> '+esc(x.ref||'')+'</td><td>'+esc(x.detail||'')+'</td><td style="color:var(--tl);">'+esc(x.staff||'')+'</td></tr>';}).join(''):'<tr><td class="az-note" style="padding:0.5rem;">No activity yet.</td></tr>')
@@ -5728,6 +5764,7 @@ function renderOps(){
   root.querySelectorAll('[data-recall]').forEach(function(b){b.onclick=function(){var h=heldMap[b.getAttribute('data-recall')];if(h&&window.__pos){window.__pos.loadCart(h.cart);var a=A();a.remove(a.ref(a.db,'heldOrders/'+b.getAttribute('data-recall')));}};});
   root.querySelectorAll('[data-hdisc]').forEach(function(b){b.onclick=function(){if(confirm('Discard this held order?')){var a=A();a.remove(a.ref(a.db,'heldOrders/'+b.getAttribute('data-hdisc')));}};});
   var rc=document.getElementById('opsRound');if(rc){var a=A();a.get(a.ref(a.db,'posSettings')).then(function(s){var v=s.val()||{};rc.checked=!!v.cashRounding;});rc.onchange=function(){var a=A();a.update(a.ref(a.db,'posSettings'),{cashRounding:rc.checked});};}
+  var dt=document.getElementById('opsDenom');if(dt){var a2=A();a2.get(a2.ref(a2.db,'posSettings')).then(function(s){var v=s.val()||{};dt.checked=!!v.denomTracking;});dt.onchange=function(){var a=A();a.update(a.ref(a.db,'posSettings'),{denomTracking:dt.checked});};}
   renderPayMethods();
 }
 function kpi(l,v){return '<div class="az-kpi"><div class="v">'+v+'</div><div class="l">'+esc(l)+'</div></div>';}
@@ -5764,8 +5801,8 @@ function openShift(){
   var pin=prompt('Enter '+s.name+"'s PIN to open the shift:");if(pin===null)return;if(String(s.pin)!==String(pin)){alert('Wrong PIN.');return;}
   var od=denomRead('opsOpenDenom'); var float=od.total;
   var id='SH-'+Date.now().toString().slice(-6);var a=A();
-  var rec={id:id,staff:s.name,staffId:sid,openingFloat:float,openCount:od.counts,openAt:Date.now(),status:'open'};
-  a.set(a.ref(a.db,'shifts/'+id),rec).then(function(){a.set(a.ref(a.db,'posActiveShift'),{id:id,staff:s.name,staffId:sid,openingFloat:float,openAt:Date.now()});window.__posLog('shift-open',id,'float '+peso(float));});
+  var rec={id:id,staff:s.name,staffId:sid,openingFloat:float,openCount:od.counts,drawer:Object.assign({},od.counts),openAt:Date.now(),status:'open'};
+  a.set(a.ref(a.db,'shifts/'+id),rec).then(function(){a.set(a.ref(a.db,'posActiveShift'),{id:id,staff:s.name,staffId:sid,openingFloat:float,drawer:Object.assign({},od.counts),openAt:Date.now()});window.__posLog('shift-open',id,'float '+peso(float));});
 }
 function closeShift(){
   if(!activeShift)return;var shift=activeShift;
@@ -5781,9 +5818,9 @@ function closeShift(){
   document.getElementById('opsCloseSubmit').onclick=function(){ var r=denomRead('opsCloseDenom'); document.body.removeChild(mask); finalizeClose(shift,r.total,r.counts); };
 }
 function finalizeClose(shift,counted,counts){
-  var z=computeZ(shift);z.countedCash=counted;z.variance=counted-z.expectedCash;z.closeCount=counts;
+  var z=computeZ(shift);z.countedCash=counted;z.variance=counted-z.expectedCash;z.closeCount=counts;z.expectedDrawer=shift.drawer||null;
   var a=A();
-  a.update(a.ref(a.db,'shifts/'+shift.id),{status:'closed',closeAt:Date.now(),openingFloat:shift.openingFloat,openCount:shift.openCount||null,closeCount:counts,tx:z.tx,gross:z.gross,discounts:z.discounts,refunds:z.refunds,net:z.net,byMethod:z.byMethod,voidCount:z.voidCount,voidAmt:z.voidAmt,payIns:z.payIns,payOuts:z.payOuts,expectedCash:z.expectedCash,countedCash:counted,variance:z.variance,pending:z.pending,pendingCount:z.pendingCount});
+  a.update(a.ref(a.db,'shifts/'+shift.id),{status:'closed',closeAt:Date.now(),openingFloat:shift.openingFloat,openCount:shift.openCount||null,closeCount:counts,drawerExpected:shift.drawer||null,tx:z.tx,gross:z.gross,discounts:z.discounts,refunds:z.refunds,net:z.net,byMethod:z.byMethod,voidCount:z.voidCount,voidAmt:z.voidAmt,payIns:z.payIns,payOuts:z.payOuts,expectedCash:z.expectedCash,countedCash:counted,variance:z.variance,pending:z.pending,pendingCount:z.pendingCount});
   a.remove(a.ref(a.db,'posActiveShift'));
   window.__posLog('shift-close',shift.id,'counted '+peso(counted)+' · variance '+peso(z.variance));
   if(Math.abs(z.variance)>(Number(toleranceCfg.cashPeso)||0)){
@@ -5815,6 +5852,7 @@ function showZ(shift,z){
     +'<tr><td>Counted cash</td><td style="text-align:right;">'+peso(z.countedCash)+'</td></tr>'
     +'<tr><td><b>Variance</b></td><td style="text-align:right;"><b>'+peso(z.variance)+'</b></td></tr></table><hr>'
     +(z.closeCount&&denomBreakdownRows(z.closeCount)?('<div><b>Cash counted by denomination</b></div><table>'+denomBreakdownRows(z.closeCount)+'</table><hr>'):'')
+    +(z.expectedDrawer?('<div><b>Denomination check (expected → counted)</b></div><table>'+DENOMS.map(function(d){var exp=Number(z.expectedDrawer[d.k])||0;var act=Number((z.closeCount||{})[d.k])||0;if(!exp&&!act)return '';var dv=act-exp;return '<tr><td>'+d.lbl+'</td><td style="text-align:right;">'+exp+' → '+act+(dv?'  ('+(dv>0?'+':'')+dv+')':'  ✓')+'</td></tr>';}).join('')+'</table><hr>'):'')
     +'<div style="font-size:9px;text-align:center;">Expected drawer = float + cash sales − refunds. Management report, not a BIR document.</div>'
     +'<div style="text-align:center;margin-top:8px;"><button onclick="window.print()">Print</button></div></body></html>');
   w.document.close();
