@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v62</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v63</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -5839,7 +5839,7 @@ function closeShift(){
       +DENOMS.map(function(d){return '<tr><td style="padding:0.15rem 0.2rem;">'+d.lbl+'</td><td style="text-align:right;padding:0.15rem 0.2rem;"><input type="number" min="0" step="1" data-cc="'+d.k+'" data-cv="'+d.v+'" placeholder="0" style="width:72px;text-align:right;border:1px solid #ccc;border-radius:4px;padding:0.1rem 0.3rem;"/></td></tr>';}).join('')
       +'</tbody></table></div>'
       +'<div style="text-align:right;font-weight:700;margin-top:0.5rem;">Counted: <span id="ccTotal">₱0.00</span></div>'
-      +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="cR">Reveal expected &amp; variance</button><button class="pz-btn sec" id="cC">Cancel</button></div>');
+      +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="cR">Confirm cash count</button><button class="pz-btn sec" id="cC">Cancel</button></div>');
     function tot(){var t=0;mask.querySelectorAll('[data-cc]').forEach(function(i){t+=(Number(i.value)||0)*(Number(i.getAttribute('data-cv'))||0);});var el=mask.querySelector('#ccTotal');if(el)el.textContent=peso(t);}
     mask.querySelectorAll('[data-cc]').forEach(function(i){i.oninput=tot;}); tot();
     mask.querySelector('#cC').onclick=close;
