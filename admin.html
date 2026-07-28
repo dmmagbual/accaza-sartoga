@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v59</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v62</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -5819,16 +5819,44 @@ function openShift(){
 }
 function closeShift(){
   if(!activeShift)return;var shift=activeShift;
+  var recon=denomTrackingOnR()&&shift.drawer;
   var mask=document.createElement('div'); mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
-  mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:540px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
-    +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Close shift — count the drawer</div>'
-    +'<p class="pz-sub" style="margin-top:0.2rem;">Enter the quantity of each bill and coin. The expected figure is hidden until you submit (blind count).</p>'
-    +denomGridHtml('opsCloseDenom')
-    +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="opsCloseSubmit">Submit count &amp; Z-report</button><button class="pz-btn sec" id="opsCloseCancel">Cancel</button></div>'
-    +'</div>';
-  document.body.appendChild(mask); wireDenom('opsCloseDenom');
-  document.getElementById('opsCloseCancel').onclick=function(){document.body.removeChild(mask);};
-  document.getElementById('opsCloseSubmit').onclick=function(){ var r=denomRead('opsCloseDenom'); document.body.removeChild(mask); finalizeClose(shift,r.total,r.counts); };
+  document.body.appendChild(mask);
+  function close(){document.body.removeChild(mask);}
+  function box(inner){return '<div style="background:#fff;border-radius:10px;max-width:560px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'+inner+'</div>';}
+  if(!recon){
+    mask.innerHTML=box('<div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Close shift — count the drawer</div><p class="pz-sub" style="margin-top:0.2rem;">Enter the quantity of each bill and coin. The expected figure is hidden until you submit (blind count).</p>'+denomGridHtml('opsCloseDenom')+'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="cS">Submit count &amp; Z-report</button><button class="pz-btn sec" id="cC">Cancel</button></div>');
+    wireDenom('opsCloseDenom');
+    mask.querySelector('#cC').onclick=close;
+    mask.querySelector('#cS').onclick=function(){var r=denomRead('opsCloseDenom');close();finalizeClose(shift,r.total,r.counts);};
+    return;
+  }
+  var drawer=shift.drawer||{}; var exCash=computeZ(shift).expectedCash;
+  function renderBlind(){
+    mask.innerHTML=box('<div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Close shift — count the drawer</div>'
+      +'<p class="pz-sub" style="margin-top:0.2rem;">Count the drawer and enter each denomination. Expected stays hidden until you reveal (blind count).</p>'
+      +'<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.82rem;"><thead><tr><th style="text-align:left;padding:0.2rem;">Denom</th><th style="text-align:right;padding:0.2rem;">Actual count</th></tr></thead><tbody>'
+      +DENOMS.map(function(d){return '<tr><td style="padding:0.15rem 0.2rem;">'+d.lbl+'</td><td style="text-align:right;padding:0.15rem 0.2rem;"><input type="number" min="0" step="1" data-cc="'+d.k+'" data-cv="'+d.v+'" placeholder="0" style="width:72px;text-align:right;border:1px solid #ccc;border-radius:4px;padding:0.1rem 0.3rem;"/></td></tr>';}).join('')
+      +'</tbody></table></div>'
+      +'<div style="text-align:right;font-weight:700;margin-top:0.5rem;">Counted: <span id="ccTotal">₱0.00</span></div>'
+      +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="cR">Reveal expected &amp; variance</button><button class="pz-btn sec" id="cC">Cancel</button></div>');
+    function tot(){var t=0;mask.querySelectorAll('[data-cc]').forEach(function(i){t+=(Number(i.value)||0)*(Number(i.getAttribute('data-cv'))||0);});var el=mask.querySelector('#ccTotal');if(el)el.textContent=peso(t);}
+    mask.querySelectorAll('[data-cc]').forEach(function(i){i.oninput=tot;}); tot();
+    mask.querySelector('#cC').onclick=close;
+    mask.querySelector('#cR').onclick=function(){var counts={},total=0;mask.querySelectorAll('[data-cc]').forEach(function(i){var q=Number(i.value)||0;if(q>0){counts[i.getAttribute('data-cc')]=q;total+=q*(Number(i.getAttribute('data-cv'))||0);}});renderReveal(counts,Math.round(total*100)/100);};
+  }
+  function renderReveal(counts,total){
+    mask.innerHTML=box('<div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Close shift — reconciliation</div>'
+      +'<p class="pz-sub" style="margin-top:0.2rem;">Count confirmed &amp; locked. Review, then close. A manager PIN is needed to reopen and recount.</p>'
+      +'<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.82rem;"><thead><tr><th style="text-align:left;padding:0.2rem;">Denom</th><th style="text-align:right;padding:0.2rem;">Actual</th><th style="text-align:right;padding:0.2rem;">Expected</th><th style="text-align:right;padding:0.2rem;">Var</th></tr></thead><tbody>'
+      +DENOMS.map(function(d){var act=Number(counts[d.k])||0;var exp=Number(drawer[d.k])||0;if(!act&&!exp)return '';var dv=act-exp;var col=dv?(dv<0?'#c0392b':'#8a6d1b'):'#155724';return '<tr><td style="padding:0.15rem 0.2rem;">'+d.lbl+'</td><td style="text-align:right;padding:0.15rem 0.2rem;">'+act+'</td><td style="text-align:right;padding:0.15rem 0.2rem;color:#555;">'+exp+'</td><td style="text-align:right;padding:0.15rem 0.2rem;font-weight:600;color:'+col+';">'+(dv>0?'+':'')+dv+'</td></tr>';}).join('')
+      +'</tbody></table></div>'
+      +'<div style="margin-top:0.6rem;font-weight:700;"><div style="display:flex;justify-content:space-between;"><span>Counted</span><span>'+peso(total)+'</span></div><div style="display:flex;justify-content:space-between;"><span>Expected</span><span>'+peso(exCash)+'</span></div><div style="display:flex;justify-content:space-between;color:'+(Math.abs(total-exCash)<0.01?'#155724':'#c0392b')+';"><span>Variance</span><span>'+peso(total-exCash)+'</span></div></div>'
+      +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="cF">Close shift &amp; Z-report</button><button class="pz-btn sec" id="cB">🔒 Reopen count (manager)</button></div>');
+    mask.querySelector('#cB').onclick=function(){var pin=prompt('Manager PIN to reopen and recount:');if(pin===null)return;if(!window.__posIsManagerPin(pin)){alert('Invalid manager PIN.');return;}renderBlind();};
+    mask.querySelector('#cF').onclick=function(){close();finalizeClose(shift,total,counts);};
+  }
+  renderBlind();
 }
 function finalizeClose(shift,counted,counts){
   var z=computeZ(shift);z.countedCash=counted;z.variance=counted-z.expectedCash;z.closeCount=counts;z.expectedDrawer=shift.drawer||null;
