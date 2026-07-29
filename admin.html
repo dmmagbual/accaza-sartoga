@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v76</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v77</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4849,8 +4849,9 @@ function renderDedupe(){
   function hasRecipe(key){var r=recipesMap[key];return !!(r&&((r.base&&r.base.length)||(r.options&&r.options.length)||(r.consumables&&r.consumables.length)));}
   function hasChan(key){return !!((channelPricesMap.grabfood||{})[key]||(channelPricesMap.foodpanda||{})[key]);}
   function priceStr(it){return it.priceM?('S'+(it.priceS||0)+'/M'+it.priceM+'/L'+it.priceL):('₱'+(it.priceS||0));}
+  function catLbl(c){return (A().getCatLabel?A().getCatLabel(c):'')||c||'—';}
   var groups={};
-  items.forEach(function(it){var k=((it.name||'').trim().toLowerCase())+'||'+(it.cat||'');(groups[k]=groups[k]||[]).push(it);});
+  items.forEach(function(it){var k=(it.name||'').trim().toLowerCase();(groups[k]=groups[k]||[]).push(it);});
   var dupKeys=Object.keys(groups).filter(function(k){return groups[k].length>1;});
   var html='<div class="pz-h">🧹 De-dupe Menu Items</div><p class="pz-sub">Items saved more than once (same name + category). Keep the copy that has a recipe / channel price; delete the empty twin. Deleting a menu item does NOT change past orders — they keep their own price snapshot.</p>';
   if(!dupKeys.length){ html+='<div class="pz-card"><p class="az-note" style="padding:0.7rem;">✓ No duplicate menu items found. Your menu is clean.</p></div>'; root.innerHTML=html; return; }
@@ -4862,11 +4863,12 @@ function renderDedupe(){
     var rows=scored.map(function(s){
       var isKeep=s.it.key===keep.it.key;
       var flags=[]; if(s.rec)flags.push('recipe'); if(s.chan)flags.push('channel price');
-      return '<tr'+(isKeep?' style="background:#eaf6ee;"':'')+'><td>'+esc(s.it.name)+'<div style="font-size:0.7rem;color:var(--tl);">'+esc(s.it.key)+' · '+esc(priceStr(s.it))+'</div></td>'
+      return '<tr'+(isKeep?' style="background:#eaf6ee;"':'')+'><td>'+esc(s.it.name)+'<div style="font-size:0.7rem;color:var(--tl);">'+esc(catLbl(s.it.cat))+' · '+esc(s.it.key)+' · '+esc(priceStr(s.it))+'</div></td>'
         +'<td style="font-size:0.76rem;">'+(flags.length?flags.join(', '):'<span style="color:var(--tl);">empty</span>')+'</td>'
         +'<td style="white-space:nowrap;text-align:right;">'+(isKeep?'<span style="color:#2a9d5c;font-weight:700;">✓ keep</span>':'<button class="pz-btn warn" style="padding:0.2rem 0.6rem;" data-deldup="'+esc(s.it.key)+'">Delete</button>')+'</td></tr>';
     }).join('');
-    html+='<div class="az-sec">'+esc(groups[k][0].name)+' <span style="font-size:0.75rem;color:var(--tl);font-weight:400;">('+esc(groups[k][0].cat||'')+') · '+arr.length+' copies</span></div>'
+    var catset={};arr.forEach(function(it){catset[it.cat||'']=1;});var crossCat=Object.keys(catset).length>1;
+    html+='<div class="az-sec">'+esc(groups[k][0].name)+' <span style="font-size:0.75rem;color:var(--tl);font-weight:400;">· '+arr.length+' copies'+(crossCat?' · <span style="color:#c0392b;">in different categories — check these are not two real products</span>':'')+'</span></div>'
       +'<div class="pz-card" style="margin-bottom:0.8rem;"><table class="pz-tbl"><thead><tr><th>Copy</th><th>Has</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
   });
   root.innerHTML=html;
