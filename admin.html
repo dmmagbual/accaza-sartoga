@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v88</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v89</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4848,6 +4848,8 @@ function renderChannelPricing(){
   var cfg=channelsCfg(); var items=menuList();
   var rows=items.map(function(it){
     function inp(ch,sz){var v=channelPriceOf(ch,it.key,sz);return '<input class="pz-in" type="number" step="any" data-cp="'+ch+'" data-ck="'+esc(it.key)+'" data-cs="'+sz+'" value="'+(v||'')+'" style="width:62px;text-align:right;padding:0.15rem 0.25rem;" placeholder="0"/>';}
+    var single=!(Number(it.priceM))&&!(Number(it.priceL));
+    if(single){ return '<tr><td style="white-space:nowrap;">'+esc(it.name)+' <span style="font-size:0.68rem;color:var(--tl);">(single)</span></td><td colspan="3" style="text-align:center;">'+inp('grabfood','S')+'</td><td colspan="3" style="text-align:center;">'+inp('foodpanda','S')+'</td></tr>'; }
     return '<tr><td style="white-space:nowrap;">'+esc(it.name)+'</td><td>'+inp('grabfood','S')+'</td><td>'+inp('grabfood','M')+'</td><td>'+inp('grabfood','L')+'</td><td>'+inp('foodpanda','S')+'</td><td>'+inp('foodpanda','M')+'</td><td>'+inp('foodpanda','L')+'</td></tr>';
   }).join('');
   var opts=allOptionChoices();
