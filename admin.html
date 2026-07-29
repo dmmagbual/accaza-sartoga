@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v92</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v94</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4520,17 +4520,28 @@ function receiveStock(id){
 }
 function editIngredient(id){
   var i=inventoryMap[id]; if(!i)return;
-  var name=prompt('Item name:',i.name); if(name==null)return;
-  var type=prompt('Type:  base / option / consumable',ingType(i)); if(type==null)return; type=(type||'base').trim().toLowerCase(); if(['base','option','consumable'].indexOf(type)<0)type='base';
-  var reorder=prompt('Reorder level ('+(i.unit||'')+'):',i.reorder||0); if(reorder==null)return;
-  var cost=prompt('Cost per '+(i.unit||'unit')+' (₱, blank = none):',i.cost||''); if(cost==null)return;
-  var upd={name:name.trim()||i.name,type:type,reorder:Number(reorder)||0,cost:Number(cost)||0,updatedAt:Date.now()};
-  if(type==='consumable'){
-    var sv=prompt('Consumable serves:  both / drink / food',i.serves||'both'); if(sv==null)return; upd.serves=(['both','drink','food'].indexOf((sv||'').trim().toLowerCase())>=0)?(sv.trim().toLowerCase()):'both';
-    var sz=prompt('Cup size (S / M / L, blank = all sizes):',i.size||''); if(sz==null)return; sz=(sz||'').trim().toUpperCase(); upd.size=(['S','M','L'].indexOf(sz)>=0)?sz:'';
-    var qp=prompt('Qty consumed per order:',i.qtyPerOrder!=null?i.qtyPerOrder:1); if(qp==null)return; upd.qtyPerOrder=Number(qp)||1;
-  }
-  var a=A();a.update(a.ref(a.db,'inventory/'+id),upd);
+  var ty=ingType(i);
+  var units=['g','ml','oz','pcs','shot','pump','ea','kg','L','box','pack'];
+  var uOpts=(units.indexOf(i.unit||'')<0&&(i.unit||'')?'<option selected>'+esc(i.unit)+'</option>':'')+units.map(function(u){return '<option'+(u===(i.unit||'')?' selected':'')+'>'+u+'</option>';}).join('');
+  var mask=document.createElement('div');mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
+  mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:470px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
+    +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Edit item — '+esc(i.name)+'</div>'
+    +'<p class="pz-sub" style="margin:0.2rem 0 0.7rem;">Sets values directly — <b>no variance is recorded</b>. (For a counted correction that should hit COGS, use <b>Adjust</b> instead.)</p>'
+    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;"><div style="flex:1;min-width:150px;"><span class="pz-lbl">Name</span><input class="pz-in" id="eiName" value="'+esc(i.name||'')+'"/></div><div><span class="pz-lbl">Unit</span><select class="pz-in" id="eiUnit">'+uOpts+'</select></div><div><span class="pz-lbl">Type</span><select class="pz-in" id="eiType"><option value="base"'+(ty==='base'?' selected':'')+'>Base</option><option value="option"'+(ty==='option'?' selected':'')+'>Option</option><option value="consumable"'+(ty==='consumable'?' selected':'')+'>Consumable</option></select></div></div>'
+    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div><span class="pz-lbl">Stock (direct set)</span><input class="pz-in" id="eiStock" type="number" step="any" value="'+(Number(i.stock)||0)+'" style="width:120px;"/></div><div><span class="pz-lbl">Reorder</span><input class="pz-in" id="eiReorder" type="number" step="any" value="'+(Number(i.reorder)||0)+'" style="width:110px;"/></div><div><span class="pz-lbl">Cost / unit ₱</span><input class="pz-in" id="eiCost" type="number" step="any" value="'+(i.cost!=null&&i.cost!==''?i.cost:'')+'" style="width:120px;"/></div></div>'
+    +'<div id="eiCons" style="display:'+(ty==='consumable'?'flex':'none')+';gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div><span class="pz-lbl">Serves</span><select class="pz-in" id="eiServes"><option value="both"'+((i.serves||'both')==='both'?' selected':'')+'>Both</option><option value="drink"'+(i.serves==='drink'?' selected':'')+'>Drinks</option><option value="food"'+(i.serves==='food'?' selected':'')+'>Food</option></select></div><div><span class="pz-lbl">Size (blank=all)</span><select class="pz-in" id="eiSize"><option value="">all</option><option'+(i.size==='S'?' selected':'')+'>S</option><option'+(i.size==='M'?' selected':'')+'>M</option><option'+(i.size==='L'?' selected':'')+'>L</option></select></div><div><span class="pz-lbl">Qty per order</span><input class="pz-in" id="eiQPO" type="number" step="any" value="'+(i.qtyPerOrder!=null?i.qtyPerOrder:1)+'" style="width:100px;"/></div></div>'
+    +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="eiSave">Save</button><button class="pz-btn sec" id="eiCancel">Cancel</button></div></div>';
+  document.body.appendChild(mask);
+  function close(){document.body.removeChild(mask);}
+  mask.querySelector('#eiType').onchange=function(){mask.querySelector('#eiCons').style.display=(this.value==='consumable')?'flex':'none';};
+  mask.querySelector('#eiCancel').onclick=close;
+  mask.querySelector('#eiSave').onclick=function(){
+    var type=mask.querySelector('#eiType').value;
+    var upd={name:(mask.querySelector('#eiName').value||'').trim()||i.name,unit:mask.querySelector('#eiUnit').value,type:type,stock:Number(mask.querySelector('#eiStock').value)||0,reorder:Number(mask.querySelector('#eiReorder').value)||0,cost:Number(mask.querySelector('#eiCost').value)||0,updatedAt:Date.now()};
+    if(type==='consumable'){upd.serves=mask.querySelector('#eiServes').value;upd.size=mask.querySelector('#eiSize').value;upd.qtyPerOrder=Number(mask.querySelector('#eiQPO').value)||1;}
+    var a=A();a.update(a.ref(a.db,'inventory/'+id),upd).then(function(){close();}).catch(function(e){alert('Could not save: '+((e&&e.code)||e)+'. If PERMISSION_DENIED, log in with your admin EMAIL and publish the rules.');});
+  };
+  return;
 }
 function delIngredient(id){
   var i=inventoryMap[id]; if(!i)return;
@@ -4562,13 +4573,15 @@ function renderRecipes(){
       +'<div id="recEditor"></div>';
   }
   var tools='<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">'
-    +'<button class="pz-btn sec" id="recExport">⬇ Export Excel</button>'
+    +'<button class="pz-btn sec" id="recCostSheet">📊 Cost sheet</button>'
+    +'<button class="pz-btn sec" id="recExport">⬇ Export recipes</button>'
     +'<button class="pz-btn sec" id="recTemplate">⬇ Import template</button>'
-    +'<button class="pz-btn ok" id="recImportBtn">⬆ Import Excel</button>'
+    +'<button class="pz-btn ok" id="recImportBtn">⬆ Import recipes</button>'
     +'<input type="file" id="recImportFile" accept=".xlsx,.xls,.csv" style="display:none;"/>'
     +'</div>';
   root.innerHTML='<div class="pz-h">🧪 Recipe &amp; Costing</div>'+nav+tools+body;
   root.querySelectorAll('[data-recsub]').forEach(function(b){b.onclick=function(){recSub=b.getAttribute('data-recsub');recipeEditing=false;renderRecipes();};});
+  var _cs=document.getElementById('recCostSheet'); if(_cs)_cs.onclick=exportCostSheet;
   var _re=document.getElementById('recExport'); if(_re)_re.onclick=exportRecipesXlsx;
   var _rt=document.getElementById('recTemplate'); if(_rt)_rt.onclick=downloadRecipeTemplate;
   var _rb=document.getElementById('recImportBtn'), _rf=document.getElementById('recImportFile');
@@ -4663,14 +4676,39 @@ function drawRecipeEditor(item){
   document.getElementById('recClose').onclick=function(){ recipeEditing=false; curRecipeKey=null; renderRecipes(); };
   if(document.getElementById('recDel'))document.getElementById('recDel').onclick=function(){ if(!confirm('Delete this recipe? '+esc(item.name)+' will no longer deduct stock.'))return; var a=A();a.remove(a.ref(a.db,'recipes/'+item.key));recipeEditing=false;curRecipeKey=null;setTimeout(renderRecipes,200);};
 }
+function exportCostSheet(){
+  if(!window.XLSX){alert('Excel library is still loading — try again.');return;}
+  function r4(n){return Math.round((Number(n)||0)*10000)/10000;}
+  var aoa=[['Category','Item','Line','Type','Unit','S qty','S cost','M qty','M cost','L qty','L cost']];
+  menuList().forEach(function(it){
+    var rec=recipesMap[it.key]; if(!rec)return;
+    var cat=it.cat||''; var catL=(A().getCatLabel?A().getCatLabel(cat):cat)||cat;
+    var totS=0,totM=0,totL=0;
+    (rec.base||[]).forEach(function(b){ if(!b.ing)return; var inv=inventoryMap[b.ing]||{}; var uc=Number(inv.cost)||0;
+      var qs=baseQtyForSize(rec,b,'S'),qm=baseQtyForSize(rec,b,'M'),ql=baseQtyForSize(rec,b,'L');
+      var cs=qs*uc,cm=qm*uc,cl=ql*uc; totS+=cs;totM+=cm;totL+=cl;
+      aoa.push([catL,it.name,inv.name||b.ing,'base',inv.unit||'',qs||'',r4(cs),qm||'',r4(cm),ql||'',r4(cl)]);
+    });
+    var consUnion={}; ['S','M','L'].forEach(function(sz){ consumablesFor(cat,sz).forEach(function(c){consUnion[c.id]=c;}); });
+    Object.keys(consUnion).forEach(function(cid){ var c=consUnion[cid]; var uc=Number((inventoryMap[cid]||{}).cost)||0;
+      function q(sz){ return consumablesFor(cat,sz).some(function(x){return x.id===cid;})?(Number(c.qtyPerOrder)||1):0; }
+      var qs=q('S'),qm=q('M'),ql=q('L'); var cs=qs*uc,cm=qm*uc,cl=ql*uc; totS+=cs;totM+=cm;totL+=cl;
+      aoa.push([catL,it.name,c.name||cid,'consumable',c.unit||'',qs||'',r4(cs),qm||'',r4(cm),ql||'',r4(cl)]);
+    });
+    aoa.push(['',it.name,'COST PER DRINK','','','',r4(totS),'',r4(totM),'',r4(totL)]);
+    aoa.push([]);
+  });
+  if(aoa.length<=1){alert('No recipes yet to build a cost sheet.');return;}
+  var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'CostSheet');XLSX.writeFile(wb,'accaza-cost-sheet-'+new Date().toISOString().slice(0,10)+'.xlsx');
+}
 function saveRecipe(key){
-  var d=recipeDraft;
+  var d=recipeDraft; if(!d){alert('Nothing to save — reopen the recipe and try again.');return;}
   var base=(d.base||[]).filter(function(r){return r.ing&&((r.qtyS!=null&&r.qtyS!=='')||(r.qtyM!=null&&r.qtyM!=='')||(r.qtyL!=null&&r.qtyL!==''));}).map(function(r){
     return {ing:r.ing,qtyS:(r.qtyS===''||r.qtyS==null)?null:Number(r.qtyS)||0,qtyM:(r.qtyM===''||r.qtyM==null)?null:Number(r.qtyM)||0,qtyL:(r.qtyL===''||r.qtyL==null)?null:Number(r.qtyL)||0};
   });
   var rec={base:base,updatedAt:Date.now()};
   var saved=recipesMap[key]; if(saved&&saved.options)rec.options=saved.options; /* keep legacy per-recipe options if any */
-  var a=A();a.set(a.ref(a.db,'recipes/'+key),rec).then(function(){ recipeEditing=false; alert('Recipe saved for '+(A().menuItemsMap[key]?A().menuItemsMap[key].name:key)+'.'); curRecipeKey=key; setTimeout(function(){renderRecipes();},150); });
+  var a=A();a.set(a.ref(a.db,'recipes/'+key),rec).then(function(){ recipeEditing=false; alert('Recipe saved for '+(A().menuItemsMap[key]?A().menuItemsMap[key].name:key)+'.'); curRecipeKey=key; setTimeout(function(){renderRecipes();},150); }).catch(function(e){ alert('Could not save the recipe: '+((e&&e.code)||e)+'.\n\nIf it says PERMISSION_DENIED — log in with your ADMIN EMAIL (not the old username), and make sure the database rules are published. Nothing was saved.'); });
 }
 function optKey(label){return String(label).replace(/[.#$\[\]\/]/g,'_');}
 function allOptionLabels(){
