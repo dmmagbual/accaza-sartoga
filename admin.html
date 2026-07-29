@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v68</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v69</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4083,8 +4083,11 @@ var POS_CHANNELS=[{k:'grabfood',lbl:'GrabFood',rate:0.25},{k:'foodpanda',lbl:'Fo
 function channelsCfg(){var c=(window.__posSettings&&window.__posSettings.channels);var out={};POS_CHANNELS.forEach(function(d){var s=(c&&c[d.k])||{};out[d.k]={label:d.lbl,rate:(s.rate!=null?Number(s.rate):d.rate),active:s.active!==false};});return out;}
 function channelRate(ch){var c=channelsCfg()[ch];return c?Number(c.rate)||0:0;}
 function channelPriceOf(ch,itemKey,size){var cp=(channelPricesMap[ch]||{})[itemKey];return cp?(Number(cp[size])||0):0;}
+function channelLabel(ch){var c=channelsCfg()[ch];return c?c.label:ch;}
+function posIsPlatform(){return posChannel&&posChannel!=='instore';}
+function posBasePrice(item,size){ size=size||'S'; if(posIsPlatform())return channelPriceOf(posChannel,item.key,size); return size==='L'?(Number(item.priceL)||0):size==='M'?(Number(item.priceM)||0):(Number(item.priceS)||0); }
 var usageKind='staff', usageAdhoc=false, usageAdhocRows=[];
-var posCart={}, posCat='ALL', posBuilt=false, recipeEditing=false, curRecipeKey=null, recipeDraft=null, recSub='base', recSize='M', posScopedDisc=[];
+var posCart={}, posCat='ALL', posBuilt=false, recipeEditing=false, curRecipeKey=null, recipeDraft=null, recSub='base', recSize='M', posScopedDisc=[], posChannel='instore';
 var DISC_TYPES={senior:{label:'Senior Citizen',rate:0.20},pwd:{label:'PWD',rate:0.20},athlete:{label:'National Athlete',rate:0.20},promo5:{label:'5% Drink Promo',rate:0.05}};
 
 function A(){return window.__accaza;}
@@ -4833,7 +4836,12 @@ function drawPosItems(){
   var wrap=document.getElementById('posItems'); if(!wrap)return;
   var items=menuList().filter(function(it){return posCat==='ALL'||it.cat===posCat;});
   if(!items.length){wrap.innerHTML='<p class="pz-sub">No items in this category.</p>';return;}
-  wrap.innerHTML=items.map(function(it){var pr=it.priceM?('S '+it.priceS+' · M '+it.priceM+' · L '+it.priceL):('₱'+(it.priceS||0));return '<button class="pz-item" data-item="'+esc(it.key)+'"><div class="n">'+esc(it.name)+'</div><div class="p">'+esc(pr)+'</div></button>';}).join('');
+  var plat=posIsPlatform();
+  wrap.innerHTML=items.map(function(it){
+    var pr;
+    if(plat){ var s=channelPriceOf(posChannel,it.key,'S'),m=channelPriceOf(posChannel,it.key,'M'),l=channelPriceOf(posChannel,it.key,'L'); pr=(it.priceM||it.priceL)?('S '+(s||'–')+' · M '+(m||'–')+' · L '+(l||'–')):(s?('₱'+s):'no price'); }
+    else { pr=it.priceM?('S '+it.priceS+' · M '+it.priceM+' · L '+it.priceL):('₱'+(it.priceS||0)); }
+    return '<button class="pz-item" data-item="'+esc(it.key)+'"><div class="n">'+esc(it.name)+'</div><div class="p">'+esc(pr)+'</div></button>';}).join('');
   wrap.querySelectorAll('[data-item]').forEach(function(b){b.onclick=function(){openPosItem(b.getAttribute('data-item'));};});
 }
 // ---- item customize modal ----
@@ -4842,13 +4850,15 @@ function openPosItem(key){
   var item=A().menuItemsMap[key]; if(!item)return;
   var body=document.getElementById('pzItemBody'); var titleEl=document.getElementById('pzItemTitle');
   titleEl.textContent=item.name;
-  mSel={item:Object.assign({key:key},item), size:null, price:(item.priceS||0), opts:{}, qty:1};
+  var plat=posIsPlatform();
+  mSel={item:Object.assign({key:key},item), size:null, price:posBasePrice(item,'S'), opts:{}, qty:1};
   var html='';
+  if(plat)html+='<div style="font-size:0.72rem;color:var(--tl);margin-bottom:0.4rem;">'+esc(channelLabel(posChannel))+' pricing — all-inclusive, add-on options don’t apply.</div>';
   var hasM=item.priceM&&item.priceL, hasAB=item.labelS&&item.labelL&&item.priceL;
-  if(hasAB){ html+=sizeBlock([['S',item.labelS||'Option 1',item.priceS],['L',item.labelL||'Option 2',item.priceL]]); }
-  else if(hasM){ html+=sizeBlock([['S','Small',item.priceS],['M','Medium',item.priceM],['L','Large',item.priceL]]); }
-  else { mSel.size='S'; mSel.price=item.priceS||0; }
-  var groups=A().getItemOptionGroups?A().getItemOptionGroups(item):[];
+  if(hasAB){ html+=sizeBlock([['S',item.labelS||'Option 1',posBasePrice(item,'S')],['L',item.labelL||'Option 2',posBasePrice(item,'L')]]); }
+  else if(hasM){ html+=sizeBlock([['S','Small',posBasePrice(item,'S')],['M','Medium',posBasePrice(item,'M')],['L','Large',posBasePrice(item,'L')]]); }
+  else { mSel.size='S'; mSel.price=posBasePrice(item,'S'); }
+  var groups=plat?[]:(A().getItemOptionGroups?A().getItemOptionGroups(item):[]);
   groups.forEach(function(g){
     html+='<div style="margin-top:0.8rem;"><span class="pz-lbl">'+esc(g.name)+(g.type!=='multi'&&g.required!==false?' (required)':'')+'</span>';
     html+=(g.choices||[]).map(function(c,ci){var pp=Number(c.price)||0;return '<div class="pz-opt" data-g="'+esc(g.id)+'" data-multi="'+(g.type==='multi'?1:0)+'" data-label="'+esc(c.label)+'" data-price="'+pp+'"><span>'+esc(c.label)+'</span><span>'+(pp>0?'+₱'+pp:'Free')+'</span></div>';}).join('');
@@ -4871,13 +4881,14 @@ function toggleOpt(el){
   else { document.querySelectorAll('#pzItemBody .pz-opt[data-g="'+g+'"]').forEach(function(o){o.classList.remove('on');}); el.classList.add('on'); mSel.opts[g]=[{label:label,price:price}]; }
   updatePzTotal();
 }
-function pzUnit(){ var t=mSel.price||0; Object.keys(mSel.opts).forEach(function(g){(mSel.opts[g]||[]).forEach(function(c){t+=c.price||0;});}); return t; }
+function pzUnit(){ var t=mSel.price||0; if(posIsPlatform())return t; Object.keys(mSel.opts).forEach(function(g){(mSel.opts[g]||[]).forEach(function(c){t+=c.price||0;});}); return t; }
 function updatePzTotal(){ document.getElementById('pzItemTotal').textContent=peso(pzUnit()*mSel.qty); }
 function pzAddToCart(){
-  var item=mSel.item;
+  var item=mSel.item; var plat=posIsPlatform();
   var hasM=item.priceM&&item.priceL, hasAB=item.labelS&&item.labelL&&item.priceL;
   if((hasM||hasAB)&&!mSel.size){alert('Please select a size.');return;}
-  var groups=A().getItemOptionGroups?A().getItemOptionGroups(item):[];
+  if(plat&&!(pzUnit()>0)){alert('No '+channelLabel(posChannel)+' price set for this item/size — set it in Channel Pricing first.');return;}
+  var groups=plat?[]:(A().getItemOptionGroups?A().getItemOptionGroups(item):[]);
   for(var i=0;i<groups.length;i++){var g=groups[i];if(g.type!=='multi'&&g.required!==false&&!(mSel.opts[g.id]&&mSel.opts[g.id].length)){alert('Please select: '+g.name);return;}}
   var optLabels=[],details=[]; Object.keys(mSel.opts).forEach(function(g){(mSel.opts[g]||[]).forEach(function(c){optLabels.push(c.label);details.push(c.label);});});
   var key=uid('pc_');
@@ -4966,34 +4977,52 @@ function renderPosCart(){
   var shiftBar=shift
     ? '<div style="background:#e8f5ec;border:1px solid #b8dfc4;border-radius:6px;padding:0.4rem 0.6rem;font-size:0.76rem;color:#155724;">🟢 Shift open · Cashier <b>'+esc(shift.staff)+'</b></div>'
     : '<div style="background:#fde8e8;border:1px solid #f5c6c6;border-radius:6px;padding:0.4rem 0.6rem;font-size:0.76rem;color:#721c24;">🔴 No open shift — open one in <b>Register Ops</b> to start selling.</div>';
+  var isPlat=posIsPlatform();
+  var _ccfg=channelsCfg();
+  var chanOpts=[{k:'instore',lbl:'🏪 In-store'}].concat(POS_CHANNELS.filter(function(d){return _ccfg[d.k].active!==false;}).map(function(d){return {k:d.k,lbl:(d.k==='grabfood'?'🟢 ':'🩷 ')+_ccfg[d.k].label};}));
+  var chLabel=isPlat?channelLabel(posChannel):'';
+  var chanSel='<div style="margin-bottom:0.6rem;"><span class="pz-lbl">Channel</span><select class="pz-in" id="posChannelSel">'+chanOpts.map(function(o){return '<option value="'+o.k+'"'+(posChannel===o.k?' selected':'')+'>'+o.lbl+'</option>';}).join('')+'</select>'+(isPlat?'<div style="font-size:0.72rem;color:#8a5a00;background:#fff6e5;border:1px solid #f0dcae;border-radius:5px;padding:0.3rem 0.45rem;margin-top:0.25rem;">'+esc(chLabel)+' — platform prices apply, sale is a <b>receivable</b> (not cash drawer), commission trued up at weekly payout.</div>':'')+'</div>';
   p.innerHTML=
-    (shift?'<button class="pz-btn sec" id="posPkgBtn" style="width:100%;margin-bottom:0.6rem;">🎁 Add Package / Promo</button>':'')+'<div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">🛒 Current sale</div>'
+    chanSel
+    +(shift&&!isPlat?'<button class="pz-btn sec" id="posPkgBtn" style="width:100%;margin-bottom:0.6rem;">🎁 Add Package / Promo</button>':'')+'<div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">🛒 Current sale</div>'
     +(keys.length?lines:'<p class="pz-sub" style="margin:0.5rem 0;">Tap items to add them.</p>')
     +'<div style="margin-top:0.6rem;">'
       +'<div style="display:flex;justify-content:space-between;font-size:0.82rem;margin-bottom:0.3rem;"><span>Subtotal</span><span>'+peso(sub)+'</span></div>'
-      +'<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.82rem;margin-bottom:0.3rem;"><span>Discount ₱</span><input class="pz-in" id="posDisc" type="number" step="any" style="width:100px;text-align:right;" value="0"/></div>'
+      +(isPlat?'':'<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.82rem;margin-bottom:0.3rem;"><span>Discount ₱</span><input class="pz-in" id="posDisc" type="number" step="any" style="width:100px;text-align:right;" value="0"/></div>'
       +'<button class="pz-btn sec" id="posDiscBtn" style="width:100%;margin-bottom:0.4rem;font-size:0.8rem;">🧾 PWD / Senior / Athlete / Promo</button>'
       +(posScopedDisc.length?('<div style="font-size:0.76rem;margin-bottom:0.4rem;">'+posScopedDisc.map(function(d,ix){return '<div style="display:flex;justify-content:space-between;align-items:center;color:#155724;margin-bottom:0.15rem;"><span>'+esc((DISC_TYPES[d.type]||{}).label||d.type)+' · '+esc(d.name)+(d.idNumber?' ('+esc(d.idNumber)+')':'')+'</span><span style="white-space:nowrap;">−'+peso(d.value)+' <button class="pz-btn warn" data-sdrm="'+ix+'" style="padding:0 0.35rem;">✕</button></span></div>';}).join('')+'</div>'):'')
-      +(posMeta.cashRounding?'<div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;"><span>Cash rounding</span><span id="posRound">₱0.00</span></div>':'')
-      +'<div style="display:flex;justify-content:space-between;font-weight:700;color:var(--bd);font-size:1rem;border-top:1px solid var(--cd);padding-top:0.4rem;"><span>Total</span><span id="posTotal">'+peso(sub)+'</span></div>'
+      +(posMeta.cashRounding?'<div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;"><span>Cash rounding</span><span id="posRound">₱0.00</span></div>':''))
+      +'<div style="display:flex;justify-content:space-between;font-weight:700;color:var(--bd);font-size:1rem;border-top:1px solid var(--cd);padding-top:0.4rem;"><span>'+(isPlat?'Gross':'Total')+'</span><span id="posTotal">'+peso(sub)+'</span></div>'
     +'</div>'
-    +'<div style="margin-top:0.7rem;display:flex;justify-content:space-between;align-items:center;"><span class="pz-lbl" style="margin:0;">Payment</span><label style="font-size:0.74rem;color:var(--tl);cursor:pointer;"><input type="checkbox" id="posSplitChk"/> Split</label></div>'
-    +'<div id="posPaySingle"><select class="pz-in" id="posPay" style="margin-top:0.3rem;">'+posActiveMethods().map(function(m){return '<option value="'+m.name+'">'+m.name+'</option>';}).join('')+'</select>'
-      +'<div id="posCashWrap" style="margin-top:0.5rem;">'+(denomTrackingOn()?posDenomPadHtml():'<span class="pz-lbl">Cash tendered ₱</span><input class="pz-in" id="posTender" type="number" step="any" placeholder="0"/><div id="posChange" style="font-size:0.82rem;color:var(--bd);font-weight:600;margin-top:0.3rem;"></div>')+'</div>'
-      +'<div id="posRefWrap" style="display:none;margin-top:0.5rem;"><span class="pz-lbl">Ref no. (GCash / bank) — required</span><input class="pz-in" id="posPayRef" placeholder="e.g. GCash ref / bank txn ref"/><div style="font-size:0.72rem;color:var(--tl);margin-top:0.2rem;">Marks the sale <b>pending</b> until a manager verifies the money landed.</div></div></div>'
-    +'<div id="posPaySplit" style="display:none;margin-top:0.4rem;"><div id="posSplitRows"></div><button class="pz-btn sec" id="posAddPay" style="padding:0.25rem 0.6rem;">+ payment</button><div id="posSplitInfo" style="font-size:0.76rem;color:var(--tl);margin-top:0.3rem;"></div></div>'
+    +(isPlat
+      ? '<div style="margin-top:0.7rem;border-top:1px solid var(--cd);padding-top:0.6rem;"><span class="pz-lbl">'+esc(chLabel)+' order # (required)</span><input class="pz-in" id="posPlatRef" placeholder="'+(posChannel==='grabfood'?'GrabFood order #':'foodpanda order #')+'"/><div id="posPlatCalc" style="font-size:0.82rem;margin-top:0.5rem;"></div></div>'
+      : '<div style="margin-top:0.7rem;display:flex;justify-content:space-between;align-items:center;"><span class="pz-lbl" style="margin:0;">Payment</span><label style="font-size:0.74rem;color:var(--tl);cursor:pointer;"><input type="checkbox" id="posSplitChk"/> Split</label></div>'
+        +'<div id="posPaySingle"><select class="pz-in" id="posPay" style="margin-top:0.3rem;">'+posActiveMethods().map(function(m){return '<option value="'+m.name+'">'+m.name+'</option>';}).join('')+'</select>'
+          +'<div id="posCashWrap" style="margin-top:0.5rem;">'+(denomTrackingOn()?posDenomPadHtml():'<span class="pz-lbl">Cash tendered ₱</span><input class="pz-in" id="posTender" type="number" step="any" placeholder="0"/><div id="posChange" style="font-size:0.82rem;color:var(--bd);font-weight:600;margin-top:0.3rem;"></div>')+'</div>'
+          +'<div id="posRefWrap" style="display:none;margin-top:0.5rem;"><span class="pz-lbl">Ref no. (GCash / bank) — required</span><input class="pz-in" id="posPayRef" placeholder="e.g. GCash ref / bank txn ref"/><div style="font-size:0.72rem;color:var(--tl);margin-top:0.2rem;">Marks the sale <b>pending</b> until a manager verifies the money landed.</div></div></div>'
+        +'<div id="posPaySplit" style="display:none;margin-top:0.4rem;"><div id="posSplitRows"></div><button class="pz-btn sec" id="posAddPay" style="padding:0.25rem 0.6rem;">+ payment</button><div id="posSplitInfo" style="font-size:0.76rem;color:var(--tl);margin-top:0.3rem;"></div></div>')
     +'<div style="margin-top:0.5rem;"><span class="pz-lbl">Customer (optional)</span><input class="pz-in" id="posCust" placeholder="Walk-in"/></div>'
-    +'<button class="pz-btn ok" id="posCharge" style="width:100%;margin-top:0.8rem;padding:0.7rem;font-size:0.95rem;"'+((keys.length&&shift)?'':' disabled')+'>Charge &amp; Complete</button>'
+    +'<button class="pz-btn ok" id="posCharge" style="width:100%;margin-top:0.8rem;padding:0.7rem;font-size:0.95rem;"'+((keys.length&&shift)?'':' disabled')+'>'+(isPlat?'Record '+esc(chLabel)+' sale':'Charge &amp; Complete')+'</button>'
     +'<div style="display:flex;gap:0.4rem;margin-top:0.4rem;">'
-      +'<button class="pz-btn sec" id="posHold" style="flex:1;"'+(keys.length?'':' disabled')+'>Hold</button>'
+      +(isPlat?'':'<button class="pz-btn sec" id="posHold" style="flex:1;"'+(keys.length?'':' disabled')+'>Hold</button>')
       +'<button class="pz-btn sec" id="posClear" style="flex:1;"'+(keys.length?'':' disabled')+'>Clear</button>'
     +'</div>';
+  var _chsel=document.getElementById('posChannelSel'); if(_chsel)_chsel.onchange=function(){ var v=this.value; if(v===posChannel)return; if(Object.keys(posCart).length&&!confirm('Switching channel clears the current sale — prices differ between in-store and platform. Continue?')){ this.value=posChannel; return; } posChannel=v; posCart={}; window.__posPkgs=[]; posScopedDisc=[]; buildPOS(); };
   p.querySelectorAll('[data-rm]').forEach(function(b){b.onclick=function(){delete posCart[b.getAttribute('data-rm')];renderPosCart();};});
   var disc=document.getElementById('posDisc');
   var splitRows=[];
-  function grandTotal(){ var d=(Number(disc.value)||0)+scopedDiscTotal(); var tot=Math.max(0,sub-d); if(posMeta.cashRounding){var r=Math.round(tot); var pr=document.getElementById('posRound'); if(pr)pr.textContent=peso(r-tot); tot=r;} document.getElementById('posTotal').textContent=peso(tot); return tot; }
+  var pay=null, splitChk=null;
+  function grandTotal(){ var d=isPlat?0:((Number(disc&&disc.value)||0)+scopedDiscTotal()); var tot=Math.max(0,sub-d); if(!isPlat&&posMeta.cashRounding){var r=Math.round(tot); var pr=document.getElementById('posRound'); if(pr)pr.textContent=peso(r-tot); tot=r;} var tEl=document.getElementById('posTotal'); if(tEl)tEl.textContent=peso(tot); return tot; }
+  function refreshPlat(){ var el=document.getElementById('posPlatCalc'); if(!el)return; var gross=grandTotal(); var rate=channelRate(posChannel); var comm=Math.round(gross*rate*100)/100; var net=Math.round((gross-comm)*100)/100;
+    el.innerHTML='<div style="display:flex;justify-content:space-between;"><span>Gross</span><span>'+peso(gross)+'</span></div>'
+      +'<div style="display:flex;justify-content:space-between;color:#c0392b;"><span>Commission ('+Math.round(rate*100)+'%)</span><span>-'+peso(comm)+'</span></div>'
+      +'<div style="display:flex;justify-content:space-between;font-weight:700;border-top:1px solid var(--cd);padding-top:0.2rem;margin-top:0.2rem;"><span>Net receivable</span><span>'+peso(net)+'</span></div>'
+      +'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.25rem;">Commission is an estimate; trued up at the weekly payout reconciliation (Finance).</div>';
+  }
+  if(isPlat){ var _plr=document.getElementById('posPlatRef'); if(_plr)_plr.oninput=refreshPlat; refreshPlat(); }
+  else {
   function refreshSingle(){ var tot=grandTotal(); var tender=document.getElementById('posTender'); var t=Number(tender&&tender.value)||0; var ch=document.getElementById('posChange'); if(ch)ch.textContent=t?('Change: '+peso(Math.max(0,t-tot))):''; }
-  var pay=document.getElementById('posPay');
+  pay=document.getElementById('posPay');
   pay.onchange=function(){var isc=isCashMethod(pay.value);document.getElementById('posCashWrap').style.display=isc?'block':'none';var rw=document.getElementById('posRefWrap');if(rw)rw.style.display=isc?'none':'block';};
   pay.onchange();
   var tender0=document.getElementById('posTender'); if(tender0)tender0.oninput=refreshSingle;
@@ -5016,7 +5045,7 @@ function renderPosCart(){
     el.innerHTML=html;
   }
   if(denomTrackingOn()){ document.querySelectorAll('[data-prd]').forEach(function(inp){inp.oninput=refreshDenom;}); refreshDenom(); }
-  var splitChk=document.getElementById('posSplitChk');
+  splitChk=document.getElementById('posSplitChk');
   function renderSplit(){
     var tot=grandTotal(); if(!splitRows.length)splitRows=[{method:'Cash',amount:tot}];
     var cont=document.getElementById('posSplitRows');
@@ -5028,20 +5057,30 @@ function renderPosCart(){
     cont.querySelectorAll('[data-pr]').forEach(function(inp){inp.oninput=function(){splitRows[+inp.getAttribute('data-pr')].ref=inp.value;};});
     cont.querySelectorAll('[data-pd]').forEach(function(b){b.onclick=function(){splitRows.splice(+b.getAttribute('data-pd'),1);renderSplit();};});
   }
-  disc.oninput=function(){ if(splitChk.checked)renderSplit(); else refreshSingle(); };
+  if(disc)disc.oninput=function(){ if(splitChk.checked)renderSplit(); else refreshSingle(); };
   splitChk.onchange=function(){ document.getElementById('posPaySingle').style.display=this.checked?'none':'block'; document.getElementById('posPaySplit').style.display=this.checked?'block':'none'; if(this.checked){splitRows=[];renderSplit();} else refreshSingle(); };
   document.getElementById('posAddPay').onclick=function(){splitRows.push({method:'GCash',amount:0});renderSplit();};
-  refreshSingle();updateOfflineUI();
+  refreshSingle();
+  }
+  updateOfflineUI();
   var _sb=document.getElementById('posShiftBar'); if(_sb)_sb.innerHTML=shiftBar;
   var _db=document.getElementById('posDiscBtn'); if(_db)_db.onclick=openDiscountModal;
   p.querySelectorAll('[data-sdrm]').forEach(function(b){b.onclick=function(){posScopedDisc.splice(+b.getAttribute('data-sdrm'),1);renderPosCart();};});
   var _pb=document.getElementById('posPkgBtn');if(_pb)_pb.onclick=function(){ if(window.__openPackagePicker)window.__openPackagePicker(); else alert('Packages module still loading \u2014 try again.'); };
   document.getElementById('posClear').onclick=function(){if(Object.keys(posCart).length&&confirm('Clear this sale?')){posCart={};window.__posPkgs=[];posScopedDisc=[];renderPosCart();}};
-  document.getElementById('posHold').onclick=function(){ if(!Object.keys(posCart).length)return; var a=A(); a.set(a.ref(a.db,'heldOrders/'+uid('hold_')),{cart:posCart,ts:Date.now(),staff:(window.__posShift&&window.__posShift.staff)||'—',note:(document.getElementById('posCust').value||'').trim()}); posCart={}; window.__posPkgs=[]; renderPosCart(); alert('Order held. Recall it from Register Ops.'); };
+  var _hold=document.getElementById('posHold'); if(_hold)_hold.onclick=function(){ if(!Object.keys(posCart).length)return; var a=A(); a.set(a.ref(a.db,'heldOrders/'+uid('hold_')),{cart:posCart,ts:Date.now(),staff:(window.__posShift&&window.__posShift.staff)||'—',note:(document.getElementById('posCust').value||'').trim()}); posCart={}; window.__posPkgs=[]; renderPosCart(); alert('Order held. Recall it from Register Ops.'); };
   document.getElementById('posCharge').onclick=function(){
     if(!window.__posShift){alert('Open a shift first (Register Ops tab).');return;}
     var tot=grandTotal();
-    var d=Number(disc.value)||0;
+    if(isPlat){
+      if(tot<=0){alert('Add items to the sale first.');return;}
+      var pref=(document.getElementById('posPlatRef').value||'').trim();
+      if(!pref){alert(chLabel+' order # is required — key in the platform order number.');return;}
+      var prate=channelRate(posChannel); var pcomm=Math.round(tot*prate*100)/100; var pnet=Math.round((tot-pcomm)*100)/100;
+      chargeSale(sub,tot,null,{channel:posChannel,platformRef:pref,gross:tot,commission:pcomm,commissionRate:prate,net:pnet});
+      return;
+    }
+    var d=Number(disc&&disc.value)||0;
     if(d>0&&window.__posIsManagerPin){ var pin=prompt('Manager PIN required to approve a ₱'+d+' discount:'); if(pin===null)return; if(!window.__posIsManagerPin(pin)){alert('Invalid manager PIN — discount not approved.');return;} }
     var payments;
     if(splitChk.checked){ var assigned=splitRows.reduce(function(s,r){return s+(Number(r.amount)||0);},0); if(Math.abs(assigned-tot)>0.01){alert('Split payments must add up to the total.');return;} if(splitRows.some(function(r){return !isCashMethod(r.method)&&!String(r.ref||'').trim();})){alert('Enter a reference number for every GCash/bank payment before charging.');return;} payments=splitRows.map(function(r){return {method:r.method,amount:Number(r.amount)||0,ref:isCashMethod(r.method)?'':String(r.ref||'').trim()};}); }
@@ -5053,31 +5092,35 @@ function renderPosCart(){
     chargeSale(sub,tot,payments);
   };
 }
-function chargeSale(sub,total,payments){
+function chargeSale(sub,total,payments,platform){
   var keys=Object.keys(posCart); if(!keys.length)return;
   var shift=window.__posShift; if(!shift){alert('Open a shift first.');return;}
+  var isPlat=!!platform;
   var cust=(document.getElementById('posCust').value||'').trim()||'Walk-in';
-  var _scoped=posScopedDisc.slice();
-  var disc=(Number(document.getElementById('posDisc').value)||0)+_scoped.reduce(function(s,d){return s+(Number(d.value)||0);},0);
+  var _scoped=isPlat?[]:posScopedDisc.slice();
+  var _discEl=document.getElementById('posDisc');
+  var disc=isPlat?0:((Number(_discEl&&_discEl.value)||0)+_scoped.reduce(function(s,d){return s+(Number(d.value)||0);},0));
   var a=A(); var staff=shift.staff||'Staff';
   var oid='POS-'+Date.now().toString().slice(-6);
   var lineItems=keys.map(function(k){var c=posCart[k];return {itemKey:c.itemKey,name:c.name,size:c.size,optLabels:c.optLabels,qty:c.qty,unitTotal:c.unitTotal,stream:c.stream||null,pkg:c.pkgId||null};});
-  var _pkgs=window.__posPkgs||[];var _extra=_pkgs.reduce(function(s,pp){return s+(Number(pp.extraCost)||0);},0);
+  var _pkgs=isPlat?[]:(window.__posPkgs||[]);var _extra=_pkgs.reduce(function(s,pp){return s+(Number(pp.extraCost)||0);},0);
   var itemsStr=keys.map(function(k){var c=posCart[k];return c.name+(c.details?' ('+c.details+')':'')+' x'+c.qty;}).join(', ');
+  if(isPlat){ payments=[{method:channelLabel(platform.channel),amount:total,tendered:0,change:0,ref:platform.platformRef}]; }
   var cash=(payments||[]).filter(function(x){return x.method==='Cash';});
   var tendered=cash.reduce(function(s,x){return s+(Number(x.tendered)||0);},0);
   var change=cash.reduce(function(s,x){return s+(Number(x.change)||0);},0);
-  var payLabel=payments.length>1?'Split':payments[0].method;
-  var _pendingPay=(payments||[]).some(function(p){return !isCashMethod(p.method);});
+  var payLabel=isPlat?channelLabel(platform.channel):(payments.length>1?'Split':payments[0].method);
+  var _pendingPay=(!isPlat)&&(payments||[]).some(function(p){return !isCashMethod(p.method);});
   var now=new Date();
-  var order={id:oid,name:cust,phone:'',type:'Walk-in',address:'',payment:payLabel,payments:payments,contact:'',contactMethod:'',items:itemsStr,lineItems:lineItems,subtotal:sub,discount:disc,discountLines:_scoped,total:total,tendered:tendered,change:change,notes:'',status:'Completed',source:'pos',staff:staff,shiftId:shift.id,packages:_pkgs,extraCost:_extra,paymentStatus:(_pendingPay?'pending':'confirmed'),receivedByCustomer:true,time:now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:now.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
+  var order={id:oid,name:cust,phone:'',type:(isPlat?channelLabel(platform.channel):'Walk-in'),address:'',payment:payLabel,payments:payments,contact:'',contactMethod:'',items:itemsStr,lineItems:lineItems,subtotal:sub,discount:disc,discountLines:_scoped,total:total,tendered:tendered,change:change,notes:'',status:'Completed',source:'pos',channel:(isPlat?platform.channel:'instore'),staff:staff,shiftId:shift.id,packages:_pkgs,extraCost:_extra,paymentStatus:(_pendingPay?'pending':'confirmed'),receivedByCustomer:true,time:now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:now.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
+  if(isPlat){ order.platformRef=platform.platformRef; order.grossPlatform=platform.gross; order.commission=platform.commission; order.commissionRate=platform.commissionRate; order.netPlatform=platform.net; order.settlementStatus='unsettled'; order.payoutId=''; }
   var _cp=(payments||[]).filter(function(p){return p.cashReceived;})[0];
   if(_cp){ order.cashReceived=_cp.cashReceived; order.cashChange=_cp.cashChange||{}; order.changeShort=_cp.changeShort||0;
     var _sh=window.__posShift;
     if(_sh){ var nd=mergeDenoms(shiftDrawer(), _cp.cashReceived); Object.keys(order.cashChange).forEach(function(k){ nd[k]=(Number(nd[k])||0)-(Number(order.cashChange[k])||0); });
       a.update(a.ref(a.db,'shifts/'+_sh.id),{drawer:nd}); a.update(a.ref(a.db,'posActiveShift'),{drawer:nd}); }
   }
-  if(window.__online===false && (payments||[]).some(function(pp){return pp.method!=='Cash';})){
+  if(!isPlat && window.__online===false && (payments||[]).some(function(pp){return pp.method!=='Cash';})){
     alert("You're offline. Only CASH sales can be rung until the Wi-Fi/connection returns. Take this as cash, or wait to reconnect for G-Cash/bank.");
     return;
   }
@@ -5140,6 +5183,7 @@ function showReceipt(o){
     +(function(){var sc=(o.discountLines||[]).reduce(function(s,d){return s+(Number(d.value)||0);},0);var man=(Number(o.discount)||0)-sc;return man>0.005?'<tr><td>Discount</td><td style="text-align:right;">-'+peso(man)+'</td></tr>':'';})()
     +'<tr><td><b>TOTAL</b></td><td style="text-align:right;"><b>'+peso(o.total)+'</b></td></tr>'
     +'<tr><td>Payment</td><td style="text-align:right;">'+esc(o.payment)+'</td></tr>'
+    +(o.platformRef?'<tr><td>Platform #</td><td style="text-align:right;">'+esc(o.platformRef)+'</td></tr><tr><td>Net (after comm.)</td><td style="text-align:right;">'+peso(o.netPlatform||0)+'</td></tr>':'')
     +(o.tendered?'<tr><td>Cash</td><td style="text-align:right;">'+peso(o.tendered)+'</td></tr><tr><td>Change</td><td style="text-align:right;">'+peso(o.change)+'</td></tr>':'')
     +'</table><hr><div style="text-align:center;">Salamat! Please come again.</div>'
     +'<div style="text-align:center;font-size:9px;margin-top:4px;">This is not an official BIR receipt.</div>'
