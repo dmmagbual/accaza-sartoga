@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v79</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v81</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4094,7 +4094,11 @@ function optKey(gid,label){return gid+'::'+label;}
 function channelOptPrice(ch,gid,label){var o=(channelPricesMap[ch]||{}).__opt||{};return Number(o[optKey(gid,label)])||0;}
 function optChoicePrice(gid,label,instorePrice){ return posIsPlatform()?channelOptPrice(posChannel,gid,label):(Number(instorePrice)||0); }
 function allOptionChoices(){ var og=(A()&&A().optionGroupsMap)||{}; var out=[]; Object.keys(og).forEach(function(gid){var g=og[gid]||{};(g.choices||[]).forEach(function(c){out.push({gid:gid,gname:g.name||gid,label:c.label,price:Number(c.price)||0});});}); return out; }
-var usageKind='staff', usageAdhoc=false, usageAdhocRows=[];
+var usageKind='staff', usageAdhoc=false, usageTypesMap={}, usageManageOpen=false, usageRecipeName='', usageRows={menuaddon:[],base:[],addon:[],cons:[]};
+var DEFAULT_USAGE_TYPES=[{id:'staff',name:'Staff consumption',reasons:['Staff Meal','Staff Drink','Management'],order:1},{id:'rnd',name:'R&D / Testing',reasons:['Testing','Training','Sampling','Quality Check'],order:2}];
+function usageTypesList(){var keys=Object.keys(usageTypesMap);var list=keys.length?keys.map(function(k){return Object.assign({id:k},usageTypesMap[k]);}):DEFAULT_USAGE_TYPES.slice();return list.sort(function(a,b){return (a.order||0)-(b.order||0);});}
+function usageTypeName(id){return (usageTypesMap[id]&&usageTypesMap[id].name)||(id==='staff'?'Staff consumption':id==='rnd'?'R&D / Testing':id);}
+function usageTypeReasons(id){var t=usageTypesMap[id]||DEFAULT_USAGE_TYPES.filter(function(d){return d.id===id;})[0];return (t&&t.reasons)||[];}
 var posCart={}, posCat='ALL', posBuilt=false, recipeEditing=false, curRecipeKey=null, recipeDraft=null, recSub='base', recSize='M', posScopedDisc=[], posChannel='instore';
 var DISC_TYPES={senior:{label:'Senior Citizen',rate:0.20},pwd:{label:'PWD',rate:0.20},athlete:{label:'National Athlete',rate:0.20},promo5:{label:'5% Drink Promo',rate:0.05}};
 
@@ -4164,6 +4168,7 @@ function init(){
   a.onValue(a.ref(a.db,'recipes'), function(s){ recipesMap=s.val()||{}; if(isTab('recipes')&&!recipeEditing)renderRecipes(); });
   a.onValue(a.ref(a.db,'optionRecipes'), function(s){ var raw=s.val()||{}; var m={}; Object.keys(raw).forEach(function(k){var v=raw[k]||{}; var lb=v.label||k; m[lb]=v;}); optRecipesMap=m; if(isTab('recipes')&&!recipeEditing)renderRecipes(); });
   a.onValue(a.ref(a.db,'internalUsage'), function(s){ usageMap=s.val()||{}; if(isTab('usage'))renderUsage(); });
+  a.onValue(a.ref(a.db,'usageTypes'), function(s){ usageTypesMap=s.val()||{}; if(isTab('usage'))renderUsage(); });
   a.onValue(a.ref(a.db,'channelPrices'), function(s){ channelPricesMap=s.val()||{}; if(isTab('channelpricing'))renderChannelPricing(); });
   a.onValue(a.ref(a.db,'posSettings'), function(s){ var v=s.val(); if(v)posMeta=Object.assign({vat:false,vatRate:12},v); });
   a.onValue(a.ref(a.db,'orders'), function(s){ var all=s.val()||{}; Object.keys(all).forEach(function(oid){ var o=all[oid]; if(o&&(o.status==='Completed'||o.status==='Received')&&!o.inventoryDeducted&&o.lineItems)tryDeduct(oid,o); }); });
@@ -4682,93 +4687,120 @@ function usageCost(usage){var c=0;Object.keys(usage||{}).forEach(function(ing){c
 function applyUsageToStock(usage,sign){var a=A();Object.keys(usage||{}).forEach(function(ing){a.runTransaction(a.ref(a.db,'inventory/'+ing+'/stock'),function(cur){return (Number(cur)||0)+sign*usage[ing];});});}
 function usageEntries(){return Object.keys(usageMap).map(function(k){return Object.assign({id:k},usageMap[k]);}).sort(function(a,b){return (b.ts||0)-(a.ts||0);});}
 function usageThisMonth(){var now=new Date(),y=now.getFullYear(),m=now.getMonth();return usageEntries().filter(function(u){var d=new Date(u.ts);return d.getFullYear()===y&&d.getMonth()===m;});}
-function usageOptHtml(itemKey){
-  var it=(itemKey&&A().menuItemsMap)?A().menuItemsMap[itemKey]:null;
-  var groups=(it&&A().getItemOptionGroups)?A().getItemOptionGroups(it):[];
-  if(!groups.length)return '<div style="font-size:0.75rem;color:var(--tl);">This item has no add-on options.</div>';
-  return '<span class="pz-lbl">Add-ons used (tick any that were consumed — their ingredients deduct too)</span>'+groups.map(function(g){
-    return '<div style="margin-bottom:0.35rem;"><div style="font-size:0.72rem;color:var(--tl);">'+esc(g.name)+'</div><div style="display:flex;flex-wrap:wrap;gap:0.4rem;">'+(g.choices||[]).map(function(c){return '<label style="font-size:0.8rem;display:inline-flex;align-items:center;gap:0.25rem;border:1px solid var(--cd);border-radius:6px;padding:0.15rem 0.5rem;cursor:pointer;"><input type="checkbox" data-uopt value="'+esc(c.label)+'"/> '+esc(c.label)+'</label>';}).join('')+'</div></div>';
+function ingRowsHtml(tag){
+  var rows=usageRows[tag]||[]; var allIng=ings();
+  var body=rows.map(function(r,ix){
+    var sel='<select class="pz-in" data-rg="'+tag+'" data-rgi="'+ix+'" data-rgf="ing" style="min-width:150px;"><option value="">— ingredient —</option>'+allIng.map(function(i){return '<option value="'+i.id+'"'+(i.id===r.ing?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+')</option>';}).join('')+'</select>';
+    return '<tr><td>'+sel+'</td><td><input class="pz-in" type="number" step="any" style="width:90px;" data-rg="'+tag+'" data-rgi="'+ix+'" data-rgf="qty" value="'+(r.qty!=null?r.qty:'')+'" placeholder="qty"/></td><td style="color:var(--tl);">'+esc(r.ing?ingUnit(r.ing):'')+'</td><td><button class="pz-btn warn" style="padding:0.2rem 0.45rem;" data-rgdel="'+tag+'" data-rgdeli="'+ix+'">✕</button></td></tr>';
   }).join('');
+  return '<table class="pz-tbl"><thead><tr><th>Ingredient</th><th style="width:90px;">Qty</th><th style="width:70px;">Unit</th><th></th></tr></thead><tbody id="urows_'+tag+'">'+(body||'<tr><td colspan="4" style="color:var(--tl);padding:0.4rem;">None.</td></tr>')+'</tbody></table><button class="pz-btn sec" data-rgadd="'+tag+'" style="padding:0.25rem 0.7rem;margin-top:0.3rem;">+ ingredient</button>';
+}
+function usageManageHtml(types){
+  var rows=types.map(function(t){return '<tr><td><input class="pz-in" data-utname="'+esc(t.id)+'" value="'+esc(t.name)+'" style="min-width:150px;"/></td><td><input class="pz-in" data-utreasons="'+esc(t.id)+'" value="'+esc((t.reasons||[]).join(', '))+'" placeholder="comma-separated reasons" style="min-width:220px;"/></td><td><button class="pz-btn warn" data-utdel="'+esc(t.id)+'" style="padding:0.2rem 0.5rem;">✕</button></td></tr>';}).join('');
+  return '<div class="pz-card" style="margin-bottom:0.8rem;background:#faf7f2;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.3rem;">Usage types</div><p class="pz-sub" style="margin-top:0;">Each type is its own P&amp;L line. The Reasons are that type’s dropdown options (comma-separated). Deleting a type keeps past records intact.</p><table class="pz-tbl"><thead><tr><th>Type name</th><th>Reasons</th><th></th></tr></thead><tbody>'+rows+'</tbody></table><div style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap;margin-top:0.6rem;"><div><span class="pz-lbl">New type</span><input class="pz-in" id="utNewName" placeholder="e.g. Wastage" style="width:180px;"/></div><div style="flex:1;min-width:200px;"><span class="pz-lbl">Reasons (comma-separated)</span><input class="pz-in" id="utNewReasons" placeholder="e.g. Spoilage, Spillage, Expired"/></div><button class="pz-btn sec" id="utAdd">+ Add type</button><button class="pz-btn ok" id="utSave" style="margin-left:auto;">💾 Save types</button></div></div>';
 }
 function renderUsage(){
   var root=document.getElementById('usageRoot'); if(!root)return;
+  var a0=A();
+  if(a0&&!Object.keys(usageTypesMap).length){var seed={};DEFAULT_USAGE_TYPES.forEach(function(d){seed[d.id]={name:d.name,reasons:d.reasons,order:d.order};});a0.update(a0.ref(a0.db,'usageTypes'),seed).catch(function(){});}
+  var types=usageTypesList();
+  if(!types.some(function(t){return t.id===usageKind;}))usageKind=(types[0]?types[0].id:'staff');
   var kind=usageKind;
-  var kindBtns='<button class="pz-btn '+(kind==='staff'?'ok':'sec')+'" data-ukind="staff" style="padding:0.35rem 0.9rem;">👤 Staff consumption</button> <button class="pz-btn '+(kind==='rnd'?'ok':'sec')+'" data-ukind="rnd" style="padding:0.35rem 0.9rem;">🧪 R&amp;D / Testing</button>';
+  var kindBtns=types.map(function(t){return '<button class="pz-btn '+(kind===t.id?'ok':'sec')+'" data-ukind="'+esc(t.id)+'" style="padding:0.35rem 0.9rem;">'+esc(t.name)+'</button>';}).join(' ')+' <button class="pz-btn '+(usageManageOpen?'ok':'sec')+'" id="usageManageBtn" style="padding:0.35rem 0.7rem;">⚙️ Manage types</button>';
+  var manageBlock=usageManageOpen?usageManageHtml(types):'';
   var srcBtns='<button class="pz-btn '+(!usageAdhoc?'ok':'sec')+'" data-usrc="menu" style="padding:0.25rem 0.7rem;">Menu item</button> <button class="pz-btn '+(usageAdhoc?'ok':'sec')+'" data-usrc="adhoc" style="padding:0.25rem 0.7rem;">Ad-hoc ingredients</button>';
   var itemOpts=menuList().map(function(it){return '<option value="'+esc(it.key)+'">'+esc(it.name)+'</option>';}).join('');
-  var reasonField = kind==='staff'
-    ? '<div><span class="pz-lbl">Reason</span><select class="pz-in" id="usageReason"><option>Staff Meal</option><option>Staff Drink</option><option>Management</option></select></div>'
-    : '<div><span class="pz-lbl">Category</span><select class="pz-in" id="usageCat"><option>Testing</option><option>Training</option><option>Sampling</option><option>Quality Check</option></select></div>';
+  var reasons=usageTypeReasons(kind);
+  var reasonField='<div><span class="pz-lbl">Reason</span><select class="pz-in" id="usageReason">'+(reasons.length?reasons.map(function(r){return '<option>'+esc(r)+'</option>';}).join(''):'<option value="">(add reasons in Manage types)</option>')+'</select></div>';
   var sourceBlock;
   if(usageAdhoc){
-    var allIng=ings();
-    var rows=usageAdhocRows.map(function(r,ix){
-      var sel='<select class="pz-in" data-uarow="'+ix+'" data-uafield="ing" style="min-width:150px;"><option value="">— ingredient —</option>'+allIng.map(function(i){return '<option value="'+i.id+'"'+(i.id===r.ing?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+')</option>';}).join('')+'</select>';
-      return '<tr><td>'+sel+'</td><td><input class="pz-in" type="number" step="any" style="width:90px;" data-uarow="'+ix+'" data-uafield="qty" value="'+(r.qty!=null?r.qty:'')+'" placeholder="qty"/></td><td>'+esc(r.ing?ingUnit(r.ing):'')+'</td><td><button class="pz-btn warn" style="padding:0.2rem 0.45rem;" data-uarem="'+ix+'">✕</button></td></tr>';
-    }).join('');
-    sourceBlock='<span class="pz-lbl">Ad-hoc ingredients (for a recipe not on the menu yet)</span><table class="pz-tbl"><thead><tr><th>Ingredient</th><th style="width:90px;">Qty</th><th style="width:80px;">Unit</th><th></th></tr></thead><tbody>'+(rows||'<tr><td style="color:var(--tl);padding:0.5rem;">No ingredients yet.</td></tr>')+'</tbody></table><button class="pz-btn sec" id="usageAddRow" style="padding:0.3rem 0.7rem;">+ ingredient</button>';
+    sourceBlock='<div style="margin-bottom:0.6rem;"><span class="pz-lbl">Experimental recipe name</span><input class="pz-in" id="usageRecipeName" value="'+esc(usageRecipeName)+'" placeholder="e.g. Salted Caramel Cold Foam v2"/></div>'
+      +'<div style="font-size:0.75rem;color:var(--tl);margin-bottom:0.5rem;">Build the trial recipe in three parts. If it tastes good, you can print it and add it to the menu.</div>'
+      +'<span class="pz-lbl">1 · Base / main ingredients</span><div id="ugrp_base">'+ingRowsHtml('base')+'</div>'
+      +'<div style="margin-top:0.7rem;"></div><span class="pz-lbl">2 · Add-on ingredients</span><div id="ugrp_addon">'+ingRowsHtml('addon')+'</div>'
+      +'<div style="margin-top:0.7rem;"></div><span class="pz-lbl">3 · Consumables used (cup, lid, straw…)</span><div id="ugrp_cons">'+ingRowsHtml('cons')+'</div>';
   } else {
-    sourceBlock='<div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:end;"><div style="flex:1;min-width:180px;"><span class="pz-lbl">Menu item</span><select class="pz-in" id="usageItem">'+itemOpts+'</select></div><div><span class="pz-lbl">Size</span><select class="pz-in" id="usageSize"><option>S</option><option selected>M</option><option>L</option></select></div><div><span class="pz-lbl">Qty</span><input class="pz-in" id="usageQty" type="number" step="any" value="1" style="width:80px;"/></div></div><div id="usageOptBox" style="margin-top:0.7rem;"></div>';
+    sourceBlock='<div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:end;"><div style="flex:1;min-width:180px;"><span class="pz-lbl">Menu item</span><select class="pz-in" id="usageItem">'+itemOpts+'</select></div><div><span class="pz-lbl">Size</span><select class="pz-in" id="usageSize"><option>S</option><option selected>M</option><option>L</option></select></div><div><span class="pz-lbl">Qty</span><input class="pz-in" id="usageQty" type="number" step="any" value="1" style="width:80px;"/></div></div>'
+      +'<div style="margin-top:0.7rem;"><span class="pz-lbl">Add-on ingredients (optional — extra beyond the recipe, e.g. Whipped cream 60 ml)</span><div id="ugrp_menuaddon">'+ingRowsHtml('menuaddon')+'</div></div>';
   }
   var tm=usageThisMonth();
-  var staffTot=tm.filter(function(u){return u.kind==='staff'&&!u.reversed;}).reduce(function(s,u){return s+(Number(u.cost)||0);},0);
-  var rndTot=tm.filter(function(u){return u.kind==='rnd'&&!u.reversed;}).reduce(function(s,u){return s+(Number(u.cost)||0);},0);
+  var byTypeTot={}; tm.forEach(function(u){if(u.reversed)return;var t=u.kind||'staff';byTypeTot[t]=(byTypeTot[t]||0)+(Number(u.cost)||0);});
+  var typeIdsForCards={}; types.forEach(function(t){typeIdsForCards[t.id]=1;}); Object.keys(byTypeTot).forEach(function(i){typeIdsForCards[i]=1;});
+  var usageCards=Object.keys(typeIdsForCards).map(function(i){return '<div class="pz-card" style="flex:1;min-width:150px;"><div style="font-size:0.78rem;color:var(--tl);">'+esc(usageTypeName(i))+' (this month)</div><div style="font-weight:700;font-size:1.15rem;color:var(--bd);">'+peso(byTypeTot[i]||0)+'</div></div>';}).join('');
   var logRows=tm.length?tm.map(function(u){
     var when=new Date(u.ts).toLocaleDateString('en-PH',{month:'short',day:'numeric'});
-    var tag=u.kind==='rnd'?('R&D · '+esc(u.category||'')):('Staff · '+esc(u.reason||''));
-    return '<tr'+(u.reversed?' style="opacity:0.5;text-decoration:line-through;"':'')+'><td>'+when+'</td><td>'+tag+'</td><td>'+esc(u.label||u.itemKey||'')+'</td><td>'+esc(u.recipient||'')+'</td><td style="text-align:right;">'+peso(u.cost)+'</td><td>'+(u.reversed?'<span style="color:var(--tl);font-size:0.75rem;">reversed</span>':'<button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-urev="'+esc(u.id)+'">Reverse</button>')+'</td></tr>';
+    var tag=esc(usageTypeName(u.kind||'staff'))+((u.reason||u.category)?' · '+esc(u.reason||u.category):'');
+    return '<tr'+(u.reversed?' style="opacity:0.5;text-decoration:line-through;"':'')+'><td>'+when+'</td><td>'+tag+'</td><td>'+esc(u.label||u.itemKey||'')+'</td><td>'+esc(u.recipient||'')+'</td><td style="text-align:right;">'+peso(u.cost)+'</td><td style="white-space:nowrap;"><button class="pz-btn sec" style="padding:0.2rem 0.5rem;" data-uprint="'+esc(u.id)+'">🖨 View</button> '+(u.reversed?'<span style="color:var(--tl);font-size:0.75rem;">reversed</span>':'<button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-urev="'+esc(u.id)+'">Reverse</button>')+'</td></tr>';
   }).join(''):'<tr><td colspan="6" style="color:var(--tl);padding:0.6rem;">No entries this month.</td></tr>';
   root.innerHTML='<div class="pz-h">🍽️ Internal Usage</div>'
-    +'<p class="pz-sub">Record drinks/food consumed internally — never a sale. Stock deducts by recipe (incl. cups &amp; consumables); cost is logged to a separate P&amp;L line (Staff vs R&amp;D). Log-only, no PIN.</p>'
+    +'<p class="pz-sub">Record drinks/food consumed internally — never a sale. Stock deducts by recipe (incl. cups &amp; consumables); cost posts to that usage type’s own P&amp;L line. Types &amp; reasons are customizable. Log-only, no PIN.</p>'
     +'<div class="pz-card" style="margin-bottom:1rem;">'
       +'<div style="margin-bottom:0.7rem;">'+kindBtns+'</div>'
-      +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.7rem;">'+reasonField+'<div><span class="pz-lbl">Recipient</span><input class="pz-in" id="usageRecipient" placeholder="name / who"/></div>'+(kind==='rnd'?'<div style="flex:1;min-width:160px;"><span class="pz-lbl">Note / reason</span><input class="pz-in" id="usageRnote" placeholder="e.g. new latte v2 trial"/></div>':'')+'</div>'
+      +manageBlock
+      +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.7rem;">'+reasonField+'<div><span class="pz-lbl">Recipient</span><input class="pz-in" id="usageRecipient" placeholder="name / who"/></div><div style="flex:1;min-width:160px;"><span class="pz-lbl">Note (optional)</span><input class="pz-in" id="usageRnote" placeholder="e.g. new latte v2 trial"/></div></div>'
       +'<div style="margin-bottom:0.5rem;">'+srcBtns+'</div>'
       +sourceBlock
       +'<div style="margin-top:1rem;"><button class="pz-btn ok" id="usageRecord">Record &amp; deduct stock</button></div>'
     +'</div>'
-    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.8rem;"><div class="pz-card" style="flex:1;min-width:150px;"><div style="font-size:0.78rem;color:var(--tl);">Staff consumption (this month)</div><div style="font-weight:700;font-size:1.15rem;color:var(--bd);">'+peso(staffTot)+'</div></div><div class="pz-card" style="flex:1;min-width:150px;"><div style="font-size:0.78rem;color:var(--tl);">R&amp;D / testing (this month)</div><div style="font-weight:700;font-size:1.15rem;color:var(--bd);">'+peso(rndTot)+'</div></div></div>'
+    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.8rem;">'+usageCards+'</div>'
     +'<div class="pz-card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;"><div style="font-weight:600;color:var(--bd);">This month’s log</div><button class="pz-btn sec" id="usageExport" style="padding:0.25rem 0.7rem;">⬇ Export Excel</button></div>'
       +'<table class="pz-tbl"><thead><tr><th>Date</th><th>Type</th><th>Item</th><th>Recipient</th><th style="text-align:right;">Cost</th><th></th></tr></thead><tbody>'+logRows+'</tbody></table></div>';
   root.querySelectorAll('[data-ukind]').forEach(function(b){b.onclick=function(){usageKind=b.getAttribute('data-ukind');renderUsage();};});
-  root.querySelectorAll('[data-usrc]').forEach(function(b){b.onclick=function(){usageAdhoc=(b.getAttribute('data-usrc')==='adhoc');if(usageAdhoc&&!usageAdhocRows.length)usageAdhocRows=[{ing:'',qty:''}];renderUsage();};});
-  function syncAdhoc(){var out=[];root.querySelectorAll('[data-uarow]').forEach(function(el){var ix=+el.getAttribute('data-uarow');out[ix]=out[ix]||{ing:'',qty:''};var f=el.getAttribute('data-uafield');if(f==='ing')out[ix].ing=el.value;else out[ix].qty=el.value;});usageAdhocRows=out.filter(function(x){return x;});}
-  var addr=document.getElementById('usageAddRow'); if(addr)addr.onclick=function(){syncAdhoc();usageAdhocRows.push({ing:'',qty:''});renderUsage();};
-  root.querySelectorAll('[data-uarem]').forEach(function(b){b.onclick=function(){syncAdhoc();usageAdhocRows.splice(+b.getAttribute('data-uarem'),1);renderUsage();};});
-  root.querySelectorAll('select[data-uafield="ing"]').forEach(function(sel){sel.onchange=function(){syncAdhoc();renderUsage();};});
-  var uItem=document.getElementById('usageItem');
-  if(uItem){ var ob=document.getElementById('usageOptBox'); if(ob)ob.innerHTML=usageOptHtml(uItem.value); uItem.onchange=function(){var ob2=document.getElementById('usageOptBox'); if(ob2)ob2.innerHTML=usageOptHtml(this.value);}; }
-  var rec=document.getElementById('usageRecord'); if(rec)rec.onclick=function(){syncAdhoc();recordUsage();};
+  root.querySelectorAll('[data-usrc]').forEach(function(b){b.onclick=function(){usageAdhoc=(b.getAttribute('data-usrc')==='adhoc');if(usageAdhoc&&!(usageRows.base.length||usageRows.addon.length||usageRows.cons.length))usageRows.base=[{ing:'',qty:''}];if(!usageAdhoc&&!usageRows.menuaddon.length){}renderUsage();};});
+  function captureRow(tag){var arr=usageRows[tag]||[];root.querySelectorAll('[data-rg="'+tag+'"]').forEach(function(el){var ix=+el.getAttribute('data-rgi');var f=el.getAttribute('data-rgf');arr[ix]=arr[ix]||{ing:'',qty:''};if(f==='ing')arr[ix].ing=el.value;else arr[ix].qty=el.value;});usageRows[tag]=arr;}
+  function captureRecipeName(){var el=document.getElementById('usageRecipeName');if(el)usageRecipeName=el.value;}
+  function wireGroup(tag){var c=document.getElementById('ugrp_'+tag);if(!c)return;
+    c.querySelectorAll('select[data-rg="'+tag+'"][data-rgf="ing"]').forEach(function(s){s.onchange=function(){refreshGroup(tag);};});
+    c.querySelectorAll('input[data-rg="'+tag+'"][data-rgf="qty"]').forEach(function(i){i.oninput=function(){captureRow(tag);};});
+    var add=c.querySelector('[data-rgadd="'+tag+'"]');if(add)add.onclick=function(){captureRow(tag);(usageRows[tag]=usageRows[tag]||[]).push({ing:'',qty:''});refreshGroup(tag);};
+    c.querySelectorAll('[data-rgdel="'+tag+'"]').forEach(function(b){b.onclick=function(){captureRow(tag);usageRows[tag].splice(+b.getAttribute('data-rgdeli'),1);refreshGroup(tag);};});
+  }
+  function refreshGroup(tag){captureRow(tag);var c=document.getElementById('ugrp_'+tag);if(c){c.innerHTML=ingRowsHtml(tag);wireGroup(tag);}}
+  ['menuaddon','base','addon','cons'].forEach(function(tag){if(document.getElementById('ugrp_'+tag))wireGroup(tag);});
+  var rn=document.getElementById('usageRecipeName'); if(rn)rn.oninput=function(){usageRecipeName=this.value;};
+  var mgB=document.getElementById('usageManageBtn'); if(mgB)mgB.onclick=function(){usageManageOpen=!usageManageOpen;renderUsage();};
+  var utAdd=document.getElementById('utAdd'); if(utAdd)utAdd.onclick=function(){var nm=((document.getElementById('utNewName')||{}).value||'').trim();if(!nm){alert('Type a name for the new usage type.');return;}var rs=((document.getElementById('utNewReasons')||{}).value||'').split(',').map(function(x){return x.trim();}).filter(Boolean);var a=A();a.set(a.ref(a.db,'usageTypes/'+uid('ut_')),{name:nm,reasons:rs,order:usageTypesList().length+1}).then(function(){}).catch(function(e){alert('Could not add: '+((e&&e.code)||e));});};
+  var utSave=document.getElementById('utSave'); if(utSave)utSave.onclick=function(){var a=A();var ups={};root.querySelectorAll('[data-utname]').forEach(function(i){var id=i.getAttribute('data-utname');var nm=(i.value||'').trim();var rsEl=root.querySelector('[data-utreasons="'+id+'"]');var rs=((rsEl&&rsEl.value)||'').split(',').map(function(x){return x.trim();}).filter(Boolean);if(nm)ups[id]={name:nm,reasons:rs,order:(usageTypesMap[id]&&usageTypesMap[id].order)||0};});a.update(a.ref(a.db,'usageTypes'),ups).then(function(){alert('Usage types saved.');}).catch(function(e){alert('Could not save: '+((e&&e.code)||e));});};
+  root.querySelectorAll('[data-utdel]').forEach(function(b){b.onclick=function(){if(usageTypesList().length<=1){alert('Keep at least one usage type.');return;}var id=b.getAttribute('data-utdel');if(!confirm('Delete this usage type? Past records keep their figures on the P&L.'))return;var a=A();a.remove(a.ref(a.db,'usageTypes/'+id));};});
+  var rec=document.getElementById('usageRecord'); if(rec)rec.onclick=function(){['menuaddon','base','addon','cons'].forEach(function(tag){captureRow(tag);});captureRecipeName();recordUsage();};
   root.querySelectorAll('[data-urev]').forEach(function(b){b.onclick=function(){reverseUsage(b.getAttribute('data-urev'));};});
+  root.querySelectorAll('[data-uprint]').forEach(function(b){b.onclick=function(){printUsageRecipe(b.getAttribute('data-uprint'));};});
   var exb=document.getElementById('usageExport'); if(exb)exb.onclick=exportUsageXlsx;
 }
 function recordUsage(){
   var kind=usageKind; var a=A();
   var recipient=((document.getElementById('usageRecipient')||{}).value||'').trim();
-  var reason = kind==='staff' ? ((document.getElementById('usageReason')||{}).value||'') : ((document.getElementById('usageRnote')||{}).value||'').trim();
-  var category = kind==='rnd' ? ((document.getElementById('usageCat')||{}).value||'') : '';
-  var usage={},itemKey=null,size=null,qty=1,adhocLines=null,label='',optLabels=null;
+  var reason = ((document.getElementById('usageReason')||{}).value||'');
+  var note = ((document.getElementById('usageRnote')||{}).value||'').trim();
+  var category = '';
+  function mkLines(tag){return (usageRows[tag]||[]).filter(function(r){return r.ing&&Number(r.qty);}).map(function(r){var q=Number(r.qty)||0;var nm=(inventoryMap[r.ing]&&inventoryMap[r.ing].name)||r.ing;return {ing:r.ing,name:nm,qty:q,unit:ingUnit(r.ing),cost:Math.round(q*ingCost(r.ing)*100)/100};});}
+  var usage={},itemKey=null,size=null,qty=1,adhocLines=null,label='',addonLines=null,sections=null,recipeName=null;
   if(usageAdhoc){
-    adhocLines=usageAdhocRows.filter(function(r){return r.ing&&Number(r.qty);}).map(function(r){return {ing:r.ing,qty:Number(r.qty)||0,unit:ingUnit(r.ing)};});
-    if(!adhocLines.length){alert('Add at least one ad-hoc ingredient with a quantity.');return;}
-    adhocLines.forEach(function(r){usage[r.ing]=(usage[r.ing]||0)+r.qty;});
-    label='Ad-hoc ('+adhocLines.length+' ingredient'+(adhocLines.length>1?'s':'')+')';
+    recipeName=(usageRecipeName||'').trim();
+    if(!recipeName){alert('Give the experimental recipe a name first.');return;}
+    var baseL=mkLines('base'),addL=mkLines('addon'),consL=mkLines('cons');
+    var all=baseL.concat(addL).concat(consL);
+    if(!all.length){alert('Add at least one ingredient (base, add-on, or consumable) with a quantity.');return;}
+    all.forEach(function(r){usage[r.ing]=(usage[r.ing]||0)+r.qty;});
+    sections={base:baseL,addon:addL,cons:consL};
+    label=recipeName;
   } else {
     itemKey=(document.getElementById('usageItem')||{}).value; size=(document.getElementById('usageSize')||{}).value||'M'; qty=Number((document.getElementById('usageQty')||{}).value)||1;
     if(!itemKey){alert('Choose a menu item.');return;}
-    optLabels=[]; document.querySelectorAll('#usageOptBox [data-uopt]:checked').forEach(function(c){optLabels.push(c.value);});
-    usage=computeUsage([{itemKey:itemKey,size:size,qty:qty,optLabels:optLabels}]);
-    if(!Object.keys(usage).length){alert('That item has no recipe yet — add one in Recipes first.');return;}
-    label=(A().menuItemsMap[itemKey]?A().menuItemsMap[itemKey].name:itemKey)+' ('+size+') ×'+qty+(optLabels.length?' + '+optLabels.join(', '):'');
+    usage=computeUsage([{itemKey:itemKey,size:size,qty:qty}]);
+    addonLines=mkLines('menuaddon');
+    addonLines.forEach(function(r){usage[r.ing]=(usage[r.ing]||0)+r.qty;});
+    if(!Object.keys(usage).length){alert('That item has no recipe yet and no add-ons — add a recipe in Recipes or add an add-on ingredient.');return;}
+    label=(A().menuItemsMap[itemKey]?A().menuItemsMap[itemKey].name:itemKey)+' ('+size+') ×'+qty+(addonLines.length?' + '+addonLines.map(function(l){return l.name+' '+l.qty+l.unit;}).join(', '):'');
   }
   var cost=usageCost(usage);
   var acct=(window.__posShift&&window.__posShift.staff)||'Admin';
   var id=uid('use_');
   applyUsageToStock(usage,-1);
-  a.set(a.ref(a.db,'internalUsage/'+id),{kind:kind,category:category,itemKey:itemKey,size:size,qty:qty,optLabels:optLabels,adhoc:!!usageAdhoc,adhocLines:adhocLines,label:label,recipient:recipient,reason:reason,recordingAccount:acct,ts:Date.now(),usage:usage,cost:cost,reversed:false});
-  if(window.__posLog)window.__posLog(kind==='rnd'?'rnd-usage':'staff-usage',label,peso(cost));
-  usageAdhocRows=[]; renderUsage();
-  alert('Recorded. Stock deducted; '+peso(cost)+' logged to '+(kind==='rnd'?'R&D / testing':'Staff consumption')+'.');
+  a.set(a.ref(a.db,'internalUsage/'+id),{kind:kind,kindName:usageTypeName(kind),category:category,itemKey:itemKey,size:size,qty:qty,addonLines:addonLines,recipeName:recipeName,sections:sections,adhoc:!!usageAdhoc,label:label,recipient:recipient,reason:reason,note:note,recordingAccount:acct,ts:Date.now(),usage:usage,cost:cost,reversed:false});
+  if(window.__posLog)window.__posLog('usage:'+kind,label,peso(cost));
+  usageRows={menuaddon:[],base:[],addon:[],cons:[]}; usageRecipeName=''; renderUsage();
+  alert('Recorded. Stock deducted; '+peso(cost)+' logged to '+usageTypeName(kind)+'.');
 }
 function reverseUsage(id){
   var u=usageMap[id]; if(!u||u.reversed)return;
@@ -4783,6 +4815,26 @@ function exportUsageXlsx(){
   usageEntries().forEach(function(u){ aoa.push([new Date(u.ts).toLocaleString('en-PH'),u.kind,u.category||'',u.label||u.itemKey||'',u.qty||'',u.recipient||'',u.reason||'',Number(u.cost)||0,u.recordingAccount||'',u.reversed?'yes':'']); });
   var wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'InternalUsage');
   XLSX.writeFile(wb,'accaza-internal-usage-'+new Date().toISOString().slice(0,10)+'.xlsx');
+}
+function printUsageRecipe(id){
+  var u=usageMap[id]; if(!u){alert('Entry not found.');return;}
+  var w=window.open('','_blank','width=380,height=680'); if(!w){alert('Allow pop-ups to view/print the recipe.');return;}
+  function secTbl(title,lines){ if(!lines||!lines.length)return ''; return '<div style="font-weight:bold;margin-top:6px;">'+esc(title)+'</div><table>'+lines.map(function(l){return '<tr><td>'+esc(l.name||l.ing)+'</td><td style="text-align:right;">'+l.qty+' '+esc(l.unit||'')+'</td><td style="text-align:right;">'+peso(l.cost||0)+'</td></tr>';}).join('')+'</table>'; }
+  var title=esc(u.recipeName||u.label||'Internal usage');
+  var body='';
+  if(u.adhoc&&u.sections){ body=secTbl('Base / main ingredients',u.sections.base)+secTbl('Add-on ingredients',u.sections.addon)+secTbl('Consumables',u.sections.cons); }
+  else { body='<div>'+esc(u.label||'')+'</div>'+secTbl('Add-on ingredients',u.addonLines); }
+  w.document.write('<html><head><title>'+title+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2,h3{text-align:center;margin:2px 0;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
+    +'<h2>Accaza — Internal Usage</h2><h3>'+title+'</h3><hr>'
+    +'<div>Date: '+new Date(u.ts).toLocaleString('en-PH')+'</div>'
+    +'<div>Type: '+esc(u.kindName||u.kind||'')+(u.reason?' · '+esc(u.reason):'')+'</div>'
+    +(u.recipient?'<div>Recipient: '+esc(u.recipient)+'</div>':'')
+    +(u.note?'<div>Note: '+esc(u.note)+'</div>':'')
+    +'<hr>'+(body||'<div style="color:#777;">No itemized ingredients recorded.</div>')+'<hr>'
+    +'<table><tr><td><b>Total cost</b></td><td style="text-align:right;"><b>'+peso(u.cost||0)+'</b></td></tr></table>'
+    +'<div style="font-size:9px;text-align:center;margin-top:6px;">Internal usage — not a sale. Management record.</div>'
+    +'<div style="text-align:center;margin-top:8px;"><button onclick="window.print()">Print</button></div></body></html>');
+  w.document.close();
 }
 /* ══════════ CHANNEL PRICING (GrabFood / FoodPanda) ══════════ */
 function renderChannelPricing(){
@@ -5506,12 +5558,13 @@ function pad(n){return(n<10?'0':'')+n;}
 function monthKey(ts){var d=new Date(ts);return d.getFullYear()+'-'+pad(d.getMonth()+1);}
 function monthLabel(mk){var p=mk.split('-');return new Date(p[0],p[1]-1,1).toLocaleDateString('en-PH',{month:'long',year:'numeric'});}
 function prevMonthKey(mk){var p=mk.split('-');var d=new Date(p[0],p[1]-1,1);d.setMonth(d.getMonth()-1);return d.getFullYear()+'-'+pad(d.getMonth()+1);}
+function usageNameFor(id){ if(id==='staff')return 'Staff consumption'; if(id==='rnd')return 'R&D / Testing'; var nm=null; Object.keys(usageMap).some(function(k){var u=usageMap[k];if(u&&u.kind===id&&u.kindName){nm=u.kindName;return true;}return false;}); return nm||id; }
 function pnlFor(mk){
   var sales=allOrders().filter(isSale).map(saleFields).filter(function(s){return monthKey(s.ts)===mk;});
   var revenue=sales.reduce(function(s,x){return s+x.net;},0);
   var cogs=0,uncovered=0;sales.forEach(function(x){if(x.lineItems){var r=orderCOGS(x.o);cogs+=r.cost;if(!r.covered)uncovered++;}else uncovered++;});
   var variance=0;Object.keys(adjMap).forEach(function(k){var adj=adjMap[k];if(adj&&monthKey(adj.ts)===mk)variance+=Number(adj.varianceValue)||0;});
-  var staffUse=0,rndUse=0;Object.keys(usageMap).forEach(function(k){var u=usageMap[k];if(!u||u.reversed||monthKey(u.ts)!==mk)return;if(u.kind==='rnd')rndUse+=Number(u.cost)||0;else staffUse+=Number(u.cost)||0;});
+  var usageByType={},totalUsage=0;Object.keys(usageMap).forEach(function(k){var u=usageMap[k];if(!u||u.reversed||monthKey(u.ts)!==mk)return;var t=u.kind||'staff';var c=Number(u.cost)||0;usageByType[t]=(usageByType[t]||0)+c;totalUsage+=c;});
   var totalCogs=cogs+variance;
   var gp=revenue-totalCogs;
   var m=monthlyExp[mk]||{};var amounts=m.amounts||{};
@@ -5522,8 +5575,8 @@ function pnlFor(mk){
   sales.forEach(function(x){var o=x.o;if(o&&o.channel&&o.channel!=='instore'){platformCommission+=Number(o.commission)||0;platformGross+=Number(o.grossPlatform||o.subtotal||o.total)||0;}});
   var reconExp=0,reconRev=0,reconBy={};
   Object.keys(payoutsMap).forEach(function(k){var p=payoutsMap[k];if(!p)return;if(monthKey(p.settledAt||p.periodEnd||0)!==mk)return;var allocs=p.allocations||{};Object.keys(allocs).forEach(function(aid){var amt=Number(allocs[aid])||0;if(!amt)return;var acct=varAcctMap[aid]||(DEFAULT_VAR_ACCOUNTS.filter(function(d){return d.id===aid;})[0])||{};reconBy[aid]=(reconBy[aid]||0)+amt;if(acct.type==='revenue')reconRev+=amt;else reconExp+=amt;});});
-  var net=gp-opex-staffUse-rndUse-platformCommission-reconExp+reconRev;
-  return{revenue:revenue,cogs:cogs,variance:variance,totalCogs:totalCogs,gp:gp,margin:revenue>0?gp/revenue*100:0,byItem:byItem,opex:opex,staffUse:staffUse,rndUse:rndUse,platformCommission:platformCommission,platformGross:platformGross,reconExp:reconExp,reconRev:reconRev,reconBy:reconBy,net:net,uncovered:uncovered,tx:sales.length,locked:!!m.locked};
+  var net=gp-opex-totalUsage-platformCommission-reconExp+reconRev;
+  return{revenue:revenue,cogs:cogs,variance:variance,totalCogs:totalCogs,gp:gp,margin:revenue>0?gp/revenue*100:0,byItem:byItem,opex:opex,usageByType:usageByType,totalUsage:totalUsage,platformCommission:platformCommission,platformGross:platformGross,reconExp:reconExp,reconRev:reconRev,reconBy:reconBy,net:net,uncovered:uncovered,tx:sales.length,locked:!!m.locked};
 }
 function itemIdsSorted(){return Object.keys(expItems).sort(function(a,b){return((expItems[a].order||0)-(expItems[b].order||0))||(expItems[a].name||'').localeCompare(expItems[b].name||'');});}
 function varianceDetailHtml(mk){
@@ -5632,8 +5685,7 @@ function renderPnl(){
     +'<tr><td style="color:var(--tl);font-size:0.78rem;">Gross margin</td><td class="r" style="color:var(--tl);">'+(Math.round(cur.margin*10)/10)+'%</td><td class="r" style="color:var(--tl);">'+(Math.round(prev.margin*10)/10)+'%</td><td></td></tr>'
     +'<tr class="head"><td>Overhead expenses</td><td class="r">'+peso(-cur.opex)+'</td><td class="r">'+peso(-prev.opex)+'</td><td></td></tr>'
     +oveRows
-    +vrow('Staff consumption',-cur.staffUse,-prev.staffUse)
-    +vrow('R&D / testing',-cur.rndUse,-prev.rndUse)
+    +(function(){var ids={};Object.keys(cur.usageByType||{}).forEach(function(i){ids[i]=1;});Object.keys(prev.usageByType||{}).forEach(function(i){ids[i]=1;});return Object.keys(ids).sort().map(function(i){return vrow(usageNameFor(i),-((cur.usageByType||{})[i]||0),-((prev.usageByType||{})[i]||0));}).join('');})()
     +((cur.platformCommission||prev.platformCommission)?vrow('Platform commission (Grab/Panda)',-cur.platformCommission,-prev.platformCommission):'')
     +(function(){var accs=varAccounts();var out='';accs.forEach(function(ac){var c=(cur.reconBy[ac.id]||0),p=(prev.reconBy[ac.id]||0);if(!c&&!p)return;var sign=ac.type==='revenue'?1:-1;out+=vrow('Payout: '+ac.name,sign*c,sign*p);});return out;})()
     +vrow('Net profit',cur.net,prev.net,true)
