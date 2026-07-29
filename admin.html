@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v78</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v79</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4682,6 +4682,14 @@ function usageCost(usage){var c=0;Object.keys(usage||{}).forEach(function(ing){c
 function applyUsageToStock(usage,sign){var a=A();Object.keys(usage||{}).forEach(function(ing){a.runTransaction(a.ref(a.db,'inventory/'+ing+'/stock'),function(cur){return (Number(cur)||0)+sign*usage[ing];});});}
 function usageEntries(){return Object.keys(usageMap).map(function(k){return Object.assign({id:k},usageMap[k]);}).sort(function(a,b){return (b.ts||0)-(a.ts||0);});}
 function usageThisMonth(){var now=new Date(),y=now.getFullYear(),m=now.getMonth();return usageEntries().filter(function(u){var d=new Date(u.ts);return d.getFullYear()===y&&d.getMonth()===m;});}
+function usageOptHtml(itemKey){
+  var it=(itemKey&&A().menuItemsMap)?A().menuItemsMap[itemKey]:null;
+  var groups=(it&&A().getItemOptionGroups)?A().getItemOptionGroups(it):[];
+  if(!groups.length)return '<div style="font-size:0.75rem;color:var(--tl);">This item has no add-on options.</div>';
+  return '<span class="pz-lbl">Add-ons used (tick any that were consumed — their ingredients deduct too)</span>'+groups.map(function(g){
+    return '<div style="margin-bottom:0.35rem;"><div style="font-size:0.72rem;color:var(--tl);">'+esc(g.name)+'</div><div style="display:flex;flex-wrap:wrap;gap:0.4rem;">'+(g.choices||[]).map(function(c){return '<label style="font-size:0.8rem;display:inline-flex;align-items:center;gap:0.25rem;border:1px solid var(--cd);border-radius:6px;padding:0.15rem 0.5rem;cursor:pointer;"><input type="checkbox" data-uopt value="'+esc(c.label)+'"/> '+esc(c.label)+'</label>';}).join('')+'</div></div>';
+  }).join('');
+}
 function renderUsage(){
   var root=document.getElementById('usageRoot'); if(!root)return;
   var kind=usageKind;
@@ -4698,9 +4706,9 @@ function renderUsage(){
       var sel='<select class="pz-in" data-uarow="'+ix+'" data-uafield="ing" style="min-width:150px;"><option value="">— ingredient —</option>'+allIng.map(function(i){return '<option value="'+i.id+'"'+(i.id===r.ing?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+')</option>';}).join('')+'</select>';
       return '<tr><td>'+sel+'</td><td><input class="pz-in" type="number" step="any" style="width:90px;" data-uarow="'+ix+'" data-uafield="qty" value="'+(r.qty!=null?r.qty:'')+'" placeholder="qty"/></td><td>'+esc(r.ing?ingUnit(r.ing):'')+'</td><td><button class="pz-btn warn" style="padding:0.2rem 0.45rem;" data-uarem="'+ix+'">✕</button></td></tr>';
     }).join('');
-    sourceBlock='<span class="pz-lbl">Ad-hoc ingredients (for a recipe not on the menu yet)</span><table class="pz-tbl"><tbody>'+(rows||'<tr><td style="color:var(--tl);padding:0.5rem;">No ingredients yet.</td></tr>')+'</tbody></table><button class="pz-btn sec" id="usageAddRow" style="padding:0.3rem 0.7rem;">+ ingredient</button>';
+    sourceBlock='<span class="pz-lbl">Ad-hoc ingredients (for a recipe not on the menu yet)</span><table class="pz-tbl"><thead><tr><th>Ingredient</th><th style="width:90px;">Qty</th><th style="width:80px;">Unit</th><th></th></tr></thead><tbody>'+(rows||'<tr><td style="color:var(--tl);padding:0.5rem;">No ingredients yet.</td></tr>')+'</tbody></table><button class="pz-btn sec" id="usageAddRow" style="padding:0.3rem 0.7rem;">+ ingredient</button>';
   } else {
-    sourceBlock='<div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:end;"><div style="flex:1;min-width:180px;"><span class="pz-lbl">Menu item</span><select class="pz-in" id="usageItem">'+itemOpts+'</select></div><div><span class="pz-lbl">Size</span><select class="pz-in" id="usageSize"><option>S</option><option selected>M</option><option>L</option></select></div><div><span class="pz-lbl">Qty</span><input class="pz-in" id="usageQty" type="number" step="any" value="1" style="width:80px;"/></div></div>';
+    sourceBlock='<div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:end;"><div style="flex:1;min-width:180px;"><span class="pz-lbl">Menu item</span><select class="pz-in" id="usageItem">'+itemOpts+'</select></div><div><span class="pz-lbl">Size</span><select class="pz-in" id="usageSize"><option>S</option><option selected>M</option><option>L</option></select></div><div><span class="pz-lbl">Qty</span><input class="pz-in" id="usageQty" type="number" step="any" value="1" style="width:80px;"/></div></div><div id="usageOptBox" style="margin-top:0.7rem;"></div>';
   }
   var tm=usageThisMonth();
   var staffTot=tm.filter(function(u){return u.kind==='staff'&&!u.reversed;}).reduce(function(s,u){return s+(Number(u.cost)||0);},0);
@@ -4728,6 +4736,8 @@ function renderUsage(){
   var addr=document.getElementById('usageAddRow'); if(addr)addr.onclick=function(){syncAdhoc();usageAdhocRows.push({ing:'',qty:''});renderUsage();};
   root.querySelectorAll('[data-uarem]').forEach(function(b){b.onclick=function(){syncAdhoc();usageAdhocRows.splice(+b.getAttribute('data-uarem'),1);renderUsage();};});
   root.querySelectorAll('select[data-uafield="ing"]').forEach(function(sel){sel.onchange=function(){syncAdhoc();renderUsage();};});
+  var uItem=document.getElementById('usageItem');
+  if(uItem){ var ob=document.getElementById('usageOptBox'); if(ob)ob.innerHTML=usageOptHtml(uItem.value); uItem.onchange=function(){var ob2=document.getElementById('usageOptBox'); if(ob2)ob2.innerHTML=usageOptHtml(this.value);}; }
   var rec=document.getElementById('usageRecord'); if(rec)rec.onclick=function(){syncAdhoc();recordUsage();};
   root.querySelectorAll('[data-urev]').forEach(function(b){b.onclick=function(){reverseUsage(b.getAttribute('data-urev'));};});
   var exb=document.getElementById('usageExport'); if(exb)exb.onclick=exportUsageXlsx;
@@ -4737,24 +4747,25 @@ function recordUsage(){
   var recipient=((document.getElementById('usageRecipient')||{}).value||'').trim();
   var reason = kind==='staff' ? ((document.getElementById('usageReason')||{}).value||'') : ((document.getElementById('usageRnote')||{}).value||'').trim();
   var category = kind==='rnd' ? ((document.getElementById('usageCat')||{}).value||'') : '';
-  var usage={},itemKey=null,size=null,qty=1,adhocLines=null,label='';
+  var usage={},itemKey=null,size=null,qty=1,adhocLines=null,label='',optLabels=null;
   if(usageAdhoc){
-    adhocLines=usageAdhocRows.filter(function(r){return r.ing&&Number(r.qty);}).map(function(r){return {ing:r.ing,qty:Number(r.qty)||0};});
+    adhocLines=usageAdhocRows.filter(function(r){return r.ing&&Number(r.qty);}).map(function(r){return {ing:r.ing,qty:Number(r.qty)||0,unit:ingUnit(r.ing)};});
     if(!adhocLines.length){alert('Add at least one ad-hoc ingredient with a quantity.');return;}
     adhocLines.forEach(function(r){usage[r.ing]=(usage[r.ing]||0)+r.qty;});
     label='Ad-hoc ('+adhocLines.length+' ingredient'+(adhocLines.length>1?'s':'')+')';
   } else {
     itemKey=(document.getElementById('usageItem')||{}).value; size=(document.getElementById('usageSize')||{}).value||'M'; qty=Number((document.getElementById('usageQty')||{}).value)||1;
     if(!itemKey){alert('Choose a menu item.');return;}
-    usage=computeUsage([{itemKey:itemKey,size:size,qty:qty}]);
+    optLabels=[]; document.querySelectorAll('#usageOptBox [data-uopt]:checked').forEach(function(c){optLabels.push(c.value);});
+    usage=computeUsage([{itemKey:itemKey,size:size,qty:qty,optLabels:optLabels}]);
     if(!Object.keys(usage).length){alert('That item has no recipe yet — add one in Recipes first.');return;}
-    label=(A().menuItemsMap[itemKey]?A().menuItemsMap[itemKey].name:itemKey)+' ('+size+') ×'+qty;
+    label=(A().menuItemsMap[itemKey]?A().menuItemsMap[itemKey].name:itemKey)+' ('+size+') ×'+qty+(optLabels.length?' + '+optLabels.join(', '):'');
   }
   var cost=usageCost(usage);
   var acct=(window.__posShift&&window.__posShift.staff)||'Admin';
   var id=uid('use_');
   applyUsageToStock(usage,-1);
-  a.set(a.ref(a.db,'internalUsage/'+id),{kind:kind,category:category,itemKey:itemKey,size:size,qty:qty,adhoc:!!usageAdhoc,adhocLines:adhocLines,label:label,recipient:recipient,reason:reason,recordingAccount:acct,ts:Date.now(),usage:usage,cost:cost,reversed:false});
+  a.set(a.ref(a.db,'internalUsage/'+id),{kind:kind,category:category,itemKey:itemKey,size:size,qty:qty,optLabels:optLabels,adhoc:!!usageAdhoc,adhocLines:adhocLines,label:label,recipient:recipient,reason:reason,recordingAccount:acct,ts:Date.now(),usage:usage,cost:cost,reversed:false});
   if(window.__posLog)window.__posLog(kind==='rnd'?'rnd-usage':'staff-usage',label,peso(cost));
   usageAdhocRows=[]; renderUsage();
   alert('Recorded. Stock deducted; '+peso(cost)+' logged to '+(kind==='rnd'?'R&D / testing':'Staff consumption')+'.');
