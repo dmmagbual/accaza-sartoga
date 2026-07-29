@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v90</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v92</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4476,10 +4476,47 @@ function importInventoryXlsx(file){
 }
 function receiveStock(id){
   var i=inventoryMap[id]; if(!i)return;
-  var q=prompt('Add stock for '+i.name+' (current '+num(i.stock)+' '+(i.unit||')')+').\nEnter quantity received:'); if(q==null)return;
-  q=Number(q); if(!q){return;}
-  var a=A();a.runTransaction(a.ref(a.db,'inventory/'+id+'/stock'),function(cur){return (Number(cur)||0)+q;});
-  a.update(a.ref(a.db,'inventory/'+id),{updatedAt:Date.now()});
+  var before=Number(i.stock)||0, oldCost=Number(i.cost)||0, unit=i.unit||'';
+  var cf=window.__cf; var accs=(cf&&cf.accounts&&cf.accounts())||[];
+  var accOpts=accs.map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.name)+' ('+peso(x.balance)+')</option>';}).join('');
+  var mask=document.createElement('div'); mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
+  mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:460px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
+    +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Receive stock — '+esc(i.name)+'</div>'
+    +'<p class="pz-sub" style="margin:0.2rem 0 0.7rem;">On hand: <b>'+num(before)+' '+esc(unit)+'</b> · current cost '+peso(oldCost)+' / '+esc(unit||'unit')+'</p>'
+    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;"><div><span class="pz-lbl">Quantity received ('+esc(unit||'units')+')</span><input class="pz-in" id="rcQty" type="number" step="any" style="width:120px;"/></div><div><span class="pz-lbl">Unit cost ₱ (per '+esc(unit||'unit')+')</span><input class="pz-in" id="rcCost" type="number" step="any" value="'+(oldCost||'')+'" style="width:120px;"/></div></div>'
+    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div style="flex:1;min-width:140px;"><span class="pz-lbl">Supplier</span><input class="pz-in" id="rcSup" placeholder="supplier name"/></div><div><span class="pz-lbl">Invoice / ref</span><input class="pz-in" id="rcRef" style="width:130px;"/></div></div>'
+    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div><span class="pz-lbl">Date</span><input class="pz-in" id="rcDate" type="date" value="'+new Date().toISOString().slice(0,10)+'"/></div><div style="flex:1;min-width:140px;"><span class="pz-lbl">Received by</span><input class="pz-in" id="rcBy" value="'+esc((window.__posShift&&window.__posShift.staff)||'Admin')+'"/></div></div>'
+    +'<label style="display:block;font-size:0.85rem;margin-top:0.6rem;cursor:pointer;"><input type="checkbox" id="rcAvg" checked/> Update item cost to weighted average</label>'
+    +'<div style="margin-top:0.6rem;border-top:1px solid var(--cd);padding-top:0.5rem;"><span class="pz-lbl">How was it paid?</span>'
+      +'<label style="display:block;font-size:0.85rem;cursor:pointer;"><input type="radio" name="rcPay" value="none" checked/> Just receive (no money entry)</label>'
+      +'<label style="display:block;font-size:0.85rem;cursor:pointer;"><input type="radio" name="rcPay" value="paid"'+(accs.length?'':' disabled')+'/> Paid now from '+(accs.length?('<select class="pz-in" id="rcAcct" style="width:auto;display:inline-block;">'+accOpts+'</select>'):'<span style="color:var(--tl);">(add a bank/e-wallet account in Cash Flow first)</span>')+'</label>'
+      +'<label style="display:block;font-size:0.85rem;cursor:pointer;"><input type="radio" name="rcPay" value="account"/> On account — creates a Payable, due <input class="pz-in" id="rcDue" type="date" style="width:auto;display:inline-block;"/></label>'
+    +'</div>'
+    +'<div id="rcPrev" style="margin-top:0.6rem;font-size:0.82rem;color:var(--tm);"></div>'
+    +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="rcOk">Receive</button><button class="pz-btn sec" id="rcCancel">Cancel</button></div></div>';
+  document.body.appendChild(mask);
+  function close(){document.body.removeChild(mask);}
+  function prev(){var q=Number(mask.querySelector('#rcQty').value)||0;var c=Number(mask.querySelector('#rcCost').value)||0;var tot=Math.round(q*c*100)/100;var navg=(before+q>0)?((before*oldCost+q*c)/(before+q)):c;mask.querySelector('#rcPrev').innerHTML=q?('New stock: <b>'+num(before+q)+' '+esc(unit)+'</b> · total '+peso(tot)+((mask.querySelector('#rcAvg').checked&&c>0)?(' · new avg cost '+peso(Math.round(navg*100)/100)+' / '+esc(unit||'unit')):'')):'';}
+  mask.querySelector('#rcQty').oninput=prev; mask.querySelector('#rcCost').oninput=prev; mask.querySelector('#rcAvg').onchange=prev;
+  mask.querySelector('#rcCancel').onclick=close;
+  mask.querySelector('#rcOk').onclick=function(){
+    var q=Number(mask.querySelector('#rcQty').value)||0; if(!(q>0)){alert('Enter the quantity received.');return;}
+    var c=Number(mask.querySelector('#rcCost').value)||0; var tot=Math.round(q*c*100)/100;
+    var sup=(mask.querySelector('#rcSup').value||'').trim(); var ref=(mask.querySelector('#rcRef').value||'').trim();
+    var date=mask.querySelector('#rcDate').value||new Date().toISOString().slice(0,10); var by=(mask.querySelector('#rcBy').value||'').trim();
+    var pay=(mask.querySelector('input[name=rcPay]:checked')||{}).value||'none';
+    var a=A(); var rid=uid('rcpt_'); var payAcct='', payableId='';
+    if(pay==='paid'){ var accEl=mask.querySelector('#rcAcct'); payAcct=accEl?accEl.value:''; if(!payAcct){alert('Pick an account.');return;} }
+    a.runTransaction(a.ref(a.db,'inventory/'+id+'/stock'),function(cur){return (Number(cur)||0)+q;});
+    var invUpd={updatedAt:Date.now()};
+    if(mask.querySelector('#rcAvg').checked && c>0 && (before+q)>0){ invUpd.cost=Math.round(((before*oldCost+q*c)/(before+q))*100)/100; }
+    a.update(a.ref(a.db,'inventory/'+id),invUpd);
+    if(pay==='paid'){ if(window.__cf&&window.__cf.postOut)window.__cf.postOut({date:date,accountId:payAcct,amount:tot,party:sup||i.name,ref:ref||i.name,category:'Purchases',source:'purchase',linkId:rid,note:'Received '+num(q)+' '+unit+' '+i.name}); }
+    else if(pay==='account'){ var due=mask.querySelector('#rcDue').value||''; if(window.__cf&&window.__cf.addPayable)payableId=window.__cf.addPayable({party:sup||'Supplier',type:'inventory',amount:tot,date:date,due:due,ref:ref||i.name}); }
+    a.set(a.ref(a.db,'stockReceipts/'+rid),{ing:id,name:i.name,unit:unit,qty:q,unitCost:c,total:tot,supplier:sup,ref:ref,date:date,receivedBy:by,payMode:pay,accountId:payAcct,payableId:payableId,ts:Date.now()});
+    if(window.__posLog)window.__posLog('stock-receive',i.name,num(q)+' '+unit+' · '+peso(tot)+(pay==='paid'?' · paid':pay==='account'?' · on account':''));
+    close();
+  };
 }
 function editIngredient(id){
   var i=inventoryMap[id]; if(!i)return;
@@ -6596,13 +6633,13 @@ var cfFrom=null,cfTo=null,cfAcctFilter='all';
 var CF_CATS=['Sales deposit','Platform payout','Purchases','Supplier payment','Rent','Utilities','Salaries','Owner draw','Capital in','Bank charges','AR collection','AP payment','Transfer','Other'];
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
 function init(){var a=A();
-  a.onValue(a.ref(a.db,'cfAccounts'),function(s){accountsMap=s.val()||{};if(isTab('cashflow'))renderCashflow();if(isTab('receivables'))renderReceivables();if(isTab('payables'))renderPayables();});
+  a.onValue(a.ref(a.db,'cfAccounts'),function(s){accountsMap=s.val()||{};reconcileAuto();if(isTab('cashflow'))renderCashflow();if(isTab('receivables'))renderReceivables();if(isTab('payables'))renderPayables();});
   a.onValue(a.ref(a.db,'cfLedger'),function(s){ledgerMap=s.val()||{};if(isTab('cashflow'))renderCashflow();});
   a.onValue(a.ref(a.db,'receivables'),function(s){arMap=s.val()||{};if(isTab('receivables'))renderReceivables();});
   a.onValue(a.ref(a.db,'payables'),function(s){apMap=s.val()||{};if(isTab('payables'))renderPayables();});
   a.onValue(a.ref(a.db,'platformPayouts'),function(s){payoutsMapCF=s.val()||{};if(isTab('cashflow'))renderCashflow();});
-  a.onValue(a.ref(a.db,'orders'),function(s){ordersMapCF=s.val()||{};if(isTab('receivables'))renderReceivables();});
-  a.onValue(a.ref(a.db,'archivedOrders'),function(s){archMapCF=s.val()||{};if(isTab('receivables'))renderReceivables();});
+  a.onValue(a.ref(a.db,'orders'),function(s){ordersMapCF=s.val()||{};reconcileAuto();if(isTab('receivables'))renderReceivables();if(isTab('cashflow'))renderCashflow();});
+  a.onValue(a.ref(a.db,'archivedOrders'),function(s){archMapCF=s.val()||{};reconcileAuto();if(isTab('receivables'))renderReceivables();});
 }
 var _prev=window.posSwitchTab;
 window.posSwitchTab=function(name,btn){ if(_prev)_prev(name,btn); else if(window.switchTab)window.switchTab(name,btn); if(name==='cashflow')renderCashflow(); if(name==='receivables')renderReceivables(); if(name==='payables')renderPayables(); };
@@ -6611,6 +6648,27 @@ function acctName(id){return (accountsMap[id]&&accountsMap[id].name)||'—';}
 function ledgerArr(){return Object.keys(ledgerMap).map(function(k){return Object.assign({id:k},ledgerMap[k]);});}
 function acctBalance(id){var b=Number((accountsMap[id]||{}).opening)||0;ledgerArr().forEach(function(e){if(e.accountId!==id)return;b+=(e.dir==='in'?1:-1)*(Number(e.amount)||0);});return Math.round(b*100)/100;}
 function postLedger(o,cb){var a=A();var lid=uid('lg_');a.set(a.ref(a.db,'cfLedger/'+lid),Object.assign({ts:Date.now(),by:(window.__posShift&&window.__posShift.staff)||'Admin'},o)).then(function(){if(cb)cb(lid);}).catch(function(e){alert('Could not post: '+((e&&e.code)||e)+'. If PERMISSION_DENIED, re-publish the database rules.');});return lid;}
+function isCashM(m){return String(m||'').toLowerCase()==='cash';}
+function methodAcct(m){var mm=String(m||'').toLowerCase();var found=null;accList().forEach(function(x){(x.feedMethods||[]).forEach(function(z){if(String(z).toLowerCase()===mm)found=x.id;});});return found;}
+function orderPays(o){return (o.payments&&o.payments.length)?o.payments:[{method:o.payment,amount:o.total}];}
+function unmappedMethods(){var seen={};[ordersMapCF,archMapCF].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k];if(!o||o.source!=='pos'||(o.channel&&o.channel!=='instore'))return;orderPays(o).forEach(function(p){if(!isCashM(p.method)&&!methodAcct(p.method))seen[p.method]=1;});});});return Object.keys(seen);}
+function reconcileAuto(){
+  var a=A();if(!a)return;
+  if(!accList().some(function(x){return (x.feedMethods||[]).length;}))return;
+  var desired={};
+  function consider(o,oid){
+    if(!o||o.source!=='pos'||(o.channel&&o.channel!=='instore')||o.paymentStatus==='pending'||o.voided)return;
+    var firstAcct=null;
+    orderPays(o).forEach(function(p){if(isCashM(p.method))return;var acct=methodAcct(p.method);if(!acct)return;if(!firstAcct)firstAcct=acct;var mslug=String(p.method).replace(/[^A-Za-z0-9]/g,'');var key='cfauto_'+oid+'_'+mslug;desired[key]={date:dateFromTs(o.timestamp),accountId:acct,dir:'in',category:'Sale · '+p.method,amount:Math.round((Number(p.amount)||0)*100)/100,party:o.name||'Walk-in',ref:oid,source:'sale',linkId:oid,method:p.method,auto:true};});
+    var refund=Number(o.refundAmount)||0;
+    if(refund>0&&firstAcct){var rkey='cfrefund_'+oid;desired[rkey]={date:dateFromTs(o.refundedAt||o.timestamp),accountId:firstAcct,dir:'out',category:'Refund',amount:Math.round(refund*100)/100,party:o.name||'',ref:oid,source:'refund',linkId:oid,auto:true};}
+  }
+  Object.keys(ordersMapCF).forEach(function(k){consider(ordersMapCF[k],(ordersMapCF[k]&&ordersMapCF[k].id)||k);});
+  Object.keys(archMapCF).forEach(function(k){consider(archMapCF[k],(archMapCF[k]&&archMapCF[k].id)||k);});
+  Object.keys(desired).forEach(function(key){var d=desired[key];var cur=ledgerMap[key];if(!cur||Number(cur.amount)!==d.amount||cur.accountId!==d.accountId||cur.dir!==d.dir||cur.date!==d.date){a.set(a.ref(a.db,'cfLedger/'+key),Object.assign({ts:Date.now(),by:'auto'},d));}});
+  Object.keys(ledgerMap).forEach(function(key){var e=ledgerMap[key];if(!e||!e.auto||(e.source!=='sale'&&e.source!=='refund'))return;if(!desired[key])a.remove(a.ref(a.db,'cfLedger/'+key));});
+}
+function dateFromTs(ts){var d=new Date(ts||Date.now());return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
 function cfPick(opts,cb){
   if(!accList().length){alert('Add a bank / e-wallet account first in the Cash Flow tab.');return;}
   var mask=document.createElement('div');mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
@@ -6639,7 +6697,7 @@ function renderCashflow(){
   var led=ledgerArr().filter(function(e){var d=e.date||'';return (cfAcctFilter==='all'||e.accountId===cfAcctFilter)&&(!cfFrom||d>=cfFrom)&&(!cfTo||d<=cfTo);}).sort(function(a,b){return (b.date||'').localeCompare(a.date||'')||(b.ts||0)-(a.ts||0);});
   var tin=led.filter(function(e){return e.dir==='in';}).reduce(function(s,e){return s+(Number(e.amount)||0);},0);
   var tout=led.filter(function(e){return e.dir==='out';}).reduce(function(s,e){return s+(Number(e.amount)||0);},0);
-  var ledRows=led.length?led.slice(0,300).map(function(e){return '<tr><td>'+esc(e.date||'')+'</td><td>'+esc(acctName(e.accountId))+'</td><td>'+esc(e.category||'')+(e.party?' · '+esc(e.party):'')+(e.ref?' <span style="color:var(--tl);">['+esc(e.ref)+']</span>':'')+'</td><td class="r" style="color:#2a9d5c;">'+(e.dir==='in'?peso(e.amount):'')+'</td><td class="r" style="color:#c0392b;">'+(e.dir==='out'?peso(e.amount):'')+'</td><td class="r"><button class="pz-btn warn" data-ldel="'+esc(e.id)+'" style="padding:0.1rem 0.4rem;">✕</button></td></tr>';}).join(''):'<tr><td colspan="6" class="az-note" style="padding:0.6rem;">No movements in this view.</td></tr>';
+  var ledRows=led.length?led.slice(0,300).map(function(e){var act=(e.auto&&(e.source==='sale'||e.source==='refund'))?'<span style="font-size:0.68rem;color:var(--tl);">auto</span>':'<button class="pz-btn warn" data-ldel="'+esc(e.id)+'" style="padding:0.1rem 0.4rem;">✕</button>';return '<tr><td>'+esc(e.date||'')+'</td><td>'+esc(acctName(e.accountId))+'</td><td>'+esc(e.category||'')+(e.party?' · '+esc(e.party):'')+(e.ref?' <span style="color:var(--tl);">['+esc(e.ref)+']</span>':'')+'</td><td class="r" style="color:#2a9d5c;">'+(e.dir==='in'?peso(e.amount):'')+'</td><td class="r" style="color:#c0392b;">'+(e.dir==='out'?peso(e.amount):'')+'</td><td class="r">'+act+'</td></tr>';}).join(''):'<tr><td colspan="6" class="az-note" style="padding:0.6rem;">No movements in this view.</td></tr>';
   var acctFilterOpts='<option value="all"'+(cfAcctFilter==='all'?' selected':'')+'>All accounts</option>'+accs.map(function(x){return '<option value="'+x.id+'"'+(cfAcctFilter===x.id?' selected':'')+'>'+esc(x.name)+'</option>';}).join('');
   var acctSelOpts=accs.map(function(x){return '<option value="'+x.id+'">'+esc(x.name)+'</option>';}).join('');
   var catOpts=CF_CATS.map(function(c){return '<option>'+esc(c)+'</option>';}).join('');
@@ -6661,9 +6719,10 @@ function renderCashflow(){
     +'</div>'
     +'<div class="az-sec" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">Movements <div style="display:flex;gap:0.4rem;align-items:center;font-weight:400;font-size:0.78rem;"><select class="pz-in" id="cfFAcct" style="width:auto;">'+acctFilterOpts+'</select><input class="pz-in" id="cfFFrom" type="date" value="'+(cfFrom||'')+'" style="width:auto;"/><input class="pz-in" id="cfFTo" type="date" value="'+(cfTo||'')+'" style="width:auto;"/><button class="pz-btn sec" id="cfExport" style="padding:0.2rem 0.6rem;">⬇ Excel</button></div></div>'
     +'<div class="pz-card"><div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0.5rem;font-weight:600;"><span style="color:#2a9d5c;">In '+peso(tin)+'</span><span style="color:#c0392b;">Out '+peso(tout)+'</span><span>Net '+peso(tin-tout)+'</span></div><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Date</th><th>Account</th><th>Category / party</th><th class="r">In</th><th class="r">Out</th><th></th></tr></thead><tbody>'+ledRows+'</tbody></table></div></div>'
-    +'<div class="az-sec">Accounts &amp; opening balances</div><div class="pz-card"><table class="pz-tbl"><thead><tr><th>Account</th><th>Type</th><th class="r">Opening</th><th>Opened</th><th class="r">Current</th><th></th></tr></thead><tbody>'
-      +(accs.length?accs.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td>'+esc(x.type||'bank')+'</td><td class="r">'+peso(x.opening||0)+'</td><td>'+esc(x.openingDate||'')+'</td><td class="r">'+peso(acctBalance(x.id))+'</td><td class="r"><button class="pz-btn warn" data-acctdel="'+esc(x.id)+'" style="padding:0.1rem 0.4rem;">✕</button></td></tr>';}).join(''):'<tr><td colspan="6" class="az-note" style="padding:0.5rem;">No accounts yet.</td></tr>')
+    +'<div class="az-sec">Accounts &amp; opening balances</div><div class="pz-card"><table class="pz-tbl"><thead><tr><th>Account</th><th>Type</th><th class="r">Opening</th><th>Opened</th><th>Auto-post methods</th><th class="r">Current</th><th></th></tr></thead><tbody>'
+      +(accs.length?accs.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td>'+esc(x.type||'bank')+'</td><td class="r">'+peso(x.opening||0)+'</td><td>'+esc(x.openingDate||'')+'</td><td><input class="pz-in" data-feed="'+esc(x.id)+'" value="'+esc((x.feedMethods||[]).join(', '))+'" placeholder="e.g. GCash, Bank Transfer" style="min-width:150px;font-size:0.78rem;"/></td><td class="r">'+peso(acctBalance(x.id))+'</td><td class="r"><button class="pz-btn warn" data-acctdel="'+esc(x.id)+'" style="padding:0.1rem 0.4rem;">✕</button></td></tr>';}).join(''):'<tr><td colspan="7" class="az-note" style="padding:0.5rem;">No accounts yet.</td></tr>')
       +'</tbody></table>'
+      +'<div class="az-note" style="margin-top:0.4rem;">“Auto-post methods” = which POS payment methods deposit into this account. A GCash/bank sale (once verified) then posts here automatically, and refunds reverse. '+(function(){var u=unmappedMethods();return u.length?('<b style="color:#8a6d1b;">Unmapped non-cash methods seen in sales: '+esc(u.join(', '))+' — map them to an account.</b>'):'';})()+'</div>'
       +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:end;margin-top:0.6rem;"><div><span class="pz-lbl">Account name</span><input class="pz-in" id="naName" placeholder="e.g. BPI / GCash"/></div><div><span class="pz-lbl">Type</span><select class="pz-in" id="naType"><option value="bank">bank</option><option value="ewallet">e-wallet</option></select></div><div><span class="pz-lbl">Opening balance ₱</span><input class="pz-in" id="naOpen" type="number" step="any" style="width:120px;"/></div><div><span class="pz-lbl">As of</span><input class="pz-in" id="naDate" type="date" value="'+todayStr()+'"/></div><button class="pz-btn ok" id="naAdd">+ Add account</button></div>'
     +'</div>';
   root.innerHTML=html;
@@ -6676,6 +6735,7 @@ function renderCashflow(){
   root.querySelectorAll('[data-ldel]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-ldel');var e=ledgerMap[id];if(!confirm('Delete this movement?'+((e&&e.transferId)?' (only this side of the transfer is removed.)':'')))return;A().remove(A().ref(A().db,'cfLedger/'+id));};});
   root.querySelectorAll('[data-acctdel]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-acctdel');if(ledgerArr().some(function(e){return e.accountId===id;})){alert('This account has movements — delete them first.');return;}if(!confirm('Delete this account?'))return;A().remove(A().ref(A().db,'cfAccounts/'+id));};});
   var na=document.getElementById('naAdd');if(na)na.onclick=function(){var nm=(document.getElementById('naName').value||'').trim();if(!nm){alert('Account name?');return;}A().set(A().ref(A().db,'cfAccounts/'+uid('acc_')),{name:nm,type:document.getElementById('naType').value,opening:Number(document.getElementById('naOpen').value)||0,openingDate:document.getElementById('naDate').value||todayStr(),order:accList().length,ts:Date.now()}).catch(function(e){alert('Could not add: '+((e&&e.code)||e));});};
+  root.querySelectorAll('[data-feed]').forEach(function(inp){inp.onchange=function(){var id=inp.getAttribute('data-feed');var arr=(inp.value||'').split(',').map(function(s){return s.trim();}).filter(Boolean);A().update(A().ref(A().db,'cfAccounts/'+id),{feedMethods:arr});};});
   var ex=document.getElementById('cfExport');if(ex)ex.onclick=cfExport;
 }
 function renderReceivables(){
@@ -6713,6 +6773,12 @@ function renderPayables(){
   root.querySelectorAll('[data-appay]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-appay');var ap=apMap[id];if(!ap)return;cfPick({title:'Pay '+ap.party,amount:ap.amount,note:'AP '+ap.party},function(r){var lid=postLedger({date:r.date,accountId:r.accountId,dir:'out',category:'AP payment',amount:r.amount,party:ap.party,ref:ap.ref||'',source:'ap',linkId:id,note:r.note});A().update(A().ref(A().db,'payables/'+id),{status:'paid',paidAt:Date.now(),paidLedgerId:lid,accountId:r.accountId});});};});
   root.querySelectorAll('[data-apdel]').forEach(function(b){b.onclick=function(){if(!confirm('Delete this payable?'))return;A().remove(A().ref(A().db,'payables/'+b.getAttribute('data-apdel')));};});
 }
+window.__cf={
+  hasAccounts:function(){return accList().length>0;},
+  accounts:function(){return accList().map(function(x){return {id:x.id,name:x.name,type:x.type,balance:acctBalance(x.id)};});},
+  postOut:function(o){return postLedger({date:o.date||todayStr(),accountId:o.accountId,dir:'out',category:o.category||'Purchases',amount:Math.round((Number(o.amount)||0)*100)/100,party:o.party||'',ref:o.ref||'',source:o.source||'purchase',linkId:o.linkId||'',note:o.note||''});},
+  addPayable:function(o){var a=A();var id=uid('ap_');a.set(a.ref(a.db,'payables/'+id),{party:o.party||'',type:o.type||'inventory',amount:Math.round((Number(o.amount)||0)*100)/100,date:o.date||todayStr(),due:o.due||'',ref:o.ref||'',status:'open',ts:Date.now()});return id;}
+};
 })();
 </script>
 </body>
