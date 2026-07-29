@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v81</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v82</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4824,13 +4824,17 @@ function printUsageRecipe(id){
   var body='';
   if(u.adhoc&&u.sections){ body=secTbl('Base / main ingredients',u.sections.base)+secTbl('Add-on ingredients',u.sections.addon)+secTbl('Consumables',u.sections.cons); }
   else { body='<div>'+esc(u.label||'')+'</div>'+secTbl('Add-on ingredients',u.addonLines); }
+  // full per-ingredient costing from exactly what was deducted
+  var costRows=Object.keys(u.usage||{}).map(function(ing){var q=Number(u.usage[ing])||0;var inv=inventoryMap[ing]||{};var uc=Number(inv.cost)||0;return {name:inv.name||ing,qty:Math.round(q*1000)/1000,unit:inv.unit||'',unitCost:uc,cost:Math.round(q*uc*100)/100};}).sort(function(a,b){return b.cost-a.cost;});
+  var costTbl=costRows.length?('<div style="font-weight:bold;margin-top:6px;">Ingredient costing (deducted)</div><table><tr style="border-bottom:1px solid #000;"><td>Ingredient</td><td style="text-align:right;">Used</td><td style="text-align:right;">Unit ₱</td><td style="text-align:right;">Cost</td></tr>'+costRows.map(function(l){return '<tr><td>'+esc(l.name)+'</td><td style="text-align:right;">'+l.qty+' '+esc(l.unit)+'</td><td style="text-align:right;">'+peso(l.unitCost)+'</td><td style="text-align:right;">'+peso(l.cost)+'</td></tr>';}).join('')+'</table>'):'';
   w.document.write('<html><head><title>'+title+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2,h3{text-align:center;margin:2px 0;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
     +'<h2>Accaza — Internal Usage</h2><h3>'+title+'</h3><hr>'
     +'<div>Date: '+new Date(u.ts).toLocaleString('en-PH')+'</div>'
     +'<div>Type: '+esc(u.kindName||u.kind||'')+(u.reason?' · '+esc(u.reason):'')+'</div>'
     +(u.recipient?'<div>Recipient: '+esc(u.recipient)+'</div>':'')
     +(u.note?'<div>Note: '+esc(u.note)+'</div>':'')
-    +'<hr>'+(body||'<div style="color:#777;">No itemized ingredients recorded.</div>')+'<hr>'
+    +'<hr>'+(body||'<div style="color:#777;">No itemized ingredients recorded.</div>')
+    +(costTbl?('<hr>'+costTbl):'')+'<hr>'
     +'<table><tr><td><b>Total cost</b></td><td style="text-align:right;"><b>'+peso(u.cost||0)+'</b></td></tr></table>'
     +'<div style="font-size:9px;text-align:center;margin-top:6px;">Internal usage — not a sale. Management record.</div>'
     +'<div style="text-align:center;margin-top:8px;"><button onclick="window.print()">Print</button></div></body></html>');
