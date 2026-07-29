@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v84</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v87</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -5130,7 +5130,7 @@ function renderPosCart(){
       +'<div style="display:flex;justify-content:space-between;font-weight:700;color:var(--bd);font-size:1rem;border-top:1px solid var(--cd);padding-top:0.4rem;"><span>'+(isPlat?'Gross':'Total')+'</span><span id="posTotal">'+peso(sub)+'</span></div>'
     +'</div>'
     +(isPlat
-      ? '<div style="margin-top:0.7rem;border-top:1px solid var(--cd);padding-top:0.6rem;"><span class="pz-lbl">'+esc(chLabel)+' order # (required)</span><input class="pz-in" id="posPlatRef" placeholder="'+(posChannel==='grabfood'?'GrabFood order #':'foodpanda order #')+'"/><div id="posPlatCalc" style="font-size:0.82rem;margin-top:0.5rem;"></div></div>'
+      ? '<div style="margin-top:0.7rem;border-top:1px solid var(--cd);padding-top:0.6rem;"><span class="pz-lbl">'+(posChannel==='grabfood'?'GrabFood order # (GF- is added automatically)':'FoodPanda order code (required)')+'</span>'+(posChannel==='grabfood'?'<div style="display:flex;align-items:center;gap:0.3rem;"><span style="font-weight:700;color:var(--bd);">GF-</span><input class="pz-in" id="posPlatRef" placeholder="e.g. 123456" style="flex:1;"/></div>':'<input class="pz-in" id="posPlatRef" placeholder="e.g. o7km-49a7"/>')+'<div id="posPlatCalc" style="font-size:0.82rem;margin-top:0.5rem;"></div></div>'
       : '<div style="margin-top:0.7rem;display:flex;justify-content:space-between;align-items:center;"><span class="pz-lbl" style="margin:0;">Payment</span><label style="font-size:0.74rem;color:var(--tl);cursor:pointer;"><input type="checkbox" id="posSplitChk"/> Split</label></div>'
         +'<div id="posPaySingle"><select class="pz-in" id="posPay" style="margin-top:0.3rem;">'+posActiveMethods().map(function(m){return '<option value="'+m.name+'">'+m.name+'</option>';}).join('')+'</select>'
           +'<div id="posCashWrap" style="margin-top:0.5rem;">'+(denomTrackingOn()?posDenomPadHtml():'<span class="pz-lbl">Cash tendered ₱</span><input class="pz-in" id="posTender" type="number" step="any" placeholder="0"/><div id="posChange" style="font-size:0.82rem;color:var(--bd);font-weight:600;margin-top:0.3rem;"></div>')+'</div>'
@@ -5219,6 +5219,7 @@ function renderPosCart(){
       if(tot<=0){alert('Add items to the sale first.');return;}
       var pref=(document.getElementById('posPlatRef').value||'').trim();
       if(!pref){alert(chLabel+' order # is required — key in the platform order number.');return;}
+      if(posChannel==='grabfood'&&!/^gf-/i.test(pref)){pref='GF-'+pref;}
       var prate=channelRate(posChannel); var pcomm=Math.round(tot*prate*100)/100; var pnet=Math.round((tot-pcomm)*100)/100;
       chargeSale(sub,tot,null,{channel:posChannel,platformRef:pref,gross:tot,commission:pcomm,commissionRate:prate,net:pnet});
       return;
@@ -5617,6 +5618,8 @@ function varianceDetailHtml(mk){
 /* ══════════ PLATFORM PAYOUT RECONCILIATION ══════════ */
 function poGross(o){return Number(o.grossPlatform||o.subtotal||o.total)||0;}
 function poNet(o){return (o.netPlatform!=null)?(Number(o.netPlatform)||0):(poGross(o)-(Number(o.commission)||0));}
+function refNorm(s){return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');}
+function refEq(a,b){var x=refNorm(a),y=refNorm(b);if(!x||!y)return false;if(x===y)return true;var lo=x.length<y.length?x:y,hi=x.length<y.length?y:x;return lo.length>=5&&hi.slice(-lo.length)===lo;}
 function platEntries(){var out=[];Object.keys(ordersMap).forEach(function(k){var o=ordersMap[k];if(o&&o.source==='pos'&&o.channel&&o.channel!=='instore'&&!o.voided)out.push({key:k,node:'orders',o:o});});Object.keys(archMap).forEach(function(k){var o=archMap[k];if(o&&o.source==='pos'&&o.channel&&o.channel!=='instore'&&!o.voided)out.push({key:k,node:'archivedOrders',o:o});});return out;}
 function poUnsettled(ch){return platEntries().filter(function(e){return e.o.channel===ch&&(e.o.settlementStatus||'unsettled')!=='settled';});}
 function renderPayouts(){
@@ -5632,7 +5635,8 @@ function renderPayouts(){
   var commSum=inRange.reduce(function(s,e){return s+(Number(e.o.commission)||0);},0);
   // receivables (all unsettled, ignoring range)
   var recvCards=PO_CHANNELS.map(function(d){var u=poUnsettled(d.k);var net=u.reduce(function(s,e){return s+poNet(e.o);},0);return '<div style="flex:1;min-width:170px;background:var(--cr);border:1px solid var(--cd);border-radius:8px;padding:0.7rem 0.9rem;"><div style="font-size:0.72rem;color:var(--tl);text-transform:uppercase;letter-spacing:0.05em;">'+esc(d.lbl)+' receivable</div><div style="font-size:1.2rem;font-weight:700;color:var(--bd);">'+peso(net)+'</div><div style="font-size:0.72rem;color:var(--tl);">'+u.length+' unsettled order(s)</div></div>';}).join('');
-  var ordRows=inRange.length?inRange.sort(function(x,y){return (x.o.timestamp||0)-(y.o.timestamp||0);}).map(function(e){var o=e.o;return '<tr><td>'+esc(o.date||'')+'</td><td>'+esc(o.platformRef||o.id||'')+'</td><td class="r">'+peso(poGross(o))+'</td><td class="r">'+peso(Number(o.commission)||0)+'</td><td class="r">'+peso(poNet(o))+'</td></tr>';}).join(''):'<tr><td colspan="5" class="az-note" style="padding:0.7rem;">No unsettled '+esc(chLbl)+' orders in this range.</td></tr>';
+  inRange.sort(function(x,y){return (x.o.timestamp||0)-(y.o.timestamp||0);});
+  var ordRows=inRange.length?inRange.map(function(e,i){var o=e.o;return '<tr><td style="text-align:center;"><input type="checkbox" data-poinc="'+i+'" checked/></td><td>'+esc(o.date||'')+'</td><td>'+esc(o.platformRef||o.id||'')+'</td><td class="r">'+peso(poGross(o))+'</td><td class="r">'+peso(Number(o.commission)||0)+'</td><td class="r">'+peso(poNet(o))+'</td></tr>';}).join(''):'<tr><td colspan="6" class="az-note" style="padding:0.7rem;">No unsettled '+esc(chLbl)+' orders in this range.</td></tr>';
   var allocRows=accs.map(function(ac){return '<tr><td>'+esc(ac.name)+' <span style="font-size:0.7rem;color:var(--tl);">('+ac.type+')</span></td><td style="width:150px;"><input class="pz-in" type="number" step="any" data-alloc="'+esc(ac.id)+'" data-atype="'+ac.type+'" value="" placeholder="0" style="text-align:right;"/></td></tr>';}).join('');
   var hist=Object.keys(payoutsMap).map(function(k){return Object.assign({id:k},payoutsMap[k]);}).filter(function(p){return p.channel===ch;}).sort(function(a,b){return (b.settledAt||0)-(a.settledAt||0);});
   var histRows=hist.length?hist.map(function(p){return '<tr><td>'+esc(new Date(p.settledAt||0).toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'}))+'</td><td class="r">'+peso(p.expectedNet)+'</td><td class="r">'+peso(p.actualPayout)+'</td><td class="r '+((Number(p.variance)||0)<0?'az-down':(Number(p.variance)||0)>0?'az-up':'')+'">'+peso(p.variance)+'</td><td class="r">'+((p.orderIds||[]).length)+'</td></tr>';}).join(''):'<tr><td colspan="5" class="az-note" style="padding:0.6rem;">No payouts settled yet for '+esc(chLbl)+'.</td></tr>';
@@ -5647,8 +5651,11 @@ function renderPayouts(){
         +'<div><span class="pz-lbl">To</span><input type="date" class="pz-in" id="poTo" value="'+(poTo||'')+'"/></div>'
         +'<div style="font-size:0.74rem;color:var(--tl);">Leave dates blank to reconcile <b>all</b> unsettled '+esc(chLbl)+' orders.</div>'
       +'</div>'
-      +'<table class="pnl-tbl"><thead><tr><th>Date</th><th>Order #</th><th class="r">Gross</th><th class="r">Commission</th><th class="r">Net</th></tr></thead><tbody>'+ordRows
-        +'<tr class="tot"><td colspan="2">Expected net ('+inRange.length+' orders)</td><td class="r">'+peso(grossSum)+'</td><td class="r">'+peso(commSum)+'</td><td class="r" id="poExpected">'+peso(expected)+'</td></tr>'
+      +'<details style="margin-bottom:0.6rem;"><summary style="cursor:pointer;font-weight:600;color:var(--bd);font-size:0.85rem;">📄 Match to payout statement (optional)</summary>'
+        +'<div style="margin-top:0.4rem;"><span class="pz-lbl">Paste the order numbers from the '+esc(chLbl)+' payout report (one per line or comma-separated)</span><textarea class="pz-in" id="poStmt" rows="3" placeholder="'+(ch==='grabfood'?'GF-123456, GF-123457, GF-123460':'FP-123456, FP-123457')+'" style="width:100%;font-size:0.8rem;"></textarea><button class="pz-btn sec" id="poMatch" style="margin-top:0.4rem;">Match &amp; tick</button><div id="poMatchInfo" style="font-size:0.78rem;margin-top:0.4rem;"></div></div></details>'
+      +'<p class="pz-sub" style="margin-top:0;">Tick only the orders that appear on <b>this</b> payout statement. Untick any that aren’t paid this cycle — they stay unsettled and roll to the next payout automatically.</p>'
+      +'<table class="pnl-tbl"><thead><tr><th style="text-align:center;"><input type="checkbox" id="poAll" checked title="Select all"/></th><th>Date</th><th>Order #</th><th class="r">Gross</th><th class="r">Commission</th><th class="r">Net</th></tr></thead><tbody>'+ordRows
+        +'<tr class="tot"><td></td><td colspan="2">Expected net (<span id="poCount">'+inRange.length+'</span> ticked)</td><td class="r" id="poGrossSum">'+peso(grossSum)+'</td><td class="r" id="poCommSum">'+peso(commSum)+'</td><td class="r" id="poExpected">'+peso(expected)+'</td></tr>'
       +'</tbody></table>'
       +'<div style="display:flex;gap:0.8rem;flex-wrap:wrap;align-items:end;margin-top:0.9rem;">'
         +'<div><span class="pz-lbl">Actual payout received</span><input class="pz-in" type="number" step="any" id="poActual" placeholder="0" style="text-align:right;width:180px;"/></div>'
@@ -5677,18 +5684,36 @@ function renderPayouts(){
   function recompute(){var actual=Number((document.getElementById('poActual')||{}).value)||0;var variance=Math.round((actual-expected)*100)/100;var vEl=document.getElementById('poVariance');if(vEl){vEl.textContent=peso(variance);vEl.style.color=variance<0?'#c0392b':variance>0?'#2a9d5c':'var(--td)';}var alloc=Math.round(allocSum()*100)/100;var diff=Math.round((variance-alloc)*100)/100;var bEl=document.getElementById('poBalance');var ok=Math.abs(diff)<0.01;if(bEl){bEl.innerHTML='Allocated '+peso(alloc)+' / Variance '+peso(variance)+' — '+(ok?'<span style="color:#2a9d5c;">✓ balanced</span>':'<span style="color:#c0392b;">off by '+peso(diff)+'</span>');}return ok;}
   var _pa=document.getElementById('poActual');if(_pa)_pa.oninput=recompute;
   root.querySelectorAll('[data-alloc]').forEach(function(i){i.oninput=recompute;});
-  recompute();
+  function selectedEntries(){return inRange.filter(function(e,i){var cb=root.querySelector('[data-poinc="'+i+'"]');return cb&&cb.checked;});}
+  function recomputeSel(){var g=0,c=0,n=0,cnt=0;inRange.forEach(function(e,i){var cb=root.querySelector('[data-poinc="'+i+'"]');if(cb&&cb.checked){g+=poGross(e.o);c+=(Number(e.o.commission)||0);n+=poNet(e.o);cnt++;}});expected=Math.round(n*100)/100;grossSum=g;commSum=c;var gEl=document.getElementById('poGrossSum');if(gEl)gEl.textContent=peso(g);var cEl=document.getElementById('poCommSum');if(cEl)cEl.textContent=peso(c);var eEl=document.getElementById('poExpected');if(eEl)eEl.textContent=peso(expected);var ctEl=document.getElementById('poCount');if(ctEl)ctEl.textContent=cnt;recompute();}
+  root.querySelectorAll('[data-poinc]').forEach(function(cb){cb.onchange=recomputeSel;});
+  var poAll=document.getElementById('poAll');if(poAll)poAll.onchange=function(){var ck=this.checked;root.querySelectorAll('[data-poinc]').forEach(function(cb){cb.checked=ck;});recomputeSel();};
+  var pmB=document.getElementById('poMatch');if(pmB)pmB.onclick=function(){
+    var raw=(document.getElementById('poStmt').value||'');
+    var refs=raw.split(/[\n,;\t ]+/).map(function(s){return s.trim();}).filter(Boolean);
+    if(!refs.length){alert('Paste the payout order numbers first.');return;}
+    var stmtMatched={}, matchedInRange=0;
+    inRange.forEach(function(e,i){var cb=root.querySelector('[data-poinc="'+i+'"]');if(!cb)return;var hit=false;refs.forEach(function(r,ri){if(refEq(r,e.o.platformRef)||refEq(r,e.o.id)){hit=true;stmtMatched[ri]=1;}});cb.checked=hit;if(hit)matchedInRange++;});
+    recomputeSel();
+    var allE=platEntries().filter(function(e){return e.o.channel===ch;});
+    var unmatched=refs.filter(function(r,ri){return !stmtMatched[ri];});
+    var rows=unmatched.map(function(r){var e=allE.filter(function(en){return refEq(r,en.o.platformRef)||refEq(r,en.o.id);})[0];var reason;if(!e)reason='<span style="color:#c0392b;">not in POS — possible missed re-key</span>';else if((e.o.settlementStatus||'unsettled')==='settled')reason='<span style="color:var(--tl);">already settled</span>';else reason='<span style="color:#8a6d1b;">unsettled but outside the current dates — widen the range, then re-match</span>';return '<div>• '+esc(r)+' — '+reason+'</div>';}).join('');
+    var info=document.getElementById('poMatchInfo');if(info)info.innerHTML='<b>'+matchedInRange+'</b> of '+refs.length+' statement order(s) matched &amp; ticked here.'+(unmatched.length?('<div style="margin-top:0.3rem;font-weight:600;">'+unmatched.length+' not matched in the list above:</div>'+rows):' <span style="color:#2a9d5c;">all matched ✓</span>');
+  };
+  recomputeSel();
   document.getElementById('poSettle').onclick=function(){
-    if(!inRange.length){alert('No unsettled orders in this range to settle.');return;}
+    var selected=selectedEntries();
+    if(!selected.length){alert('Tick at least one order that appears on this payout statement.');return;}
     var actual=Number((document.getElementById('poActual').value)||0);
     if(!recompute()){alert('Allocations must equal the variance before you can settle.');return;}
     var variance=Math.round((actual-expected)*100)/100;
     var allocs={};root.querySelectorAll('[data-alloc]').forEach(function(i){var v=Number(i.value)||0;if(v)allocs[i.getAttribute('data-alloc')]=v;});
     var pid=uid('po_');var now=Date.now();
-    var rec={channel:ch,periodStart:(poFrom||''),periodEnd:(poTo||''),expectedNet:Math.round(expected*100)/100,actualPayout:actual,variance:variance,allocations:allocs,orderIds:inRange.map(function(e){return e.o.id||e.key;}),by:(window.__posShift&&window.__posShift.staff)||'Manager',settledAt:now};
+    var rec={channel:ch,periodStart:(poFrom||''),periodEnd:(poTo||''),expectedNet:Math.round(expected*100)/100,actualPayout:actual,variance:variance,allocations:allocs,orderIds:selected.map(function(e){return e.o.id||e.key;}),by:(window.__posShift&&window.__posShift.staff)||'Manager',settledAt:now};
+    var left=inRange.length-selected.length;
     var a2=A();a2.set(a2.ref(a2.db,'platformPayouts/'+pid),rec).then(function(){
-      inRange.forEach(function(e){a2.update(a2.ref(a2.db,e.node+'/'+e.key),{settlementStatus:'settled',payoutId:pid});});
-      alert('Settled '+inRange.length+' '+chLbl+' order(s). Variance '+peso(variance)+' posted to the P&L.');
+      selected.forEach(function(e){a2.update(a2.ref(a2.db,e.node+'/'+e.key),{settlementStatus:'settled',payoutId:pid});});
+      alert('Settled '+selected.length+' '+chLbl+' order(s).'+(left>0?(' '+left+' left unticked stay unsettled and carry to the next payout.'):'')+' Variance '+peso(variance)+' posted to the P&L.');
     }).catch(function(err){alert('Could not save payout: '+((err&&err.code)||err)+'. If PERMISSION_DENIED: re-publish the database rules.');});
   };
   var _add=document.getElementById('poAddAcc');if(_add)_add.onclick=function(){var nm=(document.getElementById('poNewName').value||'').trim();if(!nm){alert('Type an account name.');return;}var t=document.getElementById('poNewType').value;var a3=A();a3.set(a3.ref(a3.db,'platformVarAccounts/'+uid('va_')),{name:nm,type:t,order:accs.length+1}).then(function(){});};
