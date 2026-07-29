@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v71</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v75</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -5007,6 +5007,7 @@ function renderPosCart(){
   var chanSel='<div style="margin-bottom:0.6rem;"><span class="pz-lbl">Channel</span><select class="pz-in" id="posChannelSel">'+chanOpts.map(function(o){return '<option value="'+o.k+'"'+(posChannel===o.k?' selected':'')+'>'+o.lbl+'</option>';}).join('')+'</select>'+(isPlat?'<div style="font-size:0.72rem;color:#8a5a00;background:#fff6e5;border:1px solid #f0dcae;border-radius:5px;padding:0.3rem 0.45rem;margin-top:0.25rem;">'+esc(chLabel)+' — platform prices apply, sale is a <b>receivable</b> (not cash drawer), commission trued up at weekly payout.</div>':'')+'</div>';
   p.innerHTML=
     chanSel
+    +'<div style="margin-bottom:0.6rem;"><span class="pz-lbl">Customer\'s name</span><input class="pz-in" id="posCust" placeholder="Walk-in"/></div>'
     +(shift&&!isPlat?'<button class="pz-btn sec" id="posPkgBtn" style="width:100%;margin-bottom:0.6rem;">🎁 Add Package / Promo</button>':'')+'<div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">🛒 Current sale</div>'
     +(keys.length?lines:'<p class="pz-sub" style="margin:0.5rem 0;">Tap items to add them.</p>')
     +'<div style="margin-top:0.6rem;">'
@@ -5024,7 +5025,6 @@ function renderPosCart(){
           +'<div id="posCashWrap" style="margin-top:0.5rem;">'+(denomTrackingOn()?posDenomPadHtml():'<span class="pz-lbl">Cash tendered ₱</span><input class="pz-in" id="posTender" type="number" step="any" placeholder="0"/><div id="posChange" style="font-size:0.82rem;color:var(--bd);font-weight:600;margin-top:0.3rem;"></div>')+'</div>'
           +'<div id="posRefWrap" style="display:none;margin-top:0.5rem;"><span class="pz-lbl">Ref no. (GCash / bank) — required</span><input class="pz-in" id="posPayRef" placeholder="e.g. GCash ref / bank txn ref"/><div style="font-size:0.72rem;color:var(--tl);margin-top:0.2rem;">Marks the sale <b>pending</b> until a manager verifies the money landed.</div></div></div>'
         +'<div id="posPaySplit" style="display:none;margin-top:0.4rem;"><div id="posSplitRows"></div><button class="pz-btn sec" id="posAddPay" style="padding:0.25rem 0.6rem;">+ payment</button><div id="posSplitInfo" style="font-size:0.76rem;color:var(--tl);margin-top:0.3rem;"></div></div>')
-    +'<div style="margin-top:0.5rem;"><span class="pz-lbl">Customer (optional)</span><input class="pz-in" id="posCust" placeholder="Walk-in"/></div>'
     +'<button class="pz-btn ok" id="posCharge" style="width:100%;margin-top:0.8rem;padding:0.7rem;font-size:0.95rem;"'+((keys.length&&shift)?'':' disabled')+'>'+(isPlat?'Record '+esc(chLabel)+' sale':'Charge &amp; Complete')+'</button>'
     +'<div style="display:flex;gap:0.4rem;margin-top:0.4rem;">'
       +(isPlat?'':'<button class="pz-btn sec" id="posHold" style="flex:1;"'+(keys.length?'':' disabled')+'>Hold</button>')
@@ -5991,9 +5991,9 @@ function renderOps(){
     html+='<div class="az-sec">Held orders ('+held.length+')</div><div class="pz-card">'+held.map(function(h){var n=Object.keys(h.cart||{}).length;return '<div style="display:flex;justify-content:space-between;align-items:center;padding:0.35rem 0;border-bottom:1px solid var(--cd);font-size:0.83rem;"><span>'+n+' item(s)'+(h.note?' · '+esc(h.note):'')+' · '+new Date(h.ts).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})+'</span><span><button class="pz-btn ok" style="padding:0.2rem 0.6rem;" data-recall="'+h.id+'">Recall</button> <button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-hdisc="'+h.id+'">✕</button></span></div>';}).join('')+'</div>';
   }
   // VOID / REFUND recent sales
-  var recent=Object.keys(ordersMap).map(function(k){return ordersMap[k];}).filter(function(o){return o&&(o.status==='Completed'||o.status==='Received');}).sort(function(a,b){return(b.timestamp||0)-(a.timestamp||0);}).slice(0,25);
+  var recent=activeShift?Object.keys(ordersMap).map(function(k){return ordersMap[k];}).filter(function(o){return o&&o.shiftId===activeShift.id&&(o.status==='Completed'||o.status==='Received');}).sort(function(a,b){return(b.timestamp||0)-(a.timestamp||0);}).slice(0,60):[];
   html+='<div class="az-sec">Recent sales — void / refund</div><div class="pz-card"><table class="pz-tbl"><thead><tr><th>Order</th><th>Time</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>'
-    +(recent.length?recent.map(function(o){var st=o.voided?'<span style="color:#e63946;">VOID</span>':(Number(o.refundAmount)>0?'<span style="color:#e67e00;">Refunded '+peso(o.refundAmount)+'</span>':'OK');return '<tr><td>'+esc(o.id)+'<div style="font-size:0.7rem;color:var(--tl);">'+esc((o.staff||''))+'</div></td><td>'+esc(o.time||'')+'</td><td>'+peso(o.total)+'</td><td>'+st+'</td><td style="white-space:nowrap;">'+(o.voided?'':'<button class="pz-btn sec" style="padding:0.2rem 0.5rem;" data-refund="'+o.id+'">Refund</button> <button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-void="'+o.id+'">Void</button>')+'</td></tr>';}).join(''):'<tr><td colspan="5" class="az-note" style="padding:0.8rem;">No sales yet.</td></tr>')
+    +(recent.length?recent.map(function(o){var st=o.voided?'<span style="color:#e63946;">VOID</span>':(Number(o.refundAmount)>0?'<span style="color:#e67e00;">Refunded '+peso(o.refundAmount)+'</span>':'OK');return '<tr><td>'+esc(o.id)+'<div style="font-size:0.7rem;color:var(--tl);">'+esc((o.staff||''))+'</div></td><td>'+esc(o.time||'')+'</td><td>'+peso(o.total)+'</td><td>'+st+'</td><td style="white-space:nowrap;">'+(o.voided?'':'<button class="pz-btn sec" style="padding:0.2rem 0.5rem;" data-refund="'+o.id+'">Refund</button> <button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-void="'+o.id+'">Void</button>')+'</td></tr>';}).join(''):'<tr><td colspan="5" class="az-note" style="padding:0.8rem;">'+(activeShift?'No sales in this shift yet.':'No open shift — a shift’s sales show here while it’s open and clear when it closes.')+'</td></tr>')
     +'</tbody></table></div>';
   // STAFF & PINS
   html+='<div class="az-sec">Staff &amp; PINs</div><div class="pz-card" style="margin-bottom:1rem;"><div style="display:grid;grid-template-columns:1.5fr 1fr 1fr auto;gap:0.5rem;align-items:end;">'
@@ -6122,6 +6122,8 @@ function finalizeClose(shift,counted,counts){
 function showZ(shift,z){
   var w=window.open('','_blank','width=380,height=680');if(!w){alert('Shift closed. Allow pop-ups to print the Z-report.');return;}
   var methods=Object.keys(z.byMethod).map(function(m){return '<tr><td>'+esc(m)+'</td><td style="text-align:right;">'+peso(z.byMethod[m])+'</td></tr>';}).join('');
+  var saleList=Object.keys(ordersMap).map(function(k){return ordersMap[k];}).filter(function(o){return o&&o.shiftId===shift.id&&(o.status==='Completed'||o.status==='Received');}).sort(function(a,b){return(a.timestamp||0)-(b.timestamp||0);});
+  var saleRows=saleList.map(function(o){var tag=o.voided?' [VOID]':(Number(o.refundAmount)>0?' [R '+peso(o.refundAmount)+']':'');var ch=(o.channel&&o.channel!=='instore')?(' '+esc(o.channel==='grabfood'?'GF':'FP')):'';return '<tr><td>'+esc(o.id)+' '+esc(o.time||'')+ch+'</td><td style="text-align:right;">'+peso(o.total)+esc(tag)+'</td></tr>';}).join('');
   w.document.write('<html><head><title>Z-Report '+esc(shift.id)+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2,h3{text-align:center;margin:2px 0;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
     +'<h2>Accaza Coffee House</h2><h3>SHIFT Z-REPORT</h3><hr>'
     +'<div>Shift: '+esc(shift.id)+'</div><div>Cashier: '+esc(shift.staff)+'</div><div>Open: '+new Date(shift.openAt).toLocaleString('en-PH')+'</div><div>Close: '+new Date().toLocaleString('en-PH')+'</div><hr>'
@@ -6131,6 +6133,7 @@ function showZ(shift,z){
     +'<tr><td>Refunds</td><td style="text-align:right;">-'+peso(z.refunds)+'</td></tr>'
     +'<tr><td><b>Net sales</b></td><td style="text-align:right;"><b>'+peso(z.net)+'</b></td></tr></table><hr>'
     +'<div><b>By payment method</b></div><table>'+methods+'</table><hr>'
+    +'<div><b>Sales this shift ('+saleList.length+')</b></div><table>'+(saleRows||'<tr><td colspan="2">None</td></tr>')+'</table><hr>'
     +(z.pendingCount?'<div style="color:#8a6d1b;"><b>⏳ Non-cash pending verification: '+peso(z.pending)+' ('+z.pendingCount+')</b></div><div style="font-size:9px;">Not yet confirmed in the account at close. Verify these landed.</div><hr>':'')
     +'<table><tr><td>Voids</td><td style="text-align:right;">'+z.voidCount+' ('+peso(z.voidAmt)+')</td></tr>'
     +'<tr><td>Opening float</td><td style="text-align:right;">'+peso(shift.openingFloat)+'</td></tr>'
