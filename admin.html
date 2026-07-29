@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v69</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v70</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1104,6 +1104,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
       <div class="tabgrp" data-grp="finance" style="display:none;">
         <button class="admin-tab" onclick="posSwitchTab('analytics',this)">📊 Analytics</button>
         <button class="admin-tab" onclick="posSwitchTab('pnl',this)">💰 Profit &amp; Loss</button>
+        <button class="admin-tab" onclick="posSwitchTab('payouts',this)">💱 Platform Payouts</button>
         <button class="admin-tab" onclick="posSwitchTab('discrepancy',this)">🚩 Discrepancies <span id="discBadge" style="display:none;background:#e63946;color:#fff;border-radius:10px;padding:0 0.4rem;font-size:0.7rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
       </div>
       <div class="tabgrp" data-grp="customers" style="display:none;">
@@ -1311,6 +1312,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
     <div id="tab-packages" class="admin-tab-content" style="display:none;"><div id="packagesRoot"></div></div>
     <div id="tab-analytics" class="admin-tab-content" style="display:none;"><div id="analyticsRoot"></div></div>
     <div id="tab-pnl" class="admin-tab-content" style="display:none;"><div id="pnlRoot"></div></div>
+    <div id="tab-payouts" class="admin-tab-content" style="display:none;"><div id="payoutsRoot"></div></div>
     <div id="tab-ops" class="admin-tab-content" style="display:none;"><div id="opsRoot"></div></div>
     <div id="tab-staffaccess" class="admin-tab-content" style="display:none;"><div id="staffAccessRoot"></div></div>
 
@@ -5219,8 +5221,19 @@ function showReceipt(o){
 <script id="accaza-analytics">
 (function(){
 'use strict';
-var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},funnelMap={},expItems={},monthlyExp={},adjMap={},usageMap={};
+var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},funnelMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={};
 var azRange='7d', azFrom=null, azTo=null, pnlMonth=null;
+var poChannel='grabfood', poFrom=null, poTo=null;
+var PO_CHANNELS=[{k:'grabfood',lbl:'GrabFood'},{k:'foodpanda',lbl:'FoodPanda'}];
+var DEFAULT_VAR_ACCOUNTS=[
+  {id:'va_ads',name:'Platform ads / marketing',type:'expense',order:1},
+  {id:'va_promo',name:'Promo co-funding',type:'expense',order:2},
+  {id:'va_fees',name:'Payment / processing fees',type:'expense',order:3},
+  {id:'va_penalty',name:'Penalties / adjustments',type:'expense',order:4},
+  {id:'va_refund',name:'Refunds / cancellations',type:'expense',order:5},
+  {id:'va_incentive',name:'Incentives / rebates',type:'revenue',order:6}
+];
+function varAccounts(){var keys=Object.keys(varAcctMap);var list=keys.length?keys.map(function(k){return Object.assign({id:k},varAcctMap[k]);}):DEFAULT_VAR_ACCOUNTS.slice();return list.sort(function(a,b){return (a.order||0)-(b.order||0);});}
 function A(){return window.__accaza;}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function peso(n){n=Number(n)||0;return '₱'+n.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});}
@@ -5244,10 +5257,12 @@ function init(){
   a.onValue(a.ref(a.db,'inventoryAdjustments'),function(s){adjMap=s.val()||{};if(isTab('pnl'))renderPnl();});
   a.onValue(a.ref(a.db,'internalUsage'),function(s){usageMap=s.val()||{};if(isTab('pnl'))renderPnl();});
   a.onValue(a.ref(a.db,'analyticsFunnel'),function(s){funnelMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
+  a.onValue(a.ref(a.db,'platformPayouts'),function(s){payoutsMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();if(isTab('analytics'))renderAnalytics();});
+  a.onValue(a.ref(a.db,'platformVarAccounts'),function(s){varAcctMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();});
 }
 // extend the POS tab switcher to also render our tabs
 var _prev=window.posSwitchTab;
-window.posSwitchTab=function(name,btn){ if(_prev)_prev(name,btn); else if(window.switchTab)window.switchTab(name,btn); if(name==='analytics')renderAnalytics(); if(name==='pnl'){if(!pnlMonth)pnlMonth=monthKey(Date.now());renderPnl();} };
+window.posSwitchTab=function(name,btn){ if(_prev)_prev(name,btn); else if(window.switchTab)window.switchTab(name,btn); if(name==='analytics')renderAnalytics(); if(name==='pnl'){if(!pnlMonth)pnlMonth=monthKey(Date.now());renderPnl();} if(name==='payouts')renderPayouts(); };
 
 // capture completedAt for ops metrics (idempotent, additive)
 function captureCompletedAt(all){var a=A();Object.keys(all).forEach(function(id){var o=all[id];if(o&&o.status==='Completed'&&!o.completedAt){a.update(a.ref(a.db,'orders/'+id),{completedAt:Date.now()});}});}
@@ -5395,6 +5410,14 @@ function renderAnalytics(){
     +'<div style="display:flex;gap:1rem;font-size:0.85rem;">'
     +'<div>Reach <b>'+(reach||'—')+'</b></div>→<div>Visits <b>'+(visits||'—')+'</b> ('+(reach?Math.round(convRV):'—')+'%)</div>→<div>Orders <b>'+tx+'</b> ('+(visits?Math.round(convVO):'—')+'%)</div>'
     +'</div><div class="az-note">Reach/Visits are read from your Google Analytics and entered here for the selected period.</div></div>';
+  // ---- channel mix (in-store vs platforms) ----
+  (function(){
+    var chData={instore:{lbl:'In-store',gross:0,comm:0,cogs:0,tx:0},grabfood:{lbl:'GrabFood',gross:0,comm:0,cogs:0,tx:0},foodpanda:{lbl:'FoodPanda',gross:0,comm:0,cogs:0,tx:0}};
+    cur.forEach(function(x){var o=x.o;var c=(o&&o.channel&&chData[o.channel])?o.channel:'instore';var d=chData[c];d.gross+=(c==='instore'?x.net:poGross(o));d.comm+=(c==='instore'?0:(Number(o.commission)||0));d.cogs+=(x.lineItems?orderCOGS(o).cost:0);d.tx++;});
+    var order=['instore','grabfood','foodpanda'];
+    var rows=order.map(function(k){var d=chData[k];if(!d.tx&&k!=='instore')return '';var netAfter=d.gross-d.comm-d.cogs;var mgn=d.gross>0?netAfter/d.gross*100:0;return '<tr><td>'+esc(d.lbl)+'</td><td class="r">'+d.tx+'</td><td class="r">'+peso(d.gross)+'</td><td class="r">'+(d.comm?('-'+peso(d.comm)):'—')+'</td><td class="r">'+peso(d.cogs)+'</td><td class="r">'+peso(netAfter)+'</td><td class="r '+(mgn>=0?'az-up':'az-down')+'">'+(Math.round(mgn*10)/10)+'%</td></tr>';}).join('');
+    html+='<div class="az-sec">Channel mix</div><div class="pz-card"><table class="pnl-tbl"><thead><tr><th>Channel</th><th class="r">Tx</th><th class="r">Gross</th><th class="r">Commission</th><th class="r">COGS</th><th class="r">Net after comm.+COGS</th><th class="r">Margin</th></tr></thead><tbody>'+rows+'</tbody></table><div class="az-note">Platform gross is booked as revenue; commission is the flat estimate (trued up in Platform Payouts). In-store "gross" here is net of discounts.</div></div>';
+  })();
   root.innerHTML=html;
   root.querySelectorAll('[data-range]').forEach(function(c){c.onclick=function(){azRange=c.getAttribute('data-range');renderAnalytics();};});
   var ap=document.getElementById('azApply');if(ap)ap.onclick=function(){var f=document.getElementById('azFrom').value,t=document.getElementById('azTo').value;if(f&&t){azFrom=new Date(f).getTime();azTo=new Date(t).getTime();azRange='custom';renderAnalytics();}};
@@ -5419,7 +5442,13 @@ function pnlFor(mk){
   var m=monthlyExp[mk]||{};var amounts=m.amounts||{};
   var byItem={},opex=0;
   Object.keys(expItems).forEach(function(id){var amt=Number(amounts[id])||0;byItem[id]={name:expItems[id].name,amount:amt};opex+=amt;});
-  return{revenue:revenue,cogs:cogs,variance:variance,totalCogs:totalCogs,gp:gp,margin:revenue>0?gp/revenue*100:0,byItem:byItem,opex:opex,staffUse:staffUse,rndUse:rndUse,net:gp-opex-staffUse-rndUse,uncovered:uncovered,tx:sales.length,locked:!!m.locked};
+  // platform economics
+  var platformCommission=0,platformGross=0;
+  sales.forEach(function(x){var o=x.o;if(o&&o.channel&&o.channel!=='instore'){platformCommission+=Number(o.commission)||0;platformGross+=Number(o.grossPlatform||o.subtotal||o.total)||0;}});
+  var reconExp=0,reconRev=0,reconBy={};
+  Object.keys(payoutsMap).forEach(function(k){var p=payoutsMap[k];if(!p)return;if(monthKey(p.settledAt||p.periodEnd||0)!==mk)return;var allocs=p.allocations||{};Object.keys(allocs).forEach(function(aid){var amt=Number(allocs[aid])||0;if(!amt)return;var acct=varAcctMap[aid]||(DEFAULT_VAR_ACCOUNTS.filter(function(d){return d.id===aid;})[0])||{};reconBy[aid]=(reconBy[aid]||0)+amt;if(acct.type==='revenue')reconRev+=amt;else reconExp+=amt;});});
+  var net=gp-opex-staffUse-rndUse-platformCommission-reconExp+reconRev;
+  return{revenue:revenue,cogs:cogs,variance:variance,totalCogs:totalCogs,gp:gp,margin:revenue>0?gp/revenue*100:0,byItem:byItem,opex:opex,staffUse:staffUse,rndUse:rndUse,platformCommission:platformCommission,platformGross:platformGross,reconExp:reconExp,reconRev:reconRev,reconBy:reconBy,net:net,uncovered:uncovered,tx:sales.length,locked:!!m.locked};
 }
 function itemIdsSorted(){return Object.keys(expItems).sort(function(a,b){return((expItems[a].order||0)-(expItems[b].order||0))||(expItems[a].name||'').localeCompare(expItems[b].name||'');});}
 function varianceDetailHtml(mk){
@@ -5428,6 +5457,87 @@ function varianceDetailHtml(mk){
   if(!list.length)return '<div style="padding:0.6rem 0.9rem;color:var(--tl);font-size:0.8rem;">No stock adjustments recorded this month.</div>';
   var rows=list.map(function(x){var d=new Date(x.ts);var dl=d.toLocaleDateString('en-PH',{month:'short',day:'numeric'});return '<tr><td style="padding:0.25rem 0.5rem;">'+dl+'</td><td style="padding:0.25rem 0.5rem;">'+esc(x.name||'')+'</td><td style="padding:0.25rem 0.5rem;text-align:right;">'+((Number(x.delta)||0)>0?'+':'')+fq(x.delta)+' '+esc(x.unit||'')+'</td><td style="padding:0.25rem 0.5rem;">'+esc(x.reason||'')+'</td><td style="padding:0.25rem 0.5rem;text-align:right;font-weight:600;">'+peso(x.varianceValue)+'</td></tr>';}).join('');
   return '<div style="background:#faf7f2;padding:0.4rem 0.6rem;"><table style="width:100%;border-collapse:collapse;font-size:0.76rem;"><thead><tr style="color:var(--tl);text-align:left;"><th style="padding:0.25rem 0.5rem;">Date</th><th style="padding:0.25rem 0.5rem;">Item</th><th style="padding:0.25rem 0.5rem;text-align:right;">Qty Δ</th><th style="padding:0.25rem 0.5rem;">Reason</th><th style="padding:0.25rem 0.5rem;text-align:right;">COGS impact</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+/* ══════════ PLATFORM PAYOUT RECONCILIATION ══════════ */
+function poGross(o){return Number(o.grossPlatform||o.subtotal||o.total)||0;}
+function poNet(o){return (o.netPlatform!=null)?(Number(o.netPlatform)||0):(poGross(o)-(Number(o.commission)||0));}
+function platEntries(){var out=[];Object.keys(ordersMap).forEach(function(k){var o=ordersMap[k];if(o&&o.source==='pos'&&o.channel&&o.channel!=='instore'&&!o.voided)out.push({key:k,node:'orders',o:o});});Object.keys(archMap).forEach(function(k){var o=archMap[k];if(o&&o.source==='pos'&&o.channel&&o.channel!=='instore'&&!o.voided)out.push({key:k,node:'archivedOrders',o:o});});return out;}
+function poUnsettled(ch){return platEntries().filter(function(e){return e.o.channel===ch&&(e.o.settlementStatus||'unsettled')!=='settled';});}
+function renderPayouts(){
+  var root=document.getElementById('payoutsRoot');if(!root)return;
+  var a=A();
+  if(a&&!Object.keys(varAcctMap).length){var seed={};DEFAULT_VAR_ACCOUNTS.forEach(function(d){seed[d.id]={name:d.name,type:d.type,order:d.order};});a.update(a.ref(a.db,'platformVarAccounts'),seed).catch(function(){});}
+  var ch=poChannel;var chLbl=(PO_CHANNELS.filter(function(d){return d.k===ch;})[0]||{lbl:ch}).lbl;
+  var accs=varAccounts();
+  var unset=poUnsettled(ch);
+  var inRange=unset.filter(function(e){var t=e.o.timestamp||0;return (!poFrom||t>=dayStart(poFrom))&&(!poTo||t<dayStart(poTo)+86400000);});
+  var expected=inRange.reduce(function(s,e){return s+poNet(e.o);},0);
+  var grossSum=inRange.reduce(function(s,e){return s+poGross(e.o);},0);
+  var commSum=inRange.reduce(function(s,e){return s+(Number(e.o.commission)||0);},0);
+  // receivables (all unsettled, ignoring range)
+  var recvCards=PO_CHANNELS.map(function(d){var u=poUnsettled(d.k);var net=u.reduce(function(s,e){return s+poNet(e.o);},0);return '<div style="flex:1;min-width:170px;background:var(--cr);border:1px solid var(--cd);border-radius:8px;padding:0.7rem 0.9rem;"><div style="font-size:0.72rem;color:var(--tl);text-transform:uppercase;letter-spacing:0.05em;">'+esc(d.lbl)+' receivable</div><div style="font-size:1.2rem;font-weight:700;color:var(--bd);">'+peso(net)+'</div><div style="font-size:0.72rem;color:var(--tl);">'+u.length+' unsettled order(s)</div></div>';}).join('');
+  var ordRows=inRange.length?inRange.sort(function(x,y){return (x.o.timestamp||0)-(y.o.timestamp||0);}).map(function(e){var o=e.o;return '<tr><td>'+esc(o.date||'')+'</td><td>'+esc(o.platformRef||o.id||'')+'</td><td class="r">'+peso(poGross(o))+'</td><td class="r">'+peso(Number(o.commission)||0)+'</td><td class="r">'+peso(poNet(o))+'</td></tr>';}).join(''):'<tr><td colspan="5" class="az-note" style="padding:0.7rem;">No unsettled '+esc(chLbl)+' orders in this range.</td></tr>';
+  var allocRows=accs.map(function(ac){return '<tr><td>'+esc(ac.name)+' <span style="font-size:0.7rem;color:var(--tl);">('+ac.type+')</span></td><td style="width:150px;"><input class="pz-in" type="number" step="any" data-alloc="'+esc(ac.id)+'" data-atype="'+ac.type+'" value="" placeholder="0" style="text-align:right;"/></td></tr>';}).join('');
+  var hist=Object.keys(payoutsMap).map(function(k){return Object.assign({id:k},payoutsMap[k]);}).filter(function(p){return p.channel===ch;}).sort(function(a,b){return (b.settledAt||0)-(a.settledAt||0);});
+  var histRows=hist.length?hist.map(function(p){return '<tr><td>'+esc(new Date(p.settledAt||0).toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'}))+'</td><td class="r">'+peso(p.expectedNet)+'</td><td class="r">'+peso(p.actualPayout)+'</td><td class="r '+((Number(p.variance)||0)<0?'az-down':(Number(p.variance)||0)>0?'az-up':'')+'">'+peso(p.variance)+'</td><td class="r">'+((p.orderIds||[]).length)+'</td></tr>';}).join(''):'<tr><td colspan="5" class="az-note" style="padding:0.6rem;">No payouts settled yet for '+esc(chLbl)+'.</td></tr>';
+
+  var html='<div class="pz-h">💱 Platform Payout Reconciliation</div>'
+    +'<p class="pz-sub">Weekly truth-up per platform. POS gross is booked as revenue and the flat commission as expense; here you enter the <b>actual payout</b> from Grab/Panda and allocate the difference to named accounts. Every peso is explained.</p>'
+    +'<div style="display:flex;gap:0.7rem;flex-wrap:wrap;margin-bottom:1rem;">'+recvCards+'</div>'
+    +'<div class="pz-card" style="margin-bottom:1rem;">'
+      +'<div style="display:flex;gap:0.8rem;flex-wrap:wrap;align-items:end;margin-bottom:0.8rem;">'
+        +'<div><span class="pz-lbl">Platform</span><select class="pz-in" id="poCh">'+PO_CHANNELS.map(function(d){return '<option value="'+d.k+'"'+(d.k===ch?' selected':'')+'>'+d.lbl+'</option>';}).join('')+'</select></div>'
+        +'<div><span class="pz-lbl">From</span><input type="date" class="pz-in" id="poFrom" value="'+(poFrom||'')+'"/></div>'
+        +'<div><span class="pz-lbl">To</span><input type="date" class="pz-in" id="poTo" value="'+(poTo||'')+'"/></div>'
+        +'<div style="font-size:0.74rem;color:var(--tl);">Leave dates blank to reconcile <b>all</b> unsettled '+esc(chLbl)+' orders.</div>'
+      +'</div>'
+      +'<table class="pnl-tbl"><thead><tr><th>Date</th><th>Order #</th><th class="r">Gross</th><th class="r">Commission</th><th class="r">Net</th></tr></thead><tbody>'+ordRows
+        +'<tr class="tot"><td colspan="2">Expected net ('+inRange.length+' orders)</td><td class="r">'+peso(grossSum)+'</td><td class="r">'+peso(commSum)+'</td><td class="r" id="poExpected">'+peso(expected)+'</td></tr>'
+      +'</tbody></table>'
+      +'<div style="display:flex;gap:0.8rem;flex-wrap:wrap;align-items:end;margin-top:0.9rem;">'
+        +'<div><span class="pz-lbl">Actual payout received</span><input class="pz-in" type="number" step="any" id="poActual" placeholder="0" style="text-align:right;width:180px;"/></div>'
+        +'<div style="align-self:center;"><span class="pz-lbl">Variance (actual − expected)</span><div id="poVariance" style="font-weight:700;font-size:1.05rem;">'+peso(0-expected)+'</div></div>'
+      +'</div>'
+      +'<div class="az-sec" style="margin-top:0.9rem;">Allocate the variance</div>'
+      +'<p class="pz-sub" style="margin-top:0.2rem;">Enter positive amounts. Expense accounts reduce the payout; revenue accounts add. The allocations must equal the variance before you can settle.</p>'
+      +'<table class="pz-tbl"><thead><tr><th>Account</th><th>Amount ₱</th></tr></thead><tbody>'+allocRows+'</tbody></table>'
+      +'<div id="poBalance" style="margin-top:0.6rem;font-weight:600;"></div>'
+      +'<button class="pz-btn ok" id="poSettle" style="margin-top:0.7rem;padding:0.6rem 1.2rem;">Save &amp; settle '+esc(chLbl)+' payout</button>'
+    +'</div>'
+    +'<details style="margin-bottom:1rem;"><summary style="cursor:pointer;font-weight:600;color:var(--bd);">⚙️ Manage variance accounts</summary>'
+      +'<div class="pz-card" style="margin-top:0.5rem;"><table class="pz-tbl"><tbody>'
+        +accs.map(function(ac){return '<tr><td><input class="pz-in" data-acname="'+esc(ac.id)+'" value="'+esc(ac.name)+'"/></td><td style="width:130px;"><select class="pz-in" data-actype="'+esc(ac.id)+'"><option value="expense"'+(ac.type==='expense'?' selected':'')+'>expense</option><option value="revenue"'+(ac.type==='revenue'?' selected':'')+'>revenue</option></select></td><td style="width:60px;"><button class="pz-btn warn" data-acdel="'+esc(ac.id)+'" style="padding:0.2rem 0.5rem;">✕</button></td></tr>';}).join('')
+        +'</tbody></table>'
+        +'<div style="display:flex;gap:0.5rem;align-items:end;margin-top:0.6rem;flex-wrap:wrap;"><div><span class="pz-lbl">New account</span><input class="pz-in" id="poNewName" placeholder="e.g. FX adjustment" style="width:200px;"/></div><div><span class="pz-lbl">Type</span><select class="pz-in" id="poNewType"><option value="expense">expense</option><option value="revenue">revenue</option></select></div><button class="pz-btn sec" id="poAddAcc">+ Add</button><button class="pz-btn sec" id="poSaveAcc" style="margin-left:auto;">💾 Save account edits</button></div>'
+      +'</div></details>'
+    +'<div class="az-sec">Settled payouts — '+esc(chLbl)+'</div>'
+    +'<div class="pz-card"><table class="pnl-tbl"><thead><tr><th>Settled</th><th class="r">Expected</th><th class="r">Actual</th><th class="r">Variance</th><th class="r">Orders</th></tr></thead><tbody>'+histRows+'</tbody></table></div>';
+  root.innerHTML=html;
+
+  document.getElementById('poCh').onchange=function(){poChannel=this.value;renderPayouts();};
+  document.getElementById('poFrom').onchange=function(){poFrom=this.value||null;renderPayouts();};
+  document.getElementById('poTo').onchange=function(){poTo=this.value||null;renderPayouts();};
+  function allocSum(){var rev=0,exp=0;root.querySelectorAll('[data-alloc]').forEach(function(i){var v=Number(i.value)||0;if(i.getAttribute('data-atype')==='revenue')rev+=v;else exp+=v;});return rev-exp;}
+  function recompute(){var actual=Number((document.getElementById('poActual')||{}).value)||0;var variance=Math.round((actual-expected)*100)/100;var vEl=document.getElementById('poVariance');if(vEl){vEl.textContent=peso(variance);vEl.style.color=variance<0?'#c0392b':variance>0?'#2a9d5c':'var(--td)';}var alloc=Math.round(allocSum()*100)/100;var diff=Math.round((variance-alloc)*100)/100;var bEl=document.getElementById('poBalance');var ok=Math.abs(diff)<0.01;if(bEl){bEl.innerHTML='Allocated '+peso(alloc)+' / Variance '+peso(variance)+' — '+(ok?'<span style="color:#2a9d5c;">✓ balanced</span>':'<span style="color:#c0392b;">off by '+peso(diff)+'</span>');}return ok;}
+  var _pa=document.getElementById('poActual');if(_pa)_pa.oninput=recompute;
+  root.querySelectorAll('[data-alloc]').forEach(function(i){i.oninput=recompute;});
+  recompute();
+  document.getElementById('poSettle').onclick=function(){
+    if(!inRange.length){alert('No unsettled orders in this range to settle.');return;}
+    var actual=Number((document.getElementById('poActual').value)||0);
+    if(!recompute()){alert('Allocations must equal the variance before you can settle.');return;}
+    var variance=Math.round((actual-expected)*100)/100;
+    var allocs={};root.querySelectorAll('[data-alloc]').forEach(function(i){var v=Number(i.value)||0;if(v)allocs[i.getAttribute('data-alloc')]=v;});
+    var pid=uid('po_');var now=Date.now();
+    var rec={channel:ch,periodStart:(poFrom||''),periodEnd:(poTo||''),expectedNet:Math.round(expected*100)/100,actualPayout:actual,variance:variance,allocations:allocs,orderIds:inRange.map(function(e){return e.o.id||e.key;}),by:(window.__posShift&&window.__posShift.staff)||'Manager',settledAt:now};
+    var a2=A();a2.set(a2.ref(a2.db,'platformPayouts/'+pid),rec).then(function(){
+      inRange.forEach(function(e){a2.update(a2.ref(a2.db,e.node+'/'+e.key),{settlementStatus:'settled',payoutId:pid});});
+      alert('Settled '+inRange.length+' '+chLbl+' order(s). Variance '+peso(variance)+' posted to the P&L.');
+    }).catch(function(err){alert('Could not save payout: '+((err&&err.code)||err)+'. If PERMISSION_DENIED: re-publish the database rules.');});
+  };
+  var _add=document.getElementById('poAddAcc');if(_add)_add.onclick=function(){var nm=(document.getElementById('poNewName').value||'').trim();if(!nm){alert('Type an account name.');return;}var t=document.getElementById('poNewType').value;var a3=A();a3.set(a3.ref(a3.db,'platformVarAccounts/'+uid('va_')),{name:nm,type:t,order:accs.length+1}).then(function(){});};
+  var _sav=document.getElementById('poSaveAcc');if(_sav)_sav.onclick=function(){var a4=A();var ups={};root.querySelectorAll('[data-acname]').forEach(function(i){var id=i.getAttribute('data-acname');var nm=(i.value||'').trim();var tp=(root.querySelector('[data-actype="'+id+'"]')||{}).value||'expense';if(nm)ups[id]={name:nm,type:tp,order:(varAcctMap[id]&&varAcctMap[id].order)||0};});a4.update(a4.ref(a4.db,'platformVarAccounts'),ups).then(function(){alert('Account edits saved.');});};
+  root.querySelectorAll('[data-acdel]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-acdel');if(!confirm('Remove this variance account? Past settled payouts keep their figures.'))return;var a5=A();a5.remove(a5.ref(a5.db,'platformVarAccounts/'+id));};});
 }
 function renderPnl(){
   var root=document.getElementById('pnlRoot');if(!root)return;
@@ -5449,8 +5559,11 @@ function renderPnl(){
     +oveRows
     +vrow('Staff consumption',-cur.staffUse,-prev.staffUse)
     +vrow('R&D / testing',-cur.rndUse,-prev.rndUse)
+    +((cur.platformCommission||prev.platformCommission)?vrow('Platform commission (Grab/Panda)',-cur.platformCommission,-prev.platformCommission):'')
+    +(function(){var accs=varAccounts();var out='';accs.forEach(function(ac){var c=(cur.reconBy[ac.id]||0),p=(prev.reconBy[ac.id]||0);if(!c&&!p)return;var sign=ac.type==='revenue'?1:-1;out+=vrow('Payout: '+ac.name,sign*c,sign*p);});return out;})()
     +vrow('Net profit',cur.net,prev.net,true)
     +'</tbody></table>'
+    +((cur.platformGross||0)>0?'<p class="az-note" style="margin-top:0.5rem;">Revenue includes '+peso(cur.platformGross)+' platform gross (Grab/Panda). Commission is booked above; the weekly payout reconciliation posts any variance to the Payout lines.</p>':'')
     +(cur.uncovered>0?'<p class="az-note" style="margin-top:0.5rem;">\u26a0\ufe0f '+cur.uncovered+' sale(s) this month have items without a costed recipe \u2014 COGS is understated for those.</p>':'')
     +'</div>';
   html+='<div class="az-sec">Overhead expenses \u2014 '+esc(monthLabel(pnlMonth))+(locked?' <span style="color:#2a9d5c;font-size:0.8rem;">(saved)</span>':'')+'</div>';
