@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v63</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v64</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4762,6 +4762,7 @@ function buildPOS(){
   root.innerHTML=
     '<div class="pz-h">🧾 Point of Sale</div>'
     +'<p class="pz-sub">Counter orders. Tap items to build a sale, take payment, then Charge &amp; Complete — the sale is logged to Orders and stock auto-deducts.</p>'
+    +'<div style="display:flex;gap:0.75rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap;"><div id="posOfflineBar" style="flex:1;min-width:160px;"></div><div id="posShiftBar"></div></div>'
     +'<div class="pz-posgrid" style="display:grid;grid-template-columns:1.7fr 1fr;gap:1rem;align-items:start;">'
       +'<div><div id="posChips" style="margin-bottom:0.75rem;">'+chips+'</div><div id="posItems" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:0.6rem;"></div></div>'
       +'<div class="pz-card" id="posCartPanel" style="position:sticky;top:1rem;"></div>'
@@ -4836,6 +4837,7 @@ function posRcvRead(){var counts={},total=0;document.querySelectorAll('[data-prd
 function mergeDenoms(a,b){var o=Object.assign({},a||{});Object.keys(b||{}).forEach(function(k){o[k]=(Number(o[k])||0)+(Number(b[k])||0);});return o;}
 function makeChange(amount,avail){var rem=Math.round(amount*100);var give={};POS_DENOMS.forEach(function(d){if(rem<=0)return;var cents=Math.round(d.v*100);var have=Number(avail[d.k])||0;var use=Math.min(Math.floor(rem/cents),have);if(use>0){give[d.k]=use;rem-=use*cents;}});return {denoms:give,ok:rem<=0,short:rem/100};}
 function changeStr(denoms){var m={};POS_DENOMS.forEach(function(d){m[d.k]=d.lbl;});return Object.keys(denoms||{}).map(function(k){return denoms[k]+'×'+m[k];}).join(', ')||'—';}
+function changeRows(denoms){return POS_DENOMS.filter(function(d){return denoms&&denoms[d.k];}).map(function(d){return '<div style="color:#155724;">'+denoms[d.k]+' × '+d.lbl+'</div>';}).join('');}
 function posDenomPadHtml(){
   return '<span class="pz-lbl">Cash received — enter note/coin counts</span>'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:0.3rem;margin-top:0.3rem;">'
@@ -4906,9 +4908,7 @@ function renderPosCart(){
     ? '<div style="background:#e8f5ec;border:1px solid #b8dfc4;border-radius:6px;padding:0.4rem 0.6rem;font-size:0.76rem;color:#155724;margin-bottom:0.6rem;">🟢 Shift open · Cashier <b>'+esc(shift.staff)+'</b></div>'
     : '<div style="background:#fde8e8;border:1px solid #f5c6c6;border-radius:6px;padding:0.4rem 0.6rem;font-size:0.76rem;color:#721c24;margin-bottom:0.6rem;">🔴 No open shift — open one in <b>Register Ops</b> to start selling.</div>';
   p.innerHTML=
-    '<div id="posOfflineBar"></div>'
-    +shiftBar
-    +(shift?'<button class="pz-btn sec" id="posPkgBtn" style="width:100%;margin-bottom:0.6rem;">🎁 Add Package / Promo</button>':'')+'<div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">🛒 Current sale</div>'
+    (shift?'<button class="pz-btn sec" id="posPkgBtn" style="width:100%;margin-bottom:0.6rem;">🎁 Add Package / Promo</button>':'')+'<div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">🛒 Current sale</div>'
     +(keys.length?lines:'<p class="pz-sub" style="margin:0.5rem 0;">Tap items to add them.</p>')
     +'<div style="margin-top:0.6rem;">'
       +'<div style="display:flex;justify-content:space-between;font-size:0.82rem;margin-bottom:0.3rem;"><span>Subtotal</span><span>'+peso(sub)+'</span></div>'
@@ -4943,7 +4943,7 @@ function renderPosCart(){
     var change=Math.round((r.total-tot)*100)/100;
     if(change<=0.001){ el.innerHTML='<span style="color:#155724;">Exact — no change.</span>'; window.__posChange={amount:0,denoms:{}}; return; }
     var mc=makeChange(change, mergeDenoms(shiftDrawer(), r.counts));
-    if(mc.ok){ el.innerHTML='<span style="color:#155724;">Change '+peso(change)+' → '+changeStr(mc.denoms)+'</span>'; window.__posChange={amount:change,denoms:mc.denoms,short:0}; }
+    if(mc.ok){ el.innerHTML='<div style="color:#155724;font-weight:700;">Change '+peso(change)+'</div>'+changeRows(mc.denoms); window.__posChange={amount:change,denoms:mc.denoms,short:0}; }
     else{ el.innerHTML='<span style="color:#c0392b;">⚠ No exact change for '+peso(change)+' (short '+peso(mc.short)+'). Ask for the exact amount &amp; edit the counts above.</span>'; window.__posChange={amount:change,denoms:mc.denoms,short:mc.short}; }
   }
   if(denomTrackingOn()){ document.querySelectorAll('[data-prd]').forEach(function(inp){inp.oninput=refreshDenom;}); refreshDenom(); }
@@ -4963,6 +4963,7 @@ function renderPosCart(){
   splitChk.onchange=function(){ document.getElementById('posPaySingle').style.display=this.checked?'none':'block'; document.getElementById('posPaySplit').style.display=this.checked?'block':'none'; if(this.checked){splitRows=[];renderSplit();} else refreshSingle(); };
   document.getElementById('posAddPay').onclick=function(){splitRows.push({method:'GCash',amount:0});renderSplit();};
   refreshSingle();updateOfflineUI();
+  var _sb=document.getElementById('posShiftBar'); if(_sb)_sb.innerHTML=shiftBar;
   var _db=document.getElementById('posDiscBtn'); if(_db)_db.onclick=openDiscountModal;
   p.querySelectorAll('[data-sdrm]').forEach(function(b){b.onclick=function(){posScopedDisc.splice(+b.getAttribute('data-sdrm'),1);renderPosCart();};});
   var _pb=document.getElementById('posPkgBtn');if(_pb)_pb.onclick=function(){ if(window.__openPackagePicker)window.__openPackagePicker(); else alert('Packages module still loading \u2014 try again.'); };
