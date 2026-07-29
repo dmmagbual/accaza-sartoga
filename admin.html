@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v77</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v78</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4900,11 +4900,14 @@ function drawPosItems(){
   var items=menuList().filter(function(it){return posCat==='ALL'||it.cat===posCat;});
   if(!items.length){wrap.innerHTML='<p class="pz-sub">No items in this category.</p>';return;}
   var plat=posIsPlatform();
+  var tileBg=posChannel==='grabfood'?'#e8f5ec':posChannel==='foodpanda'?'#fde8e8':'';
+  var tileBd=posChannel==='grabfood'?'#b8dfc4':posChannel==='foodpanda'?'#f5c6c6':'';
+  var st=tileBg?(' style="background:'+tileBg+';border-color:'+tileBd+';"'):'';
   wrap.innerHTML=items.map(function(it){
     var pr;
     if(plat){ var s=channelPriceOf(posChannel,it.key,'S'),m=channelPriceOf(posChannel,it.key,'M'),l=channelPriceOf(posChannel,it.key,'L'); pr=(it.priceM||it.priceL)?('S '+(s||'–')+' · M '+(m||'–')+' · L '+(l||'–')):(s?('₱'+s):'no price'); }
     else { pr=it.priceM?('S '+it.priceS+' · M '+it.priceM+' · L '+it.priceL):('₱'+(it.priceS||0)); }
-    return '<button class="pz-item" data-item="'+esc(it.key)+'"><div class="n">'+esc(it.name)+'</div><div class="p">'+esc(pr)+'</div></button>';}).join('');
+    return '<button class="pz-item"'+st+' data-item="'+esc(it.key)+'"><div class="n">'+esc(it.name)+'</div><div class="p">'+esc(pr)+'</div></button>';}).join('');
   wrap.querySelectorAll('[data-item]').forEach(function(b){b.onclick=function(){openPosItem(b.getAttribute('data-item'));};});
 }
 // ---- item customize modal ----
