@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v75</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v76</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1100,6 +1100,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
         <button class="admin-tab" onclick="posSwitchTab('inventory',this)">📦 Inventory <span id="lowStockBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
         <button class="admin-tab" onclick="posSwitchTab('recipes',this)">🧪 Recipes</button>
         <button class="admin-tab" onclick="posSwitchTab('usage',this)">🍽️ Internal Usage</button>
+        <button class="admin-tab" onclick="posSwitchTab('dedupe',this)">🧹 De-dupe Menu</button>
       </div>
       <div class="tabgrp" data-grp="finance" style="display:none;">
         <button class="admin-tab" onclick="posSwitchTab('analytics',this)">📊 Analytics</button>
@@ -1307,6 +1308,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
     <div id="tab-recipes" class="admin-tab-content" style="display:none;"><div id="recipesRoot"></div></div>
     <div id="tab-usage" class="admin-tab-content" style="display:none;"><div id="usageRoot"></div></div>
     <div id="tab-channelpricing" class="admin-tab-content" style="display:none;"><div id="channelPricingRoot"></div></div>
+    <div id="tab-dedupe" class="admin-tab-content" style="display:none;"><div id="dedupeRoot"></div></div>
     <div id="tab-discrepancy" class="admin-tab-content" style="display:none;"><div id="discrepancyRoot"></div></div>
     <div id="tab-petty" class="admin-tab-content" style="display:none;"><div id="pettyRoot"></div></div>
     <div id="tab-packages" class="admin-tab-content" style="display:none;"><div id="packagesRoot"></div></div>
@@ -3483,8 +3485,8 @@ window.selectLoginRole=function(role){
 };
 
 // ── LOGIN SUCCESS ───────────────────────────────────────────
-var DEFAULT_STAFF_PERMS={orders:true,reservations:true,pos:true,inventory:true,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,discrepancy:false,petty:true,channelpricing:false};
-var _permTabMap={"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'analytics'":'analytics',"'pnl'":'pnl',"'ops'":'registerOps'};
+var DEFAULT_STAFF_PERMS={orders:true,reservations:true,pos:true,inventory:true,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false};
+var _permTabMap={"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'dedupe'":'dedupe',"'analytics'":'analytics',"'pnl'":'pnl',"'ops'":'registerOps'};
 var _permAlwaysHide=["'payment'","'staffaccounts'","'adminaccounts'","'staffaccess'","'packages'"];
 window.showAdminSection=function(id){
   var av=document.getElementById('availSection'),cm=document.getElementById('commentsSection');
@@ -4169,7 +4171,7 @@ function init(){
 }
 function isTab(name){var el=document.getElementById('tab-'+name);return el&&el.style.display!=='none';}
 
-window.posSwitchTab=function(name,btn){ if(window.switchTab)window.switchTab(name,btn); if(name==='pos'){buildPOS();} if(name==='inventory')renderInventory(); if(name==='recipes'){recipeEditing=false;renderRecipes();} if(name==='usage')renderUsage(); if(name==='channelpricing')renderChannelPricing(); };
+window.posSwitchTab=function(name,btn){ if(window.switchTab)window.switchTab(name,btn); if(name==='pos'){buildPOS();} if(name==='inventory')renderInventory(); if(name==='recipes'){recipeEditing=false;renderRecipes();} if(name==='usage')renderUsage(); if(name==='channelpricing')renderChannelPricing(); if(name==='dedupe')renderDedupe(); };
 
 /* ══════════ INVENTORY ══════════ */
 function renderInventory(){
@@ -4839,6 +4841,42 @@ function importChannelPrices(file){
       var a=A();a.set(a.ref(a.db,'channelPrices'),byCh).then(function(){alert('Imported '+n+' item row(s) and '+m+' add-on row(s).');});
     }catch(err){alert('Could not read that file: '+err);}
   };rd.readAsArrayBuffer(file);
+}
+/* ══════════ DE-DUPE MENU ITEMS ══════════ */
+function renderDedupe(){
+  var root=document.getElementById('dedupeRoot'); if(!root)return;
+  var items=(A().getMenuItems?A().getMenuItems():[]);
+  function hasRecipe(key){var r=recipesMap[key];return !!(r&&((r.base&&r.base.length)||(r.options&&r.options.length)||(r.consumables&&r.consumables.length)));}
+  function hasChan(key){return !!((channelPricesMap.grabfood||{})[key]||(channelPricesMap.foodpanda||{})[key]);}
+  function priceStr(it){return it.priceM?('S'+(it.priceS||0)+'/M'+it.priceM+'/L'+it.priceL):('₱'+(it.priceS||0));}
+  var groups={};
+  items.forEach(function(it){var k=((it.name||'').trim().toLowerCase())+'||'+(it.cat||'');(groups[k]=groups[k]||[]).push(it);});
+  var dupKeys=Object.keys(groups).filter(function(k){return groups[k].length>1;});
+  var html='<div class="pz-h">🧹 De-dupe Menu Items</div><p class="pz-sub">Items saved more than once (same name + category). Keep the copy that has a recipe / channel price; delete the empty twin. Deleting a menu item does NOT change past orders — they keep their own price snapshot.</p>';
+  if(!dupKeys.length){ html+='<div class="pz-card"><p class="az-note" style="padding:0.7rem;">✓ No duplicate menu items found. Your menu is clean.</p></div>'; root.innerHTML=html; return; }
+  html+='<div class="pz-card" style="margin-bottom:1rem;"><b style="color:var(--bd);">'+dupKeys.length+' duplicated item(s) found.</b><div style="font-size:0.78rem;color:var(--tl);margin-top:0.2rem;">The green row is the recommended keep (it has the recipe/channel price). Delete the others.</div></div>';
+  dupKeys.sort(function(a,b){return groups[a][0].name.localeCompare(groups[b][0].name);}).forEach(function(k){
+    var arr=groups[k].slice();
+    var scored=arr.map(function(it){return {it:it,rec:hasRecipe(it.key)?1:0,chan:hasChan(it.key)?1:0};});
+    var keep=scored.slice().sort(function(a,b){return (b.rec-a.rec)||(b.chan-a.chan);})[0];
+    var rows=scored.map(function(s){
+      var isKeep=s.it.key===keep.it.key;
+      var flags=[]; if(s.rec)flags.push('recipe'); if(s.chan)flags.push('channel price');
+      return '<tr'+(isKeep?' style="background:#eaf6ee;"':'')+'><td>'+esc(s.it.name)+'<div style="font-size:0.7rem;color:var(--tl);">'+esc(s.it.key)+' · '+esc(priceStr(s.it))+'</div></td>'
+        +'<td style="font-size:0.76rem;">'+(flags.length?flags.join(', '):'<span style="color:var(--tl);">empty</span>')+'</td>'
+        +'<td style="white-space:nowrap;text-align:right;">'+(isKeep?'<span style="color:#2a9d5c;font-weight:700;">✓ keep</span>':'<button class="pz-btn warn" style="padding:0.2rem 0.6rem;" data-deldup="'+esc(s.it.key)+'">Delete</button>')+'</td></tr>';
+    }).join('');
+    html+='<div class="az-sec">'+esc(groups[k][0].name)+' <span style="font-size:0.75rem;color:var(--tl);font-weight:400;">('+esc(groups[k][0].cat||'')+') · '+arr.length+' copies</span></div>'
+      +'<div class="pz-card" style="margin-bottom:0.8rem;"><table class="pz-tbl"><thead><tr><th>Copy</th><th>Has</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  });
+  root.innerHTML=html;
+  root.querySelectorAll('[data-deldup]').forEach(function(b){b.onclick=function(){
+    var key=b.getAttribute('data-deldup');var it=(A().menuItemsMap||{})[key];var nm=it?it.name:key;
+    var risky=hasRecipe(key)||hasChan(key);
+    if(risky){ if(!confirm('⚠ This copy HAS a recipe or channel price attached. Deleting it will lose that link. Delete "'+nm+'" ('+key+') anyway?'))return; }
+    else if(!confirm('Delete duplicate "'+nm+'" ('+key+')?\nPast orders are unaffected.'))return;
+    var a=A();a.remove(a.ref(a.db,'menuItems/'+key)).then(function(){ if(window.__posLog)window.__posLog('menu-dedupe',key,'deleted duplicate '+nm); renderDedupe(); }).catch(function(e){alert('Could not delete: '+((e&&e.code)||e)+'. If PERMISSION_DENIED, log in with your EMAIL.');});
+  };});
 }
 /* ══════════ POS REGISTER ══════════ */
 function buildPOS(){
@@ -6185,7 +6223,7 @@ var admins={},perms={};
 function A(){return window.__accaza;}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function isTab(n){var el=document.getElementById('tab-'+n);return el&&el.style.display!=='none';}
-var PERMS=[['orders','Orders'],['reservations','Reservations & Calendar'],['pos','POS Register'],['inventory','Inventory'],['recipes','Recipes'],['usage','Internal Usage (staff & R&D)'],['registerOps','Register Ops (shifts, void, refund)'],['reviews','Reviews'],['appcustomers','App Customers'],['availability','Availability'],['comments','Comments'],['analytics','Analytics'],['pnl','P&L (financials)'],['discrepancy','Discrepancy Log'],['petty','Petty Cash'],['channelpricing','Channel Pricing (Grab/Panda)']];
+var PERMS=[['orders','Orders'],['reservations','Reservations & Calendar'],['pos','POS Register'],['inventory','Inventory'],['recipes','Recipes'],['usage','Internal Usage (staff & R&D)'],['registerOps','Register Ops (shifts, void, refund)'],['reviews','Reviews'],['appcustomers','App Customers'],['availability','Availability'],['comments','Comments'],['analytics','Analytics'],['pnl','P&L (financials)'],['discrepancy','Discrepancy Log'],['petty','Petty Cash'],['channelpricing','Channel Pricing (Grab/Panda)'],['dedupe','De-dupe Menu']];
 var DEF={orders:true,reservations:true,pos:true,inventory:true,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,discrepancy:false,petty:true,channelpricing:false};
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
 function init(){var a=A();a.onValue(a.ref(a.db,'admins'),function(s){admins=s.val()||{};if(isTab('staffaccess'))render();});a.onValue(a.ref(a.db,'adminPerms'),function(s){perms=s.val()||{};if(isTab('staffaccess'))render();});}
