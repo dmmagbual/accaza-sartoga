@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v94</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v97</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1109,6 +1109,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
         <button class="admin-tab" onclick="posSwitchTab('cashflow',this)">🏦 Cash Flow</button>
         <button class="admin-tab" onclick="posSwitchTab('receivables',this)">📥 Receivables</button>
         <button class="admin-tab" onclick="posSwitchTab('payables',this)">📤 Payables</button>
+        <button class="admin-tab" onclick="posSwitchTab('stockvalue',this)">📊 Stock Value</button>
         <button class="admin-tab" onclick="posSwitchTab('discrepancy',this)">🚩 Discrepancies <span id="discBadge" style="display:none;background:#e63946;color:#fff;border-radius:10px;padding:0 0.4rem;font-size:0.7rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
       </div>
       <div class="tabgrp" data-grp="customers" style="display:none;">
@@ -1321,6 +1322,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
     <div id="tab-cashflow" class="admin-tab-content" style="display:none;"><div id="cashflowRoot"></div></div>
     <div id="tab-receivables" class="admin-tab-content" style="display:none;"><div id="receivablesRoot"></div></div>
     <div id="tab-payables" class="admin-tab-content" style="display:none;"><div id="payablesRoot"></div></div>
+    <div id="tab-stockvalue" class="admin-tab-content" style="display:none;"><div id="stockValueRoot"></div></div>
     <div id="tab-ops" class="admin-tab-content" style="display:none;"><div id="opsRoot"></div></div>
     <div id="tab-staffaccess" class="admin-tab-content" style="display:none;"><div id="staffAccessRoot"></div></div>
 
@@ -3491,8 +3493,8 @@ window.selectLoginRole=function(role){
 };
 
 // ── LOGIN SUCCESS ───────────────────────────────────────────
-var DEFAULT_STAFF_PERMS={orders:true,reservations:true,pos:true,inventory:true,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false,cashflow:false,receivables:false,payables:false};
-var _permTabMap={"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'dedupe'":'dedupe',"'cashflow'":'cashflow',"'receivables'":'receivables',"'payables'":'payables',"'analytics'":'analytics',"'pnl'":'pnl',"'ops'":'registerOps'};
+var DEFAULT_STAFF_PERMS={orders:true,reservations:true,pos:true,inventory:true,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false,cashflow:false,receivables:false,payables:false,stockvalue:false};
+var _permTabMap={"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'dedupe'":'dedupe',"'cashflow'":'cashflow',"'receivables'":'receivables',"'payables'":'payables',"'stockvalue'":'stockvalue',"'analytics'":'analytics',"'pnl'":'pnl',"'ops'":'registerOps'};
 var _permAlwaysHide=["'payment'","'staffaccounts'","'adminaccounts'","'staffaccess'","'packages'"];
 window.showAdminSection=function(id){
   var av=document.getElementById('availSection'),cm=document.getElementById('commentsSection');
@@ -4140,6 +4142,17 @@ function baseQtyForSize(rec,b,size){
   var mult=(rec&&rec.sizeMult&&rec.sizeMult[size]!=null)?rec.sizeMult[size]:1;
   return (Number(b.qty)||0)*mult;
 }
+/* ---- unit conversion (recipe unit → ingredient stock unit) ---- */
+var UNIT_DIMS={
+  vol:{ml:1,l:1000,liter:1000,litre:1000,tsp:4.92892,tbsp:14.7868,cup:240,oz:29.5735,floz:29.5735,'fl oz':29.5735},
+  weight:{g:1,gram:1,mg:0.001,kg:1000,lb:453.592,oz:28.3495},
+  count:{pcs:1,pc:1,ea:1,each:1,unit:1,dozen:12,doz:12}
+};
+function uNorm(u){return String(u||'').trim().toLowerCase();}
+function unitDim(u){u=uNorm(u);if(u==='oz')return null;var d;for(d in UNIT_DIMS){if(UNIT_DIMS[d][u]!=null)return d;}return null;}
+function itemDim(item){return unitDim(item&&item.unit);}
+function compatUnits(item){var dim=itemDim(item);var own=uNorm(item&&item.unit);var out;if(dim==='vol')out=['ml','l','tsp','tbsp','cup','oz'];else if(dim==='weight')out=['g','kg','lb','oz'];else out=[own||'pcs'];if(own&&out.indexOf(own)<0)out.unshift(own);return out;}
+function convertToStock(qty,fromUnit,item){qty=Number(qty)||0;var dim=itemDim(item);if(!dim)return qty;var m=UNIT_DIMS[dim]||{};var ff=m[uNorm(fromUnit)],tf=m[uNorm(item.unit)];if(ff==null||tf==null)return qty;return qty*ff/tf;}
 /* option → {ing,qty}: prefer legacy per-recipe option, else global optionRecipes by label */
 function optRecipeFor(rec,label){
   if(rec&&rec.options){var m=rec.options.filter(function(o){return o.label===label;})[0];if(m&&m.ing)return m;}
@@ -4195,7 +4208,7 @@ function renderInventory(){
   var rows=list.map(function(i){
     var st=Number(i.stock)||0; var isLow=st<=Number(i.reorder||0)&&st>=0; var isNeg=st<0;
     var ty=ingType(i);
-    var tyBadge=ty==='consumable'?('🧻 Consumable'+(i.serves&&i.serves!=='both'?' · '+esc(i.serves):'')+(i.size?' · '+esc(i.size):'')):(ty==='option'?'➕ Option':'🧪 Base');
+    var tyBadge=ty==='consumable'?('🧻 Consumable'+(i.serves&&i.serves!=='both'?' · '+esc(i.serves):'')+(i.size?' · '+esc(i.size):'')):(ty==='option'?'➕ Option':(ty==='both'?'🔀 Both':'🧪 Base'));
     return '<tr>'
       +'<td>'+esc(i.name)+'</td>'
       +'<td style="font-size:0.78rem;color:var(--tl);">'+tyBadge+'</td>'
@@ -4223,7 +4236,7 @@ function renderInventory(){
       +'<div style="display:grid;grid-template-columns:2fr 1fr 1.2fr 1fr 1fr 1fr auto;gap:0.5rem;align-items:end;">'
         +'<div><span class="pz-lbl">Name</span><input class="pz-in" id="invName" placeholder="e.g. Espresso beans"/></div>'
         +'<div><span class="pz-lbl">Unit</span><select class="pz-in" id="invUnit"><option>g</option><option>ml</option><option>oz</option><option>pcs</option><option>shot</option><option>pump</option><option>ea</option></select></div>'
-        +'<div><span class="pz-lbl">Type</span><select class="pz-in" id="invType"><option value="base">Base</option><option value="option">Option</option><option value="consumable">Consumable</option></select></div>'
+        +'<div><span class="pz-lbl">Type</span><select class="pz-in" id="invType"><option value="base">Base</option><option value="option">Option</option><option value="both">Both (base+option)</option><option value="consumable">Consumable</option></select></div>'
         +'<div><span class="pz-lbl">Stock</span><input class="pz-in" id="invStock" type="number" step="any" placeholder="0"/></div>'
         +'<div><span class="pz-lbl">Reorder</span><input class="pz-in" id="invReorder" type="number" step="any" placeholder="0"/></div>'
         +'<div><span class="pz-lbl">Cost/unit ₱</span><input class="pz-in" id="invCost" type="number" step="any" placeholder="opt."/></div>'
@@ -4527,7 +4540,7 @@ function editIngredient(id){
   mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:470px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
     +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Edit item — '+esc(i.name)+'</div>'
     +'<p class="pz-sub" style="margin:0.2rem 0 0.7rem;">Sets values directly — <b>no variance is recorded</b>. (For a counted correction that should hit COGS, use <b>Adjust</b> instead.)</p>'
-    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;"><div style="flex:1;min-width:150px;"><span class="pz-lbl">Name</span><input class="pz-in" id="eiName" value="'+esc(i.name||'')+'"/></div><div><span class="pz-lbl">Unit</span><select class="pz-in" id="eiUnit">'+uOpts+'</select></div><div><span class="pz-lbl">Type</span><select class="pz-in" id="eiType"><option value="base"'+(ty==='base'?' selected':'')+'>Base</option><option value="option"'+(ty==='option'?' selected':'')+'>Option</option><option value="consumable"'+(ty==='consumable'?' selected':'')+'>Consumable</option></select></div></div>'
+    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;"><div style="flex:1;min-width:150px;"><span class="pz-lbl">Name</span><input class="pz-in" id="eiName" value="'+esc(i.name||'')+'"/></div><div><span class="pz-lbl">Unit</span><select class="pz-in" id="eiUnit">'+uOpts+'</select></div><div><span class="pz-lbl">Type</span><select class="pz-in" id="eiType"><option value="base"'+(ty==='base'?' selected':'')+'>Base</option><option value="option"'+(ty==='option'?' selected':'')+'>Option</option><option value="both"'+(ty==='both'?' selected':'')+'>Both (base+option)</option><option value="consumable"'+(ty==='consumable'?' selected':'')+'>Consumable</option></select></div></div>'
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div><span class="pz-lbl">Stock (direct set)</span><input class="pz-in" id="eiStock" type="number" step="any" value="'+(Number(i.stock)||0)+'" style="width:120px;"/></div><div><span class="pz-lbl">Reorder</span><input class="pz-in" id="eiReorder" type="number" step="any" value="'+(Number(i.reorder)||0)+'" style="width:110px;"/></div><div><span class="pz-lbl">Cost / unit ₱</span><input class="pz-in" id="eiCost" type="number" step="any" value="'+(i.cost!=null&&i.cost!==''?i.cost:'')+'" style="width:120px;"/></div></div>'
     +'<div id="eiCons" style="display:'+(ty==='consumable'?'flex':'none')+';gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div><span class="pz-lbl">Serves</span><select class="pz-in" id="eiServes"><option value="both"'+((i.serves||'both')==='both'?' selected':'')+'>Both</option><option value="drink"'+(i.serves==='drink'?' selected':'')+'>Drinks</option><option value="food"'+(i.serves==='food'?' selected':'')+'>Food</option></select></div><div><span class="pz-lbl">Size (blank=all)</span><select class="pz-in" id="eiSize"><option value="">all</option><option'+(i.size==='S'?' selected':'')+'>S</option><option'+(i.size==='M'?' selected':'')+'>M</option><option'+(i.size==='L'?' selected':'')+'>L</option></select></div><div><span class="pz-lbl">Qty per order</span><input class="pz-in" id="eiQPO" type="number" step="any" value="'+(i.qtyPerOrder!=null?i.qtyPerOrder:1)+'" style="width:100px;"/></div></div>'
     +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="eiSave">Save</button><button class="pz-btn sec" id="eiCancel">Cancel</button></div></div>';
@@ -4558,16 +4571,16 @@ function updateLowStockBadge(){
 function menuList(){ return (A().getMenuItems?A().getMenuItems():[]).slice().sort(function(a,b){return (a.cat||'').localeCompare(b.cat||'')||(a.name||'').localeCompare(b.name||'');}); }
 function renderRecipes(){
   var root=document.getElementById('recipesRoot'); if(!root)return;
-  var tabs=[['base','1 · Base ingredients'],['options','2 · Optional ingredients'],['consumables','3 · Consumables']];
+  var tabs=[['base','🧪 Recipe (base + consumables)'],['options','➕ Optional ingredients']];
   var nav='<div style="display:flex;gap:0.4rem;margin:0.4rem 0 1rem;flex-wrap:wrap;">'+tabs.map(function(t){return '<button class="pz-btn '+(recSub===t[0]?'ok':'sec')+'" data-recsub="'+t[0]+'" style="padding:0.4rem 0.9rem;">'+t[1]+'</button>';}).join('')+'</div>';
+  if(recSub==='consumables')recSub='base';
   var body;
   if(recSub==='options'){ body='<div id="optMasterRoot"></div>'; }
-  else if(recSub==='consumables'){ body='<div id="consumRoot"></div>'; }
   else {
     var items=menuList();
     var opts=items.map(function(it){var has=!!recipesMap[it.key];return '<option value="'+esc(it.key)+'"'+(it.key===curRecipeKey?' selected':'')+'>'+(has?'✓ ':'○ ')+esc(it.name)+'</option>';}).join('');
     var covered=items.filter(function(it){return !!recipesMap[it.key];}).length;
-    body='<p class="pz-sub">Enter the real quantity per serving size (S / M / L) in the item’s unit. The <b>Amount</b> column and totals follow the size you select. Options and consumables below are auto-listed for a costing preview — real deduction follows what the customer actually picks. <b>'+covered+' of '+items.length+'</b> items have a recipe.</p>'
+    body='<p class="pz-sub">Build each drink from its ingredients — base + consumables (cups, lids, straws) — with the quantity per size. Cost per drink is the sum. Optional add-ons are costed separately in the Optional ingredients tab and only trigger when a customer picks them. <b>'+covered+' of '+items.length+'</b> items have a recipe.</p>'
       +'<div class="pz-card" style="margin-bottom:1rem;"><span class="pz-lbl">Menu item</span>'
       +'<select class="pz-in" id="recPick" style="max-width:420px;"><option value="">— choose an item —</option>'+opts+'</select></div>'
       +'<div id="recEditor"></div>';
@@ -4587,7 +4600,6 @@ function renderRecipes(){
   var _rb=document.getElementById('recImportBtn'), _rf=document.getElementById('recImportFile');
   if(_rb&&_rf){ _rb.onclick=function(){_rf.value='';_rf.click();}; _rf.onchange=function(){ if(_rf.files&&_rf.files[0])importRecipesXlsx(_rf.files[0]); }; }
   if(recSub==='options'){ renderOptionsMaster(); }
-  else if(recSub==='consumables'){ renderConsumables(); }
   else { var rp=document.getElementById('recPick'); if(rp)rp.onchange=function(){ curRecipeKey=this.value||null; openRecipe(curRecipeKey); }; if(curRecipeKey)openRecipe(curRecipeKey); }
 }
 function optLabelsForItem(item){
@@ -4604,9 +4616,11 @@ function openRecipe(key){
   var sm=saved.sizeMult||{S:1,M:1.3,L:1.6};
   recipeDraft={
     base:(saved.base?saved.base.map(function(b){
-      if(b.qtyS!=null||b.qtyM!=null||b.qtyL!=null)return Object.assign({},b);
-      var q=Number(b.qty)||0; /* migrate legacy qty × sizeMult into explicit per-size */
-      return {ing:b.ing,qtyS:q*(sm.S!=null?sm.S:1),qtyM:q*(sm.M!=null?sm.M:1),qtyL:q*(sm.L!=null?sm.L:1)};
+      var inv=inventoryMap[b.ing]||{}; var u=b.unit||inv.unit||'';
+      var qS,qM,qL;
+      if(b.qtyS!=null||b.qtyM!=null||b.qtyL!=null){qS=b.qtyS;qM=b.qtyM;qL=b.qtyL;}
+      else{var q=Number(b.qty)||0;qS=q*(sm.S!=null?sm.S:1);qM=q*(sm.M!=null?sm.M:1);qL=q*(sm.L!=null?sm.L:1);}
+      return {ing:b.ing,unit:u,dS:(b.dispS!=null?b.dispS:qS),dM:(b.dispM!=null?b.dispM:qM),dL:(b.dispL!=null?b.dispL:qL)};
     }):[]),
     _optPreview:[]
   };
@@ -4616,45 +4630,31 @@ function drawRecipeEditor(item){
   var ed=document.getElementById('recEditor'); if(!ed)return;
   var d=recipeDraft; var size=recSize||'M';
   var cat=item.cat||''; var ct=catType(cat);
-  function ingSelect(val,attr){return '<select class="pz-in" '+attr+' style="min-width:150px;"><option value="">— ingredient —</option>'+ingsByType('base').concat(ingsByType('option')).map(function(i){return '<option value="'+i.id+'"'+(i.id===val?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+')</option>';}).join('')+'</select>';}
+  function ingSelect(val,attr){return '<select class="pz-in" '+attr+' style="min-width:150px;"><option value="">— ingredient —</option>'+ingsByType('base').concat(ingsByType('both')).concat(ingsByType('consumable')).map(function(i){return '<option value="'+i.id+'"'+(i.id===val?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+') · '+ingType(i)+'</option>';}).join('')+'</select>';}
   var baseTotal=0;
   var baseRows=d.base.map(function(r,ix){
-    var unit=ingUnit(r.ing); var amt=(Number(r['qty'+size])||0)*ingCost(r.ing); baseTotal+=amt;
-    function qc(sz){return '<input class="pz-in" type="number" step="any" style="width:66px;" value="'+(r['qty'+sz]!=null&&r['qty'+sz]!==''?r['qty'+sz]:'')+'" data-brow="'+ix+'" data-bfield="qty'+sz+'" placeholder="0"/>';}
+    var inv=inventoryMap[r.ing]||{};
+    var stockQ=convertToStock((r['d'+size]===''||r['d'+size]==null)?0:Number(r['d'+size]),r.unit,inv);
+    var amt=stockQ*ingCost(r.ing); baseTotal+=amt;
+    var cu=compatUnits(inv); var uOpts=cu.map(function(u){return '<option'+(uNorm(u)===uNorm(r.unit)?' selected':'')+'>'+esc(u)+'</option>';}).join('');
+    var stkNote=(inv.unit&&uNorm(inv.unit)!==uNorm(r.unit))?('<div style="font-size:0.62rem;color:var(--tl);">=&nbsp;'+num(Math.round(stockQ*1000)/1000)+' '+esc(inv.unit)+'</div>'):'';
+    function qc(sz){return '<input class="pz-in" type="number" step="any" style="width:60px;" value="'+(r['d'+sz]!=null&&r['d'+sz]!==''?r['d'+sz]:'')+'" data-brow="'+ix+'" data-bfield="d'+sz+'" placeholder="0"/>';}
     return '<tr><td>'+ingSelect(r.ing,'data-brow="'+ix+'" data-bfield="ing"')+'</td>'
-      +'<td style="color:var(--tl);">'+esc(unit)+'</td>'
+      +'<td><select class="pz-in" data-brow="'+ix+'" data-bfield="unit" style="width:78px;">'+(uOpts||'<option></option>')+'</select>'+stkNote+'</td>'
       +'<td>'+qc('S')+'</td><td>'+qc('M')+'</td><td>'+qc('L')+'</td>'
       +'<td style="white-space:nowrap;font-weight:600;">'+peso(amt)+' <button class="pz-btn warn" style="padding:0.2rem 0.45rem;font-weight:400;" data-brem="'+ix+'">✕</button></td></tr>';
   }).join('');
   var sizeBtns=['S','M','L'].map(function(sz){return '<button class="pz-btn '+(sz===size?'ok':'sec')+'" data-recsize="'+sz+'" style="padding:0.25rem 0.8rem;">'+sz+'</button>';}).join(' ');
-  var itemLabels=(optLabelsForItem(item)||[]).map(function(o){return o.label;});
-  var optKeys=Object.keys(optRecipesMap).filter(function(lb){return itemLabels.indexOf(lb)>-1;}).sort();
-  var optTotal=0;
-  var optRows=optKeys.length?optKeys.map(function(lb){
-    var o=optRecipesMap[lb]; var cost=(Number(o.qty)||0)*ingCost(o.ing); var checked=(d._optPreview||[]).indexOf(lb)>-1; if(checked)optTotal+=cost;
-    return '<tr><td style="width:26px;"><input type="checkbox" data-optprev="'+esc(lb)+'"'+(checked?' checked':'')+'/></td><td>'+esc(lb)+'</td><td style="color:var(--tl);font-size:0.8rem;">'+esc(ingName(o.ing))+' · '+num(o.qty)+' '+esc(ingUnit(o.ing))+'</td><td style="text-align:right;">'+peso(cost)+'</td></tr>';
-  }).join(''):'<tr><td colspan="4" style="color:var(--tl);padding:0.5rem;">No options yet — define them in the “Optional ingredients” sub-tab.</td></tr>';
-  var consList=consumablesFor(cat,size); var consTotal=0; var consRows;
-  if(ct==='drink'||ct==='food'){ consRows=consList.length?consList.map(function(c){var cost=(Number(c.qtyPerOrder)||1)*ingCost(c);consTotal+=cost;return '<tr><td>'+esc(c.name)+'</td><td style="color:var(--tl);font-size:0.8rem;">'+num(c.qtyPerOrder||1)+' '+esc(c.unit||'')+(c.size?' · size '+esc(c.size):'')+'</td><td style="text-align:right;">'+peso(cost)+'</td></tr>';}).join(''):'<tr><td colspan="3" style="color:var(--tl);padding:0.5rem;">No consumables match this '+ct+'.</td></tr>'; }
-  else { consRows='<tr><td colspan="3" class="pz-low" style="padding:0.5rem;">Category “'+esc(cat||'—')+'” isn’t tagged Drink/Food yet. Set it in the “Consumables” sub-tab so cups/stirrers cost correctly.</td></tr>'; }
-  var grand=baseTotal+optTotal+consTotal;
+  var grand=baseTotal;
   ed.innerHTML=
     '<div class="pz-card" style="margin-bottom:1rem;">'
       +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.6rem;"><div style="font-weight:600;color:var(--bd);">Recipe for “'+esc(item.name)+'”'+(cat?' · <span style="color:var(--tl);font-size:0.82rem;">'+esc(A().getCatLabel?A().getCatLabel(cat):cat)+(ct?' ('+ct+')':'')+'</span>':'')+'</div><div><span class="pz-lbl" style="display:inline;margin-right:0.4rem;">Cost for size</span>'+sizeBtns+'</div></div>'
       +(ings().length?'':'<p class="pz-low" style="font-size:0.8rem;">Add items in the Inventory tab first.</p>')
-      +'<span class="pz-lbl">1 · Base ingredients — enter qty per size</span>'
-      +'<table class="pz-tbl" style="margin-bottom:0.4rem;"><thead><tr><th>Ingredient</th><th>Unit</th><th>S</th><th>M</th><th>L</th><th>Amount ('+size+')</th></tr></thead><tbody>'+(baseRows||'<tr><td colspan="6" style="color:var(--tl);padding:0.5rem;">No base ingredients yet.</td></tr>')+'</tbody></table>'
-      +'<button class="pz-btn sec" id="recAddBase" style="padding:0.3rem 0.7rem;">+ base ingredient</button>'
-      +'<div style="text-align:right;font-weight:600;margin-top:0.3rem;">Base ('+size+'): '+peso(baseTotal)+'</div>'
-      +'<div style="height:0.8rem;"></div>'
-      +'<span class="pz-lbl">2 · Optional ingredients — tick to include in this costing preview</span>'
-      +'<table class="pz-tbl" style="margin-bottom:0.2rem;"><thead><tr><th></th><th>Option</th><th>Uses</th><th style="text-align:right;">Cost/order</th></tr></thead><tbody>'+optRows+'</tbody></table>'
-      +'<div style="text-align:right;font-weight:600;">Options ticked: '+peso(optTotal)+'</div>'
-      +'<div style="height:0.8rem;"></div>'
-      +'<span class="pz-lbl">3 · Consumables — auto by category ('+size+' cup where size-specific)</span>'
-      +'<table class="pz-tbl" style="margin-bottom:0.2rem;"><thead><tr><th>Consumable</th><th>Per order</th><th style="text-align:right;">Cost</th></tr></thead><tbody>'+consRows+'</tbody></table>'
-      +'<div style="text-align:right;font-weight:600;">Consumables: '+peso(consTotal)+'</div>'
-      +'<div style="border-top:2px solid var(--bd);margin-top:0.8rem;padding-top:0.6rem;display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:var(--bd);">TOTAL cost / '+size+(optTotal?' (with ticked options)':'')+'</span><span style="font-weight:700;font-size:1.1rem;color:var(--bd);">'+peso(grand)+'</span></div>'
+      +'<span class="pz-lbl">Recipe ingredients — base &amp; consumables (cups, lids, straws…). Enter qty per size.</span>'
+      +'<table class="pz-tbl" style="margin-bottom:0.4rem;"><thead><tr><th>Ingredient</th><th>Recipe unit</th><th>S</th><th>M</th><th>L</th><th>Amount ('+size+')</th></tr></thead><tbody>'+(baseRows||'<tr><td colspan="6" style="color:var(--tl);padding:0.5rem;">No ingredients yet.</td></tr>')+'</tbody></table>'
+      +'<button class="pz-btn sec" id="recAddBase" style="padding:0.3rem 0.7rem;">+ ingredient</button>'
+      +'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;">Add cups / lids / straws / tissue here too — pick the inventory item (tagged consumable) and its qty. Optional add-ons are costed separately in the Optional ingredients tab and only trigger when a customer picks them.</div>'
+      +'<div style="border-top:2px solid var(--bd);margin-top:0.8rem;padding-top:0.6rem;display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:var(--bd);">COST PER DRINK / '+size+'</span><span style="font-weight:700;font-size:1.1rem;color:var(--bd);">'+peso(grand)+'</span></div>'
       +'<div style="margin-top:1rem;display:flex;gap:0.5rem;">'
         +'<button class="pz-btn ok" id="recSave">💾 Save recipe</button>'
         +'<button class="pz-btn sec" id="recClose">Close</button>'
@@ -4663,13 +4663,11 @@ function drawRecipeEditor(item){
     +'</div>';
   // sync DOM into draft
   function syncDraft(){
-    var base=[]; d.base.forEach(function(_,ix){ var ing=ed.querySelector('[data-brow="'+ix+'"][data-bfield="ing"]'); if(!ing)return; var row={ing:ing.value}; ['S','M','L'].forEach(function(sz){var q=ed.querySelector('[data-brow="'+ix+'"][data-bfield="qty'+sz+'"]'); row['qty'+sz]=q?(q.value===''?'':(Number(q.value)||0)):'';}); base[ix]=row;});
+    var base=[]; d.base.forEach(function(_,ix){ var ing=ed.querySelector('[data-brow="'+ix+'"][data-bfield="ing"]'); if(!ing)return; var uEl=ed.querySelector('[data-brow="'+ix+'"][data-bfield="unit"]'); var inv=inventoryMap[ing.value]||{}; var u=uEl?uEl.value:(inv.unit||''); if(compatUnits(inv).map(uNorm).indexOf(uNorm(u))<0)u=inv.unit||u; var row={ing:ing.value,unit:u}; ['S','M','L'].forEach(function(sz){var q=ed.querySelector('[data-brow="'+ix+'"][data-bfield="d'+sz+'"]'); row['d'+sz]=q?(q.value===''?'':(Number(q.value)||0)):'';}); base[ix]=row;});
     d.base=base.filter(function(x){return x;});
-    var prev=[]; ed.querySelectorAll('[data-optprev]').forEach(function(c){if(c.checked)prev.push(c.getAttribute('data-optprev'));}); d._optPreview=prev;
   }
-  document.getElementById('recAddBase').onclick=function(){syncDraft();d.base.push({ing:'',qtyS:'',qtyM:'',qtyL:''});drawRecipeEditor(item);};
+  document.getElementById('recAddBase').onclick=function(){syncDraft();d.base.push({ing:'',unit:'',dS:'',dM:'',dL:''});drawRecipeEditor(item);};
   ed.querySelectorAll('[data-recsize]').forEach(function(b){b.onclick=function(){syncDraft();recSize=b.getAttribute('data-recsize');drawRecipeEditor(item);};});
-  ed.querySelectorAll('[data-optprev]').forEach(function(c){c.onchange=function(){syncDraft();drawRecipeEditor(item);};});
   ed.querySelectorAll('[data-brem]').forEach(function(b){b.onclick=function(){syncDraft();d.base.splice(Number(b.getAttribute('data-brem')),1);drawRecipeEditor(item);};});
   ed.querySelectorAll('select[data-brow]').forEach(function(s){s.onchange=function(){syncDraft();drawRecipeEditor(item);};});
   document.getElementById('recSave').onclick=function(){ syncDraft(); saveRecipe(item.key); };
@@ -4687,13 +4685,8 @@ function exportCostSheet(){
     (rec.base||[]).forEach(function(b){ if(!b.ing)return; var inv=inventoryMap[b.ing]||{}; var uc=Number(inv.cost)||0;
       var qs=baseQtyForSize(rec,b,'S'),qm=baseQtyForSize(rec,b,'M'),ql=baseQtyForSize(rec,b,'L');
       var cs=qs*uc,cm=qm*uc,cl=ql*uc; totS+=cs;totM+=cm;totL+=cl;
-      aoa.push([catL,it.name,inv.name||b.ing,'base',inv.unit||'',qs||'',r4(cs),qm||'',r4(cm),ql||'',r4(cl)]);
-    });
-    var consUnion={}; ['S','M','L'].forEach(function(sz){ consumablesFor(cat,sz).forEach(function(c){consUnion[c.id]=c;}); });
-    Object.keys(consUnion).forEach(function(cid){ var c=consUnion[cid]; var uc=Number((inventoryMap[cid]||{}).cost)||0;
-      function q(sz){ return consumablesFor(cat,sz).some(function(x){return x.id===cid;})?(Number(c.qtyPerOrder)||1):0; }
-      var qs=q('S'),qm=q('M'),ql=q('L'); var cs=qs*uc,cm=qm*uc,cl=ql*uc; totS+=cs;totM+=cm;totL+=cl;
-      aoa.push([catL,it.name,c.name||cid,'consumable',c.unit||'',qs||'',r4(cs),qm||'',r4(cm),ql||'',r4(cl)]);
+      var du=b.unit||inv.unit||''; var ds=(b.dispS!=null?b.dispS:qs),dm=(b.dispM!=null?b.dispM:qm),dl=(b.dispL!=null?b.dispL:ql);
+      aoa.push([catL,it.name,inv.name||b.ing,'base',du,ds||'',r4(cs),dm||'',r4(cm),dl||'',r4(cl)]);
     });
     aoa.push(['',it.name,'COST PER DRINK','','','',r4(totS),'',r4(totM),'',r4(totL)]);
     aoa.push([]);
@@ -4703,8 +4696,11 @@ function exportCostSheet(){
 }
 function saveRecipe(key){
   var d=recipeDraft; if(!d){alert('Nothing to save — reopen the recipe and try again.');return;}
-  var base=(d.base||[]).filter(function(r){return r.ing&&((r.qtyS!=null&&r.qtyS!=='')||(r.qtyM!=null&&r.qtyM!=='')||(r.qtyL!=null&&r.qtyL!==''));}).map(function(r){
-    return {ing:r.ing,qtyS:(r.qtyS===''||r.qtyS==null)?null:Number(r.qtyS)||0,qtyM:(r.qtyM===''||r.qtyM==null)?null:Number(r.qtyM)||0,qtyL:(r.qtyL===''||r.qtyL==null)?null:Number(r.qtyL)||0};
+  var base=(d.base||[]).filter(function(r){return r.ing&&((r.dS!=null&&r.dS!=='')||(r.dM!=null&&r.dM!=='')||(r.dL!=null&&r.dL!==''));}).map(function(r){
+    var inv=inventoryMap[r.ing]||{}; var u=r.unit||inv.unit||'';
+    function d2(v){return (v===''||v==null)?null:(Number(v)||0);}
+    function s2(v){return (v===''||v==null)?null:Math.round(convertToStock(Number(v)||0,u,inv)*100000)/100000;}
+    return {ing:r.ing,unit:u,dispS:d2(r.dS),dispM:d2(r.dM),dispL:d2(r.dL),qtyS:s2(r.dS),qtyM:s2(r.dM),qtyL:s2(r.dL)};
   });
   var rec={base:base,updatedAt:Date.now()};
   var saved=recipesMap[key]; if(saved&&saved.options)rec.options=saved.options; /* keep legacy per-recipe options if any */
@@ -4718,27 +4714,25 @@ function allOptionLabels(){
 }
 function renderOptionsMaster(){
   var root=document.getElementById('optMasterRoot'); if(!root)return;
-  var labels=allOptionLabels();
-  var baseOpts=ingsByType('base').concat(ingsByType('option'));
-  function ingSel(id){return '<select class="pz-in" data-oing style="min-width:150px;"><option value="">— ingredient —</option>'+baseOpts.map(function(i){return '<option value="'+i.id+'"'+(i.id===id?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+')</option>';}).join('')+'</select>';}
-  var rows=labels.length?labels.map(function(o){
-    var g=optRecipesMap[o.label]||{}; var cost=(Number(g.qty)||0)*ingCost(g.ing);
-    return '<tr data-optlabel="'+esc(o.label)+'"><td>'+esc(o.group)+': <b>'+esc(o.label)+'</b></td>'
-      +'<td>'+ingSel(g.ing)+'</td>'
-      +'<td><input class="pz-in" type="number" step="any" style="width:80px;" data-oqty value="'+(g.qty!=null?g.qty:'')+'" placeholder="qty"/></td>'
-      +'<td style="text-align:right;font-weight:600;">'+peso(cost)+'</td>'
+  var items=ingsByType('option').concat(ingsByType('both')).sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
+  var rows=items.length?items.map(function(i){
+    var ex=optRecipesMap[i.name]||{}; var q=(ex.qty!=null?ex.qty:'');
+    var cost=(Number(q)||0)*ingCost(i.id);
+    return '<tr data-optiid="'+esc(i.id)+'" data-optname="'+esc(i.name)+'"><td><b>'+esc(i.name)+'</b> <span style="font-size:0.7rem;color:var(--tl);">('+esc(ingType(i))+')</span></td>'
+      +'<td style="color:var(--tl);">'+esc(i.unit||'')+'</td>'
+      +'<td><input class="pz-in" type="number" step="any" style="width:100px;" data-oqty value="'+(q!==''&&q!=null?q:'')+'" placeholder="qty / serving"/></td>'
+      +'<td style="text-align:right;font-weight:600;" data-ocost>'+peso(cost)+'</td>'
       +'<td><button class="pz-btn ok" data-osave style="padding:0.25rem 0.6rem;">Save</button></td></tr>';
-  }).join(''):'<tr><td colspan="5" style="color:var(--tl);padding:0.6rem;">No menu options found. Add option groups to your menu items first.</td></tr>';
-  root.innerHTML='<p class="pz-sub">Map each customer option to the inventory item it consumes and the qty per order — one costing for all sizes. This drives real deduction &amp; COGS when a customer picks the option, and feeds the tick-boxes in the Base sub-tab.</p>'
-    +'<div class="pz-card"><table class="pz-tbl"><thead><tr><th>Option</th><th>Consumes</th><th>Qty/order</th><th style="text-align:right;">Cost/order</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
-  root.querySelectorAll('tr[data-optlabel]').forEach(function(tr){
-    var save=tr.querySelector('[data-osave]'); if(!save)return;
-    save.onclick=function(){
-      var label=tr.getAttribute('data-optlabel');
-      var ing=tr.querySelector('[data-oing]').value; var qty=Number(tr.querySelector('[data-oqty]').value)||0;
-      var a=A();
-      if(!ing||!qty){ a.remove(a.ref(a.db,'optionRecipes/'+optKey(label))); }
-      else { a.set(a.ref(a.db,'optionRecipes/'+optKey(label)),{label:label,ing:ing,qty:qty,updatedAt:Date.now()}); }
+  }).join(''):'<tr><td colspan="5" style="color:var(--tl);padding:0.6rem;">No option ingredients yet. Tag inventory items as <b>Option</b> or <b>Both</b> to list them here.</td></tr>';
+  root.innerHTML='<p class="pz-sub">Add-ons come from your inventory — items tagged <b>Option</b> or <b>Both</b>. Set the qty used per serving; the cost triggers and the ingredient deducts when a customer picks that add-on (matched by name to the menu option). These are <b>not</b> part of the base recipe — costed here separately.</p>'
+    +'<div class="pz-card"><table class="pz-tbl"><thead><tr><th>Option</th><th>Unit</th><th>Qty / serving</th><th style="text-align:right;">Cost / serving</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  root.querySelectorAll('tr[data-optiid]').forEach(function(tr){
+    var save=tr.querySelector('[data-osave]'); var qtyEl=tr.querySelector('[data-oqty]'); var costEl=tr.querySelector('[data-ocost]');
+    var id=tr.getAttribute('data-optiid'); var name=tr.getAttribute('data-optname');
+    if(qtyEl)qtyEl.oninput=function(){ if(costEl)costEl.textContent=peso((Number(qtyEl.value)||0)*ingCost(id)); };
+    if(save)save.onclick=function(){ var qty=Number(qtyEl.value)||0; var a=A();
+      if(!qty){ a.remove(a.ref(a.db,'optionRecipes/'+optKey(name))); }
+      else { a.set(a.ref(a.db,'optionRecipes/'+optKey(name)),{label:name,ing:id,qty:qty,unit:(inventoryMap[id]||{}).unit||'',updatedAt:Date.now()}); }
       save.textContent='✓ Saved';
     };
   });
@@ -5383,8 +5377,7 @@ function computeUsage(lineItems){
     var rec=recipesMap[li.itemKey];
     if(rec){ (rec.base||[]).forEach(function(b){ if(!b.ing)return; usage[b.ing]=(usage[b.ing]||0)+baseQtyForSize(rec,b,size)*qty; }); }
     (li.optLabels||[]).forEach(function(lb){ var o=optRecipeFor(rec,lb); if(o&&o.ing){ usage[o.ing]=(usage[o.ing]||0)+(Number(o.qty)||0)*qty; } });
-    var it=mim[li.itemKey]; var cat=it?it.cat:'';
-    consumablesFor(cat,size).forEach(function(c){ usage[c.id]=(usage[c.id]||0)+(Number(c.qtyPerOrder)||1)*qty; });
+    /* consumables are now explicit recipe rows (base) — no auto-by-category deduction */
   });
   return usage;
 }
@@ -5463,7 +5456,8 @@ function showReceipt(o){
 <script id="accaza-analytics">
 (function(){
 'use strict';
-var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},funnelMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={};
+var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},funnelMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={},receiptsMap={};
+var svFrom=null,svTo=null,svExpand=null;
 var azRange='7d', azFrom=null, azTo=null, pnlMonth=null;
 var poChannel='grabfood', poFrom=null, poTo=null;
 var PO_CHANNELS=[{k:'grabfood',lbl:'GrabFood'},{k:'foodpanda',lbl:'FoodPanda'}];
@@ -5492,19 +5486,20 @@ function init(){
   a.onValue(a.ref(a.db,'reviews'),function(s){reviewsMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
   a.onValue(a.ref(a.db,'feedbacks'),function(s){feedbacksMap=s.val()||{};});
   a.onValue(a.ref(a.db,'appCustomers'),function(s){custMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
-  a.onValue(a.ref(a.db,'inventory'),function(s){invMap=s.val()||{};});
   a.onValue(a.ref(a.db,'recipes'),function(s){recMap=s.val()||{};});
   a.onValue(a.ref(a.db,'expenseItems'),function(s){expItems=s.val()||{};if(isTab('pnl'))renderPnl();});
   a.onValue(a.ref(a.db,'monthlyExpenses'),function(s){monthlyExp=s.val()||{};if(isTab('pnl'))renderPnl();});
-  a.onValue(a.ref(a.db,'inventoryAdjustments'),function(s){adjMap=s.val()||{};if(isTab('pnl'))renderPnl();});
-  a.onValue(a.ref(a.db,'internalUsage'),function(s){usageMap=s.val()||{};if(isTab('pnl'))renderPnl();});
+  a.onValue(a.ref(a.db,'inventoryAdjustments'),function(s){adjMap=s.val()||{};if(isTab('pnl'))renderPnl();if(isTab('stockvalue'))renderStockValue();});
+  a.onValue(a.ref(a.db,'internalUsage'),function(s){usageMap=s.val()||{};if(isTab('pnl'))renderPnl();if(isTab('stockvalue'))renderStockValue();});
+  a.onValue(a.ref(a.db,'stockReceipts'),function(s){receiptsMap=s.val()||{};if(isTab('stockvalue'))renderStockValue();});
+  a.onValue(a.ref(a.db,'inventory'),function(s){invMap=s.val()||{};if(isTab('stockvalue'))renderStockValue();});
   a.onValue(a.ref(a.db,'analyticsFunnel'),function(s){funnelMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
   a.onValue(a.ref(a.db,'platformPayouts'),function(s){payoutsMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();if(isTab('analytics'))renderAnalytics();});
   a.onValue(a.ref(a.db,'platformVarAccounts'),function(s){varAcctMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();});
 }
 // extend the POS tab switcher to also render our tabs
 var _prev=window.posSwitchTab;
-window.posSwitchTab=function(name,btn){ if(_prev)_prev(name,btn); else if(window.switchTab)window.switchTab(name,btn); if(name==='analytics')renderAnalytics(); if(name==='pnl'){if(!pnlMonth)pnlMonth=monthKey(Date.now());renderPnl();} if(name==='payouts')renderPayouts(); };
+window.posSwitchTab=function(name,btn){ if(_prev)_prev(name,btn); else if(window.switchTab)window.switchTab(name,btn); if(name==='analytics')renderAnalytics(); if(name==='pnl'){if(!pnlMonth)pnlMonth=monthKey(Date.now());renderPnl();} if(name==='payouts')renderPayouts(); if(name==='stockvalue')renderStockValue(); };
 
 // capture completedAt for ops metrics (idempotent, additive)
 function captureCompletedAt(all){var a=A();Object.keys(all).forEach(function(id){var o=all[id];if(o&&o.status==='Completed'&&!o.completedAt){a.update(a.ref(a.db,'orders/'+id),{completedAt:Date.now()});}});}
@@ -5866,6 +5861,73 @@ function exportPnl(cur,prev,pmk,ids){
   rows.push(['Net profit',cur.net.toFixed(2),prev.net.toFixed(2)]);
   var csv=rows.map(function(r){return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"';}).join(',');}).join('\n');
   var blob=new Blob([csv],{type:'text/csv'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='accaza-pnl-'+pnlMonth+'.csv';a.click();URL.revokeObjectURL(url);
+}
+/* ══════════ STOCK VALUE / STOCK CARD ══════════ */
+function svRange(){var f=svFrom,t=svTo;if(!f&&!t){var d=new Date();f=new Date(d.getFullYear(),d.getMonth(),1);f=f.getFullYear()+'-'+pad(f.getMonth()+1)+'-'+pad(f.getDate());t=new Date();t=t.getFullYear()+'-'+pad(t.getMonth()+1)+'-'+pad(t.getDate());}return {f:f||'',t:t||''};}
+function fq(n){n=Number(n)||0;return (Math.round(n*1000)/1000).toLocaleString('en-PH');}
+function invItems(){return Object.keys(invMap).map(function(k){return Object.assign({id:k},invMap[k]);}).sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});}
+function tsToDate(ts){var d=new Date(ts||0);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+function inRng(d,rng){return (!rng.f||d>=rng.f)&&(!rng.t||d<=rng.t);}
+function itemPeriod(id,cost,rng){var pQ=0,pV=0,uQ=0;
+  Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r||r.ing!==id)return;var d=r.date||tsToDate(r.ts);if(inRng(d,rng)){pQ+=Number(r.qty)||0;pV+=Number(r.total)||0;}});
+  [ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k];if(!isSale(o)||!o.inventoryUsage||!o.inventoryUsage[id])return;var d=tsToDate(o.timestamp||Date.parse(o.date)||0);if(inRng(d,rng))uQ+=Number(o.inventoryUsage[id])||0;});});
+  Object.keys(usageMap).forEach(function(k){var u=usageMap[k];if(!u||u.reversed||!u.usage||!u.usage[id])return;var d=tsToDate(u.ts);if(inRng(d,rng))uQ+=Number(u.usage[id])||0;});
+  return {pQ:pQ,pV:pV,uQ:uQ,uV:uQ*(Number(cost)||0)};
+}
+function itemMovements(id){
+  var cost=Number((invMap[id]||{}).cost)||0;var out=[];
+  Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r||r.ing!==id)return;out.push({ts:r.ts||Date.parse(r.date)||0,date:r.date||tsToDate(r.ts),type:'Purchase'+(r.supplier?' · '+r.supplier:''),in:Number(r.qty)||0,out:0});});
+  Object.keys(adjMap).forEach(function(k){var x=adjMap[k];if(!x||x.ing!==id)return;var dl=Number(x.delta)||0;out.push({ts:x.ts||0,date:tsToDate(x.ts),type:'Adjust · '+(x.reason||''),in:dl>0?dl:0,out:dl<0?-dl:0});});
+  Object.keys(usageMap).forEach(function(k){var u=usageMap[k];if(!u||u.reversed||!u.usage||!u.usage[id])return;out.push({ts:u.ts||0,date:tsToDate(u.ts),type:'Usage · '+(u.kindName||u.kind||''),in:0,out:Number(u.usage[id])||0});});
+  var byDay={};[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k];if(!isSale(o)||!o.inventoryUsage||!o.inventoryUsage[id])return;var day=tsToDate(o.timestamp||Date.parse(o.date)||0);byDay[day]=(byDay[day]||0)+(Number(o.inventoryUsage[id])||0);});});
+  Object.keys(byDay).forEach(function(day){out.push({ts:new Date(day+'T12:00:00').getTime(),date:day,type:'Sales usage',in:0,out:byDay[day]});});
+  out.sort(function(a,b){return (a.ts||0)-(b.ts||0);});return out;
+}
+function renderStockValue(){
+  var root=document.getElementById('stockValueRoot');if(!root)return;
+  var rng=svRange();var items=invItems();
+  var totalValue=items.reduce(function(s,i){return s+(Number(i.stock)||0)*(Number(i.cost)||0);},0);
+  var periodPurch=0;Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r)return;var d=r.date||tsToDate(r.ts);if(inRng(d,rng))periodPurch+=Number(r.total)||0;});
+  var periodUse=0;[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k];if(!isSale(o))return;var d=tsToDate(o.timestamp||Date.parse(o.date)||0);if(inRng(d,rng))periodUse+=Number(o.cogsSnapshot)||0;});});
+  Object.keys(usageMap).forEach(function(k){var u=usageMap[k];if(!u||u.reversed)return;var d=tsToDate(u.ts);if(inRng(d,rng))periodUse+=Number(u.cost)||0;});
+  var rows=items.map(function(i){var cost=Number(i.cost)||0;var val=(Number(i.stock)||0)*cost;var pf=itemPeriod(i.id,cost,rng);
+    return '<tr><td>'+esc(i.name)+'</td><td class="r">'+fq(i.stock||0)+' '+esc(i.unit||'')+'</td><td class="r">'+peso(cost)+'</td><td class="r" style="font-weight:600;">'+peso(val)+'</td><td class="r" style="color:#2a9d5c;">'+(pf.pQ?(fq(pf.pQ)+' · '+peso(pf.pV)):'—')+'</td><td class="r" style="color:#c0392b;">'+(pf.uQ?(fq(pf.uQ)+' · '+peso(pf.uV)):'—')+'</td><td class="r"><button class="pz-btn sec" data-svcard="'+esc(i.id)+'" style="padding:0.15rem 0.5rem;">Card</button></td></tr>';
+  }).join('');
+  var html='<div class="pz-h">📊 Stock Value</div><p class="pz-sub">Inventory valuation (stock × current cost) plus per-item stock cards. Purchases come from received stock, usage from sales &amp; internal use, adjustments from counts/wastage. A stock card’s “implied opening” is what the balance must have been before the tracked movements — it always ties to today’s stock.</p>'
+    +'<div style="display:flex;gap:0.7rem;flex-wrap:wrap;margin-bottom:0.8rem;">'
+      +'<div class="pz-card" style="flex:1;min-width:170px;"><div style="font-size:0.72rem;color:var(--tl);">Total inventory value</div><div style="font-size:1.25rem;font-weight:700;color:var(--bd);">'+peso(totalValue)+'</div></div>'
+      +'<div class="pz-card" style="flex:1;min-width:170px;"><div style="font-size:0.72rem;color:var(--tl);">Purchases (period)</div><div style="font-size:1.25rem;font-weight:700;color:#2a9d5c;">'+peso(periodPurch)+'</div></div>'
+      +'<div class="pz-card" style="flex:1;min-width:170px;"><div style="font-size:0.72rem;color:var(--tl);">Usage / COGS (period)</div><div style="font-size:1.25rem;font-weight:700;color:#c0392b;">'+peso(periodUse)+'</div></div>'
+    +'</div>'
+    +'<div style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap;margin-bottom:0.8rem;"><div><span class="pz-lbl">From</span><input class="pz-in" id="svFrom" type="date" value="'+rng.f+'"/></div><div><span class="pz-lbl">To</span><input class="pz-in" id="svTo" type="date" value="'+rng.t+'"/></div><button class="pz-btn sec" id="svExport" style="padding:0.3rem 0.7rem;">⬇ Excel</button></div>'
+    +'<div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th class="r">In stock</th><th class="r">Cost/unit</th><th class="r">Value</th><th class="r">Purchases (qty · ₱)</th><th class="r">Usage (qty · ₱)</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="7" class="az-note" style="padding:0.6rem;">No inventory items.</td></tr>')+'</tbody></table></div></div>';
+  root.innerHTML=html;
+  var ff=document.getElementById('svFrom');if(ff)ff.onchange=function(){svFrom=this.value||null;renderStockValue();};
+  var ft=document.getElementById('svTo');if(ft)ft.onchange=function(){svTo=this.value||null;renderStockValue();};
+  var ex=document.getElementById('svExport');if(ex)ex.onclick=exportStockValue;
+  root.querySelectorAll('[data-svcard]').forEach(function(b){b.onclick=function(){openStockCard(b.getAttribute('data-svcard'));};});
+}
+function openStockCard(id){
+  var inv=invMap[id]||{};var cost=Number(inv.cost)||0;var cur=Number(inv.stock)||0;
+  var mv=itemMovements(id);var net=mv.reduce(function(s,m){return s+(Number(m.in)||0)-(Number(m.out)||0);},0);var opening=Math.round((cur-net)*1000)/1000;var run=opening;
+  var rows=mv.map(function(m){run=Math.round((run+(Number(m.in)||0)-(Number(m.out)||0))*1000)/1000;return '<tr><td>'+esc(m.date)+'</td><td>'+esc(m.type)+'</td><td class="r" style="color:#2a9d5c;">'+(m.in?fq(m.in):'')+'</td><td class="r" style="color:#c0392b;">'+(m.out?fq(m.out):'')+'</td><td class="r">'+fq(run)+'</td><td class="r">'+peso(run*cost)+'</td></tr>';}).join('');
+  var mask=document.createElement('div');mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
+  mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:660px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;"><div style="font-weight:700;color:var(--bd);">Stock card — '+esc(inv.name)+'</div><button class="pz-btn sec" id="scClose" style="padding:0.2rem 0.6rem;">✕</button></div>'
+    +'<p class="pz-sub" style="margin:0.3rem 0 0.6rem;">Cost/unit '+peso(cost)+' · current stock '+fq(cur)+' '+esc(inv.unit||'')+' · value '+peso(cur*cost)+'</p>'
+    +'<table class="pz-tbl"><thead><tr><th>Date</th><th>Movement</th><th class="r">In</th><th class="r">Out</th><th class="r">Balance</th><th class="r">Value</th></tr></thead><tbody>'
+    +'<tr style="font-style:italic;color:var(--tl);"><td>—</td><td>Implied opening (before tracked movements)</td><td></td><td></td><td class="r">'+fq(opening)+'</td><td class="r">'+peso(opening*cost)+'</td></tr>'
+    +(rows||'<tr><td colspan="6" class="az-note" style="padding:0.5rem;">No tracked movements yet.</td></tr>')
+    +'</tbody></table></div>';
+  document.body.appendChild(mask);
+  mask.querySelector('#scClose').onclick=function(){document.body.removeChild(mask);};
+  mask.onclick=function(e){if(e.target===mask)document.body.removeChild(mask);};
+}
+function exportStockValue(){
+  if(!window.XLSX){alert('Excel library still loading — try again.');return;}
+  var rng=svRange();var aoa=[['Item','Unit','In stock','Cost/unit','Value','Purchases qty','Purchases ₱','Usage qty','Usage ₱']];
+  invItems().forEach(function(i){var cost=Number(i.cost)||0;var pf=itemPeriod(i.id,cost,rng);aoa.push([i.name,i.unit||'',Number(i.stock)||0,cost,(Number(i.stock)||0)*cost,pf.pQ,pf.pV,pf.uQ,pf.uV]);});
+  var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'StockValue');XLSX.writeFile(wb,'accaza-stock-value-'+new Date().toISOString().slice(0,10)+'.xlsx');
 }
 })();
 </script>
@@ -6466,8 +6528,8 @@ var admins={},perms={};
 function A(){return window.__accaza;}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function isTab(n){var el=document.getElementById('tab-'+n);return el&&el.style.display!=='none';}
-var PERMS=[['orders','Orders'],['reservations','Reservations & Calendar'],['pos','POS Register'],['inventory','Inventory'],['recipes','Recipes'],['usage','Internal Usage (staff & R&D)'],['registerOps','Register Ops (shifts, void, refund)'],['reviews','Reviews'],['appcustomers','App Customers'],['availability','Availability'],['comments','Comments'],['analytics','Analytics'],['pnl','P&L (financials)'],['discrepancy','Discrepancy Log'],['petty','Petty Cash'],['channelpricing','Channel Pricing (Grab/Panda)'],['dedupe','De-dupe Menu'],['cashflow','Cash Flow'],['receivables','Receivables'],['payables','Payables']];
-var DEF={orders:true,reservations:true,pos:true,inventory:true,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false,cashflow:false,receivables:false,payables:false};
+var PERMS=[['orders','Orders'],['reservations','Reservations & Calendar'],['pos','POS Register'],['inventory','Inventory'],['recipes','Recipes'],['usage','Internal Usage (staff & R&D)'],['registerOps','Register Ops (shifts, void, refund)'],['reviews','Reviews'],['appcustomers','App Customers'],['availability','Availability'],['comments','Comments'],['analytics','Analytics'],['pnl','P&L (financials)'],['discrepancy','Discrepancy Log'],['petty','Petty Cash'],['channelpricing','Channel Pricing (Grab/Panda)'],['dedupe','De-dupe Menu'],['cashflow','Cash Flow'],['receivables','Receivables'],['payables','Payables'],['stockvalue','Stock Value']];
+var DEF={orders:true,reservations:true,pos:true,inventory:true,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false,cashflow:false,receivables:false,payables:false,stockvalue:false};
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
 function init(){var a=A();a.onValue(a.ref(a.db,'admins'),function(s){admins=s.val()||{};if(isTab('staffaccess'))render();});a.onValue(a.ref(a.db,'adminPerms'),function(s){perms=s.val()||{};if(isTab('staffaccess'))render();});}
 var _prev=window.posSwitchTab;
