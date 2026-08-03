@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v97</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v98</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4267,7 +4267,7 @@ function addIngredient(){
   var type=(document.getElementById('invType')||{}).value||'base';
   var o={name:name,unit:document.getElementById('invUnit').value,type:type,stock:Number(document.getElementById('invStock').value)||0,reorder:Number(document.getElementById('invReorder').value)||0,cost:Number(document.getElementById('invCost').value)||0,updatedAt:Date.now()};
   if(type==='consumable'){ o.serves=(document.getElementById('invServes')||{}).value||'both'; o.size=(document.getElementById('invSize')||{}).value||''; o.qtyPerOrder=Number((document.getElementById('invQPO')||{}).value)||1; }
-  var a=A();a.set(a.ref(a.db,'inventory/'+uid('ing_')),o);
+  var a=A();a.set(a.ref(a.db,'inventory/'+uid('ing_')),o).then(function(){ document.getElementById('invName').value=''; }).catch(function(e){ alert('Could not add the item: '+((e&&e.code)||e)+'.\n\nIf it says PERMISSION_DENIED — log in with your admin EMAIL (not the old username), and make sure the database rules are published.'); });
 }
 function adjustStock(id){
   var i=inventoryMap[id]; if(!i)return;
@@ -4670,7 +4670,7 @@ function drawRecipeEditor(item){
   ed.querySelectorAll('[data-recsize]').forEach(function(b){b.onclick=function(){syncDraft();recSize=b.getAttribute('data-recsize');drawRecipeEditor(item);};});
   ed.querySelectorAll('[data-brem]').forEach(function(b){b.onclick=function(){syncDraft();d.base.splice(Number(b.getAttribute('data-brem')),1);drawRecipeEditor(item);};});
   ed.querySelectorAll('select[data-brow]').forEach(function(s){s.onchange=function(){syncDraft();drawRecipeEditor(item);};});
-  document.getElementById('recSave').onclick=function(){ syncDraft(); saveRecipe(item.key); };
+  document.getElementById('recSave').onclick=function(){ try{ syncDraft(); saveRecipe(item.key); }catch(err){ alert('Recipe save hit an error: '+(err&&err.message?err.message:err)+'. Nothing was saved — tell support this message.'); } };
   document.getElementById('recClose').onclick=function(){ recipeEditing=false; curRecipeKey=null; renderRecipes(); };
   if(document.getElementById('recDel'))document.getElementById('recDel').onclick=function(){ if(!confirm('Delete this recipe? '+esc(item.name)+' will no longer deduct stock.'))return; var a=A();a.remove(a.ref(a.db,'recipes/'+item.key));recipeEditing=false;curRecipeKey=null;setTimeout(renderRecipes,200);};
 }
@@ -5060,7 +5060,8 @@ function drawPosItems(){
 // ---- item customize modal ----
 var mSel={};
 function openPosItem(key){
-  var item=A().menuItemsMap[key]; if(!item)return;
+  var _raw=A().menuItemsMap[key]; if(!_raw)return;
+  var item=Object.assign({key:key},_raw);
   if(!posIsAvail(item.name)){alert(item.name+' is marked unavailable — it can’t be sold. Toggle it back on in Availability first.');return;}
   var body=document.getElementById('pzItemBody'); var titleEl=document.getElementById('pzItemTitle');
   titleEl.textContent=item.name;
