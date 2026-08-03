@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v100</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v101</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4572,22 +4572,24 @@ function menuList(){ return (A().getMenuItems?A().getMenuItems():[]).slice().sor
 function recipeCost(rec,size){var c=0;((rec&&rec.base)||[]).forEach(function(b){if(!b.ing)return;c+=baseQtyForSize(rec,b,size)*ingCost(b.ing);});return Math.round(c*100)/100;}
 function renderRecipes(){
   var root=document.getElementById('recipesRoot'); if(!root)return;
-  var tabs=[['base','🧪 Recipe (base + consumables)'],['options','➕ Optional ingredients']];
+  var tabs=[['base','🧪 Recipe (base + consumables)'],['saved','📋 Saved Recipes'],['options','➕ Optional ingredients']];
   var nav='<div style="display:flex;gap:0.4rem;margin:0.4rem 0 1rem;flex-wrap:wrap;">'+tabs.map(function(t){return '<button class="pz-btn '+(recSub===t[0]?'ok':'sec')+'" data-recsub="'+t[0]+'" style="padding:0.4rem 0.9rem;">'+t[1]+'</button>';}).join('')+'</div>';
   if(recSub==='consumables')recSub='base';
   var body;
   if(recSub==='options'){ body='<div id="optMasterRoot"></div>'; }
+  else if(recSub==='saved'){
+    var sitems=menuList().filter(function(it){return !!recipesMap[it.key];});
+    var savedRows=sitems.length?sitems.map(function(it){var rec=recipesMap[it.key];return '<tr style="cursor:pointer;" data-recopen="'+esc(it.key)+'"><td>'+esc(it.name)+'</td><td style="color:var(--tl);font-size:0.8rem;">'+esc(A().getCatLabel?A().getCatLabel(it.cat):(it.cat||''))+'</td><td class="r">'+((rec.base&&rec.base.length)||0)+'</td><td class="r">'+peso(recipeCost(rec,'M'))+'</td><td class="r"><button class="pz-btn ok" data-recopen="'+esc(it.key)+'" style="padding:0.15rem 0.6rem;">Open</button></td></tr>';}).join(''):'<tr><td colspan="5" style="color:var(--tl);padding:0.6rem;">No saved recipes yet. Build one in the Recipe tab.</td></tr>';
+    body='<p class="pz-sub">All saved recipes ('+sitems.length+'). Click a row to open it in the Recipe tab — edit, add or remove ingredients, then save.</p>'
+      +'<div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th>Category</th><th class="r">Ingredients</th><th class="r">Cost/drink (M)</th><th></th></tr></thead><tbody>'+savedRows+'</tbody></table></div></div>';
+  }
   else {
     var items=menuList();
     var opts=items.map(function(it){var has=!!recipesMap[it.key];return '<option value="'+esc(it.key)+'"'+(it.key===curRecipeKey?' selected':'')+'>'+(has?'✓ ':'○ ')+esc(it.name)+'</option>';}).join('');
     var covered=items.filter(function(it){return !!recipesMap[it.key];}).length;
-    var savedItems=items.filter(function(it){return !!recipesMap[it.key];});
-    var savedRows=savedItems.length?savedItems.map(function(it){var rec=recipesMap[it.key];return '<tr style="cursor:pointer;" data-recopen="'+esc(it.key)+'"><td>'+esc(it.name)+'</td><td style="color:var(--tl);font-size:0.8rem;">'+esc(A().getCatLabel?A().getCatLabel(it.cat):(it.cat||''))+'</td><td class="r">'+((rec.base&&rec.base.length)||0)+'</td><td class="r">'+peso(recipeCost(rec,'M'))+'</td><td class="r"><button class="pz-btn sec" data-recopen="'+esc(it.key)+'" style="padding:0.15rem 0.5rem;">Open</button></td></tr>';}).join(''):'<tr><td colspan="5" style="color:var(--tl);padding:0.6rem;">No saved recipes yet. Pick an item above to build one.</td></tr>';
-    body='<p class="pz-sub">Build each drink from its ingredients — base + consumables (cups, lids, straws) — with the quantity per size. Cost per drink is the sum. Optional add-ons are costed separately in the Optional ingredients tab and only trigger when a customer picks them. <b>'+covered+' of '+items.length+'</b> items have a recipe.</p>'
+    body='<p class="pz-sub">Build each drink from its ingredients — base + consumables (cups, lids, straws) — with the quantity per size. Cost per drink is the sum. Optional add-ons are costed separately in the Optional ingredients tab and only trigger when a customer picks them. Saved recipes are listed in the <b>Saved Recipes</b> tab. <b>'+covered+' of '+items.length+'</b> items have a recipe.</p>'
       +'<div class="pz-card" style="margin-bottom:1rem;"><span class="pz-lbl">Start / edit a recipe — pick a menu item</span>'
       +'<select class="pz-in" id="recPick" style="max-width:420px;"><option value="">— choose an item —</option>'+opts+'</select></div>'
-      +'<div class="az-sec">Saved recipes ('+savedItems.length+')</div>'
-      +'<div class="pz-card" style="margin-bottom:1rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th>Category</th><th class="r">Ingredients</th><th class="r">Cost/drink (M)</th><th></th></tr></thead><tbody>'+savedRows+'</tbody></table></div></div>'
       +'<div id="recEditor"></div>';
   }
   var tools='<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">'
@@ -4605,8 +4607,8 @@ function renderRecipes(){
   var _rb=document.getElementById('recImportBtn'), _rf=document.getElementById('recImportFile');
   if(_rb&&_rf){ _rb.onclick=function(){_rf.value='';_rf.click();}; _rf.onchange=function(){ if(_rf.files&&_rf.files[0])importRecipesXlsx(_rf.files[0]); }; }
   if(recSub==='options'){ renderOptionsMaster(); }
+  else if(recSub==='saved'){ root.querySelectorAll('[data-recopen]').forEach(function(b){b.onclick=function(){curRecipeKey=b.getAttribute('data-recopen');recSub='base';recipeEditing=false;renderRecipes();};}); }
   else { var rp=document.getElementById('recPick'); if(rp)rp.onchange=function(){ curRecipeKey=this.value||null; openRecipe(curRecipeKey); };
-    root.querySelectorAll('[data-recopen]').forEach(function(b){b.onclick=function(e){e.stopPropagation();curRecipeKey=b.getAttribute('data-recopen');var rp2=document.getElementById('recPick');if(rp2)rp2.value=curRecipeKey;openRecipe(curRecipeKey);var ed=document.getElementById('recEditor');if(ed)ed.scrollIntoView({behavior:'smooth'});};});
     if(curRecipeKey)openRecipe(curRecipeKey); }
 }
 function optLabelsForItem(item){
