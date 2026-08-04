@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v105</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v106</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4099,8 +4099,8 @@ function channelPriceOf(ch,itemKey,size){var cp=(channelPricesMap[ch]||{})[itemK
 function channelLabel(ch){var c=channelsCfg()[ch];return c?c.label:ch;}
 function posIsPlatform(){return posChannel&&posChannel!=='instore';}
 function posBasePrice(item,size){ size=size||'S'; if(posIsPlatform())return channelPriceOf(posChannel,item.key,size); return size==='L'?(Number(item.priceL)||0):size==='M'?(Number(item.priceM)||0):(Number(item.priceS)||0); }
-function optKey(gid,label){return gid+'::'+label;}
-function channelOptPrice(ch,gid,label){var o=(channelPricesMap[ch]||{}).__opt||{};return Number(o[optKey(gid,label)])||0;}
+function chOptKey(gid,label){return (String(gid)+'::'+String(label)).replace(/[.#$\[\]\/]/g,'_');}
+function channelOptPrice(ch,gid,label){var o=(channelPricesMap[ch]||{}).__opt||{};return Number(o[chOptKey(gid,label)])||0;}
 function optChoicePrice(gid,label,instorePrice){ return posIsPlatform()?channelOptPrice(posChannel,gid,label):(Number(instorePrice)||0); }
 function allOptionChoices(){ var og=(A()&&A().optionGroupsMap)||{}; var out=[]; Object.keys(og).forEach(function(gid){var g=og[gid]||{};(g.choices||[]).forEach(function(c){out.push({gid:gid,gname:g.name||gid,label:c.label,price:Number(c.price)||0});});}); return out; }
 var usageKind='staff', usageAdhoc=false, usageTypesMap={}, usageManageOpen=false, usageRecipeName='', usageRows={menuaddon:[],base:[],addon:[],cons:[]};
@@ -4962,7 +4962,7 @@ function saveChannelPrices(){
   // so setting a price to 0 actually sticks. Fails loud instead of a false "saved".
   var upd={},changed=0;
   document.querySelectorAll('[data-cp]').forEach(function(inp){var ch=inp.getAttribute('data-cp'),k=inp.getAttribute('data-ck'),sz=inp.getAttribute('data-cs');var v=Number(inp.value)||0;upd['channelPrices/'+ch+'/'+k+'/'+sz]=v?v:null;changed++;});
-  document.querySelectorAll('[data-op]').forEach(function(inp){var ch=inp.getAttribute('data-op'),gid=inp.getAttribute('data-ogid'),lb=inp.getAttribute('data-olabel');var v=Number(inp.value)||0;upd['channelPrices/'+ch+'/__opt/'+optKey(gid,lb)]=v?v:null;changed++;});
+  document.querySelectorAll('[data-op]').forEach(function(inp){var ch=inp.getAttribute('data-op'),gid=inp.getAttribute('data-ogid'),lb=inp.getAttribute('data-olabel');var v=Number(inp.value)||0;upd['channelPrices/'+ch+'/__opt/'+chOptKey(gid,lb)]=v?v:null;changed++;});
   var a=A();
   a.update(a.ref(a.db),upd).then(function(){
     // Re-read the authoritative server copy, refresh the in-memory map, and repaint —
@@ -5011,7 +5011,7 @@ function importChannelPrices(file){
         function setp(ch,pre){var o={};['S','M','L'].forEach(function(sz){var v=Number(r[pre+sz])||0;if(v)o[sz]=v;});if(Object.keys(o).length)byCh[ch][key]=o;}
         setp('grabfood','grab_');setp('foodpanda','panda_');n++;});
       var osh=wb.Sheets['AddOns'];var m=0;
-      if(osh){XLSX.utils.sheet_to_json(osh,{defval:''}).forEach(function(r){var gid=String(r.groupId||'').trim();var lb=String(r.addon||'').trim();if(!gid||!lb)return;var gk=optKey(gid,lb);var gp=Number(r.grab)||0,pp=Number(r.panda)||0;if(gp)byCh.grabfood.__opt[gk]=gp;if(pp)byCh.foodpanda.__opt[gk]=pp;m++;});}
+      if(osh){XLSX.utils.sheet_to_json(osh,{defval:''}).forEach(function(r){var gid=String(r.groupId||'').trim();var lb=String(r.addon||'').trim();if(!gid||!lb)return;var gk=chOptKey(gid,lb);var gp=Number(r.grab)||0,pp=Number(r.panda)||0;if(gp)byCh.grabfood.__opt[gk]=gp;if(pp)byCh.foodpanda.__opt[gk]=pp;m++;});}
       if(!Object.keys(byCh.grabfood.__opt).length)delete byCh.grabfood.__opt;
       if(!Object.keys(byCh.foodpanda.__opt).length)delete byCh.foodpanda.__opt;
       var a=A();a.set(a.ref(a.db,'channelPrices'),byCh).then(function(){alert('Imported '+n+' item row(s) and '+m+' add-on row(s).');});
