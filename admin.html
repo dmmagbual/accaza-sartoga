@@ -4958,10 +4958,16 @@ function renderChannelPricing(){
   if(ib&&ifl){ib.onclick=function(){ifl.value='';ifl.click();};ifl.onchange=function(){if(ifl.files&&ifl.files[0])importChannelPrices(ifl.files[0]);};}
 }
 function saveChannelPrices(){
-  var byCh={grabfood:{},foodpanda:{}};
-  document.querySelectorAll('[data-cp]').forEach(function(inp){var ch=inp.getAttribute('data-cp'),k=inp.getAttribute('data-ck'),sz=inp.getAttribute('data-cs');var v=Number(inp.value)||0;if(v){byCh[ch][k]=byCh[ch][k]||{};byCh[ch][k][sz]=v;}});
-  document.querySelectorAll('[data-op]').forEach(function(inp){var ch=inp.getAttribute('data-op'),gid=inp.getAttribute('data-ogid'),lb=inp.getAttribute('data-olabel');var v=Number(inp.value)||0;if(v){byCh[ch].__opt=byCh[ch].__opt||{};byCh[ch].__opt[optKey(gid,lb)]=v;}});
-  var a=A();a.set(a.ref(a.db,'channelPrices'),byCh).then(function(){alert('Channel prices saved.');});
+  // Targeted, non-destructive update. Cleared/zero boxes write null (delete the field)
+  // so setting a price to 0 actually sticks. Fails loud instead of a false "saved".
+  var upd={},changed=0;
+  document.querySelectorAll('[data-cp]').forEach(function(inp){var ch=inp.getAttribute('data-cp'),k=inp.getAttribute('data-ck'),sz=inp.getAttribute('data-cs');var v=Number(inp.value)||0;upd['channelPrices/'+ch+'/'+k+'/'+sz]=v?v:null;changed++;});
+  document.querySelectorAll('[data-op]').forEach(function(inp){var ch=inp.getAttribute('data-op'),gid=inp.getAttribute('data-ogid'),lb=inp.getAttribute('data-olabel');var v=Number(inp.value)||0;upd['channelPrices/'+ch+'/__opt/'+optKey(gid,lb)]=v?v:null;changed++;});
+  var a=A();
+  a.update(a.ref(a.db),upd).then(function(){
+    a.get(a.ref(a.db,'channelPrices')).then(function(s){console.log('[channelPrices saved ✓] '+changed+' field(s) written. Server now has:',s.val());});
+    alert('Channel prices saved.');
+  }).catch(function(e){console.error('channelPrices SAVE FAILED',e);alert('SAVE FAILED — nothing was written: '+((e&&e.message)||e)+'\n\nMost likely your admin session or database rules. Send me the console error.');});
 }
 function exportChannelPrices(){
   if(!window.XLSX){alert('Excel library still loading — try again.');return;}
