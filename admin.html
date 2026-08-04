@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v103</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v104</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4965,8 +4965,22 @@ function saveChannelPrices(){
   document.querySelectorAll('[data-op]').forEach(function(inp){var ch=inp.getAttribute('data-op'),gid=inp.getAttribute('data-ogid'),lb=inp.getAttribute('data-olabel');var v=Number(inp.value)||0;upd['channelPrices/'+ch+'/__opt/'+optKey(gid,lb)]=v?v:null;changed++;});
   var a=A();
   a.update(a.ref(a.db),upd).then(function(){
-    a.get(a.ref(a.db,'channelPrices')).then(function(s){console.log('[channelPrices saved ✓] '+changed+' field(s) written. Server now has:',s.val());});
-    alert('Channel prices saved.');
+    // Re-read the authoritative server copy, refresh the in-memory map, and repaint —
+    // so the boxes reflect the DB, not a stale live-sync cache.
+    a.get(a.ref(a.db,'channelPrices')).then(function(s){
+      var srv=s.val()||{};
+      channelPricesMap=srv;
+      // Verify every field we just wrote actually matches the server.
+      var bad=[];
+      Object.keys(upd).forEach(function(p){
+        var want=Number(upd[p])||0, parts=p.split('/'), cur=srv;
+        for(var i=1;i<parts.length;i++){cur=(cur&&cur[parts[i]]!=null)?cur[parts[i]]:undefined;}
+        if((Number(cur)||0)!==want)bad.push(p+' → wanted '+want+', server has '+(Number(cur)||0));
+      });
+      if(isTab('channelpricing'))renderChannelPricing();
+      if(bad.length){console.warn('[channelPrices ✗ MISMATCH]',bad);alert('Saved, but '+bad.length+' value(s) did NOT match on the server — press F12 → Console and send me the red line.');}
+      else{console.log('[channelPrices ✓] all '+changed+' field(s) verified on server.');alert('Channel prices saved & verified. ✅');}
+    });
   }).catch(function(e){console.error('channelPrices SAVE FAILED',e);alert('SAVE FAILED — nothing was written: '+((e&&e.message)||e)+'\n\nMost likely your admin session or database rules. Send me the console error.');});
 }
 function exportChannelPrices(){
