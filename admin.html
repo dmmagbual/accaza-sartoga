@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v106</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v108</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4092,9 +4092,11 @@ function heroInstallClick(){
 'use strict';
 var inventoryMap={}, recipesMap={}, posMeta={vat:false,vatRate:12}, optRecipesMap={}, usageMap={}, channelPricesMap={}, posAvailMap={};
 function posIsAvail(name){return posAvailMap[name]!==false;}
-var POS_CHANNELS=[{k:'grabfood',lbl:'GrabFood',rate:0.25},{k:'foodpanda',lbl:'FoodPanda',rate:0.30}];
-function channelsCfg(){var c=(window.__posSettings&&window.__posSettings.channels);var out={};POS_CHANNELS.forEach(function(d){var s=(c&&c[d.k])||{};out[d.k]={label:d.lbl,rate:(s.rate!=null?Number(s.rate):d.rate),active:s.active!==false};});return out;}
+var POS_CHANNELS=[{k:'grabfood',lbl:'GrabFood',rate:0.25,wht:0,vat:0},{k:'foodpanda',lbl:'FoodPanda',rate:0.30,wht:0.0005,vat:0.036}];
+function channelsCfg(){var c=(window.__posSettings&&window.__posSettings.channels);var out={};POS_CHANNELS.forEach(function(d){var s=(c&&c[d.k])||{};out[d.k]={label:d.lbl,rate:(s.rate!=null?Number(s.rate):d.rate),wht:(s.wht!=null?Number(s.wht):d.wht),vat:(s.vat!=null?Number(s.vat):d.vat),active:s.active!==false};});return out;}
 function channelRate(ch){var c=channelsCfg()[ch];return c?Number(c.rate)||0:0;}
+function channelWht(ch){var c=channelsCfg()[ch];return c?Number(c.wht)||0:0;}
+function channelVat(ch){var c=channelsCfg()[ch];return c?Number(c.vat)||0:0;}
 function channelPriceOf(ch,itemKey,size){var cp=(channelPricesMap[ch]||{})[itemKey];return cp?(Number(cp[size])||0):0;}
 function channelLabel(ch){var c=channelsCfg()[ch];return c?c.label:ch;}
 function posIsPlatform(){return posChannel&&posChannel!=='instore';}
@@ -4944,14 +4946,14 @@ function renderChannelPricing(){
   }).join('');
   root.innerHTML='<div class="pz-h">💱 Channel Pricing</div>'
     +'<p class="pz-sub">Grab &amp; Panda menu prices — the price the customer pays on the platform (your gross revenue). Item prices are per size; add-on prices are one price each, used across every item. Keep these in sync with the live platform menus. Commission is deducted per platform at checkout.</p>'
-    +'<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Commission rates</div><div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:end;">'
-      +POS_CHANNELS.map(function(d){return '<div><span class="pz-lbl">'+d.lbl+' %</span><input class="pz-in" type="number" step="any" id="crate_'+d.k+'" value="'+(cfg[d.k].rate*100)+'" style="width:90px;"/></div>';}).join('')
-      +'<button class="pz-btn sec" id="cpRateSave">Save rates</button></div></div>'
+    +'<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Platform deduction rates (% of gross)</div>'
+      +POS_CHANNELS.map(function(d){return '<div style="display:flex;gap:0.8rem;flex-wrap:wrap;align-items:end;margin-bottom:0.5rem;"><div style="min-width:90px;font-weight:600;color:var(--bd);align-self:center;">'+d.lbl+'</div><div><span class="pz-lbl">Commission %</span><input class="pz-in" type="number" step="any" id="crate_'+d.k+'" value="'+(cfg[d.k].rate*100)+'" style="width:90px;"/></div><div><span class="pz-lbl">Withholding tax %</span><input class="pz-in" type="number" step="any" id="cwht_'+d.k+'" value="'+(cfg[d.k].wht*100)+'" style="width:100px;"/></div><div><span class="pz-lbl">VAT on services %</span><input class="pz-in" type="number" step="any" id="cvat_'+d.k+'" value="'+(cfg[d.k].vat*100)+'" style="width:100px;"/></div></div>';}).join('')
+      +'<button class="pz-btn sec" id="cpRateSave">Save rates</button><div style="font-size:0.72rem;color:var(--tl);margin-top:0.2rem;">Discount is entered per order at checkout. All four (commission, discount, WHT, VAT) are deducted from gross.</div></div>'
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;"><button class="pz-btn sec" id="cpExport">⬇ Export Excel</button><button class="pz-btn sec" id="cpTemplate">⬇ Import template</button><button class="pz-btn ok" id="cpImportBtn">⬆ Import Excel</button><input type="file" id="cpImportFile" accept=".xlsx,.xls,.csv" style="display:none;"/></div>'
     +'<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Item prices</div><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th colspan="3" style="text-align:center;">GrabFood S / M / L</th><th colspan="3" style="text-align:center;">FoodPanda S / M / L</th></tr></thead><tbody>'+(rows||'<tr><td colspan="7" style="color:var(--tl);padding:0.6rem;">No menu items.</td></tr>')+'</tbody></table></div></div>'
     +'<div class="pz-card"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Add-on prices</div><p class="pz-sub" style="margin-top:0;">One price per add-on, applied on every item for that platform. Blank = ₱0 (free) on the platform.</p><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Add-on</th><th style="text-align:center;">GrabFood ₱</th><th style="text-align:center;">FoodPanda ₱</th></tr></thead><tbody>'+(optRows||'<tr><td colspan="3" style="color:var(--tl);padding:0.6rem;">No add-ons defined.</td></tr>')+'</tbody></table></div><div style="margin-top:0.8rem;"><button class="pz-btn ok" id="cpSave">💾 Save all prices</button></div></div>';
   document.getElementById('cpSave').onclick=saveChannelPrices;
-  document.getElementById('cpRateSave').onclick=function(){var a=A();var ch={};POS_CHANNELS.forEach(function(d){ch[d.k]={label:d.lbl,rate:(Number(document.getElementById('crate_'+d.k).value)||0)/100,active:true};});a.update(a.ref(a.db,'posSettings'),{channels:ch}).then(function(){alert('Commission rates saved.');});};
+  document.getElementById('cpRateSave').onclick=function(){var a=A();var ch={};POS_CHANNELS.forEach(function(d){ch[d.k]={label:d.lbl,rate:(Number(document.getElementById('crate_'+d.k).value)||0)/100,wht:(Number(document.getElementById('cwht_'+d.k).value)||0)/100,vat:(Number(document.getElementById('cvat_'+d.k).value)||0)/100,active:true};});a.update(a.ref(a.db,'posSettings'),{channels:ch}).then(function(){alert('Platform deduction rates saved.');});};
   document.getElementById('cpExport').onclick=exportChannelPrices;
   document.getElementById('cpTemplate').onclick=channelTemplate;
   var ib=document.getElementById('cpImportBtn'),ifl=document.getElementById('cpImportFile');
@@ -5242,7 +5244,7 @@ function renderPosCart(){
       +'<div style="display:flex;justify-content:space-between;font-weight:700;color:var(--bd);font-size:1rem;border-top:1px solid var(--cd);padding-top:0.4rem;"><span>'+(isPlat?'Gross':'Total')+'</span><span id="posTotal">'+peso(sub)+'</span></div>'
     +'</div>'
     +(isPlat
-      ? '<div style="margin-top:0.7rem;border-top:1px solid var(--cd);padding-top:0.6rem;"><span class="pz-lbl">'+(posChannel==='grabfood'?'GrabFood order # (GF- is added automatically)':'FoodPanda order code (required)')+'</span>'+(posChannel==='grabfood'?'<div style="display:flex;align-items:center;gap:0.3rem;"><span style="font-weight:700;color:var(--bd);">GF-</span><input class="pz-in" id="posPlatRef" placeholder="e.g. 123456" style="flex:1;"/></div>':'<input class="pz-in" id="posPlatRef" placeholder="e.g. o7km-49a7"/>')+'<div id="posPlatCalc" style="font-size:0.82rem;margin-top:0.5rem;"></div></div>'
+      ? '<div style="margin-top:0.7rem;border-top:1px solid var(--cd);padding-top:0.6rem;"><span class="pz-lbl">'+(posChannel==='grabfood'?'GrabFood order # (GF- is added automatically)':'FoodPanda order code (required)')+'</span>'+(posChannel==='grabfood'?'<div style="display:flex;align-items:center;gap:0.3rem;"><span style="font-weight:700;color:var(--bd);">GF-</span><input class="pz-in" id="posPlatRef" placeholder="e.g. 123456" style="flex:1;"/></div>':'<input class="pz-in" id="posPlatRef" placeholder="e.g. o7km-49a7"/>')+'<div style="margin-top:0.5rem;"><span class="pz-lbl">Discount off (Delivery / Pickup) %</span><input class="pz-in" id="posPlatDisc" type="number" step="any" placeholder="0" style="width:110px;text-align:right;"/></div><div id="posPlatCalc" style="font-size:0.82rem;margin-top:0.5rem;"></div></div>'
       : '<div style="margin-top:0.7rem;display:flex;justify-content:space-between;align-items:center;"><span class="pz-lbl" style="margin:0;">Payment</span><label style="font-size:0.74rem;color:var(--tl);cursor:pointer;"><input type="checkbox" id="posSplitChk"/> Split</label></div>'
         +'<div id="posPaySingle"><select class="pz-in" id="posPay" style="margin-top:0.3rem;">'+posActiveMethods().map(function(m){return '<option value="'+m.name+'">'+m.name+'</option>';}).join('')+'</select>'
           +'<div id="posCashWrap" style="margin-top:0.5rem;">'+(denomTrackingOn()?posDenomPadHtml():'<span class="pz-lbl">Cash tendered ₱</span><input class="pz-in" id="posTender" type="number" step="any" placeholder="0"/><div id="posChange" style="font-size:0.82rem;color:var(--bd);font-weight:600;margin-top:0.3rem;"></div>')+'</div>'
@@ -5260,13 +5262,21 @@ function renderPosCart(){
   var splitRows=[];
   var pay=null, splitChk=null;
   function grandTotal(){ var d=isPlat?0:((Number(disc&&disc.value)||0)+scopedDiscTotal()); var tot=Math.max(0,sub-d); if(!isPlat&&posMeta.cashRounding){var r=Math.round(tot); var pr=document.getElementById('posRound'); if(pr)pr.textContent=peso(r-tot); tot=r;} var tEl=document.getElementById('posTotal'); if(tEl)tEl.textContent=peso(tot); return tot; }
-  function refreshPlat(){ var el=document.getElementById('posPlatCalc'); if(!el)return; var gross=grandTotal(); var rate=channelRate(posChannel); var comm=Math.round(gross*rate*100)/100; var net=Math.round((gross-comm)*100)/100;
-    el.innerHTML='<div style="display:flex;justify-content:space-between;"><span>Gross</span><span>'+peso(gross)+'</span></div>'
-      +'<div style="display:flex;justify-content:space-between;color:#c0392b;"><span>Commission ('+Math.round(rate*100)+'%)</span><span>-'+peso(comm)+'</span></div>'
+  function refreshPlat(){ var el=document.getElementById('posPlatCalc'); if(!el)return; function r2(n){return Math.round((Number(n)||0)*100)/100;}
+    var gross=grandTotal(); var rate=channelRate(posChannel); var whtR=channelWht(posChannel); var vatR=channelVat(posChannel);
+    var dPct=Math.max(0,Number((document.getElementById('posPlatDisc')||{}).value)||0);
+    var comm=r2(gross*rate); var dAmt=r2(gross*dPct/100); var wht=r2(gross*whtR); var vat=r2(gross*vatR);
+    var net=r2(gross-comm-dAmt-wht-vat);
+    function ln(l,v,c){return '<div style="display:flex;justify-content:space-between;'+(c?'color:'+c+';':'')+'"><span>'+l+'</span><span>'+(v<0?'-'+peso(-v):peso(v))+'</span></div>';}
+    el.innerHTML=ln('Gross',gross)
+      +ln('Commission ('+(Math.round(rate*1000)/10)+'%)',-comm,'#c0392b')
+      +(dPct?ln('Discount ('+dPct+'%)',-dAmt,'#c0392b'):'')
+      +(whtR?ln('Withholding tax ('+(Math.round(whtR*10000)/100)+'%)',-wht,'#c0392b'):'')
+      +(vatR?ln('VAT on services ('+(Math.round(vatR*1000)/10)+'%)',-vat,'#c0392b'):'')
       +'<div style="display:flex;justify-content:space-between;font-weight:700;border-top:1px solid var(--cd);padding-top:0.2rem;margin-top:0.2rem;"><span>Net receivable</span><span>'+peso(net)+'</span></div>'
-      +'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.25rem;">Commission is an estimate; trued up at the weekly payout reconciliation (Finance).</div>';
+      +'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.25rem;">All deducted from gross. Estimate — trued up at the weekly payout reconciliation.</div>';
   }
-  if(isPlat){ var _plr=document.getElementById('posPlatRef'); if(_plr)_plr.oninput=refreshPlat; refreshPlat(); }
+  if(isPlat){ var _plr=document.getElementById('posPlatRef'); if(_plr)_plr.oninput=refreshPlat; var _pd=document.getElementById('posPlatDisc'); if(_pd)_pd.oninput=refreshPlat; refreshPlat(); }
   else {
   var curChange=0;
   function updateKeep(){ var w=document.getElementById('posKeepWrap'); if(!w)return; var isc=isCashMethod(pay?pay.value:'Cash'); var show=isc&&curChange>0.001; w.style.display=show?'block':'none'; var k=document.getElementById('posKeep'); var kw=document.getElementById('posKeepAmtWrap'); var amt=document.getElementById('posKeepAmt'); if(!show){ if(k)k.checked=false; if(kw)kw.style.display='none'; return; } if(amt){amt.max=curChange;amt.placeholder=String(curChange);} if(k&&k.checked){ if(kw)kw.style.display='block'; if(amt&&!amt.value)amt.value=curChange; } }
@@ -5332,8 +5342,12 @@ function renderPosCart(){
       var pref=(document.getElementById('posPlatRef').value||'').trim();
       if(!pref){alert(chLabel+' order # is required — key in the platform order number.');return;}
       if(posChannel==='grabfood'&&!/^gf-/i.test(pref)){pref='GF-'+pref;}
-      var prate=channelRate(posChannel); var pcomm=Math.round(tot*prate*100)/100; var pnet=Math.round((tot-pcomm)*100)/100;
-      chargeSale(sub,tot,null,{channel:posChannel,platformRef:pref,gross:tot,commission:pcomm,commissionRate:prate,net:pnet});
+      var pdPct=Math.max(0,Number((document.getElementById('posPlatDisc')||{}).value)||0);
+      var _r2=function(n){return Math.round((Number(n)||0)*100)/100;};
+      var prate=channelRate(posChannel),pwhtR=channelWht(posChannel),pvatR=channelVat(posChannel);
+      var pdAmt=_r2(tot*pdPct/100), pcomm=_r2(tot*prate), pwht=_r2(tot*pwhtR), pvat=_r2(tot*pvatR);
+      var pNetSales=_r2(tot-pdAmt); var pnet=_r2(tot-pcomm-pdAmt-pwht-pvat);
+      chargeSale(sub,pNetSales,null,{channel:posChannel,platformRef:pref,gross:tot,discountPct:pdPct,discountAmt:pdAmt,netSales:pNetSales,commission:pcomm,commissionRate:prate,wht:pwht,whtRate:pwhtR,vat:pvat,vatRate:pvatR,net:pnet});
       return;
     }
     var d=Number(disc&&disc.value)||0;
@@ -5365,7 +5379,7 @@ function chargeSale(sub,total,payments,platform){
   var cust=(document.getElementById('posCust').value||'').trim()||'Walk-in';
   var _scoped=isPlat?[]:posScopedDisc.slice();
   var _discEl=document.getElementById('posDisc');
-  var disc=isPlat?0:((Number(_discEl&&_discEl.value)||0)+_scoped.reduce(function(s,d){return s+(Number(d.value)||0);},0));
+  var disc=isPlat?(Number(platform.discountAmt)||0):((Number(_discEl&&_discEl.value)||0)+_scoped.reduce(function(s,d){return s+(Number(d.value)||0);},0));
   var a=A(); var staff=shift.staff||'Staff';
   var oid='POS-'+Date.now().toString().slice(-6);
   var lineItems=keys.map(function(k){var c=posCart[k];return {itemKey:c.itemKey,name:c.name,size:c.size,optLabels:c.optLabels,qty:c.qty,unitTotal:c.unitTotal,stream:c.stream||null,pkg:c.pkgId||null};});
@@ -5380,7 +5394,7 @@ function chargeSale(sub,total,payments,platform){
   var _pendingPay=(!isPlat)&&(payments||[]).some(function(p){return !isCashMethod(p.method);});
   var now=new Date();
   var order={id:oid,name:cust,phone:'',type:(isPlat?channelLabel(platform.channel):'Walk-in'),address:'',payment:payLabel,payments:payments,contact:'',contactMethod:'',items:itemsStr,lineItems:lineItems,subtotal:sub,discount:disc,discountLines:_scoped,total:total,tendered:tendered,change:change,notes:'',status:'Completed',source:'pos',channel:(isPlat?platform.channel:'instore'),staff:staff,shiftId:shift.id,packages:_pkgs,extraCost:_extra,paymentStatus:(_pendingPay?'pending':'confirmed'),receivedByCustomer:true,tipRounding:tipTotal,time:now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:now.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
-  if(isPlat){ order.platformRef=platform.platformRef; order.grossPlatform=platform.gross; order.commission=platform.commission; order.commissionRate=platform.commissionRate; order.netPlatform=platform.net; order.settlementStatus='unsettled'; order.payoutId=''; }
+  if(isPlat){ order.platformRef=platform.platformRef; order.grossPlatform=platform.gross; order.platformDiscountPct=Number(platform.discountPct)||0; order.platformDiscount=Number(platform.discountAmt)||0; order.netSalesPlatform=Number(platform.netSales!=null?platform.netSales:total)||0; order.commission=platform.commission; order.commissionRate=platform.commissionRate; order.platformWht=Number(platform.wht)||0; order.platformWhtRate=Number(platform.whtRate)||0; order.platformVat=Number(platform.vat)||0; order.platformVatRate=Number(platform.vatRate)||0; order.netPlatform=platform.net; order.settlementStatus='unsettled'; order.payoutId=''; }
   var _cps=(payments||[]).filter(function(p){return p.cashReceived;});
   if(_cps.length){ var rcv={},chgD={},shrt=0; _cps.forEach(function(p){ rcv=mergeDenoms(rcv,p.cashReceived); chgD=mergeDenoms(chgD,p.cashChange||{}); shrt+=Number(p.changeShort)||0; });
     order.cashReceived=rcv; order.cashChange=chgD; order.changeShort=shrt;
@@ -5712,13 +5726,14 @@ function pnlFor(mk){
   var byItem={},opex=0;
   Object.keys(expItems).forEach(function(id){var amt=Number(amounts[id])||0;byItem[id]={name:expItems[id].name,amount:amt};opex+=amt;});
   // platform economics
-  var platformCommission=0,platformGross=0;
-  sales.forEach(function(x){var o=x.o;if(o&&o.channel&&o.channel!=='instore'){platformCommission+=Number(o.commission)||0;platformGross+=Number(o.grossPlatform||o.subtotal||o.total)||0;}});
+  var platformCommission=0,platformGross=0,platformWht=0,platformVat=0;
+  sales.forEach(function(x){var o=x.o;if(o&&o.channel&&o.channel!=='instore'){platformCommission+=Number(o.commission)||0;platformGross+=Number(o.grossPlatform||o.subtotal||o.total)||0;platformWht+=Number(o.platformWht)||0;platformVat+=Number(o.platformVat)||0;}});
+  var platformTax=platformWht+platformVat;
   var reconExp=0,reconRev=0,reconBy={};
   Object.keys(payoutsMap).forEach(function(k){var p=payoutsMap[k];if(!p)return;if(monthKey(p.settledAt||p.periodEnd||0)!==mk)return;var allocs=p.allocations||{};Object.keys(allocs).forEach(function(aid){var amt=Number(allocs[aid])||0;if(!amt)return;var acct=varAcctMap[aid]||(DEFAULT_VAR_ACCOUNTS.filter(function(d){return d.id===aid;})[0])||{};reconBy[aid]=(reconBy[aid]||0)+amt;if(acct.type==='revenue')reconRev+=amt;else reconExp+=amt;});});
   var tips=0;sales.forEach(function(x){tips+=Number(x.o&&x.o.tipRounding)||0;});
-  var net=gp-opex-totalUsage-platformCommission-reconExp+reconRev+tips;
-  return{revenue:revenue,cogs:cogs,variance:variance,totalCogs:totalCogs,gp:gp,margin:revenue>0?gp/revenue*100:0,byItem:byItem,opex:opex,usageByType:usageByType,totalUsage:totalUsage,platformCommission:platformCommission,platformGross:platformGross,reconExp:reconExp,reconRev:reconRev,reconBy:reconBy,tips:tips,net:net,uncovered:uncovered,tx:sales.length,locked:!!m.locked};
+  var net=gp-opex-totalUsage-platformCommission-platformTax-reconExp+reconRev+tips;
+  return{revenue:revenue,cogs:cogs,variance:variance,totalCogs:totalCogs,gp:gp,margin:revenue>0?gp/revenue*100:0,byItem:byItem,opex:opex,usageByType:usageByType,totalUsage:totalUsage,platformCommission:platformCommission,platformGross:platformGross,platformWht:platformWht,platformVat:platformVat,platformTax:platformTax,reconExp:reconExp,reconRev:reconRev,reconBy:reconBy,tips:tips,net:net,uncovered:uncovered,tx:sales.length,locked:!!m.locked};
 }
 function itemIdsSorted(){return Object.keys(expItems).sort(function(a,b){return((expItems[a].order||0)-(expItems[b].order||0))||(expItems[a].name||'').localeCompare(expItems[b].name||'');});}
 function varianceDetailHtml(mk){
@@ -5854,6 +5869,8 @@ function renderPnl(){
     +(function(){var ids={};Object.keys(cur.usageByType||{}).forEach(function(i){ids[i]=1;});Object.keys(prev.usageByType||{}).forEach(function(i){ids[i]=1;});return Object.keys(ids).sort().map(function(i){return vrow(usageNameFor(i),-((cur.usageByType||{})[i]||0),-((prev.usageByType||{})[i]||0));}).join('');})()
     +((cur.tips||prev.tips)?vrow('Other income — tips / rounding',cur.tips,prev.tips):'')
     +((cur.platformCommission||prev.platformCommission)?vrow('Platform commission (Grab/Panda)',-cur.platformCommission,-prev.platformCommission):'')
+    +((cur.platformWht||prev.platformWht)?vrow('Platform withholding tax (FoodPanda)',-cur.platformWht,-prev.platformWht):'')
+    +((cur.platformVat||prev.platformVat)?vrow('Platform VAT on services (FoodPanda)',-cur.platformVat,-prev.platformVat):'')
     +(function(){var accs=varAccounts();var out='';accs.forEach(function(ac){var c=(cur.reconBy[ac.id]||0),p=(prev.reconBy[ac.id]||0);if(!c&&!p)return;var sign=ac.type==='revenue'?1:-1;out+=vrow('Payout: '+ac.name,sign*c,sign*p);});return out;})()
     +vrow('Net profit',cur.net,prev.net,true)
     +'</tbody></table>'
