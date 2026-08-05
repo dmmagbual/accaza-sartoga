@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v111</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v112</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4179,7 +4179,7 @@ function choiceIngs(item,rec,label,size){
     var oc=store[gid][optKey(label)];
     if(oc&&oc.ings&&oc.ings.length){
       return oc.ings.filter(function(r){return r&&r.ing;}).map(function(r){
-        var q=r['qty'+size]; if(q==null||q==='')q=r.qtyM; if(q==null||q==='')q=0;
+        var q=r['qty'+size]; if(q==null||q==='')q=0;
         return {ing:r.ing,qty:Number(q)||0};
       });
     }
@@ -4753,7 +4753,7 @@ function allOptionLabels(){
 }
 function ocClone(o){try{return JSON.parse(JSON.stringify(o||{}));}catch(e){return {};}}
 function ocGroups(){var m=(A()&&A().optionGroupsMap)||{};return Object.keys(m).map(function(id){return Object.assign({id:id},m[id]);}).sort(function(a,b){return (a.order||0)-(b.order||0);});}
-function ocChoiceCost(ings,size){var c=0;(ings||[]).forEach(function(r){if(!r||!r.ing)return;var q=r['qty'+size];if(q==null||q==='')q=r.qtyM;c+=(Number(q)||0)*ingCost(r.ing);});return c;}
+function ocChoiceCost(ings,size){var c=0;(ings||[]).forEach(function(r){if(!r||!r.ing)return;var q=r['qty'+size];if(q==null||q==='')q=0;c+=(Number(q)||0)*ingCost(r.ing);});return c;}
 function renderOptionsMaster(){ window.__optCostDraft=ocClone(optCostStore()); ocDraw(); }
 function ocSync(){
   var root=document.getElementById('optMasterRoot'); if(!root)return;
