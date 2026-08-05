@@ -5265,16 +5265,18 @@ function renderPosCart(){
   function refreshPlat(){ var el=document.getElementById('posPlatCalc'); if(!el)return; function r2(n){return Math.round((Number(n)||0)*100)/100;}
     var gross=grandTotal(); var rate=channelRate(posChannel); var whtR=channelWht(posChannel); var vatR=channelVat(posChannel);
     var dPct=Math.max(0,Number((document.getElementById('posPlatDisc')||{}).value)||0);
-    var comm=r2(gross*rate); var dAmt=r2(gross*dPct/100); var wht=r2(gross*whtR); var vat=r2(gross*vatR);
+    var dAmt=r2(gross*dPct/100);
+    var commBase=(posChannel==='grabfood')?r2(gross-dAmt):gross;
+    var comm=r2(commBase*rate); var wht=r2(gross*whtR); var vat=r2(gross*vatR);
     var net=r2(gross-comm-dAmt-wht-vat);
     function ln(l,v,c){return '<div style="display:flex;justify-content:space-between;'+(c?'color:'+c+';':'')+'"><span>'+l+'</span><span>'+(v<0?'-'+peso(-v):peso(v))+'</span></div>';}
     el.innerHTML=ln('Gross',gross)
-      +ln('Commission ('+(Math.round(rate*1000)/10)+'%)',-comm,'#c0392b')
       +(dPct?ln('Discount ('+dPct+'%)',-dAmt,'#c0392b'):'')
+      +ln('Commission ('+(Math.round(rate*1000)/10)+'%'+((posChannel==='grabfood'&&dPct)?' of net of discount':'')+')',-comm,'#c0392b')
       +(whtR?ln('Withholding tax ('+(Math.round(whtR*10000)/100)+'%)',-wht,'#c0392b'):'')
       +(vatR?ln('VAT on services ('+(Math.round(vatR*1000)/10)+'%)',-vat,'#c0392b'):'')
       +'<div style="display:flex;justify-content:space-between;font-weight:700;border-top:1px solid var(--cd);padding-top:0.2rem;margin-top:0.2rem;"><span>Net receivable</span><span>'+peso(net)+'</span></div>'
-      +'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.25rem;">All deducted from gross. Estimate — trued up at the weekly payout reconciliation.</div>';
+      +'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.25rem;">'+((posChannel==='grabfood'&&dPct)?'Commission is on gross less discount; WHT/VAT on gross. ':'All deducted from gross. ')+'Estimate — trued up at the weekly payout reconciliation.</div>';
   }
   if(isPlat){ var _plr=document.getElementById('posPlatRef'); if(_plr)_plr.oninput=refreshPlat; var _pd=document.getElementById('posPlatDisc'); if(_pd)_pd.oninput=refreshPlat; refreshPlat(); }
   else {
@@ -5345,7 +5347,9 @@ function renderPosCart(){
       var pdPct=Math.max(0,Number((document.getElementById('posPlatDisc')||{}).value)||0);
       var _r2=function(n){return Math.round((Number(n)||0)*100)/100;};
       var prate=channelRate(posChannel),pwhtR=channelWht(posChannel),pvatR=channelVat(posChannel);
-      var pdAmt=_r2(tot*pdPct/100), pcomm=_r2(tot*prate), pwht=_r2(tot*pwhtR), pvat=_r2(tot*pvatR);
+      var pdAmt=_r2(tot*pdPct/100);
+      var pcommBase=(posChannel==='grabfood')?_r2(tot-pdAmt):tot;
+      var pcomm=_r2(pcommBase*prate), pwht=_r2(tot*pwhtR), pvat=_r2(tot*pvatR);
       var pNetSales=_r2(tot-pdAmt); var pnet=_r2(tot-pcomm-pdAmt-pwht-pvat);
       chargeSale(sub,pNetSales,null,{channel:posChannel,platformRef:pref,gross:tot,discountPct:pdPct,discountAmt:pdAmt,netSales:pNetSales,commission:pcomm,commissionRate:prate,wht:pwht,whtRate:pwhtR,vat:pvat,vatRate:pvatR,net:pnet});
       return;
