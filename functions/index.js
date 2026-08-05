@@ -93,14 +93,55 @@ function consumablesForServer(cat, size, invArr, catType) {
     return true;
   });
 }
-function computeUsageServer(lineItems, recipes, optMap, inv, menuItems, catType) {
+/* Mirrors the client choiceIngs (admin.html): a selected choice stacks the
+   shared global cost (posSettings.optionCosts[gid][optKey(label)]) PLUS the
+   per-recipe delta (recipes/{item}.choiceAdd[gid][optKey(label)]), size-aware.
+   Falls back to the legacy single-qty optionRecipes only if neither exists,
+   so client and server never diverge. Keep in sync with admin.html choiceIngs. */
+function optKeyServer(label) {
+  return String(label == null ? "" : label).replace(/[.#$[\]/]/g, "_");
+}
+function groupIdForLabelServer(item, label, optionGroups) {
+  const ids = Array.isArray(item && item.options) ? item.options : Object.keys(optionGroups || {});
+  for (const gid of ids) {
+    const g = optionGroups[gid];
+    if (g && Array.isArray(g.choices)) {
+      for (const c of g.choices) {
+        if (c && c.label === label) return gid;
+      }
+    }
+  }
+  return null;
+}
+function choiceIngsServer(item, rec, label, size, optionCosts, optionGroups) {
+  size = size || "M";
+  const gid = groupIdForLabelServer(item, label, optionGroups);
+  const lk = optKeyServer(label);
+  const out = [];
+  let found = false;
+  const push = (arr) => (arr || []).forEach((r) => {
+    if (!r || !r.ing) return;
+    let q = r["qty" + size];
+    if (q == null || q === "") q = 0;
+    out.push({ing: r.ing, qty: Number(q) || 0});
+  });
+  if (gid && optionCosts[gid] && optionCosts[gid][lk] && (optionCosts[gid][lk].ings || []).length) {
+    push(optionCosts[gid][lk].ings); found = true;
+  }
+  if (gid && rec && rec.choiceAdd && rec.choiceAdd[gid] && rec.choiceAdd[gid][lk] &&
+      (rec.choiceAdd[gid][lk].ings || []).length) {
+    push(rec.choiceAdd[gid][lk].ings); found = true;
+  }
+  return {ings: out, found};
+}
+function computeUsageServer(lineItems, recipes, optMap, inv, menuItems, catType, optionCosts, optionGroups) {
   const usage = {};
-  const invArr = Object.keys(inv).map((id) => Object.assign({id}, inv[id]));
   (lineItems || []).forEach((li) => {
     if (!li || !li.itemKey) return;
     const qty = Number(li.qty) || 1;
     const size = li.size || "M";
     const rec = recipes[li.itemKey];
+    const item = Object.assign({key: li.itemKey}, menuItems[li.itemKey] || {});
     if (rec && rec.base) {
       rec.base.forEach((b) => {
         if (!b.ing) return;
@@ -108,10 +149,17 @@ function computeUsageServer(lineItems, recipes, optMap, inv, menuItems, catType)
       });
     }
     (li.optLabels || []).forEach((lb) => {
-      let o = null;
-      if (rec && rec.options) o = rec.options.find((x) => x.label === lb) || null;
-      if (!o || !o.ing) o = optMap[lb] || null;
-      if (o && o.ing) usage[o.ing] = (usage[o.ing] || 0) + (Number(o.qty) || 0) * qty;
+      const res = choiceIngsServer(item, rec, lb, size, optionCosts, optionGroups);
+      if (res.found) {
+        res.ings.forEach((r) => {
+          if (r.ing) usage[r.ing] = (usage[r.ing] || 0) + r.qty * qty;
+        });
+      } else {
+        let o = null; /* legacy single-ingredient flat qty */
+        if (rec && rec.options) o = rec.options.find((x) => x.label === lb) || null;
+        if (!o || !o.ing) o = optMap[lb] || null;
+        if (o && o.ing) usage[o.ing] = (usage[o.ing] || 0) + (Number(o.qty) || 0) * qty;
+      }
     });
     /* consumables are now explicit recipe rows (rec.base) — no auto-by-category deduction */
   });
@@ -136,12 +184,13 @@ exports.onOrderFinalize = onValueWritten(
     if (!claim.committed) return;
 
     try {
-      const [recSnap, optSnap, invSnap, miSnap, psSnap] = await Promise.all([
+      const [recSnap, optSnap, invSnap, miSnap, psSnap, ogSnap] = await Promise.all([
         db.ref("/recipes").get(),
         db.ref("/optionRecipes").get(),
         db.ref("/inventory").get(),
         db.ref("/menuItems").get(),
         db.ref("/posSettings").get(),
+        db.ref("/optionGroups").get(),
       ]);
       const recipes = recSnap.val() || {};
       const inv = invSnap.val() || {};
@@ -154,8 +203,10 @@ exports.onOrderFinalize = onValueWritten(
         optMap[v.label || k] = v;
       });
       const catType = ps.catType || {};
+      const optionCosts = ps.optionCosts || {};
+      const optionGroups = ogSnap.val() || {};
 
-      const usage = computeUsageServer(o.lineItems, recipes, optMap, inv, mi, catType);
+      const usage = computeUsageServer(o.lineItems, recipes, optMap, inv, mi, catType, optionCosts, optionGroups);
       const ids = Object.keys(usage);
       let cogs = 0;
       let missing = false;
