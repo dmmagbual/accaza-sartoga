@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v123</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v124</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4237,6 +4237,7 @@ function renderInventory(){
   var list=ings();
   var low=list.filter(function(i){return Number(i.stock)<=Number(i.reorder||0)&&Number(i.stock)>=0;});
   var neg=list.filter(function(i){return Number(i.stock)<0;});
+  var ozItems=list.filter(function(i){var u=uNorm(i.unit);return u==='oz'||u==='ounce';});
   var rows=list.map(function(i){
     var st=Number(i.stock)||0; var isLow=st<=Number(i.reorder||0)&&st>=0; var isNeg=st<0;
     var ty=ingType(i);
@@ -4262,12 +4263,13 @@ function renderInventory(){
       +'<button class="pz-btn sec" id="invTemplate">⬇ Import template</button>'
       +'<button class="pz-btn ok" id="invImportBtn">⬆ Import Excel</button>'
       +'<input type="file" id="invImportFile" accept=".xlsx,.xls,.csv" style="display:none;"/>'
+      +(ozItems.length?'<button class="pz-btn sec" id="invFixOz" style="border-color:#e6a817;color:#8a5a00;">🔤 Convert '+ozItems.length+' oz → fl oz</button>':'')
     +'</div>'
     +'<div class="pz-card" style="margin-bottom:1rem;">'
       +'<div style="font-weight:600;color:var(--bd);margin-bottom:0.6rem;font-size:0.9rem;">➕ Add item</div>'
       +'<div style="display:grid;grid-template-columns:2fr 1fr 1.2fr 1fr 1fr 1fr auto;gap:0.5rem;align-items:end;">'
         +'<div><span class="pz-lbl">Name</span><input class="pz-in" id="invName" placeholder="e.g. Espresso beans"/></div>'
-        +'<div><span class="pz-lbl">Unit</span><select class="pz-in" id="invUnit"><option>g</option><option>kg</option><option>ml</option><option>L</option><option>fl oz</option><option>oz</option><option>pcs</option><option>shot</option><option>pump</option><option>ea</option></select></div>'
+        +'<div><span class="pz-lbl">Unit</span><select class="pz-in" id="invUnit"><option>g</option><option>kg</option><option>ml</option><option>L</option><option>fl oz</option><option>pcs</option><option>shot</option><option>pump</option><option>ea</option></select></div>'
         +'<div><span class="pz-lbl">Type</span><select class="pz-in" id="invType"><option value="base">Base</option><option value="option">Option</option><option value="both">Both (base+option)</option><option value="consumable">Consumable</option></select></div>'
         +'<div><span class="pz-lbl">Stock</span><input class="pz-in" id="invStock" type="number" step="any" placeholder="0"/></div>'
         +'<div><span class="pz-lbl">Reorder</span><input class="pz-in" id="invReorder" type="number" step="any" placeholder="0"/></div>'
@@ -4285,6 +4287,7 @@ function renderInventory(){
     +'</tbody></table></div>';
   document.getElementById('invAddBtn').onclick=addIngredient;
   var _ex=document.getElementById('invExport'); if(_ex)_ex.onclick=exportInventoryXlsx;
+  var _fo=document.getElementById('invFixOz'); if(_fo)_fo.onclick=migrateOzToFloz;
   var _tp=document.getElementById('invTemplate'); if(_tp)_tp.onclick=downloadInventoryTemplate;
   var _ib=document.getElementById('invImportBtn'), _if=document.getElementById('invImportFile');
   if(_ib&&_if){ _ib.onclick=function(){_if.value='';_if.click();}; _if.onchange=function(){ if(_if.files&&_if.files[0])importInventoryXlsx(_if.files[0]); }; }
@@ -4707,7 +4710,7 @@ function postPurchases(){
 function editIngredient(id){
   var i=inventoryMap[id]; if(!i)return;
   var ty=ingType(i);
-  var units=['g','kg','ml','L','fl oz','oz','pcs','shot','pump','ea','box','pack'];
+  var units=['g','kg','ml','L','fl oz','pcs','shot','pump','ea','box','pack'];
   var uOpts=(units.indexOf(i.unit||'')<0&&(i.unit||'')?'<option selected>'+esc(i.unit)+'</option>':'')+units.map(function(u){return '<option'+(u===(i.unit||'')?' selected':'')+'>'+u+'</option>';}).join('');
   var mask=document.createElement('div');mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
   mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:470px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
@@ -4733,6 +4736,18 @@ function delIngredient(id){
   var i=inventoryMap[id]; if(!i)return;
   if(!confirm('Delete "'+i.name+'"? Recipes referencing it will show it as deleted.'))return;
   var a=A();a.remove(a.ref(a.db,'inventory/'+id));
+}
+/* One-click: relabel any item stocked in ambiguous "oz"/"ounce" to "fl oz" (fluid ounce = volume),
+   so ml/L conversion works in recipes. Quantity is unchanged; only the unit label changes.
+   Use only for liquids — a weight-ounce item should be set to g/kg instead. */
+function migrateOzToFloz(){
+  var items=ings().filter(function(i){var u=uNorm(i.unit);return u==='oz'||u==='ounce';});
+  if(!items.length){alert('No items are using oz / ounce.');return;}
+  if(!confirm('Convert '+items.length+' item(s) from oz/ounce to "fl oz" (fluid ounce)?\n\n'+items.map(function(i){return '• '+i.name;}).join('\n')+'\n\nThe stock number stays the same — this only makes the unit a proper volume so ml/L conversion works. Use this only if these are liquids.'))return;
+  var a=A();
+  items.forEach(function(i){ a.update(a.ref(a.db,'inventory/'+i.id),{unit:'fl oz',updatedAt:Date.now()}); });
+  if(window.__posLog)window.__posLog('unit-migrate','oz → fl oz',items.length+' item(s)');
+  alert('Converted '+items.length+' item(s) to fl oz. ✅ You can now enter ml/L in their recipes.');
 }
 function updateLowStockBadge(){
   var n=ings().filter(function(i){return Number(i.stock)<=Number(i.reorder||0);}).length;
