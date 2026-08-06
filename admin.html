@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v118</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v119</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1098,6 +1098,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
       </div>
       <div class="tabgrp" data-grp="stock" style="display:none;">
         <button class="admin-tab" onclick="posSwitchTab('inventory',this)">📦 Inventory <span id="lowStockBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
+        <button class="admin-tab" onclick="posSwitchTab('purchases',this)">📥 Purchases</button>
         <button class="admin-tab" onclick="posSwitchTab('recipes',this)">🧪 Recipes</button>
         <button class="admin-tab" onclick="posSwitchTab('usage',this)">🍽️ Internal Usage</button>
         <button class="admin-tab" onclick="posSwitchTab('dedupe',this)">🧹 De-dupe Menu</button>
@@ -1309,6 +1310,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 
     <div id="tab-pos" class="admin-tab-content" style="display:none;"><div id="posRoot"></div></div>
     <div id="tab-inventory" class="admin-tab-content" style="display:none;"><div id="inventoryRoot"></div></div>
+    <div id="tab-purchases" class="admin-tab-content" style="display:none;"><div id="purchasesRoot"></div></div>
     <div id="tab-recipes" class="admin-tab-content" style="display:none;"><div id="recipesRoot"></div></div>
     <div id="tab-usage" class="admin-tab-content" style="display:none;"><div id="usageRoot"></div></div>
     <div id="tab-channelpricing" class="admin-tab-content" style="display:none;"><div id="channelPricingRoot"></div></div>
@@ -3493,8 +3495,8 @@ window.selectLoginRole=function(role){
 };
 
 // ── LOGIN SUCCESS ───────────────────────────────────────────
-var DEFAULT_STAFF_PERMS={orders:true,reservations:true,pos:true,inventory:true,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false,cashflow:false,receivables:false,payables:false,stockvalue:false};
-var _permTabMap={"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'dedupe'":'dedupe',"'cashflow'":'cashflow',"'receivables'":'receivables',"'payables'":'payables',"'stockvalue'":'stockvalue',"'analytics'":'analytics',"'pnl'":'pnl',"'ops'":'registerOps'};
+var DEFAULT_STAFF_PERMS={orders:true,reservations:true,pos:true,inventory:true,purchases:false,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false,cashflow:false,receivables:false,payables:false,stockvalue:false};
+var _permTabMap={"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'purchases'":'purchases',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'dedupe'":'dedupe',"'cashflow'":'cashflow',"'receivables'":'receivables',"'payables'":'payables',"'stockvalue'":'stockvalue',"'analytics'":'analytics',"'pnl'":'pnl',"'ops'":'registerOps'};
 var _permAlwaysHide=["'payment'","'staffaccounts'","'adminaccounts'","'staffaccess'","'packages'"];
 window.showAdminSection=function(id){
   var av=document.getElementById('availSection'),cm=document.getElementById('commentsSection');
@@ -4227,7 +4229,7 @@ function init(){
 }
 function isTab(name){var el=document.getElementById('tab-'+name);return el&&el.style.display!=='none';}
 
-window.posSwitchTab=function(name,btn){ if(window.switchTab)window.switchTab(name,btn); if(name==='pos'){buildPOS();} if(name==='inventory')renderInventory(); if(name==='recipes'){recipeEditing=false;renderRecipes();} if(name==='usage')renderUsage(); if(name==='channelpricing'){var a=A();a.get(a.ref(a.db,'channelPrices')).then(function(s){channelPricesMap=s.val()||{};renderChannelPricing();}).catch(function(){renderChannelPricing();});} if(name==='dedupe')renderDedupe(); };
+window.posSwitchTab=function(name,btn){ if(window.switchTab)window.switchTab(name,btn); if(name==='pos'){buildPOS();} if(name==='inventory')renderInventory(); if(name==='purchases')renderPurchases(); if(name==='recipes'){recipeEditing=false;renderRecipes();} if(name==='usage')renderUsage(); if(name==='channelpricing'){var a=A();a.get(a.ref(a.db,'channelPrices')).then(function(s){channelPricesMap=s.val()||{};renderChannelPricing();}).catch(function(){renderChannelPricing();});} if(name==='dedupe')renderDedupe(); };
 
 /* ══════════ INVENTORY ══════════ */
 function renderInventory(){
@@ -4560,6 +4562,146 @@ function receiveStock(id){
     if(window.__posLog)window.__posLog('stock-receive',i.name,num(q)+' '+unit+' · '+peso(tot)+(pay==='paid'?' · paid':pay==='account'?' · on account':''));
     close();
   };
+}
+/* ══════════ PURCHASES (Goods-Received Note) ══════════
+   Function model: receive stock into existing generic items (blends weighted-avg cost)
+   or create a new item. Measurement units only (dimension-guarded); converts to the
+   item's stock unit; cost stored at higher precision. Brand rides on the receipt/stock card.
+   Deduction + recipes untouched — recipes keep costing at the item's blended average. */
+function purchBlank(){return {mode:'existing',ing:'',newName:'',newUnit:'ml',newType:'base',brand:'',recvUnit:'',qty:'',costMode:'unit',unitCost:'',lineTotal:''};}
+function purchInit(){ if(!window.__purch){ window.__purch={supplier:'',ref:'',date:new Date().toISOString().slice(0,10),by:((window.__posShift&&window.__posShift.staff)||'Admin'),pay:'none',acct:'',due:'',lines:[purchBlank()]}; } }
+var PURCH_UNITS=['ml','l','g','kg','pcs'];
+function purchCalc(ln){
+  var inv=(ln.mode==='new')?{unit:ln.newUnit||'',stock:0,cost:0}:(inventoryMap[ln.ing]||null);
+  if(!inv)return null;
+  var recvUnit=(ln.mode==='new')?(ln.newUnit||''):(ln.recvUnit||inv.unit||'');
+  var qty=Number(ln.qty)||0;
+  var stockAdd=convertToStock(qty,recvUnit,inv);
+  var lineTotal=(ln.costMode==='total')?(Number(ln.lineTotal)||0):qty*(Number(ln.unitCost)||0);
+  var before=Number(inv.stock)||0, oldCost=Number(inv.cost)||0;
+  var denom=before+stockAdd;
+  var newCost=denom>0?((before*oldCost+lineTotal)/denom):(stockAdd>0?lineTotal/stockAdd:0);
+  return {inv:inv,stockUnit:inv.unit||'',recvUnit:recvUnit,qty:qty,stockAdd:Math.round(stockAdd*100000)/100000,lineTotal:Math.round(lineTotal*100)/100,before:before,oldCost:oldCost,newCost:Math.round(newCost*100000)/100000};
+}
+function renderPurchases(){
+  var root=document.getElementById('purchasesRoot'); if(!root)return;
+  purchInit(); var P=window.__purch;
+  var cf=window.__cf; var accs=(cf&&cf.accounts&&cf.accounts())||[];
+  var accOpts=accs.map(function(x){return '<option value="'+esc(x.id)+'"'+(P.acct===x.id?' selected':'')+'>'+esc(x.name)+' ('+peso(x.balance)+')</option>';}).join('');
+  var invList=ings().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
+  function itemOpts(sel){return '<option value="">— pick item —</option>'+invList.map(function(i){return '<option value="'+esc(i.id)+'"'+(i.id===sel?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+') · '+ingType(i)+'</option>';}).join('');}
+  function unitOpts(list,sel){return list.map(function(u){return '<option'+(uNorm(u)===uNorm(sel)?' selected':'')+'>'+esc(u)+'</option>';}).join('');}
+  var invTotal=0;
+  var lineHtml=P.lines.map(function(ln,i){
+    var c=purchCalc(ln);
+    if(c)invTotal+=c.lineTotal;
+    var pickCol,unitCol;
+    if(ln.mode==='new'){
+      pickCol='<input class="pz-in" data-pf="newName" data-pi="'+i+'" placeholder="new item name (generic, no brand)" value="'+esc(ln.newName)+'" style="min-width:150px;"/>'
+        +'<div style="display:flex;gap:0.3rem;margin-top:0.2rem;"><select class="pz-in" data-pf="newUnit" data-pi="'+i+'" style="width:74px;" title="stock unit">'+unitOpts(PURCH_UNITS,ln.newUnit)+'</select>'
+        +'<select class="pz-in" data-pf="newType" data-pi="'+i+'" style="width:110px;" title="item type"><option value="base"'+(ln.newType==='base'?' selected':'')+'>base</option><option value="both"'+(ln.newType==='both'?' selected':'')+'>both</option><option value="option"'+(ln.newType==='option'?' selected':'')+'>option</option><option value="consumable"'+(ln.newType==='consumable'?' selected':'')+'>consumable</option></select></div>';
+      unitCol='<span style="font-size:0.78rem;color:var(--td);">'+esc(ln.newUnit||'')+'</span>';
+    } else {
+      var inv=inventoryMap[ln.ing]||{};
+      pickCol='<select class="pz-in" data-pf="ing" data-pi="'+i+'" style="min-width:160px;">'+itemOpts(ln.ing)+'</select>';
+      var cu=ln.ing?compatUnits(inv):[inv.unit||''];
+      unitCol=ln.ing?('<select class="pz-in" data-pf="recvUnit" data-pi="'+i+'" style="width:74px;">'+unitOpts(cu,ln.recvUnit||inv.unit)+'</select>'):'<span style="color:var(--tl);">—</span>';
+    }
+    var costInput=(ln.costMode==='total'
+      ?'<input class="pz-in" type="number" step="any" data-pf="lineTotal" data-pi="'+i+'" value="'+(ln.lineTotal!==''&&ln.lineTotal!=null?ln.lineTotal:'')+'" placeholder="line ₱" style="width:90px;text-align:right;"/>'
+      :'<input class="pz-in" type="number" step="any" data-pf="unitCost" data-pi="'+i+'" value="'+(ln.unitCost!==''&&ln.unitCost!=null?ln.unitCost:'')+'" placeholder="₱ / unit" style="width:90px;text-align:right;"/>');
+    var prev=c?('+'+num(c.stockAdd)+' '+esc(c.stockUnit)+' · new avg '+peso(c.newCost)+'/'+esc(c.stockUnit)+' · line '+peso(c.lineTotal)):'';
+    return '<div class="pz-card" style="margin-bottom:0.6rem;padding:0.7rem;">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;"><div style="font-size:0.75rem;">'
+        +'<label style="cursor:pointer;margin-right:0.6rem;"><input type="radio" name="pmode'+i+'" data-pf="mode" data-pi="'+i+'" value="existing"'+(ln.mode!=='new'?' checked':'')+'/> existing item</label>'
+        +'<label style="cursor:pointer;"><input type="radio" name="pmode'+i+'" data-pf="mode" data-pi="'+i+'" value="new"'+(ln.mode==='new'?' checked':'')+'/> ＋ new item</label>'
+      +'</div><button class="pz-btn warn" data-prem="'+i+'" style="padding:0.15rem 0.5rem;">✕</button></div>'
+      +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:start;">'
+        +'<div>'+pickCol+'</div>'
+        +'<div><span class="pz-lbl">Brand</span><input class="pz-in" data-pf="brand" data-pi="'+i+'" value="'+esc(ln.brand)+'" placeholder="brand (optional)" style="width:120px;"/></div>'
+        +'<div><span class="pz-lbl">Qty</span><input class="pz-in" type="number" step="any" data-pf="qty" data-pi="'+i+'" value="'+(ln.qty!==''&&ln.qty!=null?ln.qty:'')+'" placeholder="0" style="width:80px;text-align:right;"/></div>'
+        +'<div><span class="pz-lbl">Unit</span>'+unitCol+'</div>'
+        +'<div><span class="pz-lbl"><select class="pz-in" data-pf="costMode" data-pi="'+i+'" style="width:96px;font-size:0.72rem;"><option value="unit"'+(ln.costMode!=='total'?' selected':'')+'>₱ per unit</option><option value="total"'+(ln.costMode==='total'?' selected':'')+'>line total ₱</option></select></span>'+costInput+'</div>'
+      +'</div>'
+      +'<div data-pprev="'+i+'" style="font-size:0.74rem;color:var(--tm);margin-top:0.35rem;">'+prev+'</div>'
+      +'</div>';
+  }).join('');
+  var payBlock='<div style="margin-top:0.6rem;border-top:1px solid var(--cd);padding-top:0.5rem;"><span class="pz-lbl">Payment (whole invoice)</span>'
+    +'<label style="display:block;font-size:0.85rem;cursor:pointer;"><input type="radio" name="ppay" data-pf="pay" value="none"'+(P.pay==='none'?' checked':'')+'/> Just receive (no money entry)</label>'
+    +'<label style="display:block;font-size:0.85rem;cursor:pointer;"><input type="radio" name="ppay" data-pf="pay" value="paid"'+(P.pay==='paid'?' checked':'')+(accs.length?'':' disabled')+'/> Paid now from '+(accs.length?('<select class="pz-in" id="purAcct" style="width:auto;display:inline-block;">'+accOpts+'</select>'):'<span style="color:var(--tl);">(add a bank/e-wallet in Cash Flow first)</span>')+'</label>'
+    +'<label style="display:block;font-size:0.85rem;cursor:pointer;"><input type="radio" name="ppay" data-pf="pay" value="account"'+(P.pay==='account'?' checked':'')+'/> On account — creates one Payable, due <input class="pz-in" id="purDue" type="date" value="'+esc(P.due||'')+'" style="width:auto;display:inline-block;"/></label>'
+    +'</div>';
+  root.innerHTML='<div class="pz-h">📥 Purchases (Goods Received)</div>'
+    +'<p class="pz-sub">Record a supplier delivery. Pick an existing generic item to blend its weighted-average cost (any brand), or create a new item. Enter quantities in real measures (ml, L, g, kg, pcs) — the system converts to each item’s stock unit and re-costs. Recipes keep costing at the blended average automatically.</p>'
+    +'<div class="pz-card" style="margin-bottom:1rem;"><div style="display:flex;gap:0.5rem;flex-wrap:wrap;">'
+      +'<div style="flex:1;min-width:150px;"><span class="pz-lbl">Supplier</span><input class="pz-in" id="purSupplier" value="'+esc(P.supplier)+'" placeholder="supplier name"/></div>'
+      +'<div><span class="pz-lbl">Invoice / ref</span><input class="pz-in" id="purRef" value="'+esc(P.ref)+'" style="width:130px;"/></div>'
+      +'<div><span class="pz-lbl">Date</span><input class="pz-in" id="purDate" type="date" value="'+esc(P.date)+'"/></div>'
+      +'<div><span class="pz-lbl">Received by</span><input class="pz-in" id="purBy" value="'+esc(P.by)+'" style="width:120px;"/></div>'
+    +'</div>'+payBlock+'</div>'
+    +lineHtml
+    +'<button class="pz-btn sec" id="purAddLine" style="padding:0.35rem 0.8rem;margin-bottom:0.8rem;">+ line</button>'
+    +'<div class="pz-card" style="border:2px solid var(--bd);display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:var(--bd);">INVOICE TOTAL</span><span style="font-weight:700;font-size:1.2rem;color:var(--bd);" id="purTotal">'+peso(invTotal)+'</span></div>'
+    +'<div style="display:flex;gap:0.5rem;margin-top:0.8rem;"><button class="pz-btn ok" id="purPost" style="padding:0.6rem 1.4rem;">Receive all</button><button class="pz-btn sec" id="purReset">Clear</button></div>'
+    +'<div id="purMsg" style="font-size:0.8rem;color:var(--tl);margin-top:0.4rem;"></div>';
+  function hb(id,f){var el=document.getElementById(id);if(el)el.oninput=function(){P[f]=el.value;};}
+  hb('purSupplier','supplier');hb('purRef','ref');hb('purDate','date');hb('purBy','by');
+  var da=document.getElementById('purAcct');if(da)da.onchange=function(){P.acct=da.value;};
+  var du=document.getElementById('purDue');if(du)du.oninput=function(){P.due=du.value;};
+  root.querySelectorAll('input[name=ppay]').forEach(function(r){r.onchange=function(){P.pay=r.value;renderPurchases();};});
+  root.querySelectorAll('[data-pf]').forEach(function(el){
+    var f=el.getAttribute('data-pf'); if(el.getAttribute('data-pi')==null)return; var i=Number(el.getAttribute('data-pi'));
+    if(el.tagName==='SELECT'||el.type==='radio'){
+      el.onchange=function(){ P.lines[i][f]=el.value; if(f==='ing'){var inv2=inventoryMap[el.value]||{};P.lines[i].recvUnit=inv2.unit||'';} if(f==='newUnit'){P.lines[i].recvUnit=el.value;} renderPurchases(); };
+    } else if(f==='qty'||f==='unitCost'||f==='lineTotal'){
+      el.oninput=function(){P.lines[i][f]=el.value;purchUpdatePrev();};
+    } else {
+      el.oninput=function(){P.lines[i][f]=el.value;};
+    }
+  });
+  root.querySelectorAll('[data-prem]').forEach(function(b){b.onclick=function(){var i=Number(b.getAttribute('data-prem'));P.lines.splice(i,1);if(!P.lines.length)P.lines.push(purchBlank());renderPurchases();};});
+  var al=document.getElementById('purAddLine');if(al)al.onclick=function(){P.lines.push(purchBlank());renderPurchases();};
+  var rs=document.getElementById('purReset');if(rs)rs.onclick=function(){if(confirm('Clear this purchase entry?')){window.__purch=null;renderPurchases();}};
+  var pp=document.getElementById('purPost');if(pp)pp.onclick=postPurchases;
+}
+function purchUpdatePrev(){
+  var P=window.__purch; if(!P)return; var tot=0;
+  P.lines.forEach(function(ln,i){var c=purchCalc(ln);if(c)tot+=c.lineTotal;var el=document.querySelector('[data-pprev="'+i+'"]');if(el)el.textContent=c?('+'+num(c.stockAdd)+' '+c.stockUnit+' · new avg '+peso(c.newCost)+'/'+c.stockUnit+' · line '+peso(c.lineTotal)):'';});
+  var t=document.getElementById('purTotal');if(t)t.textContent=peso(Math.round(tot*100)/100);
+}
+function postPurchases(){
+  if(window.__purchPosting)return; var P=window.__purch; if(!P)return;
+  var lines=P.lines.filter(function(ln){return (ln.mode==='new'?(ln.newName||'').trim():ln.ing)&&(Number(ln.qty)||0)>0;});
+  if(!lines.length){alert('Add at least one line with an item and a quantity.');return;}
+  for(var i=0;i<lines.length;i++){var c=purchCalc(lines[i]);if(!c||!(c.stockAdd>0)){alert('A line has an invalid quantity/unit — check the measures.');return;}}
+  if(P.pay==='paid'){ if(!(window.__cf&&window.__cf.accounts&&window.__cf.accounts().length)){alert('No bank/e-wallet account. Add one in Cash Flow or choose another payment option.');return;} if(!P.acct){var a0=window.__cf.accounts();P.acct=a0[0]&&a0[0].id;} }
+  window.__purchPosting=true;
+  var a=A(); var invoiceId=uid('pinv_'); var date=P.date||new Date().toISOString().slice(0,10); var invTotal=0; var receiptIds=[];
+  lines.forEach(function(ln){
+    var c=purchCalc(ln); var ingId=ln.ing;
+    if(ln.mode==='new'){
+      ingId=uid('ing_');
+      var ni={name:(ln.newName||'').trim(),unit:ln.newUnit||'',type:ln.newType||'base',stock:c.stockAdd,cost:c.newCost,reorder:0,updatedAt:Date.now()};
+      if(ni.type==='consumable'){ni.serves='both';ni.size='';ni.qtyPerOrder=1;}
+      a.set(a.ref(a.db,'inventory/'+ingId),ni);
+    } else {
+      a.runTransaction(a.ref(a.db,'inventory/'+ingId+'/stock'),function(cur){return (Number(cur)||0)+c.stockAdd;});
+      a.update(a.ref(a.db,'inventory/'+ingId),{cost:c.newCost,updatedAt:Date.now()});
+    }
+    var rid=uid('rcpt_'); receiptIds.push(rid); invTotal+=c.lineTotal;
+    var nm=(ln.mode==='new')?((ln.newName||'').trim()):((inventoryMap[ingId]||{}).name||'');
+    a.set(a.ref(a.db,'stockReceipts/'+rid),{ing:ingId,name:nm,unit:c.stockUnit,qty:c.stockAdd,recvQty:c.qty,recvUnit:c.recvUnit,unitCost:(c.stockAdd>0?Math.round((c.lineTotal/c.stockAdd)*100000)/100000:0),total:c.lineTotal,supplier:(P.supplier||'').trim(),brand:(ln.brand||'').trim(),ref:(P.ref||'').trim(),date:date,receivedBy:(P.by||'').trim(),payMode:P.pay,invoiceId:invoiceId,ts:Date.now()});
+  });
+  invTotal=Math.round(invTotal*100)/100;
+  var payableId='';
+  if(P.pay==='paid'&&window.__cf&&window.__cf.postOut){ window.__cf.postOut({date:date,accountId:P.acct,amount:invTotal,party:(P.supplier||'').trim()||'Supplier',ref:(P.ref||'').trim()||invoiceId,category:'Purchases',source:'purchase',linkId:invoiceId,note:lines.length+' item(s) received'}); }
+  else if(P.pay==='account'&&window.__cf&&window.__cf.addPayable){ payableId=window.__cf.addPayable({party:(P.supplier||'').trim()||'Supplier',type:'inventory',amount:invTotal,date:date,due:P.due||'',ref:(P.ref||'').trim()||invoiceId})||''; }
+  a.set(a.ref(a.db,'purchaseInvoices/'+invoiceId),{supplier:(P.supplier||'').trim(),ref:(P.ref||'').trim(),date:date,by:(P.by||'').trim(),payMode:P.pay,accountId:(P.pay==='paid'?P.acct:''),payableId:payableId,total:invTotal,lineCount:lines.length,receiptIds:receiptIds,ts:Date.now()}).then(function(){
+    if(window.__posLog)window.__posLog('purchase',(P.supplier||'Supplier'),lines.length+' item(s) · '+peso(invTotal)+(P.pay==='paid'?' · paid':P.pay==='account'?' · on account':''));
+    window.__purchPosting=false; window.__purch=null; renderPurchases();
+    var m=document.getElementById('purMsg'); if(m)m.textContent='✓ Received '+lines.length+' item(s), invoice total '+peso(invTotal)+' at '+new Date().toLocaleTimeString();
+    alert('Purchase received. Stock and weighted-average costs updated. ✅');
+  }).catch(function(e){ window.__purchPosting=false; alert('Purchase post FAILED: '+((e&&e.code)||e)+'. Some writes may not have completed — check Inventory and re-enter if needed.'); });
 }
 function editIngredient(id){
   var i=inventoryMap[id]; if(!i)return;
@@ -6054,7 +6196,7 @@ function itemPeriod(id,cost,rng){var pQ=0,pV=0,uQ=0;
 }
 function itemMovements(id){
   var cost=Number((invMap[id]||{}).cost)||0;var out=[];
-  Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r||r.ing!==id)return;out.push({ts:r.ts||Date.parse(r.date)||0,date:r.date||tsToDate(r.ts),type:'Purchase'+(r.supplier?' · '+r.supplier:''),in:Number(r.qty)||0,out:0});});
+  Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r||r.ing!==id)return;out.push({ts:r.ts||Date.parse(r.date)||0,date:r.date||tsToDate(r.ts),type:'Purchase'+(r.supplier?' · '+r.supplier:'')+(r.brand?' · '+r.brand:''),in:Number(r.qty)||0,out:0});});
   Object.keys(adjMap).forEach(function(k){var x=adjMap[k];if(!x||x.ing!==id)return;var dl=Number(x.delta)||0;out.push({ts:x.ts||0,date:tsToDate(x.ts),type:'Adjust · '+(x.reason||''),in:dl>0?dl:0,out:dl<0?-dl:0});});
   Object.keys(usageMap).forEach(function(k){var u=usageMap[k];if(!u||u.reversed||!u.usage||!u.usage[id])return;out.push({ts:u.ts||0,date:tsToDate(u.ts),type:'Usage · '+(u.kindName||u.kind||''),in:0,out:Number(u.usage[id])||0});});
   var byDay={};[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k];if(!isSale(o)||!o.inventoryUsage||!o.inventoryUsage[id])return;var day=tsToDate(o.timestamp||Date.parse(o.date)||0);byDay[day]=(byDay[day]||0)+(Number(o.inventoryUsage[id])||0);});});
@@ -6706,7 +6848,7 @@ var admins={},perms={};
 function A(){return window.__accaza;}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function isTab(n){var el=document.getElementById('tab-'+n);return el&&el.style.display!=='none';}
-var PERMS=[['orders','Orders'],['reservations','Reservations & Calendar'],['pos','POS Register'],['inventory','Inventory'],['recipes','Recipes'],['usage','Internal Usage (staff & R&D)'],['registerOps','Register Ops (shifts, void, refund)'],['reviews','Reviews'],['appcustomers','App Customers'],['availability','Availability'],['comments','Comments'],['analytics','Analytics'],['pnl','P&L (financials)'],['discrepancy','Discrepancy Log'],['petty','Petty Cash'],['channelpricing','Channel Pricing (Grab/Panda)'],['dedupe','De-dupe Menu'],['cashflow','Cash Flow'],['receivables','Receivables'],['payables','Payables'],['stockvalue','Stock Value']];
+var PERMS=[['orders','Orders'],['reservations','Reservations & Calendar'],['pos','POS Register'],['inventory','Inventory'],['purchases','Purchases (Goods Received)'],['recipes','Recipes'],['usage','Internal Usage (staff & R&D)'],['registerOps','Register Ops (shifts, void, refund)'],['reviews','Reviews'],['appcustomers','App Customers'],['availability','Availability'],['comments','Comments'],['analytics','Analytics'],['pnl','P&L (financials)'],['discrepancy','Discrepancy Log'],['petty','Petty Cash'],['channelpricing','Channel Pricing (Grab/Panda)'],['dedupe','De-dupe Menu'],['cashflow','Cash Flow'],['receivables','Receivables'],['payables','Payables'],['stockvalue','Stock Value']];
 var DEF={orders:true,reservations:true,pos:true,inventory:true,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false,cashflow:false,receivables:false,payables:false,stockvalue:false};
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
 function init(){var a=A();a.onValue(a.ref(a.db,'admins'),function(s){admins=s.val()||{};if(isTab('staffaccess'))render();});a.onValue(a.ref(a.db,'adminPerms'),function(s){perms=s.val()||{};if(isTab('staffaccess'))render();});}
