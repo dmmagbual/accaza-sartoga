@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v119</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v120</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4595,42 +4595,43 @@ function renderPurchases(){
   var lineHtml=P.lines.map(function(ln,i){
     var c=purchCalc(ln);
     if(c)invTotal+=c.lineTotal;
-    var pickCol,unitCol;
+    var firstCell,typeCell='',unitCell;
     if(ln.mode==='new'){
-      pickCol='<input class="pz-in" data-pf="newName" data-pi="'+i+'" placeholder="new item name (generic, no brand)" value="'+esc(ln.newName)+'" style="min-width:150px;"/>'
-        +'<div style="display:flex;gap:0.3rem;margin-top:0.2rem;"><select class="pz-in" data-pf="newUnit" data-pi="'+i+'" style="width:74px;" title="stock unit">'+unitOpts(PURCH_UNITS,ln.newUnit)+'</select>'
-        +'<select class="pz-in" data-pf="newType" data-pi="'+i+'" style="width:110px;" title="item type"><option value="base"'+(ln.newType==='base'?' selected':'')+'>base</option><option value="both"'+(ln.newType==='both'?' selected':'')+'>both</option><option value="option"'+(ln.newType==='option'?' selected':'')+'>option</option><option value="consumable"'+(ln.newType==='consumable'?' selected':'')+'>consumable</option></select></div>';
-      unitCol='<span style="font-size:0.78rem;color:var(--td);">'+esc(ln.newUnit||'')+'</span>';
+      firstCell='<div style="flex:1;min-width:160px;"><span class="pz-lbl">New item (generic name)</span><input class="pz-in" data-pf="newName" data-pi="'+i+'" placeholder="e.g. Condensed Milk" value="'+esc(ln.newName)+'"/></div>';
+      typeCell='<div><span class="pz-lbl">Type</span><select class="pz-in" data-pf="newType" data-pi="'+i+'" style="width:110px;"><option value="base"'+(ln.newType==='base'?' selected':'')+'>base</option><option value="both"'+(ln.newType==='both'?' selected':'')+'>both</option><option value="option"'+(ln.newType==='option'?' selected':'')+'>option</option><option value="consumable"'+(ln.newType==='consumable'?' selected':'')+'>consumable</option></select></div>';
+      unitCell='<select class="pz-in" data-pf="newUnit" data-pi="'+i+'" style="width:74px;">'+unitOpts(PURCH_UNITS,ln.newUnit)+'</select>';
     } else {
       var inv=inventoryMap[ln.ing]||{};
-      pickCol='<select class="pz-in" data-pf="ing" data-pi="'+i+'" style="min-width:160px;">'+itemOpts(ln.ing)+'</select>';
+      firstCell='<div style="flex:1;min-width:170px;"><span class="pz-lbl">Item</span><select class="pz-in" data-pf="ing" data-pi="'+i+'">'+itemOpts(ln.ing)+'</select></div>';
       var cu=ln.ing?compatUnits(inv):[inv.unit||''];
-      unitCol=ln.ing?('<select class="pz-in" data-pf="recvUnit" data-pi="'+i+'" style="width:74px;">'+unitOpts(cu,ln.recvUnit||inv.unit)+'</select>'):'<span style="color:var(--tl);">—</span>';
+      unitCell=ln.ing?('<select class="pz-in" data-pf="recvUnit" data-pi="'+i+'" style="width:74px;">'+unitOpts(cu,ln.recvUnit||inv.unit)+'</select>'):'<span style="color:var(--tl);font-size:0.85rem;">—</span>';
     }
     var costInput=(ln.costMode==='total'
-      ?'<input class="pz-in" type="number" step="any" data-pf="lineTotal" data-pi="'+i+'" value="'+(ln.lineTotal!==''&&ln.lineTotal!=null?ln.lineTotal:'')+'" placeholder="line ₱" style="width:90px;text-align:right;"/>'
-      :'<input class="pz-in" type="number" step="any" data-pf="unitCost" data-pi="'+i+'" value="'+(ln.unitCost!==''&&ln.unitCost!=null?ln.unitCost:'')+'" placeholder="₱ / unit" style="width:90px;text-align:right;"/>');
+      ?'<input class="pz-in" type="number" step="any" data-pf="lineTotal" data-pi="'+i+'" value="'+(ln.lineTotal!==''&&ln.lineTotal!=null?ln.lineTotal:'')+'" placeholder="line ₱" style="width:88px;text-align:right;"/>'
+      :'<input class="pz-in" type="number" step="any" data-pf="unitCost" data-pi="'+i+'" value="'+(ln.unitCost!==''&&ln.unitCost!=null?ln.unitCost:'')+'" placeholder="₱ / unit" style="width:88px;text-align:right;"/>');
     var prev=c?('+'+num(c.stockAdd)+' '+esc(c.stockUnit)+' · new avg '+peso(c.newCost)+'/'+esc(c.stockUnit)+' · line '+peso(c.lineTotal)):'';
     return '<div class="pz-card" style="margin-bottom:0.6rem;padding:0.7rem;">'
-      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem;"><div style="font-size:0.75rem;">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem;"><div style="font-size:0.75rem;">'
         +'<label style="cursor:pointer;margin-right:0.6rem;"><input type="radio" name="pmode'+i+'" data-pf="mode" data-pi="'+i+'" value="existing"'+(ln.mode!=='new'?' checked':'')+'/> existing item</label>'
         +'<label style="cursor:pointer;"><input type="radio" name="pmode'+i+'" data-pf="mode" data-pi="'+i+'" value="new"'+(ln.mode==='new'?' checked':'')+'/> ＋ new item</label>'
       +'</div><button class="pz-btn warn" data-prem="'+i+'" style="padding:0.15rem 0.5rem;">✕</button></div>'
-      +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:start;">'
-        +'<div>'+pickCol+'</div>'
-        +'<div><span class="pz-lbl">Brand</span><input class="pz-in" data-pf="brand" data-pi="'+i+'" value="'+esc(ln.brand)+'" placeholder="brand (optional)" style="width:120px;"/></div>'
-        +'<div><span class="pz-lbl">Qty</span><input class="pz-in" type="number" step="any" data-pf="qty" data-pi="'+i+'" value="'+(ln.qty!==''&&ln.qty!=null?ln.qty:'')+'" placeholder="0" style="width:80px;text-align:right;"/></div>'
-        +'<div><span class="pz-lbl">Unit</span>'+unitCol+'</div>'
-        +'<div><span class="pz-lbl"><select class="pz-in" data-pf="costMode" data-pi="'+i+'" style="width:96px;font-size:0.72rem;"><option value="unit"'+(ln.costMode!=='total'?' selected':'')+'>₱ per unit</option><option value="total"'+(ln.costMode==='total'?' selected':'')+'>line total ₱</option></select></span>'+costInput+'</div>'
+      +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;">'
+        +firstCell
+        +typeCell
+        +'<div><span class="pz-lbl">Brand</span><input class="pz-in" data-pf="brand" data-pi="'+i+'" value="'+esc(ln.brand)+'" placeholder="optional" style="width:110px;"/></div>'
+        +'<div><span class="pz-lbl">Qty</span><input class="pz-in" type="number" step="any" data-pf="qty" data-pi="'+i+'" value="'+(ln.qty!==''&&ln.qty!=null?ln.qty:'')+'" placeholder="0" style="width:78px;text-align:right;"/></div>'
+        +'<div><span class="pz-lbl">Unit</span>'+unitCell+'</div>'
+        +'<div><span class="pz-lbl">Cost</span><div style="display:flex;gap:0.25rem;"><select class="pz-in" data-pf="costMode" data-pi="'+i+'" style="width:84px;font-size:0.72rem;"><option value="unit"'+(ln.costMode!=='total'?' selected':'')+'>₱/unit</option><option value="total"'+(ln.costMode==='total'?' selected':'')+'>total ₱</option></select>'+costInput+'</div></div>'
       +'</div>'
-      +'<div data-pprev="'+i+'" style="font-size:0.74rem;color:var(--tm);margin-top:0.35rem;">'+prev+'</div>'
+      +'<div data-pprev="'+i+'" style="font-size:0.74rem;color:var(--tm);margin-top:0.4rem;">'+prev+'</div>'
       +'</div>';
   }).join('');
   var payBlock='<div style="margin-top:0.6rem;border-top:1px solid var(--cd);padding-top:0.5rem;"><span class="pz-lbl">Payment (whole invoice)</span>'
-    +'<label style="display:block;font-size:0.85rem;cursor:pointer;"><input type="radio" name="ppay" data-pf="pay" value="none"'+(P.pay==='none'?' checked':'')+'/> Just receive (no money entry)</label>'
-    +'<label style="display:block;font-size:0.85rem;cursor:pointer;"><input type="radio" name="ppay" data-pf="pay" value="paid"'+(P.pay==='paid'?' checked':'')+(accs.length?'':' disabled')+'/> Paid now from '+(accs.length?('<select class="pz-in" id="purAcct" style="width:auto;display:inline-block;">'+accOpts+'</select>'):'<span style="color:var(--tl);">(add a bank/e-wallet in Cash Flow first)</span>')+'</label>'
-    +'<label style="display:block;font-size:0.85rem;cursor:pointer;"><input type="radio" name="ppay" data-pf="pay" value="account"'+(P.pay==='account'?' checked':'')+'/> On account — creates one Payable, due <input class="pz-in" id="purDue" type="date" value="'+esc(P.due||'')+'" style="width:auto;display:inline-block;"/></label>'
-    +'</div>';
+    +'<div style="display:flex;gap:1.2rem;flex-wrap:wrap;align-items:center;">'
+      +'<label style="font-size:0.85rem;cursor:pointer;white-space:nowrap;"><input type="radio" name="ppay" data-pf="pay" value="none"'+(P.pay==='none'?' checked':'')+'/> Just receive</label>'
+      +'<label style="font-size:0.85rem;cursor:pointer;white-space:nowrap;"><input type="radio" name="ppay" data-pf="pay" value="paid"'+(P.pay==='paid'?' checked':'')+(accs.length?'':' disabled')+'/> Paid now from '+(accs.length?('<select class="pz-in" id="purAcct" style="width:auto;display:inline-block;">'+accOpts+'</select>'):'<span style="color:var(--tl);">(add account in Cash Flow)</span>')+'</label>'
+      +'<label style="font-size:0.85rem;cursor:pointer;white-space:nowrap;"><input type="radio" name="ppay" data-pf="pay" value="account"'+(P.pay==='account'?' checked':'')+'/> On account, due <input class="pz-in" id="purDue" type="date" value="'+esc(P.due||'')+'" style="width:auto;display:inline-block;"/></label>'
+    +'</div></div>';
   root.innerHTML='<div class="pz-h">📥 Purchases (Goods Received)</div>'
     +'<p class="pz-sub">Record a supplier delivery. Pick an existing generic item to blend its weighted-average cost (any brand), or create a new item. Enter quantities in real measures (ml, L, g, kg, pcs) — the system converts to each item’s stock unit and re-costs. Recipes keep costing at the blended average automatically.</p>'
     +'<div class="pz-card" style="margin-bottom:1rem;"><div style="display:flex;gap:0.5rem;flex-wrap:wrap;">'
