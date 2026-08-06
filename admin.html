@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v126</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v127</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4678,40 +4678,45 @@ function postPurchases(){
   if(window.__purchPosting)return; var P=window.__purch; if(!P)return;
   var lines=P.lines.filter(function(ln){return (ln.mode==='new'?(ln.newName||'').trim():ln.ing)&&(Number(ln.qty)||0)>0;});
   if(!lines.length){alert('Add at least one line with an item and a quantity.');return;}
-  for(var i=0;i<lines.length;i++){var c=purchCalc(lines[i]);if(!c||!(c.stockAdd>0)){alert('A line has an invalid quantity/unit — check the measures.');return;}}
+  for(var i=0;i<lines.length;i++){var c0=purchCalc(lines[i]);if(!c0||!(c0.stockAdd>0)){alert('A line has an invalid quantity/unit — check the measures.');return;}}
   if(P.pay==='paid'){ if(!(window.__cf&&window.__cf.accounts&&window.__cf.accounts().length)){alert('No bank/e-wallet account. Add one in Cash Flow or choose another payment option.');return;} if(!P.acct){var a0=window.__cf.accounts();P.acct=a0[0]&&a0[0].id;} }
+  if(P.pay==='account'&&!(window.__cf&&window.__cf.addPayable)){ alert('Payables module not ready — reopen the tab, or choose another payment option.'); return; }
+  /* a "new" line whose name already exists (or repeats within this invoice) blends into that item — no duplicate SKU */
+  var byName={}; ings().forEach(function(x){byName[uNorm(x.name)]=x.id;});
   window.__purchPosting=true;
-  var a=A(); var invoiceId=uid('pinv_'); var date=P.date||new Date().toISOString().slice(0,10); var invTotal=0; var receiptIds=[];
-  var agg={}; /* existing item -> accumulate so multiple lines (e.g. two brands) blend correctly in ONE weighted average */
+  var a=A(); var invoiceId=uid('pinv_'); var date=P.date||new Date().toISOString().slice(0,10);
+  var updates={}, invTotal=0, receiptIds=[], agg={}, newByName={};
   lines.forEach(function(ln){
+    if(ln.mode==='new'){ var mt=byName[uNorm((ln.newName||'').trim())]; if(mt)ln=Object.assign({},ln,{mode:'existing',ing:mt}); }
     var c=purchCalc(ln); var ingId=ln.ing; var nm;
     if(ln.mode==='new'){
-      ingId=uid('ing_');
-      var ni={name:(ln.newName||'').trim(),unit:ln.newUnit||'',type:ln.newType||'base',stock:c.stockAdd,cost:c.newCost,reorder:0,updatedAt:Date.now()};
-      if(ni.type==='consumable'){ni.serves='both';ni.size='';ni.qtyPerOrder=1;}
-      a.set(a.ref(a.db,'inventory/'+ingId),ni); nm=ni.name;
+      var nk=uNorm((ln.newName||'').trim());
+      if(newByName[nk]){ ingId=newByName[nk]; }
+      else { ingId=uid('ing_'); newByName[nk]=ingId; agg[ingId]={before:0,oldCost:0,stock:0,value:0,newItem:true,name:(ln.newName||'').trim(),unit:ln.newUnit||'',type:ln.newType||'base'}; }
+      agg[ingId].stock+=c.stockAdd; agg[ingId].value+=c.lineTotal; nm=(ln.newName||'').trim();
     } else {
       var inv=inventoryMap[ingId]||{}; nm=inv.name||'';
       if(!agg[ingId])agg[ingId]={before:Number(inv.stock)||0,oldCost:Number(inv.cost)||0,stock:0,value:0};
       agg[ingId].stock+=c.stockAdd; agg[ingId].value+=c.lineTotal;
     }
     var rid=uid('rcpt_'); receiptIds.push(rid); invTotal+=c.lineTotal;
-    a.set(a.ref(a.db,'stockReceipts/'+rid),{ing:ingId,name:nm,unit:c.stockUnit,qty:c.stockAdd,recvQty:c.qty,recvUnit:c.recvUnit,unitCost:(c.stockAdd>0?Math.round((c.lineTotal/c.stockAdd)*100000)/100000:0),total:c.lineTotal,supplier:(P.supplier||'').trim(),brand:(ln.brand||'').trim(),ref:(P.ref||'').trim(),date:date,receivedBy:(P.by||'').trim(),payMode:P.pay,invoiceId:invoiceId,ts:Date.now()});
+    updates['stockReceipts/'+rid]={ing:ingId,name:nm,unit:c.stockUnit,qty:c.stockAdd,recvQty:c.qty,recvUnit:c.recvUnit,unitCost:(c.stockAdd>0?Math.round((c.lineTotal/c.stockAdd)*100000)/100000:0),total:c.lineTotal,supplier:(P.supplier||'').trim(),brand:(ln.brand||'').trim(),ref:(P.ref||'').trim(),date:date,receivedBy:(P.by||'').trim(),payMode:P.pay,invoiceId:invoiceId,ts:Date.now()};
   });
-  Object.keys(agg).forEach(function(id){ var g=agg[id]; var denom=g.before+g.stock; var newCost=denom>0?((g.before*g.oldCost+g.value)/denom):g.oldCost; newCost=Math.round(newCost*100000)/100000;
-    a.runTransaction(a.ref(a.db,'inventory/'+id+'/stock'),function(cur){return (Number(cur)||0)+g.stock;});
-    a.update(a.ref(a.db,'inventory/'+id),{cost:newCost,updatedAt:Date.now()});
+  Object.keys(agg).forEach(function(id){ var g=agg[id]; var denom=g.before+g.stock; var newCost=denom>0?((g.before*g.oldCost+g.value)/denom):g.oldCost; newCost=Math.round(newCost*100000)/100000; var newStock=Math.round((g.before+g.stock)*100000)/100000;
+    if(g.newItem){ var ni={name:g.name,unit:g.unit,type:g.type,stock:newStock,cost:newCost,reorder:0,updatedAt:Date.now()}; if(g.type==='consumable'){ni.serves='both';ni.size='';ni.qtyPerOrder=1;} updates['inventory/'+id]=ni; }
+    else { updates['inventory/'+id+'/stock']=newStock; updates['inventory/'+id+'/cost']=newCost; updates['inventory/'+id+'/updatedAt']=Date.now(); }
   });
   invTotal=Math.round(invTotal*100)/100;
-  var payableId='';
-  if(P.pay==='paid'&&window.__cf&&window.__cf.postOut){ window.__cf.postOut({date:date,accountId:P.acct,amount:invTotal,party:(P.supplier||'').trim()||'Supplier',ref:(P.ref||'').trim()||invoiceId,category:'Purchases',source:'purchase',linkId:invoiceId,note:lines.length+' item(s) received'}); }
-  else if(P.pay==='account'&&window.__cf&&window.__cf.addPayable){ payableId=window.__cf.addPayable({party:(P.supplier||'').trim()||'Supplier',type:'inventory',amount:invTotal,date:date,due:P.due||'',ref:(P.ref||'').trim()||invoiceId})||''; }
-  a.set(a.ref(a.db,'purchaseInvoices/'+invoiceId),{supplier:(P.supplier||'').trim(),ref:(P.ref||'').trim(),date:date,by:(P.by||'').trim(),payMode:P.pay,accountId:(P.pay==='paid'?P.acct:''),payableId:payableId,total:invTotal,lineCount:lines.length,receiptIds:receiptIds,ts:Date.now()}).then(function(){
+  updates['purchaseInvoices/'+invoiceId]={supplier:(P.supplier||'').trim(),ref:(P.ref||'').trim(),date:date,by:(P.by||'').trim(),payMode:P.pay,accountId:(P.pay==='paid'?P.acct:''),payableId:'',total:invTotal,lineCount:lines.length,receiptIds:receiptIds,ts:Date.now()};
+  /* ONE atomic multi-path write — the whole invoice (stock, receipts, costs, new items) lands together or not at all */
+  a.update(a.ref(a.db),updates).then(function(){
+    if(P.pay==='paid'&&window.__cf&&window.__cf.postOut){ window.__cf.postOut({date:date,accountId:P.acct,amount:invTotal,party:(P.supplier||'').trim()||'Supplier',ref:(P.ref||'').trim()||invoiceId,category:'Purchases',source:'purchase',linkId:invoiceId,note:lines.length+' item(s) received'}); }
+    else if(P.pay==='account'&&window.__cf&&window.__cf.addPayable){ var pid=window.__cf.addPayable({party:(P.supplier||'').trim()||'Supplier',type:'inventory',amount:invTotal,date:date,due:P.due||'',ref:(P.ref||'').trim()||invoiceId})||''; if(pid)a.update(a.ref(a.db,'purchaseInvoices/'+invoiceId),{payableId:pid}); }
     if(window.__posLog)window.__posLog('purchase',(P.supplier||'Supplier'),lines.length+' item(s) · '+peso(invTotal)+(P.pay==='paid'?' · paid':P.pay==='account'?' · on account':''));
     window.__purchPosting=false; window.__purch=null; renderPurchases();
     var m=document.getElementById('purMsg'); if(m)m.textContent='✓ Received '+lines.length+' item(s), invoice total '+peso(invTotal)+' at '+new Date().toLocaleTimeString();
     alert('Purchase received. Stock and weighted-average costs updated. ✅');
-  }).catch(function(e){ window.__purchPosting=false; alert('Purchase post FAILED: '+((e&&e.code)||e)+'. Some writes may not have completed — check Inventory and re-enter if needed.'); });
+  }).catch(function(e){ window.__purchPosting=false; alert('Purchase post FAILED — nothing was written: '+((e&&e.code)||e)+'. Fix the issue and try again (safe to retry).'); });
 }
 function editIngredient(id){
   var i=inventoryMap[id]; if(!i)return;
@@ -4765,9 +4770,11 @@ function updateLowStockBadge(){
 function menuList(){ return (A().getMenuItems?A().getMenuItems():[]).slice().sort(function(a,b){return (a.cat||'').localeCompare(b.cat||'')||(a.name||'').localeCompare(b.name||'');}); }
 function recipeCost(rec,size){var c=0;((rec&&rec.base)||[]).forEach(function(b){if(!b.ing)return;c+=baseQtyForSize(rec,b,size)*ingCost(b.ing);});return Math.round(c*100)/100;}
 /* Menu items with a costing gap: no recipe, ₱0 recipe cost, or a base ingredient with no cost. */
+function markNoRecipe(key,val){ var a=A(); a.set(a.ref(a.db,'menuItems/'+key+'/noRecipe'),val?true:null).then(function(){ updateCostBadge(); }).catch(function(e){ alert('Could not update: '+((e&&e.code)||e)+'. Log in with your admin EMAIL.'); }); }
 function menuCostGaps(){
   var out=[];
   menuList().forEach(function(it){
+    if(it.noRecipe)return; /* resale / bought-in items opted out of costing */
     var rec=recipesMap[it.key];
     if(!rec||!(rec.base&&rec.base.length)){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'No recipe yet'}); return; }
     if(!(recipeCost(rec,'M')>0)){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'Recipe cost is ₱0'}); return; }
@@ -4810,12 +4817,13 @@ function renderRecipes(){
   var gapPanel;
   if(!_gaps.length){ gapPanel='<div class="pz-card" style="border:1px solid #a8d5b5;background:#f0faf4;margin-bottom:0.8rem;color:#2d6a4f;font-weight:600;">✓ All menu items are costed.</div>'; }
   else if(_editingNow){ gapPanel='<div class="pz-card" style="border:1px solid #f0c36d;background:#fff8e8;margin-bottom:0.6rem;padding:0.45rem 0.8rem;display:flex;justify-content:space-between;align-items:center;gap:0.5rem;"><span style="color:#8a5a00;font-weight:600;">⚠ '+_gaps.length+' menu item'+(_gaps.length===1?'':'s')+' still not costed — finish below, the list updates.</span><button class="pz-btn sec" id="recBackToList" style="padding:0.15rem 0.6rem;">◂ Back to list</button></div>'; }
-  else { gapPanel='<div class="pz-card" style="border:1px solid #f0c36d;background:#fff8e8;margin-bottom:0.8rem;"><div style="font-weight:700;color:#8a5a00;">⚠ '+_gaps.length+' menu item'+(_gaps.length===1?'':'s')+' not costed yet</div><p class="pz-sub" style="margin:0.2rem 0 0.4rem;">These can be sold without a reliable COGS. Click “Cost it” to open its costing page.</p>'+_gaps.map(function(g){return '<div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;padding:0.25rem 0;border-top:1px solid #f0e0c0;"><span>'+esc(g.name)+' <span style="color:#a06a10;font-size:0.75rem;">· '+esc(g.reason)+'</span></span><button class="pz-btn ok" data-recopen="'+esc(g.key)+'" style="padding:0.12rem 0.6rem;">Cost it</button></div>';}).join('')+'</div>'; }
+  else { gapPanel='<div class="pz-card" style="border:1px solid #f0c36d;background:#fff8e8;margin-bottom:0.8rem;"><div style="font-weight:700;color:#8a5a00;">⚠ '+_gaps.length+' menu item'+(_gaps.length===1?'':'s')+' not costed yet</div><p class="pz-sub" style="margin:0.2rem 0 0.4rem;">These can be sold without a reliable COGS. Click “Cost it” to open its costing page.</p>'+_gaps.map(function(g){return '<div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;padding:0.25rem 0;border-top:1px solid #f0e0c0;"><span>'+esc(g.name)+' <span style="color:#a06a10;font-size:0.75rem;">· '+esc(g.reason)+'</span></span><span style="white-space:nowrap;"><button class="pz-btn sec" data-noneed="'+esc(g.key)+'" style="padding:0.12rem 0.5rem;font-size:0.72rem;">not a recipe item</button> <button class="pz-btn ok" data-recopen="'+esc(g.key)+'" style="padding:0.12rem 0.6rem;">Cost it</button></span></div>';}).join('')+'</div>'; }
   root.innerHTML='<div class="pz-h">🧪 Recipe &amp; Costing</div>'+gapPanel+nav+tools+body;
   updateCostBadge();
   var _btl=document.getElementById('recBackToList'); if(_btl)_btl.onclick=function(){ curRecipeKey=null; recipeEditing=false; renderRecipes(); };
   root.querySelectorAll('[data-recsub]').forEach(function(b){b.onclick=function(){recSub=b.getAttribute('data-recsub');recipeEditing=false;renderRecipes();};});
   root.querySelectorAll('[data-recopen]').forEach(function(b){b.onclick=function(){curRecipeKey=b.getAttribute('data-recopen');recSub='base';recipeEditing=false;renderRecipes();var e=document.getElementById('recEditor');if(e)e.scrollIntoView({behavior:'smooth',block:'start'});};});
+  root.querySelectorAll('[data-noneed]').forEach(function(b){b.onclick=function(){ if(confirm('Mark this as a resale / bought-in item that needs no recipe? It will be hidden from the not-costed flag. Its COGS won\'t be tracked by recipe — record its cost via the purchase price instead.')) markNoRecipe(b.getAttribute('data-noneed'),true); renderRecipes(); };});
   var _cs=document.getElementById('recCostSheet'); if(_cs)_cs.onclick=exportCostSheet;
   var _re=document.getElementById('recExport'); if(_re)_re.onclick=exportRecipesXlsx;
   var _rt=document.getElementById('recTemplate'); if(_rt)_rt.onclick=downloadRecipeTemplate;
@@ -4919,6 +4927,7 @@ function drawRecipeEditor(item){
   ed.innerHTML=
     '<div class="pz-card" style="margin-bottom:1rem;">'
       +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.6rem;"><div style="font-weight:600;color:var(--bd);">Recipe for “'+esc(item.name)+'”'+(cat?' · <span style="color:var(--tl);font-size:0.82rem;">'+esc(A().getCatLabel?A().getCatLabel(cat):cat)+(ct?' ('+ct+')':'')+'</span>':'')+'</div><div><span class="pz-lbl" style="display:inline;margin-right:0.4rem;">Cost for size</span>'+sizeBtns+'</div></div>'
+      +'<label style="display:inline-flex;align-items:center;gap:0.35rem;font-size:0.76rem;color:var(--tl);margin-bottom:0.5rem;cursor:pointer;"><input type="checkbox" id="recNoNeed"'+(item.noRecipe?' checked':'')+'/> No recipe needed (resale / bought-in item — hide from the not-costed flag)</label>'
       +(ings().length?'':'<p class="pz-low" style="font-size:0.8rem;">Add items in the Inventory tab first.</p>')
       +'<span class="pz-lbl">Recipe ingredients — base &amp; consumables (cups, lids, straws…). Enter qty per size.</span>'
       +'<table class="pz-tbl" style="margin-bottom:0.4rem;"><thead><tr><th>Ingredient</th><th>Recipe unit</th><th>S</th><th>M</th><th>L</th><th>Amount ('+size+')</th></tr></thead><tbody>'+(baseRows||'<tr><td colspan="6" style="color:var(--tl);padding:0.5rem;">No ingredients yet.</td></tr>')+'</tbody></table>'
@@ -4960,6 +4969,7 @@ function drawRecipeEditor(item){
   ed.querySelectorAll('select[data-caf="ing"]').forEach(function(s){s.onchange=function(){syncAll();drawRecipeEditor(item);};});
   ed.querySelectorAll('input[data-caf]').forEach(function(inp){inp.oninput=function(){var tr=inp.closest('[data-carow]');if(!tr)return;var g=tr.getAttribute('data-ca-g'),lk=tr.getAttribute('data-ca-l');var rows=[];ed.querySelectorAll('[data-carow][data-ca-g="'+g+'"][data-ca-l="'+lk+'"]').forEach(function(r){var ing=(r.querySelector('[data-caf="ing"]')||{}).value||'';function v(f){var el=r.querySelector('[data-caf="'+f+'"]');return (el&&el.value!=='')?(Number(el.value)||0):null;}rows.push({ing:ing,qtyS:v('qtyS'),qtyM:v('qtyM'),qtyL:v('qtyL')});});var lab=ed.querySelector('[data-cacost="'+g+'|'+lk+'"]');if(lab)lab.textContent='extra — S '+peso(ocChoiceCost(rows,'S'))+' · M '+peso(ocChoiceCost(rows,'M'))+' · L '+peso(ocChoiceCost(rows,'L'));};});
   ed.querySelectorAll('[data-rcsel]').forEach(function(b){b.onclick=function(){syncAll();var gid=b.getAttribute('data-rcsel');var multi=b.getAttribute('data-rcmulti')==='1';var lb=b.getAttribute('data-rclabel');var sel=window.__recCostSel||{};if(multi){var arr=Array.isArray(sel[gid])?sel[gid].slice():[];var i=arr.indexOf(lb);if(i>-1)arr.splice(i,1);else arr.push(lb);sel[gid]=arr;}else{sel[gid]=(sel[gid]===lb)?null:lb;}window.__recCostSel=sel;drawRecipeEditor(item);};});
+  var _nn=document.getElementById('recNoNeed'); if(_nn)_nn.onchange=function(){ markNoRecipe(item.key,this.checked); };
   document.getElementById('recSave').onclick=function(){ try{ syncAll(); saveRecipe(item.key); }catch(err){ alert('Recipe save hit an error: '+(err&&err.message?err.message:err)+'. Nothing was saved — tell support this message.'); } };
   document.getElementById('recClose').onclick=function(){ recipeEditing=false; curRecipeKey=null; renderRecipes(); };
   if(document.getElementById('recDel'))document.getElementById('recDel').onclick=function(){ if(!confirm('Delete this recipe? '+esc(item.name)+' will no longer deduct stock.'))return; var a=A();a.remove(a.ref(a.db,'recipes/'+item.key));recipeEditing=false;curRecipeKey=null;setTimeout(renderRecipes,200);};
