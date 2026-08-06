@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v125</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v126</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4578,6 +4578,7 @@ function purchCalc(ln){
   var inv=(ln.mode==='new')?{unit:ln.newUnit||'',stock:0,cost:0}:(inventoryMap[ln.ing]||null);
   if(!inv)return null;
   var recvUnit=(ln.mode==='new')?(ln.newUnit||''):(ln.recvUnit||inv.unit||'');
+  if(ln.mode!=='new'&&compatUnits(inv).map(uNorm).indexOf(uNorm(recvUnit))<0)recvUnit=inv.unit||''; /* guard: never convert across dimensions */
   var qty=Number(ln.qty)||0;
   var stockAdd=convertToStock(qty,recvUnit,inv);
   var lineTotal=(ln.costMode==='total')?(Number(ln.lineTotal)||0):qty*(Number(ln.unitCost)||0);
@@ -4656,7 +4657,7 @@ function renderPurchases(){
   root.querySelectorAll('[data-pf]').forEach(function(el){
     var f=el.getAttribute('data-pf'); if(el.getAttribute('data-pi')==null)return; var i=Number(el.getAttribute('data-pi'));
     if(el.tagName==='SELECT'||el.type==='radio'){
-      el.onchange=function(){ P.lines[i][f]=el.value; if(f==='ing'){var inv2=inventoryMap[el.value]||{};P.lines[i].recvUnit=inv2.unit||'';} if(f==='newUnit'){P.lines[i].recvUnit=el.value;} renderPurchases(); };
+      el.onchange=function(){ P.lines[i][f]=el.value; if(f==='ing'){var inv2=inventoryMap[el.value]||{};P.lines[i].recvUnit=inv2.unit||'';} if(f==='newUnit'){P.lines[i].recvUnit=el.value;} if(f==='mode'){P.lines[i].recvUnit='';} renderPurchases(); };
     } else if(f==='qty'||f==='unitCost'||f==='lineTotal'){
       el.oninput=function(){P.lines[i][f]=el.value;purchUpdatePrev();};
     } else {
@@ -4681,20 +4682,25 @@ function postPurchases(){
   if(P.pay==='paid'){ if(!(window.__cf&&window.__cf.accounts&&window.__cf.accounts().length)){alert('No bank/e-wallet account. Add one in Cash Flow or choose another payment option.');return;} if(!P.acct){var a0=window.__cf.accounts();P.acct=a0[0]&&a0[0].id;} }
   window.__purchPosting=true;
   var a=A(); var invoiceId=uid('pinv_'); var date=P.date||new Date().toISOString().slice(0,10); var invTotal=0; var receiptIds=[];
+  var agg={}; /* existing item -> accumulate so multiple lines (e.g. two brands) blend correctly in ONE weighted average */
   lines.forEach(function(ln){
-    var c=purchCalc(ln); var ingId=ln.ing;
+    var c=purchCalc(ln); var ingId=ln.ing; var nm;
     if(ln.mode==='new'){
       ingId=uid('ing_');
       var ni={name:(ln.newName||'').trim(),unit:ln.newUnit||'',type:ln.newType||'base',stock:c.stockAdd,cost:c.newCost,reorder:0,updatedAt:Date.now()};
       if(ni.type==='consumable'){ni.serves='both';ni.size='';ni.qtyPerOrder=1;}
-      a.set(a.ref(a.db,'inventory/'+ingId),ni);
+      a.set(a.ref(a.db,'inventory/'+ingId),ni); nm=ni.name;
     } else {
-      a.runTransaction(a.ref(a.db,'inventory/'+ingId+'/stock'),function(cur){return (Number(cur)||0)+c.stockAdd;});
-      a.update(a.ref(a.db,'inventory/'+ingId),{cost:c.newCost,updatedAt:Date.now()});
+      var inv=inventoryMap[ingId]||{}; nm=inv.name||'';
+      if(!agg[ingId])agg[ingId]={before:Number(inv.stock)||0,oldCost:Number(inv.cost)||0,stock:0,value:0};
+      agg[ingId].stock+=c.stockAdd; agg[ingId].value+=c.lineTotal;
     }
     var rid=uid('rcpt_'); receiptIds.push(rid); invTotal+=c.lineTotal;
-    var nm=(ln.mode==='new')?((ln.newName||'').trim()):((inventoryMap[ingId]||{}).name||'');
     a.set(a.ref(a.db,'stockReceipts/'+rid),{ing:ingId,name:nm,unit:c.stockUnit,qty:c.stockAdd,recvQty:c.qty,recvUnit:c.recvUnit,unitCost:(c.stockAdd>0?Math.round((c.lineTotal/c.stockAdd)*100000)/100000:0),total:c.lineTotal,supplier:(P.supplier||'').trim(),brand:(ln.brand||'').trim(),ref:(P.ref||'').trim(),date:date,receivedBy:(P.by||'').trim(),payMode:P.pay,invoiceId:invoiceId,ts:Date.now()});
+  });
+  Object.keys(agg).forEach(function(id){ var g=agg[id]; var denom=g.before+g.stock; var newCost=denom>0?((g.before*g.oldCost+g.value)/denom):g.oldCost; newCost=Math.round(newCost*100000)/100000;
+    a.runTransaction(a.ref(a.db,'inventory/'+id+'/stock'),function(cur){return (Number(cur)||0)+g.stock;});
+    a.update(a.ref(a.db,'inventory/'+id),{cost:newCost,updatedAt:Date.now()});
   });
   invTotal=Math.round(invTotal*100)/100;
   var payableId='';
