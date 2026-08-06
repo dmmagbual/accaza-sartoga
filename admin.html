@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v120</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v122</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1099,7 +1099,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
       <div class="tabgrp" data-grp="stock" style="display:none;">
         <button class="admin-tab" onclick="posSwitchTab('inventory',this)">📦 Inventory <span id="lowStockBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
         <button class="admin-tab" onclick="posSwitchTab('purchases',this)">📥 Purchases</button>
-        <button class="admin-tab" onclick="posSwitchTab('recipes',this)">🧪 Recipes</button>
+        <button class="admin-tab" onclick="posSwitchTab('recipes',this)">🧪 Recipes <span id="costGapBadge" style="display:none;background:#e6a817;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;" title="menu items not costed">0</span></button>
         <button class="admin-tab" onclick="posSwitchTab('usage',this)">🍽️ Internal Usage</button>
         <button class="admin-tab" onclick="posSwitchTab('dedupe',this)">🧹 De-dupe Menu</button>
       </div>
@@ -4217,8 +4217,8 @@ function init(){
   try{ window.addEventListener('online', function(){ window.__online=true; updateOfflineUI(); flushOfflineQueue(); }); window.addEventListener('offline', function(){ window.__online=false; updateOfflineUI(); }); }catch(e){}
   flushOfflineQueue();
   a.onValue(a.ref(a.db,'availability'), function(s){ posAvailMap=s.val()||{}; if(isTab('pos')&&document.getElementById('posItems'))drawPosItems(); });
-  a.onValue(a.ref(a.db,'inventory'), function(s){ inventoryMap=s.val()||{}; if(isTab('inventory'))renderInventory(); if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateLowStockBadge(); });
-  a.onValue(a.ref(a.db,'recipes'), function(s){ recipesMap=s.val()||{}; if(isTab('recipes')&&!recipeEditing)renderRecipes(); });
+  a.onValue(a.ref(a.db,'inventory'), function(s){ inventoryMap=s.val()||{}; if(isTab('inventory'))renderInventory(); if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateLowStockBadge(); updateCostBadge(); });
+  a.onValue(a.ref(a.db,'recipes'), function(s){ recipesMap=s.val()||{}; if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateCostBadge(); });
   a.onValue(a.ref(a.db,'optionRecipes'), function(s){ var raw=s.val()||{}; var m={}; Object.keys(raw).forEach(function(k){var v=raw[k]||{}; var lb=v.label||k; m[lb]=v;}); optRecipesMap=m; if(isTab('recipes')&&!recipeEditing)renderRecipes(); });
   a.onValue(a.ref(a.db,'internalUsage'), function(s){ usageMap=s.val()||{}; if(isTab('usage'))renderUsage(); });
   a.onValue(a.ref(a.db,'usageTypes'), function(s){ usageTypesMap=s.val()||{}; if(isTab('usage'))renderUsage(); });
@@ -4267,7 +4267,7 @@ function renderInventory(){
       +'<div style="font-weight:600;color:var(--bd);margin-bottom:0.6rem;font-size:0.9rem;">➕ Add item</div>'
       +'<div style="display:grid;grid-template-columns:2fr 1fr 1.2fr 1fr 1fr 1fr auto;gap:0.5rem;align-items:end;">'
         +'<div><span class="pz-lbl">Name</span><input class="pz-in" id="invName" placeholder="e.g. Espresso beans"/></div>'
-        +'<div><span class="pz-lbl">Unit</span><select class="pz-in" id="invUnit"><option>g</option><option>ml</option><option>oz</option><option>pcs</option><option>shot</option><option>pump</option><option>ea</option></select></div>'
+        +'<div><span class="pz-lbl">Unit</span><select class="pz-in" id="invUnit"><option>g</option><option>kg</option><option>ml</option><option>L</option><option>fl oz</option><option>oz</option><option>pcs</option><option>shot</option><option>pump</option><option>ea</option></select></div>'
         +'<div><span class="pz-lbl">Type</span><select class="pz-in" id="invType"><option value="base">Base</option><option value="option">Option</option><option value="both">Both (base+option)</option><option value="consumable">Consumable</option></select></div>'
         +'<div><span class="pz-lbl">Stock</span><input class="pz-in" id="invStock" type="number" step="any" placeholder="0"/></div>'
         +'<div><span class="pz-lbl">Reorder</span><input class="pz-in" id="invReorder" type="number" step="any" placeholder="0"/></div>'
@@ -4743,6 +4743,18 @@ function updateLowStockBadge(){
 /* ══════════ RECIPES ══════════ */
 function menuList(){ return (A().getMenuItems?A().getMenuItems():[]).slice().sort(function(a,b){return (a.cat||'').localeCompare(b.cat||'')||(a.name||'').localeCompare(b.name||'');}); }
 function recipeCost(rec,size){var c=0;((rec&&rec.base)||[]).forEach(function(b){if(!b.ing)return;c+=baseQtyForSize(rec,b,size)*ingCost(b.ing);});return Math.round(c*100)/100;}
+/* Menu items with a costing gap: no recipe, ₱0 recipe cost, or a base ingredient with no cost. */
+function menuCostGaps(){
+  var out=[];
+  menuList().forEach(function(it){
+    var rec=recipesMap[it.key];
+    if(!rec||!(rec.base&&rec.base.length)){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'No recipe yet'}); return; }
+    if(!(recipeCost(rec,'M')>0)){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'Recipe cost is ₱0'}); return; }
+    if((rec.base||[]).some(function(b){return b.ing&&!(Number((inventoryMap[b.ing]||{}).cost)>0);})){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'An ingredient has no cost'}); }
+  });
+  return out;
+}
+function updateCostBadge(){ var n=menuCostGaps().length; var b=document.getElementById('costGapBadge'); if(!b)return; if(n>0){b.textContent=n;b.style.display='inline-block';}else{b.style.display='none';} }
 function renderRecipes(){
   var root=document.getElementById('recipesRoot'); if(!root)return;
   var tabs=[['base','🧪 Recipe (base + consumables)'],['saved','📋 Saved Recipes'],['options','➕ Optional ingredients']];
@@ -4772,8 +4784,14 @@ function renderRecipes(){
     +'<button class="pz-btn ok" id="recImportBtn">⬆ Import recipes</button>'
     +'<input type="file" id="recImportFile" accept=".xlsx,.xls,.csv" style="display:none;"/>'
     +'</div>';
-  root.innerHTML='<div class="pz-h">🧪 Recipe &amp; Costing</div>'+nav+tools+body;
+  var _gaps=menuCostGaps();
+  var gapPanel=_gaps.length
+    ?('<div class="pz-card" style="border:1px solid #f0c36d;background:#fff8e8;margin-bottom:0.8rem;"><div style="font-weight:700;color:#8a5a00;">⚠ '+_gaps.length+' menu item'+(_gaps.length===1?'':'s')+' not costed yet</div><p class="pz-sub" style="margin:0.2rem 0 0.4rem;">These can be sold without a reliable COGS. Click “Cost it” to build or fix the recipe.</p>'+_gaps.map(function(g){return '<div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;padding:0.25rem 0;border-top:1px solid #f0e0c0;"><span>'+esc(g.name)+' <span style="color:#a06a10;font-size:0.75rem;">· '+esc(g.reason)+'</span></span><button class="pz-btn ok" data-recopen="'+esc(g.key)+'" style="padding:0.12rem 0.6rem;">Cost it</button></div>';}).join('')+'</div>')
+    :'<div class="pz-card" style="border:1px solid #a8d5b5;background:#f0faf4;margin-bottom:0.8rem;color:#2d6a4f;font-weight:600;">✓ All menu items are costed.</div>';
+  root.innerHTML='<div class="pz-h">🧪 Recipe &amp; Costing</div>'+gapPanel+nav+tools+body;
+  updateCostBadge();
   root.querySelectorAll('[data-recsub]').forEach(function(b){b.onclick=function(){recSub=b.getAttribute('data-recsub');recipeEditing=false;renderRecipes();};});
+  root.querySelectorAll('[data-recopen]').forEach(function(b){b.onclick=function(){curRecipeKey=b.getAttribute('data-recopen');recSub='base';recipeEditing=false;renderRecipes();};});
   var _cs=document.getElementById('recCostSheet'); if(_cs)_cs.onclick=exportCostSheet;
   var _re=document.getElementById('recExport'); if(_re)_re.onclick=exportRecipesXlsx;
   var _rt=document.getElementById('recTemplate'); if(_rt)_rt.onclick=downloadRecipeTemplate;
