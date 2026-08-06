@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v127</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v129</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4250,6 +4250,7 @@ function renderInventory(){
       +'<td>'+(i.cost?peso(i.cost):'—')+'</td>'
       +'<td style="white-space:nowrap;">'
         +'<button class="pz-btn ok" style="padding:0.3rem 0.6rem;" data-inv-receive="'+i.id+'">+ Stock</button> '
+        +'<button class="pz-btn sec" style="padding:0.3rem 0.6rem;" data-inv-brands="'+i.id+'">🏷 Brands</button> '
         +'<button class="pz-btn sec" style="padding:0.3rem 0.6rem;" data-inv-adjust="'+i.id+'">Adjust</button> '
         +'<button class="pz-btn sec" style="padding:0.3rem 0.6rem;" data-inv-edit="'+i.id+'">Edit</button> '
         +'<button class="pz-btn warn" style="padding:0.3rem 0.55rem;" data-inv-del="'+i.id+'">✕</button>'
@@ -4293,6 +4294,7 @@ function renderInventory(){
   if(_ib&&_if){ _ib.onclick=function(){_if.value='';_if.click();}; _if.onchange=function(){ if(_if.files&&_if.files[0])importInventoryXlsx(_if.files[0]); }; }
   var _it=document.getElementById('invType'); if(_it)_it.onchange=function(){document.getElementById('invConsumRow').style.display=(_it.value==='consumable')?'grid':'none';};
   root.querySelectorAll('[data-inv-receive]').forEach(function(b){b.onclick=function(){receiveStock(b.getAttribute('data-inv-receive'));};});
+  root.querySelectorAll('[data-inv-brands]').forEach(function(b){b.onclick=function(){brandBreakdown(b.getAttribute('data-inv-brands'));};});
   root.querySelectorAll('[data-inv-adjust]').forEach(function(b){b.onclick=function(){adjustStock(b.getAttribute('data-inv-adjust'));};});
   root.querySelectorAll('[data-inv-edit]').forEach(function(b){b.onclick=function(){editIngredient(b.getAttribute('data-inv-edit'));};});
   root.querySelectorAll('[data-inv-del]').forEach(function(b){b.onclick=function(){delIngredient(b.getAttribute('data-inv-del'));};});
@@ -4743,9 +4745,48 @@ function editIngredient(id){
   };
   return;
 }
+/* Brand breakdown for a pooled generic item: shows each brand received + the
+   weighted-average cost recipes actually use. On-hand is pooled (one figure). */
+function brandBreakdown(id){
+  var i=inventoryMap[id]; if(!i)return; var a=A();
+  a.get(a.ref(a.db,'stockReceipts')).then(function(s){
+    var all=s.val()||{}; var byBrand={}; var totQ=0,totV=0;
+    Object.keys(all).forEach(function(k){var r=all[k]; if(!r||r.ing!==id)return; var b=(r.brand||'').trim()||'(no brand noted)'; if(!byBrand[b])byBrand[b]={qty:0,value:0,n:0,last:''}; byBrand[b].qty+=Number(r.qty)||0; byBrand[b].value+=Number(r.total)||0; byBrand[b].n++; totQ+=Number(r.qty)||0; totV+=Number(r.total)||0; var d=r.date||''; if(d>byBrand[b].last)byBrand[b].last=d;});
+    var brands=Object.keys(byBrand).sort();
+    var rows=brands.length?brands.map(function(b){var x=byBrand[b];var avg=x.qty>0?x.value/x.qty:0;return '<tr><td>'+esc(b)+'</td><td class="r">'+num(Math.round(x.qty*1000)/1000)+' '+esc(i.unit||'')+'</td><td class="r">'+peso(x.value)+'</td><td class="r">'+peso(Math.round(avg*100000)/100000)+'</td><td class="r" style="color:var(--tl);">'+x.n+'</td><td class="r" style="color:var(--tl);">'+esc(x.last||'')+'</td></tr>';}).join(''):'<tr><td colspan="6" style="color:var(--tl);padding:0.6rem;">No purchases recorded for this item yet. Receive stock via the Purchases tab and note the brand per line.</td></tr>';
+    var histAvg=totQ>0?(totV/totQ):0;
+    var mask=document.createElement('div'); mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
+    mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:620px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;"><div style="font-weight:700;color:var(--bd);">🏷 Brands — '+esc(i.name)+'</div><button class="pz-btn sec" id="bbClose" style="padding:0.2rem 0.6rem;">✕</button></div>'
+      +'<p class="pz-sub" style="margin:0.3rem 0 0.6rem;">Recipes reference <b>'+esc(i.name)+'</b> and cost at its <b>current weighted-average: '+peso(Number(i.cost)||0)+' / '+esc(i.unit||'')+'</b> · on hand (pooled) '+num(Number(i.stock)||0)+' '+esc(i.unit||'')+'.</p>'
+      +'<table class="pz-tbl"><thead><tr><th>Brand</th><th class="r">Received</th><th class="r">Total ₱</th><th class="r">Avg ₱/unit</th><th class="r">Buys</th><th class="r">Last</th></tr></thead><tbody>'+rows+'</tbody></table>'
+      +(brands.length?'<div style="text-align:right;font-size:0.8rem;color:var(--tl);margin-top:0.3rem;">Lifetime purchase avg across brands: <b>'+peso(Math.round(histAvg*100000)/100000)+' / '+esc(i.unit||'')+'</b></div>':'')
+      +'<p class="pz-sub" style="margin-top:0.6rem;font-size:0.72rem;">This is purchase history <b>by brand</b>. On-hand stock is pooled into one figure — per-brand remaining isn’t tracked once pooled (that’s the trade-off of pooling). The recipe always uses the current weighted-average cost shown above.</p>'
+      +'<div style="margin-top:0.8rem;"><button class="pz-btn sec" id="bbClose2">Close</button></div></div>';
+    document.body.appendChild(mask);
+    function close(){document.body.removeChild(mask);}
+    var c1=mask.querySelector('#bbClose'); if(c1)c1.onclick=close; var c2=mask.querySelector('#bbClose2'); if(c2)c2.onclick=close;
+    mask.addEventListener('click',function(e){if(e.target===mask)close();});
+  }).catch(function(e){ alert('Could not load brand history: '+((e&&e.code)||e)+'. If PERMISSION_DENIED, log in with your admin email.'); });
+}
+/* Every place a recipe/option references an inventory id — for referential integrity. */
+function ingredientRefs(id){
+  var refs=[];
+  menuList().forEach(function(it){ var rec=recipesMap[it.key]; if(!rec)return; var used=false;
+    (rec.base||[]).forEach(function(b){if(b.ing===id)used=true;});
+    if(rec.choiceAdd)Object.keys(rec.choiceAdd).forEach(function(g){Object.keys(rec.choiceAdd[g]||{}).forEach(function(lk){(((rec.choiceAdd[g]||{})[lk]||{}).ings||[]).forEach(function(r){if(r&&r.ing===id)used=true;});});});
+    if(used)refs.push('Recipe: '+it.name);
+  });
+  var store=optCostStore();
+  Object.keys(store).forEach(function(g){Object.keys(store[g]||{}).forEach(function(lk){var e=store[g][lk]||{};(e.ings||[]).forEach(function(r){if(r&&r.ing===id)refs.push('Shared option cost: '+(e.label||lk));});});});
+  Object.keys(optRecipesMap||{}).forEach(function(lb){if((optRecipesMap[lb]||{}).ing===id)refs.push('Option (legacy): '+lb);});
+  return refs;
+}
 function delIngredient(id){
   var i=inventoryMap[id]; if(!i)return;
-  if(!confirm('Delete "'+i.name+'"? Recipes referencing it will show it as deleted.'))return;
+  var refs=ingredientRefs(id);
+  if(refs.length){ alert('Cannot delete "'+i.name+'" — it is still used by '+refs.length+' recipe/option'+(refs.length===1?'':'s')+':\n\n'+refs.slice(0,25).join('\n')+(refs.length>25?'\n…and '+(refs.length-25)+' more':'')+'\n\nRemove it from these (or repoint them to the correct item) first. This keeps every recipe linked to a real inventory item.'); return; }
+  if(!confirm('Delete "'+i.name+'"? It is not used by any recipe.'))return;
   var a=A();a.remove(a.ref(a.db,'inventory/'+id));
 }
 /* One-click: relabel any item stocked in ambiguous "oz"/"ounce" to "fl oz" (fluid ounce = volume),
@@ -4777,6 +4818,7 @@ function menuCostGaps(){
     if(it.noRecipe)return; /* resale / bought-in items opted out of costing */
     var rec=recipesMap[it.key];
     if(!rec||!(rec.base&&rec.base.length)){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'No recipe yet'}); return; }
+    if((rec.base||[]).some(function(b){return b.ing&&!inventoryMap[b.ing];})){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'An ingredient was deleted (broken link)'}); return; }
     if(!(recipeCost(rec,'M')>0)){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'Recipe cost is ₱0'}); return; }
     if((rec.base||[]).some(function(b){return b.ing&&!(Number((inventoryMap[b.ing]||{}).cost)>0);})){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'An ingredient has no cost'}); }
   });
