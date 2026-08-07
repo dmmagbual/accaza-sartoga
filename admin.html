@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v130</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v131</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4245,7 +4245,8 @@ function renderInventory(){
   var neg=list.filter(function(i){return Number(i.stock)<0;});
   var ozItems=list.filter(function(i){var u=uNorm(i.unit);return u==='oz'||u==='ounce';});
   seedInvCats(); var catList=invCats(); var catFilter=window.__invCatFilter||'';
-  var shown=catFilter?list.filter(function(i){return (i.category||'')===catFilter;}):list;
+  var uncat=list.filter(function(i){return !(i.category&&invCatsMap()[i.category]);});
+  var shown=!catFilter?list:(catFilter==='__none__'?uncat:list.filter(function(i){return (i.category||'')===catFilter;}));
   var rows=shown.map(function(i){
     var st=Number(i.stock)||0; var isLow=st<=Number(i.reorder||0)&&st>=0; var isNeg=st<0;
     var ty=ingType(i);
@@ -4267,7 +4268,7 @@ function renderInventory(){
   }).join('');
   root.innerHTML=
     '<div class="pz-h">📦 Inventory</div>'
-    +'<p class="pz-sub">Every item is tagged Base / Option / Consumable. Completed orders auto-deduct by recipe (base per size), selected options and category consumables. Stock may go negative — flagged 🔴 so you can count &amp; adjust; the variance posts to COGS.'+(low.length?' <b class="pz-low">'+low.length+' low.</b>':'')+(neg.length?' <b class="pz-low">'+neg.length+' negative.</b>':'')+'</p>'
+    +'<p class="pz-sub">Every item is tagged Base / Option / Consumable. Completed orders auto-deduct by recipe (base per size), selected options and category consumables. Stock may go negative — flagged 🔴 so you can count &amp; adjust; the variance posts to COGS.'+(low.length?' <b class="pz-low">'+low.length+' low.</b>':'')+(neg.length?' <b class="pz-low">'+neg.length+' negative.</b>':'')+(uncat.length?' <b style="color:#8a5a00;">'+uncat.length+' uncategorized.</b>':'')+'</p>'
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">'
       +'<button class="pz-btn sec" id="invExport">⬇ Export Excel</button>'
       +'<button class="pz-btn sec" id="invTemplate">⬇ Import template</button>'
@@ -4275,7 +4276,7 @@ function renderInventory(){
       +'<input type="file" id="invImportFile" accept=".xlsx,.xls,.csv" style="display:none;"/>'
       +(ozItems.length?'<button class="pz-btn sec" id="invFixOz" style="border-color:#e6a817;color:#8a5a00;">🔤 Convert '+ozItems.length+' oz → fl oz</button>':'')
       +'<button class="pz-btn sec" id="invCatMgr">🗂 Categories</button>'
-      +'<select class="pz-in" id="invCatFilter" style="width:auto;"><option value="">All categories</option>'+catList.map(function(c){return '<option value="'+esc(c.id)+'"'+(catFilter===c.id?' selected':'')+'>'+esc(c.name)+(c.kind==='overhead'?' (overhead)':'')+'</option>';}).join('')+'</select>'
+      +'<select class="pz-in" id="invCatFilter" style="width:auto;"><option value="">All categories</option><option value="__none__"'+(catFilter==='__none__'?' selected':'')+'>— Uncategorized ('+uncat.length+') —</option>'+catList.map(function(c){return '<option value="'+esc(c.id)+'"'+(catFilter===c.id?' selected':'')+'>'+esc(c.name)+(c.kind==='overhead'?' (overhead)':'')+'</option>';}).join('')+'</select>'
     +'</div>'
     +'<div class="pz-card" style="margin-bottom:1rem;">'
       +'<div style="font-weight:600;color:var(--bd);margin-bottom:0.6rem;font-size:0.9rem;">➕ Add item</div>'
