@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v131</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v132</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1106,6 +1106,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
       <div class="tabgrp" data-grp="finance" style="display:none;">
         <button class="admin-tab" onclick="posSwitchTab('analytics',this)">📊 Analytics</button>
         <button class="admin-tab" onclick="posSwitchTab('pnl',this)">💰 Profit &amp; Loss</button>
+        <button class="admin-tab" onclick="posSwitchTab('dailyreport',this)">📆 Daily Report</button>
         <button class="admin-tab" onclick="posSwitchTab('payouts',this)">💱 Platform Payouts</button>
         <button class="admin-tab" onclick="posSwitchTab('cashflow',this)">🏦 Cash Flow</button>
         <button class="admin-tab" onclick="posSwitchTab('receivables',this)">📥 Receivables</button>
@@ -1320,6 +1321,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
     <div id="tab-packages" class="admin-tab-content" style="display:none;"><div id="packagesRoot"></div></div>
     <div id="tab-analytics" class="admin-tab-content" style="display:none;"><div id="analyticsRoot"></div></div>
     <div id="tab-pnl" class="admin-tab-content" style="display:none;"><div id="pnlRoot"></div></div>
+    <div id="tab-dailyreport" class="admin-tab-content" style="display:none;"><div id="dailyReportRoot"></div></div>
     <div id="tab-payouts" class="admin-tab-content" style="display:none;"><div id="payoutsRoot"></div></div>
     <div id="tab-cashflow" class="admin-tab-content" style="display:none;"><div id="cashflowRoot"></div></div>
     <div id="tab-receivables" class="admin-tab-content" style="display:none;"><div id="receivablesRoot"></div></div>
@@ -3495,8 +3497,8 @@ window.selectLoginRole=function(role){
 };
 
 // ── LOGIN SUCCESS ───────────────────────────────────────────
-var DEFAULT_STAFF_PERMS={orders:true,reservations:true,pos:true,inventory:true,purchases:false,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false,cashflow:false,receivables:false,payables:false,stockvalue:false};
-var _permTabMap={"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'purchases'":'purchases',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'dedupe'":'dedupe',"'cashflow'":'cashflow',"'receivables'":'receivables',"'payables'":'payables',"'stockvalue'":'stockvalue',"'analytics'":'analytics',"'pnl'":'pnl',"'ops'":'registerOps'};
+var DEFAULT_STAFF_PERMS={orders:true,reservations:true,pos:true,inventory:true,purchases:false,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,dailyreport:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false,cashflow:false,receivables:false,payables:false,stockvalue:false};
+var _permTabMap={"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'purchases'":'purchases',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'dedupe'":'dedupe',"'cashflow'":'cashflow',"'receivables'":'receivables',"'payables'":'payables',"'stockvalue'":'stockvalue',"'dailyreport'":'dailyreport',"'analytics'":'analytics',"'pnl'":'pnl',"'ops'":'registerOps'};
 var _permAlwaysHide=["'payment'","'staffaccounts'","'adminaccounts'","'staffaccess'","'packages'"];
 window.showAdminSection=function(id){
   var av=document.getElementById('availSection'),cm=document.getElementById('commentsSection');
@@ -5947,7 +5949,7 @@ function init(){
 }
 // extend the POS tab switcher to also render our tabs
 var _prev=window.posSwitchTab;
-window.posSwitchTab=function(name,btn){ if(_prev)_prev(name,btn); else if(window.switchTab)window.switchTab(name,btn); if(name==='analytics')renderAnalytics(); if(name==='pnl'){if(!pnlMonth)pnlMonth=monthKey(Date.now());renderPnl();} if(name==='payouts')renderPayouts(); if(name==='stockvalue')renderStockValue(); };
+window.posSwitchTab=function(name,btn){ if(_prev)_prev(name,btn); else if(window.switchTab)window.switchTab(name,btn); if(name==='analytics')renderAnalytics(); if(name==='pnl'){if(!pnlMonth)pnlMonth=monthKey(Date.now());renderPnl();} if(name==='payouts')renderPayouts(); if(name==='stockvalue')renderStockValue(); if(name==='dailyreport')renderDailyReport(); };
 
 // capture completedAt for ops metrics (idempotent, additive)
 function captureCompletedAt(all){var a=A();Object.keys(all).forEach(function(id){var o=all[id];if(o&&o.status==='Completed'&&!o.completedAt){a.update(a.ref(a.db,'orders/'+id),{completedAt:Date.now()});}});}
@@ -6117,6 +6119,79 @@ function monthKey(ts){var d=new Date(ts);return d.getFullYear()+'-'+pad(d.getMon
 function monthLabel(mk){var p=mk.split('-');return new Date(p[0],p[1]-1,1).toLocaleDateString('en-PH',{month:'long',year:'numeric'});}
 function prevMonthKey(mk){var p=mk.split('-');var d=new Date(p[0],p[1]-1,1);d.setMonth(d.getMonth()-1);return d.getFullYear()+'-'+pad(d.getMonth()+1);}
 function usageNameFor(id){ if(id==='staff')return 'Staff consumption'; if(id==='rnd')return 'R&D / Testing'; var nm=null; Object.keys(usageMap).some(function(k){var u=usageMap[k];if(u&&u.kind===id&&u.kindName){nm=u.kindName;return true;}return false;}); return nm||id; }
+/* ══════════ DAILY REPORT (all channels + register expenses) ══════════ */
+function drNum(n){return (Math.round((Number(n)||0)*1000)/1000).toLocaleString('en-PH');}
+function dailyBounds(dstr){var s=new Date(dstr+'T00:00:00').getTime();return [s,s+86400000];}
+function renderDailyReport(){
+  var root=document.getElementById('dailyReportRoot'); if(!root)return;
+  var d=window.__dailyDate||new Date().toISOString().slice(0,10); window.__dailyDate=d;
+  var b=dailyBounds(d);
+  var sales=allOrders().filter(isSale).map(saleFields).filter(function(s){return s.ts>=b[0]&&s.ts<b[1];});
+  var chan={instore:{lbl:'In-store',tx:0,gross:0,disc:0,net:0,comm:0},grabfood:{lbl:'GrabFood',tx:0,gross:0,disc:0,net:0,comm:0},foodpanda:{lbl:'FoodPanda',tx:0,gross:0,disc:0,net:0,comm:0}};
+  var byMethod={},itemsM={},txns=[],refundsTot=0,netTot=0;
+  sales.forEach(function(s){var o=s.o;var c=(o.channel&&chan[o.channel])?o.channel:'instore';var ch=chan[c];ch.tx++;
+    if(c==='instore'){ch.gross+=s.gross;ch.disc+=s.discount;ch.net+=s.net;netTot+=s.net;}
+    else{var g=Number(o.grossPlatform||o.subtotal||o.total)||0;var nt=Number(o.netPlatform!=null?o.netPlatform:g)||0;ch.gross+=g;ch.comm+=Number(o.commission)||0;ch.net+=nt;netTot+=nt;}
+    refundsTot+=s.refund;
+    var pays=(o.payments&&o.payments.length)?o.payments:[{method:(o.channel&&o.channel!=='instore')?(o.channel==='grabfood'?'GrabFood':'FoodPanda'):(o.payment||'—'),amount:Number(o.total)||0}];
+    pays.forEach(function(p){byMethod[p.method]=(byMethod[p.method]||0)+(Number(p.amount)||0);});
+    (o.lineItems||[]).forEach(function(li){var k=li.itemKey||li.name||'?';if(!itemsM[k])itemsM[k]={name:li.name||k,qty:0,sales:0};itemsM[k].qty+=Number(li.qty)||0;itemsM[k].sales+=(Number(li.qty)||0)*(Number(li.unitTotal)||0);});
+    txns.push({time:o.time||new Date(s.ts).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),id:o.id,channel:chan[c].lbl,method:pays.map(function(p){return p.method;}).join('+'),amount:Number(o.total)||0,refund:s.refund});
+  });
+  var items=Object.keys(itemsM).map(function(k){return itemsM[k];}).sort(function(a,b){return b.sales-a.sales;});
+  var a=A();
+  a.get(a.ref(a.db,'shifts')).then(function(sn){var sh=sn.val()||{};var payouts=[];Object.keys(sh).forEach(function(k){var s=sh[k];(s.payOuts||[]).forEach(function(p){var ts=Number(p.ts)||0;if(ts>=b[0]&&ts<b[1])payouts.push({time:new Date(ts).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),reason:p.reason||'pay-out',amount:Number(p.amount)||0});});});build(payouts);}).catch(function(){build([]);});
+  function build(payouts){
+    var payoutTot=payouts.reduce(function(s,p){return s+p.amount;},0);
+    var chRows=['instore','grabfood','foodpanda'].map(function(c){var x=chan[c];if(!x.tx)return '';return '<tr><td>'+x.lbl+'</td><td class="r">'+x.tx+'</td><td class="r">'+peso(x.gross)+'</td><td class="r">'+(x.disc?('−'+peso(x.disc)):(x.comm?('comm −'+peso(x.comm)):'—'))+'</td><td class="r">'+peso(x.net)+'</td></tr>';}).join('');
+    var methodRows=Object.keys(byMethod).sort().map(function(m){return '<tr><td>'+esc(m)+'</td><td class="r">'+peso(byMethod[m])+'</td></tr>';}).join('')||'<tr><td colspan="2" style="color:var(--tl);">—</td></tr>';
+    var itemRows=items.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td class="r">'+drNum(x.qty)+'</td><td class="r">'+peso(x.sales)+'</td></tr>';}).join('')||'<tr><td colspan="3" style="color:var(--tl);">No sales this day.</td></tr>';
+    var txnRows=txns.map(function(t){return '<tr><td>'+esc(t.time)+'</td><td>'+esc(t.id)+'</td><td>'+esc(t.channel)+'</td><td>'+esc(t.method)+'</td><td class="r">'+peso(t.amount)+(t.refund?(' · R '+peso(t.refund)):'')+'</td></tr>';}).join('')||'<tr><td colspan="5" style="color:var(--tl);">No sales this day.</td></tr>';
+    var expRows=payouts.map(function(p){return '<tr><td>'+esc(p.time)+'</td><td>'+esc(p.reason)+'</td><td class="r">'+peso(p.amount)+'</td></tr>';}).join('')+(refundsTot?('<tr><td>—</td><td>Refunds</td><td class="r">'+peso(refundsTot)+'</td></tr>'):'');
+    var html='<div class="pz-h">📆 Daily Report</div>'
+      +'<div style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap;margin-bottom:0.8rem;"><div><span class="pz-lbl">Date</span><input class="pz-in" id="drDate" type="date" value="'+d+'"/></div><button class="pz-btn ok" id="drPrint" style="padding:0.4rem 0.9rem;">🖨 Print</button><button class="pz-btn sec" id="drExcel" style="padding:0.4rem 0.9rem;">⬇ Excel</button></div>'
+      +'<div style="display:flex;gap:0.7rem;flex-wrap:wrap;margin-bottom:0.8rem;">'
+        +'<div class="pz-card" style="flex:1;min-width:150px;"><div style="font-size:0.72rem;color:var(--tl);">Transactions</div><div style="font-weight:700;font-size:1.25rem;color:var(--bd);">'+sales.length+'</div></div>'
+        +'<div class="pz-card" style="flex:1;min-width:150px;"><div style="font-size:0.72rem;color:var(--tl);">Net sales (all channels)</div><div style="font-weight:700;font-size:1.25rem;color:var(--bd);">'+peso(netTot)+'</div></div>'
+        +'<div class="pz-card" style="flex:1;min-width:150px;"><div style="font-size:0.72rem;color:var(--tl);">Register cash out</div><div style="font-weight:700;font-size:1.25rem;color:#c0392b;">'+peso(payoutTot+refundsTot)+'</div></div>'
+      +'</div>'
+      +'<div class="az-sec">Sales by channel</div><div class="pz-card" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Channel</th><th class="r">Tx</th><th class="r">Gross</th><th class="r">Disc / Comm</th><th class="r">Net</th></tr></thead><tbody>'+(chRows||'<tr><td colspan="5" style="color:var(--tl);">No sales this day.</td></tr>')+'</tbody></table></div></div>'
+      +'<div class="az-sec">Sales by payment method</div><div class="pz-card" style="margin-bottom:0.7rem;"><table class="pz-tbl"><tbody>'+methodRows+'</tbody></table></div>'
+      +'<div class="az-sec">Register expenses (cash out)</div><div class="pz-card" style="margin-bottom:0.7rem;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Reason</th><th class="r">Amount</th></tr></thead><tbody>'+(expRows||'<tr><td colspan="3" style="color:var(--tl);">None.</td></tr>')+'</tbody></table></div>'
+      +'<div class="az-sec">Items sold</div><div class="pz-card" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Sales</th></tr></thead><tbody>'+itemRows+'</tbody></table></div></div>'
+      +'<div class="az-sec">All transactions ('+txns.length+')</div><div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Order</th><th>Channel</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+txnRows+'</tbody></table></div></div>';
+    root.innerHTML=html;
+    var X={chan:chan,byMethod:byMethod,items:items,txns:txns,payouts:payouts,refundsTot:refundsTot,netTot:netTot,payoutTot:payoutTot};
+    var di=document.getElementById('drDate'); if(di)di.onchange=function(){window.__dailyDate=this.value||d;renderDailyReport();};
+    var pr=document.getElementById('drPrint'); if(pr)pr.onclick=function(){printDailyReport(d,X);};
+    var ex=document.getElementById('drExcel'); if(ex)ex.onclick=function(){exportDailyXlsx(d,X);};
+  }
+}
+function printDailyReport(d,X){
+  var w=window.open('','_blank','width=440,height=760');if(!w){alert('Allow pop-ups to print the report.');return;}
+  var ch=['instore','grabfood','foodpanda'].map(function(c){var x=X.chan[c];if(!x.tx)return '';return '<tr><td>'+x.lbl+' ('+x.tx+')</td><td style="text-align:right;">'+peso(x.net)+'</td></tr>';}).join('');
+  var me=Object.keys(X.byMethod).sort().map(function(m){return '<tr><td>'+esc(m)+'</td><td style="text-align:right;">'+peso(X.byMethod[m])+'</td></tr>';}).join('');
+  var ex=X.payouts.map(function(p){return '<tr><td>'+esc(p.time)+' '+esc(p.reason)+'</td><td style="text-align:right;">'+peso(p.amount)+'</td></tr>';}).join('')+(X.refundsTot?'<tr><td>Refunds</td><td style="text-align:right;">'+peso(X.refundsTot)+'</td></tr>':'');
+  var it=X.items.map(function(x){return '<tr><td>'+esc(x.name)+' ×'+drNum(x.qty)+'</td><td style="text-align:right;">'+peso(x.sales)+'</td></tr>';}).join('');
+  w.document.write('<html><head><title>Daily Report '+esc(d)+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2,h3{text-align:center;margin:2px 0;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
+    +'<h2>Accaza Coffee House</h2><h3>DAILY REPORT</h3><div style="text-align:center;">'+esc(d)+'</div><hr>'
+    +'<div><b>Net sales by channel</b></div><table>'+(ch||'<tr><td>None</td></tr>')+'<tr><td><b>Total net</b></td><td style="text-align:right;"><b>'+peso(X.netTot)+'</b></td></tr></table><hr>'
+    +'<div><b>By payment method</b></div><table>'+(me||'<tr><td>None</td></tr>')+'</table><hr>'
+    +'<div><b>Register expenses (cash out)</b></div><table>'+(ex||'<tr><td>None</td></tr>')+'<tr><td><b>Total out</b></td><td style="text-align:right;"><b>'+peso(X.payoutTot+X.refundsTot)+'</b></td></tr></table><hr>'
+    +'<div><b>Items sold</b></div><table>'+(it||'<tr><td>None</td></tr>')+'</table><hr>'
+    +'<div style="font-size:9px;text-align:center;">Management report — includes in-store &amp; platform channels; register cash-out = drawer pay-outs + refunds.</div>'
+    +'<div style="text-align:center;margin-top:8px;"><button onclick="window.print()">Print</button></div></body></html>');
+  w.document.close();
+}
+function exportDailyXlsx(d,X){
+  if(!window.XLSX){alert('Excel library still loading — try again.');return;}
+  var ch=[['Channel','Tx','Gross','Discount','Commission','Net']];['instore','grabfood','foodpanda'].forEach(function(c){var x=X.chan[c];ch.push([x.lbl,x.tx,x.gross,x.disc,x.comm,x.net]);});
+  var me=[['Method','Amount']];Object.keys(X.byMethod).sort().forEach(function(m){me.push([m,X.byMethod[m]]);});
+  var it=[['Item','Qty','Sales']];X.items.forEach(function(x){it.push([x.name,x.qty,x.sales]);});
+  var tx=[['Time','Order','Channel','Method','Amount','Refund']];X.txns.forEach(function(t){tx.push([t.time,t.id,t.channel,t.method,t.amount,t.refund]);});
+  var ex=[['Time','Reason','Amount']];X.payouts.forEach(function(p){ex.push([p.time,p.reason,p.amount]);});if(X.refundsTot)ex.push(['','Refunds',X.refundsTot]);
+  var wb=XLSX.utils.book_new();[['Channels',ch],['Methods',me],['Items',it],['Transactions',tx],['Expenses',ex]].forEach(function(p){XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(p[1]),p[0]);});XLSX.writeFile(wb,'daily-report-'+d+'.xlsx');
+}
 function pnlFor(mk){
   var sales=allOrders().filter(isSale).map(saleFields).filter(function(s){return monthKey(s.ts)===mk;});
   var revenue=sales.reduce(function(s,x){return s+x.net;},0);
@@ -6761,7 +6836,7 @@ function renderOps(){
   if(activeShift){
     var z=computeZ(activeShift);
     html+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;"><div><span style="color:#2a9d5c;font-weight:700;">🟢 Shift open</span> · Cashier <b>'+esc(activeShift.staff)+'</b> · since '+new Date(activeShift.openAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})+'</div><button class="pz-btn warn" id="opsClose">Close shift &amp; Z-report</button></div>';
-    html+='<div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap;align-items:center;"><button class="pz-btn sec" id="opsCashIn">➕ Cash in</button>'+(denomTrackingOnR()?'<button class="pz-btn sec" id="opsSwap">🔁 Break a bill</button>':'')+'<span style="font-size:0.72rem;color:var(--tl);">For expenses, top up <b>Petty Cash</b> (Replenish → from register) and disburse with a voucher — no direct cash-out from the drawer.</span></div>';
+    html+='<div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap;align-items:center;"><button class="pz-btn ok" id="opsReview">📋 Shift review</button><button class="pz-btn sec" id="opsCashIn">➕ Cash in</button>'+(denomTrackingOnR()?'<button class="pz-btn sec" id="opsSwap">🔁 Break a bill</button>':'')+'<span style="font-size:0.72rem;color:var(--tl);">For expenses, top up <b>Petty Cash</b> (Replenish → from register) and disburse with a voucher — no direct cash-out from the drawer.</span></div>';
     html+='<div class="az-kpis" style="margin-top:0.8rem;">'+kpi('Sales',z.tx)+kpi('Net',peso(z.net))+kpi('Cash in',peso(z.cashSales))+kpi('Tips',peso(z.tips))+kpi('Expected drawer',peso(z.expectedCash))+kpi('Voids',z.voidCount)+kpi('Refunds',peso(z.refunds))+kpi('⏳ Unverified',peso(z.pending)+(z.pendingCount?' ('+z.pendingCount+')':''))+'</div>';
   } else {
     var opts=staffArr().map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+' ('+esc(s.role||'cashier')+')</option>';}).join('');
@@ -6803,6 +6878,7 @@ function renderOps(){
   if(document.getElementById('opsOpenDenom_total'))wireDenom('opsOpenDenom');
   var oClose=document.getElementById('opsClose');if(oClose)oClose.onclick=closeShift;
   var oCin=document.getElementById('opsCashIn');if(oCin)oCin.onclick=function(){cashMove('in');};
+  var oRev=document.getElementById('opsReview');if(oRev)oRev.onclick=openShiftReview;
   var oSwap=document.getElementById('opsSwap');if(oSwap)oSwap.onclick=cashSwap;
   document.getElementById('stAdd').onclick=addStaff;
   root.querySelectorAll('[data-stpin]').forEach(function(b){b.onclick=function(){changeStaffPin(b.getAttribute('data-stpin'));};});
@@ -6943,6 +7019,73 @@ function showZ(shift,z){
     +'<div style="text-align:center;margin-top:8px;"><button onclick="window.print()">Print</button></div></body></html>');
   w.document.close();
 }
+/* ══════════ SHIFT REVIEW (live liquidation for the open shift) ══════════ */
+function shiftSales(shift){return Object.keys(ordersMap).map(function(k){return ordersMap[k];}).filter(function(o){return o&&o.shiftId===shift.id&&!o.voided&&(o.status==='Completed'||o.status==='Received');}).sort(function(a,b){return (a.timestamp||0)-(b.timestamp||0);});}
+function shiftItemsSummary(shift){var m={};shiftSales(shift).forEach(function(o){(o.lineItems||[]).forEach(function(li){var k=li.itemKey||li.name||'?';if(!m[k])m[k]={name:li.name||k,qty:0,sales:0};m[k].qty+=Number(li.qty)||0;m[k].sales+=(Number(li.qty)||0)*(Number(li.unitTotal)||0);});});return Object.keys(m).map(function(k){return m[k];}).sort(function(a,b){return b.sales-a.sales;});}
+function shiftTxnMethod(o){return paysOf(o).map(function(p){return p.method;}).join('+');}
+function openShiftReview(){
+  if(!activeShift){alert('No open shift to review.');return;}
+  var shift=activeShift,z=computeZ(shift),sales=shiftSales(shift),items=shiftItemsSummary(shift);
+  var methodRows=Object.keys(z.byMethod).map(function(m){return '<tr><td>'+esc(m)+'</td><td class="r">'+peso(z.byMethod[m])+'</td></tr>';}).join('')||'<tr><td colspan="2" style="color:var(--tl);">No sales yet.</td></tr>';
+  var txnRows=sales.map(function(o){var ch=(o.channel&&o.channel!=='instore')?(o.channel==='grabfood'?'GrabFood':'FoodPanda'):'In-store';var tag=Number(o.refundAmount)>0?' · R '+peso(o.refundAmount):'';return '<tr><td>'+esc(o.time||'')+'</td><td>'+esc(o.id)+'</td><td>'+esc(ch)+'</td><td>'+esc(shiftTxnMethod(o))+'</td><td class="r">'+peso(o.total)+esc(tag)+'</td></tr>';}).join('')||'<tr><td colspan="5" style="color:var(--tl);">No sales yet.</td></tr>';
+  var itemRows=items.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td class="r">'+num(x.qty)+'</td><td class="r">'+peso(x.sales)+'</td></tr>';}).join('')||'<tr><td colspan="3" style="color:var(--tl);">No items yet.</td></tr>';
+  var mask=document.createElement('div');mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
+  mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:700px;width:100%;max-height:92vh;overflow:auto;padding:1.2rem;">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;"><div style="font-weight:700;color:var(--bd);">📋 Shift review — '+esc(shift.staff)+'</div><button class="pz-btn sec" id="srClose" style="padding:0.2rem 0.6rem;">✕</button></div>'
+    +'<p class="pz-sub" style="margin:0.3rem 0 0.6rem;">Live liquidation for the open shift since '+new Date(shift.openAt).toLocaleString('en-PH')+'.</p>'
+    +'<div class="pz-card" style="margin-bottom:0.8rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.3rem;">💵 Cash on hand</div><table class="pz-tbl"><tbody>'
+      +'<tr><td>Opening float</td><td class="r">'+peso(shift.openingFloat)+'</td></tr>'
+      +'<tr><td>Cash sales</td><td class="r">+'+peso(z.cashSales)+'</td></tr>'
+      +(z.tips?'<tr><td>Tips / rounding kept</td><td class="r">+'+peso(z.tips)+'</td></tr>':'')
+      +(z.payIns?'<tr><td>Cash pay-ins</td><td class="r">+'+peso(z.payIns)+'</td></tr>':'')
+      +(z.refunds?'<tr><td>Refunds</td><td class="r">−'+peso(z.refunds)+'</td></tr>':'')
+      +(z.payOuts?'<tr><td>Pay-outs (register expenses)</td><td class="r">−'+peso(z.payOuts)+'</td></tr>':'')
+      +'<tr style="border-top:2px solid var(--bd);"><td><b>Expected cash on hand</b></td><td class="r"><b>'+peso(z.expectedCash)+'</b></td></tr>'
+      +'</tbody></table></div>'
+    +'<div style="display:flex;gap:0.7rem;flex-wrap:wrap;margin-bottom:0.8rem;">'
+      +'<div class="pz-card" style="flex:1;min-width:130px;"><div style="font-size:0.72rem;color:var(--tl);">Transactions</div><div style="font-weight:700;font-size:1.1rem;color:var(--bd);">'+z.tx+'</div></div>'
+      +'<div class="pz-card" style="flex:1;min-width:130px;"><div style="font-size:0.72rem;color:var(--tl);">Net sales</div><div style="font-weight:700;font-size:1.1rem;color:var(--bd);">'+peso(z.net)+'</div></div>'
+      +'<div class="pz-card" style="flex:1;min-width:130px;"><div style="font-size:0.72rem;color:var(--tl);">Non-cash pending</div><div style="font-weight:700;font-size:1.1rem;color:'+(z.pending?'#8a5a00':'var(--bd)')+';">'+peso(z.pending)+'</div></div>'
+    +'</div>'
+    +'<div class="az-sec">Sales by payment method</div><div class="pz-card" style="margin-bottom:0.7rem;"><table class="pz-tbl"><tbody>'+methodRows+'</tbody></table></div>'
+    +'<div class="az-sec">Transactions ('+sales.length+')</div><div class="pz-card" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Order</th><th>Channel</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+txnRows+'</tbody></table></div></div>'
+    +'<div class="az-sec">Items sold</div><div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Sales</th></tr></thead><tbody>'+itemRows+'</tbody></table></div></div>'
+    +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="srPrint">🖨 Print</button><button class="pz-btn sec" id="srExcel">⬇ Excel</button><button class="pz-btn sec" id="srClose2">Close</button></div></div>';
+  document.body.appendChild(mask);
+  function close(){document.body.removeChild(mask);}
+  mask.querySelector('#srClose').onclick=close;mask.querySelector('#srClose2').onclick=close;
+  mask.querySelector('#srPrint').onclick=function(){printShiftReview(shift,z,sales,items);};
+  mask.querySelector('#srExcel').onclick=function(){exportShiftReviewXlsx(shift,z,sales,items);};
+}
+function printShiftReview(shift,z,sales,items){
+  var w=window.open('','_blank','width=420,height=720');if(!w){alert('Allow pop-ups to print the review.');return;}
+  var methods=Object.keys(z.byMethod).map(function(m){return '<tr><td>'+esc(m)+'</td><td style="text-align:right;">'+peso(z.byMethod[m])+'</td></tr>';}).join('');
+  var txn=sales.map(function(o){var ch=(o.channel&&o.channel!=='instore')?(o.channel==='grabfood'?' GF':' FP'):'';return '<tr><td>'+esc(o.time||'')+' '+esc(o.id)+ch+'</td><td style="text-align:right;">'+peso(o.total)+'</td></tr>';}).join('');
+  var it=items.map(function(x){return '<tr><td>'+esc(x.name)+' ×'+num(x.qty)+'</td><td style="text-align:right;">'+peso(x.sales)+'</td></tr>';}).join('');
+  w.document.write('<html><head><title>Shift Review '+esc(shift.id)+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2,h3{text-align:center;margin:2px 0;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
+    +'<h2>Accaza Coffee House</h2><h3>SHIFT REVIEW (liquidation)</h3><hr>'
+    +'<div>Shift: '+esc(shift.id)+'</div><div>Cashier: '+esc(shift.staff)+'</div><div>Open: '+new Date(shift.openAt).toLocaleString('en-PH')+'</div><div>Printed: '+new Date().toLocaleString('en-PH')+'</div><hr>'
+    +'<table><tr><td>Opening float</td><td style="text-align:right;">'+peso(shift.openingFloat)+'</td></tr>'
+    +'<tr><td>Cash sales</td><td style="text-align:right;">+'+peso(z.cashSales)+'</td></tr>'
+    +(z.tips?'<tr><td>Tips kept</td><td style="text-align:right;">+'+peso(z.tips)+'</td></tr>':'')
+    +(z.payIns?'<tr><td>Pay-ins</td><td style="text-align:right;">+'+peso(z.payIns)+'</td></tr>':'')
+    +(z.refunds?'<tr><td>Refunds</td><td style="text-align:right;">-'+peso(z.refunds)+'</td></tr>':'')
+    +(z.payOuts?'<tr><td>Pay-outs</td><td style="text-align:right;">-'+peso(z.payOuts)+'</td></tr>':'')
+    +'<tr><td><b>Cash on hand</b></td><td style="text-align:right;"><b>'+peso(z.expectedCash)+'</b></td></tr></table><hr>'
+    +'<div><b>By payment method</b></div><table>'+(methods||'<tr><td>None</td></tr>')+'</table><hr>'
+    +'<div><b>Transactions ('+sales.length+')</b></div><table>'+(txn||'<tr><td>None</td></tr>')+'</table><hr>'
+    +'<div><b>Items sold</b></div><table>'+(it||'<tr><td>None</td></tr>')+'</table><hr>'
+    +'<div style="font-size:9px;text-align:center;">Cash on hand = float + cash sales + tips + pay-ins − refunds − pay-outs. Management report.</div>'
+    +'<div style="text-align:center;margin-top:8px;"><button onclick="window.print()">Print</button></div></body></html>');
+  w.document.close();
+}
+function exportShiftReviewXlsx(shift,z,sales,items){
+  if(!window.XLSX){alert('Excel library still loading — try again.');return;}
+  var sum=[['Shift',shift.id],['Cashier',shift.staff],['Open',new Date(shift.openAt).toLocaleString('en-PH')],[],['Opening float',Number(shift.openingFloat)||0],['Cash sales',z.cashSales],['Tips',z.tips],['Pay-ins',z.payIns],['Refunds',-z.refunds],['Pay-outs',-z.payOuts],['Cash on hand',z.expectedCash],[],['Transactions',z.tx],['Net sales',z.net]];
+  var tx=[['Time','Order','Channel','Method','Amount','Refund']];sales.forEach(function(o){tx.push([o.time||'',o.id,(o.channel&&o.channel!=='instore')?o.channel:'instore',shiftTxnMethod(o),Number(o.total)||0,Number(o.refundAmount)||0]);});
+  var it=[['Item','Qty','Sales']];items.forEach(function(x){it.push([x.name,x.qty,x.sales]);});
+  var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),'Summary');XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(tx),'Transactions');XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(it),'Items');XLSX.writeFile(wb,'shift-review-'+shift.id+'.xlsx');
+}
 function reverseInv(o){var a=A();var u=o.inventoryUsage||{};Object.keys(u).forEach(function(ing){a.runTransaction(a.ref(a.db,'inventory/'+ing+'/stock'),function(cur){return(Number(cur)||0)+u[ing];});});}
 function voidSale(oid){
   var o=ordersMap[oid];if(!o)return;
@@ -6979,7 +7122,7 @@ var admins={},perms={};
 function A(){return window.__accaza;}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function isTab(n){var el=document.getElementById('tab-'+n);return el&&el.style.display!=='none';}
-var PERMS=[['orders','Orders'],['reservations','Reservations & Calendar'],['pos','POS Register'],['inventory','Inventory'],['purchases','Purchases (Goods Received)'],['recipes','Recipes'],['usage','Internal Usage (staff & R&D)'],['registerOps','Register Ops (shifts, void, refund)'],['reviews','Reviews'],['appcustomers','App Customers'],['availability','Availability'],['comments','Comments'],['analytics','Analytics'],['pnl','P&L (financials)'],['discrepancy','Discrepancy Log'],['petty','Petty Cash'],['channelpricing','Channel Pricing (Grab/Panda)'],['dedupe','De-dupe Menu'],['cashflow','Cash Flow'],['receivables','Receivables'],['payables','Payables'],['stockvalue','Stock Value']];
+var PERMS=[['orders','Orders'],['reservations','Reservations & Calendar'],['pos','POS Register'],['inventory','Inventory'],['purchases','Purchases (Goods Received)'],['recipes','Recipes'],['usage','Internal Usage (staff & R&D)'],['registerOps','Register Ops (shifts, void, refund)'],['reviews','Reviews'],['appcustomers','App Customers'],['availability','Availability'],['comments','Comments'],['analytics','Analytics'],['pnl','P&L (financials)'],['dailyreport','Daily Report'],['discrepancy','Discrepancy Log'],['petty','Petty Cash'],['channelpricing','Channel Pricing (Grab/Panda)'],['dedupe','De-dupe Menu'],['cashflow','Cash Flow'],['receivables','Receivables'],['payables','Payables'],['stockvalue','Stock Value']];
 var DEF={orders:true,reservations:true,pos:true,inventory:true,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false,cashflow:false,receivables:false,payables:false,stockvalue:false};
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
 function init(){var a=A();a.onValue(a.ref(a.db,'admins'),function(s){admins=s.val()||{};if(isTab('staffaccess'))render();});a.onValue(a.ref(a.db,'adminPerms'),function(s){perms=s.val()||{};if(isTab('staffaccess'))render();});}
