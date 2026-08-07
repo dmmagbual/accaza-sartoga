@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v129</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v130</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4129,6 +4129,12 @@ function ingUnit(id){var i=inventoryMap[id];return i?(i.unit||''):'';}
 function ingCost(id){var i=inventoryMap[id];return i?(Number(i.cost)||0):0;}
 function ingType(i){return (i&&i.type)||'base';}
 function ingsByType(t){return ings().filter(function(i){return ingType(i)===t;});}
+/* Inventory categories (organization + product-cost vs overhead), stored in posSettings (no new rule). */
+function invCatsMap(){return (window.__posSettings&&window.__posSettings.invCategories)||{};}
+function invCats(){var m=invCatsMap();return Object.keys(m).map(function(id){return Object.assign({id:id},m[id]);}).sort(function(a,b){return ((a.order||0)-(b.order||0))||(a.name||'').localeCompare(b.name||'');});}
+function invCatName(id){var c=invCatsMap()[id];return c?c.name:'';}
+function invCatKind(id){var c=invCatsMap()[id];return (c&&c.kind)||'cogs';}
+function seedInvCats(){ if(Object.keys(invCatsMap()).length)return; var a=A(); if(!a)return; var seed={}; [['Coffee','cogs'],['Milk','cogs'],['Syrup','cogs'],['Powder','cogs'],['Tea','cogs'],['Packaging','cogs'],['Cleaning','overhead'],['Office','overhead']].forEach(function(p,i){seed['cat_'+p[0].toLowerCase()]={name:p[0],kind:p[1],order:i};}); a.update(a.ref(a.db,'posSettings/invCategories'),seed).catch(function(){}); }
 /* consumables applicable to a menu category+size */
 function catType(cat){var m=(window.__posSettings&&window.__posSettings.catType)||{};return m[cat]||'';}
 function consumablesFor(cat,size){
@@ -4238,13 +4244,16 @@ function renderInventory(){
   var low=list.filter(function(i){return Number(i.stock)<=Number(i.reorder||0)&&Number(i.stock)>=0;});
   var neg=list.filter(function(i){return Number(i.stock)<0;});
   var ozItems=list.filter(function(i){var u=uNorm(i.unit);return u==='oz'||u==='ounce';});
-  var rows=list.map(function(i){
+  seedInvCats(); var catList=invCats(); var catFilter=window.__invCatFilter||'';
+  var shown=catFilter?list.filter(function(i){return (i.category||'')===catFilter;}):list;
+  var rows=shown.map(function(i){
     var st=Number(i.stock)||0; var isLow=st<=Number(i.reorder||0)&&st>=0; var isNeg=st<0;
     var ty=ingType(i);
     var tyBadge=ty==='consumable'?('🧻 Consumable'+(i.serves&&i.serves!=='both'?' · '+esc(i.serves):'')+(i.size?' · '+esc(i.size):'')):(ty==='option'?'➕ Option':(ty==='both'?'🔀 Both':'🧪 Base'));
     return '<tr>'
       +'<td>'+esc(i.name)+'</td>'
       +'<td style="font-size:0.78rem;color:var(--tl);">'+tyBadge+'</td>'
+      +'<td style="font-size:0.78rem;">'+(i.category?(esc(invCatName(i.category))+(invCatKind(i.category)==='overhead'?' <span style="color:#8a5a00;font-size:0.66rem;">overhead</span>':'')):'<span style="color:var(--tl);">—</span>')+'</td>'
       +'<td class="'+((isNeg||isLow)?'pz-low':'')+'">'+num(st)+' '+esc(i.unit||'')+(isNeg?' 🔴 NEGATIVE':(isLow?' ⚠️':''))+'</td>'
       +'<td>'+num(i.reorder||0)+'</td>'
       +'<td>'+(i.cost?peso(i.cost):'—')+'</td>'
@@ -4265,13 +4274,16 @@ function renderInventory(){
       +'<button class="pz-btn ok" id="invImportBtn">⬆ Import Excel</button>'
       +'<input type="file" id="invImportFile" accept=".xlsx,.xls,.csv" style="display:none;"/>'
       +(ozItems.length?'<button class="pz-btn sec" id="invFixOz" style="border-color:#e6a817;color:#8a5a00;">🔤 Convert '+ozItems.length+' oz → fl oz</button>':'')
+      +'<button class="pz-btn sec" id="invCatMgr">🗂 Categories</button>'
+      +'<select class="pz-in" id="invCatFilter" style="width:auto;"><option value="">All categories</option>'+catList.map(function(c){return '<option value="'+esc(c.id)+'"'+(catFilter===c.id?' selected':'')+'>'+esc(c.name)+(c.kind==='overhead'?' (overhead)':'')+'</option>';}).join('')+'</select>'
     +'</div>'
     +'<div class="pz-card" style="margin-bottom:1rem;">'
       +'<div style="font-weight:600;color:var(--bd);margin-bottom:0.6rem;font-size:0.9rem;">➕ Add item</div>'
-      +'<div style="display:grid;grid-template-columns:2fr 1fr 1.2fr 1fr 1fr 1fr auto;gap:0.5rem;align-items:end;">'
+      +'<div style="display:grid;grid-template-columns:1.6fr 0.9fr 1.1fr 1.1fr 0.9fr 0.9fr 0.9fr auto;gap:0.5rem;align-items:end;">'
         +'<div><span class="pz-lbl">Name</span><input class="pz-in" id="invName" placeholder="e.g. Espresso beans"/></div>'
         +'<div><span class="pz-lbl">Unit</span><select class="pz-in" id="invUnit"><option>g</option><option>kg</option><option>ml</option><option>L</option><option>fl oz</option><option>pcs</option><option>shot</option><option>pump</option><option>ea</option></select></div>'
         +'<div><span class="pz-lbl">Type</span><select class="pz-in" id="invType"><option value="base">Base</option><option value="option">Option</option><option value="both">Both (base+option)</option><option value="consumable">Consumable</option></select></div>'
+        +'<div><span class="pz-lbl">Category</span><select class="pz-in" id="invCat"><option value="">—</option>'+catList.map(function(c){return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>';}).join('')+'</select></div>'
         +'<div><span class="pz-lbl">Stock</span><input class="pz-in" id="invStock" type="number" step="any" placeholder="0"/></div>'
         +'<div><span class="pz-lbl">Reorder</span><input class="pz-in" id="invReorder" type="number" step="any" placeholder="0"/></div>'
         +'<div><span class="pz-lbl">Cost/unit ₱</span><input class="pz-in" id="invCost" type="number" step="any" placeholder="opt."/></div>'
@@ -4283,10 +4295,12 @@ function renderInventory(){
         +'<div><span class="pz-lbl">Qty per order</span><input class="pz-in" id="invQPO" type="number" step="any" value="1"/></div>'
       +'</div>'
     +'</div>'
-    +'<div class="pz-card"><table class="pz-tbl"><thead><tr><th>Item</th><th>Type</th><th>In stock</th><th>Reorder</th><th>Cost</th><th>Actions</th></tr></thead><tbody>'
-      +(rows||'<tr><td colspan="6" style="color:var(--tl);padding:1rem;">No items yet. Add your first above.</td></tr>')
-    +'</tbody></table></div>';
+    +'<div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th>Type</th><th>Category</th><th>In stock</th><th>Reorder</th><th>Cost</th><th>Actions</th></tr></thead><tbody>'
+      +(rows||'<tr><td colspan="7" style="color:var(--tl);padding:1rem;">No items in this view.</td></tr>')
+    +'</tbody></table></div></div>';
   document.getElementById('invAddBtn').onclick=addIngredient;
+  var _cf=document.getElementById('invCatFilter'); if(_cf)_cf.onchange=function(){window.__invCatFilter=this.value||'';renderInventory();};
+  var _cm=document.getElementById('invCatMgr'); if(_cm)_cm.onclick=openCatManager;
   var _ex=document.getElementById('invExport'); if(_ex)_ex.onclick=exportInventoryXlsx;
   var _fo=document.getElementById('invFixOz'); if(_fo)_fo.onclick=migrateOzToFloz;
   var _tp=document.getElementById('invTemplate'); if(_tp)_tp.onclick=downloadInventoryTemplate;
@@ -4302,7 +4316,7 @@ function renderInventory(){
 function addIngredient(){
   var name=(document.getElementById('invName').value||'').trim(); if(!name){alert('Enter an ingredient name.');return;}
   var type=(document.getElementById('invType')||{}).value||'base';
-  var o={name:name,unit:document.getElementById('invUnit').value,type:type,stock:Number(document.getElementById('invStock').value)||0,reorder:Number(document.getElementById('invReorder').value)||0,cost:Number(document.getElementById('invCost').value)||0,updatedAt:Date.now()};
+  var o={name:name,unit:document.getElementById('invUnit').value,type:type,category:(document.getElementById('invCat')||{}).value||'',stock:Number(document.getElementById('invStock').value)||0,reorder:Number(document.getElementById('invReorder').value)||0,cost:Number(document.getElementById('invCost').value)||0,updatedAt:Date.now()};
   if(type==='consumable'){ o.serves=(document.getElementById('invServes')||{}).value||'both'; o.size=(document.getElementById('invSize')||{}).value||''; o.qtyPerOrder=Number((document.getElementById('invQPO')||{}).value)||1; }
   var a=A();a.set(a.ref(a.db,'inventory/'+uid('ing_')),o).then(function(){ document.getElementById('invName').value=''; }).catch(function(e){ alert('Could not add the item: '+((e&&e.code)||e)+'.\n\nIf it says PERMISSION_DENIED — log in with your admin EMAIL (not the old username), and make sure the database rules are published.'); });
 }
@@ -4724,12 +4738,13 @@ function editIngredient(id){
   var i=inventoryMap[id]; if(!i)return;
   var ty=ingType(i);
   var units=['g','kg','ml','L','fl oz','pcs','shot','pump','ea','box','pack'];
+  var eCats=invCats();
   var uOpts=(units.indexOf(i.unit||'')<0&&(i.unit||'')?'<option selected>'+esc(i.unit)+'</option>':'')+units.map(function(u){return '<option'+(u===(i.unit||'')?' selected':'')+'>'+u+'</option>';}).join('');
   var mask=document.createElement('div');mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
   mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:470px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
     +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Edit item — '+esc(i.name)+'</div>'
     +'<p class="pz-sub" style="margin:0.2rem 0 0.7rem;">Sets values directly — <b>no variance is recorded</b>. (For a counted correction that should hit COGS, use <b>Adjust</b> instead.)</p>'
-    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;"><div style="flex:1;min-width:150px;"><span class="pz-lbl">Name</span><input class="pz-in" id="eiName" value="'+esc(i.name||'')+'"/></div><div><span class="pz-lbl">Unit</span><select class="pz-in" id="eiUnit">'+uOpts+'</select></div><div><span class="pz-lbl">Type</span><select class="pz-in" id="eiType"><option value="base"'+(ty==='base'?' selected':'')+'>Base</option><option value="option"'+(ty==='option'?' selected':'')+'>Option</option><option value="both"'+(ty==='both'?' selected':'')+'>Both (base+option)</option><option value="consumable"'+(ty==='consumable'?' selected':'')+'>Consumable</option></select></div></div>'
+    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;"><div style="flex:1;min-width:150px;"><span class="pz-lbl">Name</span><input class="pz-in" id="eiName" value="'+esc(i.name||'')+'"/></div><div><span class="pz-lbl">Unit</span><select class="pz-in" id="eiUnit">'+uOpts+'</select></div><div><span class="pz-lbl">Type</span><select class="pz-in" id="eiType"><option value="base"'+(ty==='base'?' selected':'')+'>Base</option><option value="option"'+(ty==='option'?' selected':'')+'>Option</option><option value="both"'+(ty==='both'?' selected':'')+'>Both (base+option)</option><option value="consumable"'+(ty==='consumable'?' selected':'')+'>Consumable</option></select></div><div><span class="pz-lbl">Category</span><select class="pz-in" id="eiCat"><option value="">—</option>'+eCats.map(function(c){return '<option value="'+esc(c.id)+'"'+((i.category||'')===c.id?' selected':'')+'>'+esc(c.name)+'</option>';}).join('')+'</select></div></div>'
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div><span class="pz-lbl">Stock (direct set)</span><input class="pz-in" id="eiStock" type="number" step="any" value="'+(Number(i.stock)||0)+'" style="width:120px;"/></div><div><span class="pz-lbl">Reorder</span><input class="pz-in" id="eiReorder" type="number" step="any" value="'+(Number(i.reorder)||0)+'" style="width:110px;"/></div><div><span class="pz-lbl">Cost / unit ₱</span><input class="pz-in" id="eiCost" type="number" step="any" value="'+(i.cost!=null&&i.cost!==''?i.cost:'')+'" style="width:120px;"/></div></div>'
     +'<div id="eiCons" style="display:'+(ty==='consumable'?'flex':'none')+';gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div><span class="pz-lbl">Serves</span><select class="pz-in" id="eiServes"><option value="both"'+((i.serves||'both')==='both'?' selected':'')+'>Both</option><option value="drink"'+(i.serves==='drink'?' selected':'')+'>Drinks</option><option value="food"'+(i.serves==='food'?' selected':'')+'>Food</option></select></div><div><span class="pz-lbl">Size (blank=all)</span><select class="pz-in" id="eiSize"><option value="">all</option><option'+(i.size==='S'?' selected':'')+'>S</option><option'+(i.size==='M'?' selected':'')+'>M</option><option'+(i.size==='L'?' selected':'')+'>L</option></select></div><div><span class="pz-lbl">Qty per order</span><input class="pz-in" id="eiQPO" type="number" step="any" value="'+(i.qtyPerOrder!=null?i.qtyPerOrder:1)+'" style="width:100px;"/></div></div>'
     +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="eiSave">Save</button><button class="pz-btn sec" id="eiCancel">Cancel</button></div></div>';
@@ -4739,7 +4754,7 @@ function editIngredient(id){
   mask.querySelector('#eiCancel').onclick=close;
   mask.querySelector('#eiSave').onclick=function(){
     var type=mask.querySelector('#eiType').value;
-    var upd={name:(mask.querySelector('#eiName').value||'').trim()||i.name,unit:mask.querySelector('#eiUnit').value,type:type,stock:Number(mask.querySelector('#eiStock').value)||0,reorder:Number(mask.querySelector('#eiReorder').value)||0,cost:Number(mask.querySelector('#eiCost').value)||0,updatedAt:Date.now()};
+    var upd={name:(mask.querySelector('#eiName').value||'').trim()||i.name,unit:mask.querySelector('#eiUnit').value,type:type,category:(mask.querySelector('#eiCat')||{}).value||'',stock:Number(mask.querySelector('#eiStock').value)||0,reorder:Number(mask.querySelector('#eiReorder').value)||0,cost:Number(mask.querySelector('#eiCost').value)||0,updatedAt:Date.now()};
     if(type==='consumable'){upd.serves=mask.querySelector('#eiServes').value;upd.size=mask.querySelector('#eiSize').value;upd.qtyPerOrder=Number(mask.querySelector('#eiQPO').value)||1;}
     var a=A();a.update(a.ref(a.db,'inventory/'+id),upd).then(function(){close();}).catch(function(e){alert('Could not save: '+((e&&e.code)||e)+'. If PERMISSION_DENIED, log in with your admin EMAIL and publish the rules.');});
   };
@@ -4788,6 +4803,25 @@ function delIngredient(id){
   if(refs.length){ alert('Cannot delete "'+i.name+'" — it is still used by '+refs.length+' recipe/option'+(refs.length===1?'':'s')+':\n\n'+refs.slice(0,25).join('\n')+(refs.length>25?'\n…and '+(refs.length-25)+' more':'')+'\n\nRemove it from these (or repoint them to the correct item) first. This keeps every recipe linked to a real inventory item.'); return; }
   if(!confirm('Delete "'+i.name+'"? It is not used by any recipe.'))return;
   var a=A();a.remove(a.ref(a.db,'inventory/'+id));
+}
+function openCatManager(){
+  var mask=document.createElement('div'); mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
+  function draw(){
+    var cats=invCats();
+    var rows=cats.map(function(c){return '<div style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.35rem;" data-catrow="'+esc(c.id)+'"><input class="pz-in" data-cf="name" value="'+esc(c.name)+'" style="flex:1;"/><select class="pz-in" data-cf="kind" style="width:170px;"><option value="cogs"'+(c.kind!=='overhead'?' selected':'')+'>Product cost (COGS)</option><option value="overhead"'+(c.kind==='overhead'?' selected':'')+'>Overhead</option></select><button class="pz-btn warn" data-catdel="'+esc(c.id)+'" style="padding:0.2rem 0.5rem;">✕</button></div>';}).join('');
+    mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:540px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;"><div style="font-weight:700;color:var(--bd);">🗂 Inventory categories</div><button class="pz-btn sec" id="cmClose" style="padding:0.2rem 0.6rem;">✕</button></div>'
+      +'<p class="pz-sub" style="margin:0.3rem 0 0.6rem;">Group inventory items. Mark a category <b>Overhead</b> for supplies that aren’t recipe ingredients — record their use in Internal Usage (Overhead type) and it posts to the Overhead P&amp;L line. Recipes still link to the pooled item; categories are organization.</p>'
+      +'<div data-catrows>'+(rows||'<div style="color:var(--tl);font-size:0.8rem;">No categories yet.</div>')+'</div>'
+      +'<div style="display:flex;gap:0.4rem;margin-top:0.5rem;"><input class="pz-in" id="cmNew" placeholder="new category name" style="flex:1;"/><select class="pz-in" id="cmNewKind" style="width:170px;"><option value="cogs">Product cost (COGS)</option><option value="overhead">Overhead</option></select><button class="pz-btn sec" id="cmAdd">+ Add</button></div>'
+      +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="cmSave">💾 Save</button><button class="pz-btn sec" id="cmClose2">Close</button></div></div>';
+    var a=A();
+    mask.querySelector('#cmAdd').onclick=function(){var nm=(mask.querySelector('#cmNew').value||'').trim();if(!nm){alert('Type a category name.');return;}var k=mask.querySelector('#cmNewKind').value;var o={};o[uid('cat_')]={name:nm,kind:k,order:invCats().length};a.update(a.ref(a.db,'posSettings/invCategories'),o);setTimeout(draw,250);};
+    mask.querySelectorAll('[data-catdel]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-catdel');var used=ings().filter(function(x){return (x.category||'')===id;}).length;if(used&&!confirm(used+' item(s) use this category. Delete it anyway? Those items just lose the label.'))return;a.remove(a.ref(a.db,'posSettings/invCategories/'+id));setTimeout(draw,250);};});
+    mask.querySelector('#cmSave').onclick=function(){var ups={};mask.querySelectorAll('[data-catrow]').forEach(function(r,ix){var id=r.getAttribute('data-catrow');var nm=(r.querySelector('[data-cf="name"]').value||'').trim();var k=r.querySelector('[data-cf="kind"]').value;if(nm)ups[id]={name:nm,kind:k,order:ix};});a.update(a.ref(a.db,'posSettings/invCategories'),ups).then(function(){if(isTab('inventory'))renderInventory();alert('Categories saved.');}).catch(function(e){alert('Could not save: '+((e&&e.code)||e));});};
+    var c1=mask.querySelector('#cmClose'),c2=mask.querySelector('#cmClose2');function close(){document.body.removeChild(mask);}if(c1)c1.onclick=close;if(c2)c2.onclick=close;
+  }
+  document.body.appendChild(mask); draw();
 }
 /* One-click: relabel any item stocked in ambiguous "oz"/"ounce" to "fl oz" (fluid ounce = volume),
    so ml/L conversion works in recipes. Quantity is unchanged; only the unit label changes.
@@ -5154,6 +5188,7 @@ function renderUsage(){
   var root=document.getElementById('usageRoot'); if(!root)return;
   var a0=A();
   if(a0&&!Object.keys(usageTypesMap).length){var seed={};DEFAULT_USAGE_TYPES.forEach(function(d){seed[d.id]={name:d.name,reasons:d.reasons,order:d.order};});a0.update(a0.ref(a0.db,'usageTypes'),seed).catch(function(){});}
+  if(a0&&Object.keys(usageTypesMap).length&&!Object.keys(usageTypesMap).some(function(k){return (usageTypesMap[k]&&(usageTypesMap[k].name||'').toLowerCase()==='overhead');})){a0.update(a0.ref(a0.db,'usageTypes/ut_overhead'),{name:'Overhead',reasons:['supplies','cleaning','maintenance','office'],order:5}).catch(function(){});}
   var types=usageTypesList();
   if(!types.some(function(t){return t.id===usageKind;}))usageKind=(types[0]?types[0].id:'staff');
   var kind=usageKind;
