@@ -569,7 +569,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 </style>
 </head>
 <body>
-<!-- accaza-index build v39 -->
+<!-- accaza-index build v40 -->
 <div class="fb-sync" id="fbSync">🔥 Firebase Connected</div>
 <div class="order-toast" id="orderToast" onclick="ackNewOrders()">
   <span class="ot-bell">🔔</span>
@@ -1365,7 +1365,7 @@ import{initializeAppCheck,ReCaptchaEnterpriseProvider}from"https://www.gstatic.c
 
 const firebaseConfig={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 const app=initializeApp(firebaseConfig);
-const APP_CHECK_SITE_KEY=''; // Set after registering the GitHub Pages domain with reCAPTCHA Enterprise in Firebase App Check.
+const APP_CHECK_SITE_KEY='6LdQ6HstAAAAAGvaa0exDw5aAHxNsrPKCtdlCeis'; // Public reCAPTCHA Enterprise site key registered for the production domain.
 if(APP_CHECK_SITE_KEY){try{initializeAppCheck(app,{provider:new ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY),isTokenAutoRefreshEnabled:true});}catch(e){console.warn('App Check init failed',e);}}
 const db=getDatabase(app);
 const auth=getAuth(app);
