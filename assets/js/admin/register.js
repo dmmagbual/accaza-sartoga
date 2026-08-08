@@ -624,14 +624,12 @@ function exportShiftReviewXlsx(shift,z,sales,items){
   var it=[['Item','Qty','Sales']];items.forEach(function(x){it.push([x.name,x.qty,x.sales]);});
   var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),'Summary');XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(tx),'Transactions');XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(it),'Items');XLSX.writeFile(wb,'shift-review-'+shift.id+'.xlsx');
 }
-function reverseInv(o){var a=A();var u=o.inventoryUsage||{};Object.keys(u).forEach(function(ing){a.runTransaction(a.ref(a.db,'inventory/'+ing+'/stock'),function(cur){return(Number(cur)||0)+u[ing];});});}
 function voidSale(oid){
   var o=ordersMap[oid];if(!o)return;
   var pin=prompt('Manager PIN to VOID '+oid+':');if(pin===null)return;if(!window.__posIsManagerPin(pin)){alert('Invalid manager PIN.');return;}
   var reason=prompt('Reason for void:')||'';
   var restock=o.inventoryUsage&&!o.inventoryReversed?confirm('Return this order\'s ingredients to stock?\nOK = restock · Cancel = treat as wastage (keep deducted).'):false;
-  var a=A();a.update(a.ref(a.db,'orders/'+oid),{voided:true,voidReason:reason,voidedAt:Date.now()});
-  if(restock){reverseInv(o);a.update(a.ref(a.db,'orders/'+oid),{inventoryReversed:true});}
+  var a=A();a.update(a.ref(a.db,'orders/'+oid),{voided:true,voidReason:reason,voidedAt:Date.now(),inventoryReversalRequested:restock?true:null,inventoryReversalReason:restock?reason:''});
   window.__posLog('void',oid,reason||'—');
 }
 function refundSale(oid){
@@ -643,8 +641,7 @@ function refundSale(oid){
   var reason=prompt('Refund reason:')||'';
   var full=(already+amt)>=max-0.01;
   var restock=full&&o.inventoryUsage&&!o.inventoryReversed?confirm('Full refund. Return ingredients to stock?\nOK = restock · Cancel = wastage.'):false;
-  var a=A();a.update(a.ref(a.db,'orders/'+oid),{refundAmount:already+amt,refundReason:reason,refundedAt:Date.now(),refunded:true});
-  if(restock){reverseInv(o);a.update(a.ref(a.db,'orders/'+oid),{inventoryReversed:true});}
+  var a=A();a.update(a.ref(a.db,'orders/'+oid),{refundAmount:already+amt,refundReason:reason,refundedAt:Date.now(),refunded:true,inventoryReversalRequested:restock?true:null,inventoryReversalReason:restock?reason:''});
   if(denomTrackingOnR()&&activeShift){ var wasCash=o.payment==='Cash'||(o.payments&&o.payments.some(function(p){return p.method==='Cash';})); if(wasCash){ var mc=makeChangeD(amt,drawerNow()); saveDrawer(subD(drawerNow(),mc.denoms)); if(!mc.ok)alert('Note: the drawer can’t provide exactly '+peso(amt)+' cash (short '+peso(mc.short)+'). Reconcile at count.'); } }
   window.__posLog('refund',oid,peso(amt)+' · '+(reason||'—'));
 }
