@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v148</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v149</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1393,20 +1393,28 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import{getDatabase,ref,set,get,push,update,remove,onValue,runTransaction}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import{getDatabase,ref,set,get,push,update,remove,onValue,runTransaction,query,orderByChild,limitToLast,endBefore}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import{getMessaging,getToken,onMessage,isSupported}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
 import{getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider,setPersistence,browserLocalPersistence}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import{getFunctions,httpsCallable}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 
 const firebaseConfig={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 const app=initializeApp(firebaseConfig);
-const db=getDatabase(app);const auth=getAuth(app);const functions=getFunctions(app,'asia-southeast1');const getPaymentProofCall=httpsCallable(functions,'getPaymentProof');window.__accazaAuth=auth;
+const db=getDatabase(app);const auth=getAuth(app);const functions=getFunctions(app,'asia-southeast1');const getPaymentProofCall=httpsCallable(functions,'getPaymentProof');const ensureActiveOrdersCall=httpsCallable(functions,'ensureActiveOrders');window.__accazaAuth=auth;
 // Release 2B: one physical Realtime Database listener per path. POS-critical
 // paths stay live; large back-office paths are connected only for the open tab.
-function createSubscriptionHub(database,makeRef,listen){
+const HISTORY_BOUNDS={
+  orders:{field:'timestamp',limit:250,page:250},archivedOrders:{field:'archivedAt',limit:100,page:100},archivedReservations:{field:'archivedAt',limit:100,page:100},
+  shifts:{field:'openAt',limit:100,page:100},activityLog:{field:'ts',limit:200,page:200},discrepancies:{field:'ts',limit:200,page:200},
+  stockReceipts:{field:'ts',limit:250,page:250},inventoryAdjustments:{field:'ts',limit:250,page:250},internalUsage:{field:'ts',limit:250,page:250},
+  cfLedger:{field:'ts',limit:300,page:300},platformPayouts:{field:'settledAt',limit:100,page:100}
+};
+function liveTarget(database,path){var base=ref(database,path),spec=HISTORY_BOUNDS[path];return spec?query(base,orderByChild(spec.field),limitToLast(spec.limit)):base;}
+function createSubscriptionHub(database,makeRef,listen,targetFor){
   var entries={},authorized=false,activeScope='dashboard',nextId=1;
-  var critical={categories:1,settings:1,posSettings:1,orders:1,optionGroups:1,menuItems:1,availability:1,channelPrices:1,posStaff:1,posActiveShift:1,packages:1,'.info/connected':1};
+  var critical={categories:1,settings:1,posSettings:1,activeOrders:1,optionGroups:1,menuItems:1,availability:1,channelPrices:1,posStaff:1,posActiveShift:1,packages:1,'.info/connected':1};
   var scopes={
+    orders:['analytics','pnl','payouts','stockvalue','dailyreport','cashflow','receivables'],
     staffAccounts:['staffaccounts'],adminAccounts:['adminaccounts'],admins:['staffaccess'],adminPerms:['staffaccess'],
     archivedOrders:['dashboard','archive','appcustomers','analytics','pnl','stockvalue','cashflow','receivables','dailyreport'],
     archivedReservations:['reservations','calendar'],reservations:['dashboard','reservations','calendar'],
@@ -1422,10 +1430,14 @@ function createSubscriptionHub(database,makeRef,listen){
   function policy(path,opts){opts=opts||{};return {critical:opts.critical===true||critical[path]===1,scopes:opts.scopes||scopes[path]||[]};}
   function consumerActive(c){return authorized&&(c.critical||c.scopes.indexOf(activeScope)>-1);}
   function reportError(path,error){console.error('ACCAZA LIVE DATA ERROR ['+path+']',error);try{(window.accazaToast||function(){})('Live data failed for '+path+'. Check connection or access.','err');}catch(_e){}}
+  function facade(entry){var merged=Object.assign({},entry.older||{},entry.live||{});return {val:function(){return merged;},exists:function(){return Object.keys(merged).length>0;}};}
+  function dispatch(entry,snapshot){
+    entry.last=snapshot;
+    Object.keys(entry.consumers).forEach(function(id){var c=entry.consumers[id];if(consumerActive(c)){try{c.callback(snapshot);}catch(e){console.error('ACCAZA RENDER ERROR ['+entry.path+']',e);}}});
+  }
   function attach(entry){
-    entry.unsub=listen(makeRef(database,entry.path),function(snapshot){
-      entry.last=snapshot;
-      Object.keys(entry.consumers).forEach(function(id){var c=entry.consumers[id];if(consumerActive(c)){try{c.callback(snapshot);}catch(e){console.error('ACCAZA RENDER ERROR ['+entry.path+']',e);}}});
+    entry.unsub=listen((targetFor||function(db,path){return makeRef(db,path);})(database,entry.path),function(snapshot){
+      if(HISTORY_BOUNDS[entry.path]){entry.live=snapshot.val()||{};entry.hasOlder=Object.keys(entry.live).length>=HISTORY_BOUNDS[entry.path].limit;dispatch(entry,facade(entry));}else dispatch(entry,snapshot);
     },function(error){entry.unsub=null;reportError(entry.path,error);});
   }
   function reconcileEntry(entry){
@@ -1441,18 +1453,37 @@ function createSubscriptionHub(database,makeRef,listen){
   function reconcile(){Object.keys(entries).forEach(function(path){reconcileEntry(entries[path]);});}
   return {
     subscribe:function(path,callback,opts){
-      var p=policy(path,opts),entry=entries[path]||(entries[path]={path:path,consumers:{},unsub:null,last:null}),id=String(nextId++);
+      var p=policy(path,opts),entry=entries[path]||(entries[path]={path:path,consumers:{},unsub:null,last:null,live:{},older:{},hasOlder:true}),id=String(nextId++);
       entry.consumers[id]={callback:callback,critical:p.critical,scopes:p.scopes,wasActive:false};reconcileEntry(entry);
       return function(){delete entry.consumers[id];reconcileEntry(entry);};
     },
     authorize:function(){authorized=true;try{performance.mark('accaza-live-start');}catch(_e){}reconcile();},
     deauthorize:function(){authorized=false;reconcile();},
     activate:function(scope){activeScope=scope||'dashboard';reconcile();},
+    loadOlder:async function(path){
+      var spec=HISTORY_BOUNDS[path],entry=entries[path];if(!spec||!entry)throw new Error('No paginated subscription for '+path);
+      var merged=Object.assign({},entry.older||{},entry.live||{}),keys=Object.keys(merged),oldest=null;
+      keys.forEach(function(k){var v=merged[k]||{},sv=Number(v[spec.field])||0;if(!oldest||sv<oldest.value||(sv===oldest.value&&k<oldest.key))oldest={value:sv,key:k};});
+      if(!oldest){entry.hasOlder=false;return {loaded:0,hasOlder:false};}
+      var snap=await get(query(ref(database,path),orderByChild(spec.field),endBefore(oldest.value,oldest.key),limitToLast(spec.page+1))),rows=[];
+      snap.forEach(function(ch){rows.push({key:ch.key,value:ch.val()||{}});});var hasOlder=rows.length>spec.page;if(hasOlder)rows.shift();
+      rows.forEach(function(r){entry.older[r.key]=r.value;});entry.hasOlder=hasOlder;dispatch(entry,facade(entry));return {loaded:rows.length,hasOlder:hasOlder};
+    },
+    historyStatus:function(path){var e=entries[path],s=HISTORY_BOUNDS[path];return {bounded:!!s,loaded:e?Object.keys(Object.assign({},e.older||{},e.live||{})).length:0,hasOlder:e?e.hasOlder:false};},
     stats:function(){var attached=Object.keys(entries).filter(function(k){return !!entries[k].unsub;});return {authorized:authorized,activeScope:activeScope,attached:attached,attachedCount:attached.length,registeredPaths:Object.keys(entries).length};}
   };
 }
-const subscriptionHub=createSubscriptionHub(db,ref,onValue);
+const subscriptionHub=createSubscriptionHub(db,ref,onValue,liveTarget);
 window.__accazaLiveStats=function(){return subscriptionHub.stats();};
+const HISTORY_TAB_PATHS={analytics:['orders','archivedOrders'],pnl:['orders','archivedOrders','internalUsage','inventoryAdjustments','platformPayouts'],payouts:['orders','archivedOrders','platformPayouts'],stockvalue:['orders','archivedOrders','stockReceipts','inventoryAdjustments','internalUsage'],dailyreport:['orders','archivedOrders'],cashflow:['orders','archivedOrders','cfLedger','platformPayouts'],receivables:['orders','archivedOrders'],purchases:['stockReceipts'],usage:['internalUsage'],ops:['shifts','activityLog'],discrepancy:['discrepancies'],reservations:['archivedReservations']};
+function renderHistoryPager(tab){
+  var paths=HISTORY_TAB_PATHS[tab],host=document.getElementById('tab-'+tab);if(!paths||!host)return;
+  var old=host.querySelector('.accaza-history-pager');if(old)old.remove();
+  var box=document.createElement('div');box.className='accaza-history-pager';box.style.cssText='margin:1rem 0;padding:0.65rem;border:1px solid #e1d5c5;border-radius:7px;background:#fffaf3;font-size:0.74rem;color:var(--tl);';
+  box.innerHTML='<div style="margin-bottom:0.4rem;"><b>Bounded history:</b> reports use the recent loaded pages. Load older pages when reviewing an older period.</div><div style="display:flex;gap:0.35rem;flex-wrap:wrap;">'+paths.map(function(path){return '<button class="pz-btn sec" data-history-more="'+path+'" style="padding:0.22rem 0.55rem;">Load older '+path+'</button>';}).join('')+'</div>';
+  host.appendChild(box);
+  box.querySelectorAll('[data-history-more]').forEach(function(btn){btn.onclick=async function(){var path=btn.getAttribute('data-history-more');btn.disabled=true;btn.textContent='Loading '+path+'…';try{var r=await subscriptionHub.loadOlder(path);btn.textContent=r.loaded?(r.loaded+' older '+path+' loaded'):'All '+path+' history reached';if(r.hasOlder){setTimeout(function(){btn.disabled=false;btn.textContent='Load older '+path;},900);}}catch(e){btn.disabled=false;btn.textContent='Retry older '+path;}};});
+}
 window.__fbForgot=async function(){var em=(document.getElementById('adminUser').value||'').trim();if(!em||em.indexOf('@')<0){em=(prompt('Enter your account email for a reset link:')||'').trim();}if(!em||em.indexOf('@')<0){alert('Please enter a valid email.');return;}try{await sendPasswordResetEmail(auth,em);alert('Password reset link sent to '+em+'. Check inbox and spam.');}catch(e){alert('Could not send reset: '+((e&&e.code)||e));}};
 // ===================== WEB PUSH (FCM) =====================
 // Paste your Web Push certificate key here (Firebase Console > Project settings > Cloud Messaging > Web Push certificates).
@@ -1828,8 +1859,9 @@ function checkMyReadyOrders(){
   }catch(e){}
 }
 (function(){var un=function(){try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}document.removeEventListener('touchstart',un);document.removeEventListener('click',un);};document.addEventListener('touchstart',un,{passive:true});document.addEventListener('click',un);})();
-subscriptionHub.subscribe('orders',snap=>{
+subscriptionHub.subscribe('activeOrders',snap=>{
   var prevIds=knownOrderIds;
+  var previousOrders=adminOrdersMap;
   adminOrdersMap=snap.val()||{};
   var ids=Object.keys(adminOrdersMap);
   if(prevIds&&(adminLoggedIn||staffLoggedIn)){
@@ -1837,7 +1869,7 @@ subscriptionHub.subscribe('orders',snap=>{
     if(fresh.length)notifyNewOrders(fresh);
   }
   knownOrderIds=ids;
-  if(adminLoggedIn||staffLoggedIn){renderOrders();renderDashboard();renderAppCustomers();}
+  if(adminLoggedIn||staffLoggedIn){var ot=document.getElementById('tab-orders'),dt=document.getElementById('tab-dashboard'),ct=document.getElementById('tab-appcustomers');if(ot&&ot.style.display!=='none')patchOrderCards(previousOrders,adminOrdersMap);if(dt&&dt.style.display!=='none')renderDashboard();if(ct&&ct.style.display!=='none')renderAppCustomers();}
   updateStats();renderCustomerOrders();checkMyReadyOrders();
 });
 subscriptionHub.subscribe('archivedOrders',snap=>{archivedOrdersMap=snap.val()||{};if(adminLoggedIn)renderDashboard();if(adminLoggedIn||staffLoggedIn)renderAppCustomers();var _ap=document.getElementById('archivePanel');if(_ap&&_ap.style.display!=='none'){try{renderArchive();}catch(e){}}});
@@ -2563,14 +2595,11 @@ function orderStatusCtl(o){
   }
   return '<select class="status-select" data-orderid="'+oid+'"><option'+(o.status==='Pending'?' selected':'')+'>Pending</option><option'+(o.status==='Confirmed'?' selected':'')+'>Confirmed</option><option'+(o.status==='Preparing'?' selected':'')+'>Preparing</option><option value="Ready"'+(o.status==='Ready'?' selected':'')+'>'+(o.type==='Delivery'?'Ready for Delivery':'Ready for Pickup')+'</option><option'+(o.status==='Rejected'?' selected':'')+' style="color:#c0392b;">Rejected</option></select>'+'<button data-complete="'+oid+'" style="background:#d4edda;border:1px solid #a8d5b5;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#155724;cursor:pointer;font-weight:600;">\u2705 Mark Completed</button>';
 }
-function renderOrders(){
-  const el=document.getElementById('ordersList'),orders=Object.values(adminOrdersMap).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
-  if(!orders.length){el.innerHTML='<div class="empty-state">No active orders yet.</div>';return;}
-  el.innerHTML=orders.map(function(o){
+function orderCardHtml(o){
     const isDelivery=o.type==='Delivery',isReceived=o.status==='Received',canArchive=o.status==='Completed'||o.status==='Received'||o.status==='Rejected';
     const modeBadge=isDelivery?'<span class="badge" style="background:#d1ecf1;color:#0c5460;">🛵 Delivery</span>':'<span class="badge" style="background:#d4edda;color:#155724;">🏠 Pick-up</span>';
     const oid=escHtml(o.id),status=escHtml(o.status||'Pending'),statusClass=String(o.status||'pending').toLowerCase().replace(/[^a-z0-9_-]/g,'-'),proof=safeImageSrc(o.proof),storedProof=typeof o.proofPath==='string'&&o.proofPath.indexOf('payment-proofs/')===0;
-    return'<div class="order-admin-card" style="'+(isReceived?'opacity:0.75;':'')+'"><div class="order-admin-top"><div><div class="order-admin-name">'+escHtml(o.name)+' <span style="font-size:0.75rem;color:var(--tl);">#'+oid+'</span></div><div class="order-admin-meta">'+escHtml(o.phone)+(o.contact?' · '+escHtml(o.contact):'')+' · '+escHtml(o.date)+' '+escHtml(o.time)+((o.onDuty||o.staff)?' · On Duty: '+escHtml(o.onDuty||o.staff):'')+'</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;"><span class="badge badge-'+statusClass+'">'+status+'</span>'+modeBadge+(o.receivedByCustomer?'<span class="badge" style="background:#c8e6c9;color:#1b5e20;">✅ Customer Confirmed</span>':'')+'</div></div>'
+    return'<div class="order-admin-card" data-order-card="'+oid+'" style="'+(isReceived?'opacity:0.75;':'')+'"><div class="order-admin-top"><div><div class="order-admin-name">'+escHtml(o.name)+' <span style="font-size:0.75rem;color:var(--tl);">#'+oid+'</span></div><div class="order-admin-meta">'+escHtml(o.phone)+(o.contact?' · '+escHtml(o.contact):'')+' · '+escHtml(o.date)+' '+escHtml(o.time)+((o.onDuty||o.staff)?' · On Duty: '+escHtml(o.onDuty||o.staff):'')+'</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;"><span class="badge badge-'+statusClass+'">'+status+'</span>'+modeBadge+(o.receivedByCustomer?'<span class="badge" style="background:#c8e6c9;color:#1b5e20;">✅ Customer Confirmed</span>':'')+'</div></div>'
       +'<div class="order-admin-items">🛒 '+escHtml(o.items)+'</div>'
       +(o.address?'<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📍 '+escHtml(o.address)+'</div>':'')
       +(o.notes?'<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📝 '+escHtml(o.notes)+'</div>':'')
@@ -2579,7 +2608,8 @@ function renderOrders(){
       +orderStatusCtl(o)
       +(canArchive?'<button data-archive="'+oid+'" style="background:#e2e3e5;border:1px solid #bbb;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#41464b;cursor:pointer;">📦 Archive</button>':'')+(o.status!=='Received'?'<button data-notify="'+oid+'" style="background:#e7f5ec;border:1px solid #8fd0a8;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#1b7a43;cursor:pointer;font-weight:600;">🔔 Notify</button>':'')+'<button data-printorder="'+oid+'" style="background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#e65100;cursor:pointer;font-weight:600;">🖨️ Print</button>'
       +'</div></div></div>';
-  }).join('');
+}
+function wireOrderActions(el){
   el.querySelectorAll('.status-select[data-orderid]').forEach(function(sel){sel.addEventListener('change',function(){update(ref(db,'orders/'+this.dataset.orderid),{status:this.value});});});
   el.querySelectorAll('button[data-complete]').forEach(function(b){b.addEventListener('click',function(){if(confirm('Mark this order COMPLETED? This finalizes the sale, deducts stock, and locks the order.'))window.__markOrderCompleted(this.dataset.complete);});});
   el.querySelectorAll('button[data-verify]').forEach(function(b){b.addEventListener('click',function(){if(window.__posVerify)window.__posVerify(this.dataset.verify);});});
@@ -2588,7 +2618,19 @@ function renderOrders(){
   el.querySelectorAll('button[data-printorder]').forEach(function(b){b.addEventListener('click',function(){printOrder(this.dataset.printorder);});});
   el.querySelectorAll('button[data-prooforder]').forEach(function(b){b.addEventListener('click',function(){window.showStoredProof(this.dataset.prooforder,this);});});
   el.querySelectorAll('button[data-notify]').forEach(function(b){b.addEventListener('click',function(){notifyCustomer(this.dataset.notify);});});
-  el.querySelectorAll('button[data-archive]').forEach(function(btn){btn.addEventListener('click',function(){const oid=this.dataset.archive,o=adminOrdersMap[oid];if(!o)return;showDeletePopup('Archive order from '+o.name,async function(){await set(ref(db,'archivedOrders/'+oid),{...o,status:'Archived',prevStatus:o.status,archivedAt:Date.now(),archivedDate:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'})});await remove(ref(db,'orders/'+oid));});});});
+  el.querySelectorAll('button[data-archive]').forEach(function(btn){btn.addEventListener('click',function(){const oid=this.dataset.archive,o=adminOrdersMap[oid];if(!o)return;showDeletePopup('Archive order from '+o.name,async function(){var writes={};writes['archivedOrders/'+oid]={...o,status:'Archived',prevStatus:o.status,archivedAt:Date.now(),archivedDate:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'})};writes['orders/'+oid]=null;writes['activeOrders/'+oid]=null;await update(ref(db),writes);});});});
+}
+function renderOrders(){
+  const el=document.getElementById('ordersList'),orders=Object.values(adminOrdersMap).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
+  if(!orders.length){el.innerHTML='<div class="empty-state">No active orders yet.</div>';return;}
+  el.innerHTML=orders.map(orderCardHtml).join('');wireOrderActions(el);
+}
+function patchOrderCards(previous,current){
+  var el=document.getElementById('ordersList');if(!el)return;
+  var before=previous||{},after=current||{},ids=Array.from(new Set(Object.keys(before).concat(Object.keys(after)))),changed=ids.filter(function(id){return JSON.stringify(before[id]||null)!==JSON.stringify(after[id]||null);});
+  if(changed.length!==1||!before[changed[0]]||!after[changed[0]]){renderOrders();return;}
+  var id=changed[0],old=null;el.querySelectorAll('[data-order-card]').forEach(function(card){if(card.getAttribute('data-order-card')===id)old=card;});if(!old){renderOrders();return;}
+  var holder=document.createElement('div');holder.innerHTML=orderCardHtml(after[id]);var fresh=holder.firstElementChild;if(!fresh){renderOrders();return;}old.replaceWith(fresh);wireOrderActions(fresh);
 }
 
 function renderReservations(){
@@ -3397,8 +3439,8 @@ window.savePayment=async function(){
 };
 
 let archivePanelOpen=false;
-window.toggleArchivePanel=function(){archivePanelOpen=!archivePanelOpen;document.getElementById('archivePanel').style.display=archivePanelOpen?'block':'none';document.getElementById('ordersList').style.display=archivePanelOpen?'none':'block';var btn=document.getElementById('archiveToggleBtn');var hdg=document.getElementById('ordersHeading');if(btn){btn.textContent=archivePanelOpen?'← Back to Orders':'📦 View Archive';}if(hdg){hdg.textContent=archivePanelOpen?'Order Archive':'Active Orders';}if(archivePanelOpen)renderArchive();};
-function renderArchive(){var el=document.getElementById('archiveList');if(el)el.innerHTML='<p style="text-align:center;color:var(--tl);padding:1rem;">Loading archive\u2026</p>';get(ref(db,'archivedOrders')).then(function(sn){archivedOrdersMap=sn.val()||{};_paintArchive();var n=Object.keys(archivedOrdersMap).length;var s2=document.getElementById('archiveSummary');if(s2)s2.insertAdjacentHTML('afterbegin','<div style="width:100%;font-size:0.72rem;color:var(--tl);">Loaded '+n+' order(s) from database</div>');}).catch(function(e){if(el)el.innerHTML='<p style="text-align:center;color:#c0392b;padding:1rem;">Archive read blocked: '+((e&&e.code)||e)+'<br><span style="font-size:0.75rem;">Log in by EMAIL and confirm the database rules are published.</span></p>';});}
+window.toggleArchivePanel=function(){archivePanelOpen=!archivePanelOpen;document.getElementById('archivePanel').style.display=archivePanelOpen?'block':'none';document.getElementById('ordersList').style.display=archivePanelOpen?'none':'block';var btn=document.getElementById('archiveToggleBtn');var hdg=document.getElementById('ordersHeading');if(btn){btn.textContent=archivePanelOpen?'← Back to Orders':'📦 View Archive';}if(hdg){hdg.textContent=archivePanelOpen?'Order Archive':'Active Orders';}subscriptionHub.activate(archivePanelOpen?'archive':'orders');if(archivePanelOpen)renderArchive();};
+function renderArchive(){_paintArchive();}
 function _paintArchive(){
   const el=document.getElementById('archiveList'),sumEl=document.getElementById('archiveSummary');if(!el)return;
   const fromVal=document.getElementById('archiveFrom').value,toVal=document.getElementById('archiveTo').value;
@@ -3406,10 +3448,12 @@ function _paintArchive(){
   if(fromVal)orders=orders.filter(o=>new Date(o.archivedAt||0)>=new Date(fromVal));
   if(toVal)orders=orders.filter(o=>new Date(o.archivedAt||0)<=new Date(toVal+'T23:59:59'));
   const rejCnt=orders.filter(o=>o.prevStatus==='Rejected').length;const totalRev=orders.filter(o=>o.prevStatus!=='Rejected').reduce((s,o)=>s+(o.total||0),0),gcashCnt=orders.filter(o=>o.payment==='GCash').length,bankCnt=orders.filter(o=>o.payment==='Bank Transfer').length;
-  sumEl.innerHTML='<div><span class="archive-sum-num">'+orders.length+(rejCnt?' <span style="font-size:0.7rem;color:#721c24;">('+rejCnt+' ✗)</span>':'')+'</span><span class="archive-sum-lbl">Orders</span></div><div><span class="archive-sum-num">₱'+totalRev.toLocaleString()+'</span><span class="archive-sum-lbl">Revenue</span></div><div><span class="archive-sum-num">'+gcashCnt+'G / '+bankCnt+'B</span><span class="archive-sum-lbl">GCash / Bank</span></div>';
-  if(!orders.length){el.innerHTML='<p style="color:var(--tl);text-align:center;padding:1.5rem;font-size:0.88rem;">No archived orders for selected range.</p>';return;}
-  el.innerHTML=orders.map(function(o){var oid=escHtml(o.id);return'<div class="archive-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.4rem;"><div><div style="font-weight:500;font-size:0.88rem;color:var(--bd);">'+escHtml(o.name)+' <span style="font-size:0.72rem;color:var(--tl);">#'+oid+'</span></div><div style="font-size:0.75rem;color:var(--tl);">'+escHtml(o.date)+' · '+escHtml(o.time)+'</div></div>'+(o.prevStatus==='Rejected'?'<span class="badge badge-rejected">🔴 Rejected</span>':'<span class="badge badge-archived">📦 Archived</span>')+'</div><div style="font-size:0.8rem;color:var(--tm);margin:0.3rem 0;">🛒 '+escHtml(o.items)+'</div><div style="font-size:0.78rem;color:var(--tl);">₱'+(Number(o.total)||0).toLocaleString()+' · '+escHtml(o.payment)+' · '+escHtml(o.type)+'</div><div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;">Archived: '+escHtml(o.archivedDate||'—')+'</div>'+(adminLoggedIn?'<div style="margin-top:0.5rem;text-align:right;"><button data-delarch="'+oid+'" style="background:#fdecea;border:1px solid #f5c6c6;color:#c0392b;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.74rem;cursor:pointer;font-weight:600;">🗑 Delete permanently</button></div>':'')+'</div>';}).join('');
-  el.querySelectorAll('button[data-delarch]').forEach(function(btn){btn.addEventListener('click',function(){var oid=this.getAttribute('data-delarch');var o=archivedOrdersMap[oid];showDeletePopup('PERMANENTLY delete order #'+oid+(o&&o.name?' ('+o.name+')':'')+'. This removes it from all records and reports and cannot be undone.',async function(){await remove(ref(db,'archivedOrders/'+oid));renderArchive();});});});
+  var hs=subscriptionHub.historyStatus('archivedOrders');
+  sumEl.innerHTML='<div style="width:100%;font-size:0.72rem;color:var(--tl);">Loaded '+hs.loaded+' most recent archived order(s). Date filters apply to loaded pages.</div><div><span class="archive-sum-num">'+orders.length+(rejCnt?' <span style="font-size:0.7rem;color:#721c24;">('+rejCnt+' ✗)</span>':'')+'</span><span class="archive-sum-lbl">Orders</span></div><div><span class="archive-sum-num">₱'+totalRev.toLocaleString()+'</span><span class="archive-sum-lbl">Revenue</span></div><div><span class="archive-sum-num">'+gcashCnt+'G / '+bankCnt+'B</span><span class="archive-sum-lbl">GCash / Bank</span></div>';
+  var cards=orders.length?orders.map(function(o){var oid=escHtml(o.id);return'<div class="archive-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.4rem;"><div><div style="font-weight:500;font-size:0.88rem;color:var(--bd);">'+escHtml(o.name)+' <span style="font-size:0.72rem;color:var(--tl);">#'+oid+'</span></div><div style="font-size:0.75rem;color:var(--tl);">'+escHtml(o.date)+' · '+escHtml(o.time)+'</div></div>'+(o.prevStatus==='Rejected'?'<span class="badge badge-rejected">🔴 Rejected</span>':'<span class="badge badge-archived">📦 Archived</span>')+'</div><div style="font-size:0.8rem;color:var(--tm);margin:0.3rem 0;">🛒 '+escHtml(o.items)+'</div><div style="font-size:0.78rem;color:var(--tl);">₱'+(Number(o.total)||0).toLocaleString()+' · '+escHtml(o.payment)+' · '+escHtml(o.type)+'</div><div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;">Archived: '+escHtml(o.archivedDate||'—')+'</div>'+(adminLoggedIn?'<div style="margin-top:0.5rem;text-align:right;"><button data-delarch="'+oid+'" style="background:#fdecea;border:1px solid #f5c6c6;color:#c0392b;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.74rem;cursor:pointer;font-weight:600;">🗑 Delete permanently</button></div>':'')+'</div>';}).join(''):'<p style="color:var(--tl);text-align:center;padding:1.5rem;font-size:0.88rem;">No archived orders in the loaded pages for this range.</p>';
+  el.innerHTML=cards+'<div style="text-align:center;padding:0.8rem;"><button id="archiveLoadOlder" class="pz-btn sec"'+(hs.hasOlder?'':' disabled')+'>'+(hs.hasOlder?'Load 100 older orders':'All loaded orders reached')+'</button></div>';
+  var more=document.getElementById('archiveLoadOlder');if(more&&hs.hasOlder)more.onclick=async function(){more.disabled=true;more.textContent='Loading older orders…';try{await subscriptionHub.loadOlder('archivedOrders');}catch(e){more.textContent='Could not load older orders';more.disabled=false;}};
+  el.querySelectorAll('button[data-delarch]').forEach(function(btn){btn.addEventListener('click',function(){var oid=this.getAttribute('data-delarch');var o=archivedOrdersMap[oid];showDeletePopup('PERMANENTLY delete order #'+oid+(o&&o.name?' ('+o.name+')':'')+'. This removes it from all records and reports and cannot be undone.',async function(){await remove(ref(db,'archivedOrders/'+oid));delete archivedOrdersMap[oid];renderArchive();});});});
 }
 
 window.openResContactPopup=function(id){
@@ -3555,6 +3599,7 @@ async function loginSuccess(role,username,uid,serverRole){
   window.__accazaAuthz={uid:uid,role:serverRole||role,isPrivileged:role==='admin'||role==='superadmin'};
   subscriptionHub.authorize();
   subscriptionHub.activate('dashboard');
+  ensureActiveOrdersCall({}).catch(function(e){console.warn('Active-order projection sweep deferred',e&&e.code);});
   try{sessionStorage.setItem('accaza_admin_session',JSON.stringify({username:username,uid:uid||null}));}catch(e){}
   try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}
   document.getElementById('adminUser').value='';
@@ -3673,10 +3718,12 @@ window.switchTab=function(tab,btn){
   document.querySelectorAll('.admin-tab-content').forEach(function(t){t.style.display='none';});
   document.getElementById('tab-'+tab).style.display='block';
   if(tab==='orders')clearOrderAlert();
+  if(tab==='orders')renderOrders();
   if(tab==='reviews')renderAdminReviews();
   if(tab==='calendar')renderAdminCalendar();
   if(tab==='dashboard')renderDashboard();
   if(tab==='appcustomers')renderAppCustomers();
+  setTimeout(function(){renderHistoryPager(tab);},0);
   try{var _ab=document.querySelector('.admin-tab.active'); if(_ab){var _g=_ab.closest('.tabgrp'); if(_g){var _gn=_g.getAttribute('data-grp'); document.querySelectorAll('.tabgrp').forEach(function(r){r.style.display=(r===_g)?'flex':'none';}); document.querySelectorAll('.admin-group').forEach(function(x){x.classList.toggle('active', x.getAttribute('data-grp')===_gn);}); }}}catch(e){}
 };
 window.showTabGroup=function(g,btn){
@@ -4252,7 +4299,7 @@ var tries=0,iv=setInterval(function(){ if(window.__accaza){clearInterval(iv);ini
 function _offLoad(){try{return JSON.parse(localStorage.getItem('accaza_offline_orders')||'[]');}catch(e){return [];}}
 function _offSave(q){try{localStorage.setItem('accaza_offline_orders',JSON.stringify(q));}catch(e){}}
 function queueOfflineOrder(o){var q=_offLoad();if(!q.some(function(x){return x.id===o.id;}))q.push(o);_offSave(q);updateOfflineUI();}
-function flushOfflineQueue(){var q=_offLoad();if(!q.length){updateOfflineUI();return;}var a=A();q.slice().forEach(function(o){a.set(a.ref(a.db,'orders/'+o.id),o).then(function(){var q2=_offLoad().filter(function(x){return x.id!==o.id;});_offSave(q2);if(window.__posLog)window.__posLog('offline-sync',o.id,'₱'+(o.total||0));updateOfflineUI();}).catch(function(){});});}
+function flushOfflineQueue(){var q=_offLoad();if(!q.length){updateOfflineUI();return;}var a=A();q.slice().forEach(function(o){var writes={};writes['orders/'+o.id]=o;writes['activeOrders/'+o.id]=o;a.update(a.ref(a.db),writes).then(function(){var q2=_offLoad().filter(function(x){return x.id!==o.id;});_offSave(q2);if(window.__posLog)window.__posLog('offline-sync',o.id,'₱'+(o.total||0));updateOfflineUI();}).catch(function(){});});}
 function updateOfflineUI(){var el=document.getElementById('posOfflineBar');if(!el)return;var pend=_offLoad().length;if(window.__online===false){el.innerHTML='<div style="background:#fdecea;border:1px solid #f5c6c6;color:#c0392b;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;">🔴 Offline — cash sales only'+(pend?' · '+pend+' sale(s) pending sync':' · sales will sync when back online')+'</div>';}else if(pend){el.innerHTML='<div style="background:#fff8e1;border:1px solid #ffe0a3;color:#8a6d1b;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;">🟡 Syncing '+pend+' offline sale(s)…</div>';}else{el.innerHTML='<div style="background:#e8f5ec;border:1px solid #b8dfc4;color:#155724;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;">🟢 Online</div>';}}
 window.__flushOfflineQueue=flushOfflineQueue;
 function posMethods(){
@@ -4278,7 +4325,6 @@ function init(){
   a.subscribe('usageTypes', function(s){ usageTypesMap=s.val()||{}; if(isTab('usage'))renderUsage(); });
   a.subscribe('channelPrices', function(s){ channelPricesMap=s.val()||{}; if(isTab('channelpricing'))renderChannelPricing(); });
   a.subscribe('posSettings', function(s){ var v=s.val(); if(v)posMeta=Object.assign({vat:false,vatRate:12},v); });
-  a.subscribe('orders', function(s){ var all=s.val()||{}; Object.keys(all).forEach(function(oid){ var o=all[oid]; if(o&&(o.status==='Completed'||o.status==='Received')&&!o.inventoryDeducted&&o.lineItems)tryDeduct(oid,o); }); });
   ensureModals();
 }
 function isTab(name){var el=document.getElementById('tab-'+name);return el&&el.style.display!=='none';}
@@ -6138,20 +6184,6 @@ function computeUsage(lineItems){
   });
   return usage;
 }
-function tryDeduct(oid,o){
-  var a=A();
-  // idempotent claim: set inventoryDeducted true only if currently falsy
-  a.runTransaction(a.ref(a.db,'orders/'+oid+'/inventoryDeducted'),function(cur){ if(cur)return; return true; }).then(function(res){
-    if(!res.committed||!(res.snapshot&&res.snapshot.val()===true))return;
-    // double-check we actually won (previous was falsy): if another writer set it we still guard by usage flag below
-    var usage=computeUsage(o.lineItems);
-    var ids=Object.keys(usage); if(!ids.length){ a.update(a.ref(a.db,'orders/'+oid),{inventoryUsage:{},inventoryNote:'no matching recipes',cogsSnapshot:0,cogsCovered:false});return; }
-    var cogs=0,missing=false;
-    ids.forEach(function(ing){ var inv=inventoryMap[ing]; var c=inv?(Number(inv.cost)||0):0; if(!c)missing=true; cogs+=usage[ing]*c; a.runTransaction(a.ref(a.db,'inventory/'+ing+'/stock'),function(cur){ return (Number(cur)||0)-usage[ing]; }); });
-    a.update(a.ref(a.db,'orders/'+oid),{inventoryUsage:usage,inventoryDeductedAt:Date.now(),cogsSnapshot:cogs,cogsCovered:!missing,onDuty:(window.__posShift&&window.__posShift.staff)||o.staff||''});
-  }).catch(function(){});
-}
-
 /* ══════════ MODALS / RECEIPT ══════════ */
 function ensureModals(){
   if(document.getElementById('pzItemMask'))return;
@@ -6816,7 +6848,7 @@ function init(){
   a.subscribe('shifts',function(s){shiftsMap=s.val()||{};});
   a.subscribe('activityLog',function(s){activityMap=s.val()||{};if(isTab('ops'))renderOps();});
   a.subscribe('heldOrders',function(s){heldMap=s.val()||{};if(isTab('ops'))renderOps();});
-  a.subscribe('orders',function(s){ordersMap=s.val()||{};if(isTab('ops'))renderOps();});
+  a.subscribe('activeOrders',function(s){ordersMap=s.val()||{};if(isTab('ops'))renderOps();});
   a.subscribe('discrepancies',function(s){discMap=s.val()||{};updateDiscBadge();if(isTab('discrepancy'))renderDiscrepancies();});
   a.subscribe('pettyCashVouchers',function(s){pettyVouchers=s.val()||{};if(isTab('petty'))renderPetty();});
   a.subscribe('pettyCashReplenishments',function(s){pettyRepl=s.val()||{};if(isTab('petty'))renderPetty();});
@@ -7691,7 +7723,7 @@ function unmappedMethods(){var seen={};[ordersMapCF,archMapCF].forEach(function(
 function reconcileAuto(){
   var a=A();if(!a)return;
   if(!accList().some(function(x){return (x.feedMethods||[]).length;}))return;
-  var desired={};
+  var desired={},loadedById={};
   function consider(o,oid){
     if(!o||o.source!=='pos'||(o.channel&&o.channel!=='instore')||o.paymentStatus==='pending'||o.voided)return;
     var firstAcct=null;
@@ -7699,10 +7731,10 @@ function reconcileAuto(){
     var refund=Number(o.refundAmount)||0;
     if(refund>0&&firstAcct){var rkey='cfrefund_'+oid;desired[rkey]={date:dateFromTs(o.refundedAt||o.timestamp),accountId:firstAcct,dir:'out',category:'Refund',amount:Math.round(refund*100)/100,party:o.name||'',ref:oid,source:'refund',linkId:oid,auto:true};}
   }
-  Object.keys(ordersMapCF).forEach(function(k){consider(ordersMapCF[k],(ordersMapCF[k]&&ordersMapCF[k].id)||k);});
-  Object.keys(archMapCF).forEach(function(k){consider(archMapCF[k],(archMapCF[k]&&archMapCF[k].id)||k);});
+  Object.keys(ordersMapCF).forEach(function(k){var o=ordersMapCF[k],id=(o&&o.id)||k;loadedById[id]=o;consider(o,id);});
+  Object.keys(archMapCF).forEach(function(k){var o=archMapCF[k],id=(o&&o.id)||k;loadedById[id]=o;consider(o,id);});
   Object.keys(desired).forEach(function(key){var d=desired[key];var cur=ledgerMap[key];if(!cur||Number(cur.amount)!==d.amount||cur.accountId!==d.accountId||cur.dir!==d.dir||cur.date!==d.date){a.set(a.ref(a.db,'cfLedger/'+key),Object.assign({ts:Date.now(),by:'auto'},d));}});
-  Object.keys(ledgerMap).forEach(function(key){var e=ledgerMap[key];if(!e||!e.auto||(e.source!=='sale'&&e.source!=='refund'))return;if(!desired[key])a.remove(a.ref(a.db,'cfLedger/'+key));});
+  Object.keys(ledgerMap).forEach(function(key){var e=ledgerMap[key];if(!e||!e.auto||(e.source!=='sale'&&e.source!=='refund'))return;if(!desired[key]&&e.linkId&&loadedById[e.linkId])a.remove(a.ref(a.db,'cfLedger/'+key));});
 }
 function dateFromTs(ts){var d=new Date(ts||Date.now());return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
 function cfPick(opts,cb){
