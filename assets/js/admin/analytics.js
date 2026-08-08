@@ -1,0 +1,582 @@
+(function(){
+'use strict';
+var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},funnelMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={},receiptsMap={};
+var svFrom=null,svTo=null,svExpand=null;
+var azRange='7d', azFrom=null, azTo=null, pnlMonth=null;
+var poChannel='grabfood', poFrom=null, poTo=null;
+var PO_CHANNELS=[{k:'grabfood',lbl:'GrabFood'},{k:'foodpanda',lbl:'FoodPanda'}];
+var DEFAULT_VAR_ACCOUNTS=[
+  {id:'va_ads',name:'Platform ads / marketing',type:'expense',order:1},
+  {id:'va_promo',name:'Promo co-funding',type:'expense',order:2},
+  {id:'va_fees',name:'Payment / processing fees',type:'expense',order:3},
+  {id:'va_penalty',name:'Penalties / adjustments',type:'expense',order:4},
+  {id:'va_refund',name:'Refunds / cancellations',type:'expense',order:5},
+  {id:'va_incentive',name:'Incentives / rebates',type:'revenue',order:6}
+];
+function varAccounts(){var keys=Object.keys(varAcctMap);var list=keys.length?keys.map(function(k){return Object.assign({id:k},varAcctMap[k]);}):DEFAULT_VAR_ACCOUNTS.slice();return list.sort(function(a,b){return (a.order||0)-(b.order||0);});}
+function A(){return window.__accaza;}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function peso(n){n=Number(n)||0;return '₱'+n.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function peso0(n){n=Number(n)||0;return '₱'+Math.round(n).toLocaleString('en-PH');}
+function pct(n){return (n>=0?'+':'')+(Math.round(n*10)/10)+'%';}
+function uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+function isTab(n){var el=document.getElementById('tab-'+n);return el&&el.style.display!=='none';}
+
+var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
+function init(){
+  var a=A();
+  a.subscribe('orders',function(s){ordersMap=s.val()||{};captureCompletedAt(ordersMap);if(isTab('analytics'))renderAnalytics();});
+  a.subscribe('archivedOrders',function(s){archMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
+  a.subscribe('reviews',function(s){reviewsMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
+  a.subscribe('feedbacks',function(s){feedbacksMap=s.val()||{};});
+  a.subscribe('appCustomers',function(s){custMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
+  a.subscribe('recipes',function(s){recMap=s.val()||{};});
+  a.subscribe('expenseItems',function(s){expItems=s.val()||{};if(isTab('pnl'))renderPnl();});
+  a.subscribe('monthlyExpenses',function(s){monthlyExp=s.val()||{};if(isTab('pnl'))renderPnl();});
+  a.subscribe('inventoryAdjustments',function(s){adjMap=s.val()||{};if(isTab('pnl'))renderPnl();if(isTab('stockvalue'))renderStockValue();});
+  a.subscribe('internalUsage',function(s){usageMap=s.val()||{};if(isTab('pnl'))renderPnl();if(isTab('stockvalue'))renderStockValue();});
+  a.subscribe('stockReceipts',function(s){receiptsMap=s.val()||{};if(isTab('stockvalue'))renderStockValue();});
+  a.subscribe('inventory',function(s){invMap=s.val()||{};if(isTab('stockvalue'))renderStockValue();});
+  a.subscribe('analyticsFunnel',function(s){funnelMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
+  a.subscribe('platformPayouts',function(s){payoutsMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();if(isTab('analytics'))renderAnalytics();});
+  a.subscribe('platformVarAccounts',function(s){varAcctMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();});
+}
+// extend the POS tab switcher to also render our tabs
+window.__accazaRegisterModule('analytics',function(name){ if(name==='analytics')renderAnalytics(); if(name==='pnl'){if(!pnlMonth)pnlMonth=monthKey(Date.now());renderPnl();} if(name==='payouts')renderPayouts(); if(name==='stockvalue')renderStockValue(); if(name==='dailyreport')renderDailyReport(); });
+
+// capture completedAt for ops metrics (idempotent, additive)
+function captureCompletedAt(all){var a=A();Object.keys(all).forEach(function(id){var o=all[id];if(o&&o.status==='Completed'&&!o.completedAt){a.update(a.ref(a.db,'orders/'+id),{completedAt:Date.now()});}});}
+
+/* ---------- sales model ---------- */
+function isSale(o){if(!o||o.voided)return false;var r=['Completed','Received'];if(o.source==='pos')return true;if(r.indexOf(o.status)>-1)return true;if(o.status==='Archived'&&r.indexOf(o.prevStatus)>-1)return true;return false;}
+function allOrders(){var out=[];[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){out.push(m[k]);});});return out;}
+function itemCost(li){var rec=recMap[li.itemKey];if(!rec)return null;var mult=(rec.sizeMult&&rec.sizeMult[li.size]!=null)?rec.sizeMult[li.size]:1;var c=0;(rec.base||[]).forEach(function(b){var ing=invMap[b.ing];if(!ing)return;var per=b['qty'+(li.size||'M')];var q=(per!=null&&per!=='')?(Number(per)||0):(Number(b.qty)||0)*mult;c+=q*(Number(ing.cost)||0);});var labels=li.optLabels||[];var _it=((A()&&A().menuItemsMap)||{})[li.itemKey]||{key:li.itemKey};var getChoiceIngs=window.__accazaChoiceIngs;labels.forEach(function(lb){(getChoiceIngs?getChoiceIngs(_it,rec,lb,li.size):[]).forEach(function(r){var ing=invMap[r.ing];if(ing)c+=(Number(r.qty)||0)*(Number(ing.cost)||0);});});return c*(Number(li.qty)||1);}
+function orderCOGS(o){var _x=Number(o.extraCost)||0;
+  if(o.cogsSnapshot!=null)return{cost:(Number(o.cogsSnapshot)||0)+_x,covered:o.cogsCovered!==false};
+  if(!o.lineItems)return{cost:_x,covered:false};var cost=0,any=false,all=true;o.lineItems.forEach(function(li){var c=itemCost(li);if(c==null)all=false;else{cost+=c;any=true;}});return{cost:cost+_x,covered:any&&all};}
+function saleFields(o){var gross=(o.subtotal!=null?Number(o.subtotal):Number(o.total))||0;var disc=Number(o.discount)||0;var ref=Number(o.refundAmount)||0;return{ts:o.timestamp||Date.parse(o.date)||0,gross:gross,discount:disc,refund:ref,net:gross-disc-ref,payment:o.payment||'—',type:o.type||'—',lineItems:o.lineItems||null,phone:(o.phone||'').replace(/[^0-9]/g,''),name:o.name||'Walk-in',o:o};}
+function salesBetween(from,to){return allOrders().filter(isSale).map(saleFields).filter(function(s){return s.ts>=from&&s.ts<to;});}
+function dayStart(d){d=new Date(d);d.setHours(0,0,0,0);return d.getTime();}
+function addDays(ts,n){var d=new Date(ts);d.setDate(d.getDate()+n);return d.getTime();}
+function localDateValue(v){var p=String(v||'').split('-');if(p.length!==3)return NaN;return new Date(Number(p[0]),Number(p[1])-1,Number(p[2])).getTime();}
+function rangeBounds(){var now=Date.now(),today=dayStart(now),end=addDays(today,1);if(azRange==='today')return[today,end];if(azRange==='7d')return[addDays(today,-6),end];if(azRange==='30d')return[addDays(today,-29),end];if(azRange==='month'){var d=new Date();return[new Date(d.getFullYear(),d.getMonth(),1).getTime(),end];}if(azRange==='custom'&&azFrom!=null&&azTo!=null)return[dayStart(azFrom),addDays(dayStart(azTo),1)];return[addDays(today,-6),end];}
+function fmtD(ts){return new Date(ts).toLocaleDateString('en-PH',{month:'short',day:'numeric'});}
+function azRangeLabel(from,to){var nm={today:'Today','7d':'Last 7 days','30d':'Last 30 days',month:'This month',custom:'Custom range'};return (nm[azRange]||azRange)+' · '+fmtD(from)+' – '+fmtD(to-86400000);}
+
+function bar(label,val,max,disp){var w=max>0?Math.max(2,Math.round(val/max*100)):0;return '<div class="az-bar-row"><div class="az-bar-lbl">'+esc(label)+'</div><div class="az-bar-track"><div class="az-bar-fill" style="width:'+w+'%;"></div></div><div class="az-bar-val">'+(disp!=null?disp:val)+'</div></div>';}
+function kpi(label,val,delta){var d='';if(delta!=null&&isFinite(delta))d='<div class="d '+(delta>0?'az-up':delta<0?'az-down':'az-flat')+'">'+pct(delta)+' vs prev</div>';return '<div class="az-kpi"><div class="v">'+val+'</div><div class="l">'+esc(label)+'</div>'+d+'</div>';}
+
+/* ══════════ ANALYTICS ══════════ */
+function renderAnalytics(){
+  var root=document.getElementById('analyticsRoot'); if(!root)return;
+  /* One delegated click listener on the (persistent) analytics container. It survives every
+     innerHTML re-render AND any error inside the body render, so the date controls always work. */
+  if(!root.__azWired){ root.__azWired=true; root.addEventListener('click',function(e){
+    var t=e.target; if(!t||!t.closest)return;
+    var chip=t.closest('[data-range]');
+    if(chip){ e.preventDefault(); azRange=chip.getAttribute('data-range'); azFrom=null; azTo=null; renderAnalytics(); return; }
+    if(t.closest('#azApply')){
+      var f=(document.getElementById('azFrom')||{}).value, tt=(document.getElementById('azTo')||{}).value;
+      if(!f||!tt){ alert('Pick both a From and a To date, then tap “Apply dates”.'); return; }
+      if(f>tt){ alert('The From date is later than the To date — please switch them.'); return; }
+      azFrom=localDateValue(f); azTo=localDateValue(tt);
+      if(!isFinite(azFrom)||!isFinite(azTo)){ alert('Those dates could not be read. Please choose them again.'); return; }
+      azRange='custom'; renderAnalytics(); return;
+    }
+  }); }
+  try{ renderAnalyticsBody(); }
+  catch(err){ console.error('renderAnalytics error',err);
+    root.innerHTML='<div class="pz-h">📊 Analytics</div><div style="margin:0.5rem 0;">'
+      +['today:Today','7d:7 days','30d:30 days','month:This month'].map(function(o){var v=o.split(':');return '<span class="pz-chip'+(azRange===v[0]?' on':'')+'" data-range="'+v[0]+'">'+v[1]+'</span>';}).join('')
+      +' <span style="font-size:0.78rem;color:var(--tl);">or <input type="date" class="pz-in" id="azFrom" style="width:auto;display:inline-block;padding:0.2rem 0.4rem;"/> → <input type="date" class="pz-in" id="azTo" style="width:auto;display:inline-block;padding:0.2rem 0.4rem;"/> <button class="pz-btn sec" id="azApply" style="padding:0.25rem 0.6rem;">Apply dates</button></span></div>'
+      +'<div style="background:#fde8e8;border:1px solid #f5b5b5;border-radius:8px;padding:1rem;color:#a11;font-size:0.85rem;">Analytics couldn’t finish building the report: <b>'+esc(String((err&&err.message)||err))+'</b>.<br>The date buttons above still work. Please send Claude this exact message so I can fix the cause.</div>'; }
+}
+function renderAnalyticsBody(){
+  var root=document.getElementById('analyticsRoot');if(!root)return;
+  var b=rangeBounds(),from=b[0],to=b[1];var span=to-from;
+  var cur=salesBetween(from,to), prev=salesBetween(from-span,from);
+  var net=cur.reduce(function(s,x){return s+x.net;},0), gross=cur.reduce(function(s,x){return s+x.gross;},0);
+  var pnet=prev.reduce(function(s,x){return s+x.net;},0);
+  var tx=cur.length, days=Math.max(1,Math.round(span/86400000));
+  var aov=tx?net/tx:0;
+  var cogsAll=cur.reduce(function(s,x){return s+(x.lineItems?orderCOGS(x.o).cost:0);},0);
+  var margin=net>0?(net-cogsAll)/net*100:0;
+  var trend=pnet>0?(net-pnet)/pnet*100:(net>0?100:0);
+  // daily series
+  var byDay={};cur.forEach(function(x){var k=dayStart(x.ts);byDay[k]=(byDay[k]||0)+x.net;});
+  var dayKeys=[];for(var t=from;t<to;t+=86400000)dayKeys.push(t);
+  var maxDay=Math.max.apply(null,dayKeys.map(function(k){return byDay[k]||0;}).concat([1]));
+  var hi=null,lo=null;dayKeys.forEach(function(k){var v=byDay[k]||0;if(hi===null||v>byDay[hi])hi=k;if(lo===null||v<byDay[lo])lo=k;});
+  // hour
+  var byHour={};cur.forEach(function(x){var h=new Date(x.ts).getHours();byHour[h]=(byHour[h]||0)+x.net;});
+  var maxHour=Math.max.apply(null,Object.keys(byHour).map(function(h){return byHour[h];}).concat([1]));
+  // dow
+  var dowN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],byDow={};cur.forEach(function(x){var d=new Date(x.ts).getDay();byDow[d]=(byDow[d]||0)+x.net;});
+  var maxDow=Math.max.apply(null,Object.keys(byDow).map(function(d){return byDow[d];}).concat([1]));
+  // category / payment / type / items
+  var byCat={},byPay={},byType={},items={};var totItems=0;
+  cur.forEach(function(x){
+    byPay[x.payment]=(byPay[x.payment]||0)+x.net;
+    byType[x.type]=(byType[x.type]||0)+x.net;
+    (x.lineItems||[]).forEach(function(li){
+      var mi=A().menuItemsMap[li.itemKey];var cat=mi?(A().getCatLabel?A().getCatLabel(mi.cat):mi.cat):'Other';
+      byCat[cat]=(byCat[cat]||0)+li.qty*li.unitTotal;
+      totItems+=li.qty;
+      var _ct=(window.__posSettings&&window.__posSettings.catType)||{}; if(mi&&_ct[mi.cat]==='food')return; /* Top items = drinks only: exclude food/pastry categories. Add-ons are options (optLabels), never line items, so already excluded. */
+      var key=li.name;items[key]=items[key]||{name:li.name,units:0,rev:0,cost:0};
+      items[key].units+=li.qty;items[key].rev+=li.qty*li.unitTotal;var c=itemCost(li);if(c!=null)items[key].cost+=c;
+    });
+  });
+  // prev-period item units for trend
+  var pItems={};prev.forEach(function(x){(x.lineItems||[]).forEach(function(li){pItems[li.name]=(pItems[li.name]||0)+li.qty;});});
+  var itemArr=Object.values(items);
+  var topByRev=itemArr.slice().sort(function(a,b){return b.rev-a.rev;});
+  var topByProfit=itemArr.slice().filter(function(i){return i.cost>0;}).map(function(i){return Object.assign({profit:i.rev-i.cost,margin:i.rev>0?(i.rev-i.cost)/i.rev*100:0},i);}).sort(function(a,b){return b.profit-a.profit;});
+  var maxRev=Math.max.apply(null,topByRev.map(function(i){return i.rev;}).concat([1]));
+  // customers
+  var custIn={};cur.forEach(function(x){if(x.phone)custIn[x.phone]=(custIn[x.phone]||0)+x.net;});
+  var pCustIn={};prev.forEach(function(x){if(x.phone)pCustIn[x.phone]=1;});
+  var custCount=Object.keys(custIn).length;
+  var newC=0;Object.keys(custIn).forEach(function(ph){var c=custMap[ph];if(c&&c.firstSeen&&c.firstSeen>=from)newC++;else if(!c)newC++;});
+  var repeatC=custCount-newC;
+  var custGrowth=Object.keys(pCustIn).length>0?(custCount-Object.keys(pCustIn).length)/Object.keys(pCustIn).length*100:(custCount>0?100:0);
+  var repeatRev=0;cur.forEach(function(x){if(x.phone){var c=custMap[x.phone];if(c&&(c.orders||0)>1)repeatRev+=x.net;}});
+  var topCust=Object.keys(custIn).map(function(ph){return{name:(custMap[ph]&&custMap[ph].name)||ph,spend:custIn[ph]};}).sort(function(a,b){return b.spend-a.spend;}).slice(0,5);
+  // ratings
+  var rlist=Object.values(reviewsMap).map(function(r){return{rating:Number(r.rating||r.stars||0),ts:r.timestamp||r.ts||0};}).filter(function(r){return r.rating>0;});
+  var rIn=rlist.filter(function(r){return r.ts>=from&&r.ts<to;});
+  var avgAll=rlist.length?rlist.reduce(function(s,r){return s+r.rating;},0)/rlist.length:0;
+  // ops
+  var ordersInRange=allOrders().filter(function(o){var ts=o.timestamp||Date.parse(o.date)||0;return ts>=from&&ts<to;});
+  var cancelled=ordersInRange.filter(function(o){return['Declined','Cancelled','Canceled','Voided'].indexOf(o.status)>-1||o.voided||(o.status==='Archived'&&['Declined','Cancelled'].indexOf(o.prevStatus)>-1);}).length;
+  var cancelRate=ordersInRange.length?cancelled/ordersInRange.length*100:0;
+  var prepList=cur.filter(function(x){return x.o.completedAt&&x.ts&&x.o.source!=='pos';}).map(function(x){return(x.o.completedAt-x.ts)/60000;}).filter(function(m){return m>0&&m<600;});
+  var avgPrep=prepList.length?prepList.reduce(function(s,m){return s+m;},0)/prepList.length:null;
+  var target=15;var onTime=prepList.length?prepList.filter(function(m){return m<=target;}).length/prepList.length*100:null;
+  // funnel
+  var fkey=funnelKey(from);var f=funnelMap[fkey]||{};var reach=Number(f.reach)||0,visits=Number(f.visits)||0;
+  var convVO=visits>0?tx/visits*100:0, convRV=reach>0?visits/reach*100:0;
+
+  var html='<div class="pz-h">📊 Analytics</div><p class="pz-sub">Every figure here traces to your own orders, recipes, and reviews. Reach/Visits are entered manually from Google Analytics.</p>';
+  var _azF=new Date(from).toISOString().slice(0,10), _azT=new Date(to-86400000).toISOString().slice(0,10);
+  html+='<div style="margin-bottom:0.4rem;">'+['today:Today','7d:7 days','30d:30 days','month:This month'].map(function(o){var v=o.split(':');return '<span class="pz-chip '+(azRange===v[0]?'on':'')+'" data-range="'+v[0]+'">'+v[1]+'</span>';}).join('')
+    +'<span style="margin-left:0.5rem;font-size:0.78rem;color:var(--tl);">or '+'<input type="date" class="pz-in" id="azFrom" value="'+_azF+'" style="width:auto;display:inline-block;padding:0.2rem 0.4rem;"/> → <input type="date" class="pz-in" id="azTo" value="'+_azT+'" style="width:auto;display:inline-block;padding:0.2rem 0.4rem;"/> <button class="pz-btn '+(azRange==='custom'?'ok':'sec')+'" id="azApply" style="padding:0.25rem 0.6rem;">Apply dates</button></span></div>'
+    +'<div class="az-note" id="azActive" style="margin:0 0 0.7rem;font-weight:600;color:var(--bd);">📅 Showing: '+azRangeLabel(from,to)+'</div>';
+  // KPIs
+  html+='<div class="az-kpis">'
+    +kpi('Net sales',peso0(net),trend)
+    +kpi('Gross sales',peso0(gross))
+    +kpi('Transactions',tx)
+    +kpi('Avg order value',peso0(aov))
+    +kpi('Avg daily net',peso0(net/days))
+    +kpi('Gross margin',(Math.round(margin*10)/10)+'%')
+    +'</div>';
+  html+='<div class="az-note">Highest day: '+(hi!==null?fmtD(hi)+' ('+peso0(byDay[hi]||0)+')':'—')+' · Lowest: '+(lo!==null?fmtD(lo)+' ('+peso0(byDay[lo]||0)+')':'—')+'</div>';
+  // daily trend
+  html+='<div class="az-sec">Daily net sales</div><div class="pz-card">'+dayKeys.map(function(k){return bar(fmtD(k),byDay[k]||0,maxDay,peso0(byDay[k]||0));}).join('')+'</div>';
+  // two-col: hours + dow
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;" class="pz-posgrid">';
+  html+='<div><div class="az-sec">Peak hours</div><div class="pz-card">'+Object.keys(byHour).sort(function(a,b){return a-b;}).map(function(h){return bar((h%12||12)+(h<12?'am':'pm'),byHour[h],maxHour,peso0(byHour[h]));}).join('')+'</div></div>';
+  html+='<div><div class="az-sec">By day of week</div><div class="pz-card">'+[0,1,2,3,4,5,6].map(function(d){return bar(dowN[d],byDow[d]||0,maxDow,peso0(byDow[d]||0));}).join('')+'</div></div>';
+  html+='</div>';
+  // category / payment / type
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;" class="pz-posgrid">';
+  html+='<div><div class="az-sec">By category</div><div class="pz-card">'+chartObj(byCat)+'</div></div>';
+  html+='<div><div class="az-sec">Payment mix</div><div class="pz-card">'+chartObj(byPay)+'</div></div>';
+  html+='<div><div class="az-sec">Order type</div><div class="pz-card">'+chartObj(byType)+'</div></div>';
+  html+='</div>';
+  var walkInRev=0,onlineRev=0,eventRev=0,promoRev=0;
+  cur.forEach(function(x){var lis=x.lineItems||[];if(!lis.length){if((x.o&&x.o.source==='pos')||x.type==='Walk-in')walkInRev+=x.net;else onlineRev+=x.net;return;}lis.forEach(function(li){var rev=(Number(li.qty)||0)*(Number(li.unitTotal)||0);if(li.stream==='events')eventRev+=rev;else if(li.stream==='promo')promoRev+=rev;else if((x.o&&x.o.source==='pos')||x.type==='Walk-in')walkInRev+=rev;else onlineRev+=rev;});});
+  var chTot=walkInRev+onlineRev+eventRev+promoRev||1;
+  html+='<div class="az-sec">Sales channel</div><div class="pz-card"><div class="az-kpis" style="margin:0;">'+kpi('Walk-in (counter)',peso0(walkInRev)+' · '+Math.round(walkInRev/chTot*100)+'%')+kpi('Online',peso0(onlineRev)+' · '+Math.round(onlineRev/chTot*100)+'%')+kpi('Events',peso0(eventRev)+' · '+Math.round(eventRev/chTot*100)+'%')+kpi('Promos',peso0(promoRev)+' · '+Math.round(promoRev/chTot*100)+'%')+'</div><div class="az-note">Revenue share by channel — walk-in, online, event packages, promos.</div></div>';
+  // items
+  html+='<div class="az-sec">Top items by revenue</div><div class="pz-card"><table class="pz-tbl"><thead><tr><th>Item</th><th>Units</th><th>Revenue</th><th>Trend</th></tr></thead><tbody>'
+    +topByRev.slice(0,10).map(function(i){var pv=pItems[i.name]||0;var tr=pv>0?(i.units-pv)/pv*100:(i.units>0?100:0);return '<tr><td>'+esc(i.name)+'</td><td>'+i.units+'</td><td>'+peso0(i.rev)+'</td><td class="'+(tr>0?'az-up':tr<0?'az-down':'az-flat')+'">'+(pv>0||i.units>0?pct(tr):'—')+'</td></tr>';}).join('')
+    +'</tbody></table></div>';
+  html+='<div class="az-sec">Most profitable items <span class="az-note">(revenue − recipe cost)</span></div><div class="pz-card">'
+    +(topByProfit.length?'<table class="pz-tbl"><thead><tr><th>Item</th><th>Units</th><th>Profit</th><th>Margin</th></tr></thead><tbody>'
+      +topByProfit.slice(0,10).map(function(i){return '<tr><td>'+esc(i.name)+'</td><td>'+i.units+'</td><td>'+peso0(i.profit)+'</td><td>'+(Math.round(i.margin)||0)+'%</td></tr>';}).join('')+'</tbody></table>'
+      :'<p class="az-note">Add recipes with ingredient costs to see per-item profit.</p>')
+    +'</div>';
+  // customers
+  html+='<div class="az-sec">Customers</div><div class="az-kpis">'
+    +kpi('Customers',custCount,custGrowth)
+    +kpi('New',custCount?Math.round(newC/custCount*100)+'%':'0%')
+    +kpi('Repeat',custCount?Math.round(repeatC/custCount*100)+'%':'0%')
+    +kpi('Repeat sales share',net>0?Math.round(repeatRev/net*100)+'%':'0%')
+    +'</div><div class="az-note">Walk-in POS sales have no phone and aren\'t counted as identified customers.</div>';
+  if(topCust.length)html+='<div class="pz-card" style="margin-top:0.5rem;"><b style="font-size:0.82rem;color:var(--bd);">Top customers</b>'+topCust.map(function(c){return '<div style="display:flex;justify-content:space-between;font-size:0.82rem;padding:0.25rem 0;"><span>'+esc(c.name)+'</span><span>'+peso0(c.spend)+'</span></div>';}).join('')+'</div>';
+  // ops scorecard
+  html+='<div class="az-sec">Operations scorecard</div><div class="az-kpis">'
+    +kpi('Avg prep time',avgPrep!=null?Math.round(avgPrep)+' min':'—')
+    +kpi('On-time (≤'+target+'m)',onTime!=null?Math.round(onTime)+'%':'—')
+    +kpi('Cancel rate',(Math.round(cancelRate*10)/10)+'%')
+    +kpi('Ratings avg',avgAll?avgAll.toFixed(2):'—')
+    +'</div><div class="az-note">Prep time from online orders (place → complete). '+rIn.length+' new rating(s) this period.</div>';
+  // funnel
+  html+='<div class="az-sec">Conversion funnel</div><div class="pz-card"><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;align-items:end;margin-bottom:0.6rem;">'
+    +'<div><span class="pz-lbl">Reach (from GA)</span><input class="pz-in" id="fReach" type="number" value="'+(reach||'')+'" placeholder="0"/></div>'
+    +'<div><span class="pz-lbl">Visits (from GA)</span><input class="pz-in" id="fVisits" type="number" value="'+(visits||'')+'" placeholder="0"/></div>'
+    +'<button class="pz-btn" id="fSave">Save</button></div>'
+    +'<div style="display:flex;gap:1rem;font-size:0.85rem;">'
+    +'<div>Reach <b>'+(reach||'—')+'</b></div>→<div>Visits <b>'+(visits||'—')+'</b> ('+(reach?Math.round(convRV):'—')+'%)</div>→<div>Orders <b>'+tx+'</b> ('+(visits?Math.round(convVO):'—')+'%)</div>'
+    +'</div><div class="az-note">Reach/Visits are read from your Google Analytics and entered here for the selected period.</div></div>';
+  // ---- channel mix (in-store vs platforms) ----
+  (function(){
+    var chData={instore:{lbl:'In-store',gross:0,comm:0,cogs:0,tx:0},grabfood:{lbl:'GrabFood',gross:0,comm:0,cogs:0,tx:0},foodpanda:{lbl:'FoodPanda',gross:0,comm:0,cogs:0,tx:0}};
+    cur.forEach(function(x){var o=x.o;var c=(o&&o.channel&&chData[o.channel])?o.channel:'instore';var d=chData[c];d.gross+=(c==='instore'?x.net:poGross(o));d.comm+=(c==='instore'?0:(Number(o.commission)||0));d.cogs+=(x.lineItems?orderCOGS(o).cost:0);d.tx++;});
+    var order=['instore','grabfood','foodpanda'];
+    var rows=order.map(function(k){var d=chData[k];if(!d.tx&&k!=='instore')return '';var netAfter=d.gross-d.comm-d.cogs;var mgn=d.gross>0?netAfter/d.gross*100:0;return '<tr><td>'+esc(d.lbl)+'</td><td class="r">'+d.tx+'</td><td class="r">'+peso(d.gross)+'</td><td class="r">'+(d.comm?('-'+peso(d.comm)):'—')+'</td><td class="r">'+peso(d.cogs)+'</td><td class="r">'+peso(netAfter)+'</td><td class="r '+(mgn>=0?'az-up':'az-down')+'">'+(Math.round(mgn*10)/10)+'%</td></tr>';}).join('');
+    html+='<div class="az-sec">Channel mix</div><div class="pz-card"><table class="pnl-tbl"><thead><tr><th>Channel</th><th class="r">Tx</th><th class="r">Gross</th><th class="r">Commission</th><th class="r">COGS</th><th class="r">Net after comm.+COGS</th><th class="r">Margin</th></tr></thead><tbody>'+rows+'</tbody></table><div class="az-note">Platform gross is booked as revenue; commission is the flat estimate (trued up in Platform Payouts). In-store "gross" here is net of discounts.</div></div>';
+  })();
+  root.innerHTML=html;
+  /* Date controls are handled by the single delegated listener installed in renderAnalytics().
+     Keeping them there means a report-data error cannot make the controls unclickable. */
+  var fs=document.getElementById('fSave');if(fs)fs.onclick=function(){var a=A();a.set(a.ref(a.db,'analyticsFunnel/'+funnelKey(from)),{reach:Number(document.getElementById('fReach').value)||0,visits:Number(document.getElementById('fVisits').value)||0,ts:Date.now()});};
+}
+function chartObj(obj){var keys=Object.keys(obj).sort(function(a,b){return obj[b]-obj[a];});var max=Math.max.apply(null,keys.map(function(k){return obj[k];}).concat([1]));return keys.length?keys.map(function(k){return bar(k,obj[k],max,peso0(obj[k]));}).join(''):'<p class="az-note">No data.</p>';}
+function funnelKey(from){var d=new Date(from);return azRange==='custom'?('c'+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())):azRange+'-'+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate());}
+function pad(n){return(n<10?'0':'')+n;}
+
+/* ══════════ P&L ══════════ */
+function monthKey(ts){var d=new Date(ts);return d.getFullYear()+'-'+pad(d.getMonth()+1);}
+function monthLabel(mk){var p=mk.split('-');return new Date(p[0],p[1]-1,1).toLocaleDateString('en-PH',{month:'long',year:'numeric'});}
+function prevMonthKey(mk){var p=mk.split('-');var d=new Date(p[0],p[1]-1,1);d.setMonth(d.getMonth()-1);return d.getFullYear()+'-'+pad(d.getMonth()+1);}
+function usageNameFor(id){ if(id==='staff')return 'Staff consumption'; if(id==='rnd')return 'R&D / Testing'; var nm=null; Object.keys(usageMap).some(function(k){var u=usageMap[k];if(u&&u.kind===id&&u.kindName){nm=u.kindName;return true;}return false;}); return nm||id; }
+/* ══════════ DAILY REPORT (all channels + register expenses) ══════════ */
+function drNum(n){return (Math.round((Number(n)||0)*1000)/1000).toLocaleString('en-PH');}
+function dailyBounds(dstr){var s=new Date(dstr+'T00:00:00').getTime();return [s,s+86400000];}
+function renderDailyReport(){
+  var root=document.getElementById('dailyReportRoot'); if(!root)return;
+  var d=window.__dailyDate||new Date().toISOString().slice(0,10); window.__dailyDate=d;
+  var b=dailyBounds(d);
+  var sales=allOrders().filter(isSale).map(saleFields).filter(function(s){return s.ts>=b[0]&&s.ts<b[1];});
+  var chan={instore:{lbl:'In-store',tx:0,gross:0,disc:0,net:0,comm:0},grabfood:{lbl:'GrabFood',tx:0,gross:0,disc:0,net:0,comm:0},foodpanda:{lbl:'FoodPanda',tx:0,gross:0,disc:0,net:0,comm:0}};
+  var byMethod={},itemsM={},txns=[],refundsTot=0,netTot=0;
+  sales.forEach(function(s){var o=s.o;var c=(o.channel&&chan[o.channel])?o.channel:'instore';var ch=chan[c];ch.tx++;
+    if(c==='instore'){ch.gross+=s.gross;ch.disc+=s.discount;ch.net+=s.net;netTot+=s.net;}
+    else{var g=Number(o.grossPlatform||o.subtotal||o.total)||0;var nt=Number(o.netPlatform!=null?o.netPlatform:g)||0;ch.gross+=g;ch.comm+=Number(o.commission)||0;ch.net+=nt;netTot+=nt;}
+    refundsTot+=s.refund;
+    var pays=(o.payments&&o.payments.length)?o.payments:[{method:(o.channel&&o.channel!=='instore')?(o.channel==='grabfood'?'GrabFood':'FoodPanda'):(o.payment||'—'),amount:Number(o.total)||0}];
+    pays.forEach(function(p){byMethod[p.method]=(byMethod[p.method]||0)+(Number(p.amount)||0);});
+    (o.lineItems||[]).forEach(function(li){var k=li.itemKey||li.name||'?';if(!itemsM[k])itemsM[k]={name:li.name||k,qty:0,sales:0};itemsM[k].qty+=Number(li.qty)||0;itemsM[k].sales+=(Number(li.qty)||0)*(Number(li.unitTotal)||0);});
+    txns.push({time:o.time||new Date(s.ts).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),id:o.id,channel:chan[c].lbl,method:pays.map(function(p){return p.method;}).join('+'),amount:Number(o.total)||0,refund:s.refund});
+  });
+  var items=Object.keys(itemsM).map(function(k){return itemsM[k];}).sort(function(a,b){return b.sales-a.sales;});
+  var a=A();
+  a.get(a.ref(a.db,'shifts')).then(function(sn){var sh=sn.val()||{};var payouts=[];Object.keys(sh).forEach(function(k){var s=sh[k];(s.payOuts||[]).forEach(function(p){var ts=Number(p.ts)||0;if(ts>=b[0]&&ts<b[1])payouts.push({time:new Date(ts).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),reason:p.reason||'pay-out',amount:Number(p.amount)||0});});});build(payouts);}).catch(function(){build([]);});
+  function build(payouts){
+    var payoutTot=payouts.reduce(function(s,p){return s+p.amount;},0);
+    var chRows=['instore','grabfood','foodpanda'].map(function(c){var x=chan[c];if(!x.tx)return '';return '<tr><td>'+x.lbl+'</td><td class="r">'+x.tx+'</td><td class="r">'+peso(x.gross)+'</td><td class="r">'+(x.disc?('−'+peso(x.disc)):(x.comm?('comm −'+peso(x.comm)):'—'))+'</td><td class="r">'+peso(x.net)+'</td></tr>';}).join('');
+    var methodRows=Object.keys(byMethod).sort().map(function(m){return '<tr><td>'+esc(m)+'</td><td class="r">'+peso(byMethod[m])+'</td></tr>';}).join('')||'<tr><td colspan="2" style="color:var(--tl);">—</td></tr>';
+    var itemRows=items.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td class="r">'+drNum(x.qty)+'</td><td class="r">'+peso(x.sales)+'</td></tr>';}).join('')||'<tr><td colspan="3" style="color:var(--tl);">No sales this day.</td></tr>';
+    var txnRows=txns.map(function(t){return '<tr><td>'+esc(t.time)+'</td><td>'+esc(t.id)+'</td><td>'+esc(t.channel)+'</td><td>'+esc(t.method)+'</td><td class="r">'+peso(t.amount)+(t.refund?(' · R '+peso(t.refund)):'')+'</td></tr>';}).join('')||'<tr><td colspan="5" style="color:var(--tl);">No sales this day.</td></tr>';
+    var expRows=payouts.map(function(p){return '<tr><td>'+esc(p.time)+'</td><td>'+esc(p.reason)+'</td><td class="r">'+peso(p.amount)+'</td></tr>';}).join('')+(refundsTot?('<tr><td>—</td><td>Refunds</td><td class="r">'+peso(refundsTot)+'</td></tr>'):'');
+    var html='<div class="pz-h">📆 Daily Report</div>'
+      +'<div style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap;margin-bottom:0.8rem;"><div><span class="pz-lbl">Date</span><input class="pz-in" id="drDate" type="date" value="'+d+'"/></div><button class="pz-btn ok" id="drPrint" style="padding:0.4rem 0.9rem;">🖨 Print</button><button class="pz-btn sec" id="drExcel" style="padding:0.4rem 0.9rem;">⬇ Excel</button></div>'
+      +'<div style="display:flex;gap:0.7rem;flex-wrap:wrap;margin-bottom:0.8rem;">'
+        +'<div class="pz-card" style="flex:1;min-width:150px;"><div style="font-size:0.72rem;color:var(--tl);">Transactions</div><div style="font-weight:700;font-size:1.25rem;color:var(--bd);">'+sales.length+'</div></div>'
+        +'<div class="pz-card" style="flex:1;min-width:150px;"><div style="font-size:0.72rem;color:var(--tl);">Net sales (all channels)</div><div style="font-weight:700;font-size:1.25rem;color:var(--bd);">'+peso(netTot)+'</div></div>'
+        +'<div class="pz-card" style="flex:1;min-width:150px;"><div style="font-size:0.72rem;color:var(--tl);">Register cash out</div><div style="font-weight:700;font-size:1.25rem;color:#c0392b;">'+peso(payoutTot+refundsTot)+'</div></div>'
+      +'</div>'
+      +'<div class="az-sec">Sales by channel</div><div class="pz-card" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Channel</th><th class="r">Tx</th><th class="r">Gross</th><th class="r">Disc / Comm</th><th class="r">Net</th></tr></thead><tbody>'+(chRows||'<tr><td colspan="5" style="color:var(--tl);">No sales this day.</td></tr>')+'</tbody></table></div></div>'
+      +'<div class="az-sec">Sales by payment method</div><div class="pz-card" style="margin-bottom:0.7rem;"><table class="pz-tbl"><tbody>'+methodRows+'</tbody></table></div>'
+      +'<div class="az-sec">Register expenses (cash out)</div><div class="pz-card" style="margin-bottom:0.7rem;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Reason</th><th class="r">Amount</th></tr></thead><tbody>'+(expRows||'<tr><td colspan="3" style="color:var(--tl);">None.</td></tr>')+'</tbody></table></div>'
+      +'<div class="az-sec">Items sold</div><div class="pz-card" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Sales</th></tr></thead><tbody>'+itemRows+'</tbody></table></div></div>'
+      +'<div class="az-sec">All transactions ('+txns.length+')</div><div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Order</th><th>Channel</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+txnRows+'</tbody></table></div></div>';
+    root.innerHTML=html;
+    var X={chan:chan,byMethod:byMethod,items:items,txns:txns,payouts:payouts,refundsTot:refundsTot,netTot:netTot,payoutTot:payoutTot};
+    var di=document.getElementById('drDate'); if(di)di.onchange=function(){window.__dailyDate=this.value||d;renderDailyReport();};
+    var pr=document.getElementById('drPrint'); if(pr)pr.onclick=function(){printDailyReport(d,X);};
+    var ex=document.getElementById('drExcel'); if(ex)ex.onclick=function(){exportDailyXlsx(d,X);};
+  }
+}
+function printDailyReport(d,X){
+  var w=window.open('','_blank','width=440,height=760');if(!w){alert('Allow pop-ups to print the report.');return;}
+  var ch=['instore','grabfood','foodpanda'].map(function(c){var x=X.chan[c];if(!x.tx)return '';return '<tr><td>'+x.lbl+' ('+x.tx+')</td><td style="text-align:right;">'+peso(x.net)+'</td></tr>';}).join('');
+  var me=Object.keys(X.byMethod).sort().map(function(m){return '<tr><td>'+esc(m)+'</td><td style="text-align:right;">'+peso(X.byMethod[m])+'</td></tr>';}).join('');
+  var ex=X.payouts.map(function(p){return '<tr><td>'+esc(p.time)+' '+esc(p.reason)+'</td><td style="text-align:right;">'+peso(p.amount)+'</td></tr>';}).join('')+(X.refundsTot?'<tr><td>Refunds</td><td style="text-align:right;">'+peso(X.refundsTot)+'</td></tr>':'');
+  var it=X.items.map(function(x){return '<tr><td>'+esc(x.name)+' ×'+drNum(x.qty)+'</td><td style="text-align:right;">'+peso(x.sales)+'</td></tr>';}).join('');
+  w.document.write('<html><head><title>Daily Report '+esc(d)+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2,h3{text-align:center;margin:2px 0;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
+    +'<h2>Accaza Coffee House</h2><h3>DAILY REPORT</h3><div style="text-align:center;">'+esc(d)+'</div><hr>'
+    +'<div><b>Net sales by channel</b></div><table>'+(ch||'<tr><td>None</td></tr>')+'<tr><td><b>Total net</b></td><td style="text-align:right;"><b>'+peso(X.netTot)+'</b></td></tr></table><hr>'
+    +'<div><b>By payment method</b></div><table>'+(me||'<tr><td>None</td></tr>')+'</table><hr>'
+    +'<div><b>Register expenses (cash out)</b></div><table>'+(ex||'<tr><td>None</td></tr>')+'<tr><td><b>Total out</b></td><td style="text-align:right;"><b>'+peso(X.payoutTot+X.refundsTot)+'</b></td></tr></table><hr>'
+    +'<div><b>Items sold</b></div><table>'+(it||'<tr><td>None</td></tr>')+'</table><hr>'
+    +'<div style="font-size:9px;text-align:center;">Management report — includes in-store &amp; platform channels; register cash-out = drawer pay-outs + refunds.</div>'
+    +'<div style="text-align:center;margin-top:8px;"><button onclick="window.print()">Print</button></div></body></html>');
+  w.document.close();
+}
+function exportDailyXlsx(d,X){
+  if(!window.XLSX){alert('Excel library still loading — try again.');return;}
+  var ch=[['Channel','Tx','Gross','Discount','Commission','Net']];['instore','grabfood','foodpanda'].forEach(function(c){var x=X.chan[c];ch.push([x.lbl,x.tx,x.gross,x.disc,x.comm,x.net]);});
+  var me=[['Method','Amount']];Object.keys(X.byMethod).sort().forEach(function(m){me.push([m,X.byMethod[m]]);});
+  var it=[['Item','Qty','Sales']];X.items.forEach(function(x){it.push([x.name,x.qty,x.sales]);});
+  var tx=[['Time','Order','Channel','Method','Amount','Refund']];X.txns.forEach(function(t){tx.push([t.time,t.id,t.channel,t.method,t.amount,t.refund]);});
+  var ex=[['Time','Reason','Amount']];X.payouts.forEach(function(p){ex.push([p.time,p.reason,p.amount]);});if(X.refundsTot)ex.push(['','Refunds',X.refundsTot]);
+  var wb=XLSX.utils.book_new();[['Channels',ch],['Methods',me],['Items',it],['Transactions',tx],['Expenses',ex]].forEach(function(p){XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(p[1]),p[0]);});XLSX.writeFile(wb,'daily-report-'+d+'.xlsx');
+}
+function pnlFor(mk){
+  var sales=allOrders().filter(isSale).map(saleFields).filter(function(s){return monthKey(s.ts)===mk;});
+  var revenue=sales.reduce(function(s,x){return s+x.net;},0);
+  var cogs=0,uncovered=0;sales.forEach(function(x){if(x.lineItems){var r=orderCOGS(x.o);cogs+=r.cost;if(!r.covered)uncovered++;}else uncovered++;});
+  var variance=0;Object.keys(adjMap).forEach(function(k){var adj=adjMap[k];if(adj&&monthKey(adj.ts)===mk)variance+=Number(adj.varianceValue)||0;});
+  var usageByType={},totalUsage=0;Object.keys(usageMap).forEach(function(k){var u=usageMap[k];if(!u||u.reversed||monthKey(u.ts)!==mk)return;var t=u.kind||'staff';var c=Number(u.cost)||0;usageByType[t]=(usageByType[t]||0)+c;totalUsage+=c;});
+  var totalCogs=cogs+variance;
+  var gp=revenue-totalCogs;
+  var m=monthlyExp[mk]||{};var amounts=m.amounts||{};
+  var byItem={},opex=0;
+  Object.keys(expItems).forEach(function(id){var amt=Number(amounts[id])||0;byItem[id]={name:expItems[id].name,amount:amt};opex+=amt;});
+  // platform economics
+  var platformCommission=0,platformGross=0,platformWht=0,platformVat=0;
+  sales.forEach(function(x){var o=x.o;if(o&&o.channel&&o.channel!=='instore'){platformCommission+=Number(o.commission)||0;platformGross+=Number(o.grossPlatform||o.subtotal||o.total)||0;platformWht+=Number(o.platformWht)||0;platformVat+=Number(o.platformVat)||0;}});
+  var platformTax=platformWht+platformVat;
+  var reconExp=0,reconRev=0,reconBy={};
+  Object.keys(payoutsMap).forEach(function(k){var p=payoutsMap[k];if(!p)return;if(monthKey(p.settledAt||p.periodEnd||0)!==mk)return;var allocs=p.allocations||{};Object.keys(allocs).forEach(function(aid){var amt=Number(allocs[aid])||0;if(!amt)return;var acct=varAcctMap[aid]||(DEFAULT_VAR_ACCOUNTS.filter(function(d){return d.id===aid;})[0])||{};reconBy[aid]=(reconBy[aid]||0)+amt;if(acct.type==='revenue')reconRev+=amt;else reconExp+=amt;});});
+  var tips=0;sales.forEach(function(x){tips+=Number(x.o&&x.o.tipRounding)||0;});
+  var net=gp-opex-totalUsage-platformCommission-platformTax-reconExp+reconRev+tips;
+  return{revenue:revenue,cogs:cogs,variance:variance,totalCogs:totalCogs,gp:gp,margin:revenue>0?gp/revenue*100:0,byItem:byItem,opex:opex,usageByType:usageByType,totalUsage:totalUsage,platformCommission:platformCommission,platformGross:platformGross,platformWht:platformWht,platformVat:platformVat,platformTax:platformTax,reconExp:reconExp,reconRev:reconRev,reconBy:reconBy,tips:tips,net:net,uncovered:uncovered,tx:sales.length,locked:!!m.locked};
+}
+function itemIdsSorted(){return Object.keys(expItems).sort(function(a,b){return((expItems[a].order||0)-(expItems[b].order||0))||(expItems[a].name||'').localeCompare(expItems[b].name||'');});}
+function varianceDetailHtml(mk){
+  function fq(n){n=Number(n)||0;return (Math.round(n*1000)/1000).toLocaleString('en-PH');}
+  var list=Object.keys(adjMap).map(function(k){return adjMap[k];}).filter(function(x){return x&&monthKey(x.ts)===mk;}).sort(function(a,b){return (b.ts||0)-(a.ts||0);});
+  if(!list.length)return '<div style="padding:0.6rem 0.9rem;color:var(--tl);font-size:0.8rem;">No stock adjustments recorded this month.</div>';
+  var rows=list.map(function(x){var d=new Date(x.ts);var dl=d.toLocaleDateString('en-PH',{month:'short',day:'numeric'});return '<tr><td style="padding:0.25rem 0.5rem;">'+dl+'</td><td style="padding:0.25rem 0.5rem;">'+esc(x.name||'')+'</td><td style="padding:0.25rem 0.5rem;text-align:right;">'+((Number(x.delta)||0)>0?'+':'')+fq(x.delta)+' '+esc(x.unit||'')+'</td><td style="padding:0.25rem 0.5rem;">'+esc(x.reason||'')+'</td><td style="padding:0.25rem 0.5rem;text-align:right;font-weight:600;">'+peso(x.varianceValue)+'</td></tr>';}).join('');
+  return '<div style="background:#faf7f2;padding:0.4rem 0.6rem;"><table style="width:100%;border-collapse:collapse;font-size:0.76rem;"><thead><tr style="color:var(--tl);text-align:left;"><th style="padding:0.25rem 0.5rem;">Date</th><th style="padding:0.25rem 0.5rem;">Item</th><th style="padding:0.25rem 0.5rem;text-align:right;">Qty Δ</th><th style="padding:0.25rem 0.5rem;">Reason</th><th style="padding:0.25rem 0.5rem;text-align:right;">COGS impact</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+/* ══════════ PLATFORM PAYOUT RECONCILIATION ══════════ */
+function poGross(o){return Number(o.grossPlatform||o.subtotal||o.total)||0;}
+function poNet(o){return (o.netPlatform!=null)?(Number(o.netPlatform)||0):(poGross(o)-(Number(o.commission)||0));}
+function refNorm(s){return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');}
+function refEq(a,b){var x=refNorm(a),y=refNorm(b);if(!x||!y)return false;if(x===y)return true;var lo=x.length<y.length?x:y,hi=x.length<y.length?y:x;return lo.length>=5&&hi.slice(-lo.length)===lo;}
+function platEntries(){var out=[];Object.keys(ordersMap).forEach(function(k){var o=ordersMap[k];if(o&&o.source==='pos'&&o.channel&&o.channel!=='instore'&&!o.voided)out.push({key:k,node:'orders',o:o});});Object.keys(archMap).forEach(function(k){var o=archMap[k];if(o&&o.source==='pos'&&o.channel&&o.channel!=='instore'&&!o.voided)out.push({key:k,node:'archivedOrders',o:o});});return out;}
+function poUnsettled(ch){return platEntries().filter(function(e){return e.o.channel===ch&&(e.o.settlementStatus||'unsettled')!=='settled';});}
+function renderPayouts(){
+  var root=document.getElementById('payoutsRoot');if(!root)return;
+  var a=A();
+  if(a&&!Object.keys(varAcctMap).length){var seed={};DEFAULT_VAR_ACCOUNTS.forEach(function(d){seed[d.id]={name:d.name,type:d.type,order:d.order};});a.update(a.ref(a.db,'platformVarAccounts'),seed).catch(function(){});}
+  var ch=poChannel;var chLbl=(PO_CHANNELS.filter(function(d){return d.k===ch;})[0]||{lbl:ch}).lbl;
+  var accs=varAccounts();
+  var unset=poUnsettled(ch);
+  var inRange=unset.filter(function(e){var t=e.o.timestamp||0;return (!poFrom||t>=dayStart(poFrom))&&(!poTo||t<dayStart(poTo)+86400000);});
+  var expected=inRange.reduce(function(s,e){return s+poNet(e.o);},0);
+  var grossSum=inRange.reduce(function(s,e){return s+poGross(e.o);},0);
+  var commSum=inRange.reduce(function(s,e){return s+(Number(e.o.commission)||0);},0);
+  // receivables (all unsettled, ignoring range)
+  var recvCards=PO_CHANNELS.map(function(d){var u=poUnsettled(d.k);var net=u.reduce(function(s,e){return s+poNet(e.o);},0);return '<div style="flex:1;min-width:170px;background:var(--cr);border:1px solid var(--cd);border-radius:8px;padding:0.7rem 0.9rem;"><div style="font-size:0.72rem;color:var(--tl);text-transform:uppercase;letter-spacing:0.05em;">'+esc(d.lbl)+' receivable</div><div style="font-size:1.2rem;font-weight:700;color:var(--bd);">'+peso(net)+'</div><div style="font-size:0.72rem;color:var(--tl);">'+u.length+' unsettled order(s)</div></div>';}).join('');
+  inRange.sort(function(x,y){return (x.o.timestamp||0)-(y.o.timestamp||0);});
+  var ordRows=inRange.length?inRange.map(function(e,i){var o=e.o;return '<tr><td style="text-align:center;"><input type="checkbox" data-poinc="'+i+'" checked/></td><td>'+esc(o.date||'')+'</td><td>'+esc(o.platformRef||o.id||'')+'</td><td class="r">'+peso(poGross(o))+'</td><td class="r">'+peso(Number(o.commission)||0)+'</td><td class="r">'+peso(poNet(o))+'</td></tr>';}).join(''):'<tr><td colspan="6" class="az-note" style="padding:0.7rem;">No unsettled '+esc(chLbl)+' orders in this range.</td></tr>';
+  var allocRows=accs.map(function(ac){return '<tr><td>'+esc(ac.name)+' <span style="font-size:0.7rem;color:var(--tl);">('+ac.type+')</span></td><td style="width:150px;"><input class="pz-in" type="number" step="any" data-alloc="'+esc(ac.id)+'" data-atype="'+ac.type+'" value="" placeholder="0" style="text-align:right;"/></td></tr>';}).join('');
+  var hist=Object.keys(payoutsMap).map(function(k){return Object.assign({id:k},payoutsMap[k]);}).filter(function(p){return p.channel===ch;}).sort(function(a,b){return (b.settledAt||0)-(a.settledAt||0);});
+  var histRows=hist.length?hist.map(function(p){return '<tr><td>'+esc(new Date(p.settledAt||0).toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'}))+'</td><td class="r">'+peso(p.expectedNet)+'</td><td class="r">'+peso(p.actualPayout)+'</td><td class="r '+((Number(p.variance)||0)<0?'az-down':(Number(p.variance)||0)>0?'az-up':'')+'">'+peso(p.variance)+'</td><td class="r">'+((p.orderIds||[]).length)+'</td></tr>';}).join(''):'<tr><td colspan="5" class="az-note" style="padding:0.6rem;">No payouts settled yet for '+esc(chLbl)+'.</td></tr>';
+
+  var html='<div class="pz-h">💱 Platform Payout Reconciliation</div>'
+    +'<p class="pz-sub">Weekly truth-up per platform. POS gross is booked as revenue and the flat commission as expense; here you enter the <b>actual payout</b> from Grab/Panda and allocate the difference to named accounts. Every peso is explained.</p>'
+    +'<div style="display:flex;gap:0.7rem;flex-wrap:wrap;margin-bottom:1rem;">'+recvCards+'</div>'
+    +'<div class="pz-card" style="margin-bottom:1rem;">'
+      +'<div style="display:flex;gap:0.8rem;flex-wrap:wrap;align-items:end;margin-bottom:0.8rem;">'
+        +'<div><span class="pz-lbl">Platform</span><select class="pz-in" id="poCh">'+PO_CHANNELS.map(function(d){return '<option value="'+d.k+'"'+(d.k===ch?' selected':'')+'>'+d.lbl+'</option>';}).join('')+'</select></div>'
+        +'<div><span class="pz-lbl">From</span><input type="date" class="pz-in" id="poFrom" value="'+(poFrom||'')+'"/></div>'
+        +'<div><span class="pz-lbl">To</span><input type="date" class="pz-in" id="poTo" value="'+(poTo||'')+'"/></div>'
+        +'<div style="font-size:0.74rem;color:var(--tl);">Leave dates blank to reconcile <b>all</b> unsettled '+esc(chLbl)+' orders.</div>'
+      +'</div>'
+      +'<details style="margin-bottom:0.6rem;"><summary style="cursor:pointer;font-weight:600;color:var(--bd);font-size:0.85rem;">📄 Match to payout statement (optional)</summary>'
+        +'<div style="margin-top:0.4rem;"><span class="pz-lbl">Paste the order numbers from the '+esc(chLbl)+' payout report (one per line or comma-separated)</span><textarea class="pz-in" id="poStmt" rows="3" placeholder="'+(ch==='grabfood'?'GF-123456, GF-123457, GF-123460':'FP-123456, FP-123457')+'" style="width:100%;font-size:0.8rem;"></textarea><button class="pz-btn sec" id="poMatch" style="margin-top:0.4rem;">Match &amp; tick</button><div id="poMatchInfo" style="font-size:0.78rem;margin-top:0.4rem;"></div></div></details>'
+      +'<p class="pz-sub" style="margin-top:0;">Tick only the orders that appear on <b>this</b> payout statement. Untick any that aren’t paid this cycle — they stay unsettled and roll to the next payout automatically.</p>'
+      +'<table class="pnl-tbl"><thead><tr><th style="text-align:center;"><input type="checkbox" id="poAll" checked title="Select all"/></th><th>Date</th><th>Order #</th><th class="r">Gross</th><th class="r">Commission</th><th class="r">Net</th></tr></thead><tbody>'+ordRows
+        +'<tr class="tot"><td></td><td colspan="2">Expected net (<span id="poCount">'+inRange.length+'</span> ticked)</td><td class="r" id="poGrossSum">'+peso(grossSum)+'</td><td class="r" id="poCommSum">'+peso(commSum)+'</td><td class="r" id="poExpected">'+peso(expected)+'</td></tr>'
+      +'</tbody></table>'
+      +'<div style="display:flex;gap:0.8rem;flex-wrap:wrap;align-items:end;margin-top:0.9rem;">'
+        +'<div><span class="pz-lbl">Actual payout received</span><input class="pz-in" type="number" step="any" id="poActual" placeholder="0" style="text-align:right;width:180px;"/></div>'
+        +'<div style="align-self:center;"><span class="pz-lbl">Variance (actual − expected)</span><div id="poVariance" style="font-weight:700;font-size:1.05rem;">'+peso(0-expected)+'</div></div>'
+      +'</div>'
+      +'<div class="az-sec" style="margin-top:0.9rem;">Allocate the variance</div>'
+      +'<p class="pz-sub" style="margin-top:0.2rem;">Enter positive amounts. Expense accounts reduce the payout; revenue accounts add. The allocations must equal the variance before you can settle.</p>'
+      +'<table class="pz-tbl"><thead><tr><th>Account</th><th>Amount ₱</th></tr></thead><tbody>'+allocRows+'</tbody></table>'
+      +'<div id="poBalance" style="margin-top:0.6rem;font-weight:600;"></div>'
+      +'<button class="pz-btn ok" id="poSettle" style="margin-top:0.7rem;padding:0.6rem 1.2rem;">Save &amp; settle '+esc(chLbl)+' payout</button>'
+    +'</div>'
+    +'<details style="margin-bottom:1rem;"><summary style="cursor:pointer;font-weight:600;color:var(--bd);">⚙️ Manage variance accounts</summary>'
+      +'<div class="pz-card" style="margin-top:0.5rem;"><table class="pz-tbl"><tbody>'
+        +accs.map(function(ac){return '<tr><td><input class="pz-in" data-acname="'+esc(ac.id)+'" value="'+esc(ac.name)+'"/></td><td style="width:130px;"><select class="pz-in" data-actype="'+esc(ac.id)+'"><option value="expense"'+(ac.type==='expense'?' selected':'')+'>expense</option><option value="revenue"'+(ac.type==='revenue'?' selected':'')+'>revenue</option></select></td><td style="width:60px;"><button class="pz-btn warn" data-acdel="'+esc(ac.id)+'" style="padding:0.2rem 0.5rem;">✕</button></td></tr>';}).join('')
+        +'</tbody></table>'
+        +'<div style="display:flex;gap:0.5rem;align-items:end;margin-top:0.6rem;flex-wrap:wrap;"><div><span class="pz-lbl">New account</span><input class="pz-in" id="poNewName" placeholder="e.g. FX adjustment" style="width:200px;"/></div><div><span class="pz-lbl">Type</span><select class="pz-in" id="poNewType"><option value="expense">expense</option><option value="revenue">revenue</option></select></div><button class="pz-btn sec" id="poAddAcc">+ Add</button><button class="pz-btn sec" id="poSaveAcc" style="margin-left:auto;">💾 Save account edits</button></div>'
+      +'</div></details>'
+    +'<div class="az-sec">Settled payouts — '+esc(chLbl)+'</div>'
+    +'<div class="pz-card"><table class="pnl-tbl"><thead><tr><th>Settled</th><th class="r">Expected</th><th class="r">Actual</th><th class="r">Variance</th><th class="r">Orders</th></tr></thead><tbody>'+histRows+'</tbody></table></div>';
+  root.innerHTML=html;
+
+  document.getElementById('poCh').onchange=function(){poChannel=this.value;renderPayouts();};
+  document.getElementById('poFrom').onchange=function(){poFrom=this.value||null;renderPayouts();};
+  document.getElementById('poTo').onchange=function(){poTo=this.value||null;renderPayouts();};
+  function allocSum(){var rev=0,exp=0;root.querySelectorAll('[data-alloc]').forEach(function(i){var v=Number(i.value)||0;if(i.getAttribute('data-atype')==='revenue')rev+=v;else exp+=v;});return rev-exp;}
+  function recompute(){var actual=Number((document.getElementById('poActual')||{}).value)||0;var variance=Math.round((actual-expected)*100)/100;var vEl=document.getElementById('poVariance');if(vEl){vEl.textContent=peso(variance);vEl.style.color=variance<0?'#c0392b':variance>0?'#2a9d5c':'var(--td)';}var alloc=Math.round(allocSum()*100)/100;var diff=Math.round((variance-alloc)*100)/100;var bEl=document.getElementById('poBalance');var ok=Math.abs(diff)<0.01;if(bEl){bEl.innerHTML='Allocated '+peso(alloc)+' / Variance '+peso(variance)+' — '+(ok?'<span style="color:#2a9d5c;">✓ balanced</span>':'<span style="color:#c0392b;">off by '+peso(diff)+'</span>');}return ok;}
+  var _pa=document.getElementById('poActual');if(_pa)_pa.oninput=recompute;
+  root.querySelectorAll('[data-alloc]').forEach(function(i){i.oninput=recompute;});
+  function selectedEntries(){return inRange.filter(function(e,i){var cb=root.querySelector('[data-poinc="'+i+'"]');return cb&&cb.checked;});}
+  function recomputeSel(){var g=0,c=0,n=0,cnt=0;inRange.forEach(function(e,i){var cb=root.querySelector('[data-poinc="'+i+'"]');if(cb&&cb.checked){g+=poGross(e.o);c+=(Number(e.o.commission)||0);n+=poNet(e.o);cnt++;}});expected=Math.round(n*100)/100;grossSum=g;commSum=c;var gEl=document.getElementById('poGrossSum');if(gEl)gEl.textContent=peso(g);var cEl=document.getElementById('poCommSum');if(cEl)cEl.textContent=peso(c);var eEl=document.getElementById('poExpected');if(eEl)eEl.textContent=peso(expected);var ctEl=document.getElementById('poCount');if(ctEl)ctEl.textContent=cnt;recompute();}
+  root.querySelectorAll('[data-poinc]').forEach(function(cb){cb.onchange=recomputeSel;});
+  var poAll=document.getElementById('poAll');if(poAll)poAll.onchange=function(){var ck=this.checked;root.querySelectorAll('[data-poinc]').forEach(function(cb){cb.checked=ck;});recomputeSel();};
+  var pmB=document.getElementById('poMatch');if(pmB)pmB.onclick=function(){
+    var raw=(document.getElementById('poStmt').value||'');
+    var refs=raw.split(/[\n,;\t ]+/).map(function(s){return s.trim();}).filter(Boolean);
+    if(!refs.length){alert('Paste the payout order numbers first.');return;}
+    var stmtMatched={}, matchedInRange=0;
+    inRange.forEach(function(e,i){var cb=root.querySelector('[data-poinc="'+i+'"]');if(!cb)return;var hit=false;refs.forEach(function(r,ri){if(refEq(r,e.o.platformRef)||refEq(r,e.o.id)){hit=true;stmtMatched[ri]=1;}});cb.checked=hit;if(hit)matchedInRange++;});
+    recomputeSel();
+    var allE=platEntries().filter(function(e){return e.o.channel===ch;});
+    var unmatched=refs.filter(function(r,ri){return !stmtMatched[ri];});
+    var rows=unmatched.map(function(r){var e=allE.filter(function(en){return refEq(r,en.o.platformRef)||refEq(r,en.o.id);})[0];var reason;if(!e)reason='<span style="color:#c0392b;">not in POS — possible missed re-key</span>';else if((e.o.settlementStatus||'unsettled')==='settled')reason='<span style="color:var(--tl);">already settled</span>';else reason='<span style="color:#8a6d1b;">unsettled but outside the current dates — widen the range, then re-match</span>';return '<div>• '+esc(r)+' — '+reason+'</div>';}).join('');
+    var info=document.getElementById('poMatchInfo');if(info)info.innerHTML='<b>'+matchedInRange+'</b> of '+refs.length+' statement order(s) matched &amp; ticked here.'+(unmatched.length?('<div style="margin-top:0.3rem;font-weight:600;">'+unmatched.length+' not matched in the list above:</div>'+rows):' <span style="color:#2a9d5c;">all matched ✓</span>');
+  };
+  recomputeSel();
+  document.getElementById('poSettle').onclick=function(){
+    var selected=selectedEntries();
+    if(!selected.length){alert('Tick at least one order that appears on this payout statement.');return;}
+    var actual=Number((document.getElementById('poActual').value)||0);
+    if(!recompute()){alert('Allocations must equal the variance before you can settle.');return;}
+    var variance=Math.round((actual-expected)*100)/100;
+    var allocs={};root.querySelectorAll('[data-alloc]').forEach(function(i){var v=Number(i.value)||0;if(v)allocs[i.getAttribute('data-alloc')]=v;});
+    var pid=uid('po_');var now=Date.now();
+    var rec={channel:ch,periodStart:(poFrom||''),periodEnd:(poTo||''),expectedNet:Math.round(expected*100)/100,actualPayout:actual,variance:variance,allocations:allocs,orderIds:selected.map(function(e){return e.o.id||e.key;}),by:(window.__posShift&&window.__posShift.staff)||'Manager',settledAt:now};
+    var left=inRange.length-selected.length;
+    var a2=A();a2.set(a2.ref(a2.db,'platformPayouts/'+pid),rec).then(function(){
+      selected.forEach(function(e){a2.update(a2.ref(a2.db,e.node+'/'+e.key),{settlementStatus:'settled',payoutId:pid});});
+      alert('Settled '+selected.length+' '+chLbl+' order(s).'+(left>0?(' '+left+' left unticked stay unsettled and carry to the next payout.'):'')+' Variance '+peso(variance)+' posted to the P&L.');
+    }).catch(function(err){alert('Could not save payout: '+((err&&err.code)||err)+'. If PERMISSION_DENIED: re-publish the database rules.');});
+  };
+  var _add=document.getElementById('poAddAcc');if(_add)_add.onclick=function(){var nm=(document.getElementById('poNewName').value||'').trim();if(!nm){alert('Type an account name.');return;}var t=document.getElementById('poNewType').value;var a3=A();a3.set(a3.ref(a3.db,'platformVarAccounts/'+uid('va_')),{name:nm,type:t,order:accs.length+1}).then(function(){});};
+  var _sav=document.getElementById('poSaveAcc');if(_sav)_sav.onclick=function(){var a4=A();var ups={};root.querySelectorAll('[data-acname]').forEach(function(i){var id=i.getAttribute('data-acname');var nm=(i.value||'').trim();var tp=(root.querySelector('[data-actype="'+id+'"]')||{}).value||'expense';if(nm)ups[id]={name:nm,type:tp,order:(varAcctMap[id]&&varAcctMap[id].order)||0};});a4.update(a4.ref(a4.db,'platformVarAccounts'),ups).then(function(){alert('Account edits saved.');});};
+  root.querySelectorAll('[data-acdel]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-acdel');if(!confirm('Remove this variance account? Past settled payouts keep their figures.'))return;var a5=A();a5.remove(a5.ref(a5.db,'platformVarAccounts/'+id));};});
+}
+function renderPnl(){
+  var root=document.getElementById('pnlRoot');if(!root)return;
+  if(!pnlMonth)pnlMonth=monthKey(Date.now());
+  var cur=pnlFor(pnlMonth), pmk=prevMonthKey(pnlMonth), prev=pnlFor(pmk);
+  var locked=cur.locked, ids=itemIdsSorted();
+  function vrow(label,c,p,bold){var dv=c-p;var dp=p!==0?dv/Math.abs(p)*100:(c!==0?100:0);return '<tr'+(bold?' class="tot"':'')+'><td>'+esc(label)+'</td><td class="r">'+peso(c)+'</td><td class="r">'+peso(p)+'</td><td class="r '+(dv>0?'az-up':dv<0?'az-down':'az-flat')+'">'+(p!==0||c!==0?pct(dp):'\u2014')+'</td></tr>';}
+  var oveRows=ids.map(function(id){return vrow('   '+expItems[id].name,(cur.byItem[id]&&cur.byItem[id].amount)||0,(prev.byItem[id]&&prev.byItem[id].amount)||0);}).join('');
+  var html='<div class="pz-h">\ud83d\udcb0 Profit &amp; Loss</div><p class="pz-sub">Management P&amp;L (cash-basis). Revenue = net sales \u00b7 COGS from recipe costs \u00b7 overhead expenses entered per month below. Netsuite/Xero remain the books of record.</p>';
+  html+='<div style="margin-bottom:1rem;display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;"><span class="pz-lbl" style="margin:0;">Month</span><input type="month" class="pz-in" id="pnlMonth" value="'+pnlMonth+'" style="width:auto;"/>'+(locked?'<span style="font-size:0.75rem;color:#2a9d5c;font-weight:600;">\ud83d\udd12 Saved</span>':'<span style="font-size:0.75rem;color:#e67e00;font-weight:600;">\u270f\ufe0f Draft \u2014 not saved</span>')+'<button class="pz-btn sec" id="pnlExport" style="padding:0.35rem 0.8rem;margin-left:auto;">\u2b07 Export CSV</button></div>';
+  html+='<div class="pz-card" style="margin-bottom:1.2rem;"><table class="pnl-tbl"><thead><tr><th>'+esc(monthLabel(pnlMonth))+'</th><th>This month</th><th>'+esc(monthLabel(pmk))+'</th><th>Var</th></tr></thead><tbody>'
+    +vrow('Net sales (revenue)',cur.revenue,prev.revenue)
+    +vrow('Cost of goods sold (recipes)',-cur.cogs,-prev.cogs)
+    +'<tr><td>Consumption variance <button class="pz-btn sec" id="pnlVarBtn" style="padding:0.05rem 0.5rem;font-size:0.72rem;margin-left:0.4rem;">details</button></td><td class="r">'+peso(-cur.variance)+'</td><td class="r">'+peso(-prev.variance)+'</td><td class="r">'+((cur.variance!==0||prev.variance!==0)?pct(prev.variance!==0?((cur.variance-prev.variance)/Math.abs(prev.variance)*100):(cur.variance!==0?100:0)):'—')+'</td></tr>'
+    +'<tr id="pnlVarDetail" style="display:none;"><td colspan="4" style="padding:0;">'+varianceDetailHtml(pnlMonth)+'</td></tr>'
+    +'<tr class="head"><td>Gross profit</td><td class="r">'+peso(cur.gp)+'</td><td class="r">'+peso(prev.gp)+'</td><td class="r">'+(prev.gp!==0?pct((cur.gp-prev.gp)/Math.abs(prev.gp)*100):'\u2014')+'</td></tr>'
+    +'<tr><td style="color:var(--tl);font-size:0.78rem;">Gross margin</td><td class="r" style="color:var(--tl);">'+(Math.round(cur.margin*10)/10)+'%</td><td class="r" style="color:var(--tl);">'+(Math.round(prev.margin*10)/10)+'%</td><td></td></tr>'
+    +'<tr class="head"><td>Overhead expenses</td><td class="r">'+peso(-cur.opex)+'</td><td class="r">'+peso(-prev.opex)+'</td><td></td></tr>'
+    +oveRows
+    +(function(){var ids={};Object.keys(cur.usageByType||{}).forEach(function(i){ids[i]=1;});Object.keys(prev.usageByType||{}).forEach(function(i){ids[i]=1;});return Object.keys(ids).sort().map(function(i){return vrow(usageNameFor(i),-((cur.usageByType||{})[i]||0),-((prev.usageByType||{})[i]||0));}).join('');})()
+    +((cur.tips||prev.tips)?vrow('Other income — tips / rounding',cur.tips,prev.tips):'')
+    +((cur.platformCommission||prev.platformCommission)?vrow('Platform commission (Grab/Panda)',-cur.platformCommission,-prev.platformCommission):'')
+    +((cur.platformWht||prev.platformWht)?vrow('Platform withholding tax (FoodPanda)',-cur.platformWht,-prev.platformWht):'')
+    +((cur.platformVat||prev.platformVat)?vrow('Platform VAT on services (FoodPanda)',-cur.platformVat,-prev.platformVat):'')
+    +(function(){var accs=varAccounts();var out='';accs.forEach(function(ac){var c=(cur.reconBy[ac.id]||0),p=(prev.reconBy[ac.id]||0);if(!c&&!p)return;var sign=ac.type==='revenue'?1:-1;out+=vrow('Payout: '+ac.name,sign*c,sign*p);});return out;})()
+    +vrow('Net profit',cur.net,prev.net,true)
+    +'</tbody></table>'
+    +((cur.platformGross||0)>0?'<p class="az-note" style="margin-top:0.5rem;">Revenue includes '+peso(cur.platformGross)+' platform gross (Grab/Panda). Commission is booked above; the weekly payout reconciliation posts any variance to the Payout lines.</p>':'')
+    +(cur.uncovered>0?'<p class="az-note" style="margin-top:0.5rem;">\u26a0\ufe0f '+cur.uncovered+' sale(s) this month have items without a costed recipe \u2014 COGS is understated for those.</p>':'')
+    +'</div>';
+  html+='<div class="az-sec">Overhead expenses \u2014 '+esc(monthLabel(pnlMonth))+(locked?' <span style="color:#2a9d5c;font-size:0.8rem;">(saved)</span>':'')+'</div>';
+  html+='<div class="pz-card"><table class="pz-tbl"><thead><tr><th>Expense item</th><th style="width:170px;">Amount \u20b1</th><th></th></tr></thead><tbody>'
+    +(ids.length?ids.map(function(id){var amt=(cur.byItem[id]&&cur.byItem[id].amount)||0;return '<tr><td>'+esc(expItems[id].name)+'</td><td><input class="pz-in" type="number" step="any" data-amt="'+id+'" value="'+(amt||'')+'"'+(locked?' disabled':'')+' style="text-align:right;"/></td><td><button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-itemdel="'+id+'"'+(locked?' disabled':'')+'>\u2715</button></td></tr>';}).join(''):'<tr><td colspan="3" class="az-note" style="padding:0.8rem;">No expense items yet. Add your overhead items below (e.g. Rent, Electricity, Salaries).</td></tr>')
+    +'<tr class="tot"><td>Total overhead</td><td class="r" id="ovTotal">'+peso(cur.opex)+'</td><td></td></tr>'
+    +'</tbody></table>'
+    +'<div style="margin-top:0.7rem;display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap;">'
+    +'<div><span class="pz-lbl">Add expense item</span><input class="pz-in" id="pnlExpName" placeholder="e.g. Electricity" style="width:200px;"/></div><button class="pz-btn sec" id="addItemBtn">+ Add item</button>'
+    +'<div style="margin-left:auto;">'+(locked?'<button class="pz-btn" id="reopenBtn">\ud83d\udd13 Re-open to amend</button>':'<button class="pz-btn ok" id="saveBtn">\ud83d\udcbe Save month</button>')+'</div>'
+    +'</div></div>';
+  root.innerHTML=html;
+  var _vb=document.getElementById('pnlVarBtn'); if(_vb)_vb.onclick=function(){var d=document.getElementById('pnlVarDetail'); if(d)d.style.display=(d.style.display==='none'?'table-row':'none');};
+  document.getElementById('pnlMonth').onchange=function(){pnlMonth=this.value;renderPnl();};
+  document.getElementById('pnlExport').onclick=function(){exportPnl(cur,prev,pmk,ids);};
+  function recalcTotal(){var t=0;root.querySelectorAll('[data-amt]').forEach(function(i){t+=Number(i.value)||0;});var el=document.getElementById('ovTotal');if(el)el.textContent=peso(t);}
+  root.querySelectorAll('[data-amt]').forEach(function(i){i.oninput=recalcTotal;});
+  var addB=document.getElementById('addItemBtn');if(addB)addB.onclick=function(){var nm=(document.getElementById('pnlExpName').value||'').trim();if(!nm){alert('Type an item name first.');return;}var a=A();a.set(a.ref(a.db,'expenseItems/'+uid('ei_')),{name:nm,order:Object.keys(expItems).length,ts:Date.now()}).then(function(){document.getElementById('pnlExpName').value='';}).catch(function(e){alert('Could not add item: '+((e&&e.code)||e)+'. If PERMISSION_DENIED: re-publish the database rules and log in with your EMAIL, not the old username.');});};
+  var saveB=document.getElementById('saveBtn');if(saveB)saveB.onclick=function(){var amounts={};root.querySelectorAll('[data-amt]').forEach(function(i){amounts[i.getAttribute('data-amt')]=Number(i.value)||0;});var a=A();a.set(a.ref(a.db,'monthlyExpenses/'+pnlMonth),{locked:true,amounts:amounts,savedAt:Date.now()}).then(function(){renderPnl();}).catch(function(e){alert('Could not save: '+((e&&e.code)||e)+'. If PERMISSION_DENIED: re-publish the database rules and log in with your EMAIL.');});};
+  var reB=document.getElementById('reopenBtn');if(reB)reB.onclick=function(){if(!confirm('Re-open '+monthLabel(pnlMonth)+' to amend the figures?'))return;var a=A();a.update(a.ref(a.db,'monthlyExpenses/'+pnlMonth),{locked:false}).then(function(){renderPnl();});};
+  root.querySelectorAll('[data-itemdel]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-itemdel');if(!confirm('Remove "'+(expItems[id]?expItems[id].name:'')+'" from the item list? It is removed from every month.'))return;var a=A();a.remove(a.ref(a.db,'expenseItems/'+id));};});
+}
+function exportPnl(cur,prev,pmk,ids){
+  var rows=[['Accaza Profit & Loss',monthLabel(pnlMonth)],[''],['Line','This month','Last month ('+monthLabel(pmk)+')']];
+  rows.push(['Net sales',cur.revenue.toFixed(2),prev.revenue.toFixed(2)]);
+  rows.push(['COGS',(-cur.cogs).toFixed(2),(-prev.cogs).toFixed(2)]);
+  rows.push(['Gross profit',cur.gp.toFixed(2),prev.gp.toFixed(2)]);
+  rows.push(['Gross margin %',(Math.round(cur.margin*10)/10),(Math.round(prev.margin*10)/10)]);
+  rows.push(['Overhead expenses','','']);
+  (ids||Object.keys(cur.byItem)).forEach(function(id){var nm=(cur.byItem[id]&&cur.byItem[id].name)||id;rows.push(['  '+nm,(-((cur.byItem[id]&&cur.byItem[id].amount)||0)).toFixed(2),(-((prev.byItem[id]&&prev.byItem[id].amount)||0)).toFixed(2)]);});
+  rows.push(['Total overhead',(-cur.opex).toFixed(2),(-prev.opex).toFixed(2)]);
+  rows.push(['Net profit',cur.net.toFixed(2),prev.net.toFixed(2)]);
+  var csv=rows.map(function(r){return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"';}).join(',');}).join('\n');
+  var blob=new Blob([csv],{type:'text/csv'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='accaza-pnl-'+pnlMonth+'.csv';a.click();URL.revokeObjectURL(url);
+}
+/* ══════════ STOCK VALUE / STOCK CARD ══════════ */
+function svRange(){var f=svFrom,t=svTo;if(!f&&!t){var d=new Date();f=new Date(d.getFullYear(),d.getMonth(),1);f=f.getFullYear()+'-'+pad(f.getMonth()+1)+'-'+pad(f.getDate());t=new Date();t=t.getFullYear()+'-'+pad(t.getMonth()+1)+'-'+pad(t.getDate());}return {f:f||'',t:t||''};}
+function fq(n){n=Number(n)||0;return (Math.round(n*1000)/1000).toLocaleString('en-PH');}
+function invItems(){return Object.keys(invMap).map(function(k){return Object.assign({id:k},invMap[k]);}).sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});}
+function tsToDate(ts){var d=new Date(ts||0);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+function inRng(d,rng){return (!rng.f||d>=rng.f)&&(!rng.t||d<=rng.t);}
+function itemPeriod(id,cost,rng){var pQ=0,pV=0,uQ=0;
+  Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r||r.ing!==id)return;var d=r.date||tsToDate(r.ts);if(inRng(d,rng)){pQ+=Number(r.qty)||0;pV+=Number(r.total)||0;}});
+  [ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k];if(!isSale(o)||!o.inventoryUsage||!o.inventoryUsage[id])return;var d=tsToDate(o.timestamp||Date.parse(o.date)||0);if(inRng(d,rng))uQ+=Number(o.inventoryUsage[id])||0;});});
+  Object.keys(usageMap).forEach(function(k){var u=usageMap[k];if(!u||u.reversed||!u.usage||!u.usage[id])return;var d=tsToDate(u.ts);if(inRng(d,rng))uQ+=Number(u.usage[id])||0;});
+  return {pQ:pQ,pV:pV,uQ:uQ,uV:uQ*(Number(cost)||0)};
+}
+function itemMovements(id){
+  var cost=Number((invMap[id]||{}).cost)||0;var out=[];
+  Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r||r.ing!==id)return;out.push({ts:r.ts||Date.parse(r.date)||0,date:r.date||tsToDate(r.ts),type:'Purchase'+(r.supplier?' · '+r.supplier:'')+(r.brand?' · '+r.brand:''),in:Number(r.qty)||0,out:0});});
+  Object.keys(adjMap).forEach(function(k){var x=adjMap[k];if(!x||x.ing!==id)return;var dl=Number(x.delta)||0;out.push({ts:x.ts||0,date:tsToDate(x.ts),type:'Adjust · '+(x.reason||''),in:dl>0?dl:0,out:dl<0?-dl:0});});
+  Object.keys(usageMap).forEach(function(k){var u=usageMap[k];if(!u||u.reversed||!u.usage||!u.usage[id])return;out.push({ts:u.ts||0,date:tsToDate(u.ts),type:'Usage · '+(u.kindName||u.kind||''),in:0,out:Number(u.usage[id])||0});});
+  var byDay={};[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k];if(!isSale(o)||!o.inventoryUsage||!o.inventoryUsage[id])return;var day=tsToDate(o.timestamp||Date.parse(o.date)||0);byDay[day]=(byDay[day]||0)+(Number(o.inventoryUsage[id])||0);});});
+  Object.keys(byDay).forEach(function(day){out.push({ts:new Date(day+'T12:00:00').getTime(),date:day,type:'Sales usage',in:0,out:byDay[day]});});
+  out.sort(function(a,b){return (a.ts||0)-(b.ts||0);});return out;
+}
+function renderStockValue(){
+  var root=document.getElementById('stockValueRoot');if(!root)return;
+  var rng=svRange();var items=invItems();
+  var totalValue=items.reduce(function(s,i){return s+(Number(i.stock)||0)*(Number(i.cost)||0);},0);
+  var periodPurch=0;Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r)return;var d=r.date||tsToDate(r.ts);if(inRng(d,rng))periodPurch+=Number(r.total)||0;});
+  var periodUse=0;[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k];if(!isSale(o))return;var d=tsToDate(o.timestamp||Date.parse(o.date)||0);if(inRng(d,rng))periodUse+=Number(o.cogsSnapshot)||0;});});
+  Object.keys(usageMap).forEach(function(k){var u=usageMap[k];if(!u||u.reversed)return;var d=tsToDate(u.ts);if(inRng(d,rng))periodUse+=Number(u.cost)||0;});
+  var rows=items.map(function(i){var cost=Number(i.cost)||0;var val=(Number(i.stock)||0)*cost;var pf=itemPeriod(i.id,cost,rng);
+    return '<tr><td>'+esc(i.name)+'</td><td class="r">'+fq(i.stock||0)+' '+esc(i.unit||'')+'</td><td class="r">'+peso(cost)+'</td><td class="r" style="font-weight:600;">'+peso(val)+'</td><td class="r" style="color:#2a9d5c;">'+(pf.pQ?(fq(pf.pQ)+' · '+peso(pf.pV)):'—')+'</td><td class="r" style="color:#c0392b;">'+(pf.uQ?(fq(pf.uQ)+' · '+peso(pf.uV)):'—')+'</td><td class="r"><button class="pz-btn sec" data-svcard="'+esc(i.id)+'" style="padding:0.15rem 0.5rem;">Card</button></td></tr>';
+  }).join('');
+  var html='<div class="pz-h">📊 Stock Value</div><p class="pz-sub">Inventory valuation (stock × current cost) plus per-item stock cards. Purchases come from received stock, usage from sales &amp; internal use, adjustments from counts/wastage. A stock card’s “implied opening” is what the balance must have been before the tracked movements — it always ties to today’s stock.</p>'
+    +'<div style="display:flex;gap:0.7rem;flex-wrap:wrap;margin-bottom:0.8rem;">'
+      +'<div class="pz-card" style="flex:1;min-width:170px;"><div style="font-size:0.72rem;color:var(--tl);">Total inventory value</div><div style="font-size:1.25rem;font-weight:700;color:var(--bd);">'+peso(totalValue)+'</div></div>'
+      +'<div class="pz-card" style="flex:1;min-width:170px;"><div style="font-size:0.72rem;color:var(--tl);">Purchases (period)</div><div style="font-size:1.25rem;font-weight:700;color:#2a9d5c;">'+peso(periodPurch)+'</div></div>'
+      +'<div class="pz-card" style="flex:1;min-width:170px;"><div style="font-size:0.72rem;color:var(--tl);">Usage / COGS (period)</div><div style="font-size:1.25rem;font-weight:700;color:#c0392b;">'+peso(periodUse)+'</div></div>'
+    +'</div>'
+    +'<div style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap;margin-bottom:0.8rem;"><div><span class="pz-lbl">From</span><input class="pz-in" id="svFrom" type="date" value="'+rng.f+'"/></div><div><span class="pz-lbl">To</span><input class="pz-in" id="svTo" type="date" value="'+rng.t+'"/></div><button class="pz-btn sec" id="svExport" style="padding:0.3rem 0.7rem;">⬇ Excel</button></div>'
+    +'<div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th class="r">In stock</th><th class="r">Cost/unit</th><th class="r">Value</th><th class="r">Purchases (qty · ₱)</th><th class="r">Usage (qty · ₱)</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="7" class="az-note" style="padding:0.6rem;">No inventory items.</td></tr>')+'</tbody></table></div></div>';
+  root.innerHTML=html;
+  var ff=document.getElementById('svFrom');if(ff)ff.onchange=function(){svFrom=this.value||null;renderStockValue();};
+  var ft=document.getElementById('svTo');if(ft)ft.onchange=function(){svTo=this.value||null;renderStockValue();};
+  var ex=document.getElementById('svExport');if(ex)ex.onclick=exportStockValue;
+  root.querySelectorAll('[data-svcard]').forEach(function(b){b.onclick=function(){openStockCard(b.getAttribute('data-svcard'));};});
+}
+function openStockCard(id){
+  var inv=invMap[id]||{};var cost=Number(inv.cost)||0;var cur=Number(inv.stock)||0;
+  var mv=itemMovements(id);var net=mv.reduce(function(s,m){return s+(Number(m.in)||0)-(Number(m.out)||0);},0);var opening=Math.round((cur-net)*1000)/1000;var run=opening;
+  var rows=mv.map(function(m){run=Math.round((run+(Number(m.in)||0)-(Number(m.out)||0))*1000)/1000;return '<tr><td>'+esc(m.date)+'</td><td>'+esc(m.type)+'</td><td class="r" style="color:#2a9d5c;">'+(m.in?fq(m.in):'')+'</td><td class="r" style="color:#c0392b;">'+(m.out?fq(m.out):'')+'</td><td class="r">'+fq(run)+'</td><td class="r">'+peso(run*cost)+'</td></tr>';}).join('');
+  var mask=document.createElement('div');mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
+  mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:660px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;"><div style="font-weight:700;color:var(--bd);">Stock card — '+esc(inv.name)+'</div><button class="pz-btn sec" id="scClose" style="padding:0.2rem 0.6rem;">✕</button></div>'
+    +'<p class="pz-sub" style="margin:0.3rem 0 0.6rem;">Cost/unit '+peso(cost)+' · current stock '+fq(cur)+' '+esc(inv.unit||'')+' · value '+peso(cur*cost)+'</p>'
+    +'<table class="pz-tbl"><thead><tr><th>Date</th><th>Movement</th><th class="r">In</th><th class="r">Out</th><th class="r">Balance</th><th class="r">Value</th></tr></thead><tbody>'
+    +'<tr style="font-style:italic;color:var(--tl);"><td>—</td><td>Implied opening (before tracked movements)</td><td></td><td></td><td class="r">'+fq(opening)+'</td><td class="r">'+peso(opening*cost)+'</td></tr>'
+    +(rows||'<tr><td colspan="6" class="az-note" style="padding:0.5rem;">No tracked movements yet.</td></tr>')
+    +'</tbody></table></div>';
+  document.body.appendChild(mask);
+  mask.querySelector('#scClose').onclick=function(){document.body.removeChild(mask);};
+  mask.onclick=function(e){if(e.target===mask)document.body.removeChild(mask);};
+}
+function exportStockValue(){
+  if(!window.XLSX){alert('Excel library still loading — try again.');return;}
+  var rng=svRange();var aoa=[['Item','Unit','In stock','Cost/unit','Value','Purchases qty','Purchases ₱','Usage qty','Usage ₱']];
+  invItems().forEach(function(i){var cost=Number(i.cost)||0;var pf=itemPeriod(i.id,cost,rng);aoa.push([i.name,i.unit||'',Number(i.stock)||0,cost,(Number(i.stock)||0)*cost,pf.pQ,pf.pV,pf.uQ,pf.uV]);});
+  var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'StockValue');XLSX.writeFile(wb,'accaza-stock-value-'+new Date().toISOString().slice(0,10)+'.xlsx');
+}
+})();

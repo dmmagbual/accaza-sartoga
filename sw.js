@@ -28,8 +28,8 @@ self.addEventListener('notificationclick',function(e){
 });
 
 /* App shell cache (network-first) */
-const CACHE='accaza-v43';
-const ASSETS=['/','/index.html','/favicon_192x192.png','/favicon_512x512.png'];
+const CACHE='accaza-v44';
+const ASSETS=['/','/index.html','/assets/js/customer/core.mjs','/assets/js/customer/navigation.js','/assets/js/customer/ui.js','/assets/js/customer/order-tracker.js','/assets/js/customer/packages.js'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));self.skipWaiting();});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));self.clients.claim();});
 self.addEventListener('fetch',e=>{
