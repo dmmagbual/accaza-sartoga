@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v137</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v138</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1143,7 +1143,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
         <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;margin-bottom:1rem;">💳 Payment Split</h4><div id="payPendBanner"></div><div id="payMixList" style="margin-top:0.5rem;"></div></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
-        <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;margin-bottom:1rem;">🏆 Top 5 Best Sellers</h4><div id="topItemsList"></div></div>
+        <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;margin-bottom:1rem;">🏆 Top 10 Best Sellers</h4><div id="topItemsList"></div></div>
         <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;margin-bottom:1rem;">📦 Order Status Breakdown</h4><div id="statusBreakdown"></div></div>
       </div>
     </div>
@@ -3227,12 +3227,21 @@ function renderDashboard(){
   var _pendEl=document.getElementById('payPendBanner');if(_pendEl)_pendEl.innerHTML=_pend.length?'<div style="background:#fff8e1;border:1px solid #ffe0a3;border-radius:6px;padding:0.4rem 0.6rem;font-size:0.78rem;color:#8a6d1b;font-weight:600;margin-bottom:0.5rem;">⏳ Pending verification: ₱'+_pendTot.toLocaleString()+' ('+_pend.length+') — non-cash not yet confirmed in the account</div>':'';
   var _pml=document.getElementById('payMixList');if(_pml)_pml.innerHTML=_pmk.length?_pmk.map(function(k){var pv=Math.round(payMix[k]/_pmt*100);return '<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.45rem;font-size:0.82rem;"><span style="width:12px;height:12px;border-radius:50%;background:'+(_pmc[k]||'#999')+';flex-shrink:0;"></span><span style="flex:1;color:var(--tm);">'+k+'</span><span style="font-weight:600;color:var(--bd);">₱'+payMix[k].toLocaleString()+' ('+pv+'%)</span></div>';}).join(''):'<p style="font-size:0.8rem;color:var(--tl);text-align:center;padding:0.5rem;">No sales yet.</p>';
   drawRevenueChart(sales);
-  // Top 5
+  // Top 10 best sellers — ranked by menu product (drinks) units. Uses structured lineItems so
+  // optional ingredients (add-ons/syrups/shots) are NOT counted; food-tagged categories excluded.
   const itemCount={};
-  sales.forEach(function(o){if(!o.items)return;o.items.split(',').forEach(function(s){const name=s.trim().replace(/\s*\(.*?\)\s*/g,'').replace(/\s*x\d+\s*$/,'').trim();const qty=parseInt((s.match(/x(\d+)/)||[])[1]||1);if(name)itemCount[name]=(itemCount[name]||0)+qty;});});
-  const top5=Object.entries(itemCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const _mim=(A()&&A().menuItemsMap)||{}; const _ctype=(window.__posSettings&&window.__posSettings.catType)||{};
+  function _isDrink(li){ var mi=_mim[li&&li.itemKey]; if(!mi)return true; /* unknown/legacy → keep */ return _ctype[mi.cat]!=='food'; }
+  sales.forEach(function(o){
+    if(o.lineItems&&o.lineItems.length){
+      o.lineItems.forEach(function(li){ if(!li)return; if(!_isDrink(li))return; var nm=li.name||(_mim[li.itemKey]&&_mim[li.itemKey].name)||li.itemKey; if(!nm)return; itemCount[nm]=(itemCount[nm]||0)+(Number(li.qty)||0); });
+    } else if(o.items){ /* legacy orders without lineItems — parse the summary string, strip (options) and xN */
+      o.items.split(',').forEach(function(s){const name=s.trim().replace(/\s*\(.*?\)\s*/g,'').replace(/\s*x\d+\s*$/,'').trim();const qty=parseInt((s.match(/x(\d+)/)||[])[1]||1);if(name)itemCount[name]=(itemCount[name]||0)+qty;});
+    }
+  });
+  const top10=Object.entries(itemCount).sort((a,b)=>b[1]-a[1]).slice(0,10);
   const topEl=document.getElementById('topItemsList');
-  if(topEl)topEl.innerHTML=top5.length?top5.map(function(entry,i){const medals=['🥇','🥈','🥉','4','5'];return'<div style="display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0;border-bottom:1px solid var(--cd);"><span style="font-size:1rem;min-width:20px;text-align:center;">'+medals[i]+'</span><span style="flex:1;font-size:0.83rem;color:var(--bd);">'+entry[0]+'</span><span style="font-size:0.8rem;font-weight:600;color:var(--bl);">'+entry[1]+' sold</span></div>';}).join(''):'<p style="color:var(--tl);font-size:0.83rem;text-align:center;padding:1rem;">No archived orders yet.</p>';
+  if(topEl)topEl.innerHTML=top10.length?top10.map(function(entry,i){const medals=['🥇','🥈','🥉','4','5','6','7','8','9','10'];return'<div style="display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0;border-bottom:1px solid var(--cd);"><span style="font-size:1rem;min-width:20px;text-align:center;">'+medals[i]+'</span><span style="flex:1;font-size:0.83rem;color:var(--bd);">'+entry[0]+'</span><span style="font-size:0.8rem;font-weight:600;color:var(--bl);">'+entry[1]+' sold</span></div>';}).join(''):'<p style="color:var(--tl);font-size:0.83rem;text-align:center;padding:1rem;">No sales yet.</p>';
   // Status breakdown
   const allActive=Object.values(adminOrdersMap);
   const statuses=['Pending','Confirmed','Preparing','Completed','Received','Rejected'];
