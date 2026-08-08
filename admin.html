@@ -6252,6 +6252,28 @@ function kpi(label,val,delta){var d='';if(delta!=null&&isFinite(delta))d='<div c
 
 /* ══════════ ANALYTICS ══════════ */
 function renderAnalytics(){
+  var root=document.getElementById('analyticsRoot'); if(!root)return;
+  /* One delegated click listener on the (persistent) analytics container. It survives every
+     innerHTML re-render AND any error inside the body render, so the date controls always work. */
+  if(!root.__azWired){ root.__azWired=true; root.addEventListener('click',function(e){
+    var t=e.target; if(!t||!t.closest)return;
+    var chip=t.closest('[data-range]');
+    if(chip){ azRange=chip.getAttribute('data-range'); azFrom=null; azTo=null; renderAnalytics(); return; }
+    if(t.closest('#azApply')){
+      var f=(document.getElementById('azFrom')||{}).value, tt=(document.getElementById('azTo')||{}).value;
+      if(!f||!tt){ alert('Pick both a From and a To date, then tap “Apply dates”.'); return; }
+      if(f>tt){ alert('The From date is later than the To date — please switch them.'); return; }
+      azFrom=new Date(f).getTime(); azTo=new Date(tt).getTime(); azRange='custom'; renderAnalytics(); return;
+    }
+  }); }
+  try{ renderAnalyticsBody(); }
+  catch(err){ console.error('renderAnalytics error',err);
+    root.innerHTML='<div class="pz-h">📊 Analytics</div><div style="margin:0.5rem 0;">'
+      +['today:Today','7d:7 days','30d:30 days','month:This month'].map(function(o){var v=o.split(':');return '<span class="pz-chip'+(azRange===v[0]?' on':'')+'" data-range="'+v[0]+'">'+v[1]+'</span>';}).join('')
+      +' <span style="font-size:0.78rem;color:var(--tl);">or <input type="date" class="pz-in" id="azFrom" style="width:auto;display:inline-block;padding:0.2rem 0.4rem;"/> → <input type="date" class="pz-in" id="azTo" style="width:auto;display:inline-block;padding:0.2rem 0.4rem;"/> <button class="pz-btn sec" id="azApply" style="padding:0.25rem 0.6rem;">Apply dates</button></span></div>'
+      +'<div style="background:#fde8e8;border:1px solid #f5b5b5;border-radius:8px;padding:1rem;color:#a11;font-size:0.85rem;">Analytics couldn’t finish building the report: <b>'+esc(String((err&&err.message)||err))+'</b>.<br>The date buttons above still work. Please send Claude this exact message so I can fix the cause.</div>'; }
+}
+function renderAnalyticsBody(){
   var root=document.getElementById('analyticsRoot');if(!root)return;
   var b=rangeBounds(),from=b[0],to=b[1];var span=to-from;
   var cur=salesBetween(from,to), prev=salesBetween(from-span,from);
