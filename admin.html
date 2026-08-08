@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v147</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v148</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1401,6 +1401,58 @@ import{getFunctions,httpsCallable}from"https://www.gstatic.com/firebasejs/10.12.
 const firebaseConfig={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 const app=initializeApp(firebaseConfig);
 const db=getDatabase(app);const auth=getAuth(app);const functions=getFunctions(app,'asia-southeast1');const getPaymentProofCall=httpsCallable(functions,'getPaymentProof');window.__accazaAuth=auth;
+// Release 2B: one physical Realtime Database listener per path. POS-critical
+// paths stay live; large back-office paths are connected only for the open tab.
+function createSubscriptionHub(database,makeRef,listen){
+  var entries={},authorized=false,activeScope='dashboard',nextId=1;
+  var critical={categories:1,settings:1,posSettings:1,orders:1,optionGroups:1,menuItems:1,availability:1,channelPrices:1,posStaff:1,posActiveShift:1,packages:1,'.info/connected':1};
+  var scopes={
+    staffAccounts:['staffaccounts'],adminAccounts:['adminaccounts'],admins:['staffaccess'],adminPerms:['staffaccess'],
+    archivedOrders:['dashboard','archive','appcustomers','analytics','pnl','stockvalue','cashflow','receivables','dailyreport'],
+    archivedReservations:['reservations','calendar'],reservations:['dashboard','reservations','calendar'],
+    feedbacks:['comments','analytics'],reviews:['dashboard','reviews','analytics'],payment:['payment'],calBlocks:['reservations','calendar'],
+    appCustomers:['appcustomers','analytics'],inventory:['inventory','purchases','recipes','usage','stockvalue'],
+    recipes:['recipes','usage','analytics','pnl'],optionRecipes:['recipes','usage'],internalUsage:['usage','pnl','stockvalue'],usageTypes:['usage'],
+    expenseItems:['pnl'],monthlyExpenses:['pnl'],inventoryAdjustments:['pnl','stockvalue'],stockReceipts:['purchases','stockvalue'],
+    analyticsFunnel:['analytics'],platformPayouts:['payouts','pnl','analytics','cashflow','receivables'],platformVarAccounts:['payouts','pnl'],
+    shifts:['ops'],activityLog:['ops'],heldOrders:['pos','ops'],discrepancies:['discrepancy'],
+    pettyCashVouchers:['petty'],pettyCashReplenishments:['petty'],pettyCashSettings:['petty'],
+    cfAccounts:['cashflow','receivables','payables'],cfLedger:['cashflow'],receivables:['receivables'],payables:['payables']
+  };
+  function policy(path,opts){opts=opts||{};return {critical:opts.critical===true||critical[path]===1,scopes:opts.scopes||scopes[path]||[]};}
+  function consumerActive(c){return authorized&&(c.critical||c.scopes.indexOf(activeScope)>-1);}
+  function reportError(path,error){console.error('ACCAZA LIVE DATA ERROR ['+path+']',error);try{(window.accazaToast||function(){})('Live data failed for '+path+'. Check connection or access.','err');}catch(_e){}}
+  function attach(entry){
+    entry.unsub=listen(makeRef(database,entry.path),function(snapshot){
+      entry.last=snapshot;
+      Object.keys(entry.consumers).forEach(function(id){var c=entry.consumers[id];if(consumerActive(c)){try{c.callback(snapshot);}catch(e){console.error('ACCAZA RENDER ERROR ['+entry.path+']',e);}}});
+    },function(error){entry.unsub=null;reportError(entry.path,error);});
+  }
+  function reconcileEntry(entry){
+    var ids=Object.keys(entry.consumers),needed=ids.some(function(id){return consumerActive(entry.consumers[id]);}),wasAttached=!!entry.unsub;
+    if(needed&&!entry.unsub)attach(entry);
+    if(!needed&&entry.unsub){entry.unsub();entry.unsub=null;entry.last=null;}
+    ids.forEach(function(id){
+      var c=entry.consumers[id],now=consumerActive(c),becameActive=now&&!c.wasActive;
+      c.wasActive=now;
+      if(becameActive&&wasAttached&&entry.last){try{c.callback(entry.last);}catch(e){console.error('ACCAZA RENDER ERROR ['+entry.path+']',e);}}
+    });
+  }
+  function reconcile(){Object.keys(entries).forEach(function(path){reconcileEntry(entries[path]);});}
+  return {
+    subscribe:function(path,callback,opts){
+      var p=policy(path,opts),entry=entries[path]||(entries[path]={path:path,consumers:{},unsub:null,last:null}),id=String(nextId++);
+      entry.consumers[id]={callback:callback,critical:p.critical,scopes:p.scopes,wasActive:false};reconcileEntry(entry);
+      return function(){delete entry.consumers[id];reconcileEntry(entry);};
+    },
+    authorize:function(){authorized=true;try{performance.mark('accaza-live-start');}catch(_e){}reconcile();},
+    deauthorize:function(){authorized=false;reconcile();},
+    activate:function(scope){activeScope=scope||'dashboard';reconcile();},
+    stats:function(){var attached=Object.keys(entries).filter(function(k){return !!entries[k].unsub;});return {authorized:authorized,activeScope:activeScope,attached:attached,attachedCount:attached.length,registeredPaths:Object.keys(entries).length};}
+  };
+}
+const subscriptionHub=createSubscriptionHub(db,ref,onValue);
+window.__accazaLiveStats=function(){return subscriptionHub.stats();};
 window.__fbForgot=async function(){var em=(document.getElementById('adminUser').value||'').trim();if(!em||em.indexOf('@')<0){em=(prompt('Enter your account email for a reset link:')||'').trim();}if(!em||em.indexOf('@')<0){alert('Please enter a valid email.');return;}try{await sendPasswordResetEmail(auth,em);alert('Password reset link sent to '+em+'. Check inbox and spam.');}catch(e){alert('Could not send reset: '+((e&&e.code)||e));}};
 // ===================== WEB PUSH (FCM) =====================
 // Paste your Web Push certificate key here (Firebase Console > Project settings > Cloud Messaging > Web Push certificates).
@@ -1446,7 +1498,8 @@ window.__setupPush=setupPush;
 const settingsRef=ref(db,'settings'),staffAccountsRef=ref(db,'staffAccounts'),adminAccountsRef=ref(db,'adminAccounts'),ordersRef=ref(db,'orders'),archivedRef=ref(db,'archivedOrders'),archivedResRef=ref(db,'archivedReservations'),reservationsRef=ref(db,'reservations'),feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),calBlocksRef=ref(db,'calBlocks'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups'),appCustomersRef=ref(db,'appCustomers');
 // ── POS / INVENTORY BRIDGE ── exposes DB + live maps to the isolated POS module (see #accaza-pos script). Additive; does not change existing behaviour.
 window.__accaza={
-  db, ref, set, get, update, remove, onValue, runTransaction,
+  db, ref, set, get, update, remove, onValue, runTransaction, hub:subscriptionHub,
+  subscribe:function(path,callback,opts){return subscriptionHub.subscribe(path,callback,opts);},
   get menuItemsMap(){return menuItemsMap;},
   get optionGroupsMap(){return optionGroupsMap;},
   get categoriesMap(){return categoriesMap;},
@@ -1564,7 +1617,7 @@ function rebuildTabs(){
 }
 
 // ── FIREBASE LISTENERS ──
-onValue(categoriesRef,snap=>{
+subscriptionHub.subscribe('categories',snap=>{
   const saved=snap.val();
   if(saved){categoriesMap=saved;}
   else{const seed={};DEFAULT_CATS.forEach(c=>{seed[c.id]=c;});set(categoriesRef,seed);categoriesMap=seed;}
@@ -1574,17 +1627,17 @@ onValue(categoriesRef,snap=>{
   if(adminLoggedIn){buildAvail();renderCategoryManager();}
 });
 
-onValue(settingsRef,snap=>{
+subscriptionHub.subscribe('settings',snap=>{
   const s=snap.val()||{};
   if(s.adminPasswordHash) currentAdminHash=s.adminPasswordHash;
 });
 
-onValue(staffAccountsRef,snap=>{
+subscriptionHub.subscribe('staffAccounts',snap=>{
   staffAccountsMap=snap.val()||{};
   if(adminLoggedIn||superAdminLoggedIn) renderStaffAccounts();
 });
 
-onValue(adminAccountsRef,snap=>{
+subscriptionHub.subscribe('adminAccounts',snap=>{
   adminAccountsMap=snap.val()||{};
   if(superAdminLoggedIn) renderAdminAccounts();
 });
@@ -1604,7 +1657,7 @@ function migrateItemOptions(){
   itemOptMigrated=true;
   if(Object.keys(updates).length)update(ref(db),updates).catch(function(){});
 }
-onValue(optionGroupsRef,snap=>{
+subscriptionHub.subscribe('optionGroups',snap=>{
   if(snap.exists()){optionGroupsMap=snap.val();}
   else if(!optSeedStarted){
     optSeedStarted=true;
@@ -1616,7 +1669,7 @@ onValue(optionGroupsRef,snap=>{
   renderNewItemOptionChecklist();
 });
 
-onValue(menuRef,snap=>{
+subscriptionHub.subscribe('menuItems',snap=>{
   const saved=snap.val();
   if(saved){menuItemsMap=saved;}
   else{
@@ -1775,7 +1828,7 @@ function checkMyReadyOrders(){
   }catch(e){}
 }
 (function(){var un=function(){try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}document.removeEventListener('touchstart',un);document.removeEventListener('click',un);};document.addEventListener('touchstart',un,{passive:true});document.addEventListener('click',un);})();
-onValue(ordersRef,snap=>{
+subscriptionHub.subscribe('orders',snap=>{
   var prevIds=knownOrderIds;
   adminOrdersMap=snap.val()||{};
   var ids=Object.keys(adminOrdersMap);
@@ -1787,11 +1840,11 @@ onValue(ordersRef,snap=>{
   if(adminLoggedIn||staffLoggedIn){renderOrders();renderDashboard();renderAppCustomers();}
   updateStats();renderCustomerOrders();checkMyReadyOrders();
 });
-onValue(archivedRef,snap=>{archivedOrdersMap=snap.val()||{};if(adminLoggedIn)renderDashboard();if(adminLoggedIn||staffLoggedIn)renderAppCustomers();var _ap=document.getElementById('archivePanel');if(_ap&&_ap.style.display!=='none'){try{renderArchive();}catch(e){}}});
-onValue(archivedResRef,snap=>{archivedResMap=snap.val()||{};if((adminLoggedIn||staffLoggedIn)&&resArchiveOpen)renderResArchive();});
-onValue(reservationsRef,snap=>{adminResMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderReservations();updateStats();renderCustomerCalendar();if(adminLoggedIn||staffLoggedIn)renderAdminCalendar();});
-onValue(feedbacksRef,snap=>{feedbacksMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderComments();});
-onValue(reviewsRef,snap=>{
+subscriptionHub.subscribe('archivedOrders',snap=>{archivedOrdersMap=snap.val()||{};if(adminLoggedIn)renderDashboard();if(adminLoggedIn||staffLoggedIn)renderAppCustomers();var _ap=document.getElementById('archivePanel');if(_ap&&_ap.style.display!=='none'){try{renderArchive();}catch(e){}}});
+subscriptionHub.subscribe('archivedReservations',snap=>{archivedResMap=snap.val()||{};if((adminLoggedIn||staffLoggedIn)&&resArchiveOpen)renderResArchive();});
+subscriptionHub.subscribe('reservations',snap=>{adminResMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderReservations();updateStats();renderCustomerCalendar();if(adminLoggedIn||staffLoggedIn)renderAdminCalendar();});
+subscriptionHub.subscribe('feedbacks',snap=>{feedbacksMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderComments();});
+subscriptionHub.subscribe('reviews',snap=>{
   const saved=snap.val();
   if(saved){reviewsMap=saved;}
   else{
@@ -1806,8 +1859,8 @@ onValue(reviewsRef,snap=>{
   renderPublicReviews();
   if(adminLoggedIn||staffLoggedIn)renderAdminReviews();
 });
-onValue(availRef,snap=>{const s=snap.val();if(s)Object.keys(s).forEach(k=>availability[k]=s[k]);renderMenuSection();renderOrderSection();if(adminLoggedIn)buildAvail();});
-onValue(paymentRef,snap=>{
+subscriptionHub.subscribe('availability',snap=>{const s=snap.val();if(s)Object.keys(s).forEach(k=>availability[k]=s[k]);renderMenuSection();renderOrderSection();if(adminLoggedIn)buildAvail();});
+subscriptionHub.subscribe('payment',snap=>{
   const p=snap.val();if(!p)return;
   if(p.gcashNum)document.getElementById('gcashNum').textContent=p.gcashNum;
   if(p.gcashName)document.getElementById('gcashName').textContent=p.gcashName;
@@ -1892,7 +1945,7 @@ onValue(paymentRef,snap=>{
     if(b4row)b4row.style.display=p.bank4Enabled!==false?'block':'none';
   }else{if(b4row)b4row.style.display='none';}
 });
-onValue(calBlocksRef,snap=>{calBlocks=snap.val()||{};renderCustomerCalendar();if(adminLoggedIn)renderAdminCalendar();});
+subscriptionHub.subscribe('calBlocks',snap=>{calBlocks=snap.val()||{};renderCustomerCalendar();if(adminLoggedIn)renderAdminCalendar();});
 
 // ── WIRE BUTTONS VIA addEventListener (avoids ES module scope issues) ──
 document.getElementById('btnAddCat').addEventListener('click',async function(){
@@ -2249,7 +2302,7 @@ window.exportAppCustomers=function(){
   var csv=rows.map(function(r){return r.map(function(x){return '"'+String(x).replace(/"/g,'""')+'"';}).join(',');}).join(String.fromCharCode(10));
   var blob=new Blob([csv],{type:'text/csv'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='accaza-app-customers.csv';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
 };
-onValue(appCustomersRef,function(snap){appCustomersMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderAppCustomers();});
+subscriptionHub.subscribe('appCustomers',function(snap){appCustomersMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderAppCustomers();});
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',appLoginInit);else appLoginInit();
 window.notifyCustomer=function(oid){
   var o=adminOrdersMap[oid]; if(!o)return;
@@ -3500,6 +3553,8 @@ function applyStaffPerms(perms){
 async function loginSuccess(role,username,uid,serverRole){
   currentUser={role:role,serverRole:serverRole||role,username:username,uid:uid};
   window.__accazaAuthz={uid:uid,role:serverRole||role,isPrivileged:role==='admin'||role==='superadmin'};
+  subscriptionHub.authorize();
+  subscriptionHub.activate('dashboard');
   try{sessionStorage.setItem('accaza_admin_session',JSON.stringify({username:username,uid:uid||null}));}catch(e){}
   try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}
   document.getElementById('adminUser').value='';
@@ -3561,6 +3616,7 @@ function portalRole(raw){
   return null;
 }
 var authGateResolved=false,portalAuthPromise=null,portalAuthUid=null;
+window.__accazaAuthGateReady=function(){return authGateResolved;};
 async function authorizePortalUser(user){
   if(portalAuthUid===user.uid&&window.__accazaAuthz)return;
   if(portalAuthPromise)return portalAuthPromise;
@@ -3579,7 +3635,7 @@ async function authorizePortalUser(user){
   try{return await portalAuthPromise;}finally{portalAuthPromise=null;}
 }
 onAuthStateChanged(auth,async function(user){
-  if(!user){authGateResolved=true;portalAuthUid=null;currentUser=null;window.__accazaAuthz=null;return;}
+  if(!user){authGateResolved=true;portalAuthUid=null;currentUser=null;window.__accazaAuthz=null;subscriptionHub.deauthorize();return;}
   try{
     await authorizePortalUser(user);
   }catch(e){
@@ -3597,7 +3653,7 @@ window.checkLogin=async function(){
   if(!username||username.indexOf('@')<1||!pass){_le.textContent='Enter your Firebase account email and password.';_le.style.display='block';return;}
   _le.style.display='none';
   if(_btn){_btn.disabled=true;_btn.textContent='Signing in…';}
-  try{try{await setPersistence(auth,browserLocalPersistence);}catch(_p){}var cred=await signInWithEmailAndPassword(auth,username,pass);await authorizePortalUser(cred.user);location.reload();}
+  try{try{await setPersistence(auth,browserLocalPersistence);}catch(_p){}var cred=await signInWithEmailAndPassword(auth,username,pass);await authorizePortalUser(cred.user);}
   catch(_e){console.error('ACCAZA AUTH ERROR',_e);_le.textContent=(_e&&_e.message&&_e.message.indexOf('not authorized')>-1)?_e.message:'Login failed. Check the email and password.';_le.style.display='block';document.getElementById('adminPass').value='';}
   finally{if(_btn){_btn.disabled=false;_btn.textContent='Log In';}}
 };
@@ -3605,11 +3661,13 @@ window.checkLogin=async function(){
 window.logoutAdmin=function(){
   try{sessionStorage.removeItem('accaza_admin_session');}catch(e){}
   adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;currentUser=null;currentLoginRole=null;window.__accazaAuthz=null;
+  subscriptionHub.deauthorize();
   var _go=function(){window.location.href='index.html';};
   try{ signOut(auth).then(_go).catch(_go); }catch(e){ _go(); }
 };
 window.switchTab=function(tab,btn){
   if(tab==='payment'&&currentUser&&currentUser.role==='admin'&&currentUser.uid&&adminAccountsMap[currentUser.uid]&&adminAccountsMap[currentUser.uid].access==='nopay'){alert('⛔ You do not have access to Payment Details.');return;}
+  subscriptionHub.activate(tab);
   document.querySelectorAll('.admin-tab').forEach(function(b){b.classList.remove('active');});
   if(btn)btn.classList.add('active');
   document.querySelectorAll('.admin-tab-content').forEach(function(t){t.style.display='none';});
@@ -4208,19 +4266,19 @@ window.__isCashMethod=isCashMethod;
 function init(){
   var a=A();
   window.__online=(typeof navigator!=='undefined')?navigator.onLine:true;
-  a.onValue(a.ref(a.db,'posSettings'), function(s){ window.__posSettings=s.val()||{}; if(document.getElementById('posPay'))renderPosCart(); });
-  a.onValue(a.ref(a.db,'.info/connected'), function(sn){ window.__online=(sn.val()===true); updateOfflineUI(); if(window.__online) flushOfflineQueue(); });
+  a.subscribe('posSettings', function(s){ window.__posSettings=s.val()||{}; if(document.getElementById('posPay'))renderPosCart(); });
+  a.subscribe('.info/connected', function(sn){ window.__online=(sn.val()===true); updateOfflineUI(); if(window.__online) flushOfflineQueue(); });
   try{ window.addEventListener('online', function(){ window.__online=true; updateOfflineUI(); flushOfflineQueue(); }); window.addEventListener('offline', function(){ window.__online=false; updateOfflineUI(); }); }catch(e){}
   flushOfflineQueue();
-  a.onValue(a.ref(a.db,'availability'), function(s){ posAvailMap=s.val()||{}; if(isTab('pos')&&document.getElementById('posItems'))drawPosItems(); });
-  a.onValue(a.ref(a.db,'inventory'), function(s){ inventoryMap=s.val()||{}; if(isTab('inventory'))renderInventory(); if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateLowStockBadge(); updateCostBadge(); });
-  a.onValue(a.ref(a.db,'recipes'), function(s){ recipesMap=s.val()||{}; if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateCostBadge(); });
-  a.onValue(a.ref(a.db,'optionRecipes'), function(s){ var raw=s.val()||{}; var m={}; Object.keys(raw).forEach(function(k){var v=raw[k]||{}; var lb=v.label||k; m[lb]=v;}); optRecipesMap=m; if(isTab('recipes')&&!recipeEditing)renderRecipes(); });
-  a.onValue(a.ref(a.db,'internalUsage'), function(s){ usageMap=s.val()||{}; if(isTab('usage'))renderUsage(); });
-  a.onValue(a.ref(a.db,'usageTypes'), function(s){ usageTypesMap=s.val()||{}; if(isTab('usage'))renderUsage(); });
-  a.onValue(a.ref(a.db,'channelPrices'), function(s){ channelPricesMap=s.val()||{}; if(isTab('channelpricing'))renderChannelPricing(); });
-  a.onValue(a.ref(a.db,'posSettings'), function(s){ var v=s.val(); if(v)posMeta=Object.assign({vat:false,vatRate:12},v); });
-  a.onValue(a.ref(a.db,'orders'), function(s){ var all=s.val()||{}; Object.keys(all).forEach(function(oid){ var o=all[oid]; if(o&&(o.status==='Completed'||o.status==='Received')&&!o.inventoryDeducted&&o.lineItems)tryDeduct(oid,o); }); });
+  a.subscribe('availability', function(s){ posAvailMap=s.val()||{}; if(isTab('pos')&&document.getElementById('posItems'))drawPosItems(); });
+  a.subscribe('inventory', function(s){ inventoryMap=s.val()||{}; if(isTab('inventory'))renderInventory(); if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateLowStockBadge(); updateCostBadge(); });
+  a.subscribe('recipes', function(s){ recipesMap=s.val()||{}; if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateCostBadge(); });
+  a.subscribe('optionRecipes', function(s){ var raw=s.val()||{}; var m={}; Object.keys(raw).forEach(function(k){var v=raw[k]||{}; var lb=v.label||k; m[lb]=v;}); optRecipesMap=m; if(isTab('recipes')&&!recipeEditing)renderRecipes(); });
+  a.subscribe('internalUsage', function(s){ usageMap=s.val()||{}; if(isTab('usage'))renderUsage(); });
+  a.subscribe('usageTypes', function(s){ usageTypesMap=s.val()||{}; if(isTab('usage'))renderUsage(); });
+  a.subscribe('channelPrices', function(s){ channelPricesMap=s.val()||{}; if(isTab('channelpricing'))renderChannelPricing(); });
+  a.subscribe('posSettings', function(s){ var v=s.val(); if(v)posMeta=Object.assign({vat:false,vatRate:12},v); });
+  a.subscribe('orders', function(s){ var all=s.val()||{}; Object.keys(all).forEach(function(oid){ var o=all[oid]; if(o&&(o.status==='Completed'||o.status==='Received')&&!o.inventoryDeducted&&o.lineItems)tryDeduct(oid,o); }); });
   ensureModals();
 }
 function isTab(name){var el=document.getElementById('tab-'+name);return el&&el.style.display!=='none';}
@@ -6180,21 +6238,21 @@ function isTab(n){var el=document.getElementById('tab-'+n);return el&&el.style.d
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
 function init(){
   var a=A();
-  a.onValue(a.ref(a.db,'orders'),function(s){ordersMap=s.val()||{};captureCompletedAt(ordersMap);if(isTab('analytics'))renderAnalytics();});
-  a.onValue(a.ref(a.db,'archivedOrders'),function(s){archMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
-  a.onValue(a.ref(a.db,'reviews'),function(s){reviewsMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
-  a.onValue(a.ref(a.db,'feedbacks'),function(s){feedbacksMap=s.val()||{};});
-  a.onValue(a.ref(a.db,'appCustomers'),function(s){custMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
-  a.onValue(a.ref(a.db,'recipes'),function(s){recMap=s.val()||{};});
-  a.onValue(a.ref(a.db,'expenseItems'),function(s){expItems=s.val()||{};if(isTab('pnl'))renderPnl();});
-  a.onValue(a.ref(a.db,'monthlyExpenses'),function(s){monthlyExp=s.val()||{};if(isTab('pnl'))renderPnl();});
-  a.onValue(a.ref(a.db,'inventoryAdjustments'),function(s){adjMap=s.val()||{};if(isTab('pnl'))renderPnl();if(isTab('stockvalue'))renderStockValue();});
-  a.onValue(a.ref(a.db,'internalUsage'),function(s){usageMap=s.val()||{};if(isTab('pnl'))renderPnl();if(isTab('stockvalue'))renderStockValue();});
-  a.onValue(a.ref(a.db,'stockReceipts'),function(s){receiptsMap=s.val()||{};if(isTab('stockvalue'))renderStockValue();});
-  a.onValue(a.ref(a.db,'inventory'),function(s){invMap=s.val()||{};if(isTab('stockvalue'))renderStockValue();});
-  a.onValue(a.ref(a.db,'analyticsFunnel'),function(s){funnelMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
-  a.onValue(a.ref(a.db,'platformPayouts'),function(s){payoutsMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();if(isTab('analytics'))renderAnalytics();});
-  a.onValue(a.ref(a.db,'platformVarAccounts'),function(s){varAcctMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();});
+  a.subscribe('orders',function(s){ordersMap=s.val()||{};captureCompletedAt(ordersMap);if(isTab('analytics'))renderAnalytics();});
+  a.subscribe('archivedOrders',function(s){archMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
+  a.subscribe('reviews',function(s){reviewsMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
+  a.subscribe('feedbacks',function(s){feedbacksMap=s.val()||{};});
+  a.subscribe('appCustomers',function(s){custMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
+  a.subscribe('recipes',function(s){recMap=s.val()||{};});
+  a.subscribe('expenseItems',function(s){expItems=s.val()||{};if(isTab('pnl'))renderPnl();});
+  a.subscribe('monthlyExpenses',function(s){monthlyExp=s.val()||{};if(isTab('pnl'))renderPnl();});
+  a.subscribe('inventoryAdjustments',function(s){adjMap=s.val()||{};if(isTab('pnl'))renderPnl();if(isTab('stockvalue'))renderStockValue();});
+  a.subscribe('internalUsage',function(s){usageMap=s.val()||{};if(isTab('pnl'))renderPnl();if(isTab('stockvalue'))renderStockValue();});
+  a.subscribe('stockReceipts',function(s){receiptsMap=s.val()||{};if(isTab('stockvalue'))renderStockValue();});
+  a.subscribe('inventory',function(s){invMap=s.val()||{};if(isTab('stockvalue'))renderStockValue();});
+  a.subscribe('analyticsFunnel',function(s){funnelMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
+  a.subscribe('platformPayouts',function(s){payoutsMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();if(isTab('analytics'))renderAnalytics();});
+  a.subscribe('platformVarAccounts',function(s){varAcctMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();});
 }
 // extend the POS tab switcher to also render our tabs
 var _prev=window.posSwitchTab;
@@ -6753,17 +6811,17 @@ function paysOf(o){return(o.payments&&o.payments.length)?o.payments:[{method:o.p
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
 function init(){
   var a=A();
-  a.onValue(a.ref(a.db,'posStaff'),function(s){staffList=s.val()||{};if(isTab('ops'))renderOps();});
-  a.onValue(a.ref(a.db,'posActiveShift'),function(s){activeShift=s.val()||null;window.__posShift=activeShift;if(window.__pos)window.__pos.render();if(isTab('ops'))renderOps();});
-  a.onValue(a.ref(a.db,'shifts'),function(s){shiftsMap=s.val()||{};});
-  a.onValue(a.ref(a.db,'activityLog'),function(s){activityMap=s.val()||{};if(isTab('ops'))renderOps();});
-  a.onValue(a.ref(a.db,'heldOrders'),function(s){heldMap=s.val()||{};if(isTab('ops'))renderOps();});
-  a.onValue(a.ref(a.db,'orders'),function(s){ordersMap=s.val()||{};if(isTab('ops'))renderOps();});
-  a.onValue(a.ref(a.db,'discrepancies'),function(s){discMap=s.val()||{};updateDiscBadge();if(isTab('discrepancy'))renderDiscrepancies();});
-  a.onValue(a.ref(a.db,'pettyCashVouchers'),function(s){pettyVouchers=s.val()||{};if(isTab('petty'))renderPetty();});
-  a.onValue(a.ref(a.db,'pettyCashReplenishments'),function(s){pettyRepl=s.val()||{};if(isTab('petty'))renderPetty();});
-  a.onValue(a.ref(a.db,'pettyCashSettings'),function(s){pettySettings=s.val()||{};if(isTab('petty'))renderPetty();});
-  a.onValue(a.ref(a.db,'posSettings'),function(s){var v=s.val()||{};if(v.tolerances)toleranceCfg=Object.assign({cashPeso:20,invPct:5},v.tolerances);});
+  a.subscribe('posStaff',function(s){staffList=s.val()||{};if(isTab('ops'))renderOps();});
+  a.subscribe('posActiveShift',function(s){activeShift=s.val()||null;window.__posShift=activeShift;if(window.__pos)window.__pos.render();if(isTab('ops'))renderOps();});
+  a.subscribe('shifts',function(s){shiftsMap=s.val()||{};});
+  a.subscribe('activityLog',function(s){activityMap=s.val()||{};if(isTab('ops'))renderOps();});
+  a.subscribe('heldOrders',function(s){heldMap=s.val()||{};if(isTab('ops'))renderOps();});
+  a.subscribe('orders',function(s){ordersMap=s.val()||{};if(isTab('ops'))renderOps();});
+  a.subscribe('discrepancies',function(s){discMap=s.val()||{};updateDiscBadge();if(isTab('discrepancy'))renderDiscrepancies();});
+  a.subscribe('pettyCashVouchers',function(s){pettyVouchers=s.val()||{};if(isTab('petty'))renderPetty();});
+  a.subscribe('pettyCashReplenishments',function(s){pettyRepl=s.val()||{};if(isTab('petty'))renderPetty();});
+  a.subscribe('pettyCashSettings',function(s){pettySettings=s.val()||{};if(isTab('petty'))renderPetty();});
+  a.subscribe('posSettings',function(s){var v=s.val()||{};if(v.tolerances)toleranceCfg=Object.assign({cashPeso:20,invPct:5},v.tolerances);});
 }
 // shared hooks used by the POS script
 window.__posLog=function(action,ref,detail){var a=A();var id=uid('log_');a.set(a.ref(a.db,'activityLog/'+id),{ts:Date.now(),action:action,ref:ref||'',detail:detail||'',staff:(activeShift&&activeShift.staff)||'—'});};
@@ -7393,7 +7451,11 @@ function refundSale(oid){
 })();
 </script>
 <script id="admin-portal-boot">
-setTimeout(function(){if(!window.__accazaAuthz&&window.openAdmin)window.openAdmin();},1200);
+(function waitForAuthGate(){
+  if(window.__accazaAuthz)return;
+  if(window.__accazaAuthGateReady&&window.__accazaAuthGateReady()){if(window.openAdmin)window.openAdmin();return;}
+  setTimeout(waitForAuthGate,150);
+})();
 </script>
 <script id="accaza-staffaccess">
 (function(){
@@ -7405,7 +7467,7 @@ function isTab(n){var el=document.getElementById('tab-'+n);return el&&el.style.d
 var PERMS=[['orders','Orders'],['reservations','Reservations & Calendar'],['pos','POS Register'],['inventory','Inventory'],['purchases','Purchases (Goods Received)'],['recipes','Recipes'],['usage','Internal Usage (staff & R&D)'],['registerOps','Register Ops (shifts, void, refund)'],['reviews','Reviews'],['appcustomers','App Customers'],['availability','Availability'],['comments','Comments'],['analytics','Analytics'],['pnl','P&L (financials)'],['dailyreport','Daily Report'],['discrepancy','Discrepancy Log'],['petty','Petty Cash'],['channelpricing','Channel Pricing (Grab/Panda)'],['dedupe','De-dupe Menu'],['cashflow','Cash Flow'],['receivables','Receivables'],['payables','Payables'],['stockvalue','Stock Value']];
 var DEF={orders:true,reservations:true,pos:true,inventory:true,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false,cashflow:false,receivables:false,payables:false,stockvalue:false};
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
-function init(){var a=A();a.onValue(a.ref(a.db,'admins'),function(s){admins=s.val()||{};if(isTab('staffaccess'))render();});a.onValue(a.ref(a.db,'adminPerms'),function(s){perms=s.val()||{};if(isTab('staffaccess'))render();});}
+function init(){var a=A();a.subscribe('admins',function(s){admins=s.val()||{};if(isTab('staffaccess'))render();});a.subscribe('adminPerms',function(s){perms=s.val()||{};if(isTab('staffaccess'))render();});}
 var _prev=window.posSwitchTab;
 window.posSwitchTab=function(name,btn){ if(_prev)_prev(name,btn); else if(window.switchTab)window.switchTab(name,btn); if(name==='staffaccess')render(); };
 function render(){
@@ -7459,7 +7521,7 @@ function hasSizes(it){return it.priceM&&it.priceL;}
 function itemPrice(it,size){if(size==='L'&&it.priceL)return Number(it.priceL)||0;if(size==='M'&&it.priceM)return Number(it.priceM)||0;if(size==='S')return Number(it.priceS)||0;return Number(it.priceM||it.priceS)||0;}
 
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
-function init(){var a=A();a.onValue(a.ref(a.db,'packages'),function(s){pkgMap=s.val()||{};if(isTab('packages'))renderPackages();});ensurePickerModal();}
+function init(){var a=A();a.subscribe('packages',function(s){pkgMap=s.val()||{};if(isTab('packages'))renderPackages();});ensurePickerModal();}
 var _prev=window.posSwitchTab;
 window.posSwitchTab=function(name,btn){ if(_prev)_prev(name,btn); else if(window.switchTab)window.switchTab(name,btn); if(name==='packages')renderPackages(); };
 
@@ -7607,13 +7669,13 @@ var cfFrom=null,cfTo=null,cfAcctFilter='all';
 var CF_CATS=['Sales deposit','Platform payout','Purchases','Supplier payment','Rent','Utilities','Salaries','Owner draw','Capital in','Bank charges','AR collection','AP payment','Transfer','Other'];
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
 function init(){var a=A();
-  a.onValue(a.ref(a.db,'cfAccounts'),function(s){accountsMap=s.val()||{};reconcileAuto();if(isTab('cashflow'))renderCashflow();if(isTab('receivables'))renderReceivables();if(isTab('payables'))renderPayables();});
-  a.onValue(a.ref(a.db,'cfLedger'),function(s){ledgerMap=s.val()||{};if(isTab('cashflow'))renderCashflow();});
-  a.onValue(a.ref(a.db,'receivables'),function(s){arMap=s.val()||{};if(isTab('receivables'))renderReceivables();});
-  a.onValue(a.ref(a.db,'payables'),function(s){apMap=s.val()||{};if(isTab('payables'))renderPayables();});
-  a.onValue(a.ref(a.db,'platformPayouts'),function(s){payoutsMapCF=s.val()||{};if(isTab('cashflow'))renderCashflow();});
-  a.onValue(a.ref(a.db,'orders'),function(s){ordersMapCF=s.val()||{};reconcileAuto();if(isTab('receivables'))renderReceivables();if(isTab('cashflow'))renderCashflow();});
-  a.onValue(a.ref(a.db,'archivedOrders'),function(s){archMapCF=s.val()||{};reconcileAuto();if(isTab('receivables'))renderReceivables();});
+  a.subscribe('cfAccounts',function(s){accountsMap=s.val()||{};reconcileAuto();if(isTab('cashflow'))renderCashflow();if(isTab('receivables'))renderReceivables();if(isTab('payables'))renderPayables();});
+  a.subscribe('cfLedger',function(s){ledgerMap=s.val()||{};if(isTab('cashflow'))renderCashflow();});
+  a.subscribe('receivables',function(s){arMap=s.val()||{};if(isTab('receivables'))renderReceivables();});
+  a.subscribe('payables',function(s){apMap=s.val()||{};if(isTab('payables'))renderPayables();});
+  a.subscribe('platformPayouts',function(s){payoutsMapCF=s.val()||{};if(isTab('cashflow'))renderCashflow();});
+  a.subscribe('orders',function(s){ordersMapCF=s.val()||{};reconcileAuto();if(isTab('receivables'))renderReceivables();if(isTab('cashflow'))renderCashflow();});
+  a.subscribe('archivedOrders',function(s){archMapCF=s.val()||{};reconcileAuto();if(isTab('receivables'))renderReceivables();});
 }
 var _prev=window.posSwitchTab;
 window.posSwitchTab=function(name,btn){ if(_prev)_prev(name,btn); else if(window.switchTab)window.switchTab(name,btn); if(name==='cashflow')renderCashflow(); if(name==='receivables')renderReceivables(); if(name==='payables')renderPayables(); };
