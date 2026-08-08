@@ -569,7 +569,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 </style>
 </head>
 <body>
-<!-- accaza-index build v38 -->
+<!-- accaza-index build v39 -->
 <div class="fb-sync" id="fbSync">🔥 Firebase Connected</div>
 <div class="order-toast" id="orderToast" onclick="ackNewOrders()">
   <span class="ot-bell">🔔</span>
@@ -1359,16 +1359,25 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import{getDatabase,ref,set,get,push,update,remove,onValue,runTransaction}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import{getMessaging,getToken,onMessage,isSupported}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
-import{getAuth,signInAnonymously,onAuthStateChanged}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import{getAuth,signInAnonymously,signOut,onAuthStateChanged}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import{getFunctions,httpsCallable}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
+import{initializeAppCheck,ReCaptchaEnterpriseProvider}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js";
 
 const firebaseConfig={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 const app=initializeApp(firebaseConfig);
+const APP_CHECK_SITE_KEY=''; // Set after registering the GitHub Pages domain with reCAPTCHA Enterprise in Firebase App Check.
+if(APP_CHECK_SITE_KEY){try{initializeAppCheck(app,{provider:new ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY),isTokenAutoRefreshEnabled:true});}catch(e){console.warn('App Check init failed',e);}}
 const db=getDatabase(app);
 const auth=getAuth(app);
-var myOrdersMap={},_myOrdersSub={};
+const functions=getFunctions(app,'asia-southeast1');
+const createOnlineOrderCall=httpsCallable(functions,'createOnlineOrder');
+const confirmOrderReceivedCall=httpsCallable(functions,'confirmOrderReceived');
+var myOrdersMap={},_myOrdersSub={},customerUid=null,_customerIndexUnsub=null;
 function subscribeMyOrders(){try{(myOrderIds||[]).forEach(function(id){if(_myOrdersSub[id])return;_myOrdersSub[id]=true;onValue(ref(db,'orders/'+id),function(s){if(s.exists())myOrdersMap[id]=s.val();if(typeof renderCustomerOrders==='function')renderCustomerOrders();if(typeof checkMyReadyOrders==='function')checkMyReadyOrders();},function(){});});}catch(e){}}
+function subscribeCustomerOrderIndex(uid){try{if(_customerIndexUnsub)_customerIndexUnsub();_customerIndexUnsub=onValue(ref(db,'customerOrders/'+uid),function(s){var ids=Object.keys(s.val()||{});ids.forEach(function(id){if(myOrderIds.indexOf(id)<0)myOrderIds.push(id);});try{localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));}catch(e){}subscribeMyOrders();});}catch(e){}}
+function ensureCustomerAuth(){return new Promise(function(resolve,reject){if(auth.currentUser){resolve(auth.currentUser);return;}var done=false;var off=onAuthStateChanged(auth,function(u){if(done)return;if(u){done=true;off();resolve(u);}});signInAnonymously(auth).catch(function(e){if(!done){done=true;off();reject(e);}});setTimeout(function(){if(!done){done=true;off();reject(new Error('Customer session timed out.'));}},10000);});}
 window.__subscribeMyOrders=subscribeMyOrders;
-onAuthStateChanged(auth,function(u){if(!u){signInAnonymously(auth).catch(function(e){console.warn('anon auth failed',e);});return;}subscribeMyOrders();});
+onAuthStateChanged(auth,function(u){if(!u){customerUid=null;signInAnonymously(auth).catch(function(e){console.warn('anon auth failed',e);});return;}customerUid=u.uid;subscribeCustomerOrderIndex(u.uid);subscribeMyOrders();});
 // ===================== WEB PUSH (FCM) =====================
 // Paste your Web Push certificate key here (Firebase Console > Project settings > Cloud Messaging > Web Push certificates).
 const VAPID_KEY="BIIVf-1RYIQger0yqeYlyV6-tQpH8YfytIgQK6-7IJg87HVITcNkYv4RYcKjyCmJBJKR1EXjJqRuiHzkFJjSvlE";
@@ -1382,7 +1391,7 @@ async function registerPushToken(){
     var reg=await navigator.serviceWorker.ready;
     var messaging=getMessaging(app);
     var token=await getToken(messaging,{vapidKey:VAPID_KEY,serviceWorkerRegistration:reg});
-    if(token){var u=getAppUser();if(u&&u.phone){var k=u.phone.replace(/[^0-9]/g,'');if(k){try{await update(ref(db,'appCustomers/'+k),{pushToken:token,pushTokenAt:Date.now()});if(!window.__pushToasted){window.__pushToasted=true;(window.accazaToast||function(){})('🔔 Notifications on for this device','ok');}}catch(e){}}}}
+    if(token){var u=getAppUser();var au=auth.currentUser;if(u&&au){try{await update(ref(db,'appCustomers/'+au.uid),{pushToken:token,pushTokenAt:Date.now()});if(!window.__pushToasted){window.__pushToasted=true;(window.accazaToast||function(){})('🔔 Notifications on for this device','ok');}}catch(e){}}}
     _pushToastWire(messaging);
   }catch(e){}
 }
@@ -1413,7 +1422,7 @@ window.__setupPush=setupPush;
 const settingsRef=ref(db,'settings'),staffAccountsRef=ref(db,'staffAccounts'),adminAccountsRef=ref(db,'adminAccounts'),ordersRef=ref(db,'orders'),archivedRef=ref(db,'archivedOrders'),archivedResRef=ref(db,'archivedReservations'),reservationsRef=ref(db,'reservations'),feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),calBlocksRef=ref(db,'calBlocks'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups'),appCustomersRef=ref(db,'appCustomers');const packagesRef=ref(db,'packages');
 window.__custPkgs=[];
 window.__accazaC={db:db,ref:ref,set:set,get:get,onValue:onValue,get menuItemsMap(){return menuItemsMap;},get optionGroupsMap(){return optionGroupsMap;},getMenuItems:getMenuItems,getCats:getCats,getCatLabel:getCatLabel,getItemOptionGroups:getItemOptionGroups};
-window.__custAddPackage=function(components,meta){(components||[]).forEach(function(c){var key=Date.now()+'_'+Math.random().toString(36).substr(2,5)+Math.floor(Math.random()*99);cart[key]={name:c.name,details:c.details||('pkg: '+meta.name),qty:c.qty,unitTotal:c.unitTotal,cat:c.cat||'',itemKey:c.itemKey,size:c.size||null,optLabels:c.optLabels||[],stream:(meta.type==='promo'?'promo':'events'),pkgId:meta.id};});window.__custPkgs.push(meta);updateCartDisplay();renderOrderSection();};
+window.__custAddPackage=function(components,meta){(components||[]).forEach(function(c){var key=Date.now()+'_'+Math.random().toString(36).substr(2,5)+Math.floor(Math.random()*99);cart[key]={name:c.name,details:c.details||('pkg: '+meta.name),qty:c.qty,unitTotal:c.unitTotal,cat:c.cat||'',itemKey:c.itemKey,size:c.size||null,optLabels:c.optLabels||[],stream:(meta.type==='promo'?'promo':'events'),pkgId:meta.id,packageRole:c.packageRole||null};});window.__custPkgs.push(meta);updateCartDisplay();renderOrderSection();};
 
 let currentAdminHash=null,staffAccountsMap={},adminAccountsMap={},staffLoggedIn=false,superAdminLoggedIn=false,currentUser=null,currentLoginRole=null;
 const SUPER_ADMIN_USERNAME='superadmin',CAFE_PHONE='639276924831',CAFE_EMAIL='mariadaniela@gmail.com',MAX_GUESTS=30;
@@ -2095,12 +2104,11 @@ function updateCartDisplay(){
       +(item.details?'<div style="font-size:0.72rem;color:var(--tl);">'+item.details+'</div>':'')
       +'<div style="font-size:0.75rem;color:var(--tl);">₱'+item.unitTotal.toLocaleString()+' each</div></div>'
       +'<div style="display:flex;align-items:center;gap:0.4rem;margin-left:0.5rem;">'
-      +'<button data-cartkey="'+k+'" data-delta="-1" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:0.9rem;cursor:pointer;color:var(--bd);">−</button>'
-      +'<span style="font-size:0.85rem;font-weight:500;min-width:18px;text-align:center;">'+item.qty+'</span>'
-      +'<button data-cartkey="'+k+'" data-delta="1" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:0.9rem;cursor:pointer;color:var(--bd);">+</button>'
+      +(item.pkgId?'<span style="font-size:0.8rem;color:var(--tl);">Qty '+item.qty+'</span><button data-removepkg="'+item.pkgId+'" title="Remove package" style="border:1px solid #c0392b;background:#fff;color:#c0392b;border-radius:6px;padding:0.2rem 0.4rem;cursor:pointer;">Remove</button>':'<button data-cartkey="'+k+'" data-delta="-1" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:0.9rem;cursor:pointer;color:var(--bd);">−</button><span style="font-size:0.85rem;font-weight:500;min-width:18px;text-align:center;">'+item.qty+'</span><button data-cartkey="'+k+'" data-delta="1" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:0.9rem;cursor:pointer;color:var(--bd);">+</button>')
       +'<span style="font-size:0.85rem;font-weight:500;color:var(--bl);min-width:50px;text-align:right;">₱'+line.toLocaleString()+'</span>'
       +'</div></div></div>';
   }).join('');
+  var pkgExtra=(window.__custPkgs||[]).reduce(function(s,p){return s+(Number(p.extraCost)||0);},0);if(pkgExtra){total+=pkgExtra;box.innerHTML+='<div style="display:flex;justify-content:space-between;padding:0.55rem 0;color:var(--bd);font-size:0.82rem;"><span>Package extra charges</span><strong>₱'+pkgExtra.toLocaleString()+'</strong></div>';}
   // Wire cart qty buttons
   box.querySelectorAll('button[data-cartkey]').forEach(function(btn){
     btn.addEventListener('click',function(e){if(e&&e.stopPropagation)e.stopPropagation();
@@ -2110,6 +2118,7 @@ function updateCartDisplay(){
       updateCartDisplay();renderOrderSection();
     });
   });
+  box.querySelectorAll('button[data-removepkg]').forEach(function(btn){btn.addEventListener('click',function(e){if(e&&e.stopPropagation)e.stopPropagation();var id=this.dataset.removepkg;Object.keys(cart).forEach(function(k){if(cart[k]&&cart[k].pkgId===id)delete cart[k];});window.__custPkgs=(window.__custPkgs||[]).filter(function(p){return p.id!==id;});updateCartDisplay();renderOrderSection();});});
   document.getElementById('totalAmt').textContent='₱'+total.toLocaleString();
   tot.style.display='flex';
   var _cb1=document.getElementById('cartCheckoutBtn');if(_cb1)_cb1.style.display='block';
@@ -2146,12 +2155,12 @@ window.appLoginSubmit=async function(){
   err.style.display='none';
   var user={name:n,phone:p,since:Date.now()};
   try{localStorage.setItem('accaza_app_user',JSON.stringify(user));}catch(e){}
-  try{var k=digits;var snap=await get(ref(db,'appCustomers/'+k));var cur=snap.val()||{};await update(ref(db,'appCustomers/'+k),{name:n,phone:p,orders:cur.orders||0,firstSeen:cur.firstSeen||Date.now(),lastSeen:Date.now()});}catch(e){}
+  try{var au=await ensureCustomerAuth();await update(ref(db,'appCustomers/'+au.uid),{name:n,phone:p,lastSeen:Date.now()});}catch(e){}
   var ov=document.getElementById('appLoginOverlay');if(ov)ov.style.display='none';
   prefillAppUser();
   setupPush();
 };
-window.appLogout=function(){try{localStorage.removeItem('accaza_app_user');}catch(e){}location.reload();};
+window.appLogout=async function(){try{localStorage.removeItem('accaza_app_user');localStorage.removeItem('accaza_my_orders');}catch(e){}try{if(auth.currentUser)await remove(ref(db,'appCustomers/'+auth.currentUser.uid+'/pushToken'));}catch(e){}try{await signOut(auth);}catch(e){}location.reload();};
 function appLoginInit(){if(!isAppMode())return;var ov=document.getElementById('appLoginOverlay');var u=getAppUser();if(!u){if(ov)ov.style.display='flex';}else{prefillAppUser();setupPush();refreshNotifyPrompt();}}
 window.renderAppCustomers=function(){
   var body=document.getElementById('appCustBody');if(!body)return;
@@ -2235,34 +2244,27 @@ window.placeOrder=async function(){
   if(orderType==='delivery'&&!document.getElementById('deliveryAddr').value.trim()){alert('Please enter your delivery address.');return;}
   if(!document.getElementById('paymentProof').files[0]){alert('Please attach your proof of payment.');return;}
   const proofSrc=document.getElementById('proofImg').src;
-  const total=Object.values(cart).reduce((s,c)=>s+c.qty*c.unitTotal,0);
+  const total=Object.values(cart).reduce((s,c)=>s+c.qty*c.unitTotal,0)+(window.__custPkgs||[]).reduce((s,p)=>s+(Number(p.extraCost)||0),0);
   const itemsArr=Object.values(cart).map(c=>c.name+(c.details?' ('+c.details+')':'')+' x'+c.qty);
-  const lineItemsArr=Object.values(cart).map(c=>({itemKey:c.itemKey||null,name:c.name,size:c.size||null,optLabels:c.optLabels||[],qty:c.qty,unitTotal:c.unitTotal,stream:c.stream||null,pkg:c.pkgId||null}));
-  const _onPkgs=window.__custPkgs||[];const _onExtra=_onPkgs.reduce((s,pp)=>s+(Number(pp.extraCost)||0),0);
+  const lineItemsArr=Object.values(cart).map(c=>({itemKey:c.itemKey||null,size:c.size||null,optLabels:c.optLabels||[],qty:c.qty,stream:c.stream||null,pkg:c.pkgId||null,packageRole:c.packageRole||null}));
   const _sig=phone+'|'+itemsArr.join('~')+'|'+total;
   var _persist=(function(){try{var v=localStorage.getItem('accaza_lastsig');if(!v)return null;var ix=v.lastIndexOf('@@');return {sig:v.slice(0,ix),t:parseInt(v.slice(ix+2))||0};}catch(e){return null;}})();
   if((window._lastOrderSig===_sig&&Date.now()-(window._lastOrderTime||0)<30000)||(_persist&&_persist.sig===_sig&&Date.now()-_persist.t<30000)){alert('Looks like you just placed this exact order — please try again after 30 seconds.');return;}
   window._placingOrder=true;
   const _btn=document.querySelector('.btn-place-order');_btn.disabled=true;_btn.style.opacity='0.5';_btn.textContent='⏳ Placing order…';
   try{
-    var _sigKey=phone.replace(/[^0-9]/g,'')+'_'+_hashSig(_sig);
-    var _lock=await runTransaction(ref(db,'orderLocks/'+_sigKey),function(cur){var now=Date.now();if(cur&&(now-(cur.t||0)<90000))return;return {t:Date.now(),id:'pending'};});
-    if(_lock&&_lock.committed===false){window._placingOrder=false;_btn.disabled=false;_btn.style.opacity='1';_btn.textContent='Place Order';alert('This looks like a duplicate of an order you just placed. If it is intentional, please wait a minute and try again.');return;}
-  }catch(_le){/* offline or transaction error: allow order to proceed */}
-  const orderId='ORD-'+Date.now().toString().slice(-6);
-  const newOrder={id:orderId,name,phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':paymentType==='maya'?'PayMaya':'Bank Transfer',contact:document.getElementById('custContact').value.trim(),contactMethod,items:itemsArr.join(', '),total,notes:document.getElementById('custNotes').value.trim(),status:'Pending',receivedByCustomer:false,time:new Date().toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now(),lineItems:lineItemsArr,packages:_onPkgs,extraCost:_onExtra,source:'online',proof:proofSrc};
-  try{
-    await set(ref(db,'orders/'+orderId),newOrder);
-    try{ if(isAppMode()){ var _u=getAppUser(); var _ph=(_u&&_u.phone)||phone; var _k=_ph.replace(/[^0-9]/g,''); if(_k){ var _snap=await get(ref(db,'appCustomers/'+_k)); var _c=_snap.val()||{}; await update(ref(db,'appCustomers/'+_k),{name:(_u&&_u.name)||name,phone:_ph,orders:(_c.orders||0)+1,firstSeen:_c.firstSeen||Date.now(),lastOrder:Date.now(),lastOrderId:orderId}); } } }catch(_e){}
+    await ensureCustomerAuth();
+    var placed=await createOnlineOrderCall({name:name,phone:phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':paymentType==='maya'?'PayMaya':'Bank Transfer',contact:document.getElementById('custContact').value.trim(),contactMethod:contactMethod,notes:document.getElementById('custNotes').value.trim(),proof:proofSrc,lineItems:lineItemsArr,expectedTotal:total});
+    var orderId=placed&&placed.data&&placed.data.orderId;if(!orderId)throw new Error('Server did not return an order number.');
     window._lastOrderSig=_sig;window._lastOrderTime=Date.now();window._placingOrder=false;_btn.textContent='✅ Order Placed!';try{localStorage.setItem('accaza_lastsig',_sig+'@@'+Date.now());}catch(e){}
-    myOrderIds.push(orderId);localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));if(window.__subscribeMyOrders)window.__subscribeMyOrders();
+    if(myOrderIds.indexOf(orderId)<0)myOrderIds.push(orderId);localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));if(window.__subscribeMyOrders)window.__subscribeMyOrders();
     document.getElementById('displayOrderId').textContent=orderId;document.getElementById('orderConfirm').style.display='block';
     document.querySelector('.btn-place-order').disabled=true;document.querySelector('.btn-place-order').style.opacity='0.5';
     cart={};window.__custPkgs=[];updateCartDisplay();renderOrderSection();renderCustomerOrders();
     document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';
     removeProof({stopPropagation:function(){}});
     setTimeout(function(){var b=document.querySelector('.btn-place-order');b.disabled=false;b.style.opacity='1';b.textContent='Place Order';document.getElementById('orderConfirm').style.display='none';},5000);
-  }catch(e){window._placingOrder=false;_btn.disabled=false;_btn.style.opacity='1';_btn.textContent='Place Order';alert('Could not place order: '+e.message);}
+  }catch(e){window._placingOrder=false;_btn.disabled=false;_btn.style.opacity='1';_btn.textContent='Place Order';var msg=(e&&e.message)||'Unknown error';if(String(e&&e.code).indexOf('already-exists')>-1)msg='This exact order was already submitted. Please wait one minute before trying again.';alert('Could not place order: '+msg);}
 };
 window.resetOrder=function(){if(!Object.keys(cart).length&&!document.getElementById('custName').value){alert('Your order is already empty!');return;}if(confirm('Reset your order?')){cart={};updateCartDisplay();renderOrderSection();document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';setType('pickup');(function(){var gBtn=document.getElementById('btnGcash');var mBtn=document.getElementById('btnMaya');var bBtn=document.getElementById('btnBank');var first=gBtn&&gBtn.style.display!=='none'?'gcash':mBtn&&mBtn.style.display!=='none'?'maya':'bank';setPayment(first);})();document.getElementById('orderConfirm').style.display='none';document.querySelector('.btn-place-order').disabled=false;document.querySelector('.btn-place-order').style.opacity='1';}};
 
@@ -2295,7 +2297,7 @@ function renderCustomerOrders(){
       const oid=this.dataset.orderid;
       document.getElementById('receivedOrderId').textContent=oid;
       document.getElementById('confirmReceivedPopup').classList.add('show');
-      document.getElementById('confirmReceivedBtn').onclick=function(){update(ref(db,'orders/'+oid),{receivedByCustomer:true,status:'Received'});document.getElementById('confirmReceivedPopup').classList.remove('show');if(window.dismissReadyAlert)window.dismissReadyAlert();};
+      document.getElementById('confirmReceivedBtn').onclick=async function(){var b=this;b.disabled=true;b.textContent='Confirming…';try{await ensureCustomerAuth();await confirmOrderReceivedCall({orderId:oid});document.getElementById('confirmReceivedPopup').classList.remove('show');if(window.dismissReadyAlert)window.dismissReadyAlert();}catch(e){alert('Could not confirm receipt: '+((e&&e.message)||e));}finally{b.disabled=false;b.textContent='Yes, Received ✓';}};
     });
   });
 }
@@ -4047,8 +4049,8 @@ function confirmPick(){
   var disc=0;if(!isPromo){disc=pk.discType==='percent'?gross*(Number(pk.discValue)||0)/100:pk.discType==='fixed'?(Number(pk.discValue)||0):0;}
   var net=isPromo?gross:Math.max(0,gross-disc);var factor=(!isPromo&&gross>0)?net/gross:1;
   var comps=[];
-  Object.keys(pickState.paid).forEach(function(k){var it=A().menuItemsMap[k];if(!it)return;var pr=itemPrice(it,size);comps.push({itemKey:k,name:it.name+(size&&hasSizes(it)?' ('+size+')':''),size:(hasSizes(it)?size:null),qty:pickState.paid[k],unitTotal:Math.round(pr*factor*100)/100,cat:it.cat,details:pk.name});});
-  if(isPromo)Object.keys(pickState.free).forEach(function(k){var it=A().menuItemsMap[k];if(!it)return;comps.push({itemKey:k,name:it.name+(size&&hasSizes(it)?' ('+size+')':'')+' (FREE)',size:(hasSizes(it)?size:null),qty:pickState.free[k],unitTotal:0,cat:it.cat,details:pk.name+' free'});});
+  Object.keys(pickState.paid).forEach(function(k){var it=A().menuItemsMap[k];if(!it)return;var pr=itemPrice(it,size);comps.push({itemKey:k,name:it.name+(size&&hasSizes(it)?' ('+size+')':''),size:(hasSizes(it)?size:null),qty:pickState.paid[k],unitTotal:Math.round(pr*factor*100)/100,cat:it.cat,details:pk.name,packageRole:'paid'});});
+  if(isPromo)Object.keys(pickState.free).forEach(function(k){var it=A().menuItemsMap[k];if(!it)return;comps.push({itemKey:k,name:it.name+(size&&hasSizes(it)?' ('+size+')':'')+' (FREE)',size:(hasSizes(it)?size:null),qty:pickState.free[k],unitTotal:0,cat:it.cat,details:pk.name+' free',packageRole:'free'});});
   var freeVal=0;if(isPromo)Object.keys(pickState.free).forEach(function(k){var it=A().menuItemsMap[k];if(it)freeVal+=itemPrice(it,size)*pickState.free[k];});
   var meta={id:pk.id,name:pk.name,type:pk.type,gross:isPromo?(gross+freeVal):gross,discount:isPromo?freeVal:disc,extraCost:Number(pk.extraCost)||0};
   if(window.__custAddPackage){window.__custAddPackage(comps,meta);document.getElementById('cpkMask').classList.remove('show');pickState=null;(window.accazaToast||function(){})('Package added to your order','ok');}
