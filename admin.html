@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v143</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v144</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1330,16 +1330,21 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
   <div class="login-box">
     <div style="text-align:center;font-family:'Playfair Display',serif;font-size:1.5rem;color:var(--bd);margin-bottom:0.25rem;">Accaza Coffee</div>
     <p style="text-align:center;font-size:0.8rem;color:var(--tl);margin-bottom:1.25rem;">🔐 Staff &amp; Admin Portal</p>
+    <!-- Role choice is presentation only; Firebase UID + database role remain authoritative. -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:1.25rem;">
+      <button id="roleAdminBtn" onclick="selectLoginRole('admin')" style="padding:0.6rem;border:2px solid var(--cd);border-radius:8px;background:#fff;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);font-weight:500;transition:all 0.2s;">👑 Admin</button>
+      <button id="roleStaffBtn" onclick="selectLoginRole('staff')" style="padding:0.6rem;border:2px solid var(--cd);border-radius:8px;background:#fff;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);font-weight:500;transition:all 0.2s;">👤 Staff</button>
+    </div>
     <!-- Login form -->
-    <div id="loginForm">
-      <label class="field-label">Firebase account email</label>
-      <input type="email" id="adminUser" placeholder="name@example.com" autocomplete="username" style="margin-bottom:0.75rem;" onkeydown="if(event.key==='Enter')document.getElementById('adminPass').focus()"/>
+    <div id="loginForm" style="display:none;">
+      <label class="field-label">Username or Email</label>
+      <input type="text" id="adminUser" placeholder="Enter Firebase account email" autocomplete="username" style="margin-bottom:0.75rem;" onkeydown="if(event.key==='Enter')document.getElementById('adminPass').focus()"/>
       <label class="field-label">Password</label>
       <input type="password" id="adminPass" placeholder="Enter password" autocomplete="current-password" style="margin-bottom:1rem;" onkeydown="if(event.key==='Enter')checkLogin()"/>
       <button class="btn-primary" style="width:100%;" onclick="checkLogin()">Log In</button>
       <p id="loginErr" style="display:none;color:#c0392b;font-size:0.8rem;margin-top:0.75rem;text-align:center;">❌ Incorrect credentials. Try again.</p>
       <p style="text-align:center;margin-top:0.5rem;">
-        <button id="forgotPwBtn" onclick="__fbForgot()" style="background:none;border:none;font-size:0.76rem;color:var(--tl);cursor:pointer;text-decoration:underline;">Forgot password?</button>
+        <button id="forgotPwBtn" onclick="__fbForgot()" style="display:none;background:none;border:none;font-size:0.76rem;color:var(--tl);cursor:pointer;text-decoration:underline;">Forgot password?</button>
       </p>
     </div>
     <button onclick="closeAdmin()" style="margin-top:1rem;background:none;border:none;font-size:0.78rem;color:var(--tl);cursor:pointer;width:100%;text-align:center;">← Back to website</button>
@@ -3444,6 +3449,22 @@ function showDeletePopup(label,onConfirm){
 
 window.openAdmin=function(){document.getElementById('loginOverlay').classList.add('show');setTimeout(function(){document.getElementById('adminPass').focus();},150);};
 window.closeAdmin=function(){document.getElementById('loginOverlay').classList.remove('show');document.getElementById('loginErr').style.display='none';document.getElementById('adminPass').value='';};
+
+// ── ROLE SELECTOR (visual choice; actual role comes from /admins/{Firebase UID}) ──
+window.selectLoginRole=function(role){
+  currentLoginRole=role;
+  document.getElementById('loginForm').style.display='block';
+  var aBtn=document.getElementById('roleAdminBtn'),sBtn=document.getElementById('roleStaffBtn');
+  aBtn.style.background=role==='admin'?'var(--bd)':'#fff';
+  aBtn.style.color=role==='admin'?'#fff':'var(--td)';
+  aBtn.style.borderColor=role==='admin'?'var(--bd)':'var(--cd)';
+  sBtn.style.background=role==='staff'?'var(--bl)':'#fff';
+  sBtn.style.color=role==='staff'?'#fff':'var(--td)';
+  sBtn.style.borderColor=role==='staff'?'var(--bl)':'var(--cd)';
+  var fBtn=document.getElementById('forgotPwBtn');if(fBtn)fBtn.style.display='inline';
+  document.getElementById('loginErr').style.display='none';
+  setTimeout(function(){document.getElementById('adminUser').focus();},100);
+};
 
 // ── LOGIN SUCCESS ───────────────────────────────────────────
 var DEFAULT_STAFF_PERMS={orders:true,reservations:true,pos:true,inventory:true,purchases:false,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,dailyreport:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false,cashflow:false,receivables:false,payables:false,stockvalue:false};
