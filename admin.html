@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v144</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v145</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1341,7 +1341,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
       <input type="text" id="adminUser" placeholder="Enter Firebase account email" autocomplete="username" style="margin-bottom:0.75rem;" onkeydown="if(event.key==='Enter')document.getElementById('adminPass').focus()"/>
       <label class="field-label">Password</label>
       <input type="password" id="adminPass" placeholder="Enter password" autocomplete="current-password" style="margin-bottom:1rem;" onkeydown="if(event.key==='Enter')checkLogin()"/>
-      <button class="btn-primary" style="width:100%;" onclick="checkLogin()">Log In</button>
+      <button id="adminLoginBtn" class="btn-primary" style="width:100%;" onclick="checkLogin()">Log In</button>
       <p id="loginErr" style="display:none;color:#c0392b;font-size:0.8rem;margin-top:0.75rem;text-align:center;">❌ Incorrect credentials. Try again.</p>
       <p style="text-align:center;margin-top:0.5rem;">
         <button id="forgotPwBtn" onclick="__fbForgot()" style="display:none;background:none;border:none;font-size:0.76rem;color:var(--tl);cursor:pointer;text-decoration:underline;">Forgot password?</button>
@@ -3552,18 +3552,28 @@ function portalRole(raw){
   if(['staff','cashier','kitchen','finance'].indexOf(r)>-1)return {ui:'staff',server:r};
   return null;
 }
-var authGateResolved=false;
-onAuthStateChanged(auth,async function(user){
-  if(!user){authGateResolved=true;currentUser=null;window.__accazaAuthz=null;return;}
-  try{
-    var roleSnap=await get(ref(db,'admins/'+user.uid));
+var authGateResolved=false,portalAuthPromise=null,portalAuthUid=null;
+async function authorizePortalUser(user){
+  if(portalAuthUid===user.uid&&window.__accazaAuthz)return;
+  if(portalAuthPromise)return portalAuthPromise;
+  portalAuthPromise=(async function(){
+    var results=await Promise.all([get(ref(db,'admins/'+user.uid)),get(ref(db,'adminPerms/'+user.uid+'/name')).catch(function(){return null;})]);
+    var roleSnap=results[0],nameSnap=results[1];
     var mapped=roleSnap.exists()?portalRole(roleSnap.val()):null;
     if(!mapped)throw new Error('This Firebase account is not authorized for the Accaza portal.');
     var display=(user.displayName||user.email||user.uid);
-    try{var ps=await get(ref(db,'adminPerms/'+user.uid+'/name'));if(ps.exists()&&ps.val())display=ps.val();}catch(_pn){}
+    if(nameSnap&&nameSnap.exists()&&nameSnap.val())display=nameSnap.val();
     await loginSuccess(mapped.ui,display,user.uid,mapped.server);
+    portalAuthUid=user.uid;
     authGateResolved=true;
     if(location.hash)setTimeout(function(){var t=document.getElementById(location.hash.slice(1));if(t)t.scrollIntoView();},450);
+  })();
+  try{return await portalAuthPromise;}finally{portalAuthPromise=null;}
+}
+onAuthStateChanged(auth,async function(user){
+  if(!user){authGateResolved=true;portalAuthUid=null;currentUser=null;window.__accazaAuthz=null;return;}
+  try{
+    await authorizePortalUser(user);
   }catch(e){
     authGateResolved=true;console.error('ACCAZA AUTHORIZATION ERROR',e);try{await signOut(auth);}catch(_so){}
     try{sessionStorage.removeItem('accaza_admin_session');}catch(_ss){}
@@ -3575,10 +3585,13 @@ window.checkLogin=async function(){
   var username=(document.getElementById('adminUser').value||'').trim().toLowerCase();
   var pass=document.getElementById('adminPass').value;
   var _le=document.getElementById('loginErr');
+  var _btn=document.getElementById('adminLoginBtn');
   if(!username||username.indexOf('@')<1||!pass){_le.textContent='Enter your Firebase account email and password.';_le.style.display='block';return;}
   _le.style.display='none';
-  try{try{await setPersistence(auth,browserSessionPersistence);}catch(_p){}await signInWithEmailAndPassword(auth,username,pass);location.reload();}
-  catch(_e){console.error('ACCAZA AUTH ERROR',_e);_le.textContent='Login failed. Check the email and password.';_le.style.display='block';document.getElementById('adminPass').value='';}
+  if(_btn){_btn.disabled=true;_btn.textContent='Signing in…';}
+  try{try{await setPersistence(auth,browserSessionPersistence);}catch(_p){}var cred=await signInWithEmailAndPassword(auth,username,pass);await authorizePortalUser(cred.user);}
+  catch(_e){console.error('ACCAZA AUTH ERROR',_e);_le.textContent=(_e&&_e.message&&_e.message.indexOf('not authorized')>-1)?_e.message:'Login failed. Check the email and password.';_le.style.display='block';document.getElementById('adminPass').value='';}
+  finally{if(_btn){_btn.disabled=false;_btn.textContent='Log In';}}
 };
 
 window.logoutAdmin=function(){
