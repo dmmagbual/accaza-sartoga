@@ -569,7 +569,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 </style>
 </head>
 <body>
-<!-- accaza-index build v40 -->
+<!-- accaza-index build v41 -->
 <div class="fb-sync" id="fbSync">🔥 Firebase Connected</div>
 <div class="order-toast" id="orderToast" onclick="ackNewOrders()">
   <span class="ot-bell">🔔</span>
@@ -1375,7 +1375,20 @@ const confirmOrderReceivedCall=httpsCallable(functions,'confirmOrderReceived');
 var myOrdersMap={},_myOrdersSub={},customerUid=null,_customerIndexUnsub=null;
 function subscribeMyOrders(){try{(myOrderIds||[]).forEach(function(id){if(_myOrdersSub[id])return;_myOrdersSub[id]=true;onValue(ref(db,'orders/'+id),function(s){if(s.exists())myOrdersMap[id]=s.val();if(typeof renderCustomerOrders==='function')renderCustomerOrders();if(typeof checkMyReadyOrders==='function')checkMyReadyOrders();},function(){});});}catch(e){}}
 function subscribeCustomerOrderIndex(uid){try{if(_customerIndexUnsub)_customerIndexUnsub();_customerIndexUnsub=onValue(ref(db,'customerOrders/'+uid),function(s){var ids=Object.keys(s.val()||{});ids.forEach(function(id){if(myOrderIds.indexOf(id)<0)myOrderIds.push(id);});try{localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));}catch(e){}subscribeMyOrders();});}catch(e){}}
-function ensureCustomerAuth(){return new Promise(function(resolve,reject){if(auth.currentUser){resolve(auth.currentUser);return;}var done=false;var off=onAuthStateChanged(auth,function(u){if(done)return;if(u){done=true;off();resolve(u);}});signInAnonymously(auth).catch(function(e){if(!done){done=true;off();reject(e);}});setTimeout(function(){if(!done){done=true;off();reject(new Error('Customer session timed out.'));}},10000);});}
+async function ensureCustomerAuth(forceRefresh){
+  var user=auth.currentUser;
+  if(!user){
+    user=await new Promise(function(resolve,reject){
+      var done=false;
+      var off=onAuthStateChanged(auth,function(u){if(done||!u)return;done=true;off();resolve(u);});
+      signInAnonymously(auth).then(function(result){if(!done&&result&&result.user){done=true;off();resolve(result.user);}}).catch(function(e){if(!done){done=true;off();reject(e);}});
+      setTimeout(function(){if(!done){done=true;off();reject(new Error('Customer session timed out.'));}},10000);
+    });
+  }
+  var token=await user.getIdToken(forceRefresh===true);
+  if(!token)throw new Error('Customer authentication token was not created.');
+  return user;
+}
 window.__subscribeMyOrders=subscribeMyOrders;
 onAuthStateChanged(auth,function(u){if(!u){customerUid=null;signInAnonymously(auth).catch(function(e){console.warn('anon auth failed',e);});return;}customerUid=u.uid;subscribeCustomerOrderIndex(u.uid);subscribeMyOrders();});
 // ===================== WEB PUSH (FCM) =====================
@@ -2253,8 +2266,14 @@ window.placeOrder=async function(){
   window._placingOrder=true;
   const _btn=document.querySelector('.btn-place-order');_btn.disabled=true;_btn.style.opacity='0.5';_btn.textContent='⏳ Placing order…';
   try{
-    await ensureCustomerAuth();
-    var placed=await createOnlineOrderCall({name:name,phone:phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':paymentType==='maya'?'PayMaya':'Bank Transfer',contact:document.getElementById('custContact').value.trim(),contactMethod:contactMethod,notes:document.getElementById('custNotes').value.trim(),proof:proofSrc,lineItems:lineItemsArr,expectedTotal:total});
+    await ensureCustomerAuth(true);
+    var orderPayload={name:name,phone:phone,type:orderType==='delivery'?'Delivery':'Pick-up',address:orderType==='delivery'?document.getElementById('deliveryAddr').value.trim():'',payment:paymentType==='gcash'?'GCash':paymentType==='maya'?'PayMaya':'Bank Transfer',contact:document.getElementById('custContact').value.trim(),contactMethod:contactMethod,notes:document.getElementById('custNotes').value.trim(),proof:proofSrc,lineItems:lineItemsArr,expectedTotal:total};
+    var placed;
+    try{placed=await createOnlineOrderCall(orderPayload);}catch(firstError){
+      if(String(firstError&&firstError.code).indexOf('unauthenticated')<0)throw firstError;
+      await ensureCustomerAuth(true);
+      placed=await createOnlineOrderCall(orderPayload);
+    }
     var orderId=placed&&placed.data&&placed.data.orderId;if(!orderId)throw new Error('Server did not return an order number.');
     window._lastOrderSig=_sig;window._lastOrderTime=Date.now();window._placingOrder=false;_btn.textContent='✅ Order Placed!';try{localStorage.setItem('accaza_lastsig',_sig+'@@'+Date.now());}catch(e){}
     if(myOrderIds.indexOf(orderId)<0)myOrderIds.push(orderId);localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));if(window.__subscribeMyOrders)window.__subscribeMyOrders();
