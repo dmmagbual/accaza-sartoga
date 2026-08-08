@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v133</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v134</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4281,6 +4281,7 @@ function renderInventory(){
       +'<input type="file" id="invImportFile" accept=".xlsx,.xls,.csv" style="display:none;"/>'
       +(ozItems.length?'<button class="pz-btn sec" id="invFixOz" style="border-color:#e6a817;color:#8a5a00;">🔤 Convert '+ozItems.length+' oz → fl oz</button>':'')
       +'<button class="pz-btn sec" id="invCatMgr">🗂 Categories</button>'
+      +'<button class="pz-btn sec" id="invSkuSetup" style="border-color:#3a8a6a;color:#256b52;">🔀 SKU &amp; Batch setup</button>'
       +'<select class="pz-in" id="invCatFilter" style="width:auto;"><option value="">All categories</option><option value="__none__"'+(catFilter==='__none__'?' selected':'')+'>— Uncategorized ('+uncat.length+') —</option>'+catList.map(function(c){return '<option value="'+esc(c.id)+'"'+(catFilter===c.id?' selected':'')+'>'+esc(c.name)+(c.kind==='overhead'?' (overhead)':'')+'</option>';}).join('')+'</select>'
     +'</div>'
     +'<div class="pz-card" style="margin-bottom:1rem;">'
@@ -4307,6 +4308,7 @@ function renderInventory(){
   document.getElementById('invAddBtn').onclick=addIngredient;
   var _cf=document.getElementById('invCatFilter'); if(_cf)_cf.onchange=function(){window.__invCatFilter=this.value||'';renderInventory();};
   var _cm=document.getElementById('invCatMgr'); if(_cm)_cm.onclick=openCatManager;
+  var _ss=document.getElementById('invSkuSetup'); if(_ss)_ss.onclick=openSkuBatchSetup;
   var _ex=document.getElementById('invExport'); if(_ex)_ex.onclick=exportInventoryXlsx;
   var _fo=document.getElementById('invFixOz'); if(_fo)_fo.onclick=migrateOzToFloz;
   var _tp=document.getElementById('invTemplate'); if(_tp)_tp.onclick=downloadInventoryTemplate;
@@ -4318,6 +4320,68 @@ function renderInventory(){
   root.querySelectorAll('[data-inv-adjust]').forEach(function(b){b.onclick=function(){adjustStock(b.getAttribute('data-inv-adjust'));};});
   root.querySelectorAll('[data-inv-edit]').forEach(function(b){b.onclick=function(){editIngredient(b.getAttribute('data-inv-edit'));};});
   root.querySelectorAll('[data-inv-del]').forEach(function(b){b.onclick=function(){delIngredient(b.getAttribute('data-inv-del'));};});
+}
+/* ══════════ INVENTORY ARCHITECTURE v2 — Phase 0 migration (DRY-RUN first) ══════════
+   Promotes each inventory item to an Ingredient Master (KEEPS its ID — recipes untouched),
+   seeds an Approved-SKU record per brand seen in stockReceipts, and creates ONE opening
+   batch per item from current stock + weighted-average cost. Additive, idempotent, reversible.
+   Actual COGS + deduction engine are NOT changed (WAC stays authoritative). */
+function openSkuBatchSetup(){
+  var a=A();
+  var mask=document.createElement('div'); mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
+  mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:900px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;"><div style="font-weight:700;color:var(--bd);">🔀 SKU &amp; Batch setup — Phase 0</div><p class="pz-sub">Reading your inventory and purchase receipts…</p></div>';
+  document.body.appendChild(mask);
+  function close(){ if(mask.parentNode)document.body.removeChild(mask); }
+  Promise.all([a.get(a.ref(a.db,'stockReceipts')),a.get(a.ref(a.db,'inventorySku')),a.get(a.ref(a.db,'inventoryBatch'))]).then(function(res){
+    var receipts=res[0].val()||{}, existingSku=res[1].val()||{}, existingBatch=res[2].val()||{};
+    // brands + last supplier seen per inventory item, from receipt history
+    var brandsByItem={};
+    Object.keys(receipts).forEach(function(rid){ var r=receipts[rid]||{}; var ing=r.ing; if(!ing)return; var b=(r.brand||'').trim(); if(!b)return; brandsByItem[ing]=brandsByItem[ing]||{}; if(!brandsByItem[ing][b])brandsByItem[ing][b]={supplier:(r.supplier||'').trim()}; else if(r.supplier)brandsByItem[ing][b].supplier=(r.supplier||'').trim(); });
+    var list=ings();
+    var plan=[]; var nSku=0,nBatch=0,nItems=0,nNeg=0;
+    list.forEach(function(it){
+      var done=!!it.skuMigrated;
+      var brs=Object.keys(brandsByItem[it.id]||{});
+      var stock=Number(it.stock)||0;
+      var willBatch=(!done&&stock>0);
+      if(willBatch)nBatch++; if(!done){nItems++; nSku+=brs.length;} if(stock<0)nNeg++;
+      plan.push({it:it,done:done,brs:brs,stock:stock,willBatch:willBatch});
+    });
+    var rows=plan.map(function(p){
+      var it=p.it; var wac=Number(it.cost)||0;
+      var brandCell=p.brs.length?p.brs.map(esc).join(', '):'<span style="color:var(--tl);">— none in receipts —</span>';
+      var status=p.done?'<span style="color:#2a7;">✓ already set up</span>':'<span style="color:#256b52;font-weight:600;">will set up</span>';
+      var batchCell=p.done?'—':(p.stock>0?(num(p.stock)+' '+esc(it.unit||'')+' @ '+peso(wac)):(p.stock<0?'<span class="pz-low">negative — skipped</span>':'0 — skipped'));
+      return '<tr><td>'+esc(it.name)+'</td><td style="font-size:0.78rem;color:var(--tl);">'+esc(it.unit||'')+'</td><td>'+(wac?peso(wac):'—')+'</td><td style="font-size:0.8rem;">'+brandCell+'</td><td style="font-size:0.8rem;">'+batchCell+'</td><td style="font-size:0.8rem;">'+status+'</td></tr>';
+    }).join('');
+    var allDone=(nItems===0);
+    mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:900px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;"><div style="font-weight:700;color:var(--bd);">🔀 SKU &amp; Batch setup — Phase 0 (dry run)</div><button class="pz-btn sec" id="skuClose" style="padding:0.2rem 0.6rem;">✕</button></div>'
+      +'<p class="pz-sub" style="margin-top:0.3rem;">This promotes each item to an <b>Ingredient Master</b> (keeps its ID — your recipes are not touched), seeds an <b>Approved-SKU</b> record per brand found in your receipts, and creates one <b>opening batch</b> from current stock at weighted-average cost. Your deduction &amp; COGS stay exactly as they are. Nothing is written until you press Commit.</p>'
+      +'<div style="background:var(--cd);border-radius:6px;padding:0.5rem 0.7rem;margin:0.5rem 0;font-size:0.85rem;"><b>Preview:</b> '+nItems+' item(s) to set up · '+nSku+' SKU record(s) from brand history · '+nBatch+' opening batch(es)'+(nNeg?' · <span class="pz-low">'+nNeg+' with negative stock (opening batch skipped)</span>':'')+(allDone?' · <b style="color:#2a7;">everything already set up</b>':'')+'</div>'
+      +'<div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item (→ Master)</th><th>Base unit</th><th>WAC cost</th><th>Brands → SKUs</th><th>Opening batch</th><th>Status</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6" style="padding:1rem;color:var(--tl);">No inventory items yet.</td></tr>')+'</tbody></table></div>'
+      +'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.5rem;">Items with no brand in receipt history get no SKU yet — you add approved brands in the next step (P1). The opening batch is a blended-WAC balance, not tied to a brand (your pooled stock is already blended). Re-running this is safe: items already set up are skipped.</div>'
+      +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="skuCommit"'+(allDone?' disabled style="opacity:0.5;"':'')+'>✅ Commit '+nItems+' item(s)</button><button class="pz-btn sec" id="skuCancel">Cancel</button></div>'
+      +'</div>';
+    document.getElementById('skuClose').onclick=close;
+    document.getElementById('skuCancel').onclick=close;
+    var commitBtn=document.getElementById('skuCommit');
+    if(commitBtn&&!allDone)commitBtn.onclick=function(){
+      commitBtn.disabled=true; commitBtn.textContent='Committing…';
+      var now=Date.now(); var today=new Date().toISOString().slice(0,10); var updates={}; var c=0;
+      plan.forEach(function(p){
+        if(p.done)return; var it=p.it; var wac=Number(it.cost)||0;
+        updates['inventory/'+it.id+'/masterUnit']=it.unit||'';
+        updates['inventory/'+it.id+'/stdCost']=wac;
+        updates['inventory/'+it.id+'/kind']=(invCatKind(it.category)||'cogs');
+        updates['inventory/'+it.id+'/skuMigrated']=true;
+        updates['inventory/'+it.id+'/skuMigratedAt']=now;
+        p.brs.forEach(function(bName,ix){ var sid='sku_'+now.toString(36)+'_'+(c++); updates['inventorySku/'+sid]={masterId:it.id,brand:bName,supplier:(brandsByItem[it.id][bName]||{}).supplier||'',purchaseUnit:it.unit||'',packSize:null,purchaseCost:null,convToBase:1,costPerBase:wac,active:true,priority:ix,branchAvail:['main'],seededFrom:'receipts',createdAt:now}; });
+        if(p.willBatch){ var bid='bat_'+now.toString(36)+'_'+(c++); updates['inventoryBatch/'+bid]={skuId:'',masterId:it.id,brand:'(opening balance — blended WAC)',qtyRecv:p.stock,qtyRemaining:p.stock,unitCost:wac,recvDate:today,expiry:'',lot:'OPENING',branch:'main',source:'opening',createdAt:now}; }
+      });
+      a.update(a.ref(a.db),updates).then(function(){ close(); alert('Done. Set up '+nItems+' item(s), '+nSku+' SKU record(s), '+nBatch+' opening batch(es).\n\nRecipes, stock and costs are unchanged. Next: manage approved brands (Phase 1).'); if(isTab('inventory'))renderInventory(); }).catch(function(e){ commitBtn.disabled=false; commitBtn.textContent='✅ Commit '+nItems+' item(s)'; alert('Could not write: '+((e&&e.code)||e)+'.\n\nIf PERMISSION_DENIED — log in with your admin email and publish the updated database rules (inventorySku + inventoryBatch nodes).'); });
+    };
+  }).catch(function(e){ mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:520px;width:100%;padding:1.2rem;"><div style="font-weight:700;color:var(--bd);">Could not load</div><p class="pz-sub">'+esc((e&&e.code)||String(e))+'</p><button class="pz-btn sec" id="skuErrClose">Close</button></div>'; var b=document.getElementById('skuErrClose'); if(b)b.onclick=close; });
 }
 function addIngredient(){
   var name=(document.getElementById('invName').value||'').trim(); if(!name){alert('Enter an ingredient name.');return;}
