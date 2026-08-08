@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v136</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v137</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4129,6 +4129,12 @@ function ings(){return Object.keys(inventoryMap).map(function(k){return Object.a
 function ingName(id){var i=inventoryMap[id];return i?i.name:'(deleted)';}
 function ingUnit(id){var i=inventoryMap[id];return i?(i.unit||''):'';}
 function ingCost(id){var i=inventoryMap[id];return i?(Number(i.cost)||0):0;}
+/* P3: Standard cost (pricing lens) vs Actual COGS (weighted-average, unchanged).
+   Method 'wac' → standard = live weighted-average; 'manual' → standard = the locked stdCost you set. */
+function stdCostMethod(){return (window.__posSettings&&window.__posSettings.stdCostMethod)||'wac';}
+function stdCostOf(item){ if(!item)return 0; if(stdCostMethod()==='manual'&&item.stdCost!=null&&item.stdCost!=='')return Number(item.stdCost)||0; return Number(item.cost)||0; }
+function stdIngCost(id){return stdCostOf(inventoryMap[id]);}
+function recipeStdCost(key,size){ var rec=recipesMap[key]; if(!rec||!rec.base)return {cost:0,covered:false,has:false}; var c=0,cov=true; (rec.base||[]).forEach(function(b){ if(!b.ing)return; var q=baseQtyForSize(rec,b,size); var uc=stdIngCost(b.ing); if(!uc&&q)cov=false; c+=q*uc; }); return {cost:Math.round(c*100000)/100000,covered:cov,has:true}; }
 function ingType(i){return (i&&i.type)||'base';}
 function ingsByType(t){return ings().filter(function(i){return ingType(i)===t;});}
 /* Inventory categories (organization + product-cost vs overhead), stored in posSettings (no new rule). */
@@ -4284,6 +4290,7 @@ function renderInventory(){
       +'<button class="pz-btn sec" id="invCatMgr">🗂 Categories</button>'
       +'<button class="pz-btn sec" id="invSkuSetup" style="border-color:#3a8a6a;color:#256b52;">🔀 SKU &amp; Batch setup</button>'
       +'<button class="pz-btn sec" id="invExpiry" style="border-color:#c98a2b;color:#8a5a00;">📅 Expiry / batches</button>'
+      +'<button class="pz-btn sec" id="invStdCost" style="border-color:#5a6fb0;color:#3a4a86;">📊 Standard costing</button>'
       +'<select class="pz-in" id="invCatFilter" style="width:auto;"><option value="">All categories</option><option value="__none__"'+(catFilter==='__none__'?' selected':'')+'>— Uncategorized ('+uncat.length+') —</option>'+catList.map(function(c){return '<option value="'+esc(c.id)+'"'+(catFilter===c.id?' selected':'')+'>'+esc(c.name)+(c.kind==='overhead'?' (overhead)':'')+'</option>';}).join('')+'</select>'
     +'</div>'
     +'<div class="pz-card" style="margin-bottom:1rem;">'
@@ -4312,6 +4319,7 @@ function renderInventory(){
   var _cm=document.getElementById('invCatMgr'); if(_cm)_cm.onclick=openCatManager;
   var _ss=document.getElementById('invSkuSetup'); if(_ss)_ss.onclick=openSkuBatchSetup;
   var _xp=document.getElementById('invExpiry'); if(_xp)_xp.onclick=openExpiryView;
+  var _sc=document.getElementById('invStdCost'); if(_sc)_sc.onclick=openStdCosting;
   var _ex=document.getElementById('invExport'); if(_ex)_ex.onclick=exportInventoryXlsx;
   var _fo=document.getElementById('invFixOz'); if(_fo)_fo.onclick=migrateOzToFloz;
   var _tp=document.getElementById('invTemplate'); if(_tp)_tp.onclick=downloadInventoryTemplate;
@@ -4506,6 +4514,62 @@ function openExpiryView(){
     mask.querySelectorAll('[data-xpdisc]').forEach(function(btn){ btn.onclick=function(){ var bid=btn.getAttribute('data-xpdisc'); var mid=btn.getAttribute('data-xpmid'); var rem=Number(btn.getAttribute('data-xprem'))||0; var it=inventoryMap[mid]||{}; if(!confirm('Discard '+num(rem)+' '+(it.unit||'')+' of '+(it.name||'this item')+' as wastage? This reduces stock and posts a COGS variance.'))return; a.update(a.ref(a.db,'inventoryBatch/'+bid),{closed:true,qtyRemaining:0,closedAt:Date.now(),closedReason:'wastage'}).then(function(){ if(typeof finalizeAdjust==='function')finalizeAdjust(mid,Number(it.stock)||0,-rem,'wastage'); setTimeout(load,300); }).catch(function(e){alert('Could not discard: '+((e&&e.code)||e));}); }; });
   }
   load();
+}
+/* ══════════ INVENTORY ARCHITECTURE v2 — Phase 3: Standard vs Actual costing ══════════
+   Standard cost = pricing lens (menu margin, food-cost %). Actual COGS stays weighted-average
+   (unchanged, already snapshotted per sale into cogsSnapshot). Method 'wac' (default) makes
+   standard = live WAC; 'manual' lets you lock a standard that pricing uses independently. */
+function openStdCosting(){
+  var a=A(); var size=window.__stdSize||'M'; var method=stdCostMethod();
+  var mask=document.createElement('div'); mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
+  document.body.appendChild(mask);
+  function close(){ if(mask.parentNode)document.body.removeChild(mask); }
+  function pctCol(fc){ return fc<=35?'#2a7':(fc<=45?'#c98a2b':'#c0392b'); }
+  function draw(){
+    size=window.__stdSize||'M'; method=stdCostMethod();
+    var items=(typeof menuList==='function'?menuList():[]).slice();
+    var sizeBtns=['S','M','L'].map(function(s){return '<button class="pz-btn '+(s===size?'ok':'sec')+'" data-stdsize="'+s+'" style="padding:0.2rem 0.7rem;">'+s+'</button>';}).join(' ');
+    var sumFc=0,nFc=0,nUncosted=0,nNoRec=0;
+    var rows=items.map(function(it){
+      var price=Number(it['price'+size])||0;
+      var r=recipeStdCost(it.key,size);
+      if(!r.has||it.noRecipe){ if(!it.noRecipe)nNoRec++; return '<tr><td>'+esc(it.name)+'</td><td class="r">'+(price?peso(price):'—')+'</td><td class="r" style="color:var(--tl);">'+(it.noRecipe?'resale':'no recipe')+'</td><td class="r">—</td><td class="r">—</td><td class="r">—</td></tr>'; }
+      var cost=r.cost; var gp=price-cost; var gpp=price>0?(gp/price*100):0; var fc=price>0?(cost/price*100):0;
+      if(price>0){sumFc+=fc;nFc++;}
+      if(!r.covered)nUncosted++;
+      return '<tr>'
+        +'<td>'+esc(it.name)+(r.covered?'':' <span title="an ingredient has no cost" style="color:#c0392b;">⚠</span>')+'</td>'
+        +'<td class="r">'+(price?peso(price):'—')+'</td>'
+        +'<td class="r">'+peso(cost)+'</td>'
+        +'<td class="r">'+peso(gp)+'</td>'
+        +'<td class="r" style="font-weight:600;">'+(price?num(Math.round(gpp*10)/10)+'%':'—')+'</td>'
+        +'<td class="r" style="font-weight:600;color:'+pctCol(fc)+';">'+(price?num(Math.round(fc*10)/10)+'%':'—')+'</td>'
+      +'</tr>';
+    }).join('');
+    var avgFc=nFc?Math.round(sumFc/nFc*10)/10:0;
+    // ingredient standard vs WAC drift (matters when method=manual or a standard was locked)
+    var drift=ings().filter(function(x){return x.stdCost!=null&&x.stdCost!==''&&Math.abs((Number(x.stdCost)||0)-(Number(x.cost)||0))>0.00001;})
+      .map(function(x){var d=(Number(x.cost)||0)-(Number(x.stdCost)||0);return '<tr><td>'+esc(x.name)+'</td><td class="r">'+peso(Number(x.stdCost)||0)+'</td><td class="r">'+peso(Number(x.cost)||0)+'</td><td class="r" style="color:'+(d>0?'#c0392b':'#2a7')+';">'+(d>0?'+':'')+peso(d)+'/'+esc(x.unit||'')+'</td></tr>';}).join('');
+    mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:960px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;"><div style="font-weight:700;color:var(--bd);">📊 Standard costing — pricing &amp; margin</div><button class="pz-btn sec" id="stClose" style="padding:0.2rem 0.6rem;">✕</button></div>'
+      +'<p class="pz-sub" style="margin-top:0.3rem;">Expected recipe cost per drink using <b>standard</b> cost, and the margin it implies. Actual COGS on sales stays weighted-average and is unchanged. Options/add-ons are excluded (they’re priced separately); this is the base drink.</p>'
+      +'<div style="display:flex;gap:0.8rem;flex-wrap:wrap;align-items:center;background:var(--cd);border-radius:6px;padding:0.5rem 0.7rem;margin-bottom:0.6rem;font-size:0.82rem;">'
+        +'<span>Standard cost method: <select class="pz-in" id="stMethod" style="width:auto;display:inline-block;"><option value="wac"'+(method==='wac'?' selected':'')+'>Weighted-average (auto)</option><option value="manual"'+(method==='manual'?' selected':'')+'>Manual / locked</option></select></span>'
+        +'<span>Size: '+sizeBtns+'</span>'
+        +'<button class="pz-btn sec" id="stSetWac" style="padding:0.2rem 0.6rem;">Set all standards = current WAC</button>'
+        +'<button class="pz-btn sec" id="stXls" style="padding:0.2rem 0.6rem;">⬇ Excel</button>'
+        +'<span style="margin-left:auto;">Avg food cost: <b style="color:'+pctCol(avgFc)+';">'+num(avgFc)+'%</b>'+(nUncosted?' · <b style="color:#c0392b;">'+nUncosted+' uncosted</b>':'')+'</span>'
+      +'</div>'
+      +'<div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Menu item</th><th class="r">Price ('+size+')</th><th class="r">Std cost</th><th class="r">GP ₱</th><th class="r">GP %</th><th class="r">Food %</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6" style="padding:1rem;color:var(--tl);">No menu items with recipes yet.</td></tr>')+'</tbody></table></div>'
+      +(method==='manual'?('<div style="margin-top:0.8rem;font-weight:600;color:var(--bd);font-size:0.9rem;">Standard vs actual (WAC) drift — ingredients</div><p class="pz-sub" style="margin-top:0.1rem;">Where your locked standard differs from the live weighted-average. Big gaps = time to refresh the standard.</p><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Ingredient</th><th class="r">Standard</th><th class="r">WAC (actual)</th><th class="r">Actual − Std</th></tr></thead><tbody>'+(drift||'<tr><td colspan="4" style="padding:0.6rem;color:var(--tl);">No locked standards differ from WAC.</td></tr>')+'</tbody></table></div>'):'<p class="pz-sub" style="margin-top:0.6rem;">Method is <b>Weighted-average</b>: standard tracks live WAC, so standard = actual. Switch to <b>Manual</b> to lock standards (e.g. a target or replacement cost) and see drift.</p>')
+      +'</div>';
+    document.getElementById('stClose').onclick=close;
+    mask.querySelectorAll('[data-stdsize]').forEach(function(b){b.onclick=function(){window.__stdSize=b.getAttribute('data-stdsize');draw();};});
+    document.getElementById('stMethod').onchange=function(){var v=this.value;window.__posSettings=window.__posSettings||{};window.__posSettings.stdCostMethod=v;a.update(a.ref(a.db,'posSettings'),{stdCostMethod:v}).catch(function(e){alert('Could not save method: '+((e&&e.code)||e));});draw();};
+    document.getElementById('stSetWac').onclick=function(){ if(!confirm('Set every item’s standard cost to its current weighted-average? This snapshots today’s WAC as the standard (useful before switching to Manual).'))return; var upd={}; ings().forEach(function(x){upd['inventory/'+x.id+'/stdCost']=Number(x.cost)||0;}); a.update(a.ref(a.db),upd).then(function(){alert('Standards set to current WAC for '+Object.keys(upd).length+' item(s).');draw();}).catch(function(e){alert('Could not update: '+((e&&e.code)||e));}); };
+    document.getElementById('stXls').onclick=function(){ if(!window.XLSX){alert('Excel library still loading — try again.');return;} var aoa=[['Menu item','Size','Price','Std cost','GP','GP%','Food%','Costed']]; (typeof menuList==='function'?menuList():[]).forEach(function(it){['S','M','L'].forEach(function(s){var price=Number(it['price'+s])||0;var r=recipeStdCost(it.key,s);if(!r.has)return;var gp=price-r.cost;aoa.push([it.name,s,price,r.cost,Math.round(gp*100)/100,price>0?Math.round(gp/price*1000)/10:'',price>0?Math.round(r.cost/price*1000)/10:'',r.covered?'yes':'MISSING']);});}); var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'StdCosting');XLSX.writeFile(wb,'accaza-standard-costing-'+new Date().toISOString().slice(0,10)+'.xlsx'); };
+  }
+  draw();
 }
 function addIngredient(){
   var name=(document.getElementById('invName').value||'').trim(); if(!name){alert('Enter an ingredient name.');return;}
@@ -4948,7 +5012,7 @@ function editIngredient(id){
     +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Edit item — '+esc(i.name)+'</div>'
     +'<p class="pz-sub" style="margin:0.2rem 0 0.7rem;">Sets values directly — <b>no variance is recorded</b>. (For a counted correction that should hit COGS, use <b>Adjust</b> instead.)</p>'
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;"><div style="flex:1;min-width:150px;"><span class="pz-lbl">Name</span><input class="pz-in" id="eiName" value="'+esc(i.name||'')+'"/></div><div><span class="pz-lbl">Unit</span><select class="pz-in" id="eiUnit">'+uOpts+'</select></div><div><span class="pz-lbl">Type</span><select class="pz-in" id="eiType"><option value="base"'+(ty==='base'?' selected':'')+'>Base</option><option value="option"'+(ty==='option'?' selected':'')+'>Option</option><option value="both"'+(ty==='both'?' selected':'')+'>Both (base+option)</option><option value="consumable"'+(ty==='consumable'?' selected':'')+'>Consumable</option></select></div><div><span class="pz-lbl">Category</span><select class="pz-in" id="eiCat"><option value="">—</option>'+eCats.map(function(c){return '<option value="'+esc(c.id)+'"'+((i.category||'')===c.id?' selected':'')+'>'+esc(c.name)+'</option>';}).join('')+'</select></div></div>'
-    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div><span class="pz-lbl">Stock (direct set)</span><input class="pz-in" id="eiStock" type="number" step="any" value="'+(Number(i.stock)||0)+'" style="width:120px;"/></div><div><span class="pz-lbl">Reorder</span><input class="pz-in" id="eiReorder" type="number" step="any" value="'+(Number(i.reorder)||0)+'" style="width:110px;"/></div><div><span class="pz-lbl">Cost / unit ₱</span><input class="pz-in" id="eiCost" type="number" step="any" value="'+(i.cost!=null&&i.cost!==''?i.cost:'')+'" style="width:120px;"/></div></div>'
+    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div><span class="pz-lbl">Stock (direct set)</span><input class="pz-in" id="eiStock" type="number" step="any" value="'+(Number(i.stock)||0)+'" style="width:120px;"/></div><div><span class="pz-lbl">Reorder</span><input class="pz-in" id="eiReorder" type="number" step="any" value="'+(Number(i.reorder)||0)+'" style="width:110px;"/></div><div><span class="pz-lbl">Cost / unit ₱ (WAC · actual)</span><input class="pz-in" id="eiCost" type="number" step="any" value="'+(i.cost!=null&&i.cost!==''?i.cost:'')+'" style="width:120px;"/></div><div><span class="pz-lbl">Standard cost / unit ₱</span><input class="pz-in" id="eiStd" type="number" step="any" value="'+(i.stdCost!=null&&i.stdCost!==''?i.stdCost:'')+'" placeholder="pricing" style="width:120px;" title="Used for menu pricing/margin when standard-cost method is Manual. Blank = falls back to WAC."/></div></div>'
     +'<div id="eiCons" style="display:'+(ty==='consumable'?'flex':'none')+';gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div><span class="pz-lbl">Serves</span><select class="pz-in" id="eiServes"><option value="both"'+((i.serves||'both')==='both'?' selected':'')+'>Both</option><option value="drink"'+(i.serves==='drink'?' selected':'')+'>Drinks</option><option value="food"'+(i.serves==='food'?' selected':'')+'>Food</option></select></div><div><span class="pz-lbl">Size (blank=all)</span><select class="pz-in" id="eiSize"><option value="">all</option><option'+(i.size==='S'?' selected':'')+'>S</option><option'+(i.size==='M'?' selected':'')+'>M</option><option'+(i.size==='L'?' selected':'')+'>L</option></select></div><div><span class="pz-lbl">Qty per order</span><input class="pz-in" id="eiQPO" type="number" step="any" value="'+(i.qtyPerOrder!=null?i.qtyPerOrder:1)+'" style="width:100px;"/></div></div>'
     +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="eiSave">Save</button><button class="pz-btn sec" id="eiCancel">Cancel</button></div></div>';
   document.body.appendChild(mask);
@@ -4957,7 +5021,8 @@ function editIngredient(id){
   mask.querySelector('#eiCancel').onclick=close;
   mask.querySelector('#eiSave').onclick=function(){
     var type=mask.querySelector('#eiType').value;
-    var upd={name:(mask.querySelector('#eiName').value||'').trim()||i.name,unit:mask.querySelector('#eiUnit').value,type:type,category:(mask.querySelector('#eiCat')||{}).value||'',stock:Number(mask.querySelector('#eiStock').value)||0,reorder:Number(mask.querySelector('#eiReorder').value)||0,cost:Number(mask.querySelector('#eiCost').value)||0,updatedAt:Date.now()};
+    var _stdRaw=(mask.querySelector('#eiStd')||{}).value;
+    var upd={name:(mask.querySelector('#eiName').value||'').trim()||i.name,unit:mask.querySelector('#eiUnit').value,type:type,category:(mask.querySelector('#eiCat')||{}).value||'',stock:Number(mask.querySelector('#eiStock').value)||0,reorder:Number(mask.querySelector('#eiReorder').value)||0,cost:Number(mask.querySelector('#eiCost').value)||0,stdCost:(_stdRaw===''||_stdRaw==null)?null:(Number(_stdRaw)||0),updatedAt:Date.now()};
     if(type==='consumable'){upd.serves=mask.querySelector('#eiServes').value;upd.size=mask.querySelector('#eiSize').value;upd.qtyPerOrder=Number(mask.querySelector('#eiQPO').value)||1;}
     var a=A();a.update(a.ref(a.db,'inventory/'+id),upd).then(function(){close();}).catch(function(e){alert('Could not save: '+((e&&e.code)||e)+'. If PERMISSION_DENIED, log in with your admin EMAIL and publish the rules.');});
   };
