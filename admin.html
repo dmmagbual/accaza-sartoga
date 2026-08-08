@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v140</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v141</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -6245,6 +6245,7 @@ function salesBetween(from,to){return allOrders().filter(isSale).map(saleFields)
 function dayStart(d){d=new Date(d);d.setHours(0,0,0,0);return d.getTime();}
 function rangeBounds(){var now=Date.now();var end=dayStart(now)+86400000;if(azRange==='today')return[dayStart(now),end];if(azRange==='7d')return[dayStart(now)-6*86400000,end];if(azRange==='30d')return[dayStart(now)-29*86400000,end];if(azRange==='month'){var d=new Date();return[new Date(d.getFullYear(),d.getMonth(),1).getTime(),end];}if(azRange==='custom'&&azFrom&&azTo)return[dayStart(azFrom),dayStart(azTo)+86400000];return[dayStart(now)-6*86400000,end];}
 function fmtD(ts){return new Date(ts).toLocaleDateString('en-PH',{month:'short',day:'numeric'});}
+function azRangeLabel(from,to){var nm={today:'Today','7d':'Last 7 days','30d':'Last 30 days',month:'This month',custom:'Custom range'};return (nm[azRange]||azRange)+' · '+fmtD(from)+' – '+fmtD(to-86400000);}
 
 function bar(label,val,max,disp){var w=max>0?Math.max(2,Math.round(val/max*100)):0;return '<div class="az-bar-row"><div class="az-bar-lbl">'+esc(label)+'</div><div class="az-bar-track"><div class="az-bar-fill" style="width:'+w+'%;"></div></div><div class="az-bar-val">'+(disp!=null?disp:val)+'</div></div>';}
 function kpi(label,val,delta){var d='';if(delta!=null&&isFinite(delta))d='<div class="d '+(delta>0?'az-up':delta<0?'az-down':'az-flat')+'">'+pct(delta)+' vs prev</div>';return '<div class="az-kpi"><div class="v">'+val+'</div><div class="l">'+esc(label)+'</div>'+d+'</div>';}
@@ -6317,8 +6318,10 @@ function renderAnalytics(){
   var convVO=visits>0?tx/visits*100:0, convRV=reach>0?visits/reach*100:0;
 
   var html='<div class="pz-h">📊 Analytics</div><p class="pz-sub">Every figure here traces to your own orders, recipes, and reviews. Reach/Visits are entered manually from Google Analytics.</p>';
-  html+='<div style="margin-bottom:0.8rem;">'+['today:Today','7d:7 days','30d:30 days','month:This month'].map(function(o){var v=o.split(':');return '<span class="pz-chip '+(azRange===v[0]?'on':'')+'" data-range="'+v[0]+'">'+v[1]+'</span>';}).join('')
-    +'<span style="margin-left:0.5rem;font-size:0.78rem;color:var(--tl);">or '+'<input type="date" class="pz-in" id="azFrom" style="width:auto;display:inline-block;padding:0.2rem 0.4rem;"/> → <input type="date" class="pz-in" id="azTo" style="width:auto;display:inline-block;padding:0.2rem 0.4rem;"/> <button class="pz-btn sec" id="azApply" style="padding:0.25rem 0.6rem;">Apply</button></span></div>';
+  var _azF=new Date(from).toISOString().slice(0,10), _azT=new Date(to-86400000).toISOString().slice(0,10);
+  html+='<div style="margin-bottom:0.4rem;">'+['today:Today','7d:7 days','30d:30 days','month:This month'].map(function(o){var v=o.split(':');return '<span class="pz-chip '+(azRange===v[0]?'on':'')+'" data-range="'+v[0]+'">'+v[1]+'</span>';}).join('')
+    +'<span style="margin-left:0.5rem;font-size:0.78rem;color:var(--tl);">or '+'<input type="date" class="pz-in" id="azFrom" value="'+_azF+'" style="width:auto;display:inline-block;padding:0.2rem 0.4rem;"/> → <input type="date" class="pz-in" id="azTo" value="'+_azT+'" style="width:auto;display:inline-block;padding:0.2rem 0.4rem;"/> <button class="pz-btn '+(azRange==='custom'?'ok':'sec')+'" id="azApply" style="padding:0.25rem 0.6rem;">Apply dates</button></span></div>'
+    +'<div class="az-note" id="azActive" style="margin:0 0 0.7rem;font-weight:600;color:var(--bd);">📅 Showing: '+azRangeLabel(from,to)+'</div>';
   // KPIs
   html+='<div class="az-kpis">'
     +kpi('Net sales',peso0(net),trend)
@@ -6387,8 +6390,8 @@ function renderAnalytics(){
     html+='<div class="az-sec">Channel mix</div><div class="pz-card"><table class="pnl-tbl"><thead><tr><th>Channel</th><th class="r">Tx</th><th class="r">Gross</th><th class="r">Commission</th><th class="r">COGS</th><th class="r">Net after comm.+COGS</th><th class="r">Margin</th></tr></thead><tbody>'+rows+'</tbody></table><div class="az-note">Platform gross is booked as revenue; commission is the flat estimate (trued up in Platform Payouts). In-store "gross" here is net of discounts.</div></div>';
   })();
   root.innerHTML=html;
-  root.querySelectorAll('[data-range]').forEach(function(c){c.onclick=function(){azRange=c.getAttribute('data-range');renderAnalytics();};});
-  var ap=document.getElementById('azApply');if(ap)ap.onclick=function(){var f=document.getElementById('azFrom').value,t=document.getElementById('azTo').value;if(f&&t){azFrom=new Date(f).getTime();azTo=new Date(t).getTime();azRange='custom';renderAnalytics();}};
+  root.querySelectorAll('[data-range]').forEach(function(c){c.onclick=function(){azRange=c.getAttribute('data-range');azFrom=null;azTo=null;renderAnalytics();};});
+  var ap=document.getElementById('azApply');if(ap)ap.onclick=function(){var f=document.getElementById('azFrom').value,t=document.getElementById('azTo').value;if(!f||!t){alert('Pick both a From and a To date, then tap “Apply dates”.');return;}if(f>t){alert('The From date is later than the To date — please switch them.');return;}azFrom=new Date(f).getTime();azTo=new Date(t).getTime();azRange='custom';renderAnalytics();var bb=rangeBounds();var el=document.getElementById('azActive');if(el)el.innerHTML='✓ Applied — showing '+azRangeLabel(bb[0],bb[1]);};
   var fs=document.getElementById('fSave');if(fs)fs.onclick=function(){var a=A();a.set(a.ref(a.db,'analyticsFunnel/'+funnelKey(from)),{reach:Number(document.getElementById('fReach').value)||0,visits:Number(document.getElementById('fVisits').value)||0,ts:Date.now()});};
 }
 function chartObj(obj){var keys=Object.keys(obj).sort(function(a,b){return obj[b]-obj[a];});var max=Math.max.apply(null,keys.map(function(k){return obj[k];}).concat([1]));return keys.length?keys.map(function(k){return bar(k,obj[k],max,peso0(obj[k]));}).join(''):'<p class="az-note">No data.</p>';}
