@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v132</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v133</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -4179,6 +4179,9 @@ function optRecipeFor(rec,label){
    Falls back to legacy optRecipeFor (single flat qty by label) when no entry exists,
    so existing add-on costs and historical (snapshotted) orders are unaffected. */
 function optCostStore(){return (window.__posSettings&&window.__posSettings.optionCosts)||{};}
+/* Which option groups may carry per-drink extra ingredients (choiceAdd). Default = Temperature only.
+   Stored in posSettings.choiceAddGroups (no rule change). Empty array = none allowed. */
+function caAllowGroups(){var s=(window.__posSettings&&window.__posSettings.choiceAddGroups);return Array.isArray(s)?s:['og_temp'];}
 function groupIdForLabel(item,label){
   var groups=(item&&A()&&A().getItemOptionGroups)?A().getItemOptionGroups(item):[];
   for(var i=0;i<(groups||[]).length;i++){var cs=groups[i].choices||[];for(var j=0;j<cs.length;j++){if(cs[j].label===label)return groups[i].id;}}
@@ -4961,7 +4964,10 @@ function drawRecipeEditor(item){
   }).join('');
   var sizeBtns=['S','M','L'].map(function(sz){return '<button class="pz-btn '+(sz===size?'ok':'sec')+'" data-recsize="'+sz+'" style="padding:0.25rem 0.8rem;">'+sz+'</button>';}).join(' ');
   var grand=baseTotal;
-  var caGroups=(A().getItemOptionGroups?A().getItemOptionGroups(item):[])||[];
+  var caGroupsAll=(A().getItemOptionGroups?A().getItemOptionGroups(item):[])||[];
+  var caAllow=caAllowGroups();
+  if(d.choiceAdd){Object.keys(d.choiceAdd).forEach(function(_g){if(caAllow.indexOf(_g)<0)delete d.choiceAdd[_g];});}
+  var caGroups=caGroupsAll.filter(function(g){return caAllow.indexOf(g.id)>=0;});
   var caInv=ings().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
   function caIngSel(val){return '<select class="pz-in" data-caf="ing" style="min-width:150px;"><option value="">— ingredient —</option>'+caInv.map(function(i){return '<option value="'+i.id+'"'+(i.id===val?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+') · '+ingType(i)+'</option>';}).join('')+'</select>';}
   var caCards=caGroups.map(function(g){
@@ -4984,19 +4990,20 @@ function drawRecipeEditor(item){
     }).join('');
     return '<div style="margin-bottom:0.6rem;"><div style="font-weight:600;color:var(--bd);font-size:0.85rem;">'+esc(g.name)+'</div>'+choices+'</div>';
   }).join('');
-  var caSection=caGroups.length?('<div style="border-top:2px solid var(--cd);margin-top:0.8rem;padding-top:0.6rem;"><div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Extra ingredients per choice — this drink only</div><p class="pz-sub" style="margin-top:0;">Stacks on top of the base recipe and the shared Optional-ingredients cost (cups, ice, milk). Use for drink-specific deltas — e.g. Hot → extra coffee for this drink. Blank = 0 for that size.</p>'+caCards+'</div>'):'';
+  var caManage=caGroupsAll.map(function(g){var on=caAllow.indexOf(g.id)>=0;return '<label style="display:inline-flex;align-items:center;gap:0.3rem;font-size:0.72rem;margin:0 0.7rem 0.25rem 0;cursor:pointer;"><input type="checkbox" data-cagrp="'+esc(g.id)+'"'+(on?' checked':'')+'/>'+esc(g.name)+'</label>';}).join('');
+  var caSection=caGroupsAll.length?('<div style="border-top:2px solid var(--cd);margin-top:0.8rem;padding-top:0.6rem;"><div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Extra ingredients per choice — this drink only</div><p class="pz-sub" style="margin-top:0;">Stacks on top of the base recipe and the shared Optional-ingredients cost (cups, ice, milk). Use for drink-specific deltas — e.g. Hot → extra coffee for this drink. Blank = 0 for that size.</p>'+'<div style="background:var(--cd);border-radius:6px;padding:0.4rem 0.55rem;margin-bottom:0.5rem;font-size:0.72rem;"><b>Which choices can carry per-drink extras</b> <span style="color:var(--tl);">(applies to all drinks — Temperature only by default):</span><div style="margin-top:0.3rem;">'+caManage+'</div></div>'+(caCards||'<p class="pz-sub" style="margin:0;">No choices enabled — tick one above to add a per-drink extra.</p>')+'</div>'):'';
   // ── COST PER DRINK calculator: base + selected choices (per-recipe extra + shared optional) ──
   var tempRec={choiceAdd:d.choiceAdd};
   function selLabelCost(lb){var c=0;choiceIngs(item,tempRec,lb,size).forEach(function(r){c+=(Number(r.qty)||0)*ingCost(r.ing);});return c;}
   var selState=window.__recCostSel||{};
   var selLines=[],extrasTotal=0;
-  caGroups.forEach(function(g){var v=selState[g.id];var labels=Array.isArray(v)?v:(v?[v]:[]);labels.forEach(function(lb){var cc=selLabelCost(lb);extrasTotal+=cc;selLines.push('<div style="display:flex;justify-content:space-between;"><span style="color:var(--tl);">'+esc(g.name)+': '+esc(lb)+'</span><span>'+peso(cc)+'</span></div>');});});
+  caGroupsAll.forEach(function(g){var v=selState[g.id];var labels=Array.isArray(v)?v:(v?[v]:[]);labels.forEach(function(lb){var cc=selLabelCost(lb);extrasTotal+=cc;selLines.push('<div style="display:flex;justify-content:space-between;"><span style="color:var(--tl);">'+esc(g.name)+': '+esc(lb)+'</span><span>'+peso(cc)+'</span></div>');});});
   var drinkTotal=baseTotal+extrasTotal;
-  var calcGroups=caGroups.map(function(g){var sv=selState[g.id];var isMulti=g.type==='multi';
+  var calcGroups=caGroupsAll.map(function(g){var sv=selState[g.id];var isMulti=g.type==='multi';
     var chips=(g.choices||[]).map(function(c){var on=isMulti?(Array.isArray(sv)&&sv.indexOf(c.label)>-1):(sv===c.label);return '<button class="pz-btn '+(on?'ok':'sec')+'" data-rcsel="'+esc(g.id)+'" data-rcmulti="'+(isMulti?1:0)+'" data-rclabel="'+esc(c.label)+'" style="padding:0.18rem 0.55rem;font-size:0.74rem;margin:0 0.2rem 0.2rem 0;">'+esc(c.label)+'</button>';}).join('');
     return '<div style="margin-bottom:0.3rem;"><span style="font-size:0.7rem;color:var(--tl);text-transform:uppercase;letter-spacing:0.03em;display:block;">'+esc(g.name)+(isMulti?' · pick any':' · pick one')+'</span>'+chips+'</div>';
   }).join('');
-  var drinkCard=caGroups.length?('<div class="pz-card" style="margin-bottom:1rem;border:2px solid var(--bd);">'
+  var drinkCard=caGroupsAll.length?('<div class="pz-card" style="margin-bottom:1rem;border:2px solid var(--bd);">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.4rem;"><span style="font-weight:700;color:var(--bd);">💰 Cost per drink — by selection</span><span><span class="pz-lbl" style="display:inline;margin-right:0.4rem;">Size</span>'+sizeBtns+'</span></div>'
     +'<p class="pz-sub" style="margin-top:0;">Pick the choices a customer would make; this stacks the base, this drink’s per-choice extras, and the shared Optional-ingredients cost, at the '+size+' size.</p>'
     +calcGroups
@@ -5045,6 +5052,7 @@ function drawRecipeEditor(item){
   ed.querySelectorAll('select[data-brow]').forEach(function(s){s.onchange=function(){syncAll();drawRecipeEditor(item);};});
   ed.querySelectorAll('[data-caadd]').forEach(function(b){b.onclick=function(){syncAll();var g=b.getAttribute('data-g'),lk=b.getAttribute('data-l'),lbl=b.getAttribute('data-label');d.choiceAdd=d.choiceAdd||{};d.choiceAdd[g]=d.choiceAdd[g]||{};d.choiceAdd[g][lk]=d.choiceAdd[g][lk]||{label:lbl,ings:[]};d.choiceAdd[g][lk].ings.push({ing:'',qtyS:null,qtyM:null,qtyL:null});drawRecipeEditor(item);};});
   ed.querySelectorAll('[data-carem]').forEach(function(b){b.onclick=function(){syncAll();var g=b.getAttribute('data-g'),lk=b.getAttribute('data-l'),ix=Number(b.getAttribute('data-ix'));if(d.choiceAdd&&d.choiceAdd[g]&&d.choiceAdd[g][lk]&&d.choiceAdd[g][lk].ings)d.choiceAdd[g][lk].ings.splice(ix,1);drawRecipeEditor(item);};});
+  ed.querySelectorAll('[data-cagrp]').forEach(function(cb){cb.onchange=function(){syncAll();var picked=[];ed.querySelectorAll('[data-cagrp]').forEach(function(x){if(x.checked)picked.push(x.getAttribute('data-cagrp'));});window.__posSettings=window.__posSettings||{};window.__posSettings.choiceAddGroups=picked;var a=A();a.update(a.ref(a.db,'posSettings'),{choiceAddGroups:picked}).catch(function(e){alert('Could not save the choice list: '+((e&&e.code)||e)+'. Log in with your admin email.');});drawRecipeEditor(item);};});
   ed.querySelectorAll('select[data-caf="ing"]').forEach(function(s){s.onchange=function(){syncAll();drawRecipeEditor(item);};});
   ed.querySelectorAll('input[data-caf]').forEach(function(inp){inp.oninput=function(){var tr=inp.closest('[data-carow]');if(!tr)return;var g=tr.getAttribute('data-ca-g'),lk=tr.getAttribute('data-ca-l');var rows=[];ed.querySelectorAll('[data-carow][data-ca-g="'+g+'"][data-ca-l="'+lk+'"]').forEach(function(r){var ing=(r.querySelector('[data-caf="ing"]')||{}).value||'';function v(f){var el=r.querySelector('[data-caf="'+f+'"]');return (el&&el.value!=='')?(Number(el.value)||0):null;}rows.push({ing:ing,qtyS:v('qtyS'),qtyM:v('qtyM'),qtyL:v('qtyL')});});var lab=ed.querySelector('[data-cacost="'+g+'|'+lk+'"]');if(lab)lab.textContent='extra — S '+peso(ocChoiceCost(rows,'S'))+' · M '+peso(ocChoiceCost(rows,'M'))+' · L '+peso(ocChoiceCost(rows,'L'));};});
   ed.querySelectorAll('[data-rcsel]').forEach(function(b){b.onclick=function(){syncAll();var gid=b.getAttribute('data-rcsel');var multi=b.getAttribute('data-rcmulti')==='1';var lb=b.getAttribute('data-rclabel');var sel=window.__recCostSel||{};if(multi){var arr=Array.isArray(sel[gid])?sel[gid].slice():[];var i=arr.indexOf(lb);if(i>-1)arr.splice(i,1);else arr.push(lb);sel[gid]=arr;}else{sel[gid]=(sel[gid]===lb)?null:lb;}window.__recCostSel=sel;drawRecipeEditor(item);};});
@@ -5082,7 +5090,7 @@ function saveRecipe(key){
     return {ing:r.ing,unit:u,dispS:d2(r.dS),dispM:d2(r.dM),dispL:d2(r.dL),qtyS:s2(r.dS),qtyM:s2(r.dM),qtyL:s2(r.dL)};
   });
   var rec={base:base,updatedAt:Date.now()};
-  if(d.choiceAdd){var ca={};Object.keys(d.choiceAdd).forEach(function(g){var gc={};Object.keys(d.choiceAdd[g]).forEach(function(lk){var e=d.choiceAdd[g][lk]||{};var kept=(e.ings||[]).filter(function(r){return r&&r.ing&&(r.qtyS!=null||r.qtyM!=null||r.qtyL!=null);});if(kept.length)gc[lk]={label:e.label||lk,ings:kept};});if(Object.keys(gc).length)ca[g]=gc;});if(Object.keys(ca).length)rec.choiceAdd=ca;}
+  if(d.choiceAdd){var ca={};var _allow=caAllowGroups();Object.keys(d.choiceAdd).forEach(function(g){if(_allow.indexOf(g)<0)return;var gc={};Object.keys(d.choiceAdd[g]).forEach(function(lk){var e=d.choiceAdd[g][lk]||{};var kept=(e.ings||[]).filter(function(r){return r&&r.ing&&(r.qtyS!=null||r.qtyM!=null||r.qtyL!=null);});if(kept.length)gc[lk]={label:e.label||lk,ings:kept};});if(Object.keys(gc).length)ca[g]=gc;});if(Object.keys(ca).length)rec.choiceAdd=ca;}
   var saved=recipesMap[key]; if(saved&&saved.options)rec.options=saved.options; /* keep legacy per-recipe options if any */
   var a=A();a.set(a.ref(a.db,'recipes/'+key),rec).then(function(){ recipeEditing=false; alert('Recipe saved for '+(A().menuItemsMap[key]?A().menuItemsMap[key].name:key)+'.'); curRecipeKey=key; setTimeout(function(){renderRecipes();},150); }).catch(function(e){ alert('Could not save the recipe: '+((e&&e.code)||e)+'.\n\nIf it says PERMISSION_DENIED — log in with your ADMIN EMAIL (not the old username), and make sure the database rules are published. Nothing was saved.'); });
 }
