@@ -1,0 +1,11 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Payment proofs are written and read only by Cloud Functions using the
+    // Admin SDK. Browsers never receive direct bucket access.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
