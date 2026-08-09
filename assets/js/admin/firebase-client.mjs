@@ -1,0 +1,13 @@
+import{initializeApp,deleteApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import{getDatabase,ref,set,get,push,update,remove,onValue,runTransaction,query,orderByChild,limitToLast,endBefore}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import{getMessaging,getToken,onMessage,isSupported}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
+import{getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider,setPersistence,browserLocalPersistence,inMemoryPersistence}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import{getFunctions,httpsCallable}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
+
+const firebaseConfig={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
+const app=initializeApp(firebaseConfig);
+const db=getDatabase(app),auth=getAuth(app),functions=getFunctions(app,'asia-southeast1');
+const callableNames=['getPaymentProof','ensureActiveOrders','postInventoryMovements','ensureInventoryLedger','validateRecipeDefinition','postFinancialCommand','settlePlatformPayout','processOrderAdjustment','ensureFinancialLedger','createManagerApproval','consumeManagerApproval','manageChartAccount','auditFinancialControls','manageOrderArchive','reviewDiscrepancy','managePettyVoucher','archiveActivityLog'];
+const callables=Object.fromEntries(callableNames.map(function(name){return [name,httpsCallable(functions,name)];}));
+
+export{firebaseConfig,app,db,auth,callables,initializeApp,deleteApp,ref,set,get,push,update,remove,onValue,runTransaction,query,orderByChild,limitToLast,endBefore,getMessaging,getToken,onMessage,isSupported,getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider,setPersistence,browserLocalPersistence,inMemoryPersistence};

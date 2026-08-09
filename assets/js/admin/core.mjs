@@ -1,95 +1,17 @@
-import{initializeApp,deleteApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import{getDatabase,ref,set,get,push,update,remove,onValue,runTransaction,query,orderByChild,limitToLast,endBefore}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-import{getMessaging,getToken,onMessage,isSupported}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
-import{getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider,setPersistence,browserLocalPersistence,inMemoryPersistence}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import{getFunctions,httpsCallable}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
+import{db,auth,callables,ref,set,get,push,update,remove,onValue,runTransaction,query,orderByChild,limitToLast,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
+import{createSubscriptionHub}from"./realtime-hub.mjs";
+import{createHistoryPager}from"./history-pager.mjs";
+import{requestManagerApproval}from"./manager-approval.mjs";
+import{installPortalAuth}from"./portal-auth.mjs";
+import{createOrderAdmin}from"./admin-orders.mjs";
+import{createCustomerRegistry}from"./customer-registry.mjs";
+import{escHtml,safeImageSrc}from"./shared-ui.mjs";
 
-const firebaseConfig={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
-const app=initializeApp(firebaseConfig);
-const db=getDatabase(app);const auth=getAuth(app);const functions=getFunctions(app,'asia-southeast1');const getPaymentProofCall=httpsCallable(functions,'getPaymentProof');const ensureActiveOrdersCall=httpsCallable(functions,'ensureActiveOrders');const postInventoryMovementsCall=httpsCallable(functions,'postInventoryMovements');const ensureInventoryLedgerCall=httpsCallable(functions,'ensureInventoryLedger');const validateRecipeDefinitionCall=httpsCallable(functions,'validateRecipeDefinition');const postFinancialCommandCall=httpsCallable(functions,'postFinancialCommand');const settlePlatformPayoutCall=httpsCallable(functions,'settlePlatformPayout');const processOrderAdjustmentCall=httpsCallable(functions,'processOrderAdjustment');const ensureFinancialLedgerCall=httpsCallable(functions,'ensureFinancialLedger');const createManagerApprovalCall=httpsCallable(functions,'createManagerApproval');const consumeManagerApprovalCall=httpsCallable(functions,'consumeManagerApproval');const manageChartAccountCall=httpsCallable(functions,'manageChartAccount');const auditFinancialControlsCall=httpsCallable(functions,'auditFinancialControls');const manageOrderArchiveCall=httpsCallable(functions,'manageOrderArchive');const reviewDiscrepancyCall=httpsCallable(functions,'reviewDiscrepancy');const managePettyVoucherCall=httpsCallable(functions,'managePettyVoucher');const archiveActivityLogCall=httpsCallable(functions,'archiveActivityLog');window.__accazaAuth=auth;
-// Release 2B: one physical Realtime Database listener per path. POS-critical
-// paths stay live; large back-office paths are connected only for the open tab.
-const HISTORY_BOUNDS={
-  orders:{field:'timestamp',limit:250,page:250},archivedOrders:{field:'archivedAt',limit:100,page:100},archivedReservations:{field:'archivedAt',limit:100,page:100},
-  shifts:{field:'openAt',limit:100,page:100},activityLog:{field:'ts',limit:200,page:200},discrepancies:{field:'ts',limit:200,page:200},
-  stockReceipts:{field:'ts',limit:250,page:250},inventoryAdjustments:{field:'ts',limit:250,page:250},internalUsage:{field:'ts',limit:250,page:250},
-  cfLedger:{field:'ts',limit:300,page:300},financialMovements:{field:'occurredAt',limit:300,page:300},platformPayouts:{field:'settledAt',limit:100,page:100},inventoryMovements:{field:'occurredAt',limit:300,page:300}
-};
-function liveTarget(database,path){var base=ref(database,path),spec=HISTORY_BOUNDS[path];return spec?query(base,orderByChild(spec.field),limitToLast(spec.limit)):base;}
-function createSubscriptionHub(database,makeRef,listen,targetFor){
-  var entries={},authorized=false,activeScope='dashboard',nextId=1;
-  var critical={categories:1,settings:1,posSettings:1,activeOrders:1,optionGroups:1,menuItems:1,availability:1,channelPrices:1,posStaff:1,posActiveShift:1,packages:1,'.info/connected':1};
-  var scopes={
-    orders:['analytics','pnl','payouts','stockvalue','dailyreport','cashflow','receivables'],
-    staffAccounts:['staffaccounts'],adminAccounts:['adminaccounts'],admins:['staffaccess'],adminPerms:['staffaccess'],
-    archivedOrders:['dashboard','archive','appcustomers','analytics','pnl','stockvalue','cashflow','receivables','dailyreport'],
-    archivedReservations:['reservations','calendar'],reservations:['dashboard','reservations','calendar'],
-    feedbacks:['comments','analytics'],reviews:['dashboard','reviews','analytics'],payment:['payment'],calBlocks:['reservations','calendar'],
-    appCustomers:['appcustomers','analytics'],inventory:['inventory','purchases','recipes','usage','stockvalue'],inventoryMovements:['inventory','purchases','usage','stockvalue'],
-    recipes:['recipes','usage','analytics','pnl'],optionRecipes:['recipes','usage'],internalUsage:['usage','pnl','stockvalue'],usageTypes:['usage'],
-    expenseItems:['pnl'],monthlyExpenses:['pnl'],inventoryAdjustments:['pnl','stockvalue'],stockReceipts:['purchases','stockvalue'],
-    analyticsFunnel:['analytics'],platformPayouts:['payouts','pnl','analytics','cashflow','receivables'],platformVarAccounts:['payouts','pnl'],
-    shifts:['ops'],activityLog:['ops'],heldOrders:['pos','ops'],discrepancies:['discrepancy'],
-    pettyCashVouchers:['petty'],pettyCashReplenishments:['petty'],pettyCashSettings:['petty'],
-    cfAccounts:['cashflow','receivables','payables'],cfLedger:['cashflow'],financialMovements:['cashflow','receivables','payables','payouts'],chartOfAccounts:['cashflow'],cashCustody:['cashflow'],receivables:['receivables'],payables:['payables']
-  };
-  function policy(path,opts){opts=opts||{};return {critical:opts.critical===true||critical[path]===1,scopes:opts.scopes||scopes[path]||[]};}
-  function consumerActive(c){return authorized&&(c.critical||c.scopes.indexOf(activeScope)>-1);}
-  function reportError(path,error){console.error('ACCAZA LIVE DATA ERROR ['+path+']',error);try{(window.accazaToast||function(){})('Live data failed for '+path+'. Check connection or access.','err');}catch(_e){}}
-  function facade(entry){var merged=Object.assign({},entry.older||{},entry.live||{});return {val:function(){return merged;},exists:function(){return Object.keys(merged).length>0;}};}
-  function dispatch(entry,snapshot){
-    entry.last=snapshot;
-    Object.keys(entry.consumers).forEach(function(id){var c=entry.consumers[id];if(consumerActive(c)){try{c.callback(snapshot);}catch(e){console.error('ACCAZA RENDER ERROR ['+entry.path+']',e);}}});
-  }
-  function attach(entry){
-    entry.unsub=listen((targetFor||function(db,path){return makeRef(db,path);})(database,entry.path),function(snapshot){
-      if(HISTORY_BOUNDS[entry.path]){entry.live=snapshot.val()||{};entry.hasOlder=Object.keys(entry.live).length>=HISTORY_BOUNDS[entry.path].limit;dispatch(entry,facade(entry));}else dispatch(entry,snapshot);
-    },function(error){entry.unsub=null;reportError(entry.path,error);});
-  }
-  function reconcileEntry(entry){
-    var ids=Object.keys(entry.consumers),needed=ids.some(function(id){return consumerActive(entry.consumers[id]);}),wasAttached=!!entry.unsub;
-    if(needed&&!entry.unsub)attach(entry);
-    if(!needed&&entry.unsub){entry.unsub();entry.unsub=null;entry.last=null;}
-    ids.forEach(function(id){
-      var c=entry.consumers[id],now=consumerActive(c),becameActive=now&&!c.wasActive;
-      c.wasActive=now;
-      if(becameActive&&wasAttached&&entry.last){try{c.callback(entry.last);}catch(e){console.error('ACCAZA RENDER ERROR ['+entry.path+']',e);}}
-    });
-  }
-  function reconcile(){Object.keys(entries).forEach(function(path){reconcileEntry(entries[path]);});}
-  return {
-    subscribe:function(path,callback,opts){
-      var p=policy(path,opts),entry=entries[path]||(entries[path]={path:path,consumers:{},unsub:null,last:null,live:{},older:{},hasOlder:true}),id=String(nextId++);
-      entry.consumers[id]={callback:callback,critical:p.critical,scopes:p.scopes,wasActive:false};reconcileEntry(entry);
-      return function(){delete entry.consumers[id];reconcileEntry(entry);};
-    },
-    authorize:function(){authorized=true;try{performance.mark('accaza-live-start');}catch(_e){}reconcile();},
-    deauthorize:function(){authorized=false;reconcile();},
-    activate:function(scope){activeScope=scope||'dashboard';reconcile();},
-    loadOlder:async function(path){
-      var spec=HISTORY_BOUNDS[path],entry=entries[path];if(!spec||!entry)throw new Error('No paginated subscription for '+path);
-      var merged=Object.assign({},entry.older||{},entry.live||{}),keys=Object.keys(merged),oldest=null;
-      keys.forEach(function(k){var v=merged[k]||{},sv=Number(v[spec.field])||0;if(!oldest||sv<oldest.value||(sv===oldest.value&&k<oldest.key))oldest={value:sv,key:k};});
-      if(!oldest){entry.hasOlder=false;return {loaded:0,hasOlder:false};}
-      var snap=await get(query(ref(database,path),orderByChild(spec.field),endBefore(oldest.value,oldest.key),limitToLast(spec.page+1))),rows=[];
-      snap.forEach(function(ch){rows.push({key:ch.key,value:ch.val()||{}});});var hasOlder=rows.length>spec.page;if(hasOlder)rows.shift();
-      rows.forEach(function(r){entry.older[r.key]=r.value;});entry.hasOlder=hasOlder;dispatch(entry,facade(entry));return {loaded:rows.length,hasOlder:hasOlder};
-    },
-    historyStatus:function(path){var e=entries[path],s=HISTORY_BOUNDS[path];return {bounded:!!s,loaded:e?Object.keys(Object.assign({},e.older||{},e.live||{})).length:0,hasOlder:e?e.hasOlder:false};},
-    stats:function(){var attached=Object.keys(entries).filter(function(k){return !!entries[k].unsub;});return {authorized:authorized,activeScope:activeScope,attached:attached,attachedCount:attached.length,registeredPaths:Object.keys(entries).length};}
-  };
-}
-const subscriptionHub=createSubscriptionHub(db,ref,onValue,liveTarget);
+const {getPaymentProof:getPaymentProofCall,ensureActiveOrders:ensureActiveOrdersCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,archiveActivityLog:archiveActivityLogCall}=callables;
+window.__accazaAuth=auth;
+const subscriptionHub=createSubscriptionHub(db,{ref,onValue,query,orderByChild,limitToLast,endBefore,get});
 window.__accazaLiveStats=function(){return subscriptionHub.stats();};
-const HISTORY_TAB_PATHS={analytics:['orders','archivedOrders'],pnl:['orders','archivedOrders','internalUsage','inventoryAdjustments','platformPayouts'],payouts:['orders','archivedOrders','platformPayouts','financialMovements'],stockvalue:['orders','archivedOrders','stockReceipts','inventoryAdjustments','internalUsage','inventoryMovements'],dailyreport:['orders','archivedOrders'],cashflow:['orders','archivedOrders','cfLedger','financialMovements','platformPayouts'],receivables:['orders','archivedOrders','financialMovements'],purchases:['stockReceipts','inventoryMovements'],usage:['internalUsage','inventoryMovements'],inventory:['inventoryMovements'],ops:['shifts','activityLog'],discrepancy:['discrepancies'],reservations:['archivedReservations']};
-function renderHistoryPager(tab){
-  var paths=HISTORY_TAB_PATHS[tab],host=document.getElementById('tab-'+tab);if(!paths||!host)return;
-  var old=host.querySelector('.accaza-history-pager');if(old)old.remove();
-  var box=document.createElement('div');box.className='accaza-history-pager';box.style.cssText='margin:1rem 0;padding:0.65rem;border:1px solid #e1d5c5;border-radius:7px;background:#fffaf3;font-size:0.74rem;color:var(--tl);';
-  box.innerHTML='<div style="margin-bottom:0.4rem;"><b>Bounded history:</b> reports use the recent loaded pages. Load older pages when reviewing an older period.</div><div style="display:flex;gap:0.35rem;flex-wrap:wrap;">'+paths.map(function(path){return '<button class="pz-btn sec" data-history-more="'+path+'" style="padding:0.22rem 0.55rem;">Load older '+path+'</button>';}).join('')+'</div>';
-  host.appendChild(box);
-  box.querySelectorAll('[data-history-more]').forEach(function(btn){btn.onclick=async function(){var path=btn.getAttribute('data-history-more');btn.disabled=true;btn.textContent='Loading '+path+'…';try{var r=await subscriptionHub.loadOlder(path);btn.textContent=r.loaded?(r.loaded+' older '+path+' loaded'):'All '+path+' history reached';if(r.hasOlder){setTimeout(function(){btn.disabled=false;btn.textContent='Load older '+path;},900);}}catch(e){btn.disabled=false;btn.textContent='Retry older '+path;}};});
-}
+const renderHistoryPager=createHistoryPager(subscriptionHub);
 window.__fbForgot=async function(){var em=(document.getElementById('adminUser').value||'').trim();if(!em||em.indexOf('@')<0){em=(prompt('Enter your account email for a reset link:')||'').trim();}if(!em||em.indexOf('@')<0){alert('Please enter a valid email.');return;}try{await sendPasswordResetEmail(auth,em);alert('Password reset link sent to '+em+'. Check inbox and spam.');}catch(e){alert('Could not send reset: '+((e&&e.code)||e));}};
 // ===================== WEB PUSH (FCM) =====================
 // Paste your Web Push certificate key here (Firebase Console > Project settings > Cloud Messaging > Web Push certificates).
@@ -132,10 +54,7 @@ window.enableNotifications=async function(){
 window.__setupPush=setupPush;
 
 // DB refs
-const settingsRef=ref(db,'settings'),staffAccountsRef=ref(db,'staffAccounts'),adminAccountsRef=ref(db,'adminAccounts'),ordersRef=ref(db,'orders'),archivedRef=ref(db,'archivedOrders'),archivedResRef=ref(db,'archivedReservations'),reservationsRef=ref(db,'reservations'),feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),calBlocksRef=ref(db,'calBlocks'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups'),appCustomersRef=ref(db,'appCustomers');
-function requestManagerApproval(action,sourceId,amount,reason){return new Promise(function(resolve,reject){
-  var mask=document.createElement('div');mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.58);z-index:12000;display:flex;align-items:center;justify-content:center;padding:1rem;';mask.innerHTML='<div style="background:#fff;border-radius:12px;max-width:430px;width:100%;padding:1.2rem;box-shadow:0 12px 40px rgba(0,0,0,.25);"><div style="font-weight:700;color:var(--bd);font-size:1rem;">🔐 Manager approval</div><p style="font-size:.78rem;color:var(--tl);line-height:1.45;">A manager must sign in with their own Firebase portal account. The cashier session will remain open.</p><label class="pz-lbl">Manager email</label><input class="pz-in" id="maEmail" type="email" autocomplete="username"/><label class="pz-lbl" style="margin-top:.5rem;">Manager password</label><input class="pz-in" id="maPass" type="password" autocomplete="current-password"/><div id="maErr" style="display:none;color:#b42318;font-size:.75rem;margin-top:.5rem;"></div><div style="display:flex;gap:.5rem;margin-top:1rem;"><button class="pz-btn ok" id="maOk">Approve</button><button class="pz-btn sec" id="maCancel">Cancel</button></div></div>';document.body.appendChild(mask);var done=false;function close(){if(mask.parentNode)mask.parentNode.removeChild(mask);}mask.querySelector('#maCancel').onclick=function(){done=true;close();reject(new Error('Manager approval cancelled.'));};mask.querySelector('#maOk').onclick=async function(){var btn=this,email=(mask.querySelector('#maEmail').value||'').trim(),password=mask.querySelector('#maPass').value||'',err=mask.querySelector('#maErr');if(!email||!password){err.textContent='Enter the manager email and password.';err.style.display='block';return;}btn.disabled=true;btn.textContent='Verifying…';var mgrApp=null;try{mgrApp=initializeApp(firebaseConfig,'manager-approval-'+Date.now()+'-'+Math.random().toString(36).slice(2));var mgrAuth=getAuth(mgrApp);await setPersistence(mgrAuth,inMemoryPersistence);var cred=await signInWithEmailAndPassword(mgrAuth,email,password),token=await cred.user.getIdToken(true),res=await createManagerApprovalCall({action:action,sourceId:String(sourceId),amount:amount==null?null:Number(amount),reason:String(reason||''),managerIdToken:token});done=true;close();resolve((res&&res.data)||res);}catch(e){err.textContent='Approval failed: '+((e&&e.message)||(e&&e.code)||e);err.style.display='block';btn.disabled=false;btn.textContent='Approve';}finally{if(mgrApp)try{await deleteApp(mgrApp);}catch(_e){}}};setTimeout(function(){var e=mask.querySelector('#maEmail');if(e)e.focus();},50);
-});}
+const feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups');
 // ── POS / INVENTORY BRIDGE ── exposes DB + live maps to the isolated POS module (see #accaza-pos script). Additive; does not change existing behaviour.
 window.__accaza={
   db, ref, set, get, update, remove, onValue, runTransaction, hub:subscriptionHub,
@@ -163,7 +82,7 @@ window.__accaza={
   getMenuItems, getCats, getCatLabel, getCatIcon, getItemOptionGroups, formatPrice
 };
 
-let currentAdminHash=null,staffAccountsMap={},adminAccountsMap={},staffLoggedIn=false,superAdminLoggedIn=false,currentUser=null,currentLoginRole=null;
+let staffAccountsMap={},adminAccountsMap={},staffLoggedIn=false,superAdminLoggedIn=false,currentUser=null,currentLoginRole=null;
 const SUPER_ADMIN_USERNAME='superadmin',CAFE_PHONE='639276924831',CAFE_EMAIL='mariadaniela@gmail.com',MAX_GUESTS=30;
 const TIME_SLOTS=['3:00 PM','4:00 PM','5:00 PM','6:00 PM','7:00 PM','8:00 PM','9:00 PM','10:00 PM','11:00 PM','12:00 Midnight'];
 
@@ -280,11 +199,6 @@ subscriptionHub.subscribe('categories',snap=>{
   renderMenuSection();
   renderOrderSection();
   if(adminLoggedIn){buildAvail();renderCategoryManager();}
-});
-
-subscriptionHub.subscribe('settings',snap=>{
-  const s=snap.val()||{};
-  if(s.adminPasswordHash) currentAdminHash=s.adminPasswordHash;
 });
 
 subscriptionHub.subscribe('staffAccounts',snap=>{
@@ -887,7 +801,6 @@ window.previewProof=function(input){if(!input.files||!input.files[0])return;cons
 window.removeProof=function(e){e.stopPropagation();document.getElementById('paymentProof').value='';document.getElementById('proofImg').src='';document.getElementById('uploadPlaceholder').style.display='block';document.getElementById('uploadPreview').style.display='none';document.getElementById('uploadBox').style.borderColor='var(--cd)';};
 
 // ===================== APP CUSTOMER LOGIN + TRACKING =====================
-let appCustomersMap={};
 function isAppMode(){return document.documentElement.classList.contains('app-mode')||window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;}
 function getAppUser(){try{return JSON.parse(localStorage.getItem('accaza_app_user')||'null');}catch(e){return null;}}
 function prefillAppUser(){var u=getAppUser();if(!u)return;var n=document.getElementById('custName'),p=document.getElementById('custPhone');if(n&&!n.value)n.value=u.name;if(p&&!p.value)p.value=u.phone;var ind=document.getElementById('appUserIndicator');if(ind){var nm=document.getElementById('appUserName');if(nm)nm.textContent=u.name;ind.style.display='block';}}
@@ -908,57 +821,8 @@ window.appLoginSubmit=async function(){
 };
 window.appLogout=function(){try{localStorage.removeItem('accaza_app_user');}catch(e){}location.reload();};
 function appLoginInit(){if(!isAppMode())return;var ov=document.getElementById('appLoginOverlay');var u=getAppUser();if(!u){if(ov)ov.style.display='flex';}else{prefillAppUser();setupPush();refreshNotifyPrompt();}}
-window.renderAppCustomers=function(){
-  var body=document.getElementById('appCustBody');if(!body)return;
-  var arr=Object.keys(appCustomersMap).map(function(k){var v=appCustomersMap[k]||{};return {name:v.name||'\u2014',phone:v.phone||k,orders:v.orders||0,firstSeen:v.firstSeen,lastOrder:v.lastOrder};});
-  arr.sort(function(a,b){return (b.orders-a.orders)||((b.lastOrder||0)-(a.lastOrder||0));});
-  var sum=document.getElementById('appCustSummary');var total=arr.reduce(function(s,c){return s+c.orders;},0);
-  if(sum)sum.textContent=arr.length+' customers \u00b7 '+total+' app orders';
-  function d(ts){if(!ts)return '\u2014';try{return new Date(ts).toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'});}catch(e){return '\u2014';}}
-  if(!arr.length){body.innerHTML='<tr><td colspan="6" style="padding:1rem;color:var(--tl);text-align:center;">No app customers yet.</td></tr>';return;}
-  body.innerHTML=arr.map(function(c,i){return '<tr style="border-bottom:1px solid var(--cr);"><td style="padding:0.55rem;color:var(--tl);">'+(i+1)+'</td><td style="padding:0.55rem;font-weight:500;">'+escHtml(c.name)+'</td><td style="padding:0.55rem;">'+escHtml(c.phone)+'</td><td style="padding:0.55rem;text-align:center;font-weight:700;color:var(--bd);">'+c.orders+'</td><td style="padding:0.55rem;color:var(--tm);">'+d(c.firstSeen)+'</td><td style="padding:0.55rem;color:var(--tm);">'+d(c.lastOrder)+'</td></tr>';}).join('');
-};
-window.exportAppCustomers=function(){
-  var arr=Object.keys(appCustomersMap).map(function(k){return appCustomersMap[k]||{};});
-  arr.sort(function(a,b){return (b.orders||0)-(a.orders||0);});
-  function d(ts){if(!ts)return '';try{return new Date(ts).toLocaleDateString('en-PH');}catch(e){return '';}}
-  var rows=[['Name','Phone','App Orders','First Seen','Last Order']];
-  arr.forEach(function(c){rows.push([c.name||'',c.phone||'',c.orders||0,d(c.firstSeen),d(c.lastOrder)]);});
-  var csv=rows.map(function(r){return r.map(function(x){return '"'+String(x).replace(/"/g,'""')+'"';}).join(',');}).join(String.fromCharCode(10));
-  var blob=new Blob([csv],{type:'text/csv'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='accaza-app-customers.csv';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
-};
-var APP_PROMO_THRESHOLD=10;
-function getPromoTarget(){var el=document.getElementById('appPromoTarget');var v=el?parseInt(el.value,10):NaN;if(!(v>=1)){try{v=parseInt(localStorage.getItem('accaza_promo_target'),10);}catch(e){}}if(!(v>=1))v=10;return v;}
-window.savePromoTarget=function(){var v=getPromoTarget();try{localStorage.setItem('accaza_promo_target',String(v));}catch(e){}var el=document.getElementById('appPromoTarget');if(el)el.value=v;renderAppCustomers();};
-function _acDigits(p){return String(p||'').replace(/[^0-9]/g,'');}
-function _acRange(){var f=document.getElementById('appCustFrom'),t=document.getElementById('appCustTo'),fromTs=null,toTs=null;if(f&&f.value){var a=new Date(f.value+'T00:00:00');if(!isNaN(a.getTime()))fromTs=a.getTime();}if(t&&t.value){var b=new Date(t.value+'T23:59:59.999');if(!isNaN(b.getTime()))toTs=b.getTime();}return {fromTs:fromTs,toTs:toTs};}
-function _acCounts(){var r=_acRange();var all={};try{Object.assign(all,archivedOrdersMap||{},adminOrdersMap||{});}catch(e){all=adminOrdersMap||{};}var counts={};Object.keys(all).forEach(function(id){var o=all[id];if(!o||!o.phone||o.status==='Rejected')return;var ts=o.timestamp||o.archivedAt||0;if(r.fromTs&&ts<r.fromTs)return;if(r.toTs&&ts>r.toTs)return;var k=_acDigits(o.phone);if(!k)return;if(!counts[k])counts[k]={count:0,last:0,name:o.name||''};counts[k].count++;if(ts>counts[k].last){counts[k].last=ts;counts[k].name=o.name||counts[k].name;}});return counts;}
-window.clearAppCustFilter=function(){var f=document.getElementById('appCustFrom'),t=document.getElementById('appCustTo');if(f)f.value='';if(t)t.value='';renderAppCustomers();};
-window.renderAppCustomers=function(){
-  var body=document.getElementById('appCustBody');if(!body)return;
-  APP_PROMO_THRESHOLD=getPromoTarget();var _pt=document.getElementById('appPromoTarget');if(_pt&&!_pt.value)_pt.value=APP_PROMO_THRESHOLD;
-  var counts=_acCounts();
-  var arr=Object.keys(appCustomersMap).map(function(k){var v=appCustomersMap[k]||{};var c=counts[k]||{count:0,last:0,name:''};return {name:(v.name||c.name||'—'),phone:v.phone||k,orders:c.count,last:c.last||v.lastOrder,firstSeen:v.firstSeen};});
-  arr.sort(function(a,b){return (b.orders-a.orders)||((b.last||0)-(a.last||0));});
-  var elig=arr.filter(function(c){return c.orders>=APP_PROMO_THRESHOLD;}).length;
-  var total=arr.reduce(function(s,c){return s+c.orders;},0);
-  var sum=document.getElementById('appCustSummary');
-  if(sum)sum.textContent=arr.length+' customers · '+total+' orders · '+elig+' eligible (≥'+APP_PROMO_THRESHOLD+')';
-  function d(ts){if(!ts)return '—';try{return new Date(ts).toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'});}catch(e){return '—';}}
-  if(!arr.length){body.innerHTML='<tr><td colspan="6" style="padding:1rem;color:var(--tl);text-align:center;">No app customers yet.</td></tr>';return;}
-  body.innerHTML=arr.map(function(c,i){var e=c.orders>=APP_PROMO_THRESHOLD;return '<tr style="border-bottom:1px solid var(--cr);'+(e?'background:rgba(45,158,95,0.08);':'')+'"><td style="padding:0.55rem;color:var(--tl);">'+(i+1)+'</td><td style="padding:0.55rem;font-weight:500;">'+escHtml(c.name)+(e?' <span style="background:#2d9e5f;color:#fff;border-radius:999px;font-size:0.62rem;padding:0.1rem 0.45rem;white-space:nowrap;">🎁 Free coffee</span>':'')+'</td><td style="padding:0.55rem;">'+escHtml(c.phone)+'</td><td style="padding:0.55rem;text-align:center;font-weight:700;color:'+(e?'#2d9e5f':'var(--bd)')+';">'+c.orders+'</td><td style="padding:0.55rem;color:var(--tm);">'+d(c.firstSeen)+'</td><td style="padding:0.55rem;color:var(--tm);">'+d(c.last)+'</td></tr>';}).join('');
-};
-window.exportAppCustomers=function(){
-  var counts=_acCounts();
-  var arr=Object.keys(appCustomersMap).map(function(k){var v=appCustomersMap[k]||{};var c=counts[k]||{count:0,last:0};return {name:v.name||'',phone:v.phone||k,orders:c.count,firstSeen:v.firstSeen,last:c.last||v.lastOrder,eligible:(c.count>=APP_PROMO_THRESHOLD)?'YES':''};});
-  arr.sort(function(a,b){return (b.orders||0)-(a.orders||0);});
-  function d(ts){if(!ts)return '';try{return new Date(ts).toLocaleDateString('en-PH');}catch(e){return '';}}
-  var rows=[['Name','Phone','Orders (in range)','Eligible (>='+APP_PROMO_THRESHOLD+')','First Seen','Last Order']];
-  arr.forEach(function(c){rows.push([c.name,c.phone,c.orders,c.eligible,d(c.firstSeen),d(c.last)]);});
-  var csv=rows.map(function(r){return r.map(function(x){return '"'+String(x).replace(/"/g,'""')+'"';}).join(',');}).join(String.fromCharCode(10));
-  var blob=new Blob([csv],{type:'text/csv'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='accaza-app-customers.csv';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
-};
-subscriptionHub.subscribe('appCustomers',function(snap){appCustomersMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderAppCustomers();});
+const customerRegistry=createCustomerRegistry({subscriptionHub:subscriptionHub,getOrders:function(){return adminOrdersMap;},getArchivedOrders:function(){return archivedOrdersMap;},escape:escHtml,isPortalActive:function(){return adminLoggedIn||staffLoggedIn;}});
+const renderAppCustomers=customerRegistry.renderAppCustomers;
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',appLoginInit);else appLoginInit();
 window.notifyCustomer=function(oid){
   var o=adminOrdersMap[oid]; if(!o)return;
@@ -1203,59 +1067,8 @@ window.submitFeedback=async function(){
 // ── ADMIN FUNCTIONS ──
 function updateStats(){const orders=Object.values(adminOrdersMap),active=orders.filter(o=>o.status!=='Received');document.getElementById('statOrders').textContent=active.length;document.getElementById('statPending').textContent=active.filter(o=>o.status==='Pending').length;document.getElementById('statReservations').textContent=Object.keys(adminResMap).length;document.getElementById('statRevenue').textContent='₱'+active.filter(o=>o.status!=='Rejected').reduce((s,o)=>s+(o.total||0),0).toLocaleString();}
 
-window.__markOrderCompleted=function(oid){update(ref(db,'orders/'+oid),{status:'Completed'});};
-function orderStatusCtl(o){
-  var oid=escHtml(o.id);
-  if(o.voided)return '<span style="font-size:0.8rem;color:#c0392b;font-weight:600;">\uD83D\uDEAB Voided</span>';
-  if(o.status==='Completed'||o.status==='Received'){
-    var lbl=(o.status==='Received'?'\u2705 Received':'\u2705 Completed')+(Number(o.refundAmount)>0?' \u00b7 \u21a9 \u20b1'+(Number(o.refundAmount)||0).toLocaleString()+' refunded':'')+' \uD83D\uDD12';
-    var _nonCash=(o.payments&&o.payments.length)?o.payments.some(function(p){return p.method&&p.method!=='Cash';}):(o.payment&&o.payment!=='Cash'&&o.payment!=='Split');
-    var _payv='';
-    if(o.paymentStatus==='pending'){ _payv='<button data-verify="'+oid+'" style="background:#fff8e1;border:1px solid #ffe0a3;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#8a6d1b;cursor:pointer;font-weight:600;">\u23F3 Verify payment</button>'; }
-    else if(o.paymentStatus==='confirmed'&&_nonCash){ _payv='<span style="font-size:0.75rem;color:#155724;font-weight:600;">\u2705 Payment verified</span>'; }
-    return '<span style="font-size:0.8rem;color:#155724;font-weight:600;">'+lbl+'</span>'+_payv
-      +'<button data-refund="'+oid+'" style="background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#e65100;cursor:pointer;font-weight:600;">\u21a9 Refund</button>'
-      +'<button data-void="'+oid+'" style="background:#fdecea;border:1px solid #f5c6c6;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;font-weight:600;">\uD83D\uDEAB Void</button>';
-  }
-  return '<select class="status-select" data-orderid="'+oid+'"><option'+(o.status==='Pending'?' selected':'')+'>Pending</option><option'+(o.status==='Confirmed'?' selected':'')+'>Confirmed</option><option'+(o.status==='Preparing'?' selected':'')+'>Preparing</option><option value="Ready"'+(o.status==='Ready'?' selected':'')+'>'+(o.type==='Delivery'?'Ready for Delivery':'Ready for Pickup')+'</option><option'+(o.status==='Rejected'?' selected':'')+' style="color:#c0392b;">Rejected</option></select>'+'<button data-complete="'+oid+'" style="background:#d4edda;border:1px solid #a8d5b5;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#155724;cursor:pointer;font-weight:600;">\u2705 Mark Completed</button>';
-}
-function orderCardHtml(o){
-    const isDelivery=o.type==='Delivery',isReceived=o.status==='Received',canArchive=o.status==='Completed'||o.status==='Received'||o.status==='Rejected';
-    const modeBadge=isDelivery?'<span class="badge" style="background:#d1ecf1;color:#0c5460;">🛵 Delivery</span>':'<span class="badge" style="background:#d4edda;color:#155724;">🏠 Pick-up</span>';
-    const oid=escHtml(o.id),status=escHtml(o.status||'Pending'),statusClass=String(o.status||'pending').toLowerCase().replace(/[^a-z0-9_-]/g,'-'),proof=safeImageSrc(o.proof),storedProof=typeof o.proofPath==='string'&&o.proofPath.indexOf('payment-proofs/')===0;
-    return'<div class="order-admin-card" data-order-card="'+oid+'" style="'+(isReceived?'opacity:0.75;':'')+'"><div class="order-admin-top"><div><div class="order-admin-name">'+escHtml(o.name)+' <span style="font-size:0.75rem;color:var(--tl);">#'+oid+'</span></div><div class="order-admin-meta">'+escHtml(o.phone)+(o.contact?' · '+escHtml(o.contact):'')+' · '+escHtml(o.date)+' '+escHtml(o.time)+((o.onDuty||o.staff)?' · On Duty: '+escHtml(o.onDuty||o.staff):'')+'</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;"><span class="badge badge-'+statusClass+'">'+status+'</span>'+modeBadge+(o.receivedByCustomer?'<span class="badge" style="background:#c8e6c9;color:#1b5e20;">✅ Customer Confirmed</span>':'')+'</div></div>'
-      +'<div class="order-admin-items">🛒 '+escHtml(o.items)+'</div>'
-      +(o.address?'<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📍 '+escHtml(o.address)+'</div>':'')
-      +(o.notes?'<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📝 '+escHtml(o.notes)+'</div>':'')
-      +(proof?'<div style="margin:0.5rem 0;"><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;">📎 Proof:</p><img src="'+proof+'" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid var(--cd);cursor:pointer;" onclick="showProof(this.src)"/></div>':storedProof?'<div style="margin:0.5rem 0;"><button data-prooforder="'+oid+'" style="background:#eef7f1;border:1px solid #9ac8aa;border-radius:6px;padding:0.42rem 0.8rem;color:#23623a;cursor:pointer;font-size:0.76rem;font-weight:600;">📎 View payment proof</button> <span style="font-size:0.7rem;color:var(--tl);">Loads only when opened</span></div>':'<p style="font-size:0.75rem;color:#c0392b;margin:0.3rem 0;">⚠️ No valid proof of payment</p>')
-      +'<div class="order-admin-footer"><span class="order-total-tag">₱'+(Number(o.total)||0).toLocaleString()+' · '+escHtml(o.payment)+'</span><div style="display:flex;align-items:center;gap:0.5rem;">'
-      +orderStatusCtl(o)
-      +(canArchive?'<button data-archive="'+oid+'" style="background:#e2e3e5;border:1px solid #bbb;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#41464b;cursor:pointer;">📦 Archive</button>':'')+(o.status!=='Received'?'<button data-notify="'+oid+'" style="background:#e7f5ec;border:1px solid #8fd0a8;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#1b7a43;cursor:pointer;font-weight:600;">🔔 Notify</button>':'')+'<button data-printorder="'+oid+'" style="background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#e65100;cursor:pointer;font-weight:600;">🖨️ Print</button>'
-      +'</div></div></div>';
-}
-function wireOrderActions(el){
-  el.querySelectorAll('.status-select[data-orderid]').forEach(function(sel){sel.addEventListener('change',function(){update(ref(db,'orders/'+this.dataset.orderid),{status:this.value});});});
-  el.querySelectorAll('button[data-complete]').forEach(function(b){b.addEventListener('click',function(){if(confirm('Mark this order COMPLETED? This finalizes the sale, deducts stock, and locks the order.'))window.__markOrderCompleted(this.dataset.complete);});});
-  el.querySelectorAll('button[data-verify]').forEach(function(b){b.addEventListener('click',function(){if(window.__posVerify)window.__posVerify(this.dataset.verify);});});
-  el.querySelectorAll('button[data-refund]').forEach(function(b){b.addEventListener('click',function(){if(window.__posRefund)window.__posRefund(this.dataset.refund);});});
-  el.querySelectorAll('button[data-void]').forEach(function(b){b.addEventListener('click',function(){if(window.__posVoid)window.__posVoid(this.dataset.void);});});
-  el.querySelectorAll('button[data-printorder]').forEach(function(b){b.addEventListener('click',function(){printOrder(this.dataset.printorder);});});
-  el.querySelectorAll('button[data-prooforder]').forEach(function(b){b.addEventListener('click',function(){window.showStoredProof(this.dataset.prooforder,this);});});
-  el.querySelectorAll('button[data-notify]').forEach(function(b){b.addEventListener('click',function(){notifyCustomer(this.dataset.notify);});});
-  el.querySelectorAll('button[data-archive]').forEach(function(btn){btn.addEventListener('click',function(){const oid=this.dataset.archive,o=adminOrdersMap[oid];if(!o)return;showDeletePopup('Archive order from '+o.name,async function(){try{await manageOrderArchiveCall({action:'archive',orderId:oid});(window.accazaToast||function(){})('Order archived','ok');}catch(e){alert('Could not archive order: '+((e&&e.message)||e));}});});});
-}
-function renderOrders(){
-  const el=document.getElementById('ordersList'),orders=Object.values(adminOrdersMap).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
-  if(!orders.length){el.innerHTML='<div class="empty-state">No active orders yet.</div>';return;}
-  el.innerHTML=orders.map(orderCardHtml).join('');wireOrderActions(el);
-}
-function patchOrderCards(previous,current){
-  var el=document.getElementById('ordersList');if(!el)return;
-  var before=previous||{},after=current||{},ids=Array.from(new Set(Object.keys(before).concat(Object.keys(after)))),changed=ids.filter(function(id){return JSON.stringify(before[id]||null)!==JSON.stringify(after[id]||null);});
-  if(changed.length!==1||!before[changed[0]]||!after[changed[0]]){renderOrders();return;}
-  var id=changed[0],old=null;el.querySelectorAll('[data-order-card]').forEach(function(card){if(card.getAttribute('data-order-card')===id)old=card;});if(!old){renderOrders();return;}
-  var holder=document.createElement('div');holder.innerHTML=orderCardHtml(after[id]);var fresh=holder.firstElementChild;if(!fresh){renderOrders();return;}old.replaceWith(fresh);wireOrderActions(fresh);
-}
+const orderAdmin=createOrderAdmin({getOrders:function(){return adminOrdersMap;},escHtml:escHtml,safeImageSrc:safeImageSrc,showDeletePopup:showDeletePopup,printOrder:printOrder,notifyCustomer:window.notifyCustomer});
+const renderOrders=orderAdmin.renderOrders,patchOrderCards=orderAdmin.patchOrderCards;
 
 function renderReservations(){
   const el=document.getElementById('resList'),reservations=Object.values(adminResMap).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
@@ -1359,36 +1172,6 @@ window.changeAdminPassword=async function(){
   catch(e){if(e&&e.code==='auth/requires-recent-login'){try{if(!cur){showMsg('Enter your CURRENT password to confirm the change.',false);return;}var _c=EmailAuthProvider.credential(auth.currentUser.email,cur);await reauthenticateWithCredential(auth.currentUser,_c);await updatePassword(auth.currentUser,nw);showMsg('\u2705 Password updated.',true);}catch(e2){showMsg('Current password is incorrect.',false);}}else{showMsg('Error: '+((e&&e.code)||e),false);}}
 };
 
-
-// ── FORGOT PASSWORD ────────────────────────────────────────
-window.toggleForgotPw=function(){
-  var p=document.getElementById('forgotPwPanel');
-  if(!p)return;
-  p.style.display=(p.style.display==='none'||!p.style.display)?'block':'none';
-  if(p.style.display==='block'){
-    document.getElementById('recoveryPass').focus();
-    document.getElementById('recoveryMsg').style.display='none';
-  }
-};
-window.resetAdminPassword=async function(){
-  var pass=document.getElementById('recoveryPass').value;
-  var msg=document.getElementById('recoveryMsg');
-  if(!pass){msg.textContent='Please enter your recovery password.';msg.style.color='#c0392b';msg.style.display='block';return;}
-  var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pass));
-  var hex=Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
-  if(!currentAdminHash||hex!==currentAdminHash){
-    msg.textContent='❌ Incorrect recovery password.';msg.style.color='#c0392b';msg.style.display='block';
-    document.getElementById('recoveryPass').value='';return;
-  }
-  try{
-    await update(settingsRef,{adminPasswordHash:null});
-    currentAdminHash=null;
-    document.getElementById('recoveryPass').value='';
-    msg.textContent='✅ Password reset! You can now log in with your original password.';
-    msg.style.color='#1a7a45';msg.style.display='block';
-    setTimeout(function(){window.toggleForgotPw();msg.style.display='none';},3000);
-  }catch(e){msg.textContent='Error: '+e.message;msg.style.color='#c0392b';msg.style.display='block';}
-};
 
 // ── STAFF ACCOUNTS ─────────────────────────────────────────
 function renderStaffAccounts(){
@@ -1671,8 +1454,6 @@ function renderPublicReviews(){
 
 
 // ── EDIT ITEM HELPERS ──────────────────────────────────────
-function escHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-function safeImageSrc(s){s=String(s||'');if(/^data:image\/(?:png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=\s]+$/i.test(s)||/^https:\/\//i.test(s))return escHtml(s);return '';}
 window.toggleEditPanel=function(key){
   var p=document.getElementById('ep_'+key);if(!p)return;
   p.style.display=(p.style.display==='none'||p.style.display==='')?'block':'none';
@@ -2276,64 +2057,8 @@ async function loginSuccess(role,username,uid,serverRole){
   window.scrollTo(0,0);
 }
 
-// ── CHECK LOGIN ─────────────────────────────────────────────
-function portalRole(raw){
-  var r=raw===true?'owner':(typeof raw==='string'?raw:((raw&&raw.role)||''));
-  r=String(r||'').toLowerCase();
-  if(['owner','superadmin','admin','manager'].indexOf(r)>-1)return {ui:'admin',server:r};
-  if(['staff','cashier','kitchen','finance'].indexOf(r)>-1)return {ui:'staff',server:r};
-  return null;
-}
-var authGateResolved=false,portalAuthPromise=null,portalAuthUid=null;
-window.__accazaAuthGateReady=function(){return authGateResolved;};
-async function authorizePortalUser(user){
-  if(portalAuthUid===user.uid&&window.__accazaAuthz)return;
-  if(portalAuthPromise)return portalAuthPromise;
-  portalAuthPromise=(async function(){
-    var results=await Promise.all([get(ref(db,'admins/'+user.uid)),get(ref(db,'adminPerms/'+user.uid+'/name')).catch(function(){return null;})]);
-    var roleSnap=results[0],nameSnap=results[1];
-    var mapped=roleSnap.exists()?portalRole(roleSnap.val()):null;
-    if(!mapped)throw new Error('This Firebase account is not authorized for the Accaza portal.');
-    var display=(user.displayName||user.email||user.uid);
-    if(nameSnap&&nameSnap.exists()&&nameSnap.val())display=nameSnap.val();
-    await loginSuccess(mapped.ui,display,user.uid,mapped.server);
-    portalAuthUid=user.uid;
-    authGateResolved=true;
-    if(location.hash)setTimeout(function(){var t=document.getElementById(location.hash.slice(1));if(t)t.scrollIntoView();},450);
-  })();
-  try{return await portalAuthPromise;}finally{portalAuthPromise=null;}
-}
-onAuthStateChanged(auth,async function(user){
-  if(!user){authGateResolved=true;portalAuthUid=null;currentUser=null;window.__accazaAuthz=null;subscriptionHub.deauthorize();return;}
-  try{
-    await authorizePortalUser(user);
-  }catch(e){
-    authGateResolved=true;console.error('ACCAZA AUTHORIZATION ERROR',e);try{await signOut(auth);}catch(_so){}
-    try{sessionStorage.removeItem('accaza_admin_session');}catch(_ss){}
-    var le=document.getElementById('loginErr');if(le){le.textContent=(e&&e.message)||'This account is not authorized.';le.style.display='block';le.style.whiteSpace='normal';}
-    openAdmin();
-  }
-});
-window.checkLogin=async function(){
-  var username=(document.getElementById('adminUser').value||'').trim().toLowerCase();
-  var pass=document.getElementById('adminPass').value;
-  var _le=document.getElementById('loginErr');
-  var _btn=document.getElementById('adminLoginBtn');
-  if(!username||username.indexOf('@')<1||!pass){_le.textContent='Enter your Firebase account email and password.';_le.style.display='block';return;}
-  _le.style.display='none';
-  if(_btn){_btn.disabled=true;_btn.textContent='Signing in…';}
-  try{try{await setPersistence(auth,browserLocalPersistence);}catch(_p){}var cred=await signInWithEmailAndPassword(auth,username,pass);await authorizePortalUser(cred.user);}
-  catch(_e){console.error('ACCAZA AUTH ERROR',_e);_le.textContent=(_e&&_e.message&&_e.message.indexOf('not authorized')>-1)?_e.message:'Login failed. Check the email and password.';_le.style.display='block';document.getElementById('adminPass').value='';}
-  finally{if(_btn){_btn.disabled=false;_btn.textContent='Log In';}}
-};
-
-window.logoutAdmin=function(){
-  try{sessionStorage.removeItem('accaza_admin_session');}catch(e){}
-  adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;currentUser=null;currentLoginRole=null;window.__accazaAuthz=null;
-  subscriptionHub.deauthorize();
-  var _go=function(){window.location.href='index.html';};
-  try{ signOut(auth).then(_go).catch(_go); }catch(e){ _go(); }
-};
+// ── FIREBASE AUTH GATE ─────────────────────────────────────
+installPortalAuth({subscriptionHub:subscriptionHub,onAuthorized:loginSuccess,openLogin:window.openAdmin,onSignedOut:function(){adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;currentUser=null;currentLoginRole=null;}});
 window.switchTab=function(tab,btn){
   if(tab==='payment'&&currentUser&&currentUser.role==='admin'&&currentUser.uid&&adminAccountsMap[currentUser.uid]&&adminAccountsMap[currentUser.uid].access==='nopay'){alert('⛔ You do not have access to Payment Details.');return;}
   subscriptionHub.activate(tab);
