@@ -258,6 +258,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!functionsSource.includes('exports.updateOrderStatus = onCall')||!functionsSource.includes('OrderStatus.updateOrderStatusCommand'))fail('Phase 7A server order-status command missing');
   if(!functionsSource.includes('"cashier", "kitchen", "finance"'))fail('Phase 7A kitchen portal role is not recognized server-side');
   if(!orderAdminSource.includes('callables.updateOrderStatus')||/update\(ref\(db,'orders\/'/.test(orderAdminSource))fail('Phase 7A admin status mutations are not server-routed');
+  const catalogAdminSource=fs.readFileSync(path.join(root,'assets','js','admin','catalog-admin.mjs'),'utf8');
+  if(!catalogAdminSource.includes('Only owner, admin, or manager accounts can change menu prices')||!catalogAdminSource.includes('deploy the current Firebase Database rules'))fail('Release 7G catalog permission recovery guidance missing');
   for(const marker of ['order-payment-summary','order-payment-state','order-card-actions','Payment proof is missing'])if(!orderAdminSource.includes(marker))fail(`Release 7G order-card structure missing: ${marker}`);
   if(!rulesRaw.includes('"orderStatusCommands": { ".read": false, ".write": false }')||!rulesRaw.includes('"status": { ".validate": "!data.exists() || newData.val() === data.val()" }'))fail('Phase 7A direct status-write lock missing');
   if(!orderStatusSource.includes('statusHistory')||!orderStatusSource.includes('operationalAudit')||!orderStatusSource.includes('expectedStatus'))fail('Phase 7A status trace/stale-state evidence incomplete');

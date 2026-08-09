@@ -10,7 +10,9 @@ try{
   await env.withSecurityRulesDisabled(async(context)=>{
     await set(ref(context.database()),{
       admins:{owner:true,manager:'manager',staff:'staff',kitchen:'kitchen'},
-      adminPerms:{staff:{orders:true,pos:true,discrepancy:true,petty:true},kitchen:{orders:true}},
+      adminPerms:{staff:{orders:true,pos:true,discrepancy:true,petty:true,availability:true},kitchen:{orders:true}},
+      menuItems:{latte:{name:'Latte',cat:'coffee',priceS:100}},
+      availability:{Latte:true},
       orders:{
         own:{id:'own',ownerUid:'customer-a',status:'Pending',total:100,source:'online'},
         other:{id:'other',ownerUid:'customer-b',status:'Pending',total:120,source:'online'},
@@ -61,6 +63,10 @@ try{
   await assertFails(update(ref(kitchen,'orders/own'),{status:'Preparing'}));
   await assertFails(set(ref(a,'activeOrders/fake'),{id:'fake',status:'Pending'}));
   await assertFails(get(ref(owner,'systemMaintenance')));
+  await assertSucceeds(update(ref(owner,'menuItems/latte'),{priceS:110}));
+  await assertSucceeds(update(ref(manager,'menuItems/latte'),{priceS:120}));
+  await assertFails(update(ref(staff,'menuItems/latte'),{priceS:130}));
+  await assertSucceeds(update(ref(staff,'availability'),{Latte:false}));
   await assertFails(get(ref(owner,'inventoryAccounting/milk')));
   await assertSucceeds(get(ref(owner,'inventoryBalances/milk')));
   await assertSucceeds(get(ref(owner,'inventoryMovements/opening_milk')));
