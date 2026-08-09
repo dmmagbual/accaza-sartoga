@@ -312,7 +312,10 @@ function createCatalogAdmin(deps){
       }
       window.toggleEditPanel(key);
       buildAvail();deps.renderMenuSection();deps.renderOrderSection();
-    }catch(e){alert('Error saving: '+e.message);}
+    }catch(e){
+      var denied=String((e&&e.code)||(e&&e.message)||e).toLowerCase().indexOf('permission_denied')>-1||String((e&&e.message)||'').toLowerCase().indexOf('permission denied')>-1;
+      alert(denied?'Price update was blocked. Only owner, admin, or manager accounts can change menu prices. If this is a management account, deploy the current Firebase Database rules, sign out, and sign in again.':'Error saving: '+((e&&e.message)||e));
+    }
   };
   
   
