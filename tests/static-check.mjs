@@ -247,6 +247,11 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!functionsSource.includes('exports.recordClientTelemetry = onCall')||!functionsSource.includes('CLIENT_METRICS')||!functionsSource.includes('/clientTelemetryDaily/'))fail('Phase 6A server telemetry aggregation missing');
   if(!rulesRaw.includes('"clientTelemetryDaily"')||!rulesRaw.includes('".write": false'))fail('Phase 6A telemetry node is not server-write-only');
   if(!precache.includes('/assets/js/admin/telemetry.js'))fail('Phase 6A telemetry module is not precached');
+  const operationsSource=fs.readFileSync(path.join(root,'assets','js','admin','operations-dashboard.js'),'utf8');
+  if(!adminHtml.includes("posSwitchTab('operations',this)")||!adminHtml.includes('id="operationsRoot"'))fail('Phase 6C System Health tab is missing');
+  if(!operationsSource.includes("clientTelemetryDaily/'+day")||!operationsSource.includes('Last 30 days')||!operationsSource.includes('not percentile measurements'))fail('Phase 6C bounded telemetry dashboard or honest metric disclosure is incomplete');
+  for(const marker of ['pos_boot','cart_render','charge_to_durable','offline_flush','realtime_order_arrival'])if(!operationsSource.includes(marker))fail(`Phase 6C performance threshold missing: ${marker}`);
+  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v55'"))fail('Phase 6C dashboard is not in the coordinated offline cache');
 
   const fn=spawnSync(process.execPath,['--check',path.join(root,'functions','index.js')],{encoding:'utf8'});
   if(fn.status!==0)fail(`functions/index.js failed syntax check:\n${fn.stderr||fn.stdout}`);

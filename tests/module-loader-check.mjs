@@ -28,5 +28,8 @@ const count=loaded.length;
 await window.posSwitchTab('pnl',null);
 if(loaded.length!==count)throw new Error('already-loaded modules were downloaded twice');
 if(loaded.some(src=>src.includes('xlsx')))throw new Error('Excel library loaded before an Excel action');
+await window.posSwitchTab('operations',null);
+if(!loaded.includes('assets/js/admin/operations-dashboard.js'))throw new Error('system health module was not loaded on demand');
+if(!handled.includes('operations:operations'))throw new Error('system health handler was not called');
 
-console.log('PASS: lazy tab routing, dependency order, module reuse, and deferred Excel loading passed.');
+console.log('PASS: lazy tab routing, dependency order, module reuse, operational dashboard, and deferred Excel loading passed.');
