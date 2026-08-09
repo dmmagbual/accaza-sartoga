@@ -7,6 +7,8 @@ import{createOrderAdmin}from"./admin-orders.mjs";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
+import{createAppCustomerSession}from"./app-customer-session.mjs";
+import{createCustomerOrderTracker}from"./customer-order-tracker.mjs";
 import{escHtml,safeImageSrc}from"./shared-ui.mjs";
 
 const {getPaymentProof:getPaymentProofCall,ensureActiveOrders:ensureActiveOrdersCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,archiveActivityLog:archiveActivityLogCall}=callables;
@@ -18,7 +20,7 @@ window.__fbForgot=async function(){var em=(document.getElementById('adminUser').
 // ===================== WEB PUSH (FCM) =====================
 // Paste your Web Push certificate key here (Firebase Console > Project settings > Cloud Messaging > Web Push certificates).
 const VAPID_KEY="BIIVf-1RYIQger0yqeYlyV6-tQpH8YfytIgQK6-7IJg87HVITcNkYv4RYcKjyCmJBJKR1EXjJqRuiHzkFJjSvlE";
-function _pushToastWire(messaging){onMessage(messaging,function(payload){var d=(payload&&(payload.data||payload.notification))||{};try{if(navigator.vibrate)navigator.vibrate([400,150,400,150,400,150,400]);}catch(e){}try{playReadyChime();}catch(e){}try{navigator.serviceWorker.ready.then(function(reg){reg.showNotification(d.title||'Accaza Coffee House',{body:d.body||'',icon:'/favicon_192x192.png',badge:'/favicon_192x192.png',vibrate:[400,150,400,150,400,150,400],requireInteraction:true,renotify:true,tag:'accaza-order',data:{link:(d.link||'/')}});});}catch(e){}try{(window.accazaToast||function(){})((d.title?d.title+': ':'')+(d.body||'New notification'),'ok');}catch(e){}});}
+function _pushToastWire(messaging){onMessage(messaging,function(payload){var d=(payload&&(payload.data||payload.notification))||{};try{if(navigator.vibrate)navigator.vibrate([400,150,400,150,400,150,400]);}catch(e){}try{customerOrderTracker.playChime();}catch(e){}try{navigator.serviceWorker.ready.then(function(reg){reg.showNotification(d.title||'Accaza Coffee House',{body:d.body||'',icon:'/favicon_192x192.png',badge:'/favicon_192x192.png',vibrate:[400,150,400,150,400,150,400],requireInteraction:true,renotify:true,tag:'accaza-order',data:{link:(d.link||'/')}});});}catch(e){}try{(window.accazaToast||function(){})((d.title?d.title+': ':'')+(d.body||'New notification'),'ok');}catch(e){}});}
 async function registerPushToken(){
   try{
     if(!VAPID_KEY||VAPID_KEY.indexOf('PASTE_')===0)return;
@@ -28,7 +30,7 @@ async function registerPushToken(){
     var reg=await navigator.serviceWorker.ready;
     var messaging=getMessaging(app);
     var token=await getToken(messaging,{vapidKey:VAPID_KEY,serviceWorkerRegistration:reg});
-    if(token){var u=getAppUser();if(u&&u.phone){var k=u.phone.replace(/[^0-9]/g,'');if(k){try{await update(ref(db,'appCustomers/'+k),{pushToken:token,pushTokenAt:Date.now()});if(!window.__pushToasted){window.__pushToasted=true;(window.accazaToast||function(){})('🔔 Notifications on for this device','ok');}}catch(e){}}}}
+    if(token){var u=appCustomerSession.getUser();if(u&&u.phone){var k=u.phone.replace(/[^0-9]/g,'');if(k){try{await update(ref(db,'appCustomers/'+k),{pushToken:token,pushTokenAt:Date.now()});if(!window.__pushToasted){window.__pushToasted=true;(window.accazaToast||function(){})('🔔 Notifications on for this device','ok');}}catch(e){}}}}
     _pushToastWire(messaging);
   }catch(e){}
 }
@@ -42,7 +44,7 @@ async function setupPush(){
 }
 function refreshNotifyPrompt(){
   var b=document.getElementById('enableNotifyBtn');if(!b)return;
-  if(!isAppMode()||!('Notification' in window)){b.style.display='none';return;}
+  if(!appCustomerSession.isAppMode()||!('Notification' in window)){b.style.display='none';return;}
   if(Notification.permission==='granted'){b.style.display='none';return;}
   b.style.display='block';
   b.textContent=(Notification.permission==='denied')?'🔔 Notifications blocked — tap for help':'🔔 Enable order-ready notifications';
@@ -133,11 +135,13 @@ let categoriesMap={},menuItemsMap={},adminOrdersMap={},archivedOrdersMap={},feed
 let optionGroupsMap={},optSeedStarted=false,itemOptMigrated=false;
 let knownOrderIds=null,unseenOrders=0,orderChimeTimer=null,audioCtx=null;
 let orderType='pickup',paymentType='gcash',contactMethod='whatsapp';
-let myOrderIds=JSON.parse(localStorage.getItem('accaza_my_orders')||'[]');
 let adminLoggedIn=false;
 let chatOpen=false,chatStarted=false;
 let custItem=null,custSize=null,custSel={},custQty=1;
 let menuFilter='coffee',orderFilter=null;
+
+const appCustomerSession=createAppCustomerSession({setupPush:setupPush,refreshNotifyPrompt:refreshNotifyPrompt});
+const customerOrderTracker=createCustomerOrderTracker({getOrders:function(){return adminOrdersMap;},escHtml:escHtml});
 
 const reservationManager=createReservationManager({subscriptionHub:subscriptionHub,isPortalActive:function(){return adminLoggedIn||staffLoggedIn;},onReservationsChanged:updateStats,showDeletePopup:showDeletePopup});
 const renderReservations=reservationManager.renderReservations,renderCustomerCalendar=reservationManager.renderCustomerCalendar,renderAdminCalendar=reservationManager.renderAdminCalendar;
@@ -348,54 +352,7 @@ window.ackNewOrders=function(){
   var ob=document.getElementById('tabBtnOrders');if(ob)ob.click();
   var ad=document.getElementById('adminDash');if(ad)ad.scrollIntoView({behavior:'smooth'});
 };
-// ===== CUSTOMER 'ORDER READY' IN-APP ALERT (free; works while the app is open) =====
-var _readyAlerted;try{_readyAlerted=new Set(JSON.parse(localStorage.getItem('accaza_ready_alerted')||'[]'));}catch(e){_readyAlerted=new Set();}
-var _ordersSeeded=false,_readyTimer=null,_readyStop=null;
-function _saveReadyAlerted(){try{localStorage.setItem('accaza_ready_alerted',JSON.stringify(Array.from(_readyAlerted)));}catch(e){}}
-function stopReadyAlert(){if(_readyTimer){clearInterval(_readyTimer);_readyTimer=null;}if(_readyStop){clearTimeout(_readyStop);_readyStop=null;}}
-window.dismissReadyAlert=function(){stopReadyAlert();var el=document.getElementById('orderReadyAlert');if(el)el.style.display='none';};
-function playReadyChime(){
-  try{
-    if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();
-    if(audioCtx.state==='suspended')audioCtx.resume();
-    var t=audioCtx.currentTime;
-    var notes=[523.25,659.25,783.99,1046.5]; // C5 E5 G5 C6 — cheerful ascending arpeggio
-    notes.forEach(function(f,i){
-      var o=audioCtx.createOscillator(),gn=audioCtx.createGain();
-      o.type='triangle';o.frequency.value=f;
-      var st=t+i*0.17;
-      gn.gain.setValueAtTime(0.0001,st);
-      gn.gain.exponentialRampToValueAtTime(0.6,st+0.02);
-      gn.gain.setValueAtTime(0.6,st+0.13);
-      gn.gain.exponentialRampToValueAtTime(0.0001,st+0.33);
-      o.connect(gn);gn.connect(audioCtx.destination);
-      o.start(st);o.stop(st+0.36);
-    });
-  }catch(e){}
-}
-function triggerReadyAlert(o){
-  var el=document.getElementById('orderReadyAlert');if(!el)return;
-  var sub=document.getElementById('orderReadySub');
-  if(sub)sub.textContent='Order #'+(o.id||'')+' \u2014 '+((o.type==='Delivery')?'ready for delivery':'ready for pick-up');
-  el.style.display='flex';
-  try{playReadyChime();}catch(e){}
-  stopReadyAlert();
-  _readyTimer=setInterval(function(){try{playReadyChime();}catch(e){}try{if(navigator.vibrate)navigator.vibrate([500,200,500]);}catch(e){}},3800);
-  try{if(navigator.vibrate)navigator.vibrate([500,200,500,200,500]);}catch(e){}
-  _readyStop=setTimeout(stopReadyAlert,45000);
-}
-function checkMyReadyOrders(){
-  try{
-    myOrderIds.forEach(function(id){
-      var o=adminOrdersMap[id];if(!o)return;
-      if(o.status==='Completed'){
-        if(!_ordersSeeded){_readyAlerted.add(id);}
-        else if(!_readyAlerted.has(id)){_readyAlerted.add(id);_saveReadyAlerted();triggerReadyAlert(o);}
-      }else if(_readyAlerted.has(id)){_readyAlerted.delete(id);_saveReadyAlerted();}
-    });
-    if(!_ordersSeeded){_ordersSeeded=true;_saveReadyAlerted();}
-  }catch(e){}
-}
+function checkMyReadyOrders(){return customerOrderTracker.checkReady();}
 (function(){var un=function(){try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}document.removeEventListener('touchstart',un);document.removeEventListener('click',un);};document.addEventListener('touchstart',un,{passive:true});document.addEventListener('click',un);})();
 subscriptionHub.subscribe('activeOrders',snap=>{
   var prevIds=knownOrderIds;
@@ -742,30 +699,9 @@ window.setContact=function(type){contactMethod=type;['Whatsapp','Viber','Sms','C
 window.previewProof=function(input){if(!input.files||!input.files[0])return;const r=new FileReader();r.onload=function(e){document.getElementById('proofImg').src=e.target.result;document.getElementById('proofFileName').textContent=input.files[0].name;document.getElementById('uploadPlaceholder').style.display='none';document.getElementById('uploadPreview').style.display='block';document.getElementById('uploadBox').style.borderColor='#2d9e5f';};r.readAsDataURL(input.files[0]);};
 window.removeProof=function(e){e.stopPropagation();document.getElementById('paymentProof').value='';document.getElementById('proofImg').src='';document.getElementById('uploadPlaceholder').style.display='block';document.getElementById('uploadPreview').style.display='none';document.getElementById('uploadBox').style.borderColor='var(--cd)';};
 
-// ===================== APP CUSTOMER LOGIN + TRACKING =====================
-function isAppMode(){return document.documentElement.classList.contains('app-mode')||window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;}
-function getAppUser(){try{return JSON.parse(localStorage.getItem('accaza_app_user')||'null');}catch(e){return null;}}
-function prefillAppUser(){var u=getAppUser();if(!u)return;var n=document.getElementById('custName'),p=document.getElementById('custPhone');if(n&&!n.value)n.value=u.name;if(p&&!p.value)p.value=u.phone;var ind=document.getElementById('appUserIndicator');if(ind){var nm=document.getElementById('appUserName');if(nm)nm.textContent=u.name;ind.style.display='block';}}
-window.appLoginSubmit=async function(){
-  var n=(document.getElementById('appLoginName').value||'').trim();
-  var p=(document.getElementById('appLoginPhone').value||'').trim();
-  var err=document.getElementById('appLoginErr');
-  if(n.length<2){err.textContent='Please enter your full name.';err.style.display='block';return;}
-  var digits=p.replace(/[^0-9]/g,'');
-  if(digits.length<10){err.textContent='Please enter a valid phone number.';err.style.display='block';return;}
-  err.style.display='none';
-  var user={name:n,phone:p,since:Date.now()};
-  try{localStorage.setItem('accaza_app_user',JSON.stringify(user));}catch(e){}
-  try{var k=digits;var snap=await get(ref(db,'appCustomers/'+k));var cur=snap.val()||{};await update(ref(db,'appCustomers/'+k),{name:n,phone:p,orders:cur.orders||0,firstSeen:cur.firstSeen||Date.now(),lastSeen:Date.now()});}catch(e){}
-  var ov=document.getElementById('appLoginOverlay');if(ov)ov.style.display='none';
-  prefillAppUser();
-  setupPush();
-};
-window.appLogout=function(){try{localStorage.removeItem('accaza_app_user');}catch(e){}location.reload();};
-function appLoginInit(){if(!isAppMode())return;var ov=document.getElementById('appLoginOverlay');var u=getAppUser();if(!u){if(ov)ov.style.display='flex';}else{prefillAppUser();setupPush();refreshNotifyPrompt();}}
 const customerRegistry=createCustomerRegistry({subscriptionHub:subscriptionHub,getOrders:function(){return adminOrdersMap;},getArchivedOrders:function(){return archivedOrdersMap;},escape:escHtml,isPortalActive:function(){return adminLoggedIn||staffLoggedIn;}});
 const renderAppCustomers=customerRegistry.renderAppCustomers;
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',appLoginInit);else appLoginInit();
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',appCustomerSession.init);else appCustomerSession.init();
 window.notifyCustomer=function(oid){
   var o=adminOrdersMap[oid]; if(!o)return;
   var first=((o.name||'').trim().split(' ')[0])||'there';
@@ -815,7 +751,7 @@ window.placeOrder=async function(){
     await set(ref(db,'orders/'+orderId),newOrder);
     try{ if(isAppMode()){ var _u=getAppUser(); var _ph=(_u&&_u.phone)||phone; var _k=_ph.replace(/[^0-9]/g,''); if(_k){ var _snap=await get(ref(db,'appCustomers/'+_k)); var _c=_snap.val()||{}; await update(ref(db,'appCustomers/'+_k),{name:(_u&&_u.name)||name,phone:_ph,orders:(_c.orders||0)+1,firstSeen:_c.firstSeen||Date.now(),lastOrder:Date.now(),lastOrderId:orderId}); } } }catch(_e){}
     window._lastOrderSig=_sig;window._lastOrderTime=Date.now();window._placingOrder=false;_btn.textContent='✅ Order Placed!';try{localStorage.setItem('accaza_lastsig',_sig+'@@'+Date.now());}catch(e){}
-    myOrderIds.push(orderId);localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));
+    customerOrderTracker.addOrderId(orderId);
     document.getElementById('displayOrderId').textContent=orderId;document.getElementById('orderConfirm').style.display='block';
     document.querySelector('.btn-place-order').disabled=true;document.querySelector('.btn-place-order').style.opacity='0.5';
     cart={};updateCartDisplay();renderOrderSection();renderCustomerOrders();
@@ -826,38 +762,7 @@ window.placeOrder=async function(){
 };
 window.resetOrder=function(){if(!Object.keys(cart).length&&!document.getElementById('custName').value){alert('Your order is already empty!');return;}if(confirm('Reset your order?')){cart={};updateCartDisplay();renderOrderSection();document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';setType('pickup');(function(){var gBtn=document.getElementById('btnGcash');var mBtn=document.getElementById('btnMaya');var bBtn=document.getElementById('btnBank');var first=gBtn&&gBtn.style.display!=='none'?'gcash':mBtn&&mBtn.style.display!=='none'?'maya':'bank';setPayment(first);})();document.getElementById('orderConfirm').style.display='none';document.querySelector('.btn-place-order').disabled=false;document.querySelector('.btn-place-order').style.opacity='1';}};
 
-// ── ORDER TRACKER ──
-const statusConfig={Pending:{icon:'🟡',color:'#856404',bg:'#fef3cd',msg:'Your order has been received and is awaiting confirmation from our staff.'},Confirmed:{icon:'🔵',color:'#0c5460',bg:'#d1ecf1',msg:'Your order has been confirmed. We will start preparing it soon!'},Preparing:{icon:'🟠',color:'#664d03',bg:'#fff3cd',msg:'Your order is currently being prepared. ☕'},Completed:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your order is ready! Please confirm once you have received it below.'},Received:{icon:'✅',color:'#1b5e20',bg:'#c8e6c9',msg:'You have confirmed receipt. Thank you! ☕🐻'},Rejected:{icon:'🔴',color:'#721c24',bg:'#f8d7da',msg:'Unfortunately, we could not verify your payment in our account, so this order has been rejected. If you believe this is a mistake, please contact us at 0927 692 4831 with your payment reference.'}};
-function renderCustomerOrders(){
-  const myOrders=myOrderIds.map(id=>adminOrdersMap[id]).filter(Boolean);
-  const active=myOrders.filter(o=>o.status!=='Received'&&!o.receivedByCustomer);
-  const el=document.getElementById('activeOrdersList');
-  if(!active.length){el.innerHTML='<div style="text-align:center;padding:3rem;color:var(--tl);"><p style="font-size:2.5rem;margin-bottom:0.75rem;">☕</p><p style="font-size:0.95rem;font-weight:500;color:var(--bd);margin-bottom:0.3rem;">No active orders yet</p><p style="font-size:0.85rem;">Place an order above and it will appear here!</p></div>';return;}
-  el.innerHTML=active.map(function(o){const s=statusConfig[o.status]||statusConfig.Pending;const isDelivery=o.type==='Delivery';
-    return'<div style="background:#fff;border:2px solid #a8d5b5;border-radius:12px;overflow:hidden;margin-bottom:1.25rem;">'
-      +'<div style="background:var(--bd);padding:1rem 1.25rem;text-align:center;">'
-      +'<p style="font-size:0.72rem;color:rgba(224,212,198,0.6);text-transform:uppercase;letter-spacing:0.15em;margin-bottom:0.25rem;">Order ID</p>'
-      +'<p style="font-family:\'Playfair Display\',serif;font-size:1.8rem;color:#fff;font-weight:600;">'+escHtml(o.id)+'</p>'
-      +'<p style="font-size:0.72rem;color:rgba(224,212,198,0.5);margin-top:0.25rem;">🛒 '+escHtml(o.items)+'</p>'
-      +'<p style="font-size:0.75rem;color:#c9a36a;">💰 ₱'+(Number(o.total)||0).toLocaleString()+' · '+escHtml(o.payment)+'</p>'
-      +'<p style="font-size:0.75rem;margin-top:0.3rem;padding:0.25rem 0.75rem;display:inline-block;border-radius:999px;background:'+(isDelivery?'rgba(13,110,253,0.2)':'rgba(45,158,95,0.2)')+';color:'+(isDelivery?'#90caf9':'#a5d6a7')+';">'+(isDelivery?'🛵 For Delivery':'🏠 For Pick-up')+'</p></div>'
-      +'<div style="padding:1rem 1.25rem;background:'+s.bg+';"><p style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.15em;color:'+s.color+';margin-bottom:0.4rem;font-weight:600;">Order Status</p>'
-      +'<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;"><span style="font-size:1.3rem;">'+s.icon+'</span><span style="font-size:1rem;font-weight:700;color:'+s.color+';">'+escHtml(o.status)+'</span></div>'
-      +'<p style="font-size:0.82rem;color:'+s.color+';line-height:1.5;">'+s.msg+'</p></div>'
-      +'<div style="padding:1rem 1.25rem;background:#ece4d8;text-align:center;">'
-      +(o.status==='Completed'?'<button data-orderid="'+escHtml(o.id)+'" class="confirm-recv-btn" style="background:#2d9e5f;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:pointer;width:100%;">✅ Yes, I Received My Order</button>'
-        :'<p style="font-size:0.82rem;color:var(--tl);">This button will be enabled once your order is marked <strong>Completed</strong>.</p><button disabled style="background:#ccc;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:not-allowed;width:100%;margin-top:0.5rem;opacity:0.6;">Waiting for Completion...</button>')
-      +'</div></div>';
-  }).join('')+'<p style="font-size:0.72rem;color:var(--tl);text-align:center;margin-top:0.25rem;">🔥 Your order status updates automatically — no refresh needed!</p>';
-  el.querySelectorAll('.confirm-recv-btn').forEach(function(btn){
-    btn.addEventListener('click',function(){
-      const oid=this.dataset.orderid;
-      document.getElementById('receivedOrderId').textContent=oid;
-      document.getElementById('confirmReceivedPopup').classList.add('show');
-      document.getElementById('confirmReceivedBtn').onclick=function(){update(ref(db,'orders/'+oid),{receivedByCustomer:true,status:'Received'});document.getElementById('confirmReceivedPopup').classList.remove('show');};
-    });
-  });
-}
+function renderCustomerOrders(){return customerOrderTracker.render();}
 
 // ── RESERVATIONS ──
 // ── FEEDBACK ──
