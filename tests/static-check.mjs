@@ -162,7 +162,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   for(const marker of ['exports.createManagerApproval = onCall','exports.consumeManagerApproval = onCall','exports.manageChartAccount = onCall','exports.auditFinancialControls = onCall','exports.onShiftOpenFinancial = onValueWritten'])if(!functionsSource.includes(marker))fail(`Release 3D server marker missing: ${marker}`);
   for(const node of ['financialApprovals','chartOfAccounts','cashCustody'])if(!rulesRaw.includes(`"${node}"`))fail(`Release 3D rules missing ${node}`);
   if(!adminSource.includes("'createManagerApproval'")||!adminSource.includes('callables.createManagerApproval')||!adminSource.includes('inMemoryPersistence'))fail('Release 3D independent Firebase manager approval is missing');
-  if(!adminSource.includes('authz&&authz.isPrivileged&&current')||!adminSource.includes("['owner','superadmin','admin','manager'].indexOf(effectiveRole)>-1"))fail('Release 7G privileged Admin payment approval path is missing');
+  if(!adminSource.includes('authz&&authz.isPrivileged&&current')||!adminSource.includes("['owner','superadmin','admin','manager'].indexOf(effectiveRole)>-1"))fail('Release 7G privileged Admin approval path is missing');
   if(!adminSource.includes("a.managerApproval('refund'")||!adminSource.includes('refundPayments:refundPayments'))fail('Release 3D actual refund-tender approval flow is missing');
   if(!adminSource.includes("financeCommand('cash_deposit'")||!adminSource.includes('auditFinancialControls'))fail('Release 3D custody deposit or controls audit UI is missing');
   for(const marker of ['exports.manageOrderArchive = onCall','exports.reviewDiscrepancy = onCall','exports.managePettyVoucher = onCall','exports.archiveActivityLog = onCall'])if(!functionsSource.includes(marker))fail(`Release 3E server marker missing: ${marker}`);
@@ -252,7 +252,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!adminHtml.includes("posSwitchTab('operations',this)")||!adminHtml.includes('id="operationsRoot"'))fail('Phase 6C System Health tab is missing');
   if(!operationsSource.includes("clientTelemetryDaily/'+day")||!operationsSource.includes('Last 30 days')||!operationsSource.includes('not percentile measurements'))fail('Phase 6C bounded telemetry dashboard or honest metric disclosure is incomplete');
   for(const marker of ['pos_boot','cart_render','charge_to_durable','offline_flush','realtime_order_arrival'])if(!operationsSource.includes(marker))fail(`Phase 6C performance threshold missing: ${marker}`);
-  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v65'"))fail('Phase 6C/7G dashboard is not in the coordinated offline cache');
+  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v67'"))fail('Phase 6C/7G dashboard is not in the coordinated offline cache');
 
   const orderAdminSource=fs.readFileSync(path.join(root,'assets','js','admin','admin-orders.mjs'),'utf8');
   const orderStatusSource=fs.readFileSync(path.join(root,'functions','lib','order-status.js'),'utf8');
@@ -305,6 +305,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(operationalExceptionsCheck.status!==0)fail(`Phase 7B operational exception checks failed:\n${operationalExceptionsCheck.stderr||operationalExceptionsCheck.stdout}`);
   const managerApprovalCheck=spawnSync(process.execPath,[path.join(root,'tests','manager-approval-claim-check.mjs')],{encoding:'utf8',cwd:root});
   if(managerApprovalCheck.status!==0)fail(`Privileged approval claim checks failed:\n${managerApprovalCheck.stderr||managerApprovalCheck.stdout}`);
+  const approvalMatrixCheck=spawnSync(process.execPath,[path.join(root,'tests','approval-matrix-check.mjs')],{encoding:'utf8',cwd:root});
+  if(approvalMatrixCheck.status!==0)fail(`Privileged approval matrix checks failed:\n${approvalMatrixCheck.stderr||approvalMatrixCheck.stdout}`);
 
   const pricing=spawnSync(process.execPath,[path.join(root,'tests','order-pricing-check.mjs')],{encoding:'utf8',cwd:root});
   if(pricing.status!==0)fail(`server pricing checks failed:\n${pricing.stderr||pricing.stdout}`);

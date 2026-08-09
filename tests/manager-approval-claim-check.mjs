@@ -3,7 +3,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 
 const source=fs.readFileSync(path.join(process.cwd(),'functions','index.js'),'utf8');
-const start=source.indexOf('async function claimManagerApproval');
+const start=source.indexOf('function transactionCurrent');
 const end=source.indexOf('\nexports.createManagerApproval',start);
 if(start<0||end<0)throw new Error('Privileged approval claim function not found');
 
@@ -18,12 +18,12 @@ vm.createContext(sandbox);
 vm.runInContext(`${source.slice(start,end)}\nresult=claimManagerApproval;`,sandbox);
 
 function harness(approval){
-  let row={...approval},warmed=false,transactionCalls=0;
+  let row={...approval},transactionCalls=0,callbackCalls=0;
   const ref={
-    async get(){warmed=true;return{val(){return row;}};},
-    async transaction(update){transactionCalls++;const current=warmed?row:null,next=update(current);if(next===undefined)return{committed:false,snapshot:{val(){return row;}}};row=next;return{committed:true,snapshot:{val(){return row;}}};},
+    async get(){return{val(){return row;}};},
+    async transaction(update){transactionCalls++;callbackCalls++;const coldProposal=update(null);if(coldProposal===undefined)return{committed:false,snapshot:{val(){return row;}}};callbackCalls++;const next=update(row);if(next===undefined)return{committed:false,snapshot:{val(){return row;}}};row=next;return{committed:true,snapshot:{val(){return row;}}};},
   };
-  return{db:{ref(){return ref;}},row(){return row;},replace(next){row=next;warmed=false;},transactionCalls(){return transactionCalls;}};
+  return{db:{ref(){return ref;}},row(){return row;},replace(next){row=next;},transactionCalls(){return transactionCalls;},callbackCalls(){return callbackCalls;}};
 }
 async function expectRejected(work,label){let rejected=false;try{await work();}catch(error){rejected=error.code==='failed-precondition';}if(!rejected)throw new Error(label);}
 
@@ -31,7 +31,7 @@ for(const action of actions){
   const sourceId=`source_${action}`,operationKey=`operation_${action}`,amount=action==='review_discrepancy'||action==='reopen_cash_count'?null:25;
   const h=harness({action,sourceId,amount,approvedBy:'admin_uid',approvedRole:'admin',expiresAt:Date.now()+60000});
   const claimed=await sandbox.result(h.db,{approvalId:`approval_${action}`},action,sourceId,amount,operationKey);
-  if(claimed.id!==`approval_${action}`||h.row().claimKey!==operationKey||h.transactionCalls()!==1)throw new Error(`${action}: valid cold-cache Admin approval was not claimed atomically`);
+  if(claimed.id!==`approval_${action}`||h.row().claimKey!==operationKey||h.transactionCalls()!==1||h.callbackCalls()!==2)throw new Error(`${action}: valid cold-cache Admin approval was not claimed atomically after the initial null callback`);
   if(!claimed.usedWrites[`financialApprovals/approval_${action}/usedAt`]||claimed.usedWrites[`financialApprovals/approval_${action}/usedBy`]!==operationKey)throw new Error(`${action}: claim does not produce one-time-use writes`);
   h.replace({...h.row(),usedAt:Date.now(),usedBy:operationKey});
   await expectRejected(()=>sandbox.result(h.db,{approvalId:`approval_${action}`},action,sourceId,amount,operationKey),`${action}: used approval was accepted`);

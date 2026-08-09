@@ -14,7 +14,7 @@
   "builds": {
     "admin": 173,
     "customer": 45,
-    "serviceWorkerCache": 65
+    "serviceWorkerCache": 67
   },
   "authoritativeFiles": [
     "admin.html",
@@ -32,11 +32,14 @@
     "assets/js/shared/costing.js",
     "assets/css/admin-backoffice.css",
     "assets/js/admin/core.mjs",
+    "assets/js/admin/manager-approval.mjs",
+    "assets/js/admin/form-dialog.js",
     "assets/js/admin/workspace-shell.mjs",
     "assets/js/admin/overview-command.mjs",
     "assets/js/admin/module-loader.js",
     "assets/js/admin/pos.js",
     "assets/js/admin/register.js",
+    "assets/js/admin/analytics.js",
     "assets/js/admin/finance.js",
     "assets/js/admin/operations-dashboard.js"
   ],
@@ -57,6 +60,7 @@
     "processOrderAdjustment",
     "ensureFinancialLedger",
     "createManagerApproval",
+    "consumeManagerApproval",
     "manageOrderArchive",
     "reviewDiscrepancy",
     "managePettyVoucher",

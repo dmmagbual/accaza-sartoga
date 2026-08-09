@@ -1734,7 +1734,7 @@ onValue(ordersRef,snap=>{
   adminOrdersMap=snap.val()||{};
   var ids=Object.keys(adminOrdersMap);
   if(prevIds&&(adminLoggedIn||staffLoggedIn)){
-    var fresh=ids.filter(function(id){return prevIds.indexOf(id)===-1;}).map(function(id){return adminOrdersMap[id];});
+    var fresh=ids.filter(function(id){return prevIds.indexOf(id)===-1;}).map(function(id){return adminOrdersMap[id];}).filter(function(o){return o&&o.source!=='pos';});
     if(fresh.length)notifyNewOrders(fresh);
   }
   knownOrderIds=ids;

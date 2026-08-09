@@ -195,12 +195,18 @@ const MANAGER_APPROVAL_ACTIONS = new Set([
   "delete_archived_order", "review_discrepancy", "approve_petty_voucher",
   "reject_petty_voucher", "void_petty_voucher", "manual_discount", "cash_in",
 ]);
+function transactionCurrent(current, initial, state) {
+  const value = current == null && !state.seen ? initial : current;
+  state.seen = true;
+  return value;
+}
 async function claimManagerApproval(db, data, action, sourceId, amount, operationKey) {
   const approvalId = financeKey(data && data.approvalId, "Privileged approval"); const ref = db.ref(`/financialApprovals/${approvalId}`), now = Date.now();
   const matches = (row) => !!row && row.action === action && row.sourceId === String(sourceId) && Number(row.expiresAt || 0) >= now && !row.usedAt && !(amount != null && Math.abs(Financial.money(row.amount) - Financial.money(amount)) > 0.009) && !(row.claimKey && row.claimKey !== operationKey);
   const initial = (await ref.get()).val();
   if (!matches(initial)) throw new HttpsError("failed-precondition", "Privileged approval is missing, expired, already used, or does not match this action.");
-  const claimed = await ref.transaction((row) => matches(row) ? Object.assign({}, row, {claimKey: operationKey, claimedAt: now}) : undefined, undefined, false);
+  const transactionState = {seen: false};
+  const claimed = await ref.transaction((row) => {row = transactionCurrent(row, initial, transactionState); return matches(row) ? Object.assign({}, row, {claimKey: operationKey, claimedAt: now}) : undefined;}, undefined, false);
   if (!claimed.committed) throw new HttpsError("failed-precondition", "Privileged approval was changed or used before this action completed. Request a new approval.");
   return {id: approvalId, record: initial, usedWrites: {[`financialApprovals/${approvalId}/usedAt`]: now, [`financialApprovals/${approvalId}/usedBy`]: operationKey}};
 }
@@ -304,8 +310,9 @@ exports.reviewDiscrepancy = onCall(
     if (!snap.exists()) throw new HttpsError("not-found", "Discrepancy not found.");
     const row = snap.val() || {}; if (row.status === "reviewed") return {discrepancyId: id, duplicate: true};
     const approval = await claimManagerApproval(db, data, "review_discrepancy", id, null, `review_discrepancy_${id}`), now = Date.now(), reviewedBy = approval.record.approvedName || approval.record.approvedEmail || approval.record.approvedRole;
-    let duplicate = false;
+    let duplicate = false; const transactionState = {seen: false};
     const result = await ref.transaction((current) => {
+      current = transactionCurrent(current, row, transactionState);
       if (!current) return;
       if (current.status === "reviewed") {if (current.reviewApprovalId === approval.id) {duplicate = true; return current;} return;}
       return Object.assign({}, current, {status: "reviewed", reviewedAt: now, reviewedBy, reviewedByUid: approval.record.approvedBy, reviewApprovalId: approval.id, note});
@@ -346,10 +353,9 @@ exports.managePettyVoucher = onCall(
       const [settingsSnap, replSnap] = await Promise.all([db.ref("/pettyCashSettings/openingBalance").get(), db.ref("/pettyCashReplenishments").get()]);
       baseFunds = Financial.money(Number(settingsSnap.val() || 0) + Object.values(replSnap.val() || {}).reduce((sum, row) => sum + Financial.money(row && row.amount), 0));
     }
-    let failure = "", duplicate = false; const vouchersRef = db.ref("/pettyCashVouchers");
-    await vouchersRef.get();
+    let failure = "", duplicate = false; const vouchersRef = db.ref("/pettyCashVouchers"), vouchersInitial = (await vouchersRef.get()).val() || {}, transactionState = {seen: false};
     const result = await vouchersRef.transaction((all) => {
-      all = all || {}; const current = all[id]; failure = ""; duplicate = false;
+      all = transactionCurrent(all, vouchersInitial, transactionState); if (!all) return; all = Object.assign({}, all); const current = all[id]; failure = ""; duplicate = false;
       if (!current) {failure = "Petty cash voucher not found."; return;}
       if (action === "approve") {
         if (current.status === "approved" && current.approvalId === approval.id) {duplicate = true; return all;}

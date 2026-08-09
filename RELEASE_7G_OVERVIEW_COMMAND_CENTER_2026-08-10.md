@@ -1,6 +1,6 @@
 # Release 7G — Overview Command Center
 
-**Build:** admin v173, customer v45, service-worker cache v65
+**Build:** admin v173, customer v45, service-worker cache v67
 
 ## Delivered
 
@@ -14,13 +14,16 @@
 - Restored the original cash-register card by user request while retaining POS search, visible wrapping categories, and the other non-card improvements.
 - Allowed an already signed-in Owner, Superadmin, Admin, or Manager to approve payment confirmation directly; ordinary staff still require separate privileged credentials.
 - Repaired cold-cache approval claims so valid Admin approvals can atomically review discrepancies and other controlled actions without false “approval missing” errors.
+- Audited all twelve privileged actions end to end. Admin now uses the same direct Firebase approval path for payment verification, refunds, voids, payouts, cash-count reopening, archive deletion, discrepancy review, petty cash, manual discounts, and cash-in.
+- Removed the remaining shared-PIN approval paths, recorded approver identity on manual discounts and cash-in, and added matrix plus one-time-use regression tests to prevent role drift.
+- Fixed Firebase Functions transactions that initially surface an empty local value before returning the server record; approval claims, discrepancy review, and petty-cash decisions now continue safely through that retry sequence.
 - Repaired active-order cards with a contained action grid, separated payment summary, unambiguous status language, and proof warnings only while verification is pending.
 - Replaced the horizontally scrolling POS category rail with a wrapping shelf so every category, including Pastries, remains visible.
 - Added explicit management-only menu-price permission recovery guidance and emulator coverage for catalog-versus-availability access.
 
 ## Safety boundary
 
-Release 7G adds no Firebase node, database listener, Cloud Function, financial formula, inventory calculation, or permission. It reads existing authorized UI state and the existing `getOperationalExceptions` callable. Failure or denial of the management scan does not expose data and does not prevent the remaining overview signals from rendering.
+The Overview Command Center itself adds no Firebase node, database listener, Cloud Function, financial formula, inventory calculation, or permission. The follow-up approval audit updates existing approval Functions and browser workflows without changing the privileged role set: Owner, Superadmin, Admin, and Manager remain authorized. Failure or denial of the management scan does not expose data and does not prevent the remaining overview signals from rendering.
 
 ## Coordinated publication
 
@@ -36,9 +39,9 @@ Because Releases 7C–7F are not yet production-verified, publish the complete c
 4. Confirm a user without management exception access sees no protected exception detail.
 5. Create or use a pending test order and confirm the Overview attention count and Orders shortcut update.
 6. Confirm existing sales totals and supporting charts still match their prior dashboard sources.
-7. Test desktop, tablet, and narrow mobile layouts, then hard-refresh once to activate cache v65.
+7. Test desktop, tablet, and narrow mobile layouts, then hard-refresh once to activate cache v67.
 8. Complete one normal sale and confirm order, inventory, and financial behavior is unchanged.
 
 ## Firebase deployment
 
-No new Function or rule is introduced by 7G. The previously pending Release 7B Database query indexes still require `firebase deploy --only database` after the GitHub quality gate passes.
+The approval audit changes `functions/index.js`; deploy Firebase Functions after the GitHub quality gate passes. The previously pending Release 7B Database query indexes still require `firebase deploy --only database`.
