@@ -313,6 +313,10 @@ Until Phases 0–2 are complete, new convenience features should be paused unles
 
 **Release 7C local status (9 August 2026):** Complete in admin v169 and cache v58. The admin shell now gives POS permanent priority, consolidates work into six clear management domains, reveals only contextual secondary pages, and lands cashier, kitchen, and finance roles in their natural workspaces. Existing permissions and workflows are unchanged. See `ADR-021_ADMIN_INFORMATION_ARCHITECTURE.md` and `RELEASE_7C_ADMIN_NAVIGATION_2026-08-09.md`.
 
+**Release 7D local status (9 August 2026):** Complete in admin v170 and cache v59. Contextual workspace headers, relevant shortcuts, and live connection/role/shift/offline-queue signals clarify each work area; POS gains a wider focused canvas and reachable Charge action. See `ADR-022_CONTEXTUAL_ADMIN_WORKSPACES.md` and `RELEASE_7D_CONTEXTUAL_WORKSPACES_2026-08-09.md`.
+
+**Release 7E local status (9 August 2026):** Complete in admin v171 and cache v60. The rush-hour POS workflow adds local menu search, accessible category controls, clearer product tiles, ticket readiness, directed empty states, and one-tap quantity correction without changing transaction authority. See `ADR-023_RUSH_HOUR_POS_WORKFLOW.md` and `RELEASE_7E_RUSH_HOUR_POS_2026-08-09.md`.
+
 1. Firebase Emulator tests for database rules.
 2. Cloud Function tests for retries, duplicate events, partial failure, refunds, and reversals.
 3. Checkout tests for in-store, split payment, GrabFood, FoodPanda, unavailable items, options, packages, and refunds.

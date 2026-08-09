@@ -10,7 +10,7 @@ This is the single current handoff document. Claude should inspect the actual wo
 
 ## Current Production Change Pending Deployment
 
-Danilo confirmed all releases through 5D are deployed and production-tested. Release 7B Functions are deployed; Release 7C is implemented and validated locally. Frontend is **`admin.html` v169**, customer v45, and service-worker cache v58. `CLAUDE_HANDOFF.md` and `release-manifest.json` are the authoritative continuation/status sources. Release 7C GitHub publication, Database query-index deployment, and production v169 smoke evidence remain pending.
+Danilo confirmed all releases through 5D are deployed and production-tested. Release 7B Functions are deployed; Release 7E is implemented and undergoing final local validation. Frontend is **`admin.html` v171**, customer v45, and service-worker cache v60. `CLAUDE_HANDOFF.md` and `release-manifest.json` are the authoritative continuation/status sources. Coordinated 7D/7E GitHub publication, Database query-index deployment, and production v171 smoke evidence remain pending.
 
 The prior v157 login/startup incident was fixed and tested in the later coordinated releases. Do not publish individual modules from an older release over the current coordinated set.
 
@@ -41,14 +41,16 @@ The prior v157 login/startup incident was fixed and tested in the later coordina
 - Release 7A routes portal order-status changes through an authenticated, permission-checked, stale-state protected, idempotent server command and denies direct browser status changes.
 - Release 7B adds a bounded, sanitized, management-only Operations Center for stuck orders, partial offline sync, missing inventory/accounting postings, aged cash custody, proof-access failures, and client health warnings.
 - Release 7C declutters the portal into POS, Overview, Orders & Operations, Inventory, Financials, Customers, and Settings, with role-aware landing and unchanged permissions.
+- Release 7D adds contextual workspace headers and shortcuts, a live connection/role/shift/offline-queue strip, and a wider focused POS canvas with a sticky checkout action.
+- Release 7E optimizes rush-hour selling with local menu search, accessible categories, clearer product tiles, ticket readiness, directed empty states, and one-tap quantity correction.
 
-Next deploy Release 7C: publish the coordinated v169/cache-v58 files, wait for CI, then deploy Database rules for the Release 7B query indexes. See `RELEASE_7C_ADMIN_NAVIGATION_2026-08-09.md`.
+Next deploy Release 7E: publish the coordinated v171/cache-v60 files, wait for CI, then deploy Database rules for the Release 7B query indexes. See `RELEASE_7E_RUSH_HOUR_POS_2026-08-09.md`.
 
 ## Current Builds
 
-- `admin.html`: **v169 validated locally; Release 7C deployment pending**. Hash must be recaptured after final packaging.
+- `admin.html`: **v171 Release 7E deployment pending**. Hash must be recaptured after final packaging.
 - `index.html`: **v45**, modular customer scripts, App Check, and shared install UX. SHA-256: `C70E1CA0002B51E179A0149BC2586CC230807E33B473B9B77AF3659EC6015A1A`.
-- `sw.js`: **cache v58**, including Release 7C and all earlier PWA assets. Hash must be recaptured after final packaging.
+- `sw.js`: **cache v60**, including Release 7E and all earlier PWA assets. Hash must be recaptured after final packaging.
 - `assets/js/admin/` and `assets/js/customer/`: **mandatory Release 2D publish directories**. Do not publish only the HTML files.
 - Cloud Functions: Node.js 22, region `asia-southeast1`.
 - `assets/js/admin/core.mjs`: SHA-256 `C6488B1E9F589746EB75F6AECADF85C523AD3EF728E99E6FE3B8F10BCA04BB02`.
@@ -58,7 +60,7 @@ Next deploy Release 7C: publish the coordinated v169/cache-v58 files, wait for C
 - `assets/js/admin/pos.js`: 250,295 bytes; SHA-256 `CD2A4CB866C970AE3DDFC870355EB2CD7324F2436D23183EF7A8D2F7F47D62FB`.
 - `assets/js/shared/costing.js`: SHA-256 `C5D34EBB0ECD205B901DE8A2CDC2FD0388C93447204131450E39831680F27ACC`.
 - `assets/js/admin/register.js`: SHA-256 `F99DFB416B174FCADB9BB6DEA1C2F3A7588089CB923C96A948AD22DE61EE2A56`.
-- `assets/js/admin/telemetry.js`: Release 6A collector reporting admin-v167; SHA-256 `82CBF40DCD2DB7A5E36A10B7EF7A330395C3DAF50909A03EB29E775BE1696096`.
+- `assets/js/admin/telemetry.js`: Release 6A collector now reporting admin-v171; hash must be recaptured after final packaging.
 - `assets/js/admin/operations-dashboard.js`: Release 6C bounded System Health view; SHA-256 `6E5944400D178D12D4216FD592AC4E88E9920975FBC22CCB514629486B9DA5E2`.
 - `assets/js/admin/firebase-client.mjs`: SHA-256 `384D2F192886D876F22D876467DF1C9420D52E6311D1C9C626C01830D4251453`.
 - `assets/js/admin/admin-orders.mjs`: SHA-256 `97796ECB987BFAE5D10C102B50D3FD294E4112F4ECBCDAD39825099725C21EE7`.
@@ -213,7 +215,7 @@ The complete suite passes with v158/v43:
 
 ## Next Planned Work
 
-### First: deploy and test coordinated Release 7C
+### First: deploy and test coordinated Release 7E
 
 Follow `RELEASE_7C_ADMIN_NAVIGATION_2026-08-09.md`: publish the coordinated frontend, wait for CI, deploy Database rules, then verify role landing and every primary work area.
 
