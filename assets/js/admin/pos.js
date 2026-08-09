@@ -22,6 +22,10 @@ function usageTypesList(){var keys=Object.keys(usageTypesMap);var list=keys.leng
 function usageTypeName(id){return (usageTypesMap[id]&&usageTypesMap[id].name)||(id==='staff'?'Staff consumption':id==='rnd'?'R&D / Testing':id);}
 function usageTypeReasons(id){var t=usageTypesMap[id]||DEFAULT_USAGE_TYPES.filter(function(d){return d.id===id;})[0];return (t&&t.reasons)||[];}
 var posCart={}, posCat='ALL', posBuilt=false, recipeEditing=false, curRecipeKey=null, recipeDraft=null, recSub='base', recSize='M', posScopedDisc=[], posChannel='instore';
+var posDraft={},posChargeBusy=false;
+function telemetry(){return window.AccazaTelemetry||{start:function(){},end:function(){},metric:function(){},error:function(){}};}
+function capturePosDraft(root){if(!root)return;var active=document.activeElement,focusId=active&&root.contains(active)?active.id:'';root.querySelectorAll('input[id],select[id],textarea[id]').forEach(function(el){posDraft[el.id]={value:el.value,checked:!!el.checked,type:el.type};});posDraft.__focus=focusId;}
+function restorePosDraft(root){if(!root)return;Object.keys(posDraft).forEach(function(id){if(id==='__focus')return;var el=document.getElementById(id),v=posDraft[id];if(!el||!root.contains(el))return;if(v.type==='checkbox'||v.type==='radio')el.checked=v.checked;else el.value=v.value;});var f=posDraft.__focus&&document.getElementById(posDraft.__focus);if(f&&root.contains(f))setTimeout(function(){try{f.focus();}catch(e){}},0);}
 var DISC_TYPES={senior:{label:'Senior Citizen',rate:0.20},pwd:{label:'PWD',rate:0.20},athlete:{label:'National Athlete',rate:0.20},promo5:{label:'5% Drink Promo',rate:0.05}};
 
 function A(){return window.__accaza;}
@@ -121,7 +125,7 @@ var _offState={pending:0,syncing:0,failed:0,synced:0,total:0,rows:[]};
 function offlineQueue(){if(!window.AccazaOfflineQueue)throw new Error('Durable offline storage is unavailable.');return window.AccazaOfflineQueue;}
 function queueOfflineOrder(o){return offlineQueue().enqueue(o).then(function(){return refreshOfflineState();});}
 function refreshOfflineState(){return offlineQueue().summary().then(function(s){_offState=s;renderOfflineUI();return s;}).catch(function(e){_offState.error=String(e&&e.message||e);renderOfflineUI();return _offState;});}
-function flushOfflineQueue(){if(window.__online===false){updateOfflineUI();return Promise.resolve({offline:true});}return offlineQueue().flush(function(command){return A().syncOfflinePosSale(command);},refreshOfflineState).then(function(r){refreshOfflineState();if(r&&r.synced&&window.__posLog)window.__posLog('offline-sync','batch',r.synced+' sale(s) synced');return r;});}
+function flushOfflineQueue(){if(window.__online===false){updateOfflineUI();return Promise.resolve({offline:true});}var t=performance.now();return offlineQueue().flush(function(command){return A().syncOfflinePosSale(command);},refreshOfflineState).then(function(r){telemetry().metric('offline_flush',performance.now()-t,true);refreshOfflineState();if(r&&r.synced&&window.__posLog)window.__posLog('offline-sync','batch',r.synced+' sale(s) synced');return r;}).catch(function(e){telemetry().metric('offline_flush',performance.now()-t,false);throw e;});}
 function renderOfflineUI(){var el=document.getElementById('posOfflineBar');if(!el)return;var pend=(_offState.pending||0)+(_offState.syncing||0),failed=_offState.failed||0,click=' onclick="window.__showOfflineQueue()" title="View transaction sync queue"';if(_offState.error){el.innerHTML='<button'+click+' style="background:#fdecea;border:1px solid #f5c6c6;color:#c0392b;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;cursor:pointer;">⛔ Offline storage error</button>';}else if(window.__online===false){el.innerHTML='<button'+click+' style="background:#fdecea;border:1px solid #f5c6c6;color:#c0392b;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;cursor:pointer;">🔴 Offline · '+pend+' Pending Sync'+(failed?' · '+failed+' Failed':'')+'</button>';}else if(failed){el.innerHTML='<button'+click+' style="background:#fdecea;border:1px solid #f5c6c6;color:#c0392b;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;cursor:pointer;">🔴 '+failed+' Failed · Retry</button>';}else if(pend){el.innerHTML='<button'+click+' style="background:#fff8e1;border:1px solid #ffe0a3;color:#8a6d1b;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;cursor:pointer;">🟡 Syncing '+pend+' sale(s)…</button>';}else{el.innerHTML='<button'+click+' style="background:#e8f5ec;border:1px solid #b8dfc4;color:#155724;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;cursor:pointer;">🟢 Online · Synced</button>';}}
 function updateOfflineUI(){renderOfflineUI();refreshOfflineState();}
 window.__showOfflineQueue=function(){offlineQueue().all().then(function(rows){var old=document.getElementById('posSyncQueueMask');if(old)old.remove();var m=document.createElement('div');m.id='posSyncQueueMask';m.className='pz-mask show';var body=rows.length?rows.slice().reverse().map(function(r){var col=r.status==='synced'?'#155724':r.status==='failed'?'#c0392b':'#8a6d1b';return '<div style="border-bottom:1px solid #ddd;padding:0.55rem 0;"><div style="display:flex;justify-content:space-between;gap:1rem;"><b>'+esc((r.order&&r.order.id)||r.id)+'</b><b style="color:'+col+';">'+esc(r.status.toUpperCase())+'</b></div><div style="font-size:0.75rem;color:#666;">'+peso((r.order&&r.order.total)||0)+' · attempts '+(r.attempts||0)+'</div>'+(r.lastError?'<div style="font-size:0.72rem;color:#c0392b;margin-top:0.2rem;">'+esc(r.lastError)+'</div>':'')+(r.status==='failed'?'<button class="pz-btn sec" data-sync-retry="'+esc(r.id)+'" style="margin-top:0.35rem;">Retry this sale</button>':'')+'</div>';}).join(''):'<p>No queued transactions.</p>';m.innerHTML='<div class="pz-modal" style="max-width:560px;"><div style="display:flex;justify-content:space-between;align-items:center;"><div class="pz-h">Transaction Sync Queue</div><button class="pz-btn sec" data-sync-close>✕</button></div><p style="font-size:0.78rem;color:#666;">Pending is stored on this device. Synced means Firebase confirmed it.</p><div style="max-height:55vh;overflow:auto;">'+body+'</div><button class="pz-btn ok" data-sync-all style="width:100%;margin-top:0.8rem;">Retry pending / failed now</button></div>';document.body.appendChild(m);m.querySelector('[data-sync-close]').onclick=function(){m.remove();};m.querySelector('[data-sync-all]').onclick=function(){flushOfflineQueue().then(function(){m.remove();window.__showOfflineQueue();});};m.querySelectorAll('[data-sync-retry]').forEach(function(b){b.onclick=function(){offlineQueue().retry(this.getAttribute('data-sync-retry')).then(flushOfflineQueue).then(function(){m.remove();window.__showOfflineQueue();});};});});};
@@ -1591,6 +1595,7 @@ function renderDedupe(){
 }
 /* ══════════ POS REGISTER ══════════ */
 function buildPOS(){
+  var _t=performance.now();
   var root=document.getElementById('posRoot'); if(!root)return;
   var cats=A().getCats?A().getCats():[];
   var chips='<span class="pz-chip '+(posCat==='ALL'?'on':'')+'" data-cat="ALL">All</span>'+cats.map(function(c){return '<span class="pz-chip '+(posCat===c.id?'on':'')+'" data-cat="'+esc(c.id)+'">'+esc(c.icon||'')+' '+esc(c.label)+'</span>';}).join('');
@@ -1602,7 +1607,7 @@ function buildPOS(){
       +'<div class="pz-card" id="posCartPanel" style="position:sticky;top:1rem;"></div>'
     +'</div>';
   root.querySelectorAll('[data-cat]').forEach(function(ch){ch.onclick=function(){posCat=ch.getAttribute('data-cat');buildPOS();};});
-  drawPosItems(); renderPosCart(); posBuilt=true;
+  drawPosItems(); renderPosCart(); posBuilt=true;telemetry().metric('pos_build',performance.now()-_t,true);
 }
 function drawPosItems(){
   var wrap=document.getElementById('posItems'); if(!wrap)return;
@@ -1745,6 +1750,7 @@ function openDiscountModal(){
 }
 function renderPosCart(){
   var p=document.getElementById('posCartPanel'); if(!p)return;
+  var _rt=performance.now();capturePosDraft(p);
   var shift=window.__posShift||null;
   var keys=Object.keys(posCart);
   posScopedDisc=posScopedDisc.filter(function(d){return posCart[d.key];});
@@ -1787,6 +1793,7 @@ function renderPosCart(){
       +(isPlat?'':'<button class="pz-btn sec" id="posHold" style="flex:1;"'+(keys.length?'':' disabled')+'>Hold</button>')
       +'<button class="pz-btn sec" id="posClear" style="flex:1;"'+(keys.length?'':' disabled')+'>Clear</button>'
     +'</div>';
+  restorePosDraft(p);telemetry().metric('cart_render',performance.now()-_rt,true);
   var _chsel=document.getElementById('posChannelSel'); if(_chsel)_chsel.onchange=function(){ var v=this.value; if(v===posChannel)return; if(Object.keys(posCart).length&&!confirm('Switching channel clears the current sale — prices differ between in-store and platform. Continue?')){ this.value=posChannel; return; } posChannel=v; posCart={}; window.__posPkgs=[]; posScopedDisc=[]; buildPOS(); };
   p.querySelectorAll('[data-rm]').forEach(function(b){b.onclick=function(){delete posCart[b.getAttribute('data-rm')];renderPosCart();};});
   var disc=document.getElementById('posDisc');
@@ -1865,9 +1872,11 @@ function renderPosCart(){
   var _db=document.getElementById('posDiscBtn'); if(_db)_db.onclick=openDiscountModal;
   p.querySelectorAll('[data-sdrm]').forEach(function(b){b.onclick=function(){posScopedDisc.splice(+b.getAttribute('data-sdrm'),1);renderPosCart();};});
   var _pb=document.getElementById('posPkgBtn');if(_pb)_pb.onclick=function(){ if(window.__openPackagePicker)window.__openPackagePicker(); else alert('Packages module still loading \u2014 try again.'); };
-  document.getElementById('posClear').onclick=function(){if(Object.keys(posCart).length&&confirm('Clear this sale?')){posCart={};window.__posPkgs=[];posScopedDisc=[];renderPosCart();}};
-  var _hold=document.getElementById('posHold'); if(_hold)_hold.onclick=function(){ if(!Object.keys(posCart).length)return; var a=A(); a.set(a.ref(a.db,'heldOrders/'+uid('hold_')),{cart:posCart,ts:Date.now(),staff:(window.__posShift&&window.__posShift.staff)||'—',note:(document.getElementById('posCust').value||'').trim()}); posCart={}; window.__posPkgs=[]; renderPosCart(); alert('Order held. Recall it from Register Ops.'); };
+  document.getElementById('posClear').onclick=function(){if(Object.keys(posCart).length&&confirm('Clear this sale?')){posCart={};posDraft={};window.__posPkgs=[];posScopedDisc=[];renderPosCart();}};
+  var _hold=document.getElementById('posHold'); if(_hold)_hold.onclick=function(){ if(!Object.keys(posCart).length)return; var a=A(); a.set(a.ref(a.db,'heldOrders/'+uid('hold_')),{cart:posCart,ts:Date.now(),staff:(window.__posShift&&window.__posShift.staff)||'—',note:(document.getElementById('posCust').value||'').trim()}); posCart={};posDraft={};window.__posPkgs=[]; renderPosCart(); alert('Order held. Recall it from Register Ops.'); };
   document.getElementById('posCharge').onclick=async function(){
+    var chargeButton=this;if(posChargeBusy)return;posChargeBusy=true;chargeButton.disabled=true;var chargeLabel=chargeButton.textContent;chargeButton.textContent='Processing…';
+    try{return await (async function(){
     if(!window.__posShift){alert('Open a shift first (Register Ops tab).');return;}
     var tot=grandTotal();
     if(isPlat){
@@ -1882,7 +1891,7 @@ function renderPosCart(){
       var pcommBase=(posChannel==='grabfood')?_r2(tot-pdAmt):tot;
       var pcomm=_r2(pcommBase*prate), pwht=_r2(tot*pwhtR), pvat=_r2(tot*pvatR);
       var pNetSales=_r2(tot-pdAmt); var pnet=_r2(tot-pcomm-pdAmt-pwht-pvat);
-      chargeSale(sub,pNetSales,null,{channel:posChannel,platformRef:pref,gross:tot,discountPct:pdPct,discountAmt:pdAmt,netSales:pNetSales,commission:pcomm,commissionRate:prate,wht:pwht,whtRate:pwhtR,vat:pvat,vatRate:pvatR,net:pnet});
+      await chargeSale(sub,pNetSales,null,{channel:posChannel,platformRef:pref,gross:tot,discountPct:pdPct,discountAmt:pdAmt,netSales:pNetSales,commission:pcomm,commissionRate:prate,wht:pwht,whtRate:pwhtR,vat:pvat,vatRate:pvatR,net:pnet});
       return;
     }
     var d=Number(disc&&disc.value)||0;
@@ -1904,7 +1913,8 @@ function renderPosCart(){
       else if(denomTrackingOn()){ var r=posRcvRead(); if(r.total<tot-0.001){alert('Cash received ('+peso(r.total)+') is less than the total ('+peso(tot)+').');return;} var chg=Math.round((r.total-tot)*100)/100; var tip=posKeepTip(chg); var giveChg=Math.round((chg-tip)*100)/100; var mc=makeChange(giveChg, mergeDenoms(shiftDrawer(),r.counts)); payments=[{method:m,amount:tot,tendered:r.total,change:giveChg,ref:'',cashReceived:r.counts,cashChange:mc.denoms,changeShort:mc.ok?0:mc.short,tipRounding:tip}]; }
       else { var tv=Number((document.getElementById('posTender')||{}).value)||0; if(tv&&tv<tot){alert('Cash tendered is less than the total.');return;} var chg2=tv?Math.max(0,Math.round((tv-tot)*100)/100):0; var tip2=posKeepTip(chg2); payments=[{method:m,amount:tot,tendered:tv,change:Math.round((chg2-tip2)*100)/100,ref:'',tipRounding:tip2}]; }
     }
-    chargeSale(sub,tot,payments);
+    await chargeSale(sub,tot,payments);
+    })();}finally{posChargeBusy=false;if(document.body.contains(chargeButton)){chargeButton.disabled=false;chargeButton.textContent=chargeLabel;}}
   };
 }
 function chargeSale(sub,total,payments,platform){
@@ -1942,10 +1952,11 @@ function chargeSale(sub,total,payments,platform){
     return;
   }
   order.offlineRung=(window.__online===false);
-  queueOfflineOrder(order).then(function(){
+  var _chargeStarted=performance.now();return queueOfflineOrder(order).then(function(){
+    telemetry().metric('charge_to_durable',performance.now()-_chargeStarted,true);
     if(window.__posLog)window.__posLog('sale-queued',oid,'₱'+total+' · '+payLabel+(order.offlineRung?' · OFFLINE':'')+' · '+txnId);
-    var receipt=Object.assign({},order); receipt._offline=(window.__online===false); receipt._syncPending=true; posCart={}; window.__posPkgs=[]; posScopedDisc=[]; renderPosCart(); showReceipt(receipt); flushOfflineQueue();
-  }).catch(function(error){alert('Sale was NOT saved. Durable storage failed: '+String(error&&error.message||error));});
+    var receipt=Object.assign({},order); receipt._offline=(window.__online===false); receipt._syncPending=true; posCart={};posDraft={}; window.__posPkgs=[]; posScopedDisc=[]; renderPosCart(); showReceipt(receipt); flushOfflineQueue();
+  }).catch(function(error){telemetry().metric('charge_to_durable',performance.now()-_chargeStarted,false);alert('Sale was NOT saved. Durable storage failed: '+String(error&&error.message||error));return {failed:true};});
 }
 window.__pos={render:function(){if(document.getElementById('posCartPanel'))renderPosCart();},loadCart:function(c){posCart=c||{};if(window.switchTab)window.switchTab('pos',document.querySelector('.admin-tab'));buildPOS();},hasItems:function(){return Object.keys(posCart).length>0;},addPackage:function(components,meta){(components||[]).forEach(function(c){var key=uid('pc_');posCart[key]={itemKey:c.itemKey,name:c.name,size:c.size||null,optLabels:c.optLabels||[],details:c.details||('pkg: '+meta.name),qty:c.qty,unitTotal:c.unitTotal,stream:(meta.type==='promo'?'promo':'events'),pkgId:meta.id};});window.__posPkgs=window.__posPkgs||[];window.__posPkgs.push(meta);renderPosCart();}};
 

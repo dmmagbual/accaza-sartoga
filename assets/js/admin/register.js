@@ -613,6 +613,7 @@ function refundTenderModal(o,amount,cb){
   mask.querySelector('#rtCancel').onclick=function(){document.body.removeChild(mask);cb(null);};
 }
 function voidSale(oid){
+  if(document.getElementById('accazaFormDialog'))return;
   var o=ordersMap[oid];if(!o)return;
   var a=A(),amount=Math.max(0,(Number(o.total)||0)-(Number(o.refundAmount)||0));if(!a.processOrderAdjustment||!a.managerApproval){alert('3D adjustment service is not available. Refresh the portal.');return;}
   var fields=[{name:'reason',label:'Void reason',type:'textarea',required:true,maxLength:300,placeholder:'Explain why this completed sale must be voided'}];
@@ -620,6 +621,7 @@ function voidSale(oid){
   F().run({title:'Void completed sale',subtitle:oid+' · reversible amount '+peso(amount),submitLabel:'Request void approval',busyLabel:'Posting reversal…',danger:true,fields:fields},function(v){return a.managerApproval('void',oid,amount,v.reason).then(function(ap){return a.processOrderAdjustment({action:'void',orderId:oid,reason:v.reason,restock:!!v.restock,approvalId:ap.approvalId});}).then(function(){window.__posLog('void',oid,v.reason);});}).then(function(){alert('Order voided and financial reversal posted.');}).catch(function(){});
 }
 function refundSale(oid){
+  if(document.getElementById('accazaFormDialog'))return;
   var o=ordersMap[oid];if(!o)return;
   var max=Number(o.total)||0;var already=Number(o.refundAmount)||0;
   var remaining=Math.round((max-already)*100)/100;if(remaining<=0){alert('This order has no refundable balance.');return;}

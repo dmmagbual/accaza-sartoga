@@ -79,6 +79,7 @@ window.__accaza={
   managePettyVoucher:function(command){return managePettyVoucherCall(command);},
   archiveActivityLog:function(){return archiveActivityLogCall({});},
   syncOfflinePosSale:function(command){return callables.syncOfflinePosSale(command);},
+  recordClientTelemetry:function(command){return callables.recordClientTelemetry(command);},
   get menuItemsMap(){return menuItemsMap;},
   get optionGroupsMap(){return optionGroupsMap;},
   get categoriesMap(){return categoriesMap;},
@@ -362,7 +363,7 @@ subscriptionHub.subscribe('activeOrders',snap=>{
   var ids=Object.keys(adminOrdersMap);
   if(prevIds&&(adminLoggedIn||staffLoggedIn)){
     var fresh=ids.filter(function(id){return prevIds.indexOf(id)===-1;}).map(function(id){return adminOrdersMap[id];}).filter(function(o){return o&&o.source!=='pos';});
-    if(fresh.length)notifyNewOrders(fresh);
+    if(fresh.length){notifyNewOrders(fresh);if(window.AccazaTelemetry)fresh.forEach(function(o){var age=Date.now()-Number(o.timestamp||Date.now());window.AccazaTelemetry.metric('realtime_order_arrival',Math.max(0,age),true);});}
   }
   knownOrderIds=ids;
   if(adminLoggedIn||staffLoggedIn){var ot=document.getElementById('tab-orders'),dt=document.getElementById('tab-dashboard'),ct=document.getElementById('tab-appcustomers');if(ot&&ot.style.display!=='none')patchOrderCards(previousOrders,adminOrdersMap);if(dt&&dt.style.display!=='none')renderDashboard();if(ct&&ct.style.display!=='none')renderAppCustomers();}
