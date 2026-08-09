@@ -275,6 +275,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!workspaceShellSource.includes('installWorkspaceShell')||!workspaceShellSource.includes('__refreshWorkspaceStatus')||!adminSource.includes('workspaceShell.update(tab)'))fail('Phase 7D workspace shell integration incomplete');
   if(!precache.includes('/assets/js/admin/workspace-shell.mjs'))fail('Phase 7D workspace shell is not precached');
   if(!adminHtml.includes('id="accaza-pos-workflow-7e"')||!adminHtml.includes('.pos-order-rail')||!adminHtml.includes('.pos-line-stepper'))fail('Phase 7E focused POS workflow styling missing');
+  if(!adminHtml.includes('.pos-category-rail{display:flex;flex-wrap:wrap')||!adminHtml.includes('.pos-category-rail .pz-chip{flex:0 1 auto'))fail('Release 7G fully visible wrapping POS categories missing');
+  if(/\.pos-category-rail\{[^}]*overflow-x\s*:\s*auto/.test(adminHtml))fail('Release 7G POS categories must not require horizontal scrolling');
   if(!adminHtml.includes('100dvh - 2rem')||!adminHtml.includes('.pos-cart-empty')||!adminHtml.includes('@container pos-ticket'))fail('Release 7G compact register viewport or empty-ticket treatment missing');
   if(!posSource.includes("id=\"posMenuSearch\"")||!posSource.includes("type=\"button\" class=\"pz-chip")||!posSource.includes("data-inc=\"")||!posSource.includes("data-dec=\""))fail('Phase 7E search, accessible categories, or ticket quantity controls missing');
   if(!posSource.includes('No matching items')||!posSource.includes('Ready')||!posSource.includes('Waiting'))fail('Phase 7E directed empty/readiness states missing');
