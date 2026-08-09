@@ -18,6 +18,7 @@ const Costing = require("./lib/costing");
 const Financial = require("./lib/financial");
 const OfflineSync = require("./lib/offline-sync");
 const OrderStatus = require("./lib/order-status");
+const OperationalExceptions = require("./lib/operational-exceptions");
 
 initializeApp();
 
@@ -146,7 +147,7 @@ exports.recordClientTelemetry = onCall(
     const accepted = raw.map((event) => {
       const type = event && event.type === "error" ? "error" : "metric", name = telemetryKey(event && event.name);
       if (type === "metric" && !CLIENT_METRICS.has(name)) return null;
-      if (type === "error" && !/^(js_[a-z0-9_-]+|unhandled_promise)$/.test(name)) return null;
+      if (type === "error" && !/^(js_[a-z0-9_-]+|unhandled_promise|proof_access)$/.test(name)) return null;
       return {type, name, duration: Math.max(0, Math.min(120000, Math.round(Number(event.duration) || 0))), ok: event.ok !== false};
     }).filter(Boolean);
     if (!accepted.length) return {accepted: 0};
@@ -157,6 +158,20 @@ exports.recordClientTelemetry = onCall(
       row.builds[build] = Math.min(1000000, Number(row.builds[build] || 0) + accepted.length);row.updatedAt = Date.now();row.lastRole = actor.role;return row;
     });
     return {accepted: accepted.length};
+  },
+);
+
+// Release 7B: bounded, sanitized, management-only operational exception scan.
+exports.getOperationalExceptions = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalUser(db, request);
+    if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Operational exceptions are restricted to management accounts.");
+    const now = Date.now(), days = [];for (let offset = 0; offset < 7; offset++) days.push(new Date(now - offset * 86400000).toISOString().slice(0, 10));
+    const [activeSnap, ordersSnap, offlineSnap, custodySnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
+    const orders = ordersSnap.val() || {}, financialPairs = await Promise.all(Object.keys(orders).slice(0, 100).map(async (id) => {const snap = await db.ref(`/financialMovements/sale_${id}`).get();return [id, snap.exists() ? snap.val() : null];}));
+    const financialMovements = {};financialPairs.forEach(([id, value]) => {if (value) financialMovements[`sale_${id}`] = value;});const telemetry = {};days.forEach((day, i) => {telemetry[day] = telemetrySnaps[i].val() || {};});
+    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements, telemetry}, now);
   },
 );
 
