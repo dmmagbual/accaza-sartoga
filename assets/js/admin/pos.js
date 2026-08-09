@@ -1896,8 +1896,7 @@ function renderPosCart(){
       await chargeSale(sub,pNetSales,null,{channel:posChannel,platformRef:pref,gross:tot,discountPct:pdPct,discountAmt:pdAmt,netSales:pNetSales,commission:pcomm,commissionRate:prate,wht:pwht,whtRate:pwhtR,vat:pvat,vatRate:pvatR,net:pnet});
       return;
     }
-    var d=Number(disc&&disc.value)||0;
-    if(d>0&&window.__posIsManagerPin){try{await window.AccazaFormDialog.run({title:'Approve manual discount',subtitle:'Discount amount: '+peso(d),submitLabel:'Approve discount',fields:[{name:'pin',label:'Manager PIN',type:'password',required:true,maxLength:6,placeholder:'4–6 digits',validate:function(v){return /^[0-9]{4,6}$/.test(v)?'':'Enter a 4–6 digit manager PIN.';}}]},function(v){if(!window.__posIsManagerPin(v.pin))throw new Error('Manager PIN is invalid.');});}catch(e){return;} }
+    var d=Number(disc&&disc.value)||0,discountApproval=null;
     var payments;
     if(splitChk.checked){ var assigned=splitRows.reduce(function(s,r){return s+(Number(r.amount)||0);},0); if(Math.abs(assigned-tot)>0.01){alert('Split payments must add up to the total.');return;} if(splitRows.some(function(r){return !isCashMethod(r.method)&&!String(r.ref||'').trim();})){alert('Enter a reference number for every GCash/bank payment before charging.');return;}
       var _splitBad=false;
@@ -1915,11 +1914,12 @@ function renderPosCart(){
       else if(denomTrackingOn()){ var r=posRcvRead(); if(r.total<tot-0.001){alert('Cash received ('+peso(r.total)+') is less than the total ('+peso(tot)+').');return;} var chg=Math.round((r.total-tot)*100)/100; var tip=posKeepTip(chg); var giveChg=Math.round((chg-tip)*100)/100; var mc=makeChange(giveChg, mergeDenoms(shiftDrawer(),r.counts)); payments=[{method:m,amount:tot,tendered:r.total,change:giveChg,ref:'',cashReceived:r.counts,cashChange:mc.denoms,changeShort:mc.ok?0:mc.short,tipRounding:tip}]; }
       else { var tv=Number((document.getElementById('posTender')||{}).value)||0; if(tv&&tv<tot){alert('Cash tendered is less than the total.');return;} var chg2=tv?Math.max(0,Math.round((tv-tot)*100)/100):0; var tip2=posKeepTip(chg2); payments=[{method:m,amount:tot,tendered:tv,change:Math.round((chg2-tip2)*100)/100,ref:'',tipRounding:tip2}]; }
     }
-    await chargeSale(sub,tot,payments);
+    if(d>0){var a0=A();if(!a0.managerApproval||!a0.consumeManagerApproval){alert('Privileged discount approval is unavailable. Refresh the portal.');return;}var discountSource='manual_discount_'+shift.id+'_'+Date.now();try{var dap=await a0.managerApproval('manual_discount',discountSource,d,'Approve manual POS discount');var dcr=await a0.consumeManagerApproval({action:'manual_discount',sourceId:discountSource,amount:d,operationKey:discountSource,approvalId:dap.approvalId}),dcd=(dcr&&dcr.data)||dcr||{};discountApproval={approvalId:dap.approvalId,approvedBy:dcd.approvedBy||'',approvedByUid:dcd.approvedByUid||'',approvedRole:dcd.approvedRole||'',sourceId:discountSource};}catch(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Discount approval failed: '+((e&&e.message)||e));return;} }
+    await chargeSale(sub,tot,payments,null,discountApproval);
     })();}finally{posChargeBusy=false;if(document.body.contains(chargeButton)){chargeButton.disabled=false;chargeButton.textContent=chargeLabel;}}
   };
 }
-function chargeSale(sub,total,payments,platform){
+function chargeSale(sub,total,payments,platform,discountApproval){
   var keys=Object.keys(posCart); if(!keys.length)return;
   var shift=window.__posShift; if(!shift){alert('Open a shift first.');return;}
   var isPlat=!!platform;
@@ -1942,6 +1942,7 @@ function chargeSale(sub,total,payments,platform){
   var _pendingPay=(!isPlat)&&(payments||[]).some(function(p){return !isCashMethod(p.method);});
   var now=new Date();
   var order={id:oid,clientTxnId:txnId,schemaVersion:2,syncState:'pending',name:cust,phone:'',type:(isPlat?channelLabel(platform.channel):'Walk-in'),address:'',payment:payLabel,payments:payments,contact:'',contactMethod:'',items:itemsStr,lineItems:lineItems,subtotal:sub,discount:disc,discountLines:_scoped,total:total,tendered:tendered,change:change,notes:'',status:'Completed',source:'pos',channel:(isPlat?platform.channel:'instore'),staff:staff,shiftId:shift.id,packages:_pkgs,extraCost:_extra,paymentStatus:(_pendingPay?'pending':'confirmed'),receivedByCustomer:true,tipRounding:tipTotal,time:now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:now.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
+  if(discountApproval){order.discountApprovalId=discountApproval.approvalId;order.discountApprovedBy=discountApproval.approvedBy;order.discountApprovedByUid=discountApproval.approvedByUid;order.discountApprovedRole=discountApproval.approvedRole;order.discountApprovalSource=discountApproval.sourceId;}
   if(isPlat){ order.platformRef=platform.platformRef; order.grossPlatform=platform.gross; order.platformDiscountPct=Number(platform.discountPct)||0; order.platformDiscount=Number(platform.discountAmt)||0; order.netSalesPlatform=Number(platform.netSales!=null?platform.netSales:total)||0; order.commission=platform.commission; order.commissionRate=platform.commissionRate; order.platformWht=Number(platform.wht)||0; order.platformWhtRate=Number(platform.whtRate)||0; order.platformVat=Number(platform.vat)||0; order.platformVatRate=Number(platform.vatRate)||0; order.netPlatform=platform.net; order.settlementStatus='unsettled'; order.payoutId=''; }
   var _cps=(payments||[]).filter(function(p){return p.cashReceived;});
   if(_cps.length){ var rcv={},chgD={},shrt=0; _cps.forEach(function(p){ rcv=mergeDenoms(rcv,p.cashReceived); chgD=mergeDenoms(chgD,p.cashChange||{}); shrt+=Number(p.changeShort)||0; });
