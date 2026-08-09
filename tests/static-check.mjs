@@ -228,7 +228,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!posSource.includes("clientTxnId:txnId")||!posSource.includes('PENDING SYNC — Firebase confirmation not yet received'))fail('Phase 5B POS does not stamp or disclose pending synchronization');
   if(!adminSource.includes("syncOfflinePosSale:function(command)")||!adminSource.includes("'syncOfflinePosSale'"))fail('Phase 5B callable bridge missing');
   if(!functionsSource.includes('exports.syncOfflinePosSale = onCall')||!functionsSource.includes('OfflineSync.syncOfflinePosSaleCommand')||!offlineServerSource.includes('offlineSyncApplied')||!offlineServerSource.includes('raw.clientTxnId !== transactionId'))fail('Phase 5B server idempotency or drawer guard missing');
-  if(!rulesRaw.includes('"offlinePosSync": { ".read": false, ".write": false }'))fail('Phase 5B server-only sync audit node missing');
+  if(!rulesRaw.includes('"offlinePosSync": {')||!rulesRaw.includes('".indexOn": "updatedAt", ".read": false, ".write": false'))fail('Phase 5B server-only sync audit node missing');
   if(!precache.includes('/assets/js/admin/offline-queue.js'))fail('Phase 5B durable queue module is not precached');
 
   const formDialogSource=fs.readFileSync(path.join(root,'assets','js','admin','form-dialog.js'),'utf8');
@@ -264,6 +264,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!functionsSource.includes('exports.getOperationalExceptions = onCall')||!functionsSource.includes('OperationalExceptions.buildOperationalExceptions'))fail('Phase 7B manager exception callable missing');
   for(const marker of ['offline_sync','stuck_order','inventory_gap','financial_gap','cash_custody','proof_access'])if(!exceptionSource.includes(marker)&&!functionsSource.includes(marker))fail(`Phase 7B exception category missing: ${marker}`);
   if(!operationsSource.includes('Operational Exceptions')||!operationsSource.includes('getOperationalExceptions')||!operationsSource.includes('Read-only manager scan'))fail('Phase 7B Operations Center UI incomplete');
+  if(!rulesRaw.includes('"offlinePosSync": { ".indexOn": "updatedAt"')||!rulesRaw.includes('"cashCustody": { ".indexOn": "closedAt"'))fail('Phase 7B bounded exception query indexes missing');
 
   const fn=spawnSync(process.execPath,['--check',path.join(root,'functions','index.js')],{encoding:'utf8'});
   if(fn.status!==0)fail(`functions/index.js failed syntax check:\n${fn.stderr||fn.stdout}`);
