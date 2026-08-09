@@ -10,6 +10,7 @@ import{createCatalogAdmin}from"./catalog-admin.mjs";
 import{createAppCustomerSession}from"./app-customer-session.mjs";
 import{createCustomerOrderTracker}from"./customer-order-tracker.mjs";
 import{escHtml,safeImageSrc}from"./shared-ui.mjs";
+import{installWorkspaceShell}from"./workspace-shell.mjs";
 
 const {getPaymentProof:getPaymentProofCall,ensureActiveOrders:ensureActiveOrdersCall,updateOrderStatus:updateOrderStatusCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,archiveActivityLog:archiveActivityLogCall}=callables;
 window.__accazaAuth=auth;
@@ -1255,10 +1256,12 @@ async function loginSuccess(role,username,uid,serverRole){
     },300);
   }
   window.scrollTo(0,0);
+  workspaceShell.update('dashboard');
 }
 
 // ── FIREBASE AUTH GATE ─────────────────────────────────────
 installPortalAuth({subscriptionHub:subscriptionHub,onAuthorized:loginSuccess,openLogin:window.openAdmin,onSignedOut:function(){adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;currentUser=null;currentLoginRole=null;}});
+const workspaceShell=installWorkspaceShell({currentUser:function(){return currentUser;}});
 window.switchTab=function(tab,btn){
   if(tab==='payment'&&currentUser&&currentUser.role==='admin'&&currentUser.uid&&adminAccountsMap[currentUser.uid]&&adminAccountsMap[currentUser.uid].access==='nopay'){alert('⛔ You do not have access to Payment Details.');return;}
   subscriptionHub.activate(tab);
@@ -1272,6 +1275,7 @@ window.switchTab=function(tab,btn){
   if(tab==='calendar')renderAdminCalendar();
   if(tab==='dashboard')renderDashboard();
   if(tab==='appcustomers')renderAppCustomers();
+  workspaceShell.update(tab);
   setTimeout(function(){renderHistoryPager(tab);},0);
   try{var _ab=document.querySelector('.admin-tab.active'); if(_ab){var _g=_ab.closest('.tabgrp'); if(_g){var _gn=_g.getAttribute('data-grp'); document.querySelectorAll('.tabgrp').forEach(function(r){r.style.display=(r===_g)?'flex':'none';}); document.querySelectorAll('.admin-group').forEach(function(x){x.classList.toggle('active', x.getAttribute('data-grp')===_gn);}); }}}catch(e){}
 };
