@@ -5,26 +5,45 @@ import vm from 'node:vm';
 const source=fs.readFileSync(path.join(process.cwd(),'functions','index.js'),'utf8');
 const start=source.indexOf('async function claimManagerApproval');
 const end=source.indexOf('\nexports.createManagerApproval',start);
-if(start<0||end<0)throw new Error('Manager approval claim function not found');
+if(start<0||end<0)throw new Error('Privileged approval claim function not found');
 
+const actions=[
+  'confirm_payment','refund','void','settle_platform_payout','reopen_cash_count',
+  'delete_archived_order','review_discrepancy','approve_petty_voucher',
+  'reject_petty_voucher','void_petty_voucher','manual_discount','cash_in',
+];
 class HttpsError extends Error{constructor(code,message){super(message);this.code=code;}}
 const sandbox={HttpsError,Financial:{money(value){return Math.round((Number(value)||0)*100)/100;}},financeKey(value){const key=String(value||'').trim();if(!/^[A-Za-z0-9_-]{1,160}$/.test(key))throw new HttpsError('invalid-argument','Invalid approval');return key;},result:null};
 vm.createContext(sandbox);
 vm.runInContext(`${source.slice(start,end)}\nresult=claimManagerApproval;`,sandbox);
 
-const approval={action:'review_discrepancy',sourceId:'disc_test',amount:null,approvedBy:'admin_uid',approvedRole:'admin',expiresAt:Date.now()+60000};
-let row={...approval},warmed=false,transactionCalls=0;
-const ref={
-  async get(){warmed=true;return{val(){return row;}};},
-  async transaction(update){transactionCalls++;const current=warmed?row:null,next=update(current);if(next===undefined)return{committed:false,snapshot:{val(){return row;}}};row=next;return{committed:true,snapshot:{val(){return row;}}};}
-};
-const db={ref(){return ref;}};
-const claimed=await sandbox.result(db,{approvalId:'approval_test'},'review_discrepancy','disc_test',null,'review_discrepancy_disc_test');
-if(claimed.id!=='approval_test'||row.claimKey!=='review_discrepancy_disc_test'||transactionCalls!==1)throw new Error('Valid cold-cache Admin approval was not claimed atomically');
-if(!claimed.usedWrites['financialApprovals/approval_test/usedAt'])throw new Error('Claim does not produce one-time-use writes');
+function harness(approval){
+  let row={...approval},warmed=false,transactionCalls=0;
+  const ref={
+    async get(){warmed=true;return{val(){return row;}};},
+    async transaction(update){transactionCalls++;const current=warmed?row:null,next=update(current);if(next===undefined)return{committed:false,snapshot:{val(){return row;}}};row=next;return{committed:true,snapshot:{val(){return row;}}};},
+  };
+  return{db:{ref(){return ref;}},row(){return row;},replace(next){row=next;warmed=false;},transactionCalls(){return transactionCalls;}};
+}
+async function expectRejected(work,label){let rejected=false;try{await work();}catch(error){rejected=error.code==='failed-precondition';}if(!rejected)throw new Error(label);}
 
-let rejected=false;
-try{await sandbox.result(db,{approvalId:'approval_test'},'confirm_payment','disc_test',null,'confirm_disc_test');}catch(error){rejected=error.code==='failed-precondition';}
-if(!rejected)throw new Error('Mismatched approval action was accepted');
+for(const action of actions){
+  const sourceId=`source_${action}`,operationKey=`operation_${action}`,amount=action==='review_discrepancy'||action==='reopen_cash_count'?null:25;
+  const h=harness({action,sourceId,amount,approvedBy:'admin_uid',approvedRole:'admin',expiresAt:Date.now()+60000});
+  const claimed=await sandbox.result(h.db,{approvalId:`approval_${action}`},action,sourceId,amount,operationKey);
+  if(claimed.id!==`approval_${action}`||h.row().claimKey!==operationKey||h.transactionCalls()!==1)throw new Error(`${action}: valid cold-cache Admin approval was not claimed atomically`);
+  if(!claimed.usedWrites[`financialApprovals/approval_${action}/usedAt`]||claimed.usedWrites[`financialApprovals/approval_${action}/usedBy`]!==operationKey)throw new Error(`${action}: claim does not produce one-time-use writes`);
+  h.replace({...h.row(),usedAt:Date.now(),usedBy:operationKey});
+  await expectRejected(()=>sandbox.result(h.db,{approvalId:`approval_${action}`},action,sourceId,amount,operationKey),`${action}: used approval was accepted`);
+}
 
-console.log('PASS: valid cold-cache privileged approvals are loaded, matched, and claimed atomically.');
+const mismatch=harness({action:'review_discrepancy',sourceId:'disc_test',amount:null,approvedBy:'admin_uid',approvedRole:'admin',expiresAt:Date.now()+60000});
+await expectRejected(()=>sandbox.result(mismatch.db,{approvalId:'approval_mismatch'},'confirm_payment','disc_test',null,'confirm_disc_test'),'Mismatched approval action was accepted');
+
+const competing=harness({action:'cash_in',sourceId:'cash_in_test',amount:50,approvedBy:'admin_uid',approvedRole:'admin',expiresAt:Date.now()+60000,claimKey:'another_operation'});
+await expectRejected(()=>sandbox.result(competing.db,{approvalId:'approval_competing'},'cash_in','cash_in_test',50,'cash_in_operation'),'Approval claimed by another operation was accepted');
+
+const expired=harness({action:'manual_discount',sourceId:'discount_test',amount:10,approvedBy:'admin_uid',approvedRole:'admin',expiresAt:Date.now()-1});
+await expectRejected(()=>sandbox.result(expired.db,{approvalId:'approval_expired'},'manual_discount','discount_test',10,'discount_operation'),'Expired approval was accepted');
+
+console.log(`PASS: all ${actions.length} privileged approval actions are cold-cache safe, matched, atomic, and one-time use.`);
