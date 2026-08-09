@@ -72,6 +72,32 @@ body[data-admin-workspace="orders"] .order-admin-card{margin:0!important;padding
 body[data-admin-workspace="orders"] .order-admin-name{color:var(--bo-ink)}
 body[data-admin-workspace="orders"] .order-admin-meta{color:var(--bo-muted);font-size:.7rem}
 body[data-admin-workspace="orders"] .order-total-tag{font-variant-numeric:tabular-nums;font-weight:800}
+body[data-admin-workspace="orders"] .order-admin-card{display:flex;min-width:0;flex-direction:column;overflow:hidden}
+body[data-admin-workspace="orders"] .order-admin-top{gap:.65rem}
+body[data-admin-workspace="orders"] .order-admin-top>div:first-child{min-width:0;overflow-wrap:anywhere}
+body[data-admin-workspace="orders"] .order-admin-badges{display:flex;flex:0 0 auto;align-items:flex-end;flex-direction:column;gap:.32rem;max-width:48%}
+body[data-admin-workspace="orders"] .order-admin-badges .badge{max-width:100%;white-space:normal;text-align:right}
+body[data-admin-workspace="orders"] .customer-confirmed{border-color:#b9d4c1!important;background:#e9f5ec!important;color:#245d3b!important}
+body[data-admin-workspace="orders"] .order-admin-items{overflow-wrap:anywhere}
+body[data-admin-workspace="orders"] .order-proof-warning{margin:.35rem 0;color:var(--bo-alert);font-size:.72rem;font-weight:650}
+body[data-admin-workspace="orders"] .order-proof-button{min-height:38px;padding:.4rem .65rem;border:1px solid #9ac8aa;border-radius:6px;background:#eef7f1;color:#23623a;font-size:.72rem;font-weight:700;cursor:pointer}
+body[data-admin-workspace="orders"] .order-admin-footer{display:block;margin-top:auto;padding-top:.65rem;border-top:1px solid #e2d8cc}
+body[data-admin-workspace="orders"] .order-payment-summary{display:flex;align-items:center;justify-content:space-between;gap:.65rem;margin-bottom:.55rem}
+body[data-admin-workspace="orders"] .order-total-tag{display:flex;min-width:0;flex-direction:column;color:var(--bo-walnut)}
+body[data-admin-workspace="orders"] .order-total-tag strong{font-size:1rem;line-height:1.1}
+body[data-admin-workspace="orders"] .order-total-tag small{margin-top:.12rem;color:var(--bo-muted);font-size:.67rem;font-weight:700;overflow-wrap:anywhere}
+body[data-admin-workspace="orders"] .order-payment-state{max-width:55%;padding:.3rem .48rem;border-radius:999px;background:#ece7df;color:#61564d;font-size:.63rem;font-weight:800;line-height:1.15;text-align:center}
+body[data-admin-workspace="orders"] .order-payment-state.pending{background:#fff1cf;color:#7b5810}
+body[data-admin-workspace="orders"] .order-payment-state.confirmed{background:#e5f4e9;color:#205f39}
+body[data-admin-workspace="orders"] .order-payment-state.voided{background:#f9e3e1;color:#8d3732}
+body[data-admin-workspace="orders"] .order-card-actions{display:grid;width:100%;grid-template-columns:repeat(3,minmax(0,1fr));gap:.4rem}
+body[data-admin-workspace="orders"] .order-card-actions .order-action,body[data-admin-workspace="orders"] .order-card-actions .status-select{width:100%;min-width:0;min-height:40px;padding:.38rem .3rem;border:1px solid #cfc3b5;border-radius:6px;background:#fff;color:#56483e;font-family:Inter,sans-serif;font-size:.68rem;font-weight:750;line-height:1.15;white-space:normal;cursor:pointer}
+body[data-admin-workspace="orders"] .order-card-actions .verify{border-color:#e4c36f;background:#fff7e4;color:#77550e}
+body[data-admin-workspace="orders"] .order-card-actions .complete,body[data-admin-workspace="orders"] .order-card-actions .notify{border-color:#9bc7aa;background:#edf7f0;color:#205f39}
+body[data-admin-workspace="orders"] .order-card-actions .refund,body[data-admin-workspace="orders"] .order-card-actions .print{border-color:#e7bd79;background:#fff7eb;color:#9a5312}
+body[data-admin-workspace="orders"] .order-card-actions .void{border-color:#dfaaa5;background:#fff1f0;color:#993c36}
+body[data-admin-workspace="orders"] .order-card-actions .archive{border-color:#c9c3bb;background:#f0eeeb;color:#514a44}
+@media(max-width:440px){body[data-admin-workspace="orders"] .order-card-actions{grid-template-columns:repeat(2,minmax(0,1fr))}body[data-admin-workspace="orders"] .order-admin-badges{max-width:44%}}
 body[data-admin-area="settings"] .pz-card{max-width:1050px}
 body[data-admin-area="settings"] code{padding:.12rem .28rem;border-radius:4px;background:#eee9e1;color:#59483d;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.72rem}
 
