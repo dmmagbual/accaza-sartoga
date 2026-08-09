@@ -1166,7 +1166,7 @@ window.selectLoginRole=function(role){
 };
 
 // ── LOGIN SUCCESS ───────────────────────────────────────────
-var DEFAULT_STAFF_PERMS={orders:true,reservations:true,pos:true,inventory:true,purchases:false,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,dailyreport:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false,cashflow:false,receivables:false,payables:false,stockvalue:false};
+var DEFAULT_STAFF_PERMS={orders:true,reservations:true,pos:true,inventory:true,purchases:false,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,dailyreport:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false,cashflow:false,receivables:false,payables:false,stockvalue:false},roleLandingDone=false;
 var _permTabMap={"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'purchases'":'purchases',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'dedupe'":'dedupe',"'cashflow'":'cashflow',"'receivables'":'receivables',"'payables'":'payables',"'stockvalue'":'stockvalue',"'dailyreport'":'dailyreport',"'analytics'":'analytics',"'pnl'":'pnl',"'ops'":'registerOps'};
 var _permAlwaysHide=["'payment'","'staffaccounts'","'adminaccounts'","'staffaccess'","'packages'","'operations'"];
 window.showAdminSection=function(id){
@@ -1187,8 +1187,19 @@ function applyStaffPerms(perms){
   document.querySelectorAll('.admin-group').forEach(function(gb){var g=gb.getAttribute('data-grp');var row=document.querySelector('.tabgrp[data-grp="'+g+'"]');var vis=false;if(row)row.querySelectorAll('.admin-tab').forEach(function(b){if(b.style.display!=='none')vis=true;});gb.style.display=vis?'':'none';});
   var curG=document.querySelector('.admin-group.active');
   if(!curG||curG.style.display==='none'){var fg=null;document.querySelectorAll('.admin-group').forEach(function(gb){if(!fg&&gb.style.display!=='none')fg=gb;});if(fg)window.showTabGroup(fg.getAttribute('data-grp'),fg);}
+  landRoleHome();
+}
+function landRoleHome(){
+  if(roleLandingDone||!currentUser||!window.showTabGroup)return;
+  var target={cashier:'pos',kitchen:'orders',finance:'finance'}[String(currentUser.serverRole||'').toLowerCase()];
+  if(!target)return;
+  var group=document.querySelector('.admin-group[data-grp="'+target+'"]'),row=document.querySelector('.tabgrp[data-grp="'+target+'"]');
+  if(!group||group.style.display==='none'||!row)return;
+  var first=null;row.querySelectorAll('.admin-tab').forEach(function(button){if(!first&&button.style.display!=='none')first=button;});
+  if(!first)return;roleLandingDone=true;window.showTabGroup(target,group);
 }
 async function loginSuccess(role,username,uid,serverRole){
+  roleLandingDone=false;
   currentUser={role:role,serverRole:serverRole||role,username:username,uid:uid};
   window.__accazaAuthz={uid:uid,role:serverRole||role,isPrivileged:role==='admin'||role==='superadmin'};
   subscriptionHub.authorize();
