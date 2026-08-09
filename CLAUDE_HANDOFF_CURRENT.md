@@ -10,7 +10,7 @@ This is the single current handoff document. Claude should inspect the actual wo
 
 ## Current Production Change Pending Deployment
 
-Danilo confirmed all releases through 5D are deployed and production-tested. Releases 5E/6A, 6B, 6C, and the 6D handoff/readiness package are implemented and validated locally; the GitHub Release 6B Quality Gate was confirmed green. Frontend is **`admin.html` v166**, customer v45, and service-worker cache v55. `CLAUDE_HANDOFF.md` and `release-manifest.json` are now the authoritative continuation/status sources. Production v166 timing/smoke evidence remains pending unless Danilo separately confirms it.
+Danilo confirmed all releases through 5D are deployed and production-tested. Later releases through 7A are implemented and validated locally; the GitHub Release 6B Quality Gate was confirmed green. Frontend is **`admin.html` v167**, customer v45, and service-worker cache v56. `CLAUDE_HANDOFF.md` and `release-manifest.json` are the authoritative continuation/status sources. Production v167 timing/smoke evidence remains pending unless Danilo separately confirms it.
 
 The prior v157 login/startup incident was fixed and tested in the later coordinated releases. Do not publish individual modules from an older release over the current coordinated set.
 
@@ -38,34 +38,38 @@ The prior v157 login/startup incident was fixed and tested in the later coordina
 - Release 6B adds integrated all-channel checkout/accounting tests, executable partial-failure and exactly-once offline replay tests, expanded Database Emulator controls, tracked-secret detection, and mandatory GitHub quality gates before Function deployment.
 - Release 6C adds a lazy management-only System Health dashboard with bounded 7/30-day reads, honest average/worst thresholds, build/error release signals, and formal release/restore/review routines.
 - Release 6D adds a machine-readable release manifest, CI-enforced release consistency, final Claude handoff/entry files, and manager-role System Health rule coverage.
+- Release 7A routes portal order-status changes through an authenticated, permission-checked, stale-state protected, idempotent server command and denies direct browser status changes.
 
-Next deployment order: if 3D/3E are not yet live, export a Firebase backup, pause POS transactions, deploy the combined 3D/3E Functions and Database rules, then publish the complete v157/4A frontend. Initialize the chart and run the 3D/3E and 4A smoke tests. Release 4A itself has no Firebase backend change. See `RELEASE_3D_FINANCIAL_CONTROLS_2026-08-09.md`, `RELEASE_3E_OPERATIONAL_CONTROLS_2026-08-09.md`, and `RELEASE_4A_MODULE_FOUNDATION_2026-08-09.md`.
+Next deployment order is the coordinated Release 7A sequence: deploy `functions:updateOrderStatus`, publish v167/cache-v56 frontend files, confirm the new build, then deploy Database rules. Never deploy the 7A rules before the Function and frontend. See `RELEASE_7A_SERVER_ORDER_STATUS_2026-08-09.md`.
 
 ## Current Builds
 
-- `admin.html`: **v166 validated locally; Release 6C deployment pending**. SHA-256: `B6CC43CDE8601B8F7337751A095D692BC68593C525189C5AC0CC89A31B5748FD`.
+- `admin.html`: **v167 validated locally; Release 7A deployment pending**. SHA-256: `8C5DF652D7AE9BF73E55E186955193AA8D4F87FDBD7D08BE483C62D96BF8B2D7`.
 - `index.html`: **v45**, modular customer scripts, App Check, and shared install UX. SHA-256: `C70E1CA0002B51E179A0149BC2586CC230807E33B473B9B77AF3659EC6015A1A`.
-- `sw.js`: **cache v55**, including the telemetry collector, System Health dashboard, and all earlier PWA assets. SHA-256: `4C77F77525DF502498C1B93105C41B3B71F2F1D90757D22087C36857FD1C67A3`.
+- `sw.js`: **cache v56**, including the Release 7A status-command client and all earlier PWA assets. SHA-256: `F3738E51C4D3DDA5E01881F170B74364EAFF94733AD2678CC0E95356892F200E`.
 - `assets/js/admin/` and `assets/js/customer/`: **mandatory Release 2D publish directories**. Do not publish only the HTML files.
 - Cloud Functions: Node.js 22, region `asia-southeast1`.
-- `assets/js/admin/core.mjs`: SHA-256 `AC600AB935C08975B189626E96981C6267F06676FC27ACA40461184BD2109095`.
+- `assets/js/admin/core.mjs`: SHA-256 `C6488B1E9F589746EB75F6AECADF85C523AD3EF728E99E6FE3B8F10BCA04BB02`.
 - Release 4C modules: `app-customer-session.mjs` and `customer-order-tracker.mjs`. Both are mandatory with v159.
 - Release 4A modules: `firebase-client.mjs`, `realtime-hub.mjs`, `history-pager.mjs`, `manager-approval.mjs`, `portal-auth.mjs`, `admin-orders.mjs`, `customer-registry.mjs`, and `shared-ui.mjs`. All are mandatory with v157.
 - `assets/js/admin/module-loader.js`: SHA-256 `05DC6451A33C52E283EACE31A09916EE70FFCEAD6EFC955AA308E28ADBA914D4`.
 - `assets/js/admin/pos.js`: 250,295 bytes; SHA-256 `CD2A4CB866C970AE3DDFC870355EB2CD7324F2436D23183EF7A8D2F7F47D62FB`.
 - `assets/js/shared/costing.js`: SHA-256 `C5D34EBB0ECD205B901DE8A2CDC2FD0388C93447204131450E39831680F27ACC`.
 - `assets/js/admin/register.js`: SHA-256 `F99DFB416B174FCADB9BB6DEA1C2F3A7588089CB923C96A948AD22DE61EE2A56`.
-- `assets/js/admin/telemetry.js`: Release 6A collector reporting admin-v166; SHA-256 `039C261F9024077A269A1E8296007177918C9DA58E094DBFD018CAB4D8D77100`.
+- `assets/js/admin/telemetry.js`: Release 6A collector reporting admin-v167; SHA-256 `82CBF40DCD2DB7A5E36A10B7EF7A330395C3DAF50909A03EB29E775BE1696096`.
 - `assets/js/admin/operations-dashboard.js`: Release 6C bounded System Health view; SHA-256 `6E5944400D178D12D4216FD592AC4E88E9920975FBC22CCB514629486B9DA5E2`.
-- `assets/js/admin/firebase-client.mjs`: SHA-256 `A6371D5C551D3104CCBD795E559888F646977A88C97DDDC92137BD2E270A6876`.
+- `assets/js/admin/firebase-client.mjs`: SHA-256 `384D2F192886D876F22D876467DF1C9420D52E6311D1C9C626C01830D4251453`.
+- `assets/js/admin/admin-orders.mjs`: SHA-256 `97796ECB987BFAE5D10C102B50D3FD294E4112F4ECBCDAD39825099725C21EE7`.
+- `assets/js/admin/customer-order-tracker.mjs`: SHA-256 `E338D1387B10D75B1D2035FACB0C3B26D4DE46088AC24695BB3B4BD177CF9361`.
 - `assets/js/admin/form-dialog.js`: Release 5D validated form service; SHA-256 `F9E3CDEA5B76BAF5EFFB75D6A899ADC0DC2D64517BEACF88308E2791383E2F13`.
 - `assets/js/admin/finance.js`: SHA-256 `E5B5EEBDEE0B1E85D0BC3AE9D9BE280BF4095357C39521FFD0F78F0ACD82817D`.
 - `assets/js/admin/analytics.js`: SHA-256 `E6202C01F2318FA3129FAAAF8DE0A4DFB1215788BFD7B27D4EA1EF64FC91866C`.
-- `functions/index.js`: Release 6B testable offline-sync routing; SHA-256 `16386073C71562D7F8EAE7866388D5FD4A60AF3AF93BB28DD41A1D8B6873F176`.
+- `functions/index.js`: Release 7A order-status command plus prior Functions; SHA-256 `E0416D520BAA578FE8914DC90A17E9165C2B0A8C31B8FB568BAE98C42F286A7B`.
+- `functions/lib/order-status.js`: Release 7A transition/idempotency engine; SHA-256 `7B4390369E228EB7A5AE6F4E2453F94201575C4257D028997B2EB68646271E52`.
 - `functions/lib/offline-sync.js`: production offline idempotency/recovery engine; SHA-256 `B33733F3A8C3D0C4A1D2360A5AA25C9969ED6BF2C87B4AFF01F7EC52C79647B2`.
 - `functions/lib/financial.js`: SHA-256 `F67488B9BE91A30FF9AF13BFB7585DAD9D5BFEEC46F23C8E4D6B594FCA526B5E`.
 - `functions/lib/costing.js`: SHA-256 `C5D34EBB0ECD205B901DE8A2CDC2FD0388C93447204131450E39831680F27ACC` (must match browser engine).
-- `database.rules.json`: SHA-256 `B8BAD758B7E7FAF0397ACE16B0FF3CE5E81DE67CD9E0EFF7675544F5096EE49F`.
+- `database.rules.json`: SHA-256 `D57B8A60E3A32B4108C8CABE390A24A6020B303089E957278AC1CF4018B3D4CA`.
 
 ## What Is Already Live
 
@@ -207,9 +211,9 @@ The complete suite passes with v158/v43:
 
 ## Next Planned Work
 
-### First: publish and test the coordinated Release 6C frontend
+### First: deploy and test coordinated Release 7A
 
-If Release 6A is not live, deploy `functions:recordClientTelemetry` and Database rules. Publish the coordinated v166/cache-v55 files listed in `RELEASE_6C_OPERATIONAL_HEALTH_2026-08-09.md`. Run duplicate-tap, redraw preservation, offline reconnect, all-channel checkout, and System Health tests on the actual register device.
+Follow `RELEASE_7A_SERVER_ORDER_STATUS_2026-08-09.md`: Function first, v167/cache-v56 frontend second, Database rules last. Test owner/admin and kitchen transitions, stale-screen rejection, Ready notification, Completed inventory/finance, and customer Received.
 
 ### Then: production measurement and final handoff
 

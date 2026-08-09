@@ -1,13 +1,13 @@
 # Accaza Coffee House — Authoritative Project Handoff
 
 **Prepared:** 9 August 2026  
-**Release candidate:** Phase 6D  
-**Local builds:** admin v166, customer v45, service-worker cache v55  
+**Release candidate:** Phase 7A  
+**Local builds:** admin v167, customer v45, service-worker cache v56  
 **Truth source:** current workspace plus `release-manifest.json`
 
 ## Deployment truth
 
-The current source and complete CI-equivalent suite are validated locally. Danilo confirmed releases through 5D were deployed and production-tested, and confirmed the GitHub Quality Gate passed during Release 6B troubleshooting. Releases 5E/6A, 6C, and this 6D package must not be described as production-verified until the corresponding fields in `release-manifest.json` are changed from `pending` using real evidence.
+The current source and complete CI-equivalent suite are validated locally. Danilo confirmed releases through 5D were deployed and production-tested, and confirmed the GitHub Quality Gate passed during Release 6B troubleshooting. Later releases including this 7A package must not be described as production-verified until the corresponding fields in `release-manifest.json` are changed from `pending` using real evidence.
 
 Do not infer production status from a build number in a local file. Confirm the live site, Firebase deployment output, System Health data, and smoke-test record.
 
@@ -30,7 +30,7 @@ flowchart LR
 - Cloud Functions: Node.js 22, region `asia-southeast1`.
 - Storage: private default bucket; payment proofs are retrieved through an authorized Function, not public URLs.
 - Authentication: Firebase email/password for portal users and Anonymous Auth for customers.
-- PWA: separate customer and POS manifests; one service worker with coordinated cache v55.
+- PWA: separate customer and POS manifests; one service worker with coordinated cache v56.
 - Currency: Philippine peso (PHP/₱) in the current Accaza application.
 
 ## Authoritative file map
@@ -40,7 +40,7 @@ flowchart LR
 | Customer application | `index.html`, `assets/js/customer/`, `manifest.json` |
 | POS/back office shell | `admin.html`, `assets/js/admin/`, `manifest-admin.json` |
 | Shared costing authority | `assets/js/shared/costing.js`, byte-identical `functions/lib/costing.js` |
-| Cloud Functions | `functions/index.js`, `functions/lib/financial.js`, `functions/lib/offline-sync.js` |
+| Cloud Functions | `functions/index.js`, `functions/lib/financial.js`, `functions/lib/offline-sync.js`, `functions/lib/order-status.js` |
 | Firebase deployment | `firebase.json`, `database.rules.json`, `storage.rules` |
 | PWA cache | `sw.js`, favicon PNG/ICO files, `assets/js/pwa-register.js` |
 | Automated controls | `tests/`, `.github/workflows/`, root and Functions package files |
@@ -54,7 +54,7 @@ The application intentionally remains a lightweight native HTML/JavaScript Fireb
 
 `/orders` is authoritative. `/activeOrders` is a bounded projection for live screens. Closed/resolved orders leave the active projection while authoritative history remains available through bounded/paginated reads.
 
-The browser previews prices and COGS. Cloud Functions are authoritative for customer pricing, inventory movements, COGS snapshots, financial movements, sensitive approvals, payout settlement, archive decisions, and offline sale replay.
+The browser previews prices and COGS. Cloud Functions are authoritative for customer pricing, portal order-status transitions, inventory movements, COGS snapshots, financial movements, sensitive approvals, payout settlement, archive decisions, and offline sale replay. Existing order status can no longer be changed directly by a browser; `updateOrderStatus` records the actor, transition history, idempotency claim, and operational audit.
 
 ## Authentication and roles
 
@@ -73,8 +73,8 @@ Key nodes and authority boundaries:
 | Node/group | Purpose | Write authority |
 |---|---|---|
 | `menuItems`, `categories`, `optionGroups`, `availability` | Public catalog and availability | Authorized portal roles under rules |
-| `orders` | Authoritative order records | Controlled portal updates; customer creation/confirmation through Functions/ownership rules |
-| `activeOrders` | Bounded live projection | Authorized POS and server projection logic |
+| `orders` | Authoritative order records | Status through server commands; other controlled portal updates; customer creation/confirmation through Functions |
+| `activeOrders` | Bounded live projection | Status through server projection/commands; other authorized POS updates |
 | `customerOrders`, `appCustomers` | UID-keyed customer index/profile | Owner-scoped constrained updates and server logic |
 | `orderLocks` | Duplicate-order protection | Server only/private |
 | `inventory`, `inventoryBalances`, `inventoryMovements` | Item master, current balance, immutable movement history | Quantity/cost and movements are server-authoritative |
@@ -130,6 +130,7 @@ System Health currently reports arithmetic average and worst observation, not p9
 The exact export list is machine-checked from `release-manifest.json`. Major groups are:
 
 - Customer ordering/proofs: `createOnlineOrder`, `confirmOrderReceived`, `getPaymentProof`, `notifyOnComplete`.
+- Order operations: `updateOrderStatus` with stale-state, transition, idempotency, projection, and audit controls.
 - Active data: `ensureActiveOrders`, `syncActiveOrderProjection`, `pruneClosedShiftOrders`.
 - Inventory/costing: `validateRecipeDefinition`, `postInventoryMovements`, `ensureInventoryLedger`, `onOrderFinalize`, `onOrderInventoryReversal`.
 - Finance: order/shift/petty triggers plus financial command, payout, adjustment, backfill, chart, and audit callables.
@@ -156,7 +157,7 @@ Do not upload `node_modules`. Functions deployment requires `functions/package.j
 
 The release is not fully verified until every pending field in `release-manifest.json` has evidence:
 
-1. v166 production smoke test passes on the cashier device.
+1. v167 production smoke test passes on the cashier device.
 2. System Health contains enough live samples to assess launch, cart, Charge, sync, and remote arrival.
 3. A Firebase backup is restored into a separate test project and representative financial/inventory records are verified.
 4. Role tests cover owner, manager, cashier, kitchen, and finance.
@@ -166,7 +167,7 @@ Use `OPERATIONS_RELEASE_RUNBOOK.md`. Change the manifest to `production_verified
 
 ## Known limitations
 
-- Production timing evidence for v166 is pending; local tests cannot prove real cashier-device speed.
+- Production timing evidence for v167 is pending; local tests cannot prove real cashier-device speed.
 - The telemetry schema does not retain individual samples, device segmentation, or percentiles.
 - App Check enforcement remains intentionally cautious until production token monitoring is consistently clean; do not enable database-wide enforcement without admin initialization and testing.
 - Some legacy authorized browser writes remain for ordinary operational nodes; protected inventory/financial authority is server-side, but future hardening can move more commands behind Functions.
