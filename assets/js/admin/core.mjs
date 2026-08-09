@@ -1202,7 +1202,8 @@ function landRoleHome(){
 async function loginSuccess(role,username,uid,serverRole){
   roleLandingDone=false;
   currentUser={role:role,serverRole:serverRole||role,username:username,uid:uid};
-  window.__accazaAuthz={uid:uid,role:serverRole||role,isPrivileged:role==='admin'||role==='superadmin'};
+  var effectiveRole=String(serverRole||role||'').toLowerCase();
+  window.__accazaAuthz={uid:uid,role:effectiveRole,isPrivileged:['owner','superadmin','admin','manager'].indexOf(effectiveRole)>-1};
   subscriptionHub.authorize();
   subscriptionHub.activate('dashboard');
   ensureActiveOrdersCall({}).catch(function(e){console.warn('Active-order projection sweep deferred',e&&e.code);});
