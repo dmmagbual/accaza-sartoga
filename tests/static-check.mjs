@@ -251,7 +251,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!adminHtml.includes("posSwitchTab('operations',this)")||!adminHtml.includes('id="operationsRoot"'))fail('Phase 6C System Health tab is missing');
   if(!operationsSource.includes("clientTelemetryDaily/'+day")||!operationsSource.includes('Last 30 days')||!operationsSource.includes('not percentile measurements'))fail('Phase 6C bounded telemetry dashboard or honest metric disclosure is incomplete');
   for(const marker of ['pos_boot','cart_render','charge_to_durable','offline_flush','realtime_order_arrival'])if(!operationsSource.includes(marker))fail(`Phase 6C performance threshold missing: ${marker}`);
-  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v56'"))fail('Phase 6C dashboard is not in the coordinated offline cache');
+  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v57'"))fail('Phase 6C/7B dashboard is not in the coordinated offline cache');
 
   const orderAdminSource=fs.readFileSync(path.join(root,'assets','js','admin','admin-orders.mjs'),'utf8');
   const orderStatusSource=fs.readFileSync(path.join(root,'functions','lib','order-status.js'),'utf8');
@@ -260,11 +260,17 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!orderAdminSource.includes('callables.updateOrderStatus')||/update\(ref\(db,'orders\/'/.test(orderAdminSource))fail('Phase 7A admin status mutations are not server-routed');
   if(!rulesRaw.includes('"orderStatusCommands": { ".read": false, ".write": false }')||!rulesRaw.includes('"status": { ".validate": "!data.exists() || newData.val() === data.val()" }'))fail('Phase 7A direct status-write lock missing');
   if(!orderStatusSource.includes('statusHistory')||!orderStatusSource.includes('operationalAudit')||!orderStatusSource.includes('expectedStatus'))fail('Phase 7A status trace/stale-state evidence incomplete');
+  const exceptionSource=fs.readFileSync(path.join(root,'functions','lib','operational-exceptions.js'),'utf8');
+  if(!functionsSource.includes('exports.getOperationalExceptions = onCall')||!functionsSource.includes('OperationalExceptions.buildOperationalExceptions'))fail('Phase 7B manager exception callable missing');
+  for(const marker of ['offline_sync','stuck_order','inventory_gap','financial_gap','cash_custody','proof_access'])if(!exceptionSource.includes(marker)&&!functionsSource.includes(marker))fail(`Phase 7B exception category missing: ${marker}`);
+  if(!operationsSource.includes('Operational Exceptions')||!operationsSource.includes('getOperationalExceptions')||!operationsSource.includes('Read-only manager scan'))fail('Phase 7B Operations Center UI incomplete');
 
   const fn=spawnSync(process.execPath,['--check',path.join(root,'functions','index.js')],{encoding:'utf8'});
   if(fn.status!==0)fail(`functions/index.js failed syntax check:\n${fn.stderr||fn.stdout}`);
   const orderStatusCheck=spawnSync(process.execPath,[path.join(root,'tests','order-status-command-check.mjs')],{encoding:'utf8',cwd:root});
   if(orderStatusCheck.status!==0)fail(`Phase 7A order-status command checks failed:\n${orderStatusCheck.stderr||orderStatusCheck.stdout}`);
+  const operationalExceptionsCheck=spawnSync(process.execPath,[path.join(root,'tests','operational-exceptions-check.mjs')],{encoding:'utf8',cwd:root});
+  if(operationalExceptionsCheck.status!==0)fail(`Phase 7B operational exception checks failed:\n${operationalExceptionsCheck.stderr||operationalExceptionsCheck.stdout}`);
 
   const pricing=spawnSync(process.execPath,[path.join(root,'tests','order-pricing-check.mjs')],{encoding:'utf8',cwd:root});
   if(pricing.status!==0)fail(`server pricing checks failed:\n${pricing.stderr||pricing.stdout}`);
@@ -299,6 +305,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   process.stdout.write(financialLedgerCheck.stdout);
   process.stdout.write(checkoutWorkflowCheck.stdout);
   process.stdout.write(offlineRecoveryCheck.stdout);
+  process.stdout.write(operationalExceptionsCheck.stdout);
   console.log('PASS: functions/index.js syntax is valid.');
 }finally{
   fs.rmSync(temp,{recursive:true,force:true});
