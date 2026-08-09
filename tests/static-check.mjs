@@ -251,7 +251,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!adminHtml.includes("posSwitchTab('operations',this)")||!adminHtml.includes('id="operationsRoot"'))fail('Phase 6C System Health tab is missing');
   if(!operationsSource.includes("clientTelemetryDaily/'+day")||!operationsSource.includes('Last 30 days')||!operationsSource.includes('not percentile measurements'))fail('Phase 6C bounded telemetry dashboard or honest metric disclosure is incomplete');
   for(const marker of ['pos_boot','cart_render','charge_to_durable','offline_flush','realtime_order_arrival'])if(!operationsSource.includes(marker))fail(`Phase 6C performance threshold missing: ${marker}`);
-  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v62'"))fail('Phase 6C/7G dashboard is not in the coordinated offline cache');
+  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v63'"))fail('Phase 6C/7G dashboard is not in the coordinated offline cache');
 
   const orderAdminSource=fs.readFileSync(path.join(root,'assets','js','admin','admin-orders.mjs'),'utf8');
   const orderStatusSource=fs.readFileSync(path.join(root,'functions','lib','order-status.js'),'utf8');
@@ -273,16 +273,16 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!adminSource.includes("cashier:'pos',kitchen:'orders',finance:'finance'")||!adminSource.includes('landRoleHome()'))fail('Phase 7C role-aware landing behavior missing');
   const workspaceShellSource=fs.readFileSync(path.join(root,'assets','js','admin','workspace-shell.mjs'),'utf8');
   if(!adminHtml.includes('id="adminWorkspaceHeader"')||!adminHtml.includes('id="adminServiceStrip"'))fail('Phase 7D contextual workspace header or live service strip missing');
-  if(!adminHtml.includes('body.admin-pos-workspace')||!adminHtml.includes('#posCharge{position:sticky'))fail('Phase 7D focused POS workspace or sticky checkout action missing');
+  if(!adminHtml.includes('body.admin-pos-workspace')||!adminHtml.includes('#posCartPanel'))fail('Phase 7D focused POS workspace missing');
   if(!workspaceShellSource.includes('installWorkspaceShell')||!workspaceShellSource.includes('__refreshWorkspaceStatus')||!adminSource.includes('workspaceShell.update(tab)'))fail('Phase 7D workspace shell integration incomplete');
   if(!precache.includes('/assets/js/admin/workspace-shell.mjs'))fail('Phase 7D workspace shell is not precached');
-  if(!adminHtml.includes('id="accaza-pos-workflow-7e"')||!adminHtml.includes('.pos-order-rail')||!adminHtml.includes('.pos-line-stepper'))fail('Phase 7E focused POS workflow styling missing');
+  if(!adminHtml.includes('id="accaza-pos-workflow-7e"')||!adminHtml.includes('.pos-menu-search')||!adminHtml.includes('.pos-item-grid'))fail('Phase 7E POS menu workflow styling missing');
   if(!adminHtml.includes('.pos-category-rail{display:flex;flex-wrap:wrap')||!adminHtml.includes('.pos-category-rail .pz-chip{flex:0 1 auto'))fail('Release 7G fully visible wrapping POS categories missing');
   if(/\.pos-category-rail\{[^}]*overflow-x\s*:\s*auto/.test(adminHtml))fail('Release 7G POS categories must not require horizontal scrolling');
-  if(!adminHtml.includes('100dvh - 2rem')||!adminHtml.includes('.pos-cart-empty')||!adminHtml.includes('@container pos-ticket'))fail('Release 7G compact register viewport or empty-ticket treatment missing');
-  if(!posSource.includes("id=\"posMenuSearch\"")||!posSource.includes("type=\"button\" class=\"pz-chip")||!posSource.includes("data-inc=\"")||!posSource.includes("data-dec=\""))fail('Phase 7E search, accessible categories, or ticket quantity controls missing');
-  if(!posSource.includes('No matching items')||!posSource.includes('Ready')||!posSource.includes('Waiting'))fail('Phase 7E directed empty/readiness states missing');
-  if(!posSource.includes("classList.toggle('pos-cart-empty'")||!posSource.includes('pos-denom-grid'))fail('Release 7G compact register state or denomination strip missing');
+  if(!posSource.includes("id=\"posMenuSearch\"")||!posSource.includes("type=\"button\" class=\"pz-chip"))fail('Phase 7E search or accessible categories missing');
+  if(!posSource.includes('No matching items'))fail('Phase 7E directed menu-search empty state missing');
+  if(!posSource.includes('Tap items to add them.')||!posSource.includes('>remove</button>')||!posSource.includes('repeat(auto-fill,minmax(78px,1fr))'))fail('Release 7G original register card is incomplete');
+  for(const rejectedMarker of ['pos-ticket-head','pos-order-rail','pos-line-stepper','pos-cart-empty','pos-denom-grid'])if(posSource.includes(rejectedMarker))fail(`Rejected register redesign marker remains: ${rejectedMarker}`);
   const backofficeCss=fs.readFileSync(path.join(root,'assets','css','admin-backoffice.css'),'utf8');
   if(!adminHtml.includes('/assets/css/admin-backoffice.css')||!precache.includes('/assets/css/admin-backoffice.css'))fail('Phase 7F back-office visual system is not linked and precached');
   for(const marker of ['--bo-walnut','#adminWorkspaceHeader:before','.pz-tbl th','.badge-pending','prefers-reduced-motion'])if(!backofficeCss.includes(marker))fail(`Phase 7F visual-system marker missing: ${marker}`);
