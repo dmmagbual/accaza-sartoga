@@ -1,12 +1,12 @@
-import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import{initializeApp,deleteApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import{getDatabase,ref,set,get,push,update,remove,onValue,runTransaction,query,orderByChild,limitToLast,endBefore}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import{getMessaging,getToken,onMessage,isSupported}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
-import{getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider,setPersistence,browserLocalPersistence}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import{getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider,setPersistence,browserLocalPersistence,inMemoryPersistence}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import{getFunctions,httpsCallable}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 
 const firebaseConfig={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 const app=initializeApp(firebaseConfig);
-const db=getDatabase(app);const auth=getAuth(app);const functions=getFunctions(app,'asia-southeast1');const getPaymentProofCall=httpsCallable(functions,'getPaymentProof');const ensureActiveOrdersCall=httpsCallable(functions,'ensureActiveOrders');const postInventoryMovementsCall=httpsCallable(functions,'postInventoryMovements');const ensureInventoryLedgerCall=httpsCallable(functions,'ensureInventoryLedger');const validateRecipeDefinitionCall=httpsCallable(functions,'validateRecipeDefinition');const postFinancialCommandCall=httpsCallable(functions,'postFinancialCommand');const settlePlatformPayoutCall=httpsCallable(functions,'settlePlatformPayout');const processOrderAdjustmentCall=httpsCallable(functions,'processOrderAdjustment');const ensureFinancialLedgerCall=httpsCallable(functions,'ensureFinancialLedger');window.__accazaAuth=auth;
+const db=getDatabase(app);const auth=getAuth(app);const functions=getFunctions(app,'asia-southeast1');const getPaymentProofCall=httpsCallable(functions,'getPaymentProof');const ensureActiveOrdersCall=httpsCallable(functions,'ensureActiveOrders');const postInventoryMovementsCall=httpsCallable(functions,'postInventoryMovements');const ensureInventoryLedgerCall=httpsCallable(functions,'ensureInventoryLedger');const validateRecipeDefinitionCall=httpsCallable(functions,'validateRecipeDefinition');const postFinancialCommandCall=httpsCallable(functions,'postFinancialCommand');const settlePlatformPayoutCall=httpsCallable(functions,'settlePlatformPayout');const processOrderAdjustmentCall=httpsCallable(functions,'processOrderAdjustment');const ensureFinancialLedgerCall=httpsCallable(functions,'ensureFinancialLedger');const createManagerApprovalCall=httpsCallable(functions,'createManagerApproval');const consumeManagerApprovalCall=httpsCallable(functions,'consumeManagerApproval');const manageChartAccountCall=httpsCallable(functions,'manageChartAccount');const auditFinancialControlsCall=httpsCallable(functions,'auditFinancialControls');window.__accazaAuth=auth;
 // Release 2B: one physical Realtime Database listener per path. POS-critical
 // paths stay live; large back-office paths are connected only for the open tab.
 const HISTORY_BOUNDS={
@@ -31,7 +31,7 @@ function createSubscriptionHub(database,makeRef,listen,targetFor){
     analyticsFunnel:['analytics'],platformPayouts:['payouts','pnl','analytics','cashflow','receivables'],platformVarAccounts:['payouts','pnl'],
     shifts:['ops'],activityLog:['ops'],heldOrders:['pos','ops'],discrepancies:['discrepancy'],
     pettyCashVouchers:['petty'],pettyCashReplenishments:['petty'],pettyCashSettings:['petty'],
-    cfAccounts:['cashflow','receivables','payables'],cfLedger:['cashflow'],financialMovements:['cashflow','receivables','payables','payouts'],receivables:['receivables'],payables:['payables']
+    cfAccounts:['cashflow','receivables','payables'],cfLedger:['cashflow'],financialMovements:['cashflow','receivables','payables','payouts'],chartOfAccounts:['cashflow'],cashCustody:['cashflow'],receivables:['receivables'],payables:['payables']
   };
   function policy(path,opts){opts=opts||{};return {critical:opts.critical===true||critical[path]===1,scopes:opts.scopes||scopes[path]||[]};}
   function consumerActive(c){return authorized&&(c.critical||c.scopes.indexOf(activeScope)>-1);}
@@ -133,6 +133,9 @@ window.__setupPush=setupPush;
 
 // DB refs
 const settingsRef=ref(db,'settings'),staffAccountsRef=ref(db,'staffAccounts'),adminAccountsRef=ref(db,'adminAccounts'),ordersRef=ref(db,'orders'),archivedRef=ref(db,'archivedOrders'),archivedResRef=ref(db,'archivedReservations'),reservationsRef=ref(db,'reservations'),feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),calBlocksRef=ref(db,'calBlocks'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups'),appCustomersRef=ref(db,'appCustomers');
+function requestManagerApproval(action,sourceId,amount,reason){return new Promise(function(resolve,reject){
+  var mask=document.createElement('div');mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.58);z-index:12000;display:flex;align-items:center;justify-content:center;padding:1rem;';mask.innerHTML='<div style="background:#fff;border-radius:12px;max-width:430px;width:100%;padding:1.2rem;box-shadow:0 12px 40px rgba(0,0,0,.25);"><div style="font-weight:700;color:var(--bd);font-size:1rem;">🔐 Manager approval</div><p style="font-size:.78rem;color:var(--tl);line-height:1.45;">A manager must sign in with their own Firebase portal account. The cashier session will remain open.</p><label class="pz-lbl">Manager email</label><input class="pz-in" id="maEmail" type="email" autocomplete="username"/><label class="pz-lbl" style="margin-top:.5rem;">Manager password</label><input class="pz-in" id="maPass" type="password" autocomplete="current-password"/><div id="maErr" style="display:none;color:#b42318;font-size:.75rem;margin-top:.5rem;"></div><div style="display:flex;gap:.5rem;margin-top:1rem;"><button class="pz-btn ok" id="maOk">Approve</button><button class="pz-btn sec" id="maCancel">Cancel</button></div></div>';document.body.appendChild(mask);var done=false;function close(){if(mask.parentNode)mask.parentNode.removeChild(mask);}mask.querySelector('#maCancel').onclick=function(){done=true;close();reject(new Error('Manager approval cancelled.'));};mask.querySelector('#maOk').onclick=async function(){var btn=this,email=(mask.querySelector('#maEmail').value||'').trim(),password=mask.querySelector('#maPass').value||'',err=mask.querySelector('#maErr');if(!email||!password){err.textContent='Enter the manager email and password.';err.style.display='block';return;}btn.disabled=true;btn.textContent='Verifying…';var mgrApp=null;try{mgrApp=initializeApp(firebaseConfig,'manager-approval-'+Date.now()+'-'+Math.random().toString(36).slice(2));var mgrAuth=getAuth(mgrApp);await setPersistence(mgrAuth,inMemoryPersistence);var cred=await signInWithEmailAndPassword(mgrAuth,email,password),token=await cred.user.getIdToken(true),res=await createManagerApprovalCall({action:action,sourceId:String(sourceId),amount:amount==null?null:Number(amount),reason:String(reason||''),managerIdToken:token});done=true;close();resolve((res&&res.data)||res);}catch(e){err.textContent='Approval failed: '+((e&&e.message)||(e&&e.code)||e);err.style.display='block';btn.disabled=false;btn.textContent='Approve';}finally{if(mgrApp)try{await deleteApp(mgrApp);}catch(_e){}}};setTimeout(function(){var e=mask.querySelector('#maEmail');if(e)e.focus();},50);
+});}
 // ── POS / INVENTORY BRIDGE ── exposes DB + live maps to the isolated POS module (see #accaza-pos script). Additive; does not change existing behaviour.
 window.__accaza={
   db, ref, set, get, update, remove, onValue, runTransaction, hub:subscriptionHub,
@@ -144,6 +147,10 @@ window.__accaza={
   settlePlatformPayout:function(command){return settlePlatformPayoutCall(command);},
   processOrderAdjustment:function(command){return processOrderAdjustmentCall(command);},
   ensureFinancialLedger:function(){return ensureFinancialLedgerCall({});},
+  managerApproval:requestManagerApproval,
+  consumeManagerApproval:function(command){return consumeManagerApprovalCall(command);},
+  manageChartAccount:function(command){return manageChartAccountCall(command);},
+  auditFinancialControls:function(){return auditFinancialControlsCall({});},
   get menuItemsMap(){return menuItemsMap;},
   get optionGroupsMap(){return optionGroupsMap;},
   get categoriesMap(){return categoriesMap;},

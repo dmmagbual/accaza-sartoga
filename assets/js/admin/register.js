@@ -31,9 +31,7 @@ window.__posVoid=function(oid){voidSale(oid);};window.__posRefund=function(oid){
 function verifyPayment(oid){
   var o=ordersMap[oid];if(!o){alert('Order not found in the active list. If it was archived, restore it first to verify.');return;}
   if(o.paymentStatus!=='pending'){alert('This sale is not pending verification.');return;}
-  var pin=prompt('Manager PIN to VERIFY payment received for '+oid+' (₱'+(Number(o.total)||0).toLocaleString()+'):');if(pin===null)return;
-  if(!window.__posIsManagerPin(pin)){alert('Invalid manager PIN — verification not approved.');return;}
-  var a=A();if(!a.processOrderAdjustment){alert('3C payment service is not available. Refresh the portal.');return;}a.processOrderAdjustment({action:'confirm_payment',orderId:oid}).then(function(){if(window.__posLog)window.__posLog('verify-payment',oid,'₱'+(Number(o.total)||0).toLocaleString()+' · '+(o.payment||''));}).catch(function(e){alert('Payment confirmation failed: '+((e&&e.message)||e));});
+  var a=A();if(!a.processOrderAdjustment||!a.managerApproval){alert('3D approval service is not available. Refresh the portal.');return;}a.managerApproval('confirm_payment',oid,Number(o.total)||0,'Verify payment received').then(function(ap){return a.processOrderAdjustment({action:'confirm_payment',orderId:oid,approvalId:ap.approvalId});}).then(function(){if(window.__posLog)window.__posLog('verify-payment',oid,'₱'+(Number(o.total)||0).toLocaleString()+' · '+(o.payment||''));}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Payment confirmation failed: '+((e&&e.message)||e));});
 }
 window.__posVerify=function(oid){verifyPayment(oid);};
 window.__accazaRegisterModule('register',function(name){ if(name==='ops')renderOps(); if(name==='discrepancy')renderDiscrepancies(); if(name==='petty')renderPetty(); });
@@ -97,11 +95,11 @@ function cashSwap(){
 }
 /* ---------- Z-report computation ---------- */
 function computeZ(shift){
-  var sales=[],voids=[],z={tx:0,gross:0,discounts:0,refunds:0,net:0,byMethod:{},cashSales:0,voidCount:0,voidAmt:0,pending:0,pendingCount:0,tips:0};
+  var sales=[],voids=[],z={tx:0,gross:0,discounts:0,refunds:0,cashRefunds:0,net:0,byMethod:{},cashSales:0,voidCount:0,voidAmt:0,pending:0,pendingCount:0,tips:0};
   Object.keys(ordersMap).forEach(function(id){var o=ordersMap[id];if(!o||o.shiftId!==shift.id)return;
     if(o.voided){z.voidCount++;z.voidAmt+=Number(o.total)||0;return;}
     var gross=(o.subtotal!=null?Number(o.subtotal):Number(o.total))||0;var disc=Number(o.discount)||0;var ref=Number(o.refundAmount)||0;
-    z.tx++;z.gross+=gross;z.discounts+=disc;z.refunds+=ref;z.net+=gross-disc-ref;
+    z.tx++;z.gross+=gross;z.discounts+=disc;z.refunds+=ref;z.cashRefunds+=Number((o.refundPayments||{}).Cash)||(ref&&(!o.refundPayments)&&(o.payment==='Cash'||paysOf(o).some(function(p){return p.method==='Cash';}))?ref:0);z.net+=gross-disc-ref;
     z.tips+=Number(o.tipRounding)||0;
     if(o.paymentStatus==='pending'){z.pending+=(Number(o.total)||0);z.pendingCount++;}
     paysOf(o).forEach(function(p){z.byMethod[p.method]=(z.byMethod[p.method]||0)+(Number(p.amount)||0);});
@@ -109,7 +107,7 @@ function computeZ(shift){
   z.cashSales=z.byMethod['Cash']||0;
   z.payIns=(shift.payIns||[]).reduce(function(s,x){return s+(Number(x.amount)||0);},0);
   z.payOuts=(shift.payOuts||[]).reduce(function(s,x){return s+(Number(x.amount)||0);},0);
-  z.expectedCash=(Number(shift.openingFloat)||0)+z.cashSales+z.tips-z.refunds+z.payIns-z.payOuts;
+  z.expectedCash=(Number(shift.openingFloat)||0)+z.cashSales+z.tips-z.cashRefunds+z.payIns-z.payOuts;
   return z;
 }
 
@@ -507,7 +505,7 @@ function closeShift(){
       +'<div style="margin-top:0.6rem;font-weight:700;"><div style="display:flex;justify-content:space-between;"><span>Counted</span><span>'+peso(total)+'</span></div><div style="display:flex;justify-content:space-between;"><span>Expected</span><span>'+peso(exCash)+'</span></div><div style="display:flex;justify-content:space-between;color:'+(withinTol?'#155724':'#c0392b')+';"><span>Variance</span><span>'+peso(vary)+'</span></div></div>'
       +'<div style="font-size:0.78rem;margin-top:0.3rem;color:'+(withinTol?'#155724':'#c0392b')+';">'+(withinTol?('✓ Within tolerance (±'+peso(tolv)+') — no discrepancy will be logged.'):('⚠ Over tolerance (±'+peso(tolv)+') — a discrepancy will be logged.'))+'</div>'
       +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="cF">Close shift &amp; Z-report</button><button class="pz-btn sec" id="cB">🔒 Reopen count (manager)</button></div>');
-    mask.querySelector('#cB').onclick=function(){var pin=prompt('Manager PIN to reopen and recount:');if(pin===null)return;if(!window.__posIsManagerPin(pin)){alert('Invalid manager PIN.');return;}renderBlind();};
+    mask.querySelector('#cB').onclick=function(){var a=A();if(!a.managerApproval||!a.consumeManagerApproval){alert('3D approval service is not available. Refresh the portal.');return;}a.managerApproval('reopen_cash_count',shift.id,null,'Reopen confirmed cash count').then(function(ap){return a.consumeManagerApproval({action:'reopen_cash_count',sourceId:shift.id,operationKey:'reopen_'+shift.id+'_'+Date.now(),approvalId:ap.approvalId});}).then(function(){renderBlind();}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Could not reopen count: '+((e&&e.message)||e));});};
     mask.querySelector('#cF').onclick=function(){close();finalizeClose(shift,total,counts);};
   }
   renderBlind();
@@ -536,7 +534,7 @@ function showZ(shift,z){
     +'<table><tr><td>Transactions</td><td style="text-align:right;">'+z.tx+'</td></tr>'
     +'<tr><td>Gross sales</td><td style="text-align:right;">'+peso(z.gross)+'</td></tr>'
     +'<tr><td>Discounts</td><td style="text-align:right;">-'+peso(z.discounts)+'</td></tr>'
-    +'<tr><td>Refunds</td><td style="text-align:right;">-'+peso(z.refunds)+'</td></tr>'
+    +'<tr><td>Cash refunds</td><td style="text-align:right;">-'+peso(z.cashRefunds)+'</td></tr>'
     +'<tr><td><b>Net sales</b></td><td style="text-align:right;"><b>'+peso(z.net)+'</b></td></tr></table><hr>'
     +'<div><b>By payment method</b></div><table>'+methods+'</table><hr>'
     +'<div><b>Sales this shift ('+saleList.length+')</b></div><table>'+(saleRows||'<tr><td colspan="2">None</td></tr>')+'</table><hr>'
@@ -552,7 +550,7 @@ function showZ(shift,z){
     +'<tr><td><b>Variance</b></td><td style="text-align:right;"><b>'+peso(z.variance)+'</b></td></tr></table><hr>'
     +(z.closeCount&&denomBreakdownRows(z.closeCount)?('<div><b>Cash counted by denomination</b></div><table>'+denomBreakdownRows(z.closeCount)+'</table><hr>'):'')
     +((!reconcileTotalOnlyR()&&z.expectedDrawer)?('<div><b>Denomination check (expected → counted)</b></div><table>'+DENOMS.map(function(d){var exp=Number(z.expectedDrawer[d.k])||0;var act=Number((z.closeCount||{})[d.k])||0;if(!exp&&!act)return '';var dv=act-exp;return '<tr><td>'+d.lbl+'</td><td style="text-align:right;">'+exp+' → '+act+(dv?'  ('+(dv>0?'+':'')+dv+')':'  ✓')+'</td></tr>';}).join('')+'</table><hr>'):'')
-    +'<div style="font-size:9px;text-align:center;">Expected drawer = float + cash sales + tips − refunds + pay-ins − pay-outs. Management report, not a BIR document.</div>'
+    +'<div style="font-size:9px;text-align:center;">Expected drawer = float + cash sales + tips − cash refunds + pay-ins − pay-outs. Management report, not a BIR document.</div>'
     +'<div style="text-align:center;margin-top:8px;"><button onclick="window.print()">Print</button></div></body></html>');
   w.document.close();
 }
@@ -575,7 +573,7 @@ function openShiftReview(){
       +'<tr><td>Cash sales</td><td class="r">+'+peso(z.cashSales)+'</td></tr>'
       +(z.tips?'<tr><td>Tips / rounding kept</td><td class="r">+'+peso(z.tips)+'</td></tr>':'')
       +(z.payIns?'<tr><td>Cash pay-ins</td><td class="r">+'+peso(z.payIns)+'</td></tr>':'')
-      +(z.refunds?'<tr><td>Refunds</td><td class="r">−'+peso(z.refunds)+'</td></tr>':'')
+      +(z.cashRefunds?'<tr><td>Cash refunds</td><td class="r">−'+peso(z.cashRefunds)+'</td></tr>':'')
       +(z.payOuts?'<tr><td>Pay-outs (register expenses)</td><td class="r">−'+peso(z.payOuts)+'</td></tr>':'')
       +'<tr style="border-top:2px solid var(--bd);"><td><b>Expected cash on hand</b></td><td class="r"><b>'+peso(z.expectedCash)+'</b></td></tr>'
       +'</tbody></table></div>'
@@ -606,39 +604,41 @@ function printShiftReview(shift,z,sales,items){
     +'<tr><td>Cash sales</td><td style="text-align:right;">+'+peso(z.cashSales)+'</td></tr>'
     +(z.tips?'<tr><td>Tips kept</td><td style="text-align:right;">+'+peso(z.tips)+'</td></tr>':'')
     +(z.payIns?'<tr><td>Pay-ins</td><td style="text-align:right;">+'+peso(z.payIns)+'</td></tr>':'')
-    +(z.refunds?'<tr><td>Refunds</td><td style="text-align:right;">-'+peso(z.refunds)+'</td></tr>':'')
+    +(z.cashRefunds?'<tr><td>Cash refunds</td><td style="text-align:right;">-'+peso(z.cashRefunds)+'</td></tr>':'')
     +(z.payOuts?'<tr><td>Pay-outs</td><td style="text-align:right;">-'+peso(z.payOuts)+'</td></tr>':'')
     +'<tr><td><b>Cash on hand</b></td><td style="text-align:right;"><b>'+peso(z.expectedCash)+'</b></td></tr></table><hr>'
     +'<div><b>By payment method</b></div><table>'+(methods||'<tr><td>None</td></tr>')+'</table><hr>'
     +'<div><b>Transactions ('+sales.length+')</b></div><table>'+(txn||'<tr><td>None</td></tr>')+'</table><hr>'
     +'<div><b>Items sold</b></div><table>'+(it||'<tr><td>None</td></tr>')+'</table><hr>'
-    +'<div style="font-size:9px;text-align:center;">Cash on hand = float + cash sales + tips + pay-ins − refunds − pay-outs. Management report.</div>'
+    +'<div style="font-size:9px;text-align:center;">Cash on hand = float + cash sales + tips + pay-ins − cash refunds − pay-outs. Management report.</div>'
     +'<div style="text-align:center;margin-top:8px;"><button onclick="window.print()">Print</button></div></body></html>');
   w.document.close();
 }
 function exportShiftReviewXlsx(shift,z,sales,items){
   if(!window.XLSX){alert('Excel library still loading — try again.');return;}
-  var sum=[['Shift',shift.id],['Cashier',shift.staff],['Open',new Date(shift.openAt).toLocaleString('en-PH')],[],['Opening float',Number(shift.openingFloat)||0],['Cash sales',z.cashSales],['Tips',z.tips],['Pay-ins',z.payIns],['Refunds',-z.refunds],['Pay-outs',-z.payOuts],['Cash on hand',z.expectedCash],[],['Transactions',z.tx],['Net sales',z.net]];
+  var sum=[['Shift',shift.id],['Cashier',shift.staff],['Open',new Date(shift.openAt).toLocaleString('en-PH')],[],['Opening float',Number(shift.openingFloat)||0],['Cash sales',z.cashSales],['Tips',z.tips],['Pay-ins',z.payIns],['Cash refunds',-z.cashRefunds],['Pay-outs',-z.payOuts],['Cash on hand',z.expectedCash],[],['Transactions',z.tx],['Net sales',z.net]];
   var tx=[['Time','Order','Channel','Method','Amount','Refund']];sales.forEach(function(o){tx.push([o.time||'',o.id,(o.channel&&o.channel!=='instore')?o.channel:'instore',shiftTxnMethod(o),Number(o.total)||0,Number(o.refundAmount)||0]);});
   var it=[['Item','Qty','Sales']];items.forEach(function(x){it.push([x.name,x.qty,x.sales]);});
   var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),'Summary');XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(tx),'Transactions');XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(it),'Items');XLSX.writeFile(wb,'shift-review-'+shift.id+'.xlsx');
 }
+function refundTenderModal(o,amount,cb){
+  if((o.channel||'instore')!=='instore'){cb([]);return;}var paid={};paysOf(o).forEach(function(p){paid[p.method]=(paid[p.method]||0)+(Number(p.amount)||0);});var prior=o.refundPayments||{},methods=Object.keys(paid),left=amount,defaults={};methods.forEach(function(m){var avail=Math.max(0,paid[m]-(Number(prior[m])||0)),use=Math.min(left,avail);defaults[m]=use;left=Math.round((left-use)*100)/100;});
+  var mask=document.createElement('div');mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:11000;display:flex;align-items:center;justify-content:center;padding:1rem;';mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:460px;width:100%;padding:1.2rem;"><div style="font-weight:700;color:var(--bd);">Refund payment method</div><p class="pz-sub">Record exactly how '+peso(amount)+' will be returned. This controls the cash drawer and accounting reversal.</p>'+methods.map(function(m){var avail=Math.max(0,paid[m]-(Number(prior[m])||0));return '<div style="display:flex;gap:.5rem;align-items:center;margin:.4rem 0;"><div style="flex:1;"><b>'+esc(m)+'</b><div style="font-size:.68rem;color:var(--tl);">remaining refundable '+peso(avail)+'</div></div><input class="pz-in" type="number" min="0" max="'+avail+'" step=".01" data-rt="'+esc(m)+'" value="'+(defaults[m]||'')+'" style="width:130px;"/></div>';}).join('')+'<div id="rtBal" style="font-weight:700;text-align:right;margin-top:.5rem;"></div><div style="display:flex;gap:.5rem;margin-top:1rem;"><button class="pz-btn ok" id="rtOk">Continue</button><button class="pz-btn sec" id="rtCancel">Cancel</button></div></div>';document.body.appendChild(mask);function read(){var rows=[],sum=0;mask.querySelectorAll('[data-rt]').forEach(function(inp){var v=Math.round((Number(inp.value)||0)*100)/100;if(v>0){rows.push({method:inp.getAttribute('data-rt'),amount:v});sum+=v;}});return{rows:rows,sum:Math.round(sum*100)/100};}function recalc(){var r=read(),diff=Math.round((amount-r.sum)*100)/100,el=mask.querySelector('#rtBal');el.innerHTML=Math.abs(diff)<.001?'<span style="color:#155724;">✓ Exact '+peso(amount)+'</span>':'<span style="color:#c0392b;">Still allocate '+peso(diff)+'</span>';}mask.querySelectorAll('[data-rt]').forEach(function(i){i.oninput=recalc;});recalc();mask.querySelector('#rtCancel').onclick=function(){document.body.removeChild(mask);};mask.querySelector('#rtOk').onclick=function(){var r=read();if(Math.abs(r.sum-amount)>.009){alert('Refund payment methods must total exactly '+peso(amount)+'.');return;}document.body.removeChild(mask);cb(r.rows);};
+}
 function voidSale(oid){
   var o=ordersMap[oid];if(!o)return;
-  var pin=prompt('Manager PIN to VOID '+oid+':');if(pin===null)return;if(!window.__posIsManagerPin(pin)){alert('Invalid manager PIN.');return;}
   var reason=prompt('Reason for void:')||'';
   var restock=o.inventoryUsage&&!o.inventoryReversed?confirm('Return this order\'s ingredients to stock?\nOK = restock · Cancel = treat as wastage (keep deducted).'):false;
-  var a=A();if(!a.processOrderAdjustment){alert('3C adjustment service is not available. Refresh the portal.');return;}a.processOrderAdjustment({action:'void',orderId:oid,reason:reason,restock:restock}).then(function(){window.__posLog('void',oid,reason||'—');alert('Order voided and financial reversal posted.');}).catch(function(e){alert('Void failed: '+((e&&e.message)||e)+'. Nothing was changed.');});
+  var a=A(),amount=Math.max(0,(Number(o.total)||0)-(Number(o.refundAmount)||0));if(!a.processOrderAdjustment||!a.managerApproval){alert('3D adjustment service is not available. Refresh the portal.');return;}a.managerApproval('void',oid,amount,reason).then(function(ap){return a.processOrderAdjustment({action:'void',orderId:oid,reason:reason,restock:restock,approvalId:ap.approvalId});}).then(function(){window.__posLog('void',oid,reason||'—');alert('Order voided and financial reversal posted.');}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Void failed: '+((e&&e.message)||e)+'. Nothing was changed.');});
 }
 function refundSale(oid){
   var o=ordersMap[oid];if(!o)return;
-  var pin=prompt('Manager PIN to REFUND '+oid+':');if(pin===null)return;if(!window.__posIsManagerPin(pin)){alert('Invalid manager PIN.');return;}
   var max=Number(o.total)||0;var already=Number(o.refundAmount)||0;
   var amt=prompt('Refund amount (remaining refundable ₱'+(max-already)+'):',(max-already));if(amt===null)return;amt=Number(amt)||0;if(amt<=0){return;}
   if(amt>max-already+0.01){alert('Refund exceeds the refundable amount.');return;}
   var reason=prompt('Refund reason:')||'';
   var full=(already+amt)>=max-0.01;
   var restock=full&&o.inventoryUsage&&!o.inventoryReversed?confirm('Full refund. Return ingredients to stock?\nOK = restock · Cancel = wastage.'):false;
-  var a=A();if(!a.processOrderAdjustment){alert('3C adjustment service is not available. Refresh the portal.');return;}a.processOrderAdjustment({action:'refund',orderId:oid,amount:amt,reason:reason,restock:restock}).then(function(){if(denomTrackingOnR()&&activeShift){var wasCash=o.payment==='Cash'||(o.payments&&o.payments.some(function(p){return p.method==='Cash';}));if(wasCash){var mc=makeChangeD(amt,drawerNow());saveDrawer(subD(drawerNow(),mc.denoms));if(!mc.ok)alert('Note: the drawer can’t provide exactly '+peso(amt)+' cash (short '+peso(mc.short)+'). Reconcile at count.');}}window.__posLog('refund',oid,peso(amt)+' · '+(reason||'—'));alert('Refund and financial reversal posted.');}).catch(function(e){alert('Refund failed: '+((e&&e.message)||e)+'. Nothing was changed.');});
+  var a=A();if(!a.processOrderAdjustment||!a.managerApproval){alert('3D adjustment service is not available. Refresh the portal.');return;}refundTenderModal(o,amt,function(refundPayments){a.managerApproval('refund',oid,amt,reason).then(function(ap){return a.processOrderAdjustment({action:'refund',orderId:oid,amount:amt,refundPayments:refundPayments,reason:reason,restock:restock,approvalId:ap.approvalId});}).then(function(){if(denomTrackingOnR()&&activeShift){var cash=refundPayments.reduce(function(s,p){return s+(p.method==='Cash'?(Number(p.amount)||0):0);},0);if(cash>0){var mc=makeChangeD(cash,drawerNow());saveDrawer(subD(drawerNow(),mc.denoms));if(!mc.ok)alert('Note: the drawer can’t provide exactly '+peso(cash)+' cash (short '+peso(mc.short)+'). Reconcile at count.');}}window.__posLog('refund',oid,peso(amt)+' · '+refundPayments.map(function(p){return p.method+' '+peso(p.amount);}).join(', ')+' · '+(reason||'—'));alert('Refund and financial reversal posted.');}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Refund failed: '+((e&&e.message)||e)+'. Nothing was changed.');});});
 }
 })();
