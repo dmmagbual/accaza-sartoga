@@ -1062,48 +1062,58 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v168</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button data-accaza-install onclick="accazaInstallApp()" style="background:#e8f5ec;color:#155724;border:1px solid #b8dfc4;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;">📲 Install Accaza POS App</button><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v169</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button data-accaza-install onclick="accazaInstallApp()" style="background:#e8f5ec;color:#155724;border:1px solid #b8dfc4;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;">📲 Install Accaza POS App</button><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statReservations">0</span><span class="stat-lbl">Reservations</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statRevenue">₱0</span><span class="stat-lbl">Active Order Value</span></div>
     </div>
-    <style>
-      .admin-group{padding:0.45rem 0.95rem;border-radius:8px;border:1px solid #d8cdbf;background:#efe7dd;color:#5b4636;font-weight:700;font-size:0.9rem;cursor:pointer;}
-      .admin-group.active{background:#6F4E37;color:#fff;border-color:#6F4E37;}
-      .tabgrp{display:flex;flex-wrap:wrap;gap:0.35rem;}
+    <style id="accaza-admin-nav-7c">
+      .admin-tabs{border:0;margin-bottom:1.15rem;}
+      #adminGroups{display:flex;align-items:stretch;gap:0.4rem;margin-bottom:0.55rem;padding:0.45rem;background:#19241b;border:1px solid #2e3d31;border-radius:12px;box-shadow:0 8px 24px rgba(25,36,27,.12);overflow-x:auto;scrollbar-width:thin;}
+      .admin-group{flex:0 0 auto;padding:0.62rem 0.9rem;border-radius:8px;border:1px solid transparent;background:transparent;color:#d9d0c5;font-weight:650;font-size:0.82rem;letter-spacing:.01em;cursor:pointer;white-space:nowrap;transition:background .16s ease,color .16s ease,border-color .16s ease;}
+      .admin-group:hover{background:#27362b;color:#fff;}
+      .admin-group.active{background:#f4eee5;color:#3f2f24;border-color:#d5c3ab;box-shadow:0 2px 8px rgba(0,0,0,.16);}
+      .admin-group.pos-primary{background:#b08d57;color:#fff;border-color:#c9a36a;font-weight:800;padding-inline:1.15rem;}
+      .admin-group.pos-primary:hover,.admin-group.pos-primary.active{background:#c9a36a;color:#19241b;border-color:#ead2a6;}
+      .tabgrp{display:flex;flex-wrap:wrap;gap:0.35rem;min-height:39px;padding:.45rem .25rem .2rem;border-bottom:1px solid #e6ddd2;}
+      .tabgrp:before{content:attr(data-label);align-self:center;margin-right:.35rem;color:#8a7869;font-size:.68rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;}
+      .tabgrp[data-grp="pos"]:before{content:"Quick sale";}
+      @media(max-width:720px){#adminGroups{margin-inline:-.25rem;border-radius:9px;padding:.35rem}.admin-group{padding:.56rem .72rem;font-size:.76rem}.admin-group.pos-primary{padding-inline:.95rem}.tabgrp{flex-wrap:nowrap;overflow-x:auto;padding-bottom:.55rem}.tabgrp .admin-tab{flex:0 0 auto}.admin-stats{grid-template-columns:repeat(2,1fr)!important;}}
+      @media(prefers-reduced-motion:reduce){.admin-group{transition:none;}}
     </style>
     <div class="admin-tabs" style="display:block;">
-      <div id="adminGroups" style="display:flex;flex-wrap:wrap;gap:0.35rem;margin-bottom:0.55rem;border-bottom:1px solid #e6ddd2;padding-bottom:0.5rem;">
-        <button class="admin-group active" data-grp="overview" onclick="showTabGroup('overview',this)">📊 Overview</button>
-        <button class="admin-group" data-grp="sell" onclick="showTabGroup('sell',this)">🧾 Sell</button>
-        <button class="admin-group" data-grp="stock" onclick="showTabGroup('stock',this)">📦 Stock &amp; Recipes</button>
-        <button class="admin-group" data-grp="finance" onclick="showTabGroup('finance',this)">💰 Finance</button>
-        <button class="admin-group" data-grp="customers" onclick="showTabGroup('customers',this)">💬 Customers</button>
-        <button class="admin-group" data-grp="settings" onclick="showTabGroup('settings',this)">⚙️ Settings</button>
+      <div id="adminGroups" aria-label="Admin work areas">
+        <button class="admin-group pos-primary" data-grp="pos" onclick="showTabGroup('pos',this)">☕ POS</button>
+        <button class="admin-group active" data-grp="overview" onclick="showTabGroup('overview',this)">Overview</button>
+        <button class="admin-group" data-grp="orders" onclick="showTabGroup('orders',this)">Orders &amp; Operations</button>
+        <button class="admin-group" data-grp="stock" onclick="showTabGroup('stock',this)">Inventory</button>
+        <button class="admin-group" data-grp="finance" onclick="showTabGroup('finance',this)">Financials</button>
+        <button class="admin-group" data-grp="customers" onclick="showTabGroup('customers',this)">Customers</button>
+        <button class="admin-group" data-grp="settings" onclick="showTabGroup('settings',this)">Settings</button>
       </div>
-      <div class="tabgrp" data-grp="overview">
+      <div class="tabgrp" data-grp="pos" data-label="Quick sale" style="display:none;">
+        <button class="admin-tab" id="tabBtnPos" onclick="posSwitchTab('pos',this)">🧾 Open Point of Sale</button>
+      </div>
+      <div class="tabgrp" data-grp="overview" data-label="Overview">
         <button class="admin-tab active" onclick="switchTab('dashboard',this)">📊 Dashboard</button>
+        <button class="admin-tab" onclick="posSwitchTab('operations',this)">🚨 Operations Center</button>
+      </div>
+      <div class="tabgrp" data-grp="orders" data-label="Orders &amp; operations" style="display:none;">
         <button class="admin-tab" id="tabBtnOrders" onclick="switchTab('orders',this)">📋 Orders <span id="ordersBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
+        <button class="admin-tab" onclick="posSwitchTab('ops',this)">🧾 Register Operations</button>
         <button class="admin-tab" onclick="switchTab('reservations',this)">📅 Reservations</button>
         <button class="admin-tab" onclick="switchTab('calendar',this)">🗓️ Calendar</button>
       </div>
-      <div class="tabgrp" data-grp="sell" style="display:none;">
-        <button class="admin-tab" onclick="posSwitchTab('pos',this)" style="color:#8a5a2b;font-weight:600;">🧾 POS</button>
-        <button class="admin-tab" onclick="posSwitchTab('ops',this)">🧾 Register Ops</button>
-        <button class="admin-tab" onclick="posSwitchTab('petty',this)">💷 Petty Cash</button>
-        <button class="admin-tab" onclick="posSwitchTab('packages',this)">🎁 Packages</button>
-        <button class="admin-tab" onclick="posSwitchTab('channelpricing',this)">💱 Channel Pricing</button>
-      </div>
-      <div class="tabgrp" data-grp="stock" style="display:none;">
+      <div class="tabgrp" data-grp="stock" data-label="Inventory" style="display:none;">
         <button class="admin-tab" onclick="posSwitchTab('inventory',this)">📦 Inventory <span id="lowStockBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
         <button class="admin-tab" onclick="posSwitchTab('purchases',this)">📥 Purchases</button>
         <button class="admin-tab" onclick="posSwitchTab('recipes',this)">🧪 Recipes <span id="costGapBadge" style="display:none;background:#e6a817;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;" title="menu items not costed">0</span></button>
         <button class="admin-tab" onclick="posSwitchTab('usage',this)">🍽️ Internal Usage</button>
-        <button class="admin-tab" onclick="posSwitchTab('dedupe',this)">🧹 De-dupe Menu</button>
+        <button class="admin-tab" onclick="posSwitchTab('packages',this)">🎁 Packages</button>
       </div>
-      <div class="tabgrp" data-grp="finance" style="display:none;">
+      <div class="tabgrp" data-grp="finance" data-label="Financials" style="display:none;">
         <button class="admin-tab" onclick="posSwitchTab('analytics',this)">📊 Analytics</button>
         <button class="admin-tab" onclick="posSwitchTab('pnl',this)">💰 Profit &amp; Loss</button>
         <button class="admin-tab" onclick="posSwitchTab('dailyreport',this)">📆 Daily Report</button>
@@ -1113,16 +1123,18 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
         <button class="admin-tab" onclick="posSwitchTab('payables',this)">📤 Payables</button>
         <button class="admin-tab" onclick="posSwitchTab('stockvalue',this)">📊 Stock Value</button>
         <button class="admin-tab" onclick="posSwitchTab('discrepancy',this)">🚩 Discrepancies <span id="discBadge" style="display:none;background:#e63946;color:#fff;border-radius:10px;padding:0 0.4rem;font-size:0.7rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
+        <button class="admin-tab" onclick="posSwitchTab('petty',this)">💷 Petty Cash</button>
       </div>
-      <div class="tabgrp" data-grp="customers" style="display:none;">
+      <div class="tabgrp" data-grp="customers" data-label="Customers" style="display:none;">
         <button class="admin-tab" onclick="switchTab('reviews',this)">⭐ Reviews</button>
         <button class="admin-tab" onclick="switchTab('appcustomers',this)">👥 App Customers</button>
       </div>
-      <div class="tabgrp" data-grp="settings" style="display:none;">
+      <div class="tabgrp" data-grp="settings" data-label="Settings &amp; maintenance" style="display:none;">
+        <button class="admin-tab" onclick="posSwitchTab('channelpricing',this)">💱 Channel Pricing</button>
+        <button class="admin-tab" onclick="posSwitchTab('dedupe',this)">🧹 Menu Maintenance</button>
         <button class="admin-tab" onclick="switchTab('payment',this)">💳 Payment Details</button>
         <button class="admin-tab" onclick="switchTab('staffaccounts',this)">🔐 Account Setup</button>
         <button class="admin-tab" onclick="posSwitchTab('staffaccess',this)">🔐 Staff Access</button>
-        <button class="admin-tab" onclick="posSwitchTab('operations',this)">🚨 Operations Center</button>
         <button class="admin-tab" id="tabBtnAdminAccounts" style="display:none;" onclick="switchTab('adminaccounts',this)">👑 Admin Accounts</button>
         <button class="admin-tab" onclick="switchTab('changepw',this)">🔑 Change Password</button>
       </div>

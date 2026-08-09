@@ -311,6 +311,8 @@ Until Phases 0–2 are complete, new convenience features should be paused unles
 
 **Release 7B local status (9 August 2026):** Complete in admin v168 and cache v57. The management-only Operations Center adds a bounded, sanitized server scan for stuck orders, partial offline sync, missing inventory/accounting postings, aged cash custody, proof-access failures, and client health warnings. It is read-only and routes resolution through existing controlled workflows. See `ADR-020_OPERATIONAL_EXCEPTION_CENTER.md` and `RELEASE_7B_OPERATIONAL_EXCEPTION_CENTER_2026-08-09.md`.
 
+**Release 7C local status (9 August 2026):** Complete in admin v169 and cache v58. The admin shell now gives POS permanent priority, consolidates work into six clear management domains, reveals only contextual secondary pages, and lands cashier, kitchen, and finance roles in their natural workspaces. Existing permissions and workflows are unchanged. See `ADR-021_ADMIN_INFORMATION_ARCHITECTURE.md` and `RELEASE_7C_ADMIN_NAVIGATION_2026-08-09.md`.
+
 1. Firebase Emulator tests for database rules.
 2. Cloud Function tests for retries, duplicate events, partial failure, refunds, and reversals.
 3. Checkout tests for in-store, split payment, GrabFood, FoodPanda, unavailable items, options, packages, and refunds.
