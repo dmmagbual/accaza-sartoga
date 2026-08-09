@@ -27,17 +27,25 @@ self.addEventListener('notificationclick',function(e){
   }));
 });
 
-/* App shell cache (network-first) */
-const CACHE='accaza-v48';
-const ASSETS=['/','/index.html','/assets/js/customer/core.mjs','/assets/js/customer/navigation.js','/assets/js/customer/ui.js','/assets/js/customer/order-tracker.js','/assets/js/customer/packages.js'];
+/* Versioned customer + POS app shells. Transactions remain online-only. */
+const CACHE='accaza-v49';
+const ASSETS=[
+  '/','/index.html','/admin.html','/manifest.json','/manifest-admin.json',
+  '/favicon.svg','/favicon_192x192.png','/favicon_512x512.png',
+  '/assets/js/pwa-register.js',
+  '/assets/js/customer/core.mjs','/assets/js/customer/navigation.js','/assets/js/customer/ui.js','/assets/js/customer/order-tracker.js','/assets/js/customer/packages.js',
+  '/assets/js/admin/core.mjs','/assets/js/admin/firebase-client.mjs','/assets/js/admin/realtime-hub.mjs','/assets/js/admin/history-pager.mjs','/assets/js/admin/manager-approval.mjs','/assets/js/admin/portal-auth.mjs','/assets/js/admin/admin-orders.mjs','/assets/js/admin/customer-registry.mjs','/assets/js/admin/reservations.mjs','/assets/js/admin/catalog-admin.mjs','/assets/js/admin/app-customer-session.mjs','/assets/js/admin/customer-order-tracker.mjs','/assets/js/admin/shared-ui.mjs','/assets/js/admin/module-loader.js','/assets/js/admin/portal-boot.js',
+  '/assets/js/shared/costing.js','/assets/js/admin/pos.js','/assets/js/admin/channel-pricing.js','/assets/js/admin/analytics.js','/assets/js/admin/register.js','/assets/js/admin/staff-access.js','/assets/js/admin/packages.js','/assets/js/admin/finance.js'
+];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));self.skipWaiting();});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));self.clients.claim();});
 self.addEventListener('fetch',e=>{
   if(e.request.method!=='GET')return;
   const url=new URL(e.request.url);
   if(url.origin!==location.origin)return; /* Firebase & CDNs go straight to network */
-  e.respondWith(
-    fetch(e.request).then(r=>{const cp=r.clone();caches.open(CACHE).then(c=>c.put(e.request,cp));return r;})
-    .catch(()=>caches.match(e.request).then(m=>m||caches.match('/index.html')))
-  );
+  e.respondWith(fetch(e.request).then(r=>{if(r&&r.ok){const cp=r.clone();caches.open(CACHE).then(c=>c.put(e.request,cp));}return r;}).catch(()=>caches.match(e.request).then(m=>{
+    if(m)return m;
+    if(e.request.mode==='navigate')return caches.match(url.pathname.indexOf('/admin')===0?'/admin.html':'/index.html');
+    return new Response('Offline asset unavailable',{status:503,statusText:'Offline'});
+  })));
 });
