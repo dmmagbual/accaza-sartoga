@@ -8,11 +8,15 @@
 const {onValueUpdated, onValueWritten} = require("firebase-functions/v2/database");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {initializeApp} = require("firebase-admin/app");
+const {getAuth: getAdminAuth} = require("firebase-admin/auth");
 const {getDatabase} = require("firebase-admin/database");
 const {getMessaging} = require("firebase-admin/messaging");
 const {getStorage} = require("firebase-admin/storage");
 const logger = require("firebase-functions/logger");
 const crypto = require("node:crypto");
+const Costing = require("./lib/costing");
+const Financial = require("./lib/financial");
+const OfflineSync = require("./lib/offline-sync");
 
 initializeApp();
 
@@ -128,6 +132,223 @@ async function requirePortalPermission(db, request, permissions) {
   return portal;
 }
 
+// Release 6A: privacy-safe, bounded operational telemetry. Only aggregate
+// counters and timings are stored; no order/customer/payment content is accepted.
+const CLIENT_METRICS = new Set(["pos_boot", "pos_build", "cart_render", "charge_to_durable", "offline_flush", "realtime_order_arrival"]);
+function telemetryKey(value) {return String(value || "").toLowerCase().replace(/[^a-z0-9_-]/g, "_").slice(0, 50);}
+exports.recordClientTelemetry = onCall(
+  {region: ORDER_REGION, enforceAppCheck: false},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalUser(db, request), data = request.data || {}, raw = Array.isArray(data.events) ? data.events.slice(0, 20) : [];
+    if (!raw.length) return {accepted: 0};
+    const day = new Date().toISOString().slice(0, 10), build = telemetryKey(data.build).slice(0, 24) || "unknown";
+    const accepted = raw.map((event) => {
+      const type = event && event.type === "error" ? "error" : "metric", name = telemetryKey(event && event.name);
+      if (type === "metric" && !CLIENT_METRICS.has(name)) return null;
+      if (type === "error" && !/^(js_[a-z0-9_-]+|unhandled_promise)$/.test(name)) return null;
+      return {type, name, duration: Math.max(0, Math.min(120000, Math.round(Number(event.duration) || 0))), ok: event.ok !== false};
+    }).filter(Boolean);
+    if (!accepted.length) return {accepted: 0};
+    await db.ref(`/clientTelemetryDaily/${day}`).transaction((current) => {
+      const row = current && typeof current === "object" ? current : {metrics: {}, errors: {}, builds: {}, updatedAt: 0};
+      row.metrics = row.metrics || {}; row.errors = row.errors || {}; row.builds = row.builds || {};
+      accepted.forEach((event) => {if (event.type === "metric") {const m = row.metrics[event.name] || {count: 0, totalMs: 0, maxMs: 0, failed: 0};m.count = Math.min(1000000, Number(m.count || 0) + 1);m.totalMs = Math.min(1000000000, Number(m.totalMs || 0) + event.duration);m.maxMs = Math.max(Number(m.maxMs || 0), event.duration);if (!event.ok) m.failed = Math.min(1000000, Number(m.failed || 0) + 1);row.metrics[event.name] = m;} else row.errors[event.name] = Math.min(1000000, Number(row.errors[event.name] || 0) + 1);});
+      row.builds[build] = Math.min(1000000, Number(row.builds[build] || 0) + accepted.length);row.updatedAt = Date.now();row.lastRole = actor.role;return row;
+    });
+    return {accepted: accepted.length};
+  },
+);
+
+const MANAGER_APPROVAL_ACTIONS = new Set([
+  "confirm_payment", "refund", "void", "settle_platform_payout", "reopen_cash_count",
+  "delete_archived_order", "review_discrepancy", "approve_petty_voucher",
+  "reject_petty_voucher", "void_petty_voucher",
+]);
+async function claimManagerApproval(db, data, action, sourceId, amount, operationKey) {
+  const approvalId = financeKey(data && data.approvalId, "Manager approval"); const ref = db.ref(`/financialApprovals/${approvalId}`), now = Date.now(); let result;
+  await ref.transaction((row) => {if (!row || row.action !== action || row.sourceId !== String(sourceId) || Number(row.expiresAt || 0) < now || row.usedAt) return; if (amount != null && Math.abs(Financial.money(row.amount) - Financial.money(amount)) > 0.009) return; if (row.claimKey && row.claimKey !== operationKey) return; result = Object.assign({}, row); return Object.assign({}, row, {claimKey: operationKey, claimedAt: now});}, undefined, false);
+  if (!result) throw new HttpsError("failed-precondition", "Manager approval is missing, expired, already used, or does not match this action."); return {id: approvalId, record: result, usedWrites: {[`financialApprovals/${approvalId}/usedAt`]: now, [`financialApprovals/${approvalId}/usedBy`]: operationKey}};
+}
+
+exports.createManagerApproval = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(); const requester = await requirePortalUser(db, request); const data = request.data || {}, action = financeText(data.action, 40); if (!MANAGER_APPROVAL_ACTIONS.has(action)) throw new HttpsError("invalid-argument", "Approval action is invalid.");
+    let decoded; try {decoded = await getAdminAuth().verifyIdToken(String(data.managerIdToken || ""), true);} catch (_error) {throw new HttpsError("permission-denied", "Manager sign-in could not be verified.");}
+    const managerSnap = await db.ref(`/admins/${decoded.uid}`).get(), managerRole = portalRoleValue(managerSnap.val()); if (!["owner", "superadmin", "admin", "manager"].includes(managerRole)) throw new HttpsError("permission-denied", "That Firebase account is not a manager account.");
+    const sourceId = financeText(data.sourceId, 160); if (!sourceId) throw new HttpsError("invalid-argument", "Approval source is required."); const amount = data.amount == null ? null : Financial.money(data.amount), now = Date.now(), id = `approval_${crypto.randomBytes(12).toString("hex")}`;
+    await db.ref(`/financialApprovals/${id}`).set({action, sourceId, amount, reason: financeText(data.reason, 300), requestedBy: requester.uid, approvedBy: decoded.uid, approvedEmail: financeText(decoded.email, 160), approvedName: financeText(decoded.name, 160), approvedRole: managerRole, approvedAt: now, expiresAt: now + 5 * 60 * 1000, schemaVersion: 1});
+    return {approvalId: id, approvedBy: decoded.email || managerRole, expiresAt: now + 5 * 60 * 1000};
+  },
+);
+
+exports.consumeManagerApproval = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {const db = getDatabase(); await requirePortalPermission(db, request, ["registerOps"]); const data = request.data || {}, action = financeText(data.action, 40), sourceId = financeText(data.sourceId, 160), op = financeKey(data.operationKey || `${action}_${sourceId}`, "Operation ID"), approval = await claimManagerApproval(db, data, action, sourceId, data.amount, op); await db.ref().update(approval.usedWrites); return {approvedBy: approval.record.approvedEmail || approval.record.approvedRole};},
+);
+
+// ---------------------------------------------------------------------------
+// Release 3E: server-owned operational controls and retention.
+// ---------------------------------------------------------------------------
+const REJECTED_ORDER_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+
+function operationalAuditRecord(action, sourceType, sourceId, actor, details = {}) {
+  return Object.assign({
+    action, sourceType, sourceId, actorUid: actor.uid, actorRole: actor.role,
+    ts: Date.now(), schemaVersion: 1,
+  }, details);
+}
+
+exports.manageOrderArchive = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase();
+    const actor = await requirePortalPermission(db, request, ["orders"]);
+    const data = request.data || {};
+    const action = financeText(data.action, 40);
+    const orderId = financeKey(data.orderId, "Order ID");
+    const now = Date.now();
+    if (action === "archive") {
+      const [orderSnap, archivedSnap] = await Promise.all([
+        db.ref(`/orders/${orderId}`).get(), db.ref(`/archivedOrders/${orderId}`).get(),
+      ]);
+      if (!orderSnap.exists()) {
+        if (archivedSnap.exists()) return {orderId, duplicate: true};
+        throw new HttpsError("not-found", "Order not found.");
+      }
+      const order = Object.assign({id: orderId}, orderSnap.val() || {});
+      if (!["Completed", "Received", "Rejected"].includes(String(order.status || "")) && order.voided !== true) {
+        throw new HttpsError("failed-precondition", "Only completed, received, rejected, or voided orders can be archived.");
+      }
+      const archived = archivedOrderRecord(order, now, "manual-server");
+      await db.ref().update({
+        [`archivedOrders/${orderId}`]: archived,
+        [`orders/${orderId}`]: null,
+        [`activeOrders/${orderId}`]: null,
+        [`operationalAudit/${now}_${orderId}`]: operationalAuditRecord("archive_order", "order", orderId, actor, {previousStatus: order.status || ""}),
+      });
+      return {orderId, archivedAt: now};
+    }
+    if (action === "delete") {
+      const snap = await db.ref(`/archivedOrders/${orderId}`).get();
+      if (!snap.exists()) throw new HttpsError("not-found", "Archived order not found.");
+      const order = snap.val() || {};
+      const archivedAt = Number(order.archivedAt || 0);
+      if (String(order.prevStatus || "") !== "Rejected") {
+        throw new HttpsError("failed-precondition", "Financial sales are retained and cannot be permanently deleted. Only rejected orders are eligible.");
+      }
+      if (!archivedAt || now - archivedAt < REJECTED_ORDER_RETENTION_MS) {
+        throw new HttpsError("failed-precondition", "Rejected orders must remain archived for at least 90 days before deletion.");
+      }
+      const financialSnap = await db.ref(`/financialMovements/sale_${orderId}`).get();
+      if (financialSnap.exists()) throw new HttpsError("failed-precondition", "This order has a financial posting and cannot be deleted.");
+      const approval = await claimManagerApproval(db, data, "delete_archived_order", orderId, Financial.money(order.total), `delete_archived_order_${orderId}`);
+      await db.ref().update(Object.assign({}, approval.usedWrites, {
+        [`archivedOrders/${orderId}`]: null,
+        [`deletionAudit/orders/${orderId}`]: {
+          orderId, previousStatus: order.prevStatus || "Rejected", archivedAt,
+          deletedAt: now, deletedBy: actor.uid, approvalId: approval.id,
+          approvedBy: approval.record.approvedEmail || approval.record.approvedRole,
+          policy: "rejected-order-90-days", schemaVersion: 1,
+        },
+        [`operationalAudit/${now}_${orderId}`]: operationalAuditRecord("delete_archived_order", "order", orderId, actor, {approvalId: approval.id}),
+      }));
+      return {orderId, deletedAt: now};
+    }
+    throw new HttpsError("invalid-argument", "Archive action is invalid.");
+  },
+);
+
+exports.reviewDiscrepancy = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["discrepancy", "registerOps"]);
+    const data = request.data || {}, id = financeKey(data.discrepancyId, "Discrepancy ID"), note = financeText(data.note, 500);
+    if (!note) throw new HttpsError("invalid-argument", "A root-cause note is required.");
+    const ref = db.ref(`/discrepancies/${id}`), snap = await ref.get();
+    if (!snap.exists()) throw new HttpsError("not-found", "Discrepancy not found.");
+    const row = snap.val() || {}; if (row.status === "reviewed") return {discrepancyId: id, duplicate: true};
+    const approval = await claimManagerApproval(db, data, "review_discrepancy", id, null, `review_discrepancy_${id}`), now = Date.now(), reviewedBy = approval.record.approvedName || approval.record.approvedEmail || approval.record.approvedRole;
+    let duplicate = false;
+    const result = await ref.transaction((current) => {
+      if (!current) return;
+      if (current.status === "reviewed") {if (current.reviewApprovalId === approval.id) {duplicate = true; return current;} return;}
+      return Object.assign({}, current, {status: "reviewed", reviewedAt: now, reviewedBy, reviewedByUid: approval.record.approvedBy, reviewApprovalId: approval.id, note});
+    }, undefined, false);
+    if (!result.committed) throw new HttpsError("aborted", "This discrepancy was reviewed by another manager. Refresh the list.");
+    await db.ref().update(Object.assign({}, approval.usedWrites, {[`operationalAudit/${now}_${id}`]: operationalAuditRecord("review_discrepancy", "discrepancy", id, actor, {approvalId: approval.id})}));
+    return {discrepancyId: id, reviewedAt: now, duplicate};
+  },
+);
+
+exports.managePettyVoucher = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["petty"]);
+    const data = request.data || {}, action = financeText(data.action, 20), id = financeKey(data.voucherId, "Voucher ID"), reason = financeText(data.reason, 500);
+    const ref = db.ref(`/pettyCashVouchers/${id}`), snap = await ref.get(); if (!snap.exists()) throw new HttpsError("not-found", "Petty cash voucher not found.");
+    const voucher = snap.val() || {}, value = Financial.money(voucher.amount), now = Date.now(); let approvalAction;
+    if (action === "approve") {
+      if (voucher.status !== "pending") throw new HttpsError("failed-precondition", "Only pending vouchers can be approved.");
+      if (!voucher.receiptImg) throw new HttpsError("failed-precondition", "A receipt is required before approval.");
+      approvalAction = "approve_petty_voucher";
+    } else if (action === "reject") {
+      if (voucher.status !== "pending") throw new HttpsError("failed-precondition", "Only pending vouchers can be rejected.");
+      if (!reason) throw new HttpsError("invalid-argument", "A rejection reason is required."); approvalAction = "reject_petty_voucher";
+    } else if (action === "void") {
+      if (voucher.status !== "approved" || voucher.voided === true) throw new HttpsError("failed-precondition", "Only an active approved voucher can be voided.");
+      if (!reason) throw new HttpsError("invalid-argument", "A void reason is required."); approvalAction = "void_petty_voucher";
+    } else throw new HttpsError("invalid-argument", "Petty voucher action is invalid.");
+    const approval = await claimManagerApproval(db, data, approvalAction, id, value, `${approvalAction}_${id}`);
+    const approvedBy = approval.record.approvedName || approval.record.approvedEmail || approval.record.approvedRole;
+    if (action === "approve") {
+      const requesterName = financeText(voucher.requesterName, 160).toLowerCase();
+      const managerNames = [approval.record.approvedName, String(approval.record.approvedEmail || "").split("@")[0]].map((x) => financeText(x, 160).toLowerCase()).filter(Boolean);
+      if (requesterName && managerNames.includes(requesterName)) {await db.ref().update(approval.usedWrites); throw new HttpsError("failed-precondition", "The requester cannot approve their own voucher.");}
+    }
+    let baseFunds = 0;
+    if (action === "approve") {
+      const [settingsSnap, replSnap] = await Promise.all([db.ref("/pettyCashSettings/openingBalance").get(), db.ref("/pettyCashReplenishments").get()]);
+      baseFunds = Financial.money(Number(settingsSnap.val() || 0) + Object.values(replSnap.val() || {}).reduce((sum, row) => sum + Financial.money(row && row.amount), 0));
+    }
+    let failure = "", duplicate = false;
+    const result = await db.ref("/pettyCashVouchers").transaction((all) => {
+      all = all || {}; const current = all[id]; failure = ""; duplicate = false;
+      if (!current) {failure = "Petty cash voucher not found."; return;}
+      if (action === "approve") {
+        if (current.status === "approved" && current.approvalId === approval.id) {duplicate = true; return all;}
+        if (current.status !== "pending") {failure = "Only pending vouchers can be approved."; return;}
+        if (!current.receiptImg) {failure = "A receipt is required before approval."; return;}
+        const disbursed = Object.values(all).reduce((sum, row) => sum + (row && row.status === "approved" && !row.voided ? Financial.money(row.amount) : 0), 0), available = Financial.money(baseFunds - disbursed);
+        if (value > available + 0.009) {failure = `Voucher exceeds available petty cash (${available.toFixed(2)}).`; return;}
+        all[id] = Object.assign({}, current, {status: "approved", approvedBy, approvedByUid: approval.record.approvedBy, approvedAt: now, approvalId: approval.id});
+      } else if (action === "reject") {
+        if (current.status === "rejected" && current.rejectionApprovalId === approval.id) {duplicate = true; return all;}
+        if (current.status !== "pending") {failure = "Only pending vouchers can be rejected."; return;}
+        all[id] = Object.assign({}, current, {status: "rejected", rejectReason: reason, rejectedBy: approvedBy, rejectedByUid: approval.record.approvedBy, rejectedAt: now, rejectionApprovalId: approval.id});
+      } else {
+        if (current.voided === true && current.voidApprovalId === approval.id) {duplicate = true; return all;}
+        if (current.status !== "approved" || current.voided === true) {failure = "Only an active approved voucher can be voided."; return;}
+        all[id] = Object.assign({}, current, {voided: true, voidReason: reason, voidedBy: approvedBy, voidedByUid: approval.record.approvedBy, voidedAt: now, voidApprovalId: approval.id});
+      }
+      return all;
+    }, undefined, false);
+    if (!result.committed) throw new HttpsError("failed-precondition", failure || "Voucher changed while it was being reviewed. Refresh and try again.");
+    await db.ref().update(Object.assign({}, approval.usedWrites, {[`operationalAudit/${now}_${id}`]: operationalAuditRecord(`${action}_petty_voucher`, "pettyVoucher", id, actor, {approvalId: approval.id, amount: value})}));
+    return {voucherId: id, action, at: now, duplicate};
+  },
+);
+
+exports.archiveActivityLog = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["registerOps"]), cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000;
+    const snap = await db.ref("/activityLog").orderByChild("ts").endAt(cutoff).limitToFirst(500).get(), writes = {}; let count = 0;
+    snap.forEach((child) => {writes[`activityLogArchive/${child.key}`] = Object.assign({}, child.val() || {}, {archivedAt: Date.now(), archivedBy: actor.uid}); writes[`activityLog/${child.key}`] = null; count++;});
+    if (count) await db.ref().update(writes); return {archived: count, hasMore: count === 500};
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Release 2C: bounded operational order projection.
 // /orders remains authoritative. /activeOrders contains only orders needed by
@@ -156,6 +377,19 @@ function shouldProjectOrder(order, activeShift, now = Date.now()) {
   if (order.source === "online" && age >= 0 && age <= ACTIVE_ONLINE_TTL_MS) return true;
   return false;
 }
+
+// ---------------------------------------------------------------------------
+// Release 5B: durable, idempotent POS offline-sale synchronization.
+// IndexedDB retains the client command. This callable is the only authority
+// that turns it into an order and applies denomination drawer deltas.
+// ---------------------------------------------------------------------------
+exports.syncOfflinePosSale = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["pos"]), data = request.data || {};
+    return OfflineSync.syncOfflinePosSaleCommand({db, actor, data, textField, money, listFromFirebase, activeOrderProjection});
+  },
+);
 
 function archivedOrderRecord(order, now = Date.now(), reason = "closed-shift") {
   return Object.assign({}, order, {
@@ -544,104 +778,247 @@ exports.pruneClosedShiftOrders = onValueWritten(
   },
 );
 
-/**
- * Server-authoritative inventory deduction + COGS snapshot.
- * Fires when an order reaches Completed or Received. Idempotent via a
- * transaction claim on /orders/{id}/inventoryDeducted, so it never
- * double-deducts alongside the client (whoever claims first wins).
- * This removes the "an admin browser must be open" dependency.
- */
-function baseQtyForSize(rec, b, size) {
-  const per = b["qty" + size];
-  if (per != null && per !== "") return Number(per) || 0;
-  const sm = (rec && rec.sizeMult) ? rec.sizeMult : {S: 1, M: 1.3, L: 1.6};
-  const mult = (sm[size] != null) ? sm[size] : 1;
-  return (Number(b.qty) || 0) * mult;
+// Release 3B recipe normalization, unit conversion, usage, and COGS all come
+// from the shared pure engine mirrored from assets/js/shared/costing.js.
+
+exports.validateRecipeDefinition = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase();
+    const actor = await requirePortalPermission(db, request, ["recipes"]);
+    const inventory = (await db.ref("/inventory").get()).val() || {};
+    const result = Costing.normalizeRecipe(request.data && request.data.recipe, inventory);
+    if (!result.ok) throw new HttpsError("invalid-argument", "Recipe is invalid: " + result.errors.slice(0, 5).map((x) => x.message).join(" | "), {errors: result.errors});
+    logger.info("Recipe definition validated", {uid: actor.uid, engineVersion: Costing.VERSION, warnings: result.warnings.length});
+    return {recipe: result.recipe, engineVersion: Costing.VERSION, warnings: result.warnings};
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Release 3C: immutable, idempotent financial movements and server projections.
+// ---------------------------------------------------------------------------
+function financeKey(value, label = "ID") {
+  const key = String(value || "").trim();
+  if (!/^[A-Za-z0-9_-]{1,160}$/.test(key)) throw new HttpsError("invalid-argument", `${label} is invalid.`);
+  return key;
 }
-function consumablesForServer(cat, size, invArr, catType) {
-  const t = catType[cat] || "";
-  if (t !== "drink" && t !== "food") return [];
-  return invArr.filter((i) => {
-    if ((i.type || "") !== "consumable") return false;
-    const sv = i.serves || "both";
-    if (t === "drink" && sv === "food") return false;
-    if (t === "food" && sv === "drink") return false;
-    if (i.size && i.size !== size) return false;
-    return true;
-  });
+function financeText(value, max = 160) { return String(value == null ? "" : value).trim().slice(0, max); }
+function financeDate(value) {
+  const date = String(value || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new HttpsError("invalid-argument", "Date must use YYYY-MM-DD.");
+  return date;
 }
-/* Mirrors the client choiceIngs (admin.html): a selected choice stacks the
-   shared global cost (posSettings.optionCosts[gid][optKey(label)]) PLUS the
-   per-recipe delta (recipes/{item}.choiceAdd[gid][optKey(label)]), size-aware.
-   Falls back to the legacy single-qty optionRecipes only if neither exists,
-   so client and server never diverge. Keep in sync with admin.html choiceIngs. */
-function optKeyServer(label) {
-  return String(label == null ? "" : label).replace(/[.#$[\]/]/g, "_");
+function financeDateFromTimestamp(value) {const parts = new Intl.DateTimeFormat("en-US", {timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit"}).formatToParts(new Date(Number(value) || Date.now())); const map = {}; parts.forEach((part) => {map[part.type] = part.value;}); return `${map.year}-${map.month}-${map.day}`;}
+const DEFAULT_CHART_ACCOUNTS = {
+  sales_revenue:{code:"4000", name:"Sales revenue", type:"revenue", active:true, system:true}, platform_commission:{code:"5100", name:"Platform commission", type:"expense", active:true, system:true}, purchases:{code:"5200", name:"Purchases / inventory", type:"expense", active:true, system:true}, rent:{code:"5300", name:"Rent", type:"expense", active:true, system:true}, utilities:{code:"5310", name:"Utilities", type:"expense", active:true, system:true}, salaries:{code:"5320", name:"Salaries", type:"expense", active:true, system:true}, bank_charges:{code:"5330", name:"Bank charges", type:"expense", active:true, system:true}, supplies:{code:"5340", name:"Supplies", type:"expense", active:true, system:true}, owner_draw:{code:"3100", name:"Owner draw", type:"equity", active:true, system:true}, capital_in:{code:"3000", name:"Owner capital", type:"equity", active:true, system:true}, other_income:{code:"4900", name:"Other income", type:"revenue", active:true, system:true}, other_expense:{code:"5900", name:"Other expense", type:"expense", active:true, system:true}
+};
+async function ensureChartAccounts(db) {const snap = await db.ref("/chartOfAccounts").get(), current = snap.val() || {}, writes = {}; Object.keys(DEFAULT_CHART_ACCOUNTS).forEach((id) => {if (!current[id]) writes[`chartOfAccounts/${id}`] = Object.assign({}, DEFAULT_CHART_ACCOUNTS[id], {createdAt: Date.now(), schemaVersion: 1});}); if (Object.keys(writes).length) await db.ref().update(writes); return Object.assign({}, DEFAULT_CHART_ACCOUNTS, current);}
+function chartAccountFor(chart, id) {const key = financeKey(id, "Accounting category"), row = chart[key]; if (!row || row.active === false) throw new HttpsError("failed-precondition", "The selected accounting category is inactive or missing."); return {id:key, row};}
+function chartAccountFromLegacy(chart, category, dir) {const text=financeText(category,80).toLowerCase(), map={"purchases":"purchases","supplier payment":"purchases","rent":"rent","utilities":"utilities","salaries":"salaries","bank charges":"bank_charges","owner draw":"owner_draw","capital in":"capital_in","sales deposit":"sales_revenue","platform payout":"sales_revenue"}, id=map[text]||(dir==="out"?"other_expense":"other_income");return chartAccountFor(chart,id);}
+function financeRecord(id, movement, actor) {
+  const now = Date.now();
+  return Object.assign({}, movement, {id, schemaVersion: 1, occurredAt: Number(movement.occurredAt || now), postedAt: now, actorUid: actor.uid, actorRole: actor.role, actorName: financeText(movement.actorName || actor.role, 100)});
 }
-function groupIdForLabelServer(item, label, optionGroups) {
-  const ids = Array.isArray(item && item.options) ? item.options : Object.keys(optionGroups || {});
-  for (const gid of ids) {
-    const g = optionGroups[gid];
-    if (g && Array.isArray(g.choices)) {
-      for (const c of g.choices) {
-        if (c && c.label === label) return gid;
-      }
+function cashLedgerRecord(entry, movementId, movement, actor) {
+  return {date: entry.date, accountId: entry.accountId, dir: entry.dir, category: entry.category, amount: Financial.money(entry.amount), party: financeText(entry.party || "", 120), ref: financeText(entry.ref || movement.sourceId || "", 120), source: movement.sourceType, linkId: movement.sourceId, movementId, method: financeText(entry.method || "", 60), auto: entry.auto === true, immutable: true, ts: Number(movement.occurredAt || Date.now()), by: actor.role};
+}
+async function commitFinancial(db, movementId, movement, actor, extraWrites = {}) {
+  movementId = financeKey(movementId, "Movement ID");
+  const ref = db.ref(`/financialMovements/${movementId}`);
+  const existing = await ref.get();
+  if (existing.exists()) return {duplicate: true, movement: existing.val()};
+  const record = financeRecord(movementId, movement, actor);
+  const writes = Object.assign({}, extraWrites, {[`financialMovements/${movementId}`]: record});
+  await db.ref().update(writes);
+  return {duplicate: false, movement: record};
+}
+function accountIdFor(dbAccounts, id) {
+  const key = financeKey(id, "Cash account");
+  if (!dbAccounts[key]) throw new HttpsError("failed-precondition", "The selected cash-flow account no longer exists.");
+  return key;
+}
+async function findOrder(db, orderId) {
+  const id = financeKey(orderId, "Order ID");
+  let node = "orders", snap = await db.ref(`/orders/${id}`).get();
+  if (!snap.exists()) { node = "archivedOrders"; snap = await db.ref(`/archivedOrders/${id}`).get(); }
+  if (!snap.exists()) throw new HttpsError("not-found", "Order not found.");
+  return {id, node, order: Object.assign({id}, snap.val() || {})};
+}
+async function postOrderFinancial(db, order, accounts, actor) {
+  if (!order || !order.id || order.paymentStatus === "pending" || !["Completed", "Received", "Archived"].includes(String(order.status || ""))) return {skipped: true};
+  const movement = Financial.orderPosting(order, accounts || {});
+  if (order.paymentApprovalId) {movement.approvalId = order.paymentApprovalId; movement.approvedBy = financeText(order.paymentApprovedBy, 160);}
+  movement.occurredAt = Number(order.completedAt || order.receivedAt || order.timestamp || Date.now());
+  movement.actorName = order.onDuty || order.staff || "POS";
+  const date = financeDateFromTimestamp(movement.occurredAt);
+  const writes = {};
+  (movement.cashEntries || []).forEach((entry) => { entry.date = date; entry.party = order.name || "Walk-in"; entry.ref = order.id; entry.auto = true; writes[`cfLedger/${entry.id}`] = cashLedgerRecord(entry, `sale_${order.id}`, movement, actor); });
+  return commitFinancial(db, `sale_${order.id}`, movement, actor, writes);
+}
+function addOrderCashWrites(writes, movement, movementId, order, actor) {
+  const occurredAt = Number(movement.occurredAt || Date.now());
+  const date = financeDateFromTimestamp(occurredAt);
+  (movement.cashEntries || []).forEach((entry, index) => {entry.date = date; entry.party = order.name || "Walk-in"; entry.ref = order.id; entry.auto = true; const id = `cf_${movementId}_${index}`; writes[`cfLedger/${id}`] = cashLedgerRecord(entry, movementId, movement, actor);});
+}
+
+exports.onOrderFinancialPosting = onValueWritten(
+  {ref: "/orders/{orderId}", region: ORDER_REGION, retry: true},
+  async (event) => {
+    const before = event.data.before.val() || {}, afterRaw = event.data.after.val();
+    if (!afterRaw) return;
+    const order = Object.assign({id: event.params.orderId}, afterRaw);
+    const db = getDatabase(); const accounts = (await db.ref("/cfAccounts").get()).val() || {}; const actor = {uid: "server", role: "server"};
+    await postOrderFinancial(db, order, accounts, actor);
+    const beforeRefund = Financial.money(before.refundAmount), afterRefund = Financial.money(order.refundAmount);
+    if (afterRefund > beforeRefund) {
+      const delta = Financial.money(afterRefund - beforeRefund), movement = Financial.reversalPosting(order, delta, "refund", accounts);
+      movement.occurredAt = Number(order.refundedAt || Date.now()); movement.actorName = order.refundedBy || order.staff || "Refund";
+      const movementId = `refund_${order.id}_${Math.round(afterRefund * 100)}`, writes = {}; addOrderCashWrites(writes, movement, movementId, order, actor); await commitFinancial(db, movementId, movement, actor, writes);
     }
-  }
-  return null;
-}
-function choiceIngsServer(item, rec, label, size, optionCosts, optionGroups) {
-  size = size || "M";
-  const gid = groupIdForLabelServer(item, label, optionGroups);
-  const lk = optKeyServer(label);
-  const out = [];
-  let found = false;
-  const push = (arr) => (arr || []).forEach((r) => {
-    if (!r || !r.ing) return;
-    let q = r["qty" + size];
-    if (q == null || q === "") q = 0;
-    out.push({ing: r.ing, qty: Number(q) || 0});
-  });
-  if (gid && optionCosts[gid] && optionCosts[gid][lk] && (optionCosts[gid][lk].ings || []).length) {
-    push(optionCosts[gid][lk].ings); found = true;
-  }
-  if (gid && rec && rec.choiceAdd && rec.choiceAdd[gid] && rec.choiceAdd[gid][lk] &&
-      (rec.choiceAdd[gid][lk].ings || []).length) {
-    push(rec.choiceAdd[gid][lk].ings); found = true;
-  }
-  return {ings: out, found};
-}
-function computeUsageServer(lineItems, recipes, optMap, inv, menuItems, catType, optionCosts, optionGroups) {
-  const usage = {};
-  (lineItems || []).forEach((li) => {
-    if (!li || !li.itemKey) return;
-    const qty = Number(li.qty) || 1;
-    const size = li.size || "M";
-    const rec = recipes[li.itemKey];
-    const item = Object.assign({key: li.itemKey}, menuItems[li.itemKey] || {});
-    if (rec && rec.base) {
-      rec.base.forEach((b) => {
-        if (!b.ing) return;
-        usage[b.ing] = (usage[b.ing] || 0) + baseQtyForSize(rec, b, size) * qty;
-      });
+    if (order.voided === true && before.voided !== true) {
+      const remaining = Financial.money(Math.max(0, Financial.money(order.total) - afterRefund));
+      if (remaining > 0) { const movement = Financial.reversalPosting(order, remaining, "void", accounts); movement.occurredAt = Number(order.voidedAt || Date.now()); movement.actorName = order.voidedBy || order.staff || "Void"; const movementId = `void_${order.id}`, writes = {}; addOrderCashWrites(writes, movement, movementId, order, actor); await commitFinancial(db, movementId, movement, actor, writes); }
     }
-    (li.optLabels || []).forEach((lb) => {
-      const res = choiceIngsServer(item, rec, lb, size, optionCosts, optionGroups);
-      if (res.found) {
-        res.ings.forEach((r) => {
-          if (r.ing) usage[r.ing] = (usage[r.ing] || 0) + r.qty * qty;
-        });
+  },
+);
+
+async function postShiftCashEntries(db, shiftId, entries, kind) {
+  const actor = {uid: "server", role: "server"};
+  for (let index = 0; index < (entries || []).length; index++) { const entry = entries[index] || {}, value = Financial.money(entry.amount); if (!(value > 0)) continue; const token = `${Number(entry.ts || 0)}_${index}`, movementId = `${kind}_${shiftId}_${token}`, isIn = kind === "shift_payin"; if (!isIn && /^petty cash replenish/i.test(String(entry.reason || ""))) continue; const lines = isIn ? [Financial.line("asset:register_cash", value, 0, entry.reason || "Cash in"), Financial.line(`offset:cash_in:${financeText(entry.reason || "other", 60)}`, 0, value, entry.reason || "Cash in")] : [Financial.line(`expense:cash_out:${financeText(entry.reason || "other", 60)}`, value, 0, entry.reason || "Cash out"), Financial.line("asset:register_cash", 0, value, entry.reason || "Cash out")]; const movement = Financial.movement(kind, "shift", shiftId, lines, {occurredAt: Number(entry.ts || Date.now()), actorName: entry.by || "Register"}); await commitFinancial(db, movementId, movement, actor); }
+}
+exports.onShiftPayInsFinancial = onValueWritten({ref: "/shifts/{shiftId}/payIns", region: ORDER_REGION, retry: true}, async (event) => {if (!event.data.after.exists()) return; await postShiftCashEntries(getDatabase(), event.params.shiftId, event.data.after.val() || [], "shift_payin");});
+exports.onShiftPayOutsFinancial = onValueWritten({ref: "/shifts/{shiftId}/payOuts", region: ORDER_REGION, retry: true}, async (event) => {if (!event.data.after.exists()) return; await postShiftCashEntries(getDatabase(), event.params.shiftId, event.data.after.val() || [], "shift_payout");});
+exports.onShiftOpenFinancial = onValueWritten({ref: "/shifts/{shiftId}", region: ORDER_REGION, retry: true}, async (event) => {if (event.data.before.exists() || !event.data.after.exists()) return; const shift=event.data.after.val()||{}, value=Financial.money(shift.openingFloat); if (!(value>0)) return; const db=getDatabase(), custody=(await db.ref("/cashCustody").get()).val()||{}, rows=Object.keys(custody).map((id)=>Object.assign({id},custody[id])).filter((x)=>Financial.money(x.remaining)>0).sort((a,b)=>Number(a.closedAt||0)-Number(b.closedAt||0)),writes={},allocations={};let need=value,fromCustody=0;for(const row of rows){if(need<=0)break;const available=Financial.money(row.remaining),use=Financial.money(Math.min(need,available));if(!(use>0))continue;allocations[row.id]=use;fromCustody=Financial.money(fromCustody+use);need=Financial.money(need-use);const next=Financial.money(available-use);writes[`cashCustody/${row.id}/remaining`]=next;writes[`cashCustody/${row.id}/status`]=next>0?"partially_issued":"issued_to_float";writes[`cashCustody/${row.id}/issuedToFloat`]=Financial.money(Number(row.issuedToFloat||0)+use);writes[`cashCustody/${row.id}/lastIssuedShiftId`]=event.params.shiftId;writes[`cashCustody/${row.id}/lastIssuedAt`]=Date.now();}const lines=[Financial.line("asset:register_cash",value,0,"Opening float issued")];if(fromCustody>0)lines.push(Financial.line("asset:cash_awaiting_deposit",0,fromCustody,"Opening float from custody"));if(need>0)lines.push(Financial.line("equity:cash_float_source",0,need,"Opening float from outside custody"));const movement=Financial.movement("shift_opening_float","shift",event.params.shiftId,lines,{occurredAt:Number(shift.openAt||Date.now()),actorName:shift.staff||"Register",custodyAllocations:allocations});await commitFinancial(db,`shift_open_float_${event.params.shiftId}`,movement,{uid:"server",role:"server"},writes);});
+exports.onShiftCloseFinancial = onValueWritten({ref: "/shifts/{shiftId}/status", region: ORDER_REGION, retry: true}, async (event) => {if (event.data.after.val() !== "closed" || event.data.before.val() === "closed") return; const db = getDatabase(), id=event.params.shiftId, shift = (await db.ref(`/shifts/${id}`).get()).val() || {}, actor={uid:"server",role:"server"}, occurredAt=Number(shift.closeAt||Date.now()), counted=Financial.money(shift.countedCash); if (counted>0) {const custody=Financial.movement("shift_cash_to_custody","shift",id,[Financial.line("asset:cash_awaiting_deposit",counted,0,"Closed shift cash custody"),Financial.line("asset:register_cash",0,counted,"Closed shift cash custody")],{occurredAt,actorName:shift.staff||"Register"}); await commitFinancial(db,`shift_custody_${id}`,custody,actor,{[`cashCustody/${id}`]:{shiftId:id,staff:financeText(shift.staff,100),amount:counted,depositedAmount:0,remaining:counted,status:"awaiting_deposit",closedAt:occurredAt,movementId:`shift_custody_${id}`,schemaVersion:1}});} const value = Financial.money(Math.abs(Number(shift.variance) || 0)); if (!(value > 0)) return; const short = Number(shift.variance) < 0, lines = short ? [Financial.line("expense:cash_shortage", value, 0, "Cash shortage"), Financial.line("asset:register_cash", 0, value, "Cash shortage")] : [Financial.line("asset:register_cash", value, 0, "Cash overage"), Financial.line("revenue:cash_overage", 0, value, "Cash overage")]; const movement = Financial.movement("shift_cash_variance", "shift", id, lines, {occurredAt, actorName: shift.staff || "Register"}); await commitFinancial(db, `shift_variance_${id}`, movement, actor);});
+
+exports.onPettyVoucherFinancial = onValueWritten(
+  {ref: "/pettyCashVouchers/{voucherId}", region: ORDER_REGION, retry: true},
+  async (event) => {const before = event.data.before.val() || {}, after = event.data.after.val(); if (!after) return; const db = getDatabase(), id = event.params.voucherId, value = Financial.money(after.amount), actor = {uid: "server", role: "server"}; if (after.status === "approved" && before.status !== "approved" && value > 0) {const movement = Financial.movement("petty_cash_expense", "pettyVoucher", id, [Financial.line(`expense:petty:${financeText(after.category || "other", 60)}`, value, 0, after.category), Financial.line("asset:petty_cash", 0, value, "Petty cash")], {occurredAt: Number(after.approvedAt || Date.now()), actorName: after.approvedBy || "Manager"}); await commitFinancial(db, `petty_${id}`, movement, actor);} if (after.voided === true && before.voided !== true && after.status === "approved" && value > 0) {const movement = Financial.movement("petty_cash_void", "pettyVoucher", id, [Financial.line("asset:petty_cash", value, 0, "Petty cash restored"), Financial.line(`expense:petty:${financeText(after.category || "other", 60)}`, 0, value, "Reverse petty expense")], {occurredAt: Number(after.voidedAt || Date.now()), actorName: "Manager"}); await commitFinancial(db, `petty_void_${id}`, movement, actor);}},
+);
+exports.onPettyReplenishmentFinancial = onValueWritten(
+  {ref: "/pettyCashReplenishments/{replenishmentId}", region: ORDER_REGION, retry: true},
+  async (event) => {if (!event.data.after.exists() || event.data.before.exists()) return; const row = event.data.after.val() || {}, value = Financial.money(row.amount); if (!(value > 0)) return; const id = event.params.replenishmentId, source = row.source === "register" ? "asset:register_cash" : "equity:owner_capital", movement = Financial.movement("petty_cash_replenishment", "pettyReplenishment", id, [Financial.line("asset:petty_cash", value, 0, "Petty cash replenished"), Financial.line(source, 0, value, row.source || "owner")], {occurredAt: Number(row.ts || Date.now()), actorName: row.by || "Admin"}); await commitFinancial(getDatabase(), `petty_replenish_${id}`, movement, {uid: "server", role: "server"});},
+);
+async function backfillPettyVoucher(db, id, row) {const value = Financial.money(row && row.amount), actor = {uid: "server", role: "server"}; if (!row || row.status !== "approved" || !(value > 0)) return; const expense = Financial.movement("petty_cash_expense", "pettyVoucher", id, [Financial.line(`expense:petty:${financeText(row.category || "other", 60)}`, value, 0, row.category), Financial.line("asset:petty_cash", 0, value, "Petty cash")], {occurredAt: Number(row.approvedAt || row.createdAt || Date.now()), actorName: row.approvedBy || "Manager"}); await commitFinancial(db, `petty_${id}`, expense, actor); if (row.voided === true) {const reversal = Financial.movement("petty_cash_void", "pettyVoucher", id, [Financial.line("asset:petty_cash", value, 0, "Petty cash restored"), Financial.line(`expense:petty:${financeText(row.category || "other", 60)}`, 0, value, "Reverse petty expense")], {occurredAt: Number(row.voidedAt || Date.now()), actorName: "Manager"}); await commitFinancial(db, `petty_void_${id}`, reversal, actor);}}
+async function backfillPettyReplenishment(db, id, row) {const value = Financial.money(row && row.amount); if (!(value > 0)) return; const source = row.source === "register" ? "asset:register_cash" : "equity:owner_capital", movement = Financial.movement("petty_cash_replenishment", "pettyReplenishment", id, [Financial.line("asset:petty_cash", value, 0, "Petty cash replenished"), Financial.line(source, 0, value, row.source || "owner")], {occurredAt: Number(row.ts || Date.now()), actorName: row.by || "Admin"}); await commitFinancial(db, `petty_replenish_${id}`, movement, {uid: "server", role: "server"});}
+async function backfillShiftVariance(db, id, shift) {if (!shift || shift.status !== "closed") return; const value = Financial.money(Math.abs(Number(shift.variance) || 0)); if (!(value > 0)) return; const short = Number(shift.variance) < 0, lines = short ? [Financial.line("expense:cash_shortage", value, 0, "Cash shortage"), Financial.line("asset:register_cash", 0, value, "Cash shortage")] : [Financial.line("asset:register_cash", value, 0, "Cash overage"), Financial.line("revenue:cash_overage", 0, value, "Cash overage")]; const movement = Financial.movement("shift_cash_variance", "shift", id, lines, {occurredAt: Number(shift.closeAt || Date.now()), actorName: shift.staff || "Register"}); await commitFinancial(db, `shift_variance_${id}`, movement, {uid: "server", role: "server"});}
+async function backfillOpeningBalance(db, movementId, sourceType, sourceId, assetAccount, rawAmount, occurredAt, label) {
+  const value = Financial.money(rawAmount); if (!value) return {skipped: true}; const absolute = Math.abs(value), lines = value > 0 ? [Financial.line(assetAccount, absolute, 0, label), Financial.line("equity:opening_balance", 0, absolute, label)] : [Financial.line("equity:opening_balance", absolute, 0, label), Financial.line(assetAccount, 0, absolute, label)];
+  return commitFinancial(db, movementId, Financial.movement("opening_balance", sourceType, sourceId, lines, {occurredAt: Number(occurredAt || Date.now()), actorName: "3C migration"}), {uid: "server", role: "server"});
+}
+async function backfillFinancialDocument(db, id, row, isReceivable, accounts) {
+  if (!row) return []; const value = Financial.money(row.amount); if (!(value > 0)) return []; const path = isReceivable ? "receivables" : "payables", source = isReceivable ? "receivable" : "payable", type = financeText(row.type || "legacy", 60), party = financeText(row.party || "Legacy balance", 120), occurredAt = Number(row.ts || Date.parse(`${row.date || ""}T00:00:00+08:00`) || Date.now()), movementId = financeText(row.movementId, 160) || `legacy_${isReceivable ? "ar" : "ap"}_${id}`;
+  const recognitionLines = isReceivable ? [Financial.line(`asset:receivable:${id}`, value, 0, party), Financial.line(`revenue:${type}`, 0, value, party)] : [Financial.line(`expense_or_inventory:${type}`, value, 0, party), Financial.line(`liability:payable:${id}`, 0, value, party)];
+  const results = [await commitFinancial(db, movementId, Financial.movement(`${source}_created`, source, id, recognitionLines, {occurredAt, actorName: "3C migration"}), {uid: "server", role: "server"})];
+  const settled = isReceivable ? row.status === "collected" : row.status === "paid"; if (!settled || !row.accountId || !accounts[row.accountId]) return results; const settlementId = financeText(row.settlementMovementId, 160) || `legacy_${isReceivable ? "ar_collect" : "ap_pay"}_${id}`, asset = `asset:cash_account:${row.accountId}`, settlementLines = isReceivable ? [Financial.line(asset, value, 0, "Legacy AR collection"), Financial.line(`asset:receivable:${id}`, 0, value, "Legacy AR collection")] : [Financial.line(`liability:payable:${id}`, value, 0, "Legacy AP payment"), Financial.line(asset, 0, value, "Legacy AP payment")];
+  results.push(await commitFinancial(db, settlementId, Financial.movement(isReceivable ? "receivable_collected" : "payable_paid", path, id, settlementLines, {occurredAt: Number(row.collectedAt || row.paidAt || occurredAt), actorName: "3C migration"}), {uid: "server", role: "server"})); return results;
+}
+
+exports.postFinancialCommand = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(); const data = request.data || {}; const action = financeText(data.action, 40);
+    const perms = action.includes("payable") ? ["payables", "purchases"] : action.includes("receivable") ? ["receivables"] : ["cashflow", "receivables", "payables", "purchases"];
+    const actor = await requirePortalPermission(db, request, perms); const commandId = financeKey(data.commandId, "Command ID");
+    const accounts = (await db.ref("/cfAccounts").get()).val() || {}, chart = await ensureChartAccounts(db); const now = Date.now(); let movement, writes = {}, result = {};
+    function amount(v) { const x = Financial.money(v); if (!(x > 0)) throw new HttpsError("invalid-argument", "Amount must be greater than zero."); return x; }
+    function addCash(id, entry) { writes[`cfLedger/${id}`] = cashLedgerRecord(entry, commandId, movement, actor); }
+    if (action === "manual") {
+      const accountId = accountIdFor(accounts, data.accountId), value = amount(data.amount), dir = data.dir === "out" ? "out" : "in", selected = data.offsetAccountId ? chartAccountFor(chart, data.offsetAccountId) : chartAccountFromLegacy(chart, data.category, dir), category = financeText(selected.row.name, 80), asset = `asset:cash_account:${accountId}`, offset = `${selected.row.type}:${selected.id}`;
+      movement = Financial.movement("manual_cash", "manual", commandId, dir === "in" ? [Financial.line(asset, value, 0, category), Financial.line(offset, 0, value, category)] : [Financial.line(offset, value, 0, category), Financial.line(asset, 0, value, category)], {occurredAt: now, actorName: financeText(data.actorName || "")});
+      addCash(`fm_${commandId}`, {date: financeDate(data.date), accountId, dir, category, amount: value, party: data.party, ref: data.ref, auto: false});
+    } else if (action === "transfer") {
+      const from = accountIdFor(accounts, data.fromAccountId), to = accountIdFor(accounts, data.toAccountId); if (from === to) throw new HttpsError("invalid-argument", "Transfer accounts must be different."); const value = amount(data.amount), date = financeDate(data.date);
+      movement = Financial.movement("cash_transfer", "transfer", commandId, [Financial.line(`asset:cash_account:${to}`, value, 0, "Transfer in"), Financial.line(`asset:cash_account:${from}`, 0, value, "Transfer out")], {occurredAt: now});
+      addCash(`fm_${commandId}_out`, {date, accountId: from, dir: "out", category: "Transfer", amount: value, party: `→ ${financeText(accounts[to].name)}`}); addCash(`fm_${commandId}_in`, {date, accountId: to, dir: "in", category: "Transfer", amount: value, party: `← ${financeText(accounts[from].name)}`});
+    } else if (action === "create_receivable" || action === "create_payable") {
+      const isAr = action === "create_receivable", docId = financeKey(data.documentId, isAr ? "Receivable ID" : "Payable ID"), value = amount(data.amount), party = financeText(data.party, 120); if (!party) throw new HttpsError("invalid-argument", "Party is required.");
+      movement = Financial.movement(isAr ? "receivable_created" : "payable_created", isAr ? "receivable" : "payable", docId, isAr ? [Financial.line(`asset:receivable:${docId}`, value, 0, party), Financial.line(`revenue:${financeText(data.type || "other")}`, 0, value, party)] : [Financial.line(`expense_or_inventory:${financeText(data.type || "other")}`, value, 0, party), Financial.line(`liability:payable:${docId}`, 0, value, party)], {occurredAt: now});
+      const record = {party, type: financeText(data.type || "other", 60), amount: value, date: financeDate(data.date), due: data.due ? financeDate(data.due) : "", ref: financeText(data.ref, 120), status: "open", movementId: commandId, ts: now, createdBy: actor.uid, schemaVersion: 1}; writes[`${isAr ? "receivables" : "payables"}/${docId}`] = record; result.documentId = docId;
+    } else if (["collect_receivable", "pay_payable", "reverse_receivable", "reverse_payable"].includes(action)) {
+      const isAr = action.includes("receivable"), isReverse = action.startsWith("reverse_"), docId = financeKey(data.documentId, "Document ID"), path = isAr ? "receivables" : "payables", snap = await db.ref(`/${path}/${docId}`).get(); if (!snap.exists()) throw new HttpsError("not-found", "Financial document not found."); const doc = snap.val(); if (doc.status !== "open") throw new HttpsError("failed-precondition", "This document is no longer open."); const value = amount(doc.amount);
+      if (isReverse) {
+        movement = Financial.movement(isAr ? "receivable_reversed" : "payable_reversed", path, docId, isAr ? [Financial.line(`revenue:${doc.type || "other"}`, value, 0, "Reverse receivable"), Financial.line(`asset:receivable:${docId}`, 0, value, "Reverse receivable")] : [Financial.line(`liability:payable:${docId}`, value, 0, "Reverse payable"), Financial.line(`expense_or_inventory:${doc.type || "other"}`, 0, value, "Reverse payable")], {occurredAt: now}); writes[`${path}/${docId}/status`] = "reversed"; writes[`${path}/${docId}/reversedAt`] = now; writes[`${path}/${docId}/reversalMovementId`] = commandId;
       } else {
-        let o = null; /* legacy single-ingredient flat qty */
-        if (rec && rec.options) o = rec.options.find((x) => x.label === lb) || null;
-        if (!o || !o.ing) o = optMap[lb] || null;
-        if (o && o.ing) usage[o.ing] = (usage[o.ing] || 0) + (Number(o.qty) || 0) * qty;
+        const accountId = accountIdFor(accounts, data.accountId), date = financeDate(data.date), asset = `asset:cash_account:${accountId}`;
+        movement = Financial.movement(isAr ? "receivable_collected" : "payable_paid", path, docId, isAr ? [Financial.line(asset, value, 0, "AR collection"), Financial.line(`asset:receivable:${docId}`, 0, value, "AR collection")] : [Financial.line(`liability:payable:${docId}`, value, 0, "AP payment"), Financial.line(asset, 0, value, "AP payment")], {occurredAt: now}); addCash(`fm_${commandId}`, {date, accountId, dir: isAr ? "in" : "out", category: isAr ? "AR collection" : "AP payment", amount: value, party: doc.party, ref: doc.ref}); writes[`${path}/${docId}/status`] = isAr ? "collected" : "paid"; writes[`${path}/${docId}/${isAr ? "collectedAt" : "paidAt"}`] = now; writes[`${path}/${docId}/settlementMovementId`] = commandId; writes[`${path}/${docId}/accountId`] = accountId;
       }
-    });
-    /* consumables are now explicit recipe rows (rec.base) — no auto-by-category deduction */
-  });
-  return usage;
-}
+    } else if (action === "payout_deposit") {
+      const payoutId = financeKey(data.payoutId, "Payout ID"), snap = await db.ref(`/platformPayouts/${payoutId}`).get(); if (!snap.exists()) throw new HttpsError("not-found", "Payout not found."); const payout = snap.val(); if (payout.depositMovementId) throw new HttpsError("already-exists", "This payout deposit is already recorded."); const accountId = accountIdFor(accounts, data.accountId), value = amount(payout.actualPayout);
+      movement = Financial.movement("platform_payout_deposit", "platformPayout", payoutId, [Financial.line(`asset:cash_account:${accountId}`, value, 0, "Platform payout deposit"), Financial.line(`asset:platform_clearing:${payout.channel}`, 0, value, "Clear platform payout")], {occurredAt: now}); addCash(`fm_${commandId}`, {date: financeDate(data.date), accountId, dir: "in", category: "Platform payout", amount: value, party: payout.channel, ref: payoutId}); writes[`platformPayouts/${payoutId}/depositMovementId`] = commandId; writes[`platformPayouts/${payoutId}/depositedAt`] = now; writes[`platformPayouts/${payoutId}/accountId`] = accountId;
+    } else if (action === "cash_deposit") {
+      const accountId = accountIdFor(accounts, data.accountId), allocations = data.allocations || {}, ids = Object.keys(allocations); if (!ids.length) throw new HttpsError("invalid-argument", "Select cash custody records to deposit."); let value = 0; for (const id of ids) {const key = financeKey(id, "Custody ID"), row = (await db.ref(`/cashCustody/${key}`).get()).val(); if (!row) throw new HttpsError("not-found", `Cash custody ${key} was not found.`); const use = amount(allocations[id]), remaining = Financial.money(row.remaining != null ? row.remaining : row.amount); if (use > remaining + 0.009) throw new HttpsError("failed-precondition", `Deposit exceeds remaining custody for ${key}.`); value = Financial.money(value + use); const next = Financial.money(remaining - use); writes[`cashCustody/${key}/depositedAmount`] = Financial.money(Number(row.depositedAmount || 0) + use); writes[`cashCustody/${key}/remaining`] = next; writes[`cashCustody/${key}/status`] = next > 0 ? "partially_deposited" : "deposited"; writes[`cashCustody/${key}/lastDepositMovementId`] = commandId; writes[`cashCustody/${key}/lastDepositAt`] = now; }
+      movement = Financial.movement("register_cash_deposit", "cashCustody", ids.join("_"), [Financial.line(`asset:cash_account:${accountId}`, value, 0, "Register cash deposited"), Financial.line("asset:cash_awaiting_deposit", 0, value, "Clear cash custody")], {occurredAt: now}); addCash(`fm_${commandId}`, {date: financeDate(data.date), accountId, dir: "in", category: "Register cash deposit", amount: value, party: "Register cash custody", ref: ids.join(",")}); result.amount = value;
+    } else throw new HttpsError("invalid-argument", "Unsupported financial command.");
+    const committed = await commitFinancial(db, commandId, movement, actor, writes); return Object.assign(result, {movementId: commandId, duplicate: committed.duplicate});
+  },
+);
+
+exports.settlePlatformPayout = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["receivables"]); const data = request.data || {}, payoutId = financeKey(data.payoutId, "Payout ID"), channel = financeText(data.channel, 30); if (!["grabfood", "foodpanda"].includes(channel)) throw new HttpsError("invalid-argument", "Platform is invalid.");
+    const ids = Array.isArray(data.orderIds) ? [...new Set(data.orderIds.map((id) => financeKey(id, "Order ID")))] : []; if (!ids.length) throw new HttpsError("invalid-argument", "Select at least one order.");
+    const found = await Promise.all(ids.map((id) => findOrder(db, id))); let expected = 0; found.forEach((entry) => { const o = entry.order; if (o.channel !== channel || o.voided || (o.settlementStatus || "unsettled") === "settled") throw new HttpsError("failed-precondition", `Order ${entry.id} is not eligible for this payout.`); expected += Financial.money(o.netPlatform != null ? o.netPlatform : Financial.money(o.grossPlatform || o.total) - Financial.money(o.commission)); }); expected = Financial.money(expected);
+    const actual = Financial.money(data.actualPayout); if (actual < 0) throw new HttpsError("invalid-argument", "Actual payout cannot be negative."); const approval = await claimManagerApproval(db, data, "settle_platform_payout", payoutId, actual, `payout_${payoutId}`), variance = Financial.money(actual - expected), defs = (await db.ref("/platformVarAccounts").get()).val() || {}, allocations = data.allocations || {}; let netAlloc = 0; const lines = [Financial.line(`asset:platform_clearing:${channel}`, actual, 0, "Actual payout clearing")];
+    Object.keys(allocations).forEach((id) => { const value = Financial.money(allocations[id]); if (!(value > 0) || !defs[id]) throw new HttpsError("invalid-argument", "Variance allocation is invalid."); if (defs[id].type === "revenue") {netAlloc += value; lines.push(Financial.line(`revenue:platform_variance:${id}`, 0, value, defs[id].name));} else {netAlloc -= value; lines.push(Financial.line(`expense:platform_variance:${id}`, value, 0, defs[id].name));} });
+    if (Math.abs(Financial.money(netAlloc) - variance) > 0.009) throw new HttpsError("failed-precondition", "Variance allocations do not equal the server-calculated variance."); lines.push(Financial.line(`asset:platform_receivable:${channel}`, 0, expected, "Settle platform receivable")); const movement = Financial.movement("platform_payout_settlement", "platformPayout", payoutId, lines, {occurredAt: Date.now(),approvalId:approval.id,approvedBy:approval.record.approvedEmail||approval.record.approvedRole});
+    const writes = Object.assign({}, approval.usedWrites), settledAt = Date.now(); found.forEach((entry) => {writes[`${entry.node}/${entry.id}/settlementStatus`] = "settled"; writes[`${entry.node}/${entry.id}/payoutId`] = payoutId;}); writes[`platformPayouts/${payoutId}`] = {channel, periodStart: financeText(data.periodStart, 10), periodEnd: financeText(data.periodEnd, 10), expectedNet: expected, actualPayout: actual, variance, allocations, orderIds: ids, by: actor.role, actorUid: actor.uid, approvedBy: approval.record.approvedEmail || approval.record.approvedRole, approvalId: approval.id, settledAt, movementId: `payout_${payoutId}`, schemaVersion: 1};
+    const committed = await commitFinancial(db, `payout_${payoutId}`, movement, actor, writes); return {payoutId, expectedNet: expected, actualPayout: actual, variance, orderCount: ids.length, duplicate: committed.duplicate};
+  },
+);
+
+exports.processOrderAdjustment = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["registerOps"]); const data = request.data || {}, found = await findOrder(db, data.orderId), o = found.order;
+    if (data.action === "confirm_payment") { if (o.paymentStatus === "confirmed") return {alreadyConfirmed: true}; const approval = await claimManagerApproval(db, data, "confirm_payment", o.id, Financial.money(o.total), `confirm_${o.id}`), confirmedAt = Date.now(), approvedBy=approval.record.approvedEmail || approval.record.approvedRole, confirmed = Object.assign({}, o, {paymentStatus: "confirmed", verifiedAt: confirmedAt, verifiedBy: actor.uid,paymentApprovalId:approval.id,paymentApprovedBy:approvedBy}), accounts = (await db.ref("/cfAccounts").get()).val() || {}, confirmWrites = Object.assign({}, approval.usedWrites, {[`${found.node}/${o.id}/paymentStatus`]:"confirmed", [`${found.node}/${o.id}/verifiedAt`]:confirmedAt, [`${found.node}/${o.id}/verifiedBy`]:actor.uid, [`${found.node}/${o.id}/paymentApprovalId`]:approval.id, [`${found.node}/${o.id}/paymentApprovedBy`]:approvedBy}); await db.ref().update(confirmWrites); const posted = await postOrderFinancial(db, confirmed, accounts, {uid: "server", role: "server"}); return {confirmed: true, financialPosted: !posted.skipped, duplicate: posted.duplicate === true}; }
+    const reason = financeText(data.reason, 300); if (!reason) throw new HttpsError("invalid-argument", "Reason is required."); const accounts = (await db.ref("/cfAccounts").get()).val() || {}; await postOrderFinancial(db, o, accounts, {uid: "server", role: "server"});
+    const now = Date.now(), writes = {}; let movementId, movement;
+    if (data.action === "refund") { const delta = Financial.money(data.amount), already = Financial.money(o.refundAmount), max = Financial.money(o.total); if (!(delta > 0) || already + delta > max + 0.009) throw new HttpsError("invalid-argument", "Refund exceeds the refundable amount."); const cumulative = Financial.money(already + delta), original = (Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment||"Cash",amount:o.total}]), prior = o.refundPayments || {}, tender = Array.isArray(data.refundPayments)?data.refundPayments.map((row) => ({method:financeText(row.method,60),amount:Financial.money(row.amount)})).filter((row) => row.method&&row.amount>0):[]; if ((o.channel||"instore") === "instore") {if (Math.abs(tender.reduce((s,row)=>Financial.money(s+row.amount),0)-delta)>0.009) throw new HttpsError("invalid-argument","Refund tender allocations must equal the refund amount."); const allowed={}; original.forEach((row)=>{allowed[row.method]=Financial.money((allowed[row.method]||0)+Financial.money(row.amount));}); tender.forEach((row)=>{if (!allowed[row.method] || Financial.money((prior[row.method]||0)+row.amount)>allowed[row.method]+0.009) throw new HttpsError("invalid-argument",`Refund through ${row.method} exceeds the original payment.`);});} movementId = `refund_${o.id}_${Math.round(cumulative * 100)}`; const approval = await claimManagerApproval(db, data, "refund", o.id, delta, movementId); movement = Financial.reversalPosting(o, delta, "refund", accounts, tender); Object.assign(writes, approval.usedWrites); const nextRefundPayments=Object.assign({},prior);tender.forEach((row)=>{nextRefundPayments[row.method]=Financial.money((nextRefundPayments[row.method]||0)+row.amount);}); writes[`${found.node}/${o.id}/refundAmount`] = cumulative; writes[`${found.node}/${o.id}/refundPayments`] = nextRefundPayments; writes[`${found.node}/${o.id}/refundHistory/${movementId}`] = {amount:delta,payments:tender,reason,at:now,by:actor.uid,approvalId:approval.id,approvedBy:approval.record.approvedEmail||approval.record.approvedRole}; writes[`${found.node}/${o.id}/refundReason`] = reason; writes[`${found.node}/${o.id}/refundedAt`] = now; writes[`${found.node}/${o.id}/refundedBy`] = actor.uid; writes[`${found.node}/${o.id}/refunded`] = true; }
+    else if (data.action === "void") { if (o.voided) throw new HttpsError("already-exists", "Order is already voided."); const value = Financial.money(Math.max(0, Financial.money(o.total) - Financial.money(o.refundAmount))); if (!(value > 0)) throw new HttpsError("failed-precondition", "Nothing remains to void."); movementId = `void_${o.id}`; const approval = await claimManagerApproval(db, data, "void", o.id, value, movementId), original=(Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment||"Cash",amount:o.total}]), prior=o.refundPayments||{}, tender=[]; if ((o.channel||"instore")==="instore") {let rem=value; original.forEach((row)=>{const available=Financial.money(Math.max(0,Financial.money(row.amount)-Financial.money(prior[row.method]))),use=Financial.money(Math.min(rem,available));if(use>0){tender.push({method:row.method,amount:use});rem=Financial.money(rem-use);}});if(rem>0.009)throw new HttpsError("failed-precondition","Original payment allocation cannot support the void reversal.");} movement = Financial.reversalPosting(o, value, "void", accounts, tender); Object.assign(writes, approval.usedWrites); writes[`${found.node}/${o.id}/voided`] = true; writes[`${found.node}/${o.id}/voidPayments`] = tender; writes[`${found.node}/${o.id}/voidApprovalId`] = approval.id; writes[`${found.node}/${o.id}/voidApprovedBy`] = approval.record.approvedEmail||approval.record.approvedRole; writes[`${found.node}/${o.id}/voidReason`] = reason; writes[`${found.node}/${o.id}/voidedAt`] = now; writes[`${found.node}/${o.id}/voidedBy`] = actor.uid; }
+    else throw new HttpsError("invalid-argument", "Adjustment action is invalid.");
+    if (data.restock === true) {writes[`${found.node}/${o.id}/inventoryReversalRequested`] = true; writes[`${found.node}/${o.id}/inventoryReversalReason`] = reason;}
+    movement.occurredAt = now; movement.actorName = actor.role; movement.approvalId=financeText(data.approvalId,160); addOrderCashWrites(writes, movement, movementId, o, actor); const committed = await commitFinancial(db, movementId, movement, actor, writes); return {movementId, duplicate: committed.duplicate};
+  },
+);
+
+exports.ensureFinancialLedger = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 540, memory: "512MiB"},
+  async (request) => {
+    const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["cashflow", "receivables"]);
+    const [ordersSnap, archiveSnap, accountsSnap, ledgerSnap, shiftsSnap, vouchersSnap, replenishmentsSnap, pettySettingsSnap, receivablesSnap, payablesSnap] = await Promise.all([db.ref("/orders").get(), db.ref("/archivedOrders").get(), db.ref("/cfAccounts").get(), db.ref("/cfLedger").get(), db.ref("/shifts").get(), db.ref("/pettyCashVouchers").get(), db.ref("/pettyCashReplenishments").get(), db.ref("/pettyCashSettings").get(), db.ref("/receivables").get(), db.ref("/payables").get()]);
+    const accounts = accountsSnap.val() || {}, legacyLedger = ledgerSnap.val() || {}, all = Object.assign({}, archiveSnap.val() || {}, ordersSnap.val() || {}); let posted = 0, duplicates = 0, skipped = 0; const serverActor = {uid: "server", role: "server"};
+    for (const id of Object.keys(all)) { try {const order = Object.assign({id}, all[id]), result = await postOrderFinancial(db, order, accounts, serverActor); if (result.skipped) skipped++; else if (result.duplicate) duplicates++; else posted++; const refund = Financial.money(order.refundAmount); if (refund > 0) {const movementId = `refund_${id}_${Math.round(refund * 100)}`, movement = Financial.reversalPosting(order, refund, "refund", accounts), writes = {}; movement.occurredAt = Number(order.refundedAt || order.timestamp || Date.now()); if (!legacyLedger[`cfrefund_${id}`]) addOrderCashWrites(writes, movement, movementId, order, serverActor); const rr = await commitFinancial(db, movementId, movement, serverActor, writes); rr.duplicate ? duplicates++ : posted++;} if (order.voided) {const remaining = Financial.money(Math.max(0, Financial.money(order.total) - refund)); if (remaining > 0) {const movementId = `void_${id}`, movement = Financial.reversalPosting(order, remaining, "void", accounts), writes = {}; movement.occurredAt = Number(order.voidedAt || order.timestamp || Date.now()); addOrderCashWrites(writes, movement, movementId, order, serverActor); const vr = await commitFinancial(db, movementId, movement, serverActor, writes); vr.duplicate ? duplicates++ : posted++;}}} catch (error) {logger.error("3C backfill order failed", {id, error: String(error)}); throw new HttpsError("internal", `Backfill stopped at order ${id}. It is safe to retry.`);} }
+    const shifts = shiftsSnap.val() || {}; for (const id of Object.keys(shifts)) {await postShiftCashEntries(db, id, shifts[id].payIns || [], "shift_payin"); await postShiftCashEntries(db, id, shifts[id].payOuts || [], "shift_payout"); await backfillShiftVariance(db, id, shifts[id]);}
+    const vouchers = vouchersSnap.val() || {}; for (const id of Object.keys(vouchers)) await backfillPettyVoucher(db, id, vouchers[id]);
+    const replenishments = replenishmentsSnap.val() || {}; for (const id of Object.keys(replenishments)) await backfillPettyReplenishment(db, id, replenishments[id]);
+    for (const id of Object.keys(accounts)) {const account = accounts[id] || {}, occurredAt = Date.parse(`${account.openingDate || ""}T00:00:00+08:00`) || account.ts || Date.now(); await backfillOpeningBalance(db, `opening_cash_${id}`, "cashAccount", id, `asset:cash_account:${id}`, account.opening, occurredAt, `Opening balance — ${financeText(account.name || id, 80)}`);}
+    const pettySettings = pettySettingsSnap.val() || {}; await backfillOpeningBalance(db, "opening_petty_cash", "pettyCash", "pettyCash", "asset:petty_cash", pettySettings.openingBalance, pettySettings.updatedAt || Date.now(), "Petty cash opening balance");
+    const receivables = receivablesSnap.val() || {}; for (const id of Object.keys(receivables)) await backfillFinancialDocument(db, id, receivables[id], true, accounts);
+    const payables = payablesSnap.val() || {}; for (const id of Object.keys(payables)) await backfillFinancialDocument(db, id, payables[id], false, accounts);
+    const scanned = Object.keys(all).length + Object.keys(shifts).length + Object.keys(vouchers).length + Object.keys(replenishments).length + Object.keys(accounts).length + Object.keys(receivables).length + Object.keys(payables).length + 1; await db.ref("/systemMaintenance/financialLedgerInitialized").set({at: Date.now(), by: actor.uid, scanned, posted, duplicates, skipped}); return {scanned, posted, duplicates, skipped};
+  },
+);
+
+exports.manageChartAccount = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {const db=getDatabase(), actor=await requirePortalUser(db,request);if(!["owner","superadmin","admin","manager"].includes(actor.role))throw new HttpsError("permission-denied","Manager access is required.");const data=request.data||{}, action=financeText(data.action,30);await ensureChartAccounts(db);if(action==="initialize")return{initialized:true};const id=financeKey(data.accountId,"Chart account"), ref=db.ref(`/chartOfAccounts/${id}`), old=(await ref.get()).val();if(action==="upsert"){const name=financeText(data.name,100),code=financeText(data.code,20),type=financeText(data.type,20);if(!name||!code||!["asset","liability","equity","revenue","expense"].includes(type))throw new HttpsError("invalid-argument","Code, name, and valid account type are required.");await ref.set({code,name,type,active:data.active!==false,system:old&&old.system===true,createdAt:old&&old.createdAt||Date.now(),updatedAt:Date.now(),updatedBy:actor.uid,schemaVersion:1});return{accountId:id};}if(action==="deactivate"){if(!old)throw new HttpsError("not-found","Chart account not found.");await ref.update({active:false,updatedAt:Date.now(),updatedBy:actor.uid});return{accountId:id};}throw new HttpsError("invalid-argument","Chart action is invalid.");},
+);
+
+exports.auditFinancialControls = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 120, memory: "512MiB"},
+  async (request) => {
+    const db=getDatabase();await requirePortalPermission(db,request,["cashflow","receivables","payables"]);
+    const snaps=await Promise.all([db.ref("/orders").get(),db.ref("/archivedOrders").get(),db.ref("/financialMovements").get(),db.ref("/cfLedger").get(),db.ref("/receivables").get(),db.ref("/payables").get(),db.ref("/platformPayouts").get(),db.ref("/cashCustody").get(),db.ref("/cfAccounts").get()]);
+    const orders=Object.assign({},snaps[1].val()||{},snaps[0].val()||{}),movements=snaps[2].val()||{},cash=snaps[3].val()||{},ars=snaps[4].val()||{},aps=snaps[5].val()||{},payouts=snaps[6].val()||{},custody=snaps[7].val()||{},accounts=snaps[8].val()||{},issues=[];
+    Object.keys(movements).forEach((id)=>{const m=movements[id],sum=Financial.totals(m.lines||[]);if(Math.abs(sum.debit-sum.credit)>0.009)issues.push({severity:"critical",kind:"unbalanced",source:id,amount:Financial.money(sum.debit-sum.credit)});(m.warnings||[]).forEach((w)=>issues.push({severity:"warning",kind:"movement_warning",source:id,detail:w}));});
+    Object.keys(cash).forEach((id)=>{if(!cash[id].movementId)issues.push({severity:"warning",kind:"legacy_cash_without_movement",source:id,amount:Financial.money(cash[id].amount)});});
+    let unsettledValue=0,unsettledCount=0;Object.keys(orders).forEach((id)=>{const o=orders[id]||{},status=o.status==="Archived"?o.prevStatus:o.status,platform=o.channel&&o.channel!=="instore";if(!o.voided&&["Completed","Received"].includes(status)&&o.paymentStatus!=="pending"&&!movements[`sale_${id}`])issues.push({severity:"critical",kind:"sale_not_posted",source:id,amount:Financial.money(o.total)});if(platform&&!o.voided&&(o.settlementStatus||"unsettled")!=="settled"){unsettledCount++;unsettledValue=Financial.money(unsettledValue+Financial.money(o.netPlatform));}if(!platform){const rows=Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment,amount:o.total}];rows.forEach((p)=>{if(String(p.method||"").toLowerCase()==="cash")return;if(!Financial.accountForMethod(p.method,accounts))issues.push({severity:"warning",kind:"unmapped_payment_method",source:id,detail:financeText(p.method,60),amount:Financial.money(p.amount)});});}});
+    let custodyValue=0,custodyCount=0;Object.keys(custody).forEach((id)=>{const rem=Financial.money(custody[id].remaining);if(rem>0){custodyCount++;custodyValue=Financial.money(custodyValue+rem);}});const openAr=Object.values(ars).filter((x)=>x&&x.status==="open"),openAp=Object.values(aps).filter((x)=>x&&x.status==="open"),undepositedPayouts=Object.values(payouts).filter((x)=>x&&!x.depositMovementId);
+    return{generatedAt:Date.now(),issues:issues.slice(0,200),issueCount:issues.length,unsettledPlatform:{count:unsettledCount,amount:unsettledValue},cashAwaitingDeposit:{count:custodyCount,amount:custodyValue},openReceivables:{count:openAr.length,amount:Financial.money(openAr.reduce((s,x)=>s+Number(x.amount||0),0))},openPayables:{count:openAp.length,amount:Financial.money(openAp.reduce((s,x)=>s+Number(x.amount||0),0))},undepositedPayouts:undepositedPayouts.length};
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Release 3A: immutable, retry-safe inventory movement ledger.
@@ -869,19 +1246,20 @@ exports.onOrderFinalize = onValueWritten(
         const v = optRaw[k] || {};
         optMap[v.label || k] = v;
       });
-      const catType = ps.catType || {};
       const optionCosts = ps.optionCosts || {};
       const optionGroups = ogSnap.val() || {};
 
-      const usage = computeUsageServer(o.lineItems, recipes, optMap, inv, mi, catType, optionCosts, optionGroups);
-      const ids = Object.keys(usage);
-      let cogs = 0;
-      let missing = false;
-      ids.forEach((ing) => {
-        const c = Number(inv[ing] && inv[ing].cost) || 0;
-        if (!c) missing = true;
-        cogs += usage[ing] * c;
+      const costing = Costing.costOrder({
+        lineItems: o.lineItems, recipes, inventory: inv, menuItems: mi,
+        optionCosts, optionRecipes: optMap, optionGroups,
       });
+      if (!costing.ok) {
+        const summary = costing.errors.slice(0, 5).map((x) => x.code + ": " + x.message).join(" | ");
+        throw new Error("Authoritative costing rejected order " + orderId + ": " + summary);
+      }
+      const usage = costing.usage;
+      const ids = Object.keys(usage);
+      const cogs = costing.totalCost;
 
       await Promise.all(ids.map((ing) => applyInventoryMovement(db, {
         movementId: `sale_${orderId}_${ing}`,
@@ -896,7 +1274,12 @@ exports.onOrderFinalize = onValueWritten(
         inventoryUsage: usage,
         inventoryDeductedAt: Date.now(),
         cogsSnapshot: cogs,
-        cogsCovered: !missing,
+        cogsCovered: costing.cogsCovered,
+        cogsDetail: {
+          engineVersion: costing.engineVersion, computedAt: Date.now(),
+          totalCost: cogs, lines: costing.lines, warnings: costing.warnings,
+        },
+        costingEngineVersion: costing.engineVersion,
         deductedBy: "server",
         inventoryLedgerVersion: 1,
       });
