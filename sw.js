@@ -28,7 +28,7 @@ self.addEventListener('notificationclick',function(e){
 });
 
 /* Versioned customer + POS app shells. Transactions remain online-only. */
-const CACHE='accaza-v50';
+const CACHE='accaza-v51';
 const ASSETS=[
   '/','/index.html','/admin.html','/manifest.json','/manifest-admin.json',
   '/favicon.svg','/favicon_192x192.png','/favicon_512x512.png',
