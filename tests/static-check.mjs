@@ -251,7 +251,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!adminHtml.includes("posSwitchTab('operations',this)")||!adminHtml.includes('id="operationsRoot"'))fail('Phase 6C System Health tab is missing');
   if(!operationsSource.includes("clientTelemetryDaily/'+day")||!operationsSource.includes('Last 30 days')||!operationsSource.includes('not percentile measurements'))fail('Phase 6C bounded telemetry dashboard or honest metric disclosure is incomplete');
   for(const marker of ['pos_boot','cart_render','charge_to_durable','offline_flush','realtime_order_arrival'])if(!operationsSource.includes(marker))fail(`Phase 6C performance threshold missing: ${marker}`);
-  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v60'"))fail('Phase 6C/7E dashboard is not in the coordinated offline cache');
+  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v61'"))fail('Phase 6C/7F dashboard is not in the coordinated offline cache');
 
   const orderAdminSource=fs.readFileSync(path.join(root,'assets','js','admin','admin-orders.mjs'),'utf8');
   const orderStatusSource=fs.readFileSync(path.join(root,'functions','lib','order-status.js'),'utf8');
@@ -276,6 +276,10 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!adminHtml.includes('id="accaza-pos-workflow-7e"')||!adminHtml.includes('.pos-order-rail')||!adminHtml.includes('.pos-line-stepper'))fail('Phase 7E focused POS workflow styling missing');
   if(!posSource.includes("id=\"posMenuSearch\"")||!posSource.includes("type=\"button\" class=\"pz-chip")||!posSource.includes("data-inc=\"")||!posSource.includes("data-dec=\""))fail('Phase 7E search, accessible categories, or ticket quantity controls missing');
   if(!posSource.includes('No matching items')||!posSource.includes('Ready')||!posSource.includes('Waiting'))fail('Phase 7E directed empty/readiness states missing');
+  const backofficeCss=fs.readFileSync(path.join(root,'assets','css','admin-backoffice.css'),'utf8');
+  if(!adminHtml.includes('/assets/css/admin-backoffice.css')||!precache.includes('/assets/css/admin-backoffice.css'))fail('Phase 7F back-office visual system is not linked and precached');
+  for(const marker of ['--bo-walnut','#adminWorkspaceHeader:before','.pz-tbl th','.badge-pending','prefers-reduced-motion'])if(!backofficeCss.includes(marker))fail(`Phase 7F visual-system marker missing: ${marker}`);
+  if(!workspaceShellSource.includes('dataset.adminWorkspace')||!workspaceShellSource.includes('dataset.adminArea')||!workspaceShellSource.includes('operations:System health'))fail('Phase 7F domain ledger rail or System Health shortcut missing');
 
   const fn=spawnSync(process.execPath,['--check',path.join(root,'functions','index.js')],{encoding:'utf8'});
   if(fn.status!==0)fail(`functions/index.js failed syntax check:\n${fn.stderr||fn.stdout}`);
