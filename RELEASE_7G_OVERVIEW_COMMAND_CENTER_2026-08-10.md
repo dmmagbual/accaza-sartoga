@@ -13,6 +13,7 @@
 - Added responsive layouts, keyboard focus compatibility, sanitization, and offline precaching.
 - Extended the register to the usable viewport, compacted its vertical rhythm, collapsed inactive checkout controls on an empty ticket, and condensed denomination entry to reduce nested scrolling.
 - Repaired active-order cards with a contained action grid, separated payment summary, unambiguous status language, and proof warnings only while verification is pending.
+- Replaced the horizontally scrolling POS category rail with a wrapping shelf so every category, including Pastries, remains visible.
 
 ## Safety boundary
 
