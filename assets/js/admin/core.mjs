@@ -81,6 +81,7 @@ window.__accaza={
   archiveActivityLog:function(){return archiveActivityLogCall({});},
   syncOfflinePosSale:function(command){return callables.syncOfflinePosSale(command);},
   recordClientTelemetry:function(command){return callables.recordClientTelemetry(command);},
+  getOperationalExceptions:function(){return callables.getOperationalExceptions({});},
   get menuItemsMap(){return menuItemsMap;},
   get optionGroupsMap(){return optionGroupsMap;},
   get categoriesMap(){return categoriesMap;},
@@ -686,7 +687,7 @@ window.showProof=function(src){var m=document.getElementById('proofModal');var i
 window.showStoredProof=async function(orderId,button){
   var old=button?button.textContent:'';if(button){button.disabled=true;button.textContent='Loading proof…';}
   try{var result=await getPaymentProofCall({orderId:orderId});var data=result&&result.data&&result.data.dataUrl;if(!data)throw new Error('The server returned no image.');window.showProof(data);}
-  catch(e){alert('Could not load payment proof: '+((e&&e.message)||e));}
+  catch(e){try{if(window.AccazaTelemetry)window.AccazaTelemetry.error('proof_access');}catch(_e){}alert('Could not load payment proof: '+((e&&e.message)||e));}
   finally{if(button){button.disabled=false;button.textContent=old||'📎 View payment proof';}}
 };
 window.setPayment=function(p){paymentType=p;
