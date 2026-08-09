@@ -17,6 +17,7 @@ const crypto = require("node:crypto");
 const Costing = require("./lib/costing");
 const Financial = require("./lib/financial");
 const OfflineSync = require("./lib/offline-sync");
+const OrderStatus = require("./lib/order-status");
 
 initializeApp();
 
@@ -115,7 +116,7 @@ async function requirePortalUser(db, request) {
   if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "Staff login is required.");
   const snap = await db.ref(`/admins/${request.auth.uid}`).get();
   const role = portalRoleValue(snap.val());
-  if (!["owner", "superadmin", "admin", "manager", "staff", "cashier", "finance"].includes(role)) {
+  if (!["owner", "superadmin", "admin", "manager", "staff", "cashier", "kitchen", "finance"].includes(role)) {
     throw new HttpsError("permission-denied", "This account is not authorized for the Accaza portal.");
   }
   return {uid: request.auth.uid, role};
@@ -127,7 +128,7 @@ async function requirePortalPermission(db, request, permissions) {
   const snap = await db.ref(`/adminPerms/${portal.uid}`).get();
   const granted = snap.val() || {};
   if (!(permissions || []).some((key) => granted[key] === true)) {
-    throw new HttpsError("permission-denied", "This account cannot post inventory movements.");
+    throw new HttpsError("permission-denied", "This account does not have the required permission.");
   }
   return portal;
 }
@@ -156,6 +157,21 @@ exports.recordClientTelemetry = onCall(
       row.builds[build] = Math.min(1000000, Number(row.builds[build] || 0) + accepted.length);row.updatedAt = Date.now();row.lastRole = actor.role;return row;
     });
     return {accepted: accepted.length};
+  },
+);
+
+// Release 7A: portal order-status changes are authenticated, transition-
+// validated, idempotent server commands. Customer receipt remains a separate
+// UID-owned command and offline POS creation remains syncOfflinePosSale.
+exports.updateOrderStatus = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase();
+    const actor = await requirePortalPermission(db, request, ["orders", "pos"]);
+    return OrderStatus.updateOrderStatusCommand({
+      db, actor, data: request.data || {}, activeOrderProjection, shouldProjectOrder,
+      error: (code, message) => new HttpsError(code, message),
+    });
   },
 );
 
