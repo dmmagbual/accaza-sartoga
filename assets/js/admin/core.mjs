@@ -11,7 +11,7 @@ import{createAppCustomerSession}from"./app-customer-session.mjs";
 import{createCustomerOrderTracker}from"./customer-order-tracker.mjs";
 import{escHtml,safeImageSrc}from"./shared-ui.mjs";
 
-const {getPaymentProof:getPaymentProofCall,ensureActiveOrders:ensureActiveOrdersCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,archiveActivityLog:archiveActivityLogCall}=callables;
+const {getPaymentProof:getPaymentProofCall,ensureActiveOrders:ensureActiveOrdersCall,updateOrderStatus:updateOrderStatusCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,archiveActivityLog:archiveActivityLogCall}=callables;
 window.__accazaAuth=auth;
 const subscriptionHub=createSubscriptionHub(db,{ref,onValue,query,orderByChild,limitToLast,endBefore,get});
 window.__accazaLiveStats=function(){return subscriptionHub.stats();};
@@ -75,6 +75,7 @@ window.__accaza={
   manageChartAccount:function(command){return manageChartAccountCall(command);},
   auditFinancialControls:function(){return auditFinancialControlsCall({});},
   manageOrderArchive:function(command){return manageOrderArchiveCall(command);},
+  updateOrderStatus:function(command){return updateOrderStatusCall(command);},
   reviewDiscrepancy:function(command){return reviewDiscrepancyCall(command);},
   managePettyVoucher:function(command){return managePettyVoucherCall(command);},
   archiveActivityLog:function(){return archiveActivityLogCall({});},
