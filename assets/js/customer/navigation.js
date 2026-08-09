@@ -1,5 +1,4 @@
 (function(){var tabs=document.querySelectorAll('#appTabBar a');tabs.forEach(function(t){t.addEventListener('click',function(){tabs.forEach(function(x){x.classList.remove('active');});this.classList.add('active');});});})();
-if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').then(function(reg){reg.update();}).catch(function(){});});}
 // Hero Install Button Logic
 var _heroDeferredPrompt = null;
 window.addEventListener('beforeinstallprompt', function(e){
