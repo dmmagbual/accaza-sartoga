@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "preparedAt": "2026-08-09",
-  "release": "7E",
+  "release": "7F",
   "status": "candidate_pending_production_verification",
   "project": {
     "name": "Accaza Coffee House",
@@ -12,9 +12,9 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 171,
+    "admin": 172,
     "customer": 45,
-    "serviceWorkerCache": 60
+    "serviceWorkerCache": 61
   },
   "authoritativeFiles": [
     "admin.html",
@@ -30,6 +30,7 @@
     "functions/lib/order-status.js",
     "functions/lib/operational-exceptions.js",
     "assets/js/shared/costing.js",
+    "assets/css/admin-backoffice.css",
     "assets/js/admin/core.mjs",
     "assets/js/admin/workspace-shell.mjs",
     "assets/js/admin/module-loader.js",
@@ -77,7 +78,7 @@
   "verification": {
     "localQualityGate": "passed_2026-08-09",
     "githubQualityGate": "pending",
-    "productionBuild171SmokeTest": "pending",
+    "productionBuild172SmokeTest": "pending",
     "productionPerformanceReview": "pending",
     "backupRestoreTest": "pending",
     "quarterlyPermissionReview": "pending",
