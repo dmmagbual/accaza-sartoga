@@ -1,0 +1,118 @@
+/* Accaza Release 7F — back-office visual system. Presentation only. */
+:root{--bo-ink:#2b211b;--bo-walnut:#5a3828;--bo-brass:#b48950;--bo-paper:#fbfaf7;--bo-ledger:#f1ede6;--bo-line:#d8d0c5;--bo-service:#245d3b;--bo-alert:#a1433f;--bo-muted:#74685f}
+body.admin-workspace-focused:not(.admin-pos-workspace){background:#e9e4dc}
+body.admin-workspace-focused:not(.admin-pos-workspace) .admin-wrap{max-width:1460px;padding-left:1.25rem;padding-right:1.25rem}
+
+/* The ledger rail is the visual signature: it identifies the active operating domain. */
+body[data-admin-workspace] #adminWorkspaceHeader{position:relative;overflow:hidden;padding:1.05rem 1.2rem 1.05rem 1.45rem;border-color:var(--bo-line);border-radius:9px;background:var(--bo-paper);box-shadow:0 3px 12px rgba(48,35,27,.045)}
+body[data-admin-workspace] #adminWorkspaceHeader:before{content:'';position:absolute;inset:0 auto 0 0;width:6px;background:var(--workspace-rail,var(--bo-brass))}
+body[data-admin-area="overview"]{--workspace-rail:#315f45}
+body[data-admin-area="orders & operations"]{--workspace-rail:#a86435}
+body[data-admin-area="inventory"]{--workspace-rail:#56704d}
+body[data-admin-area="financials"]{--workspace-rail:#866a37}
+body[data-admin-area="customers"]{--workspace-rail:#76628d}
+body[data-admin-area="settings"]{--workspace-rail:#59646d}
+body[data-admin-workspace] .awh-eyebrow{color:var(--workspace-rail,var(--bo-brass));font-size:.66rem;font-weight:800;letter-spacing:.14em}
+body[data-admin-workspace] #adminWorkspaceTitle{color:var(--bo-ink);font-size:1.45rem;line-height:1.15}
+body[data-admin-workspace] #adminWorkspaceSubtitle{max-width:720px;color:var(--bo-muted)}
+body[data-admin-workspace] .awh-action{min-height:42px;border:1px solid var(--bo-walnut);border-radius:7px;background:var(--bo-walnut);color:#fff;font-weight:700;box-shadow:0 3px 8px rgba(90,56,40,.12)}
+body[data-admin-workspace] .awh-action:hover{background:var(--bo-ink)}
+body.admin-workspace-focused:not(.admin-pos-workspace) .admin-service-strip{margin-bottom:1rem;padding:.45rem .55rem;border:1px solid var(--bo-line);border-radius:8px;background:rgba(251,250,247,.72)}
+body.admin-workspace-focused:not(.admin-pos-workspace) .admin-service-pill{border-color:#d7cec3;background:#f8f5ef;color:#5f544c;font-weight:650}
+body.admin-workspace-focused:not(.admin-pos-workspace) .admin-service-pill.ok{border-color:#bcd4c3;background:#eaf4ed;color:#245d3b}
+body.admin-workspace-focused:not(.admin-pos-workspace) .admin-service-pill.warn{border-color:#e2c990;background:#fff7e5;color:#7b5b19}
+body.admin-workspace-focused:not(.admin-pos-workspace) .admin-service-pill.bad{border-color:#dfb2ae;background:#fbebea;color:#913b37}
+
+/* Records become the surface instead of sitting inside another white container. */
+body.admin-workspace-focused:not(.admin-pos-workspace) .admin-tab-content{padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
+body.admin-workspace-focused:not(.admin-pos-workspace) .admin-tab-content>div>.pz-h:first-child{margin-bottom:.6rem;color:var(--bo-ink);font-size:1.12rem}
+body.admin-workspace-focused:not(.admin-pos-workspace) .pz-card,
+body.admin-workspace-focused:not(.admin-pos-workspace) .order-admin-card,
+body.admin-workspace-focused:not(.admin-pos-workspace) .admin-stat-card{border:1px solid var(--bo-line)!important;border-radius:9px!important;background:var(--bo-paper)!important;box-shadow:0 2px 9px rgba(43,33,27,.045)}
+body.admin-workspace-focused:not(.admin-pos-workspace) .pz-card{padding:1rem!important}
+body.admin-workspace-focused:not(.admin-pos-workspace) .pz-card:hover{border-color:#c7baaa!important}
+body.admin-workspace-focused:not(.admin-pos-workspace) .az-kpis{grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:.65rem}
+body.admin-workspace-focused:not(.admin-pos-workspace) .az-kpis .pz-card{position:relative;min-height:86px;overflow:hidden}
+body.admin-workspace-focused:not(.admin-pos-workspace) .az-kpis .pz-card:after{content:'';position:absolute;right:0;top:0;width:4px;height:100%;background:var(--workspace-rail,var(--bo-brass));opacity:.7}
+body.admin-workspace-focused:not(.admin-pos-workspace) .az-sec{display:flex;align-items:center;gap:.55rem;margin:1.35rem 0 .55rem;color:var(--bo-ink);font-size:.78rem;font-weight:800;letter-spacing:.075em;text-transform:uppercase}
+body.admin-workspace-focused:not(.admin-pos-workspace) .az-sec:before{content:'';width:18px;height:3px;background:var(--workspace-rail,var(--bo-brass));border-radius:2px}
+body.admin-workspace-focused:not(.admin-pos-workspace) .az-note{color:var(--bo-muted);font-style:normal;line-height:1.5}
+
+/* Ledger tables: quiet hierarchy, fixed numeric rhythm and safe horizontal scrolling. */
+body.admin-workspace-focused:not(.admin-pos-workspace) .pz-card:has(>table),body.admin-workspace-focused:not(.admin-pos-workspace) .pz-card:has(>div>table){overflow-x:auto}
+body.admin-workspace-focused:not(.admin-pos-workspace) .pz-tbl,body.admin-workspace-focused:not(.admin-pos-workspace) .pnl-tbl{min-width:620px;border-collapse:separate;border-spacing:0;font-size:.8rem;font-variant-numeric:tabular-nums}
+body.admin-workspace-focused:not(.admin-pos-workspace) .pz-tbl th,body.admin-workspace-focused:not(.admin-pos-workspace) .pnl-tbl th{position:sticky;top:0;z-index:1;padding:.62rem .65rem!important;border-bottom:1px solid #cfc4b6!important;background:#eee8df!important;color:#62564d!important;font-size:.65rem!important;font-weight:800!important;letter-spacing:.08em!important;text-transform:uppercase;white-space:nowrap}
+body.admin-workspace-focused:not(.admin-pos-workspace) .pz-tbl td,body.admin-workspace-focused:not(.admin-pos-workspace) .pnl-tbl td{padding:.62rem .65rem!important;border-bottom:1px solid #e5ded5!important;color:#3f3731;vertical-align:middle}
+body.admin-workspace-focused:not(.admin-pos-workspace) .pz-tbl tbody tr:nth-child(even),body.admin-workspace-focused:not(.admin-pos-workspace) .pnl-tbl tbody tr:nth-child(even){background:rgba(239,234,226,.36)}
+body.admin-workspace-focused:not(.admin-pos-workspace) .pz-tbl tbody tr:hover,body.admin-workspace-focused:not(.admin-pos-workspace) .pnl-tbl tbody tr:hover{background:#f6f0e6}
+body.admin-workspace-focused:not(.admin-pos-workspace) .pz-tbl td.r,body.admin-workspace-focused:not(.admin-pos-workspace) .pnl-tbl td.r,body.admin-workspace-focused:not(.admin-pos-workspace) .pz-tbl th.r,body.admin-workspace-focused:not(.admin-pos-workspace) .pnl-tbl th.r{text-align:right}
+body.admin-workspace-focused:not(.admin-pos-workspace) td[colspan]{padding:1.25rem!important;text-align:center;color:var(--bo-muted)!important}
+
+/* Controls use one visual grammar across finance, inventory and settings. */
+body.admin-workspace-focused:not(.admin-pos-workspace) .pz-btn{min-height:40px;border-radius:7px;padding:.48rem .8rem;background:var(--bo-walnut);font-weight:700;box-shadow:none}
+body.admin-workspace-focused:not(.admin-pos-workspace) .pz-btn:hover{filter:brightness(.94)}
+body.admin-workspace-focused:not(.admin-pos-workspace) .pz-btn.sec{border-color:#c9bdaf;background:#fff;color:var(--bo-walnut)}
+body.admin-workspace-focused:not(.admin-pos-workspace) .pz-btn.ok{background:var(--bo-service)}
+body.admin-workspace-focused:not(.admin-pos-workspace) .pz-btn.warn{background:var(--bo-alert)}
+body.admin-workspace-focused:not(.admin-pos-workspace) .pz-in{min-height:42px;border-color:#cfc4b7;border-radius:7px;background:#fff;color:var(--bo-ink)}
+body.admin-workspace-focused:not(.admin-pos-workspace) .pz-in:focus{border-color:var(--workspace-rail,var(--bo-brass));outline:3px solid rgba(180,137,80,.18)}
+body.admin-workspace-focused:not(.admin-pos-workspace) .pz-lbl{color:#65584f;font-size:.67rem;font-weight:800;letter-spacing:.065em;text-transform:uppercase}
+body.admin-workspace-focused:not(.admin-pos-workspace) button:focus-visible,body.admin-workspace-focused:not(.admin-pos-workspace) a:focus-visible,body.admin-workspace-focused:not(.admin-pos-workspace) select:focus-visible,body.admin-workspace-focused:not(.admin-pos-workspace) input:focus-visible{outline:3px solid #d6a961!important;outline-offset:2px!important}
+
+/* Status language remains compatible with existing badge classes. */
+body.admin-workspace-focused:not(.admin-pos-workspace) .badge{display:inline-flex;align-items:center;min-height:24px;padding:.22rem .5rem!important;border:1px solid transparent;border-radius:999px!important;font-size:.64rem!important;font-weight:800!important;letter-spacing:.035em;white-space:nowrap}
+body.admin-workspace-focused:not(.admin-pos-workspace) .badge-pending{border-color:#e5c98b;background:#fff4d8!important;color:#775612!important}
+body.admin-workspace-focused:not(.admin-pos-workspace) .badge-confirmed,body.admin-workspace-focused:not(.admin-pos-workspace) .badge-preparing{border-color:#b8cbe4;background:#eaf2fb!important;color:#315a85!important}
+body.admin-workspace-focused:not(.admin-pos-workspace) .badge-ready,body.admin-workspace-focused:not(.admin-pos-workspace) .badge-completed{border-color:#b9d4c1;background:#e9f5ec!important;color:#245d3b!important}
+body.admin-workspace-focused:not(.admin-pos-workspace) .badge-rejected,body.admin-workspace-focused:not(.admin-pos-workspace) .badge-cancelled{border-color:#dfb6b2;background:#fae9e8!important;color:#913b37!important}
+
+/* Orders read like service tickets, not marketing cards. */
+body[data-admin-workspace="orders"] #ordersList{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:.75rem}
+body[data-admin-workspace="orders"] .order-admin-card{margin:0!important;padding:1rem!important;border-left:5px solid var(--workspace-rail)!important}
+body[data-admin-workspace="orders"] .order-admin-name{color:var(--bo-ink)}
+body[data-admin-workspace="orders"] .order-admin-meta{color:var(--bo-muted);font-size:.7rem}
+body[data-admin-workspace="orders"] .order-total-tag{font-variant-numeric:tabular-nums;font-weight:800}
+body[data-admin-area="settings"] .pz-card{max-width:1050px}
+body[data-admin-area="settings"] code{padding:.12rem .28rem;border-radius:4px;background:#eee9e1;color:#59483d;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.72rem}
+
+/* Compatibility for the original admin views that predate the shared primitives. */
+body.admin-workspace-focused:not(.admin-pos-workspace) .archive-section,
+body.admin-workspace-focused:not(.admin-pos-workspace) .admin-cal-wrap,
+body.admin-workspace-focused:not(.admin-pos-workspace) .payment-edit-card,
+body.admin-workspace-focused:not(.admin-pos-workspace) .review-card{border:1px solid var(--bo-line)!important;border-radius:9px!important;background:var(--bo-paper)!important;box-shadow:0 2px 9px rgba(43,33,27,.045)}
+body.admin-workspace-focused:not(.admin-pos-workspace) .review-card{transform:none!important}
+body.admin-workspace-focused:not(.admin-pos-workspace) .review-avatar{background:var(--bo-walnut);color:#fff}
+body.admin-workspace-focused:not(.admin-pos-workspace) .review-text{color:#564b43;font-style:normal}
+body[data-admin-workspace="reservations"] #resList{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:.75rem}
+body[data-admin-workspace="reservations"] #resList .order-admin-card{margin:0!important;padding:1rem!important;border-left:5px solid var(--workspace-rail)!important}
+body.admin-workspace-focused:not(.admin-pos-workspace) .field-label{display:block;margin-bottom:.3rem;color:#65584f!important;font-size:.67rem!important;font-weight:800;letter-spacing:.065em;text-transform:uppercase}
+body.admin-workspace-focused:not(.admin-pos-workspace) .admin-tab-content input:not([type="checkbox"]):not([type="radio"]),
+body.admin-workspace-focused:not(.admin-pos-workspace) .admin-tab-content select,
+body.admin-workspace-focused:not(.admin-pos-workspace) .admin-tab-content textarea{min-height:42px;border:1px solid #cfc4b7!important;border-radius:7px!important;background:#fff!important;color:var(--bo-ink)!important;font-family:Inter,sans-serif}
+body.admin-workspace-focused:not(.admin-pos-workspace) .admin-tab-content textarea{min-height:96px}
+body.admin-workspace-focused:not(.admin-pos-workspace) .admin-tab-content button:not(.pz-btn){min-height:38px;border-radius:7px!important;font-family:Inter,sans-serif}
+body.admin-workspace-focused:not(.admin-pos-workspace) .btn-save{min-height:42px!important;border:0!important;border-radius:7px!important;background:var(--bo-service)!important;color:#fff!important;font-weight:750!important}
+body.admin-workspace-focused:not(.admin-pos-workspace) .payment-edit-grid{grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.75rem}
+body.admin-workspace-focused:not(.admin-pos-workspace) .payment-edit-card{padding:1rem!important}
+body.admin-workspace-focused:not(.admin-pos-workspace) .payment-edit-card h4{color:var(--bo-ink)!important}
+
+/* Older plain tables inherit the same ledger treatment. */
+body[data-admin-workspace="appcustomers"] #tab-appcustomers table,
+body[data-admin-workspace="operations"] #operationsRoot table{min-width:620px;border-collapse:separate!important;border-spacing:0;font-size:.8rem!important;font-variant-numeric:tabular-nums}
+body[data-admin-workspace="appcustomers"] #tab-appcustomers th,
+body[data-admin-workspace="operations"] #operationsRoot th{position:sticky;top:0;z-index:1;padding:.62rem .65rem!important;border-bottom:1px solid #cfc4b6!important;background:#eee8df!important;color:#62564d!important;font-size:.65rem!important;font-weight:800!important;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+body[data-admin-workspace="appcustomers"] #tab-appcustomers td,
+body[data-admin-workspace="operations"] #operationsRoot td{padding:.62rem .65rem!important;border-bottom:1px solid #e5ded5!important;color:#3f3731}
+body[data-admin-workspace="appcustomers"] #tab-appcustomers>div:last-child,
+body[data-admin-workspace="operations"] #operationsRoot>div[style*="overflow-x:auto"]{overflow-x:auto;border:1px solid var(--bo-line);border-radius:9px;background:var(--bo-paper)}
+body[data-admin-workspace="operations"] #operationsRoot>div[style*="grid-template-columns"]>div{border-color:var(--bo-line)!important;background:var(--bo-paper)!important;box-shadow:0 2px 9px rgba(43,33,27,.04)}
+body[data-admin-workspace="operations"] #operationsRoot h3,body[data-admin-workspace="operations"] #operationsRoot h4{color:var(--bo-ink)!important}
+
+/* Calendar retains semantic colors but uses the same physical surfaces. */
+body[data-admin-workspace="calendar"] .admin-cal-day{border-radius:7px;box-shadow:inset 0 0 0 1px rgba(58,44,34,.04)}
+body[data-admin-workspace="calendar"] .admin-cal-day.selected{background:var(--bo-walnut);border-color:var(--bo-brass)}
+body[data-admin-workspace="calendar"] #adminSlotManager{padding:1rem;border:1px solid var(--bo-line);border-radius:9px;background:var(--bo-paper)}
+
+@media(max-width:820px){body.admin-workspace-focused:not(.admin-pos-workspace) .admin-wrap{padding-left:.55rem;padding-right:.55rem}body[data-admin-workspace] #adminWorkspaceHeader{padding:.9rem .85rem .9rem 1.15rem}body[data-admin-workspace] #adminWorkspaceTitle{font-size:1.22rem}body.admin-workspace-focused:not(.admin-pos-workspace) .pz-card{padding:.75rem!important}body[data-admin-workspace="orders"] #ordersList,body[data-admin-workspace="reservations"] #resList{grid-template-columns:1fr}body.admin-workspace-focused:not(.admin-pos-workspace) .az-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.admin-cal-wrap{padding:.8rem!important}}
+@media(max-width:520px){body.admin-workspace-focused:not(.admin-pos-workspace) .az-kpis{grid-template-columns:1fr}body.admin-workspace-focused:not(.admin-pos-workspace) .admin-service-strip{overflow-x:auto;flex-wrap:nowrap}body.admin-workspace-focused:not(.admin-pos-workspace) .admin-service-pill{flex:0 0 auto}}
+@media(prefers-reduced-motion:reduce){body.admin-workspace-focused:not(.admin-pos-workspace) *,body.admin-workspace-focused:not(.admin-pos-workspace) *:before,body.admin-workspace-focused:not(.admin-pos-workspace) *:after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
