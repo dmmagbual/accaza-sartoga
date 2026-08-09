@@ -9,8 +9,8 @@ const env=await initializeTestEnvironment({projectId,database:{rules}});
 try{
   await env.withSecurityRulesDisabled(async(context)=>{
     await set(ref(context.database()),{
-      admins:{owner:true,manager:'manager',staff:'staff'},
-      adminPerms:{staff:{orders:true,pos:true,discrepancy:true,petty:true}},
+      admins:{owner:true,manager:'manager',staff:'staff',kitchen:'kitchen'},
+      adminPerms:{staff:{orders:true,pos:true,discrepancy:true,petty:true},kitchen:{orders:true}},
       orders:{
         own:{id:'own',ownerUid:'customer-a',status:'Pending',total:100,source:'online'},
         other:{id:'other',ownerUid:'customer-b',status:'Pending',total:120,source:'online'},
@@ -47,6 +47,7 @@ try{
   const owner=env.authenticatedContext('owner').database();
   const manager=env.authenticatedContext('manager').database();
   const staff=env.authenticatedContext('staff').database();
+  const kitchen=env.authenticatedContext('kitchen').database();
   const guest=env.unauthenticatedContext().database();
 
   await assertSucceeds(get(ref(a,'orders/own')));
@@ -56,7 +57,8 @@ try{
   await assertFails(get(ref(a,'activeOrders/own')));
   await assertFails(get(ref(guest,'activeOrders/own')));
   await assertSucceeds(get(ref(staff,'activeOrders/own')));
-  await assertSucceeds(update(ref(staff,'activeOrders/own'),{status:'Preparing'}));
+  await assertFails(update(ref(staff,'activeOrders/own'),{status:'Preparing'}));
+  await assertFails(update(ref(kitchen,'orders/own'),{status:'Preparing'}));
   await assertFails(set(ref(a,'activeOrders/fake'),{id:'fake',status:'Pending'}));
   await assertFails(get(ref(owner,'systemMaintenance')));
   await assertFails(get(ref(owner,'inventoryAccounting/milk')));
@@ -97,10 +99,10 @@ try{
 
   await assertFails(set(ref(a,'orders/forged'),{id:'forged',ownerUid:'customer-a',source:'online',status:'Pending',total:1}));
   await assertFails(update(ref(a,'orders/own'),{status:'Received',receivedByCustomer:true}));
-  await assertSucceeds(update(ref(owner,'orders/own'),{status:'Confirmed'}));
+  await assertFails(update(ref(owner,'orders/own'),{status:'Confirmed'}));
 
   await assertSucceeds(get(ref(a,'orders/legacy')));
-  await assertSucceeds(update(ref(a,'orders/legacy'),{status:'Received',receivedByCustomer:true}));
+  await assertFails(update(ref(a,'orders/legacy'),{status:'Received',receivedByCustomer:true}));
 
   await assertSucceeds(get(ref(a,'customerOrders/customer-a')));
   await assertFails(get(ref(a,'customerOrders/customer-b')));
