@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v172</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button data-accaza-install onclick="accazaInstallApp()" style="background:#e8f5ec;color:#155724;border:1px solid #b8dfc4;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;">📲 Install Accaza POS App</button><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v173</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button data-accaza-install onclick="accazaInstallApp()" style="background:#e8f5ec;color:#155724;border:1px solid #b8dfc4;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;">📲 Install Accaza POS App</button><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1170,21 +1170,22 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
     </div>
     <!-- DASHBOARD -->
     <div id="tab-dashboard" class="admin-tab-content">
-      <div id="todayResBanner" style="display:none;background:linear-gradient(135deg,#fff3cd,#fde8b0);border:1px solid #f0ad4e;border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;">
+      <div id="overviewCommandCenter" aria-live="polite"><div class="occ-loading">Preparing today’s command center…</div></div>
+      <div id="todayResBanner" class="overview-reservation-alert" style="display:none;background:linear-gradient(135deg,#fff3cd,#fde8b0);border:1px solid #f0ad4e;border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;">
         <div style="display:flex;align-items:center;gap:0.75rem;"><span style="font-size:1.5rem;">⚠️</span><div><p style="font-weight:600;color:#664d03;font-size:0.95rem;" id="todayResText">Reservations today!</p><p style="font-size:0.8rem;color:#856404;">Make sure the team is ready.</p></div></div>
         <button onclick="document.querySelector('.admin-tab:nth-child(3)').click()" style="background:#856404;color:#fff;border:none;border-radius:6px;padding:0.45rem 1rem;font-size:0.8rem;cursor:pointer;font-family:'Inter',sans-serif;">View Reservations →</button>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.5rem;">
+      <div class="overview-periods" style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.5rem;">
         <div style="background:linear-gradient(135deg,#19241b,#243528);border-radius:10px;padding:1.25rem;text-align:center;"><div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(224,212,198,0.6);margin-bottom:0.4rem;">Today</div><div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#c9a36a;" id="dashToday">₱0</div><div style="font-size:0.72rem;color:rgba(224,212,198,0.5);" id="dashTodayCount">0 orders</div></div>
         <div style="background:linear-gradient(135deg,#19241b,#243528);border-radius:10px;padding:1.25rem;text-align:center;"><div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(224,212,198,0.6);margin-bottom:0.4rem;">This Week</div><div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#c9a36a;" id="dashWeek">₱0</div><div style="font-size:0.72rem;color:rgba(224,212,198,0.5);" id="dashWeekCount">0 orders</div></div>
         <div style="background:linear-gradient(135deg,#19241b,#243528);border-radius:10px;padding:1.25rem;text-align:center;"><div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(224,212,198,0.6);margin-bottom:0.4rem;">This Month</div><div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#c9a36a;" id="dashMonth">₱0</div><div style="font-size:0.72rem;color:rgba(224,212,198,0.5);" id="dashMonthCount">0 orders</div></div>
         <div style="background:linear-gradient(135deg,#19241b,#243528);border-radius:10px;padding:1.25rem;text-align:center;"><div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(224,212,198,0.6);margin-bottom:0.4rem;">All Time</div><div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#c9a36a;" id="dashAllTime">₱0</div><div style="font-size:0.72rem;color:rgba(224,212,198,0.5);" id="dashAllTimeCount">0 orders</div></div>
       </div>
-      <div style="display:grid;grid-template-columns:2fr 1fr;gap:1rem;margin-bottom:1.25rem;">
+      <div class="overview-trends" style="display:grid;grid-template-columns:2fr 1fr;gap:1rem;margin-bottom:1.25rem;">
         <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;"><h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;">📈 Last 30 Days</h4><div style="display:flex;gap:1rem;font-size:0.72rem;"><span style="display:flex;align-items:center;gap:0.3rem;"><span style="width:12px;height:12px;border-radius:2px;background:#b08d57;display:inline-block;"></span>Revenue</span><span style="display:flex;align-items:center;gap:0.3rem;"><span style="width:12px;height:12px;border-radius:2px;background:#3b8fd4;display:inline-block;"></span>Orders</span></div></div><canvas id="revenueChart" height="180" style="width:100%;display:block;"></canvas></div>
         <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;margin-bottom:1rem;">💳 Payment Split</h4><div id="payPendBanner"></div><div id="payMixList" style="margin-top:0.5rem;"></div></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+      <div class="overview-insights" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
         <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;margin-bottom:1rem;">🏆 Top 10 Best Sellers</h4><div id="topItemsList"></div></div>
         <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;margin-bottom:1rem;">📦 Order Status Breakdown</h4><div id="statusBreakdown"></div></div>
       </div>
@@ -1477,6 +1478,7 @@ body.admin-pos-workspace #posCharge{background:var(--pos-service);border-radius:
 <script src="assets/js/admin/telemetry.js"></script>
 <script src="assets/js/admin/form-dialog.js"></script>
 <script type="module" src="assets/js/admin/core.mjs"></script>
+<script type="module" src="assets/js/admin/overview-command.mjs"></script>
 <!-- Lightbox -->
 <div id="lightbox" role="dialog" aria-modal="true" aria-label="Image viewer" onclick="if(event.target===this)closeLightbox()">
   <button id="lightbox-close" onclick="closeLightbox()" aria-label="Close">✕</button>

@@ -319,6 +319,8 @@ Until Phases 0–2 are complete, new convenience features should be paused unles
 
 **Release 7F local status (9 August 2026):** Complete in admin v172 and cache v61. A cached compatibility stylesheet now unifies back-office headers, ledger tables, cards, controls, status badges, Orders, Reservations, Customers, Settings and Operations Center. Workspace-domain rails and an Overview System Health shortcut improve orientation without changing business logic. See `ADR-024_BACK_OFFICE_VISUAL_SYSTEM.md` and `RELEASE_7F_BACK_OFFICE_VISUAL_SYSTEM_2026-08-09.md`.
 
+**Release 7G local status (10 August 2026):** Complete in admin v173 and cache v62. Overview is now a command center led by immediate operational attention, live-floor signals, money position, stock exceptions and system health. It reuses bounded authorized sources and adds no new Firebase listener or accounting logic. See `ADR-025_OVERVIEW_COMMAND_CENTER.md` and `RELEASE_7G_OVERVIEW_COMMAND_CENTER_2026-08-10.md`.
+
 1. Firebase Emulator tests for database rules.
 2. Cloud Function tests for retries, duplicate events, partial failure, refunds, and reversals.
 3. Checkout tests for in-store, split payment, GrabFood, FoodPanda, unavailable items, options, packages, and refunds.

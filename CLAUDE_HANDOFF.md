@@ -1,8 +1,8 @@
 # Accaza Coffee House — Authoritative Project Handoff
 
-**Prepared:** 9 August 2026  
-**Release candidate:** Phase 7A  
-**Local builds:** admin v172, customer v45, service-worker cache v61  
+**Prepared:** 10 August 2026  
+**Release candidate:** Release 7G  
+**Local builds:** admin v173, customer v45, service-worker cache v62  
 **Truth source:** current workspace plus `release-manifest.json`
 
 ## Deployment truth
@@ -30,7 +30,7 @@ flowchart LR
 - Cloud Functions: Node.js 22, region `asia-southeast1`.
 - Storage: private default bucket; payment proofs are retrieved through an authorized Function, not public URLs.
 - Authentication: Firebase email/password for portal users and Anonymous Auth for customers.
-- PWA: separate customer and POS manifests; one service worker with coordinated cache v61.
+- PWA: separate customer and POS manifests; one service worker with coordinated cache v62.
 - Currency: Philippine peso (PHP/₱) in the current Accaza application.
 
 ## Authoritative file map
@@ -50,7 +50,7 @@ Never edit or deploy `admin-backup.html`, `index backup*.html`, `index-pos.html`
 
 ## Runtime architecture
 
-The application intentionally remains a lightweight native HTML/JavaScript Firebase PWA rather than a framework rewrite. `admin.html` loads a small shared core, then lazy-loads POS, register, inventory, recipes, analytics, finance, staff access, channel pricing, packages, and System Health modules only when needed.
+The application intentionally remains a lightweight native HTML/JavaScript Firebase PWA rather than a framework rewrite. `admin.html` loads a small shared core and the lightweight Overview command center, then lazy-loads POS, register, inventory, recipes, analytics, finance, staff access, channel pricing, packages, and System Health modules only when needed.
 
 `/orders` is authoritative. `/activeOrders` is a bounded projection for live screens. Closed/resolved orders leave the active projection while authoritative history remains available through bounded/paginated reads.
 
@@ -157,7 +157,7 @@ Do not upload `node_modules`. Functions deployment requires `functions/package.j
 
 The release is not fully verified until every pending field in `release-manifest.json` has evidence:
 
-1. v172 production smoke test passes on the cashier device.
+1. v173 production smoke test passes on the cashier device.
 2. System Health contains enough live samples to assess launch, cart, Charge, sync, and remote arrival.
 3. A Firebase backup is restored into a separate test project and representative financial/inventory records are verified.
 4. Role tests cover owner, manager, cashier, kitchen, and finance.
@@ -167,7 +167,7 @@ Use `OPERATIONS_RELEASE_RUNBOOK.md`. Change the manifest to `production_verified
 
 ## Known limitations
 
-- Production timing evidence for v172 is pending; local tests cannot prove real cashier-device speed.
+- Production timing evidence for v173 is pending; local tests cannot prove real cashier-device speed.
 - The telemetry schema does not retain individual samples, device segmentation, or percentiles.
 - App Check enforcement remains intentionally cautious until production token monitoring is consistently clean; do not enable database-wide enforcement without admin initialization and testing.
 - Some legacy authorized browser writes remain for ordinary operational nodes; protected inventory/financial authority is server-side, but future hardening can move more commands behind Functions.
