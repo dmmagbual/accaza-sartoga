@@ -6,7 +6,7 @@ const read=file=>fs.readFileSync(path.join(root,file),'utf8');
 const fail=message=>{throw new Error(message);};
 const manifest=JSON.parse(read('release-manifest.json'));
 
-if(manifest.schemaVersion!==1||manifest.release!=='6D')fail('Release manifest schema/release is invalid');
+if(manifest.schemaVersion!==1||manifest.release!=='7A')fail('Release manifest schema/release is invalid');
 if(!['candidate_pending_production_verification','production_verified'].includes(manifest.status))fail('Release manifest status is invalid');
 
 for(const file of manifest.authoritativeFiles){
