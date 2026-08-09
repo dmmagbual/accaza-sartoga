@@ -6,14 +6,14 @@ import{getFunctions,httpsCallable}from"https://www.gstatic.com/firebasejs/10.12.
 
 const firebaseConfig={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 const app=initializeApp(firebaseConfig);
-const db=getDatabase(app);const auth=getAuth(app);const functions=getFunctions(app,'asia-southeast1');const getPaymentProofCall=httpsCallable(functions,'getPaymentProof');const ensureActiveOrdersCall=httpsCallable(functions,'ensureActiveOrders');const postInventoryMovementsCall=httpsCallable(functions,'postInventoryMovements');const ensureInventoryLedgerCall=httpsCallable(functions,'ensureInventoryLedger');const validateRecipeDefinitionCall=httpsCallable(functions,'validateRecipeDefinition');window.__accazaAuth=auth;
+const db=getDatabase(app);const auth=getAuth(app);const functions=getFunctions(app,'asia-southeast1');const getPaymentProofCall=httpsCallable(functions,'getPaymentProof');const ensureActiveOrdersCall=httpsCallable(functions,'ensureActiveOrders');const postInventoryMovementsCall=httpsCallable(functions,'postInventoryMovements');const ensureInventoryLedgerCall=httpsCallable(functions,'ensureInventoryLedger');const validateRecipeDefinitionCall=httpsCallable(functions,'validateRecipeDefinition');const postFinancialCommandCall=httpsCallable(functions,'postFinancialCommand');const settlePlatformPayoutCall=httpsCallable(functions,'settlePlatformPayout');const processOrderAdjustmentCall=httpsCallable(functions,'processOrderAdjustment');const ensureFinancialLedgerCall=httpsCallable(functions,'ensureFinancialLedger');window.__accazaAuth=auth;
 // Release 2B: one physical Realtime Database listener per path. POS-critical
 // paths stay live; large back-office paths are connected only for the open tab.
 const HISTORY_BOUNDS={
   orders:{field:'timestamp',limit:250,page:250},archivedOrders:{field:'archivedAt',limit:100,page:100},archivedReservations:{field:'archivedAt',limit:100,page:100},
   shifts:{field:'openAt',limit:100,page:100},activityLog:{field:'ts',limit:200,page:200},discrepancies:{field:'ts',limit:200,page:200},
   stockReceipts:{field:'ts',limit:250,page:250},inventoryAdjustments:{field:'ts',limit:250,page:250},internalUsage:{field:'ts',limit:250,page:250},
-  cfLedger:{field:'ts',limit:300,page:300},platformPayouts:{field:'settledAt',limit:100,page:100},inventoryMovements:{field:'occurredAt',limit:300,page:300}
+  cfLedger:{field:'ts',limit:300,page:300},financialMovements:{field:'occurredAt',limit:300,page:300},platformPayouts:{field:'settledAt',limit:100,page:100},inventoryMovements:{field:'occurredAt',limit:300,page:300}
 };
 function liveTarget(database,path){var base=ref(database,path),spec=HISTORY_BOUNDS[path];return spec?query(base,orderByChild(spec.field),limitToLast(spec.limit)):base;}
 function createSubscriptionHub(database,makeRef,listen,targetFor){
@@ -31,7 +31,7 @@ function createSubscriptionHub(database,makeRef,listen,targetFor){
     analyticsFunnel:['analytics'],platformPayouts:['payouts','pnl','analytics','cashflow','receivables'],platformVarAccounts:['payouts','pnl'],
     shifts:['ops'],activityLog:['ops'],heldOrders:['pos','ops'],discrepancies:['discrepancy'],
     pettyCashVouchers:['petty'],pettyCashReplenishments:['petty'],pettyCashSettings:['petty'],
-    cfAccounts:['cashflow','receivables','payables'],cfLedger:['cashflow'],receivables:['receivables'],payables:['payables']
+    cfAccounts:['cashflow','receivables','payables'],cfLedger:['cashflow'],financialMovements:['cashflow','receivables','payables','payouts'],receivables:['receivables'],payables:['payables']
   };
   function policy(path,opts){opts=opts||{};return {critical:opts.critical===true||critical[path]===1,scopes:opts.scopes||scopes[path]||[]};}
   function consumerActive(c){return authorized&&(c.critical||c.scopes.indexOf(activeScope)>-1);}
@@ -81,7 +81,7 @@ function createSubscriptionHub(database,makeRef,listen,targetFor){
 }
 const subscriptionHub=createSubscriptionHub(db,ref,onValue,liveTarget);
 window.__accazaLiveStats=function(){return subscriptionHub.stats();};
-const HISTORY_TAB_PATHS={analytics:['orders','archivedOrders'],pnl:['orders','archivedOrders','internalUsage','inventoryAdjustments','platformPayouts'],payouts:['orders','archivedOrders','platformPayouts'],stockvalue:['orders','archivedOrders','stockReceipts','inventoryAdjustments','internalUsage','inventoryMovements'],dailyreport:['orders','archivedOrders'],cashflow:['orders','archivedOrders','cfLedger','platformPayouts'],receivables:['orders','archivedOrders'],purchases:['stockReceipts','inventoryMovements'],usage:['internalUsage','inventoryMovements'],inventory:['inventoryMovements'],ops:['shifts','activityLog'],discrepancy:['discrepancies'],reservations:['archivedReservations']};
+const HISTORY_TAB_PATHS={analytics:['orders','archivedOrders'],pnl:['orders','archivedOrders','internalUsage','inventoryAdjustments','platformPayouts'],payouts:['orders','archivedOrders','platformPayouts','financialMovements'],stockvalue:['orders','archivedOrders','stockReceipts','inventoryAdjustments','internalUsage','inventoryMovements'],dailyreport:['orders','archivedOrders'],cashflow:['orders','archivedOrders','cfLedger','financialMovements','platformPayouts'],receivables:['orders','archivedOrders','financialMovements'],purchases:['stockReceipts','inventoryMovements'],usage:['internalUsage','inventoryMovements'],inventory:['inventoryMovements'],ops:['shifts','activityLog'],discrepancy:['discrepancies'],reservations:['archivedReservations']};
 function renderHistoryPager(tab){
   var paths=HISTORY_TAB_PATHS[tab],host=document.getElementById('tab-'+tab);if(!paths||!host)return;
   var old=host.querySelector('.accaza-history-pager');if(old)old.remove();
@@ -140,6 +140,10 @@ window.__accaza={
   postInventoryMovements:function(movements){return postInventoryMovementsCall({movements:movements});},
   ensureInventoryLedger:function(){return ensureInventoryLedgerCall({});},
   validateRecipeDefinition:function(recipe){return validateRecipeDefinitionCall({recipe:recipe});},
+  postFinancialCommand:function(command){return postFinancialCommandCall(command);},
+  settlePlatformPayout:function(command){return settlePlatformPayoutCall(command);},
+  processOrderAdjustment:function(command){return processOrderAdjustmentCall(command);},
+  ensureFinancialLedger:function(){return ensureFinancialLedgerCall({});},
   get menuItemsMap(){return menuItemsMap;},
   get optionGroupsMap(){return optionGroupsMap;},
   get categoriesMap(){return categoriesMap;},

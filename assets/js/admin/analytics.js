@@ -438,13 +438,9 @@ function renderPayouts(){
     if(!recompute()){alert('Allocations must equal the variance before you can settle.');return;}
     var variance=Math.round((actual-expected)*100)/100;
     var allocs={};root.querySelectorAll('[data-alloc]').forEach(function(i){var v=Number(i.value)||0;if(v)allocs[i.getAttribute('data-alloc')]=v;});
-    var pid=uid('po_');var now=Date.now();
-    var rec={channel:ch,periodStart:(poFrom||''),periodEnd:(poTo||''),expectedNet:Math.round(expected*100)/100,actualPayout:actual,variance:variance,allocations:allocs,orderIds:selected.map(function(e){return e.o.id||e.key;}),by:(window.__posShift&&window.__posShift.staff)||'Manager',settledAt:now};
+    var pid=uid('po_');
     var left=inRange.length-selected.length;
-    var a2=A();a2.set(a2.ref(a2.db,'platformPayouts/'+pid),rec).then(function(){
-      selected.forEach(function(e){a2.update(a2.ref(a2.db,e.node+'/'+e.key),{settlementStatus:'settled',payoutId:pid});});
-      alert('Settled '+selected.length+' '+chLbl+' order(s).'+(left>0?(' '+left+' left unticked stay unsettled and carry to the next payout.'):'')+' Variance '+peso(variance)+' posted to the P&L.');
-    }).catch(function(err){alert('Could not save payout: '+((err&&err.code)||err)+'. If PERMISSION_DENIED: re-publish the database rules.');});
+    var a2=A(),btn=document.getElementById('poSettle');if(!a2.settlePlatformPayout){alert('3C payout service is not available. Refresh the portal.');return;}btn.disabled=true;btn.textContent='Settling on server…';a2.settlePlatformPayout({payoutId:pid,channel:ch,periodStart:(poFrom||''),periodEnd:(poTo||''),actualPayout:actual,allocations:allocs,orderIds:selected.map(function(e){return e.o.id||e.key;})}).then(function(r){var d=(r&&r.data)||r||{};alert('Settled '+d.orderCount+' '+chLbl+' order(s).'+(left>0?(' '+left+' left unticked stay unsettled and carry to the next payout.'):'')+' Server variance '+peso(d.variance)+' posted to the audit ledger.');}).catch(function(err){btn.disabled=false;btn.textContent='Save & settle '+chLbl+' payout';alert('Could not settle payout: '+((err&&err.message)||(err&&err.code)||err)+'. Nothing was settled.');});
   };
   var _add=document.getElementById('poAddAcc');if(_add)_add.onclick=function(){var nm=(document.getElementById('poNewName').value||'').trim();if(!nm){alert('Type an account name.');return;}var t=document.getElementById('poNewType').value;var a3=A();a3.set(a3.ref(a3.db,'platformVarAccounts/'+uid('va_')),{name:nm,type:t,order:accs.length+1}).then(function(){});};
   var _sav=document.getElementById('poSaveAcc');if(_sav)_sav.onclick=function(){var a4=A();var ups={};root.querySelectorAll('[data-acname]').forEach(function(i){var id=i.getAttribute('data-acname');var nm=(i.value||'').trim();var tp=(root.querySelector('[data-actype="'+id+'"]')||{}).value||'expense';if(nm)ups[id]={name:nm,type:tp,order:(varAcctMap[id]&&varAcctMap[id].order)||0};});a4.update(a4.ref(a4.db,'platformVarAccounts'),ups).then(function(){alert('Account edits saved.');});};

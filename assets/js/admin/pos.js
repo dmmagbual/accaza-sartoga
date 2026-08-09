@@ -755,13 +755,15 @@ function receiveStock(id){
     var brand=(mask.querySelector('#rcBrand').value||'').trim(); var expiry=mask.querySelector('#rcExpiry').value||''; var lot=(mask.querySelector('#rcLot').value||'').trim();
     var now=Date.now(), mid=movementId('purchase',rid,id);
     postMovements([{movementId:mid,itemId:id,type:'purchase',qty:q,unitCost:c,sourceType:'stock-receipt',sourceId:rid,note:(sup||'Supplier')+(ref?' · '+ref:''),actorName:by,occurredAt:now}]).then(function(){
-      if(pay==='paid'){ if(window.__cf&&window.__cf.postOut)window.__cf.postOut({date:date,accountId:payAcct,amount:tot,party:sup||i.name,ref:ref||i.name,category:'Purchases',source:'purchase',linkId:rid,note:'Received '+num(q)+' '+unit+' '+i.name}); }
-      else if(pay==='account'){ var due=mask.querySelector('#rcDue').value||''; if(window.__cf&&window.__cf.addPayable)payableId=window.__cf.addPayable({party:sup||'Supplier',type:'inventory',amount:tot,date:date,due:due,ref:ref||i.name}); }
+      if(pay==='paid'&&window.__cf&&window.__cf.postOut)return window.__cf.postOut({commandId:'purchase_cash_'+rid,date:date,accountId:payAcct,amount:tot,party:sup||i.name,ref:ref||i.name,category:'Purchases',source:'purchase',linkId:rid,note:'Received '+num(q)+' '+unit+' '+i.name});
+      if(pay==='account'&&window.__cf&&window.__cf.addPayable){var due=mask.querySelector('#rcDue').value||'';return window.__cf.addPayable({commandId:'purchase_ap_'+rid,documentId:'ap_'+rid,party:sup||'Supplier',type:'inventory',amount:tot,date:date,due:due,ref:ref||i.name}).then(function(pid){payableId=pid;});}
+      return null;
+    }).then(function(){
       var writes={};
       writes['stockReceipts/'+rid]={ing:id,name:i.name,unit:unit,qty:q,unitCost:c,total:tot,supplier:sup,brand:brand,ref:ref,date:date,receivedBy:by,payMode:pay,accountId:payAcct,payableId:payableId,movementId:mid,ts:now};
       writes['inventoryBatch/'+('bat_'+now.toString(36)+'_r')]={skuId:'',masterId:id,brand:brand,supplier:sup,qtyRecv:q,qtyRemaining:q,unit:unit,unitCost:c,recvDate:date,expiry:expiry,lot:lot,branch:'main',source:'purchase',invoiceId:'',receiptId:rid,createdAt:now};
       return a.update(a.ref(a.db),writes);
-    }).then(function(){if(window.__posLog)window.__posLog('stock-receive',i.name,num(q)+' '+unit+' · '+peso(tot)+(pay==='paid'?' · paid':pay==='account'?' · on account':''));close();}).catch(function(e){alert('Receipt FAILED — stock was not changed: '+((e&&e.message)||e));});
+    }).then(function(){if(window.__posLog)window.__posLog('stock-receive',i.name,num(q)+' '+unit+' · '+peso(tot)+(pay==='paid'?' · paid':pay==='account'?' · on account':''));close();}).catch(function(e){alert('Receipt did not finish: '+((e&&e.message)||e)+'. Stock or finance may already be posted; the same receipt is safe to retry and cannot double-post.');});
   };
 }
 /* ══════════ PURCHASES (Goods-Received Note) ══════════
@@ -914,8 +916,10 @@ function postPurchases(){
   updates['purchaseInvoices/'+invoiceId]={supplier:(P.supplier||'').trim(),ref:(P.ref||'').trim(),date:date,by:(P.by||'').trim(),payMode:P.pay,accountId:(P.pay==='paid'?P.acct:''),payableId:'',total:invTotal,lineCount:lines.length,receiptIds:receiptIds,movementIds:movementRows.map(function(x){return x.movementId;}),ts:Date.now()};
   /* New item shells must exist before the server can post their first movement. Movement IDs make retries safe. */
   Promise.resolve(Object.keys(seedUpdates).length?a.update(a.ref(a.db),seedUpdates):null).then(function(){return postMovements(movementRows);}).then(function(){return a.update(a.ref(a.db),updates);}).then(function(){
-    if(P.pay==='paid'&&window.__cf&&window.__cf.postOut){ window.__cf.postOut({date:date,accountId:P.acct,amount:invTotal,party:(P.supplier||'').trim()||'Supplier',ref:(P.ref||'').trim()||invoiceId,category:'Purchases',source:'purchase',linkId:invoiceId,note:lines.length+' item(s) received'}); }
-    else if(P.pay==='account'&&window.__cf&&window.__cf.addPayable){ var pid=window.__cf.addPayable({party:(P.supplier||'').trim()||'Supplier',type:'inventory',amount:invTotal,date:date,due:P.due||'',ref:(P.ref||'').trim()||invoiceId})||''; if(pid)a.update(a.ref(a.db,'purchaseInvoices/'+invoiceId),{payableId:pid}); }
+    if(P.pay==='paid'&&window.__cf&&window.__cf.postOut)return window.__cf.postOut({commandId:'purchase_cash_'+invoiceId,date:date,accountId:P.acct,amount:invTotal,party:(P.supplier||'').trim()||'Supplier',ref:(P.ref||'').trim()||invoiceId,category:'Purchases',source:'purchase',linkId:invoiceId,note:lines.length+' item(s) received'});
+    if(P.pay==='account'&&window.__cf&&window.__cf.addPayable)return window.__cf.addPayable({commandId:'purchase_ap_'+invoiceId,documentId:'ap_'+invoiceId,party:(P.supplier||'').trim()||'Supplier',type:'inventory',amount:invTotal,date:date,due:P.due||'',ref:(P.ref||'').trim()||invoiceId}).then(function(pid){return a.update(a.ref(a.db,'purchaseInvoices/'+invoiceId),{payableId:pid});});
+    return null;
+  }).then(function(){
     if(window.__posLog)window.__posLog('purchase',(P.supplier||'Supplier'),lines.length+' item(s) · '+peso(invTotal)+(P.pay==='paid'?' · paid':P.pay==='account'?' · on account':''));
     window.__purchPosting=false; window.__purch=null; renderPurchases();
     var m=document.getElementById('purMsg'); if(m)m.textContent='✓ Received '+lines.length+' item(s), invoice total '+peso(invTotal)+' at '+new Date().toLocaleTimeString();

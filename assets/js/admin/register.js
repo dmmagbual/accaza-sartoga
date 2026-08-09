@@ -33,8 +33,7 @@ function verifyPayment(oid){
   if(o.paymentStatus!=='pending'){alert('This sale is not pending verification.');return;}
   var pin=prompt('Manager PIN to VERIFY payment received for '+oid+' (₱'+(Number(o.total)||0).toLocaleString()+'):');if(pin===null)return;
   if(!window.__posIsManagerPin(pin)){alert('Invalid manager PIN — verification not approved.');return;}
-  var a=A();a.update(a.ref(a.db,'orders/'+oid),{paymentStatus:'confirmed',verifiedAt:Date.now(),verifiedBy:(activeShift&&activeShift.staff)||'Manager'});
-  if(window.__posLog)window.__posLog('verify-payment',oid,'₱'+(Number(o.total)||0).toLocaleString()+' · '+(o.payment||''));
+  var a=A();if(!a.processOrderAdjustment){alert('3C payment service is not available. Refresh the portal.');return;}a.processOrderAdjustment({action:'confirm_payment',orderId:oid}).then(function(){if(window.__posLog)window.__posLog('verify-payment',oid,'₱'+(Number(o.total)||0).toLocaleString()+' · '+(o.payment||''));}).catch(function(e){alert('Payment confirmation failed: '+((e&&e.message)||e));});
 }
 window.__posVerify=function(oid){verifyPayment(oid);};
 window.__accazaRegisterModule('register',function(name){ if(name==='ops')renderOps(); if(name==='discrepancy')renderDiscrepancies(); if(name==='petty')renderPetty(); });
@@ -629,8 +628,7 @@ function voidSale(oid){
   var pin=prompt('Manager PIN to VOID '+oid+':');if(pin===null)return;if(!window.__posIsManagerPin(pin)){alert('Invalid manager PIN.');return;}
   var reason=prompt('Reason for void:')||'';
   var restock=o.inventoryUsage&&!o.inventoryReversed?confirm('Return this order\'s ingredients to stock?\nOK = restock · Cancel = treat as wastage (keep deducted).'):false;
-  var a=A();a.update(a.ref(a.db,'orders/'+oid),{voided:true,voidReason:reason,voidedAt:Date.now(),inventoryReversalRequested:restock?true:null,inventoryReversalReason:restock?reason:''});
-  window.__posLog('void',oid,reason||'—');
+  var a=A();if(!a.processOrderAdjustment){alert('3C adjustment service is not available. Refresh the portal.');return;}a.processOrderAdjustment({action:'void',orderId:oid,reason:reason,restock:restock}).then(function(){window.__posLog('void',oid,reason||'—');alert('Order voided and financial reversal posted.');}).catch(function(e){alert('Void failed: '+((e&&e.message)||e)+'. Nothing was changed.');});
 }
 function refundSale(oid){
   var o=ordersMap[oid];if(!o)return;
@@ -641,8 +639,6 @@ function refundSale(oid){
   var reason=prompt('Refund reason:')||'';
   var full=(already+amt)>=max-0.01;
   var restock=full&&o.inventoryUsage&&!o.inventoryReversed?confirm('Full refund. Return ingredients to stock?\nOK = restock · Cancel = wastage.'):false;
-  var a=A();a.update(a.ref(a.db,'orders/'+oid),{refundAmount:already+amt,refundReason:reason,refundedAt:Date.now(),refunded:true,inventoryReversalRequested:restock?true:null,inventoryReversalReason:restock?reason:''});
-  if(denomTrackingOnR()&&activeShift){ var wasCash=o.payment==='Cash'||(o.payments&&o.payments.some(function(p){return p.method==='Cash';})); if(wasCash){ var mc=makeChangeD(amt,drawerNow()); saveDrawer(subD(drawerNow(),mc.denoms)); if(!mc.ok)alert('Note: the drawer can’t provide exactly '+peso(amt)+' cash (short '+peso(mc.short)+'). Reconcile at count.'); } }
-  window.__posLog('refund',oid,peso(amt)+' · '+(reason||'—'));
+  var a=A();if(!a.processOrderAdjustment){alert('3C adjustment service is not available. Refresh the portal.');return;}a.processOrderAdjustment({action:'refund',orderId:oid,amount:amt,reason:reason,restock:restock}).then(function(){if(denomTrackingOnR()&&activeShift){var wasCash=o.payment==='Cash'||(o.payments&&o.payments.some(function(p){return p.method==='Cash';}));if(wasCash){var mc=makeChangeD(amt,drawerNow());saveDrawer(subD(drawerNow(),mc.denoms));if(!mc.ok)alert('Note: the drawer can’t provide exactly '+peso(amt)+' cash (short '+peso(mc.short)+'). Reconcile at count.');}}window.__posLog('refund',oid,peso(amt)+' · '+(reason||'—'));alert('Refund and financial reversal posted.');}).catch(function(e){alert('Refund failed: '+((e&&e.message)||e)+'. Nothing was changed.');});
 }
 })();
