@@ -153,10 +153,9 @@ function renderDiscrepancies(){
 }
 function reviewDiscrepancy(id){
   var d=discMap[id]; if(!d||d.status==='reviewed')return;
-  var pin=prompt('Manager PIN to review/close this discrepancy:'); if(pin===null)return; if(!window.__posIsManagerPin(pin)){alert('Invalid manager PIN.');return;}
-  var note=prompt('Root-cause note (shortage / overage / encoding error / explanation):')||'';
-  var a=A();a.update(a.ref(a.db,'discrepancies/'+id),{status:'reviewed',reviewedBy:(activeShift&&activeShift.staff)||'Manager',reviewedAt:Date.now(),note:note});
-  window.__posLog('discrepancy-review',id,note);
+  var note=prompt('Root-cause note (shortage / overage / encoding error / explanation):')||'';if(!note.trim()){alert('A root-cause note is required.');return;}
+  var a=A();if(!a.reviewDiscrepancy||!a.managerApproval){alert('3E discrepancy service is not available. Refresh the portal.');return;}
+  a.managerApproval('review_discrepancy',id,null,note).then(function(ap){return a.reviewDiscrepancy({discrepancyId:id,note:note,approvalId:ap.approvalId});}).then(function(){window.__posLog('discrepancy-review',id,note);alert('Discrepancy reviewed and locked.');}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Review failed: '+((e&&e.message)||e));});
 }
 function exportDiscrepancies(){
   if(!window.XLSX){alert('Excel library still loading — try again.');return;}
@@ -255,26 +254,20 @@ function createVoucher(){
 function approveVoucher(id){
   var v=pettyVouchers[id]; if(!v||v.status!=='pending')return;
   if(!v.receiptImg){alert('No receipt attached — cannot approve. No audit trail = no approval.');return;}
-  var pin=prompt('Manager PIN to approve '+v.voucherNo+' ('+peso(v.amount)+'):'); if(pin===null)return;
-  var mgr=managerByPin(pin); if(!mgr){alert('Invalid manager PIN.');return;}
-  if((mgr.name||'').trim().toLowerCase()===(v.requesterName||'').trim().toLowerCase()){alert('The approver must be different from the requester.');return;}
-  var bal=pettyBalance(); if(Number(v.amount)>bal.remaining){ if(!confirm('This exceeds the remaining petty cash ('+peso(bal.remaining)+'). Approve anyway?'))return; }
-  var a=A();a.update(a.ref(a.db,'pettyCashVouchers/'+id),{status:'approved',approvedBy:mgr.name,approvedAt:Date.now()});
-  window.__posLog('petty-approve',v.voucherNo,peso(v.amount));
+  var a=A();if(!a.managePettyVoucher||!a.managerApproval){alert('3E petty-cash service is not available. Refresh the portal.');return;}
+  a.managerApproval('approve_petty_voucher',id,Number(v.amount)||0,'Approve '+v.voucherNo).then(function(ap){return a.managePettyVoucher({action:'approve',voucherId:id,approvalId:ap.approvalId});}).then(function(){window.__posLog('petty-approve',v.voucherNo,peso(v.amount));alert('Voucher approved.');}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Approval failed: '+((e&&e.message)||e));});
 }
 function rejectVoucher(id){
   var v=pettyVouchers[id]; if(!v||v.status!=='pending')return;
-  var pin=prompt('Manager PIN to reject '+v.voucherNo+':'); if(pin===null)return; if(!window.__posIsManagerPin(pin)){alert('Invalid manager PIN.');return;}
-  var reason=prompt('Reason for rejection:')||'';
-  var a=A();a.update(a.ref(a.db,'pettyCashVouchers/'+id),{status:'rejected',rejectReason:reason,rejectedAt:Date.now()});
-  window.__posLog('petty-reject',v.voucherNo,reason);
+  var reason=prompt('Reason for rejection (required):')||'';if(!reason.trim()){alert('A rejection reason is required.');return;}
+  var a=A();if(!a.managePettyVoucher||!a.managerApproval){alert('3E petty-cash service is not available. Refresh the portal.');return;}
+  a.managerApproval('reject_petty_voucher',id,Number(v.amount)||0,reason).then(function(ap){return a.managePettyVoucher({action:'reject',voucherId:id,reason:reason,approvalId:ap.approvalId});}).then(function(){window.__posLog('petty-reject',v.voucherNo,reason);alert('Voucher rejected.');}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Rejection failed: '+((e&&e.message)||e));});
 }
 function voidVoucher(id){
   var v=pettyVouchers[id]; if(!v||v.status!=='approved'||v.voided)return;
-  var pin=prompt('Manager PIN to VOID approved voucher '+v.voucherNo+' (restores the fund):'); if(pin===null)return; if(!window.__posIsManagerPin(pin)){alert('Invalid manager PIN.');return;}
-  var reason=prompt('Reason for void:')||'';
-  var a=A();a.update(a.ref(a.db,'pettyCashVouchers/'+id),{voided:true,voidReason:reason,voidedAt:Date.now()});
-  window.__posLog('petty-void',v.voucherNo,reason);
+  var reason=prompt('Reason for void (required):')||'';if(!reason.trim()){alert('A void reason is required.');return;}
+  var a=A();if(!a.managePettyVoucher||!a.managerApproval){alert('3E petty-cash service is not available. Refresh the portal.');return;}
+  a.managerApproval('void_petty_voucher',id,Number(v.amount)||0,reason).then(function(ap){return a.managePettyVoucher({action:'void',voucherId:id,reason:reason,approvalId:ap.approvalId});}).then(function(){window.__posLog('petty-void',v.voucherNo,reason);alert('Voucher voided and petty cash restored.');}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Void failed: '+((e&&e.message)||e));});
 }
 function addReplenishment(){
   var amt=Number(fv('prAmount'))||0; if(!amt){alert('Enter an amount.');return;}
@@ -315,13 +308,9 @@ function exportPetty(){
   XLSX.writeFile(wb,'accaza-petty-cash-'+new Date().toISOString().slice(0,10)+'.xlsx');
 }
 function archiveOldActivity(){
-  var cutoff=Date.now()-60*24*3600*1000;
-  var old=Object.keys(activityMap).filter(function(k){return (activityMap[k].ts||0)<cutoff;});
-  if(!old.length){alert('No activity-log entries older than 60 days.');return;}
-  if(!confirm('Move '+old.length+' entr'+(old.length>1?'ies':'y')+' older than 60 days to the archive?\nThey stay in the database (activityLogArchive) and can still be exported — just removed from this live list.'))return;
-  var a=A(); var upd={};
-  old.forEach(function(k){ upd['activityLogArchive/'+k]=activityMap[k]; upd['activityLog/'+k]=null; });
-  a.update(a.ref(a.db),upd).then(function(){alert('Archived '+old.length+' entries.');}).catch(function(e){alert('Could not archive: '+e);});
+  if(!confirm('Move activity-log entries older than 60 days to the server-owned archive? Up to 500 entries are processed per click.'))return;
+  var a=A();if(!a.archiveActivityLog){alert('3E retention service is not available. Refresh the portal.');return;}
+  a.archiveActivityLog().then(function(res){var d=(res&&res.data)||res||{};alert(d.archived?('Archived '+d.archived+' entries.'+(d.hasMore?' Click again to archive the next batch.':'')):'No activity-log entries older than 60 days.');}).catch(function(e){alert('Could not archive activity log: '+((e&&e.message)||e));});
 }
 function cashMove(dir){
   if(!activeShift){alert('Open a shift first.');return;}
