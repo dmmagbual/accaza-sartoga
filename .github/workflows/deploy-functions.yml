@@ -21,6 +21,15 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Set up Java for Firebase Emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install root test dependencies
+        run: npm ci
+
       - name: Install function dependencies
         working-directory: functions
         run: npm ci
@@ -28,8 +37,10 @@ jobs:
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
 
+      - name: Run Accaza quality gate
+        run: npm run test:ci
+
       - name: Deploy functions
         run: firebase deploy --only functions --project accaza-sartoga --non-interactive --force
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-

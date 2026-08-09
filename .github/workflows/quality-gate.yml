@@ -1,0 +1,37 @@
+name: Accaza Quality Gate
+
+on:
+  push:
+    branches: [main, master]
+  pull_request: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Set up Java for Firebase Emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install root test dependencies
+        run: npm ci
+      - name: Install Function dependencies
+        working-directory: functions
+        run: npm ci
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+      - name: Run static, workflow, recovery, and rules tests
+        run: npm run test:ci
