@@ -1,1 +1,43 @@
+# Firebase / local tooling
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+ui-debug.log
+.env
+.env.*
+!.env.example
+
+# Dependencies and generated output
+node_modules/
+functions/node_modules/
+coverage/
+dist/
+.cache/
+*.log
+
+# Private business data and database exports
+*backup*.json
+*export*.json
+*.zip
+*.xlsx
+*.xls
+*.csv
+*.pdf
+*.docx
+PRICING and COSTING/
+video animation/
+pictures/
+
+# Retired/manual source copies — use Git history instead
+admin-backup.html
+index backup*.html
+index-pos.html
+Firebase rules - backup.txt
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
 
