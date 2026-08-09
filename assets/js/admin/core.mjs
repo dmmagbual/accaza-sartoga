@@ -78,6 +78,7 @@ window.__accaza={
   reviewDiscrepancy:function(command){return reviewDiscrepancyCall(command);},
   managePettyVoucher:function(command){return managePettyVoucherCall(command);},
   archiveActivityLog:function(){return archiveActivityLogCall({});},
+  syncOfflinePosSale:function(command){return callables.syncOfflinePosSale(command);},
   get menuItemsMap(){return menuItemsMap;},
   get optionGroupsMap(){return optionGroupsMap;},
   get categoriesMap(){return categoriesMap;},

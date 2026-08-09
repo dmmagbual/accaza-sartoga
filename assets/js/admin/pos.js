@@ -117,11 +117,14 @@ window.__accazaChoiceIngs=choiceIngs;
 // ---- boot (wait for bridge) ----
 var tries=0,iv=setInterval(function(){ if(window.__accaza){clearInterval(iv);init();} else if(++tries>150){clearInterval(iv);} },100);
 
-function _offLoad(){try{return JSON.parse(localStorage.getItem('accaza_offline_orders')||'[]');}catch(e){return [];}}
-function _offSave(q){try{localStorage.setItem('accaza_offline_orders',JSON.stringify(q));}catch(e){}}
-function queueOfflineOrder(o){var q=_offLoad();if(!q.some(function(x){return x.id===o.id;}))q.push(o);_offSave(q);updateOfflineUI();}
-function flushOfflineQueue(){var q=_offLoad();if(!q.length){updateOfflineUI();return;}var a=A();q.slice().forEach(function(o){var writes={};writes['orders/'+o.id]=o;writes['activeOrders/'+o.id]=o;a.update(a.ref(a.db),writes).then(function(){var q2=_offLoad().filter(function(x){return x.id!==o.id;});_offSave(q2);if(window.__posLog)window.__posLog('offline-sync',o.id,'₱'+(o.total||0));updateOfflineUI();}).catch(function(){});});}
-function updateOfflineUI(){var el=document.getElementById('posOfflineBar');if(!el)return;var pend=_offLoad().length;if(window.__online===false){el.innerHTML='<div style="background:#fdecea;border:1px solid #f5c6c6;color:#c0392b;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;">🔴 Offline — cash sales only'+(pend?' · '+pend+' sale(s) pending sync':' · sales will sync when back online')+'</div>';}else if(pend){el.innerHTML='<div style="background:#fff8e1;border:1px solid #ffe0a3;color:#8a6d1b;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;">🟡 Syncing '+pend+' offline sale(s)…</div>';}else{el.innerHTML='<div style="background:#e8f5ec;border:1px solid #b8dfc4;color:#155724;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;">🟢 Online</div>';}}
+var _offState={pending:0,syncing:0,failed:0,synced:0,total:0,rows:[]};
+function offlineQueue(){if(!window.AccazaOfflineQueue)throw new Error('Durable offline storage is unavailable.');return window.AccazaOfflineQueue;}
+function queueOfflineOrder(o){return offlineQueue().enqueue(o).then(function(){return refreshOfflineState();});}
+function refreshOfflineState(){return offlineQueue().summary().then(function(s){_offState=s;renderOfflineUI();return s;}).catch(function(e){_offState.error=String(e&&e.message||e);renderOfflineUI();return _offState;});}
+function flushOfflineQueue(){if(window.__online===false){updateOfflineUI();return Promise.resolve({offline:true});}return offlineQueue().flush(function(command){return A().syncOfflinePosSale(command);},refreshOfflineState).then(function(r){refreshOfflineState();if(r&&r.synced&&window.__posLog)window.__posLog('offline-sync','batch',r.synced+' sale(s) synced');return r;});}
+function renderOfflineUI(){var el=document.getElementById('posOfflineBar');if(!el)return;var pend=(_offState.pending||0)+(_offState.syncing||0),failed=_offState.failed||0,click=' onclick="window.__showOfflineQueue()" title="View transaction sync queue"';if(_offState.error){el.innerHTML='<button'+click+' style="background:#fdecea;border:1px solid #f5c6c6;color:#c0392b;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;cursor:pointer;">⛔ Offline storage error</button>';}else if(window.__online===false){el.innerHTML='<button'+click+' style="background:#fdecea;border:1px solid #f5c6c6;color:#c0392b;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;cursor:pointer;">🔴 Offline · '+pend+' Pending Sync'+(failed?' · '+failed+' Failed':'')+'</button>';}else if(failed){el.innerHTML='<button'+click+' style="background:#fdecea;border:1px solid #f5c6c6;color:#c0392b;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;cursor:pointer;">🔴 '+failed+' Failed · Retry</button>';}else if(pend){el.innerHTML='<button'+click+' style="background:#fff8e1;border:1px solid #ffe0a3;color:#8a6d1b;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;cursor:pointer;">🟡 Syncing '+pend+' sale(s)…</button>';}else{el.innerHTML='<button'+click+' style="background:#e8f5ec;border:1px solid #b8dfc4;color:#155724;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;cursor:pointer;">🟢 Online · Synced</button>';}}
+function updateOfflineUI(){renderOfflineUI();refreshOfflineState();}
+window.__showOfflineQueue=function(){offlineQueue().all().then(function(rows){var old=document.getElementById('posSyncQueueMask');if(old)old.remove();var m=document.createElement('div');m.id='posSyncQueueMask';m.className='pz-mask show';var body=rows.length?rows.slice().reverse().map(function(r){var col=r.status==='synced'?'#155724':r.status==='failed'?'#c0392b':'#8a6d1b';return '<div style="border-bottom:1px solid #ddd;padding:0.55rem 0;"><div style="display:flex;justify-content:space-between;gap:1rem;"><b>'+esc((r.order&&r.order.id)||r.id)+'</b><b style="color:'+col+';">'+esc(r.status.toUpperCase())+'</b></div><div style="font-size:0.75rem;color:#666;">'+peso((r.order&&r.order.total)||0)+' · attempts '+(r.attempts||0)+'</div>'+(r.lastError?'<div style="font-size:0.72rem;color:#c0392b;margin-top:0.2rem;">'+esc(r.lastError)+'</div>':'')+(r.status==='failed'?'<button class="pz-btn sec" data-sync-retry="'+esc(r.id)+'" style="margin-top:0.35rem;">Retry this sale</button>':'')+'</div>';}).join(''):'<p>No queued transactions.</p>';m.innerHTML='<div class="pz-modal" style="max-width:560px;"><div style="display:flex;justify-content:space-between;align-items:center;"><div class="pz-h">Transaction Sync Queue</div><button class="pz-btn sec" data-sync-close>✕</button></div><p style="font-size:0.78rem;color:#666;">Pending is stored on this device. Synced means Firebase confirmed it.</p><div style="max-height:55vh;overflow:auto;">'+body+'</div><button class="pz-btn ok" data-sync-all style="width:100%;margin-top:0.8rem;">Retry pending / failed now</button></div>';document.body.appendChild(m);m.querySelector('[data-sync-close]').onclick=function(){m.remove();};m.querySelector('[data-sync-all]').onclick=function(){flushOfflineQueue().then(function(){m.remove();window.__showOfflineQueue();});};m.querySelectorAll('[data-sync-retry]').forEach(function(b){b.onclick=function(){offlineQueue().retry(this.getAttribute('data-sync-retry')).then(flushOfflineQueue).then(function(){m.remove();window.__showOfflineQueue();});};});});};
 window.__flushOfflineQueue=flushOfflineQueue;
 function posMethods(){
   var pm=(window.__posSettings&&window.__posSettings.payMethods);
@@ -1912,8 +1915,9 @@ function chargeSale(sub,total,payments,platform){
   var _scoped=isPlat?[]:posScopedDisc.slice();
   var _discEl=document.getElementById('posDisc');
   var disc=isPlat?(Number(platform.discountAmt)||0):((Number(_discEl&&_discEl.value)||0)+_scoped.reduce(function(s,d){return s+(Number(d.value)||0);},0));
-  var a=A(); var staff=shift.staff||'Staff';
-  var oid='POS-'+Date.now().toString().slice(-6);
+  var staff=shift.staff||'Staff';
+  var txnId='pos_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10);
+  var oid='POS-'+Date.now().toString(36).toUpperCase()+'-'+Math.random().toString(36).slice(2,6).toUpperCase();
   var lineItems=keys.map(function(k){var c=posCart[k];return {itemKey:c.itemKey,name:c.name,size:c.size,optLabels:c.optLabels,qty:c.qty,unitTotal:c.unitTotal,stream:c.stream||null,pkg:c.pkgId||null};});
   var _pkgs=isPlat?[]:(window.__posPkgs||[]);var _extra=_pkgs.reduce(function(s,pp){return s+(Number(pp.extraCost)||0);},0);
   var itemsStr=keys.map(function(k){var c=posCart[k];return c.name+(c.details?' ('+c.details+')':'')+' x'+c.qty;}).join(', ');
@@ -1925,24 +1929,23 @@ function chargeSale(sub,total,payments,platform){
   var payLabel=isPlat?channelLabel(platform.channel):(payments.length>1?'Split':payments[0].method);
   var _pendingPay=(!isPlat)&&(payments||[]).some(function(p){return !isCashMethod(p.method);});
   var now=new Date();
-  var order={id:oid,name:cust,phone:'',type:(isPlat?channelLabel(platform.channel):'Walk-in'),address:'',payment:payLabel,payments:payments,contact:'',contactMethod:'',items:itemsStr,lineItems:lineItems,subtotal:sub,discount:disc,discountLines:_scoped,total:total,tendered:tendered,change:change,notes:'',status:'Completed',source:'pos',channel:(isPlat?platform.channel:'instore'),staff:staff,shiftId:shift.id,packages:_pkgs,extraCost:_extra,paymentStatus:(_pendingPay?'pending':'confirmed'),receivedByCustomer:true,tipRounding:tipTotal,time:now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:now.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
+  var order={id:oid,clientTxnId:txnId,schemaVersion:2,syncState:'pending',name:cust,phone:'',type:(isPlat?channelLabel(platform.channel):'Walk-in'),address:'',payment:payLabel,payments:payments,contact:'',contactMethod:'',items:itemsStr,lineItems:lineItems,subtotal:sub,discount:disc,discountLines:_scoped,total:total,tendered:tendered,change:change,notes:'',status:'Completed',source:'pos',channel:(isPlat?platform.channel:'instore'),staff:staff,shiftId:shift.id,packages:_pkgs,extraCost:_extra,paymentStatus:(_pendingPay?'pending':'confirmed'),receivedByCustomer:true,tipRounding:tipTotal,time:now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:now.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
   if(isPlat){ order.platformRef=platform.platformRef; order.grossPlatform=platform.gross; order.platformDiscountPct=Number(platform.discountPct)||0; order.platformDiscount=Number(platform.discountAmt)||0; order.netSalesPlatform=Number(platform.netSales!=null?platform.netSales:total)||0; order.commission=platform.commission; order.commissionRate=platform.commissionRate; order.platformWht=Number(platform.wht)||0; order.platformWhtRate=Number(platform.whtRate)||0; order.platformVat=Number(platform.vat)||0; order.platformVatRate=Number(platform.vatRate)||0; order.netPlatform=platform.net; order.settlementStatus='unsettled'; order.payoutId=''; }
   var _cps=(payments||[]).filter(function(p){return p.cashReceived;});
   if(_cps.length){ var rcv={},chgD={},shrt=0; _cps.forEach(function(p){ rcv=mergeDenoms(rcv,p.cashReceived); chgD=mergeDenoms(chgD,p.cashChange||{}); shrt+=Number(p.changeShort)||0; });
     order.cashReceived=rcv; order.cashChange=chgD; order.changeShort=shrt;
     var _sh=window.__posShift;
-    if(_sh){ var nd=mergeDenoms(shiftDrawer(), rcv); Object.keys(chgD).forEach(function(k){ nd[k]=(Number(nd[k])||0)-(Number(chgD[k])||0); });
-      a.update(a.ref(a.db,'shifts/'+_sh.id),{drawer:nd}); a.update(a.ref(a.db,'posActiveShift'),{drawer:nd}); }
+    if(_sh){ var nd=mergeDenoms(shiftDrawer(), rcv); Object.keys(chgD).forEach(function(k){ nd[k]=(Number(nd[k])||0)-(Number(chgD[k])||0); }); _sh.drawer=nd; }
   }
   if(!isPlat && window.__online===false && (payments||[]).some(function(pp){return pp.method!=='Cash';})){
     alert("You're offline. Only CASH sales can be rung until the Wi-Fi/connection returns. Take this as cash, or wait to reconnect for G-Cash/bank.");
     return;
   }
   order.offlineRung=(window.__online===false);
-  queueOfflineOrder(order);
-  if(window.__posLog)window.__posLog('sale',oid,'₱'+total+' · '+payLabel+(order.offlineRung?' · OFFLINE':''));
-  var receipt=Object.assign({},order); receipt._offline=(window.__online===false); posCart={}; window.__posPkgs=[]; posScopedDisc=[]; renderPosCart(); showReceipt(receipt);
-  flushOfflineQueue();
+  queueOfflineOrder(order).then(function(){
+    if(window.__posLog)window.__posLog('sale-queued',oid,'₱'+total+' · '+payLabel+(order.offlineRung?' · OFFLINE':'')+' · '+txnId);
+    var receipt=Object.assign({},order); receipt._offline=(window.__online===false); receipt._syncPending=true; posCart={}; window.__posPkgs=[]; posScopedDisc=[]; renderPosCart(); showReceipt(receipt); flushOfflineQueue();
+  }).catch(function(error){alert('Sale was NOT saved. Durable storage failed: '+String(error&&error.message||error));});
 }
 window.__pos={render:function(){if(document.getElementById('posCartPanel'))renderPosCart();},loadCart:function(c){posCart=c||{};if(window.switchTab)window.switchTab('pos',document.querySelector('.admin-tab'));buildPOS();},hasItems:function(){return Object.keys(posCart).length>0;},addPackage:function(components,meta){(components||[]).forEach(function(c){var key=uid('pc_');posCart[key]={itemKey:c.itemKey,name:c.name,size:c.size||null,optLabels:c.optLabels||[],details:c.details||('pkg: '+meta.name),qty:c.qty,unitTotal:c.unitTotal,stream:(meta.type==='promo'?'promo':'events'),pkgId:meta.id};});window.__posPkgs=window.__posPkgs||[];window.__posPkgs.push(meta);renderPosCart();}};
 
@@ -1970,7 +1973,8 @@ function showReceipt(o){
   if(!w){alert('Allow pop-ups to print the receipt. Sale was saved.');return;}
   w.document.write('<html><head><title>Receipt '+esc(o.id)+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2{text-align:center;margin:0 0 2px;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
     +'<h2>Accaza Coffee House</h2><div style="text-align:center;">'+esc(addr)+'</div><hr>'
-    +'<div>Order: '+esc(o.id)+'</div><div>'+esc(o.date)+' '+esc(o.time)+'</div><div>On Duty: '+esc(o.onDuty||o.staff||'-')+'</div><div>Customer: '+esc(o.name||'Walk-in')+'</div><hr>'
+    +'<div>Order: '+esc(o.id)+'</div><div>'+esc(o.date)+' '+esc(o.time)+'</div><div>On Duty: '+esc(o.onDuty||o.staff||'-')+'</div><div>Customer: '+esc(o.name||'Walk-in')+'</div>'
+    +(o._syncPending?'<div style="border:2px solid #8a6d1b;padding:4px;margin:5px 0;text-align:center;font-weight:bold;">PENDING SYNC — Firebase confirmation not yet received</div>':'')+'<hr>'
     +'<table>'+rows+'</table><hr>'
     +'<table><tr><td>Subtotal</td><td style="text-align:right;">'+peso(o.subtotal||o.total)+'</td></tr>'
     +((o.discountLines&&o.discountLines.length)?o.discountLines.map(function(d){var lbl={senior:'Senior 20%',pwd:'PWD 20%',athlete:'Athlete 20%',promo5:'Promo 5%'}[d.type]||d.type;return '<tr><td>'+esc(lbl)+(d.idNumber?' · '+esc(d.idNumber):'')+'</td><td style="text-align:right;">-'+peso(d.value)+'</td></tr>';}).join(''):'')
