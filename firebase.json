@@ -1,10 +1,12 @@
 {
   "database": { "rules": "database.rules.json" },
+  "storage": { "rules": "storage.rules" },
   "functions": [
     {
       "source": "functions",
       "codebase": "default",
       "runtime": "nodejs22",
+      "predeploy": ["node tools/sync-costing.mjs"],
       "ignore": ["node_modules", ".git", "*.log"]
     }
   ]
