@@ -27,7 +27,6 @@ function init(){
 }
 // shared hooks used by the POS script
 window.__posLog=function(action,ref,detail){var a=A();var id=uid('log_');a.set(a.ref(a.db,'activityLog/'+id),{ts:Date.now(),action:action,ref:ref||'',detail:detail||'',staff:(activeShift&&activeShift.staff)||'—'});};
-window.__posIsManagerPin=function(pin){var z=window.__accazaAuthz;if(!z||!z.isPrivileged)return false;return Object.keys(staffList).some(function(k){var s=staffList[k];return s.role==='manager'&&String(s.pin)===String(pin);});};
 window.__posVoid=function(oid){voidSale(oid);};window.__posRefund=function(oid){refundSale(oid);};
 function verifyPayment(oid){
   var o=ordersMap[oid];if(!o){alert('Order not found in the active list. If it was archived, restore it first to verify.');return;}
@@ -155,7 +154,7 @@ function renderDiscrepancies(){
 function reviewDiscrepancy(id){
   var d=discMap[id]; if(!d||d.status==='reviewed')return;
   var a=A();if(!a.reviewDiscrepancy||!a.managerApproval){alert('3E discrepancy service is not available. Refresh the portal.');return;}
-  F().run({title:'Review discrepancy',subtitle:'Record the root cause before manager approval. This note becomes part of the permanent audit trail.',submitLabel:'Request approval',busyLabel:'Processing…',fields:[{name:'note',label:'Root-cause explanation',type:'textarea',required:true,maxLength:300,placeholder:'Shortage, overage, encoding error, or other explanation'}]},function(v){return a.managerApproval('review_discrepancy',id,null,v.note).then(function(ap){return a.reviewDiscrepancy({discrepancyId:id,note:v.note,approvalId:ap.approvalId});}).then(function(){window.__posLog('discrepancy-review',id,v.note);});}).then(function(){alert('Discrepancy reviewed and locked.');}).catch(function(){});
+  F().run({title:'Review discrepancy',subtitle:'Record the root cause before privileged approval. Owner, Superadmin, Admin, and Manager accounts may approve. This note becomes part of the permanent audit trail.',submitLabel:'Approve review',busyLabel:'Processing…',fields:[{name:'note',label:'Root-cause explanation',type:'textarea',required:true,maxLength:300,placeholder:'Shortage, overage, encoding error, or other explanation'}]},function(v){return a.managerApproval('review_discrepancy',id,null,v.note).then(function(ap){return a.reviewDiscrepancy({discrepancyId:id,note:v.note,approvalId:ap.approvalId});}).then(function(){window.__posLog('discrepancy-review',id,v.note);});}).then(function(){alert('Discrepancy reviewed and locked.');}).catch(function(){});
 }
 function exportDiscrepancies(){
   if(!window.XLSX){alert('Excel library still loading — try again.');return;}
@@ -167,7 +166,6 @@ function exportDiscrepancies(){
 /* ---------- Petty Cash (Feature B) ---------- */
 var PETTY_CATS=['Supplies','Transport','Repairs & maintenance','Utilities','Staff meals','Miscellaneous'];
 function fv(id){var el=document.getElementById(id);return el?el.value:'';}
-function managerByPin(pin){var m=null;Object.keys(staffList).forEach(function(k){var s=staffList[k];if(s.role==='manager'&&String(s.pin)===String(pin))m=s;});return m;}
 function pettyBalance(){
   var open=Number((pettySettings&&pettySettings.openingBalance)||0);
   var rep=Object.keys(pettyRepl).reduce(function(s,k){return s+(Number(pettyRepl[k].amount)||0);},0);
@@ -200,7 +198,7 @@ function renderPetty(){
   }
   var repl=Object.keys(pettyRepl).map(function(k){return pettyRepl[k];}).sort(function(a,b){return (b.ts||0)-(a.ts||0);});
   root.innerHTML='<div class="pz-h">💷 Petty Cash</div>'
-    +'<p class="pz-sub">Digital vouchers so no one takes cash from the sales drawer for expenses. Every disbursement needs a receipt and a manager approval; the fund is a running imprest balance.</p>'
+    +'<p class="pz-sub">Digital vouchers so no one takes cash from the sales drawer for expenses. Every disbursement needs a receipt and privileged approval; the fund is a running imprest balance.</p>'
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">'
       +'<div class="pz-card" style="flex:1;min-width:130px;"><div style="font-size:0.75rem;color:var(--tl);">Opening</div><div style="font-weight:700;">'+peso(bal.opening)+'</div></div>'
       +'<div class="pz-card" style="flex:1;min-width:130px;"><div style="font-size:0.75rem;color:var(--tl);">+ Replenishments</div><div style="font-weight:700;">'+peso(bal.replen)+'</div></div>'
@@ -318,23 +316,17 @@ function cashMove(dir){
     +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.5rem;">Cash in — add to drawer</div>'
     +(denom?('<span class="pz-lbl">Notes/coins added</span>'+denomGridHtml('cmDenom')):'<div><span class="pz-lbl">Amount ₱</span><input class="pz-in" id="cmAmt" type="number" step="any"/></div>')
     +'<div style="margin-top:0.5rem;"><span class="pz-lbl">Reason</span><select class="pz-in" id="cmReason"><option>Owner top-up</option><option>Change float</option><option>Return</option><option>Other</option></select></div>'
-    +'<div style="margin-top:0.5rem;"><span class="pz-lbl">Manager PIN</span><input class="pz-in" id="cmPin" type="password" inputmode="numeric"/></div>'
+    +'<div style="margin-top:0.5rem;padding:0.45rem 0.55rem;background:#f4efe7;border-radius:6px;font-size:0.76rem;color:var(--tl);">Owner, Superadmin, Admin, or Manager approval is recorded when you submit.</div>'
     +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="cmSubmit">Add to drawer</button><button class="pz-btn sec" id="cmCancel">Cancel</button></div></div>';
   document.body.appendChild(mask);
   if(denom)wireDenom('cmDenom');
   mask.querySelector('#cmCancel').onclick=function(){document.body.removeChild(mask);};
-  mask.querySelector('#cmSubmit').onclick=function(){
+  mask.querySelector('#cmSubmit').onclick=async function(){
     var amt, counts=null;
     if(denom){var rd=denomRead('cmDenom'); amt=rd.total; counts=rd.counts;} else { amt=Number(mask.querySelector('#cmAmt').value)||0; }
     if(!amt||amt<0){alert('Enter a valid amount / notes.');return;}
-    var reason=mask.querySelector('#cmReason').value||'Other';
-    var mgr=managerByPin(mask.querySelector('#cmPin').value||''); if(!mgr){alert('Invalid manager PIN.');return;}
-    var a=A(); var arr=(activeShift.payIns||[]).slice(); arr.push({amount:amt,reason:reason,by:mgr.name,ts:Date.now(),denoms:counts||null});
-    a.update(a.ref(a.db,'shifts/'+activeShift.id),{payIns:arr}); a.update(a.ref(a.db,'posActiveShift'),{payIns:arr});
-    if(denom&&counts)saveDrawer(mergeD(drawerNow(),counts));
-    window.__posLog('cash-in',reason,peso(amt)+' by '+mgr.name);
-    document.body.removeChild(mask);
-    alert('Recorded. Expected drawer increased by '+peso(amt)+'.');
+    var reason=mask.querySelector('#cmReason').value||'Other',a=A(),btn=this;if(!a.managerApproval||!a.consumeManagerApproval){alert('Privileged cash-in approval is unavailable. Refresh the portal.');return;}btn.disabled=true;btn.textContent='Approving…';var sourceId='cash_in_'+activeShift.id+'_'+Date.now();
+    try{var ap=await a.managerApproval('cash_in',sourceId,amt,reason);var cr=await a.consumeManagerApproval({action:'cash_in',sourceId:sourceId,amount:amt,operationKey:sourceId,approvalId:ap.approvalId}),cd=(cr&&cr.data)||cr||{},approver=cd.approvedBy||'Privileged account';var arr=(activeShift.payIns||[]).slice();arr.push({amount:amt,reason:reason,by:approver,ts:Date.now(),denoms:counts||null,approvalId:ap.approvalId});await Promise.all([a.update(a.ref(a.db,'shifts/'+activeShift.id),{payIns:arr}),a.update(a.ref(a.db,'posActiveShift'),{payIns:arr})]);if(denom&&counts)saveDrawer(mergeD(drawerNow(),counts));window.__posLog('cash-in',reason,peso(amt)+' by '+approver+' · '+ap.approvalId);document.body.removeChild(mask);alert('Recorded. Expected drawer increased by '+peso(amt)+'.');}catch(e){btn.disabled=false;btn.textContent='Add to drawer';if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Cash-in approval failed: '+((e&&e.message)||e));}
   };
 }
 function pendingPanel(){
@@ -343,7 +335,7 @@ function pendingPanel(){
   var h='<div class="pz-card" style="margin-bottom:1rem;border:1px solid #ffe0a3;background:#fffdf5;">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:#8a6d1b;">⏳ Payments to verify</span><span style="font-weight:700;color:#8a6d1b;">'+peso(tot)+' · '+list.length+'</span></div>';
   if(!list.length){return h+'<p class="pz-sub" style="margin:0.4rem 0 0;">Nothing pending — all non-cash sales verified. 👍</p></div>';}
-  h+='<p class="pz-sub" style="margin:0.3rem 0 0.6rem;">Check the money landed in your GCash/bank account, match the ref, then Verify. Manager PIN required.</p>';
+  h+='<p class="pz-sub" style="margin:0.3rem 0 0.6rem;">Check the money landed in your GCash/bank account, match the ref, then Verify. Owner, Superadmin, Admin, or Manager approval is required.</p>';
   h+='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.8rem;"><thead><tr style="text-align:left;color:var(--tl);"><th style="padding:0.3rem;">Sale</th><th style="padding:0.3rem;">Amount</th><th style="padding:0.3rem;">Method</th><th style="padding:0.3rem;">Ref no.</th><th style="padding:0.3rem;">Time</th><th></th></tr></thead><tbody>';
   h+=list.map(function(o){var refs=(o.payments||[]).filter(function(p){return p.ref;}).map(function(p){return esc(p.ref);}).join(', ')||'—';var meth=(o.payments&&o.payments.length>1)?'Split':esc(o.payment||'');return '<tr style="border-top:1px solid #eee;"><td style="padding:0.3rem;font-weight:600;">'+esc(o.id)+'</td><td style="padding:0.3rem;">'+peso(o.total)+'</td><td style="padding:0.3rem;">'+meth+'</td><td style="padding:0.3rem;">'+refs+'</td><td style="padding:0.3rem;color:var(--tl);">'+esc(o.time||'')+'</td><td style="padding:0.3rem;"><button class="pz-btn ok" data-verify="'+esc(o.id)+'" style="padding:0.25rem 0.6rem;">✅ Verify</button></td></tr>';}).join('');
   h+='</tbody></table></div></div>';
@@ -351,7 +343,7 @@ function pendingPanel(){
 }
 function renderOps(){
   var root=document.getElementById('opsRoot');if(!root)return;
-  var html='<div class="pz-h">🧾 Register Ops</div><p class="pz-sub">Shift control, cash reconciliation, voids &amp; refunds — all logged. Cashiers ring sales; a manager PIN approves voids, refunds, and discounts.</p>';
+  var html='<div class="pz-h">🧾 Register Ops</div><p class="pz-sub">Shift control, cash reconciliation, voids &amp; refunds — all logged. Owner, Superadmin, Admin, or Manager accounts approve controlled actions.</p>';
   html+=pendingPanel();
   // SHIFT
   html+='<div class="pz-card" style="margin-bottom:1rem;">';
@@ -486,7 +478,7 @@ function closeShift(){
       +DENOMS.map(function(d){var act=Number(counts[d.k])||0;var exp=Number(drawer[d.k])||0;if(!act&&!exp)return '';var dv=act-exp;var col=dv?(dv<0?'#c0392b':'#8a6d1b'):'#155724';return '<tr><td style="padding:0.15rem 0.2rem;">'+d.lbl+'</td><td style="text-align:right;padding:0.15rem 0.2rem;">'+act+'</td><td style="text-align:right;padding:0.15rem 0.2rem;color:#555;">'+exp+'</td><td style="text-align:right;padding:0.15rem 0.2rem;font-weight:600;color:'+col+';">'+(dv>0?'+':'')+dv+'</td></tr>';}).join('')
       +'</tbody></table><div style="font-size:0.72rem;color:var(--tl);margin-top:0.2rem;">Per-denomination differences are normal (change-making, breaking bills, tips kept). Only the total below decides the shift.</div></div>');
     mask.innerHTML=box('<div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Close shift — reconciliation</div>'
-      +'<p class="pz-sub" style="margin-top:0.2rem;">Count confirmed &amp; locked. Review, then close. A manager PIN is needed to reopen and recount.</p>'
+      +'<p class="pz-sub" style="margin-top:0.2rem;">Count confirmed &amp; locked. Review, then close. Privileged approval is needed to reopen and recount.</p>'
       +denomTbl
       +'<div style="margin-top:0.6rem;font-weight:700;"><div style="display:flex;justify-content:space-between;"><span>Counted</span><span>'+peso(total)+'</span></div><div style="display:flex;justify-content:space-between;"><span>Expected</span><span>'+peso(exCash)+'</span></div><div style="display:flex;justify-content:space-between;color:'+(withinTol?'#155724':'#c0392b')+';"><span>Variance</span><span>'+peso(vary)+'</span></div></div>'
       +'<div style="font-size:0.78rem;margin-top:0.3rem;color:'+(withinTol?'#155724':'#c0392b')+';">'+(withinTol?('✓ Within tolerance (±'+peso(tolv)+') — no discrepancy will be logged.'):('⚠ Over tolerance (±'+peso(tolv)+') — a discrepancy will be logged.'))+'</div>'
