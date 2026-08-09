@@ -9,7 +9,7 @@ const env=await initializeTestEnvironment({projectId,database:{rules}});
 try{
   await env.withSecurityRulesDisabled(async(context)=>{
     await set(ref(context.database()),{
-      admins:{owner:true,staff:'staff'},
+      admins:{owner:true,manager:'manager',staff:'staff'},
       adminPerms:{staff:{orders:true,pos:true,discrepancy:true,petty:true}},
       orders:{
         own:{id:'own',ownerUid:'customer-a',status:'Pending',total:100,source:'online'},
@@ -45,6 +45,7 @@ try{
   const a=env.authenticatedContext('customer-a').database();
   const b=env.authenticatedContext('customer-b').database();
   const owner=env.authenticatedContext('owner').database();
+  const manager=env.authenticatedContext('manager').database();
   const staff=env.authenticatedContext('staff').database();
   const guest=env.unauthenticatedContext().database();
 
@@ -90,6 +91,7 @@ try{
   await assertSucceeds(get(ref(owner,'deletionAudit/orders/old_deleted')));
   await assertFails(set(ref(owner,'deletionAudit/orders/forged'),{deletedAt:2}));
   await assertSucceeds(get(ref(owner,'clientTelemetryDaily/2026-08-09')));
+  await assertSucceeds(get(ref(manager,'clientTelemetryDaily/2026-08-09')));
   await assertFails(get(ref(staff,'clientTelemetryDaily/2026-08-09')));
   await assertFails(set(ref(owner,'clientTelemetryDaily/2026-08-10'),{metrics:{forged:{count:1}}}));
 
