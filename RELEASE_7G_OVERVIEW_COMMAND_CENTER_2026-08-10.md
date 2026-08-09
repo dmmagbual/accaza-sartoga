@@ -11,6 +11,7 @@
 - Added direct, allow-listed routes from each signal to the existing controlled workspace.
 - Kept existing dashboard periods, trends, payment mix, best sellers, and status analytics as supporting detail.
 - Added responsive layouts, keyboard focus compatibility, sanitization, and offline precaching.
+- Extended the register to the usable viewport, compacted its vertical rhythm, collapsed inactive checkout controls on an empty ticket, and condensed denomination entry to reduce nested scrolling.
 
 ## Safety boundary
 
