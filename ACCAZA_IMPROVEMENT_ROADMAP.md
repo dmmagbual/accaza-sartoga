@@ -309,6 +309,8 @@ Until Phases 0–2 are complete, new convenience features should be paused unles
 
 **Release 7A local status (9 August 2026):** Complete in admin v167 and cache v56. Portal order-status changes are authenticated, permission-checked, transition-validated, stale-state protected, idempotent server commands. Direct browser status changes are denied; customer receipt and offline POS retain their dedicated commands. See `ADR-019_SERVER_ORDER_STATUS_AUTHORITY.md` and `RELEASE_7A_SERVER_ORDER_STATUS_2026-08-09.md`.
 
+**Release 7B local status (9 August 2026):** Complete in admin v168 and cache v57. The management-only Operations Center adds a bounded, sanitized server scan for stuck orders, partial offline sync, missing inventory/accounting postings, aged cash custody, proof-access failures, and client health warnings. It is read-only and routes resolution through existing controlled workflows. See `ADR-020_OPERATIONAL_EXCEPTION_CENTER.md` and `RELEASE_7B_OPERATIONAL_EXCEPTION_CENTER_2026-08-09.md`.
+
 1. Firebase Emulator tests for database rules.
 2. Cloud Function tests for retries, duplicate events, partial failure, refunds, and reversals.
 3. Checkout tests for in-store, split payment, GrabFood, FoodPanda, unavailable items, options, packages, and refunds.

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "preparedAt": "2026-08-09",
-  "release": "7A",
+  "release": "7B",
   "status": "candidate_pending_production_verification",
   "project": {
     "name": "Accaza Coffee House",
@@ -12,9 +12,9 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 167,
+    "admin": 168,
     "customer": 45,
-    "serviceWorkerCache": 56
+    "serviceWorkerCache": 57
   },
   "authoritativeFiles": [
     "admin.html",
@@ -28,6 +28,7 @@
     "functions/lib/financial.js",
     "functions/lib/offline-sync.js",
     "functions/lib/order-status.js",
+    "functions/lib/operational-exceptions.js",
     "assets/js/shared/costing.js",
     "assets/js/admin/core.mjs",
     "assets/js/admin/module-loader.js",
@@ -39,6 +40,7 @@
   "requiredFunctionExports": [
     "createOnlineOrder",
     "updateOrderStatus",
+    "getOperationalExceptions",
     "confirmOrderReceived",
     "getPaymentProof",
     "syncOfflinePosSale",
@@ -73,8 +75,8 @@
   ],
   "verification": {
     "localQualityGate": "passed_2026-08-09",
-    "githubQualityGate": "passed_2026-08-09",
-    "productionBuild167SmokeTest": "pending",
+    "githubQualityGate": "pending",
+    "productionBuild168SmokeTest": "pending",
     "productionPerformanceReview": "pending",
     "backupRestoreTest": "pending",
     "quarterlyPermissionReview": "pending",
