@@ -1,0 +1,15 @@
+{
+  "name": "accaza-coffee-shop-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/static-check.mjs",
+    "test:rules": "firebase emulators:exec --only database \"node tests/rules-ownership-check.mjs\"",
+    "test:safety": "node tests/repository-safety-check.mjs",
+    "test:ci": "npm test && npm run test:safety && npm run test:rules"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
+    "firebase": "^12.17.1"
+  }
+}
