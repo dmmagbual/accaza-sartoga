@@ -196,9 +196,13 @@ const MANAGER_APPROVAL_ACTIONS = new Set([
   "reject_petty_voucher", "void_petty_voucher",
 ]);
 async function claimManagerApproval(db, data, action, sourceId, amount, operationKey) {
-  const approvalId = financeKey(data && data.approvalId, "Manager approval"); const ref = db.ref(`/financialApprovals/${approvalId}`), now = Date.now(); let result;
-  await ref.transaction((row) => {if (!row || row.action !== action || row.sourceId !== String(sourceId) || Number(row.expiresAt || 0) < now || row.usedAt) return; if (amount != null && Math.abs(Financial.money(row.amount) - Financial.money(amount)) > 0.009) return; if (row.claimKey && row.claimKey !== operationKey) return; result = Object.assign({}, row); return Object.assign({}, row, {claimKey: operationKey, claimedAt: now});}, undefined, false);
-  if (!result) throw new HttpsError("failed-precondition", "Manager approval is missing, expired, already used, or does not match this action."); return {id: approvalId, record: result, usedWrites: {[`financialApprovals/${approvalId}/usedAt`]: now, [`financialApprovals/${approvalId}/usedBy`]: operationKey}};
+  const approvalId = financeKey(data && data.approvalId, "Privileged approval"); const ref = db.ref(`/financialApprovals/${approvalId}`), now = Date.now();
+  const matches = (row) => !!row && row.action === action && row.sourceId === String(sourceId) && Number(row.expiresAt || 0) >= now && !row.usedAt && !(amount != null && Math.abs(Financial.money(row.amount) - Financial.money(amount)) > 0.009) && !(row.claimKey && row.claimKey !== operationKey);
+  const initial = (await ref.get()).val();
+  if (!matches(initial)) throw new HttpsError("failed-precondition", "Privileged approval is missing, expired, already used, or does not match this action.");
+  const claimed = await ref.transaction((row) => matches(row) ? Object.assign({}, row, {claimKey: operationKey, claimedAt: now}) : undefined, undefined, false);
+  if (!claimed.committed) throw new HttpsError("failed-precondition", "Privileged approval was changed or used before this action completed. Request a new approval.");
+  return {id: approvalId, record: initial, usedWrites: {[`financialApprovals/${approvalId}/usedAt`]: now, [`financialApprovals/${approvalId}/usedBy`]: operationKey}};
 }
 
 exports.createManagerApproval = onCall(
