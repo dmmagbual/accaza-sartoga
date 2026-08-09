@@ -5,6 +5,8 @@ import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin}from"./admin-orders.mjs";
 import{createCustomerRegistry}from"./customer-registry.mjs";
+import{createReservationManager}from"./reservations.mjs";
+import{createCatalogAdmin}from"./catalog-admin.mjs";
 import{escHtml,safeImageSrc}from"./shared-ui.mjs";
 
 const {getPaymentProof:getPaymentProofCall,ensureActiveOrders:ensureActiveOrdersCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,archiveActivityLog:archiveActivityLogCall}=callables;
@@ -83,8 +85,7 @@ window.__accaza={
 };
 
 let staffAccountsMap={},adminAccountsMap={},staffLoggedIn=false,superAdminLoggedIn=false,currentUser=null,currentLoginRole=null;
-const SUPER_ADMIN_USERNAME='superadmin',CAFE_PHONE='639276924831',CAFE_EMAIL='mariadaniela@gmail.com',MAX_GUESTS=30;
-const TIME_SLOTS=['3:00 PM','4:00 PM','5:00 PM','6:00 PM','7:00 PM','8:00 PM','9:00 PM','10:00 PM','11:00 PM','12:00 Midnight'];
+const SUPER_ADMIN_USERNAME='superadmin',CAFE_PHONE='639276924831',CAFE_EMAIL='mariadaniela@gmail.com';
 
 const DEFAULT_CATS=[
   {id:'coffee',label:'Coffee Based',icon:'☕',order:0},
@@ -128,21 +129,20 @@ function getItemOptionGroups(item){
 }
 
 // State
-let categoriesMap={},menuItemsMap={},adminOrdersMap={},archivedOrdersMap={},archivedResMap={},adminResMap={},feedbacksMap={},reviewsMap={},availability={},cart={};
+let categoriesMap={},menuItemsMap={},adminOrdersMap={},archivedOrdersMap={},feedbacksMap={},reviewsMap={},availability={},cart={};
 let optionGroupsMap={},optSeedStarted=false,itemOptMigrated=false;
 let knownOrderIds=null,unseenOrders=0,orderChimeTimer=null,audioCtx=null;
-let orderType='pickup',paymentType='gcash',contactMethod='whatsapp',resContactMethod='whatsapp';
+let orderType='pickup',paymentType='gcash',contactMethod='whatsapp';
 let myOrderIds=JSON.parse(localStorage.getItem('accaza_my_orders')||'[]');
-let adminLoggedIn=false,calBlocks={};
-let calYear,calMonth,selectedDate=null,selectedTime=null;
-let adminCalYear,adminCalMonth,adminSelectedDate=null;
+let adminLoggedIn=false;
 let chatOpen=false,chatStarted=false;
 let custItem=null,custSize=null,custSel={},custQty=1;
 let menuFilter='coffee',orderFilter=null;
 
-const now=new Date();
-calYear=now.getFullYear();calMonth=now.getMonth();
-adminCalYear=now.getFullYear();adminCalMonth=now.getMonth();
+const reservationManager=createReservationManager({subscriptionHub:subscriptionHub,isPortalActive:function(){return adminLoggedIn||staffLoggedIn;},onReservationsChanged:updateStats,showDeletePopup:showDeletePopup});
+const renderReservations=reservationManager.renderReservations,renderCustomerCalendar=reservationManager.renderCustomerCalendar,renderAdminCalendar=reservationManager.renderAdminCalendar;
+const catalogAdmin=createCatalogAdmin({getCategoriesMap:function(){return categoriesMap;},getMenuItemsMap:function(){return menuItemsMap;},getOptionGroupsMap:function(){return optionGroupsMap;},getAvailability:function(){return availability;},getCats:getCats,getMenuItems:getMenuItems,getEffectiveOptionIds:getEffectiveOptionIds,isAvail:isAvail,isStaffLoggedIn:function(){return staffLoggedIn;},showDeletePopup:showDeletePopup,renderMenuSection:renderMenuSection,renderOrderSection:renderOrderSection});
+const renderCategoryManager=catalogAdmin.renderCategoryManager,renderOptionManager=catalogAdmin.renderOptionManager,renderNewItemOptionChecklist=catalogAdmin.renderNewItemOptionChecklist,renderStaffMenu=catalogAdmin.renderStaffMenu,buildAvail=catalogAdmin.buildAvail;
 
 // Sync badge
 document.getElementById('fbSync').classList.add('online');
@@ -411,8 +411,6 @@ subscriptionHub.subscribe('activeOrders',snap=>{
   updateStats();renderCustomerOrders();checkMyReadyOrders();
 });
 subscriptionHub.subscribe('archivedOrders',snap=>{archivedOrdersMap=snap.val()||{};if(adminLoggedIn)renderDashboard();if(adminLoggedIn||staffLoggedIn)renderAppCustomers();var _ap=document.getElementById('archivePanel');if(_ap&&_ap.style.display!=='none'){try{renderArchive();}catch(e){}}});
-subscriptionHub.subscribe('archivedReservations',snap=>{archivedResMap=snap.val()||{};if((adminLoggedIn||staffLoggedIn)&&resArchiveOpen)renderResArchive();});
-subscriptionHub.subscribe('reservations',snap=>{adminResMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderReservations();updateStats();renderCustomerCalendar();if(adminLoggedIn||staffLoggedIn)renderAdminCalendar();});
 subscriptionHub.subscribe('feedbacks',snap=>{feedbacksMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderComments();});
 subscriptionHub.subscribe('reviews',snap=>{
   const saved=snap.val();
@@ -514,62 +512,6 @@ subscriptionHub.subscribe('payment',snap=>{
     if(document.getElementById('editBank4Name'))document.getElementById('editBank4Name').value=p.bank4Name||'';
     if(b4row)b4row.style.display=p.bank4Enabled!==false?'block':'none';
   }else{if(b4row)b4row.style.display='none';}
-});
-subscriptionHub.subscribe('calBlocks',snap=>{calBlocks=snap.val()||{};renderCustomerCalendar();if(adminLoggedIn)renderAdminCalendar();});
-
-// ── WIRE BUTTONS VIA addEventListener (avoids ES module scope issues) ──
-document.getElementById('btnAddCat').addEventListener('click',async function(){
-  const iconEl=document.getElementById('newCatIcon');
-  const labelEl=document.getElementById('newCatLabel');
-  const icon=(iconEl.value||'').trim()||'🍽️';
-  const label=(labelEl.value||'').trim();
-  if(!label){alert('Please enter a category name.');return;}
-  const id='cat_'+Date.now();
-  try{
-    await set(ref(db,'categories/'+id),{id,label,icon,order:Object.keys(categoriesMap).length});
-    iconEl.value='';labelEl.value='';
-    const c=document.getElementById('catAddConfirm');c.style.display='block';setTimeout(()=>c.style.display='none',2000);
-  }catch(e){alert('Error: '+e.message);}
-});
-
-document.getElementById('btnAddItem').addEventListener('click',async function(){
-  const name=document.getElementById('newItemName').value.trim();
-  const cat=document.getElementById('newItemCat').value;
-  const desc=document.getElementById('newItemDesc').value.trim();
-  const img=document.getElementById('newItemImg').value.trim();
-  const isFlat=document.getElementById('pricingTypeFlat')&&document.getElementById('pricingTypeFlat').checked;
-  const isTwo=document.getElementById('pricingTypeTwo')&&document.getElementById('pricingTypeTwo').checked;
-  const priceFlat=parseInt(document.getElementById('newItemPriceFlat').value)||0;
-  const labelS=(document.getElementById('newItemLabelS').value||'').trim();
-  const labelL=(document.getElementById('newItemLabelL').value||'').trim();
-  const priceTwoS=parseInt(document.getElementById('newItemPriceTwoS').value)||0;
-  const priceTwoL=parseInt(document.getElementById('newItemPriceTwoL').value)||0;
-  const priceS=isFlat?priceFlat:isTwo?priceTwoS:(parseInt(document.getElementById('newItemPriceS').value)||0);
-  const priceM=isTwo?0:isFlat?0:(parseInt(document.getElementById('newItemPriceM').value)||0);
-  const priceL=isTwo?priceTwoL:isFlat?0:(parseInt(document.getElementById('newItemPriceL').value)||0);
-  if(isTwo&&(!labelS||!labelL)){alert('Please enter both option labels.');return;}
-  if(isTwo&&(!priceTwoS||!priceTwoL)){alert('Please enter both option prices.');return;}
-  if(!name||!priceS){alert('Please enter item name and price.');return;}
-  const catItems=getMenuItems().filter(i=>i.cat===cat);
-  const newItem={cat,name,desc,priceS,order:catItems.length,optionsSet:true};
-  var selOgs=[];document.querySelectorAll('#newItemOptions input[data-ogid]:checked').forEach(function(c){selOgs.push(c.dataset.ogid);});
-  if(selOgs.length)newItem.options=selOgs;
-  if(priceM)newItem.priceM=priceM;
-  if(priceL)newItem.priceL=priceL;
-  if(isTwo&&labelS)newItem.labelS=labelS;
-  if(isTwo&&labelL)newItem.labelL=labelL;
-  if(img)newItem.img=img;
-  try{
-    await set(ref(db,'menuItems/item_'+Date.now()),newItem);
-    document.getElementById('newItemName').value='';document.getElementById('newItemDesc').value='';
-    document.getElementById('newItemImg').value='';document.getElementById('newItemPriceS').value='';
-    document.getElementById('newItemPriceM').value='';document.getElementById('newItemPriceL').value='';
-    document.getElementById('newItemPriceFlat').value='';
-    ['newItemPriceTwoS','newItemPriceTwoL','newItemLabelS','newItemLabelL'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
-    document.querySelectorAll('#newItemOptions input[data-ogid]').forEach(function(c){c.checked=false;c.parentElement.style.background='#fff';});
-    document.getElementById('pricingTypeSized').checked=true;setPricingType('sized');
-    const c=document.getElementById('addItemConfirm');c.style.display='block';setTimeout(()=>c.style.display='none',2500);
-  }catch(e){alert('Error: '+e.message);}
 });
 
 document.getElementById('btnAddToCart').addEventListener('click',function(){addCustomizedToCart();});
@@ -918,140 +860,6 @@ function renderCustomerOrders(){
 }
 
 // ── RESERVATIONS ──
-function getConfirmedGuestsForDate(k){return Object.values(adminResMap).filter(r=>r.date===k&&(r.status==='Accepted'||r.status==='Confirmed')).reduce((s,r)=>s+(parseInt(r.guests)||0),0);}
-function getConfirmedSlotsForDate(k){const s=new Set();Object.values(adminResMap).filter(r=>r.date===k&&(r.status==='Accepted'||r.status==='Confirmed')).forEach(r=>s.add(r.time));return s;}
-function dateKey(y,m,d){return y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');}
-function getDateStatus(y,m,d){const k=dateKey(y,m,d);const bl=calBlocks[k];if(bl&&bl.blocked)return'blocked';const g=getConfirmedGuestsForDate(k);if(g>=MAX_GUESTS)return'blocked';if(g>0)return'partial';if(bl&&bl.slots&&Object.values(bl.slots).some(v=>v===false))return'partial';return'open';}
-function isSlotBlocked(k,slot){const b=calBlocks[k];if(b&&b.blocked)return true;if(b&&b.slots&&b.slots[slot]===false)return true;return false;}
-function renderCustomerCalendar(){
-  const title=new Date(calYear,calMonth).toLocaleDateString('en-PH',{month:'long',year:'numeric'});
-  document.getElementById('calTitle').textContent=title;
-  const today=new Date();today.setHours(0,0,0,0);
-  const maxDate=new Date(today);maxDate.setMonth(maxDate.getMonth()+5);
-  document.getElementById('calPrev').disabled=new Date(calYear,calMonth,1)<=new Date(today.getFullYear(),today.getMonth(),1);
-  document.getElementById('calNext').disabled=new Date(calYear,calMonth,1)>=new Date(maxDate.getFullYear(),maxDate.getMonth(),1);
-  const firstDay=new Date(calYear,calMonth,1).getDay(),daysInMonth=new Date(calYear,calMonth+1,0).getDate();
-  let html=['Su','Mo','Tu','We','Th','Fr','Sa'].map(d=>'<div class="cal-day-label">'+d+'</div>').join('');
-  for(let i=0;i<firstDay;i++)html+='<div class="cal-day empty"></div>';
-  for(let d=1;d<=daysInMonth;d++){
-    const date=new Date(calYear,calMonth,d);date.setHours(0,0,0,0);
-    const isPast=date<today,isToday=date.getTime()===today.getTime();
-    const status=getDateStatus(calYear,calMonth,d),k=dateKey(calYear,calMonth,d);
-    let cls='cal-day';if(isPast)cls+=' past';else if(status==='blocked')cls+=' blocked';else if(status==='partial')cls+=' partial';else cls+=' open';
-    if(isToday)cls+=' today';if(selectedDate===k)cls+=' selected';
-    const clickable=!isPast&&status!=='blocked';
-    html+='<div class="'+cls+'" '+(clickable?'data-y="'+calYear+'" data-m="'+calMonth+'" data-d="'+d+'"':'')+'>'+d+'</div>';
-  }
-  const grid=document.getElementById('calGrid');
-  grid.innerHTML=html;
-  grid.querySelectorAll('.cal-day[data-y]').forEach(function(el){
-    el.addEventListener('click',function(){selectCalDate(parseInt(this.dataset.y),parseInt(this.dataset.m),parseInt(this.dataset.d));});
-  });
-}
-window.calNavigate=function(dir){calMonth+=dir;if(calMonth>11){calMonth=0;calYear++;}if(calMonth<0){calMonth=11;calYear--;}renderCustomerCalendar();};
-function selectCalDate(y,m,d){
-  selectedDate=dateKey(y,m,d);selectedTime=null;renderCustomerCalendar();
-  document.getElementById('timeSlotsWrap').style.display='block';
-  document.getElementById('selectedDateLabel').textContent=new Date(y,m,d).toLocaleDateString('en-PH',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
-  renderTimeSlots();document.getElementById('resFormWrap').style.display='none';
-  document.getElementById('timeSlotsWrap').scrollIntoView({behavior:'smooth',block:'nearest'});
-}
-function renderTimeSlots(){
-  const confirmedSlots=getConfirmedSlotsForDate(selectedDate),dayFull=getConfirmedGuestsForDate(selectedDate)>=MAX_GUESTS;
-  const fdBtn=document.getElementById('fullDaySlot');
-  if(fdBtn){const fdSel=selectedTime==='Full Day Booking';fdBtn.style.background=fdSel?'rgba(45,158,95,0.5)':'rgba(45,158,95,0.15)';fdBtn.style.color=fdSel?'#fff':'#a5d6a7';fdBtn.style.borderColor=fdSel?'rgba(45,158,95,0.8)':'rgba(45,158,95,0.3)';}
-  const grid=document.getElementById('timeSlotsGrid');
-  grid.innerHTML=TIME_SLOTS.map(function(slot){
-    const blocked=isSlotBlocked(selectedDate,slot)||dayFull,confirmed=confirmedSlots.has(slot),sel=selectedTime===slot;
-    const cls='time-slot '+(sel?'selected':blocked?'blocked':'available');
-    return'<div class="'+cls+'" '+(blocked?'':'data-slot="'+slot+'"')+'>'+slot+(confirmed&&!blocked?'<br/><span style="font-size:0.62rem;opacity:0.7;">booked</span>':'')+'</div>';
-  }).join('');
-  grid.querySelectorAll('.time-slot[data-slot]').forEach(function(el){el.addEventListener('click',function(){selectTimeSlot(this.dataset.slot);});});
-}
-document.getElementById('fullDaySlot').addEventListener('click',function(){selectTimeSlot('Full Day Booking');});
-window.selectTimeSlot=function(slot){
-  selectedTime=slot;renderTimeSlots();
-  const fw=document.getElementById('resFormWrap');fw.style.display='block';
-  const label=new Date(selectedDate+'T00:00:00').toLocaleDateString('en-PH',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
-  document.getElementById('resSummaryDateTime').textContent=label+' · '+slot;
-  updateBookingType();fw.scrollIntoView({behavior:'smooth',block:'nearest'});
-};
-window.resetResSelection=function(){selectedTime=null;document.getElementById('resFormWrap').style.display='none';};
-window.updateBookingType=function(){
-  const guests=parseInt(document.getElementById('resGuests').value)||1,infoEl=document.getElementById('bookingTypeInfo');
-  let type,color,bg,icon,msg,reqAdvance=false;
-  if(guests<=2){type='Individual / Couple';icon='💑';color='#155724';bg='#d4edda';msg='Same-day booking accepted. Our staff will contact you to confirm.';}
-  else if(guests<=5){type='Small Group';icon='👨‍👩‍👧';color='#664d03';bg='#fff3cd';msg='Same-day booking. Deposit details will be discussed upon staff confirmation.';}
-  else if(guests<=20){type='Medium Group';icon='👥';color='#0c5460';bg='#d1ecf1';msg='At least 7 days advance booking required.';reqAdvance=true;}
-  else{type='Large Group';icon='🎉';color='#721c24';bg='#fde8e8';msg='At least 7 days advance booking required. Admin callback required.';reqAdvance=true;}
-  infoEl.innerHTML='<div style="background:'+bg+';border-radius:8px;padding:0.75rem 1rem;display:flex;align-items:flex-start;gap:0.6rem;"><span style="font-size:1.2rem;">'+icon+'</span><div><p style="font-size:0.82rem;font-weight:600;color:'+color+';">'+type+'</p><p style="font-size:0.78rem;color:'+color+';line-height:1.5;margin-top:0.2rem;">'+msg+'</p></div></div>';
-  if(reqAdvance&&selectedDate){const today=new Date();today.setHours(0,0,0,0);const bd=new Date(selectedDate+'T00:00:00');if(Math.ceil((bd-today)/(1000*60*60*24))<7)infoEl.innerHTML+='<div style="background:#fde8e8;border:1px solid #f5c6c6;border-radius:6px;padding:0.75rem;margin-top:0.5rem;"><p style="font-size:0.78rem;color:#721c24;line-height:1.6;">⚠️ This booking requires at least 7 days advance notice. Please select a later date, or call us at <strong>0927 692 4831</strong>.</p></div>';}
-};
-window.setResContact=function(type){resContactMethod=type;['Wa','Vb','Sms','Call','Email'].forEach(function(_,i){const ids=['resBtnWa','resBtnVb','resBtnSms','resBtnCall','resBtnEmail'],types=['whatsapp','viber','sms','call','email'];const el=document.getElementById(ids[i]);if(el)el.classList.toggle('active',types[i]===type);});const ph={whatsapp:'Enter your WhatsApp number',viber:'Enter your Viber number',sms:'Enter your phone number for SMS',call:'Enter your phone number',email:'Enter your email address'};document.getElementById('resContact').placeholder=ph[type]||'Enter your contact';};
-window.submitReservation=async function(){
-  if(window._placingRes)return;
-  const name=document.getElementById('resName').value.trim(),phone=document.getElementById('resPhone').value.trim();
-  if(!selectedDate||!selectedTime){alert('Please select a date and time.');return;}
-  if(!name||!phone){alert('Please enter your name and phone number.');return;}
-  const guests=parseInt(document.getElementById('resGuests').value)||1;
-  if(guests>=6){const today=new Date();today.setHours(0,0,0,0);const diff=Math.ceil((new Date(selectedDate+'T00:00:00')-today)/(1000*60*60*24));if(diff<7&&!confirm('This booking typically requires 7 days advance notice. Proceed anyway?'))return;}
-  const id='RES-'+String(Object.keys(adminResMap).length+1).padStart(3,'0');
-  window._placingRes=true;
-  const _rbtn=document.querySelector('.btn-reserve');_rbtn.disabled=true;_rbtn.style.opacity='0.5';_rbtn.textContent='⏳ Submitting…';
-  try{
-    await set(ref(db,'reservations/'+id),{id,name,phone,date:selectedDate,time:selectedTime,guests:document.getElementById('resGuests').value,occasion:document.getElementById('resOccasion').value,notes:document.getElementById('resNotes').value.trim(),contact:document.getElementById('resContact').value.trim(),contactMethod:resContactMethod,status:'Pending',timestamp:Date.now()});
-    window._placingRes=false;_rbtn.textContent='✅ Request Sent!';
-    document.getElementById('resConfirm').style.display='block';
-    setTimeout(function(){document.getElementById('resConfirm').style.display='none';var rb=document.querySelector('.btn-reserve');rb.disabled=false;rb.style.opacity='1';rb.textContent='Submit Reservation Request';document.getElementById('resName').value='';document.getElementById('resPhone').value='';document.getElementById('resNotes').value='';document.getElementById('resContact').value='';selectedDate=null;selectedTime=null;document.getElementById('resFormWrap').style.display='none';document.getElementById('timeSlotsWrap').style.display='none';renderCustomerCalendar();},5000);
-  }catch(e){window._placingRes=false;_rbtn.disabled=false;_rbtn.style.opacity='1';_rbtn.textContent='Submit Reservation Request';alert('Could not submit: '+e.message);}
-};
-
-// ── ADMIN CALENDAR ──
-function renderAdminCalendar(){
-  const title=new Date(adminCalYear,adminCalMonth).toLocaleDateString('en-PH',{month:'long',year:'numeric'});
-  document.getElementById('adminCalTitle').textContent=title;
-  const today=new Date();today.setHours(0,0,0,0);
-  const firstDay=new Date(adminCalYear,adminCalMonth,1).getDay(),daysInMonth=new Date(adminCalYear,adminCalMonth+1,0).getDate();
-  let html=['Su','Mo','Tu','We','Th','Fr','Sa'].map(d=>'<div style="text-align:center;font-size:0.68rem;color:var(--tl);padding:0.3rem 0;text-transform:uppercase;">'+d+'</div>').join('');
-  for(let i=0;i<firstDay;i++)html+='<div class="admin-cal-day empty"></div>';
-  for(let d=1;d<=daysInMonth;d++){
-    const date=new Date(adminCalYear,adminCalMonth,d);date.setHours(0,0,0,0);
-    const isPast=date<today,isToday=date.getTime()===today.getTime();
-    const k=dateKey(adminCalYear,adminCalMonth,d),status=getDateStatus(adminCalYear,adminCalMonth,d);
-    let cls='admin-cal-day';if(isPast)cls+=' past';else if(status==='blocked')cls+=' blocked';else if(status==='partial')cls+=' partial';else cls+=' open';
-    if(isToday)cls+=' today';if(adminSelectedDate===k)cls+=' selected';
-    html+='<div class="'+cls+'" data-k="'+k+'">'+d+'</div>';
-  }
-  const grid=document.getElementById('adminCalGrid');grid.innerHTML=html;
-  grid.querySelectorAll('.admin-cal-day[data-k]').forEach(function(el){el.addEventListener('click',function(){adminSelectDate(this.dataset.k);});});
-}
-window.adminCalNavigate=function(dir){adminCalMonth+=dir;if(adminCalMonth>11){adminCalMonth=0;adminCalYear++;}if(adminCalMonth<0){adminCalMonth=11;adminCalYear--;}renderAdminCalendar();};
-function adminSelectDate(k){
-  adminSelectedDate=k;renderAdminCalendar();
-  document.getElementById('adminSlotManager').style.display='block';
-  const parts=k.split('-');
-  document.getElementById('adminSlotTitle').textContent=new Date(parseInt(parts[0]),parseInt(parts[1])-1,parseInt(parts[2])).toLocaleDateString('en-PH',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
-  renderAdminSlots(k);
-}
-function renderAdminSlots(k){
-  const grid=document.getElementById('adminSlotGrid');const confirmedSlots=getConfirmedSlotsForDate(k);
-  grid.innerHTML=TIME_SLOTS.map(function(slot){
-    if(confirmedSlots.has(slot))return'<div class="slot-item booked">📅 '+slot+'</div>';
-    if(isSlotBlocked(k,slot)&&!confirmedSlots.has(slot))return'<div class="slot-item blocked" data-k="'+k+'" data-slot="'+slot+'" data-blocked="1">❌ '+slot+'</div>';
-    return'<div class="slot-item open" data-k="'+k+'" data-slot="'+slot+'" data-blocked="0">✅ '+slot+'</div>';
-  }).join('');
-  grid.querySelectorAll('.slot-item[data-slot]').forEach(function(el){
-    el.addEventListener('click',async function(){
-      const dk=this.dataset.k,slot=this.dataset.slot,isBlocked=this.dataset.blocked==='1';
-      if(isBlocked){const snap=await get(ref(db,'calBlocks/'+dk+'/slots/'+slot));if(snap.exists())await remove(ref(db,'calBlocks/'+dk+'/slots/'+slot));const all=await get(ref(db,'calBlocks/'+dk+'/slots'));if(!all.exists())await remove(ref(db,'calBlocks/'+dk));}
-      else{await update(ref(db,'calBlocks/'+dk+'/slots'),{[slot]:false});}
-      setTimeout(function(){renderAdminSlots(dk);},400);
-    });
-  });
-}
-window.blockAllSlots=async function(){if(!adminSelectedDate)return;await set(ref(db,'calBlocks/'+adminSelectedDate),{blocked:true});setTimeout(function(){renderAdminSlots(adminSelectedDate);},400);};
-window.openAllSlots=async function(){if(!adminSelectedDate)return;await remove(ref(db,'calBlocks/'+adminSelectedDate));setTimeout(function(){renderAdminSlots(adminSelectedDate);},400);};
-
 // ── FEEDBACK ──
 window.submitContact=function(){if(!document.getElementById('conName').value.trim()||!document.getElementById('conMessage').value.trim()){alert('Please fill in name and message.');return;}document.getElementById('conConfirm').style.display='block';};
 window.updateFbCounter=function(){const len=document.getElementById('fbMessage').value.length;const c=document.getElementById('fbCounter');c.textContent=len+' / 800';c.style.color=len>=720?'#ff8080':len>=560?'#f39c12':'rgba(224,212,198,0.5)';};
@@ -1065,91 +873,12 @@ window.submitFeedback=async function(){
 };
 
 // ── ADMIN FUNCTIONS ──
-function updateStats(){const orders=Object.values(adminOrdersMap),active=orders.filter(o=>o.status!=='Received');document.getElementById('statOrders').textContent=active.length;document.getElementById('statPending').textContent=active.filter(o=>o.status==='Pending').length;document.getElementById('statReservations').textContent=Object.keys(adminResMap).length;document.getElementById('statRevenue').textContent='₱'+active.filter(o=>o.status!=='Rejected').reduce((s,o)=>s+(o.total||0),0).toLocaleString();}
+function updateStats(){const orders=Object.values(adminOrdersMap),active=orders.filter(o=>o.status!=='Received');document.getElementById('statOrders').textContent=active.length;document.getElementById('statPending').textContent=active.filter(o=>o.status==='Pending').length;document.getElementById('statReservations').textContent=Object.keys(reservationManager.getReservations()).length;document.getElementById('statRevenue').textContent='₱'+active.filter(o=>o.status!=='Rejected').reduce((s,o)=>s+(o.total||0),0).toLocaleString();}
 
-const orderAdmin=createOrderAdmin({getOrders:function(){return adminOrdersMap;},escHtml:escHtml,safeImageSrc:safeImageSrc,showDeletePopup:showDeletePopup,printOrder:printOrder,notifyCustomer:window.notifyCustomer});
+const orderAdmin=createOrderAdmin({getOrders:function(){return adminOrdersMap;},escHtml:escHtml,safeImageSrc:safeImageSrc,showDeletePopup:showDeletePopup,printOrder:function(id){if(window.printOrder)return window.printOrder(id);},notifyCustomer:function(id){if(window.notifyCustomer)return window.notifyCustomer(id);}});
 const renderOrders=orderAdmin.renderOrders,patchOrderCards=orderAdmin.patchOrderCards;
 
-function renderReservations(){
-  const el=document.getElementById('resList'),reservations=Object.values(adminResMap).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
-  const todayStr=new Date().toISOString().slice(0,10);
-  const todayRes=reservations.filter(r=>r.date===todayStr&&r.status!=='Declined'&&r.status!=='Completed');
-  const banner=document.getElementById('todayResBanner');
-  if(banner){if(todayRes.length>0){banner.style.display='flex';document.getElementById('todayResText').textContent='⚠️ '+todayRes.length+' reservation'+(todayRes.length>1?'s':'')+' today!';}else{banner.style.display='none';}}
-  if(!reservations.length){el.innerHTML='<div class="empty-state">No reservations yet.</div>';return;}
-  el.innerHTML=reservations.map(function(r){
-    const guests=Math.max(1,Math.min(50,parseInt(r.guests)||1)),bookType=guests<=2?'💑 Individual':guests<=5?'👨‍👩‍👧 Small':guests<=20?'👥 Medium':'🎉 Large';
-    const isFullDay=r.time==='Full Day Booking';
-    const rawStatus=r.status==='Confirmed'?'Accepted':r.status,st=['Pending','Accepted','Declined','Completed'].indexOf(rawStatus)>=0?rawStatus:'Pending',rid=escHtml(r.id);
-    return'<div class="order-admin-card"><div class="order-admin-top"><div><div class="order-admin-name">'+escHtml(r.name)+' <span style="font-size:0.75rem;color:var(--tl);">#'+rid+'</span>'+(isFullDay?'<span class="badge" style="background:#fff3cd;color:#664d03;margin-left:0.4rem;">📅 Full Day</span>':'')+'</div><div class="order-admin-meta">'+escHtml(r.phone)+' · '+escHtml(r.date)+' · '+escHtml(r.time)+' · '+guests+' guests'+(r.occasion?' · '+escHtml(r.occasion):'')+'</div></div><div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.4rem;"><span class="badge badge-'+st.toLowerCase()+'">'+st+'</span><span style="font-size:0.7rem;color:var(--tl);">'+bookType+'</span></div></div>'
-      +(r.notes?'<div class="order-admin-items">📝 '+escHtml(r.notes)+'</div>':'')
-      +(r.contact?'<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📱 '+escHtml(r.contact)+' · prefers <strong>'+escHtml(r.contactMethod||'phone')+'</strong></div>':'')
-      +(st==='Accepted'?'<div style="margin:0.6rem 0;padding:0.6rem 0.75rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;"><p style="font-size:0.75rem;font-weight:600;color:#2d6a4f;">📨 Contact the customer to confirm booking details</p><button data-contactres="'+rid+'" style="background:#2d9e5f;color:#fff;border:none;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.75rem;cursor:pointer;">📨 Contact Options</button></div>':'')
-      +'<div class="order-admin-footer"><span></span><div style="display:flex;gap:0.5rem;"><select class="status-select" data-resid="'+rid+'"><option'+(st==='Pending'?' selected':'')+'>Pending</option><option'+(st==='Accepted'?' selected':'')+'>Accepted</option><option'+(st==='Declined'?' selected':'')+'>Declined</option><option'+(st==='Completed'?' selected':'')+'>Completed</option></select>'+(st==='Completed'||st==='Declined'?'<button data-resid="'+rid+'" class="arch-res-btn" style="background:#e2e3e5;border:1px solid #bbb;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#41464b;cursor:pointer;">📦 Archive</button>':'')+'</div></div></div>';
-  }).join('');
-  el.querySelectorAll('.status-select[data-resid]').forEach(function(sel){
-    sel.addEventListener('change',async function(){
-      const id=this.dataset.resid,val=this.value;
-      await update(ref(db,'reservations/'+id),{status:val});
-      const r=adminResMap[id];
-      if(r&&r.date&&r.time==='Full Day Booking'){
-        if(val==='Accepted'){const slots={};TIME_SLOTS.forEach(s=>slots[s]=false);await update(ref(db,'calBlocks/'+r.date),{slots,fullDayReservationId:id});}
-        if(val==='Completed'||val==='Declined'){const snap=await get(ref(db,'calBlocks/'+r.date));const data=snap.val();if(data&&data.fullDayReservationId===id)await remove(ref(db,'calBlocks/'+r.date));}
-      }
-      if(val==='Accepted')openResContactPopup(id);
-    });
-  });
-  el.querySelectorAll('button[data-contactres]').forEach(function(btn){btn.addEventListener('click',function(){openResContactPopup(this.dataset.contactres);});});
-  el.querySelectorAll('.arch-res-btn').forEach(function(btn){btn.addEventListener('click',function(){const id=this.dataset.resid,r=adminResMap[id];if(!r)return;showDeletePopup('Archive reservation for '+r.name,async function(){const pst=r.status==='Confirmed'?'Accepted':r.status;await set(ref(db,'archivedReservations/'+id),{...r,status:'Archived',prevStatus:pst,archivedAt:Date.now(),archivedDate:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'})});await remove(ref(db,'reservations/'+id));});});});
-}
-
 // ── AVAILABILITY & CATEGORY MANAGER ──
-function renderCategoryManager(){
-  const el=document.getElementById('categoryList');if(!el)return;
-  const cats=getCats();
-  if(!cats.length){el.innerHTML='<p style="color:var(--tl);font-size:0.85rem;">No categories yet.</p>';return;}
-  el.innerHTML=cats.map(function(c){
-    return'<div style="display:flex;align-items:center;gap:0.6rem;background:var(--cr);border:1px solid var(--cd);border-radius:8px;padding:0.6rem 0.85rem;" draggable="true" data-catid="'+c.id+'">'
-      +'<span style="cursor:grab;color:var(--tl);font-size:1rem;user-select:none;">⠿</span>'
-      +'<input type="text" id="catIcon_'+c.id+'" value="'+(c.icon||'☕')+'" style="width:50px;font-size:0.9rem;text-align:center;padding:0.3rem;border:1px solid var(--cd);border-radius:4px;background:#fff;font-family:\'Inter\',sans-serif;"/>'
-      +'<input type="text" id="catLabel_'+c.id+'" value="'+(c.label||'')+'" style="flex:1;font-size:0.85rem;padding:0.3rem 0.5rem;border:1px solid var(--cd);border-radius:4px;background:#fff;font-family:\'Inter\',sans-serif;"/>'
-      +'<button data-savecatid="'+c.id+'" style="background:#d4edda;border:1px solid #a8d5b5;border-radius:4px;padding:0.25rem 0.6rem;font-size:0.72rem;color:#155724;cursor:pointer;font-family:\'Inter\',sans-serif;white-space:nowrap;">💾 Save</button>'
-      +'<button data-delcatid="'+c.id+'" style="background:#fde8e8;border:1px solid #f5c6c6;border-radius:4px;padding:0.25rem 0.6rem;font-size:0.72rem;color:#721c24;cursor:pointer;font-family:\'Inter\',sans-serif;">🗑️</button>'
-      +'</div>';
-  }).join('');
-  // Wire save/delete
-  el.querySelectorAll('button[data-savecatid]').forEach(function(btn){
-    btn.addEventListener('click',async function(){
-      const id=this.dataset.savecatid;
-      const icon=document.getElementById('catIcon_'+id).value.trim()||'☕';
-      const label=document.getElementById('catLabel_'+id).value.trim();
-      if(!label)return;
-      await update(ref(db,'categories/'+id),{icon,label});
-    });
-  });
-  el.querySelectorAll('button[data-delcatid]').forEach(function(btn){
-    btn.addEventListener('click',function(){
-      const id=this.dataset.delcatid;
-      const items=getMenuItems().filter(i=>i.cat===id);
-      if(items.length>0){alert('Cannot delete — this category has '+items.length+' item(s). Remove the items first.');return;}
-      showDeletePopup(categoriesMap[id]?.label||id,async function(){await remove(ref(db,'categories/'+id));});
-    });
-  });
-  // Drag reorder
-  let dragId=null;
-  el.querySelectorAll('[data-catid]').forEach(function(row){
-    row.addEventListener('dragstart',function(){dragId=this.dataset.catid;});
-    row.addEventListener('dragover',function(e){e.preventDefault();});
-    row.addEventListener('drop',async function(e){
-      e.preventDefault();if(!dragId||dragId===this.dataset.catid)return;
-      const cats2=getCats();const from=cats2.findIndex(c=>c.id===dragId),to=cats2.findIndex(c=>c.id===this.dataset.catid);
-      const reordered=[...cats2];reordered.splice(to,0,reordered.splice(from,1)[0]);
-      const updates={};reordered.forEach((c,i)=>{updates[c.id+'/order']=i;});
-      await update(categoriesRef,updates);dragId=null;
-    });
-  });
-}
-
 // ── CHANGE PASSWORD ────────────────────────────────────────
 window.togglePwVis=function(inputId,btn){var inp=document.getElementById(inputId);if(!inp)return;var show=inp.type==='password';inp.type=show?'text':'password';btn.textContent=show?'🙈':'👁️';};
 window.changeAdminPassword=async function(){
@@ -1285,145 +1014,6 @@ window.addAdminAccount=async function(){
 };
 
 // ── OPTION GROUPS MANAGER (admin) ───────────────────────────
-function buildOptionChecklistHtml(selectedIds){
-  var ids=Object.keys(optionGroupsMap);
-  if(!ids.length)return '<span style="font-size:0.78rem;color:var(--tl);">No option groups yet — create them in the 🧩 Item Options panel.</span>';
-  return ids.sort(function(a,b){return(optionGroupsMap[a].order||0)-(optionGroupsMap[b].order||0);}).map(function(id){
-    var g=optionGroupsMap[id];
-    var on=selectedIds.indexOf(id)!==-1;
-    return '<label style="display:inline-flex;align-items:center;gap:0.35rem;background:'+(on?'#f5ead9':'#fff')+';border:1px solid var(--cd);border-radius:999px;padding:0.3rem 0.8rem;font-size:0.78rem;color:var(--td);cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;"><input type="checkbox" data-ogid="'+id+'"'+(on?' checked':'')+' style="width:auto;accent-color:var(--bl);margin:0;" onchange="this.parentElement.style.background=this.checked?\'#f5ead9\':\'#fff\'"/>'+escHtml(g.name)+'</label>';
-  }).join('');
-}
-function renderNewItemOptionChecklist(){
-  var el=document.getElementById('newItemOptions');if(!el)return;
-  var checked=[];el.querySelectorAll('input[data-ogid]:checked').forEach(function(c){checked.push(c.dataset.ogid);});
-  el.innerHTML=buildOptionChecklistHtml(checked);
-}
-var OG_INP='background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.35rem 0.55rem;font-size:0.8rem;color:var(--td);font-family:\'Inter\',sans-serif;';
-function ogChoiceRowHtml(label,price){
-  return '<div style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.35rem;" data-ogchoicerow>'
-    +'<input type="text" value="'+escHtml(label)+'" data-choicelabel placeholder="Choice label (e.g. Hot, 1 Sugar)" style="flex:1;min-width:0;'+OG_INP+'"/>'
-    +'<span style="font-size:0.78rem;color:var(--tl);">₱</span>'
-    +'<input type="number" value="'+(parseInt(price)||0)+'" data-choiceprice min="0" title="Extra price — 0 shows as Free" style="width:84px;'+OG_INP+'"/>'
-    +'<button data-removechoice title="Remove choice" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.3rem 0.55rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">✖</button>'
-    +'</div>';
-}
-function wireOgChoiceRow(row){
-  row.querySelector('[data-removechoice]').addEventListener('click',function(){row.remove();});
-}
-function renderOptionManager(){
-  var el=document.getElementById('optGroupList');if(!el)return;
-  var ids=Object.keys(optionGroupsMap).sort(function(a,b){return(optionGroupsMap[a].order||0)-(optionGroupsMap[b].order||0);});
-  if(!ids.length){el.innerHTML='<p style="font-size:0.85rem;color:var(--tl);">No option groups yet. Add your first one below.</p>';return;}
-  var items=getMenuItems();
-  el.innerHTML=ids.map(function(id){
-    var g=optionGroupsMap[id];
-    var used=items.filter(function(i){return getEffectiveOptionIds(i).indexOf(id)!==-1;}).length;
-    var choiceRows=(g.choices||[]).map(function(c){return ogChoiceRowHtml(c.label,c.price);}).join('');
-    return '<div data-ogcard="'+id+'" style="background:var(--cr);border:1px solid var(--cd);border-radius:8px;padding:1rem;margin-bottom:0.75rem;">'
-      +'<div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:0.6rem;">'
-      +'<div style="flex:1;min-width:150px;"><label style="font-size:0.7rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Option Name</label>'
-      +'<input type="text" value="'+escHtml(g.name)+'" data-ogname style="width:100%;'+OG_INP+'"/></div>'
-      +'<div><label style="font-size:0.7rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Selection</label>'
-      +'<select data-ogtype style="'+OG_INP+'">'
-      +'<option value="single"'+(g.type!=='multi'?' selected':'')+'>Choose one</option>'
-      +'<option value="multi"'+(g.type==='multi'?' selected':'')+'>Choose many</option>'
-      +'</select></div>'
-      +'<label style="display:flex;align-items:center;gap:0.3rem;font-size:0.78rem;color:var(--td);cursor:pointer;padding-bottom:0.45rem;text-transform:none;letter-spacing:0;font-weight:400;"><input type="checkbox" data-ogreq'+(g.required!==false?' checked':'')+' style="width:auto;accent-color:var(--bl);"/> Required</label>'
-      +'</div>'
-      +'<div style="font-size:0.7rem;color:var(--tl);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.35rem;">Choices — price 0 = Free</div>'
-      +'<div data-ogchoices>'+choiceRows+'</div>'
-      +'<button data-addchoice style="background:#fff;border:1px dashed var(--cd);border-radius:6px;padding:0.35rem 0.8rem;font-size:0.78rem;color:var(--tm);cursor:pointer;margin-top:0.2rem;">➕ Add Choice</button>'
-      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.75rem;flex-wrap:wrap;gap:0.5rem;">'
-      +'<span style="font-size:0.72rem;color:var(--tl);">Used by '+used+' item'+(used===1?'':'s')+'</span>'
-      +'<div style="display:flex;gap:0.5rem;">'
-      +'<button data-delog="'+id+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.35rem 0.8rem;font-size:0.78rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>'
-      +'<button data-saveog="'+id+'" style="background:var(--bd);color:#fff;border:none;border-radius:6px;padding:0.35rem 1rem;font-size:0.78rem;cursor:pointer;font-weight:500;">💾 Save</button>'
-      +'</div></div></div>';
-  }).join('');
-  el.querySelectorAll('[data-ogchoicerow]').forEach(wireOgChoiceRow);
-  el.querySelectorAll('[data-addchoice]').forEach(function(btn){
-    btn.addEventListener('click',function(){
-      var wrap=this.closest('[data-ogcard]').querySelector('[data-ogchoices]');
-      var tmp=document.createElement('div');
-      tmp.innerHTML=ogChoiceRowHtml('',0);
-      var row=tmp.firstChild;
-      wrap.appendChild(row);
-      wireOgChoiceRow(row);
-      row.querySelector('[data-choicelabel]').focus();
-    });
-  });
-  el.querySelectorAll('[data-saveog]').forEach(function(btn){
-    btn.addEventListener('click',async function(){
-      var id=this.dataset.saveog,card=el.querySelector('[data-ogcard="'+id+'"]'),self=this;
-      var name=(card.querySelector('[data-ogname]').value||'').trim();
-      if(!name){alert('Please enter the option name.');return;}
-      var type=card.querySelector('[data-ogtype]').value;
-      var required=card.querySelector('[data-ogreq]').checked;
-      var choices=[];
-      card.querySelectorAll('[data-ogchoicerow]').forEach(function(r){
-        var lbl=(r.querySelector('[data-choicelabel]').value||'').trim();
-        var pr=parseInt(r.querySelector('[data-choiceprice]').value)||0;
-        if(lbl)choices.push({label:lbl,price:pr});
-      });
-      if(!choices.length){alert('Please add at least one choice.');return;}
-      try{
-        await update(ref(db,'optionGroups/'+id),{name:name,type:type,required:required,choices:choices});
-        self.textContent='✅ Saved';setTimeout(function(){self.textContent='💾 Save';},1500);
-      }catch(e){alert('Error: '+e.message);}
-    });
-  });
-  el.querySelectorAll('[data-delog]').forEach(function(btn){
-    btn.addEventListener('click',function(){
-      var id=this.dataset.delog;
-      var g=optionGroupsMap[id];if(!g)return;
-      var used=getMenuItems().filter(function(i){return getEffectiveOptionIds(i).indexOf(id)!==-1;}).length;
-      showDeletePopup('option "'+g.name+'"'+(used?' (used by '+used+' item'+(used===1?'':'s')+')':''),async function(){
-        await remove(ref(db,'optionGroups/'+id));
-      });
-    });
-  });
-}
-window.addOptionGroup=async function(){
-  var name=(document.getElementById('newOgName').value||'').trim();
-  if(!name){alert('Please enter an option name (e.g. Temperature).');return;}
-  var type=document.getElementById('newOgType').value;
-  var required=document.getElementById('newOgReq').checked;
-  var id='og_'+Date.now();
-  try{
-    await set(ref(db,'optionGroups/'+id),{name:name,type:type,required:required,order:Object.keys(optionGroupsMap).length,choices:[{label:'Option 1',price:0}]});
-    document.getElementById('newOgName').value='';
-    var c=document.getElementById('ogAddConfirm');c.style.display='block';setTimeout(function(){c.style.display='none';},2500);
-  }catch(e){alert('Error: '+e.message);}
-};
-
-// ── STAFF MENU (read-only view) ─────────────────────────────
-function renderStaffMenu(){
-  var el=document.getElementById('staffMenuContainer');if(!el)return;
-  var cats=getCats();var items=getMenuItems();
-  if(!cats.length){el.innerHTML='<p style="color:var(--tl);">No menu items yet.</p>';return;}
-  el.innerHTML=cats.map(function(cat){
-    var catItems=items.filter(function(i){return i.cat===cat.id;}).sort(function(a,b){return(a.order||0)-(b.order||0);});
-    if(!catItems.length)return'';
-    return'<div style="margin-bottom:1.5rem;">'
-      +'<div style="font-family:\'Playfair Display\',serif;font-size:1rem;color:var(--bd);margin-bottom:0.6rem;padding-bottom:0.3rem;border-bottom:1px solid var(--cd);">'+cat.icon+' '+cat.label+'</div>'
-      +catItems.map(function(item){
-        var priceStr=item.priceM&&item.priceL?'S ₱'+item.priceS+' · M ₱'+item.priceM+' · L ₱'+item.priceL
-          :item.priceL&&item.labelS&&item.labelL?item.labelS+' ₱'+item.priceS+' · '+item.labelL+' ₱'+item.priceL
-          :'₱'+item.priceS;
-        return'<div style="display:flex;align-items:center;gap:0.75rem;padding:0.55rem 0;border-bottom:1px solid rgba(0,0,0,0.04);">'
-          +(item.img?'<img src="'+item.img+'" style="width:38px;height:38px;border-radius:6px;object-fit:cover;flex-shrink:0;" onerror="this.style.display=\'none\'"/>'
-            :'<div style="width:38px;height:38px;border-radius:6px;background:linear-gradient(135deg,var(--cd),var(--bl));display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;">'+cat.icon+'</div>')
-          +'<div style="flex:1;min-width:0;"><div style="font-size:0.88rem;font-weight:500;color:var(--bd);">'+item.name+'</div>'
-          +(item.desc?'<div style="font-size:0.75rem;color:var(--tl);margin-top:0.1rem;">'+item.desc+'</div>':'')
-          +'<div style="font-size:0.78rem;color:#c9a36a;margin-top:0.15rem;">'+priceStr+'</div></div>'
-          +'<span style="font-size:0.7rem;padding:0.15rem 0.5rem;border-radius:999px;flex-shrink:0;background:'+(isAvail(item.name)?'rgba(45,158,95,0.12)':'rgba(192,57,57,0.1)')+';color:'+(isAvail(item.name)?'#2d9e5f':'#c0392b')+';">'+(isAvail(item.name)?'✅':'❌')+'</span>'
-          +'</div>';
-      }).join('')
-      +'</div>';
-  }).join('');
-}
-
 // ── PUBLIC REVIEWS (dynamic) ────────────────────────────────
 function renderPublicReviews(){
   var el=document.getElementById('publicReviewsContainer');if(!el)return;
@@ -1454,229 +1044,6 @@ function renderPublicReviews(){
 
 
 // ── EDIT ITEM HELPERS ──────────────────────────────────────
-window.toggleEditPanel=function(key){
-  var p=document.getElementById('ep_'+key);if(!p)return;
-  p.style.display=(p.style.display==='none'||p.style.display==='')?'block':'none';
-};
-window.setEditPricingType=function(key,type){
-  var s=document.getElementById('ep_'+key+'_sized');
-  var t=document.getElementById('ep_'+key+'_two');
-  var f=document.getElementById('ep_'+key+'_flat');
-  if(s)s.style.display=(type==='sized')?'grid':'none';
-  if(t)t.style.display=(type==='two')?'grid':'none';
-  if(f)f.style.display=(type==='flat')?'block':'none';
-};
-window.saveEditItem=async function(key){
-  var item=menuItemsMap[key];if(!item){alert('Item not found.');return;}
-  var catEl=document.getElementById('ep_'+key+'_cat');
-  var nameEl=document.getElementById('ep_'+key+'_name');
-  var descEl=document.getElementById('ep_'+key+'_desc');
-  var imgEl=document.getElementById('ep_'+key+'_img');
-  var ptRadio=document.querySelector('input[name="ep_pt_'+key+'"]:checked');
-  if(!catEl||!nameEl||!ptRadio){alert('Could not read form fields.');return;}
-  var newCat=catEl.value;
-  var newName=nameEl.value.trim();
-  var newDesc=descEl?descEl.value.trim():'';
-  var newImg=imgEl?(imgEl.value.trim()||null):null;
-  var pType=ptRadio.value;
-  if(!newName){alert('Name is required.');return;}
-  var updates={cat:newCat,name:newName,desc:newDesc||null,img:newImg,optionsSet:true};
-  var selOg=[];var epnl=document.getElementById('ep_'+key);
-  if(epnl)epnl.querySelectorAll('input[data-ogid]:checked').forEach(function(c){selOg.push(c.dataset.ogid);});
-  updates.options=selOg.length?selOg:null;
-  if(pType==='sized'){
-    var pS=parseInt(document.getElementById('ep_'+key+'_priceS').value)||0;
-    var pM=parseInt(document.getElementById('ep_'+key+'_priceM').value)||0;
-    var pL=parseInt(document.getElementById('ep_'+key+'_priceL').value)||0;
-    if(!pS||!pM||!pL){alert('Please fill in Small, Medium, and Large prices.');return;}
-    updates.priceS=pS;updates.priceM=pM;updates.priceL=pL;
-    updates.labelS=null;updates.labelL=null;
-  } else if(pType==='two'){
-    var lS=(document.getElementById('ep_'+key+'_labelS').value||'').trim();
-    var lL=(document.getElementById('ep_'+key+'_labelL').value||'').trim();
-    var tS=parseInt(document.getElementById('ep_'+key+'_priceTwoS').value)||0;
-    var tL=parseInt(document.getElementById('ep_'+key+'_priceTwoL').value)||0;
-    if(!lS||!lL){alert('Please enter both option labels.');return;}
-    if(!tS||!tL){alert('Please enter both option prices.');return;}
-    updates.priceS=tS;updates.priceM=null;updates.priceL=tL;
-    updates.labelS=lS;updates.labelL=lL;
-  } else {
-    var pF=parseInt(document.getElementById('ep_'+key+'_priceFlat').value)||0;
-    if(!pF){alert('Please enter a price.');return;}
-    updates.priceS=pF;updates.priceM=null;updates.priceL=null;
-    updates.labelS=null;updates.labelL=null;
-  }
-  var oldName=item.name;
-  try{
-    await update(ref(db,'menuItems/'+key),updates);
-    if(newName!==oldName&&availability[oldName]!==undefined){
-      var wasAvail=availability[oldName];
-      await update(availRef,{[newName]:wasAvail,[oldName]:null});
-    }
-    window.toggleEditPanel(key);
-    buildAvail();renderMenuSection();renderOrderSection();
-  }catch(e){alert('Error saving: '+e.message);}
-};
-
-
-function buildAvail(){
-  const el=document.getElementById('availList');if(!el)return;
-  const items=getMenuItems();
-  if(!Object.keys(menuItemsMap).length){el.innerHTML='<p style="color:var(--tl);text-align:center;padding:2rem;">Loading...</p>';return;}
-  const cats=getCats();let html='';
-  cats.forEach(function(cat){
-    const catItems=items.filter(i=>i.cat===cat.id).sort((a,b)=>(a.order||0)-(b.order||0));
-    html+='<div style="font-family:\'Playfair Display\',serif;font-size:1.1rem;color:var(--bd);margin:1.5rem 0 0.75rem;padding-bottom:0.4rem;border-bottom:2px solid var(--cd);">'+cat.icon+' '+cat.label+'</div>';
-    if(!catItems.length){html+='<p style="font-size:0.82rem;color:var(--tl);padding:0.5rem 0 1rem;">No items in this category yet.</p>';return;}
-    catItems.forEach(function(item){
-      const ok=isAvail(item.name),sid='av_'+item.key;
-      const priceStr=item.priceM&&item.priceL?'S ₱'+item.priceS+' · M ₱'+item.priceM+' · L ₱'+item.priceL:item.priceL&&item.labelS&&item.labelL?''+item.labelS+' ₱'+item.priceS+' · '+item.labelL+' ₱'+item.priceL:'₱'+item.priceS;
-      const imgSrc=item.img||'';
-      const imgBlock=imgSrc?'<img src="'+imgSrc+'" style="width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0;" onerror="this.style.display=\'none\'"/>'
-        :'<div style="width:44px;height:44px;border-radius:6px;background:linear-gradient(135deg,var(--cd),var(--bl));display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">'+cat.icon+'</div>';
-      html+='<div style="background:#fff;border:1px solid var(--cd);border-radius:8px;padding:0.85rem 1rem;margin-bottom:0.6rem;" draggable="true" data-itemkey="'+item.key+'" data-itemcat="'+cat.id+'">'
-        +'<div style="display:flex;align-items:center;gap:0.75rem;">'
-        +'<span style="cursor:grab;color:var(--tl);font-size:1.1rem;flex-shrink:0;user-select:none;">⠿</span>'
-        +imgBlock
-        +'<div style="flex:1;min-width:0;"><div style="font-size:0.9rem;font-weight:500;color:var(--bd);'+(ok?'':'text-decoration:line-through;opacity:0.5;')+'" id="'+sid+'_n">'+item.name+'</div><div style="font-size:0.75rem;color:var(--tl);">'+priceStr+'</div></div>'
-        +'<div style="display:flex;align-items:center;gap:0.6rem;flex-shrink:0;">'
-        +'<span id="'+sid+'_l" style="font-size:0.75rem;font-weight:600;padding:0.2rem 0.65rem;border-radius:999px;background:'+(ok?'#d4edda':'#fde8e8')+';color:'+(ok?'#155724':'#721c24')+';white-space:nowrap;">'+(ok?'✅ Available':'❌ Unavailable')+'</span>'
-        +'<input type="checkbox" class="avail-toggle" '+(ok?'checked':'')+' data-name="'+item.name+'" data-sid="'+sid+'"/>'
-        +'<button onclick="toggleEditPanel(\''+item.key+'\')" style="background:#fff8e1;border:1px solid #f0d080;border-radius:6px;padding:0.3rem 0.6rem;font-size:0.75rem;color:#7a5c00;cursor:pointer;">✏️</button>'
-        +'<button data-delitem="'+item.key+'" data-delname="'+item.name+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.3rem 0.6rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">🗑️</button>'
-        +'</div></div>'
-        +'<div style="margin-top:0.6rem;display:flex;align-items:center;gap:0.5rem;background:#ece4d8;border:1px solid var(--cd);border-radius:6px;padding:0.45rem 0.7rem;">'
-        +'<span style="font-size:0.72rem;color:var(--tl);white-space:nowrap;flex-shrink:0;">🖼️ Image URL:</span>'
-        +'<input type="text" id="'+sid+'_img" value="'+imgSrc+'" placeholder="https://i.postimg.cc/..." style="flex:1;font-size:0.75rem;padding:0.25rem 0.5rem;border:1px solid var(--cd);border-radius:4px;background:#fff;color:var(--td);font-family:\'Inter\',sans-serif;"/>'
-        +'<button data-saveimg="'+item.key+'" data-sid="'+sid+'" style="background:var(--bd);color:#fff;border:none;border-radius:4px;padding:0.28rem 0.7rem;font-size:0.72rem;cursor:pointer;font-family:\'Inter\',sans-serif;white-space:nowrap;flex-shrink:0;">💾 Save</button>'
-        +'</div></div>';
-    });
-  });
-  el.innerHTML=html||'<p style="color:var(--tl);text-align:center;padding:2rem;">No menu items yet. Add one above!</p>';
-
-  // ── Inject edit panels ──
-  el.querySelectorAll('[data-itemkey]').forEach(function(row){
-    var key=row.dataset.itemkey;
-    var item=menuItemsMap[key];if(!item)return;
-    var cats=getCats();
-    var pType=(item.priceM&&item.priceL)?'sized':(item.priceL&&item.labelS&&item.labelL)?'two':'flat';
-    var panel=document.createElement('div');
-    panel.id='ep_'+key;
-    panel.style.cssText='display:none;margin-top:0.75rem;padding:0.9rem;background:#f5f0ea;border:1px solid var(--cd);border-radius:8px;';
-    var catOpts=cats.map(function(c){return'<option value="'+c.id+'"'+(item.cat===c.id?' selected':'')+'>'+c.icon+' '+c.label+'</option>';}).join('');
-    panel.innerHTML=
-      '<div style="font-size:0.78rem;font-weight:600;color:var(--bd);margin-bottom:0.6rem;text-transform:uppercase;letter-spacing:0.07em;">✏️ Edit Item</div>'
-      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.5rem;">'
-      +'<div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Category</label>'
-      +'<select id="ep_'+key+'_cat" style="width:100%;background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.42rem 0.55rem;font-size:0.8rem;color:var(--td);font-family:\'Inter\',sans-serif;">'+catOpts+'</select></div>'
-      +'<div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Name</label>'
-      +'<input type="text" id="ep_'+key+'_name" value="'+escHtml(item.name)+'" style="width:100%;background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.42rem 0.55rem;font-size:0.8rem;color:var(--td);font-family:\'Inter\',sans-serif;"/></div>'
-      +'</div>'
-      +'<div style="margin-bottom:0.5rem;"><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Description</label>'
-      +'<input type="text" id="ep_'+key+'_desc" value="'+escHtml(item.desc||'')+'" placeholder="Optional description" style="width:100%;background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.42rem 0.55rem;font-size:0.8rem;color:var(--td);font-family:\'Inter\',sans-serif;"/></div>'
-      +'<div style="margin-bottom:0.45rem;"><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.05em;">Pricing Type</label>'
-      +'<div style="display:flex;gap:0.75rem;flex-wrap:wrap;">'
-      +'<label style="font-size:0.8rem;color:var(--td);display:flex;align-items:center;gap:0.3rem;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;">'
-      +'<input type="radio" name="ep_pt_'+key+'" value="sized"'+(pType==='sized'?' checked':'')+' onchange="setEditPricingType(\''+key+'\',\'sized\')" style="width:auto;accent-color:var(--bl);"/> Sized (S/M/L)</label>'
-      +'<label style="font-size:0.8rem;color:var(--td);display:flex;align-items:center;gap:0.3rem;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;">'
-      +'<input type="radio" name="ep_pt_'+key+'" value="two"'+(pType==='two'?' checked':'')+' onchange="setEditPricingType(\''+key+'\',\'two\')" style="width:auto;accent-color:var(--bl);"/> Two Options</label>'
-      +'<label style="font-size:0.8rem;color:var(--td);display:flex;align-items:center;gap:0.3rem;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;">'
-      +'<input type="radio" name="ep_pt_'+key+'" value="flat"'+(pType==='flat'?' checked':'')+' onchange="setEditPricingType(\''+key+'\',\'flat\')" style="width:auto;accent-color:var(--bl);"/> Flat Price</label>'
-      +'</div></div>'
-      // Sized fields
-      +'<div id="ep_'+key+'_sized" style="display:'+(pType==='sized'?'grid':'none')+';grid-template-columns:1fr 1fr 1fr;gap:0.5rem;margin-bottom:0.5rem;">'
-      +'<div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Small (₱)</label>'
-      +'<input type="number" id="ep_'+key+'_priceS" value="'+(pType==='sized'?(item.priceS||''):'')+'" style="width:100%;background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.42rem 0.55rem;font-size:0.8rem;color:var(--td);font-family:\'Inter\',sans-serif;"/></div>'
-      +'<div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Medium (₱)</label>'
-      +'<input type="number" id="ep_'+key+'_priceM" value="'+(pType==='sized'?(item.priceM||''):'')+'" style="width:100%;background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.42rem 0.55rem;font-size:0.8rem;color:var(--td);font-family:\'Inter\',sans-serif;"/></div>'
-      +'<div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Large (₱)</label>'
-      +'<input type="number" id="ep_'+key+'_priceL" value="'+(pType==='sized'?(item.priceL||''):'')+'" style="width:100%;background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.42rem 0.55rem;font-size:0.8rem;color:var(--td);font-family:\'Inter\',sans-serif;"/></div>'
-      +'</div>'
-      // Two options fields
-      +'<div id="ep_'+key+'_two" style="display:'+(pType==='two'?'grid':'none')+';grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.5rem;">'
-      +'<div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Option 1 Label</label>'
-      +'<input type="text" id="ep_'+key+'_labelS" value="'+escHtml(item.labelS||'')+'" placeholder="e.g. Small" style="width:100%;background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.42rem 0.55rem;font-size:0.8rem;color:var(--td);font-family:\'Inter\',sans-serif;"/></div>'
-      +'<div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Option 1 Price (₱)</label>'
-      +'<input type="number" id="ep_'+key+'_priceTwoS" value="'+(pType==='two'?(item.priceS||''):'')+'" style="width:100%;background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.42rem 0.55rem;font-size:0.8rem;color:var(--td);font-family:\'Inter\',sans-serif;"/></div>'
-      +'<div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Option 2 Label</label>'
-      +'<input type="text" id="ep_'+key+'_labelL" value="'+escHtml(item.labelL||'')+'" placeholder="e.g. Large" style="width:100%;background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.42rem 0.55rem;font-size:0.8rem;color:var(--td);font-family:\'Inter\',sans-serif;"/></div>'
-      +'<div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Option 2 Price (₱)</label>'
-      +'<input type="number" id="ep_'+key+'_priceTwoL" value="'+(pType==='two'?(item.priceL||''):'')+'" style="width:100%;background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.42rem 0.55rem;font-size:0.8rem;color:var(--td);font-family:\'Inter\',sans-serif;"/></div>'
-      +'</div>'
-      // Flat field
-      +'<div id="ep_'+key+'_flat" style="display:'+(pType==='flat'?'block':'none')+';margin-bottom:0.5rem;">'
-      +'<label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Price (₱)</label>'
-      +'<input type="number" id="ep_'+key+'_priceFlat" value="'+(pType==='flat'?(item.priceS||''):'')+'" placeholder="e.g. 195" style="width:100%;background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.42rem 0.55rem;font-size:0.8rem;color:var(--td);font-family:\'Inter\',sans-serif;"/>'
-      +'</div>'
-      // Item options
-      +'<div style="margin-bottom:0.7rem;"><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.05em;">Item Options — tick everything this item should offer</label>'
-      +'<div style="display:flex;flex-wrap:wrap;gap:0.4rem;">'+buildOptionChecklistHtml(getEffectiveOptionIds(item))+'</div></div>'
-      // Image URL
-      +'<div style="margin-bottom:0.7rem;"><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Image URL</label>'
-      +'<input type="text" id="ep_'+key+'_img" value="'+escHtml(item.img||'')+'" placeholder="https://i.postimg.cc/..." style="width:100%;background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.42rem 0.55rem;font-size:0.8rem;color:var(--td);font-family:\'Inter\',sans-serif;"/></div>'
-      // Buttons
-      +'<div style="display:flex;gap:0.5rem;justify-content:flex-end;">'
-      +'<button onclick="toggleEditPanel(\''+key+'\')" style="background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.38rem 0.9rem;font-size:0.8rem;color:var(--tl);cursor:pointer;font-family:\'Inter\',sans-serif;">Cancel</button>'
-      +'<button onclick="saveEditItem(\''+key+'\')" style="background:var(--bd);color:#fff;border:none;border-radius:6px;padding:0.38rem 0.9rem;font-size:0.8rem;cursor:pointer;font-family:\'Inter\',sans-serif;font-weight:500;">💾 Save Changes</button>'
-      +'</div>';
-    row.appendChild(panel);
-  });
- 
-  // Staff mode: hide edit/delete/drag/toggle/imageURL controls
-  if(staffLoggedIn){
-    el.querySelectorAll('.avail-toggle').forEach(function(t){t.style.display='none';});
-    el.querySelectorAll('[data-delitem]').forEach(function(b){b.style.display='none';});
-    el.querySelectorAll('button[onclick*="toggleEditPanel"]').forEach(function(b){b.style.display='none';});
-    el.querySelectorAll('[draggable]').forEach(function(r){r.removeAttribute('draggable');});
-    el.querySelectorAll('[style*="cursor:grab"]').forEach(function(s){s.style.display='none';});
-    el.querySelectorAll('[data-saveimg]').forEach(function(b){b.closest('div').style.display='none';});
-  }
-  // Wire toggles
-  el.querySelectorAll('.avail-toggle').forEach(function(chk){
-    chk.addEventListener('change',async function(){
-      const name=this.dataset.name,sid=this.dataset.sid,ok=this.checked;
-      availability[name]=ok;
-      const n=document.getElementById(sid+'_n'),l=document.getElementById(sid+'_l');
-      if(n){n.style.textDecoration=ok?'none':'line-through';n.style.opacity=ok?'1':'0.5';}
-      if(l){l.textContent=ok?'✅ Available':'❌ Unavailable';l.style.background=ok?'#d4edda':'#fde8e8';l.style.color=ok?'#155724':'#721c24';}
-      renderMenuSection();renderOrderSection();
-      await update(availRef,{[name]:ok});
-    });
-  });
-  // Wire save image
-  el.querySelectorAll('button[data-saveimg]').forEach(function(btn){
-    btn.addEventListener('click',async function(){
-      const key=this.dataset.saveimg,sid=this.dataset.sid;
-      const input=document.getElementById(sid+'_img');if(!input)return;
-      const imgUrl=input.value.trim()||null;
-      await update(ref(db,'menuItems/'+key),{img:imgUrl});
-      input.style.borderColor='#2d9e5f';input.style.background='#f0faf4';
-      setTimeout(function(){input.style.borderColor='var(--cd)';input.style.background='#fff';},1500);
-      renderMenuSection();
-    });
-  });
-  // Wire delete item
-  el.querySelectorAll('button[data-delitem]').forEach(function(btn){
-    btn.addEventListener('click',function(){showDeletePopup(this.dataset.delname,async function(){await remove(ref(db,'menuItems/'+btn.dataset.delitem));});});
-  });
-  // Wire drag reorder
-  let dragItemKey=null;
-  el.querySelectorAll('[data-itemkey]').forEach(function(row){
-    row.addEventListener('dragstart',function(){dragItemKey=this.dataset.itemkey;});
-    row.addEventListener('dragover',function(e){e.preventDefault();});
-    row.addEventListener('drop',async function(e){
-      e.preventDefault();if(!dragItemKey||dragItemKey===this.dataset.itemkey)return;
-      const cat2=this.dataset.itemcat;
-      const catItems=getMenuItems().filter(i=>i.cat===cat2).sort((a,b)=>(a.order||0)-(b.order||0));
-      const from=catItems.findIndex(i=>i.key===dragItemKey),to=catItems.findIndex(i=>i.key===this.dataset.itemkey);
-      if(from<0||to<0)return;
-      const reordered=[...catItems];reordered.splice(to,0,reordered.splice(from,1)[0]);
-      const updates={};reordered.forEach((item,i)=>{updates[item.key+'/order']=i;});
-      await update(menuRef,updates);dragItemKey=null;
-    });
-  });
-}
-
 // ── DASHBOARD ──
 function renderDashboard(){
   const archived=Object.values(archivedOrdersMap);
@@ -1860,93 +1227,6 @@ function _paintArchive(){
   var more=document.getElementById('archiveLoadOlder');if(more&&hs.hasOlder)more.onclick=async function(){more.disabled=true;more.textContent='Loading older orders…';try{await subscriptionHub.loadOlder('archivedOrders');}catch(e){more.textContent='Could not load older orders';more.disabled=false;}};
   el.querySelectorAll('button[data-delarch]').forEach(function(btn){btn.addEventListener('click',function(){var oid=this.getAttribute('data-delarch'),o=archivedOrdersMap[oid];showDeletePopup('PERMANENTLY delete eligible rejected order #'+oid+(o&&o.name?' ('+o.name+')':'')+'. A manager sign-in is required.',async function(){try{var ap=await requestManagerApproval('delete_archived_order',oid,Number(o&&o.total)||0,'Delete rejected order after retention period');await manageOrderArchiveCall({action:'delete',orderId:oid,approvalId:ap.approvalId});delete archivedOrdersMap[oid];renderArchive();}catch(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Could not delete order: '+((e&&e.message)||e));}});});});
 }
-
-window.openResContactPopup=function(id){
-  const r=adminResMap[id];if(!r)return;
-  const pref=(r.contactMethod||'call').toLowerCase();
-  const prefLabels={whatsapp:'💬 WhatsApp',viber:'📱 Viber',sms:'📩 SMS',call:'📞 Phone Call',email:'📧 Email'};
-  const contactRaw=r.contact||r.phone||'';
-  const email=/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactRaw)?contactRaw:'';
-  const phone=(contactRaw.includes('@')?(r.phone||''):contactRaw).replace(/\D/g,'').replace(/^0/,'');
-  const msg=encodeURIComponent('Hi '+r.name+'! 😊 Your reservation at Accaza Coffee House has been accepted!\n\n📅 Date: '+r.date+'\n🕐 Time: '+r.time+'\n👥 Guests: '+r.guests+(r.occasion?' · '+r.occasion:'')+'\n📍 Saratoga Ave, La Mediterranea, Dasmariñas, Cavite\n\nWe look forward to seeing you! ☕🐻\n— Accaza Coffee House');
-  document.getElementById('resContactInfo').innerHTML='<p><strong>'+escHtml(r.name)+'</strong> · '+Math.max(1,Math.min(50,parseInt(r.guests)||1))+' guests · '+escHtml(r.date)+' · '+escHtml(r.time)+'</p><p>📱 '+escHtml(contactRaw||r.phone)+'</p><p style="color:#2d6a4f;font-weight:600;">⭐ Preferred contact: '+(prefLabels[pref]||'📞 Phone')+'</p>';
-  const hl=function(m){return pref===m?'box-shadow:0 0 0 3px rgba(45,158,95,0.55);':'opacity:0.85;';};
-  let btns='';
-  btns+='<a href="https://wa.me/63'+phone+'?text='+msg+'" target="_blank" rel="noopener noreferrer" style="'+hl('whatsapp')+'background:#25D366;color:#fff;border-radius:6px;padding:0.5rem 0.9rem;font-size:0.8rem;text-decoration:none;">💬 WhatsApp'+(pref==='whatsapp'?' ⭐':'')+'</a>';
-  btns+='<a href="viber://chat?number=%2B63'+phone+'&text='+msg+'" style="'+hl('viber')+'background:#7360f2;color:#fff;border-radius:6px;padding:0.5rem 0.9rem;font-size:0.8rem;text-decoration:none;">📱 Viber'+(pref==='viber'?' ⭐':'')+'</a>';
-  btns+='<a href="sms:+63'+phone+'?body='+msg+'" style="'+hl('sms')+'background:#44523f;color:#fff;border-radius:6px;padding:0.5rem 0.9rem;font-size:0.8rem;text-decoration:none;">📩 SMS'+(pref==='sms'?' ⭐':'')+'</a>';
-  btns+='<a href="tel:+63'+phone+'" style="'+hl('call')+'background:#0c5460;color:#fff;border-radius:6px;padding:0.5rem 0.9rem;font-size:0.8rem;text-decoration:none;">📞 Call'+(pref==='call'?' ⭐':'')+'</a>';
-  if(email)btns+='<a href="mailto:'+encodeURIComponent(email)+'?subject=Your%20Accaza%20Reservation&body='+msg+'" style="'+hl('email')+'background:#856404;color:#fff;border-radius:6px;padding:0.5rem 0.9rem;font-size:0.8rem;text-decoration:none;">📧 Email'+(pref==='email'?' ⭐':'')+'</a>';
-  document.getElementById('resContactBtns').innerHTML=btns;
-  document.getElementById('resContactPopup').classList.add('show');
-};
-
-let resArchiveOpen=false;
-window.toggleResArchivePanel=function(){resArchiveOpen=!resArchiveOpen;document.getElementById('resArchivePanel').style.display=resArchiveOpen?'block':'none';document.getElementById('resList').style.display=resArchiveOpen?'none':'block';var btn=document.getElementById('resArchiveToggleBtn'),hdg=document.getElementById('resHeading');if(btn)btn.textContent=resArchiveOpen?'← Back to Reservations':'📦 View Archive';if(hdg)hdg.textContent=resArchiveOpen?'Reservation Archive':'Reservations';if(resArchiveOpen)renderResArchive();};
-
-function filteredResArchive(){
-  const fromVal=document.getElementById('resArchiveFrom').value,toVal=document.getElementById('resArchiveTo').value;
-  let list=Object.values(archivedResMap).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  if(fromVal)list=list.filter(r=>(r.date||'')>=fromVal);
-  if(toVal)list=list.filter(r=>(r.date||'')<=toVal);
-  return list;
-}
-window.renderResArchive=function(){
-  const el=document.getElementById('resArchiveList'),sumEl=document.getElementById('resArchiveSummary');
-  const list=filteredResArchive();
-  const totalGuests=list.filter(r=>r.prevStatus!=='Declined').reduce((s,r)=>s+(parseInt(r.guests)||0),0);
-  const declinedCnt=list.filter(r=>r.prevStatus==='Declined').length;
-  sumEl.innerHTML='<div><span class="archive-sum-num">'+list.length+'</span><span class="archive-sum-lbl">Reservations</span></div><div><span class="archive-sum-num">'+totalGuests+'</span><span class="archive-sum-lbl">Guests Served</span></div><div><span class="archive-sum-num">'+declinedCnt+'</span><span class="archive-sum-lbl">Declined</span></div>';
-  if(!list.length){el.innerHTML='<p style="color:var(--tl);text-align:center;padding:1.5rem;font-size:0.88rem;">No archived reservations for selected range.</p>';return;}
-  el.innerHTML=list.map(function(r){var guests=Math.max(1,Math.min(50,parseInt(r.guests)||1));return'<div class="archive-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.4rem;"><div><div style="font-weight:500;font-size:0.88rem;color:var(--bd);">'+escHtml(r.name)+' <span style="font-size:0.72rem;color:var(--tl);">#'+escHtml(r.id)+'</span></div><div style="font-size:0.75rem;color:var(--tl);">'+escHtml(r.date)+' · '+escHtml(r.time)+' · '+guests+' guests'+(r.occasion?' · '+escHtml(r.occasion):'')+'</div></div>'+(r.prevStatus==='Declined'?'<span class="badge badge-declined">Declined</span>':'<span class="badge badge-archived">📦 Archived</span>')+'</div>'+(r.notes?'<div style="font-size:0.8rem;color:var(--tm);margin:0.3rem 0;">📝 '+escHtml(r.notes)+'</div>':'')+'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;">Archived: '+escHtml(r.archivedDate||'—')+'</div></div>';}).join('');
-};
-window.printResArchive=function(){
-  const fromVal=document.getElementById('resArchiveFrom').value,toVal=document.getElementById('resArchiveTo').value;
-  const list=filteredResArchive().slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
-  if(!list.length){alert('No archived reservations found for the selected date range.');return;}
-  const totalGuests=list.filter(r=>r.prevStatus!=='Declined').reduce((s,r)=>s+(parseInt(r.guests)||0),0);
-  const declinedCnt=list.filter(r=>r.prevStatus==='Declined').length;
-  const rowH=44,headerH=220,pageW=800,totalH=headerH+list.length*rowH+80;
-  const canvas=document.createElement('canvas');canvas.width=pageW;canvas.height=totalH;
-  const ctx=canvas.getContext('2d');
-  ctx.fillStyle='#e0d4c6';ctx.fillRect(0,0,pageW,totalH);
-  ctx.fillStyle='#19241b';ctx.fillRect(0,0,pageW,headerH);
-  ctx.fillStyle='#c9a36a';ctx.font='bold 28px Georgia,serif';ctx.textAlign='center';ctx.fillText('Accaza Coffee House',pageW/2,55);
-  ctx.fillStyle='rgba(224,212,198,0.7)';ctx.font='14px Inter,sans-serif';ctx.fillText('Saratoga Ave, La Mediterranea, Dasmariñas, Cavite',pageW/2,82);
-  ctx.fillStyle='#fff';ctx.font='bold 18px Georgia,serif';ctx.fillText('Reservation Archive Report',pageW/2,118);
-  const dateRange=fromVal&&toVal?fromVal+' to '+toVal:fromVal?'From '+fromVal:toVal?'Up to '+toVal:'All Time';
-  ctx.fillStyle='rgba(224,212,198,0.6)';ctx.font='12px Inter,sans-serif';ctx.fillText(dateRange,pageW/2,140);
-  ctx.fillStyle='rgba(255,255,255,0.1)';ctx.fillRect(40,156,pageW-80,48);
-  ctx.fillStyle='#c9a36a';ctx.font='bold 14px Inter,sans-serif';ctx.textAlign='left';ctx.fillText('Total Reservations: '+list.length,60,178);
-  ctx.textAlign='center';ctx.fillText('Guests Served: '+totalGuests,pageW/2,178);
-  ctx.textAlign='right';ctx.fillText('Declined: '+declinedCnt,pageW-60,178);
-  ctx.fillStyle='rgba(224,212,198,0.4)';ctx.font='11px Inter,sans-serif';ctx.textAlign='center';ctx.fillText('Generated: '+new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}),pageW/2,198);
-  let y=headerH+16;
-  ctx.fillStyle='#19241b';ctx.font='bold 11px Inter,sans-serif';ctx.textAlign='left';
-  ['Res ID','Name','Date','Time','Guests','Occasion','Status'].forEach(function(h,i){ctx.fillText(h,[40,140,300,400,500,560,690][i],y);});
-  ctx.strokeStyle='#cdbda7';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(40,y+8);ctx.lineTo(pageW-40,y+8);ctx.stroke();
-  y+=rowH*0.6;
-  list.forEach(function(r,idx){
-    if(idx%2===0){ctx.fillStyle='rgba(176,141,87,0.06)';ctx.fillRect(40,y-14,pageW-80,rowH);}
-    ctx.fillStyle='#1c2420';ctx.font='11px Inter,sans-serif';ctx.textAlign='left';
-    ctx.fillText((r.id||'—'),40,y+4);
-    ctx.fillText((r.name||'—').slice(0,18),140,y+4);
-    ctx.fillText((r.date||'—'),300,y+4);
-    ctx.fillText((r.time||'—').slice(0,14),400,y+4);
-    ctx.fillText(String(r.guests||'—'),500,y+4);
-    ctx.fillText((r.occasion||'—').slice(0,16),560,y+4);
-    ctx.fillStyle=r.prevStatus==='Declined'?'#c0392b':'#155724';ctx.font='bold 11px Inter,sans-serif';
-    ctx.fillText(r.prevStatus||'Completed',690,y+4);
-    ctx.strokeStyle='#cdbda7';ctx.lineWidth=0.5;ctx.beginPath();ctx.moveTo(40,y+rowH-14);ctx.lineTo(pageW-40,y+rowH-14);ctx.stroke();
-    y+=rowH;
-  });
-  ctx.fillStyle='#19241b';ctx.fillRect(0,totalH-40,pageW,40);
-  ctx.fillStyle='rgba(224,212,198,0.5)';ctx.font='11px Inter,sans-serif';ctx.textAlign='center';ctx.fillText('Accaza Coffee House · Confidential · For internal use only',pageW/2,totalH-14);
-  const w=window.open('','_blank');
-  if(!w){const link=document.createElement('a');link.download='Accaza_Reservations_'+new Date().toISOString().slice(0,10)+'.png';link.href=canvas.toDataURL('image/png');link.click();return;}
-  w.document.write('<html><head><title>Reservation Archive — Accaza Coffee House</title></head><body style="margin:0;"><img src="'+canvas.toDataURL('image/png')+'" style="width:100%;" onload="setTimeout(function(){window.print();},400);"/></body></html>');
-  w.document.close();
-};
 
 function showDeletePopup(label,onConfirm){
   document.getElementById('deleteLabel').textContent=label;
