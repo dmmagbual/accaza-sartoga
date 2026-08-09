@@ -3,6 +3,7 @@
 var staffList={},activeShift=null,shiftsMap={},activityMap={},heldMap={},ordersMap={},discMap={},toleranceCfg={cashPeso:20,invPct:5};
 var pettyVouchers={},pettyRepl={},pettySettings={};
 function A(){return window.__accaza;}
+function F(){if(!window.AccazaFormDialog)throw new Error('Form service unavailable. Refresh the portal.');return window.AccazaFormDialog;}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function peso(n){n=Number(n)||0;return '₱'+n.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5);}
@@ -153,9 +154,8 @@ function renderDiscrepancies(){
 }
 function reviewDiscrepancy(id){
   var d=discMap[id]; if(!d||d.status==='reviewed')return;
-  var note=prompt('Root-cause note (shortage / overage / encoding error / explanation):')||'';if(!note.trim()){alert('A root-cause note is required.');return;}
   var a=A();if(!a.reviewDiscrepancy||!a.managerApproval){alert('3E discrepancy service is not available. Refresh the portal.');return;}
-  a.managerApproval('review_discrepancy',id,null,note).then(function(ap){return a.reviewDiscrepancy({discrepancyId:id,note:note,approvalId:ap.approvalId});}).then(function(){window.__posLog('discrepancy-review',id,note);alert('Discrepancy reviewed and locked.');}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Review failed: '+((e&&e.message)||e));});
+  F().run({title:'Review discrepancy',subtitle:'Record the root cause before manager approval. This note becomes part of the permanent audit trail.',submitLabel:'Request approval',busyLabel:'Processing…',fields:[{name:'note',label:'Root-cause explanation',type:'textarea',required:true,maxLength:300,placeholder:'Shortage, overage, encoding error, or other explanation'}]},function(v){return a.managerApproval('review_discrepancy',id,null,v.note).then(function(ap){return a.reviewDiscrepancy({discrepancyId:id,note:v.note,approvalId:ap.approvalId});}).then(function(){window.__posLog('discrepancy-review',id,v.note);});}).then(function(){alert('Discrepancy reviewed and locked.');}).catch(function(){});
 }
 function exportDiscrepancies(){
   if(!window.XLSX){alert('Excel library still loading — try again.');return;}
@@ -259,15 +259,13 @@ function approveVoucher(id){
 }
 function rejectVoucher(id){
   var v=pettyVouchers[id]; if(!v||v.status!=='pending')return;
-  var reason=prompt('Reason for rejection (required):')||'';if(!reason.trim()){alert('A rejection reason is required.');return;}
   var a=A();if(!a.managePettyVoucher||!a.managerApproval){alert('3E petty-cash service is not available. Refresh the portal.');return;}
-  a.managerApproval('reject_petty_voucher',id,Number(v.amount)||0,reason).then(function(ap){return a.managePettyVoucher({action:'reject',voucherId:id,reason:reason,approvalId:ap.approvalId});}).then(function(){window.__posLog('petty-reject',v.voucherNo,reason);alert('Voucher rejected.');}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Rejection failed: '+((e&&e.message)||e));});
+  F().run({title:'Reject petty-cash voucher',subtitle:v.voucherNo+' · '+peso(v.amount),submitLabel:'Request rejection approval',busyLabel:'Processing…',fields:[{name:'reason',label:'Rejection reason',type:'textarea',required:true,maxLength:300,placeholder:'Explain why this voucher is being rejected'}]},function(x){return a.managerApproval('reject_petty_voucher',id,Number(v.amount)||0,x.reason).then(function(ap){return a.managePettyVoucher({action:'reject',voucherId:id,reason:x.reason,approvalId:ap.approvalId});}).then(function(){window.__posLog('petty-reject',v.voucherNo,x.reason);});}).then(function(){alert('Voucher rejected.');}).catch(function(){});
 }
 function voidVoucher(id){
   var v=pettyVouchers[id]; if(!v||v.status!=='approved'||v.voided)return;
-  var reason=prompt('Reason for void (required):')||'';if(!reason.trim()){alert('A void reason is required.');return;}
   var a=A();if(!a.managePettyVoucher||!a.managerApproval){alert('3E petty-cash service is not available. Refresh the portal.');return;}
-  a.managerApproval('void_petty_voucher',id,Number(v.amount)||0,reason).then(function(ap){return a.managePettyVoucher({action:'void',voucherId:id,reason:reason,approvalId:ap.approvalId});}).then(function(){window.__posLog('petty-void',v.voucherNo,reason);alert('Voucher voided and petty cash restored.');}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Void failed: '+((e&&e.message)||e));});
+  F().run({title:'Void petty-cash voucher',subtitle:v.voucherNo+' · '+peso(v.amount),submitLabel:'Request void approval',busyLabel:'Processing…',fields:[{name:'reason',label:'Void reason',type:'textarea',required:true,maxLength:300,placeholder:'Explain why this approved voucher must be voided'}]},function(x){return a.managerApproval('void_petty_voucher',id,Number(v.amount)||0,x.reason).then(function(ap){return a.managePettyVoucher({action:'void',voucherId:id,reason:x.reason,approvalId:ap.approvalId});}).then(function(){window.__posLog('petty-void',v.voucherNo,x.reason);});}).then(function(){alert('Voucher voided and petty cash restored.');}).catch(function(){});
 }
 function addReplenishment(){
   var amt=Number(fv('prAmount'))||0; if(!amt){alert('Enter an amount.');return;}
@@ -448,11 +446,10 @@ function changeStaffPin(id){
 
 function openShift(){
   var sid=document.getElementById('opsStaff').value;var s=staffList[sid];if(!s){alert('Pick a cashier.');return;}
-  var pin=prompt('Enter '+s.name+"'s PIN to open the shift:");if(pin===null)return;if(String(s.pin)!==String(pin)){alert('Wrong PIN.');return;}
   var od=denomRead('opsOpenDenom'); var float=od.total;
   var id='SH-'+Date.now().toString().slice(-6);var a=A();
   var rec={id:id,staff:s.name,staffId:sid,openingFloat:float,openCount:od.counts,drawer:Object.assign({},od.counts),openAt:Date.now(),status:'open'};
-  a.set(a.ref(a.db,'shifts/'+id),rec).then(function(){a.set(a.ref(a.db,'posActiveShift'),{id:id,staff:s.name,staffId:sid,openingFloat:float,drawer:Object.assign({},od.counts),openAt:Date.now()});window.__posLog('shift-open',id,'float '+peso(float));});
+  F().run({title:'Open shift',subtitle:s.name+' · opening float '+peso(float),submitLabel:'Open shift',busyLabel:'Opening…',fields:[{name:'pin',label:s.name+"'s PIN",type:'password',required:true,maxLength:6,placeholder:'4–6 digits',validate:function(v){return /^[0-9]{4,6}$/.test(v)?'':'Enter a 4–6 digit PIN.';}}]},function(v){if(String(s.pin)!==String(v.pin))throw new Error('Cashier PIN is incorrect.');return a.set(a.ref(a.db,'shifts/'+id),rec).then(function(){return a.set(a.ref(a.db,'posActiveShift'),{id:id,staff:s.name,staffId:sid,openingFloat:float,drawer:Object.assign({},od.counts),openAt:Date.now()});}).then(function(){window.__posLog('shift-open',id,'float '+peso(float));});}).catch(function(){});
 }
 function closeShift(){
   if(!activeShift)return;var shift=activeShift;
@@ -613,21 +610,22 @@ function exportShiftReviewXlsx(shift,z,sales,items){
 function refundTenderModal(o,amount,cb){
   if((o.channel||'instore')!=='instore'){cb([]);return;}var paid={};paysOf(o).forEach(function(p){paid[p.method]=(paid[p.method]||0)+(Number(p.amount)||0);});var prior=o.refundPayments||{},methods=Object.keys(paid),left=amount,defaults={};methods.forEach(function(m){var avail=Math.max(0,paid[m]-(Number(prior[m])||0)),use=Math.min(left,avail);defaults[m]=use;left=Math.round((left-use)*100)/100;});
   var mask=document.createElement('div');mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:11000;display:flex;align-items:center;justify-content:center;padding:1rem;';mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:460px;width:100%;padding:1.2rem;"><div style="font-weight:700;color:var(--bd);">Refund payment method</div><p class="pz-sub">Record exactly how '+peso(amount)+' will be returned. This controls the cash drawer and accounting reversal.</p>'+methods.map(function(m){var avail=Math.max(0,paid[m]-(Number(prior[m])||0));return '<div style="display:flex;gap:.5rem;align-items:center;margin:.4rem 0;"><div style="flex:1;"><b>'+esc(m)+'</b><div style="font-size:.68rem;color:var(--tl);">remaining refundable '+peso(avail)+'</div></div><input class="pz-in" type="number" min="0" max="'+avail+'" step=".01" data-rt="'+esc(m)+'" value="'+(defaults[m]||'')+'" style="width:130px;"/></div>';}).join('')+'<div id="rtBal" style="font-weight:700;text-align:right;margin-top:.5rem;"></div><div style="display:flex;gap:.5rem;margin-top:1rem;"><button class="pz-btn ok" id="rtOk">Continue</button><button class="pz-btn sec" id="rtCancel">Cancel</button></div></div>';document.body.appendChild(mask);function read(){var rows=[],sum=0;mask.querySelectorAll('[data-rt]').forEach(function(inp){var v=Math.round((Number(inp.value)||0)*100)/100;if(v>0){rows.push({method:inp.getAttribute('data-rt'),amount:v});sum+=v;}});return{rows:rows,sum:Math.round(sum*100)/100};}function recalc(){var r=read(),diff=Math.round((amount-r.sum)*100)/100,el=mask.querySelector('#rtBal');el.innerHTML=Math.abs(diff)<.001?'<span style="color:#155724;">✓ Exact '+peso(amount)+'</span>':'<span style="color:#c0392b;">Still allocate '+peso(diff)+'</span>';}mask.querySelectorAll('[data-rt]').forEach(function(i){i.oninput=recalc;});recalc();mask.querySelector('#rtCancel').onclick=function(){document.body.removeChild(mask);};mask.querySelector('#rtOk').onclick=function(){var r=read();if(Math.abs(r.sum-amount)>.009){alert('Refund payment methods must total exactly '+peso(amount)+'.');return;}document.body.removeChild(mask);cb(r.rows);};
+  mask.querySelector('#rtCancel').onclick=function(){document.body.removeChild(mask);cb(null);};
 }
 function voidSale(oid){
   var o=ordersMap[oid];if(!o)return;
-  var reason=prompt('Reason for void:')||'';
-  var restock=o.inventoryUsage&&!o.inventoryReversed?confirm('Return this order\'s ingredients to stock?\nOK = restock · Cancel = treat as wastage (keep deducted).'):false;
-  var a=A(),amount=Math.max(0,(Number(o.total)||0)-(Number(o.refundAmount)||0));if(!a.processOrderAdjustment||!a.managerApproval){alert('3D adjustment service is not available. Refresh the portal.');return;}a.managerApproval('void',oid,amount,reason).then(function(ap){return a.processOrderAdjustment({action:'void',orderId:oid,reason:reason,restock:restock,approvalId:ap.approvalId});}).then(function(){window.__posLog('void',oid,reason||'—');alert('Order voided and financial reversal posted.');}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Void failed: '+((e&&e.message)||e)+'. Nothing was changed.');});
+  var a=A(),amount=Math.max(0,(Number(o.total)||0)-(Number(o.refundAmount)||0));if(!a.processOrderAdjustment||!a.managerApproval){alert('3D adjustment service is not available. Refresh the portal.');return;}
+  var fields=[{name:'reason',label:'Void reason',type:'textarea',required:true,maxLength:300,placeholder:'Explain why this completed sale must be voided'}];
+  if(o.inventoryUsage&&!o.inventoryReversed)fields.push({name:'restock',label:'Return deducted ingredients to inventory',type:'checkbox',help:'Leave unchecked when the ingredients were consumed or wasted.'});
+  F().run({title:'Void completed sale',subtitle:oid+' · reversible amount '+peso(amount),submitLabel:'Request void approval',busyLabel:'Posting reversal…',danger:true,fields:fields},function(v){return a.managerApproval('void',oid,amount,v.reason).then(function(ap){return a.processOrderAdjustment({action:'void',orderId:oid,reason:v.reason,restock:!!v.restock,approvalId:ap.approvalId});}).then(function(){window.__posLog('void',oid,v.reason);});}).then(function(){alert('Order voided and financial reversal posted.');}).catch(function(){});
 }
 function refundSale(oid){
   var o=ordersMap[oid];if(!o)return;
   var max=Number(o.total)||0;var already=Number(o.refundAmount)||0;
-  var amt=prompt('Refund amount (remaining refundable ₱'+(max-already)+'):',(max-already));if(amt===null)return;amt=Number(amt)||0;if(amt<=0){return;}
-  if(amt>max-already+0.01){alert('Refund exceeds the refundable amount.');return;}
-  var reason=prompt('Refund reason:')||'';
-  var full=(already+amt)>=max-0.01;
-  var restock=full&&o.inventoryUsage&&!o.inventoryReversed?confirm('Full refund. Return ingredients to stock?\nOK = restock · Cancel = wastage.'):false;
-  var a=A();if(!a.processOrderAdjustment||!a.managerApproval){alert('3D adjustment service is not available. Refresh the portal.');return;}refundTenderModal(o,amt,function(refundPayments){a.managerApproval('refund',oid,amt,reason).then(function(ap){return a.processOrderAdjustment({action:'refund',orderId:oid,amount:amt,refundPayments:refundPayments,reason:reason,restock:restock,approvalId:ap.approvalId});}).then(function(){if(denomTrackingOnR()&&activeShift){var cash=refundPayments.reduce(function(s,p){return s+(p.method==='Cash'?(Number(p.amount)||0):0);},0);if(cash>0){var mc=makeChangeD(cash,drawerNow());saveDrawer(subD(drawerNow(),mc.denoms));if(!mc.ok)alert('Note: the drawer can’t provide exactly '+peso(cash)+' cash (short '+peso(mc.short)+'). Reconcile at count.');}}window.__posLog('refund',oid,peso(amt)+' · '+refundPayments.map(function(p){return p.method+' '+peso(p.amount);}).join(', ')+' · '+(reason||'—'));alert('Refund and financial reversal posted.');}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Refund failed: '+((e&&e.message)||e)+'. Nothing was changed.');});});
+  var remaining=Math.round((max-already)*100)/100;if(remaining<=0){alert('This order has no refundable balance.');return;}
+  var a=A();if(!a.processOrderAdjustment||!a.managerApproval){alert('3D adjustment service is not available. Refresh the portal.');return;}
+  var fields=[{name:'amount',label:'Refund amount',type:'number',required:true,min:0.01,max:remaining,step:'0.01',value:remaining,validate:function(v){var n=Number(v);return n>0&&n<=remaining+.001?'':'Enter an amount from '+peso(.01)+' to '+peso(remaining)+'.';}},{name:'reason',label:'Refund reason',type:'textarea',required:true,maxLength:300,placeholder:'Explain why this refund is being issued'}];
+  if(o.inventoryUsage&&!o.inventoryReversed)fields.push({name:'restock',label:'Return ingredients on a full refund',type:'checkbox',help:'Inventory is restored only when this completes the full order reversal.'});
+  F().run({title:'Refund completed sale',subtitle:oid+' · remaining refundable '+peso(remaining),submitLabel:'Continue to refund method',busyLabel:'Posting refund…',fields:fields},function(v){var amt=Math.round(Number(v.amount)*100)/100,full=(already+amt)>=max-.01,restock=full&&!!v.restock;return new Promise(function(resolve,reject){refundTenderModal(o,amt,function(refundPayments){if(refundPayments===null){reject(new Error('Refund payment allocation was cancelled.'));return;}a.managerApproval('refund',oid,amt,v.reason).then(function(ap){return a.processOrderAdjustment({action:'refund',orderId:oid,amount:amt,refundPayments:refundPayments,reason:v.reason,restock:restock,approvalId:ap.approvalId});}).then(function(){if(denomTrackingOnR()&&activeShift){var cash=refundPayments.reduce(function(s,p){return s+(p.method==='Cash'?(Number(p.amount)||0):0);},0);if(cash>0){var mc=makeChangeD(cash,drawerNow());saveDrawer(subD(drawerNow(),mc.denoms));if(!mc.ok)alert('Note: the drawer can’t provide exactly '+peso(cash)+' cash (short '+peso(mc.short)+'). Reconcile at count.');}}window.__posLog('refund',oid,peso(amt)+' · '+refundPayments.map(function(p){return p.method+' '+peso(p.amount);}).join(', ')+' · '+v.reason);resolve();}).catch(reject);});});}).then(function(){alert('Refund and financial reversal posted.');}).catch(function(){});
 }
 })();

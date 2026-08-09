@@ -1867,7 +1867,7 @@ function renderPosCart(){
   var _pb=document.getElementById('posPkgBtn');if(_pb)_pb.onclick=function(){ if(window.__openPackagePicker)window.__openPackagePicker(); else alert('Packages module still loading \u2014 try again.'); };
   document.getElementById('posClear').onclick=function(){if(Object.keys(posCart).length&&confirm('Clear this sale?')){posCart={};window.__posPkgs=[];posScopedDisc=[];renderPosCart();}};
   var _hold=document.getElementById('posHold'); if(_hold)_hold.onclick=function(){ if(!Object.keys(posCart).length)return; var a=A(); a.set(a.ref(a.db,'heldOrders/'+uid('hold_')),{cart:posCart,ts:Date.now(),staff:(window.__posShift&&window.__posShift.staff)||'—',note:(document.getElementById('posCust').value||'').trim()}); posCart={}; window.__posPkgs=[]; renderPosCart(); alert('Order held. Recall it from Register Ops.'); };
-  document.getElementById('posCharge').onclick=function(){
+  document.getElementById('posCharge').onclick=async function(){
     if(!window.__posShift){alert('Open a shift first (Register Ops tab).');return;}
     var tot=grandTotal();
     if(isPlat){
@@ -1886,7 +1886,7 @@ function renderPosCart(){
       return;
     }
     var d=Number(disc&&disc.value)||0;
-    if(d>0&&window.__posIsManagerPin){ var pin=prompt('Manager PIN required to approve a ₱'+d+' discount:'); if(pin===null)return; if(!window.__posIsManagerPin(pin)){alert('Invalid manager PIN — discount not approved.');return;} }
+    if(d>0&&window.__posIsManagerPin){try{await window.AccazaFormDialog.run({title:'Approve manual discount',subtitle:'Discount amount: '+peso(d),submitLabel:'Approve discount',fields:[{name:'pin',label:'Manager PIN',type:'password',required:true,maxLength:6,placeholder:'4–6 digits',validate:function(v){return /^[0-9]{4,6}$/.test(v)?'':'Enter a 4–6 digit manager PIN.';}}]},function(v){if(!window.__posIsManagerPin(v.pin))throw new Error('Manager PIN is invalid.');});}catch(e){return;} }
     var payments;
     if(splitChk.checked){ var assigned=splitRows.reduce(function(s,r){return s+(Number(r.amount)||0);},0); if(Math.abs(assigned-tot)>0.01){alert('Split payments must add up to the total.');return;} if(splitRows.some(function(r){return !isCashMethod(r.method)&&!String(r.ref||'').trim();})){alert('Enter a reference number for every GCash/bank payment before charging.');return;}
       var _splitBad=false;
