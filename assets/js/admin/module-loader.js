@@ -1,7 +1,7 @@
 (function(){
   'use strict';
   var base='assets/js/admin/';
-  var files={pos:'pos.js',analytics:'analytics.js',register:'register.js',staff:'staff-access.js',packages:'packages.js',finance:'finance.js'};
+  var files={costing:'../shared/costing.js',pos:'pos.js',analytics:'analytics.js',register:'register.js',staff:'staff-access.js',packages:'packages.js',finance:'finance.js'};
   var routes={
     pos:['pos'],inventory:['pos'],purchases:['pos'],recipes:['pos'],usage:['pos'],channelpricing:['pos'],dedupe:['pos'],
     analytics:['pos','analytics'],pnl:['pos','analytics'],payouts:['pos','analytics'],stockvalue:['pos','analytics'],dailyreport:['pos','analytics'],
@@ -15,6 +15,7 @@
 
   function load(name){
     if(promises[name])return promises[name];
+    if(name==='pos'&&!window.AccazaCosting)return load('costing').then(function(){if(!window.AccazaCosting)throw new Error('Shared costing engine did not initialize.');return load('pos');});
     promises[name]=new Promise(function(resolve,reject){
       var script=document.createElement('script');
       script.src=base+files[name];script.async=true;script.dataset.accazaModule=name;

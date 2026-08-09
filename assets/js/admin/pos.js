@@ -24,6 +24,8 @@ var posCart={}, posCat='ALL', posBuilt=false, recipeEditing=false, curRecipeKey=
 var DISC_TYPES={senior:{label:'Senior Citizen',rate:0.20},pwd:{label:'PWD',rate:0.20},athlete:{label:'National Athlete',rate:0.20},promo5:{label:'5% Drink Promo',rate:0.05}};
 
 function A(){return window.__accaza;}
+function Costing(){if(!window.AccazaCosting)throw new Error('The shared costing engine did not load. Refresh the portal and try again.');return window.AccazaCosting;}
+function costingContext(extra){return Object.assign({inventory:inventoryMap,recipes:recipesMap,menuItems:(A()&&A().menuItemsMap)||{},optionCosts:optCostStore(),optionRecipes:optRecipesMap,optionGroups:(A()&&A().optionGroupsMap)||{}},extra||{});}
 function movementId(prefix,source,item){return (String(prefix)+'_'+String(source)+'_'+String(item)).replace(/[^A-Za-z0-9_-]/g,'_').slice(0,160);}
 function postMovements(rows){var a=A();if(!a||!a.postInventoryMovements)return Promise.reject(new Error('Inventory movement service is not available. Refresh the portal.'));rows=(rows||[]).filter(function(x){return x&&x.itemId;});var chunks=[];while(rows.length)chunks.push(rows.splice(0,100));var out={count:0,duplicates:0,movements:[]};return chunks.reduce(function(p,chunk){return p.then(function(){return a.postInventoryMovements(chunk);}).then(function(r){r=r&&r.data?r.data:r||{};out.count+=Number(r.count)||0;out.duplicates+=Number(r.duplicates)||0;out.movements=out.movements.concat(r.movements||[]);});},Promise.resolve()).then(function(){return out;});}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -39,7 +41,7 @@ function ingCost(id){var i=inventoryMap[id];return i?(Number(i.cost)||0):0;}
 function stdCostMethod(){return (window.__posSettings&&window.__posSettings.stdCostMethod)||'wac';}
 function stdCostOf(item){ if(!item)return 0; if(stdCostMethod()==='manual'&&item.stdCost!=null&&item.stdCost!=='')return Number(item.stdCost)||0; return Number(item.cost)||0; }
 function stdIngCost(id){return stdCostOf(inventoryMap[id]);}
-function recipeStdCost(key,size){ var rec=recipesMap[key]; if(!rec||!rec.base)return {cost:0,covered:false,has:false}; var c=0,cov=true; (rec.base||[]).forEach(function(b){ if(!b.ing)return; var q=baseQtyForSize(rec,b,size); var uc=stdIngCost(b.ing); if(!uc&&q)cov=false; c+=q*uc; }); return {cost:Math.round(c*100000)/100000,covered:cov,has:true}; }
+function recipeStdCost(key,size){ var rec=recipesMap[key]; if(!rec||!rec.base)return {cost:0,covered:false,has:false};var stdInv={};Object.keys(inventoryMap).forEach(function(id){stdInv[id]=Object.assign({},inventoryMap[id],{cost:stdIngCost(id)});});var result=Costing().costRecipe({itemKey:key,recipe:rec,inventory:stdInv,item:((A()&&A().menuItemsMap)||{})[key]||{},size:size});return {cost:result.totalCost,covered:result.cogsCovered,has:true}; }
 function ingType(i){return (i&&i.type)||'base';}
 function ingsByType(t){return ings().filter(function(i){return ingType(i)===t;});}
 /* Inventory categories (organization + product-cost vs overhead), stored in posSettings (no new rule). */
@@ -69,16 +71,11 @@ function baseQtyForSize(rec,b,size){
   return (Number(b.qty)||0)*mult;
 }
 /* ---- unit conversion (recipe unit → ingredient stock unit) ---- */
-var UNIT_DIMS={
-  vol:{ml:1,l:1000,liter:1000,litre:1000,tsp:4.92892,tbsp:14.7868,cup:240,oz:29.5735,floz:29.5735,'fl oz':29.5735},
-  weight:{g:1,gram:1,mg:0.001,kg:1000,lb:453.592,oz:28.3495},
-  count:{pcs:1,pc:1,ea:1,each:1,unit:1,dozen:12,doz:12}
-};
-function uNorm(u){return String(u||'').trim().toLowerCase();}
-function unitDim(u){u=uNorm(u);if(u==='oz')return null;var d;for(d in UNIT_DIMS){if(UNIT_DIMS[d][u]!=null)return d;}return null;}
+function uNorm(u){return Costing().normalizeUnit(u);}
+function unitDim(u){var x=Costing().unitInfo(u);return x.error?null:x.dim;}
 function itemDim(item){return unitDim(item&&item.unit);}
-function compatUnits(item){var dim=itemDim(item);var own=uNorm(item&&item.unit);var out;if(dim==='vol')out=['ml','l','tsp','tbsp','cup','oz'];else if(dim==='weight')out=['g','kg','lb','oz'];else out=[own||'pcs'];if(own&&out.indexOf(own)<0)out.unshift(own);return out;}
-function convertToStock(qty,fromUnit,item){qty=Number(qty)||0;var dim=itemDim(item);if(!dim)return qty;var m=UNIT_DIMS[dim]||{};var ff=m[uNorm(fromUnit)],tf=m[uNorm(item.unit)];if(ff==null||tf==null)return qty;return qty*ff/tf;}
+function compatUnits(item){var dim=itemDim(item),own=uNorm(item&&item.unit),out;if(dim==='volume')out=['ml','l','tsp','tbsp','cup','fl oz'];else if(dim==='weight')out=['mg','g','kg','lb','oz wt'];else if(dim==='count')out=['pc','pcs','ea','each','dozen'];else out=[own||'pcs'];if(own&&out.indexOf(own)<0)out.unshift(own);return out;}
+function convertToStock(qty,fromUnit,item){var cv=Costing().convert(Number(qty),fromUnit,item&&item.unit);return cv.ok?cv.qty:NaN;}
 /* option → {ing,qty}: prefer legacy per-recipe option, else global optionRecipes by label */
 function optRecipeFor(rec,label){
   if(rec&&rec.options){var m=rec.options.filter(function(o){return o.label===label;})[0];if(m&&m.ing)return m;}
@@ -594,7 +591,7 @@ function importRecipesXlsx(file){
       var ingByName={}; ings().forEach(function(i){ingByName[(i.name||'').trim().toLowerCase()]=i.id;});
       var itemByName={}; menuList().forEach(function(it){itemByName[(it.name||'').trim().toLowerCase()]=it.key;});
       var mim=A().menuItemsMap||{}; var a=A();
-      var recCount=0,recRows=0,optCount=0,missIng={},missItem={};
+      var recCount=0,recRows=0,optCount=0,missIng={},missItem={},jobs=[];
       var rsh=wb.Sheets['Recipes'];
       if(rsh){
         var grouped={};
@@ -605,12 +602,15 @@ function importRecipesXlsx(file){
           var ingName=String(r.ingredient||'').trim(); if(!ingName)return;
           var ingId=ingByName[ingName.toLowerCase()]; if(!ingId){missIng[ingName]=1;return;}
           function q(v){return (v===''||v==null)?null:(Number(v)||0);}
-          (grouped[key]=grouped[key]||[]).push({ing:ingId,qtyS:q(r.qtyS),qtyM:q(r.qtyM),qtyL:q(r.qtyL)}); recRows++;
+          var inputUnit=String(r.unit||'').trim()||((inventoryMap[ingId]||{}).unit||'');
+          (grouped[key]=grouped[key]||[]).push({ing:ingId,unit:inputUnit,dispS:q(r.qtyS),dispM:q(r.qtyM),dispL:q(r.qtyL)}); recRows++;
         });
         Object.keys(grouped).forEach(function(key){
           var rec={base:grouped[key],updatedAt:Date.now()};
           var saved=recipesMap[key]; if(saved&&saved.options)rec.options=saved.options;
-          a.set(a.ref(a.db,'recipes/'+key),rec); recCount++;
+          var local=Costing().normalizeRecipe(rec,inventoryMap);if(!local.ok)throw new Error('Recipe '+((mim[key]&&mim[key].name)||key)+': '+costingIssues(local.errors));
+          if(!a.validateRecipeDefinition)throw new Error('The 3B recipe validator is not available. Refresh the portal.');
+          jobs.push(a.validateRecipeDefinition(rec).then(function(res){var data=res&&res.data?res.data:res;if(!data||!data.recipe)throw new Error('No normalized recipe returned for '+key);return a.set(a.ref(a.db,'recipes/'+key),data.recipe);}));recCount++;
         });
       }
       var osh=wb.Sheets['Options'];
@@ -620,14 +620,14 @@ function importRecipesXlsx(file){
           var ingName=String(r.ingredient||'').trim(); var qty=Number(r.qty)||0;
           if(!ingName||!qty)return;
           var ingId=ingByName[ingName.toLowerCase()]; if(!ingId){missIng[ingName]=1;return;}
-          a.set(a.ref(a.db,'optionRecipes/'+optKey(label)),{label:label,ing:ingId,qty:qty,updatedAt:Date.now()}); optCount++;
+          jobs.push(a.set(a.ref(a.db,'optionRecipes/'+optKey(label)),{label:label,ing:ingId,qty:qty,updatedAt:Date.now()})); optCount++;
         });
       }
       var msg='Recipes imported.\nMenu items updated: '+recCount+' ('+recRows+' ingredient rows)\nOptions set: '+optCount;
       var mi=Object.keys(missItem),mg=Object.keys(missIng);
       if(mi.length)msg+='\n\nUnknown menu items (skipped): '+mi.slice(0,8).join(', ')+(mi.length>8?' …':'');
       if(mg.length)msg+='\n\nUnknown ingredients — add in Inventory first: '+mg.slice(0,8).join(', ')+(mg.length>8?' …':'');
-      alert(msg);
+      Promise.all(jobs).then(function(){alert(msg+'\n\nAll recipes were normalized by costing engine '+Costing().VERSION+'.');}).catch(function(err){alert('Import stopped: '+(err&&err.message?err.message:err)+'\n\nSome earlier rows may already have been saved. Fix the error and import again.');});
     }catch(err){alert('Could not read that file: '+err);}
   };
   rd.readAsArrayBuffer(file);
@@ -1039,7 +1039,15 @@ function updateLowStockBadge(){
 
 /* ══════════ RECIPES ══════════ */
 function menuList(){ return (A().getMenuItems?A().getMenuItems():[]).slice().sort(function(a,b){return (a.cat||'').localeCompare(b.cat||'')||(a.name||'').localeCompare(b.name||'');}); }
-function recipeCost(rec,size){var c=0;((rec&&rec.base)||[]).forEach(function(b){if(!b.ing)return;c+=baseQtyForSize(rec,b,size)*ingCost(b.ing);});return Math.round(c*100)/100;}
+function recipeCost(rec,size){var key='preview';var result=Costing().costRecipe({itemKey:key,recipe:rec,inventory:inventoryMap,item:{name:'Recipe'},size:size});return result.totalCost;}
+function recipeDraftRaw(d){
+  d=d||{};
+  var base=(d.base||[]).filter(function(r){return r&&r.ing&&['S','M','L'].some(function(sz){return r['d'+sz]!=null&&r['d'+sz]!=='';});}).map(function(r){var inv=inventoryMap[r.ing]||{};return {ing:r.ing,unit:r.unit||inv.unit||'',dispS:r.dS===''?null:r.dS,dispM:r.dM===''?null:r.dM,dispL:r.dL===''?null:r.dL};});
+  var rec={base:base,updatedAt:Date.now()},allow=caAllowGroups();
+  Object.keys(d.choiceAdd||{}).forEach(function(g){if(allow.indexOf(g)<0)return;var group={};Object.keys(d.choiceAdd[g]||{}).forEach(function(lk){var e=d.choiceAdd[g][lk]||{};var rows=(e.ings||[]).filter(function(r){return r&&r.ing&&['S','M','L'].some(function(sz){return r['qty'+sz]!=null&&r['qty'+sz]!=='';});});if(rows.length)group[lk]={label:e.label||lk,ings:rows};});if(Object.keys(group).length){rec.choiceAdd=rec.choiceAdd||{};rec.choiceAdd[g]=group;}});
+  return rec;
+}
+function costingIssues(list){return (list||[]).map(function(x){return '• '+(x.message||x.code||'Costing error');}).join('\n');}
 /* Menu items with a costing gap: no recipe, ₱0 recipe cost, or a base ingredient with no cost. */
 function markNoRecipe(key,val){ var a=A(); a.set(a.ref(a.db,'menuItems/'+key+'/noRecipe'),val?true:null).then(function(){ updateCostBadge(); }).catch(function(e){ alert('Could not update: '+((e&&e.code)||e)+'. Log in with your admin EMAIL.'); }); }
 function menuCostGaps(){
@@ -1122,10 +1130,12 @@ function openRecipe(key){
   recipeDraft={
     base:(saved.base?saved.base.map(function(b){
       var inv=inventoryMap[b.ing]||{}; var u=b.unit||inv.unit||'';
+      if(uNorm(u)==='oz'){var dim=itemDim(inv);u=dim==='volume'?'fl oz':(dim==='weight'?'oz wt':u);}
       var qS,qM,qL;
       if(b.qtyS!=null||b.qtyM!=null||b.qtyL!=null){qS=b.qtyS;qM=b.qtyM;qL=b.qtyL;}
       else{var q=Number(b.qty)||0;qS=q*(sm.S!=null?sm.S:1);qM=q*(sm.M!=null?sm.M:1);qL=q*(sm.L!=null?sm.L:1);}
-      return {ing:b.ing,unit:u,dS:(b.dispS!=null?b.dispS:qS),dM:(b.dispM!=null?b.dispM:qM),dL:(b.dispL!=null?b.dispL:qL)};
+      function display(stored,shown){if(shown!=null)return shown;var cv=Costing().convert(Number(stored)||0,inv.unit||u,u);return cv.ok?cv.qty:stored;}
+      return {ing:b.ing,unit:u,dS:display(qS,b.dispS),dM:display(qM,b.dispM),dL:display(qL,b.dispL)};
     }):[]),
     choiceAdd:ocClone(saved.choiceAdd),
     _optPreview:[]
@@ -1143,9 +1153,9 @@ function drawRecipeEditor(item){
   var baseRows=d.base.map(function(r,ix){
     var inv=inventoryMap[r.ing]||{};
     var stockQ=convertToStock((r['d'+size]===''||r['d'+size]==null)?0:Number(r['d'+size]),r.unit,inv);
-    var amt=stockQ*ingCost(r.ing); baseTotal+=amt;
+    var amt=(Number.isFinite(stockQ)?stockQ:0)*ingCost(r.ing); baseTotal+=amt;
     var cu=compatUnits(inv); var uOpts=cu.map(function(u){return '<option'+(uNorm(u)===uNorm(r.unit)?' selected':'')+'>'+esc(u)+'</option>';}).join('');
-    var stkNote=(inv.unit&&uNorm(inv.unit)!==uNorm(r.unit))?('<div style="font-size:0.62rem;color:var(--tl);">=&nbsp;'+num(Math.round(stockQ*1000)/1000)+' '+esc(inv.unit)+'</div>'):'';
+    var stkNote=!Number.isFinite(stockQ)?'<div style="font-size:0.62rem;color:#b44336;">incompatible unit</div>':((inv.unit&&uNorm(inv.unit)!==uNorm(r.unit))?('<div style="font-size:0.62rem;color:var(--tl);">=&nbsp;'+num(Math.round(stockQ*1000)/1000)+' '+esc(inv.unit)+'</div>'):'');
     function qc(sz){return '<input class="pz-in" type="number" step="any" style="width:80px;text-align:right;" value="'+(r['d'+sz]!=null&&r['d'+sz]!==''?r['d'+sz]:'')+'" data-brow="'+ix+'" data-bfield="d'+sz+'" placeholder="0"/>';}
     return '<tr><td>'+ingSelect(r.ing,'data-brow="'+ix+'" data-bfield="ing"')+'</td>'
       +'<td style="white-space:nowrap;"><select class="pz-in" data-brow="'+ix+'" data-bfield="unit" style="width:70px;padding-left:0.3rem;padding-right:0.2rem;" title="Unit you are entering — converts to the item stock unit for costing">'+(uOpts||'<option></option>')+'</select>'+stkNote+'</td>'
@@ -1184,11 +1194,19 @@ function drawRecipeEditor(item){
   var caSection=caGroupsAll.length?('<div style="border-top:2px solid var(--cd);margin-top:0.8rem;padding-top:0.6rem;"><div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Extra ingredients per choice — this drink only</div><p class="pz-sub" style="margin-top:0;">Stacks on top of the base recipe and the shared Optional-ingredients cost (cups, ice, milk). Use for drink-specific deltas — e.g. Hot → extra coffee for this drink. Blank = 0 for that size.</p>'+'<div style="background:var(--cd);border-radius:6px;padding:0.4rem 0.55rem;margin-bottom:0.5rem;font-size:0.72rem;"><b>Which choices can carry per-drink extras</b> <span style="color:var(--tl);">(applies to all drinks — Temperature only by default):</span><div style="margin-top:0.3rem;">'+caManage+'</div></div>'+(caCards||'<p class="pz-sub" style="margin:0;">No choices enabled — tick one above to add a per-drink extra.</p>')+'</div>'):'';
   // ── COST PER DRINK calculator: base + selected choices (per-recipe extra + shared optional) ──
   var tempRec={choiceAdd:d.choiceAdd};
+  var previewNorm=Costing().normalizeRecipe(recipeDraftRaw(d),inventoryMap);
+  var previewRec=previewNorm.ok?previewNorm.recipe:null;
+  if(previewRec){var _basePreview=Costing().costRecipe({itemKey:item.key,recipe:previewRec,inventory:inventoryMap,item:item,size:size});baseTotal=_basePreview.totalCost;grand=baseTotal;}
   function selLabelCost(lb){var c=0;choiceIngs(item,tempRec,lb,size).forEach(function(r){c+=(Number(r.qty)||0)*ingCost(r.ing);});return c;}
   var selState=window.__recCostSel||{};
-  var selLines=[],extrasTotal=0;
+  var selLines=[],extrasTotal=0,selectedLabels=[];
   caGroupsAll.forEach(function(g){var v=selState[g.id];var labels=Array.isArray(v)?v:(v?[v]:[]);labels.forEach(function(lb){var cc=selLabelCost(lb);extrasTotal+=cc;selLines.push('<div style="display:flex;justify-content:space-between;"><span style="color:var(--tl);">'+esc(g.name)+': '+esc(lb)+'</span><span>'+peso(cc)+'</span></div>');});});
-  var drinkTotal=baseTotal+extrasTotal;
+  caGroupsAll.forEach(function(g){var v=selState[g.id];(Array.isArray(v)?v:(v?[v]:[])).forEach(function(lb){selectedLabels.push(lb);});});
+  var drinkPreview=previewRec?Costing().costRecipe({itemKey:item.key,recipe:previewRec,inventory:inventoryMap,item:item,size:size,optLabels:selectedLabels,optionCosts:optCostStore(),optionRecipes:optRecipesMap,optionGroups:(A()&&A().optionGroupsMap)||{}}):{totalCost:0,lines:[],errors:previewNorm.errors||[],warnings:previewNorm.warnings||[]};
+  var drinkTotal=previewRec?drinkPreview.totalCost:(baseTotal+extrasTotal);
+  var traceRows=(drinkPreview.lines||[]).map(function(line){return '<tr><td>'+esc(line.source.replace(/_/g,' '))+'</td><td>'+esc(line.ingredientName)+'</td><td class="r">'+num(line.totalQuantity)+' '+esc(line.stockUnit)+'</td><td class="r">'+peso(line.unitCost)+'</td><td class="r">'+peso(line.totalCost)+'</td></tr>';}).join('');
+  var previewIssues=(drinkPreview.errors||[]).concat(drinkPreview.warnings||[]);
+  var tracePanel='<details style="margin-top:0.55rem;"><summary style="cursor:pointer;font-size:0.75rem;color:var(--bd);font-weight:600;">Cost trace · engine '+esc(Costing().VERSION)+'</summary>'+(previewIssues.length?'<div style="margin:0.4rem 0;padding:0.45rem;background:#fff8e8;color:#8a5a00;font-size:0.72rem;white-space:pre-line;">'+esc(costingIssues(previewIssues))+'</div>':'')+(traceRows?'<div style="overflow-x:auto;"><table class="pz-tbl" style="font-size:0.7rem;"><thead><tr><th>Source</th><th>Ingredient</th><th class="r">Usage</th><th class="r">Unit cost</th><th class="r">Cost</th></tr></thead><tbody>'+traceRows+'</tbody></table></div>':'<div style="font-size:0.72rem;color:var(--tl);padding:0.4rem 0;">Add a valid ingredient and quantity to see the trace.</div>')+'</details>';
   var calcGroups=caGroupsAll.map(function(g){var sv=selState[g.id];var isMulti=g.type==='multi';
     var chips=(g.choices||[]).map(function(c){var on=isMulti?(Array.isArray(sv)&&sv.indexOf(c.label)>-1):(sv===c.label);return '<button class="pz-btn '+(on?'ok':'sec')+'" data-rcsel="'+esc(g.id)+'" data-rcmulti="'+(isMulti?1:0)+'" data-rclabel="'+esc(c.label)+'" style="padding:0.18rem 0.55rem;font-size:0.74rem;margin:0 0.2rem 0.2rem 0;">'+esc(c.label)+'</button>';}).join('');
     return '<div style="margin-bottom:0.3rem;"><span style="font-size:0.7rem;color:var(--tl);text-transform:uppercase;letter-spacing:0.03em;display:block;">'+esc(g.name)+(isMulti?' · pick any':' · pick one')+'</span>'+chips+'</div>';
@@ -1211,6 +1229,7 @@ function drawRecipeEditor(item){
       +'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;">Add cups / lids / straws / tissue here too — pick the inventory item (tagged consumable) and its qty. Optional add-ons are costed separately in the Optional ingredients tab and only trigger when a customer picks them.</div>'
       +'<div style="border-top:2px solid var(--bd);margin-top:0.8rem;padding-top:0.6rem;display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:var(--bd);">BASE COST / '+size+'</span><span style="font-weight:700;font-size:1.1rem;color:var(--bd);">'+peso(grand)+'</span></div>'
       +'<div style="font-size:0.68rem;color:var(--tl);margin-top:0.2rem;">Base ingredients only. The full cost per drink (base + extras + optional) is in the calculator below.</div>'
+      +tracePanel
       +caSection
       +'<div style="margin-top:1rem;display:flex;gap:0.5rem;">'
         +'<button class="pz-btn ok" id="recSave">💾 Save recipe</button>'
@@ -1273,16 +1292,11 @@ function exportCostSheet(){
 }
 function saveRecipe(key){
   var d=recipeDraft; if(!d){alert('Nothing to save — reopen the recipe and try again.');return;}
-  var base=(d.base||[]).filter(function(r){return r.ing&&((r.dS!=null&&r.dS!=='')||(r.dM!=null&&r.dM!=='')||(r.dL!=null&&r.dL!==''));}).map(function(r){
-    var inv=inventoryMap[r.ing]||{}; var u=r.unit||inv.unit||'';
-    function d2(v){return (v===''||v==null)?null:(Number(v)||0);}
-    function s2(v){return (v===''||v==null)?null:Math.round(convertToStock(Number(v)||0,u,inv)*100000)/100000;}
-    return {ing:r.ing,unit:u,dispS:d2(r.dS),dispM:d2(r.dM),dispL:d2(r.dL),qtyS:s2(r.dS),qtyM:s2(r.dM),qtyL:s2(r.dL)};
-  });
-  var rec={base:base,updatedAt:Date.now()};
-  if(d.choiceAdd){var ca={};var _allow=caAllowGroups();Object.keys(d.choiceAdd).forEach(function(g){if(_allow.indexOf(g)<0)return;var gc={};Object.keys(d.choiceAdd[g]).forEach(function(lk){var e=d.choiceAdd[g][lk]||{};var kept=(e.ings||[]).filter(function(r){return r&&r.ing&&(r.qtyS!=null||r.qtyM!=null||r.qtyL!=null);});if(kept.length)gc[lk]={label:e.label||lk,ings:kept};});if(Object.keys(gc).length)ca[g]=gc;});if(Object.keys(ca).length)rec.choiceAdd=ca;}
-  var saved=recipesMap[key]; if(saved&&saved.options)rec.options=saved.options; /* keep legacy per-recipe options if any */
-  var a=A();a.set(a.ref(a.db,'recipes/'+key),rec).then(function(){ recipeEditing=false; alert('Recipe saved for '+(A().menuItemsMap[key]?A().menuItemsMap[key].name:key)+'.'); curRecipeKey=key; setTimeout(function(){renderRecipes();},150); }).catch(function(e){ alert('Could not save the recipe: '+((e&&e.code)||e)+'.\n\nIf it says PERMISSION_DENIED — log in with your ADMIN EMAIL (not the old username), and make sure the database rules are published. Nothing was saved.'); });
+  var raw=recipeDraftRaw(d),local=Costing().normalizeRecipe(raw,inventoryMap);
+  if(!local.ok){alert('Recipe was not saved. Fix these costing errors:\n\n'+costingIssues(local.errors));return;}
+  var saved=recipesMap[key];if(saved&&saved.options)raw.options=saved.options;
+  var a=A();if(!a.validateRecipeDefinition){alert('The 3B recipe validator is not available. Refresh the portal. Nothing was saved.');return;}
+  a.validateRecipeDefinition(raw).then(function(res){var data=res&&res.data?res.data:res;var rec=data&&data.recipe;if(!rec)throw new Error('The server did not return a normalized recipe.');return a.set(a.ref(a.db,'recipes/'+key),rec).then(function(){return data;});}).then(function(data){recipeEditing=false;var note=(data.warnings&&data.warnings.length)?'\n\nWarnings:\n'+costingIssues(data.warnings):'';alert('Recipe saved for '+(A().menuItemsMap[key]?A().menuItemsMap[key].name:key)+'.\nCosting engine '+(data.engineVersion||Costing().VERSION)+'.'+note);curRecipeKey=key;setTimeout(function(){renderRecipes();},150);}).catch(function(e){var details=e&&e.details&&e.details.errors;alert('Could not save the recipe: '+((e&&e.message)||(e&&e.code)||e)+(details?'\n\n'+costingIssues(details):'')+'\n\nNothing was saved.');});
 }
 function optKey(label){return String(label).replace(/[.#$\[\]\/]/g,'_');}
 function allOptionLabels(){
@@ -1474,7 +1488,7 @@ function recordUsage(){
   } else {
     itemKey=(document.getElementById('usageItem')||{}).value; size=(document.getElementById('usageSize')||{}).value||'M'; qty=Number((document.getElementById('usageQty')||{}).value)||1;
     if(!itemKey){alert('Choose a menu item.');return;}
-    usage=computeUsage([{itemKey:itemKey,size:size,qty:qty}]);
+    try{usage=computeUsage([{itemKey:itemKey,size:size,qty:qty}]);}catch(err){alert('Cannot record usage because the recipe has an error:\n\n'+(err&&err.message?err.message:err));return;}
     addonLines=mkLines('menuaddon');
     addonLines.forEach(function(r){usage[r.ing]=(usage[r.ing]||0)+r.qty;});
     if(!Object.keys(usage).length){alert('That item has no recipe yet and no add-ons — add a recipe in Recipes or add an add-on ingredient.');return;}
@@ -2020,16 +2034,10 @@ window.__pos={render:function(){if(document.getElementById('posCartPanel'))rende
 
 /* ══════════ DEDUCTION ENGINE ══════════ */
 function computeUsage(lineItems){
-  var usage={}; var mim=(A()&&A().menuItemsMap)||{};
-  (lineItems||[]).forEach(function(li){
-    if(!li||!li.itemKey)return; var qty=Number(li.qty)||1; var size=li.size||'M';
-    var rec=recipesMap[li.itemKey];
-    if(rec){ (rec.base||[]).forEach(function(b){ if(!b.ing)return; usage[b.ing]=(usage[b.ing]||0)+baseQtyForSize(rec,b,size)*qty; }); }
-    var _it=mim[li.itemKey]||{key:li.itemKey};
-    (li.optLabels||[]).forEach(function(lb){ choiceIngs(_it,rec,lb,size).forEach(function(r){ if(r.ing)usage[r.ing]=(usage[r.ing]||0)+(Number(r.qty)||0)*qty; }); });
-    /* consumables are now explicit recipe rows (base) — no auto-by-category deduction */
-  });
-  return usage;
+  var result=Costing().costOrder(costingContext({lineItems:lineItems||[]}));
+  if(!result.ok)throw new Error(costingIssues(result.errors));
+  window.__lastCostingResult=result;
+  return result.usage;
 }
 /* ══════════ MODALS / RECEIPT ══════════ */
 function ensureModals(){

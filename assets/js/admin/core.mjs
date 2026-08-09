@@ -6,7 +6,7 @@ import{getFunctions,httpsCallable}from"https://www.gstatic.com/firebasejs/10.12.
 
 const firebaseConfig={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 const app=initializeApp(firebaseConfig);
-const db=getDatabase(app);const auth=getAuth(app);const functions=getFunctions(app,'asia-southeast1');const getPaymentProofCall=httpsCallable(functions,'getPaymentProof');const ensureActiveOrdersCall=httpsCallable(functions,'ensureActiveOrders');const postInventoryMovementsCall=httpsCallable(functions,'postInventoryMovements');const ensureInventoryLedgerCall=httpsCallable(functions,'ensureInventoryLedger');window.__accazaAuth=auth;
+const db=getDatabase(app);const auth=getAuth(app);const functions=getFunctions(app,'asia-southeast1');const getPaymentProofCall=httpsCallable(functions,'getPaymentProof');const ensureActiveOrdersCall=httpsCallable(functions,'ensureActiveOrders');const postInventoryMovementsCall=httpsCallable(functions,'postInventoryMovements');const ensureInventoryLedgerCall=httpsCallable(functions,'ensureInventoryLedger');const validateRecipeDefinitionCall=httpsCallable(functions,'validateRecipeDefinition');window.__accazaAuth=auth;
 // Release 2B: one physical Realtime Database listener per path. POS-critical
 // paths stay live; large back-office paths are connected only for the open tab.
 const HISTORY_BOUNDS={
@@ -139,6 +139,7 @@ window.__accaza={
   subscribe:function(path,callback,opts){return subscriptionHub.subscribe(path,callback,opts);},
   postInventoryMovements:function(movements){return postInventoryMovementsCall({movements:movements});},
   ensureInventoryLedger:function(){return ensureInventoryLedgerCall({});},
+  validateRecipeDefinition:function(recipe){return validateRecipeDefinitionCall({recipe:recipe});},
   get menuItemsMap(){return menuItemsMap;},
   get optionGroupsMap(){return optionGroupsMap;},
   get categoriesMap(){return categoriesMap;},
