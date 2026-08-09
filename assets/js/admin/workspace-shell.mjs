@@ -67,6 +67,7 @@ function installWorkspaceShell(options={}){
     const area=document.getElementById('adminWorkspaceArea'),title=document.getElementById('adminWorkspaceTitle'),sub=document.getElementById('adminWorkspaceSubtitle');
     if(area)area.textContent=meta[0];if(title)title.textContent=meta[1];if(sub)sub.textContent=meta[2];
     action(meta[3]);refresh();
+    if(tab==='dashboard'&&window.__refreshOverviewCommand)window.__refreshOverviewCommand();
   }
   window.openAdminWorkspaceTab=open;window.__refreshWorkspaceStatus=refresh;
   try{window.addEventListener('online',refresh);window.addEventListener('offline',refresh);}catch(_error){}

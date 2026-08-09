@@ -26,6 +26,7 @@
     });
     return promises[name];
   }
+  window.__accazaLoadAdminModule=load;
   function loading(tab){var root=document.getElementById(roots[tab]||'');if(root&&!root.innerHTML.trim())root.innerHTML='<div style="padding:2rem;text-align:center;color:var(--tl);">Loading '+String(tab).replace(/([A-Z])/g,' $1')+'…</div>';}
   function failed(tab,error){var root=document.getElementById(roots[tab]||'');if(root)root.innerHTML='<div style="padding:1.2rem;border:1px solid #f1b7b7;background:#fff5f5;color:#8b1e1e;border-radius:8px;">This section could not load. Check the connection and open the tab again.</div>';console.error('Accaza module load failed',tab,error);}
 
