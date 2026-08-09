@@ -10,7 +10,7 @@ This is the single current handoff document. Claude should inspect the actual wo
 
 ## Current Production Change Pending Deployment
 
-Danilo confirmed all releases through 5D are deployed and production-tested. Releases 5E/6A and 6B are implemented and validated locally. Frontend remains **`admin.html` v165**, customer v45, and service-worker cache v54. Coordinated deployment and cashier-device timing/smoke tests remain pending unless Danilo separately confirms them.
+Danilo confirmed all releases through 5D are deployed and production-tested. Releases 5E/6A, 6B, and 6C are implemented and validated locally; the GitHub Release 6B Quality Gate is now green. Frontend is **`admin.html` v166**, customer v45, and service-worker cache v55. Coordinated frontend publication and cashier-device timing/smoke tests remain pending unless Danilo separately confirms them.
 
 The prior v157 login/startup incident was fixed and tested in the later coordinated releases. Do not publish individual modules from an older release over the current coordinated set.
 
@@ -36,24 +36,26 @@ The prior v157 login/startup incident was fixed and tested in the later coordina
 - Release 5E preserves POS draft values/focus during background redraws, makes Charge single-flight through durable save, prevents duplicate financial forms, and enlarges touch controls.
 - Release 6A adds non-blocking, privacy-safe daily aggregate telemetry for startup, POS build, cart render, durable Charge, offline sync, remote-order arrival, and generic client errors.
 - Release 6B adds integrated all-channel checkout/accounting tests, executable partial-failure and exactly-once offline replay tests, expanded Database Emulator controls, tracked-secret detection, and mandatory GitHub quality gates before Function deployment.
+- Release 6C adds a lazy management-only System Health dashboard with bounded 7/30-day reads, honest average/worst thresholds, build/error release signals, and formal release/restore/review routines.
 
 Next deployment order: if 3D/3E are not yet live, export a Firebase backup, pause POS transactions, deploy the combined 3D/3E Functions and Database rules, then publish the complete v157/4A frontend. Initialize the chart and run the 3D/3E and 4A smoke tests. Release 4A itself has no Firebase backend change. See `RELEASE_3D_FINANCIAL_CONTROLS_2026-08-09.md`, `RELEASE_3E_OPERATIONAL_CONTROLS_2026-08-09.md`, and `RELEASE_4A_MODULE_FOUNDATION_2026-08-09.md`.
 
 ## Current Builds
 
-- `admin.html`: **v165 validated locally; Release 5E/6A deployment pending**. SHA-256: `1EA121B7DF78FAF524F214CA3B69134CA18E17B7E5858B3647A0FEA5E1D339E5`.
+- `admin.html`: **v166 validated locally; Release 6C deployment pending**. SHA-256: `B6CC43CDE8601B8F7337751A095D692BC68593C525189C5AC0CC89A31B5748FD`.
 - `index.html`: **v45**, modular customer scripts, App Check, and shared install UX. SHA-256: `C70E1CA0002B51E179A0149BC2586CC230807E33B473B9B77AF3659EC6015A1A`.
-- `sw.js`: **cache v54**, including the telemetry collector and all earlier PWA assets. SHA-256: `9A4BD581D02BA43861C95C54743A6B5479B3EA1A15F2BF392D9E9A94C213D72D`.
+- `sw.js`: **cache v55**, including the telemetry collector, System Health dashboard, and all earlier PWA assets. SHA-256: `4C77F77525DF502498C1B93105C41B3B71F2F1D90757D22087C36857FD1C67A3`.
 - `assets/js/admin/` and `assets/js/customer/`: **mandatory Release 2D publish directories**. Do not publish only the HTML files.
 - Cloud Functions: Node.js 22, region `asia-southeast1`.
-- `assets/js/admin/core.mjs`: 123,514 bytes; SHA-256 `41CF9A9A620886D90AD19EC3369733F26204461356A439517213969908308778`.
+- `assets/js/admin/core.mjs`: SHA-256 `AC600AB935C08975B189626E96981C6267F06676FC27ACA40461184BD2109095`.
 - Release 4C modules: `app-customer-session.mjs` and `customer-order-tracker.mjs`. Both are mandatory with v159.
 - Release 4A modules: `firebase-client.mjs`, `realtime-hub.mjs`, `history-pager.mjs`, `manager-approval.mjs`, `portal-auth.mjs`, `admin-orders.mjs`, `customer-registry.mjs`, and `shared-ui.mjs`. All are mandatory with v157.
-- `assets/js/admin/module-loader.js`: SHA-256 `BA20C171E141004CDDAACAF0CA9D07D8891D5C1AFCE7B58B0DE8364F51DE6E4E`.
+- `assets/js/admin/module-loader.js`: SHA-256 `05DC6451A33C52E283EACE31A09916EE70FFCEAD6EFC955AA308E28ADBA914D4`.
 - `assets/js/admin/pos.js`: 250,295 bytes; SHA-256 `CD2A4CB866C970AE3DDFC870355EB2CD7324F2436D23183EF7A8D2F7F47D62FB`.
 - `assets/js/shared/costing.js`: SHA-256 `C5D34EBB0ECD205B901DE8A2CDC2FD0388C93447204131450E39831680F27ACC`.
 - `assets/js/admin/register.js`: SHA-256 `F99DFB416B174FCADB9BB6DEA1C2F3A7588089CB923C96A948AD22DE61EE2A56`.
-- `assets/js/admin/telemetry.js`: Release 6A collector; SHA-256 `94B7719DE490F747B48517527E2CBE8ED5CF85AE8EB0052CA4B3A8F5B88D71A2`.
+- `assets/js/admin/telemetry.js`: Release 6A collector reporting admin-v166; SHA-256 `039C261F9024077A269A1E8296007177918C9DA58E094DBFD018CAB4D8D77100`.
+- `assets/js/admin/operations-dashboard.js`: Release 6C bounded System Health view; SHA-256 `6E5944400D178D12D4216FD592AC4E88E9920975FBC22CCB514629486B9DA5E2`.
 - `assets/js/admin/firebase-client.mjs`: SHA-256 `A6371D5C551D3104CCBD795E559888F646977A88C97DDDC92137BD2E270A6876`.
 - `assets/js/admin/form-dialog.js`: Release 5D validated form service; SHA-256 `F9E3CDEA5B76BAF5EFFB75D6A899ADC0DC2D64517BEACF88308E2791383E2F13`.
 - `assets/js/admin/finance.js`: SHA-256 `E5B5EEBDEE0B1E85D0BC3AE9D9BE280BF4095357C39521FFD0F78F0ACD82817D`.
@@ -204,13 +206,13 @@ The complete suite passes with v158/v43:
 
 ## Next Planned Work
 
-### First: deploy and time Release 5E/6A
+### First: publish and test the coordinated Release 6C frontend
 
-Deploy `functions:recordClientTelemetry` and Database rules, then publish the coordinated v165/cache-v54 frontend listed in `RELEASE_5E_6A_POS_STABILITY_TELEMETRY_2026-08-09.md`. Run duplicate-tap, redraw preservation, offline reconnect, and all-channel checkout tests on the actual register device.
+If Release 6A is not live, deploy `functions:recordClientTelemetry` and Database rules. Publish the coordinated v166/cache-v55 files listed in `RELEASE_6C_OPERATIONAL_HEALTH_2026-08-09.md`. Run duplicate-tap, redraw preservation, offline reconnect, all-channel checkout, and System Health tests on the actual register device.
 
-### Then: Phase 6C operational dashboard and release gates
+### Then: production measurement and final handoff
 
-Build a bounded manager-only view of `/clientTelemetryDaily`, compare actual timings with the targets below, add warning thresholds, and formalize staging, smoke-test, rollback, monthly restore, and quarterly permission/dependency reviews.
+Collect enough production telemetry to evaluate the targets below, execute the runbook, and produce the final `CLAUDE_HANDOFF.md` and concise root `CLAUDE.md` from the confirmed deployed state.
 
 Performance targets from `ACCAZA_IMPROVEMENT_ROADMAP.md`:
 

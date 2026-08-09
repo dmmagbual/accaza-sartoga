@@ -303,6 +303,8 @@ Until Phases 0–2 are complete, new convenience features should be paused unles
 
 **Release 6B local status (9 August 2026):** Complete. Integrated checkout/accounting tests, executable offline partial-failure and duplicate-replay tests, expanded rules-emulator controls, tracked-secret detection, and GitHub quality/deployment gates pass locally where applicable. Firebase dry run for `syncOfflinePosSale` passed. See `ADR-017_RELEASE_QUALITY_GATE.md` and `RELEASE_6B_AUTOMATED_WORKFLOW_RECOVERY_TESTS_2026-08-09.md`.
 
+**Release 6C local status (9 August 2026):** Complete in admin v166 and cache v55. A lazy, management-only System Health dashboard reads a bounded 7/30-day window, applies honest average/worst timing thresholds, and exposes build/error release signals. The operational runbook formalizes smoke tests, rollback decisions, monthly restore tests, and quarterly permission/dependency reviews. See `ADR-018_OPERATIONAL_HEALTH_RELEASE_GATES.md`, `RELEASE_6C_OPERATIONAL_HEALTH_2026-08-09.md`, and `OPERATIONS_RELEASE_RUNBOOK.md`.
+
 1. Firebase Emulator tests for database rules.
 2. Cloud Function tests for retries, duplicate events, partial failure, refunds, and reversals.
 3. Checkout tests for in-store, split payment, GrabFood, FoodPanda, unavailable items, options, packages, and refunds.
