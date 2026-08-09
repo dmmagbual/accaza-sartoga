@@ -317,6 +317,8 @@ Until Phases 0–2 are complete, new convenience features should be paused unles
 
 **Release 7E local status (9 August 2026):** Complete in admin v171 and cache v60. The rush-hour POS workflow adds local menu search, accessible category controls, clearer product tiles, ticket readiness, directed empty states, and one-tap quantity correction without changing transaction authority. See `ADR-023_RUSH_HOUR_POS_WORKFLOW.md` and `RELEASE_7E_RUSH_HOUR_POS_2026-08-09.md`.
 
+**Release 7F local status (9 August 2026):** Complete in admin v172 and cache v61. A cached compatibility stylesheet now unifies back-office headers, ledger tables, cards, controls, status badges, Orders, Reservations, Customers, Settings and Operations Center. Workspace-domain rails and an Overview System Health shortcut improve orientation without changing business logic. See `ADR-024_BACK_OFFICE_VISUAL_SYSTEM.md` and `RELEASE_7F_BACK_OFFICE_VISUAL_SYSTEM_2026-08-09.md`.
+
 1. Firebase Emulator tests for database rules.
 2. Cloud Function tests for retries, duplicate events, partial failure, refunds, and reversals.
 3. Checkout tests for in-store, split payment, GrabFood, FoodPanda, unavailable items, options, packages, and refunds.
