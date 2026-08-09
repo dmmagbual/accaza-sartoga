@@ -10,7 +10,7 @@ This is the single current handoff document. Claude should inspect the actual wo
 
 ## Current Production Change Pending Deployment
 
-Danilo confirmed all releases through 5D are deployed and production-tested. Releases 5E/6A, 6B, and 6C are implemented and validated locally; the GitHub Release 6B Quality Gate is now green. Frontend is **`admin.html` v166**, customer v45, and service-worker cache v55. Coordinated frontend publication and cashier-device timing/smoke tests remain pending unless Danilo separately confirms them.
+Danilo confirmed all releases through 5D are deployed and production-tested. Releases 5E/6A, 6B, 6C, and the 6D handoff/readiness package are implemented and validated locally; the GitHub Release 6B Quality Gate was confirmed green. Frontend is **`admin.html` v166**, customer v45, and service-worker cache v55. `CLAUDE_HANDOFF.md` and `release-manifest.json` are now the authoritative continuation/status sources. Production v166 timing/smoke evidence remains pending unless Danilo separately confirms it.
 
 The prior v157 login/startup incident was fixed and tested in the later coordinated releases. Do not publish individual modules from an older release over the current coordinated set.
 
@@ -37,6 +37,7 @@ The prior v157 login/startup incident was fixed and tested in the later coordina
 - Release 6A adds non-blocking, privacy-safe daily aggregate telemetry for startup, POS build, cart render, durable Charge, offline sync, remote-order arrival, and generic client errors.
 - Release 6B adds integrated all-channel checkout/accounting tests, executable partial-failure and exactly-once offline replay tests, expanded Database Emulator controls, tracked-secret detection, and mandatory GitHub quality gates before Function deployment.
 - Release 6C adds a lazy management-only System Health dashboard with bounded 7/30-day reads, honest average/worst thresholds, build/error release signals, and formal release/restore/review routines.
+- Release 6D adds a machine-readable release manifest, CI-enforced release consistency, final Claude handoff/entry files, and manager-role System Health rule coverage.
 
 Next deployment order: if 3D/3E are not yet live, export a Firebase backup, pause POS transactions, deploy the combined 3D/3E Functions and Database rules, then publish the complete v157/4A frontend. Initialize the chart and run the 3D/3E and 4A smoke tests. Release 4A itself has no Firebase backend change. See `RELEASE_3D_FINANCIAL_CONTROLS_2026-08-09.md`, `RELEASE_3E_OPERATIONAL_CONTROLS_2026-08-09.md`, and `RELEASE_4A_MODULE_FOUNDATION_2026-08-09.md`.
 
@@ -212,7 +213,7 @@ If Release 6A is not live, deploy `functions:recordClientTelemetry` and Database
 
 ### Then: production measurement and final handoff
 
-Collect enough production telemetry to evaluate the targets below, execute the runbook, and produce the final `CLAUDE_HANDOFF.md` and concise root `CLAUDE.md` from the confirmed deployed state.
+Publish/deploy the 6D package, collect enough production telemetry to evaluate the targets below, execute the restore/role/dependency runbook, then update `release-manifest.json` from candidate to production-verified only when evidence exists. The final `CLAUDE_HANDOFF.md` and concise root `CLAUDE.md` are present and must remain synchronized with verified truth.
 
 Performance targets from `ACCAZA_IMPROVEMENT_ROADMAP.md`:
 
@@ -238,6 +239,9 @@ Performance targets from `ACCAZA_IMPROVEMENT_ROADMAP.md`:
 
 ## Key Documents
 
+- `CLAUDE_HANDOFF.md` — authoritative architecture, ownership, deployment, limitations, and continuation guide.
+- `release-manifest.json` — machine-readable build and production-verification truth.
+- `RELEASE_6D_PRODUCTION_VERIFICATION_HANDOFF_2026-08-09.md` — Phase 6D files, Firebase deployment, acceptance, and rollback.
 - `ACCAZA_IMPROVEMENT_ROADMAP.md` — master improvement sequence.
 - `RED_TEAM_AUDIT_2026-08-09.md` — audit findings and risk baseline.
 - `RELEASE_1A_SECURITY_2026-08-09.md` — stored-XSS containment.

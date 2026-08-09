@@ -305,6 +305,8 @@ Until Phases 0–2 are complete, new convenience features should be paused unles
 
 **Release 6C local status (9 August 2026):** Complete in admin v166 and cache v55. A lazy, management-only System Health dashboard reads a bounded 7/30-day window, applies honest average/worst timing thresholds, and exposes build/error release signals. The operational runbook formalizes smoke tests, rollback decisions, monthly restore tests, and quarterly permission/dependency reviews. See `ADR-018_OPERATIONAL_HEALTH_RELEASE_GATES.md`, `RELEASE_6C_OPERATIONAL_HEALTH_2026-08-09.md`, and `OPERATIONS_RELEASE_RUNBOOK.md`.
 
+**Release 6D local status (9 August 2026):** Candidate complete. `release-manifest.json`, an automated release-readiness gate, `CLAUDE_HANDOFF.md`, and `CLAUDE.md` now define and verify the authoritative project state. A discovered manager/System Health authorization mismatch was corrected in Database rules and covered by the emulator. Production v166 smoke/performance evidence, backup restore, and periodic reviews remain explicitly pending. See `RELEASE_6D_PRODUCTION_VERIFICATION_HANDOFF_2026-08-09.md`.
+
 1. Firebase Emulator tests for database rules.
 2. Cloud Function tests for retries, duplicate events, partial failure, refunds, and reversals.
 3. Checkout tests for in-store, split payment, GrabFood, FoodPanda, unavailable items, options, packages, and refunds.

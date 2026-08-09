@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "preparedAt": "2026-08-09",
+  "release": "6D",
+  "status": "candidate_pending_production_verification",
+  "project": {
+    "name": "Accaza Coffee House",
+    "firebaseProjectId": "accaza-sartoga",
+    "functionsRegion": "asia-southeast1",
+    "nodeRuntime": "22",
+    "repository": "dmmagbual/accaza-sartoga",
+    "productionDomain": "https://accazacoffee.com"
+  },
+  "builds": {
+    "admin": 166,
+    "customer": 45,
+    "serviceWorkerCache": 55
+  },
+  "authoritativeFiles": [
+    "admin.html",
+    "index.html",
+    "sw.js",
+    "database.rules.json",
+    "storage.rules",
+    "firebase.json",
+    "functions/index.js",
+    "functions/lib/costing.js",
+    "functions/lib/financial.js",
+    "functions/lib/offline-sync.js",
+    "assets/js/shared/costing.js",
+    "assets/js/admin/core.mjs",
+    "assets/js/admin/module-loader.js",
+    "assets/js/admin/pos.js",
+    "assets/js/admin/register.js",
+    "assets/js/admin/finance.js",
+    "assets/js/admin/operations-dashboard.js"
+  ],
+  "requiredFunctionExports": [
+    "createOnlineOrder",
+    "confirmOrderReceived",
+    "getPaymentProof",
+    "syncOfflinePosSale",
+    "recordClientTelemetry",
+    "onOrderFinalize",
+    "onOrderInventoryReversal",
+    "postInventoryMovements",
+    "ensureInventoryLedger",
+    "postFinancialCommand",
+    "settlePlatformPayout",
+    "processOrderAdjustment",
+    "ensureFinancialLedger",
+    "createManagerApproval",
+    "manageOrderArchive",
+    "reviewDiscrepancy",
+    "managePettyVoucher",
+    "archiveActivityLog"
+  ],
+  "requiredProtectedNodes": [
+    "activeOrders",
+    "orderLocks",
+    "offlinePosSync",
+    "clientTelemetryDaily",
+    "inventoryBalances",
+    "inventoryMovements",
+    "financialMovements",
+    "financialApprovals",
+    "cashCustody",
+    "operationalAudit",
+    "deletionAudit"
+  ],
+  "verification": {
+    "localQualityGate": "passed_2026-08-09",
+    "githubQualityGate": "passed_2026-08-09",
+    "productionBuild166SmokeTest": "pending",
+    "productionPerformanceReview": "pending",
+    "backupRestoreTest": "pending",
+    "quarterlyPermissionReview": "pending",
+    "quarterlyDependencyReview": "pending"
+  }
+}
