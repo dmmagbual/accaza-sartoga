@@ -20,17 +20,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
       - name: Set up Java for Firebase Emulator
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
       - name: Install root test dependencies
-        run: npm ci
+        run: if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
       - name: Install Function dependencies
         working-directory: functions
-        run: npm ci
+        run: if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
       - name: Run static, workflow, recovery, and rules tests

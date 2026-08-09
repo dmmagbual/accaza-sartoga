@@ -28,11 +28,11 @@ jobs:
           java-version: "21"
 
       - name: Install root test dependencies
-        run: npm ci
+        run: if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
 
       - name: Install function dependencies
         working-directory: functions
-        run: npm ci
+        run: if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
 
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
