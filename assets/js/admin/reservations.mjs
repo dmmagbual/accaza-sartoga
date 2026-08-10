@@ -7,24 +7,24 @@ const TIME_SLOTS=['3:00 PM','4:00 PM','5:00 PM','6:00 PM','7:00 PM','8:00 PM','9
 function createReservationManager(deps){
   let reservations={},archived={},calBlocks={},resContactMethod='whatsapp',selectedDate=null,selectedTime=null,adminSelectedDate=null,resArchiveOpen=false,knownResIds=null,resChimeTimer=null,resChimeCount=0;
   function stopResChime(){if(resChimeTimer){clearInterval(resChimeTimer);resChimeTimer=null;}}
+  function dismissResAlert(){stopResChime();var t=document.getElementById('__accazaResToast');if(t)t.style.display='none';}
   function showResToast(msg){
     try{
       var t=document.getElementById('__accazaResToast');
-      if(!t){t=document.createElement('div');t.id='__accazaResToast';t.style.cssText='position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:99999;background:#2d6a4f;color:#fff;padding:0.85rem 1.3rem;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,0.28);font-size:0.92rem;font-weight:600;max-width:92vw;text-align:center;cursor:pointer;';t.title='Tap to dismiss';t.addEventListener('click',function(){stopResChime();t.style.display='none';});document.body.appendChild(t);}
+      if(!t){t=document.createElement('div');t.id='__accazaResToast';t.style.cssText='position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:99999;background:#2d6a4f;color:#fff;padding:0.9rem 1.4rem;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,0.3);font-size:0.94rem;font-weight:600;max-width:92vw;text-align:center;cursor:pointer;border:2px solid #fff;';t.title='Tap to dismiss';t.addEventListener('click',dismissResAlert);document.body.appendChild(t);}
       t.textContent=msg;t.style.display='block';
-      clearTimeout(t._hideTimer);t._hideTimer=setTimeout(function(){t.style.display='none';},9000);
     }catch(e){}
   }
   function notifyNewReservations(fresh){
     var last=fresh[fresh.length-1];
-    var msg=fresh.length>1?('📅 '+fresh.length+' new reservations received! Tap to dismiss'):('📅 New reservation from '+(last&&last.name?last.name:'a guest')+(last&&last.date?' · '+last.date+(last.time?' '+last.time:''):'')+' — tap to dismiss');
+    var msg=fresh.length>1?('📅 '+fresh.length+' new reservations! Tap to dismiss'):('📅 New reservation from '+(last&&last.name?last.name:'a guest')+(last&&last.date?' · '+last.date+(last.time?' '+last.time:''):'')+' — tap to dismiss');
     showResToast(msg);
     var chime=(deps&&typeof deps.playChime==='function')?deps.playChime:function(){};
     chime();
     stopResChime();
-    resChimeCount=1;
-    resChimeTimer=setInterval(function(){resChimeCount++;chime();if(resChimeCount>=3)stopResChime();},4000);
+    resChimeTimer=setInterval(chime,3800);
   }
+  window.dismissResAlert=dismissResAlert;
   const now=new Date();let calYear=now.getFullYear(),calMonth=now.getMonth(),adminCalYear=now.getFullYear(),adminCalMonth=now.getMonth();
   function portalActive(){return !!deps.isPortalActive();}
   function getConfirmedGuestsForDate(k){return Object.values(reservations).filter(function(r){return r.date===k&&(r.status==='Accepted'||r.status==='Confirmed');}).reduce(function(s,r){return s+(parseInt(r.guests)||0);},0);}
