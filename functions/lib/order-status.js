@@ -54,6 +54,12 @@ async function updateOrderStatusCommand(options) {
   const orderRef = db.ref(`/orders/${orderId}`);
   let failure = null, result = null, updatedOrder = null;
   try {
+    // Confirm existence against the server and prime the local cache first.
+    // A cold Admin SDK transaction can be invoked with null on its first pass
+    // even when the order exists, which would abort and false-negative as
+    // "Order not found". get() before transaction() avoids that race.
+    const existingSnap = await orderRef.get();
+    if (!existingSnap.exists()) raise(options, "not-found", "Order not found.");
     await orderRef.transaction((current) => {
       if (!current) { failure = ["not-found", "Order not found."]; return; }
       const from = String(current.status || "Pending");
