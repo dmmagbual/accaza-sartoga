@@ -201,7 +201,7 @@ function renderInventory(){
       +'</div></td></tr>';
   }).join('');
   root.innerHTML=
-    '<div class="pz-h">📦 Inventory</div>'
+    '<div class="pz-h">📦 Stock Items</div>'
     +'<p class="pz-sub">Each inventory row is the common SKU used by recipes. Approved brands are interchangeable purchasing options beneath that SKU. Completed orders deduct the common SKU while receipts retain the selected brand.'+(low.length?' <b class="pz-low">'+low.length+' low.</b>':'')+(neg.length?' <b class="pz-low">'+neg.length+' negative.</b>':'')+(uncat.length?' <b style="color:#8a5a00;">'+uncat.length+' uncategorized.</b>':'')+(missingBrand.length?' <b style="color:#8a5a00;">'+missingBrand.length+' recipe item'+(missingBrand.length===1?'':'s')+' without an approved purchasing brand.</b>':'')+'</p>'
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">'
       +'<button class="pz-btn sec" id="invExport">⬇ Export Excel</button>'

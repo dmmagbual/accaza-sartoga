@@ -529,24 +529,42 @@ function itemMovements(id){
   Object.keys(byDay).forEach(function(day){out.push({ts:new Date(day+'T12:00:00').getTime(),date:day,type:'Sales usage',in:0,out:byDay[day]});});
   out.sort(function(a,b){return (a.ts||0)-(b.ts||0);});return out;
 }
+function roundQty(n){return Math.round((Number(n)||0)*1000)/1000;}
+function isWasteMovement(m){return /waste|wastage|spoil|expired|damage|variance|shrink|adjust/i.test(String(m.type||''));}
+function itemReconciliation(id,rng){
+  var movements=itemMovements(id);var current=Number((invMap[id]||{}).stock)||0;
+  var fromTs=rng.f?localDateValue(rng.f):-Infinity;var toTs=rng.t?addDays(localDateValue(rng.t),1):Infinity;
+  var ending=current;
+  movements.forEach(function(m){if((Number(m.ts)||0)>=toTs)ending-=((Number(m.in)||0)-(Number(m.out)||0));});
+  var received=0,issued=0,adjustment=0;
+  movements.forEach(function(m){var ts=Number(m.ts)||0;if(ts<fromTs||ts>=toTs)return;
+    if(/^Purchase/i.test(m.type||''))received+=Number(m.in)||0;
+    else if(isWasteMovement(m))adjustment+=(Number(m.in)||0)-(Number(m.out)||0);
+    else issued+=Number(m.out)||0;
+  });
+  ending=roundQty(ending);received=roundQty(received);issued=roundQty(issued);adjustment=roundQty(adjustment);
+  return {beginning:roundQty(ending-received+issued-adjustment),received:received,issued:issued,adjustment:adjustment,ending:ending};
+}
+function signedQty(n){n=roundQty(n);return n?(n>0?'+':'')+fq(n):'—';}
 function renderStockValue(){
   var root=document.getElementById('stockValueRoot');if(!root)return;
   var rng=svRange();var items=invItems();
-  var totalValue=items.reduce(function(s,i){return s+(Number(i.stock)||0)*(Number(i.cost)||0);},0);
+  var summaries=items.map(function(i){return {item:i,flow:itemReconciliation(i.id,rng)};});
+  var totalValue=summaries.reduce(function(s,x){return s+x.flow.ending*(Number(x.item.cost)||0);},0);
   var periodPurch=0;Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r)return;var d=r.date||tsToDate(r.ts);if(inRng(d,rng))periodPurch+=Number(r.total)||0;});
   var periodUse=0;[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k];if(!isSale(o))return;var d=tsToDate(o.timestamp||Date.parse(o.date)||0);if(inRng(d,rng))periodUse+=Number(o.cogsSnapshot)||0;});});
   Object.keys(usageMap).forEach(function(k){var u=usageMap[k];if(!u||u.reversed)return;var d=tsToDate(u.ts);if(inRng(d,rng))periodUse+=Number(u.cost)||0;});
-  var rows=items.map(function(i){var cost=Number(i.cost)||0;var val=(Number(i.stock)||0)*cost;var pf=itemPeriod(i.id,cost,rng);
-    return '<tr><td>'+esc(i.name)+'</td><td class="r">'+fq(i.stock||0)+' '+esc(i.unit||'')+'</td><td class="r">'+peso(cost)+'</td><td class="r" style="font-weight:600;">'+peso(val)+'</td><td class="r" style="color:#2a9d5c;">'+(pf.pQ?(fq(pf.pQ)+' · '+peso(pf.pV)):'—')+'</td><td class="r" style="color:#c0392b;">'+(pf.uQ?(fq(pf.uQ)+' · '+peso(pf.uV)):'—')+'</td><td class="r"><button class="pz-btn sec" data-svcard="'+esc(i.id)+'" style="padding:0.15rem 0.5rem;">Card</button></td></tr>';
+  var rows=summaries.map(function(x){var i=x.item,f=x.flow,cost=Number(i.cost)||0,val=f.ending*cost,unit=esc(i.unit||'');
+    return '<tr><td><b>'+esc(i.name)+'</b><div class="az-note">'+unit+'</div></td><td class="r">'+fq(f.beginning)+'</td><td class="r" style="color:#267354;font-weight:600;">'+(f.received?fq(f.received):'—')+'</td><td class="r" style="color:#b44336;font-weight:600;">'+(f.issued?fq(f.issued):'—')+'</td><td class="r" style="color:#9a6700;font-weight:600;">'+signedQty(f.adjustment)+'</td><td class="r" style="font-weight:700;">'+fq(f.ending)+'</td><td class="r">'+peso(val)+'</td><td class="r">'+peso(cost)+'</td><td class="r"><button class="pz-btn sec" data-svcard="'+esc(i.id)+'" style="padding:0.2rem 0.55rem;white-space:nowrap;">Stock card</button></td></tr>';
   }).join('');
-  var html='<div class="pz-h">📊 Stock Value</div><p class="pz-sub">Inventory valuation (stock × current cost) plus per-item stock cards. Purchases come from received stock, usage from sales &amp; internal use, adjustments from counts/wastage. A stock card’s “implied opening” is what the balance must have been before the tracked movements — it always ties to today’s stock.</p>'
+  var html='<div class="pz-h">📊 Inventory</div><p class="pz-sub">Financial inventory reconciliation for the selected period. Beginning balance + stock received − stock issued or consumed ± adjustment and wastage = ending balance. Ending value uses the current cost per unit.</p>'
     +'<div style="display:flex;gap:0.7rem;flex-wrap:wrap;margin-bottom:0.8rem;">'
-      +'<div class="pz-card" style="flex:1;min-width:170px;"><div style="font-size:0.72rem;color:var(--tl);">Total inventory value</div><div style="font-size:1.25rem;font-weight:700;color:var(--bd);">'+peso(totalValue)+'</div></div>'
+      +'<div class="pz-card" style="flex:1;min-width:170px;"><div style="font-size:0.72rem;color:var(--tl);">Ending inventory value</div><div style="font-size:1.25rem;font-weight:700;color:var(--bd);">'+peso(totalValue)+'</div></div>'
       +'<div class="pz-card" style="flex:1;min-width:170px;"><div style="font-size:0.72rem;color:var(--tl);">Purchases (period)</div><div style="font-size:1.25rem;font-weight:700;color:#2a9d5c;">'+peso(periodPurch)+'</div></div>'
       +'<div class="pz-card" style="flex:1;min-width:170px;"><div style="font-size:0.72rem;color:var(--tl);">Usage / COGS (period)</div><div style="font-size:1.25rem;font-weight:700;color:#c0392b;">'+peso(periodUse)+'</div></div>'
     +'</div>'
     +'<div style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap;margin-bottom:0.8rem;"><div><span class="pz-lbl">From</span><input class="pz-in" id="svFrom" type="date" value="'+rng.f+'"/></div><div><span class="pz-lbl">To</span><input class="pz-in" id="svTo" type="date" value="'+rng.t+'"/></div><button class="pz-btn sec" id="svExport" style="padding:0.3rem 0.7rem;">⬇ Excel</button></div>'
-    +'<div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th class="r">In stock</th><th class="r">Cost/unit</th><th class="r">Value</th><th class="r">Purchases (qty · ₱)</th><th class="r">Usage (qty · ₱)</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="7" class="az-note" style="padding:0.6rem;">No inventory items.</td></tr>')+'</tbody></table></div></div>';
+    +'<div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th class="r" title="Balance immediately before the selected period">Beginning balance</th><th class="r">Stock received</th><th class="r">Stock issued or consumed</th><th class="r">Adjustment and wastage</th><th class="r">Ending balance</th><th class="r">Ending value</th><th class="r">Cost per unit</th><th class="r">Stock cards</th></tr></thead><tbody>'+(rows||'<tr><td colspan="9" class="az-note" style="padding:0.6rem;">No inventory items.</td></tr>')+'</tbody></table></div></div>';
   root.innerHTML=html;
   var ff=document.getElementById('svFrom');if(ff)ff.onchange=function(){svFrom=this.value||null;renderStockValue();};
   var ft=document.getElementById('svTo');if(ft)ft.onchange=function(){svTo=this.value||null;renderStockValue();};
@@ -571,8 +589,8 @@ function openStockCard(id){
 }
 function exportStockValue(){
   if(!window.XLSX){alert('Excel library still loading — try again.');return;}
-  var rng=svRange();var aoa=[['Item','Unit','In stock','Cost/unit','Value','Purchases qty','Purchases ₱','Usage qty','Usage ₱']];
-  invItems().forEach(function(i){var cost=Number(i.cost)||0;var pf=itemPeriod(i.id,cost,rng);aoa.push([i.name,i.unit||'',Number(i.stock)||0,cost,(Number(i.stock)||0)*cost,pf.pQ,pf.pV,pf.uQ,pf.uV]);});
-  var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'StockValue');XLSX.writeFile(wb,'accaza-stock-value-'+new Date().toISOString().slice(0,10)+'.xlsx');
+  var rng=svRange();var aoa=[['Item','Unit','Beginning balance','Stock received','Stock issued or consumed','Adjustment and wastage','Ending balance','Ending value','Cost per unit']];
+  invItems().forEach(function(i){var cost=Number(i.cost)||0;var f=itemReconciliation(i.id,rng);aoa.push([i.name,i.unit||'',f.beginning,f.received,f.issued,f.adjustment,f.ending,f.ending*cost,cost]);});
+  var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'Inventory');XLSX.writeFile(wb,'accaza-inventory-'+new Date().toISOString().slice(0,10)+'.xlsx');
 }
 })();
