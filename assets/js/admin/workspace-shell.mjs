@@ -33,7 +33,6 @@ const META={
 };
 
 function installWorkspaceShell(options={}){
-  const current=options.currentUser||(()=>null);
   function open(tab){
     let button=null;
     document.querySelectorAll('.admin-tab').forEach(b=>{
@@ -52,11 +51,10 @@ function installWorkspaceShell(options={}){
     el.appendChild(button);
   }
   function refresh(){
-    const connection=document.getElementById('adminServiceConnection'),user=document.getElementById('adminServiceUser'),shift=document.getElementById('adminServiceShift'),queue=document.getElementById('adminServiceQueue');
-    if(connection){const online=window.__online!==false;connection.className='admin-service-pill '+(online?'ok':'bad');connection.textContent=online?'● Online':'● Offline';}
-    if(user){const u=current(),role=u&&u.serverRole||'portal';user.textContent='Role · '+String(role).replace(/^./,c=>c.toUpperCase());}
-    if(shift){const sh=window.__posShift;if(sh){shift.className='admin-service-pill ok';shift.textContent='Shift open · '+(sh.staff||'Cashier');}else{shift.className='admin-service-pill warn';shift.textContent='No open shift';}}
-    if(queue&&window.AccazaOfflineQueue&&window.AccazaOfflineQueue.summary)window.AccazaOfflineQueue.summary().then(s=>{const pending=Number(s.pending||0)+Number(s.syncing||0),failed=Number(s.failed||0);queue.className='admin-service-pill '+(failed?'bad':pending?'warn':'ok');queue.textContent=failed?failed+' sync failed':pending?pending+' awaiting sync':'Offline queue · clear';}).catch(()=>{queue.className='admin-service-pill warn';queue.textContent='Offline queue unavailable';});
+    const connection=document.getElementById('adminServiceConnection'),shift=document.getElementById('adminServiceShift'),queue=document.getElementById('adminServiceQueue');
+    if(connection){const online=window.__online!==false,label=online?'Online':'Offline';connection.className='admin-service-pill '+(online?'ok':'bad');connection.textContent=label;connection.setAttribute('aria-label','Connection: '+label);}
+    if(shift){const open=!!window.__posShift,label=open?'Shift open':'Shift closed';shift.className='admin-service-pill '+(open?'ok':'warn');shift.textContent=label;shift.setAttribute('aria-label',label);}
+    if(queue){queue.textContent='Offline queue';if(window.AccazaOfflineQueue&&window.AccazaOfflineQueue.summary)window.AccazaOfflineQueue.summary().then(s=>{const pending=Number(s.pending||0)+Number(s.syncing||0),failed=Number(s.failed||0),detail=failed?failed+' sync failed':pending?pending+' awaiting sync':'Queue clear';queue.className='admin-service-pill '+(failed?'bad':pending?'warn':'ok');queue.title=detail;queue.setAttribute('aria-label','Offline queue: '+detail);}).catch(()=>{queue.className='admin-service-pill warn';queue.title='Queue status unavailable';queue.setAttribute('aria-label','Offline queue status unavailable');});}
   }
   function update(tab){
     const meta=META[tab]||['Admin','Admin workspace','Manage this area of the Accaza operation.',''];

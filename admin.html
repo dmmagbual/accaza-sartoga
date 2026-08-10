@@ -1088,8 +1088,8 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
       #adminWorkspaceSubtitle{font-size:.76rem;color:var(--tl);margin:.28rem 0 0;max-width:680px;}
       #adminWorkspaceActions{display:flex;gap:.4rem;flex-wrap:wrap;}
       .awh-action{border:1px solid #d5c6b5;background:#f7f2eb;color:#514033;border-radius:7px;padding:.48rem .72rem;font-size:.75rem;font-weight:700;cursor:pointer;}
-      .admin-service-strip{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin:-.45rem 0 1rem;padding:0 .15rem;}
-      .admin-service-pill{display:inline-flex;align-items:center;gap:.32rem;padding:.25rem .5rem;border-radius:999px;background:#eee9e2;color:#594b40;font-size:.68rem;font-weight:650;}
+      .admin-service-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem;margin:-.35rem 0 1rem;}
+      .admin-service-pill{display:flex;min-height:54px;align-items:center;justify-content:center;padding:.65rem .9rem;border:1px solid #d8cec1;border-radius:9px;background:#eee9e2;color:#594b40;font-size:.84rem;font-weight:850;letter-spacing:.065em;text-align:center;text-transform:uppercase;box-sizing:border-box;}
       .admin-service-pill.ok{background:#e7f4ea;color:#1e6b39}.admin-service-pill.warn{background:#fff3d6;color:#805d0b}.admin-service-pill.bad{background:#fde8e8;color:#8b1e1e}
       body.admin-workspace-focused .admin-stats{display:none;}
       body.admin-pos-workspace #adminDash{padding-left:.35rem;padding-right:.35rem;background:#eee9e1;}
@@ -1101,6 +1101,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
       body.admin-pos-workspace #posCartPanel{max-height:none;overflow:visible;box-shadow:none;}
       body.admin-pos-workspace #posCharge{position:static;min-height:44px;background:#2a9d5c;box-shadow:none;}
       @media(max-width:820px){#adminWorkspaceHeader{align-items:flex-start}body.admin-pos-workspace .admin-wrap{padding:.45rem}body.admin-pos-workspace #posCartPanel{position:static!important}}
+      @media(max-width:560px){.admin-service-strip{grid-template-columns:1fr;gap:.45rem}.admin-service-pill{min-height:48px;font-size:.8rem}}
     </style>
     <div class="admin-tabs" style="display:block;">
       <div id="adminGroups" aria-label="Admin work areas">
@@ -1163,10 +1164,9 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
       <div id="adminWorkspaceActions"></div>
     </div>
     <div class="admin-service-strip" id="adminServiceStrip" aria-label="Live service status">
-      <span class="admin-service-pill" id="adminServiceConnection">● Checking connection</span>
-      <span class="admin-service-pill" id="adminServiceUser">Signed in</span>
-      <span class="admin-service-pill" id="adminServiceShift">Shift status unavailable</span>
-      <button class="admin-service-pill" id="adminServiceQueue" type="button" onclick="if(window.__showOfflineQueue)window.__showOfflineQueue()" style="border:0;cursor:pointer;">Offline queue unavailable</button>
+      <span class="admin-service-pill" id="adminServiceConnection">Online</span>
+      <span class="admin-service-pill" id="adminServiceShift">Shift closed</span>
+      <button class="admin-service-pill" id="adminServiceQueue" type="button" onclick="if(window.__showOfflineQueue)window.__showOfflineQueue()" style="cursor:pointer;">Offline queue</button>
     </div>
     <!-- DASHBOARD -->
     <div id="tab-dashboard" class="admin-tab-content">
