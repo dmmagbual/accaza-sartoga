@@ -1,6 +1,6 @@
 # Release 7G — Overview Command Center
 
-**Build:** admin v173, customer v45, service-worker cache v69
+**Build:** admin v173, customer v45, service-worker cache v70
 
 ## Delivered
 
@@ -23,6 +23,7 @@
 - Repaired active-order cards with a contained action grid, separated payment summary, unambiguous status language, and proof warnings only while verification is pending.
 - Replaced the horizontally scrolling POS category rail with a wrapping shelf so every category, including Pastries, remains visible.
 - Added explicit management-only menu-price permission recovery guidance and emulator coverage for catalog-versus-availability access.
+- Expanded the package recipe selector to its full wrapped height so every recipe is visible without a nested scrollbar.
 
 ## Safety boundary
 
@@ -42,7 +43,7 @@ Because Releases 7C–7F are not yet production-verified, publish the complete c
 4. Confirm a user without management exception access sees no protected exception detail.
 5. Create or use a pending test order and confirm the Overview attention count and Orders shortcut update.
 6. Confirm existing sales totals and supporting charts still match their prior dashboard sources.
-7. Test desktop, tablet, and narrow mobile layouts, then hard-refresh once to activate cache v69.
+7. Test desktop, tablet, and narrow mobile layouts, then hard-refresh once to activate cache v70.
 8. Complete one normal sale and confirm order, inventory, and financial behavior is unchanged.
 
 ## Firebase deployment

@@ -14,7 +14,7 @@
   "builds": {
     "admin": 173,
     "customer": 45,
-    "serviceWorkerCache": 69
+    "serviceWorkerCache": 70
   },
   "authoritativeFiles": [
     "admin.html",
@@ -41,7 +41,8 @@
     "assets/js/admin/register.js",
     "assets/js/admin/analytics.js",
     "assets/js/admin/finance.js",
-    "assets/js/admin/operations-dashboard.js"
+    "assets/js/admin/operations-dashboard.js",
+    "assets/js/admin/packages.js"
   ],
   "requiredFunctionExports": [
     "createOnlineOrder",

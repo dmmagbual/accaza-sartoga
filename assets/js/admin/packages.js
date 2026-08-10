@@ -32,7 +32,7 @@ function renderPackages(){
     +'<div><span class="pz-lbl">Type</span><select class="pz-in" id="pkType"><option value="package">Package (fixed set)</option><option value="promo">Promo (buy X + free)</option></select></div>'
     +'<div><span class="pz-lbl">Eligible category</span><select class="pz-in" id="pkCat">'+catOpts+'</select></div>'
     +'</div>'
-    +'<div style="margin-top:0.6rem;"><span class="pz-lbl">Or pick specific items (optional — combined with the category)</span><div style="display:flex;flex-wrap:wrap;gap:0.35rem;max-height:120px;overflow:auto;padding:0.35rem;border:1px solid var(--cd);border-radius:6px;">'+(itemChecks||'<span class="az-note">No menu items yet.</span>')+'</div></div>'
+    +'<div style="margin-top:0.6rem;"><span class="pz-lbl">Or pick specific items (optional — combined with the category)</span><div class="pkg-recipe-list">'+(itemChecks||'<span class="az-note">No menu items yet.</span>')+'</div></div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:0.6rem;margin-top:0.6rem;">'
     +'<div><span class="pz-lbl" id="pkQtyLbl">Items (qty)</span><input class="pz-in" id="pkQty" type="number" min="1" value="10"/></div>'
     +'<div><span class="pz-lbl">Free items <span id="pkFreeHint" style="color:var(--tl);">(promo)</span></span><input class="pz-in" id="pkFree" type="number" min="0" value="0"/></div>'

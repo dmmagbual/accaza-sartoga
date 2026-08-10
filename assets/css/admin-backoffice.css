@@ -139,6 +139,9 @@ body[data-admin-workspace="calendar"] .admin-cal-day{border-radius:7px;box-shado
 body[data-admin-workspace="calendar"] .admin-cal-day.selected{background:var(--bo-walnut);border-color:var(--bo-brass)}
 body[data-admin-workspace="calendar"] #adminSlotManager{padding:1rem;border:1px solid var(--bo-line);border-radius:9px;background:var(--bo-paper)}
 
+/* Keep every package-eligible recipe visible instead of hiding choices in a nested scroller. */
+.pkg-recipe-list{display:flex;flex-wrap:wrap;align-content:flex-start;gap:.35rem;max-height:none;overflow:visible;padding:.35rem;border:1px solid var(--cd);border-radius:6px}
+
 @media(max-width:820px){body.admin-workspace-focused:not(.admin-pos-workspace) .admin-wrap{padding-left:.55rem;padding-right:.55rem}body[data-admin-workspace] #adminWorkspaceHeader{padding:.9rem .85rem .9rem 1.15rem}body[data-admin-workspace] #adminWorkspaceTitle{font-size:1.22rem}body.admin-workspace-focused:not(.admin-pos-workspace) .pz-card{padding:.75rem!important}body[data-admin-workspace="orders"] #ordersList,body[data-admin-workspace="reservations"] #resList{grid-template-columns:1fr}body.admin-workspace-focused:not(.admin-pos-workspace) .az-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.admin-cal-wrap{padding:.8rem!important}}
 @media(max-width:560px){body.admin-workspace-focused:not(.admin-pos-workspace) .az-kpis{grid-template-columns:1fr}body.admin-workspace-focused:not(.admin-pos-workspace) .admin-service-strip{grid-template-columns:1fr;gap:.45rem}body.admin-workspace-focused:not(.admin-pos-workspace) .admin-service-pill{min-height:48px;font-size:.8rem}}
 @media(prefers-reduced-motion:reduce){body.admin-workspace-focused:not(.admin-pos-workspace) *,body.admin-workspace-focused:not(.admin-pos-workspace) *:before,body.admin-workspace-focused:not(.admin-pos-workspace) *:after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
