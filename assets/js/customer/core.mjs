@@ -15,6 +15,7 @@ const functions=getFunctions(app,'asia-southeast1');
 const createOnlineOrderCall=httpsCallable(functions,'createOnlineOrder');
 const confirmOrderReceivedCall=httpsCallable(functions,'confirmOrderReceived');
 var myOrdersMap={},_myOrdersSub={},customerUid=null,_customerIndexUnsub=null;
+var myResMap={},_myResSub={};
 function subscribeMyOrders(){try{(myOrderIds||[]).forEach(function(id){if(_myOrdersSub[id])return;_myOrdersSub[id]=true;onValue(ref(db,'orders/'+id),function(s){if(s.exists())myOrdersMap[id]=s.val();if(typeof renderCustomerOrders==='function')renderCustomerOrders();if(typeof checkMyReadyOrders==='function')checkMyReadyOrders();},function(){});});}catch(e){}}
 function subscribeCustomerOrderIndex(uid){try{if(_customerIndexUnsub)_customerIndexUnsub();_customerIndexUnsub=onValue(ref(db,'customerOrders/'+uid),function(s){var ids=Object.keys(s.val()||{});ids.forEach(function(id){if(myOrderIds.indexOf(id)<0)myOrderIds.push(id);});try{localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));}catch(e){}subscribeMyOrders();});}catch(e){}}
 async function ensureCustomerAuth(forceRefresh){
@@ -32,7 +33,9 @@ async function ensureCustomerAuth(forceRefresh){
   return user;
 }
 window.__subscribeMyOrders=subscribeMyOrders;
-onAuthStateChanged(auth,function(u){if(!u){customerUid=null;signInAnonymously(auth).catch(function(e){console.warn('anon auth failed',e);});return;}customerUid=u.uid;subscribeCustomerOrderIndex(u.uid);subscribeMyOrders();});
+function subscribeMyReservations(){try{(myReservationIds||[]).forEach(function(id){if(_myResSub[id])return;_myResSub[id]=true;onValue(ref(db,'reservations/'+id),function(s){if(s.exists())myResMap[id]=s.val();else delete myResMap[id];if(typeof renderMyReservations==='function')renderMyReservations();},function(){});});}catch(e){}}
+window.__subscribeMyReservations=subscribeMyReservations;
+onAuthStateChanged(auth,function(u){if(!u){customerUid=null;signInAnonymously(auth).catch(function(e){console.warn('anon auth failed',e);});return;}customerUid=u.uid;subscribeCustomerOrderIndex(u.uid);subscribeMyOrders();subscribeMyReservations();});
 // ===================== WEB PUSH (FCM) =====================
 // Paste your Web Push certificate key here (Firebase Console > Project settings > Cloud Messaging > Web Push certificates).
 const VAPID_KEY="BIIVf-1RYIQger0yqeYlyV6-tQpH8YfytIgQK6-7IJg87HVITcNkYv4RYcKjyCmJBJKR1EXjJqRuiHzkFJjSvlE";
@@ -966,7 +969,7 @@ function renderCustomerOrders(){
 const resStatusConfig={Pending:{icon:'🟡',color:'#856404',bg:'#fef3cd',msg:'Your reservation request has been received and is awaiting confirmation from our staff.'},Accepted:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your reservation is confirmed! Our staff will reach out with the final details. See you soon! ☕'},Confirmed:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your reservation is confirmed! Our staff will reach out with the final details. See you soon! ☕'},Declined:{icon:'🔴',color:'#721c24',bg:'#f8d7da',msg:'Unfortunately we could not accommodate this reservation. Please contact us at 0927 692 4831 to discuss options.'},Completed:{icon:'✅',color:'#155724',bg:'#d4edda',msg:'Thank you for visiting Accaza Coffee House! We hope to see you again. ☕🐻'}};
 function renderMyReservations(){
   var el=document.getElementById('myReservationsList');if(!el)return;
-  var mine=myReservationIds.map(function(id){return adminResMap[id];}).filter(function(r){return r&&r.status!=='Archived';}).sort(function(a,b){return(b.timestamp||0)-(a.timestamp||0);});
+  var mine=myReservationIds.map(function(id){return myResMap[id];}).filter(function(r){return r&&r.status!=='Archived';}).sort(function(a,b){return(b.timestamp||0)-(a.timestamp||0);});
   if(!mine.length){el.innerHTML='';return;}
   el.innerHTML='<h3 style="font-family:\'Playfair Display\',serif;color:var(--cr);font-size:1.15rem;margin-bottom:0.85rem;text-align:center;">Your Reservation'+(mine.length>1?'s':'')+'</h3>'+mine.map(function(r){
     var st=(r.status==='Confirmed')?'Accepted':(r.status||'Pending');var s=resStatusConfig[st]||resStatusConfig.Pending;var guests=Math.max(1,Math.min(50,parseInt(r.guests)||1));
@@ -1054,12 +1057,13 @@ window.submitReservation=async function(){
   if(!name||!phone){alert('Please enter your name and phone number.');return;}
   const guests=parseInt(document.getElementById('resGuests').value)||1;
   if(guests>=6){const today=new Date();today.setHours(0,0,0,0);const diff=Math.ceil((new Date(selectedDate+'T00:00:00')-today)/(1000*60*60*24));if(diff<7&&!confirm('This booking typically requires 7 days advance notice. Proceed anyway?'))return;}
-  const id='RES-'+String(Object.keys(adminResMap).length+1).padStart(3,'0');
+  const id='RES-'+(Date.now()%2176782336).toString(36).toUpperCase().padStart(6,'0');
   window._placingRes=true;
   const _rbtn=document.querySelector('.btn-reserve');_rbtn.disabled=true;_rbtn.style.opacity='0.5';_rbtn.textContent='⏳ Submitting…';
   try{
-    await set(ref(db,'reservations/'+id),{id,name,phone,date:selectedDate,time:selectedTime,guests:document.getElementById('resGuests').value,occasion:document.getElementById('resOccasion').value,notes:document.getElementById('resNotes').value.trim(),contact:document.getElementById('resContact').value.trim(),contactMethod:resContactMethod,status:'Pending',timestamp:Date.now()});
-    if(myReservationIds.indexOf(id)<0)myReservationIds.push(id);try{localStorage.setItem('accaza_my_reservations',JSON.stringify(myReservationIds));}catch(e){}renderMyReservations();
+    var _resAu=await ensureCustomerAuth();
+    await set(ref(db,'reservations/'+id),{id,name,phone,date:selectedDate,time:selectedTime,guests:document.getElementById('resGuests').value,occasion:document.getElementById('resOccasion').value,notes:document.getElementById('resNotes').value.trim(),contact:document.getElementById('resContact').value.trim(),contactMethod:resContactMethod,status:'Pending',ownerUid:_resAu.uid,timestamp:Date.now()});
+    if(myReservationIds.indexOf(id)<0)myReservationIds.push(id);try{localStorage.setItem('accaza_my_reservations',JSON.stringify(myReservationIds));}catch(e){}subscribeMyReservations();renderMyReservations();
     window._placingRes=false;_rbtn.textContent='✅ Request Sent!';
     document.getElementById('resConfirm').style.display='block';
     setTimeout(function(){document.getElementById('resConfirm').style.display='none';var rb=document.querySelector('.btn-reserve');rb.disabled=false;rb.style.opacity='1';rb.textContent='Submit Reservation Request';document.getElementById('resName').value='';document.getElementById('resPhone').value='';document.getElementById('resNotes').value='';document.getElementById('resContact').value='';selectedDate=null;selectedTime=null;document.getElementById('resFormWrap').style.display='none';document.getElementById('timeSlotsWrap').style.display='none';renderCustomerCalendar();},5000);

@@ -1,11 +1,13 @@
-name: Deploy Firebase Functions
+name: Deploy Firebase Functions & Rules
 
-# Runs only when something under functions/ changes.
-# Your normal admin.html / index.html uploads will NOT trigger a deploy.
+# Runs when functions/ OR the database/storage rules change.
+# Static site files (admin.html / index.html / assets) still publish via Pages.
 on:
   push:
     paths:
       - "functions/**"
+      - "database.rules.json"
+      - "storage.rules"
       - ".github/workflows/deploy-functions.yml"
   workflow_dispatch: {}   # lets you run it manually from the Actions tab too
 
@@ -42,5 +44,10 @@ jobs:
 
       - name: Deploy functions
         run: firebase deploy --only functions --project accaza-sartoga --non-interactive --force
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+      - name: Deploy database & storage rules
+        run: firebase deploy --only database,storage --project accaza-sartoga --non-interactive --force
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
