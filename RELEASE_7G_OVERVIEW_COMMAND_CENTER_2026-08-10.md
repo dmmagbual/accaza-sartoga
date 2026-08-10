@@ -1,6 +1,6 @@
 # Release 7G — Overview Command Center
 
-**Build:** admin v173, customer v45, service-worker cache v68
+**Build:** admin v173, customer v45, service-worker cache v69
 
 ## Delivered
 
@@ -18,6 +18,8 @@
 - Removed the remaining shared-PIN approval paths, recorded approver identity on manual discounts and cash-in, and added matrix plus one-time-use regression tests to prevent role drift.
 - Fixed Firebase Functions transactions that initially surface an empty local value before returning the server record; approval claims, discrepancy review, and petty-cash decisions now continue safely through that retry sequence.
 - Simplified the admin service strip to three larger operational indicators—Online, Shift open, and Offline queue—and removed the visible account role.
+- Removed the detailed morning-service banner and work queue from Overview because Operations Center already owns the same exception detail; Overview now stays focused on compact live-floor and business summaries.
+- Replaced the non-working Operations self-link on client-error exceptions with “View system health,” which scrolls to the relevant section in the current workspace.
 - Repaired active-order cards with a contained action grid, separated payment summary, unambiguous status language, and proof warnings only while verification is pending.
 - Replaced the horizontally scrolling POS category rail with a wrapping shelf so every category, including Pastries, remains visible.
 - Added explicit management-only menu-price permission recovery guidance and emulator coverage for catalog-versus-availability access.
@@ -40,7 +42,7 @@ Because Releases 7C–7F are not yet production-verified, publish the complete c
 4. Confirm a user without management exception access sees no protected exception detail.
 5. Create or use a pending test order and confirm the Overview attention count and Orders shortcut update.
 6. Confirm existing sales totals and supporting charts still match their prior dashboard sources.
-7. Test desktop, tablet, and narrow mobile layouts, then hard-refresh once to activate cache v68.
+7. Test desktop, tablet, and narrow mobile layouts, then hard-refresh once to activate cache v69.
 8. Complete one normal sale and confirm order, inventory, and financial behavior is unchanged.
 
 ## Firebase deployment

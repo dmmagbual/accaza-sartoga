@@ -19,11 +19,6 @@ function activeOrders(){
   return Object.values(source).filter(order=>order&&order.status!=='Received'&&order.status!=='Rejected');
 }
 
-function actionCard(item){
-  const severity=item.severity==='critical'?'critical':'warning',tab=ALLOWED_TABS.has(item.tab)?item.tab:'operations';
-  return '<article class="occ-action '+severity+'"><div><span>'+esc(severity)+' · '+esc(String(item.category||'operations').replace(/_/g,' '))+'</span><h4>'+esc(item.title||'Operational review')+'</h4><p>'+esc(item.detail||'Open the controlled workflow to review this item.')+'</p></div><button type="button" data-occ-route="'+esc(tab)+'">Open '+esc(tab)+'</button></article>';
-}
-
 function signal(label,value,note,route,tone='neutral'){
   return '<button type="button" class="occ-signal '+tone+'" data-occ-route="'+route+'"><span>'+esc(label)+'</span><strong>'+esc(value)+'</strong><small>'+esc(note)+'</small></button>';
 }
@@ -33,20 +28,7 @@ async function render(){
   const orders=activeOrders(),pending=orders.filter(order=>order.status==='Pending'),pendingPay=orders.filter(order=>order.paymentStatus==='pending'),pendingValue=pendingPay.reduce((sum,order)=>sum+(Number(order.total)||0),0);
   const queue=await queueSummary(),queued=Number(queue.pending||0)+Number(queue.syncing||0),failed=Number(queue.failed||0),shift=window.__posShift||null;
   const exceptions=exceptionData&&Array.isArray(exceptionData.exceptions)?exceptionData.exceptions:[],counts=exceptionData&&exceptionData.counts||{};
-  const now=new Date(),hour=now.getHours(),period=hour<12?'Morning':hour<18?'Afternoon':'Evening';
-  const managementUnavailable=!exceptionLoading&&!exceptionData;
-  let actions=exceptions.slice(0,5);
-  const hasOrderException=exceptions.some(item=>item.category==='stuck_order'),hasOfflineException=exceptions.some(item=>item.category==='offline_sync');
-  if(pending.length&&!hasOrderException)actions.unshift({severity:'warning',category:'orders',title:pending.length+' new order'+(pending.length===1?' is':'s are')+' waiting',detail:'Confirm the order and move it into preparation.',tab:'orders'});
-  if(failed&&!hasOfflineException)actions.unshift({severity:'critical',category:'offline_sync',title:failed+' offline sale'+(failed===1?' failed':'s failed')+' to sync',detail:'Open register operations and retry the durable queue.',tab:'ops'});
-  actions=actions.slice(0,5);
-  const attention=exceptions.length+(pending.length&&!hasOrderException?1:0)+(failed&&!hasOfflineException?1:0);
-  const headline=attention?attention+' item'+(attention===1?'':'s')+' need attention':'Service is clear';
-  const intro=attention?'Work the urgent queue first, then review today’s service and money.':'No urgent exception is currently visible. Keep an eye on live service signals.';
-  const actionHtml=actions.length?actions.map(actionCard).join(''):'<div class="occ-clear"><span>✓</span><div><b>No immediate action</b><p>'+(managementUnavailable?'Management exception details are unavailable for this account. Live store signals remain visible below.':'The bounded operational scan has no current exception to resolve.')+'</p></div></div>';
-  root.innerHTML='<section class="occ-brief '+(attention?'attention':'clear')+'"><div><span class="occ-kicker">'+period+' service · '+now.toLocaleDateString('en-PH',{weekday:'long',month:'short',day:'numeric'})+'</span><h3>'+headline+'</h3><p>'+intro+'</p></div><div class="occ-brief-meta"><span>Updated</span><strong>'+now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})+'</strong></div></section>'
-    +'<section class="occ-section"><div class="occ-section-head"><div><span>Immediate attention</span><h3>Work queue</h3></div><button type="button" data-occ-route="operations">Open full health check</button></div><div class="occ-actions">'+actionHtml+'</div></section>'
-    +'<section class="occ-section"><div class="occ-section-head"><div><span>Service now</span><h3>Live floor</h3></div></div><div class="occ-signal-grid">'
+  root.innerHTML='<section class="occ-section"><div class="occ-section-head"><div><span>Service now</span><h3>Live floor</h3></div></div><div class="occ-signal-grid">'
       +signal('Active orders',String(orders.length),pending.length?pending.length+' still pending':'No new order waiting','orders',pending.length?'warning':'good')
       +signal('Reservations',String(num('statReservations')),'Current reservation list','reservations')
       +signal('Register',shift?'Open':'Closed',shift?'Cashier · '+String(shift.staff||'On duty'):'Open a shift before selling','ops',shift?'good':'warning')

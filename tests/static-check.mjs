@@ -251,8 +251,9 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   const operationsSource=fs.readFileSync(path.join(root,'assets','js','admin','operations-dashboard.js'),'utf8');
   if(!adminHtml.includes("posSwitchTab('operations',this)")||!adminHtml.includes('id="operationsRoot"'))fail('Phase 6C System Health tab is missing');
   if(!operationsSource.includes("clientTelemetryDaily/'+day")||!operationsSource.includes('Last 30 days')||!operationsSource.includes('not percentile measurements'))fail('Phase 6C bounded telemetry dashboard or honest metric disclosure is incomplete');
+  if(!operationsSource.includes('View system health')||!operationsSource.includes('operationsSystemHealth')||!operationsSource.includes("scrollIntoView({behavior:'smooth'"))fail('Operations self-route does not move to System Health');
   for(const marker of ['pos_boot','cart_render','charge_to_durable','offline_flush','realtime_order_arrival'])if(!operationsSource.includes(marker))fail(`Phase 6C performance threshold missing: ${marker}`);
-  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v68'"))fail('Phase 6C/7G dashboard is not in the coordinated offline cache');
+  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v69'"))fail('Phase 6C/7G dashboard is not in the coordinated offline cache');
 
   const orderAdminSource=fs.readFileSync(path.join(root,'assets','js','admin','admin-orders.mjs'),'utf8');
   const orderStatusSource=fs.readFileSync(path.join(root,'functions','lib','order-status.js'),'utf8');
@@ -292,7 +293,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   const overviewCommandSource=fs.readFileSync(path.join(root,'assets','js','admin','overview-command.mjs'),'utf8');
   const moduleLoaderSource=fs.readFileSync(path.join(root,'assets','js','admin','module-loader.js'),'utf8');
   if(!adminHtml.includes('id="overviewCommandCenter"')||!adminHtml.includes('assets/js/admin/overview-command.mjs'))fail('Phase 7G Overview Command Center is not mounted');
-  for(const marker of ['getOperationalExceptions','AccazaOfflineQueue.summary','__accazaLoadAdminModule','Service is clear','data-occ-route','MutationObserver'])if(!overviewCommandSource.includes(marker))fail(`Phase 7G command-center marker missing: ${marker}`);
+  for(const marker of ['getOperationalExceptions','AccazaOfflineQueue.summary','__accazaLoadAdminModule','Service now','data-occ-route','MutationObserver'])if(!overviewCommandSource.includes(marker))fail(`Phase 7G command-center marker missing: ${marker}`);
+  for(const duplicate of ['Morning service','Immediate attention','Work queue','Open full health check'])if(overviewCommandSource.includes(duplicate))fail(`Overview duplicates Operations Center content: ${duplicate}`);
   if(!moduleLoaderSource.includes('window.__accazaLoadAdminModule=load'))fail('Phase 7G offline-queue on-demand loader is missing');
   for(const marker of ['.occ-brief','.occ-signal-grid','.occ-control-list'])if(!backofficeCss.includes(marker))fail(`Phase 7G command-center visual marker missing: ${marker}`);
   if(!precache.includes('/assets/js/admin/overview-command.mjs'))fail('Phase 7G Overview Command Center is not precached');
