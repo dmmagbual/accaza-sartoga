@@ -14,7 +14,7 @@ var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init
 function init(){
   var a=A();
   a.subscribe('posStaff',function(s){staffList=s.val()||{};if(isTab('ops'))renderOps();});
-  a.subscribe('posActiveShift',function(s){activeShift=s.val()||null;window.__posShift=activeShift;if(window.__pos)window.__pos.render();if(isTab('ops'))renderOps();});
+  a.subscribe('posActiveShift',function(s){activeShift=s.val()||null;window.__posShift=activeShift;if(window.__refreshWorkspaceStatus)window.__refreshWorkspaceStatus();if(window.__refreshOverviewCommand)window.__refreshOverviewCommand();if(window.__pos)window.__pos.render();if(isTab('ops'))renderOps();});
   a.subscribe('shifts',function(s){shiftsMap=s.val()||{};});
   a.subscribe('activityLog',function(s){activityMap=s.val()||{};if(isTab('ops'))renderOps();});
   a.subscribe('heldOrders',function(s){heldMap=s.val()||{};if(isTab('ops'))renderOps();});

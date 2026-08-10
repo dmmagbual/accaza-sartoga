@@ -1261,8 +1261,8 @@ async function loginSuccess(role,username,uid,serverRole){
 }
 
 // ── FIREBASE AUTH GATE ─────────────────────────────────────
-installPortalAuth({subscriptionHub:subscriptionHub,onAuthorized:loginSuccess,openLogin:window.openAdmin,onSignedOut:function(){adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;currentUser=null;currentLoginRole=null;}});
-const workspaceShell=installWorkspaceShell({currentUser:function(){return currentUser;}});
+installPortalAuth({subscriptionHub:subscriptionHub,onAuthorized:loginSuccess,openLogin:window.openAdmin,onSignedOut:function(){adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;currentUser=null;currentLoginRole=null;window.__posShift=null;if(window.__refreshWorkspaceStatus)window.__refreshWorkspaceStatus();}});
+const workspaceShell=installWorkspaceShell({currentUser:function(){return currentUser;},subscriptionHub:subscriptionHub});
 window.switchTab=function(tab,btn){
   if(tab==='payment'&&currentUser&&currentUser.role==='admin'&&currentUser.uid&&adminAccountsMap[currentUser.uid]&&adminAccountsMap[currentUser.uid].access==='nopay'){alert('⛔ You do not have access to Payment Details.');return;}
   subscriptionHub.activate(tab);

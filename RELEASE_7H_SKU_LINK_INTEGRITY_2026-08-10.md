@@ -1,6 +1,6 @@
 # Release 7H — SKU Link Integrity
 
-**Build:** admin v177, customer v46, service-worker cache v74
+**Build:** admin v178, customer v46, service-worker cache v75
 
 ## Delivered
 
@@ -18,6 +18,7 @@
 - Applies the same resilient time-slot controls to the portal reservation preview so both entry points behave consistently.
 - Removes the false “Recipe · no SKU” status and renames the filter to “Recipe items without approved brand.”
 - Uses a fixed Inventory action grid so Stock, History, Brands, Adjust, Edit, and delete controls align identically on every row.
+- Subscribes the compact workspace header directly to the live open-shift record, eliminating the stale default “Shift closed” status on Overview and other tabs.
 
 ## Smoke test
 
@@ -29,7 +30,8 @@
 6. Confirm non-recipe or overhead purchases can still be received without a SKU.
 7. Select an available customer reservation date and time; confirm the reservation-details form opens and receives the selected date and time.
 8. Confirm Inventory shows “SKU ready” or an approved-brand count instead of “no SKU,” and all delete buttons form one vertical line.
-9. Hard-refresh once after deployment to activate cache v74.
+9. Open a shift, return to Overview, and confirm the header immediately shows “Shift open · Cashier [name]” without first opening Register Operations.
+10. Hard-refresh once after deployment to activate cache v75.
 
 ## Deployment
 

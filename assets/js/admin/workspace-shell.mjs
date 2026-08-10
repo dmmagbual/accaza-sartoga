@@ -33,6 +33,7 @@ const META={
 };
 
 function installWorkspaceShell(options={}){
+  const subscriptionHub=options.subscriptionHub;
   function open(tab){
     let button=null;
     document.querySelectorAll('.admin-tab').forEach(b=>{
@@ -68,6 +69,11 @@ function installWorkspaceShell(options={}){
     if(tab==='dashboard'&&window.__refreshOverviewCommand)window.__refreshOverviewCommand();
   }
   window.openAdminWorkspaceTab=open;window.__refreshWorkspaceStatus=refresh;
+  if(subscriptionHub&&typeof subscriptionHub.subscribe==='function')subscriptionHub.subscribe('posActiveShift',snapshot=>{
+    window.__posShift=snapshot&&typeof snapshot.val==='function'?(snapshot.val()||null):null;
+    refresh();
+    if(window.__refreshOverviewCommand)window.__refreshOverviewCommand();
+  },{critical:true});
   try{window.addEventListener('online',refresh);window.addEventListener('offline',refresh);}catch(_error){}
   return{update,refresh,open};
 }
