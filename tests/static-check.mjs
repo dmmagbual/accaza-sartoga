@@ -223,6 +223,9 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   const offlineQueueSource=fs.readFileSync(path.join(root,'assets','js','admin','offline-queue.js'),'utf8');
   const offlineServerSource=fs.readFileSync(path.join(root,'functions','lib','offline-sync.js'),'utf8');
   const posSource=fs.readFileSync(path.join(root,'assets','js','admin','pos.js'),'utf8');
+  const editItemSource=(posSource.match(/function editIngredient\(id\)\{[\s\S]*?\/\* Brand breakdown/)||[])[0]||'';
+  for(const marker of ['Stock item master','Item details','Inventory control','Actual cost · weighted average','Planning cost','Consumption rule','Adjust stock','Save changes'])if(!editItemSource.includes(marker))fail(`Stock Items professional edit-card marker missing: ${marker}`);
+  if(editItemSource.includes('id="eiStock"')||editItemSource.includes('id="eiCost"')||editItemSource.includes('postMovements(['))fail('Stock Items edit card can still override ledger-controlled stock or actual WAC');
   if(!offlineQueueSource.includes("indexedDB.open(DB_NAME,DB_VERSION)")||!offlineQueueSource.includes("keyPath:'id'")||!offlineQueueSource.includes("status:'pending'"))fail('Phase 5B durable IndexedDB transaction queue missing');
   for(const state of ["'pending'","'syncing'","'failed'","'synced'"])if(!offlineQueueSource.includes(state))fail(`Phase 5B queue state missing: ${state}`);
   if(posSource.includes("localStorage.getItem('accaza_offline_orders')")||posSource.includes("writes['orders/'+o.id]"))fail('Phase 5B retired localStorage/direct-write queue remains in POS');
@@ -253,7 +256,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!operationsSource.includes("clientTelemetryDaily/'+day")||!operationsSource.includes('Last 30 days')||!operationsSource.includes('not percentile measurements'))fail('Phase 6C bounded telemetry dashboard or honest metric disclosure is incomplete');
   if(!operationsSource.includes('View system health')||!operationsSource.includes('operationsSystemHealth')||!operationsSource.includes("scrollIntoView({behavior:'smooth'"))fail('Operations self-route does not move to System Health');
   for(const marker of ['pos_boot','cart_render','charge_to_durable','offline_flush','realtime_order_arrival'])if(!operationsSource.includes(marker))fail(`Phase 6C performance threshold missing: ${marker}`);
-  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v76'"))fail('Phase 6C/7H dashboard is not in the coordinated offline cache');
+  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v77'"))fail('Phase 6C/7H dashboard is not in the coordinated offline cache');
 
   const orderAdminSource=fs.readFileSync(path.join(root,'assets','js','admin','admin-orders.mjs'),'utf8');
   const orderStatusSource=fs.readFileSync(path.join(root,'functions','lib','order-status.js'),'utf8');

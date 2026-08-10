@@ -1,6 +1,6 @@
 # Release 7H — SKU Link Integrity
 
-**Build:** admin v179, customer v46, service-worker cache v76
+**Build:** admin v180, customer v46, service-worker cache v77
 
 ## Delivered
 
@@ -20,6 +20,7 @@
 - Uses a fixed Inventory action grid so Stock, History, Brands, Adjust, Edit, and delete controls align identically on every row.
 - Subscribes the compact workspace header directly to the live open-shift record, eliminating the stale default “Shift closed” status on Overview and other tabs.
 - Removes the redundant Inventory-row “+ Stock” and “History” actions; stock receipts remain in Purchases and the compact row keeps Brands, Adjust, Edit, and delete.
+- Rebuilds the Stock Items edit card into clear item, inventory, costing, and consumption sections. Actual WAC comes from purchase receipts, stock changes route through Adjust, and manual standard cost is available only when Manual costing is selected.
 
 ## Smoke test
 
@@ -33,7 +34,8 @@
 8. Confirm Inventory shows “SKU ready” or an approved-brand count instead of “no SKU,” and all delete buttons form one vertical line.
 9. Open a shift, return to Overview, and confirm the header immediately shows “Shift open · Cashier [name]” without first opening Register Operations.
 10. Confirm Inventory rows show only Brands, Adjust, Edit, and delete, with the delete column aligned.
-11. Hard-refresh once after deployment to activate cache v76.
+11. Open a Stock Item and confirm current balance and actual WAC are read-only, Adjust opens the audited stock workflow, and standard cost is editable only in Manual costing mode.
+12. Hard-refresh once after deployment to activate cache v77.
 
 ## Deployment
 
