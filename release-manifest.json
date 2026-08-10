@@ -12,9 +12,9 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 174,
+    "admin": 175,
     "customer": 45,
-    "serviceWorkerCache": 71
+    "serviceWorkerCache": 72
   },
   "authoritativeFiles": [
     "admin.html",
@@ -87,7 +87,7 @@
   "verification": {
     "localQualityGate": "passed_2026-08-10",
     "githubQualityGate": "pending",
-    "productionBuild174SmokeTest": "pending",
+    "productionBuild175SmokeTest": "pending",
     "productionPerformanceReview": "pending",
     "backupRestoreTest": "pending",
     "quarterlyPermissionReview": "pending",

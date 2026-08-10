@@ -10,7 +10,7 @@ This is the single current handoff document. Claude should inspect the actual wo
 
 ## Current Production Change Pending Deployment
 
-Danilo confirmed all releases through 5D are deployed and production-tested. Release 7B Functions are deployed; Release 7H is implemented and locally validated. Frontend is **`admin.html` v174**, customer v45, and service-worker cache v71. `CLAUDE_HANDOFF.md` and `release-manifest.json` are the authoritative continuation/status sources. Coordinated 7C–7H GitHub publication, Database query-index deployment, and production v174 smoke evidence remain pending.
+Danilo confirmed all releases through 5D are deployed and production-tested. Release 7B Functions are deployed; Release 7H is implemented and locally validated. Frontend is **`admin.html` v175**, customer v45, and service-worker cache v72. `CLAUDE_HANDOFF.md` and `release-manifest.json` are the authoritative continuation/status sources. Coordinated 7C–7H GitHub publication, Database query-index deployment, and production v175 smoke evidence remain pending.
 
 The prior v157 login/startup incident was fixed and tested in the later coordinated releases. Do not publish individual modules from an older release over the current coordinated set.
 

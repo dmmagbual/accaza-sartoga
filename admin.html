@@ -1062,7 +1062,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v174</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button data-accaza-install onclick="accazaInstallApp()" style="background:#e8f5ec;color:#155724;border:1px solid #b8dfc4;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;">📲 Install Accaza POS App</button><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v175</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button data-accaza-install onclick="accazaInstallApp()" style="background:#e8f5ec;color:#155724;border:1px solid #b8dfc4;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;">📲 Install Accaza POS App</button><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1088,9 +1088,12 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
       #adminWorkspaceSubtitle{font-size:.76rem;color:var(--tl);margin:.28rem 0 0;max-width:680px;}
       #adminWorkspaceActions{display:flex;gap:.4rem;flex-wrap:wrap;}
       .awh-action{border:1px solid #d5c6b5;background:#f7f2eb;color:#514033;border-radius:7px;padding:.48rem .72rem;font-size:.75rem;font-weight:700;cursor:pointer;}
-      .admin-service-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem;margin:-.35rem 0 1rem;}
-      .admin-service-pill{display:flex;min-height:54px;align-items:center;justify-content:center;padding:.65rem .9rem;border:1px solid #d8cec1;border-radius:9px;background:#eee9e2;color:#594b40;font-size:.84rem;font-weight:850;letter-spacing:.065em;text-align:center;text-transform:uppercase;box-sizing:border-box;}
-      .admin-service-pill.ok{background:#e7f4ea;color:#1e6b39}.admin-service-pill.warn{background:#fff3d6;color:#805d0b}.admin-service-pill.bad{background:#fde8e8;color:#8b1e1e}
+      .awh-copy{min-width:0;flex:1;}
+      .admin-service-strip{display:flex;align-items:center;gap:.42rem;flex-wrap:wrap;margin-top:.52rem;color:#594b40;font-size:.76rem;line-height:1.35;}
+      .admin-service-pill{display:inline-flex;align-items:center;gap:.28rem;padding:0;border:0;background:transparent;color:inherit;font:inherit;white-space:nowrap;}
+      .admin-service-pill strong{font-weight:800}.admin-service-pill.ok strong{color:#087d35}.admin-service-pill.warn strong{color:#805d0b}.admin-service-pill.bad strong{color:#a3302c}
+      .admin-status-dot{width:11px;height:11px;border-radius:50%;background:#23c968;box-shadow:0 0 0 2px rgba(35,201,104,.16);flex:0 0 auto}.admin-service-pill.bad .admin-status-dot{background:#d8443e;box-shadow:0 0 0 2px rgba(216,68,62,.14)}
+      .admin-status-sep{color:#b4a89b}.admin-service-queue{cursor:pointer;text-align:left}.admin-service-queue:hover strong,.admin-service-queue:focus-visible strong{text-decoration:underline}
       body.admin-workspace-focused .admin-stats{display:none;}
       body.admin-pos-workspace #adminDash{padding-left:.35rem;padding-right:.35rem;background:#eee9e1;}
       body.admin-pos-workspace .admin-wrap{max-width:1580px;padding:1rem;}
@@ -1101,7 +1104,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
       body.admin-pos-workspace #posCartPanel{max-height:none;overflow:visible;box-shadow:none;}
       body.admin-pos-workspace #posCharge{position:static;min-height:44px;background:#2a9d5c;box-shadow:none;}
       @media(max-width:820px){#adminWorkspaceHeader{align-items:flex-start}body.admin-pos-workspace .admin-wrap{padding:.45rem}body.admin-pos-workspace #posCartPanel{position:static!important}}
-      @media(max-width:560px){.admin-service-strip{grid-template-columns:1fr;gap:.45rem}.admin-service-pill{min-height:48px;font-size:.8rem}}
+      @media(max-width:560px){.admin-service-strip{align-items:flex-start;flex-direction:column;gap:.25rem}.admin-status-sep{display:none}.admin-service-pill{white-space:normal}}
     </style>
     <div class="admin-tabs" style="display:block;">
       <div id="adminGroups" aria-label="Admin work areas">
@@ -1160,13 +1163,14 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
       </div>
     </div>
     <div id="adminWorkspaceHeader" aria-live="polite">
-      <div><div class="awh-eyebrow" id="adminWorkspaceArea">Overview</div><h2 id="adminWorkspaceTitle">Store overview</h2><p id="adminWorkspaceSubtitle">Today’s activity, service signals, and the work that needs attention.</p></div>
+      <div class="awh-copy"><div class="awh-eyebrow" id="adminWorkspaceArea">Overview</div><h2 id="adminWorkspaceTitle">Store overview</h2><p id="adminWorkspaceSubtitle">Today’s activity, service signals, and the work that needs attention.</p>
+        <div class="admin-service-strip" id="adminServiceStrip" aria-label="Live service status">
+          <span class="admin-service-pill" id="adminServiceConnection"><i class="admin-status-dot" aria-hidden="true"></i><strong id="adminServiceConnectionLabel">Online</strong></span><span class="admin-status-sep" aria-hidden="true">·</span>
+          <span class="admin-service-pill" id="adminServiceShift"><strong id="adminServiceShiftLabel">Shift closed</strong><span id="adminServiceCashier"> · No cashier assigned</span></span><span class="admin-status-sep" aria-hidden="true">·</span>
+          <button class="admin-service-pill admin-service-queue" id="adminServiceQueue" type="button" onclick="if(window.__showOfflineQueue)window.__showOfflineQueue()"><strong>Offline queue</strong><span id="adminServiceQueueNote"> · Push to check sync queue</span></button>
+        </div>
+      </div>
       <div id="adminWorkspaceActions"></div>
-    </div>
-    <div class="admin-service-strip" id="adminServiceStrip" aria-label="Live service status">
-      <span class="admin-service-pill" id="adminServiceConnection">Online</span>
-      <span class="admin-service-pill" id="adminServiceShift">Shift closed</span>
-      <button class="admin-service-pill" id="adminServiceQueue" type="button" onclick="if(window.__showOfflineQueue)window.__showOfflineQueue()" style="cursor:pointer;">Offline queue</button>
     </div>
     <!-- DASHBOARD -->
     <div id="tab-dashboard" class="admin-tab-content">

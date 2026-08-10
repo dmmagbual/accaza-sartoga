@@ -1,6 +1,6 @@
 # Release 7H — SKU Link Integrity
 
-**Build:** admin v174, customer v45, service-worker cache v71
+**Build:** admin v175, customer v45, service-worker cache v72
 
 ## Delivered
 
@@ -13,6 +13,7 @@
 - Keeps recipes linked to the generic inventory master and preserves weighted-average costing.
 - Leaves legacy opening batches and historical receipts unchanged; they remain valid but are not presented as SKU-linked records.
 - Extends the existing Purchases permission to approved-SKU and batch records so authorized purchasing staff can complete the required linkage.
+- Replaces the full-width three-card service banner with one compact header line: a bright online dot, shift cashier identity, and an actionable offline-queue sync note.
 
 ## Smoke test
 
@@ -22,7 +23,7 @@
 4. Confirm the resulting receipt, purchase invoice line, and inventory batch contain the same `skuId`.
 5. Create a new purchase item with “Used in recipes” checked; confirm its SKU brand is required and an approved SKU is created.
 6. Confirm non-recipe or overhead purchases can still be received without a SKU.
-7. Hard-refresh once after deployment to activate cache v71.
+7. Hard-refresh once after deployment to activate cache v72.
 
 ## Deployment
 

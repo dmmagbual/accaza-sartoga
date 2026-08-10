@@ -253,7 +253,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!operationsSource.includes("clientTelemetryDaily/'+day")||!operationsSource.includes('Last 30 days')||!operationsSource.includes('not percentile measurements'))fail('Phase 6C bounded telemetry dashboard or honest metric disclosure is incomplete');
   if(!operationsSource.includes('View system health')||!operationsSource.includes('operationsSystemHealth')||!operationsSource.includes("scrollIntoView({behavior:'smooth'"))fail('Operations self-route does not move to System Health');
   for(const marker of ['pos_boot','cart_render','charge_to_durable','offline_flush','realtime_order_arrival'])if(!operationsSource.includes(marker))fail(`Phase 6C performance threshold missing: ${marker}`);
-  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v71'"))fail('Phase 6C/7H dashboard is not in the coordinated offline cache');
+  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v72'"))fail('Phase 6C/7H dashboard is not in the coordinated offline cache');
 
   const orderAdminSource=fs.readFileSync(path.join(root,'assets','js','admin','admin-orders.mjs'),'utf8');
   const orderStatusSource=fs.readFileSync(path.join(root,'functions','lib','order-status.js'),'utf8');
@@ -306,8 +306,10 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   for(const marker of ['.occ-brief','.occ-signal-grid','.occ-control-list'])if(!backofficeCss.includes(marker))fail(`Phase 7G command-center visual marker missing: ${marker}`);
   if(!precache.includes('/assets/js/admin/overview-command.mjs'))fail('Phase 7G Overview Command Center is not precached');
   if(adminHtml.includes('id="adminServiceUser"')||workspaceShellSource.includes("user.textContent='Role"))fail('Admin status strip still exposes the signed-in role');
-  for(const marker of ['Online','Shift closed','Offline queue'])if(!adminHtml.includes('>'+marker+'<'))fail(`Admin status strip is missing the simplified ${marker} indicator`);
-  if(!adminHtml.includes('grid-template-columns:repeat(3,minmax(0,1fr))')||!adminHtml.includes('min-height:54px'))fail('Admin status indicators are not using the larger three-cell layout');
+  for(const marker of ['adminServiceConnectionLabel','adminServiceCashier','adminServiceQueueNote','admin-status-dot'])if(!adminHtml.includes(marker))fail(`Compact admin status line is missing: ${marker}`);
+  if((adminHtml.match(/id="adminServiceStrip"/g)||[]).length!==1||!adminHtml.includes('class="awh-copy"'))fail('Admin status must appear once inside the workspace header');
+  if(!workspaceShellSource.includes("' · Cashier '")||!workspaceShellSource.includes("' · Push to sync '")||!workspaceShellSource.includes("' · Push to retry '"))fail('Compact admin status lacks cashier identity or actionable offline-queue guidance');
+  if(/\.admin-service-strip\{[^}]*grid-template-columns/.test(adminHtml)||/body\.admin-workspace-focused[^\n]*\.admin-service-strip\{[^}]*display:grid/.test(backofficeCss))fail('Retired full-width status-card banner styling remains');
 
   const fn=spawnSync(process.execPath,['--check',path.join(root,'functions','index.js')],{encoding:'utf8'});
   if(fn.status!==0)fail(`functions/index.js failed syntax check:\n${fn.stderr||fn.stdout}`);

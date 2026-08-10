@@ -2,7 +2,7 @@
 
 **Prepared:** 10 August 2026  
 **Release candidate:** Release 7H  
-**Local builds:** admin v174, customer v45, service-worker cache v71  
+**Local builds:** admin v175, customer v45, service-worker cache v72  
 **Truth source:** current workspace plus `release-manifest.json`
 
 ## Deployment truth
@@ -30,7 +30,7 @@ flowchart LR
 - Cloud Functions: Node.js 22, region `asia-southeast1`.
 - Storage: private default bucket; payment proofs are retrieved through an authorized Function, not public URLs.
 - Authentication: Firebase email/password for portal users and Anonymous Auth for customers.
-- PWA: separate customer and POS manifests; one service worker with coordinated cache v71.
+- PWA: separate customer and POS manifests; one service worker with coordinated cache v72.
 - Currency: Philippine peso (PHP/₱) in the current Accaza application.
 
 ## Authoritative file map
