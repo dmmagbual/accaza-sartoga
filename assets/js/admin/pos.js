@@ -1,6 +1,12 @@
 (function(){
 'use strict';
 var inventoryMap={}, inventorySkuMap={}, recipesMap={}, posMeta={vat:false,vatRate:12}, optRecipesMap={}, usageMap={}, channelPricesMap={}, posAvailMap={}, inventoryMovementsMap={};
+// Order reference: PREFIX-XXXXXX (6 base36 chars from a monotonic timestamp).
+// Prefix namespaces the channel so IDs never collide across channels; the
+// monotonic counter guarantees uniqueness for rapid same-device sales offline.
+var _lastRefN=0;
+function _shortRef(){var n=Date.now();if(n<=_lastRefN)n=_lastRefN+1;_lastRefN=n;return (n%2176782336).toString(36).toUpperCase().padStart(6,'0');}
+function _orderRefPrefix(isPlat,platform){if(isPlat&&platform){if(platform.channel==='grabfood')return 'GF';if(platform.channel==='foodpanda')return 'FF';}return 'POS';}
 function posIsAvail(name){return posAvailMap[name]!==false;}
 var POS_CHANNELS=[{k:'grabfood',lbl:'GrabFood',rate:0.25,wht:0,vat:0},{k:'foodpanda',lbl:'FoodPanda',rate:0.30,wht:0.0005,vat:0.036}];
 function channelsCfg(){var c=(window.__posSettings&&window.__posSettings.channels);var out={};POS_CHANNELS.forEach(function(d){var s=(c&&c[d.k])||{};out[d.k]={label:d.lbl,rate:(s.rate!=null?Number(s.rate):d.rate),wht:(s.wht!=null?Number(s.wht):d.wht),vat:(s.vat!=null?Number(s.vat):d.vat),active:s.active!==false};});return out;}
@@ -1984,7 +1990,7 @@ function chargeSale(sub,total,payments,platform,discountApproval){
   var disc=isPlat?(Number(platform.discountAmt)||0):((Number(_discEl&&_discEl.value)||0)+_scoped.reduce(function(s,d){return s+(Number(d.value)||0);},0));
   var staff=shift.staff||'Staff';
   var txnId='pos_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10);
-  var oid='POS-'+Date.now().toString(36).toUpperCase()+'-'+Math.random().toString(36).slice(2,6).toUpperCase();
+  var oid=_orderRefPrefix(isPlat,platform)+'-'+_shortRef();
   var lineItems=keys.map(function(k){var c=posCart[k];return {itemKey:c.itemKey,name:c.name,size:c.size,optLabels:c.optLabels,qty:c.qty,unitTotal:c.unitTotal,stream:c.stream||null,pkg:c.pkgId||null};});
   var _pkgs=isPlat?[]:(window.__posPkgs||[]);var _extra=_pkgs.reduce(function(s,pp){return s+(Number(pp.extraCost)||0);},0);
   var itemsStr=keys.map(function(k){var c=posCart[k];return c.name+(c.details?' ('+c.details+')':'')+' x'+c.qty;}).join(', ');
