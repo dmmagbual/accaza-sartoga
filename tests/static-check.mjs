@@ -256,13 +256,14 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!operationsSource.includes("clientTelemetryDaily/'+day")||!operationsSource.includes('Last 30 days')||!operationsSource.includes('not percentile measurements'))fail('Phase 6C bounded telemetry dashboard or honest metric disclosure is incomplete');
   if(!operationsSource.includes('View system health')||!operationsSource.includes('operationsSystemHealth')||!operationsSource.includes("scrollIntoView({behavior:'smooth'"))fail('Operations self-route does not move to System Health');
   for(const marker of ['pos_boot','cart_render','charge_to_durable','offline_flush','realtime_order_arrival'])if(!operationsSource.includes(marker))fail(`Phase 6C performance threshold missing: ${marker}`);
-  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v77'"))fail('Phase 6C/7H dashboard is not in the coordinated offline cache');
+  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v78'"))fail('Phase 6C/7H dashboard is not in the coordinated offline cache');
 
   const orderAdminSource=fs.readFileSync(path.join(root,'assets','js','admin','admin-orders.mjs'),'utf8');
   const orderStatusSource=fs.readFileSync(path.join(root,'functions','lib','order-status.js'),'utf8');
   if(!functionsSource.includes('exports.updateOrderStatus = onCall')||!functionsSource.includes('OrderStatus.updateOrderStatusCommand'))fail('Phase 7A server order-status command missing');
   if(!functionsSource.includes('"cashier", "kitchen", "finance"'))fail('Phase 7A kitchen portal role is not recognized server-side');
   if(!orderAdminSource.includes('callables.updateOrderStatus')||/update\(ref\(db,'orders\/'/.test(orderAdminSource))fail('Phase 7A admin status mutations are not server-routed');
+  if(!orderAdminSource.includes('Object.entries(deps.getOrders())')||!orderAdminSource.includes('orderCardHtml(entry[1],entry[0])')||!orderAdminSource.includes('orderStatusCtl(o,orderKey)'))fail('Admin order actions do not preserve the authoritative database order key');
   const catalogAdminSource=fs.readFileSync(path.join(root,'assets','js','admin','catalog-admin.mjs'),'utf8');
   if(!catalogAdminSource.includes('Only owner, admin, or manager accounts can change menu prices')||!catalogAdminSource.includes('deploy the current Firebase Database rules'))fail('Release 7G catalog permission recovery guidance missing');
   for(const marker of ['order-payment-summary','order-payment-state','order-card-actions','Payment proof is missing'])if(!orderAdminSource.includes(marker))fail(`Release 7G order-card structure missing: ${marker}`);
