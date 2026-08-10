@@ -52,20 +52,26 @@ async function updateOrderStatusCommand(options) {
   if (commandAlreadyApplied) return {orderId, status: targetStatus, duplicate: true};
 
   const orderRef = db.ref(`/orders/${orderId}`);
-  let failure = null, result = null, updatedOrder = null;
+  let result = null, updatedOrder = null;
   try {
-    // Confirm existence against the server and prime the local cache first.
-    // A cold Admin SDK transaction can be invoked with null on its first pass
-    // even when the order exists, which would abort and false-negative as
-    // "Order not found". get() before transaction() avoids that race.
-    const existingSnap = await orderRef.get();
-    if (!existingSnap.exists()) raise(options, "not-found", "Order not found.");
-    await orderRef.transaction((current) => {
-      if (!current) { failure = ["not-found", "Order not found."]; return; }
-      const from = String(current.status || "Pending");
-      if (from === targetStatus) { result = {orderId, fromStatus: from, status: targetStatus, duplicate: true}; updatedOrder = current; return current; }
-      if (expectedStatus && expectedStatus !== from) { failure = ["aborted", `Order changed from ${expectedStatus} to ${from}. Refresh and try again.`]; return; }
-      if (!canTransition(from, targetStatus)) { failure = ["failed-precondition", `Order cannot move from ${from} to ${targetStatus}.`]; return; }
+    // Read-modify-write instead of a transaction. The Admin SDK can invoke a
+    // transaction's update function with null on its first pass even when the
+    // order exists (cold instance / uncached read); returning undefined there
+    // aborts the whole transaction and false-negatives as "Order not found".
+    // Reading once with get() and committing via an atomic multi-path update()
+    // avoids that footgun. Idempotency is still guaranteed by the
+    // orderStatusCommands/{requestId} claim taken above, and expectedStatus
+    // rejects stale transitions.
+    const snap = await orderRef.get();
+    if (!snap.exists()) raise(options, "not-found", "Order not found.");
+    const current = snap.val() || {};
+    const from = String(current.status || "Pending");
+    if (from === targetStatus) {
+      result = {orderId, fromStatus: from, status: targetStatus, duplicate: true};
+      updatedOrder = current;
+    } else {
+      if (expectedStatus && expectedStatus !== from) raise(options, "aborted", `Order changed from ${expectedStatus} to ${from}. Refresh and try again.`);
+      if (!canTransition(from, targetStatus)) raise(options, "failed-precondition", `Order cannot move from ${from} to ${targetStatus}.`);
       updatedOrder = Object.assign({}, current, {
         status: targetStatus,
         statusUpdatedAt: now,
@@ -77,10 +83,7 @@ async function updateOrderStatusCommand(options) {
       history[requestId] = {from, to: targetStatus, at: now, actorUid: actor.uid, actorRole: actor.role};
       updatedOrder.statusHistory = history;
       result = {orderId, fromStatus: from, status: targetStatus, duplicate: false};
-      return updatedOrder;
-    }, undefined, false);
-    if (failure) raise(options, failure[0], failure[1]);
-    if (!result || !updatedOrder) raise(options, "aborted", "Order status could not be updated. Refresh and try again.");
+    }
 
     const writes = {
       [`orderStatusCommands/${requestId}/status`]: "applied",
@@ -88,6 +91,7 @@ async function updateOrderStatusCommand(options) {
       [`orderStatusCommands/${requestId}/duplicate`]: result.duplicate,
       [`orderStatusCommands/${requestId}/fromStatus`]: result.fromStatus,
     };
+    if (!result.duplicate) writes[`orders/${orderId}`] = updatedOrder;
     if (typeof shouldProjectOrder === "function" && typeof activeOrderProjection === "function") {
       const activeShift = (await db.ref("/posActiveShift").get()).val() || null;
       writes[`activeOrders/${orderId}`] = shouldProjectOrder(updatedOrder, activeShift) ? activeOrderProjection(updatedOrder) : null;
