@@ -1006,17 +1006,17 @@ function renderTimeSlots(){
   grid.innerHTML=TIME_SLOTS.map(function(slot){
     const blocked=isSlotBlocked(selectedDate,slot)||dayFull,confirmed=confirmedSlots.has(slot),sel=selectedTime===slot;
     const cls='time-slot '+(sel?'selected':blocked?'blocked':'available');
-    return'<div class="'+cls+'" '+(blocked?'':'data-slot="'+slot+'"')+'>'+slot+(confirmed&&!blocked?'<br/><span style="font-size:0.62rem;opacity:0.7;">booked</span>':'')+'</div>';
+    return'<button type="button" class="'+cls+'" '+(blocked?'disabled aria-disabled="true"':'data-slot="'+slot+'"')+'>'+slot+(confirmed&&!blocked?'<br/><span style="font-size:0.62rem;opacity:0.7;">booked</span>':'')+'</button>';
   }).join('');
-  grid.querySelectorAll('.time-slot[data-slot]').forEach(function(el){el.addEventListener('click',function(){selectTimeSlot(this.dataset.slot);});});
+  grid.querySelectorAll('.time-slot[data-slot]').forEach(function(el){el.addEventListener('click',function(){window.selectTimeSlot(this.dataset.slot);});});
 }
-document.getElementById('fullDaySlot').addEventListener('click',function(){selectTimeSlot('Full Day Booking');});
+const fullDaySlotButton=document.getElementById('fullDaySlot');if(fullDaySlotButton)fullDaySlotButton.addEventListener('click',function(){window.selectTimeSlot('Full Day Booking');});
 window.selectTimeSlot=function(slot){
   selectedTime=slot;renderTimeSlots();
   const fw=document.getElementById('resFormWrap');fw.style.display='block';
   const label=new Date(selectedDate+'T00:00:00').toLocaleDateString('en-PH',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
   document.getElementById('resSummaryDateTime').textContent=label+' · '+slot;
-  updateBookingType();fw.scrollIntoView({behavior:'smooth',block:'nearest'});
+  window.updateBookingType();fw.scrollIntoView({behavior:'smooth',block:'nearest'});
 };
 window.resetResSelection=function(){selectedTime=null;document.getElementById('resFormWrap').style.display='none';};
 window.updateBookingType=function(){

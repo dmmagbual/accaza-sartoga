@@ -1,6 +1,6 @@
 # Release 7H — SKU Link Integrity
 
-**Build:** admin v175, customer v45, service-worker cache v72
+**Build:** admin v176, customer v46, service-worker cache v73
 
 ## Delivered
 
@@ -14,6 +14,8 @@
 - Leaves legacy opening batches and historical receipts unchanged; they remain valid but are not presented as SKU-linked records.
 - Extends the existing Purchases permission to approved-SKU and batch records so authorized purchasing staff can complete the required linkage.
 - Replaces the full-width three-card service banner with one compact header line: a bright online dot, shift cashier identity, and an actionable offline-queue sync note.
+- Repairs the customer reservation path with native time-slot buttons and explicit module-safe handlers that reveal and focus the reservation form.
+- Applies the same resilient time-slot controls to the portal reservation preview so both entry points behave consistently.
 
 ## Smoke test
 
@@ -23,7 +25,8 @@
 4. Confirm the resulting receipt, purchase invoice line, and inventory batch contain the same `skuId`.
 5. Create a new purchase item with “Used in recipes” checked; confirm its SKU brand is required and an approved SKU is created.
 6. Confirm non-recipe or overhead purchases can still be received without a SKU.
-7. Hard-refresh once after deployment to activate cache v72.
+7. Select an available customer reservation date and time; confirm the reservation-details form opens and receives the selected date and time.
+8. Hard-refresh once after deployment to activate cache v73.
 
 ## Deployment
 

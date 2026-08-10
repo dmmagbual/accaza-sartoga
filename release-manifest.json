@@ -12,14 +12,16 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 175,
-    "customer": 45,
-    "serviceWorkerCache": 72
+    "admin": 176,
+    "customer": 46,
+    "serviceWorkerCache": 73
   },
   "authoritativeFiles": [
     "admin.html",
     "index.html",
     "sw.js",
+    "assets/js/customer/core.mjs",
+    "assets/js/admin/reservations.mjs",
     "database.rules.json",
     "storage.rules",
     "firebase.json",
@@ -87,7 +89,7 @@
   "verification": {
     "localQualityGate": "passed_2026-08-10",
     "githubQualityGate": "pending",
-    "productionBuild175SmokeTest": "pending",
+    "productionBuild176SmokeTest": "pending",
     "productionPerformanceReview": "pending",
     "backupRestoreTest": "pending",
     "quarterlyPermissionReview": "pending",

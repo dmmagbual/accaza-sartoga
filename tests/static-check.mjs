@@ -253,7 +253,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!operationsSource.includes("clientTelemetryDaily/'+day")||!operationsSource.includes('Last 30 days')||!operationsSource.includes('not percentile measurements'))fail('Phase 6C bounded telemetry dashboard or honest metric disclosure is incomplete');
   if(!operationsSource.includes('View system health')||!operationsSource.includes('operationsSystemHealth')||!operationsSource.includes("scrollIntoView({behavior:'smooth'"))fail('Operations self-route does not move to System Health');
   for(const marker of ['pos_boot','cart_render','charge_to_durable','offline_flush','realtime_order_arrival'])if(!operationsSource.includes(marker))fail(`Phase 6C performance threshold missing: ${marker}`);
-  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v72'"))fail('Phase 6C/7H dashboard is not in the coordinated offline cache');
+  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v73'"))fail('Phase 6C/7H dashboard is not in the coordinated offline cache');
 
   const orderAdminSource=fs.readFileSync(path.join(root,'assets','js','admin','admin-orders.mjs'),'utf8');
   const orderStatusSource=fs.readFileSync(path.join(root,'functions','lib','order-status.js'),'utf8');
@@ -310,6 +310,14 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if((adminHtml.match(/id="adminServiceStrip"/g)||[]).length!==1||!adminHtml.includes('class="awh-copy"'))fail('Admin status must appear once inside the workspace header');
   if(!workspaceShellSource.includes("' · Cashier '")||!workspaceShellSource.includes("' · Push to sync '")||!workspaceShellSource.includes("' · Push to retry '"))fail('Compact admin status lacks cashier identity or actionable offline-queue guidance');
   if(/\.admin-service-strip\{[^}]*grid-template-columns/.test(adminHtml)||/body\.admin-workspace-focused[^\n]*\.admin-service-strip\{[^}]*display:grid/.test(backofficeCss))fail('Retired full-width status-card banner styling remains');
+  const customerReservationSource=fs.readFileSync(path.join(root,'assets','js','customer','core.mjs'),'utf8');
+  const adminReservationSource=fs.readFileSync(path.join(root,'assets','js','admin','reservations.mjs'),'utf8');
+  for(const [name,source] of [['customer',customerReservationSource],['admin',adminReservationSource]]){
+    if(!source.includes("<button type=\"button\" class=\"'+cls+'\"")||!source.includes('window.selectTimeSlot(this.dataset.slot)'))fail(`${name} reservation slots are not native buttons with an explicit selection handler`);
+    if(!source.includes("fw.style.display='block'")||!source.includes("scrollIntoView({behavior:'smooth'"))fail(`${name} reservation selection does not reveal and focus the booking form`);
+  }
+  if(!customerReservationSource.includes('window.updateBookingType()')||/function\(\)\{selectTimeSlot\(/.test(customerReservationSource))fail('Customer reservation still relies on a fragile implicit module global');
+  for(const [name,html] of [['customer',customerHtml],['admin',adminHtml]])if(!html.includes('<button type="button" class="time-slot available" id="fullDaySlot"'))fail(`${name} full-day reservation control is not a native button`);
 
   const fn=spawnSync(process.execPath,['--check',path.join(root,'functions','index.js')],{encoding:'utf8'});
   if(fn.status!==0)fail(`functions/index.js failed syntax check:\n${fn.stderr||fn.stdout}`);
