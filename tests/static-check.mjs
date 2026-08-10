@@ -323,6 +323,12 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(/\.admin-service-strip\{[^}]*grid-template-columns/.test(adminHtml)||/body\.admin-workspace-focused[^\n]*\.admin-service-strip\{[^}]*display:grid/.test(backofficeCss))fail('Retired full-width status-card banner styling remains');
   const customerReservationSource=fs.readFileSync(path.join(root,'assets','js','customer','core.mjs'),'utf8');
   const adminReservationSource=fs.readFileSync(path.join(root,'assets','js','admin','reservations.mjs'),'utf8');
+  for(const id of ['btnAddCat','btnAddItem','btnAddToCart']){
+    if(customerReservationSource.includes(`document.getElementById('${id}').addEventListener`))fail(`Customer startup unsafely assumes #${id} exists on every page`);
+  }
+  for(const id of ['editGcashNum','editGcashName','editBdoNum','editUbNum']){
+    if(customerReservationSource.includes(`document.getElementById('${id}').value=`))fail(`Customer payment sync unsafely assumes admin-only #${id} exists`);
+  }
   for(const [name,source] of [['customer',customerReservationSource],['admin',adminReservationSource]]){
     if(!source.includes("<button type=\"button\" class=\"'+cls+'\"")||!source.includes('window.selectTimeSlot(this.dataset.slot)'))fail(`${name} reservation slots are not native buttons with an explicit selection handler`);
     if(!source.includes("fw.style.display='block'")||!source.includes("scrollIntoView({behavior:'smooth'"))fail(`${name} reservation selection does not reveal and focus the booking form`);
