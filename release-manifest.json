@@ -50,6 +50,7 @@
     "RELEASE_7H_SKU_LINK_INTEGRITY_2026-08-10.md"
   ],
   "requiredFunctionExports": [
+    "notifyOnComplete",
     "createOnlineOrder",
     "updateOrderStatus",
     "getOperationalExceptions",
