@@ -407,10 +407,10 @@ onValue(paymentRef,snap=>{
   if(p.gcashName)document.getElementById('gcashName').textContent=p.gcashName;
   if(p.bdoNum)document.getElementById('bankNum').textContent=p.bdoNum;
   if(p.ubNum)document.getElementById('bankNum2').textContent=p.ubNum;
-  if(p.gcashNum)document.getElementById('editGcashNum').value=p.gcashNum;
-  if(p.gcashName)document.getElementById('editGcashName').value=p.gcashName;
-  if(p.bdoNum)document.getElementById('editBdoNum').value=p.bdoNum;
-  if(p.ubNum)document.getElementById('editUbNum').value=p.ubNum;
+  var editGcashNum=document.getElementById('editGcashNum');if(p.gcashNum&&editGcashNum)editGcashNum.value=p.gcashNum;
+  var editGcashName=document.getElementById('editGcashName');if(p.gcashName&&editGcashName)editGcashName.value=p.gcashName;
+  var editBdoNum=document.getElementById('editBdoNum');if(p.bdoNum&&editBdoNum)editBdoNum.value=p.bdoNum;
+  var editUbNum=document.getElementById('editUbNum');if(p.ubNum&&editUbNum)editUbNum.value=p.ubNum;
   // Enabled flags → update admin toggles
   function setChk(id,val){var el=document.getElementById(id);if(el){el.checked=(val!==false);}}
   setChk('chkGcash',p.gcashEnabled!==false);
@@ -489,7 +489,8 @@ onValue(paymentRef,snap=>{
 onValue(calBlocksRef,snap=>{calBlocks=snap.val()||{};renderCustomerCalendar();if(adminLoggedIn)renderAdminCalendar();});
 
 // ── WIRE BUTTONS VIA addEventListener (avoids ES module scope issues) ──
-document.getElementById('btnAddCat').addEventListener('click',async function(){
+const btnAddCat=document.getElementById('btnAddCat');
+if(btnAddCat)btnAddCat.addEventListener('click',async function(){
   const iconEl=document.getElementById('newCatIcon');
   const labelEl=document.getElementById('newCatLabel');
   const icon=(iconEl.value||'').trim()||'🍽️';
@@ -503,7 +504,8 @@ document.getElementById('btnAddCat').addEventListener('click',async function(){
   }catch(e){alert('Error: '+e.message);}
 });
 
-document.getElementById('btnAddItem').addEventListener('click',async function(){
+const btnAddItem=document.getElementById('btnAddItem');
+if(btnAddItem)btnAddItem.addEventListener('click',async function(){
   const name=document.getElementById('newItemName').value.trim();
   const cat=document.getElementById('newItemCat').value;
   const desc=document.getElementById('newItemDesc').value.trim();
@@ -543,7 +545,8 @@ document.getElementById('btnAddItem').addEventListener('click',async function(){
   }catch(e){alert('Error: '+e.message);}
 });
 
-document.getElementById('btnAddToCart').addEventListener('click',function(){addCustomizedToCart();});
+const btnAddToCart=document.getElementById('btnAddToCart');
+if(btnAddToCart)btnAddToCart.addEventListener('click',function(){addCustomizedToCart();});
 
 // ── MENU & ORDER RENDERING ──
 window.filterMenu=function(cat,btn){
