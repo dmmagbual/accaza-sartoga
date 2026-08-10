@@ -1111,7 +1111,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
         <button class="admin-group pos-primary" data-grp="pos" onclick="showTabGroup('pos',this)">☕ POS</button>
         <button class="admin-group active" data-grp="overview" onclick="showTabGroup('overview',this)">Overview</button>
         <button class="admin-group" data-grp="orders" onclick="showTabGroup('orders',this)">Orders &amp; Operations</button>
-        <button class="admin-group" data-grp="stock" onclick="showTabGroup('stock',this)">Inventory</button>
+        <button class="admin-group" data-grp="stock" onclick="showTabGroup('stock',this)">Supplies &amp; Recipes</button>
         <button class="admin-group" data-grp="finance" onclick="showTabGroup('finance',this)">Financials</button>
         <button class="admin-group" data-grp="customers" onclick="showTabGroup('customers',this)">Customers</button>
         <button class="admin-group" data-grp="settings" onclick="showTabGroup('settings',this)">Settings</button>
@@ -1129,8 +1129,8 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
         <button class="admin-tab" onclick="switchTab('reservations',this)">📅 Reservations</button>
         <button class="admin-tab" onclick="switchTab('calendar',this)">🗓️ Calendar</button>
       </div>
-      <div class="tabgrp" data-grp="stock" data-label="Inventory" style="display:none;">
-        <button class="admin-tab" onclick="posSwitchTab('inventory',this)">📦 Inventory <span id="lowStockBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
+      <div class="tabgrp" data-grp="stock" data-label="Supplies &amp; recipes" style="display:none;">
+        <button class="admin-tab" onclick="posSwitchTab('inventory',this)">📦 Stock Items <span id="lowStockBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
         <button class="admin-tab" onclick="posSwitchTab('purchases',this)">📥 Purchases</button>
         <button class="admin-tab" onclick="posSwitchTab('recipes',this)">🧪 Recipes <span id="costGapBadge" style="display:none;background:#e6a817;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;" title="menu items not costed">0</span></button>
         <button class="admin-tab" onclick="posSwitchTab('usage',this)">🍽️ Internal Usage</button>
@@ -1144,7 +1144,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
         <button class="admin-tab" onclick="posSwitchTab('cashflow',this)">🏦 Cash Flow</button>
         <button class="admin-tab" onclick="posSwitchTab('receivables',this)">📥 Receivables</button>
         <button class="admin-tab" onclick="posSwitchTab('payables',this)">📤 Payables</button>
-        <button class="admin-tab" onclick="posSwitchTab('stockvalue',this)">📊 Stock Value</button>
+        <button class="admin-tab" onclick="posSwitchTab('stockvalue',this)">📊 Inventory</button>
         <button class="admin-tab" onclick="posSwitchTab('discrepancy',this)">🚩 Discrepancies <span id="discBadge" style="display:none;background:#e63946;color:#fff;border-radius:10px;padding:0 0.4rem;font-size:0.7rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
         <button class="admin-tab" onclick="posSwitchTab('petty',this)">💷 Petty Cash</button>
       </div>
