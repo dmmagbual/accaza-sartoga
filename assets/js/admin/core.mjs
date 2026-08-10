@@ -148,7 +148,7 @@ let menuFilter='coffee',orderFilter=null;
 const appCustomerSession=createAppCustomerSession({setupPush:setupPush,refreshNotifyPrompt:refreshNotifyPrompt});
 const customerOrderTracker=createCustomerOrderTracker({getOrders:function(){return adminOrdersMap;},escHtml:escHtml});
 
-const reservationManager=createReservationManager({subscriptionHub:subscriptionHub,isPortalActive:function(){return adminLoggedIn||staffLoggedIn;},onReservationsChanged:updateStats,showDeletePopup:showDeletePopup});
+const reservationManager=createReservationManager({subscriptionHub:subscriptionHub,isPortalActive:function(){return adminLoggedIn||staffLoggedIn;},onReservationsChanged:updateStats,playChime:playChime,showDeletePopup:showDeletePopup});
 const renderReservations=reservationManager.renderReservations,renderCustomerCalendar=reservationManager.renderCustomerCalendar,renderAdminCalendar=reservationManager.renderAdminCalendar;
 const catalogAdmin=createCatalogAdmin({getCategoriesMap:function(){return categoriesMap;},getMenuItemsMap:function(){return menuItemsMap;},getOptionGroupsMap:function(){return optionGroupsMap;},getAvailability:function(){return availability;},getCats:getCats,getMenuItems:getMenuItems,getEffectiveOptionIds:getEffectiveOptionIds,isAvail:isAvail,isStaffLoggedIn:function(){return staffLoggedIn;},showDeletePopup:showDeletePopup,renderMenuSection:renderMenuSection,renderOrderSection:renderOrderSection});
 const renderCategoryManager=catalogAdmin.renderCategoryManager,renderOptionManager=catalogAdmin.renderOptionManager,renderNewItemOptionChecklist=catalogAdmin.renderNewItemOptionChecklist,renderStaffMenu=catalogAdmin.renderStaffMenu,buildAvail=catalogAdmin.buildAvail;
