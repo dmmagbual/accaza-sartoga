@@ -5,7 +5,19 @@ const MAX_GUESTS=30;
 const TIME_SLOTS=['3:00 PM','4:00 PM','5:00 PM','6:00 PM','7:00 PM','8:00 PM','9:00 PM','10:00 PM','11:00 PM','12:00 Midnight'];
 
 function createReservationManager(deps){
-  let reservations={},archived={},calBlocks={},resContactMethod='whatsapp',selectedDate=null,selectedTime=null,adminSelectedDate=null,resArchiveOpen=false;
+  let reservations={},archived={},calBlocks={},resContactMethod='whatsapp',selectedDate=null,selectedTime=null,adminSelectedDate=null,resArchiveOpen=false,knownResIds=null,resChimeTimer=null,resChimeCount=0;
+  function notifyNewReservations(fresh){
+    try{
+      var last=fresh[fresh.length-1];
+      var msg=fresh.length>1?('📅 '+fresh.length+' new reservations received!'):('📅 New reservation from '+(last&&last.name?last.name:'a guest')+(last&&last.date?' · '+last.date+(last.time?' '+last.time:''):'')+'!');
+      (window.accazaToast||function(){})(msg,'ok');
+    }catch(e){}
+    var chime=(deps&&typeof deps.playChime==='function')?deps.playChime:function(){};
+    chime();
+    if(resChimeTimer)clearInterval(resChimeTimer);
+    resChimeCount=1;
+    resChimeTimer=setInterval(function(){resChimeCount++;chime();if(resChimeCount>=3){clearInterval(resChimeTimer);resChimeTimer=null;}},4000);
+  }
   const now=new Date();let calYear=now.getFullYear(),calMonth=now.getMonth(),adminCalYear=now.getFullYear(),adminCalMonth=now.getMonth();
   function portalActive(){return !!deps.isPortalActive();}
   function getConfirmedGuestsForDate(k){return Object.values(reservations).filter(function(r){return r.date===k&&(r.status==='Accepted'||r.status==='Confirmed');}).reduce(function(s,r){return s+(parseInt(r.guests)||0);},0);}
@@ -49,7 +61,7 @@ function createReservationManager(deps){
   window.renderResArchive=renderResArchive;
   window.printResArchive=function(){const list=filteredResArchive().slice().sort(function(a,b){return(a.date||'').localeCompare(b.date||'');});if(!list.length){alert('No archived reservations found for the selected date range.');return;}const rows=list.map(function(r){return'<tr><td>'+escHtml(r.id)+'</td><td>'+escHtml(r.name)+'</td><td>'+escHtml(r.date)+'</td><td>'+escHtml(r.time)+'</td><td>'+Math.max(1,Math.min(50,parseInt(r.guests)||1))+'</td><td>'+escHtml(r.occasion||'—')+'</td><td>'+escHtml(r.prevStatus||'Completed')+'</td></tr>';}).join(''),w=window.open('','_blank');if(!w){alert('Allow pop-ups to print the reservation archive.');return;}w.document.write('<html><head><title>Reservation Archive — Accaza Coffee House</title><style>body{font-family:Arial;padding:24px}table{width:100%;border-collapse:collapse}th,td{padding:7px;border-bottom:1px solid #ccc;text-align:left}@media print{button{display:none}}</style></head><body><h2>Accaza Coffee House</h2><h3>Reservation Archive</h3><table><thead><tr><th>ID</th><th>Name</th><th>Date</th><th>Time</th><th>Guests</th><th>Occasion</th><th>Status</th></tr></thead><tbody>'+rows+'</tbody></table><button onclick="window.print()">Print</button></body></html>');w.document.close();};
   deps.subscriptionHub.subscribe('archivedReservations',function(snap){archived=snap.val()||{};if(portalActive()&&resArchiveOpen)renderResArchive();});
-  deps.subscriptionHub.subscribe('reservations',function(snap){reservations=snap.val()||{};if(portalActive())renderReservations();deps.onReservationsChanged();renderCustomerCalendar();if(portalActive())renderAdminCalendar();});
+  deps.subscriptionHub.subscribe('reservations',function(snap){var prevIds=knownResIds;reservations=snap.val()||{};var ids=Object.keys(reservations);if(prevIds&&portalActive()){var fresh=ids.filter(function(id){return prevIds.indexOf(id)===-1;}).map(function(id){return reservations[id];}).filter(function(r){return r&&(!r.status||r.status==='Pending');});if(fresh.length)notifyNewReservations(fresh);}knownResIds=ids;if(portalActive())renderReservations();deps.onReservationsChanged();renderCustomerCalendar();if(portalActive())renderAdminCalendar();});
   deps.subscriptionHub.subscribe('calBlocks',function(snap){calBlocks=snap.val()||{};renderCustomerCalendar();if(portalActive())renderAdminCalendar();});
   return{getReservations:function(){return reservations;},getArchivedReservations:function(){return archived;},renderReservations,renderCustomerCalendar,renderAdminCalendar,renderResArchive,isArchiveOpen:function(){return resArchiveOpen;}};
 }
