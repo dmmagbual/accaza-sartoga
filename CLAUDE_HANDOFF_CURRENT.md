@@ -10,7 +10,7 @@ This is the single current handoff document. Claude should inspect the actual wo
 
 ## Current Production Change Pending Deployment
 
-Danilo confirmed all releases through 5D are deployed and production-tested. Release 7B Functions are deployed; Release 7H is implemented and locally validated. Frontend is **`admin.html` v178**, customer v46, and service-worker cache v75. `CLAUDE_HANDOFF.md` and `release-manifest.json` are the authoritative continuation/status sources. Coordinated 7C–7H GitHub publication, Database query-index deployment, and production v178 smoke evidence remain pending.
+Danilo confirmed all releases through 5D are deployed and production-tested. Release 7B Functions are deployed; Release 7H is implemented and locally validated. Frontend is **`admin.html` v179**, customer v46, and service-worker cache v76. `CLAUDE_HANDOFF.md` and `release-manifest.json` are the authoritative continuation/status sources. Coordinated 7C–7H GitHub publication, Database query-index deployment, and production v179 smoke evidence remain pending.
 
 The prior v157 login/startup incident was fixed and tested in the later coordinated releases. Do not publish individual modules from an older release over the current coordinated set.
 
@@ -26,6 +26,7 @@ The prior v157 login/startup incident was fixed and tested in the later coordina
 - The coordinated 7H patch also restores clickable customer reservation time slots with native buttons and explicit module-safe handlers that open the reservation form.
 - Inventory now names each stock item as the common recipe SKU and treats child records as approved purchasing brands; its fixed action grid keeps every delete control vertically aligned.
 - The compact header now owns an always-live `posActiveShift` subscription, so shift and cashier status update on every workspace without opening Register Operations first.
+- Inventory rows now expose only Brands, Adjust, Edit, and delete; supplier receipts remain centralized in Purchases and the four-column action rail stays aligned.
 - Release 3B uses one byte-identical costing engine in the browser and Functions. The browser previews; `onOrderFinalize` produces authoritative usage, `cogsSnapshot`, and detailed `cogsDetail` evidence.
 - Release 3C adds immutable balanced `/financialMovements`, server-owned financial projections, deterministic retry-safe posting, historical/opening-balance backfill, and a bounded Finance audit view.
 - Release 3D adds real Firebase manager approvals, actual refund tenders, register-cash custody/deposit accounting, controlled chart accounts, and a server control audit.
@@ -54,9 +55,9 @@ Next deploy Release 7G: publish the coordinated v173/cache-v62 files, wait for C
 
 ## Current Builds
 
-- `admin.html`: **v178 Release 7H deployment pending**. Hash must be recaptured after final packaging.
+- `admin.html`: **v179 Release 7H deployment pending**. Hash must be recaptured after final packaging.
 - `index.html`: **v46**, modular customer scripts, App Check, shared install UX, and repaired reservation slot selection. Hash must be recaptured after final packaging.
-- `sw.js`: **cache v75**, including Release 7H and all earlier PWA assets. Hash must be recaptured after final packaging.
+- `sw.js`: **cache v76**, including Release 7H and all earlier PWA assets. Hash must be recaptured after final packaging.
 - `assets/js/admin/` and `assets/js/customer/`: **mandatory Release 2D publish directories**. Do not publish only the HTML files.
 - Cloud Functions: Node.js 22, region `asia-southeast1`.
 - `assets/js/admin/core.mjs`: SHA-256 `C6488B1E9F589746EB75F6AECADF85C523AD3EF728E99E6FE3B8F10BCA04BB02`.

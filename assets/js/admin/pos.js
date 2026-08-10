@@ -194,8 +194,6 @@ function renderInventory(){
       +'<td>'+(i.cost?peso(i.cost):'—')+'</td>'
       +'<td>'+linkBadge+'</td>'
       +'<td class="inventory-actions-cell"><div class="inventory-actions">'
-        +'<button class="pz-btn ok" data-inv-receive="'+i.id+'">+ Stock</button>'
-        +'<button class="pz-btn sec" data-inv-brands="'+i.id+'">History</button>'
         +'<button class="pz-btn sec" style="'+(recipeLinked&&!brandCount?'border-color:#c98a2b;color:#8a5a00;':'border-color:#3a8a6a;color:#256b52;')+'" data-inv-skus="'+i.id+'">'+(recipeLinked&&!brandCount?'Add brand':'Brands ('+brandCount+')')+'</button>'
         +'<button class="pz-btn sec" data-inv-adjust="'+i.id+'">Adjust</button>'
         +'<button class="pz-btn sec" data-inv-edit="'+i.id+'">Edit</button>'
@@ -253,8 +251,6 @@ function renderInventory(){
   var _ib=document.getElementById('invImportBtn'), _if=document.getElementById('invImportFile');
   if(_ib&&_if){ _ib.onclick=function(){_if.value='';_if.click();}; _if.onchange=function(){ if(_if.files&&_if.files[0])importInventoryXlsx(_if.files[0]); }; }
   var _it=document.getElementById('invType'); if(_it)_it.onchange=function(){document.getElementById('invConsumRow').style.display=(_it.value==='consumable')?'grid':'none';};
-  root.querySelectorAll('[data-inv-receive]').forEach(function(b){b.onclick=function(){receiveStock(b.getAttribute('data-inv-receive'));};});
-  root.querySelectorAll('[data-inv-brands]').forEach(function(b){b.onclick=function(){brandBreakdown(b.getAttribute('data-inv-brands'));};});
   root.querySelectorAll('[data-inv-skus]').forEach(function(b){b.onclick=function(){openSkuManager(b.getAttribute('data-inv-skus'));};});
   root.querySelectorAll('[data-inv-adjust]').forEach(function(b){b.onclick=function(){adjustStock(b.getAttribute('data-inv-adjust'));};});
   root.querySelectorAll('[data-inv-edit]').forEach(function(b){b.onclick=function(){editIngredient(b.getAttribute('data-inv-edit'));};});

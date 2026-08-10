@@ -1,6 +1,6 @@
 # Release 7H — SKU Link Integrity
 
-**Build:** admin v178, customer v46, service-worker cache v75
+**Build:** admin v179, customer v46, service-worker cache v76
 
 ## Delivered
 
@@ -19,6 +19,7 @@
 - Removes the false “Recipe · no SKU” status and renames the filter to “Recipe items without approved brand.”
 - Uses a fixed Inventory action grid so Stock, History, Brands, Adjust, Edit, and delete controls align identically on every row.
 - Subscribes the compact workspace header directly to the live open-shift record, eliminating the stale default “Shift closed” status on Overview and other tabs.
+- Removes the redundant Inventory-row “+ Stock” and “History” actions; stock receipts remain in Purchases and the compact row keeps Brands, Adjust, Edit, and delete.
 
 ## Smoke test
 
@@ -31,7 +32,8 @@
 7. Select an available customer reservation date and time; confirm the reservation-details form opens and receives the selected date and time.
 8. Confirm Inventory shows “SKU ready” or an approved-brand count instead of “no SKU,” and all delete buttons form one vertical line.
 9. Open a shift, return to Overview, and confirm the header immediately shows “Shift open · Cashier [name]” without first opening Register Operations.
-10. Hard-refresh once after deployment to activate cache v75.
+10. Confirm Inventory rows show only Brands, Adjust, Edit, and delete, with the delete column aligned.
+11. Hard-refresh once after deployment to activate cache v76.
 
 ## Deployment
 

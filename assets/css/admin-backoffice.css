@@ -144,8 +144,8 @@ body[data-admin-workspace="calendar"] #adminSlotManager{padding:1rem;border:1px 
 /* Release 7H — SKU linkage reads like a receiving-control stamp. */
 .inv-sku-link{display:inline-flex;align-items:center;min-height:25px;padding:.2rem .48rem;border:1px solid #d8d0c5;border-radius:999px;background:#f3efe9;color:#6f6359;font-size:.66rem;font-weight:800;white-space:nowrap}
 .inv-sku-link.linked{border-color:#acd2b8;background:#eaf5ed;color:#216b45}.inv-sku-link.pending{border-color:#dfc58c;background:#fff7df;color:#805d18}.inv-sku-link.missing{border-color:#e1aaa5;background:#fff0ee;color:#9b3029}.inv-sku-link.neutral{color:#786d64}
-.inventory-table .inventory-actions-cell{min-width:464px;white-space:normal!important}
-.inventory-actions{display:grid;grid-template-columns:72px 78px 112px 72px 58px 42px;gap:6px;align-items:center;width:max-content;margin-left:auto}
+.inventory-table .inventory-actions-cell{min-width:302px;white-space:normal!important}
+.inventory-actions{display:grid;grid-template-columns:112px 72px 58px 42px;gap:6px;align-items:center;width:max-content;margin-left:auto}
 .inventory-actions>.pz-btn{width:100%;min-width:0;padding:.3rem .35rem!important;white-space:nowrap}
 .inventory-actions .inventory-delete-slot{display:inline-flex;width:42px;height:40px;min-height:40px;align-items:center;justify-content:center;padding:0!important}
 .inventory-actions .inventory-lock{border:1px solid transparent;border-radius:7px;color:var(--bo-muted)}
