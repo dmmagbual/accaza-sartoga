@@ -10,7 +10,7 @@ This is the single current handoff document. Claude should inspect the actual wo
 
 ## Current Production Change Pending Deployment
 
-Danilo confirmed all releases through 5D are deployed and production-tested. Release 7B Functions are deployed; Release 7G is implemented and locally validated. Frontend is **`admin.html` v173**, customer v45, and service-worker cache v62. `CLAUDE_HANDOFF.md` and `release-manifest.json` are the authoritative continuation/status sources. Coordinated 7C–7G GitHub publication, Database query-index deployment, and production v173 smoke evidence remain pending.
+Danilo confirmed all releases through 5D are deployed and production-tested. Release 7B Functions are deployed; Release 7H is implemented and locally validated. Frontend is **`admin.html` v174**, customer v45, and service-worker cache v71. `CLAUDE_HANDOFF.md` and `release-manifest.json` are the authoritative continuation/status sources. Coordinated 7C–7H GitHub publication, Database query-index deployment, and production v174 smoke evidence remain pending.
 
 The prior v157 login/startup incident was fixed and tested in the later coordinated releases. Do not publish individual modules from an older release over the current coordinated set.
 
@@ -22,6 +22,7 @@ The prior v157 login/startup incident was fixed and tested in the later coordina
 - High-growth logs and archives have indexed query windows and “Load older” controls.
 - Active order updates replace one card where possible.
 - Inventory quantity/WAC is server-authoritative. Every sale, purchase, internal use, R&D, waste, adjustment, edit, refund, and void return has an idempotent movement ID and audit record.
+- Release 7H automatically detects recipe-linked inventory, requires an active approved SKU when it is received, records the SKU on receipts/invoice lines/batches, and exposes recipe items without a SKU in Inventory.
 - Release 3B uses one byte-identical costing engine in the browser and Functions. The browser previews; `onOrderFinalize` produces authoritative usage, `cogsSnapshot`, and detailed `cogsDetail` evidence.
 - Release 3C adds immutable balanced `/financialMovements`, server-owned financial projections, deterministic retry-safe posting, historical/opening-balance backfill, and a bounded Finance audit view.
 - Release 3D adds real Firebase manager approvals, actual refund tenders, register-cash custody/deposit accounting, controlled chart accounts, and a server control audit.

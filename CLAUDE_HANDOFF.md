@@ -1,13 +1,13 @@
 # Accaza Coffee House — Authoritative Project Handoff
 
 **Prepared:** 10 August 2026  
-**Release candidate:** Release 7G  
-**Local builds:** admin v173, customer v45, service-worker cache v62  
+**Release candidate:** Release 7H  
+**Local builds:** admin v174, customer v45, service-worker cache v71  
 **Truth source:** current workspace plus `release-manifest.json`
 
 ## Deployment truth
 
-The current source and complete CI-equivalent suite are validated locally. Danilo confirmed releases through 5D were deployed and production-tested, and confirmed the GitHub Quality Gate passed during Release 6B troubleshooting. Later releases including this 7A package must not be described as production-verified until the corresponding fields in `release-manifest.json` are changed from `pending` using real evidence.
+The current source and complete CI-equivalent suite are validated locally. Danilo confirmed releases through 5D were deployed and production-tested, and confirmed the GitHub Quality Gate passed during Release 6B troubleshooting. Later releases including this 7H package must not be described as production-verified until the corresponding fields in `release-manifest.json` are changed from `pending` using real evidence.
 
 Do not infer production status from a build number in a local file. Confirm the live site, Firebase deployment output, System Health data, and smoke-test record.
 
@@ -30,7 +30,7 @@ flowchart LR
 - Cloud Functions: Node.js 22, region `asia-southeast1`.
 - Storage: private default bucket; payment proofs are retrieved through an authorized Function, not public URLs.
 - Authentication: Firebase email/password for portal users and Anonymous Auth for customers.
-- PWA: separate customer and POS manifests; one service worker with coordinated cache v62.
+- PWA: separate customer and POS manifests; one service worker with coordinated cache v71.
 - Currency: Philippine peso (PHP/₱) in the current Accaza application.
 
 ## Authoritative file map

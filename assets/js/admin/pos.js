@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var inventoryMap={}, recipesMap={}, posMeta={vat:false,vatRate:12}, optRecipesMap={}, usageMap={}, channelPricesMap={}, posAvailMap={}, inventoryMovementsMap={};
+var inventoryMap={}, inventorySkuMap={}, recipesMap={}, posMeta={vat:false,vatRate:12}, optRecipesMap={}, usageMap={}, channelPricesMap={}, posAvailMap={}, inventoryMovementsMap={};
 function posIsAvail(name){return posAvailMap[name]!==false;}
 var POS_CHANNELS=[{k:'grabfood',lbl:'GrabFood',rate:0.25,wht:0,vat:0},{k:'foodpanda',lbl:'FoodPanda',rate:0.30,wht:0.0005,vat:0.036}];
 function channelsCfg(){var c=(window.__posSettings&&window.__posSettings.channels);var out={};POS_CHANNELS.forEach(function(d){var s=(c&&c[d.k])||{};out[d.k]={label:d.lbl,rate:(s.rate!=null?Number(s.rate):d.rate),wht:(s.wht!=null?Number(s.wht):d.wht),vat:(s.vat!=null?Number(s.vat):d.vat),active:s.active!==false};});return out;}
@@ -38,6 +38,10 @@ function peso(n){n=Number(n)||0;return '₱'+n.toLocaleString('en-PH',{minimumFr
 function num(n){n=Number(n)||0;return (Math.round(n*1000)/1000).toLocaleString('en-PH');}
 function uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 function ings(){return Object.keys(inventoryMap).map(function(k){return Object.assign({id:k},inventoryMap[k]);}).sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});}
+function activeSkusFor(masterId){return Object.keys(inventorySkuMap).map(function(k){return Object.assign({id:k},inventorySkuMap[k]);}).filter(function(s){return s.masterId===masterId&&s.active!==false;}).sort(function(a,b){return (Number(a.priority)||0)-(Number(b.priority)||0)||(a.brand||'').localeCompare(b.brand||'');});}
+function treeUsesIngredient(value,id){if(!value||typeof value!=='object')return false;if(value.ing===id)return true;if(Array.isArray(value))return value.some(function(x){return treeUsesIngredient(x,id);});return Object.keys(value).some(function(k){return treeUsesIngredient(value[k],id);});}
+function recipeUsesInventory(id){var item=inventoryMap[id]||{};return item.recipeItem===true||ingType(item)==='consumable'||treeUsesIngredient(recipesMap,id)||treeUsesIngredient(optRecipesMap,id)||treeUsesIngredient(optCostStore(),id);}
+function skuDisplay(s){return ((s&&s.brand)||'Unnamed SKU')+((s&&s.supplier)?' · '+s.supplier:'');}
 function ingName(id){var i=inventoryMap[id];return i?i.name:'(deleted)';}
 function ingUnit(id){var i=inventoryMap[id];return i?(i.unit||''):'';}
 function ingCost(id){var i=inventoryMap[id];return i?(Number(i.cost)||0):0;}
@@ -141,15 +145,16 @@ window.__isCashMethod=isCashMethod;
 function init(){
   var a=A();
   window.__online=(typeof navigator!=='undefined')?navigator.onLine:true;
-  a.subscribe('posSettings', function(s){ window.__posSettings=s.val()||{}; if(document.getElementById('posPay'))renderPosCart(); });
+  a.subscribe('posSettings', function(s){ window.__posSettings=s.val()||{}; if(document.getElementById('posPay'))renderPosCart(); if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); });
   a.subscribe('.info/connected', function(sn){ window.__online=(sn.val()===true); updateOfflineUI(); if(window.__online) flushOfflineQueue(); });
   try{ window.addEventListener('online', function(){ window.__online=true; updateOfflineUI(); flushOfflineQueue(); }); window.addEventListener('offline', function(){ window.__online=false; updateOfflineUI(); }); }catch(e){}
   flushOfflineQueue();
   a.subscribe('availability', function(s){ posAvailMap=s.val()||{}; if(isTab('pos')&&document.getElementById('posItems'))drawPosItems(); });
   a.subscribe('inventory', function(s){ inventoryMap=s.val()||{}; if(isTab('inventory'))renderInventory(); if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateLowStockBadge(); updateCostBadge(); });
+  a.subscribe('inventorySku', function(s){ inventorySkuMap=s.val()||{}; if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); });
   a.subscribe('inventoryMovements', function(s){ inventoryMovementsMap=s.val()||{}; if(isTab('inventory'))renderInventory(); });
-  a.subscribe('recipes', function(s){ recipesMap=s.val()||{}; if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateCostBadge(); });
-  a.subscribe('optionRecipes', function(s){ var raw=s.val()||{}; var m={}; Object.keys(raw).forEach(function(k){var v=raw[k]||{}; var lb=v.label||k; m[lb]=v;}); optRecipesMap=m; if(isTab('recipes')&&!recipeEditing)renderRecipes(); });
+  a.subscribe('recipes', function(s){ recipesMap=s.val()||{}; if(isTab('recipes')&&!recipeEditing)renderRecipes(); if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); updateCostBadge(); });
+  a.subscribe('optionRecipes', function(s){ var raw=s.val()||{}; var m={}; Object.keys(raw).forEach(function(k){var v=raw[k]||{}; var lb=v.label||k; m[lb]=v;}); optRecipesMap=m; if(isTab('recipes')&&!recipeEditing)renderRecipes(); if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); });
   a.subscribe('internalUsage', function(s){ usageMap=s.val()||{}; if(isTab('usage'))renderUsage(); });
   a.subscribe('usageTypes', function(s){ usageTypesMap=s.val()||{}; if(isTab('usage'))renderUsage(); });
   a.subscribe('channelPrices', function(s){ channelPricesMap=s.val()||{}; if(isTab('channelpricing')&&window.__accazaRenderChannelPricing)window.__accazaRenderChannelPricing(); });
@@ -169,13 +174,16 @@ function renderInventory(){
   var ozItems=list.filter(function(i){var u=uNorm(i.unit);return !i.ledgerVersion&&(u==='oz'||u==='ounce');});
   seedInvCats(); var catList=invCats(); var catFilter=window.__invCatFilter||'';
   var uncat=list.filter(function(i){return !(i.category&&invCatsMap()[i.category]);});
-  var shown=!catFilter?list:(catFilter==='__none__'?uncat:list.filter(function(i){return (i.category||'')===catFilter;}));
+  var missingSku=list.filter(function(i){return recipeUsesInventory(i.id)&&!activeSkusFor(i.id).length;});
+  var shown=!catFilter?list:(catFilter==='__none__'?uncat:(catFilter==='__sku_missing__'?missingSku:list.filter(function(i){return (i.category||'')===catFilter;})));
   var unledgered=list.filter(function(i){return !i.ledgerVersion;});
   var movements=Object.keys(inventoryMovementsMap||{}).map(function(k){return Object.assign({id:k},inventoryMovementsMap[k]);}).sort(function(x,y){return (Number(y.occurredAt)||0)-(Number(x.occurredAt)||0);}).slice(0,100);
   var movementRows=movements.map(function(m){var q=Number(m.qty)||0;return '<tr><td>'+new Date(Number(m.occurredAt)||0).toLocaleString('en-PH')+'</td><td>'+esc(String(m.type||'').replace(/_/g,' '))+'</td><td>'+esc(m.itemName||m.itemId||'')+'</td><td class="r" style="color:'+(q<0?'#b44336':'#267354')+';">'+(q>0?'+':'')+num(q)+' '+esc(m.unit||'')+'</td><td class="r">'+num(m.balanceBefore)+' → <b>'+num(m.balanceAfter)+'</b></td><td class="r">'+peso(m.unitCost)+'</td><td>'+esc(m.sourceId||m.sourceType||'')+'</td><td>'+esc(m.actorName||'server')+'</td></tr>';}).join('');
   var rows=shown.map(function(i){
     var st=Number(i.stock)||0; var isLow=st<=Number(i.reorder||0)&&st>=0; var isNeg=st<0;
     var ty=ingType(i);
+    var recipeLinked=recipeUsesInventory(i.id), skuCount=activeSkusFor(i.id).length;
+    var linkBadge=recipeLinked?(skuCount?'<span class="inv-sku-link linked">✓ Recipe · '+skuCount+' SKU'+(skuCount===1?'':'s')+'</span>':'<span class="inv-sku-link missing">! Recipe · no SKU</span>'):'<span class="inv-sku-link neutral">Not in a recipe</span>';
     var tyBadge=ty==='consumable'?('🧻 Consumable'+(i.serves&&i.serves!=='both'?' · '+esc(i.serves):'')+(i.size?' · '+esc(i.size):'')):(ty==='option'?'➕ Option':(ty==='both'?'🔀 Both':'🧪 Base'));
     return '<tr>'
       +'<td>'+esc(i.name)+'</td>'
@@ -184,10 +192,11 @@ function renderInventory(){
       +'<td class="'+((isNeg||isLow)?'pz-low':'')+'">'+num(st)+' '+esc(i.unit||'')+(isNeg?' 🔴 NEGATIVE':(isLow?' ⚠️':''))+'</td>'
       +'<td>'+num(i.reorder||0)+'</td>'
       +'<td>'+(i.cost?peso(i.cost):'—')+'</td>'
+      +'<td>'+linkBadge+'</td>'
       +'<td style="white-space:nowrap;">'
         +'<button class="pz-btn ok" style="padding:0.3rem 0.6rem;" data-inv-receive="'+i.id+'">+ Stock</button> '
         +'<button class="pz-btn sec" style="padding:0.3rem 0.6rem;" data-inv-brands="'+i.id+'">🏷 Brands</button> '
-        +'<button class="pz-btn sec" style="padding:0.3rem 0.6rem;border-color:#3a8a6a;color:#256b52;" data-inv-skus="'+i.id+'">🔖 SKUs</button> '
+        +'<button class="pz-btn sec" style="padding:0.3rem 0.6rem;'+(recipeLinked&&!skuCount?'border-color:#b44336;color:#9f3028;':'border-color:#3a8a6a;color:#256b52;')+'" data-inv-skus="'+i.id+'">🔖 '+(recipeLinked&&!skuCount?'Add SKU':'SKUs')+'</button> '
         +'<button class="pz-btn sec" style="padding:0.3rem 0.6rem;" data-inv-adjust="'+i.id+'">Adjust</button> '
         +'<button class="pz-btn sec" style="padding:0.3rem 0.6rem;" data-inv-edit="'+i.id+'">Edit</button> '
         +(i.ledgerVersion?'<span title="Ledger items cannot be deleted; preserve their audit trail." style="color:var(--tl);padding:0.3rem;">🔒</span>':'<button class="pz-btn warn" style="padding:0.3rem 0.55rem;" data-inv-del="'+i.id+'">✕</button>')
@@ -195,7 +204,7 @@ function renderInventory(){
   }).join('');
   root.innerHTML=
     '<div class="pz-h">📦 Inventory</div>'
-    +'<p class="pz-sub">Every item is tagged Base / Option / Consumable. Completed orders auto-deduct by recipe (base per size), selected options and category consumables. Stock may go negative — flagged 🔴 so you can count &amp; adjust; the variance posts to COGS.'+(low.length?' <b class="pz-low">'+low.length+' low.</b>':'')+(neg.length?' <b class="pz-low">'+neg.length+' negative.</b>':'')+(uncat.length?' <b style="color:#8a5a00;">'+uncat.length+' uncategorized.</b>':'')+'</p>'
+    +'<p class="pz-sub">Every item is tagged Base / Option / Consumable. Completed orders auto-deduct by recipe (base per size), selected options and category consumables. Stock may go negative — flagged 🔴 so you can count &amp; adjust; the variance posts to COGS.'+(low.length?' <b class="pz-low">'+low.length+' low.</b>':'')+(neg.length?' <b class="pz-low">'+neg.length+' negative.</b>':'')+(uncat.length?' <b style="color:#8a5a00;">'+uncat.length+' uncategorized.</b>':'')+(missingSku.length?' <b class="pz-low">'+missingSku.length+' recipe item'+(missingSku.length===1?'':'s')+' without an active SKU.</b>':'')+'</p>'
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">'
       +'<button class="pz-btn sec" id="invExport">⬇ Export Excel</button>'
       +'<button class="pz-btn sec" id="invTemplate">⬇ Import template</button>'
@@ -207,7 +216,7 @@ function renderInventory(){
       +'<button class="pz-btn sec" id="invExpiry" style="border-color:#c98a2b;color:#8a5a00;">📅 Expiry / batches</button>'
       +'<button class="pz-btn sec" id="invStdCost" style="border-color:#5a6fb0;color:#3a4a86;">📊 Standard costing</button>'
       +(unledgered.length?'<button class="pz-btn ok" id="invLedgerInit" style="border-color:#267354;">🧾 Initialize 3A ledger ('+unledgered.length+')</button>':'<span style="font-size:0.78rem;color:#267354;align-self:center;">✓ 3A ledger active</span>')
-      +'<select class="pz-in" id="invCatFilter" style="width:auto;"><option value="">All categories</option><option value="__none__"'+(catFilter==='__none__'?' selected':'')+'>— Uncategorized ('+uncat.length+') —</option>'+catList.map(function(c){return '<option value="'+esc(c.id)+'"'+(catFilter===c.id?' selected':'')+'>'+esc(c.name)+(c.kind==='overhead'?' (overhead)':'')+'</option>';}).join('')+'</select>'
+      +'<select class="pz-in" id="invCatFilter" style="width:auto;"><option value="">All categories</option><option value="__sku_missing__"'+(catFilter==='__sku_missing__'?' selected':'')+'>Recipe items without SKU ('+missingSku.length+')</option><option value="__none__"'+(catFilter==='__none__'?' selected':'')+'>— Uncategorized ('+uncat.length+') —</option>'+catList.map(function(c){return '<option value="'+esc(c.id)+'"'+(catFilter===c.id?' selected':'')+'>'+esc(c.name)+(c.kind==='overhead'?' (overhead)':'')+'</option>';}).join('')+'</select>'
     +'</div>'
     +'<div class="pz-card" style="margin-bottom:1rem;">'
       +'<div style="font-weight:600;color:var(--bd);margin-bottom:0.6rem;font-size:0.9rem;">➕ Add item</div>'
@@ -227,8 +236,8 @@ function renderInventory(){
         +'<div><span class="pz-lbl">Qty per order</span><input class="pz-in" id="invQPO" type="number" step="any" value="1"/></div>'
       +'</div>'
     +'</div>'
-    +'<div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th>Type</th><th>Category</th><th>In stock</th><th>Reorder</th><th>Cost</th><th>Actions</th></tr></thead><tbody>'
-      +(rows||'<tr><td colspan="7" style="color:var(--tl);padding:1rem;">No items in this view.</td></tr>')
+    +'<div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th>Type</th><th>Category</th><th>In stock</th><th>Reorder</th><th>Cost</th><th>Recipe / SKU</th><th>Actions</th></tr></thead><tbody>'
+      +(rows||'<tr><td colspan="8" style="color:var(--tl);padding:1rem;">No items in this view.</td></tr>')
     +'</tbody></table></div></div>'
     +'<div class="pz-card" style="margin-top:1rem;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;"><div style="font-weight:600;color:var(--bd);">🧾 Inventory movement ledger</div><span style="font-size:0.74rem;color:var(--tl);">Latest '+movements.length+' loaded · immutable server record</span></div><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Date/time</th><th>Movement</th><th>Item</th><th class="r">Quantity</th><th class="r">Balance</th><th class="r">Unit cost</th><th>Source</th><th>Posted by</th></tr></thead><tbody>'+(movementRows||'<tr><td colspan="8" style="padding:0.7rem;color:var(--tl);">No ledger movements loaded yet. Initialize once to capture today’s stock and cost as opening balances.</td></tr>')+'</tbody></table></div></div>';
   document.getElementById('invAddBtn').onclick=addIngredient;
@@ -727,6 +736,8 @@ function importInventoryXlsx(file){
 }
 function receiveStock(id){
   var i=inventoryMap[id]; if(!i)return;
+  var recipeRequired=recipeUsesInventory(id), activeSkus=activeSkusFor(id);
+  if(recipeRequired&&!activeSkus.length){alert('“'+i.name+'” is used in a recipe and has no active approved SKU. Add one before receiving stock.');openSkuManager(id);return;}
   var before=Number(i.stock)||0, oldCost=Number(i.cost)||0, unit=i.unit||'';
   var cf=window.__cf; var accs=(cf&&cf.accounts&&cf.accounts())||[];
   var accOpts=accs.map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.name)+' ('+peso(x.balance)+')</option>';}).join('');
@@ -737,7 +748,7 @@ function receiveStock(id){
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;"><div><span class="pz-lbl">Quantity received ('+esc(unit||'units')+')</span><input class="pz-in" id="rcQty" type="number" step="any" style="width:120px;"/></div><div><span class="pz-lbl">Unit cost ₱ (per '+esc(unit||'unit')+')</span><input class="pz-in" id="rcCost" type="number" step="any" value="'+(oldCost||'')+'" style="width:120px;"/></div></div>'
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div style="flex:1;min-width:140px;"><span class="pz-lbl">Supplier</span><input class="pz-in" id="rcSup" placeholder="supplier name"/></div><div><span class="pz-lbl">Invoice / ref</span><input class="pz-in" id="rcRef" style="width:130px;"/></div></div>'
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div><span class="pz-lbl">Date</span><input class="pz-in" id="rcDate" type="date" value="'+new Date().toISOString().slice(0,10)+'"/></div><div style="flex:1;min-width:140px;"><span class="pz-lbl">Received by</span><input class="pz-in" id="rcBy" value="'+esc((window.__posShift&&window.__posShift.staff)||'Admin')+'"/></div></div>'
-    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div style="flex:1;min-width:120px;"><span class="pz-lbl">Brand (opt.)</span><input class="pz-in" id="rcBrand" placeholder="e.g. Arla"/></div><div><span class="pz-lbl">Expiry (opt.)</span><input class="pz-in" id="rcExpiry" type="date"/></div><div><span class="pz-lbl">Lot # (opt.)</span><input class="pz-in" id="rcLot" style="width:90px;"/></div></div>'
+    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div class="purchase-sku-cell '+(recipeRequired?'required':'optional')+'" style="flex:1;min-width:180px;"><span class="pz-lbl">Approved SKU '+(recipeRequired?'<b>required</b>':'(optional)')+'</span><select class="pz-in" id="rcSku"><option value="">— '+(recipeRequired?'select SKU':'no SKU / legacy brand')+' —</option>'+activeSkus.map(function(s,ix){return '<option value="'+esc(s.id)+'"'+(recipeRequired&&activeSkus.length===1&&ix===0?' selected':'')+'>'+esc(skuDisplay(s))+'</option>';}).join('')+'</select></div><div style="flex:1;min-width:120px;"><span class="pz-lbl">Brand '+(recipeRequired?'from SKU':'(opt.)')+'</span><input class="pz-in" id="rcBrand" placeholder="e.g. Arla"'+(recipeRequired?' readonly':'')+'/></div><div><span class="pz-lbl">Expiry (opt.)</span><input class="pz-in" id="rcExpiry" type="date"/></div><div><span class="pz-lbl">Lot # (opt.)</span><input class="pz-in" id="rcLot" style="width:90px;"/></div></div>'
     +'<label style="display:block;font-size:0.85rem;margin-top:0.6rem;cursor:pointer;"><input type="checkbox" id="rcAvg" checked/> Update item cost to weighted average</label>'
     +'<div style="margin-top:0.6rem;border-top:1px solid var(--cd);padding-top:0.5rem;"><span class="pz-lbl">How was it paid?</span>'
       +'<label style="display:block;font-size:0.85rem;cursor:pointer;"><input type="radio" name="rcPay" value="none" checked/> Just receive (no money entry)</label>'
@@ -750,6 +761,8 @@ function receiveStock(id){
   function close(){document.body.removeChild(mask);}
   function prev(){var q=Number(mask.querySelector('#rcQty').value)||0;var c=Number(mask.querySelector('#rcCost').value)||0;var tot=Math.round(q*c*100)/100;var navg=(before+q>0)?((before*oldCost+q*c)/(before+q)):c;mask.querySelector('#rcPrev').innerHTML=q?('New stock: <b>'+num(before+q)+' '+esc(unit)+'</b> · total '+peso(tot)+((mask.querySelector('#rcAvg').checked&&c>0)?(' · new avg cost '+peso(Math.round(navg*100)/100)+' / '+esc(unit||'unit')):'')):'';}
   mask.querySelector('#rcQty').oninput=prev; mask.querySelector('#rcCost').oninput=prev; mask.querySelector('#rcAvg').onchange=prev;
+  function syncReceiptSku(){var sid=mask.querySelector('#rcSku').value,sk=inventorySkuMap[sid];if(sk)mask.querySelector('#rcBrand').value=sk.brand||'';else if(recipeRequired)mask.querySelector('#rcBrand').value='';}
+  mask.querySelector('#rcSku').onchange=syncReceiptSku; syncReceiptSku();
   mask.querySelector('#rcCancel').onclick=close;
   var pendingReceiptId='';
   mask.querySelector('#rcOk').onclick=function(){
@@ -760,7 +773,9 @@ function receiveStock(id){
     var pay=(mask.querySelector('input[name=rcPay]:checked')||{}).value||'none';
     var a=A(); var rid=pendingReceiptId||(pendingReceiptId=uid('rcpt_')); var payAcct='', payableId='';
     if(pay==='paid'){ var accEl=mask.querySelector('#rcAcct'); payAcct=accEl?accEl.value:''; if(!payAcct){alert('Pick an account.');return;} }
-    var brand=(mask.querySelector('#rcBrand').value||'').trim(); var expiry=mask.querySelector('#rcExpiry').value||''; var lot=(mask.querySelector('#rcLot').value||'').trim();
+    var skuId=mask.querySelector('#rcSku').value||'', selectedSku=inventorySkuMap[skuId];
+    if(recipeRequired&&(!selectedSku||selectedSku.masterId!==id||selectedSku.active===false)){alert('Select an active approved SKU before receiving this recipe item.');return;}
+    var brand=selectedSku?(selectedSku.brand||''):(mask.querySelector('#rcBrand').value||'').trim(); var expiry=mask.querySelector('#rcExpiry').value||''; var lot=(mask.querySelector('#rcLot').value||'').trim();
     var now=Date.now(), mid=movementId('purchase',rid,id);
     postMovements([{movementId:mid,itemId:id,type:'purchase',qty:q,unitCost:c,sourceType:'stock-receipt',sourceId:rid,note:(sup||'Supplier')+(ref?' · '+ref:''),actorName:by,occurredAt:now}]).then(function(){
       if(pay==='paid'&&window.__cf&&window.__cf.postOut)return window.__cf.postOut({commandId:'purchase_cash_'+rid,date:date,accountId:payAcct,amount:tot,party:sup||i.name,ref:ref||i.name,category:'Purchases',source:'purchase',linkId:rid,note:'Received '+num(q)+' '+unit+' '+i.name});
@@ -768,8 +783,8 @@ function receiveStock(id){
       return null;
     }).then(function(){
       var writes={};
-      writes['stockReceipts/'+rid]={ing:id,name:i.name,unit:unit,qty:q,unitCost:c,total:tot,supplier:sup,brand:brand,ref:ref,date:date,receivedBy:by,payMode:pay,accountId:payAcct,payableId:payableId,movementId:mid,ts:now};
-      writes['inventoryBatch/'+('bat_'+now.toString(36)+'_r')]={skuId:'',masterId:id,brand:brand,supplier:sup,qtyRecv:q,qtyRemaining:q,unit:unit,unitCost:c,recvDate:date,expiry:expiry,lot:lot,branch:'main',source:'purchase',invoiceId:'',receiptId:rid,createdAt:now};
+      writes['stockReceipts/'+rid]={ing:id,skuId:skuId,skuBrand:brand,name:i.name,unit:unit,qty:q,unitCost:c,total:tot,supplier:sup,brand:brand,ref:ref,date:date,receivedBy:by,payMode:pay,accountId:payAcct,payableId:payableId,movementId:mid,ts:now};
+      writes['inventoryBatch/'+('bat_'+now.toString(36)+'_r')]={skuId:skuId,masterId:id,brand:brand,supplier:sup,qtyRecv:q,qtyRemaining:q,unit:unit,unitCost:c,recvDate:date,expiry:expiry,lot:lot,branch:'main',source:'purchase',invoiceId:'',receiptId:rid,createdAt:now};
       return a.update(a.ref(a.db),writes);
     }).then(function(){if(window.__posLog)window.__posLog('stock-receive',i.name,num(q)+' '+unit+' · '+peso(tot)+(pay==='paid'?' · paid':pay==='account'?' · on account':''));close();}).catch(function(e){alert('Receipt did not finish: '+((e&&e.message)||e)+'. Stock or finance may already be posted; the same receipt is safe to retry and cannot double-post.');});
   };
@@ -779,7 +794,7 @@ function receiveStock(id){
    or create a new item. Measurement units only (dimension-guarded); converts to the
    item's stock unit; cost stored at higher precision. Brand rides on the receipt/stock card.
    Deduction + recipes untouched — recipes keep costing at the item's blended average. */
-function purchBlank(){return {mode:'existing',ing:'',newName:'',newUnit:'ml',newType:'base',brand:'',recvUnit:'',qty:'',costMode:'unit',unitCost:'',lineTotal:'',expiry:'',lot:''};}
+function purchBlank(){return {mode:'existing',ing:'',skuId:'',recipeItem:true,newName:'',newUnit:'ml',newType:'base',brand:'',recvUnit:'',qty:'',costMode:'unit',unitCost:'',lineTotal:'',expiry:'',lot:''};}
 function purchInit(){ if(!window.__purch){ window.__purch={supplier:'',ref:'',date:new Date().toISOString().slice(0,10),by:((window.__posShift&&window.__posShift.staff)||'Admin'),pay:'none',acct:'',due:'',lines:[purchBlank()]}; } }
 var PURCH_UNITS=['ml','l','g','kg','pcs'];
 function purchCalc(ln){
@@ -801,22 +816,32 @@ function renderPurchases(){
   var cf=window.__cf; var accs=(cf&&cf.accounts&&cf.accounts())||[];
   var accOpts=accs.map(function(x){return '<option value="'+esc(x.id)+'"'+(P.acct===x.id?' selected':'')+'>'+esc(x.name)+' ('+peso(x.balance)+')</option>';}).join('');
   var invList=ings().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
-  function itemOpts(sel){return '<option value="">— pick item —</option>'+invList.map(function(i){return '<option value="'+esc(i.id)+'"'+(i.id===sel?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+') · '+ingType(i)+'</option>';}).join('');}
+  function itemOpts(sel){return '<option value="">— pick item —</option>'+invList.map(function(i){var required=recipeUsesInventory(i.id),n=activeSkusFor(i.id).length;return '<option value="'+esc(i.id)+'"'+(i.id===sel?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+') · '+ingType(i)+(required?(n?' · SKU linked':' · SKU REQUIRED'):'')+'</option>';}).join('');}
   function unitOpts(list,sel){return list.map(function(u){return '<option'+(uNorm(u)===uNorm(sel)?' selected':'')+'>'+esc(u)+'</option>';}).join('');}
   var invTotal=0;
   var lineHtml=P.lines.map(function(ln,i){
     var c=purchCalc(ln);
     if(c)invTotal+=c.lineTotal;
-    var firstCell,typeCell='',unitCell;
+    var firstCell,typeCell='',unitCell,skuCell='',brandCell='';
     if(ln.mode==='new'){
+      var newRecipeItem=ln.newType==='consumable'||ln.recipeItem!==false;
       firstCell='<div style="flex:1;min-width:160px;"><span class="pz-lbl">New item (generic name)</span><input class="pz-in" data-pf="newName" data-pi="'+i+'" placeholder="e.g. Condensed Milk" value="'+esc(ln.newName)+'"/></div>';
-      typeCell='<div><span class="pz-lbl">Type</span><select class="pz-in" data-pf="newType" data-pi="'+i+'" style="width:110px;"><option value="base"'+(ln.newType==='base'?' selected':'')+'>base</option><option value="both"'+(ln.newType==='both'?' selected':'')+'>both</option><option value="option"'+(ln.newType==='option'?' selected':'')+'>option</option><option value="consumable"'+(ln.newType==='consumable'?' selected':'')+'>consumable</option></select></div>';
+      typeCell='<div><span class="pz-lbl">Type</span><select class="pz-in" data-pf="newType" data-pi="'+i+'" style="width:110px;"><option value="base"'+(ln.newType==='base'?' selected':'')+'>base</option><option value="both"'+(ln.newType==='both'?' selected':'')+'>both</option><option value="option"'+(ln.newType==='option'?' selected':'')+'>option</option><option value="consumable"'+(ln.newType==='consumable'?' selected':'')+'>consumable</option></select></div>'
+        +'<label class="purchase-recipe-toggle"><input type="checkbox" data-pf="recipeItem" data-pi="'+i+'"'+(newRecipeItem?' checked':'')+(ln.newType==='consumable'?' disabled title="Consumables are automatically used by recipes"':'')+'/> Used in recipes</label>';
       unitCell='<select class="pz-in" data-pf="newUnit" data-pi="'+i+'" style="width:74px;">'+unitOpts(PURCH_UNITS,ln.newUnit)+'</select>';
+      skuCell='<div class="purchase-sku-cell '+(newRecipeItem?'required':'optional')+'"><span class="pz-lbl">New SKU brand '+(newRecipeItem?'<b>required</b>':'(optional)')+'</span><input class="pz-in" data-pf="brand" data-pi="'+i+'" value="'+esc(ln.brand)+'" placeholder="e.g. Arla Full Cream"/></div>';
     } else {
       var inv=inventoryMap[ln.ing]||{};
       firstCell='<div style="flex:1;min-width:170px;"><span class="pz-lbl">Item</span><select class="pz-in" data-pf="ing" data-pi="'+i+'">'+itemOpts(ln.ing)+'</select></div>';
       var cu=ln.ing?compatUnits(inv):[inv.unit||''];
       unitCell=ln.ing?('<select class="pz-in" data-pf="recvUnit" data-pi="'+i+'" style="width:74px;">'+unitOpts(cu,ln.recvUnit||inv.unit)+'</select>'):'<span style="color:var(--tl);font-size:0.85rem;">—</span>';
+      var required=ln.ing&&recipeUsesInventory(ln.ing), skus=ln.ing?activeSkusFor(ln.ing):[];
+      if(ln.skuId&&!skus.some(function(s){return s.id===ln.skuId;}))ln.skuId='';
+      if(required&&!ln.skuId&&skus.length===1)ln.skuId=skus[0].id;
+      var selectedSku=ln.skuId&&inventorySkuMap[ln.skuId];
+      var skuOpts='<option value="">'+(required?'— select required SKU —':'— no SKU / legacy brand —')+'</option>'+skus.map(function(s){return '<option value="'+esc(s.id)+'"'+(s.id===ln.skuId?' selected':'')+'>'+esc(skuDisplay(s))+'</option>';}).join('');
+      skuCell='<div class="purchase-sku-cell '+(required?'required':'optional')+'"><span class="pz-lbl">Approved SKU '+(required?'<b>required</b>':'(optional)')+'</span><select class="pz-in" data-pf="skuId" data-pi="'+i+'"'+(!ln.ing?' disabled':'')+'>'+skuOpts+'</select>'+(required&&!skus.length?'<button type="button" class="purchase-add-sku" data-pmanage-sku="'+esc(ln.ing)+'">Add an approved SKU</button>':'')+'</div>';
+      brandCell=selectedSku?'<div><span class="pz-lbl">Brand from SKU</span><div class="purchase-sku-brand">'+esc(selectedSku.brand||'—')+'</div></div>':'<div><span class="pz-lbl">Brand</span><input class="pz-in" data-pf="brand" data-pi="'+i+'" value="'+esc(ln.brand)+'" placeholder="optional" style="width:110px;"/></div>';
     }
     var costInput=(ln.costMode==='total'
       ?'<input class="pz-in" type="number" step="any" data-pf="lineTotal" data-pi="'+i+'" value="'+(ln.lineTotal!==''&&ln.lineTotal!=null?ln.lineTotal:'')+'" placeholder="line ₱" style="width:88px;text-align:right;"/>'
@@ -830,7 +855,8 @@ function renderPurchases(){
       +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;">'
         +firstCell
         +typeCell
-        +'<div><span class="pz-lbl">Brand</span><input class="pz-in" data-pf="brand" data-pi="'+i+'" value="'+esc(ln.brand)+'" placeholder="optional" style="width:110px;"/></div>'
+        +skuCell
+        +(ln.mode==='new'?'':brandCell)
         +'<div><span class="pz-lbl">Qty</span><input class="pz-in" type="number" step="any" data-pf="qty" data-pi="'+i+'" value="'+(ln.qty!==''&&ln.qty!=null?ln.qty:'')+'" placeholder="0" style="width:78px;text-align:right;"/></div>'
         +'<div><span class="pz-lbl">Unit</span>'+unitCell+'</div>'
         +'<div><span class="pz-lbl">Cost</span><div style="display:flex;gap:0.25rem;"><select class="pz-in" data-pf="costMode" data-pi="'+i+'" style="width:84px;font-size:0.72rem;"><option value="unit"'+(ln.costMode!=='total'?' selected':'')+'>₱/unit</option><option value="total"'+(ln.costMode==='total'?' selected':'')+'>total ₱</option></select>'+costInput+'</div></div>'
@@ -847,7 +873,7 @@ function renderPurchases(){
       +'<label style="font-size:0.85rem;cursor:pointer;white-space:nowrap;"><input type="radio" name="ppay" data-pf="pay" value="account"'+(P.pay==='account'?' checked':'')+'/> On account, due <input class="pz-in" id="purDue" type="date" value="'+esc(P.due||'')+'" style="width:auto;display:inline-block;"/></label>'
     +'</div></div>';
   root.innerHTML='<div class="pz-h">📥 Purchases (Goods Received)</div>'
-    +'<p class="pz-sub">Record a supplier delivery. Pick an existing generic item to blend its weighted-average cost (any brand), or create a new item. Enter quantities in real measures (ml, L, g, kg, pcs) — the system converts to each item’s stock unit and re-costs. Recipes keep costing at the blended average automatically.</p>'
+    +'<p class="pz-sub">Record a supplier delivery. Recipe items are detected automatically and must use an active approved SKU; new recipe items create their first SKU from the brand entered here. The receipt and batch retain that exact SKU while recipes continue costing against the generic inventory item’s blended average.</p>'
     +'<div class="pz-card" style="margin-bottom:1rem;"><div style="display:flex;gap:0.5rem;flex-wrap:wrap;">'
       +'<div style="flex:1;min-width:150px;"><span class="pz-lbl">Supplier</span><input class="pz-in" id="purSupplier" value="'+esc(P.supplier)+'" placeholder="supplier name"/></div>'
       +'<div><span class="pz-lbl">Invoice / ref</span><input class="pz-in" id="purRef" value="'+esc(P.ref)+'" style="width:130px;"/></div>'
@@ -866,8 +892,8 @@ function renderPurchases(){
   root.querySelectorAll('input[name=ppay]').forEach(function(r){r.onchange=function(){P.pay=r.value;renderPurchases();};});
   root.querySelectorAll('[data-pf]').forEach(function(el){
     var f=el.getAttribute('data-pf'); if(el.getAttribute('data-pi')==null)return; var i=Number(el.getAttribute('data-pi'));
-    if(el.tagName==='SELECT'||el.type==='radio'){
-      el.onchange=function(){ P.lines[i][f]=el.value; if(f==='ing'){var inv2=inventoryMap[el.value]||{};P.lines[i].recvUnit=inv2.unit||'';} if(f==='newUnit'){P.lines[i].recvUnit=el.value;} if(f==='mode'){P.lines[i].recvUnit='';} renderPurchases(); };
+    if(el.tagName==='SELECT'||el.type==='radio'||el.type==='checkbox'){
+      el.onchange=function(){ P.lines[i][f]=(el.type==='checkbox'?el.checked:el.value); if(f==='ing'){var inv2=inventoryMap[el.value]||{};P.lines[i].recvUnit=inv2.unit||'';P.lines[i].skuId='';} if(f==='newUnit'){P.lines[i].recvUnit=el.value;} if(f==='mode'){P.lines[i].recvUnit='';P.lines[i].skuId='';} renderPurchases(); };
     } else if(f==='qty'||f==='unitCost'||f==='lineTotal'){
       el.oninput=function(){P.lines[i][f]=el.value;purchUpdatePrev();};
     } else {
@@ -875,6 +901,7 @@ function renderPurchases(){
     }
   });
   root.querySelectorAll('[data-prem]').forEach(function(b){b.onclick=function(){var i=Number(b.getAttribute('data-prem'));P.lines.splice(i,1);if(!P.lines.length)P.lines.push(purchBlank());renderPurchases();};});
+  root.querySelectorAll('[data-pmanage-sku]').forEach(function(b){b.onclick=function(){openSkuManager(b.getAttribute('data-pmanage-sku'));};});
   var al=document.getElementById('purAddLine');if(al)al.onclick=function(){P.lines.push(purchBlank());renderPurchases();};
   var rs=document.getElementById('purReset');if(rs)rs.onclick=function(){if(confirm('Clear this purchase entry?')){window.__purch=null;renderPurchases();}};
   var pp=document.getElementById('purPost');if(pp)pp.onclick=postPurchases;
@@ -888,21 +915,26 @@ function postPurchases(){
   if(window.__purchPosting)return; var P=window.__purch; if(!P)return;
   var lines=P.lines.filter(function(ln){return (ln.mode==='new'?(ln.newName||'').trim():ln.ing)&&(Number(ln.qty)||0)>0;});
   if(!lines.length){alert('Add at least one line with an item and a quantity.');return;}
-  for(var i=0;i<lines.length;i++){var c0=purchCalc(lines[i]);if(!c0||!(c0.stockAdd>0)){alert('A line has an invalid quantity/unit — check the measures.');return;}}
+  for(var i=0;i<lines.length;i++){
+    var line=lines[i],c0=purchCalc(line);if(!c0||!(c0.stockAdd>0)){alert('A line has an invalid quantity/unit — check the measures.');return;}
+    if(line.mode==='new'&&(line.newType==='consumable'||line.recipeItem!==false)&&!(line.brand||'').trim()){alert('Enter the required SKU brand for new recipe item “'+((line.newName||'').trim()||'unnamed item')+'”.');return;}
+    if(line.mode!=='new'&&recipeUsesInventory(line.ing)){var validSku=inventorySkuMap[line.skuId];if(!validSku||validSku.masterId!==line.ing||validSku.active===false){alert('Select an active approved SKU for recipe item “'+((inventoryMap[line.ing]||{}).name||line.ing)+'” before receiving this purchase.');return;}}
+  }
   if(P.pay==='paid'){ if(!(window.__cf&&window.__cf.accounts&&window.__cf.accounts().length)){alert('No bank/e-wallet account. Add one in Cash Flow or choose another payment option.');return;} if(!P.acct){var a0=window.__cf.accounts();P.acct=a0[0]&&a0[0].id;} }
   if(P.pay==='account'&&!(window.__cf&&window.__cf.addPayable)){ alert('Payables module not ready — reopen the tab, or choose another payment option.'); return; }
   /* a "new" line whose name already exists (or repeats within this invoice) blends into that item — no duplicate SKU */
   var byName={}; ings().forEach(function(x){byName[uNorm(x.name)]=x.id;});
   window.__purchPosting=true;
   var a=A(); var invoiceId=P.invoiceId||(P.invoiceId=uid('pinv_')); var date=P.date||new Date().toISOString().slice(0,10);
-  var updates={}, seedUpdates={}, invTotal=0, receiptIds=[], agg={}, newByName={};
+  var updates={}, seedUpdates={}, invTotal=0, receiptIds=[], invoiceLines=[], agg={}, newByName={}, newSkuByKey={};
   lines.forEach(function(ln){
+    var requestedNew=ln.mode==='new';
     if(ln.mode==='new'){ var mt=byName[uNorm((ln.newName||'').trim())]; if(mt)ln=Object.assign({},ln,{mode:'existing',ing:mt}); }
     var c=purchCalc(ln); var ingId=ln.ing; var nm;
     if(ln.mode==='new'){
       var nk=uNorm((ln.newName||'').trim());
       if(newByName[nk]){ ingId=newByName[nk]; }
-      else { ingId=uid('ing_'); newByName[nk]=ingId; agg[ingId]={before:0,oldCost:0,stock:0,value:0,newItem:true,name:(ln.newName||'').trim(),unit:ln.newUnit||'',type:ln.newType||'base'}; }
+      else { ingId=uid('ing_'); newByName[nk]=ingId; agg[ingId]={before:0,oldCost:0,stock:0,value:0,newItem:true,recipeItem:(ln.newType==='consumable'||ln.recipeItem!==false),name:(ln.newName||'').trim(),unit:ln.newUnit||'',type:ln.newType||'base'}; }
       agg[ingId].stock+=c.stockAdd; agg[ingId].value+=c.lineTotal; nm=(ln.newName||'').trim();
     } else {
       var inv=inventoryMap[ingId]||{}; nm=inv.name||'';
@@ -911,17 +943,24 @@ function postPurchases(){
     }
     var rid=uid('rcpt_'); receiptIds.push(rid); invTotal+=c.lineTotal;
     var lineUnitCost=(c.stockAdd>0?Math.round((c.lineTotal/c.stockAdd)*100000)/100000:0);
-    updates['stockReceipts/'+rid]={ing:ingId,name:nm,unit:c.stockUnit,qty:c.stockAdd,recvQty:c.qty,recvUnit:c.recvUnit,unitCost:lineUnitCost,total:c.lineTotal,supplier:(P.supplier||'').trim(),brand:(ln.brand||'').trim(),ref:(P.ref||'').trim(),date:date,receivedBy:(P.by||'').trim(),payMode:P.pay,invoiceId:invoiceId,ts:Date.now()};
+    var selectedSku=inventorySkuMap[ln.skuId]&&inventorySkuMap[ln.skuId].masterId===ingId&&inventorySkuMap[ln.skuId].active!==false?inventorySkuMap[ln.skuId]:null;
+    var skuId=selectedSku?ln.skuId:'', skuBrand=selectedSku?(selectedSku.brand||''):(ln.brand||'').trim();
+    if(requestedNew&&!selectedSku&&skuBrand){selectedSku=activeSkusFor(ingId).filter(function(s){return uNorm(s.brand)===uNorm(skuBrand);})[0]||null;if(selectedSku)skuId=selectedSku.id;}
+    var needsNewSku=requestedNew&&(ln.newType==='consumable'||ln.recipeItem!==false)&&!skuId;
+    if(needsNewSku&&skuBrand){var skuKey=ingId+'::'+uNorm(skuBrand);skuId=newSkuByKey[skuKey]||uid('sku_');newSkuByKey[skuKey]=skuId;updates['inventorySku/'+skuId]={masterId:ingId,brand:skuBrand,supplier:(P.supplier||'').trim(),purchaseUnit:c.recvUnit,packSize:null,purchaseCost:null,convToBase:1,costPerBase:lineUnitCost,active:true,priority:activeSkusFor(ingId).length,branchAvail:['main'],seededFrom:'purchase',createdAt:Date.now(),updatedAt:Date.now()};}
+    if(requestedNew&&(ln.newType==='consumable'||ln.recipeItem!==false)&&inventoryMap[ingId])seedUpdates['inventory/'+ingId+'/recipeItem']=true;
+    updates['stockReceipts/'+rid]={ing:ingId,skuId:skuId,skuBrand:skuBrand,name:nm,unit:c.stockUnit,qty:c.stockAdd,recvQty:c.qty,recvUnit:c.recvUnit,unitCost:lineUnitCost,total:c.lineTotal,supplier:(P.supplier||'').trim(),brand:skuBrand,ref:(P.ref||'').trim(),date:date,receivedBy:(P.by||'').trim(),payMode:P.pay,invoiceId:invoiceId,ts:Date.now()};
     /* P2: a batch/lot per line for expiry + brand tracking (does NOT drive costing — WAC pool stays authoritative) */
-    var bid='bat_'+Date.now().toString(36)+'_'+receiptIds.length; updates['inventoryBatch/'+bid]={skuId:'',masterId:ingId,brand:(ln.brand||'').trim(),supplier:(P.supplier||'').trim(),qtyRecv:c.stockAdd,qtyRemaining:c.stockAdd,unit:c.stockUnit,unitCost:lineUnitCost,recvDate:date,expiry:(ln.expiry||''),lot:(ln.lot||''),branch:'main',source:'purchase',invoiceId:invoiceId,receiptId:rid,createdAt:Date.now()};
+    var bid='bat_'+Date.now().toString(36)+'_'+receiptIds.length; updates['inventoryBatch/'+bid]={skuId:skuId,masterId:ingId,brand:skuBrand,supplier:(P.supplier||'').trim(),qtyRecv:c.stockAdd,qtyRemaining:c.stockAdd,unit:c.stockUnit,unitCost:lineUnitCost,recvDate:date,expiry:(ln.expiry||''),lot:(ln.lot||''),branch:'main',source:'purchase',invoiceId:invoiceId,receiptId:rid,createdAt:Date.now()};
+    invoiceLines.push({receiptId:rid,itemId:ingId,itemName:nm,recipeItem:recipeUsesInventory(ingId)||(ln.newType==='consumable'||ln.recipeItem!==false),skuId:skuId,skuBrand:skuBrand,qty:c.stockAdd,unit:c.stockUnit,unitCost:lineUnitCost,total:c.lineTotal});
   });
   var movementRows=[];
   Object.keys(agg).forEach(function(id){ var g=agg[id];
-    if(g.newItem){ var ni={name:g.name,unit:g.unit,type:g.type,stock:0,cost:0,reorder:0,updatedAt:Date.now()}; if(g.type==='consumable'){ni.serves='both';ni.size='';ni.qtyPerOrder=1;} seedUpdates['inventory/'+id]=ni; }
+    if(g.newItem){ var ni={name:g.name,unit:g.unit,type:g.type,recipeItem:g.recipeItem===true,stock:0,cost:0,reorder:0,updatedAt:Date.now()}; if(g.type==='consumable'){ni.serves='both';ni.size='';ni.qtyPerOrder=1;} seedUpdates['inventory/'+id]=ni; }
     movementRows.push({movementId:movementId('purchase',invoiceId,id),itemId:id,type:'purchase',qty:Math.round(g.stock*1000000)/1000000,unitCost:g.stock>0?Math.round((g.value/g.stock)*1000000)/1000000:0,sourceType:'purchase-invoice',sourceId:invoiceId,note:(P.supplier||'Supplier')+((P.ref||'')?' · '+P.ref:''),actorName:(P.by||'').trim()||'Admin',occurredAt:Date.now()});
   });
   invTotal=Math.round(invTotal*100)/100;
-  updates['purchaseInvoices/'+invoiceId]={supplier:(P.supplier||'').trim(),ref:(P.ref||'').trim(),date:date,by:(P.by||'').trim(),payMode:P.pay,accountId:(P.pay==='paid'?P.acct:''),payableId:'',total:invTotal,lineCount:lines.length,receiptIds:receiptIds,movementIds:movementRows.map(function(x){return x.movementId;}),ts:Date.now()};
+  updates['purchaseInvoices/'+invoiceId]={supplier:(P.supplier||'').trim(),ref:(P.ref||'').trim(),date:date,by:(P.by||'').trim(),payMode:P.pay,accountId:(P.pay==='paid'?P.acct:''),payableId:'',total:invTotal,lineCount:lines.length,lines:invoiceLines,receiptIds:receiptIds,movementIds:movementRows.map(function(x){return x.movementId;}),ts:Date.now()};
   /* New item shells must exist before the server can post their first movement. Movement IDs make retries safe. */
   Promise.resolve(Object.keys(seedUpdates).length?a.update(a.ref(a.db),seedUpdates):null).then(function(){return postMovements(movementRows);}).then(function(){return a.update(a.ref(a.db),updates);}).then(function(){
     if(P.pay==='paid'&&window.__cf&&window.__cf.postOut)return window.__cf.postOut({commandId:'purchase_cash_'+invoiceId,date:date,accountId:P.acct,amount:invTotal,party:(P.supplier||'').trim()||'Supplier',ref:(P.ref||'').trim()||invoiceId,category:'Purchases',source:'purchase',linkId:invoiceId,note:lines.length+' item(s) received'});
