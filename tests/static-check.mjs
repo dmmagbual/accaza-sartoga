@@ -253,7 +253,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!operationsSource.includes("clientTelemetryDaily/'+day")||!operationsSource.includes('Last 30 days')||!operationsSource.includes('not percentile measurements'))fail('Phase 6C bounded telemetry dashboard or honest metric disclosure is incomplete');
   if(!operationsSource.includes('View system health')||!operationsSource.includes('operationsSystemHealth')||!operationsSource.includes("scrollIntoView({behavior:'smooth'"))fail('Operations self-route does not move to System Health');
   for(const marker of ['pos_boot','cart_render','charge_to_durable','offline_flush','realtime_order_arrival'])if(!operationsSource.includes(marker))fail(`Phase 6C performance threshold missing: ${marker}`);
-  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v73'"))fail('Phase 6C/7H dashboard is not in the coordinated offline cache');
+  if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes("const CACHE='accaza-v74'"))fail('Phase 6C/7H dashboard is not in the coordinated offline cache');
 
   const orderAdminSource=fs.readFileSync(path.join(root,'assets','js','admin','admin-orders.mjs'),'utf8');
   const orderStatusSource=fs.readFileSync(path.join(root,'functions','lib','order-status.js'),'utf8');
@@ -291,9 +291,12 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   for(const marker of ['--bo-walnut','#adminWorkspaceHeader:before','.pz-tbl th','.badge-pending','prefers-reduced-motion'])if(!backofficeCss.includes(marker))fail(`Phase 7F visual-system marker missing: ${marker}`);
   for(const marker of ['.order-card-actions','.order-payment-summary','.order-payment-state.pending'])if(!backofficeCss.includes(marker))fail(`Release 7G order-card containment marker missing: ${marker}`);
   if(!packagesSource.includes('class="pkg-recipe-list"')||!backofficeCss.includes('.pkg-recipe-list{display:flex;flex-wrap:wrap')||packagesSource.includes('max-height:120px;overflow:auto'))fail('Package recipe selector must show every recipe without a nested scrollbar');
-  for(const marker of ["subscribe('inventorySku'",'recipeUsesInventory','Recipe items without SKU','purchase-sku-cell','Select an active approved SKU','skuId:skuId','lines:invoiceLines'])if(!posSource.includes(marker))fail(`Release 7H SKU-link integrity marker missing: ${marker}`);
+  for(const marker of ["subscribe('inventorySku'",'recipeUsesInventory','Recipe items without approved brand','purchase-sku-cell','Select an active approved brand','skuId:skuId','lines:invoiceLines'])if(!posSource.includes(marker))fail(`Release 7H SKU/brand integrity marker missing: ${marker}`);
   if(!posSource.includes("recipeItem:true")||!posSource.includes('Used in recipes')||!posSource.includes("seededFrom:'purchase'"))fail('Release 7H new recipe-item SKU creation is incomplete');
   if(!backofficeCss.includes('.inv-sku-link.linked')||!backofficeCss.includes('.purchase-sku-cell.required'))fail('Release 7H SKU linkage states are not visibly distinguished');
+  for(const marker of ['SKU / stock item','✓ Recipe · SKU ready','Add brand','Brands (','History'])if(!posSource.includes(marker))fail(`Inventory SKU/brand language is incomplete: ${marker}`);
+  if(posSource.includes('Recipe · no SKU')||posSource.includes('Recipe items without SKU'))fail('Inventory still incorrectly describes its common stock items as missing SKUs');
+  if(!posSource.includes('class="inventory-actions-cell"><div class="inventory-actions">')||!backofficeCss.includes('grid-template-columns:72px 78px 112px 72px 58px 42px'))fail('Inventory actions do not use the fixed alignment grid');
   var skuRule=rulesRaw.slice(rulesRaw.indexOf('"inventorySku"'),rulesRaw.indexOf('"inventoryBatch"')),batchRule=rulesRaw.slice(rulesRaw.indexOf('"inventoryBatch"'),rulesRaw.indexOf('"purchaseInvoices"'));
   if((skuRule.match(/child\('purchases'\)/g)||[]).length<2||(batchRule.match(/child\('purchases'\)/g)||[]).length<2)fail('Release 7H purchasing permission is missing from inventorySku or inventoryBatch');
   if(!workspaceShellSource.includes('dataset.adminWorkspace')||!workspaceShellSource.includes('dataset.adminArea')||!workspaceShellSource.includes('operations:System health'))fail('Phase 7F domain ledger rail or System Health shortcut missing');

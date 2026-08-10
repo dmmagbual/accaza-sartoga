@@ -41,7 +41,7 @@ function ings(){return Object.keys(inventoryMap).map(function(k){return Object.a
 function activeSkusFor(masterId){return Object.keys(inventorySkuMap).map(function(k){return Object.assign({id:k},inventorySkuMap[k]);}).filter(function(s){return s.masterId===masterId&&s.active!==false;}).sort(function(a,b){return (Number(a.priority)||0)-(Number(b.priority)||0)||(a.brand||'').localeCompare(b.brand||'');});}
 function treeUsesIngredient(value,id){if(!value||typeof value!=='object')return false;if(value.ing===id)return true;if(Array.isArray(value))return value.some(function(x){return treeUsesIngredient(x,id);});return Object.keys(value).some(function(k){return treeUsesIngredient(value[k],id);});}
 function recipeUsesInventory(id){var item=inventoryMap[id]||{};return item.recipeItem===true||ingType(item)==='consumable'||treeUsesIngredient(recipesMap,id)||treeUsesIngredient(optRecipesMap,id)||treeUsesIngredient(optCostStore(),id);}
-function skuDisplay(s){return ((s&&s.brand)||'Unnamed SKU')+((s&&s.supplier)?' · '+s.supplier:'');}
+function skuDisplay(s){return ((s&&s.brand)||'Unnamed brand')+((s&&s.supplier)?' · '+s.supplier:'');}
 function ingName(id){var i=inventoryMap[id];return i?i.name:'(deleted)';}
 function ingUnit(id){var i=inventoryMap[id];return i?(i.unit||''):'';}
 function ingCost(id){var i=inventoryMap[id];return i?(Number(i.cost)||0):0;}
@@ -174,16 +174,16 @@ function renderInventory(){
   var ozItems=list.filter(function(i){var u=uNorm(i.unit);return !i.ledgerVersion&&(u==='oz'||u==='ounce');});
   seedInvCats(); var catList=invCats(); var catFilter=window.__invCatFilter||'';
   var uncat=list.filter(function(i){return !(i.category&&invCatsMap()[i.category]);});
-  var missingSku=list.filter(function(i){return recipeUsesInventory(i.id)&&!activeSkusFor(i.id).length;});
-  var shown=!catFilter?list:(catFilter==='__none__'?uncat:(catFilter==='__sku_missing__'?missingSku:list.filter(function(i){return (i.category||'')===catFilter;})));
+  var missingBrand=list.filter(function(i){return recipeUsesInventory(i.id)&&!activeSkusFor(i.id).length;});
+  var shown=!catFilter?list:(catFilter==='__none__'?uncat:(catFilter==='__brand_missing__'?missingBrand:list.filter(function(i){return (i.category||'')===catFilter;})));
   var unledgered=list.filter(function(i){return !i.ledgerVersion;});
   var movements=Object.keys(inventoryMovementsMap||{}).map(function(k){return Object.assign({id:k},inventoryMovementsMap[k]);}).sort(function(x,y){return (Number(y.occurredAt)||0)-(Number(x.occurredAt)||0);}).slice(0,100);
   var movementRows=movements.map(function(m){var q=Number(m.qty)||0;return '<tr><td>'+new Date(Number(m.occurredAt)||0).toLocaleString('en-PH')+'</td><td>'+esc(String(m.type||'').replace(/_/g,' '))+'</td><td>'+esc(m.itemName||m.itemId||'')+'</td><td class="r" style="color:'+(q<0?'#b44336':'#267354')+';">'+(q>0?'+':'')+num(q)+' '+esc(m.unit||'')+'</td><td class="r">'+num(m.balanceBefore)+' → <b>'+num(m.balanceAfter)+'</b></td><td class="r">'+peso(m.unitCost)+'</td><td>'+esc(m.sourceId||m.sourceType||'')+'</td><td>'+esc(m.actorName||'server')+'</td></tr>';}).join('');
   var rows=shown.map(function(i){
     var st=Number(i.stock)||0; var isLow=st<=Number(i.reorder||0)&&st>=0; var isNeg=st<0;
     var ty=ingType(i);
-    var recipeLinked=recipeUsesInventory(i.id), skuCount=activeSkusFor(i.id).length;
-    var linkBadge=recipeLinked?(skuCount?'<span class="inv-sku-link linked">✓ Recipe · '+skuCount+' SKU'+(skuCount===1?'':'s')+'</span>':'<span class="inv-sku-link missing">! Recipe · no SKU</span>'):'<span class="inv-sku-link neutral">Not in a recipe</span>';
+    var recipeLinked=recipeUsesInventory(i.id), brandCount=activeSkusFor(i.id).length;
+    var linkBadge=recipeLinked?(brandCount?'<span class="inv-sku-link linked">✓ Recipe · '+brandCount+' approved brand'+(brandCount===1?'':'s')+'</span>':'<span class="inv-sku-link pending" title="This stock item is the SKU. Add an approved purchasing brand before receiving it.">✓ Recipe · SKU ready</span>'):'<span class="inv-sku-link neutral">Not in a recipe</span>';
     var tyBadge=ty==='consumable'?('🧻 Consumable'+(i.serves&&i.serves!=='both'?' · '+esc(i.serves):'')+(i.size?' · '+esc(i.size):'')):(ty==='option'?'➕ Option':(ty==='both'?'🔀 Both':'🧪 Base'));
     return '<tr>'
       +'<td>'+esc(i.name)+'</td>'
@@ -193,18 +193,18 @@ function renderInventory(){
       +'<td>'+num(i.reorder||0)+'</td>'
       +'<td>'+(i.cost?peso(i.cost):'—')+'</td>'
       +'<td>'+linkBadge+'</td>'
-      +'<td style="white-space:nowrap;">'
-        +'<button class="pz-btn ok" style="padding:0.3rem 0.6rem;" data-inv-receive="'+i.id+'">+ Stock</button> '
-        +'<button class="pz-btn sec" style="padding:0.3rem 0.6rem;" data-inv-brands="'+i.id+'">🏷 Brands</button> '
-        +'<button class="pz-btn sec" style="padding:0.3rem 0.6rem;'+(recipeLinked&&!skuCount?'border-color:#b44336;color:#9f3028;':'border-color:#3a8a6a;color:#256b52;')+'" data-inv-skus="'+i.id+'">🔖 '+(recipeLinked&&!skuCount?'Add SKU':'SKUs')+'</button> '
-        +'<button class="pz-btn sec" style="padding:0.3rem 0.6rem;" data-inv-adjust="'+i.id+'">Adjust</button> '
-        +'<button class="pz-btn sec" style="padding:0.3rem 0.6rem;" data-inv-edit="'+i.id+'">Edit</button> '
-        +(i.ledgerVersion?'<span title="Ledger items cannot be deleted; preserve their audit trail." style="color:var(--tl);padding:0.3rem;">🔒</span>':'<button class="pz-btn warn" style="padding:0.3rem 0.55rem;" data-inv-del="'+i.id+'">✕</button>')
-      +'</td></tr>';
+      +'<td class="inventory-actions-cell"><div class="inventory-actions">'
+        +'<button class="pz-btn ok" data-inv-receive="'+i.id+'">+ Stock</button>'
+        +'<button class="pz-btn sec" data-inv-brands="'+i.id+'">History</button>'
+        +'<button class="pz-btn sec" style="'+(recipeLinked&&!brandCount?'border-color:#c98a2b;color:#8a5a00;':'border-color:#3a8a6a;color:#256b52;')+'" data-inv-skus="'+i.id+'">'+(recipeLinked&&!brandCount?'Add brand':'Brands ('+brandCount+')')+'</button>'
+        +'<button class="pz-btn sec" data-inv-adjust="'+i.id+'">Adjust</button>'
+        +'<button class="pz-btn sec" data-inv-edit="'+i.id+'">Edit</button>'
+        +(i.ledgerVersion?'<span class="inventory-delete-slot inventory-lock" title="Ledger items cannot be deleted; preserve their audit trail.">🔒</span>':'<button class="pz-btn warn inventory-delete-slot" data-inv-del="'+i.id+'" aria-label="Delete '+esc(i.name)+'">✕</button>')
+      +'</div></td></tr>';
   }).join('');
   root.innerHTML=
     '<div class="pz-h">📦 Inventory</div>'
-    +'<p class="pz-sub">Every item is tagged Base / Option / Consumable. Completed orders auto-deduct by recipe (base per size), selected options and category consumables. Stock may go negative — flagged 🔴 so you can count &amp; adjust; the variance posts to COGS.'+(low.length?' <b class="pz-low">'+low.length+' low.</b>':'')+(neg.length?' <b class="pz-low">'+neg.length+' negative.</b>':'')+(uncat.length?' <b style="color:#8a5a00;">'+uncat.length+' uncategorized.</b>':'')+(missingSku.length?' <b class="pz-low">'+missingSku.length+' recipe item'+(missingSku.length===1?'':'s')+' without an active SKU.</b>':'')+'</p>'
+    +'<p class="pz-sub">Each inventory row is the common SKU used by recipes. Approved brands are interchangeable purchasing options beneath that SKU. Completed orders deduct the common SKU while receipts retain the selected brand.'+(low.length?' <b class="pz-low">'+low.length+' low.</b>':'')+(neg.length?' <b class="pz-low">'+neg.length+' negative.</b>':'')+(uncat.length?' <b style="color:#8a5a00;">'+uncat.length+' uncategorized.</b>':'')+(missingBrand.length?' <b style="color:#8a5a00;">'+missingBrand.length+' recipe item'+(missingBrand.length===1?'':'s')+' without an approved purchasing brand.</b>':'')+'</p>'
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">'
       +'<button class="pz-btn sec" id="invExport">⬇ Export Excel</button>'
       +'<button class="pz-btn sec" id="invTemplate">⬇ Import template</button>'
@@ -212,11 +212,11 @@ function renderInventory(){
       +'<input type="file" id="invImportFile" accept=".xlsx,.xls,.csv" style="display:none;"/>'
       +(ozItems.length?'<button class="pz-btn sec" id="invFixOz" style="border-color:#e6a817;color:#8a5a00;">🔤 Convert '+ozItems.length+' oz → fl oz</button>':'')
       +'<button class="pz-btn sec" id="invCatMgr">🗂 Categories</button>'
-      +'<button class="pz-btn sec" id="invSkuSetup" style="border-color:#3a8a6a;color:#256b52;">🔀 SKU &amp; Batch setup</button>'
+      +'<button class="pz-btn sec" id="invSkuSetup" style="border-color:#3a8a6a;color:#256b52;">🔀 Brand &amp; Batch setup</button>'
       +'<button class="pz-btn sec" id="invExpiry" style="border-color:#c98a2b;color:#8a5a00;">📅 Expiry / batches</button>'
       +'<button class="pz-btn sec" id="invStdCost" style="border-color:#5a6fb0;color:#3a4a86;">📊 Standard costing</button>'
       +(unledgered.length?'<button class="pz-btn ok" id="invLedgerInit" style="border-color:#267354;">🧾 Initialize 3A ledger ('+unledgered.length+')</button>':'<span style="font-size:0.78rem;color:#267354;align-self:center;">✓ 3A ledger active</span>')
-      +'<select class="pz-in" id="invCatFilter" style="width:auto;"><option value="">All categories</option><option value="__sku_missing__"'+(catFilter==='__sku_missing__'?' selected':'')+'>Recipe items without SKU ('+missingSku.length+')</option><option value="__none__"'+(catFilter==='__none__'?' selected':'')+'>— Uncategorized ('+uncat.length+') —</option>'+catList.map(function(c){return '<option value="'+esc(c.id)+'"'+(catFilter===c.id?' selected':'')+'>'+esc(c.name)+(c.kind==='overhead'?' (overhead)':'')+'</option>';}).join('')+'</select>'
+      +'<select class="pz-in" id="invCatFilter" style="width:auto;"><option value="">All categories</option><option value="__brand_missing__"'+(catFilter==='__brand_missing__'?' selected':'')+'>Recipe items without approved brand ('+missingBrand.length+')</option><option value="__none__"'+(catFilter==='__none__'?' selected':'')+'>— Uncategorized ('+uncat.length+') —</option>'+catList.map(function(c){return '<option value="'+esc(c.id)+'"'+(catFilter===c.id?' selected':'')+'>'+esc(c.name)+(c.kind==='overhead'?' (overhead)':'')+'</option>';}).join('')+'</select>'
     +'</div>'
     +'<div class="pz-card" style="margin-bottom:1rem;">'
       +'<div style="font-weight:600;color:var(--bd);margin-bottom:0.6rem;font-size:0.9rem;">➕ Add item</div>'
@@ -236,7 +236,7 @@ function renderInventory(){
         +'<div><span class="pz-lbl">Qty per order</span><input class="pz-in" id="invQPO" type="number" step="any" value="1"/></div>'
       +'</div>'
     +'</div>'
-    +'<div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th>Type</th><th>Category</th><th>In stock</th><th>Reorder</th><th>Cost</th><th>Recipe / SKU</th><th>Actions</th></tr></thead><tbody>'
+    +'<div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl inventory-table"><thead><tr><th>SKU / stock item</th><th>Type</th><th>Category</th><th>In stock</th><th>Reorder</th><th>Cost</th><th>Recipe / brands</th><th>Actions</th></tr></thead><tbody>'
       +(rows||'<tr><td colspan="8" style="color:var(--tl);padding:1rem;">No items in this view.</td></tr>')
     +'</tbody></table></div></div>'
     +'<div class="pz-card" style="margin-top:1rem;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;"><div style="font-weight:600;color:var(--bd);">🧾 Inventory movement ledger</div><span style="font-size:0.74rem;color:var(--tl);">Latest '+movements.length+' loaded · immutable server record</span></div><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Date/time</th><th>Movement</th><th>Item</th><th class="r">Quantity</th><th class="r">Balance</th><th class="r">Unit cost</th><th>Source</th><th>Posted by</th></tr></thead><tbody>'+(movementRows||'<tr><td colspan="8" style="padding:0.7rem;color:var(--tl);">No ledger movements loaded yet. Initialize once to capture today’s stock and cost as opening balances.</td></tr>')+'</tbody></table></div></div>';
@@ -268,7 +268,7 @@ function renderInventory(){
 function openSkuBatchSetup(){
   var a=A();
   var mask=document.createElement('div'); mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
-  mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:900px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;"><div style="font-weight:700;color:var(--bd);">🔀 SKU &amp; Batch setup — Phase 0</div><p class="pz-sub">Reading your inventory and purchase receipts…</p></div>';
+  mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:900px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;"><div style="font-weight:700;color:var(--bd);">🔀 Brand &amp; Batch setup</div><p class="pz-sub">Reading your inventory and purchase receipts…</p></div>';
   document.body.appendChild(mask);
   function close(){ if(mask.parentNode)document.body.removeChild(mask); }
   Promise.all([a.get(a.ref(a.db,'stockReceipts')),a.get(a.ref(a.db,'inventorySku')),a.get(a.ref(a.db,'inventoryBatch'))]).then(function(res){
@@ -295,11 +295,11 @@ function openSkuBatchSetup(){
     }).join('');
     var allDone=(nItems===0);
     mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:900px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
-      +'<div style="display:flex;justify-content:space-between;align-items:center;"><div style="font-weight:700;color:var(--bd);">🔀 SKU &amp; Batch setup — Phase 0 (dry run)</div><button class="pz-btn sec" id="skuClose" style="padding:0.2rem 0.6rem;">✕</button></div>'
-      +'<p class="pz-sub" style="margin-top:0.3rem;">This promotes each item to an <b>Ingredient Master</b> (keeps its ID — your recipes are not touched), seeds an <b>Approved-SKU</b> record per brand found in your receipts, and creates one <b>opening batch</b> from current stock at weighted-average cost. Your deduction &amp; COGS stay exactly as they are. Nothing is written until you press Commit.</p>'
-      +'<div style="background:var(--cd);border-radius:6px;padding:0.5rem 0.7rem;margin:0.5rem 0;font-size:0.85rem;"><b>Preview:</b> '+nItems+' item(s) to set up · '+nSku+' SKU record(s) from brand history · '+nBatch+' opening batch(es)'+(nNeg?' · <span class="pz-low">'+nNeg+' with negative stock (opening batch skipped)</span>':'')+(allDone?' · <b style="color:#2a7;">everything already set up</b>':'')+'</div>'
-      +'<div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item (→ Master)</th><th>Base unit</th><th>WAC cost</th><th>Brands → SKUs</th><th>Opening batch</th><th>Status</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6" style="padding:1rem;color:var(--tl);">No inventory items yet.</td></tr>')+'</tbody></table></div>'
-      +'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.5rem;">Items with no brand in receipt history get no SKU yet — you add approved brands in the next step (P1). The opening batch is a blended-WAC balance, not tied to a brand (your pooled stock is already blended). Re-running this is safe: items already set up are skipped.</div>'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;"><div style="font-weight:700;color:var(--bd);">🔀 Brand &amp; Batch setup — preview</div><button class="pz-btn sec" id="skuClose" style="padding:0.2rem 0.6rem;">✕</button></div>'
+      +'<p class="pz-sub" style="margin-top:0.3rem;">Each inventory item remains the common SKU used by recipes. This creates an <b>approved brand option</b> from each brand found in purchase history and creates one <b>opening batch</b> from current stock at weighted-average cost. Recipes, deduction and COGS are unchanged. Nothing is written until you press Commit.</p>'
+      +'<div style="background:var(--cd);border-radius:6px;padding:0.5rem 0.7rem;margin:0.5rem 0;font-size:0.85rem;"><b>Preview:</b> '+nItems+' item(s) to set up · '+nSku+' approved brand record(s) from purchase history · '+nBatch+' opening batch(es)'+(nNeg?' · <span class="pz-low">'+nNeg+' with negative stock (opening batch skipped)</span>':'')+(allDone?' · <b style="color:#2a7;">everything already set up</b>':'')+'</div>'
+      +'<div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>SKU / stock item</th><th>Base unit</th><th>WAC cost</th><th>Approved brands</th><th>Opening batch</th><th>Status</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6" style="padding:1rem;color:var(--tl);">No inventory items yet.</td></tr>')+'</tbody></table></div>'
+      +'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.5rem;">Items with no brand in purchase history remain valid SKUs but need an approved brand before their next receipt. The opening batch is a blended-WAC balance, not tied to a brand. Re-running this is safe: items already set up are skipped.</div>'
       +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="skuCommit"'+(allDone?' disabled style="opacity:0.5;"':'')+'>✅ Commit '+nItems+' item(s)</button><button class="pz-btn sec" id="skuCancel">Cancel</button></div>'
       +'</div>';
     document.getElementById('skuClose').onclick=close;
@@ -318,7 +318,7 @@ function openSkuBatchSetup(){
         p.brs.forEach(function(bName,ix){ var sid='sku_'+now.toString(36)+'_'+(c++); updates['inventorySku/'+sid]={masterId:it.id,brand:bName,supplier:(brandsByItem[it.id][bName]||{}).supplier||'',purchaseUnit:it.unit||'',packSize:null,purchaseCost:null,convToBase:1,costPerBase:wac,active:true,priority:ix,branchAvail:['main'],seededFrom:'receipts',createdAt:now}; });
         if(p.willBatch){ var bid='bat_'+now.toString(36)+'_'+(c++); updates['inventoryBatch/'+bid]={skuId:'',masterId:it.id,brand:'(opening balance — blended WAC)',qtyRecv:p.stock,qtyRemaining:p.stock,unitCost:wac,recvDate:today,expiry:'',lot:'OPENING',branch:'main',source:'opening',createdAt:now}; }
       });
-      a.update(a.ref(a.db),updates).then(function(){ close(); alert('Done. Set up '+nItems+' item(s), '+nSku+' SKU record(s), '+nBatch+' opening batch(es).\n\nRecipes, stock and costs are unchanged. Next: manage approved brands (Phase 1).'); if(isTab('inventory'))renderInventory(); }).catch(function(e){ commitBtn.disabled=false; commitBtn.textContent='✅ Commit '+nItems+' item(s)'; alert('Could not write: '+((e&&e.code)||e)+'.\n\nIf PERMISSION_DENIED — log in with your admin email and publish the updated database rules (inventorySku + inventoryBatch nodes).'); });
+      a.update(a.ref(a.db),updates).then(function(){ close(); alert('Done. Set up '+nItems+' item(s), '+nSku+' approved brand record(s), '+nBatch+' opening batch(es).\n\nRecipes, stock and costs are unchanged.'); if(isTab('inventory'))renderInventory(); }).catch(function(e){ commitBtn.disabled=false; commitBtn.textContent='✅ Commit '+nItems+' item(s)'; alert('Could not write: '+((e&&e.code)||e)+'.\n\nIf PERMISSION_DENIED — log in with your admin email and publish the updated database rules (inventorySku + inventoryBatch nodes).'); });
     };
   }).catch(function(e){ mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:520px;width:100%;padding:1.2rem;"><div style="font-weight:700;color:var(--bd);">Could not load</div><p class="pz-sub">'+esc((e&&e.code)||String(e))+'</p><button class="pz-btn sec" id="skuErrClose">Close</button></div>'; var b=document.getElementById('skuErrClose'); if(b)b.onclick=close; });
 }
@@ -337,7 +337,7 @@ function openSkuManager(id){
   var mask=document.createElement('div'); mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
   document.body.appendChild(mask);
   function close(){ if(mask.parentNode)document.body.removeChild(mask); }
-  function load(){ a.get(a.ref(a.db,'inventorySku')).then(function(s){ var all=s.val()||{}; var mine=Object.keys(all).map(function(k){return Object.assign({id:k},all[k]);}).filter(function(x){return x.masterId===id;}).sort(function(x,y){return (Number(x.priority)||0)-(Number(y.priority)||0);}); draw(mine); }).catch(function(e){ mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:520px;width:100%;padding:1.2rem;"><div style="font-weight:700;color:var(--bd);">Could not load SKUs</div><p class="pz-sub">'+esc((e&&e.code)||String(e))+'</p><button class="pz-btn sec" id="skErrX">Close</button></div>'; var b=document.getElementById('skErrX'); if(b)b.onclick=close; }); }
+  function load(){ a.get(a.ref(a.db,'inventorySku')).then(function(s){ var all=s.val()||{}; var mine=Object.keys(all).map(function(k){return Object.assign({id:k},all[k]);}).filter(function(x){return x.masterId===id;}).sort(function(x,y){return (Number(x.priority)||0)-(Number(y.priority)||0);}); draw(mine); }).catch(function(e){ mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:520px;width:100%;padding:1.2rem;"><div style="font-weight:700;color:var(--bd);">Could not load approved brands</div><p class="pz-sub">'+esc((e&&e.code)||String(e))+'</p><button class="pz-btn sec" id="skErrX">Close</button></div>'; var b=document.getElementById('skErrX'); if(b)b.onclick=close; }); }
   var unitOpts=compatUnits(item).map(function(u){return '<option value="'+esc(u)+'"'+(uNorm(u)===uNorm(item.unit)?' selected':'')+'>'+esc(u)+'</option>';}).join('');
   function draw(mine){
     var rows=mine.map(function(sk,ix){
@@ -355,8 +355,8 @@ function openSkuManager(id){
     }).join('');
     var e=editId?(mine.filter(function(x){return x.id===editId;})[0]||{}):{};
     mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:920px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
-      +'<div style="display:flex;justify-content:space-between;align-items:center;"><div style="font-weight:700;color:var(--bd);">🔖 Approved brands / SKUs — '+esc(item.name)+'</div><button class="pz-btn sec" id="skClose" style="padding:0.2rem 0.6rem;">✕</button></div>'
-      +'<p class="pz-sub" style="margin-top:0.3rem;">Base unit <b>'+esc(baseU)+'</b>. These are the brands allowed to fulfil this ingredient. Adding, deactivating, or reordering brands never touches a recipe — recipes just ask for “'+esc(item.name)+'”. Cost/base unit auto-computes from pack size and purchase cost.'+(item.skuMigrated?'':' <b style="color:#8a5a00;">Tip: run “🔀 SKU &amp; Batch setup” first to seed this item.</b>')+'</p>'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;"><div style="font-weight:700;color:var(--bd);">Approved brands — '+esc(item.name)+'</div><button class="pz-btn sec" id="skClose" style="padding:0.2rem 0.6rem;">✕</button></div>'
+      +'<p class="pz-sub" style="margin-top:0.3rem;"><b>'+esc(item.name)+'</b> is the common SKU used by recipes. These are the interchangeable brands allowed when purchasing it. Adding, deactivating, or reordering brands never changes a recipe. Cost per '+esc(baseU)+' is calculated from pack size and purchase cost.'+(item.skuMigrated?'':' <b style="color:#8a5a00;">Tip: run “Brand &amp; Batch setup” to seed brands from purchase history.</b>')+'</p>'
       +'<div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Rank</th><th>Brand</th><th>Supplier</th><th>Pack</th><th>Purchase ₱</th><th>Cost/base</th><th>Status</th><th>Actions</th></tr></thead><tbody>'+(rows||'<tr><td colspan="8" style="padding:0.8rem;color:var(--tl);">No approved brands yet — add one below.</td></tr>')+'</tbody></table></div>'
       +'<div class="pz-card" style="margin-top:0.8rem;">'
         +'<div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">'+(editId?'✏️ Edit brand':'➕ Add brand')+'</div>'
@@ -737,7 +737,7 @@ function importInventoryXlsx(file){
 function receiveStock(id){
   var i=inventoryMap[id]; if(!i)return;
   var recipeRequired=recipeUsesInventory(id), activeSkus=activeSkusFor(id);
-  if(recipeRequired&&!activeSkus.length){alert('“'+i.name+'” is used in a recipe and has no active approved SKU. Add one before receiving stock.');openSkuManager(id);return;}
+  if(recipeRequired&&!activeSkus.length){alert('“'+i.name+'” is a recipe SKU with no active approved brand. Add a brand before receiving stock.');openSkuManager(id);return;}
   var before=Number(i.stock)||0, oldCost=Number(i.cost)||0, unit=i.unit||'';
   var cf=window.__cf; var accs=(cf&&cf.accounts&&cf.accounts())||[];
   var accOpts=accs.map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.name)+' ('+peso(x.balance)+')</option>';}).join('');
@@ -748,7 +748,7 @@ function receiveStock(id){
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;"><div><span class="pz-lbl">Quantity received ('+esc(unit||'units')+')</span><input class="pz-in" id="rcQty" type="number" step="any" style="width:120px;"/></div><div><span class="pz-lbl">Unit cost ₱ (per '+esc(unit||'unit')+')</span><input class="pz-in" id="rcCost" type="number" step="any" value="'+(oldCost||'')+'" style="width:120px;"/></div></div>'
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div style="flex:1;min-width:140px;"><span class="pz-lbl">Supplier</span><input class="pz-in" id="rcSup" placeholder="supplier name"/></div><div><span class="pz-lbl">Invoice / ref</span><input class="pz-in" id="rcRef" style="width:130px;"/></div></div>'
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div><span class="pz-lbl">Date</span><input class="pz-in" id="rcDate" type="date" value="'+new Date().toISOString().slice(0,10)+'"/></div><div style="flex:1;min-width:140px;"><span class="pz-lbl">Received by</span><input class="pz-in" id="rcBy" value="'+esc((window.__posShift&&window.__posShift.staff)||'Admin')+'"/></div></div>'
-    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div class="purchase-sku-cell '+(recipeRequired?'required':'optional')+'" style="flex:1;min-width:180px;"><span class="pz-lbl">Approved SKU '+(recipeRequired?'<b>required</b>':'(optional)')+'</span><select class="pz-in" id="rcSku"><option value="">— '+(recipeRequired?'select SKU':'no SKU / legacy brand')+' —</option>'+activeSkus.map(function(s,ix){return '<option value="'+esc(s.id)+'"'+(recipeRequired&&activeSkus.length===1&&ix===0?' selected':'')+'>'+esc(skuDisplay(s))+'</option>';}).join('')+'</select></div><div style="flex:1;min-width:120px;"><span class="pz-lbl">Brand '+(recipeRequired?'from SKU':'(opt.)')+'</span><input class="pz-in" id="rcBrand" placeholder="e.g. Arla"'+(recipeRequired?' readonly':'')+'/></div><div><span class="pz-lbl">Expiry (opt.)</span><input class="pz-in" id="rcExpiry" type="date"/></div><div><span class="pz-lbl">Lot # (opt.)</span><input class="pz-in" id="rcLot" style="width:90px;"/></div></div>'
+    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div class="purchase-sku-cell '+(recipeRequired?'required':'optional')+'" style="flex:1;min-width:180px;"><span class="pz-lbl">Approved brand '+(recipeRequired?'<b>required</b>':'(optional)')+'</span><select class="pz-in" id="rcSku"><option value="">— '+(recipeRequired?'select brand':'no approved brand / legacy receipt')+' —</option>'+activeSkus.map(function(s,ix){return '<option value="'+esc(s.id)+'"'+(recipeRequired&&activeSkus.length===1&&ix===0?' selected':'')+'>'+esc(skuDisplay(s))+'</option>';}).join('')+'</select></div><div style="flex:1;min-width:120px;"><span class="pz-lbl">Brand</span><input class="pz-in" id="rcBrand" placeholder="e.g. Arla"'+(recipeRequired?' readonly':'')+'/></div><div><span class="pz-lbl">Expiry (opt.)</span><input class="pz-in" id="rcExpiry" type="date"/></div><div><span class="pz-lbl">Lot # (opt.)</span><input class="pz-in" id="rcLot" style="width:90px;"/></div></div>'
     +'<label style="display:block;font-size:0.85rem;margin-top:0.6rem;cursor:pointer;"><input type="checkbox" id="rcAvg" checked/> Update item cost to weighted average</label>'
     +'<div style="margin-top:0.6rem;border-top:1px solid var(--cd);padding-top:0.5rem;"><span class="pz-lbl">How was it paid?</span>'
       +'<label style="display:block;font-size:0.85rem;cursor:pointer;"><input type="radio" name="rcPay" value="none" checked/> Just receive (no money entry)</label>'
@@ -774,7 +774,7 @@ function receiveStock(id){
     var a=A(); var rid=pendingReceiptId||(pendingReceiptId=uid('rcpt_')); var payAcct='', payableId='';
     if(pay==='paid'){ var accEl=mask.querySelector('#rcAcct'); payAcct=accEl?accEl.value:''; if(!payAcct){alert('Pick an account.');return;} }
     var skuId=mask.querySelector('#rcSku').value||'', selectedSku=inventorySkuMap[skuId];
-    if(recipeRequired&&(!selectedSku||selectedSku.masterId!==id||selectedSku.active===false)){alert('Select an active approved SKU before receiving this recipe item.');return;}
+    if(recipeRequired&&(!selectedSku||selectedSku.masterId!==id||selectedSku.active===false)){alert('Select an active approved brand before receiving this recipe item.');return;}
     var brand=selectedSku?(selectedSku.brand||''):(mask.querySelector('#rcBrand').value||'').trim(); var expiry=mask.querySelector('#rcExpiry').value||''; var lot=(mask.querySelector('#rcLot').value||'').trim();
     var now=Date.now(), mid=movementId('purchase',rid,id);
     postMovements([{movementId:mid,itemId:id,type:'purchase',qty:q,unitCost:c,sourceType:'stock-receipt',sourceId:rid,note:(sup||'Supplier')+(ref?' · '+ref:''),actorName:by,occurredAt:now}]).then(function(){
@@ -816,7 +816,7 @@ function renderPurchases(){
   var cf=window.__cf; var accs=(cf&&cf.accounts&&cf.accounts())||[];
   var accOpts=accs.map(function(x){return '<option value="'+esc(x.id)+'"'+(P.acct===x.id?' selected':'')+'>'+esc(x.name)+' ('+peso(x.balance)+')</option>';}).join('');
   var invList=ings().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
-  function itemOpts(sel){return '<option value="">— pick item —</option>'+invList.map(function(i){var required=recipeUsesInventory(i.id),n=activeSkusFor(i.id).length;return '<option value="'+esc(i.id)+'"'+(i.id===sel?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+') · '+ingType(i)+(required?(n?' · SKU linked':' · SKU REQUIRED'):'')+'</option>';}).join('');}
+  function itemOpts(sel){return '<option value="">— pick item —</option>'+invList.map(function(i){var required=recipeUsesInventory(i.id),n=activeSkusFor(i.id).length;return '<option value="'+esc(i.id)+'"'+(i.id===sel?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+') · '+ingType(i)+(required?(n?' · '+n+' approved brand'+(n===1?'':'s'):' · BRAND REQUIRED'):'')+'</option>';}).join('');}
   function unitOpts(list,sel){return list.map(function(u){return '<option'+(uNorm(u)===uNorm(sel)?' selected':'')+'>'+esc(u)+'</option>';}).join('');}
   var invTotal=0;
   var lineHtml=P.lines.map(function(ln,i){
@@ -829,7 +829,7 @@ function renderPurchases(){
       typeCell='<div><span class="pz-lbl">Type</span><select class="pz-in" data-pf="newType" data-pi="'+i+'" style="width:110px;"><option value="base"'+(ln.newType==='base'?' selected':'')+'>base</option><option value="both"'+(ln.newType==='both'?' selected':'')+'>both</option><option value="option"'+(ln.newType==='option'?' selected':'')+'>option</option><option value="consumable"'+(ln.newType==='consumable'?' selected':'')+'>consumable</option></select></div>'
         +'<label class="purchase-recipe-toggle"><input type="checkbox" data-pf="recipeItem" data-pi="'+i+'"'+(newRecipeItem?' checked':'')+(ln.newType==='consumable'?' disabled title="Consumables are automatically used by recipes"':'')+'/> Used in recipes</label>';
       unitCell='<select class="pz-in" data-pf="newUnit" data-pi="'+i+'" style="width:74px;">'+unitOpts(PURCH_UNITS,ln.newUnit)+'</select>';
-      skuCell='<div class="purchase-sku-cell '+(newRecipeItem?'required':'optional')+'"><span class="pz-lbl">New SKU brand '+(newRecipeItem?'<b>required</b>':'(optional)')+'</span><input class="pz-in" data-pf="brand" data-pi="'+i+'" value="'+esc(ln.brand)+'" placeholder="e.g. Arla Full Cream"/></div>';
+      skuCell='<div class="purchase-sku-cell '+(newRecipeItem?'required':'optional')+'"><span class="pz-lbl">First approved brand '+(newRecipeItem?'<b>required</b>':'(optional)')+'</span><input class="pz-in" data-pf="brand" data-pi="'+i+'" value="'+esc(ln.brand)+'" placeholder="e.g. Dabba"/></div>';
     } else {
       var inv=inventoryMap[ln.ing]||{};
       firstCell='<div style="flex:1;min-width:170px;"><span class="pz-lbl">Item</span><select class="pz-in" data-pf="ing" data-pi="'+i+'">'+itemOpts(ln.ing)+'</select></div>';
@@ -839,9 +839,9 @@ function renderPurchases(){
       if(ln.skuId&&!skus.some(function(s){return s.id===ln.skuId;}))ln.skuId='';
       if(required&&!ln.skuId&&skus.length===1)ln.skuId=skus[0].id;
       var selectedSku=ln.skuId&&inventorySkuMap[ln.skuId];
-      var skuOpts='<option value="">'+(required?'— select required SKU —':'— no SKU / legacy brand —')+'</option>'+skus.map(function(s){return '<option value="'+esc(s.id)+'"'+(s.id===ln.skuId?' selected':'')+'>'+esc(skuDisplay(s))+'</option>';}).join('');
-      skuCell='<div class="purchase-sku-cell '+(required?'required':'optional')+'"><span class="pz-lbl">Approved SKU '+(required?'<b>required</b>':'(optional)')+'</span><select class="pz-in" data-pf="skuId" data-pi="'+i+'"'+(!ln.ing?' disabled':'')+'>'+skuOpts+'</select>'+(required&&!skus.length?'<button type="button" class="purchase-add-sku" data-pmanage-sku="'+esc(ln.ing)+'">Add an approved SKU</button>':'')+'</div>';
-      brandCell=selectedSku?'<div><span class="pz-lbl">Brand from SKU</span><div class="purchase-sku-brand">'+esc(selectedSku.brand||'—')+'</div></div>':'<div><span class="pz-lbl">Brand</span><input class="pz-in" data-pf="brand" data-pi="'+i+'" value="'+esc(ln.brand)+'" placeholder="optional" style="width:110px;"/></div>';
+      var skuOpts='<option value="">'+(required?'— select required brand —':'— no approved brand / legacy receipt —')+'</option>'+skus.map(function(s){return '<option value="'+esc(s.id)+'"'+(s.id===ln.skuId?' selected':'')+'>'+esc(skuDisplay(s))+'</option>';}).join('');
+      skuCell='<div class="purchase-sku-cell '+(required?'required':'optional')+'"><span class="pz-lbl">Approved brand '+(required?'<b>required</b>':'(optional)')+'</span><select class="pz-in" data-pf="skuId" data-pi="'+i+'"'+(!ln.ing?' disabled':'')+'>'+skuOpts+'</select>'+(required&&!skus.length?'<button type="button" class="purchase-add-sku" data-pmanage-sku="'+esc(ln.ing)+'">Add an approved brand</button>':'')+'</div>';
+      brandCell=selectedSku?'<div><span class="pz-lbl">Selected brand</span><div class="purchase-sku-brand">'+esc(selectedSku.brand||'—')+'</div></div>':'<div><span class="pz-lbl">Legacy brand note</span><input class="pz-in" data-pf="brand" data-pi="'+i+'" value="'+esc(ln.brand)+'" placeholder="optional" style="width:110px;"/></div>';
     }
     var costInput=(ln.costMode==='total'
       ?'<input class="pz-in" type="number" step="any" data-pf="lineTotal" data-pi="'+i+'" value="'+(ln.lineTotal!==''&&ln.lineTotal!=null?ln.lineTotal:'')+'" placeholder="line ₱" style="width:88px;text-align:right;"/>'
@@ -873,7 +873,7 @@ function renderPurchases(){
       +'<label style="font-size:0.85rem;cursor:pointer;white-space:nowrap;"><input type="radio" name="ppay" data-pf="pay" value="account"'+(P.pay==='account'?' checked':'')+'/> On account, due <input class="pz-in" id="purDue" type="date" value="'+esc(P.due||'')+'" style="width:auto;display:inline-block;"/></label>'
     +'</div></div>';
   root.innerHTML='<div class="pz-h">📥 Purchases (Goods Received)</div>'
-    +'<p class="pz-sub">Record a supplier delivery. Recipe items are detected automatically and must use an active approved SKU; new recipe items create their first SKU from the brand entered here. The receipt and batch retain that exact SKU while recipes continue costing against the generic inventory item’s blended average.</p>'
+    +'<p class="pz-sub">Record a supplier delivery. Each inventory item is the common SKU used by recipes. For recipe items, select the approved brand actually received; new stock items create their first approved brand from the name entered here. Receipts retain the brand while recipe deduction and weighted-average costing remain pooled under the common SKU.</p>'
     +'<div class="pz-card" style="margin-bottom:1rem;"><div style="display:flex;gap:0.5rem;flex-wrap:wrap;">'
       +'<div style="flex:1;min-width:150px;"><span class="pz-lbl">Supplier</span><input class="pz-in" id="purSupplier" value="'+esc(P.supplier)+'" placeholder="supplier name"/></div>'
       +'<div><span class="pz-lbl">Invoice / ref</span><input class="pz-in" id="purRef" value="'+esc(P.ref)+'" style="width:130px;"/></div>'
@@ -917,8 +917,8 @@ function postPurchases(){
   if(!lines.length){alert('Add at least one line with an item and a quantity.');return;}
   for(var i=0;i<lines.length;i++){
     var line=lines[i],c0=purchCalc(line);if(!c0||!(c0.stockAdd>0)){alert('A line has an invalid quantity/unit — check the measures.');return;}
-    if(line.mode==='new'&&(line.newType==='consumable'||line.recipeItem!==false)&&!(line.brand||'').trim()){alert('Enter the required SKU brand for new recipe item “'+((line.newName||'').trim()||'unnamed item')+'”.');return;}
-    if(line.mode!=='new'&&recipeUsesInventory(line.ing)){var validSku=inventorySkuMap[line.skuId];if(!validSku||validSku.masterId!==line.ing||validSku.active===false){alert('Select an active approved SKU for recipe item “'+((inventoryMap[line.ing]||{}).name||line.ing)+'” before receiving this purchase.');return;}}
+    if(line.mode==='new'&&(line.newType==='consumable'||line.recipeItem!==false)&&!(line.brand||'').trim()){alert('Enter the first approved brand for new recipe item “'+((line.newName||'').trim()||'unnamed item')+'”.');return;}
+    if(line.mode!=='new'&&recipeUsesInventory(line.ing)){var validSku=inventorySkuMap[line.skuId];if(!validSku||validSku.masterId!==line.ing||validSku.active===false){alert('Select an active approved brand for recipe item “'+((inventoryMap[line.ing]||{}).name||line.ing)+'” before receiving this purchase.');return;}}
   }
   if(P.pay==='paid'){ if(!(window.__cf&&window.__cf.accounts&&window.__cf.accounts().length)){alert('No bank/e-wallet account. Add one in Cash Flow or choose another payment option.');return;} if(!P.acct){var a0=window.__cf.accounts();P.acct=a0[0]&&a0[0].id;} }
   if(P.pay==='account'&&!(window.__cf&&window.__cf.addPayable)){ alert('Payables module not ready — reopen the tab, or choose another payment option.'); return; }
