@@ -130,6 +130,7 @@ let optionGroupsMap={},optSeedStarted=false,itemOptMigrated=false;
 let knownOrderIds=null,unseenOrders=0,orderChimeTimer=null,audioCtx=null;
 let orderType='pickup',paymentType='gcash',contactMethod='whatsapp',resContactMethod='whatsapp';
 let myOrderIds=JSON.parse(localStorage.getItem('accaza_my_orders')||'[]');
+let myReservationIds=JSON.parse(localStorage.getItem('accaza_my_reservations')||'[]');
 let adminLoggedIn=false,calBlocks={};
 let calYear,calMonth,selectedDate=null,selectedTime=null;
 let adminCalYear,adminCalMonth,adminSelectedDate=null;
@@ -384,7 +385,7 @@ function checkMyReadyOrders(){
   }catch(e){}
 }
 (function(){var un=function(){try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}document.removeEventListener('touchstart',un);document.removeEventListener('click',un);};document.addEventListener('touchstart',un,{passive:true});document.addEventListener('click',un);})();
-onValue(reservationsRef,snap=>{adminResMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderReservations();updateStats();renderCustomerCalendar();if(adminLoggedIn||staffLoggedIn)renderAdminCalendar();});
+onValue(reservationsRef,snap=>{adminResMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderReservations();updateStats();renderCustomerCalendar();renderMyReservations();if(adminLoggedIn||staffLoggedIn)renderAdminCalendar();});
 onValue(reviewsRef,snap=>{
   const saved=snap.val();
   if(saved){reviewsMap=saved;}
@@ -962,6 +963,19 @@ function renderCustomerOrders(){
 }
 
 // ── RESERVATIONS ──
+const resStatusConfig={Pending:{icon:'🟡',color:'#856404',bg:'#fef3cd',msg:'Your reservation request has been received and is awaiting confirmation from our staff.'},Accepted:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your reservation is confirmed! Our staff will reach out with the final details. See you soon! ☕'},Confirmed:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your reservation is confirmed! Our staff will reach out with the final details. See you soon! ☕'},Declined:{icon:'🔴',color:'#721c24',bg:'#f8d7da',msg:'Unfortunately we could not accommodate this reservation. Please contact us at 0927 692 4831 to discuss options.'},Completed:{icon:'✅',color:'#155724',bg:'#d4edda',msg:'Thank you for visiting Accaza Coffee House! We hope to see you again. ☕🐻'}};
+function renderMyReservations(){
+  var el=document.getElementById('myReservationsList');if(!el)return;
+  var mine=myReservationIds.map(function(id){return adminResMap[id];}).filter(function(r){return r&&r.status!=='Archived';}).sort(function(a,b){return(b.timestamp||0)-(a.timestamp||0);});
+  if(!mine.length){el.innerHTML='';return;}
+  el.innerHTML='<h3 style="font-family:\'Playfair Display\',serif;color:var(--cr);font-size:1.15rem;margin-bottom:0.85rem;text-align:center;">Your Reservation'+(mine.length>1?'s':'')+'</h3>'+mine.map(function(r){
+    var st=(r.status==='Confirmed')?'Accepted':(r.status||'Pending');var s=resStatusConfig[st]||resStatusConfig.Pending;var guests=Math.max(1,Math.min(50,parseInt(r.guests)||1));
+    return '<div style="background:#fff;border:2px solid #a8d5b5;border-radius:12px;overflow:hidden;margin-bottom:1rem;">'
+      +'<div style="background:var(--bd);padding:0.85rem 1.1rem;text-align:center;"><p style="font-size:0.7rem;color:rgba(224,212,198,0.6);text-transform:uppercase;letter-spacing:0.15em;">Reservation</p><p style="font-family:\'Playfair Display\',serif;font-size:1.3rem;color:#fff;font-weight:600;">#'+escHtml(r.id)+'</p><p style="font-size:0.75rem;color:#c9a36a;margin-top:0.2rem;">📅 '+escHtml(r.date)+' · '+escHtml(r.time)+' · '+guests+' guest'+(guests>1?'s':'')+'</p></div>'
+      +'<div style="padding:0.9rem 1.1rem;background:'+s.bg+';"><p style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.15em;color:'+s.color+';margin-bottom:0.4rem;font-weight:600;">Reservation Status</p><div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem;"><span style="font-size:1.2rem;">'+s.icon+'</span><span style="font-size:0.98rem;font-weight:700;color:'+s.color+';">'+escHtml(st)+'</span></div><p style="font-size:0.82rem;color:'+s.color+';line-height:1.5;">'+s.msg+'</p></div></div>';
+  }).join('')+'<p style="font-size:0.72rem;color:rgba(224,212,198,0.6);text-align:center;">🔥 Status updates automatically — no refresh needed!</p>';
+}
+window.renderMyReservations=renderMyReservations;
 function getConfirmedGuestsForDate(k){return Object.values(adminResMap).filter(r=>r.date===k&&(r.status==='Accepted'||r.status==='Confirmed')).reduce((s,r)=>s+(parseInt(r.guests)||0),0);}
 function getConfirmedSlotsForDate(k){const s=new Set();Object.values(adminResMap).filter(r=>r.date===k&&(r.status==='Accepted'||r.status==='Confirmed')).forEach(r=>s.add(r.time));return s;}
 function dateKey(y,m,d){return y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');}
@@ -1045,6 +1059,7 @@ window.submitReservation=async function(){
   const _rbtn=document.querySelector('.btn-reserve');_rbtn.disabled=true;_rbtn.style.opacity='0.5';_rbtn.textContent='⏳ Submitting…';
   try{
     await set(ref(db,'reservations/'+id),{id,name,phone,date:selectedDate,time:selectedTime,guests:document.getElementById('resGuests').value,occasion:document.getElementById('resOccasion').value,notes:document.getElementById('resNotes').value.trim(),contact:document.getElementById('resContact').value.trim(),contactMethod:resContactMethod,status:'Pending',timestamp:Date.now()});
+    if(myReservationIds.indexOf(id)<0)myReservationIds.push(id);try{localStorage.setItem('accaza_my_reservations',JSON.stringify(myReservationIds));}catch(e){}renderMyReservations();
     window._placingRes=false;_rbtn.textContent='✅ Request Sent!';
     document.getElementById('resConfirm').style.display='block';
     setTimeout(function(){document.getElementById('resConfirm').style.display='none';var rb=document.querySelector('.btn-reserve');rb.disabled=false;rb.style.opacity='1';rb.textContent='Submit Reservation Request';document.getElementById('resName').value='';document.getElementById('resPhone').value='';document.getElementById('resNotes').value='';document.getElementById('resContact').value='';selectedDate=null;selectedTime=null;document.getElementById('resFormWrap').style.display='none';document.getElementById('timeSlotsWrap').style.display='none';renderCustomerCalendar();},5000);
