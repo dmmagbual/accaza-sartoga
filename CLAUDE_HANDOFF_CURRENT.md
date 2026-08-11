@@ -10,7 +10,9 @@ This is the single current handoff document. Claude should inspect the actual wo
 
 ## Current Production Change Pending Deployment
 
-Danilo confirmed all releases through 5D are deployed and production-tested. Release 7B Functions are deployed; Release 7H is implemented and locally validated. Frontend is **`admin.html` v180**, customer v46, and service-worker cache v77. `CLAUDE_HANDOFF.md` and `release-manifest.json` are the authoritative continuation/status sources. Coordinated 7C–7H GitHub publication, Database query-index deployment, and production v180 smoke evidence remain pending.
+Danilo confirmed all releases through 5D are deployed and production-tested. Release 7B Functions are deployed; Release 7H is implemented and locally validated. Frontend is **`admin.html` v180**, customer v46, and service-worker cache **v78** (bumped from v77 for the Release 7I web-push feature). `CLAUDE_HANDOFF.md` and `release-manifest.json` are the authoritative continuation/status sources. Coordinated 7C–7I GitHub publication, Database query-index deployment, and production v180 smoke evidence remain pending.
+
+**Release 7I — web-push (FCM), pending deployment (added 10 Aug 2026).** An external ChatGPT session added FCM order-ready push notifications; this workspace then reviewed and corrected them. See `RELEASE_7I_PUSH_NOTIFICATION_REVIEW_2026-08-10.md`. Server trigger `notifyOnComplete` fires on `/orders/{id}/status` → `"Ready"`, is idempotent (`pushNotified` guard), and self-heals dead tokens. Fixes applied here: `assets/js/admin/core.mjs` now imports `app` (was undefined, silently throwing) and keys the token by `auth.currentUser.uid` (was phone digits, which the DB rules reject); `notifyOnComplete` added to `release-manifest.json` `requiredFunctionExports`. Coordinated deploy set: `sw.js`, `admin.html`, `index.html`, `assets/js/admin/core.mjs`, `assets/js/customer/core.mjs`, `functions/index.js`, `release-manifest.json`. Still to verify: `npm run test:rules` (needs emulator) and that the POS "mark ready" action writes `"Ready"`. This workspace is now a Git repository (baseline + 7I fix committed).
 
 The prior v157 login/startup incident was fixed and tested in the later coordinated releases. Do not publish individual modules from an older release over the current coordinated set.
 
@@ -56,12 +58,13 @@ Next deploy Release 7G: publish the coordinated v173/cache-v62 files, wait for C
 
 ## Current Builds
 
-- `admin.html`: **v180 Release 7H deployment pending**. Hash must be recaptured after final packaging.
+- `admin.html`: **v181 (Release 7M — staff web-push alerts)**. Prior v180 = Release 7H. Marker `build&nbsp;v181` must match `release-manifest.json` builds.admin. Manifest `release` is now `7M` (tests/release-readiness-check.mjs pins this — advance both together).
 - `index.html`: **v46**, modular customer scripts, App Check, shared install UX, and repaired reservation slot selection. Hash must be recaptured after final packaging.
-- `sw.js`: **cache v77**, including Release 7H and all earlier PWA assets. Hash must be recaptured after final packaging.
+- `sw.js`: **cache v78**, including Release 7I web-push (FCM background handler), Release 7H, and all earlier PWA assets. SHA-256 `EB50268403A27A2302EDFBE71C9F4005C76A3F0D044C8FB16FE239C65C9AB1F1`.
 - `assets/js/admin/` and `assets/js/customer/`: **mandatory Release 2D publish directories**. Do not publish only the HTML files.
 - Cloud Functions: Node.js 22, region `asia-southeast1`.
-- `assets/js/admin/core.mjs`: SHA-256 `C6488B1E9F589746EB75F6AECADF85C523AD3EF728E99E6FE3B8F10BCA04BB02`.
+- `assets/js/admin/core.mjs`: **124,983 bytes; SHA-256 `987ED6C035238A9882AF4E1E9D20135F5590828489A73945D8CD8B989CD4FED1`** (Release 7I: imports `app`; push token keyed by `auth.currentUser.uid`. Release 7K: passes `playChime` to the reservation manager for staff new-reservation alerts). Under the 125 KB Phase-4C guard. Prior hashes: 7I `A7040B48F8C213AC6387B57123CF11FF43396ECC5AEF25FA8AC8EBE39FCFB1A1`, 7H `C6488B1E9F589746EB75F6AECADF85C523AD3EF728E99E6FE3B8F10BCA04BB02`.
+- `assets/js/admin/reservations.mjs`: **Release 7K staff new-reservation chime + toast** (detects fresh Pending reservations while a staff/admin portal is active, plays the shared chime up to 3×). SHA-256 `52623509F6415ABE284F82F8FBA3ECAA26F3C7B70571D308860CD6B51C3A529C`.
 - Release 4C modules: `app-customer-session.mjs` and `customer-order-tracker.mjs`. Both are mandatory with v159.
 - Release 4A modules: `firebase-client.mjs`, `realtime-hub.mjs`, `history-pager.mjs`, `manager-approval.mjs`, `portal-auth.mjs`, `admin-orders.mjs`, `customer-registry.mjs`, and `shared-ui.mjs`. All are mandatory with v157.
 - `assets/js/admin/module-loader.js`: SHA-256 `05DC6451A33C52E283EACE31A09916EE70FFCEAD6EFC955AA308E28ADBA914D4`.
@@ -77,8 +80,8 @@ Next deploy Release 7G: publish the coordinated v173/cache-v62 files, wait for C
 - `assets/js/admin/form-dialog.js`: Release 5D validated form service; SHA-256 `F9E3CDEA5B76BAF5EFFB75D6A899ADC0DC2D64517BEACF88308E2791383E2F13`.
 - `assets/js/admin/finance.js`: SHA-256 `E5B5EEBDEE0B1E85D0BC3AE9D9BE280BF4095357C39521FFD0F78F0ACD82817D`.
 - `assets/js/admin/analytics.js`: SHA-256 `E6202C01F2318FA3129FAAAF8DE0A4DFB1215788BFD7B27D4EA1EF64FC91866C`.
-- `functions/index.js`: Release 7A order-status command plus prior Functions; SHA-256 `E0416D520BAA578FE8914DC90A17E9165C2B0A8C31B8FB568BAE98C42F286A7B`.
-- `functions/lib/order-status.js`: Release 7A transition/idempotency engine; SHA-256 `7B4390369E228EB7A5AE6F4E2453F94201575C4257D028997B2EB68646271E52`.
+- `functions/index.js`: **124,963-era build with Release 7I `notifyOnComplete` web-push trigger** plus Release 7A order-status command and prior Functions; SHA-256 `D2BB5D44B6C6DC6D8750033322AB5F78BBD755D6E2B2621B2812EB8CF6211F5B`. Prior 7A hash was `E0416D520BAA578FE8914DC90A17E9165C2B0A8C31B8FB568BAE98C42F286A7B`.
+- `functions/lib/order-status.js`: Release 7A transition/idempotency engine **+ Release 7J cold-cache fix** — replaces the `/orders` transaction with `get()` + atomic multi-path `update()` so a cold Admin SDK null first-pass no longer false-negatives as "Order not found" (verified in production via Cloud Logging + Network payload). SHA-256 `BC268896619A42942E9EA9D27BE283760D524B26A9F7EC4167615ABFC6BDC5E1`. Prior 7A hash was `7B4390369E228EB7A5AE6F4E2453F94201575C4257D028997B2EB68646271E52`. See `RELEASE_7J_ORDER_STATUS_COLDCACHE_FIX_2026-08-10.md`.
 - `functions/lib/offline-sync.js`: production offline idempotency/recovery engine; SHA-256 `B33733F3A8C3D0C4A1D2360A5AA25C9969ED6BF2C87B4AFF01F7EC52C79647B2`.
 - `functions/lib/financial.js`: SHA-256 `F67488B9BE91A30FF9AF13BFB7585DAD9D5BFEEC46F23C8E4D6B594FCA526B5E`.
 - `functions/lib/costing.js`: SHA-256 `C5D34EBB0ECD205B901DE8A2CDC2FD0388C93447204131450E39831680F27ACC` (must match browser engine).
@@ -252,7 +255,7 @@ Performance targets from `ACCAZA_IMPROVEMENT_ROADMAP.md`:
 - Keep `ENFORCE_APP_CHECK` a real Boolean.
 - Do not enable database-wide App Check until admin initializes it and monitoring is clean.
 - Do not weaken Firebase rules merely to make a denied operation work.
-- Existing user changes and local files must be preserved; this folder is not currently a Git repository.
+- Existing user changes and local files must be preserved. This folder **is now a Git repository** (initialized 10 Aug 2026, baseline + 7I fix committed) but is **not yet connected to a GitHub remote**; do not force-push over the existing `dmmagbual/accaza-sartoga` history.
 
 ## Key Documents
 

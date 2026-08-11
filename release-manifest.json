@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "preparedAt": "2026-08-10",
-  "release": "7H",
+  "preparedAt": "2026-08-11",
+  "release": "7M",
   "status": "candidate_pending_production_verification",
   "project": {
     "name": "Accaza Coffee House",
@@ -12,7 +12,7 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 180,
+    "admin": 181,
     "customer": 46,
     "serviceWorkerCache": 78
   },
