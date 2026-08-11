@@ -958,10 +958,10 @@ function renderCustomerOrders(){
   }).join('')+'<p style="font-size:0.72rem;color:var(--tl);text-align:center;margin-top:0.25rem;">🔥 Your order status updates automatically — no refresh needed!</p>';
   el.querySelectorAll('.confirm-recv-btn').forEach(function(btn){
     btn.addEventListener('click',function(){
-      const oid=this.dataset.orderid;
-      document.getElementById('receivedOrderId').textContent=oid;
-      document.getElementById('confirmReceivedPopup').classList.add('show');
-      document.getElementById('confirmReceivedBtn').onclick=async function(){var b=this;b.disabled=true;b.textContent='Confirming…';try{await ensureCustomerAuth();await confirmOrderReceivedCall({orderId:oid});document.getElementById('confirmReceivedPopup').classList.remove('show');if(window.dismissReadyAlert)window.dismissReadyAlert();}catch(e){alert('Could not confirm receipt: '+((e&&e.message)||e));}finally{b.disabled=false;b.textContent='Yes, Received ✓';}};
+      const oid=this.dataset.orderid;var b=this;
+      if(!confirm('Confirm that you have received your order?'))return;
+      b.disabled=true;b.textContent='Confirming…';b.style.opacity='0.6';b.style.cursor='default';
+      (async function(){try{await ensureCustomerAuth();await confirmOrderReceivedCall({orderId:oid});if(window.dismissReadyAlert)window.dismissReadyAlert();/* order flips to Received -> renderCustomerOrders drops the card */}catch(e){b.disabled=false;b.textContent='✅ Yes, I Received My Order';b.style.opacity='1';b.style.cursor='pointer';alert('Could not confirm receipt: '+((e&&e.message)||e));}})();
     });
   });
 }
