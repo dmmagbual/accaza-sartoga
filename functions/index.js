@@ -5,7 +5,7 @@
  * Trigger: when an order's status changes to "Completed", send a Web Push
  * notification to the customer's installed app (pick-up or delivery message).
  */
-const {onValueUpdated, onValueWritten} = require("firebase-functions/v2/database");
+const {onValueUpdated, onValueWritten, onValueCreated} = require("firebase-functions/v2/database");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {initializeApp} = require("firebase-admin/app");
 const {getAuth: getAdminAuth} = require("firebase-admin/auth");
@@ -78,6 +78,55 @@ exports.notifyOnComplete = onValueUpdated(
       }
     }
   }
+);
+
+// ---------------------------------------------------------------------------
+// Staff web-push: alert all registered staff devices on new online orders and
+// new reservations, even when the admin app is closed. Tokens live under
+// /staffPushTokens/{uid}; dead tokens are pruned on send.
+// ---------------------------------------------------------------------------
+async function notifyStaff(db, title, body, link) {
+  const snap = await db.ref("/staffPushTokens").get();
+  const tokens = snap.val() || {};
+  const messaging = getMessaging();
+  await Promise.all(Object.keys(tokens).map(async (uid) => {
+    const token = tokens[uid] && tokens[uid].token;
+    if (!token) return;
+    try {
+      await messaging.send({
+        token,
+        data: {title, body, link: link || "/admin.html"},
+        webpush: {headers: {Urgency: "high"}, fcmOptions: {link: link || "/admin.html"}},
+      });
+    } catch (err) {
+      const code = err && err.code;
+      if (code === "messaging/registration-token-not-registered" || code === "messaging/invalid-argument") {
+        try { await db.ref("/staffPushTokens/" + uid).remove(); } catch (ignored) {}
+      }
+    }
+  }));
+}
+
+exports.notifyStaffOnOrder = onValueCreated(
+  {ref: "/orders/{orderId}", region: "asia-southeast1"},
+  async (event) => {
+    const o = event.data.val();
+    if (!o || o.source !== "online") return; // POS/platform sales are entered by staff already
+    const db = getDatabase();
+    const who = String(o.name || "A customer");
+    const items = String(o.items || "").slice(0, 80);
+    await notifyStaff(db, "🛎️ New online order", `${who} · PHP ${Number(o.total) || 0}${items ? " · " + items : ""}`, "/admin.html");
+  },
+);
+
+exports.notifyStaffOnReservation = onValueCreated(
+  {ref: "/reservations/{resId}", region: "asia-southeast1"},
+  async (event) => {
+    const r = event.data.val();
+    if (!r) return;
+    const db = getDatabase();
+    await notifyStaff(db, "📅 New reservation", `${String(r.name || "Guest")} · ${String(r.date || "")} ${String(r.time || "")} · ${r.guests || 1} guest(s)`, "/admin.html");
+  },
 );
 
 // ---------------------------------------------------------------------------
