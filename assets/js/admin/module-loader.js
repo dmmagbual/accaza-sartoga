@@ -5,10 +5,10 @@
   var routes={
     pos:['pos'],inventory:['pos'],purchases:['pos'],recipes:['pos'],usage:['pos'],channelpricing:['pos','channelpricing'],dedupe:['pos'],
     analytics:['pos','analytics'],pnl:['pos','analytics'],payouts:['pos','analytics'],stockvalue:['pos','analytics'],dailyreport:['pos','analytics'],
-    ops:['pos','register'],discrepancy:['pos','register'],petty:['pos','register'],packages:['pos','packages'],staffaccess:['staff'],
+    ops:['pos','register'],possettings:['pos','register'],discrepancy:['pos','register'],petty:['pos','register'],packages:['pos','packages'],staffaccess:['staff'],
     cashflow:['finance'],receivables:['finance'],payables:['finance'],operations:['operations']
   };
-  var roots={pos:'posRoot',inventory:'inventoryRoot',purchases:'purchasesRoot',recipes:'recipesRoot',usage:'usageRoot',channelpricing:'channelPricingRoot',dedupe:'dedupeRoot',analytics:'analyticsRoot',pnl:'pnlRoot',payouts:'payoutsRoot',stockvalue:'stockValueRoot',dailyreport:'dailyReportRoot',ops:'opsRoot',discrepancy:'discrepancyRoot',petty:'pettyRoot',packages:'packagesRoot',staffaccess:'staffAccessRoot',cashflow:'cashflowRoot',receivables:'receivablesRoot',payables:'payablesRoot',operations:'operationsRoot'};
+  var roots={pos:'posRoot',inventory:'inventoryRoot',purchases:'purchasesRoot',recipes:'recipesRoot',usage:'usageRoot',channelpricing:'channelPricingRoot',dedupe:'dedupeRoot',analytics:'analyticsRoot',pnl:'pnlRoot',payouts:'payoutsRoot',stockvalue:'stockValueRoot',dailyreport:'dailyReportRoot',ops:'opsRoot',possettings:'posSettingsRoot',discrepancy:'discrepancyRoot',petty:'pettyRoot',packages:'packagesRoot',staffaccess:'staffAccessRoot',cashflow:'cashflowRoot',receivables:'receivablesRoot',payables:'payablesRoot',operations:'operationsRoot'};
   var promises={},handlers={},requestSerial=0;
 
   window.__accazaRegisterModule=function(name,handler){handlers[name]=handler;};

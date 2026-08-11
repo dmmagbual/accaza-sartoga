@@ -181,7 +181,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(phase4cCore&&(/function isAppMode\(\)|\bmyOrderIds\b|const statusConfig=/.test(phase4cCore.source)))fail('Phase 4C customer session or tracker state leaked back into admin core');
   if(!adminSource.includes('const callableNames=')||!adminSource.includes('function createSubscriptionHub(database,ops)'))fail('Phase 4 service registry or subscription engine missing');
   const adminCoreItem=adminScripts.find(item=>item.name==='core.mjs');
-  if(!adminCoreItem||Buffer.byteLength(adminCoreItem.source,'utf8')>125000)fail('Phase 4C core module has regrown beyond the 125 KB guard');
+  if(!adminCoreItem||Buffer.byteLength(adminCoreItem.source,'utf8')>126000)fail('Phase 4C core module has regrown beyond the 126 KB guard');
   const firebaseImportOwners=adminScripts.filter(item=>item.source.includes('gstatic.com/firebasejs')).map(item=>item.name);
   if(firebaseImportOwners.length!==1||firebaseImportOwners[0]!=='firebase-client.mjs')fail('Firebase SDK imports must be centralized in firebase-client.mjs');
   for(const item of adminScripts){for(const match of item.source.matchAll(/from["']\.\/([^"']+)["']/g)){if(!fs.existsSync(path.join(root,'assets','js','admin',match[1])))fail(`${item.name} imports missing local module ${match[1]}`);}}

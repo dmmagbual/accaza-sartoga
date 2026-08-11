@@ -13,7 +13,7 @@ function paysOf(o){return(o.payments&&o.payments.length)?o.payments:[{method:o.p
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
 function init(){
   var a=A();
-  a.subscribe('posStaff',function(s){staffList=s.val()||{};if(isTab('ops'))renderOps();});
+  a.subscribe('posStaff',function(s){staffList=s.val()||{};if(isTab('ops'))renderOps();if(isTab('possettings'))renderPosSettings();});
   a.subscribe('posActiveShift',function(s){activeShift=s.val()||null;window.__posShift=activeShift;if(window.__refreshWorkspaceStatus)window.__refreshWorkspaceStatus();if(window.__refreshOverviewCommand)window.__refreshOverviewCommand();if(window.__pos)window.__pos.render();if(isTab('ops'))renderOps();});
   a.subscribe('shifts',function(s){shiftsMap=s.val()||{};});
   a.subscribe('activityLog',function(s){activityMap=s.val()||{};if(isTab('ops'))renderOps();});
@@ -34,7 +34,7 @@ function verifyPayment(oid){
   var a=A();if(!a.processOrderAdjustment||!a.managerApproval){alert('3D approval service is not available. Refresh the portal.');return;}a.managerApproval('confirm_payment',oid,Number(o.total)||0,'Verify payment received').then(function(ap){return a.processOrderAdjustment({action:'confirm_payment',orderId:oid,approvalId:ap.approvalId});}).then(function(){if(window.__posLog)window.__posLog('verify-payment',oid,'₱'+(Number(o.total)||0).toLocaleString()+' · '+(o.payment||''));}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Payment confirmation failed: '+((e&&e.message)||e));});
 }
 window.__posVerify=function(oid){verifyPayment(oid);};
-window.__accazaRegisterModule('register',function(name){ if(name==='ops')renderOps(); if(name==='discrepancy')renderDiscrepancies(); if(name==='petty')renderPetty(); });
+window.__accazaRegisterModule('register',function(name){ if(name==='ops')renderOps(); if(name==='possettings')renderPosSettings(); if(name==='discrepancy')renderDiscrepancies(); if(name==='petty')renderPetty(); });
 
 function staffArr(){return Object.keys(staffList).map(function(k){return Object.assign({id:k},staffList[k]);}).sort(function(a,b){return(a.name||'').localeCompare(b.name||'');});}
 
@@ -371,16 +371,7 @@ function renderOps(){
   html+='<div class="az-sec">Recent sales — void / refund</div><div class="pz-card"><table class="pz-tbl"><thead><tr><th>Order</th><th>Time</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>'
     +(recent.length?recent.map(function(o){var st=o.voided?'<span style="color:#e63946;">VOID</span>':(Number(o.refundAmount)>0?'<span style="color:#e67e00;">Refunded '+peso(o.refundAmount)+'</span>':'OK');return '<tr><td>'+esc(o.id)+'<div style="font-size:0.7rem;color:var(--tl);">'+esc((o.staff||''))+'</div></td><td>'+esc(o.time||'')+'</td><td>'+peso(o.total)+'</td><td>'+st+'</td><td style="white-space:nowrap;">'+(o.voided?'':'<button class="pz-btn sec" style="padding:0.2rem 0.5rem;" data-refund="'+o.id+'">Refund</button> <button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-void="'+o.id+'">Void</button>')+'</td></tr>';}).join(''):'<tr><td colspan="5" class="az-note" style="padding:0.8rem;">'+(activeShift?'No sales in this shift yet.':'No open shift — a shift’s sales show here while it’s open and clear when it closes.')+'</td></tr>')
     +'</tbody></table></div>';
-  // STAFF & PINS
-  html+='<div class="az-sec">Staff &amp; PINs</div><div class="pz-card" style="margin-bottom:1rem;"><div style="display:grid;grid-template-columns:1.5fr 1fr 1fr auto;gap:0.5rem;align-items:end;">'
-    +'<div><span class="pz-lbl">Name</span><input class="pz-in" id="stName" placeholder="e.g. Maria"/></div>'
-    +'<div><span class="pz-lbl">4-digit PIN</span><input class="pz-in" id="stPin" inputmode="numeric" maxlength="6" placeholder="1234"/></div>'
-    +'<div><span class="pz-lbl">Role</span><select class="pz-in" id="stRole"><option value="cashier">Cashier</option><option value="manager">Manager</option></select></div>'
-    +'<button class="pz-btn" id="stAdd">Add</button></div>'
-    +'<table class="pz-tbl" style="margin-top:0.6rem;"><tbody>'+(staffArr().length?staffArr().map(function(s){return '<tr><td>'+esc(s.name)+'</td><td>'+esc(s.role||'cashier')+'</td><td style="color:var(--tl);">PIN ••••</td><td style="white-space:nowrap;"><button class="pz-btn sec" style="padding:0.2rem 0.5rem;" data-stpin="'+s.id+'">Change PIN</button> <button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-stdel="'+s.id+'">✕</button></td></tr>';}).join(''):'<tr><td class="az-note" style="padding:0.5rem;">No staff yet.</td></tr>')+'</tbody></table></div>';
-  // SETTINGS + ACTIVITY
-  var cr=(window.__accaza&&false);
-  html+='<div class="az-sec">Settings</div><div class="pz-card" style="margin-bottom:1rem;"><label style="font-size:0.85rem;cursor:pointer;display:block;"><input type="checkbox" id="opsRound"/> Round cash totals to the nearest peso</label><label style="font-size:0.85rem;cursor:pointer;display:block;margin-top:0.5rem;"><input type="checkbox" id="opsDenom"/> Track cash by denomination at checkout (running drawer + per-denomination shift reconciliation)</label><label style="font-size:0.85rem;cursor:pointer;display:block;margin-top:0.5rem;"><input type="checkbox" id="opsTotalOnly"/> Reconcile on total only at close (still count denominations to reach the total, but skip the per-denomination variance)</label><div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.6rem;"><span style="font-size:0.85rem;">Cash variance tolerance ₱</span><input class="pz-in" id="opsTolerance" type="number" step="any" style="width:90px;"/><span style="font-size:0.75rem;color:var(--tl);">a discrepancy is only logged when the total is off by more than this</span></div></div>'+'<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">💳 Payment methods</div><div id="payMethodsBox"></div></div>';
+  // (Staff & PINs, POS Settings, and Payment methods moved to the Settings ▸ POS Settings tab — see renderPosSettings)
   var acts=Object.keys(activityMap).map(function(k){return activityMap[k];}).sort(function(a,b){return(b.ts||0)-(a.ts||0);}).slice(0,20);
   html+='<div class="az-sec" style="display:flex;justify-content:space-between;align-items:center;">Activity log <button class="pz-btn sec" id="opsArchiveLog" style="padding:0.2rem 0.6rem;font-size:0.72rem;font-weight:400;">Archive entries &gt; 60 days</button></div><div class="pz-card"><table class="pz-tbl"><tbody>'
     +(acts.length?acts.map(function(x){return '<tr><td style="white-space:nowrap;color:var(--tl);font-size:0.75rem;">'+new Date(x.ts).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+'</td><td><b>'+esc(x.action)+'</b> '+esc(x.ref||'')+'</td><td>'+esc(x.detail||'')+'</td><td style="color:var(--tl);">'+esc(x.staff||'')+'</td></tr>';}).join(''):'<tr><td class="az-note" style="padding:0.5rem;">No activity yet.</td></tr>')
@@ -395,13 +386,28 @@ function renderOps(){
   var oCin=document.getElementById('opsCashIn');if(oCin)oCin.onclick=function(){cashMove('in');};
   var oRev=document.getElementById('opsReview');if(oRev)oRev.onclick=openShiftReview;
   var oSwap=document.getElementById('opsSwap');if(oSwap)oSwap.onclick=cashSwap;
-  document.getElementById('stAdd').onclick=addStaff;
-  root.querySelectorAll('[data-stpin]').forEach(function(b){b.onclick=function(){changeStaffPin(b.getAttribute('data-stpin'));};});
-  root.querySelectorAll('[data-stdel]').forEach(function(b){b.onclick=function(){if(confirm('Remove this staff?')){var a=A();a.remove(a.ref(a.db,'posStaff/'+b.getAttribute('data-stdel')));}};});
   root.querySelectorAll('[data-void]').forEach(function(b){b.onclick=function(){voidSale(b.getAttribute('data-void'));};});
   root.querySelectorAll('[data-refund]').forEach(function(b){b.onclick=function(){refundSale(b.getAttribute('data-refund'));};});
   root.querySelectorAll('[data-recall]').forEach(function(b){b.onclick=function(){var h=heldMap[b.getAttribute('data-recall')];if(h&&window.__pos){window.__pos.loadCart(h.cart);var a=A();a.remove(a.ref(a.db,'heldOrders/'+b.getAttribute('data-recall')));}};});
   root.querySelectorAll('[data-hdisc]').forEach(function(b){b.onclick=function(){if(confirm('Discard this held order?')){var a=A();a.remove(a.ref(a.db,'heldOrders/'+b.getAttribute('data-hdisc')));}};});
+}
+// POS Settings tab (Settings ▸ POS Settings): Staff & PINs, cash/reconciliation
+// settings, and payment methods — moved out of Register Operations.
+function renderPosSettings(){
+  var root=document.getElementById('posSettingsRoot');if(!root)return;
+  var html='';
+  html+='<div class="az-sec">Staff &amp; PINs</div><div class="pz-card" style="margin-bottom:1rem;"><div style="display:grid;grid-template-columns:1.5fr 1fr 1fr auto;gap:0.5rem;align-items:end;">'
+    +'<div><span class="pz-lbl">Name</span><input class="pz-in" id="stName" placeholder="e.g. Maria"/></div>'
+    +'<div><span class="pz-lbl">4-digit PIN</span><input class="pz-in" id="stPin" inputmode="numeric" maxlength="6" placeholder="1234"/></div>'
+    +'<div><span class="pz-lbl">Role</span><select class="pz-in" id="stRole"><option value="cashier">Cashier</option><option value="manager">Manager</option></select></div>'
+    +'<button class="pz-btn" id="stAdd">Add</button></div>'
+    +'<table class="pz-tbl" style="margin-top:0.6rem;"><tbody>'+(staffArr().length?staffArr().map(function(s){return '<tr><td>'+esc(s.name)+'</td><td>'+esc(s.role||'cashier')+'</td><td style="color:var(--tl);">PIN ••••</td><td style="white-space:nowrap;"><button class="pz-btn sec" style="padding:0.2rem 0.5rem;" data-stpin="'+s.id+'">Change PIN</button> <button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-stdel="'+s.id+'">✕</button></td></tr>';}).join(''):'<tr><td class="az-note" style="padding:0.5rem;">No staff yet.</td></tr>')+'</tbody></table></div>';
+  html+='<div class="az-sec">Settings</div><div class="pz-card" style="margin-bottom:1rem;"><label style="font-size:0.85rem;cursor:pointer;display:block;"><input type="checkbox" id="opsRound"/> Round cash totals to the nearest peso</label><label style="font-size:0.85rem;cursor:pointer;display:block;margin-top:0.5rem;"><input type="checkbox" id="opsDenom"/> Track cash by denomination at checkout (running drawer + per-denomination shift reconciliation)</label><label style="font-size:0.85rem;cursor:pointer;display:block;margin-top:0.5rem;"><input type="checkbox" id="opsTotalOnly"/> Reconcile on total only at close (still count denominations to reach the total, but skip the per-denomination variance)</label><div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.6rem;"><span style="font-size:0.85rem;">Cash variance tolerance ₱</span><input class="pz-in" id="opsTolerance" type="number" step="any" style="width:90px;"/><span style="font-size:0.75rem;color:var(--tl);">a discrepancy is only logged when the total is off by more than this</span></div></div>';
+  html+='<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">💳 Payment methods</div><div id="payMethodsBox"></div></div>';
+  root.innerHTML=html;
+  var sa=document.getElementById('stAdd');if(sa)sa.onclick=addStaff;
+  root.querySelectorAll('[data-stpin]').forEach(function(b){b.onclick=function(){changeStaffPin(b.getAttribute('data-stpin'));};});
+  root.querySelectorAll('[data-stdel]').forEach(function(b){b.onclick=function(){if(confirm('Remove this staff?')){var a=A();a.remove(a.ref(a.db,'posStaff/'+b.getAttribute('data-stdel')));}};});
   var rc=document.getElementById('opsRound');if(rc){var a=A();a.get(a.ref(a.db,'posSettings')).then(function(s){var v=s.val()||{};rc.checked=!!v.cashRounding;});rc.onchange=function(){var a=A();a.update(a.ref(a.db,'posSettings'),{cashRounding:rc.checked});};}
   var dt=document.getElementById('opsDenom');if(dt){var a2=A();a2.get(a2.ref(a2.db,'posSettings')).then(function(s){var v=s.val()||{};dt.checked=!!v.denomTracking;});dt.onchange=function(){var a=A();a.update(a.ref(a.db,'posSettings'),{denomTracking:dt.checked});};}
   var to=document.getElementById('opsTotalOnly');if(to){var a3=A();a3.get(a3.ref(a3.db,'posSettings')).then(function(s){var v=s.val()||{};to.checked=!!v.reconcileTotalOnly;});to.onchange=function(){var a=A();a.update(a.ref(a.db,'posSettings'),{reconcileTotalOnly:to.checked});};}

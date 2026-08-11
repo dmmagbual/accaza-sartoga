@@ -58,7 +58,7 @@ Next deploy Release 7G: publish the coordinated v173/cache-v62 files, wait for C
 
 ## Current Builds
 
-- `admin.html`: **v181 (Release 7M — staff web-push alerts)**. Prior v180 = Release 7H. Marker `build&nbsp;v181` must match `release-manifest.json` builds.admin. Manifest `release` is now `7M` (tests/release-readiness-check.mjs pins this — advance both together).
+- `admin.html`: **v182 (Release 7M line — staff web-push alerts + POS Settings tab)**. v181 = staff push; v180 = Release 7H. Marker `build&nbsp;v182` must match `release-manifest.json` builds.admin. Manifest `release` is `7M` (tests/release-readiness-check.mjs pins this — advance both together). **Note:** the Phase-4C core.mjs size guard (tests/static-check.mjs) was raised 125 KB → 126 KB to fit the POS Settings permission mapping; core.mjs is 125,013 bytes. New Settings ▸ POS Settings tab holds Staff & PINs, POS/cash Settings, and Payment methods (moved out of Register Operations); gated management-only via `_permTabMap` (`possettings` perm, undefined for staff = hidden).
 - `index.html`: **v46**, modular customer scripts, App Check, shared install UX, and repaired reservation slot selection. Hash must be recaptured after final packaging.
 - `sw.js`: **cache v78**, including Release 7I web-push (FCM background handler), Release 7H, and all earlier PWA assets. SHA-256 `EB50268403A27A2302EDFBE71C9F4005C76A3F0D044C8FB16FE239C65C9AB1F1`.
 - `assets/js/admin/` and `assets/js/customer/`: **mandatory Release 2D publish directories**. Do not publish only the HTML files.
