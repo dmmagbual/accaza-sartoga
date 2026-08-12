@@ -7,8 +7,6 @@
  */
 const {onValueUpdated, onValueWritten, onValueCreated} = require("firebase-functions/v2/database");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
-const {defineSecret} = require("firebase-functions/params");
-const nodemailer = require("nodemailer");
 const {initializeApp} = require("firebase-admin/app");
 const {getAuth: getAdminAuth} = require("firebase-admin/auth");
 const {getDatabase} = require("firebase-admin/database");
@@ -26,12 +24,6 @@ initializeApp();
 
 const SHOP_NAME = "Accaza Coffee House";
 const PICKUP_ADDR = "Saratoga Ave, La Mediterranea Subd., Governor's Drive, Dasmarinas";
-
-// Contact-form email delivery. The mailbox password is stored as a Firebase
-// secret (never in code): set it with `firebase functions:secrets:set SMTP_PASSWORD`.
-const CONTACT_MAILBOX = "admin@accazacoffee.com";
-const SMTP_HOST = "mail.privateemail.com";
-const SMTP_PASSWORD = defineSecret("SMTP_PASSWORD");
 
 // Order reference: PREFIX-XXXXXX (6 base36 chars from the timestamp). Online
 // orders use the "OD-" prefix; uniqueness is confirmed against /orders below.
@@ -138,35 +130,17 @@ exports.notifyStaffOnReservation = onValueCreated(
 );
 
 // Website contact form: on a new /feedbacks entry of type "Contact", alert staff
-// devices and email the message to the shop mailbox. The message is already
-// stored under /feedbacks (visible in the admin Contact Messages list); email is
-// a best-effort notification and never blocks or duplicates the stored record.
+// devices via push. The message itself is stored under /feedbacks and shown in the
+// admin "Contact Messages" list, so delivery never depends on email.
 exports.notifyOnContactMessage = onValueCreated(
-  {ref: "/feedbacks/{fbId}", region: "asia-southeast1", secrets: [SMTP_PASSWORD]},
+  {ref: "/feedbacks/{fbId}", region: "asia-southeast1"},
   async (event) => {
     const f = event.data.val();
     if (!f || f.type !== "Contact") return;
     const db = getDatabase();
     const who = String(f.name || "Someone");
     const contact = String(f.contact || "").slice(0, 120);
-    const message = String(f.message || "").slice(0, 800);
     await notifyStaff(db, "✉️ New website message", `${who}${contact ? " · " + contact : ""}`, "/admin.html");
-    const pass = SMTP_PASSWORD.value();
-    if (!pass) { logger.warn("SMTP_PASSWORD secret is not set; contact email skipped", {fbId: event.params.fbId}); return; }
-    try {
-      const transport = nodemailer.createTransport({host: SMTP_HOST, port: 465, secure: true, auth: {user: CONTACT_MAILBOX, pass}});
-      const replyTo = contact.indexOf("@") > 0 ? contact : undefined;
-      await transport.sendMail({
-        from: `"Accaza Website" <${CONTACT_MAILBOX}>`,
-        to: CONTACT_MAILBOX,
-        replyTo,
-        subject: `New website message from ${who}`,
-        text: `Name: ${who}\nContact: ${contact || "(not provided)"}\nReceived: ${String(f.date || "")}\n\n${message}\n\n— Sent automatically from the Accaza contact form`,
-      });
-      logger.info("Contact email sent", {fbId: event.params.fbId});
-    } catch (err) {
-      logger.error("Contact email failed (message is still saved in the admin panel)", {fbId: event.params.fbId, error: String(err)});
-    }
   },
 );
 

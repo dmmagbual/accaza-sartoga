@@ -92,7 +92,7 @@ window.__accaza={
 };
 
 let staffAccountsMap={},adminAccountsMap={},staffLoggedIn=false,superAdminLoggedIn=false,currentUser=null,currentLoginRole=null;
-const SUPER_ADMIN_USERNAME='superadmin',CAFE_PHONE='639276924831',CAFE_EMAIL='mariadaniela@gmail.com';
+const SUPER_ADMIN_USERNAME='superadmin',CAFE_PHONE='639276924831',CAFE_EMAIL='admin@accazacoffee.com';
 
 const DEFAULT_CATS=[
   {id:'coffee',label:'Coffee Based',icon:'☕',order:0},
