@@ -1182,7 +1182,7 @@ var _permAlwaysHide=["'payment'","'staffaccounts'","'adminaccounts'","'staffacce
 window.showAdminSection=function(id){
   var av=document.getElementById('availSection'),cm=document.getElementById('commentsSection');
   if(id==='availSection'){ if(cm)cm.style.display='none'; if(av)av.style.display='block'; if(typeof buildAvail==='function')buildAvail(); if(av)av.scrollIntoView({behavior:'smooth'}); }
-  else if(id==='commentsSection'){ if(av)av.style.display='none'; if(cm)cm.style.display='block'; if(typeof renderComments==='function')renderComments(); if(cm)cm.scrollIntoView({behavior:'smooth'}); }
+  else if(id==='commentsSection'){ if(av)av.style.display='none'; if(cm)cm.style.display='block'; subscriptionHub.activate('comments'); if(typeof renderComments==='function')renderComments(); if(cm)cm.scrollIntoView({behavior:'smooth'}); }
   else { if(av)av.style.display='none'; if(cm)cm.style.display='none'; window.scrollTo({top:0,behavior:'smooth'}); }
 };
 function applyStaffPerms(perms){
