@@ -771,7 +771,16 @@ function renderCustomerOrders(){return customerOrderTracker.render();}
 
 // ── RESERVATIONS ──
 // ── FEEDBACK ──
-window.submitContact=function(){if(!document.getElementById('conName').value.trim()||!document.getElementById('conMessage').value.trim()){alert('Please fill in name and message.');return;}document.getElementById('conConfirm').style.display='block';};
+window.submitContact=async function(){
+  const name=document.getElementById('conName').value.trim(),contact=document.getElementById('conContact').value.trim(),subject=document.getElementById('conSubject').value.trim(),message=document.getElementById('conMessage').value.trim();
+  if(!name||!message){alert('Please fill in name and message.');return;}
+  const body=(subject?('['+subject+'] '):'')+message;
+  if(body.length>800){alert('Message is too long (max 800 characters). Please shorten it.');return;}
+  try{await push(feedbacksRef,{name,contact,type:'Contact',message:body,status:'Unread',date:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()});
+    document.getElementById('conName').value='';document.getElementById('conContact').value='';document.getElementById('conSubject').value='';document.getElementById('conMessage').value='';
+    document.getElementById('conConfirm').style.display='block';setTimeout(function(){document.getElementById('conConfirm').style.display='none';},6000);
+  }catch(e){alert('Could not send your message: '+((e&&e.message)||e));}
+};
 window.updateFbCounter=function(){const len=document.getElementById('fbMessage').value.length;const c=document.getElementById('fbCounter');c.textContent=len+' / 800';c.style.color=len>=720?'#ff8080':len>=560?'#f39c12':'rgba(224,212,198,0.5)';};
 window.submitFeedback=async function(){
   const name=document.getElementById('fbName').value.trim(),message=document.getElementById('fbMessage').value.trim(),type=document.getElementById('fbType').value;
@@ -1080,9 +1089,9 @@ window.downloadArchivePDF=function(){
 
 // ── MISC ADMIN ──
 function renderComments(){
-  const types=['Complaint','Suggestion','Compliment','Other'];
-  const empty={Complaint:'No complaints yet. 🎉',Suggestion:'No suggestions yet.',Compliment:'No compliments yet.',Other:'No other feedback yet.'};
-  const color={Complaint:'#c0392b',Suggestion:'#f39c12',Compliment:'#2d9e5f',Other:'#888'};
+  const types=['Contact','Complaint','Suggestion','Compliment','Other'];
+  const empty={Contact:'No website messages yet.',Complaint:'No complaints yet. 🎉',Suggestion:'No suggestions yet.',Compliment:'No compliments yet.',Other:'No other feedback yet.'};
+  const color={Contact:'#2f6f8f',Complaint:'#c0392b',Suggestion:'#f39c12',Compliment:'#2d9e5f',Other:'#888'};
   types.forEach(function(type){
     const el=document.getElementById('fbList'+type);if(!el)return;
     const items=Object.entries(feedbacksMap).filter(function(e){return e[1].type===type;});

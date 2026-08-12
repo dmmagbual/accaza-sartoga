@@ -12,7 +12,7 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 183,
+    "admin": 184,
     "customer": 47,
     "serviceWorkerCache": 78
   },
@@ -74,7 +74,8 @@
     "manageOrderArchive",
     "reviewDiscrepancy",
     "managePettyVoucher",
-    "archiveActivityLog"
+    "archiveActivityLog",
+    "notifyOnContactMessage"
   ],
   "requiredProtectedNodes": [
     "activeOrders",
