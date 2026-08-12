@@ -6,9 +6,9 @@ var inventoryMap={}, inventorySkuMap={}, recipesMap={}, posMeta={vat:false,vatRa
 // monotonic counter guarantees uniqueness for rapid same-device sales offline.
 var _lastRefN=0;
 function _shortRef(){var n=Date.now();if(n<=_lastRefN)n=_lastRefN+1;_lastRefN=n;return (n%2176782336).toString(36).toUpperCase().padStart(6,'0');}
-function _orderRefPrefix(isPlat,platform){if(isPlat&&platform){if(platform.channel==='grabfood')return 'GF';if(platform.channel==='foodpanda')return 'FF';}return 'POS';}
+function _orderRefPrefix(isPlat,platform){if(isPlat&&platform){if(platform.channel==='grabfood')return 'GF';if(platform.channel==='foodpanda')return 'FP';}return 'POS';}
 function posIsAvail(name){return posAvailMap[name]!==false;}
-var POS_CHANNELS=[{k:'grabfood',lbl:'GrabFood',rate:0.25,wht:0,vat:0},{k:'foodpanda',lbl:'FoodPanda',rate:0.30,wht:0.0005,vat:0.036}];
+var POS_CHANNELS=[{k:'grabfood',lbl:'GrabFood',rate:0.25,wht:0,vat:0},{k:'foodpanda',lbl:'FoodPanda',rate:0.30,wht:0.005,vat:0.036}];
 function channelsCfg(){var c=(window.__posSettings&&window.__posSettings.channels);var out={};POS_CHANNELS.forEach(function(d){var s=(c&&c[d.k])||{};out[d.k]={label:d.lbl,rate:(s.rate!=null?Number(s.rate):d.rate),wht:(s.wht!=null?Number(s.wht):d.wht),vat:(s.vat!=null?Number(s.vat):d.vat),active:s.active!==false};});return out;}
 function channelRate(ch){var c=channelsCfg()[ch];return c?Number(c.rate)||0:0;}
 function channelWht(ch){var c=channelsCfg()[ch];return c?Number(c.wht)||0:0;}

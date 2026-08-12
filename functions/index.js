@@ -26,7 +26,7 @@ const SHOP_NAME = "Accaza Coffee House";
 const PICKUP_ADDR = "Saratoga Ave, La Mediterranea Subd., Governor's Drive, Dasmarinas";
 
 // Order reference: PREFIX-XXXXXX (6 base36 chars from the timestamp). Online
-// orders use the "OD-" prefix; uniqueness is confirmed against /orders below.
+// orders use the "OO-" prefix; uniqueness is confirmed against /orders below.
 function shortRefCode(seed) { return (Number(seed) % 2176782336).toString(36).toUpperCase().padStart(6, "0"); }
 
 exports.notifyOnComplete = onValueUpdated(
@@ -740,8 +740,8 @@ exports.createOnlineOrder = onCall(
       return {t: now};
     });
     if (!lock.committed) throw new HttpsError("already-exists", "This exact order was already submitted. Wait a minute before submitting it again.");
-    let orderId = "OD-" + shortRefCode(now);
-    for (let i = 1; i < 8 && (await db.ref("/orders/" + orderId).get()).exists(); i++) orderId = "OD-" + shortRefCode(now + i);
+    let orderId = "OO-" + shortRefCode(now);
+    for (let i = 1; i < 8 && (await db.ref("/orders/" + orderId).get()).exists(); i++) orderId = "OO-" + shortRefCode(now + i);
     const nowDate = new Date(now);
     const itemText = priced.lines.map((line) => `${line.name}${line.size ? ` (${line.size})` : ""}${line.optLabels.length ? ` [${line.optLabels.join(", ")}]` : ""} x${line.qty}`).join(", ");
     const order = {
