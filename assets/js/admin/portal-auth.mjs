@@ -18,6 +18,7 @@ function installPortalAuth(options){
     portalAuthPromise=(async function(){
       var results=await Promise.all([get(ref(db,'admins/'+user.uid)),get(ref(db,'adminPerms/'+user.uid+'/name')).catch(function(){return null;})]);
       var roleSnap=results[0],nameSnap=results[1],mapped=roleSnap.exists()?portalRole(roleSnap.val()):null;
+      try{console.log('ACCAZA AUTH DEBUG →',{uid:user.uid,email:user.email,isAnonymous:user.isAnonymous,adminsEntryExists:roleSnap.exists(),adminsEntryValue:roleSnap.val(),mappedRole:mapped});}catch(_dbg){}
       if(!mapped)throw new Error('This Firebase account is not authorized for the Accaza portal.');
       var display=(user.displayName||user.email||user.uid);if(nameSnap&&nameSnap.exists()&&nameSnap.val())display=nameSnap.val();
       await onAuthorized(mapped.ui,display,user.uid,mapped.server);portalAuthUid=user.uid;authGateResolved=true;
