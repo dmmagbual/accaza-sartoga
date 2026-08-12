@@ -1063,7 +1063,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v187</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button data-accaza-install onclick="accazaInstallApp()" style="background:#e8f5ec;color:#155724;border:1px solid #b8dfc4;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;">📲 Install Accaza POS App</button><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div></div>
+    <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#b8945f;font-weight:400;letter-spacing:0.06em;">build&nbsp;v188</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button data-accaza-install onclick="accazaInstallApp()" style="background:#e8f5ec;color:#155724;border:1px solid #b8dfc4;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;">📲 Install Accaza POS App</button><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1549,7 +1549,9 @@ input.pz-in[type=number]::-webkit-outer-spin-button,input.pz-in[type=number]::-w
 .pz-mask.show{display:flex;}
 .pz-modal{background:#fff;border-radius:12px;max-width:460px;width:100%;max-height:88vh;overflow:auto;padding:1.25rem;}
 .pz-opt{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--cd);border-radius:6px;padding:0.45rem 0.65rem;margin-bottom:0.35rem;cursor:pointer;font-size:0.83rem;}
-.pz-opt.on{border-color:var(--bd);background:rgba(176,141,87,0.08);}
+.pz-opt.on{border-color:#8a5a2b;background:rgba(138,90,43,0.14);box-shadow:inset 4px 0 0 #8a5a2b;font-weight:700;}
+.pz-mask.ch-grabfood .pz-opt.on{border-color:#2d9e5f;background:rgba(45,158,95,0.15);box-shadow:inset 4px 0 0 #2d9e5f;}
+.pz-mask.ch-foodpanda .pz-opt.on{border-color:#d81b60;background:rgba(216,27,96,0.12);box-shadow:inset 4px 0 0 #d81b60;}
 @media(max-width:820px){.pz-posgrid{grid-template-columns:1fr!important;}}
 </style>
 <!-- Release 2D: POS module is loaded on demand. -->
