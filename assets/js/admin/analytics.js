@@ -158,7 +158,7 @@ function renderAnalyticsBody(){
   var convVO=visits>0?tx/visits*100:0, convRV=reach>0?visits/reach*100:0;
 
   var html='<div class="pz-h">📊 Analytics</div><p class="pz-sub">Every figure here traces to your own orders, recipes, and reviews. Reach/Visits are entered manually from Google Analytics.</p>';
-  var _azF=new Date(from).toISOString().slice(0,10), _azT=new Date(to-86400000).toISOString().slice(0,10);
+  var _azF=tsToDate(from), _azT=tsToDate(to-86400000); // local date parts (not UTC) so date inputs match the range in UTC+10
   html+='<div style="margin-bottom:0.4rem;">'+['today:Today','7d:7 days','30d:30 days','month:This month'].map(function(o){var v=o.split(':');return '<span class="pz-chip '+(azRange===v[0]?'on':'')+'" data-range="'+v[0]+'">'+v[1]+'</span>';}).join('')
     +'<span style="margin-left:0.5rem;font-size:0.78rem;color:var(--tl);">or '+'<input type="date" class="pz-in" id="azFrom" value="'+_azF+'" style="width:auto;display:inline-block;padding:0.2rem 0.4rem;"/> → <input type="date" class="pz-in" id="azTo" value="'+_azT+'" style="width:auto;display:inline-block;padding:0.2rem 0.4rem;"/> <button class="pz-btn '+(azRange==='custom'?'ok':'sec')+'" id="azApply" style="padding:0.25rem 0.6rem;">Apply dates</button></span></div>'
     +'<div class="az-note" id="azActive" style="margin:0 0 0.7rem;font-weight:600;color:var(--bd);">📅 Showing: '+azRangeLabel(from,to)+'</div>';
