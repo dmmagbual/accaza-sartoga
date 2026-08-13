@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var staffList={},activeShift=null,shiftsMap={},activityMap={},heldMap={},ordersMap={},discMap={},toleranceCfg={cashPeso:20,invPct:5};
+var staffList={},activeShift=null,shiftsMap={},activityMap={},heldMap={},ordersMap={},discMap={},toleranceCfg={cashPeso:20,invPct:5},fixedFloatCfg=1000;
 var pettyVouchers={},pettyRepl={},pettySettings={};
 function A(){return window.__accaza;}
 function F(){if(!window.AccazaFormDialog)throw new Error('Form service unavailable. Refresh the portal.');return window.AccazaFormDialog;}
@@ -23,7 +23,7 @@ function init(){
   a.subscribe('pettyCashVouchers',function(s){pettyVouchers=s.val()||{};if(isTab('petty'))renderPetty();});
   a.subscribe('pettyCashReplenishments',function(s){pettyRepl=s.val()||{};if(isTab('petty'))renderPetty();});
   a.subscribe('pettyCashSettings',function(s){pettySettings=s.val()||{};if(isTab('petty'))renderPetty();});
-  a.subscribe('posSettings',function(s){var v=s.val()||{};if(v.tolerances)toleranceCfg=Object.assign({cashPeso:20,invPct:5},v.tolerances);});
+  a.subscribe('posSettings',function(s){var v=s.val()||{};if(v.tolerances)toleranceCfg=Object.assign({cashPeso:20,invPct:5},v.tolerances);if(v.fixedFloat!=null)fixedFloatCfg=Number(v.fixedFloat)||0;if(isTab('ops'))renderOps();});
 }
 // shared hooks used by the POS script
 window.__posLog=function(action,ref,detail){var a=A();var id=uid('log_');a.set(a.ref(a.db,'activityLog/'+id),{ts:Date.now(),action:action,ref:ref||'',detail:detail||'',staff:(activeShift&&activeShift.staff)||'—'});};
@@ -95,12 +95,13 @@ function cashSwap(){
 }
 /* ---------- Z-report computation ---------- */
 function computeZ(shift){
-  var sales=[],voids=[],z={tx:0,gross:0,discounts:0,refunds:0,cashRefunds:0,net:0,byMethod:{},cashSales:0,voidCount:0,voidAmt:0,pending:0,pendingCount:0,tips:0};
+  var sales=[],voids=[],z={tx:0,gross:0,discounts:0,refunds:0,cashRefunds:0,net:0,byMethod:{},byChannel:{instore:0,grabfood:0,foodpanda:0},cashSales:0,voidCount:0,voidAmt:0,pending:0,pendingCount:0,tips:0};
   Object.keys(ordersMap).forEach(function(id){var o=ordersMap[id];if(!o||o.shiftId!==shift.id)return;
     if(o.voided){z.voidCount++;z.voidAmt+=Number(o.total)||0;return;}
     var gross=(o.subtotal!=null?Number(o.subtotal):Number(o.total))||0;var disc=Number(o.discount)||0;var ref=Number(o.refundAmount)||0;
     z.tx++;z.gross+=gross;z.discounts+=disc;z.refunds+=ref;z.cashRefunds+=Number((o.refundPayments||{}).Cash)||(ref&&(!o.refundPayments)&&(o.payment==='Cash'||paysOf(o).some(function(p){return p.method==='Cash';}))?ref:0);z.net+=gross-disc-ref;
     z.tips+=Number(o.tipRounding)||0;
+    var _ch=(o.channel&&z.byChannel[o.channel]!=null)?o.channel:'instore';z.byChannel[_ch]+=Number(o.total)||0;
     if(o.paymentStatus==='pending'){z.pending+=(Number(o.total)||0);z.pendingCount++;}
     paysOf(o).forEach(function(p){z.byMethod[p.method]=(z.byMethod[p.method]||0)+(Number(p.amount)||0);});
   });
@@ -108,6 +109,10 @@ function computeZ(shift){
   z.payIns=(shift.payIns||[]).reduce(function(s,x){return s+(Number(x.amount)||0);},0);
   z.payOuts=(shift.payOuts||[]).reduce(function(s,x){return s+(Number(x.amount)||0);},0);
   z.expectedCash=(Number(shift.openingFloat)||0)+z.cashSales+z.tips-z.cashRefunds+z.payIns-z.payOuts;
+  // Imprest: cashier retains the fixed float, remits the rest. Grab/Panda + non-cash tenders never entered cashSales, so they're already out of the cash line.
+  z.retainedFloat=(fixedFloatCfg>0?fixedFloatCfg:(Number(shift.openingFloat)||0));
+  z.cashToSettle=Math.round((z.expectedCash-z.retainedFloat)*100)/100;
+  z.floatMismatch=(fixedFloatCfg>0&&Math.abs((Number(shift.openingFloat)||0)-fixedFloatCfg)>0.001);
   return z;
 }
 
@@ -352,7 +357,7 @@ function renderOps(){
     var z=computeZ(activeShift);
     html+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;"><div><span style="color:#2a9d5c;font-weight:700;">🟢 Shift open</span> · Cashier <b>'+esc(activeShift.staff)+'</b> · since '+new Date(activeShift.openAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})+'</div><button class="pz-btn warn" id="opsClose">Close shift &amp; Z-report</button></div>';
     html+='<div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap;align-items:center;"><button class="pz-btn ok" id="opsReview">📋 Shift review</button><button class="pz-btn sec" id="opsCashIn">➕ Cash in</button>'+(denomTrackingOnR()?'<button class="pz-btn sec" id="opsSwap">🔁 Break a bill</button>':'')+'<span style="font-size:0.72rem;color:var(--tl);">For expenses, top up <b>Petty Cash</b> (Replenish → from register) and disburse with a voucher — no direct cash-out from the drawer.</span></div>';
-    html+='<div class="az-kpis" style="margin-top:0.8rem;">'+kpi('Sales',z.tx)+kpi('Net',peso(z.net))+kpi('Cash in',peso(z.cashSales))+kpi('Tips',peso(z.tips))+kpi('Expected drawer',peso(z.expectedCash))+kpi('Voids',z.voidCount)+kpi('Refunds',peso(z.refunds))+kpi('⏳ Unverified',peso(z.pending)+(z.pendingCount?' ('+z.pendingCount+')':''))+'</div>';
+    html+='<div class="az-kpis" style="margin-top:0.8rem;">'+kpi('Sales',z.tx)+kpi('Net',peso(z.net))+kpi('Cash in',peso(z.cashSales))+kpi('Tips',peso(z.tips))+kpi('Expected drawer',peso(z.expectedCash))+kpi('Cash to settle',peso(z.cashToSettle))+kpi('Voids',z.voidCount)+kpi('Refunds',peso(z.refunds))+kpi('⏳ Unverified',peso(z.pending)+(z.pendingCount?' ('+z.pendingCount+')':''))+'</div>';
   } else {
     var opts=staffArr().map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+' ('+esc(s.role||'cashier')+')</option>';}).join('');
     html+='<div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Open a shift</div>'
@@ -402,7 +407,7 @@ function renderPosSettings(){
     +'<div><span class="pz-lbl">Role</span><select class="pz-in" id="stRole"><option value="cashier">Cashier</option><option value="manager">Manager</option></select></div>'
     +'<button class="pz-btn" id="stAdd">Add</button></div>'
     +'<table class="pz-tbl" style="margin-top:0.6rem;"><tbody>'+(staffArr().length?staffArr().map(function(s){return '<tr><td>'+esc(s.name)+'</td><td>'+esc(s.role||'cashier')+'</td><td style="color:var(--tl);">PIN ••••</td><td style="white-space:nowrap;"><button class="pz-btn sec" style="padding:0.2rem 0.5rem;" data-stpin="'+s.id+'">Change PIN</button> <button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-stdel="'+s.id+'">✕</button></td></tr>';}).join(''):'<tr><td class="az-note" style="padding:0.5rem;">No staff yet.</td></tr>')+'</tbody></table></div>';
-  html+='<div class="az-sec">Settings</div><div class="pz-card" style="margin-bottom:1rem;"><label style="font-size:0.85rem;cursor:pointer;display:block;"><input type="checkbox" id="opsRound"/> Round cash totals to the nearest peso</label><label style="font-size:0.85rem;cursor:pointer;display:block;margin-top:0.5rem;"><input type="checkbox" id="opsDenom"/> Track cash by denomination at checkout (running drawer + per-denomination shift reconciliation)</label><label style="font-size:0.85rem;cursor:pointer;display:block;margin-top:0.5rem;"><input type="checkbox" id="opsTotalOnly"/> Reconcile on total only at close (still count denominations to reach the total, but skip the per-denomination variance)</label><div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.6rem;"><span style="font-size:0.85rem;">Cash variance tolerance ₱</span><input class="pz-in" id="opsTolerance" type="number" step="any" style="width:90px;"/><span style="font-size:0.75rem;color:var(--tl);">a discrepancy is only logged when the total is off by more than this</span></div></div>';
+  html+='<div class="az-sec">Settings</div><div class="pz-card" style="margin-bottom:1rem;"><label style="font-size:0.85rem;cursor:pointer;display:block;"><input type="checkbox" id="opsRound"/> Round cash totals to the nearest peso</label><label style="font-size:0.85rem;cursor:pointer;display:block;margin-top:0.5rem;"><input type="checkbox" id="opsDenom"/> Track cash by denomination at checkout (running drawer + per-denomination shift reconciliation)</label><label style="font-size:0.85rem;cursor:pointer;display:block;margin-top:0.5rem;"><input type="checkbox" id="opsTotalOnly"/> Reconcile on total only at close (still count denominations to reach the total, but skip the per-denomination variance)</label><div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.6rem;"><span style="font-size:0.85rem;">Cash variance tolerance ₱</span><input class="pz-in" id="opsTolerance" type="number" step="any" style="width:90px;"/><span style="font-size:0.75rem;color:var(--tl);">a discrepancy is only logged when the total is off by more than this</span></div><div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.6rem;"><span style="font-size:0.85rem;">Fixed cash float (imprest) ₱</span><input class="pz-in" id="opsFloat" type="number" step="any" style="width:100px;"/><span style="font-size:0.75rem;color:var(--tl);">the constant float the cashier keeps in the drawer; cash to settle = expected drawer − this</span></div></div>';
   html+='<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">💳 Payment methods</div><div id="payMethodsBox"></div></div>';
   root.innerHTML=html;
   var sa=document.getElementById('stAdd');if(sa)sa.onclick=addStaff;
@@ -412,6 +417,7 @@ function renderPosSettings(){
   var dt=document.getElementById('opsDenom');if(dt){var a2=A();a2.get(a2.ref(a2.db,'posSettings')).then(function(s){var v=s.val()||{};dt.checked=!!v.denomTracking;});dt.onchange=function(){var a=A();a.update(a.ref(a.db,'posSettings'),{denomTracking:dt.checked});};}
   var to=document.getElementById('opsTotalOnly');if(to){var a3=A();a3.get(a3.ref(a3.db,'posSettings')).then(function(s){var v=s.val()||{};to.checked=!!v.reconcileTotalOnly;});to.onchange=function(){var a=A();a.update(a.ref(a.db,'posSettings'),{reconcileTotalOnly:to.checked});};}
   var tol=document.getElementById('opsTolerance');if(tol){var a4=A();a4.get(a4.ref(a4.db,'posSettings')).then(function(s){var v=s.val()||{};tol.value=((v.tolerances&&v.tolerances.cashPeso!=null)?v.tolerances.cashPeso:20);});tol.onchange=function(){var a=A();a.update(a.ref(a.db,'posSettings/tolerances'),{cashPeso:Number(tol.value)||0});};}
+  var ff=document.getElementById('opsFloat');if(ff){var a5=A();a5.get(a5.ref(a5.db,'posSettings')).then(function(s){var v=s.val()||{};ff.value=(v.fixedFloat!=null?v.fixedFloat:1000);});ff.onchange=function(){var a=A();a.update(a.ref(a.db,'posSettings'),{fixedFloat:Number(ff.value)||0});};}
   renderPayMethods();
 }
 function kpi(l,v){return '<div class="az-kpi"><div class="v">'+v+'</div><div class="l">'+esc(l)+'</div></div>';}
@@ -521,6 +527,7 @@ function showZ(shift,z){
     +'<tr><td>Discounts</td><td style="text-align:right;">-'+peso(z.discounts)+'</td></tr>'
     +'<tr><td>Cash refunds</td><td style="text-align:right;">-'+peso(z.cashRefunds)+'</td></tr>'
     +'<tr><td><b>Net sales</b></td><td style="text-align:right;"><b>'+peso(z.net)+'</b></td></tr></table><hr>'
+    +'<div><b>Sales by channel</b></div><table>'+([['instore','In-store'],['grabfood','GrabFood'],['foodpanda','FoodPanda']].map(function(c){var v=(z.byChannel&&z.byChannel[c[0]])||0;if(!v&&c[0]!=='instore')return '';return '<tr><td>'+c[1]+'</td><td style="text-align:right;">'+peso(v)+'</td></tr>';}).join(''))+'</table><div style="font-size:9px;">GrabFood/FoodPanda are receivables (platform settles weekly), not cash. Online is not rung here — see Daily Report.</div><hr>'
     +'<div><b>By payment method</b></div><table>'+methods+'</table><hr>'
     +'<div><b>Sales this shift ('+saleList.length+')</b></div><table>'+(saleRows||'<tr><td colspan="2">None</td></tr>')+'</table><hr>'
     +(z.pendingCount?'<div style="color:#8a6d1b;"><b>⏳ Non-cash pending verification: '+peso(z.pending)+' ('+z.pendingCount+')</b></div><div style="font-size:9px;">Not yet confirmed in the account at close. Verify these landed.</div><hr>':'')
@@ -533,9 +540,15 @@ function showZ(shift,z){
     +'<tr><td>Expected drawer</td><td style="text-align:right;">'+peso(z.expectedCash)+'</td></tr>'
     +'<tr><td>Counted cash</td><td style="text-align:right;">'+peso(z.countedCash)+'</td></tr>'
     +'<tr><td><b>Variance</b></td><td style="text-align:right;"><b>'+peso(z.variance)+'</b></td></tr></table><hr>'
+    +'<div><b>Cash to settle (imprest)</b></div><table>'
+      +'<tr><td>Counted cash</td><td style="text-align:right;">'+peso(z.countedCash)+'</td></tr>'
+      +'<tr><td>Less: float retained</td><td style="text-align:right;">-'+peso(z.retainedFloat)+'</td></tr>'
+      +'<tr><td><b>► CASH TO SETTLE (remit)</b></td><td style="text-align:right;"><b>'+peso(Math.round(((Number(z.countedCash)||0)-z.retainedFloat)*100)/100)+'</b></td></tr></table>'
+      +(z.floatMismatch?'<div style="font-size:9px;color:#c0392b;">⚠ Opened with '+peso(shift.openingFloat)+' but standard float is '+peso(fixedFloatCfg)+' — reconcile the float.</div>':'')
+      +'<hr>'
     +(z.closeCount&&denomBreakdownRows(z.closeCount)?('<div><b>Cash counted by denomination</b></div><table>'+denomBreakdownRows(z.closeCount)+'</table><hr>'):'')
     +((!reconcileTotalOnlyR()&&z.expectedDrawer)?('<div><b>Denomination check (expected → counted)</b></div><table>'+DENOMS.map(function(d){var exp=Number(z.expectedDrawer[d.k])||0;var act=Number((z.closeCount||{})[d.k])||0;if(!exp&&!act)return '';var dv=act-exp;return '<tr><td>'+d.lbl+'</td><td style="text-align:right;">'+exp+' → '+act+(dv?'  ('+(dv>0?'+':'')+dv+')':'  ✓')+'</td></tr>';}).join('')+'</table><hr>'):'')
-    +'<div style="font-size:9px;text-align:center;">Expected drawer = float + cash sales + tips − cash refunds + pay-ins − pay-outs. Management report, not a BIR document.</div>'
+    +'<div style="font-size:9px;text-align:center;">Expected drawer = float + cash sales + tips − cash refunds + pay-ins − pay-outs. Cash to settle = counted cash − fixed float (imprest); the float stays in the drawer. Management report, not a BIR document.</div>'
     +'<div style="text-align:center;margin-top:8px;"><button onclick="window.print()">Print</button></div></body></html>');
   w.document.close();
 }
@@ -561,7 +574,12 @@ function openShiftReview(){
       +(z.cashRefunds?'<tr><td>Cash refunds</td><td class="r">−'+peso(z.cashRefunds)+'</td></tr>':'')
       +(z.payOuts?'<tr><td>Pay-outs (register expenses)</td><td class="r">−'+peso(z.payOuts)+'</td></tr>':'')
       +'<tr style="border-top:2px solid var(--bd);"><td><b>Expected cash on hand</b></td><td class="r"><b>'+peso(z.expectedCash)+'</b></td></tr>'
-      +'</tbody></table></div>'
+      +'<tr><td>Less: fixed float retained</td><td class="r">−'+peso(z.retainedFloat)+'</td></tr>'
+      +'<tr style="border-top:1px solid var(--cd);"><td><b>► Cash to settle (remit)</b></td><td class="r"><b>'+peso(z.cashToSettle)+'</b></td></tr>'
+      +'</tbody></table>'+(z.floatMismatch?'<div class="az-note" style="color:#c0392b;">⚠ Opened with '+peso(shift.openingFloat)+' but standard float is '+peso(fixedFloatCfg)+'.</div>':'')+'</div>'
+    +'<div class="pz-card" style="margin-bottom:0.8rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.3rem;">🧾 Sales by channel</div><table class="pz-tbl"><tbody>'
+      +([['instore','In-store'],['grabfood','GrabFood'],['foodpanda','FoodPanda']].map(function(c){var v=(z.byChannel&&z.byChannel[c[0]])||0;if(!v&&c[0]!=='instore')return '';return '<tr><td>'+c[1]+'</td><td class="r">'+peso(v)+'</td></tr>';}).join(''))
+      +'</tbody></table><div class="az-note">GrabFood/FoodPanda are receivables (platform settles weekly), not cash. Online is not rung on a shift — see Daily Report.</div></div>'
     +'<div style="display:flex;gap:0.7rem;flex-wrap:wrap;margin-bottom:0.8rem;">'
       +'<div class="pz-card" style="flex:1;min-width:130px;"><div style="font-size:0.72rem;color:var(--tl);">Transactions</div><div style="font-weight:700;font-size:1.1rem;color:var(--bd);">'+z.tx+'</div></div>'
       +'<div class="pz-card" style="flex:1;min-width:130px;"><div style="font-size:0.72rem;color:var(--tl);">Net sales</div><div style="font-weight:700;font-size:1.1rem;color:var(--bd);">'+peso(z.net)+'</div></div>'
@@ -591,7 +609,9 @@ function printShiftReview(shift,z,sales,items){
     +(z.payIns?'<tr><td>Pay-ins</td><td style="text-align:right;">+'+peso(z.payIns)+'</td></tr>':'')
     +(z.cashRefunds?'<tr><td>Cash refunds</td><td style="text-align:right;">-'+peso(z.cashRefunds)+'</td></tr>':'')
     +(z.payOuts?'<tr><td>Pay-outs</td><td style="text-align:right;">-'+peso(z.payOuts)+'</td></tr>':'')
-    +'<tr><td><b>Cash on hand</b></td><td style="text-align:right;"><b>'+peso(z.expectedCash)+'</b></td></tr></table><hr>'
+    +'<tr><td><b>Cash on hand</b></td><td style="text-align:right;"><b>'+peso(z.expectedCash)+'</b></td></tr>'
+    +'<tr><td>Less float retained</td><td style="text-align:right;">-'+peso(z.retainedFloat)+'</td></tr>'
+    +'<tr><td><b>Cash to settle</b></td><td style="text-align:right;"><b>'+peso(z.cashToSettle)+'</b></td></tr></table><hr>'
     +'<div><b>By payment method</b></div><table>'+(methods||'<tr><td>None</td></tr>')+'</table><hr>'
     +'<div><b>Transactions ('+sales.length+')</b></div><table>'+(txn||'<tr><td>None</td></tr>')+'</table><hr>'
     +'<div><b>Items sold</b></div><table>'+(it||'<tr><td>None</td></tr>')+'</table><hr>'
@@ -601,7 +621,7 @@ function printShiftReview(shift,z,sales,items){
 }
 function exportShiftReviewXlsx(shift,z,sales,items){
   if(!window.XLSX){alert('Excel library still loading — try again.');return;}
-  var sum=[['Shift',shift.id],['Cashier',shift.staff],['Open',new Date(shift.openAt).toLocaleString('en-PH')],[],['Opening float',Number(shift.openingFloat)||0],['Cash sales',z.cashSales],['Tips',z.tips],['Pay-ins',z.payIns],['Cash refunds',-z.cashRefunds],['Pay-outs',-z.payOuts],['Cash on hand',z.expectedCash],[],['Transactions',z.tx],['Net sales',z.net]];
+  var sum=[['Shift',shift.id],['Cashier',shift.staff],['Open',new Date(shift.openAt).toLocaleString('en-PH')],[],['Opening float',Number(shift.openingFloat)||0],['Cash sales',z.cashSales],['Tips',z.tips],['Pay-ins',z.payIns],['Cash refunds',-z.cashRefunds],['Pay-outs',-z.payOuts],['Cash on hand',z.expectedCash],['Fixed float retained',-z.retainedFloat],['Cash to settle',z.cashToSettle],[],['In-store sales',z.byChannel.instore],['GrabFood sales',z.byChannel.grabfood],['FoodPanda sales',z.byChannel.foodpanda],[],['Transactions',z.tx],['Net sales',z.net]];
   var tx=[['Time','Order','Channel','Method','Amount','Refund']];sales.forEach(function(o){tx.push([o.time||'',o.id,(o.channel&&o.channel!=='instore')?o.channel:'instore',shiftTxnMethod(o),Number(o.total)||0,Number(o.refundAmount)||0]);});
   var it=[['Item','Qty','Sales']];items.forEach(function(x){it.push([x.name,x.qty,x.sales]);});
   var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),'Summary');XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(tx),'Transactions');XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(it),'Items');XLSX.writeFile(wb,'shift-review-'+shift.id+'.xlsx');

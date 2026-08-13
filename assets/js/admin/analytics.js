@@ -246,15 +246,17 @@ function usageNameFor(id){ if(id==='staff')return 'Staff consumption'; if(id==='
 /* ══════════ DAILY REPORT (all channels + register expenses) ══════════ */
 function drNum(n){return (Math.round((Number(n)||0)*1000)/1000).toLocaleString('en-PH');}
 function dailyBounds(dstr){var s=new Date(dstr+'T00:00:00').getTime();return [s,s+86400000];}
+// Channel of a sale for the Daily Report. Platform tags win; POS-keyed = in-store; anything else (website orders, no shiftId) = online.
+function drChannel(o){if(o.channel==='grabfood'||o.channel==='foodpanda')return o.channel;if(o.source==='pos'||o.channel==='instore')return 'instore';return 'online';}
 function renderDailyReport(){
   var root=document.getElementById('dailyReportRoot'); if(!root)return;
   var d=window.__dailyDate||new Date().toISOString().slice(0,10); window.__dailyDate=d;
   var b=dailyBounds(d);
   var sales=allOrders().filter(isSale).map(saleFields).filter(function(s){return s.ts>=b[0]&&s.ts<b[1];});
-  var chan={instore:{lbl:'In-store',tx:0,gross:0,disc:0,net:0,comm:0},grabfood:{lbl:'GrabFood',tx:0,gross:0,disc:0,net:0,comm:0},foodpanda:{lbl:'FoodPanda',tx:0,gross:0,disc:0,net:0,comm:0}};
+  var chan={instore:{lbl:'In-store',tx:0,gross:0,disc:0,net:0,comm:0},grabfood:{lbl:'GrabFood',tx:0,gross:0,disc:0,net:0,comm:0},foodpanda:{lbl:'FoodPanda',tx:0,gross:0,disc:0,net:0,comm:0},online:{lbl:'Online',tx:0,gross:0,disc:0,net:0,comm:0}};
   var byMethod={},itemsM={},txns=[],refundsTot=0,netTot=0;
-  sales.forEach(function(s){var o=s.o;var c=(o.channel&&chan[o.channel])?o.channel:'instore';var ch=chan[c];ch.tx++;
-    if(c==='instore'){ch.gross+=s.gross;ch.disc+=s.discount;ch.net+=s.net;netTot+=s.net;}
+  sales.forEach(function(s){var o=s.o;var c=drChannel(o);var ch=chan[c];ch.tx++;
+    if(c==='instore'||c==='online'){ch.gross+=s.gross;ch.disc+=s.discount;ch.net+=s.net;netTot+=s.net;}
     else{var g=Number(o.grossPlatform||o.subtotal||o.total)||0;var nt=Number(o.netPlatform!=null?o.netPlatform:g)||0;ch.gross+=g;ch.comm+=Number(o.commission)||0;ch.net+=nt;netTot+=nt;}
     refundsTot+=s.refund;
     var pays=(o.payments&&o.payments.length)?o.payments:[{method:(o.channel&&o.channel!=='instore')?(o.channel==='grabfood'?'GrabFood':'FoodPanda'):(o.payment||'—'),amount:Number(o.total)||0}];
@@ -267,7 +269,7 @@ function renderDailyReport(){
   a.get(a.ref(a.db,'shifts')).then(function(sn){var sh=sn.val()||{};var payouts=[];Object.keys(sh).forEach(function(k){var s=sh[k];(s.payOuts||[]).forEach(function(p){var ts=Number(p.ts)||0;if(ts>=b[0]&&ts<b[1])payouts.push({time:new Date(ts).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),reason:p.reason||'pay-out',amount:Number(p.amount)||0});});});build(payouts);}).catch(function(){build([]);});
   function build(payouts){
     var payoutTot=payouts.reduce(function(s,p){return s+p.amount;},0);
-    var chRows=['instore','grabfood','foodpanda'].map(function(c){var x=chan[c];if(!x.tx)return '';return '<tr><td>'+x.lbl+'</td><td class="r">'+x.tx+'</td><td class="r">'+peso(x.gross)+'</td><td class="r">'+(x.disc?('−'+peso(x.disc)):(x.comm?('comm −'+peso(x.comm)):'—'))+'</td><td class="r">'+peso(x.net)+'</td></tr>';}).join('');
+    var chRows=['instore','grabfood','foodpanda','online'].map(function(c){var x=chan[c];if(!x.tx)return '';return '<tr><td>'+x.lbl+'</td><td class="r">'+x.tx+'</td><td class="r">'+peso(x.gross)+'</td><td class="r">'+(x.disc?('−'+peso(x.disc)):(x.comm?('comm −'+peso(x.comm)):'—'))+'</td><td class="r">'+peso(x.net)+'</td></tr>';}).join('');
     var methodRows=Object.keys(byMethod).sort().map(function(m){return '<tr><td>'+esc(m)+'</td><td class="r">'+peso(byMethod[m])+'</td></tr>';}).join('')||'<tr><td colspan="2" style="color:var(--tl);">—</td></tr>';
     var itemRows=items.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td class="r">'+drNum(x.qty)+'</td><td class="r">'+peso(x.sales)+'</td></tr>';}).join('')||'<tr><td colspan="3" style="color:var(--tl);">No sales this day.</td></tr>';
     var txnRows=txns.map(function(t){return '<tr><td>'+esc(t.time)+'</td><td>'+esc(t.id)+'</td><td>'+esc(t.channel)+'</td><td>'+esc(t.method)+'</td><td class="r">'+peso(t.amount)+(t.refund?(' · R '+peso(t.refund)):'')+'</td></tr>';}).join('')||'<tr><td colspan="5" style="color:var(--tl);">No sales this day.</td></tr>';
@@ -293,7 +295,7 @@ function renderDailyReport(){
 }
 function printDailyReport(d,X){
   var w=window.open('','_blank','width=440,height=760');if(!w){alert('Allow pop-ups to print the report.');return;}
-  var ch=['instore','grabfood','foodpanda'].map(function(c){var x=X.chan[c];if(!x.tx)return '';return '<tr><td>'+x.lbl+' ('+x.tx+')</td><td style="text-align:right;">'+peso(x.net)+'</td></tr>';}).join('');
+  var ch=['instore','grabfood','foodpanda','online'].map(function(c){var x=X.chan[c];if(!x.tx)return '';return '<tr><td>'+x.lbl+' ('+x.tx+')</td><td style="text-align:right;">'+peso(x.net)+'</td></tr>';}).join('');
   var me=Object.keys(X.byMethod).sort().map(function(m){return '<tr><td>'+esc(m)+'</td><td style="text-align:right;">'+peso(X.byMethod[m])+'</td></tr>';}).join('');
   var ex=X.payouts.map(function(p){return '<tr><td>'+esc(p.time)+' '+esc(p.reason)+'</td><td style="text-align:right;">'+peso(p.amount)+'</td></tr>';}).join('')+(X.refundsTot?'<tr><td>Refunds</td><td style="text-align:right;">'+peso(X.refundsTot)+'</td></tr>':'');
   var it=X.items.map(function(x){return '<tr><td>'+esc(x.name)+' ×'+drNum(x.qty)+'</td><td style="text-align:right;">'+peso(x.sales)+'</td></tr>';}).join('');
@@ -309,7 +311,7 @@ function printDailyReport(d,X){
 }
 function exportDailyXlsx(d,X){
   if(!window.XLSX){alert('Excel library still loading — try again.');return;}
-  var ch=[['Channel','Tx','Gross','Discount','Commission','Net']];['instore','grabfood','foodpanda'].forEach(function(c){var x=X.chan[c];ch.push([x.lbl,x.tx,x.gross,x.disc,x.comm,x.net]);});
+  var ch=[['Channel','Tx','Gross','Discount','Commission','Net']];['instore','grabfood','foodpanda','online'].forEach(function(c){var x=X.chan[c];ch.push([x.lbl,x.tx,x.gross,x.disc,x.comm,x.net]);});
   var me=[['Method','Amount']];Object.keys(X.byMethod).sort().forEach(function(m){me.push([m,X.byMethod[m]]);});
   var it=[['Item','Qty','Sales']];X.items.forEach(function(x){it.push([x.name,x.qty,x.sales]);});
   var tx=[['Time','Order','Channel','Method','Amount','Refund']];X.txns.forEach(function(t){tx.push([t.time,t.id,t.channel,t.method,t.amount,t.refund]);});
