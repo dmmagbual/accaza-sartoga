@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var staffList={},activeShift=null,shiftsMap={},activityMap={},heldMap={},ordersMap={},discMap={},toleranceCfg={cashPeso:20,invPct:5},fixedFloatCfg=1000,logCollapsed=true;
+var staffList={},activeShift=null,shiftsMap={},activityMap={},heldMap={},ordersMap={},discMap={},toleranceCfg={cashPeso:20,invPct:5},fixedFloatCfg=null,logCollapsed=true;
 var pettyVouchers={},pettyRepl={},pettySettings={};
 function A(){return window.__accaza;}
 function F(){if(!window.AccazaFormDialog)throw new Error('Form service unavailable. Refresh the portal.');return window.AccazaFormDialog;}
@@ -23,7 +23,7 @@ function init(){
   a.subscribe('pettyCashVouchers',function(s){pettyVouchers=s.val()||{};if(isTab('petty'))renderPetty();});
   a.subscribe('pettyCashReplenishments',function(s){pettyRepl=s.val()||{};if(isTab('petty'))renderPetty();});
   a.subscribe('pettyCashSettings',function(s){pettySettings=s.val()||{};if(isTab('petty'))renderPetty();});
-  a.subscribe('posSettings',function(s){var v=s.val()||{};if(v.tolerances)toleranceCfg=Object.assign({cashPeso:20,invPct:5},v.tolerances);if(v.fixedFloat!=null)fixedFloatCfg=Number(v.fixedFloat)||0;if(isTab('ops'))renderOps();});
+  a.subscribe('posSettings',function(s){var v=s.val()||{};if(v.tolerances)toleranceCfg=Object.assign({cashPeso:20,invPct:5},v.tolerances);fixedFloatCfg=(v.fixedFloat!=null?(Number(v.fixedFloat)||0):null);if(isTab('ops'))renderOps();});
 }
 // shared hooks used by the POS script
 window.__posLog=function(action,ref,detail){var a=A();var id=uid('log_');a.set(a.ref(a.db,'activityLog/'+id),{ts:Date.now(),action:action,ref:ref||'',detail:detail||'',staff:(activeShift&&activeShift.staff)||'—'});};
@@ -110,9 +110,9 @@ function computeZ(shift){
   z.payOuts=(shift.payOuts||[]).reduce(function(s,x){return s+(Number(x.amount)||0);},0);
   z.expectedCash=(Number(shift.openingFloat)||0)+z.cashSales+z.tips-z.cashRefunds+z.payIns-z.payOuts;
   // Imprest: cashier retains the fixed float, remits the rest. Grab/Panda + non-cash tenders never entered cashSales, so they're already out of the cash line.
-  z.retainedFloat=(fixedFloatCfg>0?fixedFloatCfg:(Number(shift.openingFloat)||0));
+  z.retainedFloat=(fixedFloatCfg!=null?fixedFloatCfg:(Number(shift.openingFloat)||0));
   z.cashToSettle=Math.round((z.expectedCash-z.retainedFloat)*100)/100;
-  z.floatMismatch=(fixedFloatCfg>0&&Math.abs((Number(shift.openingFloat)||0)-fixedFloatCfg)>0.001);
+  z.floatMismatch=(fixedFloatCfg!=null&&fixedFloatCfg>0&&Math.abs((Number(shift.openingFloat)||0)-fixedFloatCfg)>0.001);
   return z;
 }
 
@@ -408,7 +408,7 @@ function renderPosSettings(){
     +'<div><span class="pz-lbl">Role</span><select class="pz-in" id="stRole"><option value="cashier">Cashier</option><option value="manager">Manager</option></select></div>'
     +'<button class="pz-btn" id="stAdd">Add</button></div>'
     +'<table class="pz-tbl" style="margin-top:0.6rem;"><tbody>'+(staffArr().length?staffArr().map(function(s){return '<tr><td>'+esc(s.name)+'</td><td>'+esc(s.role||'cashier')+'</td><td style="color:var(--tl);">PIN ••••</td><td style="white-space:nowrap;"><button class="pz-btn sec" style="padding:0.2rem 0.5rem;" data-stpin="'+s.id+'">Change PIN</button> <button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-stdel="'+s.id+'">✕</button></td></tr>';}).join(''):'<tr><td class="az-note" style="padding:0.5rem;">No staff yet.</td></tr>')+'</tbody></table></div>';
-  html+='<div class="az-sec">Settings</div><div class="pz-card" style="margin-bottom:1rem;"><label style="font-size:0.85rem;cursor:pointer;display:block;"><input type="checkbox" id="opsRound"/> Round cash totals to the nearest peso</label><label style="font-size:0.85rem;cursor:pointer;display:block;margin-top:0.5rem;"><input type="checkbox" id="opsDenom"/> Track cash by denomination at checkout (running drawer + per-denomination shift reconciliation)</label><label style="font-size:0.85rem;cursor:pointer;display:block;margin-top:0.5rem;"><input type="checkbox" id="opsTotalOnly"/> Reconcile on total only at close (still count denominations to reach the total, but skip the per-denomination variance)</label><div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.6rem;"><span style="font-size:0.85rem;">Cash variance tolerance ₱</span><input class="pz-in" id="opsTolerance" type="number" step="any" style="width:90px;"/><span style="font-size:0.75rem;color:var(--tl);">a discrepancy is only logged when the total is off by more than this</span></div><div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.6rem;"><span style="font-size:0.85rem;">Fixed cash float (imprest) ₱</span><input class="pz-in" id="opsFloat" type="number" step="any" style="width:100px;"/><span style="font-size:0.75rem;color:var(--tl);">the constant float the cashier keeps in the drawer; cash to settle = expected drawer − this</span></div></div>';
+  html+='<div class="az-sec">Settings</div><div class="pz-card" style="margin-bottom:1rem;"><label style="font-size:0.85rem;cursor:pointer;display:block;"><input type="checkbox" id="opsRound"/> Round cash totals to the nearest peso</label><label style="font-size:0.85rem;cursor:pointer;display:block;margin-top:0.5rem;"><input type="checkbox" id="opsDenom"/> Track cash by denomination at checkout (running drawer + per-denomination shift reconciliation)</label><label style="font-size:0.85rem;cursor:pointer;display:block;margin-top:0.5rem;"><input type="checkbox" id="opsTotalOnly"/> Reconcile on total only at close (still count denominations to reach the total, but skip the per-denomination variance)</label><div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.6rem;"><span style="font-size:0.85rem;">Cash variance tolerance ₱</span><input class="pz-in" id="opsTolerance" type="number" step="any" style="width:90px;"/><span style="font-size:0.75rem;color:var(--tl);">a discrepancy is only logged when the total is off by more than this</span></div><div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.6rem;"><span style="font-size:0.85rem;">Fixed cash float (imprest) ₱</span><input class="pz-in" id="opsFloat" type="number" step="any" placeholder="opening float" style="width:110px;"/><span style="font-size:0.75rem;color:var(--tl);">Optional. Blank = cashier keeps her opening float and remits the takings. Set a number for a fixed imprest float (0 = remit the whole drawer).</span></div></div>';
   html+='<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">💳 Payment methods</div><div id="payMethodsBox"></div></div>';
   root.innerHTML=html;
   var sa=document.getElementById('stAdd');if(sa)sa.onclick=addStaff;
@@ -418,7 +418,7 @@ function renderPosSettings(){
   var dt=document.getElementById('opsDenom');if(dt){var a2=A();a2.get(a2.ref(a2.db,'posSettings')).then(function(s){var v=s.val()||{};dt.checked=!!v.denomTracking;});dt.onchange=function(){var a=A();a.update(a.ref(a.db,'posSettings'),{denomTracking:dt.checked});};}
   var to=document.getElementById('opsTotalOnly');if(to){var a3=A();a3.get(a3.ref(a3.db,'posSettings')).then(function(s){var v=s.val()||{};to.checked=!!v.reconcileTotalOnly;});to.onchange=function(){var a=A();a.update(a.ref(a.db,'posSettings'),{reconcileTotalOnly:to.checked});};}
   var tol=document.getElementById('opsTolerance');if(tol){var a4=A();a4.get(a4.ref(a4.db,'posSettings')).then(function(s){var v=s.val()||{};tol.value=((v.tolerances&&v.tolerances.cashPeso!=null)?v.tolerances.cashPeso:20);});tol.onchange=function(){var a=A();a.update(a.ref(a.db,'posSettings/tolerances'),{cashPeso:Number(tol.value)||0});};}
-  var ff=document.getElementById('opsFloat');if(ff){var a5=A();a5.get(a5.ref(a5.db,'posSettings')).then(function(s){var v=s.val()||{};ff.value=(v.fixedFloat!=null?v.fixedFloat:1000);});ff.onchange=function(){var a=A();a.update(a.ref(a.db,'posSettings'),{fixedFloat:Number(ff.value)||0});};}
+  var ff=document.getElementById('opsFloat');if(ff){var a5=A();a5.get(a5.ref(a5.db,'posSettings')).then(function(s){var v=s.val()||{};ff.value=(v.fixedFloat!=null?v.fixedFloat:'');});ff.onchange=function(){var a=A();var raw=String(ff.value).trim();a.update(a.ref(a.db,'posSettings'),{fixedFloat:raw===''?null:(Number(raw)||0)});};}
   renderPayMethods();
 }
 function kpi(l,v){return '<div class="az-kpi"><div class="v">'+v+'</div><div class="l">'+esc(l)+'</div></div>';}
@@ -549,7 +549,7 @@ function showZ(shift,z){
       +'<hr>'
     +(z.closeCount&&denomBreakdownRows(z.closeCount)?('<div><b>Cash counted by denomination</b></div><table>'+denomBreakdownRows(z.closeCount)+'</table><hr>'):'')
     +((!reconcileTotalOnlyR()&&z.expectedDrawer)?('<div><b>Denomination check (expected → counted)</b></div><table>'+DENOMS.map(function(d){var exp=Number(z.expectedDrawer[d.k])||0;var act=Number((z.closeCount||{})[d.k])||0;if(!exp&&!act)return '';var dv=act-exp;return '<tr><td>'+d.lbl+'</td><td style="text-align:right;">'+exp+' → '+act+(dv?'  ('+(dv>0?'+':'')+dv+')':'  ✓')+'</td></tr>';}).join('')+'</table><hr>'):'')
-    +'<div style="font-size:9px;text-align:center;">Expected drawer = float + cash sales + tips − cash refunds + pay-ins − pay-outs. Cash to settle = counted cash − fixed float (imprest); the float stays in the drawer. Management report, not a BIR document.</div>'
+    +'<div style="font-size:9px;text-align:center;">Expected drawer = float + cash sales + tips − cash refunds + pay-ins − pay-outs. Cash to settle = counted cash − float retained (the opening float, unless a fixed imprest float is set in POS Settings); the float stays in the drawer. Management report, not a BIR document.</div>'
     +'<div style="text-align:center;margin-top:8px;"><button onclick="window.print()">Print</button></div></body></html>');
   w.document.close();
 }
@@ -575,7 +575,7 @@ function openShiftReview(){
       +(z.cashRefunds?'<tr><td>Cash refunds</td><td class="r">−'+peso(z.cashRefunds)+'</td></tr>':'')
       +(z.payOuts?'<tr><td>Pay-outs (register expenses)</td><td class="r">−'+peso(z.payOuts)+'</td></tr>':'')
       +'<tr style="border-top:2px solid var(--bd);"><td><b>Expected cash on hand</b></td><td class="r"><b>'+peso(z.expectedCash)+'</b></td></tr>'
-      +'<tr><td>Less: fixed float retained</td><td class="r">−'+peso(z.retainedFloat)+'</td></tr>'
+      +'<tr><td>Less: float retained</td><td class="r">−'+peso(z.retainedFloat)+'</td></tr>'
       +'<tr style="border-top:1px solid var(--cd);"><td><b>► Cash to settle (remit)</b></td><td class="r"><b>'+peso(z.cashToSettle)+'</b></td></tr>'
       +'</tbody></table>'+(z.floatMismatch?'<div class="az-note" style="color:#c0392b;">⚠ Opened with '+peso(shift.openingFloat)+' but standard float is '+peso(fixedFloatCfg)+'.</div>':'')+'</div>'
     +'<div class="pz-card" style="margin-bottom:0.8rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.3rem;">🧾 Sales by channel</div><table class="pz-tbl"><tbody>'
