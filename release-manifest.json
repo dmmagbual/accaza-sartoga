@@ -76,7 +76,8 @@
     "managePettyVoucher",
     "archiveActivityLog",
     "notifyOnContactMessage",
-    "pruneEphemeralNodes"
+    "pruneEphemeralNodes",
+    "backupDatabaseDaily"
   ],
   "requiredProtectedNodes": [
     "activeOrders",

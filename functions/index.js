@@ -1484,3 +1484,38 @@ exports.pruneEphemeralNodes = onSchedule(
     return null;
   },
 );
+
+// Release 8B: automated recovery point. Snapshots the durable business data to
+// Cloud Storage once a day and keeps 30 days. Transient/reconstructable nodes
+// (active-order projections, locks, rate windows, status-command claims, offline
+// sync scratch, daily telemetry) are excluded — a restore rebuilds those. This
+// is the safety net behind a corrupt write, a bad delete, or human error.
+const BACKUP_EXCLUDE = new Set(["activeOrders", "orderLocks", "rateLimits", "orderStatusCommands", "offlinePosSync", "clientTelemetryDaily"]);
+exports.backupDatabaseDaily = onSchedule(
+  {schedule: "every day 03:00", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 540, memory: "512MiB"},
+  async () => {
+    const db = getDatabase(), bucket = getStorage().bucket(PROOF_BUCKET), now = Date.now();
+    const root = (await db.ref("/").get()).val() || {};
+    const snapshot = {};
+    Object.keys(root).forEach((node) => { if (!BACKUP_EXCLUDE.has(node)) snapshot[node] = root[node]; });
+    const stamp = new Date(now).toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    const objectName = `db-backups/accaza-${stamp}.json`;
+    const payload = JSON.stringify({takenAt: now, version: "backup-v1", excluded: [...BACKUP_EXCLUDE], data: snapshot});
+    await bucket.file(objectName).save(payload, {
+      resumable: false, contentType: "application/json",
+      metadata: {cacheControl: "private, max-age=0, no-store", metadata: {takenAt: String(now)}},
+    });
+    // Retention: delete snapshots older than 30 days.
+    let removed = 0;
+    try {
+      const [files] = await bucket.getFiles({prefix: "db-backups/"});
+      const cutoff = now - 30 * 86400000;
+      await Promise.all(files.map(async (file) => {
+        const created = Date.parse((file.metadata && file.metadata.timeCreated) || "") || 0;
+        if (created && created < cutoff) { await file.delete({ignoreNotFound: true}); removed++; }
+      }));
+    } catch (error) { logger.warn("Backup retention sweep failed", {error: String(error)}); }
+    logger.info("backupDatabaseDaily complete", {objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, removed});
+    return null;
+  },
+);
