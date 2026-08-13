@@ -2044,12 +2044,13 @@ function ensureModals(){
 }
 function showReceipt(o){
   var addr='Saratoga Ave, La Mediterranea Subd., Governor\'s Drive, Dasmariñas';
+  var dispRef=o.platformRef||o.id;
   var rows=(o.lineItems||[]).map(function(li){return '<tr><td>'+esc(li.name)+' ×'+li.qty+'</td><td style="text-align:right;">'+peso(li.qty*li.unitTotal)+'</td></tr>'+(li.optLabels&&li.optLabels.length?'<tr><td colspan="2" style="font-size:0.7rem;color:#777;padding-top:0;">'+esc(li.optLabels.join(', '))+'</td></tr>':'');}).join('');
   var w=window.open('','_blank','width=360,height=640');
   if(!w){alert('Allow pop-ups to print the receipt. Sale was saved.');return;}
-  w.document.write('<html><head><title>Receipt '+esc(o.id)+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2{text-align:center;margin:0 0 2px;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
+  w.document.write('<html><head><title>Receipt '+esc(dispRef)+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2{text-align:center;margin:0 0 2px;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
     +'<h2>Accaza Coffee House</h2><div style="text-align:center;">'+esc(addr)+'</div><hr>'
-    +'<div>Order: '+esc(o.id)+'</div><div>'+esc(o.date)+' '+esc(o.time)+'</div><div>On Duty: '+esc(o.onDuty||o.staff||'-')+'</div><div>Customer: '+esc(o.name||'Walk-in')+'</div>'
+    +'<div>Order: '+esc(dispRef)+'</div><div>'+esc(o.date)+' '+esc(o.time)+'</div><div>On Duty: '+esc(o.onDuty||o.staff||'-')+'</div><div>Customer: '+esc(o.name||'Walk-in')+'</div>'
     +(o._syncPending?'<div style="border:2px solid #8a6d1b;padding:4px;margin:5px 0;text-align:center;font-weight:bold;">PENDING SYNC — Firebase confirmation not yet received</div>':'')+'<hr>'
     +'<table>'+rows+'</table><hr>'
     +'<table><tr><td>Subtotal</td><td style="text-align:right;">'+peso(o.subtotal||o.total)+'</td></tr>'
@@ -2057,7 +2058,7 @@ function showReceipt(o){
     +(function(){var sc=(o.discountLines||[]).reduce(function(s,d){return s+(Number(d.value)||0);},0);var man=(Number(o.discount)||0)-sc;return man>0.005?'<tr><td>Discount</td><td style="text-align:right;">-'+peso(man)+'</td></tr>':'';})()
     +'<tr><td><b>TOTAL</b></td><td style="text-align:right;"><b>'+peso(o.total)+'</b></td></tr>'
     +'<tr><td>Payment</td><td style="text-align:right;">'+esc(o.payment)+'</td></tr>'
-    +(o.platformRef?'<tr><td>Platform #</td><td style="text-align:right;">'+esc(o.platformRef)+'</td></tr><tr><td>Net (after comm.)</td><td style="text-align:right;">'+peso(o.netPlatform||0)+'</td></tr>':'')
+    +(o.platformRef?'<tr><td>Net (after comm.)</td><td style="text-align:right;">'+peso(o.netPlatform||0)+'</td></tr>':'')
     +(o.tendered?'<tr><td>Cash</td><td style="text-align:right;">'+peso(o.tendered)+'</td></tr><tr><td>Change</td><td style="text-align:right;">'+peso(o.change)+'</td></tr>':'')
     +(o.tipRounding?'<tr><td>Tip / kept change</td><td style="text-align:right;">'+peso(o.tipRounding)+'</td></tr>':'')
     +'</table><hr><div style="text-align:center;">Salamat! Please come again.</div>'
