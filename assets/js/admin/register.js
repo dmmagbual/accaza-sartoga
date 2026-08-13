@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var staffList={},activeShift=null,shiftsMap={},activityMap={},heldMap={},ordersMap={},discMap={},toleranceCfg={cashPeso:20,invPct:5},fixedFloatCfg=1000;
+var staffList={},activeShift=null,shiftsMap={},activityMap={},heldMap={},ordersMap={},discMap={},toleranceCfg={cashPeso:20,invPct:5},fixedFloatCfg=1000,logCollapsed=true;
 var pettyVouchers={},pettyRepl={},pettySettings={};
 function A(){return window.__accaza;}
 function F(){if(!window.AccazaFormDialog)throw new Error('Form service unavailable. Refresh the portal.');return window.AccazaFormDialog;}
@@ -378,13 +378,14 @@ function renderOps(){
     +'</tbody></table></div>';
   // (Staff & PINs, POS Settings, and Payment methods moved to the Settings ▸ POS Settings tab — see renderPosSettings)
   var acts=Object.keys(activityMap).map(function(k){return activityMap[k];}).sort(function(a,b){return(b.ts||0)-(a.ts||0);}).slice(0,20);
-  html+='<div class="az-sec" style="display:flex;justify-content:space-between;align-items:center;">Activity log <button class="pz-btn sec" id="opsArchiveLog" style="padding:0.2rem 0.6rem;font-size:0.72rem;font-weight:400;">Archive entries &gt; 60 days</button></div><div class="pz-card"><table class="pz-tbl"><tbody>'
+  html+='<div class="az-sec" style="display:flex;justify-content:space-between;align-items:center;"><span id="opsLogToggle" style="cursor:pointer;user-select:none;">'+(logCollapsed?'▸':'▾')+' Activity log <span style="font-weight:400;color:var(--tl);font-size:0.78rem;">('+acts.length+')</span></span> <button class="pz-btn sec" id="opsArchiveLog" style="padding:0.2rem 0.6rem;font-size:0.72rem;font-weight:400;">Archive entries &gt; 60 days</button></div><div class="pz-card" id="opsLogBody"'+(logCollapsed?' style="display:none;"':'')+'><table class="pz-tbl"><tbody>'
     +(acts.length?acts.map(function(x){return '<tr><td style="white-space:nowrap;color:var(--tl);font-size:0.75rem;">'+new Date(x.ts).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+'</td><td><b>'+esc(x.action)+'</b> '+esc(x.ref||'')+'</td><td>'+esc(x.detail||'')+'</td><td style="color:var(--tl);">'+esc(x.staff||'')+'</td></tr>';}).join(''):'<tr><td class="az-note" style="padding:0.5rem;">No activity yet.</td></tr>')
     +'</tbody></table></div>';
   root.innerHTML=html;
   // wire
   root.querySelectorAll('[data-verify]').forEach(function(b){b.onclick=function(){window.__posVerify(b.getAttribute('data-verify'));};});
   var _al=document.getElementById('opsArchiveLog'); if(_al)_al.onclick=archiveOldActivity;
+  var _lt=document.getElementById('opsLogToggle'); if(_lt)_lt.onclick=function(){logCollapsed=!logCollapsed;var b=document.getElementById('opsLogBody');if(b)b.style.display=logCollapsed?'none':'';_lt.innerHTML=(logCollapsed?'▸':'▾')+' Activity log <span style="font-weight:400;color:var(--tl);font-size:0.78rem;">('+acts.length+')</span>';};
   var oOpen=document.getElementById('opsOpen');if(oOpen)oOpen.onclick=openShift;
   if(document.getElementById('opsOpenDenom_total'))wireDenom('opsOpenDenom');
   var oClose=document.getElementById('opsClose');if(oClose)oClose.onclick=closeShift;
