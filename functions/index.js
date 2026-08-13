@@ -7,6 +7,7 @@
  */
 const {onValueUpdated, onValueWritten, onValueCreated} = require("firebase-functions/v2/database");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {initializeApp} = require("firebase-admin/app");
 const {getAuth: getAdminAuth} = require("firebase-admin/auth");
 const {getDatabase} = require("firebase-admin/database");
@@ -1430,5 +1431,56 @@ exports.onOrderInventoryReversal = onValueWritten(
       inventoryReversalLedgerVersion: 1,
     });
     logger.info("Order inventory reversed", {orderId, type, items: Object.keys(usage).length});
+  },
+);
+
+// Release 8A: bounded retention. Idempotency claims, order locks, rate-limit
+// windows, and daily telemetry accumulate forever otherwise. This daily sweep
+// deletes only entries far past the window in which they can affect any live
+// decision (locks/rate windows are minute-scale; command claims guard replay of
+// long-closed orders; telemetry keeps ~4 months for trend review). Live data is
+// never touched — cutoffs are deliberately generous.
+exports.pruneEphemeralNodes = onSchedule(
+  {schedule: "every day 03:30", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "256MiB"},
+  async () => {
+    const db = getDatabase(), now = Date.now(), DAY = 86400000;
+    const deletions = {};
+    const mark = (path) => { deletions[path] = null; };
+
+    // orderLocks/{uid}/{signature} = {t} — duplicate-submit guard (minute-scale)
+    const locks = (await db.ref("/orderLocks").get()).val() || {};
+    Object.keys(locks).forEach((uid) => {
+      const sigs = locks[uid] || {};
+      Object.keys(sigs).forEach((sig) => {
+        if (now - Number((sigs[sig] && sigs[sig].t) || 0) > 7 * DAY) mark(`orderLocks/${uid}/${sig}`);
+      });
+    });
+
+    // rateLimits/orders/{uid} = {start,count} — 1-minute windows
+    const rl = (await db.ref("/rateLimits/orders").get()).val() || {};
+    Object.keys(rl).forEach((uid) => {
+      if (now - Number((rl[uid] && rl[uid].start) || 0) > 7 * DAY) mark(`rateLimits/orders/${uid}`);
+    });
+
+    // orderStatusCommands/{requestId} = {createdAt,appliedAt} — status idempotency
+    const cmds = (await db.ref("/orderStatusCommands").get()).val() || {};
+    Object.keys(cmds).forEach((rid) => {
+      const ts = Number((cmds[rid] && (cmds[rid].appliedAt || cmds[rid].createdAt)) || 0);
+      if (ts && now - ts > 45 * DAY) mark(`orderStatusCommands/${rid}`);
+    });
+
+    // clientTelemetryDaily/{YYYY-MM-DD} — keep ~4 months
+    const cutoffDay = new Date(now - 120 * DAY).toISOString().slice(0, 10);
+    const tel = (await db.ref("/clientTelemetryDaily").get()).val() || {};
+    Object.keys(tel).forEach((day) => { if (day < cutoffDay) mark(`clientTelemetryDaily/${day}`); });
+
+    const paths = Object.keys(deletions);
+    for (let i = 0; i < paths.length; i += 400) {
+      const chunk = {};
+      paths.slice(i, i + 400).forEach((p) => { chunk[p] = null; });
+      await db.ref().update(chunk);
+    }
+    logger.info("pruneEphemeralNodes complete", {deleted: paths.length});
+    return null;
   },
 );
