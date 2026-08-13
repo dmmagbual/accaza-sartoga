@@ -1492,7 +1492,7 @@ exports.pruneEphemeralNodes = onSchedule(
 // is the safety net behind a corrupt write, a bad delete, or human error.
 const BACKUP_EXCLUDE = new Set(["activeOrders", "orderLocks", "rateLimits", "orderStatusCommands", "offlinePosSync", "clientTelemetryDaily"]);
 exports.backupDatabaseDaily = onSchedule(
-  {schedule: "every day 03:00", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 540, memory: "512MiB"},
+  {schedule: "every day 03:00", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "256MiB"},
   async () => {
     const db = getDatabase(), bucket = getStorage().bucket(PROOF_BUCKET), now = Date.now();
     const root = (await db.ref("/").get()).val() || {};
