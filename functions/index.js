@@ -1515,7 +1515,7 @@ exports.backupDatabaseDaily = onSchedule(
         if (created && created < cutoff) { await file.delete({ignoreNotFound: true}); removed++; }
       }));
     } catch (error) { logger.warn("Backup retention sweep failed", {error: String(error)}); }
-    logger.info("backupDatabaseDaily complete", {objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, removed});
+    logger.info("backupDatabaseDaily complete", {objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, removed, rev: 2});
     return null;
   },
 );
