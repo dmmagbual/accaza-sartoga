@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var staffList={},activeShift=null,shiftsMap={},activityMap={},heldMap={},ordersMap={},discMap={},toleranceCfg={cashPeso:20,invPct:5},fixedFloatCfg=null,logCollapsed=true;
+var staffList={},activeShift=null,shiftsMap={},activityMap={},heldMap={},ordersMap={},discMap={},toleranceCfg={cashPeso:20,invPct:5},fixedFloatCfg=null,logCollapsed=true,cardShiftId=null;
 var pettyVouchers={},pettyRepl={},pettySettings={};
 function A(){return window.__accaza;}
 function F(){if(!window.AccazaFormDialog)throw new Error('Form service unavailable. Refresh the portal.');return window.AccazaFormDialog;}
@@ -15,7 +15,7 @@ function init(){
   var a=A();
   a.subscribe('posStaff',function(s){staffList=s.val()||{};if(isTab('ops'))renderOps();if(isTab('possettings'))renderPosSettings();});
   a.subscribe('posActiveShift',function(s){activeShift=s.val()||null;window.__posShift=activeShift;if(window.__refreshWorkspaceStatus)window.__refreshWorkspaceStatus();if(window.__refreshOverviewCommand)window.__refreshOverviewCommand();if(window.__pos)window.__pos.render();if(isTab('ops'))renderOps();});
-  a.subscribe('shifts',function(s){shiftsMap=s.val()||{};});
+  a.subscribe('shifts',function(s){shiftsMap=s.val()||{};if(isTab('ops'))renderOps();});
   a.subscribe('activityLog',function(s){activityMap=s.val()||{};if(isTab('ops'))renderOps();});
   a.subscribe('heldOrders',function(s){heldMap=s.val()||{};if(isTab('ops'))renderOps();});
   a.subscribe('activeOrders',function(s){ordersMap=s.val()||{};if(isTab('ops'))renderOps();});
@@ -366,6 +366,7 @@ function renderOps(){
         :'<p class="az-note">Add at least one staff member with a PIN below first.</p>');
   }
   html+='</div>';
+  html+=shiftCardHtml();
   // HELD ORDERS
   var held=Object.keys(heldMap).map(function(k){return Object.assign({id:k},heldMap[k]);}).sort(function(a,b){return(b.ts||0)-(a.ts||0);});
   if(held.length){
@@ -386,6 +387,7 @@ function renderOps(){
   root.querySelectorAll('[data-verify]').forEach(function(b){b.onclick=function(){window.__posVerify(b.getAttribute('data-verify'));};});
   var _al=document.getElementById('opsArchiveLog'); if(_al)_al.onclick=archiveOldActivity;
   var _lt=document.getElementById('opsLogToggle'); if(_lt)_lt.onclick=function(){logCollapsed=!logCollapsed;var b=document.getElementById('opsLogBody');if(b)b.style.display=logCollapsed?'none':'';_lt.innerHTML=(logCollapsed?'▸':'▾')+' Activity log <span style="font-weight:400;color:var(--tl);font-size:0.78rem;">('+acts.length+')</span>';};
+  var _cs=document.getElementById('opsCardShift'); if(_cs){_cs.onchange=function(){cardShiftId=this.value;renderShiftCard();};renderShiftCard();}
   var oOpen=document.getElementById('opsOpen');if(oOpen)oOpen.onclick=openShift;
   if(document.getElementById('opsOpenDenom_total'))wireDenom('opsOpenDenom');
   var oClose=document.getElementById('opsClose');if(oClose)oClose.onclick=closeShift;
@@ -396,6 +398,55 @@ function renderOps(){
   root.querySelectorAll('[data-refund]').forEach(function(b){b.onclick=function(){refundSale(b.getAttribute('data-refund'));};});
   root.querySelectorAll('[data-recall]').forEach(function(b){b.onclick=function(){var h=heldMap[b.getAttribute('data-recall')];if(h&&window.__pos){window.__pos.loadCart(h.cart);var a=A();a.remove(a.ref(a.db,'heldOrders/'+b.getAttribute('data-recall')));}};});
   root.querySelectorAll('[data-hdisc]').forEach(function(b){b.onclick=function(){if(confirm('Discard this held order?')){var a=A();a.remove(a.ref(a.db,'heldOrders/'+b.getAttribute('data-hdisc')));}};});
+}
+function shiftOptions(){
+  var opts='';
+  if(activeShift)opts+='<option value="'+esc(activeShift.id)+'">🟢 Open — '+esc(activeShift.staff||'')+' · '+new Date(activeShift.openAt).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+'</option>';
+  Object.keys(shiftsMap).map(function(k){return Object.assign({id:k},shiftsMap[k]);}).filter(function(s){return s.status==='closed';}).sort(function(a,b){return (b.openAt||0)-(a.openAt||0);}).slice(0,80).forEach(function(s){opts+='<option value="'+esc(s.id)+'">'+esc(s.staff||'')+' · '+new Date(s.openAt).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+(s.closeAt?('–'+new Date(s.closeAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})):'')+'</option>';});
+  return opts;
+}
+function shiftCardHtml(){
+  var opts=shiftOptions(); if(!opts)return '';
+  return '<div class="az-sec">📇 Shift summary</div><div class="pz-card" style="margin-bottom:1rem;"><div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.6rem;"><span style="font-size:0.85rem;color:var(--bd);font-weight:600;">Shift</span><select class="pz-in" id="opsCardShift" style="min-width:250px;">'+opts+'</select></div><div id="opsCardBody"></div></div>';
+}
+function shiftSummaryObj(shift,isOpen){
+  if(isOpen){var z=computeZ(shift);return {tx:z.tx,net:z.net,gross:z.gross,cashSales:z.cashSales,byMethod:z.byMethod,byChannel:z.byChannel,expectedCash:z.expectedCash,countedCash:null,retainedFloat:z.retainedFloat,cashToSettle:z.cashToSettle,variance:null,openingFloat:Number(shift.openingFloat)||0,openAt:shift.openAt,closeAt:null,open:true};}
+  var rf=(shift.retainedFloat!=null?Number(shift.retainedFloat):(fixedFloatCfg!=null?fixedFloatCfg:(Number(shift.openingFloat)||0)));
+  var counted=(shift.countedCash!=null?Number(shift.countedCash):null);
+  var cts=(shift.cashToSettle!=null?Number(shift.cashToSettle):Math.round(((counted!=null?counted:(Number(shift.expectedCash)||0))-rf)*100)/100);
+  return {tx:Number(shift.tx)||0,net:Number(shift.net)||0,gross:Number(shift.gross)||0,cashSales:(shift.byMethod&&shift.byMethod.Cash)||0,byMethod:shift.byMethod||{},byChannel:shift.byChannel||null,expectedCash:Number(shift.expectedCash)||0,countedCash:counted,retainedFloat:rf,cashToSettle:cts,variance:(shift.variance!=null?Number(shift.variance):null),openingFloat:Number(shift.openingFloat)||0,openAt:shift.openAt,closeAt:shift.closeAt||null,open:false};
+}
+function shiftTxTable(list,expected){
+  if(!list.length)return '<div class="az-note" style="padding:0.4rem;">No transaction lines available'+(expected?(' (summary shows '+expected+' — older lines may be archived)'):'')+'.</div>';
+  var note=(expected&&list.length<expected)?'<div class="az-note" style="padding:0.3rem 0;">Showing '+list.length+' of '+expected+' — older lines archived.</div>':'';
+  return note+'<div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Order</th><th>Channel</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+list.map(function(o){var ch=(o.channel&&o.channel!=='instore')?(o.channel==='grabfood'?'GrabFood':'FoodPanda'):'In-store';var tag=Number(o.refundAmount)>0?' · R '+peso(o.refundAmount):'';return '<tr><td>'+esc(o.time||'')+'</td><td>'+esc(o.id)+'</td><td>'+esc(ch)+'</td><td>'+esc(shiftTxnMethod(o))+'</td><td class="r">'+peso(o.total)+esc(tag)+'</td></tr>';}).join('')+'</tbody></table></div>';
+}
+function renderShiftCard(){
+  var sel=document.getElementById('opsCardShift'),body=document.getElementById('opsCardBody'); if(!sel||!body)return;
+  if(cardShiftId){var has=false;Array.prototype.forEach.call(sel.options,function(o){if(o.value===cardShiftId)has=true;});if(!has)cardShiftId=null;}
+  if(!cardShiftId)cardShiftId=sel.value; sel.value=cardShiftId;
+  var id=cardShiftId, isOpen=!!(activeShift&&activeShift.id===id);
+  var shift=isOpen?activeShift:(shiftsMap[id]?Object.assign({id:id},shiftsMap[id]):null);
+  if(!shift){body.innerHTML='<p class="az-note">Shift not found.</p>';return;}
+  var S=shiftSummaryObj(shift,isOpen);
+  var chRows=S.byChannel?([['instore','In-store'],['grabfood','GrabFood'],['foodpanda','FoodPanda']].map(function(c){var v=(S.byChannel&&S.byChannel[c[0]])||0;if(!v&&c[0]!=='instore')return '';return '<tr><td>'+c[1]+'</td><td class="r">'+peso(v)+'</td></tr>';}).join('')):'<tr><td colspan="2" class="az-note">Channel split not stored for this shift.</td></tr>';
+  var mRows=Object.keys(S.byMethod).sort().map(function(m){return '<tr><td>'+esc(m)+'</td><td class="r">'+peso(S.byMethod[m])+'</td></tr>';}).join('')||'<tr><td colspan="2" class="az-note">—</td></tr>';
+  var hdr='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.5rem;"><div><b>'+esc(shift.staff||'')+'</b> · '+new Date(S.openAt).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+(S.closeAt?('–'+new Date(S.closeAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})):'')+'</div><span style="font-weight:700;color:'+(S.open?'#2a9d5c':'var(--tl)')+';">'+(S.open?'🟢 Open':'Closed')+'</span></div>';
+  var kpis='<div class="az-kpis" style="margin:0 0 0.7rem;">'+kpi('Transactions',S.tx)+kpi('Net sales',peso(S.net))+kpi('Cash sales',peso(S.cashSales))+kpi('Cash to settle',peso(S.cashToSettle))+'</div>';
+  var recon='<div class="az-sec">Cash</div><div class="pz-card" style="margin-bottom:0.6rem;"><table class="pz-tbl"><tbody>'
+    +'<tr><td>Opening float</td><td class="r">'+peso(S.openingFloat)+'</td></tr>'
+    +'<tr><td>Expected drawer</td><td class="r">'+peso(S.expectedCash)+'</td></tr>'
+    +(S.countedCash!=null?'<tr><td>Counted cash</td><td class="r">'+peso(S.countedCash)+'</td></tr>':'')
+    +(S.variance!=null?'<tr><td>Variance</td><td class="r" style="color:'+(Math.abs(S.variance)<=(Number(toleranceCfg.cashPeso)||0)?'#155724':'#c0392b')+';">'+peso(S.variance)+'</td></tr>':'')
+    +'<tr><td>Less float retained</td><td class="r">−'+peso(S.retainedFloat)+'</td></tr>'
+    +'<tr style="border-top:2px solid var(--bd);"><td><b>► Cash to settle</b></td><td class="r"><b>'+peso(S.cashToSettle)+'</b></td></tr>'
+    +'</tbody></table></div>';
+  var chBlk='<div class="az-sec">Sales by channel</div><div class="pz-card" style="margin-bottom:0.6rem;"><table class="pz-tbl"><tbody>'+chRows+'</tbody></table><div class="az-note">GrabFood/FoodPanda are receivables, not cash. Online is not part of a shift.</div></div>';
+  var mBlk='<div class="az-sec">By payment method</div><div class="pz-card" style="margin-bottom:0.6rem;"><table class="pz-tbl"><tbody>'+mRows+'</tbody></table></div>';
+  body.innerHTML=hdr+kpis+recon+chBlk+mBlk+'<div class="az-sec">Transactions</div><div class="pz-card" id="opsCardTx"><p class="az-note">Loading…</p></div>';
+  var txEl=document.getElementById('opsCardTx');
+  if(isOpen){ if(txEl)txEl.innerHTML=shiftTxTable(shiftSales(shift)); }
+  else { var a=A(); a.get(a.ref(a.db,'orders')).then(function(sn){var all=sn.val()||{};var arr=Object.keys(all).map(function(k){return all[k];}).filter(function(o){return o&&o.shiftId===id&&!o.voided&&(o.status==='Completed'||o.status==='Received');}).sort(function(x,y){return (x.timestamp||0)-(y.timestamp||0);});var el=document.getElementById('opsCardTx');if(el)el.innerHTML=shiftTxTable(arr,S.tx);}).catch(function(){var el=document.getElementById('opsCardTx');if(el)el.innerHTML='<div class="az-note" style="padding:0.4rem;">Could not load transaction lines.</div>';}); }
 }
 // POS Settings tab (Settings ▸ POS Settings): Staff & PINs, cash/reconciliation
 // settings, and payment methods — moved out of Register Operations.
@@ -505,7 +556,7 @@ function closeShift(){
 function finalizeClose(shift,counted,counts){
   var z=computeZ(shift);z.countedCash=counted;z.variance=counted-z.expectedCash;z.closeCount=counts;z.expectedDrawer=shift.drawer||null;
   var a=A();
-  a.update(a.ref(a.db,'shifts/'+shift.id),{status:'closed',closeAt:Date.now(),openingFloat:shift.openingFloat,openCount:shift.openCount||null,closeCount:counts,drawerExpected:shift.drawer||null,tx:z.tx,gross:z.gross,discounts:z.discounts,refunds:z.refunds,net:z.net,byMethod:z.byMethod,voidCount:z.voidCount,voidAmt:z.voidAmt,payIns:z.payIns,payOuts:z.payOuts,expectedCash:z.expectedCash,countedCash:counted,variance:z.variance,pending:z.pending,pendingCount:z.pendingCount});
+  a.update(a.ref(a.db,'shifts/'+shift.id),{status:'closed',closeAt:Date.now(),openingFloat:shift.openingFloat,openCount:shift.openCount||null,closeCount:counts,drawerExpected:shift.drawer||null,tx:z.tx,gross:z.gross,discounts:z.discounts,refunds:z.refunds,net:z.net,byMethod:z.byMethod,voidCount:z.voidCount,voidAmt:z.voidAmt,payIns:z.payIns,payOuts:z.payOuts,expectedCash:z.expectedCash,countedCash:counted,variance:z.variance,byChannel:z.byChannel,retainedFloat:z.retainedFloat,cashToSettle:Math.round((counted-z.retainedFloat)*100)/100,pending:z.pending,pendingCount:z.pendingCount});
   a.remove(a.ref(a.db,'posActiveShift'));
   window.__posLog('shift-close',shift.id,'counted '+peso(counted)+' · variance '+peso(z.variance));
   if(Math.abs(z.variance)>(Number(toleranceCfg.cashPeso)||0)){

@@ -250,44 +250,57 @@ function dailyBounds(dstr){var s=new Date(dstr+'T00:00:00').getTime();return [s,
 function drChannel(o){if(o.channel==='grabfood'||o.channel==='foodpanda')return o.channel;if(o.source==='pos'||o.channel==='instore')return 'instore';return 'online';}
 function renderDailyReport(){
   var root=document.getElementById('dailyReportRoot'); if(!root)return;
-  var d=window.__dailyDate||new Date().toISOString().slice(0,10); window.__dailyDate=d;
-  var b=dailyBounds(d);
-  var sales=allOrders().filter(isSale).map(saleFields).filter(function(s){return s.ts>=b[0]&&s.ts<b[1];});
-  var chan={instore:{lbl:'In-store',tx:0,gross:0,disc:0,net:0,comm:0},grabfood:{lbl:'GrabFood',tx:0,gross:0,disc:0,net:0,comm:0},foodpanda:{lbl:'FoodPanda',tx:0,gross:0,disc:0,net:0,comm:0},online:{lbl:'Online',tx:0,gross:0,disc:0,net:0,comm:0}};
-  var byMethod={},itemsM={},txns=[],refundsTot=0,netTot=0;
-  sales.forEach(function(s){var o=s.o;var c=drChannel(o);var ch=chan[c];ch.tx++;
-    if(c==='instore'||c==='online'){ch.gross+=s.gross;ch.disc+=s.discount;ch.net+=s.net;netTot+=s.net;}
-    else{var g=Number(o.grossPlatform||o.subtotal||o.total)||0;var nt=Number(o.netPlatform!=null?o.netPlatform:g)||0;ch.gross+=g;ch.comm+=Number(o.commission)||0;ch.net+=nt;netTot+=nt;}
-    refundsTot+=s.refund;
-    var pays=(o.payments&&o.payments.length)?o.payments:[{method:(o.channel&&o.channel!=='instore')?(o.channel==='grabfood'?'GrabFood':'FoodPanda'):(o.payment||'—'),amount:Number(o.total)||0}];
-    pays.forEach(function(p){byMethod[p.method]=(byMethod[p.method]||0)+(Number(p.amount)||0);});
-    (o.lineItems||[]).forEach(function(li){var k=li.itemKey||li.name||'?';if(!itemsM[k])itemsM[k]={name:li.name||k,qty:0,sales:0};itemsM[k].qty+=Number(li.qty)||0;itemsM[k].sales+=(Number(li.qty)||0)*(Number(li.unitTotal)||0);});
-    txns.push({time:o.time||new Date(s.ts).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),id:o.id,channel:chan[c].lbl,method:pays.map(function(p){return p.method;}).join('+'),amount:Number(o.total)||0,refund:s.refund});
-  });
-  var items=Object.keys(itemsM).map(function(k){return itemsM[k];}).sort(function(a,b){return b.sales-a.sales;});
+  var d=window.__dailyDate||tsToDate(Date.now()); window.__dailyDate=d;
   var a=A();
-  a.get(a.ref(a.db,'shifts')).then(function(sn){var sh=sn.val()||{};var payouts=[];Object.keys(sh).forEach(function(k){var s=sh[k];(s.payOuts||[]).forEach(function(p){var ts=Number(p.ts)||0;if(ts>=b[0]&&ts<b[1])payouts.push({time:new Date(ts).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),reason:p.reason||'pay-out',amount:Number(p.amount)||0});});});build(payouts);}).catch(function(){build([]);});
-  function build(payouts){
+  a.get(a.ref(a.db,'shifts')).then(function(sn){buildDay(sn.val()||{});}).catch(function(){buildDay({});});
+  function buildDay(sh){
+    // Trading-day attribution: a POS sale belongs to the day its SHIFT OPENED (business day runs past midnight);
+    // online orders (no shift) fall on their own calendar date.
+    var shiftDay={}; Object.keys(sh).forEach(function(k){var s=sh[k];if(s&&s.openAt)shiftDay[k]=tsToDate(s.openAt);});
+    function tradingDay(o){return (o.shiftId&&shiftDay[o.shiftId])?shiftDay[o.shiftId]:tsToDate(o.timestamp||Date.parse(o.date)||0);}
+    var sales=allOrders().filter(isSale).map(saleFields).filter(function(s){return tradingDay(s.o)===d;});
+    var chan={instore:{lbl:'In-store',tx:0,gross:0,disc:0,net:0,comm:0},grabfood:{lbl:'GrabFood',tx:0,gross:0,disc:0,net:0,comm:0},foodpanda:{lbl:'FoodPanda',tx:0,gross:0,disc:0,net:0,comm:0},online:{lbl:'Online',tx:0,gross:0,disc:0,net:0,comm:0}};
+    var byMethod={},itemsM={},txns=[],refundsTot=0,netTot=0,byShift={};
+    sales.forEach(function(s){var o=s.o;var c=drChannel(o);var ch=chan[c];ch.tx++;var nt;
+      if(c==='instore'||c==='online'){ch.gross+=s.gross;ch.disc+=s.discount;ch.net+=s.net;nt=s.net;netTot+=s.net;}
+      else{var g=Number(o.grossPlatform||o.subtotal||o.total)||0;nt=Number(o.netPlatform!=null?o.netPlatform:g)||0;ch.gross+=g;ch.comm+=Number(o.commission)||0;ch.net+=nt;netTot+=nt;}
+      refundsTot+=s.refund;
+      var pays=(o.payments&&o.payments.length)?o.payments:[{method:(o.channel&&o.channel!=='instore')?(o.channel==='grabfood'?'GrabFood':'FoodPanda'):(o.payment||'—'),amount:Number(o.total)||0}];
+      pays.forEach(function(p){byMethod[p.method]=(byMethod[p.method]||0)+(Number(p.amount)||0);});
+      if(o.shiftId){var g2=byShift[o.shiftId]||(byShift[o.shiftId]={tx:0,net:0,cash:0});g2.tx++;g2.net+=nt;pays.forEach(function(p){if(p.method==='Cash')g2.cash+=Number(p.amount)||0;});}
+      (o.lineItems||[]).forEach(function(li){var k=li.itemKey||li.name||'?';if(!itemsM[k])itemsM[k]={name:li.name||k,qty:0,sales:0};itemsM[k].qty+=Number(li.qty)||0;itemsM[k].sales+=(Number(li.qty)||0)*(Number(li.unitTotal)||0);});
+      txns.push({time:o.time||new Date(s.ts).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),id:o.id,channel:chan[c].lbl,method:pays.map(function(p){return p.method;}).join('+'),amount:Number(o.total)||0,refund:s.refund});
+    });
+    var items=Object.keys(itemsM).map(function(k){return itemsM[k];}).sort(function(a,b){return b.sales-a.sales;});
+    var payouts=[];Object.keys(sh).forEach(function(k){var s=sh[k];(s.payOuts||[]).forEach(function(p){var pd=shiftDay[k]||tsToDate(Number(p.ts)||0);if(pd===d)payouts.push({time:new Date(Number(p.ts)||0).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),reason:p.reason||'pay-out',amount:Number(p.amount)||0});});});
+    // shifts whose trading day == d, with per-shift rollup
+    var shiftRows=Object.keys(sh).map(function(k){return Object.assign({id:k},sh[k]);}).filter(function(s){return shiftDay[s.id]===d;}).sort(function(a,b){return (a.openAt||0)-(b.openAt||0);}).map(function(s){var g=byShift[s.id]||{tx:0,net:0,cash:0};var open=s.status!=='closed';return {id:s.id,staff:s.staff||'',openAt:s.openAt,closeAt:s.closeAt||null,open:open,tx:g.tx,net:g.net,cash:g.cash,cashToSettle:(open?null:(s.cashToSettle!=null?Number(s.cashToSettle):null))};});
+    build(payouts,shiftRows);
+  }
+  function build(payouts,shiftRows){
     var payoutTot=payouts.reduce(function(s,p){return s+p.amount;},0);
     var chRows=['instore','grabfood','foodpanda','online'].map(function(c){var x=chan[c];if(!x.tx)return '';return '<tr><td>'+x.lbl+'</td><td class="r">'+x.tx+'</td><td class="r">'+peso(x.gross)+'</td><td class="r">'+(x.disc?('−'+peso(x.disc)):(x.comm?('comm −'+peso(x.comm)):'—'))+'</td><td class="r">'+peso(x.net)+'</td></tr>';}).join('');
     var methodRows=Object.keys(byMethod).sort().map(function(m){return '<tr><td>'+esc(m)+'</td><td class="r">'+peso(byMethod[m])+'</td></tr>';}).join('')||'<tr><td colspan="2" style="color:var(--tl);">—</td></tr>';
     var itemRows=items.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td class="r">'+drNum(x.qty)+'</td><td class="r">'+peso(x.sales)+'</td></tr>';}).join('')||'<tr><td colspan="3" style="color:var(--tl);">No sales this day.</td></tr>';
     var txnRows=txns.map(function(t){return '<tr><td>'+esc(t.time)+'</td><td>'+esc(t.id)+'</td><td>'+esc(t.channel)+'</td><td>'+esc(t.method)+'</td><td class="r">'+peso(t.amount)+(t.refund?(' · R '+peso(t.refund)):'')+'</td></tr>';}).join('')||'<tr><td colspan="5" style="color:var(--tl);">No sales this day.</td></tr>';
     var expRows=payouts.map(function(p){return '<tr><td>'+esc(p.time)+'</td><td>'+esc(p.reason)+'</td><td class="r">'+peso(p.amount)+'</td></tr>';}).join('')+(refundsTot?('<tr><td>—</td><td>Refunds</td><td class="r">'+peso(refundsTot)+'</td></tr>'):'');
+    var shiftTbl=shiftRows.map(function(s){return '<tr><td>'+esc(s.staff)+(s.open?' <span style="color:#2a9d5c;">● open</span>':'')+'</td><td>'+(s.openAt?new Date(s.openAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}):'—')+(s.closeAt?('–'+new Date(s.closeAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})):(s.open?'–open':''))+'</td><td class="r">'+s.tx+'</td><td class="r">'+peso(s.net)+'</td><td class="r">'+(s.cashToSettle!=null?peso(s.cashToSettle):'—')+'</td></tr>';}).join('')||'<tr><td colspan="5" style="color:var(--tl);">No shifts opened this trading day.</td></tr>';
     var html='<div class="pz-h">📆 Daily Report</div>'
-      +'<div style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap;margin-bottom:0.8rem;"><div><span class="pz-lbl">Date</span><input class="pz-in" id="drDate" type="date" value="'+d+'"/></div><button class="pz-btn ok" id="drPrint" style="padding:0.4rem 0.9rem;">🖨 Print</button><button class="pz-btn sec" id="drExcel" style="padding:0.4rem 0.9rem;">⬇ Excel</button></div>'
+      +'<div style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap;margin-bottom:0.4rem;"><div><span class="pz-lbl">Trading day</span><input class="pz-in" id="drDate" type="date" value="'+d+'"/></div><button class="pz-btn ok" id="drPrint" style="padding:0.4rem 0.9rem;">🖨 Print</button><button class="pz-btn sec" id="drExcel" style="padding:0.4rem 0.9rem;">⬇ Excel</button></div>'
+      +'<div class="az-note" style="margin:0 0 0.7rem;">Trading day = the day a shift opened; a shift stays whole even if it runs past midnight. Online orders count on their own date.</div>'
       +'<div style="display:flex;gap:0.7rem;flex-wrap:wrap;margin-bottom:0.8rem;">'
         +'<div class="pz-card" style="flex:1;min-width:150px;"><div style="font-size:0.72rem;color:var(--tl);">Transactions</div><div style="font-weight:700;font-size:1.25rem;color:var(--bd);">'+sales.length+'</div></div>'
         +'<div class="pz-card" style="flex:1;min-width:150px;"><div style="font-size:0.72rem;color:var(--tl);">Net sales (all channels)</div><div style="font-weight:700;font-size:1.25rem;color:var(--bd);">'+peso(netTot)+'</div></div>'
         +'<div class="pz-card" style="flex:1;min-width:150px;"><div style="font-size:0.72rem;color:var(--tl);">Register cash out</div><div style="font-weight:700;font-size:1.25rem;color:#c0392b;">'+peso(payoutTot+refundsTot)+'</div></div>'
       +'</div>'
+      +'<div class="az-sec">Shifts this day ('+shiftRows.length+')</div><div class="pz-card" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Cashier</th><th>Open–Close</th><th class="r">Tx</th><th class="r">Net</th><th class="r">Cash to settle</th></tr></thead><tbody>'+shiftTbl+'</tbody></table></div><div class="az-note">Each shift settles its own drawer. Cash to settle shows for closed shifts. Online orders aren’t tied to a shift.</div></div>'
       +'<div class="az-sec">Sales by channel</div><div class="pz-card" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Channel</th><th class="r">Tx</th><th class="r">Gross</th><th class="r">Disc / Comm</th><th class="r">Net</th></tr></thead><tbody>'+(chRows||'<tr><td colspan="5" style="color:var(--tl);">No sales this day.</td></tr>')+'</tbody></table></div></div>'
       +'<div class="az-sec">Sales by payment method</div><div class="pz-card" style="margin-bottom:0.7rem;"><table class="pz-tbl"><tbody>'+methodRows+'</tbody></table></div>'
       +'<div class="az-sec">Register expenses (cash out)</div><div class="pz-card" style="margin-bottom:0.7rem;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Reason</th><th class="r">Amount</th></tr></thead><tbody>'+(expRows||'<tr><td colspan="3" style="color:var(--tl);">None.</td></tr>')+'</tbody></table></div>'
       +'<div class="az-sec">Items sold</div><div class="pz-card" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Sales</th></tr></thead><tbody>'+itemRows+'</tbody></table></div></div>'
       +'<div class="az-sec">All transactions ('+txns.length+')</div><div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Order</th><th>Channel</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+txnRows+'</tbody></table></div></div>';
     root.innerHTML=html;
-    var X={chan:chan,byMethod:byMethod,items:items,txns:txns,payouts:payouts,refundsTot:refundsTot,netTot:netTot,payoutTot:payoutTot};
+    var X={chan:chan,byMethod:byMethod,items:items,txns:txns,payouts:payouts,refundsTot:refundsTot,netTot:netTot,payoutTot:payoutTot,shiftRows:shiftRows};
     var di=document.getElementById('drDate'); if(di)di.onchange=function(){window.__dailyDate=this.value||d;renderDailyReport();};
     var pr=document.getElementById('drPrint'); if(pr)pr.onclick=function(){printDailyReport(d,X);};
     var ex=document.getElementById('drExcel'); if(ex)ex.onclick=function(){exportDailyXlsx(d,X);};
@@ -299,8 +312,10 @@ function printDailyReport(d,X){
   var me=Object.keys(X.byMethod).sort().map(function(m){return '<tr><td>'+esc(m)+'</td><td style="text-align:right;">'+peso(X.byMethod[m])+'</td></tr>';}).join('');
   var ex=X.payouts.map(function(p){return '<tr><td>'+esc(p.time)+' '+esc(p.reason)+'</td><td style="text-align:right;">'+peso(p.amount)+'</td></tr>';}).join('')+(X.refundsTot?'<tr><td>Refunds</td><td style="text-align:right;">'+peso(X.refundsTot)+'</td></tr>':'');
   var it=X.items.map(function(x){return '<tr><td>'+esc(x.name)+' ×'+drNum(x.qty)+'</td><td style="text-align:right;">'+peso(x.sales)+'</td></tr>';}).join('');
+  var shf=(X.shiftRows||[]).map(function(s){return '<tr><td>'+esc(s.staff)+(s.open?' (open)':'')+' ×'+s.tx+'</td><td style="text-align:right;">'+peso(s.net)+(s.cashToSettle!=null?(' · settle '+peso(s.cashToSettle)):'')+'</td></tr>';}).join('');
   w.document.write('<html><head><title>Daily Report '+esc(d)+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2,h3{text-align:center;margin:2px 0;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
-    +'<h2>Accaza Coffee House</h2><h3>DAILY REPORT</h3><div style="text-align:center;">'+esc(d)+'</div><hr>'
+    +'<h2>Accaza Coffee House</h2><h3>DAILY REPORT</h3><div style="text-align:center;">Trading day '+esc(d)+'</div><hr>'
+    +'<div><b>Shifts this day</b></div><table>'+(shf||'<tr><td>None</td></tr>')+'</table><hr>'
     +'<div><b>Net sales by channel</b></div><table>'+(ch||'<tr><td>None</td></tr>')+'<tr><td><b>Total net</b></td><td style="text-align:right;"><b>'+peso(X.netTot)+'</b></td></tr></table><hr>'
     +'<div><b>By payment method</b></div><table>'+(me||'<tr><td>None</td></tr>')+'</table><hr>'
     +'<div><b>Register expenses (cash out)</b></div><table>'+(ex||'<tr><td>None</td></tr>')+'<tr><td><b>Total out</b></td><td style="text-align:right;"><b>'+peso(X.payoutTot+X.refundsTot)+'</b></td></tr></table><hr>'
@@ -316,7 +331,8 @@ function exportDailyXlsx(d,X){
   var it=[['Item','Qty','Sales']];X.items.forEach(function(x){it.push([x.name,x.qty,x.sales]);});
   var tx=[['Time','Order','Channel','Method','Amount','Refund']];X.txns.forEach(function(t){tx.push([t.time,t.id,t.channel,t.method,t.amount,t.refund]);});
   var ex=[['Time','Reason','Amount']];X.payouts.forEach(function(p){ex.push([p.time,p.reason,p.amount]);});if(X.refundsTot)ex.push(['','Refunds',X.refundsTot]);
-  var wb=XLSX.utils.book_new();[['Channels',ch],['Methods',me],['Items',it],['Transactions',tx],['Expenses',ex]].forEach(function(p){XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(p[1]),p[0]);});XLSX.writeFile(wb,'daily-report-'+d+'.xlsx');
+  var sf=[['Cashier','Open','Close','Status','Tx','Net','Cash sales','Cash to settle']];(X.shiftRows||[]).forEach(function(s){sf.push([s.staff,s.openAt?new Date(s.openAt).toLocaleString('en-PH'):'',s.closeAt?new Date(s.closeAt).toLocaleString('en-PH'):'',s.open?'open':'closed',s.tx,s.net,s.cash,(s.cashToSettle!=null?s.cashToSettle:'')]);});
+  var wb=XLSX.utils.book_new();[['Shifts',sf],['Channels',ch],['Methods',me],['Items',it],['Transactions',tx],['Expenses',ex]].forEach(function(p){XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(p[1]),p[0]);});XLSX.writeFile(wb,'daily-report-'+d+'.xlsx');
 }
 function pnlFor(mk){
   var sales=allOrders().filter(isSale).map(saleFields).filter(function(s){return monthKey(s.ts)===mk;});
