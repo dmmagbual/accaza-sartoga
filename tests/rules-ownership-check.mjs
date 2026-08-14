@@ -107,7 +107,7 @@ try{
   await assertFails(update(ref(a,'orders/own'),{status:'Received',receivedByCustomer:true}));
   await assertFails(update(ref(owner,'orders/own'),{status:'Confirmed'}));
 
-  await assertSucceeds(get(ref(a,'orders/legacy')));
+  await assertFails(get(ref(a,'orders/legacy')));
   await assertFails(update(ref(a,'orders/legacy'),{status:'Received',receivedByCustomer:true}));
 
   await assertSucceeds(get(ref(a,'customerOrders/customer-a')));

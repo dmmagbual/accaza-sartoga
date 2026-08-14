@@ -127,6 +127,7 @@ try{
   if(customerSource.includes('onValue(appCustomersRef'))fail('customer startup still requests the whole customer registry');
   if(!placeOrderBlock.includes('const proofSrc=paymentProofData'))fail('checkout does not submit the optimized payment proof');
   if(!rulesRaw.includes('data.child(\'ownerUid\').val() === auth.uid'))fail('customer order ownership read rule missing');
+  if(rulesRaw.includes("data.child('ownerUid').val() === auth.uid || !data.hasChild('ownerUid')"))fail('legacy ownerless orders are still readable by arbitrary signed-in customers');
   if(!rulesRaw.includes('"orderLocks": { ".read": false, ".write": false }'))fail('order locks are not private');
   if(!rulesRaw.includes('"customerOrders"'))fail('customer order index rules missing');
   if(!rulesRaw.includes('"$uid": {')||!rulesRaw.includes('auth.uid === $uid'))fail('UID-owned customer profile rules missing');
@@ -192,6 +193,18 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!storageRules.includes('allow read, write: if false'))fail('Storage is not locked to server-only access');
   const firebaseConfig=JSON.parse(fs.readFileSync(path.join(root,'firebase.json'),'utf8'));
   if(!firebaseConfig.storage||firebaseConfig.storage.rules!=='storage.rules')fail('Storage rules are not wired into Firebase deployment');
+  if(firebaseConfig.hosting)fail('Firebase Hosting must not be configured while production is published by GitHub Pages');
+
+  const pagesConfig=fs.readFileSync(path.join(root,'_config.yml'),'utf8');
+  for(const privatePath of ['functions','database.rules.json','storage.rules','firebase.json','release-manifest.json']){
+    if(!pagesConfig.includes(`- ${privatePath}`))fail(`GitHub Pages exclusion missing: ${privatePath}`);
+  }
+  const deployWorkflow=fs.readFileSync(path.join(root,'.github','workflows','deploy-functions.yml'),'utf8');
+  if(!deployWorkflow.includes('branches: [main]'))fail('production Firebase deployment is not restricted to main');
+  if(deployWorkflow.includes('--force'))fail('production Firebase deployment may silently delete functions');
+  if(!deployWorkflow.includes('concurrency:')||!deployWorkflow.includes('environment: production'))fail('production Firebase deployment safeguards are incomplete');
+  if(adminHtml.includes("document.querySelector('.admin-tab:nth-child(3)')"))fail('reservation navigation still depends on fragile DOM position');
+  if(!adminHtml.includes("openAdminWorkspaceTab('reservations')"))fail('reservation banner is not routed through the named workspace navigator');
 
   const swSource=fs.readFileSync(path.join(root,'sw.js'),'utf8');
   const assetMatch=swSource.match(/const ASSETS=(\[[^;]+\])/);

@@ -4,6 +4,7 @@ name: Deploy Firebase Functions & Rules
 # Static site files (admin.html / index.html / assets) still publish via Pages.
 on:
   push:
+    branches: [main]
     paths:
       - "functions/**"
       - "database.rules.json"
@@ -11,9 +12,18 @@ on:
       - ".github/workflows/deploy-functions.yml"
   workflow_dispatch: {}   # lets you run it manually from the Actions tab too
 
+permissions:
+  contents: read
+
+concurrency:
+  group: accaza-production-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -42,12 +52,7 @@ jobs:
       - name: Run Accaza quality gate
         run: npm run test:ci
 
-      - name: Deploy functions
-        run: firebase deploy --only functions --project accaza-sartoga --non-interactive --force
-        env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-
-      - name: Deploy database & storage rules
-        run: firebase deploy --only database,storage --project accaza-sartoga --non-interactive --force
+      - name: Deploy Functions and rules
+        run: firebase deploy --only functions,database,storage --project accaza-sartoga --non-interactive
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}

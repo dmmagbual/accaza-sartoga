@@ -1,0 +1,23 @@
+exclude:
+  - functions
+  - tests
+  - tools
+  - node_modules
+  - package.json
+  - package-lock.json
+  - firebase.json
+  - database.rules.json
+  - storage.rules
+  - release-manifest.json
+  - .env.example
+  - "*.md"
+  - "*.docx"
+  - "*.xlsx"
+  - "*.zip"
+  - "*.log"
+  - "accaza-backup*.json"
+  - "index backup*.html"
+  - admin-backup.html
+  - "backup json"
+  - "PRICING and COSTING"
+  - "$repoPath"

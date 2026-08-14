@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "preparedAt": "2026-08-11",
+  "preparedAt": "2026-08-14",
   "release": "7M",
   "status": "candidate_pending_production_verification",
   "project": {
@@ -12,9 +12,9 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 197,
+    "admin": 198,
     "customer": 47,
-    "serviceWorkerCache": 91
+    "serviceWorkerCache": 92
   },
   "authoritativeFiles": [
     "admin.html",
@@ -94,9 +94,9 @@
     "deletionAudit"
   ],
   "verification": {
-    "localQualityGate": "passed_2026-08-10",
+    "localQualityGate": "passed_2026-08-14",
     "githubQualityGate": "pending",
-    "productionBuild180SmokeTest": "pending",
+    "productionBuild198SmokeTest": "pending",
     "productionPerformanceReview": "pending",
     "backupRestoreTest": "pending",
     "quarterlyPermissionReview": "pending",
