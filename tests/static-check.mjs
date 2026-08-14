@@ -261,6 +261,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes(`const CACHE='accaza-v${swCacheVersion}'`))fail('Phase 6C/7H dashboard is not in the coordinated offline cache');
   const analyticsSource=fs.readFileSync(path.join(root,'assets','js','admin','analytics.js'),'utf8');
   if(!analyticsSource.includes('build(payouts,shiftRows,chan,byMethod,items,txns,refundsTot,netTot,sales)')||!analyticsSource.includes('function build(payouts,shiftRows,chan,byMethod,items,txns,refundsTot,netTot,sales)'))fail('Daily Report renderer is missing calculated report inputs');
+  if(!analyticsSource.includes('class="dr-summary"')||!analyticsSource.includes('data-dr-target="drChannels"')||!analyticsSource.includes("scrollIntoView({behavior:'smooth',block:'center'})"))fail('Daily Report summary navigation is incomplete');
 
   const orderAdminSource=fs.readFileSync(path.join(root,'assets','js','admin','admin-orders.mjs'),'utf8');
   const orderStatusSource=fs.readFileSync(path.join(root,'functions','lib','order-status.js'),'utf8');
