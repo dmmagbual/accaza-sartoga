@@ -203,6 +203,9 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!deployWorkflow.includes('branches: [main]'))fail('production Firebase deployment is not restricted to main');
   if(deployWorkflow.includes('--force'))fail('production Firebase deployment may silently delete functions');
   if(!deployWorkflow.includes('concurrency:')||!deployWorkflow.includes('environment: production'))fail('production Firebase deployment safeguards are incomplete');
+  if(/actions\/(?:checkout|setup-node|setup-java)@v4/.test(deployWorkflow))fail('Firebase deployment workflow still uses deprecated Node 20-based actions');
+  const qualityWorkflow=fs.readFileSync(path.join(root,'.github','workflows','quality-gate.yml'),'utf8');
+  if(/actions\/(?:checkout|setup-node|setup-java)@v4/.test(qualityWorkflow))fail('quality workflow still uses deprecated Node 20-based actions');
   if(adminHtml.includes("document.querySelector('.admin-tab:nth-child(3)')"))fail('reservation navigation still depends on fragile DOM position');
   if(!adminHtml.includes("openAdminWorkspaceTab('reservations')"))fail('reservation banner is not routed through the named workspace navigator');
 
