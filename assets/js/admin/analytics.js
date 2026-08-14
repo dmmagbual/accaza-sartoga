@@ -279,6 +279,9 @@ function renderDailyReport(){
   }
   function build(payouts,shiftRows,chan,byMethod,items,txns,refundsTot,netTot,sales){
     var payoutTot=payouts.reduce(function(s,p){return s+p.amount;},0);
+    var cashReceived=Object.keys(byMethod).reduce(function(sum,method){return /cash/i.test(method)?sum+(Number(byMethod[method])||0):sum;},0);
+    var nonCashReceived=Object.keys(byMethod).reduce(function(sum,method){return /cash/i.test(method)?sum:sum+(Number(byMethod[method])||0);},0);
+    var itemsSold=items.reduce(function(sum,item){return sum+(Number(item.qty)||0);},0);
     var chRows=['instore','grabfood','foodpanda','online'].map(function(c){var x=chan[c];if(!x.tx)return '';return '<tr><td>'+x.lbl+'</td><td class="r">'+x.tx+'</td><td class="r">'+peso(x.gross)+'</td><td class="r">'+(x.disc?('−'+peso(x.disc)):(x.comm?('comm −'+peso(x.comm)):'—'))+'</td><td class="r">'+peso(x.net)+'</td></tr>';}).join('');
     var methodRows=Object.keys(byMethod).sort().map(function(m){return '<tr><td>'+esc(m)+'</td><td class="r">'+peso(byMethod[m])+'</td></tr>';}).join('')||'<tr><td colspan="2" style="color:var(--tl);">—</td></tr>';
     var itemRows=items.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td class="r">'+drNum(x.qty)+'</td><td class="r">'+peso(x.sales)+'</td></tr>';}).join('')||'<tr><td colspan="3" style="color:var(--tl);">No sales this day.</td></tr>';
@@ -288,22 +291,27 @@ function renderDailyReport(){
     var html='<div class="pz-h">📆 Daily Report</div>'
       +'<div style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap;margin-bottom:0.4rem;"><div><span class="pz-lbl">Trading day</span><input class="pz-in" id="drDate" type="date" value="'+d+'"/></div><button class="pz-btn ok" id="drPrint" style="padding:0.4rem 0.9rem;">🖨 Print</button><button class="pz-btn sec" id="drExcel" style="padding:0.4rem 0.9rem;">⬇ Excel</button></div>'
       +'<div class="az-note" style="margin:0 0 0.7rem;">Trading day = the day a shift opened; a shift stays whole even if it runs past midnight. Online orders count on their own date.</div>'
-      +'<div style="display:flex;gap:0.7rem;flex-wrap:wrap;margin-bottom:0.8rem;">'
-        +'<div class="pz-card" style="flex:1;min-width:150px;"><div style="font-size:0.72rem;color:var(--tl);">Transactions</div><div style="font-weight:700;font-size:1.25rem;color:var(--bd);">'+sales.length+'</div></div>'
-        +'<div class="pz-card" style="flex:1;min-width:150px;"><div style="font-size:0.72rem;color:var(--tl);">Net sales (all channels)</div><div style="font-weight:700;font-size:1.25rem;color:var(--bd);">'+peso(netTot)+'</div></div>'
-        +'<div class="pz-card" style="flex:1;min-width:150px;"><div style="font-size:0.72rem;color:var(--tl);">Register cash out</div><div style="font-weight:700;font-size:1.25rem;color:#c0392b;">'+peso(payoutTot+refundsTot)+'</div></div>'
-      +'</div>'
-      +'<div class="az-sec">Shifts this day ('+shiftRows.length+')</div><div class="pz-card" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Cashier</th><th>Open–Close</th><th class="r">Tx</th><th class="r">Net</th><th class="r">Cash to settle</th></tr></thead><tbody>'+shiftTbl+'</tbody></table></div><div class="az-note">Each shift settles its own drawer. Cash to settle shows for closed shifts. Online orders aren’t tied to a shift.</div></div>'
-      +'<div class="az-sec">Sales by channel</div><div class="pz-card" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Channel</th><th class="r">Tx</th><th class="r">Gross</th><th class="r">Disc / Comm</th><th class="r">Net</th></tr></thead><tbody>'+(chRows||'<tr><td colspan="5" style="color:var(--tl);">No sales this day.</td></tr>')+'</tbody></table></div></div>'
-      +'<div class="az-sec">Sales by payment method</div><div class="pz-card" style="margin-bottom:0.7rem;"><table class="pz-tbl"><tbody>'+methodRows+'</tbody></table></div>'
-      +'<div class="az-sec">Register expenses (cash out)</div><div class="pz-card" style="margin-bottom:0.7rem;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Reason</th><th class="r">Amount</th></tr></thead><tbody>'+(expRows||'<tr><td colspan="3" style="color:var(--tl);">None.</td></tr>')+'</tbody></table></div>'
-      +'<div class="az-sec">Items sold</div><div class="pz-card" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Sales</th></tr></thead><tbody>'+itemRows+'</tbody></table></div></div>'
-      +'<div class="az-sec">All transactions ('+txns.length+')</div><div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Order</th><th>Channel</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+txnRows+'</tbody></table></div></div>';
+      +'<section class="dr-summary" aria-labelledby="drSummaryTitle"><div class="dr-summary-head"><div><span>Close-of-day snapshot</span><h3 id="drSummaryTitle">Daily summary</h3></div><small>Choose an amount to view its detail</small></div><div class="dr-summary-grid">'
+        +'<button class="dr-summary-item primary" data-dr-target="drChannels"><span>Net sales</span><strong>'+peso(netTot)+'</strong><small>All sales channels →</small></button>'
+        +'<button class="dr-summary-item" data-dr-target="drTransactions"><span>Transactions</span><strong>'+sales.length+'</strong><small>View every order →</small></button>'
+        +'<button class="dr-summary-item" data-dr-target="drMethods"><span>Cash received</span><strong>'+peso(cashReceived)+'</strong><small>Payment breakdown →</small></button>'
+        +'<button class="dr-summary-item" data-dr-target="drMethods"><span>Non-cash received</span><strong>'+peso(nonCashReceived)+'</strong><small>Payment breakdown →</small></button>'
+        +'<button class="dr-summary-item out" data-dr-target="drExpenses"><span>Register cash out</span><strong>'+peso(payoutTot+refundsTot)+'</strong><small>Expenses and refunds →</small></button>'
+        +'<button class="dr-summary-item" data-dr-target="drItems"><span>Items sold</span><strong>'+drNum(itemsSold)+'</strong><small>Item detail →</small></button>'
+        +'<button class="dr-summary-item" data-dr-target="drShifts"><span>Shifts</span><strong>'+shiftRows.length+'</strong><small>Cashier detail →</small></button>'
+      +'</div></section>'
+      +'<div class="az-sec">Shifts this day ('+shiftRows.length+')</div><div class="pz-card dr-detail-card" id="drShifts" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Cashier</th><th>Open–Close</th><th class="r">Tx</th><th class="r">Net</th><th class="r">Cash to settle</th></tr></thead><tbody>'+shiftTbl+'</tbody></table></div><div class="az-note">Each shift settles its own drawer. Cash to settle shows for closed shifts. Online orders aren’t tied to a shift.</div></div>'
+      +'<div class="az-sec">Sales by channel</div><div class="pz-card dr-detail-card" id="drChannels" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Channel</th><th class="r">Tx</th><th class="r">Gross</th><th class="r">Disc / Comm</th><th class="r">Net</th></tr></thead><tbody>'+(chRows||'<tr><td colspan="5" style="color:var(--tl);">No sales this day.</td></tr>')+'</tbody></table></div></div>'
+      +'<div class="az-sec">Sales by payment method</div><div class="pz-card dr-detail-card" id="drMethods" style="margin-bottom:0.7rem;"><table class="pz-tbl"><tbody>'+methodRows+'</tbody></table></div>'
+      +'<div class="az-sec">Register expenses (cash out)</div><div class="pz-card dr-detail-card" id="drExpenses" style="margin-bottom:0.7rem;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Reason</th><th class="r">Amount</th></tr></thead><tbody>'+(expRows||'<tr><td colspan="3" style="color:var(--tl);">None.</td></tr>')+'</tbody></table></div>'
+      +'<div class="az-sec">Items sold</div><div class="pz-card dr-detail-card" id="drItems" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Sales</th></tr></thead><tbody>'+itemRows+'</tbody></table></div></div>'
+      +'<div class="az-sec">All transactions ('+txns.length+')</div><div class="pz-card dr-detail-card" id="drTransactions"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Order</th><th>Channel</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+txnRows+'</tbody></table></div></div>';
     root.innerHTML=html;
     var X={chan:chan,byMethod:byMethod,items:items,txns:txns,payouts:payouts,refundsTot:refundsTot,netTot:netTot,payoutTot:payoutTot,shiftRows:shiftRows};
     var di=document.getElementById('drDate'); if(di)di.onchange=function(){window.__dailyDate=this.value||d;renderDailyReport();};
     var pr=document.getElementById('drPrint'); if(pr)pr.onclick=function(){printDailyReport(d,X);};
     var ex=document.getElementById('drExcel'); if(ex)ex.onclick=function(){exportDailyXlsx(d,X);};
+    root.querySelectorAll('[data-dr-target]').forEach(function(button){button.onclick=function(){var target=document.getElementById(this.getAttribute('data-dr-target'));if(!target)return;root.querySelectorAll('.dr-detail-card.focused').forEach(function(card){card.classList.remove('focused');});target.classList.add('focused');target.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(function(){target.classList.remove('focused');},1800);};});
   }
 }
 function printDailyReport(d,X){
