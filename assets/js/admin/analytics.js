@@ -275,9 +275,9 @@ function renderDailyReport(){
     var payouts=[];Object.keys(sh).forEach(function(k){var s=sh[k];(s.payOuts||[]).forEach(function(p){var pd=shiftDay[k]||tsToDate(Number(p.ts)||0);if(pd===d)payouts.push({time:new Date(Number(p.ts)||0).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),reason:p.reason||'pay-out',amount:Number(p.amount)||0});});});
     // shifts whose trading day == d, with per-shift rollup
     var shiftRows=Object.keys(sh).map(function(k){return Object.assign({id:k},sh[k]);}).filter(function(s){return shiftDay[s.id]===d;}).sort(function(a,b){return (a.openAt||0)-(b.openAt||0);}).map(function(s){var g=byShift[s.id]||{tx:0,net:0,cash:0};var open=s.status!=='closed';return {id:s.id,staff:s.staff||'',openAt:s.openAt,closeAt:s.closeAt||null,open:open,tx:g.tx,net:g.net,cash:g.cash,cashToSettle:(open?null:(s.cashToSettle!=null?Number(s.cashToSettle):null))};});
-    build(payouts,shiftRows,chan,byMethod,items,txns,refundsTot,netTot);
+    build(payouts,shiftRows,chan,byMethod,items,txns,refundsTot,netTot,sales);
   }
-  function build(payouts,shiftRows,chan,byMethod,items,txns,refundsTot,netTot){
+  function build(payouts,shiftRows,chan,byMethod,items,txns,refundsTot,netTot,sales){
     var payoutTot=payouts.reduce(function(s,p){return s+p.amount;},0);
     var chRows=['instore','grabfood','foodpanda','online'].map(function(c){var x=chan[c];if(!x.tx)return '';return '<tr><td>'+x.lbl+'</td><td class="r">'+x.tx+'</td><td class="r">'+peso(x.gross)+'</td><td class="r">'+(x.disc?('−'+peso(x.disc)):(x.comm?('comm −'+peso(x.comm)):'—'))+'</td><td class="r">'+peso(x.net)+'</td></tr>';}).join('');
     var methodRows=Object.keys(byMethod).sort().map(function(m){return '<tr><td>'+esc(m)+'</td><td class="r">'+peso(byMethod[m])+'</td></tr>';}).join('')||'<tr><td colspan="2" style="color:var(--tl);">—</td></tr>';
