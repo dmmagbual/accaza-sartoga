@@ -72,9 +72,6 @@ The production walkthrough passed, but it is manual. Add an authenticated Playwr
 
 ## Release sequence
 
-1. Commit only the build-198 audit files; do not include unrelated untracked documents.
-2. Push to `main`. GitHub Pages will publish the website, while the Functions workflow will test and deploy Functions plus Database/Storage rules.
-3. Wait for both GitHub Actions workflows to finish successfully.
-4. Confirm Admin shows build 198, force-refresh once to activate cache 92, and repeat an order status change plus a Daily Report date click.
-5. Verify public URLs such as `/functions/index.js`, `/database.rules.json`, and `/release-manifest.json` return 404 after Pages completes.
-6. Enable `main` branch protection and schedule the PIN, bounded-query, and petty-cash-image migrations above.
+Build 198 was committed and pushed to `main`. GitHub Pages, the repository quality gate, and the Firebase Functions/Database/Storage deployment all completed successfully. The live site reports Admin build 198, and `/functions/index.js`, `/database.rules.json`, and `/release-manifest.json` now return 404.
+
+The owner should force-refresh Admin once to activate cache 92, then enable `main` branch protection and schedule the PIN, bounded-query, and petty-cash-image migrations above.
