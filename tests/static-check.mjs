@@ -255,6 +255,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!adminHtml.includes("posSwitchTab('operations',this)")||!adminHtml.includes('id="operationsRoot"'))fail('Phase 6C System Health tab is missing');
   if(!operationsSource.includes("clientTelemetryDaily/'+day")||!operationsSource.includes('Last 30 days')||!operationsSource.includes('not percentile measurements'))fail('Phase 6C bounded telemetry dashboard or honest metric disclosure is incomplete');
   if(!operationsSource.includes('View system health')||!operationsSource.includes('operationsSystemHealth')||!operationsSource.includes("scrollIntoView({behavior:'smooth'"))fail('Operations self-route does not move to System Health');
+  if(!operationsSource.includes('Operations service is restarting after the billing update')||!operationsSource.includes('opsRetryNow')||!operationsSource.includes('functions/unavailable'))fail('Operations Center transient service recovery is not handled');
   for(const marker of ['pos_boot','cart_render','charge_to_durable','offline_flush','realtime_order_arrival'])if(!operationsSource.includes(marker))fail(`Phase 6C performance threshold missing: ${marker}`);
   const swCacheVersion=JSON.parse(fs.readFileSync(path.join(root,'release-manifest.json'),'utf8')).builds.serviceWorkerCache;
   if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes(`const CACHE='accaza-v${swCacheVersion}'`))fail('Phase 6C/7H dashboard is not in the coordinated offline cache');

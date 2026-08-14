@@ -8,7 +8,7 @@
     {key:'offline_flush',label:'Offline reconnect sync',target:5000,note:'Warning at 5.0s'},
     {key:'realtime_order_arrival',label:'Remote order arrival',target:1500,note:'Target < 1.5s'}
   ];
-  var days=7,loading=false,exceptionData=null;
+  var days=7,loading=false,exceptionData=null,serviceRetry=0,retryTimer=null;
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function dateKey(offset){var d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()-offset);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
   function ms(v){v=Math.round(Number(v)||0);return v>=1000?(v/1000).toFixed(v>=10000?1:2)+'s':v+'ms';}
@@ -44,7 +44,16 @@
     var keys=Array.from({length:days},function(_,i){return dateKey(i);});
     var health=Promise.all(keys.map(function(day){return a.get(a.ref(a.db,'clientTelemetryDaily/'+day)).then(function(s){return{day:day,row:s.val()||null};});}));
     var exceptions=exceptionData?Promise.resolve(exceptionData):a.getOperationalExceptions().then(function(result){return result&&result.data||result;});
-    Promise.all([health,exceptions]).then(function(result){exceptionData=result[1];render(result[0]);}).catch(function(error){if(root)root.innerHTML='<div style="padding:1rem;border:1px solid #f1b7b7;background:#fff5f5;color:#8b1e1e;border-radius:8px;">Operations Center is restricted to authorized management accounts. '+esc(error&&error.code||'Could not load operational data.')+'</div>';}).finally(function(){loading=false;});
+    Promise.all([health,exceptions]).then(function(result){serviceRetry=0;if(retryTimer){clearTimeout(retryTimer);retryTimer=null;}exceptionData=result[1];render(result[0]);}).catch(function(error){
+      var code=String(error&&error.code||'');
+      if(code==='functions/internal'||code==='functions/unavailable'||code==='functions/resource-exhausted'){
+        var delays=[5000,10000,20000,40000,80000],delay=delays[Math.min(serviceRetry,delays.length-1)];serviceRetry++;
+        if(root)root.innerHTML='<div style="padding:1rem;border:1px solid #ead39a;background:#fffaf0;color:#7a5200;border-radius:8px;">Operations service is restarting after the billing update. Retrying automatically in '+Math.round(delay/1000)+' seconds… <button id="opsRetryNow" style="margin-left:.5rem;border:1px solid #d2b66d;background:#fff;border-radius:6px;padding:.35rem .6rem;cursor:pointer;">Retry now</button></div>';
+        var retryNow=document.getElementById('opsRetryNow');if(retryNow)retryNow.onclick=function(){if(retryTimer)clearTimeout(retryTimer);retryTimer=null;loading=false;load();};
+        retryTimer=setTimeout(function(){retryTimer=null;load();},delay);return;
+      }
+      if(root)root.innerHTML='<div style="padding:1rem;border:1px solid #f1b7b7;background:#fff5f5;color:#8b1e1e;border-radius:8px;">Operations Center could not load. '+esc(code||'Check the connection and try again.')+'</div>';
+    }).finally(function(){loading=false;});
   }
   global.__accazaRegisterModule('operations',function(tab){if(tab==='operations')load();});
 })(window);
