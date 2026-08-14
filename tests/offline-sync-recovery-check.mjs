@@ -28,6 +28,15 @@ assert(state.shifts['SH-TEST'].drawer.b100===3&&state.posActiveShift.drawer.b100
 assert(state.offlinePosSync[txn].state==='synced','sync audit did not reach synced state');
 let collision=false;try{await O.syncOfflinePosSaleCommand({...ctx,data:{transactionId:'different_txn_12345',order:Object.assign({},order,{clientTxnId:'different_txn_12345'})}});}catch(error){collision=error.code==='already-exists';}
 assert(collision,'order-ID collision with a different transaction was accepted');
+const platformTxn='pos_platform_123456789',platformOrder=Object.assign({},order,{id:'GF-RECOVERY-1',clientTxnId:platformTxn,total:550});
+const platformResult=await O.syncOfflinePosSaleCommand({...ctx,data:{transactionId:platformTxn,order:platformOrder,drawerDelta:{}},now:4000});
+assert(platformResult.orderId==='GF-RECOVERY-1'&&state.orders['GF-RECOVERY-1'].clientTxnId===platformTxn,'GrabFood recovery order was rejected');
+const pandaTxn='pos_platform_987654321',pandaOrder=Object.assign({},order,{id:'FP-RECOVERY-1',clientTxnId:pandaTxn,total:890});
+const pandaResult=await O.syncOfflinePosSaleCommand({...ctx,data:{transactionId:pandaTxn,order:pandaOrder,drawerDelta:{}},now:5000});
+assert(pandaResult.orderId==='FP-RECOVERY-1'&&state.orders['FP-RECOVERY-1'].clientTxnId===pandaTxn,'FoodPanda recovery order was rejected');
+const cancelledTxn='pos_cancelled_123456789';state.offlinePosSync[cancelledTxn]={state:'cancelled',reason:'test transaction'};
+let cancelled=false;try{await O.syncOfflinePosSaleCommand({...ctx,data:{transactionId:cancelledTxn,order:Object.assign({},order,{id:'GF-CANCELLED-1',clientTxnId:cancelledTxn}),drawerDelta:{}},now:6000});}catch(error){cancelled=error.code==='failed-precondition';}
+assert(cancelled&&!state.orders['GF-CANCELLED-1'],'management-cancelled transaction was uploaded');
 let badDenom=false;try{O.offlineDrawerDelta({fake100:1});}catch(error){badDenom=error.code==='invalid-argument';}
 assert(badDenom,'unknown denomination was accepted');
 console.log('PASS: offline order retry repairs partial failure and duplicate replay is exactly-once.');
