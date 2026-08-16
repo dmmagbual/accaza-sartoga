@@ -21,10 +21,12 @@ function applyDrawerDelta(row, transactionId, delta, now, actor) {
 async function syncOfflinePosSaleCommand(ctx) {
   const {db, actor, data, textField, money, listFromFirebase, activeOrderProjection} = ctx, now = Number(ctx.now) || Date.now();
   const transactionId = offlineTxnKey(data.transactionId), raw = data.order;
+  const syncAudit = (await db.ref(`/offlinePosSync/${transactionId}`).get()).val();
+  if (syncAudit && syncAudit.state === "cancelled") throw new HttpsError("failed-precondition", "This offline transaction was cancelled by management.");
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new HttpsError("invalid-argument", "Offline sale payload is missing.");
   if (Buffer.byteLength(JSON.stringify(raw), "utf8") > 250000) throw new HttpsError("invalid-argument", "Offline sale payload is too large.");
   const orderId = textField(raw.id, "Order ID", 120, true), shiftId = textField(raw.shiftId, "Shift ID", 120, true);
-  if (!/^POS-[A-Za-z0-9_-]+$/.test(orderId) || raw.source !== "pos" || raw.status !== "Completed") throw new HttpsError("invalid-argument", "Offline sale identity or status is invalid.");
+  if (!/^(?:POS|GF|FP)-[A-Za-z0-9_-]+$/.test(orderId) || raw.source !== "pos" || raw.status !== "Completed") throw new HttpsError("invalid-argument", "Offline sale identity or status is invalid.");
   if (raw.clientTxnId !== transactionId) throw new HttpsError("invalid-argument", "Offline sale transaction identity does not match.");
   const total = money(raw.total);if (!(total >= 0 && total <= 1000000)) throw new HttpsError("invalid-argument", "Offline sale total is invalid.");
   const lines = listFromFirebase(raw.lineItems);if (!lines.length || lines.length > 200) throw new HttpsError("invalid-argument", "Offline sale items are invalid.");
