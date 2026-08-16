@@ -812,12 +812,12 @@ window.changeAdminPassword=async function(){
     msg.style.color=ok?'#1a7a45':'#c0392b';
     msg.style.border='1px solid '+(ok?'rgba(45,158,95,0.3)':'rgba(192,57,57,0.3)');
   }
-  if(!auth.currentUser){showMsg('Your Firebase session has expired. Log in again.',false);return;}
-  if(!nw||!conf){showMsg('Please fill in the new password fields.',false);return;}
+  if(!auth.currentUser||!auth.currentUser.email){showMsg('Your Firebase session has expired. Log in again.',false);return;}
+  if(!cur||!nw||!conf){showMsg('Please fill in all fields.',false);return;}
   if(nw!==conf){showMsg('New passwords do not match.',false);return;}
   if(nw.length<6){showMsg('New password must be at least 6 characters.',false);return;}
-  try{await updatePassword(auth.currentUser,nw);showMsg('\u2705 Password updated.',true);document.getElementById('cpCurrent').value='';document.getElementById('cpNew').value='';document.getElementById('cpConfirm').value='';}
-  catch(e){if(e&&e.code==='auth/requires-recent-login'){try{if(!cur){showMsg('Enter your CURRENT password to confirm the change.',false);return;}var _c=EmailAuthProvider.credential(auth.currentUser.email,cur);await reauthenticateWithCredential(auth.currentUser,_c);await updatePassword(auth.currentUser,nw);showMsg('\u2705 Password updated.',true);}catch(e2){showMsg('Current password is incorrect.',false);}}else{showMsg('Error: '+((e&&e.code)||e),false);}}
+  try{var credential=EmailAuthProvider.credential(auth.currentUser.email,cur);await reauthenticateWithCredential(auth.currentUser,credential);await updatePassword(auth.currentUser,nw);['cpCurrent','cpNew','cpConfirm'].forEach(function(id){document.getElementById(id).value='';});showMsg('\u2705 Password updated successfully!',true);}
+  catch(e){var bad=e&&(e.code==='auth/invalid-credential'||e.code==='auth/wrong-password');showMsg(bad?'Current password is incorrect.':'Password could not be updated. Please try again.',false);}
 };
 
 
