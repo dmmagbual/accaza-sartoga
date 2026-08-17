@@ -374,9 +374,10 @@ function renderOps(){
   }
   // VOID / REFUND recent sales
   var recent=activeShift?Object.keys(ordersMap).map(function(k){return ordersMap[k];}).filter(function(o){return o&&o.shiftId===activeShift.id&&(o.status==='Completed'||o.status==='Received');}).sort(function(a,b){return(b.timestamp||0)-(a.timestamp||0);}).slice(0,60):[];
+  var recentOriginal=recent.reduce(function(s,o){return s+(Number(o.total)||0);},0),recentVoids=recent.reduce(function(s,o){return s+(o.voided?(Number(o.total)||0):0);},0),recentRefunds=recent.reduce(function(s,o){return s+(o.voided?0:(Number(o.refundAmount)||0));},0),recentNet=recentOriginal-recentVoids-recentRefunds;
   html+='<div class="az-sec">Recent sales — void / refund</div><div class="pz-card"><table class="pz-tbl"><thead><tr><th>Order</th><th>Time</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>'
     +(recent.length?recent.map(function(o){var st=o.voided?'<span style="color:#e63946;">VOID</span>':(Number(o.refundAmount)>0?'<span style="color:#e67e00;">Refunded '+peso(o.refundAmount)+'</span>':'OK');return '<tr><td>'+esc(o.id)+'<div style="font-size:0.7rem;color:var(--tl);">'+esc((o.staff||''))+'</div></td><td>'+esc(o.time||'')+'</td><td>'+peso(o.total)+'</td><td>'+st+'</td><td style="white-space:nowrap;">'+(o.voided?'':'<button class="pz-btn sec" style="padding:0.2rem 0.5rem;" data-refund="'+o.id+'">Refund</button> <button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-void="'+o.id+'">Void</button>')+'</td></tr>';}).join(''):'<tr><td colspan="5" class="az-note" style="padding:0.8rem;">'+(activeShift?'No sales in this shift yet.':'No open shift — a shift’s sales show here while it’s open and clear when it closes.')+'</td></tr>')
-    +'</tbody></table></div>';
+    +'<tr class="register-total"><td colspan="2">Total net ('+recent.length+' sales)</td><td>'+peso(recentNet)+'</td><td colspan="2">Original '+peso(recentOriginal)+' · Voids −'+peso(recentVoids)+' · Refunds −'+peso(recentRefunds)+'</td></tr></tbody></table></div>';
   // (Staff & PINs, POS Settings, and Payment methods moved to the Settings ▸ POS Settings tab — see renderPosSettings)
   var acts=Object.keys(activityMap).map(function(k){return activityMap[k];}).sort(function(a,b){return(b.ts||0)-(a.ts||0);}).slice(0,20);
   html+='<div class="az-sec" style="display:flex;justify-content:space-between;align-items:center;"><span id="opsLogToggle" style="cursor:pointer;user-select:none;">'+(logCollapsed?'▸':'▾')+' Activity log <span style="font-weight:400;color:var(--tl);font-size:0.78rem;">('+acts.length+')</span></span> <button class="pz-btn sec" id="opsArchiveLog" style="padding:0.2rem 0.6rem;font-size:0.72rem;font-weight:400;">Archive entries &gt; 60 days</button></div><div class="pz-card" id="opsLogBody"'+(logCollapsed?' style="display:none;"':'')+'><table class="pz-tbl"><tbody>'
@@ -419,7 +420,8 @@ function shiftSummaryObj(shift,isOpen){
 function shiftTxTable(list,expected){
   if(!list.length)return '<div class="az-note" style="padding:0.4rem;">No transaction lines available'+(expected?(' (summary shows '+expected+' — older lines may be archived)'):'')+'.</div>';
   var note=(expected&&list.length<expected)?'<div class="az-note" style="padding:0.3rem 0;">Showing '+list.length+' of '+expected+' — older lines archived.</div>':'';
-  return note+'<div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Order</th><th>Channel</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+list.map(function(o){var ch=(o.channel&&o.channel!=='instore')?(o.channel==='grabfood'?'GrabFood':'FoodPanda'):'In-store';var tag=Number(o.refundAmount)>0?' · R '+peso(o.refundAmount):'';return '<tr><td>'+esc(o.time||'')+'</td><td>'+esc(o.id)+'</td><td>'+esc(ch)+'</td><td>'+esc(shiftTxnMethod(o))+'</td><td class="r">'+peso(o.total)+esc(tag)+'</td></tr>';}).join('')+'</tbody></table></div>';
+  var total=list.reduce(function(s,o){return s+(Number(o.total)||0)-(Number(o.refundAmount)||0);},0);
+  return note+'<div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Order</th><th>Channel</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+list.map(function(o){var ch=(o.channel&&o.channel!=='instore')?(o.channel==='grabfood'?'GrabFood':'FoodPanda'):'In-store';var tag=Number(o.refundAmount)>0?' · R '+peso(o.refundAmount):'';return '<tr><td>'+esc(o.time||'')+'</td><td>'+esc(o.id)+'</td><td>'+esc(ch)+'</td><td>'+esc(shiftTxnMethod(o))+'</td><td class="r">'+peso(o.total)+esc(tag)+'</td></tr>';}).join('')+'<tr class="register-total"><td colspan="4">Total ('+list.length+' transactions)</td><td class="r">'+peso(total)+'</td></tr></tbody></table></div>';
 }
 function renderShiftCard(){
   var sel=document.getElementById('opsCardShift'),body=document.getElementById('opsCardBody'); if(!sel||!body)return;
@@ -441,8 +443,9 @@ function renderShiftCard(){
     +'<tr><td>Less float retained</td><td class="r">−'+peso(S.retainedFloat)+'</td></tr>'
     +'<tr style="border-top:2px solid var(--bd);"><td><b>► Cash to settle</b></td><td class="r"><b>'+peso(S.cashToSettle)+'</b></td></tr>'
     +'</tbody></table></div>';
-  var chBlk='<div class="az-sec">Sales by channel</div><div class="pz-card" style="margin-bottom:0.6rem;"><table class="pz-tbl"><tbody>'+chRows+'</tbody></table><div class="az-note">GrabFood/FoodPanda are receivables, not cash. Online is not part of a shift.</div></div>';
-  var mBlk='<div class="az-sec">By payment method</div><div class="pz-card" style="margin-bottom:0.6rem;"><table class="pz-tbl"><tbody>'+mRows+'</tbody></table></div>';
+  var methodTotal=Object.keys(S.byMethod).reduce(function(sum,m){return sum+(Number(S.byMethod[m])||0);},0);
+  var chBlk='<div class="az-sec">Sales by channel</div><div class="pz-card" style="margin-bottom:0.6rem;"><table class="pz-tbl"><tbody>'+chRows+'<tr class="register-total"><td>Total net sales</td><td class="r">'+peso(S.net)+'</td></tr></tbody></table><div class="az-note">GrabFood/FoodPanda are receivables, not cash. Online is not part of a shift.</div></div>';
+  var mBlk='<div class="az-sec">By payment method</div><div class="pz-card" style="margin-bottom:0.6rem;"><table class="pz-tbl"><tbody>'+mRows+'<tr class="register-total"><td>Total</td><td class="r">'+peso(methodTotal)+'</td></tr></tbody></table></div>';
   body.innerHTML=hdr+kpis+recon+chBlk+mBlk+'<div class="az-sec">Transactions</div><div class="pz-card" id="opsCardTx"><p class="az-note">Loading…</p></div>';
   var txEl=document.getElementById('opsCardTx');
   if(isOpen){ if(txEl)txEl.innerHTML=shiftTxTable(shiftSales(shift)); }
@@ -611,6 +614,7 @@ function shiftTxnMethod(o){return paysOf(o).map(function(p){return p.method;}).j
 function openShiftReview(){
   if(!activeShift){alert('No open shift to review.');return;}
   var shift=activeShift,z=computeZ(shift),sales=shiftSales(shift),items=shiftItemsSummary(shift);
+  var reviewMethodTotal=Object.keys(z.byMethod).reduce(function(s,m){return s+(Number(z.byMethod[m])||0);},0),reviewTxnTotal=sales.reduce(function(s,o){return s+(Number(o.total)||0)-(Number(o.refundAmount)||0);},0);
   var methodRows=Object.keys(z.byMethod).map(function(m){return '<tr><td>'+esc(m)+'</td><td class="r">'+peso(z.byMethod[m])+'</td></tr>';}).join('')||'<tr><td colspan="2" style="color:var(--tl);">No sales yet.</td></tr>';
   var txnRows=sales.map(function(o){var ch=(o.channel&&o.channel!=='instore')?(o.channel==='grabfood'?'GrabFood':'FoodPanda'):'In-store';var tag=Number(o.refundAmount)>0?' · R '+peso(o.refundAmount):'';return '<tr><td>'+esc(o.time||'')+'</td><td>'+esc(o.id)+'</td><td>'+esc(ch)+'</td><td>'+esc(shiftTxnMethod(o))+'</td><td class="r">'+peso(o.total)+esc(tag)+'</td></tr>';}).join('')||'<tr><td colspan="5" style="color:var(--tl);">No sales yet.</td></tr>';
   var itemRows=items.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td class="r">'+num(x.qty)+'</td><td class="r">'+peso(x.sales)+'</td></tr>';}).join('')||'<tr><td colspan="3" style="color:var(--tl);">No items yet.</td></tr>';
@@ -631,14 +635,14 @@ function openShiftReview(){
       +'</tbody></table>'+(z.floatMismatch?'<div class="az-note" style="color:#c0392b;">⚠ Opened with '+peso(shift.openingFloat)+' but standard float is '+peso(fixedFloatCfg)+'.</div>':'')+'</div>'
     +'<div class="pz-card" style="margin-bottom:0.8rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.3rem;">🧾 Sales by channel</div><table class="pz-tbl"><tbody>'
       +([['instore','In-store'],['grabfood','GrabFood'],['foodpanda','FoodPanda']].map(function(c){var v=(z.byChannel&&z.byChannel[c[0]])||0;if(!v&&c[0]!=='instore')return '';return '<tr><td>'+c[1]+'</td><td class="r">'+peso(v)+'</td></tr>';}).join(''))
-      +'</tbody></table><div class="az-note">GrabFood/FoodPanda are receivables (platform settles weekly), not cash. Online is not rung on a shift — see Daily Report.</div></div>'
+      +'<tr class="register-total"><td>Total net sales</td><td class="r">'+peso(z.net)+'</td></tr></tbody></table><div class="az-note">GrabFood/FoodPanda are receivables (platform settles weekly), not cash. Online is not rung on a shift — see Daily Report.</div></div>'
     +'<div style="display:flex;gap:0.7rem;flex-wrap:wrap;margin-bottom:0.8rem;">'
       +'<div class="pz-card" style="flex:1;min-width:130px;"><div style="font-size:0.72rem;color:var(--tl);">Transactions</div><div style="font-weight:700;font-size:1.1rem;color:var(--bd);">'+z.tx+'</div></div>'
       +'<div class="pz-card" style="flex:1;min-width:130px;"><div style="font-size:0.72rem;color:var(--tl);">Net sales</div><div style="font-weight:700;font-size:1.1rem;color:var(--bd);">'+peso(z.net)+'</div></div>'
       +'<div class="pz-card" style="flex:1;min-width:130px;"><div style="font-size:0.72rem;color:var(--tl);">Non-cash pending</div><div style="font-weight:700;font-size:1.1rem;color:'+(z.pending?'#8a5a00':'var(--bd)')+';">'+peso(z.pending)+'</div></div>'
     +'</div>'
-    +'<div class="az-sec">Sales by payment method</div><div class="pz-card" style="margin-bottom:0.7rem;"><table class="pz-tbl"><tbody>'+methodRows+'</tbody></table></div>'
-    +'<div class="az-sec">Transactions ('+sales.length+')</div><div class="pz-card" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Order</th><th>Channel</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+txnRows+'</tbody></table></div></div>'
+    +'<div class="az-sec">Sales by payment method</div><div class="pz-card" style="margin-bottom:0.7rem;"><table class="pz-tbl"><tbody>'+methodRows+'<tr class="register-total"><td>Total</td><td class="r">'+peso(reviewMethodTotal)+'</td></tr></tbody></table></div>'
+    +'<div class="az-sec">Transactions ('+sales.length+')</div><div class="pz-card" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Order</th><th>Channel</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+txnRows+'<tr class="register-total"><td colspan="4">Total ('+sales.length+' transactions)</td><td class="r">'+peso(reviewTxnTotal)+'</td></tr></tbody></table></div></div>'
     +'<div class="az-sec">Items sold</div><div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Sales</th></tr></thead><tbody>'+itemRows+'</tbody></table></div></div>'
     +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="srPrint">🖨 Print</button><button class="pz-btn sec" id="srExcel">⬇ Excel</button><button class="pz-btn sec" id="srClose2">Close</button></div></div>';
   document.body.appendChild(mask);
