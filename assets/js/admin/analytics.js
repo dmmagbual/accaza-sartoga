@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},funnelMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={},receiptsMap={};
+var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},funnelMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={},receiptsMap={},posSettingsMap={};
 var svFrom=null,svTo=null,svExpand=null;
 var azRange='7d', azFrom=null, azTo=null, pnlMonth=null;
 var poChannel='grabfood', poFrom=null, poTo=null;
@@ -37,6 +37,7 @@ function init(){
   a.subscribe('internalUsage',function(s){usageMap=s.val()||{};if(isTab('pnl'))renderPnl();if(isTab('stockvalue'))renderStockValue();});
   a.subscribe('stockReceipts',function(s){receiptsMap=s.val()||{};if(isTab('stockvalue'))renderStockValue();});
   a.subscribe('inventory',function(s){invMap=s.val()||{};if(isTab('stockvalue'))renderStockValue();});
+  a.subscribe('posSettings',function(s){posSettingsMap=s.val()||{};if(isTab('pnl'))renderPnl();});
   a.subscribe('analyticsFunnel',function(s){funnelMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
   a.subscribe('platformPayouts',function(s){payoutsMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();if(isTab('analytics'))renderAnalytics();});
   a.subscribe('platformVarAccounts',function(s){varAcctMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();});
@@ -243,6 +244,21 @@ function monthKey(ts){var d=new Date(ts);return d.getFullYear()+'-'+pad(d.getMon
 function monthLabel(mk){var p=mk.split('-');return new Date(p[0],p[1]-1,1).toLocaleDateString('en-PH',{month:'long',year:'numeric'});}
 function prevMonthKey(mk){var p=mk.split('-');var d=new Date(p[0],p[1]-1,1);d.setMonth(d.getMonth()-1);return d.getFullYear()+'-'+pad(d.getMonth()+1);}
 function usageNameFor(id){ if(id==='staff')return 'Staff consumption'; if(id==='rnd')return 'R&D / Testing'; var nm=null; Object.keys(usageMap).some(function(k){var u=usageMap[k];if(u&&u.kind===id&&u.kindName){nm=u.kindName;return true;}return false;}); return nm||id; }
+var PNL_OPEX_LINES=[
+  {id:'salaries',label:'Salaries and wages',re:/salary|salaries|wage|payroll/i},
+  {id:'rent',label:'Rent',re:/rent|rental|lease/i},
+  {id:'electricity',label:'Electricity',re:/electric/i},
+  {id:'waterUtilities',label:'Water and other utilities',re:/water|utilit|internet|telephone|gas/i},
+  {id:'transportation',label:'Transportation',re:/transport|travel|fuel|fare/i},
+  {id:'repairs',label:'Repairs and maintenance',re:/repair|maintenance/i},
+  {id:'officeAdmin',label:'Office and administrative expenses',re:/office|admin|supplies|pcf|petty cash/i},
+  {id:'permits',label:'Permits and licenses',re:/permit|licen[cs]e|registration/i},
+  {id:'depreciation',label:'Depreciation',re:/depreciation/i}
+];
+function pnlExpenseGroups(byItem){var out={operating:{},other:{interest:0,bank:0,other:0},tax:0};PNL_OPEX_LINES.forEach(function(x){out.operating[x.id]=0;});out.operating.other=0;Object.keys(byItem||{}).forEach(function(id){var x=byItem[id]||{},n=String(x.name||'');var a=Number(x.amount)||0;if(/income.?tax|tax expense/i.test(n)){out.tax+=a;return;}if(/interest/i.test(n)){out.other.interest+=a;return;}if(/bank charge|bank fee/i.test(n)){out.other.bank+=a;return;}if(/loan|debt repayment|principal/i.test(n)){out.other.other+=a;return;}var hit=PNL_OPEX_LINES.filter(function(d){return d.re.test(n);})[0];if(hit)out.operating[hit.id]+=a;else out.operating.other+=a;});return out;}
+function emptyCogsCategories(){return{food:0,beverage:0,packaging:0,directLabor:0,unallocated:0};}
+function cogsBucketForIngredient(id){var item=invMap[id]||{},cat=((posSettingsMap.invCategories||{})[item.category])||{};var label=String(cat.name||item.category||'').toLowerCase();if(/packag|cup|lid|straw|napkin|container/.test(label))return'packaging';if(/beverage|drink|coffee|tea|milk|syrup|powder/.test(label))return'beverage';if(/food|ingredient|bakery|kitchen|pastry|meal/.test(label))return'food';return'unallocated';}
+function orderCogsCategories(o){var out=emptyCogsCategories(),snap=o&&o.cogsCategorySnapshot;if(snap){Object.keys(out).forEach(function(k){out[k]=Number(snap[k])||0;});return out;}var lines=o&&o.cogsDetail&&o.cogsDetail.lines;if(Array.isArray(lines)&&lines.length){lines.forEach(function(line){var b=cogsBucketForIngredient(line.ingredientId);out[b]+=Number(line.totalCost)||0;});return out;}out.unallocated=Number(o&&o.cogsSnapshot)||0;return out;}
 /* ══════════ DAILY REPORT (all channels + register expenses) ══════════ */
 function drNum(n){return (Math.round((Number(n)||0)*1000)/1000).toLocaleString('en-PH');}
 function dailyBounds(dstr){var s=new Date(dstr+'T00:00:00').getTime();return [s,s+86400000];}
@@ -282,6 +298,11 @@ function renderDailyReport(){
     var cashReceived=Object.keys(byMethod).reduce(function(sum,method){return /cash/i.test(method)?sum+(Number(byMethod[method])||0):sum;},0);
     var nonCashReceived=Object.keys(byMethod).reduce(function(sum,method){return /cash/i.test(method)?sum:sum+(Number(byMethod[method])||0);},0);
     var itemsSold=items.reduce(function(sum,item){return sum+(Number(item.qty)||0);},0);
+    var paymentTotal=cashReceived+nonCashReceived;
+    var itemSalesTotal=items.reduce(function(sum,item){return sum+(Number(item.sales)||0);},0);
+    var transactionTotal=txns.reduce(function(sum,t){return sum+(Number(t.amount)||0);},0);
+    var shiftTxTotal=shiftRows.reduce(function(sum,s){return sum+(Number(s.tx)||0);},0),shiftNetTotal=shiftRows.reduce(function(sum,s){return sum+(Number(s.net)||0);},0),shiftSettleTotal=shiftRows.reduce(function(sum,s){return sum+(Number(s.cashToSettle)||0);},0);
+    var channelTxTotal=0,channelGrossTotal=0,channelDeductionTotal=0;Object.keys(chan).forEach(function(k){var x=chan[k];channelTxTotal+=Number(x.tx)||0;channelGrossTotal+=Number(x.gross)||0;channelDeductionTotal+=(Number(x.disc)||0)+(Number(x.comm)||0);});
     var chRows=['instore','grabfood','foodpanda','online'].map(function(c){var x=chan[c];if(!x.tx)return '';return '<tr><td>'+x.lbl+'</td><td class="r">'+x.tx+'</td><td class="r">'+peso(x.gross)+'</td><td class="r">'+(x.disc?('−'+peso(x.disc)):(x.comm?('comm −'+peso(x.comm)):'—'))+'</td><td class="r">'+peso(x.net)+'</td></tr>';}).join('');
     var methodRows=Object.keys(byMethod).sort().map(function(m){return '<tr><td>'+esc(m)+'</td><td class="r">'+peso(byMethod[m])+'</td></tr>';}).join('')||'<tr><td colspan="2" style="color:var(--tl);">—</td></tr>';
     var itemRows=items.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td class="r">'+drNum(x.qty)+'</td><td class="r">'+peso(x.sales)+'</td></tr>';}).join('')||'<tr><td colspan="3" style="color:var(--tl);">No sales this day.</td></tr>';
@@ -300,12 +321,12 @@ function renderDailyReport(){
         +'<button class="dr-summary-item" data-dr-target="drItems"><span>Items sold</span><strong>'+drNum(itemsSold)+'</strong><small>Item detail →</small></button>'
         +'<button class="dr-summary-item" data-dr-target="drShifts"><span>Shifts</span><strong>'+shiftRows.length+'</strong><small>Cashier detail →</small></button>'
       +'</div></section>'
-      +'<div class="az-sec">Shifts this day ('+shiftRows.length+')</div><div class="pz-card dr-detail-card" id="drShifts" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Cashier</th><th>Open–Close</th><th class="r">Tx</th><th class="r">Net</th><th class="r">Cash to settle</th></tr></thead><tbody>'+shiftTbl+'</tbody></table></div><div class="az-note">Each shift settles its own drawer. Cash to settle shows for closed shifts. Online orders aren’t tied to a shift.</div></div>'
-      +'<div class="az-sec">Sales by channel</div><div class="pz-card dr-detail-card" id="drChannels" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Channel</th><th class="r">Tx</th><th class="r">Gross</th><th class="r">Disc / Comm</th><th class="r">Net</th></tr></thead><tbody>'+(chRows||'<tr><td colspan="5" style="color:var(--tl);">No sales this day.</td></tr>')+'</tbody></table></div></div>'
-      +'<div class="az-sec">Sales by payment method</div><div class="pz-card dr-detail-card" id="drMethods" style="margin-bottom:0.7rem;"><table class="pz-tbl"><tbody>'+methodRows+'</tbody></table></div>'
-      +'<div class="az-sec">Register expenses (cash out)</div><div class="pz-card dr-detail-card" id="drExpenses" style="margin-bottom:0.7rem;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Reason</th><th class="r">Amount</th></tr></thead><tbody>'+(expRows||'<tr><td colspan="3" style="color:var(--tl);">None.</td></tr>')+'</tbody></table></div>'
-      +'<div class="az-sec">Items sold</div><div class="pz-card dr-detail-card" id="drItems" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Sales</th></tr></thead><tbody>'+itemRows+'</tbody></table></div></div>'
-      +'<div class="az-sec">All transactions ('+txns.length+')</div><div class="pz-card dr-detail-card" id="drTransactions"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Order</th><th>Channel</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+txnRows+'</tbody></table></div></div>';
+      +'<div class="az-sec">Shifts this day ('+shiftRows.length+')</div><div class="pz-card dr-detail-card" id="drShifts" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Cashier</th><th>Open–Close</th><th class="r">Tx</th><th class="r">Net</th><th class="r">Cash to settle</th></tr></thead><tbody>'+shiftTbl+'<tr class="tot"><td colspan="2">Total</td><td class="r">'+shiftTxTotal+'</td><td class="r">'+peso(shiftNetTotal)+'</td><td class="r">'+peso(shiftSettleTotal)+'</td></tr></tbody></table></div><div class="az-note">Each shift settles its own drawer. Cash to settle shows for closed shifts. Online orders aren’t tied to a shift.</div></div>'
+      +'<div class="az-sec">Sales by channel</div><div class="pz-card dr-detail-card" id="drChannels" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Channel</th><th class="r">Tx</th><th class="r">Gross</th><th class="r">Disc / Comm</th><th class="r">Net</th></tr></thead><tbody>'+(chRows||'<tr><td colspan="5" style="color:var(--tl);">No sales this day.</td></tr>')+'<tr class="tot"><td>Total</td><td class="r">'+channelTxTotal+'</td><td class="r">'+peso(channelGrossTotal)+'</td><td class="r">−'+peso(channelDeductionTotal)+'</td><td class="r">'+peso(netTot)+'</td></tr></tbody></table></div></div>'
+      +'<div class="az-sec">Sales by payment method</div><div class="pz-card dr-detail-card" id="drMethods" style="margin-bottom:0.7rem;"><table class="pz-tbl"><tbody>'+methodRows+'<tr class="tot"><td>Total received</td><td class="r">'+peso(paymentTotal)+'</td></tr></tbody></table></div>'
+      +'<div class="az-sec">Register expenses (cash out)</div><div class="pz-card dr-detail-card" id="drExpenses" style="margin-bottom:0.7rem;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Reason</th><th class="r">Amount</th></tr></thead><tbody>'+(expRows||'<tr><td colspan="3" style="color:var(--tl);">None.</td></tr>')+'<tr class="tot"><td colspan="2">Total cash out</td><td class="r">'+peso(payoutTot+refundsTot)+'</td></tr></tbody></table></div>'
+      +'<div class="az-sec">Items sold</div><div class="pz-card dr-detail-card" id="drItems" style="margin-bottom:0.7rem;"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Sales</th></tr></thead><tbody>'+itemRows+'<tr class="tot"><td>Total</td><td class="r">'+drNum(itemsSold)+'</td><td class="r">'+peso(itemSalesTotal)+'</td></tr></tbody></table></div></div>'
+      +'<div class="az-sec">All transactions ('+txns.length+')</div><div class="pz-card dr-detail-card" id="drTransactions"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Order</th><th>Channel</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+txnRows+'<tr class="tot"><td colspan="4">Total ('+txns.length+' transactions)</td><td class="r">'+peso(transactionTotal)+'</td></tr></tbody></table></div></div>';
     root.innerHTML=html;
     var X={chan:chan,byMethod:byMethod,items:items,txns:txns,payouts:payouts,refundsTot:refundsTot,netTot:netTot,payoutTot:payoutTot,shiftRows:shiftRows};
     var di=document.getElementById('drDate'); if(di)di.onchange=function(){window.__dailyDate=this.value||d;renderDailyReport();};
@@ -321,13 +342,15 @@ function printDailyReport(d,X){
   var ex=X.payouts.map(function(p){return '<tr><td>'+esc(p.time)+' '+esc(p.reason)+'</td><td style="text-align:right;">'+peso(p.amount)+'</td></tr>';}).join('')+(X.refundsTot?'<tr><td>Refunds</td><td style="text-align:right;">'+peso(X.refundsTot)+'</td></tr>':'');
   var it=X.items.map(function(x){return '<tr><td>'+esc(x.name)+' ×'+drNum(x.qty)+'</td><td style="text-align:right;">'+peso(x.sales)+'</td></tr>';}).join('');
   var shf=(X.shiftRows||[]).map(function(s){return '<tr><td>'+esc(s.staff)+(s.open?' (open)':'')+' ×'+s.tx+'</td><td style="text-align:right;">'+peso(s.net)+(s.cashToSettle!=null?(' · settle '+peso(s.cashToSettle)):'')+'</td></tr>';}).join('');
+  var methodTotal=Object.keys(X.byMethod).reduce(function(sum,k){return sum+(Number(X.byMethod[k])||0);},0),itemQty=X.items.reduce(function(sum,x){return sum+(Number(x.qty)||0);},0),itemSales=X.items.reduce(function(sum,x){return sum+(Number(x.sales)||0);},0),shiftNet=(X.shiftRows||[]).reduce(function(sum,x){return sum+(Number(x.net)||0);},0),txnTotal=X.txns.reduce(function(sum,x){return sum+(Number(x.amount)||0);},0);
   w.document.write('<html><head><title>Daily Report '+esc(d)+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2,h3{text-align:center;margin:2px 0;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
     +'<h2>Accaza Coffee House</h2><h3>DAILY REPORT</h3><div style="text-align:center;">Trading day '+esc(d)+'</div><hr>'
-    +'<div><b>Shifts this day</b></div><table>'+(shf||'<tr><td>None</td></tr>')+'</table><hr>'
+    +'<div><b>Shifts this day</b></div><table>'+(shf||'<tr><td>None</td></tr>')+'<tr><td><b>Total shift net</b></td><td style="text-align:right;"><b>'+peso(shiftNet)+'</b></td></tr></table><hr>'
     +'<div><b>Net sales by channel</b></div><table>'+(ch||'<tr><td>None</td></tr>')+'<tr><td><b>Total net</b></td><td style="text-align:right;"><b>'+peso(X.netTot)+'</b></td></tr></table><hr>'
-    +'<div><b>By payment method</b></div><table>'+(me||'<tr><td>None</td></tr>')+'</table><hr>'
+    +'<div><b>By payment method</b></div><table>'+(me||'<tr><td>None</td></tr>')+'<tr><td><b>Total received</b></td><td style="text-align:right;"><b>'+peso(methodTotal)+'</b></td></tr></table><hr>'
     +'<div><b>Register expenses (cash out)</b></div><table>'+(ex||'<tr><td>None</td></tr>')+'<tr><td><b>Total out</b></td><td style="text-align:right;"><b>'+peso(X.payoutTot+X.refundsTot)+'</b></td></tr></table><hr>'
-    +'<div><b>Items sold</b></div><table>'+(it||'<tr><td>None</td></tr>')+'</table><hr>'
+    +'<div><b>Items sold</b></div><table>'+(it||'<tr><td>None</td></tr>')+'<tr><td><b>Total items ×'+drNum(itemQty)+'</b></td><td style="text-align:right;"><b>'+peso(itemSales)+'</b></td></tr></table><hr>'
+    +'<div><b>All transactions</b></div><table><tr><td><b>Total ('+X.txns.length+')</b></td><td style="text-align:right;"><b>'+peso(txnTotal)+'</b></td></tr></table><hr>'
     +'<div style="font-size:9px;text-align:center;">Management report — includes in-store &amp; platform channels; register cash-out = drawer pay-outs + refunds.</div>'
     +'<div style="text-align:center;margin-top:8px;"><button onclick="window.print()">Print</button></div></body></html>');
   w.document.close();
@@ -340,12 +363,17 @@ function exportDailyXlsx(d,X){
   var tx=[['Time','Order','Channel','Method','Amount','Refund']];X.txns.forEach(function(t){tx.push([t.time,t.id,t.channel,t.method,t.amount,t.refund]);});
   var ex=[['Time','Reason','Amount']];X.payouts.forEach(function(p){ex.push([p.time,p.reason,p.amount]);});if(X.refundsTot)ex.push(['','Refunds',X.refundsTot]);
   var sf=[['Cashier','Open','Close','Status','Tx','Net','Cash sales','Cash to settle']];(X.shiftRows||[]).forEach(function(s){sf.push([s.staff,s.openAt?new Date(s.openAt).toLocaleString('en-PH'):'',s.closeAt?new Date(s.closeAt).toLocaleString('en-PH'):'',s.open?'open':'closed',s.tx,s.net,s.cash,(s.cashToSettle!=null?s.cashToSettle:'')]);});
+  ch.push(['TOTAL',ch.slice(1).reduce(function(s,r){return s+(Number(r[1])||0);},0),ch.slice(1).reduce(function(s,r){return s+(Number(r[2])||0);},0),ch.slice(1).reduce(function(s,r){return s+(Number(r[3])||0);},0),ch.slice(1).reduce(function(s,r){return s+(Number(r[4])||0);},0),X.netTot]);
+  me.push(['TOTAL',Object.keys(X.byMethod).reduce(function(s,k){return s+(Number(X.byMethod[k])||0);},0)]);it.push(['TOTAL',X.items.reduce(function(s,x){return s+(Number(x.qty)||0);},0),X.items.reduce(function(s,x){return s+(Number(x.sales)||0);},0)]);tx.push(['TOTAL','','','',X.txns.reduce(function(s,x){return s+(Number(x.amount)||0);},0),X.refundsTot]);ex.push(['TOTAL','',X.payoutTot+X.refundsTot]);sf.push(['TOTAL','','','',sf.slice(1).reduce(function(s,r){return s+(Number(r[4])||0);},0),sf.slice(1).reduce(function(s,r){return s+(Number(r[5])||0);},0),sf.slice(1).reduce(function(s,r){return s+(Number(r[6])||0);},0),sf.slice(1).reduce(function(s,r){return s+(Number(r[7])||0);},0)]);
   var wb=XLSX.utils.book_new();[['Shifts',sf],['Channels',ch],['Methods',me],['Items',it],['Transactions',tx],['Expenses',ex]].forEach(function(p){XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(p[1]),p[0]);});XLSX.writeFile(wb,'daily-report-'+d+'.xlsx');
 }
 function pnlFor(mk){
   var sales=allOrders().filter(isSale).map(saleFields).filter(function(s){return monthKey(s.ts)===mk;});
   var revenue=sales.reduce(function(s,x){return s+x.net;},0);
-  var cogs=0,uncovered=0;sales.forEach(function(x){if(x.lineItems){var r=orderCOGS(x.o);cogs+=r.cost;if(!r.covered)uncovered++;}else uncovered++;});
+  var revenueByChannel={instore:0,grabfood:0,foodpanda:0,online:0},customerDiscounts=0;
+  sales.forEach(function(x){var ch=drChannel(x.o);revenueByChannel[ch]+=(x.gross-x.refund);customerDiscounts+=x.discount;});
+  var cogs=0,uncovered=0,cogsByCategory=emptyCogsCategories();sales.forEach(function(x){if(x.lineItems){var r=orderCOGS(x.o);cogs+=r.cost;if(!r.covered)uncovered++;var cg=orderCogsCategories(x.o);Object.keys(cogsByCategory).forEach(function(k){cogsByCategory[k]+=Number(cg[k])||0;});}else uncovered++;});
+  var categorizedCogs=Object.keys(cogsByCategory).reduce(function(sum,k){return sum+cogsByCategory[k];},0);var cogsCategoryGap=Math.round((cogs-categorizedCogs)*100)/100;if(cogsCategoryGap)cogsByCategory.unallocated+=cogsCategoryGap;
   var variance=0;Object.keys(adjMap).forEach(function(k){var adj=adjMap[k];if(adj&&monthKey(adj.ts)===mk)variance+=Number(adj.varianceValue)||0;});
   var usageByType={},totalUsage=0;Object.keys(usageMap).forEach(function(k){var u=usageMap[k];if(!u||u.reversed||monthKey(u.ts)!==mk)return;var t=u.kind||'staff';var c=Number(u.cost)||0;usageByType[t]=(usageByType[t]||0)+c;totalUsage+=c;});
   var totalCogs=cogs+variance;
@@ -353,15 +381,23 @@ function pnlFor(mk){
   var m=monthlyExp[mk]||{};var amounts=m.amounts||{};
   var byItem={},opex=0;
   Object.keys(expItems).forEach(function(id){var amt=Number(amounts[id])||0;byItem[id]={name:expItems[id].name,amount:amt};opex+=amt;});
+  var expenseGroups=pnlExpenseGroups(byItem);
   // platform economics
-  var platformCommission=0,platformGross=0,platformWht=0,platformVat=0;
-  sales.forEach(function(x){var o=x.o;if(o&&o.channel&&o.channel!=='instore'){platformCommission+=Number(o.commission)||0;platformGross+=Number(o.grossPlatform||o.subtotal||o.total)||0;platformWht+=Number(o.platformWht)||0;platformVat+=Number(o.platformVat)||0;}});
-  var platformTax=platformWht+platformVat;
+  var platformCommission=0,platformGross=0,platformWht=0,platformVat=0,platformByChannel={grabfood:0,foodpanda:0};
+  sales.forEach(function(x){var o=x.o;if(o&&o.channel&&o.channel!=='instore'){var charge=(Number(o.commission)||0)+(Number(o.platformVat)||0);platformCommission+=Number(o.commission)||0;platformGross+=Number(o.grossPlatform||o.subtotal||o.total)||0;platformWht+=Number(o.platformWht)||0;platformVat+=Number(o.platformVat)||0;if(platformByChannel[o.channel]!=null)platformByChannel[o.channel]+=charge;}});
   var reconExp=0,reconRev=0,reconBy={};
   Object.keys(payoutsMap).forEach(function(k){var p=payoutsMap[k];if(!p)return;if(monthKey(p.settledAt||p.periodEnd||0)!==mk)return;var allocs=p.allocations||{};Object.keys(allocs).forEach(function(aid){var amt=Number(allocs[aid])||0;if(!amt)return;var acct=varAcctMap[aid]||(DEFAULT_VAR_ACCOUNTS.filter(function(d){return d.id===aid;})[0])||{};reconBy[aid]=(reconBy[aid]||0)+amt;if(acct.type==='revenue')reconRev+=amt;else reconExp+=amt;});});
   var tips=0;sales.forEach(function(x){tips+=Number(x.o&&x.o.tipRounding)||0;});
-  var net=gp-opex-totalUsage-platformCommission-platformTax-reconExp+reconRev+tips;
-  return{revenue:revenue,cogs:cogs,variance:variance,totalCogs:totalCogs,gp:gp,margin:revenue>0?gp/revenue*100:0,byItem:byItem,opex:opex,usageByType:usageByType,totalUsage:totalUsage,platformCommission:platformCommission,platformGross:platformGross,platformWht:platformWht,platformVat:platformVat,platformTax:platformTax,reconExp:reconExp,reconRev:reconRev,reconBy:reconBy,tips:tips,net:net,uncovered:uncovered,tx:sales.length,locked:!!m.locked};
+  // CWT withheld by a platform is a tax credit/receivable, not a P&L expense.
+  // Platform VAT remains with selling costs here unless it is reclassified to recoverable input VAT in the books of record.
+  var platformCosts=platformCommission+platformVat+reconExp;
+  var otherExpenseTotal=expenseGroups.other.interest+expenseGroups.other.bank+expenseGroups.other.other;
+  var operatingExpenseTotal=opex-otherExpenseTotal-expenseGroups.tax+totalUsage;
+  var operatingProfit=gp-platformCosts-operatingExpenseTotal;
+  var otherIncome=tips+reconRev,otherNet=otherIncome-otherExpenseTotal;
+  var profitBeforeTax=operatingProfit+otherNet;
+  var net=profitBeforeTax-expenseGroups.tax;
+  return{revenue:revenue,revenueByChannel:revenueByChannel,customerDiscounts:customerDiscounts,cogs:cogs,cogsByCategory:cogsByCategory,variance:variance,totalCogs:totalCogs,gp:gp,margin:revenue>0?gp/revenue*100:0,byItem:byItem,expenseGroups:expenseGroups,opex:opex,usageByType:usageByType,totalUsage:totalUsage,platformCommission:platformCommission,platformByChannel:platformByChannel,platformGross:platformGross,platformWht:platformWht,platformVat:platformVat,platformCosts:platformCosts,operatingExpenseTotal:operatingExpenseTotal,operatingProfit:operatingProfit,otherIncome:otherIncome,otherExpenseTotal:otherExpenseTotal,otherNet:otherNet,profitBeforeTax:profitBeforeTax,reconExp:reconExp,reconRev:reconRev,reconBy:reconBy,tips:tips,net:net,uncovered:uncovered,tx:sales.length,locked:!!m.locked};
 }
 function itemIdsSorted(){return Object.keys(expItems).sort(function(a,b){return((expItems[a].order||0)-(expItems[b].order||0))||(expItems[a].name||'').localeCompare(expItems[b].name||'');});}
 function varianceDetailHtml(mk){
@@ -478,27 +514,52 @@ function renderPnl(){
   var cur=pnlFor(pnlMonth), pmk=prevMonthKey(pnlMonth), prev=pnlFor(pmk);
   var locked=cur.locked, ids=itemIdsSorted();
   function vrow(label,c,p,bold){var dv=c-p;var dp=p!==0?dv/Math.abs(p)*100:(c!==0?100:0);return '<tr'+(bold?' class="tot"':'')+'><td>'+esc(label)+'</td><td class="r">'+peso(c)+'</td><td class="r">'+peso(p)+'</td><td class="r '+(dv>0?'az-up':dv<0?'az-down':'az-flat')+'">'+(p!==0||c!==0?pct(dp):'\u2014')+'</td></tr>';}
-  var oveRows=ids.map(function(id){return vrow('   '+expItems[id].name,(cur.byItem[id]&&cur.byItem[id].amount)||0,(prev.byItem[id]&&prev.byItem[id].amount)||0);}).join('');
-  var html='<div class="pz-h">\ud83d\udcb0 Profit &amp; Loss</div><p class="pz-sub">Management P&amp;L (cash-basis). Revenue = net sales \u00b7 COGS from recipe costs \u00b7 overhead expenses entered per month below. Netsuite/Xero remain the books of record.</p>';
+  function reconClass(x,kind){var t=0;varAccounts().forEach(function(ac){if(ac.type==='revenue')return;var isKind=kind==='ads'?/advert|marketing|promo/i.test(ac.name||''):kind==='delivery'?/deliver|logistic|rider/i.test(ac.name||''):(!/advert|marketing|promo|deliver|logistic|rider/i.test(ac.name||''));if(isKind)t+=Number((x.reconBy||{})[ac.id])||0;});return t;}
+  function opexRows(c,p){var out='';PNL_OPEX_LINES.forEach(function(x){out+=vrow(x.label,-(c.expenseGroups.operating[x.id]||0),-(p.expenseGroups.operating[x.id]||0));});var co=(c.expenseGroups.operating.other||0)+c.totalUsage,po=(p.expenseGroups.operating.other||0)+p.totalUsage;out+=vrow('Other identified operating expenses',-co,-po);return out;}
+  var html='<div class="pz-h">\ud83d\udcb0 Profit &amp; Loss</div><p class="pz-sub">Management P&amp;L. Revenue = net sales \u00b7 COGS from recipe costs \u00b7 platform selling costs shown separately from operating overhead. Netsuite/Xero remain the books of record.</p>';
   html+='<div style="margin-bottom:1rem;display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;"><span class="pz-lbl" style="margin:0;">Month</span><input type="month" class="pz-in" id="pnlMonth" value="'+pnlMonth+'" style="width:auto;"/>'+(locked?'<span style="font-size:0.75rem;color:#2a9d5c;font-weight:600;">\ud83d\udd12 Saved</span>':'<span style="font-size:0.75rem;color:#e67e00;font-weight:600;">\u270f\ufe0f Draft \u2014 not saved</span>')+'<button class="pz-btn sec" id="pnlExport" style="padding:0.35rem 0.8rem;margin-left:auto;">\u2b07 Export CSV</button></div>';
   html+='<div class="pz-card" style="margin-bottom:1.2rem;"><table class="pnl-tbl"><thead><tr><th>'+esc(monthLabel(pnlMonth))+'</th><th>This month</th><th>'+esc(monthLabel(pmk))+'</th><th>Var</th></tr></thead><tbody>'
-    +vrow('Net sales (revenue)',cur.revenue,prev.revenue)
-    +vrow('Cost of goods sold (recipes)',-cur.cogs,-prev.cogs)
+    +'<tr class="head"><td>Revenue</td><td></td><td></td><td></td></tr>'
+    +vrow('In-store sales',cur.revenueByChannel.instore,prev.revenueByChannel.instore)
+    +vrow('Online orders — Grab',cur.revenueByChannel.grabfood,prev.revenueByChannel.grabfood)
+    +vrow('Online orders — Foodpanda',cur.revenueByChannel.foodpanda,prev.revenueByChannel.foodpanda)
+    +vrow('Other online orders',cur.revenueByChannel.online,prev.revenueByChannel.online)
+    +vrow('Less: Restaurant-funded customer discounts',-cur.customerDiscounts,-prev.customerDiscounts)
+    +vrow('Total net revenue',cur.revenue,prev.revenue,true)
+    +'<tr class="head"><td>Cost of sales</td><td></td><td></td><td></td></tr>'
+    +vrow('Food ingredients',-cur.cogsByCategory.food,-prev.cogsByCategory.food)
+    +vrow('Beverage ingredients',-cur.cogsByCategory.beverage,-prev.cogsByCategory.beverage)
+    +vrow('Packaging',-cur.cogsByCategory.packaging,-prev.cogsByCategory.packaging)
+    +vrow('Direct kitchen labor, if applicable',-cur.cogsByCategory.directLabor,-prev.cogsByCategory.directLabor)
+    +vrow('Unallocated recipe costs',-cur.cogsByCategory.unallocated,-prev.cogsByCategory.unallocated)
     +'<tr><td>Consumption variance <button class="pz-btn sec" id="pnlVarBtn" style="padding:0.05rem 0.5rem;font-size:0.72rem;margin-left:0.4rem;">details</button></td><td class="r">'+peso(-cur.variance)+'</td><td class="r">'+peso(-prev.variance)+'</td><td class="r">'+((cur.variance!==0||prev.variance!==0)?pct(prev.variance!==0?((cur.variance-prev.variance)/Math.abs(prev.variance)*100):(cur.variance!==0?100:0)):'—')+'</td></tr>'
     +'<tr id="pnlVarDetail" style="display:none;"><td colspan="4" style="padding:0;">'+varianceDetailHtml(pnlMonth)+'</td></tr>'
-    +'<tr class="head"><td>Gross profit</td><td class="r">'+peso(cur.gp)+'</td><td class="r">'+peso(prev.gp)+'</td><td class="r">'+(prev.gp!==0?pct((cur.gp-prev.gp)/Math.abs(prev.gp)*100):'\u2014')+'</td></tr>'
+    +vrow('Total cost of sales',-cur.totalCogs,-prev.totalCogs,true)
+    +vrow('Gross profit',cur.gp,prev.gp,true)
     +'<tr><td style="color:var(--tl);font-size:0.78rem;">Gross margin</td><td class="r" style="color:var(--tl);">'+(Math.round(cur.margin*10)/10)+'%</td><td class="r" style="color:var(--tl);">'+(Math.round(prev.margin*10)/10)+'%</td><td></td></tr>'
-    +'<tr class="head"><td>Overhead expenses</td><td class="r">'+peso(-cur.opex)+'</td><td class="r">'+peso(-prev.opex)+'</td><td></td></tr>'
-    +oveRows
-    +(function(){var ids={};Object.keys(cur.usageByType||{}).forEach(function(i){ids[i]=1;});Object.keys(prev.usageByType||{}).forEach(function(i){ids[i]=1;});return Object.keys(ids).sort().map(function(i){return vrow(usageNameFor(i),-((cur.usageByType||{})[i]||0),-((prev.usageByType||{})[i]||0));}).join('');})()
-    +((cur.tips||prev.tips)?vrow('Other income — tips / rounding',cur.tips,prev.tips):'')
-    +((cur.platformCommission||prev.platformCommission)?vrow('Platform commission (Grab/Panda)',-cur.platformCommission,-prev.platformCommission):'')
-    +((cur.platformWht||prev.platformWht)?vrow('Platform withholding tax (FoodPanda)',-cur.platformWht,-prev.platformWht):'')
-    +((cur.platformVat||prev.platformVat)?vrow('Platform VAT on services (FoodPanda)',-cur.platformVat,-prev.platformVat):'')
-    +(function(){var accs=varAccounts();var out='';accs.forEach(function(ac){var c=(cur.reconBy[ac.id]||0),p=(prev.reconBy[ac.id]||0);if(!c&&!p)return;var sign=ac.type==='revenue'?1:-1;out+=vrow('Payout: '+ac.name,sign*c,sign*p);});return out;})()
+    +'<tr class="head"><td>Selling and platform expenses</td><td></td><td></td><td></td></tr>'
+    +vrow('Grab commission, including non-recoverable VAT',-cur.platformByChannel.grabfood,-prev.platformByChannel.grabfood)
+    +vrow('Foodpanda commission, including non-recoverable VAT',-cur.platformByChannel.foodpanda,-prev.platformByChannel.foodpanda)
+    +vrow('Platform advertising and promotions',-reconClass(cur,'ads'),-reconClass(prev,'ads'))
+    +vrow('Delivery charges absorbed by the restaurant',-reconClass(cur,'delivery'),-reconClass(prev,'delivery'))
+    +((reconClass(cur,'other')||reconClass(prev,'other'))?vrow('Other platform expenses',-reconClass(cur,'other'),-reconClass(prev,'other')):'')
+    +vrow('Total selling and platform expenses',-cur.platformCosts,-prev.platformCosts,true)
+    +'<tr class="head"><td>Operating expenses</td><td></td><td></td><td></td></tr>'
+    +opexRows(cur,prev)
+    +vrow('Total operating expenses',-cur.operatingExpenseTotal,-prev.operatingExpenseTotal,true)
+    +vrow('Operating profit',cur.operatingProfit,prev.operatingProfit,true)
+    +'<tr class="head"><td>Other income / expenses</td><td></td><td></td><td></td></tr>'
+    +vrow('Interest expense',-cur.expenseGroups.other.interest,-prev.expenseGroups.other.interest)
+    +vrow('Bank charges',-cur.expenseGroups.other.bank,-prev.expenseGroups.other.bank)
+    +vrow('Other income',cur.otherIncome,prev.otherIncome)
+    +((cur.expenseGroups.other.other||prev.expenseGroups.other.other)?vrow('Other expenses',-cur.expenseGroups.other.other,-prev.expenseGroups.other.other):'')
+    +vrow('Total other income / expenses',cur.otherNet,prev.otherNet,true)
+    +vrow('Profit before tax',cur.profitBeforeTax,prev.profitBeforeTax,true)
+    +vrow('Income-tax expense',-cur.expenseGroups.tax,-prev.expenseGroups.tax)
     +vrow('Net profit',cur.net,prev.net,true)
+    +((cur.platformWht||prev.platformWht)?vrow('Memo: creditable withholding tax (not an expense)',cur.platformWht,prev.platformWht):'')
     +'</tbody></table>'
-    +((cur.platformGross||0)>0?'<p class="az-note" style="margin-top:0.5rem;">Revenue includes '+peso(cur.platformGross)+' platform gross (Grab/Panda). Commission is booked above; the weekly payout reconciliation posts any variance to the Payout lines.</p>':'')
+    +((cur.platformGross||0)>0?'<p class="az-note" style="margin-top:0.5rem;">Revenue includes '+peso(cur.platformGross)+' platform gross (Grab/Panda). Commission and platform-service VAT are shown as selling expenses. Creditable withholding tax is excluded from profit and shown as a memo tax credit; confirm recoverability from the platform statement/BIR Form 2307. If the business claims input VAT, reclassify qualifying platform VAT to input VAT in the books of record.</p>':'')
     +(cur.uncovered>0?'<p class="az-note" style="margin-top:0.5rem;">\u26a0\ufe0f '+cur.uncovered+' sale(s) this month have items without a costed recipe \u2014 COGS is understated for those.</p>':'')
     +'</div>';
   html+='<div class="az-sec">Overhead expenses \u2014 '+esc(monthLabel(pnlMonth))+(locked?' <span style="color:#2a9d5c;font-size:0.8rem;">(saved)</span>':'')+'</div>';
@@ -523,14 +584,15 @@ function renderPnl(){
 }
 function exportPnl(cur,prev,pmk,ids){
   var rows=[['Accaza Profit & Loss',monthLabel(pnlMonth)],[''],['Line','This month','Last month ('+monthLabel(pmk)+')']];
-  rows.push(['Net sales',cur.revenue.toFixed(2),prev.revenue.toFixed(2)]);
-  rows.push(['COGS',(-cur.cogs).toFixed(2),(-prev.cogs).toFixed(2)]);
-  rows.push(['Gross profit',cur.gp.toFixed(2),prev.gp.toFixed(2)]);
-  rows.push(['Gross margin %',(Math.round(cur.margin*10)/10),(Math.round(prev.margin*10)/10)]);
-  rows.push(['Overhead expenses','','']);
-  (ids||Object.keys(cur.byItem)).forEach(function(id){var nm=(cur.byItem[id]&&cur.byItem[id].name)||id;rows.push(['  '+nm,(-((cur.byItem[id]&&cur.byItem[id].amount)||0)).toFixed(2),(-((prev.byItem[id]&&prev.byItem[id].amount)||0)).toFixed(2)]);});
-  rows.push(['Total overhead',(-cur.opex).toFixed(2),(-prev.opex).toFixed(2)]);
+  function er(label,c,p){rows.push([label,(Number(c)||0).toFixed(2),(Number(p)||0).toFixed(2)]);}
+  function rc(x,kind){var t=0;varAccounts().forEach(function(ac){if(ac.type==='revenue')return;var hit=kind==='ads'?/advert|marketing|promo/i.test(ac.name||''):kind==='delivery'?/deliver|logistic|rider/i.test(ac.name||''):(!/advert|marketing|promo|deliver|logistic|rider/i.test(ac.name||''));if(hit)t+=Number((x.reconBy||{})[ac.id])||0;});return t;}
+  rows.push(['REVENUE','','']);er('  In-store sales',cur.revenueByChannel.instore,prev.revenueByChannel.instore);er('  Online orders – Grab',cur.revenueByChannel.grabfood,prev.revenueByChannel.grabfood);er('  Online orders – Foodpanda',cur.revenueByChannel.foodpanda,prev.revenueByChannel.foodpanda);er('  Other online orders',cur.revenueByChannel.online,prev.revenueByChannel.online);er('  Less: Restaurant-funded customer discounts',-cur.customerDiscounts,-prev.customerDiscounts);er('TOTAL NET REVENUE',cur.revenue,prev.revenue);
+  rows.push(['COST OF SALES','','']);er('  Food ingredients',-cur.cogsByCategory.food,-prev.cogsByCategory.food);er('  Beverage ingredients',-cur.cogsByCategory.beverage,-prev.cogsByCategory.beverage);er('  Packaging',-cur.cogsByCategory.packaging,-prev.cogsByCategory.packaging);er('  Direct kitchen labor, if applicable',-cur.cogsByCategory.directLabor,-prev.cogsByCategory.directLabor);er('  Unallocated recipe costs',-cur.cogsByCategory.unallocated,-prev.cogsByCategory.unallocated);er('  Consumption variance',-cur.variance,-prev.variance);er('TOTAL COST OF SALES',-cur.totalCogs,-prev.totalCogs);er('GROSS PROFIT',cur.gp,prev.gp);
+  rows.push(['SELLING AND PLATFORM EXPENSES','','']);er('  Grab commission, including non-recoverable VAT',-cur.platformByChannel.grabfood,-prev.platformByChannel.grabfood);er('  Foodpanda commission, including non-recoverable VAT',-cur.platformByChannel.foodpanda,-prev.platformByChannel.foodpanda);er('  Platform advertising and promotions',-rc(cur,'ads'),-rc(prev,'ads'));er('  Delivery charges absorbed by the restaurant',-rc(cur,'delivery'),-rc(prev,'delivery'));if(rc(cur,'other')||rc(prev,'other'))er('  Other platform expenses',-rc(cur,'other'),-rc(prev,'other'));er('TOTAL SELLING AND PLATFORM EXPENSES',-cur.platformCosts,-prev.platformCosts);
+  rows.push(['OPERATING EXPENSES','','']);PNL_OPEX_LINES.forEach(function(x){er('  '+x.label,-cur.expenseGroups.operating[x.id],-prev.expenseGroups.operating[x.id]);});er('  Other identified operating expenses',-(cur.expenseGroups.operating.other+cur.totalUsage),-(prev.expenseGroups.operating.other+prev.totalUsage));er('TOTAL OPERATING EXPENSES',-cur.operatingExpenseTotal,-prev.operatingExpenseTotal);er('OPERATING PROFIT',cur.operatingProfit,prev.operatingProfit);
+  rows.push(['OTHER INCOME / EXPENSES','','']);er('  Interest expense',-cur.expenseGroups.other.interest,-prev.expenseGroups.other.interest);er('  Bank charges',-cur.expenseGroups.other.bank,-prev.expenseGroups.other.bank);er('  Other income',cur.otherIncome,prev.otherIncome);if(cur.expenseGroups.other.other||prev.expenseGroups.other.other)er('  Other expenses',-cur.expenseGroups.other.other,-prev.expenseGroups.other.other);er('TOTAL OTHER INCOME / EXPENSES',cur.otherNet,prev.otherNet);er('PROFIT BEFORE TAX',cur.profitBeforeTax,prev.profitBeforeTax);er('  Income-tax expense',-cur.expenseGroups.tax,-prev.expenseGroups.tax);
   rows.push(['Net profit',cur.net.toFixed(2),prev.net.toFixed(2)]);
+  rows.push(['Memo: creditable withholding tax (not an expense)',cur.platformWht.toFixed(2),prev.platformWht.toFixed(2)]);
   var csv=rows.map(function(r){return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"';}).join(',');}).join('\n');
   var blob=new Blob([csv],{type:'text/csv'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='accaza-pnl-'+pnlMonth+'.csv';a.click();URL.revokeObjectURL(url);
 }
