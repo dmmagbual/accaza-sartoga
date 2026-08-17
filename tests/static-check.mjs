@@ -306,6 +306,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   const shiftRegisterSource=fs.readFileSync(path.join(root,'assets','js','admin','register.js'),'utf8');
   if(!shiftRegisterSource.includes('window.__refreshWorkspaceStatus()')||!shiftRegisterSource.includes('window.__refreshOverviewCommand()'))fail('Register shift updates do not refresh shared status consumers');
   if(!shiftRegisterSource.includes("a.get(a.ref(a.db,'archivedOrders'))")||!shiftRegisterSource.includes("o.status==='Archived'")||!shiftRegisterSource.includes("o.prevStatus==='Completed'"))fail('Closed-shift transaction details do not include archived completed sales');
+  for(const marker of ["fixed_float_exception","floatMode:fixedMode?'fixed':'opening-count'",'zReport:snapshot','Review live cash','View final Z-report','writes.posActiveShift=null','legacyReport'])if(!shiftRegisterSource.includes(marker))fail(`Adaptive fixed-float/Z-report control missing: ${marker}`);
+  if(!functionsSource.includes('Math.max(0,Number(shift.cashToSettle)||0)')||!functionsSource.includes('retainedFloat:Financial.money(shift.retainedFloat)'))fail('Shift custody does not preserve retained float and remit only cash to settle');
   if(!precache.includes('/assets/js/admin/workspace-shell.mjs'))fail('Phase 7D workspace shell is not precached');
   if(!adminHtml.includes('id="accaza-pos-workflow-7e"')||!adminHtml.includes('.pos-menu-search')||!adminHtml.includes('.pos-item-grid'))fail('Phase 7E POS menu workflow styling missing');
   if(!adminHtml.includes('.pos-category-rail{display:flex;flex-wrap:wrap')||!adminHtml.includes('.pos-category-rail .pz-chip{flex:0 1 auto'))fail('Release 7G fully visible wrapping POS categories missing');

@@ -417,6 +417,11 @@ function shiftSummaryObj(shift,isOpen){
   var cts=(shift.cashToSettle!=null?Number(shift.cashToSettle):Math.round(((counted!=null?counted:(Number(shift.expectedCash)||0))-rf)*100)/100);
   return {tx:Number(shift.tx)||0,net:Number(shift.net)||0,gross:Number(shift.gross)||0,cashSales:(shift.byMethod&&shift.byMethod.Cash)||0,byMethod:shift.byMethod||{},byChannel:shift.byChannel||null,expectedCash:Number(shift.expectedCash)||0,countedCash:counted,retainedFloat:rf,cashToSettle:cts,variance:(shift.variance!=null?Number(shift.variance):null),openingFloat:Number(shift.openingFloat)||0,openAt:shift.openAt,closeAt:shift.closeAt||null,open:false};
 }
+function reviewShiftCash(shift,isOpen){
+  if(isOpen){openShiftReview();return;}
+  var r=shift.zReport||null,z=r?Object.assign({},r,{saleList:r.sales||[],reportClosedAt:r.capturedAt,closeCount:r.closeCount||{},expectedDrawer:r.expectedDrawer||{},reconcileTotalOnly:!!r.reconcileTotalOnly}):{tx:Number(shift.tx)||0,gross:Number(shift.gross)||0,discounts:Number(shift.discounts)||0,refunds:Number(shift.refunds)||0,cashRefunds:Number(shift.cashRefunds)||0,net:Number(shift.net)||0,byMethod:shift.byMethod||{},byChannel:shift.byChannel||{},cashSales:Number((shift.byMethod||{}).Cash)||0,tips:Number(shift.tips)||0,payIns:Number(shift.payIns)||0,payOuts:Number(shift.payOuts)||0,expectedCash:Number(shift.expectedCash)||0,countedCash:Number(shift.countedCash)||0,variance:Number(shift.variance)||0,retainedFloat:Number(shift.retainedFloat)||0,cashToSettle:Number(shift.cashToSettle)||0,voidCount:Number(shift.voidCount)||0,voidAmt:Number(shift.voidAmt)||0,pending:Number(shift.pending)||0,pendingCount:Number(shift.pendingCount)||0,closeCount:shift.closeCount||{},expectedDrawer:shift.drawerExpected||{},reportClosedAt:shift.closeAt,legacyReport:true};
+  showZ(shift,z);
+}
 function shiftTxTable(list,expected){
   if(!list.length)return '<div class="az-note" style="padding:0.4rem;">No transaction lines available'+(expected?(' (summary shows '+expected+' — older lines may be archived)'):'')+'.</div>';
   var note=(expected&&list.length<expected)?'<div class="az-note" style="padding:0.3rem 0;">Showing '+list.length+' of '+expected+' — older lines archived.</div>':'';
@@ -446,11 +451,12 @@ function renderShiftCard(){
     +(S.variance!=null?'<tr><td>Variance</td><td class="r" style="color:'+(Math.abs(S.variance)<=(Number(toleranceCfg.cashPeso)||0)?'#155724':'#c0392b')+';">'+peso(S.variance)+'</td></tr>':'')
     +'<tr><td>Less float retained</td><td class="r">−'+peso(S.retainedFloat)+'</td></tr>'
     +'<tr style="border-top:2px solid var(--bd);"><td><b>► Cash to settle</b></td><td class="r"><b>'+peso(S.cashToSettle)+'</b></td></tr>'
-    +'</tbody></table></div>';
+    +'</tbody></table><div style="display:flex;justify-content:flex-end;margin-top:0.6rem;"><button class="pz-btn sec" id="opsCashReview">'+(S.open?'📋 Review live cash':'🧾 View final Z-report')+'</button></div></div>';
   var methodTotal=Object.keys(S.byMethod).reduce(function(sum,m){return sum+(Number(S.byMethod[m])||0);},0);
   var chBlk='<div class="az-sec">Sales by channel</div><div class="pz-card" style="margin-bottom:0.6rem;"><table class="pz-tbl"><tbody>'+chRows+'<tr class="register-total"><td>Total net sales</td><td class="r">'+peso(S.net)+'</td></tr></tbody></table><div class="az-note">GrabFood/FoodPanda are receivables, not cash. Online is not part of a shift.</div></div>';
   var mBlk='<div class="az-sec">By payment method</div><div class="pz-card" style="margin-bottom:0.6rem;"><table class="pz-tbl"><tbody>'+mRows+'<tr class="register-total"><td>Total</td><td class="r">'+peso(methodTotal)+'</td></tr></tbody></table></div>';
   body.innerHTML=hdr+kpis+recon+chBlk+mBlk+'<div class="az-sec">Transactions</div><div class="pz-card" id="opsCardTx"><p class="az-note">Loading…</p></div>';
+  var cashReview=document.getElementById('opsCashReview');if(cashReview)cashReview.onclick=function(){reviewShiftCash(shift,isOpen);};
   var txEl=document.getElementById('opsCardTx');
   if(isOpen){ if(txEl)txEl.innerHTML=shiftTxTable(shiftSales(shift)); }
   else { var a=A(); Promise.all([a.get(a.ref(a.db,'orders')),a.get(a.ref(a.db,'archivedOrders'))]).then(function(snaps){var merged=Object.assign({},snaps[1].val()||{},snaps[0].val()||{});var arr=Object.keys(merged).map(function(k){return merged[k];}).filter(function(o){return isShiftTransaction(o,id);}).sort(function(x,y){return (x.timestamp||0)-(y.timestamp||0);});var el=document.getElementById('opsCardTx');if(el)el.innerHTML=shiftTxTable(arr,S.tx);}).catch(function(){var el=document.getElementById('opsCardTx');if(el)el.innerHTML='<div class="az-note" style="padding:0.4rem;">Could not load transaction lines.</div>';}); }
@@ -512,8 +518,14 @@ function openShift(){
   var sid=document.getElementById('opsStaff').value;var s=staffList[sid];if(!s){alert('Pick a cashier.');return;}
   var od=denomRead('opsOpenDenom'); var float=od.total;
   var id='SH-'+Date.now().toString().slice(-6);var a=A();
-  var rec={id:id,staff:s.name,staffId:sid,openingFloat:float,openCount:od.counts,drawer:Object.assign({},od.counts),openAt:Date.now(),status:'open'};
-  F().run({title:'Open shift',subtitle:s.name+' · opening float '+peso(float),submitLabel:'Open shift',busyLabel:'Opening…',fields:[{name:'pin',label:s.name+"'s PIN",type:'password',required:true,maxLength:6,placeholder:'4–6 digits',validate:function(v){return /^[0-9]{4,6}$/.test(v)?'':'Enter a 4–6 digit PIN.';}}]},function(v){if(String(s.pin)!==String(v.pin))throw new Error('Cashier PIN is incorrect.');return a.set(a.ref(a.db,'shifts/'+id),rec).then(function(){return a.set(a.ref(a.db,'posActiveShift'),{id:id,staff:s.name,staffId:sid,openingFloat:float,drawer:Object.assign({},od.counts),openAt:Date.now()});}).then(function(){window.__posLog('shift-open',id,'float '+peso(float));});}).catch(function(){});
+  var openedAt=Date.now(),fixedMode=fixedFloatCfg!=null,mismatch=fixedMode&&Math.abs(float-fixedFloatCfg)>.009;
+  var rec={id:id,staff:s.name,staffId:sid,openingFloat:float,openCount:od.counts,drawer:Object.assign({},od.counts),openAt:openedAt,status:'open',floatMode:fixedMode?'fixed':'opening-count',configuredFloat:fixedMode?fixedFloatCfg:null};
+  var active={id:id,staff:s.name,staffId:sid,openingFloat:float,drawer:Object.assign({},od.counts),openAt:openedAt,floatMode:rec.floatMode,configuredFloat:rec.configuredFloat};
+  F().run({title:'Open shift',subtitle:s.name+' · opening float '+peso(float)+(fixedMode?' · required '+peso(fixedFloatCfg):' · flexible opening float'),submitLabel:mismatch?'Request exception & open':'Open shift',busyLabel:'Opening…',fields:[{name:'pin',label:s.name+"'s PIN",type:'password',required:true,maxLength:6,placeholder:'4–6 digits',validate:function(v){return /^[0-9]{4,6}$/.test(v)?'':'Enter a 4–6 digit PIN.';}}].concat(mismatch?[{name:'reason',label:'Reason opening float differs from fixed amount',type:'textarea',required:true,maxLength:300,placeholder:'Explain the shortage, overage, or temporary float arrangement'}]:[])},async function(v){
+    if(String(s.pin)!==String(v.pin))throw new Error('Cashier PIN is incorrect.');
+    if(mismatch){if(!a.managerApproval||!a.consumeManagerApproval)throw new Error('Manager approval is required for a fixed-float exception.');var source='fixed_float_'+id,ap=await a.managerApproval('fixed_float_exception',source,Math.abs(float-fixedFloatCfg),v.reason),cr=await a.consumeManagerApproval({action:'fixed_float_exception',sourceId:source,amount:Math.abs(float-fixedFloatCfg),operationKey:source,approvalId:ap.approvalId}),cd=(cr&&cr.data)||cr||{};rec.floatException={required:fixedFloatCfg,actual:float,variance:Math.round((float-fixedFloatCfg)*100)/100,reason:v.reason,approvalId:ap.approvalId,approvedBy:cd.approvedBy||'Privileged account',approvedByUid:cd.approvedByUid||'',approvedRole:cd.approvedRole||'',at:Date.now()};active.floatException=rec.floatException;}
+    var writes={};writes['shifts/'+id]=rec;writes.posActiveShift=active;await a.update(a.ref(a.db),writes);window.__posLog('shift-open',id,'float '+peso(float)+(mismatch?' · fixed-float exception approved':''));
+  }).catch(function(){});
 }
 function closeShift(){
   if(!activeShift)return;var shift=activeShift;
@@ -561,26 +573,24 @@ function closeShift(){
   renderBlind();
 }
 function finalizeClose(shift,counted,counts){
-  var z=computeZ(shift);z.countedCash=counted;z.variance=counted-z.expectedCash;z.closeCount=counts;z.expectedDrawer=shift.drawer||null;
-  var a=A();
-  a.update(a.ref(a.db,'shifts/'+shift.id),{status:'closed',closeAt:Date.now(),openingFloat:shift.openingFloat,openCount:shift.openCount||null,closeCount:counts,drawerExpected:shift.drawer||null,tx:z.tx,gross:z.gross,discounts:z.discounts,refunds:z.refunds,net:z.net,byMethod:z.byMethod,voidCount:z.voidCount,voidAmt:z.voidAmt,payIns:z.payIns,payOuts:z.payOuts,expectedCash:z.expectedCash,countedCash:counted,variance:z.variance,byChannel:z.byChannel,retainedFloat:z.retainedFloat,cashToSettle:Math.round((counted-z.retainedFloat)*100)/100,pending:z.pending,pendingCount:z.pendingCount});
-  a.remove(a.ref(a.db,'posActiveShift'));
-  window.__posLog('shift-close',shift.id,'counted '+peso(counted)+' · variance '+peso(z.variance));
-  if(Math.abs(z.variance)>(Number(toleranceCfg.cashPeso)||0)){
-    var did=uid('disc_');
-    a.set(a.ref(a.db,'discrepancies/'+did),{kind:'cash',expected:z.expectedCash,actual:counted,variance:z.variance,value:z.variance,type:z.variance<0?'shortage':'overage',shiftId:shift.id,staff:shift.staff||'',status:'open',ts:Date.now()});
-    window.__posLog('discrepancy-cash',shift.id,peso(z.variance)+' '+(z.variance<0?'short':'over'));
-  }
-  showZ(shift,z);
+  var z=computeZ(shift),closedAt=Date.now();z.countedCash=counted;z.variance=Math.round((counted-z.expectedCash)*100)/100;z.closeCount=counts;z.expectedDrawer=shift.drawer||null;z.cashToSettle=Math.max(0,Math.round((counted-z.retainedFloat)*100)/100);
+  var saleList=shiftSales(shift),snapshot={schemaVersion:2,capturedAt:closedAt,calculation:'float + cash sales + tips - cash refunds + pay-ins - pay-outs',floatMode:shift.floatMode||(fixedFloatCfg!=null?'fixed':'opening-count'),configuredFloat:shift.configuredFloat!=null?Number(shift.configuredFloat):(fixedFloatCfg!=null?fixedFloatCfg:null),openingFloat:Number(shift.openingFloat)||0,retainedFloat:z.retainedFloat,tolerance:Number(toleranceCfg.cashPeso)||0,reconcileTotalOnly:reconcileTotalOnlyR(),tx:z.tx,gross:z.gross,discounts:z.discounts,refunds:z.refunds,cashRefunds:z.cashRefunds,net:z.net,cashSales:z.cashSales,tips:z.tips,payIns:z.payIns,payOuts:z.payOuts,expectedCash:z.expectedCash,countedCash:counted,variance:z.variance,cashToSettle:z.cashToSettle,byMethod:z.byMethod,byChannel:z.byChannel,voidCount:z.voidCount,voidAmt:z.voidAmt,pending:z.pending,pendingCount:z.pendingCount,openCount:shift.openCount||{},closeCount:counts||{},expectedDrawer:shift.drawer||{},payInEntries:(shift.payIns||[]),payOutEntries:(shift.payOuts||[]),floatException:shift.floatException||null,sales:saleList.map(function(o){return{id:o.id||'',time:o.time||'',timestamp:Number(o.timestamp)||0,total:Number(o.total)||0,channel:o.channel||'instore',payment:o.payment||'',payments:o.payments||null,refundAmount:Number(o.refundAmount)||0,refundPayments:o.refundPayments||null,refundHistory:o.refundHistory||null};})};
+  var closed={status:'closed',closeAt:closedAt,openingFloat:shift.openingFloat,openCount:shift.openCount||null,closeCount:counts,drawerExpected:shift.drawer||null,tx:z.tx,gross:z.gross,discounts:z.discounts,refunds:z.refunds,cashRefunds:z.cashRefunds,tips:z.tips,net:z.net,byMethod:z.byMethod,voidCount:z.voidCount,voidAmt:z.voidAmt,payIns:z.payIns,payOuts:z.payOuts,expectedCash:z.expectedCash,countedCash:counted,variance:z.variance,byChannel:z.byChannel,retainedFloat:z.retainedFloat,cashToSettle:z.cashToSettle,pending:z.pending,pendingCount:z.pendingCount,floatMode:snapshot.floatMode,configuredFloat:snapshot.configuredFloat,zReport:snapshot};
+  var a=A(),writes={};writes['shifts/'+shift.id]=Object.assign({},shift,closed);writes.posActiveShift=null;
+  if(Math.abs(z.variance)>snapshot.tolerance){var did=uid('disc_');writes['discrepancies/'+did]={kind:'cash',expected:z.expectedCash,actual:counted,variance:z.variance,value:z.variance,type:z.variance<0?'shortage':'overage',shiftId:shift.id,staff:shift.staff||'',status:'open',ts:closedAt};}
+  a.update(a.ref(a.db),writes).then(function(){window.__posLog('shift-close',shift.id,'counted '+peso(counted)+' · variance '+peso(z.variance));showZ(Object.assign({},shift,closed),Object.assign({},z,{saleList:snapshot.sales,reportClosedAt:closedAt,reconcileTotalOnly:snapshot.reconcileTotalOnly}));}).catch(function(e){alert('Shift was not closed because the final report could not be saved. Please try again. '+((e&&e.message)||e));});
 }
 function showZ(shift,z){
   var w=window.open('','_blank','width=380,height=680');if(!w){alert('Shift closed. Allow pop-ups to print the Z-report.');return;}
   var methods=Object.keys(z.byMethod).map(function(m){return '<tr><td>'+esc(m)+'</td><td style="text-align:right;">'+peso(z.byMethod[m])+'</td></tr>';}).join('');
-  var saleList=Object.keys(ordersMap).map(function(k){return ordersMap[k];}).filter(function(o){return o&&o.shiftId===shift.id&&(o.status==='Completed'||o.status==='Received');}).sort(function(a,b){return(a.timestamp||0)-(b.timestamp||0);});
+  var cashMoves=(z.payInEntries||[]).map(function(x){return{kind:'Cash in',sign:'+',amount:x.amount,reason:x.reason,by:x.by,ts:x.ts};}).concat((z.payOutEntries||[]).map(function(x){return{kind:'Cash out',sign:'−',amount:x.amount,reason:x.reason,by:x.by,ts:x.ts};})).sort(function(a,b){return(Number(a.ts)||0)-(Number(b.ts)||0);});
+  var cashMoveRows=cashMoves.map(function(x){return '<tr><td>'+esc(x.ts?new Date(x.ts).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}):'')+' '+esc(x.kind)+'<div style="font-size:9px;">'+esc(x.reason||'')+(x.by?' · '+esc(x.by):'')+'</div></td><td style="text-align:right;">'+x.sign+peso(x.amount)+'</td></tr>';}).join('');
+  var saleList=(z.saleList||Object.keys(ordersMap).map(function(k){return ordersMap[k];}).filter(function(o){return o&&o.shiftId===shift.id&&(o.status==='Completed'||o.status==='Received');})).slice().sort(function(a,b){return(a.timestamp||0)-(b.timestamp||0);});
   var saleRows=saleList.map(function(o){var tag=o.voided?' [VOID]':(Number(o.refundAmount)>0?' [R '+peso(o.refundAmount)+']':'');var ch=(o.channel&&o.channel!=='instore')?(' '+esc(o.channel==='grabfood'?'GF':'FP')):'';return '<tr><td>'+esc(o.id)+' '+esc(o.time||'')+ch+'</td><td style="text-align:right;">'+peso(o.total)+esc(tag)+'</td></tr>';}).join('');
   w.document.write('<html><head><title>Z-Report '+esc(shift.id)+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2,h3{text-align:center;margin:2px 0;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
     +'<h2>Accaza Coffee House</h2><h3>SHIFT Z-REPORT</h3><hr>'
-    +'<div>Shift: '+esc(shift.id)+'</div><div>Cashier: '+esc(shift.staff)+'</div><div>Open: '+new Date(shift.openAt).toLocaleString('en-PH')+'</div><div>Close: '+new Date().toLocaleString('en-PH')+'</div><hr>'
+    +'<div>Shift: '+esc(shift.id)+'</div><div>Cashier: '+esc(shift.staff)+'</div><div>Open: '+new Date(shift.openAt).toLocaleString('en-PH')+'</div><div>Close: '+new Date(z.reportClosedAt||shift.closeAt||Date.now()).toLocaleString('en-PH')+'</div><div>Float policy: '+esc(shift.floatMode==='fixed'?'Fixed':'Opening count')+(shift.configuredFloat!=null?' '+peso(shift.configuredFloat):'')+'</div><hr>'
+    +(z.legacyReport?'<div style="border:1px solid #8a6d1b;padding:5px;margin:5px 0;"><b>Historical summary:</b> some supporting details were not captured by the system version used at closure.</div><hr>':'')
     +'<table><tr><td>Transactions</td><td style="text-align:right;">'+z.tx+'</td></tr>'
     +'<tr><td>Gross sales</td><td style="text-align:right;">'+peso(z.gross)+'</td></tr>'
     +'<tr><td>Discounts</td><td style="text-align:right;">-'+peso(z.discounts)+'</td></tr>'
@@ -590,6 +600,7 @@ function showZ(shift,z){
     +'<div><b>By payment method</b></div><table>'+methods+'</table><hr>'
     +'<div><b>Sales this shift ('+saleList.length+')</b></div><table>'+(saleRows||'<tr><td colspan="2">None</td></tr>')+'</table><hr>'
     +(z.pendingCount?'<div style="color:#8a6d1b;"><b>⏳ Non-cash pending verification: '+peso(z.pending)+' ('+z.pendingCount+')</b></div><div style="font-size:9px;">Not yet confirmed in the account at close. Verify these landed.</div><hr>':'')
+    +(cashMoveRows?'<div><b>Cash movements</b></div><table>'+cashMoveRows+'</table><hr>':'')
     +'<table><tr><td>Voids</td><td style="text-align:right;">'+z.voidCount+' ('+peso(z.voidAmt)+')</td></tr>'
     +'<tr><td>Opening float</td><td style="text-align:right;">'+peso(shift.openingFloat)+'</td></tr>'
     +'<tr><td>Cash sales</td><td style="text-align:right;">'+peso(z.cashSales)+'</td></tr>'
@@ -606,7 +617,7 @@ function showZ(shift,z){
       +(z.floatMismatch?'<div style="font-size:9px;color:#c0392b;">⚠ Opened with '+peso(shift.openingFloat)+' but standard float is '+peso(fixedFloatCfg)+' — reconcile the float.</div>':'')
       +'<hr>'
     +(z.closeCount&&denomBreakdownRows(z.closeCount)?('<div><b>Cash counted by denomination</b></div><table>'+denomBreakdownRows(z.closeCount)+'</table><hr>'):'')
-    +((!reconcileTotalOnlyR()&&z.expectedDrawer)?('<div><b>Denomination check (expected → counted)</b></div><table>'+DENOMS.map(function(d){var exp=Number(z.expectedDrawer[d.k])||0;var act=Number((z.closeCount||{})[d.k])||0;if(!exp&&!act)return '';var dv=act-exp;return '<tr><td>'+d.lbl+'</td><td style="text-align:right;">'+exp+' → '+act+(dv?'  ('+(dv>0?'+':'')+dv+')':'  ✓')+'</td></tr>';}).join('')+'</table><hr>'):'')
+    +((!(z.reconcileTotalOnly!=null?z.reconcileTotalOnly:reconcileTotalOnlyR())&&z.expectedDrawer)?('<div><b>Denomination check (expected → counted)</b></div><table>'+DENOMS.map(function(d){var exp=Number(z.expectedDrawer[d.k])||0;var act=Number((z.closeCount||{})[d.k])||0;if(!act&&!exp)return '';var dv=act-exp;return '<tr><td>'+d.lbl+'</td><td style="text-align:right;">'+exp+' → '+act+(dv?'  ('+(dv>0?'+':'')+dv+')':'  ✓')+'</td></tr>';}).join('')+'</table><hr>'):'')
     +'<div style="font-size:9px;text-align:center;">Expected drawer = float + cash sales + tips − cash refunds + pay-ins − pay-outs. Cash to settle = counted cash − float retained (the opening float, unless a fixed imprest float is set in POS Settings); the float stays in the drawer. Management report, not a BIR document.</div>'
     +'<div style="text-align:center;margin-top:8px;"><button onclick="window.print()">Print</button></div></body></html>');
   w.document.close();
