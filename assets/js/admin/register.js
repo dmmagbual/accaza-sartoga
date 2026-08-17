@@ -423,6 +423,10 @@ function shiftTxTable(list,expected){
   var total=list.reduce(function(s,o){return s+(Number(o.total)||0)-(Number(o.refundAmount)||0);},0);
   return note+'<div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Order</th><th>Channel</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+list.map(function(o){var ch=(o.channel&&o.channel!=='instore')?(o.channel==='grabfood'?'GrabFood':'FoodPanda'):'In-store';var tag=Number(o.refundAmount)>0?' · R '+peso(o.refundAmount):'';return '<tr><td>'+esc(o.time||'')+'</td><td>'+esc(o.id)+'</td><td>'+esc(ch)+'</td><td>'+esc(shiftTxnMethod(o))+'</td><td class="r">'+peso(o.total)+esc(tag)+'</td></tr>';}).join('')+'<tr class="register-total"><td colspan="4">Total ('+list.length+' transactions)</td><td class="r">'+peso(total)+'</td></tr></tbody></table></div>';
 }
+function isShiftTransaction(o,id){
+  if(!o||o.shiftId!==id||o.voided)return false;
+  return o.status==='Completed'||o.status==='Received'||(o.status==='Archived'&&(o.prevStatus==='Completed'||o.prevStatus==='Received'));
+}
 function renderShiftCard(){
   var sel=document.getElementById('opsCardShift'),body=document.getElementById('opsCardBody'); if(!sel||!body)return;
   if(cardShiftId){var has=false;Array.prototype.forEach.call(sel.options,function(o){if(o.value===cardShiftId)has=true;});if(!has)cardShiftId=null;}
@@ -449,7 +453,7 @@ function renderShiftCard(){
   body.innerHTML=hdr+kpis+recon+chBlk+mBlk+'<div class="az-sec">Transactions</div><div class="pz-card" id="opsCardTx"><p class="az-note">Loading…</p></div>';
   var txEl=document.getElementById('opsCardTx');
   if(isOpen){ if(txEl)txEl.innerHTML=shiftTxTable(shiftSales(shift)); }
-  else { var a=A(); a.get(a.ref(a.db,'orders')).then(function(sn){var all=sn.val()||{};var arr=Object.keys(all).map(function(k){return all[k];}).filter(function(o){return o&&o.shiftId===id&&!o.voided&&(o.status==='Completed'||o.status==='Received');}).sort(function(x,y){return (x.timestamp||0)-(y.timestamp||0);});var el=document.getElementById('opsCardTx');if(el)el.innerHTML=shiftTxTable(arr,S.tx);}).catch(function(){var el=document.getElementById('opsCardTx');if(el)el.innerHTML='<div class="az-note" style="padding:0.4rem;">Could not load transaction lines.</div>';}); }
+  else { var a=A(); Promise.all([a.get(a.ref(a.db,'orders')),a.get(a.ref(a.db,'archivedOrders'))]).then(function(snaps){var merged=Object.assign({},snaps[1].val()||{},snaps[0].val()||{});var arr=Object.keys(merged).map(function(k){return merged[k];}).filter(function(o){return isShiftTransaction(o,id);}).sort(function(x,y){return (x.timestamp||0)-(y.timestamp||0);});var el=document.getElementById('opsCardTx');if(el)el.innerHTML=shiftTxTable(arr,S.tx);}).catch(function(){var el=document.getElementById('opsCardTx');if(el)el.innerHTML='<div class="az-note" style="padding:0.4rem;">Could not load transaction lines.</div>';}); }
 }
 // POS Settings tab (Settings ▸ POS Settings): Staff & PINs, cash/reconciliation
 // settings, and payment methods — moved out of Register Operations.

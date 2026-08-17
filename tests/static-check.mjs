@@ -305,6 +305,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!workspaceShellSource.includes("subscriptionHub.subscribe('posActiveShift'")||!workspaceShellSource.includes('window.__posShift=snapshot')||!adminSource.includes('subscriptionHub:subscriptionHub'))fail('Workspace status does not own an always-live shift subscription');
   const shiftRegisterSource=fs.readFileSync(path.join(root,'assets','js','admin','register.js'),'utf8');
   if(!shiftRegisterSource.includes('window.__refreshWorkspaceStatus()')||!shiftRegisterSource.includes('window.__refreshOverviewCommand()'))fail('Register shift updates do not refresh shared status consumers');
+  if(!shiftRegisterSource.includes("a.get(a.ref(a.db,'archivedOrders'))")||!shiftRegisterSource.includes("o.status==='Archived'")||!shiftRegisterSource.includes("o.prevStatus==='Completed'"))fail('Closed-shift transaction details do not include archived completed sales');
   if(!precache.includes('/assets/js/admin/workspace-shell.mjs'))fail('Phase 7D workspace shell is not precached');
   if(!adminHtml.includes('id="accaza-pos-workflow-7e"')||!adminHtml.includes('.pos-menu-search')||!adminHtml.includes('.pos-item-grid'))fail('Phase 7E POS menu workflow styling missing');
   if(!adminHtml.includes('.pos-category-rail{display:flex;flex-wrap:wrap')||!adminHtml.includes('.pos-category-rail .pz-chip{flex:0 1 auto'))fail('Release 7G fully visible wrapping POS categories missing');
