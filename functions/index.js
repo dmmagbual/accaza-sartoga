@@ -1372,6 +1372,19 @@ exports.onOrderFinalize = onValueWritten(
       const usage = costing.usage;
       const ids = Object.keys(usage);
       const cogs = costing.totalCost;
+      const invCategories = ps.invCategories || {};
+      const cogsCategorySnapshot = {food: 0, beverage: 0, packaging: 0, directLabor: 0, unallocated: 0};
+      costing.lines.forEach((costLine) => {
+        const item = inv[costLine.ingredientId] || {};
+        const category = invCategories[item.category] || {};
+        const label = String(category.name || item.category || "").toLowerCase();
+        let bucket = "unallocated";
+        if (/packag|cup|lid|straw|napkin|container/.test(label)) bucket = "packaging";
+        else if (/beverage|drink|coffee|tea|milk|syrup|powder/.test(label)) bucket = "beverage";
+        else if (/food|ingredient|bakery|kitchen|pastry|meal/.test(label)) bucket = "food";
+        cogsCategorySnapshot[bucket] += Number(costLine.totalCost) || 0;
+      });
+      Object.keys(cogsCategorySnapshot).forEach((key) => {cogsCategorySnapshot[key] = Math.round(cogsCategorySnapshot[key] * 100) / 100;});
 
       await Promise.all(ids.map((ing) => applyInventoryMovement(db, {
         movementId: `sale_${orderId}_${ing}`,
@@ -1386,6 +1399,8 @@ exports.onOrderFinalize = onValueWritten(
         inventoryUsage: usage,
         inventoryDeductedAt: Date.now(),
         cogsSnapshot: cogs,
+        cogsCategorySnapshot,
+        cogsCategorySnapshotVersion: 1,
         cogsCovered: costing.cogsCovered,
         cogsDetail: {
           engineVersion: costing.engineVersion, computedAt: Date.now(),
