@@ -117,12 +117,12 @@ nav{position:fixed;top:0;width:100%;z-index:200;background:rgba(25,36,27,0.96);b
 .nav-logo{font-family:'Playfair Display',serif;font-size:1.4rem;color:var(--cr);letter-spacing:0.05em;}
 .order-service-status{display:flex;flex-direction:column;justify-content:center;gap:.28rem;margin:0 auto 0 2rem;color:#e8e8e8;line-height:1.1;text-decoration:none;min-width:260px;}
 .order-service-status__headline{display:flex;align-items:center;gap:.55rem;font-size:.84rem;font-weight:600;letter-spacing:.01em;white-space:nowrap;}
-.order-service-status__dot{width:17px;height:17px;flex:0 0 17px;border-radius:50%;background:linear-gradient(145deg,#ff9b9b 8%,#ff3030 60%,#c90000);box-shadow:inset 0 1px 2px rgba(255,255,255,.68),0 0 10px rgba(255,48,48,.72);animation:orderStatusRedPulse 1.8s ease-in-out infinite;}
+.order-service-status__dot{width:17px;height:17px;flex:0 0 17px;border-radius:50%;background:linear-gradient(145deg,#ff9b9b 8%,#ff3030 60%,#c90000);box-shadow:inset 0 1px 2px rgba(255,255,255,.68),0 0 13px rgba(255,48,48,.9);animation:orderStatusRedBlink 1.15s step-end infinite;}
 .order-service-status__note{padding-left:1.55rem;font-size:.82rem;font-style:italic;color:rgba(232,232,232,.82);white-space:nowrap;}
-.order-service-status.is-open .order-service-status__dot{background:linear-gradient(145deg,#b8ffd7 8%,#20f078 60%,#00a83f);box-shadow:inset 0 1px 2px rgba(255,255,255,.7),0 0 10px rgba(32,240,120,.75);animation:orderStatusGreenPulse 1.8s ease-in-out infinite;}
+.order-service-status.is-open .order-service-status__dot{background:linear-gradient(145deg,#b8ffd7 8%,#20f078 60%,#00a83f);box-shadow:inset 0 1px 2px rgba(255,255,255,.7),0 0 13px rgba(32,240,120,.95);animation:orderStatusGreenBlink 1.15s step-end infinite;}
 .order-service-status:focus-visible{outline:2px solid #c9a36a;outline-offset:5px;border-radius:4px;}
-@keyframes orderStatusGreenPulse{50%{transform:scale(1.15);box-shadow:inset 0 1px 2px rgba(255,255,255,.72),0 0 18px rgba(32,240,120,1);}}
-@keyframes orderStatusRedPulse{50%{transform:scale(1.15);box-shadow:inset 0 1px 2px rgba(255,255,255,.72),0 0 18px rgba(255,48,48,1);}}
+@keyframes orderStatusGreenBlink{0%,48%{opacity:1;box-shadow:inset 0 1px 2px rgba(255,255,255,.72),0 0 16px rgba(32,240,120,1);}49%,100%{opacity:.18;box-shadow:none;}}
+@keyframes orderStatusRedBlink{0%,48%{opacity:1;box-shadow:inset 0 1px 2px rgba(255,255,255,.72),0 0 16px rgba(255,48,48,1);}49%,100%{opacity:.18;box-shadow:none;}}
 .nav-links{display:flex;gap:1.5rem;list-style:none;flex-wrap:wrap;}
 .nav-links a{color:var(--cd);text-decoration:none;font-size:0.82rem;letter-spacing:0.08em;text-transform:uppercase;transition:color 0.2s;}
 .nav-links a:hover{color:#fff;}
@@ -580,7 +580,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 </style>
 </head>
 <body>
-<!-- accaza-index build v49 -->
+<!-- accaza-index build v50 -->
 <div class="fb-sync" id="fbSync">🔥 Firebase Connected</div>
 <div class="order-toast" id="orderToast" onclick="ackNewOrders()">
   <span class="ot-bell">🔔</span>
