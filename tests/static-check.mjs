@@ -151,6 +151,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!functionsSource.includes('exports.pruneClosedShiftOrders = onValueWritten'))fail('closed-shift projection cleanup trigger missing');
   if(!functionsSource.includes('exports.syncPublicOrderStatus = onValueWritten')||!functionsSource.includes('ref("/publicOrderStatus").set({acceptingOrders'))fail('public order availability projection missing');
   if(!customerSource.includes("ref(db,'publicOrderStatus')")||!customerSource.includes("OPEN FOR ONLINE ORDERS")||!customerHtml.includes('id="orderServiceStatus"'))fail('customer online-order status banner missing');
+  if(!customerHtml.includes('orderStatusGreenBlink 1.15s step-end infinite')||!customerHtml.includes('orderStatusRedBlink 1.15s step-end infinite'))fail('customer order status dots are not configured to blink');
   if(!rulesRaw.includes('"publicOrderStatus": { ".read": true, ".write": false }'))fail('public order status rules missing');
   if(!functionsSource.includes('[`activeOrders/${orderId}`]: activeOrderProjection(order)'))fail('online orders do not enter the live projection atomically');
   if(!functionsSource.includes('Costing.costOrder({'))fail('Release 3B server-authoritative costing engine is not used at finalization');
