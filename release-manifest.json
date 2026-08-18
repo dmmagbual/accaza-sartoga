@@ -13,8 +13,8 @@
   },
   "builds": {
     "admin": 205,
-    "customer": 47,
-    "serviceWorkerCache": 99
+    "customer": 48,
+    "serviceWorkerCache": 100
   },
   "authoritativeFiles": [
     "admin.html",
@@ -77,7 +77,8 @@
     "archiveActivityLog",
     "notifyOnContactMessage",
     "pruneEphemeralNodes",
-    "backupDatabaseDaily"
+    "backupDatabaseDaily",
+    "syncPublicOrderStatus"
   ],
   "requiredProtectedNodes": [
     "activeOrders",
