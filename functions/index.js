@@ -890,6 +890,17 @@ exports.pruneClosedShiftOrders = onValueWritten(
   },
 );
 
+// Publish only the customer-safe availability bit. Cashier and shift details
+// remain protected under /posActiveShift.
+exports.syncPublicOrderStatus = onValueWritten(
+  {ref: "/posActiveShift", region: ORDER_REGION},
+  async (event) => {
+    const shift = event.data.after.exists() ? (event.data.after.val() || {}) : null;
+    const acceptingOrders = !!(shift && shift.status !== "closed");
+    await getDatabase().ref("/publicOrderStatus").set({acceptingOrders, updatedAt: Date.now()});
+  },
+);
+
 // Release 3B recipe normalization, unit conversion, usage, and COGS all come
 // from the shared pure engine mirrored from assets/js/shared/costing.js.
 
