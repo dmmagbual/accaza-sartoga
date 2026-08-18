@@ -710,6 +710,8 @@ exports.createOnlineOrder = onCall(
     const uid = request.auth.uid;
     const input = request.data || {};
     const db = getDatabase();
+    const shift = (await db.ref("/posActiveShift").get()).val() || null;
+    if (!shift || shift.status === "closed") throw new HttpsError("failed-precondition", "Online orders are closed right now. Please try again when the shop is accepting orders.");
     await enforceOrderRateLimit(db, uid);
     const name = textField(input.name, "Name", 100, true);
     const phone = textField(input.phone, "Phone", 40, true);

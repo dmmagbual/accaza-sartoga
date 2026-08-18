@@ -130,6 +130,13 @@ function getItemOptionGroups(item){
 // State
 let categoriesMap={},menuItemsMap={},adminOrdersMap={},archivedOrdersMap={},archivedResMap={},adminResMap={},feedbacksMap={},reviewsMap={},availability={},cart={};
 let publicOrdersOpen=false,customerLiveConnected=false;
+function onlineOrderingAvailable(){return publicOrdersOpen&&customerLiveConnected;}
+function syncPlaceOrderButton(){
+  var button=document.querySelector('.btn-place-order');if(!button||window._placingOrder)return;
+  var open=onlineOrderingAvailable();
+  button.disabled=!open;button.style.opacity='';button.setAttribute('aria-disabled',open?'false':'true');
+  button.textContent=open?'Place Order':'Online Orders Closed';
+}
 function renderPublicOrderStatus(){
   var root=document.getElementById('orderServiceStatus'),headline=document.getElementById('orderServiceHeadline'),note=document.getElementById('orderServiceNote');
   if(!root||!headline||!note)return;
@@ -138,6 +145,7 @@ function renderPublicOrderStatus(){
   headline.textContent=open?'OPEN FOR ONLINE ORDERS':'ONLINE ORDERS CLOSED';
   note.textContent=open?'Order now — we’re ready!':'We’re not accepting orders right now.';
   root.setAttribute('aria-label',open?'Online orders are open. Order now — we’re ready!':'Online orders are closed. We’re not accepting orders right now.');
+  syncPlaceOrderButton();
 }
 onValue(publicOrderStatusRef,function(snap){publicOrdersOpen=!!(snap.val()&&snap.val().acceptingOrders===true);renderPublicOrderStatus();},function(){publicOrdersOpen=false;renderPublicOrderStatus();});
 onValue(ref(db,'.info/connected'),function(snap){customerLiveConnected=snap.val()===true;renderPublicOrderStatus();},function(){customerLiveConnected=false;renderPublicOrderStatus();});
@@ -905,6 +913,7 @@ window.notifyCustomer=function(oid){
 function _hashSig(s){var h=0,i;for(i=0;i<s.length;i++){h=((h<<5)-h+s.charCodeAt(i))|0;}return (h>>>0).toString(36);}
 window.placeOrder=async function(){
   if(window._placingOrder)return;
+  if(!onlineOrderingAvailable()){syncPlaceOrderButton();alert('Online orders are closed right now. Please wait until the green OPEN FOR ONLINE ORDERS light appears.');return;}
   const name=document.getElementById('custName').value.trim(),phone=document.getElementById('custPhone').value.trim();
   if(!Object.keys(cart).length){alert('Please add at least one item.');return;}
   if(!name||!phone){alert('Please enter your name and phone number.');return;}
@@ -938,10 +947,10 @@ window.placeOrder=async function(){
     cart={};window.__custPkgs=[];updateCartDisplay();renderOrderSection();renderCustomerOrders();
     document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';
     removeProof({stopPropagation:function(){}});
-    setTimeout(function(){var b=document.querySelector('.btn-place-order');b.disabled=false;b.style.opacity='1';b.textContent='Place Order';document.getElementById('orderConfirm').style.display='none';},5000);
-  }catch(e){window._placingOrder=false;_btn.disabled=false;_btn.style.opacity='1';_btn.textContent='Place Order';var msg=(e&&e.message)||'Unknown error';if(String(e&&e.code).indexOf('already-exists')>-1)msg='This exact order was already submitted. Please wait one minute before trying again.';alert('Could not place order: '+msg);}
+    setTimeout(function(){syncPlaceOrderButton();document.getElementById('orderConfirm').style.display='none';},5000);
+  }catch(e){window._placingOrder=false;_btn.style.opacity='1';syncPlaceOrderButton();var msg=(e&&e.message)||'Unknown error';if(String(e&&e.code).indexOf('already-exists')>-1)msg='This exact order was already submitted. Please wait one minute before trying again.';alert('Could not place order: '+msg);}
 };
-window.resetOrder=function(){if(!Object.keys(cart).length&&!document.getElementById('custName').value){alert('Your order is already empty!');return;}if(confirm('Reset your order?')){cart={};updateCartDisplay();renderOrderSection();document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';setType('pickup');(function(){var gBtn=document.getElementById('btnGcash');var mBtn=document.getElementById('btnMaya');var bBtn=document.getElementById('btnBank');var first=gBtn&&gBtn.style.display!=='none'?'gcash':mBtn&&mBtn.style.display!=='none'?'maya':'bank';setPayment(first);})();document.getElementById('orderConfirm').style.display='none';document.querySelector('.btn-place-order').disabled=false;document.querySelector('.btn-place-order').style.opacity='1';}};
+window.resetOrder=function(){if(!Object.keys(cart).length&&!document.getElementById('custName').value){alert('Your order is already empty!');return;}if(confirm('Reset your order?')){cart={};updateCartDisplay();renderOrderSection();document.getElementById('custName').value='';document.getElementById('custPhone').value='';document.getElementById('custNotes').value='';setType('pickup');(function(){var gBtn=document.getElementById('btnGcash');var mBtn=document.getElementById('btnMaya');var bBtn=document.getElementById('btnBank');var first=gBtn&&gBtn.style.display!=='none'?'gcash':mBtn&&mBtn.style.display!=='none'?'maya':'bank';setPayment(first);})();document.getElementById('orderConfirm').style.display='none';syncPlaceOrderButton();}};
 
 // ── ORDER TRACKER ──
 const statusConfig={Pending:{icon:'🟡',color:'#856404',bg:'#fef3cd',msg:'Your order has been received and is awaiting confirmation from our staff.'},Confirmed:{icon:'🔵',color:'#0c5460',bg:'#d1ecf1',msg:'Your order has been confirmed. We will start preparing it soon!'},Preparing:{icon:'🟠',color:'#664d03',bg:'#fff3cd',msg:'Your order is currently being prepared. ☕'},Ready:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your order is now ready!'},Completed:{icon:'✅',color:'#155724',bg:'#d4edda',msg:'Your order is complete — thank you! ☕'},Received:{icon:'✅',color:'#1b5e20',bg:'#c8e6c9',msg:'You have confirmed receipt. Thank you! ☕🐻'},Rejected:{icon:'🔴',color:'#721c24',bg:'#f8d7da',msg:'Unfortunately, we could not verify your payment in our account, so this order has been rejected. If you believe this is a mistake, please contact us at 0927 692 4831 with your payment reference.'}};
