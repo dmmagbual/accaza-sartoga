@@ -2,7 +2,7 @@
 'use strict';
 var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},funnelMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={},receiptsMap={},posSettingsMap={};
 var svFrom=null,svTo=null,svExpand=null;
-var azRange='7d', azFrom=null, azTo=null, pnlMonth=null;
+var azRange='30d', azFrom=null, azTo=null, pnlMonth=null;
 var poChannel='grabfood', poFrom=null, poTo=null;
 var PO_CHANNELS=[{k:'grabfood',lbl:'GrabFood'},{k:'foodpanda',lbl:'FoodPanda'}];
 var DEFAULT_VAR_ACCOUNTS=[
@@ -60,9 +60,10 @@ function salesBetween(from,to){return allOrders().filter(isSale).map(saleFields)
 function dayStart(d){d=new Date(d);d.setHours(0,0,0,0);return d.getTime();}
 function addDays(ts,n){var d=new Date(ts);d.setDate(d.getDate()+n);return d.getTime();}
 function localDateValue(v){var p=String(v||'').split('-');if(p.length!==3)return NaN;return new Date(Number(p[0]),Number(p[1])-1,Number(p[2])).getTime();}
-function rangeBounds(){var now=Date.now(),today=dayStart(now),end=addDays(today,1);if(azRange==='today')return[today,end];if(azRange==='7d')return[addDays(today,-6),end];if(azRange==='30d')return[addDays(today,-29),end];if(azRange==='month'){var d=new Date();return[new Date(d.getFullYear(),d.getMonth(),1).getTime(),end];}if(azRange==='custom'&&azFrom!=null&&azTo!=null)return[dayStart(azFrom),addDays(dayStart(azTo),1)];return[addDays(today,-6),end];}
+function rangeBounds(){var now=Date.now(),today=dayStart(now),end=addDays(today,1);if(azRange==='today')return[today,end];if(azRange==='7d')return[addDays(today,-6),end];if(azRange==='30d')return[addDays(today,-29),end];if(azRange==='month'){var d=new Date();return[new Date(d.getFullYear(),d.getMonth(),1).getTime(),end];}if(azRange==='all'){var ts=allOrders().map(function(o){return o.timestamp||Date.parse(o.date)||0;}).filter(Boolean);return[ts.length?dayStart(Math.min.apply(null,ts)):today,end];}if(azRange==='custom'&&azFrom!=null&&azTo!=null)return[dayStart(azFrom),addDays(dayStart(azTo),1)];return[addDays(today,-29),end];}
 function fmtD(ts){return new Date(ts).toLocaleDateString('en-PH',{month:'short',day:'numeric'});}
-function azRangeLabel(from,to){var nm={today:'Today','7d':'Last 7 days','30d':'Last 30 days',month:'This month',custom:'Custom range'};return (nm[azRange]||azRange)+' · '+fmtD(from)+' – '+fmtD(to-86400000);}
+function azRangeLabel(from,to){var nm={today:'Today','7d':'Last 7 days','30d':'Last 30 days',month:'This month',all:'All time',custom:'Custom range'};return (nm[azRange]||azRange)+' · '+fmtD(from)+' – '+fmtD(to-86400000);}
+function sharedPeriod(v){v=v||(window.AccazaReportPeriod&&window.AccazaReportPeriod.get&&window.AccazaReportPeriod.get());if(!v)return;azRange=v.period==='7'?'7d':v.period==='30'?'30d':v.period||'30d';azFrom=v.from?localDateValue(v.from):null;azTo=v.to?localDateValue(v.to):null;}
 
 function bar(label,val,max,disp){var w=max>0?Math.max(2,Math.round(val/max*100)):0;return '<div class="az-bar-row"><div class="az-bar-lbl">'+esc(label)+'</div><div class="az-bar-track"><div class="az-bar-fill" style="width:'+w+'%;"></div></div><div class="az-bar-val">'+(disp!=null?disp:val)+'</div></div>';}
 function kpi(label,val,delta){var d='';if(delta!=null&&isFinite(delta))d='<div class="d '+(delta>0?'az-up':delta<0?'az-down':'az-flat')+'">'+pct(delta)+' vs prev</div>';return '<div class="az-kpi"><div class="v">'+val+'</div><div class="l">'+esc(label)+'</div>'+d+'</div>';}
@@ -70,25 +71,26 @@ function kpi(label,val,delta){var d='';if(delta!=null&&isFinite(delta))d='<div c
 /* ══════════ ANALYTICS ══════════ */
 function renderAnalytics(){
   var root=document.getElementById('analyticsRoot'); if(!root)return;
+  sharedPeriod();
   /* One delegated click listener on the (persistent) analytics container. It survives every
      innerHTML re-render AND any error inside the body render, so the date controls always work. */
   if(!root.__azWired){ root.__azWired=true; root.addEventListener('click',function(e){
     var t=e.target; if(!t||!t.closest)return;
     var chip=t.closest('[data-range]');
-    if(chip){ e.preventDefault(); azRange=chip.getAttribute('data-range'); azFrom=null; azTo=null; renderAnalytics(); return; }
+    if(chip){ e.preventDefault(); azRange=chip.getAttribute('data-range'); azFrom=null; azTo=null;if(window.AccazaReportPeriod)window.AccazaReportPeriod.set({period:azRange==='7d'?'7':azRange==='30d'?'30':azRange});renderAnalytics(); return; }
     if(t.closest('#azApply')){
       var f=(document.getElementById('azFrom')||{}).value, tt=(document.getElementById('azTo')||{}).value;
       if(!f||!tt){ alert('Pick both a From and a To date, then tap “Apply dates”.'); return; }
       if(f>tt){ alert('The From date is later than the To date — please switch them.'); return; }
       azFrom=localDateValue(f); azTo=localDateValue(tt);
       if(!isFinite(azFrom)||!isFinite(azTo)){ alert('Those dates could not be read. Please choose them again.'); return; }
-      azRange='custom'; renderAnalytics(); return;
+      azRange='custom';if(window.AccazaReportPeriod)window.AccazaReportPeriod.set({period:'custom',from:tsToDate(azFrom),to:tsToDate(azTo)});renderAnalytics(); return;
     }
   }); }
   try{ renderAnalyticsBody(); }
   catch(err){ console.error('renderAnalytics error',err);
     root.innerHTML='<div class="pz-h">📊 Analytics</div><div style="margin:0.5rem 0;">'
-      +['today:Today','7d:7 days','30d:30 days','month:This month'].map(function(o){var v=o.split(':');return '<span class="pz-chip'+(azRange===v[0]?' on':'')+'" data-range="'+v[0]+'">'+v[1]+'</span>';}).join('')
+      +['today:Today','7d:7 days','30d:30 days','month:This month','all:All time'].map(function(o){var v=o.split(':');return '<span class="pz-chip'+(azRange===v[0]?' on':'')+'" data-range="'+v[0]+'">'+v[1]+'</span>';}).join('')
       +' <span style="font-size:0.78rem;color:var(--tl);">or <input type="date" class="pz-in" id="azFrom" style="width:auto;display:inline-block;padding:0.2rem 0.4rem;"/> → <input type="date" class="pz-in" id="azTo" style="width:auto;display:inline-block;padding:0.2rem 0.4rem;"/> <button class="pz-btn sec" id="azApply" style="padding:0.25rem 0.6rem;">Apply dates</button></span></div>'
       +'<div style="background:#fde8e8;border:1px solid #f5b5b5;border-radius:8px;padding:1rem;color:#a11;font-size:0.85rem;">Analytics couldn’t finish building the report: <b>'+esc(String((err&&err.message)||err))+'</b>.<br>The date buttons above still work. Please send Claude this exact message so I can fix the cause.</div>'; }
 }
@@ -119,17 +121,17 @@ function renderAnalyticsBody(){
   cur.forEach(function(x){
     byPay[x.payment]=(byPay[x.payment]||0)+x.net;
     byType[x.type]=(byType[x.type]||0)+x.net;
-    (x.lineItems||[]).forEach(function(li){
+    var itemFactor=x.gross>0?Math.max(0,x.net/x.gross):0;if(itemFactor<=0)return;(x.lineItems||[]).forEach(function(li){
       var mi=A().menuItemsMap[li.itemKey];var cat=mi?(A().getCatLabel?A().getCatLabel(mi.cat):mi.cat):'Other';
       byCat[cat]=(byCat[cat]||0)+li.qty*li.unitTotal;
       totItems+=li.qty;
       var _ct=(window.__posSettings&&window.__posSettings.catType)||{}; if(mi&&_ct[mi.cat]==='food')return; /* Top items = drinks only: exclude food/pastry categories. Add-ons are options (optLabels), never line items, so already excluded. */
       var key=li.name;items[key]=items[key]||{name:li.name,units:0,rev:0,cost:0};
-      items[key].units+=li.qty;items[key].rev+=li.qty*li.unitTotal;var c=itemCost(li);if(c!=null)items[key].cost+=c;
+      items[key].units+=li.qty;items[key].rev+=li.qty*li.unitTotal*itemFactor;var c=itemCost(li);if(c!=null)items[key].cost+=c;
     });
   });
   // prev-period item units for trend
-  var pItems={};prev.forEach(function(x){(x.lineItems||[]).forEach(function(li){pItems[li.name]=(pItems[li.name]||0)+li.qty;});});
+  var pItems={};prev.forEach(function(x){if(x.net<=0)return;(x.lineItems||[]).forEach(function(li){var mi=A().menuItemsMap[li.itemKey],ct=(window.__posSettings&&window.__posSettings.catType)||{};if(mi&&ct[mi.cat]==='food')return;pItems[li.name]=(pItems[li.name]||0)+li.qty;});});
   var itemArr=Object.values(items);
   var topByRev=itemArr.slice().sort(function(a,b){return b.rev-a.rev;});
   var topByProfit=itemArr.slice().filter(function(i){return i.cost>0;}).map(function(i){return Object.assign({profit:i.rev-i.cost,margin:i.rev>0?(i.rev-i.cost)/i.rev*100:0},i);}).sort(function(a,b){return b.profit-a.profit;});
@@ -160,7 +162,7 @@ function renderAnalyticsBody(){
 
   var html='<div class="pz-h">📊 Analytics</div><p class="pz-sub">Every figure here traces to your own orders, recipes, and reviews. Reach/Visits are entered manually from Google Analytics.</p>';
   var _azF=tsToDate(from), _azT=tsToDate(to-86400000); // local date parts (not UTC) so date inputs match the range in UTC+10
-  html+='<div style="margin-bottom:0.4rem;">'+['today:Today','7d:7 days','30d:30 days','month:This month'].map(function(o){var v=o.split(':');return '<span class="pz-chip '+(azRange===v[0]?'on':'')+'" data-range="'+v[0]+'">'+v[1]+'</span>';}).join('')
+  html+='<div style="margin-bottom:0.4rem;">'+['today:Today','7d:7 days','30d:30 days','month:This month','all:All time'].map(function(o){var v=o.split(':');return '<span class="pz-chip '+(azRange===v[0]?'on':'')+'" data-range="'+v[0]+'">'+v[1]+'</span>';}).join('')
     +'<span style="margin-left:0.5rem;font-size:0.78rem;color:var(--tl);">or '+'<input type="date" class="pz-in" id="azFrom" value="'+_azF+'" style="width:auto;display:inline-block;padding:0.2rem 0.4rem;"/> → <input type="date" class="pz-in" id="azTo" value="'+_azT+'" style="width:auto;display:inline-block;padding:0.2rem 0.4rem;"/> <button class="pz-btn '+(azRange==='custom'?'ok':'sec')+'" id="azApply" style="padding:0.25rem 0.6rem;">Apply dates</button></span></div>'
     +'<div class="az-note" id="azActive" style="margin:0 0 0.7rem;font-weight:600;color:var(--bd);">📅 Showing: '+azRangeLabel(from,to)+'</div>';
   // KPIs
@@ -191,7 +193,7 @@ function renderAnalyticsBody(){
   var chTot=walkInRev+onlineRev+eventRev+promoRev||1;
   html+='<div class="az-sec">Sales channel</div><div class="pz-card"><div class="az-kpis" style="margin:0;">'+kpi('Walk-in (counter)',peso0(walkInRev)+' · '+Math.round(walkInRev/chTot*100)+'%')+kpi('Online',peso0(onlineRev)+' · '+Math.round(onlineRev/chTot*100)+'%')+kpi('Events',peso0(eventRev)+' · '+Math.round(eventRev/chTot*100)+'%')+kpi('Promos',peso0(promoRev)+' · '+Math.round(promoRev/chTot*100)+'%')+'</div><div class="az-note">Revenue share by channel — walk-in, online, event packages, promos.</div></div>';
   // items
-  html+='<div class="az-sec">Top items by revenue</div><div class="pz-card"><table class="pz-tbl"><thead><tr><th>Item</th><th>Units</th><th>Revenue</th><th>Trend</th></tr></thead><tbody>'
+  html+='<div class="az-sec">Top drinks by net revenue</div><div class="pz-card"><table class="pz-tbl"><thead><tr><th>Drink</th><th>Units</th><th>Net revenue</th><th>Unit trend</th></tr></thead><tbody>'
     +topByRev.slice(0,10).map(function(i){var pv=pItems[i.name]||0;var tr=pv>0?(i.units-pv)/pv*100:(i.units>0?100:0);return '<tr><td>'+esc(i.name)+'</td><td>'+i.units+'</td><td>'+peso0(i.rev)+'</td><td class="'+(tr>0?'az-up':tr<0?'az-down':'az-flat')+'">'+(pv>0||i.units>0?pct(tr):'—')+'</td></tr>';}).join('')
     +'</tbody></table></div>';
   html+='<div class="az-sec">Most profitable items <span class="az-note">(revenue − recipe cost)</span></div><div class="pz-card">'
