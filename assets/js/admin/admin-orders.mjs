@@ -15,6 +15,7 @@ function createOrderAdmin(deps){
   }
   function orderStatusCtl(o,orderKey){
     var oid=escHtml(orderKey||o.id);if(o.voided)return '';
+    if((o.source==='online'||o.channel==='online')&&!o.shiftId)return '<span class="order-payment-state pending">Use POS → Online Orders to verify payment and accept into shift</span>';
     if(o.status==='Completed'||o.status==='Received'){
       var paymentAction=o.paymentStatus==='pending'?'<button data-verify="'+oid+'" class="order-action verify">Verify payment</button>':'';
       return paymentAction+'<button data-refund="'+oid+'" class="order-action refund">Refund</button><button data-void="'+oid+'" class="order-action void">Void</button>';
