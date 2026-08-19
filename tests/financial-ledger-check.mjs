@@ -15,6 +15,12 @@ balanced(platform,'platform sale');
 assert(platform.lines.some(x=>x.account==='asset:platform_receivable:grabfood'&&x.debit===65),'platform receivable is wrong');
 assert(platform.lines.some(x=>x.account==='revenue:sales'&&x.credit===100),'platform gross revenue is wrong');
 
+const online=F.orderPosting({id:'WEB1',source:'online',channel:'online',total:125,payment:'GCash',payments:[{method:'GCash',amount:125}]},accounts);
+balanced(online,'online order');
+assert(online.lines.some(x=>x.account==='asset:cash_account:gcash'&&x.debit===125),'online payment did not debit the mapped cash account');
+assert(!online.lines.some(x=>x.account.indexOf('asset:platform_receivable:')===0),'online order was incorrectly treated as a platform receivable');
+assert(online.lines.some(x=>x.account==='revenue:sales'&&x.label==='Online order sales'),'online revenue is not identified separately');
+
 const refund=F.reversalPosting({id:'O2',channel:'instore',payment:'GCash',total:80},30,'refund',accounts);
 balanced(refund,'refund');
 assert(refund.cashEntries.length===1&&refund.cashEntries[0].dir==='out'&&refund.cashEntries[0].amount===30,'non-cash refund projection is wrong');
@@ -28,4 +34,4 @@ const transfer=F.movement('cash_transfer','transfer','T1',[F.line('asset:to',50,
 balanced(transfer,'transfer');
 let rejected=false;try{F.movement('bad','test','B1',[F.line('asset:x',10,0,'bad')]);}catch(_e){rejected=true;}assert(rejected,'unbalanced movement was accepted');
 
-console.log('PASS: Release 3C/3D split sale, platform receivable, actual refund tenders, transfer, and balancing checks passed.');
+console.log('PASS: Release 3C/3D split sale, online direct payment, platform receivable, actual refund tenders, transfer, and balancing checks passed.');

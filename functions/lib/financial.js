@@ -32,8 +32,9 @@ function accountForMethod(method, accounts) {
 function orderPosting(order, accounts) {
   order = order || {}; const id = safe(order.id); if (!id) throw new Error("Order ID is required.");
   const channel = safe(order.channel || "instore").toLowerCase();
+  const platform = channel === "grabfood" || channel === "foodpanda";
   const lines = [], cashEntries = [], warnings = [];
-  if (channel !== "instore") {
+  if (platform) {
     const gross = money(order.grossPlatform != null ? order.grossPlatform : (order.subtotal != null ? order.subtotal : order.total));
     const commission = money(order.commission), discount = money(order.platformDiscount), wht = money(order.platformWht), vat = money(order.platformVat);
     const net = money(order.netPlatform != null ? order.netPlatform : gross - commission - discount - wht - vat);
@@ -57,16 +58,16 @@ function orderPosting(order, accounts) {
     });
     const paid = totals(lines).debit;
     if (Math.abs(paid - total) > 0.009) lines.push(line(paid < total ? "asset:unmapped_payment:balance" : "revenue:payment_overage", paid < total ? money(total - paid) : 0, paid > total ? money(paid - total) : 0, "Payment allocation difference"));
-    lines.push(line("revenue:sales", 0, total, "In-store sales"));
+    lines.push(line("revenue:sales", 0, total, channel === "online" ? "Online order sales" : "In-store sales"));
   }
   const sum = assertBalanced(lines);
   return {type: "order_sale", sourceType: "order", sourceId: id, channel, amount: sum.credit, lines, cashEntries, warnings};
 }
 function reversalPosting(order, amount, kind, accounts, settlementPayments) {
   order = order || {}; const value = money(amount); if (!(value > 0)) throw new Error("Reversal amount must be positive.");
-  const channel = safe(order.channel || "instore").toLowerCase(); const lines = [], cashEntries = [], warnings = [];
+  const channel = safe(order.channel || "instore").toLowerCase(); const platform = channel === "grabfood" || channel === "foodpanda"; const lines = [], cashEntries = [], warnings = [];
   lines.push(line("revenue:sales_reversal", value, 0, kind === "void" ? "Voided sale" : "Sales refund"));
-  if (channel !== "instore") lines.push(line(`asset:platform_receivable:${channel}`, 0, value, "Reduce platform receivable"));
+  if (platform) lines.push(line(`asset:platform_receivable:${channel}`, 0, value, "Reduce platform receivable"));
   else {
     let settlements = Array.isArray(settlementPayments) ? settlementPayments.map((row) => ({method: safe(row.method), amount: money(row.amount)})).filter((row) => row.method && row.amount > 0) : [];
     if (!settlements.length) {const payments = paymentRows(order), cash = payments.find((row) => row.method.toLowerCase() === "cash"), chosen = cash || payments[0] || {method: "Cash"}; settlements = [{method: chosen.method, amount: value}];}

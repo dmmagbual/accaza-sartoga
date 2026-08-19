@@ -9,6 +9,7 @@ function peso(n){n=Number(n)||0;return '₱'+n.toLocaleString('en-PH',{minimumFr
 function uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5);}
 function isTab(n){var el=document.getElementById('tab-'+n);return el&&el.style.display!=='none';}
 function paysOf(o){return(o.payments&&o.payments.length)?o.payments:[{method:o.payment||'—',amount:Number(o.total)||0}];}
+function channelLabel(o){var c=o&&o.channel||'instore';return c==='online'?'Online Orders':c==='grabfood'?'GrabFood':c==='foodpanda'?'FoodPanda':'In-store';}
 
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
 function init(){
@@ -95,9 +96,10 @@ function cashSwap(){
 }
 /* ---------- Z-report computation ---------- */
 function computeZ(shift){
-  var sales=[],voids=[],z={tx:0,gross:0,discounts:0,refunds:0,cashRefunds:0,net:0,byMethod:{},byChannel:{instore:0,grabfood:0,foodpanda:0},cashSales:0,voidCount:0,voidAmt:0,pending:0,pendingCount:0,tips:0};
+  var sales=[],voids=[],z={tx:0,gross:0,discounts:0,refunds:0,cashRefunds:0,net:0,byMethod:{},byChannel:{instore:0,online:0,grabfood:0,foodpanda:0},cashSales:0,voidCount:0,voidAmt:0,pending:0,pendingCount:0,tips:0};
   Object.keys(ordersMap).forEach(function(id){var o=ordersMap[id];if(!o||o.shiftId!==shift.id)return;
     if(o.voided){z.voidCount++;z.voidAmt+=Number(o.total)||0;return;}
+    if(['Completed','Received'].indexOf(o.status)<0)return;
     var gross=(o.subtotal!=null?Number(o.subtotal):Number(o.total))||0;var disc=Number(o.discount)||0;var ref=Number(o.refundAmount)||0;
     z.tx++;z.gross+=gross;z.discounts+=disc;z.refunds+=ref;z.cashRefunds+=Number((o.refundPayments||{}).Cash)||(ref&&(!o.refundPayments)&&(o.payment==='Cash'||paysOf(o).some(function(p){return p.method==='Cash';}))?ref:0);z.net+=gross-disc-ref;
     z.tips+=Number(o.tipRounding)||0;
@@ -428,7 +430,7 @@ function shiftTxTable(list,expected){
   if(!list.length)return '<div class="az-note" style="padding:0.4rem;">No transaction lines available'+(expected?(' (summary shows '+expected+' — older lines may be archived)'):'')+'.</div>';
   var note=(expected&&list.length<expected)?'<div class="az-note" style="padding:0.3rem 0;">Showing '+list.length+' of '+expected+' — older lines archived.</div>':'';
   var total=list.reduce(function(s,o){return s+(Number(o.total)||0)-(Number(o.refundAmount)||0);},0);
-  return note+'<div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Order</th><th>Channel</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+list.map(function(o){var ch=(o.channel&&o.channel!=='instore')?(o.channel==='grabfood'?'GrabFood':'FoodPanda'):'In-store';var tag=Number(o.refundAmount)>0?' · R '+peso(o.refundAmount):'';return '<tr><td>'+esc(o.time||'')+'</td><td>'+esc(o.id)+'</td><td>'+esc(ch)+'</td><td>'+esc(shiftTxnMethod(o))+'</td><td class="r">'+peso(o.total)+esc(tag)+'</td></tr>';}).join('')+'<tr class="register-total"><td colspan="4">Total ('+list.length+' transactions)</td><td class="r">'+peso(total)+'</td></tr></tbody></table></div>';
+  return note+'<div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Time</th><th>Order</th><th>Channel</th><th>Method</th><th class="r">Amount</th></tr></thead><tbody>'+list.map(function(o){var ch=channelLabel(o);var tag=Number(o.refundAmount)>0?' · R '+peso(o.refundAmount):'';return '<tr><td>'+esc(o.time||'')+'</td><td>'+esc(o.id)+'</td><td>'+esc(ch)+'</td><td>'+esc(shiftTxnMethod(o))+'</td><td class="r">'+peso(o.total)+esc(tag)+'</td></tr>';}).join('')+'<tr class="register-total"><td colspan="4">Total ('+list.length+' transactions)</td><td class="r">'+peso(total)+'</td></tr></tbody></table></div>';
 }
 function isShiftTransaction(o,id){
   if(!o||o.shiftId!==id||o.voided)return false;
@@ -442,7 +444,7 @@ function renderShiftCard(){
   var shift=isOpen?activeShift:(shiftsMap[id]?Object.assign({id:id},shiftsMap[id]):null);
   if(!shift){body.innerHTML='<p class="az-note">Shift not found.</p>';return;}
   var S=shiftSummaryObj(shift,isOpen);
-  var chRows=S.byChannel?([['instore','In-store'],['grabfood','GrabFood'],['foodpanda','FoodPanda']].map(function(c){var v=(S.byChannel&&S.byChannel[c[0]])||0;if(!v&&c[0]!=='instore')return '';return '<tr><td>'+c[1]+'</td><td class="r">'+peso(v)+'</td></tr>';}).join('')):'<tr><td colspan="2" class="az-note">Channel split not stored for this shift.</td></tr>';
+  var chRows=S.byChannel?([['instore','In-store'],['online','Online Orders'],['grabfood','GrabFood'],['foodpanda','FoodPanda']].map(function(c){var v=(S.byChannel&&S.byChannel[c[0]])||0;if(!v&&c[0]!=='instore')return '';return '<tr><td>'+c[1]+'</td><td class="r">'+peso(v)+'</td></tr>';}).join('')):'<tr><td colspan="2" class="az-note">Channel split not stored for this shift.</td></tr>';
   var mRows=Object.keys(S.byMethod).sort().map(function(m){return '<tr><td>'+esc(m)+'</td><td class="r">'+peso(S.byMethod[m])+'</td></tr>';}).join('')||'<tr><td colspan="2" class="az-note">—</td></tr>';
   var hdr='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.5rem;"><div><b>'+esc(shift.staff||'')+'</b> · '+new Date(S.openAt).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+(S.closeAt?('–'+new Date(S.closeAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})):'')+'</div><span style="font-weight:700;color:'+(S.open?'#2a9d5c':'var(--tl)')+';">'+(S.open?'🟢 Open':'Closed')+'</span></div>';
   var kpis='<div class="az-kpis" style="margin:0 0 0.7rem;">'+kpi('Transactions',S.tx)+kpi('Net sales',peso(S.net))+kpi('Cash sales',peso(S.cashSales))+kpi('Cash to settle',peso(S.cashToSettle))+'</div>';
@@ -455,7 +457,7 @@ function renderShiftCard(){
     +'<tr style="border-top:2px solid var(--bd);"><td><b>► Cash to settle</b></td><td class="r"><b>'+peso(S.cashToSettle)+'</b></td></tr>'
     +'</tbody></table><div style="display:flex;justify-content:flex-end;margin-top:0.6rem;"><button class="pz-btn sec" id="opsCashReview">'+(S.open?'📋 Review live cash':'🧾 View final Z-report')+'</button></div></div>';
   var methodTotal=Object.keys(S.byMethod).reduce(function(sum,m){return sum+(Number(S.byMethod[m])||0);},0);
-  var chBlk='<div class="az-sec">Sales by channel</div><div class="pz-card" style="margin-bottom:0.6rem;"><table class="pz-tbl"><tbody>'+chRows+'<tr class="register-total"><td>Total net sales</td><td class="r">'+peso(S.net)+'</td></tr></tbody></table><div class="az-note">GrabFood/FoodPanda are receivables, not cash. Online is not part of a shift.</div></div>';
+  var chBlk='<div class="az-sec">Sales by channel</div><div class="pz-card" style="margin-bottom:0.6rem;"><table class="pz-tbl"><tbody>'+chRows+'<tr class="register-total"><td>Total net sales</td><td class="r">'+peso(S.net)+'</td></tr></tbody></table><div class="az-note">Online Orders are verified non-cash sales captured in the shift. GrabFood/FoodPanda remain platform receivables. None of these increases physical drawer cash.</div></div>';
   var mBlk='<div class="az-sec">By payment method</div><div class="pz-card" style="margin-bottom:0.6rem;"><table class="pz-tbl"><tbody>'+mRows+'<tr class="register-total"><td>Total</td><td class="r">'+peso(methodTotal)+'</td></tr></tbody></table></div>';
   body.innerHTML=hdr+kpis+recon+chBlk+mBlk+'<div class="az-sec">Transactions</div><div class="pz-card" id="opsCardTx"><p class="az-note">Loading…</p></div>';
   var cashReview=document.getElementById('opsCashReview');if(cashReview)cashReview.onclick=function(){reviewShiftCash(shift,isOpen);};
@@ -601,7 +603,7 @@ function showZ(shift,z,existingWindow){
     +'<tr><td>Discounts</td><td style="text-align:right;">-'+peso(z.discounts)+'</td></tr>'
     +'<tr><td>Cash refunds</td><td style="text-align:right;">-'+peso(z.cashRefunds)+'</td></tr>'
     +'<tr><td><b>Net sales</b></td><td style="text-align:right;"><b>'+peso(z.net)+'</b></td></tr></table><hr>'
-    +'<div><b>Sales by channel</b></div><table>'+([['instore','In-store'],['grabfood','GrabFood'],['foodpanda','FoodPanda']].map(function(c){var v=(z.byChannel&&z.byChannel[c[0]])||0;if(!v&&c[0]!=='instore')return '';return '<tr><td>'+c[1]+'</td><td style="text-align:right;">'+peso(v)+'</td></tr>';}).join(''))+'<tr style="border-top:1px solid #000;"><td><b>Total by channel</b></td><td style="text-align:right;"><b>'+peso(channelTotal)+'</b></td></tr></table><div style="font-size:9px;">GrabFood/FoodPanda are receivables (platform settles weekly), not cash. Online is not rung here — see Daily Report.</div><hr>'
+    +'<div><b>Sales by channel</b></div><table>'+([['instore','In-store'],['online','Online Orders'],['grabfood','GrabFood'],['foodpanda','FoodPanda']].map(function(c){var v=(z.byChannel&&z.byChannel[c[0]])||0;if(!v&&c[0]!=='instore')return '';return '<tr><td>'+c[1]+'</td><td style="text-align:right;">'+peso(v)+'</td></tr>';}).join(''))+'<tr style="border-top:1px solid #000;"><td><b>Total by channel</b></td><td style="text-align:right;"><b>'+peso(channelTotal)+'</b></td></tr></table><div style="font-size:9px;">Online Orders are verified non-cash sales. GrabFood/FoodPanda are platform receivables. None increases drawer cash.</div><hr>'
     +'<div><b>By payment method</b></div><table>'+methods+'<tr style="border-top:1px solid #000;"><td><b>Total by payment method</b></td><td style="text-align:right;"><b>'+peso(methodTotal)+'</b></td></tr></table><hr>'
     +'<div><b>Sales this shift ('+saleList.length+')</b></div><table>'+(saleRows||'<tr><td colspan="2">None</td></tr>')+'<tr style="border-top:1px solid #000;"><td><b>Total sales this shift</b></td><td style="text-align:right;"><b>'+peso(salesTotal)+'</b></td></tr></table><hr>'
     +(z.pendingCount?'<div style="color:#8a6d1b;"><b>⏳ Non-cash pending verification: '+peso(z.pending)+' ('+z.pendingCount+')</b></div><div style="font-size:9px;">Not yet confirmed in the account at close. Verify these landed.</div><hr>':'')
@@ -636,7 +638,7 @@ function openShiftReview(){
   var shift=activeShift,z=computeZ(shift),sales=shiftSales(shift),items=shiftItemsSummary(shift);
   var reviewMethodTotal=Object.keys(z.byMethod).reduce(function(s,m){return s+(Number(z.byMethod[m])||0);},0),reviewTxnTotal=sales.reduce(function(s,o){return s+(Number(o.total)||0)-(Number(o.refundAmount)||0);},0);
   var methodRows=Object.keys(z.byMethod).map(function(m){return '<tr><td>'+esc(m)+'</td><td class="r">'+peso(z.byMethod[m])+'</td></tr>';}).join('')||'<tr><td colspan="2" style="color:var(--tl);">No sales yet.</td></tr>';
-  var txnRows=sales.map(function(o){var ch=(o.channel&&o.channel!=='instore')?(o.channel==='grabfood'?'GrabFood':'FoodPanda'):'In-store';var tag=Number(o.refundAmount)>0?' · R '+peso(o.refundAmount):'';return '<tr><td>'+esc(o.time||'')+'</td><td>'+esc(o.id)+'</td><td>'+esc(ch)+'</td><td>'+esc(shiftTxnMethod(o))+'</td><td class="r">'+peso(o.total)+esc(tag)+'</td></tr>';}).join('')||'<tr><td colspan="5" style="color:var(--tl);">No sales yet.</td></tr>';
+  var txnRows=sales.map(function(o){var ch=channelLabel(o);var tag=Number(o.refundAmount)>0?' · R '+peso(o.refundAmount):'';return '<tr><td>'+esc(o.time||'')+'</td><td>'+esc(o.id)+'</td><td>'+esc(ch)+'</td><td>'+esc(shiftTxnMethod(o))+'</td><td class="r">'+peso(o.total)+esc(tag)+'</td></tr>';}).join('')||'<tr><td colspan="5" style="color:var(--tl);">No sales yet.</td></tr>';
   var itemRows=items.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td class="r">'+num(x.qty)+'</td><td class="r">'+peso(x.sales)+'</td></tr>';}).join('')||'<tr><td colspan="3" style="color:var(--tl);">No items yet.</td></tr>';
   var mask=document.createElement('div');mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
   mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:700px;width:100%;max-height:92vh;overflow:auto;padding:1.2rem;">'
@@ -654,8 +656,8 @@ function openShiftReview(){
       +'<tr style="border-top:1px solid var(--cd);"><td><b>► Cash to settle (remit)</b></td><td class="r"><b>'+peso(z.cashToSettle)+'</b></td></tr>'
       +'</tbody></table>'+(z.floatMismatch?'<div class="az-note" style="color:#c0392b;">⚠ Opened with '+peso(shift.openingFloat)+' but standard float is '+peso(fixedFloatCfg)+'.</div>':'')+'</div>'
     +'<div class="pz-card" style="margin-bottom:0.8rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.3rem;">🧾 Sales by channel</div><table class="pz-tbl"><tbody>'
-      +([['instore','In-store'],['grabfood','GrabFood'],['foodpanda','FoodPanda']].map(function(c){var v=(z.byChannel&&z.byChannel[c[0]])||0;if(!v&&c[0]!=='instore')return '';return '<tr><td>'+c[1]+'</td><td class="r">'+peso(v)+'</td></tr>';}).join(''))
-      +'<tr class="register-total"><td>Total net sales</td><td class="r">'+peso(z.net)+'</td></tr></tbody></table><div class="az-note">GrabFood/FoodPanda are receivables (platform settles weekly), not cash. Online is not rung on a shift — see Daily Report.</div></div>'
+      +([['instore','In-store'],['online','Online Orders'],['grabfood','GrabFood'],['foodpanda','FoodPanda']].map(function(c){var v=(z.byChannel&&z.byChannel[c[0]])||0;if(!v&&c[0]!=='instore')return '';return '<tr><td>'+c[1]+'</td><td class="r">'+peso(v)+'</td></tr>';}).join(''))
+      +'<tr class="register-total"><td>Total net sales</td><td class="r">'+peso(z.net)+'</td></tr></tbody></table><div class="az-note">Online Orders are verified non-cash sales. GrabFood/FoodPanda are platform receivables. None increases drawer cash.</div></div>'
     +'<div style="display:flex;gap:0.7rem;flex-wrap:wrap;margin-bottom:0.8rem;">'
       +'<div class="pz-card" style="flex:1;min-width:130px;"><div style="font-size:0.72rem;color:var(--tl);">Transactions</div><div style="font-weight:700;font-size:1.1rem;color:var(--bd);">'+z.tx+'</div></div>'
       +'<div class="pz-card" style="flex:1;min-width:130px;"><div style="font-size:0.72rem;color:var(--tl);">Net sales</div><div style="font-weight:700;font-size:1.1rem;color:var(--bd);">'+peso(z.net)+'</div></div>'
@@ -697,7 +699,7 @@ function printShiftReview(shift,z,sales,items){
 }
 function exportShiftReviewXlsx(shift,z,sales,items){
   if(!window.XLSX){alert('Excel library still loading — try again.');return;}
-  var sum=[['Shift',shift.id],['Cashier',shift.staff],['Open',new Date(shift.openAt).toLocaleString('en-PH')],[],['Opening float',Number(shift.openingFloat)||0],['Cash sales',z.cashSales],['Tips',z.tips],['Pay-ins',z.payIns],['Cash refunds',-z.cashRefunds],['Pay-outs',-z.payOuts],['Cash on hand',z.expectedCash],['Fixed float retained',-z.retainedFloat],['Cash to settle',z.cashToSettle],[],['In-store sales',z.byChannel.instore],['GrabFood sales',z.byChannel.grabfood],['FoodPanda sales',z.byChannel.foodpanda],[],['Transactions',z.tx],['Net sales',z.net]];
+  var sum=[['Shift',shift.id],['Cashier',shift.staff],['Open',new Date(shift.openAt).toLocaleString('en-PH')],[],['Opening float',Number(shift.openingFloat)||0],['Cash sales',z.cashSales],['Tips',z.tips],['Pay-ins',z.payIns],['Cash refunds',-z.cashRefunds],['Pay-outs',-z.payOuts],['Cash on hand',z.expectedCash],['Fixed float retained',-z.retainedFloat],['Cash to settle',z.cashToSettle],[],['In-store sales',z.byChannel.instore],['Online Orders sales',z.byChannel.online],['GrabFood sales',z.byChannel.grabfood],['FoodPanda sales',z.byChannel.foodpanda],[],['Transactions',z.tx],['Net sales',z.net]];
   var tx=[['Time','Order','Channel','Method','Amount','Refund']];sales.forEach(function(o){tx.push([o.time||'',o.id,(o.channel&&o.channel!=='instore')?o.channel:'instore',shiftTxnMethod(o),Number(o.total)||0,Number(o.refundAmount)||0]);});
   var it=[['Item','Qty','Sales']];items.forEach(function(x){it.push([x.name,x.qty,x.sales]);});
   var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),'Summary');XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(tx),'Transactions');XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(it),'Items');XLSX.writeFile(wb,'shift-review-'+shift.id+'.xlsx');

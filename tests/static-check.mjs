@@ -321,6 +321,9 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(/\.pos-category-rail\{[^}]*overflow-x\s*:\s*auto/.test(adminHtml))fail('Release 7G POS categories must not require horizontal scrolling');
   if(!posSource.includes("id=\"posMenuSearch\"")||!posSource.includes("type=\"button\" class=\"pz-chip"))fail('Phase 7E search or accessible categories missing');
   if(!posSource.includes('No matching items'))fail('Phase 7E directed menu-search empty state missing');
+  for(const marker of ['Online Orders','onlineOrderRows()','data-online-accept','acceptOnlineOrder({orderId:id})','New website orders will appear here automatically.'])if(!posSource.includes(marker))fail(`Online Orders POS channel marker missing: ${marker}`);
+  if(!functionsSource.includes('exports.acceptOnlineOrder = onCall')||!functionsSource.includes('accept_online_order')||!functionsSource.includes('posCaptured: true'))fail('Online order shift-acceptance authority is incomplete');
+  if(!shiftRegisterSource.includes('online:0')||!shiftRegisterSource.includes("['online','Online Orders']")||!shiftRegisterSource.includes("['Completed','Received'].indexOf(o.status)<0"))fail('Online Orders are not separated or finalized correctly in shift reporting');
   if(!posSource.includes('Tap items to add them.')||!posSource.includes('>remove</button>')||!posSource.includes('repeat(auto-fill,minmax(78px,1fr))'))fail('Release 7G original register card is incomplete');
   for(const rejectedMarker of ['pos-ticket-head','pos-order-rail','pos-line-stepper','pos-cart-empty','pos-denom-grid'])if(posSource.includes(rejectedMarker))fail(`Rejected register redesign marker remains: ${rejectedMarker}`);
   const backofficeCss=fs.readFileSync(path.join(root,'assets','css','admin-backoffice.css'),'utf8');

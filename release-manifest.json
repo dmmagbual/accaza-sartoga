@@ -12,9 +12,9 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 205,
+    "admin": 206,
     "customer": 52,
-    "serviceWorkerCache": 104
+    "serviceWorkerCache": 105
   },
   "authoritativeFiles": [
     "admin.html",
@@ -56,6 +56,7 @@
     "notifyStaffOnReservation",
     "createOnlineOrder",
     "updateOrderStatus",
+    "acceptOnlineOrder",
     "getOperationalExceptions",
     "confirmOrderReceived",
     "getPaymentProof",

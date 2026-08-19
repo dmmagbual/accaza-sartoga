@@ -224,11 +224,11 @@ function renderAnalyticsBody(){
     +'</div><div class="az-note">Reach/Visits are read from your Google Analytics and entered here for the selected period.</div></div>';
   // ---- channel mix (in-store vs platforms) ----
   (function(){
-    var chData={instore:{lbl:'In-store',gross:0,comm:0,cogs:0,tx:0},grabfood:{lbl:'GrabFood',gross:0,comm:0,cogs:0,tx:0},foodpanda:{lbl:'FoodPanda',gross:0,comm:0,cogs:0,tx:0}};
-    cur.forEach(function(x){var o=x.o;var c=(o&&o.channel&&chData[o.channel])?o.channel:'instore';var d=chData[c];d.gross+=(c==='instore'?x.net:poGross(o));d.comm+=(c==='instore'?0:(Number(o.commission)||0));d.cogs+=(x.lineItems?orderCOGS(o).cost:0);d.tx++;});
-    var order=['instore','grabfood','foodpanda'];
+    var chData={instore:{lbl:'In-store',gross:0,comm:0,cogs:0,tx:0},online:{lbl:'Online Orders',gross:0,comm:0,cogs:0,tx:0},grabfood:{lbl:'GrabFood',gross:0,comm:0,cogs:0,tx:0},foodpanda:{lbl:'FoodPanda',gross:0,comm:0,cogs:0,tx:0}};
+    cur.forEach(function(x){var o=x.o;var c=(o&&o.channel&&chData[o.channel])?o.channel:'instore';var d=chData[c],direct=c==='instore'||c==='online';d.gross+=(direct?x.net:poGross(o));d.comm+=(direct?0:(Number(o.commission)||0));d.cogs+=(x.lineItems?orderCOGS(o).cost:0);d.tx++;});
+    var order=['instore','online','grabfood','foodpanda'];
     var rows=order.map(function(k){var d=chData[k];if(!d.tx&&k!=='instore')return '';var netAfter=d.gross-d.comm-d.cogs;var mgn=d.gross>0?netAfter/d.gross*100:0;return '<tr><td>'+esc(d.lbl)+'</td><td class="r">'+d.tx+'</td><td class="r">'+peso(d.gross)+'</td><td class="r">'+(d.comm?('-'+peso(d.comm)):'—')+'</td><td class="r">'+peso(d.cogs)+'</td><td class="r">'+peso(netAfter)+'</td><td class="r '+(mgn>=0?'az-up':'az-down')+'">'+(Math.round(mgn*10)/10)+'%</td></tr>';}).join('');
-    html+='<div class="az-sec">Channel mix</div><div class="pz-card"><table class="pnl-tbl"><thead><tr><th>Channel</th><th class="r">Tx</th><th class="r">Gross</th><th class="r">Commission</th><th class="r">COGS</th><th class="r">Net after comm.+COGS</th><th class="r">Margin</th></tr></thead><tbody>'+rows+'</tbody></table><div class="az-note">Platform gross is booked as revenue; commission is the flat estimate (trued up in Platform Payouts). In-store "gross" here is net of discounts.</div></div>';
+    html+='<div class="az-sec">Channel mix</div><div class="pz-card"><table class="pnl-tbl"><thead><tr><th>Channel</th><th class="r">Tx</th><th class="r">Gross</th><th class="r">Commission</th><th class="r">COGS</th><th class="r">Net after comm.+COGS</th><th class="r">Margin</th></tr></thead><tbody>'+rows+'</tbody></table><div class="az-note">Online Orders are tracked separately from in-store sales and use their verified payment method. Platform gross is booked as revenue; commission is trued up in Platform Payouts.</div></div>';
   })();
   root.innerHTML=html;
   /* Date controls are handled by the single delegated listener installed in renderAnalytics().
@@ -275,13 +275,13 @@ function renderDailyReport(){
     var shiftDay={}; Object.keys(sh).forEach(function(k){var s=sh[k];if(s&&s.openAt)shiftDay[k]=tsToDate(s.openAt);});
     function tradingDay(o){return (o.shiftId&&shiftDay[o.shiftId])?shiftDay[o.shiftId]:tsToDate(o.timestamp||Date.parse(o.date)||0);}
     var sales=allOrders().filter(isSale).map(saleFields).filter(function(s){return tradingDay(s.o)===d;});
-    var chan={instore:{lbl:'In-store',tx:0,gross:0,disc:0,net:0,comm:0},grabfood:{lbl:'GrabFood',tx:0,gross:0,disc:0,net:0,comm:0},foodpanda:{lbl:'FoodPanda',tx:0,gross:0,disc:0,net:0,comm:0},online:{lbl:'Online',tx:0,gross:0,disc:0,net:0,comm:0}};
+    var chan={instore:{lbl:'In-store',tx:0,gross:0,disc:0,net:0,comm:0},grabfood:{lbl:'GrabFood',tx:0,gross:0,disc:0,net:0,comm:0},foodpanda:{lbl:'FoodPanda',tx:0,gross:0,disc:0,net:0,comm:0},online:{lbl:'Online Orders',tx:0,gross:0,disc:0,net:0,comm:0}};
     var byMethod={},itemsM={},txns=[],refundsTot=0,netTot=0,byShift={};
     sales.forEach(function(s){var o=s.o;var c=drChannel(o);var ch=chan[c];ch.tx++;var nt;
       if(c==='instore'||c==='online'){ch.gross+=s.gross;ch.disc+=s.discount;ch.net+=s.net;nt=s.net;netTot+=s.net;}
       else{var g=Number(o.grossPlatform||o.subtotal||o.total)||0;nt=Number(o.netPlatform!=null?o.netPlatform:g)||0;ch.gross+=g;ch.comm+=Number(o.commission)||0;ch.net+=nt;netTot+=nt;}
       refundsTot+=s.refund;
-      var pays=(o.payments&&o.payments.length)?o.payments:[{method:(o.channel&&o.channel!=='instore')?(o.channel==='grabfood'?'GrabFood':'FoodPanda'):(o.payment||'—'),amount:Number(o.total)||0}];
+      var pays=(o.payments&&o.payments.length)?o.payments:[{method:o.channel==='grabfood'?'GrabFood':o.channel==='foodpanda'?'FoodPanda':(o.payment||'—'),amount:Number(o.total)||0}];
       pays.forEach(function(p){byMethod[p.method]=(byMethod[p.method]||0)+(Number(p.amount)||0);});
       if(o.shiftId){var g2=byShift[o.shiftId]||(byShift[o.shiftId]={tx:0,net:0,cash:0});g2.tx++;g2.net+=nt;pays.forEach(function(p){if(p.method==='Cash')g2.cash+=Number(p.amount)||0;});}
       (o.lineItems||[]).forEach(function(li){var k=li.itemKey||li.name||'?';if(!itemsM[k])itemsM[k]={name:li.name||k,qty:0,sales:0};itemsM[k].qty+=Number(li.qty)||0;itemsM[k].sales+=(Number(li.qty)||0)*(Number(li.unitTotal)||0);});
