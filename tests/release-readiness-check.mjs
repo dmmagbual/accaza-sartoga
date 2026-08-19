@@ -18,8 +18,8 @@ if(!admin.includes(`build&nbsp;v${manifest.builds.admin}`))fail('Admin build mar
 if(!admin.includes(`name="accaza-admin-build" content="${manifest.builds.admin}"`))fail('Admin telemetry build marker differs from release manifest');
 if(!customer.includes(`accaza-index build v${manifest.builds.customer}`))fail('Customer build marker differs from release manifest');
 if(!customer.includes(`name="accaza-customer-build" content="${manifest.builds.customer}"`))fail('Customer telemetry build marker differs from release manifest');
-if(!customer.includes(`>Customer v${manifest.builds.customer}</div>`))fail('Visible customer build marker differs from release manifest');
-if(!admin.includes(`>Admin v${manifest.builds.admin}</div>`))fail('Visible admin build marker differs from release manifest');
+if(!customer.includes(`>Website version ${manifest.builds.customer}</span>`))fail('Visible customer footer version differs from release manifest');
+if(admin.includes('site-build-badge'))fail('Admin build version must not be duplicated in a floating badge');
 if(!sw.includes(`const CACHE='accaza-v${manifest.builds.serviceWorkerCache}'`))fail('Service-worker cache differs from release manifest');
 
 const firebase=JSON.parse(read('firebase.json')),fnPackage=JSON.parse(read('functions/package.json'));
