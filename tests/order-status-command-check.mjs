@@ -24,7 +24,7 @@ assert.equal(Status.canTransition('Pending','Ready'),true);
 assert.equal(Status.canTransition('Completed','Preparing'),false);
 assert.equal(Status.normalizeStatus('Forged'),'');
 
-const db=new FakeDb({orders:{one:{id:'one',ownerUid:'customer-1',status:'Pending',source:'online',timestamp:1}},activeOrders:{one:{id:'one',status:'Pending'}},posActiveShift:null});
+const db=new FakeDb({orders:{one:{id:'one',ownerUid:'customer-1',status:'Pending',source:'online',channel:'online',shiftId:'shift-1',posCaptured:true,paymentStatus:'confirmed',timestamp:1}},activeOrders:{one:{id:'one',status:'Pending'}},posActiveShift:{id:'shift-1'}});
 const first=await run(db,{orderId:'one',status:'Ready',expectedStatus:'Pending',requestId:'req_one'});
 assert.equal(first.duplicate,false);assert.equal(db.data.orders.one.status,'Ready');assert.equal(db.data.activeOrders.one.status,'Ready');assert.equal(db.data.customerOrders['customer-1'].one.status,'Ready');
 assert.equal(Object.keys(db.data.orders.one.statusHistory).length,1);assert.equal(Object.keys(db.data.operationalAudit).length,1);
@@ -40,6 +40,8 @@ await assert.rejects(run(db,{orderId:'two',status:'Confirmed',expectedStatus:'Pe
 assert.equal(db.data.orders.two.status,'Pending');assert.equal(db.data.orderStatusCommands.req_two.status,'failed');
 const recovered=await run(db,{orderId:'two',status:'Confirmed',expectedStatus:'Pending',requestId:'req_two'});
 assert.equal(recovered.duplicate,false);assert.equal(db.data.orders.two.status,'Confirmed');assert.equal(db.data.orderStatusCommands.req_two.status,'applied');
+await assert.rejects(run(db,{orderId:'two',status:'Ready',expectedStatus:'Confirmed',requestId:'req_two_ready'}),/Verify payment and accept this website order/);
+assert.equal(db.data.orders.two.status,'Confirmed');
 
 db.data.orders.three={id:'three',status:'Completed',source:'online',timestamp:3};
 await assert.rejects(run(db,{orderId:'three',status:'Preparing',expectedStatus:'Completed',requestId:'req_three'}),/cannot move/);
@@ -60,7 +62,7 @@ class ColdRef extends FakeRef{
   }
 }
 class ColdDb extends FakeDb{constructor(data){super(data);this.primed=new Set();}ref(path='/'){return new ColdRef(this,path);}}
-const cold=new ColdDb({orders:{cc:{id:'cc',ownerUid:'customer-9',status:'Pending',source:'online',timestamp:9}},activeOrders:{cc:{id:'cc',status:'Pending'}},posActiveShift:null});
+const cold=new ColdDb({orders:{cc:{id:'cc',ownerUid:'customer-9',status:'Pending',source:'online',channel:'online',shiftId:'shift-cold',posCaptured:true,paymentStatus:'confirmed',timestamp:9}},activeOrders:{cc:{id:'cc',status:'Pending'}},posActiveShift:{id:'shift-cold'}});
 const coldRun=(data)=>Status.updateOrderStatusCommand({db:cold,actor,data,activeOrderProjection:project,shouldProjectOrder:keep});
 const coldResult=await coldRun({orderId:'cc',status:'Ready',expectedStatus:'Pending',requestId:'req_cold'});
 assert.equal(coldResult.duplicate,false);assert.equal(cold.data.orders.cc.status,'Ready');assert.equal(cold.data.activeOrders.cc.status,'Ready');
