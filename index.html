@@ -33,7 +33,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="/favicon_512x512.png"/>
 <link rel="manifest" href="/manifest.json"/>
 <meta name="theme-color" content="#19241b"/>
-<meta name="accaza-customer-build" content="54"/>
+<meta name="accaza-customer-build" content="55"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -409,6 +409,7 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 .footer-links a{font-size:0.78rem;color:rgba(224,212,198,0.5);text-decoration:none;letter-spacing:0.08em;text-transform:uppercase;}
 .footer-links a:hover{color:var(--cr);}
 .footer-copy{font-size:0.72rem;color:rgba(224,212,198,0.25);margin:0;}
+.footer-version{display:block;margin-top:.38rem;color:rgba(224,212,198,.32);font-size:.64rem;letter-spacing:.04em;}
 #adminDash{background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;}
 .admin-wrap{max-width:1100px;margin:0 auto;padding:2rem;}
 .admin-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2rem;}
@@ -553,8 +554,6 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 @keyframes toastUp{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:none;}}
 /* Back to top */
 #toTop{position:fixed;left:18px;bottom:28px;z-index:250;width:44px;height:44px;border-radius:50%;border:1px solid rgba(176,141,87,.5);background:rgba(25,36,27,.92);color:#e0d4c6;font-size:1.15rem;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transform:translateY(10px);transition:opacity .3s,transform .3s,background .2s;box-shadow:0 6px 18px rgba(0,0,0,.35);}
-.site-build-badge{position:fixed;left:18px;bottom:84px;z-index:240;padding:.28rem .55rem;border:1px solid rgba(176,141,87,.45);border-radius:5px;background:rgba(25,36,27,.9);color:#e0d4c6;font:700 .62rem/1.2 'Inter',sans-serif;letter-spacing:.06em;text-transform:uppercase;box-shadow:0 3px 10px rgba(0,0,0,.18);backdrop-filter:blur(6px);pointer-events:none;}
-.app-mode .site-build-badge{bottom:105px;}
 #toTop.show{opacity:1;pointer-events:auto;transform:none;}
 #toTop:hover{background:#19241b;border-color:#c9a36a;}
 .app-mode #toTop{display:none!important;}
@@ -583,8 +582,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 </style>
 </head>
 <body>
-<!-- accaza-index build v54 -->
-<div class="site-build-badge" aria-label="Customer application build 54">Customer v54</div>
+<!-- accaza-index build v55 -->
 <div class="fb-sync" id="fbSync">🔥 Firebase Connected</div>
 <div class="order-toast" id="orderToast" onclick="ackNewOrders()">
   <span class="ot-bell">🔔</span>
@@ -1001,7 +999,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
     <div class="footer-logo">Accaza Coffee House</div>
     <p>Saratoga Ave, La Mediterranea, Dasmariñas, Cavite · Open daily 3PM–12MN</p>
     <div class="footer-links"><a href="#menu">Menu</a><a href="#order">Order</a><a href="#reserve">Reserve</a><a href="#reviews">Reviews</a><a href="#feedback">Feedback</a><a href="#gallery">Gallery</a><a href="#contact">Contact</a><a href="menu.html">Menu</a><a href="about.html">About</a><a href="reservations.html">Reservations</a><a href="contact.html">Visit</a></div>
-    <p class="footer-copy">© 2026 Accaza Coffee House. All rights reserved.</p>
+    <p class="footer-copy">© 2026 Accaza Coffee House. All rights reserved.<span class="footer-version">Website version 55</span></p>
   </div>
 </footer>
 
