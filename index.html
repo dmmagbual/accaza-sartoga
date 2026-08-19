@@ -33,6 +33,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="/favicon_512x512.png"/>
 <link rel="manifest" href="/manifest.json"/>
 <meta name="theme-color" content="#19241b"/>
+<meta name="accaza-customer-build" content="54"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -552,6 +553,8 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 @keyframes toastUp{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:none;}}
 /* Back to top */
 #toTop{position:fixed;left:18px;bottom:28px;z-index:250;width:44px;height:44px;border-radius:50%;border:1px solid rgba(176,141,87,.5);background:rgba(25,36,27,.92);color:#e0d4c6;font-size:1.15rem;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transform:translateY(10px);transition:opacity .3s,transform .3s,background .2s;box-shadow:0 6px 18px rgba(0,0,0,.35);}
+.site-build-badge{position:fixed;left:18px;bottom:84px;z-index:240;padding:.28rem .55rem;border:1px solid rgba(176,141,87,.45);border-radius:5px;background:rgba(25,36,27,.9);color:#e0d4c6;font:700 .62rem/1.2 'Inter',sans-serif;letter-spacing:.06em;text-transform:uppercase;box-shadow:0 3px 10px rgba(0,0,0,.18);backdrop-filter:blur(6px);pointer-events:none;}
+.app-mode .site-build-badge{bottom:105px;}
 #toTop.show{opacity:1;pointer-events:auto;transform:none;}
 #toTop:hover{background:#19241b;border-color:#c9a36a;}
 .app-mode #toTop{display:none!important;}
@@ -580,7 +583,8 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 </style>
 </head>
 <body>
-<!-- accaza-index build v53 -->
+<!-- accaza-index build v54 -->
+<div class="site-build-badge" aria-label="Customer application build 54">Customer v54</div>
 <div class="fb-sync" id="fbSync">🔥 Firebase Connected</div>
 <div class="order-toast" id="orderToast" onclick="ackNewOrders()">
   <span class="ot-bell">🔔</span>
