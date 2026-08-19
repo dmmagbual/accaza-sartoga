@@ -77,6 +77,7 @@ window.__accaza={
   auditFinancialControls:function(){return auditFinancialControlsCall({});},
   manageOrderArchive:function(command){return manageOrderArchiveCall(command);},
   updateOrderStatus:function(command){return updateOrderStatusCall(command);},
+  acceptOnlineOrder:c=>callables.acceptOnlineOrder(c),
   reviewDiscrepancy:function(command){return reviewDiscrepancyCall(command);},
   managePettyVoucher:function(command){return managePettyVoucherCall(command);},
   archiveActivityLog:function(){return archiveActivityLogCall({});},
@@ -354,6 +355,7 @@ function notifyNewOrders(fresh){
 }
 window.ackNewOrders=function(){
   clearOrderAlert();
+  if(window.__openPosOnlineOrders){window.__openPosOnlineOrders();return;}
   var ob=document.getElementById('tabBtnOrders');if(ob)ob.click();
   var ad=document.getElementById('adminDash');if(ad)ad.scrollIntoView({behavior:'smooth'});
 };

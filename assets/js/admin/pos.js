@@ -27,7 +27,7 @@ var DEFAULT_USAGE_TYPES=[{id:'staff',name:'Staff consumption',reasons:['Staff Me
 function usageTypesList(){var keys=Object.keys(usageTypesMap);var list=keys.length?keys.map(function(k){return Object.assign({id:k},usageTypesMap[k]);}):DEFAULT_USAGE_TYPES.slice();return list.sort(function(a,b){return (a.order||0)-(b.order||0);});}
 function usageTypeName(id){return (usageTypesMap[id]&&usageTypesMap[id].name)||(id==='staff'?'Staff consumption':id==='rnd'?'R&D / Testing':id);}
 function usageTypeReasons(id){var t=usageTypesMap[id]||DEFAULT_USAGE_TYPES.filter(function(d){return d.id===id;})[0];return (t&&t.reasons)||[];}
-var posCart={}, posCat='ALL', posSearch='', posBuilt=false, recipeEditing=false, curRecipeKey=null, recipeDraft=null, recSub='base', recSize='M', posScopedDisc=[], posChannel='instore';
+var posCart={}, posCat='ALL', posSearch='', posBuilt=false, recipeEditing=false, curRecipeKey=null, recipeDraft=null, recSub='base', recSize='M', posScopedDisc=[], posChannel='instore', posView='counter', onlineOrdersMap={};
 var posDraft={},posChargeBusy=false;
 function telemetry(){return window.AccazaTelemetry||{start:function(){},end:function(){},metric:function(){},error:function(){}};}
 function capturePosDraft(root){if(!root)return;var active=document.activeElement,focusId=active&&root.contains(active)?active.id:'';root.querySelectorAll('input[id],textarea[id]').forEach(function(el){posDraft[el.id]={value:el.value,checked:!!el.checked,type:el.type};});posDraft.__focus=focusId;}
@@ -164,6 +164,7 @@ function init(){
   a.subscribe('internalUsage', function(s){ usageMap=s.val()||{}; if(isTab('usage'))renderUsage(); });
   a.subscribe('usageTypes', function(s){ usageTypesMap=s.val()||{}; if(isTab('usage'))renderUsage(); });
   a.subscribe('channelPrices', function(s){ channelPricesMap=s.val()||{}; if(isTab('channelpricing')&&window.__accazaRenderChannelPricing)window.__accazaRenderChannelPricing(); });
+  a.subscribe('activeOrders', function(s){ onlineOrdersMap=s.val()||{}; if(isTab('pos')){updateOnlineOrderCount();if(posView==='online')renderOnlineOrders();} });
   a.subscribe('posSettings', function(s){ var v=s.val(); if(v)posMeta=Object.assign({vat:false,vatRate:12},v); });
   ensureModals();
 }
@@ -1660,16 +1661,42 @@ function buildPOS(){
   var root=document.getElementById('posRoot'); if(!root)return;
   var cats=A().getCats?A().getCats():[];
   var chips='<button type="button" class="pz-chip '+(posCat==='ALL'?'on':'')+'" data-cat="ALL">All</button>'+cats.map(function(c){return '<button type="button" class="pz-chip '+(posCat===c.id?'on':'')+'" data-cat="'+esc(c.id)+'">'+esc(c.icon||'')+' '+esc(c.label)+'</button>';}).join('');
-  root.innerHTML=
+  var incoming=onlineOrderRows().filter(function(o){return !o.shiftId&&o.status!=='Rejected';}).length;
+  root.innerHTML='<div class="pos-channel-switch" role="tablist" aria-label="POS sales channels"><button type="button" class="pz-btn '+(posView==='counter'?'ok':'sec')+'" data-pos-view="counter" role="tab" aria-selected="'+(posView==='counter')+'">🏪 In-store</button><button type="button" class="pz-btn '+(posView==='online'?'ok':'sec')+'" data-pos-view="online" role="tab" aria-selected="'+(posView==='online')+'">🌐 Online Orders <span id="posOnlineCount" class="pos-online-count"'+(incoming?'':' hidden')+'>'+incoming+'</span></button></div>'
+    +(posView==='online'?'<div id="posOnlineOrdersPanel"></div>':(
     '<div class="pos-counter-head"><div><div class="pz-h" style="margin:0;">Counter service</div><p class="pz-sub" style="margin:.2rem 0 0;">Find an item, check the ticket, then take payment.</p></div></div>'
     +'<div class="pz-posgrid" style="display:grid;grid-template-columns:1.7fr 1fr;gap:1rem;align-items:start;">'
       +'<div class="pos-menu-deck"><label class="pos-menu-search"><span>Find an item</span><input class="pz-in" id="posMenuSearch" type="search" autocomplete="off" placeholder="Search coffee, pastry, package…" value="'+esc(posSearch)+'"/></label><div id="posChips" class="pos-category-rail">'+chips+'</div><div id="posItems" class="pos-item-grid"></div></div>'
       +'<div class="pz-card" id="posCartPanel" style="position:sticky;top:1rem;"></div>'
-    +'</div>';
+    +'</div>'));
+  root.querySelectorAll('[data-pos-view]').forEach(function(button){button.onclick=function(){posView=button.getAttribute('data-pos-view');buildPOS();};});
+  if(posView==='online'){renderOnlineOrders();posBuilt=true;return;}
   root.querySelectorAll('[data-cat]').forEach(function(ch){ch.onclick=function(){posCat=ch.getAttribute('data-cat');buildPOS();};});
   var search=document.getElementById('posMenuSearch');if(search){search.oninput=function(){posSearch=this.value||'';drawPosItems();};}
   drawPosItems(); renderPosCart(); posBuilt=true;telemetry().metric('pos_build',performance.now()-_t,true);
 }
+function onlineOrderRows(){return Object.keys(onlineOrdersMap).map(function(id){return Object.assign({id:id},onlineOrdersMap[id]||{});}).filter(function(o){return o.source==='online'||o.channel==='online';}).filter(function(o){return o.status!=='Received'&&!o.voided;}).sort(function(a,b){return(Number(b.timestamp)||0)-(Number(a.timestamp)||0);});}
+function updateOnlineOrderCount(){var badge=document.getElementById('posOnlineCount');if(!badge)return;var count=onlineOrderRows().filter(function(o){return !o.shiftId&&o.status!=='Rejected';}).length;badge.textContent=count;badge.hidden=!count;}
+function onlineStatusAction(o){if(!o.shiftId)return'';var next=o.status==='Confirmed'?'Preparing':o.status==='Preparing'?'Ready':o.status==='Ready'?'Completed':'';if(!next)return'';return '<button class="pz-btn ok" data-online-status="'+esc(o.id)+'" data-next="'+next+'">'+(next==='Preparing'?'Start preparing':next==='Ready'?'Mark ready':'Complete order')+'</button>';}
+function renderOnlineOrders(){
+  var root=document.getElementById('posOnlineOrdersPanel');if(!root)return;var rows=onlineOrderRows(),shift=window.__posShift||null;
+  var active=rows.filter(function(o){return o.shiftId&&shift&&o.shiftId===shift.id;}),incoming=rows.filter(function(o){return !o.shiftId;});
+  function card(o){var verified=o.paymentStatus==='confirmed',captured=!!o.shiftId,items=esc(o.items||((o.lineItems||[]).map(function(x){return(x.name||x.itemKey)+' ×'+x.qty;}).join(', '))),proof=o.proofPath?'<button class="pz-btn sec" data-online-proof="'+esc(o.id)+'">View payment proof</button>':'',action='';
+    if(o.status==='Rejected')action='<span class="pos-online-state rejected">Rejected</span>';
+    else if(!verified)action='<button class="pz-btn ok" data-online-verify="'+esc(o.id)+'">Verify payment</button><button class="pz-btn warn" data-online-reject="'+esc(o.id)+'">Reject</button>';
+    else if(!captured)action='<button class="pz-btn ok" data-online-accept="'+esc(o.id)+'"'+(shift?'':' disabled')+'>'+(shift?'Accept into shift':'Open a shift first')+'</button><button class="pz-btn warn" data-online-reject="'+esc(o.id)+'">Reject</button>';
+    else action='<span class="pos-online-state captured">Captured · '+esc(o.status)+'</span>'+onlineStatusAction(o);
+    return '<article class="pos-online-card"><div class="pos-online-card-head"><div><b>'+esc(o.name||'Customer')+'</b><span>#'+esc(o.id)+'</span></div><strong>'+peso(o.total)+'</strong></div><div class="pos-online-meta">'+esc(o.type||'Pick-up')+' · '+esc(o.payment||'Online payment')+' · '+esc(o.time||'')+'</div><div class="pos-online-items">'+items+'</div>'+(o.address?'<div class="pos-online-meta">📍 '+esc(o.address)+'</div>':'')+'<div class="pos-online-actions">'+proof+action+'</div></article>';}
+  root.innerHTML='<div class="pos-counter-head"><div><div class="pz-h" style="margin:0;">Online Orders</div><p class="pz-sub" style="margin:.2rem 0 0;">Verify payment, accept into the open shift, then move the order through preparation.</p></div><span class="pos-online-shift '+(shift?'open':'closed')+'">'+(shift?'Shift open · '+esc(shift.staff||'Cashier'):'No open shift')+'</span></div>'
+    +(incoming.length?'<div class="az-sec">Incoming ('+incoming.length+')</div><div class="pos-online-grid">'+incoming.map(card).join('')+'</div>':'<div class="pos-menu-empty"><b>No incoming online orders</b><span>New website orders will appear here automatically.</span></div>')
+    +(active.length?'<div class="az-sec" style="margin-top:1rem;">Captured in this shift ('+active.length+')</div><div class="pos-online-grid">'+active.map(card).join('')+'</div>':'');
+  root.querySelectorAll('[data-online-proof]').forEach(function(b){b.onclick=function(){if(window.showStoredProof)window.showStoredProof(b.getAttribute('data-online-proof'),b);};});
+  root.querySelectorAll('[data-online-verify]').forEach(function(b){b.onclick=function(){if(window.__posVerify)window.__posVerify(b.getAttribute('data-online-verify'));};});
+  root.querySelectorAll('[data-online-accept]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-online-accept');b.disabled=true;b.textContent='Accepting…';A().acceptOnlineOrder({orderId:id}).then(function(){(window.accazaToast||function(){})('Online order captured in POS','ok');}).catch(function(e){alert('Could not accept order: '+((e&&e.message)||e));b.disabled=false;b.textContent='Accept into shift';});};});
+  root.querySelectorAll('[data-online-reject]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-online-reject'),o=onlineOrdersMap[id]||{};if(!confirm('Reject online order '+id+'?'))return;A().updateOrderStatus({orderId:id,status:'Rejected',expectedStatus:o.status||'Pending',requestId:'online_reject_'+Date.now()+'_'+Math.random().toString(36).slice(2)}).catch(function(e){alert('Could not reject order: '+((e&&e.message)||e));});};});
+  root.querySelectorAll('[data-online-status]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-online-status'),next=b.getAttribute('data-next'),o=onlineOrdersMap[id]||{};b.disabled=true;A().updateOrderStatus({orderId:id,status:next,expectedStatus:o.status||'',requestId:'online_status_'+Date.now()+'_'+Math.random().toString(36).slice(2)}).catch(function(e){alert('Could not update order: '+((e&&e.message)||e));b.disabled=false;});};});
+}
+window.__openPosOnlineOrders=function(){posView='online';var button=document.getElementById('tabBtnPos');if(button)button.click();else buildPOS();};
 function drawPosItems(){
   var wrap=document.getElementById('posItems'); if(!wrap)return;
   var q=String(posSearch||'').trim().toLowerCase();

@@ -259,6 +259,43 @@ exports.updateOrderStatus = onCall(
   },
 );
 
+// A website order becomes a POS-channel order only after staff verifies its
+// payment and accepts it into the currently open shift.
+exports.acceptOnlineOrder = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["orders", "pos"]);
+    const orderId = String(request.data && request.data.orderId || "").trim();
+    if (!/^[A-Za-z0-9_-]{1,160}$/.test(orderId)) throw new HttpsError("invalid-argument", "Order ID is invalid.");
+    const [shiftSnap, orderSnap] = await Promise.all([db.ref("/posActiveShift").get(), db.ref(`/orders/${orderId}`).get()]);
+    const shift = shiftSnap.val() || null, order = orderSnap.val() || null;
+    if (!shift || !shift.id || shift.status === "closed") throw new HttpsError("failed-precondition", "Open a POS shift before accepting online orders.");
+    if (!order) throw new HttpsError("not-found", "Online order not found.");
+    if (order.source !== "online" && order.channel !== "online") throw new HttpsError("failed-precondition", "Only website orders can enter the Online Orders channel.");
+    if (["Rejected", "Completed", "Received"].includes(String(order.status || ""))) throw new HttpsError("failed-precondition", "This order can no longer be accepted into POS.");
+    if (order.paymentStatus !== "confirmed") throw new HttpsError("failed-precondition", "Verify the customer payment before accepting this order.");
+    if (order.shiftId) {
+      if (order.shiftId === shift.id && order.channel === "online") return {orderId, shiftId: shift.id, duplicate: true};
+      throw new HttpsError("failed-precondition", "This order is already assigned to another shift.");
+    }
+    const now = Date.now(), status = order.status === "Pending" ? "Confirmed" : order.status;
+    const captured = Object.assign({}, order, {
+      channel: "online", shiftId: shift.id, staff: shift.staff || shift.cashier || actor.role,
+      posCaptured: true, acceptedAt: now, acceptedBy: actor.uid, acceptedRole: actor.role,
+      status, statusUpdatedAt: now, statusUpdatedBy: actor.uid,
+      payments: Array.isArray(order.payments) && order.payments.length ? order.payments : [{method: order.payment || "Online payment", amount: Financial.money(order.total)}],
+    });
+    const writes = {
+      [`orders/${orderId}`]: captured,
+      [`activeOrders/${orderId}`]: activeOrderProjection(captured),
+      [`operationalAudit/${now}_accept_${orderId}`]: {action: "accept_online_order", sourceType: "order", sourceId: orderId, shiftId: shift.id, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1},
+    };
+    if (captured.ownerUid) writes[`customerOrders/${captured.ownerUid}/${orderId}/status`] = status;
+    await db.ref().update(writes);
+    return {orderId, shiftId: shift.id, status, duplicate: false};
+  },
+);
+
 const MANAGER_APPROVAL_ACTIONS = new Set([
   "confirm_payment", "refund", "void", "settle_platform_payout", "reopen_cash_count",
   "delete_archived_order", "review_discrepancy", "approve_petty_voucher",
@@ -482,7 +519,7 @@ function shouldProjectOrder(order, activeShift, now = Date.now()) {
   const status = String(order.status || "Pending");
   if (["Pending", "Confirmed", "Preparing", "Ready"].includes(status)) return true;
   if (order.paymentStatus === "pending") return true;
-  if (order.channel && order.channel !== "instore" && (order.settlementStatus || "unsettled") === "unsettled") return true;
+  if (["grabfood", "foodpanda"].includes(order.channel) && (order.settlementStatus || "unsettled") === "unsettled") return true;
   if (activeShift && order.shiftId && order.shiftId === activeShift.id) return true;
   const age = now - Number(order.timestamp || 0);
   if (order.source === "online" && age >= 0 && age <= ACTIVE_ONLINE_TTL_MS) return true;
@@ -754,6 +791,7 @@ exports.createOnlineOrder = onCall(
       date: new Intl.DateTimeFormat("en-PH", {timeZone: "Asia/Manila", year: "numeric", month: "long", day: "numeric"}).format(nowDate),
       timestamp: now, lineItems: priced.lines.map(({cat, ...line}) => line), packages: priced.packages,
       extraCost: priced.extraCost, source: "online", pricingVersion: "server-v1", pricedAt: now,
+      channel: "online", paymentStatus: "pending", payments: [{method: payment, amount: priced.total}],
     };
     const proofPath = `payment-proofs/${uid}/${orderId}.${proof.ext}`;
     const proofFile = getStorage().bucket(PROOF_BUCKET).file(proofPath);
@@ -1139,7 +1177,7 @@ exports.auditFinancialControls = onCall(
     const orders=Object.assign({},snaps[1].val()||{},snaps[0].val()||{}),movements=snaps[2].val()||{},cash=snaps[3].val()||{},ars=snaps[4].val()||{},aps=snaps[5].val()||{},payouts=snaps[6].val()||{},custody=snaps[7].val()||{},accounts=snaps[8].val()||{},issues=[];
     Object.keys(movements).forEach((id)=>{const m=movements[id],sum=Financial.totals(m.lines||[]);if(Math.abs(sum.debit-sum.credit)>0.009)issues.push({severity:"critical",kind:"unbalanced",source:id,amount:Financial.money(sum.debit-sum.credit)});(m.warnings||[]).forEach((w)=>issues.push({severity:"warning",kind:"movement_warning",source:id,detail:w}));});
     Object.keys(cash).forEach((id)=>{if(!cash[id].movementId)issues.push({severity:"warning",kind:"legacy_cash_without_movement",source:id,amount:Financial.money(cash[id].amount)});});
-    let unsettledValue=0,unsettledCount=0;Object.keys(orders).forEach((id)=>{const o=orders[id]||{},status=o.status==="Archived"?o.prevStatus:o.status,platform=o.channel&&o.channel!=="instore";if(!o.voided&&["Completed","Received"].includes(status)&&o.paymentStatus!=="pending"&&!movements[`sale_${id}`])issues.push({severity:"critical",kind:"sale_not_posted",source:id,amount:Financial.money(o.total)});if(platform&&!o.voided&&(o.settlementStatus||"unsettled")!=="settled"){unsettledCount++;unsettledValue=Financial.money(unsettledValue+Financial.money(o.netPlatform));}if(!platform){const rows=Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment,amount:o.total}];rows.forEach((p)=>{if(String(p.method||"").toLowerCase()==="cash")return;if(!Financial.accountForMethod(p.method,accounts))issues.push({severity:"warning",kind:"unmapped_payment_method",source:id,detail:financeText(p.method,60),amount:Financial.money(p.amount)});});}});
+    let unsettledValue=0,unsettledCount=0;Object.keys(orders).forEach((id)=>{const o=orders[id]||{},status=o.status==="Archived"?o.prevStatus:o.status,platform=["grabfood","foodpanda"].includes(o.channel);if(!o.voided&&["Completed","Received"].includes(status)&&o.paymentStatus!=="pending"&&!movements[`sale_${id}`])issues.push({severity:"critical",kind:"sale_not_posted",source:id,amount:Financial.money(o.total)});if(platform&&!o.voided&&(o.settlementStatus||"unsettled")!=="settled"){unsettledCount++;unsettledValue=Financial.money(unsettledValue+Financial.money(o.netPlatform));}if(!platform){const rows=Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment,amount:o.total}];rows.forEach((p)=>{if(String(p.method||"").toLowerCase()==="cash")return;if(!Financial.accountForMethod(p.method,accounts))issues.push({severity:"warning",kind:"unmapped_payment_method",source:id,detail:financeText(p.method,60),amount:Financial.money(p.amount)});});}});
     let custodyValue=0,custodyCount=0;Object.keys(custody).forEach((id)=>{const rem=Financial.money(custody[id].remaining);if(rem>0){custodyCount++;custodyValue=Financial.money(custodyValue+rem);}});const openAr=Object.values(ars).filter((x)=>x&&x.status==="open"),openAp=Object.values(aps).filter((x)=>x&&x.status==="open"),undepositedPayouts=Object.values(payouts).filter((x)=>x&&!x.depositMovementId);
     return{generatedAt:Date.now(),issues:issues.slice(0,200),issueCount:issues.length,unsettledPlatform:{count:unsettledCount,amount:unsettledValue},cashAwaitingDeposit:{count:custodyCount,amount:custodyValue},openReceivables:{count:openAr.length,amount:Financial.money(openAr.reduce((s,x)=>s+Number(x.amount||0),0))},openPayables:{count:openAp.length,amount:Financial.money(openAp.reduce((s,x)=>s+Number(x.amount||0),0))},undepositedPayouts:undepositedPayouts.length};
   },
