@@ -129,22 +129,23 @@ function getItemOptionGroups(item){
 
 // State
 let categoriesMap={},menuItemsMap={},adminOrdersMap={},archivedOrdersMap={},archivedResMap={},adminResMap={},feedbacksMap={},reviewsMap={},availability={},cart={};
-let publicOrdersOpen=false,customerLiveConnected=false;
+let publicOrdersOpen=null,customerLiveConnected=null;
 function onlineOrderingAvailable(){return publicOrdersOpen&&customerLiveConnected;}
 function syncPlaceOrderButton(){
   var button=document.querySelector('.btn-place-order');if(!button||window._placingOrder)return;
   var open=onlineOrderingAvailable();
   button.disabled=!open;button.style.opacity='';button.setAttribute('aria-disabled',open?'false':'true');
-  button.textContent=open?'Place Order':'Online Orders Closed';
+  button.textContent=open?'Place Order':(publicOrdersOpen===null||customerLiveConnected!==true?'Checking order availability…':'Online Orders Closed');
 }
 function renderPublicOrderStatus(){
   var root=document.getElementById('orderServiceStatus'),headline=document.getElementById('orderServiceHeadline'),note=document.getElementById('orderServiceNote');
   if(!root||!headline||!note)return;
   var open=publicOrdersOpen&&customerLiveConnected;
   root.classList.toggle('is-open',open);
-  headline.textContent=open?'OPEN FOR ONLINE ORDERS':'ONLINE ORDERS CLOSED';
-  note.textContent=open?'Order now — we’re ready!':'We’re not accepting orders right now.';
-  root.setAttribute('aria-label',open?'Online orders are open. Order now — we’re ready!':'Online orders are closed. We’re not accepting orders right now.');
+  var checking=publicOrdersOpen===null||customerLiveConnected!==true;
+  headline.textContent=open?'OPEN FOR ONLINE ORDERS':(checking?'CHECKING ORDER AVAILABILITY':'ONLINE ORDERS CLOSED');
+  note.textContent=open?'Order now — we’re ready!':(checking?(navigator.onLine?'Connecting to the shop…':'Your phone is offline. Reconnect to check availability.'):'We’re not accepting orders right now.');
+  root.setAttribute('aria-label',open?'Online orders are open. Order now — we’re ready!':(checking?'Checking live online-order availability.':'Online orders are closed. We’re not accepting orders right now.'));
   syncPlaceOrderButton();
 }
 onValue(publicOrderStatusRef,function(snap){publicOrdersOpen=!!(snap.val()&&snap.val().acceptingOrders===true);renderPublicOrderStatus();},function(){publicOrdersOpen=false;renderPublicOrderStatus();});
