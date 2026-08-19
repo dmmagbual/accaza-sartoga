@@ -12,9 +12,9 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 214,
+    "admin": 215,
     "customer": 56,
-    "serviceWorkerCache": 115
+    "serviceWorkerCache": 116
   },
   "authoritativeFiles": [
     "admin.html",
@@ -39,6 +39,7 @@
     "assets/js/admin/form-dialog.js",
     "assets/js/admin/workspace-shell.mjs",
     "assets/js/admin/overview-command.mjs",
+    "assets/js/admin/overview-insights.mjs",
     "assets/js/admin/module-loader.js",
     "assets/js/admin/pos.js",
     "assets/js/admin/register.js",

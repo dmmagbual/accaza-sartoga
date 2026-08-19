@@ -4,6 +4,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome}from"./admin-orders.mjs";
+import{createOverviewInsights}from"./overview-insights.mjs";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -145,6 +146,8 @@ let adminLoggedIn=false;
 let chatOpen=false,chatStarted=false;
 let custItem=null,custSize=null,custSel={},custQty=1;
 let menuFilter='coffee',orderFilter=null;
+
+const overviewInsights=createOverviewInsights({esc:escHtml,historyStatus:function(){return subscriptionHub.historyStatus('archivedOrders');},loadOlder:function(){return subscriptionHub.loadOlder('archivedOrders');}});
 
 const appCustomerSession=createAppCustomerSession({setupPush:setupPush,refreshNotifyPrompt:refreshNotifyPrompt});
 const customerOrderTracker=createCustomerOrderTracker({getOrders:function(){return adminOrdersMap;},escHtml:escHtml});
@@ -979,34 +982,7 @@ function renderDashboard(){
   const t=sumOrders(sales.filter(o=>_tsOf(o)>=startToday)),w=sumOrders(sales.filter(o=>_tsOf(o)>=startWeek)),m=sumOrders(sales.filter(o=>_tsOf(o)>=startMonth)),a=sumOrders(sales);
   function setCard(id,rev,cnt){const el=document.getElementById(id);if(el)el.textContent='₱'+rev.toLocaleString();const cel=document.getElementById(id+'Count');if(cel)cel.textContent=cnt+' order'+(cnt!==1?'s':'');}
   setCard('dashToday',t.rev,t.cnt);setCard('dashWeek',w.rev,w.cnt);setCard('dashMonth',m.rev,m.cnt);setCard('dashAllTime',a.rev,a.cnt);
-  var payMix={};sales.forEach(function(o){var pays=(o.payments&&o.payments.length)?o.payments:[{method:o.payment||'Other',amount:o.total||0}];pays.forEach(function(pp){var mm=pp.method||'Other';payMix[mm]=(payMix[mm]||0)+(Number(pp.amount)||0);});});
-  var _pmk=Object.keys(payMix).sort(function(a,b){return payMix[b]-payMix[a];});var _pmt=_pmk.reduce(function(x,k){return x+payMix[k];},0)||1;var _pmc={'Cash':'#2a9d5c','GCash':'#b08d57','Bank Transfer':'#3b8fd4','PayMaya':'#7360f2','Split':'#e67e00'};
-  var _pend=sales.filter(function(o){return o.paymentStatus==='pending';});var _pendTot=_pend.reduce(function(x,o){return x+(Number(o.total)||0);},0);
-  var _pendEl=document.getElementById('payPendBanner');if(_pendEl)_pendEl.innerHTML=_pend.length?'<div style="background:#fff8e1;border:1px solid #ffe0a3;border-radius:6px;padding:0.4rem 0.6rem;font-size:0.78rem;color:#8a6d1b;font-weight:600;margin-bottom:0.5rem;">⏳ Pending verification: ₱'+_pendTot.toLocaleString()+' ('+_pend.length+') — non-cash not yet confirmed in the account</div>':'';
-  var _pml=document.getElementById('payMixList');if(_pml)_pml.innerHTML=_pmk.length?_pmk.map(function(k){var pv=Math.round(payMix[k]/_pmt*100);return '<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.45rem;font-size:0.82rem;"><span style="width:12px;height:12px;border-radius:50%;background:'+(_pmc[k]||'#999')+';flex-shrink:0;"></span><span style="flex:1;color:var(--tm);">'+k+'</span><span style="font-weight:600;color:var(--bd);">₱'+payMix[k].toLocaleString()+' ('+pv+'%)</span></div>';}).join(''):'<p style="font-size:0.8rem;color:var(--tl);text-align:center;padding:0.5rem;">No sales yet.</p>';
-  drawRevenueChart(sales);
-  // Top 10 best sellers — ranked by menu product (drinks) units. Uses structured lineItems so
-  // optional ingredients (add-ons/syrups/shots) are NOT counted; food-tagged categories excluded.
-  const itemCount={};
-  const _mim=menuItemsMap||{}; const _ctype=(window.__posSettings&&window.__posSettings.catType)||{};
-  function _isDrink(li){ var mi=_mim[li&&li.itemKey]; if(!mi)return true; /* unknown/legacy → keep */ return _ctype[mi.cat]!=='food'; }
-  sales.forEach(function(o){
-    if(o.lineItems&&o.lineItems.length){
-      o.lineItems.forEach(function(li){ if(!li)return; if(!_isDrink(li))return; var nm=li.name||(_mim[li.itemKey]&&_mim[li.itemKey].name)||li.itemKey; if(!nm)return; itemCount[nm]=(itemCount[nm]||0)+(Number(li.qty)||0); });
-    } else if(o.items){ /* legacy orders without lineItems — parse the summary string, strip (options) and xN */
-      o.items.split(',').forEach(function(s){const name=s.trim().replace(/\s*\(.*?\)\s*/g,'').replace(/\s*x\d+\s*$/,'').trim();const qty=parseInt((s.match(/x(\d+)/)||[])[1]||1);if(name)itemCount[name]=(itemCount[name]||0)+qty;});
-    }
-  });
-  const top10=Object.entries(itemCount).sort((a,b)=>b[1]-a[1]).slice(0,10);
-  const topEl=document.getElementById('topItemsList');
-  if(topEl)topEl.innerHTML=top10.length?top10.map(function(entry,i){const medals=['🥇','🥈','🥉','4','5','6','7','8','9','10'];return'<div style="display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0;border-bottom:1px solid var(--cd);"><span style="font-size:1rem;min-width:20px;text-align:center;">'+medals[i]+'</span><span style="flex:1;font-size:0.83rem;color:var(--bd);">'+entry[0]+'</span><span style="font-size:0.8rem;font-weight:600;color:var(--bl);">'+entry[1]+' sold</span></div>';}).join(''):'<p style="color:var(--tl);font-size:0.83rem;text-align:center;padding:1rem;">No sales yet.</p>';
-  // Status breakdown
-  const allActive=Object.values(adminOrdersMap);
-  const statuses=['Pending','Confirmed','Preparing','Completed','Received','Rejected'];
-  const statusColors={Pending:'#856404',Confirmed:'#0c5460',Preparing:'#664d03',Completed:'#155724',Received:'#1b5e20',Rejected:'#721c24'};
-  const statusBg={Pending:'#fef3cd',Confirmed:'#d1ecf1',Preparing:'#fff3cd',Completed:'#d4edda',Received:'#c8e6c9',Rejected:'#f8d7da'};
-  const stEl=document.getElementById('statusBreakdown');
-  if(stEl)stEl.innerHTML=statuses.map(function(s){const cnt=allActive.filter(o=>o.status===s).length;return'<div style="display:flex;align-items:center;justify-content:space-between;padding:0.45rem 0.75rem;background:'+statusBg[s]+';border-radius:6px;margin-bottom:0.4rem;"><span style="font-size:0.82rem;font-weight:500;color:'+statusColors[s]+';">'+s+'</span><span style="font-size:0.9rem;font-weight:700;color:'+statusColors[s]+';">'+cnt+'</span></div>';}).join('')+'<div style="margin-top:0.5rem;padding:0.45rem 0.75rem;background:#e2e3e5;border-radius:6px;display:flex;justify-content:space-between;"><span style="font-size:0.82rem;font-weight:500;color:#41464b;">Archived</span><span style="font-size:0.9rem;font-weight:700;color:#41464b;">'+Object.keys(archivedOrdersMap).length+'</span></div>';
+  overviewInsights.render({active:Object.values(adminOrdersMap),archived:archived,sales:sales,menuItems:menuItemsMap||{},catType:(window.__posSettings&&window.__posSettings.catType)||{}});
 }
 
 function drawPaymentPie(gcashR,bankR){
@@ -1020,27 +996,6 @@ function drawPaymentPie(gcashR,bankR){
     const s=i===0?start:start+gcashR*Math.PI*2,e=i===0?start+gcashR*Math.PI*2:start+Math.PI*2;
     ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,s,e);ctx.closePath();ctx.fillStyle=pair[1];ctx.fill();
   });
-}
-
-function drawRevenueChart(archived){
-  const canvas=document.getElementById('revenueChart');if(!canvas)return;
-  const W=canvas.offsetWidth||500,H=180;canvas.width=W;canvas.height=H;
-  const ctx=canvas.getContext('2d');ctx.clearRect(0,0,W,H);
-  const days=[],today2=new Date();
-  for(let i=29;i>=0;i--){const d=new Date(today2);d.setDate(today2.getDate()-i);days.push(d.toISOString().slice(0,10));}
-  const revByDay={},cntByDay={};days.forEach(d=>{revByDay[d]=0;cntByDay[d]=0;});
-  archived.filter(o=>o&&!o.voided&&o.prevStatus!=='Rejected'&&o.status!=='Rejected').forEach(function(o){const _t=o.timestamp||Date.parse(o.date)||o.archivedAt||0;const d=new Date(_t).toISOString().slice(0,10);if(revByDay[d]!==undefined){revByDay[d]+=(o.total||0);cntByDay[d]++;}});
-  const revVals=days.map(d=>revByDay[d]),cntVals=days.map(d=>cntByDay[d]);
-  const maxRev=Math.max(...revVals,1),maxCnt=Math.max(...cntVals,1);
-  const pad={l:40,r:10,t:10,b:30},chartW=W-pad.l-pad.r,chartH=H-pad.t-pad.b,gap=chartW/days.length,barW=gap*0.6;
-  ctx.strokeStyle='rgba(0,0,0,0.07)';ctx.lineWidth=1;
-  [0,0.25,0.5,0.75,1].forEach(function(pct){const y=pad.t+chartH*(1-pct);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();ctx.fillStyle='#79806f';ctx.font='10px Inter,sans-serif';ctx.textAlign='right';ctx.fillText('₱'+(maxRev*pct/1000).toFixed(0)+'k',pad.l-4,y+3);});
-  revVals.forEach(function(val,i){const x=pad.l+i*gap+gap*0.2,bh=val/maxRev*chartH;ctx.fillStyle='rgba(176,141,87,0.75)';ctx.fillRect(x,pad.t+chartH-bh,barW,bh);});
-  ctx.strokeStyle='#3b8fd4';ctx.lineWidth=2;ctx.beginPath();
-  cntVals.forEach(function(val,i){const x=pad.l+i*gap+gap*0.5,y=pad.t+chartH*(1-val/maxCnt);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});ctx.stroke();
-  ctx.fillStyle='#3b8fd4';cntVals.forEach(function(val,i){const x=pad.l+i*gap+gap*0.5,y=pad.t+chartH*(1-val/maxCnt);ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fill();});
-  ctx.fillStyle='#79806f';ctx.font='9px Inter,sans-serif';ctx.textAlign='center';
-  days.forEach(function(d,i){if(i%5===0||i===29)ctx.fillText(d.slice(5),pad.l+i*gap+gap*0.5,H-8);});
 }
 
 // ── ARCHIVE PDF ──
