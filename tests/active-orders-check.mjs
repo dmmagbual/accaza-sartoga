@@ -8,8 +8,8 @@ const end=source.indexOf('async function rebuildActiveOrders',start);
 if(start<0||end<0)fail('active-order projection helpers missing');
 const sandbox={Date,Intl,Object,result:null};
 const pureHelpers=source.slice(start,end).replace(/\/\/ ---------------------------------------------------------------------------\r?\n\/\/ Release 5B:[\s\S]*?(?=function archivedOrderRecord)/,'');
-vm.runInNewContext(`${pureHelpers};result={activeOrderProjection,shouldProjectOrder,archivedOrderRecord,ACTIVE_ONLINE_TTL_MS};`,sandbox);
-const {activeOrderProjection,shouldProjectOrder,archivedOrderRecord,ACTIVE_ONLINE_TTL_MS}=sandbox.result;
+vm.runInNewContext(`${pureHelpers};result={activeOrderProjection,shouldProjectOrder,archivedOrderRecord,readyForAutoComplete,ACTIVE_ONLINE_TTL_MS,READY_AUTO_COMPLETE_MS};`,sandbox);
+const {activeOrderProjection,shouldProjectOrder,archivedOrderRecord,readyForAutoComplete,ACTIVE_ONLINE_TTL_MS,READY_AUTO_COMPLETE_MS}=sandbox.result;
 const now=2_000_000_000_000;
 
 if(!shouldProjectOrder({status:'Pending'},null,now))fail('Pending order must remain active');
@@ -21,6 +21,10 @@ if(!shouldProjectOrder({status:'Completed',source:'pos',channel:'grabfood',settl
 if(shouldProjectOrder({status:'Completed',source:'pos',channel:'grabfood',settlementStatus:'settled'},null,now))fail('Settled closed-shift platform sale must leave active orders');
 if(!shouldProjectOrder({status:'Received',source:'online',timestamp:now-ACTIVE_ONLINE_TTL_MS+1},null,now))fail('Recent received online order must remain active');
 if(shouldProjectOrder({status:'Received',source:'online',timestamp:now-ACTIVE_ONLINE_TTL_MS-1},null,now))fail('Expired received online order must leave active orders');
+if(readyForAutoComplete({status:'Ready',channel:'online',statusUpdatedAt:now-READY_AUTO_COMPLETE_MS+1},now))fail('Fresh Ready online order completed too early');
+if(!readyForAutoComplete({status:'Ready',channel:'online',statusUpdatedAt:now-READY_AUTO_COMPLETE_MS},now))fail('Two-hour Ready online order did not become eligible');
+if(readyForAutoComplete({status:'Ready',channel:'instore',statusUpdatedAt:now-READY_AUTO_COMPLETE_MS},now))fail('In-store order entered online timeout flow');
+if(readyForAutoComplete({status:'Completed',channel:'online',statusUpdatedAt:now-READY_AUTO_COMPLETE_MS},now))fail('Completed order re-entered timeout flow');
 
 const projected=activeOrderProjection({id:'O1',proof:'data:image/png;base64,large',proofData:'large',proofPath:'payment-proofs/u/O1.png',total:100});
 if('proof' in projected||'proofData' in projected)fail('embedded proof leaked into active projection');
