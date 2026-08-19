@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},funnelMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={},receiptsMap={},posSettingsMap={};
+var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={},receiptsMap={},posSettingsMap={};
 var svFrom=null,svTo=null,svExpand=null;
 var azRange='30d', azFrom=null, azTo=null, pnlMonth=null;
 var poChannel='grabfood', poFrom=null, poTo=null;
@@ -38,7 +38,6 @@ function init(){
   a.subscribe('stockReceipts',function(s){receiptsMap=s.val()||{};if(isTab('stockvalue'))renderStockValue();});
   a.subscribe('inventory',function(s){invMap=s.val()||{};if(isTab('stockvalue'))renderStockValue();});
   a.subscribe('posSettings',function(s){posSettingsMap=s.val()||{};if(isTab('pnl'))renderPnl();});
-  a.subscribe('analyticsFunnel',function(s){funnelMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
   a.subscribe('platformPayouts',function(s){payoutsMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();if(isTab('analytics'))renderAnalytics();});
   a.subscribe('platformVarAccounts',function(s){varAcctMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();});
 }
@@ -156,11 +155,7 @@ function renderAnalyticsBody(){
   var prepList=cur.filter(function(x){return x.o.completedAt&&x.ts&&x.o.source!=='pos';}).map(function(x){return(x.o.completedAt-x.ts)/60000;}).filter(function(m){return m>0&&m<600;});
   var avgPrep=prepList.length?prepList.reduce(function(s,m){return s+m;},0)/prepList.length:null;
   var target=15;var onTime=prepList.length?prepList.filter(function(m){return m<=target;}).length/prepList.length*100:null;
-  // funnel
-  var fkey=funnelKey(from);var f=funnelMap[fkey]||{};var reach=Number(f.reach)||0,visits=Number(f.visits)||0;
-  var convVO=visits>0?tx/visits*100:0, convRV=reach>0?visits/reach*100:0;
-
-  var html='<div class="pz-h">📊 Analytics</div><p class="pz-sub">Every figure here traces to your own orders, recipes, and reviews. Reach/Visits are entered manually from Google Analytics.</p>';
+  var html='<div class="pz-h">📊 Analytics</div><p class="pz-sub">Every figure here traces to your own orders, recipes, and reviews.</p>';
   var _azF=tsToDate(from), _azT=tsToDate(to-86400000); // local date parts (not UTC) so date inputs match the range in UTC+10
   html+='<div style="margin-bottom:0.4rem;">'+['today:Today','7d:7 days','30d:30 days','month:This month','all:All time'].map(function(o){var v=o.split(':');return '<span class="pz-chip '+(azRange===v[0]?'on':'')+'" data-range="'+v[0]+'">'+v[1]+'</span>';}).join('')
     +'<span style="margin-left:0.5rem;font-size:0.78rem;color:var(--tl);">or '+'<input type="date" class="pz-in" id="azFrom" value="'+_azF+'" style="width:auto;display:inline-block;padding:0.2rem 0.4rem;"/> → <input type="date" class="pz-in" id="azTo" value="'+_azT+'" style="width:auto;display:inline-block;padding:0.2rem 0.4rem;"/> <button class="pz-btn '+(azRange==='custom'?'ok':'sec')+'" id="azApply" style="padding:0.25rem 0.6rem;">Apply dates</button></span></div>'
@@ -216,14 +211,6 @@ function renderAnalyticsBody(){
     +kpi('Cancel rate',(Math.round(cancelRate*10)/10)+'%')
     +kpi('Ratings avg',avgAll?avgAll.toFixed(2):'—')
     +'</div><div class="az-note">Prep time from online orders (place → complete). '+rIn.length+' new rating(s) this period.</div>';
-  // funnel
-  html+='<div class="az-sec">Conversion funnel</div><div class="pz-card"><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;align-items:end;margin-bottom:0.6rem;">'
-    +'<div><span class="pz-lbl">Reach (from GA)</span><input class="pz-in" id="fReach" type="number" value="'+(reach||'')+'" placeholder="0"/></div>'
-    +'<div><span class="pz-lbl">Visits (from GA)</span><input class="pz-in" id="fVisits" type="number" value="'+(visits||'')+'" placeholder="0"/></div>'
-    +'<button class="pz-btn" id="fSave">Save</button></div>'
-    +'<div style="display:flex;gap:1rem;font-size:0.85rem;">'
-    +'<div>Reach <b>'+(reach||'—')+'</b></div>→<div>Visits <b>'+(visits||'—')+'</b> ('+(reach?Math.round(convRV):'—')+'%)</div>→<div>Orders <b>'+tx+'</b> ('+(visits?Math.round(convVO):'—')+'%)</div>'
-    +'</div><div class="az-note">Reach/Visits are read from your Google Analytics and entered here for the selected period.</div></div>';
   // ---- channel mix (in-store vs platforms) ----
   (function(){
     var chData={instore:{lbl:'In-store',gross:0,comm:0,cogs:0,tx:0},online:{lbl:'Online Orders',gross:0,comm:0,cogs:0,tx:0},grabfood:{lbl:'GrabFood',gross:0,comm:0,cogs:0,tx:0},foodpanda:{lbl:'FoodPanda',gross:0,comm:0,cogs:0,tx:0}};
@@ -235,10 +222,8 @@ function renderAnalyticsBody(){
   root.innerHTML=html;
   /* Date controls are handled by the single delegated listener installed in renderAnalytics().
      Keeping them there means a report-data error cannot make the controls unclickable. */
-  var fs=document.getElementById('fSave');if(fs)fs.onclick=function(){var a=A();a.set(a.ref(a.db,'analyticsFunnel/'+funnelKey(from)),{reach:Number(document.getElementById('fReach').value)||0,visits:Number(document.getElementById('fVisits').value)||0,ts:Date.now()});};
 }
 function chartObj(obj){var keys=Object.keys(obj).sort(function(a,b){return obj[b]-obj[a];});var max=Math.max.apply(null,keys.map(function(k){return obj[k];}).concat([1]));return keys.length?keys.map(function(k){return bar(k,obj[k],max,peso0(obj[k]));}).join(''):'<p class="az-note">No data.</p>';}
-function funnelKey(from){var d=new Date(from);return azRange==='custom'?('c'+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())):azRange+'-'+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate());}
 function pad(n){return(n<10?'0':'')+n;}
 
 /* ══════════ P&L ══════════ */
