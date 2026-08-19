@@ -504,6 +504,11 @@ exports.archiveActivityLog = onCall(
 // ---------------------------------------------------------------------------
 const ACTIVE_ONLINE_TTL_MS = 48 * 60 * 60 * 1000;
 const ACTIVE_SWEEP_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const READY_AUTO_COMPLETE_MS = 2 * 60 * 60 * 1000;
+
+function readyForAutoComplete(order, now = Date.now()) {
+  return !!order && order.channel === "online" && order.status === "Ready" && now - Number(order.statusUpdatedAt || order.readyAt || order.timestamp || 0) >= READY_AUTO_COMPLETE_MS;
+}
 
 function activeOrderProjection(order) {
   if (!order || typeof order !== "object") return null;
@@ -1547,6 +1552,34 @@ exports.pruneEphemeralNodes = onSchedule(
       await db.ref().update(chunk);
     }
     logger.info("pruneEphemeralNodes complete", {deleted: paths.length});
+    return null;
+  },
+);
+
+// Customer confirmation is optional. If neither the customer nor cashier closes
+// a Ready online order, finalize it after two hours so it cannot remain active
+// indefinitely. The authoritative order remains available for history/reports.
+exports.autoCompleteReadyOnlineOrders = onSchedule(
+  {schedule: "every 15 minutes", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 120, memory: "256MiB"},
+  async () => {
+    const db = getDatabase(), now = Date.now();
+    const active = (await db.ref("/activeOrders").orderByChild("status").equalTo("Ready").limitToLast(250).get()).val() || {};
+    let completed = 0;
+    for (const orderId of Object.keys(active)) {
+      if (!readyForAutoComplete(active[orderId], now)) continue;
+      const result = await db.ref(`/orders/${orderId}`).transaction((order) => {
+        if (!readyForAutoComplete(order, now)) return;
+        return Object.assign({}, order, {status: "Completed", completedAt: now, statusUpdatedAt: now, statusUpdatedBy: "system", completionReason: "ready_timeout"});
+      });
+      if (!result.committed) continue;
+      const order = result.snapshot.val() || {}, writes = {
+        [`operationalAudit/${now}_auto_complete_${orderId}`]: {action: "auto_complete_ready_order", sourceType: "order", sourceId: orderId, ts: now, actorUid: "system", actorRole: "system", schemaVersion: 1},
+      };
+      if (order.ownerUid) writes[`customerOrders/${order.ownerUid}/${orderId}/status`] = "Completed";
+      await db.ref().update(writes);
+      completed++;
+    }
+    logger.info("autoCompleteReadyOnlineOrders complete", {completed});
     return null;
   },
 );

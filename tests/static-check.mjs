@@ -139,6 +139,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!functionsSource.includes('pricingVersion: "server-v1"'))fail('server pricing stamp missing');
   if(!functionsSource.includes('ownerUid: uid'))fail('server order owner stamp missing');
   if(!functionsSource.includes('exports.confirmOrderReceived = onCall'))fail('confirmOrderReceived callable missing');
+  if(!functionsSource.includes('exports.autoCompleteReadyOnlineOrders = onSchedule')||!functionsSource.includes('READY_AUTO_COMPLETE_MS = 2 * 60 * 60 * 1000')||!functionsSource.includes('completionReason: "ready_timeout"'))fail('Two-hour Ready-order fallback is incomplete');
   if(!functionsSource.includes('const {getStorage} = require("firebase-admin/storage")'))fail('server Storage integration missing');
   if(!functionsSource.includes('exports.getPaymentProof = onCall'))fail('authorized on-demand proof retrieval callable missing');
   if(!functionsSource.includes('order.proofPath = proofPath'))fail('orders do not store the compact proof path');
@@ -322,6 +323,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!posSource.includes("id=\"posMenuSearch\"")||!posSource.includes("type=\"button\" class=\"pz-chip"))fail('Phase 7E search or accessible categories missing');
   if(!posSource.includes('No matching items'))fail('Phase 7E directed menu-search empty state missing');
   for(const marker of ['Online Orders','onlineOrderRows()','data-online-accept','acceptOnlineOrder({orderId:id})','New website orders will appear here automatically.'])if(!posSource.includes(marker))fail(`Online Orders POS channel marker missing: ${marker}`);
+  for(const marker of ['🧾 Active Orders','activeOrderRows()','renderActiveOrders()','data-active-status','pos-stage-rail','Accepted orders will appear here until they are completed.'])if(!posSource.includes(marker)&&!adminHtml.includes(marker))fail(`Active Orders POS workflow marker missing: ${marker}`);
+  if(!posSource.includes("['Pending','Confirmed','Preparing','Ready'].indexOf(o.status)>=0")||!posSource.includes("posView==='active'"))fail('Active Orders POS queue is not restricted to actionable current-shift orders');
   if(!functionsSource.includes('exports.acceptOnlineOrder = onCall')||!functionsSource.includes('accept_online_order')||!functionsSource.includes('posCaptured: true'))fail('Online order shift-acceptance authority is incomplete');
   if(!shiftRegisterSource.includes('online:0')||!shiftRegisterSource.includes("['online','Online Orders']")||!shiftRegisterSource.includes("['Completed','Received'].indexOf(o.status)<0"))fail('Online Orders are not separated or finalized correctly in shift reporting');
   if(!posSource.includes('Tap items to add them.')||!posSource.includes('>remove</button>')||!posSource.includes('repeat(auto-fill,minmax(78px,1fr))'))fail('Release 7G original register card is incomplete');
