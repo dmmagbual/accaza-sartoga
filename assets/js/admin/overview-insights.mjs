@@ -1,5 +1,7 @@
 function createOverviewInsights(deps){
-  var state={period:'30',from:'',to:'',latest:null,bound:false,loading:false};
+  var saved={};try{saved=JSON.parse(localStorage.getItem('accaza-report-period')||'{}')||{};}catch(_e){}
+  var state={period:saved.period||'30',from:saved.from||'',to:saved.to||'',metric:'units',latest:null,bound:false,loading:false};
+  window.AccazaReportPeriod={get:function(){return{period:state.period,from:state.from,to:state.to};},set:function(v){v=v||{};state.period=v.period||'30';state.from=v.from||'';state.to=v.to||'';try{localStorage.setItem('accaza-report-period',JSON.stringify(window.AccazaReportPeriod.get()));}catch(_e){}window.dispatchEvent(new CustomEvent('accaza-report-period',{detail:window.AccazaReportPeriod.get()}));}};
   function stamp(o){return Number(o&&o.timestamp)||Date.parse(o&&o.date)||Number(o&&o.archivedAt)||0;}
   function dayStart(d){var x=new Date(d);x.setHours(0,0,0,0);return x.getTime();}
   function range(){
@@ -7,6 +9,7 @@ function createOverviewInsights(deps){
     if(state.period==='today'){start=dayStart(now);label='Today';}
     else if(state.period==='7'){start=dayStart(now)-6*86400000;label='Last 7 days';}
     else if(state.period==='30'){start=dayStart(now)-29*86400000;label='Last 30 days';}
+    else if(state.period==='month'){start=new Date(now.getFullYear(),now.getMonth(),1).getTime();label='This month';}
     else if(state.period==='custom'){
       start=state.from?new Date(state.from+'T00:00:00').getTime():0;
       end=state.to?new Date(state.to+'T23:59:59.999').getTime():Date.now();
@@ -26,11 +29,13 @@ function createOverviewInsights(deps){
   }
   function bind(){
     if(state.bound)return;state.bound=true;
-    document.querySelectorAll('[data-overview-period]').forEach(function(btn){btn.addEventListener('click',function(){state.period=this.dataset.overviewPeriod;select();ensureHistory();paint();});});
-    var apply=document.getElementById('overviewCustomApply');if(apply)apply.addEventListener('click',function(){var f=document.getElementById('overviewFrom'),t=document.getElementById('overviewTo');if(f&&t&&f.value&&t.value&&f.value>t.value){alert('The From date must be before the To date.');return;}state.from=f&&f.value||'';state.to=t&&t.value||'';state.period='custom';select();ensureHistory();paint();});
+    document.querySelectorAll('[data-overview-period]').forEach(function(btn){btn.addEventListener('click',function(){window.AccazaReportPeriod.set({period:this.dataset.overviewPeriod});select();ensureHistory();paint();});});
+    document.querySelectorAll('[data-overview-metric]').forEach(function(btn){btn.addEventListener('click',function(){state.metric=this.dataset.overviewMetric;select();paint();});});
+    var f=document.getElementById('overviewFrom'),t=document.getElementById('overviewTo');if(f)f.value=state.from;if(t)t.value=state.to;
+    var apply=document.getElementById('overviewCustomApply');if(apply)apply.addEventListener('click',function(){var f=document.getElementById('overviewFrom'),t=document.getElementById('overviewTo');if(f&&t&&f.value&&t.value&&f.value>t.value){alert('The From date must be before the To date.');return;}window.AccazaReportPeriod.set({period:'custom',from:f&&f.value||'',to:t&&t.value||''});select();ensureHistory();paint();});
     select();
   }
-  function select(){document.querySelectorAll('[data-overview-period]').forEach(function(btn){var on=btn.dataset.overviewPeriod===state.period;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');});var custom=document.getElementById('overviewCustomDates');if(custom)custom.classList.toggle('active',state.period==='custom');}
+  function select(){document.querySelectorAll('[data-overview-period]').forEach(function(btn){var on=btn.dataset.overviewPeriod===state.period;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');});document.querySelectorAll('[data-overview-metric]').forEach(function(btn){var on=btn.dataset.overviewMetric===state.metric;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');});var custom=document.getElementById('overviewCustomDates');if(custom)custom.classList.toggle('active',state.period==='custom');}
   async function ensureHistory(){
     if(state.loading||!state.latest)return;var r=range(),needStart=r.start,notice=document.getElementById('overviewDataNote');state.loading=true;if(notice)notice.textContent='Loading the required order history…';
     try{
@@ -46,9 +51,9 @@ function createOverviewInsights(deps){
     if(el)el.innerHTML=keys.length?keys.map(function(k){return'<div class="overview-payment-row"><span class="overview-payment-dot" style="background:'+(colors[k]||'#999')+'"></span><span>'+deps.esc(k)+'</span><strong>'+money(mix[k])+' <small>'+Math.round(mix[k]/total*100)+'%</small></strong></div>';}).join(''):'<p class="overview-empty">No completed sales in this period.</p>';
   }
   function renderTop(rows,data){
-    var count={},menu=data.menuItems||{},types=data.catType||{};function drink(li){var mi=menu[li&&li.itemKey];return!mi||types[mi.cat]!=='food';}
-    rows.filter(function(o){return outcome(o)!=='Refunded';}).forEach(function(o){if(Array.isArray(o.lineItems)&&o.lineItems.length)o.lineItems.forEach(function(li){if(!li||!drink(li))return;var name=li.name||(menu[li.itemKey]&&menu[li.itemKey].name)||li.itemKey;if(name)count[name]=(count[name]||0)+(Number(li.qty)||0);});else if(o.items)String(o.items).split(',').forEach(function(s){var name=s.trim().replace(/\s*\(.*?\)\s*/g,'').replace(/\s*x\d+\s*$/,'').trim(),qty=parseInt((s.match(/x(\d+)/)||[])[1]||1);if(name)count[name]=(count[name]||0)+qty;});});
-    var top=Object.entries(count).sort(function(a,b){return b[1]-a[1];}).slice(0,10),medals=['🥇','🥈','🥉','4','5','6','7','8','9','10'],el=document.getElementById('topItemsList');if(el)el.innerHTML=top.length?top.map(function(x,i){return'<div class="overview-rank-row"><span>'+medals[i]+'</span><span>'+deps.esc(x[0])+'</span><strong>'+x[1]+' sold</strong></div>';}).join(''):'<p class="overview-empty">No completed sales in this period.</p>';
+    var items={},menu=data.menuItems||{},types=data.catType||{};function drink(li){var mi=menu[li&&li.itemKey];return!mi||types[mi.cat]!=='food';}
+    rows.forEach(function(o){var gross=Number(o.subtotal!=null?o.subtotal:o.total)||0,net=Math.max(0,gross-(Number(o.discount)||0)-(Number(o.refundAmount)||0)),factor=gross>0?net/gross:0;if(net<=0||!Array.isArray(o.lineItems))return;o.lineItems.forEach(function(li){if(!li||!drink(li))return;var name=li.name||(menu[li.itemKey]&&menu[li.itemKey].name)||li.itemKey,qty=Number(li.qty)||0;if(!name)return;var row=items[name]||(items[name]={name:name,units:0,revenue:0});row.units+=qty;row.revenue+=qty*(Number(li.unitTotal)||0)*factor;});});
+    var metric=state.metric,top=Object.values(items).sort(function(a,b){return b[metric]-a[metric];}).slice(0,10),medals=['🥇','🥈','🥉','4','5','6','7','8','9','10'],el=document.getElementById('topItemsList'),title=document.getElementById('overviewTopTitle');if(title)title.textContent='Top 10 Best Sellers - By '+(metric==='units'?'Quantity':'Revenue');if(el)el.innerHTML=top.length?top.map(function(x,i){return'<div class="overview-rank-row"><span>'+medals[i]+'</span><span>'+deps.esc(x.name)+'</span><strong>'+(metric==='units'?x.units+' sold':money(x.revenue))+'</strong></div>';}).join(''):'<p class="overview-empty">No structured drink sales in this period.</p>';
   }
   function renderOutcomes(all,active){
     var names=['Completed','Received','Cancelled / Rejected','Voided','Refunded','Partially refunded'],colors={'Completed':['#d4edda','#155724'],'Received':['#c8e6c9','#1b5e20'],'Cancelled / Rejected':['#f8d7da','#721c24'],'Voided':['#f5d0d0','#7f1d1d'],'Refunded':['#fff3cd','#856404'],'Partially refunded':['#fff1d6','#8a510b']},counts={},total=0;names.forEach(function(n){counts[n]=0;});all.forEach(function(o){var x=outcome(o);if(x){counts[x]++;total++;}});
