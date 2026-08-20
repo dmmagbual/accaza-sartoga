@@ -2173,7 +2173,7 @@ function chargeSale(sub,total,payments,platform,discountApproval,cashierVerifica
   var _chargeStarted=performance.now();return persistPosSale(order).then(function(saved){
     telemetry().metric('charge_to_durable',performance.now()-_chargeStarted,saved.mode!=='server');
     if(window.__posLog)window.__posLog(saved.mode==='server'?'sale-server-recovered':'sale-queued',oid,'₱'+total+' · '+payLabel+(order.offlineRung?' · OFFLINE':'')+' · '+txnId);
-    var receipt=Object.assign({},order); receipt._offline=(window.__online===false); receipt._syncPending=saved.mode!=='server'; posCart={};posDraft={};posPaymentVerification=null; window.__posPkgs=[]; posScopedDisc=[]; renderPosCart(); showReceipt(receipt); if(saved.mode==='server'){(window.accazaToast||function(){})('Sale saved to the server. Browser storage was recovered safely.','ok');checkPosStorageHealth();}else flushOfflineQueue();
+    var receipt=Object.assign({},order); posCart={};posDraft={};posPaymentVerification=null; window.__posPkgs=[]; posScopedDisc=[]; renderPosCart(); showReceipt(receipt); if(saved.mode==='server'){(window.accazaToast||function(){})('Sale saved to the server. Browser storage was recovered safely.','ok');checkPosStorageHealth();}else flushOfflineQueue();
   }).catch(function(error){telemetry().metric('charge_to_durable',performance.now()-_chargeStarted,false);alert('Sale was NOT saved. Durable storage failed: '+String(error&&error.message||error));return {failed:true};});
 }
 window.__pos={render:function(){if(document.getElementById('posCartPanel'))renderPosCart();},loadCart:function(c){posCart=c||{};if(window.switchTab)window.switchTab('pos',document.querySelector('.admin-tab'));buildPOS();},hasItems:function(){return Object.keys(posCart).length>0;},addPackage:function(components,meta){(components||[]).forEach(function(c){var key=uid('pc_');posCart[key]={itemKey:c.itemKey,name:c.name,size:c.size||null,optLabels:c.optLabels||[],details:c.details||('pkg: '+meta.name),qty:c.qty,unitTotal:c.unitTotal,stream:(meta.type==='promo'?'promo':'events'),pkgId:meta.id};});window.__posPkgs=window.__posPkgs||[];window.__posPkgs.push(meta);renderPosCart();}};
@@ -2204,7 +2204,7 @@ function showReceipt(o){
   w.document.write('<html><head><title>Receipt '+esc(dispRef)+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2{text-align:center;margin:0 0 2px;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
     +'<h2>Accaza Coffee House</h2><div style="text-align:center;">'+esc(addr)+'</div><hr>'
     +'<div>Order: '+esc(dispRef)+'</div><div>'+esc(o.date)+' '+esc(o.time)+'</div><div>On Duty: '+esc(o.onDuty||o.staff||'-')+'</div><div>Customer: '+esc(o.name||'Walk-in')+'</div>'
-    +(o._syncPending?'<div style="border:2px solid #8a6d1b;padding:4px;margin:5px 0;text-align:center;font-weight:bold;">PENDING SYNC — Firebase confirmation not yet received</div>':'')+'<hr>'
+    +'<hr>'
     +'<table>'+rows+'</table><hr>'
     +'<table><tr><td>Subtotal</td><td style="text-align:right;">'+peso(o.subtotal||o.total)+'</td></tr>'
     +((o.discountLines&&o.discountLines.length)?o.discountLines.map(function(d){var lbl={senior:'Senior 20%',pwd:'PWD 20%',athlete:'Athlete 20%',promo5:'Promo 5%'}[d.type]||d.type;return '<tr><td>'+esc(lbl)+(d.idNumber?' · '+esc(d.idNumber):'')+'</td><td style="text-align:right;">-'+peso(d.value)+'</td></tr>';}).join(''):'')
