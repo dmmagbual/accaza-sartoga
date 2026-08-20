@@ -299,7 +299,7 @@ exports.acceptOnlineOrder = onCall(
 const MANAGER_APPROVAL_ACTIONS = new Set([
   "validate_payment", "refund", "void", "settle_platform_payout", "reopen_cash_count",
   "delete_archived_order", "review_discrepancy", "approve_petty_voucher",
-  "reject_petty_voucher", "void_petty_voucher", "manual_discount", "cash_in", "fixed_float_exception",
+  "reject_petty_voucher", "void_petty_voucher", "manual_discount", "cash_in", "fixed_float_exception", "reverse_purchase",
 ]);
 function transactionCurrent(current, initial, state) {
   const value = current == null && !state.seen ? initial : current;
@@ -1165,6 +1165,42 @@ exports.reconcilePurchasePayable = onCall(
   },
 );
 
+// Controlled purchase correction boundary. Metadata corrections preserve the
+// original financial amount. Reversals offset inventory and finance with
+// deterministic IDs so an interrupted request is safe to retry.
+exports.managePurchaseCorrection = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 120, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["purchases"]), data = request.data || {}, action = financeText(data.action, 30);
+    const invoices = (await db.ref("/purchaseInvoices").get()).val() || {}, requestedId = financeText(data.invoiceId, 160), requestedRef = financeText(data.invoiceRef, 120);
+    let invoiceId = requestedId && invoices[requestedId] ? requestedId : "";
+    if (!invoiceId && requestedRef) {const matches = Object.keys(invoices).filter((id) => financeText(invoices[id] && invoices[id].ref, 120).toLowerCase() === requestedRef.toLowerCase());if (matches.length > 1) throw new HttpsError("failed-precondition", "More than one purchase uses this reference. Management review is required.");invoiceId = matches[0] || "";}
+    if (!invoiceId) throw new HttpsError("not-found", "Purchase invoice was not found.");
+    const invoice = invoices[invoiceId] || {}, safeInvoice = {id:invoiceId,supplier:financeText(invoice.supplier,120),ref:financeText(invoice.ref,120),date:invoice.date||"",due:invoice.due||"",by:financeText(invoice.by,120),payMode:invoice.payMode||"none",payableId:invoice.payableId||"",total:Financial.money(invoice.total),lines:Array.isArray(invoice.lines)?invoice.lines:[]};
+    if (action === "lookup") return {invoice:safeInvoice,reversed:invoice.reversed===true};
+    if (invoice.reversed === true) throw new HttpsError("failed-precondition", "This purchase has already been reversed.");
+    const now = Date.now(), reason = financeText(data.reason, 300); if (!reason) throw new HttpsError("invalid-argument", "A correction reason is required.");
+    if (action === "correct_details") {
+      const next = {ref:financeText(data.ref,120),due:data.due?financeDate(data.due):"",by:financeText(data.by,120)}; if (!next.ref) throw new HttpsError("invalid-argument", "Invoice reference is required.");
+      const duplicate = Object.keys(invoices).some((id) => id !== invoiceId && financeText(invoices[id] && invoices[id].ref,120).toLowerCase() === next.ref.toLowerCase());if (duplicate) throw new HttpsError("already-exists", "Another purchase already uses this invoice reference.");
+      const writes = {[`purchaseInvoices/${invoiceId}/ref`]:next.ref,[`purchaseInvoices/${invoiceId}/due`]:next.due,[`purchaseInvoices/${invoiceId}/by`]:next.by,[`purchaseInvoices/${invoiceId}/lastCorrectionAt`]:now,[`purchaseInvoices/${invoiceId}/lastCorrectionBy`]:actor.uid,[`purchaseInvoices/${invoiceId}/lastCorrectionReason`]:reason,[`operationalAudit/${now}_purchase_correct_${invoiceId}`]:{action:"correct_purchase_details",sourceType:"purchaseInvoice",sourceId:invoiceId,before:{ref:invoice.ref||"",due:invoice.due||"",by:invoice.by||""},after:next,reason,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}};
+      (invoice.receiptIds||[]).forEach((id) => {writes[`stockReceipts/${id}/ref`]=next.ref;writes[`stockReceipts/${id}/receivedBy`]=next.by;});if (invoice.payableId) {writes[`payables/${invoice.payableId}/ref`]=next.ref;writes[`payables/${invoice.payableId}/due`]=next.due;}
+      await db.ref().update(writes);return {invoiceId,result:"corrected",invoice:Object.assign({},safeInvoice,next)};
+    }
+    if (action !== "reverse") throw new HttpsError("invalid-argument", "Purchase correction action is invalid.");
+    const approval = await claimManagerApproval(db, data, "reverse_purchase", invoiceId, safeInvoice.total, `reverse_purchase_${invoiceId}`), movementIds = Array.isArray(invoice.movementIds)?invoice.movementIds:[], originals=[];
+    const payable = invoice.payableId ? (await db.ref(`/payables/${financeKey(invoice.payableId,"Payable ID")}`).get()).val() : null;if (payable && payable.status === "paid") throw new HttpsError("failed-precondition", "This payable has already been paid. Reverse the supplier payment before reversing the purchase.");if (invoice.payMode === "account"&&(!payable||payable.status!=="open")) throw new HttpsError("failed-precondition", "The linked payable is missing or is no longer open.");
+    const paidAccountId=invoice.payMode==="paid"?accountIdFor((await db.ref("/cfAccounts").get()).val()||{},invoice.accountId):"";
+    for (const movementId of movementIds) {const movement=(await db.ref(`/inventoryMovements/${financeKey(movementId,"Movement ID")}`).get()).val();if (!movement) throw new HttpsError("failed-precondition", "An original inventory movement is missing. Run inventory review before reversal.");const accounting=(await db.ref(`/inventoryAccounting/${movement.itemId}`).get()).val()||{},reversalId=`purchase_reverse_${invoiceId}_${movement.itemId}`,already=accounting.applied&&accounting.applied[reversalId];if (!already&&qty6(accounting.balance)+0.000001<qty6(movement.qty)) throw new HttpsError("failed-precondition", `Not enough remaining stock to reverse ${movement.itemName||movement.itemId}.`);if (!already&&qty6(accounting.balance)>qty6(movement.qty)&&((qty6(accounting.balance)*qty6(accounting.unitCost))-(qty6(movement.qty)*qty6(movement.unitCost)))<-.000001) throw new HttpsError("failed-precondition", `The remaining stock value for ${movement.itemName||movement.itemId} cannot support this reversal.`);originals.push(movement);}
+    for (const movement of originals) await applyInventoryMovement(db,{movementId:`purchase_reverse_${invoiceId}_${movement.itemId}`,itemId:movement.itemId,type:"purchase_reversal",qty:-qty6(movement.qty),unitCost:qty6(movement.unitCost),sourceType:"purchase-invoice-reversal",sourceId:invoiceId,sourceLine:movement.sourceLine||movement.itemId,note:`Reverse purchase ${invoice.ref||invoiceId}: ${reason}`,reversalOf:movement.id,actorName:actor.role,occurredAt:now},actor);
+    const writes = Object.assign({},approval.usedWrites,{[`purchaseInvoices/${invoiceId}/reversed`]:true,[`purchaseInvoices/${invoiceId}/reversedAt`]:now,[`purchaseInvoices/${invoiceId}/reversedBy`]:actor.uid,[`purchaseInvoices/${invoiceId}/reversalReason`]:reason,[`operationalAudit/${now}_purchase_reverse_${invoiceId}`]:{action:"reverse_purchase",sourceType:"purchaseInvoice",sourceId:invoiceId,amount:safeInvoice.total,reason,approvalId:approval.id,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}});(invoice.receiptIds||[]).forEach((id)=>{writes[`stockReceipts/${id}/reversed`]=true;writes[`stockReceipts/${id}/reversedAt`]=now;});
+    const batches=(await db.ref("/inventoryBatch").get()).val()||{};Object.keys(batches).forEach((id)=>{if (batches[id]&&batches[id].invoiceId===invoiceId){writes[`inventoryBatch/${id}/closed`]=true;writes[`inventoryBatch/${id}/reversedAt`]=now;}});
+    let financialMovement=null,financialId="";if (invoice.payMode === "account") {financialId=`purchase_ap_reversal_${invoiceId}`;financialMovement=Financial.movement("purchase_payable_reversed","purchaseInvoice",invoiceId,[Financial.line(`liability:payable:${invoice.payableId}`,safeInvoice.total,0,"Reverse supplier payable"),Financial.line("expense_or_inventory:inventory",0,safeInvoice.total,"Reverse inventory purchase")],{occurredAt:now,actorName:actor.role});writes[`payables/${invoice.payableId}/status`]="reversed";writes[`payables/${invoice.payableId}/reversedAt`]=now;writes[`payables/${invoice.payableId}/reversalMovementId`]=financialId;} else if (invoice.payMode === "paid") {financialId=`purchase_cash_reversal_${invoiceId}`;financialMovement=Financial.movement("purchase_cash_reversed","purchaseInvoice",invoiceId,[Financial.line(`asset:cash_account:${paidAccountId}`,safeInvoice.total,0,"Reverse purchase payment"),Financial.line("expense_or_inventory:inventory",0,safeInvoice.total,"Reverse inventory purchase")],{occurredAt:now,actorName:actor.role});writes[`cfLedger/fm_${financialId}`]=cashLedgerRecord({date:financeDateFromTimestamp(now),accountId:paidAccountId,dir:"in",category:"Purchase reversal",amount:safeInvoice.total,party:invoice.supplier,ref:invoice.ref,auto:true},financialId,financialMovement,actor);}
+    if (financialMovement) await commitFinancial(db,financialId,financialMovement,actor,writes);else await db.ref().update(writes);
+    return {invoiceId,result:"reversed",amount:safeInvoice.total,invoice:safeInvoice};
+  },
+);
+
 exports.settlePlatformPayout = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
@@ -1262,7 +1298,7 @@ exports.auditFinancialControls = onCall(
 const INVENTORY_MOVEMENT_TYPES = new Set([
   "opening_balance", "purchase", "sale_usage", "staff_use", "rnd_testing",
   "waste", "adjustment", "manual_edit", "usage_reversal",
-  "void_reversal", "refund_reversal",
+  "void_reversal", "refund_reversal", "purchase_reversal",
 ]);
 function qty6(value) {
   return Math.round((Number(value) || 0) * 1000000) / 1000000;
@@ -1337,7 +1373,7 @@ async function applyInventoryMovement(db, raw, actor) {
   }
   const qty = qty6(raw.qty);
   const requestedCost = qty6(raw.unitCost);
-  const setCost = raw.setCost === true || type === "purchase";
+  const setCost = raw.setCost === true || type === "purchase" || type === "purchase_reversal";
   if (!Number.isFinite(qty) || Math.abs(qty) > 100000000) throw new HttpsError("invalid-argument", "Inventory quantity is invalid.");
   if (qty === 0 && !setCost) throw new HttpsError("invalid-argument", "Inventory movement quantity cannot be zero.");
   if (requestedCost < 0 || requestedCost > 100000000) throw new HttpsError("invalid-argument", "Inventory unit cost is invalid.");
@@ -1345,7 +1381,7 @@ async function applyInventoryMovement(db, raw, actor) {
   const item = (await itemRef.get()).val();
   if (!item) throw new HttpsError("not-found", "Inventory item no longer exists.");
   const now = Date.now();
-  let duplicate = false;
+  let duplicate = false, insufficient = false, insufficientValue = false;
   const accountingRef = db.ref(`/inventoryAccounting/${itemId}`);
   const result = await accountingRef.transaction((current) => {
     const state = current || seedInventoryAccounting(itemId, item, now);
@@ -1354,6 +1390,7 @@ async function applyInventoryMovement(db, raw, actor) {
     const before = qty6(state.balance);
     const costBefore = qty6(state.unitCost || item.cost);
     const after = qty6(before + qty);
+    if (type === "purchase_reversal" && after < 0) {insufficient = true; return;}
     let costAfter = costBefore;
     if (type === "purchase" && qty > 0 && requestedCost >= 0) {
       const denominator = before + qty;
@@ -1361,6 +1398,9 @@ async function applyInventoryMovement(db, raw, actor) {
       // Blending it can create a nonsensical negative WAC, so the first receipt
       // that recovers such a balance establishes the new purchase cost.
       costAfter = before > 0 && denominator > 0 ? qty6(((before * costBefore) + (qty * requestedCost)) / denominator) : requestedCost;
+    } else if (type === "purchase_reversal" && qty < 0 && requestedCost >= 0) {
+      const remainingValue = (before * costBefore) + (qty * requestedCost);if (after > 0 && remainingValue < -0.000001) {insufficientValue=true;return;}
+      costAfter = after > 0 ? qty6(remainingValue / after) : costBefore;
     } else if (setCost) {
       costAfter = requestedCost;
     }
@@ -1368,8 +1408,8 @@ async function applyInventoryMovement(db, raw, actor) {
     const movement = {
       id: movementId, itemId,
       itemName: String(item.name || itemId).slice(0, 160), unit: String(item.unit || "").slice(0, 40),
-      type, qty, unitCost: type === "purchase" ? requestedCost : costBefore,
-      totalCost: money(qty * (type === "purchase" ? requestedCost : costBefore)),
+      type, qty, unitCost: ["purchase", "purchase_reversal"].includes(type) ? requestedCost : costBefore,
+      totalCost: money(qty * (["purchase", "purchase_reversal"].includes(type) ? requestedCost : costBefore)),
       balanceBefore: before, balanceAfter: after, costBefore, costAfter,
       sourceType: String(raw.sourceType || type).slice(0, 80),
       sourceId: String(raw.sourceId || "").slice(0, 160),
@@ -1384,7 +1424,7 @@ async function applyInventoryMovement(db, raw, actor) {
     state.applied[movementId] = movement;
     return state;
   });
-  if (!result.committed) throw new Error(`Inventory transaction was not committed for ${itemId}`);
+  if (!result.committed) {if (insufficient) throw new HttpsError("failed-precondition", `Not enough remaining stock to reverse ${item.name || itemId}.`);if (insufficientValue) throw new HttpsError("failed-precondition", `The remaining stock value for ${item.name || itemId} cannot support this reversal.`);throw new Error(`Inventory transaction was not committed for ${itemId}`);}
   const accounting = result.snapshot.val();
   const movement = accounting.applied[movementId];
   const opening = accounting.applied[`opening_${itemId}`];
@@ -1402,7 +1442,7 @@ exports.postInventoryMovements = onCall(
     const db = getDatabase();
     const movements = listFromFirebase(request.data && request.data.movements);
     if (!movements.length || movements.length > 100) throw new HttpsError("invalid-argument", "Submit 1 to 100 inventory movements.");
-    const serverOnly = new Set(["opening_balance", "sale_usage", "void_reversal", "refund_reversal"]);
+    const serverOnly = new Set(["opening_balance", "sale_usage", "void_reversal", "refund_reversal", "purchase_reversal"]);
     if (movements.some((movement) => serverOnly.has(String(movement && movement.type || "")))) {
       throw new HttpsError("permission-denied", "That inventory movement type can only be posted by the server.");
     }

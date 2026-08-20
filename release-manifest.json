@@ -12,9 +12,9 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 225,
+    "admin": 226,
     "customer": 57,
-    "serviceWorkerCache": 127
+    "serviceWorkerCache": 128
   },
   "authoritativeFiles": [
     "admin.html",
@@ -69,6 +69,7 @@
     "ensureInventoryLedger",
     "postFinancialCommand",
     "reconcilePurchasePayable",
+    "managePurchaseCorrection",
     "settlePlatformPayout",
     "processOrderAdjustment",
     "ensureFinancialLedger",
