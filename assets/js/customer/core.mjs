@@ -141,8 +141,9 @@ function renderPublicOrderStatus(){
   var root=document.getElementById('orderServiceStatus'),headline=document.getElementById('orderServiceHeadline'),note=document.getElementById('orderServiceNote');
   if(!root||!headline||!note)return;
   var open=publicOrdersOpen&&customerLiveConnected;
-  root.classList.toggle('is-open',open);
   var checking=publicOrdersOpen===null||customerLiveConnected!==true;
+  root.classList.toggle('is-open',open);
+  root.classList.toggle('is-closed',!open&&!checking);
   headline.textContent=open?'OPEN FOR ONLINE ORDERS':(checking?'CHECKING ORDER AVAILABILITY':'ONLINE ORDERS CLOSED');
   note.textContent=open?'Order now — we’re ready!':(checking?(navigator.onLine?'Connecting to the shop…':'Your phone is offline. Reconnect to check availability.'):'We’re not accepting orders right now.');
   root.setAttribute('aria-label',open?'Online orders are open. Order now — we’re ready!':(checking?'Checking live online-order availability.':'Online orders are closed. We’re not accepting orders right now.'));

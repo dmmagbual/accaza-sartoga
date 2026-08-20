@@ -33,7 +33,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="/favicon_512x512.png"/>
 <link rel="manifest" href="/manifest.json"/>
 <meta name="theme-color" content="#19241b"/>
-<meta name="accaza-customer-build" content="56"/>
+<meta name="accaza-customer-build" content="57"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -118,10 +118,12 @@ nav{position:fixed;top:0;width:100%;z-index:200;background:rgba(25,36,27,0.96);b
 .nav-logo{font-family:'Playfair Display',serif;font-size:1.4rem;color:var(--cr);letter-spacing:0.05em;}
 .order-service-status{display:flex;flex-direction:column;justify-content:center;gap:.28rem;margin:0 auto 0 2rem;color:#e8e8e8;line-height:1.1;text-decoration:none;min-width:260px;}
 .order-service-status__headline{display:flex;align-items:center;gap:.55rem;font-size:.84rem;font-weight:600;letter-spacing:.01em;white-space:nowrap;}
-.order-service-status__dot{width:17px;height:17px;flex:0 0 17px;border-radius:50%;background:linear-gradient(145deg,#ff9b9b 8%,#ff3030 60%,#c90000);box-shadow:inset 0 1px 2px rgba(255,255,255,.68),0 0 13px rgba(255,48,48,.9);animation:orderStatusRedBlink 1.15s step-end infinite;}
+.order-service-status__dot{width:17px;height:17px;flex:0 0 17px;border-radius:50%;background:linear-gradient(145deg,#b9dcff 8%,#328cff 60%,#0759c7);box-shadow:inset 0 1px 2px rgba(255,255,255,.7),0 0 13px rgba(50,140,255,.95);animation:orderStatusBlueBlink 1.15s step-end infinite;}
 .order-service-status__note{padding-left:1.55rem;font-size:.82rem;font-style:italic;color:rgba(232,232,232,.82);white-space:nowrap;}
+.order-service-status.is-closed .order-service-status__dot{background:linear-gradient(145deg,#ff9b9b 8%,#ff3030 60%,#c90000);box-shadow:inset 0 1px 2px rgba(255,255,255,.68),0 0 13px rgba(255,48,48,.9);animation:orderStatusRedBlink 1.15s step-end infinite;}
 .order-service-status.is-open .order-service-status__dot{background:linear-gradient(145deg,#b8ffd7 8%,#20f078 60%,#00a83f);box-shadow:inset 0 1px 2px rgba(255,255,255,.7),0 0 13px rgba(32,240,120,.95);animation:orderStatusGreenBlink 1.15s step-end infinite;}
 .order-service-status:focus-visible{outline:2px solid #c9a36a;outline-offset:5px;border-radius:4px;}
+@keyframes orderStatusBlueBlink{0%,48%{opacity:1;box-shadow:inset 0 1px 2px rgba(255,255,255,.72),0 0 16px rgba(50,140,255,1);}49%,100%{opacity:.18;box-shadow:none;}}
 @keyframes orderStatusGreenBlink{0%,48%{opacity:1;box-shadow:inset 0 1px 2px rgba(255,255,255,.72),0 0 16px rgba(32,240,120,1);}49%,100%{opacity:.18;box-shadow:none;}}
 @keyframes orderStatusRedBlink{0%,48%{opacity:1;box-shadow:inset 0 1px 2px rgba(255,255,255,.72),0 0 16px rgba(255,48,48,1);}49%,100%{opacity:.18;box-shadow:none;}}
 .nav-links{display:flex;gap:1.5rem;list-style:none;flex-wrap:wrap;}
@@ -582,7 +584,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 </style>
 </head>
 <body>
-<!-- accaza-index build v56 -->
+<!-- accaza-index build v57 -->
 <div class="fb-sync" id="fbSync">🔥 Firebase Connected</div>
 <div class="order-toast" id="orderToast" onclick="ackNewOrders()">
   <span class="ot-bell">🔔</span>
@@ -999,7 +1001,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
     <div class="footer-logo">Accaza Coffee House</div>
     <p>Saratoga Ave, La Mediterranea, Dasmariñas, Cavite · Open daily 3PM–12MN</p>
     <div class="footer-links"><a href="#menu">Menu</a><a href="#order">Order</a><a href="#reserve">Reserve</a><a href="#reviews">Reviews</a><a href="#feedback">Feedback</a><a href="#gallery">Gallery</a><a href="#contact">Contact</a><a href="menu.html">Menu</a><a href="about.html">About</a><a href="reservations.html">Reservations</a><a href="contact.html">Visit</a></div>
-    <p class="footer-copy">© 2026 Accaza Coffee House. All rights reserved.<span class="footer-version">Website version 56</span></p>
+    <p class="footer-copy">© 2026 Accaza Coffee House. All rights reserved.<span class="footer-version">Website version 57</span></p>
   </div>
 </footer>
 
