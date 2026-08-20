@@ -1393,9 +1393,14 @@ async function applyInventoryMovement(db, raw, actor) {
   const now = Date.now();
   let duplicate = false, insufficient = false, insufficientValue = false;
   const accountingRef = db.ref(`/inventoryAccounting/${itemId}`);
+  // RTDB transactions may invoke the updater once with an empty local cache
+  // before the server value arrives.  A purchase reversal must not seed that
+  // pass from the legacy inventory projection because its stock can be stale.
+  // Preload the authoritative ledger so the first pass uses the real balance.
+  const accountingSeed = (await accountingRef.get()).val() || seedInventoryAccounting(itemId, item, now);
   const result = await accountingRef.transaction((current) => {
-    const state = current || seedInventoryAccounting(itemId, item, now);
-    state.applied = state.applied || {};
+    const base = current || accountingSeed;
+    const state = Object.assign({}, base, {applied: Object.assign({}, base.applied || {})});
     if (state.applied[movementId]) { duplicate = true; return state; }
     const before = qty6(state.balance);
     const costBefore = qty6(state.unitCost || item.cost);

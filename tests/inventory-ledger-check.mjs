@@ -37,6 +37,7 @@ const sandbox={
 const api=vm.runInNewContext(`(function(){${functions.slice(start,end)};return {applyInventoryMovement};})()`,sandbox);
 const state={inventory:{milk:{name:'Milk',unit:'ml',stock:100,cost:2}}};
 let failProjectionWrite=true;
+let emptyFirstTransactionFor='';
 const parts=(path)=>String(path||'').split('/').filter(Boolean);
 function read(path){let cur=state;for(const key of parts(path)){if(cur==null)return undefined;cur=cur[key];}return cur;}
 function write(path,value){const keys=parts(path);let cur=state;for(let i=0;i<keys.length-1;i++)cur=cur[keys[i]]||(cur[keys[i]]={});if(!keys.length)throw new Error('root set unsupported');cur[keys.at(-1)]=structuredClone(value);}
@@ -45,7 +46,7 @@ const db={ref(path=''){return {
   async get(){const value=read(path);return {val:()=>structuredClone(value),exists:()=>value!=null};},
   async set(value){write(path,value);},
   async update(updates){if(!parts(path).length&&failProjectionWrite){failProjectionWrite=false;throw new Error('injected projection failure');}applyUpdates(path,updates);},
-  async transaction(fn){const current=structuredClone(read(path));const next=fn(current);if(next===undefined)return {committed:false,snapshot:{val:()=>current}};write(path,next);return {committed:true,snapshot:{val:()=>structuredClone(next)}};},
+  async transaction(fn){const current=structuredClone(read(path));const first=path===emptyFirstTransactionFor?undefined:current;emptyFirstTransactionFor='';const next=fn(first);if(next===undefined)return {committed:false,snapshot:{val:()=>current}};write(path,next);return {committed:true,snapshot:{val:()=>structuredClone(next)}};},
 };}};
 const movement={movementId:'purchase_doc1_milk',itemId:'milk',type:'purchase',qty:50,unitCost:4,sourceId:'doc1'};
 let injected=false,caughtMessage='';
@@ -61,5 +62,14 @@ state.inventory.powder={name:'Powder',unit:'g',stock:-100,cost:2};
 await api.applyInventoryMovement(db,{movementId:'purchase_doc2_powder',itemId:'powder',type:'purchase',qty:50,unitCost:10,sourceId:'doc2'},{uid:'tester',role:'manager'});
 assert(state.inventory.powder.stock===-50,'negative stock purchase balance is incorrect');
 assert(state.inventory.powder.cost===10,'receipt against negative stock produced an invalid blended WAC');
+
+// A stale legacy projection must not block a valid reversal when RTDB invokes
+// the transaction updater once with an empty local cache.
+state.inventory.coffee={name:'Coffee Beans',unit:'g',stock:1196,cost:1.431};
+state.inventoryAccounting.coffee={balance:3047,unitCost:1.278,version:1,applied:{purchase_coffee:{id:'purchase_coffee',itemId:'coffee',qty:2000,unitCost:1.278}}};
+emptyFirstTransactionFor='/inventoryAccounting/coffee';
+await api.applyInventoryMovement(db,{movementId:'purchase_reverse_coffee',itemId:'coffee',type:'purchase_reversal',qty:-2000,unitCost:1.278,sourceId:'duplicate',reversalOf:'purchase_coffee'},{uid:'tester',role:'manager'});
+assert(state.inventoryAccounting.coffee.balance===1047,'stale inventory projection falsely blocked an authoritative-ledger reversal');
+assert(state.inventory.coffee.stock===1047,'reversal did not repair the stale stock projection');
 
 console.log('PASS: Release 3A authority, mutation routing, partial-failure retry, WAC, and rule guards passed.');
