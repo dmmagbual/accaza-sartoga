@@ -74,8 +74,8 @@ async function updateOrderStatusCommand(options) {
       if (!canTransition(from, targetStatus)) raise(options, "failed-precondition", `Order cannot move from ${from} to ${targetStatus}.`);
       const websiteOrder = current.source === "online" || current.channel === "online";
       const requiresShiftCapture = ["Preparing", "Ready", "Completed"].includes(targetStatus);
-      if (websiteOrder && requiresShiftCapture && (!current.shiftId || current.posCaptured !== true || current.paymentStatus !== "confirmed")) {
-        raise(options, "failed-precondition", "Verify payment and accept this website order into the open POS shift before preparing or completing it.");
+      if (websiteOrder && requiresShiftCapture && (!current.shiftId || current.posCaptured !== true || !["cashier_verified", "manager_validated", "confirmed"].includes(current.paymentStatus))) {
+        raise(options, "failed-precondition", "Cashier verification and POS shift acceptance are required before preparing or completing this website order.");
       }
       updatedOrder = Object.assign({}, current, {
         status: targetStatus,

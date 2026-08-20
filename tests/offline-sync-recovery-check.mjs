@@ -28,6 +28,11 @@ assert(state.shifts['SH-TEST'].drawer.b100===3&&state.posActiveShift.drawer.b100
 assert(state.offlinePosSync[txn].state==='synced','sync audit did not reach synced state');
 let collision=false;try{await O.syncOfflinePosSaleCommand({...ctx,data:{transactionId:'different_txn_12345',order:Object.assign({},order,{clientTxnId:'different_txn_12345'})}});}catch(error){collision=error.code==='already-exists';}
 assert(collision,'order-ID collision with a different transaction was accepted');
+const directTxn='pos_direct_123456789',directBase=Object.assign({},order,{id:'POS-DIRECT-RECOVERY-1',clientTxnId:directTxn,payment:'GCash',payments:[{method:'GCash',amount:100,ref:'GC-7788'}]});
+let directBlocked=false;try{await O.syncOfflinePosSaleCommand({...ctx,data:{transactionId:directTxn,order:directBase,drawerDelta:{}},now:3500});}catch(error){directBlocked=error.code==='failed-precondition';}
+assert(directBlocked&&!state.orders['POS-DIRECT-RECOVERY-1'],'direct electronic payment bypassed the cashier verification gate');
+const directResult=await O.syncOfflinePosSaleCommand({...ctx,data:{transactionId:directTxn,order:Object.assign({},directBase,{cashierVerificationIntent:true}),drawerDelta:{}},now:3600});
+assert(directResult.orderId==='POS-DIRECT-RECOVERY-1'&&state.orders['POS-DIRECT-RECOVERY-1'].paymentStatus==='cashier_verified'&&state.orders['POS-DIRECT-RECOVERY-1'].cashierVerifiedBy==='cashier-1','cashier verification was not stamped by the server');
 const platformTxn='pos_platform_123456789',platformOrder=Object.assign({},order,{id:'GF-RECOVERY-1',clientTxnId:platformTxn,total:550});
 const platformResult=await O.syncOfflinePosSaleCommand({...ctx,data:{transactionId:platformTxn,order:platformOrder,drawerDelta:{}},now:4000});
 assert(platformResult.orderId==='GF-RECOVERY-1'&&state.orders['GF-RECOVERY-1'].clientTxnId===platformTxn,'GrabFood recovery order was rejected');

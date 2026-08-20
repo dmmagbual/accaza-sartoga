@@ -11,7 +11,7 @@ const posSource=read('assets','js','admin','pos.js');
 const analyticsSource=read('assets','js','admin','analytics.js');
 const clientSource=[coreSource,registerSource,posSource,analyticsSource].join('\n');
 const expected=[
-  'confirm_payment','refund','void','settle_platform_payout','reopen_cash_count',
+  'validate_payment','refund','void','settle_platform_payout','reopen_cash_count',
   'delete_archived_order','review_discrepancy','approve_petty_voucher',
   'reject_petty_voucher','void_petty_voucher','manual_discount','cash_in','fixed_float_exception',
 ];

@@ -17,6 +17,7 @@ if(!shouldProjectOrder({status:'Confirmed'},null,now))fail('Confirmed order must
 if(!shouldProjectOrder({status:'Completed',source:'pos',shiftId:'S1'},{id:'S1'},now))fail('Current-shift sale must remain active');
 if(shouldProjectOrder({status:'Completed',source:'pos',shiftId:'S1'},null,now))fail('Resolved closed-shift sale must leave active orders');
 if(!shouldProjectOrder({status:'Completed',source:'pos',paymentStatus:'pending'},null,now))fail('Unverified payment must remain active');
+if(!shouldProjectOrder({status:'Completed',source:'pos',paymentStatus:'cashier_verified'},null,now))fail('Cashier-verified payment must remain active until manager validation');
 if(!shouldProjectOrder({status:'Completed',source:'pos',channel:'grabfood',settlementStatus:'unsettled'},null,now))fail('Unsettled platform sale must remain active');
 if(shouldProjectOrder({status:'Completed',source:'pos',channel:'grabfood',settlementStatus:'settled'},null,now))fail('Settled closed-shift platform sale must leave active orders');
 if(!shouldProjectOrder({status:'Received',source:'online',timestamp:now-ACTIVE_ONLINE_TTL_MS+1},null,now))fail('Recent received online order must remain active');

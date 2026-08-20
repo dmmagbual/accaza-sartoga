@@ -273,7 +273,7 @@ exports.acceptOnlineOrder = onCall(
     if (!order) throw new HttpsError("not-found", "Online order not found.");
     if (order.source !== "online" && order.channel !== "online") throw new HttpsError("failed-precondition", "Only website orders can enter the Online Orders channel.");
     if (["Rejected", "Completed", "Received"].includes(String(order.status || ""))) throw new HttpsError("failed-precondition", "This order can no longer be accepted into POS.");
-    if (order.paymentStatus !== "confirmed") throw new HttpsError("failed-precondition", "Verify the customer payment before accepting this order.");
+    if (!["cashier_verified", "manager_validated", "confirmed"].includes(order.paymentStatus)) throw new HttpsError("failed-precondition", "The cashier must verify the customer payment before accepting this order.");
     if (order.shiftId) {
       if (order.shiftId === shift.id && order.channel === "online") return {orderId, shiftId: shift.id, duplicate: true};
       throw new HttpsError("failed-precondition", "This order is already assigned to another shift.");
@@ -297,7 +297,7 @@ exports.acceptOnlineOrder = onCall(
 );
 
 const MANAGER_APPROVAL_ACTIONS = new Set([
-  "confirm_payment", "refund", "void", "settle_platform_payout", "reopen_cash_count",
+  "validate_payment", "refund", "void", "settle_platform_payout", "reopen_cash_count",
   "delete_archived_order", "review_discrepancy", "approve_petty_voucher",
   "reject_petty_voucher", "void_petty_voucher", "manual_discount", "cash_in", "fixed_float_exception",
 ]);
@@ -523,7 +523,7 @@ function shouldProjectOrder(order, activeShift, now = Date.now()) {
   if (order.inventoryReversalRequested === true && order.inventoryReversed !== true) return true;
   const status = String(order.status || "Pending");
   if (["Pending", "Confirmed", "Preparing", "Ready"].includes(status)) return true;
-  if (order.paymentStatus === "pending") return true;
+  if (["pending", "cashier_verified"].includes(order.paymentStatus)) return true;
   if (["grabfood", "foodpanda"].includes(order.channel) && (order.settlementStatus || "unsettled") === "unsettled") return true;
   if (activeShift && order.shiftId && order.shiftId === activeShift.id) return true;
   const age = now - Number(order.timestamp || 0);
@@ -1140,7 +1140,30 @@ exports.processOrderAdjustment = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
     const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["registerOps"]); const data = request.data || {}, found = await findOrder(db, data.orderId), o = found.order;
-    if (data.action === "confirm_payment") { if (o.paymentStatus === "confirmed") return {alreadyConfirmed: true}; const approval = await claimManagerApproval(db, data, "confirm_payment", o.id, Financial.money(o.total), `confirm_${o.id}`), confirmedAt = Date.now(), approvedBy=approval.record.approvedEmail || approval.record.approvedRole, confirmed = Object.assign({}, o, {paymentStatus: "confirmed", verifiedAt: confirmedAt, verifiedBy: actor.uid,paymentApprovalId:approval.id,paymentApprovedBy:approvedBy}), accounts = (await db.ref("/cfAccounts").get()).val() || {}, confirmWrites = Object.assign({}, approval.usedWrites, {[`${found.node}/${o.id}/paymentStatus`]:"confirmed", [`${found.node}/${o.id}/verifiedAt`]:confirmedAt, [`${found.node}/${o.id}/verifiedBy`]:actor.uid, [`${found.node}/${o.id}/paymentApprovalId`]:approval.id, [`${found.node}/${o.id}/paymentApprovedBy`]:approvedBy}); await db.ref().update(confirmWrites); const posted = await postOrderFinancial(db, confirmed, accounts, {uid: "server", role: "server"}); return {confirmed: true, financialPosted: !posted.skipped, duplicate: posted.duplicate === true}; }
+    if (data.action === "cashier_verify_payment") {
+      if (["grabfood", "foodpanda"].includes(String(o.channel || "").toLowerCase())) throw new HttpsError("failed-precondition", "Platform orders are settled through their platform payout.");
+      if (["cashier_verified", "manager_validated", "confirmed"].includes(o.paymentStatus)) return {alreadyVerified: true, paymentStatus: o.paymentStatus};
+      const payments = (Array.isArray(o.payments) && o.payments.length ? o.payments : [{method: o.payment, amount: o.total}]).map((row) => Object.assign({}, row));
+      const direct = payments.filter((row) => /gcash|maya|bank|transfer/i.test(String(row.method || "")));
+      if (!direct.length) throw new HttpsError("failed-precondition", "This order has no direct GCash, Maya, or bank payment to verify.");
+      const suppliedRef = financeText(data.reference, 120); if (direct.length === 1 && !financeText(direct[0].ref, 120) && suppliedRef) direct[0].ref = suppliedRef;
+      if (direct.some((row) => !financeText(row.ref, 120))) throw new HttpsError("invalid-argument", "Enter the transaction reference for every direct electronic payment.");
+      const now = Date.now(), website = o.source === "online" || o.channel === "online", nextStatus = website && String(o.status || "Pending") === "Pending" ? "Confirmed" : String(o.status || "Pending");
+      const verified = Object.assign({}, o, {payments, paymentStatus: "cashier_verified", cashierVerifiedAt: now, cashierVerifiedBy: actor.uid, cashierVerifiedRole: actor.role, cashierVerifiedAmount: Financial.money(direct.reduce((sum, row) => sum + Financial.money(row.amount), 0)), status: nextStatus, statusUpdatedAt: nextStatus !== o.status ? now : o.statusUpdatedAt, statusUpdatedBy: nextStatus !== o.status ? actor.uid : o.statusUpdatedBy});
+      const writes = {[`${found.node}/${o.id}`]: verified, [`activeOrders/${o.id}`]: activeOrderProjection(verified), [`operationalAudit/${now}_cashier_verify_${o.id}`]: {action: "cashier_verify_payment", sourceType: "order", sourceId: o.id, amount: verified.cashierVerifiedAmount, actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1}};
+      if (verified.ownerUid) writes[`customerOrders/${verified.ownerUid}/${o.id}/status`] = nextStatus;
+      await db.ref().update(writes); const accounts = (await db.ref("/cfAccounts").get()).val() || {}, posted = await postOrderFinancial(db, verified, accounts, {uid: "server", role: "server"});
+      return {verified: true, status: nextStatus, paymentStatus: "cashier_verified", financialPosted: !posted.skipped, duplicate: posted.duplicate === true};
+    }
+    if (data.action === "manager_validate_payment") {
+      if (o.paymentStatus === "manager_validated" || o.paymentStatus === "confirmed") return {alreadyValidated: true};
+      if (o.paymentStatus !== "cashier_verified") throw new HttpsError("failed-precondition", "Cashier verification is required before manager validation.");
+      const approval = await claimManagerApproval(db, data, "validate_payment", o.id, Financial.money(o.total), `validate_${o.id}`), now = Date.now(), approvedBy = approval.record.approvedEmail || approval.record.approvedRole;
+      const validated = Object.assign({}, o, {paymentStatus: "manager_validated", managerValidatedAt: now, managerValidatedBy: approval.record.approvedBy, managerValidatedRole: approval.record.approvedRole, managerValidatedName: approvedBy, paymentApprovalId: approval.id});
+      const activeShift = (await db.ref("/posActiveShift").get()).val() || null;
+      const writes = Object.assign({}, approval.usedWrites, {[`${found.node}/${o.id}`]: validated, [`activeOrders/${o.id}`]: shouldProjectOrder(validated, activeShift, now) ? activeOrderProjection(validated) : null, [`operationalAudit/${now}_manager_validate_${o.id}`]: {action: "manager_validate_payment", sourceType: "order", sourceId: o.id, actorUid: actor.uid, actorRole: actor.role, approvedBy: approval.record.approvedBy, approvedRole: approval.record.approvedRole, approvalId: approval.id, ts: now, schemaVersion: 1}});
+      await db.ref().update(writes); return {validated: true, paymentStatus: "manager_validated", approvedBy};
+    }
     const reason = financeText(data.reason, 300); if (!reason) throw new HttpsError("invalid-argument", "Reason is required."); const accounts = (await db.ref("/cfAccounts").get()).val() || {}; await postOrderFinancial(db, o, accounts, {uid: "server", role: "server"});
     const now = Date.now(), writes = {}; let movementId, movement;
     if (data.action === "refund") { const delta = Financial.money(data.amount), already = Financial.money(o.refundAmount), max = Financial.money(o.total); if (!(delta > 0) || already + delta > max + 0.009) throw new HttpsError("invalid-argument", "Refund exceeds the refundable amount."); const cumulative = Financial.money(already + delta), original = (Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment||"Cash",amount:o.total}]), prior = o.refundPayments || {}, tender = Array.isArray(data.refundPayments)?data.refundPayments.map((row) => ({method:financeText(row.method,60),amount:Financial.money(row.amount)})).filter((row) => row.method&&row.amount>0):[]; if ((o.channel||"instore") === "instore") {if (Math.abs(tender.reduce((s,row)=>Financial.money(s+row.amount),0)-delta)>0.009) throw new HttpsError("invalid-argument","Refund tender allocations must equal the refund amount."); const allowed={}; original.forEach((row)=>{allowed[row.method]=Financial.money((allowed[row.method]||0)+Financial.money(row.amount));}); tender.forEach((row)=>{if (!allowed[row.method] || Financial.money((prior[row.method]||0)+row.amount)>allowed[row.method]+0.009) throw new HttpsError("invalid-argument",`Refund through ${row.method} exceeds the original payment.`);});} movementId = `refund_${o.id}_${Math.round(cumulative * 100)}`; const approval = await claimManagerApproval(db, data, "refund", o.id, delta, movementId); movement = Financial.reversalPosting(o, delta, "refund", accounts, tender); Object.assign(writes, approval.usedWrites); const nextRefundPayments=Object.assign({},prior);tender.forEach((row)=>{nextRefundPayments[row.method]=Financial.money((nextRefundPayments[row.method]||0)+row.amount);}); writes[`${found.node}/${o.id}/refundAmount`] = cumulative; writes[`${found.node}/${o.id}/refundPayments`] = nextRefundPayments; writes[`${found.node}/${o.id}/refundHistory/${movementId}`] = {amount:delta,payments:tender,reason,at:now,by:actor.uid,approvalId:approval.id,approvedBy:approval.record.approvedEmail||approval.record.approvedRole}; writes[`${found.node}/${o.id}/refundReason`] = reason; writes[`${found.node}/${o.id}/refundedAt`] = now; writes[`${found.node}/${o.id}/refundedBy`] = actor.uid; writes[`${found.node}/${o.id}/refunded`] = true; }

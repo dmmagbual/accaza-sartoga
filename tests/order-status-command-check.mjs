@@ -40,7 +40,7 @@ await assert.rejects(run(db,{orderId:'two',status:'Confirmed',expectedStatus:'Pe
 assert.equal(db.data.orders.two.status,'Pending');assert.equal(db.data.orderStatusCommands.req_two.status,'failed');
 const recovered=await run(db,{orderId:'two',status:'Confirmed',expectedStatus:'Pending',requestId:'req_two'});
 assert.equal(recovered.duplicate,false);assert.equal(db.data.orders.two.status,'Confirmed');assert.equal(db.data.orderStatusCommands.req_two.status,'applied');
-await assert.rejects(run(db,{orderId:'two',status:'Ready',expectedStatus:'Confirmed',requestId:'req_two_ready'}),/Verify payment and accept this website order/);
+await assert.rejects(run(db,{orderId:'two',status:'Ready',expectedStatus:'Confirmed',requestId:'req_two_ready'}),/Cashier verification and POS shift acceptance are required/);
 assert.equal(db.data.orders.two.status,'Confirmed');
 
 db.data.orders.three={id:'three',status:'Completed',source:'online',timestamp:3};

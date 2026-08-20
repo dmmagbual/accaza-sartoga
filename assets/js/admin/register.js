@@ -31,9 +31,11 @@ window.__posLog=function(action,ref,detail){var a=A();var id=uid('log_');a.set(a
 window.__posVoid=function(oid){voidSale(oid);};window.__posRefund=function(oid){refundSale(oid);};
 function verifyPayment(oid){
   var o=ordersMap[oid];if(!o){alert('Order not found in the active list. If it was archived, restore it first to verify.');return;}
-  if(o.paymentStatus!=='pending'){alert('This sale is not pending verification.');return;}
-  var a=A();if(!a.processOrderAdjustment||!a.managerApproval){alert('3D approval service is not available. Refresh the portal.');return;}a.managerApproval('confirm_payment',oid,Number(o.total)||0,'Verify payment received').then(function(ap){return a.processOrderAdjustment({action:'confirm_payment',orderId:oid,approvalId:ap.approvalId});}).then(function(){if(window.__posLog)window.__posLog('verify-payment',oid,'₱'+(Number(o.total)||0).toLocaleString()+' · '+(o.payment||''));}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Payment confirmation failed: '+((e&&e.message)||e));});
+  if(o.paymentStatus!=='pending'){alert('This sale is not pending cashier verification.');return;}
+  var rows=paysOf(o).filter(function(p){return /gcash|maya|bank|transfer/i.test(String(p.method||''));}),existing=rows.map(function(p){return p.ref||'';}).filter(Boolean).join(', '),a=A();if(!a.processOrderAdjustment){alert('Payment verification service is not available. Refresh the portal.');return;}
+  F().run({title:'Cashier payment verification',subtitle:oid+' · '+peso(o.total)+' · '+(o.payment||''),submitLabel:'Verify payment',busyLabel:'Recording verification…',fields:[{name:'reference',label:'Transaction reference',value:existing,required:true,maxLength:120,help:'Match this against the actual read-only GCash, Maya, or bank transaction history.'},{name:'confirmed',label:'I found this successful payment in the actual receiving account',type:'checkbox',required:true,help:'A customer screenshot by itself is not sufficient.'}]},function(v){return a.processOrderAdjustment({action:'cashier_verify_payment',orderId:oid,reference:v.reference});}).then(function(){if(window.__posLog)window.__posLog('cashier-verify-payment',oid,peso(o.total)+' · '+(o.payment||''));}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0&&String((e&&e.message)||e).indexOf('cancelled')<0)alert('Payment confirmation failed: '+((e&&e.message)||e));});
 }
+function validatePayment(oid){var o=ordersMap[oid];if(!o||o.paymentStatus!=='cashier_verified'){alert('This payment is not awaiting manager validation.');return;}var a=A();if(!a.processOrderAdjustment||!a.managerApproval){alert('Manager validation service is unavailable. Refresh the portal.');return;}a.managerApproval('validate_payment',oid,Number(o.total)||0,'Revalidate cashier-confirmed payment').then(function(ap){return a.processOrderAdjustment({action:'manager_validate_payment',orderId:oid,approvalId:ap.approvalId});}).then(function(){if(window.__posLog)window.__posLog('manager-validate-payment',oid,peso(o.total));(window.accazaToast||function(){})('Payment manager validated','ok');}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Manager validation failed: '+((e&&e.message)||e));});}
 window.__posVerify=function(oid){verifyPayment(oid);};
 window.__accazaRegisterModule('register',function(name){ if(name==='ops')renderOps(); if(name==='possettings')renderPosSettings(); if(name==='discrepancy')renderDiscrepancies(); if(name==='petty')renderPetty(); });
 
@@ -96,7 +98,7 @@ function cashSwap(){
 }
 /* ---------- Z-report computation ---------- */
 function computeZ(shift){
-  var sales=[],voids=[],z={tx:0,gross:0,discounts:0,refunds:0,cashRefunds:0,net:0,byMethod:{},byChannel:{instore:0,online:0,grabfood:0,foodpanda:0},cashSales:0,voidCount:0,voidAmt:0,pending:0,pendingCount:0,tips:0};
+  var sales=[],voids=[],z={tx:0,gross:0,discounts:0,refunds:0,cashRefunds:0,net:0,byMethod:{},byChannel:{instore:0,online:0,grabfood:0,foodpanda:0},cashSales:0,voidCount:0,voidAmt:0,pending:0,pendingCount:0,managerPending:0,managerPendingCount:0,tips:0};
   Object.keys(ordersMap).forEach(function(id){var o=ordersMap[id];if(!o||o.shiftId!==shift.id)return;
     if(o.voided){z.voidCount++;z.voidAmt+=Number(o.total)||0;return;}
     if(['Completed','Received'].indexOf(o.status)<0)return;
@@ -105,6 +107,7 @@ function computeZ(shift){
     z.tips+=Number(o.tipRounding)||0;
     var _ch=(o.channel&&z.byChannel[o.channel]!=null)?o.channel:'instore';z.byChannel[_ch]+=Number(o.total)||0;
     if(o.paymentStatus==='pending'){z.pending+=(Number(o.total)||0);z.pendingCount++;}
+    if(o.paymentStatus==='cashier_verified'){z.managerPending+=(Number(o.total)||0);z.managerPendingCount++;}
     paysOf(o).forEach(function(p){z.byMethod[p.method]=(z.byMethod[p.method]||0)+(Number(p.amount)||0);});
   });
   z.cashSales=z.byMethod['Cash']||0;
@@ -338,15 +341,18 @@ function cashMove(dir){
   };
 }
 function pendingPanel(){
-  var list=Object.keys(ordersMap).map(function(k){return Object.assign({id:k},ordersMap[k]);}).filter(function(o){return o.paymentStatus==='pending'&&!o.voided;}).sort(function(a,b){return (a.timestamp||0)-(b.timestamp||0);});
+  var all=Object.keys(ordersMap).map(function(k){return Object.assign({id:k},ordersMap[k]);}).filter(function(o){return !o.voided&&['grabfood','foodpanda'].indexOf(o.channel)<0;}).sort(function(a,b){return (a.timestamp||0)-(b.timestamp||0);}),list=all.filter(function(o){return o.paymentStatus==='pending';}),review=all.filter(function(o){return o.paymentStatus==='cashier_verified';});
   var tot=list.reduce(function(s,o){return s+(Number(o.total)||0);},0);
   var h='<div class="pz-card" style="margin-bottom:1rem;border:1px solid #ffe0a3;background:#fffdf5;">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:#8a6d1b;">⏳ Payments to verify</span><span style="font-weight:700;color:#8a6d1b;">'+peso(tot)+' · '+list.length+'</span></div>';
-  if(!list.length){return h+'<p class="pz-sub" style="margin:0.4rem 0 0;">Nothing pending — all non-cash sales verified. 👍</p></div>';}
-  h+='<p class="pz-sub" style="margin:0.3rem 0 0.6rem;">Check the money landed in your GCash/bank account, match the ref, then Verify. Owner, Superadmin, Admin, or Manager approval is required.</p>';
+  if(!list.length){h+='<p class="pz-sub" style="margin:0.4rem 0 0;">Nothing awaiting cashier verification.</p>';}else{
+  h+='<p class="pz-sub" style="margin:0.3rem 0 0.6rem;">Cashier checks the actual receiving account and reference before releasing the sale.</p>';
   h+='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.8rem;"><thead><tr style="text-align:left;color:var(--tl);"><th style="padding:0.3rem;">Sale</th><th style="padding:0.3rem;">Amount</th><th style="padding:0.3rem;">Method</th><th style="padding:0.3rem;">Ref no.</th><th style="padding:0.3rem;">Time</th><th></th></tr></thead><tbody>';
   h+=list.map(function(o){var refs=(o.payments||[]).filter(function(p){return p.ref;}).map(function(p){return esc(p.ref);}).join(', ')||'—';var meth=(o.payments&&o.payments.length>1)?'Split':esc(o.payment||'');return '<tr style="border-top:1px solid #eee;"><td style="padding:0.3rem;font-weight:600;">'+esc(o.id)+'</td><td style="padding:0.3rem;">'+peso(o.total)+'</td><td style="padding:0.3rem;">'+meth+'</td><td style="padding:0.3rem;">'+refs+'</td><td style="padding:0.3rem;color:var(--tl);">'+esc(o.time||'')+'</td><td style="padding:0.3rem;"><button class="pz-btn ok" data-verify="'+esc(o.id)+'" style="padding:0.25rem 0.6rem;">✅ Verify</button></td></tr>';}).join('');
-  h+='</tbody></table></div></div>';
+  h+='</tbody></table></div>';}
+  h+='<div style="border-top:1px solid #eadfca;margin-top:.8rem;padding-top:.8rem;display:flex;justify-content:space-between;"><b style="color:#0c5460;">Manager revalidation</b><b>'+review.length+'</b></div>';
+  if(!review.length)h+='<p class="pz-sub" style="margin:.35rem 0 0;">No cashier-verified payments awaiting review.</p>';else h+='<div style="overflow-x:auto;margin-top:.45rem;"><table style="width:100%;border-collapse:collapse;font-size:.8rem;"><tbody>'+review.map(function(o){var refs=paysOf(o).filter(function(p){return p.ref;}).map(function(p){return esc(p.ref);}).join(', ')||'—';return'<tr style="border-top:1px solid #eee;"><td style="padding:.35rem;font-weight:600;">'+esc(o.id)+'</td><td style="padding:.35rem;">'+peso(o.total)+'</td><td style="padding:.35rem;">'+esc(o.payment||'')+'</td><td style="padding:.35rem;">'+refs+'</td><td style="padding:.35rem;"><button class="pz-btn ok" data-validate="'+esc(o.id)+'" style="padding:.25rem .6rem;">Manager validate</button></td></tr>';}).join('')+'</tbody></table></div>';
+  h+='</div>';
   return h;
 }
 function renderOps(){
@@ -359,7 +365,7 @@ function renderOps(){
     var z=computeZ(activeShift);
     html+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;"><div><span style="color:#2a9d5c;font-weight:700;">🟢 Shift open</span> · Cashier <b>'+esc(activeShift.staff)+'</b> · since '+new Date(activeShift.openAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})+'</div><button class="pz-btn warn" id="opsClose">Close shift &amp; Z-report</button></div>';
     html+='<div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap;align-items:center;"><button class="pz-btn ok" id="opsReview">📋 Shift review</button><button class="pz-btn sec" id="opsCashIn">➕ Cash in</button>'+(denomTrackingOnR()?'<button class="pz-btn sec" id="opsSwap">🔁 Break a bill</button>':'')+'<span style="font-size:0.72rem;color:var(--tl);">For expenses, top up <b>Petty Cash</b> (Replenish → from register) and disburse with a voucher — no direct cash-out from the drawer.</span></div>';
-    html+='<div class="az-kpis" style="margin-top:0.8rem;">'+kpi('Sales',z.tx)+kpi('Net',peso(z.net))+kpi('Cash in',peso(z.cashSales))+kpi('Tips',peso(z.tips))+kpi('Expected drawer',peso(z.expectedCash))+kpi('Cash to settle',peso(z.cashToSettle))+kpi('Voids',z.voidCount)+kpi('Refunds',peso(z.refunds))+kpi('⏳ Unverified',peso(z.pending)+(z.pendingCount?' ('+z.pendingCount+')':''))+'</div>';
+    html+='<div class="az-kpis" style="margin-top:0.8rem;">'+kpi('Sales',z.tx)+kpi('Net',peso(z.net))+kpi('Cash in',peso(z.cashSales))+kpi('Tips',peso(z.tips))+kpi('Expected drawer',peso(z.expectedCash))+kpi('Cash to settle',peso(z.cashToSettle))+kpi('Voids',z.voidCount)+kpi('Refunds',peso(z.refunds))+kpi('⏳ Cashier check',peso(z.pending)+(z.pendingCount?' ('+z.pendingCount+')':''))+kpi('🔎 Manager review',peso(z.managerPending)+(z.managerPendingCount?' ('+z.managerPendingCount+')':''))+'</div>';
   } else {
     var opts=staffArr().map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+' ('+esc(s.role||'cashier')+')</option>';}).join('');
     html+='<div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Open a shift</div>'
@@ -388,6 +394,7 @@ function renderOps(){
   root.innerHTML=html;
   // wire
   root.querySelectorAll('[data-verify]').forEach(function(b){b.onclick=function(){window.__posVerify(b.getAttribute('data-verify'));};});
+  root.querySelectorAll('[data-validate]').forEach(function(b){b.onclick=function(){validatePayment(b.getAttribute('data-validate'));};});
   var _al=document.getElementById('opsArchiveLog'); if(_al)_al.onclick=archiveOldActivity;
   var _lt=document.getElementById('opsLogToggle'); if(_lt)_lt.onclick=function(){logCollapsed=!logCollapsed;var b=document.getElementById('opsLogBody');if(b)b.style.display=logCollapsed?'none':'';_lt.innerHTML=(logCollapsed?'▸':'▾')+' Activity log <span style="font-weight:400;color:var(--tl);font-size:0.78rem;">('+acts.length+')</span>';};
   var _cs=document.getElementById('opsCardShift'); if(_cs){_cs.onchange=function(){cardShiftId=this.value;renderShiftCard();};renderShiftCard();}
@@ -606,7 +613,8 @@ function showZ(shift,z,existingWindow){
     +'<div><b>Sales by channel</b></div><table>'+([['instore','In-store'],['online','Online Orders'],['grabfood','GrabFood'],['foodpanda','FoodPanda']].map(function(c){var v=(z.byChannel&&z.byChannel[c[0]])||0;if(!v&&c[0]!=='instore')return '';return '<tr><td>'+c[1]+'</td><td style="text-align:right;">'+peso(v)+'</td></tr>';}).join(''))+'<tr style="border-top:1px solid #000;"><td><b>Total by channel</b></td><td style="text-align:right;"><b>'+peso(channelTotal)+'</b></td></tr></table><div style="font-size:9px;">Online Orders are verified non-cash sales. GrabFood/FoodPanda are platform receivables. None increases drawer cash.</div><hr>'
     +'<div><b>By payment method</b></div><table>'+methods+'<tr style="border-top:1px solid #000;"><td><b>Total by payment method</b></td><td style="text-align:right;"><b>'+peso(methodTotal)+'</b></td></tr></table><hr>'
     +'<div><b>Sales this shift ('+saleList.length+')</b></div><table>'+(saleRows||'<tr><td colspan="2">None</td></tr>')+'<tr style="border-top:1px solid #000;"><td><b>Total sales this shift</b></td><td style="text-align:right;"><b>'+peso(salesTotal)+'</b></td></tr></table><hr>'
-    +(z.pendingCount?'<div style="color:#8a6d1b;"><b>⏳ Non-cash pending verification: '+peso(z.pending)+' ('+z.pendingCount+')</b></div><div style="font-size:9px;">Not yet confirmed in the account at close. Verify these landed.</div><hr>':'')
+    +(z.pendingCount?'<div style="color:#8a6d1b;"><b>⏳ Awaiting cashier verification: '+peso(z.pending)+' ('+z.pendingCount+')</b></div><div style="font-size:9px;">Not yet confirmed in the actual receiving account.</div><hr>':'')
+    +(z.managerPendingCount?'<div style="color:#0c5460;"><b>🔎 Awaiting manager revalidation: '+peso(z.managerPending)+' ('+z.managerPendingCount+')</b></div><div style="font-size:9px;">Cashier verified; independent manager review remains open.</div><hr>':'')
     +(cashMoveRows?'<div><b>Cash movements</b></div><table>'+cashMoveRows+'<tr style="border-top:1px solid #000;"><td><b>Net cash movements</b></td><td style="text-align:right;"><b>'+peso((Number(z.payIns)||0)-(Number(z.payOuts)||0))+'</b></td></tr></table><hr>':'')
     +'<table><tr><td>Voids</td><td style="text-align:right;">'+z.voidCount+' ('+peso(z.voidAmt)+')</td></tr>'
     +'<tr><td>Opening float</td><td style="text-align:right;">'+peso(shift.openingFloat)+'</td></tr>'
