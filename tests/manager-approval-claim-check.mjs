@@ -8,7 +8,7 @@ const end=source.indexOf('\nexports.createManagerApproval',start);
 if(start<0||end<0)throw new Error('Privileged approval claim function not found');
 
 const actions=[
-  'confirm_payment','refund','void','settle_platform_payout','reopen_cash_count',
+  'validate_payment','refund','void','settle_platform_payout','reopen_cash_count',
   'delete_archived_order','review_discrepancy','approve_petty_voucher',
   'reject_petty_voucher','void_petty_voucher','manual_discount','cash_in','fixed_float_exception',
 ];
