@@ -348,6 +348,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!packagesSource.includes('class="pkg-recipe-list"')||!backofficeCss.includes('.pkg-recipe-list{display:flex;flex-wrap:wrap')||packagesSource.includes('max-height:120px;overflow:auto'))fail('Package recipe selector must show every recipe without a nested scrollbar');
   for(const marker of ["subscribe('inventorySku'",'recipeUsesInventory','Recipe items without approved brand','purchase-sku-cell','Select an active approved brand','skuId:skuId','lines:invoiceLines'])if(!posSource.includes(marker))fail(`Release 7H SKU/brand integrity marker missing: ${marker}`);
   for(const marker of ['function openSkuManager(id,onUse)','data-skuse','Use this brand','data-pmanage-line','selected for this purchase'])if(!posSource.includes(marker))fail(`Purchase approved-brand handoff marker missing: ${marker}`);
+  for(const marker of ['reconcilePurchasePayable','Repair missing payable',"rid='rcpt_'+invoiceId+'_'+lineIndex","bid='bat_'+invoiceId+'_'+lineIndex","P.pay==='account')return a.reconcilePurchasePayable"])if(!posSource.includes(marker)&&!functionsSource.includes(marker))fail(`Purchase/payable reconciliation marker missing: ${marker}`);
   if(!posSource.includes("recipeItem:true")||!posSource.includes('Used in recipes')||!posSource.includes("seededFrom:'purchase'"))fail('Release 7H new recipe-item SKU creation is incomplete');
   if(!backofficeCss.includes('.inv-sku-link.linked')||!backofficeCss.includes('.purchase-sku-cell.required'))fail('Release 7H SKU linkage states are not visibly distinguished');
   for(const marker of ['SKU / stock item','✓ Recipe · SKU ready','Add brand','Brands ('])if(!posSource.includes(marker))fail(`Inventory SKU/brand language is incomplete: ${marker}`);
@@ -360,6 +361,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!workspaceShellSource.includes('dataset.adminWorkspace')||!workspaceShellSource.includes('dataset.adminArea')||!workspaceShellSource.includes('operations:System health'))fail('Phase 7F domain ledger rail or System Health shortcut missing');
   const overviewCommandSource=fs.readFileSync(path.join(root,'assets','js','admin','overview-command.mjs'),'utf8');
   const moduleLoaderSource=fs.readFileSync(path.join(root,'assets','js','admin','module-loader.js'),'utf8');
+  if(!moduleLoaderSource.includes("purchases:['finance','pos']"))fail('Purchases does not preload the finance module before accepting payment terms');
   if(!adminHtml.includes('id="overviewCommandCenter"')||!adminHtml.includes('assets/js/admin/overview-command.mjs'))fail('Phase 7G Overview Command Center is not mounted');
   for(const marker of ['getOperationalExceptions','AccazaOfflineQueue.summary','__accazaLoadAdminModule','Service now','data-occ-route','MutationObserver'])if(!overviewCommandSource.includes(marker))fail(`Phase 7G command-center marker missing: ${marker}`);
   for(const duplicate of ['Morning service','Immediate attention','Work queue','Open full health check'])if(overviewCommandSource.includes(duplicate))fail(`Overview duplicates Operations Center content: ${duplicate}`);

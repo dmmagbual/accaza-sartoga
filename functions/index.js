@@ -1122,6 +1122,48 @@ exports.postFinancialCommand = onCall(
   },
 );
 
+// Reconciles the one-to-one link between an on-account purchase invoice and
+// its payable. Safe to retry: the invoice, payable and financial movement use
+// deterministic IDs, while legacy/manual matches are linked instead of copied.
+exports.reconcilePurchasePayable = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["purchases", "payables"]), data = request.data || {};
+    const requestedId = financeText(data.invoiceId, 160), requestedRef = financeText(data.invoiceRef, 120);
+    const invoices = (await db.ref("/purchaseInvoices").get()).val() || {};
+    let invoiceId = requestedId && invoices[requestedId] ? requestedId : "";
+    if (!invoiceId && requestedRef) {
+      const matches = Object.keys(invoices).filter((id) => financeText(invoices[id] && invoices[id].ref, 120).toLowerCase() === requestedRef.toLowerCase());
+      if (matches.length > 1) throw new HttpsError("failed-precondition", "More than one purchase uses this invoice reference. Use the purchase invoice ID.");
+      invoiceId = matches[0] || "";
+    }
+    if (!invoiceId) throw new HttpsError("not-found", "Purchase invoice was not found.");
+    const invoice = invoices[invoiceId] || {};
+    if (invoice.payMode !== "account") throw new HttpsError("failed-precondition", "This purchase was not recorded as on account.");
+    const amount = Financial.money(invoice.total); if (!(amount > 0)) throw new HttpsError("failed-precondition", "Purchase invoice total is invalid.");
+    const party = financeText(invoice.supplier || "Supplier", 120), ref = financeText(invoice.ref || invoiceId, 120), date = financeDate(invoice.date), due = data.due ? financeDate(data.due) : (invoice.due ? financeDate(invoice.due) : "");
+    const canonicalId = financeKey(`ap_${invoiceId}`, "Payable ID"), movementId = financeKey(`purchase_ap_${invoiceId}`, "Movement ID"), payables = (await db.ref("/payables").get()).val() || {};
+    const linkedId = financeText(invoice.payableId, 160), exact = [], refConflicts = [];
+    Object.keys(payables).forEach((id) => {const row = payables[id] || {}, sameLink = id === canonicalId || id === linkedId || row.purchaseInvoiceId === invoiceId || row.movementId === movementId, sameRef = ref && financeText(row.ref, 120).toLowerCase() === ref.toLowerCase();if (sameLink || (sameRef && Financial.money(row.amount) === amount && financeText(row.party, 120).toLowerCase() === party.toLowerCase())) exact.push(id);else if (sameRef) refConflicts.push(id);});
+    const unique = [...new Set(exact)];
+    if (unique.length > 1) throw new HttpsError("failed-precondition", "Multiple payables may belong to this purchase. Management review is required before recovery.");
+    if (!unique.length && refConflicts.length) throw new HttpsError("failed-precondition", "A payable with this invoice reference has a different supplier or amount. Review it before recovery.");
+    const now = Date.now(), auditId = `${now}_purchase_payable_${invoiceId}`;
+    if (unique.length === 1) {
+      const payableId = unique[0], row = payables[payableId] || {};
+      if (Financial.money(row.amount) !== amount) throw new HttpsError("failed-precondition", "The linked payable amount does not match the purchase invoice.");
+      await db.ref().update({[`purchaseInvoices/${invoiceId}/payableId`]: payableId,[`purchaseInvoices/${invoiceId}/payableReconciledAt`]: now,[`purchaseInvoices/${invoiceId}/due`]: due || row.due || "",[`payables/${payableId}/purchaseInvoiceId`]: invoiceId,[`operationalAudit/${auditId}`]: {action:"reconcile_purchase_payable",sourceType:"purchaseInvoice",sourceId:invoiceId,payableId,result:"linked_existing",amount,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}});
+      return {invoiceId, payableId, amount, result: "linked_existing"};
+    }
+    const payable = {party,type:"inventory",amount,date,due,ref,status:"open",movementId,purchaseInvoiceId:invoiceId,ts:now,createdBy:actor.uid,recovered:data.recovery === true,schemaVersion:1};
+    const writes = {[`payables/${canonicalId}`]:payable,[`purchaseInvoices/${invoiceId}/payableId`]:canonicalId,[`purchaseInvoices/${invoiceId}/payableReconciledAt`]:now,[`purchaseInvoices/${invoiceId}/due`]:due,[`operationalAudit/${auditId}`]:{action:"reconcile_purchase_payable",sourceType:"purchaseInvoice",sourceId:invoiceId,payableId:canonicalId,result:"created",amount,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}};
+    const movementSnap = await db.ref(`/financialMovements/${movementId}`).get();
+    if (movementSnap.exists()) await db.ref().update(writes);
+    else {const movement = Financial.movement("payable_created", "payable", canonicalId, [Financial.line("expense_or_inventory:inventory", amount, 0, party), Financial.line(`liability:payable:${canonicalId}`, 0, amount, party)], {occurredAt:Number(Date.parse(`${date}T00:00:00+08:00`)||now),actorName:actor.role});await commitFinancial(db, movementId, movement, actor, writes);}
+    return {invoiceId, payableId: canonicalId, amount, result: movementSnap.exists() ? "recreated_from_movement" : "created"};
+  },
+);
+
 exports.settlePlatformPayout = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {

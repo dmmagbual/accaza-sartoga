@@ -3,7 +3,7 @@
   var base='assets/js/admin/';
   var files={offlinequeue:'offline-queue.js',costing:'../shared/costing.js',pos:'pos.js',channelpricing:'channel-pricing.js',analytics:'analytics.js',register:'register.js',staff:'staff-access.js',packages:'packages.js',finance:'finance.js',operations:'operations-dashboard.js'};
   var routes={
-    pos:['pos'],inventory:['pos'],purchases:['pos'],recipes:['pos'],usage:['pos'],channelpricing:['pos','channelpricing'],dedupe:['pos'],
+    pos:['pos'],inventory:['pos'],purchases:['finance','pos'],recipes:['pos'],usage:['pos'],channelpricing:['pos','channelpricing'],dedupe:['pos'],
     analytics:['pos','analytics'],pnl:['pos','analytics'],payouts:['pos','analytics'],stockvalue:['pos','analytics'],dailyreport:['pos','analytics'],
     ops:['pos','register'],possettings:['pos','register'],discrepancy:['pos','register'],petty:['pos','register'],packages:['pos','packages'],staffaccess:['staff'],
     cashflow:['finance'],receivables:['finance'],payables:['finance'],operations:['operations']

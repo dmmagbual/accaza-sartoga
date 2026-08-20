@@ -13,7 +13,7 @@ import{createCustomerOrderTracker}from"./customer-order-tracker.mjs";
 import{escHtml,safeImageSrc}from"./shared-ui.mjs";
 import{installWorkspaceShell}from"./workspace-shell.mjs";
 
-const {getPaymentProof:getPaymentProofCall,ensureActiveOrders:ensureActiveOrdersCall,updateOrderStatus:updateOrderStatusCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,archiveActivityLog:archiveActivityLogCall}=callables;
+const {getPaymentProof:getPaymentProofCall,ensureActiveOrders:ensureActiveOrdersCall,updateOrderStatus:updateOrderStatusCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,reconcilePurchasePayable:reconcilePurchasePayableCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,archiveActivityLog:archiveActivityLogCall}=callables;
 window.__accazaAuth=auth;
 const subscriptionHub=createSubscriptionHub(db,{ref,onValue,query,orderByChild,limitToLast,endBefore,get});
 window.__accazaLiveStats=function(){return subscriptionHub.stats();};
@@ -69,6 +69,7 @@ window.__accaza={
   ensureInventoryLedger:function(){return ensureInventoryLedgerCall({});},
   validateRecipeDefinition:function(recipe){return validateRecipeDefinitionCall({recipe:recipe});},
   postFinancialCommand:function(command){return postFinancialCommandCall(command);},
+  reconcilePurchasePayable:function(command){return reconcilePurchasePayableCall(command);},
   settlePlatformPayout:function(command){return settlePlatformPayoutCall(command);},
   processOrderAdjustment:function(command){return processOrderAdjustmentCall(command);},
   ensureFinancialLedger:function(){return ensureFinancialLedgerCall({});},
