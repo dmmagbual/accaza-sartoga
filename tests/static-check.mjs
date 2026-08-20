@@ -358,6 +358,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(financeSource.includes('<option>inventory</option>'))fail('Manual Payables entry still offers inventory as a type');
   if(!financeSource.includes("filter(function(x){return !x.status||x.status==='open';})"))fail('Reversed payables can still appear in Open Payables');
   if(!functionsSource.includes('Inventory payables must be created from Purchases'))fail('Server does not block manually created inventory payables');
+  for(const marker of ['exports.managePurchaseCorrection = onCall','purchase_reversal','reverse_purchase','Not enough remaining stock to reverse'])if(!functionsSource.includes(marker))fail(`Purchase correction authority missing: ${marker}`);
+  for(const marker of ['Correct purchase details','Reverse &amp; re-enter',"managerApproval('reverse_purchase'",'correctedPurchaseDraft(inv)'])if(!posSource.includes(marker))fail(`Purchase correction interface missing: ${marker}`);
   if(!posSource.includes("recipeItem:true")||!posSource.includes('Used in recipes')||!posSource.includes("seededFrom:'purchase'"))fail('Release 7H new recipe-item SKU creation is incomplete');
   if(!backofficeCss.includes('.inv-sku-link.linked')||!backofficeCss.includes('.purchase-sku-cell.required'))fail('Release 7H SKU linkage states are not visibly distinguished');
   for(const marker of ['SKU / stock item','✓ Recipe · SKU ready','Add brand','Brands ('])if(!posSource.includes(marker))fail(`Inventory SKU/brand language is incomplete: ${marker}`);
