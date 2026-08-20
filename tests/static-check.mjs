@@ -349,6 +349,11 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   for(const marker of ["subscribe('inventorySku'",'recipeUsesInventory','Recipe items without approved brand','purchase-sku-cell','Select an active approved brand','skuId:skuId','lines:invoiceLines'])if(!posSource.includes(marker))fail(`Release 7H SKU/brand integrity marker missing: ${marker}`);
   for(const marker of ['function openSkuManager(id,onUse)','data-skuse','Use this brand','data-pmanage-line','selected for this purchase'])if(!posSource.includes(marker))fail(`Purchase approved-brand handoff marker missing: ${marker}`);
   for(const marker of ['reconcilePurchasePayable','Repair missing payable',"rid='rcpt_'+invoiceId+'_'+lineIndex","bid='bat_'+invoiceId+'_'+lineIndex","P.pay==='account')return a.reconcilePurchasePayable"])if(!posSource.includes(marker)&&!functionsSource.includes(marker))fail(`Purchase/payable reconciliation marker missing: ${marker}`);
+  const financeSource=fs.readFileSync(path.join(root,'assets','js','admin','finance.js'),'utf8');
+  for(const marker of ['function openPayableDetail(id)','data-apdetail','<th>Reference</th>','data-apreverse','Inventory liabilities are created only from Purchases'])if(!financeSource.includes(marker))fail(`Payables control/detail marker missing: ${marker}`);
+  if(financeSource.includes('<option>inventory</option>'))fail('Manual Payables entry still offers inventory as a type');
+  if(!financeSource.includes("filter(function(x){return !x.status||x.status==='open';})"))fail('Reversed payables can still appear in Open Payables');
+  if(!functionsSource.includes('Inventory payables must be created from Purchases'))fail('Server does not block manually created inventory payables');
   if(!posSource.includes("recipeItem:true")||!posSource.includes('Used in recipes')||!posSource.includes("seededFrom:'purchase'"))fail('Release 7H new recipe-item SKU creation is incomplete');
   if(!backofficeCss.includes('.inv-sku-link.linked')||!backofficeCss.includes('.purchase-sku-cell.required'))fail('Release 7H SKU linkage states are not visibly distinguished');
   for(const marker of ['SKU / stock item','✓ Recipe · SKU ready','Add brand','Brands ('])if(!posSource.includes(marker))fail(`Inventory SKU/brand language is incomplete: ${marker}`);
