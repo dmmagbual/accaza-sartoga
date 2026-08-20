@@ -99,6 +99,8 @@ try{
   if(!adminSource.includes("subscriptionHub.subscribe('activeOrders'"))fail('Release 2C active-order projection is not the live admin source');
   if(!adminSource.includes("a.subscribe('orders',function(s){ordersMap=s.val()"))fail('analytics does not use bounded authoritative order history');
   if(!adminSource.includes('const HISTORY_BOUNDS='))fail('bounded history query configuration missing');
+  if(!adminSource.includes("purchaseInvoices:{field:'ts',limit:250,page:250}")||!adminSource.includes("purchases:['purchaseInvoices','stockReceipts','inventoryMovements']")||!adminSource.includes("purchaseInvoices:['purchases']"))fail('Purchase invoices are not attached and paginated in the Purchases workspace');
+  if(!fs.readFileSync(path.join(root,'database.rules.json'),'utf8').includes('"purchaseInvoices":     { ".indexOn": "ts"'))fail('Purchase invoice history query index is missing');
   if(!adminSource.includes('loadOlder:async function(path)'))fail('history pagination loader missing');
   if(adminSource.includes('function tryDeduct('))fail('retired browser inventory deduction still exists');
   if(adminHtml.includes('xlsx.full.min.js'))fail('Release 2D still downloads SheetJS during admin startup');
