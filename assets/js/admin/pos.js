@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var inventoryMap={}, inventorySkuMap={}, recipesMap={}, posMeta={vat:false,vatRate:12}, optRecipesMap={}, usageMap={}, channelPricesMap={}, posAvailMap={}, inventoryMovementsMap={};
+var inventoryMap={}, inventorySkuMap={}, purchaseInvoicesMap={}, recipesMap={}, posMeta={vat:false,vatRate:12}, optRecipesMap={}, usageMap={}, channelPricesMap={}, posAvailMap={}, inventoryMovementsMap={};
 // Order reference: PREFIX-XXXXXX (6 base36 chars from a monotonic timestamp).
 // Prefix namespaces the channel so IDs never collide across channels; the
 // monotonic counter guarantees uniqueness for rapid same-device sales offline.
@@ -170,6 +170,7 @@ function init(){
   a.subscribe('inventory', function(s){ inventoryMap=s.val()||{}; if(isTab('inventory'))renderInventory(); if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateLowStockBadge(); updateCostBadge(); });
   a.subscribe('inventorySku', function(s){ inventorySkuMap=s.val()||{}; if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); });
   a.subscribe('inventoryMovements', function(s){ inventoryMovementsMap=s.val()||{}; if(isTab('inventory'))renderInventory(); });
+  a.subscribe('purchaseInvoices', function(s){ purchaseInvoicesMap=s.val()||{}; if(isTab('purchases'))renderPurchases(); });
   a.subscribe('recipes', function(s){ recipesMap=s.val()||{}; if(isTab('recipes')&&!recipeEditing)renderRecipes(); if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); updateCostBadge(); });
   a.subscribe('optionRecipes', function(s){ var raw=s.val()||{}; var m={}; Object.keys(raw).forEach(function(k){var v=raw[k]||{}; var lb=v.label||k; m[lb]=v;}); optRecipesMap=m; if(isTab('recipes')&&!recipeEditing)renderRecipes(); if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); });
   a.subscribe('internalUsage', function(s){ usageMap=s.val()||{}; if(isTab('usage'))renderUsage(); });
@@ -767,7 +768,7 @@ function receiveStock(id){
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.4rem;"><div class="purchase-sku-cell '+(recipeRequired?'required':'optional')+'" style="flex:1;min-width:180px;"><span class="pz-lbl">Approved brand '+(recipeRequired?'<b>required</b>':'(optional)')+'</span><select class="pz-in" id="rcSku"><option value="">— '+(recipeRequired?'select brand':'no approved brand / legacy receipt')+' —</option>'+activeSkus.map(function(s,ix){return '<option value="'+esc(s.id)+'"'+(recipeRequired&&activeSkus.length===1&&ix===0?' selected':'')+'>'+esc(skuDisplay(s))+'</option>';}).join('')+'</select></div><div style="flex:1;min-width:120px;"><span class="pz-lbl">Brand</span><input class="pz-in" id="rcBrand" placeholder="e.g. Arla"'+(recipeRequired?' readonly':'')+'/></div><div><span class="pz-lbl">Expiry (opt.)</span><input class="pz-in" id="rcExpiry" type="date"/></div><div><span class="pz-lbl">Lot # (opt.)</span><input class="pz-in" id="rcLot" style="width:90px;"/></div></div>'
     +'<label style="display:block;font-size:0.85rem;margin-top:0.6rem;cursor:pointer;"><input type="checkbox" id="rcAvg" checked/> Update item cost to weighted average</label>'
     +'<div style="margin-top:0.6rem;border-top:1px solid var(--cd);padding-top:0.5rem;"><span class="pz-lbl">How was it paid?</span>'
-      +'<label style="display:block;font-size:0.85rem;cursor:pointer;"><input type="radio" name="rcPay" value="none" checked/> Just receive (no money entry)</label>'
+      +'<label style="display:block;font-size:0.85rem;cursor:pointer;"><input type="radio" name="rcPay" value="pending" checked/> Invoice pending — records a provisional supplier obligation</label>'
       +'<label style="display:block;font-size:0.85rem;cursor:pointer;"><input type="radio" name="rcPay" value="paid"'+(accs.length?'':' disabled')+'/> Paid now from '+(accs.length?('<select class="pz-in" id="rcAcct" style="width:auto;display:inline-block;">'+accOpts+'</select>'):'<span style="color:var(--tl);">(add a bank/e-wallet account in Cash Flow first)</span>')+'</label>'
       +'<label style="display:block;font-size:0.85rem;cursor:pointer;"><input type="radio" name="rcPay" value="account"/> On account — creates a Payable, due <input class="pz-in" id="rcDue" type="date" style="width:auto;display:inline-block;"/></label>'
     +'</div>'
@@ -786,8 +787,10 @@ function receiveStock(id){
     var c=Number(mask.querySelector('#rcCost').value)||0; var tot=Math.round(q*c*100)/100;
     var sup=(mask.querySelector('#rcSup').value||'').trim(); var ref=(mask.querySelector('#rcRef').value||'').trim();
     var date=mask.querySelector('#rcDate').value||new Date().toISOString().slice(0,10); var by=(mask.querySelector('#rcBy').value||'').trim();
-    var pay=(mask.querySelector('input[name=rcPay]:checked')||{}).value||'none';
+    var pay=(mask.querySelector('input[name=rcPay]:checked')||{}).value||'pending';
     var a=A(); var rid=pendingReceiptId||(pendingReceiptId=uid('rcpt_')); var payAcct='', payableId='';
+    if(!sup){alert('Enter the supplier. Stock cannot be received without a payment or supplier obligation.');return;}
+    if((pay==='account'||pay==='pending')&&!(window.__cf&&window.__cf.addPayable)){alert('Purchase liability service is not ready. Refresh the portal and try again.');return;}
     if(pay==='paid'){ var accEl=mask.querySelector('#rcAcct'); payAcct=accEl?accEl.value:''; if(!payAcct){alert('Pick an account.');return;} }
     var skuId=mask.querySelector('#rcSku').value||'', selectedSku=inventorySkuMap[skuId];
     if(recipeRequired&&(!selectedSku||selectedSku.masterId!==id||selectedSku.active===false)){alert('Select an active approved brand before receiving this recipe item.');return;}
@@ -795,7 +798,7 @@ function receiveStock(id){
     var now=Date.now(), mid=movementId('purchase',rid,id);
     postMovements([{movementId:mid,itemId:id,type:'purchase',qty:q,unitCost:c,sourceType:'stock-receipt',sourceId:rid,note:(sup||'Supplier')+(ref?' · '+ref:''),actorName:by,occurredAt:now}]).then(function(){
       if(pay==='paid'&&window.__cf&&window.__cf.postOut)return window.__cf.postOut({commandId:'purchase_cash_'+rid,date:date,accountId:payAcct,amount:tot,party:sup||i.name,ref:ref||i.name,category:'Purchases',source:'purchase',linkId:rid,note:'Received '+num(q)+' '+unit+' '+i.name});
-      if(pay==='account'&&window.__cf&&window.__cf.addPayable){var due=mask.querySelector('#rcDue').value||'';return window.__cf.addPayable({commandId:'purchase_ap_'+rid,documentId:'ap_'+rid,party:sup||'Supplier',type:'inventory',amount:tot,date:date,due:due,ref:ref||i.name}).then(function(pid){payableId=pid;});}
+      if((pay==='account'||pay==='pending')&&window.__cf&&window.__cf.addPayable){var due=pay==='account'?(mask.querySelector('#rcDue').value||''):'';return window.__cf.addPayable({commandId:'purchase_ap_'+rid,documentId:'ap_'+rid,party:sup||'Supplier',type:pay==='pending'?'inventory_pending_invoice':'inventory',amount:tot,date:date,due:due,ref:ref||('PENDING-'+rid)}).then(function(pid){payableId=pid;});}
       return null;
     }).then(function(){
       var writes={};
@@ -811,9 +814,9 @@ function receiveStock(id){
    item's stock unit; cost stored at higher precision. Brand rides on the receipt/stock card.
    Deduction + recipes untouched — recipes keep costing at the item's blended average. */
 function purchBlank(){return {mode:'existing',ing:'',skuId:'',recipeItem:true,newName:'',newUnit:'ml',newType:'base',brand:'',recvUnit:'',qty:'',costMode:'unit',unitCost:'',lineTotal:'',expiry:'',lot:''};}
-function purchInit(){ if(!window.__purch){ window.__purch={supplier:'',ref:'',date:new Date().toISOString().slice(0,10),by:((window.__posShift&&window.__posShift.staff)||'Admin'),pay:'none',acct:'',due:'',lines:[purchBlank()]}; } }
+function purchInit(){ if(!window.__purch){ window.__purch={supplier:'',ref:'',date:new Date().toISOString().slice(0,10),by:((window.__posShift&&window.__posShift.staff)||'Admin'),pay:'pending',acct:'',due:'',lines:[purchBlank()]}; } }
 function purchaseLookup(title){var a=A();if(!a||!a.managePurchaseCorrection)return Promise.reject(new Error('Purchase correction service is unavailable. Refresh the portal.'));return F().run({title:title,subtitle:'Enter the exact supplier invoice reference.',submitLabel:'Find purchase',busyLabel:'Finding purchase…',fields:[{name:'invoiceRef',label:'Invoice / reference',required:true,value:(window.__purch&&window.__purch.ref)||'',maxLength:120}]},function(v){return a.managePurchaseCorrection({action:'lookup',invoiceRef:v.invoiceRef});}).then(function(r){return ((r&&r.data)||r||{}).invoice;});}
-function correctedPurchaseDraft(inv){return {supplier:inv.supplier||'',ref:inv.ref||'',date:new Date().toISOString().slice(0,10),by:inv.by||((window.__posShift&&window.__posShift.staff)||'Admin'),pay:inv.payMode||'none',acct:'',due:inv.due||'',lines:(inv.lines||[]).map(function(x){return {mode:'existing',ing:x.itemId||'',skuId:x.skuId||'',recipeItem:true,newName:'',newUnit:x.unit||'',newType:'base',brand:x.skuBrand||'',recvUnit:x.unit||'',qty:x.qty||'',costMode:'total',unitCost:'',lineTotal:x.total||'',expiry:'',lot:''};})};}
+function correctedPurchaseDraft(inv){return {supplier:inv.supplier||'',ref:inv.ref||'',date:new Date().toISOString().slice(0,10),by:inv.by||((window.__posShift&&window.__posShift.staff)||'Admin'),pay:inv.payMode==='none'?'pending':(inv.payMode||'pending'),acct:'',due:inv.due||'',lines:(inv.lines||[]).map(function(x){return {mode:'existing',ing:x.itemId||'',skuId:x.skuId||'',recipeItem:true,newName:'',newUnit:x.unit||'',newType:'base',brand:x.skuBrand||'',recvUnit:x.unit||'',qty:x.qty||'',costMode:'total',unitCost:'',lineTotal:x.total||'',expiry:'',lot:''};})};}
 var PURCH_UNITS=['ml','l','g','kg','pcs'];
 function purchCalc(ln){
   var inv=(ln.mode==='new')?{unit:ln.newUnit||'',stock:0,cost:0}:(inventoryMap[ln.ing]||null);
@@ -828,6 +831,9 @@ function purchCalc(ln){
   var newCost=denom>0?((before*oldCost+lineTotal)/denom):(stockAdd>0?lineTotal/stockAdd:0);
   return {inv:inv,stockUnit:inv.unit||'',recvUnit:recvUnit,qty:qty,stockAdd:Math.round(stockAdd*100000)/100000,lineTotal:Math.round(lineTotal*100)/100,before:before,oldCost:oldCost,newCost:Math.round(newCost*100000)/100000};
 }
+function purchaseStatusLabel(p){if(p.reversed)return 'Reversed';if(p.payMode==='paid')return 'Paid';if(p.payMode==='account')return 'On account';if(p.payMode==='pending')return 'Invoice pending';return 'Legacy — liability missing';}
+function purchaseHistoryHtml(){var rows=Object.keys(purchaseInvoicesMap).map(function(id){return Object.assign({id:id},purchaseInvoicesMap[id]);}).sort(function(a,b){return (Number(b.ts)||0)-(Number(a.ts)||0);}).slice(0,100);return '<div class="pz-h" style="margin-top:1.4rem;">Purchase history</div><p class="pz-sub">Review received purchases and their liability status. Legacy records require payable conversion or reversal.</p><div class="pz-card" style="overflow:auto;"><table class="pz-table" style="min-width:850px;width:100%;"><thead><tr><th>Date</th><th>Supplier</th><th>Reference</th><th>Status</th><th class="r">Amount</th><th>Actions</th></tr></thead><tbody>'+(rows.length?rows.map(function(p){return '<tr><td>'+esc(p.date||'—')+'</td><td>'+esc(p.supplier||'—')+'</td><td>'+esc(p.ref||p.id)+'</td><td>'+esc(purchaseStatusLabel(p))+'</td><td class="r">'+peso(p.total)+'</td><td><button class="pz-btn sec" data-purchase-details="'+esc(p.id)+'">Details</button>'+(p.payMode==='pending'&&!p.reversed?' <button class="pz-btn ok" data-purchase-finalize="'+esc(p.id)+'">Finalize invoice</button>':'')+(p.payMode==='none'&&!p.reversed?' <button class="pz-btn warn" data-purchase-legacy="'+esc(p.id)+'">Create liability</button>':'')+'</td></tr>';}).join(''):'<tr><td colspan="6">No purchases recorded.</td></tr>')+'</tbody></table></div>';}
+function showPurchaseDetails(id){var p=purchaseInvoicesMap[id];if(!p)return;var old=document.getElementById('purchaseDetailsMask');if(old)old.remove();var m=document.createElement('div');m.id='purchaseDetailsMask';m.className='pz-mask show';var lines=(p.lines||[]).map(function(x){return '<tr><td>'+esc(x.itemName||x.itemId||'')+'</td><td>'+esc(x.skuBrand||'—')+'</td><td class="r">'+num(x.qty)+' '+esc(x.unit||'')+'</td><td class="r">'+peso(x.total)+'</td></tr>';}).join('');m.innerHTML='<div class="pz-modal" style="max-width:720px;"><div style="display:flex;justify-content:space-between;gap:1rem;"><div><div class="pz-lbl">Purchase record</div><div class="pz-h">'+esc(p.supplier||'Supplier')+'</div><div>'+esc(p.ref||id)+'</div></div><button class="pz-btn sec" data-purchase-close>✕</button></div><div class="pz-card" style="margin-top:0.8rem;"><b>'+peso(p.total)+'</b> · '+esc(purchaseStatusLabel(p))+'<br><span class="pz-sub">Received '+esc(p.date||'—')+' by '+esc(p.by||'—')+(p.due?' · Due '+esc(p.due):'')+'</span></div><table class="pz-table" style="width:100%;"><thead><tr><th>Item</th><th>Brand</th><th class="r">Quantity</th><th class="r">Amount</th></tr></thead><tbody>'+lines+'</tbody></table><button class="pz-btn ok" data-purchase-close style="width:100%;margin-top:0.8rem;">Close</button></div>';document.body.appendChild(m);m.querySelectorAll('[data-purchase-close]').forEach(function(b){b.onclick=function(){m.remove();};});}
 function renderPurchases(){
   var root=document.getElementById('purchasesRoot'); if(!root)return;
   purchInit(); var P=window.__purch;
@@ -886,7 +892,7 @@ function renderPurchases(){
   }).join('');
   var payBlock='<div style="margin-top:0.6rem;border-top:1px solid var(--cd);padding-top:0.5rem;"><span class="pz-lbl">Payment (whole invoice)</span>'
     +'<div style="display:flex;gap:1.2rem;flex-wrap:wrap;align-items:center;">'
-      +'<label style="font-size:0.85rem;cursor:pointer;white-space:nowrap;"><input type="radio" name="ppay" data-pf="pay" value="none"'+(P.pay==='none'?' checked':'')+'/> Just receive</label>'
+      +'<label style="font-size:0.85rem;cursor:pointer;white-space:nowrap;"><input type="radio" name="ppay" data-pf="pay" value="pending"'+(P.pay==='pending'||P.pay==='none'?' checked':'')+'/> Invoice pending — provisional obligation</label>'
       +'<label style="font-size:0.85rem;cursor:pointer;white-space:nowrap;"><input type="radio" name="ppay" data-pf="pay" value="paid"'+(P.pay==='paid'?' checked':'')+(accs.length?'':' disabled')+'/> Paid now from '+(accs.length?('<select class="pz-in" id="purAcct" style="width:auto;display:inline-block;">'+accOpts+'</select>'):'<span style="color:var(--tl);">(add account in Cash Flow)</span>')+'</label>'
       +'<label style="font-size:0.85rem;cursor:pointer;white-space:nowrap;"><input type="radio" name="ppay" data-pf="pay" value="account"'+(P.pay==='account'?' checked':'')+'/> On account, due <input class="pz-in" id="purDue" type="date" value="'+esc(P.due||'')+'" style="width:auto;display:inline-block;"/></label>'
     +'</div></div>';
@@ -902,7 +908,7 @@ function renderPurchases(){
     +'<button class="pz-btn sec" id="purAddLine" style="padding:0.35rem 0.8rem;margin-bottom:0.8rem;">+ line</button>'
     +'<div class="pz-card" style="border:2px solid var(--bd);display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:var(--bd);">INVOICE TOTAL</span><span style="font-weight:700;font-size:1.2rem;color:var(--bd);" id="purTotal">'+peso(invTotal)+'</span></div>'
     +'<div style="display:flex;gap:0.5rem;margin-top:0.8rem;flex-wrap:wrap;"><button class="pz-btn ok" id="purPost" style="padding:0.6rem 1.4rem;">Receive all</button><button class="pz-btn sec" id="purReset">Clear</button><button class="pz-btn sec" id="purCorrectDetails">Correct purchase details</button><button class="pz-btn warn" id="purReversePurchase">Reverse &amp; re-enter</button><button class="pz-btn sec" id="purRepairPayable">Repair missing payable</button></div>'
-    +'<div id="purMsg" style="font-size:0.8rem;color:var(--tl);margin-top:0.4rem;"></div>';
+    +'<div id="purMsg" style="font-size:0.8rem;color:var(--tl);margin-top:0.4rem;"></div>'+purchaseHistoryHtml();
   function hb(id,f){var el=document.getElementById(id);if(el)el.oninput=function(){P[f]=el.value;};}
   hb('purSupplier','supplier');hb('purRef','ref');hb('purDate','date');hb('purBy','by');
   var da=document.getElementById('purAcct');if(da)da.onchange=function(){P.acct=da.value;};
@@ -926,6 +932,9 @@ function renderPurchases(){
   var prv=document.getElementById('purReversePurchase');if(prv)prv.onclick=function(){purchaseLookup('Reverse a purchase').then(function(inv){return F().run({title:'Reverse purchase and prepare corrected entry',subtitle:(inv.supplier||'Supplier')+' · '+peso(inv.total)+'. This reverses stock and the linked financial entry. A manager approval is required.',submitLabel:'Request approval & reverse',busyLabel:'Reversing purchase…',fields:[{name:'reason',label:'Reversal reason',type:'textarea',required:true,maxLength:300},{name:'confirmed',label:'I understand the original purchase will remain in the audit trail as reversed',type:'checkbox',required:true}]},function(v){return A().managerApproval('reverse_purchase',inv.id,inv.total,v.reason).then(function(ap){return A().managePurchaseCorrection({action:'reverse',invoiceId:inv.id,reason:v.reason,approvalId:ap.approvalId});}).then(function(){return inv;});});}).then(function(inv){window.__purch=correctedPurchaseDraft(inv);renderPurchases();alert('Original purchase reversed. Review the prepared corrected entry, choose its payment details, then Receive all.');}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0&&String((e&&e.message)||e).indexOf('cancelled')<0)alert('Could not reverse purchase: '+((e&&e.message)||e));});};
   var rp=document.getElementById('purRepairPayable');if(rp)rp.onclick=function(){var a=A();if(!a.reconcilePurchasePayable){alert('Purchase reconciliation service is not available. Refresh the portal.');return;}F().run({title:'Repair missing purchase payable',subtitle:'The server checks for an existing payable before creating or linking one.',submitLabel:'Check and repair',busyLabel:'Checking purchase and payable…',fields:[{name:'invoiceRef',label:'Purchase invoice / reference',required:true,value:P.ref||'',maxLength:120},{name:'due',label:'Due date',type:'date',required:true,value:P.due||''}]},function(v){return a.reconcilePurchasePayable({invoiceRef:v.invoiceRef,due:v.due,recovery:true});}).then(function(res){var d=(res&&res.data)||res||{};alert('Payable control completed: '+(d.result==='linked_existing'?'an existing payable was linked.':'the missing payable was created.')+' Amount '+peso(d.amount)+'.');}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0&&String((e&&e.message)||e).indexOf('cancelled')<0)alert('Could not repair payable: '+((e&&e.message)||e));});};
   var pp=document.getElementById('purPost');if(pp)pp.onclick=postPurchases;
+  root.querySelectorAll('[data-purchase-details]').forEach(function(b){b.onclick=function(){showPurchaseDetails(b.getAttribute('data-purchase-details'));};});
+  root.querySelectorAll('[data-purchase-finalize]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-purchase-finalize'),p=purchaseInvoicesMap[id]||{};F().run({title:'Finalize supplier invoice',subtitle:(p.supplier||'Supplier')+' · '+peso(p.total)+'. This replaces GRNI with the formal payable; inventory is unchanged.',submitLabel:'Finalize invoice',busyLabel:'Finalizing…',fields:[{name:'invoiceRef',label:'Final invoice / reference',required:true,maxLength:120},{name:'due',label:'Due date',type:'date',required:true}]},function(v){return A().reconcilePurchasePayable({invoiceId:id,invoiceRef:v.invoiceRef,due:v.due,finalize:true});}).then(function(){alert('Invoice finalized. The provisional obligation is now a normal supplier payable.');}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0)alert('Could not finalize invoice: '+((e&&e.message)||e));});};});
+  root.querySelectorAll('[data-purchase-legacy]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-purchase-legacy'),p=purchaseInvoicesMap[id]||{};F().run({title:'Create missing purchase liability',subtitle:(p.supplier||'Supplier')+' · '+peso(p.total)+'. Use this only after confirming the purchase was never paid or recorded elsewhere.',submitLabel:'Create payable',busyLabel:'Creating liability…',fields:[{name:'due',label:'Due date',type:'date',required:true},{name:'confirmed',label:'I confirmed this obligation is not already recorded',type:'checkbox',required:true}]},function(v){return A().reconcilePurchasePayable({invoiceId:id,due:v.due,recovery:true});}).then(function(){alert('The missing supplier liability was created and linked to the purchase.');}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0)alert('Could not create liability: '+((e&&e.message)||e));});};});
 }
 function purchUpdatePrev(){
   var P=window.__purch; if(!P)return; var tot=0;
@@ -934,6 +943,8 @@ function purchUpdatePrev(){
 }
 function postPurchases(){
   if(window.__purchPosting)return; var P=window.__purch; if(!P)return;
+  if(P.pay==='none')P.pay='pending';
+  if(!(P.supplier||'').trim()){alert('Enter the supplier. Every inventory receipt must have a payment or supplier obligation.');return;}
   var lines=P.lines.filter(function(ln){return (ln.mode==='new'?(ln.newName||'').trim():ln.ing)&&(Number(ln.qty)||0)>0;});
   if(!lines.length){alert('Add at least one line with an item and a quantity.');return;}
   for(var i=0;i<lines.length;i++){
@@ -942,11 +953,11 @@ function postPurchases(){
     if(line.mode!=='new'&&recipeUsesInventory(line.ing)){var validSku=inventorySkuMap[line.skuId];if(!validSku||validSku.masterId!==line.ing||validSku.active===false){alert('Select an active approved brand for recipe item “'+((inventoryMap[line.ing]||{}).name||line.ing)+'” before receiving this purchase.');return;}}
   }
   if(P.pay==='paid'){ if(!(window.__cf&&window.__cf.accounts&&window.__cf.accounts().length)){alert('No bank/e-wallet account. Add one in Cash Flow or choose another payment option.');return;} if(!P.acct){var a0=window.__cf.accounts();P.acct=a0[0]&&a0[0].id;} }
-  if(P.pay==='account'&&!(A()&&A().reconcilePurchasePayable)){ alert('Purchase payable service is not ready. Refresh the portal and try again.'); return; }
+  if((P.pay==='account'||P.pay==='pending')&&!(A()&&A().reconcilePurchasePayable)){ alert('Purchase liability service is not ready. Refresh the portal and try again.'); return; }
   /* a "new" line whose name already exists (or repeats within this invoice) blends into that item — no duplicate SKU */
   var byName={}; ings().forEach(function(x){byName[uNorm(x.name)]=x.id;});
   window.__purchPosting=true;
-  var a=A(); var invoiceId=P.invoiceId||(P.invoiceId=uid('pinv_')); var date=P.date||new Date().toISOString().slice(0,10);
+  var a=A(); var invoiceId=P.invoiceId||(P.invoiceId=uid('pinv_')); var date=P.date||new Date().toISOString().slice(0,10), effectiveRef=(P.ref||'').trim()||(P.pay==='pending'?('PENDING-'+invoiceId):invoiceId);
   var updates={}, seedUpdates={}, invTotal=0, receiptIds=[], invoiceLines=[], agg={}, newByName={}, newSkuByKey={};
   lines.forEach(function(ln,lineIndex){
     var requestedNew=ln.mode==='new';
@@ -970,7 +981,7 @@ function postPurchases(){
     var needsNewSku=requestedNew&&(ln.newType==='consumable'||ln.recipeItem!==false)&&!skuId;
     if(needsNewSku&&skuBrand){var skuKey=ingId+'::'+uNorm(skuBrand);skuId=newSkuByKey[skuKey]||('sku_'+invoiceId+'_'+lineIndex);newSkuByKey[skuKey]=skuId;updates['inventorySku/'+skuId]={masterId:ingId,brand:skuBrand,supplier:(P.supplier||'').trim(),purchaseUnit:c.recvUnit,packSize:null,purchaseCost:null,convToBase:1,costPerBase:lineUnitCost,active:true,priority:activeSkusFor(ingId).length,branchAvail:['main'],seededFrom:'purchase',createdAt:Date.now(),updatedAt:Date.now()};}
     if(requestedNew&&(ln.newType==='consumable'||ln.recipeItem!==false)&&inventoryMap[ingId])seedUpdates['inventory/'+ingId+'/recipeItem']=true;
-    updates['stockReceipts/'+rid]={ing:ingId,skuId:skuId,skuBrand:skuBrand,name:nm,unit:c.stockUnit,qty:c.stockAdd,recvQty:c.qty,recvUnit:c.recvUnit,unitCost:lineUnitCost,total:c.lineTotal,supplier:(P.supplier||'').trim(),brand:skuBrand,ref:(P.ref||'').trim(),date:date,receivedBy:(P.by||'').trim(),payMode:P.pay,invoiceId:invoiceId,ts:Date.now()};
+    updates['stockReceipts/'+rid]={ing:ingId,skuId:skuId,skuBrand:skuBrand,name:nm,unit:c.stockUnit,qty:c.stockAdd,recvQty:c.qty,recvUnit:c.recvUnit,unitCost:lineUnitCost,total:c.lineTotal,supplier:(P.supplier||'').trim(),brand:skuBrand,ref:effectiveRef,date:date,receivedBy:(P.by||'').trim(),payMode:P.pay,invoiceId:invoiceId,ts:Date.now()};
     /* P2: a batch/lot per line for expiry + brand tracking (does NOT drive costing — WAC pool stays authoritative) */
     var bid='bat_'+invoiceId+'_'+lineIndex; updates['inventoryBatch/'+bid]={skuId:skuId,masterId:ingId,brand:skuBrand,supplier:(P.supplier||'').trim(),qtyRecv:c.stockAdd,qtyRemaining:c.stockAdd,unit:c.stockUnit,unitCost:lineUnitCost,recvDate:date,expiry:(ln.expiry||''),lot:(ln.lot||''),branch:'main',source:'purchase',invoiceId:invoiceId,receiptId:rid,createdAt:Date.now()};
     invoiceLines.push({receiptId:rid,itemId:ingId,itemName:nm,recipeItem:recipeUsesInventory(ingId)||(ln.newType==='consumable'||ln.recipeItem!==false),skuId:skuId,skuBrand:skuBrand,qty:c.stockAdd,unit:c.stockUnit,unitCost:lineUnitCost,total:c.lineTotal});
@@ -978,17 +989,17 @@ function postPurchases(){
   var movementRows=[];
   Object.keys(agg).forEach(function(id){ var g=agg[id];
     if(g.newItem){ var ni={name:g.name,unit:g.unit,type:g.type,recipeItem:g.recipeItem===true,stock:0,cost:0,reorder:0,updatedAt:Date.now()}; if(g.type==='consumable'){ni.serves='both';ni.size='';ni.qtyPerOrder=1;} seedUpdates['inventory/'+id]=ni; }
-    movementRows.push({movementId:movementId('purchase',invoiceId,id),itemId:id,type:'purchase',qty:Math.round(g.stock*1000000)/1000000,unitCost:g.stock>0?Math.round((g.value/g.stock)*1000000)/1000000:0,sourceType:'purchase-invoice',sourceId:invoiceId,note:(P.supplier||'Supplier')+((P.ref||'')?' · '+P.ref:''),actorName:(P.by||'').trim()||'Admin',occurredAt:Date.now()});
+    movementRows.push({movementId:movementId('purchase',invoiceId,id),itemId:id,type:'purchase',qty:Math.round(g.stock*1000000)/1000000,unitCost:g.stock>0?Math.round((g.value/g.stock)*1000000)/1000000:0,sourceType:'purchase-invoice',sourceId:invoiceId,note:(P.supplier||'Supplier')+' · '+effectiveRef,actorName:(P.by||'').trim()||'Admin',occurredAt:Date.now()});
   });
   invTotal=Math.round(invTotal*100)/100;
-  updates['purchaseInvoices/'+invoiceId]={supplier:(P.supplier||'').trim(),ref:(P.ref||'').trim(),date:date,due:(P.pay==='account'?(P.due||''):''),by:(P.by||'').trim(),payMode:P.pay,accountId:(P.pay==='paid'?P.acct:''),payableId:'',total:invTotal,lineCount:lines.length,lines:invoiceLines,receiptIds:receiptIds,movementIds:movementRows.map(function(x){return x.movementId;}),ts:Date.now()};
+  updates['purchaseInvoices/'+invoiceId]={supplier:(P.supplier||'').trim(),ref:effectiveRef,date:date,due:(P.pay==='account'?(P.due||''):''),by:(P.by||'').trim(),payMode:P.pay,accountId:(P.pay==='paid'?P.acct:''),payableId:'',total:invTotal,lineCount:lines.length,lines:invoiceLines,receiptIds:receiptIds,movementIds:movementRows.map(function(x){return x.movementId;}),ts:Date.now()};
   /* New item shells must exist before the server can post their first movement. Movement IDs make retries safe. */
   Promise.resolve(Object.keys(seedUpdates).length?a.update(a.ref(a.db),seedUpdates):null).then(function(){return postMovements(movementRows);}).then(function(){return a.update(a.ref(a.db),updates);}).then(function(){
-    if(P.pay==='paid'&&window.__cf&&window.__cf.postOut)return window.__cf.postOut({commandId:'purchase_cash_'+invoiceId,date:date,accountId:P.acct,amount:invTotal,party:(P.supplier||'').trim()||'Supplier',ref:(P.ref||'').trim()||invoiceId,category:'Purchases',source:'purchase',linkId:invoiceId,note:lines.length+' item(s) received'});
-    if(P.pay==='account')return a.reconcilePurchasePayable({invoiceId:invoiceId,due:P.due||''});
+    if(P.pay==='paid'&&window.__cf&&window.__cf.postOut)return window.__cf.postOut({commandId:'purchase_cash_'+invoiceId,date:date,accountId:P.acct,amount:invTotal,party:(P.supplier||'').trim()||'Supplier',ref:effectiveRef,category:'Purchases',source:'purchase',linkId:invoiceId,note:lines.length+' item(s) received'});
+    if(P.pay==='account'||P.pay==='pending')return a.reconcilePurchasePayable({invoiceId:invoiceId,due:P.pay==='account'?(P.due||''):''});
     return null;
   }).then(function(){
-    if(window.__posLog)window.__posLog('purchase',(P.supplier||'Supplier'),lines.length+' item(s) · '+peso(invTotal)+(P.pay==='paid'?' · paid':P.pay==='account'?' · on account':''));
+    if(window.__posLog)window.__posLog('purchase',(P.supplier||'Supplier'),lines.length+' item(s) · '+peso(invTotal)+(P.pay==='paid'?' · paid':P.pay==='account'?' · on account':' · invoice pending'));
     window.__purchPosting=false; window.__purch=null; renderPurchases();
     var m=document.getElementById('purMsg'); if(m)m.textContent='✓ Received '+lines.length+' item(s), invoice total '+peso(invTotal)+' at '+new Date().toLocaleTimeString();
     alert('Purchase received. Stock and weighted-average costs updated. ✅');
