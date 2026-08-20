@@ -368,6 +368,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   for(const marker of ['linkPayableId','link_existing_purchase_payable','Another purchase already claims this payable','orphanAccount'])if(!functionsSource.includes(marker))fail(`Server purchase-link/duplicate guard missing: ${marker}`);
   for(const marker of ['keepInvoiceId','duplicateCleanup','reverse_duplicate_purchase','purchase_ap_repair'])if(!functionsSource.includes(marker))fail(`Shared-payable duplicate recovery missing: ${marker}`);
   if(!posSource.includes('keepInvoiceId:keepId,duplicate:true')||!posSource.includes('If its shared payable had already been reversed'))fail('Duplicate-pair reversal does not preserve the selected surviving purchase');
+  if(!posSource.includes('showReversedPurchases||!p.reversed')||!posSource.includes('data-purchase-toggle-reversed'))fail('Reversed purchases are not hidden by default with an audit-history toggle');
   for(const marker of ['Correct purchase details','Reverse &amp; re-enter',"managerApproval('reverse_purchase'",'correctedPurchaseDraft(inv)'])if(!posSource.includes(marker))fail(`Purchase correction interface missing: ${marker}`);
   if(!posSource.includes("recipeItem:true")||!posSource.includes('Used in recipes')||!posSource.includes("seededFrom:'purchase'"))fail('Release 7H new recipe-item SKU creation is incomplete');
   if(!backofficeCss.includes('.inv-sku-link.linked')||!backofficeCss.includes('.purchase-sku-cell.required'))fail('Release 7H SKU linkage states are not visibly distinguished');
