@@ -898,7 +898,7 @@ function renderPurchases(){
     +lineHtml
     +'<button class="pz-btn sec" id="purAddLine" style="padding:0.35rem 0.8rem;margin-bottom:0.8rem;">+ line</button>'
     +'<div class="pz-card" style="border:2px solid var(--bd);display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:var(--bd);">INVOICE TOTAL</span><span style="font-weight:700;font-size:1.2rem;color:var(--bd);" id="purTotal">'+peso(invTotal)+'</span></div>'
-    +'<div style="display:flex;gap:0.5rem;margin-top:0.8rem;"><button class="pz-btn ok" id="purPost" style="padding:0.6rem 1.4rem;">Receive all</button><button class="pz-btn sec" id="purReset">Clear</button></div>'
+    +'<div style="display:flex;gap:0.5rem;margin-top:0.8rem;flex-wrap:wrap;"><button class="pz-btn ok" id="purPost" style="padding:0.6rem 1.4rem;">Receive all</button><button class="pz-btn sec" id="purReset">Clear</button><button class="pz-btn sec" id="purRepairPayable">Repair missing payable</button></div>'
     +'<div id="purMsg" style="font-size:0.8rem;color:var(--tl);margin-top:0.4rem;"></div>';
   function hb(id,f){var el=document.getElementById(id);if(el)el.oninput=function(){P[f]=el.value;};}
   hb('purSupplier','supplier');hb('purRef','ref');hb('purDate','date');hb('purBy','by');
@@ -919,6 +919,7 @@ function renderPurchases(){
   root.querySelectorAll('[data-pmanage-sku]').forEach(function(b){b.onclick=function(){var lineIndex=Number(b.getAttribute('data-pmanage-line')),masterId=b.getAttribute('data-pmanage-sku');openSkuManager(masterId,function(sid,sku){if(!P.lines[lineIndex]||P.lines[lineIndex].ing!==masterId)return;P.lines[lineIndex].skuId=sid;renderPurchases();(window.accazaToast||function(){})((sku.brand||'Brand')+' selected for this purchase','ok');});};});
   var al=document.getElementById('purAddLine');if(al)al.onclick=function(){P.lines.push(purchBlank());renderPurchases();};
   var rs=document.getElementById('purReset');if(rs)rs.onclick=function(){if(confirm('Clear this purchase entry?')){window.__purch=null;renderPurchases();}};
+  var rp=document.getElementById('purRepairPayable');if(rp)rp.onclick=function(){var a=A();if(!a.reconcilePurchasePayable){alert('Purchase reconciliation service is not available. Refresh the portal.');return;}F().run({title:'Repair missing purchase payable',subtitle:'The server checks for an existing payable before creating or linking one.',submitLabel:'Check and repair',busyLabel:'Checking purchase and payable…',fields:[{name:'invoiceRef',label:'Purchase invoice / reference',required:true,value:P.ref||'',maxLength:120},{name:'due',label:'Due date',type:'date',required:true,value:P.due||''}]},function(v){return a.reconcilePurchasePayable({invoiceRef:v.invoiceRef,due:v.due,recovery:true});}).then(function(res){var d=(res&&res.data)||res||{};alert('Payable control completed: '+(d.result==='linked_existing'?'an existing payable was linked.':'the missing payable was created.')+' Amount '+peso(d.amount)+'.');}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0&&String((e&&e.message)||e).indexOf('cancelled')<0)alert('Could not repair payable: '+((e&&e.message)||e));});};
   var pp=document.getElementById('purPost');if(pp)pp.onclick=postPurchases;
 }
 function purchUpdatePrev(){
@@ -936,37 +937,37 @@ function postPurchases(){
     if(line.mode!=='new'&&recipeUsesInventory(line.ing)){var validSku=inventorySkuMap[line.skuId];if(!validSku||validSku.masterId!==line.ing||validSku.active===false){alert('Select an active approved brand for recipe item “'+((inventoryMap[line.ing]||{}).name||line.ing)+'” before receiving this purchase.');return;}}
   }
   if(P.pay==='paid'){ if(!(window.__cf&&window.__cf.accounts&&window.__cf.accounts().length)){alert('No bank/e-wallet account. Add one in Cash Flow or choose another payment option.');return;} if(!P.acct){var a0=window.__cf.accounts();P.acct=a0[0]&&a0[0].id;} }
-  if(P.pay==='account'&&!(window.__cf&&window.__cf.addPayable)){ alert('Payables module not ready — reopen the tab, or choose another payment option.'); return; }
+  if(P.pay==='account'&&!(A()&&A().reconcilePurchasePayable)){ alert('Purchase payable service is not ready. Refresh the portal and try again.'); return; }
   /* a "new" line whose name already exists (or repeats within this invoice) blends into that item — no duplicate SKU */
   var byName={}; ings().forEach(function(x){byName[uNorm(x.name)]=x.id;});
   window.__purchPosting=true;
   var a=A(); var invoiceId=P.invoiceId||(P.invoiceId=uid('pinv_')); var date=P.date||new Date().toISOString().slice(0,10);
   var updates={}, seedUpdates={}, invTotal=0, receiptIds=[], invoiceLines=[], agg={}, newByName={}, newSkuByKey={};
-  lines.forEach(function(ln){
+  lines.forEach(function(ln,lineIndex){
     var requestedNew=ln.mode==='new';
     if(ln.mode==='new'){ var mt=byName[uNorm((ln.newName||'').trim())]; if(mt)ln=Object.assign({},ln,{mode:'existing',ing:mt}); }
     var c=purchCalc(ln); var ingId=ln.ing; var nm;
     if(ln.mode==='new'){
       var nk=uNorm((ln.newName||'').trim());
       if(newByName[nk]){ ingId=newByName[nk]; }
-      else { ingId=uid('ing_'); newByName[nk]=ingId; agg[ingId]={before:0,oldCost:0,stock:0,value:0,newItem:true,recipeItem:(ln.newType==='consumable'||ln.recipeItem!==false),name:(ln.newName||'').trim(),unit:ln.newUnit||'',type:ln.newType||'base'}; }
+      else { ingId='ing_'+invoiceId+'_'+lineIndex; newByName[nk]=ingId; agg[ingId]={before:0,oldCost:0,stock:0,value:0,newItem:true,recipeItem:(ln.newType==='consumable'||ln.recipeItem!==false),name:(ln.newName||'').trim(),unit:ln.newUnit||'',type:ln.newType||'base'}; }
       agg[ingId].stock+=c.stockAdd; agg[ingId].value+=c.lineTotal; nm=(ln.newName||'').trim();
     } else {
       var inv=inventoryMap[ingId]||{}; nm=inv.name||'';
       if(!agg[ingId])agg[ingId]={before:Number(inv.stock)||0,oldCost:Number(inv.cost)||0,stock:0,value:0};
       agg[ingId].stock+=c.stockAdd; agg[ingId].value+=c.lineTotal;
     }
-    var rid=uid('rcpt_'); receiptIds.push(rid); invTotal+=c.lineTotal;
+    var rid='rcpt_'+invoiceId+'_'+lineIndex; receiptIds.push(rid); invTotal+=c.lineTotal;
     var lineUnitCost=(c.stockAdd>0?Math.round((c.lineTotal/c.stockAdd)*100000)/100000:0);
     var selectedSku=inventorySkuMap[ln.skuId]&&inventorySkuMap[ln.skuId].masterId===ingId&&inventorySkuMap[ln.skuId].active!==false?inventorySkuMap[ln.skuId]:null;
     var skuId=selectedSku?ln.skuId:'', skuBrand=selectedSku?(selectedSku.brand||''):(ln.brand||'').trim();
     if(requestedNew&&!selectedSku&&skuBrand){selectedSku=activeSkusFor(ingId).filter(function(s){return uNorm(s.brand)===uNorm(skuBrand);})[0]||null;if(selectedSku)skuId=selectedSku.id;}
     var needsNewSku=requestedNew&&(ln.newType==='consumable'||ln.recipeItem!==false)&&!skuId;
-    if(needsNewSku&&skuBrand){var skuKey=ingId+'::'+uNorm(skuBrand);skuId=newSkuByKey[skuKey]||uid('sku_');newSkuByKey[skuKey]=skuId;updates['inventorySku/'+skuId]={masterId:ingId,brand:skuBrand,supplier:(P.supplier||'').trim(),purchaseUnit:c.recvUnit,packSize:null,purchaseCost:null,convToBase:1,costPerBase:lineUnitCost,active:true,priority:activeSkusFor(ingId).length,branchAvail:['main'],seededFrom:'purchase',createdAt:Date.now(),updatedAt:Date.now()};}
+    if(needsNewSku&&skuBrand){var skuKey=ingId+'::'+uNorm(skuBrand);skuId=newSkuByKey[skuKey]||('sku_'+invoiceId+'_'+lineIndex);newSkuByKey[skuKey]=skuId;updates['inventorySku/'+skuId]={masterId:ingId,brand:skuBrand,supplier:(P.supplier||'').trim(),purchaseUnit:c.recvUnit,packSize:null,purchaseCost:null,convToBase:1,costPerBase:lineUnitCost,active:true,priority:activeSkusFor(ingId).length,branchAvail:['main'],seededFrom:'purchase',createdAt:Date.now(),updatedAt:Date.now()};}
     if(requestedNew&&(ln.newType==='consumable'||ln.recipeItem!==false)&&inventoryMap[ingId])seedUpdates['inventory/'+ingId+'/recipeItem']=true;
     updates['stockReceipts/'+rid]={ing:ingId,skuId:skuId,skuBrand:skuBrand,name:nm,unit:c.stockUnit,qty:c.stockAdd,recvQty:c.qty,recvUnit:c.recvUnit,unitCost:lineUnitCost,total:c.lineTotal,supplier:(P.supplier||'').trim(),brand:skuBrand,ref:(P.ref||'').trim(),date:date,receivedBy:(P.by||'').trim(),payMode:P.pay,invoiceId:invoiceId,ts:Date.now()};
     /* P2: a batch/lot per line for expiry + brand tracking (does NOT drive costing — WAC pool stays authoritative) */
-    var bid='bat_'+Date.now().toString(36)+'_'+receiptIds.length; updates['inventoryBatch/'+bid]={skuId:skuId,masterId:ingId,brand:skuBrand,supplier:(P.supplier||'').trim(),qtyRecv:c.stockAdd,qtyRemaining:c.stockAdd,unit:c.stockUnit,unitCost:lineUnitCost,recvDate:date,expiry:(ln.expiry||''),lot:(ln.lot||''),branch:'main',source:'purchase',invoiceId:invoiceId,receiptId:rid,createdAt:Date.now()};
+    var bid='bat_'+invoiceId+'_'+lineIndex; updates['inventoryBatch/'+bid]={skuId:skuId,masterId:ingId,brand:skuBrand,supplier:(P.supplier||'').trim(),qtyRecv:c.stockAdd,qtyRemaining:c.stockAdd,unit:c.stockUnit,unitCost:lineUnitCost,recvDate:date,expiry:(ln.expiry||''),lot:(ln.lot||''),branch:'main',source:'purchase',invoiceId:invoiceId,receiptId:rid,createdAt:Date.now()};
     invoiceLines.push({receiptId:rid,itemId:ingId,itemName:nm,recipeItem:recipeUsesInventory(ingId)||(ln.newType==='consumable'||ln.recipeItem!==false),skuId:skuId,skuBrand:skuBrand,qty:c.stockAdd,unit:c.stockUnit,unitCost:lineUnitCost,total:c.lineTotal});
   });
   var movementRows=[];
@@ -975,11 +976,11 @@ function postPurchases(){
     movementRows.push({movementId:movementId('purchase',invoiceId,id),itemId:id,type:'purchase',qty:Math.round(g.stock*1000000)/1000000,unitCost:g.stock>0?Math.round((g.value/g.stock)*1000000)/1000000:0,sourceType:'purchase-invoice',sourceId:invoiceId,note:(P.supplier||'Supplier')+((P.ref||'')?' · '+P.ref:''),actorName:(P.by||'').trim()||'Admin',occurredAt:Date.now()});
   });
   invTotal=Math.round(invTotal*100)/100;
-  updates['purchaseInvoices/'+invoiceId]={supplier:(P.supplier||'').trim(),ref:(P.ref||'').trim(),date:date,by:(P.by||'').trim(),payMode:P.pay,accountId:(P.pay==='paid'?P.acct:''),payableId:'',total:invTotal,lineCount:lines.length,lines:invoiceLines,receiptIds:receiptIds,movementIds:movementRows.map(function(x){return x.movementId;}),ts:Date.now()};
+  updates['purchaseInvoices/'+invoiceId]={supplier:(P.supplier||'').trim(),ref:(P.ref||'').trim(),date:date,due:(P.pay==='account'?(P.due||''):''),by:(P.by||'').trim(),payMode:P.pay,accountId:(P.pay==='paid'?P.acct:''),payableId:'',total:invTotal,lineCount:lines.length,lines:invoiceLines,receiptIds:receiptIds,movementIds:movementRows.map(function(x){return x.movementId;}),ts:Date.now()};
   /* New item shells must exist before the server can post their first movement. Movement IDs make retries safe. */
   Promise.resolve(Object.keys(seedUpdates).length?a.update(a.ref(a.db),seedUpdates):null).then(function(){return postMovements(movementRows);}).then(function(){return a.update(a.ref(a.db),updates);}).then(function(){
     if(P.pay==='paid'&&window.__cf&&window.__cf.postOut)return window.__cf.postOut({commandId:'purchase_cash_'+invoiceId,date:date,accountId:P.acct,amount:invTotal,party:(P.supplier||'').trim()||'Supplier',ref:(P.ref||'').trim()||invoiceId,category:'Purchases',source:'purchase',linkId:invoiceId,note:lines.length+' item(s) received'});
-    if(P.pay==='account'&&window.__cf&&window.__cf.addPayable)return window.__cf.addPayable({commandId:'purchase_ap_'+invoiceId,documentId:'ap_'+invoiceId,party:(P.supplier||'').trim()||'Supplier',type:'inventory',amount:invTotal,date:date,due:P.due||'',ref:(P.ref||'').trim()||invoiceId}).then(function(pid){return a.update(a.ref(a.db,'purchaseInvoices/'+invoiceId),{payableId:pid});});
+    if(P.pay==='account')return a.reconcilePurchasePayable({invoiceId:invoiceId,due:P.due||''});
     return null;
   }).then(function(){
     if(window.__posLog)window.__posLog('purchase',(P.supplier||'Supplier'),lines.length+' item(s) · '+peso(invTotal)+(P.pay==='paid'?' · paid':P.pay==='account'?' · on account':''));
