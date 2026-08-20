@@ -28,7 +28,7 @@ function usageTypesList(){var keys=Object.keys(usageTypesMap);var list=keys.leng
 function usageTypeName(id){return (usageTypesMap[id]&&usageTypesMap[id].name)||(id==='staff'?'Staff consumption':id==='rnd'?'R&D / Testing':id);}
 function usageTypeReasons(id){var t=usageTypesMap[id]||DEFAULT_USAGE_TYPES.filter(function(d){return d.id===id;})[0];return (t&&t.reasons)||[];}
 var posCart={}, posCat='ALL', posSearch='', posBuilt=false, recipeEditing=false, curRecipeKey=null, recipeDraft=null, recSub='base', recSize='M', posScopedDisc=[], posChannel='instore', posView='counter', onlineOrdersMap={};
-var posDraft={},posChargeBusy=false;
+var posDraft={},posChargeBusy=false,posPaymentVerification=null;
 function telemetry(){return window.AccazaTelemetry||{start:function(){},end:function(){},metric:function(){},error:function(){}};}
 function capturePosDraft(root){if(!root)return;var active=document.activeElement,focusId=active&&root.contains(active)?active.id:'';root.querySelectorAll('input[id],textarea[id]').forEach(function(el){posDraft[el.id]={value:el.value,checked:!!el.checked,type:el.type};});posDraft.__focus=focusId;}
 function restorePosDraft(root){if(!root)return;Object.keys(posDraft).forEach(function(id){if(id==='__focus')return;var el=document.getElementById(id),v=posDraft[id];if(!el||!root.contains(el)||el.tagName==='SELECT')return;if(v.type==='checkbox'||v.type==='radio')el.checked=v.checked;else el.value=v.value;});var f=posDraft.__focus&&document.getElementById(posDraft.__focus);if(f&&root.contains(f))setTimeout(function(){try{f.focus();}catch(e){}},0);}
@@ -1696,6 +1696,11 @@ function updateActiveOrderCount(){var badge=document.getElementById('posActiveCo
 function updatePosOrderCounts(){updateOnlineOrderCount();updateActiveOrderCount();}
 function activeChannelLabel(o){return o.channel==='online'?'Online':o.channel==='grabfood'?'GrabFood':o.channel==='foodpanda'?'FoodPanda':'In-store';}
 function directPaymentRows(payments){return(payments||[]).filter(function(p){return /gcash|maya|bank|transfer/i.test(String(p&&p.method||''));});}
+function paymentVerificationSignature(payments,total){
+  var cart=Object.keys(posCart).sort().map(function(k){var c=posCart[k]||{};return[k,Number(c.qty)||0,Number(c.unitTotal)||0];});
+  var direct=directPaymentRows(payments).map(function(p){return[String(p.method||''),Math.round((Number(p.amount)||0)*100)/100,String(p.ref||'').trim()];});
+  return JSON.stringify({cart:cart,total:Math.round((Number(total)||0)*100)/100,direct:direct});
+}
 function cashierVerificationGate(payments,total,context){
   var direct=directPaymentRows(payments),existing=direct.map(function(p){return p.ref||'';}).filter(Boolean).join(', ');
   if(!direct.length)return Promise.resolve({required:false});
@@ -1925,8 +1930,9 @@ function renderPosCart(){
         +'<div id="posPaySingle"><select class="pz-in" id="posPay" style="margin-top:0.3rem;">'+posActiveMethods().map(function(m){return '<option value="'+m.name+'">'+m.name+'</option>';}).join('')+'</select>'
           +'<div id="posCashWrap" style="margin-top:0.5rem;">'+(denomTrackingOn()?posDenomPadHtml():'<span class="pz-lbl">Cash tendered ₱</span><input class="pz-in" id="posTender" type="number" step="any" placeholder="0"/><div id="posChange" style="font-size:0.82rem;color:var(--bd);font-weight:600;margin-top:0.3rem;"></div>')+'</div>'
           +'<div id="posKeepWrap" style="display:none;margin-top:0.4rem;padding:0.4rem 0.55rem;background:#fff6e5;border:1px solid #f0dcae;border-radius:6px;"><label style="font-size:0.8rem;display:flex;align-items:center;gap:0.4rem;cursor:pointer;"><input type="checkbox" id="posKeep"/> Customer kept the change (tip / no small change)</label><div id="posKeepAmtWrap" style="display:none;margin-top:0.3rem;font-size:0.8rem;">Amount kept ₱ <input class="pz-in" id="posKeepAmt" type="number" step="any" style="width:90px;text-align:right;"/> <span style="color:var(--tl);">→ Other Income (Tips)</span></div></div>'
-          +'<div id="posRefWrap" style="display:none;margin-top:0.5rem;"><span class="pz-lbl">Ref no. (GCash / bank) — required</span><input class="pz-in" id="posPayRef" placeholder="e.g. GCash ref / bank txn ref"/><div style="font-size:0.72rem;color:var(--tl);margin-top:0.2rem;">Marks the sale <b>pending</b> until a manager verifies the money landed.</div></div></div>'
+          +'<div id="posRefWrap" style="display:none;margin-top:0.5rem;"><span class="pz-lbl">Ref no. (GCash / bank) — required</span><input class="pz-in" id="posPayRef" placeholder="e.g. GCash ref / bank txn ref"/><div style="font-size:0.72rem;color:var(--tl);margin-top:0.2rem;">The cashier must find this payment in the actual receiving account before completing the sale.</div></div></div>'
         +'<div id="posPaySplit" style="display:none;margin-top:0.4rem;"><div id="posSplitRows"></div><button class="pz-btn sec" id="posAddPay" style="padding:0.25rem 0.6rem;">+ payment</button><div id="posSplitInfo" style="font-size:0.76rem;color:var(--tl);margin-top:0.3rem;"></div></div>')
+    +'<div id="posVerifyState" style="display:none;margin-top:0.7rem;padding:0.45rem 0.6rem;border-radius:6px;font-size:0.76rem;"></div>'
     +'<button class="pz-btn ok" id="posCharge" style="width:100%;margin-top:0.8rem;padding:0.7rem;font-size:0.95rem;"'+((keys.length&&shift)?'':' disabled')+'>'+(isPlat?'Record '+esc(chLabel)+' sale':'Charge &amp; Complete')+'</button>'
     +'<div style="display:flex;gap:0.4rem;margin-top:0.4rem;">'
       +(isPlat?'':'<button class="pz-btn sec" id="posHold" style="flex:1;"'+(keys.length?'':' disabled')+'>Hold</button>')
@@ -1939,6 +1945,22 @@ function renderPosCart(){
   var splitRows=[];
   var pay=null, splitChk=null;
   function grandTotal(){ var d=isPlat?0:((Number(disc&&disc.value)||0)+scopedDiscTotal()); var tot=Math.max(0,sub-d); if(!isPlat&&posMeta.cashRounding){var r=Math.round(tot); var pr=document.getElementById('posRound'); if(pr)pr.textContent=peso(r-tot); tot=r;} var tEl=document.getElementById('posTotal'); if(tEl)tEl.textContent=peso(tot); return tot; }
+  function draftElectronicPayments(){
+    if(isPlat)return[];
+    var tot=grandTotal();
+    if(splitChk&&splitChk.checked)return splitRows.filter(function(r){return !isCashMethod(r.method);}).map(function(r){return{method:r.method,amount:Number(r.amount)||0,ref:String(r.ref||'').trim()};});
+    var method=pay?pay.value:'Cash';return isCashMethod(method)?[]:[{method:method,amount:tot,ref:String((document.getElementById('posPayRef')||{}).value||'').trim()}];
+  }
+  function refreshChargeAction(){
+    var button=document.getElementById('posCharge'),state=document.getElementById('posVerifyState');if(!button)return;
+    var direct=draftElectronicPayments(),signature=paymentVerificationSignature(direct,grandTotal()),verified=direct.length&&posPaymentVerification&&posPaymentVerification.signature===signature;
+    if(isPlat){button.textContent='Record '+chLabel+' sale';button.style.background='';}
+    else if(direct.length&&!verified){button.textContent='Verify Payment';button.style.background='#2f80ed';}
+    else{button.textContent='Charge & Complete';button.style.background='';}
+    if(state){if(verified){var refs=direct.map(function(r){return r.ref;}).filter(Boolean).join(', ');state.style.display='block';state.style.background='#e8f5ec';state.style.border='1px solid #b8dfc4';state.style.color='#155724';state.innerHTML='✓ Cashier verified'+(refs?' · Ref: '+esc(refs):'')+' · Complete the sale below.';}else{state.style.display='none';state.innerHTML='';}}
+    button.disabled=posChargeBusy||!keys.length||!shift;
+  }
+  function invalidatePaymentVerification(){posPaymentVerification=null;refreshChargeAction();}
   function platformDiscountData(gross){
     function val(id){return Math.max(0,Number((document.getElementById(id)||{}).value)||0);}
     function typ(id,fallback){return String((document.getElementById(id)||{}).value||'').trim()||fallback;}
@@ -1968,7 +1990,7 @@ function renderPosCart(){
   function updateKeep(){ var w=document.getElementById('posKeepWrap'); if(!w)return; var isc=isCashMethod(pay?pay.value:'Cash'); var show=isc&&curChange>0.001; w.style.display=show?'block':'none'; var k=document.getElementById('posKeep'); var kw=document.getElementById('posKeepAmtWrap'); var amt=document.getElementById('posKeepAmt'); if(!show){ if(k)k.checked=false; if(kw)kw.style.display='none'; return; } if(amt){amt.max=curChange;amt.placeholder=String(curChange);} if(k&&k.checked){ if(kw)kw.style.display='block'; if(amt&&!amt.value)amt.value=curChange; } }
   function refreshSingle(){ var tot=grandTotal(); var tender=document.getElementById('posTender'); var t=Number(tender&&tender.value)||0; curChange=t?Math.max(0,Math.round((t-tot)*100)/100):0; var ch=document.getElementById('posChange'); if(ch)ch.textContent=t?('Change: '+peso(curChange)):''; updateKeep(); }
   pay=document.getElementById('posPay');
-  pay.onchange=function(){var isc=isCashMethod(pay.value);document.getElementById('posCashWrap').style.display=isc?'block':'none';var rw=document.getElementById('posRefWrap');if(rw)rw.style.display=isc?'none':'block';updateKeep();};
+  pay.onchange=function(){var isc=isCashMethod(pay.value);document.getElementById('posCashWrap').style.display=isc?'block':'none';var rw=document.getElementById('posRefWrap');if(rw)rw.style.display=isc?'none':'block';updateKeep();invalidatePaymentVerification();};
   pay.onchange();
   var tender0=document.getElementById('posTender'); if(tender0)tender0.oninput=refreshSingle;
   var pk=document.getElementById('posKeep'); if(pk)pk.onchange=function(){var kw=document.getElementById('posKeepAmtWrap'); if(kw)kw.style.display=this.checked?'block':'none'; var amt=document.getElementById('posKeepAmt'); if(this.checked&&amt&&!amt.value)amt.value=curChange;};
@@ -2002,26 +2024,28 @@ function renderPosCart(){
     var assigned=splitRows.reduce(function(s,r){return s+(Number(r.amount)||0);},0);
     document.getElementById('posSplitInfo').innerHTML='Assigned '+peso(assigned)+' / Total '+peso(tot)+' · '+(Math.abs(assigned-tot)<0.01?'<span style="color:#2a9d5c;">balanced</span>':'<span style="color:#e63946;">off by '+peso(tot-assigned)+'</span>');
     function sdRecalc(i){var received=0;cont.querySelectorAll('[data-sdrow="'+i+'"]').forEach(function(inp){received+=(Number(inp.value)||0)*(Number(inp.getAttribute('data-sdv'))||0);});received=Math.round(received*100)/100;var amt=Number(splitRows[i].amount)||0;var info=cont.querySelector('[data-sdinfo="'+i+'"]');if(!info)return;if(received<amt-0.001){info.innerHTML='<span style="color:#c0392b;">Received '+peso(received)+' · short '+peso(amt-received)+'</span>';}else{info.innerHTML='Received '+peso(received)+' · change '+peso(Math.round((received-amt)*100)/100);}}
-    cont.querySelectorAll('[data-pm]').forEach(function(s){s.onchange=function(){splitRows[+s.getAttribute('data-pm')].method=s.value;renderSplit();};});
-    cont.querySelectorAll('[data-pa]').forEach(function(inp){inp.oninput=function(){splitRows[+inp.getAttribute('data-pa')].amount=Number(inp.value)||0;renderSplit();};});
-    cont.querySelectorAll('[data-pr]').forEach(function(inp){inp.oninput=function(){splitRows[+inp.getAttribute('data-pr')].ref=inp.value;};});
+    cont.querySelectorAll('[data-pm]').forEach(function(s){s.onchange=function(){splitRows[+s.getAttribute('data-pm')].method=s.value;posPaymentVerification=null;renderSplit();refreshChargeAction();};});
+    cont.querySelectorAll('[data-pa]').forEach(function(inp){inp.oninput=function(){splitRows[+inp.getAttribute('data-pa')].amount=Number(inp.value)||0;posPaymentVerification=null;renderSplit();refreshChargeAction();};});
+    cont.querySelectorAll('[data-pr]').forEach(function(inp){inp.oninput=function(){splitRows[+inp.getAttribute('data-pr')].ref=inp.value;invalidatePaymentVerification();};});
     cont.querySelectorAll('[data-sdrow]').forEach(function(inp){inp.oninput=function(){sdRecalc(+inp.getAttribute('data-sdrow'));};});
-    cont.querySelectorAll('[data-pd]').forEach(function(b){b.onclick=function(){splitRows.splice(+b.getAttribute('data-pd'),1);renderSplit();};});
+    cont.querySelectorAll('[data-pd]').forEach(function(b){b.onclick=function(){splitRows.splice(+b.getAttribute('data-pd'),1);posPaymentVerification=null;renderSplit();refreshChargeAction();};});
   }
-  if(disc)disc.oninput=function(){ if(splitChk.checked)renderSplit(); else refreshSingle(); };
-  splitChk.onchange=function(){ document.getElementById('posPaySingle').style.display=this.checked?'none':'block'; document.getElementById('posPaySplit').style.display=this.checked?'block':'none'; if(this.checked){splitRows=[];renderSplit();} else refreshSingle(); };
-  document.getElementById('posAddPay').onclick=function(){splitRows.push({method:'GCash',amount:0});renderSplit();};
+  if(disc)disc.oninput=function(){ posPaymentVerification=null;if(splitChk.checked)renderSplit(); else refreshSingle();refreshChargeAction(); };
+  splitChk.onchange=function(){ posPaymentVerification=null;document.getElementById('posPaySingle').style.display=this.checked?'none':'block'; document.getElementById('posPaySplit').style.display=this.checked?'block':'none'; if(this.checked){splitRows=[];renderSplit();} else refreshSingle();refreshChargeAction(); };
+  document.getElementById('posAddPay').onclick=function(){posPaymentVerification=null;splitRows.push({method:'GCash',amount:0});renderSplit();refreshChargeAction();};
   refreshSingle();
+  var payRef=document.getElementById('posPayRef');if(payRef)payRef.oninput=invalidatePaymentVerification;
   }
+  refreshChargeAction();
   updateOfflineUI();
   var _sb=document.getElementById('posShiftBar'); if(_sb)_sb.innerHTML=shiftBar;
   var _db=document.getElementById('posDiscBtn'); if(_db)_db.onclick=openDiscountModal;
   p.querySelectorAll('[data-sdrm]').forEach(function(b){b.onclick=function(){posScopedDisc.splice(+b.getAttribute('data-sdrm'),1);renderPosCart();};});
   var _pb=document.getElementById('posPkgBtn');if(_pb)_pb.onclick=function(){ if(window.__openPackagePicker)window.__openPackagePicker(); else alert('Packages module still loading \u2014 try again.'); };
-  document.getElementById('posClear').onclick=function(){if(Object.keys(posCart).length&&confirm('Clear this sale?')){posCart={};posDraft={};window.__posPkgs=[];posScopedDisc=[];renderPosCart();}};
-  var _hold=document.getElementById('posHold'); if(_hold)_hold.onclick=function(){ if(!Object.keys(posCart).length)return; var a=A(); a.set(a.ref(a.db,'heldOrders/'+uid('hold_')),{cart:posCart,ts:Date.now(),staff:(window.__posShift&&window.__posShift.staff)||'—',note:(document.getElementById('posCust').value||'').trim()}); posCart={};posDraft={};window.__posPkgs=[]; renderPosCart(); alert('Order held. Recall it from Register Ops.'); };
+  document.getElementById('posClear').onclick=function(){if(Object.keys(posCart).length&&confirm('Clear this sale?')){posCart={};posDraft={};posPaymentVerification=null;window.__posPkgs=[];posScopedDisc=[];renderPosCart();}};
+  var _hold=document.getElementById('posHold'); if(_hold)_hold.onclick=function(){ if(!Object.keys(posCart).length)return; var a=A(); a.set(a.ref(a.db,'heldOrders/'+uid('hold_')),{cart:posCart,ts:Date.now(),staff:(window.__posShift&&window.__posShift.staff)||'—',note:(document.getElementById('posCust').value||'').trim()}); posCart={};posDraft={};posPaymentVerification=null;window.__posPkgs=[]; renderPosCart(); alert('Order held. Recall it from Register Ops.'); };
   document.getElementById('posCharge').onclick=async function(){
-    var chargeButton=this;if(posChargeBusy)return;posChargeBusy=true;chargeButton.disabled=true;var chargeLabel=chargeButton.textContent;chargeButton.textContent='Processing…';
+    var chargeButton=this;if(posChargeBusy)return;posChargeBusy=true;chargeButton.disabled=true;chargeButton.textContent='Processing…';
     try{return await (async function(){
     if(!window.__posShift){alert('Open a shift first (Register Ops tab).');return;}
     var tot=grandTotal();
@@ -2059,10 +2083,16 @@ function renderPosCart(){
       else if(denomTrackingOn()){ var r=posRcvRead(); if(r.total<tot-0.001){alert('Cash received ('+peso(r.total)+') is less than the total ('+peso(tot)+').');return;} var chg=Math.round((r.total-tot)*100)/100; var tip=posKeepTip(chg); var giveChg=Math.round((chg-tip)*100)/100; var mc=makeChange(giveChg, mergeDenoms(shiftDrawer(),r.counts)); payments=[{method:m,amount:tot,tendered:r.total,change:giveChg,ref:'',cashReceived:r.counts,cashChange:mc.denoms,changeShort:mc.ok?0:mc.short,tipRounding:tip}]; }
       else { var tv=Number((document.getElementById('posTender')||{}).value)||0; if(tv&&tv<tot){alert('Cash tendered is less than the total.');return;} var chg2=tv?Math.max(0,Math.round((tv-tot)*100)/100):0; var tip2=posKeepTip(chg2); payments=[{method:m,amount:tot,tendered:tv,change:Math.round((chg2-tip2)*100)/100,ref:'',tipRounding:tip2}]; }
     }
+    var verificationSignature=paymentVerificationSignature(payments,tot),direct=directPaymentRows(payments),cashierVerification=null;
+    if(direct.length&&(!posPaymentVerification||posPaymentVerification.signature!==verificationSignature)){
+      try{cashierVerification=await cashierVerificationGate(payments,tot,'In-store sale');}catch(e){return;}
+      posPaymentVerification={required:true,reference:cashierVerification.reference||'',signature:paymentVerificationSignature(payments,tot)};
+      (window.accazaToast||function(){})('Payment verified · complete the sale when ready','ok');return;
+    }
+    cashierVerification=direct.length?posPaymentVerification:{required:false};
     if(d>0){var a0=A();if(!a0.managerApproval||!a0.consumeManagerApproval){alert('Privileged discount approval is unavailable. Refresh the portal.');return;}var discountSource='manual_discount_'+shift.id+'_'+Date.now();try{var dap=await a0.managerApproval('manual_discount',discountSource,d,'Approve manual POS discount');var dcr=await a0.consumeManagerApproval({action:'manual_discount',sourceId:discountSource,amount:d,operationKey:discountSource,approvalId:dap.approvalId}),dcd=(dcr&&dcr.data)||dcr||{};discountApproval={approvalId:dap.approvalId,approvedBy:dcd.approvedBy||'',approvedByUid:dcd.approvedByUid||'',approvedRole:dcd.approvedRole||'',sourceId:discountSource};}catch(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Discount approval failed: '+((e&&e.message)||e));return;} }
-    var cashierVerification;try{cashierVerification=await cashierVerificationGate(payments,tot,'In-store sale');}catch(e){return;}
     await chargeSale(sub,tot,payments,null,discountApproval,cashierVerification);
-    })();}finally{posChargeBusy=false;if(document.body.contains(chargeButton)){chargeButton.disabled=false;chargeButton.textContent=chargeLabel;}}
+    })();}finally{posChargeBusy=false;if(document.body.contains(chargeButton))refreshChargeAction();}
   };
 }
 function chargeSale(sub,total,payments,platform,discountApproval,cashierVerification){
@@ -2104,7 +2134,7 @@ function chargeSale(sub,total,payments,platform,discountApproval,cashierVerifica
   var _chargeStarted=performance.now();return persistPosSale(order).then(function(saved){
     telemetry().metric('charge_to_durable',performance.now()-_chargeStarted,saved.mode!=='server');
     if(window.__posLog)window.__posLog(saved.mode==='server'?'sale-server-recovered':'sale-queued',oid,'₱'+total+' · '+payLabel+(order.offlineRung?' · OFFLINE':'')+' · '+txnId);
-    var receipt=Object.assign({},order); receipt._offline=(window.__online===false); receipt._syncPending=saved.mode!=='server'; posCart={};posDraft={}; window.__posPkgs=[]; posScopedDisc=[]; renderPosCart(); showReceipt(receipt); if(saved.mode==='server'){(window.accazaToast||function(){})('Sale saved to the server. Browser storage was recovered safely.','ok');checkPosStorageHealth();}else flushOfflineQueue();
+    var receipt=Object.assign({},order); receipt._offline=(window.__online===false); receipt._syncPending=saved.mode!=='server'; posCart={};posDraft={};posPaymentVerification=null; window.__posPkgs=[]; posScopedDisc=[]; renderPosCart(); showReceipt(receipt); if(saved.mode==='server'){(window.accazaToast||function(){})('Sale saved to the server. Browser storage was recovered safely.','ok');checkPosStorageHealth();}else flushOfflineQueue();
   }).catch(function(error){telemetry().metric('charge_to_durable',performance.now()-_chargeStarted,false);alert('Sale was NOT saved. Durable storage failed: '+String(error&&error.message||error));return {failed:true};});
 }
 window.__pos={render:function(){if(document.getElementById('posCartPanel'))renderPosCart();},loadCart:function(c){posCart=c||{};if(window.switchTab)window.switchTab('pos',document.querySelector('.admin-tab'));buildPOS();},hasItems:function(){return Object.keys(posCart).length>0;},addPackage:function(components,meta){(components||[]).forEach(function(c){var key=uid('pc_');posCart[key]={itemKey:c.itemKey,name:c.name,size:c.size||null,optLabels:c.optLabels||[],details:c.details||('pkg: '+meta.name),qty:c.qty,unitTotal:c.unitTotal,stream:(meta.type==='promo'?'promo':'events'),pkgId:meta.id};});window.__posPkgs=window.__posPkgs||[];window.__posPkgs.push(meta);renderPosCart();}};
