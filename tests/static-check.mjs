@@ -252,6 +252,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(editItemSource.includes('id="eiStock"')||editItemSource.includes('id="eiCost"')||editItemSource.includes('postMovements(['))fail('Stock Items edit card can still override ledger-controlled stock or actual WAC');
   if(!offlineQueueSource.includes("indexedDB.open(DB_NAME,DB_VERSION)")||!offlineQueueSource.includes("keyPath:'id'")||!offlineQueueSource.includes("status:'pending'"))fail('Phase 5B durable IndexedDB transaction queue missing');
   for(const state of ["'pending'","'syncing'","'failed'","'synced'"])if(!offlineQueueSource.includes(state))fail(`Phase 5B queue state missing: ${state}`);
+  if(!offlineQueueSource.includes('function compactSynced()')||!offlineQueueSource.includes('function isQuotaError(error)')||!offlineQueueSource.includes('function storageHealth()'))fail('POS durable storage quota recovery or health check is missing');
+  if(!posSource.includes('function persistPosSale(o)')||!posSource.includes("saved.mode==='server'?'sale-server-recovered':'sale-queued'")||!posSource.includes('transactionId:o.clientTxnId'))fail('POS quota failure does not have an idempotent online server recovery path');
   if(posSource.includes("localStorage.getItem('accaza_offline_orders')")||posSource.includes("writes['orders/'+o.id]"))fail('Phase 5B retired localStorage/direct-write queue remains in POS');
   if(!posSource.includes("clientTxnId:txnId")||!posSource.includes('PENDING SYNC — Firebase confirmation not yet received'))fail('Phase 5B POS does not stamp or disclose pending synchronization');
   if(!adminSource.includes("syncOfflinePosSale:function(command)")||!adminSource.includes("'syncOfflinePosSale'"))fail('Phase 5B callable bridge missing');

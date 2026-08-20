@@ -20,15 +20,31 @@
   }
   function drawerDelta(order){var out={};function add(map,sign){Object.keys(map||{}).forEach(function(k){out[k]=(Number(out[k])||0)+sign*(Number(map[k])||0);if(!out[k])delete out[k];});}add(order.cashReceived,1);add(order.cashChange,-1);return out;}
   function put(row){row.updatedAt=Date.now();return tx('readwrite',function(s){s.put(row);});}
-  function enqueue(order){if(!order||!order.clientTxnId)return Promise.reject(new Error('Offline transaction ID is missing.'));return put({id:order.clientTxnId,order:order,drawerDelta:drawerDelta(order),status:'pending',createdAt:Number(order.timestamp)||Date.now(),updatedAt:Date.now(),attempts:0,lastError:''}).then(function(){return order.clientTxnId;});}
+  function isQuotaError(error){var name=String(error&&error.name||''),message=String(error&&error.message||error||'');return name==='QuotaExceededError'||/quota.?exceeded|storage.*(?:full|quota)/i.test(message);}
+  function removeIds(ids){if(!ids.length)return Promise.resolve(0);return tx('readwrite',function(s){ids.forEach(function(id){s.delete(id);});}).then(function(){return ids.length;});}
   function all(){return open().then(function(db){return request(db.transaction(STORE,'readonly').objectStore(STORE).getAll());}).then(function(rows){return(rows||[]).sort(function(a,b){return Number(a.createdAt)-Number(b.createdAt);});});}
   function get(id){return open().then(function(db){return request(db.transaction(STORE,'readonly').objectStore(STORE).get(id));});}
   function summary(){return all().then(function(rows){var s={pending:0,syncing:0,failed:0,synced:0,total:rows.length,rows:rows};rows.forEach(function(r){if(s[r.status]!=null)s[r.status]++;});return s;});}
   function patch(id,fields){return get(id).then(function(row){if(!row)return;Object.assign(row,fields||{}, {updatedAt:Date.now()});return put(row);});}
-  function prune(){var cutoff=Date.now()-24*60*60*1000;return all().then(function(rows){var ids=rows.filter(function(r){return r.status==='synced'&&Number(r.syncedAt||0)<cutoff;}).map(function(r){return r.id;});if(!ids.length)return;return tx('readwrite',function(s){ids.forEach(function(id){s.delete(id);});});});}
+  function prune(){var cutoff=Date.now()-24*60*60*1000;return all().then(function(rows){return removeIds(rows.filter(function(r){return r.status==='synced'&&Number(r.syncedAt||0)<cutoff;}).map(function(r){return r.id;}));});}
+  function compactSynced(){return all().then(function(rows){return removeIds(rows.filter(function(r){return r.status==='synced';}).map(function(r){return r.id;}));});}
+  function enqueue(order){
+    if(!order||!order.clientTxnId)return Promise.reject(new Error('Offline transaction ID is missing.'));
+    var row={id:order.clientTxnId,order:order,drawerDelta:drawerDelta(order),status:'pending',createdAt:Number(order.timestamp)||Date.now(),updatedAt:Date.now(),attempts:0,lastError:''};
+    return prune().then(function(){return put(row);}).catch(function(error){
+      if(!isQuotaError(error))throw error;
+      return compactSynced().then(function(){return put(row);});
+    }).then(function(){return order.clientTxnId;});
+  }
+  function storageHealth(){
+    var estimatePromise=(global.navigator&&navigator.storage&&navigator.storage.estimate)?navigator.storage.estimate().catch(function(){return{};}):Promise.resolve({});
+    var probeId='__storage_health_probe__',probe={id:probeId,status:'synced',createdAt:Date.now(),syncedAt:Date.now(),updatedAt:Date.now(),healthProbe:true};
+    var probePromise=put(probe).then(function(){return removeIds([probeId]);}).then(function(){return true;}).catch(function(error){return isQuotaError(error)?false:Promise.reject(error);});
+    return Promise.all([summary(),estimatePromise,probePromise]).then(function(parts){var e=parts[1]||{},usage=Number(e.usage)||0,quota=Number(e.quota)||0;return{writable:parts[2],usage:usage,quota:quota,remaining:quota?Math.max(0,quota-usage):null,ratio:quota?usage/quota:null,queue:parts[0]};});
+  }
   function flush(sync,onChange){
     if(flushing)return Promise.resolve({busy:true});flushing=true;
     return all().then(function(rows){var work=rows.filter(function(r){return r.status==='pending'||r.status==='failed'||r.status==='syncing';});var chain=Promise.resolve(),result={synced:0,failed:0};work.forEach(function(row){chain=chain.then(function(){return patch(row.id,{status:'syncing',attempts:(Number(row.attempts)||0)+1,lastError:''}).then(function(){if(onChange)onChange();return sync({transactionId:row.id,order:row.order,drawerDelta:row.drawerDelta});}).then(function(response){return patch(row.id,{status:'synced',syncedAt:Date.now(),serverResult:(response&&response.data)||response||null}).then(function(){result.synced++;if(onChange)onChange();});}).catch(function(error){var msg=String((error&&error.message)||error||'Sync failed').slice(0,500);return patch(row.id,{status:'failed',lastError:msg,failedAt:Date.now()}).then(function(){result.failed++;if(onChange)onChange();});});});});return chain.then(function(){return prune().then(function(){return result;});});}).finally(function(){flushing=false;if(onChange)onChange();});
   }
-  global.AccazaOfflineQueue={open:open,enqueue:enqueue,all:all,summary:summary,flush:flush,retry:function(id){return patch(id,{status:'pending',lastError:''});},drawerDelta:drawerDelta};
+  global.AccazaOfflineQueue={open:open,enqueue:enqueue,all:all,summary:summary,flush:flush,retry:function(id){return patch(id,{status:'pending',lastError:''});},drawerDelta:drawerDelta,storageHealth:storageHealth,isQuotaError:isQuotaError,compactSynced:compactSynced};
 })(window);
