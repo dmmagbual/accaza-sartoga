@@ -27,6 +27,19 @@
     return promises[name];
   }
   window.__accazaLoadAdminModule=load;
+  window.__openOfflineQueue=function(button){
+    var old=button&&button.innerHTML;
+    if(button){button.disabled=true;button.setAttribute('aria-busy','true');}
+    return load('pos').then(function(){
+      if(typeof window.__showOfflineQueue!=='function')throw new Error('Transaction sync queue did not initialize.');
+      window.__showOfflineQueue();
+    }).catch(function(error){
+      console.error('Accaza transaction sync queue failed to open',error);
+      alert('The transaction sync queue could not open. Check the connection and try again.');
+    }).finally(function(){
+      if(button){button.disabled=false;button.removeAttribute('aria-busy');if(old!=null)button.innerHTML=old;}
+    });
+  };
   function loading(tab){var root=document.getElementById(roots[tab]||'');if(root&&!root.innerHTML.trim())root.innerHTML='<div style="padding:2rem;text-align:center;color:var(--tl);">Loading '+String(tab).replace(/([A-Z])/g,' $1')+'…</div>';}
   function failed(tab,error){var root=document.getElementById(roots[tab]||'');if(root)root.innerHTML='<div style="padding:1.2rem;border:1px solid #f1b7b7;background:#fff5f5;color:#8b1e1e;border-radius:8px;">This section could not load. Check the connection and open the tab again.</div>';console.error('Accaza module load failed',tab,error);}
 
