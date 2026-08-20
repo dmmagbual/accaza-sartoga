@@ -351,6 +351,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   for(const marker of ['reconcilePurchasePayable','Repair missing payable',"rid='rcpt_'+invoiceId+'_'+lineIndex","bid='bat_'+invoiceId+'_'+lineIndex","P.pay==='account')return a.reconcilePurchasePayable"])if(!posSource.includes(marker)&&!functionsSource.includes(marker))fail(`Purchase/payable reconciliation marker missing: ${marker}`);
   const financeSource=fs.readFileSync(path.join(root,'assets','js','admin','finance.js'),'utf8');
   for(const marker of ['function openPayableDetail(id)','data-apdetail','<th>Reference</th>','data-apreverse','Inventory liabilities are created only from Purchases'])if(!financeSource.includes(marker))fail(`Payables control/detail marker missing: ${marker}`);
+  if(!financeSource.includes('>Details</button>')||financeSource.includes('<tr data-apdetail=')||financeSource.includes('Click a row for details'))fail('Payable details must use a dedicated button instead of a clickable row');
+  if(financeSource.includes('background:var(--pw)'))fail('Payable details panel still uses an undefined transparent background token');
   if(financeSource.includes('<option>inventory</option>'))fail('Manual Payables entry still offers inventory as a type');
   if(!financeSource.includes("filter(function(x){return !x.status||x.status==='open';})"))fail('Reversed payables can still appear in Open Payables');
   if(!functionsSource.includes('Inventory payables must be created from Purchases'))fail('Server does not block manually created inventory payables');
