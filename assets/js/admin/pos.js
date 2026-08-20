@@ -345,13 +345,13 @@ function skuCostPerBase(item,packSize,purchaseUnit,purchaseCost){
   if(!baseUnits)return {base:0,per:0};
   return {base:baseUnits,per:(Number(purchaseCost)||0)/baseUnits};
 }
-function openSkuManager(id){
+function openSkuManager(id,onUse){
   var a=A(); var item=inventoryMap[id]; if(!item){alert('Item not found.');return;}
   var baseU=item.masterUnit||item.unit||''; var editId=null;
   var mask=document.createElement('div'); mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
   document.body.appendChild(mask);
   function close(){ if(mask.parentNode)document.body.removeChild(mask); }
-  function load(){ a.get(a.ref(a.db,'inventorySku')).then(function(s){ var all=s.val()||{}; var mine=Object.keys(all).map(function(k){return Object.assign({id:k},all[k]);}).filter(function(x){return x.masterId===id;}).sort(function(x,y){return (Number(x.priority)||0)-(Number(y.priority)||0);}); draw(mine); }).catch(function(e){ mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:520px;width:100%;padding:1.2rem;"><div style="font-weight:700;color:var(--bd);">Could not load approved brands</div><p class="pz-sub">'+esc((e&&e.code)||String(e))+'</p><button class="pz-btn sec" id="skErrX">Close</button></div>'; var b=document.getElementById('skErrX'); if(b)b.onclick=close; }); }
+  function load(){ a.get(a.ref(a.db,'inventorySku')).then(function(s){ var all=s.val()||{}; inventorySkuMap=all;var mine=Object.keys(all).map(function(k){return Object.assign({id:k},all[k]);}).filter(function(x){return x.masterId===id;}).sort(function(x,y){return (Number(x.priority)||0)-(Number(y.priority)||0);}); draw(mine); }).catch(function(e){ mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:520px;width:100%;padding:1.2rem;"><div style="font-weight:700;color:var(--bd);">Could not load approved brands</div><p class="pz-sub">'+esc((e&&e.code)||String(e))+'</p><button class="pz-btn sec" id="skErrX">Close</button></div>'; var b=document.getElementById('skErrX'); if(b)b.onclick=close; }); }
   var unitOpts=compatUnits(item).map(function(u){return '<option value="'+esc(u)+'"'+(uNorm(u)===uNorm(item.unit)?' selected':'')+'>'+esc(u)+'</option>';}).join('');
   function draw(mine){
     var rows=mine.map(function(sk,ix){
@@ -365,7 +365,7 @@ function openSkuManager(id){
         +'<td style="font-size:0.8rem;">'+(sk.purchaseCost?peso(sk.purchaseCost):'—')+'</td>'
         +'<td style="font-size:0.8rem;white-space:nowrap;">'+(per?('₱'+per.toFixed(4)+'/'+esc(baseU)):'—')+'</td>'
         +'<td style="font-size:0.8rem;">'+(sk.active===false?'<span style="color:#a55;">inactive</span>':'<span style="color:#2a7;">active</span>')+'</td>'
-        +'<td style="white-space:nowrap;"><button class="pz-btn sec" data-sked="'+sk.id+'" style="padding:0.15rem 0.5rem;">Edit</button> <button class="pz-btn sec" data-sktog="'+sk.id+'" style="padding:0.15rem 0.5rem;">'+(sk.active===false?'Activate':'Deactivate')+'</button> <button class="pz-btn warn" data-skdel="'+sk.id+'" style="padding:0.15rem 0.45rem;">✕</button></td></tr>';
+        +'<td style="white-space:nowrap;">'+(onUse&&sk.active!==false?'<button class="pz-btn ok" data-skuse="'+sk.id+'" style="padding:0.15rem 0.5rem;">Use this brand</button> ':'')+'<button class="pz-btn sec" data-sked="'+sk.id+'" style="padding:0.15rem 0.5rem;">Edit</button> <button class="pz-btn sec" data-sktog="'+sk.id+'" style="padding:0.15rem 0.5rem;">'+(sk.active===false?'Activate':'Deactivate')+'</button> <button class="pz-btn warn" data-skdel="'+sk.id+'" style="padding:0.15rem 0.45rem;">✕</button></td></tr>';
     }).join('');
     var e=editId?(mine.filter(function(x){return x.id===editId;})[0]||{}):{};
     mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:920px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
@@ -396,8 +396,9 @@ function openSkuManager(id){
       var p=skuCostPerBase(item,pack,punit,pcost);
       var rec={masterId:id,brand:brand,supplier:(document.getElementById('skSup').value||'').trim(),purchaseUnit:punit,packSize:(pack===''?null:Number(pack)||0),purchaseCost:(pcost===''?null:Number(pcost)||0),convToBase:p.base,costPerBase:p.per,branchAvail:['main'],updatedAt:Date.now()};
       if(editId){ a.update(a.ref(a.db,'inventorySku/'+editId),rec).then(function(){editId=null;load();}).catch(skErr); }
-      else { rec.active=true; rec.priority=mine.length; rec.createdAt=Date.now(); rec.seededFrom='manual'; a.set(a.ref(a.db,'inventorySku/'+uid('sku_')),rec).then(load).catch(skErr); }
+      else { rec.active=true; rec.priority=mine.length; rec.createdAt=Date.now(); rec.seededFrom='manual';var newSid=uid('sku_');a.set(a.ref(a.db,'inventorySku/'+newSid),rec).then(function(){inventorySkuMap[newSid]=rec;if(onUse){onUse(newSid,rec);close();}else load();}).catch(skErr); }
     };
+    mask.querySelectorAll('[data-skuse]').forEach(function(b){b.onclick=function(){var sid=b.getAttribute('data-skuse'),selected=mine.filter(function(x){return x.id===sid&&x.active!==false;})[0];if(!selected)return;inventorySkuMap[sid]=selected;onUse(sid,selected);close();};});
     mask.querySelectorAll('[data-sked]').forEach(function(b){b.onclick=function(){editId=b.getAttribute('data-sked');draw(mine);};});
     mask.querySelectorAll('[data-sktog]').forEach(function(b){b.onclick=function(){var sid=b.getAttribute('data-sktog');var cur=mine.filter(function(x){return x.id===sid;})[0]||{};a.update(a.ref(a.db,'inventorySku/'+sid),{active:!(cur.active!==false)}).then(load).catch(skErr);};});
     mask.querySelectorAll('[data-skdel]').forEach(function(b){b.onclick=function(){var sid=b.getAttribute('data-skdel');var cur=mine.filter(function(x){return x.id===sid;})[0]||{};if(!confirm('Remove brand “'+((cur.brand)||'')+'”? Past purchase receipts and batches are unaffected.'))return;a.remove(a.ref(a.db,'inventorySku/'+sid)).then(load).catch(skErr);};});
@@ -854,7 +855,7 @@ function renderPurchases(){
       if(required&&!ln.skuId&&skus.length===1)ln.skuId=skus[0].id;
       var selectedSku=ln.skuId&&inventorySkuMap[ln.skuId];
       var skuOpts='<option value="">'+(required?'— select required brand —':'— no approved brand / legacy receipt —')+'</option>'+skus.map(function(s){return '<option value="'+esc(s.id)+'"'+(s.id===ln.skuId?' selected':'')+'>'+esc(skuDisplay(s))+'</option>';}).join('');
-      skuCell='<div class="purchase-sku-cell '+(required?'required':'optional')+'"><span class="pz-lbl">Approved brand '+(required?'<b>required</b>':'(optional)')+'</span><select class="pz-in" data-pf="skuId" data-pi="'+i+'"'+(!ln.ing?' disabled':'')+'>'+skuOpts+'</select>'+(required&&!skus.length?'<button type="button" class="purchase-add-sku" data-pmanage-sku="'+esc(ln.ing)+'">Add an approved brand</button>':'')+'</div>';
+      skuCell='<div class="purchase-sku-cell '+(required?'required':'optional')+'"><span class="pz-lbl">Approved brand '+(required?'<b>required</b>':'(optional)')+'</span><select class="pz-in" data-pf="skuId" data-pi="'+i+'"'+(!ln.ing?' disabled':'')+'>'+skuOpts+'</select>'+(required&&!skus.length?'<button type="button" class="purchase-add-sku" data-pmanage-sku="'+esc(ln.ing)+'" data-pmanage-line="'+i+'">Choose or add an approved brand</button>':'')+'</div>';
       brandCell=selectedSku?'<div><span class="pz-lbl">Selected brand</span><div class="purchase-sku-brand">'+esc(selectedSku.brand||'—')+'</div></div>':'<div><span class="pz-lbl">Legacy brand note</span><input class="pz-in" data-pf="brand" data-pi="'+i+'" value="'+esc(ln.brand)+'" placeholder="optional" style="width:110px;"/></div>';
     }
     var costInput=(ln.costMode==='total'
@@ -915,7 +916,7 @@ function renderPurchases(){
     }
   });
   root.querySelectorAll('[data-prem]').forEach(function(b){b.onclick=function(){var i=Number(b.getAttribute('data-prem'));P.lines.splice(i,1);if(!P.lines.length)P.lines.push(purchBlank());renderPurchases();};});
-  root.querySelectorAll('[data-pmanage-sku]').forEach(function(b){b.onclick=function(){openSkuManager(b.getAttribute('data-pmanage-sku'));};});
+  root.querySelectorAll('[data-pmanage-sku]').forEach(function(b){b.onclick=function(){var lineIndex=Number(b.getAttribute('data-pmanage-line')),masterId=b.getAttribute('data-pmanage-sku');openSkuManager(masterId,function(sid,sku){if(!P.lines[lineIndex]||P.lines[lineIndex].ing!==masterId)return;P.lines[lineIndex].skuId=sid;renderPurchases();(window.accazaToast||function(){})((sku.brand||'Brand')+' selected for this purchase','ok');});};});
   var al=document.getElementById('purAddLine');if(al)al.onclick=function(){P.lines.push(purchBlank());renderPurchases();};
   var rs=document.getElementById('purReset');if(rs)rs.onclick=function(){if(confirm('Clear this purchase entry?')){window.__purch=null;renderPurchases();}};
   var pp=document.getElementById('purPost');if(pp)pp.onclick=postPurchases;
