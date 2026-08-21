@@ -12,9 +12,9 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 239,
-    "customer": 58,
-    "serviceWorkerCache": 141
+    "admin": 240,
+    "customer": 59,
+    "serviceWorkerCache": 143
   },
   "authoritativeFiles": [
     "admin.html",
@@ -93,6 +93,7 @@
     "offlinePosSync",
     "orderStatusCommands",
     "clientTelemetryDaily",
+    "systemHealth",
     "inventoryBalances",
     "inventoryMovements",
     "financialMovements",
