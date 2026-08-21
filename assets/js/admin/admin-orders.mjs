@@ -16,9 +16,10 @@ function createOrderAdmin(deps){
   function updateStatus(oid,status,control){var order=deps.getOrders()[oid]||{},expected=String(order.status||'Pending'),oldText=control&&control.textContent;if(control){control.disabled=true;if(control.tagName==='BUTTON')control.textContent='Processing…';}return callables.updateOrderStatus({orderId:oid,status:status,expectedStatus:expected,requestId:commandId()}).then(function(result){(window.accazaToast||function(){})('Order '+status,'ok');return result;}).catch(function(error){alert('Could not update order: '+((error&&error.message)||error));throw error;}).finally(function(){if(control){control.disabled=false;if(control.tagName==='BUTTON')control.textContent=oldText;}});}
   window.__markOrderCompleted=function(oid,control){return updateStatus(oid,'Completed',control);};
   function hasNonCashPayment(o){return(o.payments&&o.payments.length)?o.payments.some(function(p){return p.method&&p.method!=='Cash';}):(o.payment&&o.payment!=='Cash'&&o.payment!=='Split');}
+  function verificationPolicy(o){var payments=(o.payments&&o.payments.length)?o.payments:[{method:o.payment}],direct=payments.filter(function(p){var m=String(p&&p.method||'').trim().toLowerCase();return m&&m!=='cash'&&m!=='grabfood'&&m!=='foodpanda';}),methods=(window.__posSettings&&window.__posSettings.payMethods)||[];if(!direct.length)return null;return direct.some(function(p){var row=methods.find(function(m){return String(m&&m.name||'').trim().toLowerCase()===String(p.method||'').trim().toLowerCase();}),policy=row&&row.verificationPolicy;if(policy!=='cashier_manager'&&policy!=='manager_only')policy=/gcash|maya/i.test(String(p.method||''))?'cashier_manager':'manager_only';return policy==='manager_only';})?'manager_only':'cashier_manager';}
   function paymentState(o){
     if(o.voided)return '<span class="order-payment-state voided">Voided sale</span>';
-    if(o.paymentStatus==='pending')return '<span class="order-payment-state pending">Awaiting cashier verification</span>';
+    if(o.paymentStatus==='pending')return '<span class="order-payment-state pending">'+(verificationPolicy(o)==='manager_only'?'Awaiting manager verification':'Awaiting cashier verification')+'</span>';
     if(o.paymentStatus==='cashier_verified')return '<span class="order-payment-state pending">Cashier verified · manager review pending</span>';
     if((o.paymentStatus==='manager_validated'||o.paymentStatus==='confirmed')&&hasNonCashPayment(o))return '<span class="order-payment-state confirmed">Manager validated</span>';
     if(o.status==='Completed'||o.status==='Received')return '<span class="order-payment-state locked">Sale locked</span>';
@@ -26,9 +27,9 @@ function createOrderAdmin(deps){
   }
   function orderStatusCtl(o,orderKey){
     var oid=escHtml(orderKey||o.id);if(o.voided)return '';
-    if((o.source==='online'||o.channel==='online')&&!o.shiftId){var verifyAction=o.paymentStatus==='pending'?'<button data-verify="'+oid+'" class="order-action verify">Verify payment</button>':'';return verifyAction+'<span class="order-payment-state pending">Use POS → Online Orders to accept into shift</span>';}
+    if((o.source==='online'||o.channel==='online')&&!o.shiftId){var verifyAction=o.paymentStatus==='pending'?'<button data-verify="'+oid+'" class="order-action verify">'+(verificationPolicy(o)==='manager_only'?'Manager verify':'Cashier verify')+'</button>':'';return verifyAction+'<span class="order-payment-state pending">Use POS → Online Orders to accept into shift</span>';}
     if(o.status==='Completed'||o.status==='Received'){
-      var paymentAction=o.paymentStatus==='pending'?'<button data-verify="'+oid+'" class="order-action verify">Verify payment</button>':'';
+      var paymentAction=o.paymentStatus==='pending'?'<button data-verify="'+oid+'" class="order-action verify">'+(verificationPolicy(o)==='manager_only'?'Manager verify':'Cashier verify')+'</button>':'';
       return paymentAction+'<button data-refund="'+oid+'" class="order-action refund">Refund</button><button data-void="'+oid+'" class="order-action void">Void</button>';
     }
     return '<select class="status-select" data-orderid="'+oid+'"><option'+(o.status==='Pending'?' selected':'')+'>Pending</option><option'+(o.status==='Confirmed'?' selected':'')+'>Confirmed</option><option'+(o.status==='Preparing'?' selected':'')+'>Preparing</option><option value="Ready"'+(o.status==='Ready'?' selected':'')+'>'+(o.type==='Delivery'?'Ready for Delivery':'Ready for Pickup')+'</option><option'+(o.status==='Rejected'?' selected':'')+' style="color:#c0392b;">Rejected</option></select><button data-complete="'+oid+'" class="order-action complete">Mark completed</button>';

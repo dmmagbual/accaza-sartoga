@@ -1,5 +1,6 @@
 "use strict";
 const {HttpsError} = require("firebase-functions/v2/https");
+const PaymentVerification = require("./payment-verification");
 
 const POS_DENOM_KEYS = new Set(["b1000", "b500", "b200", "b100", "b50", "p20", "c10", "c5", "c1", "c25", "c10s", "c5s"]);
 function offlineTxnKey(value) {
@@ -32,10 +33,10 @@ async function syncOfflinePosSaleCommand(ctx) {
   const lines = listFromFirebase(raw.lineItems);if (!lines.length || lines.length > 200) throw new HttpsError("invalid-argument", "Offline sale items are invalid.");
   const delta = offlineDrawerDelta(data.drawerDelta), orderRef = db.ref(`/orders/${orderId}`), existingSnap = await orderRef.get(), existing = existingSnap.val();
   if (existing && existing.clientTxnId !== transactionId) throw new HttpsError("already-exists", "This order ID already belongs to another transaction.");
-  const channel = String(raw.channel || "instore").toLowerCase(), platform = channel === "grabfood" || channel === "foodpanda", payments = Array.isArray(raw.payments) ? raw.payments : [], direct = payments.filter((row) => /gcash|maya|bank|transfer/i.test(String(row && row.method || "")));
-  if (!platform && direct.length && raw.cashierVerificationIntent !== true) throw new HttpsError("failed-precondition", "Cashier verification is required before completing a direct electronic payment sale.");
+  const channel = String(raw.channel || "instore").toLowerCase(), platform = channel === "grabfood" || channel === "foodpanda", payments = Array.isArray(raw.payments) ? raw.payments : [], direct = PaymentVerification.directPaymentRows(payments), posSettings = (await db.ref("/posSettings").get()).val() || {}, verificationPolicy = platform ? null : PaymentVerification.paymentPolicy(payments, posSettings.payMethods);
+  if (!platform && direct.length && verificationPolicy === PaymentVerification.CASHIER_MANAGER && raw.cashierVerificationIntent !== true) throw new HttpsError("failed-precondition", "Cashier verification is required before completing this direct electronic payment sale.");
   if (!platform && direct.some((row) => !String(row && row.ref || "").trim())) throw new HttpsError("invalid-argument", "Every direct electronic payment requires a transaction reference.");
-  const paymentControl = platform || !direct.length ? {paymentStatus: "confirmed"} : {paymentStatus: "cashier_verified", cashierVerifiedAt: now, cashierVerifiedBy: actor.uid, cashierVerifiedRole: actor.role, cashierVerifiedAmount: money(direct.reduce((sum, row) => sum + money(row.amount), 0))};
+  const paymentControl = platform || !direct.length ? {paymentStatus: "confirmed"} : verificationPolicy === PaymentVerification.MANAGER_ONLY ? {paymentStatus: "pending", paymentVerificationPolicy: verificationPolicy} : {paymentStatus: "cashier_verified", paymentVerificationPolicy: verificationPolicy, cashierVerifiedAt: now, cashierVerifiedBy: actor.uid, cashierVerifiedRole: actor.role, cashierVerifiedAmount: money(direct.reduce((sum, row) => sum + money(row.amount), 0))};
   const order = Object.assign({}, raw, paymentControl, {id: orderId, shiftId, total, lineItems: lines, clientTxnId: transactionId, syncState: "synced", syncedAt: existing && existing.syncedAt ? existing.syncedAt : now, syncedByUid: actor.uid, schemaVersion: Math.max(2, Number(raw.schemaVersion) || 0)}); delete order.cashierVerificationIntent;
   if (!existing) await db.ref().update({[`orders/${orderId}`]: order, [`activeOrders/${orderId}`]: activeOrderProjection(order), [`offlinePosSync/${transactionId}`]: {orderId, shiftId, state: "order-written", createdAt: Number(raw.timestamp) || now, updatedAt: now, actorUid: actor.uid}});
   const shiftResult = await db.ref(`/shifts/${shiftId}`).transaction((row) => applyDrawerDelta(row, transactionId, delta, now, actor), undefined, false);
