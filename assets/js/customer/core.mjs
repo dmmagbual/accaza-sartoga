@@ -637,7 +637,7 @@ function renderMenuSection(){
   if(!items.length){el.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:3rem;color:rgba(224,212,198,0.5);"><p style="font-size:2rem;">'+getCatIcon(menuFilter)+'</p><p style="margin-top:0.5rem;">No items yet.</p></div>';return;}
   el.innerHTML=items.map(function(i){
     const ok=isAvail(i.name);
-    const imgHtml=i.img?'<img src="'+i.img+'" class="menu-card-img" style="'+(ok?'':'opacity:0.5;')+'" onerror="this.style.display=\'none\'"/>'
+    const imgHtml=i.img?'<img src="'+i.img+'" alt="" class="menu-card-img" style="'+(ok?'':'opacity:0.5;')+'" onerror="this.style.display=\'none\'"/>'
       :'<div class="menu-card-img-placeholder">'+getCatIcon(i.cat)+'</div>';
     const priceHtml=i.priceM&&i.priceL
       ?'<span class="price-badge">S ₱'+i.priceS+'</span><span class="price-badge">M ₱'+i.priceM+'</span><span class="price-badge">L ₱'+i.priceL+'</span>'
@@ -657,7 +657,7 @@ function renderOrderSection(){
   el.innerHTML=items.map(function(i){
     const ok=isAvail(i.name);
     const cartQty=Object.values(cart).filter(c=>c.name===i.name||c.name.startsWith(i.name+' (')).reduce((s,c)=>s+c.qty,0);
-    const imgHtml=i.img?'<img src="'+i.img+'" class="item-row-img" onerror="this.style.display=\'none\'"/>'
+    const imgHtml=i.img?'<img src="'+i.img+'" alt="" class="item-row-img" onerror="this.style.display=\'none\'"/>'
       :'<div class="item-row-img-placeholder">'+getCatIcon(i.cat)+'</div>';
     return'<div class="item-row" data-itemkey="'+i.key+'" style="'+(ok?'':'opacity:0.45;pointer-events:none;')+'">'
       +imgHtml
@@ -682,7 +682,7 @@ window.openCustomize=function(itemKey){
   custSize=null;custSel={};custQty=1;
   document.getElementById('custItemName').textContent=custItem.name;
   const imgWrap=document.getElementById('custItemImgWrap');
-  imgWrap.innerHTML=custItem.img?'<img src="'+custItem.img+'" style="width:100%;height:160px;object-fit:cover;" onerror="this.style.display=\'none\'"/>'
+  imgWrap.innerHTML=custItem.img?'<img src="'+custItem.img+'" alt="" style="width:100%;height:160px;object-fit:cover;" onerror="this.style.display=\'none\'"/>'
     :'<div class="customize-img-placeholder">'+getCatIcon(custItem.cat)+'</div>';
   let html='';
   if(custItem.labelS&&custItem.labelL&&custItem.priceL){
@@ -1210,7 +1210,7 @@ function renderOrders(){
       +'<div class="order-admin-items">🛒 '+escHtml(o.items)+'</div>'
       +(o.address?'<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📍 '+escHtml(o.address)+'</div>':'')
       +(o.notes?'<div style="font-size:0.78rem;color:var(--tl);margin:0.2rem 0;">📝 '+escHtml(o.notes)+'</div>':'')
-      +(proof?'<div style="margin:0.5rem 0;"><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;">📎 Proof:</p><img src="'+proof+'" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid var(--cd);cursor:pointer;" onclick="showProof(this.src)"/></div>':'<p style="font-size:0.75rem;color:#c0392b;margin:0.3rem 0;">⚠️ No valid proof of payment</p>')
+      +(proof?'<div style="margin:0.5rem 0;"><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;">📎 Proof:</p><img src="'+proof+'" alt="Payment receipt proof" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid var(--cd);cursor:pointer;" onclick="showProof(this.src)"/></div>':'<p style="font-size:0.75rem;color:#c0392b;margin:0.3rem 0;">⚠️ No valid proof of payment</p>')
       +'<div class="order-admin-footer"><span class="order-total-tag">₱'+(Number(o.total)||0).toLocaleString()+' · '+escHtml(o.payment)+'</span><div style="display:flex;align-items:center;gap:0.5rem;">'
       +(isReceived?'<span style="font-size:0.8rem;color:#1b5e20;font-weight:500;">✅ Received</span>':'<select class="status-select" data-orderid="'+oid+'"><option'+(o.status==='Pending'?' selected':'')+'>Pending</option><option'+(o.status==='Confirmed'?' selected':'')+'>Confirmed</option><option'+(o.status==='Preparing'?' selected':'')+'>Preparing</option><option'+(o.status==='Completed'?' selected':'')+'>Completed</option><option'+(o.status==='Rejected'?' selected':'')+' style="color:#c0392b;">Rejected</option></select>')
       +(canArchive?'<button data-archive="'+oid+'" style="background:#e2e3e5;border:1px solid #bbb;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#41464b;cursor:pointer;">📦 Archive</button>':'')+(o.status!=='Received'?'<button data-notify="'+oid+'" style="background:#e7f5ec;border:1px solid #8fd0a8;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#1b7a43;cursor:pointer;font-weight:600;">🔔 Notify</button>':'')+'<button data-printorder="'+oid+'" style="background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#e65100;cursor:pointer;font-weight:600;">🖨️ Print</button>'
@@ -1617,7 +1617,7 @@ function renderStaffMenu(){
           :item.priceL&&item.labelS&&item.labelL?item.labelS+' ₱'+item.priceS+' · '+item.labelL+' ₱'+item.priceL
           :'₱'+item.priceS;
         return'<div style="display:flex;align-items:center;gap:0.75rem;padding:0.55rem 0;border-bottom:1px solid rgba(0,0,0,0.04);">'
-          +(item.img?'<img src="'+item.img+'" style="width:38px;height:38px;border-radius:6px;object-fit:cover;flex-shrink:0;" onerror="this.style.display=\'none\'"/>'
+          +(item.img?'<img src="'+item.img+'" alt="" style="width:38px;height:38px;border-radius:6px;object-fit:cover;flex-shrink:0;" onerror="this.style.display=\'none\'"/>'
             :'<div style="width:38px;height:38px;border-radius:6px;background:linear-gradient(135deg,var(--cd),var(--bl));display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;">'+cat.icon+'</div>')
           +'<div style="flex:1;min-width:0;"><div style="font-size:0.88rem;font-weight:500;color:var(--bd);">'+item.name+'</div>'
           +(item.desc?'<div style="font-size:0.75rem;color:var(--tl);margin-top:0.1rem;">'+item.desc+'</div>':'')
@@ -1739,7 +1739,7 @@ function buildAvail(){
       const ok=isAvail(item.name),sid='av_'+item.key;
       const priceStr=item.priceM&&item.priceL?'S ₱'+item.priceS+' · M ₱'+item.priceM+' · L ₱'+item.priceL:item.priceL&&item.labelS&&item.labelL?''+item.labelS+' ₱'+item.priceS+' · '+item.labelL+' ₱'+item.priceL:'₱'+item.priceS;
       const imgSrc=item.img||'';
-      const imgBlock=imgSrc?'<img src="'+imgSrc+'" style="width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0;" onerror="this.style.display=\'none\'"/>'
+      const imgBlock=imgSrc?'<img src="'+imgSrc+'" alt="" style="width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0;" onerror="this.style.display=\'none\'"/>'
         :'<div style="width:44px;height:44px;border-radius:6px;background:linear-gradient(135deg,var(--cd),var(--bl));display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">'+cat.icon+'</div>';
       html+='<div style="background:#fff;border:1px solid var(--cd);border-radius:8px;padding:0.85rem 1rem;margin-bottom:0.6rem;" draggable="true" data-itemkey="'+item.key+'" data-itemcat="'+cat.id+'">'
         +'<div style="display:flex;align-items:center;gap:0.75rem;">'
@@ -2135,7 +2135,7 @@ window.printResArchive=function(){
   ctx.fillStyle='rgba(224,212,198,0.5)';ctx.font='11px Inter,sans-serif';ctx.textAlign='center';ctx.fillText('Accaza Coffee House · Confidential · For internal use only',pageW/2,totalH-14);
   const w=window.open('','_blank');
   if(!w){const link=document.createElement('a');link.download='Accaza_Reservations_'+new Date().toISOString().slice(0,10)+'.png';link.href=canvas.toDataURL('image/png');link.click();return;}
-  w.document.write('<html><head><title>Reservation Archive — Accaza Coffee House</title></head><body style="margin:0;"><img src="'+canvas.toDataURL('image/png')+'" style="width:100%;" onload="setTimeout(function(){window.print();},400);"/></body></html>');
+  w.document.write('<html><head><title>Reservation Archive — Accaza Coffee House</title></head><body style="margin:0;"><img src="'+canvas.toDataURL('image/png')+'" alt="Reservation archive" style="width:100%;" onload="setTimeout(function(){window.print();},400);"/></body></html>');
   w.document.close();
 };
 

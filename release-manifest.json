@@ -13,8 +13,8 @@
   },
   "builds": {
     "admin": 240,
-    "customer": 58,
-    "serviceWorkerCache": 142
+    "customer": 59,
+    "serviceWorkerCache": 143
   },
   "authoritativeFiles": [
     "admin.html",
