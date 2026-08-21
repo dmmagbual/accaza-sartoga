@@ -1732,6 +1732,7 @@ exports.backupDatabaseDaily = onSchedule(
       resumable: false, contentType: "application/json",
       metadata: {cacheControl: "private, max-age=0, no-store", metadata: {takenAt: String(now)}},
     });
+    await db.ref("/systemHealth/backups/latest").set({takenAt: now, objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, version: "backup-v1"});
     // Retention: delete snapshots older than 30 days.
     let removed = 0;
     try {

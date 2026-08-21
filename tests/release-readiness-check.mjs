@@ -37,7 +37,7 @@ const rulesObject=JSON.parse(rules.replace(/^\s*\/\/.*$/gm,''));
 for(const node of manifest.requiredProtectedNodes){
   if(!rules.includes(`"${node}"`))fail(`Required protected database node missing: ${node}`);
 }
-for(const node of ['offlinePosSync','clientTelemetryDaily','financialMovements','financialApprovals','operationalAudit','deletionAudit']){
+for(const node of ['offlinePosSync','clientTelemetryDaily','systemHealth','financialMovements','financialApprovals','operationalAudit','deletionAudit']){
   if(rulesObject.rules?.[node]?.['.write']!==false)fail(`Server-write protection missing for: ${node}`);
 }
 
