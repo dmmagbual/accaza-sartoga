@@ -33,7 +33,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="/favicon_512x512.png"/>
 <link rel="manifest" href="/manifest.json"/>
 <meta name="theme-color" content="#19241b"/>
-<meta name="accaza-customer-build" content="57"/>
+<meta name="accaza-customer-build" content="58"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -584,8 +584,8 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 </style>
 </head>
 <body>
-<!-- accaza-index build v57 -->
-<div class="fb-sync" id="fbSync">🔥 Firebase Connected</div>
+<!-- accaza-index build v58 -->
+<div class="fb-sync" id="fbSync" role="status" aria-live="polite">Connecting to Firebase…</div>
 <div class="order-toast" id="orderToast" onclick="ackNewOrders()">
   <span class="ot-bell">🔔</span>
   <div><div style="font-weight:600;font-size:0.92rem;" id="orderToastTitle">New order received!</div>
@@ -764,8 +764,8 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
         <div id="qrSection" style="margin-top:1.5rem;background:#fff;border:1px solid var(--cd);border-radius:10px;padding:1.25rem;text-align:center;">
           <p style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--bd);margin-bottom:1rem;">📲 Scan to Pay</p>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
-            <div id="qrGcash"><img src="https://i.postimg.cc/JzD6kpwZ/GCASH-QR-CODE.jpg" alt="GCash QR Code" loading="lazy" style="width:100%;border-radius:8px;"/></div>
-            <div id="qrBdo"><img src="https://i.postimg.cc/Hnk3s24z/BDO-QR-CODE.jpg" alt="BDO QR Code" loading="lazy" style="width:100%;border-radius:8px;"/></div>
+            <div id="qrGcash"><img src="assets/img/payment/gcash-qr.jpg" alt="GCash QR Code" loading="lazy" decoding="async" style="width:100%;border-radius:8px;"/></div>
+            <div id="qrBdo"><img src="assets/img/payment/bdo-qr.jpg" alt="BDO QR Code" loading="lazy" decoding="async" style="width:100%;border-radius:8px;"/></div>
           </div>
           <p style="font-size:0.75rem;color:var(--tl);margin-top:0.75rem;line-height:1.6;">Scan and pay using your preferred payment channel, then attach your receipt below as proof of payment. ✅</p>
         </div>
@@ -818,6 +818,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
           <input type="text" id="custContact" placeholder="Enter your WhatsApp number" style="margin-bottom:0.25rem;"/>
           <p style="font-size:0.72rem;color:var(--tl);">We will use this to send you your order confirmation. 😊</p>
           <button class="btn-place-order" onclick="placeOrder()" disabled aria-disabled="true">Checking order availability…</button>
+          <button id="orderConnectionRetry" onclick="retryCustomerConnection()" style="display:none;width:100%;margin-top:0.5rem;background:#fff6e8;color:#76511d;border:1px solid #d6b77f;border-radius:6px;padding:0.7rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;">↻ Retry connection</button>
           <button onclick="resetOrder()" style="width:100%;margin-top:0.5rem;background:transparent;color:var(--tl);border:1px solid var(--cd);border-radius:6px;padding:0.7rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;">🔄 Reset Order</button>
           <div id="orderConfirm" style="display:none;margin-top:1rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:8px;padding:1.25rem;text-align:center;">
             <p style="font-size:1.1rem;font-weight:600;color:#2d6a4f;margin-bottom:0.5rem;">🎉 Order Placed Successfully!</p>
@@ -918,11 +919,11 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
   </div>
 
   <div style="text-align:center;padding-bottom:2.5rem;">
-    <a href="https://search.google.com/local/writereview?placeid=PLACEHOLDER" target="_blank" rel="noopener noreferrer"
+    <a href="https://www.google.com/maps/search/?api=1&amp;query=Accaza+Coffee+House+Saratoga+Avenue+Dasmarinas+Cavite" target="_blank" rel="noopener noreferrer"
        style="display:inline-block;background:var(--bd);color:#fff;padding:0.75rem 2rem;
               border-radius:2rem;font-weight:600;text-decoration:none;font-size:0.95rem;
               box-shadow:0 2px 10px rgba(0,0,0,0.2);"
-       onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">⭐ Leave Us a Google Review</a>
+       onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">📍 Find Accaza on Google Maps</a>
     <p style="margin-top:0.75rem;font-size:0.82rem;color:#aaa;">Your review means the world to us ☕</p>
   </div>
 </section>
@@ -954,15 +955,15 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
     <div style="text-align:center;margin-bottom:3rem;"><p class="section-label" style="color:var(--bl);">Our Space</p><h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.5rem;">A Peek Inside</h2><p style="color:rgba(224,212,198,0.45);font-size:0.82rem;letter-spacing:0.04em;">Click any photo for a closer look</p></div>
     <div class="gallery-grid">
       <div onclick="openLightbox(0)" class="gallery-card tall"><img src="https://i.postimg.cc/g0qrJsnX/6.jpg" alt="Accaza Coffee House gallery" loading="lazy"/></div>
-      <div onclick="openLightbox(1)" class="gallery-card"><img src="https://i.postimg.cc/TwtsR8Gd/image.png" alt="Accaza"/></div>
-      <div onclick="openLightbox(2)" class="gallery-card"><img src="https://i.postimg.cc/5yPsM8BH/image.png" alt="Accaza"/></div>
-      <div onclick="openLightbox(3)" class="gallery-card"><img src="https://i.postimg.cc/wMbQrgz3/image.png" alt="Accaza"/></div>
-      <div onclick="openLightbox(4)" class="gallery-card"><img src="https://i.postimg.cc/BvGckmr5/image.png" alt="Accaza"/></div>
-      <div onclick="openLightbox(5)" class="gallery-card"><img src="https://i.postimg.cc/sXJJz5YV/image.png" alt="Accaza"/></div>
-      <div onclick="openLightbox(6)" class="gallery-card"><img src="https://i.postimg.cc/B6mT84jW/image.png" alt="Accaza"/></div>
-      <div onclick="openLightbox(7)" class="gallery-card"><img src="https://i.postimg.cc/yxJZk9qq/image.png" alt="Accaza"/></div>
-      <div onclick="openLightbox(8)" class="gallery-card"><img src="https://i.postimg.cc/CxpqxzcB/image.png" alt="Accaza"/></div>
-      <div onclick="openLightbox(9)" class="gallery-card"><img src="https://i.postimg.cc/Pq2pyKTr/image.png" alt="Accaza"/></div>
+      <div onclick="openLightbox(1)" class="gallery-card"><img src="https://i.postimg.cc/TwtsR8Gd/image.png" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(2)" class="gallery-card"><img src="https://i.postimg.cc/5yPsM8BH/image.png" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(3)" class="gallery-card"><img src="https://i.postimg.cc/wMbQrgz3/image.png" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(4)" class="gallery-card"><img src="https://i.postimg.cc/BvGckmr5/image.png" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(5)" class="gallery-card"><img src="https://i.postimg.cc/sXJJz5YV/image.png" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(6)" class="gallery-card"><img src="https://i.postimg.cc/B6mT84jW/image.png" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(7)" class="gallery-card"><img src="https://i.postimg.cc/yxJZk9qq/image.png" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(8)" class="gallery-card"><img src="https://i.postimg.cc/CxpqxzcB/image.png" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(9)" class="gallery-card"><img src="https://i.postimg.cc/Pq2pyKTr/image.png" alt="Accaza" loading="lazy" decoding="async"/></div>
       <div onclick="openLightbox(10)" class="gallery-card"><img src="https://i.postimg.cc/sxZMVrSZ/image.png" alt="Frappe and cold drinks at Accaza" loading="lazy"/></div>
     </div>
   </div>
@@ -1001,7 +1002,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
     <div class="footer-logo">Accaza Coffee House</div>
     <p>Saratoga Ave, La Mediterranea, Dasmariñas, Cavite · Open daily 3PM–12MN</p>
     <div class="footer-links"><a href="#menu">Menu</a><a href="#order">Order</a><a href="#reserve">Reserve</a><a href="#reviews">Reviews</a><a href="#feedback">Feedback</a><a href="#gallery">Gallery</a><a href="#contact">Contact</a><a href="menu.html">Menu</a><a href="about.html">About</a><a href="reservations.html">Reservations</a><a href="contact.html">Visit</a></div>
-    <p class="footer-copy">© 2026 Accaza Coffee House. All rights reserved.<span class="footer-version">Website version 57</span></p>
+    <p class="footer-copy">© 2026 Accaza Coffee House. All rights reserved.<span class="footer-version">Website version 58</span></p>
   </div>
 </footer>
 
@@ -1039,6 +1040,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
   <div class="chat-input-row"><input type="text" class="chat-input" id="chatInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendChat()"/><button class="chat-send" onclick="sendChat()">➤</button></div>
 </div>
 
+<script src="assets/js/shared/business-date.js"></script>
 <script type="module" src="assets/js/customer/core.mjs"></script>
 <!-- Lightbox -->
 <div id="lightbox" role="dialog" aria-modal="true" aria-label="Image viewer" onclick="if(event.target===this)closeLightbox()">

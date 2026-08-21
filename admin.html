@@ -33,7 +33,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="/favicon_512x512.png"/>
 <link rel="manifest" href="/manifest-admin.json"/>
 <meta name="theme-color" content="#19241b"/>
-<meta name="accaza-admin-build" content="238"/>
+<meta name="accaza-admin-build" content="239"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -736,8 +736,8 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
         <div id="qrSection" style="margin-top:1.5rem;background:#fff;border:1px solid var(--cd);border-radius:10px;padding:1.25rem;text-align:center;">
           <p style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--bd);margin-bottom:1rem;">📲 Scan to Pay</p>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
-            <div id="qrGcash"><img src="https://i.postimg.cc/JzD6kpwZ/GCASH-QR-CODE.jpg" alt="GCash QR Code" loading="lazy" style="width:100%;border-radius:8px;"/></div>
-            <div id="qrBdo"><img src="https://i.postimg.cc/Hnk3s24z/BDO-QR-CODE.jpg" alt="BDO QR Code" loading="lazy" style="width:100%;border-radius:8px;"/></div>
+            <div id="qrGcash"><img src="assets/img/payment/gcash-qr.jpg" alt="GCash QR Code" loading="lazy" decoding="async" style="width:100%;border-radius:8px;"/></div>
+            <div id="qrBdo"><img src="assets/img/payment/bdo-qr.jpg" alt="BDO QR Code" loading="lazy" decoding="async" style="width:100%;border-radius:8px;"/></div>
           </div>
           <p style="font-size:0.75rem;color:var(--tl);margin-top:0.75rem;line-height:1.6;">Scan and pay using your preferred payment channel, then attach your receipt below as proof of payment. ✅</p>
         </div>
@@ -1065,7 +1065,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-            <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#7d5f2c;font-weight:400;letter-spacing:0.06em;">build&nbsp;v238</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button data-accaza-install onclick="accazaInstallApp()" style="background:#e8f5ec;color:#155724;border:1px solid #b8dfc4;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;">📲 Install Accaza POS App</button><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div></div>
+            <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#7d5f2c;font-weight:400;letter-spacing:0.06em;">build&nbsp;v239</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button data-accaza-install onclick="accazaInstallApp()" style="background:#e8f5ec;color:#155724;border:1px solid #b8dfc4;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;">📲 Install Accaza POS App</button><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1502,6 +1502,7 @@ body.admin-pos-workspace #posCharge{background:#2a9d5c;border-radius:6px;box-sha
 <link rel="stylesheet" href="/assets/css/admin-backoffice.css"/>
 <script src="assets/js/admin/telemetry.js"></script>
 <script src="assets/js/admin/form-dialog.js"></script>
+<script src="assets/js/shared/business-date.js"></script>
 <script type="module" src="assets/js/admin/core.mjs"></script>
 <script type="module" src="assets/js/admin/overview-command.mjs"></script>
 <script type="module" src="assets/js/admin/staff-push.mjs"></script>
