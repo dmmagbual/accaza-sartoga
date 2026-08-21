@@ -169,9 +169,12 @@ window.__showOfflineQueue=function(note){offlineQueue().all().then(function(rows
 window.__flushOfflineQueue=flushOfflineQueue;
 function posMethods(){
   var pm=(window.__posSettings&&window.__posSettings.payMethods);
-  if(!pm||!pm.length)pm=[{name:'Cash',active:true,cash:true},{name:'GCash',active:true,cash:false},{name:'Bank Transfer',active:true,cash:false},{name:'Card / EFTPOS',active:false,cash:false}];
+  if(!pm||!pm.length)pm=[{name:'Cash',active:true,cash:true},{name:'GCash',active:true,cash:false,verificationPolicy:'cashier_manager'},{name:'Bank Transfer',active:true,cash:false,verificationPolicy:'manager_only'},{name:'Card / EFTPOS',active:false,cash:false,verificationPolicy:'manager_only'}];
   return pm;
 }
+function directPaymentRows(payments){return(payments||[]).filter(function(p){var m=String(p&&p.method||'').trim().toLowerCase();return m&&m!=='cash'&&m!=='grabfood'&&m!=='foodpanda';});}
+function defaultPaymentVerificationPolicy(method){return /gcash|maya/i.test(String(method||''))?'cashier_manager':'manager_only';}
+function paymentVerificationPolicy(payments){var direct=directPaymentRows(payments),methods=posMethods();if(!direct.length)return null;return direct.some(function(p){var row=methods.find(function(m){return String(m&&m.name||'').trim().toLowerCase()===String(p.method||'').trim().toLowerCase();}),policy=row&&row.verificationPolicy;return (policy==='cashier_manager'||policy==='manager_only'?policy:defaultPaymentVerificationPolicy(p.method))==='manager_only';})?'manager_only':'cashier_manager';}
 function posActiveMethods(){return posMethods().filter(function(m){return m.active!==false;});}
 function isCashMethod(name){var m=posMethods().filter(function(x){return x.name===name;})[0];return m?!!m.cash:(name==='Cash');}
 window.__isCashMethod=isCashMethod;
@@ -1734,7 +1737,6 @@ function activeOrderRows(){return shiftOrderRows().filter(function(o){return o.c
 function updateActiveOrderCount(){var badge=document.getElementById('posActiveCount');if(!badge)return;var count=shiftOrderRows().length;badge.textContent=count;badge.hidden=!count;}
 function updatePosOrderCounts(){updateOnlineOrderCount();updateActiveOrderCount();}
 function activeChannelLabel(o){return o.channel==='online'?'Online':o.channel==='grabfood'?'GrabFood':o.channel==='foodpanda'?'FoodPanda':'In-store';}
-function directPaymentRows(payments){return(payments||[]).filter(function(p){return /gcash|maya|bank|transfer/i.test(String(p&&p.method||''));});}
 function paymentVerificationSignature(payments,total){
   var cart=Object.keys(posCart).sort().map(function(k){var c=posCart[k]||{};return[k,Number(c.qty)||0,Number(c.unitTotal)||0];});
   var direct=directPaymentRows(payments).map(function(p){return[String(p.method||''),Math.round((Number(p.amount)||0)*100)/100,String(p.ref||'').trim()];});
@@ -1747,9 +1749,11 @@ function cashierVerificationGate(payments,total,context){
 }
 function verifyOnlinePayment(oid,button){
   var o=onlineOrdersMap[oid],a=A();if(!o){alert('Order not found. Refresh the POS and try again.');return;}if(o.paymentStatus!=='pending'){alert('This payment is no longer awaiting cashier verification.');return;}if(!a||!a.processOrderAdjustment){alert('Payment verification is unavailable. Refresh the POS and try again.');return;}
+  if(paymentVerificationPolicy((o.payments&&o.payments.length)?o.payments:[{method:o.payment,amount:o.total}])==='manager_only'){managerVerifyOnlinePayment(oid,button);return;}
   var payments=(o.payments&&o.payments.length)?o.payments:[{method:o.payment,amount:o.total,ref:''}],old=button&&button.textContent;
   cashierVerificationGate(payments,Number(o.total)||0,'Online order #'+oid).then(function(v){if(button){button.disabled=true;button.textContent='Verifying…';}return a.processOrderAdjustment({action:'cashier_verify_payment',orderId:oid,reference:v.reference});}).then(function(){if(window.__posLog)window.__posLog('cashier-verify-payment',oid,peso(o.total)+' · '+(o.payment||''));(window.accazaToast||function(){})('Payment verified · order confirmed','ok');}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0&&String((e&&e.message)||e).indexOf('cancelled')<0)alert('Payment confirmation failed: '+((e&&e.message)||e));}).finally(function(){if(button&&document.body.contains(button)){button.disabled=false;button.textContent=old;}});
 }
+function managerVerifyOnlinePayment(oid,button){var o=onlineOrdersMap[oid],a=A(),old=button&&button.textContent;if(!o||o.paymentStatus!=='pending'){alert('This payment is no longer awaiting manager verification.');return;}if(!a||!a.processOrderAdjustment||!a.managerApproval){alert('Manager verification is unavailable. Refresh the POS and try again.');return;}if(button){button.disabled=true;button.textContent='Approving…';}a.managerApproval('validate_payment',oid,Number(o.total)||0,'Manager-only payment verification').then(function(ap){return a.processOrderAdjustment({action:'manager_validate_payment',orderId:oid,approvalId:ap.approvalId});}).then(function(){if(window.__posLog)window.__posLog('manager-validate-payment',oid,peso(o.total));(window.accazaToast||function(){})('Payment manager validated · order confirmed','ok');}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0&&String((e&&e.message)||e).indexOf('cancelled')<0)alert('Manager verification failed: '+((e&&e.message)||e));}).finally(function(){if(button&&document.body.contains(button)){button.disabled=false;button.textContent=old;}});}
 function posLegacyItemLines(text){var out=[],buf='',depth=0;String(text||'').split('').forEach(function(ch){if(ch==='(')depth++;if(ch===')'&&depth>0)depth--;if(ch===','&&depth===0){if(buf.trim())out.push(buf.trim());buf='';}else buf+=ch;});if(buf.trim())out.push(buf.trim());return out;}
 function posOrderItemsHtml(o){
   var lines=Array.isArray(o.lineItems)&&o.lineItems.length?o.lineItems.map(function(li){return{name:li.name||li.itemKey||'Item',size:li.size||'',options:Array.isArray(li.optLabels)?li.optLabels:[],qty:Math.max(1,Number(li.qty)||1)};}):posLegacyItemLines(o.items).map(function(text){var qm=text.match(/\s+x(\d+)\s*$/i);return{name:qm?text.slice(0,qm.index).trim():text,size:'',options:[],qty:qm?Math.max(1,Number(qm[1])||1):1};});
@@ -1773,7 +1777,7 @@ function renderOnlineOrders(){
   var active=rows.filter(function(o){return o.shiftId&&shift&&o.shiftId===shift.id;}),incoming=rows.filter(function(o){return !o.shiftId;});
   function card(o){var verified=['cashier_verified','manager_validated','confirmed'].indexOf(o.paymentStatus)>=0,captured=!!o.shiftId,proof=o.proofPath?'<button class="pz-btn sec" data-online-proof="'+esc(o.id)+'">View payment proof</button>':'',action='';
     if(o.status==='Rejected')action='<span class="pos-online-state rejected">Rejected</span>';
-    else if(!verified)action='<button class="pz-btn ok" data-online-verify="'+esc(o.id)+'">Verify payment</button><button class="pz-btn warn" data-online-reject="'+esc(o.id)+'">Reject</button>';
+    else if(!verified){var managerOnly=paymentVerificationPolicy((o.payments&&o.payments.length)?o.payments:[{method:o.payment,amount:o.total}])==='manager_only';action='<button class="pz-btn ok" data-online-verify="'+esc(o.id)+'">'+(managerOnly?'Manager verify':'Cashier verify')+'</button><button class="pz-btn warn" data-online-reject="'+esc(o.id)+'">Reject</button>';}
     else if(!captured)action='<button class="pz-btn ok" data-online-accept="'+esc(o.id)+'"'+(shift?'':' disabled')+'>'+(shift?'Accept into shift':'Open a shift first')+'</button><button class="pz-btn warn" data-online-reject="'+esc(o.id)+'">Reject</button>';
     else action='<span class="pos-online-state captured">'+(o.paymentStatus==='cashier_verified'?'Cashier verified · manager review pending':'Payment validated')+' · '+esc(o.status)+'</span>'+onlineStatusAction(o);
     return '<article class="pos-online-card"><div class="pos-online-card-head"><div><b>'+esc(o.name||'Customer')+'</b><span>#'+esc(o.id)+'</span></div><strong>'+peso(o.total)+'</strong></div><div class="pos-online-meta">'+esc(o.type||'Pick-up')+' · '+esc(o.payment||'Online payment')+' · '+esc(o.time||'')+'</div>'+posOrderItemsHtml(o)+(o.address?'<div class="pos-online-meta">📍 '+esc(o.address)+'</div>':'')+'<div class="pos-online-actions">'+proof+action+'</div></article>';}
@@ -1992,9 +1996,10 @@ function renderPosCart(){
   }
   function refreshChargeAction(){
     var button=document.getElementById('posCharge'),state=document.getElementById('posVerifyState');if(!button)return;
-    var direct=draftElectronicPayments(),signature=paymentVerificationSignature(direct,grandTotal()),verified=direct.length&&posPaymentVerification&&posPaymentVerification.signature===signature;
+    var direct=draftElectronicPayments(),policy=paymentVerificationPolicy(direct),signature=paymentVerificationSignature(direct,grandTotal()),verified=policy==='cashier_manager'&&direct.length&&posPaymentVerification&&posPaymentVerification.signature===signature;
     if(isPlat){button.textContent='Record '+chLabel+' sale';button.style.background='';}
-    else if(direct.length&&!verified){button.textContent='Verify Payment';button.style.background='#2f80ed';}
+    else if(direct.length&&policy==='manager_only'){button.textContent='Record Sale · Manager Verification Required';button.style.background='#8a6d1b';}
+    else if(direct.length&&!verified){button.textContent='Cashier Verify Payment';button.style.background='#2f80ed';}
     else{button.textContent='Charge & Complete';button.style.background='';}
     if(state){if(verified){var refs=direct.map(function(r){return r.ref;}).filter(Boolean).join(', ');state.style.display='block';state.style.background='#e8f5ec';state.style.border='1px solid #b8dfc4';state.style.color='#155724';state.innerHTML='✓ Cashier verified'+(refs?' · Ref: '+esc(refs):'')+' · Complete the sale below.';}else{state.style.display='none';state.innerHTML='';}}
     button.disabled=posChargeBusy||!keys.length||!shift;
@@ -2122,13 +2127,13 @@ function renderPosCart(){
       else if(denomTrackingOn()){ var r=posRcvRead(); if(r.total<tot-0.001){alert('Cash received ('+peso(r.total)+') is less than the total ('+peso(tot)+').');return;} var chg=Math.round((r.total-tot)*100)/100; var tip=posKeepTip(chg); var giveChg=Math.round((chg-tip)*100)/100; var mc=makeChange(giveChg, mergeDenoms(shiftDrawer(),r.counts)); payments=[{method:m,amount:tot,tendered:r.total,change:giveChg,ref:'',cashReceived:r.counts,cashChange:mc.denoms,changeShort:mc.ok?0:mc.short,tipRounding:tip}]; }
       else { var tv=Number((document.getElementById('posTender')||{}).value)||0; if(tv&&tv<tot){alert('Cash tendered is less than the total.');return;} var chg2=tv?Math.max(0,Math.round((tv-tot)*100)/100):0; var tip2=posKeepTip(chg2); payments=[{method:m,amount:tot,tendered:tv,change:Math.round((chg2-tip2)*100)/100,ref:'',tipRounding:tip2}]; }
     }
-    var verificationSignature=paymentVerificationSignature(payments,tot),direct=directPaymentRows(payments),cashierVerification=null;
-    if(direct.length&&(!posPaymentVerification||posPaymentVerification.signature!==verificationSignature)){
+    var verificationSignature=paymentVerificationSignature(payments,tot),direct=directPaymentRows(payments),verificationPolicy=paymentVerificationPolicy(payments),cashierVerification=null;
+    if(direct.length&&verificationPolicy==='cashier_manager'&&(!posPaymentVerification||posPaymentVerification.signature!==verificationSignature)){
       try{cashierVerification=await cashierVerificationGate(payments,tot,'In-store sale');}catch(e){return;}
       posPaymentVerification={required:true,reference:cashierVerification.reference||'',signature:paymentVerificationSignature(payments,tot)};
       (window.accazaToast||function(){})('Payment verified · complete the sale when ready','ok');return;
     }
-    cashierVerification=direct.length?posPaymentVerification:{required:false};
+    cashierVerification=direct.length&&verificationPolicy==='cashier_manager'?posPaymentVerification:{required:false};
     if(d>0){var a0=A();if(!a0.managerApproval||!a0.consumeManagerApproval){alert('Privileged discount approval is unavailable. Refresh the portal.');return;}var discountSource='manual_discount_'+shift.id+'_'+Date.now();try{var dap=await a0.managerApproval('manual_discount',discountSource,d,'Approve manual POS discount');var dcr=await a0.consumeManagerApproval({action:'manual_discount',sourceId:discountSource,amount:d,operationKey:discountSource,approvalId:dap.approvalId}),dcd=(dcr&&dcr.data)||dcr||{};discountApproval={approvalId:dap.approvalId,approvedBy:dcd.approvedBy||'',approvedByUid:dcd.approvedByUid||'',approvedRole:dcd.approvedRole||'',sourceId:discountSource};}catch(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Discount approval failed: '+((e&&e.message)||e));return;} }
     await chargeSale(sub,tot,payments,null,discountApproval,cashierVerification);
     })();}finally{posChargeBusy=false;if(document.body.contains(chargeButton))refreshChargeAction();}
@@ -2154,9 +2159,9 @@ function chargeSale(sub,total,payments,platform,discountApproval,cashierVerifica
   var change=cash.reduce(function(s,x){return s+(Number(x.change)||0);},0);
   var tipTotal=(payments||[]).reduce(function(s,x){return s+(Number(x.tipRounding)||0);},0);
   var payLabel=isPlat?channelLabel(platform.channel):(payments.length>1?'Split':payments[0].method);
-  var _pendingPay=(!isPlat)&&(payments||[]).some(function(p){return !isCashMethod(p.method);});
+  var _pendingPay=(!isPlat)&&directPaymentRows(payments).length>0,_verificationPolicy=_pendingPay?paymentVerificationPolicy(payments):null;
   var now=new Date();
-  var order={id:oid,clientTxnId:txnId,schemaVersion:2,syncState:'pending',name:cust,phone:'',type:(isPlat?channelLabel(platform.channel):'Walk-in'),address:'',payment:payLabel,payments:payments,contact:'',contactMethod:'',items:itemsStr,lineItems:lineItems,subtotal:sub,discount:disc,discountLines:_scoped,total:total,tendered:tendered,change:change,notes:'',status:'Completed',source:'pos',channel:(isPlat?platform.channel:'instore'),staff:staff,shiftId:shift.id,packages:_pkgs,extraCost:_extra,paymentStatus:(_pendingPay?'cashier_verified':'confirmed'),cashierVerificationIntent:!!(_pendingPay&&cashierVerification&&cashierVerification.required),receivedByCustomer:true,tipRounding:tipTotal,time:now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:now.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
+  var order={id:oid,clientTxnId:txnId,schemaVersion:2,syncState:'pending',name:cust,phone:'',type:(isPlat?channelLabel(platform.channel):'Walk-in'),address:'',payment:payLabel,payments:payments,contact:'',contactMethod:'',items:itemsStr,lineItems:lineItems,subtotal:sub,discount:disc,discountLines:_scoped,total:total,tendered:tendered,change:change,notes:'',status:'Completed',source:'pos',channel:(isPlat?platform.channel:'instore'),staff:staff,shiftId:shift.id,packages:_pkgs,extraCost:_extra,paymentStatus:(_pendingPay?(_verificationPolicy==='manager_only'?'pending':'cashier_verified'):'confirmed'),paymentVerificationPolicy:_verificationPolicy,cashierVerificationIntent:!!(_pendingPay&&_verificationPolicy==='cashier_manager'&&cashierVerification&&cashierVerification.required),receivedByCustomer:true,tipRounding:tipTotal,time:now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:now.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
   if(discountApproval){order.discountApprovalId=discountApproval.approvalId;order.discountApprovedBy=discountApproval.approvedBy;order.discountApprovedByUid=discountApproval.approvedByUid;order.discountApprovedRole=discountApproval.approvedRole;order.discountApprovalSource=discountApproval.sourceId;}
   if(isPlat){ order.platformRef=platform.platformRef; order.grossPlatform=platform.gross; order.platformDiscountPct=Number(platform.discountPct)||0; order.platformDiscount=Number(platform.discountAmt)||0; order.platformDiscountLines=platform.discountLines||[]; order.netSalesPlatform=Number(platform.netSales!=null?platform.netSales:total)||0; order.commission=platform.commission; order.commissionRate=platform.commissionRate; order.platformWht=Number(platform.wht)||0; order.platformWhtRate=Number(platform.whtRate)||0; order.platformVat=Number(platform.vat)||0; order.platformVatRate=Number(platform.vatRate)||0; order.netPlatform=platform.net; order.settlementStatus='unsettled'; order.payoutId=''; }
   var _cps=(payments||[]).filter(function(p){return p.cashReceived;});

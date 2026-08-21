@@ -3,7 +3,7 @@ const require=createRequire(import.meta.url);
 const O=require('../functions/lib/offline-sync.js');
 function assert(ok,message){if(!ok)throw new Error(message);}
 
-const state={shifts:{'SH-TEST':{id:'SH-TEST',drawer:{b100:2}}},posActiveShift:{id:'SH-TEST',drawer:{b100:2}}};
+const state={shifts:{'SH-TEST':{id:'SH-TEST',drawer:{b100:2}}},posActiveShift:{id:'SH-TEST',drawer:{b100:2}},posSettings:{payMethods:[{name:'GCash',verificationPolicy:'cashier_manager'},{name:'Bank Transfer',verificationPolicy:'manager_only'},{name:'QR Wallet',verificationPolicy:'manager_only'}]}};
 let failShiftOnce=true;
 const parts=p=>String(p||'').split('/').filter(Boolean);
 function read(path){let cur=state;for(const key of parts(path)){if(cur==null)return undefined;cur=cur[key];}return cur;}
@@ -33,6 +33,12 @@ let directBlocked=false;try{await O.syncOfflinePosSaleCommand({...ctx,data:{tran
 assert(directBlocked&&!state.orders['POS-DIRECT-RECOVERY-1'],'direct electronic payment bypassed the cashier verification gate');
 const directResult=await O.syncOfflinePosSaleCommand({...ctx,data:{transactionId:directTxn,order:Object.assign({},directBase,{cashierVerificationIntent:true}),drawerDelta:{}},now:3600});
 assert(directResult.orderId==='POS-DIRECT-RECOVERY-1'&&state.orders['POS-DIRECT-RECOVERY-1'].paymentStatus==='cashier_verified'&&state.orders['POS-DIRECT-RECOVERY-1'].cashierVerifiedBy==='cashier-1','cashier verification was not stamped by the server');
+const managerTxn='pos_manager_123456789',managerOrder=Object.assign({},order,{id:'POS-MANAGER-RECOVERY-1',clientTxnId:managerTxn,payment:'Bank Transfer',payments:[{method:'Bank Transfer',amount:100,ref:'BANK-7788'}]});
+await O.syncOfflinePosSaleCommand({...ctx,data:{transactionId:managerTxn,order:managerOrder,drawerDelta:{}},now:3700});
+assert(state.orders['POS-MANAGER-RECOVERY-1'].paymentStatus==='pending'&&state.orders['POS-MANAGER-RECOVERY-1'].paymentVerificationPolicy==='manager_only'&&!state.orders['POS-MANAGER-RECOVERY-1'].cashierVerifiedBy,'manager-only payment was incorrectly cashier verified');
+const customTxn='pos_custom_123456789',customOrder=Object.assign({},order,{id:'POS-CUSTOM-RECOVERY-1',clientTxnId:customTxn,payment:'QR Wallet',payments:[{method:'QR Wallet',amount:100,ref:'QR-7788'}]});
+await O.syncOfflinePosSaleCommand({...ctx,data:{transactionId:customTxn,order:customOrder,drawerDelta:{}},now:3800});
+assert(state.orders['POS-CUSTOM-RECOVERY-1'].paymentStatus==='pending','custom online payment did not follow its manager-only policy');
 const platformTxn='pos_platform_123456789',platformOrder=Object.assign({},order,{id:'GF-RECOVERY-1',clientTxnId:platformTxn,total:550});
 const platformResult=await O.syncOfflinePosSaleCommand({...ctx,data:{transactionId:platformTxn,order:platformOrder,drawerDelta:{}},now:4000});
 assert(platformResult.orderId==='GF-RECOVERY-1'&&state.orders['GF-RECOVERY-1'].clientTxnId===platformTxn,'GrabFood recovery order was rejected');

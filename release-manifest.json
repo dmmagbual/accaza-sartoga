@@ -12,9 +12,9 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 236,
+    "admin": 237,
     "customer": 57,
-    "serviceWorkerCache": 138
+    "serviceWorkerCache": 139
   },
   "authoritativeFiles": [
     "admin.html",
@@ -30,6 +30,7 @@
     "functions/lib/costing.js",
     "functions/lib/financial.js",
     "functions/lib/offline-sync.js",
+    "functions/lib/payment-verification.js",
     "functions/lib/order-status.js",
     "functions/lib/operational-exceptions.js",
     "assets/js/shared/costing.js",
