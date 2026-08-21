@@ -892,12 +892,12 @@ function renderPurchases(){
       ?'<input class="pz-in" type="number" step="any" data-pf="lineTotal" data-pi="'+i+'" value="'+(ln.lineTotal!==''&&ln.lineTotal!=null?ln.lineTotal:'')+'" placeholder="line ₱" style="width:88px;text-align:right;"/>'
       :'<input class="pz-in" type="number" step="any" data-pf="unitCost" data-pi="'+i+'" value="'+(ln.unitCost!==''&&ln.unitCost!=null?ln.unitCost:'')+'" placeholder="₱ / unit" style="width:88px;text-align:right;"/>');
     var prev=c?('+'+num(c.stockAdd)+' '+esc(c.stockUnit)+' · new avg '+peso(c.newCost)+'/'+esc(c.stockUnit)+' · line '+peso(c.lineTotal)):'';
-    return '<div class="pz-card" style="margin-bottom:0.6rem;padding:0.7rem;">'
-      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.4rem;"><div style="font-size:0.75rem;">'
+    return '<div class="purchase-line">'
+      +'<div class="purchase-line-head"><div class="purchase-line-title"><span class="purchase-line-number">'+(i+1)+'</span><span>Stock item</span></div><div class="purchase-line-mode">'
         +'<label style="cursor:pointer;margin-right:0.6rem;"><input type="radio" name="pmode'+i+'" data-pf="mode" data-pi="'+i+'" value="existing"'+(ln.mode!=='new'?' checked':'')+'/> existing item</label>'
         +'<label style="cursor:pointer;"><input type="radio" name="pmode'+i+'" data-pf="mode" data-pi="'+i+'" value="new"'+(ln.mode==='new'?' checked':'')+'/> ＋ new item</label>'
-      +'</div><button class="pz-btn warn" data-prem="'+i+'" style="padding:0.15rem 0.5rem;">✕</button></div>'
-      +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;">'
+      +'</div><button class="purchase-line-remove" data-prem="'+i+'" title="Remove this line" aria-label="Remove stock item '+(i+1)+'">✕</button></div>'
+      +'<div class="purchase-line-fields">'
         +firstCell
         +typeCell
         +skuCell
@@ -908,28 +908,26 @@ function renderPurchases(){
         +'<div><span class="pz-lbl">Expiry (opt.)</span><input class="pz-in" type="date" data-pf="expiry" data-pi="'+i+'" value="'+esc(ln.expiry||'')+'" style="width:140px;"/></div>'
         +'<div><span class="pz-lbl">Lot # (opt.)</span><input class="pz-in" data-pf="lot" data-pi="'+i+'" value="'+esc(ln.lot||'')+'" placeholder="batch/lot" style="width:100px;"/></div>'
       +'</div>'
-      +'<div data-pprev="'+i+'" style="font-size:0.74rem;color:var(--tm);margin-top:0.4rem;">'+prev+'</div>'
+      +'<div class="purchase-line-preview" data-pprev="'+i+'">'+prev+'</div>'
       +'</div>';
   }).join('');
-  var payBlock='<div style="margin-top:0.6rem;border-top:1px solid var(--cd);padding-top:0.5rem;"><span class="pz-lbl">Payment (whole invoice)</span>'
-    +'<div style="display:flex;gap:1.2rem;flex-wrap:wrap;align-items:center;">'
-      +'<label style="font-size:0.85rem;cursor:pointer;white-space:nowrap;"><input type="radio" name="ppay" data-pf="pay" value="pending"'+(P.pay==='pending'||P.pay==='none'?' checked':'')+'/> Invoice pending — provisional obligation</label>'
-      +'<label style="font-size:0.85rem;cursor:pointer;white-space:nowrap;"><input type="radio" name="ppay" data-pf="pay" value="paid"'+(P.pay==='paid'?' checked':'')+(accs.length?'':' disabled')+'/> Paid now from '+(accs.length?('<select class="pz-in" id="purAcct" style="width:auto;display:inline-block;">'+accOpts+'</select>'):'<span style="color:var(--tl);">(add account in Cash Flow)</span>')+'</label>'
-      +'<label style="font-size:0.85rem;cursor:pointer;white-space:nowrap;"><input type="radio" name="ppay" data-pf="pay" value="account"'+(P.pay==='account'?' checked':'')+'/> On account, due <input class="pz-in" id="purDue" type="date" value="'+esc(P.due||'')+'" style="width:auto;display:inline-block;"/></label>'
+  var payBlock='<div class="purchase-section purchase-payment"><div class="purchase-section-head"><span class="purchase-step">2</span><div><b>Payment</b><small>Choose how this whole invoice will be settled.</small></div></div>'
+    +'<div class="purchase-payment-options">'
+      +'<label class="purchase-payment-option"><input type="radio" name="ppay" data-pf="pay" value="pending"'+(P.pay==='pending'||P.pay==='none'?' checked':'')+'/><span><b>Invoice pending — provisional obligation</b><small>Record the delivery now and complete the obligation later.</small></span></label>'
+      +'<label class="purchase-payment-option"><input type="radio" name="ppay" data-pf="pay" value="paid"'+(P.pay==='paid'?' checked':'')+(accs.length?'':' disabled')+'/><span><b>Paid now</b><small>'+(accs.length?'Deduct from the selected cash-flow account.':'Add an account in Cash Flow first.')+'</small>'+(accs.length?('<select class="pz-in" id="purAcct">'+accOpts+'</select>'):'')+'</span></label>'
+      +'<label class="purchase-payment-option"><input type="radio" name="ppay" data-pf="pay" value="account"'+(P.pay==='account'?' checked':'')+'/><span><b>On account</b><small>Create a payable with this due date.</small><input class="pz-in" id="purDue" type="date" value="'+esc(P.due||'')+'"/></span></label>'
     +'</div></div>';
-  root.innerHTML='<div class="pz-h">📥 Purchases (Goods Received)</div>'
-    +'<p class="pz-sub">Record a supplier delivery. Each inventory item is the common SKU used by recipes. For recipe items, select the approved brand actually received; new stock items create their first approved brand from the name entered here. Receipts retain the brand while recipe deduction and weighted-average costing remain pooled under the common SKU.</p>'
-    +'<div class="pz-card" style="margin-bottom:1rem;"><div style="display:flex;gap:0.5rem;flex-wrap:wrap;">'
-      +'<div style="flex:1;min-width:150px;"><span class="pz-lbl">Supplier</span><input class="pz-in" id="purSupplier" value="'+esc(P.supplier)+'" placeholder="supplier name"/></div>'
-      +'<div><span class="pz-lbl">Invoice / ref</span><input class="pz-in" id="purRef" value="'+esc(P.ref)+'" style="width:130px;"/></div>'
+  root.innerHTML='<div class="purchase-page-head"><div><div class="pz-h">Purchases <span>Goods received</span></div><p class="pz-sub">Record a supplier delivery and update stock in one clear receiving sheet.</p></div><div class="purchase-head-note">Approved brands keep receipts accurate while stock and costing stay pooled under the common item.</div></div>'
+    +'<div class="pz-card purchase-sheet"><div class="purchase-sheet-banner"><div><span class="purchase-eyebrow">New delivery</span><h3>Supplier invoice</h3></div><span class="purchase-draft-status">Draft · not yet received</span></div>'
+    +'<div class="purchase-section"><div class="purchase-section-head"><span class="purchase-step">1</span><div><b>Delivery details</b><small>Identify who supplied the stock and when it arrived.</small></div></div><div class="purchase-details-grid">'
+      +'<div><span class="pz-lbl">Supplier</span><input class="pz-in" id="purSupplier" value="'+esc(P.supplier)+'" placeholder="Supplier name"/></div>'
+      +'<div><span class="pz-lbl">Invoice / reference</span><input class="pz-in" id="purRef" value="'+esc(P.ref)+'" placeholder="Optional"/></div>'
       +'<div><span class="pz-lbl">Date</span><input class="pz-in" id="purDate" type="date" value="'+esc(P.date)+'"/></div>'
-      +'<div><span class="pz-lbl">Received by</span><input class="pz-in" id="purBy" value="'+esc(P.by)+'" style="width:120px;"/></div>'
-    +'</div>'+payBlock+'</div>'
-    +lineHtml
-    +'<button class="pz-btn sec" id="purAddLine" style="padding:0.35rem 0.8rem;margin-bottom:0.8rem;">+ line</button>'
-    +'<div class="pz-card" style="border:2px solid var(--bd);display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:var(--bd);">INVOICE TOTAL</span><span style="font-weight:700;font-size:1.2rem;color:var(--bd);" id="purTotal">'+peso(invTotal)+'</span></div>'
-    +'<div style="display:flex;gap:0.5rem;margin-top:0.8rem;flex-wrap:wrap;"><button class="pz-btn ok" id="purPost" style="padding:0.6rem 1.4rem;">Receive all</button><button class="pz-btn sec" id="purReset">Clear</button><button class="pz-btn sec" id="purCorrectDetails">Correct purchase details</button><button class="pz-btn warn" id="purReversePurchase">Reverse &amp; re-enter</button><button class="pz-btn sec" id="purRepairPayable">Repair missing payable</button></div>'
-    +'<div id="purMsg" style="font-size:0.8rem;color:var(--tl);margin-top:0.4rem;"></div>'+purchaseHistoryHtml();
+      +'<div><span class="pz-lbl">Received by</span><input class="pz-in" id="purBy" value="'+esc(P.by)+'" placeholder="Staff name"/></div>'
+    +'</div></div>'+payBlock
+    +'<div class="purchase-section purchase-items"><div class="purchase-section-head"><span class="purchase-step">3</span><div><b>Items received</b><small>Add each delivered stock item, quantity, and cost.</small></div><button class="pz-btn sec purchase-add-line" id="purAddLine">＋ Add item</button></div><div class="purchase-lines">'+lineHtml+'</div></div>'
+    +'<div class="purchase-sheet-footer"><div class="purchase-total"><span>Invoice total</span><strong id="purTotal">'+peso(invTotal)+'</strong><small>'+P.lines.length+' item line'+(P.lines.length===1?'':'s')+'</small></div><div class="purchase-primary-actions"><button class="pz-btn sec" id="purReset">Clear draft</button><button class="pz-btn ok" id="purPost">Receive stock</button></div></div>'
+    +'<div id="purMsg" class="purchase-message"></div><details class="purchase-record-tools"><summary>Purchase corrections and repair tools</summary><div><button class="pz-btn sec" id="purCorrectDetails">Correct purchase details</button><button class="pz-btn warn" id="purReversePurchase">Reverse &amp; re-enter</button><button class="pz-btn sec" id="purRepairPayable">Repair missing payable</button></div></details></div>'+purchaseHistoryHtml();
   function hb(id,f){var el=document.getElementById(id);if(el)el.oninput=function(){P[f]=el.value;};}
   hb('purSupplier','supplier');hb('purRef','ref');hb('purDate','date');hb('purBy','by');
   var da=document.getElementById('purAcct');if(da)da.onchange=function(){P.acct=da.value;};
