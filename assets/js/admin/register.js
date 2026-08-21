@@ -176,7 +176,7 @@ function exportDiscrepancies(){
   var aoa=[['when','kind','affected','expected','actual','variance','type','staff','status','note']];
   discList(false).forEach(function(d){aoa.push([new Date(d.ts).toLocaleString('en-PH'),d.kind,d.kind==='cash'?'Cash drawer':(d.item||''),d.kind==='cash'?d.expected:d.expectedQty,d.kind==='cash'?d.actual:d.actualQty,d.variance,d.type||'',d.staff||'',d.status||'',d.note||'']);});
   var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'Discrepancies');
-  XLSX.writeFile(wb,'accaza-discrepancies-'+new Date().toISOString().slice(0,10)+'.xlsx');
+  XLSX.writeFile(wb,'accaza-discrepancies-'+window.AccazaDate.key()+'.xlsx');
 }
 /* ---------- Petty Cash (Feature B) ---------- */
 var PETTY_CATS=['Supplies','Transport','Repairs & maintenance','Utilities','Staff meals','Miscellaneous'];
@@ -204,7 +204,7 @@ function renderPetty(){
   var vs=Object.keys(pettyVouchers).map(function(k){return Object.assign({id:k},pettyVouchers[k]);}).sort(function(a,b){return (b.createdAt||0)-(a.createdAt||0);});
   var pend=vs.filter(function(v){return v.status==='pending';});
   var catOpts=PETTY_CATS.map(function(c){return '<option>'+esc(c)+'</option>';}).join('');
-  var today=new Date().toISOString().slice(0,10);
+  var today=window.AccazaDate.key();
   function vrowHtml(v){
     var st=v.voided?'<span style="color:#c0392b;">VOID</span>':(v.status==='approved'?'<span style="color:#155724;">approved</span>':(v.status==='rejected'?'<span style="color:#c0392b;">rejected</span>':'<span style="color:#8a6d1b;">pending</span>'));
     var act=v.status==='pending'?('<button class="pz-btn ok" data-pvap="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Approve</button> <button class="pz-btn warn" data-pvrj="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Reject</button>'):('<button class="pz-btn sec" data-pvpr="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Print</button>'+((v.status==='approved'&&!v.voided)?' <button class="pz-btn warn" data-pvvd="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Void</button>':''));
@@ -254,7 +254,7 @@ function renderPetty(){
 function createVoucher(){
   var amount=Number(fv('pvAmount'))||0; if(!amount){alert('Enter an amount.');return;}
   var requester=(fv('pvRequester')||'').trim(); if(!requester){alert('Enter the requester name.');return;}
-  var date=fv('pvDate')||new Date().toISOString().slice(0,10); var category=fv('pvCat'); var approver=(fv('pvApprover')||'').trim();
+  var date=fv('pvDate')||window.AccazaDate.key(); var category=fv('pvCat'); var approver=(fv('pvApprover')||'').trim();
   var fileEl=document.getElementById('pvReceipt'); var file=fileEl&&fileEl.files&&fileEl.files[0];
   var btn=document.getElementById('pvCreate'); if(btn)btn.disabled=true;
   compressImage(file,function(img){
@@ -283,7 +283,7 @@ function voidVoucher(id){
 function addReplenishment(){
   var amt=Number(fv('prAmount'))||0; if(!amt){alert('Enter an amount.');return;}
   var source=fv('prSource'); var note=(fv('prNote')||'').trim(); var a=A();
-  a.set(a.ref(a.db,'pettyCashReplenishments/'+uid('pr_')),{amount:amt,source:source,note:note,by:(activeShift&&activeShift.staff)||'Admin',ts:Date.now(),date:new Date().toISOString().slice(0,10)});
+  a.set(a.ref(a.db,'pettyCashReplenishments/'+uid('pr_')),{amount:amt,source:source,note:note,by:(activeShift&&activeShift.staff)||'Admin',ts:Date.now(),date:window.AccazaDate.key()});
   if(source==='register'){
     if(!activeShift){alert('Recorded to petty cash. Note: no shift is open, so no drawer pay-out was posted — open a shift if you need the Z-report to reflect it.');}
     else{ var po=(activeShift.payOuts||[]).slice(); var poEntry={amount:amt,reason:'Petty cash replenish',ts:Date.now()};
@@ -316,7 +316,7 @@ function exportPetty(){
   Object.keys(pettyVouchers).map(function(k){return pettyVouchers[k];}).sort(function(a,b){return (a.createdAt||0)-(b.createdAt||0);}).forEach(function(v){aoa.push([v.voucherNo||'',v.date||'',Number(v.amount)||0,v.category||'',v.requesterName||'',v.approvedBy||v.approverName||'',v.status||'',v.voided?'yes':'',v.createdBy||'']);});
   aoa.push([]);aoa.push(['Opening',bal.opening]);aoa.push(['Replenishments',bal.replen]);aoa.push(['Disbursements',bal.disb]);aoa.push(['Remaining',bal.remaining]);
   var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'PettyCash');
-  XLSX.writeFile(wb,'accaza-petty-cash-'+new Date().toISOString().slice(0,10)+'.xlsx');
+  XLSX.writeFile(wb,'accaza-petty-cash-'+window.AccazaDate.key()+'.xlsx');
 }
 function archiveOldActivity(){
   if(!confirm('Move activity-log entries older than 60 days to the server-owned archive? Up to 500 entries are processed per click.'))return;

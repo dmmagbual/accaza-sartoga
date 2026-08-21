@@ -213,7 +213,7 @@ exports.recordClientTelemetry = onCall(
   async (request) => {
     const db = getDatabase(), actor = await requirePortalUser(db, request), data = request.data || {}, raw = Array.isArray(data.events) ? data.events.slice(0, 20) : [];
     if (!raw.length) return {accepted: 0};
-    const day = new Date().toISOString().slice(0, 10), build = telemetryKey(data.build).slice(0, 24) || "unknown";
+    const day = financeDateFromTimestamp(Date.now()), build = telemetryKey(data.build).slice(0, 24) || "unknown";
     const accepted = raw.map((event) => {
       const type = event && event.type === "error" ? "error" : "metric", name = telemetryKey(event && event.name);
       if (type === "metric" && !CLIENT_METRICS.has(name)) return null;
@@ -237,7 +237,7 @@ exports.getOperationalExceptions = onCall(
   async (request) => {
     const db = getDatabase(), actor = await requirePortalUser(db, request);
     if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Operational exceptions are restricted to management accounts.");
-    const now = Date.now(), days = [];for (let offset = 0; offset < 7; offset++) days.push(new Date(now - offset * 86400000).toISOString().slice(0, 10));
+    const now = Date.now(), days = [];for (let offset = 0; offset < 7; offset++) days.push(financeDateFromTimestamp(now - offset * 86400000));
     const [activeSnap, ordersSnap, offlineSnap, custodySnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
     const orders = ordersSnap.val() || {}, financialPairs = await Promise.all(Object.keys(orders).slice(0, 100).map(async (id) => {const snap = await db.ref(`/financialMovements/sale_${id}`).get();return [id, snap.exists() ? snap.val() : null];}));
     const financialMovements = {};financialPairs.forEach(([id, value]) => {if (value) financialMovements[`sale_${id}`] = value;});const telemetry = {};days.forEach((day, i) => {telemetry[day] = telemetrySnaps[i].val() || {};});
@@ -1669,7 +1669,7 @@ exports.pruneEphemeralNodes = onSchedule(
     });
 
     // clientTelemetryDaily/{YYYY-MM-DD} — keep ~4 months
-    const cutoffDay = new Date(now - 120 * DAY).toISOString().slice(0, 10);
+    const cutoffDay = financeDateFromTimestamp(now - 120 * DAY);
     const tel = (await db.ref("/clientTelemetryDaily").get()).val() || {};
     Object.keys(tel).forEach((day) => { if (day < cutoffDay) mark(`clientTelemetryDaily/${day}`); });
 

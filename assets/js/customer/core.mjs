@@ -15,6 +15,7 @@ const functions=getFunctions(app,'asia-southeast1');
 const createOnlineOrderCall=httpsCallable(functions,'createOnlineOrder');
 const confirmOrderReceivedCall=httpsCallable(functions,'confirmOrderReceived');
 var myOrdersMap={},_myOrdersSub={},customerUid=null,_customerIndexUnsub=null;
+var customerAuthProblem=null,customerAuthRetryTimer=null,customerAuthFailures=0;
 var myResMap={},_myResSub={};
 function subscribeMyOrders(){try{(myOrderIds||[]).forEach(function(id){if(_myOrdersSub[id])return;_myOrdersSub[id]=true;onValue(ref(db,'orders/'+id),function(s){if(s.exists())myOrdersMap[id]=s.val();if(typeof renderCustomerOrders==='function')renderCustomerOrders();if(typeof checkMyReadyOrders==='function')checkMyReadyOrders();},function(){});});}catch(e){}}
 function subscribeCustomerOrderIndex(uid){try{if(_customerIndexUnsub)_customerIndexUnsub();_customerIndexUnsub=onValue(ref(db,'customerOrders/'+uid),function(s){var ids=Object.keys(s.val()||{});ids.forEach(function(id){if(myOrderIds.indexOf(id)<0)myOrderIds.push(id);});try{localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));}catch(e){}subscribeMyOrders();});}catch(e){}}
@@ -35,7 +36,38 @@ async function ensureCustomerAuth(forceRefresh){
 window.__subscribeMyOrders=subscribeMyOrders;
 function subscribeMyReservations(){try{(myReservationIds||[]).forEach(function(id){if(_myResSub[id])return;_myResSub[id]=true;onValue(ref(db,'reservations/'+id),function(s){if(s.exists())myResMap[id]=s.val();else delete myResMap[id];if(typeof renderMyReservations==='function')renderMyReservations();},function(){});});}catch(e){}}
 window.__subscribeMyReservations=subscribeMyReservations;
-onAuthStateChanged(auth,function(u){if(!u){customerUid=null;signInAnonymously(auth).catch(function(e){console.warn('anon auth failed',e);});return;}customerUid=u.uid;subscribeCustomerOrderIndex(u.uid);subscribeMyOrders();subscribeMyReservations();});
+function scheduleCustomerAuthRetry(){
+  if(customerAuthRetryTimer||!navigator.onLine)return;
+  var delay=Math.min(30000,2000*Math.pow(2,Math.min(customerAuthFailures,4)));
+  customerAuthRetryTimer=setTimeout(function(){customerAuthRetryTimer=null;attemptCustomerAuth().catch(function(){});},delay);
+}
+async function attemptCustomerAuth(){
+  if(auth.currentUser)return auth.currentUser;
+  try{
+    var result=await signInAnonymously(auth);
+    customerAuthProblem=null;customerAuthFailures=0;
+    return result&&result.user;
+  }catch(e){
+    customerAuthProblem=e||new Error('Firebase sign-in failed.');customerAuthFailures++;
+    if(typeof renderPublicOrderStatus==='function')renderPublicOrderStatus();
+    scheduleCustomerAuthRetry();
+    throw e;
+  }
+}
+window.retryCustomerConnection=function(){
+  if(customerAuthRetryTimer){clearTimeout(customerAuthRetryTimer);customerAuthRetryTimer=null;}
+  customerAuthProblem=null;
+  if(typeof renderPublicOrderStatus==='function')renderPublicOrderStatus();
+  return attemptCustomerAuth().catch(function(){(window.accazaToast||window.alert)('We still cannot connect. Please check your internet and try again.');});
+};
+window.addEventListener('online',function(){attemptCustomerAuth().catch(function(){});});
+onAuthStateChanged(auth,function(u){
+  if(!u){customerUid=null;attemptCustomerAuth().catch(function(){});return;}
+  customerAuthProblem=null;customerAuthFailures=0;
+  if(customerAuthRetryTimer){clearTimeout(customerAuthRetryTimer);customerAuthRetryTimer=null;}
+  customerUid=u.uid;subscribeCustomerOrderIndex(u.uid);subscribeMyOrders();subscribeMyReservations();
+  if(typeof renderPublicOrderStatus==='function')renderPublicOrderStatus();
+});
 // ===================== WEB PUSH (FCM) =====================
 // Paste your Web Push certificate key here (Firebase Console > Project settings > Cloud Messaging > Web Push certificates).
 const VAPID_KEY="BIIVf-1RYIQger0yqeYlyV6-tQpH8YfytIgQK6-7IJg87HVITcNkYv4RYcKjyCmJBJKR1EXjJqRuiHzkFJjSvlE";
@@ -130,27 +162,34 @@ function getItemOptionGroups(item){
 // State
 let categoriesMap={},menuItemsMap={},adminOrdersMap={},archivedOrdersMap={},archivedResMap={},adminResMap={},feedbacksMap={},reviewsMap={},availability={},cart={};
 let publicOrdersOpen=null,customerLiveConnected=null;
-function onlineOrderingAvailable(){return publicOrdersOpen&&customerLiveConnected;}
+function onlineOrderingAvailable(){return publicOrdersOpen&&customerLiveConnected&&!!auth.currentUser&&!customerAuthProblem;}
 function syncPlaceOrderButton(){
   var button=document.querySelector('.btn-place-order');if(!button||window._placingOrder)return;
   var open=onlineOrderingAvailable();
   button.disabled=!open;button.style.opacity='';button.setAttribute('aria-disabled',open?'false':'true');
-  button.textContent=open?'Place Order':(publicOrdersOpen===null||customerLiveConnected!==true?'Checking order availability…':'Online Orders Closed');
+  button.textContent=open?'Place Order':(customerAuthProblem?'Connection unavailable':(publicOrdersOpen===null||customerLiveConnected!==true||!auth.currentUser?'Checking order availability…':'Online Orders Closed'));
 }
 function renderPublicOrderStatus(){
   var root=document.getElementById('orderServiceStatus'),headline=document.getElementById('orderServiceHeadline'),note=document.getElementById('orderServiceNote');
   if(!root||!headline||!note)return;
-  var open=publicOrdersOpen&&customerLiveConnected;
-  var checking=publicOrdersOpen===null||customerLiveConnected!==true;
+  var open=onlineOrderingAvailable();
+  var checking=!customerAuthProblem&&(publicOrdersOpen===null||customerLiveConnected!==true||!auth.currentUser);
+  var retry=document.getElementById('orderConnectionRetry');
   root.classList.toggle('is-open',open);
   root.classList.toggle('is-closed',!open&&!checking);
-  headline.textContent=open?'OPEN FOR ONLINE ORDERS':(checking?'CHECKING ORDER AVAILABILITY':'ONLINE ORDERS CLOSED');
-  note.textContent=open?'Order now — we’re ready!':(checking?(navigator.onLine?'Connecting to the shop…':'Your phone is offline. Reconnect to check availability.'):'We’re not accepting orders right now.');
-  root.setAttribute('aria-label',open?'Online orders are open. Order now — we’re ready!':(checking?'Checking live online-order availability.':'Online orders are closed. We’re not accepting orders right now.'));
+  headline.textContent=open?'OPEN FOR ONLINE ORDERS':(customerAuthProblem?'CONNECTION NEEDS ATTENTION':(checking?'CHECKING ORDER AVAILABILITY':'ONLINE ORDERS CLOSED'));
+  note.textContent=open?'Order now — we’re ready!':(customerAuthProblem?'We could not connect securely. Check your internet, then retry.':(checking?(navigator.onLine?'Connecting to the shop…':'Your phone is offline. Reconnect to check availability.'):'We’re not accepting orders right now.'));
+  if(retry)retry.style.display=customerAuthProblem?'block':'none';
+  root.setAttribute('aria-label',headline.textContent+'. '+note.textContent);
   syncPlaceOrderButton();
 }
 onValue(publicOrderStatusRef,function(snap){publicOrdersOpen=!!(snap.val()&&snap.val().acceptingOrders===true);renderPublicOrderStatus();},function(){publicOrdersOpen=false;renderPublicOrderStatus();});
-onValue(ref(db,'.info/connected'),function(snap){customerLiveConnected=snap.val()===true;renderPublicOrderStatus();},function(){customerLiveConnected=false;renderPublicOrderStatus();});
+onValue(ref(db,'.info/connected'),function(snap){
+  customerLiveConnected=snap.val()===true;
+  var badge=document.getElementById('fbSync');
+  if(badge){badge.classList.toggle('online',customerLiveConnected);badge.textContent=customerLiveConnected?'Firebase connected':'Connecting to Firebase…';badge.style.display='block';}
+  renderPublicOrderStatus();
+},function(){customerLiveConnected=false;var badge=document.getElementById('fbSync');if(badge){badge.classList.remove('online');badge.textContent='Firebase connection unavailable';badge.style.display='block';}renderPublicOrderStatus();});
 let optionGroupsMap={},optSeedStarted=false,itemOptMigrated=false;
 let knownOrderIds=null,unseenOrders=0,orderChimeTimer=null,audioCtx=null;
 let orderType='pickup',paymentType='gcash',contactMethod='whatsapp',resContactMethod='whatsapp';
@@ -166,10 +205,6 @@ let menuFilter='coffee',orderFilter=null;
 const now=new Date();
 calYear=now.getFullYear();calMonth=now.getMonth();
 adminCalYear=now.getFullYear();adminCalMonth=now.getMonth();
-
-// Sync badge
-document.getElementById('fbSync').classList.add('online');
-setTimeout(()=>document.getElementById('fbSync').style.display='none',4000);
 
 // Helpers
 function getCats(){return Object.values(categoriesMap).sort((a,b)=>(a.order||0)-(b.order||0));}
@@ -410,7 +445,6 @@ function checkMyReadyOrders(){
   }catch(e){}
 }
 (function(){var un=function(){try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}document.removeEventListener('touchstart',un);document.removeEventListener('click',un);};document.addEventListener('touchstart',un,{passive:true});document.addEventListener('click',un);})();
-onValue(reservationsRef,snap=>{adminResMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderReservations();updateStats();renderCustomerCalendar();renderMyReservations();if(adminLoggedIn||staffLoggedIn)renderAdminCalendar();});
 onValue(reviewsRef,snap=>{
   const saved=snap.val();
   if(saved){reviewsMap=saved;}
