@@ -343,11 +343,14 @@ function plData(){
 /* ============================================================ TABS ============================================================ */
 const TABS = [
   {id:"dashboard",label:"Dashboard"},
+  {id:"transactions",label:"Transactions"},
   {id:"journal",label:"Journal"},
   {id:"ledger",label:"General Ledger"},
   {id:"tb",label:"Trial Balance"},
   {id:"pl",label:"Profit & Loss"},
   {id:"bs",label:"Balance Sheet"},
+  {id:"receivables",label:"Receivables"},
+  {id:"payables",label:"Payables"},
   {id:"coa",label:"Chart of Accounts"}
 ];
 let CURRENT = "dashboard";
@@ -492,15 +495,16 @@ const PAGES = {
     const kpi=(lbl,val,sub,cls)=>`<div class="kpi ${cls||''}"><div class="lbl">${lbl}</div><div class="val">${val}</div><div class="sub">${sub||''}</div></div>`;
     return `<div class="page-head"><div><h2>Dashboard</h2><p>${monthLabel(PERIOD)} · ${DB.meta&&DB.meta.name||''}</p></div>
         <button class="btn primary" onclick="App.newEntry()">+ New entry</button></div>
-      <div class="hint">This P1 prototype is a working double-entry ledger — every figure below is computed live from posted journal entries and drills through to its source. Persistence is in this browser for now; the Firebase sync and the daily POS import land in P2.</div>
+      <div class="hint">Live double-entry books. When signed in, POS sales, COGS, and cash post automatically, and receivables/payables read from your finance subledgers. Set opening balances to make the balance sheet and cash flow tie out.</div>
       <div class="kpis">
         ${kpi("Cash position", pesoNoDec(cash), "On hand + bank + wallet (all-time)", cash>=0?'good':'bad')}
         ${kpi("Sales ("+monthLabel(PERIOD)+")", pesoNoDec(pl.totalIncome), "Net of discounts")}
         ${kpi("Gross profit", pesoNoDec(pl.gross), grossPct.toFixed(1)+"% margin", pl.gross>=0?'good':'bad')}
         ${kpi("Net income", pesoNoDec(pl.net), pl.net>=0?'Profit':'Loss', pl.net>=0?'good':'bad')}
         ${kpi("COGS ratio", cogsPct.toFixed(1)+"%", "of sales")}
-        ${kpi("Receivable (Grab/Panda)", pesoNoDec(ar), "Owed to us")}
-        ${kpi("Payables", pesoNoDec(ap), "Owed to suppliers")}
+        ${(function(){var t=arApTotals(); return window.__booksUser
+          ? kpi("Receivables (open)", pesoNoDec(t.ar), "Owed to us", 'good')+kpi("Payables (open)", pesoNoDec(t.ap), "We owe", 'bad')+kpi("Net working capital", pesoNoDec(t.net), t.net>=0?'AR exceeds AP':'AP exceeds AR', t.net>=0?'good':'bad')
+          : kpi("Receivable (Grab/Panda)", pesoNoDec(ar), "From journal")+kpi("Payables", pesoNoDec(ap), "From journal");})()}
         ${kpi("Top expense", topExp?topExp.a.name:"—", topExp?pesoNoDec(topExp.bal):"")}
       </div>
       <div class="two-col">
@@ -652,6 +656,77 @@ const PAGES = {
   }
 };
 
+/* ---- AR / AP subledgers + aging (read live from /receivables, /payables) ---- */
+var AGING_ORDER = ['Current','1–30','31–60','61–90','90+','No due date'];
+function agingBucket(due){
+  if(!due) return 'No due date';
+  var t = Date.parse(String(due)+'T00:00:00'); if(isNaN(t)) return 'No due date';
+  var days = Math.floor((Date.now()-t)/86400000);
+  if(days<=0) return 'Current'; if(days<=30) return '1–30'; if(days<=60) return '31–60'; if(days<=90) return '61–90'; return '90+';
+}
+function openDocs(map){ return Object.keys(map||{}).map(function(k){return Object.assign({id:k}, map[k]||{});}).filter(function(d){return (d.status||'open')==='open' && (Number(d.amount)||0)>0;}); }
+function arApTotals(){
+  var ar=openDocs(window.__arMap).reduce(function(s,d){return s+(Number(d.amount)||0);},0);
+  var ap=openDocs(window.__apMap).reduce(function(s,d){return s+(Number(d.amount)||0);},0);
+  return {ar:ar, ap:ap, net:ar-ap};
+}
+function subledgerPage(kind){
+  var isAr = kind==='ar', map = isAr?window.__arMap:window.__apMap, live = !!window.__booksUser;
+  var title = isAr?'Receivables':'Payables', sub = isAr?'Money owed to you':'Money you owe';
+  if(!live) return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+'</p></div></div>'+
+    '<div class="empty"><div class="big">'+(isAr?'📥':'📤')+'</div><b>Sign in for live '+title.toLowerCase()+'</b><br><span class="tiny">This subledger reads your live finance data. Click the status pill (top-right) to sign in with your Accaza admin account, or open this app from your Accaza domain.</span></div>';
+  var docs = openDocs(map).sort(function(a,b){return String(a.due||'9999-99-99').localeCompare(String(b.due||'9999-99-99'));});
+  if(!docs.length) return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+'</p></div></div><div class="empty"><div class="big">✓</div>No open '+title.toLowerCase()+'.</div>';
+  var buckets={}; AGING_ORDER.forEach(function(b){buckets[b]=0;});
+  var total=0; docs.forEach(function(d){var amt=Number(d.amount)||0; total+=amt; buckets[agingBucket(d.due)]+=amt;});
+  var agingCards = AGING_ORDER.filter(function(b){return buckets[b]>0.005;}).map(function(b){
+    return '<div class="kpi"><div class="lbl">'+b+'</div><div class="val" style="font-size:1.15rem">'+pesoNoDec(buckets[b])+'</div></div>';}).join('');
+  var rows = docs.map(function(d){
+    var bkt = agingBucket(d.due), overdue = (bkt!=='Current' && bkt!=='No due date');
+    return '<tr><td><b>'+esc(d.party||'—')+'</b>'+(d.ref?'<div class="tiny muted">'+esc(d.ref)+'</div>':'')+'</td><td class="tiny">'+esc(d.type||'')+'</td><td class="tiny">'+esc(d.date||'')+'</td><td class="tiny">'+esc(d.due||'—')+'</td><td><span class="type-pill '+(overdue?'t-expense':'t-income')+'">'+bkt+'</span></td><td class="num">'+peso(d.amount)+'</td></tr>';}).join('');
+  var t = arApTotals();
+  return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+' · '+docs.length+' open · net working capital '+pesoNoDec(t.net)+'</p></div></div>'+
+    '<div class="kpis"><div class="kpi '+(isAr?'good':'bad')+'"><div class="lbl">Total '+(isAr?'receivable':'payable')+'</div><div class="val">'+pesoNoDec(total)+'</div><div class="sub">'+docs.length+' open</div></div>'+agingCards+'</div>'+
+    '<div class="card"><div class="tbl-wrap"><table><thead><tr><th>Party</th><th>Type</th><th>Date</th><th>Due</th><th>Aging</th><th class="num">Amount</th></tr></thead><tbody>'+rows+
+    '<tr class="total-row"><td colspan="5">Total open '+title.toLowerCase()+'</td><td class="num">'+peso(total)+'</td></tr></tbody></table></div></div>'+
+    '<p class="tiny muted" style="margin-top:.6rem">Aging as of today. Recording a '+(isAr?'collection':'payment')+' or creating a new one comes with the Transactions tab.</p>';
+}
+PAGES.receivables = function(){ return subledgerPage('ar'); };
+PAGES.payables = function(){ return subledgerPage('ap'); };
+
+/* ---- Transactions: finance-originated postings via postFinancialCommand ---- */
+function uid(){ try{return crypto.randomUUID();}catch(_e){return 'id_'+Date.now()+'_'+Math.floor(Math.random()*1e6);} }
+function fval(id){ var el=document.getElementById(id); return el?String(el.value).trim():''; }
+function cashAccountOptions(sel){ var m=window.__cfAccounts||{}, ks=Object.keys(m); if(!ks.length) return '<option value="">(no cash accounts found)</option>'; return ks.map(function(k){return '<option value="'+esc(k)+'"'+(k===sel?' selected':'')+'>'+esc(m[k].name||k)+'</option>';}).join(''); }
+function openDocOptions(map){ var d=openDocs(map); if(!d.length) return ''; return d.map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.party||'—')+' · '+peso(x.amount)+(x.due?' · due '+esc(x.due):'')+(x.ref?' · '+esc(x.ref):'')+'</option>';}).join(''); }
+var TXN_CATS = [['rent','Rent'],['utilities','Utilities'],['salaries','Salaries'],['bank charges','Bank charges'],['repairs','Repairs & maintenance'],['marketing','Marketing'],['supplies','Supplies'],['internet','Internet & phone'],['purchases','Purchases'],['other','Other']];
+function catOptions(sel){ return TXN_CATS.map(function(c){return '<option value="'+c[0]+'"'+(c[0]===sel?' selected':'')+'>'+c[1]+'</option>';}).join(''); }
+
+PAGES.transactions = function(){
+  if(!window.__booksUser) return '<div class="page-head"><div><h2>Transactions</h2><p>Record finance transactions</p></div></div><div class="empty"><div class="big">🧾</div><b>Sign in to record transactions</b><br><span class="tiny">These post to your shared finance ledger through your server functions. Click the status pill (top-right) to sign in, or open from your Accaza domain.</span></div>';
+  var tile=function(icon,label,desc,fn){return '<button class="card card-pad" style="text-align:left;cursor:pointer" onclick="App.'+fn+'()"><div style="font-size:1.5rem">'+icon+'</div><div style="font-weight:750;margin-top:.3rem">'+label+'</div><div class="tiny muted">'+desc+'</div></button>';};
+  return '<div class="page-head"><div><h2>Transactions</h2><p>Post finance transactions to the shared ledger through your server functions</p></div></div>'+
+    '<div class="hint">Each of these posts a real double-entry movement server-side (with your approval controls), then flows into the Journal, subledgers, and statements. A fixed-assets register is coming next.</div>'+
+    '<div class="kpis">'+
+      tile('🧾','New bill','Vendor bill → Accounts Payable','txnBill')+
+      tile('💵','Pay a bill','Settle an open payable from cash','txnPay')+
+      tile('📥','Collect receivable','Receive payment on an open AR','txnCollect')+
+      tile('🔄','Bank transfer','Move money between cash accounts','txnTransfer')+
+      tile('🧮','Cash in / out','Expense paid now, or other cash','txnManual')+
+      tile('👤','Owner capital','Owner puts money in','txnCapital')+
+      tile('💸','Owner drawing','Owner takes money out','txnDraw')+
+    '</div>';
+};
+App._txnRun=function(btn, payload){ if(!window.__financeCmd){alert('Live connection not ready — sign in first.');return;} btn.disabled=true; var old=btn.textContent; btn.textContent='Posting…'; window.__financeCmd(payload).then(function(){ App.closeModal(); App.render(); }).catch(function(e){ alert('Could not post: '+((e&&e.message)||e)); btn.disabled=false; btn.textContent=old; }); };
+App._txnModal=function(title, body, submitLabel, onSubmit){ var m=document.getElementById('modal'); m.innerHTML='<div class="modal-head"><h3>'+title+'</h3><button class="x" onclick="App.closeModal()">×</button></div><div class="modal-body">'+body+'</div><div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Cancel</button><button class="btn primary" id="txnGo">'+submitLabel+'</button></div>'; document.getElementById('modalBg').classList.add('show'); document.getElementById('txnGo').onclick=function(){ onSubmit(this); }; };
+App.txnBill=function(){ App._txnModal('New bill','<div class="grid2"><div class="field"><label>Supplier / vendor</label><input id="tb_party"/></div><div class="field"><label>Category</label><select id="tb_type">'+catOptions('rent')+'</select></div></div><div class="grid2"><div class="field"><label>Amount</label><input id="tb_amount" type="number" step="0.01" min="0"/></div><div class="field"><label>Bill date</label><input id="tb_date" type="date" value="'+todayStr()+'"/></div></div><div class="grid2"><div class="field"><label>Due date</label><input id="tb_due" type="date"/></div><div class="field"><label>Reference</label><input id="tb_ref"/></div></div>','Post bill',function(btn){ var party=fval('tb_party'), amount=Number(fval('tb_amount'))||0; if(!party) return alert('Supplier is required.'); if(!(amount>0)) return alert('Amount must be greater than zero.'); App._txnRun(btn,{action:'create_payable',commandId:uid(),documentId:uid(),party:party,type:fval('tb_type'),amount:amount,date:fval('tb_date'),due:fval('tb_due'),ref:fval('tb_ref')}); }); };
+App.txnPay=function(){ var opts=openDocOptions(window.__apMap); if(!opts) return alert('No open payables to pay.'); App._txnModal('Pay a bill','<div class="field"><label>Open payable</label><select id="tp_doc">'+opts+'</select></div><div class="grid2"><div class="field"><label>Pay from</label><select id="tp_acct">'+cashAccountOptions()+'</select></div><div class="field"><label>Date</label><input id="tp_date" type="date" value="'+todayStr()+'"/></div></div>','Pay',function(btn){ if(!fval('tp_acct')) return alert('Choose a cash account.'); App._txnRun(btn,{action:'pay_payable',commandId:uid(),documentId:fval('tp_doc'),accountId:fval('tp_acct'),date:fval('tp_date')}); }); };
+App.txnCollect=function(){ var opts=openDocOptions(window.__arMap); if(!opts) return alert('No open receivables to collect.'); App._txnModal('Collect receivable','<div class="field"><label>Open receivable</label><select id="tc_doc">'+opts+'</select></div><div class="grid2"><div class="field"><label>Deposit to</label><select id="tc_acct">'+cashAccountOptions()+'</select></div><div class="field"><label>Date</label><input id="tc_date" type="date" value="'+todayStr()+'"/></div></div>','Collect',function(btn){ if(!fval('tc_acct')) return alert('Choose a cash account.'); App._txnRun(btn,{action:'collect_receivable',commandId:uid(),documentId:fval('tc_doc'),accountId:fval('tc_acct'),date:fval('tc_date')}); }); };
+App.txnTransfer=function(){ App._txnModal('Bank transfer','<div class="grid2"><div class="field"><label>From</label><select id="tt_from">'+cashAccountOptions()+'</select></div><div class="field"><label>To</label><select id="tt_to">'+cashAccountOptions()+'</select></div></div><div class="grid2"><div class="field"><label>Amount</label><input id="tt_amount" type="number" step="0.01" min="0"/></div><div class="field"><label>Date</label><input id="tt_date" type="date" value="'+todayStr()+'"/></div></div>','Transfer',function(btn){ var a=Number(fval('tt_amount'))||0; if(fval('tt_from')===fval('tt_to')) return alert('Choose two different accounts.'); if(!(a>0)) return alert('Amount must be greater than zero.'); App._txnRun(btn,{action:'transfer',commandId:uid(),fromAccountId:fval('tt_from'),toAccountId:fval('tt_to'),amount:a,date:fval('tt_date')}); }); };
+App.txnManual=function(prefill){ prefill=prefill||{}; App._txnModal(prefill.title||'Cash in / out','<div class="grid2"><div class="field"><label>Cash account</label><select id="tm_acct">'+cashAccountOptions()+'</select></div><div class="field"><label>Direction</label><select id="tm_dir"><option value="out"'+(prefill.dir==='in'?'':' selected')+'>Money out</option><option value="in"'+(prefill.dir==='in'?' selected':'')+'>Money in</option></select></div></div><div class="grid2"><div class="field"><label>Category</label><select id="tm_cat">'+catOptions(prefill.category||'other')+'</select></div><div class="field"><label>Amount</label><input id="tm_amount" type="number" step="0.01" min="0"/></div></div><div class="grid2"><div class="field"><label>Date</label><input id="tm_date" type="date" value="'+todayStr()+'"/></div><div class="field"><label>Party (optional)</label><input id="tm_party"/></div></div><div class="field"><label>Reference (optional)</label><input id="tm_ref"/></div>','Post',function(btn){ var a=Number(fval('tm_amount'))||0; if(!fval('tm_acct')) return alert('Choose a cash account.'); if(!(a>0)) return alert('Amount must be greater than zero.'); App._txnRun(btn,{action:'manual',commandId:uid(),accountId:fval('tm_acct'),amount:a,dir:fval('tm_dir'),category:fval('tm_cat'),date:fval('tm_date'),party:fval('tm_party'),ref:fval('tm_ref')}); }); };
+App.txnCapital=function(){ App.txnManual({title:'Owner capital in',dir:'in',category:'capital in'}); };
+App.txnDraw=function(){ App.txnManual({title:'Owner drawing',dir:'out',category:'owner draw'}); };
+
 /* ---- account add/edit ---- */
 App.editAccount = function(code){
   const a = code?acc(code):{code:"",name:"",type:"Expense",note:""};
@@ -732,10 +807,11 @@ App.init();
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {getDatabase, ref, onValue} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import {getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import {getFunctions, httpsCallable} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 const cfg={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 function setPill(text,cls){ const el=document.getElementById("liveStatus"); if(el){ el.textContent=text; el.className="live-pill "+cls; } }
 let app,db,auth;
-try{ app=initializeApp(cfg); db=getDatabase(app); auth=getAuth(app); window.__booksAuthReady=true; }
+try{ app=initializeApp(cfg); db=getDatabase(app); auth=getAuth(app); var fns=getFunctions(app,"asia-southeast1"); window.__financeCmd=function(payload){ return httpsCallable(fns,"postFinancialCommand")(payload).then(function(r){return r.data;}); }; window.__booksAuthReady=true; }
 catch(e){ setPill("● Offline (local only)","off"); }
 if(auth){
   setPersistence(auth, browserLocalPersistence).catch(()=>{});
@@ -756,7 +832,10 @@ if(auth){
     if(user){ setPill("● Live · "+(user.email||"synced"),"ok");
       onValue(ref(db,"/books/journal"), s=>{ journalCache=s.val()||{}; refresh(); }, ()=>setPill("● Read blocked — not an admin","bad"));
       onValue(ref(db,"/books/reviewQueue"), s=>{ reviewCache=s.val()||{}; refresh(); }, ()=>{});
-    } else { setPill("● Sign in for live POS","off"); window.__posEntries=[]; if(window.App&&App.render)App.render(); }
+      onValue(ref(db,"/receivables"), s=>{ window.__arMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
+      onValue(ref(db,"/payables"), s=>{ window.__apMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
+      onValue(ref(db,"/cfAccounts"), s=>{ window.__cfAccounts=s.val()||{}; }, ()=>{});
+    } else { setPill("● Sign in for live POS","off"); window.__posEntries=[]; window.__arMap={}; window.__apMap={}; window.__cfAccounts={}; if(window.App&&App.render)App.render(); }
   });
 }
 </script>
