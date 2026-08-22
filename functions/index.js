@@ -21,6 +21,7 @@ const OfflineSync = require("./lib/offline-sync");
 const PaymentVerification = require("./lib/payment-verification");
 const OrderStatus = require("./lib/order-status");
 const OperationalExceptions = require("./lib/operational-exceptions");
+const BooksBridge = require("./lib/books-bridge");
 
 initializeApp();
 
@@ -143,6 +144,43 @@ exports.notifyOnContactMessage = onValueCreated(
     const who = String(f.name || "Someone");
     const contact = String(f.contact || "").slice(0, 120);
     await notifyStaff(db, "✉️ New website message", `${who}${contact ? " · " + contact : ""}`, "/admin.html");
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Accaza Books bridge: mirror every POS financialMovement into /books/journal.
+// Sale movements roll up into a daily-summary-per-channel entry; all other
+// movements post as their own discrete entry. Idempotent by sources[id].
+// ---------------------------------------------------------------------------
+async function flagUnmappedBooks(db, mv, unmapped) {
+  if (!unmapped || !unmapped.length) return;
+  await db.ref(`/books/reviewQueue/${mv.id}`).set({movementId: String(mv.id || ""), type: String(mv.type || ""), sourceId: String(mv.sourceId || ""), accounts: unmapped, at: Date.now()});
+}
+
+exports.mirrorPosMovementToBooks = onValueCreated(
+  {ref: "/financialMovements/{movementId}", region: "asia-southeast1"},
+  async (event) => {
+    const mv = event.data.val();
+    if (!mv || !Array.isArray(mv.lines) || !mv.lines.length) return;
+    if (!mv.id) mv.id = event.params.movementId;
+    const db = getDatabase();
+    const cashMap = (await db.ref("/books/config/cashAccountMap").get()).val() || {};
+    const bucket = BooksBridge.bucketFor(mv);
+    if (bucket.mode === "daily") {
+      const ref = db.ref(`/books/journal/${bucket.key}`);
+      await ref.transaction((cur) => {
+        const next = BooksBridge.applyDaily(cur, mv, cashMap);
+        return next === undefined ? cur : next; // abort (already applied) leaves node unchanged
+      });
+      await ref.child("updatedAt").set(Date.now());
+    } else {
+      const built = BooksBridge.buildSingle(mv, cashMap);
+      const ref = db.ref(`/books/journal/${built.entry.id}`);
+      const existing = await ref.get();
+      if (!existing.exists()) { built.entry.createdAt = Date.now(); await ref.set(built.entry); }
+    }
+    const unmapped = BooksBridge.mappedLines(mv, cashMap).unmapped;
+    await flagUnmappedBooks(db, mv, unmapped);
   },
 );
 

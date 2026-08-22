@@ -450,6 +450,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(checkoutWorkflowCheck.status!==0)fail(`Release 6B checkout workflow checks failed:\n${checkoutWorkflowCheck.stderr||checkoutWorkflowCheck.stdout}`);
   const offlineRecoveryCheck=spawnSync(process.execPath,[path.join(root,'tests','offline-sync-recovery-check.mjs')],{encoding:'utf8',cwd:root});
   if(offlineRecoveryCheck.status!==0)fail(`Release 6B offline recovery checks failed:\n${offlineRecoveryCheck.stderr||offlineRecoveryCheck.stdout}`);
+  const booksBridgeCheck=spawnSync(process.execPath,[path.join(root,'tests','books-bridge-check.mjs')],{encoding:'utf8',cwd:root});
+  if(booksBridgeCheck.status!==0)fail(`Accaza Books POS bridge checks failed:\n${booksBridgeCheck.stderr||booksBridgeCheck.stdout}`);
 
   console.log(`PASS: ${checked} executable HTML and external scripts parsed successfully.`);
   console.log('PASS: customer-field rendering containment checks passed.');
@@ -465,6 +467,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   process.stdout.write(financialLedgerCheck.stdout);
   process.stdout.write(checkoutWorkflowCheck.stdout);
   process.stdout.write(offlineRecoveryCheck.stdout);
+  process.stdout.write(booksBridgeCheck.stdout);
   process.stdout.write(operationalExceptionsCheck.stdout);
   process.stdout.write(managerApprovalCheck.stdout);
   console.log('PASS: functions/index.js syntax is valid.');
