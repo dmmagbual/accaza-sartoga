@@ -39,12 +39,14 @@ function mapAccount(posAccount, channel, cashAccountMap) {
     "expense:platform_estimate_variance": "6100", "revenue:platform_estimate_variance": "4990",
     "equity:owner_capital": "3000", "equity:opening_balance": "3900", "equity:cash_float_source": "3050",
     "cogs:beverage": "5000", "cogs:food": "5030", "cogs:packaging": "5040", "cogs:other": "5000", "inventory:control": "1200",
+    "asset:accumulated_depreciation": "1590", "expense:depreciation": "6090", "revenue:asset_disposal_gain": "4990", "expense:asset_disposal_loss": "6100",
   };
   if (exact[a]) return {code: exact[a], unmapped: false};
   if (a === "revenue:sales") return {code: CHANNEL_SALES[String(channel || "instore").toLowerCase()] || "4000", unmapped: false};
   if (a.indexOf("asset:cash_account:") === 0) { const id = a.split(":")[2] || ""; return {code: cashAccountMap[id] || "1010", unmapped: false}; }
   if (a.indexOf("asset:platform_receivable:") === 0 || a.indexOf("asset:platform_clearing:") === 0) return {code: "1100", unmapped: false};
   if (a.indexOf("asset:receivable:") === 0) return {code: "1110", unmapped: false};
+  if (a.indexOf("asset:fixed_asset:") === 0) return {code: a.split(":")[2] === "furniture" ? "1510" : "1500", unmapped: false};
   if (a.indexOf("liability:payable:") === 0) return {code: "2000", unmapped: false};
   if (a.indexOf("revenue:") === 0) return {code: "4990", unmapped: true};
   if (a.indexOf("expense:") === 0) return {code: "6100", unmapped: true};
@@ -147,4 +149,15 @@ function cogsMovement(order, orderId){
   };
 }
 
-module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, isSaleMovement, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, cogsLines, cogsMovement};
+/* Straight-line monthly depreciation and net book value (shared by server + register UI). */
+function monthlyStraightLine(cost, salvage, usefulLifeMonths){
+  var dep = r2((Number(cost)||0) - Math.max(0, Number(salvage)||0));
+  var life = Math.max(1, Math.round(Number(usefulLifeMonths)||0));
+  return r2(dep / life);
+}
+function netBookValue(asset){
+  if(!asset) return 0;
+  return r2((Number(asset.cost)||0) - (Number(asset.accumulatedDepreciation)||0));
+}
+
+module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, isSaleMovement, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, cogsLines, cogsMovement, monthlyStraightLine, netBookValue};

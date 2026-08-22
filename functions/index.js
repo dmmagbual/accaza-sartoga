@@ -1145,6 +1145,73 @@ async function backfillFinancialDocument(db, id, row, isReceivable, accounts) {
   results.push(await commitFinancial(db, settlementId, Financial.movement(isReceivable ? "receivable_collected" : "payable_paid", path, id, settlementLines, {occurredAt: Number(row.collectedAt || row.paidAt || occurredAt), actorName: "3C migration"}), {uid: "server", role: "server"})); return results;
 }
 
+// Fixed assets register: acquire, manual straight-line depreciation run, and disposal.
+// Posts double-entry movements (bridge maps fixed_asset->1500/1510, accum dep->1590,
+// depreciation->6090) and maintains /fixedAssets. Depreciation is idempotent per period.
+exports.manageFixedAsset = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(); const data = request.data || {}; const action = financeText(data.action, 40);
+    const actor = await requirePortalPermission(db, request, ["cashflow", "purchases"]);
+    const commandId = financeKey(data.commandId, "Command ID"); const now = Date.now();
+    const M = (v) => Financial.money(v);
+    if (action === "create") {
+      const assetId = financeKey(data.assetId, "Asset ID"), name = financeText(data.name, 120) || "Asset";
+      const category = financeText(data.category || "equipment", 40).toLowerCase();
+      const cost = M(data.cost); if (!(cost > 0)) throw new HttpsError("invalid-argument", "Cost must be greater than zero.");
+      const salvage = Math.max(0, M(data.salvage || 0)); if (salvage >= cost) throw new HttpsError("invalid-argument", "Salvage must be less than cost.");
+      const life = Math.max(1, Math.round(Number(data.usefulLifeMonths) || 0));
+      const acquiredDate = financeDate(data.acquiredDate); const occurredAt = Date.parse(`${acquiredDate}T00:00:00+08:00`) || now;
+      const funding = data.funding || {}; const writes = {}; let creditLine;
+      if (funding.type === "payable") {
+        creditLine = Financial.line(`liability:payable:${assetId}`, 0, cost, name);
+        writes[`payables/${assetId}`] = {party: financeText(funding.party || name, 120), type: "fixed asset", amount: cost, date: acquiredDate, due: funding.due ? financeDate(funding.due) : "", ref: financeText(funding.ref, 120), status: "open", movementId: commandId, ts: now, createdBy: actor.uid, schemaVersion: 1};
+      } else {
+        const accounts = (await db.ref("/cfAccounts").get()).val() || {}; const accountId = accountIdFor(accounts, funding.accountId);
+        creditLine = Financial.line(`asset:cash_account:${accountId}`, 0, cost, name);
+      }
+      const movement = Financial.movement("fixed_asset_acquired", "fixedAsset", assetId, [Financial.line(`asset:fixed_asset:${category}`, cost, 0, name), creditLine], {occurredAt, actorName: actor.role});
+      writes[`fixedAssets/${assetId}`] = {name, category, cost, salvage, usefulLifeMonths: life, method: "straight-line", acquiredDate, accumulatedDepreciation: 0, status: "active", depreciation: {}, movementId: commandId, createdBy: actor.uid, ts: now, schemaVersion: 1};
+      const res = await commitFinancial(db, `fa_acq_${assetId}`, movement, actor, writes);
+      return {assetId, duplicate: res.duplicate === true};
+    }
+    if (action === "depreciate") {
+      const period = financeText(data.period, 7); if (!/^\d{4}-\d{2}$/.test(period)) throw new HttpsError("invalid-argument", "Period must be YYYY-MM.");
+      const assets = (await db.ref("/fixedAssets").get()).val() || {}; const posted = []; const occurredAt = Date.parse(`${period}-28T00:00:00+08:00`) || now;
+      for (const id of Object.keys(assets)) {
+        const a = assets[id]; if (!a || a.status !== "active") continue;
+        if (a.depreciation && a.depreciation[period] != null) continue;
+        const depreciable = M(M(a.cost) - M(a.salvage || 0)), already = M(a.accumulatedDepreciation || 0), remaining = M(depreciable - already);
+        if (!(remaining > 0)) continue;
+        const monthly = M(depreciable / Math.max(1, a.usefulLifeMonths)), amount = M(Math.min(monthly, remaining));
+        if (!(amount > 0)) continue;
+        const movement = Financial.movement("depreciation", "fixedAsset", id, [Financial.line("expense:depreciation", amount, 0, `${a.name} ${period}`), Financial.line("asset:accumulated_depreciation", 0, amount, `${a.name} ${period}`)], {occurredAt, actorName: actor.role});
+        const writes = {[`fixedAssets/${id}/accumulatedDepreciation`]: M(already + amount), [`fixedAssets/${id}/depreciation/${period}`]: amount};
+        if (M(already + amount) >= depreciable - 0.005) writes[`fixedAssets/${id}/status`] = "fully_depreciated";
+        await commitFinancial(db, `dep_${id}_${period}`, movement, actor, writes); posted.push({assetId: id, amount});
+      }
+      return {period, count: posted.length, posted};
+    }
+    if (action === "dispose") {
+      const assetId = financeKey(data.assetId, "Asset ID"), a = (await db.ref(`/fixedAssets/${assetId}`).get()).val();
+      if (!a) throw new HttpsError("not-found", "Asset not found.");
+      if (a.status === "disposed") throw new HttpsError("failed-precondition", "Asset already disposed.");
+      const proceeds = Math.max(0, M(data.proceeds || 0)), cost = M(a.cost), accum = M(a.accumulatedDepreciation || 0), nbv = M(cost - accum);
+      const lines = [Financial.line("asset:accumulated_depreciation", accum, 0, "Remove accumulated depreciation")];
+      if (proceeds > 0) { const accounts = (await db.ref("/cfAccounts").get()).val() || {}; const accountId = accountIdFor(accounts, data.accountId); lines.push(Financial.line(`asset:cash_account:${accountId}`, proceeds, 0, "Disposal proceeds")); }
+      lines.push(Financial.line(`asset:fixed_asset:${a.category}`, 0, cost, "Remove asset cost"));
+      const gainLoss = M(proceeds - nbv);
+      if (gainLoss > 0) lines.push(Financial.line("revenue:asset_disposal_gain", 0, gainLoss, "Gain on disposal"));
+      else if (gainLoss < 0) lines.push(Financial.line("expense:asset_disposal_loss", M(-gainLoss), 0, "Loss on disposal"));
+      const occurredAt = Date.parse(`${financeDate(data.date)}T00:00:00+08:00`) || now;
+      const movement = Financial.movement("fixed_asset_disposed", "fixedAsset", assetId, lines, {occurredAt, actorName: actor.role});
+      await commitFinancial(db, `fa_disp_${assetId}`, movement, actor, {[`fixedAssets/${assetId}/status`]: "disposed", [`fixedAssets/${assetId}/disposedAt`]: now, [`fixedAssets/${assetId}/proceeds`]: proceeds, [`fixedAssets/${assetId}/gainLoss`]: gainLoss});
+      return {assetId, gainLoss};
+    }
+    throw new HttpsError("invalid-argument", "Unknown fixed-asset action.");
+  },
+);
+
 exports.postFinancialCommand = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
