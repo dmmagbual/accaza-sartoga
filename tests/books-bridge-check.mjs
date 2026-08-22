@@ -60,5 +60,26 @@ ok(B.linesBalanced(built.entry.lines),'discrete purchase entry balances');
 ok(built.entry.lines.some(l=>l.code==='2000'&&l.credit===1000),'payable→2000 credit 1000');
 ok(built.unmapped.some(u=>u.account==='inventory:beans'),'unknown inventory account flagged unmapped');
 
+// 6) COGS leg: order cogs snapshot -> Dr COGS / Cr Inventory (account strings; codes via mapAccount)
+const order = {channel:"instore", cogsSnapshot:41.5, cogsCategorySnapshot:{beverage:30, food:10, packaging:1.5, directLabor:0, unallocated:0}, completedAt: Date.parse("2026-08-22T05:00:00Z")};
+const cl = B.cogsLines(order);
+ok(B.linesBalanced(cl), "cogs lines balance (Dr COGS = Cr Inventory)");
+ok(cl.find(l=>l.account==="cogs:beverage" && Math.abs(l.debit-30)<0.005), "beverage COGS debit 30");
+ok(cl.find(l=>l.account==="cogs:food" && Math.abs(l.debit-10)<0.005), "food COGS debit 10");
+ok(cl.find(l=>l.account==="cogs:packaging" && Math.abs(l.debit-1.5)<0.005), "packaging COGS debit 1.5");
+ok(cl.find(l=>l.account==="inventory:control" && Math.abs(l.credit-41.5)<0.005), "inventory:control credit 41.5");
+ok(B.mapAccount("cogs:beverage","instore",{}).code==="5000", "cogs:beverage -> 5000");
+ok(B.mapAccount("cogs:food","instore",{}).code==="5030", "cogs:food -> 5030");
+ok(B.mapAccount("cogs:packaging","instore",{}).code==="5040", "cogs:packaging -> 5040");
+ok(B.mapAccount("inventory:control","instore",{}).code==="1200", "inventory:control -> 1200");
+// bucket mismatch reconciles to authoritative total
+const order2 = {channel:"instore", cogsSnapshot:50, cogsCategorySnapshot:{beverage:30, food:10}, completedAt: Date.parse("2026-08-22T05:00:00Z")};
+ok(Math.abs(B.cogsLines(order2).find(l=>l.account==="inventory:control").credit - 50) < 0.005, "cogs reconciles buckets to total (50)");
+// fold cogs pseudo-movement into a daily node and stay balanced + idempotent
+const cm = B.cogsMovement(order, "ORD1");
+let n = B.applyDaily(null, cm, {});
+ok(B.linesBalanced(B.netToLines(n.net)), "cogs-only daily node balances");
+ok(B.applyDaily(n, cm, {})===undefined, "cogs movement idempotent (re-fire aborts)");
+
 if(failed){ console.error(`\n${failed} bridge check(s) FAILED`); process.exit(1); }
-console.log('PASS: Accaza Books POS→journal bridge (mapping, business date, daily aggregation, idempotency, discrete entries) checks passed.');
+console.log('PASS: Accaza Books POS→journal bridge (mapping, business date, daily aggregation, idempotency, discrete entries, COGS leg) checks passed.');

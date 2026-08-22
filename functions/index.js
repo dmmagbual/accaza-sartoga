@@ -184,6 +184,30 @@ exports.mirrorPosMovementToBooks = onValueCreated(
   },
 );
 
+// COGS leg: when an order's COGS snapshot is written, fold Dr COGS / Cr Inventory
+// into the same daily-summary-per-channel entry. Idempotent via sources[cogs_<orderId>].
+exports.mirrorPosCogsToBooks = onValueWritten(
+  {ref: "/orders/{orderId}/cogsSnapshot", region: "asia-southeast1"},
+  async (event) => {
+    const after = event.data && event.data.after && event.data.after.val();
+    if (!(Number(after) > 0)) return;
+    const orderId = event.params.orderId;
+    const db = getDatabase();
+    let order = (await db.ref(`/orders/${orderId}`).get()).val();
+    if (!order) order = (await db.ref(`/archivedOrders/${orderId}`).get()).val();
+    if (!order) return;
+    const mv = BooksBridge.cogsMovement(order, orderId);
+    if (!mv.lines.length) return;
+    const bucket = BooksBridge.bucketFor(mv);
+    const ref = db.ref(`/books/journal/${bucket.key}`);
+    await ref.transaction((cur) => {
+      const next = BooksBridge.applyDaily(cur, mv, {});
+      return next === undefined ? cur : next;
+    });
+    await ref.child("updatedAt").set(Date.now());
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Release 1C: customer-owned, server-priced online ordering.
 // ---------------------------------------------------------------------------
