@@ -348,6 +348,8 @@ const TABS = [
   {id:"tb",label:"Trial Balance"},
   {id:"pl",label:"Profit & Loss"},
   {id:"bs",label:"Balance Sheet"},
+  {id:"receivables",label:"Receivables"},
+  {id:"payables",label:"Payables"},
   {id:"coa",label:"Chart of Accounts"}
 ];
 let CURRENT = "dashboard";
@@ -492,15 +494,16 @@ const PAGES = {
     const kpi=(lbl,val,sub,cls)=>`<div class="kpi ${cls||''}"><div class="lbl">${lbl}</div><div class="val">${val}</div><div class="sub">${sub||''}</div></div>`;
     return `<div class="page-head"><div><h2>Dashboard</h2><p>${monthLabel(PERIOD)} · ${DB.meta&&DB.meta.name||''}</p></div>
         <button class="btn primary" onclick="App.newEntry()">+ New entry</button></div>
-      <div class="hint">This P1 prototype is a working double-entry ledger — every figure below is computed live from posted journal entries and drills through to its source. Persistence is in this browser for now; the Firebase sync and the daily POS import land in P2.</div>
+      <div class="hint">Live double-entry books. When signed in, POS sales, COGS, and cash post automatically, and receivables/payables read from your finance subledgers. Set opening balances to make the balance sheet and cash flow tie out.</div>
       <div class="kpis">
         ${kpi("Cash position", pesoNoDec(cash), "On hand + bank + wallet (all-time)", cash>=0?'good':'bad')}
         ${kpi("Sales ("+monthLabel(PERIOD)+")", pesoNoDec(pl.totalIncome), "Net of discounts")}
         ${kpi("Gross profit", pesoNoDec(pl.gross), grossPct.toFixed(1)+"% margin", pl.gross>=0?'good':'bad')}
         ${kpi("Net income", pesoNoDec(pl.net), pl.net>=0?'Profit':'Loss', pl.net>=0?'good':'bad')}
         ${kpi("COGS ratio", cogsPct.toFixed(1)+"%", "of sales")}
-        ${kpi("Receivable (Grab/Panda)", pesoNoDec(ar), "Owed to us")}
-        ${kpi("Payables", pesoNoDec(ap), "Owed to suppliers")}
+        ${(function(){var t=arApTotals(); return window.__booksUser
+          ? kpi("Receivables (open)", pesoNoDec(t.ar), "Owed to us", 'good')+kpi("Payables (open)", pesoNoDec(t.ap), "We owe", 'bad')+kpi("Net working capital", pesoNoDec(t.net), t.net>=0?'AR exceeds AP':'AP exceeds AR', t.net>=0?'good':'bad')
+          : kpi("Receivable (Grab/Panda)", pesoNoDec(ar), "From journal")+kpi("Payables", pesoNoDec(ap), "From journal");})()}
         ${kpi("Top expense", topExp?topExp.a.name:"—", topExp?pesoNoDec(topExp.bal):"")}
       </div>
       <div class="two-col">
@@ -652,6 +655,44 @@ const PAGES = {
   }
 };
 
+/* ---- AR / AP subledgers + aging (read live from /receivables, /payables) ---- */
+var AGING_ORDER = ['Current','1–30','31–60','61–90','90+','No due date'];
+function agingBucket(due){
+  if(!due) return 'No due date';
+  var t = Date.parse(String(due)+'T00:00:00'); if(isNaN(t)) return 'No due date';
+  var days = Math.floor((Date.now()-t)/86400000);
+  if(days<=0) return 'Current'; if(days<=30) return '1–30'; if(days<=60) return '31–60'; if(days<=90) return '61–90'; return '90+';
+}
+function openDocs(map){ return Object.keys(map||{}).map(function(k){return Object.assign({id:k}, map[k]||{});}).filter(function(d){return (d.status||'open')==='open' && (Number(d.amount)||0)>0;}); }
+function arApTotals(){
+  var ar=openDocs(window.__arMap).reduce(function(s,d){return s+(Number(d.amount)||0);},0);
+  var ap=openDocs(window.__apMap).reduce(function(s,d){return s+(Number(d.amount)||0);},0);
+  return {ar:ar, ap:ap, net:ar-ap};
+}
+function subledgerPage(kind){
+  var isAr = kind==='ar', map = isAr?window.__arMap:window.__apMap, live = !!window.__booksUser;
+  var title = isAr?'Receivables':'Payables', sub = isAr?'Money owed to you':'Money you owe';
+  if(!live) return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+'</p></div></div>'+
+    '<div class="empty"><div class="big">'+(isAr?'📥':'📤')+'</div><b>Sign in for live '+title.toLowerCase()+'</b><br><span class="tiny">This subledger reads your live finance data. Click the status pill (top-right) to sign in with your Accaza admin account, or open this app from your Accaza domain.</span></div>';
+  var docs = openDocs(map).sort(function(a,b){return String(a.due||'9999-99-99').localeCompare(String(b.due||'9999-99-99'));});
+  if(!docs.length) return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+'</p></div></div><div class="empty"><div class="big">✓</div>No open '+title.toLowerCase()+'.</div>';
+  var buckets={}; AGING_ORDER.forEach(function(b){buckets[b]=0;});
+  var total=0; docs.forEach(function(d){var amt=Number(d.amount)||0; total+=amt; buckets[agingBucket(d.due)]+=amt;});
+  var agingCards = AGING_ORDER.filter(function(b){return buckets[b]>0.005;}).map(function(b){
+    return '<div class="kpi"><div class="lbl">'+b+'</div><div class="val" style="font-size:1.15rem">'+pesoNoDec(buckets[b])+'</div></div>';}).join('');
+  var rows = docs.map(function(d){
+    var bkt = agingBucket(d.due), overdue = (bkt!=='Current' && bkt!=='No due date');
+    return '<tr><td><b>'+esc(d.party||'—')+'</b>'+(d.ref?'<div class="tiny muted">'+esc(d.ref)+'</div>':'')+'</td><td class="tiny">'+esc(d.type||'')+'</td><td class="tiny">'+esc(d.date||'')+'</td><td class="tiny">'+esc(d.due||'—')+'</td><td><span class="type-pill '+(overdue?'t-expense':'t-income')+'">'+bkt+'</span></td><td class="num">'+peso(d.amount)+'</td></tr>';}).join('');
+  var t = arApTotals();
+  return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+' · '+docs.length+' open · net working capital '+pesoNoDec(t.net)+'</p></div></div>'+
+    '<div class="kpis"><div class="kpi '+(isAr?'good':'bad')+'"><div class="lbl">Total '+(isAr?'receivable':'payable')+'</div><div class="val">'+pesoNoDec(total)+'</div><div class="sub">'+docs.length+' open</div></div>'+agingCards+'</div>'+
+    '<div class="card"><div class="tbl-wrap"><table><thead><tr><th>Party</th><th>Type</th><th>Date</th><th>Due</th><th>Aging</th><th class="num">Amount</th></tr></thead><tbody>'+rows+
+    '<tr class="total-row"><td colspan="5">Total open '+title.toLowerCase()+'</td><td class="num">'+peso(total)+'</td></tr></tbody></table></div></div>'+
+    '<p class="tiny muted" style="margin-top:.6rem">Aging as of today. Recording a '+(isAr?'collection':'payment')+' or creating a new one comes with the Transactions tab.</p>';
+}
+PAGES.receivables = function(){ return subledgerPage('ar'); };
+PAGES.payables = function(){ return subledgerPage('ap'); };
+
 /* ---- account add/edit ---- */
 App.editAccount = function(code){
   const a = code?acc(code):{code:"",name:"",type:"Expense",note:""};
@@ -756,7 +797,9 @@ if(auth){
     if(user){ setPill("● Live · "+(user.email||"synced"),"ok");
       onValue(ref(db,"/books/journal"), s=>{ journalCache=s.val()||{}; refresh(); }, ()=>setPill("● Read blocked — not an admin","bad"));
       onValue(ref(db,"/books/reviewQueue"), s=>{ reviewCache=s.val()||{}; refresh(); }, ()=>{});
-    } else { setPill("● Sign in for live POS","off"); window.__posEntries=[]; if(window.App&&App.render)App.render(); }
+      onValue(ref(db,"/receivables"), s=>{ window.__arMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
+      onValue(ref(db,"/payables"), s=>{ window.__apMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
+    } else { setPill("● Sign in for live POS","off"); window.__posEntries=[]; window.__arMap={}; window.__apMap={}; if(window.App&&App.render)App.render(); }
   });
 }
 </script>
