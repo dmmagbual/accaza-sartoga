@@ -38,6 +38,7 @@ function mapAccount(posAccount, channel, cashAccountMap) {
     "expense:platform_discount": "6045", "expense:platform_service_vat": "6046",
     "expense:platform_estimate_variance": "6100", "revenue:platform_estimate_variance": "4990",
     "equity:owner_capital": "3000", "equity:opening_balance": "3900", "equity:cash_float_source": "3050",
+    "cogs:beverage": "5000", "cogs:food": "5030", "cogs:packaging": "5040", "cogs:other": "5000", "inventory:control": "1200",
   };
   if (exact[a]) return {code: exact[a], unmapped: false};
   if (a === "revenue:sales") return {code: CHANNEL_SALES[String(channel || "instore").toLowerCase()] || "4000", unmapped: false};
@@ -117,4 +118,33 @@ function linesBalanced(lines) {
   return Math.abs(r2(dr) - r2(cr)) < 0.005;
 }
 
-module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, isSaleMovement, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced};
+/* Build Dr COGS (by category) / Cr Inventory lines from an order's cogs snapshot. */
+function cogsLines(order){
+  var total = r2(order && order.cogsSnapshot);
+  if(!(total>0)) return [];
+  var cat = (order && order.cogsCategorySnapshot) || {};
+  var bev = r2((Number(cat.beverage)||0) + (Number(cat.directLabor)||0) + (Number(cat.unallocated)||0));
+  var food = r2(Number(cat.food)||0);
+  var pack = r2(Number(cat.packaging)||0);
+  var catSum = r2(bev+food+pack);
+  if(Math.abs(catSum-total) >= 0.005){ bev = r2(bev + (total-catSum)); } // reconcile buckets to the authoritative total
+  var lines=[];
+  if(bev>0) lines.push({account:"cogs:beverage", debit:bev, credit:0});
+  if(food>0) lines.push({account:"cogs:food", debit:food, credit:0});
+  if(pack>0) lines.push({account:"cogs:packaging", debit:pack, credit:0});
+  var creditTotal = r2(bev+food+pack);
+  if(creditTotal>0) lines.push({account:"inventory:control", debit:0, credit:creditTotal});
+  return lines;
+}
+
+/* Pseudo-movement so COGS folds into the same daily-summary-per-channel entry as the sale. */
+function cogsMovement(order, orderId){
+  return {
+    id: "cogs_" + orderId, type: "order_cogs", sourceType: "order",
+    channel: String((order && order.channel) || "instore").toLowerCase(),
+    occurredAt: Number(order && (order.completedAt || order.receivedAt || order.occurredAt)) || Date.now(),
+    lines: cogsLines(order)
+  };
+}
+
+module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, isSaleMovement, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, cogsLines, cogsMovement};
