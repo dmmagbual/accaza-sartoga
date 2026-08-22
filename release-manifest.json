@@ -31,6 +31,7 @@
     "functions/lib/financial.js",
     "functions/lib/offline-sync.js",
     "functions/lib/payment-verification.js",
+    "functions/lib/books-bridge.js",
     "functions/lib/order-status.js",
     "functions/lib/operational-exceptions.js",
     "assets/js/shared/costing.js",
@@ -85,7 +86,8 @@
     "pruneEphemeralNodes",
     "backupDatabaseDaily",
     "syncPublicOrderStatus",
-    "autoCompleteReadyOnlineOrders"
+    "autoCompleteReadyOnlineOrders",
+    "mirrorPosMovementToBooks"
   ],
   "requiredProtectedNodes": [
     "activeOrders",
@@ -100,7 +102,8 @@
     "financialApprovals",
     "cashCustody",
     "operationalAudit",
-    "deletionAudit"
+    "deletionAudit",
+    "books"
   ],
   "verification": {
     "localQualityGate": "passed_2026-08-14",
