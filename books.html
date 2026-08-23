@@ -715,6 +715,7 @@ PAGES.transactions = function(){
       tile('🧮','Cash in / out','Expense paid now, or other cash','txnManual')+
       tile('👤','Owner capital','Owner puts money in','txnCapital')+
       tile('💸','Owner drawing','Owner takes money out','txnDraw')+
+      tile('🏭','Fixed assets','Register · depreciation · disposal','txnAssets')+
     '</div>';
 };
 App._txnRun=function(btn, payload){ if(!window.__financeCmd){alert('Live connection not ready — sign in first.');return;} btn.disabled=true; var old=btn.textContent; btn.textContent='Posting…'; window.__financeCmd(payload).then(function(){ App.closeModal(); App.render(); }).catch(function(e){ alert('Could not post: '+((e&&e.message)||e)); btn.disabled=false; btn.textContent=old; }); };
@@ -726,6 +727,43 @@ App.txnTransfer=function(){ App._txnModal('Bank transfer','<div class="grid2"><d
 App.txnManual=function(prefill){ prefill=prefill||{}; App._txnModal(prefill.title||'Cash in / out','<div class="grid2"><div class="field"><label>Cash account</label><select id="tm_acct">'+cashAccountOptions()+'</select></div><div class="field"><label>Direction</label><select id="tm_dir"><option value="out"'+(prefill.dir==='in'?'':' selected')+'>Money out</option><option value="in"'+(prefill.dir==='in'?' selected':'')+'>Money in</option></select></div></div><div class="grid2"><div class="field"><label>Category</label><select id="tm_cat">'+catOptions(prefill.category||'other')+'</select></div><div class="field"><label>Amount</label><input id="tm_amount" type="number" step="0.01" min="0"/></div></div><div class="grid2"><div class="field"><label>Date</label><input id="tm_date" type="date" value="'+todayStr()+'"/></div><div class="field"><label>Party (optional)</label><input id="tm_party"/></div></div><div class="field"><label>Reference (optional)</label><input id="tm_ref"/></div>','Post',function(btn){ var a=Number(fval('tm_amount'))||0; if(!fval('tm_acct')) return alert('Choose a cash account.'); if(!(a>0)) return alert('Amount must be greater than zero.'); App._txnRun(btn,{action:'manual',commandId:uid(),accountId:fval('tm_acct'),amount:a,dir:fval('tm_dir'),category:fval('tm_cat'),date:fval('tm_date'),party:fval('tm_party'),ref:fval('tm_ref')}); }); };
 App.txnCapital=function(){ App.txnManual({title:'Owner capital in',dir:'in',category:'capital in'}); };
 App.txnDraw=function(){ App.txnManual({title:'Owner drawing',dir:'out',category:'owner draw'}); };
+App.txnAssets=function(){ App.go('fixedassets'); };
+
+/* ---- Fixed assets register ---- */
+function faList(){ var m=window.__faMap||{}; return Object.keys(m).map(function(k){return Object.assign({id:k},m[k]||{});}); }
+function faMonthly(a){ var life=Math.max(1,Math.round(Number(a.usefulLifeMonths)||0)); return r2(((Number(a.cost)||0)-Math.max(0,Number(a.salvage)||0))/life); }
+function faNBV(a){ return r2((Number(a.cost)||0)-(Number(a.accumulatedDepreciation)||0)); }
+App._faRun=function(btn, payload, done){ if(!window.__fixedAsset){alert('Live connection not ready — sign in first.');return;} btn.disabled=true; var old=btn.textContent; btn.textContent='Working…'; window.__fixedAsset(payload).then(function(res){ App.closeModal(); if(done)done(res); App.render(); }).catch(function(e){ alert('Could not post: '+((e&&e.message)||e)); btn.disabled=false; btn.textContent=old; }); };
+PAGES.fixedassets = function(){
+  if(!window.__booksUser) return '<div class="page-head"><div><h2>Fixed assets</h2><p>Register · depreciation · disposal</p></div></div><div class="empty"><div class="big">🏭</div><b>Sign in to manage fixed assets</b><br><span class="tiny">Click the status pill (top-right) to sign in, or open from your Accaza domain.</span></div>';
+  var assets=faList(), active=assets.filter(function(a){return a.status!=='disposed';});
+  var totCost=0, totAccum=0; active.forEach(function(a){ totCost+=Number(a.cost)||0; totAccum+=Number(a.accumulatedDepreciation)||0; });
+  var head='<div class="page-head"><div><h2>Fixed assets</h2><p><span class="linkish" onclick="App.go(&#39;transactions&#39;)">← Transactions</span> · '+active.length+' active · net book value '+pesoNoDec(totCost-totAccum)+'</p></div><div class="btn-row"><button class="btn" onclick="App.faDepreciate()">Run depreciation</button><button class="btn primary" onclick="App.faAcquire()">+ Acquire asset</button></div></div>';
+  if(!assets.length) return head+'<div class="empty"><div class="big">🏭</div>No fixed assets yet. Acquire one to start the register.</div>';
+  var rows=assets.sort(function(a,b){return String(b.acquiredDate||'').localeCompare(String(a.acquiredDate||''));}).map(function(a){
+    var disposed=a.status==='disposed', full=a.status==='fully_depreciated';
+    return '<tr'+(disposed?' class="reversed"':'')+'><td><b>'+esc(a.name||'Asset')+'</b><div class="tiny muted">'+esc(a.category||'')+' · acquired '+esc(a.acquiredDate||'')+'</div></td>'+
+      '<td class="num">'+peso(a.cost)+'</td>'+
+      '<td class="num tiny">'+esc(a.usefulLifeMonths||'')+' mo<div class="muted">'+peso(faMonthly(a))+'/mo</div></td>'+
+      '<td class="num">'+peso(a.accumulatedDepreciation||0)+'</td>'+
+      '<td class="num"><b>'+peso(faNBV(a))+'</b></td>'+
+      '<td><span class="type-pill '+(disposed?'t-expense':full?'t-liability':'t-asset')+'">'+(disposed?'Disposed':full?'Fully dep.':'Active')+'</span></td>'+
+      '<td>'+(disposed?'':'<button class="btn sm ghost" onclick="App.faDispose(&#39;'+esc(a.id)+'&#39;)">Dispose</button>')+'</td></tr>';
+  }).join('');
+  return head+'<div class="card"><div class="tbl-wrap"><table><thead><tr><th>Asset</th><th class="num">Cost</th><th class="num">Life</th><th class="num">Accum. dep.</th><th class="num">Net book value</th><th>Status</th><th></th></tr></thead><tbody>'+rows+
+    '<tr class="total-row"><td>Totals (active)</td><td class="num">'+peso(totCost)+'</td><td></td><td class="num">'+peso(totAccum)+'</td><td class="num">'+peso(totCost-totAccum)+'</td><td colspan="2"></td></tr></tbody></table></div></div>'+
+    '<p class="tiny muted" style="margin-top:.6rem">Straight-line. Depreciation posts only when you run it (Dr Depreciation 6090 / Cr Accumulated Depreciation 1590) — idempotent per month.</p>';
+};
+App.faAcquire=function(){ App._txnModal('Acquire fixed asset',
+  '<div class="grid2"><div class="field"><label>Asset name</label><input id="fa_name"/></div><div class="field"><label>Category</label><select id="fa_cat"><option value="equipment">Equipment</option><option value="furniture">Furniture &amp; fixtures</option><option value="other">Other</option></select></div></div>'+
+  '<div class="grid2"><div class="field"><label>Cost</label><input id="fa_cost" type="number" step="0.01" min="0"/></div><div class="field"><label>Salvage value</label><input id="fa_salvage" type="number" step="0.01" min="0" value="0"/></div></div>'+
+  '<div class="grid2"><div class="field"><label>Useful life (months)</label><input id="fa_life" type="number" step="1" min="1" placeholder="e.g. 60"/></div><div class="field"><label>Acquired date</label><input id="fa_date" type="date" value="'+todayStr()+'"/></div></div>'+
+  '<div class="grid2"><div class="field"><label>Funded by</label><select id="fa_fund" onchange="App._faFundToggle()"><option value="cash">Paid from cash</option><option value="payable">On account (supplier)</option></select></div><div class="field" id="fa_acctWrap"><label>Cash account</label><select id="fa_acct">'+cashAccountOptions()+'</select></div></div>'+
+  '<div class="field" id="fa_partyWrap" style="display:none"><label>Supplier</label><input id="fa_party"/></div>',
+  'Acquire',function(btn){ var name=fval('fa_name'), cost=Number(fval('fa_cost'))||0, life=Number(fval('fa_life'))||0; if(!name) return alert('Asset name required.'); if(!(cost>0)) return alert('Cost must be greater than zero.'); if(!(life>=1)) return alert('Useful life in months is required.'); var fund=fval('fa_fund'); var funding = fund==='payable' ? {type:'payable',party:fval('fa_party')||name} : {type:'cash',accountId:fval('fa_acct')}; if(fund==='cash'&&!funding.accountId) return alert('Choose a cash account.'); App._faRun(btn,{action:'create',commandId:uid(),assetId:uid(),name:name,category:fval('fa_cat'),cost:cost,salvage:Number(fval('fa_salvage'))||0,usefulLifeMonths:life,acquiredDate:fval('fa_date'),funding:funding}); }); };
+App._faFundToggle=function(){ var v=fval('fa_fund'); document.getElementById('fa_acctWrap').style.display=(v==='cash')?'':'none'; document.getElementById('fa_partyWrap').style.display=(v==='payable')?'':'none'; };
+App.faDepreciate=function(){ App._txnModal('Run depreciation','<p class="tiny muted" style="margin-top:0">Posts one month of straight-line depreciation for every active asset that has not been depreciated for this period yet. Safe to re-run — it never double-posts a month.</p><div class="field"><label>Period (month)</label><input id="fa_period" type="month" value="'+todayStr().slice(0,7)+'"/></div>','Run depreciation',function(btn){ var period=fval('fa_period'); if(!/^\d{4}-\d{2}$/.test(period)) return alert('Pick a month.'); App._faRun(btn,{action:'depreciate',commandId:uid(),period:period},function(res){ (window.alert)('Depreciation for '+period+': '+((res&&res.count)||0)+' asset(s) posted.'); }); }); };
+App.faDispose=function(assetId){ var a=(window.__faMap||{})[assetId]||{}; App._txnModal('Dispose: '+esc(a.name||'asset'),'<p class="tiny muted" style="margin-top:0">Removes cost and accumulated depreciation and books any gain or loss. Net book value now: '+peso(faNBV(Object.assign({id:assetId},a)))+'.</p><div class="grid2"><div class="field"><label>Proceeds (0 if scrapped)</label><input id="fd_proceeds" type="number" step="0.01" min="0" value="0"/></div><div class="field"><label>Date</label><input id="fd_date" type="date" value="'+todayStr()+'"/></div></div><div class="field"><label>Proceeds deposited to</label><select id="fd_acct">'+cashAccountOptions()+'</select></div>','Dispose',function(btn){ App._faRun(btn,{action:'dispose',commandId:uid(),assetId:assetId,proceeds:Number(fval('fd_proceeds'))||0,accountId:fval('fd_acct'),date:fval('fd_date')}); }); };
 
 /* ---- account add/edit ---- */
 App.editAccount = function(code){
@@ -811,7 +849,7 @@ import {getFunctions, httpsCallable} from "https://www.gstatic.com/firebasejs/10
 const cfg={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 function setPill(text,cls){ const el=document.getElementById("liveStatus"); if(el){ el.textContent=text; el.className="live-pill "+cls; } }
 let app,db,auth;
-try{ app=initializeApp(cfg); db=getDatabase(app); auth=getAuth(app); var fns=getFunctions(app,"asia-southeast1"); window.__financeCmd=function(payload){ return httpsCallable(fns,"postFinancialCommand")(payload).then(function(r){return r.data;}); }; window.__booksAuthReady=true; }
+try{ app=initializeApp(cfg); db=getDatabase(app); auth=getAuth(app); var fns=getFunctions(app,"asia-southeast1"); window.__financeCmd=function(payload){ return httpsCallable(fns,"postFinancialCommand")(payload).then(function(r){return r.data;}); }; window.__fixedAsset=function(payload){ return httpsCallable(fns,"manageFixedAsset")(payload).then(function(r){return r.data;}); }; window.__booksAuthReady=true; }
 catch(e){ setPill("● Offline (local only)","off"); }
 if(auth){
   setPersistence(auth, browserLocalPersistence).catch(()=>{});
@@ -835,7 +873,8 @@ if(auth){
       onValue(ref(db,"/receivables"), s=>{ window.__arMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       onValue(ref(db,"/payables"), s=>{ window.__apMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       onValue(ref(db,"/cfAccounts"), s=>{ window.__cfAccounts=s.val()||{}; }, ()=>{});
-    } else { setPill("● Sign in for live POS","off"); window.__posEntries=[]; window.__arMap={}; window.__apMap={}; window.__cfAccounts={}; if(window.App&&App.render)App.render(); }
+      onValue(ref(db,"/fixedAssets"), s=>{ window.__faMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
+    } else { setPill("● Sign in for live POS","off"); window.__posEntries=[]; window.__arMap={}; window.__apMap={}; window.__cfAccounts={}; window.__faMap={}; if(window.App&&App.render)App.render(); }
   });
 }
 </script>
