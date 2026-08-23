@@ -16,6 +16,15 @@
    ============================================================ */
 
 const CHANNEL_SALES = {instore: "4000", online: "4010", grabfood: "4020", foodpanda: "4030"};
+// Finance chart-account id -> Accaza Books COA (bills, manual expenses, owner capital/draw, etc.)
+const CHART_COA = {
+  rent: "6010", utilities: "6020", salaries: "6000", "bank charges": "6080", bank_charges: "6080",
+  repairs: "6060", "repairs & maintenance": "6060", marketing: "6050", supplies: "6070",
+  internet: "6030", "internet & phone": "6030", depreciation: "6090",
+  purchases: "6100", other_expense: "6100", other: "6100", "fixed asset": "1500",
+  capital_in: "3000", "capital in": "3000", owner_draw: "3100", "owner draw": "3100",
+  sales_revenue: "4000", other_income: "4990"
+};
 const MANILA = new Intl.DateTimeFormat("en-US", {timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit"});
 
 function r2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
@@ -48,6 +57,9 @@ function mapAccount(posAccount, channel, cashAccountMap) {
   if (a.indexOf("asset:receivable:") === 0) return {code: "1110", unmapped: false};
   if (a.indexOf("asset:fixed_asset:") === 0) return {code: a.split(":")[2] === "furniture" ? "1510" : "1500", unmapped: false};
   if (a.indexOf("liability:payable:") === 0) return {code: "2000", unmapped: false};
+  var seg = a.indexOf(":") >= 0 ? a.slice(a.indexOf(":") + 1).toLowerCase() : "";
+  if (a.indexOf("expense_or_inventory:") === 0) return CHART_COA[seg] ? {code: CHART_COA[seg], unmapped: false} : {code: "6100", unmapped: true};
+  if (CHART_COA[seg]) return {code: CHART_COA[seg], unmapped: false};
   if (a.indexOf("revenue:") === 0) return {code: "4990", unmapped: true};
   if (a.indexOf("expense:") === 0) return {code: "6100", unmapped: true};
   return {code: "1900", unmapped: true};
