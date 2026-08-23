@@ -401,7 +401,7 @@ const MANAGER_APPROVAL_ACTIONS = new Set([
   "validate_payment", "refund", "void", "settle_platform_payout", "reopen_cash_count",
   "delete_archived_order", "review_discrepancy", "approve_petty_voucher",
   "reject_petty_voucher", "void_petty_voucher", "manual_discount", "cash_in", "fixed_float_exception", "reverse_purchase",
-  "rekey_platform_order",
+  "rekey_platform_order", "reverse_platform_payout",
 ]);
 function transactionCurrent(current, initial, state) {
   const value = current == null && !state.seen ? initial : current;
@@ -1391,6 +1391,39 @@ exports.settlePlatformPayout = onCall(
     if (Math.abs(Financial.money(netAlloc) - variance) > 0.009) throw new HttpsError("failed-precondition", "Variance allocations do not equal the server-calculated variance."); lines.push(Financial.line(`asset:platform_receivable:${channel}`, 0, expected, "Settle platform receivable")); const movement = Financial.movement("platform_payout_settlement", "platformPayout", payoutId, lines, {occurredAt: Date.now(),approvalId:approval.id,approvedBy:approval.record.approvedEmail||approval.record.approvedRole});
     const writes = Object.assign({}, approval.usedWrites), settledAt = Date.now(); found.forEach((entry) => {writes[`${entry.node}/${entry.id}/settlementStatus`] = "settled"; writes[`${entry.node}/${entry.id}/payoutId`] = payoutId;}); writes[`platformPayouts/${payoutId}`] = {channel, periodStart: financeText(data.periodStart, 10), periodEnd: financeText(data.periodEnd, 10), expectedNet: expected, actualPayout: actual, variance, allocations, orderIds: ids, by: actor.role, actorUid: actor.uid, approvedBy: approval.record.approvedEmail || approval.record.approvedRole, approvalId: approval.id, settledAt, movementId: `payout_${payoutId}`, schemaVersion: 1};
     const committed = await commitFinancial(db, `payout_${payoutId}`, movement, actor, writes); return {payoutId, expectedNet: expected, actualPayout: actual, variance, orderCount: ids.length, duplicate: committed.duplicate};
+  },
+);
+
+// Reverse a settled platform payout: unwinds the settlement posting (append-only
+// reversing entry), and sends its orders back to unsettled so they can be
+// re-settled correctly. The payout record is kept and marked reversed (audit).
+exports.reversePlatformPayout = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["receivables"]);
+    const data = request.data || {}, payoutId = financeKey(data.payoutId, "Payout ID"), reason = financeText(data.reason, 300);
+    if (!reason) throw new HttpsError("invalid-argument", "Reversal reason is required.");
+    const payout = (await db.ref(`/platformPayouts/${payoutId}`).get()).val();
+    if (!payout) throw new HttpsError("not-found", "Payout not found.");
+    if (payout.reversed) throw new HttpsError("already-exists", "This payout has already been reversed.");
+    const channel = financeText(payout.channel, 30), ids = Array.isArray(payout.orderIds) ? payout.orderIds : [];
+    const expected = Financial.money(payout.expectedNet), actual = Financial.money(payout.actualPayout), allocations = payout.allocations || {};
+    const approval = await claimManagerApproval(db, data, "reverse_platform_payout", payoutId, actual, `reverse_payout_${payoutId}`);
+    const defs = (await db.ref("/platformVarAccounts").get()).val() || {};
+    const lines = [Financial.line(`asset:platform_clearing:${channel}`, 0, actual, "Reverse actual payout clearing"), Financial.line(`asset:platform_receivable:${channel}`, expected, 0, "Restore platform receivable")];
+    Object.keys(allocations).forEach((id) => { const value = Financial.money(allocations[id]); if (!(value > 0)) return; const def = defs[id] || {}; if (def.type === "revenue") lines.push(Financial.line(`revenue:platform_variance:${id}`, value, 0, "Reverse " + (def.name || id))); else lines.push(Financial.line(`expense:platform_variance:${id}`, 0, value, "Reverse " + (def.name || id))); });
+    const now = Date.now(), movement = Financial.movement("platform_payout_reversal", "platformPayout", payoutId, lines, {occurredAt: now, approvalId: approval.id, approvedBy: approval.record.approvedEmail || approval.record.approvedRole});
+    const writes = Object.assign({}, approval.usedWrites);
+    const found = await Promise.all(ids.map((id) => findOrder(db, id).catch(() => null)));
+    found.forEach((entry) => { if (!entry) return; if ((entry.order.payoutId || "") === payoutId) { writes[`${entry.node}/${entry.id}/settlementStatus`] = "unsettled"; writes[`${entry.node}/${entry.id}/payoutId`] = ""; } });
+    writes[`platformPayouts/${payoutId}/reversed`] = true;
+    writes[`platformPayouts/${payoutId}/reversedAt`] = now;
+    writes[`platformPayouts/${payoutId}/reversedBy`] = actor.uid;
+    writes[`platformPayouts/${payoutId}/reversalReason`] = reason;
+    writes[`platformPayouts/${payoutId}/reversalApprovalId`] = approval.id;
+    writes[`operationalAudit/${now}_reverse_payout_${payoutId}`] = {action: "reverse_platform_payout", sourceType: "platformPayout", sourceId: payoutId, channel, amount: actual, orderCount: ids.length, actorUid: actor.uid, actorRole: actor.role, approvalId: approval.id, reason, ts: now, schemaVersion: 1};
+    const committed = await commitFinancial(db, `reverse_payout_${payoutId}`, movement, actor, writes);
+    return {payoutId, orderCount: ids.length, duplicate: committed.duplicate};
   },
 );
 

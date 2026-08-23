@@ -12,9 +12,9 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 250,
+    "admin": 251,
     "customer": 59,
-    "serviceWorkerCache": 153
+    "serviceWorkerCache": 154
   },
   "authoritativeFiles": [
     "admin.html",
@@ -91,7 +91,8 @@
     "mirrorPosCogsToBooks",
     "manageFixedAsset",
     "indexPlatformOrderRef",
-    "recordPlatformCatchup"
+    "recordPlatformCatchup",
+    "reversePlatformPayout"
   ],
   "requiredProtectedNodes": [
     "activeOrders",
