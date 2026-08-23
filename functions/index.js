@@ -1427,6 +1427,24 @@ exports.reversePlatformPayout = onCall(
   },
 );
 
+// Set/clear the actual platform payout date on a settled payout (from the
+// platform statement). Metadata only — no ledger posting, no approval needed.
+exports.setPlatformPayoutDate = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["receivables"]);
+    const data = request.data || {}, payoutId = financeKey(data.payoutId, "Payout ID"), raw = financeText(data.payoutDate, 10);
+    if (raw && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) throw new HttpsError("invalid-argument", "Payout date must be YYYY-MM-DD.");
+    if (!(await db.ref(`/platformPayouts/${payoutId}`).get()).exists()) throw new HttpsError("not-found", "Payout not found.");
+    const now = Date.now();
+    await db.ref().update({
+      [`platformPayouts/${payoutId}/payoutDate`]: raw || null,
+      [`operationalAudit/${now}_set_payout_date_${payoutId}`]: {action: "set_payout_date", sourceType: "platformPayout", sourceId: payoutId, detail: raw || "(cleared)", actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1},
+    });
+    return {payoutId, payoutDate: raw || ""};
+  },
+);
+
 exports.processOrderAdjustment = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
