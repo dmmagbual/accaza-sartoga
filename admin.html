@@ -33,7 +33,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="/favicon_512x512.png"/>
 <link rel="manifest" href="/manifest-admin.json"/>
 <meta name="theme-color" content="#19241b"/>
-<meta name="accaza-admin-build" content="244"/>
+<meta name="accaza-admin-build" content="245"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -1065,7 +1065,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-            <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#7d5f2c;font-weight:400;letter-spacing:0.06em;">build&nbsp;v244</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button data-accaza-install onclick="accazaInstallApp()" style="background:#e8f5ec;color:#155724;border:1px solid #b8dfc4;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;">📲 Install Accaza POS App</button><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div></div>
+            <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#7d5f2c;font-weight:400;letter-spacing:0.06em;">build&nbsp;v245</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button data-accaza-install onclick="accazaInstallApp()" style="background:#e8f5ec;color:#155724;border:1px solid #b8dfc4;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;">📲 Install Accaza POS App</button><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1134,7 +1134,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
       </div>
       <div class="tabgrp" data-grp="stock" data-label="Supplies &amp; recipes" style="display:none;">
         <button class="admin-tab" onclick="posSwitchTab('inventory',this)">📦 Stock Items <span id="lowStockBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
-        <button class="admin-tab" onclick="posSwitchTab('purchases',this)">📥 Purchases</button>
+        <button class="admin-tab" id="tabBtnPurchases" onclick="posSwitchTab('purchases',this)">📥 Purchases <span style="font-size:0.62rem;color:#1c6b47;font-weight:600;">· Receive stock</span></button>
         <button class="admin-tab" onclick="posSwitchTab('recipes',this)">🧪 Recipes <span id="costGapBadge" style="display:none;background:#e6a817;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;" title="menu items not costed">0</span></button>
         <button class="admin-tab" onclick="posSwitchTab('usage',this)">🍽️ Internal Usage</button>
         <button class="admin-tab" onclick="posSwitchTab('packages',this)">🎁 Packages</button>

@@ -242,6 +242,10 @@ function renderInventory(){
   root.innerHTML=
     '<div class="pz-h">📦 Stock Items</div>'
     +'<p class="pz-sub">Each inventory row is the common SKU used by recipes. Approved brands are interchangeable purchasing options beneath that SKU. Completed orders deduct the common SKU while receipts retain the selected brand.'+(low.length?' <b class="pz-low">'+low.length+' low.</b>':'')+(neg.length?' <b class="pz-low">'+neg.length+' negative.</b>':'')+(uncat.length?' <b style="color:#8a5a00;">'+uncat.length+' uncategorized.</b>':'')+(missingBrand.length?' <b style="color:#8a5a00;">'+missingBrand.length+' recipe item'+(missingBrand.length===1?'':'s')+' without an approved purchasing brand.</b>':'')+'</p>'
+    +'<div class="pz-card" style="margin-bottom:1rem;border:1px solid #b8dfc4;background:#f3faf5;display:flex;gap:0.9rem;align-items:center;flex-wrap:wrap;">'
+      +'<div style="flex:1;min-width:240px;"><div style="font-weight:700;color:#1c6b47;font-size:0.92rem;">📥 Receiving a delivery?</div><p style="font-size:0.79rem;color:var(--tm);margin:0.25rem 0 0;line-height:1.35;">Book stock in through the <b>Goods-Received Note</b> — capture supplier, invoice&nbsp;#, quantities and unit costs in one card. It updates the weighted-average cost and raises the payable automatically. <b>Adjust</b> and <b>Edit</b> below are only for count corrections, not for receiving purchases.</p></div>'
+      +'<button class="pz-btn ok" id="invReceiveStock" style="white-space:nowrap;">📥 Receive stock →</button>'
+    +'</div>'
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">'
       +'<button class="pz-btn sec" id="invExport">⬇ Export Excel</button>'
       +'<button class="pz-btn sec" id="invTemplate">⬇ Import template</button>'
@@ -278,6 +282,7 @@ function renderInventory(){
     +'</tbody></table></div></div>'
     +'<div class="pz-card" style="margin-top:1rem;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;"><div style="font-weight:600;color:var(--bd);">🧾 Inventory movement ledger</div><span style="font-size:0.74rem;color:var(--tl);">Latest '+movements.length+' loaded · immutable server record</span></div><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Date/time</th><th>Movement</th><th>Item</th><th class="r">Quantity</th><th class="r">Balance</th><th class="r">Unit cost</th><th>Source</th><th>Posted by</th></tr></thead><tbody>'+(movementRows||'<tr><td colspan="8" style="padding:0.7rem;color:var(--tl);">No ledger movements loaded yet. Initialize once to capture today’s stock and cost as opening balances.</td></tr>')+'</tbody></table></div></div>';
   document.getElementById('invAddBtn').onclick=addIngredient;
+  var _rs=document.getElementById('invReceiveStock'); if(_rs)_rs.onclick=function(){var b=document.getElementById('tabBtnPurchases'); if(b){b.click();} else if(window.posSwitchTab){window.posSwitchTab('purchases');}};
   var _cf=document.getElementById('invCatFilter'); if(_cf)_cf.onchange=function(){window.__invCatFilter=this.value||'';renderInventory();};
   var _cm=document.getElementById('invCatMgr'); if(_cm)_cm.onclick=openCatManager;
   var _ss=document.getElementById('invSkuSetup'); if(_ss)_ss.onclick=openSkuBatchSetup;
