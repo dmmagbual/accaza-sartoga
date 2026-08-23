@@ -92,5 +92,19 @@ ok(Math.abs(B.monthlyStraightLine(85000,5000,60) - 1333.33) < 0.005, "straight-l
 ok(Math.abs(B.monthlyStraightLine(12000,0,12) - 1000) < 0.005, "straight-line monthly = 1000");
 ok(Math.abs(B.netBookValue({cost:85000, accumulatedDepreciation:1333.33}) - 83666.67) < 0.005, "NBV = cost - accum dep");
 
+// 8) Bill / manual expense / owner capital-draw chart-category mapping
+ok(B.mapAccount("expense_or_inventory:rent","instore",{}).code==="6010", "bill rent -> 6010");
+ok(B.mapAccount("expense_or_inventory:bank charges","instore",{}).code==="6080", "bill 'bank charges' -> 6080");
+ok(B.mapAccount("expense_or_inventory:utilities","instore",{}).code==="6020", "bill utilities -> 6020");
+ok(B.mapAccount("expense:rent","instore",{}).code==="6010", "manual expense rent -> 6010");
+ok(B.mapAccount("expense:utilities","instore",{}).code==="6020", "manual expense utilities -> 6020");
+ok(B.mapAccount("equity:capital_in","instore",{}).code==="3000", "owner capital -> 3000");
+ok(B.mapAccount("equity:owner_draw","instore",{}).code==="3100", "owner draw -> 3100");
+var u=B.mapAccount("expense_or_inventory:zzzunknown","instore",{}); ok(u.code==="6100" && u.unmapped===true, "unknown bill type -> 6100 + flag");
+// existing POS strings must be unaffected
+ok(B.mapAccount("revenue:sales","instore",{}).code==="4000", "revenue:sales still -> 4000");
+ok(B.mapAccount("asset:register_cash","instore",{}).code==="1000", "register_cash still -> 1000");
+ok(B.mapAccount("liability:payable:po1","instore",{}).code==="2000", "payable still -> 2000");
+
 if(failed){ console.error(`\n${failed} bridge check(s) FAILED`); process.exit(1); }
-console.log('PASS: Accaza Books POS→journal bridge (mapping, business date, daily aggregation, idempotency, discrete entries, COGS leg, fixed assets) checks passed.');
+console.log('PASS: Accaza Books POS→journal bridge (mapping, business date, daily aggregation, idempotency, discrete entries, COGS leg, fixed assets, chart-category mapping) checks passed.');
