@@ -716,6 +716,7 @@ PAGES.transactions = function(){
       tile('👤','Owner capital','Owner puts money in','txnCapital')+
       tile('💸','Owner drawing','Owner takes money out','txnDraw')+
       tile('🏭','Fixed assets','Register · depreciation · disposal','txnAssets')+
+      tile('📦','Purchases','Goods-received invoices register','txnPurchases')+
     '</div>';
 };
 App._txnRun=function(btn, payload){ if(!window.__financeCmd){alert('Live connection not ready — sign in first.');return;} btn.disabled=true; var old=btn.textContent; btn.textContent='Posting…'; window.__financeCmd(payload).then(function(){ App.closeModal(); App.render(); }).catch(function(e){ alert('Could not post: '+((e&&e.message)||e)); btn.disabled=false; btn.textContent=old; }); };
@@ -764,6 +765,24 @@ App.faAcquire=function(){ App._txnModal('Acquire fixed asset',
 App._faFundToggle=function(){ var v=fval('fa_fund'); document.getElementById('fa_acctWrap').style.display=(v==='cash')?'':'none'; document.getElementById('fa_partyWrap').style.display=(v==='payable')?'':'none'; };
 App.faDepreciate=function(){ App._txnModal('Run depreciation','<p class="tiny muted" style="margin-top:0">Posts one month of straight-line depreciation for every active asset that has not been depreciated for this period yet. Safe to re-run — it never double-posts a month.</p><div class="field"><label>Period (month)</label><input id="fa_period" type="month" value="'+todayStr().slice(0,7)+'"/></div>','Run depreciation',function(btn){ var period=fval('fa_period'); if(!/^\d{4}-\d{2}$/.test(period)) return alert('Pick a month.'); App._faRun(btn,{action:'depreciate',commandId:uid(),period:period},function(res){ (window.alert)('Depreciation for '+period+': '+((res&&res.count)||0)+' asset(s) posted.'); }); }); };
 App.faDispose=function(assetId){ var a=(window.__faMap||{})[assetId]||{}; App._txnModal('Dispose: '+esc(a.name||'asset'),'<p class="tiny muted" style="margin-top:0">Removes cost and accumulated depreciation and books any gain or loss. Net book value now: '+peso(faNBV(Object.assign({id:assetId},a)))+'.</p><div class="grid2"><div class="field"><label>Proceeds (0 if scrapped)</label><input id="fd_proceeds" type="number" step="0.01" min="0" value="0"/></div><div class="field"><label>Date</label><input id="fd_date" type="date" value="'+todayStr()+'"/></div></div><div class="field"><label>Proceeds deposited to</label><select id="fd_acct">'+cashAccountOptions()+'</select></div>','Dispose',function(btn){ App._faRun(btn,{action:'dispose',commandId:uid(),assetId:assetId,proceeds:Number(fval('fd_proceeds'))||0,accountId:fval('fd_acct'),date:fval('fd_date')}); }); };
+
+/* ---- Purchases register (read-only view of /purchaseInvoices) ---- */
+App.txnPurchases=function(){ App.go('purchases'); };
+PAGES.purchases = function(){
+  if(!window.__booksUser) return '<div class="page-head"><div><h2>Purchases</h2><p>Goods-received invoices</p></div></div><div class="empty"><div class="big">📦</div><b>Sign in for purchases</b><br><span class="tiny">Reads your goods-received invoices. Click the status pill (top-right) to sign in.</span></div>';
+  var map=window.__piMap||{};
+  var invs=Object.keys(map).map(function(k){return Object.assign({id:k},map[k]||{});}).sort(function(a,b){return String(b.date||'').localeCompare(String(a.date||''));});
+  var total=invs.reduce(function(s,x){return s+(Number(x.total)||0);},0);
+  var unpaid=invs.filter(function(x){return x.payMode==='account'||x.payMode==='pending';}).reduce(function(s,x){return s+(Number(x.total)||0);},0);
+  var head='<div class="page-head"><div><h2>Purchases</h2><p><span class="linkish" onclick="App.go(&#39;transactions&#39;)">← Transactions</span> · '+invs.length+' invoices · '+pesoNoDec(total)+' total</p></div></div>';
+  if(!invs.length) return head+'<div class="empty"><div class="big">📦</div>No purchase invoices yet.</div>';
+  var payBadge=function(x){ if(x.payMode==='paid')return '<span class="type-pill t-income">Paid</span>'; if(x.payMode==='account')return '<span class="type-pill t-liability">On account'+(x.due?' · due '+esc(x.due):'')+'</span>'; return '<span class="type-pill t-expense">Pending invoice</span>'; };
+  var rows=invs.map(function(x){ return '<tr><td class="tiny">'+esc(x.date||'')+'</td><td><b>'+esc(x.supplier||'—')+'</b>'+(x.ref?'<div class="tiny muted">'+esc(x.ref)+'</div>':'')+'</td><td class="tiny">'+(((x.lines&&x.lines.length))||x.lineCount||0)+' item(s)</td><td>'+payBadge(x)+'</td><td class="num">'+peso(x.total)+'</td><td><button class="btn sm ghost" onclick="App.piDetail(&#39;'+esc(x.id)+'&#39;)">Details</button></td></tr>'; }).join('');
+  return head+'<div class="kpis"><div class="kpi"><div class="lbl">Total purchases</div><div class="val">'+pesoNoDec(total)+'</div><div class="sub">'+invs.length+' invoices</div></div><div class="kpi bad"><div class="lbl">Unpaid / on account</div><div class="val">'+pesoNoDec(unpaid)+'</div><div class="sub">still owed</div></div></div>'+
+    '<div class="card"><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Supplier</th><th>Items</th><th>Payment</th><th class="num">Total</th><th></th></tr></thead><tbody>'+rows+'<tr class="total-row"><td colspan="4">Total</td><td class="num">'+peso(total)+'</td><td></td></tr></tbody></table></div></div>'+
+    '<p class="tiny muted" style="margin-top:.6rem">Read-only register. Receiving new stock still runs in the POS admin for now (it is tied to inventory, recipes, brands and weighted-average cost); moving receiving into finance is the next decision.</p>';
+};
+App.piDetail=function(id){ var x=(window.__piMap||{})[id]; if(!x)return; var lines=x.lines||[]; var rows=lines.map(function(l){return '<tr><td>'+esc(l.itemName||l.itemId||'')+(l.skuBrand?'<div class="tiny muted">'+esc(l.skuBrand)+'</div>':'')+'</td><td class="num tiny">'+esc(l.qty||'')+' '+esc(l.unit||'')+'</td><td class="num tiny">'+peso(l.unitCost||0)+'</td><td class="num">'+peso(l.total||0)+'</td></tr>';}).join(''); var m=document.getElementById('modal'); m.innerHTML='<div class="modal-head"><h3>'+esc(x.supplier||'Purchase')+(x.ref?' · '+esc(x.ref):'')+'</h3><button class="x" onclick="App.closeModal()">×</button></div><div class="modal-body"><div class="tiny muted" style="margin-bottom:.5rem">'+esc(x.date||'')+' · '+esc(x.payMode||'')+' · received by '+esc(x.by||'—')+'</div><div class="tbl-wrap"><table><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Total</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4" class="muted">No line detail</td></tr>')+'<tr class="total-row"><td colspan="3">Invoice total</td><td class="num">'+peso(x.total||0)+'</td></tr></tbody></table></div></div><div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Close</button></div>'; document.getElementById('modalBg').classList.add('show'); };
 
 /* ---- account add/edit ---- */
 App.editAccount = function(code){
@@ -874,7 +893,8 @@ if(auth){
       onValue(ref(db,"/payables"), s=>{ window.__apMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       onValue(ref(db,"/cfAccounts"), s=>{ window.__cfAccounts=s.val()||{}; }, ()=>{});
       onValue(ref(db,"/fixedAssets"), s=>{ window.__faMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
-    } else { setPill("● Sign in for live POS","off"); window.__posEntries=[]; window.__arMap={}; window.__apMap={}; window.__cfAccounts={}; window.__faMap={}; if(window.App&&App.render)App.render(); }
+      onValue(ref(db,"/purchaseInvoices"), s=>{ window.__piMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
+    } else { setPill("● Sign in for live POS","off"); window.__posEntries=[]; window.__arMap={}; window.__apMap={}; window.__cfAccounts={}; window.__faMap={}; window.__piMap={}; if(window.App&&App.render)App.render(); }
   });
 }
 </script>
