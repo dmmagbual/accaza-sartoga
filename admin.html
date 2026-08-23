@@ -1065,7 +1065,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-            <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#7d5f2c;font-weight:400;letter-spacing:0.06em;">build&nbsp;v248</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button data-accaza-install onclick="accazaInstallApp()" style="background:#e8f5ec;color:#155724;border:1px solid #b8dfc4;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;">📲 Install Accaza POS App</button><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div></div>
+            <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#7d5f2c;font-weight:400;letter-spacing:0.06em;">build&nbsp;v248</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><a href="books.html" title="Open Accaza Books (finance)" style="background:#eef3ff;color:#1c3f8a;border:1px solid #b9c9ef;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;text-decoration:none;">📊 Finance / Books</a><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1172,7 +1172,6 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
           <span class="admin-service-pill" id="adminServiceConnection"><i class="admin-status-dot" aria-hidden="true"></i><strong id="adminServiceConnectionLabel">Online</strong></span><span class="admin-status-sep" aria-hidden="true">·</span>
           <span class="admin-service-pill" id="adminServiceShift"><strong id="adminServiceShiftLabel">Shift closed</strong><span id="adminServiceCashier"> · No cashier assigned</span></span><span class="admin-status-sep" aria-hidden="true">·</span>
           <button class="admin-service-pill admin-service-queue" id="adminServiceQueue" type="button" onclick="window.__openOfflineQueue(this)"><strong>Offline queue</strong><span id="adminServiceQueueNote"> · Push to check sync queue</span></button>
-          <a class="admin-service-pill" href="books.html" title="Open Accaza Books (finance)" style="text-decoration:none">📊 Finance / Books</a>
         </div>
       </div>
       <div id="adminWorkspaceActions"></div>
@@ -1338,6 +1337,11 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 
     <!-- CHANGE PASSWORD TAB -->
     <div id="tab-changepw" class="admin-tab-content" style="display:none;">
+      <div style="max-width:420px;margin-bottom:1.5rem;padding:0.9rem 1rem;border:1px solid #b8dfc4;background:#f3faf5;border-radius:8px;">
+        <div style="font-weight:700;color:#155724;font-size:0.9rem;">📲 Install Accaza POS App</div>
+        <p style="font-size:0.78rem;color:var(--tl);margin:0.25rem 0 0.6rem;">Install the admin/POS as an app on this device for faster access and offline sales.</p>
+        <button data-accaza-install onclick="accazaInstallApp()" style="background:#e8f5ec;color:#155724;border:1px solid #b8dfc4;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;">📲 Install app</button>
+      </div>
       <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:1.5rem;font-size:1.2rem;">🔑 Change Password</h3>
       <div style="max-width:420px;">
         <div style="margin-bottom:0.75rem;">
