@@ -452,7 +452,7 @@ function voidPayoutOrder(orderId,gross){
     return a.managerApproval('void',orderId,Number(gross)||0,v.reason).then(function(ap){
       return a.processOrderAdjustment({action:'void',orderId:orderId,reason:v.reason,approvalId:ap.approvalId});
     });
-  }).then(function(){renderPayouts();alert('Order '+orderId+' voided. It no longer appears in the open payout list.');}).catch(function(e){var m=String((e&&e.message)||(e&&e.code)||e);if(m.indexOf('cancelled')<0)alert('Could not void the order: '+m);});
+  }).then(function(){if(ordersMap[orderId])ordersMap[orderId].voided=true;if(archMap[orderId])archMap[orderId].voided=true;renderPayouts();alert('Order '+orderId+' voided. It no longer appears in the open payout list.');}).catch(function(e){var m=String((e&&e.message)||(e&&e.code)||e);if(m.indexOf('cancelled')<0)alert('Could not void the order: '+m);});
 }
 function reversePayout(payoutId,chLbl){
   if(!window.AccazaFormDialog){alert('Form service unavailable. Refresh the portal.');return;}
@@ -559,11 +559,26 @@ function renderPayouts(){
     if(!selected.length){alert('Tick at least one order that appears on this payout statement.');return;}
     var actual=Number((document.getElementById('poActual').value)||0);
     if(!recompute()){alert('Allocations must equal the variance before you can settle.');return;}
-    var variance=Math.round((actual-expected)*100)/100;
+    if(!window.AccazaFormDialog){alert('Form service unavailable. Refresh the portal.');return;}
     var allocs={};root.querySelectorAll('[data-alloc]').forEach(function(i){var v=Number(i.value)||0;if(v)allocs[i.getAttribute('data-alloc')]=v;});
     var pid=uid('po_');
     var left=inRange.length-selected.length;
-    var a2=A(),btn=document.getElementById('poSettle');if(!a2.settlePlatformPayout||!a2.managerApproval){alert('3D payout approval service is not available. Refresh the portal.');return;}btn.disabled=true;btn.textContent='Awaiting approval…';a2.managerApproval('settle_platform_payout',pid,actual,'Settle '+chLbl+' payout').then(function(ap){btn.textContent='Settling on server…';return a2.settlePlatformPayout({payoutId:pid,channel:ch,periodStart:(poFrom||''),periodEnd:(poTo||''),actualPayout:actual,allocations:allocs,orderIds:selected.map(function(e){return e.o.id||e.key;}),approvalId:ap.approvalId});}).then(function(r){var d=(r&&r.data)||r||{};alert('Settled '+d.orderCount+' '+chLbl+' order(s).'+(left>0?(' '+left+' left unticked stay unsettled and carry to the next payout.'):'')+' Server variance '+peso(d.variance)+' posted to the audit ledger.');}).catch(function(err){btn.disabled=false;btn.textContent='Save & settle '+chLbl+' payout';if(String((err&&err.message)||err).indexOf('cancelled')<0)alert('Could not settle payout: '+((err&&err.message)||(err&&err.code)||err)+'. Nothing was settled.');});
+    var a2=A();if(!a2.settlePlatformPayout||!a2.managerApproval){alert('3D payout approval service is not available. Refresh the portal.');return;}
+    window.AccazaFormDialog.run({
+      title:'Settle '+chLbl+' payout',
+      subtitle:'Enter the date '+chLbl+' released this payout (from the payout statement). '+selected.length+' order(s), actual '+peso(actual)+'.',
+      submitLabel:'Save & settle',
+      busyLabel:'Settling…',
+      fields:[{name:'payoutDate',label:'Payout date',type:'date',required:true}]
+    },function(v){
+      return a2.managerApproval('settle_platform_payout',pid,actual,'Settle '+chLbl+' payout').then(function(ap){
+        return a2.settlePlatformPayout({payoutId:pid,channel:ch,periodStart:(poFrom||''),periodEnd:(poTo||''),actualPayout:actual,allocations:allocs,orderIds:selected.map(function(e){return e.o.id||e.key;}),payoutDate:v.payoutDate,approvalId:ap.approvalId});
+      }).then(function(r){return (r&&r.data)||r||{};});
+    }).then(function(d){
+      selected.forEach(function(e){var mp=(e.node==='archivedOrders')?archMap:ordersMap;var k=(e.o&&e.o.id)||e.key;if(mp[k])mp[k].settlementStatus='settled';});
+      renderPayouts();
+      alert('Settled '+(d.orderCount||0)+' '+chLbl+' order(s).'+(left>0?(' '+left+' left unticked stay unsettled and carry to the next payout.'):'')+' Server variance '+peso(d.variance)+' posted to the audit ledger.');
+    }).catch(function(err){var m=String((err&&err.message)||(err&&err.code)||err);if(m.indexOf('cancelled')<0)alert('Could not settle payout: '+m+'. Nothing was settled.');});
   };
   var _add=document.getElementById('poAddAcc');if(_add)_add.onclick=function(){var nm=(document.getElementById('poNewName').value||'').trim();if(!nm){alert('Type an account name.');return;}var t=document.getElementById('poNewType').value;var a3=A();a3.set(a3.ref(a3.db,'platformVarAccounts/'+uid('va_')),{name:nm,type:t,order:accs.length+1}).then(function(){});};
   var _sav=document.getElementById('poSaveAcc');if(_sav)_sav.onclick=function(){var a4=A();var ups={};root.querySelectorAll('[data-acname]').forEach(function(i){var id=i.getAttribute('data-acname');var nm=(i.value||'').trim();var tp=(root.querySelector('[data-actype="'+id+'"]')||{}).value||'expense';if(nm)ups[id]={name:nm,type:tp,order:(varAcctMap[id]&&varAcctMap[id].order)||0};});a4.update(a4.ref(a4.db,'platformVarAccounts'),ups).then(function(){alert('Account edits saved.');});};
