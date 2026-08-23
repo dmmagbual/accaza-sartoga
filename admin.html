@@ -33,7 +33,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="/favicon_512x512.png"/>
 <link rel="manifest" href="/manifest-admin.json"/>
 <meta name="theme-color" content="#19241b"/>
-<meta name="accaza-admin-build" content="243"/>
+<meta name="accaza-admin-build" content="244"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -1065,7 +1065,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-            <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#7d5f2c;font-weight:400;letter-spacing:0.06em;">build&nbsp;v243</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button data-accaza-install onclick="accazaInstallApp()" style="background:#e8f5ec;color:#155724;border:1px solid #b8dfc4;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;">📲 Install Accaza POS App</button><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div></div>
+            <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="font-size:0.58rem;color:#7d5f2c;font-weight:400;letter-spacing:0.06em;">build&nbsp;v244</span></div><p style="font-size:0.78rem;color:var(--tl);">🔥 Firebase Realtime DB</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><button data-accaza-install onclick="accazaInstallApp()" style="background:#e8f5ec;color:#155724;border:1px solid #b8dfc4;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;">📲 Install Accaza POS App</button><button class="admin-logout" onclick="logoutAdmin()">🔒 Log Out</button></div></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1172,6 +1172,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
           <span class="admin-service-pill" id="adminServiceConnection"><i class="admin-status-dot" aria-hidden="true"></i><strong id="adminServiceConnectionLabel">Online</strong></span><span class="admin-status-sep" aria-hidden="true">·</span>
           <span class="admin-service-pill" id="adminServiceShift"><strong id="adminServiceShiftLabel">Shift closed</strong><span id="adminServiceCashier"> · No cashier assigned</span></span><span class="admin-status-sep" aria-hidden="true">·</span>
           <button class="admin-service-pill admin-service-queue" id="adminServiceQueue" type="button" onclick="window.__openOfflineQueue(this)"><strong>Offline queue</strong><span id="adminServiceQueueNote"> · Push to check sync queue</span></button>
+          <a class="admin-service-pill" href="books.html" title="Open Accaza Books (finance)" style="text-decoration:none">📊 Finance / Books</a>
         </div>
       </div>
       <div id="adminWorkspaceActions"></div>
