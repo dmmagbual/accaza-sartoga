@@ -477,6 +477,7 @@ function renderPayouts(){
   var ch=poChannel;var chLbl=(PO_CHANNELS.filter(function(d){return d.k===ch;})[0]||{lbl:ch}).lbl;
   var accs=varAccounts();
   var unset=poUnsettled(ch);
+  var owingOutstandingCh=Math.round(Object.keys(payoutsMap).reduce(function(sum,k){var p=payoutsMap[k]||{};return (p.channel===ch&&!p.reversed&&(Number(p.owingOutstanding)||0)>0.009)?sum+(Number(p.owingOutstanding)||0):sum;},0)*100)/100;
   var inRange=unset.filter(function(e){var t=e.o.timestamp||0;return (!poFrom||t>=dayStart(poFrom))&&(!poTo||t<dayStart(poTo)+86400000);});
   var expected=inRange.reduce(function(s,e){return s+poNet(e.o);},0);
   var grossSum=inRange.reduce(function(s,e){return s+poGross(e.o);},0);
@@ -506,6 +507,8 @@ function renderPayouts(){
       +'<table class="pnl-tbl"><thead><tr><th style="text-align:center;"><input type="checkbox" id="poAll" checked title="Select all"/></th><th>Date</th><th>Order #</th><th class="r">Gross</th><th class="r">Commission</th><th class="r">Net</th><th></th></tr></thead><tbody>'+ordRows
         +'<tr class="tot"><td></td><td colspan="2">Expected net (<span id="poCount">'+inRange.length+'</span> ticked)</td><td class="r" id="poGrossSum">'+peso(grossSum)+'</td><td class="r" id="poCommSum">'+peso(commSum)+'</td><td class="r" id="poExpected">'+peso(expected)+'</td><td></td></tr>'
       +'</tbody></table>'
+      +(owingOutstandingCh>0?('<div style="margin-top:0.7rem;padding:0.55rem 0.75rem;border:1px solid #e6c07a;background:#fff8e8;border-radius:8px;font-size:0.8rem;color:#8a5a00;">⚠ Outstanding owing to '+esc(chLbl)+': <b>'+peso(owingOutstandingCh)+'</b> — this will be auto-netted from this payout.</div>'):'')
+      +'<p class="pz-sub" style="margin:0.6rem 0 0;">Enter the <b>actual amount received</b>. If penalties made it negative, enter the negative figure — the shortfall is recorded as <b>owing to '+esc(chLbl)+'</b> and recovered from the next payout. Allocate penalties/adjustments to a named expense account below.</p>'
       +'<div style="display:flex;gap:0.8rem;flex-wrap:wrap;align-items:end;margin-top:0.9rem;">'
         +'<div><span class="pz-lbl">Actual payout received</span><input class="pz-in" type="number" step="any" id="poActual" placeholder="0" style="text-align:right;width:180px;"/></div>'
         +'<div style="align-self:center;"><span class="pz-lbl">Variance (actual − expected)</span><div id="poVariance" style="font-weight:700;font-size:1.05rem;">'+peso(0-expected)+'</div></div>'
@@ -534,7 +537,7 @@ function renderPayouts(){
   root.querySelectorAll('[data-porev]').forEach(function(b){b.onclick=function(){reversePayout(b.getAttribute('data-porev'),chLbl);};});
   root.querySelectorAll('[data-podate]').forEach(function(inp){inp.onchange=function(){var pid=inp.getAttribute('data-podate'),val=inp.value||'';var a=A();if(!a||!a.setPlatformPayoutDate){alert('Service unavailable. Refresh the portal.');return;}inp.disabled=true;a.setPlatformPayoutDate({payoutId:pid,payoutDate:val}).then(function(){if(payoutsMap[pid])payoutsMap[pid].payoutDate=val;(window.accazaToast||function(){})('Payout date saved.','ok');}).catch(function(e){alert('Could not save payout date: '+((e&&e.message)||e));}).finally(function(){inp.disabled=false;});};});
   function allocSum(){var rev=0,exp=0;root.querySelectorAll('[data-alloc]').forEach(function(i){var v=Number(i.value)||0;if(i.getAttribute('data-atype')==='revenue')rev+=v;else exp+=v;});return rev-exp;}
-  function recompute(){var actual=Number((document.getElementById('poActual')||{}).value)||0;var variance=Math.round((actual-expected)*100)/100;var vEl=document.getElementById('poVariance');if(vEl){vEl.textContent=peso(variance);vEl.style.color=variance<0?'#c0392b':variance>0?'#2a9d5c':'var(--td)';}var alloc=Math.round(allocSum()*100)/100;var diff=Math.round((variance-alloc)*100)/100;var bEl=document.getElementById('poBalance');var ok=Math.abs(diff)<0.01;if(bEl){bEl.innerHTML='Allocated '+peso(alloc)+' / Variance '+peso(variance)+' — '+(ok?'<span style="color:#2a9d5c;">✓ balanced</span>':'<span style="color:#c0392b;">off by '+peso(diff)+'</span>');}return ok;}
+  function recompute(){var actual=Number((document.getElementById('poActual')||{}).value)||0;var variance=Math.round((actual-expected)*100)/100;var owingApply=(actual>=0)?owingOutstandingCh:0;var target=Math.round((variance+owingApply)*100)/100;var vEl=document.getElementById('poVariance');if(vEl){vEl.textContent=peso(variance);vEl.style.color=variance<0?'#c0392b':variance>0?'#2a9d5c':'var(--td)';}var alloc=Math.round(allocSum()*100)/100;var diff=Math.round((target-alloc)*100)/100;var bEl=document.getElementById('poBalance');var ok=Math.abs(diff)<0.01;if(bEl){bEl.innerHTML=(owingApply>0?('Prior owing '+peso(owingApply)+' auto-netted. '):'')+(actual<0?('Negative payout — '+peso(-actual)+' recorded as owing to '+esc(chLbl)+'. '):'')+'Allocate '+peso(target)+' (adjustments/penalties) — allocated '+peso(alloc)+' '+(ok?'<span style="color:#2a9d5c;">✓ balanced</span>':'<span style="color:#c0392b;">off by '+peso(diff)+'</span>');}return ok;}
   var _pa=document.getElementById('poActual');if(_pa)_pa.oninput=recompute;
   root.querySelectorAll('[data-alloc]').forEach(function(i){i.oninput=recompute;});
   function selectedEntries(){return inRange.filter(function(e,i){var cb=root.querySelector('[data-poinc="'+i+'"]');return cb&&cb.checked;});}
@@ -577,7 +580,7 @@ function renderPayouts(){
     }).then(function(d){
       selected.forEach(function(e){var mp=(e.node==='archivedOrders')?archMap:ordersMap;var k=(e.o&&e.o.id)||e.key;if(mp[k])mp[k].settlementStatus='settled';});
       renderPayouts();
-      alert('Settled '+(d.orderCount||0)+' '+chLbl+' order(s).'+(left>0?(' '+left+' left unticked stay unsettled and carry to the next payout.'):'')+' Server variance '+peso(d.variance)+' posted to the audit ledger.');
+      alert('Settled '+(d.orderCount||0)+' '+chLbl+' order(s).'+(left>0?(' '+left+' left unticked stay unsettled and carry to the next payout.'):'')+((Number(d.owingCreated)||0)>0?(' '+peso(d.owingCreated)+' recorded as owing to '+chLbl+' (recovered next payout).'):'')+((Number(d.owingApplied)||0)>0?(' Prior owing '+peso(d.owingApplied)+' auto-netted.'):'')+' Server variance '+peso(d.variance)+' posted to the audit ledger.');
     }).catch(function(err){var m=String((err&&err.message)||(err&&err.code)||err);if(m.indexOf('cancelled')<0)alert('Could not settle payout: '+m+'. Nothing was settled.');});
   };
   var _add=document.getElementById('poAddAcc');if(_add)_add.onclick=function(){var nm=(document.getElementById('poNewName').value||'').trim();if(!nm){alert('Type an account name.');return;}var t=document.getElementById('poNewType').value;var a3=A();a3.set(a3.ref(a3.db,'platformVarAccounts/'+uid('va_')),{name:nm,type:t,order:accs.length+1}).then(function(){});};

@@ -57,6 +57,7 @@ function mapAccount(posAccount, channel, cashAccountMap) {
   if (a.indexOf("asset:receivable:") === 0) return {code: "1110", unmapped: false};
   if (a.indexOf("asset:fixed_asset:") === 0) return {code: a.split(":")[2] === "furniture" ? "1510" : "1500", unmapped: false};
   if (a.indexOf("liability:payable:") === 0) return {code: "2000", unmapped: false};
+  if (a.indexOf("liability:platform_owing:") === 0) return {code: "2020", unmapped: false};
   var seg = a.indexOf(":") >= 0 ? a.slice(a.indexOf(":") + 1).toLowerCase() : "";
   if (a.indexOf("expense_or_inventory:") === 0) return CHART_COA[seg] ? {code: CHART_COA[seg], unmapped: false} : {code: "6100", unmapped: true};
   if (CHART_COA[seg]) return {code: CHART_COA[seg], unmapped: false};
