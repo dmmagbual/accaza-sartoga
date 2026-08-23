@@ -86,6 +86,7 @@ window.__accaza={
   archiveActivityLog:function(){return archiveActivityLogCall({});},
   syncOfflinePosSale:function(command){return callables.syncOfflinePosSale(command);},
   recordPlatformCatchup:function(command){return callables.recordPlatformCatchup(command);},
+  reversePlatformPayout:function(command){return callables.reversePlatformPayout(command);},
   recordClientTelemetry:function(command){return callables.recordClientTelemetry(command);},
   getOperationalExceptions:function(){return callables.getOperationalExceptions({});},
   get menuItemsMap(){return menuItemsMap;},

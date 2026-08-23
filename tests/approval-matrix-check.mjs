@@ -14,7 +14,7 @@ const expected=[
   'validate_payment','refund','void','settle_platform_payout','reopen_cash_count',
   'delete_archived_order','review_discrepancy','approve_petty_voucher',
   'reject_petty_voucher','void_petty_voucher','manual_discount','cash_in','fixed_float_exception','reverse_purchase',
-  'rekey_platform_order',
+  'rekey_platform_order','reverse_platform_payout',
 ];
 const fail=(message)=>{throw new Error(message);};
 const setStart=functionsSource.indexOf('const MANAGER_APPROVAL_ACTIONS = new Set([');

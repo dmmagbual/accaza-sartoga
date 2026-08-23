@@ -438,6 +438,38 @@ function reKeyMissedOrder(ch,chLbl){
     alert('Recorded missed '+chLbl+' order '+(d.platformRef||'')+'. Net receivable '+peso(d.net||0)+' posted and now appears as unsettled.');
   }).catch(function(e){var m=String((e&&e.message)||(e&&e.code)||e);if(m.indexOf('cancelled')<0)alert('Could not record the missed order: '+m);});
 }
+function voidPayoutOrder(orderId,gross){
+  if(!window.AccazaFormDialog){alert('Form service unavailable. Refresh the portal.');return;}
+  var a=A();
+  if(!a||!a.processOrderAdjustment||!a.managerApproval){alert('Void service unavailable. Refresh the portal.');return;}
+  window.AccazaFormDialog.run({
+    title:'Void order '+orderId,
+    subtitle:'Reverses this order’s revenue and platform receivable and removes it from the open list. Use for duplicates or mistaken entries. The voided record is kept for audit.',
+    submitLabel:'Request approval & void',
+    busyLabel:'Voiding…',
+    fields:[{name:'reason',label:'Void reason',type:'textarea',required:true,maxLength:300,placeholder:'e.g. Duplicate of GF-855'},{name:'confirmed',label:'I confirm this order should be voided',type:'checkbox',required:true}]
+  },function(v){
+    return a.managerApproval('void',orderId,Number(gross)||0,v.reason).then(function(ap){
+      return a.processOrderAdjustment({action:'void',orderId:orderId,reason:v.reason,approvalId:ap.approvalId});
+    });
+  }).then(function(){renderPayouts();alert('Order '+orderId+' voided. It no longer appears in the open payout list.');}).catch(function(e){var m=String((e&&e.message)||(e&&e.code)||e);if(m.indexOf('cancelled')<0)alert('Could not void the order: '+m);});
+}
+function reversePayout(payoutId,chLbl){
+  if(!window.AccazaFormDialog){alert('Form service unavailable. Refresh the portal.');return;}
+  var a=A();
+  if(!a||!a.reversePlatformPayout||!a.managerApproval){alert('Reverse service unavailable. Refresh the portal.');return;}
+  window.AccazaFormDialog.run({
+    title:'Reverse settled '+chLbl+' payout',
+    subtitle:'Unwinds this settlement: its orders go back to unsettled and the ledger posting is reversed, so you can re-settle correctly. The payout record is kept and marked reversed.',
+    submitLabel:'Request approval & reverse',
+    busyLabel:'Reversing…',
+    fields:[{name:'reason',label:'Reversal reason',type:'textarea',required:true,maxLength:300,placeholder:'e.g. Wrong actual amount / orders included by mistake'},{name:'confirmed',label:'I understand the orders return to unsettled and the posting is reversed',type:'checkbox',required:true}]
+  },function(v){
+    return a.managerApproval('reverse_platform_payout',payoutId,null,v.reason).then(function(ap){
+      return a.reversePlatformPayout({payoutId:payoutId,reason:v.reason,approvalId:ap.approvalId});
+    }).then(function(r){return (r&&r.data)||r||{};});
+  }).then(function(d){renderPayouts();alert('Payout reversed. '+((d&&d.orderCount)||0)+' order(s) returned to unsettled and can be re-settled.');}).catch(function(e){var m=String((e&&e.message)||(e&&e.code)||e);if(m.indexOf('cancelled')<0)alert('Could not reverse the payout: '+m);});
+}
 function renderPayouts(){
   var root=document.getElementById('payoutsRoot');if(!root)return;
   var a=A();
@@ -452,10 +484,10 @@ function renderPayouts(){
   // receivables (all unsettled, ignoring range)
   var recvCards=PO_CHANNELS.map(function(d){var u=poUnsettled(d.k);var net=u.reduce(function(s,e){return s+poNet(e.o);},0);return '<div style="flex:1;min-width:170px;background:var(--cr);border:1px solid var(--cd);border-radius:8px;padding:0.7rem 0.9rem;"><div style="font-size:0.72rem;color:var(--tl);text-transform:uppercase;letter-spacing:0.05em;">'+esc(d.lbl)+' receivable</div><div style="font-size:1.2rem;font-weight:700;color:var(--bd);">'+peso(net)+'</div><div style="font-size:0.72rem;color:var(--tl);">'+u.length+' unsettled order(s)</div></div>';}).join('');
   inRange.sort(function(x,y){return (x.o.timestamp||0)-(y.o.timestamp||0);});
-  var ordRows=inRange.length?inRange.map(function(e,i){var o=e.o;return '<tr><td style="text-align:center;"><input type="checkbox" data-poinc="'+i+'" checked/></td><td>'+esc(o.date||'')+'</td><td>'+esc(o.platformRef||o.id||'')+'</td><td class="r">'+peso(poGross(o))+'</td><td class="r">'+peso(Number(o.commission)||0)+'</td><td class="r">'+peso(poNet(o))+'</td></tr>';}).join(''):'<tr><td colspan="6" class="az-note" style="padding:0.7rem;">No unsettled '+esc(chLbl)+' orders in this range.</td></tr>';
+  var ordRows=inRange.length?inRange.map(function(e,i){var o=e.o;return '<tr><td style="text-align:center;"><input type="checkbox" data-poinc="'+i+'" checked/></td><td>'+esc(o.date||'')+'</td><td>'+esc(o.platformRef||o.id||'')+'</td><td class="r">'+peso(poGross(o))+'</td><td class="r">'+peso(Number(o.commission)||0)+'</td><td class="r">'+peso(poNet(o))+'</td><td class="r"><button class="pz-btn warn" data-povoid="'+esc(o.id||e.key)+'" data-povg="'+(poGross(o))+'" style="padding:0.15rem 0.5rem;font-size:0.72rem;" title="Void this order (e.g. a duplicate)">Void</button></td></tr>';}).join(''):'<tr><td colspan="7" class="az-note" style="padding:0.7rem;">No unsettled '+esc(chLbl)+' orders in this range.</td></tr>';
   var allocRows=accs.map(function(ac){return '<tr><td>'+esc(ac.name)+' <span style="font-size:0.7rem;color:var(--tl);">('+ac.type+')</span></td><td style="width:150px;"><input class="pz-in" type="number" step="any" data-alloc="'+esc(ac.id)+'" data-atype="'+ac.type+'" value="" placeholder="0" style="text-align:right;"/></td></tr>';}).join('');
   var hist=Object.keys(payoutsMap).map(function(k){return Object.assign({id:k},payoutsMap[k]);}).filter(function(p){return p.channel===ch;}).sort(function(a,b){return (b.settledAt||0)-(a.settledAt||0);});
-  var histRows=hist.length?hist.map(function(p){return '<tr><td>'+esc(new Date(p.settledAt||0).toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'}))+'</td><td class="r">'+peso(p.expectedNet)+'</td><td class="r">'+peso(p.actualPayout)+'</td><td class="r '+((Number(p.variance)||0)<0?'az-down':(Number(p.variance)||0)>0?'az-up':'')+'">'+peso(p.variance)+'</td><td class="r">'+((p.orderIds||[]).length)+'</td></tr>';}).join(''):'<tr><td colspan="5" class="az-note" style="padding:0.6rem;">No payouts settled yet for '+esc(chLbl)+'.</td></tr>';
+  var histRows=hist.length?hist.map(function(p){return '<tr'+(p.reversed?' style="opacity:0.6;"':'')+'><td>'+esc(new Date(p.settledAt||0).toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'}))+'</td><td class="r">'+peso(p.expectedNet)+'</td><td class="r">'+peso(p.actualPayout)+'</td><td class="r '+((Number(p.variance)||0)<0?'az-down':(Number(p.variance)||0)>0?'az-up':'')+'">'+peso(p.variance)+'</td><td class="r">'+((p.orderIds||[]).length)+'</td><td class="r">'+(p.reversed?'<span style="color:var(--tl);font-size:0.72rem;">reversed</span>':'<button class="pz-btn sec" data-porev="'+esc(p.id)+'" style="padding:0.15rem 0.5rem;font-size:0.72rem;border-color:#b46a3a;color:#8a4a1a;" title="Reverse this settlement — orders return to unsettled">Reverse</button>')+'</td></tr>';}).join(''):'<tr><td colspan="6" class="az-note" style="padding:0.6rem;">No payouts settled yet for '+esc(chLbl)+'.</td></tr>';
 
   var html='<div class="pz-h">💱 Platform Payout Reconciliation</div>'
     +'<p class="pz-sub">Weekly truth-up per platform. POS gross is booked as revenue and the flat commission as expense; here you enter the <b>actual payout</b> from Grab/Panda and allocate the difference to named accounts. Every peso is explained.</p>'
@@ -471,8 +503,8 @@ function renderPayouts(){
       +'<details style="margin-bottom:0.6rem;"><summary style="cursor:pointer;font-weight:600;color:var(--bd);font-size:0.85rem;">📄 Match to payout statement (optional)</summary>'
         +'<div style="margin-top:0.4rem;"><span class="pz-lbl">Paste the order numbers from the '+esc(chLbl)+' payout report (one per line or comma-separated)</span><textarea class="pz-in" id="poStmt" rows="3" placeholder="'+(ch==='grabfood'?'GF-123456, GF-123457, GF-123460':'FP-123456, FP-123457')+'" style="width:100%;font-size:0.8rem;"></textarea><button class="pz-btn sec" id="poMatch" style="margin-top:0.4rem;">Match &amp; tick</button><div id="poMatchInfo" style="font-size:0.78rem;margin-top:0.4rem;"></div></div></details>'
       +'<p class="pz-sub" style="margin-top:0;">Tick only the orders that appear on <b>this</b> payout statement. Untick any that aren’t paid this cycle — they stay unsettled and roll to the next payout automatically.</p>'
-      +'<table class="pnl-tbl"><thead><tr><th style="text-align:center;"><input type="checkbox" id="poAll" checked title="Select all"/></th><th>Date</th><th>Order #</th><th class="r">Gross</th><th class="r">Commission</th><th class="r">Net</th></tr></thead><tbody>'+ordRows
-        +'<tr class="tot"><td></td><td colspan="2">Expected net (<span id="poCount">'+inRange.length+'</span> ticked)</td><td class="r" id="poGrossSum">'+peso(grossSum)+'</td><td class="r" id="poCommSum">'+peso(commSum)+'</td><td class="r" id="poExpected">'+peso(expected)+'</td></tr>'
+      +'<table class="pnl-tbl"><thead><tr><th style="text-align:center;"><input type="checkbox" id="poAll" checked title="Select all"/></th><th>Date</th><th>Order #</th><th class="r">Gross</th><th class="r">Commission</th><th class="r">Net</th><th></th></tr></thead><tbody>'+ordRows
+        +'<tr class="tot"><td></td><td colspan="2">Expected net (<span id="poCount">'+inRange.length+'</span> ticked)</td><td class="r" id="poGrossSum">'+peso(grossSum)+'</td><td class="r" id="poCommSum">'+peso(commSum)+'</td><td class="r" id="poExpected">'+peso(expected)+'</td><td></td></tr>'
       +'</tbody></table>'
       +'<div style="display:flex;gap:0.8rem;flex-wrap:wrap;align-items:end;margin-top:0.9rem;">'
         +'<div><span class="pz-lbl">Actual payout received</span><input class="pz-in" type="number" step="any" id="poActual" placeholder="0" style="text-align:right;width:180px;"/></div>'
@@ -491,13 +523,15 @@ function renderPayouts(){
         +'<div style="display:flex;gap:0.5rem;align-items:end;margin-top:0.6rem;flex-wrap:wrap;"><div><span class="pz-lbl">New account</span><input class="pz-in" id="poNewName" placeholder="e.g. FX adjustment" style="width:200px;"/></div><div><span class="pz-lbl">Type</span><select class="pz-in" id="poNewType"><option value="expense">expense</option><option value="revenue">revenue</option></select></div><button class="pz-btn sec" id="poAddAcc">+ Add</button><button class="pz-btn sec" id="poSaveAcc" style="margin-left:auto;">💾 Save account edits</button></div>'
       +'</div></details>'
     +'<div class="az-sec">Settled payouts — '+esc(chLbl)+'</div>'
-    +'<div class="pz-card"><table class="pnl-tbl"><thead><tr><th>Settled</th><th class="r">Expected</th><th class="r">Actual</th><th class="r">Variance</th><th class="r">Orders</th></tr></thead><tbody>'+histRows+'</tbody></table></div>';
+    +'<div class="pz-card"><table class="pnl-tbl"><thead><tr><th>Settled</th><th class="r">Expected</th><th class="r">Actual</th><th class="r">Variance</th><th class="r">Orders</th><th></th></tr></thead><tbody>'+histRows+'</tbody></table></div>';
   root.innerHTML=html;
 
   document.getElementById('poCh').onchange=function(){poChannel=this.value;renderPayouts();};
   document.getElementById('poFrom').onchange=function(){poFrom=this.value||null;renderPayouts();};
   document.getElementById('poTo').onchange=function(){poTo=this.value||null;renderPayouts();};
   var _rk=document.getElementById('poReKey'); if(_rk)_rk.onclick=function(){reKeyMissedOrder(ch,chLbl);};
+  root.querySelectorAll('[data-povoid]').forEach(function(b){b.onclick=function(){voidPayoutOrder(b.getAttribute('data-povoid'),Number(b.getAttribute('data-povg'))||0);};});
+  root.querySelectorAll('[data-porev]').forEach(function(b){b.onclick=function(){reversePayout(b.getAttribute('data-porev'),chLbl);};});
   function allocSum(){var rev=0,exp=0;root.querySelectorAll('[data-alloc]').forEach(function(i){var v=Number(i.value)||0;if(i.getAttribute('data-atype')==='revenue')rev+=v;else exp+=v;});return rev-exp;}
   function recompute(){var actual=Number((document.getElementById('poActual')||{}).value)||0;var variance=Math.round((actual-expected)*100)/100;var vEl=document.getElementById('poVariance');if(vEl){vEl.textContent=peso(variance);vEl.style.color=variance<0?'#c0392b':variance>0?'#2a9d5c':'var(--td)';}var alloc=Math.round(allocSum()*100)/100;var diff=Math.round((variance-alloc)*100)/100;var bEl=document.getElementById('poBalance');var ok=Math.abs(diff)<0.01;if(bEl){bEl.innerHTML='Allocated '+peso(alloc)+' / Variance '+peso(variance)+' — '+(ok?'<span style="color:#2a9d5c;">✓ balanced</span>':'<span style="color:#c0392b;">off by '+peso(diff)+'</span>');}return ok;}
   var _pa=document.getElementById('poActual');if(_pa)_pa.oninput=recompute;
