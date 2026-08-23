@@ -88,7 +88,8 @@
     "syncPublicOrderStatus",
     "autoCompleteReadyOnlineOrders",
     "mirrorPosMovementToBooks",
-    "mirrorPosCogsToBooks"
+    "mirrorPosCogsToBooks",
+    "manageFixedAsset"
   ],
   "requiredProtectedNodes": [
     "activeOrders",
@@ -104,7 +105,8 @@
     "cashCustody",
     "operationalAudit",
     "deletionAudit",
-    "books"
+    "books",
+    "fixedAssets"
   ],
   "verification": {
     "localQualityGate": "passed_2026-08-14",

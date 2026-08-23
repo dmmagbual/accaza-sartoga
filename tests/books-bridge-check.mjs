@@ -81,5 +81,16 @@ let n = B.applyDaily(null, cm, {});
 ok(B.linesBalanced(B.netToLines(n.net)), "cogs-only daily node balances");
 ok(B.applyDaily(n, cm, {})===undefined, "cogs movement idempotent (re-fire aborts)");
 
+// 7) Fixed assets: account mappings + straight-line depreciation math
+ok(B.mapAccount("asset:fixed_asset:equipment","instore",{}).code==="1500", "fixed_asset:equipment -> 1500");
+ok(B.mapAccount("asset:fixed_asset:furniture","instore",{}).code==="1510", "fixed_asset:furniture -> 1510");
+ok(B.mapAccount("asset:accumulated_depreciation","instore",{}).code==="1590", "accum depreciation -> 1590");
+ok(B.mapAccount("expense:depreciation","instore",{}).code==="6090", "depreciation expense -> 6090");
+ok(B.mapAccount("revenue:asset_disposal_gain","instore",{}).code==="4990", "disposal gain -> 4990");
+ok(B.mapAccount("expense:asset_disposal_loss","instore",{}).code==="6100", "disposal loss -> 6100");
+ok(Math.abs(B.monthlyStraightLine(85000,5000,60) - 1333.33) < 0.005, "straight-line monthly = (85000-5000)/60 = 1333.33");
+ok(Math.abs(B.monthlyStraightLine(12000,0,12) - 1000) < 0.005, "straight-line monthly = 1000");
+ok(Math.abs(B.netBookValue({cost:85000, accumulatedDepreciation:1333.33}) - 83666.67) < 0.005, "NBV = cost - accum dep");
+
 if(failed){ console.error(`\n${failed} bridge check(s) FAILED`); process.exit(1); }
-console.log('PASS: Accaza Books POS→journal bridge (mapping, business date, daily aggregation, idempotency, discrete entries, COGS leg) checks passed.');
+console.log('PASS: Accaza Books POS→journal bridge (mapping, business date, daily aggregation, idempotency, discrete entries, COGS leg, fixed assets) checks passed.');
