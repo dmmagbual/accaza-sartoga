@@ -150,6 +150,7 @@ tr.sub-row td{font-weight:700;background:#faf7f1}
       <select id="periodSel" onchange="App.setPeriod(this.value)"></select>
     </div>
     <div class="tb-actions">
+      <a href="admin.html" title="Switch to the POS / Admin panel" style="display:inline-flex;align-items:center;background:rgba(201,163,106,.22);color:#fff;border:1px solid rgba(201,163,106,.5);border-radius:7px;padding:.34rem .6rem;font-size:.74rem;font-weight:700;text-decoration:none">⇄ POS / Admin</a>
       <button onclick="App.exportJSON()" title="Download a backup of all books">⬇ Backup</button>
       <button onclick="document.getElementById('importFile').click()" title="Restore from a backup file">⬆ Restore</button>
       <input type="file" id="importFile" accept="application/json" style="display:none" onchange="App.importJSON(this.files[0])"/>
