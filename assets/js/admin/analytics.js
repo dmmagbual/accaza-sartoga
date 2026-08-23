@@ -23,10 +23,20 @@ function uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slic
 function isTab(n){var el=document.getElementById('tab-'+n);return el&&el.style.display!=='none';}
 
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
+/* Orders + archivedOrders feed every finance tab below — re-render whichever is
+   open so loading older history (or live sales) refreshes the visible figures,
+   not just Analytics. Fixes the Payout receivable staying stale after "Load older". */
+function rerenderOrderTabs(){
+  if(isTab('analytics'))renderAnalytics();
+  if(isTab('pnl'))renderPnl();
+  if(isTab('payouts'))renderPayouts();
+  if(isTab('stockvalue'))renderStockValue();
+  if(isTab('dailyreport'))renderDailyReport();
+}
 function init(){
   var a=A();
-  a.subscribe('orders',function(s){ordersMap=s.val()||{};captureCompletedAt(ordersMap);if(isTab('analytics'))renderAnalytics();});
-  a.subscribe('archivedOrders',function(s){archMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
+  a.subscribe('orders',function(s){ordersMap=s.val()||{};captureCompletedAt(ordersMap);rerenderOrderTabs();});
+  a.subscribe('archivedOrders',function(s){archMap=s.val()||{};rerenderOrderTabs();});
   a.subscribe('reviews',function(s){reviewsMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
   a.subscribe('feedbacks',function(s){feedbacksMap=s.val()||{};});
   a.subscribe('appCustomers',function(s){custMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
