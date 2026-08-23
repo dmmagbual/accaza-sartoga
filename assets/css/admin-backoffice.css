@@ -66,7 +66,8 @@ body.admin-workspace-focused:not(.admin-pos-workspace) .badge-ready,body.admin-w
 body.admin-workspace-focused:not(.admin-pos-workspace) .badge-rejected,body.admin-workspace-focused:not(.admin-pos-workspace) .badge-cancelled{border-color:#dfb6b2;background:#fae9e8!important;color:#913b37!important}
 
 /* Orders read like service tickets, not marketing cards. */
-body[data-admin-workspace="orders"] #ordersList{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,460px));gap:.75rem;justify-content:start;align-items:start}
+body[data-admin-workspace="orders"] #ordersList{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,460px));gap:.75rem;justify-content:start;align-items:stretch}
+body[data-admin-workspace="orders"] .order-admin-card>.order-admin-footer{margin-top:auto}
 body[data-admin-workspace="orders"] .order-admin-card{margin:0!important;padding:1rem!important;border-left:5px solid var(--workspace-rail)!important}
 body[data-admin-workspace="orders"] .order-admin-name{color:var(--bo-ink)}
 body[data-admin-workspace="orders"] .order-admin-meta{color:var(--bo-muted);font-size:.7rem}
