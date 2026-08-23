@@ -1408,7 +1408,7 @@ exports.reversePlatformPayout = onCall(
     if (payout.reversed) throw new HttpsError("already-exists", "This payout has already been reversed.");
     const channel = financeText(payout.channel, 30), ids = Array.isArray(payout.orderIds) ? payout.orderIds : [];
     const expected = Financial.money(payout.expectedNet), actual = Financial.money(payout.actualPayout), allocations = payout.allocations || {};
-    const approval = await claimManagerApproval(db, data, "reverse_platform_payout", payoutId, actual, `reverse_payout_${payoutId}`);
+    const approval = await claimManagerApproval(db, data, "reverse_platform_payout", payoutId, null, `reverse_payout_${payoutId}`);
     const defs = (await db.ref("/platformVarAccounts").get()).val() || {};
     const lines = [Financial.line(`asset:platform_clearing:${channel}`, 0, actual, "Reverse actual payout clearing"), Financial.line(`asset:platform_receivable:${channel}`, expected, 0, "Restore platform receivable")];
     Object.keys(allocations).forEach((id) => { const value = Financial.money(allocations[id]); if (!(value > 0)) return; const def = defs[id] || {}; if (def.type === "revenue") lines.push(Financial.line(`revenue:platform_variance:${id}`, value, 0, "Reverse " + (def.name || id))); else lines.push(Financial.line(`expense:platform_variance:${id}`, 0, value, "Reverse " + (def.name || id))); });
