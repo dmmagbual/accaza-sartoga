@@ -411,6 +411,33 @@ function refNorm(s){return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 function refEq(a,b){var x=refNorm(a),y=refNorm(b);if(!x||!y)return false;if(x===y)return true;var lo=x.length<y.length?x:y,hi=x.length<y.length?y:x;return lo.length>=5&&hi.slice(-lo.length)===lo;}
 function platEntries(){var out=[];Object.keys(ordersMap).forEach(function(k){var o=ordersMap[k];if(o&&o.source==='pos'&&o.channel&&o.channel!=='instore'&&!o.voided)out.push({key:k,node:'orders',o:o});});Object.keys(archMap).forEach(function(k){var o=archMap[k];if(o&&o.source==='pos'&&o.channel&&o.channel!=='instore'&&!o.voided)out.push({key:k,node:'archivedOrders',o:o});});return out;}
 function poUnsettled(ch){return platEntries().filter(function(e){return e.o.channel===ch&&(e.o.settlementStatus||'unsettled')!=='settled';});}
+function reKeyMissedOrder(ch,chLbl){
+  if(!window.AccazaFormDialog){alert('Form service unavailable. Refresh the portal.');return;}
+  var a=A();
+  if(!a||!a.recordPlatformCatchup||!a.managerApproval){alert('Re-key service unavailable. Refresh the portal.');return;}
+  var rate=(typeof channelRate==='function')?(Number(channelRate(ch))||0):0;
+  window.AccazaFormDialog.run({
+    title:'Re-key a missed '+chLbl+' order',
+    subtitle:'Records a '+chLbl+' order that was never entered in the POS. Books revenue, commission and the receivable on the order date. Stock is NOT deducted — reconcile small differences in inventory.',
+    submitLabel:'Record missed order',
+    busyLabel:'Recording…',
+    fields:[
+      {name:'ref',label:chLbl+' order number',type:'text',required:true,maxLength:60,placeholder:(ch==='grabfood'?'GF-123456':'FP-123456')},
+      {name:'date',label:'Order date',type:'date',required:true},
+      {name:'gross',label:'Gross amount (₱)',type:'number',required:true,min:0.01},
+      {name:'commission',label:'Commission (₱)'+(rate?(' — about '+(rate*100).toFixed(1)+'% of gross'):''),type:'number',required:true,min:0,validate:function(v,vals){if(Number(v)>Number(vals.gross||0)+0.009)return 'Commission cannot exceed the gross amount.';}},
+      {name:'reference',label:'Reference / reason (audit trail)',type:'text',required:true,maxLength:200,value:'Missed '+chLbl+' order — late entry'}
+    ]
+  },function(v){
+    return a.managerApproval('rekey_platform_order',v.ref,Number(v.gross),v.reference).then(function(ap){
+      return a.recordPlatformCatchup({channel:ch,platformRef:v.ref,date:v.date,gross:Number(v.gross),commission:Number(v.commission),commissionRate:rate,reference:v.reference,approvalId:ap.approvalId});
+    }).then(function(r){return (r&&r.data)||r||{};});
+  }).then(function(d){
+    if(!d)return;
+    renderPayouts();
+    alert('Recorded missed '+chLbl+' order '+(d.platformRef||'')+'. Net receivable '+peso(d.net||0)+' posted and now appears as unsettled.');
+  }).catch(function(e){var m=String((e&&e.message)||(e&&e.code)||e);if(m.indexOf('cancelled')<0)alert('Could not record the missed order: '+m);});
+}
 function renderPayouts(){
   var root=document.getElementById('payoutsRoot');if(!root)return;
   var a=A();
@@ -439,6 +466,7 @@ function renderPayouts(){
         +'<div><span class="pz-lbl">From</span><input type="date" class="pz-in" id="poFrom" value="'+(poFrom||'')+'"/></div>'
         +'<div><span class="pz-lbl">To</span><input type="date" class="pz-in" id="poTo" value="'+(poTo||'')+'"/></div>'
         +'<div style="font-size:0.74rem;color:var(--tl);">Leave dates blank to reconcile <b>all</b> unsettled '+esc(chLbl)+' orders.</div>'
+        +'<button class="pz-btn sec" id="poReKey" style="margin-left:auto;border-color:#3a8a6a;color:#256b52;">➕ Re-key missed order</button>'
       +'</div>'
       +'<details style="margin-bottom:0.6rem;"><summary style="cursor:pointer;font-weight:600;color:var(--bd);font-size:0.85rem;">📄 Match to payout statement (optional)</summary>'
         +'<div style="margin-top:0.4rem;"><span class="pz-lbl">Paste the order numbers from the '+esc(chLbl)+' payout report (one per line or comma-separated)</span><textarea class="pz-in" id="poStmt" rows="3" placeholder="'+(ch==='grabfood'?'GF-123456, GF-123457, GF-123460':'FP-123456, FP-123457')+'" style="width:100%;font-size:0.8rem;"></textarea><button class="pz-btn sec" id="poMatch" style="margin-top:0.4rem;">Match &amp; tick</button><div id="poMatchInfo" style="font-size:0.78rem;margin-top:0.4rem;"></div></div></details>'
@@ -469,6 +497,7 @@ function renderPayouts(){
   document.getElementById('poCh').onchange=function(){poChannel=this.value;renderPayouts();};
   document.getElementById('poFrom').onchange=function(){poFrom=this.value||null;renderPayouts();};
   document.getElementById('poTo').onchange=function(){poTo=this.value||null;renderPayouts();};
+  var _rk=document.getElementById('poReKey'); if(_rk)_rk.onclick=function(){reKeyMissedOrder(ch,chLbl);};
   function allocSum(){var rev=0,exp=0;root.querySelectorAll('[data-alloc]').forEach(function(i){var v=Number(i.value)||0;if(i.getAttribute('data-atype')==='revenue')rev+=v;else exp+=v;});return rev-exp;}
   function recompute(){var actual=Number((document.getElementById('poActual')||{}).value)||0;var variance=Math.round((actual-expected)*100)/100;var vEl=document.getElementById('poVariance');if(vEl){vEl.textContent=peso(variance);vEl.style.color=variance<0?'#c0392b':variance>0?'#2a9d5c':'var(--td)';}var alloc=Math.round(allocSum()*100)/100;var diff=Math.round((variance-alloc)*100)/100;var bEl=document.getElementById('poBalance');var ok=Math.abs(diff)<0.01;if(bEl){bEl.innerHTML='Allocated '+peso(alloc)+' / Variance '+peso(variance)+' — '+(ok?'<span style="color:#2a9d5c;">✓ balanced</span>':'<span style="color:#c0392b;">off by '+peso(diff)+'</span>');}return ok;}
   var _pa=document.getElementById('poActual');if(_pa)_pa.oninput=recompute;
