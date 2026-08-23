@@ -208,6 +208,44 @@ exports.mirrorPosCogsToBooks = onValueWritten(
   },
 );
 
+// Platform (Grab/FoodPanda) order-number uniqueness. Every platform reference
+// may be used ONCE. This trigger keeps an authoritative index the POS reads at
+// entry to block a re-key, and records any duplicate that still slips through
+// (offline/race) so nothing is silently double-counted in the receivable.
+function platformRefKey(ref) {
+  return String(ref || "").trim().toUpperCase().replace(/[.#$/\[\] -]/g, "_");
+}
+exports.indexPlatformOrderRef = onValueCreated(
+  {ref: "/orders/{orderId}", region: "asia-southeast1"},
+  async (event) => {
+    const o = event.data.val();
+    if (!o) return;
+    const channel = String(o.channel || "").toLowerCase();
+    if (channel !== "grabfood" && channel !== "foodpanda") return;
+    const rawRef = o.platformRef || o.id;
+    const key = platformRefKey(rawRef);
+    if (!key) return;
+    const orderId = event.params.orderId;
+    const db = getDatabase();
+    const idxRef = db.ref(`/platformRefIndex/${channel}/${key}`);
+    const tx = await idxRef.transaction((cur) => {
+      if (cur == null) return {orderId, ref: String(rawRef), at: Number(o.timestamp) || Date.now()};
+      return; // occupied -> abort, keep the first order that claimed this ref
+    });
+    if (tx.committed) return; // we reserved it for this order (first use)
+    const existing = tx.snapshot.val() || {};
+    if (existing.orderId === orderId) return; // same order re-fired -> already ours
+    // A different order already owns this reference -> duplicate. Do not hide it.
+    await db.ref(`/platformRefDuplicates/${orderId}`).set({
+      channel, ref: String(rawRef), key,
+      duplicateOf: existing.orderId || "", orderId,
+      total: Number(o.total) || 0, detectedAt: Date.now(),
+    });
+    await db.ref(`/orders/${orderId}/dupPlatformRef`).set(true);
+    logger.warn("Duplicate platform reference", {channel, ref: String(rawRef), orderId, duplicateOf: existing.orderId});
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Release 1C: customer-owned, server-priced online ordering.
 // ---------------------------------------------------------------------------

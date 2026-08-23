@@ -35,6 +35,8 @@ function restorePosDraft(root){if(!root)return;Object.keys(posDraft).forEach(fun
 var DISC_TYPES={senior:{label:'Senior Citizen',rate:0.20},pwd:{label:'PWD',rate:0.20},athlete:{label:'National Athlete',rate:0.20},promo5:{label:'5% Drink Promo',rate:0.05}};
 
 function A(){return window.__accaza;}
+/* Platform (Grab/FoodPanda) order-number key — MUST match functions/index.js platformRefKey. */
+function platformRefKey(r){return String(r||'').trim().toUpperCase().replace(/[.#$/\[\] -]/g,'_');}
 function F(){if(!window.AccazaFormDialog)throw new Error('Form service unavailable. Refresh the portal.');return window.AccazaFormDialog;}
 function Costing(){if(!window.AccazaCosting)throw new Error('The shared costing engine did not load. Refresh the portal and try again.');return window.AccazaCosting;}
 function costingContext(extra){return Object.assign({inventory:inventoryMap,recipes:recipesMap,menuItems:(A()&&A().menuItemsMap)||{},optionCosts:optCostStore(),optionRecipes:optRecipesMap,optionGroups:(A()&&A().optionGroupsMap)||{}},extra||{});}
@@ -2103,6 +2105,14 @@ function renderPosCart(options){
       if(!pref){alert(chLabel+' order # is required — key in the platform order number.');return;}
       if(posChannel==='grabfood'&&!/^gf-/i.test(pref)){pref='GF-'+pref;}
       if(posChannel==='foodpanda'&&!/^fp-/i.test(pref)){pref='FP-'+pref;}
+      try{
+        var _idxSnap=await A().get(A().ref(A().db,'platformRefIndex/'+posChannel+'/'+platformRefKey(pref)));
+        if(_idxSnap&&_idxSnap.exists()){
+          var _dupOrder=(_idxSnap.val()||{}).orderId||'';
+          alert('⛔ '+chLabel+' order number '+pref+' has already been used'+(_dupOrder?(' — recorded as order '+_dupOrder):'')+'.\n\nA Grab/FoodPanda reference can only be used once. If that order needs correcting, void it first — do not re-enter the same number.');
+          return;
+        }
+      }catch(_e){/* index lookup unavailable (offline) — allow; the server still flags any duplicate */}
       var _r2=function(n){return Math.round((Number(n)||0)*100)/100;};
       var prate=channelRate(posChannel),pwhtR=channelWht(posChannel),pvatR=channelVat(posChannel);
       var pdiscounts=platformDiscountData(tot),pdPct=pdiscounts.pct,pdAmt=pdiscounts.amount;

@@ -12,9 +12,9 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 245,
+    "admin": 246,
     "customer": 59,
-    "serviceWorkerCache": 148
+    "serviceWorkerCache": 149
   },
   "authoritativeFiles": [
     "admin.html",
@@ -89,7 +89,8 @@
     "autoCompleteReadyOnlineOrders",
     "mirrorPosMovementToBooks",
     "mirrorPosCogsToBooks",
-    "manageFixedAsset"
+    "manageFixedAsset",
+    "indexPlatformOrderRef"
   ],
   "requiredProtectedNodes": [
     "activeOrders",
@@ -106,7 +107,9 @@
     "operationalAudit",
     "deletionAudit",
     "books",
-    "fixedAssets"
+    "fixedAssets",
+    "platformRefIndex",
+    "platformRefDuplicates"
   ],
   "verification": {
     "localQualityGate": "passed_2026-08-14",
