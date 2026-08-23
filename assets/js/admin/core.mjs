@@ -85,6 +85,7 @@ window.__accaza={
   managePettyVoucher:function(command){return managePettyVoucherCall(command);},
   archiveActivityLog:function(){return archiveActivityLogCall({});},
   syncOfflinePosSale:function(command){return callables.syncOfflinePosSale(command);},
+  recordPlatformCatchup:function(command){return callables.recordPlatformCatchup(command);},
   recordClientTelemetry:function(command){return callables.recordClientTelemetry(command);},
   getOperationalExceptions:function(){return callables.getOperationalExceptions({});},
   get menuItemsMap(){return menuItemsMap;},
