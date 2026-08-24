@@ -99,27 +99,11 @@ function kpi(label,val,delta){var d='';if(delta!=null&&isFinite(delta))d='<div c
 function renderAnalytics(){
   var root=document.getElementById('analyticsRoot'); if(!root)return;
   sharedPeriod();
-  /* One delegated click listener on the (persistent) analytics container. It survives every
-     innerHTML re-render AND any error inside the body render, so the date controls always work. */
-  if(!root.__azWired){ root.__azWired=true; root.addEventListener('click',function(e){
-    var t=e.target; if(!t||!t.closest)return;
-    var chip=t.closest('[data-range]');
-    if(chip){ e.preventDefault(); azRange=chip.getAttribute('data-range'); azFrom=null; azTo=null;if(window.AccazaReportPeriod)window.AccazaReportPeriod.set({period:azRange==='7d'?'7':azRange==='30d'?'30':azRange});renderAnalytics(); return; }
-    if(t.closest('#azApply')){
-      var f=(document.getElementById('azFrom')||{}).value, tt=(document.getElementById('azTo')||{}).value;
-      if(!f||!tt){ alert('Pick both a From and a To date, then tap “Apply dates”.'); return; }
-      if(f>tt){ alert('The From date is later than the To date — please switch them.'); return; }
-      azFrom=localDateValue(f); azTo=localDateValue(tt);
-      if(!isFinite(azFrom)||!isFinite(azTo)){ alert('Those dates could not be read. Please choose them again.'); return; }
-      azRange='custom';if(window.AccazaReportPeriod)window.AccazaReportPeriod.set({period:'custom',from:tsToDate(azFrom),to:tsToDate(azTo)});renderAnalytics(); return;
-    }
-  }); }
   try{ renderAnalyticsBody();ensureAnalyticsHistory(); }
   catch(err){ console.error('renderAnalytics error',err);
-    root.innerHTML='<div class="pz-h">📊 Analytics</div><div style="margin:0.5rem 0;">'
-      +['7d:7 days','30d:30 days','month:This month','all:All time'].map(function(o){var v=o.split(':');return '<span class="pz-chip'+(azRange===v[0]?' on':'')+'" data-range="'+v[0]+'">'+v[1]+'</span>';}).join('')+'</div>'
-      +'<div style="background:#fde8e8;border:1px solid #f5b5b5;border-radius:8px;padding:1rem;color:#a11;font-size:0.85rem;">Analytics couldn’t finish building the report: <b>'+esc(String((err&&err.message)||err))+'</b>.<br>The date buttons above still work. Please send Claude this exact message so I can fix the cause.</div>'; }
+    root.innerHTML='<div class="pz-h">📊 Analytics</div><div style="background:#fde8e8;border:1px solid #f5b5b5;border-radius:8px;padding:1rem;color:#a11;font-size:0.85rem;">Analytics couldn’t finish building the shared-period report: <b>'+esc(String((err&&err.message)||err))+'</b>.</div>'; }
 }
+window.addEventListener('accaza-report-period',function(){var root=document.getElementById('analyticsRoot');if(root&&root.offsetParent!==null)renderAnalytics();});
 function renderAnalyticsBody(){
   var root=document.getElementById('analyticsRoot');if(!root)return;
   var b=rangeBounds(),from=b[0],to=b[1];var span=to-from;
@@ -184,8 +168,7 @@ function renderAnalyticsBody(){
   var target=15;var onTime=prepList.length?prepList.filter(function(m){return m<=target;}).length/prepList.length*100:null;
   var html='<div class="pz-h">📊 Analytics</div><p class="pz-sub">Every figure here traces to your own orders, recipes, and reviews.</p>';
   var _azF=tsToDate(from), _azT=tsToDate(to-86400000); // local date parts (not UTC) so date inputs match the range in UTC+10
-  html+='<div style="margin-bottom:0.4rem;">'+['7d:7 days','30d:30 days','month:This month','all:All time'].map(function(o){var v=o.split(':');return '<span class="pz-chip '+(azRange===v[0]?'on':'')+'" data-range="'+v[0]+'">'+v[1]+'</span>';}).join('')+'</div>'
-    +'<div class="az-note" id="azActive" style="margin:0 0 0.25rem;font-weight:600;color:var(--bd);">📅 Showing: '+azRangeLabel(from,to)+'</div>'
+  html+='<div class="az-note" id="azActive" style="margin:0 0 0.25rem;font-weight:600;color:var(--bd);">📅 Shared sales period: '+azRangeLabel(from,to)+'</div>'
     +'<div class="az-note" id="azHistoryNote" style="margin:0 0 0.7rem;">'+(analyticsHistoryLoading?'Loading complete sales history…':'Complete available sales history loaded.')+'</div>';
   // KPIs
   html+='<div class="az-kpis">'

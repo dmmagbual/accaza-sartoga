@@ -87,4 +87,17 @@ function reverseMovement(original, type, label) {
   return movement(type || "movement_reversal", original.sourceType || "unknown", original.sourceId || "", lines, {occurredAt: Number(original.occurredAt || original.postedAt || Date.now()), channel: original.channel || "", reversesMovementId: original.id || ""});
 }
 
-module.exports = {money, safe, line, totals, assertBalanced, accountForMethod, orderPosting, reversalPosting, movement, reverseMovement};
+function netMovementCorrection(movements, sourceId, type, label) {
+  const balances = {};
+  (movements || []).filter((item) => item && String(item.sourceId || "") === String(sourceId || "")).forEach((item) => {
+    (item.lines || []).forEach((entry) => {const account = safe(entry.account);if (!account) return;balances[account] = money((balances[account] || 0) + money(entry.debit) - money(entry.credit));});
+  });
+  const lines = Object.keys(balances).sort().filter((account) => Math.abs(balances[account]) > 0.009).map((account) => {
+    const balance = balances[account];
+    return line(account, balance < 0 ? Math.abs(balance) : 0, balance > 0 ? balance : 0, `${safe(label || "Correct net balance")} · ${account}`);
+  });
+  if (!lines.length) return null;
+  return movement(type || "net_balance_correction", "order", sourceId, lines, {occurredAt: Date.now(), controlReason: "Reverse only the remaining net balance across all source movements"});
+}
+
+module.exports = {money, safe, line, totals, assertBalanced, accountForMethod, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection};

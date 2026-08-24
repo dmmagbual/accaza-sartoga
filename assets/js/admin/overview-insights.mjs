@@ -1,7 +1,7 @@
 function createOverviewInsights(deps){
   var saved={};try{saved=JSON.parse(localStorage.getItem('accaza-report-period')||'{}')||{};}catch(_e){}
-  var state={period:'month',from:'',to:'',metric:'units',latest:null,bound:false,loading:false};
-  window.AccazaReportPeriod={get:function(){return{period:state.period,from:state.from,to:state.to};},set:function(v){v=v||{};state.period=v.period||'month';state.from='';state.to='';try{localStorage.setItem('accaza-report-period',JSON.stringify(window.AccazaReportPeriod.get()));}catch(_e){}window.dispatchEvent(new CustomEvent('accaza-report-period',{detail:window.AccazaReportPeriod.get()}));}};
+  var allowed=['7','30','month','all'],state={period:allowed.indexOf(saved.period)>-1?saved.period:'month',from:'',to:'',metric:'units',latest:null,bound:false,loading:false};
+  window.AccazaReportPeriod={get:function(){return{period:state.period};},set:function(v){v=v||{};state.period=allowed.indexOf(v.period)>-1?v.period:'month';try{localStorage.setItem('accaza-report-period',JSON.stringify(window.AccazaReportPeriod.get()));}catch(_e){}select();ensureHistory();paint();window.dispatchEvent(new CustomEvent('accaza-report-period',{detail:window.AccazaReportPeriod.get()}));}};
   function stamp(o){return Number(o&&o.timestamp)||Date.parse(o&&o.date)||Number(o&&o.archivedAt)||0;}
   function dayStart(d){var x=new Date(d);x.setHours(0,0,0,0);return x.getTime();}
   function range(){
@@ -23,11 +23,11 @@ function createOverviewInsights(deps){
   }
   function bind(){
     if(state.bound)return;state.bound=true;
-    document.querySelectorAll('[data-overview-period]').forEach(function(btn){btn.addEventListener('click',function(){window.AccazaReportPeriod.set({period:this.dataset.overviewPeriod});select();ensureHistory();paint();});});
+    document.querySelectorAll('[data-report-period]').forEach(function(btn){btn.addEventListener('click',function(){window.AccazaReportPeriod.set({period:this.dataset.reportPeriod});});});
     document.querySelectorAll('[data-overview-metric]').forEach(function(btn){btn.addEventListener('click',function(){state.metric=this.dataset.overviewMetric;select();paint();});});
     select();
   }
-  function select(){document.querySelectorAll('[data-overview-period]').forEach(function(btn){var on=btn.dataset.overviewPeriod===state.period;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');});document.querySelectorAll('[data-overview-metric]').forEach(function(btn){var on=btn.dataset.overviewMetric===state.metric;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');});}
+  function select(){document.querySelectorAll('[data-report-period]').forEach(function(btn){var on=btn.dataset.reportPeriod===state.period;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');});document.querySelectorAll('[data-overview-metric]').forEach(function(btn){var on=btn.dataset.overviewMetric===state.metric;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');});}
   async function ensureHistory(){
     if(state.loading||!state.latest)return;var r=range(),needStart=r.start,notice=document.getElementById('overviewDataNote');state.loading=true;if(notice)notice.textContent='Loading the required order history…';
     try{

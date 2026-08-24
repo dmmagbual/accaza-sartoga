@@ -28,6 +28,15 @@ balanced(orphanReverse,'orphan reversal');
 assert(orphanReverse.lines.some(x=>x.account==='revenue:sales'&&x.debit===995),'orphan reversal does not reverse sales revenue');
 assert(orphanReverse.lines.some(x=>x.account==='asset:register_cash'&&x.credit===995),'orphan reversal does not reverse the original asset');
 assert(orphanReverse.reversesMovementId==='sale_ORPHAN1'&&orphanReverse.occurredAt===12345,'orphan reversal does not retain source evidence');
+const validVoid=F.reverseMovement(orphanOriginal,'order_void','Void sale');validVoid.sourceId='ORPHAN1';
+assert(F.netMovementCorrection([orphanOriginal,validVoid],'ORPHAN1','orphan_order_reversal','Correct orphan')===null,'already-voided orphan was reversed twice');
+const orphanBalanceFix=F.netMovementCorrection([orphanOriginal],'ORPHAN1','orphan_order_reversal','Correct orphan');
+balanced(orphanBalanceFix,'orphan net-balance reversal');
+assert(orphanBalanceFix.lines.some(x=>x.account==='revenue:sales'&&x.debit===995),'sale-only orphan net balance was not reversed');
+const duplicateOrphanReversal=F.reverseMovement(orphanOriginal,'orphan_order_reversal','Old orphan reversal');duplicateOrphanReversal.sourceId='ORPHAN1';
+const duplicateFix=F.netMovementCorrection([orphanOriginal,validVoid,duplicateOrphanReversal],'ORPHAN1','orphan_order_reversal','Correct duplicate reversal');
+balanced(duplicateFix,'duplicate orphan correction');
+assert(duplicateFix.lines.some(x=>x.account==='revenue:sales'&&x.credit===995),'double-reversed orphan was not restored');
 
 const refund=F.reversalPosting({id:'O2',channel:'instore',payment:'GCash',total:80},30,'refund',accounts);
 balanced(refund,'refund');
