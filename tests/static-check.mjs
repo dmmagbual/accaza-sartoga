@@ -421,7 +421,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!customerReservationSource.includes('window.updateBookingType()')||/function\(\)\{selectTimeSlot\(/.test(customerReservationSource))fail('Customer reservation still relies on a fragile implicit module global');
   for(const [name,html] of [['customer',customerHtml],['admin',adminHtml]])if(!html.includes('<button type="button" class="time-slot available" id="fullDaySlot"'))fail(`${name} full-day reservation control is not a native button`);
 
-  if(!financeSource.includes('!p.depositMovementId&&Number(p.actualPayout)>0'))fail('Cash Flow must hide deposited, zero, and negative platform payouts from the deposit queue');
+  if(!financeSource.includes('!p.reversed&&!p.depositMovementId&&Number(p.actualPayout)>0'))fail('Cash Flow must hide reversed, deposited, zero, and negative platform payouts from the deposit queue');
   if(financeSource.includes("e.source==='payout'&&e.linkId===p.id"))fail('Cash Flow still relies on the obsolete payout ledger-source check');
 
   const fn=spawnSync(process.execPath,['--check',path.join(root,'functions','index.js')],{encoding:'utf8'});
