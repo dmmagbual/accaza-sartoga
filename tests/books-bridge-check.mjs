@@ -133,5 +133,16 @@ ok(B.mapAccount("revenue:sales","instore",{}).code==="4000", "revenue:sales stil
 ok(B.mapAccount("asset:register_cash","instore",{}).code==="1000", "register_cash still -> 1000");
 ok(B.mapAccount("liability:payable:po1","instore",{}).code==="2000", "payable still -> 2000");
 
+// 9) Server-authoritative inventory opening-balance preview.
+const invRecon=B.inventoryReconciliationSnapshot({
+  beans:{name:'Beans',stock:10,cost:20,inventoryAccount:'1200',costAccount:'5000'},
+  milk:{name:'Milk',stock:5,cost:10,inventoryAccount:'1210',costAccount:'5010'}
+},{daily:{net:{'1200':-25,'1210':10}},purchase:{lines:[{code:'1200',debit:5,credit:0}]}});
+ok(invRecon.totalStock===250,'inventory reconciliation stock value is server-derived');
+ok(invRecon.totalBooks===-10,'inventory reconciliation Books balance includes net and line journal formats');
+ok(invRecon.totalDifference===260,'inventory reconciliation difference is correct');
+ok(invRecon.rows.find(r=>r.code==='1200').difference===220,'inventory account difference is correct');
+ok(invRecon.unmapped.length===0&&invRecon.clearingBalance===0,'clean inventory reconciliation has no blocking exceptions');
+
 if(failed){ console.error(`\n${failed} bridge check(s) FAILED`); process.exit(1); }
 console.log('PASS: Accaza Books POS→journal bridge (mapping, business date, daily aggregation, idempotency, discrete entries, COGS leg, fixed assets, chart-category mapping) checks passed.');

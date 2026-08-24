@@ -1348,12 +1348,30 @@ exports.postFinancialCommand = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
     const db = getDatabase(); const data = request.data || {}; const action = financeText(data.action, 40);
-    const perms = action.includes("payable") ? ["payables", "purchases"] : action.includes("receivable") ? ["receivables"] : ["cashflow", "receivables", "payables", "purchases"];
+    const perms = action === "inventory_opening_balance" ? ["purchases", "cashflow"] : action.includes("payable") ? ["payables", "purchases"] : action.includes("receivable") ? ["receivables"] : ["cashflow", "receivables", "payables", "purchases"];
     const actor = await requirePortalPermission(db, request, perms); const commandId = financeKey(data.commandId, "Command ID");
     const accounts = (await db.ref("/cfAccounts").get()).val() || {}, chart = await ensureChartAccounts(db); const now = Date.now(); let movement, writes = {}, result = {};
     function amount(v) { const x = Financial.money(v); if (!(x > 0)) throw new HttpsError("invalid-argument", "Amount must be greater than zero."); return x; }
     function addCash(id, entry) { writes[`cfLedger/${id}`] = cashLedgerRecord(entry, commandId, movement, actor); }
-    if (action === "purchase_paid") {
+    if (action === "inventory_opening_balance") {
+      const inventory = (await db.ref("/inventory").get()).val() || {}, journal = (await db.ref("/books/journal").get()).val() || {}, reconciliation = BooksBridge.inventoryReconciliationSnapshot(inventory, journal);
+      if (reconciliation.unmapped.length) throw new HttpsError("failed-precondition", `${reconciliation.unmapped.length} stock item(s) with value are missing an inventory account. Map them before posting.`);
+      if (Math.abs(reconciliation.clearingBalance) >= 0.005) throw new HttpsError("failed-precondition", `Inventory Receiving Clearing 1290 must be zero before posting. Current balance: ${reconciliation.clearingBalance}.`);
+      const existing = (await db.ref("/inventoryReconciliations/openingBalance").get()).val();
+      if (data.preview === true) return Object.assign({alreadyPosted:!!existing}, reconciliation);
+      if (existing) throw new HttpsError("already-exists", "The inventory opening balance has already been posted.");
+      const expected = Financial.money(data.expectedDifference);
+      if (Math.abs(expected - reconciliation.totalDifference) >= 0.005) throw new HttpsError("failed-precondition", "Inventory or Books changed after preview. Refresh and review the new reconciliation before posting.");
+      const lines=[];reconciliation.rows.forEach((row)=>{if(Math.abs(row.difference)<0.005)return;lines.push(Financial.line(`coa:${row.code}`,row.difference>0?row.difference:0,row.difference<0?-row.difference:0,`Opening inventory reconciliation ${row.code}`));});
+      if (reconciliation.totalDifference>0) lines.push(Financial.line("equity:opening_balance",0,reconciliation.totalDifference,"Opening inventory balance"));
+      else if (reconciliation.totalDifference<0) lines.push(Financial.line("equity:opening_balance",-reconciliation.totalDifference,0,"Opening inventory balance"));
+      if (!lines.length || !BooksBridge.linesBalanced(lines)) throw new HttpsError("failed-precondition", "The calculated opening inventory entry is empty or unbalanced.");
+      const date=financeDate(data.date),occurredAt=Date.parse(`${date}T00:00:00+08:00`)||now,movementId="inventory_opening_balance";
+      movement=Financial.movement("inventory_opening_balance","inventoryReconciliation","openingBalance",lines,{occurredAt,actorName:actor.role});
+      writes["inventoryReconciliations/openingBalance"]={movementId,date,stockValue:reconciliation.totalStock,booksValueBefore:reconciliation.totalBooks,adjustment:reconciliation.totalDifference,rows:reconciliation.rows,postedAt:now,postedBy:actor.uid,postedRole:actor.role,schemaVersion:1};
+      result={stockValue:reconciliation.totalStock,booksValueBefore:reconciliation.totalBooks,adjustment:reconciliation.totalDifference,rows:reconciliation.rows};
+      const committed = await commitFinancial(db,movementId,movement,actor,writes);return Object.assign(result,{movementId,duplicate:committed.duplicate});
+    } else if (action === "purchase_paid") {
       const invoiceId = financeKey(data.invoiceId, "Purchase invoice ID"), invoice = (await db.ref(`/purchaseInvoices/${invoiceId}`).get()).val();
       if (!invoice) throw new HttpsError("not-found", "Purchase invoice was not found.");
       const accountId = accountIdFor(accounts, data.accountId), value = amount(invoice.total), date = financeDate(data.date), split = await purchaseInventoryLines(db, invoice, false);

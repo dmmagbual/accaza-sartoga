@@ -222,4 +222,12 @@ function netBookValue(asset){
   return r2((Number(asset.cost)||0) - (Number(asset.accumulatedDepreciation)||0));
 }
 
-module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, cashCodeForAccount, itemAccounts, cogsAccountSnapshot, isSaleMovement, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, netSales, cogsLines, cogsMovement, recognizedOrderForCogs, monthlyStraightLine, netBookValue};
+function inventoryReconciliationSnapshot(inventory,journal){
+  var stock={},books={},unmapped=[];INVENTORY_CODES.forEach(function(code){stock[code]=0;books[code]=0;});books["1290"]=0;
+  Object.keys(inventory||{}).forEach(function(id){var item=inventory[id]||{},value=r2((Number(item.stock)||0)*(Number(item.cost)||0)),mapping=itemAccounts(item);if(Math.abs(value)<0.005)return;if(!mapping.inventory){unmapped.push({id:id,name:String(item.name||id),value:value});return;}stock[mapping.inventory]=r2(stock[mapping.inventory]+value);});
+  Object.keys(journal||{}).forEach(function(id){var entry=journal[id]||{};if(entry.reversed===true)return;Object.keys(entry.net||{}).forEach(function(code){if(Object.prototype.hasOwnProperty.call(books,code))books[code]=r2(books[code]+Number(entry.net[code]||0));});(Array.isArray(entry.lines)?entry.lines:[]).forEach(function(line){var code=String(line&&line.code||'');if(Object.prototype.hasOwnProperty.call(books,code))books[code]=r2(books[code]+(Number(line.debit)||0)-(Number(line.credit)||0));});});
+  var rows=Array.from(INVENTORY_CODES).sort().map(function(code){return{code:code,stockValue:r2(stock[code]),booksValue:r2(books[code]),difference:r2(stock[code]-books[code])};}),totalDifference=r2(rows.reduce(function(sum,row){return sum+row.difference;},0));
+  return{rows:rows,totalStock:r2(rows.reduce(function(sum,row){return sum+row.stockValue;},0)),totalBooks:r2(rows.reduce(function(sum,row){return sum+row.booksValue;},0)),totalDifference:totalDifference,clearingBalance:r2(books["1290"]),unmapped:unmapped};
+}
+
+module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, cashCodeForAccount, itemAccounts, cogsAccountSnapshot, isSaleMovement, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, netSales, cogsLines, cogsMovement, recognizedOrderForCogs, monthlyStraightLine, netBookValue, inventoryReconciliationSnapshot};
