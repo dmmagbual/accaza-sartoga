@@ -1,7 +1,7 @@
 function createOverviewInsights(deps){
   var saved={};try{saved=JSON.parse(localStorage.getItem('accaza-report-period')||'{}')||{};}catch(_e){}
-  var state={period:saved.period||'30',from:saved.from||'',to:saved.to||'',metric:'units',latest:null,bound:false,loading:false};
-  window.AccazaReportPeriod={get:function(){return{period:state.period,from:state.from,to:state.to};},set:function(v){v=v||{};state.period=v.period||'30';state.from=v.from||'';state.to=v.to||'';try{localStorage.setItem('accaza-report-period',JSON.stringify(window.AccazaReportPeriod.get()));}catch(_e){}window.dispatchEvent(new CustomEvent('accaza-report-period',{detail:window.AccazaReportPeriod.get()}));}};
+  var state={period:'all',from:saved.from||'',to:saved.to||'',metric:'units',latest:null,bound:false,loading:false};
+  window.AccazaReportPeriod={get:function(){return{period:state.period,from:state.from,to:state.to};},set:function(v){v=v||{};state.period=v.period||'all';state.from=v.from||'';state.to=v.to||'';try{localStorage.setItem('accaza-report-period',JSON.stringify(window.AccazaReportPeriod.get()));}catch(_e){}window.dispatchEvent(new CustomEvent('accaza-report-period',{detail:window.AccazaReportPeriod.get()}));}};
   function stamp(o){return Number(o&&o.timestamp)||Date.parse(o&&o.date)||Number(o&&o.archivedAt)||0;}
   function dayStart(d){var x=new Date(d);x.setHours(0,0,0,0);return x.getTime();}
   function range(){
@@ -73,7 +73,7 @@ function createOverviewInsights(deps){
     renderPayments(periodSales);renderTop(periodSales,data);renderOutcomes(periodOrders,data.active||[]);chart(periodSales,r);
     var status=deps.historyStatus(),note=document.getElementById('overviewDataNote');if(note&&!state.loading)note.textContent=status.hasOlder?'Showing loaded history. Choose an older period to load more records.':'Complete available order history loaded.';
   }
-  return{render:function(data){state.latest=data;paint();},ensureHistory:ensureHistory};
+  return{render:function(data){state.latest=data;paint();ensureHistory();},ensureHistory:ensureHistory};
 }
 
 export{createOverviewInsights};
