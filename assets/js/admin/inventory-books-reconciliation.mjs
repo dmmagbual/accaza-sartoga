@@ -18,6 +18,17 @@ export function inventoryBookCode(account){
   return '';
 }
 
+function sourceIsAfterCutoff(source,cutoff){
+  if(typeof cutoff==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(cutoff)){
+    const date=String(source&&source.date||'');
+    if(/^\d{4}-\d{2}-\d{2}$/.test(date))return date>cutoff;
+    const occurredAt=Number(source&&source.occurredAt)||0;
+    return occurredAt>0&&new Date(occurredAt).toISOString().slice(0,10)>cutoff;
+  }
+  const occurredAt=Number(source&&source.occurredAt)||0;
+  return Number.isFinite(cutoff)&&occurredAt>=cutoff;
+}
+
 export function reconcileInventoryBooks(itemRows,movements,cutoffExclusive){
   const names=Object.fromEntries(INVENTORY_ACCOUNTS),rowsByCode={};
   INVENTORY_ACCOUNTS.forEach(function(row){rowsByCode[row[0]]={code:row[0],name:row[1],stockValue:0,booksValue:0,itemCount:0};});
@@ -29,10 +40,9 @@ export function reconcileInventoryBooks(itemRows,movements,cutoffExclusive){
     target.itemCount++;
   });
   (movements||[]).forEach(function(movement){
-    const occurredAt=Number(movement&&movement.occurredAt)||0;
-    if(Number.isFinite(cutoffExclusive)&&occurredAt>=cutoffExclusive)return;
+    if(sourceIsAfterCutoff(movement,cutoffExclusive))return;
     (Array.isArray(movement&&movement.lines)?movement.lines:[]).forEach(function(line){
-      const code=inventoryBookCode(line&&line.account);if(!code)return;
+      const code=inventoryBookCode(line&&(line.code||line.account));if(!code)return;
       rowsByCode[code].booksValue=r2(rowsByCode[code].booksValue+(Number(line.debit)||0)-(Number(line.credit)||0));
     });
   });
