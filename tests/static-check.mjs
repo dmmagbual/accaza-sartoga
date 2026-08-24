@@ -165,7 +165,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!functionsSource.includes('cogsDetail: {'))fail('Release 3B traceable COGS snapshot missing');
   if(!adminSource.includes("'validateRecipeDefinition'")||!adminSource.includes('validateRecipeDefinition:validateRecipeDefinitionCall'))fail('admin recipe save is not connected to the server validator');
   if(!adminSource.includes('Costing().normalizeRecipe(raw,inventoryMap)'))fail('admin recipe save does not run shared normalization');
-  for(const marker of ['exports.postFinancialCommand = onCall','exports.settlePlatformPayout = onCall','exports.processOrderAdjustment = onCall','exports.ensureFinancialLedger = onCall','exports.onOrderFinancialPosting = onValueWritten'])if(!functionsSource.includes(marker))fail(`Release 3C server marker missing: ${marker}`);
+  for(const marker of ['exports.postFinancialCommand = onCall','exports.settlePlatformPayout = onCall','exports.processOrderAdjustment = onCall','exports.ensureFinancialLedger = onCall','exports.ensureBooksJournal = onCall','exports.onOrderFinancialPosting = onValueWritten'])if(!functionsSource.includes(marker))fail(`Release 3C server marker missing: ${marker}`);
   if(adminSource.includes('function reconcileAuto()'))fail('retired browser-authored financial reconciliation still exists');
   if(!adminSource.includes("'postFinancialCommand'")||!adminSource.includes("'settlePlatformPayout'")||!adminSource.includes('postFinancialCommand:postFinancialCommandCall'))fail('Release 3C callable bridge missing');
   for(const node of ['financialMovements','cfLedger','receivables','payables','platformPayouts'])if(!rulesRaw.includes(`"${node}"`))fail(`Release 3C rules missing ${node}`);
@@ -460,6 +460,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   const booksHtml=fs.readFileSync(path.join(root,'books.html'),'utf8');
   for(const marker of ['SAMPLE_ENTRY_IDS','_sample_backup','entries: []','const used = ENTRIES()','onclick="App.drill(\'${a.code}\')"','["2020","Due to Platforms","Liability","Negative Grab/FoodPanda settlements owed to the platform"]'])if(!booksHtml.includes(marker))fail(`Accaza Books cutover marker missing: ${marker}`);
   if((booksHtml.match(/\["2020","Due to Platforms","Liability"/g)||[]).length<2)fail('Due to Platforms must exist in both the default chart and existing-browser migration');
+  for(const marker of ['["1290","Inventory Receiving Clearing"','["2090","Unrecorded Payables Clearing"','["5090","Unposted COGS Clearing"','Sync all Finance transactions','ensureBooksJournal'])if(!booksHtml.includes(marker)&&!functionsSource.includes(marker))fail(`Books historical sync marker missing: ${marker}`);
   if(booksHtml.includes('function seedEntries()'))fail('Accaza Books still seeds browser-only sample transactions');
 
   console.log(`PASS: ${checked} executable HTML and external scripts parsed successfully.`);
