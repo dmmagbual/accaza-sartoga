@@ -24,7 +24,7 @@ function init(){var a=A();
   a.subscribe('orders',function(s){ordersMapCF=s.val()||{};if(isTab('receivables'))renderReceivables();if(isTab('cashflow'))renderCashflow();});
   a.subscribe('archivedOrders',function(s){archMapCF=s.val()||{};if(isTab('receivables'))renderReceivables();});
 }
-window.__accazaRegisterModule('finance',function(name){ if(name==='cashflow')renderCashflow(); if(name==='receivables')renderReceivables(); if(name==='payables')renderPayables(); });
+window.__accazaRegisterModule('finance',function(){});
 function accList(){return Object.keys(accountsMap).map(function(k){return Object.assign({id:k},accountsMap[k]);}).sort(function(a,b){return (a.order||0)-(b.order||0)||(a.name||'').localeCompare(b.name||'');});}
 function acctName(id){return (accountsMap[id]&&accountsMap[id].name)||'—';}
 function ledgerArr(){return Object.keys(ledgerMap).map(function(k){return Object.assign({id:k},ledgerMap[k]);});}

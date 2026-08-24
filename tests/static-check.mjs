@@ -429,6 +429,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   for(const marker of ['{id:"cashflow",label:"Cash Flow"}','Authoritative cash statement · moved from Admin','function cfStatement()','openingSources','manageCashAccount','Deposits to record','payout_deposit','cash_deposit'])if(!cashflowBooksHtml.includes(marker)&&!functionsSource.includes(marker)&&!adminHtml.includes(marker))fail(`Books Cash Flow cutover marker missing: ${marker}`);
   for(const marker of ["posSwitchTab('cashflow',this)",'href="books.html?tab=cashflow"','id="tab-cashflow"','id="cashflowRoot"'])if(adminHtml.includes(marker))fail(`Retired Admin Cash Flow UI is still present: ${marker}`);
   for(const marker of ["posSwitchTab('pnl',this)",'id="tab-pnl"','id="pnlRoot"'])if(adminHtml.includes(marker))fail(`Retired Admin P&L UI is still present: ${marker}`);
+  for(const marker of ["posSwitchTab('receivables',this)",'id="tab-receivables"','id="receivablesRoot"',"posSwitchTab('payables',this)",'id="tab-payables"','id="payablesRoot"'])if(adminHtml.includes(marker))fail(`Retired Admin AR/AP UI is still present: ${marker}`);
 
   const fn=spawnSync(process.execPath,['--check',path.join(root,'functions','index.js')],{encoding:'utf8'});
   if(fn.status!==0)fail(`functions/index.js failed syntax check:\n${fn.stderr||fn.stdout}`);
