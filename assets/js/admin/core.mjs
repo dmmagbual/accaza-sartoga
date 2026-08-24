@@ -12,6 +12,7 @@ import{createAppCustomerSession}from"./app-customer-session.mjs";
 import{createCustomerOrderTracker}from"./customer-order-tracker.mjs";
 import{escHtml,safeImageSrc}from"./shared-ui.mjs";
 import{installWorkspaceShell}from"./workspace-shell.mjs";
+import{sortArchivedOrders}from"./archive-order-sort.mjs";
 
 const {getPaymentProof:getPaymentProofCall,ensureActiveOrders:ensureActiveOrdersCall,updateOrderStatus:updateOrderStatusCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,reconcilePurchasePayable:reconcilePurchasePayableCall,managePurchaseCorrection:managePurchaseCorrectionCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,manageCashAccount:manageCashAccountCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,archiveActivityLog:archiveActivityLogCall}=callables;
 window.__accazaAuth=auth;
@@ -1007,7 +1008,7 @@ function drawPaymentPie(gcashR,bankR){
 // ── ARCHIVE PDF ──
 window.downloadArchivePDF=function(){
   const fromVal=document.getElementById('archiveFrom').value,toVal=document.getElementById('archiveTo').value;
-  let orders=Object.values(archivedOrdersMap).sort((a,b)=>(b.archivedAt||0)-(a.archivedAt||0));
+  let orders=sortArchivedOrders(Object.values(archivedOrdersMap));
   if(fromVal)orders=orders.filter(o=>new Date(o.archivedAt||0)>=new Date(fromVal));
   if(toVal)orders=orders.filter(o=>new Date(o.archivedAt||0)<=new Date(toVal+'T23:59:59'));
   if(!orders.length){alert('No archived orders found for the selected date range.');return;}
@@ -1098,12 +1099,12 @@ function renderArchive(){_paintArchive();}
 function _paintArchive(){
   const el=document.getElementById('archiveList'),sumEl=document.getElementById('archiveSummary');if(!el)return;
   const fromVal=document.getElementById('archiveFrom').value,toVal=document.getElementById('archiveTo').value;
-  let orders=Object.values(archivedOrdersMap).sort((a,b)=>(b.archivedAt||0)-(a.archivedAt||0));
+  let orders=sortArchivedOrders(Object.values(archivedOrdersMap));
   if(fromVal)orders=orders.filter(o=>new Date(o.archivedAt||0)>=new Date(fromVal));
   if(toVal)orders=orders.filter(o=>new Date(o.archivedAt||0)<=new Date(toVal+'T23:59:59'));
   const rejCnt=orders.filter(o=>o.prevStatus==='Rejected').length;const totalRev=orders.filter(o=>o.prevStatus!=='Rejected').reduce((s,o)=>s+(o.total||0),0),gcashCnt=orders.filter(o=>o.payment==='GCash').length,bankCnt=orders.filter(o=>o.payment==='Bank Transfer').length;
   var hs=subscriptionHub.historyStatus('archivedOrders');
-  sumEl.innerHTML='<div style="width:100%;font-size:0.72rem;color:var(--tl);">Loaded '+hs.loaded+' most recent archived order(s). Date filters apply to loaded pages.</div><div><span class="archive-sum-num">'+orders.length+(rejCnt?' <span style="font-size:0.7rem;color:#721c24;">('+rejCnt+' ✗)</span>':'')+'</span><span class="archive-sum-lbl">Orders</span></div><div><span class="archive-sum-num">₱'+totalRev.toLocaleString()+'</span><span class="archive-sum-lbl">Revenue</span></div><div><span class="archive-sum-num">'+gcashCnt+'G / '+bankCnt+'B</span><span class="archive-sum-lbl">GCash / Bank</span></div>';
+  sumEl.innerHTML='<div style="width:100%;font-size:0.72rem;color:var(--tl);">Loaded '+hs.loaded+' most recent archived order(s), sorted by order date and time (newest first). Date filters apply to loaded pages.</div><div><span class="archive-sum-num">'+orders.length+(rejCnt?' <span style="font-size:0.7rem;color:#721c24;">('+rejCnt+' ✗)</span>':'')+'</span><span class="archive-sum-lbl">Orders</span></div><div><span class="archive-sum-num">₱'+totalRev.toLocaleString()+'</span><span class="archive-sum-lbl">Revenue</span></div><div><span class="archive-sum-num">'+gcashCnt+'G / '+bankCnt+'B</span><span class="archive-sum-lbl">GCash / Bank</span></div>';
   var cards=orders.length?orders.map(function(o){var oid=escHtml(o.id),age=Date.now()-Number(o.archivedAt||0),canDelete=o.prevStatus==='Rejected'&&age>=90*24*60*60*1000,outcome=archiveOutcome(o);return'<div class="archive-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.4rem;"><div><div style="font-weight:500;font-size:0.88rem;color:var(--bd);">'+escHtml(o.name)+' <span style="font-size:0.72rem;color:var(--tl);">#'+oid+'</span></div><div style="font-size:0.75rem;color:var(--tl);">'+escHtml(o.date)+' · '+escHtml(o.time)+'</div></div><span class="badge" style="'+outcome.style+'">'+outcome.icon+' '+escHtml(outcome.label)+'</span></div><div style="font-size:0.8rem;color:var(--tm);margin:0.3rem 0;">🛒 '+escHtml(o.items)+'</div><div style="font-size:0.78rem;color:var(--tl);">₱'+(Number(o.total)||0).toLocaleString()+' · '+escHtml(o.payment)+' · '+escHtml(o.type)+'</div><div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;">Archived: '+escHtml(o.archivedDate||'—')+'</div>'+(adminLoggedIn?'<div style="margin-top:0.5rem;text-align:right;">'+(canDelete?'<button data-delarch="'+oid+'" style="background:#fdecea;border:1px solid #f5c6c6;color:#c0392b;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.74rem;cursor:pointer;font-weight:600;">🗑 Delete rejected order</button>':'<span style="font-size:0.7rem;color:var(--tl);">🔒 Retained audit record</span>')+'</div>':'')+'</div>';}).join(''):'<p style="color:var(--tl);text-align:center;padding:1.5rem;font-size:0.88rem;">No archived orders in the loaded pages for this range.</p>';
   el.innerHTML=cards+'<div style="text-align:center;padding:0.8rem;"><button id="archiveLoadOlder" class="pz-btn sec"'+(hs.hasOlder?'':' disabled')+'>'+(hs.hasOlder?'Load 100 older orders':'All loaded orders reached')+'</button></div>';
   var more=document.getElementById('archiveLoadOlder');if(more&&hs.hasOlder)more.onclick=async function(){more.disabled=true;more.textContent='Loading older orders…';try{await subscriptionHub.loadOlder('archivedOrders');}catch(e){more.textContent='Could not load older orders';more.disabled=false;}};

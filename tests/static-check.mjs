@@ -465,6 +465,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(booksBridgeCheck.status!==0)fail(`Accaza Books POS bridge checks failed:\n${booksBridgeCheck.stderr||booksBridgeCheck.stdout}`);
   const salesAuthorityCheck=spawnSync(process.execPath,[path.join(root,'tests','sales-authority-check.mjs')],{encoding:'utf8',cwd:root});
   if(salesAuthorityCheck.status!==0)fail(`Shared Admin sales-authority checks failed:\n${salesAuthorityCheck.stderr||salesAuthorityCheck.stdout}`);
+  const archiveOrderSortCheck=spawnSync(process.execPath,[path.join(root,'tests','archive-order-sort-check.mjs')],{encoding:'utf8',cwd:root});
+  if(archiveOrderSortCheck.status!==0)fail(`Archived-order sorting checks failed:\n${archiveOrderSortCheck.stderr||archiveOrderSortCheck.stdout}`);
   const booksHtml=fs.readFileSync(path.join(root,'books.html'),'utf8');
   const salesAuthoritySource=fs.readFileSync(path.join(root,'assets','js','shared','sales-authority.js'),'utf8');
   const salesHistorySource=fs.readFileSync(path.join(root,'assets','js','admin','sales-history.js'),'utf8');
@@ -505,6 +507,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   process.stdout.write(offlineRecoveryCheck.stdout);
   process.stdout.write(booksBridgeCheck.stdout);
   process.stdout.write(salesAuthorityCheck.stdout);
+  process.stdout.write(archiveOrderSortCheck.stdout);
   process.stdout.write(operationalExceptionsCheck.stdout);
   process.stdout.write(managerApprovalCheck.stdout);
   console.log('PASS: functions/index.js syntax is valid.');
