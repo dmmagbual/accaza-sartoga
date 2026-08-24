@@ -28,26 +28,20 @@ const CHART_COA = {
 const MANILA = new Intl.DateTimeFormat("en-US", {timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit"});
 
 function r2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
-const INVENTORY_CODES = new Set(["1200", "1210", "1220", "1230", "1240"]);
-const COGS_CODES = new Set(["5000", "5010", "5020", "5030", "5040"]);
-const DIRECT_CODES = new Set([...INVENTORY_CODES, ...COGS_CODES, "1290", "5090"]);
+const INVENTORY_CODES = new Set(["1200", "1210", "1220", "1230", "1240", "1270", "1280"]);
+const COST_CODES = new Set(["5000", "5010", "5020", "5030", "5040", "6070", "6075"]);
+const DIRECT_CODES = new Set([...INVENTORY_CODES, ...COST_CODES, "1290", "5090"]);
 
-function categoryAccounts(category) {
-  category = category || {}; const name = String(category.name || "").toLowerCase(); let pair = ["", ""];
-  if (/coffee|bean/.test(name)) pair = ["1200", "5000"];
-  else if (/milk|dairy/.test(name)) pair = ["1210", "5010"];
-  else if (/syrup|flavor|powder|tea/.test(name)) pair = ["1220", "5020"];
-  else if (/packag|cup|lid|straw|napkin|container/.test(name)) pair = ["1230", "5040"];
-  else if (/food|pastr|bakery|kitchen|meal/.test(name)) pair = ["1240", "5030"];
-  const inventory = String(category.inventoryAccount || pair[0]), cogs = String(category.cogsAccount || pair[1]);
-  return {inventory: INVENTORY_CODES.has(inventory) ? inventory : "", cogs: COGS_CODES.has(cogs) ? cogs : ""};
+function itemAccounts(item) {
+  item = item || {}; const inventory = String(item.inventoryAccount || ""), cost = String(item.costAccount || item.cogsAccount || "");
+  return {inventory: INVENTORY_CODES.has(inventory) ? inventory : "", cost: COST_CODES.has(cost) ? cost : ""};
 }
 
 function cogsAccountSnapshot(order, inventory, categories) {
   if (order && order.cogsAccountSnapshot && typeof order.cogsAccountSnapshot === "object") return order.cogsAccountSnapshot;
   const lines = order && order.cogsDetail && order.cogsDetail.lines; if (!Array.isArray(lines)) return {};
   const out = {};
-  lines.forEach((line) => { const item = (inventory || {})[line.ingredientId] || {}, mapping = categoryAccounts((categories || {})[item.category]); const key = mapping.inventory && mapping.cogs ? `${mapping.inventory}|${mapping.cogs}` : "1290|5090"; out[key] = r2((out[key] || 0) + Number(line.totalCost || 0)); });
+  lines.forEach((line) => { const item = (inventory || {})[line.ingredientId] || {}, mapping = itemAccounts(item); const key = mapping.inventory && mapping.cost ? `${mapping.inventory}|${mapping.cost}` : "1290|5090"; out[key] = r2((out[key] || 0) + Number(line.totalCost || 0)); });
   return out;
 }
 
@@ -177,7 +171,7 @@ function cogsLines(order, inventory, categories){
   var accountSnapshot=cogsAccountSnapshot(order,inventory,categories),accountKeys=Object.keys(accountSnapshot||{}),mappedTotal=r2(accountKeys.reduce(function(sum,key){return sum+Number(accountSnapshot[key]||0);},0));
   if(accountKeys.length){
     var accountGap=r2(total-mappedTotal);if(Math.abs(accountGap)>=0.005){var adjustKey=accountKeys.slice().sort(function(a,b){return Number(accountSnapshot[b]||0)-Number(accountSnapshot[a]||0);})[0];accountSnapshot=Object.assign({},accountSnapshot);accountSnapshot[adjustKey]=r2(Number(accountSnapshot[adjustKey]||0)+accountGap);}
-    var detailed=[];accountKeys.sort().forEach(function(key){var parts=key.split('|'),amount=r2(accountSnapshot[key]);if(!(amount>0))return;detailed.push({account:'coa:'+(COGS_CODES.has(parts[1])?parts[1]:'5090'),debit:amount,credit:0});detailed.push({account:'coa:'+(INVENTORY_CODES.has(parts[0])?parts[0]:'1290'),debit:0,credit:amount});});
+    var detailed=[];accountKeys.sort().forEach(function(key){var parts=key.split('|'),amount=r2(accountSnapshot[key]);if(!(amount>0))return;detailed.push({account:'coa:'+(COST_CODES.has(parts[1])?parts[1]:'5090'),debit:amount,credit:0});detailed.push({account:'coa:'+(INVENTORY_CODES.has(parts[0])?parts[0]:'1290'),debit:0,credit:amount});});
     return detailed;
   }
   var cat = (order && order.cogsCategorySnapshot) || {};
@@ -216,4 +210,4 @@ function netBookValue(asset){
   return r2((Number(asset.cost)||0) - (Number(asset.accumulatedDepreciation)||0));
 }
 
-module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, cashCodeForAccount, categoryAccounts, cogsAccountSnapshot, isSaleMovement, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, cogsLines, cogsMovement, monthlyStraightLine, netBookValue};
+module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, cashCodeForAccount, itemAccounts, cogsAccountSnapshot, isSaleMovement, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, cogsLines, cogsMovement, monthlyStraightLine, netBookValue};
