@@ -205,7 +205,8 @@ exports.mirrorPosCogsToBooks = onValueWritten(
     let order = (await db.ref(`/orders/${orderId}`).get()).val();
     if (!order) order = (await db.ref(`/archivedOrders/${orderId}`).get()).val();
     if (!order) return;
-    const mv = BooksBridge.cogsMovement(order, orderId);
+    const [inventorySnap, categoriesSnap] = await Promise.all([db.ref("/inventory").get(), db.ref("/posSettings/invCategories").get()]);
+    const mv = BooksBridge.cogsMovement(order, orderId, inventorySnap.val() || {}, categoriesSnap.val() || {});
     if (!mv.lines.length) return;
     const bucket = BooksBridge.bucketFor(mv);
     const ref = db.ref(`/books/journal/${bucket.key}`);
@@ -224,8 +225,8 @@ exports.ensureBooksJournal = onCall(
   {region: "asia-southeast1", enforceAppCheck: process.env.ENFORCE_APP_CHECK === "true", timeoutSeconds: 540, memory: "512MiB"},
   async (request) => {
     const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["cashflow", "receivables", "payables"]);
-    const [movementSnap, ordersSnap, archiveSnap, journalSnap, cashAccountsSnap] = await Promise.all([
-      db.ref("/financialMovements").get(), db.ref("/orders").get(), db.ref("/archivedOrders").get(), db.ref("/books/journal").get(), db.ref("/cfAccounts").get(),
+    const [movementSnap, ordersSnap, archiveSnap, journalSnap, cashAccountsSnap, inventorySnap, categoriesSnap] = await Promise.all([
+      db.ref("/financialMovements").get(), db.ref("/orders").get(), db.ref("/archivedOrders").get(), db.ref("/books/journal").get(), db.ref("/cfAccounts").get(), db.ref("/inventory").get(), db.ref("/posSettings/invCategories").get(),
     ]);
     const movements = movementSnap.val() || {}, allOrders = Object.assign({}, archiveSnap.val() || {}, ordersSnap.val() || {});
     const cashMap = await booksCashAccountMap(db), daily = {}, singles = {}, review = {};
@@ -241,7 +242,7 @@ exports.ensureBooksJournal = onCall(
     Object.keys(allOrders).forEach((id) => {
       const order = allOrders[id] || {}, status = order.status === "Archived" ? order.prevStatus : order.status;
       if (!["Completed", "Received"].includes(status) && !order.completedAt) return;
-      const cogs = BooksBridge.cogsMovement(order, id);
+      const cogs = BooksBridge.cogsMovement(order, id, inventorySnap.val() || {}, categoriesSnap.val() || {});
       if (!cogs.lines.length) { missingCogs++; review[`cogs_missing_${id}`] = {movementId: `cogs_missing_${id}`, type: "unposted_cogs", sourceId: id, accounts: [{account: "cogs:missing_snapshot", code: "5090"}], detail: "Historical order has no reliable COGS snapshot; review in Unposted COGS Clearing without guessing a cost.", at: Date.now()}; return; }
       const bucket = BooksBridge.bucketFor(cogs); daily[bucket.key] = BooksBridge.applyDaily(daily[bucket.key] || null, cogs, cashMap); cogsPosted++;
     });
@@ -1333,7 +1334,13 @@ exports.postFinancialCommand = onCall(
     const accounts = (await db.ref("/cfAccounts").get()).val() || {}, chart = await ensureChartAccounts(db); const now = Date.now(); let movement, writes = {}, result = {};
     function amount(v) { const x = Financial.money(v); if (!(x > 0)) throw new HttpsError("invalid-argument", "Amount must be greater than zero."); return x; }
     function addCash(id, entry) { writes[`cfLedger/${id}`] = cashLedgerRecord(entry, commandId, movement, actor); }
-    if (action === "manual") {
+    if (action === "purchase_paid") {
+      const invoiceId = financeKey(data.invoiceId, "Purchase invoice ID"), invoice = (await db.ref(`/purchaseInvoices/${invoiceId}`).get()).val();
+      if (!invoice) throw new HttpsError("not-found", "Purchase invoice was not found.");
+      const accountId = accountIdFor(accounts, data.accountId), value = amount(invoice.total), date = financeDate(data.date), split = await purchaseInventoryLines(db, invoice, false);
+      movement = Financial.movement("purchase_cash", "purchaseInvoice", invoiceId, split.concat([Financial.line(`asset:cash_account:${accountId}`, 0, value, invoice.supplier || "Inventory purchase")]), {occurredAt: Date.parse(`${date}T00:00:00+08:00`) || now, actorName: actor.role});
+      addCash(`fm_${commandId}`, {date, accountId, dir:"out", category:"Inventory purchase", amount:value, party:invoice.supplier, ref:invoice.ref, auto:true});
+    } else if (action === "manual") {
       const accountId = accountIdFor(accounts, data.accountId), value = amount(data.amount), dir = data.dir === "out" ? "out" : "in", selected = data.offsetAccountId ? chartAccountFor(chart, data.offsetAccountId) : chartAccountFromLegacy(chart, data.category, dir), category = financeText(selected.row.name, 80), asset = `asset:cash_account:${accountId}`, offset = `${selected.row.type}:${selected.id}`;
       movement = Financial.movement("manual_cash", "manual", commandId, dir === "in" ? [Financial.line(asset, value, 0, category), Financial.line(offset, 0, value, category)] : [Financial.line(offset, value, 0, category), Financial.line(asset, 0, value, category)], {occurredAt: now, actorName: financeText(data.actorName || "")});
       addCash(`fm_${commandId}`, {date: financeDate(data.date), accountId, dir, category, amount: value, party: data.party, ref: data.ref, auto: false});
@@ -1368,6 +1375,14 @@ exports.postFinancialCommand = onCall(
 // Reconciles the one-to-one link between an on-account purchase invoice and
 // its payable. Safe to retry: the invoice, payable and financial movement use
 // deterministic IDs, while legacy/manual matches are linked instead of copied.
+async function purchaseInventoryLines(db, invoice, credit) {
+  const [inventorySnap, categoriesSnap] = await Promise.all([db.ref("/inventory").get(), db.ref("/posSettings/invCategories").get()]);
+  const inventory = inventorySnap.val() || {}, categories = categoriesSnap.val() || {}, totals = {};
+  (Array.isArray(invoice && invoice.lines) ? invoice.lines : []).forEach((line) => {const item=inventory[line.itemId]||{},mapping=BooksBridge.categoryAccounts(categories[item.category]||{}),code=mapping.inventory||"1290",value=Financial.money(line.total);if(value>0)totals[code]=Financial.money((totals[code]||0)+value);});
+  const expected=Financial.money(invoice&&invoice.total),found=Financial.money(Object.values(totals).reduce((sum,value)=>sum+value,0)),gap=Financial.money(expected-found);if(gap)totals["1290"]=Financial.money((totals["1290"]||0)+gap);
+  return Object.keys(totals).filter((code)=>totals[code]>0).sort().map((code)=>Financial.line(`coa:${code}`,credit?0:totals[code],credit?totals[code]:0,invoice.supplier||"Inventory purchase"));
+}
+
 exports.reconcilePurchasePayable = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
@@ -1412,7 +1427,7 @@ exports.reconcilePurchasePayable = onCall(
     const writes = {[`payables/${canonicalId}`]:payable,[`purchaseInvoices/${invoiceId}/payableId`]:canonicalId,[`purchaseInvoices/${invoiceId}/payableReconciledAt`]:now,[`purchaseInvoices/${invoiceId}/due`]:due,[`purchaseInvoices/${invoiceId}/ref`]:ref,[`purchaseInvoices/${invoiceId}/payMode`]:legacyNoLiability?"account":invoice.payMode,[`operationalAudit/${auditId}`]:{action:"reconcile_purchase_payable",sourceType:"purchaseInvoice",sourceId:invoiceId,payableId:canonicalId,result:provisional?"grni_created":(legacyNoLiability?"legacy_liability_created":"created"),amount,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}};
     const movementSnap = await db.ref(`/financialMovements/${movementId}`).get();
     if (movementSnap.exists()) await db.ref().update(writes);
-    else {const movement = Financial.movement(provisional?"grni_created":"payable_created", "payable", canonicalId, [Financial.line("expense_or_inventory:inventory", amount, 0, party), Financial.line(provisional?`liability:grni:${canonicalId}`:`liability:payable:${canonicalId}`, 0, amount, party)], {occurredAt:Number(Date.parse(`${date}T00:00:00+08:00`)||now),actorName:actor.role});await commitFinancial(db, movementId, movement, actor, writes);}
+    else {const inventoryLines=await purchaseInventoryLines(db,invoice,false),movement = Financial.movement(provisional?"grni_created":"payable_created", "payable", canonicalId, inventoryLines.concat([Financial.line(provisional?`liability:grni:${canonicalId}`:`liability:payable:${canonicalId}`, 0, amount, party)]), {occurredAt:Number(Date.parse(`${date}T00:00:00+08:00`)||now),actorName:actor.role});await commitFinancial(db, movementId, movement, actor, writes);}
     return {invoiceId, payableId: canonicalId, amount, result: movementSnap.exists() ? "recreated_from_movement" : "created"};
   },
 );
@@ -1447,7 +1462,7 @@ exports.managePurchaseCorrection = onCall(
     for (const movement of originals) await applyInventoryMovement(db,{movementId:`purchase_reverse_${invoiceId}_${movement.itemId}`,itemId:movement.itemId,type:"purchase_reversal",qty:-qty6(movement.qty),unitCost:qty6(movement.unitCost),sourceType:"purchase-invoice-reversal",sourceId:invoiceId,sourceLine:movement.sourceLine||movement.itemId,note:`Reverse purchase ${invoice.ref||invoiceId}: ${reason}`,reversalOf:movement.id,actorName:actor.role,occurredAt:now},actor);
     const writes = Object.assign({},approval.usedWrites,{[`purchaseInvoices/${invoiceId}/reversed`]:true,[`purchaseInvoices/${invoiceId}/reversedAt`]:now,[`purchaseInvoices/${invoiceId}/reversedBy`]:actor.uid,[`purchaseInvoices/${invoiceId}/reversalReason`]:reason,[`operationalAudit/${now}_purchase_reverse_${invoiceId}`]:{action:duplicateCleanup?"reverse_duplicate_purchase":"reverse_purchase",sourceType:"purchaseInvoice",sourceId:invoiceId,keptPurchaseId:duplicateCleanup?keepInvoiceId:"",amount:safeInvoice.total,reason,approvalId:approval.id,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}});if (duplicateCleanup&&payable) {if (payable.status==="open") {writes[`payables/${invoice.payableId}/purchaseInvoiceId`]=keepInvoiceId;writes[`purchaseInvoices/${keepInvoiceId}/payableId`]=invoice.payableId;} else {writes[`purchaseInvoices/${keepInvoiceId}/payableId`]=null;writes[`purchaseInvoices/${keepInvoiceId}/payableReconciledAt`]=null;}}(invoice.receiptIds||[]).forEach((id)=>{writes[`stockReceipts/${id}/reversed`]=true;writes[`stockReceipts/${id}/reversedAt`]=now;});
     const batches=(await db.ref("/inventoryBatch").get()).val()||{};Object.keys(batches).forEach((id)=>{if (batches[id]&&batches[id].invoiceId===invoiceId){writes[`inventoryBatch/${id}/closed`]=true;writes[`inventoryBatch/${id}/reversedAt`]=now;}});
-    let financialMovement=null,financialId="";if (!duplicateCleanup&&(invoice.payMode === "account"||invoice.payMode === "pending")&&payable) {financialId=`purchase_ap_reversal_${invoiceId}`;financialMovement=Financial.movement("purchase_payable_reversed","purchaseInvoice",invoiceId,[Financial.line(invoice.payMode==="pending"?`liability:grni:${invoice.payableId}`:`liability:payable:${invoice.payableId}`,safeInvoice.total,0,"Reverse supplier obligation"),Financial.line("expense_or_inventory:inventory",0,safeInvoice.total,"Reverse inventory purchase")],{occurredAt:now,actorName:actor.role});writes[`payables/${invoice.payableId}/status`]="reversed";writes[`payables/${invoice.payableId}/reversedAt`]=now;writes[`payables/${invoice.payableId}/reversalMovementId`]=financialId;} else if (invoice.payMode === "paid") {financialId=`purchase_cash_reversal_${invoiceId}`;financialMovement=Financial.movement("purchase_cash_reversed","purchaseInvoice",invoiceId,[Financial.line(`asset:cash_account:${paidAccountId}`,safeInvoice.total,0,"Reverse purchase payment"),Financial.line("expense_or_inventory:inventory",0,safeInvoice.total,"Reverse inventory purchase")],{occurredAt:now,actorName:actor.role});writes[`cfLedger/fm_${financialId}`]=cashLedgerRecord({date:financeDateFromTimestamp(now),accountId:paidAccountId,dir:"in",category:"Purchase reversal",amount:safeInvoice.total,party:invoice.supplier,ref:invoice.ref,auto:true},financialId,financialMovement,actor);}
+    const reversalInventoryLines=await purchaseInventoryLines(db,invoice,true);let financialMovement=null,financialId="";if (!duplicateCleanup&&(invoice.payMode === "account"||invoice.payMode === "pending")&&payable) {financialId=`purchase_ap_reversal_${invoiceId}`;financialMovement=Financial.movement("purchase_payable_reversed","purchaseInvoice",invoiceId,[Financial.line(invoice.payMode==="pending"?`liability:grni:${invoice.payableId}`:`liability:payable:${invoice.payableId}`,safeInvoice.total,0,"Reverse supplier obligation")].concat(reversalInventoryLines),{occurredAt:now,actorName:actor.role});writes[`payables/${invoice.payableId}/status`]="reversed";writes[`payables/${invoice.payableId}/reversedAt`]=now;writes[`payables/${invoice.payableId}/reversalMovementId`]=financialId;} else if (invoice.payMode === "paid") {financialId=`purchase_cash_reversal_${invoiceId}`;financialMovement=Financial.movement("purchase_cash_reversed","purchaseInvoice",invoiceId,[Financial.line(`asset:cash_account:${paidAccountId}`,safeInvoice.total,0,"Reverse purchase payment")].concat(reversalInventoryLines),{occurredAt:now,actorName:actor.role});writes[`cfLedger/fm_${financialId}`]=cashLedgerRecord({date:financeDateFromTimestamp(now),accountId:paidAccountId,dir:"in",category:"Purchase reversal",amount:safeInvoice.total,party:invoice.supplier,ref:invoice.ref,auto:true},financialId,financialMovement,actor);}
     if (financialMovement) await commitFinancial(db,financialId,financialMovement,actor,writes);else await db.ref().update(writes);
     return {invoiceId,result:"reversed",amount:safeInvoice.total,invoice:safeInvoice};
   },
@@ -1928,6 +1943,12 @@ exports.onOrderFinalize = onValueWritten(
         cogsCategorySnapshot[bucket] += Number(costLine.totalCost) || 0;
       });
       Object.keys(cogsCategorySnapshot).forEach((key) => {cogsCategorySnapshot[key] = Math.round(cogsCategorySnapshot[key] * 100) / 100;});
+      const cogsAccountSnapshot = {};
+      costing.lines.forEach((costLine) => {
+        const item = inv[costLine.ingredientId] || {}, mapping = BooksBridge.categoryAccounts(invCategories[item.category] || {});
+        const key = mapping.inventory && mapping.cogs ? `${mapping.inventory}|${mapping.cogs}` : "1290|5090";
+        cogsAccountSnapshot[key] = Financial.money((cogsAccountSnapshot[key] || 0) + Number(costLine.totalCost || 0));
+      });
 
       await Promise.all(ids.map((ing) => applyInventoryMovement(db, {
         movementId: `sale_${orderId}_${ing}`,
@@ -1944,6 +1965,8 @@ exports.onOrderFinalize = onValueWritten(
         cogsSnapshot: cogs,
         cogsCategorySnapshot,
         cogsCategorySnapshotVersion: 1,
+        cogsAccountSnapshot,
+        cogsAccountSnapshotVersion: 1,
         cogsCovered: costing.cogsCovered,
         cogsDetail: {
           engineVersion: costing.engineVersion, computedAt: Date.now(),
