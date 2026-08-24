@@ -2,7 +2,7 @@
 'use strict';
 var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={},receiptsMap={},posSettingsMap={};
 var svFrom=null,svTo=null,svExpand=null;
-var azRange='30d', azFrom=null, azTo=null, pnlMonth=null;
+var azRange='30d', azFrom=null, azTo=null, pnlMonth=null, analyticsHistoryLoading=false;
 var poChannel='grabfood', poFrom=null, poTo=null;
 var PO_CHANNELS=[{k:'grabfood',lbl:'GrabFood'},{k:'foodpanda',lbl:'FoodPanda'}];
 var DEFAULT_VAR_ACCOUNTS=[
@@ -72,6 +72,25 @@ function rangeBounds(){var now=Date.now(),today=dayStart(now),end=addDays(today,
 function fmtD(ts){return new Date(ts).toLocaleDateString('en-PH',{month:'short',day:'numeric'});}
 function azRangeLabel(from,to){var nm={today:'Today','7d':'Last 7 days','30d':'Last 30 days',month:'This month',all:'All time',custom:'Custom range'};return (nm[azRange]||azRange)+' · '+fmtD(from)+' – '+fmtD(to-86400000);}
 function sharedPeriod(v){v=v||(window.AccazaReportPeriod&&window.AccazaReportPeriod.get&&window.AccazaReportPeriod.get());if(!v)return;azRange=v.period==='7'?'7d':v.period==='30'?'30d':v.period||'30d';azFrom=v.from?localDateValue(v.from):null;azTo=v.to?localDateValue(v.to):null;}
+async function ensureAnalyticsHistory(){
+  var a=A(),hub=a&&a.hub;if(analyticsHistoryLoading||!hub)return;
+  var from=rangeBounds()[0],paths=[{path:'orders',map:function(){return ordersMap;},field:'timestamp'},{path:'archivedOrders',map:function(){return archMap;},field:'archivedAt'}];
+  function oldest(cfg){return Object.values(cfg.map()).reduce(function(min,o){var ts=Number(o&&o[cfg.field])||0;return ts&&(!min||ts<min)?ts:min;},0);}
+  function needsOlder(cfg){var status=hub.historyStatus(cfg.path),old=oldest(cfg);return status.hasOlder&&(azRange==='all'||!old||old>from);}
+  if(!paths.some(needsOlder))return;
+  analyticsHistoryLoading=true;var note=document.getElementById('azHistoryNote');if(note)note.textContent='Loading complete sales history…';
+  try{
+    for(var p=0;p<paths.length;p++){
+      var cfg=paths[p],status=hub.historyStatus(cfg.path),loops=0;
+      while(status.hasOlder&&loops<100){
+        var oldestTs=oldest(cfg);
+        if(azRange!=='all'&&oldestTs&&oldestTs<=from)break;
+        await hub.loadOlder(cfg.path);status=hub.historyStatus(cfg.path);loops++;
+      }
+    }
+  }catch(e){console.error('analytics history load error',e);}
+  finally{analyticsHistoryLoading=false;renderAnalytics();}
+}
 
 function bar(label,val,max,disp){var w=max>0?Math.max(2,Math.round(val/max*100)):0;return '<div class="az-bar-row"><div class="az-bar-lbl">'+esc(label)+'</div><div class="az-bar-track"><div class="az-bar-fill" style="width:'+w+'%;"></div></div><div class="az-bar-val">'+(disp!=null?disp:val)+'</div></div>';}
 function kpi(label,val,delta){var d='';if(delta!=null&&isFinite(delta))d='<div class="d '+(delta>0?'az-up':delta<0?'az-down':'az-flat')+'">'+pct(delta)+' vs prev</div>';return '<div class="az-kpi"><div class="v">'+val+'</div><div class="l">'+esc(label)+'</div>'+d+'</div>';}
@@ -95,7 +114,7 @@ function renderAnalytics(){
       azRange='custom';if(window.AccazaReportPeriod)window.AccazaReportPeriod.set({period:'custom',from:tsToDate(azFrom),to:tsToDate(azTo)});renderAnalytics(); return;
     }
   }); }
-  try{ renderAnalyticsBody(); }
+  try{ renderAnalyticsBody();ensureAnalyticsHistory(); }
   catch(err){ console.error('renderAnalytics error',err);
     root.innerHTML='<div class="pz-h">📊 Analytics</div><div style="margin:0.5rem 0;">'
       +['today:Today','7d:7 days','30d:30 days','month:This month','all:All time'].map(function(o){var v=o.split(':');return '<span class="pz-chip'+(azRange===v[0]?' on':'')+'" data-range="'+v[0]+'">'+v[1]+'</span>';}).join('')
@@ -168,7 +187,8 @@ function renderAnalyticsBody(){
   var _azF=tsToDate(from), _azT=tsToDate(to-86400000); // local date parts (not UTC) so date inputs match the range in UTC+10
   html+='<div style="margin-bottom:0.4rem;">'+['today:Today','7d:7 days','30d:30 days','month:This month','all:All time'].map(function(o){var v=o.split(':');return '<span class="pz-chip '+(azRange===v[0]?'on':'')+'" data-range="'+v[0]+'">'+v[1]+'</span>';}).join('')
     +'<span style="margin-left:0.5rem;font-size:0.78rem;color:var(--tl);">or '+'<input type="date" class="pz-in" id="azFrom" value="'+_azF+'" style="width:auto;display:inline-block;padding:0.2rem 0.4rem;"/> → <input type="date" class="pz-in" id="azTo" value="'+_azT+'" style="width:auto;display:inline-block;padding:0.2rem 0.4rem;"/> <button class="pz-btn '+(azRange==='custom'?'ok':'sec')+'" id="azApply" style="padding:0.25rem 0.6rem;">Apply dates</button></span></div>'
-    +'<div class="az-note" id="azActive" style="margin:0 0 0.7rem;font-weight:600;color:var(--bd);">📅 Showing: '+azRangeLabel(from,to)+'</div>';
+    +'<div class="az-note" id="azActive" style="margin:0 0 0.25rem;font-weight:600;color:var(--bd);">📅 Showing: '+azRangeLabel(from,to)+'</div>'
+    +'<div class="az-note" id="azHistoryNote" style="margin:0 0 0.7rem;">'+(analyticsHistoryLoading?'Loading complete sales history…':'Complete available sales history loaded.')+'</div>';
   // KPIs
   html+='<div class="az-kpis">'
     +kpi('Net sales',peso0(net),trend)
