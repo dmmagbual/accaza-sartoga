@@ -19,6 +19,7 @@
     if(name==='pos'&&!window.AccazaCosting)return load('costing').then(function(){if(!window.AccazaCosting)throw new Error('Shared costing engine did not initialize.');return load('pos');});
     promises[name]=new Promise(function(resolve,reject){
       var script=document.createElement('script');
+      if(name==='analytics')script.type='module';
       script.src=base+files[name];script.async=true;script.dataset.accazaModule=name;
       script.onload=resolve;
       script.onerror=function(){delete promises[name];reject(new Error('Could not load '+name+' module.'));};

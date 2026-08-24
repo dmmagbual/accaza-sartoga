@@ -1,6 +1,8 @@
+import{reconcileInventoryBooks}from'./inventory-books-reconciliation.mjs';
 (function(){
 'use strict';
-var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={},receiptsMap={},posSettingsMap={};
+var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={},receiptsMap={},posSettingsMap={},inventoryBooksMovements={};
+var inventoryBooksLoaded=false,inventoryBooksHistoryLoading=false;
 var svFrom=null,svTo=null,svExpand=null;
 var azRange='month', azFrom=null, azTo=null, pnlMonth=null, analyticsHistoryLoading=false;
 var poChannel='grabfood', poFrom=null, poTo=null;
@@ -46,6 +48,7 @@ function init(){
   a.subscribe('internalUsage',function(s){usageMap=s.val()||{};if(isTab('pnl'))renderPnl();if(isTab('stockvalue'))renderStockValue();});
   a.subscribe('stockReceipts',function(s){receiptsMap=s.val()||{};if(isTab('stockvalue'))renderStockValue();});
   a.subscribe('inventory',function(s){invMap=s.val()||{};if(isTab('stockvalue'))renderStockValue();});
+  a.subscribe('financialMovements',function(s){inventoryBooksMovements=s.val()||{};inventoryBooksLoaded=true;if(isTab('stockvalue'))renderStockValue();});
   a.subscribe('posSettings',function(s){posSettingsMap=s.val()||{};if(isTab('pnl'))renderPnl();});
   a.subscribe('platformPayouts',function(s){payoutsMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();if(isTab('analytics'))renderAnalytics();});
   a.subscribe('platformVarAccounts',function(s){varAcctMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();});
@@ -716,10 +719,33 @@ function itemReconciliation(id,rng){
   return {beginning:roundQty(ending-received+issued-adjustment),received:received,issued:issued,adjustment:adjustment,ending:ending};
 }
 function signedQty(n){n=roundQty(n);return n?(n>0?'+':'')+fq(n):'—';}
+async function ensureInventoryBooksHistory(){
+  var hub=A()&&A().hub;if(!hub||inventoryBooksHistoryLoading)return;
+  var status=hub.historyStatus('financialMovements');if(!status.hasOlder)return;
+  inventoryBooksHistoryLoading=true;renderStockValue();
+  try{var loops=0;while(status.hasOlder&&loops<100){await hub.loadOlder('financialMovements');status=hub.historyStatus('financialMovements');loops++;}}
+  catch(e){console.error('inventory Books history load error',e);}
+  finally{inventoryBooksHistoryLoading=false;renderStockValue();}
+}
+function inventoryBooksReconciliation(summaries,rng){
+  var cutoff=rng.t?addDays(localDateValue(rng.t),1):Infinity;
+  var itemRows=summaries.map(function(x){return{id:x.item.id,name:x.item.name,inventoryAccount:x.item.inventoryAccount,quantity:x.flow.ending,unitCost:Number(x.item.cost)||0};});
+  var movements=Object.keys(inventoryBooksMovements).map(function(k){return Object.assign({id:k},inventoryBooksMovements[k]||{});});
+  return reconcileInventoryBooks(itemRows,movements,cutoff);
+}
+function inventoryReconciliationHtml(recon,ready,history){
+  if(!ready)return '<div class="pz-card" style="margin-bottom:0.8rem;border-left:4px solid #b08d57;"><b>Inventory-to-Books reconciliation</b><div class="az-note" style="margin-top:0.35rem;">'+(inventoryBooksHistoryLoading?'Loading the complete Finance Books ledger…':'Preparing the Finance Books inventory balances…')+' Loaded '+history.loaded+' movement(s). No partial balance is presented as final.</div></div>';
+  var status=recon.balanced?'<span style="color:#267354;">✓ Reconciled</span>':'<span style="color:#b44336;">⚠ Not reconciled</span>';
+  var rows=recon.rows.map(function(r){var diff=r.difference,meaning=Math.abs(diff)<0.005?'Balanced':(diff>0?'Stock valuation is higher':'Books balance is higher');return '<tr><td><b>'+esc(r.code)+'</b> · '+esc(r.name)+'</td><td class="r">'+r.itemCount+'</td><td class="r">'+peso(r.stockValue)+'</td><td class="r">'+peso(r.booksValue)+'</td><td class="r" style="font-weight:700;color:'+(Math.abs(diff)<0.005?'#267354':'#b44336')+';">'+peso(diff)+'</td><td>'+meaning+'</td></tr>';}).join('');
+  return '<div class="pz-card" style="margin-bottom:0.8rem;"><div style="display:flex;justify-content:space-between;gap:0.6rem;flex-wrap:wrap;"><div><b>Inventory-to-Books reconciliation</b><div class="az-note">As of the selected To date · Difference = stock-item valuation − Finance Books balance.</div></div><div style="font-weight:700;">'+status+'</div></div><div style="overflow-x:auto;margin-top:0.7rem;"><table class="pz-tbl"><thead><tr><th>Inventory account</th><th class="r">Items</th><th class="r">Stock valuation</th><th class="r">Books balance</th><th class="r">Difference</th><th>Meaning</th></tr></thead><tbody>'+rows+'<tr style="font-weight:700;"><td>TOTAL</td><td></td><td class="r">'+peso(recon.totals.stockValue)+'</td><td class="r">'+peso(recon.totals.booksValue)+'</td><td class="r">'+peso(recon.totals.difference)+'</td><td>'+(recon.balanced?'Balanced':'Requires reconciliation')+'</td></tr></tbody></table></div><div class="az-note" style="margin-top:0.65rem;">Positive difference means stock valuation exceeds Books and needs an inventory debit or source repair. Negative difference means Books exceeds physical stock. Unmapped items: '+recon.unmappedCount+' · Receiving clearing 1290: '+peso(recon.clearingBalance)+'. This report does not post adjustments automatically.</div></div>';
+}
 function renderStockValue(){
   var root=document.getElementById('stockValueRoot');if(!root)return;
   var rng=svRange();var items=invItems();
   var summaries=items.map(function(i){return {item:i,flow:itemReconciliation(i.id,rng)};});
+  var history=A()&&A().hub?A().hub.historyStatus('financialMovements'):{loaded:0,hasOlder:true};
+  var reconReady=inventoryBooksLoaded&&!history.hasOlder&&!inventoryBooksHistoryLoading;
+  var recon=reconReady?inventoryBooksReconciliation(summaries,rng):null;
   var totalValue=summaries.reduce(function(s,x){return s+x.flow.ending*(Number(x.item.cost)||0);},0);
   var periodPurch=0;Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r)return;var d=r.date||tsToDate(r.ts);if(inRng(d,rng))periodPurch+=Number(r.total)||0;});
   var periodUse=0;[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k];if(!isSale(o))return;var d=tsToDate(o.timestamp||Date.parse(o.date)||0);if(inRng(d,rng))periodUse+=Number(o.cogsSnapshot)||0;});});
@@ -732,7 +758,7 @@ function renderStockValue(){
       +'<div class="pz-card" style="flex:1;min-width:170px;"><div style="font-size:0.72rem;color:var(--tl);">Ending inventory value</div><div style="font-size:1.25rem;font-weight:700;color:var(--bd);">'+peso(totalValue)+'</div></div>'
       +'<div class="pz-card" style="flex:1;min-width:170px;"><div style="font-size:0.72rem;color:var(--tl);">Purchases (period)</div><div style="font-size:1.25rem;font-weight:700;color:#2a9d5c;">'+peso(periodPurch)+'</div></div>'
       +'<div class="pz-card" style="flex:1;min-width:170px;"><div style="font-size:0.72rem;color:var(--tl);">Usage / COGS (period)</div><div style="font-size:1.25rem;font-weight:700;color:#c0392b;">'+peso(periodUse)+'</div></div>'
-    +'</div>'
+    +'</div>'+inventoryReconciliationHtml(recon,reconReady,history)
     +'<div style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap;margin-bottom:0.8rem;"><div><span class="pz-lbl">From</span><input class="pz-in" id="svFrom" type="date" value="'+rng.f+'"/></div><div><span class="pz-lbl">To</span><input class="pz-in" id="svTo" type="date" value="'+rng.t+'"/></div><button class="pz-btn sec" id="svExport" style="padding:0.3rem 0.7rem;">⬇ Excel</button></div>'
     +'<div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th class="r" title="Balance immediately before the selected period">Beginning balance</th><th class="r">Stock received</th><th class="r">Stock issued or consumed</th><th class="r">Adjustment and wastage</th><th class="r">Ending balance</th><th class="r">Ending value</th><th class="r">Cost per unit</th><th class="r">Stock cards</th></tr></thead><tbody>'+(rows||'<tr><td colspan="9" class="az-note" style="padding:0.6rem;">No inventory items.</td></tr>')+'</tbody></table></div></div>';
   root.innerHTML=html;
@@ -740,6 +766,7 @@ function renderStockValue(){
   var ft=document.getElementById('svTo');if(ft)ft.onchange=function(){svTo=this.value||null;renderStockValue();};
   var ex=document.getElementById('svExport');if(ex)ex.onclick=exportStockValue;
   root.querySelectorAll('[data-svcard]').forEach(function(b){b.onclick=function(){openStockCard(b.getAttribute('data-svcard'));};});
+  if(inventoryBooksLoaded&&history.hasOlder&&!inventoryBooksHistoryLoading)ensureInventoryBooksHistory();
 }
 function openStockCard(id){
   var inv=invMap[id]||{};var cost=Number(inv.cost)||0;var cur=Number(inv.stock)||0;
