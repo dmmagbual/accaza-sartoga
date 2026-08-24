@@ -1668,13 +1668,14 @@ exports.ensureFinancialLedger = onCall(
     const [ordersSnap, archiveSnap, accountsSnap, ledgerSnap, shiftsSnap, vouchersSnap, replenishmentsSnap, pettySettingsSnap, receivablesSnap, payablesSnap, movementsSnap] = await Promise.all([db.ref("/orders").get(), db.ref("/archivedOrders").get(), db.ref("/cfAccounts").get(), db.ref("/cfLedger").get(), db.ref("/shifts").get(), db.ref("/pettyCashVouchers").get(), db.ref("/pettyCashReplenishments").get(), db.ref("/pettyCashSettings").get(), db.ref("/receivables").get(), db.ref("/payables").get(), db.ref("/financialMovements").get()]);
     const accounts = accountsSnap.val() || {}, legacyLedger = ledgerSnap.val() || {}, all = Object.assign({}, archiveSnap.val() || {}, ordersSnap.val() || {}); let posted = 0, duplicates = 0, skipped = 0; const serverActor = {uid: "server", role: "server"};
     for (const id of Object.keys(all)) { try {const order = Object.assign({id}, all[id]), result = await postOrderFinancial(db, order, accounts, serverActor); if (result.skipped) skipped++; else if (result.duplicate) duplicates++; else posted++; const refund = Financial.money(order.refundAmount); if (refund > 0) {const movementId = `refund_${id}_${Math.round(refund * 100)}`, movement = Financial.reversalPosting(order, refund, "refund", accounts), writes = {}; movement.occurredAt = Number(order.refundedAt || order.timestamp || Date.now()); if (!legacyLedger[`cfrefund_${id}`]) addOrderCashWrites(writes, movement, movementId, order, serverActor); const rr = await commitFinancial(db, movementId, movement, serverActor, writes); rr.duplicate ? duplicates++ : posted++;} if (order.voided) {const remaining = Financial.money(Math.max(0, Financial.money(order.total) - refund)); if (remaining > 0) {const movementId = `void_${id}`, movement = Financial.reversalPosting(order, remaining, "void", accounts), writes = {}; movement.occurredAt = Number(order.voidedAt || order.timestamp || Date.now()); addOrderCashWrites(writes, movement, movementId, order, serverActor); const vr = await commitFinancial(db, movementId, movement, serverActor, writes); vr.duplicate ? duplicates++ : posted++;}}} catch (error) {logger.error("3C backfill order failed", {id, error: String(error)}); throw new HttpsError("internal", `Backfill stopped at order ${id}. It is safe to retry.`);} }
-    const originalMovements = movementsSnap.val() || {}; let orphanReversed = 0;
-    for (const movementId of Object.keys(originalMovements)) {
-      const original = originalMovements[movementId] || {}, sourceId = String(original.sourceId || "");
-      if (original.type !== "order_sale" || !sourceId || all[sourceId]) continue;
-      if (!(original.lines || []).length) continue;
-      const reversalId = `orphan_reversal_${sourceId}`, reversal = Financial.reverseMovement(Object.assign({id: movementId}, original), "orphan_order_reversal", "Reverse orphaned sale");
-      reversal.actorName = "Automated sales reconciliation"; reversal.controlReason = "Admin order record is authoritative and unavailable";
+      const originalMovements = movementsSnap.val() || {}; let orphanReversed = 0;
+      for (const movementId of Object.keys(originalMovements)) {
+        const original = originalMovements[movementId] || {}, sourceId = String(original.sourceId || "");
+        if (original.type !== "order_sale" || !sourceId || all[sourceId]) continue;
+        if (!(original.lines || []).length) continue;
+        const reversalId = `orphan_balance_correction_${sourceId}`, reversal = Financial.netMovementCorrection(Object.values(originalMovements), sourceId, "orphan_order_reversal", "Correct orphaned sale balance");
+        if (!reversal) continue;
+        reversal.actorName = "Automated sales reconciliation"; reversal.controlReason = "Admin order record is authoritative; correct only the remaining source balance";
       const result = await commitFinancial(db, reversalId, reversal, serverActor, {[`operationalAudit/${Date.now()}_orphan_sale_${sourceId}`]: {action: "orphan_sale_reversed", sourceType: "order", sourceId, movementId, reversalId, amount: Financial.money(original.amount), actorUid: actor.uid, ts: Date.now(), schemaVersion: 1}});
       if (result.duplicate) duplicates++; else {posted++; orphanReversed++;}
     }
