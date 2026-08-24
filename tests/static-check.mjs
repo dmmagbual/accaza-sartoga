@@ -467,6 +467,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(salesAuthorityCheck.status!==0)fail(`Shared Admin sales-authority checks failed:\n${salesAuthorityCheck.stderr||salesAuthorityCheck.stdout}`);
   const archiveOrderSortCheck=spawnSync(process.execPath,[path.join(root,'tests','archive-order-sort-check.mjs')],{encoding:'utf8',cwd:root});
   if(archiveOrderSortCheck.status!==0)fail(`Archived-order sorting checks failed:\n${archiveOrderSortCheck.stderr||archiveOrderSortCheck.stdout}`);
+  const inventoryBooksReconciliationCheck=spawnSync(process.execPath,[path.join(root,'tests','inventory-books-reconciliation-check.mjs')],{encoding:'utf8',cwd:root});
+  if(inventoryBooksReconciliationCheck.status!==0)fail(`Inventory-to-Books reconciliation checks failed:\n${inventoryBooksReconciliationCheck.stderr||inventoryBooksReconciliationCheck.stdout}`);
   const booksHtml=fs.readFileSync(path.join(root,'books.html'),'utf8');
   const salesAuthoritySource=fs.readFileSync(path.join(root,'assets','js','shared','sales-authority.js'),'utf8');
   const salesHistorySource=fs.readFileSync(path.join(root,'assets','js','admin','sales-history.js'),'utf8');
@@ -476,7 +478,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!overviewInsightsSource.includes("saved.period:'month'")||!analyticsSource.includes("var azRange='month'"))fail('Overview and Analytics must initially use This month');
   for(const marker of ['REPORT_PERIOD_KEY = "accaza-report-period"','function periodButtons()','window.__booksLiveLoading = true','Refreshing Finance Books'])if(!booksHtml.includes(marker))fail(`Books period/refresh marker missing: ${marker}`);
   for(const marker of ['ordersLoaded=false','movementsLoaded=false','Preparing the shared-period report'])if(!salesHistorySource.includes(marker))fail(`Sales History refresh guard missing: ${marker}`);
-  for(const marker of ["saleshistory:['orders','archivedOrders','financialMovements']","financialMovements:['cashflow','receivables','payables','payouts','saleshistory']"])if(!realtimeHubSource.includes(marker))fail(`Sales History Finance subscription scope missing: ${marker}`);
+  for(const marker of ["saleshistory:['orders','archivedOrders','financialMovements']","financialMovements:['cashflow','receivables','payables','payouts','saleshistory','stockvalue']"])if(!realtimeHubSource.includes(marker))fail(`Sales History Finance subscription scope missing: ${marker}`);
   if(!adminHtml.includes('href="books.html" target="_blank" rel="noopener"'))fail('Finance navigation must preserve the live Admin cashier tab');
   for(const marker of ['paymentStatus!==\'pending\'','Completed','Received','amounts','qualifies'])if(!salesAuthoritySource.includes(marker))fail(`Shared Admin sales-authority marker missing: ${marker}`);
   for(const marker of ['window.AccazaSales.qualifies','window.AccazaSales.amounts','window.AccazaSales.stamp'])if(!adminSource.includes(marker)||!salesHistorySource.includes(marker))fail(`Admin sales views do not share authority marker: ${marker}`);
@@ -508,6 +510,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   process.stdout.write(booksBridgeCheck.stdout);
   process.stdout.write(salesAuthorityCheck.stdout);
   process.stdout.write(archiveOrderSortCheck.stdout);
+  process.stdout.write(inventoryBooksReconciliationCheck.stdout);
   process.stdout.write(operationalExceptionsCheck.stdout);
   process.stdout.write(managerApprovalCheck.stdout);
   console.log('PASS: functions/index.js syntax is valid.');
