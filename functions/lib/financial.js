@@ -81,4 +81,10 @@ function movement(type, sourceType, sourceId, lines, extra) {
   assertBalanced(lines); return Object.assign({type: safe(type), sourceType: safe(sourceType), sourceId: safe(sourceId), amount: totals(lines).debit, lines, warnings: []}, extra || {});
 }
 
-module.exports = {money, safe, line, totals, assertBalanced, accountForMethod, orderPosting, reversalPosting, movement};
+function reverseMovement(original, type, label) {
+  original = original || {};
+  const lines = (original.lines || []).map((item) => line(item.account, item.credit, item.debit, `${safe(label || "Reverse")} · ${safe(item.label || original.sourceId)}`));
+  return movement(type || "movement_reversal", original.sourceType || "unknown", original.sourceId || "", lines, {occurredAt: Number(original.occurredAt || original.postedAt || Date.now()), channel: original.channel || "", reversesMovementId: original.id || ""});
+}
+
+module.exports = {money, safe, line, totals, assertBalanced, accountForMethod, orderPosting, reversalPosting, movement, reverseMovement};
