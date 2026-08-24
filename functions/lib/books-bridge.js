@@ -43,7 +43,7 @@ function mapAccount(posAccount, channel, cashAccountMap) {
     "asset:register_cash": "1000", "asset:cash_awaiting_deposit": "1030", "asset:petty_cash": "1040",
     "asset:withholding_tax": "1260", "revenue:sales_reversal": "4900",
     "revenue:cash_overage": "6110", "revenue:payment_overage": "4990",
-    "expense:cash_shortage": "6110", "expense:platform_commission": "6040",
+    "expense:cash_shortage": "3100", "equity:owner_draw": "3100", "expense:platform_commission": "6040",
     "expense:platform_discount": "6045", "expense:platform_service_vat": "6046",
     "expense:platform_estimate_variance": "6100", "revenue:platform_estimate_variance": "4990",
     "equity:owner_capital": "3000", "equity:opening_balance": "3900", "equity:cash_float_source": "3050",
@@ -56,6 +56,8 @@ function mapAccount(posAccount, channel, cashAccountMap) {
   if (a.indexOf("asset:platform_receivable:") === 0 || a.indexOf("asset:platform_clearing:") === 0) return {code: "1100", unmapped: false};
   if (a.indexOf("asset:receivable:") === 0) return {code: "1110", unmapped: false};
   if (a.indexOf("asset:fixed_asset:") === 0) return {code: a.split(":")[2] === "furniture" ? "1510" : "1500", unmapped: false};
+  if (a.indexOf("inventory:") === 0) return {code: "1290", unmapped: true};
+  if (a.indexOf("liability:grni:") === 0) return {code: "2090", unmapped: true};
   if (a.indexOf("liability:payable:") === 0) return {code: "2000", unmapped: false};
   if (a.indexOf("liability:platform_owing:") === 0) return {code: "2020", unmapped: false};
   var seg = a.indexOf(":") >= 0 ? a.slice(a.indexOf(":") + 1).toLowerCase() : "";
@@ -63,7 +65,19 @@ function mapAccount(posAccount, channel, cashAccountMap) {
   if (CHART_COA[seg]) return {code: CHART_COA[seg], unmapped: false};
   if (a.indexOf("revenue:") === 0) return {code: "4990", unmapped: true};
   if (a.indexOf("expense:") === 0) return {code: "6100", unmapped: true};
+  if (a.indexOf("cogs:") === 0) return {code: "5090", unmapped: true};
   return {code: "1900", unmapped: true};
+}
+
+/* Stable Books code for each live cash-flow account. Explicit config still wins. */
+function cashCodeForAccount(account) {
+  const name = String(account && account.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (name.includes("gcash") || name.includes("maya")) return "1020";
+  if (name.includes("unionbank")) return "1011";
+  if (name === "bdo" || name.startsWith("bdo")) return "1012";
+  if (name.includes("securitybank4538")) return "1013";
+  if (name.includes("securitybank4389")) return "1014";
+  return String(account && account.type || "").toLowerCase() === "ewallet" ? "1020" : "1010";
 }
 
 function isSaleMovement(mv) {
@@ -173,4 +187,4 @@ function netBookValue(asset){
   return r2((Number(asset.cost)||0) - (Number(asset.accumulatedDepreciation)||0));
 }
 
-module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, isSaleMovement, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, cogsLines, cogsMovement, monthlyStraightLine, netBookValue};
+module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, cashCodeForAccount, isSaleMovement, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, cogsLines, cogsMovement, monthlyStraightLine, netBookValue};

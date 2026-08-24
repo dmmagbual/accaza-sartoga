@@ -19,6 +19,15 @@ ok(B.mapAccount('asset:platform_receivable:grabfood','grabfood',cashMap).code===
 ok(B.mapAccount('expense:platform_commission','grabfood',cashMap).code==='6040','platform_commission→6040');
 ok(B.mapAccount('liability:payable:po_1','instore',cashMap).code==='2000','payable→2000');
 ok(B.mapAccount('liability:platform_owing:grabfood','grabfood',cashMap).code==='2020','negative platform payout→2020 liability');
+ok(B.mapAccount('expense:cash_shortage','instore',{}).code==='3100','cash shortage→owner drawings');
+ok(B.mapAccount('inventory:legacy_receipt','instore',{}).code==='1290','unposted inventory receipt→1290 clearing');
+ok(B.mapAccount('liability:grni:legacy','instore',{}).code==='2090','unrecorded payable→2090 clearing');
+ok(B.mapAccount('cogs:legacy','instore',{}).code==='5090','unposted COGS→5090 clearing');
+ok(B.cashCodeForAccount({name:'Union Bank',type:'bank'})==='1011','Union Bank→1011');
+ok(B.cashCodeForAccount({name:'BDO',type:'bank'})==='1012','BDO→1012');
+ok(B.cashCodeForAccount({name:'G-Cash',type:'ewallet'})==='1020','G-Cash→1020');
+ok(B.cashCodeForAccount({name:'Security Bank-4538',type:'bank'})==='1013','Security Bank 4538→1013');
+ok(B.cashCodeForAccount({name:'Security Bank-4389',type:'bank'})==='1014','Security Bank 4389→1014');
 const un = B.mapAccount('asset:unmapped_payment:foo','instore',cashMap);
 ok(un.code==='1900' && un.unmapped===true,'unknown account→1900 + unmapped flag');
 

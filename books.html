@@ -190,15 +190,16 @@ const STORE_KEY = "accaza_books_v1";
 function defaultAccounts(){
   return [
     // Assets
-    ["1000","Cash on Hand","Asset"],["1010","Cash in Bank","Asset"],["1020","GCash / Maya Wallet","Asset"],
+    ["1000","Cash on Hand","Asset"],["1010","Other Bank Accounts","Asset"],["1011","Union Bank","Asset"],["1012","BDO","Asset"],
+    ["1013","Security Bank – 4538","Asset"],["1014","Security Bank – 4389","Asset"],["1020","GCash / Maya Wallet","Asset"],
     ["1100","Accounts Receivable – Platforms","Asset","Grab/Panda settlements owed to us"],
     ["1200","Inventory – Coffee & Beans","Asset"],["1210","Inventory – Milk & Dairy","Asset"],
     ["1220","Inventory – Syrups & Flavors","Asset"],["1230","Inventory – Cups & Packaging","Asset"],
-    ["1240","Inventory – Food & Pastries","Asset"],
+    ["1240","Inventory – Food & Pastries","Asset"],["1290","Inventory Receiving Clearing","Asset","Received inventory awaiting complete posting"],
     ["1500","Equipment","Asset","Espresso machine, grinders"],["1510","Furniture & Fixtures","Asset"],
     ["1590","Accumulated Depreciation","Asset","Contra-asset (credit balance)"],
     // Liabilities
-    ["2000","Accounts Payable – Suppliers","Liability"],["2020","Due to Platforms","Liability","Negative Grab/FoodPanda settlements owed to the platform"],["2100","Accrued Salaries","Liability"],
+    ["2000","Accounts Payable – Suppliers","Liability"],["2020","Due to Platforms","Liability","Negative Grab/FoodPanda settlements owed to the platform"],["2090","Unrecorded Payables Clearing","Liability","Supplier obligations awaiting complete posting"],["2100","Accrued Salaries","Liability"],
     ["2200","Taxes Payable","Liability"],["2300","Loans Payable","Liability"],
     // Equity
     ["3000","Owner's Capital","Equity"],["3100","Owner's Drawings","Equity","Contra-equity (debit balance)"],
@@ -210,7 +211,7 @@ function defaultAccounts(){
     // COGS
     ["5000","COGS – Coffee & Beans","COGS"],["5010","COGS – Milk & Dairy","COGS"],
     ["5020","COGS – Syrups & Flavors","COGS"],["5030","COGS – Food & Pastries","COGS"],
-    ["5040","COGS – Cups & Packaging","COGS"],["5900","Wastage & Spoilage","COGS"],
+    ["5040","COGS – Cups & Packaging","COGS"],["5090","Unposted COGS Clearing","COGS","Costs awaiting complete item-level posting"],["5900","Wastage & Spoilage","COGS"],
     // Expenses
     ["6000","Salaries & Wages","Expense"],["6010","Rent","Expense"],["6020","Utilities","Expense","Electricity, water"],
     ["6030","Internet & Phone","Expense"],["6040","Platform Commissions","Expense","Grab/Panda fees"],
@@ -239,16 +240,20 @@ function migrate(p){
   var need=[
     ["1030","Undeposited Funds","Asset","Cash awaiting bank deposit"],
     ["1040","Petty Cash","Asset"],
+    ["1011","Union Bank","Asset"],["1012","BDO","Asset"],["1013","Security Bank – 4538","Asset"],["1014","Security Bank – 4389","Asset"],
     ["1110","Other Receivables","Asset"],
     ["1250","Input VAT (creditable)","Asset","Used when VAT-registered"],
     ["1260","Creditable Withholding Tax","Asset","CWT withheld by platforms/customers"],
     ["1900","Suspense","Asset","Unmapped POS accounts land here for review"],
+    ["1290","Inventory Receiving Clearing","Asset","Received inventory awaiting complete posting"],
     ["2020","Due to Platforms","Liability","Negative Grab/FoodPanda settlements owed to the platform"],
+    ["2090","Unrecorded Payables Clearing","Liability","Supplier obligations awaiting complete posting"],
     ["2210","Output VAT Payable","Liability","Used when VAT-registered"],
     ["2220","Percentage Tax Payable","Liability","Non-VAT percentage tax on gross receipts"],
     ["2230","Withholding Tax Payable","Liability","EWT withheld from payments"],
     ["3050","Cash Float Clearing","Equity","POS shift float source"],
     ["4990","Other Income","Income"],
+    ["5090","Unposted COGS Clearing","COGS","Costs awaiting complete item-level posting"],
     ["6045","Platform Discounts","Expense","Grab/Panda-funded or shared discounts"],
     ["6046","Platform Service VAT","Expense"],
     ["6110","Cash Short / Over","Expense","Register variance"]
@@ -457,7 +462,7 @@ const App = {
 const PAGES = {
   dashboard(){
     const pl=plData();
-    const cash = ["1000","1010","1020"].reduce((s,c)=>s+accountBalance(c,false),0); // cash across all time
+    const cash = ["1000","1010","1011","1012","1013","1014","1020"].reduce((s,c)=>s+accountBalance(c,false),0); // cash across all time
     const ar = accountBalance("1100",false);
     const ap = accountBalance("2000",false);
     const cogsPct = pl.totalIncome>0 ? (pl.totalCogs/pl.totalIncome*100) : 0;
@@ -465,7 +470,7 @@ const PAGES = {
     const topExp = pl.expense.slice().sort((a,b)=>b.bal-a.bal)[0];
     const kpi=(lbl,val,sub,cls)=>`<div class="kpi ${cls||''}"><div class="lbl">${lbl}</div><div class="val">${val}</div><div class="sub">${sub||''}</div></div>`;
     return `<div class="page-head"><div><h2>Dashboard</h2><p>${monthLabel(PERIOD)} · ${DB.meta&&DB.meta.name||''}</p></div>
-        <button class="btn primary" onclick="App.newEntry()">+ New entry</button></div>
+        <div class="btn-row">${window.__booksUser?'<button class="btn" onclick="App.syncBooks(this)">↻ Sync all Finance transactions</button>':''}<button class="btn primary" onclick="App.newEntry()">+ New entry</button></div></div>
       <div class="hint">Live double-entry books. When signed in, POS sales, COGS, and cash post automatically, and receivables/payables read from your finance subledgers. Set opening balances to make the balance sheet and cash flow tie out.</div>
       <div class="kpis">
         ${kpi("Cash position", pesoNoDec(cash), "On hand + bank + wallet (all-time)", cash>=0?'good':'bad')}
@@ -822,6 +827,15 @@ App.signInPrompt=function(){
       <button class="btn primary" onclick="window.__booksSignIn(document.getElementById('si_email').value,document.getElementById('si_pw').value)">Sign in</button></div>`;
   document.getElementById("modalBg").classList.add("show");
 };
+App.syncBooks=function(btn){
+  if(!window.__booksSync){alert("Live sync is not ready — sign in first.");return;}
+  if(!confirm("Sync every historical Finance transaction into Books? This is idempotent and safe to rerun."))return;
+  btn.disabled=true;const old=btn.textContent;btn.textContent="Syncing…";
+  window.__booksSync().then(function(r){
+    alert("Books synced. Finance movements: "+r.movements+" · COGS posted: "+r.cogsPosted+" · COGS awaiting review: "+r.missingCogs+" · opening cash: "+peso(r.openingCash));
+    btn.disabled=false;btn.textContent=old;
+  }).catch(function(e){alert("Books sync stopped: "+((e&&e.message)||e)+" Safe to retry.");btn.disabled=false;btn.textContent=old;});
+};
 
 window.App = App; // expose for the live-POS reader module below
 // If the Firebase SDK can't load at all (opened offline / from a file), downgrade the pill.
@@ -838,7 +852,7 @@ import {getFunctions, httpsCallable} from "https://www.gstatic.com/firebasejs/10
 const cfg={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 function setPill(text,cls){ const el=document.getElementById("liveStatus"); if(el){ el.textContent=text; el.className="live-pill "+cls; } }
 let app,db,auth;
-try{ app=initializeApp(cfg); db=getDatabase(app); auth=getAuth(app); var fns=getFunctions(app,"asia-southeast1"); window.__financeCmd=function(payload){ return httpsCallable(fns,"postFinancialCommand")(payload).then(function(r){return r.data;}); }; window.__fixedAsset=function(payload){ return httpsCallable(fns,"manageFixedAsset")(payload).then(function(r){return r.data;}); }; window.__booksAuthReady=true; }
+try{ app=initializeApp(cfg); db=getDatabase(app); auth=getAuth(app); var fns=getFunctions(app,"asia-southeast1"); window.__financeCmd=function(payload){ return httpsCallable(fns,"postFinancialCommand")(payload).then(function(r){return r.data;}); }; window.__fixedAsset=function(payload){ return httpsCallable(fns,"manageFixedAsset")(payload).then(function(r){return r.data;}); }; window.__booksSync=function(){return httpsCallable(fns,"ensureBooksJournal")({}).then(function(r){return r.data;});}; window.__booksAuthReady=true; }
 catch(e){ setPill("● Offline (local only)","off"); }
 if(auth){
   setPersistence(auth, browserLocalPersistence).catch(()=>{});

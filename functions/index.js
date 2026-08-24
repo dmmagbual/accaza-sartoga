@@ -157,6 +157,15 @@ async function flagUnmappedBooks(db, mv, unmapped) {
   await db.ref(`/books/reviewQueue/${mv.id}`).set({movementId: String(mv.id || ""), type: String(mv.type || ""), sourceId: String(mv.sourceId || ""), accounts: unmapped, at: Date.now()});
 }
 
+async function booksCashAccountMap(db) {
+  const [configuredSnap, accountsSnap] = await Promise.all([
+    db.ref("/books/config/cashAccountMap").get(), db.ref("/cfAccounts").get(),
+  ]);
+  const map = Object.assign({}, configuredSnap.val() || {}), accounts = accountsSnap.val() || {};
+  Object.keys(accounts).forEach((id) => { if (!map[id]) map[id] = BooksBridge.cashCodeForAccount(accounts[id]); });
+  return map;
+}
+
 exports.mirrorPosMovementToBooks = onValueCreated(
   {ref: "/financialMovements/{movementId}", region: "asia-southeast1"},
   async (event) => {
@@ -164,7 +173,7 @@ exports.mirrorPosMovementToBooks = onValueCreated(
     if (!mv || !Array.isArray(mv.lines) || !mv.lines.length) return;
     if (!mv.id) mv.id = event.params.movementId;
     const db = getDatabase();
-    const cashMap = (await db.ref("/books/config/cashAccountMap").get()).val() || {};
+    const cashMap = await booksCashAccountMap(db);
     const bucket = BooksBridge.bucketFor(mv);
     if (bucket.mode === "daily") {
       const ref = db.ref(`/books/journal/${bucket.key}`);
@@ -205,6 +214,47 @@ exports.mirrorPosCogsToBooks = onValueWritten(
       return next === undefined ? cur : next;
     });
     await ref.child("updatedAt").set(Date.now());
+  },
+);
+
+// Rebuild every authoritative Finance movement into Books. This closes the
+// one-time historical gap left by movements created before the Books trigger
+// existed, and is safe to rerun because journal keys and daily source ids are stable.
+exports.ensureBooksJournal = onCall(
+  {region: "asia-southeast1", enforceAppCheck: process.env.ENFORCE_APP_CHECK === "true", timeoutSeconds: 540, memory: "512MiB"},
+  async (request) => {
+    const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["cashflow", "receivables", "payables"]);
+    const [movementSnap, ordersSnap, archiveSnap, journalSnap, cashAccountsSnap] = await Promise.all([
+      db.ref("/financialMovements").get(), db.ref("/orders").get(), db.ref("/archivedOrders").get(), db.ref("/books/journal").get(), db.ref("/cfAccounts").get(),
+    ]);
+    const movements = movementSnap.val() || {}, allOrders = Object.assign({}, archiveSnap.val() || {}, ordersSnap.val() || {});
+    const cashMap = await booksCashAccountMap(db), daily = {}, singles = {}, review = {};
+    const movementIds = Object.keys(movements).sort((a, b) => Number(movements[a].occurredAt || 0) - Number(movements[b].occurredAt || 0) || a.localeCompare(b));
+    movementIds.forEach((id) => {
+      const mv = Object.assign({id}, movements[id] || {}); if (!Array.isArray(mv.lines) || !mv.lines.length) return;
+      const bucket = BooksBridge.bucketFor(mv), mapped = BooksBridge.mappedLines(mv, cashMap);
+      if (mapped.unmapped.length) review[id] = {movementId: id, type: String(mv.type || ""), sourceId: String(mv.sourceId || ""), accounts: mapped.unmapped, at: Date.now()};
+      if (bucket.mode === "daily") daily[bucket.key] = BooksBridge.applyDaily(daily[bucket.key] || null, mv, cashMap);
+      else singles[bucket.key] = Object.assign(BooksBridge.buildSingle(mv, cashMap).entry, {createdAt: Date.now(), rebuiltAt: Date.now()});
+    });
+    let cogsPosted = 0, missingCogs = 0;
+    Object.keys(allOrders).forEach((id) => {
+      const order = allOrders[id] || {}, status = order.status === "Archived" ? order.prevStatus : order.status;
+      if (!["Completed", "Received"].includes(status) && !order.completedAt) return;
+      const cogs = BooksBridge.cogsMovement(order, id);
+      if (!cogs.lines.length) { missingCogs++; review[`cogs_missing_${id}`] = {movementId: `cogs_missing_${id}`, type: "unposted_cogs", sourceId: id, accounts: [{account: "cogs:missing_snapshot", code: "5090"}], detail: "Historical order has no reliable COGS snapshot; review in Unposted COGS Clearing without guessing a cost.", at: Date.now()}; return; }
+      const bucket = BooksBridge.bucketFor(cogs); daily[bucket.key] = BooksBridge.applyDaily(daily[bucket.key] || null, cogs, cashMap); cogsPosted++;
+    });
+    const existing = journalSnap.val() || {}, writes = {};
+    Object.keys(existing).forEach((key) => { if (existing[key] && existing[key].net && existing[key].source === "pos-bridge" && !daily[key]) writes[`books/journal/${key}`] = null; });
+    Object.keys(daily).forEach((key) => { daily[key].updatedAt = Date.now(); writes[`books/journal/${key}`] = daily[key]; });
+    Object.keys(singles).forEach((key) => { writes[`books/journal/${key}`] = singles[key]; });
+    writes["books/reviewQueue"] = review;
+    writes["books/config/cashAccountMap"] = cashMap;
+    const paths = Object.keys(writes); for (let i = 0; i < paths.length; i += 300) { const batch = {}; paths.slice(i, i + 300).forEach((path) => { batch[path] = writes[path]; }); await db.ref().update(batch); }
+    const openingCash = BooksBridge.r2(Object.values(cashAccountsSnap.val() || {}).reduce((sum, account) => sum + Number(account && account.opening || 0), 0));
+    const result = {at: Date.now(), by: actor.uid, movements: movementIds.length, dailyEntries: Object.keys(daily).length, singleEntries: Object.keys(singles).length, cogsPosted, missingCogs, reviewItems: Object.keys(review).length, openingCash};
+    await db.ref("/systemMaintenance/booksJournalSynced").set(result); return result;
   },
 );
 
