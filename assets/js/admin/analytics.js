@@ -57,13 +57,13 @@ window.__accazaRegisterModule('analytics',function(name){ if(name==='analytics')
 function captureCompletedAt(all){var a=A();Object.keys(all).forEach(function(id){var o=all[id];if(o&&o.status==='Completed'&&!o.completedAt){a.update(a.ref(a.db,'orders/'+id),{completedAt:Date.now()});}});}
 
 /* ---------- sales model ---------- */
-function isSale(o){if(!o||o.voided)return false;var r=['Completed','Received'];if(o.source==='pos')return true;if(r.indexOf(o.status)>-1)return true;if(o.status==='Archived'&&r.indexOf(o.prevStatus)>-1)return true;return false;}
+function isSale(o){if(!o||o.voided||o.paymentStatus==='pending')return false;var status=o.status==='Archived'?o.prevStatus:o.status;return ['Completed','Received'].indexOf(status)>-1;}
 function allOrders(){var out=[];[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){out.push(m[k]);});});return out;}
 function itemCost(li){var rec=recMap[li.itemKey];if(!rec)return null;var mult=(rec.sizeMult&&rec.sizeMult[li.size]!=null)?rec.sizeMult[li.size]:1;var c=0;(rec.base||[]).forEach(function(b){var ing=invMap[b.ing];if(!ing)return;var per=b['qty'+(li.size||'M')];var q=(per!=null&&per!=='')?(Number(per)||0):(Number(b.qty)||0)*mult;c+=q*(Number(ing.cost)||0);});var labels=li.optLabels||[];var _it=((A()&&A().menuItemsMap)||{})[li.itemKey]||{key:li.itemKey};var getChoiceIngs=window.__accazaChoiceIngs;labels.forEach(function(lb){(getChoiceIngs?getChoiceIngs(_it,rec,lb,li.size):[]).forEach(function(r){var ing=invMap[r.ing];if(ing)c+=(Number(r.qty)||0)*(Number(ing.cost)||0);});});return c*(Number(li.qty)||1);}
 function orderCOGS(o){var _x=Number(o.extraCost)||0;
   if(o.cogsSnapshot!=null)return{cost:(Number(o.cogsSnapshot)||0)+_x,covered:o.cogsCovered!==false};
   if(!o.lineItems)return{cost:_x,covered:false};var cost=0,any=false,all=true;o.lineItems.forEach(function(li){var c=itemCost(li);if(c==null)all=false;else{cost+=c;any=true;}});return{cost:cost+_x,covered:any&&all};}
-function saleFields(o){var gross=(o.subtotal!=null?Number(o.subtotal):Number(o.total))||0;var disc=Number(o.discount)||0;var ref=Number(o.refundAmount)||0;return{ts:o.timestamp||Date.parse(o.date)||0,gross:gross,discount:disc,refund:ref,net:gross-disc-ref,payment:o.payment||'—',type:o.type||'—',lineItems:o.lineItems||null,phone:(o.phone||'').replace(/[^0-9]/g,''),name:o.name||'Walk-in',o:o};}
+function saleFields(o){var gross=(o.subtotal!=null?Number(o.subtotal):Number(o.total))||0;var disc=Number(o.discount)||0;var ref=Number(o.refundAmount)||0;return{ts:o.completedAt||o.receivedAt||o.timestamp||Date.parse(o.date)||0,gross:gross,discount:disc,refund:ref,net:gross-disc-ref,payment:o.payment||'—',type:o.type||'—',lineItems:o.lineItems||null,phone:(o.phone||'').replace(/[^0-9]/g,''),name:o.name||'Walk-in',o:o};}
 function salesBetween(from,to){return allOrders().filter(isSale).map(saleFields).filter(function(s){return s.ts>=from&&s.ts<to;});}
 function dayStart(d){d=new Date(d);d.setHours(0,0,0,0);return d.getTime();}
 function addDays(ts,n){var d=new Date(ts);d.setDate(d.getDate()+n);return d.getTime();}

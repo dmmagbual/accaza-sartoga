@@ -16,6 +16,7 @@
    ============================================================ */
 
 const CHANNEL_SALES = {instore: "4000", online: "4010", grabfood: "4020", foodpanda: "4030"};
+const SALES_CODES = new Set([...Object.values(CHANNEL_SALES), "4900"]);
 // Finance chart-account id -> Accaza Books COA (bills, manual expenses, owner capital/draw, etc.)
 const CHART_COA = {
   rent: "6010", utilities: "6020", salaries: "6000", "bank charges": "6080", bank_charges: "6080",
@@ -60,7 +61,7 @@ function mapAccount(posAccount, channel, cashAccountMap) {
     "asset:withholding_tax": "1260", "revenue:sales_reversal": "4900",
     "revenue:cash_overage": "6110", "revenue:payment_overage": "4990",
     "expense:cash_shortage": "3100", "equity:owner_draw": "3100", "expense:platform_commission": "6040",
-    "expense:platform_discount": "6045", "expense:platform_service_vat": "6046",
+    "expense:platform_discount": "4900", "expense:platform_service_vat": "6046",
     "expense:platform_estimate_variance": "6100", "revenue:platform_estimate_variance": "4990",
     "equity:owner_capital": "3000", "equity:opening_balance": "3900", "equity:cash_float_source": "3050",
     "cogs:beverage": "5000", "cogs:food": "5030", "cogs:packaging": "5040", "cogs:other": "5000", "inventory:control": "1200",
@@ -164,6 +165,12 @@ function linesBalanced(lines) {
   return Math.abs(r2(dr) - r2(cr)) < 0.005;
 }
 
+/* Net completed sales represented by a Books net map: sales credits less
+   refund/void debits in contra-income 4900. Other income is intentionally excluded. */
+function netSales(net) {
+  return r2(-Object.keys(net || {}).filter((code) => SALES_CODES.has(code)).reduce((sum, code) => sum + Number(net[code] || 0), 0));
+}
+
 /* Build Dr COGS (by category) / Cr Inventory lines from an order's cogs snapshot. */
 function cogsLines(order, inventory, categories){
   var total = r2(order && order.cogsSnapshot);
@@ -210,4 +217,4 @@ function netBookValue(asset){
   return r2((Number(asset.cost)||0) - (Number(asset.accumulatedDepreciation)||0));
 }
 
-module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, cashCodeForAccount, itemAccounts, cogsAccountSnapshot, isSaleMovement, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, cogsLines, cogsMovement, monthlyStraightLine, netBookValue};
+module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, cashCodeForAccount, itemAccounts, cogsAccountSnapshot, isSaleMovement, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, netSales, cogsLines, cogsMovement, monthlyStraightLine, netBookValue};

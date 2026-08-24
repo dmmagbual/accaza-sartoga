@@ -254,7 +254,8 @@ exports.ensureBooksJournal = onCall(
     writes["books/config/cashAccountMap"] = cashMap;
     const paths = Object.keys(writes); for (let i = 0; i < paths.length; i += 300) { const batch = {}; paths.slice(i, i + 300).forEach((path) => { batch[path] = writes[path]; }); await db.ref().update(batch); }
     const openingCash = BooksBridge.r2(Object.values(cashAccountsSnap.val() || {}).reduce((sum, account) => sum + Number(account && account.opening || 0), 0));
-    const result = {at: Date.now(), by: actor.uid, movements: movementIds.length, dailyEntries: Object.keys(daily).length, singleEntries: Object.keys(singles).length, cogsPosted, missingCogs, reviewItems: Object.keys(review).length, openingCash};
+    const netSales = BooksBridge.r2(Object.values(daily).reduce((sum, entry) => sum + BooksBridge.netSales(entry && entry.net), 0));
+    const result = {at: Date.now(), by: actor.uid, movements: movementIds.length, dailyEntries: Object.keys(daily).length, singleEntries: Object.keys(singles).length, netSales, cogsPosted, missingCogs, reviewItems: Object.keys(review).length, openingCash};
     await db.ref("/systemMaintenance/booksJournalSynced").set(result); return result;
   },
 );
@@ -1189,7 +1190,8 @@ async function findOrder(db, orderId) {
   return {id, node, order: Object.assign({id}, snap.val() || {})};
 }
 async function postOrderFinancial(db, order, accounts, actor) {
-  if (!order || !order.id || order.paymentStatus === "pending" || !["Completed", "Received", "Archived"].includes(String(order.status || ""))) return {skipped: true};
+  const effectiveStatus = order && order.status === "Archived" ? order.prevStatus : order && order.status;
+  if (!order || !order.id || order.paymentStatus === "pending" || !["Completed", "Received"].includes(String(effectiveStatus || ""))) return {skipped: true};
   const movement = Financial.orderPosting(order, accounts || {});
   if (order.paymentApprovalId) {movement.approvalId = order.paymentApprovalId; movement.approvedBy = financeText(order.paymentApprovedBy, 160);}
   movement.occurredAt = Number(order.completedAt || order.receivedAt || order.timestamp || Date.now());
