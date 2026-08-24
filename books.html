@@ -198,7 +198,7 @@ function defaultAccounts(){
     ["1500","Equipment","Asset","Espresso machine, grinders"],["1510","Furniture & Fixtures","Asset"],
     ["1590","Accumulated Depreciation","Asset","Contra-asset (credit balance)"],
     // Liabilities
-    ["2000","Accounts Payable – Suppliers","Liability"],["2100","Accrued Salaries","Liability"],
+    ["2000","Accounts Payable – Suppliers","Liability"],["2020","Due to Platforms","Liability","Negative Grab/FoodPanda settlements owed to the platform"],["2100","Accrued Salaries","Liability"],
     ["2200","Taxes Payable","Liability"],["2300","Loans Payable","Liability"],
     // Equity
     ["3000","Owner's Capital","Equity"],["3100","Owner's Drawings","Equity","Contra-equity (debit balance)"],
@@ -243,6 +243,7 @@ function migrate(p){
     ["1250","Input VAT (creditable)","Asset","Used when VAT-registered"],
     ["1260","Creditable Withholding Tax","Asset","CWT withheld by platforms/customers"],
     ["1900","Suspense","Asset","Unmapped POS accounts land here for review"],
+    ["2020","Due to Platforms","Liability","Negative Grab/FoodPanda settlements owed to the platform"],
     ["2210","Output VAT Payable","Liability","Used when VAT-registered"],
     ["2220","Percentage Tax Payable","Liability","Non-VAT percentage tax on gross receipts"],
     ["2230","Withholding Tax Payable","Liability","EWT withheld from payments"],
