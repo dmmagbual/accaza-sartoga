@@ -37,7 +37,7 @@
     if(!row||row.qty==null||row.qty==='')return 0;
     var base=Number(row.qty),sm=recipe&&recipe.sizeMult||{S:1,M:1.3,L:1.6},mult=Number(sm[size]==null?1:sm[size]);return Number.isFinite(base)&&Number.isFinite(mult)?base*mult:NaN;
   }
-  function normalizeRow(row,inventory,path,errors,warnings){
+  function normalizeRow(row,inventory,path,errors,warnings,allowNegative){
     row=row||{};var id=String(row.ing||'').trim(),item=inventory[id];
     if(!id){errors.push({code:'MISSING_INGREDIENT',path:path,message:'Ingredient is required.'});return null;}
     if(!item){errors.push({code:'BROKEN_INVENTORY_REFERENCE',path:path,itemId:id,message:'Inventory item '+id+' does not exist.'});return null;}
@@ -57,8 +57,8 @@
       }else if(row.qty!=null&&row.qty!==''){
         qty=rawSize(row,size,{sizeMult:row.sizeMult});out['disp'+size]=null;
       }else{qty=0;out['disp'+size]=null;}
-      if(!Number.isFinite(Number(qty))||qty<0)errors.push({code:'INVALID_QUANTITY',path:path+'.'+size,itemId:id,message:'Quantity must be zero or positive.'});
-      out['qty'+size]=q6(Math.max(0,n(qty)));if(out['qty'+size]>0)any=true;
+      if(!Number.isFinite(Number(qty))||(!allowNegative&&qty<0))errors.push({code:'INVALID_QUANTITY',path:path+'.'+size,itemId:id,message:allowNegative?'Quantity must be a valid number.':'Quantity must be zero or positive.'});
+      out['qty'+size]=q6(allowNegative?n(qty):Math.max(0,n(qty)));if(out['qty'+size]!==0)any=true;
     });
     if(!any)warnings.push({code:'ZERO_QUANTITY_ROW',path:path,itemId:id,message:(item.name||id)+' has zero quantity for every size.'});
     return out;
@@ -67,7 +67,7 @@
     recipe=recipe||{};inventory=inventory||{};var errors=[],warnings=[],seen={};
     var base=(Array.isArray(recipe.base)?recipe.base:[]).map(function(row,ix){var r=normalizeRow(row,inventory,'base['+ix+']',errors,warnings);if(r){if(seen[r.ing])warnings.push({code:'DUPLICATE_INGREDIENT',path:'base['+ix+']',itemId:r.ing,message:'Ingredient appears more than once; quantities will stack.'});seen[r.ing]=1;}return r;}).filter(Boolean);
     if(!base.length)errors.push({code:'EMPTY_RECIPE',path:'base',message:'Add at least one base ingredient or consumable.'});
-    var choiceAdd={};Object.keys(recipe.choiceAdd||{}).forEach(function(gid){var group={};Object.keys(recipe.choiceAdd[gid]||{}).forEach(function(key){var entry=recipe.choiceAdd[gid][key]||{};var rows=(entry.ings||[]).map(function(row,ix){return normalizeRow(row,inventory,'choiceAdd.'+gid+'.'+key+'['+ix+']',errors,warnings);}).filter(Boolean);if(rows.length)group[key]={label:entry.label||key,ings:rows};});if(Object.keys(group).length)choiceAdd[gid]=group;});
+    var choiceAdd={};Object.keys(recipe.choiceAdd||{}).forEach(function(gid){var group={};Object.keys(recipe.choiceAdd[gid]||{}).forEach(function(key){var entry=recipe.choiceAdd[gid][key]||{};var rows=(entry.ings||[]).map(function(row,ix){return normalizeRow(row,inventory,'choiceAdd.'+gid+'.'+key+'['+ix+']',errors,warnings,true);}).filter(Boolean);if(rows.length)group[key]={label:entry.label||key,ings:rows};});if(Object.keys(group).length)choiceAdd[gid]=group;});
     var normalized={base:base,choiceAdd:choiceAdd,schemaVersion:2,costingEngineVersion:VERSION,updatedAt:n(recipe.updatedAt)||Date.now()};
     if(Array.isArray(recipe.options))normalized.options=recipe.options;
     return {ok:errors.length===0,recipe:normalized,errors:errors,warnings:warnings,engineVersion:VERSION};
@@ -89,8 +89,9 @@
       if(!recipe||!Array.isArray(recipe.base)||!recipe.base.length){warnings.push({code:'MISSING_RECIPE',itemKey:li.itemKey,message:(item.name||li.itemKey)+' has no recipe.'});return;}
       var contributions=(recipe.base||[]).map(function(row){return {row:row,source:'base'};});
       (li.optLabels||[]).forEach(function(label){var found=optionRows(item,recipe,label,size,ctx);if(!found.length)warnings.push({code:'UNMAPPED_OPTION',itemKey:li.itemKey,label:label,message:'No ingredient cost is mapped to option '+label+'.'});contributions=contributions.concat(found);});
-      contributions.forEach(function(entry,rix){var row=entry.row||{},id=row.ing,inv=inventory[id];if(!id||!inv){errors.push({code:'BROKEN_INVENTORY_REFERENCE',itemKey:li.itemKey,itemId:id||'',message:'Recipe points to a missing inventory item.'});return;}var per=rawSize(row,size,recipe);if(!Number.isFinite(per)||per<0){errors.push({code:'INVALID_QUANTITY',itemKey:li.itemKey,itemId:id,message:'Recipe quantity is invalid.'});return;}var totalQty=q6(per*orderQty);if(!totalQty)return;var unitCost=n(inv.cost);if(!(unitCost>0))warnings.push({code:'MISSING_COST',itemKey:li.itemKey,itemId:id,message:(inv.name||id)+' has no current unit cost.'});var totalCost=q6(totalQty*unitCost);usage[id]=q6((usage[id]||0)+totalQty);lines.push({itemKey:li.itemKey,itemName:item.name||li.itemKey,size:size,orderQty:orderQty,source:entry.source,ingredientId:id,ingredientName:inv.name||id,quantityPerServing:q6(per),totalQuantity:totalQty,stockUnit:unit(inv.unit),unitCost:q6(unitCost),totalCost:totalCost,costSource:inv.ledgerVersion?'inventory-ledger-wac':'inventory-wac',costEffectiveAt:n(inv.ledgerUpdatedAt||inv.updatedAt)||null});});
+      contributions.forEach(function(entry,rix){var row=entry.row||{},id=row.ing,inv=inventory[id];if(!id||!inv){errors.push({code:'BROKEN_INVENTORY_REFERENCE',itemKey:li.itemKey,itemId:id||'',message:'Recipe points to a missing inventory item.'});return;}var per=rawSize(row,size,recipe),adjustment=entry.source!=='base';if(!Number.isFinite(per)||(!adjustment&&per<0)){errors.push({code:'INVALID_QUANTITY',itemKey:li.itemKey,itemId:id,message:'Recipe quantity is invalid.'});return;}var totalQty=q6(per*orderQty);if(!totalQty)return;var unitCost=n(inv.cost);if(!(unitCost>0))warnings.push({code:'MISSING_COST',itemKey:li.itemKey,itemId:id,message:(inv.name||id)+' has no current unit cost.'});var totalCost=q6(totalQty*unitCost);usage[id]=q6((usage[id]||0)+totalQty);lines.push({itemKey:li.itemKey,itemName:item.name||li.itemKey,size:size,orderQty:orderQty,source:entry.source,ingredientId:id,ingredientName:inv.name||id,quantityPerServing:q6(per),totalQuantity:totalQty,stockUnit:unit(inv.unit),unitCost:q6(unitCost),totalCost:totalCost,costSource:inv.ledgerVersion?'inventory-ledger-wac':'inventory-wac',costEffectiveAt:n(inv.ledgerUpdatedAt||inv.updatedAt)||null});});
     });
+    Object.keys(usage).forEach(function(id){if(usage[id]<0){errors.push({code:'NEGATIVE_TOTAL_USAGE',itemId:id,message:'Recipe option adjustments cannot reduce total ingredient usage below zero.'});}});
     var total=money(lines.reduce(function(sum,line){return sum+n(line.totalCost);},0));
     return {ok:errors.length===0,engineVersion:VERSION,usage:usage,lines:lines,totalCost:total,cogsCovered:errors.length===0&&!warnings.some(function(w){return w.code==='MISSING_COST'||w.code==='MISSING_RECIPE'||w.code==='UNMAPPED_OPTION';}),errors:errors,warnings:warnings};
   }

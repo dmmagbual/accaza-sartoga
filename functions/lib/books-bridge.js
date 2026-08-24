@@ -206,6 +206,11 @@ function cogsMovement(order, orderId, inventory, categories){
   };
 }
 
+function recognizedOrderForCogs(order){
+  order=order||{};var status=order.status==='Archived'?order.prevStatus:order.status;
+  return order.voided!==true&&order.paymentStatus!=='pending'&&(status==='Completed'||status==='Received');
+}
+
 /* Straight-line monthly depreciation and net book value (shared by server + register UI). */
 function monthlyStraightLine(cost, salvage, usefulLifeMonths){
   var dep = r2((Number(cost)||0) - Math.max(0, Number(salvage)||0));
@@ -217,4 +222,4 @@ function netBookValue(asset){
   return r2((Number(asset.cost)||0) - (Number(asset.accumulatedDepreciation)||0));
 }
 
-module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, cashCodeForAccount, itemAccounts, cogsAccountSnapshot, isSaleMovement, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, netSales, cogsLines, cogsMovement, monthlyStraightLine, netBookValue};
+module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, cashCodeForAccount, itemAccounts, cogsAccountSnapshot, isSaleMovement, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, netSales, cogsLines, cogsMovement, recognizedOrderForCogs, monthlyStraightLine, netBookValue};
