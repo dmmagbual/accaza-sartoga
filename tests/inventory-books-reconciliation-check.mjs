@@ -26,7 +26,7 @@ const journalResult=reconcileInventoryBooks([
   {inventoryAccount:'1200',quantity:10,unitCost:20},
   {inventoryAccount:'1210',quantity:5,unitCost:10}
 ],[
-  {date:'2026-08-24',lines:[{code:'1200',debit:250,credit:50},{code:'1210',debit:50,credit:0}]},
+  {date:'2026-08-24',net:{'1200':200,'1210':50}},
   {date:'2026-08-26',lines:[{code:'1200',debit:999,credit:0}]}
 ],'2026-08-25');
 assert.equal(journalResult.rows.find(function(r){return r.code==='1200';}).booksValue,200);
