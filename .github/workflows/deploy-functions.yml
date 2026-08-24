@@ -55,6 +55,11 @@ jobs:
       - name: Run Accaza quality gate
         run: npm run test:ci
 
+      - name: Acknowledge retry policy for order preservation
+        run: firebase deploy --only functions:preservePostedOrderOnDelete --project accaza-sartoga --non-interactive --force
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
       - name: Deploy Functions and rules
         run: firebase deploy --only functions,database,storage --project accaza-sartoga --non-interactive
         env:

@@ -212,7 +212,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   }
   const deployWorkflow=fs.readFileSync(path.join(root,'.github','workflows','deploy-functions.yml'),'utf8');
   if(!deployWorkflow.includes('branches: [main]'))fail('production Firebase deployment is not restricted to main');
-  if(deployWorkflow.includes('--force'))fail('production Firebase deployment may silently delete functions');
+  const forcedDeployLines=deployWorkflow.split(/\r?\n/).filter(line=>line.includes('firebase deploy')&&line.includes('--force'));
+  if(forcedDeployLines.length!==1||!forcedDeployLines[0].includes('--only functions:preservePostedOrderOnDelete '))fail('production Firebase deployment may silently delete functions');
   if(!deployWorkflow.includes('concurrency:')||!deployWorkflow.includes('environment: production'))fail('production Firebase deployment safeguards are incomplete');
   if(/actions\/(?:checkout|setup-node|setup-java)@v4/.test(deployWorkflow))fail('Firebase deployment workflow still uses deprecated Node 20-based actions');
   const qualityWorkflow=fs.readFileSync(path.join(root,'.github','workflows','quality-gate.yml'),'utf8');
