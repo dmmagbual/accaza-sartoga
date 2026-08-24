@@ -41,6 +41,10 @@ export function reconcileInventoryBooks(itemRows,movements,cutoffExclusive){
   });
   (movements||[]).forEach(function(movement){
     if(sourceIsAfterCutoff(movement,cutoffExclusive))return;
+    Object.keys(movement&&movement.net||{}).forEach(function(rawCode){
+      const code=inventoryBookCode(rawCode);if(!code)return;
+      rowsByCode[code].booksValue=r2(rowsByCode[code].booksValue+(Number(movement.net[rawCode])||0));
+    });
     (Array.isArray(movement&&movement.lines)?movement.lines:[]).forEach(function(line){
       const code=inventoryBookCode(line&&(line.code||line.account));if(!code)return;
       rowsByCode[code].booksValue=r2(rowsByCode[code].booksValue+(Number(line.debit)||0)-(Number(line.credit)||0));
