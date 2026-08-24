@@ -13,9 +13,12 @@ for(const file of manifest.authoritativeFiles){
   if(!fs.existsSync(path.join(root,file)))fail(`Authoritative release file missing: ${file}`);
 }
 
-const admin=read('admin.html'),customer=read('index.html'),sw=read('sw.js');
+const admin=read('admin.html'),books=read('books.html'),customer=read('index.html'),sw=read('sw.js');
 if(!admin.includes(`build&nbsp;v${manifest.builds.admin}`))fail('Admin build marker differs from release manifest');
 if(!admin.includes(`name="accaza-admin-build" content="${manifest.builds.admin}"`))fail('Admin telemetry build marker differs from release manifest');
+if(!books.includes(`Coffee-shop accounting · build v${manifest.builds.books}`))fail('Books visible build marker differs from release manifest');
+if(!books.includes(`name="accaza-books-build" content="${manifest.builds.books}"`))fail('Books telemetry build marker differs from release manifest');
+if(!books.includes(`Accaza Books · build v${manifest.builds.books}`))fail('Books footer build marker differs from release manifest');
 if(!customer.includes(`accaza-index build v${manifest.builds.customer}`))fail('Customer build marker differs from release manifest');
 if(!customer.includes(`name="accaza-customer-build" content="${manifest.builds.customer}"`))fail('Customer telemetry build marker differs from release manifest');
 if(!customer.includes(`>Website version ${manifest.builds.customer}</span>`))fail('Visible customer footer version differs from release manifest');
