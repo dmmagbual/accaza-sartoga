@@ -87,8 +87,11 @@ const detailed=B.cogsLines(detailedOrder);
 ok(B.linesBalanced(detailed),"item-category COGS mapping balances");
 for(const [asset,cogs,amount] of [["1200","5000",4],["1210","5010",5],["1220","5020",3],["1230","5040",2],["1240","5030",1]]){ok(detailed.some(l=>l.account===`coa:${asset}`&&l.credit===amount),`inventory ${asset} credited`);ok(detailed.some(l=>l.account===`coa:${cogs}`&&l.debit===amount),`COGS ${cogs} debited`);}
 ok(B.mapAccount("coa:1210","instore",{}).code==="1210","direct mapped COA account retained");
-const historical=B.cogsAccountSnapshot({cogsDetail:{lines:[{ingredientId:"milk",totalCost:8}]}},{milk:{category:"cat_milk"}},{cat_milk:{name:"Milk",inventoryAccount:"1210",cogsAccount:"5010"}});
-ok(historical["1210|5010"]===8,"historical item detail inherits current category mapping");
+const historical=B.cogsAccountSnapshot({cogsDetail:{lines:[{ingredientId:"milk",totalCost:8}]}},{milk:{inventoryAccount:"1210",costAccount:"5010"}},{});
+ok(historical["1210|5010"]===8,"historical item detail uses the item's own account mapping");
+const overhead=B.cogsAccountSnapshot({cogsDetail:{lines:[{ingredientId:"cleaner",totalCost:6}]}},{cleaner:{inventoryAccount:"1270",costAccount:"6070"}},{});
+ok(overhead["1270|6070"]===6,"overhead item uses its own inventory and expense codes");
+ok(B.mapAccount("coa:1270","instore",{}).code==="1270"&&B.mapAccount("coa:6070","instore",{}).code==="6070","overhead direct COA codes retained");
 // bucket mismatch reconciles to authoritative total
 const order2 = {channel:"instore", cogsSnapshot:50, cogsCategorySnapshot:{beverage:30, food:10}, completedAt: Date.parse("2026-08-22T05:00:00Z")};
 ok(Math.abs(B.cogsLines(order2).find(l=>l.account==="inventory:control").credit - 50) < 0.005, "cogs reconciles buckets to total (50)");

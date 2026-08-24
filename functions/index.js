@@ -1376,9 +1376,8 @@ exports.postFinancialCommand = onCall(
 // its payable. Safe to retry: the invoice, payable and financial movement use
 // deterministic IDs, while legacy/manual matches are linked instead of copied.
 async function purchaseInventoryLines(db, invoice, credit) {
-  const [inventorySnap, categoriesSnap] = await Promise.all([db.ref("/inventory").get(), db.ref("/posSettings/invCategories").get()]);
-  const inventory = inventorySnap.val() || {}, categories = categoriesSnap.val() || {}, totals = {};
-  (Array.isArray(invoice && invoice.lines) ? invoice.lines : []).forEach((line) => {const item=inventory[line.itemId]||{},mapping=BooksBridge.categoryAccounts(categories[item.category]||{}),code=mapping.inventory||"1290",value=Financial.money(line.total);if(value>0)totals[code]=Financial.money((totals[code]||0)+value);});
+  const inventorySnap = await db.ref("/inventory").get(), inventory = inventorySnap.val() || {}, totals = {};
+  (Array.isArray(invoice && invoice.lines) ? invoice.lines : []).forEach((line) => {const item=inventory[line.itemId]||{},mapping=BooksBridge.itemAccounts(item),code=mapping.inventory||"1290",value=Financial.money(line.total);if(value>0)totals[code]=Financial.money((totals[code]||0)+value);});
   const expected=Financial.money(invoice&&invoice.total),found=Financial.money(Object.values(totals).reduce((sum,value)=>sum+value,0)),gap=Financial.money(expected-found);if(gap)totals["1290"]=Financial.money((totals["1290"]||0)+gap);
   return Object.keys(totals).filter((code)=>totals[code]>0).sort().map((code)=>Financial.line(`coa:${code}`,credit?0:totals[code],credit?totals[code]:0,invoice.supplier||"Inventory purchase"));
 }
@@ -1945,8 +1944,8 @@ exports.onOrderFinalize = onValueWritten(
       Object.keys(cogsCategorySnapshot).forEach((key) => {cogsCategorySnapshot[key] = Math.round(cogsCategorySnapshot[key] * 100) / 100;});
       const cogsAccountSnapshot = {};
       costing.lines.forEach((costLine) => {
-        const item = inv[costLine.ingredientId] || {}, mapping = BooksBridge.categoryAccounts(invCategories[item.category] || {});
-        const key = mapping.inventory && mapping.cogs ? `${mapping.inventory}|${mapping.cogs}` : "1290|5090";
+        const item = inv[costLine.ingredientId] || {}, mapping = BooksBridge.itemAccounts(item);
+        const key = mapping.inventory && mapping.cost ? `${mapping.inventory}|${mapping.cost}` : "1290|5090";
         cogsAccountSnapshot[key] = Financial.money((cogsAccountSnapshot[key] || 0) + Number(costLine.totalCost || 0));
       });
 

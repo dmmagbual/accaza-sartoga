@@ -466,7 +466,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   for(const marker of ['SAMPLE_ENTRY_IDS','_sample_backup','entries: []','const used = ENTRIES()','onclick="App.drill(\'${a.code}\')"','["2020","Due to Platforms","Liability","Negative Grab/FoodPanda settlements owed to the platform"]'])if(!booksHtml.includes(marker))fail(`Accaza Books cutover marker missing: ${marker}`);
   if((booksHtml.match(/\["2020","Due to Platforms","Liability"/g)||[]).length<2)fail('Due to Platforms must exist in both the default chart and existing-browser migration');
   for(const marker of ['["1290","Inventory Receiving Clearing"','["2090","Unrecorded Payables Clearing"','["5090","Unposted COGS Clearing"','Sync all Finance transactions','ensureBooksJournal'])if(!booksHtml.includes(marker)&&!functionsSource.includes(marker))fail(`Books historical sync marker missing: ${marker}`);
-  for(const marker of ['inventoryAccount','cogsAccount','cogsAccountSnapshot','purchaseInventoryLines','action === "purchase_paid"'])if(!adminSource.includes(marker)&&!functionsSource.includes(marker)&&!booksBridgeSource.includes(marker))fail(`Inventory account-assignment marker missing: ${marker}`);
+  const itemAccountBridgeSource=fs.readFileSync(path.join(root,'functions','lib','books-bridge.js'),'utf8');
+  for(const marker of ['inventoryAccount','costAccount','itemAccounts','cogsAccountSnapshot','purchaseInventoryLines','action === "purchase_paid"','Inventory – Operating & Cleaning Supplies','Office & Administrative Supplies'])if(!adminSource.includes(marker)&&!functionsSource.includes(marker)&&!itemAccountBridgeSource.includes(marker)&&!booksHtml.includes(marker))fail(`Item-level inventory account-assignment marker missing: ${marker}`);
   if(booksHtml.includes('function seedEntries()'))fail('Accaza Books still seeds browser-only sample transactions');
 
   console.log(`PASS: ${checked} executable HTML and external scripts parsed successfully.`);
