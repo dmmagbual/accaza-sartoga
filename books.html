@@ -220,47 +220,15 @@ function defaultAccounts(){
   ].map(a=>({code:a[0],name:a[1],type:a[2],note:a[3]||""}));
 }
 
-/* ---------- seed example so it isn't empty ---------- */
-function seedEntries(){
-  const d = new Date();
-  const ym = d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
-  const day = n => ym+"-"+String(n).padStart(2,"0");
-  let id=1; const E=[];
-  const e=(date,ref,memo,lines)=>E.push({id:"E"+(id++),date,ref,memo,lines,createdAt:Date.now(),reversed:false,reversalOf:null});
-  // Opening capital
-  e(day(1),"OPEN","Owner opening capital injection",[
-    {code:"1010",debit:150000,credit:0},{code:"3000",debit:0,credit:150000}]);
-  // Buy equipment
-  e(day(1),"EQ-01","Espresso machine & grinder (cash)",[
-    {code:"1500",debit:85000,credit:0},{code:"1010",debit:0,credit:85000}]);
-  // Stock purchase on account
-  e(day(2),"PO-101","Beans + milk + cups from suppliers (on account)",[
-    {code:"1200",debit:18000,credit:0},{code:"1210",debit:9000,credit:0},
-    {code:"1230",debit:4000,credit:0},{code:"2000",debit:0,credit:31000}]);
-  // A trading day
-  e(day(5),"DAY-05","Sales for the day — in-store + online",[
-    {code:"1000",debit:9800,credit:0},{code:"1020",debit:2400,credit:0},
-    {code:"4000",debit:0,credit:9800},{code:"4010",debit:0,credit:2400}]);
-  e(day(5),"COGS-05","COGS for day 5 (recipe consumption)",[
-    {code:"5000",debit:1900,credit:0},{code:"5010",debit:980,credit:0},{code:"5040",debit:420,credit:0},
-    {code:"1200",debit:0,credit:1900},{code:"1210",debit:0,credit:980},{code:"1230",debit:0,credit:420}]);
-  // Grab/Panda day (revenue gross, commission expense, net receivable)
-  e(day(6),"DAY-06","GrabFood + FoodPanda sales (net of commission)",[
-    {code:"1100",debit:5100,credit:0},{code:"6040",debit:900,credit:0},
-    {code:"4020",debit:0,credit:3600},{code:"4030",debit:0,credit:2400}]);
-  // Wastage
-  e(day(7),"WASTE-07","Spoiled milk + unsold pastries written off",[
-    {code:"5900",debit:650,credit:0},{code:"1210",debit:0,credit:300},{code:"1240",debit:0,credit:350}]);
-  // Pay rent + utilities
-  e(day(8),"OPEX-08","Rent and utilities (bank)",[
-    {code:"6010",debit:18000,credit:0},{code:"6020",debit:3200,credit:0},{code:"1010",debit:0,credit:21200}]);
-  // Payroll
-  e(day(15),"PAY-15","Barista salaries — first half",[
-    {code:"6000",debit:14000,credit:0},{code:"1010",debit:0,credit:14000}]);
-  // Owner draw
-  e(day(20),"DRAW-20","Owner personal drawing",[
-    {code:"3100",debit:5000,credit:0},{code:"1000",debit:0,credit:5000}]);
-  return E;
+/* ---------- remove the original browser-only demo journal ---------- */
+const SAMPLE_ENTRY_IDS = new Set(["E1","E2","E3","E4","E5","E6","E7","E8","E9","E10"]);
+function stripSampleEntries(p){
+  const removed=(p.entries||[]).filter(e=>SAMPLE_ENTRY_IDS.has(e.id)||SAMPLE_ENTRY_IDS.has(e.reversalOf));
+  if(!removed.length)return p;
+  try{if(!localStorage.getItem(STORE_KEY+"_sample_backup"))localStorage.setItem(STORE_KEY+"_sample_backup",JSON.stringify({removedAt:Date.now(),entries:removed}));}catch(_e){}
+  p.entries=(p.entries||[]).filter(e=>!SAMPLE_ENTRY_IDS.has(e.id)&&!SAMPLE_ENTRY_IDS.has(e.reversalOf));
+  p.meta=Object.assign({},p.meta||{},{sampleEntriesRemovedAt:Date.now()});
+  return p;
 }
 
 /* ---------- state ---------- */
@@ -289,10 +257,11 @@ function migrate(p){
   return p;
 }
 function load(){
-  try{ const raw = localStorage.getItem(STORE_KEY); if(raw){ const p=JSON.parse(raw); if(p&&p.accounts&&p.entries) return migrate(p); } }catch(e){}
-  return migrate({ accounts: defaultAccounts(), entries: seedEntries(), meta:{name:"Accaza Coffee House", created:Date.now()} });
+  try{ const raw = localStorage.getItem(STORE_KEY); if(raw){ const p=JSON.parse(raw); if(p&&p.accounts&&p.entries) return migrate(stripSampleEntries(p)); } }catch(e){}
+  return migrate({ accounts: defaultAccounts(), entries: [], meta:{name:"Accaza Coffee House", created:Date.now()} });
 }
 function save(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(DB)); }catch(e){ alert("Could not save to this browser: "+e.message); } }
+save();
 
 /* ---------- helpers ---------- */
 const peso = n => "₱"+ (Math.round((Number(n)||0)*100)/100).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -555,8 +524,8 @@ const PAGES = {
     const body = groups.map(g=>{
       const rws = g.rows.map(a=>{ const bal=accountBalance(a.code,true); const has=Math.abs(bal)>0.005;
         return `<tr><td><span class="acc-code">${a.code}</span></td>
-          <td>${has?`<span class="linkish" onclick="App.drill('${a.code}')">${esc(a.name)}</span>`:'<span class="muted">'+esc(a.name)+'</span>'}</td>
-          <td class="num">${has?peso(bal):'<span class="muted">—</span>'}</td></tr>`; }).join("");
+          <td><span class="linkish" onclick="App.drill('${a.code}')">${esc(a.name)}</span></td>
+          <td class="num">${has?peso(bal):'<span class="muted">'+peso(0)+'</span>'}</td></tr>`; }).join("");
       return `<tr class="sub-row"><td colspan="3"><span class="type-pill t-${g.t.toLowerCase()}">${g.t}</span></td></tr>`+rws;
     }).join("");
     return `<div class="page-head"><div><h2>General Ledger</h2><p>${monthLabel(PERIOD)} · balances by account · click an active account to see its entries</p></div></div>
@@ -567,11 +536,10 @@ const PAGES = {
     let totDr=0, totCr=0;
     const rows = DB.accounts.map(a=>{
       const net = accountNet(a.code, entriesInPeriod()); // debit-positive
-      if(Math.abs(net)<0.005) return "";
       const dr = net>0?net:0, cr=net<0?-net:0; totDr+=dr; totCr+=cr;
       return `<tr><td><span class="acc-code">${a.code}</span></td>
         <td><span class="linkish" onclick="App.drill('${a.code}')">${esc(a.name)}</span> <span class="type-pill t-${a.type.toLowerCase()}">${a.type}</span></td>
-        <td class="num">${dr?peso(dr):''}</td><td class="num">${cr?peso(cr):''}</td></tr>`;
+        <td class="num">${dr?peso(dr):'<span class="muted">—</span>'}</td><td class="num">${cr?peso(cr):'<span class="muted">—</span>'}</td></tr>`;
     }).join("");
     const balanced = Math.abs(r2(totDr)-r2(totCr))<0.005;
     return `<div class="page-head"><div><h2>Trial Balance</h2><p>${monthLabel(PERIOD)} · proves the books are in balance</p></div></div>
@@ -815,7 +783,7 @@ App.saveAccount=function(orig){
   save(); this.closeModal(); this.render();
 };
 App.deleteAccount=function(code){
-  const used = DB.entries.some(e=>e.lines.some(l=>l.code===code));
+  const used = ENTRIES().some(e=>e.lines.some(l=>l.code===code));
   if(used) return alert("This account is used in journal entries and can't be deleted. You can rename it instead.");
   if(!confirm("Delete this account?")) return;
   DB.accounts = DB.accounts.filter(a=>a.code!==code); save(); this.closeModal(); this.render();
