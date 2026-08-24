@@ -21,6 +21,14 @@ assert(online.lines.some(x=>x.account==='asset:cash_account:gcash'&&x.debit===12
 assert(!online.lines.some(x=>x.account.indexOf('asset:platform_receivable:')===0),'online order was incorrectly treated as a platform receivable');
 assert(online.lines.some(x=>x.account==='revenue:sales'&&x.label==='Online order sales'),'online revenue is not identified separately');
 
+const orphanOriginal=F.orderPosting({id:'ORPHAN1',channel:'instore',total:995,payment:'Cash'},accounts);
+orphanOriginal.id='sale_ORPHAN1';orphanOriginal.occurredAt=12345;
+const orphanReverse=F.reverseMovement(orphanOriginal,'orphan_order_reversal','Reverse orphaned sale');
+balanced(orphanReverse,'orphan reversal');
+assert(orphanReverse.lines.some(x=>x.account==='revenue:sales'&&x.debit===995),'orphan reversal does not reverse sales revenue');
+assert(orphanReverse.lines.some(x=>x.account==='asset:register_cash'&&x.credit===995),'orphan reversal does not reverse the original asset');
+assert(orphanReverse.reversesMovementId==='sale_ORPHAN1'&&orphanReverse.occurredAt===12345,'orphan reversal does not retain source evidence');
+
 const refund=F.reversalPosting({id:'O2',channel:'instore',payment:'GCash',total:80},30,'refund',accounts);
 balanced(refund,'refund');
 assert(refund.cashEntries.length===1&&refund.cashEntries[0].dir==='out'&&refund.cashEntries[0].amount===30,'non-cash refund projection is wrong');

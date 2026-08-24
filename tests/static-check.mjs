@@ -165,7 +165,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!functionsSource.includes('cogsDetail: {'))fail('Release 3B traceable COGS snapshot missing');
   if(!adminSource.includes("'validateRecipeDefinition'")||!adminSource.includes('validateRecipeDefinition:validateRecipeDefinitionCall'))fail('admin recipe save is not connected to the server validator');
   if(!adminSource.includes('Costing().normalizeRecipe(raw,inventoryMap)'))fail('admin recipe save does not run shared normalization');
-  for(const marker of ['exports.postFinancialCommand = onCall','exports.settlePlatformPayout = onCall','exports.processOrderAdjustment = onCall','exports.ensureFinancialLedger = onCall','exports.ensureBooksJournal = onCall','exports.onOrderFinancialPosting = onValueWritten'])if(!functionsSource.includes(marker))fail(`Release 3C server marker missing: ${marker}`);
+  for(const marker of ['exports.postFinancialCommand = onCall','exports.settlePlatformPayout = onCall','exports.processOrderAdjustment = onCall','exports.ensureFinancialLedger = onCall','exports.ensureBooksJournal = onCall','exports.onOrderFinancialPosting = onValueWritten','exports.preservePostedOrderOnDelete = onValueDeleted'])if(!functionsSource.includes(marker))fail(`Release 3C server marker missing: ${marker}`);
   if(adminSource.includes('function reconcileAuto()'))fail('retired browser-authored financial reconciliation still exists');
   if(!adminSource.includes("'postFinancialCommand'")||!adminSource.includes("'settlePlatformPayout'")||!adminSource.includes('postFinancialCommand:postFinancialCommandCall'))fail('Release 3C callable bridge missing');
   for(const node of ['financialMovements','cfLedger','receivables','payables','platformPayouts'])if(!rulesRaw.includes(`"${node}"`))fail(`Release 3C rules missing ${node}`);
@@ -462,8 +462,15 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(offlineRecoveryCheck.status!==0)fail(`Release 6B offline recovery checks failed:\n${offlineRecoveryCheck.stderr||offlineRecoveryCheck.stdout}`);
   const booksBridgeCheck=spawnSync(process.execPath,[path.join(root,'tests','books-bridge-check.mjs')],{encoding:'utf8',cwd:root});
   if(booksBridgeCheck.status!==0)fail(`Accaza Books POS bridge checks failed:\n${booksBridgeCheck.stderr||booksBridgeCheck.stdout}`);
+  const salesAuthorityCheck=spawnSync(process.execPath,[path.join(root,'tests','sales-authority-check.mjs')],{encoding:'utf8',cwd:root});
+  if(salesAuthorityCheck.status!==0)fail(`Shared Admin sales-authority checks failed:\n${salesAuthorityCheck.stderr||salesAuthorityCheck.stdout}`);
   const booksHtml=fs.readFileSync(path.join(root,'books.html'),'utf8');
-  if(!adminSource.includes("o.paymentStatus==='pending'")||!adminSource.includes("o.status==='Archived'?o.prevStatus:o.status"))fail('Admin sales must exclude pending payments and use the completed pre-archive status');
+  const salesAuthoritySource=fs.readFileSync(path.join(root,'assets','js','shared','sales-authority.js'),'utf8');
+  const salesHistorySource=fs.readFileSync(path.join(root,'assets','js','admin','sales-history.js'),'utf8');
+  for(const marker of ['paymentStatus!==\'pending\'','Completed','Received','amounts','qualifies'])if(!salesAuthoritySource.includes(marker))fail(`Shared Admin sales-authority marker missing: ${marker}`);
+  for(const marker of ['window.AccazaSales.qualifies','window.AccazaSales.amounts','window.AccazaSales.stamp'])if(!adminSource.includes(marker)||!salesHistorySource.includes(marker))fail(`Admin sales views do not share authority marker: ${marker}`);
+  for(const marker of ['Admin is the operational authority','Finance Books must be generated from Admin sales','Admin Sales History reconciles to Finance Books',"A().subscribe('financialMovements'"])if(!salesHistorySource.includes(marker))fail(`Sales reconciliation procedure missing: ${marker}`);
+  for(const marker of ['orphan_order_reversal','orphanReversed','Financial.reverseMovement','posted_order_auto_preserved'])if(!functionsSource.includes(marker))fail(`Orphan-sale control marker missing: ${marker}`);
   if(!functionsSource.includes('const effectiveStatus = order && order.status === "Archived" ? order.prevStatus : order && order.status;'))fail('Finance posting must use the completed pre-archive order status');
   for(const marker of ['const salesCodes = new Set(["4000","4010","4020","4030","4900"])','Completed sales less refunds and voids','ensureFinancialLedger','net sales: '])if(!booksHtml.includes(marker))fail(`Books sales reconciliation marker missing: ${marker}`);
   for(const marker of ['SAMPLE_ENTRY_IDS','_sample_backup','entries: []','const used = ENTRIES()','onclick="App.drill(\'${a.code}\')"','["2020","Due to Platforms","Liability","Negative Grab/FoodPanda settlements owed to the platform"]'])if(!booksHtml.includes(marker))fail(`Accaza Books cutover marker missing: ${marker}`);
@@ -488,6 +495,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   process.stdout.write(checkoutWorkflowCheck.stdout);
   process.stdout.write(offlineRecoveryCheck.stdout);
   process.stdout.write(booksBridgeCheck.stdout);
+  process.stdout.write(salesAuthorityCheck.stdout);
   process.stdout.write(operationalExceptionsCheck.stdout);
   process.stdout.write(managerApprovalCheck.stdout);
   console.log('PASS: functions/index.js syntax is valid.');

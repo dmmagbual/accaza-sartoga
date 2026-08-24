@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 270,
-    "books": 4,
+    "admin": 271,
+    "books": 5,
     "customer": 59,
-    "serviceWorkerCache": 174
+    "serviceWorkerCache": 175
   },
   "authoritativeFiles": [
     "admin.html",
@@ -37,6 +37,7 @@
     "functions/lib/operational-exceptions.js",
     "assets/js/shared/costing.js",
     "assets/js/shared/business-date.js",
+    "assets/js/shared/sales-authority.js",
     "assets/css/admin-backoffice.css",
     "assets/js/admin/core.mjs",
     "assets/js/admin/manager-approval.mjs",
@@ -70,6 +71,7 @@
     "recordClientTelemetry",
     "onOrderFinalize",
     "onOrderInventoryReversal",
+    "preservePostedOrderOnDelete",
     "postInventoryMovements",
     "ensureInventoryLedger",
     "postFinancialCommand",

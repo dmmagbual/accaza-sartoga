@@ -977,14 +977,14 @@ function renderPublicReviews(){
 // ── DASHBOARD ──
 function renderDashboard(){
   const archived=Object.values(archivedOrdersMap);
-  function _isSale(o){if(!o||o.voided)return false;if(o.source==='pos')return true;var r=['Completed','Received'];if(r.indexOf(o.status)>-1)return true;if(o.status==='Archived'&&r.indexOf(o.prevStatus)>-1)return true;return false;}
-  function _tsOf(o){return o.timestamp||Date.parse(o.date)||o.archivedAt||0;}
+  function _isSale(o){return window.AccazaSales.qualifies(o);}
+  function _tsOf(o){return window.AccazaSales.stamp(o);}
   const sales=Object.values(adminOrdersMap).concat(archived).filter(_isSale);
   const now2=new Date();
   const startToday=new Date(now2.getFullYear(),now2.getMonth(),now2.getDate()).getTime();
   const _sow=new Date(now2);_sow.setDate(now2.getDate()-now2.getDay());_sow.setHours(0,0,0,0);const startWeek=_sow.getTime();
   const startMonth=new Date(now2.getFullYear(),now2.getMonth(),1).getTime();
-  function sumOrders(arr){return{rev:arr.reduce((s,o)=>s+(o.total||0),0),cnt:arr.length};}
+  function sumOrders(arr){return{rev:arr.reduce((s,o)=>s+window.AccazaSales.amounts(o).net,0),cnt:arr.length};}
   const t=sumOrders(sales.filter(o=>_tsOf(o)>=startToday)),w=sumOrders(sales.filter(o=>_tsOf(o)>=startWeek)),m=sumOrders(sales.filter(o=>_tsOf(o)>=startMonth)),a=sumOrders(sales);
   function setCard(id,rev,cnt){const el=document.getElementById(id);if(el)el.textContent='₱'+rev.toLocaleString();const cel=document.getElementById(id+'Count');if(cel)cel.textContent=cnt+' order'+(cnt!==1?'s':'');}
   setCard('dashToday',t.rev,t.cnt);setCard('dashWeek',w.rev,w.cnt);setCard('dashMonth',m.rev,m.cnt);setCard('dashAllTime',a.rev,a.cnt);
