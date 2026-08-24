@@ -11,6 +11,7 @@ const META={
   usage:['Inventory','Internal usage','Record staff use, testing, waste, and controlled adjustments.',''],
   packages:['Inventory','Packages & promotions','Build sellable bundles from the active catalog.',''],
   analytics:['Financials','Sales analytics','Understand sales mix and operating patterns.',''],
+  saleshistory:['Financials','Sales history','Find and reconcile every completed transaction.','analytics:Open analytics'],
   pnl:['Financials','Profit & loss','Review revenue, cost of goods, and operating result.',''],
   dailyreport:['Financials','Daily report','Close the day with a concise operational and financial view.',''],
   payouts:['Financials','Platform payouts','Reconcile delivery-platform receivables and settlements.',''],
