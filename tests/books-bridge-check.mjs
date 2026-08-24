@@ -103,6 +103,10 @@ const cm = B.cogsMovement(order, "ORD1");
 let n = B.applyDaily(null, cm, {});
 ok(B.linesBalanced(B.netToLines(n.net)), "cogs-only daily node balances");
 ok(B.applyDaily(n, cm, {})===undefined, "cogs movement idempotent (re-fire aborts)");
+ok(B.recognizedOrderForCogs({status:'Completed',paymentStatus:'confirmed'})===true,'completed confirmed order qualifies for COGS');
+ok(B.recognizedOrderForCogs({status:'Archived',prevStatus:'Received',paymentStatus:'cashier_verified'})===true,'archived received order qualifies for COGS');
+ok(B.recognizedOrderForCogs({status:'Archived',prevStatus:'Completed',paymentStatus:'confirmed',voided:true})===false,'voided order COGS is excluded');
+ok(B.recognizedOrderForCogs({status:'Completed',paymentStatus:'pending'})===false,'pending-payment order COGS is excluded');
 
 // 7) Fixed assets: account mappings + straight-line depreciation math
 ok(B.mapAccount("asset:fixed_asset:equipment","instore",{}).code==="1500", "fixed_asset:equipment -> 1500");

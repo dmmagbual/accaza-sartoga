@@ -59,5 +59,11 @@ const broken=Costing.normalizeRecipe({base:[{ing:'deleted',unit:'g',dispM:1}]},i
 if(broken.ok||!broken.errors.some(x=>x.code==='BROKEN_INVENTORY_REFERENCE'))throw new Error('broken inventory reference was not blocked');
 const corrupt=Costing.costRecipe({itemKey:'bad',recipe:{base:[{ing:'beans',qtyM:'not-a-number'}]},inventory,item:{name:'Bad'},size:'M'});
 if(corrupt.ok||!corrupt.errors.some(x=>x.code==='INVALID_QUANTITY'))throw new Error('corrupt stored quantity was not blocked');
+const reduced=Costing.costOrder({lineItems:[{itemKey:'hot',size:'M',qty:1,optLabels:['Hot']}],recipes:{hot:{base:[{ing:'milk',qtyM:250}],choiceAdd:{temp:{Hot:{label:'Hot',ings:[{ing:'milk',qtyM:-20}]}}}}},inventory,menuItems:{hot:{name:'Hot latte',options:['temp']}},optionGroups:{temp:{choices:[{label:'Hot'}]}}});
+if(!reduced.ok)throw new Error('valid negative option adjustment was rejected: '+JSON.stringify(reduced.errors));
+near(reduced.usage.milk,230,'negative option adjustment reduces base usage');
+near(reduced.totalCost,4.6,'negative option adjustment reduces COGS');
+const belowZero=Costing.costOrder({lineItems:[{itemKey:'badAdjust',size:'M',qty:1,optLabels:['Hot']}],recipes:{badAdjust:{base:[{ing:'milk',qtyM:10}],choiceAdd:{temp:{Hot:{label:'Hot',ings:[{ing:'milk',qtyM:-20}]}}}}},inventory,menuItems:{badAdjust:{name:'Bad adjustment',options:['temp']}},optionGroups:{temp:{choices:[{label:'Hot'}]}}});
+if(belowZero.ok||!belowZero.errors.some(x=>x.code==='NEGATIVE_TOTAL_USAGE'))throw new Error('option adjustment was allowed to make total usage negative');
 
 console.log('PASS: Release 3B shared conversions, normalization, option stacking, coverage, usage, and COGS trace checks passed.');
