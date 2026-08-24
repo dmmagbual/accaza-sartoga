@@ -17,7 +17,9 @@ ok(B.mapAccount('asset:cash_account:gcash','instore',cashMap).code==='1020','cas
 ok(B.mapAccount('asset:cash_account:unknownid','instore',cashMap).code==='1010','unmapped cash_account→1010 default');
 ok(B.mapAccount('asset:platform_receivable:grabfood','grabfood',cashMap).code==='1100','platform_receivable→1100');
 ok(B.mapAccount('expense:platform_commission','grabfood',cashMap).code==='6040','platform_commission→6040');
-ok(B.mapAccount('expense:platform_discount','grabfood',cashMap).code==='4900','platform discount→sales contra-income 4900');
+ok(B.mapAccount('expense:customer_discount','instore',cashMap).code==='4900','customer discount→contra-income 4900');
+ok(B.mapAccount('expense:platform_discount','grabfood',cashMap).code==='4900','platform discount→contra-income 4900');
+ok(B.mapAccount('revenue:sales_reversal','instore',cashMap).code==='4910','refund/void→sales returns 4910');
 ok(B.mapAccount('liability:payable:po_1','instore',cashMap).code==='2000','payable→2000');
 ok(B.mapAccount('liability:platform_owing:grabfood','grabfood',cashMap).code==='2020','negative platform payout→2020 liability');
 ok(B.mapAccount('expense:cash_shortage','instore',{}).code==='3100','cash shortage→owner drawings');
@@ -63,6 +65,7 @@ const c1020 = lines.find(l=>l.code==='1020');
 ok(c1020 && Math.abs(c1020.debit-300)<0.005,'1020 gcash debit = 300');
 ok(B.netSales(node.net)===800,'net sales includes channel sales and excludes non-sales income');
 ok(B.netSales({'4000':-1000,'4900':125,'4990':-50})===875,'net sales deducts refunds/voids and excludes other income');
+ok(B.netSales({'4000':-1000,'4900':75,'4910':50})===875,'net sales deducts discounts and refunds separately');
 
 // 5) discrete non-sale entry (purchase on account)
 const purchase = {id:'purchase_ap_po9', type:'purchase_receive', sourceType:'purchase', occurredAt:t,
