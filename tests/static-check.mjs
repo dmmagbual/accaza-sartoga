@@ -468,11 +468,13 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   const booksHtml=fs.readFileSync(path.join(root,'books.html'),'utf8');
   const salesAuthoritySource=fs.readFileSync(path.join(root,'assets','js','shared','sales-authority.js'),'utf8');
   const salesHistorySource=fs.readFileSync(path.join(root,'assets','js','admin','sales-history.js'),'utf8');
+  const realtimeHubSource=fs.readFileSync(path.join(root,'assets','js','admin','realtime-hub.mjs'),'utf8');
   const overviewInsightsSource=fs.readFileSync(path.join(root,'assets','js','admin','overview-insights.mjs'),'utf8');
   for(const marker of ["period:'month'","['7','7 days'],['30','30 days'],['month','This month'],['all','All time']"])if(!salesHistorySource.includes(marker))fail(`Sales History shared-period marker missing: ${marker}`);
   if(!overviewInsightsSource.includes("period:'month'")||!analyticsSource.includes("var azRange='month'"))fail('Overview and Analytics must initially use This month');
   for(const marker of ['let PERIOD = "month"','function periodButtons()','window.__booksLiveLoading = true','Refreshing Finance Books'])if(!booksHtml.includes(marker))fail(`Books period/refresh marker missing: ${marker}`);
   for(const marker of ['ordersLoaded=false','movementsLoaded=false','Refreshing shared Finance figures'])if(!salesHistorySource.includes(marker))fail(`Sales History refresh guard missing: ${marker}`);
+  for(const marker of ["saleshistory:['orders','archivedOrders','financialMovements']","financialMovements:['cashflow','receivables','payables','payouts','saleshistory']"])if(!realtimeHubSource.includes(marker))fail(`Sales History Finance subscription scope missing: ${marker}`);
   for(const marker of ['paymentStatus!==\'pending\'','Completed','Received','amounts','qualifies'])if(!salesAuthoritySource.includes(marker))fail(`Shared Admin sales-authority marker missing: ${marker}`);
   for(const marker of ['window.AccazaSales.qualifies','window.AccazaSales.amounts','window.AccazaSales.stamp'])if(!adminSource.includes(marker)||!salesHistorySource.includes(marker))fail(`Admin sales views do not share authority marker: ${marker}`);
   for(const marker of ['Admin is the operational authority','Finance Books must be generated from Admin sales','Admin Sales History reconciles to Finance Books',"A().subscribe('financialMovements'"])if(!salesHistorySource.includes(marker))fail(`Sales reconciliation procedure missing: ${marker}`);
