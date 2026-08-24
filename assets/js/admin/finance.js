@@ -264,7 +264,7 @@ function renderPayables(){
 window.__cf={
   hasAccounts:function(){return accList().length>0;},
   accounts:function(){return accList().map(function(x){return {id:x.id,name:x.name,type:x.type,balance:acctBalance(x.id)};});},
-  postOut:function(o){return new Promise(function(resolve,reject){var a=A();var id=o.commandId||uid('fm_');a.postFinancialCommand({action:'manual',commandId:id,date:o.date||todayStr(),accountId:o.accountId,dir:'out',category:o.category||'Purchases',amount:Math.round((Number(o.amount)||0)*100)/100,party:o.party||'',ref:o.ref||'',source:o.source||'purchase',linkId:o.linkId||'',note:o.note||''}).then(function(){resolve(id);}).catch(reject);});},
+  postOut:function(o){return new Promise(function(resolve,reject){var a=A();var id=o.commandId||uid('fm_'),isPurchase=o.source==='purchase'&&o.linkId;a.postFinancialCommand(isPurchase?{action:'purchase_paid',commandId:id,invoiceId:o.linkId,date:o.date||todayStr(),accountId:o.accountId}:{action:'manual',commandId:id,date:o.date||todayStr(),accountId:o.accountId,dir:'out',category:o.category||'Purchases',amount:Math.round((Number(o.amount)||0)*100)/100,party:o.party||'',ref:o.ref||'',source:o.source||'purchase',linkId:o.linkId||'',note:o.note||''}).then(function(){resolve(id);}).catch(reject);});},
   addPayable:function(o){return new Promise(function(resolve,reject){var a=A(),id=o.documentId||uid('ap_'),cmd=o.commandId||uid('fm_');a.postFinancialCommand({action:'create_payable',commandId:cmd,documentId:id,party:o.party||'',type:o.type||'inventory',amount:Math.round((Number(o.amount)||0)*100)/100,date:o.date||todayStr(),due:o.due||'',ref:o.ref||''}).then(function(){resolve(id);}).catch(reject);});}
 };
 })();
