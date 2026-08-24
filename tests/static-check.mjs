@@ -457,6 +457,9 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(offlineRecoveryCheck.status!==0)fail(`Release 6B offline recovery checks failed:\n${offlineRecoveryCheck.stderr||offlineRecoveryCheck.stdout}`);
   const booksBridgeCheck=spawnSync(process.execPath,[path.join(root,'tests','books-bridge-check.mjs')],{encoding:'utf8',cwd:root});
   if(booksBridgeCheck.status!==0)fail(`Accaza Books POS bridge checks failed:\n${booksBridgeCheck.stderr||booksBridgeCheck.stdout}`);
+  const booksHtml=fs.readFileSync(path.join(root,'books.html'),'utf8');
+  for(const marker of ['SAMPLE_ENTRY_IDS','_sample_backup','entries: []','const used = ENTRIES()','onclick="App.drill(\'${a.code}\')"'])if(!booksHtml.includes(marker))fail(`Accaza Books cutover marker missing: ${marker}`);
+  if(booksHtml.includes('function seedEntries()'))fail('Accaza Books still seeds browser-only sample transactions');
 
   console.log(`PASS: ${checked} executable HTML and external scripts parsed successfully.`);
   console.log('PASS: customer-field rendering containment checks passed.');
