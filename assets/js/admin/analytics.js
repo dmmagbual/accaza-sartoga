@@ -28,7 +28,6 @@ var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init
    not just Analytics. Fixes the Payout receivable staying stale after "Load older". */
 function rerenderOrderTabs(){
   if(isTab('analytics'))renderAnalytics();
-  if(isTab('pnl'))renderPnl();
   if(isTab('payouts'))renderPayouts();
   if(isTab('stockvalue'))renderStockValue();
   if(isTab('dailyreport'))renderDailyReport();
@@ -52,7 +51,7 @@ function init(){
   a.subscribe('platformVarAccounts',function(s){varAcctMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();});
 }
 // extend the POS tab switcher to also render our tabs
-window.__accazaRegisterModule('analytics',function(name){ if(name==='analytics')renderAnalytics(); if(name==='pnl'){if(!pnlMonth)pnlMonth=monthKey(Date.now());renderPnl();} if(name==='payouts')renderPayouts(); if(name==='stockvalue')renderStockValue(); if(name==='dailyreport')renderDailyReport(); });
+window.__accazaRegisterModule('analytics',function(name){ if(name==='analytics')renderAnalytics(); if(name==='payouts')renderPayouts(); if(name==='stockvalue')renderStockValue(); if(name==='dailyreport')renderDailyReport(); });
 
 // capture completedAt for ops metrics (idempotent, additive)
 function captureCompletedAt(all){var a=A();Object.keys(all).forEach(function(id){var o=all[id];if(o&&o.status==='Completed'&&!o.completedAt){a.update(a.ref(a.db,'orders/'+id),{completedAt:Date.now()});}});}
