@@ -6,9 +6,9 @@
     pos:['pos'],inventory:['pos'],purchases:['finance','pos'],recipes:['pos'],usage:['pos'],channelpricing:['pos','channelpricing'],dedupe:['pos'],
     analytics:['pos','analytics'],payouts:['pos','analytics'],stockvalue:['pos','analytics'],dailyreport:['pos','analytics'],
     ops:['pos','register'],possettings:['pos','register'],discrepancy:['pos','register'],petty:['pos','register'],packages:['pos','packages'],staffaccess:['staff'],
-    receivables:['finance'],payables:['finance'],operations:['operations']
+    operations:['operations']
   };
-  var roots={pos:'posRoot',inventory:'inventoryRoot',purchases:'purchasesRoot',recipes:'recipesRoot',usage:'usageRoot',channelpricing:'channelPricingRoot',dedupe:'dedupeRoot',analytics:'analyticsRoot',payouts:'payoutsRoot',stockvalue:'stockValueRoot',dailyreport:'dailyReportRoot',ops:'opsRoot',possettings:'posSettingsRoot',discrepancy:'discrepancyRoot',petty:'pettyRoot',packages:'packagesRoot',staffaccess:'staffAccessRoot',receivables:'receivablesRoot',payables:'payablesRoot',operations:'operationsRoot'};
+  var roots={pos:'posRoot',inventory:'inventoryRoot',purchases:'purchasesRoot',recipes:'recipesRoot',usage:'usageRoot',channelpricing:'channelPricingRoot',dedupe:'dedupeRoot',analytics:'analyticsRoot',payouts:'payoutsRoot',stockvalue:'stockValueRoot',dailyreport:'dailyReportRoot',ops:'opsRoot',possettings:'posSettingsRoot',discrepancy:'discrepancyRoot',petty:'pettyRoot',packages:'packagesRoot',staffaccess:'staffAccessRoot',operations:'operationsRoot'};
   var promises={},handlers={},requestSerial=0;
 
   window.__accazaRegisterModule=function(name,handler){handlers[name]=handler;};
