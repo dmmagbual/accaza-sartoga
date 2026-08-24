@@ -9,6 +9,14 @@ const split=F.orderPosting({id:'O1',channel:'instore',total:100,payments:[{metho
 balanced(split,'split sale');
 assert(split.cashEntries.length===1&&split.cashEntries[0].accountId==='gcash'&&split.cashEntries[0].amount===40,'split non-cash projection is wrong');
 assert(split.lines.some(x=>x.account==='asset:register_cash'&&x.debit===60),'split cash asset is missing');
+const discounted=F.orderPosting({id:'DISC1',channel:'instore',subtotal:125,total:100,discount:25,payment:'Cash'},accounts);
+balanced(discounted,'discounted sale');
+assert(discounted.lines.some(x=>x.account==='revenue:sales'&&x.credit===125),'discounted sale did not preserve gross revenue');
+assert(discounted.lines.some(x=>x.account==='expense:customer_discount'&&x.debit===25),'customer discount was not classified separately');
+assert(discounted.lines.some(x=>x.account==='asset:register_cash'&&x.debit===100),'discount changed cash received');
+const discountCorrection=F.discountClassificationPosting({id:'OLD1',channel:'instore',discount:25});
+balanced(discountCorrection,'historical discount classification');
+assert(F.totals(discountCorrection.lines).debit===25&&F.totals(discountCorrection.lines).credit===25,'historical discount classification changed net sales');
 
 const platform=F.orderPosting({id:'GF1',channel:'grabfood',grossPlatform:100,commission:25,platformDiscount:5,platformWht:2,platformVat:3,netPlatform:65},{});
 balanced(platform,'platform sale');

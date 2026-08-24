@@ -16,7 +16,7 @@
    ============================================================ */
 
 const CHANNEL_SALES = {instore: "4000", online: "4010", grabfood: "4020", foodpanda: "4030"};
-const SALES_CODES = new Set([...Object.values(CHANNEL_SALES), "4900"]);
+const SALES_CODES = new Set([...Object.values(CHANNEL_SALES), "4900", "4910"]);
 // Finance chart-account id -> Accaza Books COA (bills, manual expenses, owner capital/draw, etc.)
 const CHART_COA = {
   rent: "6010", utilities: "6020", salaries: "6000", "bank charges": "6080", bank_charges: "6080",
@@ -58,10 +58,10 @@ function mapAccount(posAccount, channel, cashAccountMap) {
   cashAccountMap = cashAccountMap || {};
   const exact = {
     "asset:register_cash": "1000", "asset:cash_awaiting_deposit": "1030", "asset:petty_cash": "1040",
-    "asset:withholding_tax": "1260", "revenue:sales_reversal": "4900",
+    "asset:withholding_tax": "1260", "revenue:sales_reversal": "4910",
     "revenue:cash_overage": "6110", "revenue:payment_overage": "4990",
     "expense:cash_shortage": "3100", "equity:owner_draw": "3100", "expense:platform_commission": "6040",
-    "expense:platform_discount": "4900", "expense:platform_service_vat": "6046",
+    "expense:customer_discount": "4900", "expense:platform_discount": "4900", "expense:platform_service_vat": "6046",
     "expense:platform_estimate_variance": "6100", "revenue:platform_estimate_variance": "4990",
     "equity:owner_capital": "3000", "equity:opening_balance": "3900", "equity:cash_float_source": "3050",
     "cogs:beverage": "5000", "cogs:food": "5030", "cogs:packaging": "5040", "cogs:other": "5000", "inventory:control": "1200",
@@ -166,7 +166,7 @@ function linesBalanced(lines) {
 }
 
 /* Net completed sales represented by a Books net map: sales credits less
-   refund/void debits in contra-income 4900. Other income is intentionally excluded. */
+   customer discounts in 4900 and refund/void debits in 4910. Other income is intentionally excluded. */
 function netSales(net) {
   return r2(-Object.keys(net || {}).filter((code) => SALES_CODES.has(code)).reduce((sum, code) => sum + Number(net[code] || 0), 0));
 }

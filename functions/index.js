@@ -1192,6 +1192,7 @@ async function findOrder(db, orderId) {
 async function postOrderFinancial(db, order, accounts, actor) {
   const effectiveStatus = order && order.status === "Archived" ? order.prevStatus : order && order.status;
   if (!order || !order.id || order.paymentStatus === "pending" || !["Completed", "Received"].includes(String(effectiveStatus || ""))) return {skipped: true};
+  const existingSale = (await db.ref(`/financialMovements/sale_${order.id}`).get()).val() || null;
   const movement = Financial.orderPosting(order, accounts || {});
   if (order.paymentApprovalId) {movement.approvalId = order.paymentApprovalId; movement.approvedBy = financeText(order.paymentApprovedBy, 160);}
   movement.occurredAt = Number(order.completedAt || order.receivedAt || order.timestamp || Date.now());
@@ -1199,7 +1200,15 @@ async function postOrderFinancial(db, order, accounts, actor) {
   const date = financeDateFromTimestamp(movement.occurredAt);
   const writes = {};
   (movement.cashEntries || []).forEach((entry) => { entry.date = date; entry.party = order.name || "Walk-in"; entry.ref = order.id; entry.auto = true; writes[`cfLedger/${entry.id}`] = cashLedgerRecord(entry, `sale_${order.id}`, movement, actor); });
-  return commitFinancial(db, `sale_${order.id}`, movement, actor, writes);
+  const result = await commitFinancial(db, `sale_${order.id}`, movement, actor, writes);
+  const platform = ["grabfood", "foodpanda"].includes(String(order.channel || "").toLowerCase());
+  const alreadyClassified = (existingSale && existingSale.lines || []).some((entry) => ["expense:customer_discount", "expense:platform_discount"].includes(String(entry.account || "")));
+  if (!platform && existingSale && !alreadyClassified && Financial.money(order.discount) > 0) {
+    const correction = Financial.discountClassificationPosting(order);
+    correction.occurredAt = movement.occurredAt; correction.actorName = "Automated discount classification";
+    await commitFinancial(db, `discount_classification_${order.id}`, correction, {uid: "server", role: "server"}, {});
+  }
+  return result;
 }
 function addOrderCashWrites(writes, movement, movementId, order, actor) {
   const occurredAt = Number(movement.occurredAt || Date.now());
