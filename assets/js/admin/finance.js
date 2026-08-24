@@ -89,6 +89,12 @@ function computeStatement(){
   var rg=stmtRange(),from=rg.from,to=rg.to;
   var beginBank={},endBank={},beginReg=0,endReg=0,beginPetty=0,endPetty=0,endRegDrawer=0,endAwaiting=0;
   var add={},ded={},addSrc={},dedSrc={};
+  accList().forEach(function(x){
+    var value=r2(x.opening),d=x.openingDate||from;if(Math.abs(value)<0.005||d>to)return;
+    endBank[x.id]=r2((endBank[x.id]||0)+value);
+    if(d<=from)beginBank[x.id]=r2((beginBank[x.id]||0)+value);
+    else{var cat='Opening balance set',tgt=value>0?add:ded,src=value>0?addSrc:dedSrc;tgt[cat]=r2((tgt[cat]||0)+Math.abs(value));(src[cat]=src[cat]||[]).push({date:d,amount:Math.abs(value),type:'opening_balance',id:'opening_'+x.id});}
+  });
   financialMovementArr().forEach(function(m){
     var d=dateFromTs(m.occurredAt||0);if(d>to)return;var before=d<from;
     var reg=lineDelta(m,function(a){return a==='asset:register_cash'||a==='asset:cash_awaiting_deposit';});

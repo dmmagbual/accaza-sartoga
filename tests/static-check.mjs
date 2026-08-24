@@ -423,6 +423,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
 
   if(!financeSource.includes('!p.reversed&&!p.depositMovementId&&Number(p.actualPayout)>0'))fail('Cash Flow must hide reversed, deposited, zero, and negative platform payouts from the deposit queue');
   if(financeSource.includes("e.source==='payout'&&e.linkId===p.id"))fail('Cash Flow still relies on the obsolete payout ledger-source check');
+  for(const marker of ["var value=r2(x.opening),d=x.openingDate||from","if(d<=from)beginBank[x.id]","type:'opening_balance',id:'opening_'+x.id"]){if(!financeSource.includes(marker))fail(`Cash Flow statement opening-balance projection is missing: ${marker}`);}
 
   const fn=spawnSync(process.execPath,['--check',path.join(root,'functions','index.js')],{encoding:'utf8'});
   if(fn.status!==0)fail(`functions/index.js failed syntax check:\n${fn.stderr||fn.stdout}`);
