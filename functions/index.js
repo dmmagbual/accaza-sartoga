@@ -258,6 +258,29 @@ exports.ensureBooksJournal = onCall(
   },
 );
 
+// Finance / Books owns cash-account maintenance. Opening changes are posted as
+// append-only adjustments so later activity and the audit trail are preserved.
+exports.manageCashAccount = onCall(
+  {region: "asia-southeast1", enforceAppCheck: process.env.ENFORCE_APP_CHECK === "true", timeoutSeconds: 60, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["cashflow"]), data = request.data || {};
+    if (financeText(data.action, 20) !== "upsert") throw new HttpsError("invalid-argument", "Unsupported cash-account action.");
+    const id = financeKey(data.accountId, "Cash account"), commandId = financeKey(data.commandId, "Command ID"), name = financeText(data.name, 100), type = financeText(data.type, 20);
+    if (!name || !["bank", "ewallet"].includes(type)) throw new HttpsError("invalid-argument", "Account name and a valid type are required.");
+    const ref = db.ref(`/cfAccounts/${id}`), old = (await ref.get()).val() || {}, opening = Financial.money(data.opening), oldOpening = Financial.money(old.opening), date = financeDate(data.openingDate), occurredAt = Date.parse(`${date}T00:00:00+08:00`) || Date.now();
+    const feedMethods = Array.isArray(data.feedMethods) ? data.feedMethods.map((x) => financeText(x, 60)).filter(Boolean).slice(0, 20) : [];
+    const row = {name, type, opening, openingDate: date, feedMethods, order: Number.isFinite(Number(old.order)) ? Number(old.order) : Object.keys((await db.ref("/cfAccounts").get()).val() || {}).length, ts: old.ts || Date.now(), updatedAt: Date.now(), updatedBy: actor.uid};
+    const writes = {[`cfAccounts/${id}`]: row}, delta = Financial.money(opening - oldOpening);
+    if (Math.abs(delta) >= 0.005) {
+      const value = Math.abs(delta), asset = `asset:cash_account:${id}`, lines = delta > 0 ? [Financial.line(asset, value, 0, "Opening cash adjustment"), Financial.line("equity:opening_balance", 0, value, "Opening cash adjustment")] : [Financial.line("equity:opening_balance", value, 0, "Opening cash adjustment"), Financial.line(asset, 0, value, "Opening cash adjustment")];
+      const movementId = financeKey(`opening_adjust_${id}_${commandId}`, "Movement ID"), movement = Financial.movement("opening_balance_adjustment", "cashAccount", id, lines, {occurredAt, actorName: name});
+      writes[`financialMovements/${movementId}`] = financeRecord(movementId, movement, actor);
+    }
+    writes[`operationalAudit/${Date.now()}_cash_account_${id}`] = {action: "cash_account_upsert", sourceType: "cashAccount", sourceId: id, oldOpening, opening, openingDate: date, actorUid: actor.uid, actorRole: actor.role, ts: Date.now(), schemaVersion: 1};
+    await db.ref().update(writes); return {accountId: id, opening, adjustment: delta};
+  },
+);
+
 // Platform (Grab/FoodPanda) order-number uniqueness. Every platform reference
 // may be used ONCE. This trigger keeps an authoritative index the POS reads at
 // entry to block a re-key, and records any duplicate that still slips through

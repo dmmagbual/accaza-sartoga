@@ -325,6 +325,7 @@ const TABS = [
   {id:"tb",label:"Trial Balance"},
   {id:"pl",label:"Profit & Loss"},
   {id:"bs",label:"Balance Sheet"},
+  {id:"cashflow",label:"Cash Flow"},
   {id:"receivables",label:"Receivables"},
   {id:"payables",label:"Payables"},
   {id:"coa",label:"Chart of Accounts"}
@@ -339,6 +340,7 @@ const App = {
     sel.innerHTML = '<option value="">All time</option>' + periods.map(p=>`<option value="${p}">${monthLabel(p)}</option>`).join("");
     // default to latest month with data
     if(periods.length){ PERIOD=periods[0]; sel.value=periods[0]; }
+    const requested=new URLSearchParams(location.search).get("tab"); if(TABS.some(t=>t.id===requested))CURRENT=requested;
     this.renderTabs(); this.render();
   },
   setPeriod(v){ PERIOD = v||null; this.render(); },
@@ -458,6 +460,28 @@ const App = {
   }
 };
 
+/* ---------- live Cash Flow (authoritative Finance movements) ---------- */
+let CF_FROM=todayStr(), CF_TO=todayStr();
+function cfAccounts(){const m=window.__cfAccounts||{};return Object.keys(m).map(id=>Object.assign({id},m[id]||{})).sort((a,b)=>(a.order||0)-(b.order||0)||String(a.name||'').localeCompare(String(b.name||'')));}
+function cfMovements(){const m=window.__financialMovements||{};return Object.keys(m).map(id=>Object.assign({id},m[id]||{})).sort((a,b)=>Number(a.occurredAt||0)-Number(b.occurredAt||0));}
+function cfDay(ts){const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(Number(ts)||Date.now())),v={};parts.forEach(p=>v[p.type]=p.value);return v.year+'-'+v.month+'-'+v.day;}
+function cfDeltas(m){const out={};(m.lines||[]).forEach(l=>{const a=String(l.account||''),v=(Number(l.debit)||0)-(Number(l.credit)||0);let k='';if(a.indexOf('asset:cash_account:')===0)k=a.slice(19);else if(a==='asset:register_cash')k='register';else if(a==='asset:cash_awaiting_deposit')k='undeposited';else if(a==='asset:petty_cash')k='petty';if(k)out[k]=r2((out[k]||0)+v);});return out;}
+function cfCategory(m,net){const x={order_sale:'Sales',order_refund:'Refunds',order_void:'Voided sales',platform_payout_deposit:'Platform payouts received',receivable_collected:'Receivable collections',payable_paid:'Supplier / bill payments',shift_payin:'Register cash-ins',shift_payout:'Register pay-outs',shift_cash_variance:net>0?'Cash overage':'Owner cash withdrawal',petty_cash_expense:'Petty cash expenses',petty_cash_void:'Petty cash reversals',petty_cash_replenishment:'Petty cash top-up',register_cash_deposit:'Register deposits',opening_balance:'Opening balance'};return x[m.type]||(net>0?'Other cash in':'Other cash out');}
+function cfStatement(){
+  const accs=cfAccounts(),moves=cfMovements(),begin={},ending={},add={},ded={},detail=[];
+  const openingSources=new Set(moves.filter(m=>String(m.type||'').indexOf('opening_balance')===0&&m.sourceType==='cashAccount').map(m=>String(m.sourceId||'')));
+  function bump(target,k,v){target[k]=r2((target[k]||0)+v);}
+  accs.forEach(a=>{if(openingSources.has(a.id))return;const d=a.openingDate||CF_FROM,v=Number(a.opening)||0;if(d<CF_FROM)bump(begin,a.id,v);if(d<=CF_TO)bump(ending,a.id,v);if(d>=CF_FROM&&d<=CF_TO&&Math.abs(v)>=.005){bump(v>0?add:ded,'Opening balance',Math.abs(v));}});
+  moves.forEach(m=>{const d=cfDay(m.occurredAt),ds=cfDeltas(m),net=r2(Object.values(ds).reduce((s,v)=>s+v,0));if(d<CF_FROM)Object.keys(ds).forEach(k=>bump(begin,k,ds[k]));if(d<=CF_TO)Object.keys(ds).forEach(k=>bump(ending,k,ds[k]));if(d>=CF_FROM&&d<=CF_TO&&Math.abs(net)>=.005){const cat=cfCategory(m,net);bump(net>0?add:ded,cat,Math.abs(net));detail.push({date:d,id:m.id,type:cat,net});}});
+  const keys=accs.map(a=>a.id).concat(['register','undeposited','petty']),sum=o=>r2(Object.values(o).reduce((s,v)=>s+(Number(v)||0),0));return {accs,keys,begin,ending,add,ded,detail,totBegin:sum(begin),totEnd:sum(ending),totAdd:sum(add),totDed:sum(ded)};
+}
+function cfName(k){const a=cfAccounts().find(x=>x.id===k);return a?a.name:k==='register'?'Register cash':k==='undeposited'?'Undeposited funds':'Petty cash';}
+App.cfRange=function(which,v){if(which==='from')CF_FROM=v||todayStr();else CF_TO=v||todayStr();App.render();};
+App.cashAccountEdit=function(id){const a=(window.__cfAccounts||{})[id]||{},isNew=!id,m=document.getElementById('modal');m.innerHTML=`<div class="modal-head"><h3>${isNew?'Add':'Edit'} cash account</h3><button class="x" onclick="App.closeModal()">×</button></div><div class="modal-body"><div class="field"><label>Account name</label><input id="cfa_name" value="${esc(a.name||'')}"/></div><div class="grid2"><div class="field"><label>Type</label><select id="cfa_type"><option value="bank" ${a.type==='bank'?'selected':''}>Bank</option><option value="ewallet" ${a.type==='ewallet'?'selected':''}>E-wallet</option></select></div><div class="field"><label>Opening balance date</label><input id="cfa_date" type="date" value="${a.openingDate||'2026-08-23'}"/></div></div><div class="field"><label>Opening balance</label><input id="cfa_open" type="number" step=".01" value="${Number(a.opening)||0}"/></div><div class="field"><label>Payment methods routed here (comma-separated)</label><input id="cfa_feed" value="${esc((a.feedMethods||[]).join(', '))}" placeholder="GCash, Bank Transfer"/></div><div class="hint">Changing an opening balance posts a dated adjustment; it never rewrites or deletes later cash activity.</div></div><div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Cancel</button><button class="btn primary" onclick="App.cashAccountSave('${id||''}',this)">Save</button></div>`;document.getElementById('modalBg').classList.add('show');};
+App.cashAccountSave=function(id,btn){if(!window.__cashAccountSave)return alert('Live Finance service is not ready.');const name=document.getElementById('cfa_name').value.trim();if(!name)return alert('Enter an account name.');btn.disabled=true;window.__cashAccountSave({action:'upsert',commandId:'cashacct_'+Date.now(),accountId:id||('acc_'+Date.now().toString(36)),name,type:document.getElementById('cfa_type').value,opening:Number(document.getElementById('cfa_open').value)||0,openingDate:document.getElementById('cfa_date').value||todayStr(),feedMethods:document.getElementById('cfa_feed').value.split(',').map(x=>x.trim()).filter(Boolean)}).then(()=>App.closeModal()).catch(e=>{alert('Could not save account: '+((e&&e.message)||e));btn.disabled=false;});};
+App.cfRecordDeposit=function(kind,id){const accs=cfAccounts();if(!accs.length)return alert('Add a cash account first.');const source=kind==='payout'?(window.__platformPayouts||{})[id]:(window.__cashCustody||{})[id];if(!source)return;const amount=kind==='payout'?Number(source.actualPayout)||0:Number(source.remaining)||0,m=document.getElementById('modal');m.innerHTML=`<div class="modal-head"><h3>Record deposit</h3><button class="x" onclick="App.closeModal()">×</button></div><div class="modal-body"><div class="field"><label>Deposit to</label><select id="cfd_acct">${accs.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select></div><div class="grid2"><div class="field"><label>Date</label><input id="cfd_date" type="date" value="${todayStr()}"/></div><div class="field"><label>Amount</label><input value="${amount}" disabled/></div></div></div><div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Cancel</button><button class="btn primary" onclick="App.cfSaveDeposit('${kind}','${id}',this)">Record deposit</button></div>`;document.getElementById('modalBg').classList.add('show');};
+App.cfSaveDeposit=function(kind,id,btn){btn.disabled=true;const payload=kind==='payout'?{action:'payout_deposit',commandId:'payoutdep_'+Date.now(),payoutId:id,date:document.getElementById('cfd_date').value,accountId:document.getElementById('cfd_acct').value}:{action:'cash_deposit',commandId:'cashdep_'+Date.now(),allocations:{[id]:Number(((window.__cashCustody||{})[id]||{}).remaining)||0},date:document.getElementById('cfd_date').value,accountId:document.getElementById('cfd_acct').value};window.__financeCmd(payload).then(()=>App.closeModal()).catch(e=>{alert('Could not record deposit: '+((e&&e.message)||e));btn.disabled=false;});};
+
 /* ============================================================ PAGES ============================================================ */
 const PAGES = {
   dashboard(){
@@ -502,6 +526,24 @@ const PAGES = {
           </tbody></table>
         </div>
       </div>`;
+  },
+
+  cashflow(){
+    if(!window.__booksUser)return `<div class="page-head"><div><h2>Cash Flow</h2><p>Bank, wallet and cash movements</p></div></div><div class="empty"><div class="big">🏦</div><b>Sign in for live Cash Flow</b><br><span class="tiny">Cash Flow now lives in Finance / Books.</span></div>`;
+    const s=cfStatement(),moneyRows=(obj,color)=>Object.keys(obj).sort().map(k=>`<tr><td>${esc(k)}</td><td class="num" style="color:${color}">${peso(obj[k])}</td></tr>`).join('')||'<tr><td colspan="2" class="muted">None</td></tr>',balRows=obj=>s.keys.filter((k,i,a)=>a.indexOf(k)===i).map(k=>`<tr><td>${esc(cfName(k))}</td><td class="num">${peso(obj[k]||0)}</td></tr>`).join(''),expected=r2(s.totBegin+s.totAdd-s.totDed),ties=Math.abs(expected-s.totEnd)<.01;
+    const cards=s.accs.map(a=>`<div class="kpi"><div class="lbl">${esc(a.name)} · ${esc(a.type||'bank')}</div><div class="val">${peso(s.ending[a.id]||0)}</div><div class="sub">Opening ${a.openingDate||'—'} · ${peso(a.opening||0)} · <span class="linkish" onclick="App.cashAccountEdit('${a.id}')">edit</span></div></div>`).join('');
+    const activity=s.detail.slice().reverse().slice(0,100).map(x=>`<tr><td>${x.date}</td><td>${esc(x.type)}<div class="tiny muted">${esc(x.id)}</div></td><td class="num ${x.net>=0?'pos':'neg'}">${x.net>=0?peso(x.net):'('+peso(-x.net)+')'}</td></tr>`).join('');
+    const payouts=Object.keys(window.__platformPayouts||{}).map(id=>Object.assign({id},window.__platformPayouts[id]||{})).filter(p=>!p.reversed&&!p.depositMovementId&&Number(p.actualPayout)>0),custody=Object.keys(window.__cashCustody||{}).map(id=>Object.assign({id},window.__cashCustody[id]||{})).filter(c=>Number(c.remaining)>0),depositRows=payouts.map(p=>`<tr><td>Platform payout · ${esc(p.channel||'')}</td><td>${p.settledAt?new Date(p.settledAt).toLocaleDateString('en-PH'):'—'}</td><td class="num">${peso(p.actualPayout)}</td><td><button class="btn sm" onclick="App.cfRecordDeposit('payout','${p.id}')">Deposit</button></td></tr>`).concat(custody.map(c=>`<tr><td>Register custody · ${esc(c.staff||c.shiftId||c.id)}</td><td>${c.closedAt?new Date(c.closedAt).toLocaleDateString('en-PH'):'—'}</td><td class="num">${peso(c.remaining)}</td><td><button class="btn sm" onclick="App.cfRecordDeposit('custody','${c.id}')">Deposit</button></td></tr>`)).join('');
+    return `<div class="page-head"><div><h2>Cash Flow</h2><p>Authoritative cash statement · moved from Admin</p></div><div class="btn-row"><button class="btn" onclick="App.go('transactions')">Record transaction</button><button class="btn primary" onclick="App.cashAccountEdit('')">+ Cash account</button></div></div>
+      <div class="hint">Beginning cash comes from movements before the selected start date. Opening balances are used only when no opening movement exists, preventing double-counting.</div>
+      <div class="kpis">${cards}</div>
+      <div class="card card-pad" style="margin-bottom:1rem"><div class="page-head" style="margin-bottom:.6rem"><div><div class="section-label">Cash flow statement</div></div><div class="tiny">From <input type="date" value="${CF_FROM}" onchange="App.cfRange('from',this.value)"/> to <input type="date" value="${CF_TO}" onchange="App.cfRange('to',this.value)"/></div></div>
+        <div class="two-col"><div><div class="section-label">Beginning cash · ${CF_FROM}</div><table><tbody>${balRows(s.begin)}<tr class="total-row"><td>Total beginning cash</td><td class="num">${peso(s.totBegin)}</td></tr></tbody></table></div><div><div class="section-label">Ending cash · ${CF_TO}</div><table><tbody>${balRows(s.ending)}<tr class="total-row"><td>Total ending cash</td><td class="num">${peso(s.totEnd)}</td></tr></tbody></table></div></div>
+        <div class="two-col" style="margin-top:1rem"><div><div class="section-label" style="color:var(--ok)">Additions — money in</div><table><tbody>${moneyRows(s.add,'var(--ok)')}<tr class="total-row"><td>Total additions</td><td class="num">${peso(s.totAdd)}</td></tr></tbody></table></div><div><div class="section-label" style="color:var(--bad)">Deductions — money out</div><table><tbody>${moneyRows(s.ded,'var(--bad)')}<tr class="total-row"><td>Total deductions</td><td class="num">${peso(s.totDed)}</td></tr></tbody></table></div></div>
+        <div class="balance-bar ${ties?'ok':'off'}">${ties?'✓ Cash statement ties':'✗ Cash statement differs by '+peso(Math.abs(expected-s.totEnd))}<span>${peso(s.totBegin)} + ${peso(s.totAdd)} − ${peso(s.totDed)} = ${peso(expected)}</span></div></div>
+      <div class="card" style="margin-bottom:1rem"><div class="card-pad"><div class="section-label">Cash accounts · all open for viewing and editing</div></div><div class="tbl-wrap"><table><thead><tr><th>Account</th><th>Type</th><th>Opening date</th><th class="num">Opening</th><th></th></tr></thead><tbody>${s.accs.map(a=>`<tr><td>${esc(a.name)}</td><td>${esc(a.type)}</td><td>${a.openingDate||'—'}</td><td class="num">${peso(a.opening)}</td><td><button class="btn sm ghost" onclick="App.cashAccountEdit('${a.id}')">Edit</button></td></tr>`).join('')}</tbody></table></div></div>
+      <div class="card" style="margin-bottom:1rem"><div class="card-pad"><div class="section-label">Deposits to record</div><div class="tiny muted">Positive platform payouts and register cash awaiting a bank or wallet deposit.</div></div><div class="tbl-wrap"><table><thead><tr><th>Source</th><th>Date</th><th class="num">Amount</th><th></th></tr></thead><tbody>${depositRows||'<tr><td colspan="4" class="empty">No deposits waiting to be recorded.</td></tr>'}</tbody></table></div></div>
+      <div class="card"><div class="card-pad"><div class="section-label">Cash activity · selected period</div></div><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Movement</th><th class="num">Net cash</th></tr></thead><tbody>${activity||'<tr><td colspan="3" class="empty">No cash activity in this period.</td></tr>'}</tbody></table></div></div>`;
   },
 
   journal(){
@@ -852,7 +894,7 @@ import {getFunctions, httpsCallable} from "https://www.gstatic.com/firebasejs/10
 const cfg={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 function setPill(text,cls){ const el=document.getElementById("liveStatus"); if(el){ el.textContent=text; el.className="live-pill "+cls; } }
 let app,db,auth;
-try{ app=initializeApp(cfg); db=getDatabase(app); auth=getAuth(app); var fns=getFunctions(app,"asia-southeast1"); window.__financeCmd=function(payload){ return httpsCallable(fns,"postFinancialCommand")(payload).then(function(r){return r.data;}); }; window.__fixedAsset=function(payload){ return httpsCallable(fns,"manageFixedAsset")(payload).then(function(r){return r.data;}); }; window.__booksSync=function(){return httpsCallable(fns,"ensureBooksJournal")({}).then(function(r){return r.data;});}; window.__booksAuthReady=true; }
+try{ app=initializeApp(cfg); db=getDatabase(app); auth=getAuth(app); var fns=getFunctions(app,"asia-southeast1"); window.__financeCmd=function(payload){ return httpsCallable(fns,"postFinancialCommand")(payload).then(function(r){return r.data;}); }; window.__fixedAsset=function(payload){ return httpsCallable(fns,"manageFixedAsset")(payload).then(function(r){return r.data;}); }; window.__booksSync=function(){return httpsCallable(fns,"ensureBooksJournal")({}).then(function(r){return r.data;});}; window.__cashAccountSave=function(payload){return httpsCallable(fns,"manageCashAccount")(payload).then(function(r){return r.data;});}; window.__booksAuthReady=true; }
 catch(e){ setPill("● Offline (local only)","off"); }
 if(auth){
   setPersistence(auth, browserLocalPersistence).catch(()=>{});
@@ -875,10 +917,13 @@ if(auth){
       onValue(ref(db,"/books/reviewQueue"), s=>{ reviewCache=s.val()||{}; refresh(); }, ()=>{});
       onValue(ref(db,"/receivables"), s=>{ window.__arMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       onValue(ref(db,"/payables"), s=>{ window.__apMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
-      onValue(ref(db,"/cfAccounts"), s=>{ window.__cfAccounts=s.val()||{}; }, ()=>{});
+      onValue(ref(db,"/cfAccounts"), s=>{ window.__cfAccounts=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
+      onValue(ref(db,"/financialMovements"), s=>{ window.__financialMovements=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
+      onValue(ref(db,"/platformPayouts"), s=>{ window.__platformPayouts=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
+      onValue(ref(db,"/cashCustody"), s=>{ window.__cashCustody=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       onValue(ref(db,"/fixedAssets"), s=>{ window.__faMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       onValue(ref(db,"/purchaseInvoices"), s=>{ window.__piMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
-    } else { setPill("● Sign in for live POS","off"); window.__posEntries=[]; window.__arMap={}; window.__apMap={}; window.__cfAccounts={}; window.__faMap={}; window.__piMap={}; if(window.App&&App.render)App.render(); }
+    } else { setPill("● Sign in for live POS","off"); window.__posEntries=[]; window.__arMap={}; window.__apMap={}; window.__cfAccounts={}; window.__financialMovements={}; window.__platformPayouts={}; window.__cashCustody={}; window.__faMap={}; window.__piMap={}; if(window.App&&App.render)App.render(); }
   });
 }
 </script>
