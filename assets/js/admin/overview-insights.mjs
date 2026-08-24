@@ -1,20 +1,14 @@
 function createOverviewInsights(deps){
   var saved={};try{saved=JSON.parse(localStorage.getItem('accaza-report-period')||'{}')||{};}catch(_e){}
-  var state={period:'all',from:saved.from||'',to:saved.to||'',metric:'units',latest:null,bound:false,loading:false};
-  window.AccazaReportPeriod={get:function(){return{period:state.period,from:state.from,to:state.to};},set:function(v){v=v||{};state.period=v.period||'all';state.from=v.from||'';state.to=v.to||'';try{localStorage.setItem('accaza-report-period',JSON.stringify(window.AccazaReportPeriod.get()));}catch(_e){}window.dispatchEvent(new CustomEvent('accaza-report-period',{detail:window.AccazaReportPeriod.get()}));}};
+  var state={period:'month',from:'',to:'',metric:'units',latest:null,bound:false,loading:false};
+  window.AccazaReportPeriod={get:function(){return{period:state.period,from:state.from,to:state.to};},set:function(v){v=v||{};state.period=v.period||'month';state.from='';state.to='';try{localStorage.setItem('accaza-report-period',JSON.stringify(window.AccazaReportPeriod.get()));}catch(_e){}window.dispatchEvent(new CustomEvent('accaza-report-period',{detail:window.AccazaReportPeriod.get()}));}};
   function stamp(o){return Number(o&&o.timestamp)||Date.parse(o&&o.date)||Number(o&&o.archivedAt)||0;}
   function dayStart(d){var x=new Date(d);x.setHours(0,0,0,0);return x.getTime();}
   function range(){
     var now=new Date(),end=Date.now(),start=0,label='All time';
-    if(state.period==='today'){start=dayStart(now);label='Today';}
-    else if(state.period==='7'){start=dayStart(now)-6*86400000;label='Last 7 days';}
+    if(state.period==='7'){start=dayStart(now)-6*86400000;label='Last 7 days';}
     else if(state.period==='30'){start=dayStart(now)-29*86400000;label='Last 30 days';}
     else if(state.period==='month'){start=new Date(now.getFullYear(),now.getMonth(),1).getTime();label='This month';}
-    else if(state.period==='custom'){
-      start=state.from?new Date(state.from+'T00:00:00').getTime():0;
-      end=state.to?new Date(state.to+'T23:59:59.999').getTime():Date.now();
-      label=(state.from||'Beginning')+' to '+(state.to||'Today');
-    }
     return{start:start,end:end,label:label};
   }
   function inRange(o,r){var t=stamp(o);return t>=r.start&&t<=r.end;}
@@ -31,11 +25,9 @@ function createOverviewInsights(deps){
     if(state.bound)return;state.bound=true;
     document.querySelectorAll('[data-overview-period]').forEach(function(btn){btn.addEventListener('click',function(){window.AccazaReportPeriod.set({period:this.dataset.overviewPeriod});select();ensureHistory();paint();});});
     document.querySelectorAll('[data-overview-metric]').forEach(function(btn){btn.addEventListener('click',function(){state.metric=this.dataset.overviewMetric;select();paint();});});
-    var f=document.getElementById('overviewFrom'),t=document.getElementById('overviewTo');if(f)f.value=state.from;if(t)t.value=state.to;
-    var apply=document.getElementById('overviewCustomApply');if(apply)apply.addEventListener('click',function(){var f=document.getElementById('overviewFrom'),t=document.getElementById('overviewTo');if(f&&t&&f.value&&t.value&&f.value>t.value){alert('The From date must be before the To date.');return;}window.AccazaReportPeriod.set({period:'custom',from:f&&f.value||'',to:t&&t.value||''});select();ensureHistory();paint();});
     select();
   }
-  function select(){document.querySelectorAll('[data-overview-period]').forEach(function(btn){var on=btn.dataset.overviewPeriod===state.period;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');});document.querySelectorAll('[data-overview-metric]').forEach(function(btn){var on=btn.dataset.overviewMetric===state.metric;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');});var custom=document.getElementById('overviewCustomDates');if(custom)custom.classList.toggle('active',state.period==='custom');}
+  function select(){document.querySelectorAll('[data-overview-period]').forEach(function(btn){var on=btn.dataset.overviewPeriod===state.period;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');});document.querySelectorAll('[data-overview-metric]').forEach(function(btn){var on=btn.dataset.overviewMetric===state.metric;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');});}
   async function ensureHistory(){
     if(state.loading||!state.latest)return;var r=range(),needStart=r.start,notice=document.getElementById('overviewDataNote');state.loading=true;if(notice)notice.textContent='Loading the required order history…';
     try{
@@ -70,6 +62,7 @@ function createOverviewInsights(deps){
   }
   function paint(){
     bind();if(!state.latest)return;var data=state.latest,r=range(),periodSales=(data.sales||[]).filter(function(o){return inRange(o,r);}),periodOrders=(data.active||[]).concat(data.archived||[]).filter(function(o){return inRange(o,r);}),label=document.getElementById('overviewRangeLabel');if(label)label.textContent=r.label;
+    var gross=0,net=0;periodSales.forEach(function(o){var v=window.AccazaSales.amounts(o);gross+=v.gross;net+=v.net;});function set(id,value){var el=document.getElementById(id);if(el)el.textContent=value;}set('overviewNetSales',money(net));set('overviewGrossSales',money(gross));set('overviewTransactions',String(periodSales.length));set('overviewAverageSale',money(periodSales.length?net/periodSales.length:0));
     renderPayments(periodSales);renderTop(periodSales,data);renderOutcomes(periodOrders,data.active||[]);chart(periodSales,r);
     var status=deps.historyStatus(),note=document.getElementById('overviewDataNote');if(note&&!state.loading)note.textContent=status.hasOlder?'Showing loaded history. Choose an older period to load more records.':'Complete available order history loaded.';
   }

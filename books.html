@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<meta name="accaza-books-build" content="5"/>
+<meta name="accaza-books-build" content="6"/>
 <title>Accaza Books</title>
 <style>
 :root{
@@ -34,6 +34,7 @@ a{color:var(--info)}
 .topbar .period{margin-left:auto;display:flex;align-items:center;gap:.4rem;color:#e9dcc7;font-size:.78rem}
 .topbar select{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.22);border-radius:7px;padding:.32rem .5rem}
 .topbar select option{color:#241a12}
+.report-periods{display:flex;gap:.4rem;flex-wrap:wrap;margin:.2rem 0 1rem}.report-periods .btn.active{background:var(--bd);border-color:var(--bd);color:#fff}
 .topbar .tb-actions{display:flex;gap:.4rem}
 .tb-actions button{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:7px;padding:.34rem .6rem;font-size:.74rem;font-weight:600}
 .tb-actions button:hover{background:rgba(255,255,255,.22)}
@@ -142,7 +143,7 @@ tr.sub-row td{font-weight:700;background:#faf7f1}
   <div class="topbar-in">
     <div class="brand">
       <div class="logo">☕</div>
-      <div><b>Accaza Books</b><small>Coffee-shop accounting · build v5</small></div>
+      <div><b>Accaza Books</b><small>Coffee-shop accounting · build v6</small></div>
     </div>
     <span id="liveStatus" class="live-pill off" title="Live POS auto-capture status — click to sign in" onclick="App.signInPrompt()">● Connecting…</span>
     <span id="reviewBadge" class="live-pill warn" style="display:none" title="Unmapped POS accounts to review" onclick="App.go('journal')"></span>
@@ -162,7 +163,7 @@ tr.sub-row td{font-weight:700;background:#faf7f1}
 <div class="tabs"><div class="tabs-in" id="tabs"></div></div>
 
 <div class="wrap"><div id="page" class="page"></div>
-  <div class="foot-note">Accaza Books · build v5 · double-entry, append-only ledger · live Finance data with browser backup support</div>
+  <div class="foot-note">Accaza Books · build v6 · double-entry, append-only ledger · live Finance data with browser backup support</div>
 </div>
 
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
@@ -186,6 +187,7 @@ const DEBIT_NORMAL = {Asset:true, COGS:true, Expense:true, Liability:false, Equi
 const TYPE_ORDER = {Asset:1, Liability:2, Equity:3, Income:4, COGS:5, Expense:6};
 
 const STORE_KEY = "accaza_books_v1";
+window.__booksLiveLoading = true;
 
 /* ---------- default coffee-shop chart of accounts ---------- */
 function defaultAccounts(){
@@ -282,20 +284,24 @@ const acc = code => DB.accounts.find(a=>a.code===code);
 const accName = code => { const a=acc(code); return a?a.name:("? "+code); };
 function todayStr(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 
-/* period handling: null = all time, else 'YYYY-MM' */
-let PERIOD = null;
+/* Shared statement periods: current month is always the initial view. */
+let PERIOD = "month";
 /* all entries = local manual entries + live POS-captured entries (window.__posEntries) */
 function ENTRIES(){ return DB.entries.concat(window.__posEntries||[]); }
-function entriesInPeriod(){ return ENTRIES().filter(e=>!PERIOD || (e.date||"").slice(0,7)===PERIOD); }
-function allPeriods(){ const s=new Set(ENTRIES().map(e=>(e.date||"").slice(0,7)).filter(Boolean)); return Array.from(s).sort().reverse(); }
+function periodBounds(){const now=new Date(),end=todayStr(),start=new Date(now);if(PERIOD==="all")return{start:"",end};if(PERIOD==="7")start.setDate(now.getDate()-6);else if(PERIOD==="30")start.setDate(now.getDate()-29);else start.setDate(1);return{start:start.getFullYear()+"-"+String(start.getMonth()+1).padStart(2,"0")+"-"+String(start.getDate()).padStart(2,"0"),end};}
+function entryInPeriod(e){const d=String(e&&e.date||"").slice(0,10),r=periodBounds();return !!d&&(!r.start||d>=r.start)&&d<=r.end;}
+function entriesInPeriod(){ return ENTRIES().filter(entryInPeriod); }
 function monthLabel(ym){ if(!ym) return "All time"; const [y,m]=ym.split("-"); return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m-1]+" "+y; }
+function periodLabel(){return PERIOD==="7"?"Last 7 days":PERIOD==="30"?"Last 30 days":PERIOD==="all"?"All time":"This month";}
+function periodOptions(){return '<option value="7">7 days</option><option value="30">30 days</option><option value="month">This month</option><option value="all">All time</option>';}
+function periodButtons(){return '<div class="report-periods" aria-label="Profit and Loss reporting period">'+[["7","7 days"],["30","30 days"],["month","This month"],["all","All time"]].map(x=>`<button class="btn sm ${PERIOD===x[0]?'active':''}" aria-pressed="${PERIOD===x[0]}" onclick="App.setPeriod('${x[0]}')">${x[1]}</button>`).join('')+'</div>';}
 
 /* signed balance in the account's NORMAL direction (debits positive for debit-normal) */
 function accountBalance(code, uptoPeriodOnly){
   let bal=0;
   ENTRIES().forEach(e=>{
     if(e.reversed) return; // reversed entries excluded; their reversal cancels anyway
-    if(uptoPeriodOnly && PERIOD && (e.date||"").slice(0,7)!==PERIOD) return;
+    if(uptoPeriodOnly && !entryInPeriod(e)) return;
     e.lines.forEach(l=>{ if(l.code===code){ bal += (Number(l.debit)||0) - (Number(l.credit)||0); } });
   });
   const a=acc(code);
@@ -345,19 +351,16 @@ const App = {
   init(){
     // period selector
     const sel=document.getElementById("periodSel");
-    const periods=allPeriods();
-    sel.innerHTML = '<option value="">All time</option>' + periods.map(p=>`<option value="${p}">${monthLabel(p)}</option>`).join("");
-    // default to latest month with data
-    if(periods.length){ PERIOD=periods[0]; sel.value=periods[0]; }
+    sel.innerHTML = periodOptions(); sel.value=PERIOD;
     const requested=new URLSearchParams(location.search).get("tab"); if(TABS.some(t=>t.id===requested))CURRENT=requested;
     this.renderTabs(); this.render();
   },
-  setPeriod(v){ PERIOD = v||null; this.render(); },
+  setPeriod(v){ PERIOD = ["7","30","month","all"].includes(v)?v:"month"; const sel=document.getElementById("periodSel");if(sel)sel.value=PERIOD;this.render(); },
   renderTabs(){
     document.getElementById("tabs").innerHTML = TABS.map(t=>`<button class="tab ${t.id===CURRENT?'active':''}" onclick="App.go('${t.id}')">${t.label}</button>`).join("");
   },
   go(id){ CURRENT=id; this.renderTabs(); this.render(); window.scrollTo(0,0); },
-  render(){ document.getElementById("page").innerHTML = PAGES[CURRENT](); },
+  render(){ const page=document.getElementById("page");if(window.__booksLiveLoading){page.innerHTML='<div class="page-head"><div><h2>Refreshing Finance Books…</h2><p>Restoring the shared journal and statement balances</p></div></div><div class="hint">Finance figures are reconnecting. Existing balances are being preserved and will appear automatically when the ledger is ready.</div>';return;}page.innerHTML = PAGES[CURRENT](); },
 
   /* ---- backup / restore ---- */
   exportJSON(){
@@ -435,10 +438,7 @@ const App = {
     CURRENT="journal"; this.renderTabs(); this.rebuildPeriodSel(); this.render();
   },
   rebuildPeriodSel(){
-    const sel=document.getElementById("periodSel"); const cur=PERIOD||"";
-    const periods=allPeriods();
-    sel.innerHTML='<option value="">All time</option>'+periods.map(p=>`<option value="${p}">${monthLabel(p)}</option>`).join("");
-    sel.value=cur;
+    const sel=document.getElementById("periodSel"); if(!sel)return;sel.innerHTML=periodOptions();sel.value=PERIOD;
   },
   reverseEntry(id){
     const e=DB.entries.find(x=>x.id===id); if(!e||e.reversed) return;
@@ -461,7 +461,7 @@ const App = {
     }).join("");
     const m=document.getElementById("modal");
     m.innerHTML=`<div class="modal-head"><h3>${a.code} · ${esc(a.name)} <span class="type-pill t-${a.type.toLowerCase()}">${a.type}</span></h3><button class="x" onclick="App.closeModal()">×</button></div>
-      <div class="modal-body"><div class="tiny muted" style="margin-bottom:.5rem">${monthLabel(PERIOD)} · ${ents.length} entr${ents.length===1?'y':'ies'} · running balance in ${DEBIT_NORMAL[a.type]?'debit':'credit'} (normal) direction</div>
+      <div class="modal-body"><div class="tiny muted" style="margin-bottom:.5rem">${periodLabel()} · ${ents.length} entr${ents.length===1?'y':'ies'} · running balance in ${DEBIT_NORMAL[a.type]?'debit':'credit'} (normal) direction</div>
       <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Entry</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead>
       <tbody>${rows||'<tr><td colspan=5 class="empty">No entries in this period</td></tr>'}</tbody></table></div></div>
       <div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Close</button></div>`;
@@ -502,12 +502,12 @@ const PAGES = {
     const grossPct = pl.netSales>0 ? (pl.gross/pl.netSales*100) : 0;
     const topExp = pl.expense.slice().sort((a,b)=>b.bal-a.bal)[0];
     const kpi=(lbl,val,sub,cls)=>`<div class="kpi ${cls||''}"><div class="lbl">${lbl}</div><div class="val">${val}</div><div class="sub">${sub||''}</div></div>`;
-    return `<div class="page-head"><div><h2>Dashboard</h2><p>${monthLabel(PERIOD)} · ${DB.meta&&DB.meta.name||''}</p></div>
+    return `<div class="page-head"><div><h2>Dashboard</h2><p>${periodLabel()} · ${DB.meta&&DB.meta.name||''}</p></div>
         <div class="btn-row">${window.__booksUser?'<button class="btn" onclick="App.syncBooks(this)">↻ Sync all Finance transactions</button>':''}<button class="btn primary" onclick="App.newEntry()">+ New entry</button></div></div>
       <div class="hint">Live double-entry books. When signed in, POS sales, COGS, and cash post automatically, and receivables/payables read from your finance subledgers. Set opening balances to make the balance sheet and cash flow tie out.</div>
       <div class="kpis">
         ${kpi("Cash position", pesoNoDec(cash), "On hand + bank + wallet (all-time)", cash>=0?'good':'bad')}
-        ${kpi("Sales ("+monthLabel(PERIOD)+")", pesoNoDec(pl.netSales), "Completed sales less refunds and voids")}
+        ${kpi("Sales ("+periodLabel()+")", pesoNoDec(pl.netSales), "Completed sales less refunds and voids")}
         ${kpi("Gross profit", pesoNoDec(pl.gross), grossPct.toFixed(1)+"% margin", pl.gross>=0?'good':'bad')}
         ${kpi("Net income", pesoNoDec(pl.net), pl.net>=0?'Profit':'Loss', pl.net>=0?'good':'bad')}
         ${kpi("COGS ratio", cogsPct.toFixed(1)+"%", "of sales")}
@@ -568,7 +568,7 @@ const PAGES = {
         <td class="num" style="white-space:nowrap">${peso(dr)}</td>
         <td style="white-space:nowrap">${e.source==='pos'?'<span class="tiny muted">auto</span>':(e.reversed||e.reversalOf?'':`<button class="btn sm ghost" onclick="App.reverseEntry('${e.id}')" title="Post a reversing entry">Reverse</button>`)}</td></tr>`;
     }).join("");
-    return `<div class="page-head"><div><h2>Journal</h2><p>${monthLabel(PERIOD)} · ${ents.length} entr${ents.length===1?'y':'ies'} · append-only</p></div>
+    return `<div class="page-head"><div><h2>Journal</h2><p>${periodLabel()} · ${ents.length} entr${ents.length===1?'y':'ies'} · append-only</p></div>
         <button class="btn primary" onclick="App.newEntry()">+ New entry</button></div>
       <div class="card"><div class="tbl-wrap"><table>
         <thead><tr><th>Date</th><th>Entry &amp; lines</th><th class="num">Amount</th><th></th></tr></thead>
@@ -585,7 +585,7 @@ const PAGES = {
           <td class="num">${has?peso(bal):'<span class="muted">'+peso(0)+'</span>'}</td></tr>`; }).join("");
       return `<tr class="sub-row"><td colspan="3"><span class="type-pill t-${g.t.toLowerCase()}">${g.t}</span></td></tr>`+rws;
     }).join("");
-    return `<div class="page-head"><div><h2>General Ledger</h2><p>${monthLabel(PERIOD)} · balances by account · click an active account to see its entries</p></div></div>
+    return `<div class="page-head"><div><h2>General Ledger</h2><p>${periodLabel()} · balances by account · click an active account to see its entries</p></div></div>
       <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Code</th><th>Account</th><th class="num">Balance (normal side)</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
   },
 
@@ -599,7 +599,7 @@ const PAGES = {
         <td class="num">${dr?peso(dr):'<span class="muted">—</span>'}</td><td class="num">${cr?peso(cr):'<span class="muted">—</span>'}</td></tr>`;
     }).join("");
     const balanced = Math.abs(r2(totDr)-r2(totCr))<0.005;
-    return `<div class="page-head"><div><h2>Trial Balance</h2><p>${monthLabel(PERIOD)} · proves the books are in balance</p></div></div>
+    return `<div class="page-head"><div><h2>Trial Balance</h2><p>${periodLabel()} · proves the books are in balance</p></div></div>
       <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Code</th><th>Account</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead>
       <tbody>${rows}<tr class="total-row"><td></td><td>Totals</td><td class="num">${peso(totDr)}</td><td class="num">${peso(totCr)}</td></tr></tbody></table></div>
       <div class="card-pad ${balanced?'':''}" style="border-top:1px solid var(--line)"><span class="balance-bar ${balanced?'ok':'off'}" style="display:inline-flex">${balanced?'✓ In balance — debits equal credits':'✗ Out of balance by '+peso(Math.abs(totDr-totCr))}</span></div></div>`;
@@ -615,8 +615,9 @@ const PAGES = {
     const expRows = pl.expense.map(x=>line(x,true)).join("");
     const grossPct = pl.netSales>0?(pl.gross/pl.netSales*100):0;
     const netPct = pl.netSales>0?(pl.net/pl.netSales*100):0;
-    return `<div class="page-head"><div><h2>Profit &amp; Loss</h2><p>${monthLabel(PERIOD)}</p></div>
+    return `<div class="page-head"><div><h2>Profit &amp; Loss</h2><p>${periodLabel()}</p></div>
       <button class="btn primary" onclick="App.newEntry()">+ New entry</button></div>
+      ${periodButtons()}
       <div class="card"><div class="tbl-wrap"><table>
         <thead><tr><th>Account</th><th class="num">Amount</th></tr></thead>
         <tbody>
@@ -894,7 +895,7 @@ App.syncBooks=function(btn){
 
 window.App = App; // expose for the live-POS reader module below
 // If the Firebase SDK can't load at all (opened offline / from a file), downgrade the pill.
-setTimeout(function(){ var el=document.getElementById('liveStatus'); if(el && /Connecting/.test(el.textContent) && !window.__booksAuthReady){ el.textContent='● Offline (local only)'; el.className='live-pill off'; } },5000);
+setTimeout(function(){ var el=document.getElementById('liveStatus'); if(el && /Connecting/.test(el.textContent) && !window.__booksAuthReady){ el.textContent='● Offline (local only)'; el.className='live-pill off';window.__booksLiveLoading=false;if(window.App&&App.render)App.render(); } },5000);
 App.init();
 </script>
 
@@ -908,7 +909,7 @@ const cfg={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-s
 function setPill(text,cls){ const el=document.getElementById("liveStatus"); if(el){ el.textContent=text; el.className="live-pill "+cls; } }
 let app,db,auth;
 try{ app=initializeApp(cfg); db=getDatabase(app); auth=getAuth(app); var fns=getFunctions(app,"asia-southeast1"); window.__financeCmd=function(payload){ return httpsCallable(fns,"postFinancialCommand")(payload).then(function(r){return r.data;}); }; window.__fixedAsset=function(payload){ return httpsCallable(fns,"manageFixedAsset")(payload).then(function(r){return r.data;}); }; window.__booksSync=function(){var ensureLedger=httpsCallable(fns,"ensureFinancialLedger"),ensureJournal=httpsCallable(fns,"ensureBooksJournal");return ensureLedger({}).then(function(finance){return ensureJournal({}).then(function(books){return Object.assign({},books.data,{ordersScanned:finance.data.scanned,financePosted:finance.data.posted,financeDuplicates:finance.data.duplicates,orphanReversed:finance.data.orphanReversed||0});});});}; window.__cashAccountSave=function(payload){return httpsCallable(fns,"manageCashAccount")(payload).then(function(r){return r.data;});}; window.__booksAuthReady=true; }
-catch(e){ setPill("● Offline (local only)","off"); }
+catch(e){ setPill("● Offline (local only)","off");window.__booksLiveLoading=false;if(window.App&&App.render)App.render(); }
 if(auth){
   setPersistence(auth, browserLocalPersistence).catch(()=>{});
   window.__booksSignIn=(email,pw)=>{ signInWithEmailAndPassword(auth,email,pw).then(()=>window.App&&App.closeModal()).catch(e=>alert("Sign-in failed: "+e.message)); };
@@ -926,7 +927,7 @@ if(auth){
   onAuthStateChanged(auth, user=>{
     window.__booksUser = user?(user.email||"signed in"):null;
     if(user){ setPill("● Live · "+(user.email||"synced"),"ok");
-      onValue(ref(db,"/books/journal"), s=>{ journalCache=s.val()||{}; refresh(); }, ()=>setPill("● Read blocked — not an admin","bad"));
+      onValue(ref(db,"/books/journal"), s=>{ journalCache=s.val()||{};window.__booksLiveLoading=false;refresh(); }, ()=>{window.__booksLiveLoading=false;setPill("● Read blocked — not an admin","bad");if(window.App&&App.render)App.render();});
       onValue(ref(db,"/books/reviewQueue"), s=>{ reviewCache=s.val()||{}; refresh(); }, ()=>{});
       onValue(ref(db,"/receivables"), s=>{ window.__arMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       onValue(ref(db,"/payables"), s=>{ window.__apMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
@@ -936,7 +937,7 @@ if(auth){
       onValue(ref(db,"/cashCustody"), s=>{ window.__cashCustody=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       onValue(ref(db,"/fixedAssets"), s=>{ window.__faMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       onValue(ref(db,"/purchaseInvoices"), s=>{ window.__piMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
-    } else { setPill("● Sign in for live POS","off"); window.__posEntries=[]; window.__arMap={}; window.__apMap={}; window.__cfAccounts={}; window.__financialMovements={}; window.__platformPayouts={}; window.__cashCustody={}; window.__faMap={}; window.__piMap={}; if(window.App&&App.render)App.render(); }
+    } else { window.__booksLiveLoading=false;setPill("● Sign in for live POS","off"); window.__posEntries=[]; window.__arMap={}; window.__apMap={}; window.__cfAccounts={}; window.__financialMovements={}; window.__platformPayouts={}; window.__cashCustody={}; window.__faMap={}; window.__piMap={}; if(window.App&&App.render)App.render(); }
   });
 }
 </script>
