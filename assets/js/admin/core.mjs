@@ -12,6 +12,7 @@ import{createAppCustomerSession}from"./app-customer-session.mjs";
 import{createCustomerOrderTracker}from"./customer-order-tracker.mjs";
 import{escHtml,safeImageSrc}from"./shared-ui.mjs";
 import{installWorkspaceShell}from"./workspace-shell.mjs";
+import{sortArchivedOrders,summarizeArchivedOrders}from"./archive-order-sort.mjs";
 
 const {getPaymentProof:getPaymentProofCall,ensureActiveOrders:ensureActiveOrdersCall,updateOrderStatus:updateOrderStatusCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,reconcilePurchasePayable:reconcilePurchasePayableCall,managePurchaseCorrection:managePurchaseCorrectionCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,manageCashAccount:manageCashAccountCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,archiveActivityLog:archiveActivityLogCall}=callables;
 window.__accazaAuth=auth;
@@ -1007,13 +1008,13 @@ function drawPaymentPie(gcashR,bankR){
 // ── ARCHIVE PDF ──
 window.downloadArchivePDF=function(){
   const fromVal=document.getElementById('archiveFrom').value,toVal=document.getElementById('archiveTo').value;
-  let orders=Object.values(archivedOrdersMap).sort((a,b)=>(b.archivedAt||0)-(a.archivedAt||0));
+  let orders=sortArchivedOrders(Object.values(archivedOrdersMap));
   if(fromVal)orders=orders.filter(o=>new Date(o.archivedAt||0)>=new Date(fromVal));
   if(toVal)orders=orders.filter(o=>new Date(o.archivedAt||0)<=new Date(toVal+'T23:59:59'));
   if(!orders.length){alert('No archived orders found for the selected date range.');return;}
-  const rejCnt=orders.filter(o=>o.prevStatus==='Rejected').length;const totalRev=orders.filter(o=>o.prevStatus!=='Rejected').reduce((s,o)=>s+(o.total||0),0);
+  const archiveTotals=summarizeArchivedOrders(orders);const rejCnt=archiveTotals.excludedCount,totalRev=archiveTotals.completedRevenue;
   const gcashCnt=orders.filter(o=>o.payment==='GCash').length,bankCnt=orders.filter(o=>o.payment==='Bank Transfer').length;
-  const rowH=52,headerH=220,pageW=800,totalH=headerH+orders.length*rowH+80;
+  const rowH=52,headerH=238,pageW=800,totalH=headerH+orders.length*rowH+80;
   const canvas=document.createElement('canvas');canvas.width=pageW;canvas.height=totalH;
   const ctx=canvas.getContext('2d');
   ctx.fillStyle='#e0d4c6';ctx.fillRect(0,0,pageW,totalH);
@@ -1025,9 +1026,11 @@ window.downloadArchivePDF=function(){
   ctx.fillStyle='rgba(224,212,198,0.6)';ctx.font='12px Inter,sans-serif';ctx.fillText(dateRange,pageW/2,140);
   ctx.fillStyle='rgba(255,255,255,0.1)';ctx.fillRect(40,156,pageW-80,48);
   ctx.fillStyle='#c9a36a';ctx.font='bold 14px Inter,sans-serif';ctx.textAlign='left';ctx.fillText('Total Orders: '+orders.length,60,178);
-  ctx.textAlign='center';ctx.fillText('Total Revenue: ₱'+totalRev.toLocaleString(),pageW/2,178);
-  ctx.textAlign='right';ctx.fillText('GCash: '+gcashCnt+' · Bank: '+bankCnt+(rejCnt?' · Rejected: '+rejCnt:''),pageW-60,178);
-  ctx.fillStyle='rgba(224,212,198,0.4)';ctx.font='11px Inter,sans-serif';ctx.textAlign='center';ctx.fillText('Generated: '+new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}),pageW/2,198);
+  ctx.textAlign='center';ctx.fillText('Completed: '+archiveTotals.completedCount+' · Revenue: ₱'+totalRev.toLocaleString(),pageW/2,174);
+  ctx.textAlign='right';ctx.fillText('Refunded: '+archiveTotals.refundedCount+' · ₱'+archiveTotals.refundedAmount.toLocaleString(),pageW-60,174);
+  ctx.textAlign='left';ctx.fillText('Voided: '+archiveTotals.voidedCount+' · ₱'+archiveTotals.voidedAmount.toLocaleString(),60,194);
+  ctx.textAlign='right';ctx.fillText('Rejected / other: '+rejCnt+' · GCash: '+gcashCnt+' · Bank: '+bankCnt,pageW-60,194);
+  ctx.fillStyle='rgba(224,212,198,0.4)';ctx.font='11px Inter,sans-serif';ctx.textAlign='center';ctx.fillText('Generated: '+new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}),pageW/2,220);
   let y=headerH+16;
   ctx.fillStyle='#19241b';ctx.font='bold 11px Inter,sans-serif';ctx.textAlign='left';
   ['Order ID','Customer','Items','Total','Payment','Type','Date'].forEach(function(h,i){ctx.fillText(h,[40,120,240,530,610,680,730][i],y);});
@@ -1098,12 +1101,12 @@ function renderArchive(){_paintArchive();}
 function _paintArchive(){
   const el=document.getElementById('archiveList'),sumEl=document.getElementById('archiveSummary');if(!el)return;
   const fromVal=document.getElementById('archiveFrom').value,toVal=document.getElementById('archiveTo').value;
-  let orders=Object.values(archivedOrdersMap).sort((a,b)=>(b.archivedAt||0)-(a.archivedAt||0));
+  let orders=sortArchivedOrders(Object.values(archivedOrdersMap));
   if(fromVal)orders=orders.filter(o=>new Date(o.archivedAt||0)>=new Date(fromVal));
   if(toVal)orders=orders.filter(o=>new Date(o.archivedAt||0)<=new Date(toVal+'T23:59:59'));
-  const rejCnt=orders.filter(o=>o.prevStatus==='Rejected').length;const totalRev=orders.filter(o=>o.prevStatus!=='Rejected').reduce((s,o)=>s+(o.total||0),0),gcashCnt=orders.filter(o=>o.payment==='GCash').length,bankCnt=orders.filter(o=>o.payment==='Bank Transfer').length;
+  const archiveTotals=summarizeArchivedOrders(orders),totalRev=archiveTotals.completedRevenue;
   var hs=subscriptionHub.historyStatus('archivedOrders');
-  sumEl.innerHTML='<div style="width:100%;font-size:0.72rem;color:var(--tl);">Loaded '+hs.loaded+' most recent archived order(s). Date filters apply to loaded pages.</div><div><span class="archive-sum-num">'+orders.length+(rejCnt?' <span style="font-size:0.7rem;color:#721c24;">('+rejCnt+' ✗)</span>':'')+'</span><span class="archive-sum-lbl">Orders</span></div><div><span class="archive-sum-num">₱'+totalRev.toLocaleString()+'</span><span class="archive-sum-lbl">Revenue</span></div><div><span class="archive-sum-num">'+gcashCnt+'G / '+bankCnt+'B</span><span class="archive-sum-lbl">GCash / Bank</span></div>';
+  sumEl.innerHTML='<div style="width:100%;font-size:0.72rem;color:var(--tl);">Loaded '+hs.loaded+' most recent archived order(s), sorted by order date and time (newest first). Revenue includes completed orders only; refunds, voids, and rejected/cancelled orders are excluded.</div><div><span class="archive-sum-num">'+archiveTotals.totalCount+'</span><span class="archive-sum-lbl">All archived orders</span></div><div><span class="archive-sum-num">'+archiveTotals.completedCount+' · ₱'+totalRev.toLocaleString()+'</span><span class="archive-sum-lbl">Completed · Revenue</span></div><div><span class="archive-sum-num">'+archiveTotals.refundedCount+' · ₱'+archiveTotals.refundedAmount.toLocaleString()+'</span><span class="archive-sum-lbl">Refunded · Amount refunded</span></div><div><span class="archive-sum-num">'+archiveTotals.voidedCount+' · ₱'+archiveTotals.voidedAmount.toLocaleString()+'</span><span class="archive-sum-lbl">Voided · Excluded value</span></div><div><span class="archive-sum-num">'+archiveTotals.excludedCount+' · ₱'+archiveTotals.excludedAmount.toLocaleString()+'</span><span class="archive-sum-lbl">Rejected / Cancelled · Excluded</span></div>';
   var cards=orders.length?orders.map(function(o){var oid=escHtml(o.id),age=Date.now()-Number(o.archivedAt||0),canDelete=o.prevStatus==='Rejected'&&age>=90*24*60*60*1000,outcome=archiveOutcome(o);return'<div class="archive-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.4rem;"><div><div style="font-weight:500;font-size:0.88rem;color:var(--bd);">'+escHtml(o.name)+' <span style="font-size:0.72rem;color:var(--tl);">#'+oid+'</span></div><div style="font-size:0.75rem;color:var(--tl);">'+escHtml(o.date)+' · '+escHtml(o.time)+'</div></div><span class="badge" style="'+outcome.style+'">'+outcome.icon+' '+escHtml(outcome.label)+'</span></div><div style="font-size:0.8rem;color:var(--tm);margin:0.3rem 0;">🛒 '+escHtml(o.items)+'</div><div style="font-size:0.78rem;color:var(--tl);">₱'+(Number(o.total)||0).toLocaleString()+' · '+escHtml(o.payment)+' · '+escHtml(o.type)+'</div><div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;">Archived: '+escHtml(o.archivedDate||'—')+'</div>'+(adminLoggedIn?'<div style="margin-top:0.5rem;text-align:right;">'+(canDelete?'<button data-delarch="'+oid+'" style="background:#fdecea;border:1px solid #f5c6c6;color:#c0392b;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.74rem;cursor:pointer;font-weight:600;">🗑 Delete rejected order</button>':'<span style="font-size:0.7rem;color:var(--tl);">🔒 Retained audit record</span>')+'</div>':'')+'</div>';}).join(''):'<p style="color:var(--tl);text-align:center;padding:1.5rem;font-size:0.88rem;">No archived orders in the loaded pages for this range.</p>';
   el.innerHTML=cards+'<div style="text-align:center;padding:0.8rem;"><button id="archiveLoadOlder" class="pz-btn sec"'+(hs.hasOlder?'':' disabled')+'>'+(hs.hasOlder?'Load 100 older orders':'All loaded orders reached')+'</button></div>';
   var more=document.getElementById('archiveLoadOlder');if(more&&hs.hasOlder)more.onclick=async function(){more.disabled=true;more.textContent='Loading older orders…';try{await subscriptionHub.loadOlder('archivedOrders');}catch(e){more.textContent='Could not load older orders';more.disabled=false;}};
