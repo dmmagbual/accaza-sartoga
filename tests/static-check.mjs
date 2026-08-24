@@ -463,6 +463,9 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   const booksBridgeCheck=spawnSync(process.execPath,[path.join(root,'tests','books-bridge-check.mjs')],{encoding:'utf8',cwd:root});
   if(booksBridgeCheck.status!==0)fail(`Accaza Books POS bridge checks failed:\n${booksBridgeCheck.stderr||booksBridgeCheck.stdout}`);
   const booksHtml=fs.readFileSync(path.join(root,'books.html'),'utf8');
+  if(!adminSource.includes("o.paymentStatus==='pending'")||!adminSource.includes("o.status==='Archived'?o.prevStatus:o.status"))fail('Admin sales must exclude pending payments and use the completed pre-archive status');
+  if(!functionsSource.includes('const effectiveStatus = order && order.status === "Archived" ? order.prevStatus : order && order.status;'))fail('Finance posting must use the completed pre-archive order status');
+  for(const marker of ['const salesCodes = new Set(["4000","4010","4020","4030","4900"])','Completed sales less refunds and voids','ensureFinancialLedger','net sales: '])if(!booksHtml.includes(marker))fail(`Books sales reconciliation marker missing: ${marker}`);
   for(const marker of ['SAMPLE_ENTRY_IDS','_sample_backup','entries: []','const used = ENTRIES()','onclick="App.drill(\'${a.code}\')"','["2020","Due to Platforms","Liability","Negative Grab/FoodPanda settlements owed to the platform"]'])if(!booksHtml.includes(marker))fail(`Accaza Books cutover marker missing: ${marker}`);
   if((booksHtml.match(/\["2020","Due to Platforms","Liability"/g)||[]).length<2)fail('Due to Platforms must exist in both the default chart and existing-browser migration');
   for(const marker of ['["1290","Inventory Receiving Clearing"','["2090","Unrecorded Payables Clearing"','["5090","Unposted COGS Clearing"','Sync all Finance transactions','ensureBooksJournal'])if(!booksHtml.includes(marker)&&!functionsSource.includes(marker))fail(`Books historical sync marker missing: ${marker}`);
