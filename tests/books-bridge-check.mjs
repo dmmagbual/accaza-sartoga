@@ -18,6 +18,7 @@ ok(B.mapAccount('asset:cash_account:unknownid','instore',cashMap).code==='1010',
 ok(B.mapAccount('asset:platform_receivable:grabfood','grabfood',cashMap).code==='1100','platform_receivable→1100');
 ok(B.mapAccount('expense:platform_commission','grabfood',cashMap).code==='6040','platform_commission→6040');
 ok(B.mapAccount('liability:payable:po_1','instore',cashMap).code==='2000','payable→2000');
+ok(B.mapAccount('liability:platform_owing:grabfood','grabfood',cashMap).code==='2020','negative platform payout→2020 liability');
 const un = B.mapAccount('asset:unmapped_payment:foo','instore',cashMap);
 ok(un.code==='1900' && un.unmapped===true,'unknown account→1900 + unmapped flag');
 

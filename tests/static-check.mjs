@@ -458,7 +458,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   const booksBridgeCheck=spawnSync(process.execPath,[path.join(root,'tests','books-bridge-check.mjs')],{encoding:'utf8',cwd:root});
   if(booksBridgeCheck.status!==0)fail(`Accaza Books POS bridge checks failed:\n${booksBridgeCheck.stderr||booksBridgeCheck.stdout}`);
   const booksHtml=fs.readFileSync(path.join(root,'books.html'),'utf8');
-  for(const marker of ['SAMPLE_ENTRY_IDS','_sample_backup','entries: []','const used = ENTRIES()','onclick="App.drill(\'${a.code}\')"'])if(!booksHtml.includes(marker))fail(`Accaza Books cutover marker missing: ${marker}`);
+  for(const marker of ['SAMPLE_ENTRY_IDS','_sample_backup','entries: []','const used = ENTRIES()','onclick="App.drill(\'${a.code}\')"','["2020","Due to Platforms","Liability","Negative Grab/FoodPanda settlements owed to the platform"]'])if(!booksHtml.includes(marker))fail(`Accaza Books cutover marker missing: ${marker}`);
+  if((booksHtml.match(/\["2020","Due to Platforms","Liability"/g)||[]).length<2)fail('Due to Platforms must exist in both the default chart and existing-browser migration');
   if(booksHtml.includes('function seedEntries()'))fail('Accaza Books still seeds browser-only sample transactions');
 
   console.log(`PASS: ${checked} executable HTML and external scripts parsed successfully.`);
