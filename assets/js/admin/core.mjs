@@ -4,7 +4,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome}from"./admin-orders.mjs";
-import{createOverviewInsights}from"./overview-insights.mjs";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=301";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -986,9 +986,7 @@ function renderDashboard(){
   const archived=_rows(archivedOrdersMap);
   function _isSale(o){return window.AccazaSales.qualifies(o);}
   function _tsOf(o){return window.AccazaSales.stamp(o);}
-  const combined={};
-  historyOrders.concat(active,archived).forEach(function(o,i){if(!o)return;var id=String(o.id||o.orderId||o.key||o._overviewKey||('overview-'+i));combined[id]=o;});
-  const outcomes=Object.values(combined);
+  const outcomes=mergeOverviewOrders(active,historyOrders,archived);
   const sales=outcomes.filter(_isSale);
   const now2=new Date();
   const startToday=new Date(now2.getFullYear(),now2.getMonth(),now2.getDate()).getTime();
