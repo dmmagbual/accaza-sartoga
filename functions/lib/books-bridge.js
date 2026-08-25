@@ -61,7 +61,7 @@ function mapAccount(posAccount, channel, cashAccountMap) {
     "asset:withholding_tax": "1260", "revenue:sales_reversal": "4900",
     "revenue:cash_overage": "6110", "revenue:payment_overage": "4990",
     "expense:cash_shortage": "3100", "equity:owner_draw": "3100", "expense:platform_commission": "6040",
-    "expense:platform_discount": "4900", "expense:platform_service_vat": "6046",
+    "expense:customer_discount": "4900", "expense:platform_discount": "4900", "expense:platform_service_vat": "6046",
     "expense:platform_estimate_variance": "6100", "revenue:platform_estimate_variance": "4990",
     "equity:owner_capital": "3000", "equity:opening_balance": "3900", "equity:cash_float_source": "3050",
     "cogs:beverage": "5000", "cogs:food": "5030", "cogs:packaging": "5040", "cogs:other": "5000", "inventory:control": "1200",
