@@ -19,7 +19,11 @@ const online=F.orderPosting({id:'WEB1',source:'online',channel:'online',total:12
 balanced(online,'online order');
 assert(online.lines.some(x=>x.account==='asset:cash_account:gcash'&&x.debit===125),'online payment did not debit the mapped cash account');
 assert(!online.lines.some(x=>x.account.indexOf('asset:platform_receivable:')===0),'online order was incorrectly treated as a platform receivable');
-assert(online.lines.some(x=>x.account==='revenue:sales'&&x.label==='Online order sales'),'online revenue is not identified separately');
+assert(online.lines.some(x=>x.account==='revenue:sales'&&x.label==='Online order gross sales'),'online revenue is not identified separately');
+const discounted=F.orderPosting({id:'DISC1',channel:'instore',subtotal:125,total:100,discount:25,payment:'Cash'},accounts);
+balanced(discounted,'discounted in-store sale');
+assert(discounted.lines.some(x=>x.account==='revenue:sales'&&x.credit===125),'discounted sale did not recognize gross revenue');
+assert(discounted.lines.some(x=>x.account==='expense:customer_discount'&&x.debit===25),'discounted sale did not classify the customer discount');
 
 const orphanOriginal=F.orderPosting({id:'ORPHAN1',channel:'instore',total:995,payment:'Cash'},accounts);
 orphanOriginal.id='sale_ORPHAN1';orphanOriginal.occurredAt=12345;
@@ -37,6 +41,11 @@ const duplicateOrphanReversal=F.reverseMovement(orphanOriginal,'orphan_order_rev
 const duplicateFix=F.netMovementCorrection([orphanOriginal,validVoid,duplicateOrphanReversal],'ORPHAN1','orphan_order_reversal','Correct duplicate reversal');
 balanced(duplicateFix,'duplicate orphan correction');
 assert(duplicateFix.lines.some(x=>x.account==='revenue:sales'&&x.credit===995),'double-reversed orphan was not restored');
+const discountedPlatform=F.orderPosting({id:'GFVOID',channel:'grabfood',grossPlatform:200,commission:40,platformDiscount:20,netPlatform:140},{});discountedPlatform.sourceId='GFVOID';
+const fullVoid=F.netMovementCorrection([discountedPlatform],'GFVOID','order_void','Fully reverse voided order');
+balanced(fullVoid,'full platform void');
+const fullyVoided=[discountedPlatform,fullVoid];
+for(const account of ['revenue:sales','expense:platform_discount','expense:platform_commission','asset:platform_receivable:grabfood'])assert(F.netMovementCorrection(fullyVoided,'GFVOID','test','Check full void')===null,`full void left a balance in ${account}`);
 
 const refund=F.reversalPosting({id:'O2',channel:'instore',payment:'GCash',total:80},30,'refund',accounts);
 balanced(refund,'refund');

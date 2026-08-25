@@ -16,7 +16,7 @@
    ============================================================ */
 
 const CHANNEL_SALES = {instore: "4000", online: "4010", grabfood: "4020", foodpanda: "4030"};
-const SALES_CODES = new Set([...Object.values(CHANNEL_SALES), "4900"]);
+const SALES_CODES = new Set([...Object.values(CHANNEL_SALES), "4900", "4910"]);
 // Finance chart-account id -> Accaza Books COA (bills, manual expenses, owner capital/draw, etc.)
 const CHART_COA = {
   rent: "6010", utilities: "6020", salaries: "6000", "bank charges": "6080", bank_charges: "6080",
@@ -58,7 +58,7 @@ function mapAccount(posAccount, channel, cashAccountMap) {
   cashAccountMap = cashAccountMap || {};
   const exact = {
     "asset:register_cash": "1000", "asset:cash_awaiting_deposit": "1030", "asset:petty_cash": "1040",
-    "asset:withholding_tax": "1260", "revenue:sales_reversal": "4900",
+    "asset:withholding_tax": "1260", "revenue:sales_reversal": "4910",
     "revenue:cash_overage": "6110", "revenue:payment_overage": "4990",
     "expense:cash_shortage": "3100", "equity:owner_draw": "3100", "expense:platform_commission": "6040",
     "expense:customer_discount": "4900", "expense:platform_discount": "4900", "expense:platform_service_vat": "6046",
@@ -101,6 +101,20 @@ function cashCodeForAccount(account) {
 function isSaleMovement(mv) {
   const t = String(mv && mv.type || "");
   return mv && (mv.sourceType === "order" || t === "order_sale" || t === "order_void" || t === "order_refund");
+}
+
+function fullyVoidedSourceIds(movements) {
+  const ids = new Set();
+  Object.keys(movements || {}).forEach((id) => {
+    const mv = movements[id] || {};
+    if (String(mv.type || "") === "order_void" && mv.sourceId) ids.add(String(mv.sourceId));
+  });
+  return ids;
+}
+
+function includeInRecognizedBooks(mv, voidedSourceIds) {
+  const sourceId = String(mv && mv.sourceId || "");
+  return !(sourceId && voidedSourceIds && voidedSourceIds.has(sourceId) && isSaleMovement(mv));
 }
 
 /* Key + channel for a movement. */
@@ -230,4 +244,4 @@ function inventoryReconciliationSnapshot(inventory,journal){
   return{rows:rows,totalStock:r2(rows.reduce(function(sum,row){return sum+row.stockValue;},0)),totalBooks:r2(rows.reduce(function(sum,row){return sum+row.booksValue;},0)),totalDifference:totalDifference,clearingBalance:r2(books["1290"]),unmapped:unmapped};
 }
 
-module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, cashCodeForAccount, itemAccounts, cogsAccountSnapshot, isSaleMovement, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, netSales, cogsLines, cogsMovement, recognizedOrderForCogs, monthlyStraightLine, netBookValue, inventoryReconciliationSnapshot};
+module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, cashCodeForAccount, itemAccounts, cogsAccountSnapshot, isSaleMovement, fullyVoidedSourceIds, includeInRecognizedBooks, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, netSales, cogsLines, cogsMovement, recognizedOrderForCogs, monthlyStraightLine, netBookValue, inventoryReconciliationSnapshot};

@@ -19,6 +19,7 @@ ok(B.mapAccount('asset:platform_receivable:grabfood','grabfood',cashMap).code===
 ok(B.mapAccount('expense:platform_commission','grabfood',cashMap).code==='6040','platform_commission→6040');
 ok(B.mapAccount('expense:customer_discount','instore',cashMap).code==='4900','customer discount→sales contra-income 4900');
 ok(B.mapAccount('expense:platform_discount','grabfood',cashMap).code==='4900','platform discount→sales contra-income 4900');
+ok(B.mapAccount('revenue:sales_reversal','instore',cashMap).code==='4910','refund reversal→returns and refunds 4910');
 ok(B.mapAccount('liability:payable:po_1','instore',cashMap).code==='2000','payable→2000');
 ok(B.mapAccount('liability:platform_owing:grabfood','grabfood',cashMap).code==='2020','negative platform payout→2020 liability');
 ok(B.mapAccount('expense:cash_shortage','instore',{}).code==='3100','cash shortage→owner drawings');
@@ -41,6 +42,11 @@ ok(B.businessDate(Date.parse('2026-08-22T10:00:00Z'))==='2026-08-22','business d
 ok(B.isSaleMovement({type:'order_sale'}),'order_sale is sale');
 ok(B.isSaleMovement({sourceType:'order'}),'sourceType order is sale');
 ok(!B.isSaleMovement({type:'purchase_receive',sourceType:'purchase'}),'purchase is not sale');
+const voidSources=B.fullyVoidedSourceIds({sale_A:{type:'order_sale',sourceId:'A'},void_A:{type:'order_void',sourceId:'A'},sale_B:{type:'order_sale',sourceId:'B'}});
+ok(voidSources.has('A')&&!voidSources.has('B'),'full void source detection is exact');
+ok(!B.includeInRecognizedBooks({type:'order_sale',sourceType:'order',sourceId:'A'},voidSources),'voided sale is excluded from recognized Books');
+ok(!B.includeInRecognizedBooks({type:'orphan_order_reversal',sourceType:'order',sourceId:'A'},voidSources),'void correction chain is excluded with its source');
+ok(B.includeInRecognizedBooks({type:'order_refund',sourceType:'order',sourceId:'B'},voidSources),'non-void refund remains in recognized Books');
 
 // helper to make a sale movement
 const t = Date.parse('2026-08-22T05:00:00Z'); // Manila 13:00 same day
@@ -63,7 +69,7 @@ ok(c1000 && Math.abs(c1000.debit-500)<0.005,'1000 cash debit = 500');
 const c1020 = lines.find(l=>l.code==='1020');
 ok(c1020 && Math.abs(c1020.debit-300)<0.005,'1020 gcash debit = 300');
 ok(B.netSales(node.net)===800,'net sales includes channel sales and excludes non-sales income');
-ok(B.netSales({'4000':-1000,'4900':125,'4990':-50})===875,'net sales deducts refunds/voids and excludes other income');
+ok(B.netSales({'4000':-1000,'4900':75,'4910':50,'4990':-50})===875,'net sales deducts discounts and refunds but excludes other income');
 
 // 5) discrete non-sale entry (purchase on account)
 const purchase = {id:'purchase_ap_po9', type:'purchase_receive', sourceType:'purchase', occurredAt:t,
