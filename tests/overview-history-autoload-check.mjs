@@ -2,7 +2,7 @@ const elements={overviewDataNote:{textContent:''},overviewRangeLabel:{textConten
 globalThis.localStorage={getItem(){return JSON.stringify({period:'all'});},setItem(){}};
 globalThis.document={querySelectorAll(){return[];},getElementById(id){return elements[id]||null;}};
 globalThis.CustomEvent=function(){};
-globalThis.window={dispatchEvent(){},AccazaSales:{amounts(o){return{gross:Number(o.total)||0,net:Number(o.total)||0};}}};
+globalThis.window={dispatchEvent(){},AccazaSales:{stamp(o){return Number(o.completedAt)||Number(o.receivedAt)||Number(o.timestamp)||Date.parse(o.date)||Number(o.archivedAt)||0;},amounts(o){return{gross:Number(o.total)||0,net:Number(o.total)||0};}}};
 const {createOverviewInsights}=await import('../assets/js/admin/overview-insights.mjs');
 const states={orders:{loaded:1,hasOlder:true},archivedOrders:{loaded:1,hasOlder:true},financialMovements:{loaded:1,hasOlder:true}},calls=[];
 const overview=createOverviewInsights({esc:String,historyStatus(path){return states[path];},async loadOlder(path){calls.push(path);states[path]={loaded:2,hasOlder:false};}});
@@ -30,3 +30,12 @@ shortcut.render({active:[],orders:[{id:'period-covered',timestamp:Date.now(),tot
 for(var k=0;k<20&&shortcutCalls.length<3;k++)await new Promise((resolve)=>setTimeout(resolve,0));
 if(shortcutCalls.join(',')!=='orders,archivedOrders,financialMovements')throw new Error('Overview stopped at the selected-period shortcut instead of verifying complete history.');
 console.log('PASS: Overview verifies every bounded feed even when the current page appears to cover the selected period.');
+
+const dateStates={orders:{loaded:1,hasOlder:false},archivedOrders:{loaded:1,hasOlder:false},financialMovements:{loaded:1,hasOlder:false}};
+const dated=createOverviewInsights({esc:String,historyStatus(path){return dateStates[path];},async loadOlder(){return{loaded:0,hasOlder:false};}});
+const completedNow={id:'completed-this-month',timestamp:1,completedAt:Date.now(),total:125,status:'Completed',paymentStatus:'confirmed'};
+dated.render({active:[],orders:[completedNow],archived:[],outcomes:[completedNow],sales:[completedNow]});
+for(var n=0;n<20&&elements.overviewTransactions.textContent!=='1';n++)await new Promise((resolve)=>setTimeout(resolve,0));
+window.AccazaReportPeriod.set({period:'month'});
+if(elements.overviewTransactions.textContent!=='1'||elements.overviewGrossSales.textContent!=='₱125')throw new Error('Overview did not use the Sales History completedAt date authority.');
+console.log('PASS: Overview and Sales History assign completed orders to the same reporting period.');

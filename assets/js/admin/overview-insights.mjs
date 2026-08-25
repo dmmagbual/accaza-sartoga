@@ -2,7 +2,7 @@ function createOverviewInsights(deps){
   var saved={};try{saved=JSON.parse(localStorage.getItem('accaza-report-period')||'{}')||{};}catch(_e){}
   var allowed=['7','30','month','all'],state={period:allowed.indexOf(saved.period)>-1?saved.period:'month',from:'',to:'',metric:'units',latest:null,bound:false,loading:false,rerun:false,verified:{orders:false,archivedOrders:false,financialMovements:false}};
   window.AccazaReportPeriod={get:function(){return{period:state.period};},set:function(v){v=v||{};state.period=allowed.indexOf(v.period)>-1?v.period:'month';try{localStorage.setItem('accaza-report-period',JSON.stringify(window.AccazaReportPeriod.get()));}catch(_e){}select();ensureHistory();paint();window.dispatchEvent(new CustomEvent('accaza-report-period',{detail:window.AccazaReportPeriod.get()}));}};
-  function stamp(o){return Number(o&&o.timestamp)||Date.parse(o&&o.date)||Number(o&&o.archivedAt)||0;}
+  function stamp(o){return window.AccazaSales.stamp(o);}
   function dayStart(d){var x=new Date(d);x.setHours(0,0,0,0);return x.getTime();}
   function range(){
     var now=new Date(),end=Date.now(),start=0,label='All time';

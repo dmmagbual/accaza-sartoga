@@ -491,6 +491,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   const overviewInsightsSource=fs.readFileSync(path.join(root,'assets','js','admin','overview-insights.mjs'),'utf8');
   for(const marker of ["period:'month'","data-report-period=\"7\"","data-report-period=\"30\"","data-report-period=\"month\"","data-report-period=\"all\""])if(!(salesHistorySource+adminHtml).includes(marker))fail(`Sales History shared-period marker missing: ${marker}`);
   if(!overviewInsightsSource.includes("saved.period:'month'")||!analyticsSource.includes("var azRange='month'"))fail('Overview and Analytics must initially use This month');
+  if(!overviewInsightsSource.includes('function stamp(o){return window.AccazaSales.stamp(o);'))fail('Overview must use the same completed/received sale date authority as Sales History');
   for(const marker of ["path:'orders'","path:'archivedOrders'","path:'financialMovements'","deps.loadOlder(cfg.path)","state.verified[cfg.path]=true","state.verified[path]&&!deps.historyStatus(path).hasOlder"])if(!overviewInsightsSource.includes(marker))fail(`Overview complete-history guard missing: ${marker}`);
   for(const marker of ['REPORT_PERIOD_KEY = "accaza-report-period"','function periodButtons()','window.__booksLiveLoading = true','Refreshing Finance Books'])if(!booksHtml.includes(marker))fail(`Books period/refresh marker missing: ${marker}`);
   if(booksHtml.includes('if(e.reversed) return'))fail('Finance statements exclude posted reversal lines and can disagree with the General Ledger');
