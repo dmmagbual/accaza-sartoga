@@ -180,7 +180,21 @@ function exportDiscrepancies(){
   XLSX.writeFile(wb,'accaza-discrepancies-'+window.AccazaDate.key()+'.xlsx');
 }
 /* ---------- Revolving Fund (legacy petty-cash storage keys retained) ---------- */
-var PETTY_CATS=['Supplies','Transport','Repairs & maintenance','Utilities','Staff meals','Miscellaneous'];
+var PETTY_CATS=[
+  {id:'operating_supplies',label:'Cleaning & operating supplies'},
+  {id:'office_supplies',label:'Office & administrative supplies'},
+  {id:'utilities',label:'Utilities'},
+  {id:'internet_phone',label:'Internet & phone'},
+  {id:'marketing',label:'Marketing & promotions'},
+  {id:'repairs',label:'Repairs & maintenance'},
+  {id:'bank_fees',label:'Bank & payment fees'},
+  {id:'rent',label:'Rent'},
+  {id:'salaries',label:'Salaries & wages'},
+  {id:'transport',label:'Transportation / delivery'},
+  {id:'staff_meals',label:'Staff meals / welfare'},
+  {id:'other_expense',label:'Other operating expense'}
+];
+function pettyCategoryLabel(v){if(v.transactionType==='owner_withdrawal')return 'Owner withdrawal — Owner\'s Drawings (3100)';var found=PETTY_CATS.find(function(c){return c.id===v.category;});return found?found.label:(v.category||'Expense');}
 function fv(id){var el=document.getElementById(id);return el?el.value:'';}
 function pettyBalance(){
   var open=Number((pettySettings&&pettySettings.openingBalance)||0);
@@ -205,14 +219,14 @@ function renderPetty(){
   var bal=pettyBalance();
   var vs=Object.keys(pettyVouchers).map(function(k){return Object.assign({id:k},pettyVouchers[k]);}).sort(function(a,b){return (b.createdAt||0)-(a.createdAt||0);});
   var pend=vs.filter(function(v){return v.status==='pending';});
-  var catOpts=PETTY_CATS.map(function(c){return '<option>'+esc(c)+'</option>';}).join('');
+  var catOpts=PETTY_CATS.map(function(c){return '<option value="'+esc(c.id)+'">'+esc(c.label)+'</option>';}).join('');
   var today=window.AccazaDate.key();
   function vrowHtml(v){
     var st=v.voided?'<span style="color:#c0392b;">VOID</span>':(v.status==='approved'?'<span style="color:#155724;">approved</span>':(v.status==='rejected'?'<span style="color:#c0392b;">rejected</span>':'<span style="color:#8a6d1b;">pending</span>'));
     var remaining=Number(v.remainingAmount!=null?v.remainingAmount:v.amount)||0;
     var act=v.status==='pending'?('<button class="pz-btn ok" data-pvap="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Approve</button> <button class="pz-btn warn" data-pvrj="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Reject</button>'):('<button class="pz-btn sec" data-pvpr="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Print</button>'+((v.status==='approved'&&!v.voided&&v.transactionType==='purchase_advance'&&remaining>0)?' <button class="pz-btn sec" data-pvrt="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Return balance</button>':'')+((v.status==='approved'&&!v.voided&&!(v.transactionType==='purchase_advance'&&(Object.keys(v.allocations||{}).length||v.returnedAt)))?' <button class="pz-btn warn" data-pvvd="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Void</button>':''));
     var rc=v.receiptImg?'<a href="'+v.receiptImg+'" target="_blank" style="color:var(--bd);">view</a>':'<span style="color:#c0392b;">none</span>';
-    var kind=v.transactionType==='purchase_advance'?'Supplier payment — pending inventory allocation':(v.category||'Expense'),alloc=v.transactionType==='purchase_advance'?('<div style="font-size:.7rem;color:var(--tl);">'+peso(v.remainingAmount!=null?v.remainingAmount:v.amount)+' awaiting allocation</div>'):'';
+    var kind=v.transactionType==='purchase_advance'?'Supplier payment — pending inventory allocation':pettyCategoryLabel(v),alloc=v.transactionType==='purchase_advance'?('<div style="font-size:.7rem;color:var(--tl);">'+peso(v.remainingAmount!=null?v.remainingAmount:v.amount)+' awaiting allocation</div>'):'';
     return '<tr'+(v.voided?' style="opacity:0.55;"':'')+'><td>'+esc(v.voucherNo||'')+'</td><td>'+esc(v.date||'')+'</td><td style="text-align:right;">'+peso(v.amount)+'</td><td>'+esc(kind)+alloc+'</td><td>'+esc(v.recipient||v.requesterName||'')+'</td><td>'+esc(v.approvedBy||v.approverName||'')+'</td><td>'+rc+'</td><td>'+st+'</td><td style="white-space:nowrap;">'+act+'</td></tr>';
   }
   var repl=Object.keys(pettyRepl).map(function(k){return pettyRepl[k];}).sort(function(a,b){return (b.ts||0)-(a.ts||0);});
@@ -230,7 +244,7 @@ function renderPetty(){
     +'<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">'
       +'<div class="pz-card" style="flex:2;min-width:280px;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Record small expense voucher</div>'
         +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">'
-          +'<div><span class="pz-lbl">Transaction type</span><select class="pz-in" id="pvType"><option value="expense">Small operating expense</option><option value="purchase_advance">Payment to supplier — allocate to inventories</option></select></div>'
+          +'<div><span class="pz-lbl">Transaction type</span><select class="pz-in" id="pvType"><option value="expense">Operating expense</option><option value="owner_withdrawal">Owner withdrawal — not an expense</option><option value="purchase_advance">Payment to supplier — allocate to inventories</option></select></div>'
           +'<div><span class="pz-lbl">Date</span><input class="pz-in" id="pvDate" type="date" value="'+today+'"/></div>'
           +'<div><span class="pz-lbl">Amount ₱</span><input class="pz-in" id="pvAmount" type="number" step="any"/></div>'
           +'<div><span class="pz-lbl">Category</span><select class="pz-in" id="pvCat">'+catOpts+'</select></div>'
@@ -254,6 +268,7 @@ function renderPetty(){
   var cs=document.getElementById('rfCustodianSave');if(cs)cs.onclick=function(){var name=(fv('rfCustodian')||'').trim();if(!name){alert('Enter the manager responsible for the physical fund.');return;}A().update(A().ref(A().db,'pettyCashSettings'),{custodian:name,custodianUpdatedAt:Date.now()}).then(function(){alert('Revolving Fund custodian saved.');});};
   var op=document.getElementById('rfOpenPurchases');if(op)op.onclick=function(){var btn=document.getElementById('tabBtnPurchases');if(btn)posSwitchTab('purchases',btn);};
   var c=document.getElementById('pvCreate'); if(c)c.onclick=createVoucher;
+  var pt=document.getElementById('pvType'),pc=document.getElementById('pvCat');if(pt&&pc)pt.onchange=function(){var fixed=pt.value!=='expense';pc.disabled=fixed;pc.title=pt.value==='owner_withdrawal'?"Posts to Owner's Drawings (3100)":(pt.value==='purchase_advance'?'Allocated later in Purchases':'');};
   var ra=document.getElementById('prAdd'); if(ra)ra.onclick=addReplenishment;
   var os=document.getElementById('pvOpenSave'); if(os)os.onclick=function(){var a=A();a.update(a.ref(a.db,'pettyCashSettings'),{openingBalance:Number(fv('pvOpening'))||0}).then(function(){alert('Opening balance saved.');});};
   var ex=document.getElementById('pettyExport'); if(ex)ex.onclick=exportPetty;
@@ -267,6 +282,7 @@ function createVoucher(){
   var amount=Number(fv('pvAmount'))||0; if(!amount){alert('Enter an amount.');return;}
   var requester=(fv('pvRequester')||'').trim(); if(!requester){alert('Enter the requester name.');return;}
   var date=fv('pvDate')||window.AccazaDate.key(); var category=fv('pvCat'); var approver=(fv('pvApprover')||'').trim(),transactionType=fv('pvType')||'expense',purpose=(fv('pvPurpose')||'').trim();
+  if(transactionType==='owner_withdrawal')category='owner_draw';
   if(transactionType==='purchase_advance'&&!purpose){alert('Enter what inventory will be purchased or allocated.');return;}
   var fileEl=document.getElementById('pvReceipt'); var file=fileEl&&fileEl.files&&fileEl.files[0];
   var btn=document.getElementById('pvCreate'); if(btn)btn.disabled=true;

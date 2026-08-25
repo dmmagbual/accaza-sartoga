@@ -132,6 +132,8 @@ ok(B.mapAccount("expense_or_inventory:bank charges","instore",{}).code==="6080",
 ok(B.mapAccount("expense_or_inventory:utilities","instore",{}).code==="6020", "bill utilities -> 6020");
 ok(B.mapAccount("expense:rent","instore",{}).code==="6010", "manual expense rent -> 6010");
 ok(B.mapAccount("expense:utilities","instore",{}).code==="6020", "manual expense utilities -> 6020");
+ok(B.mapAccount("expense:supplies","instore",{}).code==="6070", "Revolving Fund operating supplies -> 6070");
+ok(B.mapAccount("expense:office_supplies","instore",{}).code==="6075", "Revolving Fund office supplies -> 6075");
 ok(B.mapAccount("equity:capital_in","instore",{}).code==="3000", "owner capital -> 3000");
 ok(B.mapAccount("equity:owner_draw","instore",{}).code==="3100", "owner draw -> 3100");
 var u=B.mapAccount("expense_or_inventory:zzzunknown","instore",{}); ok(u.code==="6100" && u.unmapped===true, "unknown bill type -> 6100 + flag");

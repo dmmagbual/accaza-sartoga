@@ -21,6 +21,7 @@ const SALES_CODES = new Set([...Object.values(CHANNEL_SALES), "4900", "4910"]);
 const CHART_COA = {
   rent: "6010", utilities: "6020", salaries: "6000", "bank charges": "6080", bank_charges: "6080",
   repairs: "6060", "repairs & maintenance": "6060", marketing: "6050", supplies: "6070",
+  office_supplies: "6075", "office supplies": "6075",
   internet: "6030", "internet & phone": "6030", depreciation: "6090",
   purchases: "6100", other_expense: "6100", other: "6100", "fixed asset": "1500",
   capital_in: "3000", "capital in": "3000", owner_draw: "3100", "owner draw": "3100",

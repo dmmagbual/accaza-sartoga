@@ -80,6 +80,8 @@ function stmtCategory(m,net){
     case 'shift_cash_variance':return net>0?'Cash overage':'Cash shortage';
     case 'petty_cash_expense':return 'Revolving Fund expenses';
     case 'petty_cash_void':return 'Revolving Fund reversals';
+    case 'revolving_fund_owner_withdrawal':return 'Owner withdrawals from Revolving Fund';
+    case 'revolving_fund_owner_withdrawal_void':return 'Owner-withdrawal reversals';
     case 'petty_cash_replenishment':return 'Revolving Fund replenishment';
     case 'revolving_fund_purchase_advance':return 'Supplier payments pending inventory allocation';
     case 'revolving_fund_purchase_advance_void':return 'Supplier-payment allocation reversals';
