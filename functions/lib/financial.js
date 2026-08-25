@@ -102,4 +102,20 @@ function netMovementCorrection(movements, sourceId, type, label) {
   return movement(type || "net_balance_correction", "order", sourceId, lines, {occurredAt: Date.now(), controlReason: "Reverse only the remaining net balance across all source movements"});
 }
 
-module.exports = {money, safe, line, totals, assertBalanced, accountForMethod, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection};
+function postingDifference(before, after, type, sourceId, label) {
+  const balances = {};
+  [{movement: before, sign: -1}, {movement: after, sign: 1}].forEach((part) => {
+    (part.movement && part.movement.lines || []).forEach((entry) => {
+      const account = safe(entry.account); if (!account) return;
+      balances[account] = money((balances[account] || 0) + part.sign * (money(entry.debit) - money(entry.credit)));
+    });
+  });
+  const lines = Object.keys(balances).sort().filter((account) => Math.abs(balances[account]) > 0.009).map((account) => {
+    const delta = balances[account];
+    return line(account, delta > 0 ? delta : 0, delta < 0 ? Math.abs(delta) : 0, `${safe(label || "Correct posting")} · ${account}`);
+  });
+  if (!lines.length) return null;
+  return movement(type || "posting_correction", "order", sourceId, lines, {channel: after && after.channel || before && before.channel || ""});
+}
+
+module.exports = {money, safe, line, totals, assertBalanced, accountForMethod, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference};

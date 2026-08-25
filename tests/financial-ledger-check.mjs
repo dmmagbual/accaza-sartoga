@@ -42,6 +42,11 @@ const duplicateFix=F.netMovementCorrection([orphanOriginal,validVoid,duplicateOr
 balanced(duplicateFix,'duplicate orphan correction');
 assert(duplicateFix.lines.some(x=>x.account==='revenue:sales'&&x.credit===995),'double-reversed orphan was not restored');
 const discountedPlatform=F.orderPosting({id:'GFVOID',channel:'grabfood',grossPlatform:200,commission:40,platformDiscount:20,netPlatform:140},{});discountedPlatform.sourceId='GFVOID';
+const correctedPlatform=F.postingDifference(F.orderPosting({id:'GFCORRECT',channel:'grabfood',grossPlatform:775,commission:193.75,netPlatform:581.25},{}),F.orderPosting({id:'GFCORRECT',channel:'grabfood',grossPlatform:525,commission:131.25,netPlatform:393.75},{}),'platform_presettlement_correction','GFCORRECT','Pre-settlement correction');
+balanced(correctedPlatform,'platform pre-settlement correction');
+assert(correctedPlatform.lines.some(x=>x.account==='revenue:sales'&&x.debit===250),'gross correction does not reduce sales by 250');
+assert(correctedPlatform.lines.some(x=>x.account==='asset:platform_receivable:grabfood'&&x.credit===187.5),'gross correction does not reduce Grab receivable correctly');
+assert(correctedPlatform.lines.some(x=>x.account==='expense:platform_commission'&&x.credit===62.5),'commission correction is not reversed correctly');
 const fullVoid=F.netMovementCorrection([discountedPlatform],'GFVOID','order_void','Fully reverse voided order');
 balanced(fullVoid,'full platform void');
 const fullyVoided=[discountedPlatform,fullVoid];
