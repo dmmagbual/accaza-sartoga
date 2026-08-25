@@ -490,7 +490,7 @@ const MANAGER_APPROVAL_ACTIONS = new Set([
   "validate_payment", "refund", "void", "settle_platform_payout", "reopen_cash_count",
   "delete_archived_order", "review_discrepancy", "approve_petty_voucher",
   "reject_petty_voucher", "void_petty_voucher", "return_supplier_payment", "manual_discount", "cash_in", "purchase_cash_advance", "fixed_float_exception", "reverse_purchase",
-  "rekey_platform_order", "reverse_platform_payout",
+  "rekey_platform_order", "reverse_platform_payout", "correct_platform_presettlement",
 ]);
 function transactionCurrent(current, initial, state) {
   const value = current == null && !state.seen ? initial : current;
@@ -1546,6 +1546,52 @@ exports.managePurchaseCorrection = onCall(
     const reversalInventoryLines=await purchaseInventoryLines(db,invoice,true);let financialMovement=null,financialId="";if (!duplicateCleanup&&(invoice.payMode === "account"||invoice.payMode === "pending")&&payable) {financialId=`purchase_ap_reversal_${invoiceId}`;financialMovement=Financial.movement("purchase_payable_reversed","purchaseInvoice",invoiceId,[Financial.line(invoice.payMode==="pending"?`liability:grni:${invoice.payableId}`:`liability:payable:${invoice.payableId}`,safeInvoice.total,0,"Reverse supplier obligation")].concat(reversalInventoryLines),{occurredAt:now,actorName:actor.role});writes[`payables/${invoice.payableId}/status`]="reversed";writes[`payables/${invoice.payableId}/reversedAt`]=now;writes[`payables/${invoice.payableId}/reversalMovementId`]=financialId;} else if (invoice.payMode === "paid") {financialId=`purchase_cash_reversal_${invoiceId}`;financialMovement=Financial.movement("purchase_cash_reversed","purchaseInvoice",invoiceId,[Financial.line(`asset:cash_account:${paidAccountId}`,safeInvoice.total,0,"Reverse purchase payment")].concat(reversalInventoryLines),{occurredAt:now,actorName:actor.role});writes[`cfLedger/fm_${financialId}`]=cashLedgerRecord({date:financeDateFromTimestamp(now),accountId:paidAccountId,dir:"in",category:"Purchase reversal",amount:safeInvoice.total,party:invoice.supplier,ref:invoice.ref,auto:true},financialId,financialMovement,actor);} else if (invoice.payMode === "advance" && invoice.purchaseAdvanceId) {const advanceId=financeKey(invoice.purchaseAdvanceId,"Purchase advance ID");let base="",advance=null;if(invoice.advanceSource==="revolving"){base=`pettyCashVouchers/${advanceId}`;advance=(await db.ref(`/${base}`).get()).val();}else{const shifts=(await db.ref("/shifts").get()).val()||{};for(const shiftId of Object.keys(shifts)){const rows=Array.isArray(shifts[shiftId].payOuts)?shifts[shiftId].payOuts:[],index=rows.findIndex((row)=>row&&row.id===advanceId);if(index>=0){base=`shifts/${shiftId}/payOuts/${index}`;advance=rows[index];break;}}}if(!advance||!(advance.allocations&&advance.allocations[invoiceId]))throw new HttpsError("failed-precondition","The linked supplier-payment allocation is missing. Repair it before reversing this purchase.");const restored=Financial.money(Number(advance.remainingAmount!=null?advance.remainingAmount:advance.amount)+safeInvoice.total),allocated=Financial.money(Math.max(0,Number(advance.allocatedAmount||0)-safeInvoice.total));writes[`${base}/allocations/${invoiceId}`]=null;writes[`${base}/remainingAmount`]=restored;writes[`${base}/allocatedAmount`]=allocated;writes[`${base}/allocationStatus`]=allocated>0?"partially_allocated":"pending_allocation";financialId=`purchase_advance_reversal_${invoiceId}`;financialMovement=Financial.movement("purchase_advance_allocation_reversed","purchaseInvoice",invoiceId,[Financial.line(`asset:purchase_cash_advance:${advanceId}`,safeInvoice.total,0,"Restore supplier payment for allocation")].concat(reversalInventoryLines),{occurredAt:now,actorName:actor.role});}
     if (financialMovement) await commitFinancial(db,financialId,financialMovement,actor,writes);else await db.ref().update(writes);
     return {invoiceId,result:"reversed",amount:safeInvoice.total,invoice:safeInvoice};
+  },
+);
+
+// Correct an amount-only platform mismatch before payout settlement. The
+// operational order is updated to the statement-confirmed figures while an
+// append-only movement preserves the original posting and audit trail.
+exports.correctPlatformPresettlement = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["payouts", "receivables"]), data = request.data || {};
+    const requested = financeText(data.platformRef, 60), channelHint = financeText(data.channel, 20).toLowerCase();
+    if (!requested) throw new HttpsError("invalid-argument", "Platform order reference is required.");
+    const [ordersSnap, archiveSnap] = await Promise.all([db.ref("/orders").get(), db.ref("/archivedOrders").get()]);
+    const wanted = platformRefKey(requested); let found = null;
+    for (const [node, rows] of [["orders", ordersSnap.val() || {}], ["archivedOrders", archiveSnap.val() || {}]]) {
+      for (const id of Object.keys(rows)) {
+        const order = Object.assign({id}, rows[id] || {}), channel = financeText(order.channel, 20).toLowerCase();
+        if (!["grabfood", "foodpanda"].includes(channel) || (channelHint && channel !== channelHint)) continue;
+        if (platformRefKey(order.platformRef || order.id || id) === wanted) {found = {id, node, order}; break;}
+      }
+      if (found) break;
+    }
+    if (!found) throw new HttpsError("not-found", "No matching GrabFood or FoodPanda order was found.");
+    const o = found.order, channel = financeText(o.channel, 20).toLowerCase(), oldGross = Financial.money(o.grossPlatform != null ? o.grossPlatform : (o.subtotal != null ? o.subtotal : o.total)), oldCommission = Financial.money(o.commission);
+    if (data.action === "lookup") return {orderId: found.id, platformRef: o.platformRef || found.id, channel, gross: oldGross, commission: oldCommission, net: Financial.money(o.netPlatform != null ? o.netPlatform : oldGross - oldCommission), settlementStatus: o.settlementStatus || "unsettled", hasStructuredItems: Array.isArray(o.lineItems) && o.lineItems.length > 0};
+    if (o.voided) throw new HttpsError("failed-precondition", "A voided order cannot be corrected.");
+    if ((o.settlementStatus || "unsettled") === "settled" || o.payoutId) throw new HttpsError("failed-precondition", "This order is already settled. Reverse its payout before correcting it.");
+    const gross = Financial.money(data.gross), commission = Financial.money(data.commission), reason = financeText(data.reason, 300);
+    if (!(gross > 0)) throw new HttpsError("invalid-argument", "Verified gross must be greater than zero.");
+    if (commission < 0 || commission > gross + 0.009) throw new HttpsError("invalid-argument", "Verified commission must be between zero and the verified gross.");
+    if (!reason) throw new HttpsError("invalid-argument", "A correction reason is required.");
+    const discount = Financial.money(o.platformDiscount), wht = Financial.money(o.platformWht), vat = Financial.money(o.platformVat), net = Financial.money(gross - commission - discount - wht - vat);
+    if (net < -0.009) throw new HttpsError("failed-precondition", "The existing platform deductions exceed the verified gross. Review the order deductions first.");
+    const delta = Financial.money(Math.abs(oldGross - gross)); if (!(delta > 0.009) && Math.abs(oldCommission - commission) < 0.009) throw new HttpsError("failed-precondition", "The verified figures are unchanged.");
+    const version = Math.max(1, Number(o.preSettlementCorrectionVersion || 0) + 1), movementId = `platform_presettle_${found.id}_${version}`;
+    const approval = await claimManagerApproval(db, data, "correct_platform_presettlement", found.id, delta, movementId), now = Date.now(), accounts = (await db.ref("/cfAccounts").get()).val() || {};
+    const corrected = Object.assign({}, o, {grossPlatform:gross,subtotal:gross,total:gross,netSalesPlatform:Financial.money(gross-discount),commission,netPlatform:Math.max(0,net),preSettlementCorrected:true,preSettlementCorrectionVersion:version,preSettlementCorrectedAt:now,preSettlementCorrectedBy:actor.uid,preSettlementCorrectionReason:reason});
+    if (Array.isArray(corrected.payments) && corrected.payments.length === 1) corrected.payments = [Object.assign({}, corrected.payments[0], {amount:gross})];
+    const beforePosting = Financial.orderPosting(o, accounts), afterPosting = Financial.orderPosting(corrected, accounts), movement = Financial.postingDifference(beforePosting, afterPosting, "platform_presettlement_correction", found.id, "Pre-settlement correction");
+    if (!movement) throw new HttpsError("failed-precondition", "The correction creates no financial difference.");
+    movement.occurredAt = Number(o.timestamp || now); movement.approvalId = approval.id; movement.approvedBy = approval.record.approvedEmail || approval.record.approvedRole; movement.correctionRecordedAt = now;
+    const history = {version,before:{gross:oldGross,commission:oldCommission,net:Financial.money(o.netPlatform)},after:{gross,commission,net:Math.max(0,net)},reason,platformRef:o.platformRef||found.id,approvalId:approval.id,approvedBy:movement.approvedBy,actorUid:actor.uid,actorRole:actor.role,at:now,inventoryEffect:0,cogsEffect:0,movementId};
+    corrected.preSettlementCorrections = Object.assign({}, o.preSettlementCorrections || {}, {[version]:history});
+    const writes = Object.assign({}, approval.usedWrites, {[`${found.node}/${found.id}`]:corrected,[`operationalAudit/${now}_platform_presettle_${found.id}`]:{action:"correct_platform_presettlement",sourceType:"order",sourceId:found.id,platformRef:o.platformRef||found.id,channel,before:history.before,after:history.after,reason,approvalId:approval.id,actorUid:actor.uid,actorRole:actor.role,inventoryEffect:0,cogsEffect:0,ts:now,schemaVersion:1}});
+    const committed = await commitFinancial(db, movementId, movement, actor, writes);
+    return {orderId:found.id,platformRef:o.platformRef||found.id,gross,commission,net:Math.max(0,net),movementId,duplicate:committed.duplicate};
   },
 );
 

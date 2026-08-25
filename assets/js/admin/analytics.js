@@ -474,6 +474,23 @@ function reversePayout(payoutId,chLbl){
     }).then(function(r){return (r&&r.data)||r||{};});
   }).then(function(d){renderPayouts();alert('Payout reversed. '+((d&&d.orderCount)||0)+' order(s) returned to unsettled and can be re-settled.');}).catch(function(e){var m=String((e&&e.message)||(e&&e.code)||e);if(m.indexOf('cancelled')<0)alert('Could not reverse the payout: '+m);});
 }
+function correctPlatformPresettlement(ch,chLbl){
+  var a=A();if(!a||!a.correctPlatformPresettlement||!a.managerApproval){alert('Pre-settlement correction service unavailable. Refresh the portal.');return;}
+  F().run({title:'Pre-settlement correction',subtitle:'Enter the exact '+chLbl+' order reference from the payout statement.',submitLabel:'Find unsettled order',busyLabel:'Finding…',fields:[{name:'platformRef',label:chLbl+' order reference',required:true,maxLength:60}]},function(v){return a.correctPlatformPresettlement({action:'lookup',channel:ch,platformRef:v.platformRef}).then(function(r){return(r&&r.data)||r||{};});})
+  .then(function(found){
+    if((found.settlementStatus||'unsettled')==='settled')throw new Error('This order is already settled. Reverse the payout before correcting it.');
+    return F().run({title:'Correct '+found.platformRef+' before settlement',subtitle:'Current gross '+peso(found.gross)+'. Enter the verified statement figures. This changes the displayed sale and Finance Books but does not change items, COGS, or inventory.',submitLabel:'Approve & correct',busyLabel:'Posting correction…',fields:[
+      {name:'gross',label:'Verified gross order value (₱)',type:'number',required:true,min:0.01,value:found.gross},
+      {name:'commission',label:'Verified commission (₱)',type:'number',required:true,min:0,value:found.commission,validate:function(v,vals){return Number(v)>Number(vals.gross||0)+0.009?'Commission cannot exceed verified gross.':'';}},
+      {name:'reason',label:'Correction reason',type:'textarea',required:true,maxLength:300,value:'Correct cashier entry to '+chLbl+' payout statement'},
+      {name:'confirmed',label:'Items and quantities are correct; inventory must remain unchanged',type:'checkbox',required:true}
+    ]},function(v){
+      var difference=Math.round(Math.abs(Number(found.gross)-Number(v.gross))*100)/100;
+      return a.managerApproval('correct_platform_presettlement',found.orderId,difference,v.reason).then(function(ap){return a.correctPlatformPresettlement({action:'correct',channel:ch,platformRef:found.platformRef,gross:Number(v.gross),commission:Number(v.commission),reason:v.reason,approvalId:ap.approvalId});}).then(function(r){return(r&&r.data)||r||{};});
+    });
+  }).then(function(d){renderPayouts();alert('Corrected '+d.platformRef+' to gross '+peso(d.gross)+'. Net receivable is now '+peso(d.net)+'. Sales History and Finance Books received the same audited correction; inventory was unchanged.');})
+  .catch(function(e){var m=String((e&&e.message)||(e&&e.code)||e);if(m.indexOf('cancelled')<0)alert('Could not apply pre-settlement correction: '+m);});
+}
 function renderPayouts(){
   var root=document.getElementById('payoutsRoot');if(!root)return;
   var a=A();
@@ -503,7 +520,7 @@ function renderPayouts(){
         +'<div><span class="pz-lbl">From</span><input type="date" class="pz-in" id="poFrom" value="'+(poFrom||'')+'"/></div>'
         +'<div><span class="pz-lbl">To</span><input type="date" class="pz-in" id="poTo" value="'+(poTo||'')+'"/></div>'
         +'<div style="font-size:0.74rem;color:var(--tl);">Leave dates blank to reconcile <b>all</b> unsettled '+esc(chLbl)+' orders.</div>'
-        +'<button class="pz-btn sec" id="poReKey" style="margin-left:auto;border-color:#3a8a6a;color:#256b52;">➕ Re-key missed order</button>'
+        +'<div style="margin-left:auto;display:flex;gap:0.4rem;flex-wrap:wrap;"><button class="pz-btn sec" id="poCorrect" style="border-color:#b07a2b;color:#80520f;">✎ Pre-settlement correction</button><button class="pz-btn sec" id="poReKey" style="border-color:#3a8a6a;color:#256b52;">➕ Re-key missed order</button></div>'
       +'</div>'
       +'<details style="margin-bottom:0.6rem;"><summary style="cursor:pointer;font-weight:600;color:var(--bd);font-size:0.85rem;">📄 Match to payout statement (optional)</summary>'
         +'<div style="margin-top:0.4rem;"><span class="pz-lbl">Paste the order numbers from the '+esc(chLbl)+' payout report (one per line or comma-separated)</span><textarea class="pz-in" id="poStmt" rows="3" placeholder="'+(ch==='grabfood'?'GF-123456, GF-123457, GF-123460':'FP-123456, FP-123457')+'" style="width:100%;font-size:0.8rem;"></textarea><button class="pz-btn sec" id="poMatch" style="margin-top:0.4rem;">Match &amp; tick</button><div id="poMatchInfo" style="font-size:0.78rem;margin-top:0.4rem;"></div></div></details>'
@@ -537,6 +554,7 @@ function renderPayouts(){
   document.getElementById('poFrom').onchange=function(){poFrom=this.value||null;renderPayouts();};
   document.getElementById('poTo').onchange=function(){poTo=this.value||null;renderPayouts();};
   var _rk=document.getElementById('poReKey'); if(_rk)_rk.onclick=function(){reKeyMissedOrder(ch,chLbl);};
+  var _pc=document.getElementById('poCorrect'); if(_pc)_pc.onclick=function(){correctPlatformPresettlement(ch,chLbl);};
   root.querySelectorAll('[data-povoid]').forEach(function(b){b.onclick=function(){voidPayoutOrder(b.getAttribute('data-povoid'),Number(b.getAttribute('data-povg'))||0);};});
   root.querySelectorAll('[data-porev]').forEach(function(b){b.onclick=function(){reversePayout(b.getAttribute('data-porev'),chLbl);};});
   root.querySelectorAll('[data-podate]').forEach(function(inp){inp.onchange=function(){var pid=inp.getAttribute('data-podate'),val=inp.value||'';var a=A();if(!a||!a.setPlatformPayoutDate){alert('Service unavailable. Refresh the portal.');return;}inp.disabled=true;a.setPlatformPayoutDate({payoutId:pid,payoutDate:val}).then(function(){if(payoutsMap[pid])payoutsMap[pid].payoutDate=val;(window.accazaToast||function(){})('Payout date saved.','ok');}).catch(function(e){alert('Could not save payout date: '+((e&&e.message)||e));}).finally(function(){inp.disabled=false;});};});

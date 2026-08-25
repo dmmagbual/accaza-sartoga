@@ -302,6 +302,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(payoutQueueCheck.status!==0)fail(`Payout queue regression check failed:\n${payoutQueueCheck.stderr||payoutQueueCheck.stdout}`);
   const platformReferenceCheck=spawnSync(process.execPath,[path.join(root,'tests','platform-reference-check.mjs')],{encoding:'utf8',cwd:root});
   if(platformReferenceCheck.status!==0)fail(`Platform reference duplicate check failed:\n${platformReferenceCheck.stderr||platformReferenceCheck.stdout}`);
+  for(const marker of ['exports.correctPlatformPresettlement = onCall','correct_platform_presettlement','platform_presettlement_correction','Pre-settlement correction','id="poCorrect"'])if(!functionsSource.includes(marker)&&!analyticsSource.includes(marker))fail(`Platform pre-settlement correction control missing: ${marker}`);
   if(!analyticsSource.includes('class="dr-summary"')||!analyticsSource.includes('data-dr-target="drChannels"')||!analyticsSource.includes("scrollIntoView({behavior:'smooth',block:'center'})"))fail('Daily Report summary navigation is incomplete');
 
   const orderAdminSource=fs.readFileSync(path.join(root,'assets','js','admin','admin-orders.mjs'),'utf8');
