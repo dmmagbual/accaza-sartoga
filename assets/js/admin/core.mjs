@@ -4,7 +4,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=301";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=302";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -987,7 +987,8 @@ function renderDashboard(){
   function _isSale(o){return window.AccazaSales.qualifies(o);}
   function _tsOf(o){return window.AccazaSales.stamp(o);}
   const outcomes=mergeOverviewOrders(active,historyOrders,archived);
-  const sales=outcomes.filter(_isSale);
+  const reconciledSales=mergeOverviewOrders([],historyOrders,archived);
+  const sales=reconciledSales.filter(_isSale);
   const now2=new Date();
   const startToday=new Date(now2.getFullYear(),now2.getMonth(),now2.getDate()).getTime();
   const _sow=new Date(now2);_sow.setDate(now2.getDate()-now2.getDay());_sow.setHours(0,0,0,0);const startWeek=_sow.getTime();

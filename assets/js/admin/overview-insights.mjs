@@ -6,7 +6,7 @@ function mergeOverviewOrders(active,orders,archived){
 
 function createOverviewInsights(deps){
   var saved={};try{saved=JSON.parse(localStorage.getItem('accaza-report-period')||'{}')||{};}catch(_e){}
-  var allowed=['7','30','month','all'],state={period:allowed.indexOf(saved.period)>-1?saved.period:'month',from:'',to:'',metric:'units',latest:null,bound:false,loading:false,rerun:false,verified:{orders:false,archivedOrders:false,financialMovements:false}};
+  var allowed=['7','30','month','all'],state={period:allowed.indexOf(saved.period)>-1?saved.period:'month',from:'',to:'',metric:'units',latest:null,bound:false,loading:false,rerun:false,waitTimer:0,verified:{orders:false,archivedOrders:false,financialMovements:false}};
   window.AccazaReportPeriod={get:function(){return{period:state.period};},set:function(v){v=v||{};state.period=allowed.indexOf(v.period)>-1?v.period:'month';try{localStorage.setItem('accaza-report-period',JSON.stringify(window.AccazaReportPeriod.get()));}catch(_e){}select();ensureHistory();paint();window.dispatchEvent(new CustomEvent('accaza-report-period',{detail:window.AccazaReportPeriod.get()}));}};
   function stamp(o){return window.AccazaSales.stamp(o);}
   function dayStart(d){var x=new Date(d);x.setHours(0,0,0,0);return x.getTime();}
@@ -35,11 +35,11 @@ function createOverviewInsights(deps){
   }
   function select(){document.querySelectorAll('[data-report-period]').forEach(function(btn){var on=btn.dataset.reportPeriod===state.period;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');});document.querySelectorAll('[data-overview-metric]').forEach(function(btn){var on=btn.dataset.overviewMetric===state.metric;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');});}
   async function ensureHistory(){
-    if(!state.latest)return;if(state.loading){state.rerun=true;return;}var notice=document.getElementById('overviewDataNote');state.loading=true;if(notice)notice.textContent='Verifying complete order history…';
+    if(!state.latest)return;var _fr=state.latest.feedReady||{orders:true,archivedOrders:true,financialMovements:true};if(!(_fr.orders&&_fr.archivedOrders&&_fr.financialMovements)){if(!state.waitTimer){state.waitTimer=setTimeout(function(){state.waitTimer=0;ensureHistory();},75);}return;}if(state.loading){state.rerun=true;return;}var notice=document.getElementById('overviewDataNote');state.loading=true;if(notice)notice.textContent='Verifying complete order history…';
     try{
       var feeds=[{path:'orders'},{path:'archivedOrders'},{path:'financialMovements'}];
       for(var f=0;f<feeds.length;f++){
-        var cfg=feeds[f],loops=0,status=deps.historyStatus(cfg.path),ready=state.latest.feedReady||{orders:true,archivedOrders:true,financialMovements:true};if(!ready[cfg.path])return;
+        var cfg=feeds[f],loops=0,status=deps.historyStatus(cfg.path);
         if(!state.verified[cfg.path]){await deps.loadOlder(cfg.path);state.verified[cfg.path]=true;status=deps.historyStatus(cfg.path);}
         while(status.hasOlder&&loops<100){await deps.loadOlder(cfg.path);status=deps.historyStatus(cfg.path);loops++;}
       }

@@ -13,5 +13,5 @@ if(!attached.includes('orders'))throw new Error('Overview dashboard did not atta
 const fs=await import('node:fs/promises');
 const core=await fs.readFile(new URL('../assets/js/admin/core.mjs',import.meta.url),'utf8');
 if(!core.includes("subscriptionHub.subscribe('orders',snap=>{overviewOrdersMap="))throw new Error('Admin Overview does not retain the authoritative orders feed.');
-if(!core.includes('orders:historyOrders')||!core.includes('const sales=outcomes.filter(_isSale)'))throw new Error('Admin Overview is not calculating sales from the retained order history.');
+if(!core.includes('orders:historyOrders')||!core.includes('mergeOverviewOrders([],historyOrders,archived)')||!core.includes('const sales=reconciledSales.filter(_isSale)'))throw new Error('Admin Overview is not calculating sales from the retained order history.');
 console.log('PASS: Overview attaches, retains, and calculates from live order history before another Finance tab is opened.');
