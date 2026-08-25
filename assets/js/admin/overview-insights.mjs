@@ -1,3 +1,9 @@
+function mergeOverviewOrders(active,orders,archived){
+  var combined={};
+  [active||[],orders||[],archived||[]].forEach(function(rows){rows.forEach(function(o,i){if(!o)return;var id=String(o.id||o.orderId||o.key||o._overviewKey||('overview-'+i));combined[id]=o;});});
+  return Object.values(combined);
+}
+
 function createOverviewInsights(deps){
   var saved={};try{saved=JSON.parse(localStorage.getItem('accaza-report-period')||'{}')||{};}catch(_e){}
   var allowed=['7','30','month','all'],state={period:allowed.indexOf(saved.period)>-1?saved.period:'month',from:'',to:'',metric:'units',latest:null,bound:false,loading:false,rerun:false,verified:{orders:false,archivedOrders:false,financialMovements:false}};
@@ -75,4 +81,4 @@ function createOverviewInsights(deps){
   return{render:function(data){state.latest=data;paint();ensureHistory();},ensureHistory:ensureHistory};
 }
 
-export{createOverviewInsights};
+export{createOverviewInsights,mergeOverviewOrders};

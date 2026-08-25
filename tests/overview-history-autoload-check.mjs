@@ -3,7 +3,7 @@ globalThis.localStorage={getItem(){return JSON.stringify({period:'all'});},setIt
 globalThis.document={querySelectorAll(){return[];},getElementById(id){return elements[id]||null;}};
 globalThis.CustomEvent=function(){};
 globalThis.window={dispatchEvent(){},AccazaSales:{stamp(o){return Number(o.completedAt)||Number(o.receivedAt)||Number(o.timestamp)||Date.parse(o.date)||Number(o.archivedAt)||0;},amounts(o){return{gross:Number(o.total)||0,net:Number(o.total)||0};}}};
-const {createOverviewInsights}=await import('../assets/js/admin/overview-insights.mjs');
+const {createOverviewInsights,mergeOverviewOrders}=await import('../assets/js/admin/overview-insights.mjs');
 const states={orders:{loaded:1,hasOlder:true},archivedOrders:{loaded:1,hasOlder:true},financialMovements:{loaded:1,hasOlder:true}},calls=[];
 const overview=createOverviewInsights({esc:String,historyStatus(path){return states[path];},async loadOlder(path){calls.push(path);states[path]={loaded:2,hasOlder:false};}});
 overview.render({active:[],orders:[{id:'old-order',timestamp:1,total:100,status:'Completed',paymentStatus:'confirmed'}],archived:[{id:'old-archive',timestamp:1,archivedAt:2,total:200,status:'Archived',prevStatus:'Completed',paymentStatus:'confirmed'}],outcomes:[],sales:[]});
@@ -39,3 +39,14 @@ for(var n=0;n<20&&elements.overviewTransactions.textContent!=='1';n++)await new 
 window.AccazaReportPeriod.set({period:'month'});
 if(elements.overviewTransactions.textContent!=='1'||elements.overviewGrossSales.textContent!=='₱125')throw new Error('Overview did not use the Sales History completedAt date authority.');
 console.log('PASS: Overview and Sales History assign completed orders to the same reporting period.');
+
+const staleActive={id:'duplicate-order',status:'Completed',paymentStatus:'confirmed',timestamp:1,total:90};
+const completedHistory={id:'duplicate-order',status:'Completed',paymentStatus:'confirmed',timestamp:1,completedAt:Date.now(),total:125};
+const mergedDuplicate=mergeOverviewOrders([staleActive],[completedHistory],[]);
+if(mergedDuplicate.length!==1||mergedDuplicate[0]!==completedHistory)throw new Error('A stale active-order projection overwrote authoritative order history in Overview.');
+dated.render({active:[staleActive],orders:[completedHistory],archived:[],outcomes:mergedDuplicate,sales:mergedDuplicate});
+if(elements.overviewTransactions.textContent!=='1'||elements.overviewGrossSales.textContent!=='₱125')throw new Error('Overview totals still used the stale active-order copy after duplicate resolution.');
+const archivedAuthority={id:'duplicate-order',status:'Archived',prevStatus:'Completed',paymentStatus:'confirmed',completedAt:Date.now(),total:125};
+const mergedArchived=mergeOverviewOrders([staleActive],[completedHistory],[archivedAuthority]);
+if(mergedArchived.length!==1||mergedArchived[0]!==archivedAuthority)throw new Error('Archived order authority did not win Overview duplicate resolution.');
+console.log('PASS: Overview duplicate resolution prefers order history and archives over stale active projections.');
