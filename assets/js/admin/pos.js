@@ -36,7 +36,7 @@ var DISC_TYPES={senior:{label:'Senior Citizen',rate:0.20},pwd:{label:'PWD',rate:
 
 function A(){return window.__accaza;}
 /* Platform (Grab/FoodPanda) order-number key — MUST match functions/index.js platformRefKey. */
-function platformRefKey(r){return String(r||'').trim().toUpperCase().replace(/[.#$/\[\] -]/g,'_');}
+function platformRefKey(r){return String(r||'').trim().toUpperCase().replace(/[.#$/\[\]\u0000-\u001f\u007f]/g,'_');}
 function F(){if(!window.AccazaFormDialog)throw new Error('Form service unavailable. Refresh the portal.');return window.AccazaFormDialog;}
 function Costing(){if(!window.AccazaCosting)throw new Error('The shared costing engine did not load. Refresh the portal and try again.');return window.AccazaCosting;}
 function costingContext(extra){return Object.assign({inventory:inventoryMap,recipes:recipesMap,menuItems:(A()&&A().menuItemsMap)||{},optionCosts:optCostStore(),optionRecipes:optRecipesMap,optionGroups:(A()&&A().optionGroupsMap)||{}},extra||{});}

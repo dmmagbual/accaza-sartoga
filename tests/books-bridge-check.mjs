@@ -17,6 +17,7 @@ ok(B.mapAccount('asset:cash_account:gcash','instore',cashMap).code==='1020','cas
 ok(B.mapAccount('asset:cash_account:unknownid','instore',cashMap).code==='1010','unmapped cash_account→1010 default');
 ok(B.mapAccount('asset:platform_receivable:grabfood','grabfood',cashMap).code==='1100','platform_receivable→1100');
 ok(B.mapAccount('expense:platform_commission','grabfood',cashMap).code==='6040','platform_commission→6040');
+ok(B.mapAccount('expense:platform_variance:va_ads','grabfood',cashMap).code==='6050','Grab ads settlement variance→6050 marketing');
 ok(B.mapAccount('expense:customer_discount','instore',cashMap).code==='4900','customer discount→sales contra-income 4900');
 ok(B.mapAccount('expense:platform_discount','grabfood',cashMap).code==='4900','platform discount→sales contra-income 4900');
 ok(B.mapAccount('revenue:sales_reversal','instore',cashMap).code==='4910','refund reversal→returns and refunds 4910');
