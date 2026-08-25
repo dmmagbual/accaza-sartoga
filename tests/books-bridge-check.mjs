@@ -30,8 +30,11 @@ ok(B.mapAccount('liability:platform_owing:grabfood','grabfood',cashMap).code==='
 ok(B.mapAccount('expense:cash_shortage','instore',{}).code==='3100','cash shortage→owner drawings');
 ok(B.mapAccount('inventory:legacy_receipt','instore',{}).code==='1290','unposted inventory receipt→1290 clearing');
 ok(B.mapAccount('liability:grni:legacy','instore',{}).code==='2090','unrecorded payable→2090 clearing');
-const legacyPurchase=B.mappedLines({type:'payable_created',sourceId:'ap_pinv_legacy',lines:[{account:'expense_or_inventory:purchases',debit:100,credit:0},{account:'liability:payable:ap_pinv_legacy',debit:0,credit:100}]},{});
-ok(legacyPurchase.lines.some(l=>l.code==='1290'&&l.debit===100),'legacy purchase payable→1290 receiving clearing instead of Miscellaneous');
+const legacyMovement={type:'payable_created',sourceId:'ap_pinv_legacy',lines:[{account:'expense_or_inventory:purchases',debit:100,credit:0},{account:'liability:payable:ap_pinv_legacy',debit:0,credit:100}]};
+const legacyPurchase=B.mappedLines(legacyMovement,{}, {purchaseInvoice:{lines:[{itemId:'beans',total:100}]},inventory:{beans:{inventoryAccount:'1200',costAccount:'5000'}}});
+ok(legacyPurchase.lines.some(l=>l.code==='1200'&&l.debit===100),'legacy Admin purchase rebuilds to its item inventory account');
+const legacyPurchaseFallback=B.mappedLines(legacyMovement,{},{});
+ok(legacyPurchaseFallback.lines.some(l=>l.code==='1290'&&l.debit===100),'legacy purchase without saved item mapping→1290 review clearing');
 ok(B.mapAccount('cogs:legacy','instore',{}).code==='5090','unposted COGS→5090 clearing');
 ok(B.cashCodeForAccount({name:'Union Bank',type:'bank'})==='1011','Union Bank→1011');
 ok(B.cashCodeForAccount({name:'BDO',type:'bank'})==='1012','BDO→1012');
