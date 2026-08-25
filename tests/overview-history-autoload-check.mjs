@@ -6,8 +6,20 @@ globalThis.window={dispatchEvent(){},AccazaSales:{amounts(o){return{gross:Number
 const {createOverviewInsights}=await import('../assets/js/admin/overview-insights.mjs');
 const states={orders:{loaded:1,hasOlder:true},archivedOrders:{loaded:1,hasOlder:true}},calls=[];
 const overview=createOverviewInsights({esc:String,historyStatus(path){return states[path];},async loadOlder(path){calls.push(path);states[path]={loaded:2,hasOlder:false};}});
-overview.render({active:[{id:'old-order',timestamp:1,total:100,status:'Completed',paymentStatus:'confirmed'}],archived:[{id:'old-archive',timestamp:1,archivedAt:2,total:200,status:'Archived',prevStatus:'Completed',paymentStatus:'confirmed'}],sales:[]});
+overview.render({active:[],orders:[{id:'old-order',timestamp:1,total:100,status:'Completed',paymentStatus:'confirmed'}],archived:[{id:'old-archive',timestamp:1,archivedAt:2,total:200,status:'Archived',prevStatus:'Completed',paymentStatus:'confirmed'}],outcomes:[],sales:[]});
 for(var i=0;i<20&&calls.length<2;i++)await new Promise((resolve)=>setTimeout(resolve,0));
 if(calls.join(',')!=='orders,archivedOrders')throw new Error('Overview did not automatically complete both order-history feeds for All time.');
 if(elements.overviewDataNote.textContent!=='Complete available order history loaded.')throw new Error('Overview reported complete history before both feeds finished.');
 console.log('PASS: Overview automatically completes active and archived order history before reporting All-time completeness.');
+
+const raceStates={orders:{loaded:1,hasOlder:true},archivedOrders:{loaded:1,hasOlder:false}},raceChecks={orders:0,archivedOrders:0},raceCalls=[];
+let releaseRace;
+const raceGate=new Promise(function(resolve){releaseRace=resolve;});
+const raced=createOverviewInsights({esc:String,historyStatus(path){raceChecks[path]++;return raceStates[path];},async loadOlder(path){raceCalls.push(path);await raceGate;raceStates[path]={loaded:2,hasOlder:false};}});
+const raceData={active:[],orders:[{id:'race-order',timestamp:1,total:50,status:'Completed'}],archived:[],outcomes:[],sales:[]};
+raced.render(raceData);
+raced.render(raceData);
+releaseRace();
+for(var j=0;j<30&&raceChecks.orders<3;j++)await new Promise((resolve)=>setTimeout(resolve,0));
+if(raceCalls.join(',')!=='orders'||raceChecks.orders<3)throw new Error('Overview lost a refresh received while order history was loading.');
+console.log('PASS: Overview reruns history reconciliation when live data arrives during pagination.');
