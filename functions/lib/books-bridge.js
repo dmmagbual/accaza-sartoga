@@ -63,6 +63,9 @@ function mapAccount(posAccount, channel, cashAccountMap) {
     "revenue:cash_overage": "6110", "revenue:payment_overage": "4990",
     "expense:cash_shortage": "3100", "equity:owner_draw": "3100", "expense:platform_commission": "6040",
     "expense:platform_variance:va_ads": "6050",
+    "expense:platform_variance:va_promo": "6045", "expense:platform_variance:va_fees": "6080",
+    "expense:platform_variance:va_penalty": "6085", "expense:platform_variance:va_refund": "4910",
+    "revenue:platform_variance:va_incentive": "4990",
     "expense:customer_discount": "4900", "expense:platform_discount": "4900", "expense:platform_service_vat": "6046",
     "expense:platform_estimate_variance": "6100", "revenue:platform_estimate_variance": "4990",
     "equity:owner_capital": "3000", "equity:opening_balance": "3900", "equity:cash_float_source": "3050",
@@ -132,7 +135,8 @@ function bucketFor(mv) {
 function mappedLines(mv, cashMap) {
   const channel = String(mv.channel || "instore").toLowerCase(), unmapped = [];
   const out = (mv.lines || []).map((l) => {
-    const m = mapAccount(l.account, channel, cashMap);
+    const account=String(l.account||""), legacyPurchase=(String(mv.type||"")==="grni_created"||String(mv.type||"")==="purchase_payable_reversed"||(String(mv.type||"")==="payable_created"&&String(mv.sourceId||"").indexOf("ap_pinv_")===0))&&account.indexOf("expense_or_inventory:")===0;
+    const m = legacyPurchase ? {code:"1290",unmapped:true} : mapAccount(account, channel, cashMap);
     if (m.unmapped) unmapped.push({account: l.account, code: m.code});
     return {code: m.code, debit: r2(l.debit), credit: r2(l.credit), posAccount: String(l.account || "")};
   });
