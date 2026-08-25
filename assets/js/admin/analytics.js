@@ -412,8 +412,9 @@ function poGross(o){return Number(o.grossPlatform||o.subtotal||o.total)||0;}
 function poNet(o){return (o.netPlatform!=null)?(Number(o.netPlatform)||0):(poGross(o)-(Number(o.commission)||0));}
 function refNorm(s){return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');}
 function refEq(a,b){var x=refNorm(a),y=refNorm(b);if(!x||!y)return false;if(x===y)return true;var lo=x.length<y.length?x:y,hi=x.length<y.length?y:x;return lo.length>=5&&hi.slice(-lo.length)===lo;}
+function settledPayoutOrderIds(){var ids={};Object.keys(payoutsMap).forEach(function(k){var p=payoutsMap[k]||{};if(p.reversed)return;(p.orderIds||[]).forEach(function(id){if(id)ids[id]=k;});});return ids;}
 function platEntries(){var out=[];Object.keys(ordersMap).forEach(function(k){var o=ordersMap[k];if(o&&o.source==='pos'&&o.channel&&o.channel!=='instore'&&!o.voided)out.push({key:k,node:'orders',o:o});});Object.keys(archMap).forEach(function(k){var o=archMap[k];if(o&&o.source==='pos'&&o.channel&&o.channel!=='instore'&&!o.voided)out.push({key:k,node:'archivedOrders',o:o});});return out;}
-function poUnsettled(ch){return platEntries().filter(function(e){return e.o.channel===ch&&(e.o.settlementStatus||'unsettled')!=='settled';});}
+function poUnsettled(ch){var paid=settledPayoutOrderIds();return platEntries().filter(function(e){var id=e.o.id||e.key;return e.o.channel===ch&&(e.o.settlementStatus||'unsettled')!=='settled'&&!paid[id];});}
 function reKeyMissedOrder(ch,chLbl){
   if(!window.AccazaFormDialog){alert('Form service unavailable. Refresh the portal.');return;}
   var a=A();
