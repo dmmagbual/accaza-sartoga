@@ -179,14 +179,15 @@ function exportDiscrepancies(){
   var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'Discrepancies');
   XLSX.writeFile(wb,'accaza-discrepancies-'+window.AccazaDate.key()+'.xlsx');
 }
-/* ---------- Petty Cash (Feature B) ---------- */
+/* ---------- Revolving Fund (legacy petty-cash storage keys retained) ---------- */
 var PETTY_CATS=['Supplies','Transport','Repairs & maintenance','Utilities','Staff meals','Miscellaneous'];
 function fv(id){var el=document.getElementById(id);return el?el.value:'';}
 function pettyBalance(){
   var open=Number((pettySettings&&pettySettings.openingBalance)||0);
   var rep=Object.keys(pettyRepl).reduce(function(s,k){return s+(Number(pettyRepl[k].amount)||0);},0);
   var dis=Object.keys(pettyVouchers).reduce(function(s,k){var v=pettyVouchers[k];return s+((v.status==='approved'&&!v.voided)?(Number(v.amount)||0):0);},0);
-  return {opening:open,replen:rep,disb:dis,remaining:open+rep-dis};
+  var advances=Object.keys(pettyVouchers).reduce(function(s,k){var v=pettyVouchers[k];return s+((v.status==='approved'&&!v.voided&&v.transactionType==='purchase_advance')?Math.max(0,Number(v.remainingAmount!=null?v.remainingAmount:v.amount)||0):0);},0);
+  return {opening:open,replen:rep,disb:dis,remaining:open+rep-dis,advances:advances,accountability:open+rep-dis+advances};
 }
 function compressImage(file,cb){
   if(!file){cb('');return;}
@@ -208,34 +209,41 @@ function renderPetty(){
   var today=window.AccazaDate.key();
   function vrowHtml(v){
     var st=v.voided?'<span style="color:#c0392b;">VOID</span>':(v.status==='approved'?'<span style="color:#155724;">approved</span>':(v.status==='rejected'?'<span style="color:#c0392b;">rejected</span>':'<span style="color:#8a6d1b;">pending</span>'));
-    var act=v.status==='pending'?('<button class="pz-btn ok" data-pvap="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Approve</button> <button class="pz-btn warn" data-pvrj="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Reject</button>'):('<button class="pz-btn sec" data-pvpr="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Print</button>'+((v.status==='approved'&&!v.voided)?' <button class="pz-btn warn" data-pvvd="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Void</button>':''));
+    var remaining=Number(v.remainingAmount!=null?v.remainingAmount:v.amount)||0;
+    var act=v.status==='pending'?('<button class="pz-btn ok" data-pvap="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Approve</button> <button class="pz-btn warn" data-pvrj="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Reject</button>'):('<button class="pz-btn sec" data-pvpr="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Print</button>'+((v.status==='approved'&&!v.voided&&v.transactionType==='purchase_advance'&&remaining>0)?' <button class="pz-btn sec" data-pvrt="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Return balance</button>':'')+((v.status==='approved'&&!v.voided&&!(v.transactionType==='purchase_advance'&&(Object.keys(v.allocations||{}).length||v.returnedAt)))?' <button class="pz-btn warn" data-pvvd="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Void</button>':''));
     var rc=v.receiptImg?'<a href="'+v.receiptImg+'" target="_blank" style="color:var(--bd);">view</a>':'<span style="color:#c0392b;">none</span>';
-    return '<tr'+(v.voided?' style="opacity:0.55;"':'')+'><td>'+esc(v.voucherNo||'')+'</td><td>'+esc(v.date||'')+'</td><td style="text-align:right;">'+peso(v.amount)+'</td><td>'+esc(v.category||'')+'</td><td>'+esc(v.requesterName||'')+'</td><td>'+esc(v.approvedBy||v.approverName||'')+'</td><td>'+rc+'</td><td>'+st+'</td><td style="white-space:nowrap;">'+act+'</td></tr>';
+    var kind=v.transactionType==='purchase_advance'?'Supplier payment — pending inventory allocation':(v.category||'Expense'),alloc=v.transactionType==='purchase_advance'?('<div style="font-size:.7rem;color:var(--tl);">'+peso(v.remainingAmount!=null?v.remainingAmount:v.amount)+' awaiting allocation</div>'):'';
+    return '<tr'+(v.voided?' style="opacity:0.55;"':'')+'><td>'+esc(v.voucherNo||'')+'</td><td>'+esc(v.date||'')+'</td><td style="text-align:right;">'+peso(v.amount)+'</td><td>'+esc(kind)+alloc+'</td><td>'+esc(v.recipient||v.requesterName||'')+'</td><td>'+esc(v.approvedBy||v.approverName||'')+'</td><td>'+rc+'</td><td>'+st+'</td><td style="white-space:nowrap;">'+act+'</td></tr>';
   }
   var repl=Object.keys(pettyRepl).map(function(k){return pettyRepl[k];}).sort(function(a,b){return (b.ts||0)-(a.ts||0);});
-  root.innerHTML='<div class="pz-h">💷 Petty Cash</div>'
-    +'<p class="pz-sub">Digital vouchers so no one takes cash from the sales drawer for expenses. Every disbursement needs a receipt and privileged approval; the fund is a running imprest balance.</p>'
+  var custodian=(pettySettings&&pettySettings.custodian)||'';
+  root.innerHTML='<div class="pz-h">💷 Revolving Fund</div>'
+    +'<p class="pz-sub">One controlled cash fund for approved small expenses. Every disbursement needs a receipt and privileged approval. Inventory purchases must be itemized in <b>Purchases</b> with Revolving Fund selected as the payment source.</p>'
+    +'<div class="pz-card" style="margin-bottom:1rem;background:#f8f6f1;"><div style="display:flex;gap:.6rem;align-items:end;flex-wrap:wrap;"><div style="flex:1;min-width:220px;"><span class="pz-lbl">Current fund custodian</span><input class="pz-in" id="rfCustodian" value="'+esc(custodian)+'" placeholder="Manager responsible for the physical cash"/></div><button class="pz-btn sec" id="rfCustodianSave">Save custodian</button><button class="pz-btn ok" id="rfOpenPurchases">Open detailed Purchases</button></div><div class="az-note">Only one Revolving Fund exists. A custodian handover should be accompanied by a physical cash count.</div></div>'
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">'
       +'<div class="pz-card" style="flex:1;min-width:130px;"><div style="font-size:0.75rem;color:var(--tl);">Opening</div><div style="font-weight:700;">'+peso(bal.opening)+'</div></div>'
       +'<div class="pz-card" style="flex:1;min-width:130px;"><div style="font-size:0.75rem;color:var(--tl);">+ Replenishments</div><div style="font-weight:700;">'+peso(bal.replen)+'</div></div>'
       +'<div class="pz-card" style="flex:1;min-width:130px;"><div style="font-size:0.75rem;color:var(--tl);">− Disbursements</div><div style="font-weight:700;">'+peso(bal.disb)+'</div></div>'
       +'<div class="pz-card" style="flex:1;min-width:130px;background:#f5faf6;"><div style="font-size:0.75rem;color:var(--tl);">= Remaining</div><div style="font-weight:700;font-size:1.15rem;color:var(--bd);">'+peso(bal.remaining)+'</div></div>'
+      +'<div class="pz-card" style="flex:1;min-width:180px;"><div style="font-size:0.75rem;color:var(--tl);">Payments awaiting inventory allocation</div><div style="font-weight:700;color:#8a5a00;">'+peso(bal.advances)+'</div></div>'
     +'</div>'
     +'<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">'
-      +'<div class="pz-card" style="flex:2;min-width:280px;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">New voucher</div>'
+      +'<div class="pz-card" style="flex:2;min-width:280px;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Record small expense voucher</div>'
         +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">'
+          +'<div><span class="pz-lbl">Transaction type</span><select class="pz-in" id="pvType"><option value="expense">Small operating expense</option><option value="purchase_advance">Payment to supplier — allocate to inventories</option></select></div>'
           +'<div><span class="pz-lbl">Date</span><input class="pz-in" id="pvDate" type="date" value="'+today+'"/></div>'
           +'<div><span class="pz-lbl">Amount ₱</span><input class="pz-in" id="pvAmount" type="number" step="any"/></div>'
           +'<div><span class="pz-lbl">Category</span><select class="pz-in" id="pvCat">'+catOpts+'</select></div>'
-          +'<div><span class="pz-lbl">Requester</span><input class="pz-in" id="pvRequester"/></div>'
+          +'<div><span class="pz-lbl">Requester / supplier payee</span><input class="pz-in" id="pvRequester"/></div>'
+          +'<div><span class="pz-lbl">Purpose</span><input class="pz-in" id="pvPurpose" placeholder="What is this cash for?"/></div>'
           +'<div><span class="pz-lbl">Approver (intended)</span><input class="pz-in" id="pvApprover"/></div>'
           +'<div><span class="pz-lbl">Receipt photo</span><input class="pz-in" id="pvReceipt" type="file" accept="image/*"/></div>'
         +'</div><div style="margin-top:0.7rem;"><button class="pz-btn ok" id="pvCreate">Create voucher</button></div></div>'
-      +'<div class="pz-card" style="flex:1;min-width:220px;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Replenish fund</div>'
+      +'<div class="pz-card" style="flex:1;min-width:220px;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Replenish Revolving Fund</div>'
         +'<div><span class="pz-lbl">Amount ₱</span><input class="pz-in" id="prAmount" type="number" step="any"/></div>'
         +'<div style="margin-top:0.4rem;"><span class="pz-lbl">Source</span><select class="pz-in" id="prSource"><option value="owner">Owner top-up</option><option value="register">From sales register</option></select></div>'
         +'<div style="margin-top:0.4rem;"><span class="pz-lbl">Note</span><input class="pz-in" id="prNote"/></div>'
-        +'<div style="margin-top:0.4rem;font-size:0.72rem;color:var(--tl);">“From register” posts a drawer pay-out on the open shift.</div>'
+        +'<div style="margin-top:0.4rem;font-size:0.72rem;color:var(--tl);">“From register” posts a drawer pay-out on the open shift and a Revolving Fund replenishment in Finance Books.</div>'
         +'<div style="margin-top:0.7rem;"><button class="pz-btn sec" id="prAdd">Add replenishment</button></div>'
         +'<div style="margin-top:0.8rem;border-top:1px solid #eee;padding-top:0.5rem;"><span class="pz-lbl">Opening balance</span><div style="display:flex;gap:0.4rem;"><input class="pz-in" id="pvOpening" type="number" step="any" value="'+(Number(bal.opening)||0)+'" style="flex:1;"/><button class="pz-btn sec" id="pvOpenSave">Save</button></div></div>'
       +'</div>'
@@ -243,6 +251,8 @@ function renderPetty(){
     +(pend.length?('<div class="pz-card" style="margin-bottom:1rem;border:1px solid #ffe0a3;background:#fffdf5;"><div style="font-weight:700;color:#8a6d1b;margin-bottom:0.5rem;">⏳ Pending approval ('+pend.length+')</div><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Voucher</th><th>Date</th><th style="text-align:right;">Amount</th><th>Category</th><th>Requester</th><th>Approver</th><th>Receipt</th><th>Status</th><th></th></tr></thead><tbody>'+pend.map(vrowHtml).join('')+'</tbody></table></div></div>'):'')
     +'<div class="pz-card" style="margin-bottom:1rem;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;"><div style="font-weight:600;color:var(--bd);">Voucher register</div><button class="pz-btn sec" id="pettyExport" style="padding:0.25rem 0.7rem;">⬇ Export Excel</button></div><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Voucher</th><th>Date</th><th style="text-align:right;">Amount</th><th>Category</th><th>Requester</th><th>Approver</th><th>Receipt</th><th>Status</th><th></th></tr></thead><tbody>'+(vs.length?vs.map(vrowHtml).join(''):'<tr><td colspan="9" style="color:var(--tl);padding:0.6rem;">No vouchers yet.</td></tr>')+'</tbody></table></div></div>'
     +'<div class="pz-card"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Replenishments</div><table class="pz-tbl"><thead><tr><th>Date</th><th style="text-align:right;">Amount</th><th>Source</th><th>By</th><th>Note</th></tr></thead><tbody>'+(repl.length?repl.map(function(r){return '<tr><td>'+esc(r.date||new Date(r.ts).toLocaleDateString('en-PH'))+'</td><td style="text-align:right;">'+peso(r.amount)+'</td><td>'+esc(r.source||'')+'</td><td>'+esc(r.by||'')+'</td><td>'+esc(r.note||'')+'</td></tr>';}).join(''):'<tr><td colspan="5" style="color:var(--tl);padding:0.6rem;">No replenishments yet.</td></tr>')+'</tbody></table></div>';
+  var cs=document.getElementById('rfCustodianSave');if(cs)cs.onclick=function(){var name=(fv('rfCustodian')||'').trim();if(!name){alert('Enter the manager responsible for the physical fund.');return;}A().update(A().ref(A().db,'pettyCashSettings'),{custodian:name,custodianUpdatedAt:Date.now()}).then(function(){alert('Revolving Fund custodian saved.');});};
+  var op=document.getElementById('rfOpenPurchases');if(op)op.onclick=function(){var btn=document.getElementById('tabBtnPurchases');if(btn)posSwitchTab('purchases',btn);};
   var c=document.getElementById('pvCreate'); if(c)c.onclick=createVoucher;
   var ra=document.getElementById('prAdd'); if(ra)ra.onclick=addReplenishment;
   var os=document.getElementById('pvOpenSave'); if(os)os.onclick=function(){var a=A();a.update(a.ref(a.db,'pettyCashSettings'),{openingBalance:Number(fv('pvOpening'))||0}).then(function(){alert('Opening balance saved.');});};
@@ -250,44 +260,49 @@ function renderPetty(){
   root.querySelectorAll('[data-pvap]').forEach(function(b){b.onclick=function(){approveVoucher(b.getAttribute('data-pvap'));};});
   root.querySelectorAll('[data-pvrj]').forEach(function(b){b.onclick=function(){rejectVoucher(b.getAttribute('data-pvrj'));};});
   root.querySelectorAll('[data-pvvd]').forEach(function(b){b.onclick=function(){voidVoucher(b.getAttribute('data-pvvd'));};});
+  root.querySelectorAll('[data-pvrt]').forEach(function(b){b.onclick=function(){returnSupplierPayment(b.getAttribute('data-pvrt'));};});
   root.querySelectorAll('[data-pvpr]').forEach(function(b){b.onclick=function(){printVoucher(b.getAttribute('data-pvpr'));};});
 }
 function createVoucher(){
   var amount=Number(fv('pvAmount'))||0; if(!amount){alert('Enter an amount.');return;}
   var requester=(fv('pvRequester')||'').trim(); if(!requester){alert('Enter the requester name.');return;}
-  var date=fv('pvDate')||window.AccazaDate.key(); var category=fv('pvCat'); var approver=(fv('pvApprover')||'').trim();
+  var date=fv('pvDate')||window.AccazaDate.key(); var category=fv('pvCat'); var approver=(fv('pvApprover')||'').trim(),transactionType=fv('pvType')||'expense',purpose=(fv('pvPurpose')||'').trim();
+  if(transactionType==='purchase_advance'&&!purpose){alert('Enter what inventory will be purchased or allocated.');return;}
   var fileEl=document.getElementById('pvReceipt'); var file=fileEl&&fileEl.files&&fileEl.files[0];
   var btn=document.getElementById('pvCreate'); if(btn)btn.disabled=true;
   compressImage(file,function(img){
     nextVoucherNo(function(no){
       var a=A();var id=uid('pv_');
-      a.set(a.ref(a.db,'pettyCashVouchers/'+id),{voucherNo:no,date:date,amount:amount,category:category,requesterName:requester,approverName:approver,receiptImg:img||'',status:'pending',createdBy:(activeShift&&activeShift.staff)||'Admin',createdAt:Date.now()}).then(function(){window.__posLog('petty-create',no,peso(amount));renderPetty();}).catch(function(e){alert('Could not save voucher: '+e);if(btn)btn.disabled=false;});
+      a.set(a.ref(a.db,'pettyCashVouchers/'+id),{voucherNo:no,date:date,amount:amount,transactionType:transactionType,category:transactionType==='purchase_advance'?'Supplier payment pending inventory allocation':category,requesterName:requester,recipient:requester,purpose:purpose,remainingAmount:transactionType==='purchase_advance'?amount:null,approverName:approver,receiptImg:img||'',status:'pending',createdBy:(activeShift&&activeShift.staff)||'Admin',createdAt:Date.now()}).then(function(){window.__posLog('petty-create',no,peso(amount));renderPetty();}).catch(function(e){alert('Could not save voucher: '+e);if(btn)btn.disabled=false;});
     });
   });
 }
 function approveVoucher(id){
   var v=pettyVouchers[id]; if(!v||v.status!=='pending')return;
   if(!v.receiptImg){alert('No receipt attached — cannot approve. No audit trail = no approval.');return;}
-  var a=A();if(!a.managePettyVoucher||!a.managerApproval){alert('3E petty-cash service is not available. Refresh the portal.');return;}
+  var a=A();if(!a.managePettyVoucher||!a.managerApproval){alert('Revolving Fund approval service is not available. Refresh the portal.');return;}
   a.managerApproval('approve_petty_voucher',id,Number(v.amount)||0,'Approve '+v.voucherNo).then(function(ap){return a.managePettyVoucher({action:'approve',voucherId:id,approvalId:ap.approvalId});}).then(function(){window.__posLog('petty-approve',v.voucherNo,peso(v.amount));alert('Voucher approved.');}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Approval failed: '+((e&&e.message)||e));});
 }
 function rejectVoucher(id){
   var v=pettyVouchers[id]; if(!v||v.status!=='pending')return;
-  var a=A();if(!a.managePettyVoucher||!a.managerApproval){alert('3E petty-cash service is not available. Refresh the portal.');return;}
-  F().run({title:'Reject petty-cash voucher',subtitle:v.voucherNo+' · '+peso(v.amount),submitLabel:'Request rejection approval',busyLabel:'Processing…',fields:[{name:'reason',label:'Rejection reason',type:'textarea',required:true,maxLength:300,placeholder:'Explain why this voucher is being rejected'}]},function(x){return a.managerApproval('reject_petty_voucher',id,Number(v.amount)||0,x.reason).then(function(ap){return a.managePettyVoucher({action:'reject',voucherId:id,reason:x.reason,approvalId:ap.approvalId});}).then(function(){window.__posLog('petty-reject',v.voucherNo,x.reason);});}).then(function(){alert('Voucher rejected.');}).catch(function(){});
+  var a=A();if(!a.managePettyVoucher||!a.managerApproval){alert('Revolving Fund approval service is not available. Refresh the portal.');return;}
+  F().run({title:'Reject Revolving Fund voucher',subtitle:v.voucherNo+' · '+peso(v.amount),submitLabel:'Request rejection approval',busyLabel:'Processing…',fields:[{name:'reason',label:'Rejection reason',type:'textarea',required:true,maxLength:300,placeholder:'Explain why this voucher is being rejected'}]},function(x){return a.managerApproval('reject_petty_voucher',id,Number(v.amount)||0,x.reason).then(function(ap){return a.managePettyVoucher({action:'reject',voucherId:id,reason:x.reason,approvalId:ap.approvalId});}).then(function(){window.__posLog('petty-reject',v.voucherNo,x.reason);});}).then(function(){alert('Voucher rejected.');}).catch(function(){});
 }
 function voidVoucher(id){
   var v=pettyVouchers[id]; if(!v||v.status!=='approved'||v.voided)return;
-  var a=A();if(!a.managePettyVoucher||!a.managerApproval){alert('3E petty-cash service is not available. Refresh the portal.');return;}
-  F().run({title:'Void petty-cash voucher',subtitle:v.voucherNo+' · '+peso(v.amount),submitLabel:'Request void approval',busyLabel:'Processing…',fields:[{name:'reason',label:'Void reason',type:'textarea',required:true,maxLength:300,placeholder:'Explain why this approved voucher must be voided'}]},function(x){return a.managerApproval('void_petty_voucher',id,Number(v.amount)||0,x.reason).then(function(ap){return a.managePettyVoucher({action:'void',voucherId:id,reason:x.reason,approvalId:ap.approvalId});}).then(function(){window.__posLog('petty-void',v.voucherNo,x.reason);});}).then(function(){alert('Voucher voided and petty cash restored.');}).catch(function(){});
+  var a=A();if(!a.managePettyVoucher||!a.managerApproval){alert('Revolving Fund approval service is not available. Refresh the portal.');return;}
+  F().run({title:'Void Revolving Fund voucher',subtitle:v.voucherNo+' · '+peso(v.amount),submitLabel:'Request void approval',busyLabel:'Processing…',fields:[{name:'reason',label:'Void reason',type:'textarea',required:true,maxLength:300,placeholder:'Explain why this approved voucher must be voided'}]},function(x){return a.managerApproval('void_petty_voucher',id,Number(v.amount)||0,x.reason).then(function(ap){return a.managePettyVoucher({action:'void',voucherId:id,reason:x.reason,approvalId:ap.approvalId});}).then(function(){window.__posLog('petty-void',v.voucherNo,x.reason);});}).then(function(){alert('Voucher voided and Revolving Fund cash restored.');}).catch(function(){});
+}
+function returnSupplierPayment(id){
+  var v=pettyVouchers[id];if(!v||v.transactionType!=='purchase_advance'||v.status!=='approved'||v.voided)return;var remaining=Number(v.remainingAmount!=null?v.remainingAmount:v.amount)||0;if(!(remaining>0)){alert('No unallocated balance remains.');return;}var a=A();F().run({title:'Return unallocated supplier payment',subtitle:(v.recipient||'Supplier')+' · '+peso(remaining)+' will return to the Revolving Fund.',submitLabel:'Request approval & record return',busyLabel:'Recording return…',fields:[{name:'reason',label:'Return reason / reference',type:'textarea',required:true,maxLength:300}]},function(x){return a.managerApproval('return_supplier_payment',id,remaining,x.reason).then(function(ap){return a.managePettyVoucher({action:'return',voucherId:id,reason:x.reason,approvalId:ap.approvalId});});}).then(function(){alert('Unallocated payment returned to the Revolving Fund and Finance Books.');}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Could not record return: '+((e&&e.message)||e));});
 }
 function addReplenishment(){
   var amt=Number(fv('prAmount'))||0; if(!amt){alert('Enter an amount.');return;}
   var source=fv('prSource'); var note=(fv('prNote')||'').trim(); var a=A();
   a.set(a.ref(a.db,'pettyCashReplenishments/'+uid('pr_')),{amount:amt,source:source,note:note,by:(activeShift&&activeShift.staff)||'Admin',ts:Date.now(),date:window.AccazaDate.key()});
   if(source==='register'){
-    if(!activeShift){alert('Recorded to petty cash. Note: no shift is open, so no drawer pay-out was posted — open a shift if you need the Z-report to reflect it.');}
-    else{ var po=(activeShift.payOuts||[]).slice(); var poEntry={amount:amt,reason:'Petty cash replenish',ts:Date.now()};
+    if(!activeShift){alert('Recorded to the Revolving Fund. No shift is open, so no register drawer pay-out was posted.');}
+    else{ var po=(activeShift.payOuts||[]).slice(); var poEntry={amount:amt,reason:'Revolving Fund replenish',type:'revolving_fund_replenishment',ts:Date.now()};
       if(denomTrackingOnR()){ var mc=makeChangeD(amt,drawerNow()); poEntry.denoms=mc.denoms; saveDrawer(subD(drawerNow(),mc.denoms)); if(!mc.ok)alert('Note: the drawer can’t provide exactly '+peso(amt)+' (short '+peso(mc.short)+'). Recorded the closest notes removed — reconcile at count.'); }
       po.push(poEntry); a.update(a.ref(a.db,'shifts/'+activeShift.id),{payOuts:po}); a.update(a.ref(a.db,'posActiveShift'),{payOuts:po}); }
   }
@@ -297,7 +312,7 @@ function printVoucher(id){
   var v=pettyVouchers[id]; if(!v)return;
   var w=window.open('','_blank','width=420,height=640'); if(!w){alert('Allow pop-ups to print the voucher.');return;}
   w.document.write('<html><head><title>'+esc(v.voucherNo)+'</title><style>*{font-family:Arial,sans-serif;color:#000;}body{padding:18px;}h2{text-align:center;margin:2px 0;}table{width:100%;border-collapse:collapse;margin-top:8px;}td{padding:4px 2px;vertical-align:top;}hr{border:none;border-top:1px dashed #000;}img{max-width:100%;margin-top:8px;border:1px solid #ccc;}.sig{margin-top:34px;display:flex;justify-content:space-between;}.sig div{width:45%;border-top:1px solid #000;text-align:center;font-size:11px;padding-top:3px;}@media print{button{display:none;}}</style></head><body>'
-    +'<h2>Accaza Coffee House</h2><div style="text-align:center;font-weight:bold;">PETTY CASH VOUCHER</div><hr>'
+    +'<h2>Accaza Coffee House</h2><div style="text-align:center;font-weight:bold;">REVOLVING FUND VOUCHER</div><hr>'
     +'<table><tr><td>Voucher No.</td><td style="text-align:right;font-weight:bold;">'+esc(v.voucherNo)+'</td></tr>'
     +'<tr><td>Date</td><td style="text-align:right;">'+esc(v.date||'')+'</td></tr>'
     +'<tr><td>Amount</td><td style="text-align:right;font-weight:bold;">'+peso(v.amount)+'</td></tr>'
@@ -317,7 +332,7 @@ function exportPetty(){
   Object.keys(pettyVouchers).map(function(k){return pettyVouchers[k];}).sort(function(a,b){return (a.createdAt||0)-(b.createdAt||0);}).forEach(function(v){aoa.push([v.voucherNo||'',v.date||'',Number(v.amount)||0,v.category||'',v.requesterName||'',v.approvedBy||v.approverName||'',v.status||'',v.voided?'yes':'',v.createdBy||'']);});
   aoa.push([]);aoa.push(['Opening',bal.opening]);aoa.push(['Replenishments',bal.replen]);aoa.push(['Disbursements',bal.disb]);aoa.push(['Remaining',bal.remaining]);
   var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'PettyCash');
-  XLSX.writeFile(wb,'accaza-petty-cash-'+window.AccazaDate.key()+'.xlsx');
+  XLSX.writeFile(wb,'accaza-revolving-fund-'+window.AccazaDate.key()+'.xlsx');
 }
 function archiveOldActivity(){
   if(!confirm('Move activity-log entries older than 60 days to the server-owned archive? Up to 500 entries are processed per click.'))return;
@@ -374,7 +389,7 @@ function renderOps(){
   if(activeShift){
     var z=computeZ(activeShift);
     html+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;"><div><span style="color:#2a9d5c;font-weight:700;">🟢 Shift open</span> · Cashier <b>'+esc(activeShift.staff)+'</b> · since '+new Date(activeShift.openAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})+'</div><button class="pz-btn warn" id="opsClose">Close shift &amp; Z-report</button></div>';
-    html+='<div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap;align-items:center;"><button class="pz-btn ok" id="opsReview">📋 Shift review</button><button class="pz-btn sec" id="opsCashIn">➕ Cash in</button><button class="pz-btn sec" id="opsPurchaseAdvance">🧾 Release purchase cash</button>'+(denomTrackingOnR()?'<button class="pz-btn sec" id="opsSwap">🔁 Break a bill</button>':'')+'<span style="font-size:0.72rem;color:var(--tl);">Purchases use a documented cash advance; routine expenses still use Petty Cash.</span></div>';
+    html+='<div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap;align-items:center;"><button class="pz-btn ok" id="opsReview">📋 Shift review</button><button class="pz-btn sec" id="opsCashIn">➕ Cash in</button><button class="pz-btn sec" id="opsPurchaseAdvance">🧾 Release purchase cash</button>'+(denomTrackingOnR()?'<button class="pz-btn sec" id="opsSwap">🔁 Break a bill</button>':'')+'<span style="font-size:0.72rem;color:var(--tl);">Purchases use a documented cash advance; routine small expenses use the Revolving Fund.</span></div>';
     html+='<div class="az-kpis" style="margin-top:0.8rem;">'+kpi('Sales',z.tx)+kpi('Net',peso(z.net))+kpi('Cash in',peso(z.cashSales))+kpi('Tips',peso(z.tips))+kpi('Expected drawer',peso(z.expectedCash))+kpi('Cash to settle',peso(z.cashToSettle))+kpi('Voids',z.voidCount)+kpi('Refunds',peso(z.refunds))+kpi('⏳ Cashier check',peso(z.pending)+(z.pendingCount?' ('+z.pendingCount+')':''))+kpi('🔎 Manager review',peso(z.managerPending)+(z.managerPendingCount?' ('+z.managerPendingCount+')':''))+'</div>';
   } else {
     var opts=staffArr().map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+' ('+esc(s.role||'cashier')+')</option>';}).join('');

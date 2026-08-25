@@ -10,7 +10,7 @@ if(start<0||end<0)throw new Error('Privileged approval claim function not found'
 const actions=[
   'validate_payment','refund','void','settle_platform_payout','reopen_cash_count',
   'delete_archived_order','review_discrepancy','approve_petty_voucher',
-  'reject_petty_voucher','void_petty_voucher','manual_discount','cash_in','fixed_float_exception',
+  'reject_petty_voucher','void_petty_voucher','return_supplier_payment','manual_discount','cash_in','fixed_float_exception',
 ];
 class HttpsError extends Error{constructor(code,message){super(message);this.code=code;}}
 const sandbox={HttpsError,Financial:{money(value){return Math.round((Number(value)||0)*100)/100;}},financeKey(value){const key=String(value||'').trim();if(!/^[A-Za-z0-9_-]{1,160}$/.test(key))throw new HttpsError('invalid-argument','Invalid approval');return key;},result:null};
