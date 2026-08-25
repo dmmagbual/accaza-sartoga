@@ -225,18 +225,19 @@ exports.ensureBooksJournal = onCall(
   {region: "asia-southeast1", enforceAppCheck: process.env.ENFORCE_APP_CHECK === "true", timeoutSeconds: 540, memory: "512MiB"},
   async (request) => {
     const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["cashflow", "receivables", "payables"]);
-    const [movementSnap, ordersSnap, archiveSnap, journalSnap, cashAccountsSnap, inventorySnap, categoriesSnap] = await Promise.all([
-      db.ref("/financialMovements").get(), db.ref("/orders").get(), db.ref("/archivedOrders").get(), db.ref("/books/journal").get(), db.ref("/cfAccounts").get(), db.ref("/inventory").get(), db.ref("/posSettings/invCategories").get(),
+    const [movementSnap, ordersSnap, archiveSnap, journalSnap, cashAccountsSnap, inventorySnap, categoriesSnap, purchasesSnap, payablesSnap] = await Promise.all([
+      db.ref("/financialMovements").get(), db.ref("/orders").get(), db.ref("/archivedOrders").get(), db.ref("/books/journal").get(), db.ref("/cfAccounts").get(), db.ref("/inventory").get(), db.ref("/posSettings/invCategories").get(), db.ref("/purchaseInvoices").get(), db.ref("/payables").get(),
     ]);
-    const movements = movementSnap.val() || {}, allOrders = Object.assign({}, archiveSnap.val() || {}, ordersSnap.val() || {});
+    const movements = movementSnap.val() || {}, allOrders = Object.assign({}, archiveSnap.val() || {}, ordersSnap.val() || {}), purchases=purchasesSnap.val()||{}, payables=payablesSnap.val()||{}, inventory=inventorySnap.val()||{};
     const cashMap = await booksCashAccountMap(db), daily = {}, singles = {}, review = {}, voidedSourceIds = BooksBridge.fullyVoidedSourceIds(movements);
     const movementIds = Object.keys(movements).sort((a, b) => Number(movements[a].occurredAt || 0) - Number(movements[b].occurredAt || 0) || a.localeCompare(b));
     movementIds.forEach((id) => {
       const mv = Object.assign({id}, movements[id] || {}); if (!Array.isArray(mv.lines) || !mv.lines.length || !BooksBridge.includeInRecognizedBooks(mv, voidedSourceIds)) return;
-      const bucket = BooksBridge.bucketFor(mv), mapped = BooksBridge.mappedLines(mv, cashMap);
+      const payable=payables[mv.sourceId]||{},derivedId=String(mv.sourceId||"").indexOf("ap_")===0?String(mv.sourceId).slice(3):String(mv.sourceId||""),purchaseInvoice=purchases[payable.purchaseInvoiceId]||purchases[mv.sourceId]||purchases[derivedId]||null,context={purchaseInvoice,inventory};
+      const bucket = BooksBridge.bucketFor(mv), mapped = BooksBridge.mappedLines(mv, cashMap, context);
       if (mapped.unmapped.length) review[id] = {movementId: id, type: String(mv.type || ""), sourceId: String(mv.sourceId || ""), accounts: mapped.unmapped, at: Date.now()};
       if (bucket.mode === "daily") daily[bucket.key] = BooksBridge.applyDaily(daily[bucket.key] || null, mv, cashMap);
-      else singles[bucket.key] = Object.assign(BooksBridge.buildSingle(mv, cashMap).entry, {createdAt: Date.now(), rebuiltAt: Date.now()});
+      else singles[bucket.key] = Object.assign(BooksBridge.buildSingle(mv, cashMap, context).entry, {createdAt: Date.now(), rebuiltAt: Date.now()});
     });
     let cogsPosted = 0, missingCogs = 0;
     Object.keys(allOrders).forEach((id) => {
@@ -1431,7 +1432,7 @@ exports.postFinancialCommand = onCall(
       addCash(`fm_${commandId}_out`, {date, accountId: from, dir: "out", category: "Transfer", amount: value, party: `→ ${financeText(accounts[to].name)}`}); addCash(`fm_${commandId}_in`, {date, accountId: to, dir: "in", category: "Transfer", amount: value, party: `← ${financeText(accounts[from].name)}`});
     } else if (action === "create_receivable" || action === "create_payable") {
       const isAr = action === "create_receivable", docId = financeKey(data.documentId, isAr ? "Receivable ID" : "Payable ID"), value = amount(data.amount), party = financeText(data.party, 120), documentType = financeText(data.type || "other", 60).toLowerCase(); if (!party) throw new HttpsError("invalid-argument", "Party is required.");
-      if (!isAr && documentType === "inventory") throw new HttpsError("failed-precondition", "Inventory payables must be created from Purchases so the stock receipt and supplier liability stay linked.");
+      if (!isAr && ["inventory","inventory_pending_invoice","purchases"].includes(documentType)) throw new HttpsError("failed-precondition", "Inventory payables must be created from Purchases so the stock receipt, valuation, and supplier liability stay linked.");
       movement = Financial.movement(isAr ? "receivable_created" : "payable_created", isAr ? "receivable" : "payable", docId, isAr ? [Financial.line(`asset:receivable:${docId}`, value, 0, party), Financial.line(`revenue:${documentType}`, 0, value, party)] : [Financial.line(`expense_or_inventory:${documentType}`, value, 0, party), Financial.line(`liability:payable:${docId}`, 0, value, party)], {occurredAt: now});
       const record = {party, type: documentType, amount: value, date: financeDate(data.date), due: data.due ? financeDate(data.due) : "", ref: financeText(data.ref, 120), status: "open", movementId: commandId, ts: now, createdBy: actor.uid, schemaVersion: 1}; writes[`${isAr ? "receivables" : "payables"}/${docId}`] = record; result.documentId = docId;
     } else if (["collect_receivable", "pay_payable", "reverse_receivable", "reverse_payable"].includes(action)) {
