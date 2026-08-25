@@ -481,6 +481,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(archiveOrderSortCheck.status!==0)fail(`Archived-order sorting checks failed:\n${archiveOrderSortCheck.stderr||archiveOrderSortCheck.stdout}`);
   const inventoryBooksReconciliationCheck=spawnSync(process.execPath,[path.join(root,'tests','inventory-books-reconciliation-check.mjs')],{encoding:'utf8',cwd:root});
   if(inventoryBooksReconciliationCheck.status!==0)fail(`Inventory-to-Books reconciliation checks failed:\n${inventoryBooksReconciliationCheck.stderr||inventoryBooksReconciliationCheck.stdout}`);
+  const booksStatementReconciliationCheck=spawnSync(process.execPath,[path.join(root,'tests','books-statement-reconciliation-check.mjs')],{encoding:'utf8',cwd:root});
+  if(booksStatementReconciliationCheck.status!==0)fail(`Books statement-to-ledger reconciliation checks failed:\n${booksStatementReconciliationCheck.stderr||booksStatementReconciliationCheck.stdout}`);
   const booksHtml=fs.readFileSync(path.join(root,'books.html'),'utf8');
   const salesAuthoritySource=fs.readFileSync(path.join(root,'assets','js','shared','sales-authority.js'),'utf8');
   const salesHistorySource=fs.readFileSync(path.join(root,'assets','js','admin','sales-history.js'),'utf8');
@@ -490,6 +492,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!overviewInsightsSource.includes("saved.period:'month'")||!analyticsSource.includes("var azRange='month'"))fail('Overview and Analytics must initially use This month');
   for(const marker of ["path:'orders'","path:'archivedOrders'","deps.loadOlder(cfg.path)","status.hasOlder&&!status.loaded"])if(!overviewInsightsSource.includes(marker))fail(`Overview complete-history guard missing: ${marker}`);
   for(const marker of ['REPORT_PERIOD_KEY = "accaza-report-period"','function periodButtons()','window.__booksLiveLoading = true','Refreshing Finance Books'])if(!booksHtml.includes(marker))fail(`Books period/refresh marker missing: ${marker}`);
+  if(booksHtml.includes('if(e.reversed) return'))fail('Finance statements exclude posted reversal lines and can disagree with the General Ledger');
+  for(const marker of ['function postedAccountNet(code, entries)','function accountBalance(code, uptoPeriodOnly)','function accountNet(code, periodEntries)','running += DEBIT_NORMAL[a.type]?(dr-crd):(crd-dr)'])if(!booksHtml.includes(marker))fail(`Books statement-to-ledger reconciliation marker missing: ${marker}`);
   for(const marker of ['ordersLoaded=false','movementsLoaded=false','Preparing the shared-period report'])if(!salesHistorySource.includes(marker))fail(`Sales History refresh guard missing: ${marker}`);
   for(const marker of ['meta[name="accaza-admin-build"]','encodeURIComponent(build)'])if(!moduleLoaderSource.includes(marker)&&!adminHtml.includes(marker))fail(`Admin module cache-bust marker missing: ${marker}`);
   const adminBuild=(adminHtml.match(/<meta name="accaza-admin-build" content="(\d+)"\/>/)||[])[1],loaderBuild=(adminHtml.match(/module-loader\.js\?v=(\d+)/)||[])[1];
@@ -510,7 +514,9 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if((booksHtml.match(/\["2020","Due to Platforms","Liability"/g)||[]).length<2)fail('Due to Platforms must exist in both the default chart and existing-browser migration');
   for(const marker of ['["1290","Inventory Receiving Clearing"','["2090","Unrecorded Payables Clearing"','["5090","Unposted COGS Clearing"','Sync all Finance transactions','ensureBooksJournal'])if(!booksHtml.includes(marker)&&!functionsSource.includes(marker))fail(`Books historical sync marker missing: ${marker}`);
   if(!booksHtml.includes('window.__booksSync=function(){var ensureJournal=httpsCallable(fns,"ensureBooksJournal")')||booksHtml.includes('window.__booksSync=function(){var ensureLedger='))fail('Books refresh must rebuild only the journal and must not mutate the financial ledger');
+  if(booksHtml.includes("['purchases','Purchases']"))fail('Manual Bills still allow inventory purchases to bypass the linked Purchases workflow');
   const itemAccountBridgeSource=fs.readFileSync(path.join(root,'functions','lib','books-bridge.js'),'utf8');
+  for(const marker of ['["inventory","inventory_pending_invoice","purchases"].includes(documentType)','legacyPurchase','expense:platform_variance:va_penalty','["6085","Platform Penalties & Adjustments"'])if(!functionsSource.includes(marker)&&!itemAccountBridgeSource.includes(marker)&&!booksHtml.includes(marker))fail(`Miscellaneous-routing prevention marker missing: ${marker}`);
   for(const marker of ['inventoryAccount','costAccount','itemAccounts','cogsAccountSnapshot','purchaseInventoryLines','action === "purchase_paid"','Inventory – Operating & Cleaning Supplies','Office & Administrative Supplies'])if(!adminSource.includes(marker)&&!functionsSource.includes(marker)&&!itemAccountBridgeSource.includes(marker)&&!booksHtml.includes(marker))fail(`Item-level inventory account-assignment marker missing: ${marker}`);
   for(const marker of ['purchase_cash_advance','asset:purchase_cash_advance:','Purchase cash advance was not found','purchaseInvoiceId'])if(!functionsSource.includes(marker))fail(`Purchase cash advance Finance Books marker missing: ${marker}`);
   for(const marker of ['Release purchase cash','Expected cash to hand over','awaiting allocation'])if(!adminSource.includes(marker))fail(`Register purchase cash workflow marker missing: ${marker}`);

@@ -18,6 +18,10 @@ ok(B.mapAccount('asset:cash_account:unknownid','instore',cashMap).code==='1010',
 ok(B.mapAccount('asset:platform_receivable:grabfood','grabfood',cashMap).code==='1100','platform_receivable→1100');
 ok(B.mapAccount('expense:platform_commission','grabfood',cashMap).code==='6040','platform_commission→6040');
 ok(B.mapAccount('expense:platform_variance:va_ads','grabfood',cashMap).code==='6050','Grab ads settlement variance→6050 marketing');
+ok(B.mapAccount('expense:platform_variance:va_promo','grabfood',cashMap).code==='6045','platform promo variance→6045 platform discounts');
+ok(B.mapAccount('expense:platform_variance:va_fees','grabfood',cashMap).code==='6080','platform fee variance→6080 bank/payment fees');
+ok(B.mapAccount('expense:platform_variance:va_penalty','grabfood',cashMap).code==='6085','platform penalty variance→6085 penalties/adjustments');
+ok(B.mapAccount('expense:platform_variance:va_refund','grabfood',cashMap).code==='4910','platform refund variance→4910 returns/refunds');
 ok(B.mapAccount('expense:customer_discount','instore',cashMap).code==='4900','customer discount→sales contra-income 4900');
 ok(B.mapAccount('expense:platform_discount','grabfood',cashMap).code==='4900','platform discount→sales contra-income 4900');
 ok(B.mapAccount('revenue:sales_reversal','instore',cashMap).code==='4910','refund reversal→returns and refunds 4910');
@@ -26,6 +30,8 @@ ok(B.mapAccount('liability:platform_owing:grabfood','grabfood',cashMap).code==='
 ok(B.mapAccount('expense:cash_shortage','instore',{}).code==='3100','cash shortage→owner drawings');
 ok(B.mapAccount('inventory:legacy_receipt','instore',{}).code==='1290','unposted inventory receipt→1290 clearing');
 ok(B.mapAccount('liability:grni:legacy','instore',{}).code==='2090','unrecorded payable→2090 clearing');
+const legacyPurchase=B.mappedLines({type:'payable_created',sourceId:'ap_pinv_legacy',lines:[{account:'expense_or_inventory:purchases',debit:100,credit:0},{account:'liability:payable:ap_pinv_legacy',debit:0,credit:100}]},{});
+ok(legacyPurchase.lines.some(l=>l.code==='1290'&&l.debit===100),'legacy purchase payable→1290 receiving clearing instead of Miscellaneous');
 ok(B.mapAccount('cogs:legacy','instore',{}).code==='5090','unposted COGS→5090 clearing');
 ok(B.cashCodeForAccount({name:'Union Bank',type:'bank'})==='1011','Union Bank→1011');
 ok(B.cashCodeForAccount({name:'BDO',type:'bank'})==='1012','BDO→1012');

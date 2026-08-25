@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<meta name="accaza-books-build" content="13"/>
+<meta name="accaza-books-build" content="14"/>
 <title>Accaza Books</title>
 <style>
 :root{
@@ -143,7 +143,7 @@ tr.sub-row td{font-weight:700;background:#faf7f1}
   <div class="topbar-in">
     <div class="brand">
       <div class="logo">☕</div>
-      <div><b>Accaza Books</b><small>Coffee-shop accounting · build v13</small></div>
+      <div><b>Accaza Books</b><small>Coffee-shop accounting · build v14</small></div>
     </div>
     <span id="liveStatus" class="live-pill off" title="Live POS auto-capture status — click to sign in" onclick="App.signInPrompt()">● Connecting…</span>
     <span id="reviewBadge" class="live-pill warn" style="display:none" title="Unmapped POS accounts to review" onclick="App.go('journal')"></span>
@@ -163,7 +163,7 @@ tr.sub-row td{font-weight:700;background:#faf7f1}
 <div class="tabs"><div class="tabs-in" id="tabs"></div></div>
 
 <div class="wrap"><div id="page" class="page"></div>
-  <div class="foot-note">Accaza Books · build v13 · double-entry, append-only ledger · live Finance data with browser backup support</div>
+  <div class="foot-note">Accaza Books · build v14 · double-entry, append-only ledger · live Finance data with browser backup support</div>
 </div>
 
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
@@ -221,7 +221,7 @@ function defaultAccounts(){
     ["6030","Internet & Phone","Expense"],["6040","Platform Commissions","Expense","Grab/Panda fees"],
     ["6050","Marketing & Promotions","Expense"],["6060","Repairs & Maintenance","Expense"],
     ["6070","Cleaning & Operating Supplies","Expense"],["6075","Office & Administrative Supplies","Expense"],["6080","Bank & Payment Fees","Expense"],
-    ["6090","Depreciation","Expense"],["6100","Miscellaneous","Expense"]
+    ["6085","Platform Penalties & Adjustments","Expense"],["6090","Depreciation","Expense"],["6100","Miscellaneous","Expense"]
   ].map(a=>({code:a[0],name:a[1],type:a[2],note:a[3]||""}));
 }
 
@@ -262,6 +262,7 @@ function migrate(p){
     ["5090","Unposted COGS Clearing","COGS","Costs awaiting complete item-level posting"],
     ["6045","Platform Discounts","Expense","Grab/Panda-funded or shared discounts"],
     ["6046","Platform Service VAT","Expense"],
+    ["6085","Platform Penalties & Adjustments","Expense"],
     ["6075","Office & Administrative Supplies","Expense"],
     ["6110","Cash Short / Over","Expense","Register variance"]
   ];
@@ -299,21 +300,21 @@ function periodLabel(){return PERIOD==="7"?"Last 7 days":PERIOD==="30"?"Last 30 
 function periodOptions(){return '<option value="7">7 days</option><option value="30">30 days</option><option value="month">This month</option><option value="all">All time</option>';}
 function periodButtons(){return '<div class="report-periods" aria-label="Profit and Loss reporting period">'+[["7","7 days"],["30","30 days"],["month","This month"],["all","All time"]].map(x=>`<button class="btn sm ${PERIOD===x[0]?'active':''}" aria-pressed="${PERIOD===x[0]}" onclick="App.setPeriod('${x[0]}')">${x[1]}</button>`).join('')+'</div>';}
 
+/* Append-only journal authority: originals and reversing entries are both posted lines. */
+function postedAccountNet(code, entries){
+  let bal=0;
+  (entries||[]).forEach(e=>{ (e.lines||[]).forEach(l=>{ if(l.code===code) bal+=(Number(l.debit)||0)-(Number(l.credit)||0); }); });
+  return r2(bal);
+}
 /* signed balance in the account's NORMAL direction (debits positive for debit-normal) */
 function accountBalance(code, uptoPeriodOnly){
-  let bal=0;
-  ENTRIES().forEach(e=>{
-    if(e.reversed) return; // reversed entries excluded; their reversal cancels anyway
-    if(uptoPeriodOnly && !entryInPeriod(e)) return;
-    e.lines.forEach(l=>{ if(l.code===code){ bal += (Number(l.debit)||0) - (Number(l.credit)||0); } });
-  });
+  const bal=postedAccountNet(code,uptoPeriodOnly?entriesInPeriod():ENTRIES());
   const a=acc(code);
   return DEBIT_NORMAL[a?a.type:"Asset"] ? bal : -bal; // positive = normal side
 }
 /* raw debit-minus-credit (for balance sheet math) */
 function accountNet(code, periodEntries){
-  let bal=0; (periodEntries||ENTRIES()).forEach(e=>{ if(e.reversed) return; e.lines.forEach(l=>{ if(l.code===code) bal+=(Number(l.debit)||0)-(Number(l.credit)||0); }); });
-  return bal;
+  return postedAccountNet(code,periodEntries||ENTRIES());
 }
 
 /* P&L numbers for the current period */
@@ -733,7 +734,7 @@ function uid(){ try{return crypto.randomUUID();}catch(_e){return 'id_'+Date.now(
 function fval(id){ var el=document.getElementById(id); return el?String(el.value).trim():''; }
 function cashAccountOptions(sel){ var m=window.__cfAccounts||{}, ks=Object.keys(m); if(!ks.length) return '<option value="">(no cash accounts found)</option>'; return ks.map(function(k){return '<option value="'+esc(k)+'"'+(k===sel?' selected':'')+'>'+esc(m[k].name||k)+'</option>';}).join(''); }
 function openDocOptions(map){ var d=openDocs(map); if(!d.length) return ''; return d.map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.party||'—')+' · '+peso(x.amount)+(x.due?' · due '+esc(x.due):'')+(x.ref?' · '+esc(x.ref):'')+'</option>';}).join(''); }
-var TXN_CATS = [['rent','Rent'],['utilities','Utilities'],['salaries','Salaries'],['bank charges','Bank charges'],['repairs','Repairs & maintenance'],['marketing','Marketing'],['supplies','Supplies'],['internet','Internet & phone'],['purchases','Purchases'],['other','Other']];
+var TXN_CATS = [['rent','Rent'],['utilities','Utilities'],['salaries','Salaries'],['bank charges','Bank charges'],['repairs','Repairs & maintenance'],['marketing','Marketing'],['supplies','Supplies'],['internet','Internet & phone'],['other','Other']];
 function catOptions(sel){ return TXN_CATS.map(function(c){return '<option value="'+c[0]+'"'+(c[0]===sel?' selected':'')+'>'+c[1]+'</option>';}).join(''); }
 
 PAGES.transactions = function(){
