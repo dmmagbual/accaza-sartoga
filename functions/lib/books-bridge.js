@@ -132,14 +132,22 @@ function bucketFor(mv) {
   return {mode: "single", key: String(mv.id || mv.sourceId || ""), date, channel: String(mv.channel || "").toLowerCase()};
 }
 
-function mappedLines(mv, cashMap) {
+function mappedLines(mv, cashMap, context) {
   const channel = String(mv.channel || "instore").toLowerCase(), unmapped = [];
-  const out = (mv.lines || []).map((l) => {
-    const account=String(l.account||""), legacyPurchase=(String(mv.type||"")==="grni_created"||String(mv.type||"")==="purchase_payable_reversed"||(String(mv.type||"")==="payable_created"&&String(mv.sourceId||"").indexOf("ap_pinv_")===0))&&account.indexOf("expense_or_inventory:")===0;
-    const m = legacyPurchase ? {code:"1290",unmapped:true} : mapAccount(account, channel, cashMap);
+  const purchaseType=["payable_created","payable_reversed","grni_created","purchase_payable_reversed"].includes(String(mv.type||"")),legacySource=String(mv.sourceId||"").indexOf("ap_pinv_")===0||String(mv.sourceId||"").indexOf("pinv_")===0;
+  const legacyLines=(mv.lines||[]).filter((l)=>purchaseType&&legacySource&&String(l.account||"").indexOf("expense_or_inventory:")===0),out=[];
+  (mv.lines || []).filter((l)=>!legacyLines.includes(l)).forEach((l) => {
+    const account=String(l.account||""),m=mapAccount(account, channel, cashMap);
     if (m.unmapped) unmapped.push({account: l.account, code: m.code});
-    return {code: m.code, debit: r2(l.debit), credit: r2(l.credit), posAccount: String(l.account || "")};
+    out.push({code: m.code, debit: r2(l.debit), credit: r2(l.credit), posAccount: account});
   });
+  if(legacyLines.length){
+    const debit=r2(legacyLines.reduce((s,l)=>s+Number(l.debit||0),0)),credit=r2(legacyLines.reduce((s,l)=>s+Number(l.credit||0),0)),target=r2(Math.max(debit,credit)),invoice=context&&context.purchaseInvoice,inventory=context&&context.inventory||{},totals={};
+    (Array.isArray(invoice&&invoice.lines)?invoice.lines:[]).forEach((line)=>{const mapping=itemAccounts(inventory[line.itemId]||{}),code=mapping.inventory||"1290",value=r2(line.total);if(value>0)totals[code]=r2((totals[code]||0)+value);});
+    const found=r2(Object.values(totals).reduce((s,v)=>s+v,0)),gap=r2(target-found);if(found>target+0.009){Object.keys(totals).forEach((code)=>delete totals[code]);totals["1290"]=target;}else if(gap>0)totals["1290"]=r2((totals["1290"]||0)+gap);
+    if(!Object.keys(totals).length)totals["1290"]=target;
+    Object.keys(totals).sort().forEach((code)=>{const value=totals[code];if(!(value>0))return;out.push({code,debit:debit>0?value:0,credit:credit>0?value:0,posAccount:"legacy_purchase_rebuild"});if(code==="1290")unmapped.push({account:"legacy_purchase_item_mapping",code});});
+  }
   return {lines: out, unmapped};
 }
 
@@ -160,9 +168,9 @@ function applyDaily(current, mv, cashMap) {
 }
 
 /* Build a discrete journal entry for a non-sale movement. */
-function buildSingle(mv, cashMap) {
+function buildSingle(mv, cashMap, context) {
   const b = bucketFor(mv);
-  const {lines, unmapped} = mappedLines(mv, cashMap);
+  const {lines, unmapped} = mappedLines(mv, cashMap, context);
   return {
     entry: {
       id: b.key, date: b.date, ref: String(mv.sourceId || mv.id || ""),
