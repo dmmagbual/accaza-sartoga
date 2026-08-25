@@ -15,7 +15,7 @@ var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init
 function init(){var a=A();
   a.subscribe('cfAccounts',function(s){accountsMap=s.val()||{};if(isTab('cashflow'))renderCashflow();if(isTab('receivables'))renderReceivables();if(isTab('payables'))renderPayables();});
   a.subscribe('cfLedger',function(s){ledgerMap=s.val()||{};if(isTab('cashflow'))renderCashflow();});
-  a.subscribe('financialMovements',function(s){financialMovementsMap=s.val()||{};if(isTab('cashflow'))renderCashflow();});
+  a.subscribe('financialMovements',function(s){financialMovementsMap=Object.assign({},financialMovementsMap,s.val()||{});if(isTab('cashflow'))renderCashflow();if(isTab('purchases'))window.dispatchEvent(new CustomEvent('accaza:cash-balances-updated'));});
   a.subscribe('chartOfAccounts',function(s){chartMap=s.val()||{};if(isTab('cashflow'))renderCashflow();});
   a.subscribe('cashCustody',function(s){custodyMap=s.val()||{};if(isTab('cashflow'))renderCashflow();});
   a.subscribe('receivables',function(s){arMap=s.val()||{};if(isTab('receivables'))renderReceivables();});
@@ -23,6 +23,7 @@ function init(){var a=A();
   a.subscribe('platformPayouts',function(s){payoutsMapCF=s.val()||{};if(isTab('cashflow'))renderCashflow();});
   a.subscribe('orders',function(s){ordersMapCF=s.val()||{};if(isTab('receivables'))renderReceivables();if(isTab('cashflow'))renderCashflow();});
   a.subscribe('archivedOrders',function(s){archMapCF=s.val()||{};if(isTab('receivables'))renderReceivables();});
+  if(a.get&&a.ref&&a.db)a.get(a.ref(a.db,'financialMovements')).then(function(s){financialMovementsMap=s.val()||{};window.dispatchEvent(new CustomEvent('accaza:cash-balances-updated'));}).catch(function(e){console.error('Could not load current Finance Books cash balances',e);});
 }
 window.__accazaRegisterModule('finance',function(){});
 function accList(){return Object.keys(accountsMap).map(function(k){return Object.assign({id:k},accountsMap[k]);}).sort(function(a,b){return (a.order||0)-(b.order||0)||(a.name||'').localeCompare(b.name||'');});}
@@ -32,6 +33,7 @@ function financialMovementArr(){return Object.keys(financialMovementsMap).map(fu
 function chartList(){return Object.keys(chartMap).map(function(k){return Object.assign({id:k},chartMap[k]);}).sort(function(a,b){return String(a.code||'').localeCompare(String(b.code||''));});}
 function custodyList(){return Object.keys(custodyMap).map(function(k){return Object.assign({id:k},custodyMap[k]);}).filter(function(x){return Number(x.remaining)>0;}).sort(function(a,b){return (a.closedAt||0)-(b.closedAt||0);});}
 function acctBalance(id){var b=Number((accountsMap[id]||{}).opening)||0;ledgerArr().forEach(function(e){if(e.accountId!==id)return;b+=(e.dir==='in'?1:-1)*(Number(e.amount)||0);});return Math.round(b*100)/100;}
+function currentCashBalance(id){var account=id==='register'?'asset:register_cash':'asset:cash_account:'+id,b=0;financialMovementArr().forEach(function(m){(m.lines||[]).forEach(function(l){if(l.account===account)b+=(Number(l.debit)||0)-(Number(l.credit)||0);});});return Math.round(b*100)/100;}
 function financeCommand(action,data,cb){var a=A();if(!a||!a.postFinancialCommand){alert('3C financial service is not available. Refresh the portal.');return null;}var id=(data&&data.commandId)||uid('fm_');var payload=Object.assign({},data||{},{action:action,commandId:id,actorName:(window.__posShift&&window.__posShift.staff)||'Admin'});a.postFinancialCommand(payload).then(function(r){if(cb)cb((r&&r.data)||r||{});}).catch(function(e){alert('Could not post: '+((e&&e.message)||(e&&e.code)||e)+'. Nothing was posted.');});return id;}
 function postLedger(o,cb){return financeCommand('manual',{date:o.date,accountId:o.accountId,dir:o.dir,offsetAccountId:o.offsetAccountId,amount:o.amount,party:o.party||'',ref:o.ref||'',source:o.source||'manual',linkId:o.linkId||'',note:o.note||''},cb);}
 function isCashM(m){return String(m||'').toLowerCase()==='cash';}
@@ -262,8 +264,8 @@ function renderPayables(){
   root.querySelectorAll('[data-apreverse]').forEach(function(b){b.onclick=function(e){e.stopPropagation();var id=b.getAttribute('data-apreverse');if(!confirm('Reverse this payable? The original payable and its reversal will remain in the audit trail.'))return;financeCommand('reverse_payable',{documentId:id});};});
 }
 window.__cf={
-  hasAccounts:function(){return accList().length>0;},
-  accounts:function(){return accList().map(function(x){return {id:x.id,name:x.name,type:x.type,balance:acctBalance(x.id)};});},
+  hasAccounts:function(){return true;},
+  accounts:function(){return [{id:'register',name:'Register cash',type:'register',balance:currentCashBalance('register')}].concat(accList().map(function(x){return {id:x.id,name:x.name,type:x.type,balance:currentCashBalance(x.id)};}));},
   postOut:function(o){return new Promise(function(resolve,reject){var a=A();var id=o.commandId||uid('fm_'),isPurchase=o.source==='purchase'&&o.linkId;a.postFinancialCommand(isPurchase?{action:'purchase_paid',commandId:id,invoiceId:o.linkId,date:o.date||todayStr(),accountId:o.accountId}:{action:'manual',commandId:id,date:o.date||todayStr(),accountId:o.accountId,dir:'out',category:o.category||'Purchases',amount:Math.round((Number(o.amount)||0)*100)/100,party:o.party||'',ref:o.ref||'',source:o.source||'purchase',linkId:o.linkId||'',note:o.note||''}).then(function(){resolve(id);}).catch(reject);});},
   addPayable:function(o){return new Promise(function(resolve,reject){var a=A(),id=o.documentId||uid('ap_'),cmd=o.commandId||uid('fm_');a.postFinancialCommand({action:'create_payable',commandId:cmd,documentId:id,party:o.party||'',type:o.type||'inventory',amount:Math.round((Number(o.amount)||0)*100)/100,date:o.date||todayStr(),due:o.due||'',ref:o.ref||''}).then(function(){resolve(id);}).catch(reject);});}
 };
