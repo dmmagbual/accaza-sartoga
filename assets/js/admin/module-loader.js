@@ -10,6 +10,7 @@
   };
   var roots={pos:'posRoot',inventory:'inventoryRoot',purchases:'purchasesRoot',recipes:'recipesRoot',usage:'usageRoot',channelpricing:'channelPricingRoot',dedupe:'dedupeRoot',saleshistory:'salesHistoryRoot',analytics:'analyticsRoot',payouts:'payoutsRoot',stockvalue:'stockValueRoot',dailyreport:'dailyReportRoot',ops:'opsRoot',possettings:'posSettingsRoot',discrepancy:'discrepancyRoot',petty:'pettyRoot',packages:'packagesRoot',staffaccess:'staffAccessRoot',operations:'operationsRoot'};
   var promises={},handlers={},requestSerial=0;
+  var build=((typeof document.querySelector==='function'&&document.querySelector('meta[name="accaza-admin-build"]')||{}).content||'');
 
   window.__accazaRegisterModule=function(name,handler){handlers[name]=handler;};
 
@@ -20,7 +21,7 @@
     promises[name]=new Promise(function(resolve,reject){
       var script=document.createElement('script');
       if(name==='analytics')script.type='module';
-      script.src=base+files[name];script.async=true;script.dataset.accazaModule=name;
+      script.src=base+files[name]+(build?'?v='+encodeURIComponent(build):'');script.async=true;script.dataset.accazaModule=name;
       script.onload=resolve;
       script.onerror=function(){delete promises[name];reject(new Error('Could not load '+name+' module.'));};
       document.head.appendChild(script);
