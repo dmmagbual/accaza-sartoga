@@ -47,7 +47,7 @@ function orderPosting(order, accounts) {
     if (Math.abs(debits - gross) > 0.009) lines.push(line(debits < gross ? "expense:platform_estimate_variance" : "revenue:platform_estimate_variance", debits < gross ? money(gross - debits) : 0, debits > gross ? money(debits - gross) : 0, "Platform estimate rounding/variance"));
     lines.push(line("revenue:sales", 0, gross, "Platform gross sales"));
   } else {
-    const payments = paymentRows(order); const total = money(order.total), discount = money(order.discount), gross = money(total + discount);
+    const payments = paymentRows(order); const total = money(order.total);
     payments.forEach((payment, index) => {
       const isCash = payment.method.toLowerCase() === "cash";
       const accountId = isCash ? "" : accountForMethod(payment.method, accounts);
@@ -58,19 +58,10 @@ function orderPosting(order, accounts) {
     });
     const paid = totals(lines).debit;
     if (Math.abs(paid - total) > 0.009) lines.push(line(paid < total ? "asset:unmapped_payment:balance" : "revenue:payment_overage", paid < total ? money(total - paid) : 0, paid > total ? money(paid - total) : 0, "Payment allocation difference"));
-    if (discount) lines.push(line("expense:customer_discount", discount, 0, "Customer discount"));
-    lines.push(line("revenue:sales", 0, gross, channel === "online" ? "Online order sales" : "In-store sales"));
+    lines.push(line("revenue:sales", 0, total, channel === "online" ? "Online order sales" : "In-store sales"));
   }
   const sum = assertBalanced(lines);
   return {type: "order_sale", sourceType: "order", sourceId: id, channel, amount: sum.credit, lines, cashEntries, warnings};
-}
-function discountClassificationPosting(order) {
-  order = order || {}; const discount = money(order.discount);
-  if (!(discount > 0)) return null;
-  return movement("order_discount_classification", "order", safe(order.id), [
-    line("expense:customer_discount", discount, 0, "Historical customer discount classification"),
-    line("revenue:sales", 0, discount, "Restore gross sales before customer discount"),
-  ], {channel: safe(order.channel || "instore").toLowerCase()});
 }
 function reversalPosting(order, amount, kind, accounts, settlementPayments) {
   order = order || {}; const value = money(amount); if (!(value > 0)) throw new Error("Reversal amount must be positive.");
@@ -109,4 +100,4 @@ function netMovementCorrection(movements, sourceId, type, label) {
   return movement(type || "net_balance_correction", "order", sourceId, lines, {occurredAt: Date.now(), controlReason: "Reverse only the remaining net balance across all source movements"});
 }
 
-module.exports = {money, safe, line, totals, assertBalanced, accountForMethod, orderPosting, reversalPosting, discountClassificationPosting, movement, reverseMovement, netMovementCorrection};
+module.exports = {money, safe, line, totals, assertBalanced, accountForMethod, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection};
