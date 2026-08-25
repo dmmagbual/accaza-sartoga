@@ -242,7 +242,7 @@ function renderPetty(){
       +'<div class="pz-card" style="flex:1;min-width:180px;"><div style="font-size:0.75rem;color:var(--tl);">Payments awaiting inventory allocation</div><div style="font-weight:700;color:#8a5a00;">'+peso(bal.advances)+'</div></div>'
     +'</div>'
     +'<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">'
-      +'<div class="pz-card" style="flex:2;min-width:280px;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Record small expense voucher</div>'
+      +'<div class="pz-card" style="flex:2;min-width:280px;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Record Revolving Fund disbursement</div>'
         +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">'
           +'<div><span class="pz-lbl">Transaction type</span><select class="pz-in" id="pvType"><option value="expense">Operating expense</option><option value="owner_withdrawal">Owner withdrawal — not an expense</option><option value="purchase_advance">Payment to supplier — allocate to inventories</option></select></div>'
           +'<div><span class="pz-lbl">Date</span><input class="pz-in" id="pvDate" type="date" value="'+today+'"/></div>'
@@ -268,7 +268,9 @@ function renderPetty(){
   var cs=document.getElementById('rfCustodianSave');if(cs)cs.onclick=function(){var name=(fv('rfCustodian')||'').trim();if(!name){alert('Enter the manager responsible for the physical fund.');return;}A().update(A().ref(A().db,'pettyCashSettings'),{custodian:name,custodianUpdatedAt:Date.now()}).then(function(){alert('Revolving Fund custodian saved.');});};
   var op=document.getElementById('rfOpenPurchases');if(op)op.onclick=function(){var btn=document.getElementById('tabBtnPurchases');if(btn)posSwitchTab('purchases',btn);};
   var c=document.getElementById('pvCreate'); if(c)c.onclick=createVoucher;
-  var pt=document.getElementById('pvType'),pc=document.getElementById('pvCat');if(pt&&pc)pt.onchange=function(){var fixed=pt.value!=='expense';pc.disabled=fixed;pc.title=pt.value==='owner_withdrawal'?"Posts to Owner's Drawings (3100)":(pt.value==='purchase_advance'?'Allocated later in Purchases':'');};
+  var pt=document.getElementById('pvType'),pc=document.getElementById('pvCat'),lastExpenseCat='operating_supplies';
+  function syncPettyCategory(){if(!pt||!pc)return;if(pt.value==='expense'){pc.disabled=false;pc.innerHTML=catOpts;pc.value=lastExpenseCat;pc.title='Select the Finance Books expense category.';}else{lastExpenseCat=PETTY_CATS.some(function(x){return x.id===pc.value;})?pc.value:lastExpenseCat;pc.disabled=true;if(pt.value==='owner_withdrawal'){pc.innerHTML='<option value="owner_draw">Owner\'s Drawings (3100) — not an expense</option>';pc.title="Posts automatically to Owner's Drawings (3100).";}else{pc.innerHTML='<option value="purchase_allocation">Purchases — pending inventory allocation</option>';pc.title='Itemize and allocate this payment later in Purchases.';}}}
+  if(pt&&pc){pc.onchange=function(){if(pt.value==='expense')lastExpenseCat=pc.value;};pt.onchange=syncPettyCategory;syncPettyCategory();}
   var ra=document.getElementById('prAdd'); if(ra)ra.onclick=addReplenishment;
   var os=document.getElementById('pvOpenSave'); if(os)os.onclick=function(){var a=A();a.update(a.ref(a.db,'pettyCashSettings'),{openingBalance:Number(fv('pvOpening'))||0}).then(function(){alert('Opening balance saved.');});};
   var ex=document.getElementById('pettyExport'); if(ex)ex.onclick=exportPetty;

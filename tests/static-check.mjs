@@ -297,6 +297,9 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.includes(`const CACHE='accaza-v${swCacheVersion}'`))fail('Phase 6C/7H dashboard is not in the coordinated offline cache');
   const analyticsSource=fs.readFileSync(path.join(root,'assets','js','admin','analytics.js'),'utf8');
   if(!analyticsSource.includes('build(payouts,shiftRows,chan,byMethod,items,txns,refundsTot,netTot,sales)')||!analyticsSource.includes('function build(payouts,shiftRows,chan,byMethod,items,txns,refundsTot,netTot,sales)'))fail('Daily Report renderer is missing calculated report inputs');
+  if(!analyticsSource.includes('function settledPayoutOrderIds()')||!analyticsSource.includes("&&!paid[id]"))fail('Payout queue does not cross-check authoritative settled payout order IDs');
+  const payoutQueueCheck=spawnSync(process.execPath,[path.join(root,'tests','payout-queue-check.mjs')],{encoding:'utf8',cwd:root});
+  if(payoutQueueCheck.status!==0)fail(`Payout queue regression check failed:\n${payoutQueueCheck.stderr||payoutQueueCheck.stdout}`);
   if(!analyticsSource.includes('class="dr-summary"')||!analyticsSource.includes('data-dr-target="drChannels"')||!analyticsSource.includes("scrollIntoView({behavior:'smooth',block:'center'})"))fail('Daily Report summary navigation is incomplete');
 
   const orderAdminSource=fs.readFileSync(path.join(root,'assets','js','admin','admin-orders.mjs'),'utf8');
@@ -508,6 +511,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   for(const marker of ['revolving_fund_purchase_advance','transactionType==="purchase_advance"','asset:purchase_cash_advance:','An allocated or returned supplier payment cannot be voided','purchase_advance_allocation_reversed','Restore supplier payment for allocation','revolving_fund_supplier_payment_return','return_supplier_payment'])if(!functionsSource.includes(marker))fail(`Revolving Fund Finance Books marker missing: ${marker}`);
   for(const marker of ['Revolving Fund','Payment to supplier — allocate to inventories','Payments awaiting inventory allocation','rfCustodian'])if(!adminSource.includes(marker))fail(`Revolving Fund workspace marker missing: ${marker}`);
   for(const marker of ['owner_withdrawal','Owner withdrawal — not an expense','operating_supplies','office_supplies','bank_fees'])if(!adminSource.includes(marker))fail(`Revolving Fund category marker missing: ${marker}`);
+  for(const marker of ['Record Revolving Fund disbursement','function syncPettyCategory()','Purchases — pending inventory allocation',"Owner\\'s Drawings (3100) — not an expense"])if(!adminSource.includes(marker))fail(`Revolving Fund paired-field marker missing: ${marker}`);
   for(const marker of ['function revolvingFundPosting(row)','equity:owner_draw','revolving_fund_owner_withdrawal','expense:office_supplies'])if(!functionsSource.includes(marker))fail(`Revolving Fund account-routing marker missing: ${marker}`);
   if(!itemAccountBridgeSource.includes('office_supplies: "6075"'))fail('Revolving Fund office supplies must map to Books account 6075');
   if(!booksHtml.includes('["1040","Revolving Fund","Asset"]'))fail('Finance Books account 1040 is not visibly named Revolving Fund');
