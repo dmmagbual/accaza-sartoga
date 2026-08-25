@@ -466,6 +466,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(booksBridgeCheck.status!==0)fail(`Accaza Books POS bridge checks failed:\n${booksBridgeCheck.stderr||booksBridgeCheck.stdout}`);
   const salesAuthorityCheck=spawnSync(process.execPath,[path.join(root,'tests','sales-authority-check.mjs')],{encoding:'utf8',cwd:root});
   if(salesAuthorityCheck.status!==0)fail(`Shared Admin sales-authority checks failed:\n${salesAuthorityCheck.stderr||salesAuthorityCheck.stdout}`);
+  const salesHistoryAutoloadCheck=spawnSync(process.execPath,[path.join(root,'tests','sales-history-autoload-check.mjs')],{encoding:'utf8',cwd:root});
+  if(salesHistoryAutoloadCheck.status!==0)fail(`Sales History automatic completeness check failed:\n${salesHistoryAutoloadCheck.stderr||salesHistoryAutoloadCheck.stdout}`);
   const archiveOrderSortCheck=spawnSync(process.execPath,[path.join(root,'tests','archive-order-sort-check.mjs')],{encoding:'utf8',cwd:root});
   if(archiveOrderSortCheck.status!==0)fail(`Archived-order sorting checks failed:\n${archiveOrderSortCheck.stderr||archiveOrderSortCheck.stdout}`);
   const inventoryBooksReconciliationCheck=spawnSync(process.execPath,[path.join(root,'tests','inventory-books-reconciliation-check.mjs')],{encoding:'utf8',cwd:root});
@@ -489,7 +491,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   for(const marker of ['paymentStatus!==\'pending\'','Completed','Received','amounts','qualifies'])if(!salesAuthoritySource.includes(marker))fail(`Shared Admin sales-authority marker missing: ${marker}`);
   for(const marker of ['window.AccazaSales.qualifies','window.AccazaSales.amounts','window.AccazaSales.stamp'])if(!adminSource.includes(marker)||!salesHistorySource.includes(marker))fail(`Admin sales views do not share authority marker: ${marker}`);
   for(const marker of ['Admin is the operational authority','Finance Books must be generated from Admin sales','Admin Sales History reconciles to Finance Books',"A().subscribe('financialMovements'"])if(!salesHistorySource.includes(marker))fail(`Sales reconciliation procedure missing: ${marker}`);
-  for(const marker of ['function initialFeedsLoaded()','function scheduleCompleteLoad()','if(!initialFeedsLoaded()){scheduleCompleteLoad();return;}'])if(!salesHistorySource.includes(marker))fail(`Sales history must wait for all initial feeds before automatically loading complete history: ${marker}`);
+  for(const marker of ['function initialFeedsLoaded()','function scheduleCompleteLoad()','if(!initialFeedsLoaded()){scheduleCompleteLoad();return;}',"verified={orders:false,archivedOrders:false,financialMovements:false}","verified[path]&&!h.historyStatus(path).hasOlder","if(!verified[path]){await hub.loadOlder(path);verified[path]=true"])if(!salesHistorySource.includes(marker))fail(`Sales history must verify and load complete history before reconciliation: ${marker}`);
   for(const marker of ['orphan_order_reversal','orphanReversed','Financial.netMovementCorrection','posted_order_auto_preserved'])if(!functionsSource.includes(marker))fail(`Orphan-sale control marker missing: ${marker}`);
   for(const marker of ['fullOrderVoidMovement','Fully reverse voided order','BooksBridge.fullyVoidedSourceIds','BooksBridge.includeInRecognizedBooks'])if(!functionsSource.includes(marker))fail(`Full-void exclusion control missing: ${marker}`);
   if(!functionsSource.includes('const effectiveStatus = order && order.status === "Archived" ? order.prevStatus : order && order.status;'))fail('Finance posting must use the completed pre-archive order status');
@@ -518,6 +520,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   process.stdout.write(offlineRecoveryCheck.stdout);
   process.stdout.write(booksBridgeCheck.stdout);
   process.stdout.write(salesAuthorityCheck.stdout);
+  process.stdout.write(salesHistoryAutoloadCheck.stdout);
   process.stdout.write(archiveOrderSortCheck.stdout);
   process.stdout.write(inventoryBooksReconciliationCheck.stdout);
   process.stdout.write(operationalExceptionsCheck.stdout);
