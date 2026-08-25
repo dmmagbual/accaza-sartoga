@@ -290,6 +290,19 @@ exports.manageCashAccount = onCall(
 function platformRefKey(ref) {
   return String(ref || "").trim().toUpperCase().replace(/[.#$/\[\] -]/g, "_");
 }
+async function existingPlatformOrder(db, channel, ref, excludeOrderId) {
+  const [ordersSnap, archiveSnap] = await Promise.all([db.ref("/orders").get(), db.ref("/archivedOrders").get()]);
+  const wantedChannel = String(channel || "").toLowerCase(), wantedKey = platformRefKey(ref), exclude = String(excludeOrderId || "");
+  for (const [node, rows] of [["orders", ordersSnap.val() || {}], ["archivedOrders", archiveSnap.val() || {}]]) {
+    for (const id of Object.keys(rows)) {
+      const order = rows[id] || {};
+      if (id === exclude || String(order.channel || "").toLowerCase() !== wantedChannel) continue;
+      if (platformRefKey(order.platformRef || order.id || id) === wantedKey) return {id, node, order};
+    }
+  }
+  return null;
+}
+
 exports.indexPlatformOrderRef = onValueCreated(
   {ref: "/orders/{orderId}", region: "asia-southeast1"},
   async (event) => {
@@ -1679,6 +1692,8 @@ exports.recordPlatformCatchup = onCall(
     if (parsedTs > Date.now() + 86400000) throw new HttpsError("invalid-argument", "Order date cannot be in the future.");
     const reference = financeText(data.reference, 200);
     const key = platformRefKey(ref);
+    const historical = await existingPlatformOrder(db, channel, ref);
+    if (historical) throw new HttpsError("already-exists", `${ref} was already recorded (order ${historical.id}). A platform reference can only be used once.`);
     const idxSnap = await db.ref(`/platformRefIndex/${channel}/${key}`).get();
     if (idxSnap.exists()) { const ex = idxSnap.val() || {}; throw new HttpsError("already-exists", `${ref} was already recorded (order ${ex.orderId || "unknown"}). A platform reference can only be used once.`); }
     const approval = await claimManagerApproval(db, data, "rekey_platform_order", ref, gross, `rekey_${ref}`);

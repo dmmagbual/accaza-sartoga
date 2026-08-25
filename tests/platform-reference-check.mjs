@@ -1,0 +1,10 @@
+import fs from 'node:fs';
+const clientSource=fs.readFileSync(new URL('../assets/js/admin/pos.js',import.meta.url),'utf8');
+const functionsSource=fs.readFileSync(new URL('../functions/index.js',import.meta.url),'utf8');
+const declaration=(clientSource.match(/function platformRefKey\([^\n]+/)||[])[0];
+if(!declaration)throw new Error('Client platform reference normalizer is missing.');
+const client=new Function(`${declaration};return platformRefKey;`)();
+if(client('GF-319')!=='GF-319'||client(' gf-822 ')!=='GF-822')throw new Error('Existing hyphenated platform references no longer match the server index.');
+if(client('GF.12/3')!=='GF_12_3')throw new Error('Firebase-forbidden platform reference characters were not normalized.');
+for(const marker of ['async function existingPlatformOrder','db.ref("/orders").get()','db.ref("/archivedOrders").get()','const historical = await existingPlatformOrder','if (historical) throw new HttpsError("already-exists"'])if(!functionsSource.includes(marker))throw new Error(`Historical platform duplicate safeguard missing: ${marker}`);
+console.log('PASS: platform references match the existing index and re-key checks scan current and archived orders.');
