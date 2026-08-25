@@ -20,7 +20,7 @@ const META={
   payables:['Financials','Payables','Review obligations and payment status.',''],
   stockvalue:['Financials','Inventory','Reconcile beginning stock, movements, ending balance, and inventory value.',''],
   discrepancy:['Financials','Discrepancies','Investigate and approve register exceptions.',''],
-  petty:['Financials','Petty cash','Control vouchers, replenishments, and approvals.',''],
+  petty:['Financials','Revolving Fund','Control the single fund, vouchers, replenishments, purchases, and approvals.',''],
   reviews:['Customers','Reviews','Manage public feedback and customer proof points.',''],
   appcustomers:['Customers','App customers','Review registered customer-app activity.',''],
   channelpricing:['Settings','Channel pricing','Maintain channel-specific prices and fees.',''],

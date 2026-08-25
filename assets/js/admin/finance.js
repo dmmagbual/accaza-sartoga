@@ -33,7 +33,7 @@ function financialMovementArr(){return Object.keys(financialMovementsMap).map(fu
 function chartList(){return Object.keys(chartMap).map(function(k){return Object.assign({id:k},chartMap[k]);}).sort(function(a,b){return String(a.code||'').localeCompare(String(b.code||''));});}
 function custodyList(){return Object.keys(custodyMap).map(function(k){return Object.assign({id:k},custodyMap[k]);}).filter(function(x){return Number(x.remaining)>0;}).sort(function(a,b){return (a.closedAt||0)-(b.closedAt||0);});}
 function acctBalance(id){var b=Number((accountsMap[id]||{}).opening)||0;ledgerArr().forEach(function(e){if(e.accountId!==id)return;b+=(e.dir==='in'?1:-1)*(Number(e.amount)||0);});return Math.round(b*100)/100;}
-function currentCashBalance(id){var account=id==='register'?'asset:register_cash':'asset:cash_account:'+id,b=0;financialMovementArr().forEach(function(m){(m.lines||[]).forEach(function(l){if(l.account===account)b+=(Number(l.debit)||0)-(Number(l.credit)||0);});});return Math.round(b*100)/100;}
+function currentCashBalance(id){var account=id==='register'?'asset:register_cash':id==='revolving'?'asset:petty_cash':'asset:cash_account:'+id,b=0;financialMovementArr().forEach(function(m){(m.lines||[]).forEach(function(l){if(l.account===account)b+=(Number(l.debit)||0)-(Number(l.credit)||0);});});return Math.round(b*100)/100;}
 function financeCommand(action,data,cb){var a=A();if(!a||!a.postFinancialCommand){alert('3C financial service is not available. Refresh the portal.');return null;}var id=(data&&data.commandId)||uid('fm_');var payload=Object.assign({},data||{},{action:action,commandId:id,actorName:(window.__posShift&&window.__posShift.staff)||'Admin'});a.postFinancialCommand(payload).then(function(r){if(cb)cb((r&&r.data)||r||{});}).catch(function(e){alert('Could not post: '+((e&&e.message)||(e&&e.code)||e)+'. Nothing was posted.');});return id;}
 function postLedger(o,cb){return financeCommand('manual',{date:o.date,accountId:o.accountId,dir:o.dir,offsetAccountId:o.offsetAccountId,amount:o.amount,party:o.party||'',ref:o.ref||'',source:o.source||'manual',linkId:o.linkId||'',note:o.note||''},cb);}
 function isCashM(m){return String(m||'').toLowerCase()==='cash';}
@@ -78,9 +78,12 @@ function stmtCategory(m,net){
     case 'shift_payin':return 'Register cash-ins';
     case 'shift_payout':return 'Register pay-outs';
     case 'shift_cash_variance':return net>0?'Cash overage':'Cash shortage';
-    case 'petty_cash_expense':return 'Petty cash expenses';
-    case 'petty_cash_void':return 'Petty cash reversals';
-    case 'petty_cash_replenishment':return 'Petty cash top-up (owner)';
+    case 'petty_cash_expense':return 'Revolving Fund expenses';
+    case 'petty_cash_void':return 'Revolving Fund reversals';
+    case 'petty_cash_replenishment':return 'Revolving Fund replenishment';
+    case 'revolving_fund_purchase_advance':return 'Supplier payments pending inventory allocation';
+    case 'revolving_fund_purchase_advance_void':return 'Supplier-payment allocation reversals';
+    case 'revolving_fund_supplier_payment_return':return 'Supplier payments returned to Revolving Fund';
     case 'opening_balance':return 'Opening balance set';
     case 'shift_opening_float':return 'Float injected';
     case 'manual_cash':var lbl='';(m.lines||[]).forEach(function(l){if(!isCashAcct(l.account)&&l.label)lbl=l.label;});return lbl||(net>0?'Other cash in':'Other cash out');
@@ -122,7 +125,7 @@ function statementHtml(){
   var regDrill='<table class="pz-tbl"><tbody><tr><td>Open drawer</td><td class="r">'+peso(s.endRegDrawer)+'</td></tr>'+custody.map(function(c){return '<tr><td>'+esc(c.staff||'—')+' · closed '+esc(new Date(c.closedAt||0).toLocaleDateString('en-PH',{month:'short',day:'numeric'}))+'</td><td class="r">'+peso(c.remaining)+'</td></tr>';}).join('')+((!custody.length&&Math.abs(s.endAwaiting)>0.005)?'<tr><td>Awaiting deposit</td><td class="r">'+peso(s.endAwaiting)+'</td></tr>':'')+'</tbody></table>';
   endRows+='<tr><td><details style="margin:0;"><summary style="cursor:pointer;">Register cash <span style="color:var(--tl);font-size:.68rem;">by shift ▾</span></summary><div style="margin:.15rem 0;">'+regDrill+'</div></details></td><td class="r" style="vertical-align:top;">'+peso(s.endReg)+'</td></tr>';
   totBegin+=s.beginPetty;totEnd+=s.endPetty;
-  if(Math.abs(s.beginPetty)>0.005||Math.abs(s.endPetty)>0.005){beginRows+='<tr><td>Petty cash</td><td class="r">'+peso(s.beginPetty)+'</td></tr>';endRows+='<tr><td>Petty cash</td><td class="r">'+peso(s.endPetty)+'</td></tr>';}
+  if(Math.abs(s.beginPetty)>0.005||Math.abs(s.endPetty)>0.005){beginRows+='<tr><td>Revolving Fund</td><td class="r">'+peso(s.beginPetty)+'</td></tr>';endRows+='<tr><td>Revolving Fund</td><td class="r">'+peso(s.endPetty)+'</td></tr>';}
   totBegin=r2(totBegin);totEnd=r2(totEnd);
   var addKeys=Object.keys(s.add).sort(),dedKeys=Object.keys(s.ded).sort(),totAdd=0,totDed=0;
   addKeys.forEach(function(k){totAdd+=s.add[k];});dedKeys.forEach(function(k){totDed+=s.ded[k];});totAdd=r2(totAdd);totDed=r2(totDed);
@@ -166,7 +169,7 @@ function renderCashflow(){
       +'<div><span class="pz-lbl">Amount ₱</span><input class="pz-in" id="cfAmt" type="number" step="any" style="width:110px;"/></div>'
       +'<div style="flex:1;min-width:140px;"><span class="pz-lbl">Party / ref (optional)</span><input class="pz-in" id="cfParty" placeholder="who / invoice #"/></div>'
       +'<button class="pz-btn ok" id="cfAdd">Add</button></div>'
-      +'<div style="margin-top:0.6rem;border-top:1px solid var(--cd);padding-top:0.6rem;"><b style="color:var(--bd);font-size:0.85rem;">Transfer between accounts</b><div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:end;margin-top:0.3rem;"><div><span class="pz-lbl">From</span><select class="pz-in" id="cfTrFrom">'+acctSelOpts+'</select></div><div><span class="pz-lbl">To</span><select class="pz-in" id="cfTrTo">'+acctSelOpts+'</select></div><div><span class="pz-lbl">Amount ₱</span><input class="pz-in" id="cfTrAmt" type="number" step="any" style="width:110px;"/></div><div><span class="pz-lbl">Date</span><input class="pz-in" id="cfTrDate" type="date" value="'+todayStr()+'"/></div><button class="pz-btn sec" id="cfTr">Transfer</button></div><div style="font-size:0.72rem;color:var(--tl);margin-top:0.2rem;">For a register/petty-cash deposit to the bank, use the register cash deposit section, or add a plain Money-in with the right category.</div></div>';
+      +'<div style="margin-top:0.6rem;border-top:1px solid var(--cd);padding-top:0.6rem;"><b style="color:var(--bd);font-size:0.85rem;">Transfer between accounts</b><div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:end;margin-top:0.3rem;"><div><span class="pz-lbl">From</span><select class="pz-in" id="cfTrFrom">'+acctSelOpts+'</select></div><div><span class="pz-lbl">To</span><select class="pz-in" id="cfTrTo">'+acctSelOpts+'</select></div><div><span class="pz-lbl">Amount ₱</span><input class="pz-in" id="cfTrAmt" type="number" step="any" style="width:110px;"/></div><div><span class="pz-lbl">Date</span><input class="pz-in" id="cfTrDate" type="date" value="'+todayStr()+'"/></div><button class="pz-btn sec" id="cfTr">Transfer</button></div><div style="font-size:0.72rem;color:var(--tl);margin-top:0.2rem;">Use the Revolving Fund workspace for its replenishments and controlled disbursements.</div></div>';
   var movementsHtml='<div style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;font-size:0.78rem;margin-bottom:.4rem;"><select class="pz-in" id="cfFAcct" style="width:auto;">'+acctFilterOpts+'</select><input class="pz-in" id="cfFFrom" type="date" value="'+(cfFrom||'')+'" style="width:auto;"/><input class="pz-in" id="cfFTo" type="date" value="'+(cfTo||'')+'" style="width:auto;"/><button class="pz-btn sec" id="cfExport" style="padding:0.2rem 0.6rem;">⬇ Excel</button></div>'
       +'<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0.5rem;font-weight:600;"><span style="color:#2a9d5c;">In '+peso(tin)+'</span><span style="color:#c0392b;">Out '+peso(tout)+'</span><span>Net '+peso(tin-tout)+'</span></div><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Date</th><th>Account</th><th>Category / party</th><th class="r">In</th><th class="r">Out</th><th></th></tr></thead><tbody>'+ledRows+'</tbody></table></div>';
   var accountsHtml='<table class="pz-tbl"><thead><tr><th>Account</th><th>Type</th><th class="r">Opening</th><th>Opened</th><th>Auto-post methods</th><th class="r">Current</th><th></th></tr></thead><tbody>'
