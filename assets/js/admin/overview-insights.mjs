@@ -31,8 +31,11 @@ function createOverviewInsights(deps){
   async function ensureHistory(){
     if(state.loading||!state.latest)return;var r=range(),needStart=r.start,notice=document.getElementById('overviewDataNote');state.loading=true;if(notice)notice.textContent='Loading the required order history…';
     try{
-      var loops=0,status=deps.historyStatus();
-      while(status.hasOlder&&loops<100){var archived=state.latest.archived||[],oldest=archived.reduce(function(m,o){var t=stamp(o);return t&&(!m||t<m)?t:m;},0);if(state.period!=='all'&&oldest&&oldest<=needStart)break;await deps.loadOlder();status=deps.historyStatus();loops++;}
+      var feeds=[{path:'orders',rows:function(){return state.latest.active||[];},field:'timestamp'},{path:'archivedOrders',rows:function(){return state.latest.archived||[];},field:'archivedAt'}];
+      for(var f=0;f<feeds.length;f++){
+        var cfg=feeds[f],loops=0,status=deps.historyStatus(cfg.path);if(status.hasOlder&&!status.loaded)return;
+        while(status.hasOlder&&loops<100){var oldest=cfg.rows().reduce(function(m,o){var t=Number(o&&o[cfg.field])||0;return t&&(!m||t<m)?t:m;},0);if(state.period!=='all'&&oldest&&oldest<=needStart)break;await deps.loadOlder(cfg.path);status=deps.historyStatus(cfg.path);loops++;}
+      }
     }catch(e){if(notice)notice.textContent='Some older orders could not be loaded. Refresh and try again.';}
     finally{state.loading=false;paint();}
   }
@@ -64,7 +67,7 @@ function createOverviewInsights(deps){
     bind();if(!state.latest)return;var data=state.latest,r=range(),periodSales=(data.sales||[]).filter(function(o){return inRange(o,r);}),periodOrders=(data.active||[]).concat(data.archived||[]).filter(function(o){return inRange(o,r);}),label=document.getElementById('overviewRangeLabel');if(label)label.textContent=r.label;
     var gross=0,net=0;periodSales.forEach(function(o){var v=window.AccazaSales.amounts(o);gross+=v.gross;net+=v.net;});function set(id,value){var el=document.getElementById(id);if(el)el.textContent=value;}set('overviewNetSales',money(net));set('overviewGrossSales',money(gross));set('overviewTransactions',String(periodSales.length));set('overviewAverageSale',money(periodSales.length?net/periodSales.length:0));
     renderPayments(periodSales);renderTop(periodSales,data);renderOutcomes(periodOrders,data.active||[]);chart(periodSales,r);
-    var status=deps.historyStatus(),note=document.getElementById('overviewDataNote');if(note&&!state.loading)note.textContent=status.hasOlder?'Showing loaded history. Choose an older period to load more records.':'Complete available order history loaded.';
+    var incomplete=['orders','archivedOrders'].some(function(path){return deps.historyStatus(path).hasOlder;}),note=document.getElementById('overviewDataNote');if(note&&!state.loading)note.textContent=incomplete?'Loading the required order history…':'Complete available order history loaded.';
   }
   return{render:function(data){state.latest=data;paint();ensureHistory();},ensureHistory:ensureHistory};
 }
