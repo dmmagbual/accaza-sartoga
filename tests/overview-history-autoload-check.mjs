@@ -4,15 +4,15 @@ globalThis.document={querySelectorAll(){return[];},getElementById(id){return ele
 globalThis.CustomEvent=function(){};
 globalThis.window={dispatchEvent(){},AccazaSales:{amounts(o){return{gross:Number(o.total)||0,net:Number(o.total)||0};}}};
 const {createOverviewInsights}=await import('../assets/js/admin/overview-insights.mjs');
-const states={orders:{loaded:1,hasOlder:true},archivedOrders:{loaded:1,hasOlder:true}},calls=[];
+const states={orders:{loaded:1,hasOlder:true},archivedOrders:{loaded:1,hasOlder:true},financialMovements:{loaded:1,hasOlder:true}},calls=[];
 const overview=createOverviewInsights({esc:String,historyStatus(path){return states[path];},async loadOlder(path){calls.push(path);states[path]={loaded:2,hasOlder:false};}});
 overview.render({active:[],orders:[{id:'old-order',timestamp:1,total:100,status:'Completed',paymentStatus:'confirmed'}],archived:[{id:'old-archive',timestamp:1,archivedAt:2,total:200,status:'Archived',prevStatus:'Completed',paymentStatus:'confirmed'}],outcomes:[],sales:[]});
-for(var i=0;i<20&&calls.length<2;i++)await new Promise((resolve)=>setTimeout(resolve,0));
-if(calls.join(',')!=='orders,archivedOrders')throw new Error('Overview did not automatically complete both order-history feeds for All time.');
-if(elements.overviewDataNote.textContent!=='Complete available order history loaded.')throw new Error('Overview reported complete history before both feeds finished.');
-console.log('PASS: Overview automatically completes active and archived order history before reporting All-time completeness.');
+for(var i=0;i<20&&calls.length<3;i++)await new Promise((resolve)=>setTimeout(resolve,0));
+if(calls.join(',')!=='orders,archivedOrders,financialMovements')throw new Error('Overview did not automatically complete the same three sales-history feeds.');
+if(elements.overviewDataNote.textContent!=='Complete sales history verified.')throw new Error('Overview reported complete history before all three feeds finished.');
+console.log('PASS: Overview completes orders, archives, and Finance movements before reporting totals.');
 
-const raceStates={orders:{loaded:1,hasOlder:true},archivedOrders:{loaded:1,hasOlder:false}},raceChecks={orders:0,archivedOrders:0},raceCalls=[];
+const raceStates={orders:{loaded:1,hasOlder:true},archivedOrders:{loaded:1,hasOlder:false},financialMovements:{loaded:1,hasOlder:false}},raceChecks={orders:0,archivedOrders:0,financialMovements:0},raceCalls=[];
 let releaseRace;
 const raceGate=new Promise(function(resolve){releaseRace=resolve;});
 const raced=createOverviewInsights({esc:String,historyStatus(path){raceChecks[path]++;return raceStates[path];},async loadOlder(path){raceCalls.push(path);await raceGate;raceStates[path]={loaded:2,hasOlder:false};}});
@@ -21,5 +21,12 @@ raced.render(raceData);
 raced.render(raceData);
 releaseRace();
 for(var j=0;j<30&&raceChecks.orders<3;j++)await new Promise((resolve)=>setTimeout(resolve,0));
-if(raceCalls.join(',')!=='orders'||raceChecks.orders<3)throw new Error('Overview lost a refresh received while order history was loading.');
+if(raceCalls.join(',')!=='orders,archivedOrders,financialMovements'||raceChecks.orders<3)throw new Error('Overview lost a refresh received while sales history was loading.');
 console.log('PASS: Overview reruns history reconciliation when live data arrives during pagination.');
+
+const shortcutStates={orders:{loaded:250,hasOlder:true},archivedOrders:{loaded:100,hasOlder:true},financialMovements:{loaded:300,hasOlder:true}},shortcutCalls=[];
+const shortcut=createOverviewInsights({esc:String,historyStatus(path){return shortcutStates[path];},async loadOlder(path){shortcutCalls.push(path);shortcutStates[path]={loaded:shortcutStates[path].loaded+1,hasOlder:false};}});
+shortcut.render({active:[],orders:[{id:'period-covered',timestamp:Date.now(),total:10,status:'Completed'}],archived:[],outcomes:[],sales:[]});
+for(var k=0;k<20&&shortcutCalls.length<3;k++)await new Promise((resolve)=>setTimeout(resolve,0));
+if(shortcutCalls.join(',')!=='orders,archivedOrders,financialMovements')throw new Error('Overview stopped at the selected-period shortcut instead of verifying complete history.');
+console.log('PASS: Overview verifies every bounded feed even when the current page appears to cover the selected period.');
