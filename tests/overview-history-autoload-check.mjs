@@ -1,0 +1,13 @@
+const elements={overviewDataNote:{textContent:''},overviewRangeLabel:{textContent:''},overviewNetSales:{textContent:''},overviewGrossSales:{textContent:''},overviewTransactions:{textContent:''},overviewAverageSale:{textContent:''}};
+globalThis.localStorage={getItem(){return JSON.stringify({period:'all'});},setItem(){}};
+globalThis.document={querySelectorAll(){return[];},getElementById(id){return elements[id]||null;}};
+globalThis.CustomEvent=function(){};
+globalThis.window={dispatchEvent(){},AccazaSales:{amounts(o){return{gross:Number(o.total)||0,net:Number(o.total)||0};}}};
+const {createOverviewInsights}=await import('../assets/js/admin/overview-insights.mjs');
+const states={orders:{loaded:1,hasOlder:true},archivedOrders:{loaded:1,hasOlder:true}},calls=[];
+const overview=createOverviewInsights({esc:String,historyStatus(path){return states[path];},async loadOlder(path){calls.push(path);states[path]={loaded:2,hasOlder:false};}});
+overview.render({active:[{id:'old-order',timestamp:1,total:100,status:'Completed',paymentStatus:'confirmed'}],archived:[{id:'old-archive',timestamp:1,archivedAt:2,total:200,status:'Archived',prevStatus:'Completed',paymentStatus:'confirmed'}],sales:[]});
+for(var i=0;i<20&&calls.length<2;i++)await new Promise((resolve)=>setTimeout(resolve,0));
+if(calls.join(',')!=='orders,archivedOrders')throw new Error('Overview did not automatically complete both order-history feeds for All time.');
+if(elements.overviewDataNote.textContent!=='Complete available order history loaded.')throw new Error('Overview reported complete history before both feeds finished.');
+console.log('PASS: Overview automatically completes active and archived order history before reporting All-time completeness.');

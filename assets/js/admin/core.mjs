@@ -154,7 +154,7 @@ let chatOpen=false,chatStarted=false;
 let custItem=null,custSize=null,custSel={},custQty=1;
 let menuFilter='coffee',orderFilter=null;
 
-const overviewInsights=createOverviewInsights({esc:escHtml,historyStatus:function(){return subscriptionHub.historyStatus('archivedOrders');},loadOlder:function(){return subscriptionHub.loadOlder('archivedOrders');}});
+const overviewInsights=createOverviewInsights({esc:escHtml,historyStatus:function(path){return subscriptionHub.historyStatus(path);},loadOlder:function(path){return subscriptionHub.loadOlder(path);}});
 
 const appCustomerSession=createAppCustomerSession({setupPush:setupPush,refreshNotifyPrompt:refreshNotifyPrompt});
 const customerOrderTracker=createCustomerOrderTracker({getOrders:function(){return adminOrdersMap;},escHtml:escHtml});

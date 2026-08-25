@@ -471,6 +471,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(salesAuthorityCheck.status!==0)fail(`Shared Admin sales-authority checks failed:\n${salesAuthorityCheck.stderr||salesAuthorityCheck.stdout}`);
   const salesHistoryAutoloadCheck=spawnSync(process.execPath,[path.join(root,'tests','sales-history-autoload-check.mjs')],{encoding:'utf8',cwd:root});
   if(salesHistoryAutoloadCheck.status!==0)fail(`Sales History automatic completeness check failed:\n${salesHistoryAutoloadCheck.stderr||salesHistoryAutoloadCheck.stdout}`);
+  const overviewHistoryAutoloadCheck=spawnSync(process.execPath,[path.join(root,'tests','overview-history-autoload-check.mjs')],{encoding:'utf8',cwd:root});
+  if(overviewHistoryAutoloadCheck.status!==0)fail(`Overview automatic completeness check failed:\n${overviewHistoryAutoloadCheck.stderr||overviewHistoryAutoloadCheck.stdout}`);
   const archiveOrderSortCheck=spawnSync(process.execPath,[path.join(root,'tests','archive-order-sort-check.mjs')],{encoding:'utf8',cwd:root});
   if(archiveOrderSortCheck.status!==0)fail(`Archived-order sorting checks failed:\n${archiveOrderSortCheck.stderr||archiveOrderSortCheck.stdout}`);
   const inventoryBooksReconciliationCheck=spawnSync(process.execPath,[path.join(root,'tests','inventory-books-reconciliation-check.mjs')],{encoding:'utf8',cwd:root});
@@ -482,6 +484,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   const overviewInsightsSource=fs.readFileSync(path.join(root,'assets','js','admin','overview-insights.mjs'),'utf8');
   for(const marker of ["period:'month'","data-report-period=\"7\"","data-report-period=\"30\"","data-report-period=\"month\"","data-report-period=\"all\""])if(!(salesHistorySource+adminHtml).includes(marker))fail(`Sales History shared-period marker missing: ${marker}`);
   if(!overviewInsightsSource.includes("saved.period:'month'")||!analyticsSource.includes("var azRange='month'"))fail('Overview and Analytics must initially use This month');
+  for(const marker of ["path:'orders'","path:'archivedOrders'","deps.loadOlder(cfg.path)","status.hasOlder&&!status.loaded"])if(!overviewInsightsSource.includes(marker))fail(`Overview complete-history guard missing: ${marker}`);
   for(const marker of ['REPORT_PERIOD_KEY = "accaza-report-period"','function periodButtons()','window.__booksLiveLoading = true','Refreshing Finance Books'])if(!booksHtml.includes(marker))fail(`Books period/refresh marker missing: ${marker}`);
   for(const marker of ['ordersLoaded=false','movementsLoaded=false','Preparing the shared-period report'])if(!salesHistorySource.includes(marker))fail(`Sales History refresh guard missing: ${marker}`);
   for(const marker of ['meta[name="accaza-admin-build"]','encodeURIComponent(build)'])if(!moduleLoaderSource.includes(marker)&&!adminHtml.includes(marker))fail(`Admin module cache-bust marker missing: ${marker}`);
