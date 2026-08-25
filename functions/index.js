@@ -224,7 +224,7 @@ exports.mirrorPosCogsToBooks = onValueWritten(
 exports.ensureBooksJournal = onCall(
   {region: "asia-southeast1", enforceAppCheck: process.env.ENFORCE_APP_CHECK === "true", timeoutSeconds: 540, memory: "512MiB"},
   async (request) => {
-    const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["cashflow", "receivables", "payables", "saleshistory"]);
+    const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["cashflow", "receivables", "payables"]);
     const [movementSnap, ordersSnap, archiveSnap, journalSnap, cashAccountsSnap, inventorySnap, categoriesSnap] = await Promise.all([
       db.ref("/financialMovements").get(), db.ref("/orders").get(), db.ref("/archivedOrders").get(), db.ref("/books/journal").get(), db.ref("/cfAccounts").get(), db.ref("/inventory").get(), db.ref("/posSettings/invCategories").get(),
     ]);
@@ -1192,7 +1192,6 @@ async function findOrder(db, orderId) {
 async function postOrderFinancial(db, order, accounts, actor) {
   const effectiveStatus = order && order.status === "Archived" ? order.prevStatus : order && order.status;
   if (!order || !order.id || order.paymentStatus === "pending" || !["Completed", "Received"].includes(String(effectiveStatus || ""))) return {skipped: true};
-  const existingSale = (await db.ref(`/financialMovements/sale_${order.id}`).get()).val() || null;
   const movement = Financial.orderPosting(order, accounts || {});
   if (order.paymentApprovalId) {movement.approvalId = order.paymentApprovalId; movement.approvedBy = financeText(order.paymentApprovedBy, 160);}
   movement.occurredAt = Number(order.completedAt || order.receivedAt || order.timestamp || Date.now());
@@ -1200,15 +1199,7 @@ async function postOrderFinancial(db, order, accounts, actor) {
   const date = financeDateFromTimestamp(movement.occurredAt);
   const writes = {};
   (movement.cashEntries || []).forEach((entry) => { entry.date = date; entry.party = order.name || "Walk-in"; entry.ref = order.id; entry.auto = true; writes[`cfLedger/${entry.id}`] = cashLedgerRecord(entry, `sale_${order.id}`, movement, actor); });
-  const result = await commitFinancial(db, `sale_${order.id}`, movement, actor, writes);
-  const platform = ["grabfood", "foodpanda"].includes(String(order.channel || "").toLowerCase());
-  const alreadyClassified = (existingSale && existingSale.lines || []).some((entry) => ["expense:customer_discount", "expense:platform_discount"].includes(String(entry.account || "")));
-  if (!platform && existingSale && !alreadyClassified && Financial.money(order.discount) > 0) {
-    const correction = Financial.discountClassificationPosting(order);
-    correction.occurredAt = movement.occurredAt; correction.actorName = "Automated discount classification";
-    await commitFinancial(db, `discount_classification_${order.id}`, correction, {uid: "server", role: "server"}, {});
-  }
-  return result;
+  return commitFinancial(db, `sale_${order.id}`, movement, actor, writes);
 }
 function addOrderCashWrites(writes, movement, movementId, order, actor) {
   const occurredAt = Number(movement.occurredAt || Date.now());
@@ -1691,23 +1682,14 @@ exports.recordPlatformCatchup = onCall(
 exports.ensureFinancialLedger = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 540, memory: "512MiB"},
   async (request) => {
-    const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["cashflow", "receivables", "saleshistory"]);
+    const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["cashflow", "receivables"]);
     const [ordersSnap, archiveSnap, accountsSnap, ledgerSnap, shiftsSnap, vouchersSnap, replenishmentsSnap, pettySettingsSnap, receivablesSnap, payablesSnap, movementsSnap] = await Promise.all([db.ref("/orders").get(), db.ref("/archivedOrders").get(), db.ref("/cfAccounts").get(), db.ref("/cfLedger").get(), db.ref("/shifts").get(), db.ref("/pettyCashVouchers").get(), db.ref("/pettyCashReplenishments").get(), db.ref("/pettyCashSettings").get(), db.ref("/receivables").get(), db.ref("/payables").get(), db.ref("/financialMovements").get()]);
     const accounts = accountsSnap.val() || {}, legacyLedger = ledgerSnap.val() || {}, all = Object.assign({}, archiveSnap.val() || {}, ordersSnap.val() || {}); let posted = 0, duplicates = 0, skipped = 0; const serverActor = {uid: "server", role: "server"};
     for (const id of Object.keys(all)) { try {const order = Object.assign({id}, all[id]), result = await postOrderFinancial(db, order, accounts, serverActor); if (result.skipped) skipped++; else if (result.duplicate) duplicates++; else posted++; const refund = Financial.money(order.refundAmount); if (refund > 0) {const movementId = `refund_${id}_${Math.round(refund * 100)}`, movement = Financial.reversalPosting(order, refund, "refund", accounts), writes = {}; movement.occurredAt = Number(order.refundedAt || order.timestamp || Date.now()); if (!legacyLedger[`cfrefund_${id}`]) addOrderCashWrites(writes, movement, movementId, order, serverActor); const rr = await commitFinancial(db, movementId, movement, serverActor, writes); rr.duplicate ? duplicates++ : posted++;} if (order.voided) {const remaining = Financial.money(Math.max(0, Financial.money(order.total) - refund)); if (remaining > 0) {const movementId = `void_${id}`, movement = Financial.reversalPosting(order, remaining, "void", accounts), writes = {}; movement.occurredAt = Number(order.voidedAt || order.timestamp || Date.now()); addOrderCashWrites(writes, movement, movementId, order, serverActor); const vr = await commitFinancial(db, movementId, movement, serverActor, writes); vr.duplicate ? duplicates++ : posted++;}}} catch (error) {logger.error("3C backfill order failed", {id, error: String(error)}); throw new HttpsError("internal", `Backfill stopped at order ${id}. It is safe to retry.`);} }
-      const originalMovements = movementsSnap.val() || {}, orderIdentityIds = new Set(); let orphanReversed = 0, orphanRestored = 0;
-      Object.keys(all).forEach((key) => {orderIdentityIds.add(String(key));if (all[key] && all[key].id) orderIdentityIds.add(String(all[key].id));});
-      for (const movementId of Object.keys(originalMovements)) {
-        const original = Object.assign({id: movementId}, originalMovements[movementId] || {}), sourceId = String(original.sourceId || "");
-        if (original.type !== "orphan_order_reversal" || !sourceId || !orderIdentityIds.has(sourceId)) continue;
-        const restoration = Financial.reverseMovement(original, "orphan_order_restoration", "Restore sale matched by alternate order identifier");
-        restoration.actorName = "Automated sales reconciliation"; restoration.controlReason = "Operational order exists under its Firebase key or stored order ID";
-        const restored = await commitFinancial(db, `restore_${movementId}`, restoration, serverActor, {[`operationalAudit/${Date.now()}_restore_sale_${sourceId}`]: {action: "orphan_sale_restored", sourceType: "order", sourceId, movementId, restorationId: `restore_${movementId}`, actorUid: actor.uid, ts: Date.now(), schemaVersion: 1}});
-        if (restored.duplicate) duplicates++; else {posted++; orphanRestored++;}
-      }
+      const originalMovements = movementsSnap.val() || {}; let orphanReversed = 0;
       for (const movementId of Object.keys(originalMovements)) {
         const original = originalMovements[movementId] || {}, sourceId = String(original.sourceId || "");
-        if (original.type !== "order_sale" || !sourceId || orderIdentityIds.has(sourceId)) continue;
+        if (original.type !== "order_sale" || !sourceId || all[sourceId]) continue;
         if (!(original.lines || []).length) continue;
         const reversalId = `orphan_balance_correction_${sourceId}`, reversal = Financial.netMovementCorrection(Object.values(originalMovements), sourceId, "orphan_order_reversal", "Correct orphaned sale balance");
         if (!reversal) continue;
@@ -1722,7 +1704,7 @@ exports.ensureFinancialLedger = onCall(
     const pettySettings = pettySettingsSnap.val() || {}; await backfillOpeningBalance(db, "opening_petty_cash", "pettyCash", "pettyCash", "asset:petty_cash", pettySettings.openingBalance, pettySettings.updatedAt || Date.now(), "Petty cash opening balance");
     const receivables = receivablesSnap.val() || {}; for (const id of Object.keys(receivables)) await backfillFinancialDocument(db, id, receivables[id], true, accounts);
     const payables = payablesSnap.val() || {}; for (const id of Object.keys(payables)) await backfillFinancialDocument(db, id, payables[id], false, accounts);
-    const scanned = Object.keys(all).length + Object.keys(shifts).length + Object.keys(vouchers).length + Object.keys(replenishments).length + Object.keys(accounts).length + Object.keys(receivables).length + Object.keys(payables).length + 1; await db.ref("/systemMaintenance/financialLedgerInitialized").set({at: Date.now(), by: actor.uid, scanned, posted, duplicates, skipped, orphanReversed, orphanRestored}); return {scanned, posted, duplicates, skipped, orphanReversed, orphanRestored};
+    const scanned = Object.keys(all).length + Object.keys(shifts).length + Object.keys(vouchers).length + Object.keys(replenishments).length + Object.keys(accounts).length + Object.keys(receivables).length + Object.keys(payables).length + 1; await db.ref("/systemMaintenance/financialLedgerInitialized").set({at: Date.now(), by: actor.uid, scanned, posted, duplicates, skipped, orphanReversed}); return {scanned, posted, duplicates, skipped, orphanReversed};
   },
 );
 
