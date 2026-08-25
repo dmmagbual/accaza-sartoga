@@ -120,6 +120,7 @@ function computeZ(shift){
   z.expectedCash=(Number(shift.openingFloat)||0)+z.cashSales+z.tips-z.cashRefunds+z.payIns-z.payOuts;
   // Imprest: cashier retains the fixed float, remits the rest. Grab/Panda + non-cash tenders never entered cashSales, so they're already out of the cash line.
   z.retainedFloat=(fixedFloatCfg!=null?fixedFloatCfg:(Number(shift.openingFloat)||0));
+  z.availableForHandover=Math.round((z.expectedCash+z.payOuts-z.retainedFloat)*100)/100;
   z.cashToSettle=Math.round((z.expectedCash-z.retainedFloat)*100)/100;
   z.floatMismatch=(fixedFloatCfg!=null&&fixedFloatCfg>0&&Math.abs((Number(shift.openingFloat)||0)-fixedFloatCfg)>0.001);
   return z;
@@ -323,6 +324,10 @@ function archiveOldActivity(){
   var a=A();if(!a.archiveActivityLog){alert('3E retention service is not available. Refresh the portal.');return;}
   a.archiveActivityLog().then(function(res){var d=(res&&res.data)||res||{};alert(d.archived?('Archived '+d.archived+' entries.'+(d.hasMore?' Click again to archive the next batch.':'')):'No activity-log entries older than 60 days.');}).catch(function(e){alert('Could not archive activity log: '+((e&&e.message)||e));});
 }
+function purchaseCashAdvance(){
+  if(!activeShift){alert('Open a shift first.');return;}var shiftId=activeShift.id;
+  F().run({title:'Release cash for a purchase',subtitle:'This reduces the expected drawer immediately. Management will itemize and link the purchase later.',submitLabel:'Request approval & release',busyLabel:'Recording cash release…',fields:[{name:'amount',label:'Amount released ₱',type:'number',required:true},{name:'recipient',label:'Person receiving the cash',required:true,maxLength:120},{name:'purpose',label:'What will be purchased?',type:'textarea',required:true,maxLength:300},{name:'reference',label:'Receipt / request reference',maxLength:120}]},async function(v){var amount=Math.round((Number(v.amount)||0)*100)/100;if(!(amount>0))throw new Error('Enter an amount greater than zero.');if(!activeShift||activeShift.id!==shiftId)throw new Error('The active shift changed. Try again.');var a=A(),advanceId=uid('padv_'),ap=await a.managerApproval('purchase_cash_advance',advanceId,amount,v.purpose),cr=await a.consumeManagerApproval({action:'purchase_cash_advance',sourceId:advanceId,amount:amount,operationKey:advanceId,approvalId:ap.approvalId}),cd=(cr&&cr.data)||cr||{},rows=(activeShift.payOuts||[]).slice();rows.push({id:advanceId,type:'purchase_advance',status:'pending_details',amount:amount,recipient:v.recipient,purpose:v.purpose,reference:v.reference||'',reason:'Purchase advance — '+v.purpose,by:cd.approvedBy||'Manager',approvedByUid:cd.approvedByUid||'',approvedRole:cd.approvedRole||'',approvalId:ap.approvalId,ts:Date.now()});await Promise.all([a.update(a.ref(a.db,'shifts/'+shiftId),{payOuts:rows}),a.update(a.ref(a.db,'posActiveShift'),{payOuts:rows})]);window.__posLog('purchase-cash-advance',advanceId,peso(amount)+' · '+v.recipient+' · '+v.purpose);return amount;}).then(function(amount){alert('Purchase cash advance recorded. Expected drawer reduced by '+peso(amount)+'.');}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0&&String((e&&e.message)||e).indexOf('cancelled')<0)alert('Could not release purchase cash: '+((e&&e.message)||e));});
+}
 function cashMove(dir){
   if(!activeShift){alert('Open a shift first.');return;}
   var shiftId=activeShift.id;
@@ -369,7 +374,7 @@ function renderOps(){
   if(activeShift){
     var z=computeZ(activeShift);
     html+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;"><div><span style="color:#2a9d5c;font-weight:700;">🟢 Shift open</span> · Cashier <b>'+esc(activeShift.staff)+'</b> · since '+new Date(activeShift.openAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})+'</div><button class="pz-btn warn" id="opsClose">Close shift &amp; Z-report</button></div>';
-    html+='<div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap;align-items:center;"><button class="pz-btn ok" id="opsReview">📋 Shift review</button><button class="pz-btn sec" id="opsCashIn">➕ Cash in</button>'+(denomTrackingOnR()?'<button class="pz-btn sec" id="opsSwap">🔁 Break a bill</button>':'')+'<span style="font-size:0.72rem;color:var(--tl);">For expenses, top up <b>Petty Cash</b> (Replenish → from register) and disburse with a voucher — no direct cash-out from the drawer.</span></div>';
+    html+='<div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap;align-items:center;"><button class="pz-btn ok" id="opsReview">📋 Shift review</button><button class="pz-btn sec" id="opsCashIn">➕ Cash in</button><button class="pz-btn sec" id="opsPurchaseAdvance">🧾 Release purchase cash</button>'+(denomTrackingOnR()?'<button class="pz-btn sec" id="opsSwap">🔁 Break a bill</button>':'')+'<span style="font-size:0.72rem;color:var(--tl);">Purchases use a documented cash advance; routine expenses still use Petty Cash.</span></div>';
     html+='<div class="az-kpis" style="margin-top:0.8rem;">'+kpi('Sales',z.tx)+kpi('Net',peso(z.net))+kpi('Cash in',peso(z.cashSales))+kpi('Tips',peso(z.tips))+kpi('Expected drawer',peso(z.expectedCash))+kpi('Cash to settle',peso(z.cashToSettle))+kpi('Voids',z.voidCount)+kpi('Refunds',peso(z.refunds))+kpi('⏳ Cashier check',peso(z.pending)+(z.pendingCount?' ('+z.pendingCount+')':''))+kpi('🔎 Manager review',peso(z.managerPending)+(z.managerPendingCount?' ('+z.managerPendingCount+')':''))+'</div>';
   } else {
     var opts=staffArr().map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+' ('+esc(s.role||'cashier')+')</option>';}).join('');
@@ -407,6 +412,7 @@ function renderOps(){
   if(document.getElementById('opsOpenDenom_total'))wireDenom('opsOpenDenom');
   var oClose=document.getElementById('opsClose');if(oClose)oClose.onclick=closeShift;
   var oCin=document.getElementById('opsCashIn');if(oCin)oCin.onclick=function(){cashMove('in');};
+  var oPadv=document.getElementById('opsPurchaseAdvance');if(oPadv)oPadv.onclick=purchaseCashAdvance;
   var oRev=document.getElementById('opsReview');if(oRev)oRev.onclick=openShiftReview;
   var oSwap=document.getElementById('opsSwap');if(oSwap)oSwap.onclick=cashSwap;
   root.querySelectorAll('[data-void]').forEach(function(b){b.onclick=function(){voidSale(b.getAttribute('data-void'));};});
@@ -425,11 +431,12 @@ function shiftCardHtml(){
   return '<div class="az-sec">📇 Shift summary</div><div class="pz-card" style="margin-bottom:1rem;"><div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.6rem;"><span style="font-size:0.85rem;color:var(--bd);font-weight:600;">Shift</span><select class="pz-in" id="opsCardShift" style="min-width:250px;">'+opts+'</select></div><div id="opsCardBody"></div></div>';
 }
 function shiftSummaryObj(shift,isOpen){
-  if(isOpen){var z=computeZ(shift);return {tx:z.tx,net:z.net,gross:z.gross,cashSales:z.cashSales,byMethod:z.byMethod,byChannel:z.byChannel,expectedCash:z.expectedCash,countedCash:null,retainedFloat:z.retainedFloat,cashToSettle:z.cashToSettle,variance:null,openingFloat:Number(shift.openingFloat)||0,openAt:shift.openAt,closeAt:null,open:true};}
+  if(isOpen){var z=computeZ(shift);return {tx:z.tx,net:z.net,gross:z.gross,cashSales:z.cashSales,byMethod:z.byMethod,byChannel:z.byChannel,expectedCash:z.expectedCash,countedCash:null,retainedFloat:z.retainedFloat,availableForHandover:z.availableForHandover,cashToSettle:z.cashToSettle,variance:null,openingFloat:Number(shift.openingFloat)||0,openAt:shift.openAt,closeAt:null,open:true,payOutEntries:shift.payOuts||[]};}
   var rf=(shift.retainedFloat!=null?Number(shift.retainedFloat):(fixedFloatCfg!=null?fixedFloatCfg:(Number(shift.openingFloat)||0)));
   var counted=(shift.countedCash!=null?Number(shift.countedCash):null);
   var cts=(shift.cashToSettle!=null?Number(shift.cashToSettle):Math.round(((counted!=null?counted:(Number(shift.expectedCash)||0))-rf)*100)/100);
-  return {tx:Number(shift.tx)||0,net:Number(shift.net)||0,gross:Number(shift.gross)||0,cashSales:(shift.byMethod&&shift.byMethod.Cash)||0,byMethod:shift.byMethod||{},byChannel:shift.byChannel||null,expectedCash:Number(shift.expectedCash)||0,countedCash:counted,retainedFloat:rf,cashToSettle:cts,variance:(shift.variance!=null?Number(shift.variance):null),openingFloat:Number(shift.openingFloat)||0,openAt:shift.openAt,closeAt:shift.closeAt||null,open:false};
+  var payOutEntries=(shift.zReport&&shift.zReport.payOutEntries)||shift.payOuts||[],payOutTotal=payOutEntries.reduce(function(sum,x){return sum+(Number(x.amount)||0);},0);
+  return {tx:Number(shift.tx)||0,net:Number(shift.net)||0,gross:Number(shift.gross)||0,cashSales:(shift.byMethod&&shift.byMethod.Cash)||0,byMethod:shift.byMethod||{},byChannel:shift.byChannel||null,expectedCash:Number(shift.expectedCash)||0,countedCash:counted,retainedFloat:rf,availableForHandover:Math.round((cts+payOutTotal)*100)/100,cashToSettle:cts,variance:(shift.variance!=null?Number(shift.variance):null),openingFloat:Number(shift.openingFloat)||0,openAt:shift.openAt,closeAt:shift.closeAt||null,open:false,payOutEntries:payOutEntries};
 }
 function loadShiftTransactions(id){var a=A();return Promise.all([a.get(a.ref(a.db,'orders')),a.get(a.ref(a.db,'archivedOrders'))]).then(function(snaps){var merged=Object.assign({},snaps[1].val()||{},snaps[0].val()||{});return Object.keys(merged).map(function(k){return Object.assign({id:k},merged[k]);}).filter(function(o){return isShiftTransaction(o,id);}).sort(function(x,y){return (x.timestamp||0)-(y.timestamp||0);});});}
 function reviewShiftCash(shift,isOpen){
@@ -459,14 +466,17 @@ function renderShiftCard(){
   var chRows=S.byChannel?([['instore','In-store'],['online','Online Orders'],['grabfood','GrabFood'],['foodpanda','FoodPanda']].map(function(c){var v=(S.byChannel&&S.byChannel[c[0]])||0;if(!v&&c[0]!=='instore')return '';return '<tr><td>'+c[1]+'</td><td class="r">'+peso(v)+'</td></tr>';}).join('')):'<tr><td colspan="2" class="az-note">Channel split not stored for this shift.</td></tr>';
   var mRows=Object.keys(S.byMethod).sort().map(function(m){return '<tr><td>'+esc(m)+'</td><td class="r">'+peso(S.byMethod[m])+'</td></tr>';}).join('')||'<tr><td colspan="2" class="az-note">—</td></tr>';
   var hdr='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.5rem;"><div><b>'+esc(shift.staff||'')+'</b> · '+new Date(S.openAt).toLocaleString('en-PH',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})+(S.closeAt?('–'+new Date(S.closeAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})):'')+'</div><span style="font-weight:700;color:'+(S.open?'#2a9d5c':'var(--tl)')+';">'+(S.open?'🟢 Open':'Closed')+'</span></div>';
-  var kpis='<div class="az-kpis" style="margin:0 0 0.7rem;">'+kpi('Transactions',S.tx)+kpi('Net sales',peso(S.net))+kpi('Cash sales',peso(S.cashSales))+kpi('Cash to settle',peso(S.cashToSettle))+'</div>';
+  var kpis='<div class="az-kpis" style="margin:0 0 0.7rem;">'+kpi('Transactions',S.tx)+kpi('Net sales',peso(S.net))+kpi('Cash sales',peso(S.cashSales))+kpi('Expected cash to hand over',peso(S.cashToSettle))+'</div>';
+  var payoutRows=(S.payOutEntries||[]).map(function(x){var label=x.type==='purchase_advance'?'Purchase cash — '+(x.recipient||x.purpose||x.id):(x.reason||'Authorized cash-out');var state=x.type==='purchase_advance'?(' · '+peso(x.remainingAmount!=null?x.remainingAmount:x.amount)+' awaiting allocation'):'';return '<tr><td>'+esc(label+state)+'</td><td class="r">−'+peso(x.amount)+'</td></tr>';}).join('');
   var recon='<div class="az-sec">Cash</div><div class="pz-card" style="margin-bottom:0.6rem;"><table class="pz-tbl"><tbody>'
     +'<tr><td>Opening float</td><td class="r">'+peso(S.openingFloat)+'</td></tr>'
-    +'<tr><td>Expected drawer</td><td class="r">'+peso(S.expectedCash)+'</td></tr>'
+    +'<tr><td>Cash available before authorized disbursements</td><td class="r">'+peso(S.availableForHandover+S.retainedFloat)+'</td></tr>'
     +(S.countedCash!=null?'<tr><td>Counted cash</td><td class="r">'+peso(S.countedCash)+'</td></tr>':'')
     +(S.variance!=null?'<tr><td>Variance</td><td class="r" style="color:'+(Math.abs(S.variance)<=(Number(toleranceCfg.cashPeso)||0)?'#155724':'#c0392b')+';">'+peso(S.variance)+'</td></tr>':'')
     +'<tr><td>Less float retained</td><td class="r">−'+peso(S.retainedFloat)+'</td></tr>'
-    +'<tr style="border-top:2px solid var(--bd);"><td><b>► Cash to settle</b></td><td class="r"><b>'+peso(S.cashToSettle)+'</b></td></tr>'
+    +'<tr style="border-top:2px solid var(--bd);"><td><b>Available for handover</b></td><td class="r"><b>'+peso(S.availableForHandover)+'</b></td></tr>'
+    +(payoutRows||'<tr><td colspan="2" class="az-note">No authorized register disbursements.</td></tr>')
+    +'<tr style="border-top:2px solid var(--bd);"><td><b>► Expected cash to hand over</b></td><td class="r"><b>'+peso(S.cashToSettle)+'</b></td></tr>'
     +'</tbody></table><div style="display:flex;justify-content:flex-end;margin-top:0.6rem;"><button class="pz-btn sec" id="opsCashReview">'+(S.open?'📋 Review live cash':'🧾 View final Z-report')+'</button></div></div>';
   var methodTotal=Object.keys(S.byMethod).reduce(function(sum,m){return sum+(Number(S.byMethod[m])||0);},0);
   var chBlk='<div class="az-sec">Sales by channel</div><div class="pz-card" style="margin-bottom:0.6rem;"><table class="pz-tbl"><tbody>'+chRows+'<tr class="register-total"><td>Total net sales</td><td class="r">'+peso(S.net)+'</td></tr></tbody></table><div class="az-note">Online Orders are verified non-cash sales captured in the shift. GrabFood/FoodPanda remain platform receivables. None of these increases physical drawer cash.</div></div>';
@@ -663,10 +673,10 @@ function openShiftReview(){
       +(z.tips?'<tr><td>Tips / rounding kept</td><td class="r">+'+peso(z.tips)+'</td></tr>':'')
       +(z.payIns?'<tr><td>Cash pay-ins</td><td class="r">+'+peso(z.payIns)+'</td></tr>':'')
       +(z.cashRefunds?'<tr><td>Cash refunds</td><td class="r">−'+peso(z.cashRefunds)+'</td></tr>':'')
-      +(z.payOuts?'<tr><td>Pay-outs (register expenses)</td><td class="r">−'+peso(z.payOuts)+'</td></tr>':'')
-      +'<tr style="border-top:2px solid var(--bd);"><td><b>Expected cash on hand</b></td><td class="r"><b>'+peso(z.expectedCash)+'</b></td></tr>'
       +'<tr><td>Less: float retained</td><td class="r">−'+peso(z.retainedFloat)+'</td></tr>'
-      +'<tr style="border-top:1px solid var(--cd);"><td><b>► Cash to settle (remit)</b></td><td class="r"><b>'+peso(z.cashToSettle)+'</b></td></tr>'
+      +'<tr style="border-top:2px solid var(--bd);"><td><b>Available for handover</b></td><td class="r"><b>'+peso(z.availableForHandover)+'</b></td></tr>'
+      +(shift.payOuts||[]).map(function(x){return '<tr><td>'+esc((x.type==='purchase_advance'?'Purchase cash — '+(x.recipient||x.purpose||'')+' · '+peso(x.remainingAmount!=null?x.remainingAmount:x.amount)+' awaiting allocation':(x.reason||'Authorized cash-out')) )+'</td><td class="r">−'+peso(x.amount)+'</td></tr>';}).join('')
+      +'<tr style="border-top:1px solid var(--cd);"><td><b>► Expected cash to hand over</b></td><td class="r"><b>'+peso(z.cashToSettle)+'</b></td></tr>'
       +'</tbody></table>'+(z.floatMismatch?'<div class="az-note" style="color:#c0392b;">⚠ Opened with '+peso(shift.openingFloat)+' but standard float is '+peso(fixedFloatCfg)+'.</div>':'')+'</div>'
     +'<div class="pz-card" style="margin-bottom:0.8rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.3rem;">🧾 Sales by channel</div><table class="pz-tbl"><tbody>'
       +([['instore','In-store'],['online','Online Orders'],['grabfood','GrabFood'],['foodpanda','FoodPanda']].map(function(c){var v=(z.byChannel&&z.byChannel[c[0]])||0;if(!v&&c[0]!=='instore')return '';return '<tr><td>'+c[1]+'</td><td class="r">'+peso(v)+'</td></tr>';}).join(''))

@@ -502,6 +502,9 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!booksHtml.includes('window.__booksSync=function(){var ensureJournal=httpsCallable(fns,"ensureBooksJournal")')||booksHtml.includes('window.__booksSync=function(){var ensureLedger='))fail('Books refresh must rebuild only the journal and must not mutate the financial ledger');
   const itemAccountBridgeSource=fs.readFileSync(path.join(root,'functions','lib','books-bridge.js'),'utf8');
   for(const marker of ['inventoryAccount','costAccount','itemAccounts','cogsAccountSnapshot','purchaseInventoryLines','action === "purchase_paid"','Inventory – Operating & Cleaning Supplies','Office & Administrative Supplies'])if(!adminSource.includes(marker)&&!functionsSource.includes(marker)&&!itemAccountBridgeSource.includes(marker)&&!booksHtml.includes(marker))fail(`Item-level inventory account-assignment marker missing: ${marker}`);
+  for(const marker of ['purchase_cash_advance','asset:purchase_cash_advance:','Purchase cash advance was not found','purchaseInvoiceId'])if(!functionsSource.includes(marker))fail(`Purchase cash advance Finance Books marker missing: ${marker}`);
+  for(const marker of ['Release purchase cash','Expected cash to hand over','awaiting allocation'])if(!adminSource.includes(marker))fail(`Register purchase cash workflow marker missing: ${marker}`);
+  for(const marker of ['Paid from register purchase cash','advanceId:P.advanceId','purchaseAdvanceRegisterHtml','remaining of','allocations'])if(!posSource.includes(marker))fail(`Purchase advance linking marker missing: ${marker}`);
   if(booksHtml.includes('function seedEntries()'))fail('Accaza Books still seeds browser-only sample transactions');
 
   console.log(`PASS: ${checked} executable HTML and external scripts parsed successfully.`);
