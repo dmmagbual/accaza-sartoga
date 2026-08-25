@@ -146,7 +146,7 @@ function getItemOptionGroups(item){
 }
 
 // State
-let categoriesMap={},menuItemsMap={},adminOrdersMap={},archivedOrdersMap={},feedbacksMap={},reviewsMap={},availability={},cart={};
+let categoriesMap={},menuItemsMap={},adminOrdersMap={},overviewOrdersMap={},archivedOrdersMap={},feedbacksMap={},reviewsMap={},availability={},cart={};
 let optionGroupsMap={},optSeedStarted=false,itemOptMigrated=false;
 let knownOrderIds=null,unseenOrders=0,orderChimeTimer=null,audioCtx=null;
 let orderType='pickup',paymentType='gcash',contactMethod='whatsapp';
@@ -385,6 +385,7 @@ subscriptionHub.subscribe('activeOrders',snap=>{
   if(adminLoggedIn||staffLoggedIn){var ot=document.getElementById('tab-orders'),dt=document.getElementById('tab-dashboard'),ct=document.getElementById('tab-appcustomers');if(ot&&ot.style.display!=='none')patchOrderCards(previousOrders,adminOrdersMap);if(dt&&dt.style.display!=='none')renderDashboard();if(ct&&ct.style.display!=='none')renderAppCustomers();}
   updateStats();renderCustomerOrders();checkMyReadyOrders();
 });
+subscriptionHub.subscribe('orders',snap=>{overviewOrdersMap=snap.val()||{};if(adminLoggedIn){var dt=document.getElementById('tab-dashboard');if(dt&&dt.style.display!=='none')renderDashboard();}});
 subscriptionHub.subscribe('archivedOrders',snap=>{archivedOrdersMap=snap.val()||{};if(adminLoggedIn)renderDashboard();if(adminLoggedIn||staffLoggedIn)renderAppCustomers();var _ap=document.getElementById('archivePanel');if(_ap&&_ap.style.display!=='none'){try{renderArchive();}catch(e){}}});
 subscriptionHub.subscribe('feedbacks',snap=>{feedbacksMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderComments();});
 subscriptionHub.subscribe('reviews',snap=>{
@@ -978,10 +979,16 @@ function renderPublicReviews(){
 // ── EDIT ITEM HELPERS ──────────────────────────────────────
 // ── DASHBOARD ──
 function renderDashboard(){
-  const archived=Object.values(archivedOrdersMap);
+  function _rows(map){return Object.entries(map||{}).map(function(pair){var o=pair[1];return o&&o.id?o:Object.assign({_overviewKey:pair[0]},o||{});});}
+  const active=_rows(adminOrdersMap);
+  const historyOrders=_rows(overviewOrdersMap);
+  const archived=_rows(archivedOrdersMap);
   function _isSale(o){return window.AccazaSales.qualifies(o);}
   function _tsOf(o){return window.AccazaSales.stamp(o);}
-  const sales=Object.values(adminOrdersMap).concat(archived).filter(_isSale);
+  const combined={};
+  historyOrders.concat(active,archived).forEach(function(o,i){if(!o)return;var id=String(o.id||o.orderId||o.key||o._overviewKey||('overview-'+i));combined[id]=o;});
+  const outcomes=Object.values(combined);
+  const sales=outcomes.filter(_isSale);
   const now2=new Date();
   const startToday=new Date(now2.getFullYear(),now2.getMonth(),now2.getDate()).getTime();
   const _sow=new Date(now2);_sow.setDate(now2.getDate()-now2.getDay());_sow.setHours(0,0,0,0);const startWeek=_sow.getTime();
@@ -990,7 +997,7 @@ function renderDashboard(){
   const t=sumOrders(sales.filter(o=>_tsOf(o)>=startToday)),w=sumOrders(sales.filter(o=>_tsOf(o)>=startWeek)),m=sumOrders(sales.filter(o=>_tsOf(o)>=startMonth)),a=sumOrders(sales);
   function setCard(id,rev,cnt){const el=document.getElementById(id);if(el)el.textContent='₱'+rev.toLocaleString();const cel=document.getElementById(id+'Count');if(cel)cel.textContent=cnt+' order'+(cnt!==1?'s':'');}
   setCard('dashToday',t.rev,t.cnt);setCard('dashWeek',w.rev,w.cnt);setCard('dashMonth',m.rev,m.cnt);setCard('dashAllTime',a.rev,a.cnt);
-  overviewInsights.render({active:Object.values(adminOrdersMap),archived:archived,sales:sales,menuItems:menuItemsMap||{},catType:(window.__posSettings&&window.__posSettings.catType)||{}});
+  overviewInsights.render({active:active,orders:historyOrders,archived:archived,outcomes:outcomes,sales:sales,menuItems:menuItemsMap||{},catType:(window.__posSettings&&window.__posSettings.catType)||{}});
 }
 
 function drawPaymentPie(gcashR,bankR){

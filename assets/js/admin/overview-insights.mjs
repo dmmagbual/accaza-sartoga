@@ -1,6 +1,6 @@
 function createOverviewInsights(deps){
   var saved={};try{saved=JSON.parse(localStorage.getItem('accaza-report-period')||'{}')||{};}catch(_e){}
-  var allowed=['7','30','month','all'],state={period:allowed.indexOf(saved.period)>-1?saved.period:'month',from:'',to:'',metric:'units',latest:null,bound:false,loading:false};
+  var allowed=['7','30','month','all'],state={period:allowed.indexOf(saved.period)>-1?saved.period:'month',from:'',to:'',metric:'units',latest:null,bound:false,loading:false,rerun:false};
   window.AccazaReportPeriod={get:function(){return{period:state.period};},set:function(v){v=v||{};state.period=allowed.indexOf(v.period)>-1?v.period:'month';try{localStorage.setItem('accaza-report-period',JSON.stringify(window.AccazaReportPeriod.get()));}catch(_e){}select();ensureHistory();paint();window.dispatchEvent(new CustomEvent('accaza-report-period',{detail:window.AccazaReportPeriod.get()}));}};
   function stamp(o){return Number(o&&o.timestamp)||Date.parse(o&&o.date)||Number(o&&o.archivedAt)||0;}
   function dayStart(d){var x=new Date(d);x.setHours(0,0,0,0);return x.getTime();}
@@ -29,15 +29,15 @@ function createOverviewInsights(deps){
   }
   function select(){document.querySelectorAll('[data-report-period]').forEach(function(btn){var on=btn.dataset.reportPeriod===state.period;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');});document.querySelectorAll('[data-overview-metric]').forEach(function(btn){var on=btn.dataset.overviewMetric===state.metric;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');});}
   async function ensureHistory(){
-    if(state.loading||!state.latest)return;var r=range(),needStart=r.start,notice=document.getElementById('overviewDataNote');state.loading=true;if(notice)notice.textContent='Loading the required order history…';
+    if(!state.latest)return;if(state.loading){state.rerun=true;return;}var r=range(),needStart=r.start,notice=document.getElementById('overviewDataNote');state.loading=true;if(notice)notice.textContent='Loading the required order history…';
     try{
-      var feeds=[{path:'orders',rows:function(){return state.latest.active||[];},field:'timestamp'},{path:'archivedOrders',rows:function(){return state.latest.archived||[];},field:'archivedAt'}];
+      var feeds=[{path:'orders',rows:function(){return state.latest.orders||[];},field:'timestamp'},{path:'archivedOrders',rows:function(){return state.latest.archived||[];},field:'archivedAt'}];
       for(var f=0;f<feeds.length;f++){
         var cfg=feeds[f],loops=0,status=deps.historyStatus(cfg.path);if(status.hasOlder&&!status.loaded)return;
         while(status.hasOlder&&loops<100){var oldest=cfg.rows().reduce(function(m,o){var t=Number(o&&o[cfg.field])||0;return t&&(!m||t<m)?t:m;},0);if(state.period!=='all'&&oldest&&oldest<=needStart)break;await deps.loadOlder(cfg.path);status=deps.historyStatus(cfg.path);loops++;}
       }
     }catch(e){if(notice)notice.textContent='Some older orders could not be loaded. Refresh and try again.';}
-    finally{state.loading=false;paint();}
+    finally{state.loading=false;paint();if(state.rerun){state.rerun=false;setTimeout(ensureHistory,0);}}
   }
   function money(v){return'₱'+Math.round(Number(v)||0).toLocaleString();}
   function renderPayments(rows){
@@ -64,7 +64,7 @@ function createOverviewInsights(deps){
     ctx.strokeStyle='rgba(0,0,0,.07)';ctx.lineWidth=1;[0,.25,.5,.75,1].forEach(function(p){var y=pad.t+ch*(1-p);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();ctx.fillStyle='#79806f';ctx.font='10px Inter,sans-serif';ctx.textAlign='right';ctx.fillText(money(maxR*p),pad.l-4,y+3);});rev.forEach(function(v,i){var x=pad.l+i*gap+gap*.2,bh=v/maxR*ch;ctx.fillStyle='rgba(176,141,87,.75)';ctx.fillRect(x,pad.t+ch-bh,bw,bh);});ctx.strokeStyle='#3b8fd4';ctx.lineWidth=2;ctx.beginPath();cnt.forEach(function(v,i){var x=pad.l+i*gap+gap*.5,y=pad.t+ch*(1-v/maxC);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();ctx.fillStyle='#3b8fd4';cnt.forEach(function(v,i){var x=pad.l+i*gap+gap*.5,y=pad.t+ch*(1-v/maxC);ctx.beginPath();ctx.arc(x,y,2.5,0,Math.PI*2);ctx.fill();});ctx.fillStyle='#79806f';ctx.font='9px Inter,sans-serif';ctx.textAlign='center';var every=Math.max(1,Math.ceil(labels.length/6));labels.forEach(function(k,i){if(i%every===0||i===labels.length-1)ctx.fillText(monthly?k:k.slice(5),pad.l+i*gap+gap*.5,H-8);});
   }
   function paint(){
-    bind();if(!state.latest)return;var data=state.latest,r=range(),periodSales=(data.sales||[]).filter(function(o){return inRange(o,r);}),periodOrders=(data.active||[]).concat(data.archived||[]).filter(function(o){return inRange(o,r);}),label=document.getElementById('overviewRangeLabel');if(label)label.textContent=r.label;
+    bind();if(!state.latest)return;var data=state.latest,r=range(),periodSales=(data.sales||[]).filter(function(o){return inRange(o,r);}),periodOrders=(data.outcomes||[]).filter(function(o){return inRange(o,r);}),label=document.getElementById('overviewRangeLabel');if(label)label.textContent=r.label;
     var gross=0,net=0;periodSales.forEach(function(o){var v=window.AccazaSales.amounts(o);gross+=v.gross;net+=v.net;});function set(id,value){var el=document.getElementById(id);if(el)el.textContent=value;}set('overviewNetSales',money(net));set('overviewGrossSales',money(gross));set('overviewTransactions',String(periodSales.length));set('overviewAverageSale',money(periodSales.length?net/periodSales.length:0));
     renderPayments(periodSales);renderTop(periodSales,data);renderOutcomes(periodOrders,data.active||[]);chart(periodSales,r);
     var incomplete=['orders','archivedOrders'].some(function(path){return deps.historyStatus(path).hasOlder;}),note=document.getElementById('overviewDataNote');if(note&&!state.loading)note.textContent=incomplete?'Loading the required order history…':'Complete available order history loaded.';
