@@ -475,6 +475,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(salesHistoryAutoloadCheck.status!==0)fail(`Sales History automatic completeness check failed:\n${salesHistoryAutoloadCheck.stderr||salesHistoryAutoloadCheck.stdout}`);
   const overviewHistoryAutoloadCheck=spawnSync(process.execPath,[path.join(root,'tests','overview-history-autoload-check.mjs')],{encoding:'utf8',cwd:root});
   if(overviewHistoryAutoloadCheck.status!==0)fail(`Overview automatic completeness check failed:\n${overviewHistoryAutoloadCheck.stderr||overviewHistoryAutoloadCheck.stdout}`);
+  const overviewColdLoadCheck=spawnSync(process.execPath,[path.join(root,'tests','overview-cold-load-check.mjs')],{encoding:'utf8',cwd:root});
+  if(overviewColdLoadCheck.status!==0)fail(`Overview cold-load check failed:\n${overviewColdLoadCheck.stderr||overviewColdLoadCheck.stdout}`);
   const archiveOrderSortCheck=spawnSync(process.execPath,[path.join(root,'tests','archive-order-sort-check.mjs')],{encoding:'utf8',cwd:root});
   if(archiveOrderSortCheck.status!==0)fail(`Archived-order sorting checks failed:\n${archiveOrderSortCheck.stderr||archiveOrderSortCheck.stdout}`);
   const inventoryBooksReconciliationCheck=spawnSync(process.execPath,[path.join(root,'tests','inventory-books-reconciliation-check.mjs')],{encoding:'utf8',cwd:root});
