@@ -19,11 +19,11 @@ ok(B.mapAccount('asset:platform_receivable:grabfood','grabfood',cashMap).code===
 ok(B.mapAccount('expense:platform_commission','grabfood',cashMap).code==='6040','platform_commission→6040');
 ok(B.mapAccount('expense:platform_variance:va_ads','grabfood',cashMap).code==='6050','Grab ads settlement variance→6050 marketing');
 ok(B.mapAccount('expense:platform_variance:va_marketing_success','grabfood',cashMap).code==='6050','Grab marketing success fee→6050 marketing');
-ok(B.mapAccount('revenue:platform_variance:va_refund_recovery','grabfood',cashMap).code==='4910','Grab refund recovery→4910 sales returns/refunds');
+ok(B.mapAccount('revenue:platform_variance:va_refund_recovery','grabfood',cashMap).code==='4990','Grab refund recovery→4990 other income');
 ok(B.mapAccount('expense:platform_variance:va_promo','grabfood',cashMap).code==='6045','platform promo variance→6045 platform discounts');
 ok(B.mapAccount('expense:platform_variance:va_fees','grabfood',cashMap).code==='6080','platform fee variance→6080 bank/payment fees');
 ok(B.mapAccount('expense:platform_variance:va_penalty','grabfood',cashMap).code==='6085','platform penalty variance→6085 penalties/adjustments');
-ok(B.mapAccount('expense:platform_variance:va_refund','grabfood',cashMap).code==='4910','platform refund variance→4910 returns/refunds');
+ok(B.mapAccount('expense:platform_variance:va_refund','grabfood',cashMap).code==='6085','platform refund variance→6085 platform adjustments');
 ok(B.mapAccount('expense:customer_discount','instore',cashMap).code==='4900','customer discount→sales contra-income 4900');
 ok(B.mapAccount('expense:platform_discount','grabfood',cashMap).code==='4900','platform discount→sales contra-income 4900');
 ok(B.mapAccount('expense:platform_merchant_funded_promo','grabfood',cashMap).code==='6045','merchant-funded promo→6045 platform discounts');
@@ -79,6 +79,8 @@ ok(B.includeInAuthoritativeBooks({type:'order_sale',sourceType:'order',sourceId:
 ok(!B.includeInAuthoritativeBooks({type:'order_sale',sourceType:'order',sourceId:'ORPHAN'},voidSources,authorityOrders),'orphan Finance sale was recognized without an Admin order');
 ok(!B.includeInAuthoritativeBooks({type:'order_sale',sourceType:'order',sourceId:'P'},voidSources,authorityOrders),'pending Admin order was recognized as a sale');
 ok(B.includeInAuthoritativeBooks({type:'platform_payout_deposit',sourceType:'payout',sourceId:'PAY1'},voidSources,authorityOrders),'non-sale Finance adjustment was excluded');
+ok(B.mapAccount('expense:platform_variance:va_refund','grabfood',{}).code==='6085','platform refund deduction polluted customer sales returns');
+ok(B.mapAccount('revenue:platform_variance:va_refund_recovery','grabfood',{}).code==='4990','platform refund recovery polluted recognized net sales');
 
 // helper to make a sale movement
 const t = Date.parse('2026-08-22T05:00:00Z'); // Manila 13:00 same day
