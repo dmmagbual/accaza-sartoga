@@ -225,8 +225,8 @@ exports.ensureBooksJournal = onCall(
   {region: "asia-southeast1", enforceAppCheck: process.env.ENFORCE_APP_CHECK === "true", timeoutSeconds: 540, memory: "512MiB"},
   async (request) => {
     const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["cashflow", "receivables", "payables"]);
-    const [movementSnap, ordersSnap, archiveSnap, journalSnap, cashAccountsSnap, inventorySnap, categoriesSnap, purchasesSnap, payablesSnap, posSettingsSnap] = await Promise.all([
-      db.ref("/financialMovements").get(), db.ref("/orders").get(), db.ref("/archivedOrders").get(), db.ref("/books/journal").get(), db.ref("/cfAccounts").get(), db.ref("/inventory").get(), db.ref("/posSettings/invCategories").get(), db.ref("/purchaseInvoices").get(), db.ref("/payables").get(), db.ref("/posSettings").get(),
+    const [movementSnap, ordersSnap, archiveSnap, journalSnap, cashAccountsSnap, inventorySnap, categoriesSnap, purchasesSnap, payablesSnap, posSettingsSnap, activeShiftSnap] = await Promise.all([
+      db.ref("/financialMovements").get(), db.ref("/orders").get(), db.ref("/archivedOrders").get(), db.ref("/books/journal").get(), db.ref("/cfAccounts").get(), db.ref("/inventory").get(), db.ref("/posSettings/invCategories").get(), db.ref("/purchaseInvoices").get(), db.ref("/payables").get(), db.ref("/posSettings").get(), db.ref("/posActiveShift").get(),
     ]);
     const movements = movementSnap.val() || {}, allOrders = Object.assign({}, archiveSnap.val() || {}, ordersSnap.val() || {}), purchases=purchasesSnap.val()||{}, payables=payablesSnap.val()||{}, inventory=inventorySnap.val()||{};
     const cashMap = await booksCashAccountMap(db), daily = {}, singles = {}, review = {}, voidedSourceIds = BooksBridge.fullyVoidedSourceIds(movements);
@@ -255,31 +255,54 @@ exports.ensureBooksJournal = onCall(
     Object.keys(existing).forEach((key) => { if (existing[key] && existing[key].net && existing[key].source === "pos-bridge" && !daily[key]) writes[`books/journal/${key}`] = null; });
     Object.keys(daily).forEach((key) => { daily[key].updatedAt = Date.now(); writes[`books/journal/${key}`] = daily[key]; });
     Object.keys(singles).forEach((key) => { writes[`books/journal/${key}`] = singles[key]; });
-    const fixedFloat = Financial.money((posSettingsSnap.val() || {}).fixedFloat);
-    writes["books/journal/register_float_control"] = fixedFloat > 0 ? registerFloatControlEntry(fixedFloat, Date.now()) : null;
+    const registerFloat = resolveRegisterFloat(posSettingsSnap.val(), activeShiftSnap.val());
+    writes["books/journal/register_float_control"] = registerFloat.amount > 0 ? registerFloatControlEntry(registerFloat.amount, Date.now(), registerFloat) : null;
     writes["books/reviewQueue"] = review;
     writes["books/config/cashAccountMap"] = cashMap;
     const paths = Object.keys(writes); for (let i = 0; i < paths.length; i += 300) { const batch = {}; paths.slice(i, i + 300).forEach((path) => { batch[path] = writes[path]; }); await db.ref().update(batch); }
     const openingCash = BooksBridge.r2(Object.values(cashAccountsSnap.val() || {}).reduce((sum, account) => sum + Number(account && account.opening || 0), 0));
     const netSales = BooksBridge.r2(Object.values(daily).reduce((sum, entry) => sum + BooksBridge.netSales(entry && entry.net), 0));
-    const result = {at: Date.now(), by: actor.uid, movements: movementIds.length, dailyEntries: Object.keys(daily).length, singleEntries: Object.keys(singles).length, netSales, cogsPosted, missingCogs, reviewItems: Object.keys(review).length, openingCash, fixedFloat};
+    const result = {at: Date.now(), by: actor.uid, movements: movementIds.length, dailyEntries: Object.keys(daily).length, singleEntries: Object.keys(singles).length, netSales, cogsPosted, missingCogs, reviewItems: Object.keys(review).length, openingCash, fixedFloat: registerFloat.amount, registerFloatSource: registerFloat.source};
     await db.ref("/systemMaintenance/booksJournalSynced").set(result); return result;
   },
 );
 
-function registerFloatControlEntry(amount, at) {
+function resolveRegisterFloat(settings, activeShift) {
+  settings = settings || {}; activeShift = activeShift || {};
+  if (settings.fixedFloat != null && Financial.money(settings.fixedFloat) > 0) return {amount: Financial.money(settings.fixedFloat), source: "posSettings/fixedFloat", shiftId: activeShift.id || ""};
+  const retained = activeShift.retainedFloat != null ? activeShift.retainedFloat : activeShift.openingFloat;
+  return {amount: Financial.money(retained), source: activeShift.id ? `posActiveShift/${activeShift.id}` : "posActiveShift", shiftId: activeShift.id || ""};
+}
+
+function registerFloatControlEntry(amount, at, control) {
   amount = Financial.money(amount); at = Number(at) || Date.now();
-  return {id: "register_float_control", date: BooksBridge.businessDate(at), ref: "REGISTER-FLOAT", memo: "Register fixed cash float · tied to POS Settings", lines: [{code: "1005", debit: amount, credit: 0}, {code: "1000", debit: 0, credit: amount}], source: "pos", sourceType: "posSettings", sourceId: "fixedFloat", sources: {"posSettings/fixedFloat": true}, createdAt: at, rebuiltAt: at};
+  control = control || {source: "posSettings/fixedFloat", shiftId: ""};
+  const sources = {}; sources[control.source] = true;
+  return {id: "register_float_control", date: BooksBridge.businessDate(at), ref: "REGISTER-FLOAT", memo: "Register retained cash float · tied to live Register", lines: [{code: "1005", debit: amount, credit: 0}, {code: "1000", debit: 0, credit: amount}], source: "pos", sourceType: "registerFloat", sourceId: control.shiftId || "fixedFloat", sources, createdAt: at, rebuiltAt: at};
 }
 
 exports.syncRegisterCashFloat = onValueWritten(
   {ref: "/posSettings/fixedFloat", region: "asia-southeast1"},
   async (event) => {
-    const before = Financial.money(event.data.before.val()), after = Financial.money(event.data.after.val());
-    if (Math.abs(before - after) < 0.005) return;
-    const db = getDatabase(), at = Date.now(), writes = {};
-    writes["books/journal/register_float_control"] = after > 0 ? registerFloatControlEntry(after, at) : null;
-    writes[`operationalAudit/${at}_register_float`] = {action: "register_float_changed", sourceType: "posSettings", sourceId: "fixedFloat", before, after, journalId: "register_float_control", accounting: "Reclassify Cash on Hand to Register Cash Float; total cash unchanged", ts: at, schemaVersion: 1};
+    const db = getDatabase(), at = Date.now(), writes = {}, activeShift = (await db.ref("/posActiveShift").get()).val() || {};
+    const before = resolveRegisterFloat({fixedFloat: event.data.before.val()}, activeShift), after = resolveRegisterFloat({fixedFloat: event.data.after.val()}, activeShift);
+    if (Math.abs(before.amount - after.amount) < 0.005 && before.source === after.source) return;
+    writes["books/journal/register_float_control"] = after.amount > 0 ? registerFloatControlEntry(after.amount, at, after) : null;
+    writes[`operationalAudit/${at}_register_float`] = {action: "register_float_changed", sourceType: "posSettings", sourceId: "fixedFloat", before: before.amount, after: after.amount, journalId: "register_float_control", accounting: "Reclassify Cash on Hand to Register Cash Float; total cash unchanged", ts: at, schemaVersion: 1};
+    await db.ref().update(writes);
+  },
+);
+
+exports.syncActiveRegisterCashFloat = onValueWritten(
+  {ref: "/posActiveShift", region: "asia-southeast1"},
+  async (event) => {
+    const db = getDatabase(), at = Date.now();
+    const settings = (await db.ref("/posSettings").get()).val() || {};
+    const before = resolveRegisterFloat(settings, event.data.before.val()), after = resolveRegisterFloat(settings, event.data.after.val());
+    if (Math.abs(before.amount - after.amount) < 0.005 && before.source === after.source) return;
+    const writes = {};
+    writes["books/journal/register_float_control"] = after.amount > 0 ? registerFloatControlEntry(after.amount, at, after) : null;
+    writes[`operationalAudit/${at}_register_float_live`] = {action: "register_float_synced", sourceType: "posActiveShift", sourceId: after.shiftId || "", before: before.amount, after: after.amount, journalId: "register_float_control", accounting: "Reclassify Cash on Hand to Register Cash Float; total cash unchanged", ts: at, schemaVersion: 1};
     await db.ref().update(writes);
   },
 );
@@ -1488,6 +1511,7 @@ exports.manageFixedAsset = onCall(
     const M = (v) => Financial.money(v);
     if (action === "create") {
       const assetId = financeKey(data.assetId, "Asset ID"), name = financeText(data.name, 120) || "Asset";
+      const reference = financeText(data.ref || (data.funding && data.funding.ref), 120); if (!reference) throw new HttpsError("invalid-argument", "Receipt, invoice, or acquisition reference is required.");
       const category = financeText(data.category || "equipment", 40).toLowerCase();
       const cost = M(data.cost); if (!(cost > 0)) throw new HttpsError("invalid-argument", "Cost must be greater than zero.");
       const salvage = Math.max(0, M(data.salvage || 0)); if (salvage >= cost) throw new HttpsError("invalid-argument", "Salvage must be less than cost.");
@@ -1496,19 +1520,19 @@ exports.manageFixedAsset = onCall(
       const funding = data.funding || {}; const writes = {}; let creditLine,fundingMeta={fundingType:financeText(funding.type||"cash",20)};
       if (funding.type === "payable") {
         creditLine = Financial.line(`liability:payable:${assetId}`, 0, cost, name);
-        writes[`payables/${assetId}`] = {party: financeText(funding.party || name, 120), type: "fixed asset", amount: cost, date: acquiredDate, due: funding.due ? financeDate(funding.due) : "", ref: financeText(funding.ref, 120), status: "open", movementId: commandId, ts: now, createdBy: actor.uid, schemaVersion: 1};
+        writes[`payables/${assetId}`] = {party: financeText(funding.party || name, 120), type: "fixed asset", amount: cost, date: acquiredDate, due: funding.due ? financeDate(funding.due) : "", ref: reference, status: "open", movementId: commandId, ts: now, createdBy: actor.uid, schemaVersion: 1};
       } else if (funding.type === "owner_funded") {
         const ownerName=financeText(funding.ownerName,120),treatment=financeText(funding.treatment,20)==="reimburse"?"reimburse":"capital",reimbursementId=`owner_fa_${assetId}`;
         if(!ownerName)throw new HttpsError("invalid-argument","Owner or partner name is required.");
         creditLine=Financial.line(treatment==="reimburse"?`liability:due_to_owner:${reimbursementId}`:"equity:capital_in",0,cost,`Paid personally by ${ownerName}`);
-        if(treatment==="reimburse")writes[`payables/${reimbursementId}`]={party:ownerName,type:"owner reimbursement",amount:cost,date:acquiredDate,due:"",ref:financeText(funding.ref||name,120),status:"open",movementId:commandId,fixedAssetId:assetId,liabilityAccount:`liability:due_to_owner:${reimbursementId}`,ts:now,createdBy:actor.uid,schemaVersion:1};
+        if(treatment==="reimburse")writes[`payables/${reimbursementId}`]={party:ownerName,type:"owner reimbursement",amount:cost,date:acquiredDate,due:"",ref:reference,status:"open",movementId:commandId,fixedAssetId:assetId,liabilityAccount:`liability:due_to_owner:${reimbursementId}`,ts:now,createdBy:actor.uid,schemaVersion:1};
         fundingMeta={fundingType:"owner_funded",ownerName,ownerTreatment:treatment,ownerReimbursementId:treatment==="reimburse"?reimbursementId:"",fundingOffsetAccount:treatment==="reimburse"?`liability:due_to_owner:${reimbursementId}`:"equity:capital_in"};
       } else {
         const accounts = (await db.ref("/cfAccounts").get()).val() || {}; const accountId = accountIdFor(accounts, funding.accountId);
         creditLine = Financial.line(`asset:cash_account:${accountId}`, 0, cost, name);
       }
-      const movement = Financial.movement("fixed_asset_acquired", "fixedAsset", assetId, [Financial.line(`asset:fixed_asset:${category}`, cost, 0, name), creditLine], {occurredAt, actorName: actor.role});
-      writes[`fixedAssets/${assetId}`] = Object.assign({name, category, cost, salvage, usefulLifeMonths: life, method: "straight-line", acquiredDate, accumulatedDepreciation: 0, status: "active", depreciation: {}, movementId: commandId, createdBy: actor.uid, ts: now, schemaVersion: 1},fundingMeta);
+      const movement = Financial.movement("fixed_asset_acquired", "fixedAsset", assetId, [Financial.line(`asset:fixed_asset:${category}`, cost, 0, name), creditLine], {occurredAt, actorName: actor.role, reference});
+      writes[`fixedAssets/${assetId}`] = Object.assign({name, category, cost, salvage, usefulLifeMonths: life, method: "straight-line", acquiredDate, reference, accumulatedDepreciation: 0, status: "active", depreciation: {}, movementId: commandId, createdBy: actor.uid, ts: now, schemaVersion: 1},fundingMeta);
       const res = await commitFinancial(db, `fa_acq_${assetId}`, movement, actor, writes);
       return {assetId, duplicate: res.duplicate === true};
     }
@@ -1544,8 +1568,8 @@ exports.manageFixedAsset = onCall(
       if (gainLoss > 0) lines.push(Financial.line("revenue:asset_disposal_gain", 0, gainLoss, "Gain on disposal"));
       else if (gainLoss < 0) lines.push(Financial.line("expense:asset_disposal_loss", M(-gainLoss), 0, "Loss on disposal"));
       const occurredAt = Date.parse(`${financeDate(data.date)}T00:00:00+08:00`) || now;
-      const movement = Financial.movement("fixed_asset_disposed", "fixedAsset", assetId, lines, {occurredAt, actorName: actor.role});
-      await commitFinancial(db, `fa_disp_${assetId}`, movement, actor, {[`fixedAssets/${assetId}/status`]: "disposed", [`fixedAssets/${assetId}/disposedAt`]: now, [`fixedAssets/${assetId}/proceeds`]: proceeds, [`fixedAssets/${assetId}/gainLoss`]: gainLoss});
+      const reference=financeText(data.ref,120),movement = Financial.movement("fixed_asset_disposed", "fixedAsset", assetId, lines, {occurredAt, actorName: actor.role, reference});
+      await commitFinancial(db, `fa_disp_${assetId}`, movement, actor, {[`fixedAssets/${assetId}/status`]: "disposed", [`fixedAssets/${assetId}/disposedAt`]: now, [`fixedAssets/${assetId}/disposalReference`]:reference, [`fixedAssets/${assetId}/proceeds`]: proceeds, [`fixedAssets/${assetId}/gainLoss`]: gainLoss});
       return {assetId, gainLoss};
     }
     throw new HttpsError("invalid-argument", "Unknown fixed-asset action.");
@@ -1612,25 +1636,25 @@ exports.postFinancialCommand = onCall(
     } else if(action==="reverse_personal_business_cost"){
       const fundingId=financeKey(data.fundingId,"Personal funding ID"),row=(await db.ref(`/personalFundings/${fundingId}`).get()).val();if(!row)throw new HttpsError("not-found","Owner/partner-funded cost was not found.");if(row.status==="reversed")return{movementId:`personal_reverse_${fundingId}`,duplicate:true};const reason=financeText(data.reason,300);if(!reason)throw new HttpsError("invalid-argument","Reversal reason is required.");const reimbursementId=financeText(row.reimbursementId,160),reimbursement=reimbursementId?(await db.ref(`/payables/${reimbursementId}`).get()).val():null;if(reimbursement&&reimbursement.status==="paid")throw new HttpsError("failed-precondition","The owner/partner was already reimbursed. Reverse that payment first.");const value=amount(row.amount),movementId=`personal_reverse_${fundingId}`,reversal=Financial.movement("personal_business_cost_reversed","personalFunding",fundingId,[Financial.line(row.offsetAccount,value,0,"Reverse personal funding"),Financial.line(row.expenseAccount,0,value,"Reverse business cost")],{occurredAt:now,actorName:actor.role,reason});const reverseWrites={[`personalFundings/${fundingId}/status`]:"reversed",[`personalFundings/${fundingId}/reversedAt`]:now,[`personalFundings/${fundingId}/reversalReason`]:reason,[`personalFundings/${fundingId}/reversalMovementId`]:movementId};if(reimbursementId){reverseWrites[`payables/${reimbursementId}/status`]="reversed";reverseWrites[`payables/${reimbursementId}/reversedAt`]=now;reverseWrites[`payables/${reimbursementId}/reversalMovementId`]=movementId;}const committed=await commitFinancial(db,movementId,reversal,actor,reverseWrites);return{movementId,duplicate:committed.duplicate};
     } else if (action === "manual") {
-      const accountId = accountIdFor(accounts, data.accountId), value = amount(data.amount), dir = data.dir === "out" ? "out" : "in", selected = data.offsetAccountId ? chartAccountFor(chart, data.offsetAccountId) : chartAccountFromLegacy(chart, data.category, dir), category = financeText(selected.row.name, 80), asset = `asset:cash_account:${accountId}`, offset = `${selected.row.type}:${selected.id}`;
-      movement = Financial.movement("manual_cash", "manual", commandId, dir === "in" ? [Financial.line(asset, value, 0, category), Financial.line(offset, 0, value, category)] : [Financial.line(offset, value, 0, category), Financial.line(asset, 0, value, category)], {occurredAt: now, actorName: financeText(data.actorName || "")});
+      const accountId = accountIdFor(accounts, data.accountId), value = amount(data.amount), dir = data.dir === "out" ? "out" : "in", selected = data.offsetAccountId ? chartAccountFor(chart, data.offsetAccountId) : chartAccountFromLegacy(chart, data.category, dir), category = financeText(selected.row.name, 80), asset = `asset:cash_account:${accountId}`, offset = `${selected.row.type}:${selected.id}`,reference=financeText(data.ref,120);
+      movement = Financial.movement("manual_cash", "manual", commandId, dir === "in" ? [Financial.line(asset, value, 0, category), Financial.line(offset, 0, value, category)] : [Financial.line(offset, value, 0, category), Financial.line(asset, 0, value, category)], {occurredAt: now, actorName: financeText(data.actorName || ""),reference});
       addCash(`fm_${commandId}`, {date: financeDate(data.date), accountId, dir, category, amount: value, party: data.party, ref: data.ref, auto: false});
     } else if (action === "transfer") {
-      const from = accountIdFor(accounts, data.fromAccountId), to = accountIdFor(accounts, data.toAccountId); if (from === to) throw new HttpsError("invalid-argument", "Transfer accounts must be different."); const value = amount(data.amount), date = financeDate(data.date);
-      movement = Financial.movement("cash_transfer", "transfer", commandId, [Financial.line(`asset:cash_account:${to}`, value, 0, "Transfer in"), Financial.line(`asset:cash_account:${from}`, 0, value, "Transfer out")], {occurredAt: now});
-      addCash(`fm_${commandId}_out`, {date, accountId: from, dir: "out", category: "Transfer", amount: value, party: `→ ${financeText(accounts[to].name)}`}); addCash(`fm_${commandId}_in`, {date, accountId: to, dir: "in", category: "Transfer", amount: value, party: `← ${financeText(accounts[from].name)}`});
+      const from = accountIdFor(accounts, data.fromAccountId), to = accountIdFor(accounts, data.toAccountId); if (from === to) throw new HttpsError("invalid-argument", "Transfer accounts must be different."); const value = amount(data.amount), date = financeDate(data.date),reference=financeText(data.ref,120);if(!reference)throw new HttpsError("invalid-argument","Transfer reference is required.");
+      movement = Financial.movement("cash_transfer", "transfer", commandId, [Financial.line(`asset:cash_account:${to}`, value, 0, "Transfer in"), Financial.line(`asset:cash_account:${from}`, 0, value, "Transfer out")], {occurredAt: now,reference});
+      addCash(`fm_${commandId}_out`, {date, accountId: from, dir: "out", category: "Transfer", amount: value, party: `→ ${financeText(accounts[to].name)}`,ref:reference}); addCash(`fm_${commandId}_in`, {date, accountId: to, dir: "in", category: "Transfer", amount: value, party: `← ${financeText(accounts[from].name)}`,ref:reference});
     } else if (action === "create_receivable" || action === "create_payable") {
-      const isAr = action === "create_receivable", docId = financeKey(data.documentId, isAr ? "Receivable ID" : "Payable ID"), value = amount(data.amount), party = financeText(data.party, 120), documentType = financeText(data.type || "other", 60).toLowerCase(); if (!party) throw new HttpsError("invalid-argument", "Party is required.");
+      const isAr = action === "create_receivable", docId = financeKey(data.documentId, isAr ? "Receivable ID" : "Payable ID"), value = amount(data.amount), party = financeText(data.party, 120), documentType = financeText(data.type || "other", 60).toLowerCase(),reference=financeText(data.ref,120); if (!party) throw new HttpsError("invalid-argument", "Party is required.");if(!reference)throw new HttpsError("invalid-argument",`${isAr?"Receivable":"Bill or invoice"} reference is required.`);
       if (!isAr && ["inventory","inventory_pending_invoice","purchases"].includes(documentType)) throw new HttpsError("failed-precondition", "Inventory payables must be created from Purchases so the stock receipt, valuation, and supplier liability stay linked.");
-      movement = Financial.movement(isAr ? "receivable_created" : "payable_created", isAr ? "receivable" : "payable", docId, isAr ? [Financial.line(`asset:receivable:${docId}`, value, 0, party), Financial.line(`revenue:${documentType}`, 0, value, party)] : [Financial.line(`expense_or_inventory:${documentType}`, value, 0, party), Financial.line(`liability:payable:${docId}`, 0, value, party)], {occurredAt: now});
-      const record = {party, type: documentType, amount: value, date: financeDate(data.date), due: data.due ? financeDate(data.due) : "", ref: financeText(data.ref, 120), status: "open", movementId: commandId, ts: now, createdBy: actor.uid, schemaVersion: 1}; writes[`${isAr ? "receivables" : "payables"}/${docId}`] = record; result.documentId = docId;
+      movement = Financial.movement(isAr ? "receivable_created" : "payable_created", isAr ? "receivable" : "payable", docId, isAr ? [Financial.line(`asset:receivable:${docId}`, value, 0, party), Financial.line(`revenue:${documentType}`, 0, value, party)] : [Financial.line(`expense_or_inventory:${documentType}`, value, 0, party), Financial.line(`liability:payable:${docId}`, 0, value, party)], {occurredAt: now,reference});
+      const record = {party, type: documentType, amount: value, date: financeDate(data.date), due: data.due ? financeDate(data.due) : "", ref: reference, status: "open", movementId: commandId, ts: now, createdBy: actor.uid, schemaVersion: 1}; writes[`${isAr ? "receivables" : "payables"}/${docId}`] = record; result.documentId = docId;
     } else if (["collect_receivable", "pay_payable", "reverse_receivable", "reverse_payable"].includes(action)) {
       const isAr = action.includes("receivable"), isReverse = action.startsWith("reverse_"), docId = financeKey(data.documentId, "Document ID"), path = isAr ? "receivables" : "payables", snap = await db.ref(`/${path}/${docId}`).get(); if (!snap.exists()) throw new HttpsError("not-found", "Financial document not found."); const doc = snap.val(); if (doc.status !== "open") throw new HttpsError("failed-precondition", "This document is no longer open."); if (!isAr && doc.provisional === true && !isReverse) throw new HttpsError("failed-precondition", "Finalize the supplier invoice before paying this provisional obligation."); if (!isAr && (doc.purchaseInvoiceId||doc.fixedAssetId||doc.personalFundingId) && isReverse) throw new HttpsError("failed-precondition", "Reverse this owner/partner obligation from its source transaction so the cost and funding remain synchronized."); const value = amount(doc.amount);
       if (isReverse) {
         movement = Financial.movement(isAr ? "receivable_reversed" : "payable_reversed", path, docId, isAr ? [Financial.line(`revenue:${doc.type || "other"}`, value, 0, "Reverse receivable"), Financial.line(`asset:receivable:${docId}`, 0, value, "Reverse receivable")] : [Financial.line(doc.liabilityAccount||`liability:payable:${docId}`, value, 0, "Reverse payable"), Financial.line(`expense_or_inventory:${doc.type || "other"}`, 0, value, "Reverse payable")], {occurredAt: now}); writes[`${path}/${docId}/status`] = "reversed"; writes[`${path}/${docId}/reversedAt`] = now; writes[`${path}/${docId}/reversalMovementId`] = commandId;
       } else {
-        const accountId = accountIdFor(accounts, data.accountId), date = financeDate(data.date), asset = `asset:cash_account:${accountId}`;
-        movement = Financial.movement(isAr ? "receivable_collected" : "payable_paid", path, docId, isAr ? [Financial.line(asset, value, 0, "AR collection"), Financial.line(`asset:receivable:${docId}`, 0, value, "AR collection")] : [Financial.line(doc.liabilityAccount||`liability:payable:${docId}`, value, 0, doc.type==="owner reimbursement"?"Owner/partner reimbursement":"AP payment"), Financial.line(asset, 0, value, doc.type==="owner reimbursement"?"Owner/partner reimbursement":"AP payment")], {occurredAt: now}); addCash(`fm_${commandId}`, {date, accountId, dir: isAr ? "in" : "out", category: isAr ? "AR collection" : (doc.type==="owner reimbursement"?"Owner/partner reimbursement":"AP payment"), amount: value, party: doc.party, ref: doc.ref}); writes[`${path}/${docId}/status`] = isAr ? "collected" : "paid"; writes[`${path}/${docId}/${isAr ? "collectedAt" : "paidAt"}`] = now; writes[`${path}/${docId}/settlementMovementId`] = commandId; writes[`${path}/${docId}/accountId`] = accountId;
+        const accountId = accountIdFor(accounts, data.accountId), date = financeDate(data.date), asset = `asset:cash_account:${accountId}`,reference=financeText(data.ref,120);if(!reference)throw new HttpsError("invalid-argument",`${isAr?"Collection":"Payment"} reference is required.`);
+        movement = Financial.movement(isAr ? "receivable_collected" : "payable_paid", path, docId, isAr ? [Financial.line(asset, value, 0, "AR collection"), Financial.line(`asset:receivable:${docId}`, 0, value, "AR collection")] : [Financial.line(doc.liabilityAccount||`liability:payable:${docId}`, value, 0, doc.type==="owner reimbursement"?"Owner/partner reimbursement":"AP payment"), Financial.line(asset, 0, value, doc.type==="owner reimbursement"?"Owner/partner reimbursement":"AP payment")], {occurredAt: now,reference,sourceReference:financeText(doc.ref,120)}); addCash(`fm_${commandId}`, {date, accountId, dir: isAr ? "in" : "out", category: isAr ? "AR collection" : (doc.type==="owner reimbursement"?"Owner/partner reimbursement":"AP payment"), amount: value, party: doc.party, ref: reference}); writes[`${path}/${docId}/status`] = isAr ? "collected" : "paid"; writes[`${path}/${docId}/${isAr ? "collectedAt" : "paidAt"}`] = now; writes[`${path}/${docId}/settlementReference`] = reference; writes[`${path}/${docId}/settlementMovementId`] = commandId; writes[`${path}/${docId}/accountId`] = accountId;
       }
     } else if (action === "payout_deposit") {
       const payoutId = financeKey(data.payoutId, "Payout ID"), snap = await db.ref(`/platformPayouts/${payoutId}`).get(); if (!snap.exists()) throw new HttpsError("not-found", "Payout not found."); const payout = snap.val(); if (payout.depositMovementId) throw new HttpsError("already-exists", "This payout deposit is already recorded."); const accountId = accountIdFor(accounts, data.accountId), value = amount(payout.actualPayout);
