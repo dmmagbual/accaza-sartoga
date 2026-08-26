@@ -1665,7 +1665,6 @@ exports.postFinancialCommand = onCall(
       if (data.preview === true) return Object.assign({canRepost: !!(existing && existing.movementId)}, reconciliation);
       if (!existing || !existing.movementId) throw new HttpsError("failed-precondition", "There is no posted opening inventory balance to re-post.");
       if (reconciliation.unmapped.length) throw new HttpsError("failed-precondition", `${reconciliation.unmapped.length} stock item(s) with value are missing an inventory account. Map them before re-posting.`);
-      if (Math.abs(reconciliation.clearingBalance) >= 0.005) throw new HttpsError("failed-precondition", `Inventory Receiving Clearing 1290 must be zero before re-posting. Current balance: ${reconciliation.clearingBalance}. Rebuild Books first.`);
       const original = (await db.ref(`/financialMovements/${financeKey(existing.movementId, "Opening movement ID")}`).get()).val();
       if (!original || !Array.isArray(original.lines)) throw new HttpsError("failed-precondition", "The prior opening balance movement is missing; cannot reverse it cleanly.");
       const seq = Number(existing.repostSeq || 0) + 1, date = financeDate(data.date), occurredAt = Date.parse(`${date}T00:00:00+08:00`) || now;
@@ -1674,7 +1673,10 @@ exports.postFinancialCommand = onCall(
       const reversal = Financial.reverseMovement(original, "inventory_opening_balance_reversal", "Reverse prior opening inventory");
       reversal.occurredAt = occurredAt; reversal.reversesMovementId = existing.movementId;
       const reversalId = `inventory_opening_balance_reversal_${seq}`;
-      const freshLines = BooksBridge.openingRebalanceLines(reconciliation.rows, oldRows).map((l) => Financial.line(l.account, l.debit, l.credit, l.label));
+      // Include 1290 clearing (physical stock 0) so the re-post also zeroes any parked
+      // COGS/receiving balance in one action - no separate Books rebuild required.
+      const rebalanceRows = reconciliation.rows.concat([{code: "1290", stockValue: 0, booksValue: reconciliation.clearingBalance}]);
+      const freshLines = BooksBridge.openingRebalanceLines(rebalanceRows, oldRows).map((l) => Financial.line(l.account, l.debit, l.credit, l.label));
       if (!freshLines.length || !BooksBridge.linesBalanced(freshLines)) throw new HttpsError("failed-precondition", "The recomputed opening inventory entry is empty or unbalanced.");
       const freshId = `inventory_opening_balance_v${seq}`, fresh = Financial.movement("inventory_opening_balance", "inventoryReconciliation", "openingBalance", freshLines, {occurredAt, actorName: actor.role, repostSeq: seq});
       const extra = {};

@@ -226,5 +226,15 @@ ok(B.mapAccount('coa:4990','instore',{}).code==='4990','inventory overage gain -
   ok(B.linesBalanced(wasteLines),'inventory waste posting is balanced (Dr 5900 / Cr inventory)');
 }
 
+// --- Re-post also zeroes the 1290 clearing balance in one action ---
+{
+  const rows=[{code:'1200',stockValue:1711.48,booksValue:9325.62},{code:'1290',stockValue:0,booksValue:-2861.47}];
+  const fresh=B.openingRebalanceLines(rows,{});
+  const l1290=fresh.find(l=>l.account==='coa:1290')||{debit:0,credit:0};
+  const ending1290=Math.round((-2861.47+((Number(l1290.debit)||0)-(Number(l1290.credit)||0)))*100)/100;
+  ok(Math.abs(ending1290)<0.005,'re-post drives 1290 clearing to 0');
+  ok(B.linesBalanced(fresh),'re-post with 1290 clearing still balances');
+}
+
 if(failed){ console.error(`\n${failed} bridge check(s) FAILED`); process.exit(1); }
 console.log('PASS: Accaza Books POS→journal bridge (mapping, business date, daily aggregation, idempotency, discrete entries, COGS leg, fixed assets, chart-category mapping) checks passed.');
