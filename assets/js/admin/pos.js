@@ -907,7 +907,7 @@ function renderPurchases(){
       if(required&&!ln.skuId&&skus.length===1)ln.skuId=skus[0].id;
       var selectedSku=ln.skuId&&inventorySkuMap[ln.skuId];
       var skuOpts='<option value="">'+(required?'— select required brand —':'— no approved brand / legacy receipt —')+'</option>'+skus.map(function(s){return '<option value="'+esc(s.id)+'"'+(s.id===ln.skuId?' selected':'')+'>'+esc(skuDisplay(s))+'</option>';}).join('');
-      skuCell='<div class="purchase-sku-cell '+(required?'required':'optional')+'"><span class="pz-lbl">Approved brand '+(required?'<b>required</b>':'(optional)')+'</span><select class="pz-in" data-pf="skuId" data-pi="'+i+'"'+(!ln.ing?' disabled':'')+'>'+skuOpts+'</select>'+(ln.ing&&!skus.length?'<button type="button" class="purchase-add-sku" data-pmanage-sku="'+esc(ln.ing)+'" data-pmanage-line="'+i+'">Add an approved brand</button>':'')+'</div>';
+      skuCell='<div class="purchase-sku-cell '+(required?'required':'optional')+'"><span class="pz-lbl">Approved brand '+(required?'<b>required</b>':'(optional)')+'</span><select class="pz-in" data-pf="skuId" data-pi="'+i+'"'+(!ln.ing?' disabled':'')+'>'+skuOpts+'</select>'+(ln.ing?'<button type="button" class="purchase-add-sku" data-pmanage-sku="'+esc(ln.ing)+'" data-pmanage-line="'+i+'">'+(skus.length?'+ Add another brand':'Add an approved brand')+'</button>':'')+'</div>';
       brandCell=selectedSku?'<div><span class="pz-lbl">Selected brand</span><div class="purchase-sku-brand">'+esc(selectedSku.brand||'—')+'</div></div>':'<div><span class="pz-lbl">Legacy brand note</span><input class="pz-in" data-pf="brand" data-pi="'+i+'" value="'+esc(ln.brand)+'" placeholder="optional" style="width:110px;"/></div>';
     }
     var costInput=(ln.costMode==='total'
