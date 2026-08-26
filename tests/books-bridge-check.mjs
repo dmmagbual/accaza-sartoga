@@ -169,6 +169,8 @@ ok(B.mapAccount("expense:utilities","instore",{}).code==="6020", "manual expense
 ok(B.mapAccount("expense:supplies","instore",{}).code==="6070", "Revolving Fund operating supplies -> 6070");
 ok(B.mapAccount("expense:office_supplies","instore",{}).code==="6075", "Revolving Fund office supplies -> 6075");
 ok(B.mapAccount("equity:capital_in","instore",{}).code==="3000", "owner capital -> 3000");
+ok(B.mapAccount("equity:opening_balance","instore",{}).code==="3000", "opening balance -> Owner's Capital 3000");
+ok(B.mapAccount("equity:cash_float_source","instore",{}).code==="3000", "historical cash-float source -> Owner's Capital 3000");
 ok(B.mapAccount("equity:owner_draw","instore",{}).code==="3100", "owner draw -> 3100");
 const ownerFundedPurchase=B.mappedLines({type:'purchase_owner_funded',sourceId:'pinv_owner_1',lines:[{account:'coa:1200',debit:750,credit:0},{account:'equity:capital_in',debit:0,credit:750}]},{},{});
 ok(B.linesBalanced(ownerFundedPurchase.lines),'owner/partner-funded inventory purchase balances');

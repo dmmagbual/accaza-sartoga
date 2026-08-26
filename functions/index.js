@@ -225,8 +225,8 @@ exports.ensureBooksJournal = onCall(
   {region: "asia-southeast1", enforceAppCheck: process.env.ENFORCE_APP_CHECK === "true", timeoutSeconds: 540, memory: "512MiB"},
   async (request) => {
     const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["cashflow", "receivables", "payables"]);
-    const [movementSnap, ordersSnap, archiveSnap, journalSnap, cashAccountsSnap, inventorySnap, categoriesSnap, purchasesSnap, payablesSnap] = await Promise.all([
-      db.ref("/financialMovements").get(), db.ref("/orders").get(), db.ref("/archivedOrders").get(), db.ref("/books/journal").get(), db.ref("/cfAccounts").get(), db.ref("/inventory").get(), db.ref("/posSettings/invCategories").get(), db.ref("/purchaseInvoices").get(), db.ref("/payables").get(),
+    const [movementSnap, ordersSnap, archiveSnap, journalSnap, cashAccountsSnap, inventorySnap, categoriesSnap, purchasesSnap, payablesSnap, posSettingsSnap] = await Promise.all([
+      db.ref("/financialMovements").get(), db.ref("/orders").get(), db.ref("/archivedOrders").get(), db.ref("/books/journal").get(), db.ref("/cfAccounts").get(), db.ref("/inventory").get(), db.ref("/posSettings/invCategories").get(), db.ref("/purchaseInvoices").get(), db.ref("/payables").get(), db.ref("/posSettings").get(),
     ]);
     const movements = movementSnap.val() || {}, allOrders = Object.assign({}, archiveSnap.val() || {}, ordersSnap.val() || {}), purchases=purchasesSnap.val()||{}, payables=payablesSnap.val()||{}, inventory=inventorySnap.val()||{};
     const cashMap = await booksCashAccountMap(db), daily = {}, singles = {}, review = {}, voidedSourceIds = BooksBridge.fullyVoidedSourceIds(movements);
@@ -255,13 +255,32 @@ exports.ensureBooksJournal = onCall(
     Object.keys(existing).forEach((key) => { if (existing[key] && existing[key].net && existing[key].source === "pos-bridge" && !daily[key]) writes[`books/journal/${key}`] = null; });
     Object.keys(daily).forEach((key) => { daily[key].updatedAt = Date.now(); writes[`books/journal/${key}`] = daily[key]; });
     Object.keys(singles).forEach((key) => { writes[`books/journal/${key}`] = singles[key]; });
+    const fixedFloat = Financial.money((posSettingsSnap.val() || {}).fixedFloat);
+    writes["books/journal/register_float_control"] = fixedFloat > 0 ? registerFloatControlEntry(fixedFloat, Date.now()) : null;
     writes["books/reviewQueue"] = review;
     writes["books/config/cashAccountMap"] = cashMap;
     const paths = Object.keys(writes); for (let i = 0; i < paths.length; i += 300) { const batch = {}; paths.slice(i, i + 300).forEach((path) => { batch[path] = writes[path]; }); await db.ref().update(batch); }
     const openingCash = BooksBridge.r2(Object.values(cashAccountsSnap.val() || {}).reduce((sum, account) => sum + Number(account && account.opening || 0), 0));
     const netSales = BooksBridge.r2(Object.values(daily).reduce((sum, entry) => sum + BooksBridge.netSales(entry && entry.net), 0));
-    const result = {at: Date.now(), by: actor.uid, movements: movementIds.length, dailyEntries: Object.keys(daily).length, singleEntries: Object.keys(singles).length, netSales, cogsPosted, missingCogs, reviewItems: Object.keys(review).length, openingCash};
+    const result = {at: Date.now(), by: actor.uid, movements: movementIds.length, dailyEntries: Object.keys(daily).length, singleEntries: Object.keys(singles).length, netSales, cogsPosted, missingCogs, reviewItems: Object.keys(review).length, openingCash, fixedFloat};
     await db.ref("/systemMaintenance/booksJournalSynced").set(result); return result;
+  },
+);
+
+function registerFloatControlEntry(amount, at) {
+  amount = Financial.money(amount); at = Number(at) || Date.now();
+  return {id: "register_float_control", date: BooksBridge.businessDate(at), ref: "REGISTER-FLOAT", memo: "Register fixed cash float · tied to POS Settings", lines: [{code: "1005", debit: amount, credit: 0}, {code: "1000", debit: 0, credit: amount}], source: "pos", sourceType: "posSettings", sourceId: "fixedFloat", sources: {"posSettings/fixedFloat": true}, createdAt: at, rebuiltAt: at};
+}
+
+exports.syncRegisterCashFloat = onValueWritten(
+  {ref: "/posSettings/fixedFloat", region: "asia-southeast1"},
+  async (event) => {
+    const before = Financial.money(event.data.before.val()), after = Financial.money(event.data.after.val());
+    if (Math.abs(before - after) < 0.005) return;
+    const db = getDatabase(), at = Date.now(), writes = {};
+    writes["books/journal/register_float_control"] = after > 0 ? registerFloatControlEntry(after, at) : null;
+    writes[`operationalAudit/${at}_register_float`] = {action: "register_float_changed", sourceType: "posSettings", sourceId: "fixedFloat", before, after, journalId: "register_float_control", accounting: "Reclassify Cash on Hand to Register Cash Float; total cash unchanged", ts: at, schemaVersion: 1};
+    await db.ref().update(writes);
   },
 );
 

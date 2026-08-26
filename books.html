@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<meta name="accaza-books-build" content="19"/>
+<meta name="accaza-books-build" content="20"/>
 <title>Accaza Books</title>
 <style>
 :root{
@@ -143,7 +143,7 @@ tr.sub-row td{font-weight:700;background:#faf7f1}
   <div class="topbar-in">
     <div class="brand">
       <div class="logo">☕</div>
-      <div><b>Accaza Books</b><small>Coffee-shop accounting · build v19</small></div>
+      <div><b>Accaza Books</b><small>Coffee-shop accounting · build v20</small></div>
     </div>
     <span id="liveStatus" class="live-pill off" title="Live POS auto-capture status — click to sign in" onclick="App.signInPrompt()">● Connecting…</span>
     <span id="reviewBadge" class="live-pill warn" style="display:none" title="Unmapped POS accounts to review" onclick="App.go('journal')"></span>
@@ -163,7 +163,7 @@ tr.sub-row td{font-weight:700;background:#faf7f1}
 <div class="tabs"><div class="tabs-in" id="tabs"></div></div>
 
 <div class="wrap"><div id="page" class="page"></div>
-  <div class="foot-note">Accaza Books · build v19 · double-entry, append-only ledger · live Finance data with browser backup support</div>
+  <div class="foot-note">Accaza Books · build v20 · double-entry, append-only ledger · live Finance data with browser backup support</div>
 </div>
 
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
@@ -193,7 +193,7 @@ window.__booksLiveLoading = true;
 function defaultAccounts(){
   return [
     // Assets
-    ["1000","Cash on Hand","Asset"],["1010","Other Bank Accounts","Asset"],["1011","Union Bank","Asset"],["1012","BDO","Asset"],
+    ["1000","Cash on Hand","Asset"],["1005","Register Cash Float","Asset","Fixed imprest tied to POS Settings"],["1010","Other Bank Accounts","Asset"],["1011","Union Bank","Asset"],["1012","BDO","Asset"],
     ["1013","Security Bank – 4538","Asset"],["1014","Security Bank – 4389","Asset"],["1020","GCash / Maya Wallet","Asset"],
     ["1100","Accounts Receivable – Platforms","Asset","Grab/Panda settlements owed to us"],
     ["1200","Inventory – Coffee & Beans","Asset"],["1210","Inventory – Milk & Dairy","Asset"],
@@ -242,6 +242,7 @@ function migrate(p){
   p.accounts=p.accounts||defaultAccounts(); p.entries=p.entries||[]; p.meta=p.meta||{name:"Accaza Coffee House",created:Date.now()};
   // accounts the POS→journal bridge maps into, plus VAT-activation accounts (kept even while Non-VAT)
   var need=[
+    ["1005","Register Cash Float","Asset","Fixed imprest tied to POS Settings"],
     ["1030","Undeposited Collection","Asset","Cash awaiting bank deposit"],
     ["1040","Revolving Fund","Asset"],
     ["1011","Union Bank","Asset"],["1012","BDO","Asset"],["1013","Security Bank – 4538","Asset"],["1014","Security Bank – 4389","Asset"],
@@ -658,17 +659,24 @@ const PAGES = {
     const totAssets=assets.reduce((s,x)=>s+x.bal,0);
     const totLiab=liab.reduce((s,x)=>s+x.bal,0);
     let totEquity=equity.reduce((s,x)=>s+x.bal,0);
-    // net income all-time (Income - COGS - Expense) folds into equity
-    const inc = DB.accounts.filter(a=>a.type==="Income").reduce((s,a)=>s+ -accountNet(a.code,ents),0);
-    const cog = DB.accounts.filter(a=>a.type==="COGS").reduce((s,a)=>s+ accountNet(a.code,ents),0);
-    const exp = DB.accounts.filter(a=>a.type==="Expense").reduce((s,a)=>s+ accountNet(a.code,ents),0);
-    const netIncome = inc - cog - exp;
+    // Calendar-year close: completed years roll into retained earnings at Dec 31;
+    // only the current year's result remains current net income.
+    const currentYear=String(new Date().getFullYear()),yearStart=currentYear+"-01-01";
+    const resultFor = rows => {
+      const inc=DB.accounts.filter(a=>a.type==="Income").reduce((s,a)=>s+-postedAccountNet(a.code,rows),0);
+      const cog=DB.accounts.filter(a=>a.type==="COGS").reduce((s,a)=>s+postedAccountNet(a.code,rows),0);
+      const exp=DB.accounts.filter(a=>a.type==="Expense").reduce((s,a)=>s+postedAccountNet(a.code,rows),0);
+      return r2(inc-cog-exp);
+    };
+    const retainedFromClosedYears=resultFor(ents.filter(e=>String(e&&e.date||"").slice(0,10)<yearStart));
+    const currentNetIncome=resultFor(ents.filter(e=>String(e&&e.date||"").slice(0,10)>=yearStart));
+    const netIncome=r2(retainedFromClosedYears+currentNetIncome);
     const totEquityWithNI = totEquity + netIncome;
     const totLE = totLiab + totEquityWithNI;
     const balanced = Math.abs(r2(totAssets)-r2(totLE))<0.005;
     const rows = arr => arr.map(x=>`<tr><td><span class="acc-code">${x.a.code}</span> <span class="linkish" onclick="App.drill('${x.a.code}')">${esc(x.a.name)}</span></td><td class="num">${peso(x.bal)}</td></tr>`).join("");
     return `<div class="page-head"><div><h2>Balance Sheet</h2><p>All-time snapshot as of latest entry</p></div></div>
-      <div class="hint">P1 shows a cumulative all-time balance sheet (period filter applies to P&amp;L, Ledger and Trial Balance). Proper period-end snapshots with retained-earnings roll-forward come with the close process in a later phase.</div>
+      <div class="hint">Opening balances are Owner's Capital. Completed calendar-year profit or loss closes to Retained Earnings at December 31; the active year's result remains Current-year net income.</div>
       <div class="two-col">
         <div class="card"><div class="card-pad"><div class="section-label"><span class="type-pill t-asset">Assets</span></div></div><div class="tbl-wrap"><table><tbody>
           ${rows(assets)||'<tr><td class="muted">—</td><td></td></tr>'}
@@ -679,7 +687,8 @@ const PAGES = {
           <tr><td><b>Total liabilities</b></td><td class="num"><b>${peso(totLiab)}</b></td></tr>
           <tr class="sub-row"><td colspan="2">Equity</td></tr>
           ${rows(equity)||''}
-          <tr><td>Net income (all-time)</td><td class="num ${netIncome>=0?'pos':'neg'}">${peso(netIncome)}</td></tr>
+          <tr><td>Retained earnings (closed through Dec 31, ${Number(currentYear)-1})</td><td class="num ${retainedFromClosedYears>=0?'pos':'neg'}">${peso(retainedFromClosedYears)}</td></tr>
+          <tr><td>Current-year net ${currentNetIncome>=0?'income':'loss'} (${currentYear})</td><td class="num ${currentNetIncome>=0?'pos':'neg'}">${peso(currentNetIncome)}</td></tr>
           <tr><td><b>Total equity</b></td><td class="num"><b>${peso(totEquityWithNI)}</b></td></tr>
           <tr class="total-row"><td>Total liabilities &amp; equity</td><td class="num">${peso(totLE)}</td></tr></tbody></table></div></div>
       </div>
