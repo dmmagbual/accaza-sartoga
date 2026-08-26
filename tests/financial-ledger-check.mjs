@@ -19,6 +19,25 @@ balanced(mappedGrab,'mapped Grab deductions');
 assert(mappedGrab.lines.some(x=>x.account==='expense:platform_merchant_funded_promo'&&x.debit===25),'merchant-funded promo was not posted separately');
 assert(mappedGrab.lines.some(x=>x.account==='expense:platform_delivery_fee_discount'&&x.debit===10),'delivery fee discount was not posted separately');
 assert(!mappedGrab.lines.some(x=>x.account==='expense:platform_discount'),'mapped Grab deductions were also posted to the legacy discount account');
+const mappedGrabCorrection=F.postingDifference(mappedGrab,F.orderPosting({id:'GF-MAPPED',channel:'grabfood',grossPlatform:200,commission:38,platformDiscount:40,platformMerchantPromo:28,platformDeliveryFeeDiscount:12,netPlatform:122},{}),'platform_presettlement_correction','GF-MAPPED','Pre-settlement correction');
+balanced(mappedGrabCorrection,'mapped Grab correction');
+assert(mappedGrabCorrection.lines.some(x=>x.account==='expense:platform_commission'&&x.credit===2),'commission-only correction was not preserved');
+assert(mappedGrabCorrection.lines.some(x=>x.account==='expense:platform_merchant_funded_promo'&&x.debit===3),'merchant promo correction was not preserved');
+assert(mappedGrabCorrection.lines.some(x=>x.account==='expense:platform_delivery_fee_discount'&&x.debit===2),'delivery fee correction was not preserved');
+assert(mappedGrabCorrection.lines.some(x=>x.account==='asset:platform_receivable:grabfood'&&x.credit===3),'corrected expected net did not update the Grab receivable');
+const mappedGrabVoid=F.netMovementCorrection([mappedGrab],'GF-MAPPED','order_void','Fully reverse mapped Grab order');
+balanced(mappedGrabVoid,'mapped Grab void');
+for(const account of ['revenue:sales','expense:platform_commission','expense:platform_merchant_funded_promo','expense:platform_delivery_fee_discount','asset:platform_receivable:grabfood'])assert(mappedGrabVoid.lines.some(x=>x.account===account),`mapped Grab void did not reverse ${account}`);
+const grabSettlement=F.movement('platform_payout_settlement','platformPayout','GRAB-PAYOUT-1',[
+  F.line('asset:platform_clearing:grabfood',100,0,'Actual payout clearing'),
+  F.line('expense:platform_variance:va_marketing_success',15,0,'Grab marketing success fee'),
+  F.line('expense:platform_variance:va_ads',10,0,'Grab advertisements'),
+  F.line('asset:platform_receivable:grabfood',0,125,'Settle platform receivable')
+],{approvalId:'APPROVAL-1'});
+balanced(grabSettlement,'Grab statement-only deductions');
+const grabSettlementReversal=F.reverseMovement(Object.assign({id:'payout_GRAB-PAYOUT-1'},grabSettlement),'platform_payout_reversal','Reverse Grab payout');
+balanced(grabSettlementReversal,'Grab settlement reversal');
+for(const account of ['expense:platform_variance:va_marketing_success','expense:platform_variance:va_ads'])assert(grabSettlementReversal.lines.some(x=>x.account===account&&x.credit>0),`Grab settlement reversal did not reverse ${account}`);
 
 const online=F.orderPosting({id:'WEB1',source:'online',channel:'online',total:125,payment:'GCash',payments:[{method:'GCash',amount:125}]},accounts);
 balanced(online,'online order');
