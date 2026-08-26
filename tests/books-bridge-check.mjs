@@ -162,6 +162,13 @@ ok(B.mapAccount("expense:supplies","instore",{}).code==="6070", "Revolving Fund 
 ok(B.mapAccount("expense:office_supplies","instore",{}).code==="6075", "Revolving Fund office supplies -> 6075");
 ok(B.mapAccount("equity:capital_in","instore",{}).code==="3000", "owner capital -> 3000");
 ok(B.mapAccount("equity:owner_draw","instore",{}).code==="3100", "owner draw -> 3100");
+const ownerFundedPurchase=B.mappedLines({type:'purchase_owner_funded',sourceId:'pinv_owner_1',lines:[{account:'coa:1200',debit:750,credit:0},{account:'equity:capital_in',debit:0,credit:750}]},{},{});
+ok(B.linesBalanced(ownerFundedPurchase.lines),'owner/partner-funded inventory purchase balances');
+ok(ownerFundedPurchase.lines.some(l=>l.code==='1200'&&l.debit===750),'owner/partner-funded purchase debits item inventory');
+ok(ownerFundedPurchase.lines.some(l=>l.code==='3000'&&l.credit===750),'owner/partner-funded purchase credits Owner’s Capital');
+const ownerFundedReversal=B.mappedLines({type:'purchase_owner_funded_reversed',sourceId:'pinv_owner_1',lines:[{account:'equity:capital_in',debit:750,credit:0},{account:'coa:1200',debit:0,credit:750}]},{},{});
+ok(B.linesBalanced(ownerFundedReversal.lines),'owner/partner-funded purchase reversal balances');
+ok(ownerFundedReversal.lines.some(l=>l.code==='3000'&&l.debit===750)&&ownerFundedReversal.lines.some(l=>l.code==='1200'&&l.credit===750),'owner/partner-funded reversal removes capital and inventory');
 var u=B.mapAccount("expense_or_inventory:zzzunknown","instore",{}); ok(u.code==="6100" && u.unmapped===true, "unknown bill type -> 6100 + flag");
 // existing POS strings must be unaffected
 ok(B.mapAccount("revenue:sales","instore",{}).code==="4000", "revenue:sales still -> 4000");
