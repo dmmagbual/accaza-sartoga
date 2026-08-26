@@ -490,7 +490,7 @@ const MANAGER_APPROVAL_ACTIONS = new Set([
   "validate_payment", "refund", "void", "settle_platform_payout", "reopen_cash_count",
   "delete_archived_order", "review_discrepancy", "approve_petty_voucher", "correct_petty_voucher",
   "reject_petty_voucher", "void_petty_voucher", "return_supplier_payment", "manual_discount", "cash_in", "purchase_cash_advance", "fixed_float_exception", "reverse_purchase",
-  "rekey_platform_order", "reverse_platform_payout", "correct_platform_presettlement",
+  "rekey_platform_order", "reverse_platform_payout", "correct_platform_presettlement", "set_undeposited_opening_balance",
 ]);
 function transactionCurrent(current, initial, state) {
   const value = current == null && !state.seen ? initial : current;
@@ -719,6 +719,21 @@ exports.retireRevolvingFund = onCall(
     const committed = await commitFinancial(db, movementId, movement, actor, writes);
     if (committed.duplicate) { await db.ref().update(approval.usedWrites); return {balance: bal, retired: false, duplicate: true}; }
     return {balance: bal, retired: true, amount: bal, approvalId: approval.id};
+  },
+);
+
+exports.setUndepositedOpeningBalance = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["petty", "cashflow"]), data = request.data || {}, amount = Financial.money(data.amount), date = financeDate(data.date), reference = financeText(data.reference, 120), reason = financeText(data.reason, 500);
+    if (!(amount > 0)) throw new HttpsError("invalid-argument", "Beginning balance must be greater than zero.");
+    if (!reference) throw new HttpsError("invalid-argument", "A cash-count or opening-balance reference is required.");
+    if (!reason) throw new HttpsError("invalid-argument", "An opening-balance basis is required.");
+    const movementId = "undeposited_opening_balance", custodyId = "undeposited_opening_balance", existing = await db.ref(`/financialMovements/${movementId}`).get();
+    if (existing.exists()) throw new HttpsError("already-exists", "The Undeposited Collection beginning balance has already been posted.");
+    const approval = await claimManagerApproval(db, data, "set_undeposited_opening_balance", "undepositedCollection", amount, movementId), approvedBy = approval.record.approvedName || approval.record.approvedEmail || approval.record.approvedRole, occurredAt = Date.parse(`${date}T00:00:00+08:00`) || Date.now(), movement = Financial.movement("undeposited_opening_balance", "cashCustody", custodyId, [Financial.line("asset:cash_awaiting_deposit", amount, 0, "Undeposited Collection beginning balance"), Financial.line("equity:opening_balance", 0, amount, "Opening balance source")], {occurredAt,actorName:approvedBy,approvalId:approval.id,reference,reason});
+    const writes = Object.assign({}, approval.usedWrites, {[`cashCustody/${custodyId}`]:{shiftId:custodyId,staff:"Beginning balance",amount,depositedAmount:0,remaining:amount,retainedFloat:0,status:"awaiting_deposit",closedAt:occurredAt,movementId,source:"undeposited_opening_balance",reference,createdAt:Date.now(),createdBy:actor.uid,schemaVersion:2},[`undepositedOpeningBalance`]:{amount,date,reference,reason,movementId,custodyId,postedAt:Date.now(),postedBy:actor.uid,approvedBy,approvalId:approval.id,schemaVersion:1},[`operationalAudit/${Date.now()}_undeposited_opening_balance`]:operationalAuditRecord("set_undeposited_opening_balance","cashCustody",custodyId,actor,{amount,date,reference,reason,approvalId:approval.id,movementId})});
+    const committed = await commitFinancial(db, movementId, movement, actor, writes); return {amount,date,reference,movementId,duplicate:committed.duplicate};
   },
 );
 

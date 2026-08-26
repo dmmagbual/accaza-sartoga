@@ -198,7 +198,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   const firebaseImportOwners=adminScripts.filter(item=>item.source.includes('gstatic.com/firebasejs')).map(item=>item.name);
   if(firebaseImportOwners.length!==1||firebaseImportOwners[0]!=='firebase-client.mjs')fail('Firebase SDK imports must be centralized in firebase-client.mjs');
   for(const item of adminScripts){for(const match of item.source.matchAll(/from["']\.\/([^"']+)["']/g)){var importedFile=match[1].split('?')[0];if(!fs.existsSync(path.join(root,'assets','js','admin',importedFile)))fail(`${item.name} imports missing local module ${match[1]}`);}}
-  if(!adminHtml.includes('assets/js/admin/core.mjs?v=309')||!adminCoreItem.source.includes('from"./overview-insights.mjs?v=309"'))fail('Admin Overview module graph is not tied to the visible Admin build');
+  if(!adminHtml.includes('assets/js/admin/core.mjs?v=310')||!adminCoreItem.source.includes('from"./overview-insights.mjs?v=310"'))fail('Admin Overview module graph is not tied to the visible Admin build');
   if(!adminCoreItem.source.includes('mergeOverviewOrders(active,historyOrders,archived)'))fail('Overview does not preserve authoritative order-history precedence over active projections');
   if(adminSource.includes("remove(ref(db,'archivedOrders/'")||adminSource.includes("a.update(a.ref(a.db,'discrepancies/'+id)"))fail('Release 3E retired browser authority remains');
   if(!rulesRaw.includes('"archivedOrders":')||!rulesRaw.includes('"operationalAudit":')||!rulesRaw.includes('"deletionAudit":'))fail('Release 3E controlled archive/audit rules missing');
@@ -542,6 +542,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!itemAccountBridgeSource.includes('office_supplies: "6075"'))fail('Revolving Fund office supplies must map to Books account 6075');
   if(!booksHtml.includes('["1040","Revolving Fund","Asset"]'))fail('Finance Books account 1040 is not visibly named Revolving Fund');
   for(const marker of ['function cashPaymentOccurredAt(row)','voucherNo:financeText(after.voucherNo','category:financeText(after.category','Record cash payment','data-ucvoucher','Net operating expenses in range'])if(!functionsSource.includes(marker)&&!undepositedSource.includes(marker))fail(`Undeposited cash-expense control missing: ${marker}`);
+  for(const marker of ['setUndepositedOpeningBalance','set_undeposited_opening_balance','undeposited_opening_balance','equity:opening_balance','Set beginning balance','Awaiting approval — not yet deducted from cash'])if(!functionsSource.includes(marker)&&!undepositedSource.includes(marker)&&!adminCoreItem.source.includes(marker))fail(`Undeposited beginning-balance or pending-payment marker missing: ${marker}`);
   if(adminSource.includes('id="opsPurchaseAdvance"')||adminSource.includes('No authorized register disbursements.'))fail('Register Operations still exposes retired drawer disbursement controls.');
   if(!realtimeHubSource.includes("pettyCashVouchers:['petty','purchases']"))fail('Purchases cannot load Revolving Fund advances');
   if(booksHtml.includes('function seedEntries()'))fail('Accaza Books still seeds browser-only sample transactions');

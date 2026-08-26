@@ -9,6 +9,7 @@ function isTab(n){var el=document.getElementById('tab-'+n);return el&&el.style.d
 function fv(id){var el=document.getElementById(id);return el?el.value:'';}
 var POOL='asset:cash_awaiting_deposit',PETTY='asset:petty_cash';
 var TYPE_LABELS={
+  undeposited_opening_balance:'Beginning balance',
   shift_cash_to_custody:'Shift turnover in',
   register_cash_deposit:'Bank deposit',
   revolving_fund_purchase_advance:'Supplier payment',
@@ -51,6 +52,8 @@ function renderUndeposited(){
   custodyRemaining=Math.round(custodyRemaining*100)/100;
   var tie=Math.abs(poolBal-custodyRemaining)<0.01;
   var petty=pettyBalance();
+  var pending=Object.keys(vouchers).map(function(id){return Object.assign({id:id},vouchers[id]);}).filter(function(v){return v.status==='pending'&&!v.voided;}).sort(function(a,b){return (b.createdAt||0)-(a.createdAt||0);});
+  var openingPosted=!!movements.undeposited_opening_balance;
   var fromTs=rangeFrom?Date.parse(rangeFrom+'T00:00:00+08:00'):null,toTs=rangeTo?Date.parse(rangeTo+'T23:59:59+08:00'):null;
   var shown=rows.filter(function(r){return (!fromTs||r.ts>=fromTs)&&(!toTs||r.ts<=toTs);}).slice().reverse();
   var inTot=shown.reduce(function(s,r){return s+r.inAmt;},0),outTot=shown.reduce(function(s,r){return s+r.outAmt;},0);
@@ -65,8 +68,9 @@ function renderUndeposited(){
       +'<div class="pz-card" style="flex:1;min-width:200px;background:#f5faf6;"><div style="font-size:0.75rem;color:var(--tl);">Balance on hand (all-time)</div><div style="font-weight:700;font-size:1.35rem;color:var(--bd);">'+peso(poolBal)+'</div></div>'
       +'<div class="pz-card" style="flex:1;min-width:200px;"><div style="font-size:0.75rem;color:var(--tl);">Cash custody remaining (subledger)</div><div style="font-weight:700;font-size:1.15rem;">'+peso(custodyRemaining)+'</div><div style="font-size:0.72rem;margin-top:2px;color:'+(tie?'#155724':'#8a1e1e')+';">'+(tie?'✓ ties to the ledger':'⚠ differs by '+peso(Math.round((poolBal-custodyRemaining)*100)/100))+'</div></div>'
     +'</div>'
+    +(pending.length?('<div class="pz-card" style="margin-bottom:1rem;border:1px solid #ffe0a3;background:#fffdf5;"><b style="color:#8a6d1b;">Awaiting approval — not yet deducted from cash</b><div style="overflow-x:auto;margin-top:.45rem;"><table class="pz-tbl"><thead><tr><th>Voucher</th><th>Date</th><th>Payee</th><th style="text-align:right;">Amount</th><th>Status</th></tr></thead><tbody>'+pending.map(function(v){return '<tr><td>'+esc(v.voucherNo||v.id)+'</td><td>'+esc(v.date||'')+'</td><td>'+esc(v.recipient||v.requesterName||'—')+'</td><td style="text-align:right;">'+peso(v.amount)+'</td><td style="color:#8a6d1b;">pending approval</td></tr>';}).join('')+'</tbody></table></div></div>'):'')
     +(petty>0.01?('<div class="pz-card" style="margin-bottom:1rem;border:1px solid #ffe0a3;background:#fffdf5;"><div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;justify-content:space-between;"><div><b style="color:#8a6d1b;">Revolving Fund still holds '+peso(petty)+'</b><div style="font-size:.75rem;color:var(--tl);">Fold it into Undeposited Collection with one approved, audited entry to complete the retirement.</div></div><button class="pz-btn ok" id="ucRetire">Retire &amp; fold in '+peso(petty)+'</button></div></div>'):'')
-    +'<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem;"><button class="pz-btn ok" id="ucRecordPayment">Record cash payment</button><div class="pz-card" style="flex:1;min-width:260px;padding:.65rem .8rem;"><b style="display:block;margin-bottom:.35rem;">Net operating expenses in range</b>'+expenseSummary+'</div></div>'
+    +'<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem;"><button class="pz-btn ok" id="ucRecordPayment">Record cash payment</button>'+(!openingPosted?'<button class="pz-btn sec" id="ucOpeningBalance">Set beginning balance</button>':'<span class="az-note" style="align-self:center;">Beginning balance recorded</span>')+'<div class="pz-card" style="flex:1;min-width:260px;padding:.65rem .8rem;"><b style="display:block;margin-bottom:.35rem;">Net operating expenses in range</b>'+expenseSummary+'</div></div>'
     +'<div class="pz-card">'
       +'<div style="display:flex;gap:.6rem;align-items:end;flex-wrap:wrap;margin-bottom:0.6rem;">'
         +'<div><span class="pz-lbl">From</span><input class="pz-in" id="ucFrom" type="date" value="'+esc(rangeFrom)+'"/></div>'
@@ -82,7 +86,12 @@ function renderUndeposited(){
   var cl=document.getElementById('ucClear');if(cl)cl.onclick=function(){rangeFrom='';rangeTo='';renderUndeposited();};
   var rb=document.getElementById('ucRetire');if(rb)rb.onclick=doRetire;
   var rp=document.getElementById('ucRecordPayment');if(rp)rp.onclick=function(){var btn=document.querySelector('.admin-tab[onclick*="\'petty\'"]');if(window.posSwitchTab)window.posSwitchTab('petty',btn);};
+  var ob=document.getElementById('ucOpeningBalance');if(ob)ob.onclick=setOpeningBalance;
   root.querySelectorAll('[data-ucvoucher]').forEach(function(b){b.onclick=function(){var row=root.querySelector('[data-ucdetail="'+b.getAttribute('data-ucvoucher')+'"]');if(row)row.style.display=row.style.display==='none'?'table-row':'none';};});
+}
+function setOpeningBalance(){
+  var a=A(),form=window.AccazaFormDialog;if(!a.setUndepositedOpeningBalance||!a.managerApproval||!form){alert('Beginning-balance service is unavailable. Refresh the portal.');return;}
+  form.run({title:'Set Undeposited Collection beginning balance',subtitle:'Enter physical cash on hand before the first recorded movement. This is not today’s current balance and can be posted only once.',submitLabel:'Request approval & post',busyLabel:'Posting…',fields:[{name:'date',label:'Opening date',type:'date',required:true,value:window.AccazaDate.key()},{name:'amount',label:'Beginning cash on hand ₱',type:'number',required:true,min:.01,step:.01},{name:'reference',label:'Cash count / source reference',required:true,maxLength:120,placeholder:'e.g. Opening cash count 2026-08-01'},{name:'reason',label:'Basis and supporting note',type:'textarea',required:true,maxLength:300,placeholder:'Explain how the beginning cash was counted and supported'}]},function(v){return a.managerApproval('set_undeposited_opening_balance','undepositedCollection',v.amount,v.reason).then(function(ap){return a.setUndepositedOpeningBalance({date:v.date,amount:v.amount,reference:v.reference,reason:v.reason,approvalId:ap.approvalId});});}).then(function(r){alert('Beginning balance posted: '+peso(r&&r.amount)+'. Undeposited Collection and Finance Books now include the opening entry.');if(window.__posLog)window.__posLog('undeposited-opening-balance',r&&r.reference,peso(r&&r.amount));}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0&&String((e&&e.message)||e).indexOf('cancelled')<0)alert('Could not post beginning balance: '+((e&&e.message)||e));});
 }
 function doRetire(){
   var a=A();if(!a.retireRevolvingFund||!a.managerApproval){alert('Retirement service is unavailable. Refresh the portal.');return;}
