@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 314,
+    "admin": 315,
     "books": 15,
     "customer": 59,
-    "serviceWorkerCache": 221
+    "serviceWorkerCache": 222
   },
   "authoritativeFiles": [
     "admin.html",
@@ -100,6 +100,7 @@
     "recordPlatformCatchup",
     "reversePlatformPayout",
     "setPlatformPayoutDate"
+    ,"repairClosedShiftTurnover"
   ],
   "requiredProtectedNodes": [
     "activeOrders",
