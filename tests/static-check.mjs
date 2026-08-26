@@ -198,7 +198,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   const firebaseImportOwners=adminScripts.filter(item=>item.source.includes('gstatic.com/firebasejs')).map(item=>item.name);
   if(firebaseImportOwners.length!==1||firebaseImportOwners[0]!=='firebase-client.mjs')fail('Firebase SDK imports must be centralized in firebase-client.mjs');
   for(const item of adminScripts){for(const match of item.source.matchAll(/from["']\.\/([^"']+)["']/g)){var importedFile=match[1].split('?')[0];if(!fs.existsSync(path.join(root,'assets','js','admin',importedFile)))fail(`${item.name} imports missing local module ${match[1]}`);}}
-  if(!adminHtml.includes('assets/js/admin/core.mjs?v=302')||!adminCoreItem.source.includes('from"./overview-insights.mjs?v=302"'))fail('Admin Overview module graph is not tied to the visible Admin build');
+  if(!adminHtml.includes('assets/js/admin/core.mjs?v=303')||!adminCoreItem.source.includes('from"./overview-insights.mjs?v=303"'))fail('Admin Overview module graph is not tied to the visible Admin build');
   if(!adminCoreItem.source.includes('mergeOverviewOrders(active,historyOrders,archived)'))fail('Overview does not preserve authoritative order-history precedence over active projections');
   if(adminSource.includes("remove(ref(db,'archivedOrders/'")||adminSource.includes("a.update(a.ref(a.db,'discrepancies/'+id)"))fail('Release 3E retired browser authority remains');
   if(!rulesRaw.includes('"archivedOrders":')||!rulesRaw.includes('"operationalAudit":')||!rulesRaw.includes('"deletionAudit":'))fail('Release 3E controlled archive/audit rules missing');
@@ -304,7 +304,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(payoutQueueCheck.status!==0)fail(`Payout queue regression check failed:\n${payoutQueueCheck.stderr||payoutQueueCheck.stdout}`);
   const platformReferenceCheck=spawnSync(process.execPath,[path.join(root,'tests','platform-reference-check.mjs')],{encoding:'utf8',cwd:root});
   if(platformReferenceCheck.status!==0)fail(`Platform reference duplicate check failed:\n${platformReferenceCheck.stderr||platformReferenceCheck.stdout}`);
-  for(const marker of ['exports.correctPlatformPresettlement = onCall','correct_platform_presettlement','platform_presettlement_correction','Pre-settlement correction','id="poCorrect"'])if(!functionsSource.includes(marker)&&!analyticsSource.includes(marker))fail(`Platform pre-settlement correction control missing: ${marker}`);
+  for(const marker of ['exports.correctPlatformPresettlement = onCall','correct_platform_presettlement','platform_presettlement_correction','Pre-settlement correction','id="poCorrect"','data-pocorrect','type:\'select\''])if(!functionsSource.includes(marker)&&!analyticsSource.includes(marker))fail(`Platform pre-settlement correction control missing: ${marker}`);
+  if(/\bF\(\)\.run\(/.test(analyticsSource))fail('Platform payout correction must use the available form dialog service.');
   if(!analyticsSource.includes('class="dr-summary"')||!analyticsSource.includes('data-dr-target="drChannels"')||!analyticsSource.includes("scrollIntoView({behavior:'smooth',block:'center'})"))fail('Daily Report summary navigation is incomplete');
 
   const orderAdminSource=fs.readFileSync(path.join(root,'assets','js','admin','admin-orders.mjs'),'utf8');
