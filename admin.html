@@ -1151,7 +1151,8 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
         <button class="admin-tab" onclick="posSwitchTab('payouts',this)">💱 Platform Payouts</button>
         <button class="admin-tab" onclick="posSwitchTab('stockvalue',this)">📊 Inventory</button>
         <button class="admin-tab" onclick="posSwitchTab('discrepancy',this)">🚩 Discrepancies <span id="discBadge" style="display:none;background:#e63946;color:#fff;border-radius:10px;padding:0 0.4rem;font-size:0.7rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
-        <button class="admin-tab" onclick="posSwitchTab('petty',this)">💷 Revolving Fund</button>
+        <button class="admin-tab" onclick="posSwitchTab('petty',this)">💵 Cash Payments</button>
+        <button class="admin-tab" onclick="posSwitchTab('undeposited',this)">💰 Undeposited Collection</button>
       </div>
       <div class="tabgrp" data-grp="customers" data-label="Customers" style="display:none;">
         <button class="admin-tab" onclick="switchTab('reviews',this)">⭐ Reviews</button>
@@ -1364,6 +1365,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
     <div id="tab-dedupe" class="admin-tab-content" style="display:none;"><div id="dedupeRoot"></div></div>
     <div id="tab-discrepancy" class="admin-tab-content" style="display:none;"><div id="discrepancyRoot"></div></div>
     <div id="tab-petty" class="admin-tab-content" style="display:none;"><div id="pettyRoot"></div></div>
+    <div id="tab-undeposited" class="admin-tab-content" style="display:none;"><div id="undepositedRoot"></div></div>
     <div id="tab-packages" class="admin-tab-content" style="display:none;"><div id="packagesRoot"></div></div>
     <div id="tab-analytics" class="admin-tab-content" style="display:none;"><div id="analyticsRoot"></div></div>
     <div id="tab-saleshistory" class="admin-tab-content" style="display:none;"><div id="salesHistoryRoot"></div></div>
