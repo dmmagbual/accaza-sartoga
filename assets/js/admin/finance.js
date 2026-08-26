@@ -78,14 +78,14 @@ function stmtCategory(m,net){
     case 'shift_payin':return 'Register cash-ins';
     case 'shift_payout':return 'Register pay-outs';
     case 'shift_cash_variance':return net>0?'Cash overage':'Cash shortage';
-    case 'petty_cash_expense':return 'Revolving Fund expenses';
-    case 'petty_cash_void':return 'Revolving Fund reversals';
-    case 'revolving_fund_owner_withdrawal':return 'Owner withdrawals from Revolving Fund';
+    case 'petty_cash_expense':return 'Cash expenses from Undeposited Collection';
+    case 'petty_cash_void':return 'Cash-expense reversals';
+    case 'revolving_fund_owner_withdrawal':return 'Owner withdrawals from Undeposited Collection';
     case 'revolving_fund_owner_withdrawal_void':return 'Owner-withdrawal reversals';
     case 'petty_cash_replenishment':return 'Revolving Fund replenishment';
     case 'revolving_fund_purchase_advance':return 'Supplier payments pending inventory allocation';
     case 'revolving_fund_purchase_advance_void':return 'Supplier-payment allocation reversals';
-    case 'revolving_fund_supplier_payment_return':return 'Supplier payments returned to Revolving Fund';
+    case 'revolving_fund_supplier_payment_return':return 'Supplier payments returned to Undeposited Collection';
     case 'opening_balance':return 'Opening balance set';
     case 'shift_opening_float':return 'Float injected';
     case 'manual_cash':var lbl='';(m.lines||[]).forEach(function(l){if(!isCashAcct(l.account)&&l.label)lbl=l.label;});return lbl||(net>0?'Other cash in':'Other cash out');
@@ -171,7 +171,7 @@ function renderCashflow(){
       +'<div><span class="pz-lbl">Amount ₱</span><input class="pz-in" id="cfAmt" type="number" step="any" style="width:110px;"/></div>'
       +'<div style="flex:1;min-width:140px;"><span class="pz-lbl">Party / ref (optional)</span><input class="pz-in" id="cfParty" placeholder="who / invoice #"/></div>'
       +'<button class="pz-btn ok" id="cfAdd">Add</button></div>'
-      +'<div style="margin-top:0.6rem;border-top:1px solid var(--cd);padding-top:0.6rem;"><b style="color:var(--bd);font-size:0.85rem;">Transfer between accounts</b><div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:end;margin-top:0.3rem;"><div><span class="pz-lbl">From</span><select class="pz-in" id="cfTrFrom">'+acctSelOpts+'</select></div><div><span class="pz-lbl">To</span><select class="pz-in" id="cfTrTo">'+acctSelOpts+'</select></div><div><span class="pz-lbl">Amount ₱</span><input class="pz-in" id="cfTrAmt" type="number" step="any" style="width:110px;"/></div><div><span class="pz-lbl">Date</span><input class="pz-in" id="cfTrDate" type="date" value="'+todayStr()+'"/></div><button class="pz-btn sec" id="cfTr">Transfer</button></div><div style="font-size:0.72rem;color:var(--tl);margin-top:0.2rem;">Use the Revolving Fund workspace for its replenishments and controlled disbursements.</div></div>';
+      +'<div style="margin-top:0.6rem;border-top:1px solid var(--cd);padding-top:0.6rem;"><b style="color:var(--bd);font-size:0.85rem;">Transfer between accounts</b><div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:end;margin-top:0.3rem;"><div><span class="pz-lbl">From</span><select class="pz-in" id="cfTrFrom">'+acctSelOpts+'</select></div><div><span class="pz-lbl">To</span><select class="pz-in" id="cfTrTo">'+acctSelOpts+'</select></div><div><span class="pz-lbl">Amount ₱</span><input class="pz-in" id="cfTrAmt" type="number" step="any" style="width:110px;"/></div><div><span class="pz-lbl">Date</span><input class="pz-in" id="cfTrDate" type="date" value="'+todayStr()+'"/></div><button class="pz-btn sec" id="cfTr">Transfer</button></div><div style="font-size:0.72rem;color:var(--tl);margin-top:0.2rem;">Use Cash Payments for approved expenses, owner withdrawals, and supplier payments from Undeposited Collection.</div></div>';
   var movementsHtml='<div style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;font-size:0.78rem;margin-bottom:.4rem;"><select class="pz-in" id="cfFAcct" style="width:auto;">'+acctFilterOpts+'</select><input class="pz-in" id="cfFFrom" type="date" value="'+(cfFrom||'')+'" style="width:auto;"/><input class="pz-in" id="cfFTo" type="date" value="'+(cfTo||'')+'" style="width:auto;"/><button class="pz-btn sec" id="cfExport" style="padding:0.2rem 0.6rem;">⬇ Excel</button></div>'
       +'<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0.5rem;font-weight:600;"><span style="color:#2a9d5c;">In '+peso(tin)+'</span><span style="color:#c0392b;">Out '+peso(tout)+'</span><span>Net '+peso(tin-tout)+'</span></div><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Date</th><th>Account</th><th>Category / party</th><th class="r">In</th><th class="r">Out</th><th></th></tr></thead><tbody>'+ledRows+'</tbody></table></div>';
   var accountsHtml='<table class="pz-tbl"><thead><tr><th>Account</th><th>Type</th><th class="r">Opening</th><th>Opened</th><th>Auto-post methods</th><th class="r">Current</th><th></th></tr></thead><tbody>'

@@ -1,8 +1,9 @@
 (function(){
 'use strict';
-var movements={},custody={},rangeFrom='',rangeTo='';
+var movements={},custody={},vouchers={},rangeFrom='',rangeTo='';
 function A(){return window.__accaza;}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function receiptSrc(s){s=String(s||'');return /^data:image\/(?:jpeg|png|webp);base64,/i.test(s)||/^https:\/\//i.test(s)?s:'';}
 function peso(n){n=Number(n)||0;return '₱'+n.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function isTab(n){var el=document.getElementById('tab-'+n);return el&&el.style.display!=='none';}
 function fv(id){var el=document.getElementById(id);return el?el.value:'';}
@@ -19,12 +20,15 @@ var TYPE_LABELS={
   revolving_fund_supplier_payment_return:'Supplier payment returned',
   revolving_fund_retirement:'Revolving Fund folded in'
 };
+var CATEGORY_LABELS={operating_supplies:'Cleaning & operating supplies',office_supplies:'Office & administrative supplies',utilities:'Utilities',internet_phone:'Internet & phone',marketing:'Marketing & promotions',repairs:'Repairs & maintenance',bank_fees:'Bank & payment fees',rent:'Rent',salaries:'Salaries & wages',transport:'Transportation / delivery',staff_meals:'Staff meals / welfare',miscellaneous:'Other operating expense',other_expense:'Other operating expense',owner_draw:"Owner's Drawings",'Supplier payment pending inventory allocation':'Supplier payment pending inventory allocation'};
+function categoryLabel(v){return CATEGORY_LABELS[String(v&&v.category||'')]||String(v&&v.category||'').replace(/_/g,' ')||'Uncategorized';}
 function labelFor(t){return TYPE_LABELS[t]||String(t||'Movement').replace(/_/g,' ');}
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
 function init(){
   var a=A();
   a.subscribe('financialMovements',function(s){movements=s.val()||{};if(isTab('undeposited'))renderUndeposited();});
   a.subscribe('cashCustody',function(s){custody=s.val()||{};if(isTab('undeposited'))renderUndeposited();});
+  a.subscribe('pettyCashVouchers',function(s){vouchers=s.val()||{};if(isTab('undeposited'))renderUndeposited();});
 }
 function accountDelta(m,account){var dr=0,cr=0;(m&&m.lines||[]).forEach(function(l){if(l&&l.account===account){dr+=Number(l.debit)||0;cr+=Number(l.credit)||0;}});return {dr:dr,cr:cr};}
 function poolRows(){
@@ -32,7 +36,7 @@ function poolRows(){
   Object.keys(movements).forEach(function(id){
     var m=movements[id];if(!m||!m.lines)return;
     var d=accountDelta(m,POOL);if(!d.dr&&!d.cr)return;
-    rows.push({id:id,ts:Number(m.occurredAt||m.postedAt||0),type:m.type||'',ref:m.sourceId||'',src:m.sourceType||'',inAmt:d.dr,outAmt:d.cr,actor:m.actorName||''});
+    rows.push({id:id,ts:Number(m.occurredAt||m.postedAt||0),type:m.type||'',ref:m.sourceId||'',src:m.sourceType||'',inAmt:d.dr,outAmt:d.cr,actor:m.actorName||'',movement:m,voucher:m.sourceType==='pettyVoucher'?vouchers[m.sourceId]||null:null});
   });
   rows.sort(function(a,b){return (a.ts-b.ts)||String(a.id).localeCompare(String(b.id));});
   return rows;
@@ -50,8 +54,10 @@ function renderUndeposited(){
   var fromTs=rangeFrom?Date.parse(rangeFrom+'T00:00:00+08:00'):null,toTs=rangeTo?Date.parse(rangeTo+'T23:59:59+08:00'):null;
   var shown=rows.filter(function(r){return (!fromTs||r.ts>=fromTs)&&(!toTs||r.ts<=toTs);}).slice().reverse();
   var inTot=shown.reduce(function(s,r){return s+r.inAmt;},0),outTot=shown.reduce(function(s,r){return s+r.outAmt;},0);
-  var body=shown.length?shown.map(function(r){
-    return '<tr><td style="white-space:nowrap;">'+esc(fmtDate(r.ts))+'</td><td>'+esc(labelFor(r.type))+'</td><td style="font-size:.72rem;color:var(--tl);">'+esc(r.ref||r.src||'')+'</td><td style="text-align:right;color:#155724;">'+(r.inAmt?peso(r.inAmt):'')+'</td><td style="text-align:right;color:#8a1e1e;">'+(r.outAmt?('−'+peso(r.outAmt)):'')+'</td><td style="text-align:right;font-weight:600;">'+peso(r.run)+'</td></tr>';
+  var expenseTotals={};shown.forEach(function(r){if(r.type!=='petty_cash_expense'&&r.type!=='petty_cash_expense_void')return;var k=categoryLabel(r.voucher||r.movement),delta=r.type==='petty_cash_expense'?r.outAmt:-r.inAmt;expenseTotals[k]=Math.round(((expenseTotals[k]||0)+delta)*100)/100;});
+  var expenseSummary=Object.keys(expenseTotals).sort().map(function(k){return '<div style="display:flex;justify-content:space-between;gap:1rem;"><span>'+esc(k)+'</span><b>'+peso(expenseTotals[k])+'</b></div>';}).join('')||'<div style="color:var(--tl);">No operating expenses in this range.</div>';
+  var body=shown.length?shown.map(function(r){var v=r.voucher,ref=v&&v.voucherNo?v.voucherNo:(r.movement.voucherNo||r.ref||r.src||''),receipt=v&&receiptSrc(v.receiptImg),detail=v?('<tr data-ucdetail="'+esc(r.id)+'" style="display:none;background:#faf7f1;"><td colspan="6" style="padding:.65rem .8rem;font-size:.76rem;"><b>'+esc(categoryLabel(v))+'</b> · Payee '+esc(v.recipient||v.requesterName||'—')+' · Purpose '+esc(v.purpose||'—')+' · Approved by '+esc(v.approvedBy||v.approverName||'—')+' · Status '+esc(v.voided?'voided':v.status||'—')+(receipt?' · <a href="'+esc(receipt)+'" target="_blank" rel="noopener">View receipt</a>':' · No receipt attached')+'</td></tr>'):'';
+    return '<tr><td style="white-space:nowrap;">'+esc(fmtDate(r.ts))+'</td><td>'+esc(labelFor(r.type))+(v?' <button type="button" class="pz-btn sec" data-ucvoucher="'+esc(r.id)+'" style="padding:.1rem .35rem;font-size:.65rem;">View</button>':'')+'</td><td style="font-size:.72rem;color:var(--tl);">'+esc(ref)+'</td><td style="text-align:right;color:#155724;">'+(r.inAmt?peso(r.inAmt):'')+'</td><td style="text-align:right;color:#8a1e1e;">'+(r.outAmt?('−'+peso(r.outAmt)):'')+'</td><td style="text-align:right;font-weight:600;">'+peso(r.run)+'</td></tr>'+detail;
   }).join(''):'<tr><td colspan="6" style="color:var(--tl);padding:0.6rem;">No cash movements in this range.</td></tr>';
   root.innerHTML='<div class="pz-h">💰 Undeposited Collection</div>'
     +'<p class="pz-sub">The single cash-on-hand pool. Shift turnovers flow in; every cash payment (expenses and supplier payments) is drawn out with a receipt and approval; bank deposits clear it. This is the general-ledger truth for cash awaiting deposit.</p>'
@@ -60,6 +66,7 @@ function renderUndeposited(){
       +'<div class="pz-card" style="flex:1;min-width:200px;"><div style="font-size:0.75rem;color:var(--tl);">Cash custody remaining (subledger)</div><div style="font-weight:700;font-size:1.15rem;">'+peso(custodyRemaining)+'</div><div style="font-size:0.72rem;margin-top:2px;color:'+(tie?'#155724':'#8a1e1e')+';">'+(tie?'✓ ties to the ledger':'⚠ differs by '+peso(Math.round((poolBal-custodyRemaining)*100)/100))+'</div></div>'
     +'</div>'
     +(petty>0.01?('<div class="pz-card" style="margin-bottom:1rem;border:1px solid #ffe0a3;background:#fffdf5;"><div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;justify-content:space-between;"><div><b style="color:#8a6d1b;">Revolving Fund still holds '+peso(petty)+'</b><div style="font-size:.75rem;color:var(--tl);">Fold it into Undeposited Collection with one approved, audited entry to complete the retirement.</div></div><button class="pz-btn ok" id="ucRetire">Retire &amp; fold in '+peso(petty)+'</button></div></div>'):'')
+    +'<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem;"><button class="pz-btn ok" id="ucRecordPayment">Record cash payment</button><div class="pz-card" style="flex:1;min-width:260px;padding:.65rem .8rem;"><b style="display:block;margin-bottom:.35rem;">Net operating expenses in range</b>'+expenseSummary+'</div></div>'
     +'<div class="pz-card">'
       +'<div style="display:flex;gap:.6rem;align-items:end;flex-wrap:wrap;margin-bottom:0.6rem;">'
         +'<div><span class="pz-lbl">From</span><input class="pz-in" id="ucFrom" type="date" value="'+esc(rangeFrom)+'"/></div>'
@@ -74,6 +81,8 @@ function renderUndeposited(){
   var t=document.getElementById('ucTo');if(t)t.onchange=function(){rangeTo=t.value;renderUndeposited();};
   var cl=document.getElementById('ucClear');if(cl)cl.onclick=function(){rangeFrom='';rangeTo='';renderUndeposited();};
   var rb=document.getElementById('ucRetire');if(rb)rb.onclick=doRetire;
+  var rp=document.getElementById('ucRecordPayment');if(rp)rp.onclick=function(){var btn=document.querySelector('.admin-tab[onclick*="\'petty\'"]');if(window.posSwitchTab)window.posSwitchTab('petty',btn);};
+  root.querySelectorAll('[data-ucvoucher]').forEach(function(b){b.onclick=function(){var row=root.querySelector('[data-ucdetail="'+b.getAttribute('data-ucvoucher')+'"]');if(row)row.style.display=row.style.display==='none'?'table-row':'none';};});
 }
 function doRetire(){
   var a=A();if(!a.retireRevolvingFund||!a.managerApproval){alert('Retirement service is unavailable. Refresh the portal.');return;}

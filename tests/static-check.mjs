@@ -198,7 +198,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   const firebaseImportOwners=adminScripts.filter(item=>item.source.includes('gstatic.com/firebasejs')).map(item=>item.name);
   if(firebaseImportOwners.length!==1||firebaseImportOwners[0]!=='firebase-client.mjs')fail('Firebase SDK imports must be centralized in firebase-client.mjs');
   for(const item of adminScripts){for(const match of item.source.matchAll(/from["']\.\/([^"']+)["']/g)){var importedFile=match[1].split('?')[0];if(!fs.existsSync(path.join(root,'assets','js','admin',importedFile)))fail(`${item.name} imports missing local module ${match[1]}`);}}
-  if(!adminHtml.includes('assets/js/admin/core.mjs?v=304')||!adminCoreItem.source.includes('from"./overview-insights.mjs?v=304"'))fail('Admin Overview module graph is not tied to the visible Admin build');
+  if(!adminHtml.includes('assets/js/admin/core.mjs?v=305')||!adminCoreItem.source.includes('from"./overview-insights.mjs?v=305"'))fail('Admin Overview module graph is not tied to the visible Admin build');
   if(!adminCoreItem.source.includes('mergeOverviewOrders(active,historyOrders,archived)'))fail('Overview does not preserve authoritative order-history precedence over active projections');
   if(adminSource.includes("remove(ref(db,'archivedOrders/'")||adminSource.includes("a.update(a.ref(a.db,'discrepancies/'+id)"))fail('Release 3E retired browser authority remains');
   if(!rulesRaw.includes('"archivedOrders":')||!rulesRaw.includes('"operationalAudit":')||!rulesRaw.includes('"deletionAudit":'))fail('Release 3E controlled archive/audit rules missing');
@@ -272,6 +272,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
 
   const formDialogSource=fs.readFileSync(path.join(root,'assets','js','admin','form-dialog.js'),'utf8');
   const registerSource=fs.readFileSync(path.join(root,'assets','js','admin','register.js'),'utf8');
+  const undepositedSource=fs.readFileSync(path.join(root,'assets','js','admin','undeposited.js'),'utf8');
   if(adminHtml.indexOf('assets/js/admin/form-dialog.js')<0||adminHtml.indexOf('assets/js/admin/form-dialog.js')>adminHtml.indexOf('assets/js/admin/core.mjs'))fail('Phase 5D form dialog must load before admin core');
   if(!formDialogSource.includes('global.AccazaFormDialog=')||!formDialogSource.includes("setAttribute('role','dialog')")||!formDialogSource.includes("setAttribute('aria-modal','true')")||!formDialogSource.includes('data-afd-error'))fail('Phase 5D accessible validated form service is incomplete');
   if(/\bprompt\s*\(/.test(adminSource))fail('Phase 5D browser prompt remains in active admin source');
@@ -530,12 +531,14 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   for(const marker of ['Supplier payments now come from Undeposited Collection','Expected cash to hand over','awaiting allocation'])if(!adminSource.includes(marker))fail(`Register purchase cash workflow marker missing: ${marker}`);
   for(const marker of ['Allocate from payment pending inventory allocation','advanceId:P.advanceId','purchaseAdvanceRegisterHtml','remaining of','allocations'])if(!posSource.includes(marker))fail(`Purchase advance linking marker missing: ${marker}`);
   for(const marker of ['revolving_fund_purchase_advance','transactionType==="purchase_advance"','asset:purchase_cash_advance:','An allocated or returned supplier payment cannot be voided','purchase_advance_allocation_reversed','Restore supplier payment for allocation','revolving_fund_supplier_payment_return','return_supplier_payment'])if(!functionsSource.includes(marker))fail(`Revolving Fund Finance Books marker missing: ${marker}`);
-  for(const marker of ['Revolving Fund','Payment to supplier — allocate to inventories','Payments awaiting inventory allocation','rfCustodian'])if(!adminSource.includes(marker))fail(`Revolving Fund workspace marker missing: ${marker}`);
+  for(const marker of ['Cash Payments','Payment to supplier — allocate to inventories','Payments awaiting inventory allocation','rfCustodian'])if(!adminSource.includes(marker))fail(`Cash Payments workspace marker missing: ${marker}`);
   for(const marker of ['owner_withdrawal','Owner withdrawal — not an expense','operating_supplies','office_supplies','bank_fees'])if(!adminSource.includes(marker))fail(`Revolving Fund category marker missing: ${marker}`);
   for(const marker of ['Record a cash payment','function syncPettyCategory()','Purchases — pending inventory allocation',"Owner\\'s Drawings (3100) — not an expense"])if(!adminSource.includes(marker))fail(`Revolving Fund paired-field marker missing: ${marker}`);
   for(const marker of ['function revolvingFundPosting(row)','equity:owner_draw','revolving_fund_owner_withdrawal','expense:office_supplies'])if(!functionsSource.includes(marker))fail(`Revolving Fund account-routing marker missing: ${marker}`);
   if(!itemAccountBridgeSource.includes('office_supplies: "6075"'))fail('Revolving Fund office supplies must map to Books account 6075');
   if(!booksHtml.includes('["1040","Revolving Fund","Asset"]'))fail('Finance Books account 1040 is not visibly named Revolving Fund');
+  for(const marker of ['function cashPaymentOccurredAt(row)','voucherNo:financeText(after.voucherNo','category:financeText(after.category','Record cash payment','data-ucvoucher','Net operating expenses in range'])if(!functionsSource.includes(marker)&&!undepositedSource.includes(marker))fail(`Undeposited cash-expense control missing: ${marker}`);
+  if(adminSource.includes('id="opsPurchaseAdvance"')||adminSource.includes('No authorized register disbursements.'))fail('Register Operations still exposes retired drawer disbursement controls.');
   if(!realtimeHubSource.includes("pettyCashVouchers:['petty','purchases']"))fail('Purchases cannot load Revolving Fund advances');
   if(booksHtml.includes('function seedEntries()'))fail('Accaza Books still seeds browser-only sample transactions');
 
