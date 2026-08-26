@@ -53,6 +53,7 @@ function renderUndeposited(){
   var tie=Math.abs(poolBal-custodyRemaining)<0.01;
   var petty=pettyBalance();
   var pending=Object.keys(vouchers).map(function(id){return Object.assign({id:id},vouchers[id]);}).filter(function(v){return v.status==='pending'&&!v.voided;}).sort(function(a,b){return (b.createdAt||0)-(a.createdAt||0);});
+  var missingApproved=Object.keys(vouchers).map(function(id){return Object.assign({id:id},vouchers[id]);}).filter(function(v){return v.status==='approved'&&!v.voided&&!movements['petty_'+v.id];});
   var openingPosted=!!movements.undeposited_opening_balance;
   var fromTs=rangeFrom?Date.parse(rangeFrom+'T00:00:00+08:00'):null,toTs=rangeTo?Date.parse(rangeTo+'T23:59:59+08:00'):null;
   var shown=rows.filter(function(r){return (!fromTs||r.ts>=fromTs)&&(!toTs||r.ts<=toTs);}).slice().reverse();
@@ -69,6 +70,7 @@ function renderUndeposited(){
       +'<div class="pz-card" style="flex:1;min-width:200px;"><div style="font-size:0.75rem;color:var(--tl);">Cash custody remaining (subledger)</div><div style="font-weight:700;font-size:1.15rem;">'+peso(custodyRemaining)+'</div><div style="font-size:0.72rem;margin-top:2px;color:'+(tie?'#155724':'#8a1e1e')+';">'+(tie?'✓ ties to the ledger':'⚠ differs by '+peso(Math.round((poolBal-custodyRemaining)*100)/100))+'</div></div>'
     +'</div>'
     +(pending.length?('<div class="pz-card" style="margin-bottom:1rem;border:1px solid #ffe0a3;background:#fffdf5;"><b style="color:#8a6d1b;">Awaiting approval — not yet deducted from cash</b><div style="overflow-x:auto;margin-top:.45rem;"><table class="pz-tbl"><thead><tr><th>Voucher</th><th>Date</th><th>Payee</th><th style="text-align:right;">Amount</th><th>Status</th></tr></thead><tbody>'+pending.map(function(v){return '<tr><td>'+esc(v.voucherNo||v.id)+'</td><td>'+esc(v.date||'')+'</td><td>'+esc(v.recipient||v.requesterName||'—')+'</td><td style="text-align:right;">'+peso(v.amount)+'</td><td style="color:#8a6d1b;">pending approval</td></tr>';}).join('')+'</tbody></table></div></div>'):'')
+    +(missingApproved.length?('<div class="pz-card" style="margin-bottom:1rem;border:1px solid #efb7b2;background:#fff0ef;"><div style="display:flex;gap:.7rem;align-items:center;justify-content:space-between;flex-wrap:wrap;"><div><b style="color:#8b1e1e;">'+missingApproved.length+' approved cash payment(s) missing from the ledger</b><div style="font-size:.75rem;color:#6d5d4d;">Repair posts each approved voucher once and updates cash custody. Beginning cash must be available first.</div></div><button class="pz-btn warn" id="ucRepairPayments">Repair missing payments</button></div></div>'):'')
     +(petty>0.01?('<div class="pz-card" style="margin-bottom:1rem;border:1px solid #ffe0a3;background:#fffdf5;"><div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;justify-content:space-between;"><div><b style="color:#8a6d1b;">Revolving Fund still holds '+peso(petty)+'</b><div style="font-size:.75rem;color:var(--tl);">Fold it into Undeposited Collection with one approved, audited entry to complete the retirement.</div></div><button class="pz-btn ok" id="ucRetire">Retire &amp; fold in '+peso(petty)+'</button></div></div>'):'')
     +'<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem;"><button class="pz-btn ok" id="ucRecordPayment">Record cash payment</button>'+(!openingPosted?'<button class="pz-btn sec" id="ucOpeningBalance">Set beginning balance</button>':'<span class="az-note" style="align-self:center;">Beginning balance recorded</span>')+'<div class="pz-card" style="flex:1;min-width:260px;padding:.65rem .8rem;"><b style="display:block;margin-bottom:.35rem;">Net operating expenses in range</b>'+expenseSummary+'</div></div>'
     +'<div class="pz-card">'
@@ -87,7 +89,12 @@ function renderUndeposited(){
   var rb=document.getElementById('ucRetire');if(rb)rb.onclick=doRetire;
   var rp=document.getElementById('ucRecordPayment');if(rp)rp.onclick=function(){var btn=document.querySelector('.admin-tab[onclick*="\'petty\'"]');if(window.posSwitchTab)window.posSwitchTab('petty',btn);};
   var ob=document.getElementById('ucOpeningBalance');if(ob)ob.onclick=setOpeningBalance;
+  var repair=document.getElementById('ucRepairPayments');if(repair)repair.onclick=function(){repairMissingPayments(missingApproved);};
   root.querySelectorAll('[data-ucvoucher]').forEach(function(b){b.onclick=function(){var row=root.querySelector('[data-ucdetail="'+b.getAttribute('data-ucvoucher')+'"]');if(row)row.style.display=row.style.display==='none'?'table-row':'none';};});
+}
+function repairMissingPayments(rows){
+  var a=A();if(!a.repairPettyVoucherFinancial){alert('Cash-payment repair service is unavailable. Refresh the portal.');return;}if(!rows.length)return;if(!confirm('Repair '+rows.length+' approved cash payment(s) missing from Undeposited Collection and Finance Books?\n\nEach voucher uses a duplicate-safe movement ID.'))return;
+  var repaired=0,chain=Promise.resolve();rows.forEach(function(v){chain=chain.then(function(){return a.repairPettyVoucherFinancial({voucherId:v.id});}).then(function(r){if(r&&!r.duplicate)repaired++;});});chain.then(function(){alert('Repair complete. '+repaired+' missing payment(s) posted; existing entries were not duplicated.');if(window.__posLog)window.__posLog('petty-financial-repair','',String(repaired));}).catch(function(e){alert('Repair stopped: '+((e&&e.message)||e)+' It is safe to retry after resolving the stated issue.');});
 }
 function setOpeningBalance(){
   var a=A(),form=window.AccazaFormDialog;if(!a.setUndepositedOpeningBalance||!a.managerApproval||!form){alert('Beginning-balance service is unavailable. Refresh the portal.');return;}
