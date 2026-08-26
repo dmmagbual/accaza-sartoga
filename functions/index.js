@@ -298,8 +298,9 @@ function historicalSuspenseCapitalEntry() {
 function registerFloatControlEntry(amount, at, control) {
   amount = Financial.money(amount); at = Number(at) || Date.now();
   control = control || {source: "posSettings/fixedFloat", shiftId: ""};
-  const sources = {}; sources[control.source] = true;
-  return {id: "register_float_control", date: BooksBridge.businessDate(at), ref: "REGISTER-FLOAT", memo: "Register retained cash float · tied to live Register", lines: [{code: "1005", debit: amount, credit: 0}, {code: "1000", debit: 0, credit: amount}], source: "pos", sourceType: "registerFloat", sourceId: control.shiftId || "fixedFloat", sources, createdAt: at, rebuiltAt: at};
+  const sourceRef = financeText(control.source, 160), sourceKey = sourceRef.replace(/[.#$\/\[\]]/g, "_") || "register_float";
+  const sources = {}; sources[sourceKey] = true;
+  return {id: "register_float_control", date: BooksBridge.businessDate(at), ref: "REGISTER-FLOAT", memo: "Register retained cash float · tied to live Register", lines: [{code: "1005", debit: amount, credit: 0}, {code: "1000", debit: 0, credit: amount}], source: "pos", sourceType: "registerFloat", sourceId: control.shiftId || "fixedFloat", sourceRef, sources, createdAt: at, rebuiltAt: at};
 }
 
 exports.syncRegisterCashFloat = onValueWritten(
