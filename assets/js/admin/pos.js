@@ -1981,9 +1981,10 @@ function renderPosCart(options){
   var _ccfg=channelsCfg();
   var chanOpts=[{k:'instore',lbl:'🏪 In-store'}].concat(POS_CHANNELS.filter(function(d){return _ccfg[d.k].active!==false;}).map(function(d){return {k:d.k,lbl:(d.k==='grabfood'?'🟢 ':'🩷 ')+_ccfg[d.k].label};}));
   var chLabel=isPlat?channelLabel(posChannel):'';
-  var grabDiscountRows='<div style="margin-top:0.55rem;padding:0.55rem;background:#f7f3ec;border:1px solid var(--cd);border-radius:7px;"><div class="pz-lbl" style="margin-bottom:0.35rem;">GrabFood discounts</div>'
-    +[['posPlatDiscType1','posPlatDiscPct1','Delivery / Pickup','Percentage discount 1','%'],['posPlatDiscType2','posPlatDiscPct2','','Percentage discount 2','%'],['posPlatDiscType3','posPlatDiscAmt1','','Amount discount 1','₱'],['posPlatDiscType4','posPlatDiscAmt2','','Amount discount 2','₱']].map(function(r){return '<div style="display:grid;grid-template-columns:minmax(0,1fr) 112px;gap:0.45rem;align-items:end;margin-top:0.35rem;"><label><span class="pz-lbl">Discount type</span><input class="pz-in" data-plat-discount id="'+r[0]+'" placeholder="'+r[3]+'" value="'+r[2]+'"/></label><label><span class="pz-lbl">Discount '+r[4]+'</span><input class="pz-in" data-plat-discount id="'+r[1]+'" type="number" min="0" step="any" placeholder="0" style="text-align:right;"/></label></div>';}).join('')
-    +'<div style="font-size:0.7rem;color:var(--tl);margin-top:0.45rem;">The 25% commission is calculated after all GrabFood discounts.</div></div>';
+  var grabDiscountRows='<div style="margin-top:0.55rem;padding:0.55rem;background:#f7f3ec;border:1px solid var(--cd);border-radius:7px;"><div class="pz-lbl" style="margin-bottom:0.35rem;">Grab order deductions</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.45rem;align-items:end;"><label><span class="pz-lbl">Merchant-funded promo %</span><input class="pz-in" data-plat-discount id="posGrabPromoPct" type="number" min="0" step="any" placeholder="0" style="text-align:right;"/></label><label><span class="pz-lbl">Merchant-funded promo ₱</span><input class="pz-in" data-plat-discount id="posGrabPromoAmt" type="number" min="0" step="any" placeholder="0" style="text-align:right;"/></label></div>'
+    +'<label style="display:block;margin-top:0.4rem;"><span class="pz-lbl">Delivery fee discount ₱</span><input class="pz-in" data-plat-discount id="posGrabDeliveryDisc" type="number" min="0" step="any" placeholder="0" style="text-align:right;width:100%;"/></label>'
+    +'<div style="font-size:0.7rem;color:var(--tl);margin-top:0.45rem;">Commission is calculated automatically after the merchant-funded promo. Delivery fee discount reduces the receivable separately. Marketing success fee and advertisements are entered later from the Grab settlement statement.</div></div>';
   var chanSel='<div style="margin-bottom:0.6rem;"><span class="pz-lbl">Channel</span><select class="pz-in" id="posChannelSel">'+chanOpts.map(function(o){return '<option value="'+o.k+'"'+(posChannel===o.k?' selected':'')+'>'+o.lbl+'</option>';}).join('')+'</select>'+(isPlat?'<div style="font-size:0.72rem;color:#8a5a00;background:#fff6e5;border:1px solid #f0dcae;border-radius:5px;padding:0.3rem 0.45rem;margin-top:0.25rem;">'+esc(chLabel)+' — platform prices apply, sale is a <b>receivable</b> (not cash drawer), commission trued up at weekly payout.</div>':'')+'</div>';
   p.innerHTML=
     chanSel
@@ -2040,14 +2041,17 @@ function renderPosCart(options){
     function val(id){return Math.max(0,Number((document.getElementById(id)||{}).value)||0);}
     function typ(id,fallback){return String((document.getElementById(id)||{}).value||'').trim()||fallback;}
     if(posChannel!=='grabfood'){var pct=val('posPlatDisc'),amt=Math.round(gross*pct)/100;return {pct:pct,amount:amt,lines:pct?[{type:'Delivery / Pickup',mode:'percent',value:pct,amount:amt}]:[]};}
-    var defs=[['posPlatDiscType1','posPlatDiscPct1','Percentage discount 1','percent'],['posPlatDiscType2','posPlatDiscPct2','Percentage discount 2','percent'],['posPlatDiscType3','posPlatDiscAmt1','Amount discount 1','amount'],['posPlatDiscType4','posPlatDiscAmt2','Amount discount 2','amount']];
-    var lines=defs.map(function(d){var v=val(d[1]),amt=d[3]==='percent'?Math.round(gross*v)/100:Math.round(v*100)/100;return {type:typ(d[0],d[2]),mode:d[3],value:v,amount:amt};}).filter(function(d){return d.value>0;});
-    return {pct:lines.filter(function(d){return d.mode==='percent';}).reduce(function(s,d){return s+d.value;},0),amount:Math.round(lines.reduce(function(s,d){return s+d.amount;},0)*100)/100,lines:lines};
+    var promoPct=val('posGrabPromoPct'),promoPctAmt=Math.round(gross*promoPct)/100,promoAmt=Math.round(val('posGrabPromoAmt')*100)/100,deliveryAmt=Math.round(val('posGrabDeliveryDisc')*100)/100;
+    var lines=[];
+    if(promoPct)lines.push({category:'merchant_funded_promo',type:'Merchant-funded promo',mode:'percent',value:promoPct,amount:promoPctAmt});
+    if(promoAmt)lines.push({category:'merchant_funded_promo',type:'Merchant-funded promo',mode:'amount',value:promoAmt,amount:promoAmt});
+    if(deliveryAmt)lines.push({category:'delivery_fee_discount',type:'Delivery fee discount',mode:'amount',value:deliveryAmt,amount:deliveryAmt});
+    return {pct:promoPct,merchantPromo:Math.round((promoPctAmt+promoAmt)*100)/100,deliveryFeeDiscount:deliveryAmt,amount:Math.round((promoPctAmt+promoAmt+deliveryAmt)*100)/100,lines:lines};
   }
   function refreshPlat(){ var el=document.getElementById('posPlatCalc'); if(!el)return; function r2(n){return Math.round((Number(n)||0)*100)/100;}
     var gross=grandTotal(); var rate=channelRate(posChannel); var whtR=channelWht(posChannel); var vatR=channelVat(posChannel);
     var discounts=platformDiscountData(gross),dPct=discounts.pct,dAmt=discounts.amount;
-    var commBase=(posChannel==='grabfood')?r2(gross-dAmt):gross;
+    var commBase=(posChannel==='grabfood')?r2(gross-(Number(discounts.merchantPromo)||0)):gross;
     commBase=Math.max(0,commBase);var comm=r2(commBase*rate); var wht=r2(gross*whtR); var vat=r2(gross*vatR);
     var net=r2(gross-comm-dAmt-wht-vat);
     function ln(l,v,c){return '<div style="display:flex;justify-content:space-between;'+(c?'color:'+c+';':'')+'"><span>'+l+'</span><span>'+(v<0?'-'+peso(-v):peso(v))+'</span></div>';}
@@ -2057,7 +2061,7 @@ function renderPosCart(options){
       +(whtR?ln('Withholding tax ('+(Math.round(whtR*10000)/100)+'%)',-wht,'#c0392b'):'')
       +(vatR?ln('VAT on services ('+(Math.round(vatR*1000)/10)+'%)',-vat,'#c0392b'):'')
       +'<div style="display:flex;justify-content:space-between;font-weight:700;border-top:1px solid var(--cd);padding-top:0.2rem;margin-top:0.2rem;"><span>Net receivable</span><span>'+peso(net)+'</span></div>'
-      +'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.25rem;">'+((posChannel==='grabfood'&&dAmt)?'Commission is on gross less all discounts; WHT/VAT on gross. ':'All deducted from gross. ')+'Estimate — trued up at the weekly payout reconciliation.</div>';
+      +'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.25rem;">'+((posChannel==='grabfood'&&dAmt)?'Commission is on gross less merchant-funded promo; delivery fee discount is separate; WHT/VAT are on gross. ':'All deducted from gross. ')+'Estimate — trued up at the weekly payout reconciliation.</div>';
   }
   if(isPlat){ var _plr=document.getElementById('posPlatRef'); if(_plr)_plr.oninput=refreshPlat; p.querySelectorAll('[data-plat-discount]').forEach(function(inp){inp.oninput=refreshPlat;}); refreshPlat(); }
   else {
@@ -2142,10 +2146,10 @@ function renderPosCart(options){
       var prate=channelRate(posChannel),pwhtR=channelWht(posChannel),pvatR=channelVat(posChannel);
       var pdiscounts=platformDiscountData(tot),pdPct=pdiscounts.pct,pdAmt=pdiscounts.amount;
       if(pdAmt>tot){alert('Total platform discounts cannot be greater than the gross sale.');return;}
-      var pcommBase=(posChannel==='grabfood')?_r2(tot-pdAmt):tot;
+      var pcommBase=(posChannel==='grabfood')?_r2(tot-(Number(pdiscounts.merchantPromo)||0)):tot;
       var pcomm=_r2(pcommBase*prate), pwht=_r2(tot*pwhtR), pvat=_r2(tot*pvatR);
       var pNetSales=_r2(tot-pdAmt); var pnet=_r2(tot-pcomm-pdAmt-pwht-pvat);
-      await chargeSale(sub,pNetSales,null,{channel:posChannel,platformRef:pref,gross:tot,discountPct:pdPct,discountAmt:pdAmt,discountLines:pdiscounts.lines,netSales:pNetSales,commission:pcomm,commissionRate:prate,wht:pwht,whtRate:pwhtR,vat:pvat,vatRate:pvatR,net:pnet});
+      await chargeSale(sub,pNetSales,null,{channel:posChannel,platformRef:pref,gross:tot,discountPct:pdPct,discountAmt:pdAmt,discountLines:pdiscounts.lines,merchantPromo:Number(pdiscounts.merchantPromo)||0,deliveryFeeDiscount:Number(pdiscounts.deliveryFeeDiscount)||0,netSales:pNetSales,commission:pcomm,commissionRate:prate,wht:pwht,whtRate:pwhtR,vat:pvat,vatRate:pvatR,net:pnet});
       return;
     }
     var d=Number(disc&&disc.value)||0,discountApproval=null;
@@ -2202,7 +2206,7 @@ function chargeSale(sub,total,payments,platform,discountApproval,cashierVerifica
   var now=new Date();
   var order={id:oid,clientTxnId:txnId,schemaVersion:2,syncState:'pending',name:cust,phone:'',type:(isPlat?channelLabel(platform.channel):'Walk-in'),address:'',payment:payLabel,payments:payments,contact:'',contactMethod:'',items:itemsStr,lineItems:lineItems,subtotal:sub,discount:disc,discountLines:_scoped,total:total,tendered:tendered,change:change,notes:'',status:'Completed',source:'pos',channel:(isPlat?platform.channel:'instore'),staff:staff,shiftId:shift.id,packages:_pkgs,extraCost:_extra,paymentStatus:(_pendingPay?(_verificationPolicy==='manager_only'?'pending':'cashier_verified'):'confirmed'),paymentVerificationPolicy:_verificationPolicy,cashierVerificationIntent:!!(_pendingPay&&_verificationPolicy==='cashier_manager'&&cashierVerification&&cashierVerification.required),receivedByCustomer:true,tipRounding:tipTotal,time:now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:now.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
   if(discountApproval){order.discountApprovalId=discountApproval.approvalId;order.discountApprovedBy=discountApproval.approvedBy;order.discountApprovedByUid=discountApproval.approvedByUid;order.discountApprovedRole=discountApproval.approvedRole;order.discountApprovalSource=discountApproval.sourceId;}
-  if(isPlat){ order.platformRef=platform.platformRef; order.grossPlatform=platform.gross; order.platformDiscountPct=Number(platform.discountPct)||0; order.platformDiscount=Number(platform.discountAmt)||0; order.platformDiscountLines=platform.discountLines||[]; order.netSalesPlatform=Number(platform.netSales!=null?platform.netSales:total)||0; order.commission=platform.commission; order.commissionRate=platform.commissionRate; order.platformWht=Number(platform.wht)||0; order.platformWhtRate=Number(platform.whtRate)||0; order.platformVat=Number(platform.vat)||0; order.platformVatRate=Number(platform.vatRate)||0; order.netPlatform=platform.net; order.settlementStatus='unsettled'; order.payoutId=''; }
+  if(isPlat){ order.platformRef=platform.platformRef; order.grossPlatform=platform.gross; order.platformDiscountPct=Number(platform.discountPct)||0; order.platformDiscount=Number(platform.discountAmt)||0; order.platformDiscountLines=platform.discountLines||[]; order.platformMerchantPromo=Number(platform.merchantPromo)||0; order.platformDeliveryFeeDiscount=Number(platform.deliveryFeeDiscount)||0; order.netSalesPlatform=Number(platform.netSales!=null?platform.netSales:total)||0; order.commission=platform.commission; order.commissionRate=platform.commissionRate; order.platformWht=Number(platform.wht)||0; order.platformWhtRate=Number(platform.whtRate)||0; order.platformVat=Number(platform.vat)||0; order.platformVatRate=Number(platform.vatRate)||0; order.netPlatform=platform.net; order.settlementStatus='unsettled'; order.payoutId=''; }
   var _cps=(payments||[]).filter(function(p){return p.cashReceived;});
   if(_cps.length){ var rcv={},chgD={},shrt=0; _cps.forEach(function(p){ rcv=mergeDenoms(rcv,p.cashReceived); chgD=mergeDenoms(chgD,p.cashChange||{}); shrt+=Number(p.changeShort)||0; });
     order.cashReceived=rcv; order.cashChange=chgD; order.changeShort=shrt;

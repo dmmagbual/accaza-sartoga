@@ -14,6 +14,11 @@ const platform=F.orderPosting({id:'GF1',channel:'grabfood',grossPlatform:100,com
 balanced(platform,'platform sale');
 assert(platform.lines.some(x=>x.account==='asset:platform_receivable:grabfood'&&x.debit===65),'platform receivable is wrong');
 assert(platform.lines.some(x=>x.account==='revenue:sales'&&x.credit===100),'platform gross revenue is wrong');
+const mappedGrab=F.orderPosting({id:'GF-MAPPED',channel:'grabfood',grossPlatform:200,commission:40,platformDiscount:35,platformMerchantPromo:25,platformDeliveryFeeDiscount:10,netPlatform:125},{});
+balanced(mappedGrab,'mapped Grab deductions');
+assert(mappedGrab.lines.some(x=>x.account==='expense:platform_merchant_funded_promo'&&x.debit===25),'merchant-funded promo was not posted separately');
+assert(mappedGrab.lines.some(x=>x.account==='expense:platform_delivery_fee_discount'&&x.debit===10),'delivery fee discount was not posted separately');
+assert(!mappedGrab.lines.some(x=>x.account==='expense:platform_discount'),'mapped Grab deductions were also posted to the legacy discount account');
 
 const online=F.orderPosting({id:'WEB1',source:'online',channel:'online',total:125,payment:'GCash',payments:[{method:'GCash',amount:125}]},accounts);
 balanced(online,'online order');
