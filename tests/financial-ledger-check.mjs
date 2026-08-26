@@ -56,6 +56,8 @@ const cashPaymentCorrection=F.movement('petty_cash_payment_correction','pettyVou
 ]);
 balanced(cashPaymentCorrection,'approved cash-payment correction');
 assert(cashPaymentCorrection.lines.filter(x=>x.account==='asset:purchase_cash_advance:pv_test').reduce((sum,x)=>sum+x.debit-x.credit,0)===16,'Cash-payment correction did not preserve the net supplier-payment change');
+const undepositedOpening=F.movement('undeposited_opening_balance','cashCustody','undeposited_opening_balance',[F.line('asset:cash_awaiting_deposit',500,0,'Undeposited Collection beginning balance'),F.line('equity:opening_balance',0,500,'Opening balance source')]);
+balanced(undepositedOpening,'Undeposited Collection beginning balance');
 
 const online=F.orderPosting({id:'WEB1',source:'online',channel:'online',total:125,payment:'GCash',payments:[{method:'GCash',amount:125}]},accounts);
 balanced(online,'online order');
