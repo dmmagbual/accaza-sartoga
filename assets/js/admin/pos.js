@@ -1981,10 +1981,9 @@ function renderPosCart(options){
   var _ccfg=channelsCfg();
   var chanOpts=[{k:'instore',lbl:'🏪 In-store'}].concat(POS_CHANNELS.filter(function(d){return _ccfg[d.k].active!==false;}).map(function(d){return {k:d.k,lbl:(d.k==='grabfood'?'🟢 ':'🩷 ')+_ccfg[d.k].label};}));
   var chLabel=isPlat?channelLabel(posChannel):'';
-  var grabDiscountRows='<div style="margin-top:0.55rem;padding:0.55rem;background:#f7f3ec;border:1px solid var(--cd);border-radius:7px;"><div class="pz-lbl" style="margin-bottom:0.35rem;">Grab order deductions</div>'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.45rem;align-items:end;"><label><span class="pz-lbl">Merchant-funded promo %</span><input class="pz-in" data-plat-discount id="posGrabPromoPct" type="number" min="0" step="any" placeholder="0" style="text-align:right;"/></label><label><span class="pz-lbl">Merchant-funded promo ₱</span><input class="pz-in" data-plat-discount id="posGrabPromoAmt" type="number" min="0" step="any" placeholder="0" style="text-align:right;"/></label></div>'
-    +'<label style="display:block;margin-top:0.4rem;"><span class="pz-lbl">Delivery fee discount ₱</span><input class="pz-in" data-plat-discount id="posGrabDeliveryDisc" type="number" min="0" step="any" placeholder="0" style="text-align:right;width:100%;"/></label>'
-    +'<div style="font-size:0.7rem;color:var(--tl);margin-top:0.45rem;">Commission is calculated automatically after the merchant-funded promo. Delivery fee discount reduces the receivable separately. Marketing success fee and advertisements are entered later from the Grab settlement statement.</div></div>';
+  var grabDiscountRows='<div style="margin-top:0.55rem;padding:0.55rem;background:#f7f3ec;border:1px solid var(--cd);border-radius:7px;"><div class="pz-lbl" style="margin-bottom:0.35rem;">GrabFood discounts</div>'
+    +[['posPlatDiscType1','posPlatDiscPct1','Delivery / Pickup','Percentage discount 1','%'],['posPlatDiscType2','posPlatDiscPct2','','Percentage discount 2','%'],['posPlatDiscType3','posPlatDiscAmt1','','Amount discount 1','₱'],['posPlatDiscType4','posPlatDiscAmt2','','Amount discount 2','₱']].map(function(r){return '<div style="display:grid;grid-template-columns:minmax(0,1fr) 112px;gap:0.45rem;align-items:end;margin-top:0.35rem;"><label><span class="pz-lbl">Discount type</span><input class="pz-in" data-plat-discount id="'+r[0]+'" placeholder="'+r[3]+'" value="'+r[2]+'"/></label><label><span class="pz-lbl">Discount '+r[4]+'</span><input class="pz-in" data-plat-discount id="'+r[1]+'" type="number" min="0" step="any" placeholder="0" style="text-align:right;"/></label></div>';}).join('')
+    +'<div style="font-size:0.7rem;color:var(--tl);margin-top:0.45rem;">Enter the deduction labels shown by Grab. Delivery-labelled rows and merchant-funded promos are mapped separately in Finance Books.</div></div>';
   var chanSel='<div style="margin-bottom:0.6rem;"><span class="pz-lbl">Channel</span><select class="pz-in" id="posChannelSel">'+chanOpts.map(function(o){return '<option value="'+o.k+'"'+(posChannel===o.k?' selected':'')+'>'+o.lbl+'</option>';}).join('')+'</select>'+(isPlat?'<div style="font-size:0.72rem;color:#8a5a00;background:#fff6e5;border:1px solid #f0dcae;border-radius:5px;padding:0.3rem 0.45rem;margin-top:0.25rem;">'+esc(chLabel)+' — platform prices apply, sale is a <b>receivable</b> (not cash drawer), commission trued up at weekly payout.</div>':'')+'</div>';
   p.innerHTML=
     chanSel
@@ -2041,12 +2040,11 @@ function renderPosCart(options){
     function val(id){return Math.max(0,Number((document.getElementById(id)||{}).value)||0);}
     function typ(id,fallback){return String((document.getElementById(id)||{}).value||'').trim()||fallback;}
     if(posChannel!=='grabfood'){var pct=val('posPlatDisc'),amt=Math.round(gross*pct)/100;return {pct:pct,amount:amt,lines:pct?[{type:'Delivery / Pickup',mode:'percent',value:pct,amount:amt}]:[]};}
-    var promoPct=val('posGrabPromoPct'),promoPctAmt=Math.round(gross*promoPct)/100,promoAmt=Math.round(val('posGrabPromoAmt')*100)/100,deliveryAmt=Math.round(val('posGrabDeliveryDisc')*100)/100;
-    var lines=[];
-    if(promoPct)lines.push({category:'merchant_funded_promo',type:'Merchant-funded promo',mode:'percent',value:promoPct,amount:promoPctAmt});
-    if(promoAmt)lines.push({category:'merchant_funded_promo',type:'Merchant-funded promo',mode:'amount',value:promoAmt,amount:promoAmt});
-    if(deliveryAmt)lines.push({category:'delivery_fee_discount',type:'Delivery fee discount',mode:'amount',value:deliveryAmt,amount:deliveryAmt});
-    return {pct:promoPct,merchantPromo:Math.round((promoPctAmt+promoAmt)*100)/100,deliveryFeeDiscount:deliveryAmt,amount:Math.round((promoPctAmt+promoAmt+deliveryAmt)*100)/100,lines:lines};
+    var defs=[['posPlatDiscType1','posPlatDiscPct1','Percentage discount 1','percent'],['posPlatDiscType2','posPlatDiscPct2','Percentage discount 2','percent'],['posPlatDiscType3','posPlatDiscAmt1','Amount discount 1','amount'],['posPlatDiscType4','posPlatDiscAmt2','Amount discount 2','amount']];
+    var lines=defs.map(function(d){var v=val(d[1]),label=typ(d[0],d[2]),amt=d[3]==='percent'?Math.round(gross*v)/100:Math.round(v*100)/100,category=/delivery/i.test(label)?'delivery_fee_discount':'merchant_funded_promo';return {category:category,type:label,mode:d[3],value:v,amount:amt};}).filter(function(d){return d.value>0;});
+    var merchantPromo=Math.round(lines.filter(function(d){return d.category==='merchant_funded_promo';}).reduce(function(s,d){return s+d.amount;},0)*100)/100;
+    var deliveryFeeDiscount=Math.round(lines.filter(function(d){return d.category==='delivery_fee_discount';}).reduce(function(s,d){return s+d.amount;},0)*100)/100;
+    return {pct:lines.filter(function(d){return d.category==='merchant_funded_promo'&&d.mode==='percent';}).reduce(function(s,d){return s+d.value;},0),merchantPromo:merchantPromo,deliveryFeeDiscount:deliveryFeeDiscount,amount:Math.round(lines.reduce(function(s,d){return s+d.amount;},0)*100)/100,lines:lines};
   }
   function refreshPlat(){ var el=document.getElementById('posPlatCalc'); if(!el)return; function r2(n){return Math.round((Number(n)||0)*100)/100;}
     var gross=grandTotal(); var rate=channelRate(posChannel); var whtR=channelWht(posChannel); var vatR=channelVat(posChannel);
