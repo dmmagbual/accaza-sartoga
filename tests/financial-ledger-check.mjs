@@ -48,6 +48,15 @@ const grabRefundRecoveryReversal=F.reverseMovement(Object.assign({id:'payout_GRA
 balanced(grabRefundRecoveryReversal,'positive Grab refund recovery reversal');
 assert(grabRefundRecoveryReversal.lines.some(x=>x.account==='revenue:platform_variance:va_refund_recovery'&&x.debit===20&&x.label.includes('GF-521')),'Grab refund recovery reversal lost its amount or source reference');
 
+const cashPaymentCorrection=F.movement('petty_cash_payment_correction','pettyVoucher','pv_test',[
+  F.line('asset:cash_awaiting_deposit',49,0,'Reverse previous cash payment'),
+  F.line('asset:purchase_cash_advance:pv_test',0,49,'Reverse supplier payment'),
+  F.line('asset:purchase_cash_advance:pv_test',65,0,'Corrected supplier payment'),
+  F.line('asset:cash_awaiting_deposit',0,65,'Corrected cash payment')
+]);
+balanced(cashPaymentCorrection,'approved cash-payment correction');
+assert(cashPaymentCorrection.lines.filter(x=>x.account==='asset:purchase_cash_advance:pv_test').reduce((sum,x)=>sum+x.debit-x.credit,0)===16,'Cash-payment correction did not preserve the net supplier-payment change');
+
 const online=F.orderPosting({id:'WEB1',source:'online',channel:'online',total:125,payment:'GCash',payments:[{method:'GCash',amount:125}]},accounts);
 balanced(online,'online order');
 assert(online.lines.some(x=>x.account==='asset:cash_account:gcash'&&x.debit===125),'online payment did not debit the mapped cash account');
