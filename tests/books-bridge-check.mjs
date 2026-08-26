@@ -121,11 +121,14 @@ ok(B.linesBalanced(cl), "cogs lines balance (Dr COGS = Cr Inventory)");
 ok(cl.find(l=>l.account==="cogs:beverage" && Math.abs(l.debit-30)<0.005), "beverage COGS debit 30");
 ok(cl.find(l=>l.account==="cogs:food" && Math.abs(l.debit-10)<0.005), "food COGS debit 10");
 ok(cl.find(l=>l.account==="cogs:packaging" && Math.abs(l.debit-1.5)<0.005), "packaging COGS debit 1.5");
-ok(cl.find(l=>l.account==="inventory:control" && Math.abs(l.credit-41.5)<0.005), "inventory:control credit 41.5");
+ok(cl.find(l=>l.account==="coa:1290" && Math.abs(l.credit-30)<0.005), "beverage inventory pools to 1290 clearing (not a category account)");
+ok(cl.find(l=>l.account==="coa:1240" && Math.abs(l.credit-10)<0.005), "food inventory credit -> 1240");
+ok(cl.find(l=>l.account==="coa:1230" && Math.abs(l.credit-1.5)<0.005), "packaging inventory credit -> 1230");
+ok(!cl.some(l=>l.account==="coa:1200"||l.account==="inventory:control"), "fallback COGS never credits 1200 Coffee & Beans");
 ok(B.mapAccount("cogs:beverage","instore",{}).code==="5000", "cogs:beverage -> 5000");
 ok(B.mapAccount("cogs:food","instore",{}).code==="5030", "cogs:food -> 5030");
 ok(B.mapAccount("cogs:packaging","instore",{}).code==="5040", "cogs:packaging -> 5040");
-ok(B.mapAccount("inventory:control","instore",{}).code==="1200", "inventory:control -> 1200");
+ok(B.mapAccount("inventory:control","instore",{}).code==="1290", "inventory:control -> 1290 clearing (never a category account)");
 const detailedOrder={channel:"instore",cogsSnapshot:15,cogsAccountSnapshot:{"1200|5000":4,"1210|5010":5,"1220|5020":3,"1230|5040":2,"1240|5030":1}};
 const detailed=B.cogsLines(detailedOrder);
 ok(B.linesBalanced(detailed),"item-category COGS mapping balances");
@@ -138,7 +141,9 @@ ok(overhead["1270|6070"]===6,"overhead item uses its own inventory and expense c
 ok(B.mapAccount("coa:1270","instore",{}).code==="1270"&&B.mapAccount("coa:6070","instore",{}).code==="6070","overhead direct COA codes retained");
 // bucket mismatch reconciles to authoritative total
 const order2 = {channel:"instore", cogsSnapshot:50, cogsCategorySnapshot:{beverage:30, food:10}, completedAt: Date.parse("2026-08-22T05:00:00Z")};
-ok(Math.abs(B.cogsLines(order2).find(l=>l.account==="inventory:control").credit - 50) < 0.005, "cogs reconciles buckets to total (50)");
+const order2Lines = B.cogsLines(order2);
+ok(Math.abs(order2Lines.filter(l=>/^coa:12\d0$/.test(l.account)).reduce((s,l)=>s+l.credit,0) - 50) < 0.005, "cogs reconciles buckets to total (50) across inventory accounts");
+ok(order2Lines.find(l=>l.account==="coa:1290" && Math.abs(l.credit-40)<0.005), "unsplittable beverage remainder (bev 30 + 10 gap) pools in 1290");
 // fold cogs pseudo-movement into a daily node and stay balanced + idempotent
 const cm = B.cogsMovement(order, "ORD1");
 let n = B.applyDaily(null, cm, {});
