@@ -38,6 +38,15 @@ balanced(grabSettlement,'Grab statement-only deductions');
 const grabSettlementReversal=F.reverseMovement(Object.assign({id:'payout_GRAB-PAYOUT-1'},grabSettlement),'platform_payout_reversal','Reverse Grab payout');
 balanced(grabSettlementReversal,'Grab settlement reversal');
 for(const account of ['expense:platform_variance:va_marketing_success','expense:platform_variance:va_ads'])assert(grabSettlementReversal.lines.some(x=>x.account===account&&x.credit>0),`Grab settlement reversal did not reverse ${account}`);
+const grabRefundRecovery=F.movement('platform_payout_settlement','platformPayout','GRAB-PAYOUT-RECOVERY',[
+  F.line('asset:platform_clearing:grabfood',145,0,'Actual payout clearing'),
+  F.line('asset:platform_receivable:grabfood',0,125,'Settle platform receivable'),
+  F.line('revenue:platform_variance:va_refund_recovery',0,20,'Grab refund recovery / reversal · GF-521')
+]);
+balanced(grabRefundRecovery,'positive Grab refund recovery');
+const grabRefundRecoveryReversal=F.reverseMovement(Object.assign({id:'payout_GRAB-PAYOUT-RECOVERY'},grabRefundRecovery),'platform_payout_reversal','Reverse Grab payout');
+balanced(grabRefundRecoveryReversal,'positive Grab refund recovery reversal');
+assert(grabRefundRecoveryReversal.lines.some(x=>x.account==='revenue:platform_variance:va_refund_recovery'&&x.debit===20&&x.label.includes('GF-521')),'Grab refund recovery reversal lost its amount or source reference');
 
 const online=F.orderPosting({id:'WEB1',source:'online',channel:'online',total:125,payment:'GCash',payments:[{method:'GCash',amount:125}]},accounts);
 balanced(online,'online order');
