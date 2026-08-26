@@ -123,6 +123,18 @@ function includeInRecognizedBooks(mv, voidedSourceIds) {
   return !(sourceId && voidedSourceIds && voidedSourceIds.has(sourceId) && isSaleMovement(mv));
 }
 
+/* Admin Sales History is the sales authority. Finance keeps every immutable
+   movement, but Books may recognize an order-sourced movement only when its
+   Admin order still exists and is a recognized sale. Fully voided chains are
+   excluded as a whole so the original and reversal net to zero in the report. */
+function includeInAuthoritativeBooks(mv, voidedSourceIds, orders) {
+  if (!isSaleMovement(mv)) return true;
+  const sourceId = String(mv && mv.sourceId || "");
+  if (!sourceId || !orders || !orders[sourceId]) return false;
+  if (voidedSourceIds && voidedSourceIds.has(sourceId)) return false;
+  return recognizedOrderForCogs(orders[sourceId]);
+}
+
 /* Key + channel for a movement. */
 function bucketFor(mv) {
   const date = businessDate(mv && (mv.occurredAt || mv.postedAt));
@@ -259,4 +271,4 @@ function inventoryReconciliationSnapshot(inventory,journal){
   return{rows:rows,totalStock:r2(rows.reduce(function(sum,row){return sum+row.stockValue;},0)),totalBooks:r2(rows.reduce(function(sum,row){return sum+row.booksValue;},0)),totalDifference:totalDifference,clearingBalance:r2(books["1290"]),unmapped:unmapped};
 }
 
-module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, cashCodeForAccount, itemAccounts, cogsAccountSnapshot, isSaleMovement, fullyVoidedSourceIds, includeInRecognizedBooks, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, netSales, cogsLines, cogsMovement, recognizedOrderForCogs, monthlyStraightLine, netBookValue, inventoryReconciliationSnapshot};
+module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, cashCodeForAccount, itemAccounts, cogsAccountSnapshot, isSaleMovement, fullyVoidedSourceIds, includeInRecognizedBooks, includeInAuthoritativeBooks, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, netSales, cogsLines, cogsMovement, recognizedOrderForCogs, monthlyStraightLine, netBookValue, inventoryReconciliationSnapshot};
