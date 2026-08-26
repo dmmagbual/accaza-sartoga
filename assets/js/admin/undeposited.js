@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var movements={},custody={},vouchers={},rangeFrom='',rangeTo='';
+var movements={},custody={},vouchers={},accounts={},rangeFrom='',rangeTo='';
 function A(){return window.__accaza;}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function receiptSrc(s){s=String(s||'');return /^data:image\/(?:jpeg|png|webp);base64,/i.test(s)||/^https:\/\//i.test(s)?s:'';}
@@ -11,7 +11,7 @@ var POOL='asset:cash_awaiting_deposit',PETTY='asset:petty_cash';
 var TYPE_LABELS={
   undeposited_opening_balance:'Beginning balance',
   shift_cash_to_custody:'Shift turnover in',
-  register_cash_deposit:'Bank deposit',
+  register_cash_deposit:'Bank / cash-account deposit',
   revolving_fund_purchase_advance:'Supplier payment',
   revolving_fund_purchase_advance_void:'Supplier payment voided',
   petty_cash_expense:'Cash expense',
@@ -30,6 +30,7 @@ function init(){
   a.subscribe('financialMovements',function(s){movements=s.val()||{};if(isTab('undeposited'))renderUndeposited();});
   a.subscribe('cashCustody',function(s){custody=s.val()||{};if(isTab('undeposited'))renderUndeposited();});
   a.subscribe('pettyCashVouchers',function(s){vouchers=s.val()||{};if(isTab('undeposited'))renderUndeposited();});
+  a.subscribe('cfAccounts',function(s){accounts=s.val()||{};if(isTab('undeposited'))renderUndeposited();});
 }
 function accountDelta(m,account){var dr=0,cr=0;(m&&m.lines||[]).forEach(function(l){if(l&&l.account===account){dr+=Number(l.debit)||0;cr+=Number(l.credit)||0;}});return {dr:dr,cr:cr};}
 function poolRows(){
@@ -51,6 +52,7 @@ function renderUndeposited(){
   var custodyRemaining=Object.keys(custody).reduce(function(s,k){return s+(Number(custody[k]&&custody[k].remaining)||0);},0);
   custodyRemaining=Math.round(custodyRemaining*100)/100;
   var tie=Math.abs(poolBal-custodyRemaining)<0.01;
+  var accountRows=Object.keys(accounts).map(function(id){return Object.assign({id:id},accounts[id]);}).filter(function(x){return x.active!==false;}).sort(function(a,b){return (a.order||0)-(b.order||0)||String(a.name||'').localeCompare(String(b.name||''));});
   var petty=pettyBalance();
   var pending=Object.keys(vouchers).map(function(id){return Object.assign({id:id},vouchers[id]);}).filter(function(v){return v.status==='pending'&&!v.voided;}).sort(function(a,b){return (b.createdAt||0)-(a.createdAt||0);});
   var missingApproved=Object.keys(vouchers).map(function(id){return Object.assign({id:id},vouchers[id]);}).filter(function(v){return v.status==='approved'&&!v.voided&&!movements['petty_'+v.id];});
@@ -64,7 +66,7 @@ function renderUndeposited(){
     return '<tr><td style="white-space:nowrap;">'+esc(fmtDate(r.ts))+'</td><td>'+esc(labelFor(r.type))+(v?' <button type="button" class="pz-btn sec" data-ucvoucher="'+esc(r.id)+'" style="padding:.1rem .35rem;font-size:.65rem;">View</button>':'')+'</td><td style="font-size:.72rem;color:var(--tl);">'+esc(ref)+'</td><td style="text-align:right;color:#155724;">'+(r.inAmt?peso(r.inAmt):'')+'</td><td style="text-align:right;color:#8a1e1e;">'+(r.outAmt?('−'+peso(r.outAmt)):'')+'</td><td style="text-align:right;font-weight:600;">'+peso(r.run)+'</td></tr>'+detail;
   }).join(''):'<tr><td colspan="6" style="color:var(--tl);padding:0.6rem;">No cash movements in this range.</td></tr>';
   root.innerHTML='<div class="pz-h">💰 Undeposited Collection</div>'
-    +'<p class="pz-sub">The single cash-on-hand pool. Shift turnovers flow in; every cash payment (expenses and supplier payments) is drawn out with a receipt and approval; bank deposits clear it. This is the general-ledger truth for cash awaiting deposit.</p>'
+    +'<p class="pz-sub">The single temporary cash-on-hand pool. Shift turnovers flow in; approved cash payments flow out; deposits transfer the remaining physical cash to a selected bank or cash account. This is the general-ledger truth for cash awaiting deposit.</p>'
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">'
       +'<div class="pz-card" style="flex:1;min-width:200px;background:#f5faf6;"><div style="font-size:0.75rem;color:var(--tl);">Balance on hand (all-time)</div><div style="font-weight:700;font-size:1.35rem;color:var(--bd);">'+peso(poolBal)+'</div></div>'
       +'<div class="pz-card" style="flex:1;min-width:200px;"><div style="font-size:0.75rem;color:var(--tl);">Cash custody remaining (subledger)</div><div style="font-weight:700;font-size:1.15rem;">'+peso(custodyRemaining)+'</div><div style="font-size:0.72rem;margin-top:2px;color:'+(tie?'#155724':'#8a1e1e')+';">'+(tie?'✓ ties to the ledger':'⚠ differs by '+peso(Math.round((poolBal-custodyRemaining)*100)/100))+'</div></div>'
@@ -72,7 +74,7 @@ function renderUndeposited(){
     +(pending.length?('<div class="pz-card" style="margin-bottom:1rem;border:1px solid #ffe0a3;background:#fffdf5;"><b style="color:#8a6d1b;">Awaiting approval — not yet deducted from cash</b><div style="overflow-x:auto;margin-top:.45rem;"><table class="pz-tbl"><thead><tr><th>Voucher</th><th>Date</th><th>Payee</th><th style="text-align:right;">Amount</th><th>Status</th></tr></thead><tbody>'+pending.map(function(v){return '<tr><td>'+esc(v.voucherNo||v.id)+'</td><td>'+esc(v.date||'')+'</td><td>'+esc(v.recipient||v.requesterName||'—')+'</td><td style="text-align:right;">'+peso(v.amount)+'</td><td style="color:#8a6d1b;">pending approval</td></tr>';}).join('')+'</tbody></table></div></div>'):'')
     +(missingApproved.length?('<div class="pz-card" style="margin-bottom:1rem;border:1px solid #efb7b2;background:#fff0ef;"><div style="display:flex;gap:.7rem;align-items:center;justify-content:space-between;flex-wrap:wrap;"><div><b style="color:#8b1e1e;">'+missingApproved.length+' approved cash payment(s) missing from the ledger</b><div style="font-size:.75rem;color:#6d5d4d;">Repair posts each approved voucher once and updates cash custody. Beginning cash must be available first.</div></div><button class="pz-btn warn" id="ucRepairPayments">Repair missing payments</button></div></div>'):'')
     +(petty>0.01?('<div class="pz-card" style="margin-bottom:1rem;border:1px solid #ffe0a3;background:#fffdf5;"><div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;justify-content:space-between;"><div><b style="color:#8a6d1b;">Revolving Fund still holds '+peso(petty)+'</b><div style="font-size:.75rem;color:var(--tl);">Fold it into Undeposited Collection with one approved, audited entry to complete the retirement.</div></div><button class="pz-btn ok" id="ucRetire">Retire &amp; fold in '+peso(petty)+'</button></div></div>'):'')
-    +'<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem;"><button class="pz-btn ok" id="ucRecordPayment">Record cash payment</button><button class="pz-btn sec" id="ucRepairShift">Repair closed-shift turnover</button>'+(!openingPosted?'<button class="pz-btn sec" id="ucOpeningBalance">Set beginning balance</button>':'<span class="az-note" style="align-self:center;">Beginning balance recorded</span>')+'<div class="pz-card" style="flex:1;min-width:260px;padding:.65rem .8rem;"><b style="display:block;margin-bottom:.35rem;">Net operating expenses in range</b>'+expenseSummary+'</div></div>'
+    +'<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem;"><button class="pz-btn ok" id="ucDeposit"'+(!(custodyRemaining>0&&accountRows.length)?' disabled':'')+'>Deposit / move funds</button><button class="pz-btn sec" id="ucRecordPayment">Record cash payment</button><button class="pz-btn sec" id="ucRepairShift">Repair closed-shift turnover</button>'+(!openingPosted?'<button class="pz-btn sec" id="ucOpeningBalance">Set beginning balance</button>':'<span class="az-note" style="align-self:center;">Beginning balance recorded</span>')+'<div class="pz-card" style="flex:1;min-width:260px;padding:.65rem .8rem;"><b style="display:block;margin-bottom:.35rem;">Net operating expenses in range</b>'+expenseSummary+'</div></div>'
     +'<div class="pz-card">'
       +'<div style="display:flex;gap:.6rem;align-items:end;flex-wrap:wrap;margin-bottom:0.6rem;">'
         +'<div><span class="pz-lbl">From</span><input class="pz-in" id="ucFrom" type="date" value="'+esc(rangeFrom)+'"/></div>'
@@ -88,10 +90,15 @@ function renderUndeposited(){
   var cl=document.getElementById('ucClear');if(cl)cl.onclick=function(){rangeFrom='';rangeTo='';renderUndeposited();};
   var rb=document.getElementById('ucRetire');if(rb)rb.onclick=doRetire;
   var rp=document.getElementById('ucRecordPayment');if(rp)rp.onclick=function(){var btn=document.querySelector('.admin-tab[onclick*="\'petty\'"]');if(window.posSwitchTab)window.posSwitchTab('petty',btn);};
+  var dp=document.getElementById('ucDeposit');if(dp)dp.onclick=function(){depositFunds(accountRows,custodyRemaining);};
   var rs=document.getElementById('ucRepairShift');if(rs)rs.onclick=repairClosedShift;
   var ob=document.getElementById('ucOpeningBalance');if(ob)ob.onclick=setOpeningBalance;
   var repair=document.getElementById('ucRepairPayments');if(repair)repair.onclick=function(){repairMissingPayments(missingApproved);};
   root.querySelectorAll('[data-ucvoucher]').forEach(function(b){b.onclick=function(){var row=root.querySelector('[data-ucdetail="'+b.getAttribute('data-ucvoucher')+'"]');if(row)row.style.display=row.style.display==='none'?'table-row':'none';};});
+}
+function depositFunds(accountRows,available){
+  var a=A(),form=window.AccazaFormDialog;if(!a.postFinancialCommand||!form){alert('Deposit service is unavailable. Refresh the portal.');return;}if(!accountRows.length){alert('Add a bank or cash account under Cash Flow first.');return;}
+  form.run({title:'Deposit or move Undeposited Collection',subtitle:'Transfer physical cash awaiting deposit into the selected bank or cash account. This is not income and does not change sales.',submitLabel:'Record deposit',busyLabel:'Posting…',fields:[{name:'accountId',label:'Deposit to bank / cash account',type:'select',required:true,options:accountRows.map(function(x){return {value:x.id,label:(x.name||x.id)+' · '+(x.type||'cash account')};})},{name:'date',label:'Deposit date',type:'date',required:true,value:window.AccazaDate.key()},{name:'amount',label:'Amount to deposit ₱',type:'number',required:true,min:.01,max:available,step:.01,value:available},{name:'reference',label:'Deposit slip / transfer reference',required:true,maxLength:120,placeholder:'e.g. BDO deposit slip 12345'}]},function(v){var amount=Math.round(Number(v.amount)*100)/100;if(!(amount>0)||amount>available+.009)throw new Error('Deposit must be greater than zero and cannot exceed '+peso(available)+'.');var left=amount,allocations={};Object.keys(custody).map(function(id){return Object.assign({id:id},custody[id]);}).filter(function(x){return Number(x.remaining)>0;}).sort(function(x,y){return (x.closedAt||0)-(y.closedAt||0);}).forEach(function(x){if(!(left>.009))return;var use=Math.min(left,Number(x.remaining)||0);use=Math.round(use*100)/100;if(use>0){allocations[x.id]=use;left=Math.round((left-use)*100)/100;}});if(left>.009)throw new Error('Cash custody changed while preparing the deposit. Refresh and try again.');var commandId='cash_deposit_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7);return a.postFinancialCommand({action:'cash_deposit',commandId:commandId,accountId:v.accountId,date:v.date,allocations:allocations,actorName:(window.__posShift&&window.__posShift.staff)||'Admin',reference:v.reference});}).then(function(r){var d=(r&&r.data)||r||{};alert('Deposit recorded: '+peso(d.amount)+' moved from Undeposited Collection. Finance Books and cash custody were updated.');}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Could not record deposit: '+((e&&e.message)||e));});
 }
 function repairClosedShift(){
   var a=A(),form=window.AccazaFormDialog;if(!a.repairClosedShiftTurnover||!a.managerApproval||!form){alert('Closed-shift repair service is unavailable. Refresh the portal.');return;}
