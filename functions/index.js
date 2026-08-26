@@ -1606,25 +1606,36 @@ exports.correctPlatformPresettlement = onCall(
     if (data.action === "lookup") return {orderId: found.id, platformRef: o.platformRef || found.id, channel, gross: oldGross, commission: oldCommission, net: Financial.money(o.netPlatform != null ? o.netPlatform : oldGross - oldCommission), settlementStatus: o.settlementStatus || "unsettled", hasStructuredItems: Array.isArray(o.lineItems) && o.lineItems.length > 0};
     if (o.voided) throw new HttpsError("failed-precondition", "A voided order cannot be corrected.");
     if ((o.settlementStatus || "unsettled") === "settled" || o.payoutId) throw new HttpsError("failed-precondition", "This order is already settled. Reverse its payout before correcting it.");
+    const previousPlatformRef = financeText(o.platformRef || found.id, 60), newPlatformRef = financeText(data.newPlatformRef || previousPlatformRef, 60).trim(), oldRefKey = platformRefKey(previousPlatformRef), newRefKey = platformRefKey(newPlatformRef);
+    if (!newPlatformRef || !newRefKey) throw new HttpsError("invalid-argument", "The corrected platform order reference is required.");
+    if (newRefKey !== oldRefKey) {
+      const duplicate = await existingPlatformOrder(db, channel, newPlatformRef, found.id);
+      if (duplicate) throw new HttpsError("already-exists", `Platform reference ${newPlatformRef} already belongs to another ${channel === "grabfood" ? "GrabFood" : "FoodPanda"} order.`);
+      const indexed = (await db.ref(`/platformRefIndex/${channel}/${newRefKey}`).get()).val();
+      if (indexed && indexed.orderId !== found.id) throw new HttpsError("already-exists", `Platform reference ${newPlatformRef} is already reserved by another order.`);
+    }
     const gross = Financial.money(data.gross), commission = Financial.money(data.commission), reason = financeText(data.reason, 300);
     if (!(gross > 0)) throw new HttpsError("invalid-argument", "Verified gross must be greater than zero.");
     if (commission < 0 || commission > gross + 0.009) throw new HttpsError("invalid-argument", "Verified commission must be between zero and the verified gross.");
     if (!reason) throw new HttpsError("invalid-argument", "A correction reason is required.");
     const discount = Financial.money(o.platformDiscount), wht = Financial.money(o.platformWht), vat = Financial.money(o.platformVat), net = Financial.money(gross - commission - discount - wht - vat);
     if (net < -0.009) throw new HttpsError("failed-precondition", "The existing platform deductions exceed the verified gross. Review the order deductions first.");
-    const delta = Financial.money(Math.abs(oldGross - gross)); if (!(delta > 0.009) && Math.abs(oldCommission - commission) < 0.009) throw new HttpsError("failed-precondition", "The verified figures are unchanged.");
+    const delta = Financial.money(Math.abs(oldGross - gross)), referenceChanged = newPlatformRef !== previousPlatformRef; if (!referenceChanged && !(delta > 0.009) && Math.abs(oldCommission - commission) < 0.009) throw new HttpsError("failed-precondition", "The verified reference and figures are unchanged.");
     const version = Math.max(1, Number(o.preSettlementCorrectionVersion || 0) + 1), movementId = `platform_presettle_${found.id}_${version}`;
     const approval = await claimManagerApproval(db, data, "correct_platform_presettlement", found.id, delta, movementId), now = Date.now(), accounts = (await db.ref("/cfAccounts").get()).val() || {};
-    const corrected = Object.assign({}, o, {grossPlatform:gross,subtotal:gross,total:gross,netSalesPlatform:Financial.money(gross-discount),commission,netPlatform:Math.max(0,net),preSettlementCorrected:true,preSettlementCorrectionVersion:version,preSettlementCorrectedAt:now,preSettlementCorrectedBy:actor.uid,preSettlementCorrectionReason:reason});
-    if (Array.isArray(corrected.payments) && corrected.payments.length === 1) corrected.payments = [Object.assign({}, corrected.payments[0], {amount:gross})];
+    const corrected = Object.assign({}, o, {platformRef:newPlatformRef,grossPlatform:gross,subtotal:gross,total:gross,netSalesPlatform:Financial.money(gross-discount),commission,netPlatform:Math.max(0,net),preSettlementCorrected:true,preSettlementCorrectionVersion:version,preSettlementCorrectedAt:now,preSettlementCorrectedBy:actor.uid,preSettlementCorrectionReason:reason});
+    delete corrected.dupPlatformRef;
+    if (Array.isArray(corrected.payments)) corrected.payments = corrected.payments.map((payment) => Object.assign({}, payment, {amount:corrected.payments.length === 1 ? gross : payment.amount, ref:platformRefKey(payment.ref) === oldRefKey ? newPlatformRef : payment.ref}));
     const beforePosting = Financial.orderPosting(o, accounts), afterPosting = Financial.orderPosting(corrected, accounts), movement = Financial.postingDifference(beforePosting, afterPosting, "platform_presettlement_correction", found.id, "Pre-settlement correction");
-    if (!movement) throw new HttpsError("failed-precondition", "The correction creates no financial difference.");
-    movement.occurredAt = Number(o.timestamp || now); movement.approvalId = approval.id; movement.approvedBy = approval.record.approvedEmail || approval.record.approvedRole; movement.correctionRecordedAt = now;
-    const history = {version,before:{gross:oldGross,commission:oldCommission,net:Financial.money(o.netPlatform)},after:{gross,commission,net:Math.max(0,net)},reason,platformRef:o.platformRef||found.id,approvalId:approval.id,approvedBy:movement.approvedBy,actorUid:actor.uid,actorRole:actor.role,at:now,inventoryEffect:0,cogsEffect:0,movementId};
+    const approvedBy = approval.record.approvedEmail || approval.record.approvedRole;
+    if (movement) {movement.occurredAt = Number(o.timestamp || now); movement.approvalId = approval.id; movement.approvedBy = approvedBy; movement.correctionRecordedAt = now; movement.platformRef = newPlatformRef; movement.previousPlatformRef = previousPlatformRef;}
+    const history = {version,before:{platformRef:previousPlatformRef,gross:oldGross,commission:oldCommission,net:Financial.money(o.netPlatform)},after:{platformRef:newPlatformRef,gross,commission,net:Math.max(0,net)},reason,platformRef:newPlatformRef,previousPlatformRef,approvalId:approval.id,approvedBy,actorUid:actor.uid,actorRole:actor.role,at:now,inventoryEffect:0,cogsEffect:0,movementId:movement?movementId:""};
     corrected.preSettlementCorrections = Object.assign({}, o.preSettlementCorrections || {}, {[version]:history});
-    const writes = Object.assign({}, approval.usedWrites, {[`${found.node}/${found.id}`]:corrected,[`operationalAudit/${now}_platform_presettle_${found.id}`]:{action:"correct_platform_presettlement",sourceType:"order",sourceId:found.id,platformRef:o.platformRef||found.id,channel,before:history.before,after:history.after,reason,approvalId:approval.id,actorUid:actor.uid,actorRole:actor.role,inventoryEffect:0,cogsEffect:0,ts:now,schemaVersion:1}});
-    const committed = await commitFinancial(db, movementId, movement, actor, writes);
-    return {orderId:found.id,platformRef:o.platformRef||found.id,gross,commission,net:Math.max(0,net),movementId,duplicate:committed.duplicate};
+    const writes = Object.assign({}, approval.usedWrites, {[`${found.node}/${found.id}`]:corrected,[`operationalAudit/${now}_platform_presettle_${found.id}`]:{action:"correct_platform_presettlement",sourceType:"order",sourceId:found.id,platformRef:newPlatformRef,previousPlatformRef,channel,before:history.before,after:history.after,reason,approvalId:approval.id,actorUid:actor.uid,actorRole:actor.role,inventoryEffect:0,cogsEffect:0,financialEffect:movement?"posting_difference":"none",ts:now,schemaVersion:1}});
+    if (referenceChanged) {writes[`platformRefIndex/${channel}/${newRefKey}`]={orderId:found.id,ref:newPlatformRef,at:Number(o.timestamp)||now,correctedAt:now}; if (newRefKey !== oldRefKey) {const oldIndex=(await db.ref(`/platformRefIndex/${channel}/${oldRefKey}`).get()).val(); if (oldIndex && oldIndex.orderId === found.id) writes[`platformRefIndex/${channel}/${oldRefKey}`]=null;} writes[`platformRefDuplicates/${found.id}`]=null;}
+    const active=(await db.ref(`/activeOrders/${found.id}`).get()).val(); if (active) {writes[`activeOrders/${found.id}/platformRef`]=newPlatformRef; if (Array.isArray(active.payments)) writes[`activeOrders/${found.id}/payments`]=corrected.payments;}
+    let duplicate=false; if (movement) {const committed=await commitFinancial(db,movementId,movement,actor,writes);duplicate=committed.duplicate;} else await db.ref().update(writes);
+    return {orderId:found.id,previousPlatformRef,platformRef:newPlatformRef,gross,commission,net:Math.max(0,net),movementId:movement?movementId:"",financialPosted:!!movement,duplicate};
   },
 );
 

@@ -481,16 +481,17 @@ function correctPlatformPresettlement(ch,chLbl,platformRef,entries){
   choose.then(function(v){return a.correctPlatformPresettlement({action:'lookup',channel:ch,platformRef:v.platformRef}).then(function(r){return(r&&r.data)||r||{};});})
   .then(function(found){
     if((found.settlementStatus||'unsettled')==='settled')throw new Error('This order is already settled. Reverse the payout before correcting it.');
-    return window.AccazaFormDialog.run({title:'Correct '+found.platformRef+' before settlement',subtitle:'Current gross '+peso(found.gross)+'. Enter the verified statement figures. This changes the displayed sale and Finance Books but does not change items, COGS, or inventory.',submitLabel:'Approve & correct',busyLabel:'Posting correction…',fields:[
+    return window.AccazaFormDialog.run({title:'Correct '+found.platformRef+' before settlement',subtitle:'Current gross '+peso(found.gross)+'. Correct the platform reference and verified statement figures. Amount changes update Finance Books; reference-only changes are audit-only. Items, COGS, and inventory do not change.',submitLabel:'Approve & correct',busyLabel:'Posting correction…',fields:[
+      {name:'newPlatformRef',label:'Correct '+chLbl+' order reference',type:'text',required:true,maxLength:60,value:found.platformRef},
       {name:'gross',label:'Verified gross order value (₱)',type:'number',required:true,min:0.01,value:found.gross},
       {name:'commission',label:'Verified commission (₱)',type:'number',required:true,min:0,value:found.commission,validate:function(v,vals){return Number(v)>Number(vals.gross||0)+0.009?'Commission cannot exceed verified gross.':'';}},
       {name:'reason',label:'Correction reason',type:'textarea',required:true,maxLength:300,value:'Correct cashier entry to '+chLbl+' payout statement'},
       {name:'confirmed',label:'Items and quantities are correct; inventory must remain unchanged',type:'checkbox',required:true}
     ]},function(v){
       var difference=Math.round(Math.abs(Number(found.gross)-Number(v.gross))*100)/100;
-      return a.managerApproval('correct_platform_presettlement',found.orderId,difference,v.reason).then(function(ap){return a.correctPlatformPresettlement({action:'correct',channel:ch,platformRef:found.platformRef,gross:Number(v.gross),commission:Number(v.commission),reason:v.reason,approvalId:ap.approvalId});}).then(function(r){return(r&&r.data)||r||{};});
+      return a.managerApproval('correct_platform_presettlement',found.orderId,difference,v.reason).then(function(ap){return a.correctPlatformPresettlement({action:'correct',channel:ch,platformRef:found.platformRef,newPlatformRef:v.newPlatformRef,gross:Number(v.gross),commission:Number(v.commission),reason:v.reason,approvalId:ap.approvalId});}).then(function(r){return(r&&r.data)||r||{};});
     });
-  }).then(function(d){renderPayouts();alert('Corrected '+d.platformRef+' to gross '+peso(d.gross)+'. Net receivable is now '+peso(d.net)+'. Sales History and Finance Books received the same audited correction; inventory was unchanged.');})
+  }).then(function(d){renderPayouts();alert('Corrected '+d.previousPlatformRef+' to '+d.platformRef+' with gross '+peso(d.gross)+'. Net receivable is now '+peso(d.net)+'. '+(d.financialPosted?'Finance Books received the balanced amount correction. ':'The reference-only change required no journal entry. ')+'Sales History and the audit trail were updated; inventory was unchanged.');})
   .catch(function(e){var m=String((e&&e.message)||(e&&e.code)||e);if(m.indexOf('cancelled')<0)alert('Could not apply pre-settlement correction: '+m);});
 }
 function renderPayouts(){
