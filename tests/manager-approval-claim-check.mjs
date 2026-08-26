@@ -9,7 +9,7 @@ if(start<0||end<0)throw new Error('Privileged approval claim function not found'
 
 const actions=[
   'validate_payment','refund','void','settle_platform_payout','reopen_cash_count',
-  'delete_archived_order','review_discrepancy','approve_petty_voucher','correct_petty_voucher','correct_platform_presettlement','set_undeposited_opening_balance',
+  'delete_archived_order','review_discrepancy','approve_petty_voucher','correct_petty_voucher','correct_platform_presettlement','set_undeposited_opening_balance','retire_revolving_fund',
   'reject_petty_voucher','void_petty_voucher','return_supplier_payment','manual_discount','cash_in','fixed_float_exception',
 ];
 class HttpsError extends Error{constructor(code,message){super(message);this.code=code;}}
