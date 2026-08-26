@@ -18,12 +18,15 @@ ok(B.mapAccount('asset:cash_account:unknownid','instore',cashMap).code==='1010',
 ok(B.mapAccount('asset:platform_receivable:grabfood','grabfood',cashMap).code==='1100','platform_receivable→1100');
 ok(B.mapAccount('expense:platform_commission','grabfood',cashMap).code==='6040','platform_commission→6040');
 ok(B.mapAccount('expense:platform_variance:va_ads','grabfood',cashMap).code==='6050','Grab ads settlement variance→6050 marketing');
+ok(B.mapAccount('expense:platform_variance:va_marketing_success','grabfood',cashMap).code==='6050','Grab marketing success fee→6050 marketing');
 ok(B.mapAccount('expense:platform_variance:va_promo','grabfood',cashMap).code==='6045','platform promo variance→6045 platform discounts');
 ok(B.mapAccount('expense:platform_variance:va_fees','grabfood',cashMap).code==='6080','platform fee variance→6080 bank/payment fees');
 ok(B.mapAccount('expense:platform_variance:va_penalty','grabfood',cashMap).code==='6085','platform penalty variance→6085 penalties/adjustments');
 ok(B.mapAccount('expense:platform_variance:va_refund','grabfood',cashMap).code==='4910','platform refund variance→4910 returns/refunds');
 ok(B.mapAccount('expense:customer_discount','instore',cashMap).code==='4900','customer discount→sales contra-income 4900');
 ok(B.mapAccount('expense:platform_discount','grabfood',cashMap).code==='4900','platform discount→sales contra-income 4900');
+ok(B.mapAccount('expense:platform_merchant_funded_promo','grabfood',cashMap).code==='6045','merchant-funded promo→6045 platform discounts');
+ok(B.mapAccount('expense:platform_delivery_fee_discount','grabfood',cashMap).code==='6045','delivery fee discount→6045 platform discounts');
 ok(B.mapAccount('revenue:sales_reversal','instore',cashMap).code==='4910','refund reversal→returns and refunds 4910');
 ok(B.mapAccount('liability:payable:po_1','instore',cashMap).code==='2000','payable→2000');
 ok(B.mapAccount('liability:platform_owing:grabfood','grabfood',cashMap).code==='2020','negative platform payout→2020 liability');
