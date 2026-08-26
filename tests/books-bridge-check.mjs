@@ -19,6 +19,7 @@ ok(B.mapAccount('asset:platform_receivable:grabfood','grabfood',cashMap).code===
 ok(B.mapAccount('expense:platform_commission','grabfood',cashMap).code==='6040','platform_commission→6040');
 ok(B.mapAccount('expense:platform_variance:va_ads','grabfood',cashMap).code==='6050','Grab ads settlement variance→6050 marketing');
 ok(B.mapAccount('expense:platform_variance:va_marketing_success','grabfood',cashMap).code==='6050','Grab marketing success fee→6050 marketing');
+ok(B.mapAccount('revenue:platform_variance:va_refund_recovery','grabfood',cashMap).code==='4910','Grab refund recovery→4910 sales returns/refunds');
 ok(B.mapAccount('expense:platform_variance:va_promo','grabfood',cashMap).code==='6045','platform promo variance→6045 platform discounts');
 ok(B.mapAccount('expense:platform_variance:va_fees','grabfood',cashMap).code==='6080','platform fee variance→6080 bank/payment fees');
 ok(B.mapAccount('expense:platform_variance:va_penalty','grabfood',cashMap).code==='6085','platform penalty variance→6085 penalties/adjustments');
