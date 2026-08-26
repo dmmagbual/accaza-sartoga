@@ -225,6 +225,7 @@ exports.ensureBooksJournal = onCall(
   {region: "asia-southeast1", enforceAppCheck: process.env.ENFORCE_APP_CHECK === "true", timeoutSeconds: 540, memory: "512MiB"},
   async (request) => {
     const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["cashflow", "receivables", "payables"]);
+    await ensureHistoricalSecurityBankDrawings(db, actor);
     const [movementSnap, ordersSnap, archiveSnap, journalSnap, cashAccountsSnap, inventorySnap, categoriesSnap, purchasesSnap, payablesSnap, posSettingsSnap, activeShiftSnap] = await Promise.all([
       db.ref("/financialMovements").get(), db.ref("/orders").get(), db.ref("/archivedOrders").get(), db.ref("/books/journal").get(), db.ref("/cfAccounts").get(), db.ref("/inventory").get(), db.ref("/posSettings/invCategories").get(), db.ref("/purchaseInvoices").get(), db.ref("/payables").get(), db.ref("/posSettings").get(), db.ref("/posActiveShift").get(),
     ]);
@@ -267,6 +268,19 @@ exports.ensureBooksJournal = onCall(
     await db.ref("/systemMaintenance/booksJournalSynced").set(result); return result;
   },
 );
+
+async function ensureHistoricalSecurityBankDrawings(db, actor) {
+  const accounts = (await db.ref("/cfAccounts").get()).val() || {}, byCode = {};
+  Object.keys(accounts).forEach((id) => { byCode[BooksBridge.cashCodeForAccount(accounts[id])] = id; });
+  const rows = [{code: "1013", amount: 10050}, {code: "1014", amount: 3000}], occurredAt = Date.parse("2026-08-25T12:00:00+10:00");
+  for (const row of rows) {
+    const accountId = byCode[row.code];
+    if (!accountId) throw new HttpsError("failed-precondition", `Security Bank cash account ${row.code} is not configured.`);
+    const movementId = `books_manual_draw25_${row.code}`;
+    const movement = Financial.movement("manual_books_owner_draw", "booksManualJournal", movementId, [Financial.line("equity:owner_draw", row.amount, 0, "Owner personal drawing"), Financial.line(`asset:cash_account:${accountId}`, 0, row.amount, "Owner personal drawing")], {occurredAt, actorName: actor.role, reference: "DRAW-25", originalJournalDate: "2026-08-25"});
+    await commitFinancial(db, movementId, movement, actor);
+  }
+}
 
 function resolveRegisterFloat(settings, activeShift) {
   settings = settings || {}; activeShift = activeShift || {};
