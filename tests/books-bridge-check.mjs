@@ -27,6 +27,18 @@ ok(B.mapAccount('expense:customer_discount','instore',cashMap).code==='4900','cu
 ok(B.mapAccount('expense:platform_discount','grabfood',cashMap).code==='4900','platform discount→sales contra-income 4900');
 ok(B.mapAccount('expense:platform_merchant_funded_promo','grabfood',cashMap).code==='6045','merchant-funded promo→6045 platform discounts');
 ok(B.mapAccount('expense:platform_delivery_fee_discount','grabfood',cashMap).code==='6045','delivery fee discount→6045 platform discounts');
+const grabDeductionMovement={type:'platform_payout_settlement',sourceId:'GRAB-PAYOUT-1',channel:'grabfood',lines:[
+  {account:'expense:platform_commission',debit:25,credit:0,label:'Commission'},
+  {account:'expense:platform_merchant_funded_promo',debit:10,credit:0,label:'Merchant-funded promo'},
+  {account:'expense:platform_delivery_fee_discount',debit:5,credit:0,label:'Delivery fee discount'},
+  {account:'expense:platform_variance:va_marketing_success',debit:3,credit:0,label:'Marketing success fee'},
+  {account:'expense:platform_variance:va_ads',debit:2,credit:0,label:'Advertisements'},
+  {account:'asset:platform_receivable:grabfood',debit:0,credit:45,label:'Grab receivable'}
+]};
+const grabDeductionBooks=B.mappedLines(grabDeductionMovement,cashMap,{});
+ok(grabDeductionBooks.lines.filter(l=>l.code==='6040').reduce((s,l)=>s+l.debit,0)===25,'Grab commission reaches Finance Books 6040');
+ok(grabDeductionBooks.lines.filter(l=>l.code==='6045').reduce((s,l)=>s+l.debit,0)===15,'Grab merchant promo and delivery discount reach Finance Books 6045');
+ok(grabDeductionBooks.lines.filter(l=>l.code==='6050').reduce((s,l)=>s+l.debit,0)===5,'Grab marketing success fee and advertisements reach Finance Books 6050');
 ok(B.mapAccount('revenue:sales_reversal','instore',cashMap).code==='4910','refund reversal→returns and refunds 4910');
 ok(B.mapAccount('liability:payable:po_1','instore',cashMap).code==='2000','payable→2000');
 ok(B.mapAccount('liability:platform_owing:grabfood','grabfood',cashMap).code==='2020','negative platform payout→2020 liability');
