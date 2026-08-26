@@ -58,7 +58,7 @@ function mapAccount(posAccount, channel, cashAccountMap) {
   const a = String(posAccount || "");
   cashAccountMap = cashAccountMap || {};
   const exact = {
-    "asset:register_cash": "1000", "asset:cash_awaiting_deposit": "1030", "asset:petty_cash": "1040",
+    "asset:register_cash": "1000", "asset:register_float": "1005", "asset:cash_awaiting_deposit": "1030", "asset:petty_cash": "1040",
     "asset:withholding_tax": "1260", "revenue:sales_reversal": "4910",
     "revenue:cash_overage": "6110", "revenue:payment_overage": "4990",
     "expense:cash_shortage": "3100", "equity:owner_draw": "3100", "expense:platform_commission": "6040",
@@ -73,7 +73,10 @@ function mapAccount(posAccount, channel, cashAccountMap) {
     "asset:accumulated_depreciation": "1590", "expense:depreciation": "6090", "revenue:asset_disposal_gain": "4990", "expense:asset_disposal_loss": "6100",
   };
   if (exact[a]) return {code: exact[a], unmapped: false};
-  if (/^coa:\d{4}$/.test(a) && DIRECT_CODES.has(a.slice(4))) return {code: a.slice(4), unmapped: false};
+  // Server-authorized manual journals already carry a validated Books code.
+  // Preserve it exactly so a journal never falls through to Suspense merely
+  // because the account is outside the inventory/cost subset.
+  if (/^coa:\d{4}$/.test(a)) return {code: a.slice(4), unmapped: false};
   if (a === "revenue:sales") return {code: CHANNEL_SALES[String(channel || "instore").toLowerCase()] || "4000", unmapped: false};
   if (a.indexOf("asset:cash_account:") === 0) { const id = a.split(":")[2] || ""; return {code: cashAccountMap[id] || "1010", unmapped: false}; }
   if (a.indexOf("asset:platform_receivable:") === 0 || a.indexOf("asset:platform_clearing:") === 0) return {code: "1100", unmapped: false};
@@ -190,6 +193,7 @@ function buildSingle(mv, cashMap, context) {
       memo: `POS ${String(mv.type || "movement").replace(/_/g, " ")}${mv.sourceId ? " · " + mv.sourceId : ""}`,
       lines: lines.map((l) => ({code: l.code, debit: l.debit, credit: l.credit})),
       sources: {[mv.id]: true}, source: "pos-bridge", sourceType: String(mv.sourceType || ""), sourceId: String(mv.sourceId || ""),
+      reversalOf: String(mv.reversalOf || ""), reversedByMovementId: String(mv.reversedByMovementId || ""),
     },
     unmapped,
   };

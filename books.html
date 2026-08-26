@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<meta name="accaza-books-build" content="22"/>
+<meta name="accaza-books-build" content="23"/>
 <title>Accaza Books</title>
 <style>
 :root{
@@ -143,7 +143,7 @@ tr.sub-row td{font-weight:700;background:#faf7f1}
   <div class="topbar-in">
     <div class="brand">
       <div class="logo">☕</div>
-      <div><b>Accaza Books</b><small>Coffee-shop accounting · build v22</small></div>
+      <div><b>Accaza Books</b><small>Coffee-shop accounting · build v23</small></div>
     </div>
     <span id="liveStatus" class="live-pill off" title="Live POS auto-capture status — click to sign in" onclick="App.signInPrompt()">● Connecting…</span>
     <span id="reviewBadge" class="live-pill warn" style="display:none" title="Unmapped POS accounts to review" onclick="App.go('journal')"></span>
@@ -163,7 +163,7 @@ tr.sub-row td{font-weight:700;background:#faf7f1}
 <div class="tabs"><div class="tabs-in" id="tabs"></div></div>
 
 <div class="wrap"><div id="page" class="page"></div>
-  <div class="foot-note">Accaza Books · build v22 · double-entry, append-only ledger · live Finance data with browser backup support</div>
+  <div class="foot-note">Accaza Books · build v23 · double-entry, append-only ledger · shared server-authoritative Finance data</div>
 </div>
 
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
@@ -291,15 +291,9 @@ function todayStr(){ const d=new Date(); return d.getFullYear()+"-"+String(d.get
 /* Shared statement periods: current month is always the initial view. */
 const REPORT_PERIOD_KEY = "accaza-report-period";
 let PERIOD = (()=>{try{const v=JSON.parse(localStorage.getItem(REPORT_PERIOD_KEY)||"{}").period;return ["7","30","month","all"].includes(v)?v:"month";}catch(_e){return "month";}})();
-/* Local manual entries remain as a browser backup. Once a known historical
-   journal is migrated to the shared ledger, hide only its exact local copy so
-   Finance Books and Admin Cash Flow consume one authoritative posting. */
-function migratedLocalEntry(e){
-  if(!e||e.date!=="2026-08-25"||e.ref!=="DRAW-25"||e.memo!=="Owner personal drawing")return false;
-  var lines=e.lines||[],code=lines.some(function(l){return l.code==="1013"&&r2(l.credit)===10050;})?"1013":lines.some(function(l){return l.code==="1014"&&r2(l.credit)===3000;})?"1014":"";
-  return !!(code&&(window.__financialMovements||{})["books_manual_draw25_"+code]);
-}
-function ENTRIES(){ return DB.entries.filter(function(e){return !migratedLocalEntry(e);}).concat(window.__posEntries||[]); }
+/* Browser entries are retained only as a recovery backup. Authoritative
+   statements consume shared server entries exclusively, on every device. */
+function ENTRIES(){ return (window.__posEntries||[]).slice(); }
 function periodBounds(){const now=new Date(),end=todayStr(),start=new Date(now);if(PERIOD==="all")return{start:"",end};if(PERIOD==="7")start.setDate(now.getDate()-6);else if(PERIOD==="30")start.setDate(now.getDate()-29);else start.setDate(1);return{start:start.getFullYear()+"-"+String(start.getMonth()+1).padStart(2,"0")+"-"+String(start.getDate()).padStart(2,"0"),end};}
 function entryInPeriod(e){const d=String(e&&e.date||"").slice(0,10),r=periodBounds();return !!d&&(!r.start||d>=r.start)&&d<=r.end;}
 function entriesInPeriod(){ return ENTRIES().filter(entryInPeriod); }
@@ -451,20 +445,22 @@ const App = {
     if(lines.some(l=>l.debit>0&&l.credit>0)) return alert("A line can't have both a debit and a credit.");
     const dr=r2(lines.reduce((s,l)=>s+l.debit,0)), cr=r2(lines.reduce((s,l)=>s+l.credit,0));
     if(dr!==cr||dr<=0) return alert("Entry is not balanced.");
-    const entry={id:"E"+Date.now(), date:d.date||todayStr(), ref:d.ref||"", memo:d.memo||"", lines, createdAt:Date.now(), reversed:false, reversalOf:null};
-    DB.entries.push(entry); save(); this.closeModal();
-    // jump to journal to show it
-    CURRENT="journal"; this.renderTabs(); this.rebuildPeriodSel(); this.render();
+    if(!window.__financeCmd) return alert("Live connection not ready — sign in first.");
+    if(!(d.memo||"").trim()) return alert("Memo / description is required.");
+    const btn=document.getElementById("postBtn");btn.disabled=true;btn.textContent="Posting…";
+    const commandId="books_manual_"+Date.now();
+    window.__financeCmd({action:"manual_journal",commandId,date:d.date||todayStr(),ref:d.ref||"",memo:d.memo||"",lines}).then(()=>{
+      this.closeModal();CURRENT="journal";this.renderTabs();this.rebuildPeriodSel();this.render();
+    }).catch(e=>{alert("Could not post journal: "+((e&&e.message)||e));btn.disabled=false;btn.textContent="Post entry";});
   },
   rebuildPeriodSel(){
     const sel=document.getElementById("periodSel"); if(!sel)return;sel.innerHTML=periodOptions();sel.value=PERIOD;
   },
   reverseEntry(id){
-    const e=DB.entries.find(x=>x.id===id); if(!e||e.reversed) return;
+    const e=ENTRIES().find(x=>x.id===id); if(!e||e.reversed||e.reversalOf) return;
     if(!confirm("Post a reversing entry to cancel "+(e.ref||e.id)+"? The original stays in the audit trail.")) return;
-    const rev={id:"E"+Date.now(), date:todayStr(), ref:(e.ref||e.id)+"-REV", memo:"Reversal of "+(e.ref||e.id)+" — "+e.memo, createdAt:Date.now(), reversed:false, reversalOf:e.id,
-      lines:e.lines.map(l=>({code:l.code, debit:r2(l.credit||0), credit:r2(l.debit||0)}))};
-    e.reversed=true; DB.entries.push(rev); save(); this.render();
+    if(!window.__financeCmd) return alert("Live connection not ready — sign in first.");
+    window.__financeCmd({action:"reverse_manual_journal",commandId:"books_reverse_"+id,originalMovementId:id,date:todayStr(),reason:"Reversal requested from Finance Books"}).then(()=>this.render()).catch(err=>alert("Could not reverse journal: "+((err&&err.message)||err)));
   },
   closeModal(){ document.getElementById("modalBg").classList.remove("show"); document.getElementById("modal").innerHTML=""; },
 
@@ -507,8 +503,8 @@ function cfName(k){const a=cfAccounts().find(x=>x.id===k);return a?a.name:k==='r
 App.cfRange=function(which,v){if(which==='from')CF_FROM=v||todayStr();else CF_TO=v||todayStr();App.render();};
 App.cashAccountEdit=function(id){const a=(window.__cfAccounts||{})[id]||{},isNew=!id,m=document.getElementById('modal');m.innerHTML=`<div class="modal-head"><h3>${isNew?'Add':'Edit'} cash account</h3><button class="x" onclick="App.closeModal()">×</button></div><div class="modal-body"><div class="field"><label>Account name</label><input id="cfa_name" value="${esc(a.name||'')}"/></div><div class="grid2"><div class="field"><label>Type</label><select id="cfa_type"><option value="bank" ${a.type==='bank'?'selected':''}>Bank</option><option value="ewallet" ${a.type==='ewallet'?'selected':''}>E-wallet</option></select></div><div class="field"><label>Opening balance date</label><input id="cfa_date" type="date" value="${a.openingDate||'2026-08-23'}"/></div></div><div class="field"><label>Opening balance</label><input id="cfa_open" type="number" step=".01" value="${Number(a.opening)||0}"/></div><div class="field"><label>Payment methods routed here (comma-separated)</label><input id="cfa_feed" value="${esc((a.feedMethods||[]).join(', '))}" placeholder="GCash, Bank Transfer"/></div><div class="hint">Changing an opening balance posts a dated adjustment; it never rewrites or deletes later cash activity.</div></div><div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Cancel</button><button class="btn primary" onclick="App.cashAccountSave('${id||''}',this)">Save</button></div>`;document.getElementById('modalBg').classList.add('show');};
 App.cashAccountSave=function(id,btn){if(!window.__cashAccountSave)return alert('Live Finance service is not ready.');const name=document.getElementById('cfa_name').value.trim();if(!name)return alert('Enter an account name.');btn.disabled=true;window.__cashAccountSave({action:'upsert',commandId:'cashacct_'+Date.now(),accountId:id||('acc_'+Date.now().toString(36)),name,type:document.getElementById('cfa_type').value,opening:Number(document.getElementById('cfa_open').value)||0,openingDate:document.getElementById('cfa_date').value||todayStr(),feedMethods:document.getElementById('cfa_feed').value.split(',').map(x=>x.trim()).filter(Boolean)}).then(()=>App.closeModal()).catch(e=>{alert('Could not save account: '+((e&&e.message)||e));btn.disabled=false;});};
-App.cfRecordDeposit=function(kind,id){const accs=cfAccounts();if(!accs.length)return alert('Add a cash account first.');const source=kind==='payout'?(window.__platformPayouts||{})[id]:(window.__cashCustody||{})[id];if(!source)return;const amount=kind==='payout'?Number(source.actualPayout)||0:Number(source.remaining)||0,m=document.getElementById('modal');m.innerHTML=`<div class="modal-head"><h3>Record deposit</h3><button class="x" onclick="App.closeModal()">×</button></div><div class="modal-body"><div class="field"><label>Deposit to</label><select id="cfd_acct">${accs.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select></div><div class="grid2"><div class="field"><label>Date</label><input id="cfd_date" type="date" value="${todayStr()}"/></div><div class="field"><label>Amount</label><input value="${amount}" disabled/></div></div></div><div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Cancel</button><button class="btn primary" onclick="App.cfSaveDeposit('${kind}','${id}',this)">Record deposit</button></div>`;document.getElementById('modalBg').classList.add('show');};
-App.cfSaveDeposit=function(kind,id,btn){btn.disabled=true;const payload=kind==='payout'?{action:'payout_deposit',commandId:'payoutdep_'+Date.now(),payoutId:id,date:document.getElementById('cfd_date').value,accountId:document.getElementById('cfd_acct').value}:{action:'cash_deposit',commandId:'cashdep_'+Date.now(),allocations:{[id]:Number(((window.__cashCustody||{})[id]||{}).remaining)||0},date:document.getElementById('cfd_date').value,accountId:document.getElementById('cfd_acct').value};window.__financeCmd(payload).then(()=>App.closeModal()).catch(e=>{alert('Could not record deposit: '+((e&&e.message)||e));btn.disabled=false;});};
+App.cfRecordDeposit=function(kind,id){const accs=cfAccounts();if(!accs.length)return alert('Add a cash account first.');const source=kind==='payout'?(window.__platformPayouts||{})[id]:(window.__cashCustody||{})[id];if(!source)return;const amount=kind==='payout'?Number(source.actualPayout)||0:Number(source.remaining)||0,m=document.getElementById('modal');m.innerHTML=`<div class="modal-head"><h3>Record deposit</h3><button class="x" onclick="App.closeModal()">×</button></div><div class="modal-body"><div class="field"><label>Deposit to</label><select id="cfd_acct">${accs.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select></div><div class="grid2"><div class="field"><label>Date</label><input id="cfd_date" type="date" value="${todayStr()}"/></div><div class="field"><label>Amount</label><input value="${amount}" disabled/></div></div><div class="field"><label>${kind==='payout'?'Bank transaction / platform statement':'Deposit slip / transfer'} reference</label><input id="cfd_ref" placeholder="Required"/></div></div><div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Cancel</button><button class="btn primary" onclick="App.cfSaveDeposit('${kind}','${id}',this)">Record deposit</button></div>`;document.getElementById('modalBg').classList.add('show');};
+App.cfSaveDeposit=function(kind,id,btn){const reference=document.getElementById('cfd_ref').value.trim();if(!reference)return alert('Enter the deposit or bank transaction reference.');btn.disabled=true;const payload=kind==='payout'?{action:'payout_deposit',commandId:'payoutdep_'+Date.now(),payoutId:id,date:document.getElementById('cfd_date').value,accountId:document.getElementById('cfd_acct').value,ref:reference}:{action:'cash_deposit',commandId:'cashdep_'+Date.now(),allocations:{[id]:Number(((window.__cashCustody||{})[id]||{}).remaining)||0},date:document.getElementById('cfd_date').value,accountId:document.getElementById('cfd_acct').value,reference};window.__financeCmd(payload).then(()=>App.closeModal()).catch(e=>{alert('Could not record deposit: '+((e&&e.message)||e));btn.disabled=false;});};
 
 /* ============================================================ PAGES ============================================================ */
 const PAGES = {
@@ -585,7 +581,7 @@ const PAGES = {
         <td style="white-space:nowrap">${e.date}<div class="tiny muted">${esc(e.ref)||'—'} ${e.source==='pos'?'<span class="badge-rev" style="color:#28576b;background:#e9f2f6">POS</span>':''}${e.reversalOf?'<span class=badge-rev>reversal</span>':''}${e.reversed?'<span class=badge-rev>reversed</span>':''}</div></td>
         <td><b>${esc(e.memo)||'(no memo)'}</b><div style="margin-top:.35rem;font-size:.8rem">${linesHtml}</div></td>
         <td class="num" style="white-space:nowrap">${peso(dr)}</td>
-        <td style="white-space:nowrap">${e.source==='pos'?'<span class="tiny muted">auto</span>':(e.reversed||e.reversalOf?'':`<button class="btn sm ghost" onclick="App.reverseEntry('${e.id}')" title="Post a reversing entry">Reverse</button>`)}</td></tr>`;
+        <td style="white-space:nowrap">${e.source==='pos'||e.source==='pos-bridge'?((e.sourceType==='booksManualJournal'&&!e.reversalOf)?`<button class="btn sm ghost" onclick="App.reverseEntry('${e.id}')" title="Post a reversing entry">Reverse</button>`:'<span class="tiny muted">auto</span>'):(e.reversed||e.reversalOf?'':`<button class="btn sm ghost" onclick="App.reverseEntry('${e.id}')" title="Post a reversing entry">Reverse</button>`)}</td></tr>`;
     }).join("");
     return `<div class="page-head"><div><h2>Journal</h2><p>${periodLabel()} · ${ents.length} entr${ents.length===1?'y':'ies'} · append-only</p></div>
         <button class="btn primary" onclick="App.newEntry()">+ New entry</button></div>
