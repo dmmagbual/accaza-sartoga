@@ -92,6 +92,12 @@ function stmtCategory(m,net){
     default:return net>0?'Other cash in':'Other cash out';
   }
 }
+function fullyReversedCashIds(to){
+  var groups={},out={};
+  financialMovementArr().forEach(function(m){var d=dateFromTs(m.occurredAt||0),key=String(m.sourceType||'')+'|'+String(m.sourceId||'');if(d>to||!m.sourceId||Math.abs(cashDelta(m))<.005)return;(groups[key]=groups[key]||[]).push(m);});
+  Object.keys(groups).forEach(function(k){var rows=groups[k],originals=rows.filter(function(m){return !/_void$/.test(String(m.type||''));}),voids=rows.filter(function(m){return /_void$/.test(String(m.type||''));});if(originals.length!==1||voids.length!==1)return;var a=originals[0],b=voids[0];if(Math.abs(r2(cashDelta(a)+cashDelta(b)))<.005){out[a.id]=true;out[b.id]=true;}});
+  return out;
+}
 function computeStatement(){
   var rg=stmtRange(),from=rg.from,to=rg.to;
   var beginBank={},endBank={},beginReg=0,endReg=0,beginPetty=0,endPetty=0,endRegDrawer=0,endAwaiting=0;
@@ -102,7 +108,9 @@ function computeStatement(){
     if(d<=from)beginBank[x.id]=r2((beginBank[x.id]||0)+value);
     else{var cat='Opening balance set',tgt=value>0?add:ded,src=value>0?addSrc:dedSrc;tgt[cat]=r2((tgt[cat]||0)+Math.abs(value));(src[cat]=src[cat]||[]).push({date:d,amount:Math.abs(value),type:'opening_balance',id:'opening_'+x.id});}
   });
+  var fullyReversed=fullyReversedCashIds(to);
   financialMovementArr().forEach(function(m){
+    if(fullyReversed[m.id])return;
     var d=dateFromTs(m.occurredAt||0);if(d>to)return;var before=d<from;
     var reg=lineDelta(m,function(a){return a==='asset:register_cash'||a==='asset:cash_awaiting_deposit';});
     var petty=lineDelta(m,function(a){return a==='asset:petty_cash';});
