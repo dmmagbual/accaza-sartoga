@@ -290,15 +290,19 @@ function resolveRegisterFloat(settings, activeShift) {
   return {amount: 4000, source: "financeControl/defaultFixedFloat", shiftId: activeShift.id || ""};
 }
 
+function firebaseSafeSourceKey(value, fallback) {
+  return financeText(value, 160).replace(/[.#$\/\[\]]/g, "_") || fallback || "source";
+}
 function historicalSuspenseCapitalEntry() {
   const at = Date.parse("2026-08-26T00:00:00+10:00");
-  return {id: "historical_suspense_capital_20260826", date: "2026-08-26", ref: "EQUITY-RECLASS-20260826", memo: "One-time close of verified historical POS payment-reclassification residual to Owner's Capital", lines: [{code: "1900", debit: 995, credit: 0}, {code: "3000", debit: 0, credit: 995}], source: "finance-control", sourceType: "equityMigration", sourceId: "historical_pos_suspense_through_2026_08_26", sources: {"books/review/suspense-through-2026-08-26": true}, createdAt: at, rebuiltAt: at, schemaVersion: 1};
+  const sourceRef = "books/review/suspense-through-2026-08-26", sources = {}; sources[firebaseSafeSourceKey(sourceRef, "historical_suspense")] = true;
+  return {id: "historical_suspense_capital_20260826", date: "2026-08-26", ref: "EQUITY-RECLASS-20260826", memo: "One-time close of verified historical POS payment-reclassification residual to Owner's Capital", lines: [{code: "1900", debit: 995, credit: 0}, {code: "3000", debit: 0, credit: 995}], source: "finance-control", sourceType: "equityMigration", sourceId: "historical_pos_suspense_through_2026_08_26", sourceRef, sources, createdAt: at, rebuiltAt: at, schemaVersion: 1};
 }
 
 function registerFloatControlEntry(amount, at, control) {
   amount = Financial.money(amount); at = Number(at) || Date.now();
   control = control || {source: "posSettings/fixedFloat", shiftId: ""};
-  const sourceRef = financeText(control.source, 160), sourceKey = sourceRef.replace(/[.#$\/\[\]]/g, "_") || "register_float";
+  const sourceRef = financeText(control.source, 160), sourceKey = firebaseSafeSourceKey(sourceRef, "register_float");
   const sources = {}; sources[sourceKey] = true;
   return {id: "register_float_control", date: BooksBridge.businessDate(at), ref: "REGISTER-FLOAT", memo: "Register retained cash float · tied to live Register", lines: [{code: "1005", debit: amount, credit: 0}, {code: "1000", debit: 0, credit: amount}], source: "pos", sourceType: "registerFloat", sourceId: control.shiftId || "fixedFloat", sourceRef, sources, createdAt: at, rebuiltAt: at};
 }
