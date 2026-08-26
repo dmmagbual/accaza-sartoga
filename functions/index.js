@@ -257,6 +257,7 @@ exports.ensureBooksJournal = onCall(
     Object.keys(singles).forEach((key) => { writes[`books/journal/${key}`] = singles[key]; });
     const registerFloat = resolveRegisterFloat(posSettingsSnap.val(), activeShiftSnap.val());
     writes["books/journal/register_float_control"] = registerFloat.amount > 0 ? registerFloatControlEntry(registerFloat.amount, Date.now(), registerFloat) : null;
+    writes["books/journal/historical_suspense_capital_20260826"] = historicalSuspenseCapitalEntry();
     writes["books/reviewQueue"] = review;
     writes["books/config/cashAccountMap"] = cashMap;
     const paths = Object.keys(writes); for (let i = 0; i < paths.length; i += 300) { const batch = {}; paths.slice(i, i + 300).forEach((path) => { batch[path] = writes[path]; }); await db.ref().update(batch); }
@@ -272,6 +273,11 @@ function resolveRegisterFloat(settings, activeShift) {
   if (settings.fixedFloat != null && Financial.money(settings.fixedFloat) > 0) return {amount: Financial.money(settings.fixedFloat), source: "posSettings/fixedFloat", shiftId: activeShift.id || ""};
   const retained = activeShift.retainedFloat != null ? activeShift.retainedFloat : activeShift.openingFloat;
   return {amount: Financial.money(retained), source: activeShift.id ? `posActiveShift/${activeShift.id}` : "posActiveShift", shiftId: activeShift.id || ""};
+}
+
+function historicalSuspenseCapitalEntry() {
+  const at = Date.parse("2026-08-26T00:00:00+10:00");
+  return {id: "historical_suspense_capital_20260826", date: "2026-08-26", ref: "EQUITY-RECLASS-20260826", memo: "One-time close of verified historical POS payment-reclassification residual to Owner's Capital", lines: [{code: "1900", debit: 995, credit: 0}, {code: "3000", debit: 0, credit: 995}], source: "finance-control", sourceType: "equityMigration", sourceId: "historical_pos_suspense_through_2026_08_26", sources: {"books/review/suspense-through-2026-08-26": true}, createdAt: at, rebuiltAt: at, schemaVersion: 1};
 }
 
 function registerFloatControlEntry(amount, at, control) {
