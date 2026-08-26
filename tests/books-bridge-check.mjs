@@ -42,6 +42,7 @@ ok(grabDeductionBooks.lines.filter(l=>l.code==='6045').reduce((s,l)=>s+l.debit,0
 ok(grabDeductionBooks.lines.filter(l=>l.code==='6050').reduce((s,l)=>s+l.debit,0)===5,'Grab marketing success fee and advertisements reach Finance Books 6050');
 ok(B.mapAccount('revenue:sales_reversal','instore',cashMap).code==='4910','refund reversal→returns and refunds 4910');
 ok(B.mapAccount('liability:payable:po_1','instore',cashMap).code==='2000','payable→2000');
+ok(B.mapAccount('liability:due_to_owner:owner_1','instore',cashMap).code==='2050','owner/partner reimbursement liability→2050');
 ok(B.mapAccount('liability:platform_owing:grabfood','grabfood',cashMap).code==='2020','negative platform payout→2020 liability');
 ok(B.mapAccount('expense:cash_shortage','instore',{}).code==='3100','cash shortage→owner drawings');
 ok(B.mapAccount('inventory:legacy_receipt','instore',{}).code==='1290','unposted inventory receipt→1290 clearing');
