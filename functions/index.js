@@ -1636,7 +1636,7 @@ exports.postFinancialCommand = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
     const db = getDatabase(); const data = request.data || {}; const action = financeText(data.action, 40);
-    const perms = action === "inventory_opening_balance" ? ["purchases", "cashflow"] : action.includes("payable") ? ["payables", "purchases"] : action.includes("receivable") ? ["receivables"] : ["cashflow", "receivables", "payables", "purchases"];
+    const perms = action.indexOf("inventory_opening_balance") === 0 ? ["purchases", "cashflow"] : action.includes("payable") ? ["payables", "purchases"] : action.includes("receivable") ? ["receivables"] : ["cashflow", "receivables", "payables", "purchases"];
     const actor = await requirePortalPermission(db, request, perms); const commandId = financeKey(data.commandId, "Command ID");
     const accounts = (await db.ref("/cfAccounts").get()).val() || {}, chart = await ensureChartAccounts(db); const now = Date.now(); let movement, writes = {}, result = {};
     function amount(v) { const x = Financial.money(v); if (!(x > 0)) throw new HttpsError("invalid-argument", "Amount must be greater than zero."); return x; }
@@ -1659,6 +1659,30 @@ exports.postFinancialCommand = onCall(
       writes["inventoryReconciliations/openingBalance"]={movementId,date,stockValue:reconciliation.totalStock,booksValueBefore:reconciliation.totalBooks,adjustment:reconciliation.totalDifference,rows:reconciliation.rows,postedAt:now,postedBy:actor.uid,postedRole:actor.role,schemaVersion:1};
       result={stockValue:reconciliation.totalStock,booksValueBefore:reconciliation.totalBooks,adjustment:reconciliation.totalDifference,rows:reconciliation.rows};
       const committed = await commitFinancial(db,movementId,movement,actor,writes);return Object.assign(result,{movementId,duplicate:committed.duplicate});
+    } else if (action === "inventory_opening_balance_repost") {
+      const inventory = (await db.ref("/inventory").get()).val() || {}, journal = (await db.ref("/books/journal").get()).val() || {}, reconciliation = BooksBridge.inventoryReconciliationSnapshot(inventory, journal);
+      const existing = (await db.ref("/inventoryReconciliations/openingBalance").get()).val();
+      if (data.preview === true) return Object.assign({canRepost: !!(existing && existing.movementId)}, reconciliation);
+      if (!existing || !existing.movementId) throw new HttpsError("failed-precondition", "There is no posted opening inventory balance to re-post.");
+      if (reconciliation.unmapped.length) throw new HttpsError("failed-precondition", `${reconciliation.unmapped.length} stock item(s) with value are missing an inventory account. Map them before re-posting.`);
+      if (Math.abs(reconciliation.clearingBalance) >= 0.005) throw new HttpsError("failed-precondition", `Inventory Receiving Clearing 1290 must be zero before re-posting. Current balance: ${reconciliation.clearingBalance}. Rebuild Books first.`);
+      const original = (await db.ref(`/financialMovements/${financeKey(existing.movementId, "Opening movement ID")}`).get()).val();
+      if (!original || !Array.isArray(original.lines)) throw new HttpsError("failed-precondition", "The prior opening balance movement is missing; cannot reverse it cleanly.");
+      const seq = Number(existing.repostSeq || 0) + 1, date = financeDate(data.date), occurredAt = Date.parse(`${date}T00:00:00+08:00`) || now;
+      const oldRows = {};
+      original.lines.forEach((l) => { const m = /^coa:(\d{4})$/.exec(String(l.account || "")); if (m) oldRows[m[1]] = Financial.money((oldRows[m[1]] || 0) + Number(l.debit || 0) - Number(l.credit || 0)); });
+      const reversal = Financial.reverseMovement(original, "inventory_opening_balance_reversal", "Reverse prior opening inventory");
+      reversal.occurredAt = occurredAt; reversal.reversesMovementId = existing.movementId;
+      const reversalId = `inventory_opening_balance_reversal_${seq}`;
+      const freshLines = BooksBridge.openingRebalanceLines(reconciliation.rows, oldRows).map((l) => Financial.line(l.account, l.debit, l.credit, l.label));
+      if (!freshLines.length || !BooksBridge.linesBalanced(freshLines)) throw new HttpsError("failed-precondition", "The recomputed opening inventory entry is empty or unbalanced.");
+      const freshId = `inventory_opening_balance_v${seq}`, fresh = Financial.movement("inventory_opening_balance", "inventoryReconciliation", "openingBalance", freshLines, {occurredAt, actorName: actor.role, repostSeq: seq});
+      const extra = {};
+      extra[`inventoryReconciliations/history/${now}_${financeKey(existing.movementId, "Opening movement ID")}`] = Object.assign({}, existing, {archivedAt: now, archivedBy: actor.uid});
+      extra["inventoryReconciliations/openingBalance"] = {movementId: freshId, repostSeq: seq, reversedMovementId: existing.movementId, reversalMovementId: reversalId, date, stockValue: reconciliation.totalStock, booksValueBefore: reconciliation.totalBooks, adjustment: reconciliation.totalDifference, rows: reconciliation.rows, postedAt: now, postedBy: actor.uid, postedRole: actor.role, schemaVersion: 1};
+      await commitFinancial(db, reversalId, reversal, actor);
+      const committed = await commitFinancial(db, freshId, fresh, actor, extra);
+      return {movementId: freshId, reversalMovementId: reversalId, stockValue: reconciliation.totalStock, booksValueBefore: reconciliation.totalBooks, adjustment: reconciliation.totalDifference, reposted: seq, duplicate: committed.duplicate};
     } else if (action === "purchase_owner_funded") {
       const invoiceId = financeKey(data.invoiceId, "Purchase invoice ID"), invoice = (await db.ref(`/purchaseInvoices/${invoiceId}`).get()).val();
       if (!invoice) throw new HttpsError("not-found", "Purchase invoice was not found.");
@@ -2216,6 +2240,33 @@ async function repairInventoryProjections(db, itemId, accounting, item) {
   ]);
   return projection;
 }
+const INVENTORY_BOOK_POSTING_TYPES = new Set(["waste", "staff_use", "rnd_testing", "adjustment", "manual_edit"]);
+function inventoryBookAccountCode(item) {
+  const code = String(item && item.inventoryAccount || "");
+  return /^12[0-8]0$/.test(code) ? code : "1290";
+}
+// Every value-changing manual inventory movement posts a matching balanced
+// Finance entry so inventory and the books can never diverge. Stock reduced ->
+// Cr inventory / Dr 5900 Wastage & Spoilage (waste/staff/R&D/adjustment loss);
+// stock increased (positive adjustment) -> Dr inventory / Cr 4990 Other Income.
+// Idempotent via commitFinancial(`invmove_${id}`); auto-mirrors to /books/journal.
+async function postInventoryMovementToBooks(db, movement, item, actor) {
+  const type = String(movement && movement.type || "");
+  if (!INVENTORY_BOOK_POSTING_TYPES.has(type)) return;
+  const value = Financial.money(movement.totalCost); // signed: negative = stock out
+  if (Math.abs(value) < 0.005) return;
+  const invCode = inventoryBookAccountCode(item);
+  const label = `${type.replace(/_/g, " ")} \u00b7 ${String(item && item.name || movement.itemId || "").slice(0, 120)}`;
+  let lines;
+  if (value < 0) {
+    const out = Financial.money(-value);
+    lines = [Financial.line("coa:5900", out, 0, label), Financial.line(`coa:${invCode}`, 0, out, label)];
+  } else {
+    lines = [Financial.line(`coa:${invCode}`, value, 0, label), Financial.line("coa:4990", 0, value, label)];
+  }
+  const mv = Financial.movement(`inventory_${type}`, "inventoryMovement", String(movement.id || ""), lines, {occurredAt: Number(movement.occurredAt || movement.createdAt || Date.now()), actorName: String(actor && actor.role || "server"), itemId: String(movement.itemId || ""), invAccount: invCode});
+  await commitFinancial(db, `invmove_${String(movement.id || "")}`, mv, actor || {uid: "server", role: "server"});
+}
 async function applyInventoryMovement(db, raw, actor) {
   raw = raw || {};
   const itemId = inventoryKey(raw.itemId, "Inventory item");
@@ -2290,6 +2341,7 @@ async function applyInventoryMovement(db, raw, actor) {
   if (opening) writes[`inventoryMovements/${opening.id}`] = opening;
   if (movement) writes[`inventoryMovements/${movementId}`] = movement;
   if (Object.keys(writes).length) await db.ref().update(writes);
+  if (movement) await postInventoryMovementToBooks(db, movement, item, actor);
   await repairInventoryProjections(db, itemId, accounting, item);
   return {movement, duplicate};
 }

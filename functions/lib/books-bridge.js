@@ -69,7 +69,7 @@ function mapAccount(posAccount, channel, cashAccountMap) {
     "expense:customer_discount": "4900", "expense:platform_discount": "4900", "expense:platform_merchant_funded_promo": "6045", "expense:platform_delivery_fee_discount": "6045", "expense:platform_service_vat": "6046",
     "expense:platform_estimate_variance": "6100", "revenue:platform_estimate_variance": "4990",
     "equity:owner_capital": "3000", "equity:opening_balance": "3000", "equity:cash_float_source": "3000",
-    "cogs:beverage": "5000", "cogs:food": "5030", "cogs:packaging": "5040", "cogs:other": "5000", "inventory:control": "1290",
+    "cogs:beverage": "5000", "cogs:food": "5030", "cogs:packaging": "5040", "cogs:other": "5000", "inventory:control": "1200",
     "asset:accumulated_depreciation": "1590", "expense:depreciation": "6090", "revenue:asset_disposal_gain": "4990", "expense:asset_disposal_loss": "6100",
   };
   if (exact[a]) return {code: exact[a], unmapped: false};
@@ -233,13 +233,11 @@ function cogsLines(order, inventory, categories){
   var catSum = r2(bev+food+pack);
   if(Math.abs(catSum-total) >= 0.005){ bev = r2(bev + (total-catSum)); } // reconcile buckets to the authoritative total
   var lines=[];
-  // Fallback (no per-ingredient cost detail): pair each category's COGS debit with a credit
-  // to the matching inventory account. Food and packaging map 1:1 to their accounts; the
-  // beverage bucket spans coffee/milk/syrups and cannot be split here, so its inventory
-  // credit pools in 1290 (Inventory Receiving Clearing) rather than corrupting 1200 Coffee.
-  if(bev>0){ lines.push({account:"cogs:beverage", debit:bev, credit:0}); lines.push({account:"coa:1290", debit:0, credit:bev}); }
-  if(food>0){ lines.push({account:"cogs:food", debit:food, credit:0}); lines.push({account:"coa:1240", debit:0, credit:food}); }
-  if(pack>0){ lines.push({account:"cogs:packaging", debit:pack, credit:0}); lines.push({account:"coa:1230", debit:0, credit:pack}); }
+  if(bev>0) lines.push({account:"cogs:beverage", debit:bev, credit:0});
+  if(food>0) lines.push({account:"cogs:food", debit:food, credit:0});
+  if(pack>0) lines.push({account:"cogs:packaging", debit:pack, credit:0});
+  var creditTotal = r2(bev+food+pack);
+  if(creditTotal>0) lines.push({account:"inventory:control", debit:0, credit:creditTotal});
   return lines;
 }
 
@@ -269,6 +267,21 @@ function netBookValue(asset){
   return r2((Number(asset.cost)||0) - (Number(asset.accumulatedDepreciation)||0));
 }
 
+function openingRebalanceLines(rows,oldRows){
+  oldRows=oldRows||{};var lines=[];
+  (rows||[]).forEach(function(row){
+    var target=r2(row.stockValue);
+    var booksAfterReversal=r2((Number(row.booksValue)||0)-(Number(oldRows[row.code])||0));
+    var diff=r2(target-booksAfterReversal);
+    if(Math.abs(diff)<0.005)return;
+    lines.push({account:"coa:"+row.code,debit:diff>0?diff:0,credit:diff<0?-diff:0,label:"Opening inventory reconciliation "+row.code});
+  });
+  var net=r2(lines.reduce(function(s,l){return s+(Number(l.debit)||0)-(Number(l.credit)||0);},0));
+  if(net>0)lines.push({account:"equity:opening_balance",debit:0,credit:net,label:"Opening inventory balance"});
+  else if(net<0)lines.push({account:"equity:opening_balance",debit:-net,credit:0,label:"Opening inventory balance"});
+  return lines;
+}
+
 function inventoryReconciliationSnapshot(inventory,journal){
   var stock={},books={},unmapped=[];INVENTORY_CODES.forEach(function(code){stock[code]=0;books[code]=0;});books["1290"]=0;
   Object.keys(inventory||{}).forEach(function(id){var item=inventory[id]||{},value=r2((Number(item.stock)||0)*(Number(item.cost)||0)),mapping=itemAccounts(item);if(Math.abs(value)<0.005)return;if(!mapping.inventory){unmapped.push({id:id,name:String(item.name||id),value:value});return;}stock[mapping.inventory]=r2(stock[mapping.inventory]+value);});
@@ -277,4 +290,4 @@ function inventoryReconciliationSnapshot(inventory,journal){
   return{rows:rows,totalStock:r2(rows.reduce(function(sum,row){return sum+row.stockValue;},0)),totalBooks:r2(rows.reduce(function(sum,row){return sum+row.booksValue;},0)),totalDifference:totalDifference,clearingBalance:r2(books["1290"]),unmapped:unmapped};
 }
 
-module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, cashCodeForAccount, itemAccounts, cogsAccountSnapshot, isSaleMovement, fullyVoidedSourceIds, includeInRecognizedBooks, includeInAuthoritativeBooks, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, netSales, cogsLines, cogsMovement, recognizedOrderForCogs, monthlyStraightLine, netBookValue, inventoryReconciliationSnapshot};
+module.exports = {CHANNEL_SALES, r2, businessDate, mapAccount, cashCodeForAccount, itemAccounts, cogsAccountSnapshot, isSaleMovement, fullyVoidedSourceIds, includeInRecognizedBooks, includeInAuthoritativeBooks, bucketFor, mappedLines, applyDaily, buildSingle, netToLines, linesBalanced, netSales, cogsLines, cogsMovement, recognizedOrderForCogs, monthlyStraightLine, netBookValue, inventoryReconciliationSnapshot, openingRebalanceLines};
