@@ -35,7 +35,7 @@ const sandbox={
   console,
 };
 const api=vm.runInNewContext(`(function(){${functions.slice(start,end)};return {applyInventoryMovement};})()`,sandbox);
-const state={inventory:{milk:{name:'Milk',unit:'ml',stock:100,cost:2}}};
+const state={inventory:{milk:{name:'Milk',unit:'ml',stock:100,cost:2,inventoryAccount:'1210',costAccount:'5010'}}};
 let failProjectionWrite=true;
 let emptyFirstTransactionFor='';
 const parts=(path)=>String(path||'').split('/').filter(Boolean);
@@ -58,14 +58,14 @@ assert(retry.duplicate===true,'retry did not recognize the deterministic movemen
 assert(state.inventoryAccounting.milk.balance===150,'retry applied the same quantity twice');
 assert(state.inventory.milk.stock===150&&state.inventoryBalances.milk.qty===150,'retry did not repair both balance projections');
 assert(Math.abs(state.inventory.milk.cost-2.666667)<0.000001,'weighted-average cost projection is incorrect');
-state.inventory.powder={name:'Powder',unit:'g',stock:-100,cost:2};
+state.inventory.powder={name:'Powder',unit:'g',stock:-100,cost:2,inventoryAccount:'1220',costAccount:'5020'};
 await api.applyInventoryMovement(db,{movementId:'purchase_doc2_powder',itemId:'powder',type:'purchase',qty:50,unitCost:10,sourceId:'doc2'},{uid:'tester',role:'manager'});
 assert(state.inventory.powder.stock===-50,'negative stock purchase balance is incorrect');
 assert(state.inventory.powder.cost===10,'receipt against negative stock produced an invalid blended WAC');
 
 // A stale legacy projection must not block a valid reversal when RTDB invokes
 // the transaction updater once with an empty local cache.
-state.inventory.coffee={name:'Coffee Beans',unit:'g',stock:1196,cost:1.431};
+state.inventory.coffee={name:'Coffee Beans',unit:'g',stock:1196,cost:1.431,inventoryAccount:'1200',costAccount:'5000'};
 state.inventoryAccounting.coffee={balance:3047,unitCost:1.278,version:1,applied:{purchase_coffee:{id:'purchase_coffee',itemId:'coffee',qty:2000,unitCost:1.278}}};
 emptyFirstTransactionFor='/inventoryAccounting/coffee';
 await api.applyInventoryMovement(db,{movementId:'purchase_reverse_coffee',itemId:'coffee',type:'purchase_reversal',qty:-2000,unitCost:1.278,sourceId:'duplicate',reversalOf:'purchase_coffee'},{uid:'tester',role:'manager'});

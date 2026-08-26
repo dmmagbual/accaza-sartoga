@@ -1352,9 +1352,13 @@ function financeKey(value, label = "ID") {
   return key;
 }
 function financeText(value, max = 160) { return String(value == null ? "" : value).trim().slice(0, max); }
-function financeDate(value) {
+function financeDate(value, allowFuture) {
   const date = String(value || "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new HttpsError("invalid-argument", "Date must use YYYY-MM-DD.");
+  if (allowFuture !== true) {
+    const maxDate = financeDateFromTimestamp((Date.parse(`${financeDateFromTimestamp(Date.now())}T00:00:00+08:00`) || Date.now()) + 86400000);
+    if (date > maxDate) throw new HttpsError("invalid-argument", `That date (${date}) is in the future. Postings can\u2019t be future-dated \u2014 use today\u2019s date or the date it actually happened.`);
+  }
   return date;
 }
 function financeDateFromTimestamp(value) {const parts = new Intl.DateTimeFormat("en-US", {timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit"}).formatToParts(new Date(Number(value) || Date.now())); const map = {}; parts.forEach((part) => {map[part.type] = part.value;}); return `${map.year}-${map.month}-${map.day}`;}
@@ -1576,7 +1580,7 @@ exports.manageFixedAsset = onCall(
       const funding = data.funding || {}; const writes = {}; let creditLine,fundingMeta={fundingType:financeText(funding.type||"cash",20)};
       if (funding.type === "payable") {
         creditLine = Financial.line(`liability:payable:${assetId}`, 0, cost, name);
-        writes[`payables/${assetId}`] = {party: financeText(funding.party || name, 120), type: "fixed asset", amount: cost, date: acquiredDate, due: funding.due ? financeDate(funding.due) : "", ref: reference, status: "open", movementId: commandId, ts: now, createdBy: actor.uid, schemaVersion: 1};
+        writes[`payables/${assetId}`] = {party: financeText(funding.party || name, 120), type: "fixed asset", amount: cost, date: acquiredDate, due: funding.due ? financeDate(funding.due, true) : "", ref: reference, status: "open", movementId: commandId, ts: now, createdBy: actor.uid, schemaVersion: 1};
       } else if (funding.type === "owner_funded") {
         const ownerName=financeText(funding.ownerName,120),treatment=financeText(funding.treatment,20)==="reimburse"?"reimburse":"capital",reimbursementId=`owner_fa_${assetId}`;
         if(!ownerName)throw new HttpsError("invalid-argument","Owner or partner name is required.");
@@ -1754,7 +1758,7 @@ exports.postFinancialCommand = onCall(
       const isAr = action === "create_receivable", docId = financeKey(data.documentId, isAr ? "Receivable ID" : "Payable ID"), value = amount(data.amount), party = financeText(data.party, 120), documentType = financeText(data.type || "other", 60).toLowerCase(),reference=financeText(data.ref,120); if (!party) throw new HttpsError("invalid-argument", "Party is required.");if(!reference)throw new HttpsError("invalid-argument",`${isAr?"Receivable":"Bill or invoice"} reference is required.`);
       if (!isAr && ["inventory","inventory_pending_invoice","purchases"].includes(documentType)) throw new HttpsError("failed-precondition", "Inventory payables must be created from Purchases so the stock receipt, valuation, and supplier liability stay linked.");
       movement = Financial.movement(isAr ? "receivable_created" : "payable_created", isAr ? "receivable" : "payable", docId, isAr ? [Financial.line(`asset:receivable:${docId}`, value, 0, party), Financial.line(`revenue:${documentType}`, 0, value, party)] : [Financial.line(`expense_or_inventory:${documentType}`, value, 0, party), Financial.line(`liability:payable:${docId}`, 0, value, party)], {occurredAt: accountingTimestamp(data.date,now),reference});
-      const record = {party, type: documentType, amount: value, date: financeDate(data.date), due: data.due ? financeDate(data.due) : "", ref: reference, status: "open", movementId: commandId, ts: now, createdBy: actor.uid, schemaVersion: 1}; writes[`${isAr ? "receivables" : "payables"}/${docId}`] = record; result.documentId = docId;
+      const record = {party, type: documentType, amount: value, date: financeDate(data.date), due: data.due ? financeDate(data.due, true) : "", ref: reference, status: "open", movementId: commandId, ts: now, createdBy: actor.uid, schemaVersion: 1}; writes[`${isAr ? "receivables" : "payables"}/${docId}`] = record; result.documentId = docId;
     } else if (["collect_receivable", "pay_payable", "reverse_receivable", "reverse_payable"].includes(action)) {
       const isAr = action.includes("receivable"), isReverse = action.startsWith("reverse_"), docId = financeKey(data.documentId, "Document ID"), path = isAr ? "receivables" : "payables", snap = await db.ref(`/${path}/${docId}`).get(); if (!snap.exists()) throw new HttpsError("not-found", "Financial document not found."); const doc = snap.val(); if (doc.status !== "open") throw new HttpsError("failed-precondition", "This document is no longer open."); if (!isAr && doc.provisional === true && !isReverse) throw new HttpsError("failed-precondition", "Finalize the supplier invoice before paying this provisional obligation."); if (!isAr && (doc.purchaseInvoiceId||doc.fixedAssetId||doc.personalFundingId) && isReverse) throw new HttpsError("failed-precondition", "Reverse this owner/partner obligation from its source transaction so the cost and funding remain synchronized."); const value = amount(doc.amount);
       if (isReverse) {
@@ -1803,7 +1807,7 @@ exports.reconcilePurchasePayable = onCall(
     if (invoice.payMode !== "account" && !provisional && !legacyNoLiability) throw new HttpsError("failed-precondition", "This purchase is not eligible for payable reconciliation.");
     const amount = Financial.money(invoice.total); if (!(amount > 0)) throw new HttpsError("failed-precondition", "Purchase invoice total is invalid.");
     const party = financeText(invoice.supplier, 120); if (!party) throw new HttpsError("failed-precondition", "A supplier is required before recording the obligation.");
-    const ref = financeText(data.invoiceRef || invoice.ref || `PENDING-${invoiceId}`, 120), date = financeDate(invoice.date), due = data.due ? financeDate(data.due) : (invoice.due ? financeDate(invoice.due) : ""), finalizing = provisional && data.finalize === true;
+    const ref = financeText(data.invoiceRef || invoice.ref || `PENDING-${invoiceId}`, 120), date = financeDate(invoice.date), due = data.due ? financeDate(data.due, true) : (invoice.due ? financeDate(invoice.due, true) : ""), finalizing = provisional && data.finalize === true;
     if (finalizing && (!financeText(data.invoiceRef,120) || !due)) throw new HttpsError("invalid-argument", "Final invoice reference and due date are required.");
     const payables = (await db.ref("/payables").get()).val() || {}, baseCanonicalId=financeKey(`ap_${invoiceId}`,"Payable ID"), repairingReversed=payables[baseCanonicalId]&&payables[baseCanonicalId].status==="reversed", canonicalId=repairingReversed?financeKey(`ap_repair_${invoiceId}`,"Payable ID"):baseCanonicalId, movementId=financeKey(`${repairingReversed?"purchase_ap_repair":"purchase_ap"}_${invoiceId}`,"Movement ID");
     const candidates = Object.keys(payables).filter((id) => {const row=payables[id]||{},claimedBy=financeText(row.purchaseInvoiceId,160);return row.status==="open"&&Financial.money(row.amount)===amount&&financeText(row.party,120).toLowerCase()===party.toLowerCase()&&(!claimedBy||claimedBy===invoiceId);}).map((id)=>({id,party:financeText(payables[id].party,120),ref:financeText(payables[id].ref,120),due:payables[id].due||"",amount:Financial.money(payables[id].amount)}));
@@ -1850,7 +1854,7 @@ exports.managePurchaseCorrection = onCall(
     if (invoice.reversed === true) throw new HttpsError("failed-precondition", "This purchase has already been reversed.");
     const now = Date.now(), reason = financeText(data.reason, 300); if (!reason) throw new HttpsError("invalid-argument", "A correction reason is required.");
     if (action === "correct_details") {
-      const next = {ref:financeText(data.ref,120),due:data.due?financeDate(data.due):"",by:financeText(data.by,120)}; if (!next.ref) throw new HttpsError("invalid-argument", "Invoice reference is required.");
+      const next = {ref:financeText(data.ref,120),due:data.due?financeDate(data.due, true):"",by:financeText(data.by,120)}; if (!next.ref) throw new HttpsError("invalid-argument", "Invoice reference is required.");
       const duplicate = Object.keys(invoices).some((id) => id !== invoiceId && financeText(invoices[id] && invoices[id].ref,120).toLowerCase() === next.ref.toLowerCase());if (duplicate) throw new HttpsError("already-exists", "Another purchase already uses this invoice reference.");
       const writes = {[`purchaseInvoices/${invoiceId}/ref`]:next.ref,[`purchaseInvoices/${invoiceId}/due`]:next.due,[`purchaseInvoices/${invoiceId}/by`]:next.by,[`purchaseInvoices/${invoiceId}/lastCorrectionAt`]:now,[`purchaseInvoices/${invoiceId}/lastCorrectionBy`]:actor.uid,[`purchaseInvoices/${invoiceId}/lastCorrectionReason`]:reason,[`operationalAudit/${now}_purchase_correct_${invoiceId}`]:{action:"correct_purchase_details",sourceType:"purchaseInvoice",sourceId:invoiceId,before:{ref:invoice.ref||"",due:invoice.due||"",by:invoice.by||""},after:next,reason,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}};
       (invoice.receiptIds||[]).forEach((id) => {writes[`stockReceipts/${id}/ref`]=next.ref;writes[`stockReceipts/${id}/receivedBy`]=next.by;});if (invoice.payableId) {writes[`payables/${invoice.payableId}/ref`]=next.ref;writes[`payables/${invoice.payableId}/due`]=next.due;}
@@ -2231,14 +2235,17 @@ async function repairInventoryProjections(db, itemId, accounting, item) {
       if (current && Number(current.version || 0) > version) return;
       return projection;
     }),
-    db.ref(`/inventory/${itemId}`).transaction((current) => {
-      if (!current) return;
-      if (Number(current.ledgerVersion || 0) > version) return;
-      return Object.assign({}, current, {
-        stock: projection.qty, cost: projection.unitCost, ledgerVersion: version,
-        ledgerUpdatedAt: projection.updatedAt,
-      });
-    }),
+    (async () => {
+      // Read + conditional partial update (a transaction here aborted on the
+      // admin SDK's initial null-cache pass, so /inventory.stock never synced
+      // from the ledger). Only update fields the ledger owns; skip if a newer
+      // ledger version already wrote.
+      const invRef = db.ref(`/inventory/${itemId}`);
+      const cur = (await invRef.get()).val();
+      if (!cur) return;
+      if (Number(cur.ledgerVersion || 0) > version) return;
+      await invRef.update({stock: projection.qty, cost: projection.unitCost, ledgerVersion: version, ledgerUpdatedAt: projection.updatedAt});
+    })(),
   ]);
   return projection;
 }
@@ -2286,7 +2293,14 @@ async function applyInventoryMovement(db, raw, actor) {
   const itemRef = db.ref(`/inventory/${itemId}`);
   const item = (await itemRef.get()).val();
   if (!item) throw new HttpsError("not-found", "Inventory item no longer exists.");
+  if (["purchase", "waste", "staff_use", "rnd_testing", "adjustment", "manual_edit"].includes(type)) {
+    const invAcct = String(item.inventoryAccount || ""), costAcct = String(item.costAccount || item.cogsAccount || "");
+    const invOk = ["1200", "1210", "1220", "1230", "1240", "1270", "1280"].includes(invAcct);
+    const costOk = ["5000", "5010", "5020", "5030", "5040", "6070", "6075"].includes(costAcct);
+    if (!invOk || !costOk) throw new HttpsError("failed-precondition", `\u201c${String(item.name || itemId)}\u201d is missing its Inventory Asset (12xx) and/or COGS account (5xxx). Map the item under Stock Items before recording a ${type.replace(/_/g, " ")}.`);
+  }
   const now = Date.now();
+  if (Number(raw.occurredAt) && Number(raw.occurredAt) > now + 2 * 86400000) throw new HttpsError("invalid-argument", "An inventory movement can\u2019t be dated in the future.");
   let duplicate = false, insufficient = false, insufficientValue = false;
   const accountingRef = db.ref(`/inventoryAccounting/${itemId}`);
   // RTDB transactions may invoke the updater once with an empty local cache
