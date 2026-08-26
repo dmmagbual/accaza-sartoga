@@ -82,6 +82,7 @@ function mapAccount(posAccount, channel, cashAccountMap) {
   if (a.indexOf("inventory:") === 0) return {code: "1290", unmapped: true};
   if (a.indexOf("liability:grni:") === 0) return {code: "2090", unmapped: true};
   if (a.indexOf("liability:payable:") === 0) return {code: "2000", unmapped: false};
+  if (a.indexOf("liability:due_to_owner:") === 0) return {code: "2050", unmapped: false};
   if (a.indexOf("liability:platform_owing:") === 0) return {code: "2020", unmapped: false};
   var seg = a.indexOf(":") >= 0 ? a.slice(a.indexOf(":") + 1).toLowerCase() : "";
   if (a.indexOf("expense_or_inventory:") === 0) return CHART_COA[seg] ? {code: CHART_COA[seg], unmapped: false} : {code: "6100", unmapped: true};
