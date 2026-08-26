@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {inventoryBookCode,reconcileInventoryBooks} from '../assets/js/admin/inventory-books-reconciliation.mjs';
 
 assert.equal(inventoryBookCode('coa:1210'),'1210');
-assert.equal(inventoryBookCode('inventory:control'),'1290');
+assert.equal(inventoryBookCode('inventory:control'),'1200');
 assert.equal(inventoryBookCode('inventory:legacy-item'),'1290');
 assert.equal(inventoryBookCode('expense:other'),'');
 

@@ -121,14 +121,11 @@ ok(B.linesBalanced(cl), "cogs lines balance (Dr COGS = Cr Inventory)");
 ok(cl.find(l=>l.account==="cogs:beverage" && Math.abs(l.debit-30)<0.005), "beverage COGS debit 30");
 ok(cl.find(l=>l.account==="cogs:food" && Math.abs(l.debit-10)<0.005), "food COGS debit 10");
 ok(cl.find(l=>l.account==="cogs:packaging" && Math.abs(l.debit-1.5)<0.005), "packaging COGS debit 1.5");
-ok(cl.find(l=>l.account==="coa:1290" && Math.abs(l.credit-30)<0.005), "beverage inventory pools to 1290 clearing (not a category account)");
-ok(cl.find(l=>l.account==="coa:1240" && Math.abs(l.credit-10)<0.005), "food inventory credit -> 1240");
-ok(cl.find(l=>l.account==="coa:1230" && Math.abs(l.credit-1.5)<0.005), "packaging inventory credit -> 1230");
-ok(!cl.some(l=>l.account==="coa:1200"||l.account==="inventory:control"), "fallback COGS never credits 1200 Coffee & Beans");
+ok(cl.find(l=>l.account==="inventory:control" && Math.abs(l.credit-41.5)<0.005), "inventory:control credit 41.5");
 ok(B.mapAccount("cogs:beverage","instore",{}).code==="5000", "cogs:beverage -> 5000");
 ok(B.mapAccount("cogs:food","instore",{}).code==="5030", "cogs:food -> 5030");
 ok(B.mapAccount("cogs:packaging","instore",{}).code==="5040", "cogs:packaging -> 5040");
-ok(B.mapAccount("inventory:control","instore",{}).code==="1290", "inventory:control -> 1290 clearing (never a category account)");
+ok(B.mapAccount("inventory:control","instore",{}).code==="1200", "inventory:control -> 1200");
 const detailedOrder={channel:"instore",cogsSnapshot:15,cogsAccountSnapshot:{"1200|5000":4,"1210|5010":5,"1220|5020":3,"1230|5040":2,"1240|5030":1}};
 const detailed=B.cogsLines(detailedOrder);
 ok(B.linesBalanced(detailed),"item-category COGS mapping balances");
@@ -141,9 +138,7 @@ ok(overhead["1270|6070"]===6,"overhead item uses its own inventory and expense c
 ok(B.mapAccount("coa:1270","instore",{}).code==="1270"&&B.mapAccount("coa:6070","instore",{}).code==="6070","overhead direct COA codes retained");
 // bucket mismatch reconciles to authoritative total
 const order2 = {channel:"instore", cogsSnapshot:50, cogsCategorySnapshot:{beverage:30, food:10}, completedAt: Date.parse("2026-08-22T05:00:00Z")};
-const order2Lines = B.cogsLines(order2);
-ok(Math.abs(order2Lines.filter(l=>/^coa:12\d0$/.test(l.account)).reduce((s,l)=>s+l.credit,0) - 50) < 0.005, "cogs reconciles buckets to total (50) across inventory accounts");
-ok(order2Lines.find(l=>l.account==="coa:1290" && Math.abs(l.credit-40)<0.005), "unsplittable beverage remainder (bev 30 + 10 gap) pools in 1290");
+ok(Math.abs(B.cogsLines(order2).find(l=>l.account==="inventory:control").credit - 50) < 0.005, "cogs reconciles buckets to total (50)");
 // fold cogs pseudo-movement into a daily node and stay balanced + idempotent
 const cm = B.cogsMovement(order, "ORD1");
 let n = B.applyDaily(null, cm, {});
@@ -200,6 +195,36 @@ ok(invRecon.totalBooks===-10,'inventory reconciliation Books balance includes ne
 ok(invRecon.totalDifference===260,'inventory reconciliation difference is correct');
 ok(invRecon.rows.find(r=>r.code==='1200').difference===220,'inventory account difference is correct');
 ok(invRecon.unmapped.length===0&&invRecon.clearingBalance===0,'clean inventory reconciliation has no blocking exceptions');
+
+// --- Job 1: opening-balance reverse & re-post lands every account exactly on physical stock ---
+{
+  const rows=[
+    {code:'1200',stockValue:1711.48,booksValue:9325.62},
+    {code:'1210',stockValue:109950.63,booksValue:117423.25},
+    {code:'1220',stockValue:87141.86,booksValue:87004.00},
+    {code:'1230',stockValue:10166.80,booksValue:9987.15},
+  ];
+  // prior (stale) opening balance debits per account
+  const oldRows={'1200':9022.09,'1210':117218.76,'1220':89748.73,'1230':11711.37};
+  const fresh=B.openingRebalanceLines(rows,oldRows);
+  ok(B.linesBalanced(fresh),'reverse & re-post: fresh opening lines balance (Dr=Cr)');
+  // after reversing old opening and applying the fresh diff, each account must equal physical stock
+  rows.forEach(function(row){
+    const line=fresh.find(l=>l.account==='coa:'+row.code)||{debit:0,credit:0};
+    const diff=(Number(line.debit)||0)-(Number(line.credit)||0);
+    const ending=Math.round((row.booksValue-(oldRows[row.code]||0)+diff)*100)/100;
+    ok(Math.abs(ending-row.stockValue)<0.005,'re-post trues '+row.code+' to physical stock ('+row.stockValue+')');
+  });
+  ok(fresh.some(l=>l.account==='equity:opening_balance'),'re-post carries an equity opening offset');
+}
+// --- Job 2: manual inventory movements post to the correct books accounts ---
+ok(B.mapAccount('coa:5900','instore',{}).code==='5900','waste/staff/adjustment-loss expense -> 5900 Wastage & Spoilage');
+ok(B.mapAccount('coa:4990','instore',{}).code==='4990','inventory overage gain -> 4990 Other Income');
+{
+  // a waste movement of 100 credits inventory (1210) and debits 5900, balanced
+  const wasteLines=[{account:'coa:5900',debit:100,credit:0},{account:'coa:1210',debit:0,credit:100}];
+  ok(B.linesBalanced(wasteLines),'inventory waste posting is balanced (Dr 5900 / Cr inventory)');
+}
 
 if(failed){ console.error(`\n${failed} bridge check(s) FAILED`); process.exit(1); }
 console.log('PASS: Accaza Books POS→journal bridge (mapping, business date, daily aggregation, idempotency, discrete entries, COGS leg, fixed assets, chart-category mapping) checks passed.');

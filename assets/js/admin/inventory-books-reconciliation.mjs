@@ -13,7 +13,7 @@ export function inventoryBookCode(account){
   const value=String(account||'');
   if(/^coa:\d{4}$/.test(value)&&BOOK_CODES.has(value.slice(4)))return value.slice(4);
   if(BOOK_CODES.has(value))return value;
-  if(value==='inventory:control')return '1290';
+  if(value==='inventory:control')return '1200';
   if(value.indexOf('inventory:')===0)return '1290';
   return '';
 }
