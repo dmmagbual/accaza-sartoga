@@ -491,6 +491,7 @@ const MANAGER_APPROVAL_ACTIONS = new Set([
   "delete_archived_order", "review_discrepancy", "approve_petty_voucher", "correct_petty_voucher",
   "reject_petty_voucher", "void_petty_voucher", "return_supplier_payment", "manual_discount", "cash_in", "purchase_cash_advance", "fixed_float_exception", "reverse_purchase",
   "rekey_platform_order", "reverse_platform_payout", "correct_platform_presettlement", "set_undeposited_opening_balance", "retire_revolving_fund",
+  "repair_closed_shift_turnover",
 ]);
 function transactionCurrent(current, initial, state) {
   const value = current == null && !state.seen ? initial : current;
@@ -726,6 +727,37 @@ exports.retireRevolvingFund = onCall(
     const committed = await commitFinancial(db, movementId, movement, actor, writes);
     if (committed.duplicate) { await db.ref().update(approval.usedWrites); return {balance: bal, retired: false, duplicate: true}; }
     return {balance: bal, retired: true, amount: bal, approvalId: approval.id};
+  },
+);
+
+function savedShiftCashSales(shift) {
+  const sales = shift && shift.zReport && Array.isArray(shift.zReport.sales) ? shift.zReport.sales : [];
+  let cash = 0;
+  sales.forEach((order) => {
+    const rows = Array.isArray(order.payments) && order.payments.length ? order.payments : [{method: order.payment, amount: order.total}];
+    rows.forEach((row) => {if (String(row && row.method || "").toLowerCase() === "cash") cash = Financial.money(cash + Financial.money(row.amount));});
+    const refunds = order.refundPayments || {};
+    cash = Financial.money(cash - Financial.money(refunds.Cash || refunds.cash));
+  });
+  return Financial.money(Math.max(0, cash));
+}
+
+exports.repairClosedShiftTurnover = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["cashflow", "registerOps"]), data = request.data || {}, shiftId = financeKey(data.shiftId, "Shift ID"), movementId = `shift_custody_${shiftId}`;
+    const [shiftSnap, movementSnap, custodySnap] = await Promise.all([db.ref(`/shifts/${shiftId}`).get(), db.ref(`/financialMovements/${movementId}`).get(), db.ref(`/cashCustody/${shiftId}`).get()]);
+    const shift = shiftSnap.val() || null;
+    if (!shift || shift.status !== "closed") throw new HttpsError("failed-precondition", "Select a closed shift.");
+    const amount = savedShiftCashSales(shift);
+    if (!(amount > 0)) throw new HttpsError("failed-precondition", "The saved shift transaction lines contain no cash turnover to repair.");
+    if (movementSnap.exists() || custodySnap.exists()) return {shiftId, amount, duplicate: true, preview: data.preview === true};
+    if (data.preview === true) return {shiftId, amount, staff: financeText(shift.staff, 100), closedAt: Number(shift.closeAt || 0), preview: true, duplicate: false};
+    const approval = await claimManagerApproval(db, data, "repair_closed_shift_turnover", shiftId, amount, movementId), now = Date.now(), approvedBy = approval.record.approvedName || approval.record.approvedEmail || approval.record.approvedRole;
+    const movement = Financial.movement("shift_cash_to_custody", "shift", shiftId, [Financial.line("asset:cash_awaiting_deposit", amount, 0, "Confirmed closed-shift cash received"), Financial.line("asset:register_cash", 0, amount, "Closed-shift cash handed over")], {occurredAt:Number(shift.closeAt||now),actorName:approvedBy,approvalId:approval.id,repair:true,controlReason:"Manager confirmed omitted cash was physically received"});
+    const writes = Object.assign({}, approval.usedWrites, {[`cashCustody/${shiftId}`]:{shiftId,staff:financeText(shift.staff,100),amount,depositedAmount:0,remaining:amount,retainedFloat:Financial.money(shift.retainedFloat),status:"awaiting_deposit",closedAt:Number(shift.closeAt||now),movementId,source:"closed_shift_turnover_repair",schemaVersion:2},[`shifts/${shiftId}/turnoverCorrection`]:{amount,movementId,postedAt:now,postedBy:actor.uid,approvedBy,approvalId:approval.id,reason:"Confirmed cash received into Undeposited Collection",schemaVersion:1},[`operationalAudit/${now}_${shiftId}_turnover_repair`]:operationalAuditRecord("repair_closed_shift_turnover","shift",shiftId,actor,{amount,movementId,approvalId:approval.id,approvedBy})});
+    const committed = await commitFinancial(db,movementId,movement,actor,writes);
+    return {shiftId,amount,movementId,duplicate:committed.duplicate,repaired:!committed.duplicate};
   },
 );
 
