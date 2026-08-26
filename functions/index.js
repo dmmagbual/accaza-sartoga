@@ -547,6 +547,9 @@ exports.manageOrderArchive = onCall(
     const orderId = financeKey(data.orderId, "Order ID");
     const now = Date.now();
     if (action === "archive") {
+      if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) {
+        throw new HttpsError("permission-denied", "Only managers may archive orders.");
+      }
       const [orderSnap, archivedSnap] = await Promise.all([
         db.ref(`/orders/${orderId}`).get(), db.ref(`/archivedOrders/${orderId}`).get(),
       ]);
@@ -555,6 +558,10 @@ exports.manageOrderArchive = onCall(
         throw new HttpsError("not-found", "Order not found.");
       }
       const order = Object.assign({id: orderId}, orderSnap.val() || {});
+      if (order.shiftId) {
+        const shift = (await db.ref(`/shifts/${financeKey(order.shiftId, "Shift ID")}`).get()).val() || null;
+        if (shift && shift.status !== "closed") throw new HttpsError("failed-precondition", "Orders cannot be archived while their shift is open.");
+      }
       if (!["Completed", "Received", "Rejected"].includes(String(order.status || "")) && order.voided !== true) {
         throw new HttpsError("failed-precondition", "Only completed, received, rejected, or voided orders can be archived.");
       }

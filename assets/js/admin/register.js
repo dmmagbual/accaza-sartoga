@@ -101,9 +101,10 @@ function cashSwap(){
   };
 }
 /* ---------- Z-report computation ---------- */
-function computeZ(shift){
+function computeZ(shift,sourceOrders){
   var sales=[],voids=[],z={tx:0,gross:0,discounts:0,refunds:0,cashRefunds:0,net:0,byMethod:{},byChannel:{instore:0,online:0,grabfood:0,foodpanda:0},cashSales:0,voidCount:0,voidAmt:0,pending:0,pendingCount:0,managerPending:0,managerPendingCount:0,tips:0};
-  Object.keys(ordersMap).forEach(function(id){var o=ordersMap[id];if(!o||o.shiftId!==shift.id)return;
+  var source=sourceOrders||Object.keys(ordersMap).map(function(id){return Object.assign({id:id},ordersMap[id]);});
+  source.forEach(function(o){if(!o||o.shiftId!==shift.id)return;
     if(o.voided){z.voidCount++;z.voidAmt+=Number(o.total)||0;return;}
     if(['Completed','Received'].indexOf(o.status)<0)return;
     var gross=(o.subtotal!=null?Number(o.subtotal):Number(o.total))||0;var disc=Number(o.discount)||0;var ref=Number(o.refundAmount)||0;
@@ -628,8 +629,8 @@ function closeShift(){
   renderBlind();
 }
 async function finalizeClose(shift,counted,counts){
-  var z=computeZ(shift),closedAt=Date.now();z.countedCash=counted;z.variance=Math.round((counted-z.expectedCash)*100)/100;z.closeCount=counts;z.expectedDrawer=shift.drawer||null;z.cashToSettle=Math.max(0,Math.round((counted-z.retainedFloat)*100)/100);
   var saleList;try{saleList=await loadShiftTransactions(shift.id);}catch(_e){saleList=shiftSales(shift);}
+  var z=computeZ(shift,saleList),closedAt=Date.now();z.countedCash=counted;z.variance=Math.round((counted-z.expectedCash)*100)/100;z.closeCount=counts;z.expectedDrawer=shift.drawer||null;z.cashToSettle=Math.max(0,Math.round((counted-z.retainedFloat)*100)/100);
   var snapshot={schemaVersion:2,capturedAt:closedAt,calculation:'float + cash sales + tips - cash refunds + pay-ins - pay-outs',floatMode:shift.floatMode||(fixedFloatCfg!=null?'fixed':'opening-count'),configuredFloat:shift.configuredFloat!=null?Number(shift.configuredFloat):(fixedFloatCfg!=null?fixedFloatCfg:null),openingFloat:Number(shift.openingFloat)||0,retainedFloat:z.retainedFloat,tolerance:Number(toleranceCfg.cashPeso)||0,reconcileTotalOnly:reconcileTotalOnlyR(),tx:z.tx,gross:z.gross,discounts:z.discounts,refunds:z.refunds,cashRefunds:z.cashRefunds,net:z.net,cashSales:z.cashSales,tips:z.tips,payIns:z.payIns,payOuts:z.payOuts,expectedCash:z.expectedCash,countedCash:counted,variance:z.variance,cashToSettle:z.cashToSettle,byMethod:z.byMethod,byChannel:z.byChannel,voidCount:z.voidCount,voidAmt:z.voidAmt,pending:z.pending,pendingCount:z.pendingCount,openCount:shift.openCount||{},closeCount:counts||{},expectedDrawer:shift.drawer||{},payInEntries:(shift.payIns||[]),payOutEntries:(shift.payOuts||[]),floatException:shift.floatException||null,sales:saleList.map(function(o){return{id:o.id||'',time:o.time||'',timestamp:Number(o.timestamp)||0,total:Number(o.total)||0,channel:o.channel||'instore',payment:o.payment||'',payments:o.payments||null,refundAmount:Number(o.refundAmount)||0,refundPayments:o.refundPayments||null,refundHistory:o.refundHistory||null};})};
   var closed={status:'closed',closeAt:closedAt,openingFloat:shift.openingFloat,openCount:shift.openCount||null,closeCount:counts,drawerExpected:shift.drawer||null,tx:z.tx,gross:z.gross,discounts:z.discounts,refunds:z.refunds,cashRefunds:z.cashRefunds,tips:z.tips,net:z.net,byMethod:z.byMethod,voidCount:z.voidCount,voidAmt:z.voidAmt,payIns:z.payIns,payOuts:z.payOuts,expectedCash:z.expectedCash,countedCash:counted,variance:z.variance,byChannel:z.byChannel,retainedFloat:z.retainedFloat,cashToSettle:z.cashToSettle,pending:z.pending,pendingCount:z.pendingCount,floatMode:snapshot.floatMode,configuredFloat:snapshot.configuredFloat,zReport:snapshot};
   var a=A(),writes={};writes['shifts/'+shift.id]=Object.assign({},shift,closed);writes.posActiveShift=null;
