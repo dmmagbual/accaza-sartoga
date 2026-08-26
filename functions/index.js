@@ -232,7 +232,11 @@ exports.ensureBooksJournal = onCall(
     const cashMap = await booksCashAccountMap(db), daily = {}, singles = {}, review = {}, voidedSourceIds = BooksBridge.fullyVoidedSourceIds(movements);
     const movementIds = Object.keys(movements).sort((a, b) => Number(movements[a].occurredAt || 0) - Number(movements[b].occurredAt || 0) || a.localeCompare(b));
     movementIds.forEach((id) => {
-      const mv = Object.assign({id}, movements[id] || {}); if (!Array.isArray(mv.lines) || !mv.lines.length || !BooksBridge.includeInRecognizedBooks(mv, voidedSourceIds)) return;
+      const mv = Object.assign({id}, movements[id] || {}); if (!Array.isArray(mv.lines) || !mv.lines.length) return;
+      if (!BooksBridge.includeInAuthoritativeBooks(mv, voidedSourceIds, allOrders)) {
+        if (BooksBridge.isSaleMovement(mv)) review[`sales_authority_${id}`] = {movementId: id, type: String(mv.type || ""), sourceId: String(mv.sourceId || ""), accounts: [], detail: "Excluded from recognized sales because Admin Sales History has no qualifying completed/received order for this Finance movement. The immutable Finance evidence remains available for audit.", at: Date.now()};
+        return;
+      }
       const payable=payables[mv.sourceId]||{},derivedId=String(mv.sourceId||"").indexOf("ap_")===0?String(mv.sourceId).slice(3):String(mv.sourceId||""),purchaseInvoice=purchases[payable.purchaseInvoiceId]||purchases[mv.sourceId]||purchases[derivedId]||null,context={purchaseInvoice,inventory};
       const bucket = BooksBridge.bucketFor(mv), mapped = BooksBridge.mappedLines(mv, cashMap, context);
       if (mapped.unmapped.length) review[id] = {movementId: id, type: String(mv.type || ""), sourceId: String(mv.sourceId || ""), accounts: mapped.unmapped, at: Date.now()};

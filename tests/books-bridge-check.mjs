@@ -74,6 +74,11 @@ ok(voidSources.has('A')&&!voidSources.has('B'),'full void source detection is ex
 ok(!B.includeInRecognizedBooks({type:'order_sale',sourceType:'order',sourceId:'A'},voidSources),'voided sale is excluded from recognized Books');
 ok(!B.includeInRecognizedBooks({type:'orphan_order_reversal',sourceType:'order',sourceId:'A'},voidSources),'void correction chain is excluded with its source');
 ok(B.includeInRecognizedBooks({type:'order_refund',sourceType:'order',sourceId:'B'},voidSources),'non-void refund remains in recognized Books');
+const authorityOrders={B:{status:'Completed',paymentStatus:'confirmed'},P:{status:'Completed',paymentStatus:'pending'},V:{status:'Completed',paymentStatus:'confirmed'}};
+ok(B.includeInAuthoritativeBooks({type:'order_sale',sourceType:'order',sourceId:'B'},voidSources,authorityOrders),'qualified Admin sale was excluded from authoritative Books');
+ok(!B.includeInAuthoritativeBooks({type:'order_sale',sourceType:'order',sourceId:'ORPHAN'},voidSources,authorityOrders),'orphan Finance sale was recognized without an Admin order');
+ok(!B.includeInAuthoritativeBooks({type:'order_sale',sourceType:'order',sourceId:'P'},voidSources,authorityOrders),'pending Admin order was recognized as a sale');
+ok(B.includeInAuthoritativeBooks({type:'platform_payout_deposit',sourceType:'payout',sourceId:'PAY1'},voidSources,authorityOrders),'non-sale Finance adjustment was excluded');
 
 // helper to make a sale movement
 const t = Date.parse('2026-08-22T05:00:00Z'); // Manila 13:00 same day
