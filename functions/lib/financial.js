@@ -124,4 +124,20 @@ function postingDifference(before, after, type, sourceId, label) {
   return movement(type || "posting_correction", "order", sourceId, lines, {channel: after && after.channel || before && before.channel || ""});
 }
 
-module.exports = {money, safe, line, totals, assertBalanced, accountForMethod, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference};
+/* Rebuild a stored platform payout from its durable payout record. The same
+   deterministic payout_<id> movement is used by live settlement and repair. */
+function platformPayoutPosting(payout, definitions) {
+  payout = payout || {}; definitions = definitions || {};
+  const channel = safe(payout.channel).toLowerCase();
+  if (channel !== "grabfood" && channel !== "foodpanda") throw new Error("Platform payout channel is invalid.");
+  const expected = money(payout.expectedNet), actual = money(payout.actualPayout), allocations = payout.allocations || {}, meta = payout.allocationMeta || {}, refs = payout.allocationRefs || {};
+  const owingApplied = money(payout.owingApplied), owingCreated = money(payout.owing != null ? payout.owing : (actual < 0 ? -actual : 0));
+  const lines = [];
+  if (actual < 0) lines.push(line(`liability:platform_owing:${channel}`, 0, owingCreated, "Owing to platform (penalties exceeded payout)"));
+  else {lines.push(line(`asset:platform_clearing:${channel}`, actual, 0, "Actual payout clearing"));if (owingApplied > 0) lines.push(line(`liability:platform_owing:${channel}`, owingApplied, 0, "Recover prior owing to platform"));}
+  Object.keys(allocations).sort().forEach((id) => {const value=money(allocations[id]);if (!(value>0)) return;const def=meta[id]||definitions[id]||{},sourceRef=safe(def.sourceRef||refs[id]),name=safe(def.name||id),label=`${name}${sourceRef?` · ${sourceRef}`:""}`;if(def.type==="revenue")lines.push(line(`revenue:platform_variance:${id}`,0,value,label));else lines.push(line(`expense:platform_variance:${id}`,value,0,label));});
+  lines.push(line(`asset:platform_receivable:${channel}`, 0, expected, "Settle platform receivable"));
+  return movement("platform_payout_settlement", "platformPayout", safe(payout.id), lines, {occurredAt:Number(payout.settledAt||Date.now()),approvalId:safe(payout.approvalId),approvedBy:safe(payout.approvedBy),reconstructedFromPayoutRecord:payout.reconstructedFromPayoutRecord===true});
+}
+
+module.exports = {money, safe, line, totals, assertBalanced, accountForMethod, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, platformPayoutPosting};
