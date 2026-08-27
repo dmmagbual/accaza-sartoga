@@ -62,6 +62,7 @@ ok(B.mapAccount('cogs:legacy','instore',{}).code==='5090','unposted COGS→5090 
 ok(B.cashCodeForAccount({name:'Union Bank',type:'bank'})==='1011','Union Bank→1011');
 ok(B.cashCodeForAccount({name:'BDO',type:'bank'})==='1012','BDO→1012');
 ok(B.cashCodeForAccount({name:'G-Cash',type:'ewallet'})==='1020','G-Cash→1020');
+ok(B.cashCodeForAccount({name:'FoodPanda GCash',type:'ewallet'})==='1021','FoodPanda GCash→1021');
 ok(B.cashCodeForAccount({name:'Security Bank-4538',type:'bank'})==='1013','Security Bank 4538→1013');
 ok(B.cashCodeForAccount({name:'Security Bank-4389',type:'bank'})==='1014','Security Bank 4389→1014');
 const un = B.mapAccount('asset:unmapped_payment:foo','instore',cashMap);

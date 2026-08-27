@@ -101,6 +101,7 @@ function mapAccount(posAccount, channel, cashAccountMap) {
 /* Stable Books code for each live cash-flow account. Explicit config still wins. */
 function cashCodeForAccount(account) {
   const name = String(account && account.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (name.includes("foodpanda") && name.includes("gcash")) return "1021";
   if (name.includes("gcash") || name.includes("maya")) return "1020";
   if (name.includes("unionbank")) return "1011";
   if (name === "bdo" || name.startsWith("bdo")) return "1012";

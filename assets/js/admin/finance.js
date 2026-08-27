@@ -69,6 +69,7 @@ function isCashAcct(a){a=String(a||'');return a==='asset:register_cash'||a==='as
 function r2(n){return Math.round((Number(n)||0)*100)/100;}
 function lineDelta(m,pred){var s=0;(m.lines||[]).forEach(function(l){if(pred(String(l.account||'')))s+=(Number(l.debit)||0)-(Number(l.credit)||0);});return s;}
 function cashDelta(m){return r2(lineDelta(m,isCashAcct));}
+function isCashCorrection(m){return String(m&&m.sourceType||'')==='booksManualJournal'||/^manual_books_journal/.test(String(m&&m.type||''));}
 function stmtCategory(m,net){
   switch(m.type||''){
     case 'order_sale':return 'Sales';
@@ -103,7 +104,7 @@ function fullyReversedCashIds(to){
 function computeStatement(){
   var rg=stmtRange(),from=rg.from,to=rg.to;
   var beginBank={},endBank={},beginReg=0,endReg=0,beginPetty=0,endPetty=0,endRegDrawer=0,endAwaiting=0;
-  var add={},ded={},addSrc={},dedSrc={};
+  var add={},ded={},addSrc={},dedSrc={},corrections=0,correctionSrc=[];
   accList().forEach(function(x){
     var value=r2(x.opening),d=x.openingDate||from;if(Math.abs(value)<0.005||d>to)return;
     endBank[x.id]=r2((endBank[x.id]||0)+value);
@@ -120,9 +121,9 @@ function computeStatement(){
     endReg+=reg;endPetty+=petty;endRegDrawer+=lineDelta(m,function(a){return a==='asset:register_cash';});endAwaiting+=lineDelta(m,function(a){return a==='asset:cash_awaiting_deposit';});
     Object.keys(banks).forEach(function(id){endBank[id]=(endBank[id]||0)+banks[id];});
     if(before){beginReg+=reg;beginPetty+=petty;Object.keys(banks).forEach(function(id){beginBank[id]=(beginBank[id]||0)+banks[id];});}
-    else if(!(opening&&d===from)){var net=cashDelta(m);if(Math.abs(net)>=0.005){var cat=stmtCategory(m,net),tgt=net>0?add:ded,src=net>0?addSrc:dedSrc;tgt[cat]=r2((tgt[cat]||0)+Math.abs(net));(src[cat]=src[cat]||[]).push({date:d,amount:Math.abs(net),type:m.type||'',id:m.id});}}
+    else if(!(opening&&d===from)){var net=cashDelta(m);if(Math.abs(net)>=0.005){if(isCashCorrection(m)){corrections=r2(corrections+net);correctionSrc.push({date:d,amount:net,type:m.type||'',id:m.id});}else{var cat=stmtCategory(m,net),tgt=net>0?add:ded,src=net>0?addSrc:dedSrc;tgt[cat]=r2((tgt[cat]||0)+Math.abs(net));(src[cat]=src[cat]||[]).push({date:d,amount:Math.abs(net),type:m.type||'',id:m.id});}}}
   });
-  return {from:from,to:to,beginBank:beginBank,endBank:endBank,beginReg:r2(beginReg),endReg:r2(endReg),beginPetty:r2(beginPetty),endPetty:r2(endPetty),endRegDrawer:r2(endRegDrawer),endAwaiting:r2(endAwaiting),add:add,ded:ded,addSrc:addSrc,dedSrc:dedSrc};
+  return {from:from,to:to,beginBank:beginBank,endBank:endBank,beginReg:r2(beginReg),endReg:r2(endReg),beginPetty:r2(beginPetty),endPetty:r2(endPetty),endRegDrawer:r2(endRegDrawer),endAwaiting:r2(endAwaiting),add:add,ded:ded,addSrc:addSrc,dedSrc:dedSrc,corrections:r2(corrections),correctionSrc:correctionSrc};
 }
 function cfSrcRows(list){return (list||[]).slice().sort(function(a,b){return (a.date||'').localeCompare(b.date||'');}).map(function(e){return '<tr><td>'+esc(e.date)+'</td><td>'+esc(e.type)+'</td><td style="font-size:.62rem;color:var(--tl);">'+esc(e.id)+'</td><td class="r">'+peso(e.amount)+'</td></tr>';}).join('');}
 function cfCatBlock(cat,amt,list,color){return '<details style="margin:0;"><summary style="display:flex;justify-content:space-between;cursor:pointer;padding:4px 0;"><span>'+esc(cat)+'</span><span class="r" style="color:'+color+';font-weight:600;">'+peso(amt)+'</span></summary><div style="overflow-x:auto;margin:.1rem 0 .5rem;"><table class="pz-tbl"><thead><tr><th>Date</th><th>Type</th><th>Movement ID</th><th class="r">Amount</th></tr></thead><tbody>'+cfSrcRows(list)+'</tbody></table></div></details>';}
@@ -143,7 +144,7 @@ function statementHtml(){
   addKeys.forEach(function(k){totAdd+=s.add[k];});dedKeys.forEach(function(k){totDed+=s.ded[k];});totAdd=r2(totAdd);totDed=r2(totDed);
   var addHtml=addKeys.length?addKeys.map(function(k){return cfCatBlock(k,s.add[k],s.addSrc[k],'#2a9d5c');}).join(''):'<div class="az-note">No cash in this period.</div>';
   var dedHtml=dedKeys.length?dedKeys.map(function(k){return cfCatBlock(k,s.ded[k],s.dedSrc[k],'#c0392b');}).join(''):'<div class="az-note">No cash out this period.</div>';
-  var expectedEnd=r2(totBegin+totAdd-totDed),tie=Math.abs(expectedEnd-totEnd)<0.01;
+  var expectedEnd=r2(totBegin+totAdd-totDed+s.corrections),tie=Math.abs(expectedEnd-totEnd)<0.01,correctionHtml=s.correctionSrc.length?'<details style="margin:0;"><summary style="display:flex;justify-content:space-between;cursor:pointer;padding:4px 0;"><span>Manual Books corrections</span><span class="r" style="font-weight:600;">'+(s.corrections<0?'−':'')+peso(Math.abs(s.corrections))+'</span></summary><div style="overflow-x:auto;margin:.1rem 0 .5rem;"><table class="pz-tbl"><thead><tr><th>Date</th><th>Type</th><th>Movement ID</th><th class="r">Signed amount</th></tr></thead><tbody>'+s.correctionSrc.map(function(e){return '<tr><td>'+esc(e.date)+'</td><td>'+esc(e.type)+'</td><td style="font-size:.62rem;color:var(--tl);">'+esc(e.id)+'</td><td class="r">'+(e.amount<0?'−':'')+peso(Math.abs(e.amount))+'</td></tr>';}).join('')+'</tbody></table></div></details>':'<div class="az-note">No balance corrections in this period.</div>';
   var drift=[];accs.forEach(function(x){if(Math.abs(r2(s.endBank[x.id]||0)-acctBalance(x.id))>0.01)drift.push(esc(x.name));});
   var driftNote=drift.length?'<div class="az-note" style="color:#8a6d1b;margin-top:.4rem;">⚠ Ledger vs stored account balance differs for: '+drift.join(', ')+'. Run “Backfill / verify 3C financial ledger” under the audit trail below.</div>':'';
   return '<div class="pz-card" style="margin-bottom:1rem;">'
@@ -151,8 +152,9 @@ function statementHtml(){
    +'<div class="az-sec">Beginning balances · '+esc(s.from)+'</div><table class="pz-tbl"><tbody>'+beginRows+'<tr style="border-top:2px solid var(--cd);"><td><b>Total beginning cash</b></td><td class="r"><b>'+peso(totBegin)+'</b></td></tr></tbody></table>'
    +'<div class="az-sec" style="color:#2a9d5c;">Additions — money in</div>'+addHtml+'<table class="pz-tbl"><tbody><tr style="border-top:2px solid var(--cd);"><td><b>Total additions</b></td><td class="r"><b style="color:#2a9d5c;">'+peso(totAdd)+'</b></td></tr></tbody></table>'
    +'<div class="az-sec" style="color:#c0392b;">Deductions — money out</div>'+dedHtml+'<table class="pz-tbl"><tbody><tr style="border-top:2px solid var(--cd);"><td><b>Total deductions</b></td><td class="r"><b style="color:#c0392b;">'+peso(totDed)+'</b></td></tr></tbody></table>'
+   +'<div class="az-sec">Balance corrections — not receipts or payments</div>'+correctionHtml+'<table class="pz-tbl"><tbody><tr style="border-top:2px solid var(--cd);"><td><b>Net balance corrections</b></td><td class="r"><b>'+(s.corrections<0?'−':'')+peso(Math.abs(s.corrections))+'</b></td></tr></tbody></table>'
    +'<div class="az-sec">Ending balances · '+esc(s.to)+'</div><table class="pz-tbl"><tbody>'+endRows+'<tr style="border-top:2px solid var(--cd);"><td><b>Total ending cash</b></td><td class="r"><b>'+peso(totEnd)+'</b></td></tr></tbody></table>'
-   +'<div style="margin-top:.5rem;padding:.5rem .6rem;border-radius:6px;background:'+(tie?'#e8f5ec':'#fdecec')+';font-size:.8rem;color:'+(tie?'#155724':'#721c24')+';">'+(tie?'✓':'⚠')+' Cross-check: '+peso(totBegin)+' + '+peso(totAdd)+' − '+peso(totDed)+' = '+peso(expectedEnd)+(tie?' — ties to ending cash.':' — does NOT equal ending '+peso(totEnd)+'.')+'</div>'
+   +'<div style="margin-top:.5rem;padding:.5rem .6rem;border-radius:6px;background:'+(tie?'#e8f5ec':'#fdecec')+';font-size:.8rem;color:'+(tie?'#155724':'#721c24')+';">'+(tie?'✓':'⚠')+' Cross-check: '+peso(totBegin)+' + '+peso(totAdd)+' − '+peso(totDed)+' '+(s.corrections<0?'− ':'+ ')+peso(Math.abs(s.corrections))+' = '+peso(expectedEnd)+(tie?' — ties to ending cash.':' — does NOT equal ending '+peso(totEnd)+'.')+'</div>'
    +driftNote+'</div>';
 }
 function renderCashflow(){
@@ -161,7 +163,7 @@ function renderCashflow(){
   var total=accs.reduce(function(s,x){return s+acctBalance(x.id);},0);
   var acctCards=accs.length?accs.map(function(x){return '<div class="pz-card" style="flex:1;min-width:170px;"><div style="font-size:0.72rem;color:var(--tl);text-transform:uppercase;letter-spacing:0.04em;">'+esc(x.name)+' · '+esc(x.type||'bank')+'</div><div style="font-size:1.2rem;font-weight:700;color:var(--bd);">'+peso(acctBalance(x.id))+'</div><div style="font-size:0.7rem;color:var(--tl);">opened '+esc(x.openingDate||'')+' at '+peso(x.opening||0)+'</div></div>';}).join(''):'<div class="az-note" style="padding:0.6rem;">No accounts yet — add your bank accounts and e-wallets in the setup below.</div>';
   var unrec=Object.keys(payoutsMapCF).map(function(k){return Object.assign({id:k},payoutsMapCF[k]);}).filter(function(p){return !p.reversed&&!p.depositMovementId&&Number(p.actualPayout)>0;}).sort(function(a,b){return (b.settledAt||0)-(a.settledAt||0);});
-  var unrecHtml=unrec.length?('<div class="az-sec">Platform payouts to record</div><div class="pz-card" style="margin-bottom:1rem;"><table class="pz-tbl"><thead><tr><th>Settled</th><th>Platform</th><th class="r">Actual payout</th><th></th></tr></thead><tbody>'+unrec.map(function(p){return '<tr><td>'+esc(new Date(p.settledAt||0).toLocaleDateString("en-PH",{month:"short",day:"numeric"}))+'</td><td>'+esc(chLbl(p.channel))+'</td><td class="r">'+peso(p.actualPayout)+'</td><td class="r"><button class="pz-btn ok" data-recpay="'+esc(p.id)+'" style="padding:0.2rem 0.6rem;">Record deposit</button></td></tr>';}).join('')+'</tbody></table><div class="az-note">Records the payout as money IN to whichever bank/e-wallet you choose.</div></div>'):'';
+  var unrecHtml=unrec.length?('<div class="az-sec">Legacy platform payouts to record</div><div class="pz-card" style="margin-bottom:1rem;"><table class="pz-tbl"><thead><tr><th>Settled</th><th>Platform</th><th class="r">Actual payout</th><th></th></tr></thead><tbody>'+unrec.map(function(p){return '<tr><td>'+esc(new Date(p.settledAt||0).toLocaleDateString("en-PH",{month:"short",day:"numeric"}))+'</td><td>'+esc(chLbl(p.channel))+'</td><td class="r">'+peso(p.actualPayout)+'</td><td class="r"><button class="pz-btn ok" data-recpay="'+esc(p.id)+'" style="padding:0.2rem 0.6rem;">Record deposit</button></td></tr>';}).join('')+'</tbody></table><div class="az-note">Only older settlements appear here. New platform payouts post directly to the receiving bank or wallet selected during settlement.</div></div>'):'';
   var led=ledgerArr().filter(function(e){var d=e.date||'';return (cfAcctFilter==='all'||e.accountId===cfAcctFilter)&&(!cfFrom||d>=cfFrom)&&(!cfTo||d<=cfTo);}).sort(function(a,b){return (b.date||'').localeCompare(a.date||'')||(b.ts||0)-(a.ts||0);});
   var tin=led.filter(function(e){return e.dir==='in';}).reduce(function(s,e){return s+(Number(e.amount)||0);},0);
   var tout=led.filter(function(e){return e.dir==='out';}).reduce(function(s,e){return s+(Number(e.amount)||0);},0);
