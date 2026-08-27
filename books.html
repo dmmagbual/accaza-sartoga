@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<meta name="accaza-books-build" content="38"/>
+<meta name="accaza-books-build" content="39"/>
 <title>Accaza Books</title>
 <style>
 :root{
@@ -145,7 +145,7 @@ tr.group-account td{font-weight:800;background:#f3ece0;border-top:2px solid var(
   <div class="topbar-in">
     <div class="brand">
       <div class="logo">☕</div>
-      <div><b>Accaza Books</b><small>Coffee-shop accounting · build v38</small></div>
+      <div><b>Accaza Books</b><small>Coffee-shop accounting · build v39</small></div>
     </div>
     <span id="liveStatus" class="live-pill off" title="Live POS auto-capture status — click to sign in" onclick="App.signInPrompt()">● Connecting…</span>
     <span id="reviewBadge" class="live-pill warn" style="display:none" title="Unmapped POS accounts to review" onclick="App.go('journal')"></span>
@@ -165,7 +165,7 @@ tr.group-account td{font-weight:800;background:#f3ece0;border-top:2px solid var(
 <div class="tabs"><div class="tabs-in" id="tabs"></div></div>
 
 <div class="wrap"><div id="page" class="page"></div>
-  <div class="foot-note">Accaza Books · build v38 · double-entry, append-only ledger · shared server-authoritative Finance data</div>
+  <div class="foot-note">Accaza Books · build v39 · double-entry, append-only ledger · shared server-authoritative Finance data</div>
 </div>
 
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
@@ -596,14 +596,26 @@ const PAGES = {
       </div>`;
   },
 
+  repairPayoutDeposit(id,btn){
+    const payout=(window.__platformPayouts||{})[id];
+    if(!payout||!payout.reversed||!payout.depositMovementId||payout.depositReversalMovementId)return alert('This payout no longer has an orphaned deposit to repair.');
+    if(!window.__booksRepairPayout)return alert('Repair service is not ready — sign in and refresh Accaza Books.');
+    const reason=prompt('Correction reason','Deposit was recorded after the payout had already been reversed.');
+    if(!reason||!reason.trim())return;
+    if(!confirm('Post an audited correction for '+peso(payout.actualPayout)+'? This will restore Platform Payouts in Transit and remove the orphaned receipt from '+cfName(payout.accountId)+'. Original entries will remain visible.'))return;
+    btn.disabled=true;const old=btn.textContent;btn.textContent='Repairing…';
+    window.__booksRepairPayout({payoutId:id,amount:Number(payout.actualPayout)||0,reason:reason.trim()}).then(function(r){alert((r.duplicate?'This deposit was already repaired.':'Repair posted: '+peso(r.amount)+'.')+' The control exception will disappear when live Books refreshes.');}).catch(function(e){alert('Could not repair payout deposit: '+((e&&e.message)||e));btn.disabled=false;btn.textContent=old;});
+  },
+
   cashflow(){
     if(!window.__booksUser)return `<div class="page-head"><div><h2>Cash Flow</h2><p>Bank, wallet and cash movements</p></div></div><div class="empty"><div class="big">🏦</div><b>Sign in for live Cash Flow</b><br><span class="tiny">Cash Flow now lives in Finance / Books.</span></div>`;
     const s=cfStatement(),receiptRows=Object.keys(s.add).sort().map(k=>`<tr><td><span class="account-child">${esc(k)}</span></td><td class="num pos">${peso(s.add[k])}</td></tr>`).join('')||'<tr><td><span class="account-child muted">No receipts</span></td><td class="num muted">—</td></tr>',deductionRows=Object.keys(s.ded).sort().map(k=>`<tr><td><span class="account-child">${esc(k)}</span></td><td class="num neg">(${peso(s.ded[k])})</td></tr>`).join('')||'<tr><td><span class="account-child muted">No deductions</span></td><td class="num muted">—</td></tr>',correctionRows=s.correctionDetail.map(x=>`<tr><td><span class="account-child">${esc(x.type)}</span><div class="tiny muted">${esc(x.date)} · ${esc(x.id)}</div></td><td class="num">${x.net<0?'−':''}${peso(Math.abs(x.net))}</td></tr>`).join('')||'<tr><td><span class="account-child muted">No balance corrections</span></td><td class="num muted">—</td></tr>',balRows=obj=>s.keys.filter((k,i,a)=>a.indexOf(k)===i).map(k=>`<tr><td><span class="account-child">${esc(cfName(k))}</span></td><td class="num">${peso(obj[k]||0)}</td></tr>`).join(''),expected=r2(s.totBegin+s.totAdd-s.totDed+s.corrections),ties=Math.abs(expected-s.totEnd)<.01;
     const cards=s.accs.map(a=>`<div class="kpi"><div class="lbl">${esc(a.name)} · ${esc(a.type||'bank')}</div><div class="val">${peso(s.ending[a.id]||0)}</div><div class="sub">Opening ${a.openingDate||'—'} · ${peso(a.opening||0)} · <span class="linkish" onclick="App.cashAccountEdit('${a.id}')">edit</span></div></div>`).join('');
     const activity=s.detail.slice().reverse().slice(0,100).map(x=>`<tr><td>${x.date}</td><td>${esc(x.type)}<div class="tiny muted">${esc(x.id)}</div></td><td class="num ${x.net>=0?'pos':'neg'}">${x.net>=0?peso(x.net):'('+peso(-x.net)+')'}</td></tr>`).join('');
-    const payouts=Object.keys(window.__platformPayouts||{}).map(id=>Object.assign({id},window.__platformPayouts[id]||{})).filter(p=>!p.reversed&&!p.depositMovementId&&Number(p.actualPayout)>0),custody=Object.keys(window.__cashCustody||{}).map(id=>Object.assign({id},window.__cashCustody[id]||{})).filter(c=>Number(c.remaining)>0),depositRows=payouts.map(p=>`<tr><td>Platform payout · ${esc(p.channel||'')}</td><td>${p.settledAt?new Date(p.settledAt).toLocaleDateString('en-PH'):'—'}</td><td class="num">${peso(p.actualPayout)}</td><td><button class="btn sm" onclick="App.cfRecordDeposit('payout','${p.id}')">Deposit</button></td></tr>`).concat(custody.map(c=>`<tr><td>Register custody · ${esc(c.staff||c.shiftId||c.id)}</td><td>${c.closedAt?new Date(c.closedAt).toLocaleDateString('en-PH'):'—'}</td><td class="num">${peso(c.remaining)}</td><td><button class="btn sm" onclick="App.cfRecordDeposit('custody','${c.id}')">Deposit</button></td></tr>`)).join('');
+    const allPayouts=Object.keys(window.__platformPayouts||{}).map(id=>Object.assign({id},window.__platformPayouts[id]||{})),payouts=allPayouts.filter(p=>!p.reversed&&!p.depositMovementId&&Number(p.actualPayout)>0),orphanedPayoutDeposits=allPayouts.filter(p=>p.reversed&&p.depositMovementId&&!p.depositReversalMovementId&&Number(p.actualPayout)>0),custody=Object.keys(window.__cashCustody||{}).map(id=>Object.assign({id},window.__cashCustody[id]||{})).filter(c=>Number(c.remaining)>0),depositRows=payouts.map(p=>`<tr><td>Platform payout · ${esc(p.channel||'')}</td><td>${p.settledAt?new Date(p.settledAt).toLocaleDateString('en-PH'):'—'}</td><td class="num">${peso(p.actualPayout)}</td><td><button class="btn sm" onclick="App.cfRecordDeposit('payout','${p.id}')">Deposit</button></td></tr>`).concat(custody.map(c=>`<tr><td>Register custody · ${esc(c.staff||c.shiftId||c.id)}</td><td>${c.closedAt?new Date(c.closedAt).toLocaleDateString('en-PH'):'—'}</td><td class="num">${peso(c.remaining)}</td><td><button class="btn sm" onclick="App.cfRecordDeposit('custody','${c.id}')">Deposit</button></td></tr>`)).join(''),exceptionRows=orphanedPayoutDeposits.map(p=>`<tr><td><b>Deposit recorded after payout reversal</b><div class="tiny muted">${esc(p.channel||'platform')} · ${esc(p.id)}</div></td><td>${esc(cfName(p.accountId))}</td><td class="num neg">(${peso(p.actualPayout)})</td><td><button class="btn sm" onclick="App.repairPayoutDeposit('${p.id}',this)">Repair deposit</button></td></tr>`).join('');
     return `<div class="page-head"><div><h2>Cash Flow</h2><p>Authoritative cash statement · moved from Admin</p></div><div class="btn-row"><button class="btn" onclick="App.go('transactions')">Record transaction</button><button class="btn primary" onclick="App.cashAccountEdit('')">+ Cash account</button></div></div>
       <div class="hint">Beginning cash comes from movements before the selected start date. Cash on Hand and Register Cash Float use the same dated account split as the Balance Sheet; the reclassification does not change total cash.</div>
+      ${orphanedPayoutDeposits.length?`<div class="card" style="margin-bottom:1rem;border-color:#c96b62"><div class="card-pad"><div class="section-label" style="color:#9d3028">Financial control exceptions · ${orphanedPayoutDeposits.length}</div><div class="tiny muted">These deposits were posted after their payouts had already been reversed. Repairing appends an approved correction; original entries remain in the audit trail.</div></div><div class="tbl-wrap"><table><thead><tr><th>Issue</th><th>Cash account</th><th class="num">Amount</th><th></th></tr></thead><tbody>${exceptionRows}</tbody></table></div></div>`:''}
       <div class="kpis">${cards}</div>
       <div class="card card-pad" style="margin-bottom:1rem"><div class="page-head" style="margin-bottom:.6rem"><div><div class="section-label">Cash flow statement</div></div><div class="tiny">From <input type="date" value="${CF_FROM}" onchange="App.cfRange('from',this.value)"/> to <input type="date" value="${CF_TO}" onchange="App.cfRange('to',this.value)"/></div></div>
         <div class="tbl-wrap"><table><thead><tr><th>Cash movement</th><th class="num">Amount</th></tr></thead><tbody>
@@ -1098,7 +1110,7 @@ import {getFunctions, httpsCallable} from "https://www.gstatic.com/firebasejs/10
 const cfg={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 function setPill(text,cls){ const el=document.getElementById("liveStatus"); if(el){ el.textContent=text; el.className="live-pill "+cls; } }
 let app,db,auth;
-try{ app=initializeApp(cfg); db=getDatabase(app); auth=getAuth(app); var fns=getFunctions(app,"asia-southeast1"); window.__financeCmd=function(payload){ return httpsCallable(fns,"postFinancialCommand")(payload).then(function(r){return r.data;}); }; window.__fixedAsset=function(payload){ return httpsCallable(fns,"manageFixedAsset")(payload).then(function(r){return r.data;}); }; window.__booksSync=function(){var ensureLedger=httpsCallable(fns,"ensureFinancialLedger"),ensureJournal=httpsCallable(fns,"ensureBooksJournal");return ensureLedger({}).then(function(ledger){return ensureJournal({}).then(function(books){return Object.assign({},books.data,{ordersScanned:ledger.data.scanned,financePosted:ledger.data.posted,financeDuplicates:ledger.data.duplicates,orphanReversed:ledger.data.orphanReversed});});});}; window.__cashAccountSave=function(payload){return httpsCallable(fns,"manageCashAccount")(payload).then(function(r){return r.data;});}; window.__manageBooksAccount=function(payload){return httpsCallable(fns,"manageBooksAccount")(payload).then(function(r){return r.data;});}; window.__booksAuthReady=true; }
+try{ app=initializeApp(cfg); db=getDatabase(app); auth=getAuth(app); var fns=getFunctions(app,"asia-southeast1"); window.__financeCmd=function(payload){ return httpsCallable(fns,"postFinancialCommand")(payload).then(function(r){return r.data;}); }; window.__fixedAsset=function(payload){ return httpsCallable(fns,"manageFixedAsset")(payload).then(function(r){return r.data;}); }; window.__booksSync=function(){var ensureLedger=httpsCallable(fns,"ensureFinancialLedger"),ensureJournal=httpsCallable(fns,"ensureBooksJournal");return ensureLedger({}).then(function(ledger){return ensureJournal({}).then(function(books){return Object.assign({},books.data,{ordersScanned:ledger.data.scanned,financePosted:ledger.data.posted,financeDuplicates:ledger.data.duplicates,orphanReversed:ledger.data.orphanReversed});});});}; window.__cashAccountSave=function(payload){return httpsCallable(fns,"manageCashAccount")(payload).then(function(r){return r.data;});}; window.__manageBooksAccount=function(payload){return httpsCallable(fns,"manageBooksAccount")(payload).then(function(r){return r.data;});}; window.__booksRepairPayout=function(payload){if(!auth.currentUser)return Promise.reject(new Error('Sign in to Accaza Books first.'));return auth.currentUser.getIdToken(true).then(function(token){return httpsCallable(fns,"createManagerApproval")({action:'repair_reversed_payout_deposit',sourceId:payload.payoutId,amount:payload.amount,reason:payload.reason,managerIdToken:token});}).then(function(approval){return httpsCallable(fns,"repairReversedPayoutDeposit")({payoutId:payload.payoutId,reason:payload.reason,approvalId:approval.data.approvalId});}).then(function(r){return r.data;});}; window.__booksAuthReady=true; }
 catch(e){ setPill("● Offline (local only)","off");window.__booksLiveLoading=false;if(window.App&&App.render)App.render(); }
 if(auth){
   setPersistence(auth, browserLocalPersistence).catch(()=>{});
