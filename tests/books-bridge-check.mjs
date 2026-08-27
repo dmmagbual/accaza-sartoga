@@ -44,6 +44,8 @@ ok(B.mapAccount('revenue:sales_reversal','instore',cashMap).code==='4910','refun
 ok(B.mapAccount('liability:payable:po_1','instore',cashMap).code==='2000','payable→2000');
 ok(B.mapAccount('liability:due_to_owner:owner_1','instore',cashMap).code==='2050','owner/partner reimbursement liability→2050');
 ok(B.mapAccount('liability:platform_owing:grabfood','grabfood',cashMap).code==='2020','negative platform payout→2020 liability');
+ok(B.mapAccount('asset:platform_receivable:grabfood','grabfood',cashMap).code==='1100','platform receivable→1100 control account');
+ok(B.mapAccount('asset:platform_clearing:grabfood','grabfood',cashMap).code==='1050','platform payout clearing→1050 and cannot distort AR');
 ok(B.mapAccount('expense:cash_shortage','instore',{}).code==='3100','cash shortage→owner drawings');
 ok(B.mapAccount('inventory:legacy_receipt','instore',{}).code==='1290','unposted inventory receipt→1290 clearing');
 ok(B.mapAccount('liability:grni:legacy','instore',{}).code==='2090','unrecorded payable→2090 clearing');

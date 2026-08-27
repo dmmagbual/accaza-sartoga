@@ -13,9 +13,9 @@
   },
   "builds": {
     "admin": 336,
-    "books": 30,
+    "books": 31,
     "customer": 59,
-    "serviceWorkerCache": 255
+    "serviceWorkerCache": 256
   },
   "authoritativeFiles": [
     "admin.html",
