@@ -96,6 +96,7 @@ window.__accaza={
   correctPlatformPresettlement:function(command){return callables.correctPlatformPresettlement(command);},
   reversePlatformPayout:function(command){return callables.reversePlatformPayout(command);},
   setPlatformPayoutDate:function(command){return callables.setPlatformPayoutDate(command);},
+  manageStaffMessage:function(command){return callables.manageStaffMessage(command);},
   recordClientTelemetry:function(command){return callables.recordClientTelemetry(command);},
   getOperationalExceptions:function(){return callables.getOperationalExceptions({});},
   get menuItemsMap(){return menuItemsMap;},

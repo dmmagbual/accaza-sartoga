@@ -88,11 +88,13 @@ exports.notifyOnComplete = onValueUpdated(
 // new reservations, even when the admin app is closed. Tokens live under
 // /staffPushTokens/{uid}; dead tokens are pruned on send.
 // ---------------------------------------------------------------------------
-async function notifyStaff(db, title, body, link) {
-  const snap = await db.ref("/staffPushTokens").get();
-  const tokens = snap.val() || {};
+async function notifyStaff(db, title, body, link, audience) {
+  const [tokenSnap, adminsSnap] = await Promise.all([db.ref("/staffPushTokens").get(), db.ref("/admins").get()]);
+  const tokens = tokenSnap.val() || {}, admins = adminsSnap.val() || {}, target = String(audience || "all").toLowerCase();
   const messaging = getMessaging();
   await Promise.all(Object.keys(tokens).map(async (uid) => {
+    const rawRole=admins[uid],role=String(rawRole===true?"owner":(typeof rawRole==="string"?rawRole:(rawRole&&rawRole.role)||"staff")).toLowerCase();
+    if(target!=="all"&&!(target==="management"&&["owner","superadmin","admin","manager"].includes(role))&&!(target==="cashier"&&["cashier","staff"].includes(role))&&target!==role)return;
     const token = tokens[uid] && tokens[uid].token;
     if (!token) return;
     try {
@@ -455,11 +457,11 @@ function portalRoleValue(raw) {
 async function requirePortalUser(db, request) {
   if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "Staff login is required.");
   const snap = await db.ref(`/admins/${request.auth.uid}`).get();
-  const role = portalRoleValue(snap.val());
+  const raw=snap.val(),role = portalRoleValue(raw);
   if (!["owner", "superadmin", "admin", "manager", "staff", "cashier", "kitchen", "finance"].includes(role)) {
     throw new HttpsError("permission-denied", "This account is not authorized for the Accaza portal.");
   }
-  return {uid: request.auth.uid, role};
+  return {uid: request.auth.uid, role, name:financeText(raw&&typeof raw==="object"&&(raw.name||raw.displayName||raw.email)||request.auth.token&&request.auth.token.email||role,120)};
 }
 
 async function requirePortalPermission(db, request, permissions) {
@@ -472,6 +474,26 @@ async function requirePortalPermission(db, request, permissions) {
   }
   return portal;
 }
+
+exports.manageStaffMessage = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db=getDatabase(),actor=await requirePortalUser(db,request),data=request.data||{},action=financeText(data.action,30),messageId=financeKey(data.messageId,"Message ID"),now=Date.now();
+    if(action==="send"){
+      const title=financeText(data.title,100),body=financeText(data.body,1000),audience=financeText(data.audience||"all",30).toLowerCase(),priority=financeText(data.priority||"normal",20).toLowerCase()==="urgent"?"urgent":"normal";
+      if(!title||!body)throw new HttpsError("invalid-argument","Message title and body are required.");if(!["all","management","cashier","kitchen"].includes(audience))throw new HttpsError("invalid-argument","Select a valid audience.");
+      const existing=await db.ref(`/staffMessages/${messageId}`).get();if(existing.exists())return{messageId,duplicate:true};
+      const rateRef=db.ref(`/staffMessageRate/${actor.uid}`),rate=await rateRef.transaction((current)=>{const last=Number(current&&current.lastSentAt||0);if(now-last<15000)return;return{lastSentAt:now,messageId};});if(!rate.committed)throw new HttpsError("resource-exhausted","Please wait 15 seconds before sending another message.");
+      const record={title,body,audience,priority,ackRequired:data.ackRequired===true,senderUid:actor.uid,senderName:financeText(actor.name||actor.email||actor.role,120),senderRole:actor.role,createdAt:now,expiresAt:now+30*86400000,status:"active",schemaVersion:1};
+      await db.ref().update({[`staffMessages/${messageId}`]:record,[`operationalAudit/${now}_staff_message_${messageId}`]:operationalAuditRecord("send_staff_message","staffMessage",messageId,actor,{audience,priority,ackRequired:record.ackRequired})});
+      await notifyStaff(db,priority==="urgent"?`🚨 ${title}`:`📨 ${title}`,body.slice(0,180),"/admin.html#tab-inbox",audience);return{messageId,duplicate:false};
+    }
+    if(!["read","acknowledge"].includes(action))throw new HttpsError("invalid-argument","Staff message action is invalid.");
+    const message=(await db.ref(`/staffMessages/${messageId}`).get()).val();if(!message)throw new HttpsError("not-found","Staff message not found.");
+    const receiptRef=db.ref(`/staffMessageReceipts/${messageId}/${actor.uid}`);await receiptRef.transaction((current)=>{current=current||{userUid:actor.uid,userName:financeText(actor.name||actor.email||actor.role,120),role:actor.role};if(!current.readAt)current.readAt=now;if(action==="acknowledge"&&!current.acknowledgedAt)current.acknowledgedAt=now;current.updatedAt=now;return current;});
+    return{messageId,action};
+  },
+);
 
 // Release 6A: privacy-safe, bounded operational telemetry. Only aggregate
 // counters and timings are stored; no order/customer/payment content is accepted.
@@ -1446,6 +1468,16 @@ async function poolCustodyOutflow(db, value) {
   for (const row of rows) { if (need <= 0) break; const available = Financial.money(row.remaining), use = Financial.money(Math.min(need, available)); if (!(use > 0)) continue; allocations[row.id] = use; fromCustody = Financial.money(fromCustody + use); need = Financial.money(need - use); const next = Financial.money(available - use); writes[`cashCustody/${row.id}/remaining`] = next; writes[`cashCustody/${row.id}/status`] = next > 0 ? "partially_paid_out" : "paid_out"; writes[`cashCustody/${row.id}/paidOutAmount`] = Financial.money(Number(row.paidOutAmount || 0) + use); writes[`cashCustody/${row.id}/lastPaymentAt`] = Date.now(); }
   return {writes, fromCustody, shortfall: Financial.money(need), allocations};
 }
+
+async function availableCashOnHandAboveFloat(db) {
+  const [movementsSnap, settingsSnap, activeShiftSnap] = await Promise.all([db.ref("/financialMovements").get(), db.ref("/posSettings").get(), db.ref("/posActiveShift").get()]);
+  let gross = 0;
+  Object.values(movementsSnap.val() || {}).forEach((movement) => ((movement && movement.lines) || []).forEach((line) => {
+    if (line && line.account === "asset:register_cash") gross = Financial.money(gross + Financial.money(line.debit) - Financial.money(line.credit));
+  }));
+  const float = resolveRegisterFloat(settingsSnap.val(), activeShiftSnap.val()).amount;
+  return {gross: Financial.money(gross), float, available: Financial.money(Math.max(0, gross - float))};
+}
 function poolCustodyInflowRecord(cid, value, label, occurredAt, movementId) {
   return {[`cashCustody/${cid}`]: {shiftId: cid, staff: financeText(label, 100), amount: Financial.money(value), depositedAmount: 0, remaining: Financial.money(value), retainedFloat: 0, status: "awaiting_deposit", closedAt: Number(occurredAt || Date.now()), movementId, source: "pool_inflow", schemaVersion: 2}};
 }
@@ -1742,6 +1774,7 @@ exports.postFinancialCommand = onCall(
       if (!advanceId && savedAccount !== requestedAccount) throw new HttpsError("failed-precondition", "The selected payment account does not match the saved purchase record. Refresh and retry the same purchase.");
       if (!advanceId && (requestedAccount === "register" || requestedAccount === "cash_float")) throw new HttpsError("failed-precondition", "Register Cash is retired and Cash Float is controlled. Select Cash on Hand, Undeposited Collection, or an active bank/cash account.");
       const accountId = advanceId ? "" : (fromCashOnHand || fromUndeposited ? requestedAccount : accountIdFor(accounts, requestedAccount)), value = amount(invoice.total), date = financeDate(data.date), split = await purchaseInventoryLines(db, invoice, false); let cashAsset = fromCashOnHand ? "asset:register_cash" : fromUndeposited ? "asset:cash_awaiting_deposit" : `asset:cash_account:${accountId}`, custodyAllocations = {};
+      if (fromCashOnHand) {const cash = await availableCashOnHandAboveFloat(db);if (value > cash.available + 0.009) throw new HttpsError("failed-precondition", `Purchase exceeds available Cash on Hand by ${Financial.money(value-cash.available).toFixed(2)}. The protected Register Cash Float of ${cash.float.toFixed(2)} cannot be used.`);}
       if (fromUndeposited) {const custodyOut = await poolCustodyOutflow(db, value);if (custodyOut.shortfall > 0.009) throw new HttpsError("failed-precondition", `Purchase exceeds available Undeposited Collection by ${custodyOut.shortfall.toFixed(2)}.`);Object.assign(writes,custodyOut.writes);custodyAllocations=custodyOut.allocations;Object.keys(custodyOut.allocations).forEach((id)=>{writes[`cashCustody/${id}/lastPaymentMovementId`]=commandId;});}
       if (advanceId) {const [shiftsSnap,fundSnap]=await Promise.all([db.ref("/shifts").get(),db.ref(`/pettyCashVouchers/${advanceId}`).get()]),shifts=shiftsSnap.val()||{};let found=null;for(const shiftId of Object.keys(shifts)){const rows=Array.isArray(shifts[shiftId].payOuts)?shifts[shiftId].payOuts:[];const index=rows.findIndex((row)=>row&&row.id===advanceId&&row.type==="purchase_advance");if(index>=0){found={kind:"shift",shiftId,index,row:rows[index]};break;}}if(!found&&fundSnap.exists()){const row=fundSnap.val()||{};if(row.transactionType==="purchase_advance"&&row.status==="approved"&&!row.voided)found={kind:"revolving",row};}if(!found)throw new HttpsError("not-found","Purchase cash advance was not found.");const allocations=found.row.allocations||{};if(allocations[invoiceId])throw new HttpsError("already-exists","This purchase is already allocated to the selected cash advance.");const allocated=Financial.money(Object.values(allocations).reduce((sum,row)=>sum+Number(row&&row.amount||0),0)),remaining=Financial.money(Number(found.row.amount||0)-allocated);if(value>remaining+0.009)throw new HttpsError("failed-precondition",`Purchase exceeds the remaining cash advance of ${remaining}.`);const next=Financial.money(remaining-value),base=found.kind==="shift"?`shifts/${found.shiftId}/payOuts/${found.index}`:`pettyCashVouchers/${advanceId}`;cashAsset=`asset:purchase_cash_advance:${advanceId}`;writes[`${base}/allocations/${invoiceId}`]={purchaseInvoiceId:invoiceId,amount:value,supplier:financeText(invoice.supplier,120),ref:financeText(invoice.ref,120),allocatedAt:now,allocatedBy:actor.uid};writes[`${base}/allocatedAmount`]=Financial.money(allocated+value);writes[`${base}/remainingAmount`]=next;writes[`${base}/allocationStatus`]=next>0?"partially_allocated":"fully_allocated";if(!(next>0))writes[`${base}/completedAt`]=now;writes[`purchaseInvoices/${invoiceId}/purchaseAdvanceId`]=advanceId;writes[`purchaseInvoices/${invoiceId}/advanceSource`]=found.kind;}
       movement = Financial.movement("purchase_cash", "purchaseInvoice", invoiceId, split.concat([Financial.line(cashAsset, 0, value, invoice.supplier || "Inventory purchase")]), {occurredAt: Date.parse(`${date}T00:00:00+08:00`) || now, actorName: actor.role, accountId:advanceId?"purchase_advance":accountId, custodyAllocations});
