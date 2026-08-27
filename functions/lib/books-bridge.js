@@ -202,6 +202,8 @@ function buildSingle(mv, cashMap, context) {
       lines: lines.map((l) => ({code: l.code, debit: l.debit, credit: l.credit})),
       sources: {[mv.id]: true}, source: "pos-bridge", sourceType: String(mv.sourceType || ""), sourceId: String(mv.sourceId || ""),
       reversalOf: String(mv.reversalOf || ""), reversedByMovementId: String(mv.reversedByMovementId || ""),
+      correctsMovementId: String(mv.correctsMovementId || ""), correctionReplacementId: String(mv.correctionReplacementId || ""),
+      linkedPayableId: String(mv.linkedPayableId || ""), voided: mv.voided === true, reason: String(mv.reason || mv.correctionReason || ""),
     },
     unmapped,
   };
