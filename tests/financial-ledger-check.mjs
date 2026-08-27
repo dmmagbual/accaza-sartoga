@@ -35,6 +35,11 @@ const grabSettlement=F.movement('platform_payout_settlement','platformPayout','G
   F.line('asset:platform_receivable:grabfood',0,125,'Settle platform receivable')
 ],{approvalId:'APPROVAL-1'});
 balanced(grabSettlement,'Grab statement-only deductions');
+const rebuiltGrab=F.platformPayoutPosting({id:'GRAB-PAYOUT-1',channel:'grabfood',expectedNet:125,actualPayout:100,allocations:{va_marketing_success:15,va_ads:10},allocationMeta:{va_marketing_success:{name:'Marketing success',type:'expense'},va_ads:{name:'Ads',type:'expense'}},settledAt:1},{});
+balanced(rebuiltGrab,'rebuilt Grab payout');
+assert(rebuiltGrab.lines.some(x=>x.account==='asset:platform_receivable:grabfood'&&x.credit===125),'rebuilt payout did not clear the exact platform receivable');
+assert(rebuiltGrab.lines.some(x=>x.account==='asset:platform_clearing:grabfood'&&x.debit===100),'rebuilt payout lost actual clearing');
+assert(rebuiltGrab.lines.filter(x=>x.account.indexOf('expense:platform_variance:')===0).reduce((s,x)=>s+x.debit,0)===25,'rebuilt payout lost detailed variance allocations');
 const grabSettlementReversal=F.reverseMovement(Object.assign({id:'payout_GRAB-PAYOUT-1'},grabSettlement),'platform_payout_reversal','Reverse Grab payout');
 balanced(grabSettlementReversal,'Grab settlement reversal');
 for(const account of ['expense:platform_variance:va_marketing_success','expense:platform_variance:va_ads'])assert(grabSettlementReversal.lines.some(x=>x.account===account&&x.credit>0),`Grab settlement reversal did not reverse ${account}`);
