@@ -19,6 +19,8 @@ var TYPE_LABELS={
   revolving_fund_owner_withdrawal:'Owner withdrawal',
   revolving_fund_owner_withdrawal_void:'Owner withdrawal voided',
   revolving_fund_supplier_payment_return:'Supplier payment returned',
+  purchase_cash:'Inventory purchase disbursement',
+  purchase_cash_reversed:'Inventory purchase disbursement reversed',
   revolving_fund_retirement:'Revolving Fund folded in'
 };
 var CATEGORY_LABELS={operating_supplies:'Cleaning & operating supplies',office_supplies:'Office & administrative supplies',utilities:'Utilities',internet_phone:'Internet & phone',marketing:'Marketing & promotions',repairs:'Repairs & maintenance',bank_fees:'Bank & payment fees',rent:'Rent',salaries:'Salaries & wages',transport:'Transportation / delivery',staff_meals:'Staff meals / welfare',miscellaneous:'Other operating expense',other_expense:'Other operating expense',owner_draw:"Owner's Drawings",'Supplier payment pending inventory allocation':'Supplier payment pending inventory allocation'};
