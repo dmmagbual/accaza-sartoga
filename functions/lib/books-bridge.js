@@ -73,6 +73,7 @@ function mapAccount(posAccount, channel, cashAccountMap) {
     "asset:accumulated_depreciation": "1590", "expense:depreciation": "6090", "revenue:asset_disposal_gain": "4990", "expense:asset_disposal_loss": "6100",
   };
   if (exact[a]) return {code: exact[a], unmapped: false};
+  if (a.indexOf("liability:customer_change_refund:") === 0) return {code: "2030", unmapped: false};
   // Server-authorized manual journals already carry a validated Books code.
   // Preserve it exactly so a journal never falls through to Suspense merely
   // because the account is outside the inventory/cost subset.
