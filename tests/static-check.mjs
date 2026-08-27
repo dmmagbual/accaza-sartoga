@@ -255,6 +255,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   const offlineServerSource=fs.readFileSync(path.join(root,'functions','lib','offline-sync.js'),'utf8');
   const posSource=fs.readFileSync(path.join(root,'assets','js','admin','pos.js'),'utf8');
   for(const unit of ['pack','box','ream','roll','set'])if(!posSource.includes("'"+unit+"'"))fail(`Purchases new-item unit list is missing discrete packaging unit ${unit}`);
+  for(const marker of ['promptPurchaseItemMapping','Save mapping & continue','newInventoryAccount','newCostAccount','inventoryAccount:g.inventoryAccount','costAccount:g.costAccount'])if(!posSource.includes(marker))fail(`Purchases inline new-item accounting workflow is missing: ${marker}`);
   const editItemSource=(posSource.match(/function editIngredient\(id\)\{[\s\S]*?\/\* Brand breakdown/)||[])[0]||'';
   for(const marker of ['Stock item master','Item details','Inventory control','Actual cost · weighted average','Planning cost','Consumption rule','Adjust stock','Save changes'])if(!editItemSource.includes(marker))fail(`Stock Items professional edit-card marker missing: ${marker}`);
   if(editItemSource.includes('id="eiStock"')||editItemSource.includes('id="eiCost"')||editItemSource.includes('postMovements(['))fail('Stock Items edit card can still override ledger-controlled stock or actual WAC');
