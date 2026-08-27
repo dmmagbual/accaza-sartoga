@@ -113,14 +113,14 @@ function computeStatement(){
   var fullyReversed=fullyReversedCashIds(to);
   financialMovementArr().forEach(function(m){
     if(fullyReversed[m.id])return;
-    var d=dateFromTs(m.occurredAt||0);if(d>to)return;var before=d<from;
+    var d=dateFromTs(m.occurredAt||0);if(d>to)return;var opening=/^opening_balance/.test(String(m.type||'')),before=d<from||(opening&&d===from);
     var reg=lineDelta(m,function(a){return a==='asset:register_cash'||a==='asset:cash_awaiting_deposit';});
     var petty=lineDelta(m,function(a){return a==='asset:petty_cash';});
     var banks={};(m.lines||[]).forEach(function(l){var a=String(l.account||'');if(a.indexOf('asset:cash_account:')===0){var id=a.slice(19);banks[id]=(banks[id]||0)+(Number(l.debit)||0)-(Number(l.credit)||0);}});
     endReg+=reg;endPetty+=petty;endRegDrawer+=lineDelta(m,function(a){return a==='asset:register_cash';});endAwaiting+=lineDelta(m,function(a){return a==='asset:cash_awaiting_deposit';});
     Object.keys(banks).forEach(function(id){endBank[id]=(endBank[id]||0)+banks[id];});
     if(before){beginReg+=reg;beginPetty+=petty;Object.keys(banks).forEach(function(id){beginBank[id]=(beginBank[id]||0)+banks[id];});}
-    else{var net=cashDelta(m);if(Math.abs(net)>=0.005){var cat=stmtCategory(m,net),tgt=net>0?add:ded,src=net>0?addSrc:dedSrc;tgt[cat]=r2((tgt[cat]||0)+Math.abs(net));(src[cat]=src[cat]||[]).push({date:d,amount:Math.abs(net),type:m.type||'',id:m.id});}}
+    else if(!(opening&&d===from)){var net=cashDelta(m);if(Math.abs(net)>=0.005){var cat=stmtCategory(m,net),tgt=net>0?add:ded,src=net>0?addSrc:dedSrc;tgt[cat]=r2((tgt[cat]||0)+Math.abs(net));(src[cat]=src[cat]||[]).push({date:d,amount:Math.abs(net),type:m.type||'',id:m.id});}}
   });
   return {from:from,to:to,beginBank:beginBank,endBank:endBank,beginReg:r2(beginReg),endReg:r2(endReg),beginPetty:r2(beginPetty),endPetty:r2(endPetty),endRegDrawer:r2(endRegDrawer),endAwaiting:r2(endAwaiting),add:add,ded:ded,addSrc:addSrc,dedSrc:dedSrc};
 }
