@@ -7,7 +7,9 @@ export const INVENTORY_ACCOUNTS=[
 
 const ASSIGNABLE=new Set(INVENTORY_ACCOUNTS.slice(0,7).map(function(row){return row[0];}));
 const BOOK_CODES=new Set(INVENTORY_ACCOUNTS.map(function(row){return row[0];}));
+export const ROUNDING_TOLERANCE=0.01;
 function r2(value){return Math.round((Number(value)||0)*100)/100;}
+function withinRoundingTolerance(value){return Math.abs(Number(value)||0)<=ROUNDING_TOLERANCE+1e-9;}
 
 export function inventoryBookCode(account){
   const value=String(account||'');
@@ -50,9 +52,10 @@ export function reconcileInventoryBooks(itemRows,movements,cutoffExclusive){
       rowsByCode[code].booksValue=r2(rowsByCode[code].booksValue+(Number(line.debit)||0)-(Number(line.credit)||0));
     });
   });
-  const rows=INVENTORY_ACCOUNTS.map(function(row){const out=rowsByCode[row[0]];out.difference=r2(out.stockValue-out.booksValue);return out;});
+  const rows=INVENTORY_ACCOUNTS.map(function(row){const out=rowsByCode[row[0]];out.difference=r2(out.stockValue-out.booksValue);out.withinTolerance=withinRoundingTolerance(out.difference);return out;});
   if(unmapped.itemCount){unmapped.difference=r2(unmapped.stockValue);rows.push(unmapped);}
   const totals=rows.reduce(function(out,row){out.stockValue=r2(out.stockValue+row.stockValue);out.booksValue=r2(out.booksValue+row.booksValue);return out;},{stockValue:0,booksValue:0});
   totals.difference=r2(totals.stockValue-totals.booksValue);
-  return {rows:rows,totals:totals,unmappedCount:unmapped.itemCount,clearingBalance:rowsByCode['1290'].booksValue,balanced:Math.abs(totals.difference)<0.005&&unmapped.itemCount===0&&Math.abs(rowsByCode['1290'].booksValue)<0.005,names:names};
+  const balanced=withinRoundingTolerance(totals.difference)&&rows.filter(function(row){return row.code!=='1290'&&row.code!=='UNMAPPED';}).every(function(row){return row.withinTolerance;})&&unmapped.itemCount===0&&withinRoundingTolerance(rowsByCode['1290'].booksValue);
+  return {rows:rows,totals:totals,unmappedCount:unmapped.itemCount,clearingBalance:rowsByCode['1290'].booksValue,roundingTolerance:ROUNDING_TOLERANCE,balanced:balanced,names:names};
 }
