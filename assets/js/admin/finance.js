@@ -9,6 +9,7 @@ function pad(n){return(n<10?'0':'')+n;}
 function todayStr(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
 function chLbl(c){return c==='grabfood'?'GrabFood':c==='foodpanda'?'FoodPanda':c;}
 var accountsMap={},ledgerMap={},financialMovementsMap={},chartMap={},custodyMap={},arMap={},apMap={},payoutsMapCF={},ordersMapCF={},archMapCF={},financialAudit=null;
+var cashBalanceRefresh=null;
 var cfFrom=null,cfTo=null,cfAcctFilter='all';
 var CF_CATS=['Sales deposit','Platform payout','Purchases','Supplier payment','Rent','Utilities','Salaries','Owner draw','Capital in','Bank charges','AR collection','AP payment','Transfer','Other'];
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
@@ -23,9 +24,10 @@ function init(){var a=A();
   a.subscribe('platformPayouts',function(s){payoutsMapCF=s.val()||{};if(isTab('cashflow'))renderCashflow();});
   a.subscribe('orders',function(s){ordersMapCF=s.val()||{};if(isTab('receivables'))renderReceivables();if(isTab('cashflow'))renderCashflow();});
   a.subscribe('archivedOrders',function(s){archMapCF=s.val()||{};if(isTab('receivables'))renderReceivables();});
-  if(a.get&&a.ref&&a.db)a.get(a.ref(a.db,'financialMovements')).then(function(s){financialMovementsMap=s.val()||{};window.dispatchEvent(new CustomEvent('accaza:cash-balances-updated'));}).catch(function(e){console.error('Could not load current Finance Books cash balances',e);});
+  refreshCashBalances();
 }
-window.__accazaRegisterModule('finance',function(){});
+function refreshCashBalances(forceAfterCurrent){var a=A();if(cashBalanceRefresh)return forceAfterCurrent?cashBalanceRefresh.then(function(){return refreshCashBalances(false);}):cashBalanceRefresh;if(!a||!a.get||!a.ref||!a.db)return Promise.resolve(false);cashBalanceRefresh=a.get(a.ref(a.db,'financialMovements')).then(function(s){financialMovementsMap=s.val()||{};window.dispatchEvent(new CustomEvent('accaza:cash-balances-updated'));return true;}).catch(function(e){console.error('Could not refresh current Finance Books cash balances',e);return false;}).finally(function(){cashBalanceRefresh=null;});return cashBalanceRefresh;}
+window.__accazaRegisterModule('finance',function(tab){if(tab==='purchases')refreshCashBalances();});
 function accList(){return Object.keys(accountsMap).map(function(k){return Object.assign({id:k},accountsMap[k]);}).sort(function(a,b){return (a.order||0)-(b.order||0)||(a.name||'').localeCompare(b.name||'');});}
 function acctName(id){return (accountsMap[id]&&accountsMap[id].name)||'—';}
 function ledgerArr(){return Object.keys(ledgerMap).map(function(k){return Object.assign({id:k},ledgerMap[k]);});}
@@ -34,7 +36,7 @@ function chartList(){return Object.keys(chartMap).map(function(k){return Object.
 function custodyList(){return Object.keys(custodyMap).map(function(k){return Object.assign({id:k},custodyMap[k]);}).filter(function(x){return Number(x.remaining)>0;}).sort(function(a,b){return (a.closedAt||0)-(b.closedAt||0);});}
 function acctBalance(id){var b=Number((accountsMap[id]||{}).opening)||0;ledgerArr().forEach(function(e){if(e.accountId!==id)return;b+=(e.dir==='in'?1:-1)*(Number(e.amount)||0);});return Math.round(b*100)/100;}
 function currentCashBalance(id){var account=id==='cash_on_hand'?'asset:register_cash':id==='cash_float'?'asset:register_float':id==='undeposited'?'asset:cash_awaiting_deposit':id==='revolving'?'asset:petty_cash':'asset:cash_account:'+id,b=0;financialMovementArr().forEach(function(m){(m.lines||[]).forEach(function(l){if(l.account===account)b+=(Number(l.debit)||0)-(Number(l.credit)||0);});});return Math.round(b*100)/100;}
-function financeCommand(action,data,cb){var a=A();if(!a||!a.postFinancialCommand){alert('3C financial service is not available. Refresh the portal.');return null;}var id=(data&&data.commandId)||uid('fm_');var payload=Object.assign({},data||{},{action:action,commandId:id,actorName:(window.__posShift&&window.__posShift.staff)||'Admin'});a.postFinancialCommand(payload).then(function(r){if(cb)cb((r&&r.data)||r||{});}).catch(function(e){alert('Could not post: '+((e&&e.message)||(e&&e.code)||e)+'. Nothing was posted.');});return id;}
+function financeCommand(action,data,cb){var a=A();if(!a||!a.postFinancialCommand){alert('3C financial service is not available. Refresh the portal.');return null;}var id=(data&&data.commandId)||uid('fm_');var payload=Object.assign({},data||{},{action:action,commandId:id,actorName:(window.__posShift&&window.__posShift.staff)||'Admin'});a.postFinancialCommand(payload).then(function(r){return refreshCashBalances(true).then(function(){if(cb)cb((r&&r.data)||r||{});});}).catch(function(e){alert('Could not post: '+((e&&e.message)||(e&&e.code)||e)+'. Nothing was posted.');});return id;}
 function postLedger(o,cb){return financeCommand('manual',{date:o.date,accountId:o.accountId,dir:o.dir,offsetAccountId:o.offsetAccountId,amount:o.amount,party:o.party||'',ref:o.ref||'',source:o.source||'manual',linkId:o.linkId||'',note:o.note||''},cb);}
 function isCashM(m){return String(m||'').toLowerCase()==='cash';}
 function methodAcct(m){var mm=String(m||'').toLowerCase();var found=null;accList().forEach(function(x){(x.feedMethods||[]).forEach(function(z){if(String(z).toLowerCase()===mm)found=x.id;});});return found;}
@@ -279,7 +281,7 @@ function renderPayables(){
 window.__cf={
   hasAccounts:function(){return true;},
   accounts:function(){return [{id:'cash_on_hand',name:'Cash on Hand',type:'cash',balance:currentCashBalance('cash_on_hand')},{id:'undeposited',name:'Undeposited Collection',type:'cash custody',balance:currentCashBalance('undeposited')},{id:'cash_float',name:'Register Cash Float',type:'cash float',balance:currentCashBalance('cash_float'),disabled:true,disabledReason:'Controlled float — not available for purchases'}].concat(accList().filter(function(x){return x.active!==false;}).map(function(x){return {id:x.id,name:x.name,type:x.type,balance:currentCashBalance(x.id)};}));},
-  postOut:function(o){return new Promise(function(resolve,reject){var a=A();var id=o.commandId||uid('fm_'),isPurchase=o.source==='purchase'&&o.linkId;a.postFinancialCommand(isPurchase?{action:'purchase_paid',commandId:id,invoiceId:o.linkId,date:o.date||todayStr(),accountId:o.accountId,advanceId:o.advanceId||''}:{action:'manual',commandId:id,date:o.date||todayStr(),accountId:o.accountId,dir:'out',category:o.category||'Purchases',amount:Math.round((Number(o.amount)||0)*100)/100,party:o.party||'',ref:o.ref||'',source:o.source||'purchase',linkId:o.linkId||'',note:o.note||''}).then(function(){resolve(id);}).catch(reject);});},
+  postOut:function(o){return new Promise(function(resolve,reject){var a=A();var id=o.commandId||uid('fm_'),isPurchase=o.source==='purchase'&&o.linkId;a.postFinancialCommand(isPurchase?{action:'purchase_paid',commandId:id,invoiceId:o.linkId,date:o.date||todayStr(),accountId:o.accountId,advanceId:o.advanceId||''}:{action:'manual',commandId:id,date:o.date||todayStr(),accountId:o.accountId,dir:'out',category:o.category||'Purchases',amount:Math.round((Number(o.amount)||0)*100)/100,party:o.party||'',ref:o.ref||'',source:o.source||'purchase',linkId:o.linkId||'',note:o.note||''}).then(function(){return refreshCashBalances(true);}).then(function(){resolve(id);}).catch(reject);});},
   addPayable:function(o){return new Promise(function(resolve,reject){var a=A(),id=o.documentId||uid('ap_'),cmd=o.commandId||uid('fm_');a.postFinancialCommand({action:'create_payable',commandId:cmd,documentId:id,party:o.party||'',type:o.type||'inventory',amount:Math.round((Number(o.amount)||0)*100)/100,date:o.date||todayStr(),due:o.due||'',ref:o.ref||''}).then(function(){resolve(id);}).catch(reject);});}
 };
 })();
