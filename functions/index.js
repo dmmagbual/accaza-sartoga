@@ -1424,11 +1424,35 @@ function accountingTimestamp(date, fallback) {
   const value = financeDate(date);
   return Date.parse(`${value}T12:00:00+08:00`) || Number(fallback) || Date.now();
 }
-function booksCodeAccount(code, accounts) {
+// ---------------------------------------------------------------------------
+// Server-authoritative Books chart of accounts (replaces the hardcoded whitelist).
+// ---------------------------------------------------------------------------
+const BOOKS_TYPES = ["Asset","Liability","Equity","Income","COGS","Expense"];
+const SENSITIVE_BOOKS_CODES = new Set("1000 1005 1010 1011 1012 1013 1014 1020 1030 1040 1100 1110 1200 1210 1220 1230 1240 1260 1270 1280 1290 1900 2000 2020 2050 2090 3000 3100 3900 4000 4010 4020 4030 4900 4910".split(" "));
+const BOOKS_CHART_SEED_ROWS = [
+  ["1000","Cash on Hand","Asset"],["1005","Register Cash Float","Asset","Fixed imprest tied to POS Settings"],["1010","Other Bank Accounts","Asset"],["1011","Union Bank","Asset"],["1012","BDO","Asset"],["1013","Security Bank - 4538","Asset"],["1014","Security Bank - 4389","Asset"],["1020","GCash / Maya Wallet","Asset"],["1030","Undeposited Collection","Asset","Cash awaiting bank deposit"],["1040","Revolving Fund","Asset"],["1050","Platform Payouts in Transit","Asset","Settled platform payouts awaiting bank deposit"],["1100","Accounts Receivable - Platforms","Asset","Grab/Panda settlements owed to us"],["1110","Other Receivables","Asset"],["1190","Cash Shortage Under Review","Asset","Pending manager reconciliation"],["1200","Inventory - Coffee & Beans","Asset"],["1210","Inventory - Milk & Dairy","Asset"],["1220","Inventory - Syrups & Flavors","Asset"],["1230","Inventory - Cups & Packaging","Asset"],["1240","Inventory - Food & Pastries","Asset"],["1250","Input VAT (creditable)","Asset","Used when VAT-registered"],["1260","Creditable Withholding Tax","Asset","CWT withheld by platforms/customers"],["1270","Inventory - Operating & Cleaning Supplies","Asset"],["1280","Inventory - Office Supplies","Asset"],["1290","Inventory Receiving Clearing","Asset","Received inventory awaiting complete posting"],["1500","Equipment","Asset","Espresso machine, grinders"],["1510","Furniture & Fixtures","Asset"],["1590","Accumulated Depreciation","Asset","Contra-asset (credit balance)"],["1900","Suspense","Asset","Unmapped POS accounts land here for review"],
+  ["2000","Accounts Payable - Suppliers","Liability"],["2020","Due to Platforms","Liability","Negative Grab/FoodPanda settlements owed to the platform"],["2030","Customer Change / Refund Payable","Liability","Customer-related cash overages awaiting refund"],["2050","Due to Owner / Partners","Liability","Personally funded business costs awaiting reimbursement"],["2090","Unrecorded Payables Clearing","Liability","Supplier obligations awaiting complete posting"],["2100","Accrued Salaries","Liability"],["2200","Taxes Payable","Liability"],["2210","Output VAT Payable","Liability","Used when VAT-registered"],["2220","Percentage Tax Payable","Liability","Non-VAT percentage tax on gross receipts"],["2230","Withholding Tax Payable","Liability","EWT withheld from payments"],["2300","Loans Payable","Liability"],["2310","Loan 2","Liability"],["2320","Loan 3","Liability"],
+  ["3000","Owner's Capital","Equity"],["3050","Cash Float Clearing","Equity","POS shift float source"],["3100","Owner's Drawings","Equity","Contra-equity (debit balance)"],["3900","Retained Earnings","Equity"],
+  ["4000","Sales - In-store","Income"],["4010","Sales - Online (own)","Income"],["4020","Sales - GrabFood","Income"],["4030","Sales - FoodPanda","Income"],["4900","Discounts & Comps","Income","Contra-income (debit balance)"],["4910","Sales Returns & Refunds","Income","Existing void and refund adjustments"],["4990","Other Income","Income"],
+  ["5000","COGS - Coffee & Beans","COGS"],["5010","COGS - Milk & Dairy","COGS"],["5020","COGS - Syrups & Flavors","COGS"],["5030","COGS - Food & Pastries","COGS"],["5040","COGS - Cups & Packaging","COGS"],["5090","Unposted COGS Clearing","COGS","Costs awaiting complete item-level posting"],["5900","Wastage & Spoilage","COGS"],
+  ["6000","Salaries & Wages","Expense"],["6010","Rent","Expense"],["6020","Utilities","Expense","Electricity, water"],["6030","Internet & Phone","Expense"],["6040","Platform Commissions","Expense","Grab/Panda fees"],["6045","Platform Discounts","Expense","Grab/Panda-funded or shared discounts"],["6046","Platform Service VAT","Expense"],["6050","Marketing & Promotions","Expense"],["6060","Repairs & Maintenance","Expense"],["6070","Cleaning & Operating Supplies","Expense"],["6075","Office & Administrative Supplies","Expense"],["6080","Bank & Payment Fees","Expense"],["6085","Platform Penalties & Adjustments","Expense"],["6090","Depreciation","Expense"],["6100","Miscellaneous","Expense"],["6110","Cash Short / Over","Expense","Register variance"]
+];
+function booksChartSeed(){const out={};BOOKS_CHART_SEED_ROWS.forEach(function(r){out[r[0]]={code:r[0],name:r[1],type:r[2],note:r[3]||"",active:true,system:true,sensitive:SENSITIVE_BOOKS_CODES.has(r[0])};});return out;}
+async function ensureBooksChart(db){const seed=booksChartSeed();const snap=await db.ref("/booksChart").get();const current=snap.val()||{};const writes={};Object.keys(seed).forEach(function(code){if(!current[code])writes[`booksChart/${code}`]=Object.assign({},seed[code],{createdAt:Date.now(),schemaVersion:1});});if(Object.keys(writes).length)await db.ref().update(writes);return Object.assign({},seed,current);}
+const DEFAULT_BOOKS_CHART_MANAGERS=["danilomagbual@gmail.com","contact.mariadaniela@gmail.com"];
+function booksManagerKey(email){return String(email||"").toLowerCase().replace(/[^a-z0-9]+/g,"_");}
+async function ensureBooksChartManagers(db){const ref=db.ref("/config/booksChartManagers");const snap=await ref.get();let current=snap.val();if(!current||typeof current!=="object"||!Object.keys(current).length){const seed={};DEFAULT_BOOKS_CHART_MANAGERS.forEach(function(email){seed[booksManagerKey(email)]={email:String(email).toLowerCase(),active:true,seededAt:Date.now()};});await ref.set(seed);current=seed;}const allow=new Set();Object.keys(current).forEach(function(k){const row=current[k];if(row&&row.active!==false&&row.email)allow.add(String(row.email).toLowerCase());});return allow;}
+async function requireBooksChartManager(db,request){const portal=await requirePortalUser(db,request);const email=String(request.auth&&request.auth.token&&request.auth.token.email||"").toLowerCase();const allow=await ensureBooksChartManagers(db);if(!email||!allow.has(email))throw new HttpsError("permission-denied","Only the finance owners can manage the chart of accounts.");return Object.assign({},portal,{email:email});}
+function booksCodeAccount(code, accounts, booksChart) {
   code = financeText(code, 4);
   if (!/^\d{4}$/.test(code)) throw new HttpsError("invalid-argument", "Every journal line requires a valid four-digit account code.");
-  const allowed = new Set("1000 1005 1010 1011 1012 1013 1014 1020 1030 1040 1100 1110 1200 1210 1220 1230 1240 1250 1260 1270 1280 1290 1500 1510 1590 1900 2000 2020 2050 2090 2100 2200 2210 2220 2230 2300 3000 3050 3100 3900 4000 4010 4020 4030 4900 4910 4990 5000 5010 5020 5030 5040 5090 5900 6000 6010 6020 6030 6040 6045 6046 6050 6060 6070 6075 6080 6085 6090 6100 6110".split(" "));
-  if (!allowed.has(code)) throw new HttpsError("failed-precondition", `Books account ${code} is not in the approved chart of accounts.`);
+  const chartRow = booksChart && booksChart[code];
+  if (chartRow) {
+    if (chartRow.active === false) throw new HttpsError("failed-precondition", `Books account ${code} is inactive. Reactivate it in the chart of accounts before posting.`);
+  } else {
+    const allowed = new Set("1000 1005 1010 1011 1012 1013 1014 1020 1030 1040 1100 1110 1200 1210 1220 1230 1240 1250 1260 1270 1280 1290 1500 1510 1590 1900 2000 2020 2050 2090 2100 2200 2210 2220 2230 2300 2310 2320 3000 3050 3100 3900 4000 4010 4020 4030 4900 4910 4990 5000 5010 5020 5030 5040 5090 5900 6000 6010 6020 6030 6040 6045 6046 6050 6060 6070 6075 6080 6085 6090 6100 6110".split(" "));
+    if (!allowed.has(code)) throw new HttpsError("failed-precondition", `Books account ${code} is not in the approved chart of accounts.`);
+  }
   if (code === "1000") return {account:"asset:register_cash", cashKey:"register"};
   if (code === "1005") return {account:"asset:register_float", cashKey:"float"};
   if (code === "1030") return {account:"asset:cash_awaiting_deposit", cashKey:"undeposited"};
@@ -1794,9 +1818,10 @@ exports.postFinancialCommand = onCall(
       if(!memo)throw new HttpsError("invalid-argument","Memo / description is required.");
       if(rawLines.length<2||rawLines.length>20)throw new HttpsError("invalid-argument","A journal requires between two and twenty lines.");
       const lines=[],cashWrites=[];let debit=0,credit=0;
-      rawLines.forEach((row,index)=>{const dr=Financial.money(row&&row.debit),cr=Financial.money(row&&row.credit);if((dr>0&&cr>0)||(!(dr>0)&&!(cr>0)))throw new HttpsError("invalid-argument",`Journal line ${index+1} must contain either a debit or a credit.`);const mapped=booksCodeAccount(row.code,accounts);debit=Financial.money(debit+dr);credit=Financial.money(credit+cr);lines.push(Financial.line(mapped.account,dr,cr,memo));if(mapped.cashKey)cashWrites.push({mapped,dr,cr,index});});
+      const booksChart = await ensureBooksChart(db);
+      rawLines.forEach((row,index)=>{const dr=Financial.money(row&&row.debit),cr=Financial.money(row&&row.credit);if((dr>0&&cr>0)||(!(dr>0)&&!(cr>0)))throw new HttpsError("invalid-argument",`Journal line ${index+1} must contain either a debit or a credit.`);const mapped=booksCodeAccount(row.code,accounts,booksChart);debit=Financial.money(debit+dr);credit=Financial.money(credit+cr);lines.push(Financial.line(mapped.account,dr,cr,memo));if(mapped.cashKey)cashWrites.push({mapped,dr,cr,index});});
       if(Math.abs(debit-credit)>0.009||!(debit>0))throw new HttpsError("invalid-argument","Journal debits and credits must balance.");
-      const sensitive=rawLines.some((row)=>/^(1000|1005|1010|1011|1012|1013|1014|1020|1030|1040|1100|1110|1200|1210|1220|1230|1240|1260|1270|1280|1290|1900|2000|2020|2050|2090|3000|3100|3900|4000|4010|4020|4030|4900|4910)$/.test(String(row&&row.code||"")));
+      const sensitive=rawLines.some((row)=>{const c=String(row&&row.code||"");const entry=booksChart&&booksChart[c];return entry?entry.sensitive===true:SENSITIVE_BOOKS_CODES.has(c);});
       if(sensitive&&!reference)throw new HttpsError("invalid-argument","A source reference is required for cash, sales, platform, inventory, receivable, payable, suspense, or equity journals.");
       if(sensitive&&!['owner','superadmin','admin','manager'].includes(actor.role))throw new HttpsError("permission-denied","A privileged Finance role must post journals affecting cash, sales, platforms, inventory, receivables, payables, suspense, or equity.");
       const occurredAt=accountingTimestamp(date,now);
@@ -2241,6 +2266,62 @@ exports.ensureFinancialLedger = onCall(
     Object.values(repairedMovements).forEach((m)=>(m&&m.lines||[]).forEach((line)=>{for(const channel of ["grabfood","foodpanda"])if(line.account===`asset:platform_receivable:${channel}`)ledgerByChannel[channel]=Financial.money(ledgerByChannel[channel]+Financial.money(line.debit)-Financial.money(line.credit));}));
     const adminTotal=Financial.money(adminByChannel.grabfood+adminByChannel.foodpanda),ledgerTotal=Financial.money(ledgerByChannel.grabfood+ledgerByChannel.foodpanda),platformAr={adminByChannel,ledgerByChannel,adminTotal,ledgerTotal,difference:Financial.money(ledgerTotal-adminTotal),reconciled:Math.abs(ledgerTotal-adminTotal)<0.01,payoutsChecked:Object.keys(payouts).length,payoutsPosted,payoutDuplicates,settledOrdersLinked,voidBalancesCorrected,issues:payoutIssues.slice(0,200)};
     const scanned = Object.keys(all).length + Object.keys(shifts).length + Object.keys(vouchers).length + Object.keys(replenishments).length + Object.keys(accounts).length + Object.keys(receivables).length + Object.keys(payables).length + Object.keys(payouts).length + 1; await db.ref("/systemMaintenance/financialLedgerInitialized").set({at: Date.now(), by: actor.uid, scanned, posted, duplicates, skipped, orphanReversed, platformAr}); return {scanned, posted, duplicates, skipped, orphanReversed, platformAr};
+  },
+);
+
+exports.manageBooksAccount = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase();
+    const actor = await requireBooksChartManager(db, request);
+    const data = request.data || {};
+    const action = financeText(data.action, 20);
+    const chart = await ensureBooksChart(db);
+    if (action === "initialize" || action === "list" || !action) return {chart: chart, managerEmail: actor.email};
+    const now = Date.now();
+    function cleanAccount(input){const code=financeText(input&&input.code,4);if(!/^\d{4}$/.test(code))throw new HttpsError("invalid-argument","Account code must be exactly four digits.");const name=financeText(input&&input.name,100);const type=financeText(input&&input.type,12);if(!name)throw new HttpsError("invalid-argument","Account name is required.");if(!BOOKS_TYPES.includes(type))throw new HttpsError("invalid-argument","Account type must be one of: "+BOOKS_TYPES.join(", ")+".");return {code:code,name:name,type:type,note:financeText(input&&input.note,160)};}
+    if (action === "upsert") {
+      const clean = cleanAccount(data);
+      const ref = db.ref(`/booksChart/${clean.code}`);
+      const old = (await ref.get()).val();
+      const isSystem = !!(old && old.system === true);
+      const type = isSystem ? old.type : clean.type;
+      const record = {code: clean.code, name: clean.name, type: type, note: clean.note, active: data.active === false ? false : (old ? old.active !== false : true), system: isSystem, sensitive: !!(old && old.sensitive === true), createdAt: (old && old.createdAt) || now, createdBy: (old && old.createdBy) || actor.uid, updatedAt: now, updatedBy: actor.uid, updatedByEmail: actor.email, schemaVersion: 1};
+      await ref.set(record);
+      await db.ref(`/operationalAudit/${now}_booksacct_${old ? "edit" : "add"}_${clean.code}`).set(operationalAuditRecord(old ? "edit_books_account" : "add_books_account", "booksChart", clean.code, actor, {name: record.name, type: record.type, email: actor.email}));
+      return {account: record, created: !old};
+    }
+    if (action === "deactivate" || action === "reactivate") {
+      const code = financeText(data && data.code, 4);
+      if(!/^\d{4}$/.test(code))throw new HttpsError("invalid-argument","A four-digit account code is required.");
+      const ref = db.ref(`/booksChart/${code}`);
+      const old = (await ref.get()).val();
+      if (!old) throw new HttpsError("not-found", `Books account ${code} was not found.`);
+      if (action === "deactivate" && old.system === true) throw new HttpsError("failed-precondition", "System accounts are required by the ledger and can\u2019t be deactivated. Rename it instead if needed.");
+      const active = action === "reactivate";
+      await ref.update({active: active, updatedAt: now, updatedBy: actor.uid, updatedByEmail: actor.email});
+      await db.ref(`/operationalAudit/${now}_booksacct_${action}_${code}`).set(operationalAuditRecord(action + "_books_account", "booksChart", code, actor, {email: actor.email}));
+      return {account: Object.assign({}, old, {active: active})};
+    }
+    if (action === "import") {
+      const rows = Array.isArray(data.accounts) ? data.accounts.slice(0, 300) : [];
+      const results = {added: [], skipped: [], conflicts: []};
+      for (const row of rows) {
+        let clean;
+        try { clean = cleanAccount(row); } catch (e) { results.skipped.push({code: row && row.code, reason: e.message}); continue; }
+        const existing = (await db.ref(`/booksChart/${clean.code}`).get()).val();
+        if (existing) {
+          if (existing.name !== clean.name || existing.type !== clean.type) results.conflicts.push({code: clean.code, server: {name: existing.name, type: existing.type}, local: {name: clean.name, type: clean.type}});
+          else results.skipped.push({code: clean.code, reason: "already present"});
+          continue;
+        }
+        await db.ref(`/booksChart/${clean.code}`).set({code: clean.code, name: clean.name, type: clean.type, note: clean.note, active: true, system: false, sensitive: false, createdAt: now, createdBy: actor.uid, updatedAt: now, updatedBy: actor.uid, updatedByEmail: actor.email, schemaVersion: 1});
+        results.added.push(clean.code);
+      }
+      if (results.added.length) await db.ref(`/operationalAudit/${now}_booksacct_import`).set(operationalAuditRecord("import_books_accounts", "booksChart", "import", actor, {added: results.added, email: actor.email}));
+      return results;
+    }
+    throw new HttpsError("invalid-argument", "Unknown chart action.");
   },
 );
 
