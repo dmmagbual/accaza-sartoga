@@ -107,6 +107,13 @@ let badTender=false;try{F.reversalPosting({id:'O4',channel:'instore',payment:'Ca
 
 const transfer=F.movement('cash_transfer','transfer','T1',[F.line('asset:to',50,0,'in'),F.line('asset:from',0,50,'out')]);
 balanced(transfer,'transfer');
+const undepositedPurchase=F.movement('purchase_cash','purchaseInvoice','PINV1',[F.line('coa:1280',1375,0,'Office supplies inventory'),F.line('asset:cash_awaiting_deposit',0,1375,'Inventory purchase disbursement')]);
+balanced(undepositedPurchase,'Undeposited Collection purchase');
+assert(undepositedPurchase.lines.some(x=>x.account==='coa:1280'&&x.debit===1375),'Undeposited purchase did not debit the item inventory asset');
+assert(undepositedPurchase.lines.some(x=>x.account==='asset:cash_awaiting_deposit'&&x.credit===1375),'Undeposited purchase did not credit Undeposited Collection');
+const undepositedPurchaseReverse=F.reverseMovement(undepositedPurchase,'purchase_cash_reversed','Reverse purchase');
+balanced(undepositedPurchaseReverse,'Undeposited Collection purchase reversal');
+assert(undepositedPurchaseReverse.lines.some(x=>x.account==='asset:cash_awaiting_deposit'&&x.debit===1375),'Purchase reversal did not restore Undeposited Collection');
 let rejected=false;try{F.movement('bad','test','B1',[F.line('asset:x',10,0,'bad')]);}catch(_e){rejected=true;}assert(rejected,'unbalanced movement was accepted');
 
 console.log('PASS: Release 3C/3D split sale, online direct payment, platform receivable, actual refund tenders, transfer, and balancing checks passed.');
