@@ -135,6 +135,7 @@ try{
   if(!rulesRaw.includes('"$uid": {')||!rulesRaw.includes('auth.uid === $uid'))fail('UID-owned customer profile rules missing');
 
   const functionsSource=fs.readFileSync(path.join(root,'functions','index.js'),'utf8');
+  const booksBridgeSource=fs.readFileSync(path.join(root,'functions','lib','books-bridge.js'),'utf8');
 if(!functionsSource.includes('exports.createOnlineOrder = onCall'))fail('createOnlineOrder callable missing');
 if(functionsSource.includes('defineBoolean("ENFORCE_APP_CHECK"'))fail('App Check enforcement must be passed to CallableOptions as a real Boolean, not a truthy parameter object');
 if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check enforcement environment Boolean guard missing');
@@ -166,7 +167,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!adminSource.includes("'validateRecipeDefinition'")||!adminSource.includes('validateRecipeDefinition:validateRecipeDefinitionCall'))fail('admin recipe save is not connected to the server validator');
   if(!adminSource.includes('Costing().normalizeRecipe(raw,inventoryMap)'))fail('admin recipe save does not run shared normalization');
   for(const marker of ['exports.postFinancialCommand = onCall','exports.settlePlatformPayout = onCall','exports.processOrderAdjustment = onCall','exports.ensureFinancialLedger = onCall','exports.ensureBooksJournal = onCall','exports.onOrderFinancialPosting = onValueWritten','exports.preservePostedOrderOnDelete = onValueDeleted'])if(!functionsSource.includes(marker))fail(`Release 3C server marker missing: ${marker}`);
-  for(const marker of ['Financial.platformPayoutPosting','platform_payout_movement_rebuilt','payout_order_missing','platformAr','platform_ar_control_mismatch'])if(!functionsSource.includes(marker))fail(`Platform AR reconciliation marker missing: ${marker}`);
+  for(const marker of ['Financial.platformPayoutPosting','platform_payout_movement_rebuilt','payout_order_missing','platformAr','platform_ar_control_mismatch','void_balance_correction','voided_platform_order_balance_corrected'])if(!functionsSource.includes(marker))fail(`Platform AR reconciliation marker missing: ${marker}`);
+  if(!booksBridgeSource.includes('asset:platform_clearing:')||!booksBridgeSource.includes('code: "1050"'))fail('Platform payout clearing is not separated from account 1100');
   for(const marker of ['action === "inventory_opening_balance"','inventoryReconciliations/openingBalance','expectedDifference','movementId="inventory_opening_balance"'])if(!functionsSource.includes(marker))fail(`Inventory opening-balance control missing: ${marker}`);
   if(adminSource.includes('function reconcileAuto()'))fail('retired browser-authored financial reconciliation still exists');
   if(!adminSource.includes("'postFinancialCommand'")||!adminSource.includes("'settlePlatformPayout'")||!adminSource.includes('postFinancialCommand:postFinancialCommandCall'))fail('Release 3C callable bridge missing');

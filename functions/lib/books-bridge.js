@@ -79,7 +79,8 @@ function mapAccount(posAccount, channel, cashAccountMap) {
   if (/^coa:\d{4}$/.test(a)) return {code: a.slice(4), unmapped: false};
   if (a === "revenue:sales") return {code: CHANNEL_SALES[String(channel || "instore").toLowerCase()] || "4000", unmapped: false};
   if (a.indexOf("asset:cash_account:") === 0) { const id = a.split(":")[2] || ""; return {code: cashAccountMap[id] || "1010", unmapped: false}; }
-  if (a.indexOf("asset:platform_receivable:") === 0 || a.indexOf("asset:platform_clearing:") === 0) return {code: "1100", unmapped: false};
+  if (a.indexOf("asset:platform_receivable:") === 0) return {code: "1100", unmapped: false};
+  if (a.indexOf("asset:platform_clearing:") === 0) return {code: "1050", unmapped: false};
   if (a.indexOf("asset:receivable:") === 0) return {code: "1110", unmapped: false};
   if (a.indexOf("asset:fixed_asset:") === 0) return {code: a.split(":")[2] === "furniture" ? "1510" : "1500", unmapped: false};
   if (a.indexOf("inventory:") === 0) return {code: "1290", unmapped: true};
