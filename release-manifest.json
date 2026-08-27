@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 342,
+    "admin": 344,
     "books": 34,
     "customer": 59,
-    "serviceWorkerCache": 262
+    "serviceWorkerCache": 264
   },
   "authoritativeFiles": [
     "admin.html",
@@ -46,6 +46,7 @@
     "assets/js/admin/overview-command.mjs",
     "assets/js/admin/overview-insights.mjs",
     "assets/js/admin/module-loader.js",
+    "assets/js/admin/staff-inbox.js",
     "assets/js/admin/pos.js",
     "assets/js/admin/register.js",
     "assets/js/admin/analytics.js",
@@ -100,6 +101,7 @@
     "recordPlatformCatchup",
     "reversePlatformPayout",
     "setPlatformPayoutDate"
+    ,"manageStaffMessage"
     ,"repairClosedShiftTurnover"
   ],
   "requiredProtectedNodes": [
@@ -121,6 +123,8 @@
     "fixedAssets",
     "platformRefIndex",
     "platformRefDuplicates"
+    ,"staffMessages"
+    ,"staffMessageReceipts"
   ],
   "verification": {
     "localQualityGate": "passed_2026-08-14",
