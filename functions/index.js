@@ -530,10 +530,10 @@ exports.getOperationalExceptions = onCall(
     const db = getDatabase(), actor = await requirePortalUser(db, request);
     if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Operational exceptions are restricted to management accounts.");
     const now = Date.now(), days = [];for (let offset = 0; offset < 7; offset++) days.push(financeDateFromTimestamp(now - offset * 86400000));
-    const [activeSnap, ordersSnap, offlineSnap, custodySnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
-    const orders = ordersSnap.val() || {}, financialPairs = await Promise.all(Object.keys(orders).slice(0, 100).map(async (id) => {const snap = await db.ref(`/financialMovements/sale_${id}`).get();return [id, snap.exists() ? snap.val() : null];}));
-    const financialMovements = {};financialPairs.forEach(([id, value]) => {if (value) financialMovements[`sale_${id}`] = value;});const telemetry = {};days.forEach((day, i) => {telemetry[day] = telemetrySnaps[i].val() || {};});
-    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements, telemetry}, now);
+    const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
+    const orders = ordersSnap.val() || {},orderIds=Object.keys(orders).slice(0,100),financialPairs=await Promise.all(orderIds.map(async(id)=>{const snap=await db.ref(`/financialMovements/sale_${id}`).get();return[id,snap.exists()?snap.val():null];}));
+    const financialMovements = {},inventoryMovementEvidence={};financialPairs.forEach(([id, value]) => {if (value) financialMovements[`sale_${id}`] = value;});Object.values(inventoryMovementSnap.val()||{}).forEach(m=>{if(m&&m.sourceType==="order"&&m.sourceId)inventoryMovementEvidence[m.sourceId]=true;});const telemetry = {};days.forEach((day, i) => {telemetry[day] = telemetrySnaps[i].val() || {};});
+    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry}, now);
   },
 );
 
@@ -2685,16 +2685,16 @@ exports.ensureInventoryLedger = onCall(
 );
 
 exports.onOrderFinalize = onValueWritten(
-  {ref: "/orders/{orderId}/status", region: "asia-southeast1", retry: true},
+  // Watch the complete order. A later POS retry can replace the order after
+  // finalization and accidentally drop the confirmation metadata. Re-running
+  // is safe because every ingredient movement has a deterministic ID.
+  {ref: "/orders/{orderId}", region: "asia-southeast1", retry: true},
   async (event) => {
-    const after = event.data.after.val();
-    if (after !== "Completed" && after !== "Received") return;
-
     const orderId = event.params.orderId;
     const db = getDatabase();
     const oref = db.ref("/orders/" + orderId);
-    const o = (await oref.get()).val();
-    if (!o || !o.lineItems) return;
+    const o = event.data.after.val();
+    if (!o || (o.status !== "Completed" && o.status !== "Received") || !o.lineItems) return;
     if (o.inventoryDeducted && o.inventoryLedgerVersion === 1) return;
 
     try {
