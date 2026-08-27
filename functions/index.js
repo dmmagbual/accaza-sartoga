@@ -166,6 +166,13 @@ async function booksCashAccountMap(db) {
   return map;
 }
 
+async function booksMovementContext(db,mv){
+  const sourceId=String(mv&&mv.sourceId||"");let purchaseInvoice=null;
+  if(sourceId){purchaseInvoice=(await db.ref(`/purchaseInvoices/${sourceId}`).get()).val()||null;if(!purchaseInvoice){const payable=(await db.ref(`/payables/${sourceId}`).get()).val()||{},derivedId=sourceId.indexOf("ap_")===0?sourceId.slice(3):sourceId,invoiceId=String(payable.purchaseInvoiceId||derivedId);purchaseInvoice=(await db.ref(`/purchaseInvoices/${invoiceId}`).get()).val()||null;}}
+  if(!purchaseInvoice)return {};
+  return {purchaseInvoice,inventory:(await db.ref("/inventory").get()).val()||{}};
+}
+
 exports.mirrorPosMovementToBooks = onValueCreated(
   {ref: "/financialMovements/{movementId}", region: "asia-southeast1"},
   async (event) => {
@@ -175,6 +182,7 @@ exports.mirrorPosMovementToBooks = onValueCreated(
     const db = getDatabase();
     const cashMap = await booksCashAccountMap(db);
     const bucket = BooksBridge.bucketFor(mv);
+    let context={};
     if (bucket.mode === "daily") {
       const ref = db.ref(`/books/journal/${bucket.key}`);
       await ref.transaction((cur) => {
@@ -183,12 +191,12 @@ exports.mirrorPosMovementToBooks = onValueCreated(
       });
       await ref.child("updatedAt").set(Date.now());
     } else {
-      const built = BooksBridge.buildSingle(mv, cashMap);
+      context=await booksMovementContext(db,mv);const built = BooksBridge.buildSingle(mv, cashMap, context);
       const ref = db.ref(`/books/journal/${built.entry.id}`);
       const existing = await ref.get();
       if (!existing.exists()) { built.entry.createdAt = Date.now(); await ref.set(built.entry); }
     }
-    const unmapped = BooksBridge.mappedLines(mv, cashMap).unmapped;
+    const unmapped = BooksBridge.mappedLines(mv, cashMap, context).unmapped;
     await flagUnmappedBooks(db, mv, unmapped);
   },
 );

@@ -115,6 +115,10 @@ ok(built.entry.id==='purchase_ap_po9','single entry keyed by movement id');
 ok(B.linesBalanced(built.entry.lines),'discrete purchase entry balances');
 ok(built.entry.lines.some(l=>l.code==='2000'&&l.credit===1000),'payable→2000 credit 1000');
 ok(built.unmapped.some(u=>u.account==='inventory:beans'),'unknown inventory account flagged unmapped');
+const readablePurchase=B.buildSingle({id:'purchase_cash_pinv_1',type:'purchase_cash',sourceType:'purchaseInvoice',sourceId:'pinv_1',occurredAt:t,lines:[{account:'coa:1200',debit:413,credit:0},{account:'asset:register_cash',debit:0,credit:413}]},cashMap,{purchaseInvoice:{supplier:'ABC Supplier',ref:'INV-42',lines:[{itemName:'Coffee beans',qty:2,unit:'kg',total:413}]},inventory:{}});
+ok(readablePurchase.entry.ref==='Purchase — ABC Supplier','purchase journal uses supplier description instead of internal ID');
+ok(readablePurchase.entry.memo==='2 kg Coffee beans · Invoice INV-42','purchase journal shows item quantity, description and invoice reference');
+ok(readablePurchase.entry.sourceId==='pinv_1','purchase journal retains source ID for audit tracing');
 
 // 6) COGS leg: order cogs snapshot -> Dr COGS / Cr Inventory (account strings; codes via mapAccount)
 const order = {channel:"instore", cogsSnapshot:41.5, cogsCategorySnapshot:{beverage:30, food:10, packaging:1.5, directLabor:0, unallocated:0}, completedAt: Date.parse("2026-08-22T05:00:00Z")};

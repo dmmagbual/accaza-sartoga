@@ -185,13 +185,19 @@ function applyDaily(current, mv, cashMap) {
 }
 
 /* Build a discrete journal entry for a non-sale movement. */
+function purchaseJournalText(mv, context) {
+  const invoice=context&&context.purchaseInvoice;if(!invoice)return null;
+  const rows=Array.isArray(invoice.lines)?invoice.lines:[],items=rows.slice(0,3).map((line)=>{const qty=Number(line.qty)||0,unit=String(line.unit||""),name=String(line.itemName||line.itemId||"Item");return `${qty} ${unit} ${name}`.replace(/\s+/g," ").trim();}),more=rows.length>3?` +${rows.length-3} more`:"",supplier=String(invoice.supplier||"Supplier"),reference=String(invoice.ref||mv.sourceId||""),reversal=String(mv.type||"").indexOf("revers")>=0;
+  return {ref:`${reversal?"Purchase reversal":"Purchase"} — ${supplier}`,memo:`${items.join(" · ")}${more}${reference?` · Invoice ${reference}`:""}`||`Purchase from ${supplier}`};
+}
 function buildSingle(mv, cashMap, context) {
   const b = bucketFor(mv);
   const {lines, unmapped} = mappedLines(mv, cashMap, context);
+  const purchaseText=purchaseJournalText(mv,context);
   return {
     entry: {
-      id: b.key, date: b.date, ref: String(mv.sourceId || mv.id || ""),
-      memo: `POS ${String(mv.type || "movement").replace(/_/g, " ")}${mv.sourceId ? " · " + mv.sourceId : ""}`,
+      id: b.key, date: b.date, ref: purchaseText?purchaseText.ref:String(mv.sourceId || mv.id || ""),
+      memo: purchaseText?purchaseText.memo:`POS ${String(mv.type || "movement").replace(/_/g, " ")}${mv.sourceId ? " · " + mv.sourceId : ""}`,
       lines: lines.map((l) => ({code: l.code, debit: l.debit, credit: l.credit})),
       sources: {[mv.id]: true}, source: "pos-bridge", sourceType: String(mv.sourceType || ""), sourceId: String(mv.sourceId || ""),
       reversalOf: String(mv.reversalOf || ""), reversedByMovementId: String(mv.reversedByMovementId || ""),
