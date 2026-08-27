@@ -594,7 +594,7 @@ const MANAGER_APPROVAL_ACTIONS = new Set([
   "delete_archived_order", "review_discrepancy", "approve_petty_voucher", "correct_petty_voucher",
   "reject_petty_voucher", "void_petty_voucher", "return_supplier_payment", "manual_discount", "cash_in", "purchase_cash_advance", "fixed_float_exception", "reverse_purchase",
   "rekey_platform_order", "reverse_platform_payout", "correct_platform_presettlement", "set_undeposited_opening_balance", "retire_revolving_fund",
-  "repair_closed_shift_turnover",
+  "repair_closed_shift_turnover", "repair_reversed_payout_deposit",
 ]);
 function transactionCurrent(current, initial, state) {
   const value = current == null && !state.seen ? initial : current;
@@ -880,6 +880,33 @@ exports.repairClosedShiftTurnover = onCall(
     const writes = Object.assign({}, approval.usedWrites, {[`cashCustody/${shiftId}`]:{shiftId,staff:financeText(shift.staff,100),amount,depositedAmount:0,remaining:amount,retainedFloat:Financial.money(shift.retainedFloat),status:"awaiting_deposit",closedAt:Number(shift.closeAt||now),movementId,source:"closed_shift_turnover_repair",schemaVersion:2},[`shifts/${shiftId}/turnoverCorrection`]:{amount,movementId,postedAt:now,postedBy:actor.uid,approvedBy,approvalId:approval.id,reason:"Confirmed cash received into Undeposited Collection",schemaVersion:1},[`operationalAudit/${now}_${shiftId}_turnover_repair`]:operationalAuditRecord("repair_closed_shift_turnover","shift",shiftId,actor,{amount,movementId,approvalId:approval.id,approvedBy})});
     const committed = await commitFinancial(db,movementId,movement,actor,writes);
     return {shiftId,amount,movementId,duplicate:committed.duplicate,repaired:!committed.duplicate};
+  },
+);
+
+// Repairs only the narrow historical case where a payout was reversed first
+// and a legacy deposit was posted afterward. The correction is append-only:
+// it restores platform clearing, removes the duplicate cash receipt, and
+// preserves every original movement and source link.
+exports.repairReversedPayoutDeposit = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["cashflow", "receivables"]), data = request.data || {}, payoutId = financeKey(data.payoutId, "Payout ID"), reason = financeText(data.reason, 300), movementId = `repair_reversed_payout_deposit_${payoutId}`;
+    if (!reason) throw new HttpsError("invalid-argument", "A correction reason is required.");
+    const payout = (await db.ref(`/platformPayouts/${payoutId}`).get()).val();
+    if (!payout) throw new HttpsError("not-found", "Payout not found.");
+    if (payout.depositReversalMovementId) return {payoutId, movementId:payout.depositReversalMovementId, amount:Financial.money(payout.actualPayout), duplicate:true};
+    if (payout.reversed !== true || !payout.depositMovementId) throw new HttpsError("failed-precondition", "Only a reversed payout with an unreversed deposit can be repaired.");
+    const amount = Financial.money(payout.actualPayout), channel = financeText(payout.channel, 30), accountId = financeKey(payout.accountId, "Cash account ID"), depositId = financeKey(payout.depositMovementId, "Deposit movement ID");
+    if (!(amount > 0)) throw new HttpsError("failed-precondition", "The payout deposit amount is invalid.");
+    const [depositSnap, accountSnap] = await Promise.all([db.ref(`/financialMovements/${depositId}`).get(), db.ref(`/cfAccounts/${accountId}`).get()]), deposit = depositSnap.val(), account = accountSnap.val();
+    if (!deposit || deposit.type !== "platform_payout_deposit" || deposit.sourceId !== payoutId) throw new HttpsError("failed-precondition", "The linked deposit movement does not match this payout.");
+    if (!account) throw new HttpsError("failed-precondition", "The linked receiving account is unavailable.");
+    const cashAccount = `asset:cash_account:${accountId}`, clearingAccount = `asset:platform_clearing:${channel}`, cashDebit = Financial.money((deposit.lines||[]).filter((line)=>line.account===cashAccount).reduce((sum,line)=>sum+Number(line.debit||0)-Number(line.credit||0),0)), clearingCredit = Financial.money((deposit.lines||[]).filter((line)=>line.account===clearingAccount).reduce((sum,line)=>sum+Number(line.credit||0)-Number(line.debit||0),0));
+    if (Math.abs(cashDebit-amount)>0.009 || Math.abs(clearingCredit-amount)>0.009) throw new HttpsError("failed-precondition", "The linked deposit lines do not match the payout amount and accounts.");
+    const approval = await claimManagerApproval(db, data, "repair_reversed_payout_deposit", payoutId, amount, movementId), now = Date.now(), approvedBy = approval.record.approvedName || approval.record.approvedEmail || approval.record.approvedRole, reference = financeText(payout.depositReference || payoutId, 120), movement = Financial.movement("reversed_payout_deposit_repair", "platformPayout", payoutId, [Financial.line(clearingAccount,amount,0,"Restore clearing for deposit posted after payout reversal"),Financial.line(cashAccount,0,amount,`Reverse orphaned payout deposit from ${account.name}`)], {occurredAt:now,actorName:approvedBy,approvalId:approval.id,approvedBy,reason,reference,reversalOf:depositId,repair:true});
+    const writes = Object.assign({}, approval.usedWrites, {[`platformPayouts/${payoutId}/depositReversalMovementId`]:movementId,[`platformPayouts/${payoutId}/depositReversedAt`]:now,[`platformPayouts/${payoutId}/depositReversalReason`]:reason,[`platformPayouts/${payoutId}/depositReversalApprovalId`]:approval.id,[`cfLedger/fm_${movementId}`]:cashLedgerRecord({date:financeDateFromTimestamp(now),accountId,dir:"out",category:"Platform payout deposit correction",amount,party:channel,ref:reference,auto:true},movementId,movement,actor),[`operationalAudit/${now}_${payoutId}_deposit_repair`]:operationalAuditRecord("repair_reversed_payout_deposit","platformPayout",payoutId,actor,{amount,channel,accountId,accountName:account.name,depositMovementId:depositId,repairMovementId:movementId,approvalId:approval.id,approvedBy,reason})});
+    const committed = await commitFinancial(db, movementId, movement, actor, writes);
+    return {payoutId, amount, movementId, accountId, duplicate:committed.duplicate, repaired:!committed.duplicate};
   },
 );
 
