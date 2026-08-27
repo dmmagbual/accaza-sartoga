@@ -4,6 +4,23 @@ function mergeOverviewOrders(active,orders,archived){
   return Object.values(combined);
 }
 
+function createOverviewHistoryLoader(deps){
+  var state={loading:false,queued:false,retryTimer:0,attempts:0,loadedAt:0,orders:null,archived:null};
+  var defer=deps.defer||function(fn,ms){return setTimeout(fn,ms);},cancel=deps.cancel||function(id){clearTimeout(id);},now=deps.now||Date.now;
+  function scheduleRetry(){if(state.retryTimer||state.attempts>=5)return;var delay=Math.min(4000,250*Math.pow(2,Math.max(0,state.attempts-1)));state.retryTimer=defer(function(){state.retryTimer=0;load(true);},delay);}
+  async function load(force){
+    if(state.loading){state.queued=true;return false;}
+    if(!force&&state.orders&&now()-state.loadedAt<45000)return true;
+    state.loading=true;
+    try{
+      var data=await deps.read();state.orders=data.orders||{};state.archived=data.archived||{};state.loadedAt=now();state.attempts=0;
+      if(state.retryTimer){cancel(state.retryTimer);state.retryTimer=0;}deps.onData({orders:state.orders,archived:state.archived});return true;
+    }catch(e){state.attempts++;if(deps.onError)deps.onError(e);scheduleRetry();return false;}
+    finally{state.loading=false;if(state.queued){state.queued=false;defer(function(){load(true);},0);}}
+  }
+  return{load:load,snapshot:function(){return{orders:state.orders,archived:state.archived,complete:!!(state.orders&&state.archived),loading:state.loading};}};
+}
+
 function createOverviewInsights(deps){
   var saved={};try{saved=JSON.parse(localStorage.getItem('accaza-report-period')||'{}')||{};}catch(_e){}
   var allowed=['7','30','month','all'],state={period:allowed.indexOf(saved.period)>-1?saved.period:'month',from:'',to:'',metric:'units',latest:null,bound:false,loading:false,rerun:false,waitTimer:0,verified:{orders:false,archivedOrders:false,financialMovements:false}};
@@ -81,4 +98,4 @@ function createOverviewInsights(deps){
   return{render:function(data){state.latest=data;paint();ensureHistory();},ensureHistory:ensureHistory};
 }
 
-export{createOverviewInsights,mergeOverviewOrders};
+export{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders};

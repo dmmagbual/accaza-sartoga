@@ -4,7 +4,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=330";
+import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=332";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -983,25 +983,20 @@ function renderPublicReviews(){
 
 // ── EDIT ITEM HELPERS ──────────────────────────────────────
 // ── DASHBOARD ──
-var overviewFullOrders=null,overviewFullArchived=null,overviewFullLoading=false,overviewFullAt=0;
-async function ensureOverviewFullHistory(force){
-  if(overviewFullLoading)return;
-  if(!force&&overviewFullOrders&&(Date.now()-overviewFullAt)<45000)return;
-  overviewFullLoading=true;
-  try{
-    var res=await Promise.all([get(ref(db,'orders')),get(ref(db,'archivedOrders'))]);
-    overviewFullOrders=res[0].val()||{};overviewFullArchived=res[1].val()||{};overviewFullAt=Date.now();
-    var dt=document.getElementById('tab-dashboard');if(adminLoggedIn&&dt&&dt.style.display!=='none')renderDashboard();
-  }catch(e){console.error('Overview full history load failed',e);}
-  finally{overviewFullLoading=false;}
-}
+const overviewHistoryLoader=createOverviewHistoryLoader({
+  read:async function(){var res=await Promise.all([get(ref(db,'orders')),get(ref(db,'archivedOrders'))]);return{orders:res[0].val()||{},archived:res[1].val()||{}};},
+  onData:function(){var dt=document.getElementById('tab-dashboard');if(adminLoggedIn&&dt&&dt.style.display!=='none')renderDashboard();},
+  onError:function(e){console.error('Overview full history load failed; retry scheduled',e);}
+});
+function ensureOverviewFullHistory(force){return overviewHistoryLoader.load(force);}
 function renderDashboard(){
   function _rows(map){return Object.entries(map||{}).map(function(pair){var o=pair[1];return o&&o.id?o:Object.assign({_overviewKey:pair[0]},o||{});});}
   function _mergedMap(snapshot,live){return Object.assign({},snapshot||{},live||{});}
   ensureOverviewFullHistory();
+  const fullHistory=overviewHistoryLoader.snapshot();
   const active=_rows(adminOrdersMap);
-  const historyOrders=_rows(_mergedMap(overviewFullOrders,overviewOrdersMap));
-  const archived=_rows(_mergedMap(overviewFullArchived,archivedOrdersMap));
+  const historyOrders=_rows(_mergedMap(fullHistory.orders,overviewOrdersMap));
+  const archived=_rows(_mergedMap(fullHistory.archived,archivedOrdersMap));
   function _isSale(o){return window.AccazaSales.qualifies(o);}
   function _tsOf(o){return window.AccazaSales.stamp(o);}
   const outcomes=mergeOverviewOrders(active,historyOrders,archived);
@@ -1015,7 +1010,7 @@ function renderDashboard(){
   const t=sumOrders(sales.filter(o=>_tsOf(o)>=startToday)),w=sumOrders(sales.filter(o=>_tsOf(o)>=startWeek)),m=sumOrders(sales.filter(o=>_tsOf(o)>=startMonth)),a=sumOrders(sales);
   function setCard(id,rev,cnt){const el=document.getElementById(id);if(el)el.textContent='₱'+rev.toLocaleString();const cel=document.getElementById(id+'Count');if(cel)cel.textContent=cnt+' order'+(cnt!==1?'s':'');}
   setCard('dashToday',t.rev,t.cnt);setCard('dashWeek',w.rev,w.cnt);setCard('dashMonth',m.rev,m.cnt);setCard('dashAllTime',a.rev,a.cnt);
-  overviewInsights.render({active:active,orders:historyOrders,archived:archived,outcomes:outcomes,sales:sales,feedReady:{orders:overviewOrdersLoaded,archivedOrders:archivedOrdersLoaded,financialMovements:overviewFinancialMovementsLoaded},historyComplete:overviewFullOrders&&overviewFullArchived?true:undefined,menuItems:menuItemsMap||{},catType:(window.__posSettings&&window.__posSettings.catType)||{}});
+  overviewInsights.render({active:active,orders:historyOrders,archived:archived,outcomes:outcomes,sales:sales,feedReady:{orders:overviewOrdersLoaded,archivedOrders:archivedOrdersLoaded,financialMovements:overviewFinancialMovementsLoaded},historyComplete:fullHistory.complete?true:undefined,menuItems:menuItemsMap||{},catType:(window.__posSettings&&window.__posSettings.catType)||{}});
 }
 
 function drawPaymentPie(gcashR,bankR){
