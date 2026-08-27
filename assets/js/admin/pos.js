@@ -271,8 +271,10 @@ function renderInventory(){
       +(unledgered.length?'<button class="pz-btn ok" id="invLedgerInit" style="border-color:#267354;">🧾 Initialize 3A ledger ('+unledgered.length+')</button>':'<span style="font-size:0.78rem;color:#267354;align-self:center;">✓ 3A ledger active</span>')
       +'<select class="pz-in" id="invCatFilter" style="width:auto;"><option value="">All categories</option><option value="__brand_missing__"'+(catFilter==='__brand_missing__'?' selected':'')+'>Recipe items without approved brand ('+missingBrand.length+')</option><option value="__none__"'+(catFilter==='__none__'?' selected':'')+'>— Uncategorized ('+uncat.length+') —</option>'+catList.map(function(c){return '<option value="'+esc(c.id)+'"'+(catFilter===c.id?' selected':'')+'>'+esc(c.name)+(c.kind==='overhead'?' (overhead)':'')+'</option>';}).join('')+'</select>'
     +'</div>'
-    +'<div class="pz-card" style="margin-bottom:1rem;">'
-      +'<div style="font-weight:600;color:var(--bd);margin-bottom:0.6rem;font-size:0.9rem;">➕ Add item</div>'
+    +'<details class="pz-card" style="margin-bottom:1rem;border:1px solid #d8bea0;background:#fffdf9;">'
+      +'<summary class="pz-btn sec" style="display:inline-flex;cursor:pointer;list-style:none;">➕ Set up stock item / opening balance</summary>'
+      +'<div style="margin-top:.75rem;">'
+      +'<p style="font-size:0.79rem;color:var(--tm);line-height:1.45;margin:0 0 .65rem;"><b>Use this only for an item missing from the system.</b> Enter opening stock only when it is physically on hand but was not included in the system’s recorded physical count. Use <b>Purchases</b> for deliveries. Re-entering stock already counted or received will double both quantity and inventory value.</p>'
       +'<div style="display:grid;grid-template-columns:repeat(2,minmax(170px,1fr));gap:0.5rem;align-items:end;">'
         +'<div><span class="pz-lbl">Name</span><input class="pz-in" id="invName" placeholder="e.g. Espresso beans"/></div>'
         +'<div><span class="pz-lbl">Unit</span><select class="pz-in" id="invUnit"><option>g</option><option>kg</option><option>ml</option><option>L</option><option>fl oz</option><option>pcs</option><option>shot</option><option>pump</option><option>ea</option></select></div>'
@@ -280,17 +282,19 @@ function renderInventory(){
         +'<div><span class="pz-lbl">Category</span><select class="pz-in" id="invCat"><option value="">—</option>'+catList.map(function(c){return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>';}).join('')+'</select></div>'
         +'<div><span class="pz-lbl">Inventory asset account</span><select class="pz-in" id="invAssetAccount">'+itemAccountOptions('', 'inventory')+'</select></div>'
         +'<div><span class="pz-lbl">Cost / COGS account</span><select class="pz-in" id="invCostAccount">'+itemAccountOptions('', 'cost')+'</select></div>'
-        +'<div><span class="pz-lbl">Stock</span><input class="pz-in" id="invStock" type="number" step="any" placeholder="0"/></div>'
+        +'<div><span class="pz-lbl">Opening stock physically on hand</span><input class="pz-in" id="invStock" type="number" min="0" step="any" placeholder="0"/><div style="font-size:.7rem;color:var(--tl);margin-top:.2rem;">Leave 0 when setting up before the first purchase.</div></div>'
         +'<div><span class="pz-lbl">Reorder</span><input class="pz-in" id="invReorder" type="number" step="any" placeholder="0"/></div>'
-        +'<div><span class="pz-lbl">Cost/unit ₱</span><input class="pz-in" id="invCost" type="number" step="any" placeholder="opt."/></div>'
-        +'<button class="pz-btn" id="invAddBtn">Add</button>'
+        +'<div><span class="pz-lbl">Opening cost/unit ₱</span><input class="pz-in" id="invCost" type="number" min="0" step="any" placeholder="Required with opening stock"/></div>'
+        +'<button class="pz-btn" id="invAddBtn">Create stock item</button>'
       +'</div>'
+      +'<label style="display:flex;gap:.45rem;align-items:flex-start;margin-top:.65rem;padding:.55rem .65rem;border-radius:7px;background:#fff4df;font-size:.76rem;color:#6f4b20;"><input type="checkbox" id="invOpeningConfirmed" style="margin-top:.15rem;"/><span>If I enter opening stock, I confirm it is physically present, missing from the system’s recorded physical count, and has not already been received or counted elsewhere.</span></label>'
       +'<div id="invConsumRow" style="display:none;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;margin-top:0.5rem;">'
         +'<div><span class="pz-lbl">Consumable serves</span><select class="pz-in" id="invServes"><option value="both">Both</option><option value="drink">Drinks only</option><option value="food">Food only</option></select></div>'
         +'<div><span class="pz-lbl">Cup size (blank = all)</span><select class="pz-in" id="invSize"><option value="">— all sizes —</option><option>S</option><option>M</option><option>L</option></select></div>'
         +'<div><span class="pz-lbl">Qty per order</span><input class="pz-in" id="invQPO" type="number" step="any" value="1"/></div>'
       +'</div>'
-    +'</div>'
+      +'</div>'
+    +'</details>'
     +'<div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl inventory-table"><thead><tr><th>SKU / stock item</th><th>Type</th><th>Category</th><th>In stock</th><th>Reorder</th><th>Cost</th><th>Recipe / brands</th><th>Actions</th></tr></thead><tbody>'
       +(rows||'<tr><td colspan="8" style="color:var(--tl);padding:1rem;">No items in this view.</td></tr>')
     +'</tbody></table></div></div>'
@@ -558,12 +562,17 @@ function addIngredient(){
   var name=(document.getElementById('invName').value||'').trim(); if(!name){alert('Enter an ingredient name.');return;}
   var type=(document.getElementById('invType')||{}).value||'base';
   var openingStock=Number(document.getElementById('invStock').value)||0, openingCost=Number(document.getElementById('invCost').value)||0;
+  if(openingStock<0){alert('Opening stock cannot be negative. Use Adjust for a controlled count correction.');return;}
+  if(openingStock>0&&!(document.getElementById('invOpeningConfirmed')||{}).checked){alert('Confirm that this opening stock is physically present and has not already been included in the system’s recorded physical count.');return;}
+  if(openingStock>0&&!(openingCost>0)){alert('Enter the opening cost per unit so the physical stock receives the correct inventory value in Finance Books.');return;}
   var inventoryAccount=(document.getElementById('invAssetAccount')||{}).value||'',costAccount=(document.getElementById('invCostAccount')||{}).value||'';if(!inventoryAccount||!costAccount){alert('Choose both the Inventory Asset and Cost account.');return;}
+  var maker=(window.__posShift&&window.__posShift.staff)||'Admin',unit=document.getElementById('invUnit').value,openingValue=Math.round(openingStock*openingCost*100)/100;
+  if(!confirm('Confirm stock-item setup\n\nItem: '+name+'\nOpening stock: '+openingStock+' '+unit+'\nOpening cost: '+peso(openingCost)+' / '+unit+'\nOpening inventory value: '+peso(openingValue)+'\nMaker: '+maker+'\n\n'+(openingStock>0?'I confirm this stock is physically present and was not already counted or received.':'This creates the item with zero opening stock. Future deliveries must go through Purchases.')))return;
   var o={name:name,unit:document.getElementById('invUnit').value,type:type,recipeItem:!isSupplyType(type),category:(document.getElementById('invCat')||{}).value||'',inventoryAccount:inventoryAccount,costAccount:costAccount,stock:0,reorder:Number(document.getElementById('invReorder').value)||0,cost:0,updatedAt:Date.now()};
   if(type==='consumable'){ o.serves=(document.getElementById('invServes')||{}).value||'both'; o.size=(document.getElementById('invSize')||{}).value||''; o.qtyPerOrder=Number((document.getElementById('invQPO')||{}).value)||1; }
   var a=A(), id=uid('ing_'), sourceId=uid('new_');a.set(a.ref(a.db,'inventory/'+id),o).then(function(){
-    return postMovements([{movementId:movementId('manual_edit',sourceId,id),itemId:id,type:'manual_edit',qty:openingStock,unitCost:openingCost,setCost:true,sourceType:'new-inventory-item',sourceId:sourceId,note:'Opening quantity entered when item was created',actorName:(window.__posShift&&window.__posShift.staff)||'Admin',occurredAt:Date.now()}]);
-  }).then(function(){ document.getElementById('invName').value=''; }).catch(function(e){ alert('Could not add the item: '+((e&&e.message)||e)+'.'); });
+    return postMovements([{movementId:movementId('manual_edit',sourceId,id),itemId:id,type:'manual_edit',qty:openingStock,unitCost:openingCost,setCost:true,sourceType:'new-inventory-item',sourceId:sourceId,note:'Opening quantity confirmed by '+maker+' when item was created',actorName:maker,occurredAt:Date.now()}]);
+  }).then(function(){ document.getElementById('invName').value='';document.getElementById('invStock').value='';document.getElementById('invCost').value='';document.getElementById('invOpeningConfirmed').checked=false; }).catch(function(e){ alert('Could not add the item: '+((e&&e.message)||e)+'. If the item appeared, do not create it again; use Adjust after reviewing the movement ledger.'); });
 }
 function adjustStock(id){
   var i=inventoryMap[id]; if(!i)return;
