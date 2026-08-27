@@ -225,7 +225,7 @@ function defaultAccounts(){
     ["1590","Accumulated Depreciation","Asset","Contra-asset (credit balance)"],
     // Liabilities
     ["2000","Accounts Payable – Suppliers","Liability"],["2020","Due to Platforms","Liability","Negative Grab/FoodPanda settlements owed to the platform"],["2050","Due to Owner / Partners","Liability","Personally funded business costs awaiting reimbursement"],["2090","Unrecorded Payables Clearing","Liability","Supplier obligations awaiting complete posting"],["2100","Accrued Salaries","Liability"],
-    ["2200","Taxes Payable","Liability"],["2300","Loans Payable","Liability"],
+    ["2200","Taxes Payable","Liability"],["2300","Loans Payable","Liability"],["2310","Loan 2","Liability"],["2320","Loan 3","Liability"],
     // Equity
     ["3000","Owner's Capital","Equity"],["3100","Owner's Drawings","Equity","Contra-equity (debit balance)"],
     ["3900","Retained Earnings","Equity"],
@@ -422,7 +422,7 @@ const App = {
     pf = pf || {date:todayStr(), ref:"", memo:"", lines:[{code:"",debit:"",credit:""},{code:"",debit:"",credit:""}]};
     const m=document.getElementById("modal");
     const optHtml = sel => '<option value="">— account —</option>' +
-      TYPES.map(t=>{ const rows=DB.accounts.filter(a=>a.type===t&&!isMainAccount(a.code)); if(!rows.length) return ""; return `<optgroup label="${t}">`+rows.map(a=>`<option value="${a.code}" ${a.code===sel?'selected':''}>${a.code} · ${esc(a.name)}</option>`).join("")+`</optgroup>`; }).join("");
+      TYPES.map(t=>{ const rows=DB.accounts.filter(a=>a.type===t&&!isMainAccount(a.code)&&a.active!==false); if(!rows.length) return ""; return `<optgroup label="${t}">`+rows.map(a=>`<option value="${a.code}" ${a.code===sel?'selected':''}>${a.code} · ${esc(a.name)}</option>`).join("")+`</optgroup>`; }).join("");
     const lineRow = (l,i)=>`<div class="jl-row" data-i="${i}">
         <select onchange="App.lineEdit(${i},'code',this.value)">${optHtml(l.code)}</select>
         <input type="number" step="0.01" min="0" placeholder="0.00" value="${l.debit||""}" oninput="App.lineEdit(${i},'debit',this.value)"/>
@@ -763,7 +763,7 @@ const PAGES = {
       return `<tr class="sub-row"><td colspan="5"><span class="type-pill t-${g.t.toLowerCase()}">${g.t}</span> <span class="tiny muted">· normal balance: ${DEBIT_NORMAL[g.t]?'Debit':'Credit'}</span></td></tr>`+rows.join("");
     }).join("");
     return `<div class="page-head"><div><h2>Chart of Accounts</h2><p>${DB.accounts.length} posting accounts · ${ACCOUNT_GROUPS.length} protected main accounts · balances as of latest entry</p></div>
-      <button class="btn primary" onclick="App.editAccount()">+ Add account</button></div>
+      ${(!window.__booksUser||window.__booksChartManager)?`<div class="btn-row" style="gap:.5rem">${(window.__booksUser&&window.__booksChartManager)?'<button class="btn" onclick="App.importLocalChart()">⬆ Import local accounts</button>':''}<button class="btn primary" onclick="App.editAccount()">+ Add account</button></div>`:'<span class="tiny muted">Chart is managed by the finance owners</span>'}</div>
       <div class="hint">Main accounts are read-only totals. Transactions must be posted to their indented subaccounts, preserving detailed inventory and cash audit trails.</div>
       <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Code</th><th>Account</th><th>Note</th><th class="num">Balance</th><th></th></tr></thead><tbody>${body}</tbody></table></div></div>`;
   }
@@ -946,7 +946,7 @@ App.editAccount = function(code){
       <div class="field"><label>Note (optional)</label><input id="a_note" value="${esc(a.note)}"/></div>
     </div>
     <div class="modal-foot">
-      ${code?`<button class="btn danger" onclick="App.deleteAccount('${code}')" style="margin-right:auto">Delete</button>`:''}
+      ${code?(window.__booksUser?(a.active===false?`<button class="btn" onclick="App.reactivateAccount('${code}')" style="margin-right:auto">Reactivate</button>`:`<button class="btn danger" onclick="App.deleteAccount('${code}')" style="margin-right:auto">Deactivate</button>`):`<button class="btn danger" onclick="App.deleteAccount('${code}')" style="margin-right:auto">Delete</button>`):''}
       <button class="btn ghost" onclick="App.closeModal()">Cancel</button>
       <button class="btn primary" onclick="App.saveAccount('${code||''}')">Save</button></div>`;
   document.getElementById("modalBg").classList.add("show");
@@ -956,18 +956,68 @@ App.saveAccount=function(orig){
         type=document.getElementById("a_type").value, note=document.getElementById("a_note").value.trim();
   if(!code||!name) return alert("Code and name are required.");
   if(isMainAccount(code)) return alert("That code belongs to a protected main account.");
+  if(!/^\d{4}$/.test(code)) return alert("Account code must be exactly four digits (e.g. 2310).");
   if(!orig && acc(code)) return alert("That code already exists.");
+  if(window.__booksUser){
+    if(!window.__booksChartManager) return alert("Only the finance owners (Danilo / Maria) can add or edit chart accounts.");
+    if(!window.__manageBooksAccount) return alert("Live sync isn't ready yet - try again in a moment.");
+    var self=this;
+    window.__manageBooksAccount({action:'upsert',code:code,name:name,type:type,note:note}).then(function(){ self.closeModal(); }).catch(function(e){ alert("Could not save account: "+(e&&e.message||e)); });
+    return;
+  }
   if(orig){ const a=acc(orig); a.name=name; a.type=type; a.note=note; }
-  else DB.accounts.push({code,name,type,note});
+  else DB.accounts.push({code,name,type,note,active:true});
   DB.accounts.sort((x,y)=>x.code.localeCompare(y.code));
   save(); this.closeModal(); this.render();
 };
 App.deleteAccount=function(code){
   if(isMainAccount(code)) return alert("Main accounts are protected and cannot be deleted.");
+  if(window.__booksUser){
+    if(!window.__booksChartManager) return alert("Only the finance owners (Danilo / Maria) can change chart accounts.");
+    var __row=acc(code)||{}; if(__row.system) return alert("System accounts are required by the ledger and can't be deactivated. Rename it instead if needed.");
+    if(!confirm("Deactivate account "+code+"? It stays in your reports where it has balances, but can't be used for new postings. History is never deleted.")) return;
+    var self=this;
+    window.__manageBooksAccount({action:'deactivate',code:code}).then(function(){ self.closeModal(); }).catch(function(e){ alert("Could not deactivate: "+(e&&e.message||e)); });
+    return;
+  }
   const used = ENTRIES().some(e=>e.lines.some(l=>l.code===code));
   if(used) return alert("This account is used in journal entries and can't be deleted. You can rename it instead.");
   if(!confirm("Delete this account?")) return;
   DB.accounts = DB.accounts.filter(a=>a.code!==code); save(); this.closeModal(); this.render();
+};
+App.reactivateAccount=function(code){
+  if(!window.__booksChartManager) return alert("Only the finance owners can change chart accounts.");
+  var self=this;
+  window.__manageBooksAccount({action:'reactivate',code:code}).then(function(){ self.closeModal(); }).catch(function(e){ alert("Could not reactivate: "+(e&&e.message||e)); });
+};
+App.applyServerChart=function(){
+  var map=window.__booksChart; if(!map||typeof map!=='object')return;
+  var list=Object.keys(map).map(function(code){var a=map[code]||{};return {code:String(a.code||code),name:a.name||('? '+code),type:a.type||'Expense',note:a.note||'',active:a.active!==false,system:a.system===true};});
+  if(!list.length)return;
+  list.sort(function(x,y){return String(x.code).localeCompare(String(y.code));});
+  DB.accounts=list; window.__booksChartLive=true;
+  try{save();}catch(_e){}
+  if(this.render)this.render();
+};
+App.importLocalChart=function(){
+  if(!window.__booksChartManager) return alert("Only the finance owners can import accounts.");
+  var raw; try{ raw=JSON.parse(localStorage.getItem(STORE_KEY)||"{}"); }catch(_e){ raw={}; }
+  var local=(raw&&raw.accounts)||[]; var server=window.__booksChart||{};
+  var toAdd=[], conflicts=[];
+  local.forEach(function(a){ if(!a||!/^\d{4}$/.test(String(a.code||'')))return; if(isMainAccount(a.code))return; var srv=server[a.code]; if(!srv){toAdd.push(a);} else if(srv.name!==a.name||srv.type!==a.type){conflicts.push({code:a.code,local:a,server:srv});} });
+  window.__importPlan={toAdd:toAdd};
+  var addHtml = toAdd.length ? toAdd.map(function(a){return '<tr><td><span class="acc-code">'+esc(a.code)+'</span></td><td>'+esc(a.name)+'</td><td class="tiny muted">'+esc(a.type)+'</td></tr>';}).join('') : '<tr><td colspan="3" class="muted">Nothing new - your local accounts are already on the server.</td></tr>';
+  var confHtml = conflicts.length ? '<div class="hint" style="margin-top:.6rem">&#9888; '+conflicts.length+' code(s) exist on the server with a different name/type and were left untouched: '+conflicts.map(function(c){return esc(c.code)+' (local &#39;'+esc(c.local.name)+'&#39; vs server &#39;'+esc(c.server.name)+'&#39;)';}).join('; ')+'.</div>' : '';
+  var m=document.getElementById("modal");
+  m.innerHTML='<div class="modal-head"><h3>Import local accounts</h3><button class="x" onclick="App.closeModal()">&times;</button></div><div class="modal-body"><p class="tiny muted" style="margin-top:0">These custom accounts exist in <b>this browser only</b>. They will be added to the shared server chart. Nothing is written until you confirm. System accounts and codes already on the server are skipped.</p><div class="tbl-wrap"><table><thead><tr><th>Code</th><th>Name</th><th>Type</th></tr></thead><tbody>'+addHtml+'</tbody></table></div>'+confHtml+'</div><div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Cancel</button>'+(toAdd.length?'<button class="btn primary" onclick="App.runImport(this)">Import '+toAdd.length+' account(s)</button>':'')+'</div>';
+  document.getElementById("modalBg").classList.add("show");
+};
+App.runImport=function(btn){
+  var plan=window.__importPlan; if(!plan||!plan.toAdd||!plan.toAdd.length)return this.closeModal();
+  if(btn){btn.disabled=true;btn.textContent="Importing...";}
+  var payload=plan.toAdd.map(function(a){return {code:a.code,name:a.name,type:a.type,note:a.note||""};});
+  var self=this;
+  window.__manageBooksAccount({action:'import',accounts:payload}).then(function(r){ self.closeModal(); alert("Imported "+(r&&r.added?r.added.length:0)+" account(s)."+(r&&r.conflicts&&r.conflicts.length?" "+r.conflicts.length+" conflict(s) skipped.":"")); }).catch(function(e){ if(btn){btn.disabled=false;btn.textContent="Import";} alert("Import failed: "+(e&&e.message||e)); });
 };
 
 /* ---- quick-post templates (pre-filled balanced entries) ---- */
@@ -1028,7 +1078,7 @@ import {getFunctions, httpsCallable} from "https://www.gstatic.com/firebasejs/10
 const cfg={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 function setPill(text,cls){ const el=document.getElementById("liveStatus"); if(el){ el.textContent=text; el.className="live-pill "+cls; } }
 let app,db,auth;
-try{ app=initializeApp(cfg); db=getDatabase(app); auth=getAuth(app); var fns=getFunctions(app,"asia-southeast1"); window.__financeCmd=function(payload){ return httpsCallable(fns,"postFinancialCommand")(payload).then(function(r){return r.data;}); }; window.__fixedAsset=function(payload){ return httpsCallable(fns,"manageFixedAsset")(payload).then(function(r){return r.data;}); }; window.__booksSync=function(){var ensureLedger=httpsCallable(fns,"ensureFinancialLedger"),ensureJournal=httpsCallable(fns,"ensureBooksJournal");return ensureLedger({}).then(function(ledger){return ensureJournal({}).then(function(books){return Object.assign({},books.data,{ordersScanned:ledger.data.scanned,financePosted:ledger.data.posted,financeDuplicates:ledger.data.duplicates,orphanReversed:ledger.data.orphanReversed});});});}; window.__cashAccountSave=function(payload){return httpsCallable(fns,"manageCashAccount")(payload).then(function(r){return r.data;});}; window.__booksAuthReady=true; }
+try{ app=initializeApp(cfg); db=getDatabase(app); auth=getAuth(app); var fns=getFunctions(app,"asia-southeast1"); window.__financeCmd=function(payload){ return httpsCallable(fns,"postFinancialCommand")(payload).then(function(r){return r.data;}); }; window.__fixedAsset=function(payload){ return httpsCallable(fns,"manageFixedAsset")(payload).then(function(r){return r.data;}); }; window.__booksSync=function(){var ensureLedger=httpsCallable(fns,"ensureFinancialLedger"),ensureJournal=httpsCallable(fns,"ensureBooksJournal");return ensureLedger({}).then(function(ledger){return ensureJournal({}).then(function(books){return Object.assign({},books.data,{ordersScanned:ledger.data.scanned,financePosted:ledger.data.posted,financeDuplicates:ledger.data.duplicates,orphanReversed:ledger.data.orphanReversed});});});}; window.__cashAccountSave=function(payload){return httpsCallable(fns,"manageCashAccount")(payload).then(function(r){return r.data;});}; window.__manageBooksAccount=function(payload){return httpsCallable(fns,"manageBooksAccount")(payload).then(function(r){return r.data;});}; window.__booksAuthReady=true; }
 catch(e){ setPill("● Offline (local only)","off");window.__booksLiveLoading=false;if(window.App&&App.render)App.render(); }
 if(auth){
   setPersistence(auth, browserLocalPersistence).catch(()=>{});
@@ -1046,12 +1096,15 @@ if(auth){
     if(window.App&&App.render){ App.rebuildPeriodSel&&App.rebuildPeriodSel(); App.render(); } }
   onAuthStateChanged(auth, user=>{
     window.__booksUser = user?(user.email||"signed in"):null;
+    window.__booksChartManager = !!(user && user.email && ["danilomagbual@gmail.com","contact.mariadaniela@gmail.com"].indexOf(String(user.email).toLowerCase())>=0);
+    if(user && window.__booksChartManager && window.__manageBooksAccount){ window.__manageBooksAccount({action:'initialize'}).catch(function(){}); }
     if(user){ setPill("● Live · "+(user.email||"synced"),"ok");
       onValue(ref(db,"/books/journal"), s=>{ journalCache=s.val()||{};window.__booksLiveLoading=false;refresh(); }, ()=>{window.__booksLiveLoading=false;setPill("● Read blocked — not an admin","bad");if(window.App&&App.render)App.render();});
       onValue(ref(db,"/books/reviewQueue"), s=>{ reviewCache=s.val()||{}; refresh(); }, ()=>{});
       onValue(ref(db,"/receivables"), s=>{ window.__arMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       onValue(ref(db,"/payables"), s=>{ window.__apMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       onValue(ref(db,"/cfAccounts"), s=>{ window.__cfAccounts=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
+      onValue(ref(db,"/booksChart"), s=>{ window.__booksChart=s.val()||null; if(window.App&&App.applyServerChart)App.applyServerChart(); }, ()=>{});
       onValue(ref(db,"/financialMovements"), s=>{ window.__financialMovements=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       onValue(ref(db,"/platformPayouts"), s=>{ window.__platformPayouts=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       onValue(ref(db,"/orders"), s=>{ window.__booksActiveOrders=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
@@ -1060,7 +1113,7 @@ if(auth){
       onValue(ref(db,"/fixedAssets"), s=>{ window.__faMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       onValue(ref(db,"/purchaseInvoices"), s=>{ window.__piMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       onValue(ref(db,"/personalFundings"), s=>{ window.__personalFundings=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
-    } else { window.__booksLiveLoading=false;setPill("● Sign in for live POS","off"); window.__posEntries=[]; window.__arMap={}; window.__apMap={}; window.__cfAccounts={}; window.__financialMovements={}; window.__platformPayouts={}; window.__booksActiveOrders={};window.__booksArchivedOrders={};window.__cashCustody={}; window.__faMap={}; window.__piMap={};window.__personalFundings={}; if(window.App&&App.render)App.render(); }
+    } else { window.__booksLiveLoading=false;setPill("● Sign in for live POS","off");window.__booksChartManager=false; window.__posEntries=[]; window.__arMap={}; window.__apMap={}; window.__cfAccounts={}; window.__financialMovements={}; window.__platformPayouts={}; window.__booksActiveOrders={};window.__booksArchivedOrders={};window.__cashCustody={}; window.__faMap={}; window.__piMap={};window.__personalFundings={}; if(window.App&&App.render)App.render(); }
   });
 }
 </script>
