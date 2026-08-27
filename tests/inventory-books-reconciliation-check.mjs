@@ -32,4 +32,11 @@ const journalResult=reconcileInventoryBooks([
 assert.equal(journalResult.rows.find(function(r){return r.code==='1200';}).booksValue,200);
 assert.equal(journalResult.rows.find(function(r){return r.code==='1210';}).booksValue,50);
 
+const pennyResult=reconcileInventoryBooks([{inventoryAccount:'1220',quantity:1,unitCost:99.99}],[{lines:[{code:'1220',debit:100,credit:0}]}]);
+assert.equal(pennyResult.totals.difference,-0.01);
+assert.equal(pennyResult.rows.find(function(r){return r.code==='1220';}).withinTolerance,true);
+assert.equal(pennyResult.balanced,true);
+const twoCentResult=reconcileInventoryBooks([{inventoryAccount:'1220',quantity:1,unitCost:99.98}],[{lines:[{code:'1220',debit:100,credit:0}]}]);
+assert.equal(twoCentResult.balanced,false);
+
 console.log('PASS: inventory valuation reconciles by account against complete Finance Books movements.');
