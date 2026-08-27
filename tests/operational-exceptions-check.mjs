@@ -15,6 +15,7 @@ const cats=result.exceptions.map(x=>x.category);
 for(const expected of ['stuck_order','offline_sync','inventory_gap','inventory_marker_gap','financial_gap','cash_custody','payment_proof','client_error'])if(!cats.includes(expected))throw new Error('missing exception '+expected);
 if(result.counts.critical!==5||result.counts.warning!==3)throw new Error('severity counts are incorrect');
 if(result.exceptions.find(x=>x.id==='marker').severity!=='warning')throw new Error('existing inventory movement evidence was still classified as a critical stock gap');
+if(result.exceptions.find(x=>x.id==='old').tab!=='undeposited')throw new Error('cash custody exception does not open Undeposited Collection');
 if(cats.includes('fresh')||result.exceptions.some(x=>x.id==='done'||x.id==='new'||x.id==='good'))throw new Error('healthy records produced false exceptions');
 if(result.exceptions.some(x=>JSON.stringify(x).includes('customer')))throw new Error('exception response leaked customer content');
 console.log('PASS: Release 7B bounded exception classification, severity, and healthy-record suppression passed.');

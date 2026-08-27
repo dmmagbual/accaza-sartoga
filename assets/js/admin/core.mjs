@@ -100,6 +100,7 @@ window.__accaza={
   manageStaffMessage:function(command){return callables.manageStaffMessage(command);},
   recordClientTelemetry:function(command){return callables.recordClientTelemetry(command);},
   getOperationalExceptions:function(){return callables.getOperationalExceptions({});},
+  repairOrderInventoryMarker:function(orderId){return callables.repairOrderInventoryMarker({orderId:orderId});},
   get menuItemsMap(){return menuItemsMap;},
   get optionGroupsMap(){return optionGroupsMap;},
   get categoriesMap(){return categoriesMap;},
