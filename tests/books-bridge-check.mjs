@@ -46,7 +46,10 @@ ok(B.mapAccount('liability:due_to_owner:owner_1','instore',cashMap).code==='2050
 ok(B.mapAccount('liability:platform_owing:grabfood','grabfood',cashMap).code==='2020','negative platform payout→2020 liability');
 ok(B.mapAccount('asset:platform_receivable:grabfood','grabfood',cashMap).code==='1100','platform receivable→1100 control account');
 ok(B.mapAccount('asset:platform_clearing:grabfood','grabfood',cashMap).code==='1050','platform payout clearing→1050 and cannot distort AR');
-ok(B.mapAccount('expense:cash_shortage','instore',{}).code==='3100','cash shortage→owner drawings');
+ok(B.mapAccount('expense:cash_shortage','instore',{}).code==='6110','manager-approved cash shortage→6110 Cash Short / Over');
+ok(B.mapAccount('revenue:cash_overage','instore',{}).code==='4990','manager-approved cash overage→4990 Other Income');
+ok(B.mapAccount('asset:cash_shortage_pending','instore',{}).code==='1190','unresolved cash shortage→1190 pending review');
+ok(B.mapAccount('liability:cash_overage_pending','instore',{}).code==='2100','unresolved cash overage→2100 pending review');
 ok(B.mapAccount('inventory:legacy_receipt','instore',{}).code==='1290','unposted inventory receipt→1290 clearing');
 ok(B.mapAccount('liability:grni:legacy','instore',{}).code==='2090','unrecorded payable→2090 clearing');
 const legacyMovement={type:'payable_created',sourceId:'ap_pinv_legacy',lines:[{account:'expense_or_inventory:purchases',debit:100,credit:0},{account:'liability:payable:ap_pinv_legacy',debit:0,credit:100}]};
