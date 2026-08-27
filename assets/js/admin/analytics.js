@@ -1,7 +1,7 @@
 import{reconcileInventoryBooks}from'./inventory-books-reconciliation.mjs';
 (function(){
 'use strict';
-var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={},receiptsMap={},posSettingsMap={},inventoryBooksJournal={};
+var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={},receiptsMap={},posSettingsMap={},inventoryBooksJournal={},payoutCashAccounts={};
 var inventoryBooksLoaded=false;
 var svFrom=null,svTo=null,svExpand=null;
 var azRange='month', azFrom=null, azTo=null, pnlMonth=null, analyticsHistoryLoading=false;
@@ -53,6 +53,7 @@ function init(){
   a.subscribe('books/journal',function(s){inventoryBooksJournal=s.val()||{};inventoryBooksLoaded=true;if(isTab('stockvalue'))renderStockValue();});
   a.subscribe('posSettings',function(s){posSettingsMap=s.val()||{};if(isTab('pnl'))renderPnl();});
   a.subscribe('platformPayouts',function(s){payoutsMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();if(isTab('analytics'))renderAnalytics();});
+  a.subscribe('cfAccounts',function(s){payoutCashAccounts=s.val()||{};if(isTab('payouts'))renderPayouts();});
   a.subscribe('platformVarAccounts',function(s){varAcctMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();});
 }
 // extend the POS tab switcher to also render our tabs
@@ -605,20 +606,23 @@ function renderPayouts(){
     var pid=uid('po_');
     var left=inRange.length-selected.length;
     var a2=A();if(!a2.settlePlatformPayout||!a2.managerApproval){alert('3D payout approval service is not available. Refresh the portal.');return;}
+    var destinations=Object.keys(payoutCashAccounts).map(function(id){return Object.assign({id:id},payoutCashAccounts[id]||{});}).filter(function(x){return x.active!==false;}).sort(function(a,b){return (a.order||0)-(b.order||0)||String(a.name||'').localeCompare(String(b.name||''));});
+    if(actual>0&&!destinations.length){alert('Add the receiving bank or GCash account in Finance / Books → Cash Flow before settling this payout.');return;}
+    var defaultDestination='';if(ch==='grabfood'){var union=destinations.find(function(x){return /union\s*bank/i.test(String(x.name||''));});defaultDestination=union?union.id:'';}else{var panda=destinations.find(function(x){return /food\s*panda/i.test(String(x.name||''));});defaultDestination=panda?panda.id:'';}
     window.AccazaFormDialog.run({
       title:'Settle '+chLbl+' payout',
-      subtitle:'Enter the date '+chLbl+' released this payout (from the payout statement). '+selected.length+' order(s), actual '+peso(actual)+'.',
+      subtitle:'Enter the payout date and select the account that actually received the money. Settlement and bank deposit post together. '+selected.length+' order(s), actual '+peso(actual)+'.',
       submitLabel:'Save & settle',
       busyLabel:'Settling…',
-      fields:[{name:'payoutDate',label:'Payout date',type:'date',required:true}]
+      fields:[{name:'payoutDate',label:'Payout date',type:'date',required:true}].concat(actual>0?[{name:'destinationAccountId',label:'Deposited directly to',type:'select',required:true,value:defaultDestination,options:[{value:'',label:'— select receiving account —'}].concat(destinations.map(function(x){return{value:x.id,label:(x.name||x.id)+' · '+(x.type||'cash account')};})),help:ch==='grabfood'?'Select Union Bank unless the Grab statement shows a different receiving account.':'Select the dedicated FoodPanda GCash account.'}]:[])
     },function(v){
       return a2.managerApproval('settle_platform_payout',pid,actual,'Settle '+chLbl+' payout').then(function(ap){
-        return a2.settlePlatformPayout({payoutId:pid,channel:ch,periodStart:(poFrom||''),periodEnd:(poTo||''),actualPayout:actual,allocations:allocs,allocationRefs:allocationRefs,orderIds:selected.map(function(e){return e.o.id||e.key;}),payoutDate:v.payoutDate,approvalId:ap.approvalId});
+        return a2.settlePlatformPayout({payoutId:pid,channel:ch,periodStart:(poFrom||''),periodEnd:(poTo||''),actualPayout:actual,allocations:allocs,allocationRefs:allocationRefs,orderIds:selected.map(function(e){return e.o.id||e.key;}),payoutDate:v.payoutDate,destinationAccountId:v.destinationAccountId||'',approvalId:ap.approvalId});
       }).then(function(r){return (r&&r.data)||r||{};});
     }).then(function(d){
       selected.forEach(function(e){var mp=(e.node==='archivedOrders')?archMap:ordersMap;var k=(e.o&&e.o.id)||e.key;if(mp[k])mp[k].settlementStatus='settled';});
       renderPayouts();
-      alert('Settled '+(d.orderCount||0)+' '+chLbl+' order(s).'+(left>0?(' '+left+' left unticked stay unsettled and carry to the next payout.'):'')+((Number(d.owingCreated)||0)>0?(' '+peso(d.owingCreated)+' recorded as owing to '+chLbl+' (recovered next payout).'):'')+((Number(d.owingApplied)||0)>0?(' Prior owing '+peso(d.owingApplied)+' auto-netted.'):'')+' Server variance '+peso(d.variance)+' posted to the audit ledger.');
+      alert('Settled '+(d.orderCount||0)+' '+chLbl+' order(s).'+(d.depositMovementId?' The actual payout was posted directly to the selected receiving account.':'')+(left>0?(' '+left+' left unticked stay unsettled and carry to the next payout.'):'')+((Number(d.owingCreated)||0)>0?(' '+peso(d.owingCreated)+' recorded as owing to '+chLbl+' (recovered next payout).'):'')+((Number(d.owingApplied)||0)>0?(' Prior owing '+peso(d.owingApplied)+' auto-netted.'):'')+' Server variance '+peso(d.variance)+' posted to the audit ledger.');
     }).catch(function(err){var m=String((err&&err.message)||(err&&err.code)||err);if(m.indexOf('cancelled')<0)alert('Could not settle payout: '+m+'. Nothing was settled.');});
   };
   var _add=document.getElementById('poAddAcc');if(_add)_add.onclick=function(){var nm=(document.getElementById('poNewName').value||'').trim();if(!nm){alert('Type an account name.');return;}var t=document.getElementById('poNewType').value;var a3=A();a3.set(a3.ref(a3.db,'platformVarAccounts/'+uid('va_')),{name:nm,type:t,order:accs.length+1}).then(function(){});};
