@@ -66,7 +66,7 @@ function mapAccount(posAccount, channel, cashAccountMap) {
     "expense:platform_variance:va_promo": "6045", "expense:platform_variance:va_fees": "6080",
     "expense:platform_variance:va_penalty": "6085", "expense:platform_variance:va_refund": "6085",
     "revenue:platform_variance:va_incentive": "4990", "revenue:platform_variance:va_refund_recovery": "4990",
-    "expense:customer_discount": "4900", "expense:platform_discount": "4900", "expense:platform_merchant_funded_promo": "6045", "expense:platform_delivery_fee_discount": "6045", "expense:platform_service_vat": "6046",
+    "expense:customer_discount": "4900", "expense:platform_discount": "4900", "revenue:platform_discount": "4900", "expense:platform_merchant_funded_promo": "6045", "expense:platform_delivery_fee_discount": "6045", "expense:platform_service_vat": "6046",
     "expense:platform_estimate_variance": "6100", "revenue:platform_estimate_variance": "4990",
     "equity:owner_capital": "3000", "equity:opening_balance": "3000", "equity:cash_float_source": "3000",
     "cogs:beverage": "5000", "cogs:food": "5030", "cogs:packaging": "5040", "cogs:other": "5000", "inventory:control": "1200",

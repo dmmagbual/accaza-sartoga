@@ -44,8 +44,8 @@ function orderPosting(order, accounts) {
     const net = money(order.netPlatform != null ? order.netPlatform : gross - commission - discount - wht - vat);
     lines.push(line(`asset:platform_receivable:${channel}`, net, 0, "Platform receivable"));
     if (commission) lines.push(line("expense:platform_commission", commission, 0, "Platform commission"));
-    if (merchantPromo) lines.push(line("expense:platform_merchant_funded_promo", merchantPromo, 0, "Merchant-funded promo"));
-    if (deliveryFeeDiscount) lines.push(line("expense:platform_delivery_fee_discount", deliveryFeeDiscount, 0, "Delivery fee discount"));
+    if (merchantPromo) lines.push(line("revenue:platform_discount", merchantPromo, 0, "Merchant-funded promo"));
+    if (deliveryFeeDiscount) lines.push(line("revenue:platform_discount", deliveryFeeDiscount, 0, "Delivery fee discount"));
     if (unmappedDiscount) lines.push(line("expense:platform_discount", unmappedDiscount, 0, "Legacy/unclassified platform discount"));
     if (wht) lines.push(line("asset:withholding_tax", wht, 0, "Withholding tax receivable"));
     if (vat) lines.push(line("expense:platform_service_vat", vat, 0, "Platform service VAT"));
@@ -124,6 +124,39 @@ function postingDifference(before, after, type, sourceId, label) {
   return movement(type || "posting_correction", "order", sourceId, lines, {channel: after && after.channel || before && before.channel || ""});
 }
 
+function orderNetSales(order) {
+  order = order || {};
+  const gross = money(order.subtotal != null ? order.subtotal : order.total);
+  return money(Math.max(0, gross - money(order.discount) - money(order.refundAmount)));
+}
+
+function sourceNetSales(movements, sourceId) {
+  let gross = 0, discounts = 0, reversals = 0;
+  (movements || []).filter((item) => item && String(item.sourceId || "") === String(sourceId || "")).forEach((item) => {
+    (item.lines || []).forEach((entry) => {
+      const account = safe(entry.account), debit = money(entry.debit), credit = money(entry.credit);
+      if (account === "revenue:sales") gross = money(gross + credit - debit);
+      else if (["expense:customer_discount", "expense:platform_discount", "revenue:platform_discount"].includes(account)) discounts = money(discounts + debit - credit);
+      else if (account === "revenue:sales_reversal") reversals = money(reversals + debit - credit);
+    });
+  });
+  return money(gross - discounts - reversals);
+}
+
+function platformDiscountReclassification(order, originalMovement) {
+  order = order || {}; originalMovement = originalMovement || {};
+  const legacyAccounts = new Set(["expense:platform_merchant_funded_promo", "expense:platform_delivery_fee_discount"]), credits = [], labels = [];
+  (originalMovement.lines || []).forEach((entry) => {
+    const account = safe(entry.account), amount = money(money(entry.debit) - money(entry.credit));
+    if (!legacyAccounts.has(account) || !(amount > 0)) return;
+    credits.push(line(account, 0, amount, `Reclassify ${safe(entry.label || account)} to contra-revenue`));
+    labels.push(safe(entry.label || account));
+  });
+  const total = money(credits.reduce((sum, entry) => sum + entry.credit, 0));
+  if (!(total > 0)) return null;
+  return movement("sales_discount_reclassification", "order", safe(order.id || originalMovement.sourceId), [line("revenue:platform_discount", total, 0, `Platform sales discounts · ${labels.join(" + ")}`), ...credits], {channel: safe(order.channel || originalMovement.channel), occurredAt: Number(originalMovement.occurredAt || order.timestamp || Date.now()), originalMovementId: safe(originalMovement.id || `sale_${order.id}`), controlReason: "Align platform discounts with Admin net sales without changing cash, receivables, or profit"});
+}
+
 /* Rebuild a stored platform payout from its durable payout record. The same
    deterministic payout_<id> movement is used by live settlement and repair. */
 function platformPayoutPosting(payout, definitions) {
@@ -140,4 +173,4 @@ function platformPayoutPosting(payout, definitions) {
   return movement("platform_payout_settlement", "platformPayout", safe(payout.id), lines, {occurredAt:Number(payout.settledAt||Date.now()),approvalId:safe(payout.approvalId),approvedBy:safe(payout.approvedBy),reconstructedFromPayoutRecord:payout.reconstructedFromPayoutRecord===true});
 }
 
-module.exports = {money, safe, line, totals, assertBalanced, accountForMethod, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, platformPayoutPosting};
+module.exports = {money, safe, line, totals, assertBalanced, accountForMethod, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting};
