@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<meta name="accaza-books-build" content="42"/>
+<meta name="accaza-books-build" content="43"/>
 <title>Accaza Books</title>
 <style>
 :root{
@@ -145,7 +145,7 @@ tr.group-account td{font-weight:800;background:#f3ece0;border-top:2px solid var(
   <div class="topbar-in">
     <div class="brand">
       <div class="logo">☕</div>
-      <div><b>Accaza Books</b><small>Coffee-shop accounting · build v42</small></div>
+      <div><b>Accaza Books</b><small>Coffee-shop accounting · build v43</small></div>
     </div>
     <span id="liveStatus" class="live-pill off" title="Live POS auto-capture status — click to sign in" onclick="App.signInPrompt()">● Connecting…</span>
     <span id="reviewBadge" class="live-pill warn" style="display:none" title="Unmapped POS accounts to review" onclick="App.go('journal')"></span>
@@ -165,7 +165,7 @@ tr.group-account td{font-weight:800;background:#f3ece0;border-top:2px solid var(
 <div class="tabs"><div class="tabs-in" id="tabs"></div></div>
 
 <div class="wrap"><div id="page" class="page"></div>
-  <div class="foot-note">Accaza Books · build v42 · double-entry, append-only ledger · shared server-authoritative Finance data</div>
+  <div class="foot-note">Accaza Books · build v43 · double-entry, append-only ledger · shared server-authoritative Finance data</div>
 </div>
 
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
@@ -224,7 +224,7 @@ function defaultAccounts(){
     ["1500","Equipment","Asset","Espresso machine, grinders"],["1510","Furniture & Fixtures","Asset"],
     ["1590","Accumulated Depreciation","Asset","Contra-asset (credit balance)"],
     // Liabilities
-    ["2000","Accounts Payable – Suppliers","Liability"],["2020","Due to Platforms","Liability","Negative Grab/FoodPanda settlements owed to the platform"],["2050","Due to Owner / Partners","Liability","Personally funded business costs awaiting reimbursement"],["2090","Unrecorded Payables Clearing","Liability","Supplier obligations awaiting complete posting"],["2100","Accrued Salaries","Liability"],
+    ["2000","Accounts Payable – Suppliers","Liability"],["2020","Due to Platforms","Liability","Negative Grab/FoodPanda settlements owed to the platform"],["2050","Due to Owner / Partners","Liability","Personally funded business costs awaiting reimbursement"],["2090","Unrecorded Payables Clearing","Liability","Supplier obligations awaiting complete posting"],["2100","Cash Overage Under Review","Liability","Pending manager reconciliation"],["2120","Accrued Salaries","Liability"],
     ["2200","Taxes Payable","Liability"],["2300","Loans Payable","Liability"],["2310","Loan 2","Liability"],["2320","Loan 3","Liability"],
     // Equity
     ["3000","Owner's Capital","Equity"],["3100","Owner's Drawings","Equity","Contra-equity (debit balance)"],
@@ -275,7 +275,7 @@ function migrate(p){
     ["1290","Inventory Receiving Clearing","Asset","Received inventory awaiting complete posting"],
     ["1270","Inventory – Operating & Cleaning Supplies","Asset"],["1280","Inventory – Office Supplies","Asset"],
     ["2020","Due to Platforms","Liability","Negative Grab/FoodPanda settlements owed to the platform"],["2050","Due to Owner / Partners","Liability","Personally funded business costs awaiting reimbursement"],
-    ["2030","Customer Change / Refund Payable","Liability","Customer-related cash overages awaiting refund"],["2090","Unrecorded Payables Clearing","Liability","Supplier obligations awaiting complete posting"],["2100","Cash Overage Under Review","Liability","Pending manager reconciliation"],
+    ["2030","Customer Change / Refund Payable","Liability","Customer-related cash overages awaiting refund"],["2090","Unrecorded Payables Clearing","Liability","Supplier obligations awaiting complete posting"],["2100","Cash Overage Under Review","Liability","Pending manager reconciliation"],["2120","Accrued Salaries","Liability"],
     ["2210","Output VAT Payable","Liability","Used when VAT-registered"],
     ["2220","Percentage Tax Payable","Liability","Non-VAT percentage tax on gross receipts"],
     ["2230","Withholding Tax Payable","Liability","EWT withheld from payments"],
@@ -421,7 +421,7 @@ const App = {
   openEntryModal(pf,edit){
     pf = pf || {date:todayStr(), ref:"", memo:"", lines:[{code:"",debit:"",credit:""},{code:"",debit:"",credit:""}]};
     const m=document.getElementById("modal");
-    const linkedPayableId=(edit&&edit.linkedPayableId)||pf.linkedPayableId||"",payables=window.__apMap||{},payableOptions='<option value="">— select the exact open payable —</option>'+Object.keys(payables).filter(id=>(payables[id]||{}).status==='open'||id===linkedPayableId).map(id=>{const p=payables[id]||{};return `<option value="${esc(id)}" ${id===linkedPayableId?'selected':''}>${esc(p.party||'Payable')} · ${esc(p.ref||id)} · ${peso(p.remainingAmount!=null?p.remainingAmount:p.amount)}</option>`;}).join('');
+    const linkedPayableId=(edit&&edit.linkedPayableId)||pf.linkedPayableId||"",linkedDiscrepancyId=(edit&&edit.linkedDiscrepancyId)||pf.linkedDiscrepancyId||"",payables=window.__apMap||{},payableOptions='<option value="">— select the exact open payable —</option>'+Object.keys(payables).filter(id=>(payables[id]||{}).status==='open'||id===linkedPayableId).map(id=>{const p=payables[id]||{};return `<option value="${esc(id)}" ${id===linkedPayableId?'selected':''}>${esc(p.party||'Payable')} · ${esc(p.ref||id)} · ${peso(p.remainingAmount!=null?p.remainingAmount:p.amount)}</option>`;}).join(''),discrepancies=window.__cashDiscrepancies||{},discrepancyOptions='<option value="">— select the exact open cash variance —</option>'+Object.keys(discrepancies).filter(id=>{const d=discrepancies[id]||{};return d.kind==='cash'&&(d.status!=='reviewed'||id===linkedDiscrepancyId);}).map(id=>{const d=discrepancies[id]||{},left=Number(d.remainingAmount!=null?d.remainingAmount:Math.abs(Number(d.variance)||0));return `<option value="${esc(id)}" ${id===linkedDiscrepancyId?'selected':''}>${Number(d.variance)<0?'Shortage':'Overage'} · ${peso(left)} · ${esc(d.staff||d.shiftId||id)}</option>`;}).join('');
     const optHtml = sel => '<option value="">— account —</option>' +
       TYPES.map(t=>{ const rows=DB.accounts.filter(a=>a.type===t&&!isMainAccount(a.code)&&a.active!==false); if(!rows.length) return ""; return `<optgroup label="${t}">`+rows.map(a=>`<option value="${a.code}" ${a.code===sel?'selected':''}>${a.code} · ${esc(a.name)}</option>`).join("")+`</optgroup>`; }).join("");
     const lineRow = (l,i)=>`<div class="jl-row" data-i="${i}">
@@ -439,6 +439,8 @@ const App = {
           <div class="field"><label>Reference (optional)</label><input id="e_ref" value="${esc(pf.ref)}" placeholder="Receipt, invoice, transfer or approval ID" oninput="App._draft.ref=this.value"/></div>
         </div>
         <div class="field"><label>Memo / description</label><input id="e_memo" value="${esc(pf.memo)}" placeholder="What this entry is for" oninput="App._draft.memo=this.value"/></div>
+        <div class="field"><label>Journal purpose</label><select id="e_purpose" onchange="document.getElementById('e_variance_wrap').style.display=this.value==='cash_variance'?'block':'none'"><option value="normal">Normal journal</option><option value="cash_variance" ${linkedDiscrepancyId?'selected':''}>Correct an Admin cash variance</option></select></div>
+        <div class="field" id="e_variance_wrap" style="display:${linkedDiscrepancyId?'block':'none'}"><label>Linked Admin shortage / overage</label><select id="e_discrepancy">${discrepancyOptions}</select><div class="tiny muted">Posting verifies the variance amount and control-account direction, links the journal, updates cash custody when applicable, and closes or partially resolves the Admin discrepancy.</div></div>
         <div class="field"><label>Linked bill / payable <span class="muted">(required when account 2000 is used)</span></label><select id="e_payable">${payableOptions}</select><div class="tiny muted">Debiting Accounts Payable closes the selected bill in both the supplier register and General Ledger. To create a new AP credit, use New bill or Purchases.</div></div>
         <div class="section-label">Lines · debits must equal credits</div>
         <div class="jl-head"><span>Account</span><span>Debit</span><span>Credit</span><span></span></div>
@@ -458,7 +460,7 @@ const App = {
   lineAdd(){ this._draft.lines.push({code:"",debit:"",credit:""}); this.rerenderLines(); },
   lineDel(i){ if(this._draft.lines.length<=1) return; this._draft.lines.splice(i,1); this.rerenderLines(); },
   rerenderLines(){ // re-open preserving draft
-    const pf=this._draft,edit=this._edit,payable=document.getElementById('e_payable');if(payable)pf.linkedPayableId=payable.value;this.openEntryModal(pf,edit);
+    const pf=this._draft,edit=this._edit,payable=document.getElementById('e_payable'),discrepancy=document.getElementById('e_discrepancy');if(payable)pf.linkedPayableId=payable.value;if(discrepancy)pf.linkedDiscrepancyId=discrepancy.value;this.openEntryModal(pf,edit);
   },
   refreshBalBar(){
     const d=this._draft; let dr=0,cr=0; d.lines.forEach(l=>{dr+=Number(l.debit)||0;cr+=Number(l.credit)||0;});
@@ -481,9 +483,9 @@ const App = {
     if(!window.__financeCmd) return alert("Live connection not ready — sign in first.");
     if(!(d.memo||"").trim()) return alert("Memo / description is required.");
     if(this._edit&&!(this._edit.reason||"").trim())return alert("Correction reason is required.");
-    const usesAp=lines.some(l=>l.code==='2000'),linkedPayableId=(document.getElementById('e_payable')||{}).value||'';if(usesAp&&!linkedPayableId)return alert('Select the exact open bill or payable for account 2000.');
+    const usesAp=lines.some(l=>l.code==='2000'),linkedPayableId=(document.getElementById('e_payable')||{}).value||'',variancePurpose=(document.getElementById('e_purpose')||{}).value==='cash_variance',linkedDiscrepancyId=variancePurpose?((document.getElementById('e_discrepancy')||{}).value||''):'';if(usesAp&&!linkedPayableId)return alert('Select the exact open bill or payable for account 2000.');if(variancePurpose&&!linkedDiscrepancyId)return alert('Select the exact Admin cash shortage or overage this journal corrects.');
     const btn=document.getElementById("postBtn");btn.disabled=true;btn.textContent="Posting…";
-    const commandId=(this._edit?"books_edit_":"books_manual_")+Date.now(),payload={action:this._edit?"correct_manual_journal":"manual_journal",commandId,date:d.date||todayStr(),ref:d.ref||"",memo:d.memo||"",lines,linkedPayableId};if(this._edit){payload.originalMovementId=this._edit.originalMovementId;payload.reason=this._edit.reason.trim();payload.correctionDate=todayStr();}
+    const commandId=(this._edit?"books_edit_":"books_manual_")+Date.now(),payload={action:this._edit?"correct_manual_journal":"manual_journal",commandId,date:d.date||todayStr(),ref:d.ref||"",memo:d.memo||"",lines,linkedPayableId,linkedDiscrepancyId};if(this._edit){payload.originalMovementId=this._edit.originalMovementId;payload.reason=this._edit.reason.trim();payload.correctionDate=todayStr();}
     window.__financeCmd(payload).then(()=>{
       this.closeModal();CURRENT="journal";this.renderTabs();this.rebuildPeriodSel();this.render();
     }).catch(e=>{alert("Could not post journal: "+((e&&e.message)||e));btn.disabled=false;btn.textContent="Post entry";});
@@ -491,7 +493,7 @@ const App = {
   rebuildPeriodSel(){
     const sel=document.getElementById("periodSel"); if(!sel)return;sel.innerHTML=periodOptions();sel.value=PERIOD;
   },
-  editEntry(id){const e=ENTRIES().find(x=>x.id===id);if(!e||e.reversalOf||e.reversedByMovementId)return;this.openEntryModal({date:e.date||todayStr(),ref:e.ref||"",memo:e.memo||"",linkedPayableId:e.linkedPayableId||"",lines:(e.lines||[]).map(l=>({code:l.code,debit:Number(l.debit)||"",credit:Number(l.credit)||""}))},{originalMovementId:id,linkedPayableId:e.linkedPayableId||"",reason:""});},
+  editEntry(id){const e=ENTRIES().find(x=>x.id===id);if(!e||e.reversalOf||e.reversedByMovementId)return;this.openEntryModal({date:e.date||todayStr(),ref:e.ref||"",memo:e.memo||"",linkedPayableId:e.linkedPayableId||"",linkedDiscrepancyId:e.linkedDiscrepancyId||"",lines:(e.lines||[]).map(l=>({code:l.code,debit:Number(l.debit)||"",credit:Number(l.credit)||""}))},{originalMovementId:id,linkedPayableId:e.linkedPayableId||"",linkedDiscrepancyId:e.linkedDiscrepancyId||"",reason:""});},
   reverseEntry(id,voidIt){
     const e=ENTRIES().find(x=>x.id===id); if(!e||e.reversedByMovementId||e.reversalOf) return;
     const reason=prompt((voidIt?"Why was this journal wrong from the beginning? It will be voided on its original accounting date.":"Why is this valid journal being reversed now? The reversal will use today's date.")+" The original stays in the audit history.","");if(!reason||!reason.trim())return;
@@ -694,7 +696,7 @@ const PAGES = {
       const history=(corrected||closed)?`<details style="margin-top:.45rem"><summary class="tiny linkish">View posting history</summary>${historyEntry('Original posting',g.original)}${historyEntry(g.reversal&&g.reversal.voided?'Void entry':'Reversal entry',g.reversal)}${historyEntry('Corrected replacement',g.replacement)}</details>`:'';
       return `<tr>
         <td style="white-space:nowrap">${e.date}<div class="tiny muted">${esc(e.ref)||'—'} ${e.source==='pos'?'<span class="badge-rev" style="color:#28576b;background:#e9f2f6">POS</span>':''}${status?'<span class="badge-rev">'+status+'</span>':''}</div></td>
-        <td><b>${esc(e.memo)||'(no memo)'}</b><div style="margin-top:.35rem;font-size:.8rem">${entryLines(e)}</div>${history}</td>
+        <td><b>${esc(e.memo)||'(no memo)'}</b>${e.linkedDiscrepancyId?`<div class="tiny" style="margin-top:.2rem"><span class="badge-rev">Admin variance · ${esc(e.linkedDiscrepancyId)}</span></div>`:''}<div style="margin-top:.35rem;font-size:.8rem">${entryLines(e)}</div>${history}</td>
         <td class="num" style="white-space:nowrap">${closed?peso(0):peso(dr)}</td>
         <td style="white-space:nowrap">${!closed&&e.sourceType==='booksManualJournal'&&!e.reversalOf&&!e.reversedByMovementId?`<button class="btn sm ghost" onclick="App.editEntry('${e.id}')">Correct</button> <button class="btn sm ghost" onclick="App.reverseEntry('${e.id}',false)">Reverse</button> <button class="btn sm ghost" onclick="App.reverseEntry('${e.id}',true)">Void</button>`:'<span class="tiny muted">'+(status||'Automatic posting')+'</span>'}</td></tr>`;
     }).join("");
@@ -1164,7 +1166,7 @@ if(auth){
   function toEntries(j){ const out=[]; Object.keys(j||{}).forEach(k=>{ const n=j[k]||{}; let lines=[];
       if(n.net) lines=Object.keys(n.net).filter(c=>Math.abs(n.net[c])>=0.005).sort().map(c=>({code:c,debit:n.net[c]>0?n.net[c]:0,credit:n.net[c]<0?-n.net[c]:0}));
       else if(Array.isArray(n.lines)) lines=n.lines.map(l=>({code:l.code,debit:Number(l.debit)||0,credit:Number(l.credit)||0}));
-      if(lines.length) out.push({id:k,date:n.date||String(k).slice(0,10),ref:n.ref||k,memo:n.memo||"POS entry",lines,source:"pos",channel:n.channel||"",sourceType:n.sourceType||"",sourceId:n.sourceId||"",reversalOf:n.reversalOf||"",reversedByMovementId:n.reversedByMovementId||"",correctsMovementId:n.correctsMovementId||"",correctionReplacementId:n.correctionReplacementId||"",correctionReversalMovementId:n.correctionReversalMovementId||"",linkedPayableId:n.linkedPayableId||"",voided:n.voided===true,reason:n.reason||n.correctionReason||""}); });
+      if(lines.length) out.push({id:k,date:n.date||String(k).slice(0,10),ref:n.ref||k,memo:n.memo||"POS entry",lines,source:"pos",channel:n.channel||"",sourceType:n.sourceType||"",sourceId:n.sourceId||"",reversalOf:n.reversalOf||"",reversedByMovementId:n.reversedByMovementId||"",correctsMovementId:n.correctsMovementId||"",correctionReplacementId:n.correctionReplacementId||"",correctionReversalMovementId:n.correctionReversalMovementId||"",linkedPayableId:n.linkedPayableId||"",linkedDiscrepancyId:n.linkedDiscrepancyId||"",voided:n.voided===true,reason:n.reason||n.correctionReason||""}); });
     return out; }
   function refresh(){ window.__posEntries=toEntries(journalCache);
     const n=Object.keys(reviewCache||{}).length; const rb=document.getElementById("reviewBadge");
@@ -1179,6 +1181,7 @@ if(auth){
       onValue(ref(db,"/books/reviewQueue"), s=>{ reviewCache=s.val()||{}; refresh(); }, ()=>{});
       onValue(ref(db,"/receivables"), s=>{ window.__arMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       onValue(ref(db,"/payables"), s=>{ window.__apMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
+      onValue(ref(db,"/discrepancies"), s=>{ window.__cashDiscrepancies=s.val()||{}; }, ()=>{});
       onValue(ref(db,"/cfAccounts"), s=>{ window.__cfAccounts=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       onValue(ref(db,"/booksChart"), s=>{ window.__booksChart=s.val()||null; if(window.App&&App.applyServerChart)App.applyServerChart(); }, ()=>{});
       onValue(ref(db,"/financialMovements"), s=>{ window.__financialMovements=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
@@ -1189,7 +1192,7 @@ if(auth){
       onValue(ref(db,"/fixedAssets"), s=>{ window.__faMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       onValue(ref(db,"/purchaseInvoices"), s=>{ window.__piMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       onValue(ref(db,"/personalFundings"), s=>{ window.__personalFundings=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
-    } else { window.__booksLiveLoading=false;setPill("● Sign in for live POS","off");window.__booksChartManager=false; window.__posEntries=[]; window.__arMap={}; window.__apMap={}; window.__cfAccounts={}; window.__financialMovements={}; window.__platformPayouts={}; window.__booksActiveOrders={};window.__booksArchivedOrders={};window.__cashCustody={}; window.__faMap={}; window.__piMap={};window.__personalFundings={}; if(window.App&&App.render)App.render(); }
+    } else { window.__booksLiveLoading=false;setPill("● Sign in for live POS","off");window.__booksChartManager=false; window.__posEntries=[]; window.__arMap={}; window.__apMap={}; window.__cashDiscrepancies={}; window.__cfAccounts={}; window.__financialMovements={}; window.__platformPayouts={}; window.__booksActiveOrders={};window.__booksArchivedOrders={};window.__cashCustody={}; window.__faMap={}; window.__piMap={};window.__personalFundings={}; if(window.App&&App.render)App.render(); }
   });
 }
 </script>
