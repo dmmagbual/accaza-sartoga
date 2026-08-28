@@ -488,6 +488,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(managerApprovalCheck.status!==0)fail(`Privileged approval claim checks failed:\n${managerApprovalCheck.stderr||managerApprovalCheck.stdout}`);
   const approvalMatrixCheck=spawnSync(process.execPath,[path.join(root,'tests','approval-matrix-check.mjs')],{encoding:'utf8',cwd:root});
   if(approvalMatrixCheck.status!==0)fail(`Privileged approval matrix checks failed:\n${approvalMatrixCheck.stderr||approvalMatrixCheck.stdout}`);
+  const financialCloseCheck=spawnSync(process.execPath,[path.join(root,'tests','financial-close-check.cjs')],{encoding:'utf8',cwd:root});
+  if(financialCloseCheck.status!==0)fail(`Financial close checks failed:\n${financialCloseCheck.stderr||financialCloseCheck.stdout}`);
 
   const pricing=spawnSync(process.execPath,[path.join(root,'tests','order-pricing-check.mjs')],{encoding:'utf8',cwd:root});
   if(pricing.status!==0)fail(`server pricing checks failed:\n${pricing.stderr||pricing.stdout}`);
@@ -652,6 +654,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   process.stdout.write(inventoryBooksReconciliationCheck.stdout);
   process.stdout.write(operationalExceptionsCheck.stdout);
   process.stdout.write(managerApprovalCheck.stdout);
+  process.stdout.write(financialCloseCheck.stdout);
   console.log('PASS: functions/index.js syntax is valid.');
 }finally{
   fs.rmSync(temp,{recursive:true,force:true});

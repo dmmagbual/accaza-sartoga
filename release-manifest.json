@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 356,
-    "books": 43,
+    "admin": 357,
+    "books": 44,
     "customer": 59,
-    "serviceWorkerCache": 281
+    "serviceWorkerCache": 282
   },
   "authoritativeFiles": [
     "admin.html",
@@ -30,6 +30,7 @@
     "functions/index.js",
     "functions/lib/costing.js",
     "functions/lib/financial.js",
+    "functions/lib/financial-close.js",
     "functions/lib/offline-sync.js",
     "functions/lib/payment-verification.js",
     "functions/lib/books-bridge.js",
@@ -105,6 +106,9 @@
     ,"repairClosedShiftTurnover"
     ,"repairReversedPayoutDeposit"
     ,"reconcileUndepositedCustody"
+    ,"runFinancialClose"
+    ,"reopenFinancialCloseOnMovement"
+    ,"reopenFinancialCloseOnOrderChange"
   ],
   "requiredProtectedNodes": [
     "activeOrders",
@@ -116,6 +120,9 @@
     "inventoryBalances",
     "inventoryMovements",
     "financialMovements",
+    "financialCloses",
+    "financialCloseIndex",
+    "financialCloseClaims",
     "financialCommandClaims",
     "financialApprovals",
     "cashCustody",
