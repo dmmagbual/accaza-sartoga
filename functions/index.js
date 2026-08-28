@@ -22,6 +22,7 @@ const PaymentVerification = require("./lib/payment-verification");
 const OrderStatus = require("./lib/order-status");
 const OperationalExceptions = require("./lib/operational-exceptions");
 const BooksBridge = require("./lib/books-bridge");
+const FinancialClose = require("./lib/financial-close");
 
 initializeApp();
 
@@ -613,7 +614,7 @@ const MANAGER_APPROVAL_ACTIONS = new Set([
   "delete_archived_order", "review_discrepancy", "approve_petty_voucher", "correct_petty_voucher",
   "reject_petty_voucher", "void_petty_voucher", "return_supplier_payment", "manual_discount", "cash_in", "purchase_cash_advance", "fixed_float_exception", "reverse_purchase",
   "rekey_platform_order", "reverse_platform_payout", "correct_platform_presettlement", "set_undeposited_opening_balance", "retire_revolving_fund",
-  "repair_closed_shift_turnover", "repair_reversed_payout_deposit", "reconcile_undeposited_custody",
+  "repair_closed_shift_turnover", "repair_reversed_payout_deposit", "reconcile_undeposited_custody", "certify_financial_close",
 ]);
 function transactionCurrent(current, initial, state) {
   const value = current == null && !state.seen ? initial : current;
@@ -994,6 +995,46 @@ exports.reconcileUndepositedCustody = onCall(
     const writes=Object.assign({},approval.usedWrites,{[`cashCustody/${custodyId}`]:{shiftId:custodyId,staff:`Finance journal recovery · ${approvedBy}`,amount,depositedAmount:0,remaining:amount,retainedFloat:0,status:"awaiting_deposit",closedAt:occurredAt,movementId,source:"historical_finance_journal_custody_reconciliation",reference:financeText(movement.reference||movement.sourceId,120),createdAt:now,createdBy:actor.uid,approvalId:approval.id,schemaVersion:3},[`financialControlLinks/custodyRepairs/${movementId}`]:{movementId,custodyId,amount,reason,linkedAt:now,linkedBy:actor.uid,approvedBy,approvalId:approval.id,schemaVersion:1},[`operationalAudit/${now}_${movementId}_custody_reconcile`]:operationalAuditRecord("reconcile_undeposited_custody","booksManualJournal",movementId,actor,{amount,custodyId,reason,approvalId:approval.id,approvedBy,newFinancialMovement:false,expectedDifferenceAfter:0})});
     await db.ref().update(writes);return{movementId,custodyId,amount,differenceBefore:difference,differenceAfter:0,duplicate:false,repaired:true,newFinancialMovement:false};
   },
+);
+
+exports.runFinancialClose = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "512MiB"},
+  async (request) => {
+    const db=getDatabase(),actor=await requirePortalPermission(db,request,["dailyreport","cashflow","registerOps"]),data=request.data||{},closeType=data.closeType==="SHIFT_CLOSE"?"SHIFT_CLOSE":"DAILY_CLOSE",businessDate=financeText(data.businessDate,10),shiftId=closeType==="SHIFT_CLOSE"?financeKey(data.shiftId,"Shift ID"):"";
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(businessDate))throw new HttpsError("invalid-argument","Business date must use YYYY-MM-DD.");
+    const closeId=closeType==="SHIFT_CLOSE"?`shift_${shiftId}`:`daily_${businessDate.replace(/-/g,"_")}`,closeRef=db.ref(`/financialCloses/${closeId}`),existing=(await closeRef.get()).val()||{};
+    if(data.action==="get")return{closeId,current:existing.current||null,latestRevision:Number(existing.latestRevision||0)};
+    if(data.action==="certify"){
+      const current=existing.current;if(!current)throw new HttpsError("failed-precondition","Run the reconciliation before certifying this close.");if(!["RECONCILED","RECONCILED_WITH_TIMING_ITEMS"].includes(current.status))throw new HttpsError("failed-precondition","Open exceptions must be resolved or documented before certification.");if(current.certification&&current.certification.approvalId)return{closeId,revision:current.revision,status:"CERTIFIED",duplicate:true};
+      const reason=financeText(data.reason,500);if(!reason)throw new HttpsError("invalid-argument","A certification note is required.");const approval=await claimManagerApproval(db,data,"certify_financial_close",closeId,null,`certify_financial_close_${closeId}_${current.revision}`),now=Date.now(),approvedBy=approval.record.approvedName||approval.record.approvedEmail||approval.record.approvedRole,certification={approvalId:approval.id,approvedAt:now,approvedBy,approvedByUid:approval.record.approvedBy,note:reason,snapshotHash:current.snapshotHash};
+      await db.ref().update(Object.assign({},approval.usedWrites,{[`financialCloses/${closeId}/current/status`]:"CERTIFIED",[`financialCloses/${closeId}/current/certification`]:certification,[`financialCloses/${closeId}/revisions/${current.revision}/status`]:"CERTIFIED",[`financialCloses/${closeId}/revisions/${current.revision}/certification`]:certification,[`operationalAudit/${now}_${closeId}_certify`]:operationalAuditRecord("certify_financial_close","financialClose",closeId,actor,{revision:current.revision,snapshotHash:current.snapshotHash,approvalId:approval.id,approvedBy,reason})}));return{closeId,revision:current.revision,status:"CERTIFIED",certification,duplicate:false};
+    }
+    const nodes=["orders","archivedOrders","shifts","financialMovements","inventoryMovements","purchaseInvoices","books/journal","cashCustody","receivables","payables","platformPayouts"],snapshots=await Promise.all(nodes.map((path)=>db.ref(`/${path}`).get())),input={closeType,businessDate,shiftId};nodes.forEach((path,index)=>{input[path==="books/journal"?"booksJournal":path]=snapshots[index].val()||{};});
+    const selectedShift=shiftId&&input.shifts[shiftId],cutoff=closeType==="SHIFT_CLOSE"?Number(selectedShift&&selectedShift.closeAt||Date.now()):(Date.parse(`${businessDate}T23:59:59.999+08:00`)||Date.now());if(closeType==="SHIFT_CLOSE"&&(!selectedShift||selectedShift.status!=="closed"))throw new HttpsError("failed-precondition","Only a closed shift can be reconciled and certified.");input.cutoff=cutoff;
+    const result=FinancialClose.buildClose(input),current=existing.current;if(current&&current.snapshotHash===result.snapshotHash&&current.status!=="REOPENED")return Object.assign({closeId,revision:current.revision,duplicate:true},current);
+    if(data.preview===true)return Object.assign({closeId,revision:Number(existing.latestRevision||0)+1,preview:true,duplicate:false},result);
+    const now=Date.now(),claimToken=crypto.randomBytes(12).toString("hex"),claimRef=db.ref(`/financialCloseClaims/${closeId}`),claim=await claimRef.transaction((value)=>{if(value&&value.status==="processing"&&Number(value.claimedAt||0)>now-300000)return;return{status:"processing",token:claimToken,claimedAt:now,claimedBy:actor.uid,snapshotHash:result.snapshotHash};},undefined,false);
+    if(!claim.committed||!claim.snapshot.val()||claim.snapshot.val().token!==claimToken)throw new HttpsError("aborted","This close is already being reconciled. Refresh and retry after it finishes.");
+    const latest=(await closeRef.get()).val()||{},latestCurrent=latest.current;if(latestCurrent&&latestCurrent.snapshotHash===result.snapshotHash&&latestCurrent.status!=="REOPENED"){await claimRef.set({status:"duplicate",token:claimToken,completedAt:Date.now(),revision:latestCurrent.revision,snapshotHash:result.snapshotHash});return Object.assign({closeId,revision:latestCurrent.revision,duplicate:true},latestCurrent);}
+    const revision=Math.max(0,Math.floor(Number(latest.latestRevision)||0))+1,record=Object.assign({},result,{closeId,revision,preparedAt:now,preparedBy:actor.uid,preparedRole:actor.role,previousRevision:latest.latestRevision||null,status:result.status});
+    const writes={[`financialCloses/${closeId}/closeId`]:closeId,[`financialCloses/${closeId}/closeType`]:closeType,[`financialCloses/${closeId}/businessDate`]:businessDate,[`financialCloses/${closeId}/shiftId`]:shiftId||null,[`financialCloses/${closeId}/latestRevision`]:revision,[`financialCloses/${closeId}/current`]:record,[`financialCloses/${closeId}/revisions/${revision}`]:record,[`financialCloseIndex/${businessDate}/${closeId}`]:{closeId,closeType,shiftId:shiftId||null,revision,status:record.status,snapshotHash:record.snapshotHash,preparedAt:now,exceptionCount:record.exceptions.length,timingItemCount:record.timingItems.length},[`operationalAudit/${now}_${closeId}_reconcile`]:operationalAuditRecord("run_financial_close","financialClose",closeId,actor,{revision,status:record.status,snapshotHash:record.snapshotHash,exceptionCount:record.exceptions.length,timingItemCount:record.timingItems.length,controlTotals:record.controlTotals})};
+    try{await db.ref().update(writes);await claimRef.set({status:"posted",token:claimToken,completedAt:Date.now(),revision,snapshotHash:record.snapshotHash});return Object.assign({duplicate:false},record);}catch(error){await claimRef.transaction((value)=>value&&value.token===claimToken?null:value,undefined,false);throw error;}
+  },
+);
+
+async function reopenCertifiedFinancialCloses(date,activityId,activity) {
+  const db=getDatabase(),index=(await db.ref(`/financialCloseIndex/${date}`).get()).val()||{},now=Date.now(),writes={};
+  Object.keys(index).forEach((closeId)=>{const row=index[closeId]||{};if(row.status!=="CERTIFIED")return;writes[`financialCloses/${closeId}/current/status`]="REOPENED";writes[`financialCloses/${closeId}/current/reopenedAt`]=now;writes[`financialCloses/${closeId}/current/reopenedByActivityId`]=activityId;writes[`financialCloses/${closeId}/subsequentActivity/${activityId}`]=Object.assign({detectedAt:now},activity||{});writes[`financialCloseIndex/${date}/${closeId}/status`]="REOPENED";writes[`financialCloseIndex/${date}/${closeId}/reopenedAt`]=now;});if(Object.keys(writes).length)await db.ref().update(writes);
+}
+
+exports.reopenFinancialCloseOnMovement = onValueCreated(
+  {ref:"/financialMovements/{movementId}",region:ORDER_REGION},
+  async (event)=>{const movement=event.data.val()||{},movementId=event.params.movementId,date=BooksBridge.businessDate(movement.occurredAt||movement.postedAt||Date.now());await reopenCertifiedFinancialCloses(date,`movement_${movementId}`,{kind:"financial_movement",movementId,type:movement.type||"",sourceType:movement.sourceType||"",sourceId:movement.sourceId||"",occurredAt:Number(movement.occurredAt||movement.postedAt||Date.now())});},
+);
+
+exports.reopenFinancialCloseOnOrderChange = onValueWritten(
+  {ref:"/orders/{orderId}",region:ORDER_REGION},
+  async (event)=>{const order=event.data.after.val()||event.data.before.val();if(!order)return;const orderId=event.params.orderId,date=order.shiftId?(await getDatabase().ref(`/shifts/${order.shiftId}/openAt`).get()).val():0,businessDate=BooksBridge.businessDate(date||order.completedAt||order.receivedAt||order.timestamp||Date.now());await reopenCertifiedFinancialCloses(businessDate,`order_${orderId}_${Date.now()}`,{kind:"admin_order_change",orderId,shiftId:order.shiftId||"",status:order.status||"",occurredAt:Number(order.completedAt||order.receivedAt||order.timestamp||Date.now())});},
 );
 
 // Repairs only the narrow historical case where a payout was reversed first
