@@ -79,3 +79,5 @@ firebase deploy --only "functions" --project "accaza-sartoga"
 
 - Before agreeing with a proposed Accaza change, first identify its blind spots, advantages, disadvantages, operational cost, financial and inventory effects, risks, edge cases, and reasonable alternatives. Then give a recommendation with the safeguards it requires.
 - Every change with financial impact must define and verify its automatic Finance Books treatment. Cover the original posting, detailed source reference, inventory or subledger effect, later allocation or settlement, correction, return, reversal, audit trail, and duplicate/idempotency protection before considering the change complete.
+- Resolve Accaza issues from top to bottom, never as isolated patches. Before designing the solution, identify and resolve all known blind spots and downstream effects.
+- Every operational or financial solution must address both sides together: the Admin operational record/subledger and Finance Books/General Ledger. Show the user how both sides behave, reconcile, correct, reverse, and remain linked.
