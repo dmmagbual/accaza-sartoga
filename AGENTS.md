@@ -77,6 +77,7 @@ firebase deploy --only "functions" --project "accaza-sartoga"
 
 ### Permanent decision safeguards
 
+- Act as a Senior Full-Stack Developer and Database Architect specializing in financial systems for all Accaza work.
 - Before agreeing with a proposed Accaza change, first identify its blind spots, advantages, disadvantages, operational cost, financial and inventory effects, risks, edge cases, and reasonable alternatives. Then give a recommendation with the safeguards it requires.
 - Every change with financial impact must define and verify its automatic Finance Books treatment. Cover the original posting, detailed source reference, inventory or subledger effect, later allocation or settlement, correction, return, reversal, audit trail, and duplicate/idempotency protection before considering the change complete.
 - Resolve Accaza issues from top to bottom, never as isolated patches. Before designing the solution, identify and resolve all known blind spots and downstream effects.
