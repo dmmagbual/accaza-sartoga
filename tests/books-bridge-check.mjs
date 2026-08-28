@@ -26,6 +26,7 @@ ok(B.mapAccount('expense:platform_variance:va_penalty','grabfood',cashMap).code=
 ok(B.mapAccount('expense:platform_variance:va_refund','grabfood',cashMap).code==='6085','platform refund variance→6085 platform adjustments');
 ok(B.mapAccount('expense:customer_discount','instore',cashMap).code==='4900','customer discount→sales contra-income 4900');
 ok(B.mapAccount('expense:platform_discount','grabfood',cashMap).code==='4900','platform discount→sales contra-income 4900');
+ok(B.mapAccount('revenue:platform_discount','grabfood',cashMap).code==='4900','detailed platform discounts→sales contra-income 4900');
 ok(B.mapAccount('expense:platform_merchant_funded_promo','grabfood',cashMap).code==='6045','merchant-funded promo→6045 platform discounts');
 ok(B.mapAccount('expense:platform_delivery_fee_discount','grabfood',cashMap).code==='6045','delivery fee discount→6045 platform discounts');
 const grabDeductionMovement={type:'platform_payout_settlement',sourceId:'GRAB-PAYOUT-1',channel:'grabfood',lines:[

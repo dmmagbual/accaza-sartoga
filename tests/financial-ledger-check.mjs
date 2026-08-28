@@ -16,18 +16,26 @@ assert(platform.lines.some(x=>x.account==='asset:platform_receivable:grabfood'&&
 assert(platform.lines.some(x=>x.account==='revenue:sales'&&x.credit===100),'platform gross revenue is wrong');
 const mappedGrab=F.orderPosting({id:'GF-MAPPED',channel:'grabfood',grossPlatform:200,commission:40,platformDiscount:35,platformMerchantPromo:25,platformDeliveryFeeDiscount:10,netPlatform:125},{});
 balanced(mappedGrab,'mapped Grab deductions');
-assert(mappedGrab.lines.some(x=>x.account==='expense:platform_merchant_funded_promo'&&x.debit===25),'merchant-funded promo was not posted separately');
-assert(mappedGrab.lines.some(x=>x.account==='expense:platform_delivery_fee_discount'&&x.debit===10),'delivery fee discount was not posted separately');
+assert(mappedGrab.lines.filter(x=>x.account==='revenue:platform_discount').reduce((s,x)=>s+x.debit,0)===35,'mapped platform discounts were not posted to contra-revenue');
+assert(mappedGrab.lines.some(x=>x.account==='revenue:platform_discount'&&x.debit===25&&x.label==='Merchant-funded promo'),'merchant-funded promo detail was not preserved');
+assert(mappedGrab.lines.some(x=>x.account==='revenue:platform_discount'&&x.debit===10&&x.label==='Delivery fee discount'),'delivery fee discount detail was not preserved');
 assert(!mappedGrab.lines.some(x=>x.account==='expense:platform_discount'),'mapped Grab deductions were also posted to the legacy discount account');
 const mappedGrabCorrection=F.postingDifference(mappedGrab,F.orderPosting({id:'GF-MAPPED',channel:'grabfood',grossPlatform:200,commission:38,platformDiscount:40,platformMerchantPromo:28,platformDeliveryFeeDiscount:12,netPlatform:122},{}),'platform_presettlement_correction','GF-MAPPED','Pre-settlement correction');
 balanced(mappedGrabCorrection,'mapped Grab correction');
 assert(mappedGrabCorrection.lines.some(x=>x.account==='expense:platform_commission'&&x.credit===2),'commission-only correction was not preserved');
-assert(mappedGrabCorrection.lines.some(x=>x.account==='expense:platform_merchant_funded_promo'&&x.debit===3),'merchant promo correction was not preserved');
-assert(mappedGrabCorrection.lines.some(x=>x.account==='expense:platform_delivery_fee_discount'&&x.debit===2),'delivery fee correction was not preserved');
+assert(mappedGrabCorrection.lines.some(x=>x.account==='revenue:platform_discount'&&x.debit===5),'platform discount correction was not preserved');
 assert(mappedGrabCorrection.lines.some(x=>x.account==='asset:platform_receivable:grabfood'&&x.credit===3),'corrected expected net did not update the Grab receivable');
 const mappedGrabVoid=F.netMovementCorrection([mappedGrab],'GF-MAPPED','order_void','Fully reverse mapped Grab order');
 balanced(mappedGrabVoid,'mapped Grab void');
-for(const account of ['revenue:sales','expense:platform_commission','expense:platform_merchant_funded_promo','expense:platform_delivery_fee_discount','asset:platform_receivable:grabfood'])assert(mappedGrabVoid.lines.some(x=>x.account===account),`mapped Grab void did not reverse ${account}`);
+for(const account of ['revenue:sales','expense:platform_commission','revenue:platform_discount','asset:platform_receivable:grabfood'])assert(mappedGrabVoid.lines.some(x=>x.account===account),`mapped Grab void did not reverse ${account}`);
+const legacyMappedGrab={id:'sale_GF-LEGACY',type:'order_sale',sourceType:'order',sourceId:'GF-LEGACY',channel:'grabfood',occurredAt:100,lines:[F.line('asset:platform_receivable:grabfood',125,0,'Platform receivable'),F.line('expense:platform_commission',40,0,'Platform commission'),F.line('expense:platform_merchant_funded_promo',25,0,'Merchant-funded promo'),F.line('expense:platform_delivery_fee_discount',10,0,'Delivery fee discount'),F.line('revenue:sales',0,200,'Platform gross sales')]};
+const discountReclass=F.platformDiscountReclassification({id:'GF-LEGACY',channel:'grabfood',timestamp:100},legacyMappedGrab);
+balanced(discountReclass,'legacy platform discount reclassification');
+assert(discountReclass.lines.some(x=>x.account==='revenue:platform_discount'&&x.debit===35),'legacy discount reclassification did not debit contra-revenue');
+assert(discountReclass.lines.some(x=>x.account==='expense:platform_merchant_funded_promo'&&x.credit===25),'legacy merchant promo expense was not cleared');
+assert(discountReclass.lines.some(x=>x.account==='expense:platform_delivery_fee_discount'&&x.credit===10),'legacy delivery discount expense was not cleared');
+assert(F.orderNetSales({subtotal:200,discount:35})===165,'Admin expected net sales calculation is wrong');
+assert(F.sourceNetSales([legacyMappedGrab,discountReclass],'GF-LEGACY')===165,'Finance source net sales did not reconcile after reclassification');
 const grabSettlement=F.movement('platform_payout_settlement','platformPayout','GRAB-PAYOUT-1',[
   F.line('asset:platform_clearing:grabfood',100,0,'Actual payout clearing'),
   F.line('expense:platform_variance:va_marketing_success',15,0,'Grab marketing success fee'),
