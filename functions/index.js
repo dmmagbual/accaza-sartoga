@@ -2430,6 +2430,47 @@ exports.manageChartAccount = onCall(
   async (request) => {const db=getDatabase(), actor=await requirePortalUser(db,request);if(!["owner","superadmin","admin","manager"].includes(actor.role))throw new HttpsError("permission-denied","Privileged access is required.");const data=request.data||{}, action=financeText(data.action,30);await ensureChartAccounts(db);if(action==="initialize")return{initialized:true};const id=financeKey(data.accountId,"Chart account"), ref=db.ref(`/chartOfAccounts/${id}`), old=(await ref.get()).val();if(action==="upsert"){const name=financeText(data.name,100),code=financeText(data.code,20),type=financeText(data.type,20);if(!name||!code||!["asset","liability","equity","revenue","expense"].includes(type))throw new HttpsError("invalid-argument","Code, name, and valid account type are required.");await ref.set({code,name,type,active:data.active!==false,system:old&&old.system===true,createdAt:old&&old.createdAt||Date.now(),updatedAt:Date.now(),updatedBy:actor.uid,schemaVersion:1});return{accountId:id};}if(action==="deactivate"){if(!old)throw new HttpsError("not-found","Chart account not found.");await ref.update({active:false,updatedAt:Date.now(),updatedBy:actor.uid});return{accountId:id};}throw new HttpsError("invalid-argument","Chart action is invalid.");},
 );
 
+exports.repairFinanceDates = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 120, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(); const data = request.data || {}; const action = financeText(data.action, 20);
+    const actor = await requirePortalPermission(db, request, ["cashflow", "receivables", "payables"]);
+    const [cashSnap, mvSnap] = await Promise.all([db.ref("/cfLedger").get(), db.ref("/financialMovements").get()]);
+    const cash = cashSnap.val() || {}, movements = mvSnap.val() || {};
+    const byMovement = {};
+    Object.keys(cash).forEach((id) => {
+      const row = cash[id] || {}, mid = row.movementId, mv = mid && movements[mid];
+      if (!mv || !row.date) return;
+      if (mv.dateRepairSupersededBy) return;
+      const cur = BooksBridge.businessDate(mv.occurredAt);
+      if (cur === row.date) return;
+      const prev = byMovement[mid];
+      if (prev && prev.targetDate !== row.date) { prev.ambiguous = true; return; }
+      if (!prev) byMovement[mid] = {movementId: mid, amount: Financial.money(row.amount), currentDate: cur, targetDate: row.date, type: String(mv.type || ""), cfLedgerId: id};
+    });
+    const mismatches = Object.keys(byMovement).map((k) => byMovement[k]);
+    if (action === "preview" || !action) return {mismatches: mismatches.slice(0, 500), count: mismatches.length, ambiguous: mismatches.filter((m) => m.ambiguous).length};
+    if (action !== "apply") throw new HttpsError("invalid-argument", "Unknown action.");
+    if (!["owner", "superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner can apply date corrections.");
+    const reason = financeText(data.reason, 300); if (!reason) throw new HttpsError("invalid-argument", "A correction reason is required.");
+    const approved = Array.isArray(data.movementIds) ? new Set(data.movementIds.map(String)) : null;
+    const now = Date.now(); let repaired = 0, skipped = 0; const done = [];
+    for (const m of mismatches) {
+      if (m.ambiguous) { skipped++; continue; }
+      if (approved && !approved.has(m.movementId)) { skipped++; continue; }
+      const mid = m.movementId, mv = Object.assign({id: mid}, movements[mid] || {});
+      if (!Array.isArray(mv.lines) || !mv.lines.length) { skipped++; continue; }
+      const revId = `finance_datefix_rev_${mid}`, newId = `finance_datefix_new_${mid}`, targetTs = accountingTimestamp(m.targetDate, now);
+      const reversal = Financial.reverseMovement(mv, "finance_date_repair_reversal", "Re-date correction"); reversal.occurredAt = Number(mv.occurredAt) || now; reversal.controlReason = reason; reversal.redatedFromMovementId = mid;
+      const repost = Financial.movement(mv.type || "finance_date_repair", mv.sourceType || "financeDateRepair", mv.sourceId || mid, mv.lines.map((l) => Financial.line(l.account, l.debit, l.credit, l.label || "Re-dated posting")), {occurredAt: targetTs, actorName: actor.role, controlReason: reason, redatedFromMovementId: mid, redatedFrom: m.currentDate, redatedTo: m.targetDate});
+      const rr = await commitFinancial(db, revId, reversal, actor, {[`operationalAudit/${now}_datefix_${mid}`]: operationalAuditRecord("repair_finance_date", "financeDateRepair", mid, actor, {from: m.currentDate, to: m.targetDate, amount: m.amount, reversalId: revId, repostId: newId, reason})});
+      const pr = await commitFinancial(db, newId, repost, actor, {[`financialMovements/${mid}/dateRepairSupersededBy`]: newId, [`financialMovements/${mid}/dateRepairedAt`]: now});
+      if (rr.duplicate && pr.duplicate) skipped++; else { repaired++; done.push({movementId: mid, from: m.currentDate, to: m.targetDate, amount: m.amount}); }
+    }
+    return {repaired, skipped, done: done.slice(0, 500)};
+  },
+);
+
 exports.auditFinancialControls = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 120, memory: "512MiB"},
   async (request) => {
