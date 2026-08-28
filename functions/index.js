@@ -613,7 +613,7 @@ const MANAGER_APPROVAL_ACTIONS = new Set([
   "delete_archived_order", "review_discrepancy", "approve_petty_voucher", "correct_petty_voucher",
   "reject_petty_voucher", "void_petty_voucher", "return_supplier_payment", "manual_discount", "cash_in", "purchase_cash_advance", "fixed_float_exception", "reverse_purchase",
   "rekey_platform_order", "reverse_platform_payout", "correct_platform_presettlement", "set_undeposited_opening_balance", "retire_revolving_fund",
-  "repair_closed_shift_turnover", "repair_reversed_payout_deposit",
+  "repair_closed_shift_turnover", "repair_reversed_payout_deposit", "reconcile_undeposited_custody",
 ]);
 function transactionCurrent(current, initial, state) {
   const value = current == null && !state.seen ? initial : current;
@@ -968,6 +968,31 @@ exports.repairClosedShiftTurnover = onCall(
     const writes = Object.assign({}, approval.usedWrites, {[`cashCustody/${shiftId}`]:{shiftId,staff:financeText(shift.staff,100),amount,depositedAmount:0,remaining:amount,retainedFloat:Financial.money(shift.retainedFloat),status:"awaiting_deposit",closedAt:Number(shift.closeAt||now),movementId,source:"closed_shift_turnover_repair",schemaVersion:2},[`shifts/${shiftId}/turnoverCorrection`]:{amount,movementId,postedAt:now,postedBy:actor.uid,approvedBy,approvalId:approval.id,reason:"Confirmed cash received into Undeposited Collection",schemaVersion:1},[`operationalAudit/${now}_${shiftId}_turnover_repair`]:operationalAuditRecord("repair_closed_shift_turnover","shift",shiftId,actor,{amount,movementId,approvalId:approval.id,approvedBy})});
     const committed = await commitFinancial(db,movementId,movement,actor,writes);
     return {shiftId,amount,movementId,duplicate:committed.duplicate,repaired:!committed.duplicate};
+  },
+);
+
+// Links a historical Finance journal that increased Undeposited Collection
+// without creating the matching physical-cash custody record. This repairs
+// only the subledger: the existing balanced journal remains the sole GL entry.
+exports.reconcileUndepositedCustody = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db=getDatabase(),actor=await requirePortalPermission(db,request,["cashflow","registerOps"]),data=request.data||{},movementId=financeKey(data.movementId,"Finance movement ID"),now=Date.now();
+    const [movementSnap,movementsSnap,custodySnap,linkSnap]=await Promise.all([db.ref(`/financialMovements/${movementId}`).get(),db.ref("/financialMovements").get(),db.ref("/cashCustody").get(),db.ref(`/financialControlLinks/custodyRepairs/${movementId}`).get()]);
+    if(linkSnap.exists())return{movementId,amount:Financial.money(linkSnap.val().amount),duplicate:true,preview:data.preview===true};
+    const movement=movementSnap.val(),allMovements=movementsSnap.val()||{},custodyRows=custodySnap.val()||{};
+    if(!movement||!Array.isArray(movement.lines)||movement.reversalOf||movement.reversedByMovementId)throw new HttpsError("failed-precondition","Select an active balanced Finance journal.");
+    const totals=Financial.totals(movement.lines),amount=Financial.money(movement.lines.reduce((sum,line)=>sum+(line.account==="asset:cash_awaiting_deposit"?(Number(line.debit)||0)-(Number(line.credit)||0):0),0));
+    if(Math.abs(totals.debit-totals.credit)>.009||!(amount>0))throw new HttpsError("failed-precondition","The selected journal must be balanced and must increase Undeposited Collection.");
+    if(Object.values(custodyRows).some((row)=>row&&row.movementId===movementId))throw new HttpsError("already-exists","This Finance journal already has a cash custody record.");
+    let pool=0;Object.values(allMovements).forEach((m)=>{if(!m||!Array.isArray(m.lines))return;m.lines.forEach((line)=>{if(line.account==="asset:cash_awaiting_deposit")pool=Financial.money(pool+Number(line.debit||0)-Number(line.credit||0));});});
+    const custodyRemaining=Financial.money(Object.values(custodyRows).reduce((sum,row)=>sum+Number(row&&row.remaining||0),0)),difference=Financial.money(pool-custodyRemaining);
+    if(!(difference>0)||Math.abs(difference-amount)>.009)throw new HttpsError("failed-precondition",`The selected journal is ${amount.toFixed(2)}, but the current ledger-to-custody difference is ${difference.toFixed(2)}. Select the exact journal that caused the difference.`);
+    if(data.preview===true)return{movementId,amount,difference,memo:financeText(movement.memo||movement.reference||movement.sourceId,200),occurredAt:Number(movement.occurredAt||movement.postedAt||0),preview:true,duplicate:false};
+    const reason=financeText(data.reason,500);if(!reason)throw new HttpsError("invalid-argument","Explain why this existing journal represents physical cash awaiting deposit.");
+    const approval=await claimManagerApproval(db,data,"reconcile_undeposited_custody",movementId,amount,`reconcile_undeposited_custody_${movementId}`),approvedBy=approval.record.approvedName||approval.record.approvedEmail||approval.record.approvedRole,custodyId=`journal_custody_${movementId}`,occurredAt=Number(movement.occurredAt||movement.postedAt||now);
+    const writes=Object.assign({},approval.usedWrites,{[`cashCustody/${custodyId}`]:{shiftId:custodyId,staff:`Finance journal recovery · ${approvedBy}`,amount,depositedAmount:0,remaining:amount,retainedFloat:0,status:"awaiting_deposit",closedAt:occurredAt,movementId,source:"historical_finance_journal_custody_reconciliation",reference:financeText(movement.reference||movement.sourceId,120),createdAt:now,createdBy:actor.uid,approvalId:approval.id,schemaVersion:3},[`financialControlLinks/custodyRepairs/${movementId}`]:{movementId,custodyId,amount,reason,linkedAt:now,linkedBy:actor.uid,approvedBy,approvalId:approval.id,schemaVersion:1},[`operationalAudit/${now}_${movementId}_custody_reconcile`]:operationalAuditRecord("reconcile_undeposited_custody","booksManualJournal",movementId,actor,{amount,custodyId,reason,approvalId:approval.id,approvedBy,newFinancialMovement:false,expectedDifferenceAfter:0})});
+    await db.ref().update(writes);return{movementId,custodyId,amount,differenceBefore:difference,differenceAfter:0,duplicate:false,repaired:true,newFinancialMovement:false};
   },
 );
 
