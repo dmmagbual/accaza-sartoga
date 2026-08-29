@@ -6,9 +6,13 @@
   function month(d){return d.getFullYear()+'-'+pad(d.getMonth()+1);}
   function parseMonth(value,fallback){var m=/^(\d{4})-(\d{2})$/.exec(String(value||''));return m?new Date(Number(m[1]),Number(m[2])-1,1):fallback;}
   function clamp(v,min,max){v=Math.floor(Number(v)||min);return Math.max(min,Math.min(max,v));}
-  function normalize(raw){raw=raw||{};var legacy=String(raw.period||'');var mode=['month','quarter','year','custom'].indexOf(raw.mode)>-1?raw.mode:(['month','quarter','year','custom'].indexOf(legacy)>-1?legacy:'month');var now=new Date(),end=parseMonth(raw.endMonth,now);return {mode:mode,period:mode,count:clamp(raw.count,1,MAX_PERIODS),endMonth:month(end),customFrom:/^\d{4}-\d{2}-\d{2}$/.test(raw.customFrom||'')?raw.customFrom:'',customTo:/^\d{4}-\d{2}-\d{2}$/.test(raw.customTo||'')?raw.customTo:'',timeZone:'Asia/Manila'};}
+  // Default to a useful, fast recent view.  All time remains an explicit choice.
+  function normalize(raw){raw=raw||{};var mode=['30d','all','custom'].indexOf(raw.mode)>-1?raw.mode:'30d',now=new Date();return {mode:mode,period:mode,count:1,endMonth:month(now),customFrom:/^\d{4}-\d{2}-\d{2}$/.test(raw.customFrom||'')?raw.customFrom:'',customTo:/^\d{4}-\d{2}-\d{2}$/.test(raw.customTo||'')?raw.customTo:'',timeZone:'Asia/Manila'};}
   var state;try{state=normalize(JSON.parse(localStorage.getItem(KEY)||'{}'));}catch(_e){state=normalize({});}
   function bounds(value){var v=normalize(value||state),end=parseMonth(v.endMonth,new Date()),start=new Date(end),finish=new Date(end);
+    if(v.mode==='all')return {from:'0000-01-01',to:iso(new Date()),label:'All time'};
+    if(v.mode==='30d'){start.setDate(start.getDate()-29);return {from:iso(start),to:iso(new Date()),label:'Last 30 days'};}
+    if(v.mode==='custom'&&v.customFrom&&v.customTo)return {from:v.customFrom,to:v.customTo,label:v.customFrom+' to '+v.customTo};
     if(v.mode==='custom'&&v.customFrom&&v.customTo){return {from:v.customFrom,to:v.customTo,label:v.customFrom+' to '+v.customTo};}
     if(v.mode==='month'){start.setMonth(start.getMonth()-(v.count-1));finish.setMonth(finish.getMonth()+1);finish.setDate(0);}
     else if(v.mode==='quarter'){end.setMonth(Math.floor(end.getMonth()/3)*3+2,1);start=new Date(end);start.setMonth(start.getMonth()-3*(v.count-1)-2,1);finish=new Date(end.getFullYear(),end.getMonth()+1,0);}

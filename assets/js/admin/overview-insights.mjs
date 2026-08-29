@@ -23,10 +23,10 @@ function createOverviewHistoryLoader(deps){
 
 function createOverviewInsights(deps){
   var state={metric:'units',latest:null,bound:false};
-  function reportPeriod(){return window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get():{mode:'month',count:1,from:'',to:'',label:'This month'};}
+  function reportPeriod(){return window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get():{mode:'30d',count:1,from:'',to:'',label:'Last 30 days'};}
   function stamp(o){return window.AccazaSales.stamp(o);}
   function dayStart(d){var x=new Date(d);x.setHours(0,0,0,0);return x.getTime();}
-  function range(){var p=reportPeriod(),start=Number(p.startAt)||dayStart(new Date()),end=Number(p.endAt)||Date.now();return{start:start,end:end,label:p.label||'This month'};}
+  function range(){var p=reportPeriod(),start=Number(p.startAt)||dayStart(new Date()),end=Number(p.endAt)||Date.now();return{start:start,end:end,label:p.label||'Last 30 days'};}
   function inRange(o,r){var t=stamp(o);return t>=r.start&&t<=r.end;}
   function outcome(o){
     var total=Number(o&&o.total)||0,refund=Number(o&&o.refundAmount)||0,s=String((o&&o.status)==='Archived'?(o.prevStatus||'Completed'):(o&&o.status)||'');
@@ -39,9 +39,10 @@ function createOverviewInsights(deps){
   }
   function bind(){
     if(state.bound)return;state.bound=true;
-    var from=document.getElementById('reportPeriodFrom'),to=document.getElementById('reportPeriodTo'),apply=document.getElementById('reportPeriodApply');
+    var from=document.getElementById('reportPeriodFrom'),to=document.getElementById('reportPeriodTo'),apply=document.getElementById('reportPeriodApply'),all=document.getElementById('reportPeriodAll');
     function renderPeriodControls(){var p=reportPeriod();if(from)from.value=p.from||p.customFrom||'';if(to)to.value=p.to||p.customTo||'';}
     if(apply)apply.addEventListener('click',function(){if(!from||!to||!from.value||!to.value)return;if(from.value>to.value){alert('The start date must be on or before the end date.');return;}window.AccazaReportPeriod.set({mode:'custom',customFrom:from.value,customTo:to.value});});
+    if(all)all.addEventListener('click',function(){window.AccazaReportPeriod.set({mode:'all'});});
     if(window.addEventListener)window.addEventListener('accaza-report-period',function(){renderPeriodControls();paint();});renderPeriodControls();
     document.querySelectorAll('[data-overview-metric]').forEach(function(btn){btn.addEventListener('click',function(){state.metric=this.dataset.overviewMetric;select();paint();});});
     select();
@@ -78,7 +79,7 @@ function createOverviewInsights(deps){
     var periodSales=(data.sales||[]).filter(function(o){return inRange(o,r);}),periodOrders=(data.outcomes||[]).filter(function(o){return inRange(o,r);});
     var gross=0,net=0;periodSales.forEach(function(o){var v=window.AccazaSales.amounts(o);gross+=v.gross;net+=v.net;});function set(id,value){var el=document.getElementById(id);if(el)el.textContent=value;}set('overviewNetSales',money(net));set('overviewGrossSales',money(gross));set('overviewTransactions',String(periodSales.length));set('overviewAverageSale',money(periodSales.length?net/periodSales.length:0));
     renderPayments(periodSales);renderTop(periodSales,data);renderOutcomes(periodOrders,data.active||[]);chart(periodSales,r);
-    var note=document.getElementById('overviewDataNote');if(note)note.textContent='Only the selected reporting period is loaded. Change the period to view another range.';
+    var note=document.getElementById('overviewDataNote');if(note)note.textContent='Every completed paid order in the selected dates is loaded, including archived orders.';
   }
   return{render:function(data){state.latest=data;paint();},ensureHistory:ensureHistory};
 }

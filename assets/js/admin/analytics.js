@@ -134,7 +134,9 @@ function renderAnalyticsBody(){
   var trend=pnet>0?(net-pnet)/pnet*100:(net>0?100:0);
   // daily series
   var byDay={};cur.forEach(function(x){var k=businessDate(x.ts);byDay[k]=(byDay[k]||0)+x.net;});
-  var dayKeys=dateKeys(from,to);
+  // All-time reporting lists only days that actually had sales. Rendering every
+  // empty calendar day would create a long misleading zero-sales report.
+  var dayKeys=azRange==='all'?Object.keys(byDay).sort():dateKeys(from,to);
   var maxDay=Math.max.apply(null,dayKeys.map(function(k){return byDay[k]||0;}).concat([1]));
   var hi=null,lo=null;dayKeys.forEach(function(k){var v=byDay[k]||0;if(hi===null||v>byDay[hi])hi=k;if(lo===null||v<byDay[lo])lo=k;});
   // hour

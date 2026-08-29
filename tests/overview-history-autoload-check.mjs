@@ -9,7 +9,7 @@ const overview=createOverviewInsights({esc:String,historyStatus(path){return sta
 overview.render({active:[],orders:[{id:'old-order',timestamp:1,total:100,status:'Completed',paymentStatus:'confirmed'}],archived:[{id:'old-archive',timestamp:1,archivedAt:2,total:200,status:'Archived',prevStatus:'Completed',paymentStatus:'confirmed'}],outcomes:[],sales:[]});
 for(var i=0;i<5;i++)await new Promise((resolve)=>setTimeout(resolve,0));
 if(calls.length)throw new Error('Overview must not download older report pages automatically.');
-if(elements.overviewDataNote.textContent!=='Only the selected reporting period is loaded. Change the period to view another range.')throw new Error('Overview did not disclose the bounded reporting behavior.');
+if(elements.overviewDataNote.textContent!=='Every completed paid order in the selected dates is loaded, including archived orders.')throw new Error('Overview did not disclose the selected-date behavior.');
 console.log('PASS: Overview uses only the selected reporting period without automatic historical downloads.');
 
 const raceStates={orders:{loaded:1,hasOlder:true},archivedOrders:{loaded:1,hasOlder:false},financialMovements:{loaded:1,hasOlder:false}},raceChecks={orders:0,archivedOrders:0,financialMovements:0},raceCalls=[];
