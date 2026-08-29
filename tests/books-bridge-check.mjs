@@ -181,6 +181,8 @@ ok(B.mapAccount("expense:rent","instore",{}).code==="6010", "manual expense rent
 ok(B.mapAccount("expense:utilities","instore",{}).code==="6020", "manual expense utilities -> 6020");
 ok(B.mapAccount("expense:supplies","instore",{}).code==="6070", "Revolving Fund operating supplies -> 6070");
 ok(B.mapAccount("expense:office_supplies","instore",{}).code==="6075", "Revolving Fund office supplies -> 6075");
+ok(B.mapAccount("expense:transportation","instore",{}).code==="6076", "Revolving Fund transportation -> 6076");
+ok(B.mapAccount("expense:staff_meals","instore",{}).code==="6077", "Revolving Fund staff meals -> 6077");
 ok(B.mapAccount("equity:capital_in","instore",{}).code==="3000", "owner capital -> 3000");
 ok(B.mapAccount("equity:opening_balance","instore",{}).code==="3000", "opening balance -> Owner's Capital 3000");
 ok(B.mapAccount("equity:cash_float_source","instore",{}).code==="3000", "historical cash-float source -> Owner's Capital 3000");
