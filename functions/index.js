@@ -1052,6 +1052,22 @@ exports.reconcileUndepositedCustody = onCall(
   },
 );
 
+// One-time cutover: clears legacy variance and other-income balances without
+// deleting source history. Admin discrepancies remain auditable as settled.
+exports.legacyOwnerCapitalReset = onCall({region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"}, async (request) => {
+  const db=getDatabase(),actor=await requirePortalPermission(db,request,["cashflow","discrepancy"]),data=request.data||{},date=financeDate(data.date||financeDateFromTimestamp(Date.now())),reason=financeText(data.reason,500),id="legacy_owner_capital_reset";
+  if(!["owner","superadmin","admin","manager"].includes(actor.role))throw new HttpsError("permission-denied","Only a manager may run the legacy financial reset.");
+  const [journalSnap,discrepancySnap,existingSnap]=await Promise.all([db.ref("/books/journal").get(),db.ref("/discrepancies").get(),db.ref(`/financialMovements/${id}`).get()]);
+  if(existingSnap.exists())return{duplicate:true,movementId:id};
+  const normal={"4990":"credit","6110":"debit","1190":"debit","2100":"credit"},balances={"4990":0,"6110":0,"1190":0,"2100":0};
+  Object.values(journalSnap.val()||{}).forEach((entry)=>{if(!entry||entry.reversedByMovementId)return;(entry.lines||[]).forEach((line)=>{const code=String(line.code||"");if(!Object.prototype.hasOwnProperty.call(balances,code))return;balances[code]=Financial.money(balances[code]+(normal[code]==="debit"?(Number(line.debit)||0)-(Number(line.credit)||0):(Number(line.credit)||0)-(Number(line.debit)||0)));});});
+  const lines=[];Object.keys(balances).forEach((code)=>{const value=Financial.money(balances[code]);if(Math.abs(value)<.005)return;if(value>0){lines.push(Financial.line(`coa:${code}`,normal[code]==="debit"?0:value,normal[code]==="debit"?value:0,"Legacy cutover"));lines.push(Financial.line("equity:owner_capital",normal[code]==="debit"?value:0,normal[code]==="debit"?0:value,"Legacy cutover"));}else{const v=Math.abs(value);lines.push(Financial.line(`coa:${code}`,normal[code]==="debit"?v:0,normal[code]==="debit"?0:v,"Legacy cutover"));lines.push(Financial.line("equity:owner_capital",normal[code]==="debit"?0:v,normal[code]==="debit"?v:0,"Legacy cutover"));}});
+  const affected=Object.entries(discrepancySnap.val()||{}).filter(([,row])=>row&&row.status!=="legacy_closed").map(([key])=>key);
+  if(data.preview===true)return{preview:true,date,balances,affectedDiscrepancies:affected.length};if(!reason)throw new HttpsError("invalid-argument","A legacy cutover reason is required.");if(!lines.length)throw new HttpsError("failed-precondition","There are no legacy balances left to close.");
+  const now=Date.now(),writes={};affected.forEach((key)=>{writes[`discrepancies/${key}/status`]="legacy_closed";writes[`discrepancies/${key}/financialStatus`]="owner_capital_cutover";writes[`discrepancies/${key}/legacyCutover`]={movementId:id,closedAt:now,closedBy:actor.uid,reason};});writes[`operationalAudit/${now}_${id}`]=operationalAuditRecord("legacy_owner_capital_reset","legacyCutover",id,actor,{date,balances,affectedDiscrepancies:affected.length,reason});
+  const movement=Financial.movement("legacy_owner_capital_reset","legacyCutover",id,lines,{occurredAt:accountingTimestamp(date,now),actorName:actor.role,reference:"LEGACY-CUTOVER",memo:reason});const committed=await commitFinancial(db,id,movement,actor,writes);return{movementId:id,balances,affectedDiscrepancies:affected.length,duplicate:committed.duplicate};
+});
+
 exports.runFinancialClose = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "512MiB"},
   async (request) => {
