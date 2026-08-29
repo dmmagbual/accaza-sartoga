@@ -792,7 +792,7 @@ function inventoryReconciliationHtml(recon,ready,history){
   if(!ready)return '<div class="pz-card" style="margin-bottom:0.8rem;border-left:4px solid #b08d57;"><b>Inventory-to-Books reconciliation</b><div class="az-note" style="margin-top:0.35rem;">Preparing the authoritative Finance Books journal… No partial balance is presented as final.</div></div>';
   var roundingOnly=recon.balanced&&Math.abs(recon.totals.difference)>=0.005,status=recon.balanced?'<span style="color:#267354;">✓ Reconciled'+(roundingOnly?' · within ₱0.01 rounding tolerance':'')+'</span>':'<span style="color:#b44336;">⚠ Not reconciled</span>';
   var rows=recon.rows.map(function(r){var diff=r.difference,within=r.withinTolerance===true,meaning=Math.abs(diff)<0.005?'Balanced':(within?'Within rounding tolerance':(diff>0?'Stock valuation is higher':'Books balance is higher'));return '<tr><td><b>'+esc(r.code)+'</b> · '+esc(r.name)+'</td><td class="r">'+r.itemCount+'</td><td class="r">'+peso(r.stockValue)+'</td><td class="r">'+peso(r.booksValue)+'</td><td class="r" style="font-weight:700;color:'+(within?'#267354':'#b44336')+';">'+peso(diff)+'</td><td>'+meaning+'</td></tr>';}).join('');
-  var action=!recon.balanced&&recon.unmappedCount===0?'<div style="margin-top:.75rem;"><button class="pz-btn" id="inventoryOpeningBalanceBtn">Post / re-post opening inventory balance</button><div class="az-note" style="margin-top:.35rem;">Server recalculates every amount and records the actor. If an opening balance was already posted, this reverses it and posts a clean one so Books match physical stock.</div></div>':'';
+  var action=!recon.balanced&&recon.unmappedCount===0&&Math.abs(recon.clearingBalance)<.005?'<div style="margin-top:.75rem;"><button class="pz-btn" id="inventoryAutoAdjustBtn">Auto-adjust inventory variance</button><div class="az-note" style="margin-top:.35rem;">One controlled action aligns Finance Books to the verified Admin stock value by account. It never changes quantities or opening balance, and creates one dated, traceable gain/loss adjustment.</div></div>':'';
   return '<div class="pz-card" style="margin-bottom:0.8rem;"><div style="display:flex;justify-content:space-between;gap:0.6rem;flex-wrap:wrap;"><div><b>Inventory-to-Books reconciliation</b><div class="az-note">As of the selected To date · Difference = stock-item valuation − Finance Books balance.</div></div><div style="font-weight:700;">'+status+'</div></div><div style="overflow-x:auto;margin-top:0.7rem;"><table class="pz-tbl"><thead><tr><th>Inventory account</th><th class="r">Items</th><th class="r">Stock valuation</th><th class="r">Books balance</th><th class="r">Difference</th><th>Meaning</th></tr></thead><tbody>'+rows+'<tr style="font-weight:700;"><td>TOTAL</td><td></td><td class="r">'+peso(recon.totals.stockValue)+'</td><td class="r">'+peso(recon.totals.booksValue)+'</td><td class="r">'+peso(recon.totals.difference)+'</td><td>'+(recon.balanced?'Balanced':'Requires reconciliation')+'</td></tr></tbody></table></div><div class="az-note" style="margin-top:0.65rem;">Positive difference means stock valuation exceeds Books and needs an inventory debit or source repair. Negative difference means Books exceeds physical stock. Unmapped items: '+recon.unmappedCount+' · Receiving clearing 1290: '+peso(recon.clearingBalance)+'.</div>'+action+'</div>';
 }
 function postInventoryOpeningBalance(rng,btn){
@@ -810,6 +810,17 @@ function postInventoryOpeningBalance(rng,btn){
     var payload=reposting?{action:'inventory_opening_balance_repost',commandId:commandId,date:rng.t}:{action:'inventory_opening_balance',commandId:commandId,date:rng.t,expectedDifference:r.totalDifference};
     return A().postFinancialCommand(payload);
   }).then(function(r){if(!r)return;r=r&&r.data?r.data:r||{};alert('Opening inventory balance '+(r.reposted?'re-posted':'posted')+'.\nAdjustment: '+peso(r.adjustment)+'\nMovement: '+r.movementId+'\n\nFinance Books will refresh automatically.');}).catch(function(e){alert('Opening inventory balance was not posted: '+((e&&e.message)||(e&&e.code)||e));btn.disabled=false;btn.textContent='Post / re-post opening inventory balance';});
+}
+function autoAdjustInventoryReconciliation(rng,btn){
+  if(rng.t!==tsToDate(Date.now())){alert('Set the To date to today before auto-adjusting the current inventory reconciliation.');return;}
+  var commandId=uid('invrecon_');btn.disabled=true;btn.textContent='Checking current variance…';
+  A().postFinancialCommand({action:'inventory_reconciliation_adjustment',commandId:commandId,preview:true,date:rng.t}).then(function(r){r=r&&r.data?r.data:r||{};
+    var active=(r.adjustmentRows||[]).filter(function(x){return Math.abs(Number(x.difference)||0)>=.005;});
+    if(!active.length){alert('Inventory and Finance Books are already reconciled.');return null;}
+    var detail=active.map(function(x){return x.code+' '+(x.difference>0?'increase ':'decrease ')+peso(Math.abs(x.difference));}).join('\n');
+    if(!confirm('Auto-adjust this inventory variance?\n\n'+detail+'\n\nThis does not change stock quantity or opening balance. It posts one dated Finance adjustment with a permanent audit reference.'))return null;
+    btn.textContent='Auto-adjusting…';return A().postFinancialCommand({action:'inventory_reconciliation_adjustment',commandId:commandId,date:rng.t,expectedFingerprint:r.fingerprint});
+  }).then(function(r){if(!r){btn.disabled=false;btn.textContent='Auto-adjust inventory variance';return;}r=r&&r.data?r.data:r||{};alert((r.duplicate?'Existing':'New')+' inventory reconciliation adjustment recorded.\nMovement: '+r.movementId+'\n\nFinance Books will refresh automatically.');}).catch(function(e){alert('Inventory variance was not auto-adjusted: '+((e&&e.message)||(e&&e.code)||e));btn.disabled=false;btn.textContent='Auto-adjust inventory variance';});
 }
 function renderStockValue(){
   var root=document.getElementById('stockValueRoot');if(!root)return;
@@ -837,7 +848,7 @@ function renderStockValue(){
   var ff=document.getElementById('svFrom');if(ff)ff.onchange=function(){svFrom=this.value||null;renderStockValue();};
   var ft=document.getElementById('svTo');if(ft)ft.onchange=function(){svTo=this.value||null;renderStockValue();};
   var ex=document.getElementById('svExport');if(ex)ex.onclick=exportStockValue;
-  var openingBtn=document.getElementById('inventoryOpeningBalanceBtn');if(openingBtn)openingBtn.onclick=function(){postInventoryOpeningBalance(rng,openingBtn);};
+  var autoAdjustBtn=document.getElementById('inventoryAutoAdjustBtn');if(autoAdjustBtn)autoAdjustBtn.onclick=function(){autoAdjustInventoryReconciliation(rng,autoAdjustBtn);};
   root.querySelectorAll('[data-svcard]').forEach(function(b){b.onclick=function(){openStockCard(b.getAttribute('data-svcard'));};});
 }
 function openStockCard(id){
