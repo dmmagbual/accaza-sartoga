@@ -1411,7 +1411,7 @@ window.printOrder = function(orderId) {
   var addrRow = (isDelivery && o.address) ? '<div class="row"><span class="lbl">Address</span><span>' + escHtml(o.address) + '</span></div>' : '';
   var schedRow = (o.date || o.time) ? '<div class="row"><span class="lbl">Schedule</span><span>' + escHtml(o.date||'') + ' ' + escHtml(o.time||'') + '</span></div>' : '';
   var notesRow = o.notes ? '<div class="row"><span class="lbl">Notes</span><span>' + escHtml(o.notes) + '</span></div><hr/>' : '';
-  var ticketHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Order #' + o.id + ' — Kitchen Ticket</title>'
+  var ticketHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Order #' + escHtml(o.id) + ' — Kitchen Ticket</title>'
     + '<style>'
     + '* { box-sizing:border-box; margin:0; padding:0; }'
     + 'body { font-family:"Courier New",Courier,monospace; font-size:13px; color:#000; background:#fff; padding:12px 16px; max-width:380px; }'
@@ -1429,7 +1429,7 @@ window.printOrder = function(orderId) {
     + '<div class="logo">☕ ACCAZA</div>'
     + '<div class="sub">Coffee House — Kitchen Ticket</div>'
     + '<hr/>'
-    + '<div class="row"><span class="lbl">Order #</span><span>' + o.id + '</span></div>'
+    + '<div class="row"><span class="lbl">Order #</span><span>' + escHtml(o.id) + '</span></div>'
     + '<div class="row"><span class="lbl">Printed</span><span>' + printTime + '</span></div>'
     + '<hr/>'
     + '<div class="row"><span class="lbl">Customer</span><span>' + escHtml(o.name||'—') + '</span></div>'
