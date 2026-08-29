@@ -1,0 +1,40 @@
+﻿"use strict";
+
+const { HttpsError } = require("firebase-functions/v2/https");
+
+function portalRoleValue(raw) {
+  const role = raw === true ? "owner" : typeof raw === "string" ? raw : raw && raw.role;
+  return String(role || "").toLowerCase();
+}
+
+function financeText(value, maxLength = 160) {
+  return String(value == null ? "" : value).trim().slice(0, maxLength);
+}
+
+async function requirePortalUser(db, request) {
+  if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "Staff login is required.");
+  const snap = await db.ref(`/admins/${request.auth.uid}`).get();
+  const raw = snap.val(), role = portalRoleValue(raw);
+  if (!["owner", "superadmin", "admin", "manager", "staff", "cashier", "kitchen", "finance"].includes(role)) {
+    throw new HttpsError("permission-denied", "This account is not authorized for the Accaza portal.");
+  }
+  return { uid: request.auth.uid, role, name: financeText(raw && typeof raw === "object" && (raw.name || raw.displayName || raw.email) || request.auth.token && request.auth.token.email || role, 120) };
+}
+
+async function requirePortalPermission(db, request, permissions) {
+  const portal = await requirePortalUser(db, request);
+  if (["owner", "superadmin", "admin", "manager"].includes(portal.role)) return portal;
+  const snap = await db.ref(`/adminPerms/${portal.uid}`).get();
+  const granted = snap.val() || {};
+  if (!(permissions || []).some((key) => granted[key] === true)) {
+    throw new HttpsError("permission-denied", "This account does not have the required permission.");
+  }
+  return portal;
+}
+
+module.exports = {
+  portalRoleValue,
+  financeText,
+  requirePortalUser,
+  requirePortalPermission,
+};

@@ -1,4 +1,4 @@
-import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,runTransaction,query,orderByChild,limitToLast,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
+﻿import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,runTransaction,query,orderByChild,limitToLast,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
 import{createSubscriptionHub}from"./realtime-hub.mjs";
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
@@ -19,7 +19,7 @@ window.__accazaAuth=auth;
 const subscriptionHub=createSubscriptionHub(db,{ref,onValue,query,orderByChild,limitToLast,endBefore,get});
 window.__accazaLiveStats=function(){return subscriptionHub.stats();};
 const renderHistoryPager=createHistoryPager(subscriptionHub);
-window.__fbForgot=function(){var current=(document.getElementById('adminUser').value||'').trim();if(!window.AccazaFormDialog){alert('Form service unavailable. Refresh and try again.');return;}window.AccazaFormDialog.run({title:'Reset portal password',subtitle:'Firebase will send the reset link to this account.',submitLabel:'Send reset link',busyLabel:'Sending…',fields:[{name:'email',label:'Firebase account email',type:'email',required:true,value:current,validate:function(v){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)?'':'Enter a valid email address.';}}]},function(v){return sendPasswordResetEmail(auth,v.email).then(function(){return v;});}).then(function(v){alert('Password reset link sent to '+v.email+'. Check inbox and spam.');}).catch(function(e){if(e&&e.code!=='cancelled')alert('Could not send reset: '+((e&&e.code)||e));});};
+window.__fbForgot=function(){var current=(document.getElementById('adminUser').value||'').trim();if(!window.AccazaFormDialog){alert('Form service unavailable. Refresh and try again.');return;}window.AccazaFormDialog.run({title:'Reset portal password',subtitle:'Firebase will send the reset link to this account.',submitLabel:'Send reset link',busyLabel:'Sendingâ€¦',fields:[{name:'email',label:'Firebase account email',type:'email',required:true,value:current,validate:function(v){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)?'':'Enter a valid email address.';}}]},function(v){return sendPasswordResetEmail(auth,v.email).then(function(){return v;});}).then(function(v){alert('Password reset link sent to '+v.email+'. Check inbox and spam.');}).catch(function(e){if(e&&e.code!=='cancelled')alert('Could not send reset: '+((e&&e.code)||e));});};
 // ===================== WEB PUSH (FCM) =====================
 // Paste your Web Push certificate key here (Firebase Console > Project settings > Cloud Messaging > Web Push certificates).
 const VAPID_KEY="BIIVf-1RYIQger0yqeYlyV6-tQpH8YfytIgQK6-7IJg87HVITcNkYv4RYcKjyCmJBJKR1EXjJqRuiHzkFJjSvlE";
@@ -33,7 +33,7 @@ async function registerPushToken(){
     var reg=await navigator.serviceWorker.ready;
     var messaging=getMessaging(app);
     var token=await getToken(messaging,{vapidKey:VAPID_KEY,serviceWorkerRegistration:reg});
-    if(token){var u=appCustomerSession.getUser();var au=auth.currentUser;if(u&&au){try{await update(ref(db,'appCustomers/'+au.uid),{pushToken:token,pushTokenAt:Date.now()});if(!window.__pushToasted){window.__pushToasted=true;(window.accazaToast||function(){})('🔔 Notifications on for this device','ok');}}catch(e){}}}
+    if(token){var u=appCustomerSession.getUser();var au=auth.currentUser;if(u&&au){try{await update(ref(db,'appCustomers/'+au.uid),{pushToken:token,pushTokenAt:Date.now()});if(!window.__pushToasted){window.__pushToasted=true;(window.accazaToast||function(){})('ðŸ”” Notifications on for this device','ok');}}catch(e){}}}
     _pushToastWire(messaging);
   }catch(e){}
 }
@@ -50,11 +50,11 @@ function refreshNotifyPrompt(){
   if(!appCustomerSession.isAppMode()||!('Notification' in window)){b.style.display='none';return;}
   if(Notification.permission==='granted'){b.style.display='none';return;}
   b.style.display='block';
-  b.textContent=(Notification.permission==='denied')?'🔔 Notifications blocked — tap for help':'🔔 Enable order-ready notifications';
+  b.textContent=(Notification.permission==='denied')?'ðŸ”” Notifications blocked â€” tap for help':'ðŸ”” Enable order-ready notifications';
 }
 window.enableNotifications=async function(){
   if(!('Notification' in window))return;
-  if(Notification.permission==='denied'){(window.accazaToast||window.alert)('Notifications are turned off for Accaza. Please enable them in your browser/app settings (Site settings → Notifications), then reopen the app.');return;}
+  if(Notification.permission==='denied'){(window.accazaToast||window.alert)('Notifications are turned off for Accaza. Please enable them in your browser/app settings (Site settings â†’ Notifications), then reopen the app.');return;}
   await setupPush();
   refreshNotifyPrompt();
 };
@@ -62,7 +62,7 @@ window.__setupPush=setupPush;
 
 // DB refs
 const feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups');
-// ── POS / INVENTORY BRIDGE ── exposes DB + live maps to the isolated POS module (see #accaza-pos script). Additive; does not change existing behaviour.
+// â”€â”€ POS / INVENTORY BRIDGE â”€â”€ exposes DB + live maps to the isolated POS module (see #accaza-pos script). Additive; does not change existing behaviour.
 window.__accaza={
   db, ref, set, get, update, remove, onValue, runTransaction, hub:subscriptionHub,
   subscribe:function(path,callback,opts){return subscriptionHub.subscribe(path,callback,opts);},
@@ -117,12 +117,12 @@ let staffAccountsMap={},adminAccountsMap={},staffLoggedIn=false,superAdminLogged
 const SUPER_ADMIN_USERNAME='superadmin',CAFE_PHONE='639276924831',CAFE_EMAIL='admin@accazacoffee.com';
 
 const DEFAULT_CATS=[
-  {id:'coffee',label:'Coffee Based',icon:'☕',order:0},
-  {id:'noncaf',label:'Non-Coffee Based',icon:'🌿',order:1},
-  {id:'frappe',label:'Iced Blended Coffee',icon:'🥤',order:2},
-  {id:'nonfrappe',label:'Iced Blended Non-Coffee',icon:'🧊',order:3},
-  {id:'soda',label:'Soda-Based Refreshers',icon:'🍋',order:4},
-  {id:'pastry',label:'Pastries',icon:'🍞',order:5}
+  {id:'coffee',label:'Coffee Based',icon:'â˜•',order:0},
+  {id:'noncaf',label:'Non-Coffee Based',icon:'ðŸŒ¿',order:1},
+  {id:'frappe',label:'Iced Blended Coffee',icon:'ðŸ¥¤',order:2},
+  {id:'nonfrappe',label:'Iced Blended Non-Coffee',icon:'ðŸ§Š',order:3},
+  {id:'soda',label:'Soda-Based Refreshers',icon:'ðŸ‹',order:4},
+  {id:'pastry',label:'Pastries',icon:'ðŸž',order:5}
 ];
 
 // Customize cats
@@ -133,7 +133,7 @@ const SHOT_CATS=['coffee','frappe'];
 const SYRUP_CATS=['coffee','noncaf','frappe','nonfrappe'];
 const TOPPING_CATS=['coffee','noncaf','frappe','nonfrappe','soda'];
 
-// ── OPTION GROUPS (data-driven item variations) ─────────────
+// â”€â”€ OPTION GROUPS (data-driven item variations) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const DEFAULT_OPTION_GROUPS={
   og_temp:{name:'Temperature',type:'single',required:true,order:0,choices:[{label:'Hot',price:0},{label:'Cold (Chilled, no ice)',price:0},{label:'Iced (with ice)',price:0}]},
   og_sweet:{name:'Sweetness',type:'single',required:true,order:1,choices:[{label:'Not Sweet',price:0},{label:'Less Sweet',price:0},{label:'Regular',price:0}]},
@@ -184,13 +184,13 @@ setTimeout(()=>document.getElementById('fbSync').style.display='none',4000);
 // Helpers
 function getCats(){return Object.values(categoriesMap).sort((a,b)=>(a.order||0)-(b.order||0));}
 function getCatLabel(id){const c=categoriesMap[id];return c?c.icon+' '+c.label:id;}
-function getCatIcon(id){const c=categoriesMap[id];return c?c.icon:'☕';}
+function getCatIcon(id){const c=categoriesMap[id];return c?c.icon:'â˜•';}
 function getMenuItems(){return Object.entries(menuItemsMap).map(([k,v])=>({...v,key:k}));}
 function isAvail(name){return availability[name]!==false;}
 function isDrink(cat){return DRINK_CATS.includes(cat);}
-function formatPrice(item){if(item.priceM&&item.priceL)return'S ₱'+item.priceS+' · M ₱'+item.priceM+' · L ₱'+item.priceL;return'₱'+item.priceS;}
+function formatPrice(item){if(item.priceM&&item.priceL)return'S â‚±'+item.priceS+' Â· M â‚±'+item.priceM+' Â· L â‚±'+item.priceL;return'â‚±'+item.priceS;}
 
-// ── SEED TABS FROM DEFAULTS IMMEDIATELY ──
+// â”€â”€ SEED TABS FROM DEFAULTS IMMEDIATELY â”€â”€
 function seedTabsFromDefaults(){
   const cats=DEFAULT_CATS;
   const mrow=document.getElementById('menuTabsRow');
@@ -223,7 +223,7 @@ function rebuildTabs(){
   attachTabListeners();
 }
 
-// ── FIREBASE LISTENERS ──
+// â”€â”€ FIREBASE LISTENERS â”€â”€
 subscriptionHub.subscribe('categories',snap=>{
   const saved=snap.val();
   if(saved){categoriesMap=saved;}
@@ -337,7 +337,7 @@ subscriptionHub.subscribe('menuItems',snap=>{
   if(staffLoggedIn)renderStaffMenu();
 });
 
-// ── NEW ORDER ALERTS (admin/staff) ──────────────────────────
+// â”€â”€ NEW ORDER ALERTS (admin/staff) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function playChime(){
   try{
     if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();
@@ -368,7 +368,7 @@ function notifyNewOrders(fresh){
   unseenOrders+=fresh.length;
   var last=fresh[fresh.length-1];
   document.getElementById('orderToastTitle').textContent=unseenOrders>1?unseenOrders+' new orders received!':'New order from '+(last&&last.name?last.name:'a customer')+'!';
-  document.getElementById('orderToastSub').textContent=(last&&last.total?'₱'+last.total.toLocaleString()+' · ':'')+'Tap to view orders';
+  document.getElementById('orderToastSub').textContent=(last&&last.total?'â‚±'+last.total.toLocaleString()+' Â· ':'')+'Tap to view orders';
   document.getElementById('orderToast').style.display='flex';
   var b=document.getElementById('ordersBadge');
   if(b){b.textContent=unseenOrders;b.style.display='inline-block';}
@@ -406,10 +406,10 @@ subscriptionHub.subscribe('reviews',snap=>{
   if(saved){reviewsMap=saved;}
   else{
     const seed={
-      'rev_001':{name:'Maria Theresa & Quinn Isabella Margaux',stars:5,date:'June 2, 2026',text:'Accaza Coffee House is a hidden gem right along the roadside near SM Dasmariñas — easy to find whether you\'re commuting or driving. Inside, it\'s surprisingly spacious with a calm, serene atmosphere that\'s rare among today\'s cramped cafés.\n\nThe coffee is outstanding, with well-crafted flavors from bold to smooth. But what truly sets Accaza apart is how perfectly it serves both students and professionals — it\'s a productive sanctuary where you can focus, study, or work in peace.\n\nHighly recommended for anyone looking for great coffee and a place to get things done. ☕✨'},
-      'rev_002':{name:'Molina Page',stars:5,date:'June 2026',text:'The coffee was absolutely delightful — perfectly brewed, rich in flavor, and made with genuine care. Every sip spoke to your passion and quality.\n\nBeyond the coffee, your staff made the visit truly special. From the warm greeting to the attentive service, everyone made me feel genuinely valued. It\'s rare to find a team so professional yet so kind and approachable.'},
-      'rev_003':{name:'Camilla Andrea',stars:5,date:'April 6, 2026 · via Facebook',text:'Nasa may highway ang coffee shop, ngunit nakakubli ang ganda nitong hindi mo mamamalas kung hindi sasadyain. Mukha siyang maliit sa labas, subalit malaki ang espasyo pagpasok, na tila napunta ka na sa ibang lugar.\n\nGusto ko mang ipagdamot ang lugar para patuloy akong makatambay nang matiwasay, subalit tingin ko\'y kasalanan ito sa mga mahilig sa kape (at sa may-ari rin) kung hindi ito maibabahagi sa iba.'},
-      'rev_004':{name:'Cess Borja',stars:5,date:'July 2025',text:'"10/10 would recommend!! we will surely come back 🤌"'}
+      'rev_001':{name:'Maria Theresa & Quinn Isabella Margaux',stars:5,date:'June 2, 2026',text:'Accaza Coffee House is a hidden gem right along the roadside near SM DasmariÃ±as â€” easy to find whether you\'re commuting or driving. Inside, it\'s surprisingly spacious with a calm, serene atmosphere that\'s rare among today\'s cramped cafÃ©s.\n\nThe coffee is outstanding, with well-crafted flavors from bold to smooth. But what truly sets Accaza apart is how perfectly it serves both students and professionals â€” it\'s a productive sanctuary where you can focus, study, or work in peace.\n\nHighly recommended for anyone looking for great coffee and a place to get things done. â˜•âœ¨'},
+      'rev_002':{name:'Molina Page',stars:5,date:'June 2026',text:'The coffee was absolutely delightful â€” perfectly brewed, rich in flavor, and made with genuine care. Every sip spoke to your passion and quality.\n\nBeyond the coffee, your staff made the visit truly special. From the warm greeting to the attentive service, everyone made me feel genuinely valued. It\'s rare to find a team so professional yet so kind and approachable.'},
+      'rev_003':{name:'Camilla Andrea',stars:5,date:'April 6, 2026 Â· via Facebook',text:'Nasa may highway ang coffee shop, ngunit nakakubli ang ganda nitong hindi mo mamamalas kung hindi sasadyain. Mukha siyang maliit sa labas, subalit malaki ang espasyo pagpasok, na tila napunta ka na sa ibang lugar.\n\nGusto ko mang ipagdamot ang lugar para patuloy akong makatambay nang matiwasay, subalit tingin ko\'y kasalanan ito sa mga mahilig sa kape (at sa may-ari rin) kung hindi ito maibabahagi sa iba.'},
+      'rev_004':{name:'Cess Borja',stars:5,date:'July 2025',text:'"10/10 would recommend!! we will surely come back ðŸ¤Œ"'}
     };
     set(reviewsRef,seed);reviewsMap=seed;
   }
@@ -427,7 +427,7 @@ subscriptionHub.subscribe('payment',snap=>{
   if(p.gcashName)document.getElementById('editGcashName').value=p.gcashName;
   if(p.bdoNum)document.getElementById('editBdoNum').value=p.bdoNum;
   if(p.ubNum)document.getElementById('editUbNum').value=p.ubNum;
-  // Enabled flags → update admin toggles
+  // Enabled flags â†’ update admin toggles
   function setChk(id,val){var el=document.getElementById(id);if(el){el.checked=(val!==false);}}
   setChk('chkGcash',p.gcashEnabled!==false);
   setChk('chkBdo',p.bdoEnabled!==false);
@@ -505,7 +505,7 @@ subscriptionHub.subscribe('payment',snap=>{
 
 document.getElementById('btnAddToCart').addEventListener('click',function(){addCustomizedToCart();});
 
-// ── MENU & ORDER RENDERING ──
+// â”€â”€ MENU & ORDER RENDERING â”€â”€
 window.filterMenu=function(cat,btn){
   menuFilter=cat;
   document.querySelectorAll('#menuTabsRow .tab-btn').forEach(b=>b.classList.remove('active'));
@@ -537,18 +537,18 @@ function renderMenuSection(){
     const imgHtml=i.img?'<img src="'+i.img+'" class="menu-card-img" style="'+(ok?'':'opacity:0.5;')+'" onerror="this.style.display=\'none\'"/>'
       :'<div class="menu-card-img-placeholder">'+getCatIcon(i.cat)+'</div>';
     const priceHtml=i.priceM&&i.priceL
-      ?'<span class="price-badge">S ₱'+i.priceS+'</span><span class="price-badge">M ₱'+i.priceM+'</span><span class="price-badge">L ₱'+i.priceL+'</span>'
+      ?'<span class="price-badge">S â‚±'+i.priceS+'</span><span class="price-badge">M â‚±'+i.priceM+'</span><span class="price-badge">L â‚±'+i.priceL+'</span>'
       :i.priceL&&i.labelS&&i.labelL
-      ?'<span class="price-badge">'+(i.labelS||'Opt 1')+' ₱'+i.priceS+'</span><span class="price-badge">'+(i.labelL||'Opt 2')+' ₱'+i.priceL+'</span>'
-      :'<span class="price-single">₱'+i.priceS+'</span>';
-    return'<div class="menu-card'+(ok?' clickable':'')+'"'+(ok?' data-goorder="'+i.key+'" data-gocat="'+i.cat+'"':'')+'>'+imgHtml+'<div class="menu-card-body"><span class="cat-tag">'+getCatLabel(i.cat)+'</span><h4 style="'+(ok?'':'text-decoration:line-through;opacity:0.6;')+'">'+i.name+'</h4><p class="desc">'+(i.desc||'')+'</p><div class="price-row">'+priceHtml+'</div><span class="avail-badge '+(ok?'avail-yes':'avail-no')+'">'+(ok?'✅ Available':'❌ Unavailable')+'</span>'+(ok?'<span class="tap-hint">🛒 Tap to order</span>':'')+'</div></div>';
+      ?'<span class="price-badge">'+(i.labelS||'Opt 1')+' â‚±'+i.priceS+'</span><span class="price-badge">'+(i.labelL||'Opt 2')+' â‚±'+i.priceL+'</span>'
+      :'<span class="price-single">â‚±'+i.priceS+'</span>';
+    return'<div class="menu-card'+(ok?' clickable':'')+'"'+(ok?' data-goorder="'+i.key+'" data-gocat="'+i.cat+'"':'')+'>'+imgHtml+'<div class="menu-card-body"><span class="cat-tag">'+getCatLabel(i.cat)+'</span><h4 style="'+(ok?'':'text-decoration:line-through;opacity:0.6;')+'">'+i.name+'</h4><p class="desc">'+(i.desc||'')+'</p><div class="price-row">'+priceHtml+'</div><span class="avail-badge '+(ok?'avail-yes':'avail-no')+'">'+(ok?'âœ… Available':'âŒ Unavailable')+'</span>'+(ok?'<span class="tap-hint">ðŸ›’ Tap to order</span>':'')+'</div></div>';
   }).join('');
   el.querySelectorAll('.menu-card[data-goorder]').forEach(function(card){card.addEventListener('click',function(){goToOrderItem(this.dataset.gocat,this.dataset.goorder);});});
 }
 
 function renderOrderSection(){
   const el=document.getElementById('orderItemList');if(!el)return;
-  if(!orderFilter){el.innerHTML='<div class="order-empty-state"><span class="big-icon">☕</span><h3>What are you craving today?</h3><p>Choose a category above to explore our handcrafted drinks and pastries.</p></div>';return;}
+  if(!orderFilter){el.innerHTML='<div class="order-empty-state"><span class="big-icon">â˜•</span><h3>What are you craving today?</h3><p>Choose a category above to explore our handcrafted drinks and pastries.</p></div>';return;}
   const items=getMenuItems().filter(i=>i.cat===orderFilter).sort((a,b)=>(a.order||0)-(b.order||0));
   if(!items.length){el.innerHTML='<div class="order-empty-state"><span class="big-icon">'+getCatIcon(orderFilter)+'</span><h3>No items yet.</h3></div>';return;}
   el.innerHTML=items.map(function(i){
@@ -572,7 +572,7 @@ function renderOrderSection(){
   });
 }
 
-// ── CUSTOMIZE POPUP ──
+// â”€â”€ CUSTOMIZE POPUP â”€â”€
 window.openCustomize=function(itemKey){
   const itemData=menuItemsMap[itemKey];if(!itemData)return;
   custItem={...itemData,key:itemKey};
@@ -584,14 +584,14 @@ window.openCustomize=function(itemKey){
   let html='';
   if(custItem.labelS&&custItem.labelL&&custItem.priceL){
     html+='<div class="cust-section"><div class="cust-section-title">Serving Size <span class="cust-badge cust-badge-required">Required</span></div><div class="cust-options">'
-      +'<label class="cust-option" data-action="size" data-val="S" data-price="'+custItem.priceS+'"><input type="radio" name="custSize"/><span class="cust-option-label">'+(custItem.labelS||'Option 1')+'</span><span class="cust-option-price">₱'+custItem.priceS+'</span></label>'
-      +'<label class="cust-option" data-action="size" data-val="L" data-price="'+custItem.priceL+'"><input type="radio" name="custSize"/><span class="cust-option-label">'+(custItem.labelL||'Option 2')+'</span><span class="cust-option-price">₱'+custItem.priceL+'</span></label>'
+      +'<label class="cust-option" data-action="size" data-val="S" data-price="'+custItem.priceS+'"><input type="radio" name="custSize"/><span class="cust-option-label">'+(custItem.labelS||'Option 1')+'</span><span class="cust-option-price">â‚±'+custItem.priceS+'</span></label>'
+      +'<label class="cust-option" data-action="size" data-val="L" data-price="'+custItem.priceL+'"><input type="radio" name="custSize"/><span class="cust-option-label">'+(custItem.labelL||'Option 2')+'</span><span class="cust-option-price">â‚±'+custItem.priceL+'</span></label>'
       +'</div></div>';
   } else if(custItem.priceM&&custItem.priceL){
     html+='<div class="cust-section"><div class="cust-section-title">Serving Size <span class="cust-badge cust-badge-required">Required</span></div><div class="cust-options">'
-      +'<label class="cust-option" data-action="size" data-val="S" data-price="'+custItem.priceS+'"><input type="radio" name="custSize"/><span class="cust-option-label">Small</span><span class="cust-option-price">₱'+custItem.priceS+'</span></label>'
-      +'<label class="cust-option" data-action="size" data-val="M" data-price="'+custItem.priceM+'"><input type="radio" name="custSize"/><span class="cust-option-label">Medium</span><span class="cust-option-price">₱'+custItem.priceM+'</span></label>'
-      +'<label class="cust-option" data-action="size" data-val="L" data-price="'+custItem.priceL+'"><input type="radio" name="custSize"/><span class="cust-option-label">Large</span><span class="cust-option-price">₱'+custItem.priceL+'</span></label>'
+      +'<label class="cust-option" data-action="size" data-val="S" data-price="'+custItem.priceS+'"><input type="radio" name="custSize"/><span class="cust-option-label">Small</span><span class="cust-option-price">â‚±'+custItem.priceS+'</span></label>'
+      +'<label class="cust-option" data-action="size" data-val="M" data-price="'+custItem.priceM+'"><input type="radio" name="custSize"/><span class="cust-option-label">Medium</span><span class="cust-option-price">â‚±'+custItem.priceM+'</span></label>'
+      +'<label class="cust-option" data-action="size" data-val="L" data-price="'+custItem.priceL+'"><input type="radio" name="custSize"/><span class="cust-option-label">Large</span><span class="cust-option-price">â‚±'+custItem.priceL+'</span></label>'
       +'</div></div>';
   }
   var itemGroups=getItemOptionGroups(custItem);
@@ -601,11 +601,11 @@ window.openCustomize=function(itemKey){
     html+='<div class="cust-section"><div class="cust-section-title">'+escHtml(g.name)+' <span class="cust-badge '+(req?'cust-badge-required':'cust-badge-optional')+'">'+(req?'Required':'Optional')+'</span></div><div class="cust-options">'
       +(g.choices||[]).map(function(c,ci){
         var pp=parseInt(c.price)||0;
-        return '<label class="cust-option" data-action="'+(isMulti?'optcheck':'optradio')+'" data-group="'+g.id+'" data-idx="'+ci+'"><input type="'+(isMulti?'checkbox':'radio')+'" name="og_'+g.id+'"/><span class="cust-option-label">'+escHtml(c.label)+'</span><span class="cust-option-price">'+(pp>0?'+₱'+pp:'Free')+'</span></label>';
+        return '<label class="cust-option" data-action="'+(isMulti?'optcheck':'optradio')+'" data-group="'+g.id+'" data-idx="'+ci+'"><input type="'+(isMulti?'checkbox':'radio')+'" name="og_'+g.id+'"/><span class="cust-option-label">'+escHtml(c.label)+'</span><span class="cust-option-price">'+(pp>0?'+â‚±'+pp:'Free')+'</span></label>';
       }).join('')
       +'</div></div>';
   });
-  html+='<div class="cust-section"><div class="cust-section-title">Quantity</div><div class="cust-qty"><button class="cust-qty-btn" id="custQtyMinus">−</button><span class="cust-qty-num" id="custQtyNum">1</span><button class="cust-qty-btn" id="custQtyPlus">+</button></div></div>';
+  html+='<div class="cust-section"><div class="cust-section-title">Quantity</div><div class="cust-qty"><button class="cust-qty-btn" id="custQtyMinus">âˆ’</button><span class="cust-qty-num" id="custQtyNum">1</span><button class="cust-qty-btn" id="custQtyPlus">+</button></div></div>';
   const body=document.getElementById('custBody');
   body.innerHTML=html;
   // Wire option clicks via event delegation (onclick = no stacked listeners)
@@ -648,7 +648,7 @@ function calcCustUnitTotal(){
   });
   return t;
 }
-function updateCustTotal(){document.getElementById('custTotalDisplay').textContent='₱'+(calcCustUnitTotal()*custQty).toLocaleString();}
+function updateCustTotal(){document.getElementById('custTotalDisplay').textContent='â‚±'+(calcCustUnitTotal()*custQty).toLocaleString();}
 
 function addCustomizedToCart(){
   const item=custItem;if(!item)return;
@@ -675,7 +675,7 @@ function addCustomizedToCart(){
 }
 window.closeCustomize=function(){document.getElementById('customizePopup').classList.remove('show');custItem=null;};
 
-// ── CART ──
+// â”€â”€ CART â”€â”€
 function updateCartDisplay(){
   const box=document.getElementById('cartItems'),tot=document.getElementById('cartTotal');
   const keys=Object.keys(cart);
@@ -687,12 +687,12 @@ function updateCartDisplay(){
       +'<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
       +'<div style="flex:1;"><div style="font-size:0.85rem;color:var(--bd);font-weight:500;">'+item.name+'</div>'
       +(item.details?'<div style="font-size:0.72rem;color:var(--tl);">'+item.details+'</div>':'')
-      +'<div style="font-size:0.75rem;color:var(--tl);">₱'+item.unitTotal.toLocaleString()+' each</div></div>'
+      +'<div style="font-size:0.75rem;color:var(--tl);">â‚±'+item.unitTotal.toLocaleString()+' each</div></div>'
       +'<div style="display:flex;align-items:center;gap:0.4rem;margin-left:0.5rem;">'
-      +'<button data-cartkey="'+k+'" data-delta="-1" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:0.9rem;cursor:pointer;color:var(--bd);">−</button>'
+      +'<button data-cartkey="'+k+'" data-delta="-1" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:0.9rem;cursor:pointer;color:var(--bd);">âˆ’</button>'
       +'<span style="font-size:0.85rem;font-weight:500;min-width:18px;text-align:center;">'+item.qty+'</span>'
       +'<button data-cartkey="'+k+'" data-delta="1" style="width:24px;height:24px;border-radius:50%;border:1px solid var(--cd);background:var(--cr);font-size:0.9rem;cursor:pointer;color:var(--bd);">+</button>'
-      +'<span style="font-size:0.85rem;font-weight:500;color:var(--bl);min-width:50px;text-align:right;">₱'+line.toLocaleString()+'</span>'
+      +'<span style="font-size:0.85rem;font-weight:500;color:var(--bl);min-width:50px;text-align:right;">â‚±'+line.toLocaleString()+'</span>'
       +'</div></div></div>';
   }).join('');
   // Wire cart qty buttons
@@ -704,7 +704,7 @@ function updateCartDisplay(){
       updateCartDisplay();renderOrderSection();
     });
   });
-  document.getElementById('totalAmt').textContent='₱'+total.toLocaleString();
+  document.getElementById('totalAmt').textContent='â‚±'+total.toLocaleString();
   tot.style.display='flex';
   var _cb1=document.getElementById('cartCheckoutBtn');if(_cb1)_cb1.style.display='block';
 }
@@ -713,10 +713,10 @@ window.goToCheckout=function(e){if(e&&e.stopPropagation)e.stopPropagation();if(!
 window.setType=function(t){orderType=t;document.getElementById('btnPickup').classList.toggle('active',t==='pickup');document.getElementById('btnDelivery').classList.toggle('active',t==='delivery');document.getElementById('deliveryField').style.display=t==='delivery'?'block':'none';};
 window.showProof=function(src){var m=document.getElementById('proofModal');var im=document.getElementById('proofModalImg');if(im)im.src=src;if(m)m.style.display='flex';};
 window.showStoredProof=async function(orderId,button){
-  var old=button?button.textContent:'';if(button){button.disabled=true;button.textContent='Loading proof…';}
+  var old=button?button.textContent:'';if(button){button.disabled=true;button.textContent='Loading proofâ€¦';}
   try{var result=await getPaymentProofCall({orderId:orderId});var data=result&&result.data&&result.data.dataUrl;if(!data)throw new Error('The server returned no image.');window.showProof(data);}
   catch(e){try{if(window.AccazaTelemetry)window.AccazaTelemetry.error('proof_access');}catch(_e){}alert('Could not load payment proof: '+((e&&e.message)||e));}
-  finally{if(button){button.disabled=false;button.textContent=old||'📎 View payment proof';}}
+  finally{if(button){button.disabled=false;button.textContent=old||'ðŸ“Ž View payment proof';}}
 };
 window.setPayment=function(p){paymentType=p;
   document.getElementById('btnGcash').classList.toggle('active',p==='gcash');
@@ -769,9 +769,9 @@ window.placeOrder=async function(){
   const lineItemsArr=Object.values(cart).map(c=>({itemKey:c.itemKey||null,name:c.name,size:c.size||null,optLabels:c.optLabels||[],qty:c.qty,unitTotal:c.unitTotal}));
   const _sig=phone+'|'+itemsArr.join('~')+'|'+total;
   var _persist=(function(){try{var v=localStorage.getItem('accaza_lastsig');if(!v)return null;var ix=v.lastIndexOf('@@');return {sig:v.slice(0,ix),t:parseInt(v.slice(ix+2))||0};}catch(e){return null;}})();
-  if((window._lastOrderSig===_sig&&Date.now()-(window._lastOrderTime||0)<30000)||(_persist&&_persist.sig===_sig&&Date.now()-_persist.t<30000)){alert('Looks like you just placed this exact order — please try again after 30 seconds.');return;}
+  if((window._lastOrderSig===_sig&&Date.now()-(window._lastOrderTime||0)<30000)||(_persist&&_persist.sig===_sig&&Date.now()-_persist.t<30000)){alert('Looks like you just placed this exact order â€” please try again after 30 seconds.');return;}
   window._placingOrder=true;
-  const _btn=document.querySelector('.btn-place-order');_btn.disabled=true;_btn.style.opacity='0.5';_btn.textContent='⏳ Placing order…';
+  const _btn=document.querySelector('.btn-place-order');_btn.disabled=true;_btn.style.opacity='0.5';_btn.textContent='â³ Placing orderâ€¦';
   try{
     var _sigKey=phone.replace(/[^0-9]/g,'')+'_'+_hashSig(_sig);
     var _lock=await runTransaction(ref(db,'orderLocks/'+_sigKey),function(cur){var now=Date.now();if(cur&&(now-(cur.t||0)<90000))return;return {t:Date.now(),id:'pending'};});
@@ -782,7 +782,7 @@ window.placeOrder=async function(){
   try{
     await set(ref(db,'orders/'+orderId),newOrder);
     try{ if(isAppMode()){ var _u=getAppUser(); var _ph=(_u&&_u.phone)||phone; var _k=_ph.replace(/[^0-9]/g,''); if(_k){ var _snap=await get(ref(db,'appCustomers/'+_k)); var _c=_snap.val()||{}; await update(ref(db,'appCustomers/'+_k),{name:(_u&&_u.name)||name,phone:_ph,orders:(_c.orders||0)+1,firstSeen:_c.firstSeen||Date.now(),lastOrder:Date.now(),lastOrderId:orderId}); } } }catch(_e){}
-    window._lastOrderSig=_sig;window._lastOrderTime=Date.now();window._placingOrder=false;_btn.textContent='✅ Order Placed!';try{localStorage.setItem('accaza_lastsig',_sig+'@@'+Date.now());}catch(e){}
+    window._lastOrderSig=_sig;window._lastOrderTime=Date.now();window._placingOrder=false;_btn.textContent='âœ… Order Placed!';try{localStorage.setItem('accaza_lastsig',_sig+'@@'+Date.now());}catch(e){}
     customerOrderTracker.addOrderId(orderId);
     document.getElementById('displayOrderId').textContent=orderId;document.getElementById('orderConfirm').style.display='block';
     document.querySelector('.btn-place-order').disabled=true;document.querySelector('.btn-place-order').style.opacity='0.5';
@@ -796,8 +796,8 @@ window.resetOrder=function(){if(!Object.keys(cart).length&&!document.getElementB
 
 function renderCustomerOrders(){return customerOrderTracker.render();}
 
-// ── RESERVATIONS ──
-// ── FEEDBACK ──
+// â”€â”€ RESERVATIONS â”€â”€
+// â”€â”€ FEEDBACK â”€â”€
 window.submitContact=async function(){
   const name=document.getElementById('conName').value.trim(),contact=document.getElementById('conContact').value.trim(),subject=document.getElementById('conSubject').value.trim(),message=document.getElementById('conMessage').value.trim();
   if(!name||!message){alert('Please fill in name and message.');return;}
@@ -814,19 +814,19 @@ window.submitFeedback=async function(){
   if(!name||!message){alert('Please enter your name and message.');return;}
   try{await push(feedbacksRef,{name,contact:document.getElementById('fbContact').value.trim(),type,message,status:'Unread',date:new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()});
   document.getElementById('fbName').value='';document.getElementById('fbContact').value='';document.getElementById('fbMessage').value='';document.getElementById('fbCounter').textContent='0 / 800';
-  const msgs={Complaint:'🙏 Thank you for letting us know. We sincerely apologize and will look into this right away.',Suggestion:'💡 Thank you for your suggestion!',Compliment:"❤️ Oh, this made our day! Thank you so much. ☕🐻",Other:'💛 Thank you for reaching out!'};
+  const msgs={Complaint:'ðŸ™ Thank you for letting us know. We sincerely apologize and will look into this right away.',Suggestion:'ðŸ’¡ Thank you for your suggestion!',Compliment:"â¤ï¸ Oh, this made our day! Thank you so much. â˜•ðŸ»",Other:'ðŸ’› Thank you for reaching out!'};
   document.getElementById('fbConfirmMsg').textContent=msgs[type]||msgs.Other;document.getElementById('fbConfirm').style.display='block';setTimeout(function(){document.getElementById('fbConfirm').style.display='none';},6000);}catch(e){alert('Error: '+e.message);}
 };
 
-// ── ADMIN FUNCTIONS ──
-function updateStats(){const orders=Object.values(adminOrdersMap),active=orders.filter(o=>o.status!=='Received');document.getElementById('statOrders').textContent=active.length;document.getElementById('statPending').textContent=active.filter(o=>o.status==='Pending').length;document.getElementById('statReservations').textContent=Object.keys(reservationManager.getReservations()).length;document.getElementById('statRevenue').textContent='₱'+active.filter(o=>o.status!=='Rejected').reduce((s,o)=>s+(o.total||0),0).toLocaleString();}
+// â”€â”€ ADMIN FUNCTIONS â”€â”€
+function updateStats(){const orders=Object.values(adminOrdersMap),active=orders.filter(o=>o.status!=='Received');document.getElementById('statOrders').textContent=active.length;document.getElementById('statPending').textContent=active.filter(o=>o.status==='Pending').length;document.getElementById('statReservations').textContent=Object.keys(reservationManager.getReservations()).length;document.getElementById('statRevenue').textContent='â‚±'+active.filter(o=>o.status!=='Rejected').reduce((s,o)=>s+(o.total||0),0).toLocaleString();}
 
 const orderAdmin=createOrderAdmin({getOrders:function(){return adminOrdersMap;},canArchiveOrder:function(o){var verifiedRole=window.__accazaAuthz&&window.__accazaAuthz.role,manager=['owner','superadmin','admin','manager'].indexOf(String(verifiedRole||'').toLowerCase())>=0,shift=window.__posShift;return manager&&(!o.shiftId||!shift||shift.id!==o.shiftId||shift.status==='closed');},escHtml:escHtml,safeImageSrc:safeImageSrc,showDeletePopup:showDeletePopup,printOrder:function(id){if(window.printOrder)return window.printOrder(id);},notifyCustomer:function(id){if(window.notifyCustomer)return window.notifyCustomer(id);}});
 const renderOrders=orderAdmin.renderOrders,patchOrderCards=orderAdmin.patchOrderCards;
 
-// ── AVAILABILITY & CATEGORY MANAGER ──
-// ── CHANGE PASSWORD ────────────────────────────────────────
-window.togglePwVis=function(inputId,btn){var inp=document.getElementById(inputId);if(!inp)return;var show=inp.type==='password';inp.type=show?'text':'password';btn.textContent=show?'🙈':'👁️';};
+// â”€â”€ AVAILABILITY & CATEGORY MANAGER â”€â”€
+// â”€â”€ CHANGE PASSWORD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+window.togglePwVis=function(inputId,btn){var inp=document.getElementById(inputId);if(!inp)return;var show=inp.type==='password';inp.type=show?'text':'password';btn.textContent=show?'ðŸ™ˆ':'ðŸ‘ï¸';};
 window.changeAdminPassword=async function(){
   var cur=document.getElementById('cpCurrent').value;
   var nw=document.getElementById('cpNew').value;
@@ -848,7 +848,7 @@ window.changeAdminPassword=async function(){
 };
 
 
-// ── STAFF ACCOUNTS ─────────────────────────────────────────
+// â”€â”€ STAFF ACCOUNTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderStaffAccounts(){
   var el=document.getElementById('staffList');if(!el)return;
   var keys=Object.keys(staffAccountsMap);
@@ -856,9 +856,9 @@ function renderStaffAccounts(){
   el.innerHTML=keys.map(function(uid){
     var acc=staffAccountsMap[uid];
     return'<div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid var(--cd);border-radius:8px;padding:0.7rem 1rem;margin-bottom:0.5rem;">'
-      +'<div><span style="font-size:0.9rem;font-weight:500;color:var(--bd);">👤 '+escHtml(acc.username)+'</span>'
-      +'<span style="font-size:0.72rem;color:var(--tl);display:block;margin-top:0.1rem;">Staff · Password protected</span></div>'
-      +'<button data-delstaff="'+uid+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">🗑️ Remove</button>'
+      +'<div><span style="font-size:0.9rem;font-weight:500;color:var(--bd);">ðŸ‘¤ '+escHtml(acc.username)+'</span>'
+      +'<span style="font-size:0.72rem;color:var(--tl);display:block;margin-top:0.1rem;">Staff Â· Password protected</span></div>'
+      +'<button data-delstaff="'+uid+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">ðŸ—‘ï¸ Remove</button>'
       +'</div>';
   }).join('');
   el.querySelectorAll('[data-delstaff]').forEach(function(btn){
@@ -893,12 +893,12 @@ window.addStaffAccount=async function(){
     await set(ref(db,'staffAccounts/'+uid),{username,passwordHash:hashHex});
     document.getElementById('staffUsername').value='';
     document.getElementById('staffPassword').value='';
-    showMsg('✅ Staff account "'+username+'" created.',true);
+    showMsg('âœ… Staff account "'+username+'" created.',true);
   }catch(e){showMsg('Error: '+e.message,false);}
 };
 
 
-// ── ADMIN ACCOUNTS ─────────────────────────────────────────
+// â”€â”€ ADMIN ACCOUNTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderAdminAccounts(){
   var el=document.getElementById('adminAccList');if(!el)return;
   var keys=Object.keys(adminAccountsMap);
@@ -907,14 +907,14 @@ function renderAdminAccounts(){
     var acc=adminAccountsMap[uid];
     var noPay=acc.access==='nopay';
     return'<div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;flex-wrap:wrap;background:#fff;border:1px solid var(--cd);border-radius:8px;padding:0.7rem 1rem;margin-bottom:0.5rem;">'
-      +'<div><span style="font-size:0.9rem;font-weight:500;color:var(--bd);">🔑 '+escHtml(acc.username)+'</span>'
-      +'<span style="font-size:0.72rem;color:'+(noPay?'#b07a2a':'var(--tl)')+';display:block;margin-top:0.1rem;">'+(noPay?'Admin · All except Payment Details':'Admin · Full access')+'</span></div>'
+      +'<div><span style="font-size:0.9rem;font-weight:500;color:var(--bd);">ðŸ”‘ '+escHtml(acc.username)+'</span>'
+      +'<span style="font-size:0.72rem;color:'+(noPay?'#b07a2a':'var(--tl)')+';display:block;margin-top:0.1rem;">'+(noPay?'Admin Â· All except Payment Details':'Admin Â· Full access')+'</span></div>'
       +'<div style="display:flex;align-items:center;gap:0.5rem;">'
       +'<select data-accessuid="'+uid+'" title="Access level" style="background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.3rem 0.5rem;font-size:0.75rem;font-family:\'Inter\',sans-serif;color:var(--td);cursor:pointer;">'
-      +'<option value="full"'+(noPay?'':' selected')+'>✅ Full access</option>'
-      +'<option value="nopay"'+(noPay?' selected':'')+'>🔒 No Payment Details</option>'
+      +'<option value="full"'+(noPay?'':' selected')+'>âœ… Full access</option>'
+      +'<option value="nopay"'+(noPay?' selected':'')+'>ðŸ”’ No Payment Details</option>'
       +'</select>'
-      +'<button data-deladmin="'+uid+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">🗑️ Remove</button>'
+      +'<button data-deladmin="'+uid+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">ðŸ—‘ï¸ Remove</button>'
       +'</div></div>';
   }).join('');
   el.querySelectorAll('[data-deladmin]').forEach(function(btn){
@@ -955,17 +955,17 @@ window.addAdminAccount=async function(){
     document.getElementById('adminAccUsername').value='';
     document.getElementById('adminAccPassword').value='';
     var accSel=document.getElementById('adminAccAccess');if(accSel)accSel.value='full';
-    showMsg('✅ Admin account "'+username+'" created.',true);
+    showMsg('âœ… Admin account "'+username+'" created.',true);
   }catch(e){showMsg('Error: '+e.message,false);}
 };
 
-// ── OPTION GROUPS MANAGER (admin) ───────────────────────────
-// ── PUBLIC REVIEWS (dynamic) ────────────────────────────────
+// â”€â”€ OPTION GROUPS MANAGER (admin) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€ PUBLIC REVIEWS (dynamic) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderPublicReviews(){
   var el=document.getElementById('publicReviewsContainer');if(!el)return;
   var entries=Object.entries(reviewsMap);
   if(!entries.length){el.innerHTML='<p style="text-align:center;color:var(--tl);padding:2rem;">No reviews yet.</p>';return;}
-  function stars(n){return'⭐'.repeat(Math.max(1,Math.min(5,parseInt(n)||5)));}
+  function stars(n){return'â­'.repeat(Math.max(1,Math.min(5,parseInt(n)||5)));}
   function card(r,featured){
     var initials=escHtml((r.name||'?').split(' ').map(function(w){return w[0];}).join('').substring(0,2).toUpperCase());
     return'<div class="review-card"'+(featured?' style="margin-bottom:1.25rem;"':'')+'>'+
@@ -989,8 +989,8 @@ function renderPublicReviews(){
 }
 
 
-// ── EDIT ITEM HELPERS ──────────────────────────────────────
-// ── DASHBOARD ──
+// â”€â”€ EDIT ITEM HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€ DASHBOARD â”€â”€
 const overviewHistoryLoader=createOverviewHistoryLoader({
   read:async function(){var res=await Promise.all([get(ref(db,'orders')),get(ref(db,'archivedOrders'))]);return{orders:res[0].val()||{},archived:res[1].val()||{}};},
   onData:function(){var dt=document.getElementById('tab-dashboard');if(adminLoggedIn&&dt&&dt.style.display!=='none')renderDashboard();},
@@ -1016,7 +1016,7 @@ function renderDashboard(){
   const startMonth=new Date(now2.getFullYear(),now2.getMonth(),1).getTime();
   function sumOrders(arr){return{rev:arr.reduce((s,o)=>s+window.AccazaSales.amounts(o).net,0),cnt:arr.length};}
   const t=sumOrders(sales.filter(o=>_tsOf(o)>=startToday)),w=sumOrders(sales.filter(o=>_tsOf(o)>=startWeek)),m=sumOrders(sales.filter(o=>_tsOf(o)>=startMonth)),a=sumOrders(sales);
-  function setCard(id,rev,cnt){const el=document.getElementById(id);if(el)el.textContent='₱'+rev.toLocaleString();const cel=document.getElementById(id+'Count');if(cel)cel.textContent=cnt+' order'+(cnt!==1?'s':'');}
+  function setCard(id,rev,cnt){const el=document.getElementById(id);if(el)el.textContent='â‚±'+rev.toLocaleString();const cel=document.getElementById(id+'Count');if(cel)cel.textContent=cnt+' order'+(cnt!==1?'s':'');}
   setCard('dashToday',t.rev,t.cnt);setCard('dashWeek',w.rev,w.cnt);setCard('dashMonth',m.rev,m.cnt);setCard('dashAllTime',a.rev,a.cnt);
   overviewInsights.render({active:active,orders:historyOrders,archived:archived,outcomes:outcomes,sales:sales,feedReady:{orders:overviewOrdersLoaded,archivedOrders:archivedOrdersLoaded,financialMovements:overviewFinancialMovementsLoaded},historyComplete:fullHistory.complete?true:undefined,menuItems:menuItemsMap||{},catType:(window.__posSettings&&window.__posSettings.catType)||{}});
 }
@@ -1034,7 +1034,7 @@ function drawPaymentPie(gcashR,bankR){
   });
 }
 
-// ── ARCHIVE PDF ──
+// â”€â”€ ARCHIVE PDF â”€â”€
 window.downloadArchivePDF=function(){
   const fromVal=document.getElementById('archiveFrom').value,toVal=document.getElementById('archiveTo').value;
   let orders=sortArchivedOrders(Object.values(archivedOrdersMap));
@@ -1049,16 +1049,16 @@ window.downloadArchivePDF=function(){
   ctx.fillStyle='#e0d4c6';ctx.fillRect(0,0,pageW,totalH);
   ctx.fillStyle='#19241b';ctx.fillRect(0,0,pageW,headerH);
   ctx.fillStyle='#c9a36a';ctx.font='bold 28px Georgia,serif';ctx.textAlign='center';ctx.fillText('Accaza Coffee House',pageW/2,55);
-  ctx.fillStyle='rgba(224,212,198,0.7)';ctx.font='14px Inter,sans-serif';ctx.fillText('Saratoga Ave, La Mediterranea, Dasmariñas, Cavite',pageW/2,82);
+  ctx.fillStyle='rgba(224,212,198,0.7)';ctx.font='14px Inter,sans-serif';ctx.fillText('Saratoga Ave, La Mediterranea, DasmariÃ±as, Cavite',pageW/2,82);
   ctx.fillStyle='#fff';ctx.font='bold 18px Georgia,serif';ctx.fillText('Order Archive Report',pageW/2,118);
   const dateRange=fromVal&&toVal?fromVal+' to '+toVal:fromVal?'From '+fromVal:toVal?'Up to '+toVal:'All Time';
   ctx.fillStyle='rgba(224,212,198,0.6)';ctx.font='12px Inter,sans-serif';ctx.fillText(dateRange,pageW/2,140);
   ctx.fillStyle='rgba(255,255,255,0.1)';ctx.fillRect(40,156,pageW-80,48);
   ctx.fillStyle='#c9a36a';ctx.font='bold 14px Inter,sans-serif';ctx.textAlign='left';ctx.fillText('Total Orders: '+orders.length,60,178);
-  ctx.textAlign='center';ctx.fillText('Completed: '+archiveTotals.completedCount+' · Revenue: ₱'+totalRev.toLocaleString(),pageW/2,174);
-  ctx.textAlign='right';ctx.fillText('Refunded: '+archiveTotals.refundedCount+' · ₱'+archiveTotals.refundedAmount.toLocaleString(),pageW-60,174);
-  ctx.textAlign='left';ctx.fillText('Voided: '+archiveTotals.voidedCount+' · ₱'+archiveTotals.voidedAmount.toLocaleString(),60,194);
-  ctx.textAlign='right';ctx.fillText('Rejected / other: '+rejCnt+' · GCash: '+gcashCnt+' · Bank: '+bankCnt,pageW-60,194);
+  ctx.textAlign='center';ctx.fillText('Completed: '+archiveTotals.completedCount+' Â· Revenue: â‚±'+totalRev.toLocaleString(),pageW/2,174);
+  ctx.textAlign='right';ctx.fillText('Refunded: '+archiveTotals.refundedCount+' Â· â‚±'+archiveTotals.refundedAmount.toLocaleString(),pageW-60,174);
+  ctx.textAlign='left';ctx.fillText('Voided: '+archiveTotals.voidedCount+' Â· â‚±'+archiveTotals.voidedAmount.toLocaleString(),60,194);
+  ctx.textAlign='right';ctx.fillText('Rejected / other: '+rejCnt+' Â· GCash: '+gcashCnt+' Â· Bank: '+bankCnt,pageW-60,194);
   ctx.fillStyle='rgba(224,212,198,0.4)';ctx.font='11px Inter,sans-serif';ctx.textAlign='center';ctx.fillText('Generated: '+new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}),pageW/2,220);
   let y=headerH+16;
   ctx.fillStyle='#19241b';ctx.font='bold 11px Inter,sans-serif';ctx.textAlign='left';
@@ -1068,30 +1068,30 @@ window.downloadArchivePDF=function(){
   orders.forEach(function(o,idx){
     if(idx%2===0){ctx.fillStyle='rgba(176,141,87,0.06)';ctx.fillRect(40,y-14,pageW-80,rowH);}
     ctx.fillStyle='#1c2420';ctx.font='11px Inter,sans-serif';ctx.textAlign='left';
-    ctx.fillText((o.id||'—'),40,y+4);
-    ctx.fillText((o.name||'—').slice(0,14),120,y+4);
-    ctx.fillText(((o.items||'').length>35?o.items.slice(0,35)+'…':o.items||'—'),240,y+4);
-    ctx.fillStyle=o.prevStatus==='Rejected'?'#c0392b':'#b08d57';ctx.font='bold 11px Inter,sans-serif';ctx.fillText((o.prevStatus==='Rejected'?'✗ ':'')+'₱'+(o.total||0).toLocaleString(),530,y+4);
+    ctx.fillText((o.id||'â€”'),40,y+4);
+    ctx.fillText((o.name||'â€”').slice(0,14),120,y+4);
+    ctx.fillText(((o.items||'').length>35?o.items.slice(0,35)+'â€¦':o.items||'â€”'),240,y+4);
+    ctx.fillStyle=o.prevStatus==='Rejected'?'#c0392b':'#b08d57';ctx.font='bold 11px Inter,sans-serif';ctx.fillText((o.prevStatus==='Rejected'?'âœ— ':'')+'â‚±'+(o.total||0).toLocaleString(),530,y+4);
     ctx.fillStyle='#1c2420';ctx.font='11px Inter,sans-serif';
-    ctx.fillText(o.payment==='GCash'?'GCash':'Bank',610,y+4);ctx.fillText(o.type||'—',680,y+4);ctx.fillText(o.archivedDate||'—',730,y+4);
+    ctx.fillText(o.payment==='GCash'?'GCash':'Bank',610,y+4);ctx.fillText(o.type||'â€”',680,y+4);ctx.fillText(o.archivedDate||'â€”',730,y+4);
     ctx.strokeStyle='#cdbda7';ctx.lineWidth=0.5;ctx.beginPath();ctx.moveTo(40,y+rowH-14);ctx.lineTo(pageW-40,y+rowH-14);ctx.stroke();
     y+=rowH;
   });
   ctx.fillStyle='#19241b';ctx.fillRect(0,totalH-40,pageW,40);
-  ctx.fillStyle='rgba(224,212,198,0.5)';ctx.font='11px Inter,sans-serif';ctx.textAlign='center';ctx.fillText('Accaza Coffee House · Confidential · For internal use only',pageW/2,totalH-14);
+  ctx.fillStyle='rgba(224,212,198,0.5)';ctx.font='11px Inter,sans-serif';ctx.textAlign='center';ctx.fillText('Accaza Coffee House Â· Confidential Â· For internal use only',pageW/2,totalH-14);
   const link=document.createElement('a');link.download='Accaza_Archive_'+new Date().toISOString().slice(0,10)+'.png';link.href=canvas.toDataURL('image/png');link.click();
 };
 
-// ── MISC ADMIN ──
+// â”€â”€ MISC ADMIN â”€â”€
 function renderComments(){
   const types=['Contact','Complaint','Suggestion','Compliment','Other'];
-  const empty={Contact:'No website messages yet.',Complaint:'No complaints yet. 🎉',Suggestion:'No suggestions yet.',Compliment:'No compliments yet.',Other:'No other feedback yet.'};
+  const empty={Contact:'No website messages yet.',Complaint:'No complaints yet. ðŸŽ‰',Suggestion:'No suggestions yet.',Compliment:'No compliments yet.',Other:'No other feedback yet.'};
   const color={Contact:'#2f6f8f',Complaint:'#c0392b',Suggestion:'#f39c12',Compliment:'#2d9e5f',Other:'#888'};
   types.forEach(function(type){
     const el=document.getElementById('fbList'+type);if(!el)return;
     const items=Object.entries(feedbacksMap).filter(function(e){return e[1].type===type;});
     if(!items.length){el.innerHTML='<p style="color:var(--tl);padding:1rem;background:#fff;border-radius:8px;text-align:center;font-size:0.85rem;">'+empty[type]+'</p>';return;}
-    el.innerHTML=items.map(function(e){const f=e[1]||{},key=escHtml(e[0]),status=f.status==='Resolved'?'Resolved':'Unread',name=escHtml(f.name),contact=escHtml(f.contact),date=escHtml(f.date),message=escHtml(f.message);return'<div style="background:#fff;border:1px solid #cdbda7;border-left:4px solid '+color[type]+';border-radius:8px;padding:1rem;margin-bottom:0.75rem;"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;"><div><div style="font-weight:500;font-size:0.9rem;color:#19241b;">'+name+'</div><div style="font-size:0.75rem;color:#79806f;">'+(contact?contact+' · ':'')+date+'</div></div><span style="font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:999px;font-weight:500;background:'+(status==='Resolved'?'#d4edda':'#fef3cd')+';color:'+(status==='Resolved'?'#155724':'#856404')+';">'+status+'</span></div><p style="font-size:0.85rem;color:#44523f;font-style:italic;margin:0.4rem 0;">"'+message+'"</p><div class="staff-hide" style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:0.75rem;">'+(status==='Unread'?'<button data-markfb="'+key+'" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#2d6a4f;cursor:pointer;">✅ Mark Resolved</button>':'')+(status==='Resolved'?'<button data-delfb="'+key+'" data-delfbname="'+name+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#c0392b;cursor:pointer;">🗑️ Delete</button>':'')+'</div></div>';}).join('');
+    el.innerHTML=items.map(function(e){const f=e[1]||{},key=escHtml(e[0]),status=f.status==='Resolved'?'Resolved':'Unread',name=escHtml(f.name),contact=escHtml(f.contact),date=escHtml(f.date),message=escHtml(f.message);return'<div style="background:#fff;border:1px solid #cdbda7;border-left:4px solid '+color[type]+';border-radius:8px;padding:1rem;margin-bottom:0.75rem;"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;"><div><div style="font-weight:500;font-size:0.9rem;color:#19241b;">'+name+'</div><div style="font-size:0.75rem;color:#79806f;">'+(contact?contact+' Â· ':'')+date+'</div></div><span style="font-size:0.72rem;padding:0.2rem 0.6rem;border-radius:999px;font-weight:500;background:'+(status==='Resolved'?'#d4edda':'#fef3cd')+';color:'+(status==='Resolved'?'#155724':'#856404')+';">'+status+'</span></div><p style="font-size:0.85rem;color:#44523f;font-style:italic;margin:0.4rem 0;">"'+message+'"</p><div class="staff-hide" style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:0.75rem;">'+(status==='Unread'?'<button data-markfb="'+key+'" style="background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#2d6a4f;cursor:pointer;">âœ… Mark Resolved</button>':'')+(status==='Resolved'?'<button data-delfb="'+key+'" data-delfbname="'+name+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.35rem 0.85rem;font-size:0.78rem;color:#c0392b;cursor:pointer;">ðŸ—‘ï¸ Delete</button>':'')+'</div></div>';}).join('');
     el.querySelectorAll('button[data-markfb]').forEach(function(btn){btn.addEventListener('click',function(){update(ref(db,'feedbacks/'+this.dataset.markfb),{status:'Resolved'});});});
     el.querySelectorAll('button[data-delfb]').forEach(function(btn){btn.addEventListener('click',function(){showDeletePopup(this.dataset.delfbname,async function(){await remove(ref(db,'feedbacks/'+btn.dataset.delfb));});});});
   });
@@ -1100,7 +1100,7 @@ function renderComments(){
 function renderAdminReviews(){
   const el=document.getElementById('adminReviewsList'),entries=Object.entries(reviewsMap);
   if(!entries.length){el.innerHTML='<div class="empty-state">No reviews added yet.</div>';return;}
-  el.innerHTML=entries.map(function(e){const key=escHtml(e[0]),r=e[1]||{},name=escHtml(r.name),date=escHtml(r.date),review=escHtml(r.text),stars=Math.max(0,Math.min(5,parseInt(r.stars)||0));return'<div class="order-admin-card" style="display:flex;justify-content:space-between;align-items:flex-start;">'+'<div><div class="order-admin-name">'+name+' '+'⭐'.repeat(stars)+'</div>'+'<div class="order-admin-meta">'+date+'</div>'+'<div class="order-admin-items">"'+review+'"</div></div>'+(staffLoggedIn?'':'<button data-delrev="'+key+'" data-delrevname="'+name+'" style="background:none;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.6rem;font-size:0.75rem;color:#c0392b;cursor:pointer;margin-left:1rem;flex-shrink:0;">Remove</button>')+'</div>';}).join('');
+  el.innerHTML=entries.map(function(e){const key=escHtml(e[0]),r=e[1]||{},name=escHtml(r.name),date=escHtml(r.date),review=escHtml(r.text),stars=Math.max(0,Math.min(5,parseInt(r.stars)||0));return'<div class="order-admin-card" style="display:flex;justify-content:space-between;align-items:flex-start;">'+'<div><div class="order-admin-name">'+name+' '+'â­'.repeat(stars)+'</div>'+'<div class="order-admin-meta">'+date+'</div>'+'<div class="order-admin-items">"'+review+'"</div></div>'+(staffLoggedIn?'':'<button data-delrev="'+key+'" data-delrevname="'+name+'" style="background:none;border:1px solid #e0b0b0;border-radius:4px;padding:0.3rem 0.6rem;font-size:0.75rem;color:#c0392b;cursor:pointer;margin-left:1rem;flex-shrink:0;">Remove</button>')+'</div>';}).join('');
   el.querySelectorAll('button[data-delrev]').forEach(function(btn){btn.addEventListener('click',function(){showDeletePopup(this.dataset.delrevname,async function(){await remove(ref(db,'reviews/'+btn.dataset.delrev));});});});
 }
 
@@ -1125,7 +1125,7 @@ window.savePayment=async function(){
 };
 
 let archivePanelOpen=false;
-window.toggleArchivePanel=function(){archivePanelOpen=!archivePanelOpen;document.getElementById('archivePanel').style.display=archivePanelOpen?'block':'none';var ordersList=document.getElementById('ordersList');if(ordersList){if(archivePanelOpen)ordersList.style.display='none';else ordersList.style.removeProperty('display');}var btn=document.getElementById('archiveToggleBtn');var hdg=document.getElementById('ordersHeading');if(btn){btn.textContent=archivePanelOpen?'← Back to Orders':'📦 View Archive';}if(hdg){hdg.textContent=archivePanelOpen?'Order Archive':'Active Orders';}subscriptionHub.activate(archivePanelOpen?'archive':'orders');if(archivePanelOpen)renderArchive();};
+window.toggleArchivePanel=function(){archivePanelOpen=!archivePanelOpen;document.getElementById('archivePanel').style.display=archivePanelOpen?'block':'none';var ordersList=document.getElementById('ordersList');if(ordersList){if(archivePanelOpen)ordersList.style.display='none';else ordersList.style.removeProperty('display');}var btn=document.getElementById('archiveToggleBtn');var hdg=document.getElementById('ordersHeading');if(btn){btn.textContent=archivePanelOpen?'â† Back to Orders':'ðŸ“¦ View Archive';}if(hdg){hdg.textContent=archivePanelOpen?'Order Archive':'Active Orders';}subscriptionHub.activate(archivePanelOpen?'archive':'orders');if(archivePanelOpen)renderArchive();};
 function renderArchive(){_paintArchive();}
 function _paintArchive(){
   const el=document.getElementById('archiveList'),sumEl=document.getElementById('archiveSummary');if(!el)return;
@@ -1135,10 +1135,10 @@ function _paintArchive(){
   if(toVal)orders=orders.filter(o=>new Date(o.archivedAt||0)<=new Date(toVal+'T23:59:59'));
   const archiveTotals=summarizeArchivedOrders(orders),totalRev=archiveTotals.completedRevenue;
   var hs=subscriptionHub.historyStatus('archivedOrders');
-  sumEl.innerHTML='<div style="width:100%;font-size:0.72rem;color:var(--tl);">Loaded '+hs.loaded+' most recent archived order(s), sorted by order date and time (newest first). Revenue includes completed orders only; refunds, voids, and rejected/cancelled orders are excluded.</div><div><span class="archive-sum-num">'+archiveTotals.totalCount+'</span><span class="archive-sum-lbl">All archived orders</span></div><div><span class="archive-sum-num">'+archiveTotals.completedCount+' · ₱'+totalRev.toLocaleString()+'</span><span class="archive-sum-lbl">Completed · Revenue</span></div><div><span class="archive-sum-num">'+archiveTotals.refundedCount+' · ₱'+archiveTotals.refundedAmount.toLocaleString()+'</span><span class="archive-sum-lbl">Refunded · Amount refunded</span></div><div><span class="archive-sum-num">'+archiveTotals.voidedCount+' · ₱'+archiveTotals.voidedAmount.toLocaleString()+'</span><span class="archive-sum-lbl">Voided · Excluded value</span></div><div><span class="archive-sum-num">'+archiveTotals.excludedCount+' · ₱'+archiveTotals.excludedAmount.toLocaleString()+'</span><span class="archive-sum-lbl">Rejected / Cancelled · Excluded</span></div>';
-  var cards=orders.length?orders.map(function(o){var oid=escHtml(o.id),age=Date.now()-Number(o.archivedAt||0),canDelete=o.prevStatus==='Rejected'&&age>=90*24*60*60*1000,outcome=archiveOutcome(o);return'<div class="archive-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.4rem;"><div><div style="font-weight:500;font-size:0.88rem;color:var(--bd);">'+escHtml(o.name)+' <span style="font-size:0.72rem;color:var(--tl);">#'+oid+'</span></div><div style="font-size:0.75rem;color:var(--tl);">'+escHtml(o.date)+' · '+escHtml(o.time)+'</div></div><span class="badge" style="'+outcome.style+'">'+outcome.icon+' '+escHtml(outcome.label)+'</span></div><div style="font-size:0.8rem;color:var(--tm);margin:0.3rem 0;">🛒 '+escHtml(o.items)+'</div><div style="font-size:0.78rem;color:var(--tl);">₱'+(Number(o.total)||0).toLocaleString()+' · '+escHtml(o.payment)+' · '+escHtml(o.type)+'</div><div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;">Archived: '+escHtml(o.archivedDate||'—')+'</div>'+(adminLoggedIn?'<div style="margin-top:0.5rem;text-align:right;">'+(canDelete?'<button data-delarch="'+oid+'" style="background:#fdecea;border:1px solid #f5c6c6;color:#c0392b;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.74rem;cursor:pointer;font-weight:600;">🗑 Delete rejected order</button>':'<span style="font-size:0.7rem;color:var(--tl);">🔒 Retained audit record</span>')+'</div>':'')+'</div>';}).join(''):'<p style="color:var(--tl);text-align:center;padding:1.5rem;font-size:0.88rem;">No archived orders in the loaded pages for this range.</p>';
+  sumEl.innerHTML='<div style="width:100%;font-size:0.72rem;color:var(--tl);">Loaded '+hs.loaded+' most recent archived order(s), sorted by order date and time (newest first). Revenue includes completed orders only; refunds, voids, and rejected/cancelled orders are excluded.</div><div><span class="archive-sum-num">'+archiveTotals.totalCount+'</span><span class="archive-sum-lbl">All archived orders</span></div><div><span class="archive-sum-num">'+archiveTotals.completedCount+' Â· â‚±'+totalRev.toLocaleString()+'</span><span class="archive-sum-lbl">Completed Â· Revenue</span></div><div><span class="archive-sum-num">'+archiveTotals.refundedCount+' Â· â‚±'+archiveTotals.refundedAmount.toLocaleString()+'</span><span class="archive-sum-lbl">Refunded Â· Amount refunded</span></div><div><span class="archive-sum-num">'+archiveTotals.voidedCount+' Â· â‚±'+archiveTotals.voidedAmount.toLocaleString()+'</span><span class="archive-sum-lbl">Voided Â· Excluded value</span></div><div><span class="archive-sum-num">'+archiveTotals.excludedCount+' Â· â‚±'+archiveTotals.excludedAmount.toLocaleString()+'</span><span class="archive-sum-lbl">Rejected / Cancelled Â· Excluded</span></div>';
+  var cards=orders.length?orders.map(function(o){var oid=escHtml(o.id),age=Date.now()-Number(o.archivedAt||0),canDelete=o.prevStatus==='Rejected'&&age>=90*24*60*60*1000,outcome=archiveOutcome(o);return'<div class="archive-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.4rem;"><div><div style="font-weight:500;font-size:0.88rem;color:var(--bd);">'+escHtml(o.name)+' <span style="font-size:0.72rem;color:var(--tl);">#'+oid+'</span></div><div style="font-size:0.75rem;color:var(--tl);">'+escHtml(o.date)+' Â· '+escHtml(o.time)+'</div></div><span class="badge" style="'+outcome.style+'">'+outcome.icon+' '+escHtml(outcome.label)+'</span></div><div style="font-size:0.8rem;color:var(--tm);margin:0.3rem 0;">ðŸ›’ '+escHtml(o.items)+'</div><div style="font-size:0.78rem;color:var(--tl);">â‚±'+(Number(o.total)||0).toLocaleString()+' Â· '+escHtml(o.payment)+' Â· '+escHtml(o.type)+'</div><div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;">Archived: '+escHtml(o.archivedDate||'â€”')+'</div>'+(adminLoggedIn?'<div style="margin-top:0.5rem;text-align:right;">'+(canDelete?'<button data-delarch="'+oid+'" style="background:#fdecea;border:1px solid #f5c6c6;color:#c0392b;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.74rem;cursor:pointer;font-weight:600;">ðŸ—‘ Delete rejected order</button>':'<span style="font-size:0.7rem;color:var(--tl);">ðŸ”’ Retained audit record</span>')+'</div>':'')+'</div>';}).join(''):'<p style="color:var(--tl);text-align:center;padding:1.5rem;font-size:0.88rem;">No archived orders in the loaded pages for this range.</p>';
   el.innerHTML=cards+'<div style="text-align:center;padding:0.8rem;"><button id="archiveLoadOlder" class="pz-btn sec"'+(hs.hasOlder?'':' disabled')+'>'+(hs.hasOlder?'Load 100 older orders':'All loaded orders reached')+'</button></div>';
-  var more=document.getElementById('archiveLoadOlder');if(more&&hs.hasOlder)more.onclick=async function(){more.disabled=true;more.textContent='Loading older orders…';try{await subscriptionHub.loadOlder('archivedOrders');}catch(e){more.textContent='Could not load older orders';more.disabled=false;}};
+  var more=document.getElementById('archiveLoadOlder');if(more&&hs.hasOlder)more.onclick=async function(){more.disabled=true;more.textContent='Loading older ordersâ€¦';try{await subscriptionHub.loadOlder('archivedOrders');}catch(e){more.textContent='Could not load older orders';more.disabled=false;}};
   el.querySelectorAll('button[data-delarch]').forEach(function(btn){btn.addEventListener('click',function(){var oid=this.getAttribute('data-delarch'),o=archivedOrdersMap[oid];showDeletePopup('PERMANENTLY delete eligible rejected order #'+oid+(o&&o.name?' ('+o.name+')':'')+'. Owner, Superadmin, Admin, or Manager approval is required.',async function(){try{var ap=await requestManagerApproval('delete_archived_order',oid,Number(o&&o.total)||0,'Delete rejected order after retention period');await manageOrderArchiveCall({action:'delete',orderId:oid,approvalId:ap.approvalId});delete archivedOrdersMap[oid];renderArchive();}catch(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Could not delete order: '+((e&&e.message)||e));}});});});
 }
 
@@ -1154,7 +1154,7 @@ function showDeletePopup(label,onConfirm){
 window.openAdmin=function(){document.getElementById('loginOverlay').classList.add('show');setTimeout(function(){document.getElementById('adminPass').focus();},150);};
 window.closeAdmin=function(){document.getElementById('loginOverlay').classList.remove('show');document.getElementById('loginErr').style.display='none';document.getElementById('adminPass').value='';};
 
-// ── ROLE SELECTOR (visual choice; actual role comes from /admins/{Firebase UID}) ──
+// â”€â”€ ROLE SELECTOR (visual choice; actual role comes from /admins/{Firebase UID}) â”€â”€
 window.selectLoginRole=function(role){
   currentLoginRole=role;
   document.getElementById('loginForm').style.display='block';
@@ -1170,7 +1170,7 @@ window.selectLoginRole=function(role){
   setTimeout(function(){document.getElementById('adminUser').focus();},100);
 };
 
-// ── LOGIN SUCCESS ───────────────────────────────────────────
+// â”€â”€ LOGIN SUCCESS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 var DEFAULT_STAFF_PERMS={orders:true,reservations:true,pos:true,inventory:true,purchases:false,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,dailyreport:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false,cashflow:false,receivables:false,payables:false,stockvalue:false},roleLandingDone=false;
 var _permTabMap={"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'purchases'":'purchases',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'dedupe'":'dedupe',"'cashflow'":'cashflow',"'receivables'":'receivables',"'payables'":'payables',"'stockvalue'":'stockvalue',"'dailyreport'":'dailyreport',"'analytics'":'analytics',"'pnl'":'pnl',"'ops'":'registerOps',"'possettings'":'possettings'};
 var _permAlwaysHide=["'payment'","'staffaccounts'","'adminaccounts'","'staffaccess'","'packages'","'operations'"];
@@ -1226,10 +1226,10 @@ async function loginSuccess(role,username,uid,serverRole){
     adminLoggedIn=true;superAdminLoggedIn=(role==='superadmin');staffLoggedIn=false;
     document.getElementById('adminDash').style.display='block';
     ['navAvail','navComments','navAdminPanel'].forEach(function(id){document.getElementById(id).style.display='block';});
-    document.getElementById('navAdminPanelLink').textContent='🔐 Admin Panel';
+    document.getElementById('navAdminPanelLink').textContent='ðŸ” Admin Panel';
     if(superAdminLoggedIn&&aaccTab)aaccTab.style.removeProperty('display');
     var hdr=document.querySelector('#adminDash .admin-header p');
-    if(hdr)hdr.textContent=(superAdminLoggedIn?'👑 Super Admin':'🔑 Admin')+': '+username;
+    if(hdr)hdr.textContent=(superAdminLoggedIn?'ðŸ‘‘ Super Admin':'ðŸ”‘ Admin')+': '+username;
     // Restrict Payment Details for limited admins
     if(role==='admin'&&uid&&adminAccountsMap[uid]&&adminAccountsMap[uid].access==='nopay'){
       document.querySelectorAll('.admin-tab').forEach(function(btn){
@@ -1237,7 +1237,7 @@ async function loginSuccess(role,username,uid,serverRole){
         if(oc.indexOf("'payment'")!==-1)btn.style.display='none';
       });
       var tpay=document.getElementById('tab-payment');if(tpay)tpay.style.display='none';
-      if(hdr)hdr.textContent='🔑 Admin: '+username+' · Limited access';
+      if(hdr)hdr.textContent='ðŸ”‘ Admin: '+username+' Â· Limited access';
     }
     setTimeout(function(){
       buildAvail();renderCategoryManager();renderOptionManager();renderNewItemOptionChecklist();renderComments();renderOrders();renderReservations();
@@ -1251,10 +1251,10 @@ async function loginSuccess(role,username,uid,serverRole){
     document.getElementById('adminDash').style.display='block';
     document.getElementById('navAdminPanel').style.display='block';
     document.getElementById('navComments').style.display='block';
-    document.getElementById('navAdminPanelLink').textContent='🔐 Staff Panel';
+    document.getElementById('navAdminPanelLink').textContent='ðŸ” Staff Panel';
     (function(){ applyStaffPerms(Object.assign({},DEFAULT_STAFF_PERMS)); get(ref(db,'adminPerms/'+uid)).then(function(sn){ var v=sn.val(); if(v)applyStaffPerms(Object.assign({},DEFAULT_STAFF_PERMS,v)); }).catch(function(){}); })();
     var hdr=document.querySelector('#adminDash .admin-header p');
-    if(hdr)hdr.textContent='👤 Staff: '+username;
+    if(hdr)hdr.textContent='ðŸ‘¤ Staff: '+username;
     setTimeout(function(){
       renderOrders();renderReservations();renderAdminCalendar();renderDashboard();
       renderAdminReviews();renderComments();renderStaffMenu();
@@ -1264,11 +1264,11 @@ async function loginSuccess(role,username,uid,serverRole){
   workspaceShell.update('dashboard');
 }
 
-// ── FIREBASE AUTH GATE ─────────────────────────────────────
+// â”€â”€ FIREBASE AUTH GATE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 installPortalAuth({subscriptionHub:subscriptionHub,onAuthorized:loginSuccess,openLogin:window.openAdmin,onSignedOut:function(){adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;currentUser=null;currentLoginRole=null;window.__posShift=null;if(window.__refreshWorkspaceStatus)window.__refreshWorkspaceStatus();}});
 const workspaceShell=installWorkspaceShell({currentUser:function(){return currentUser;},subscriptionHub:subscriptionHub});
 window.switchTab=function(tab,btn){
-  if(tab==='payment'&&currentUser&&currentUser.role==='admin'&&currentUser.uid&&adminAccountsMap[currentUser.uid]&&adminAccountsMap[currentUser.uid].access==='nopay'){alert('⛔ You do not have access to Payment Details.');return;}
+  if(tab==='payment'&&currentUser&&currentUser.role==='admin'&&currentUser.uid&&adminAccountsMap[currentUser.uid]&&adminAccountsMap[currentUser.uid].access==='nopay'){alert('â›” You do not have access to Payment Details.');return;}
   subscriptionHub.activate(tab);
   document.querySelectorAll('.admin-tab').forEach(function(b){b.classList.remove('active');});
   if(btn)btn.classList.add('active');
@@ -1292,20 +1292,20 @@ window.showTabGroup=function(g,btn){
   if(!row.querySelector('.admin-tab.active')){ var first=null; row.querySelectorAll('.admin-tab').forEach(function(b){ if(!first && b.style.display!=='none') first=b; }); if(first)first.click(); }
 };
 
-// ── CHATBOT ──
+// â”€â”€ CHATBOT â”€â”€
 const botReplies=[
-  {keys:['hour','open','close','time','schedule'],reply:'🕐 We are open every day — <strong>Monday to Sunday, 3:00 PM to 12:00 Midnight</strong>. ☕'},
-  {keys:['location','address','where','find'],reply:"📍 <strong>Saratoga Avenue, La Mediterranea Subdivision, Governor's Drive, Dasmariñas, Cavite</strong>. Near SM Dasmariñas! 😊"},
-  {keys:['gcash','pay','payment','bank','bdo'],reply:'💳 We accept <strong>GCash, BDO, and UnionBank</strong>. GCash: <strong>0927 692 4831</strong> (ACCAZA).'},
-  {keys:['delivery','deliver'],reply:'🛵 We deliver within <strong>Dasmariñas, Cavite</strong> only. Outside? Try <strong>🟠 foodpanda</strong> or <strong>🟢 GrabFood</strong>.'},
-  {keys:['menu','food','drink','coffee','frappe','pastry'],reply:'🍽️ We serve <strong>Coffee, Non-Coffee, Iced Blended, Soda Refreshers, and Pastries</strong>. Check our menu above! ☕'},
-  {keys:['reserve','reservation','book','table'],reply:'📅 Use our <strong>Reservations section</strong> — pick a date, time slot, and fill in your details. Our staff will confirm! 😊'},
-  {keys:['wifi','internet'],reply:'📶 Yes, we have free WiFi! Ask our staff for the password. 😊'},
-  {keys:['price','cost','how much'],reply:'💰 Prices start from <strong>₱95 for pastries</strong> and <strong>₱155 for coffee</strong>. Check our menu! ☕'},
-  {keys:['parking','park'],reply:'🚗 Yes, we have parking available! 😊'},
-  {keys:['hello','hi','hey','kumusta'],reply:'Hello! 👋 Welcome to <strong>Accaza Coffee House</strong>! How can I help you today? ☕'},
-  {keys:['thank','thanks','salamat'],reply:"You're very welcome! 😊 See you at Accaza! ☕🐻"},
-  {keys:['sms','text'],reply:'📩 You can reach us via SMS at <strong>0927 692 4831</strong>. 😊'},
+  {keys:['hour','open','close','time','schedule'],reply:'ðŸ• We are open every day â€” <strong>Monday to Sunday, 3:00 PM to 12:00 Midnight</strong>. â˜•'},
+  {keys:['location','address','where','find'],reply:"ðŸ“ <strong>Saratoga Avenue, La Mediterranea Subdivision, Governor's Drive, DasmariÃ±as, Cavite</strong>. Near SM DasmariÃ±as! ðŸ˜Š"},
+  {keys:['gcash','pay','payment','bank','bdo'],reply:'ðŸ’³ We accept <strong>GCash, BDO, and UnionBank</strong>. GCash: <strong>0927 692 4831</strong> (ACCAZA).'},
+  {keys:['delivery','deliver'],reply:'ðŸ›µ We deliver within <strong>DasmariÃ±as, Cavite</strong> only. Outside? Try <strong>ðŸŸ  foodpanda</strong> or <strong>ðŸŸ¢ GrabFood</strong>.'},
+  {keys:['menu','food','drink','coffee','frappe','pastry'],reply:'ðŸ½ï¸ We serve <strong>Coffee, Non-Coffee, Iced Blended, Soda Refreshers, and Pastries</strong>. Check our menu above! â˜•'},
+  {keys:['reserve','reservation','book','table'],reply:'ðŸ“… Use our <strong>Reservations section</strong> â€” pick a date, time slot, and fill in your details. Our staff will confirm! ðŸ˜Š'},
+  {keys:['wifi','internet'],reply:'ðŸ“¶ Yes, we have free WiFi! Ask our staff for the password. ðŸ˜Š'},
+  {keys:['price','cost','how much'],reply:'ðŸ’° Prices start from <strong>â‚±95 for pastries</strong> and <strong>â‚±155 for coffee</strong>. Check our menu! â˜•'},
+  {keys:['parking','park'],reply:'ðŸš— Yes, we have parking available! ðŸ˜Š'},
+  {keys:['hello','hi','hey','kumusta'],reply:'Hello! ðŸ‘‹ Welcome to <strong>Accaza Coffee House</strong>! How can I help you today? â˜•'},
+  {keys:['thank','thanks','salamat'],reply:"You're very welcome! ðŸ˜Š See you at Accaza! â˜•ðŸ»"},
+  {keys:['sms','text'],reply:'ðŸ“© You can reach us via SMS at <strong>0927 692 4831</strong>. ðŸ˜Š'},
 ];
 function getBotReply(msg){const l=msg.toLowerCase();for(const r of botReplies){if(r.keys.some(k=>l.includes(k)))return r.reply;}return null;}
 function addBotMsg(text){const m=document.getElementById('chatMessages'),d=document.createElement('div');d.className='chat-msg bot';d.innerHTML=text;m.appendChild(d);m.scrollTop=m.scrollHeight;}
@@ -1313,21 +1313,21 @@ function addUserMsg(text){const m=document.getElementById('chatMessages'),d=docu
 function showContactOptions(msg){
   const encoded=encodeURIComponent('Hi Accaza Coffee! I have a question: '+msg);
   const d=document.createElement('div');d.className='chat-msg bot';
-  d.innerHTML='<p style="margin-bottom:0.6rem;">🤔 Sorry, I\'m not sure about that! Reach us directly:</p>'
+  d.innerHTML='<p style="margin-bottom:0.6rem;">ðŸ¤” Sorry, I\'m not sure about that! Reach us directly:</p>'
     +'<div style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:0.75rem;">'
-    +'<a href="https://wa.me/'+CAFE_PHONE+'?text='+encoded+'" target="_blank" rel="noopener noreferrer" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">💬 WhatsApp</a>'
-    +'<a href="viber://chat?number=%2B'+CAFE_PHONE+'&text='+encoded+'" style="background:#7360f2;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">📱 Viber</a>'
-    +'<a href="sms:+'+CAFE_PHONE+'?body='+encoded+'" style="background:#44523f;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">📩 SMS</a>'
-    +'<a href="mailto:'+CAFE_EMAIL+'?subject=Customer Inquiry&body='+encoded+'" style="background:#b08d57;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">📧 Email</a>'
-    +'</div><p style="font-size:0.72rem;color:#79806f;border-top:1px solid #cdbda7;padding-top:0.5rem;">📱 WhatsApp, Viber & SMS work best on mobile. On desktop? Use Email.</p>';
+    +'<a href="https://wa.me/'+CAFE_PHONE+'?text='+encoded+'" target="_blank" rel="noopener noreferrer" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">ðŸ’¬ WhatsApp</a>'
+    +'<a href="viber://chat?number=%2B'+CAFE_PHONE+'&text='+encoded+'" style="background:#7360f2;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">ðŸ“± Viber</a>'
+    +'<a href="sms:+'+CAFE_PHONE+'?body='+encoded+'" style="background:#44523f;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">ðŸ“© SMS</a>'
+    +'<a href="mailto:'+CAFE_EMAIL+'?subject=Customer Inquiry&body='+encoded+'" style="background:#b08d57;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.75rem;font-size:0.78rem;text-decoration:none;display:block;">ðŸ“§ Email</a>'
+    +'</div><p style="font-size:0.72rem;color:#79806f;border-top:1px solid #cdbda7;padding-top:0.5rem;">ðŸ“± WhatsApp, Viber & SMS work best on mobile. On desktop? Use Email.</p>';
   document.getElementById('chatMessages').appendChild(d);document.getElementById('chatMessages').scrollTop=document.getElementById('chatMessages').scrollHeight;
 }
-window.toggleChat=function(){chatOpen=!chatOpen;document.getElementById('chatWindow').classList.toggle('open',chatOpen);document.getElementById('chatNotif').style.display='none';if(chatOpen&&!chatStarted){chatStarted=true;setTimeout(function(){addBotMsg("👋 Hi! Welcome to <strong>Accaza Coffee House</strong>! Ask me about our hours, menu, delivery, reservations, and more! ☕");},400);}};
-window.sendChat=function(){const input=document.getElementById('chatInput'),msg=input.value.trim();if(!msg)return;input.value='';addUserMsg(msg);const typing=document.createElement('div');typing.className='chat-msg bot';typing.id='typing';typing.innerHTML='<span style="letter-spacing:2px;">•••</span>';document.getElementById('chatMessages').appendChild(typing);document.getElementById('chatMessages').scrollTop=document.getElementById('chatMessages').scrollHeight;setTimeout(function(){const t=document.getElementById('typing');if(t)t.remove();const reply=getBotReply(msg);if(reply)addBotMsg(reply);else showContactOptions(msg);},900);};
+window.toggleChat=function(){chatOpen=!chatOpen;document.getElementById('chatWindow').classList.toggle('open',chatOpen);document.getElementById('chatNotif').style.display='none';if(chatOpen&&!chatStarted){chatStarted=true;setTimeout(function(){addBotMsg("ðŸ‘‹ Hi! Welcome to <strong>Accaza Coffee House</strong>! Ask me about our hours, menu, delivery, reservations, and more! â˜•");},400);}};
+window.sendChat=function(){const input=document.getElementById('chatInput'),msg=input.value.trim();if(!msg)return;input.value='';addUserMsg(msg);const typing=document.createElement('div');typing.className='chat-msg bot';typing.id='typing';typing.innerHTML='<span style="letter-spacing:2px;">â€¢â€¢â€¢</span>';document.getElementById('chatMessages').appendChild(typing);document.getElementById('chatMessages').scrollTop=document.getElementById('chatMessages').scrollHeight;setTimeout(function(){const t=document.getElementById('typing');if(t)t.remove();const reply=getBotReply(msg);if(reply)addBotMsg(reply);else showContactOptions(msg);},900);};
 window.quickMsg=function(msg){document.getElementById('chatInput').value=msg;sendChat();};
 setTimeout(function(){if(!chatOpen)document.getElementById('chatNotif').style.display='block';},3000);
 
-// ── INIT ──
+// â”€â”€ INIT â”€â”€
 renderCustomerCalendar();
 renderCustomerOrders();
 const nm=new Date();
@@ -1336,7 +1336,7 @@ if(archFrom)archFrom.value=new Date(nm.getFullYear(),nm.getMonth(),1).toISOStrin
 if(archTo)archTo.value=nm.toISOString().slice(0,10);
 // Trigger initial menu render after short delay for Firebase
 setTimeout(function(){if(Object.keys(menuItemsMap).length)renderMenuSection();},1000);
-// ── Pricing Type Toggle ─────────────────────────────────────────────────────
+// â”€â”€ Pricing Type Toggle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.setPricingType = function(type) {
   var sized = document.getElementById('priceSizedFields');
   var two   = document.getElementById('priceTwoFields');
@@ -1354,7 +1354,7 @@ window.setPricingType = function(type) {
   else if (type === 'flat') { flat.style.display = 'block'; }
   else { sized.style.display = 'grid'; }
 };
-// ── Gallery Lightbox ────────────────────────────────────────────────────────
+// â”€â”€ Gallery Lightbox â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 (function(){
   var GALLERY = ["https://i.postimg.cc/g0qrJsnX/6.jpg", "https://i.postimg.cc/TwtsR8Gd/image.png", "https://i.postimg.cc/5yPsM8BH/image.png", "https://i.postimg.cc/wMbQrgz3/image.png", "https://i.postimg.cc/BvGckmr5/image.png", "https://i.postimg.cc/sXJJz5YV/image.png", "https://i.postimg.cc/B6mT84jW/image.png", "https://i.postimg.cc/yxJZk9qq/image.png", "https://i.postimg.cc/CxpqxzcB/image.png", "https://i.postimg.cc/Pq2pyKTr/image.png", "https://i.postimg.cc/sxZMVrSZ/image.png"];
   var current = 0;
@@ -1383,7 +1383,7 @@ window.setPricingType = function(type) {
     if (e.key === 'ArrowRight') shiftLightbox(1);
   });
 })();
-// ── Hamburger menu ──────────────────────────────────────────────────────────
+// â”€â”€ Hamburger menu â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.toggleNav = function() {
   var nl = document.querySelector('.nav-links');
   var hb = document.getElementById('hamburgerBtn');
@@ -1400,7 +1400,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 });
-// ── Print Order as Kitchen Ticket ──────────────────────────────────────────
+// â”€â”€ Print Order as Kitchen Ticket â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.printOrder = function(orderId) {
   var o = adminOrdersMap[orderId];
   if (!o) return;
@@ -1411,7 +1411,7 @@ window.printOrder = function(orderId) {
   var addrRow = (isDelivery && o.address) ? '<div class="row"><span class="lbl">Address</span><span>' + escHtml(o.address) + '</span></div>' : '';
   var schedRow = (o.date || o.time) ? '<div class="row"><span class="lbl">Schedule</span><span>' + escHtml(o.date||'') + ' ' + escHtml(o.time||'') + '</span></div>' : '';
   var notesRow = o.notes ? '<div class="row"><span class="lbl">Notes</span><span>' + escHtml(o.notes) + '</span></div><hr/>' : '';
-  var ticketHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Order #' + escHtml(o.id) + ' — Kitchen Ticket</title>'
+  var ticketHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Order #' + escHtml(o.id) + ' â€” Kitchen Ticket</title>'
     + '<style>'
     + '* { box-sizing:border-box; margin:0; padding:0; }'
     + 'body { font-family:"Courier New",Courier,monospace; font-size:13px; color:#000; background:#fff; padding:12px 16px; max-width:380px; }'
@@ -1426,26 +1426,26 @@ window.printOrder = function(orderId) {
     + '.footer { text-align:center; font-size:10px; margin-top:14px; color:#555; }'
     + '@media print { body { max-width:none; } @page { margin:6mm; } }'
     + '</style></head><body>'
-    + '<div class="logo">☕ ACCAZA</div>'
-    + '<div class="sub">Coffee House — Kitchen Ticket</div>'
+    + '<div class="logo">â˜• ACCAZA</div>'
+    + '<div class="sub">Coffee House â€” Kitchen Ticket</div>'
     + '<hr/>'
     + '<div class="row"><span class="lbl">Order #</span><span>' + escHtml(o.id) + '</span></div>'
     + '<div class="row"><span class="lbl">Printed</span><span>' + printTime + '</span></div>'
     + '<hr/>'
-    + '<div class="row"><span class="lbl">Customer</span><span>' + escHtml(o.name||'—') + '</span></div>'
-    + '<div class="row"><span class="lbl">Contact</span><span>' + escHtml(o.phone||'—') + (o.contact?' / '+escHtml(o.contact):'') + '</span></div>'
-    + '<div class="badge">' + (isDelivery ? '🛵 DELIVERY' : '🏠 PICK-UP') + '</div>'
+    + '<div class="row"><span class="lbl">Customer</span><span>' + escHtml(o.name||'â€”') + '</span></div>'
+    + '<div class="row"><span class="lbl">Contact</span><span>' + escHtml(o.phone||'â€”') + (o.contact?' / '+escHtml(o.contact):'') + '</span></div>'
+    + '<div class="badge">' + (isDelivery ? 'ðŸ›µ DELIVERY' : 'ðŸ  PICK-UP') + '</div>'
     + addrRow + schedRow
     + '<hr/>'
     + '<div class="lbl">Items:</div>'
     + '<div class="items">' + itemsHtml + '</div>'
     + '<hr/>'
     + notesRow
-    + '<div class="row"><span class="lbl">On Duty</span><span>' + escHtml(o.onDuty||o.staff||'—') + '</span></div>'
-    + '<div class="row"><span class="lbl">Payment</span><span>' + escHtml(o.payment||'—') + '</span></div>'
-    + '<div class="total">TOTAL: ₱' + (o.total||0).toLocaleString() + '</div>'
+    + '<div class="row"><span class="lbl">On Duty</span><span>' + escHtml(o.onDuty||o.staff||'â€”') + '</span></div>'
+    + '<div class="row"><span class="lbl">Payment</span><span>' + escHtml(o.payment||'â€”') + '</span></div>'
+    + '<div class="total">TOTAL: â‚±' + (o.total||0).toLocaleString() + '</div>'
     + '<hr/>'
-    + '<div class="footer">— Thank you! Pass this to the kitchen. —</div>'
+    + '<div class="footer">â€” Thank you! Pass this to the kitchen. â€”</div>'
     + '</body></html>';
   var win = window.open('', '_blank', 'width=440,height=640');
   win.document.write(ticketHtml);
