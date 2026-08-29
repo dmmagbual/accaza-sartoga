@@ -4,7 +4,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome}from"./admin-orders.mjs";
-import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=332";
+import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=369";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -1179,17 +1179,17 @@ async function loginSuccess(role,username,uid,serverRole){
     adminLoggedIn=true;superAdminLoggedIn=(role==='superadmin');staffLoggedIn=false;
     document.getElementById('adminDash').style.display='block';
     ['navAvail','navComments','navAdminPanel'].forEach(function(id){document.getElementById(id).style.display='block';});
-    document.getElementById('navAdminPanelLink').textContent='ðŸ” Admin Panel';
+    document.getElementById('navAdminPanelLink').textContent='Admin panel';
     if(superAdminLoggedIn&&aaccTab)aaccTab.style.removeProperty('display');
     var hdr=document.querySelector('#adminDash .admin-header p');
-    if(hdr)hdr.textContent=(superAdminLoggedIn?'ðŸ‘‘ Super Admin':'ðŸ”‘ Admin')+': '+username;
+    if(hdr)hdr.textContent=(superAdminLoggedIn?'Super admin':'Admin')+': '+username;
     if(role==='admin'&&uid&&adminAccountsMap[uid]&&adminAccountsMap[uid].access==='nopay'){
       document.querySelectorAll('.admin-tab').forEach(function(btn){
         var oc=btn.getAttribute('onclick')||'';
         if(oc.indexOf("'payment'")!==-1)btn.style.display='none';
       });
       var tpay=document.getElementById('tab-payment');if(tpay)tpay.style.display='none';
-      if(hdr)hdr.textContent='ðŸ”‘ Admin: '+username+' Â· Limited access';
+      if(hdr)hdr.textContent='Admin: '+username+' · Limited access';
     }
     setTimeout(function(){
       buildAvail();renderCategoryManager();renderOptionManager();renderNewItemOptionChecklist();renderComments();renderOrders();renderReservations();
@@ -1202,10 +1202,10 @@ async function loginSuccess(role,username,uid,serverRole){
     document.getElementById('adminDash').style.display='block';
     document.getElementById('navAdminPanel').style.display='block';
     document.getElementById('navComments').style.display='block';
-    document.getElementById('navAdminPanelLink').textContent='ðŸ” Staff Panel';
+    document.getElementById('navAdminPanelLink').textContent='Staff panel';
     (function(){ applyStaffPerms(Object.assign({},DEFAULT_STAFF_PERMS)); get(ref(db,'adminPerms/'+uid)).then(function(sn){ var v=sn.val(); if(v)applyStaffPerms(Object.assign({},DEFAULT_STAFF_PERMS,v)); }).catch(function(){}); })();
     var hdr=document.querySelector('#adminDash .admin-header p');
-    if(hdr)hdr.textContent='ðŸ‘¤ Staff: '+username;
+    if(hdr)hdr.textContent='Staff: '+username;
     setTimeout(function(){
       renderOrders();renderReservations();renderAdminCalendar();renderDashboard();
       renderAdminReviews();renderComments();renderStaffMenu();

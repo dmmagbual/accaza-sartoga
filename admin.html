@@ -33,7 +33,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="/favicon_512x512.png"/>
 <link rel="manifest" href="/manifest-admin.json"/>
 <meta name="theme-color" content="#19241b"/>
-<meta name="accaza-admin-build" content="368"/>
+<meta name="accaza-admin-build" content="369"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -122,6 +122,9 @@ nav{position:fixed;top:0;width:100%;z-index:200;background:rgba(25,36,27,0.96);b
 .nav-links{display:flex;gap:1.5rem;list-style:none;flex-wrap:wrap;}
 .nav-links a{color:var(--cd);text-decoration:none;font-size:0.82rem;letter-spacing:0.08em;text-transform:uppercase;transition:color 0.2s;}
 .nav-links a:hover{color:#fff;}
+/* Authenticated staff links are explicit so they stay visible on the dark shell. */
+.nav-links #navAdminPanel a,.nav-links #navAvail a,.nav-links #navComments a{color:#d8b06e!important;opacity:1!important;font-weight:600;text-shadow:0 1px 0 rgba(0,0,0,.3);}
+.nav-links #navAdminPanel a:hover,.nav-links #navAvail a:hover,.nav-links #navComments a:hover{color:#fff4dc!important;}
 .hamburger{display:none;flex-direction:column;gap:5px;background:none;border:none;cursor:pointer;padding:4px;z-index:201;}
 .hamburger span{display:block;width:24px;height:2px;background:var(--cr);border-radius:2px;transition:all 0.3s;}
 .hamburger.open span:nth-child(1){transform:translateY(7px) rotate(45deg);}
@@ -1065,7 +1068,7 @@ nav.nav-shrink .nav-logo{font-size:1.2rem;}
 <!-- ADMIN DASHBOARD -->
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-            <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="display:inline-block;font-size:0.74rem;line-height:1.2;color:#5f4524;background:#f3e8d5;border:1px solid #d4bd98;border-radius:999px;padding:.16rem .46rem;font-weight:700;letter-spacing:.045em;vertical-align:middle;white-space:nowrap;">build&nbsp;v368</span></div><p style="font-size:.78rem;color:var(--tl);">Firebase Realtime Database</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><a href="books.html" target="_blank" rel="noopener" title="Open Finance Books in a new tab" style="background:#eef3ff;color:#1c3f8a;border:1px solid #b9c9ef;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;text-decoration:none;">Finance Books</a><button class="admin-logout" onclick="logoutAdmin()">Log out</button></div></div>
+            <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="display:inline-block;font-size:0.74rem;line-height:1.2;color:#5f4524;background:#f3e8d5;border:1px solid #d4bd98;border-radius:999px;padding:.16rem .46rem;font-weight:700;letter-spacing:.045em;vertical-align:middle;white-space:nowrap;">build&nbsp;v369</span></div><p style="font-size:.78rem;color:var(--tl);">Firebase Realtime Database</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><a href="books.html" target="_blank" rel="noopener" title="Open Finance Books in a new tab" style="background:#eef3ff;color:#1c3f8a;border:1px solid #b9c9ef;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;text-decoration:none;">Finance Books</a><button class="admin-logout" onclick="logoutAdmin()">Log out</button></div></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -1506,7 +1509,7 @@ body.admin-pos-workspace #posCharge{background:#2a9d5c;border-radius:6px;box-sha
 <script src="assets/js/admin/form-dialog.js"></script>
 <script src="assets/js/shared/business-date.js"></script>
 <script src="assets/js/shared/sales-authority.js"></script>
-<script type="module" src="assets/js/admin/core.mjs?v=332"></script>
+<script type="module" src="assets/js/admin/core.mjs?v=369"></script>
 <script type="module" src="assets/js/admin/overview-command.mjs"></script>
 <script type="module" src="assets/js/admin/staff-push.mjs"></script>
 <!-- Lightbox -->
@@ -1618,13 +1621,13 @@ input.pz-in[type=number]::-webkit-outer-spin-button,input.pz-in[type=number]::-w
 /* Use plain text in the staff shell so every supported browser renders it
    consistently; operational controls do not depend on emoji fonts. */
 (function(){
-  var labels={navAdminPanelLink:'Admin panel',navAvail:'Availability',navComments:'Comments',tabBtnPos:'Open Point of Sale'};
+  var labels={navAdminPanelLink:'Admin panel',tabBtnPos:'Open Point of Sale'};
   Object.keys(labels).forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=labels[id];});
   var header=document.querySelector('.admin-header');if(header){var note=header.querySelector('p');if(note)note.textContent='Firebase Realtime Database';var books=header.querySelector('a[href="books.html"]');if(books)books.textContent='Finance Books';var logout=header.querySelector('.admin-logout');if(logout)logout.textContent='Log out';}
   var pos=document.querySelector('.admin-group.pos-primary');if(pos)pos.textContent='POS';
 })();
 </script>
-<script src="assets/js/admin/module-loader.js?v=368"></script>
+<script src="assets/js/admin/module-loader.js?v=369"></script>
 <script src="assets/js/admin/portal-boot.js"></script>
 <script src="assets/js/pwa-register.js"></script>
 <!-- Release 2D: staff-access module is loaded on demand. -->
