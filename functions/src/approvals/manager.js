@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 const { HttpsError } = require("firebase-functions/v2/https");
 const { getDatabase, getAdminAuth } = require("../core/firebase");
@@ -12,7 +12,7 @@ const MANAGER_APPROVAL_ACTIONS = new Set([
 
 function financeKey(value, label) {
   const str = String(value || "").trim();
-  if (!str || str.length > 160) throw new HttpsError("invalid-argument", `${label || "Key"} is invalid.`);
+  if (!str || str.length > 160) throw new HttpsError("invalid-argument", (label || "Key") + " is invalid.");
   return str;
 }
 

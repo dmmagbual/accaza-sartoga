@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 const { initializeApp, getApps } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");

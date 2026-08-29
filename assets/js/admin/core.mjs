@@ -1453,3 +1453,4 @@ window.printOrder = function(orderId) {
   win.focus();
   setTimeout(function() { win.print(); }, 400);
 };
+
