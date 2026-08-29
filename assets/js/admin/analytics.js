@@ -75,10 +75,18 @@ function salesBetween(from,to){return allOrders().filter(isSale).map(saleFields)
 function dayStart(d){d=new Date(d);d.setHours(0,0,0,0);return d.getTime();}
 function addDays(ts,n){var d=new Date(ts);d.setDate(d.getDate()+n);return d.getTime();}
 function localDateValue(v){var p=String(v||'').split('-');if(p.length!==3)return NaN;return new Date(Number(p[0]),Number(p[1])-1,Number(p[2])).getTime();}
-function rangeBounds(){var now=Date.now(),today=dayStart(now),end=addDays(today,1);if(azRange==='today')return[today,end];if(azRange==='7d')return[addDays(today,-6),end];if(azRange==='30d')return[addDays(today,-29),end];if(azRange==='month'){var d=new Date();return[new Date(d.getFullYear(),d.getMonth(),1).getTime(),end];}if(azRange==='all'){var ts=allOrders().map(function(o){return o.timestamp||Date.parse(o.date)||0;}).filter(Boolean);return[ts.length?dayStart(Math.min.apply(null,ts)):today,end];}if(azRange==='custom'&&azFrom!=null&&azTo!=null)return[dayStart(azFrom),addDays(dayStart(azTo),1)];return[addDays(today,-29),end];}
+function rangeBounds(){
+  if(azFrom!=null&&azTo!=null)return[azFrom,azTo+1];
+  var now=Date.now(),today=dayStart(now),end=addDays(today,1);if(azRange==='today')return[today,end];if(azRange==='7d')return[addDays(today,-6),end];if(azRange==='30d')return[addDays(today,-29),end];if(azRange==='month'){var d=new Date();return[new Date(d.getFullYear(),d.getMonth(),1).getTime(),end];}return[new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime(),end];
+}
 function fmtD(ts){return new Date(ts).toLocaleDateString('en-PH',{month:'short',day:'numeric'});}
 function azRangeLabel(from,to){var nm={today:'Today','7d':'Last 7 days','30d':'Last 30 days',month:'This month',all:'All time',custom:'Custom range'};return (nm[azRange]||azRange)+' · '+fmtD(from)+' – '+fmtD(to-86400000);}
-function sharedPeriod(v){v=v||(window.AccazaReportPeriod&&window.AccazaReportPeriod.get&&window.AccazaReportPeriod.get());if(!v)return;azRange=v.period==='7'?'7d':v.period==='30'?'30d':v.period||'month';azFrom=null;azTo=null;}
+function sharedPeriod(v){
+  v=v||(window.AccazaReportPeriod&&window.AccazaReportPeriod.get&&window.AccazaReportPeriod.get());if(!v)return;
+  azRange=v.mode||v.period||'month';
+  azFrom=Number(v.startAt)||null;
+  azTo=Number(v.endAt)||null;
+}
 async function ensureAnalyticsHistory(){
   var a=A(),hub=a&&a.hub;if(analyticsHistoryLoading||!hub)return;
   var from=rangeBounds()[0],paths=[{path:'orders',map:function(){return ordersMap;},field:'timestamp'},{path:'archivedOrders',map:function(){return archMap;},field:'archivedAt'}];
