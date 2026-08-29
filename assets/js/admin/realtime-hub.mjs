@@ -1,7 +1,7 @@
 // One physical Realtime Database listener per path. POS-critical paths stay
 // live; large back-office paths attach only for the active workspace.
 const HISTORY_BOUNDS={
-  orders:{field:'timestamp',limit:250,page:250},archivedOrders:{field:'archivedAt',limit:100,page:100},archivedReservations:{field:'archivedAt',limit:100,page:100},
+  orders:{field:'timestamp',limit:250,page:250},archivedOrders:{field:'timestamp',limit:100,page:100},archivedReservations:{field:'archivedAt',limit:100,page:100},
   shifts:{field:'openAt',limit:100,page:100},activityLog:{field:'ts',limit:200,page:200},discrepancies:{field:'ts',limit:200,page:200},
   stockReceipts:{field:'ts',limit:250,page:250},purchaseInvoices:{field:'ts',limit:250,page:250},inventoryAdjustments:{field:'ts',limit:250,page:250},internalUsage:{field:'ts',limit:250,page:250},
   cfLedger:{field:'ts',limit:300,page:300},financialMovements:{field:'occurredAt',limit:300,page:300},platformPayouts:{field:'settledAt',limit:100,page:100},inventoryMovements:{field:'occurredAt',limit:300,page:300}

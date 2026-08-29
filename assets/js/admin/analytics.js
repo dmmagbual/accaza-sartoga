@@ -89,7 +89,7 @@ function sharedPeriod(v){
 }
 async function ensureAnalyticsHistory(){
   var a=A(),hub=a&&a.hub;if(analyticsHistoryLoading||!hub)return;
-  var from=rangeBounds()[0],paths=[{path:'orders',map:function(){return ordersMap;},field:'timestamp'},{path:'archivedOrders',map:function(){return archMap;},field:'archivedAt'}];
+  var from=rangeBounds()[0],paths=[{path:'orders',map:function(){return ordersMap;},field:'timestamp'},{path:'archivedOrders',map:function(){return archMap;},field:'timestamp'}];
   function oldest(cfg){return Object.values(cfg.map()).reduce(function(min,o){var ts=Number(o&&o[cfg.field])||0;return ts&&(!min||ts<min)?ts:min;},0);}
   function needsOlder(cfg){var status=hub.historyStatus(cfg.path),old=oldest(cfg);return status.hasOlder&&(azRange==='all'||!old||old>from);}
   if(!paths.some(needsOlder))return;
