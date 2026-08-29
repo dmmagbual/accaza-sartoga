@@ -13,7 +13,7 @@ const financeSource=read('assets','js','admin','finance.js');
 const undepositedSource=read('assets','js','admin','undeposited.js');
 const clientSource=[coreSource,registerSource,posSource,analyticsSource,financeSource,undepositedSource].join('\n');
 const expected=[
-  'validate_payment','refund','void','settle_platform_payout','reopen_cash_count',
+  'validate_payment','refund','void','settle_platform_payout','reopen_cash_count','reopen_discrepancy',
   'delete_archived_order','review_discrepancy','approve_petty_voucher','correct_petty_voucher',
   'reject_petty_voucher','void_petty_voucher','return_supplier_payment','manual_discount','cash_in','purchase_cash_advance','fixed_float_exception','reverse_purchase',
   'rekey_platform_order','reverse_platform_payout','correct_platform_presettlement','set_undeposited_opening_balance','retire_revolving_fund','repair_closed_shift_turnover','repair_reversed_payout_deposit','reconcile_undeposited_custody','certify_financial_close',

@@ -610,7 +610,7 @@ exports.acceptOnlineOrder = onCall(
 );
 
 const MANAGER_APPROVAL_ACTIONS = new Set([
-  "validate_payment", "refund", "void", "settle_platform_payout", "reopen_cash_count",
+  "validate_payment", "refund", "void", "settle_platform_payout", "reopen_cash_count", "reopen_discrepancy",
   "delete_archived_order", "review_discrepancy", "approve_petty_voucher", "correct_petty_voucher",
   "reject_petty_voucher", "void_petty_voucher", "return_supplier_payment", "manual_discount", "cash_in", "purchase_cash_advance", "fixed_float_exception", "reverse_purchase",
   "rekey_platform_order", "reverse_platform_payout", "correct_platform_presettlement", "set_undeposited_opening_balance", "retire_revolving_fund",
@@ -839,6 +839,27 @@ exports.reviewDiscrepancy = onCall(
     if (!result.committed) throw new HttpsError("aborted", "This discrepancy was reviewed by another manager. Refresh the list.");
     await db.ref().update(Object.assign({}, approval.usedWrites, {[`operationalAudit/${now}_${id}`]: operationalAuditRecord("review_discrepancy", "discrepancy", id, actor, {approvalId: approval.id})}));
     return {discrepancyId: id, reviewedAt: now, duplicate};
+  },
+);
+
+// Reviewed discrepancy records are never a dead end. They may be reopened
+// only when nothing downstream has been posted; otherwise the caller is told
+// to reverse the exact linked treatment first. The original event is retained.
+exports.reopenDiscrepancy = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db=getDatabase(),actor=await requirePortalPermission(db,request,["discrepancy","registerOps"]),data=request.data||{},id=financeKey(data.discrepancyId,"Discrepancy ID"),reason=financeText(data.reason,500),ref=db.ref(`/discrepancies/${id}`),snap=await ref.get();
+    if(!reason)throw new HttpsError("invalid-argument","Explain why this reviewed record must be corrected.");
+    if(!snap.exists())throw new HttpsError("not-found","Discrepancy record not found.");
+    const row=snap.val()||{};if(row.status!=="reviewed")throw new HttpsError("failed-precondition","Only a reviewed discrepancy can be corrected from this workflow.");
+    const isCash=row.kind==="cash",shiftId=isCash?financeKey(row.shiftId,"Shift ID"):"",[caseSnap,linksSnap,originalSnap]=await Promise.all([isCash?db.ref(`/cashDifferenceCases/${id}`).get():Promise.resolve({val:()=>({})}),db.ref("/financialControlLinks/correctionMovements").get(),isCash?db.ref(`/financialMovements/shift_variance_${shiftId}`).get():Promise.resolve({exists:()=>true})]);
+    if(isCash&&!originalSnap.exists())throw new HttpsError("failed-precondition","The original cash-variance posting is missing. Use the Finance correction workflow instead.");
+    const caseRow=caseSnap.val()||{},allocations=Object.assign({},row.resolutionAllocations||{},caseRow.allocations||{}),controlLinks=linksSnap.val()||{},linkedEntries=Object.entries(controlLinks).filter(([,link])=>link&&link.discrepancyId===id),linked=linkedEntries.length>0,linkedIds=[row.resolutionMovementId,row.correctionMovementId,row.recoveryCustodyId,row.customerRefundPayableId,row.purchaseAdvanceId,...linkedEntries.map(([key,link])=>link.movementId||link.correctionMovementId||link.id||key)].filter(Boolean).map(String),hasTreatment=linked||linkedIds.length>0||Object.keys(allocations).length>0;
+    if(hasTreatment){const labels=[...new Set(linkedIds)].slice(0,4);throw new HttpsError("failed-precondition",`This record has linked Finance treatment${labels.length?`: ${labels.join(", ")}`:" or settlement"}. Reverse that linked treatment first, then return here to correct the original record. Its audit trail remains intact.`);}
+    const amount=isCash?Financial.money(Math.abs(Number(row.variance)||0)):null,approval=await claimManagerApproval(db,data,"reopen_discrepancy",id,amount,`reopen_discrepancy_${id}`),now=Date.now(),revision=Math.max(0,Math.floor(Number(row.reopenRevision)||0))+1,approvedBy=approval.record.approvedName||approval.record.approvedEmail||approval.record.approvedRole,history={revision,reopenedAt:now,reopenedBy:approvedBy,reopenedByUid:approval.record.approvedBy,approvalId:approval.id,reason,originalStatus:row.status,originalTreatment:row.treatment||"",originalNote:row.note||"",originalMovementId:isCash?`shift_variance_${shiftId}`:""};
+    const status=isCash?"pending_manager_reconciliation":"open",writes=Object.assign({},approval.usedWrites,{[`discrepancies/${id}/status`]:status,[`discrepancies/${id}/financialStatus`]:isCash?status:(row.financialStatus||"pending_manager_review"),[`discrepancies/${id}/reviewedAt`]:null,[`discrepancies/${id}/reopenedAt`]:now,[`discrepancies/${id}/reopenedBy`]:approvedBy,[`discrepancies/${id}/reopenRevision`]:revision,[`discrepancies/${id}/reopenHistory/${revision}`]:history,[`operationalAudit/${now}_${id}_reopen_discrepancy`]:operationalAuditRecord("reopen_discrepancy","discrepancy",id,actor,{amount,approvalId:approval.id,reason,originalMovementId:history.originalMovementId,accounting:isCash?"No Finance entry is posted on reopen. The original variance stays in its control account until a new approved treatment is selected.":"No inventory or Finance entry is posted on reopen. The original discrepancy stays in the audit trail until it is reviewed again."})});
+    if(isCash)Object.assign(writes,{[`cashDifferenceCases/${id}/status`]:status,[`cashDifferenceCases/${id}/resolvedAmount`]:0,[`cashDifferenceCases/${id}/remainingAmount`]:amount,[`cashDifferenceCases/${id}/updatedAt`]:now,[`cashDifferenceCases/${id}/reopenHistory/${revision}`]:history,[`shifts/${shiftId}/varianceStatus`]:status});
+    await db.ref().update(writes);return{discrepancyId:id,status,amount,reopenRevision:revision,duplicate:false};
   },
 );
 
