@@ -24,7 +24,7 @@ if(calls.length!==0)throw new Error('Overview paged history before all bounded f
 overview.render({active:[],orders:[],archived:[],outcomes:[],sales:[],feedReady:{orders:true,archivedOrders:true,financialMovements:true}});
 for(var i=0;i<5;i++)await new Promise((r)=>setTimeout(r,0));
 if(calls.length)throw new Error('Overview downloaded older pages outside the selected reporting period.');
-if(elements.overviewDataNote.textContent!=='Only the selected reporting period is loaded. Change the period to view another range.')throw new Error('Overview did not identify the selected-period boundary.');
+if(elements.overviewDataNote.textContent!=='Every completed paid order in the selected dates is loaded, including archived orders.')throw new Error('Overview did not identify the selected-date boundary.');
 console.log('PASS: Overview remains within the selected reporting period without opening Sales History.');
 
 // ---- 2) Reconcile to the Sales History orders+archived universe ----
