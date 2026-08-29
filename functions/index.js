@@ -996,6 +996,18 @@ exports.retireRevolvingFund = onCall(
   },
 );
 
+exports.getUndepositedControlSnapshot = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db=getDatabase();await requirePortalPermission(db,request,["petty","cashflow"]);
+    const [movementSnap,voucherSnap]=await Promise.all([db.ref("/financialMovements").get(),db.ref("/pettyCashVouchers").get()]);
+    const movementMap=movementSnap.val()||{},voucherMap=voucherSnap.val()||{};let undeposited=0,revolving=0;const postedVoucherIds={};
+    Object.keys(movementMap).forEach((id)=>{const movement=movementMap[id]||{};(movement.lines||[]).forEach((line)=>{const net=Financial.money((Number(line.debit)||0)-(Number(line.credit)||0));if(line.account==="asset:cash_awaiting_deposit")undeposited=Financial.money(undeposited+net);if(line.account==="asset:petty_cash")revolving=Financial.money(revolving+net);});if(movement.sourceType==="pettyVoucher"&&movement.sourceId)postedVoucherIds[String(movement.sourceId)]=id;});
+    const missingApproved=[];Object.keys(voucherMap).forEach((id)=>{const voucher=voucherMap[id]||{};if(voucher.status==="approved"&&voucher.voided!==true&&!postedVoucherIds[id])missingApproved.push(id);});
+    return{undepositedBalance:undeposited,revolvingBalance:revolving,postedVoucherIds,missingApprovedVoucherIds:missingApproved,retirementPosted:movementSnap.child("revolving_fund_retirement").exists(),calculatedAt:Date.now(),authority:"server_all_time"};
+  },
+);
+
 function savedShiftCashSales(shift) {
   const sales = shift && shift.zReport && Array.isArray(shift.zReport.sales) ? shift.zReport.sales : [];
   let cash = 0;

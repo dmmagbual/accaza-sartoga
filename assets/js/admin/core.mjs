@@ -4,7 +4,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome}from"./admin-orders.mjs";
-import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=378";
+import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=379";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -87,6 +87,7 @@ window.__accaza={
   setUndepositedOpeningBalance:function(command){return setUndepositedOpeningBalanceCall(command);},
   repairPettyVoucherFinancial:function(command){return repairPettyVoucherFinancialCall(command);},
   retireRevolvingFund:function(command){return retireRevolvingFundCall(command);},
+  getUndepositedControlSnapshot:function(){return callables.getUndepositedControlSnapshot({});},
   repairClosedShiftTurnover:function(command){return repairClosedShiftTurnoverCall(command);},
   repairReversedPayoutDeposit:function(command){return repairReversedPayoutDepositCall(command);},
   reconcileUndepositedCustody:function(command){return reconcileUndepositedCustodyCall(command);},

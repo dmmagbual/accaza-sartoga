@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 378,
+    "admin": 379,
     "books": 58,
     "customer": 59,
-    "serviceWorkerCache": 311
+    "serviceWorkerCache": 312
   },
   "authoritativeFiles": [
     "admin.html",
@@ -62,6 +62,7 @@
     "RELEASE_7H_SKU_LINK_INTEGRITY_2026-08-10.md"
   ],
   "requiredFunctionExports": [
+    "getUndepositedControlSnapshot",
     "notifyOnComplete",
     "notifyStaffOnOrder",
     "notifyStaffOnReservation",
