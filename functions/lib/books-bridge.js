@@ -22,6 +22,8 @@ const CHART_COA = {
   rent: "6010", utilities: "6020", salaries: "6000", "bank charges": "6080", bank_charges: "6080",
   repairs: "6060", "repairs & maintenance": "6060", marketing: "6050", supplies: "6070",
   office_supplies: "6075", "office supplies": "6075",
+  transportation: "6076", transport: "6076", "transportation / delivery": "6076",
+  staff_meals: "6077", "staff meals": "6077", "staff meals / welfare": "6077",
   internet: "6030", "internet & phone": "6030", depreciation: "6090",
   purchases: "6100", other_expense: "6100", other: "6100", "fixed asset": "1500",
   capital_in: "3000", "capital in": "3000", owner_draw: "3100", "owner draw": "3100",
