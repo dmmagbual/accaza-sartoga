@@ -539,7 +539,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   const salesHistorySource=fs.readFileSync(path.join(root,'assets','js','admin','sales-history.js'),'utf8');
   const realtimeHubSource=fs.readFileSync(path.join(root,'assets','js','admin','realtime-hub.mjs'),'utf8');
   const overviewInsightsSource=fs.readFileSync(path.join(root,'assets','js','admin','overview-insights.mjs'),'utf8');
-  for(const marker of ['assets/js/shared/report-period.js','reportPeriodMode','reportPeriodCount','reportPeriodEnd','MAX_PERIODS=12'])if(!(salesHistorySource+adminHtml+fs.readFileSync(path.join(root,'assets','js','shared','report-period.js'),'utf8')).includes(marker))fail(`Shared bounded reporting marker missing: ${marker}`);
+  for(const marker of ['assets/js/shared/report-period.js','reportPeriodFrom','reportPeriodTo','reportPeriodApply','MAX_PERIODS=12'])if(!(salesHistorySource+adminHtml+fs.readFileSync(path.join(root,'assets','js','shared','report-period.js'),'utf8')).includes(marker))fail(`Shared bounded reporting marker missing: ${marker}`);
   if(!overviewInsightsSource.includes('function reportPeriod()')||!analyticsSource.includes("var azRange='month'"))fail('Overview and Analytics must initially use This month');
   if(!overviewInsightsSource.includes('function stamp(o){return window.AccazaSales.stamp(o);'))fail('Overview must use the same completed/received sale date authority as Sales History');
   for(const marker of ['function reportPeriod()','Only the selected reporting period is loaded.','function ensureHistory(){}'])if(!overviewInsightsSource.includes(marker))fail(`Overview bounded-reporting guard missing: ${marker}`);

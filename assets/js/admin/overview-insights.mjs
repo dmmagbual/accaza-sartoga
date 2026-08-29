@@ -39,10 +39,9 @@ function createOverviewInsights(deps){
   }
   function bind(){
     if(state.bound)return;state.bound=true;
-    var mode=document.getElementById('reportPeriodMode'),count=document.getElementById('reportPeriodCount'),end=document.getElementById('reportPeriodEnd'),from=document.getElementById('reportPeriodFrom'),to=document.getElementById('reportPeriodTo'),apply=document.getElementById('reportPeriodApply');
-    if(count&&!count.options.length){for(var n=1;n<=12;n++){var opt=document.createElement('option');opt.value=String(n);opt.textContent=n+' period'+(n===1?'':'s');count.appendChild(opt);}}
-    function renderPeriodControls(){var p=reportPeriod(),custom=p.mode==='custom';if(mode)mode.value=p.mode||'month';if(count){count.value=String(p.count||1);count.disabled=custom;}if(end){end.value=p.endMonth||new Date().toISOString().slice(0,7);end.disabled=custom;}if(from){from.value=p.customFrom||p.from||'';from.disabled=!custom;}if(to){to.value=p.customTo||p.to||'';to.disabled=!custom;}}
-    if(apply)apply.addEventListener('click',function(){window.AccazaReportPeriod.set({mode:mode&&mode.value,count:count&&count.value,endMonth:end&&end.value,customFrom:from&&from.value,customTo:to&&to.value});});
+    var from=document.getElementById('reportPeriodFrom'),to=document.getElementById('reportPeriodTo'),apply=document.getElementById('reportPeriodApply');
+    function renderPeriodControls(){var p=reportPeriod();if(from)from.value=p.from||p.customFrom||'';if(to)to.value=p.to||p.customTo||'';}
+    if(apply)apply.addEventListener('click',function(){if(!from||!to||!from.value||!to.value)return;if(from.value>to.value){alert('The start date must be on or before the end date.');return;}window.AccazaReportPeriod.set({mode:'custom',customFrom:from.value,customTo:to.value});});
     if(window.addEventListener)window.addEventListener('accaza-report-period',function(){renderPeriodControls();paint();});renderPeriodControls();
     document.querySelectorAll('[data-overview-metric]').forEach(function(btn){btn.addEventListener('click',function(){state.metric=this.dataset.overviewMetric;select();paint();});});
     select();
