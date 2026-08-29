@@ -32,6 +32,7 @@ const META={
   operations:['Overview','Operations Center','Review system health and actionable operational exceptions.','dashboard:Back to overview'],
   adminaccounts:['Settings','Admin accounts','Manage privileged portal access.',''],
   changepw:['Settings','Change password','Update the current portal credential.','']
+  ,accountingperiods:['Settings','Accounting periods','Close a month after review, or reopen it for controlled corrections.','']
 };
 
 function installWorkspaceShell(options={}){

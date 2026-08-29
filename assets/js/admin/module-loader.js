@@ -1,14 +1,14 @@
 (function(){
   'use strict';
   var base='assets/js/admin/';
-  var files={offlinequeue:'offline-queue.js',costing:'../shared/costing.js',pos:'pos.js',channelpricing:'channel-pricing.js',analytics:'analytics.js',saleshistory:'sales-history.js',register:'register.js',staff:'staff-access.js',packages:'packages.js',finance:'finance.js',operations:'operations-dashboard.js',undeposited:'undeposited.js',inbox:'staff-inbox.js'};
+  var files={offlinequeue:'offline-queue.js',costing:'../shared/costing.js',pos:'pos.js',channelpricing:'channel-pricing.js',analytics:'analytics.js',saleshistory:'sales-history.js',register:'register.js',staff:'staff-access.js',packages:'packages.js',finance:'finance.js',operations:'operations-dashboard.js',undeposited:'undeposited.js',inbox:'staff-inbox.js',accountingperiods:'accounting-periods.js'};
   var routes={
     pos:['inbox','pos'],inventory:['pos'],purchases:['finance','pos'],recipes:['pos'],usage:['pos'],channelpricing:['pos','channelpricing'],dedupe:['pos'],
     saleshistory:['saleshistory'],analytics:['pos','analytics'],payouts:['pos','analytics'],stockvalue:['pos','analytics'],dailyreport:['pos','analytics'],
     ops:['pos','register'],possettings:['pos','register'],discrepancy:['pos','register'],petty:['pos','register'],packages:['pos','packages'],staffaccess:['staff'],
-    operations:['operations'],undeposited:['undeposited'],inbox:['inbox']
+    operations:['operations'],undeposited:['undeposited'],inbox:['inbox'],accountingperiods:['accountingperiods']
   };
-  var roots={pos:'posRoot',inventory:'inventoryRoot',purchases:'purchasesRoot',recipes:'recipesRoot',usage:'usageRoot',channelpricing:'channelPricingRoot',dedupe:'dedupeRoot',saleshistory:'salesHistoryRoot',analytics:'analyticsRoot',payouts:'payoutsRoot',stockvalue:'stockValueRoot',dailyreport:'dailyReportRoot',ops:'opsRoot',possettings:'posSettingsRoot',discrepancy:'discrepancyRoot',petty:'pettyRoot',packages:'packagesRoot',staffaccess:'staffAccessRoot',operations:'operationsRoot',undeposited:'undepositedRoot',inbox:'staffInboxRoot'};
+  var roots={pos:'posRoot',inventory:'inventoryRoot',purchases:'purchasesRoot',recipes:'recipesRoot',usage:'usageRoot',channelpricing:'channelPricingRoot',dedupe:'dedupeRoot',saleshistory:'salesHistoryRoot',analytics:'analyticsRoot',payouts:'payoutsRoot',stockvalue:'stockValueRoot',dailyreport:'dailyReportRoot',ops:'opsRoot',possettings:'posSettingsRoot',discrepancy:'discrepancyRoot',petty:'pettyRoot',packages:'packagesRoot',staffaccess:'staffAccessRoot',operations:'operationsRoot',undeposited:'undepositedRoot',inbox:'staffInboxRoot',accountingperiods:'accountingPeriodsRoot'};
   var promises={},handlers={},requestSerial=0;
   var build=((typeof document.querySelector==='function'&&document.querySelector('meta[name="accaza-admin-build"]')||{}).content||'');
 
