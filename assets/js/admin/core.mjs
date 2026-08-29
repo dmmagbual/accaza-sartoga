@@ -20,8 +20,6 @@ const subscriptionHub=createSubscriptionHub(db,{ref,onValue,query,orderByChild,l
 window.__accazaLiveStats=function(){return subscriptionHub.stats();};
 const renderHistoryPager=createHistoryPager(subscriptionHub);
 window.__fbForgot=function(){var current=(document.getElementById('adminUser').value||'').trim();if(!window.AccazaFormDialog){alert('Form service unavailable. Refresh and try again.');return;}window.AccazaFormDialog.run({title:'Reset portal password',subtitle:'Firebase will send the reset link to this account.',submitLabel:'Send reset link',busyLabel:'Sendingâ€¦',fields:[{name:'email',label:'Firebase account email',type:'email',required:true,value:current,validate:function(v){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)?'':'Enter a valid email address.';}}]},function(v){return sendPasswordResetEmail(auth,v.email).then(function(){return v;});}).then(function(v){alert('Password reset link sent to '+v.email+'. Check inbox and spam.');}).catch(function(e){if(e&&e.code!=='cancelled')alert('Could not send reset: '+((e&&e.code)||e));});};
-// ===================== WEB PUSH (FCM) =====================
-// Paste your Web Push certificate key here (Firebase Console > Project settings > Cloud Messaging > Web Push certificates).
 const VAPID_KEY="BIIVf-1RYIQger0yqeYlyV6-tQpH8YfytIgQK6-7IJg87HVITcNkYv4RYcKjyCmJBJKR1EXjJqRuiHzkFJjSvlE";
 function _pushToastWire(messaging){onMessage(messaging,function(payload){var d=(payload&&(payload.data||payload.notification))||{};try{if(navigator.vibrate)navigator.vibrate([400,150,400,150,400,150,400]);}catch(e){}try{customerOrderTracker.playChime();}catch(e){}try{navigator.serviceWorker.ready.then(function(reg){reg.showNotification(d.title||'Accaza Coffee House',{body:d.body||'',icon:'/favicon_192x192.png',badge:'/favicon_192x192.png',vibrate:[400,150,400,150,400,150,400],requireInteraction:true,renotify:true,tag:'accaza-order',data:{link:(d.link||'/')}});});}catch(e){}try{(window.accazaToast||function(){})((d.title?d.title+': ':'')+(d.body||'New notification'),'ok');}catch(e){}});}
 async function registerPushToken(){
@@ -60,9 +58,7 @@ window.enableNotifications=async function(){
 };
 window.__setupPush=setupPush;
 
-// DB refs
 const feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups');
-// â”€â”€ POS / INVENTORY BRIDGE â”€â”€ exposes DB + live maps to the isolated POS module (see #accaza-pos script). Additive; does not change existing behaviour.
 window.__accaza={
   db, ref, set, get, update, remove, onValue, runTransaction, hub:subscriptionHub,
   subscribe:function(path,callback,opts){return subscriptionHub.subscribe(path,callback,opts);},
@@ -125,7 +121,6 @@ const DEFAULT_CATS=[
   {id:'pastry',label:'Pastries',icon:'ðŸž',order:5}
 ];
 
-// Customize cats
 const DRINK_CATS=['coffee','noncaf','frappe','nonfrappe','soda'];
 const TEMP_CATS=['coffee','noncaf'];
 const MILK_CATS=['coffee','noncaf','frappe','nonfrappe'];
@@ -133,7 +128,6 @@ const SHOT_CATS=['coffee','frappe'];
 const SYRUP_CATS=['coffee','noncaf','frappe','nonfrappe'];
 const TOPPING_CATS=['coffee','noncaf','frappe','nonfrappe','soda'];
 
-// â”€â”€ OPTION GROUPS (data-driven item variations) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const DEFAULT_OPTION_GROUPS={
   og_temp:{name:'Temperature',type:'single',required:true,order:0,choices:[{label:'Hot',price:0},{label:'Cold (Chilled, no ice)',price:0},{label:'Iced (with ice)',price:0}]},
   og_sweet:{name:'Sweetness',type:'single',required:true,order:1,choices:[{label:'Not Sweet',price:0},{label:'Less Sweet',price:0},{label:'Regular',price:0}]},
@@ -157,7 +151,6 @@ function getItemOptionGroups(item){
   return getEffectiveOptionIds(item).map(function(id){var g=optionGroupsMap[id];return g?Object.assign({},g,{id:id}):null;}).filter(Boolean).sort(function(a,b){return(a.order||0)-(b.order||0);});
 }
 
-// State
 let categoriesMap={},menuItemsMap={},adminOrdersMap={},overviewOrdersMap={},archivedOrdersMap={},feedbacksMap={},reviewsMap={},availability={},cart={},overviewOrdersLoaded=false,archivedOrdersLoaded=false,overviewFinancialMovementsLoaded=false;
 let optionGroupsMap={},optSeedStarted=false,itemOptMigrated=false;
 let knownOrderIds=null,unseenOrders=0,orderChimeTimer=null,audioCtx=null;
@@ -177,11 +170,9 @@ const renderReservations=reservationManager.renderReservations,renderCustomerCal
 const catalogAdmin=createCatalogAdmin({getCategoriesMap:function(){return categoriesMap;},getMenuItemsMap:function(){return menuItemsMap;},getOptionGroupsMap:function(){return optionGroupsMap;},getAvailability:function(){return availability;},getCats:getCats,getMenuItems:getMenuItems,getEffectiveOptionIds:getEffectiveOptionIds,isAvail:isAvail,isStaffLoggedIn:function(){return staffLoggedIn;},showDeletePopup:showDeletePopup,renderMenuSection:renderMenuSection,renderOrderSection:renderOrderSection});
 const renderCategoryManager=catalogAdmin.renderCategoryManager,renderOptionManager=catalogAdmin.renderOptionManager,renderNewItemOptionChecklist=catalogAdmin.renderNewItemOptionChecklist,renderStaffMenu=catalogAdmin.renderStaffMenu,buildAvail=catalogAdmin.buildAvail;
 
-// Sync badge
 document.getElementById('fbSync').classList.add('online');
 setTimeout(()=>document.getElementById('fbSync').style.display='none',4000);
 
-// Helpers
 function getCats(){return Object.values(categoriesMap).sort((a,b)=>(a.order||0)-(b.order||0));}
 function getCatLabel(id){const c=categoriesMap[id];return c?c.icon+' '+c.label:id;}
 function getCatIcon(id){const c=categoriesMap[id];return c?c.icon:'â˜•';}
@@ -190,7 +181,6 @@ function isAvail(name){return availability[name]!==false;}
 function isDrink(cat){return DRINK_CATS.includes(cat);}
 function formatPrice(item){if(item.priceM&&item.priceL)return'S â‚±'+item.priceS+' Â· M â‚±'+item.priceM+' Â· L â‚±'+item.priceL;return'â‚±'+item.priceS;}
 
-// â”€â”€ SEED TABS FROM DEFAULTS IMMEDIATELY â”€â”€
 function seedTabsFromDefaults(){
   const cats=DEFAULT_CATS;
   const mrow=document.getElementById('menuTabsRow');
@@ -223,7 +213,6 @@ function rebuildTabs(){
   attachTabListeners();
 }
 
-// â”€â”€ FIREBASE LISTENERS â”€â”€
 subscriptionHub.subscribe('categories',snap=>{
   const saved=snap.val();
   if(saved){categoriesMap=saved;}
@@ -337,13 +326,11 @@ subscriptionHub.subscribe('menuItems',snap=>{
   if(staffLoggedIn)renderStaffMenu();
 });
 
-// â”€â”€ NEW ORDER ALERTS (admin/staff) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function playChime(){
   try{
     if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();
     if(audioCtx.state==='suspended')audioCtx.resume();
     var t=audioCtx.currentTime;
-    // Urgent two-tone alert: 6 alternating pulses, ~1.8s total
     for(var i=0;i<6;i++){
       var o=audioCtx.createOscillator(),gn=audioCtx.createGain();
       o.type='triangle';
@@ -427,7 +414,6 @@ subscriptionHub.subscribe('payment',snap=>{
   if(p.gcashName)document.getElementById('editGcashName').value=p.gcashName;
   if(p.bdoNum)document.getElementById('editBdoNum').value=p.bdoNum;
   if(p.ubNum)document.getElementById('editUbNum').value=p.ubNum;
-  // Enabled flags â†’ update admin toggles
   function setChk(id,val){var el=document.getElementById(id);if(el){el.checked=(val!==false);}}
   setChk('chkGcash',p.gcashEnabled!==false);
   setChk('chkBdo',p.bdoEnabled!==false);
@@ -435,31 +421,25 @@ subscriptionHub.subscribe('payment',snap=>{
   setChk('chkMaya',p.mayaEnabled!==false);
   setChk('chkBank3',p.bank3Enabled!==false);
   setChk('chkBank4',p.bank4Enabled!==false);
-  // Show/hide individual bank rows in customer panel
   var bdoRow=document.getElementById('bdoRow');
   var ubRow=document.getElementById('ubRow');
   if(bdoRow)bdoRow.style.display=p.bdoEnabled!==false?'block':'none';
   if(ubRow)ubRow.style.display=p.ubEnabled!==false?'block':'none';
-  // QR codes
   var qrGcash=document.getElementById('qrGcash');
   var qrBdo=document.getElementById('qrBdo');
   var qrSection=document.getElementById('qrSection');
   if(qrGcash)qrGcash.style.display=p.gcashEnabled!==false?'block':'none';
   if(qrBdo)qrBdo.style.display=p.bdoEnabled!==false?'block':'none';
-  // Hide whole QR box if both GCash and BDO are off
   if(qrSection)qrSection.style.display=(p.gcashEnabled!==false||p.bdoEnabled!==false)?'block':'none';
   ['Gcash','Bdo','Ub','Maya','Bank3','Bank4'].forEach(function(k){
     var note=document.getElementById('chk'+k+'Note');
     var chk=document.getElementById('chk'+k);
     if(note&&chk)note.style.display=chk.checked?'none':'block';
   });
-  // GCash customer button
   var gcashBtn=document.getElementById('btnGcash');
   if(gcashBtn)gcashBtn.style.display=p.gcashEnabled!==false?'':'none';
-  // Bank Transfer button (show if any bank enabled)
   var bankBtn=document.getElementById('btnBank');
   if(bankBtn)bankBtn.style.display=(p.bdoEnabled!==false||p.ubEnabled!==false||p.bank3Enabled!==false||p.bank4Enabled!==false)?'':'none';
-  // Auto-select first visible payment method
   (function(){
     var gcashOk=p.gcashEnabled!==false;
     var mayaOk=!!(p.mayaNum&&p.mayaEnabled!==false);
@@ -470,7 +450,6 @@ subscriptionHub.subscribe('payment',snap=>{
       if(first)setPayment(first);
     }
   })();
-  // PayMaya
   var mayaBtn=document.getElementById('btnMaya');
   if(p.mayaNum){document.getElementById('mayaNum').textContent=p.mayaNum;
     if(p.mayaName)document.getElementById('mayaName').textContent=p.mayaName;
@@ -479,7 +458,6 @@ subscriptionHub.subscribe('payment',snap=>{
     if(mayaBtn)mayaBtn.style.display=(p.mayaEnabled!==false)?'':'';
   }else{if(mayaBtn)mayaBtn.style.display='none';}
   if(mayaBtn&&p.mayaNum)mayaBtn.style.display=(p.mayaEnabled!==false)?'':'none';
-  // Extra Bank
   var b3row=document.getElementById('bank3Row');
   if(p.bank3Num){
     document.getElementById('bank3Num').textContent=p.bank3Num;
@@ -490,7 +468,6 @@ subscriptionHub.subscribe('payment',snap=>{
     if(document.getElementById('editBank3Name'))document.getElementById('editBank3Name').value=p.bank3Name||'';
     if(b3row)b3row.style.display=p.bank3Enabled!==false?'block':'none';
   }else{if(b3row)b3row.style.display='none';}
-  // Extra Bank 2
   var b4row=document.getElementById('bank4Row');
   if(p.bank4Num){
     document.getElementById('bank4Num').textContent=p.bank4Num;
@@ -505,7 +482,6 @@ subscriptionHub.subscribe('payment',snap=>{
 
 document.getElementById('btnAddToCart').addEventListener('click',function(){addCustomizedToCart();});
 
-// â”€â”€ MENU & ORDER RENDERING â”€â”€
 window.filterMenu=function(cat,btn){
   menuFilter=cat;
   document.querySelectorAll('#menuTabsRow .tab-btn').forEach(b=>b.classList.remove('active'));
@@ -566,13 +542,11 @@ function renderOrderSection(){
       +'<button class="qty-btn" style="background:var(--bd);color:#fff;border-color:var(--bd);" data-key="'+i.key+'">+</button>'
       +'</div></div>';
   }).join('');
-  // Wire + buttons via event listeners
   el.querySelectorAll('.qty-btn[data-key]').forEach(function(btn){
     btn.addEventListener('click',function(){openCustomize(this.dataset.key);});
   });
 }
 
-// â”€â”€ CUSTOMIZE POPUP â”€â”€
 window.openCustomize=function(itemKey){
   const itemData=menuItemsMap[itemKey];if(!itemData)return;
   custItem={...itemData,key:itemKey};
@@ -608,7 +582,6 @@ window.openCustomize=function(itemKey){
   html+='<div class="cust-section"><div class="cust-section-title">Quantity</div><div class="cust-qty"><button class="cust-qty-btn" id="custQtyMinus">âˆ’</button><span class="cust-qty-num" id="custQtyNum">1</span><button class="cust-qty-btn" id="custQtyPlus">+</button></div></div>';
   const body=document.getElementById('custBody');
   body.innerHTML=html;
-  // Wire option clicks via event delegation (onclick = no stacked listeners)
   body.onclick=function(e){
     const opt=e.target.closest('.cust-option');if(!opt)return;
     const action=opt.dataset.action;
@@ -675,7 +648,6 @@ function addCustomizedToCart(){
 }
 window.closeCustomize=function(){document.getElementById('customizePopup').classList.remove('show');custItem=null;};
 
-// â”€â”€ CART â”€â”€
 function updateCartDisplay(){
   const box=document.getElementById('cartItems'),tot=document.getElementById('cartTotal');
   const keys=Object.keys(cart);
@@ -695,7 +667,6 @@ function updateCartDisplay(){
       +'<span style="font-size:0.85rem;font-weight:500;color:var(--bl);min-width:50px;text-align:right;">â‚±'+line.toLocaleString()+'</span>'
       +'</div></div></div>';
   }).join('');
-  // Wire cart qty buttons
   box.querySelectorAll('button[data-cartkey]').forEach(function(btn){
     btn.addEventListener('click',function(e){if(e&&e.stopPropagation)e.stopPropagation();
       const k=this.dataset.cartkey,d=parseInt(this.dataset.delta);
@@ -796,8 +767,6 @@ window.resetOrder=function(){if(!Object.keys(cart).length&&!document.getElementB
 
 function renderCustomerOrders(){return customerOrderTracker.render();}
 
-// â”€â”€ RESERVATIONS â”€â”€
-// â”€â”€ FEEDBACK â”€â”€
 window.submitContact=async function(){
   const name=document.getElementById('conName').value.trim(),contact=document.getElementById('conContact').value.trim(),subject=document.getElementById('conSubject').value.trim(),message=document.getElementById('conMessage').value.trim();
   if(!name||!message){alert('Please fill in name and message.');return;}
@@ -818,14 +787,11 @@ window.submitFeedback=async function(){
   document.getElementById('fbConfirmMsg').textContent=msgs[type]||msgs.Other;document.getElementById('fbConfirm').style.display='block';setTimeout(function(){document.getElementById('fbConfirm').style.display='none';},6000);}catch(e){alert('Error: '+e.message);}
 };
 
-// â”€â”€ ADMIN FUNCTIONS â”€â”€
 function updateStats(){const orders=Object.values(adminOrdersMap),active=orders.filter(o=>o.status!=='Received');document.getElementById('statOrders').textContent=active.length;document.getElementById('statPending').textContent=active.filter(o=>o.status==='Pending').length;document.getElementById('statReservations').textContent=Object.keys(reservationManager.getReservations()).length;document.getElementById('statRevenue').textContent='â‚±'+active.filter(o=>o.status!=='Rejected').reduce((s,o)=>s+(o.total||0),0).toLocaleString();}
 
 const orderAdmin=createOrderAdmin({getOrders:function(){return adminOrdersMap;},canArchiveOrder:function(o){var verifiedRole=window.__accazaAuthz&&window.__accazaAuthz.role,manager=['owner','superadmin','admin','manager'].indexOf(String(verifiedRole||'').toLowerCase())>=0,shift=window.__posShift;return manager&&(!o.shiftId||!shift||shift.id!==o.shiftId||shift.status==='closed');},escHtml:escHtml,safeImageSrc:safeImageSrc,showDeletePopup:showDeletePopup,printOrder:function(id){if(window.printOrder)return window.printOrder(id);},notifyCustomer:function(id){if(window.notifyCustomer)return window.notifyCustomer(id);}});
 const renderOrders=orderAdmin.renderOrders,patchOrderCards=orderAdmin.patchOrderCards;
 
-// â”€â”€ AVAILABILITY & CATEGORY MANAGER â”€â”€
-// â”€â”€ CHANGE PASSWORD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.togglePwVis=function(inputId,btn){var inp=document.getElementById(inputId);if(!inp)return;var show=inp.type==='password';inp.type=show?'text':'password';btn.textContent=show?'ðŸ™ˆ':'ðŸ‘ï¸';};
 window.changeAdminPassword=async function(){
   var cur=document.getElementById('cpCurrent').value;
@@ -848,7 +814,6 @@ window.changeAdminPassword=async function(){
 };
 
 
-// â”€â”€ STAFF ACCOUNTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderStaffAccounts(){
   var el=document.getElementById('staffList');if(!el)return;
   var keys=Object.keys(staffAccountsMap);
@@ -883,7 +848,6 @@ window.addStaffAccount=async function(){
   }
   if(!username){showMsg('Username is required.',false);return;}
   if(!password||password.length<4){showMsg('Password must be at least 4 characters.',false);return;}
-  // Check username not already taken
   var taken=Object.values(staffAccountsMap).some(function(a){return a.username===username;});
   if(taken){showMsg('Username "'+username+'" is already taken.',false);return;}
   var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(password));
@@ -898,7 +862,6 @@ window.addStaffAccount=async function(){
 };
 
 
-// â”€â”€ ADMIN ACCOUNTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderAdminAccounts(){
   var el=document.getElementById('adminAccList');if(!el)return;
   var keys=Object.keys(adminAccountsMap);
@@ -959,8 +922,6 @@ window.addAdminAccount=async function(){
   }catch(e){showMsg('Error: '+e.message,false);}
 };
 
-// â”€â”€ OPTION GROUPS MANAGER (admin) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// â”€â”€ PUBLIC REVIEWS (dynamic) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderPublicReviews(){
   var el=document.getElementById('publicReviewsContainer');if(!el)return;
   var entries=Object.entries(reviewsMap);
@@ -989,8 +950,6 @@ function renderPublicReviews(){
 }
 
 
-// â”€â”€ EDIT ITEM HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// â”€â”€ DASHBOARD â”€â”€
 const overviewHistoryLoader=createOverviewHistoryLoader({
   read:async function(){var res=await Promise.all([get(ref(db,'orders')),get(ref(db,'archivedOrders'))]);return{orders:res[0].val()||{},archived:res[1].val()||{}};},
   onData:function(){var dt=document.getElementById('tab-dashboard');if(adminLoggedIn&&dt&&dt.style.display!=='none')renderDashboard();},
@@ -1034,7 +993,6 @@ function drawPaymentPie(gcashR,bankR){
   });
 }
 
-// â”€â”€ ARCHIVE PDF â”€â”€
 window.downloadArchivePDF=function(){
   const fromVal=document.getElementById('archiveFrom').value,toVal=document.getElementById('archiveTo').value;
   let orders=sortArchivedOrders(Object.values(archivedOrdersMap));
@@ -1082,7 +1040,6 @@ window.downloadArchivePDF=function(){
   const link=document.createElement('a');link.download='Accaza_Archive_'+new Date().toISOString().slice(0,10)+'.png';link.href=canvas.toDataURL('image/png');link.click();
 };
 
-// â”€â”€ MISC ADMIN â”€â”€
 function renderComments(){
   const types=['Contact','Complaint','Suggestion','Compliment','Other'];
   const empty={Contact:'No website messages yet.',Complaint:'No complaints yet. ðŸŽ‰',Suggestion:'No suggestions yet.',Compliment:'No compliments yet.',Other:'No other feedback yet.'};
@@ -1115,7 +1072,6 @@ window.addReview=async function(){
 
 window.savePayment=async function(){
   function getChk(id){var el=document.getElementById(id);return el?el.checked:true;}
-  // Update disabled notes
   ['Gcash','Bdo','Ub','Maya','Bank3','Bank4'].forEach(function(k){
     var note=document.getElementById('chk'+k+'Note');
     if(note)note.style.display=getChk('chk'+k)?'none':'block';
@@ -1154,7 +1110,6 @@ function showDeletePopup(label,onConfirm){
 window.openAdmin=function(){document.getElementById('loginOverlay').classList.add('show');setTimeout(function(){document.getElementById('adminPass').focus();},150);};
 window.closeAdmin=function(){document.getElementById('loginOverlay').classList.remove('show');document.getElementById('loginErr').style.display='none';document.getElementById('adminPass').value='';};
 
-// â”€â”€ ROLE SELECTOR (visual choice; actual role comes from /admins/{Firebase UID}) â”€â”€
 window.selectLoginRole=function(role){
   currentLoginRole=role;
   document.getElementById('loginForm').style.display='block';
@@ -1170,7 +1125,6 @@ window.selectLoginRole=function(role){
   setTimeout(function(){document.getElementById('adminUser').focus();},100);
 };
 
-// â”€â”€ LOGIN SUCCESS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 var DEFAULT_STAFF_PERMS={orders:true,reservations:true,pos:true,inventory:true,purchases:false,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,dailyreport:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false,cashflow:false,receivables:false,payables:false,stockvalue:false},roleLandingDone=false;
 var _permTabMap={"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'purchases'":'purchases',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'dedupe'":'dedupe',"'cashflow'":'cashflow',"'receivables'":'receivables',"'payables'":'payables',"'stockvalue'":'stockvalue',"'dailyreport'":'dailyreport',"'analytics'":'analytics',"'pnl'":'pnl',"'ops'":'registerOps',"'possettings'":'possettings'};
 var _permAlwaysHide=["'payment'","'staffaccounts'","'adminaccounts'","'staffaccess'","'packages'","'operations'"];
@@ -1188,7 +1142,6 @@ function applyStaffPerms(perms){
   });
   var na=document.getElementById('navAvail'); if(na)na.style.display=perms.availability?'block':'none';
   var nc=document.getElementById('navComments'); if(nc)nc.style.display=perms.comments?'block':'none';
-  // hide any group whose tabs are all hidden, then land on the first visible group
   document.querySelectorAll('.admin-group').forEach(function(gb){var g=gb.getAttribute('data-grp');var row=document.querySelector('.tabgrp[data-grp="'+g+'"]');var vis=false;if(row)row.querySelectorAll('.admin-tab').forEach(function(b){if(b.style.display!=='none')vis=true;});gb.style.display=vis?'':'none';});
   var curG=document.querySelector('.admin-group.active');
   if(!curG||curG.style.display==='none'){var fg=null;document.querySelectorAll('.admin-group').forEach(function(gb){if(!fg&&gb.style.display!=='none')fg=gb;});if(fg)window.showTabGroup(fg.getAttribute('data-grp'),fg);}
@@ -1217,7 +1170,6 @@ async function loginSuccess(role,username,uid,serverRole){
   document.getElementById('adminPass').value='';
   closeAdmin();
   document.body.classList.remove('staff-mode');
-  // Reset tab visibility
   document.querySelectorAll('.admin-tab').forEach(function(t){t.style.removeProperty('display');});
   var aaccTab=document.getElementById('tabBtnAdminAccounts');
   if(aaccTab)aaccTab.style.display='none';
@@ -1230,7 +1182,6 @@ async function loginSuccess(role,username,uid,serverRole){
     if(superAdminLoggedIn&&aaccTab)aaccTab.style.removeProperty('display');
     var hdr=document.querySelector('#adminDash .admin-header p');
     if(hdr)hdr.textContent=(superAdminLoggedIn?'ðŸ‘‘ Super Admin':'ðŸ”‘ Admin')+': '+username;
-    // Restrict Payment Details for limited admins
     if(role==='admin'&&uid&&adminAccountsMap[uid]&&adminAccountsMap[uid].access==='nopay'){
       document.querySelectorAll('.admin-tab').forEach(function(btn){
         var oc=btn.getAttribute('onclick')||'';
@@ -1245,7 +1196,6 @@ async function loginSuccess(role,username,uid,serverRole){
       if(superAdminLoggedIn)renderAdminAccounts();
     },300);
   }else{
-    // Staff
     staffLoggedIn=true;adminLoggedIn=false;superAdminLoggedIn=false;
     document.body.classList.add('staff-mode');
     document.getElementById('adminDash').style.display='block';
@@ -1264,7 +1214,6 @@ async function loginSuccess(role,username,uid,serverRole){
   workspaceShell.update('dashboard');
 }
 
-// â”€â”€ FIREBASE AUTH GATE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 installPortalAuth({subscriptionHub:subscriptionHub,onAuthorized:loginSuccess,openLogin:window.openAdmin,onSignedOut:function(){adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;currentUser=null;currentLoginRole=null;window.__posShift=null;if(window.__refreshWorkspaceStatus)window.__refreshWorkspaceStatus();}});
 const workspaceShell=installWorkspaceShell({currentUser:function(){return currentUser;},subscriptionHub:subscriptionHub});
 window.switchTab=function(tab,btn){
@@ -1292,7 +1241,6 @@ window.showTabGroup=function(g,btn){
   if(!row.querySelector('.admin-tab.active')){ var first=null; row.querySelectorAll('.admin-tab').forEach(function(b){ if(!first && b.style.display!=='none') first=b; }); if(first)first.click(); }
 };
 
-// â”€â”€ CHATBOT â”€â”€
 const botReplies=[
   {keys:['hour','open','close','time','schedule'],reply:'ðŸ• We are open every day â€” <strong>Monday to Sunday, 3:00 PM to 12:00 Midnight</strong>. â˜•'},
   {keys:['location','address','where','find'],reply:"ðŸ“ <strong>Saratoga Avenue, La Mediterranea Subdivision, Governor's Drive, DasmariÃ±as, Cavite</strong>. Near SM DasmariÃ±as! ðŸ˜Š"},
@@ -1327,34 +1275,27 @@ window.sendChat=function(){const input=document.getElementById('chatInput'),msg=
 window.quickMsg=function(msg){document.getElementById('chatInput').value=msg;sendChat();};
 setTimeout(function(){if(!chatOpen)document.getElementById('chatNotif').style.display='block';},3000);
 
-// â”€â”€ INIT â”€â”€
 renderCustomerCalendar();
 renderCustomerOrders();
 const nm=new Date();
 const archFrom=document.getElementById('archiveFrom'),archTo=document.getElementById('archiveTo');
 if(archFrom)archFrom.value=new Date(nm.getFullYear(),nm.getMonth(),1).toISOString().slice(0,10);
 if(archTo)archTo.value=nm.toISOString().slice(0,10);
-// Trigger initial menu render after short delay for Firebase
 setTimeout(function(){if(Object.keys(menuItemsMap).length)renderMenuSection();},1000);
-// â”€â”€ Pricing Type Toggle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.setPricingType = function(type) {
   var sized = document.getElementById('priceSizedFields');
   var two   = document.getElementById('priceTwoFields');
   var flat  = document.getElementById('priceFlatField');
-  // hide all first
   sized.style.display = 'none';
   two.style.display   = 'none';
   flat.style.display  = 'none';
-  // clear all fields
   ['newItemPriceS','newItemPriceM','newItemPriceL'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
   ['newItemPriceTwoS','newItemPriceTwoL','newItemLabelS','newItemLabelL'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
   var flatEl = document.getElementById('newItemPriceFlat'); if(flatEl) flatEl.value='';
-  // show correct section
   if (type === 'two')  { two.style.display  = 'grid'; }
   else if (type === 'flat') { flat.style.display = 'block'; }
   else { sized.style.display = 'grid'; }
 };
-// â”€â”€ Gallery Lightbox â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 (function(){
   var GALLERY = ["https://i.postimg.cc/g0qrJsnX/6.jpg", "https://i.postimg.cc/TwtsR8Gd/image.png", "https://i.postimg.cc/5yPsM8BH/image.png", "https://i.postimg.cc/wMbQrgz3/image.png", "https://i.postimg.cc/BvGckmr5/image.png", "https://i.postimg.cc/sXJJz5YV/image.png", "https://i.postimg.cc/B6mT84jW/image.png", "https://i.postimg.cc/yxJZk9qq/image.png", "https://i.postimg.cc/CxpqxzcB/image.png", "https://i.postimg.cc/Pq2pyKTr/image.png", "https://i.postimg.cc/sxZMVrSZ/image.png"];
   var current = 0;
@@ -1383,7 +1324,6 @@ window.setPricingType = function(type) {
     if (e.key === 'ArrowRight') shiftLightbox(1);
   });
 })();
-// â”€â”€ Hamburger menu â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.toggleNav = function() {
   var nl = document.querySelector('.nav-links');
   var hb = document.getElementById('hamburgerBtn');
@@ -1400,7 +1340,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 });
-// â”€â”€ Print Order as Kitchen Ticket â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.printOrder = function(orderId) {
   var o = adminOrdersMap[orderId];
   if (!o) return;

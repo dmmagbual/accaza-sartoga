@@ -35,8 +35,6 @@ for(const pathName of ['orders','archivedOrders','financialMovements']){
   callbacks[pathName]({val(){return{};}});
 }
 await new Promise(resolve=>setTimeout(resolve,350));
-for(const pathName of ['orders','archivedOrders','financialMovements']){
-  if(!loadCalls.includes(pathName))throw new Error(`Sales History did not verify older ${pathName} before reconciliation.`);
-}
-if(!root.innerHTML.includes('Complete Admin sales history and Finance ledger loaded.'))throw new Error('Sales History did not finish only after all older-page probes completed.');
-console.log('PASS: Sales History verifies older orders, archived orders, and Finance movements before reconciliation.');
+if(loadCalls.length)throw new Error('Sales History downloaded older pages automatically instead of preserving the selected reporting boundary.');
+if(!root.innerHTML.includes('Authoritative sales register'))throw new Error('Sales History did not render the selected reporting period after its bounded feeds loaded.');
+console.log('PASS: Sales History renders bounded feeds without automatic historical downloads.');

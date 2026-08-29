@@ -2,15 +2,15 @@ const elements={overviewDataNote:{textContent:''},overviewRangeLabel:{textConten
 globalThis.localStorage={getItem(){return JSON.stringify({period:'all'});},setItem(){}};
 globalThis.document={querySelectorAll(){return[];},getElementById(id){return elements[id]||null;}};
 globalThis.CustomEvent=function(){};
-globalThis.window={dispatchEvent(){},AccazaSales:{stamp(o){return Number(o.completedAt)||Number(o.receivedAt)||Number(o.timestamp)||Date.parse(o.date)||Number(o.archivedAt)||0;},amounts(o){return{gross:Number(o.total)||0,net:Number(o.total)||0};}}};
+globalThis.window={dispatchEvent(){},AccazaReportPeriod:{get(){return{mode:'month',count:1,label:'This month',startAt:new Date().setHours(0,0,0,0),endAt:Date.now()};},set(){return this.get();}},AccazaSales:{stamp(o){return Number(o.completedAt)||Number(o.receivedAt)||Number(o.timestamp)||Date.parse(o.date)||Number(o.archivedAt)||0;},amounts(o){return{gross:Number(o.total)||0,net:Number(o.total)||0};}}};
 const {createOverviewInsights,mergeOverviewOrders}=await import('../assets/js/admin/overview-insights.mjs');
 const states={orders:{loaded:1,hasOlder:true},archivedOrders:{loaded:1,hasOlder:true},financialMovements:{loaded:1,hasOlder:true}},calls=[];
 const overview=createOverviewInsights({esc:String,historyStatus(path){return states[path];},async loadOlder(path){calls.push(path);states[path]={loaded:2,hasOlder:false};}});
 overview.render({active:[],orders:[{id:'old-order',timestamp:1,total:100,status:'Completed',paymentStatus:'confirmed'}],archived:[{id:'old-archive',timestamp:1,archivedAt:2,total:200,status:'Archived',prevStatus:'Completed',paymentStatus:'confirmed'}],outcomes:[],sales:[]});
-for(var i=0;i<20&&calls.length<3;i++)await new Promise((resolve)=>setTimeout(resolve,0));
-if(calls.join(',')!=='orders,archivedOrders,financialMovements')throw new Error('Overview did not automatically complete the same three sales-history feeds.');
-if(elements.overviewDataNote.textContent!=='Complete sales history verified.')throw new Error('Overview reported complete history before all three feeds finished.');
-console.log('PASS: Overview completes orders, archives, and Finance movements before reporting totals.');
+for(var i=0;i<5;i++)await new Promise((resolve)=>setTimeout(resolve,0));
+if(calls.length)throw new Error('Overview must not download older report pages automatically.');
+if(elements.overviewDataNote.textContent!=='Only the selected reporting period is loaded. Change the period to view another range.')throw new Error('Overview did not disclose the bounded reporting behavior.');
+console.log('PASS: Overview uses only the selected reporting period without automatic historical downloads.');
 
 const raceStates={orders:{loaded:1,hasOlder:true},archivedOrders:{loaded:1,hasOlder:false},financialMovements:{loaded:1,hasOlder:false}},raceChecks={orders:0,archivedOrders:0,financialMovements:0},raceCalls=[];
 let releaseRace;
@@ -20,16 +20,16 @@ const raceData={active:[],orders:[{id:'race-order',timestamp:1,total:50,status:'
 raced.render(raceData);
 raced.render(raceData);
 releaseRace();
-for(var j=0;j<30&&raceChecks.orders<3;j++)await new Promise((resolve)=>setTimeout(resolve,0));
-if(raceCalls.join(',')!=='orders,archivedOrders,financialMovements'||raceChecks.orders<3)throw new Error('Overview lost a refresh received while sales history was loading.');
-console.log('PASS: Overview reruns history reconciliation when live data arrives during pagination.');
+for(var j=0;j<5;j++)await new Promise((resolve)=>setTimeout(resolve,0));
+if(raceCalls.length)throw new Error('Overview attempted historical pagination after a live refresh.');
+console.log('PASS: Overview remains bounded when live data refreshes.');
 
 const shortcutStates={orders:{loaded:250,hasOlder:true},archivedOrders:{loaded:100,hasOlder:true},financialMovements:{loaded:300,hasOlder:true}},shortcutCalls=[];
 const shortcut=createOverviewInsights({esc:String,historyStatus(path){return shortcutStates[path];},async loadOlder(path){shortcutCalls.push(path);shortcutStates[path]={loaded:shortcutStates[path].loaded+1,hasOlder:false};}});
 shortcut.render({active:[],orders:[{id:'period-covered',timestamp:Date.now(),total:10,status:'Completed'}],archived:[],outcomes:[],sales:[]});
-for(var k=0;k<20&&shortcutCalls.length<3;k++)await new Promise((resolve)=>setTimeout(resolve,0));
-if(shortcutCalls.join(',')!=='orders,archivedOrders,financialMovements')throw new Error('Overview stopped at the selected-period shortcut instead of verifying complete history.');
-console.log('PASS: Overview verifies every bounded feed even when the current page appears to cover the selected period.');
+for(var k=0;k<5;k++)await new Promise((resolve)=>setTimeout(resolve,0));
+if(shortcutCalls.length)throw new Error('Overview exceeded the selected-period query by loading older pages.');
+console.log('PASS: Overview does not bypass selected-period bounds.');
 
 const dateStates={orders:{loaded:1,hasOlder:false},archivedOrders:{loaded:1,hasOlder:false},financialMovements:{loaded:1,hasOlder:false}};
 const dated=createOverviewInsights({esc:String,historyStatus(path){return dateStates[path];},async loadOlder(){return{loaded:0,hasOlder:false};}});
