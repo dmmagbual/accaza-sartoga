@@ -1405,10 +1405,10 @@ window.printOrder = function(orderId) {
   var isDelivery = o.type === 'Delivery';
   var now = new Date();
   var printTime = now.toLocaleString('en-PH', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit', hour12:true });
-  var itemsHtml = (o.items || '').split(',').map(function(s){ return '<div>' + s.trim() + '</div>'; }).join('');
-  var addrRow = (isDelivery && o.address) ? '<div class="row"><span class="lbl">Address</span><span>' + o.address + '</span></div>' : '';
-  var schedRow = (o.date || o.time) ? '<div class="row"><span class="lbl">Schedule</span><span>' + (o.date||'') + ' ' + (o.time||'') + '</span></div>' : '';
-  var notesRow = o.notes ? '<div class="row"><span class="lbl">Notes</span><span>' + o.notes + '</span></div><hr/>' : '';
+  var itemsHtml = (o.items || '').split(',').map(function(s){ return '<div>' + escHtml(s.trim()) + '</div>'; }).join('');
+  var addrRow = (isDelivery && o.address) ? '<div class="row"><span class="lbl">Address</span><span>' + escHtml(o.address) + '</span></div>' : '';
+  var schedRow = (o.date || o.time) ? '<div class="row"><span class="lbl">Schedule</span><span>' + escHtml(o.date||'') + ' ' + escHtml(o.time||'') + '</span></div>' : '';
+  var notesRow = o.notes ? '<div class="row"><span class="lbl">Notes</span><span>' + escHtml(o.notes) + '</span></div><hr/>' : '';
   var ticketHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Order #' + o.id + ' — Kitchen Ticket</title>'
     + '<style>'
     + '* { box-sizing:border-box; margin:0; padding:0; }'
@@ -1430,8 +1430,8 @@ window.printOrder = function(orderId) {
     + '<div class="row"><span class="lbl">Order #</span><span>' + o.id + '</span></div>'
     + '<div class="row"><span class="lbl">Printed</span><span>' + printTime + '</span></div>'
     + '<hr/>'
-    + '<div class="row"><span class="lbl">Customer</span><span>' + (o.name||'—') + '</span></div>'
-    + '<div class="row"><span class="lbl">Contact</span><span>' + (o.phone||'—') + (o.contact?' / '+o.contact:'') + '</span></div>'
+    + '<div class="row"><span class="lbl">Customer</span><span>' + escHtml(o.name||'—') + '</span></div>'
+    + '<div class="row"><span class="lbl">Contact</span><span>' + escHtml(o.phone||'—') + (o.contact?' / '+escHtml(o.contact):'') + '</span></div>'
     + '<div class="badge">' + (isDelivery ? '🛵 DELIVERY' : '🏠 PICK-UP') + '</div>'
     + addrRow + schedRow
     + '<hr/>'
@@ -1439,8 +1439,8 @@ window.printOrder = function(orderId) {
     + '<div class="items">' + itemsHtml + '</div>'
     + '<hr/>'
     + notesRow
-    + '<div class="row"><span class="lbl">On Duty</span><span>' + (o.onDuty||o.staff||'—') + '</span></div>'
-    + '<div class="row"><span class="lbl">Payment</span><span>' + (o.payment||'—') + '</span></div>'
+    + '<div class="row"><span class="lbl">On Duty</span><span>' + escHtml(o.onDuty||o.staff||'—') + '</span></div>'
+    + '<div class="row"><span class="lbl">Payment</span><span>' + escHtml(o.payment||'—') + '</span></div>'
     + '<div class="total">TOTAL: ₱' + (o.total||0).toLocaleString() + '</div>'
     + '<hr/>'
     + '<div class="footer">— Thank you! Pass this to the kitchen. —</div>'
