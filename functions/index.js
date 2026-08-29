@@ -23,6 +23,7 @@ const OrderStatus = require("./lib/order-status");
 const OperationalExceptions = require("./lib/operational-exceptions");
 const BooksBridge = require("./lib/books-bridge");
 const FinancialClose = require("./lib/financial-close");
+const AccountingPeriods = require("./lib/accounting-periods");
 
 initializeApp();
 
@@ -477,6 +478,28 @@ async function requirePortalPermission(db, request, permissions) {
   return portal;
 }
 
+// Period status is a controlled setting, not a client-editable flag. Reopening
+// restores purpose-built correction workflows; it never edits posted history.
+exports.manageAccountingPeriod = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["cashflow"]), data = request.data || {};
+    if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Only a manager can close or reopen an accounting period.");
+    const action = financeText(data.action, 20).toLowerCase(), reason = financeText(data.reason, 300);
+    let period;
+    try { period = AccountingPeriods.periodKey(data.period); } catch (error) { throw new HttpsError("invalid-argument", error.message); }
+    if (!reason) throw new HttpsError("invalid-argument", "A clear reason is required for closing or reopening a period.");
+    const now = Date.now(), periodRef = db.ref(`/accountingPeriods/${period}`); let next;
+    const result = await periodRef.transaction((current) => {
+      try { next = AccountingPeriods.transition(current, action, period, actor, reason, now); return next; } catch (error) { throw error; }
+    }, undefined, false);
+    if (!result.committed) throw new HttpsError("aborted", "The accounting period changed at the same time. Refresh and try again.");
+    const record = result.snapshot.val() || next;
+    await db.ref(`/operationalAudit/${now}_accounting_period_${period}_${record.revision || 0}`).set(operationalAuditRecord(action === "close" ? "close_accounting_period" : "reopen_accounting_period", "accountingPeriod", period, actor, {period, status: record.status, reason, revision: record.revision || 0}));
+    return {period, status: record.status, revision: record.revision || 0, duplicate: record.status !== (action === "close" ? "closed" : "open")};
+  }
+);
+
 exports.manageStaffMessage = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => {
@@ -737,6 +760,7 @@ exports.reviewDiscrepancy = onCall(
     const ref = db.ref(`/discrepancies/${id}`), snap = await ref.get();
     if (!snap.exists()) throw new HttpsError("not-found", "Discrepancy not found.");
     const row = snap.val() || {}; if (row.status === "reviewed") return {discrepancyId: id, duplicate: true};
+    await assertAccountingPeriodOpen(db, financeText(row.date, 10) || financeDateFromTimestamp(Number(row.closedAt || row.ts || row.createdAt || Date.now())), "resolving this Admin cash discrepancy");
     const now = Date.now(); let approval, reviewedBy;
     if(row.kind==="cash"&&Number(data.caseVersion)===2){
       const short=Number(row.variance)<0,totalValue=Financial.money(Math.abs(Number(row.variance)||0)),shiftId=financeKey(row.shiftId,"Shift ID"),raw=Array.isArray(data.allocations)?data.allocations:[],prior=row.resolutionAllocations||{},priorTotal=Financial.money(Object.values(prior).reduce((sum,x)=>sum+Number(x&&x.amount||0),0)),remaining=Financial.money(totalValue-priorTotal),revision=Math.max(0,Math.floor(Number(row.resolutionRevision)||0))+1;
@@ -870,6 +894,9 @@ exports.managePettyVoucher = onCall(
     const data = request.data || {}, action = financeText(data.action, 20), id = financeKey(data.voucherId, "Voucher ID"), reason = financeText(data.reason, 500);
     const ref = db.ref(`/pettyCashVouchers/${id}`), snap = await ref.get(); if (!snap.exists()) throw new HttpsError("not-found", "Revolving Fund voucher not found.");
     const voucher = snap.val() || {}, value = Financial.money(voucher.amount), now = Date.now(); let approvalAction;
+    // Editing a voucher changes the Admin subledger as well as its linked
+    // Finance correction, so the voucher's own accounting month must be open.
+    if (["correct", "approve"].includes(action)) await assertAccountingPeriodOpen(db, action === "correct" && voucher.status === "pending" ? financeDate(data.date) : (financeText(voucher.date, 10) || financeDateFromTimestamp(now)), "editing or approving this Admin cash payment");
     if (action === "correct") {
       if (!["pending", "approved"].includes(voucher.status) || voucher.voided === true) throw new HttpsError("failed-precondition", "Only an active pending or approved cash payment can be edited.");
       if (voucher.returnedAt) throw new HttpsError("failed-precondition", "A returned supplier payment cannot be edited. Record a new correcting payment instead.");
@@ -1617,6 +1644,13 @@ function financeDate(value, allowFuture) {
   return date;
 }
 function financeDateFromTimestamp(value) {const parts = new Intl.DateTimeFormat("en-US", {timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit"}).formatToParts(new Date(Number(value) || Date.now())); const map = {}; parts.forEach((part) => {map[part.type] = part.value;}); return `${map.year}-${map.month}-${map.day}`;}
+async function assertAccountingPeriodOpen(db, effectiveDate, postingLabel) {
+  let period;
+  try { period = AccountingPeriods.periodForDate(effectiveDate); } catch (error) { throw new HttpsError("invalid-argument", error.message); }
+  const record = (await db.ref(`/accountingPeriods/${period}`).get()).val();
+  if (AccountingPeriods.isClosed(record)) throw new HttpsError("failed-precondition", `${period} is closed. Reopen it in Admin Settings before ${postingLabel || "posting or changing this financial record"}. Existing history remains unchanged.`);
+  return period;
+}
 const DEFAULT_CHART_ACCOUNTS = {
   sales_revenue:{code:"4000", name:"Sales revenue", type:"revenue", active:true, system:true}, platform_commission:{code:"5100", name:"Platform commission", type:"expense", active:true, system:true}, purchases:{code:"5200", name:"Purchases / inventory", type:"expense", active:true, system:true}, rent:{code:"5300", name:"Rent", type:"expense", active:true, system:true}, utilities:{code:"5310", name:"Utilities", type:"expense", active:true, system:true}, salaries:{code:"5320", name:"Salaries", type:"expense", active:true, system:true}, bank_charges:{code:"5330", name:"Bank charges", type:"expense", active:true, system:true}, supplies:{code:"5340", name:"Supplies", type:"expense", active:true, system:true}, owner_draw:{code:"3100", name:"Owner draw", type:"equity", active:true, system:true}, capital_in:{code:"3000", name:"Owner capital", type:"equity", active:true, system:true}, other_income:{code:"4900", name:"Other income", type:"revenue", active:true, system:true}, other_expense:{code:"5900", name:"Other expense", type:"expense", active:true, system:true}
 };
@@ -1675,6 +1709,7 @@ function booksCodeAccount(code, accounts, booksChart) {
 }
 async function prepareManualBooksJournal(db, data, accounts, actor, allowedLinkedPayable) {
   const memo=financeText(data.memo,240),reference=financeText(data.ref,120),date=financeDate(data.date),rawLines=Array.isArray(data.lines)?data.lines:[];
+  await assertAccountingPeriodOpen(db, date, "posting or correcting a manual journal");
   if(!memo)throw new HttpsError("invalid-argument","Memo / description is required.");
   if(rawLines.length<2||rawLines.length>20)throw new HttpsError("invalid-argument","A journal requires between two and twenty lines.");
   const lines=[],cashLines=[];let debit=0,credit=0;const booksChart=await ensureBooksChart(db);
@@ -1712,6 +1747,7 @@ async function commitFinancial(db, movementId, movement, actor, extraWrites = {}
   const ref = db.ref(`/financialMovements/${movementId}`);
   const existing = await ref.get();
   if (existing.exists()) return {duplicate: true, movement: existing.val()};
+  await assertAccountingPeriodOpen(db, Number(movement && movement.occurredAt || Date.now()), "creating this financial posting");
   const record = financeRecord(movementId, movement, actor);
   const claimRef = db.ref(`/financialCommandClaims/${movementId}`), claimToken = crypto.randomBytes(12).toString("hex"), claimedAt = Date.now();
   const claim = await claimRef.transaction((current) => current || {status:"processing",token:claimToken,claimedAt,actorUid:actor.uid,schemaVersion:1});
