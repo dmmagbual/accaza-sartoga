@@ -22,18 +22,11 @@ function createOverviewHistoryLoader(deps){
 }
 
 function createOverviewInsights(deps){
-  var saved={};try{saved=JSON.parse(localStorage.getItem('accaza-report-period')||'{}')||{};}catch(_e){}
-  var allowed=['7','30','month','all'],state={period:allowed.indexOf(saved.period)>-1?saved.period:'month',from:'',to:'',metric:'units',latest:null,bound:false,loading:false,rerun:false,waitTimer:0,verified:{orders:false,archivedOrders:false,financialMovements:false}};
-  window.AccazaReportPeriod={get:function(){return{period:state.period};},set:function(v){v=v||{};state.period=allowed.indexOf(v.period)>-1?v.period:'month';try{localStorage.setItem('accaza-report-period',JSON.stringify(window.AccazaReportPeriod.get()));}catch(_e){}select();ensureHistory();paint();window.dispatchEvent(new CustomEvent('accaza-report-period',{detail:window.AccazaReportPeriod.get()}));}};
+  var state={metric:'units',latest:null,bound:false};
+  function reportPeriod(){return window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get():{mode:'month',count:1,from:'',to:'',label:'This month'};}
   function stamp(o){return window.AccazaSales.stamp(o);}
   function dayStart(d){var x=new Date(d);x.setHours(0,0,0,0);return x.getTime();}
-  function range(){
-    var now=new Date(),end=Date.now(),start=0,label='All time';
-    if(state.period==='7'){start=dayStart(now)-6*86400000;label='Last 7 days';}
-    else if(state.period==='30'){start=dayStart(now)-29*86400000;label='Last 30 days';}
-    else if(state.period==='month'){start=new Date(now.getFullYear(),now.getMonth(),1).getTime();label='This month';}
-    return{start:start,end:end,label:label};
-  }
+  function range(){var p=reportPeriod(),start=Number(p.startAt)||dayStart(new Date()),end=Number(p.endAt)||Date.now();return{start:start,end:end,label:p.label||'This month'};}
   function inRange(o,r){var t=stamp(o);return t>=r.start&&t<=r.end;}
   function outcome(o){
     var total=Number(o&&o.total)||0,refund=Number(o&&o.refundAmount)||0,s=String((o&&o.status)==='Archived'?(o.prevStatus||'Completed'):(o&&o.status)||'');
@@ -46,23 +39,16 @@ function createOverviewInsights(deps){
   }
   function bind(){
     if(state.bound)return;state.bound=true;
-    document.querySelectorAll('[data-report-period]').forEach(function(btn){btn.addEventListener('click',function(){window.AccazaReportPeriod.set({period:this.dataset.reportPeriod});});});
+    var mode=document.getElementById('reportPeriodMode'),count=document.getElementById('reportPeriodCount'),end=document.getElementById('reportPeriodEnd'),from=document.getElementById('reportPeriodFrom'),to=document.getElementById('reportPeriodTo'),apply=document.getElementById('reportPeriodApply');
+    if(count&&!count.options.length){for(var n=1;n<=12;n++){var opt=document.createElement('option');opt.value=String(n);opt.textContent=n+' period'+(n===1?'':'s');count.appendChild(opt);}}
+    function renderPeriodControls(){var p=reportPeriod(),custom=p.mode==='custom';if(mode)mode.value=p.mode||'month';if(count){count.value=String(p.count||1);count.disabled=custom;}if(end){end.value=p.endMonth||new Date().toISOString().slice(0,7);end.disabled=custom;}if(from){from.value=p.customFrom||p.from||'';from.disabled=!custom;}if(to){to.value=p.customTo||p.to||'';to.disabled=!custom;}}
+    if(apply)apply.addEventListener('click',function(){window.AccazaReportPeriod.set({mode:mode&&mode.value,count:count&&count.value,endMonth:end&&end.value,customFrom:from&&from.value,customTo:to&&to.value});});
+    if(window.addEventListener)window.addEventListener('accaza-report-period',function(){renderPeriodControls();paint();});renderPeriodControls();
     document.querySelectorAll('[data-overview-metric]').forEach(function(btn){btn.addEventListener('click',function(){state.metric=this.dataset.overviewMetric;select();paint();});});
     select();
   }
-  function select(){document.querySelectorAll('[data-report-period]').forEach(function(btn){var on=btn.dataset.reportPeriod===state.period;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');});document.querySelectorAll('[data-overview-metric]').forEach(function(btn){var on=btn.dataset.overviewMetric===state.metric;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');});}
-  async function ensureHistory(){
-    if(!state.latest)return;var _fr=state.latest.feedReady||{orders:true,archivedOrders:true,financialMovements:true};if(!(_fr.orders&&_fr.archivedOrders&&_fr.financialMovements)){if(!state.waitTimer){state.waitTimer=setTimeout(function(){state.waitTimer=0;ensureHistory();},75);}return;}if(state.loading){state.rerun=true;return;}var notice=document.getElementById('overviewDataNote');state.loading=true;if(notice)notice.textContent='Verifying complete order history…';
-    try{
-      var feeds=[{path:'orders'},{path:'archivedOrders'},{path:'financialMovements'}];
-      for(var f=0;f<feeds.length;f++){
-        var cfg=feeds[f],loops=0,status=deps.historyStatus(cfg.path);
-        if(!state.verified[cfg.path]){await deps.loadOlder(cfg.path);state.verified[cfg.path]=true;status=deps.historyStatus(cfg.path);}
-        while(status.hasOlder&&loops<100){await deps.loadOlder(cfg.path);status=deps.historyStatus(cfg.path);loops++;}
-      }
-    }catch(e){if(notice)notice.textContent='Some older orders could not be loaded. Refresh and try again.';}
-    finally{state.loading=false;paint();if(state.rerun){state.rerun=false;setTimeout(ensureHistory,0);}}
-  }
+  function select(){document.querySelectorAll('[data-overview-metric]').forEach(function(btn){var on=btn.dataset.overviewMetric===state.metric;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');});}
+  function ensureHistory(){}
   function money(v){return'₱'+Math.round(Number(v)||0).toLocaleString();}
   function renderPayments(rows){
     var mix={};rows.forEach(function(o){var pays=Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment||'Other',amount:o.total||0}],refunds=o.refundPayments||{};pays.forEach(function(p){var method=p.method||'Other',net=Math.max(0,(Number(p.amount)||0)-(Number(refunds[method])||0));mix[method]=(mix[method]||0)+net;});});
@@ -88,14 +74,14 @@ function createOverviewInsights(deps){
     ctx.strokeStyle='rgba(0,0,0,.07)';ctx.lineWidth=1;[0,.25,.5,.75,1].forEach(function(p){var y=pad.t+ch*(1-p);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();ctx.fillStyle='#79806f';ctx.font='10px Inter,sans-serif';ctx.textAlign='right';ctx.fillText(money(maxR*p),pad.l-4,y+3);});rev.forEach(function(v,i){var x=pad.l+i*gap+gap*.2,bh=v/maxR*ch;ctx.fillStyle='rgba(176,141,87,.75)';ctx.fillRect(x,pad.t+ch-bh,bw,bh);});ctx.strokeStyle='#3b8fd4';ctx.lineWidth=2;ctx.beginPath();cnt.forEach(function(v,i){var x=pad.l+i*gap+gap*.5,y=pad.t+ch*(1-v/maxC);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();ctx.fillStyle='#3b8fd4';cnt.forEach(function(v,i){var x=pad.l+i*gap+gap*.5,y=pad.t+ch*(1-v/maxC);ctx.beginPath();ctx.arc(x,y,2.5,0,Math.PI*2);ctx.fill();});ctx.fillStyle='#79806f';ctx.font='9px Inter,sans-serif';ctx.textAlign='center';var every=Math.max(1,Math.ceil(labels.length/6));labels.forEach(function(k,i){if(i%every===0||i===labels.length-1)ctx.fillText(monthly?k:k.slice(5),pad.l+i*gap+gap*.5,H-8);});
   }
   function paint(){
-    bind();if(!state.latest)return;var data=state.latest,r=range(),complete=(data.historyComplete===true)||(data.historyComplete!==false&&['orders','archivedOrders','financialMovements'].every(function(path){return state.verified[path]&&!deps.historyStatus(path).hasOlder;})),label=document.getElementById('overviewRangeLabel');if(label)label.textContent=r.label;
+    bind();if(!state.latest)return;var data=state.latest,r=range(),complete=true,label=document.getElementById('overviewRangeLabel');if(label)label.textContent=r.label;
     if(!complete){['overviewNetSales','overviewGrossSales','overviewTransactions','overviewAverageSale'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent='—';});var pending=document.getElementById('overviewDataNote');if(pending)pending.textContent='Verifying complete order history…';return;}
     var periodSales=(data.sales||[]).filter(function(o){return inRange(o,r);}),periodOrders=(data.outcomes||[]).filter(function(o){return inRange(o,r);});
     var gross=0,net=0;periodSales.forEach(function(o){var v=window.AccazaSales.amounts(o);gross+=v.gross;net+=v.net;});function set(id,value){var el=document.getElementById(id);if(el)el.textContent=value;}set('overviewNetSales',money(net));set('overviewGrossSales',money(gross));set('overviewTransactions',String(periodSales.length));set('overviewAverageSale',money(periodSales.length?net/periodSales.length:0));
     renderPayments(periodSales);renderTop(periodSales,data);renderOutcomes(periodOrders,data.active||[]);chart(periodSales,r);
-    var incomplete=(data.historyComplete===false)||(data.historyComplete!==true&&['orders','archivedOrders','financialMovements'].some(function(path){return deps.historyStatus(path).hasOlder;})),note=document.getElementById('overviewDataNote');if(note&&!state.loading)note.textContent=incomplete?'Verifying complete sales history…':'Complete sales history verified.';
+    var note=document.getElementById('overviewDataNote');if(note)note.textContent='Only the selected reporting period is loaded. Change the period to view another range.';
   }
-  return{render:function(data){state.latest=data;paint();ensureHistory();},ensureHistory:ensureHistory};
+  return{render:function(data){state.latest=data;paint();},ensureHistory:ensureHistory};
 }
 
 export{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders};
