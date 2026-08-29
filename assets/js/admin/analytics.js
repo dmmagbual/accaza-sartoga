@@ -79,7 +79,9 @@ function rangeBounds(){
   if(azFrom!=null&&azTo!=null)return[azFrom,azTo+1];
   var now=Date.now(),today=dayStart(now),end=addDays(today,1);if(azRange==='today')return[today,end];if(azRange==='7d')return[addDays(today,-6),end];if(azRange==='30d')return[addDays(today,-29),end];if(azRange==='month'){var d=new Date();return[new Date(d.getFullYear(),d.getMonth(),1).getTime(),end];}return[new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime(),end];
 }
-function fmtD(ts){return new Date(ts).toLocaleDateString('en-PH',{month:'short',day:'numeric'});}
+function businessDate(ts){return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(Number(ts)||0));}
+function dateKeys(from,to){var out=[],d=new Date(Date.parse(businessDate(from)+'T00:00:00Z')),last=businessDate(to-1);while(d.toISOString().slice(0,10)<=last){out.push(d.toISOString().slice(0,10));d.setUTCDate(d.getUTCDate()+1);}return out;}
+function fmtD(value){var key=/^\d{4}-\d{2}-\d{2}$/.test(String(value||''))?String(value):businessDate(value);return new Date(key+'T12:00:00+08:00').toLocaleDateString('en-PH',{month:'short',day:'numeric'});}
 function azRangeLabel(from,to){var nm={today:'Today','7d':'Last 7 days','30d':'Last 30 days',month:'This month',all:'All time',custom:'Custom range'};return (nm[azRange]||azRange)+' · '+fmtD(from)+' – '+fmtD(to-86400000);}
 function sharedPeriod(v){
   v=v||(window.AccazaReportPeriod&&window.AccazaReportPeriod.get&&window.AccazaReportPeriod.get());if(!v)return;
@@ -131,8 +133,8 @@ function renderAnalyticsBody(){
   var margin=net>0?(net-cogsAll)/net*100:0;
   var trend=pnet>0?(net-pnet)/pnet*100:(net>0?100:0);
   // daily series
-  var byDay={};cur.forEach(function(x){var k=dayStart(x.ts);byDay[k]=(byDay[k]||0)+x.net;});
-  var dayKeys=[];for(var t=from;t<to;t+=86400000)dayKeys.push(t);
+  var byDay={};cur.forEach(function(x){var k=businessDate(x.ts);byDay[k]=(byDay[k]||0)+x.net;});
+  var dayKeys=dateKeys(from,to);
   var maxDay=Math.max.apply(null,dayKeys.map(function(k){return byDay[k]||0;}).concat([1]));
   var hi=null,lo=null;dayKeys.forEach(function(k){var v=byDay[k]||0;if(hi===null||v>byDay[hi])hi=k;if(lo===null||v<byDay[lo])lo=k;});
   // hour
