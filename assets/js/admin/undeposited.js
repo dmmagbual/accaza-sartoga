@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var movements={},custody={},vouchers={},accounts={},rangeFrom='',rangeTo='';
+var movements={},custody={},vouchers={},accounts={},rangeFrom='',rangeTo='',controlSnapshot=null,controlLoading=false,controlLoadedAt=0;
 function A(){return window.__accaza;}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function receiptSrc(s){s=String(s||'');return /^data:image\/(?:jpeg|png|webp);base64,/i.test(s)||/^https:\/\//i.test(s)?s:'';}
@@ -29,11 +29,13 @@ function labelFor(t){return TYPE_LABELS[t]||String(t||'Movement').replace(/_/g,'
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
 function init(){
   var a=A();
+  refreshControlSnapshot();
   a.subscribe('financialMovements',function(s){movements=s.val()||{};if(isTab('undeposited'))renderUndeposited();});
   a.subscribe('cashCustody',function(s){custody=s.val()||{};if(isTab('undeposited'))renderUndeposited();});
   a.subscribe('pettyCashVouchers',function(s){vouchers=s.val()||{};if(isTab('undeposited'))renderUndeposited();});
   a.subscribe('cfAccounts',function(s){accounts=s.val()||{};if(isTab('undeposited'))renderUndeposited();});
 }
+function refreshControlSnapshot(force){var a=A();if(!force&&controlSnapshot&&Date.now()-controlLoadedAt<60000)return;if(controlLoading||!a||!a.getUndepositedControlSnapshot)return;controlLoading=true;a.getUndepositedControlSnapshot().then(function(r){controlSnapshot=(r&&r.data)||r||null;controlLoadedAt=Date.now();}).catch(function(e){console.error('UNDEPOSITED CONTROL SNAPSHOT',e);controlSnapshot=null;}).finally(function(){controlLoading=false;if(isTab('undeposited'))renderUndeposited();});}
 function accountDelta(m,account){var dr=0,cr=0;(m&&m.lines||[]).forEach(function(l){if(l&&l.account===account){dr+=Number(l.debit)||0;cr+=Number(l.credit)||0;}});return {dr:dr,cr:cr};}
 function poolRows(){
   var rows=[];
@@ -50,17 +52,18 @@ function fmtDate(ts){if(!ts)return '—';var d=new Date(ts);return d.toLocaleDat
 function renderUndeposited(){
   var root=document.getElementById('undepositedRoot');if(!root)return;
   var rows=poolRows(),bal=0;rows.forEach(function(r){bal+=r.inAmt-r.outAmt;r.run=Math.round(bal*100)/100;});
-  var poolBal=Math.round(bal*100)/100;
+  var poolBal=controlSnapshot?Math.round((Number(controlSnapshot.undepositedBalance)||0)*100)/100:Math.round(bal*100)/100;
   var custodyRemaining=Object.keys(custody).reduce(function(s,k){return s+(Number(custody[k]&&custody[k].remaining)||0);},0);
   custodyRemaining=Math.round(custodyRemaining*100)/100;
   var custodyRows=Object.keys(custody).map(function(id){return Object.assign({id:id},custody[id]||{});}).filter(function(row){return Number(row.amount)||Number(row.remaining)||Number(row.depositedAmount)||Number(row.paidOutAmount);}).sort(function(a,b){return (a.closedAt||0)-(b.closedAt||0);});
   var custodyDetail=custodyRows.map(function(row){var original=Number(row.amount)||0,paid=Number(row.paidOutAmount)||0,deposited=Number(row.depositedAmount)||0,remaining=Number(row.remaining)||0;return '<tr><td>'+esc(fmtDate(row.closedAt))+'</td><td>'+esc(row.staff||row.shiftId||row.id)+'</td><td style="text-align:right;">'+peso(original)+'</td><td style="text-align:right;color:#8a1e1e;">'+(paid?'−'+peso(paid):'—')+'</td><td style="text-align:right;color:#8a1e1e;">'+(deposited?'−'+peso(deposited):'—')+'</td><td style="text-align:right;font-weight:700;">'+peso(remaining)+'</td></tr>';}).join('')||'<tr><td colspan="6" style="color:var(--tl);">No custody records are awaiting deposit.</td></tr>';
-  var tie=Math.abs(poolBal-custodyRemaining)<0.01;
-  var custodyGap=Math.round((poolBal-custodyRemaining)*100)/100;
+  var tie=!!controlSnapshot&&Math.abs(poolBal-custodyRemaining)<0.01;
+  var custodyGap=controlSnapshot?Math.round((poolBal-custodyRemaining)*100)/100:0;
   var accountRows=Object.keys(accounts).map(function(id){return Object.assign({id:id},accounts[id]);}).filter(function(x){return x.active!==false;}).sort(function(a,b){return (a.order||0)-(b.order||0)||String(a.name||'').localeCompare(String(b.name||''));});
-  var petty=pettyBalance();
+  var petty=controlSnapshot?Math.round((Number(controlSnapshot.revolvingBalance)||0)*100)/100:pettyBalance();
   var pending=Object.keys(vouchers).map(function(id){return Object.assign({id:id},vouchers[id]);}).filter(function(v){return v.status==='pending'&&!v.voided;}).sort(function(a,b){return (b.createdAt||0)-(a.createdAt||0);});
-  var missingApproved=Object.keys(vouchers).map(function(id){return Object.assign({id:id},vouchers[id]);}).filter(function(v){return v.status==='approved'&&!v.voided&&!movements['petty_'+v.id];});
+  var missingIds=controlSnapshot&&Array.isArray(controlSnapshot.missingApprovedVoucherIds)?controlSnapshot.missingApprovedVoucherIds:[];
+  var missingApproved=controlSnapshot?missingIds.map(function(id){return Object.assign({id:id},vouchers[id]||{});}).filter(function(v){return v.status==='approved'&&!v.voided;}):[];
   var openingPosted=!!movements.undeposited_opening_balance;
   var fromTs=rangeFrom?Date.parse(rangeFrom+'T00:00:00+08:00'):null,toTs=rangeTo?Date.parse(rangeTo+'T23:59:59+08:00'):null;
   var shown=rows.filter(function(r){return (!fromTs||r.ts>=fromTs)&&(!toTs||r.ts<=toTs);}).slice().reverse();
@@ -73,8 +76,8 @@ function renderUndeposited(){
   root.innerHTML='<div class="pz-h">💰 Undeposited Collection</div>'
     +'<p class="pz-sub">The single temporary cash-on-hand pool. Shift turnovers flow in; approved cash payments flow out; deposits transfer the remaining physical cash to a selected bank or cash account. This is the general-ledger truth for cash awaiting deposit.</p>'
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">'
-      +'<div class="pz-card" style="flex:1;min-width:200px;background:#f5faf6;"><div style="font-size:0.75rem;color:var(--tl);">Balance on hand (all-time)</div><div style="font-weight:700;font-size:1.35rem;color:var(--bd);">'+peso(poolBal)+'</div></div>'
-      +'<div class="pz-card" style="flex:1;min-width:200px;"><div style="font-size:0.75rem;color:var(--tl);">Cash custody remaining (subledger)</div><div style="font-weight:700;font-size:1.15rem;">'+peso(custodyRemaining)+'</div><div style="font-size:0.72rem;margin-top:2px;color:'+(tie?'#155724':'#8a1e1e')+';">'+(tie?'✓ ties to the ledger':'⚠ differs by '+peso(Math.round((poolBal-custodyRemaining)*100)/100))+'</div></div>'
+      +'<div class="pz-card" style="flex:1;min-width:200px;background:#f5faf6;"><div style="font-size:0.75rem;color:var(--tl);">Balance on hand (current control balance)</div><div style="font-weight:700;font-size:1.35rem;color:var(--bd);">'+(controlSnapshot?peso(poolBal):'Checking…')+'</div><div style="font-size:.7rem;color:var(--tl);">Not affected by the report-date filter</div></div>'
+      +'<div class="pz-card" style="flex:1;min-width:200px;"><div style="font-size:0.75rem;color:var(--tl);">Cash custody remaining (subledger)</div><div style="font-weight:700;font-size:1.15rem;">'+peso(custodyRemaining)+'</div><div style="font-size:0.72rem;margin-top:2px;color:'+(controlSnapshot?(tie?'#155724':'#8a1e1e'):'#6d5d4d')+';">'+(!controlSnapshot?'Checking the all-time control balance…':(tie?'✓ ties to the ledger':'⚠ differs by '+peso(Math.round((poolBal-custodyRemaining)*100)/100)))+'</div></div>'
     +'</div>'
     +(custodyGap>.009?('<div class="pz-card" style="margin-bottom:1rem;border:1px solid #efb7b2;background:#fff0ef;"><div style="display:flex;gap:.7rem;align-items:center;justify-content:space-between;flex-wrap:wrap;"><div><b style="color:#8b1e1e;">Finance contains '+peso(custodyGap)+' more cash than custody</b><div style="font-size:.75rem;color:#6d5d4d;">Link the existing journal that recorded the physical cash. This does not post another Finance entry.</div></div><button class="pz-btn warn" id="ucReconcileCustody">Link existing journal</button></div></div>'):'')
     +(pending.length?('<div class="pz-card" style="margin-bottom:1rem;border:1px solid #ffe0a3;background:#fffdf5;"><b style="color:#8a6d1b;">Awaiting approval — not yet deducted from cash</b><div style="overflow-x:auto;margin-top:.45rem;"><table class="pz-tbl"><thead><tr><th>Voucher</th><th>Date</th><th>Payee</th><th style="text-align:right;">Amount</th><th>Status</th></tr></thead><tbody>'+pending.map(function(v){return '<tr><td>'+esc(v.voucherNo||v.id)+'</td><td>'+esc(v.date||'')+'</td><td>'+esc(v.recipient||v.requesterName||'—')+'</td><td style="text-align:right;">'+peso(v.amount)+'</td><td style="color:#8a6d1b;">pending approval</td></tr>';}).join('')+'</tbody></table></div></div>'):'')
@@ -141,5 +144,5 @@ function doRetire(){
     }).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Retirement failed: '+((e&&e.message)||e));});
   }).catch(function(e){alert('Could not read the Revolving Fund balance: '+((e&&e.message)||e));});
 }
-window.__accazaRegisterModule('undeposited',function(name){if(name==='undeposited')renderUndeposited();});
+window.__accazaRegisterModule('undeposited',function(name){if(name==='undeposited'){renderUndeposited();refreshControlSnapshot();}});
 })();
