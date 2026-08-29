@@ -13,9 +13,9 @@
   },
   "builds": {
     "admin": 373,
-    "books": 52,
+    "books": 53,
     "customer": 59,
-    "serviceWorkerCache": 301
+    "serviceWorkerCache": 302
   },
   "authoritativeFiles": [
     "admin.html",
@@ -80,6 +80,7 @@
     "ensureInventoryLedger",
     "postFinancialCommand",
     "manageAccountingPeriod",
+    "legacyOwnerCapitalReset",
     "reconcilePurchasePayable",
     "managePurchaseCorrection",
     "settlePlatformPayout",
