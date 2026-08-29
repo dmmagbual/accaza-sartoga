@@ -2597,6 +2597,46 @@ exports.manageChartAccount = onCall(
   async (request) => {const db=getDatabase(), actor=await requirePortalUser(db,request);if(!["owner","superadmin","admin","manager"].includes(actor.role))throw new HttpsError("permission-denied","Privileged access is required.");const data=request.data||{}, action=financeText(data.action,30);await ensureChartAccounts(db);if(action==="initialize")return{initialized:true};const id=financeKey(data.accountId,"Chart account"), ref=db.ref(`/chartOfAccounts/${id}`), old=(await ref.get()).val();if(action==="upsert"){const name=financeText(data.name,100),code=financeText(data.code,20),type=financeText(data.type,20);if(!name||!code||!["asset","liability","equity","revenue","expense"].includes(type))throw new HttpsError("invalid-argument","Code, name, and valid account type are required.");await ref.set({code,name,type,active:data.active!==false,system:old&&old.system===true,createdAt:old&&old.createdAt||Date.now(),updatedAt:Date.now(),updatedBy:actor.uid,schemaVersion:1});return{accountId:id};}if(action==="deactivate"){if(!old)throw new HttpsError("not-found","Chart account not found.");await ref.update({active:false,updatedAt:Date.now(),updatedBy:actor.uid});return{accountId:id};}throw new HttpsError("invalid-argument","Chart action is invalid.");},
 );
 
+function cashFinanceDateMismatches(cash, movements) {
+  const byMovement = {};
+  Object.keys(cash || {}).forEach((id) => {
+    const row = cash[id] || {}, mid = row.movementId, mv = mid && movements[mid];
+    if (!mv || !row.date || mv.dateRepairSupersededBy) return;
+    const currentDate = BooksBridge.businessDate(mv.occurredAt);
+    if (currentDate === row.date) return;
+    const previous = byMovement[mid];
+    if (previous && previous.targetDate !== row.date) { previous.ambiguous = true; return; }
+    if (!previous) byMovement[mid] = {movementId: mid, amount: Financial.money(row.amount), currentDate, targetDate: row.date, type: String(mv.type || ""), cfLedgerId: id, ambiguous: false};
+  });
+  return Object.keys(byMovement).map((id) => byMovement[id]);
+}
+async function automaticallyRepairFinanceDates(db, cash, movements, trigger) {
+  const candidates = cashFinanceDateMismatches(cash, movements), now = Date.now(), actor = {uid:"system", role:"system"}; let repaired = 0, skipped = 0;
+  for (const candidate of candidates) {
+    const mid = candidate.movementId, mv = Object.assign({id: mid}, movements[mid] || {});
+    if (candidate.ambiguous || !Array.isArray(mv.lines) || !mv.lines.length || Math.abs(Financial.totals(mv.lines).debit - Financial.totals(mv.lines).credit) > 0.009 || mv.reversalOf || mv.reversedByMovementId) { skipped++; continue; }
+    const reversalId = `finance_datefix_rev_${mid}`, repostId = `finance_datefix_new_${mid}`, reason = "System maintenance: align Finance posting date with its single linked cash-ledger date.";
+    try {
+      const reversal = Financial.reverseMovement(mv, "finance_date_repair_reversal", "System date alignment"); reversal.occurredAt = Number(mv.occurredAt) || now; reversal.controlReason = reason; reversal.redatedFromMovementId = mid;
+      const repost = Financial.movement(mv.type || "finance_date_repair", mv.sourceType || "financeDateRepair", mv.sourceId || mid, mv.lines.map((line) => Financial.line(line.account, line.debit, line.credit, line.label || "Re-dated posting")), {occurredAt: accountingTimestamp(candidate.targetDate, now), actorName:"system", controlReason:reason, redatedFromMovementId:mid, redatedFrom:candidate.currentDate, redatedTo:candidate.targetDate, systemMaintenance:true});
+      const reversalResult = await commitFinancial(db, reversalId, reversal, actor, {[`operationalAudit/${now}_automatic_datefix_${mid}`]:operationalAuditRecord("automatic_repair_finance_date", "financeDateRepair", mid, actor, {trigger, from:candidate.currentDate, to:candidate.targetDate, amount:candidate.amount, reversalId, repostId, reason})});
+      const repostResult = await commitFinancial(db, repostId, repost, actor);
+      await db.ref(`/financialMovements/${mid}`).update({dateRepairSupersededBy:repostId, dateRepairedAt:now, dateRepairType:"automatic_cash_date_alignment", dateRepairTrigger:trigger});
+      if (!reversalResult.duplicate || !repostResult.duplicate) repaired++;
+    } catch (error) { skipped++; logger.error("automatic finance-date repair skipped", {movementId:mid, error:String(error)}); }
+  }
+  return {repaired, skipped, examined:candidates.length};
+}
+
+exports.autoRepairFinanceDateOnCashLedgerCreate = onValueCreated(
+  {ref:"/cfLedger/{ledgerId}", region: ORDER_REGION},
+  async (event) => {
+    const row = event.data.val() || {}, movementId = String(row.movementId || ""); if (!movementId || !row.date) return;
+    const db = getDatabase(), movement = (await db.ref(`/financialMovements/${movementId}`).get()).val(); if (!movement) return;
+    await automaticallyRepairFinanceDates(db, {[event.params.ledgerId]:row}, {[movementId]:movement}, "cash_ledger_created");
+  },
+);
+
 exports.repairFinanceDates = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 120, memory: "256MiB"},
   async (request) => {
@@ -2638,17 +2678,43 @@ exports.repairFinanceDates = onCall(
   },
 );
 
+function financialControlResolution(issue) {
+  const resolutions = {
+    unbalanced:["Open the source Finance posting and correct it through its original workflow. Do not create an offsetting journal just to force it to balance.","books_transactions","Open Finance Books"],
+    movement_warning:["Open the linked payment method in Cash Accounts and assign its receiving account. The system will preserve the original sale and post the supported reclassification.","admin_finance","Open Cash Accounts"],
+    sale_amount_mismatch:["Open the Admin sale, verify its completion, discount and refund status, then run the Daily Financial Close again. The close identifies the exact missing or duplicated posting.","admin_sales","Open Sales History"],
+    legacy_cash_without_movement:["Review the original cash record and create its missing Finance movement through the controlled Cash Flow workflow. Do not manually edit the ledger row.","books_cashflow","Open Cash Flow"],
+    cash_finance_date_mismatch:["Automatic repair was skipped because this movement has conflicting or unsafe date evidence. Verify the original cash date and linked Finance entry before a Finance owner corrects the period.","books_cashflow","Review Cash Flow"],
+    sale_not_posted:["Open the completed order in Admin and run the Daily Financial Close. The system will identify the specific order posting that must be restored.","admin_sales","Open Sales History"],
+    payout_movement_missing:["Open the platform payout and verify its linked settled orders. Re-run the controlled payout settlement; never journal Platform Payouts in Transit manually.","admin_finance","Open Platform Payouts"],
+    reversed_payout_cash_not_reversed:["Use the controlled payout-deposit repair. It restores the clearing account and reverses the orphaned bank receipt while retaining the audit trail.","repair_reversed_payout","Repair deposit"],
+    payout_deposit_missing_reference:["Open the platform payout deposit and enter the platform statement or bank transaction reference, then save the controlled deposit record.","admin_finance","Open Platform Payouts"],
+    payout_order_link_mismatch:["Open the platform payout and its listed orders. Correct the payout/order assignment from Platform Payouts, then run Daily Financial Close.","admin_finance","Open Platform Payouts"],
+    platform_ar_control_mismatch:["Open Platform Receivables and compare unsettled orders with payout settlements. Correct the affected payout or order from its source workflow, then rerun Daily Financial Close.","admin_finance","Open Platform Receivables"],
+    duplicate_cash_account_code:["Open Cash Accounts and give each bank or wallet a unique Finance Books account mapping before recording more deposits.","books_cashflow","Open Cash Accounts"],
+    register_float_differs_from_control:["Open POS Settings and verify the approved register float. Use the controlled float adjustment; do not record it as a receipt or expense.","admin_finance","Open POS Settings"],
+    undeposited_subledger_mismatch:["Open Undeposited Collection, reconcile the custody rows to the Finance balance, and use the controlled custody correction shown there.","admin_finance","Open Undeposited Collection"],
+    holding_account_balance:["Open the original operational workflow named in the account description and finish its allocation, settlement, or variance resolution. Do not clear control accounts with a free-form journal.","books_transactions","Open Finance Books"],
+    balance_off_chart:["Open Chart of Accounts, restore the account definition, and then review the linked posting before changing its account mapping.","books_transactions","Open Chart of Accounts"],
+    balance_on_inactive_account:["Open Chart of Accounts and either reactivate the account while its balance is resolved, or complete the controlled transfer from its original source workflow.","books_transactions","Open Chart of Accounts"],
+    unreviewed_discrepancies:["Open Admin Discrepancies, select the actual cause, and complete the linked Finance treatment. Each option records the operational and accounting resolution together.","admin_discrepancies","Open Discrepancies"],
+  };
+  const resolution = resolutions[issue.kind] || ["Open the linked source record, verify the supporting evidence, and use its controlled correction workflow. The audit trail must remain intact.","books_cashflow","Review source"];
+  return Object.assign(issue, {solution:resolution[0], actionTarget:resolution[1], actionLabel:resolution[2]});
+}
+
 exports.auditFinancialControls = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 120, memory: "512MiB"},
   async (request) => {
     const db=getDatabase();await requirePortalPermission(db,request,["cashflow","receivables","payables"]);
     const snaps=await Promise.all([db.ref("/orders").get(),db.ref("/archivedOrders").get(),db.ref("/financialMovements").get(),db.ref("/cfLedger").get(),db.ref("/receivables").get(),db.ref("/payables").get(),db.ref("/platformPayouts").get(),db.ref("/cashCustody").get(),db.ref("/cfAccounts").get(),db.ref("/posSettings").get(),db.ref("/posActiveShift").get()]);
-    const orders=Object.assign({},snaps[1].val()||{},snaps[0].val()||{}),movements=snaps[2].val()||{},cash=snaps[3].val()||{},ars=snaps[4].val()||{},aps=snaps[5].val()||{},payouts=snaps[6].val()||{},custody=snaps[7].val()||{},accounts=snaps[8].val()||{},issues=[];
+    const orders=Object.assign({},snaps[1].val()||{},snaps[0].val()||{}),cash=snaps[3].val()||{},ars=snaps[4].val()||{},aps=snaps[5].val()||{},payouts=snaps[6].val()||{},custody=snaps[7].val()||{},accounts=snaps[8].val()||{},issues=[];let movements=snaps[2].val()||{};
+    const dateMaintenance=await automaticallyRepairFinanceDates(db,cash,movements,"financial_control_audit");if(dateMaintenance.repaired)movements=(await db.ref("/financialMovements").get()).val()||{};
     const resolvedPaymentMappings=new Set();Object.values(movements).forEach((m)=>{if(m&&m.type==="payment_account_reclassification"&&m.originalMovementId&&m.method)resolvedPaymentMappings.add(`${m.originalMovementId}|${financeText(m.method,60).toLowerCase()}`);});
     Object.keys(movements).forEach((id)=>{const m=movements[id],sum=Financial.totals(m.lines||[]);if(Math.abs(sum.debit-sum.credit)>0.009)issues.push({severity:"critical",kind:"unbalanced",source:id,amount:Financial.money(sum.debit-sum.credit)});(m.warnings||[]).forEach((w)=>{const match=/^No cash-flow account mapping for (.+)\.$/.exec(String(w||"")),resolved=match&&resolvedPaymentMappings.has(`${id}|${financeText(match[1],60).toLowerCase()}`);if(!resolved)issues.push({severity:"warning",kind:"movement_warning",source:id,detail:w});});});
     const saleMovementRows=Object.values(movements);Object.keys(orders).forEach((id)=>{const o=orders[id]||{},status=o.status==="Archived"?o.prevStatus:o.status;if(o.voided||!["Completed","Received"].includes(status)||o.paymentStatus==="pending"||!movements[`sale_${id}`])return;const expected=Financial.orderNetSales(o),actual=Financial.sourceNetSales(saleMovementRows,id),difference=Financial.money(actual-expected);if(Math.abs(difference)>0.009)issues.push({severity:"critical",kind:"sale_amount_mismatch",source:id,detail:`Admin net sales ${expected.toFixed(2)}; Finance Books ${actual.toFixed(2)}`,amount:difference,expected,actual});});
     Object.keys(cash).forEach((id)=>{if(!cash[id].movementId)issues.push({severity:"warning",kind:"legacy_cash_without_movement",source:id,amount:Financial.money(cash[id].amount)});});
-    Object.keys(cash).forEach((id)=>{const row=cash[id]||{},mv=movements[row.movementId];if(mv&&row.date&&BooksBridge.businessDate(mv.occurredAt)!==row.date)issues.push({severity:"critical",kind:"cash_finance_date_mismatch",source:id,detail:`Cash ${row.date}; Finance ${BooksBridge.businessDate(mv.occurredAt)}`,amount:Financial.money(row.amount)});});
+    Object.keys(cash).forEach((id)=>{const row=cash[id]||{},mv=movements[row.movementId];if(mv&&row.date&&!mv.dateRepairSupersededBy&&BooksBridge.businessDate(mv.occurredAt)!==row.date)issues.push({severity:"critical",kind:"cash_finance_date_mismatch",source:id,detail:`Cash ${row.date}; Finance ${BooksBridge.businessDate(mv.occurredAt)}`,amount:Financial.money(row.amount)});});
     let unsettledValue=0,unsettledCount=0;Object.keys(orders).forEach((id)=>{const o=orders[id]||{},status=o.status==="Archived"?o.prevStatus:o.status,platform=["grabfood","foodpanda"].includes(o.channel);if(!o.voided&&["Completed","Received"].includes(status)&&o.paymentStatus!=="pending"&&!movements[`sale_${id}`])issues.push({severity:"critical",kind:"sale_not_posted",source:id,amount:Financial.money(o.total)});if(platform&&!o.voided&&(o.settlementStatus||"unsettled")!=="settled"){unsettledCount++;unsettledValue=Financial.money(unsettledValue+Financial.money(o.netPlatform));}if(!platform){const rows=Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment,amount:o.total}];rows.forEach((p)=>{if(String(p.method||"").toLowerCase()==="cash")return;if(!Financial.accountForMethod(p.method,accounts))issues.push({severity:"warning",kind:"unmapped_payment_method",source:id,detail:financeText(p.method,60),amount:Financial.money(p.amount)});});}});
     Object.keys(payouts).forEach((id)=>{const p=payouts[id]||{},movementId=p.movementId||`payout_${id}`;if(!movements[movementId])issues.push({severity:"critical",kind:"payout_movement_missing",source:id,amount:Financial.money(p.expectedNet)});if(p.reversed&&p.depositMovementId&&!p.depositReversalMovementId)issues.push({severity:"critical",kind:"reversed_payout_cash_not_reversed",source:id,amount:Financial.money(p.actualPayout)});if(p.depositMovementId&&!p.depositReference)issues.push({severity:"warning",kind:"payout_deposit_missing_reference",source:id,amount:Financial.money(p.actualPayout)});if(!p.reversed)(p.orderIds||[]).forEach((orderId)=>{const o=orders[orderId];if(!o||o.payoutId!==id||(o.settlementStatus||"unsettled")!=="settled")issues.push({severity:"critical",kind:"payout_order_link_mismatch",source:id,detail:String(orderId)});});});
     const ledgerPlatform={grabfood:0,foodpanda:0};Object.values(movements).forEach((m)=>(m&&m.lines||[]).forEach((line)=>{for(const channel of ["grabfood","foodpanda"])if(line.account===`asset:platform_receivable:${channel}`)ledgerPlatform[channel]=Financial.money(ledgerPlatform[channel]+Financial.money(line.debit)-Financial.money(line.credit));}));const ledgerPlatformTotal=Financial.money(ledgerPlatform.grabfood+ledgerPlatform.foodpanda),platformDifference=Financial.money(ledgerPlatformTotal-unsettledValue);if(Math.abs(platformDifference)>0.009)issues.push({severity:"critical",kind:"platform_ar_control_mismatch",source:"platform_receivables",amount:platformDifference,expected:unsettledValue,actual:ledgerPlatformTotal});
@@ -2667,7 +2733,7 @@ exports.auditFinancialControls = onCall(
       const discrepancies=(await db.ref("/discrepancies").get()).val()||{}, open=Object.keys(discrepancies).map((k)=>discrepancies[k]||{}).filter((d)=>d&&d.status!=="reviewed");
       if(open.length)issues.push({severity:"warning",kind:"unreviewed_discrepancies",source:"discrepancies",detail:open.length+" cash discrepancy(ies) awaiting manager review in Discrepancies",amount:Financial.money(open.reduce((s,d)=>s+Math.abs(Number(d.value!=null?d.value:d.variance||0)),0))});
     } catch(e){logger.warn("auditFinancialControls: discrepancy check skipped",{error:String(e)});}
-    return{generatedAt:Date.now(),issues:issues.slice(0,200),issueCount:issues.length,registerFloat:{amount:floatControl.amount,expected:4000,source:floatControl.source},unsettledPlatform:{count:unsettledCount,amount:unsettledValue},cashAwaitingDeposit:{count:custodyCount,amount:custodyValue},openReceivables:{count:openAr.length,amount:Financial.money(openAr.reduce((s,x)=>s+Number(x.amount||0),0))},openPayables:{count:openAp.length,amount:Financial.money(openAp.reduce((s,x)=>s+Number(x.amount||0),0))},undepositedPayouts:undepositedPayouts.length};
+    const resolvedIssues=issues.map(financialControlResolution);return{generatedAt:Date.now(),issues:resolvedIssues.slice(0,200),issueCount:resolvedIssues.length,systemDateMaintenance:dateMaintenance,registerFloat:{amount:floatControl.amount,expected:4000,source:floatControl.source},unsettledPlatform:{count:unsettledCount,amount:unsettledValue},cashAwaitingDeposit:{count:custodyCount,amount:custodyValue},openReceivables:{count:openAr.length,amount:Financial.money(openAr.reduce((s,x)=>s+Number(x.amount||0),0))},openPayables:{count:openAp.length,amount:Financial.money(openAp.reduce((s,x)=>s+Number(x.amount||0),0))},undepositedPayouts:undepositedPayouts.length};
   },
 );
 
