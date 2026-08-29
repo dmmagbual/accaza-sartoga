@@ -2364,21 +2364,30 @@ exports.reversePlatformPayout = onCall(
   },
 );
 
-// Set/clear the actual platform payout date on a settled payout (from the
-// platform statement). Metadata only — no ledger posting, no approval needed.
+// Correct descriptive payout metadata from the platform or bank statement.
+// This deliberately cannot change money, linked orders, receiving account, or
+// Finance movements. Those remain controlled settlement/reversal workflows.
 exports.setPlatformPayoutDate = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => {
     const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["receivables"]);
     const data = request.data || {}, payoutId = financeKey(data.payoutId, "Payout ID"), raw = financeText(data.payoutDate, 10);
     if (raw && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) throw new HttpsError("invalid-argument", "Payout date must be YYYY-MM-DD.");
-    if (!(await db.ref(`/platformPayouts/${payoutId}`).get()).exists()) throw new HttpsError("not-found", "Payout not found.");
+    const payoutSnap = await db.ref(`/platformPayouts/${payoutId}`).get();
+    if (!payoutSnap.exists()) throw new HttpsError("not-found", "Payout not found.");
+    const payout = payoutSnap.val() || {}, hasDepositReference = Object.prototype.hasOwnProperty.call(data, "depositReference"), hasPlatformStatementReference = Object.prototype.hasOwnProperty.call(data, "platformStatementReference"), hasNotes = Object.prototype.hasOwnProperty.call(data, "notes"), depositReference = hasDepositReference ? financeText(data.depositReference, 120) : financeText(payout.depositReference, 120), platformStatementReference = hasPlatformStatementReference ? financeText(data.platformStatementReference, 120) : financeText(payout.platformStatementReference, 120), notes = hasNotes ? financeText(data.notes, 500) : financeText(payout.notes, 500);
     const now = Date.now();
-    await db.ref().update({
+    const writes = {
       [`platformPayouts/${payoutId}/payoutDate`]: raw || null,
-      [`operationalAudit/${now}_set_payout_date_${payoutId}`]: {action: "set_payout_date", sourceType: "platformPayout", sourceId: payoutId, detail: raw || "(cleared)", actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1},
-    });
-    return {payoutId, payoutDate: raw || ""};
+      [`platformPayouts/${payoutId}/metadataUpdatedAt`]: now,
+      [`platformPayouts/${payoutId}/metadataUpdatedBy`]: actor.uid,
+      [`operationalAudit/${now}_update_payout_metadata_${payoutId}`]: {action: "update_platform_payout_metadata", sourceType: "platformPayout", sourceId: payoutId, detail: {payoutDate: raw || "", depositReference: depositReference || "", platformStatementReference: platformStatementReference || "", notes: notes || ""}, previous: {payoutDate: payout.payoutDate || "", depositReference: payout.depositReference || "", platformStatementReference: payout.platformStatementReference || "", notes: payout.notes || ""}, financialEffect: "none", actorUid: actor.uid, actorRole: actor.role, ts: now, schemaVersion: 1},
+    };
+    if (hasDepositReference) writes[`platformPayouts/${payoutId}/depositReference`] = depositReference || null;
+    if (hasPlatformStatementReference) writes[`platformPayouts/${payoutId}/platformStatementReference`] = platformStatementReference || null;
+    if (hasNotes) writes[`platformPayouts/${payoutId}/notes`] = notes || null;
+    await db.ref().update(writes);
+    return {payoutId, payoutDate: raw || "", depositReference, platformStatementReference, notes, financialEffect: "none"};
   },
 );
 
@@ -2688,7 +2697,7 @@ function financialControlResolution(issue) {
     sale_not_posted:["Open the completed order in Admin and run the Daily Financial Close. The system will identify the specific order posting that must be restored.","admin_sales","Open Sales History"],
     payout_movement_missing:["Open the platform payout and verify its linked settled orders. Re-run the controlled payout settlement; never journal Platform Payouts in Transit manually.","admin_finance","Open Platform Payouts"],
     reversed_payout_cash_not_reversed:["Use the controlled payout-deposit repair. It restores the clearing account and reverses the orphaned bank receipt while retaining the audit trail.","repair_reversed_payout","Repair deposit"],
-    payout_deposit_missing_reference:["Open the platform payout deposit and enter the platform statement or bank transaction reference, then save the controlled deposit record.","admin_finance","Open Platform Payouts"],
+    payout_deposit_missing_reference:["Open this exact platform payout and add the platform statement or bank transaction reference. This updates only evidence metadata; its amount, linked orders, receiving account, and Finance posting remain unchanged.","edit_payout_reference","Add payout reference"],
     payout_order_link_mismatch:["Open the platform payout and its listed orders. Correct the payout/order assignment from Platform Payouts, then run Daily Financial Close.","admin_finance","Open Platform Payouts"],
     platform_ar_control_mismatch:["Open Platform Receivables and compare unsettled orders with payout settlements. Correct the affected payout or order from its source workflow, then rerun Daily Financial Close.","admin_finance","Open Platform Receivables"],
     duplicate_cash_account_code:["Open Cash Accounts and give each bank or wallet a unique Finance Books account mapping before recording more deposits.","books_cashflow","Open Cash Accounts"],
