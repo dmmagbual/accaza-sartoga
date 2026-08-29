@@ -53,6 +53,8 @@ function renderUndeposited(){
   var poolBal=Math.round(bal*100)/100;
   var custodyRemaining=Object.keys(custody).reduce(function(s,k){return s+(Number(custody[k]&&custody[k].remaining)||0);},0);
   custodyRemaining=Math.round(custodyRemaining*100)/100;
+  var custodyRows=Object.keys(custody).map(function(id){return Object.assign({id:id},custody[id]||{});}).filter(function(row){return Number(row.amount)||Number(row.remaining)||Number(row.depositedAmount)||Number(row.paidOutAmount);}).sort(function(a,b){return (a.closedAt||0)-(b.closedAt||0);});
+  var custodyDetail=custodyRows.map(function(row){var original=Number(row.amount)||0,paid=Number(row.paidOutAmount)||0,deposited=Number(row.depositedAmount)||0,remaining=Number(row.remaining)||0;return '<tr><td>'+esc(fmtDate(row.closedAt))+'</td><td>'+esc(row.staff||row.shiftId||row.id)+'</td><td style="text-align:right;">'+peso(original)+'</td><td style="text-align:right;color:#8a1e1e;">'+(paid?'−'+peso(paid):'—')+'</td><td style="text-align:right;color:#8a1e1e;">'+(deposited?'−'+peso(deposited):'—')+'</td><td style="text-align:right;font-weight:700;">'+peso(remaining)+'</td></tr>';}).join('')||'<tr><td colspan="6" style="color:var(--tl);">No custody records are awaiting deposit.</td></tr>';
   var tie=Math.abs(poolBal-custodyRemaining)<0.01;
   var custodyGap=Math.round((poolBal-custodyRemaining)*100)/100;
   var accountRows=Object.keys(accounts).map(function(id){return Object.assign({id:id},accounts[id]);}).filter(function(x){return x.active!==false;}).sort(function(a,b){return (a.order||0)-(b.order||0)||String(a.name||'').localeCompare(String(b.name||''));});
@@ -89,6 +91,7 @@ function renderUndeposited(){
       +'</div>'
       +'<div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Date</th><th>Type</th><th>Reference</th><th style="text-align:right;">In</th><th style="text-align:right;">Out</th><th style="text-align:right;">Balance</th></tr></thead><tbody>'+body+'</tbody></table></div>'
     +'</div>';
+  root.insertAdjacentHTML('beforeend','<div class="pz-card" style="margin-top:1rem;"><div style="padding:.7rem .8rem .35rem;"><b>Cash custody available for deposit</b><div style="font-size:.75rem;color:var(--tl);">Only the remaining amount can be deposited. Approved cash payments and previous deposits reduce this balance immediately.</div></div><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Date</th><th>Custody source</th><th style="text-align:right;">Original</th><th style="text-align:right;">Cash payments</th><th style="text-align:right;">Deposited</th><th style="text-align:right;">Available now</th></tr></thead><tbody>'+custodyDetail+'</tbody></table></div></div>');
   var f=document.getElementById('ucFrom');if(f)f.onchange=function(){rangeFrom=f.value;renderUndeposited();};
   var t=document.getElementById('ucTo');if(t)t.onchange=function(){rangeTo=t.value;renderUndeposited();};
   var cl=document.getElementById('ucClear');if(cl)cl.onclick=function(){rangeFrom='';rangeTo='';renderUndeposited();};
