@@ -60,7 +60,11 @@ function mapAccount(posAccount, channel, cashAccountMap) {
   const exact = {
     "asset:register_cash": "1000", "asset:register_float": "1005", "asset:cash_awaiting_deposit": "1030", "asset:petty_cash": "1040",
     "asset:withholding_tax": "1260", "asset:cash_shortage_pending": "1190", "liability:cash_overage_pending": "2100", "revenue:sales_reversal": "4910",
-    "revenue:cash_overage": "4990", "revenue:payment_overage": "4990",
+    // A cash overage is a liability under investigation, never automatic income.
+    // Older Finance movements used the revenue-shaped key; keep the immutable
+    // source record but translate it to the overage control account on rebuild.
+    "revenue:cash_overage": "2100", "revenue:payment_overage": "2100",
+    "revenue:unexplained_cash_overage": "4990",
     "expense:cash_shortage": "6110", "equity:owner_draw": "3100", "expense:platform_commission": "6040",
     "expense:platform_variance:va_ads": "6050", "expense:platform_variance:va_marketing_success": "6050",
     "expense:platform_variance:va_promo": "6045", "expense:platform_variance:va_fees": "6080",

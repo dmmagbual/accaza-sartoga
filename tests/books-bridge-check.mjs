@@ -49,7 +49,8 @@ ok(B.mapAccount('liability:platform_owing:grabfood','grabfood',cashMap).code==='
 ok(B.mapAccount('asset:platform_receivable:grabfood','grabfood',cashMap).code==='1100','platform receivable→1100 control account');
 ok(B.mapAccount('asset:platform_clearing:grabfood','grabfood',cashMap).code==='1050','platform payout clearing→1050 and cannot distort AR');
 ok(B.mapAccount('expense:cash_shortage','instore',{}).code==='6110','manager-approved cash shortage→6110 Cash Short / Over');
-ok(B.mapAccount('revenue:cash_overage','instore',{}).code==='4990','manager-approved cash overage→4990 Other Income');
+ok(B.mapAccount('revenue:cash_overage','instore',{}).code==='2100','legacy automatic cash overage→2100 pending review control');
+ok(B.mapAccount('revenue:unexplained_cash_overage','instore',{}).code==='4990','manager-approved unexplained overage→4990 Other Income');
 ok(B.mapAccount('asset:cash_shortage_pending','instore',{}).code==='1190','unresolved cash shortage→1190 pending review');
 ok(B.mapAccount('liability:cash_overage_pending','instore',{}).code==='2100','unresolved cash overage→2100 pending review');
 ok(B.mapAccount('inventory:legacy_receipt','instore',{}).code==='1290','unposted inventory receipt→1290 clearing');
