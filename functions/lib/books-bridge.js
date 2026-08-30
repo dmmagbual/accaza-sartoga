@@ -163,11 +163,11 @@ function mappedLines(mv, cashMap, context) {
   // for losses. They are immutable source records, so reclassify only their
   // derived Books projection into the single 5905 COGS basket. The movement's
   // original occurredAt still controls its July/August accounting date.
-  const inventoryVariance=String(mv.sourceType||"")==="inventoryMovement"&&["inventory_adjustment","inventory_manual_edit"].includes(String(mv.type||""));
+  const movementType=String(mv.type||""),inventoryMovement=String(mv.sourceType||"")==="inventoryMovement",inventoryVariance=inventoryMovement&&["inventory_adjustment","inventory_manual_edit"].includes(movementType),historicalUsageAccount=inventoryMovement&&movementType==="inventory_staff_use"?"coa:6077":inventoryMovement&&movementType==="inventory_rnd_testing"?"coa:6078":inventoryMovement&&movementType==="inventory_usage_reversal"&&/^(5900|60\d{2})$/.test(String(mv.usageAccount||""))?`coa:${mv.usageAccount}`:"";
   const purchaseType=["payable_created","payable_reversed","grni_created","purchase_payable_reversed"].includes(String(mv.type||"")),legacySource=String(mv.sourceId||"").indexOf("ap_pinv_")===0||String(mv.sourceId||"").indexOf("pinv_")===0;
   const legacyLines=(mv.lines||[]).filter((l)=>purchaseType&&legacySource&&String(l.account||"").indexOf("expense_or_inventory:")===0),out=[];
   (mv.lines || []).filter((l)=>!legacyLines.includes(l)).forEach((l) => {
-    const account=String(l.account||""),booksAccount=inventoryVariance&&["coa:4990","coa:5900"].includes(account)?"coa:5905":account,m=mapAccount(booksAccount, channel, cashMap);
+    const account=String(l.account||""),booksAccount=inventoryVariance&&["coa:4990","coa:4995","coa:5900"].includes(account)?"coa:5905":historicalUsageAccount&&account==="coa:5900"?historicalUsageAccount:account,m=mapAccount(booksAccount, channel, cashMap);
     if (m.unmapped) unmapped.push({account: l.account, code: m.code});
     out.push({code: m.code, debit: r2(l.debit), credit: r2(l.credit), posAccount: account});
   });

@@ -237,6 +237,8 @@ exports.ensureBooksJournal = onCall(
   {region: "asia-southeast1", enforceAppCheck: process.env.ENFORCE_APP_CHECK === "true", timeoutSeconds: 540, memory: "512MiB"},
   async (request) => {
     const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["cashflow", "receivables", "payables"]);
+    await ensureBooksChart(db);
+    await ensureHistoricalInternalUsageFinance(db,actor);
     await ensureHistoricalSecurityBankDrawings(db, actor);
     const [movementSnap, ordersSnap, archiveSnap, journalSnap, cashAccountsSnap, inventorySnap, categoriesSnap, purchasesSnap, payablesSnap, posSettingsSnap, activeShiftSnap] = await Promise.all([
       db.ref("/financialMovements").get(), db.ref("/orders").get(), db.ref("/archivedOrders").get(), db.ref("/books/journal").get(), db.ref("/cfAccounts").get(), db.ref("/inventory").get(), db.ref("/posSettings/invCategories").get(), db.ref("/purchaseInvoices").get(), db.ref("/payables").get(), db.ref("/posSettings").get(), db.ref("/posActiveShift").get(),
@@ -265,7 +267,11 @@ exports.ensureBooksJournal = onCall(
       const bucket = BooksBridge.bucketFor(cogs); daily[bucket.key] = BooksBridge.applyDaily(daily[bucket.key] || null, cogs, cashMap); cogsPosted++;
     });
     const existing = journalSnap.val() || {}, writes = {};
-    Object.keys(existing).forEach((key) => { if (existing[key] && existing[key].net && existing[key].source === "pos-bridge" && !daily[key]) writes[`books/journal/${key}`] = null; });
+    Object.keys(existing).forEach((key) => {
+      const entry=existing[key]||{};
+      if (entry.net && entry.source === "pos-bridge" && !daily[key]) writes[`books/journal/${key}`] = null;
+      if (!daily[key]&&!singles[key]&&Array.isArray(entry.lines)&&entry.lines.some((line)=>String(line&&line.code||"")==="4995")) writes[`books/journal/${key}`]=Object.assign({},entry,{lines:entry.lines.map((line)=>String(line&&line.code||"")==="4995"?Object.assign({},line,{code:"5905"}):line),legacyAccountMigratedFrom:"4995",legacyAccountMigratedTo:"5905",legacyAccountMigratedAt:Date.now()});
+    });
     Object.keys(daily).forEach((key) => { daily[key].updatedAt = Date.now(); writes[`books/journal/${key}`] = daily[key]; });
     Object.keys(singles).forEach((key) => { writes[`books/journal/${key}`] = singles[key]; });
     const registerFloat = resolveRegisterFloat(posSettingsSnap.val(), activeShiftSnap.val());
@@ -280,6 +286,16 @@ exports.ensureBooksJournal = onCall(
     await db.ref("/systemMaintenance/booksJournalSynced").set(result); return result;
   },
 );
+
+async function ensureHistoricalInternalUsageFinance(db,actor){
+  const [inventorySnap,financeSnap]=await Promise.all([db.ref("/inventoryMovements").get(),db.ref("/financialMovements").get()]),inventory=inventorySnap.val()||{},finance=financeSnap.val()||{};
+  for(const id of Object.keys(inventory)){
+    const reversal=Object.assign({id},inventory[id]||{});if(reversal.type!=="usage_reversal"||finance[`invmove_${id}`])continue;
+    const originalId=String(reversal.reversalOf||""),originalInventory=inventory[originalId]||{},original=finance[`invmove_${originalId}`];if(originalInventory.sourceType!=="internal-usage"||!original||!Array.isArray(original.lines)||!["inventory_staff_use","inventory_rnd_testing","inventory_waste"].includes(String(original.type||"")))continue;
+    const usageAccount=String(original.usageAccount||(original.type==="inventory_rnd_testing"?"6078":original.type==="inventory_waste"?"5900":"6077")),lines=original.lines.map((line)=>Financial.line(line.account,Number(line.credit)||0,Number(line.debit)||0,`Historical internal-usage reversal · ${reversal.itemName||reversal.itemId||id}`)),movement=Financial.movement("inventory_usage_reversal","inventoryMovement",id,lines,{occurredAt:Number(reversal.occurredAt||reversal.createdAt||Date.now()),actorName:actor.role,itemId:String(reversal.itemId||""),usageAccount,reversalOf:originalId,automaticRepair:true});
+    await commitFinancial(db,`invmove_${id}`,movement,actor);
+  }
+}
 
 async function ensureHistoricalSecurityBankDrawings(db, actor) {
   const accounts = (await db.ref("/cfAccounts").get()).val() || {}, byCode = {};
@@ -1714,11 +1730,11 @@ const BOOKS_CHART_SEED_ROWS = [
   ["2000","Accounts Payable - Suppliers","Liability"],["2020","Due to Platforms","Liability","Negative Grab/FoodPanda settlements owed to the platform"],["2030","Customer Change / Refund Payable","Liability","Customer-related cash overages awaiting refund"],["2050","Due to Owner / Partners","Liability","Personally funded business costs awaiting reimbursement"],["2090","Unrecorded Payables Clearing","Liability","Supplier obligations awaiting complete posting"],["2100","Cash Overage Under Review","Liability","Pending manager reconciliation"],["2120","Accrued Salaries","Liability"],["2200","Taxes Payable","Liability"],["2210","Output VAT Payable","Liability","Used when VAT-registered"],["2220","Percentage Tax Payable","Liability","Non-VAT percentage tax on gross receipts"],["2230","Withholding Tax Payable","Liability","EWT withheld from payments"],["2300","Loans Payable","Liability"],["2310","Loan 2","Liability"],["2320","Loan 3","Liability"],
   ["3000","Owner's Capital","Equity"],["3050","Cash Float Clearing","Equity","POS shift float source"],["3100","Owner's Drawings","Equity","Contra-equity (debit balance)"],["3900","Retained Earnings","Equity"],
   ["4000","Sales - In-store","Income"],["4010","Sales - Online (own)","Income"],["4020","Sales - GrabFood","Income"],["4030","Sales - FoodPanda","Income"],["4900","Discounts & Comps","Income","Contra-income (debit balance)"],["4910","Sales Returns & Refunds","Income","Existing void and refund adjustments"],["4990","Other Income","Income"],
-  ["5000","COGS - Coffee & Beans","COGS"],["5010","COGS - Milk & Dairy","COGS"],["5020","COGS - Syrups & Flavors","COGS"],["5030","COGS - Food & Pastries","COGS"],["5040","COGS - Cups & Packaging","COGS"],["5090","Unposted COGS Clearing","COGS","Costs awaiting complete item-level posting"],["5900","Wastage & Spoilage","COGS"],["5905","Inventory Reconciliation Gain / (Loss)","COGS","Single net valuation adjustment: debit is loss, credit is gain"],
-  ["6000","Salaries & Wages","Expense"],["6010","Rent","Expense"],["6020","Utilities","Expense","Electricity, water"],["6030","Internet & Phone","Expense"],["6040","Platform Commissions","Expense","Grab/Panda fees"],["6045","Platform Discounts","Expense","Grab/Panda-funded or shared discounts"],["6046","Platform Service VAT","Expense"],["6050","Marketing & Promotions","Expense"],["6060","Repairs & Maintenance","Expense"],["6070","Cleaning & Operating Supplies","Expense"],["6075","Office & Administrative Supplies","Expense"],["6076","Transportation & Delivery","Expense"],["6077","Staff Meals & Welfare","Expense"],["6080","Bank & Payment Fees","Expense"],["6085","Platform Penalties & Adjustments","Expense"],["6090","Depreciation","Expense"],["6100","Miscellaneous","Expense"],["6110","Cash Short / Over","Expense","Register variance"]
+  ["5000","COGS - Coffee & Beans","COGS"],["5010","COGS - Milk & Dairy","COGS"],["5020","COGS - Syrups & Flavors","COGS"],["5030","COGS - Food & Pastries","COGS"],["5040","COGS - Cups & Packaging","COGS"],["5090","Unposted COGS Clearing","COGS","Costs awaiting complete item-level posting"],["5900","Wastage & Spoilage","COGS","Physical spoilage, expiry, spillage, or discard only"],["5905","Inventory Reconciliation Gain / (Loss)","COGS","Count or valuation variance only: debit is loss, credit is gain"],
+  ["6000","Salaries & Wages","Expense"],["6010","Rent","Expense"],["6020","Utilities","Expense","Electricity, water"],["6030","Internet & Phone","Expense"],["6040","Platform Commissions","Expense","Grab/Panda fees"],["6045","Platform Discounts","Expense","Grab/Panda-funded or shared discounts"],["6046","Platform Service VAT","Expense"],["6050","Marketing & Promotions","Expense"],["6060","Repairs & Maintenance","Expense"],["6070","Cleaning & Operating Supplies","Expense"],["6075","Office & Administrative Supplies","Expense"],["6076","Transportation & Delivery","Expense"],["6077","Staff Consumption & Welfare","Expense","Inventory consumed by staff; never sales COGS or inventory variance"],["6078","Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"],["6080","Bank & Payment Fees","Expense"],["6085","Platform Penalties & Adjustments","Expense"],["6090","Depreciation","Expense"],["6100","Miscellaneous","Expense"],["6110","Cash Short / Over","Expense","Register variance"]
 ];
 function booksChartSeed(){const out={};BOOKS_CHART_SEED_ROWS.forEach(function(r){out[r[0]]={code:r[0],name:r[1],type:r[2],note:r[3]||"",active:true,system:true,sensitive:SENSITIVE_BOOKS_CODES.has(r[0])};});return out;}
-async function ensureBooksChart(db){const seed=booksChartSeed();const snap=await db.ref("/booksChart").get();const current=snap.val()||{};const writes={};Object.keys(seed).forEach(function(code){if(!current[code])writes[`booksChart/${code}`]=Object.assign({},seed[code],{createdAt:Date.now(),schemaVersion:1});});const overage={code:"2100",name:"Cash Overage Under Review",type:"Liability",note:"Pending manager reconciliation",active:true,system:true,sensitive:true};if(!current["2100"]||["name","type","note","active","system","sensitive"].some((key)=>current["2100"][key]!==overage[key])){Object.keys(overage).forEach((key)=>{writes[`booksChart/2100/${key}`]=overage[key];});current["2100"]=Object.assign({},current["2100"]||{},overage);}if(Object.keys(writes).length)await db.ref().update(writes);return Object.assign({},seed,current);}
+async function ensureBooksChart(db){const seed=booksChartSeed(),snap=await db.ref("/booksChart").get(),current=snap.val()||{},writes={},resolved=Object.assign({},current),now=Date.now();Object.keys(seed).forEach(function(code){if(!current[code]){resolved[code]=Object.assign({},seed[code],{createdAt:now,schemaVersion:1});writes[`booksChart/${code}`]=resolved[code];}});["2100","5900","5905","6077","6078"].forEach(function(code){const canonical=seed[code];if(!canonical)return;resolved[code]=Object.assign({},current[code]||{},canonical);Object.keys(canonical).forEach(function(key){if(!current[code]||current[code][key]!==canonical[key])writes[`booksChart/${code}/${key}`]=canonical[key];});});if(current["4995"]){const retired={active:false,system:true,note:"Retired legacy inventory reconciliation gain account; consolidated into 5905",consolidatedInto:"5905"};resolved["4995"]=Object.assign({},current["4995"],retired);Object.keys(retired).forEach(function(key){if(current["4995"][key]!==retired[key])writes[`booksChart/4995/${key}`]=retired[key];});}if(Object.keys(writes).length)await db.ref().update(writes);return Object.assign({},seed,resolved);}
 const DEFAULT_BOOKS_CHART_MANAGERS=["danilomagbual@gmail.com","contact.mariadaniela@gmail.com"];
 function booksManagerKey(email){return String(email||"").toLowerCase().replace(/[^a-z0-9]+/g,"_");}
 async function ensureBooksChartManagers(db){const ref=db.ref("/config/booksChartManagers");const snap=await ref.get();let current=snap.val();if(!current||typeof current!=="object"||!Object.keys(current).length){const seed={};DEFAULT_BOOKS_CHART_MANAGERS.forEach(function(email){seed[booksManagerKey(email)]={email:String(email).toLowerCase(),active:true,seededAt:Date.now()};});await ref.set(seed);current=seed;}const allow=new Set();Object.keys(current).forEach(function(k){const row=current[k];if(row&&row.active!==false&&row.email)allow.add(String(row.email).toLowerCase());});return allow;}
@@ -1730,7 +1746,7 @@ function booksCodeAccount(code, accounts, booksChart) {
   if (chartRow) {
     if (chartRow.active === false) throw new HttpsError("failed-precondition", `Books account ${code} is inactive. Reactivate it in the chart of accounts before posting.`);
   } else {
-    const allowed = new Set("1000 1005 1010 1011 1012 1013 1014 1020 1021 1030 1040 1100 1110 1200 1210 1220 1230 1240 1250 1260 1270 1280 1290 1500 1510 1590 1900 2000 2020 2030 2050 2090 2100 2120 2200 2210 2220 2230 2300 2310 2320 3000 3050 3100 3900 4000 4010 4020 4030 4900 4910 4990 4995 5000 5010 5020 5030 5040 5090 5900 5905 6000 6010 6020 6030 6040 6045 6046 6050 6060 6070 6075 6076 6077 6080 6085 6090 6100 6110".split(" "));
+    const allowed = new Set("1000 1005 1010 1011 1012 1013 1014 1020 1021 1030 1040 1100 1110 1200 1210 1220 1230 1240 1250 1260 1270 1280 1290 1500 1510 1590 1900 2000 2020 2030 2050 2090 2100 2120 2200 2210 2220 2230 2300 2310 2320 3000 3050 3100 3900 4000 4010 4020 4030 4900 4910 4990 4995 5000 5010 5020 5030 5040 5090 5900 5905 6000 6010 6020 6030 6040 6045 6046 6050 6060 6070 6075 6076 6077 6078 6080 6085 6090 6100 6110".split(" "));
     if (!allowed.has(code)) throw new HttpsError("failed-precondition", `Books account ${code} is not in the approved chart of accounts.`);
   }
   if (code === "1000") return {account:"asset:register_cash", cashKey:"register"};
@@ -2997,7 +3013,7 @@ async function repairInventoryProjections(db, itemId, accounting, item) {
   ]);
   return projection;
 }
-const INVENTORY_BOOK_POSTING_TYPES = new Set(["waste", "staff_use", "rnd_testing", "adjustment", "manual_edit"]);
+const INVENTORY_BOOK_POSTING_TYPES = new Set(["waste", "staff_use", "rnd_testing", "adjustment", "manual_edit", "usage_reversal"]);
 function inventoryBookAccountCode(item) {
   const code = String(item && item.inventoryAccount || "");
   return /^12[0-8]0$/.test(code) ? code : "1290";
@@ -3005,27 +3021,38 @@ function inventoryBookAccountCode(item) {
 // Every value-changing manual inventory movement posts a matching balanced
 // Finance entry so inventory and the books can never diverge. Reconciliation
 // adjustments/manual edits use one COGS basket (5905): debit is a loss and
-// credit is a gain. Genuine waste/staff/R&D usage remains in 5900, while a
-// positive non-variance restoration retains its existing 4990 treatment.
+// credit is a gain. Waste remains in 5900; staff and R&D use their mapped
+// operating-expense accounts. Reversals exactly invert the original posting.
 // Idempotent via commitFinancial(`invmove_${id}`); auto-mirrors to /books/journal.
-async function postInventoryMovementToBooks(db, movement, item, actor) {
+function internalUsageAccount(type,movement){
+  const fallback=type==="staff_use"?"6077":type==="rnd_testing"?"6078":"",requested=String(movement&&movement.usageAccount||fallback);
+  if(!/^(5900|60\d{2})$/.test(requested)||requested==="5905")throw new HttpsError("failed-precondition","Internal usage requires an approved operating-expense account and cannot use inventory reconciliation 5905.");
+  return requested;
+}
+async function postInventoryMovementToBooks(db, movement, item, actor, context) {
   const type = String(movement && movement.type || "");
   if (!INVENTORY_BOOK_POSTING_TYPES.has(type)) return;
   const value = Financial.money(movement.totalCost); // signed: negative = stock out
   if (Math.abs(value) < 0.005) return;
   const invCode = inventoryBookAccountCode(item);
   const label = `${type.replace(/_/g, " ")} \u00b7 ${String(item && item.name || movement.itemId || "").slice(0, 120)}`;
-  const varianceBasket = type === "adjustment" || type === "manual_edit";
+  const varianceBasket = type === "adjustment" || type === "manual_edit",usageBasket=type==="staff_use"||type==="rnd_testing"?internalUsageAccount(type,movement):"";
   let lines;
+  if(type==="usage_reversal"){
+    const original=context&&context.originalFinancial;
+    if(!original||!Array.isArray(original.lines)||!original.lines.length)throw new HttpsError("failed-precondition","The original internal-usage Finance posting is missing. Repair it before restoring inventory.");
+    lines=original.lines.map((line)=>Financial.line(line.account,Number(line.credit)||0,Number(line.debit)||0,`Reverse ${label}`));
+  } else
   if (value < 0) {
     const out = Financial.money(-value);
-    lines = [Financial.line(varianceBasket ? "coa:5905" : "coa:5900", out, 0, label), Financial.line(`coa:${invCode}`, 0, out, label)];
+    lines = [Financial.line(varianceBasket ? "coa:5905" : usageBasket?`coa:${usageBasket}`:"coa:5900", out, 0, label), Financial.line(`coa:${invCode}`, 0, out, label)];
   } else {
     lines = [Financial.line(`coa:${invCode}`, value, 0, label), Financial.line(varianceBasket ? "coa:5905" : "coa:4990", 0, value, label)];
   }
-  const mv = Financial.movement(`inventory_${type}`, "inventoryMovement", String(movement.id || ""), lines, {occurredAt: Number(movement.occurredAt || movement.createdAt || Date.now()), actorName: String(actor && actor.role || "server"), itemId: String(movement.itemId || ""), invAccount: invCode});
+  const mv = Financial.movement(`inventory_${type}`, "inventoryMovement", String(movement.id || ""), lines, {occurredAt: Number(movement.occurredAt || movement.createdAt || Date.now()), actorName: String(actor && actor.role || "server"), itemId: String(movement.itemId || ""), invAccount: invCode,inventorySourceType:String(movement.sourceType||""),usageAccount:usageBasket||String(originalUsageAccount(context)||"")});
   await commitFinancial(db, `invmove_${String(movement.id || "")}`, mv, actor || {uid: "server", role: "server"});
 }
+function originalUsageAccount(context){const original=context&&context.originalFinancial,line=original&&Array.isArray(original.lines)&&original.lines.find((row)=>/^coa:(5900|60\d{2})$/.test(String(row.account||"")));return line?String(line.account).slice(4):"";}
 async function applyInventoryMovement(db, raw, actor) {
   raw = raw || {};
   const itemId = inventoryKey(raw.itemId, "Inventory item");
@@ -3043,6 +3070,17 @@ async function applyInventoryMovement(db, raw, actor) {
   const itemRef = db.ref(`/inventory/${itemId}`);
   const item = (await itemRef.get()).val();
   if (!item) throw new HttpsError("not-found", "Inventory item no longer exists.");
+  let postingContext={};
+  if(type==="staff_use"||type==="rnd_testing"){
+    const chart=await ensureBooksChart(db),usageAccount=internalUsageAccount(type,raw),row=chart[usageAccount];
+    if(!row||row.active===false||!(row.type==="Expense"||usageAccount==="5900"))throw new HttpsError("failed-precondition",`Internal usage account ${usageAccount} must be an active Expense account (or 5900 Wastage & Spoilage).`);
+    raw.usageAccount=usageAccount;raw.usageKind=String(raw.usageKind||type).slice(0,80);
+  }
+  if(type==="usage_reversal"){
+    const reversalOf=inventoryKey(raw.reversalOf,"Original inventory movement ID"),[originalInventorySnap,originalFinancialSnap]=await Promise.all([db.ref(`/inventoryMovements/${reversalOf}`).get(),db.ref(`/financialMovements/invmove_${reversalOf}`).get()]),originalInventory=originalInventorySnap.val()||{},originalFinancial=originalFinancialSnap.val();
+    if(originalInventory.sourceType!=="internal-usage"||!originalFinancial||!["inventory_staff_use","inventory_rnd_testing","inventory_waste"].includes(String(originalFinancial.type||"")))throw new HttpsError("failed-precondition","Only a posted internal-usage movement can be reversed through Internal Usage.");
+    postingContext={originalFinancial};
+  }
   if (["purchase", "waste", "staff_use", "rnd_testing", "adjustment", "manual_edit"].includes(type)) {
     const invAcct = String(item.inventoryAccount || ""), costAcct = String(item.costAccount || item.cogsAccount || "");
     const invOk = ["1200", "1210", "1220", "1230", "1240", "1270", "1280"].includes(invAcct);
@@ -3092,7 +3130,7 @@ async function applyInventoryMovement(db, raw, actor) {
       note: String(raw.note || "").slice(0, 500),
       actorUid: actor && actor.uid || "server", actorName: String(raw.actorName || actor && actor.role || "server").slice(0, 120),
       occurredAt: Number(raw.occurredAt || now), createdAt: now,
-      reversalOf: String(raw.reversalOf || "").slice(0, 160), version, schemaVersion: 1,
+      reversalOf: String(raw.reversalOf || "").slice(0, 160), usageKind:String(raw.usageKind||"").slice(0,80),usageAccount:String(raw.usageAccount||"").slice(0,4), version, schemaVersion: 2,
     };
     state.balance = after; state.unitCost = costAfter; state.version = version;
     state.lastMovementId = movementId; state.lastMovementAt = now;
@@ -3107,7 +3145,7 @@ async function applyInventoryMovement(db, raw, actor) {
   if (opening) writes[`inventoryMovements/${opening.id}`] = opening;
   if (movement) writes[`inventoryMovements/${movementId}`] = movement;
   if (Object.keys(writes).length) await db.ref().update(writes);
-  if (movement) await postInventoryMovementToBooks(db, movement, item, actor);
+  if (movement) await postInventoryMovementToBooks(db, movement, item, actor, postingContext);
   await repairInventoryProjections(db, itemId, accounting, item);
   return {movement, duplicate};
 }

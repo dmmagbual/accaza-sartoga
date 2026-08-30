@@ -244,6 +244,16 @@ ok(B.mapAccount('coa:4990','instore',{}).code==='4990','genuine non-variance oth
   ok(B.bucketFor(julyGain).date==='2026-07-15'&&B.bucketFor(augustLoss).date==='2026-08-20','variance reclassification preserves the original July/August accounting date');
 }
 {
+  const legacy4995={type:'inventory_adjustment',sourceType:'inventoryMovement',occurredAt:Date.parse('2026-07-20T12:00:00+08:00'),lines:[{account:'coa:1210',debit:15,credit:0},{account:'coa:4995',debit:0,credit:15}]};
+  const staff={type:'inventory_staff_use',sourceType:'inventoryMovement',lines:[{account:'coa:5900',debit:12,credit:0},{account:'coa:1210',debit:0,credit:12}]};
+  const rnd={type:'inventory_rnd_testing',sourceType:'inventoryMovement',lines:[{account:'coa:5900',debit:9,credit:0},{account:'coa:1200',debit:0,credit:9}]};
+  const reversal={type:'inventory_usage_reversal',sourceType:'inventoryMovement',usageAccount:'6077',lines:[{account:'coa:5900',debit:0,credit:12},{account:'coa:1210',debit:12,credit:0}]};
+  ok(B.mappedLines(legacy4995,{}).lines.some(l=>l.code==='5905'&&l.credit===15),'legacy 4995 inventory gain rebuilds into 5905 at its original date');
+  ok(B.mappedLines(staff,{}).lines.some(l=>l.code==='6077'&&l.debit===12),'historical staff consumption rebuilds into 6077');
+  ok(B.mappedLines(rnd,{}).lines.some(l=>l.code==='6078'&&l.debit===9),'historical R&D consumption rebuilds into 6078');
+  ok(B.mappedLines(reversal,{}).lines.some(l=>l.code==='6077'&&l.credit===12),'historical usage reversal follows the original mapped expense account');
+}
+{
   // a waste movement of 100 credits inventory (1210) and debits 5900, balanced
   const wasteLines=[{account:'coa:5900',debit:100,credit:0},{account:'coa:1210',debit:0,credit:100}];
   ok(B.linesBalanced(wasteLines),'inventory waste posting is balanced (Dr 5900 / Cr inventory)');
