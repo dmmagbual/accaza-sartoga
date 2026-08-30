@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<meta name="accaza-books-build" content="64"/>
+<meta name="accaza-books-build" content="65"/>
 <title>Accaza Books</title>
 <style>
 :root{
@@ -67,6 +67,14 @@ a{color:var(--info)}
 /* Tables */
 table{width:100%;border-collapse:collapse}
 .tbl-wrap{overflow-x:auto}
+.journal-table{table-layout:fixed;min-width:760px}
+.journal-table .journal-date{width:155px;white-space:normal;overflow-wrap:anywhere}
+.journal-table .journal-entry{width:auto;min-width:0;overflow-wrap:anywhere;word-break:break-word}
+.journal-table .journal-entry>div,.journal-table .journal-entry span{min-width:0;overflow-wrap:anywhere}
+.journal-table .journal-amount{width:120px}
+.journal-table .journal-actions{width:205px;white-space:normal}
+.journal-table .journal-actions .btn{margin:.12rem .12rem .12rem 0}
+@media(max-width:820px){.journal-table{min-width:680px}.journal-table .journal-date{width:125px}.journal-table .journal-amount{width:100px}.journal-table .journal-actions{width:165px}}
 th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--tl);font-weight:700;padding:.55rem .7rem;border-bottom:1px solid var(--line)}
 td{padding:.5rem .7rem;border-bottom:1px solid var(--line2);font-size:.85rem;vertical-align:top}
 tr:last-child td{border-bottom:none}
@@ -145,7 +153,7 @@ tr.group-account td{font-weight:800;background:#f3ece0;border-top:2px solid var(
   <div class="topbar-in">
     <div class="brand">
       <div class="logo">☕</div>
-      <div><b>Accaza Books</b><small>Coffee-shop accounting · build v64</small></div>
+      <div><b>Accaza Books</b><small>Coffee-shop accounting · build v65</small></div>
     </div>
     <span id="liveStatus" class="live-pill off" title="Live POS auto-capture status — click to sign in" onclick="App.signInPrompt()">● Connecting…</span>
     <span id="reviewBadge" class="live-pill warn" style="display:none" title="Unmapped POS accounts to review" onclick="App.go('journal')"></span>
@@ -170,7 +178,7 @@ tr.group-account td{font-weight:800;background:#f3ece0;border-top:2px solid var(
 <div class="tabs"><div class="tabs-in" id="tabs"></div></div>
 
 <div class="wrap"><div id="page" class="page"></div>
-  <div class="foot-note">Accaza Books · build v64 · double-entry, append-only ledger · shared server-authoritative Finance data</div>
+  <div class="foot-note">Accaza Books · build v65 · double-entry, append-only ledger · shared server-authoritative Finance data</div>
 </div>
 
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
@@ -727,16 +735,16 @@ const PAGES = {
       const history=(corrected||closed)?`<details style="margin-top:.45rem"><summary class="tiny linkish">View posting history</summary>${historyEntry('Original posting',g.original)}${historyEntry(g.reversal&&g.reversal.voided?'Void entry':'Reversal entry',g.reversal)}${historyEntry('Corrected replacement',g.replacement)}</details>`:'';
       const posLocked=e.sourceType==='order'||/^order_|^pos_/i.test(e.type||'')||/^POS-/i.test(e.ref||''),customerPayableId=linkedCustomerPayableId(e),customerPayableControl=(e.lines||[]).some(l=>l.code==='2030');
       return `<tr>
-        <td style="white-space:nowrap">${e.date}<div class="tiny muted">${esc(e.ref)||'—'} ${e.source==='pos'?'<span class="badge-rev" style="color:#28576b;background:#e9f2f6">POS</span>':''}${status?'<span class="badge-rev">'+status+'</span>':''}</div></td>
-        <td><b>${esc(e.memo)||'(no memo)'}</b>${e.linkedDiscrepancyId?`<div class="tiny" style="margin-top:.2rem"><span class="badge-rev">Admin variance · ${esc(e.linkedDiscrepancyId)}</span></div>`:''}<div style="margin-top:.35rem;font-size:.8rem">${entryLines(e)}</div>${history}</td>
-        <td class="num" style="white-space:nowrap">${closed?peso(0):peso(dr)}</td>
-        <td style="white-space:nowrap">${!closed&&customerPayableId?`<button class="btn sm primary" onclick="App.correctPayable('${customerPayableId}')">Close linked payable</button>`:!closed&&customerPayableControl?`<button class="btn sm ghost" onclick="App.editEntry('${e.id}')">Open customer payable</button>`:!closed&&!posLocked&&!e.reversalOf&&!e.reversedByMovementId?`<button class="btn sm ghost" onclick="App.editEntry('${e.id}')">Edit / correct</button> ${(e.sourceType==='booksManualJournal'||e.type==='manual_books_journal')?`<button class="btn sm ghost" onclick="App.reverseEntry('${e.id}',false)">Reverse</button> <button class="btn sm ghost" onclick="App.reverseEntry('${e.id}',true)">Void</button>`:''}`:'<span class="tiny muted">'+(status||(posLocked?'POS locked':'Automatic posting'))+'</span>'}</td></tr>`;
+        <td class="journal-date">${e.date}<div class="tiny muted">${esc(e.ref)||'—'} ${e.source==='pos'?'<span class="badge-rev" style="color:#28576b;background:#e9f2f6">POS</span>':''}${status?'<span class="badge-rev">'+status+'</span>':''}</div></td>
+        <td class="journal-entry"><b>${esc(e.memo)||'(no memo)'}</b>${e.linkedDiscrepancyId?`<div class="tiny" style="margin-top:.2rem"><span class="badge-rev">Admin variance · ${esc(e.linkedDiscrepancyId)}</span></div>`:''}<div style="margin-top:.35rem;font-size:.8rem">${entryLines(e)}</div>${history}</td>
+        <td class="num journal-amount">${closed?peso(0):peso(dr)}</td>
+        <td class="journal-actions">${!closed&&customerPayableId?`<button class="btn sm primary" onclick="App.correctPayable('${customerPayableId}')">Close linked payable</button>`:!closed&&customerPayableControl?`<button class="btn sm ghost" onclick="App.editEntry('${e.id}')">Open customer payable</button>`:!closed&&!posLocked&&!e.reversalOf&&!e.reversedByMovementId?`<button class="btn sm ghost" onclick="App.editEntry('${e.id}')">Edit / correct</button> ${(e.sourceType==='booksManualJournal'||e.type==='manual_books_journal')?`<button class="btn sm ghost" onclick="App.reverseEntry('${e.id}',false)">Reverse</button> <button class="btn sm ghost" onclick="App.reverseEntry('${e.id}',true)">Void</button>`:''}`:'<span class="tiny muted">'+(status||(posLocked?'POS locked':'Automatic posting'))+'</span>'}</td></tr>`;
     }).join("");
     return `<div class="page-head"><div><h2>Journal</h2><p>${periodLabel()} · ${display.length} displayed entr${display.length===1?'y':'ies'} · correction mechanics grouped into posting history</p></div>
         <button class="btn primary" onclick="App.newEntry()">+ New entry</button></div>
       <div class="hint">Every non-POS journal can be corrected while its accounting month is open. POS sale and COGS journals remain locked. Saving an edit creates a linked reversal and replacement, so the original audit trail is never erased.</div>
-      <div class="card"><div class="tbl-wrap"><table>
-        <thead><tr><th>Date</th><th>Entry &amp; lines</th><th class="num">Amount</th><th></th></tr></thead>
+      <div class="card"><div class="tbl-wrap"><table class="journal-table">
+        <colgroup><col style="width:155px"><col><col style="width:120px"><col style="width:205px"></colgroup><thead><tr><th>Date</th><th>Entry &amp; lines</th><th class="num">Amount</th><th>Actions</th></tr></thead>
         <tbody>${rows||'<tr><td colspan=4><div class="empty"><div class="big">📓</div>No entries in this period.<br><button class="btn primary" style="margin-top:.8rem" onclick="App.newEntry()">Post your first entry</button></div></td></tr>'}</tbody>
       </table></div></div>`;
   },
