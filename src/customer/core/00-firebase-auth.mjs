@@ -1,5 +1,5 @@
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import{getDatabase,ref,set,push,update,remove,onValue}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import{getDatabase,ref,get,set,push,update,remove,onValue}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import{getMessaging,getToken,onMessage,isSupported}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
 import{getAuth,signInAnonymously,signOut,onAuthStateChanged}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import{getFunctions,httpsCallable}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
@@ -17,6 +17,7 @@ const confirmOrderReceivedCall=httpsCallable(functions,'confirmOrderReceived');
 var myOrdersMap={},_myOrdersSub={},customerUid=null,_customerIndexUnsub=null;
 var customerAuthProblem=null,customerAuthRetryTimer=null,customerAuthFailures=0;
 var myResMap={},_myResSub={};
+let publicOrdersOpen=null,customerLiveConnected=null;
 function subscribeMyOrders(){try{(myOrderIds||[]).forEach(function(id){if(_myOrdersSub[id])return;_myOrdersSub[id]=true;onValue(ref(db,'orders/'+id),function(s){if(s.exists())myOrdersMap[id]=s.val();if(typeof renderCustomerOrders==='function')renderCustomerOrders();if(typeof checkMyReadyOrders==='function')checkMyReadyOrders();},function(){});});}catch(e){}}
 function subscribeCustomerOrderIndex(uid){try{if(_customerIndexUnsub)_customerIndexUnsub();_customerIndexUnsub=onValue(ref(db,'customerOrders/'+uid),function(s){var ids=Object.keys(s.val()||{});ids.forEach(function(id){if(myOrderIds.indexOf(id)<0)myOrderIds.push(id);});try{localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));}catch(e){}subscribeMyOrders();});}catch(e){}}
 async function ensureCustomerAuth(forceRefresh){
