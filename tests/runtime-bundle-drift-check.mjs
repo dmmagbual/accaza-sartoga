@@ -7,18 +7,19 @@ const bundles=[
   {source:'src/admin/register',target:'assets/js/admin/register.js'},
   {source:'src/admin/analytics',target:'assets/js/admin/analytics.js'},
   {source:'src/admin/finance',target:'assets/js/admin/finance.js'},
+  {source:'src/customer/core',target:'assets/js/customer/core.mjs'},
   {source:'src/books/app',target:'assets/js/books/app.js'},
   {source:'src/functions',target:'functions/index.js'}
 ];
 
 for(const bundle of bundles){
   const sourceDir=path.join(root,bundle.source);
-  const files=fs.readdirSync(sourceDir).filter(name=>name.endsWith('.js')).sort();
+  const files=fs.readdirSync(sourceDir).filter(name=>/\.m?js$/.test(name)).sort();
   const expected=files.map(name=>fs.readFileSync(path.join(sourceDir,name),'utf8')).join('');
   const actual=fs.readFileSync(path.join(root,bundle.target),'utf8');
   if(actual!==expected)throw new Error(`${bundle.target} has drifted from ${bundle.source}. Run npm run build:runtime.`);
 }
-console.log('PASS: POS, Admin operations, Finance Books, and Functions runtime bundles exactly match their ordered source sections.');
+console.log('PASS: POS, Admin operations, customer core, Finance Books, and Functions runtime bundles exactly match their ordered source sections.');
 
 const expectedFunctionExports=[
   'notifyOnComplete','notifyStaffOnOrder','notifyStaffOnReservation','notifyOnContactMessage','mirrorPosMovementToBooks','mirrorPosCogsToBooks','ensureBooksJournal','syncRegisterCashFloat','syncActiveRegisterCashFloat','manageCashAccount','indexPlatformOrderRef','manageAccountingPeriod','manageStaffMessage','recordClientTelemetry','getOperationalExceptions','repairOrderInventoryMarker','updateOrderStatus','acceptOnlineOrder','createManagerApproval','consumeManagerApproval','manageOrderArchive','reviewDiscrepancy','reopenDiscrepancy','managePettyVoucher','retireRevolvingFund','getUndepositedControlSnapshot','repairClosedShiftTurnover','reconcileUndepositedCustody','legacyOwnerCapitalReset','runFinancialClose','reopenFinancialCloseOnMovement','reopenFinancialCloseOnOrderChange','repairReversedPayoutDeposit','setUndepositedOpeningBalance','repairPettyVoucherFinancial','archiveActivityLog','syncOfflinePosSale','createOnlineOrder','getPaymentProof','confirmOrderReceived','ensureActiveOrders','syncActiveOrderProjection','pruneClosedShiftOrders','syncPublicOrderStatus','validateRecipeDefinition','onOrderFinancialPosting','preservePostedOrderOnDelete','onShiftPayInsFinancial','onShiftPayOutsFinancial','onShiftOpenFinancial','ensureShiftReference','onShiftCloseFinancial','repairPettyExpenseClassifications','onPettyVoucherFinancial','onPettyReplenishmentFinancial','manageFixedAsset','postFinancialCommand','reconcilePurchasePayable','managePurchaseCorrection','correctPlatformPresettlement','settlePlatformPayout','reversePlatformPayout','setPlatformPayoutDate','processOrderAdjustment','recordPlatformCatchup','ensureFinancialLedger','manageBooksAccount','manageChartAccount','autoRepairFinanceDateOnCashLedgerCreate','repairFinanceDates','auditFinancialControls','postInventoryMovements','ensureInventoryLedger','onOrderFinalize','onOrderInventoryReversal','pruneEphemeralNodes','autoCompleteReadyOnlineOrders','backupDatabaseDaily'
