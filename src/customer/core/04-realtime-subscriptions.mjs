@@ -7,7 +7,6 @@ onValue(categoriesRef,snap=>{
   rebuildTabs();
   renderMenuSection();
   renderOrderSection();
-  if(adminLoggedIn){buildAvail();renderCategoryManager();}
 });
 
 function migrateItemOptions(){
@@ -33,8 +32,6 @@ onValue(optionGroupsRef,snap=>{
     set(optionGroupsRef,DEFAULT_OPTION_GROUPS).catch(function(){});
   }
   migrateItemOptions();
-  if(adminLoggedIn)renderOptionManager();
-  renderNewItemOptionChecklist();
 });
 
 onValue(menuRef,snap=>{
@@ -99,8 +96,6 @@ onValue(menuRef,snap=>{
   migrateItemOptions();
   renderMenuSection();
   renderOrderSection();
-  if(adminLoggedIn){buildAvail();renderOptionManager();}
-  if(staffLoggedIn)renderStaffMenu();
 });
 
 // ── NEW ORDER ALERTS (admin/staff) ──────────────────────────
@@ -186,7 +181,7 @@ function triggerReadyAlert(o){
 function checkMyReadyOrders(){
   try{
     myOrderIds.forEach(function(id){
-      var o=myOrdersMap[id]||adminOrdersMap[id];if(!o)return;
+      var o=myOrdersMap[id];if(!o)return;
       if(o.status==='Ready'){
         if(!_ordersSeeded){_readyAlerted.add(id);}
         else if(!_readyAlerted.has(id)){_readyAlerted.add(id);_saveReadyAlerted();triggerReadyAlert(o);}
@@ -209,9 +204,8 @@ onValue(reviewsRef,snap=>{
     set(reviewsRef,seed);reviewsMap=seed;
   }
   renderPublicReviews();
-  if(adminLoggedIn||staffLoggedIn)renderAdminReviews();
 });
-onValue(availRef,snap=>{const s=snap.val();if(s)Object.keys(s).forEach(k=>availability[k]=s[k]);renderMenuSection();renderOrderSection();if(adminLoggedIn)buildAvail();});
+onValue(availRef,snap=>{const s=snap.val();if(s)Object.keys(s).forEach(k=>availability[k]=s[k]);renderMenuSection();renderOrderSection();});
 onValue(paymentRef,snap=>{
   const p=snap.val();if(!p)return;
   if(p.gcashNum)document.getElementById('gcashNum').textContent=p.gcashNum;
@@ -297,4 +291,4 @@ onValue(paymentRef,snap=>{
     if(b4row)b4row.style.display=p.bank4Enabled!==false?'block':'none';
   }else{if(b4row)b4row.style.display='none';}
 });
-onValue(calBlocksRef,snap=>{calBlocks=snap.val()||{};renderCustomerCalendar();if(adminLoggedIn)renderAdminCalendar();});
+onValue(calBlocksRef,snap=>{calBlocks=snap.val()||{};renderCustomerCalendar();});

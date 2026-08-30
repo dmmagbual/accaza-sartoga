@@ -1,6 +1,6 @@
 
 // State
-let categoriesMap={},menuItemsMap={},adminOrdersMap={},archivedOrdersMap={},archivedResMap={},adminResMap={},feedbacksMap={},reviewsMap={},availability={},cart={};
+let categoriesMap={},menuItemsMap={},adminResMap={},reviewsMap={},availability={},cart={};
 let publicOrdersOpen=null,customerLiveConnected=null;
 function onlineOrderingAvailable(){return publicOrdersOpen&&customerLiveConnected&&!!auth.currentUser&&!customerAuthProblem;}
 function syncPlaceOrderButton(){
@@ -35,7 +35,7 @@ let knownOrderIds=null,unseenOrders=0,orderChimeTimer=null,audioCtx=null;
 let orderType='pickup',paymentType='gcash',contactMethod='whatsapp',resContactMethod='whatsapp';
 let myOrderIds=JSON.parse(localStorage.getItem('accaza_my_orders')||'[]');
 let myReservationIds=JSON.parse(localStorage.getItem('accaza_my_reservations')||'[]');
-let adminLoggedIn=false,calBlocks={};
+let calBlocks={};
 let calYear,calMonth,selectedDate=null,selectedTime=null;
 let adminCalYear,adminCalMonth,adminSelectedDate=null;
 let chatOpen=false,chatStarted=false;

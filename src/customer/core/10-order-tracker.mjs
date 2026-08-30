@@ -2,7 +2,7 @@
 // ── ORDER TRACKER ──
 const statusConfig={Pending:{icon:'🟡',color:'#856404',bg:'#fef3cd',msg:'Your order has been received and is awaiting confirmation from our staff.'},Confirmed:{icon:'🔵',color:'#0c5460',bg:'#d1ecf1',msg:'Your order has been confirmed. We will start preparing it soon!'},Preparing:{icon:'🟠',color:'#664d03',bg:'#fff3cd',msg:'Your order is currently being prepared. ☕'},Ready:{icon:'🟢',color:'#155724',bg:'#d4edda',msg:'Your order is now ready!'},Completed:{icon:'✅',color:'#155724',bg:'#d4edda',msg:'Your order is complete — thank you! ☕'},Received:{icon:'✅',color:'#1b5e20',bg:'#c8e6c9',msg:'You have confirmed receipt. Thank you! ☕🐻'},Rejected:{icon:'🔴',color:'#721c24',bg:'#f8d7da',msg:'Unfortunately, we could not verify your payment in our account, so this order has been rejected. If you believe this is a mistake, please contact us at 0927 692 4831 with your payment reference.'}};
 function renderCustomerOrders(){
-  const myOrders=myOrderIds.map(id=>myOrdersMap[id]||adminOrdersMap[id]).filter(Boolean);
+  const myOrders=myOrderIds.map(id=>myOrdersMap[id]).filter(Boolean);
   const active=myOrders.filter(o=>o.status!=='Completed'&&o.status!=='Received'&&!o.receivedByCustomer);
   const el=document.getElementById('activeOrdersList');
   if(!active.length){el.innerHTML='<div style="text-align:center;padding:3rem;color:var(--tl);"><p style="font-size:2.5rem;margin-bottom:0.75rem;">☕</p><p style="font-size:0.95rem;font-weight:500;color:var(--bd);margin-bottom:0.3rem;">No active orders yet</p><p style="font-size:0.85rem;">Place an order above and it will appear here!</p></div>';return;}
