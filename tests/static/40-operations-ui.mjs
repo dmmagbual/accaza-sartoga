@@ -26,6 +26,7 @@ if(!precache.includes('/assets/js/admin/offline-queue.js'))fail('Phase 5B durabl
 
 const formDialogSource=fs.readFileSync(path.join(root,'assets','js','admin','form-dialog.js'),'utf8');
 const registerSource=fs.readFileSync(path.join(root,'assets','js','admin','register.js'),'utf8');
+if(!offlineQueueSource.includes('function closeReadiness()')||!registerSource.includes('async function continuityReadyForClose()')||(registerSource.match(/await continuityReadyForClose\(\)/g)||[]).length!==2)fail('Phase 15 shift close does not verify the durable queue before counting and final persistence');
 const undepositedSource=fs.readFileSync(path.join(root,'assets','js','admin','undeposited.js'),'utf8');
 if(adminHtml.indexOf('assets/js/admin/form-dialog.js')<0||adminHtml.indexOf('assets/js/admin/form-dialog.js')>adminHtml.indexOf('assets/js/admin/core.mjs'))fail('Phase 5D form dialog must load before admin core');
 if(!formDialogSource.includes('global.AccazaFormDialog=')||!formDialogSource.includes("setAttribute('role','dialog')")||!formDialogSource.includes("setAttribute('aria-modal','true')")||!formDialogSource.includes('data-afd-error'))fail('Phase 5D accessible validated form service is incomplete');
