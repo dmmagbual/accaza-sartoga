@@ -14,8 +14,8 @@
   "builds": {
     "admin": 393,
     "books": 77,
-    "customer": 62,
-    "serviceWorkerCache": 341
+    "customer": 63,
+    "serviceWorkerCache": 343
   },
   "authoritativeFiles": [
     "admin.html",
@@ -156,6 +156,7 @@
     "tests/html-page-drift-check.mjs",
     "tests/static-check.mjs",
     "tests/static-suite-architecture-check.mjs",
+    "tests/customer-startup-check.mjs",
     "tests/static/00-context.mjs",
     "tests/static/10-syntax-rendering.mjs",
     "tests/static/20-access-customer.mjs",
@@ -164,6 +165,7 @@
     "tests/static/50-executable-regressions.mjs",
     "tests/static/60-finance-books.mjs",
     "tests/static/70-xss-reconciliation-summary.mjs",
+    "tests/e2e/customer-firebase-fixture.mjs",
     "tests/e2e/smoke.spec.mjs",
     "docs/PHASE_2_MODULE_MAP.md",
     "docs/PHASE_3_HTML_MAP.md",

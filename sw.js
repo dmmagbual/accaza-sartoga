@@ -1,9 +1,11 @@
-/* Firebase Cloud Messaging — background push handler */
-importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
-firebase.initializeApp({apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"});
-const fcm=firebase.messaging();
-fcm.onBackgroundMessage(function(payload){
+/* Firebase Cloud Messaging — optional background push handler. Push CDN failures
+   must not prevent the offline app shell from installing. */
+try{
+  importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
+  importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
+  if(typeof firebase!=='undefined'&&firebase.messaging){
+    firebase.initializeApp({apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"});
+    firebase.messaging().onBackgroundMessage(function(payload){
   const d=(payload&&payload.data)||{};
   self.registration.showNotification(d.title||'Accaza Coffee House',{
     body:d.body||'',
@@ -17,7 +19,11 @@ fcm.onBackgroundMessage(function(payload){
     data:{link:(d.link||'/')},
     actions:[{action:'view',title:'View order'}]
   });
-});
+    });
+  }
+}catch(e){
+  /* Continue with the installable/offline shell when push scripts are unavailable. */
+}
 self.addEventListener('notificationclick',function(e){
   e.notification.close();
   const link=(e.notification.data&&e.notification.data.link)||'/';
@@ -28,7 +34,7 @@ self.addEventListener('notificationclick',function(e){
 });
 
 /* Versioned customer + POS app shells. Transactions remain online-only. */
-const CACHE='accaza-v341';
+const CACHE='accaza-v343';
 const ASSETS=[
   '/','/index.html','/admin.html','/books.html','/manifest.json','/manifest-admin.json',
   '/favicon.ico','/favicon_32x32.png','/favicon_180x180.png','/favicon_192x192.png','/favicon_512x512.png',

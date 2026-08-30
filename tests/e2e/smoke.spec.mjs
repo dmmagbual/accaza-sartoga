@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {installCustomerFirebaseFixture} from './customer-firebase-fixture.mjs';
 
 test.beforeEach(async({page})=>{await page.route(/^https?:\/\/(?!127\.0\.0\.1:4173)/,route=>route.abort());});
 
@@ -22,6 +23,34 @@ test('customer page has usable landmarks, labels, and keyboard focus',async({pag
   await expect(page.locator(':focus')).not.toHaveCount(0);
   await expect(page.locator('img:not([alt])')).toHaveCount(0);
   await expect(page.locator('a[href*="PLACEHOLDER"]')).toHaveCount(0);
+});
+
+test('customer live runtime initializes ordering, tracker, reservations, and reviews',async({page})=>{
+  await installCustomerFirebaseFixture(page);
+  const pageErrors=[];
+  page.on('pageerror',error=>pageErrors.push(error.message));
+  await page.goto('/',{waitUntil:'domcontentloaded'});
+  await expect(page.locator('meta[name="accaza-customer-build"]')).toHaveAttribute('content','63');
+  await expect(page.locator('#orderServiceHeadline')).toHaveText('OPEN FOR ONLINE ORDERS',{timeout:20000});
+  await expect(page.locator('#menuGrid .menu-card').first()).toBeVisible({timeout:20000});
+  await page.locator('#orderTabsRow .otab').first().click();
+  const firstOrderItem=page.locator('#orderItemList .item-row').first();
+  await expect(firstOrderItem).toBeVisible({timeout:20000});
+  await firstOrderItem.locator('.qty-btn').click();
+  await expect(page.locator('#customizePopup')).toHaveClass(/show/);
+  await page.locator('#customizePopup .cust-option[data-action="size"]').first().click();
+  await page.locator('#btnAddToCart').click();
+  await expect(page.locator('#cartItems')).toContainText('Cafe Latte');
+  await expect(page.locator('.btn-place-order')).toBeEnabled();
+  await expect(page.locator('#activeOrdersList')).toContainText('ORDER-TEST');
+  await expect(page.locator('#activeOrdersList')).toContainText('Ready');
+  await expect(page.locator('#activeOrdersList .confirm-recv-btn')).toBeVisible();
+  await expect(page.locator('#calGrid .cal-day')).not.toHaveCount(0,{timeout:20000});
+  await expect(page.locator('.review-card').first()).toBeVisible({timeout:20000});
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href','/manifest.json');
+  await expect(page.locator('script[src="assets/js/pwa-register.js"]')).toHaveCount(1);
+  await expect.poll(async()=>page.evaluate(async()=>!!(await navigator.serviceWorker.getRegistration('/'))),{timeout:10000}).toBeTruthy();
+  expect(pageErrors).toEqual([]);
 });
 
 test('admin shell carries the coordinated release marker',async({page})=>{
