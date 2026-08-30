@@ -3,8 +3,10 @@ import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
 import {spawnSync} from 'node:child_process';
+import {createRequire} from 'node:module';
 
 const root=process.cwd();
+const require=createRequire(import.meta.url);
 const htmlFiles=['admin.html','index.html'];
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'accaza-static-check-'));
 let checked=0;
@@ -757,7 +759,17 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   const poisonedText=poisonedEvents.filter(event=>event.type==='text').map(event=>event.text).join('\n');
   if(!poisonedText.includes(ticketPayload))fail('kitchen-ticket print path dropped order data instead of escaping it');
 
+  const reconciliation=require(path.join(root,'functions','lib','reconciliation-controls.js'));
+  const rules=reconciliation.DEFAULT_ACCOUNT_RULES,legacyJournal={old_a:{date:'2026-08-29',lines:[{code:'1900',debit:0,credit:100}]},old_b:{date:'2026-08-30',lines:[{code:'1900',debit:25,credit:0}]},new_a:{date:'2026-08-31',lines:[{code:'1900',debit:10,credit:0}]}},before=JSON.stringify(legacyJournal);
+  const controlIssues=reconciliation.controlAccountIssues(legacyJournal,rules);
+  if(controlIssues.length!==1||controlIssues[0].code!=='1900'||controlIssues[0].balance!==10||controlIssues[0].count!==1)fail('Control audit did not isolate post-cutover clearing activity');
+  if(JSON.stringify(legacyJournal)!==before)fail('Read-only reconciliation audit changed journal history or balances');
+  if(reconciliation.controlAccountIssues({cash:{date:'2026-08-31',lines:[{code:'1000',debit:500,credit:0}]}},rules).length)fail('Normal balance-sheet accounts were incorrectly treated as zero-balance clearing accounts');
+  if(reconciliation.operationalDiscrepancy({kind:'cash',status:'open',date:'2026-08-29',variance:-50}))fail('Closed legacy discrepancy resurfaced in the server audit');
+  if(!reconciliation.operationalDiscrepancy({kind:'cash',status:'open',date:'2026-08-30',variance:-120})||!reconciliation.operationalDiscrepancy({kind:'cash',status:'open',date:'2026-08-31',variance:25}))fail('Protected or post-cutover discrepancy was hidden from the server audit');
+
   console.log(`PASS: ${checked} executable HTML and external scripts parsed successfully.`);
+  console.log('PASS: shared reconciliation controls isolate legacy history, retain new exceptions, and remain rebuild-safe.');
   console.log('PASS: customer-field rendering containment checks passed.');
   console.log('PASS: database rule structure and Release 1A limits are present.');
   console.log('PASS: Release 1B authentication and role-enforcement guards are present.');
