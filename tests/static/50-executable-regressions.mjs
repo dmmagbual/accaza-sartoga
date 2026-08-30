@@ -1,0 +1,57 @@
+// Executable unit, integration, idempotency, and reconciliation checks.
+export function run(context){
+const {fs,path,vm,spawnSync,root,require,htmlFiles,temp,state,fail,section,adminScripts,customerScripts,booksScripts,adminStyles,customerStyles,adminHtml,customerHtml,booksPageHtml,adminSource,customerSource,booksSource,financialSource}=context;
+const fn=spawnSync(process.execPath,['--check',path.join(root,'functions','index.js')],{encoding:'utf8'});
+if(fn.status!==0)fail(`functions/index.js failed syntax check:\n${fn.stderr||fn.stdout}`);
+const orderStatusCheck=spawnSync(process.execPath,[path.join(root,'tests','order-status-command-check.mjs')],{encoding:'utf8',cwd:root});
+if(orderStatusCheck.status!==0)fail(`Phase 7A order-status command checks failed:\n${orderStatusCheck.stderr||orderStatusCheck.stdout}`);
+const operationalExceptionsCheck=spawnSync(process.execPath,[path.join(root,'tests','operational-exceptions-check.mjs')],{encoding:'utf8',cwd:root});
+if(operationalExceptionsCheck.status!==0)fail(`Phase 7B operational exception checks failed:\n${operationalExceptionsCheck.stderr||operationalExceptionsCheck.stdout}`);
+const managerApprovalCheck=spawnSync(process.execPath,[path.join(root,'tests','manager-approval-claim-check.mjs')],{encoding:'utf8',cwd:root});
+if(managerApprovalCheck.status!==0)fail(`Privileged approval claim checks failed:\n${managerApprovalCheck.stderr||managerApprovalCheck.stdout}`);
+const approvalMatrixCheck=spawnSync(process.execPath,[path.join(root,'tests','approval-matrix-check.mjs')],{encoding:'utf8',cwd:root});
+if(approvalMatrixCheck.status!==0)fail(`Privileged approval matrix checks failed:\n${approvalMatrixCheck.stderr||approvalMatrixCheck.stdout}`);
+const financialCloseCheck=spawnSync(process.execPath,[path.join(root,'tests','financial-close-check.cjs')],{encoding:'utf8',cwd:root});
+if(financialCloseCheck.status!==0)fail(`Financial close checks failed:\n${financialCloseCheck.stderr||financialCloseCheck.stdout}`);
+const financialCloseUi=booksSource;for(const marker of ["x.measurement==='status'","Matched open balance","GL '+peso(c.glBalance)","non-monetary controls are never displayed as pesos","<th class=\"num\">Result</th>"])if(!financialCloseUi.includes(marker))fail(`Typed Financial Close presentation safeguard missing: ${marker}`);
+
+const pricing=spawnSync(process.execPath,[path.join(root,'tests','order-pricing-check.mjs')],{encoding:'utf8',cwd:root});
+if(pricing.status!==0)fail(`server pricing checks failed:\n${pricing.stderr||pricing.stdout}`);
+const proofCheck=spawnSync(process.execPath,[path.join(root,'tests','payment-proof-check.mjs')],{encoding:'utf8',cwd:root});
+if(proofCheck.status!==0)fail(`payment-proof checks failed:\n${proofCheck.stderr||proofCheck.stdout}`);
+const activeOrdersCheck=spawnSync(process.execPath,[path.join(root,'tests','active-orders-check.mjs')],{encoding:'utf8',cwd:root});
+if(activeOrdersCheck.status!==0)fail(`active-order checks failed:\n${activeOrdersCheck.stderr||activeOrdersCheck.stdout}`);
+const moduleLoaderCheck=spawnSync(process.execPath,[path.join(root,'tests','module-loader-check.mjs')],{encoding:'utf8',cwd:root});
+if(moduleLoaderCheck.status!==0)fail(`Release 2D module-loader checks failed:\n${moduleLoaderCheck.stderr||moduleLoaderCheck.stdout}`);
+const inventoryLedgerCheck=spawnSync(process.execPath,[path.join(root,'tests','inventory-ledger-check.mjs')],{encoding:'utf8',cwd:root});
+if(inventoryLedgerCheck.status!==0)fail(`Release 3A inventory-ledger checks failed:\n${inventoryLedgerCheck.stderr||inventoryLedgerCheck.stdout}`);
+const costingEngineCheck=spawnSync(process.execPath,[path.join(root,'tests','costing-engine-check.mjs')],{encoding:'utf8',cwd:root});
+if(costingEngineCheck.status!==0)fail(`Release 3B costing-engine checks failed:\n${costingEngineCheck.stderr||costingEngineCheck.stdout}`);
+const financialLedgerCheck=spawnSync(process.execPath,[path.join(root,'tests','financial-ledger-check.mjs')],{encoding:'utf8',cwd:root});
+if(financialLedgerCheck.status!==0)fail(`Release 3C financial-ledger checks failed:\n${financialLedgerCheck.stderr||financialLedgerCheck.stdout}`);
+const checkoutWorkflowCheck=spawnSync(process.execPath,[path.join(root,'tests','checkout-workflows-check.mjs')],{encoding:'utf8',cwd:root});
+if(checkoutWorkflowCheck.status!==0)fail(`Release 6B checkout workflow checks failed:\n${checkoutWorkflowCheck.stderr||checkoutWorkflowCheck.stdout}`);
+const offlineRecoveryCheck=spawnSync(process.execPath,[path.join(root,'tests','offline-sync-recovery-check.mjs')],{encoding:'utf8',cwd:root});
+if(offlineRecoveryCheck.status!==0)fail(`Release 6B offline recovery checks failed:\n${offlineRecoveryCheck.stderr||offlineRecoveryCheck.stdout}`);
+const booksBridgeCheck=spawnSync(process.execPath,[path.join(root,'tests','books-bridge-check.mjs')],{encoding:'utf8',cwd:root});
+if(booksBridgeCheck.status!==0)fail(`Accaza Books POS bridge checks failed:\n${booksBridgeCheck.stderr||booksBridgeCheck.stdout}`);
+const salesAuthorityCheck=spawnSync(process.execPath,[path.join(root,'tests','sales-authority-check.mjs')],{encoding:'utf8',cwd:root});
+if(salesAuthorityCheck.status!==0)fail(`Shared Admin sales-authority checks failed:\n${salesAuthorityCheck.stderr||salesAuthorityCheck.stdout}`);
+const salesHistoryAutoloadCheck=spawnSync(process.execPath,[path.join(root,'tests','sales-history-autoload-check.mjs')],{encoding:'utf8',cwd:root});
+if(salesHistoryAutoloadCheck.status!==0)fail(`Sales History automatic completeness check failed:\n${salesHistoryAutoloadCheck.stderr||salesHistoryAutoloadCheck.stdout}`);
+const overviewHistoryAutoloadCheck=spawnSync(process.execPath,[path.join(root,'tests','overview-history-autoload-check.mjs')],{encoding:'utf8',cwd:root});
+if(overviewHistoryAutoloadCheck.status!==0)fail(`Overview automatic completeness check failed:\n${overviewHistoryAutoloadCheck.stderr||overviewHistoryAutoloadCheck.stdout}`);
+const overviewColdLoadCheck=spawnSync(process.execPath,[path.join(root,'tests','overview-cold-load-check.mjs')],{encoding:'utf8',cwd:root});
+if(overviewColdLoadCheck.status!==0)fail(`Overview cold-load check failed:\n${overviewColdLoadCheck.stderr||overviewColdLoadCheck.stdout}`);
+const overviewSelfHealCheck=spawnSync(process.execPath,[path.join(root,'tests','overview-selfheal-reconciliation-check.mjs')],{encoding:'utf8',cwd:root});
+if(overviewSelfHealCheck.status!==0)fail('Overview self-heal reconciliation check failed:\n'+(overviewSelfHealCheck.stderr||overviewSelfHealCheck.stdout));
+const overviewAuthRetryCheck=spawnSync(process.execPath,[path.join(root,'tests','overview-auth-retry-check.mjs')],{encoding:'utf8',cwd:root});
+if(overviewAuthRetryCheck.status!==0)fail('Overview authenticated-retry check failed:\n'+(overviewAuthRetryCheck.stderr||overviewAuthRetryCheck.stdout));
+const archiveOrderSortCheck=spawnSync(process.execPath,[path.join(root,'tests','archive-order-sort-check.mjs')],{encoding:'utf8',cwd:root});
+if(archiveOrderSortCheck.status!==0)fail(`Archived-order sorting checks failed:\n${archiveOrderSortCheck.stderr||archiveOrderSortCheck.stdout}`);
+const inventoryBooksReconciliationCheck=spawnSync(process.execPath,[path.join(root,'tests','inventory-books-reconciliation-check.mjs')],{encoding:'utf8',cwd:root});
+if(inventoryBooksReconciliationCheck.status!==0)fail(`Inventory-to-Books reconciliation checks failed:\n${inventoryBooksReconciliationCheck.stderr||inventoryBooksReconciliationCheck.stdout}`);
+const booksStatementReconciliationCheck=spawnSync(process.execPath,[path.join(root,'tests','books-statement-reconciliation-check.mjs')],{encoding:'utf8',cwd:root});
+if(booksStatementReconciliationCheck.status!==0)fail(`Books statement-to-ledger reconciliation checks failed:\n${booksStatementReconciliationCheck.stderr||booksStatementReconciliationCheck.stdout}`);
+Object.assign(context,{fn,orderStatusCheck,operationalExceptionsCheck,managerApprovalCheck,approvalMatrixCheck,financialCloseCheck,financialCloseUi,pricing,proofCheck,activeOrdersCheck,moduleLoaderCheck,inventoryLedgerCheck,costingEngineCheck,financialLedgerCheck,checkoutWorkflowCheck,offlineRecoveryCheck,booksBridgeCheck,salesAuthorityCheck,salesHistoryAutoloadCheck,overviewHistoryAutoloadCheck,overviewColdLoadCheck,overviewSelfHealCheck,overviewAuthRetryCheck,archiveOrderSortCheck,inventoryBooksReconciliationCheck,booksStatementReconciliationCheck});
+}
