@@ -12,8 +12,18 @@ function openShift(){
     var writes={};writes['shifts/'+id]=rec;writes.posActiveShift=active;await a.update(a.ref(a.db),writes);window.__posLog('shift-open',id,'float '+peso(float)+(mismatch?' · fixed-float exception approved':''));
   }).catch(function(){});
 }
-function closeShift(){
+async function continuityReadyForClose(){
+  if(window.__online===false)throw new Error('The shift cannot close while offline. Keep the shift open until the connection returns and every sale is synchronized.');
+  if(!window.AccazaOfflineQueue||!window.AccazaOfflineQueue.summary)throw new Error('The durable transaction queue is unavailable. Refresh the POS before closing the shift.');
+  if(window.__flushOfflineQueue)await window.__flushOfflineQueue();
+  var state=await window.AccazaOfflineQueue.summary(),outstanding=Number(state.pending||0)+Number(state.syncing||0)+Number(state.failed||0);
+  if(outstanding)throw new Error('The shift cannot close: '+outstanding+' sale(s) still require synchronization. Open the sync queue and retry them first.');
+  if(window.__online===false)throw new Error('The connection was lost during the close check. The shift remains open.');
+  return state;
+}
+async function closeShift(){
   if(!activeShift)return;var shift=activeShift;
+  try{await continuityReadyForClose();}catch(error){alert(String(error&&error.message||error));if(window.__showOfflineQueue)window.__showOfflineQueue('Shift close is blocked until all sales are safely synchronized.');return;}
   var recon=denomTrackingOnR()&&shift.drawer;
   var mask=document.createElement('div'); mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
   document.body.appendChild(mask);
@@ -60,6 +70,7 @@ function closeShift(){
   renderBlind();
 }
 async function finalizeClose(shift,counted,counts){
+  try{await continuityReadyForClose();}catch(error){alert(String(error&&error.message||error)+' Your cash count was not submitted; the shift remains open.');return;}
   var saleList;try{saleList=await loadShiftTransactions(shift.id);}catch(_e){saleList=shiftSales(shift);}
   var z=computeZ(shift,saleList),closedAt=Date.now();z.countedCash=counted;z.variance=Math.round((counted-z.expectedCash)*100)/100;z.closeCount=counts;z.expectedDrawer=shift.drawer||null;z.cashToSettle=Math.max(0,Math.round((counted-z.retainedFloat)*100)/100);
   z.actualFloatRetained=Math.max(0,Math.min(counted,z.retainedFloat));z.floatShortfall=Math.max(0,Math.round((z.retainedFloat-z.actualFloatRetained)*100)/100);
