@@ -1,12 +1,12 @@
 /* ============================================================ BUSINESS INTELLIGENCE (READ ONLY) ============================================================ */
 function biDate(value){
   if(value==null)return '';
-  if(typeof value==='number'||/^\d{11,}$/.test(String(value))){var d=new Date(Number(value));return isNaN(d.getTime())?'':d.toISOString().slice(0,10);}
+  if(typeof value==='number'||/^\d{11,}$/.test(String(value))){var d=new Date(Number(value));return isNaN(d.getTime())?'':window.AccazaDate.key(d);}
   return String(value).slice(0,10);
 }
-function biShift(date,days){var d=new Date(date+'T12:00:00');d.setDate(d.getDate()+days);return d.toISOString().slice(0,10);}
-function biShiftYear(date,years){var d=new Date(date+'T12:00:00'),month=d.getMonth();d.setFullYear(d.getFullYear()+years);if(d.getMonth()!==month)d.setDate(0);return d.toISOString().slice(0,10);}
-function biRanges(){var b=periodBounds(),days=Math.max(1,Math.round((new Date(b.end+'T12:00:00')-new Date(b.start+'T12:00:00'))/86400000)+1);return{current:{start:b.start,end:b.end},previous:{start:biShift(b.start,-days),end:biShift(b.start,-1)},year:{start:biShiftYear(b.start,-1),end:biShiftYear(b.end,-1)},days:days};}
+function biShift(date,days){var d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);}
+function biShiftYear(date,years){var d=new Date(date+'T12:00:00Z'),month=d.getUTCMonth();d.setUTCFullYear(d.getUTCFullYear()+years);if(d.getUTCMonth()!==month)d.setUTCDate(0);return d.toISOString().slice(0,10);}
+function biRanges(){var b=periodBounds(),days=Math.max(1,Math.round((new Date(b.end+'T12:00:00Z')-new Date(b.start+'T12:00:00Z'))/86400000)+1);return{current:{start:b.start,end:b.end},previous:{start:biShift(b.start,-days),end:biShift(b.start,-1)},year:{start:biShiftYear(b.start,-1),end:biShiftYear(b.end,-1)},days:days};}
 function biEntries(range){return ENTRIES().filter(function(e){var d=biDate(e.date);return d&&d>=range.start&&d<=range.end;});}
 function biAccountTotal(type,range,matcher){var ents=biEntries(range);return r2(DB.accounts.filter(function(a){return a.type===type&&(!matcher||matcher(a));}).reduce(function(sum,a){return sum+normalBalanceFor(a.code,ents);},0));}
 function biPeriod(range){
