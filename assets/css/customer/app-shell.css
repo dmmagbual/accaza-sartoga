@@ -1,0 +1,21 @@
+#appTabBar{display:none;}
+.app-mode #appTabBar{display:flex;position:fixed;top:auto;bottom:0;left:0;right:0;width:auto;height:auto;z-index:9000;background:#19241b;border-top:1px solid rgba(176,141,87,0.35);justify-content:space-around;padding:0.4rem 0 calc(0.4rem + env(safe-area-inset-bottom));}
+#appTabBar a{display:flex;flex-direction:column;align-items:center;gap:0.4rem;color:#e0d4c6;text-decoration:none;font-size:1.7rem;flex:1;padding:0.3rem 0;font-family:'Inter',sans-serif;transition:color 0.15s;}
+#appTabBar a span{font-size:0.87rem;letter-spacing:0.06em;text-transform:uppercase;opacity:0.85;}
+#appTabBar a.active{color:#b08d57;}
+.app-mode body{padding-bottom:95px;}
+.app-mode html,html.app-mode{scroll-padding-bottom:95px;}
+.app-mode #about,.app-mode #reel,.app-mode #reviews,.app-mode #feedback,.app-mode #gallery{display:none!important;}
+.app-mode .nav-links,.app-mode .hamburger{display:none!important;}
+.app-mode .admin-footer-link,.app-mode .footer-links{display:none!important;}
+.app-mode .chat-bubble,.app-mode .chat-window{display:none!important;}
+.app-mode #reserve>*{display:none!important;}
+.app-mode #reserve .app-reserve-note{display:block!important;}
+.pay-qr-app{display:none;}
+.app-mode .pay-qr-app{display:block!important;}
+.app-mode #qrSection{display:none!important;}
+.menu-card.clickable{cursor:pointer;transition:transform 0.15s,box-shadow 0.15s,border-color 0.15s;}
+.menu-card.clickable:hover{transform:translateY(-3px);box-shadow:0 8px 20px rgba(0,0,0,0.3);border-color:rgba(176,141,87,0.55);}
+.tap-hint{font-size:0.68rem;color:#b08d57;margin-top:0.45rem;display:block;letter-spacing:0.08em;text-transform:uppercase;}
+.item-glow{border-color:#b08d57!important;animation:itemGlow 1.1s ease-in-out 2;}
+@keyframes itemGlow{0%,100%{box-shadow:0 0 0 0 rgba(176,141,87,0);}50%{box-shadow:0 0 0 5px rgba(176,141,87,0.55);}}

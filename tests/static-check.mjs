@@ -27,12 +27,25 @@ function localScripts(folder){
     target:path.join(dir,name)
   }));
 }
+function localStyles(folder){
+  const dir=path.join(root,folder);
+  return fs.readdirSync(dir).filter(name=>/\.css$/i.test(name)).sort().map(name=>({
+    name,
+    source:fs.readFileSync(path.join(dir,name),'utf8'),
+    target:path.join(dir,name)
+  }));
+}
 const adminScripts=localScripts(path.join('assets','js','admin'));
 const customerScripts=localScripts(path.join('assets','js','customer'));
+const booksScripts=localScripts(path.join('assets','js','books'));
+const adminStyles=localStyles(path.join('assets','css','admin'));
+const customerStyles=localStyles(path.join('assets','css','customer'));
 const adminHtml=fs.readFileSync(path.join(root,'admin.html'),'utf8');
 const customerHtml=fs.readFileSync(path.join(root,'index.html'),'utf8');
-const adminSource=adminHtml+'\n'+adminScripts.map(item=>item.source).join('\n');
-const customerSource=customerHtml+'\n'+customerScripts.map(item=>item.source).join('\n');
+const booksPageHtml=fs.readFileSync(path.join(root,'books.html'),'utf8');
+const adminSource=adminHtml+'\n'+adminScripts.map(item=>item.source).join('\n')+'\n'+adminStyles.map(item=>item.source).join('\n');
+const customerSource=customerHtml+'\n'+customerScripts.map(item=>item.source).join('\n')+'\n'+customerStyles.map(item=>item.source).join('\n');
+const booksSource=booksPageHtml+'\n'+booksScripts.map(item=>item.source).join('\n')+'\n'+fs.readFileSync(path.join(root,'assets','css','books.css'),'utf8');
 const financialSource=fs.readFileSync(path.join(root,'functions','lib','financial.js'),'utf8');
 
 try{
@@ -162,7 +175,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!functionsSource.includes('exports.pruneClosedShiftOrders = onValueWritten'))fail('closed-shift projection cleanup trigger missing');
   if(!functionsSource.includes('exports.syncPublicOrderStatus = onValueWritten')||!functionsSource.includes('ref("/publicOrderStatus").set({acceptingOrders'))fail('public order availability projection missing');
   if(!customerSource.includes("ref(db,'publicOrderStatus')")||!customerSource.includes("OPEN FOR ONLINE ORDERS")||!customerHtml.includes('id="orderServiceStatus"'))fail('customer online-order status banner missing');
-  if(!customerHtml.includes('orderStatusGreenBlink 1.15s step-end infinite')||!customerHtml.includes('orderStatusRedBlink 1.15s step-end infinite'))fail('customer order status dots are not configured to blink');
+  if(!customerSource.includes('orderStatusGreenBlink 1.15s step-end infinite')||!customerSource.includes('orderStatusRedBlink 1.15s step-end infinite'))fail('customer order status dots are not configured to blink');
   if(!customerSource.includes("'Checking order availability…':'Online Orders Closed'")||!customerHtml.includes('disabled aria-disabled="true">Checking order availability'))fail('Place Order is not safely disabled while online ordering is closed or unknown');
   if(!customerSource.includes("publicOrdersOpen=null,customerLiveConnected=null")||!customerSource.includes("'CHECKING ORDER AVAILABILITY'")||!customerHtml.includes('id="orderServiceHeadline">CHECKING ORDER AVAILABILITY'))fail('Customer startup can still misreport an unknown live status as closed');
   if(!functionsSource.includes('if (!shift || shift.status === "closed") throw new HttpsError("failed-precondition", "Online orders are closed right now.'))fail('server does not reject online orders without an open shift');
@@ -178,7 +191,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   for(const marker of ['destinationAccountId','payout_deposit_${payoutId}','platform_payout_auto_deposit','depositMovementId:payoutRecord.depositMovementId'])if(!functionsSource.includes(marker))fail(`Direct platform payout deposit marker missing: ${marker}`);
   for(const marker of ['Deposited directly to','select receiving account','payoutCashAccounts','Bank transaction / payout reference','platformStatementReference:v.platformStatementReference','depositReference:v.depositReference'])if(!adminSource.includes(marker))fail(`Selectable payout destination or reference marker missing: ${marker}`);
   for(const marker of ['if(actual>0&&!depositReference)','The bank transaction or payout reference is required.','reference=depositReference','platformStatementReference:platformStatementReference||null'])if(!functionsSource.includes(marker))fail(`Settlement-time payout reference safeguard missing: ${marker}`);
-  if(!functionsSource.includes('["1021","FoodPanda GCash Wallet"')||!fs.readFileSync(path.join(root,'books.html'),'utf8').includes('["1021","FoodPanda GCash Wallet"'))fail('Dedicated FoodPanda GCash chart account is missing');
+  if(!functionsSource.includes('["1021","FoodPanda GCash Wallet"')||!booksSource.includes('["1021","FoodPanda GCash Wallet"'))fail('Dedicated FoodPanda GCash chart account is missing');
   if(!booksBridgeSource.includes('asset:platform_clearing:')||!booksBridgeSource.includes('code: "1050"'))fail('Platform payout clearing is not separated from account 1100');
   for(const marker of ['action === "inventory_opening_balance"','inventoryReconciliations/openingBalance','expectedDifference','movementId="inventory_opening_balance"'])if(!functionsSource.includes(marker))fail(`Inventory opening-balance control missing: ${marker}`);
   if(adminSource.includes('function reconcileAuto()'))fail('retired browser-authored financial reconciliation still exists');
@@ -303,7 +316,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
 
   const telemetrySource=fs.readFileSync(path.join(root,'assets','js','admin','telemetry.js'),'utf8');
   if(!posSource.includes('capturePosDraft(p)')||!posSource.includes('restorePosDraft(p)')||!posSource.includes('posChargeBusy')||!posSource.includes("textContent='Processing…'"))fail('Phase 5E draft preservation or single-flight Charge guard missing');
-  if(!adminHtml.includes('accaza-touch-5e')||!adminHtml.includes('min-height:44px'))fail('Phase 5E touch-target controls missing');
+  if(!adminSource.includes('accaza-touch-5e')||!adminSource.includes('min-height:44px'))fail('Phase 5E touch-target controls missing');
   if(!telemetrySource.includes('AccazaTelemetry=')||!telemetrySource.includes('charge_to_durable')||!telemetrySource.includes('offline_flush')||!telemetrySource.includes('realtime_order_arrival'))fail('Phase 6A client timing instrumentation incomplete');
   if(/customer|paymentref|platformref|pin|orderitems/i.test(telemetrySource))fail('Phase 6A telemetry source may collect sensitive business/customer fields');
   if(!functionsSource.includes('exports.recordClientTelemetry = onCall')||!functionsSource.includes('CLIENT_METRICS')||!functionsSource.includes('/clientTelemetryDaily/'))fail('Phase 6A server telemetry aggregation missing');
@@ -338,7 +351,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!analyticsSource.includes('Source is recorded automatically from this payout'))fail('Grab refund payout-source explanation is missing');
   for(const marker of ['Edit payout information','data-poedit','platformStatementReference','depositReference'])if(!analyticsSource.includes(marker))fail(`Platform payout metadata editor missing: ${marker}`);
   for(const marker of ['update_platform_payout_metadata','edit_payout_reference','financialEffect: "none"'])if(!functionsSource.includes(marker))fail(`Platform payout metadata safeguard missing: ${marker}`);
-  if(!fs.readFileSync(path.join(root,'books.html'),'utf8').includes("target==='edit_payout_reference'"))fail('Financial control audit cannot open the exact payout metadata editor');
+  if(!booksSource.includes("target==='edit_payout_reference'"))fail('Financial control audit cannot open the exact payout metadata editor');
   for(const marker of ['function businessReference(issue)','sourceLabel: label','Never expose an internal key as the business-facing reference'])if(!functionsSource.includes(marker))fail(`Financial control business-reference safeguard missing: ${marker}`);
   for(const marker of ['createShiftReference','Shift reference:','shiftReference:shiftRef','ensureShiftReference','shiftReferenceIndex','durableShiftReference'])if(!adminSource.includes(marker)&&!functionsSource.includes(marker))fail(`Durable shift-reference safeguard missing: ${marker}`);
   if(/\bF\(\)\.run\(/.test(analyticsSource))fail('Platform payout correction must use the available form dialog service.');
@@ -369,7 +382,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!adminSource.includes("cashier:'pos',kitchen:'orders',finance:'finance'")||!adminSource.includes('landRoleHome()'))fail('Phase 7C role-aware landing behavior missing');
   const workspaceShellSource=fs.readFileSync(path.join(root,'assets','js','admin','workspace-shell.mjs'),'utf8');
   if(!adminHtml.includes('id="adminWorkspaceHeader"')||!adminHtml.includes('id="adminServiceStrip"'))fail('Phase 7D contextual workspace header or live service strip missing');
-  if(!adminHtml.includes('body.admin-pos-workspace')||!adminHtml.includes('#posCartPanel'))fail('Phase 7D focused POS workspace missing');
+  if(!adminSource.includes('body.admin-pos-workspace')||!adminSource.includes('#posCartPanel'))fail('Phase 7D focused POS workspace missing');
   if(!workspaceShellSource.includes('installWorkspaceShell')||!workspaceShellSource.includes('__refreshWorkspaceStatus')||!adminSource.includes('workspaceShell.update(tab)'))fail('Phase 7D workspace shell integration incomplete');
   if(!workspaceShellSource.includes("subscriptionHub.subscribe('posActiveShift'")||!workspaceShellSource.includes('window.__posShift=snapshot')||!adminSource.includes('subscriptionHub:subscriptionHub'))fail('Workspace status does not own an always-live shift subscription');
   const shiftRegisterSource=fs.readFileSync(path.join(root,'assets','js','admin','register.js'),'utf8');
@@ -381,8 +394,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   for(const marker of ['loadShiftTransactions(shift.id)','Total by channel','Total by payment method','Total sales this shift','Total cash counted'])if(!shiftRegisterSource.includes(marker))fail(`Z-report completeness control missing: ${marker}`);
   if(!functionsSource.includes('Math.max(0,Number(shift.cashToSettle)||0)')||!functionsSource.includes('retainedFloat:Financial.money(shift.retainedFloat)'))fail('Shift custody does not preserve retained float and remit only cash to settle');
   if(!precache.includes('/assets/js/admin/workspace-shell.mjs'))fail('Phase 7D workspace shell is not precached');
-  if(!adminHtml.includes('id="accaza-pos-workflow-7e"')||!adminHtml.includes('.pos-menu-search')||!adminHtml.includes('.pos-item-grid'))fail('Phase 7E POS menu workflow styling missing');
-  if(!adminHtml.includes('.pos-category-rail{display:flex;flex-wrap:wrap')||!adminHtml.includes('.pos-category-rail .pz-chip{flex:0 1 auto'))fail('Release 7G fully visible wrapping POS categories missing');
+  if(!adminSource.includes('accaza-pos-workflow-7e')||!adminSource.includes('.pos-menu-search')||!adminSource.includes('.pos-item-grid'))fail('Phase 7E POS menu workflow styling missing');
+  if(!adminSource.includes('.pos-category-rail{display:flex;flex-wrap:wrap')||!adminSource.includes('.pos-category-rail .pz-chip{flex:0 1 auto'))fail('Release 7G fully visible wrapping POS categories missing');
   if(/\.pos-category-rail\{[^}]*overflow-x\s*:\s*auto/.test(adminHtml))fail('Release 7G POS categories must not require horizontal scrolling');
   if(!posSource.includes("id=\"posMenuSearch\"")||!posSource.includes("type=\"button\" class=\"pz-chip"))fail('Phase 7E search or accessible categories missing');
   if(!posSource.includes('No matching items'))fail('Phase 7E directed menu-search empty state missing');
@@ -431,7 +444,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   for(const marker of ['line.lineType==="expense"','["6070","6075"].includes(expenseCode)','A one-time purchase expense has an invalid Finance Books account'])if(!functionsSource.includes(marker))fail(`One-time purchase expense posting safeguard missing: ${marker}`);
   for(const marker of ['value="asset"','assetLifeMonths','assetSalvage','assetInServiceDate','assetLocation','assetCustodian',"lineType:'fixed_asset'","action:'register_purchase'"])if(!posSource.includes(marker))fail(`Purchasing fixed-asset card control missing: ${marker}`);
   for(const marker of ['action==="register_purchase"','fixedAssetIds','fundingType:"purchase_invoice"','A linked fixed-asset card is missing','New fixed assets must be acquired through Purchasing','line.lineType==="fixed_asset"'])if(!functionsSource.includes(marker))fail(`Purchase-linked fixed-asset safeguard missing: ${marker}`);
-  const fixedAssetBooksHtml=fs.readFileSync(path.join(root,'books.html'),'utf8');if(!fixedAssetBooksHtml.includes('Acquire through Purchasing')||fixedAssetBooksHtml.includes('onclick="App.faAcquire()">+ Acquire asset'))fail('Standalone fixed-asset acquisition is not disabled in favor of Purchasing');
+  const fixedAssetBooksHtml=booksSource;if(!fixedAssetBooksHtml.includes('Acquire through Purchasing')||fixedAssetBooksHtml.includes('onclick="App.faAcquire()">+ Acquire asset'))fail('Standalone fixed-asset acquisition is not disabled in favor of Purchasing');
   for(const marker of ['Invoice pending — provisional obligation','purchaseHistoryHtml','data-purchase-details','data-purchase-finalize','data-purchase-link'])if(!posSource.includes(marker))fail(`Purchase review/GRNI UI marker missing: ${marker}`);
   for(const marker of ['inventory_pending_invoice','grni_created','purchase_grni_finalize_','liability:grni:'])if(!functionsSource.includes(marker))fail(`Purchase GRNI authority missing: ${marker}`);
   if(!functionsSource.includes('Finalize the supplier invoice before paying this provisional obligation')||!financeSource.includes('Finalize invoice first'))fail('Provisional purchase obligations can still be paid before invoice finalization');
@@ -487,7 +500,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(!financeSource.includes('!p.reversed&&!p.depositMovementId&&Number(p.actualPayout)>0'))fail('Cash Flow must hide reversed, deposited, zero, and negative platform payouts from the deposit queue');
   if(financeSource.includes("e.source==='payout'&&e.linkId===p.id"))fail('Cash Flow still relies on the obsolete payout ledger-source check');
   for(const marker of ["var value=r2(x.opening),d=x.openingDate||from","if(d<=from)beginBank[x.id]","type:'opening_balance',id:'opening_'+x.id"]){if(!financeSource.includes(marker))fail(`Cash Flow statement opening-balance projection is missing: ${marker}`);}
-  const cashflowBooksHtml=fs.readFileSync(path.join(root,'books.html'),'utf8');
+  const cashflowBooksHtml=booksSource;
   for(const marker of ['o.platformAdsMarketing','o.platformMarketingFee'])if(!analyticsSource.includes(marker)||!financeSource.includes(marker)||!cashflowBooksHtml.includes(marker)||!functionsSource.includes(marker))fail(`Platform deduction fallback is not aligned across Admin, settlement, and Finance Books: ${marker}`);
   for(const marker of ['{id:"cashflow",label:"Cash Flow"}','Authoritative cash statement · moved from Admin','function cfStatement()','openingSources','manageCashAccount','Deposits to record','payout_deposit','cash_deposit'])if(!cashflowBooksHtml.includes(marker)&&!functionsSource.includes(marker)&&!adminHtml.includes(marker))fail(`Books Cash Flow cutover marker missing: ${marker}`);
   for(const marker of ["posSwitchTab('cashflow',this)",'href="books.html?tab=cashflow"','id="tab-cashflow"','id="cashflowRoot"'])if(adminHtml.includes(marker))fail(`Retired Admin Cash Flow UI is still present: ${marker}`);
@@ -506,7 +519,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(approvalMatrixCheck.status!==0)fail(`Privileged approval matrix checks failed:\n${approvalMatrixCheck.stderr||approvalMatrixCheck.stdout}`);
   const financialCloseCheck=spawnSync(process.execPath,[path.join(root,'tests','financial-close-check.cjs')],{encoding:'utf8',cwd:root});
   if(financialCloseCheck.status!==0)fail(`Financial close checks failed:\n${financialCloseCheck.stderr||financialCloseCheck.stdout}`);
-  const financialCloseUi=fs.readFileSync(path.join(root,'books.html'),'utf8');for(const marker of ["x.measurement==='status'","Matched open balance","GL '+peso(c.glBalance)","non-monetary controls are never displayed as pesos","<th class=\"num\">Result</th>"])if(!financialCloseUi.includes(marker))fail(`Typed Financial Close presentation safeguard missing: ${marker}`);
+  const financialCloseUi=booksSource;for(const marker of ["x.measurement==='status'","Matched open balance","GL '+peso(c.glBalance)","non-monetary controls are never displayed as pesos","<th class=\"num\">Result</th>"])if(!financialCloseUi.includes(marker))fail(`Typed Financial Close presentation safeguard missing: ${marker}`);
 
   const pricing=spawnSync(process.execPath,[path.join(root,'tests','order-pricing-check.mjs')],{encoding:'utf8',cwd:root});
   if(pricing.status!==0)fail(`server pricing checks failed:\n${pricing.stderr||pricing.stdout}`);
@@ -546,7 +559,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(inventoryBooksReconciliationCheck.status!==0)fail(`Inventory-to-Books reconciliation checks failed:\n${inventoryBooksReconciliationCheck.stderr||inventoryBooksReconciliationCheck.stdout}`);
   const booksStatementReconciliationCheck=spawnSync(process.execPath,[path.join(root,'tests','books-statement-reconciliation-check.mjs')],{encoding:'utf8',cwd:root});
   if(booksStatementReconciliationCheck.status!==0)fail(`Books statement-to-ledger reconciliation checks failed:\n${booksStatementReconciliationCheck.stderr||booksStatementReconciliationCheck.stdout}`);
-  const booksHtml=fs.readFileSync(path.join(root,'books.html'),'utf8');
+  const booksHtml=booksSource;
   const salesAuthoritySource=fs.readFileSync(path.join(root,'assets','js','shared','sales-authority.js'),'utf8');
   const salesHistorySource=fs.readFileSync(path.join(root,'assets','js','admin','sales-history.js'),'utf8');
   const realtimeHubSource=fs.readFileSync(path.join(root,'assets','js','admin','realtime-hub.mjs'),'utf8');
@@ -662,7 +675,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   for(const marker of ['exports.repairClosedShiftTurnover = onCall','repair_closed_shift_turnover','savedShiftCashSales','Repair closed-shift turnover','shift_custody_${shiftId}'])if(!functionsSource.includes(marker)&&!undepositedSource.includes(marker))fail(`Closed-shift turnover repair missing: ${marker}`);
   for(const marker of ['exports.reconcileUndepositedCustody = onCall','reconcile_undeposited_custody','historical_finance_journal_custody_reconciliation','newFinancialMovement:false','Link existing Finance journal','Finance Books was unchanged'])if(!functionsSource.includes(marker)&&!undepositedSource.includes(marker))fail(`Ledger-to-custody reconciliation missing: ${marker}`);
   for(const marker of ['exports.repairReversedPayoutDeposit = onCall','repair_reversed_payout_deposit_${payoutId}','reversed_payout_deposit_repair','Only a reversed payout with an unreversed deposit can be repaired','depositReversalMovementId','Repair deposit'])if(!functionsSource.includes(marker)&&!adminSource.includes(marker))fail(`Reversed payout deposit repair missing: ${marker}`);
-  for(const marker of ['Financial control exceptions','orphanedPayoutDeposits','App.repairPayoutDeposit=function','window.__booksRepairPayout','repairReversedPayoutDeposit'])if(!fs.readFileSync(path.join(root,'books.html'),'utf8').includes(marker))fail(`Books payout repair interface missing: ${marker}`);
+  for(const marker of ['Financial control exceptions','orphanedPayoutDeposits','App.repairPayoutDeposit=function','window.__booksRepairPayout','repairReversedPayoutDeposit'])if(!booksSource.includes(marker))fail(`Books payout repair interface missing: ${marker}`);
   for(const marker of ['Journal period exceptions','App.repairLateJournalCorrection=function','repair_late_manual_journal_correction','manualJournalPeriodRepairs','Only a balanced cash-to-cash correction can use this controlled repair','manual_books_journal_period_repair_backdate','manual_books_journal_period_repair_current'])if(!(booksHtml.includes(marker)||functionsSource.includes(marker)))fail(`Late manual-journal correction repair control missing: ${marker}`);
   if(!functionsSource.includes('if (payout.reversed) throw new HttpsError("failed-precondition","A reversed payout cannot be deposited.")'))fail('Future deposits are not blocked after payout reversal');
   for(const marker of ['Deposit / move funds','function depositFunds(accountRows,available)',"action:'cash_deposit'",'Deposit slip / transfer reference','This is not income and does not change sales.','depositReference'])if(!undepositedSource.includes(marker)&&!functionsSource.includes(marker))fail(`Undeposited deposit workflow missing: ${marker}`);

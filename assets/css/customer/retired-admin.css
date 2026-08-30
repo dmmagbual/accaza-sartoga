@@ -1,0 +1,2 @@
+/* The admin now lives entirely in admin.html. Permanently hide every old-admin element on the public site. */
+#adminDash,#availSection,#commentsSection,#navAdminPanel,#navAvail,#navComments,#loginOverlay{display:none!important;}

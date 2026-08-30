@@ -1,0 +1,3 @@
+import {getApp} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {getFunctions, httpsCallable} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
+try { const financeFunctions=getFunctions(getApp(),"asia-southeast1"); window.__manageAccountingPeriod=function(payload){return httpsCallable(financeFunctions,"manageAccountingPeriod")(payload).then(function(r){return r.data;});}; window.__legacyReset=function(payload){return httpsCallable(financeFunctions,"legacyOwnerCapitalReset")(payload).then(function(r){return r.data;});}; window.__repairPettyClassifications=function(payload){return httpsCallable(financeFunctions,"repairPettyExpenseClassifications")(payload).then(function(r){return r.data;});}; } catch (_error) {}

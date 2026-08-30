@@ -1,0 +1,3 @@
+/* Admin portal view: hide customer-facing sections (elements stay in DOM so JS is unaffected) */
+#home,#about,#reel,#menu,#order,#orderTracker,#reserve,#reviews,#feedback,#gallery,#contact,.footer{display:none!important;}
+nav .nav-links > li{display:none;}

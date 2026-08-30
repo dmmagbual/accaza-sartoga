@@ -1,0 +1,36 @@
+.admin-tabs{border:0;margin-bottom:1.15rem;}
+      #adminGroups{display:flex;align-items:stretch;gap:0.4rem;margin-bottom:0.55rem;padding:0.45rem;background:#19241b;border:1px solid #2e3d31;border-radius:12px;box-shadow:0 8px 24px rgba(25,36,27,.12);overflow-x:auto;scrollbar-width:thin;}
+      .admin-group{flex:0 0 auto;padding:0.62rem 0.9rem;border-radius:8px;border:1px solid transparent;background:transparent;color:#d9d0c5;font-weight:650;font-size:0.82rem;letter-spacing:.01em;cursor:pointer;white-space:nowrap;transition:background .16s ease,color .16s ease,border-color .16s ease;}
+      .admin-group:hover{background:#27362b;color:#fff;}
+      .admin-group.active{background:#f4eee5;color:#3f2f24;border-color:#d5c3ab;box-shadow:0 2px 8px rgba(0,0,0,.16);}
+      .admin-group.pos-primary{background:#b08d57;color:#fff;border-color:#c9a36a;font-weight:800;padding-inline:1.15rem;}
+      .admin-group.pos-primary:hover,.admin-group.pos-primary.active{background:#c9a36a;color:#19241b;border-color:#ead2a6;}
+      .tabgrp{display:flex;flex-wrap:wrap;gap:0.35rem;min-height:39px;padding:.45rem .25rem .2rem;border-bottom:1px solid #e6ddd2;}
+      .tabgrp:before{content:attr(data-label);align-self:center;margin-right:.35rem;color:#8a7869;font-size:.68rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;}
+      .tabgrp[data-grp="pos"]:before{content:"Quick sale";}
+      @media(max-width:720px){#adminGroups{margin-inline:-.25rem;border-radius:9px;padding:.35rem}.admin-group{padding:.56rem .72rem;font-size:.76rem}.admin-group.pos-primary{padding-inline:.95rem}.tabgrp{flex-wrap:nowrap;overflow-x:auto;padding-bottom:.55rem}.tabgrp .admin-tab{flex:0 0 auto}.admin-stats{grid-template-columns:repeat(2,1fr)!important;}}
+      @media(prefers-reduced-motion:reduce){.admin-group{transition:none;}}
+      #adminWorkspaceHeader{display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap;margin:.2rem 0 1rem;padding:.95rem 1rem;background:#fff;border:1px solid #ded4c8;border-radius:10px;}
+      .awh-eyebrow{font-size:.66rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#9a7b50;margin-bottom:.2rem;}
+      #adminWorkspaceTitle{font-family:'Playfair Display',serif;font-size:1.55rem;line-height:1.1;color:#35271f;margin:0;}
+      #adminWorkspaceSubtitle{font-size:.76rem;color:var(--tl);margin:.28rem 0 0;max-width:680px;}
+      #adminWorkspaceActions{display:flex;gap:.4rem;flex-wrap:wrap;}
+      .admin-report-period{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.7rem .85rem;margin:.5rem 0;border:1px solid #d5c6b5;border-radius:8px;background:#f7f2eb;color:#514033}.admin-report-period-copy{display:flex;align-items:baseline;gap:.45rem;min-width:0}.admin-report-period-copy span{font-size:.7rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.admin-report-period-copy strong{font-size:.8rem;color:#19241b}.admin-report-period-copy small{font-size:.68rem;color:var(--tl)}.admin-report-period-controls{display:flex;align-items:end;gap:.5rem;flex-wrap:wrap}.admin-report-period-controls label{display:grid;gap:.22rem;font-size:.66rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#766650}.admin-report-period-controls input{width:142px;box-sizing:border-box;border:1px solid #bda98e;background:#fff;color:#30241d;border-radius:6px;padding:.42rem .5rem;font:inherit;font-size:.78rem}.admin-report-period-controls button{border:1px solid #19241b;background:#19241b;color:#fff;border-radius:6px;padding:.47rem .7rem;font-size:.72rem;font-weight:700;cursor:pointer}@media(max-width:760px){.admin-report-period{align-items:flex-start;flex-direction:column}.admin-report-period-copy{align-items:flex-start;flex-direction:column;gap:.15rem}.admin-report-period-controls input{width:134px}}
+      .awh-action{border:1px solid #d5c6b5;background:#f7f2eb;color:#514033;border-radius:7px;padding:.48rem .72rem;font-size:.75rem;font-weight:700;cursor:pointer;}
+      .awh-copy{min-width:0;flex:1;}
+      .admin-service-strip{display:flex;align-items:center;gap:.42rem;flex-wrap:wrap;margin-top:.52rem;color:#594b40;font-size:.76rem;line-height:1.35;}
+      .admin-service-pill{display:inline-flex;align-items:center;gap:.28rem;padding:0;border:0;background:transparent;color:inherit;font:inherit;white-space:nowrap;}
+      .admin-service-pill strong{font-weight:800}.admin-service-pill.ok strong{color:#087d35}.admin-service-pill.warn strong{color:#805d0b}.admin-service-pill.bad strong{color:#a3302c}
+      .admin-status-dot{width:11px;height:11px;border-radius:50%;background:#23c968;box-shadow:0 0 0 2px rgba(35,201,104,.16);flex:0 0 auto}.admin-service-pill.bad .admin-status-dot{background:#d8443e;box-shadow:0 0 0 2px rgba(216,68,62,.14)}
+      .admin-status-sep{color:#b4a89b}.admin-service-queue{cursor:pointer;text-align:left}.admin-service-queue:hover strong,.admin-service-queue:focus-visible strong{text-decoration:underline}
+      body.admin-workspace-focused .admin-stats{display:none;}
+      body.admin-pos-workspace #adminDash{padding-left:.35rem;padding-right:.35rem;background:#eee9e1;}
+      body.admin-pos-workspace .admin-wrap{max-width:1580px;padding:1rem;}
+      body.admin-pos-workspace #adminWorkspaceHeader{background:#19241b;border-color:#2f4033;color:#fff;}
+      body.admin-pos-workspace #adminWorkspaceTitle{color:#f6efe5;font-size:1.75rem;}
+      body.admin-pos-workspace #adminWorkspaceSubtitle,body.admin-pos-workspace .awh-eyebrow{color:#cdbb9d;}
+      body.admin-pos-workspace #tab-pos{padding:1rem;border-radius:10px;border-color:#d6c9b8;box-shadow:0 12px 30px rgba(41,31,23,.08);}
+      body.admin-pos-workspace #posCartPanel{max-height:none;overflow:visible;box-shadow:none;}
+      body.admin-pos-workspace #posCharge{position:static;min-height:44px;background:#2a9d5c;box-shadow:none;}
+      @media(max-width:820px){#adminWorkspaceHeader{align-items:flex-start}body.admin-pos-workspace .admin-wrap{padding:.45rem}body.admin-pos-workspace #posCartPanel{position:static!important}}
+      @media(max-width:560px){.admin-service-strip{align-items:flex-start;flex-direction:column;gap:.25rem}.admin-status-sep{display:none}.admin-service-pill{white-space:normal}}

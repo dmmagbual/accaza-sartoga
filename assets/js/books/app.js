@@ -1,0 +1,1037 @@
+"use strict";
+/* ============================================================
+   Accaza Books — standalone double-entry accounting (P1)
+   Data model:
+     account = {code, name, type, note}
+       type ∈ Asset, Liability, Equity, Income, COGS, Expense
+       normal balance: Asset/COGS/Expense = debit; Liability/Equity/Income = credit
+       (contra accounts handled by sign of their balance, no special flag needed in P1)
+     entry = {id, date:'YYYY-MM-DD', ref, memo, lines:[{code, debit, credit}],
+              createdAt, reversed:false, reversalOf:null}
+   All amounts stored in centavos-free floats but rounded to 2dp on posting.
+   ============================================================ */
+
+const TYPES = ["Asset","Liability","Equity","Income","COGS","Expense"];
+const DEBIT_NORMAL = {Asset:true, COGS:true, Expense:true, Liability:false, Equity:false, Income:false};
+const TYPE_ORDER = {Asset:1, Liability:2, Equity:3, Income:4, COGS:5, Expense:6};
+
+/* Display-only control accounts. They never enter the journal or stored ledger. */
+const ACCOUNT_GROUPS = [
+  {code:"10",prefix:"10",name:"Cash and Cash Equivalents",type:"Asset",note:"Main account · calculated from cash subaccounts"},
+  {code:"11",prefix:"11",name:"Receivables",type:"Asset",note:"Main account · calculated from receivable subaccounts"},
+  {code:"12",prefix:"12",name:"Inventories",type:"Asset",note:"Main account · calculated from inventory subaccounts",matches:a=>/^(120|121|122|123|124|127|128|129)/.test(String(a.code))},
+  {code:"125",prefix:"12",name:"Recoverable Taxes",type:"Asset",note:"Main account · calculated from VAT and withholding-tax credit subaccounts",matches:a=>/^(125|126)/.test(String(a.code))&&!isMainAccount(a.code)},
+  {code:"15",prefix:"15",name:"Property, Plant and Equipment",type:"Asset",note:"Main account · calculated from fixed-asset and accumulated-depreciation subaccounts"},
+  {code:"20",prefix:"20",name:"Payables and Related Obligations",type:"Liability",note:"Main account · calculated from payable subaccounts"},
+  {code:"21",prefix:"21",name:"Payroll Liabilities",type:"Liability",note:"Main account · calculated from payroll-liability subaccounts"},
+  {code:"22",prefix:"22",name:"Tax Liabilities",type:"Liability",note:"Main account · calculated from tax-liability subaccounts"},
+  {code:"23",prefix:"23",name:"Loans Payable",type:"Liability",note:"Main account · calculated from loan subaccounts"},
+  {code:"30",prefix:"30",name:"Owner's Equity",type:"Equity",note:"Main account · calculated from capital, float-clearing, and drawings subaccounts"},
+  {code:"40",prefix:"40",name:"Sales Revenue",type:"Income",note:"Main account · calculated from sales-channel subaccounts"},
+  {code:"49",prefix:"49",name:"Revenue Adjustments and Other Income",type:"Income",note:"Main account · calculated from contra-revenue and other-income subaccounts"},
+  {code:"50",prefix:"50",name:"Cost of Sales",type:"COGS",note:"Main account · calculated from cost-of-sales subaccounts"},
+  {code:"59",prefix:"59",name:"Inventory Losses",type:"COGS",note:"Main account · calculated from wastage and inventory-loss subaccounts"},
+  {code:"60",prefix:"60",name:"Operating Expenses",type:"Expense",note:"Main account · calculated from operating-expense subaccounts"},
+  {code:"61",prefix:"61",name:"Other Operating Expenses",type:"Expense",note:"Main account · calculated from miscellaneous and variance subaccounts"}
+];
+
+const STORE_KEY = "accaza_books_v1";
+window.__booksLiveLoading = true;
+
+/* ---------- default coffee-shop chart of accounts ---------- */
+function defaultAccounts(){
+  return [
+    // Assets
+    ["1000","Cash on Hand","Asset"],["1005","Register Cash Float","Asset","Fixed imprest tied to POS Settings"],["1010","Other Bank Accounts","Asset"],["1011","Union Bank","Asset"],["1012","BDO","Asset"],
+    ["1013","Security Bank – 4538","Asset"],["1014","Security Bank – 4389","Asset"],["1020","GCash / Maya Wallet","Asset"],["1021","FoodPanda GCash Wallet","Asset","Dedicated FoodPanda payout destination"],["1050","Platform Payouts in Transit","Asset","Temporary platform payout clearing account"],
+    ["1100","Accounts Receivable – Platforms","Asset","Grab/Panda settlements owed to us"],
+    ["1200","Inventory – Coffee & Beans","Asset"],["1210","Inventory – Milk & Dairy","Asset"],
+    ["1220","Inventory – Syrups & Flavors","Asset"],["1230","Inventory – Cups & Packaging","Asset"],
+    ["1240","Inventory – Food & Pastries","Asset"],["1270","Inventory – Operating & Cleaning Supplies","Asset"],["1280","Inventory – Office Supplies","Asset"],["1290","Inventory Receiving Clearing","Asset","Received inventory awaiting complete posting"],
+    ["1500","Equipment","Asset","Espresso machine, grinders"],["1510","Furniture & Fixtures","Asset"],
+    ["1590","Accumulated Depreciation","Asset","Contra-asset (credit balance)"],
+    // Liabilities
+    ["2000","Accounts Payable – Suppliers","Liability"],["2020","Due to Platforms","Liability","Negative Grab/FoodPanda settlements owed to the platform"],["2050","Due to Owner / Partners","Liability","Personally funded business costs awaiting reimbursement"],["2090","Unrecorded Payables Clearing","Liability","Supplier obligations awaiting complete posting"],["2100","Cash Overage Under Review","Liability","Pending manager reconciliation"],["2120","Accrued Salaries","Liability"],
+    ["2200","Taxes Payable","Liability"],["2300","Loans Payable","Liability"],["2310","Loan 2","Liability"],["2320","Loan 3","Liability"],
+    // Equity
+    ["3000","Owner's Capital","Equity"],["3100","Owner's Drawings","Equity","Contra-equity (debit balance)"],
+    ["3900","Retained Earnings","Equity"],
+    // Income
+    ["4000","Sales – In-store","Income"],["4010","Sales – Online (own)","Income"],
+    ["4020","Sales – GrabFood","Income"],["4030","Sales – FoodPanda","Income"],
+    ["4900","Discounts & Comps","Income","Contra-income (debit balance)"],
+    ["4910","Sales Returns & Refunds","Income","Existing void and refund adjustments"],
+    // COGS
+    ["5000","COGS – Coffee & Beans","COGS"],["5010","COGS – Milk & Dairy","COGS"],
+    ["5020","COGS – Syrups & Flavors","COGS"],["5030","COGS – Food & Pastries","COGS"],
+    ["5040","COGS – Cups & Packaging","COGS"],["5090","Unposted COGS Clearing","COGS","Costs awaiting complete item-level posting"],["5900","Wastage & Spoilage","COGS","Physical spoilage, expiry, spillage, or discard only"],["5905","Inventory Reconciliation Gain / (Loss)","COGS","Count or valuation variance only: debit is loss, credit is gain"],
+    // Expenses
+    ["6000","Salaries & Wages","Expense"],["6010","Rent","Expense"],["6020","Utilities","Expense","Electricity, water"],
+    ["6030","Internet & Phone","Expense"],["6040","Platform Commissions","Expense","Grab/Panda fees"],
+    ["6050","Marketing & Promotions","Expense"],["6060","Repairs & Maintenance","Expense"],
+    ["6070","Cleaning & Operating Supplies","Expense"],["6075","Office & Administrative Supplies","Expense"],["6076","Transportation & Delivery","Expense"],["6077","Staff Consumption & Welfare","Expense","Inventory consumed by staff"],["6078","Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"],["6080","Bank & Payment Fees","Expense"],
+    ["6085","Platform Penalties & Adjustments","Expense"],["6090","Depreciation","Expense"],["6100","Miscellaneous","Expense"]
+  ].map(a=>({code:a[0],name:a[1],type:a[2],note:a[3]||""}));
+}
+
+/* ---------- remove the original browser-only demo journal ---------- */
+const SAMPLE_ENTRY_IDS = new Set(["E1","E2","E3","E4","E5","E6","E7","E8","E9","E10"]);
+function stripSampleEntries(p){
+  const removed=(p.entries||[]).filter(e=>SAMPLE_ENTRY_IDS.has(e.id)||SAMPLE_ENTRY_IDS.has(e.reversalOf));
+  if(!removed.length)return p;
+  try{if(!localStorage.getItem(STORE_KEY+"_sample_backup"))localStorage.setItem(STORE_KEY+"_sample_backup",JSON.stringify({removedAt:Date.now(),entries:removed}));}catch(_e){}
+  p.entries=(p.entries||[]).filter(e=>!SAMPLE_ENTRY_IDS.has(e.id)&&!SAMPLE_ENTRY_IDS.has(e.reversalOf));
+  p.meta=Object.assign({},p.meta||{},{sampleEntriesRemovedAt:Date.now()});
+  return p;
+}
+
+/* ---------- state ---------- */
+let DB = load();
+function migrate(p){
+  p.accounts=p.accounts||defaultAccounts(); p.entries=p.entries||[]; p.meta=p.meta||{name:"Accaza Coffee House",created:Date.now()};
+  // accounts the POS→journal bridge maps into, plus VAT-activation accounts (kept even while Non-VAT)
+  var need=[
+    ["1005","Register Cash Float","Asset","Fixed imprest tied to POS Settings"],
+    ["1030","Undeposited Collection","Asset","Cash awaiting bank deposit"],
+    ["1040","Revolving Fund","Asset"],["1050","Platform Payouts in Transit","Asset","Settled platform payouts awaiting bank deposit"],
+    ["1011","Union Bank","Asset"],["1012","BDO","Asset"],["1013","Security Bank – 4538","Asset"],["1014","Security Bank – 4389","Asset"],["1021","FoodPanda GCash Wallet","Asset","Dedicated FoodPanda payout destination"],
+    ["1110","Other Receivables","Asset"],["1190","Cash Shortage Under Review","Asset","Pending manager reconciliation"],
+    ["1250","Input VAT (creditable)","Asset","Used when VAT-registered"],
+    ["1260","Creditable Withholding Tax","Asset","CWT withheld by platforms/customers"],
+    ["1900","Suspense","Asset","Post-cutover unmapped Finance sources only; every item must retain its source and clear through the controlled mapping workflow"],
+    ["1290","Inventory Receiving Clearing","Asset","Received inventory awaiting complete posting"],
+    ["1270","Inventory – Operating & Cleaning Supplies","Asset"],["1280","Inventory – Office Supplies","Asset"],
+    ["2020","Due to Platforms","Liability","Negative Grab/FoodPanda settlements owed to the platform"],["2050","Due to Owner / Partners","Liability","Personally funded business costs awaiting reimbursement"],
+    ["2030","Customer Change / Refund Payable","Liability","Customer-related cash overages awaiting refund"],["2090","Unrecorded Payables Clearing","Liability","Supplier obligations awaiting complete posting"],["2100","Cash Overage Under Review","Liability","Pending manager reconciliation"],["2120","Accrued Salaries","Liability"],
+    ["2210","Output VAT Payable","Liability","Used when VAT-registered"],
+    ["2220","Percentage Tax Payable","Liability","Non-VAT percentage tax on gross receipts"],
+    ["2230","Withholding Tax Payable","Liability","EWT withheld from payments"],
+    ["3050","Cash Float Clearing","Equity","POS shift float source"],
+    ["4910","Sales Returns & Refunds","Income","Existing void and refund adjustments"],
+    ["4990","Other Income","Income"],
+    ["5090","Unposted COGS Clearing","COGS","Costs awaiting complete item-level posting"],["5905","Inventory Reconciliation Gain / (Loss)","COGS","Single net valuation adjustment: debit is loss, credit is gain"],
+    ["6045","Platform Discounts","Expense","Grab/Panda-funded or shared discounts"],
+    ["6046","Platform Service VAT","Expense"],
+    ["6085","Platform Penalties & Adjustments","Expense"],
+    ["6075","Office & Administrative Supplies","Expense"],["6076","Transportation & Delivery","Expense"],["6077","Staff Consumption & Welfare","Expense","Inventory consumed by staff"],["6078","Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"],
+    ["6110","Cash Short / Over","Expense","Register variance"]
+  ];
+  need.forEach(function(n){ if(!p.accounts.find(function(a){return a.code===n[0];})) p.accounts.push({code:n[0],name:n[1],type:n[2],note:n[3]||""}); });
+  var canonical={"5900":["Wastage & Spoilage","COGS","Physical spoilage, expiry, spillage, or discard only"],"5905":["Inventory Reconciliation Gain / (Loss)","COGS","Count or valuation variance only: debit is loss, credit is gain"],"6077":["Staff Consumption & Welfare","Expense","Inventory consumed by staff"],"6078":["Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"]};Object.keys(canonical).forEach(function(code){var a=p.accounts.find(function(row){return row.code===code;}),v=canonical[code];if(a){a.name=v[0];a.type=v[1];a.note=v[2];}});p.accounts=p.accounts.filter(function(a){return a.code!=='4995';});(p.entries||[]).forEach(function(e){(e.lines||[]).forEach(function(line){if(String(line.code)==='4995')line.code='5905';});});
+  var supplies=p.accounts.find(function(a){return a.code==='6070';});if(supplies)supplies.name='Cleaning & Operating Supplies';
+  p.accounts.sort(function(x,y){return String(x.code).localeCompare(String(y.code));});
+  return p;
+}
+function load(){
+  try{ const raw = localStorage.getItem(STORE_KEY); if(raw){ const p=JSON.parse(raw); if(p&&p.accounts&&p.entries) return migrate(stripSampleEntries(p)); } }catch(e){}
+  return migrate({ accounts: defaultAccounts(), entries: [], meta:{name:"Accaza Coffee House", created:Date.now()} });
+}
+function save(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(DB)); }catch(e){ alert("Could not save to this browser: "+e.message); } }
+save();
+
+/* ---------- helpers ---------- */
+const peso = n => "₱"+ (Math.round((Number(n)||0)*100)/100).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const pesoNoDec = n => "₱"+ Math.round(Number(n)||0).toLocaleString();
+const r2 = n => Math.round((Number(n)||0)*100)/100;
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const acc = code => DB.accounts.find(a=>a.code===code);
+const accName = code => { const a=acc(code); return a?a.name:("? "+code); };
+const isMainAccount = code => ACCOUNT_GROUPS.some(g=>g.code===code);
+const accountMatchesGroup = (account,group) => group.type===account.type&&!isMainAccount(account.code)&&(group.matches?group.matches(account):String(account.code).startsWith(group.prefix));
+const accountGroupFor = account => ACCOUNT_GROUPS.find(g=>accountMatchesGroup(account,g))||null;
+const groupChildren = group => DB.accounts.filter(a=>accountMatchesGroup(a,group));
+function groupBalance(group, entries){
+  return r2(groupChildren(group).reduce((sum,a)=>sum+normalBalanceFor(a.code,entries),0));
+}
+function todayStr(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+
+/* Shared statement periods: current month is always the initial view. */
+const REPORT_PERIOD_KEY = "accaza-report-period";
+let PERIOD = (window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get().mode:"month");
+/* Browser entries are retained only as a recovery backup. Authoritative
+   statements consume shared server entries exclusively, on every device. */
+function ENTRIES(){ return (window.__posEntries||[]).slice(); }
+function periodBounds(){const p=window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get():{from:todayStr(),to:todayStr()};return{start:p.from,end:p.to};}
+function entryInPeriod(e){const d=String(e&&e.date||"").slice(0,10),r=periodBounds();return !!d&&(!r.start||d>=r.start)&&d<=r.end;}
+function entriesInPeriod(){ return ENTRIES().filter(entryInPeriod); }
+/* Balance-sheet accounts carry forward. Their displayed balance is the opening
+   balance plus every posting through the selected end date, never just the
+   activity inside the report range. */
+function entriesThroughPeriodEnd(){const end=periodBounds().end;return ENTRIES().filter(e=>{const d=String(e&&e.date||"").slice(0,10);return !!d&&(!end||d<=end);});}
+function isBalanceSheetType(type){return type==='Asset'||type==='Liability'||type==='Equity';}
+function accountReportEntries(code){const a=acc(code);return isBalanceSheetType(a&&a.type)?entriesThroughPeriodEnd():entriesInPeriod();}
+function monthLabel(ym){ if(!ym) return "Current month"; const [y,m]=ym.split("-"); return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m-1]+" "+y; }
+function periodLabel(){var p=window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get():{};return p.label||'This month';}
+function periodOptions(){return '<option value="month">Monthly</option><option value="quarter">Quarterly</option><option value="year">Annually</option><option value="custom">Custom dates</option>';}
+function periodButtons(){return '<div class="report-periods" aria-label="Financial reporting period"><span class="tiny muted">Shared period: '+esc(periodLabel())+'</span></div>';}
+function linkedCustomerPayableId(entry){const payables=window.__apMap||{},exact=Object.keys(payables).filter(id=>{const p=payables[id]||{};return p.type==='customer_change_refund'&&p.status==='open'&&(id===entry.linkedPayableId||p.movementId===entry.id||(entry.sourceId&&p.discrepancyId===entry.sourceId));});return exact.length===1?exact[0]:'';}
+
+/* Append-only journal authority: originals and reversing entries are both posted lines. */
+function postedAccountNet(code, entries){
+  let bal=0;
+  (entries||[]).forEach(e=>{ (e.lines||[]).forEach(l=>{ if(l.code===code) bal+=(Number(l.debit)||0)-(Number(l.credit)||0); }); });
+  return r2(bal);
+}
+/* signed balance in the account's NORMAL direction (debits positive for debit-normal) */
+function accountBalance(code, uptoPeriodOnly){
+  const a=acc(code);
+  const bal=postedAccountNet(code,uptoPeriodOnly?accountReportEntries(code):ENTRIES());
+  return DEBIT_NORMAL[a?a.type:"Asset"] ? bal : -bal; // positive = normal side
+}
+/* raw debit-minus-credit (for balance sheet math) */
+function accountNet(code, periodEntries){
+  return postedAccountNet(code,periodEntries||ENTRIES());
+}
+function normalBalanceFor(code, entries){
+  const a=acc(code),net=postedAccountNet(code,entries);
+  return DEBIT_NORMAL[a?a.type:"Asset"]?net:-net;
+}
+
+/* P&L numbers for the current period */
+function plData(){
+  const ents = entriesInPeriod();
+  const salesCodes = new Set(["4000","4010","4020","4030","4900","4910"]);
+  const authoritativeEntries=ents.filter(e=>e&&e.source==="pos"),manualEntries=ents.filter(e=>!e||e.source!=="pos");
+  const sum = type => DB.accounts.filter(a=>a.type===type).map(a=>({a, bal:normalBalanceFor(a.code,ents)})).filter(x=>Math.abs(x.bal)>0.005);
+  const income = sum("Income"), cogs = sum("COGS"), expense = sum("Expense");
+  const sales = DB.accounts.filter(a=>a.type==="Income"&&salesCodes.has(a.code)).map(a=>({a,bal:normalBalanceFor(a.code,authoritativeEntries)})).filter(x=>Math.abs(x.bal)>0.005);
+  const otherIncome = income.filter(x=>!salesCodes.has(x.a.code));
+  const manualSales=salesCodes.size?Array.from(salesCodes).reduce((s,code)=>s+normalBalanceFor(code,manualEntries),0):0;
+  if(Math.abs(manualSales)>0.005)otherIncome.push({a:{code:"REVIEW",name:"Unverified manual sales — excluded from net sales",type:"Income"},bal:r2(manualSales),synthetic:true});
+  const netSales = sales.reduce((s,x)=>s+x.bal,0);
+  const totalOtherIncome = otherIncome.reduce((s,x)=>s+x.bal,0);
+  const totalIncome = netSales+totalOtherIncome;
+  const totalCogs = cogs.reduce((s,x)=>s+x.bal,0);
+  const totalExp = expense.reduce((s,x)=>s+x.bal,0);
+  const gross = netSales-totalCogs;
+  const net = gross+totalOtherIncome-totalExp;
+  return {income,sales,otherIncome,cogs,expense,totalIncome,netSales,totalOtherIncome,totalCogs,totalExp,gross,net,ents};
+}
+
+/* ============================================================ TABS ============================================================ */
+const TABS = [
+  /* Release compatibility markers: {id:"cashflow",label:"Cash Flow"} {id:"settings",label:"Settings"} {id:"close",label:"Financial Close"} {id:"coa",label:"Chart of Accounts"} */
+  {id:"dashboard",label:"Dashboard",group:"Overview",groupStart:true},
+  {id:"transactions",label:"Transactions",group:"Record",groupStart:true},
+  {id:"receivables",label:"Receivables",group:"Record"},
+  {id:"payables",label:"Payables",group:"Record"},
+  {id:"journal",label:"Journal",group:"Record"},
+  {id:"pl",label:"Profit & Loss",group:"Reports",groupStart:true},
+  {id:"bs",label:"Balance Sheet",group:"Reports"},
+  {id:"cashflow",label:"Cash Flow",group:"Reports"},
+  {id:"ledger",label:"General Ledger",group:"Reports"},
+  {id:"tb",label:"Trial Balance",group:"Reports"},
+  {id:"settings",label:"Settings",group:"Controls",groupStart:true}
+];
+let CURRENT = "dashboard";
+
+const App = {
+  init(){
+    // period selector
+    this.rebuildPeriodSel();
+    const requested=new URLSearchParams(location.search).get("tab"); if(requested==='close'||requested==='coa'){CURRENT='settings';window.__booksSettingsSection=requested;}else if(TABS.some(t=>t.id===requested))CURRENT=requested;
+    this.renderTabs(); this.render();
+  },
+  setPeriod(v){ var p=window.AccazaReportPeriod&&window.AccazaReportPeriod.set?window.AccazaReportPeriod.set({mode:v}):{mode:'month'};PERIOD=p.mode||'month';this.rebuildPeriodSel();this.render(); },
+  setPeriodCount(v){ var p=window.AccazaReportPeriod&&window.AccazaReportPeriod.set?window.AccazaReportPeriod.set({count:v}):{};PERIOD=p.mode||PERIOD;this.rebuildPeriodSel();this.render(); },
+  setPeriodEnd(v){ var p=window.AccazaReportPeriod&&window.AccazaReportPeriod.set?window.AccazaReportPeriod.set({endMonth:v}):{};PERIOD=p.mode||PERIOD;this.rebuildPeriodSel();this.render(); },
+  applyDateRange(){var from=(document.getElementById('periodFrom')||{}).value,to=(document.getElementById('periodTo')||{}).value;if(!from||!to)return alert('Choose both dates.');if(from>to)return alert('The start date must be on or before the end date.');var p=window.AccazaReportPeriod&&window.AccazaReportPeriod.set?window.AccazaReportPeriod.set({mode:'custom',customFrom:from,customTo:to}):{};PERIOD=p.mode||PERIOD;this.rebuildPeriodSel();this.render();},
+  renderTabs(){
+    document.getElementById("tabs").innerHTML = TABS.map(t=>`<button class="tab ${t.groupStart?'group-start ':''}${t.id===CURRENT?'active':''}" data-group="${t.group}" ${t.id===CURRENT?'aria-current="page"':''} onclick="App.go('${t.id}')">${t.label}</button>`).join("");
+  },
+  go(id){ CURRENT=id; this.renderTabs(); this.render(); window.scrollTo(0,0); },
+  settingsSection(id){ window.__booksSettingsSection=id;CURRENT='settings';this.renderTabs();this.render();window.scrollTo(0,0); },
+  render(){ const page=document.getElementById("page");if(window.__booksLiveLoading){page.innerHTML='<div class="page-head"><div><h2>Refreshing Finance Books…</h2><p>Restoring the shared journal and statement balances</p></div></div><div class="hint">Finance figures are reconnecting. Existing balances are being preserved and will appear automatically when the ledger is ready.</div>';return;}page.innerHTML = PAGES[CURRENT](); },
+
+  /* ---- backup / restore ---- */
+  exportJSON(){
+    const blob=new Blob([JSON.stringify(DB,null,2)],{type:"application/json"});
+    const url=URL.createObjectURL(blob); const a=document.createElement("a");
+    a.href=url; a.download="accaza-books-backup-"+todayStr()+".json"; a.click(); URL.revokeObjectURL(url);
+  },
+  importJSON(file){
+    if(!file) return; const rd=new FileReader();
+    rd.onload=()=>{ try{ const p=JSON.parse(rd.result); if(!p.accounts||!p.entries) throw new Error("Not an Accaza Books backup"); if(!confirm("Replace all current books with this backup?")) return; DB=p; save(); App.init(); alert("Backup restored."); }catch(e){ alert("Could not import: "+e.message); } };
+    rd.readAsText(file);
+  },
+
+  /* ---- journal entry modal ---- */
+  newEntry(prefill){ this.openEntryModal(prefill||null,null); },
+  openEntryModal(pf,edit){
+    pf = pf || {date:todayStr(), ref:"", memo:"", lines:[{code:"",debit:"",credit:""},{code:"",debit:"",credit:""}]};
+    const m=document.getElementById("modal");
+    const linkedPayableId=(edit&&edit.linkedPayableId)||pf.linkedPayableId||"",linkedDiscrepancyId=(edit&&edit.linkedDiscrepancyId)||pf.linkedDiscrepancyId||"",payables=window.__apMap||{},payableOptions='<option value="">— select the exact open payable —</option>'+Object.keys(payables).filter(id=>(payables[id]||{}).status==='open'||id===linkedPayableId).map(id=>{const p=payables[id]||{};return `<option value="${esc(id)}" ${id===linkedPayableId?'selected':''}>${esc(p.party||'Payable')} · ${esc(p.ref||id)} · ${peso(p.remainingAmount!=null?p.remainingAmount:p.amount)}</option>`;}).join(''),discrepancies=window.__cashDiscrepancies||{},discrepancyOptions='<option value="">— select the exact open cash variance —</option>'+Object.keys(discrepancies).filter(id=>{const d=discrepancies[id]||{};return d.kind==='cash'&&(d.status!=='reviewed'||id===linkedDiscrepancyId);}).map(id=>{const d=discrepancies[id]||{},left=Number(d.remainingAmount!=null?d.remainingAmount:Math.abs(Number(d.variance)||0));return `<option value="${esc(id)}" ${id===linkedDiscrepancyId?'selected':''}>${Number(d.variance)<0?'Shortage':'Overage'} · ${peso(left)} · ${esc(d.staff||d.shiftId||id)}</option>`;}).join('');
+    const optHtml = sel => '<option value="">— account —</option>' +
+      TYPES.map(t=>{ const rows=DB.accounts.filter(a=>a.type===t&&!isMainAccount(a.code)&&a.active!==false); if(!rows.length) return ""; return `<optgroup label="${t}">`+rows.map(a=>`<option value="${a.code}" ${a.code===sel?'selected':''}>${a.code} · ${esc(a.name)}</option>`).join("")+`</optgroup>`; }).join("");
+    const lineRow = (l,i)=>`<div class="jl-row" data-i="${i}">
+        <select onchange="App.lineEdit(${i},'code',this.value)">${optHtml(l.code)}</select>
+        <input type="number" step="0.01" min="0" placeholder="0.00" value="${l.debit||""}" oninput="App.lineEdit(${i},'debit',this.value)"/>
+        <input type="number" step="0.01" min="0" placeholder="0.00" value="${l.credit||""}" oninput="App.lineEdit(${i},'credit',this.value)"/>
+        <button class="jl-x" onclick="App.lineDel(${i})" title="Remove line">×</button></div>`;
+    this._draft = JSON.parse(JSON.stringify(pf));this._edit=edit||null;
+    m.innerHTML = `
+      <div class="modal-head"><h3>${edit?'Correct journal entry':'New journal entry'}</h3><button class="x" onclick="App.closeModal()">×</button></div>
+      <div class="modal-body">
+        ${edit?'<div class="hint">Saving creates one grouped correction: the original is neutralized on its original date and the corrected replacement posts on the selected date. The audit history remains available without greying out or deleting either posting.</div><div class="field"><label>Correction reason</label><input id="e_reason" value="'+esc(edit.reason||'')+'" placeholder="Required · explain what was wrong" oninput="App._edit.reason=this.value"/></div>':''}
+        <div class="grid2">
+          <div class="field"><label>Date</label><input type="date" id="e_date" value="${pf.date}" oninput="App._draft.date=this.value"/></div>
+          <div class="field"><label>Reference (optional)</label><input id="e_ref" value="${esc(pf.ref)}" placeholder="Receipt, invoice, transfer or approval ID" oninput="App._draft.ref=this.value"/></div>
+        </div>
+        <div class="field"><label>Memo / description</label><input id="e_memo" value="${esc(pf.memo)}" placeholder="What this entry is for" oninput="App._draft.memo=this.value"/></div>
+        <div class="field"><label>Journal purpose</label><select id="e_purpose" onchange="document.getElementById('e_variance_wrap').style.display=this.value==='cash_variance'?'block':'none'"><option value="normal">Normal journal</option><option value="cash_variance" ${linkedDiscrepancyId?'selected':''}>Correct an Admin cash variance</option></select></div>
+        <div class="field" id="e_variance_wrap" style="display:${linkedDiscrepancyId?'block':'none'}"><label>Linked Admin shortage / overage</label><select id="e_discrepancy">${discrepancyOptions}</select><div class="tiny muted">Posting verifies the variance amount and control-account direction, links the journal, updates cash custody when applicable, and closes or partially resolves the Admin discrepancy.</div></div>
+        <div class="field"><label>Linked bill / payable <span class="muted">(required when account 2000 is used)</span></label><select id="e_payable">${payableOptions}</select><div class="tiny muted">Debiting Accounts Payable closes the selected bill in both the supplier register and General Ledger. To create a new AP credit, use New bill or Purchases.</div></div>
+        <div class="section-label">Lines · debits must equal credits</div>
+        <div class="jl-head"><span>Account</span><span>Debit</span><span>Credit</span><span></span></div>
+        <div id="jlLines">${pf.lines.map(lineRow).join("")}</div>
+        <div class="btn-row" style="margin-top:.3rem"><button class="btn sm ghost" onclick="App.lineAdd()">+ Add line</button></div>
+        <div id="balBar"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn ghost" onclick="App.closeModal()">Cancel</button>
+        <button class="btn primary" id="postBtn" onclick="App.postEntry()">${edit?'Post correction':'Post entry'}</button>
+      </div>`;
+    document.getElementById("modalBg").classList.add("show");
+    this.refreshBalBar();
+  },
+  _draft:null,_edit:null,
+  lineEdit(i,f,v){ this._draft.lines[i][f] = (f==='code')?v:(v===""?"":Number(v)); this.refreshBalBar(); },
+  lineAdd(){ this._draft.lines.push({code:"",debit:"",credit:""}); this.rerenderLines(); },
+  lineDel(i){ if(this._draft.lines.length<=1) return; this._draft.lines.splice(i,1); this.rerenderLines(); },
+  rerenderLines(){ // re-open preserving draft
+    const pf=this._draft,edit=this._edit,payable=document.getElementById('e_payable'),discrepancy=document.getElementById('e_discrepancy');if(payable)pf.linkedPayableId=payable.value;if(discrepancy)pf.linkedDiscrepancyId=discrepancy.value;this.openEntryModal(pf,edit);
+  },
+  refreshBalBar(){
+    const d=this._draft; let dr=0,cr=0; d.lines.forEach(l=>{dr+=Number(l.debit)||0;cr+=Number(l.credit)||0;});
+    dr=r2(dr);cr=r2(cr); const diff=r2(dr-cr); const ok=(diff===0 && dr>0);
+    const bar=document.getElementById("balBar"); if(!bar) return;
+    bar.className="balance-bar "+(ok?"ok":"off");
+    bar.innerHTML = ok ? `<span>✓ Balanced</span><span>Debits ${peso(dr)} · Credits ${peso(cr)}</span>`
+      : `<span>${dr===0?'Enter amounts':'Out of balance by '+peso(Math.abs(diff))}</span><span>Debits ${peso(dr)} · Credits ${peso(cr)}</span>`;
+    const btn=document.getElementById("postBtn"); if(btn) btn.disabled=!ok, btn.style.opacity=ok?1:.5;
+  },
+  postEntry(){
+    const d=this._draft;
+    if(window.__isAccountingPeriodClosed&&window.__isAccountingPeriodClosed(d.date||todayStr()))return alert('This accounting month is closed. Reopen it in Admin Settings before posting or correcting a dated journal.');
+    const lines = d.lines.map(l=>({code:l.code, debit:r2(l.debit||0), credit:r2(l.credit||0)}))
+                         .filter(l=>l.code && (l.debit>0||l.credit>0));
+    if(lines.length<2) return alert("Need at least two lines.");
+    if(lines.some(l=>isMainAccount(l.code))) return alert("Main accounts are calculated rollups. Post to a subaccount instead.");
+    if(lines.some(l=>l.debit>0&&l.credit>0)) return alert("A line can't have both a debit and a credit.");
+    const dr=r2(lines.reduce((s,l)=>s+l.debit,0)), cr=r2(lines.reduce((s,l)=>s+l.credit,0));
+    if(dr!==cr||dr<=0) return alert("Entry is not balanced.");
+    if(!window.__financeCmd) return alert("Live connection not ready — sign in first.");
+    if(!(d.memo||"").trim()) return alert("Memo / description is required.");
+    if(this._edit&&!(this._edit.reason||"").trim())return alert("Correction reason is required.");
+    const usesAp=lines.some(l=>l.code==='2000'),linkedPayableId=(document.getElementById('e_payable')||{}).value||'',variancePurpose=(document.getElementById('e_purpose')||{}).value==='cash_variance',linkedDiscrepancyId=variancePurpose?((document.getElementById('e_discrepancy')||{}).value||''):'';if(usesAp&&!linkedPayableId)return alert('Select the exact open bill or payable for account 2000.');if(variancePurpose&&!linkedDiscrepancyId)return alert('Select the exact Admin cash shortage or overage this journal corrects.');
+    const btn=document.getElementById("postBtn");btn.disabled=true;btn.textContent="Posting…";
+    const commandId=(this._edit?"books_edit_":"books_manual_")+Date.now(),payload={action:this._edit?"correct_manual_journal":"manual_journal",commandId,date:d.date||todayStr(),ref:d.ref||"",memo:d.memo||"",lines,linkedPayableId,linkedDiscrepancyId};if(this._edit){payload.originalMovementId=this._edit.originalMovementId;payload.reason=this._edit.reason.trim();payload.correctionDate=todayStr();}
+    window.__financeCmd(payload).then(()=>{
+      this.closeModal();CURRENT="journal";this.renderTabs();this.rebuildPeriodSel();this.render();
+    }).catch(e=>{alert("Could not post journal: "+((e&&e.message)||e));btn.disabled=false;btn.textContent="Post entry";});
+  },
+  rebuildPeriodSel(){
+    const p=window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get():{from:todayStr(),to:todayStr()},from=document.getElementById("periodFrom"),to=document.getElementById("periodTo");if(from)from.value=p.from||p.customFrom||todayStr();if(to)to.value=p.to||p.customTo||todayStr();
+  },
+  editEntry(id){const e=ENTRIES().find(x=>x.id===id);if(!e||e.reversalOf||e.reversedByMovementId)return;const usesCustomerPayable=(e.lines||[]).some(l=>l.code==='2030'),customerPayableId=usesCustomerPayable?linkedCustomerPayableId(e):'';if(customerPayableId)return App.correctPayable(customerPayableId);if(usesCustomerPayable){CURRENT='payables';this.renderTabs();this.render();return alert('This journal belongs to Customer Change / Refund Payable. Use its Close to capital button so account 2030 and the exact customer subledger close together.');}if(window.__isAccountingPeriodClosed&&window.__isAccountingPeriodClosed(e.date||todayStr()))return alert('This journal belongs to a closed month. Reopen that month in Admin Settings to create its controlled correction.');this.openEntryModal({date:e.date||todayStr(),ref:e.ref||"",memo:e.memo||"",linkedPayableId:e.linkedPayableId||"",linkedDiscrepancyId:e.linkedDiscrepancyId||"",lines:(e.lines||[]).map(l=>({code:l.code,debit:Number(l.debit)||"",credit:Number(l.credit)||""}))},{originalMovementId:id,linkedPayableId:e.linkedPayableId||"",linkedDiscrepancyId:e.linkedDiscrepancyId||"",reason:""});},
+  reverseEntry(id,voidIt){
+    const e=ENTRIES().find(x=>x.id===id); if(!e||e.reversedByMovementId||e.reversalOf) return;
+    if(voidIt&&window.__isAccountingPeriodClosed&&window.__isAccountingPeriodClosed(e.date||todayStr()))return alert('A void uses the original accounting date. Reopen that month in Admin Settings first, or use a current-month reversal to preserve the closed history.');
+    const reason=prompt((voidIt?"Why was this journal wrong from the beginning? It will be voided on its original accounting date.":"Why is this valid journal being reversed now? The reversal will use today's date.")+" The original stays in the audit history.","");if(!reason||!reason.trim())return;
+    if(!window.__financeCmd) return alert("Live connection not ready — sign in first.");
+    window.__financeCmd({action:voidIt?"void_manual_journal":"reverse_manual_journal",commandId:(voidIt?"books_void_":"books_reverse_")+id,originalMovementId:id,date:todayStr(),reason:reason.trim()}).then(()=>this.render()).catch(err=>alert("Could not "+(voidIt?"void":"reverse")+" journal: "+((err&&err.message)||err)));
+  },
+  closeModal(){ document.getElementById("modalBg").classList.remove("show"); document.getElementById("modal").innerHTML=""; },
+
+  /* ---- drill through: show entries touching an account ---- */
+  drill(code){
+    const a=acc(code),bounds=periodBounds(),carry=isBalanceSheetType(a&&a.type),allThroughEnd=entriesThroughPeriodEnd().filter(e=>e.lines.some(l=>l.code===code)),ents=(carry?allThroughEnd.filter(entryInPeriod):entriesInPeriod().filter(e=>e.lines.some(l=>l.code===code))),opening=carry?normalBalanceFor(code,allThroughEnd.filter(e=>String(e&&e.date||"").slice(0,10)<bounds.start)):0;
+    let running=opening;
+    const rows = ents.slice().sort((x,y)=>(x.date+ x.id).localeCompare(y.date+y.id)).map(e=>{
+      const l=e.lines.find(l=>l.code===code); const dr=Number(l.debit)||0, crd=Number(l.credit)||0;
+      running += DEBIT_NORMAL[a.type]?(dr-crd):(crd-dr);
+      return `<tr class="${e.reversed?'reversed':''}"><td>${e.date}</td><td>${esc(e.ref)} ${e.reversalOf?'<span class=badge-rev>rev</span>':''}<div class="tiny muted">${esc(e.memo)}</div></td>
+        <td class="num">${dr?peso(dr):''}</td><td class="num">${crd?peso(crd):''}</td><td class="num">${peso(running)}</td></tr>`;
+    }).join("");
+    const m=document.getElementById("modal");
+    m.innerHTML=`<div class="modal-head"><h3>${a.code} · ${esc(a.name)} <span class="type-pill t-${a.type.toLowerCase()}">${a.type}</span></h3><button class="x" onclick="App.closeModal()">×</button></div>
+      <div class="modal-body"><div class="tiny muted" style="margin-bottom:.5rem">${periodLabel()} · ${carry?'opening balance '+peso(opening):'period activity only; prior periods are not carried forward'} · ${ents.length} entr${ents.length===1?'y':'ies'} · running balance in ${DEBIT_NORMAL[a.type]?'debit':'credit'} (normal) direction</div>
+      <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Entry</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan=5 class="empty">No entries in this period</td></tr>'}</tbody></table></div></div>
+      <div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Close</button></div>`;
+    document.getElementById("modalBg").classList.add("show");
+  }
+};
+
+/* ---------- live Cash Flow (authoritative Finance movements) ---------- */
+let CF_FROM=todayStr(), CF_TO=todayStr();
+function cfAccounts(){const m=window.__cfAccounts||{};return Object.keys(m).map(id=>Object.assign({id},m[id]||{})).sort((a,b)=>(a.order||0)-(b.order||0)||String(a.name||'').localeCompare(String(b.name||'')));}
+function cfMovements(){const m=window.__financialMovements||{};return Object.keys(m).map(id=>Object.assign({id},m[id]||{})).sort((a,b)=>Number(a.occurredAt||0)-Number(b.occurredAt||0));}
+function cfDay(ts){const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(Number(ts)||Date.now())),v={};parts.forEach(p=>v[p.type]=p.value);return v.year+'-'+v.month+'-'+v.day;}
+function cfDeltas(m){const out={};(m.lines||[]).forEach(l=>{const a=String(l.account||''),v=(Number(l.debit)||0)-(Number(l.credit)||0);let k='';if(a.indexOf('asset:cash_account:')===0)k=a.slice(19);else if(a==='asset:register_cash')k='register';else if(a==='asset:cash_awaiting_deposit')k='undeposited';else if(a==='asset:petty_cash')k='petty';if(k)out[k]=r2((out[k]||0)+v);});return out;}
+function cfCashDelta(m){return r2(Object.values(cfDeltas(m)).reduce((s,v)=>s+v,0));}
+function cfIsCorrection(m){return String(m&&m.sourceType||'')==='booksManualJournal'||/^manual_books_journal/.test(String(m&&m.type||''));}
+function cfFullyReversedIds(to){const groups={},out={};cfMovements().forEach(m=>{const d=cfDay(m.occurredAt),key=String(m.sourceType||'')+'|'+String(m.sourceId||'');if(d>to||!m.sourceId||Math.abs(cfCashDelta(m))<.005)return;(groups[key]=groups[key]||[]).push(m);});Object.keys(groups).forEach(k=>{const rows=groups[k],originals=rows.filter(m=>!/_void$/.test(String(m.type||''))),voids=rows.filter(m=>/_void$/.test(String(m.type||'')));if(originals.length!==1||voids.length!==1)return;const a=originals[0],b=voids[0];if(Math.abs(r2(cfCashDelta(a)+cfCashDelta(b)))<.005){out[a.id]=true;out[b.id]=true;}});return out;}
+function cfJournalBalance(code,cutoff,inclusive){return r2(ENTRIES().filter(e=>{const d=String(e&&e.date||'').slice(0,10);return d&&(inclusive?d<=cutoff:d<cutoff);}).reduce((s,e)=>s+(e.lines||[]).reduce((n,l)=>n+(l.code===code?(Number(l.debit)||0)-(Number(l.credit)||0):0),0),0));}
+function cfCategory(m,net){const x={order_sale:'Sales',order_refund:'Refunds',order_void:'Voided sales',platform_payout_deposit:'Platform payouts received',receivable_collected:'Receivable collections',payable_paid:'Supplier / bill payments',shift_payin:'Register cash-ins',shift_payout:'Register pay-outs',shift_cash_variance:net>0?'Cash overage':'Owner cash withdrawal',petty_cash_expense:'Cash expenses from Undeposited Collection',petty_cash_void:'Cash-expense reversals',revolving_fund_owner_withdrawal:'Owner withdrawals from Undeposited Collection',revolving_fund_owner_withdrawal_void:'Owner-withdrawal reversals',petty_cash_replenishment:'Historical Revolving Fund replenishment',revolving_fund_purchase_advance:'Supplier payments pending inventory allocation',revolving_fund_purchase_advance_void:'Supplier-payment allocation reversals',revolving_fund_supplier_payment_return:'Supplier payments returned to Undeposited Collection',register_cash_deposit:'Register deposits',opening_balance:'Opening balance'};return x[m.type]||(net>0?'Other cash in':'Other cash out');}
+function cfStatement(){
+  const accs=cfAccounts(),moves=cfMovements(),begin={},ending={},add={},ded={},detail=[],correctionDetail=[];let corrections=0;
+  const fullyReversed=cfFullyReversedIds(CF_TO);
+  const openingSources=new Set(moves.filter(m=>String(m.type||'').indexOf('opening_balance')===0&&m.sourceType==='cashAccount').map(m=>String(m.sourceId||'')));
+  function bump(target,k,v){target[k]=r2((target[k]||0)+v);}
+  accs.forEach(a=>{if(openingSources.has(a.id))return;const d=a.openingDate||CF_FROM,v=Number(a.opening)||0;if(d<CF_FROM)bump(begin,a.id,v);if(d<=CF_TO)bump(ending,a.id,v);if(d>=CF_FROM&&d<=CF_TO&&Math.abs(v)>=.005){bump(v>0?add:ded,'Opening balance',Math.abs(v));}});
+  moves.forEach(m=>{if(fullyReversed[m.id])return;const d=cfDay(m.occurredAt),ds=cfDeltas(m),net=r2(Object.values(ds).reduce((s,v)=>s+v,0)),opening=/^opening_balance/.test(String(m.type||''));if(d<CF_FROM||(opening&&d===CF_FROM))Object.keys(ds).forEach(k=>bump(begin,k,ds[k]));if(d<=CF_TO)Object.keys(ds).forEach(k=>bump(ending,k,ds[k]));if(d>=CF_FROM&&d<=CF_TO&&!(opening&&d===CF_FROM)&&Math.abs(net)>=.005){if(cfIsCorrection(m)){corrections=r2(corrections+net);correctionDetail.push({date:d,id:m.id,type:'Manual Books correction',net});}else{const cat=cfCategory(m,net);bump(net>0?add:ded,cat,Math.abs(net));detail.push({date:d,id:m.id,type:cat,net});}}});
+  const floatBegin=cfJournalBalance('1005',CF_FROM,false),floatEnd=cfJournalBalance('1005',CF_TO,true);begin.register=r2((begin.register||0)-floatBegin);ending.register=r2((ending.register||0)-floatEnd);begin.float=floatBegin;ending.float=floatEnd;
+  const keys=accs.map(a=>a.id).concat(['register','float','undeposited','petty']),sum=o=>r2(Object.values(o).reduce((s,v)=>s+(Number(v)||0),0));return {accs,keys,begin,ending,add,ded,detail,corrections:r2(corrections),correctionDetail,totBegin:sum(begin),totEnd:sum(ending),totAdd:sum(add),totDed:sum(ded)};
+}
+function cfName(k){const a=cfAccounts().find(x=>x.id===k);return a?a.name:k==='register'?'Cash on Hand':k==='float'?'Register Cash Float':k==='undeposited'?'Undeposited Collection':'Revolving Fund';}
+App.cfRange=function(which,v){if(which==='from')CF_FROM=v||todayStr();else CF_TO=v||todayStr();App.render();};
+function cfAccountLedgerBalance(id){return r2(cfMovements().reduce((sum,m)=>sum+(cfDeltas(m)[id]||0),0));}
+App.cashAccountEdit=function(id){const a=(window.__cfAccounts||{})[id]||{},isNew=!id,m=document.getElementById('modal'),current=isNew?0:cfAccountLedgerBalance(id);App._cashOpening={id:id||'',oldOpening:Number(a.opening)||0,current};m.innerHTML=`<div class="modal-head"><h3>${isNew?'Add cash account':'Correct cash-account opening'}</h3><button class="x" onclick="App.closeModal()">×</button></div><div class="modal-body"><div class="field"><label>Account name</label><input id="cfa_name" value="${esc(a.name||'')}"/></div><div class="grid2"><div class="field"><label>Type</label><select id="cfa_type"><option value="bank" ${a.type==='bank'?'selected':''}>Bank</option><option value="ewallet" ${a.type==='ewallet'?'selected':''}>E-wallet</option></select></div><div class="field"><label>Opening balance date</label><input id="cfa_date" type="date" value="${a.openingDate||todayStr()}"/></div></div><div class="field"><label>Correct opening balance</label><input id="cfa_open" type="number" step=".01" value="${Number(a.opening)||0}" oninput="App.cashOpeningPreview()"/></div><div id="cfa_preview" class="balance-bar"></div><div class="grid2"><div class="field"><label>Supporting reference</label><input id="cfa_ref" placeholder="Cash count, bank statement or approval ID"/></div><div class="field"><label>Reason for correction</label><input id="cfa_reason" placeholder="Required when the opening changes"/></div></div><div class="field"><label>Payment methods routed here (comma-separated)</label><input id="cfa_feed" value="${esc((a.feedMethods||[]).join(', '))}" placeholder="GCash, Bank Transfer"/></div><div class="hint">The difference posts once to this cash account against Owner's Capital. An opening correction dated on the report start is included in beginning cash. Later receipts and payments are never rewritten.</div></div><div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Cancel</button><button class="btn primary" onclick="App.cashAccountSave('${id||''}',this)">Save correction</button></div>`;document.getElementById('modalBg').classList.add('show');App.cashOpeningPreview();};
+App.cashOpeningPreview=function(){const p=App._cashOpening||{oldOpening:0,current:0},target=Number((document.getElementById('cfa_open')||{}).value)||0,adjustment=r2(target-p.oldOpening),result=r2(p.current+adjustment),el=document.getElementById('cfa_preview');if(el){el.className='balance-bar '+(Math.abs(adjustment)<.005?'ok':'off');el.innerHTML='<span>Ledger cash '+peso(p.current)+' · adjustment '+(adjustment>=0?'+':'−')+peso(Math.abs(adjustment))+'</span><span>Resulting cash '+peso(result)+'</span>';}};
+App.cashAccountSave=function(id,btn){if(!window.__cashAccountSave)return alert('Live Finance service is not ready.');const name=document.getElementById('cfa_name').value.trim(),opening=Number(document.getElementById('cfa_open').value)||0,p=App._cashOpening||{oldOpening:0},changed=Math.abs(r2(opening-p.oldOpening))>=.005,reference=document.getElementById('cfa_ref').value.trim(),reason=document.getElementById('cfa_reason').value.trim();if(!name)return alert('Enter an account name.');if(changed&&!reference)return alert('Enter the cash count, bank statement or approval reference.');if(changed&&!reason)return alert('Explain why the opening balance is being corrected.');btn.disabled=true;window.__cashAccountSave({action:'upsert',commandId:'cashacct_'+Date.now(),accountId:id||('acc_'+Date.now().toString(36)),name,type:document.getElementById('cfa_type').value,opening,openingDate:document.getElementById('cfa_date').value||todayStr(),reference,reason,feedMethods:document.getElementById('cfa_feed').value.split(',').map(x=>x.trim()).filter(Boolean)}).then(()=>App.closeModal()).catch(e=>{alert('Could not save account: '+((e&&e.message)||e));btn.disabled=false;});};
+App.runControlAudit=function(btn){if(!window.__auditControls){alert('Live Finance service is not ready — sign in and refresh.');return;}if(btn){btn.disabled=true;btn.textContent='Auditing…';}window.__auditControls().then(function(r){window.__controlAudit=r||{};if(window.App&&App.render)App.render();}).catch(function(e){if(btn){btn.disabled=false;btn.textContent='Run control audit';}alert('Audit failed: '+((e&&e.message)||e));});};
+App.openControlResolution=function(target,source,btn){
+  if(target==='repair_reversed_payout')return App.repairPayoutDeposit(source,btn);
+  if(target==='edit_payout_reference'){try{sessionStorage.setItem('accazaOpenPayoutMetadata',source);}catch(e){}window.location.href='admin.html';return;}
+  if(target&&target.indexOf('admin_')===0){window.location.href='admin.html';return;}
+  if(target==='books_transactions'){App.go('transactions');return;}
+  App.go('cashflow');
+};
+App.cfRecordDeposit=function(kind,id){if(kind!=='payout')return App.cfRecordCustodyDeposit();const accs=cfAccounts();if(!accs.length)return alert('Add a cash account first.');const source=(window.__platformPayouts||{})[id];if(!source)return;const amount=Number(source.actualPayout)||0,m=document.getElementById('modal');m.innerHTML=`<div class="modal-head"><h3>Record platform payout deposit</h3><button class="x" onclick="App.closeModal()">×</button></div><div class="modal-body"><div class="field"><label>Deposit to</label><select id="cfd_acct">${accs.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select></div><div class="grid2"><div class="field"><label>Date</label><input id="cfd_date" type="date" value="${todayStr()}"/></div><div class="field"><label>Amount</label><input value="${amount}" disabled/></div></div><div class="field"><label>Bank transaction / platform statement reference</label><input id="cfd_ref" placeholder="Required"/></div></div><div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Cancel</button><button class="btn primary" onclick="App.cfSaveDeposit('payout','${id}',this)">Record deposit</button></div>`;document.getElementById('modalBg').classList.add('show');};
+App.cfSaveDeposit=function(kind,id,btn){const reference=document.getElementById('cfd_ref').value.trim();if(!reference)return alert('Enter the deposit or bank transaction reference.');btn.disabled=true;window.__financeCmd({action:'payout_deposit',commandId:'payoutdep_'+Date.now(),payoutId:id,date:document.getElementById('cfd_date').value,accountId:document.getElementById('cfd_acct').value,ref:reference}).then(()=>App.closeModal()).catch(e=>{alert('Could not record deposit: '+((e&&e.message)||e));btn.disabled=false;});};
+App.cfCustodyDepositTotal=function(){const total=Array.from(document.querySelectorAll('[data-cfd-allocation]')).reduce((sum,input)=>sum+(Number(input.value)||0),0),el=document.getElementById('cfd_total');if(el)el.textContent=peso(r2(total));};
+App.cfRecordCustodyDeposit=function(){const ids=Array.from(document.querySelectorAll('[data-cf-custody]:checked')).map(input=>input.getAttribute('data-cf-custody')).filter(Boolean),custody=window.__cashCustody||{},rows=ids.map(id=>Object.assign({id},custody[id]||{})).filter(row=>Number(row.remaining)>0),accs=cfAccounts();if(!rows.length)return alert('Select the custody sources that are physically included in this deposit.');if(!accs.length)return alert('Add a cash account first.');const m=document.getElementById('modal');m.innerHTML=`<div class="modal-head"><h3>Record register-cash deposit</h3><button class="x" onclick="App.closeModal()">×</button></div><div class="modal-body"><div class="hint">Use one bank-deposit reference for the cash actually handed over. Each amount is limited to its current available balance after approved cash payments and prior deposits.</div><div class="field"><label>Deposit to</label><select id="cfd_acct">${accs.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select></div><div class="grid2"><div class="field"><label>Deposit date</label><input id="cfd_date" type="date" value="${todayStr()}"/></div><div class="field"><label>Deposit slip / transfer reference</label><input id="cfd_ref" placeholder="Required"/></div></div><div class="tbl-wrap"><table><thead><tr><th>Cash custody source</th><th class="num">Available now</th><th class="num">Amount in this deposit</th></tr></thead><tbody>${rows.map(row=>`<tr><td><b>${esc(row.shiftReference||row.reference||row.staff||row.shiftId||row.id)}</b><div class="tiny muted">${row.closedAt?new Date(row.closedAt).toLocaleDateString('en-PH'):''}</div></td><td class="num">${peso(row.remaining)}</td><td class="num"><input data-cfd-allocation="${esc(row.id)}" type="number" min="0.01" max="${Number(row.remaining)}" step="0.01" value="${Number(row.remaining)}" oninput="App.cfCustodyDepositTotal()" style="max-width:9rem;text-align:right"/></td></tr>`).join('')}</tbody></table></div><div class="balance-bar ok"><span>Actual cash being deposited</span><b id="cfd_total"></b></div></div><div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Cancel</button><button class="btn primary" onclick="App.cfSaveCustodyDeposit(this)">Record selected deposit</button></div>`;document.getElementById('modalBg').classList.add('show');App.cfCustodyDepositTotal();};
+App.cfSaveCustodyDeposit=function(btn){const custody=window.__cashCustody||{},allocations={},inputs=Array.from(document.querySelectorAll('[data-cfd-allocation]'));let total=0;for(const input of inputs){const id=input.getAttribute('data-cfd-allocation'),use=r2(Number(input.value)||0),available=r2(Number((custody[id]||{}).remaining)||0);if(!(use>0))continue;if(use>available+.009)return alert('The available cash for one selected source has changed. Refresh Cash Flow and review the physical cash before recording this deposit.');allocations[id]=use;total=r2(total+use);}if(!(total>0))return alert('Enter the cash amount actually included in this deposit.');const reference=document.getElementById('cfd_ref').value.trim();if(!reference)return alert('Enter the deposit slip or transfer reference.');btn.disabled=true;window.__financeCmd({action:'cash_deposit',commandId:'cashdep_'+Date.now(),allocations,date:document.getElementById('cfd_date').value,accountId:document.getElementById('cfd_acct').value,reference}).then(()=>App.closeModal()).catch(e=>{alert('Could not record deposit: '+((e&&e.message)||e)+'. Refresh Cash Flow before retrying; no partial deposit was posted.');btn.disabled=false;});};
+App.repairPayoutDeposit=function(id,btn){
+  const payout=(window.__platformPayouts||{})[id];
+  if(!payout||!payout.reversed||!payout.depositMovementId||payout.depositReversalMovementId)return alert('This payout no longer has an orphaned deposit to repair.');
+  if(!window.__booksRepairPayout)return alert('Repair service is not ready — sign in and refresh Accaza Books.');
+  const reason=prompt('Correction reason','Deposit was recorded after the payout had already been reversed.');
+  if(!reason||!reason.trim())return;
+  if(!confirm('Post an audited correction for '+peso(payout.actualPayout)+'? This will restore Platform Payouts in Transit and remove the orphaned receipt from '+cfName(payout.accountId)+'. Original entries will remain visible.'))return;
+  btn.disabled=true;const old=btn.textContent;btn.textContent='Repairing…';
+  window.__booksRepairPayout({payoutId:id,amount:Number(payout.actualPayout)||0,reason:reason.trim()}).then(function(r){alert((r.duplicate?'This deposit was already repaired.':'Repair posted: '+peso(r.amount)+'.')+' The control exception will disappear when live Books refreshes.');}).catch(function(e){alert('Could not repair payout deposit: '+((e&&e.message)||e));btn.disabled=false;btn.textContent=old;});
+};
+App.repairLateJournalCorrection=function(id,btn){
+  if(!window.__financeCmd)return alert('Live Finance service is not ready — sign in and refresh Accaza Books.');
+  const reason=prompt('Correction reason','Move the mechanical correction reversal back to the original accounting period.');if(!reason||!reason.trim())return;
+  if(!confirm('Repair the correction-period mismatch? The original audit history will remain, two controlled offsetting entries will restore the proper dates, and total cash will not change.'))return;
+  btn.disabled=true;const old=btn.textContent;btn.textContent='Repairing…';
+  window.__financeCmd({action:'repair_late_manual_journal_correction',commandId:'periodrepair_'+id,originalMovementId:id,reason:reason.trim()}).then(function(r){alert((r.duplicate?'This correction was already repaired.':'Correction periods repaired.')+' Security Bank and Cash on Hand will refresh after the audited entries reach Books.');}).catch(function(e){alert('Could not repair correction periods: '+((e&&e.message)||e));btn.disabled=false;btn.textContent=old;});
+};
+
+App.repairFinanceDates=function(btn){
+  if(!window.__repairFinanceDates)return alert('Live Finance service is not ready — sign in and refresh Accaza Books.');
+  if(btn){btn.disabled=true;btn.textContent='Loading preview…';}
+  window.__repairFinanceDates({action:'preview'}).then(function(r){
+    if(btn){btn.disabled=false;btn.textContent='Repair date mismatches';}
+    var list=(r&&r.mismatches)||[],count=(r&&r.count)||0,ambiguous=(r&&r.ambiguous)||0;
+    if(!count)return alert('No finance-date mismatches to repair. Every finance movement already matches its cash-ledger date.');
+    var rows=list.map(function(m){var amb=m.ambiguous;return '<tr'+(amb?' style="opacity:.5"':'')+'><td><input type="checkbox" class="rfd-chk" value="'+esc(m.movementId)+'" '+(amb?'disabled':'checked')+'/></td><td><div class="tiny">'+esc(m.type||'movement')+'</div><div class="tiny muted">'+esc(m.movementId)+'</div></td><td>'+esc(m.currentDate||'')+'</td><td>'+esc(m.targetDate||'')+(amb?' <span class="tiny muted">(ambiguous — skipped)</span>':'')+'</td><td class="num">'+peso(Math.abs(Number(m.amount)||0))+'</td></tr>';}).join('');
+    var m=document.getElementById('modal');
+    m.innerHTML='<div class="modal-head"><h3>Repair finance-date mismatches</h3><button class="x" onclick="App.closeModal()">×</button></div>'+
+      '<div class="modal-body">'+
+      '<div class="hint">Each checked movement is re-dated to match its cash-ledger date. Nothing is edited in place — the system posts a net-zero immutable reversal at the wrong date and a matching repost at the correct date. Original entries stay in the audit trail; total cash and balances do not change.</div>'+
+      (ambiguous?'<div class="tiny" style="color:#9d3028">'+ambiguous+' movement(s) map to more than one cash date and are skipped — review those manually.</div>':'')+
+      '<div class="tbl-wrap" style="max-height:42vh;overflow:auto"><table><thead><tr><th></th><th>Movement</th><th>From</th><th>To (cash date)</th><th class="num">Amount</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+      '<div class="field"><label>Correction reason (required)</label><input id="rfd_reason" placeholder="e.g. Re-date platform-payout deposits to their cash-settlement dates"/></div>'+
+      '</div>'+
+      '<div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Cancel</button><button class="btn primary" onclick="App.repairFinanceDatesApply(this)">Repair checked movements</button></div>';
+    document.getElementById('modalBg').classList.add('show');
+  }).catch(function(e){if(btn){btn.disabled=false;btn.textContent='Repair date mismatches';}alert('Could not load preview: '+((e&&e.message)||e));});
+};
+App.repairFinanceDatesApply=function(btn){
+  var reason=((document.getElementById('rfd_reason')||{}).value||'').trim();
+  if(!reason)return alert('Enter a correction reason.');
+  var ids=Array.prototype.slice.call(document.querySelectorAll('.rfd-chk:checked')).map(function(c){return c.value;});
+  if(!ids.length)return alert('Select at least one movement to repair.');
+  if(!confirm('Re-date '+ids.length+' movement(s) to their cash-ledger dates? This posts audited reverse-and-repost entries; nothing is edited in place.'))return;
+  btn.disabled=true;var old=btn.textContent;btn.textContent='Repairing…';
+  window.__repairFinanceDates({action:'apply',reason:reason,movementIds:ids}).then(function(r){
+    App.closeModal();
+    alert('Re-dated '+((r&&r.repaired)||0)+' movement(s)'+((r&&r.skipped)?' · '+r.skipped+' skipped':'')+'. Re-running the control audit…');
+    if(App.runControlAudit)App.runControlAudit();
+  }).catch(function(e){alert('Could not repair dates: '+((e&&e.message)||e));btn.disabled=false;btn.textContent=old;});
+};
+
+/* ============================================================ PAGES ============================================================ */
+const PAGES = {
+  dashboard(){
+    const pl=plData();
+    const cash = ["1000","1010","1011","1012","1013","1014","1020","1021"].reduce((s,c)=>s+accountBalance(c,false),0); // cash across all time
+    const ar = accountBalance("1100",false);
+    const ap = accountBalance("2000",false);
+    const cogsPct = pl.netSales>0 ? (pl.totalCogs/pl.netSales*100) : 0;
+    const grossPct = pl.netSales>0 ? (pl.gross/pl.netSales*100) : 0;
+    const topExp = pl.expense.slice().sort((a,b)=>b.bal-a.bal)[0];
+    const kpi=(lbl,val,sub,cls)=>`<div class="kpi ${cls||''}"><div class="lbl">${lbl}</div><div class="val">${val}</div><div class="sub">${sub||''}</div></div>`;
+    return `<div class="page-head"><div><h2>Dashboard</h2><p>${periodLabel()} · ${DB.meta&&DB.meta.name||''}</p></div>
+        <div class="btn-row">${window.__booksUser?'<button class="btn" onclick="App.syncBooks(this)">↻ Sync all Finance transactions</button>':''}<button class="btn primary" onclick="App.newEntry()">+ New entry</button></div></div>
+      <div class="hint">Live double-entry books. When signed in, POS sales, COGS, and cash post automatically, and receivables/payables read from your finance subledgers. Set opening balances to make the balance sheet and cash flow tie out.</div>
+      <div class="kpis">
+        ${kpi("Cash position", pesoNoDec(cash), "On hand + bank + wallet (all-time)", cash>=0?'good':'bad')}
+        ${kpi("Sales ("+periodLabel()+")", pesoNoDec(pl.netSales), "Completed sales less refunds and voids")}
+        ${kpi("Gross profit", pesoNoDec(pl.gross), grossPct.toFixed(1)+"% margin", pl.gross>=0?'good':'bad')}
+        ${kpi("Net income", pesoNoDec(pl.net), pl.net>=0?'Profit':'Loss', pl.net>=0?'good':'bad')}
+        ${kpi("COGS ratio", cogsPct.toFixed(1)+"%", "of sales")}
+        ${(function(){var t=arApTotals(); return window.__booksUser
+          ? kpi("Receivables (open)", pesoNoDec(t.ar), "Owed to us", 'good')+kpi("Payables (open)", pesoNoDec(t.ap), "We owe", 'bad')+kpi("Net working capital", pesoNoDec(t.net), t.net>=0?'AR exceeds AP':'AP exceeds AR', t.net>=0?'good':'bad')
+          : kpi("Receivable (Grab/Panda)", pesoNoDec(ar), "From journal")+kpi("Payables", pesoNoDec(ap), "From journal");})()}
+        ${kpi("Top expense", topExp?topExp.a.name:"—", topExp?pesoNoDec(topExp.bal):"")}
+      </div>
+      <div class="two-col">
+        <div class="card card-pad">
+          <div class="section-label">Quick post</div>
+          <p class="tiny muted" style="margin-top:-.2rem">Pre-filled, balanced entries for the transactions you run daily. Adjust the amounts, then post.</p>
+          <div class="btn-row">
+            ${QUICK.map((q,i)=>`<button class="chip" onclick="App.newEntry(QUICK[${i}].build())">${q.label}</button>`).join("")}
+          </div>
+        </div>
+        <div class="card card-pad">
+          <div class="section-label">This period at a glance</div>
+          <table><tbody>
+            <tr><td>Net sales</td><td class="num">${peso(pl.netSales)}</td></tr>
+            <tr><td>Cost of goods sold</td><td class="num neg">(${peso(pl.totalCogs)})</td></tr>
+            <tr class="sub-row"><td>Gross profit</td><td class="num">${peso(pl.gross)}</td></tr>
+            <tr><td>Operating expenses</td><td class="num neg">(${peso(pl.totalExp)})</td></tr>
+            <tr class="total-row"><td>Net ${pl.net>=0?'income':'loss'}</td><td class="num ${pl.net>=0?'pos':'neg'}">${peso(pl.net)}</td></tr>
+          </tbody></table>
+        </div>
+      </div>`;
+  },
+
+  cashflow(){
+    if(!window.__booksUser)return `<div class="page-head"><div><h2>Cash Flow</h2><p>Bank, wallet and cash movements</p></div></div><div class="empty"><div class="big">🏦</div><b>Sign in for live Cash Flow</b><br><span class="tiny">Cash Flow now lives in Finance / Books.</span></div>`;
+    if(!window.__controlAudit&&window.__auditControls&&!window.__controlAuditLoading){window.__controlAuditLoading=true;window.__auditControls().then(function(r){window.__controlAudit=r||{};}).catch(function(){window.__controlAudit={};}).finally(function(){window.__controlAuditLoading=false;if(window.App&&App.render)App.render();});}
+    const s=cfStatement(),receiptRows=Object.keys(s.add).sort().map(k=>`<tr><td><span class="account-child">${esc(k)}</span></td><td class="num pos">${peso(s.add[k])}</td></tr>`).join('')||'<tr><td><span class="account-child muted">No receipts</span></td><td class="num muted">—</td></tr>',deductionRows=Object.keys(s.ded).sort().map(k=>`<tr><td><span class="account-child">${esc(k)}</span></td><td class="num neg">(${peso(s.ded[k])})</td></tr>`).join('')||'<tr><td><span class="account-child muted">No deductions</span></td><td class="num muted">—</td></tr>',correctionRows=s.correctionDetail.map(x=>`<tr><td><span class="account-child">${esc(x.type)}</span><div class="tiny muted">${esc(x.date)} · ${esc(x.id)}</div></td><td class="num">${x.net<0?'−':''}${peso(Math.abs(x.net))}</td></tr>`).join('')||'<tr><td><span class="account-child muted">No balance corrections</span></td><td class="num muted">—</td></tr>',balRows=obj=>s.keys.filter((k,i,a)=>a.indexOf(k)===i).map(k=>`<tr><td><span class="account-child">${esc(cfName(k))}</span></td><td class="num">${peso(obj[k]||0)}</td></tr>`).join(''),expected=r2(s.totBegin+s.totAdd-s.totDed+s.corrections),ties=Math.abs(expected-s.totEnd)<.01;
+    const cards=s.accs.map(a=>`<div class="kpi"><div class="lbl">${esc(a.name)} · ${esc(a.type||'bank')}</div><div class="val">${peso(s.ending[a.id]||0)}</div><div class="sub">Opening ${a.openingDate||'—'} · ${peso(a.opening||0)} · <span class="linkish" onclick="App.cashAccountEdit('${a.id}')">edit</span></div></div>`).join('');
+    const activity=s.detail.slice().reverse().slice(0,100).map(x=>`<tr><td>${x.date}</td><td>${esc(x.type)}<div class="tiny muted">${esc(x.id)}</div></td><td class="num ${x.net>=0?'pos':'neg'}">${x.net>=0?peso(x.net):'('+peso(-x.net)+')'}</td></tr>`).join('');
+    const allPayouts=Object.keys(window.__platformPayouts||{}).map(id=>Object.assign({id},window.__platformPayouts[id]||{})),payouts=allPayouts.filter(p=>!p.reversed&&!p.depositMovementId&&Number(p.actualPayout)>0),orphanedPayoutDeposits=allPayouts.filter(p=>p.reversed&&p.depositMovementId&&!p.depositReversalMovementId&&Number(p.actualPayout)>0),custody=Object.keys(window.__cashCustody||{}).map(id=>Object.assign({id},window.__cashCustody[id]||{})).filter(c=>Number(c.remaining)>0),payoutDepositRows=payouts.map(p=>`<tr><td>Platform payout · ${esc(p.channel||'')}</td><td>${p.settledAt?new Date(p.settledAt).toLocaleDateString('en-PH'):'—'}</td><td class="num">${peso(p.actualPayout)}</td><td><button class="btn sm" onclick="App.cfRecordDeposit('payout','${p.id}')">Deposit</button></td></tr>`).join(''),custodyDepositRows=custody.map(c=>`<tr><td>Register custody · <b>${esc(c.shiftReference||c.reference||c.staff||c.shiftId||c.id)}</b></td><td>${c.closedAt?new Date(c.closedAt).toLocaleDateString('en-PH'):'—'}</td><td class="num">${peso(c.remaining)}</td><td><label class="tiny"><input type="checkbox" data-cf-custody="${esc(c.id)}"/> Include</label></td></tr>`).join(''),exceptionRows=orphanedPayoutDeposits.map(p=>`<tr><td><b>Deposit recorded after payout reversal</b><div class="tiny muted">${esc(p.channel||'platform')} · ${esc(p.id)}</div></td><td>${esc(cfName(p.accountId))}</td><td class="num neg">(${peso(p.actualPayout)})</td><td><button class="btn sm" onclick="App.repairPayoutDeposit('${p.id}',this)">Repair deposit</button></td></tr>`).join('');
+    const movementById=new Map(cfMovements().map(m=>[m.id,m])),lateCorrections=cfMovements().filter(original=>{if(original.type!=='manual_books_journal'||!original.correctionReplacementId||!original.reversedByMovementId||original.lateCorrectionRepairId)return false;const reversal=movementById.get(original.reversedByMovementId),replacement=movementById.get(original.correctionReplacementId);if(!reversal||reversal.type!=='manual_books_journal_correction_reversal'||reversal.reversalOf!==original.id||!replacement||replacement.correctsMovementId!==original.id)return false;const lines=original.lines||[],cashOnly=lines.length>=2&&lines.every(l=>{const a=String(l.account||'');return a==='asset:register_cash'||a==='asset:cash_awaiting_deposit'||a==='asset:petty_cash'||a.indexOf('asset:cash_account:')===0;});return cashOnly&&Math.abs(cfCashDelta(original))<.005&&cfDay(reversal.occurredAt)>cfDay(original.occurredAt);}),lateCorrectionRows=lateCorrections.map(original=>{const reversal=movementById.get(original.reversedByMovementId),amount=(original.lines||[]).reduce((max,l)=>Math.max(max,Number(l.debit)||0,Number(l.credit)||0),0);return `<tr><td><b>Correction reversal posted in a later period</b><div class="tiny muted">${esc(original.id)} · original ${cfDay(original.occurredAt)} · reversal ${cfDay(reversal.occurredAt)}</div></td><td>Cash-to-cash correction</td><td class="num neg">${peso(amount)}</td><td><button class="btn sm" onclick="App.repairLateJournalCorrection('${original.id}',this)">Repair periods</button></td></tr>`;}).join('');
+    return `<div class="page-head"><div><h2>Cash Flow</h2><p>Authoritative cash statement · moved from Admin</p></div><div class="btn-row"><button class="btn" onclick="App.go('transactions')">Record transaction</button><button class="btn primary" onclick="App.cashAccountEdit('')">+ Cash account</button></div></div>
+      <div class="hint">Beginning cash comes from movements before the selected start date. Cash on Hand and Register Cash Float use the same dated account split as the Balance Sheet; the reclassification does not change total cash.</div>
+      ${(function(){var audit=window.__controlAudit,maintenance=audit&&audit.systemDateMaintenance,issues=Array.isArray(audit&&audit.issues)?audit.issues:[];if(!audit)return '';var maintenanceText=maintenance&&maintenance.repaired?'<div class="tiny" style="color:#155724;margin-bottom:.55rem">System maintenance aligned '+maintenance.repaired+' historical Finance date'+(maintenance.repaired===1?'':'s')+' to their verified cash dates. No cash amount, account, or source record changed.</div>':'';if(!issues.length&&!maintenanceText)return '';var rows=issues.map(function(i){var action=i.actionTarget?'<button class="btn sm" onclick="App.openControlResolution(\''+esc(i.actionTarget)+'\',\''+esc(i.source||'')+'\',this)">'+esc(i.actionLabel||'Open solution')+'</button>':'';return '<tr><td><b>'+esc(i.title||i.kind||'Control exception')+'</b><div class="tiny muted">'+esc(i.sourceLabel||'')+'</div></td><td>'+esc(i.solution||'Open the linked source record and use its controlled correction workflow.')+'</td><td>'+action+'</td></tr>';}).join('');return '<div class="card" style="margin-bottom:1rem"><div class="card-pad"><div class="section-label">Resolution guide</div><div class="tiny muted">Every remaining exception has a controlled next step. System-only date maintenance is completed automatically and is not a manager task.</div>'+maintenanceText+'</div>'+(rows?'<div class="tbl-wrap"><table><thead><tr><th>Exception</th><th>How to resolve it</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>':'')+'</div>';})()}
+      ${(function(){var a=window.__controlAudit;var b='<button class="btn primary" onclick="App.runControlAudit(this)">Run control audit</button>';if(!a)return '<div class="card" style="margin-bottom:1rem"><div class="card-pad"><div class="section-label">Financial control audit</div><div class="tiny muted">Server check for unbalanced entries, missing sale postings, suspense/clearing balances, off-chart balances, and unreviewed cash discrepancies.</div><div style="margin-top:.6rem">'+b+'</div></div></div>';var issues=Array.isArray(a.issues)?a.issues:[];var b2=issues.some(function(i){return (i.kind||'')==='cash_finance_date_mismatch';})?' <button class="btn" onclick="App.repairFinanceDates(this)">Repair date mismatches</button>':'';var rows=issues.map(function(i){return '<tr><td>'+esc(i.severity||'')+'</td><td>'+esc(i.title||i.kind||'Control exception')+'</td><td>'+esc(i.sourceLabel||'')+'</td><td>'+esc(i.detail||'')+'</td><td class="num">'+(i.amount!=null?peso(i.amount):'')+'</td></tr>';}).join('');return '<div class="card" style="margin-bottom:1rem'+(issues.length?';border-color:#c96b62':'')+'"><div class="card-pad"><div class="section-label"'+(issues.length?' style="color:#9d3028"':'')+'>Financial control audit &middot; '+(a.issueCount||0)+' exception(s)</div><div class="tiny muted" style="margin-bottom:.4rem">'+b+b2+'</div></div>'+(issues.length?'<div class="tbl-wrap"><table><thead><tr><th>Severity</th><th>Issue</th><th>Source</th><th>Detail</th><th class="num">Amount</th></tr></thead><tbody>'+rows+'</tbody></table></div>':'<div class="card-pad" style="color:#155724">No exceptions found.</div>')+'</div>';})()}
+      ${orphanedPayoutDeposits.length?`<div class="card" style="margin-bottom:1rem;border-color:#c96b62"><div class="card-pad"><div class="section-label" style="color:#9d3028">Financial control exceptions · ${orphanedPayoutDeposits.length}</div><div class="tiny muted">These deposits were posted after their payouts had already been reversed. Repairing appends an approved correction; original entries remain in the audit trail.</div></div><div class="tbl-wrap"><table><thead><tr><th>Issue</th><th>Cash account</th><th class="num">Amount</th><th></th></tr></thead><tbody>${exceptionRows}</tbody></table></div></div>`:''}
+      ${lateCorrections.length?`<div class="card" style="margin-bottom:1rem;border-color:#c96b62"><div class="card-pad"><div class="section-label" style="color:#9d3028">Journal period exceptions · ${lateCorrections.length}</div><div class="tiny muted">These corrected cash journals used a later date for their mechanical reversal. Repairing appends two matched entries so the original and late periods both net correctly; the corrected replacement and full audit history remain.</div></div><div class="tbl-wrap"><table><thead><tr><th>Issue</th><th>Scope</th><th class="num">Amount</th><th></th></tr></thead><tbody>${lateCorrectionRows}</tbody></table></div></div>`:''}
+      <div class="kpis">${cards}</div>
+      <div class="card card-pad" style="margin-bottom:1rem"><div class="page-head" style="margin-bottom:.6rem"><div><div class="section-label">Cash flow statement</div></div><div class="tiny">From <input type="date" value="${CF_FROM}" onchange="App.cfRange('from',this.value)"/> to <input type="date" value="${CF_TO}" onchange="App.cfRange('to',this.value)"/></div></div>
+        <div class="tbl-wrap"><table><thead><tr><th>Cash movement</th><th class="num">Amount</th></tr></thead><tbody>
+          <tr class="group-account"><td>Beginning cash balance · ${CF_FROM}</td><td class="num">${peso(s.totBegin)}</td></tr>${balRows(s.begin)}
+          <tr class="sub-row"><td>Plus: Receipts</td><td class="num pos">${peso(s.totAdd)}</td></tr>${receiptRows}
+          <tr class="sub-row"><td>Less: Deductions</td><td class="num neg">(${peso(s.totDed)})</td></tr>${deductionRows}
+          <tr class="sub-row"><td>Plus / less: Balance corrections <span class="tiny muted">not receipts or payments</span></td><td class="num">${s.corrections<0?'−':''}${peso(Math.abs(s.corrections))}</td></tr>${correctionRows}
+          <tr class="total-row"><td>Calculated ending cash</td><td class="num">${peso(expected)}</td></tr>
+          <tr class="group-account"><td>Ending cash balances · ${CF_TO}</td><td class="num">${peso(s.totEnd)}</td></tr>${balRows(s.ending)}
+        </tbody></table></div>
+        <div class="balance-bar ${ties?'ok':'off'}">${ties?'✓ Beginning cash + receipts − deductions ± corrections agrees with ending cash':'✗ Cash statement differs by '+peso(Math.abs(expected-s.totEnd))}<span>${peso(s.totBegin)} + ${peso(s.totAdd)} − ${peso(s.totDed)} ${s.corrections<0?'−':'+'} ${peso(Math.abs(s.corrections))} = ${peso(expected)}</span></div></div>
+      <div class="card" style="margin-bottom:1rem"><div class="card-pad"><div class="section-label">Cash accounts · all open for viewing and editing</div></div><div class="tbl-wrap"><table><thead><tr><th>Account</th><th>Type</th><th>Opening date</th><th class="num">Opening</th><th></th></tr></thead><tbody>${s.accs.map(a=>`<tr><td>${esc(a.name)}</td><td>${esc(a.type)}</td><td>${a.openingDate||'—'}</td><td class="num">${peso(a.opening)}</td><td><button class="btn sm ghost" onclick="App.cashAccountEdit('${a.id}')">Edit</button></td></tr>`).join('')}</tbody></table></div></div>
+      <div class="card" style="margin-bottom:1rem"><div class="card-pad"><div class="section-label">Deposits to record</div><div class="tiny muted">Register custody shows only cash still physically available after approved cash payments and earlier deposits. Select the sources that make up one actual bank deposit; do not deposit the original shift amounts automatically.</div>${custody.length?'<div style="margin-top:.65rem"><button class="btn primary" onclick="App.cfRecordCustodyDeposit()">Record selected register-cash deposit</button></div>':''}</div><div class="tbl-wrap"><table><thead><tr><th>Source</th><th>Date</th><th class="num">Available now</th><th></th></tr></thead><tbody>${payoutDepositRows}${custodyDepositRows||(!payoutDepositRows?'<tr><td colspan="4" class="empty">No deposits waiting to be recorded.</td></tr>':'')}</tbody></table></div></div>
+      <div class="card"><div class="card-pad"><div class="section-label">Cash activity · selected period</div></div><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Movement</th><th class="num">Net cash</th></tr></thead><tbody>${activity||'<tr><td colspan="3" class="empty">No cash activity in this period.</td></tr>'}</tbody></table></div></div>`;
+  },
+
+  journal(){
+    const all=ENTRIES(),byId=new Map(all.map(e=>[e.id,e])),children={};
+    all.forEach(e=>{if(e.reversalOf)(children[e.reversalOf]=children[e.reversalOf]||[]).push(e);});
+    const replacements={};all.forEach(e=>{if(e.correctsMovementId)replacements[e.correctsMovementId]=e;});
+    const mechanics=new Set();all.forEach(e=>{if(e.reversalOf)mechanics.add(e.id);if(e.correctsMovementId)mechanics.add(e.id);});
+    const display=all.filter(e=>!mechanics.has(e.id)).map(original=>{
+      const replacement=replacements[original.id]||null,reversal=(children[original.id]||[])[0]||null,primary=replacement||original;
+      return {original,reversal,replacement,primary,date:replacement?replacement.date:original.date};
+    }).filter(g=>entryInPeriod({date:g.date})).sort((a,b)=>(b.date+b.primary.id).localeCompare(a.date+a.primary.id));
+    const entryLines=e=>(e.lines||[]).map(l=>`<div style="display:flex;justify-content:space-between;gap:1rem">
+          <span style="${(Number(l.credit)||0)>0?'padding-left:1.1rem':''}"><span class="acc-code">${l.code}</span> ${esc(accName(l.code))}</span>
+          <span class="num">${(Number(l.debit)||0)>0?peso(l.debit):'<span class="muted">'+peso(l.credit)+' cr</span>'}</span></div>`).join("");
+    const historyEntry=(label,e)=>e?`<div style="padding:.45rem 0;border-top:1px solid var(--cd)"><b>${label}</b> · ${esc(e.date||'')} · ${esc(e.ref||e.id)}<div style="margin-top:.25rem">${entryLines(e)}</div></div>`:'';
+    const rows = display.map(g=>{
+      const e=g.primary,dr=(e.lines||[]).reduce((s,l)=>s+(Number(l.debit)||0),0),corrected=!!g.replacement,closed=!corrected&&!!g.reversal,status=corrected?'Corrected':closed?(g.reversal&&g.reversal.voided?'Voided':'Reversed'):'';
+      const history=(corrected||closed)?`<details style="margin-top:.45rem"><summary class="tiny linkish">View posting history</summary>${historyEntry('Original posting',g.original)}${historyEntry(g.reversal&&g.reversal.voided?'Void entry':'Reversal entry',g.reversal)}${historyEntry('Corrected replacement',g.replacement)}</details>`:'';
+      const posLocked=e.sourceType==='order'||/^order_|^pos_/i.test(e.type||'')||/^POS-/i.test(e.ref||''),customerPayableId=linkedCustomerPayableId(e),customerPayableControl=(e.lines||[]).some(l=>l.code==='2030');
+      return `<tr>
+        <td class="journal-date">${e.date}<div class="tiny muted">${esc(e.ref)||'—'} ${e.source==='pos'?'<span class="badge-rev" style="color:#28576b;background:#e9f2f6">POS</span>':''}${status?'<span class="badge-rev">'+status+'</span>':''}</div></td>
+        <td class="journal-entry"><b>${esc(e.memo)||'(no memo)'}</b>${e.linkedDiscrepancyId?`<div class="tiny" style="margin-top:.2rem"><span class="badge-rev">Admin variance · ${esc(e.linkedDiscrepancyId)}</span></div>`:''}<div style="margin-top:.35rem;font-size:.8rem">${entryLines(e)}</div>${history}</td>
+        <td class="num journal-amount">${closed?peso(0):peso(dr)}</td>
+        <td class="journal-actions">${!closed&&customerPayableId?`<button class="btn sm primary" onclick="App.correctPayable('${customerPayableId}')">Close linked payable</button>`:!closed&&customerPayableControl?`<button class="btn sm ghost" onclick="App.editEntry('${e.id}')">Open customer payable</button>`:!closed&&!posLocked&&!e.reversalOf&&!e.reversedByMovementId?`<button class="btn sm ghost" onclick="App.editEntry('${e.id}')">Edit / correct</button> ${(e.sourceType==='booksManualJournal'||e.type==='manual_books_journal')?`<button class="btn sm ghost" onclick="App.reverseEntry('${e.id}',false)">Reverse</button> <button class="btn sm ghost" onclick="App.reverseEntry('${e.id}',true)">Void</button>`:''}`:'<span class="tiny muted">'+(status||(posLocked?'POS locked':'Automatic posting'))+'</span>'}</td></tr>`;
+    }).join("");
+    return `<div class="page-head"><div><h2>Journal</h2><p>${periodLabel()} · ${display.length} displayed entr${display.length===1?'y':'ies'} · correction mechanics grouped into posting history</p></div>
+        <button class="btn primary" onclick="App.newEntry()">+ New entry</button></div>
+      <div class="hint">Every non-POS journal can be corrected while its accounting month is open. POS sale and COGS journals remain locked. Saving an edit creates a linked reversal and replacement, so the original audit trail is never erased.</div>
+      <div class="card"><div class="tbl-wrap"><table class="journal-table">
+        <colgroup><col style="width:155px"><col><col style="width:120px"><col style="width:205px"></colgroup><thead><tr><th>Date</th><th>Entry &amp; lines</th><th class="num">Amount</th><th>Actions</th></tr></thead>
+        <tbody>${rows||'<tr><td colspan=4><div class="empty"><div class="big">📓</div>No entries in this period.<br><button class="btn primary" style="margin-top:.8rem" onclick="App.newEntry()">Post your first entry</button></div></td></tr>'}</tbody>
+      </table></div></div>`;
+  },
+
+  ledger(){
+    const groups = TYPES.map(t=>({t, rows:DB.accounts.filter(a=>a.type===t)}));
+    const body = groups.map(g=>{
+      const rws = g.rows.map(a=>{ const bal=accountBalance(a.code,true); const has=Math.abs(bal)>0.005;
+        return `<tr><td><span class="acc-code">${a.code}</span></td>
+          <td><span class="linkish" onclick="App.drill('${a.code}')">${esc(a.name)}</span></td>
+          <td class="num">${has?peso(bal):'<span class="muted">'+peso(0)+'</span>'}</td></tr>`; }).join("");
+      return `<tr class="sub-row"><td colspan="3"><span class="type-pill t-${g.t.toLowerCase()}">${g.t}</span></td></tr>`+rws;
+    }).join("");
+    return `<div class="page-head"><div><h2>General Ledger</h2><p>Assets, liabilities and equity through ${periodBounds().end}; income, COGS and expenses for ${periodLabel()} only</p></div></div>
+      <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Code</th><th>Account</th><th class="num">Balance (normal side)</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
+  },
+
+  tb(){
+    let totDr=0, totCr=0;
+    const rows = DB.accounts.map(a=>{
+      const net = accountNet(a.code, entriesInPeriod()); // selected-period debit-positive activity
+      const dr = net>0?net:0, cr=net<0?-net:0; totDr+=dr; totCr+=cr;
+      return `<tr><td><span class="acc-code">${a.code}</span></td>
+        <td><span class="linkish" onclick="App.drill('${a.code}')">${esc(a.name)}</span> <span class="type-pill t-${a.type.toLowerCase()}">${a.type}</span></td>
+        <td class="num">${dr?peso(dr):'<span class="muted">—</span>'}</td><td class="num">${cr?peso(cr):'<span class="muted">—</span>'}</td></tr>`;
+    }).join("");
+    const balanced = Math.abs(r2(totDr)-r2(totCr))<0.005;
+    return `<div class="page-head"><div><h2>Trial Balance</h2><p>${periodLabel()} activity · debits and credits posted inside the selected period</p></div></div>
+      <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Code</th><th>Account</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead>
+      <tbody>${rows}<tr class="total-row"><td></td><td>Totals</td><td class="num">${peso(totDr)}</td><td class="num">${peso(totCr)}</td></tr></tbody></table></div>
+      <div class="card-pad ${balanced?'':''}" style="border-top:1px solid var(--line)"><span class="balance-bar ${balanced?'ok':'off'}" style="display:inline-flex">${balanced?'✓ In balance — debits equal credits':'✗ Out of balance by '+peso(Math.abs(totDr-totCr))}</span></div></div>`;
+  },
+
+  pl(){
+    const pl=plData();
+    const line=(x,contra)=>`<tr><td><span class="acc-code">${x.a.code}</span> ${x.synthetic?'<span>'+esc(x.a.name)+'</span> <span class="tiny muted">· review the browser journal</span>':'<span class="linkish" onclick="App.drill(\''+x.a.code+'\')">'+esc(x.a.name)+'</span>'}</td><td class="num ${contra?'neg':''}">${contra?'('+peso(Math.abs(x.bal))+')':peso(x.bal)}</td></tr>`;
+    // contra: Income accounts with debit-normal balance (4900) show as negative already via bal sign
+    const salesRows = pl.sales.map(x=> line(x, x.bal<0)).join("");
+    const otherIncomeRows = pl.otherIncome.map(x=> line(x, x.bal<0)).join("");
+    const cogsRows = pl.cogs.map(x=>line(x,true)).join("");
+    const expRows = pl.expense.map(x=>line(x,true)).join("");
+    const grossPct = pl.netSales>0?(pl.gross/pl.netSales*100):0;
+    const netPct = pl.netSales>0?(pl.net/pl.netSales*100):0;
+    return `<div class="page-head"><div><h2>Profit &amp; Loss</h2><p>${periodLabel()}</p></div>
+      <button class="btn primary" onclick="App.newEntry()">+ New entry</button></div>
+      ${periodButtons()}
+      <div class="card"><div class="tbl-wrap"><table>
+        <thead><tr><th>Account</th><th class="num">Amount</th></tr></thead>
+        <tbody>
+          <tr class="sub-row"><td colspan="2">Recognized sales <span class="tiny muted">· Admin-authorized bridge entries only; fully voided transactions excluded</span></td></tr>
+          ${salesRows||'<tr><td colspan=2 class="muted">No completed sales in this period</td></tr>'}
+          <tr class="total-row"><td>Net sales</td><td class="num">${peso(pl.netSales)}</td></tr>
+          <tr class="sub-row"><td colspan="2">Cost of goods sold</td></tr>
+          ${cogsRows||'<tr><td colspan=2 class="muted">—</td></tr>'}
+          <tr class="total-row"><td>Total COGS</td><td class="num neg">(${peso(pl.totalCogs)})</td></tr>
+          <tr class="total-row"><td>Gross profit <span class="tiny muted">${grossPct.toFixed(1)}%</span></td><td class="num ${pl.gross>=0?'pos':'neg'}">${peso(pl.gross)}</td></tr>
+          <tr class="sub-row"><td colspan="2">Other income</td></tr>
+          ${otherIncomeRows||'<tr><td colspan=2 class="muted">—</td></tr>'}
+          <tr class="total-row"><td>Total other income</td><td class="num">${peso(pl.totalOtherIncome)}</td></tr>
+          <tr class="sub-row"><td colspan="2">Operating expenses</td></tr>
+          ${expRows||'<tr><td colspan=2 class="muted">—</td></tr>'}
+          <tr class="total-row"><td>Total expenses</td><td class="num neg">(${peso(pl.totalExp)})</td></tr>
+          <tr class="total-row"><td>Net ${pl.net>=0?'income':'loss'} <span class="tiny muted">${netPct.toFixed(1)}%</span></td><td class="num ${pl.net>=0?'pos':'neg'}" style="font-size:1.05rem">${peso(pl.net)}</td></tr>
+        </tbody></table></div></div>`;
+  },
+
+  bs(){
+    // Balance sheet uses ALL entries up to and including selected period (cumulative), not just the month.
+    const ents = entriesThroughPeriodEnd();
+    const grp = type => DB.accounts.filter(a=>a.type===type).map(a=>{ const net=accountNet(a.code,ents); const bal = DEBIT_NORMAL[type]?net:-net; return {a,bal}; }).filter(x=>Math.abs(x.bal)>0.005);
+    const assets=grp("Asset"), liab=grp("Liability"), equity=grp("Equity");
+    const totAssets=assets.reduce((s,x)=>s+x.bal,0);
+    const totLiab=liab.reduce((s,x)=>s+x.bal,0);
+    let totEquity=equity.reduce((s,x)=>s+x.bal,0);
+    // Calendar-year close: completed years roll into retained earnings at Dec 31;
+    // only the current year's result remains current net income.
+    const currentYear=String(periodBounds().end||todayStr()).slice(0,4),yearStart=currentYear+"-01-01";
+    const resultFor = rows => {
+      const inc=DB.accounts.filter(a=>a.type==="Income").reduce((s,a)=>s+-postedAccountNet(a.code,rows),0);
+      const cog=DB.accounts.filter(a=>a.type==="COGS").reduce((s,a)=>s+postedAccountNet(a.code,rows),0);
+      const exp=DB.accounts.filter(a=>a.type==="Expense").reduce((s,a)=>s+postedAccountNet(a.code,rows),0);
+      return r2(inc-cog-exp);
+    };
+    const retainedFromClosedYears=resultFor(ents.filter(e=>String(e&&e.date||"").slice(0,10)<yearStart));
+    const currentNetIncome=resultFor(ents.filter(e=>String(e&&e.date||"").slice(0,10)>=yearStart));
+    const netIncome=r2(retainedFromClosedYears+currentNetIncome);
+    const totEquityWithNI = totEquity + netIncome;
+    const totLE = totLiab + totEquityWithNI;
+    const balanced = Math.abs(r2(totAssets)-r2(totLE))<0.005;
+    const rows = (arr,type) => {
+      const balances=new Map(arr.map(x=>[x.a.code,x])), rendered=new Set(), out=[];
+      ACCOUNT_GROUPS.filter(g=>g.type===type).forEach(main=>{
+        const children=groupChildren(main).map(a=>balances.get(a.code)).filter(Boolean);
+        if(!children.length)return;
+        const total=r2(children.reduce((sum,x)=>sum+x.bal,0));
+        out.push(`<tr class="group-account"><td><span class="acc-code">${main.code}</span> ${esc(main.name)} <span class="type-pill t-${type.toLowerCase()}">Main</span></td><td class="num">${peso(total)}</td></tr>`);
+        children.forEach(x=>{rendered.add(x.a.code);out.push(`<tr><td><span class="account-child"><span class="acc-code">${x.a.code}</span> <span class="linkish" onclick="App.drill('${x.a.code}')">${esc(x.a.name)}</span></span></td><td class="num">${peso(x.bal)}</td></tr>`);});
+      });
+      arr.filter(x=>!rendered.has(x.a.code)).forEach(x=>out.push(`<tr><td><span class="acc-code">${x.a.code}</span> <span class="linkish" onclick="App.drill('${x.a.code}')">${esc(x.a.name)}</span></td><td class="num">${peso(x.bal)}</td></tr>`));
+      return out.join("");
+    };
+    return `<div class="page-head"><div><h2>Balance Sheet</h2><p>Cumulative balance as of ${periodBounds().end}</p></div></div>
+      <div class="hint">Opening balances are Owner's Capital. Completed calendar-year profit or loss closes to Retained Earnings at December 31; the active year's result remains Current-year net income.</div>
+      <div class="two-col">
+        <div class="card"><div class="card-pad"><div class="section-label"><span class="type-pill t-asset">Assets</span></div></div><div class="tbl-wrap"><table><tbody>
+          ${rows(assets,"Asset")||'<tr><td class="muted">—</td><td></td></tr>'}
+          <tr class="total-row"><td>Total assets</td><td class="num">${peso(totAssets)}</td></tr></tbody></table></div></div>
+        <div class="card"><div class="card-pad"><div class="section-label"><span class="type-pill t-liability">Liabilities</span> &amp; <span class="type-pill t-equity">Equity</span></div></div><div class="tbl-wrap"><table><tbody>
+          <tr class="sub-row"><td colspan="2">Liabilities</td></tr>
+          ${rows(liab,"Liability")||'<tr><td class="muted">—</td><td></td></tr>'}
+          <tr><td><b>Total liabilities</b></td><td class="num"><b>${peso(totLiab)}</b></td></tr>
+          <tr class="sub-row"><td colspan="2">Equity</td></tr>
+          ${rows(equity,"Equity")||''}
+          <tr><td>Retained earnings (closed through Dec 31, ${Number(currentYear)-1})</td><td class="num ${retainedFromClosedYears>=0?'pos':'neg'}">${peso(retainedFromClosedYears)}</td></tr>
+          <tr><td>Current-year net ${currentNetIncome>=0?'income':'loss'} (${currentYear})</td><td class="num ${currentNetIncome>=0?'pos':'neg'}">${peso(currentNetIncome)}</td></tr>
+          <tr><td><b>Total equity</b></td><td class="num"><b>${peso(totEquityWithNI)}</b></td></tr>
+          <tr class="total-row"><td>Total liabilities &amp; equity</td><td class="num">${peso(totLE)}</td></tr></tbody></table></div></div>
+      </div>
+      <div class="card-pad center"><span class="balance-bar ${balanced?'ok':'off'}" style="display:inline-flex">${balanced?'✓ Balanced — Assets = Liabilities + Equity':'✗ Out of balance by '+peso(Math.abs(totAssets-totLE))}</span></div>`;
+  },
+
+  coa(){
+    const entries=ENTRIES(), groups = TYPES.map(t=>({t, rows:DB.accounts.filter(a=>a.type===t)}));
+    const accountRow = a=>`<tr><td><span class="acc-code">${a.code}</span></td><td><span class="${accountGroupFor(a)?'account-child':''}"><b>${esc(a.name)}</b></span></td><td class="tiny muted">${esc(a.note)}</td><td class="num">${peso(normalBalanceFor(a.code,entries))}</td>
+        <td style="white-space:nowrap"><button class="btn sm ghost" onclick="App.editAccount('${a.code}')">Edit</button></td></tr>`;
+    const body = groups.map(g=>{
+      const rows=[], emitted=new Set();
+      ACCOUNT_GROUPS.filter(x=>x.type===g.t).forEach(main=>{
+        rows.push(`<tr class="group-account"><td><span class="acc-code">${main.code}</span></td><td>${esc(main.name)} <span class="type-pill t-asset">Main</span></td><td class="tiny muted">${esc(main.note)}</td><td class="num">${peso(groupBalance(main,entries))}</td><td><span class="tiny muted">Protected</span></td></tr>`);
+        groupChildren(main).forEach(a=>{rows.push(accountRow(a));emitted.add(a.code);});
+      });
+      g.rows.filter(a=>!emitted.has(a.code)).forEach(a=>rows.push(accountRow(a)));
+      return `<tr class="sub-row"><td colspan="5"><span class="type-pill t-${g.t.toLowerCase()}">${g.t}</span> <span class="tiny muted">· normal balance: ${DEBIT_NORMAL[g.t]?'Debit':'Credit'}</span></td></tr>`+rows.join("");
+    }).join("");
+    return `<div class="page-head"><div><h2>Chart of Accounts</h2><p>${DB.accounts.length} posting accounts · ${ACCOUNT_GROUPS.length} protected main accounts · balances as of latest entry</p></div>
+      ${(!window.__booksUser||window.__booksChartManager)?`<div class="btn-row" style="gap:.5rem">${(window.__booksUser&&window.__booksChartManager)?'<button class="btn" onclick="App.importLocalChart()">⬆ Import local accounts</button>':''}<button class="btn primary" onclick="App.editAccount()">+ Add account</button></div>`:'<span class="tiny muted">Chart is managed by the finance owners</span>'}</div>
+      <div class="hint">Main accounts are read-only totals. Transactions must be posted to their indented subaccounts, preserving detailed inventory and cash audit trails.</div>
+      <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Code</th><th>Account</th><th>Note</th><th class="num">Balance</th><th></th></tr></thead><tbody>${body}</tbody></table></div></div>`;
+  }
+};
+
+/* ---- AR / AP subledgers + aging (read live from /receivables, /payables) ---- */
+var AGING_ORDER = ['Current','1–30','31–60','61–90','90+','No due date'];
+function agingBucket(due){
+  if(!due) return 'No due date';
+  var t = Date.parse(String(due)+'T00:00:00'); if(isNaN(t)) return 'No due date';
+  var days = Math.floor((Date.now()-t)/86400000);
+  if(days<=0) return 'Current'; if(days<=30) return '1–30'; if(days<=60) return '31–60'; if(days<=90) return '61–90'; return '90+';
+}
+function openDocs(map){ return Object.keys(map||{}).map(function(k){return Object.assign({id:k}, map[k]||{});}).filter(function(d){return (d.status||'open')==='open' && (Number(d.amount)||0)>0;}); }
+function adminSalesAr(){
+  var combined=Object.assign({},window.__booksArchivedOrders||{},window.__booksActiveOrders||{}),rows=[];
+  Object.keys(combined).forEach(function(id){var o=combined[id]||{},channel=String(o.channel||'').toLowerCase();if(o.source!=='pos'||(channel!=='grabfood'&&channel!=='foodpanda')||o.voided===true||(o.settlementStatus||'unsettled')==='settled')return;var gross=Number(o.grossPlatform||o.subtotal||o.total)||0,net=o.netPlatform!=null?(Number(o.netPlatform)||0):r2(gross-(Number(o.commission)||0)-(Number(o.platformDiscount)||0)-(Number(o.platformWht)||0)-(Number(o.platformVat)||0)-(Number(o.platformAdsMarketing)||0)-(Number(o.platformMarketingFee)||0));if(Math.abs(net)<.005)return;rows.push({id:id,channel:channel,date:String(o.completedAt||o.receivedAt||o.createdAt||o.timestamp||''),ref:o.platformOrderRef||o.orderNumber||id,amount:r2(net)});});
+  rows.sort(function(a,b){return String(b.date).localeCompare(String(a.date));});var byChannel={grabfood:0,foodpanda:0};rows.forEach(function(x){byChannel[x.channel]=r2(byChannel[x.channel]+x.amount);});return{rows:rows,byChannel:byChannel,total:r2(byChannel.grabfood+byChannel.foodpanda)};
+}
+function arApTotals(){
+  var ar=r2(adminSalesAr().total+openDocs(window.__arMap).reduce(function(s,d){return s+(Number(d.amount)||0);},0));
+  var ap=openDocs(window.__apMap).reduce(function(s,d){return s+(Number(d.amount)||0);},0);
+  return {ar:ar, ap:ap, net:ar-ap};
+}
+function receivablesPage(){
+  if(!window.__booksUser) return '<div class="page-head"><div><h2>Receivables</h2><p>Money owed to you</p></div></div><div class="empty"><div class="big">📥</div><b>Sign in for live receivables</b><br><span class="tiny">This ledger reads the same authoritative Finance journal used by the Balance Sheet.</span></div>';
+  var salesAr=adminSalesAr(),salesRows=salesAr.rows.map(function(x){var shown=x.date&&/^\d+$/.test(x.date)?new Date(Number(x.date)).toLocaleDateString('en-PH'):String(x.date||'').slice(0,10);return '<tr><td class="tiny">'+esc(shown||'—')+'</td><td><b>'+esc(x.channel==='grabfood'?'GrabFood':'FoodPanda')+'</b><div class="tiny muted">'+esc(x.ref)+'</div></td><td class="num">'+peso(x.amount)+'</td></tr>';}).join('');
+  var entries=ENTRIES().slice().sort(function(a,b){return String(a.date||'').localeCompare(String(b.date||''))||String(a.id||'').localeCompare(String(b.id||''));}),running=0,platformRows=[];
+  entries.forEach(function(e){
+    var debit=0,credit=0;(e.lines||[]).forEach(function(l){if(String(l.code)==='1100'){debit+=Number(l.debit)||0;credit+=Number(l.credit)||0;}});
+    debit=r2(debit);credit=r2(credit);if(!(debit||credit))return;running=r2(running+debit-credit);
+    platformRows.push('<tr><td class="tiny">'+esc(e.date||'')+'</td><td><b>'+esc(e.memo||'Platform receivable movement')+'</b><div class="tiny muted">'+esc(e.ref||e.sourceId||e.id||'')+(e.channel?' · '+esc(e.channel):'')+'</div></td><td class="num">'+(debit?peso(debit):'—')+'</td><td class="num">'+(credit?peso(credit):'—')+'</td><td class="num">'+peso(running)+'</td></tr>');
+  });
+  var docs=openDocs(window.__arMap).sort(function(a,b){return String(a.due||'9999-99-99').localeCompare(String(b.due||'9999-99-99'));}),buckets={};AGING_ORDER.forEach(function(b){buckets[b]=0;});
+  var docsTotal=0;docs.forEach(function(d){var amount=Number(d.amount)||0;docsTotal+=amount;buckets[agingBucket(d.due)]+=amount;});docsTotal=r2(docsTotal);
+  var platformBalance=salesAr.total,platformControl=r2(accountBalance('1100',false)),platformDifference=r2(platformControl-platformBalance),platformTies=Math.abs(platformDifference)<.01,otherControl=r2(accountBalance('1110',false)),totalControl=r2(platformBalance+docsTotal),difference=r2(otherControl-docsTotal),ties=Math.abs(difference)<.01;
+  var agingCards=AGING_ORDER.filter(function(b){return buckets[b]>.005;}).map(function(b){return '<div class="kpi"><div class="lbl">'+b+'</div><div class="val" style="font-size:1.15rem">'+pesoNoDec(buckets[b])+'</div></div>';}).join('');
+  var docRows=docs.map(function(d){var bucket=agingBucket(d.due),overdue=bucket!=='Current'&&bucket!=='No due date';return '<tr><td><b>'+esc(d.party||'—')+'</b>'+(d.ref?'<div class="tiny muted">'+esc(d.ref)+'</div>':'')+'</td><td class="tiny">'+esc(d.type||'')+'</td><td class="tiny">'+esc(d.date||'')+'</td><td class="tiny">'+esc(d.due||'—')+'</td><td><span class="type-pill '+(overdue?'t-expense':'t-income')+'">'+bucket+'</span></td><td class="num">'+peso(d.amount)+'</td></tr>';}).join('');
+  return '<div class="page-head"><div><h2>Receivables</h2><p>Control-account ledger and detailed open items · total '+pesoNoDec(totalControl)+'</p></div><div class="btn-row"><button class="btn" onclick="App.syncBooks(this)">↻ Sync Admin Sales AR</button><button class="btn primary" onclick="App.txnReceivable()">+ Receivable</button></div></div>'+
+    '<div class="hint">Platform AR comes directly from account 1100, the same source used by the Balance Sheet. GrabFood/FoodPanda sales increase it; payouts, corrections, voids, and reversals reduce it. Other named receivables reconcile to account 1110.</div>'+
+    '<div class="kpis"><div class="kpi good"><div class="lbl">Admin Sales platform AR</div><div class="val">'+pesoNoDec(platformBalance)+'</div><div class="sub">GrabFood '+peso(salesAr.byChannel.grabfood)+' · FoodPanda '+peso(salesAr.byChannel.foodpanda)+'</div></div><div class="kpi good"><div class="lbl">Other open receivables</div><div class="val">'+pesoNoDec(docsTotal)+'</div><div class="sub">'+docs.length+' open item(s)</div></div><div class="kpi"><div class="lbl">Total accounts receivable</div><div class="val">'+pesoNoDec(totalControl)+'</div><div class="sub">Admin Sales AR plus other detailed AR</div></div>'+agingCards+'</div>'+
+    '<div class="card" style="margin-bottom:1rem"><div class="card-pad"><div class="section-label">Admin Sales platform AR · unsettled orders</div><div class="tiny muted">The same active and archived POS orders and settlement-status rules used by Admin Sales.</div></div><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Platform / order</th><th class="num">Net receivable</th></tr></thead><tbody>'+(salesRows||'<tr><td colspan="3" class="empty">No unsettled platform orders.</td></tr>')+'<tr class="total-row"><td colspan="2">Admin Sales platform AR</td><td class="num">'+peso(platformBalance)+'</td></tr></tbody></table></div></div>'+
+    '<div class="card" style="margin-bottom:1rem"><div class="card-pad"><div class="section-label">Platform AR control ledger · 1100</div><div class="tiny muted">Append-only journal activity with a running debit balance.</div></div><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Source</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead><tbody>'+(platformRows.join('')||'<tr><td colspan="5" class="empty">No platform receivable activity.</td></tr>')+'<tr class="total-row"><td colspan="4">Platform receivable control balance</td><td class="num">'+peso(platformControl)+'</td></tr></tbody></table></div><div class="card-pad"><span class="balance-bar '+(platformTies?'ok':'off')+'" style="display:flex">'+(platformTies?'✓ Account 1100 agrees with Admin Sales AR':'✗ Account 1100 differs from Admin Sales AR by '+peso(Math.abs(platformDifference)))+'<span>'+peso(platformBalance)+' Admin Sales · '+peso(platformControl)+' control</span></span></div></div>'+
+    '<div class="card"><div class="card-pad"><div class="section-label">Other open receivables · 1110</div></div><div class="tbl-wrap"><table><thead><tr><th>Party</th><th>Type</th><th>Date</th><th>Due</th><th>Aging</th><th class="num">Amount</th></tr></thead><tbody>'+(docRows||'<tr><td colspan="6" class="empty">No other open receivables.</td></tr>')+'<tr class="total-row"><td colspan="5">Total detailed open receivables</td><td class="num">'+peso(docsTotal)+'</td></tr></tbody></table></div><div class="card-pad"><span class="balance-bar '+(ties?'ok':'off')+'" style="display:flex">'+(ties?'✓ Other receivables subledger agrees with account 1110':'✗ Other receivables differ from account 1110 by '+peso(Math.abs(difference)))+'<span>'+peso(docsTotal)+' detailed · '+peso(otherControl)+' control</span></span></div></div>';
+}
+function subledgerPage(kind){
+  var isAr = kind==='ar', map = isAr?window.__arMap:window.__apMap, live = !!window.__booksUser;
+  var title = isAr?'Receivables':'Payables', sub = isAr?'Money owed to you':'Money you owe';
+  if(!live) return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+'</p></div></div>'+
+    '<div class="empty"><div class="big">'+(isAr?'📥':'📤')+'</div><b>Sign in for live '+title.toLowerCase()+'</b><br><span class="tiny">This subledger reads your live finance data. Click the status pill (top-right) to sign in with your Accaza admin account, or open this app from your Accaza domain.</span></div>';
+  var docs = openDocs(map).sort(function(a,b){return String(a.due||'9999-99-99').localeCompare(String(b.due||'9999-99-99'));});
+  if(!docs.length) return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+'</p></div></div><div class="empty"><div class="big">✓</div>No open '+title.toLowerCase()+'.</div>';
+  var buckets={}; AGING_ORDER.forEach(function(b){buckets[b]=0;});
+  var total=0; docs.forEach(function(d){var amt=Number(d.amount)||0; total+=amt; buckets[agingBucket(d.due)]+=amt;});
+  var agingCards = AGING_ORDER.filter(function(b){return buckets[b]>0.005;}).map(function(b){
+    return '<div class="kpi"><div class="lbl">'+b+'</div><div class="val" style="font-size:1.15rem">'+pesoNoDec(buckets[b])+'</div></div>';}).join('');
+  var rows = docs.map(function(d){
+    var bkt = agingBucket(d.due), overdue = (bkt!=='Current' && bkt!=='No due date');
+    return '<tr><td><b>'+esc(d.party||'—')+'</b>'+(d.ref?'<div class="tiny muted">'+esc(d.ref)+'</div>':'')+'</td><td class="tiny">'+esc(d.type||'')+'</td><td class="tiny">'+esc(d.date||'')+'</td><td class="tiny">'+esc(d.due||'—')+'</td><td><span class="type-pill '+(overdue?'t-expense':'t-income')+'">'+bkt+'</span></td><td class="num">'+peso(d.amount)+'</td>'+(isAr?'':'<td><button class="btn sm ghost" onclick="App.correctPayable(\''+esc(d.id)+'\')">'+(d.type==='customer_change_refund'?'Close to capital':'Pay / correct')+'</button></td>')+'</tr>';}).join('');
+  var t = arApTotals();
+  return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+' · '+docs.length+' open · net working capital '+pesoNoDec(t.net)+'</p></div></div>'+
+    '<div class="kpis"><div class="kpi '+(isAr?'good':'bad')+'"><div class="lbl">Total '+(isAr?'receivable':'payable')+'</div><div class="val">'+pesoNoDec(total)+'</div><div class="sub">'+docs.length+' open</div></div>'+agingCards+'</div>'+
+    '<div class="card"><div class="tbl-wrap"><table><thead><tr><th>Party</th><th>Type</th><th>Date</th><th>Due</th><th>Aging</th><th class="num">Amount</th>'+(isAr?'':'<th></th>')+'</tr></thead><tbody>'+rows+
+    '<tr class="total-row"><td colspan="5">Total open '+title.toLowerCase()+'</td><td class="num">'+peso(total)+'</td>'+(isAr?'':'<td></td>')+'</tr></tbody></table></div></div>'+
+    '<p class="tiny muted" style="margin-top:.6rem">Aging as of today. Recording a '+(isAr?'collection':'payment')+' or creating a new one comes with the Transactions tab.</p>';
+}
+PAGES.receivables = receivablesPage;
+PAGES.payables = function(){ return subledgerPage('ap'); };
+App.correctPayable=function(id){var d=(window.__apMap||{})[id];if(!d)return alert('This payable is no longer available.');if(d.type!=='customer_change_refund')return App.txnPay();var value=r2(Number(d.remainingAmount!=null?d.remainingAmount:d.amount)||0);if(!(value>0))return alert('This payable has no remaining balance.');App._txnModal('Close customer payable to Owner\'s Capital','<div class="hint">This closes the exact '+esc(d.party||id)+' payable. Finance will debit Customer Change / Refund Payable and credit Owner\'s Capital. No cash is paid or moved.</div><div class="grid2"><div class="field"><label>Amount</label><input value="'+value.toFixed(2)+'" disabled/></div><div class="field"><label>Accounting date</label><input id="pc_date" type="date" value="'+todayStr()+'"/></div></div><div class="field"><label>Owner / partner accepting the balance</label><input id="pc_owner" placeholder="Required"/></div><div class="field"><label>Correction reference</label><input id="pc_ref" value="'+esc(d.ref||id)+'" placeholder="Required · source reference"/></div><div class="field"><label>Reason for closing to capital</label><textarea id="pc_reason" maxlength="300" placeholder="Required · explain why this is not payable to the customer"></textarea></div>','Post correction',function(btn){var owner=fval('pc_owner'),reference=fval('pc_ref'),reason=fval('pc_reason'),date=fval('pc_date');if(!owner)return alert('Enter the owner or partner accepting this balance.');if(!reference)return alert('Enter the correction reference.');if(!reason)return alert('Enter the correction reason.');if(window.__isAccountingPeriodClosed&&window.__isAccountingPeriodClosed(date))return alert('This accounting month is closed. Reopen it in Finance Settings before posting the correction.');App._txnRun(btn,{action:'close_customer_payable_to_capital',commandId:'payable_capital_'+id,documentId:id,ownerName:owner,date:date,ref:reference,reason:reason},function(){CURRENT='journal';App.renderTabs();App.rebuildPeriodSel();App.render();});});};
+PAGES.settingsGeneral = function(){
+  var periods=window.__accountingPeriods||{},now=todayStr().slice(0,7),selected=window.__booksSettingsPeriod||now,record=periods[selected]||{},closed=record.status==='closed',cutoff='2026-08-29';
+  return '<div class="page-head"><div><h2>Finance settings</h2><p>Accounting-period control and one-time legacy cutover</p></div></div>'+
+    '<div class="card card-pad"><div class="section-label">Accounting period</div><div class="grid2"><div class="field"><label>Month</label><input id="bookPeriodMonth" type="month" value="'+esc(selected)+'" onchange="App.refreshPeriodSetting()"/></div><div class="field"><label>Current status</label><div id="bookPeriodStatus" class="balance-bar '+(closed?'off':'ok')+'"><span>'+(closed?'Closed — dated manual work is protected':'Open — controlled manual corrections are allowed')+'</span></div></div></div><div class="hint">Close a reviewed month to prevent new or amended manual journals, Admin cash payments, and discrepancy adjustments dated in that month. Reopen it when a controlled correction is needed. The original entry is preserved; Finance Books creates the linked correction or reversal instead of rewriting history.</div><div class="btn-row"><button class="btn '+(closed?'primary':'ghost')+'" onclick="App.changeAccountingPeriod(&quot;reopen&quot;)" '+(closed?'':'disabled')+'>Reopen selected month</button><button class="btn '+(closed?'ghost':'primary')+'" onclick="App.changeAccountingPeriod(&quot;close&quot;)" '+(closed?'disabled':'')+'>Close selected month</button></div></div>'+
+    '<div class="card card-pad" style="margin-top:1rem"><div class="section-label">Cash-payment account classification</div><p class="tiny muted">Checks every approved Admin cash-payment voucher against its Finance Books expense account. Transportation posts to 6076 and staff meals to 6077; all other categories retain their dedicated mappings. Repairing creates linked reclassification journals only—cash, Undeposited Collection, and custody balances do not change.</p><div class="btn-row"><button class="btn primary" onclick="App.repairPettyClassifications(this)">Preview and repair mismatched cash payments</button></div></div>'+
+    '<div class="card card-pad" style="margin-top:1rem"><div class="section-label">Legacy balance and discrepancy close</div><p class="tiny muted">This dated closing entry clears historical balances in 4990 Other Income, 2100 Cash Overage Under Review, 1190 Cash Shortage Under Review, and 6110 Cash Short / Over to 3000 Owner\'s Capital. It also reclassifies only linked August reversals of pre-August 6100/6110 entries, so their August negative expenses close to capital without touching genuine August expenses. Original entries and reversals remain in the audit trail. Every legacy Admin discrepancy closes except the ₱120 shortage dated 30 August 2026.</p><div class="grid2"><div class="field"><label>Include history through</label><input id="legacyCutoffDate" type="date" value="'+cutoff+'" max="2026-08-29"/></div><div class="field"><label>Accounting date for closing entry</label><input id="legacyPostingDate" type="date" value="'+cutoff+'" max="2026-08-29"/></div></div><div class="field"><label>Cutover reason</label><input id="legacyCutoverReason" value="Close legacy balances and reclassify pre-August reversals to Owner\'s Capital; retain only the ₱120 shortage dated 30 August 2026." maxlength="500"/></div><div class="btn-row"><button class="btn primary" onclick="App.runLegacyCutover(this)">Preview and post legacy close</button></div></div>';
+};
+App.refreshPeriodSetting=function(){var period=(document.getElementById('bookPeriodMonth')||{}).value;if(/^\d{4}-\d{2}$/.test(period))window.__booksSettingsPeriod=period;App.render();};
+App.changeAccountingPeriod=function(action){var period=(document.getElementById('bookPeriodMonth')||{}).value;if(!/^\d{4}-\d{2}$/.test(period))return alert('Choose a valid accounting month.');if(!window.__manageAccountingPeriod)return alert('Finance settings service is not ready. Refresh and sign in.');var reason=prompt(action==='close'?'Reason for closing this month:':'Reason for reopening this month for a controlled correction:','');if(!reason||!reason.trim())return;window.__manageAccountingPeriod({action:action,period:period,reason:reason.trim()}).then(function(){alert(period+' is now '+(action==='close'?'closed.':'open for controlled corrections.'));}).catch(function(e){alert('Could not change this accounting period: '+((e&&e.message)||e));});};
+App.runLegacyCutover=function(btn){if(!window.__legacyReset)return alert('Legacy close service is not ready. Refresh and sign in.');var cutoffDate=(document.getElementById('legacyCutoffDate')||{}).value,date=(document.getElementById('legacyPostingDate')||{}).value,reason=((document.getElementById('legacyCutoverReason')||{}).value||'').trim();if(!cutoffDate||!date||cutoffDate>'2026-08-29'||date>'2026-08-29')return alert('This controlled close must end before August 30, 2026.');if(!reason)return alert('Enter the closing reason.');btn.disabled=true;window.__legacyReset({preview:true,cutoffDate:cutoffDate,date:date}).then(function(p){var b=p.balances||{},x=p.crossPeriodReversals||{},text=['Close through '+p.cutoffDate,'4990 Other Income balance: '+peso(b['4990']||0),'2100 Cash Overage Under Review balance: '+peso(b['2100']||0),'1190 Cash Shortage Under Review balance: '+peso(b['1190']||0),'6110 Cash Short / Over all-time balance: '+peso(b['6110']||0),'August 6100 reversal reclassification: '+peso(Math.abs(x['6100']||0)),'August 6110 reversal reclassification: '+peso(Math.abs(x['6110']||0)),'Verified cross-period reversal links: '+((p.crossPeriodSources||[]).length),'Discrepancies to close: '+(p.affectedDiscrepancies||0),'Retained: '+(p.protectedDiscrepancies||0)+' × ₱120 shortage dated 30 August 2026'].join('\n');if(!confirm('Legacy close preview\n\n'+text+'\n\nPost this permanent, balanced closing entry to Owner\'s Capital and close all other Admin discrepancies?'))return null;return window.__legacyReset({cutoffDate:cutoffDate,date:date,reason:reason});}).then(function(r){if(r)alert((r.duplicate?'This legacy close was already posted.':'Legacy close posted.')+' Refresh Admin and Finance Books.');}).catch(function(e){alert('Could not post the legacy close: '+((e&&e.message)||e));}).finally(function(){btn.disabled=false;});};
+App.repairPettyClassifications=function(btn){if(!window.__repairPettyClassifications)return alert('Cash-payment repair service is not ready. Refresh and sign in.');btn.disabled=true;window.__repairPettyClassifications({preview:true}).then(function(p){var rows=p.repairs||[],text=rows.length?rows.map(function(r){return (r.voucherNo||r.voucherId)+' · '+peso(r.amount)+' → '+r.targetLabel;}).join('\n'):'No mismatched approved cash payments found.';if(p.blockedCount)text+='\n\n'+p.blockedCount+' voucher(s) need individual review because their Finance total does not match the active Admin voucher.';if(!rows.length){alert(text);return null;}if(!confirm('Cash-payment classification preview\n\n'+text+'\n\nPost these linked reclassification journals? Cash and custody will not change.'))return null;return window.__repairPettyClassifications({reason:'Align approved Admin cash-payment categories with their dedicated Finance Books expense accounts.'});}).then(function(r){if(r)alert(r.posted+' classification repair(s) posted; '+r.duplicates+' already repaired; '+r.blockedCount+' require individual review.');}).catch(function(e){alert('Could not repair cash-payment classifications: '+((e&&e.message)||e));}).finally(function(){btn.disabled=false;});};
+PAGES.close = function(){
+  var row=window.__booksCloseCurrent||null,status=row&&row.status||'NOT RUN',exceptions=row&&row.exceptions||[],timing=row&&row.timingItems||[],tot=row&&row.controlTotals||{};
+  function exceptionResult(x){if(x.measurement==='status')return '<b>'+esc(x.displayValue||'Open')+'</b>';if(x.measurement==='count')return '<b>'+Math.abs(Number(x.difference)||0)+'</b>';return peso(Math.abs(Number(x.difference)||0));}
+  var issueRows=exceptions.map(function(x){return '<tr><td>'+esc(x.control)+'</td><td>'+esc(x.sourceId||'—')+'</td><td><span class="type-pill t-expense">'+esc(x.category)+'</span></td><td class="num">'+exceptionResult(x)+'</td><td>'+esc(x.message||'')+(x.recommendedAction?'<div class="tiny muted">'+esc(x.recommendedAction)+'</div>':'')+'</td></tr>';}).join('');
+  var controls=row&&Array.isArray(row.controlAccounts)?row.controlAccounts:[{label:'Undeposited Collection',glBalance:row&&row.finance&&row.finance.undepositedBalance,subledgerBalance:row&&row.subledgers&&row.subledgers.cashCustody,subledgerLabel:'Cash custody',difference:tot.cashCustodyDifference},{label:'Other Receivables',glBalance:row&&row.finance&&row.finance.otherReceivables,subledgerBalance:row&&row.subledgers&&row.subledgers.receivables,subledgerLabel:'Open receivables',difference:tot.receivablesDifference},{label:'Supplier Accounts Payable',glBalance:row&&row.finance&&row.finance.accountsPayable,subledgerBalance:row&&row.subledgers&&row.subledgers.payables,subledgerLabel:'Open supplier bills',difference:tot.payablesDifference},{label:'Customer Change / Refund Payable',glBalance:row&&row.finance&&row.finance.customerChangePayable,subledgerBalance:row&&row.subledgers&&row.subledgers.customerChangePayables,subledgerLabel:'Open customer obligations',difference:tot.customerChangePayablesDifference}];
+  var controlRows=controls.map(function(c){var reconciled=c.reconciled!=null?c.reconciled:Math.abs(Number(c.difference)||0)<.01,outstanding=c.hasOutstandingBalance!=null?c.hasOutstandingBalance:Math.abs(Number(c.subledgerBalance)||0)>=.01;return '<div style="padding:.65rem .75rem;border:1px solid var(--line);border-radius:8px"><div><b>'+esc(c.label||'Control account')+'</b> <span class="type-pill '+(reconciled?'t-income':'t-expense')+'">'+(reconciled?'RECONCILED':'MISMATCH')+'</span></div><div class="tiny muted" style="margin-top:.3rem">GL '+peso(c.glBalance)+' · '+esc(c.subledgerLabel||'Subledger')+' '+peso(c.subledgerBalance)+' · difference '+peso(c.difference)+'</div>'+(reconciled&&outstanding?'<div class="tiny" style="margin-top:.25rem">Matched open balance — remains until the underlying obligation or custody item is settled.</div>':'')+'</div>';}).join('');
+  return '<div class="page-head"><div><h2>Daily Financial Close</h2><p>One certification shared with Admin POS</p></div><div class="btn-row"><input id="bc_date" type="date" value="'+esc(window.__booksCloseDate||todayStr())+'"/><button class="btn" onclick="App.loadFinancialClose()">Load</button><button class="btn primary" onclick="App.runFinancialClose(this)">Run reconciliation</button></div></div><div class="hint">Compares transaction-level Admin sources with Finance movements, cash custody, inventory/COGS, AP/AR, purchases, platforms and variances. Account balances and reconciliation differences are shown separately; non-monetary controls are never displayed as pesos.</div><div class="kpis"><div class="kpi '+(status==='CERTIFIED'||status==='RECONCILED'?'good':'bad')+'"><div class="lbl">Close status</div><div class="val" style="font-size:1.25rem">'+esc(String(status).replace(/_/g,' '))+'</div><div class="sub">'+(row?('Revision '+row.revision+' · '+exceptions.length+' exceptions · '+timing.length+' timing items'):'Select a date and run the close')+'</div></div><div class="kpi"><div class="lbl">Admin net sales</div><div class="val">'+pesoNoDec(row&&row.admin&&row.admin.netSales)+'</div><div class="sub">Completed paid orders</div></div><div class="kpi"><div class="lbl">Finance net revenue</div><div class="val">'+pesoNoDec(row&&row.finance&&row.finance.netRevenue)+'</div><div class="sub">Source-linked movements</div></div><div class="kpi"><div class="lbl">Sales difference</div><div class="val">'+pesoNoDec(tot.salesDifference)+'</div><div class="sub">Must be zero by order</div></div></div>'+(row?'<div class="card card-pad"><div class="section-label">Control-account reconciliation</div><div class="two-col">'+controlRows+'<div>Safe repairs available <b>'+Number(row.repairSummary&&row.repairSummary.safeRepairCount||0)+'</b></div></div></div>':'')+(issueRows?'<div class="card" style="margin-top:1rem"><div class="card-pad"><div class="section-label">Open exceptions</div></div><div class="tbl-wrap"><table><thead><tr><th>Control</th><th>Source</th><th>Category</th><th class="num">Result</th><th>Required action</th></tr></thead><tbody>'+issueRows+'</tbody></table></div></div>':'')+(row&&['RECONCILED','RECONCILED_WITH_TIMING_ITEMS'].indexOf(status)>-1?'<div class="btn-row" style="margin-top:1rem"><button class="btn primary" onclick="App.certifyFinancialClose(this)">Manager certify this revision</button></div>':'');
+};
+App.loadFinancialClose=function(){var date=(document.getElementById('bc_date')||{}).value||window.__booksCloseDate||todayStr();window.__booksCloseDate=date;if(!window.__booksFinancialClose)return alert('Close service is not ready.');window.__booksFinancialClose({action:'get',closeType:'DAILY_CLOSE',businessDate:date}).then(function(x){window.__booksCloseCurrent=x.current||null;App.render();}).catch(function(e){alert('Could not load close: '+((e&&e.message)||e));});};
+App.runFinancialClose=function(btn){var date=(document.getElementById('bc_date')||{}).value||todayStr();window.__booksCloseDate=date;if(!window.__booksFinancialClose)return alert('Close service is not ready.');btn.disabled=true;btn.textContent='Reconciling…';window.__booksFinancialClose({closeType:'DAILY_CLOSE',businessDate:date}).then(function(x){window.__booksCloseCurrent=x;App.render();alert(x.status==='EXCEPTIONS_OPEN'?'Close completed with '+(x.exceptions||[]).length+' exception(s). Certification is blocked.':'Close reconciled. Review timing items and certify.');}).catch(function(e){alert('Could not run close: '+((e&&e.message)||e));btn.disabled=false;btn.textContent='Run reconciliation';});};
+App.certifyFinancialClose=function(btn){var row=window.__booksCloseCurrent;if(!row)return;var reason=prompt('Certification note — confirm you reviewed Admin, Finance, cash custody, inventory, AP/AR and timing items:','Reviewed all close controls');if(!reason||!reason.trim())return;btn.disabled=true;window.__booksCertifyClose({businessDate:row.businessDate,closeId:row.closeId,revision:row.revision,reason:reason.trim()}).then(function(x){window.__booksCloseCurrent=Object.assign({},row,{status:'CERTIFIED',certification:x.certification});App.render();alert('Daily close certified.');}).catch(function(e){alert('Could not certify: '+((e&&e.message)||e));btn.disabled=false;});};
+
+function settingsNavigation(section){
+  var items=[['general','General'],['close','Financial Close'],['coa','Chart of Accounts'],['data','Backup & Restore']];
+  return '<div class="page-head"><div><h2>Settings</h2><p>Finance controls, account structure, and data protection</p></div></div><div class="settings-nav" role="navigation" aria-label="Finance settings">'+items.map(function(x){return '<button class="btn '+(section===x[0]?'active':'')+'" '+(section===x[0]?'aria-current="page" ':'')+'onclick="App.settingsSection(\''+x[0]+'\')">'+x[1]+'</button>';}).join('')+'</div>';
+}
+PAGES.settings=function(){
+  var section=window.__booksSettingsSection||'general',content='';
+  if(section==='close')content=PAGES.close();
+  else if(section==='coa')content=PAGES.coa();
+  else if(section==='data')content='<div class="card card-pad"><div class="section-label">Books backup</div><p class="muted">Download a local copy of the chart of accounts and journal, or restore a previously downloaded Accaza Books backup.</p><div class="hint">Restore replaces the current browser-held Books data after confirmation. Live server-authoritative Finance entries remain protected by their server controls.</div><div class="btn-row"><button class="btn primary" onclick="App.exportJSON()">↓ Download backup</button><button class="btn" onclick="document.getElementById(\'importFile\').click()">↑ Restore backup</button><input type="file" id="importFile" accept="application/json" style="display:none" onchange="App.importJSON(this.files[0])"/></div></div>';
+  else {section='general';content=PAGES.settingsGeneral();}
+  return settingsNavigation(section)+content;
+};
+
+/* ---- Transactions: finance-originated postings via postFinancialCommand ---- */
+function uid(){ try{return crypto.randomUUID();}catch(_e){return 'id_'+Date.now()+'_'+Math.floor(Math.random()*1e6);} }
+function fval(id){ var el=document.getElementById(id); return el?String(el.value).trim():''; }
+function cashAccountOptions(sel){ var m=window.__cfAccounts||{}, ks=Object.keys(m); if(!ks.length) return '<option value="">(no cash accounts found)</option>'; return ks.map(function(k){return '<option value="'+esc(k)+'"'+(k===sel?' selected':'')+'>'+esc(m[k].name||k)+'</option>';}).join(''); }
+function billPaymentSourceOptions(){var m=window.__cfAccounts||{},ks=Object.keys(m).filter(function(k){return m[k]&&m[k].active!==false&&m[k].disabled!==true;}).sort(function(a,b){return Number(m[a].order||0)-Number(m[b].order||0)||String(m[a].name||a).localeCompare(String(m[b].name||b));});return '<optgroup label="Business cash"><option value="cash_on_hand">Cash on Hand</option><option value="cash_float" disabled>Register Cash Float · protected imprest</option><option value="undeposited">Undeposited Collection</option><option value="revolving_fund">Revolving Fund</option></optgroup><optgroup label="Banks and e-wallets">'+ks.map(function(k){return '<option value="'+esc(k)+'">'+esc(m[k].name||k)+'</option>';}).join('')+'</optgroup><optgroup label="Paid personally"><option value="owner_capital">Owner\'s Capital · owner paid from own pocket</option></optgroup>';}
+function openDocOptions(map){ var d=openDocs(map); if(!d.length) return ''; return d.map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.party||'—')+' · '+peso(x.amount)+(x.due?' · due '+esc(x.due):'')+(x.ref?' · '+esc(x.ref):'')+'</option>';}).join(''); }
+var TXN_CATS = [['rent','Rent'],['utilities','Utilities'],['salaries','Salaries'],['bank charges','Bank charges'],['repairs','Repairs & maintenance'],['marketing','Marketing'],['supplies','Supplies'],['internet','Internet & phone'],['other','Other']];
+function catOptions(sel){ return TXN_CATS.map(function(c){return '<option value="'+c[0]+'"'+(c[0]===sel?' selected':'')+'>'+c[1]+'</option>';}).join(''); }
+
+PAGES.transactions = function(){
+  if(!window.__booksUser) return '<div class="page-head"><div><h2>Transactions</h2><p>Record finance transactions</p></div></div><div class="empty"><div class="big">🧾</div><b>Sign in to record transactions</b><br><span class="tiny">These post to your shared finance ledger through your server functions. Click the status pill (top-right) to sign in, or open from your Accaza domain.</span></div>';
+  var tile=function(icon,label,desc,fn){return '<button class="card card-pad" style="text-align:left;cursor:pointer" onclick="App.'+fn+'()"><div style="font-size:1.5rem">'+icon+'</div><div style="font-weight:750;margin-top:.3rem">'+label+'</div><div class="tiny muted">'+desc+'</div></button>';};
+  return '<div class="page-head"><div><h2>Transactions</h2><p>Post finance transactions to the shared ledger through your server functions</p></div></div>'+
+    '<div class="hint">Each of these posts a real double-entry movement server-side (with your approval controls), then flows into the Journal, subledgers, and statements. A fixed-assets register is coming next.</div>'+
+    '<div class="kpis">'+
+      tile('🧾','New bill','Vendor bill → Accounts Payable','txnBill')+
+      tile('💵','Pay a bill','Settle an open payable from cash','txnPay')+
+      tile('📥','Collect receivable','Receive payment on an open AR','txnCollect')+
+      tile('🔄','Bank transfer','Move money between cash accounts','txnTransfer')+
+      tile('🧮','Cash in / out','Expense paid now, or other cash','txnManual')+
+      tile('👤','Owner/partner paid','Business cost paid personally','txnOwnerPaid')+
+      tile('👤','Owner capital','Owner puts money in','txnCapital')+
+      tile('💸','Owner drawing','Owner takes money out','txnDraw')+
+      tile('🏭','Fixed assets','Register · depreciation · disposal','txnAssets')+
+      tile('📦','Purchases','Goods-received invoices register','txnPurchases')+
+    '</div>'+ownerFundingHistory();
+};
+function ownerFundingHistory(){var m=window.__personalFundings||{},rows=Object.keys(m).map(function(id){return Object.assign({id:id},m[id]||{});}).sort(function(a,b){return Number(b.createdAt||0)-Number(a.createdAt||0);}).slice(0,30);if(!rows.length)return'';return '<div class="card card-pad" style="margin-top:1rem"><h3>Owner / partner funded costs</h3><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Owner / partner</th><th>Reference</th><th>Treatment</th><th class="num">Amount</th><th></th></tr></thead><tbody>'+rows.map(function(x){return '<tr class="'+(x.status==='reversed'?'reversed':'')+'"><td>'+esc(x.date||'')+'</td><td>'+esc(x.ownerName||'')+'</td><td>'+esc(x.ref||'')+'</td><td>'+esc(x.ownerTreatment==='reimburse'?'Reimburse later':'Capital contribution')+'</td><td class="num">'+peso(x.amount)+'</td><td>'+(x.status==='reversed'?'Reversed':'<button class="btn sm ghost" onclick="App.reverseOwnerCost(&#39;'+esc(x.id)+'&#39;)">Reverse</button>')+'</td></tr>';}).join('')+'</tbody></table></div></div>';}
+App.reverseOwnerCost=function(id){App._txnModal('Reverse owner/partner-funded cost','<div class="field"><label>Reversal reason</label><input id="opr_reason"/></div>','Reverse',function(btn){if(!fval('opr_reason'))return alert('Enter a reversal reason.');App._txnRun(btn,{action:'reverse_personal_business_cost',commandId:uid(),fundingId:id,reason:fval('opr_reason')});});};
+App._txnRun=function(btn, payload, onSuccess){ if(!window.__financeCmd){alert('Live connection not ready — sign in first.');return;} btn.disabled=true; var old=btn.textContent; btn.textContent='Posting…'; window.__financeCmd(payload).then(function(result){ App.closeModal(); if(typeof onSuccess==='function')onSuccess((result&&result.data)||result||{});else App.render(); }).catch(function(e){ alert('Could not post: '+((e&&e.message)||e)); btn.disabled=false; btn.textContent=old; }); };
+App._txnModal=function(title, body, submitLabel, onSubmit){ var m=document.getElementById('modal'); m.innerHTML='<div class="modal-head"><h3>'+title+'</h3><button class="x" onclick="App.closeModal()">×</button></div><div class="modal-body">'+body+'</div><div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Cancel</button><button class="btn primary" id="txnGo">'+submitLabel+'</button></div>'; document.getElementById('modalBg').classList.add('show'); document.getElementById('txnGo').onclick=function(){ onSubmit(this); }; };
+App.txnBill=function(){ App._txnModal('New bill','<div class="grid2"><div class="field"><label>Supplier / vendor</label><input id="tb_party"/></div><div class="field"><label>Category</label><select id="tb_type">'+catOptions('rent')+'</select></div></div><div class="grid2"><div class="field"><label>Amount</label><input id="tb_amount" type="number" step="0.01" min="0"/></div><div class="field"><label>Bill date</label><input id="tb_date" type="date" value="'+todayStr()+'"/></div></div><div class="grid2"><div class="field"><label>Due date</label><input id="tb_due" type="date"/></div><div class="field"><label>Bill / invoice reference</label><input id="tb_ref" required placeholder="Required"/></div></div>','Post bill',function(btn){ var party=fval('tb_party'), amount=Number(fval('tb_amount'))||0; if(!party) return alert('Supplier is required.'); if(!(amount>0)) return alert('Amount must be greater than zero.'); if(!fval('tb_ref')) return alert('Bill or invoice reference is required.'); App._txnRun(btn,{action:'create_payable',commandId:uid(),documentId:uid(),party:party,type:fval('tb_type'),amount:amount,date:fval('tb_date'),due:fval('tb_due'),ref:fval('tb_ref')}); }); };
+App._paySourceToggle=function(){var owner=fval('tp_source')==='owner_capital',wrap=document.getElementById('tp_owner_wrap');if(wrap)wrap.style.display=owner?'':'none';};
+App.txnPay=function(){ var opts=openDocOptions(window.__apMap); if(!opts) return alert('No open payables to pay.'); App._txnModal('Pay a bill','<div class="field"><label>Open payable</label><select id="tp_doc">'+opts+'</select></div><div class="grid2"><div class="field"><label>Pay from</label><select id="tp_source" onchange="App._paySourceToggle()">'+billPaymentSourceOptions()+'</select></div><div class="field"><label>Date</label><input id="tp_date" type="date" value="'+todayStr()+'"/></div></div><div class="field" id="tp_owner_wrap" style="display:none"><label>Owner / partner who paid</label><input id="tp_owner" placeholder="Required for Owner\'s Capital"/></div><div class="hint">Register Cash Float is protected and cannot pay bills. Owner-paid bills credit Owner\'s Capital and do not reduce business cash.</div><div class="field"><label>Payment reference</label><input id="tp_ref" required placeholder="Required · receipt, transfer, cheque or voucher ID"/></div>','Pay',function(btn){var source=fval('tp_source'),owner=fval('tp_owner');if(!source)return alert('Choose a payment source.');if(source==='cash_float')return alert('Register Cash Float is protected and cannot be used to pay bills.');if(source==='owner_capital'&&!owner)return alert('Enter the owner or partner who paid.');if(!fval('tp_ref'))return alert('Payment reference is required.');App._txnRun(btn,{action:'pay_payable',commandId:uid(),documentId:fval('tp_doc'),paymentSource:source,accountId:source,date:fval('tp_date'),ref:fval('tp_ref'),ownerName:owner}); }); };
+App.txnCollect=function(){ var opts=openDocOptions(window.__arMap); if(!opts) return alert('No open receivables to collect.'); App._txnModal('Collect receivable','<div class="field"><label>Open receivable</label><select id="tc_doc">'+opts+'</select></div><div class="grid2"><div class="field"><label>Deposit to</label><select id="tc_acct">'+cashAccountOptions()+'</select></div><div class="field"><label>Date</label><input id="tc_date" type="date" value="'+todayStr()+'"/></div></div><div class="field"><label>Collection reference</label><input id="tc_ref" required placeholder="Required · receipt, deposit or transfer ID"/></div>','Collect',function(btn){ if(!fval('tc_acct')) return alert('Choose a cash account.'); if(!fval('tc_ref'))return alert('Collection reference is required.'); App._txnRun(btn,{action:'collect_receivable',commandId:uid(),documentId:fval('tc_doc'),accountId:fval('tc_acct'),date:fval('tc_date'),ref:fval('tc_ref')}); }); };
+App.txnTransfer=function(){ App._txnModal('Bank transfer','<div class="grid2"><div class="field"><label>From</label><select id="tt_from">'+cashAccountOptions()+'</select></div><div class="field"><label>To</label><select id="tt_to">'+cashAccountOptions()+'</select></div></div><div class="grid2"><div class="field"><label>Amount</label><input id="tt_amount" type="number" step="0.01" min="0"/></div><div class="field"><label>Date</label><input id="tt_date" type="date" value="'+todayStr()+'"/></div></div><div class="field"><label>Transfer reference</label><input id="tt_ref" required placeholder="Required · bank or wallet transaction ID"/></div>','Transfer',function(btn){ var a=Number(fval('tt_amount'))||0; if(fval('tt_from')===fval('tt_to')) return alert('Choose two different accounts.'); if(!(a>0)) return alert('Amount must be greater than zero.'); if(!fval('tt_ref'))return alert('Transfer reference is required.'); App._txnRun(btn,{action:'transfer',commandId:uid(),fromAccountId:fval('tt_from'),toAccountId:fval('tt_to'),amount:a,date:fval('tt_date'),ref:fval('tt_ref')}); }); };
+App.txnManual=function(prefill){ prefill=prefill||{}; App._txnModal(prefill.title||'Cash in / out','<div class="grid2"><div class="field"><label>Cash account</label><select id="tm_acct">'+cashAccountOptions()+'</select></div><div class="field"><label>Direction</label><select id="tm_dir"><option value="out"'+(prefill.dir==='in'?'':' selected')+'>Money out</option><option value="in"'+(prefill.dir==='in'?' selected':'')+'>Money in</option></select></div></div><div class="grid2"><div class="field"><label>Category</label><select id="tm_cat">'+catOptions(prefill.category||'other')+'</select></div><div class="field"><label>Amount</label><input id="tm_amount" type="number" step="0.01" min="0"/></div></div><div class="grid2"><div class="field"><label>Date</label><input id="tm_date" type="date" value="'+todayStr()+'"/></div><div class="field"><label>Party (optional)</label><input id="tm_party"/></div></div><div class="field"><label>Reference (optional)</label><input id="tm_ref"/></div>','Post',function(btn){ var a=Number(fval('tm_amount'))||0; if(!fval('tm_acct')) return alert('Choose a cash account.'); if(!(a>0)) return alert('Amount must be greater than zero.'); App._txnRun(btn,{action:'manual',commandId:uid(),accountId:fval('tm_acct'),amount:a,dir:fval('tm_dir'),category:fval('tm_cat'),date:fval('tm_date'),party:fval('tm_party'),ref:fval('tm_ref')}); }); };
+App.txnOwnerPaid=function(){App._txnModal('PAID PERSONALLY BY OWNER/PARTNER','<div class="grid2"><div class="field"><label>Owner / partner who paid</label><input id="op_owner"/></div><div class="field"><label>Treatment</label><select id="op_treatment"><option value="capital">Capital contribution</option><option value="reimburse">Reimburse later</option></select></div></div><div class="grid2"><div class="field"><label>Expense category</label><select id="op_cat">'+catOptions('other')+'</select></div><div class="field"><label>Amount</label><input id="op_amount" type="number" step="0.01" min="0"/></div></div><div class="grid2"><div class="field"><label>Date</label><input id="op_date" type="date" value="'+todayStr()+'"/></div><div class="field"><label>Supplier / payee</label><input id="op_party"/></div></div><div class="field"><label>Receipt / reference</label><input id="op_ref" placeholder="Required for audit trail"/></div>','Post owner-funded cost',function(btn){var amount=Number(fval('op_amount'))||0;if(!fval('op_owner'))return alert('Owner or partner name is required.');if(!(amount>0))return alert('Amount must be greater than zero.');if(!fval('op_ref'))return alert('Receipt or reference is required.');App._txnRun(btn,{action:'personal_business_cost',commandId:uid(),ownerName:fval('op_owner'),ownerTreatment:fval('op_treatment'),category:fval('op_cat'),amount:amount,date:fval('op_date'),party:fval('op_party'),ref:fval('op_ref')});});};
+App.txnCapital=function(){ App.txnManual({title:'Owner capital in',dir:'in',category:'capital in'}); };
+App.legacyReset=function(){if(!window.__legacyReset)return alert('Finance connection is not ready.');var date=todayStr(),reason=prompt('Reason for legacy reset','Start a clean operating balance after historical reconciliation.');if(!reason)return;window.__legacyReset({preview:true,date}).then(function(p){var b=p.balances||{},text=['4990 Other Income: '+peso(b['4990']||0),'6110 Cash Short / Over: '+peso(b['6110']||0),'1190 Cash Shortage Under Review: '+peso(b['1190']||0),'2100 Cash Overage Under Review: '+peso(b['2100']||0),'Admin discrepancies to close: '+(p.affectedDiscrepancies||0)].join('\n');if(!confirm('Legacy reset preview\n\n'+text+'\n\nClose these balances to Owner\'s Capital?'))return;return window.__legacyReset({date,reason:reason});}).then(function(r){if(r)alert('Legacy reset posted. Refresh Admin and Finance Books.');}).catch(function(e){alert('Could not run legacy reset: '+((e&&e.message)||e));});};
+App.txnDraw=function(){ App.txnManual({title:'Owner drawing',dir:'out',category:'owner draw'}); };
+App.txnAssets=function(){ App.go('fixedassets'); };
+
+/* ---- Fixed assets register ---- */
+function faList(){ var m=window.__faMap||{}; return Object.keys(m).map(function(k){return Object.assign({id:k},m[k]||{});}); }
+function faMonthly(a){ var life=Math.max(1,Math.round(Number(a.usefulLifeMonths)||0)); return r2(((Number(a.cost)||0)-Math.max(0,Number(a.salvage)||0))/life); }
+function faNBV(a){ return r2((Number(a.cost)||0)-(Number(a.accumulatedDepreciation)||0)); }
+App._faRun=function(btn, payload, done){ if(!window.__fixedAsset){alert('Live connection not ready — sign in first.');return;} btn.disabled=true; var old=btn.textContent; btn.textContent='Working…'; window.__fixedAsset(payload).then(function(res){ App.closeModal(); if(done)done(res); App.render(); }).catch(function(e){ alert('Could not post: '+((e&&e.message)||e)); btn.disabled=false; btn.textContent=old; }); };
+PAGES.fixedassets = function(){
+  if(!window.__booksUser) return '<div class="page-head"><div><h2>Fixed assets</h2><p>Register · depreciation · disposal</p></div></div><div class="empty"><div class="big">🏭</div><b>Sign in to manage fixed assets</b><br><span class="tiny">Click the status pill (top-right) to sign in, or open from your Accaza domain.</span></div>';
+  var assets=faList(), active=assets.filter(function(a){return a.status!=='disposed'&&a.status!=='acquisition_reversed';});
+  var totCost=0, totAccum=0; active.forEach(function(a){ totCost+=Number(a.cost)||0; totAccum+=Number(a.accumulatedDepreciation)||0; });
+  var head='<div class="page-head"><div><h2>Fixed assets</h2><p><span class="linkish" onclick="App.go(&#39;transactions&#39;)">← Transactions</span> · '+active.length+' active · net book value '+pesoNoDec(totCost-totAccum)+'</p></div><div class="btn-row"><button class="btn" onclick="App.faDepreciate()">Run depreciation</button><button class="btn primary" onclick="window.open(&#39;admin.html&#39;,&#39;_blank&#39;)">Acquire through Purchasing ↗</button></div></div>';
+  if(!assets.length) return head+'<div class="empty"><div class="big">🏭</div>No fixed assets yet. Record equipment through Admin Purchasing to create its card and financial entry together.</div>';
+  var rows=assets.sort(function(a,b){return String(b.acquiredDate||'').localeCompare(String(a.acquiredDate||''));}).map(function(a){
+    var disposed=a.status==='disposed', reversed=a.status==='acquisition_reversed', full=a.status==='fully_depreciated';
+    return '<tr'+(disposed?' class="reversed"':'')+'><td><b>'+esc(a.name||'Asset')+'</b><div class="tiny muted">'+esc(a.category||'')+' · in service '+esc(a.inServiceDate||a.acquiredDate||'')+(a.location?' · '+esc(a.location):'')+(a.custodian?' · custodian '+esc(a.custodian):'')+(a.reference?' · ref '+esc(a.reference):'')+'</div></td>'+
+      '<td class="num">'+peso(a.cost)+'</td>'+
+      '<td class="num tiny">'+esc(a.usefulLifeMonths||'')+' mo<div class="muted">'+peso(faMonthly(a))+'/mo</div></td>'+
+      '<td class="num">'+peso(a.accumulatedDepreciation||0)+'</td>'+
+      '<td class="num"><b>'+peso(faNBV(a))+'</b></td>'+
+      '<td><span class="type-pill '+(disposed||reversed?'t-expense':full?'t-liability':'t-asset')+'">'+(reversed?'Acquisition reversed':disposed?'Disposed':full?'Fully dep.':'Active')+'</span></td>'+
+      '<td>'+(disposed||reversed?'':(a.fundingType==='owner_funded'&&!Number(a.accumulatedDepreciation||0)?'<button class="btn sm ghost" onclick="App.faReverseAcquire(&#39;'+esc(a.id)+'&#39;)">Reverse acquisition</button> ':'')+'<button class="btn sm ghost" onclick="App.faDispose(&#39;'+esc(a.id)+'&#39;)">Dispose</button>')+'</td></tr>';
+  }).join('');
+  return head+'<div class="card"><div class="tbl-wrap"><table><thead><tr><th>Asset</th><th class="num">Cost</th><th class="num">Life</th><th class="num">Accum. dep.</th><th class="num">Net book value</th><th>Status</th><th></th></tr></thead><tbody>'+rows+
+    '<tr class="total-row"><td>Totals (active)</td><td class="num">'+peso(totCost)+'</td><td></td><td class="num">'+peso(totAccum)+'</td><td class="num">'+peso(totCost-totAccum)+'</td><td colspan="2"></td></tr></tbody></table></div></div>'+
+    '<p class="tiny muted" style="margin-top:.6rem">Straight-line. Depreciation posts only when you run it (Dr Depreciation 6090 / Cr Accumulated Depreciation 1590) — idempotent per month.</p>';
+};
+App.faAcquire=function(){ App._txnModal('Acquire fixed asset',
+  '<div class="grid2"><div class="field"><label>Asset name</label><input id="fa_name"/></div><div class="field"><label>Category</label><select id="fa_cat"><option value="equipment">Equipment</option><option value="furniture">Furniture &amp; fixtures</option><option value="other">Other</option></select></div></div>'+
+  '<div class="grid2"><div class="field"><label>Cost</label><input id="fa_cost" type="number" step="0.01" min="0"/></div><div class="field"><label>Salvage value</label><input id="fa_salvage" type="number" step="0.01" min="0" value="0"/></div></div>'+
+  '<div class="grid2"><div class="field"><label>Useful life (months)</label><input id="fa_life" type="number" step="1" min="1" placeholder="e.g. 60"/></div><div class="field"><label>Acquired date</label><input id="fa_date" type="date" value="'+todayStr()+'"/></div></div>'+
+  '<div class="grid2"><div class="field"><label>Funded by</label><select id="fa_fund" onchange="App._faFundToggle()"><option value="cash">Paid from business cash</option><option value="payable">On account (supplier)</option><option value="owner_capital">PAID PERSONALLY BY OWNER/PARTNER — capital contribution</option><option value="owner_reimburse">PAID PERSONALLY BY OWNER/PARTNER — reimburse later</option></select></div><div class="field" id="fa_acctWrap"><label>Cash account</label><select id="fa_acct">'+cashAccountOptions()+'</select></div></div>'+
+  '<div class="field"><label>Receipt / invoice / acquisition reference</label><input id="fa_ref" required placeholder="Required for audit trail"/></div>'+
+  '<div class="field" id="fa_partyWrap" style="display:none"><label>Supplier</label><input id="fa_party"/></div><div class="field" id="fa_ownerWrap" style="display:none"><label>Owner / partner who paid</label><input id="fa_owner" placeholder="Required for personal payment"/></div>',
+  'Acquire',function(btn){ var name=fval('fa_name'), cost=Number(fval('fa_cost'))||0, life=Number(fval('fa_life'))||0,reference=fval('fa_ref'); if(!name) return alert('Asset name required.'); if(!(cost>0)) return alert('Cost must be greater than zero.'); if(!(life>=1)) return alert('Useful life in months is required.');if(!reference)return alert('Receipt, invoice, or acquisition reference is required.'); var fund=fval('fa_fund'),personal=fund.indexOf('owner_')===0,owner=fval('fa_owner'); var funding = fund==='payable' ? {type:'payable',party:fval('fa_party')||name,ref:reference} : personal?{type:'owner_funded',ownerName:owner,treatment:fund==='owner_reimburse'?'reimburse':'capital',ref:reference}:{type:'cash',accountId:fval('fa_acct'),ref:reference}; if(fund==='cash'&&!funding.accountId) return alert('Choose a cash account.');if(personal&&!owner)return alert('Enter the owner or partner who paid.'); App._faRun(btn,{action:'create',commandId:uid(),assetId:uid(),name:name,category:fval('fa_cat'),cost:cost,salvage:Number(fval('fa_salvage'))||0,usefulLifeMonths:life,acquiredDate:fval('fa_date'),ref:reference,funding:funding}); }); };
+App._faFundToggle=function(){ var v=fval('fa_fund'); document.getElementById('fa_acctWrap').style.display=(v==='cash')?'':'none'; document.getElementById('fa_partyWrap').style.display=(v==='payable')?'':'none';document.getElementById('fa_ownerWrap').style.display=(v.indexOf('owner_')===0)?'':'none'; };
+App.faReverseAcquire=function(assetId){var a=(window.__faMap||{})[assetId]||{};App._txnModal('Reverse acquisition: '+esc(a.name||'asset'),'<p class="tiny muted">This removes the asset cost and reverses the owner/partner capital or reimbursement obligation. The original remains in the audit trail.</p><div class="field"><label>Reason</label><input id="far_reason"/></div>','Reverse acquisition',function(btn){if(!fval('far_reason'))return alert('Enter a reversal reason.');App._faRun(btn,{action:'reverse_acquisition',commandId:uid(),assetId:assetId,reason:fval('far_reason')});});};
+App.faDepreciate=function(){ App._txnModal('Run depreciation','<p class="tiny muted" style="margin-top:0">Posts one month of straight-line depreciation for every active asset that has not been depreciated for this period yet. Safe to re-run — it never double-posts a month.</p><div class="field"><label>Period (month)</label><input id="fa_period" type="month" value="'+todayStr().slice(0,7)+'"/></div>','Run depreciation',function(btn){ var period=fval('fa_period'); if(!/^\d{4}-\d{2}$/.test(period)) return alert('Pick a month.'); App._faRun(btn,{action:'depreciate',commandId:uid(),period:period},function(res){ (window.alert)('Depreciation for '+period+': '+((res&&res.count)||0)+' asset(s) posted.'); }); }); };
+App.faDispose=function(assetId){ var a=(window.__faMap||{})[assetId]||{}; App._txnModal('Dispose: '+esc(a.name||'asset'),'<p class="tiny muted" style="margin-top:0">Removes cost and accumulated depreciation and books any gain or loss. Net book value now: '+peso(faNBV(Object.assign({id:assetId},a)))+'.</p><div class="grid2"><div class="field"><label>Proceeds (0 if scrapped)</label><input id="fd_proceeds" type="number" step="0.01" min="0" value="0"/></div><div class="field"><label>Date</label><input id="fd_date" type="date" value="'+todayStr()+'"/></div></div><div class="field"><label>Disposal / sale reference (optional)</label><input id="fd_ref" placeholder="Disposal approval, receipt, or scrap record"/></div><div class="field"><label>Proceeds deposited to</label><select id="fd_acct">'+cashAccountOptions()+'</select></div>','Dispose',function(btn){App._faRun(btn,{action:'dispose',commandId:uid(),assetId:assetId,proceeds:Number(fval('fd_proceeds'))||0,accountId:fval('fd_acct'),date:fval('fd_date'),ref:fval('fd_ref')}); }); };
+
+/* ---- Purchases register (read-only view of /purchaseInvoices) ---- */
+App.txnPurchases=function(){ App.go('purchases'); };
+PAGES.purchases = function(){
+  if(!window.__booksUser) return '<div class="page-head"><div><h2>Purchases</h2><p>Goods-received invoices</p></div></div><div class="empty"><div class="big">📦</div><b>Sign in for purchases</b><br><span class="tiny">Reads your goods-received invoices. Click the status pill (top-right) to sign in.</span></div>';
+  var map=window.__piMap||{};
+  var invs=Object.keys(map).map(function(k){return Object.assign({id:k},map[k]||{});}).sort(function(a,b){return String(b.date||'').localeCompare(String(a.date||''));});
+  var total=invs.reduce(function(s,x){return s+(Number(x.total)||0);},0);
+  var unpaid=invs.filter(function(x){return x.payMode==='account'||x.payMode==='pending';}).reduce(function(s,x){return s+(Number(x.total)||0);},0);
+  var head='<div class="page-head"><div><h2>Purchases</h2><p><span class="linkish" onclick="App.go(&#39;transactions&#39;)">← Transactions</span> · '+invs.length+' invoices · '+pesoNoDec(total)+' total</p></div></div>';
+  if(!invs.length) return head+'<div class="empty"><div class="big">📦</div>No purchase invoices yet.</div>';
+  var payBadge=function(x){ if(x.payMode==='paid')return '<span class="type-pill t-income">Paid</span>'; if(x.payMode==='account')return '<span class="type-pill t-liability">On account'+(x.due?' · due '+esc(x.due):'')+'</span>'; return '<span class="type-pill t-expense">Pending invoice</span>'; };
+  var rows=invs.map(function(x){ return '<tr><td class="tiny">'+esc(x.date||'')+'</td><td><b>'+esc(x.supplier||'—')+'</b>'+(x.ref?'<div class="tiny muted">'+esc(x.ref)+'</div>':'')+'</td><td class="tiny">'+(((x.lines&&x.lines.length))||x.lineCount||0)+' item(s)</td><td>'+payBadge(x)+'</td><td class="num">'+peso(x.total)+'</td><td><button class="btn sm ghost" onclick="App.piDetail(&#39;'+esc(x.id)+'&#39;)">Details</button></td></tr>'; }).join('');
+  return head+'<div class="kpis"><div class="kpi"><div class="lbl">Total purchases</div><div class="val">'+pesoNoDec(total)+'</div><div class="sub">'+invs.length+' invoices</div></div><div class="kpi bad"><div class="lbl">Unpaid / on account</div><div class="val">'+pesoNoDec(unpaid)+'</div><div class="sub">still owed</div></div></div>'+
+    '<div class="card"><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Supplier</th><th>Items</th><th>Payment</th><th class="num">Total</th><th></th></tr></thead><tbody>'+rows+'<tr class="total-row"><td colspan="4">Total</td><td class="num">'+peso(total)+'</td><td></td></tr></tbody></table></div></div>'+
+    '<p class="tiny muted" style="margin-top:.6rem">Read-only register. Receiving new stock still runs in the POS admin for now (it is tied to inventory, recipes, brands and weighted-average cost); moving receiving into finance is the next decision.</p>';
+};
+App.piDetail=function(id){ var x=(window.__piMap||{})[id]; if(!x)return; var lines=x.lines||[]; var rows=lines.map(function(l){return '<tr><td>'+esc(l.itemName||l.itemId||'')+(l.skuBrand?'<div class="tiny muted">'+esc(l.skuBrand)+'</div>':'')+'</td><td class="num tiny">'+esc(l.qty||'')+' '+esc(l.unit||'')+'</td><td class="num tiny">'+peso(l.unitCost||0)+'</td><td class="num">'+peso(l.total||0)+'</td></tr>';}).join(''); var m=document.getElementById('modal'); m.innerHTML='<div class="modal-head"><h3>'+esc(x.supplier||'Purchase')+(x.ref?' · '+esc(x.ref):'')+'</h3><button class="x" onclick="App.closeModal()">×</button></div><div class="modal-body"><div class="tiny muted" style="margin-bottom:.5rem">'+esc(x.date||'')+' · '+esc(x.payMode||'')+' · received by '+esc(x.by||'—')+'</div><div class="tbl-wrap"><table><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Total</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4" class="muted">No line detail</td></tr>')+'<tr class="total-row"><td colspan="3">Invoice total</td><td class="num">'+peso(x.total||0)+'</td></tr></tbody></table></div></div><div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Close</button></div>'; document.getElementById('modalBg').classList.add('show'); };
+
+/* ---- account add/edit ---- */
+App.editAccount = function(code){
+  if(isMainAccount(code)) return alert("Main accounts are protected calculated totals and cannot be edited.");
+  const a = code?acc(code):{code:"",name:"",type:"Expense",note:""};
+  const m=document.getElementById("modal");
+  m.innerHTML=`<div class="modal-head"><h3>${code?'Edit':'Add'} account</h3><button class="x" onclick="App.closeModal()">×</button></div>
+    <div class="modal-body">
+      <div class="grid2">
+        <div class="field"><label>Code</label><input id="a_code" value="${esc(a.code)}" ${code?'readonly':''} placeholder="e.g. 6110"/></div>
+        <div class="field"><label>Type</label><select id="a_type">${TYPES.map(t=>`<option ${t===a.type?'selected':''}>${t}</option>`).join("")}</select></div>
+      </div>
+      <div class="field"><label>Name</label><input id="a_name" value="${esc(a.name)}" placeholder="Account name"/></div>
+      <div class="field"><label>Note (optional)</label><input id="a_note" value="${esc(a.note)}"/></div>
+    </div>
+    <div class="modal-foot">
+      ${code?(window.__booksUser?(a.active===false?`<button class="btn" onclick="App.reactivateAccount('${code}')" style="margin-right:auto">Reactivate</button>`:`<button class="btn danger" onclick="App.deleteAccount('${code}')" style="margin-right:auto">Deactivate</button>`):`<button class="btn danger" onclick="App.deleteAccount('${code}')" style="margin-right:auto">Delete</button>`):''}
+      <button class="btn ghost" onclick="App.closeModal()">Cancel</button>
+      <button class="btn primary" onclick="App.saveAccount('${code||''}')">Save</button></div>`;
+  document.getElementById("modalBg").classList.add("show");
+};
+App.saveAccount=function(orig){
+  const code=document.getElementById("a_code").value.trim(), name=document.getElementById("a_name").value.trim(),
+        type=document.getElementById("a_type").value, note=document.getElementById("a_note").value.trim();
+  if(!code||!name) return alert("Code and name are required.");
+  if(isMainAccount(code)) return alert("That code belongs to a protected main account.");
+  if(!/^\d{4}$/.test(code)) return alert("Account code must be exactly four digits (e.g. 2310).");
+  if(!orig && acc(code)) return alert("That code already exists.");
+  if(window.__booksUser){
+    if(!window.__booksChartManager) return alert("Only the finance owners (Danilo / Maria) can add or edit chart accounts.");
+    if(!window.__manageBooksAccount) return alert("Live sync isn't ready yet - try again in a moment.");
+    var self=this;
+    window.__manageBooksAccount({action:'upsert',code:code,name:name,type:type,note:note}).then(function(){ self.closeModal(); }).catch(function(e){ alert("Could not save account: "+(e&&e.message||e)); });
+    return;
+  }
+  if(orig){ const a=acc(orig); a.name=name; a.type=type; a.note=note; }
+  else DB.accounts.push({code,name,type,note,active:true});
+  DB.accounts.sort((x,y)=>x.code.localeCompare(y.code));
+  save(); this.closeModal(); this.render();
+};
+App.deleteAccount=function(code){
+  if(isMainAccount(code)) return alert("Main accounts are protected and cannot be deleted.");
+  if(window.__booksUser){
+    if(!window.__booksChartManager) return alert("Only the finance owners (Danilo / Maria) can change chart accounts.");
+    var __row=acc(code)||{}; if(__row.system) return alert("System accounts are required by the ledger and can't be deactivated. Rename it instead if needed.");
+    if(!confirm("Deactivate account "+code+"? It stays in your reports where it has balances, but can't be used for new postings. History is never deleted.")) return;
+    var self=this;
+    window.__manageBooksAccount({action:'deactivate',code:code}).then(function(){ self.closeModal(); }).catch(function(e){ alert("Could not deactivate: "+(e&&e.message||e)); });
+    return;
+  }
+  const used = ENTRIES().some(e=>e.lines.some(l=>l.code===code));
+  if(used) return alert("This account is used in journal entries and can't be deleted. You can rename it instead.");
+  if(!confirm("Delete this account?")) return;
+  DB.accounts = DB.accounts.filter(a=>a.code!==code); save(); this.closeModal(); this.render();
+};
+App.reactivateAccount=function(code){
+  if(!window.__booksChartManager) return alert("Only the finance owners can change chart accounts.");
+  var self=this;
+  window.__manageBooksAccount({action:'reactivate',code:code}).then(function(){ self.closeModal(); }).catch(function(e){ alert("Could not reactivate: "+(e&&e.message||e)); });
+};
+App.applyServerChart=function(){
+  var map=window.__booksChart; if(!map||typeof map!=='object')return;
+  var list=Object.keys(map).map(function(code){var a=map[code]||{};return {code:String(a.code||code),name:a.name||('? '+code),type:a.type||'Expense',note:a.note||'',active:a.active!==false,system:a.system===true};});
+  if(!list.length)return;
+  list.sort(function(x,y){return String(x.code).localeCompare(String(y.code));});
+  DB.accounts=list; window.__booksChartLive=true;
+  try{save();}catch(_e){}
+  if(this.render)this.render();
+};
+App.importLocalChart=function(){
+  if(!window.__booksChartManager) return alert("Only the finance owners can import accounts.");
+  var raw; try{ raw=JSON.parse(localStorage.getItem(STORE_KEY)||"{}"); }catch(_e){ raw={}; }
+  var local=(raw&&raw.accounts)||[]; var server=window.__booksChart||{};
+  var toAdd=[], conflicts=[];
+  local.forEach(function(a){ if(!a||!/^\d{4}$/.test(String(a.code||'')))return; if(isMainAccount(a.code))return; var srv=server[a.code]; if(!srv){toAdd.push(a);} else if(srv.name!==a.name||srv.type!==a.type){conflicts.push({code:a.code,local:a,server:srv});} });
+  window.__importPlan={toAdd:toAdd};
+  var addHtml = toAdd.length ? toAdd.map(function(a){return '<tr><td><span class="acc-code">'+esc(a.code)+'</span></td><td>'+esc(a.name)+'</td><td class="tiny muted">'+esc(a.type)+'</td></tr>';}).join('') : '<tr><td colspan="3" class="muted">Nothing new - your local accounts are already on the server.</td></tr>';
+  var confHtml = conflicts.length ? '<div class="hint" style="margin-top:.6rem">&#9888; '+conflicts.length+' code(s) exist on the server with a different name/type and were left untouched: '+conflicts.map(function(c){return esc(c.code)+' (local &#39;'+esc(c.local.name)+'&#39; vs server &#39;'+esc(c.server.name)+'&#39;)';}).join('; ')+'.</div>' : '';
+  var m=document.getElementById("modal");
+  m.innerHTML='<div class="modal-head"><h3>Import local accounts</h3><button class="x" onclick="App.closeModal()">&times;</button></div><div class="modal-body"><p class="tiny muted" style="margin-top:0">These custom accounts exist in <b>this browser only</b>. They will be added to the shared server chart. Nothing is written until you confirm. System accounts and codes already on the server are skipped.</p><div class="tbl-wrap"><table><thead><tr><th>Code</th><th>Name</th><th>Type</th></tr></thead><tbody>'+addHtml+'</tbody></table></div>'+confHtml+'</div><div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Cancel</button>'+(toAdd.length?'<button class="btn primary" onclick="App.runImport(this)">Import '+toAdd.length+' account(s)</button>':'')+'</div>';
+  document.getElementById("modalBg").classList.add("show");
+};
+App.runImport=function(btn){
+  var plan=window.__importPlan; if(!plan||!plan.toAdd||!plan.toAdd.length)return this.closeModal();
+  if(btn){btn.disabled=true;btn.textContent="Importing...";}
+  var payload=plan.toAdd.map(function(a){return {code:a.code,name:a.name,type:a.type,note:a.note||""};});
+  var self=this;
+  window.__manageBooksAccount({action:'import',accounts:payload}).then(function(r){ self.closeModal(); alert("Imported "+(r&&r.added?r.added.length:0)+" account(s)."+(r&&r.conflicts&&r.conflicts.length?" "+r.conflicts.length+" conflict(s) skipped.":"")); }).catch(function(e){ if(btn){btn.disabled=false;btn.textContent="Import";} alert("Import failed: "+(e&&e.message||e)); });
+};
+
+/* ---- quick-post templates (pre-filled balanced entries) ---- */
+const QUICK = [
+  {label:"☕ Record day's sales + cash", build:()=>({date:todayStr(),ref:"DAY-"+new Date().getDate(),memo:"Sales for the day",
+    lines:[{code:"1000",debit:0,credit:""},{code:"1020",debit:0,credit:""},{code:"4000",debit:"",credit:0},{code:"4010",debit:"",credit:0}]
+      .map(l=>({code:l.code,debit:l.debit,credit:l.credit}))})},
+  {label:"🛵 Grab/Panda sales", build:()=>({date:todayStr(),ref:"PLT-"+new Date().getDate(),memo:"Platform sales net of commission",
+    lines:[{code:"1100",debit:"",credit:0},{code:"6040",debit:"",credit:0},{code:"4020",debit:0,credit:""},{code:"4030",debit:0,credit:""}]})},
+  {label:"📦 Record COGS (recipe use)", build:()=>({date:todayStr(),ref:"COGS-"+new Date().getDate(),memo:"Cost of goods sold — inventory consumed",
+    lines:[{code:"5000",debit:"",credit:0},{code:"5010",debit:"",credit:0},{code:"1200",debit:0,credit:""},{code:"1210",debit:0,credit:""}]})},
+  {label:"🧾 Pay / receive supplier stock", build:()=>({date:todayStr(),ref:"PO-",memo:"Stock received from supplier (on account)",
+    lines:[{code:"1200",debit:"",credit:0},{code:"2000",debit:0,credit:""}]})},
+  {label:"🗑️ Wastage / spoilage", build:()=>({date:todayStr(),ref:"WASTE-"+new Date().getDate(),memo:"Spoilage / waste written off",
+    lines:[{code:"5900",debit:"",credit:0},{code:"1210",debit:0,credit:""}]})},
+  {label:"👥 Pay salaries", build:()=>({date:todayStr(),ref:"PAY-"+new Date().getDate(),memo:"Barista salaries",
+    lines:[{code:"6000",debit:"",credit:0},{code:"1010",debit:0,credit:""}]})},
+  {label:"💸 Owner drawing", build:()=>({date:todayStr(),ref:"DRAW-"+new Date().getDate(),memo:"Owner personal drawing",
+    lines:[{code:"3100",debit:"",credit:0},{code:"1000",debit:0,credit:""}]})}
+];
+
+/* ---- live POS sign-in (email/password) ---- */
+App.signInPrompt=function(){
+  if(window.__booksUser){ if(confirm("Signed in as "+window.__booksUser+". Sign out of live POS sync?")) window.__booksSignOut&&window.__booksSignOut(); return; }
+  if(!window.__booksAuthReady){ alert("Live sync is still starting. If this page is opened directly from a file it can't reach Firebase — deploy it to your Accaza domain (e.g. accazacoffee.com/books.html) so it shares your admin login."); return; }
+  const m=document.getElementById("modal");
+  m.innerHTML=`<div class="modal-head"><h3>Sign in to live POS sync</h3><button class="x" onclick="App.closeModal()">×</button></div>
+    <div class="modal-body"><p class="tiny muted" style="margin-top:0">Use your Accaza admin account. When this app is served from the same domain as the POS, you're signed in automatically.</p>
+      <div class="field"><label>Email</label><input id="si_email" type="email" autocomplete="username"/></div>
+      <div class="field"><label>Password</label><input id="si_pw" type="password" autocomplete="current-password"/></div></div>
+    <div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Cancel</button>
+      <button class="btn primary" onclick="window.__booksSignIn(document.getElementById('si_email').value,document.getElementById('si_pw').value)">Sign in</button></div>`;
+  document.getElementById("modalBg").classList.add("show");
+};
+App.syncBooks=function(btn){
+  if(!window.__booksSync){alert("Live sync is not ready — sign in first.");return;}
+  if(!confirm("Reconcile Finance sales to authoritative Admin Sales History, then rebuild Books? Missing postings and balanced corrections are captured in Finance. This is idempotent and safe to rerun."))return;
+  btn.disabled=true;const old=btn.textContent;btn.textContent="Syncing…";
+  window.__booksSync().then(function(r){
+    alert("Sales reconciled and Books rebuilt. Orders and records checked: "+r.ordersScanned+" · new Finance postings: "+r.financePosted+" · orphaned sales corrected: "+r.orphanReversed+" · existing postings: "+r.financeDuplicates+" · Finance movements: "+r.movements+" · authoritative net sales: "+peso(r.netSales)+" · COGS posted: "+r.cogsPosted+" · COGS awaiting review: "+r.missingCogs+" · review items: "+r.reviewItems);
+    btn.disabled=false;btn.textContent=old;
+  }).catch(function(e){alert("Books sync stopped: "+((e&&e.message)||e)+" Safe to retry.");btn.disabled=false;btn.textContent=old;});
+};
+
+window.App = App; // expose for the live-POS reader module below
+// If the Firebase SDK can't load at all (opened offline / from a file), downgrade the pill.
+setTimeout(function(){ var el=document.getElementById('liveStatus'); if(el && /Connecting/.test(el.textContent) && !window.__booksAuthReady){ el.textContent='● Offline (local only)'; el.className='live-pill off';window.__booksLiveLoading=false;if(window.App&&App.render)App.render(); } },5000);
+window.addEventListener('accaza-report-period',function(e){const p=(e&&e.detail)||(window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get():{});PERIOD=p.mode||'month';if(window.__booksRebindPeriod)window.__booksRebindPeriod();if(window.App){App.rebuildPeriodSel&&App.rebuildPeriodSel();App.render();}});
+App.init();
