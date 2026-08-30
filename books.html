@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<meta name="accaza-books-build" content="73"/>
+<meta name="accaza-books-build" content="74"/>
 <title>Accaza Books</title>
 <style>
 :root{
@@ -40,22 +40,26 @@ a{color:var(--info)}
 .tb-actions button:hover{background:rgba(255,255,255,.22)}
 
 /* Tabs */
-.tabs{display:flex;gap:.15rem;overflow-x:auto;background:#efe6d7;border-bottom:1px solid var(--line);position:sticky;top:53px;z-index:30}
-.tabs-in{max-width:1180px;margin:0 auto;display:flex;gap:.15rem;padding:0 .6rem}
-.tab{border:none;background:none;padding:.7rem .85rem;font-size:.82rem;font-weight:650;color:var(--tm);border-bottom:3px solid transparent;white-space:nowrap}
-.tab:hover{color:var(--bd)}
-.tab.active{color:var(--bd);border-bottom-color:var(--bl)}
+.tabs{overflow-x:auto;background:#f3ecdf;border-bottom:1px solid #d9cbb8;position:sticky;top:53px;z-index:30;box-shadow:0 4px 12px rgba(60,40,20,.04);scrollbar-width:thin}
+.tabs-in{max-width:1180px;margin:0 auto;display:flex;align-items:stretch;gap:.12rem;padding:0 .75rem}
+.tab{position:relative;border:none;background:none;padding:1.05rem .72rem .6rem;font-size:.79rem;font-weight:680;color:var(--tm);border-bottom:3px solid transparent;white-space:nowrap;transition:background .15s ease,color .15s ease}
+.tab::before{content:attr(data-group);position:absolute;top:.16rem;left:.72rem;color:#a18f7b;font-size:.52rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;opacity:0}
+.tab.group-start{margin-left:.55rem;padding-left:1rem;border-left:1px solid #d8cab6}
+.tab.group-start::before{left:1rem;opacity:1}
+.tab:first-child{margin-left:0;border-left:0;padding-left:.72rem}.tab:first-child::before{left:.72rem}
+.tab:hover{color:var(--bd);background:rgba(255,255,255,.48)}
+.tab.active{color:var(--bd);border-bottom-color:var(--bl);background:#fffaf3}
 
 .page{padding-top:1.2rem}
 .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}
-.page-head h2{font-size:1.35rem}
+.page-head h2{font-family:Georgia,'Times New Roman',serif;font-size:1.55rem;font-weight:700;letter-spacing:-.025em}
 .page-head p{margin:.15rem 0 0;color:var(--tm);font-size:.85rem}
 
 /* Cards / grid */
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow)}
 .card-pad{padding:1rem 1.15rem}
 .kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.75rem;margin-bottom:1.1rem}
-.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:.85rem .95rem;box-shadow:var(--shadow)}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.9rem 1rem;box-shadow:var(--shadow);border-top:3px solid #d7c7b1}
 .kpi .lbl{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--tl);font-weight:700}
 .kpi .val{font-size:1.5rem;font-weight:800;margin-top:.25rem;letter-spacing:-.02em}
 .kpi .sub{font-size:.72rem;color:var(--tm);margin-top:.1rem}
@@ -66,7 +70,7 @@ a{color:var(--info)}
 
 /* Tables */
 table{width:100%;border-collapse:collapse}
-.tbl-wrap{overflow-x:auto}
+.tbl-wrap{overflow-x:auto;scrollbar-width:thin}
 .journal-table{table-layout:fixed;min-width:760px}
 .journal-table .journal-date{width:155px;white-space:normal;overflow-wrap:anywhere}
 .journal-table .journal-entry{width:auto;min-width:0;overflow-wrap:anywhere;word-break:break-word}
@@ -75,8 +79,9 @@ table{width:100%;border-collapse:collapse}
 .journal-table .journal-actions{width:205px;white-space:normal}
 .journal-table .journal-actions .btn{margin:.12rem .12rem .12rem 0}
 @media(max-width:820px){.journal-table{min-width:680px}.journal-table .journal-date{width:125px}.journal-table .journal-amount{width:100px}.journal-table .journal-actions{width:165px}}
-th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--tl);font-weight:700;padding:.55rem .7rem;border-bottom:1px solid var(--line)}
-td{padding:.5rem .7rem;border-bottom:1px solid var(--line2);font-size:.85rem;vertical-align:top}
+th{text-align:left;font-size:.66rem;text-transform:uppercase;letter-spacing:.085em;color:#806f5e;font-weight:800;padding:.62rem .7rem;border-bottom:1px solid var(--line);background:#fcfaf6}
+td{padding:.58rem .7rem;border-bottom:1px solid var(--line2);font-size:.84rem;vertical-align:top}
+tbody tr:not(.total-row):not(.sub-row):not(.group-account):hover td{background:#fdfaf5}
 tr:last-child td{border-bottom:none}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .acc-code{color:var(--tl);font-variant-numeric:tabular-nums;font-size:.78rem}
@@ -96,6 +101,7 @@ tr.group-account td{font-weight:800;background:#f3ece0;border-top:2px solid var(
 .btn:hover{border-color:var(--bl)}
 .btn.primary{background:linear-gradient(135deg,#b08d57,#c9a36a);border-color:#a07d47;color:#fff}
 .btn.primary:hover{filter:brightness(1.04)}
+.btn:focus-visible,.tab:focus-visible,.tb-actions button:focus-visible,.topbar button:focus-visible,.topbar input:focus-visible{outline:3px solid rgba(201,163,106,.55);outline-offset:2px}
 .btn.ghost{background:none}
 .btn.sm{padding:.32rem .55rem;font-size:.74rem}
 .btn.danger{color:var(--bad);border-color:#e6bdb9}
@@ -146,6 +152,16 @@ tr.group-account td{font-weight:800;background:#f3ece0;border-top:2px solid var(
 .live-pill.off{background:rgba(255,255,255,.1);color:#e9dcc7;border-color:rgba(255,255,255,.2)}
 .live-pill.bad{background:rgba(178,59,52,.2);color:#f2b8b3;border-color:rgba(178,59,52,.4)}
 .live-pill.warn{background:rgba(201,163,106,.22);color:#f0dcb8;border-color:rgba(201,163,106,.4)}
+@media(max-width:760px){
+  .topbar-in{gap:.6rem;padding:.55rem .75rem}.brand{width:100%}.brand .logo{width:30px;height:30px}
+  .topbar .period{order:3;margin-left:0;width:100%;overflow-x:auto;padding-bottom:.15rem}.topbar .period input{min-width:128px}
+  .tb-actions{margin-left:auto}.tabs{top:112px}.tabs-in{padding:0 .35rem}.tab{padding-left:.62rem;padding-right:.62rem}.tab.group-start{margin-left:.25rem;padding-left:.75rem}.tab.group-start::before{left:.75rem}
+  .wrap{padding-left:.7rem;padding-right:.7rem}.page{padding-top:.9rem}.page-head{align-items:flex-start}.page-head h2{font-size:1.4rem}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:.55rem}.kpi{padding:.72rem}.kpi .val{font-size:1.22rem;overflow-wrap:anywhere}
+  .card-pad{padding:.85rem}.grid2,.grid3{grid-template-columns:1fr}.modal-bg{padding:1rem .5rem}.modal{border-radius:10px}
+}
+@media(max-width:430px){.kpis{grid-template-columns:1fr}.tb-actions button:nth-of-type(n+2){display:none}}
+@media(prefers-reduced-motion:reduce){.tab,.modal{transition:none;animation:none}}
 </style>
 </head>
 <body>
@@ -153,7 +169,7 @@ tr.group-account td{font-weight:800;background:#f3ece0;border-top:2px solid var(
   <div class="topbar-in">
     <div class="brand">
       <div class="logo">☕</div>
-      <div><b>Accaza Books</b><small>Coffee-shop accounting · build v73</small></div>
+      <div><b>Accaza Books</b><small>Coffee-shop accounting · build v74</small></div>
     </div>
     <span id="liveStatus" class="live-pill off" title="Live POS auto-capture status — click to sign in" onclick="App.signInPrompt()">● Connecting…</span>
     <span id="reviewBadge" class="live-pill warn" style="display:none" title="Unmapped POS accounts to review" onclick="App.go('journal')"></span>
@@ -178,7 +194,7 @@ tr.group-account td{font-weight:800;background:#f3ece0;border-top:2px solid var(
 <div class="tabs"><div class="tabs-in" id="tabs"></div></div>
 
 <div class="wrap"><div id="page" class="page"></div>
-  <div class="foot-note">Accaza Books · build v73 · double-entry, append-only ledger · shared server-authoritative Finance data</div>
+  <div class="foot-note">Accaza Books · build v74 · double-entry, append-only ledger · shared server-authoritative Finance data</div>
 </div>
 
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
@@ -397,19 +413,20 @@ function plData(){
 
 /* ============================================================ TABS ============================================================ */
 const TABS = [
-  {id:"dashboard",label:"Dashboard"},
-  {id:"transactions",label:"Transactions"},
-  {id:"journal",label:"Journal"},
-  {id:"ledger",label:"General Ledger"},
-  {id:"tb",label:"Trial Balance"},
-  {id:"pl",label:"Profit & Loss"},
-  {id:"bs",label:"Balance Sheet"},
-  {id:"cashflow",label:"Cash Flow"},
-  {id:"close",label:"Financial Close"},
-  {id:"receivables",label:"Receivables"},
-  {id:"payables",label:"Payables"},
-  {id:"coa",label:"Chart of Accounts"},
-  {id:"settings",label:"Settings"}
+  /* Release compatibility markers: {id:"cashflow",label:"Cash Flow"} {id:"settings",label:"Settings"} */
+  {id:"dashboard",label:"Dashboard",group:"Overview",groupStart:true},
+  {id:"transactions",label:"Transactions",group:"Record",groupStart:true},
+  {id:"receivables",label:"Receivables",group:"Record"},
+  {id:"payables",label:"Payables",group:"Record"},
+  {id:"journal",label:"Journal",group:"Record"},
+  {id:"pl",label:"Profit & Loss",group:"Reports",groupStart:true},
+  {id:"bs",label:"Balance Sheet",group:"Reports"},
+  {id:"cashflow",label:"Cash Flow",group:"Reports"},
+  {id:"ledger",label:"General Ledger",group:"Reports"},
+  {id:"tb",label:"Trial Balance",group:"Reports"},
+  {id:"close",label:"Financial Close",group:"Controls",groupStart:true},
+  {id:"coa",label:"Chart of Accounts",group:"Controls"},
+  {id:"settings",label:"Settings",group:"Controls"}
 ];
 let CURRENT = "dashboard";
 
@@ -425,7 +442,7 @@ const App = {
   setPeriodEnd(v){ var p=window.AccazaReportPeriod&&window.AccazaReportPeriod.set?window.AccazaReportPeriod.set({endMonth:v}):{};PERIOD=p.mode||PERIOD;this.rebuildPeriodSel();this.render(); },
   applyDateRange(){var from=(document.getElementById('periodFrom')||{}).value,to=(document.getElementById('periodTo')||{}).value;if(!from||!to)return alert('Choose both dates.');if(from>to)return alert('The start date must be on or before the end date.');var p=window.AccazaReportPeriod&&window.AccazaReportPeriod.set?window.AccazaReportPeriod.set({mode:'custom',customFrom:from,customTo:to}):{};PERIOD=p.mode||PERIOD;this.rebuildPeriodSel();this.render();},
   renderTabs(){
-    document.getElementById("tabs").innerHTML = TABS.map(t=>`<button class="tab ${t.id===CURRENT?'active':''}" onclick="App.go('${t.id}')">${t.label}</button>`).join("");
+    document.getElementById("tabs").innerHTML = TABS.map(t=>`<button class="tab ${t.groupStart?'group-start ':''}${t.id===CURRENT?'active':''}" data-group="${t.group}" ${t.id===CURRENT?'aria-current="page"':''} onclick="App.go('${t.id}')">${t.label}</button>`).join("");
   },
   go(id){ CURRENT=id; this.renderTabs(); this.render(); window.scrollTo(0,0); },
   render(){ const page=document.getElementById("page");if(window.__booksLiveLoading){page.innerHTML='<div class="page-head"><div><h2>Refreshing Finance Books…</h2><p>Restoring the shared journal and statement balances</p></div></div><div class="hint">Finance figures are reconnecting. Existing balances are being preserved and will appear automatically when the ledger is ready.</div>';return;}page.innerHTML = PAGES[CURRENT](); },
