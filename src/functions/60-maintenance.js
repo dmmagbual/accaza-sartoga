@@ -86,12 +86,18 @@ exports.backupDatabaseDaily = onSchedule(
     Object.keys(root).forEach((node) => { if (!BACKUP_EXCLUDE.has(node)) snapshot[node] = root[node]; });
     const stamp = new Date(now).toISOString().slice(0, 19).replace(/[:T]/g, "-");
     const objectName = `db-backups/accaza-${stamp}.json`;
-    const payload = JSON.stringify({takenAt: now, version: "backup-v1", excluded: [...BACKUP_EXCLUDE], data: snapshot});
+    const envelope = RecoveryValidation.createEnvelope(snapshot, now, BACKUP_EXCLUDE);
+    // Always preserve a recovery point, even when the business data later needs
+    // reconciliation. Upload is blocked only for an invalid/corrupt envelope;
+    // the isolated restore gate performs the strict accounting validation.
+    const validation = RecoveryValidation.validateEnvelope(envelope, {reconcile: false});
+    if (!validation.ok) throw new Error(`Backup validation failed: ${validation.issues.join("; ")}`);
+    const payload = JSON.stringify(envelope);
     await bucket.file(objectName).save(payload, {
       resumable: false, contentType: "application/json",
-      metadata: {cacheControl: "private, max-age=0, no-store", metadata: {takenAt: String(now)}},
+      metadata: {cacheControl: "private, max-age=0, no-store", metadata: {takenAt: String(now), dataSha256: validation.actualSha256, backupVersion: "backup-v2"}},
     });
-    await db.ref("/systemHealth/backups/latest").set({takenAt: now, objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, version: "backup-v1"});
+    await db.ref("/systemHealth/backups/latest").set({takenAt: now, objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, version: "backup-v2", dataSha256: validation.actualSha256, validation: "passed"});
     // Retention: delete snapshots older than 30 days.
     let removed = 0;
     try {
@@ -102,7 +108,7 @@ exports.backupDatabaseDaily = onSchedule(
         if (created && created < cutoff) { await file.delete({ignoreNotFound: true}); removed++; }
       }));
     } catch (error) { logger.warn("Backup retention sweep failed", {error: String(error)}); }
-    logger.info("backupDatabaseDaily complete", {objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, removed, rev: 2});
+    logger.info("backupDatabaseDaily complete", {objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, dataSha256: validation.actualSha256, removed, rev: 3});
     return null;
   },
 );
