@@ -4,8 +4,11 @@
   "type": "module",
   "scripts": {
     "build:runtime": "node tools/build-runtime-bundles.mjs",
+    "build:html": "node tools/build-html-pages.mjs",
+    "build:artifacts": "npm run build:runtime && npm run build:html",
     "test:bundle-drift": "node tests/runtime-bundle-drift-check.mjs",
-    "test": "npm run test:bundle-drift && node tests/static-check.mjs",
+    "test:html-drift": "node tests/html-page-drift-check.mjs",
+    "test": "npm run test:bundle-drift && npm run test:html-drift && node tests/static-check.mjs",
     "test:e2e": "playwright test",
     "test:rules": "firebase emulators:exec --only database \"node tests/rules-ownership-check.mjs\"",
     "test:safety": "node tests/repository-safety-check.mjs",

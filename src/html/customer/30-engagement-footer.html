@@ -1,0 +1,162 @@
+<section class="reservations" id="reserve">
+<div class="app-reserve-note" style="display:none;max-width:560px;margin:0 auto;text-align:center;background:rgba(255,255,255,0.06);border:1px solid rgba(176,141,87,0.4);border-radius:12px;padding:2rem 1.5rem;">
+  <div style="font-size:2.2rem;margin-bottom:0.75rem;">📅</div>
+  <h3 style="font-family:'Playfair Display',serif;color:#e0d4c6;font-size:1.3rem;margin-bottom:0.75rem;">Planning a Visit?</h3>
+  <p style="color:#c9a36a;font-size:0.95rem;line-height:1.7;letter-spacing:0.04em;">FOR RESERVATIONS, VISIT OUR WEBSITE AT</p>
+  <a href="https://accazacoffee.com/?full=1#reserve" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:0.75rem;background:#b08d57;color:#fff;text-decoration:none;border-radius:8px;padding:0.7rem 1.5rem;font-size:0.9rem;letter-spacing:0.05em;">ACCAZACOFFEE.COM</a>
+</div>
+  <div class="res-inner">
+    <div style="text-align:center;margin-bottom:3rem;">
+      <p class="section-label" style="color:var(--bl);">Book a Seat</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cr);margin-bottom:0.75rem;">Reserve a Table</h2>
+      <div style="background:rgba(201,163,106,0.15);border:1px solid rgba(201,163,106,0.3);border-radius:8px;padding:1rem 1.5rem;margin-top:1rem;max-width:620px;margin-left:auto;margin-right:auto;"><p style="font-size:0.9rem;color:#c9a36a;line-height:1.7;text-align:center;">📋 <strong>All reservations are subject to confirmation.</strong><br/>One of our staff will reach out to your contact number to discuss the details of your booking and confirm your reservation. For faster assistance, call or message us at <strong>0927 692 4831</strong>. 😊</p></div>
+    </div>
+    <div class="res-layout">
+      <div>
+        <div class="cal-wrap" style="margin-bottom:1.5rem;">
+          <div class="cal-header"><button class="cal-nav" id="calPrev" onclick="calNavigate(-1)">‹</button><span class="cal-title" id="calTitle"></span><button class="cal-nav" id="calNext" onclick="calNavigate(1)">›</button></div>
+          <div class="cal-grid" id="calGrid"></div>
+          <div class="cal-legend"><div class="cal-legend-item"><div class="cal-legend-dot" style="background:#2d9e5f;"></div>Available</div><div class="cal-legend-item"><div class="cal-legend-dot" style="background:#f39c12;"></div>Partially Booked</div><div class="cal-legend-item"><div class="cal-legend-dot" style="background:#555;"></div>Unavailable</div></div>
+        </div>
+        <div class="cal-wrap" id="timeSlotsWrap" style="display:none;margin-bottom:1.5rem;">
+          <p style="font-size:0.8rem;color:rgba(224,212,198,0.7);margin-bottom:0.75rem;">Select a time for <strong id="selectedDateLabel" style="color:var(--cr);"></strong></p>
+          <div style="margin-bottom:0.6rem;"><button type="button" class="time-slot available" id="fullDaySlot" style="font-weight:700;padding:0.65rem;font-size:0.85rem;text-align:center;border-radius:6px;cursor:pointer;">📅 Full Day Booking</button></div>
+          <div class="time-slots-grid" id="timeSlotsGrid"></div>
+        </div>
+        <div class="res-form-box" id="resFormWrap" style="display:none;">
+          <p style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--cr);margin-bottom:1rem;">📋 Your Booking Details</p>
+          <div style="background:rgba(255,255,255,0.1);border-radius:8px;padding:0.85rem 1rem;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;"><div><p style="font-size:0.72rem;color:rgba(224,212,198,0.5);text-transform:uppercase;letter-spacing:0.1em;">Date & Time</p><p style="font-size:0.95rem;color:var(--cr);font-weight:500;" id="resSummaryDateTime">—</p></div><button onclick="resetResSelection()" style="background:none;border:1px solid rgba(255,255,255,0.2);color:rgba(224,212,198,0.6);border-radius:6px;padding:0.3rem 0.75rem;font-size:0.75rem;cursor:pointer;font-family:'Inter',sans-serif;">Change</button></div>
+          <div class="res-field-group"><div class="res-field"><label class="res-label">Full Name</label><input type="text" id="resName" maxlength="100" placeholder="e.g. Maria Santos"/></div><div class="res-field"><label class="res-label">Phone Number</label><input type="text" id="resPhone" maxlength="40" placeholder="e.g. 0917 123 4567"/></div></div>
+          <div class="res-field-group">
+            <div class="res-field"><label class="res-label">Number of Guests</label><select id="resGuests" onchange="updateBookingType()"><option value="1">1 guest</option><option value="2">2 guests</option><option value="3">3 guests</option><option value="4">4 guests</option><option value="5">5 guests</option><option value="6">6 guests</option><option value="7">7 guests</option><option value="8">8 guests</option><option value="9">9 guests</option><option value="10">10 guests</option><option value="15">15 guests</option><option value="20">20 guests</option><option value="25">25 guests</option><option value="30">30 guests</option><option value="40">40 guests</option><option value="50">50 guests (max)</option></select></div>
+            <div class="res-field"><label class="res-label">Occasion (optional)</label><select id="resOccasion"><option value="">None / Regular visit</option><option>Birthday</option><option>Anniversary</option><option>Business Meeting</option><option>Date</option><option>Family Gathering</option><option>Other</option></select></div>
+          </div>
+          <div id="bookingTypeInfo" style="margin-bottom:1rem;"></div>
+          <div class="res-field" style="margin-top:0.75rem;"><label class="res-label">Special Requests (optional)</label><textarea id="resNotes" rows="2" maxlength="500" placeholder="e.g. window seat, allergies, birthday setup..."></textarea></div>
+          <p style="font-size:0.75rem;color:rgba(224,212,198,0.55);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.5rem;margin-top:0.75rem;">Preferred Contact</p>
+          <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.75rem;">
+            <button class="type-btn active" id="resBtnWa" onclick="setResContact('whatsapp')" style="flex:none;padding:0.45rem 0.8rem;font-size:0.78rem;">📱 WhatsApp</button>
+            <button class="type-btn" id="resBtnVb" onclick="setResContact('viber')" style="flex:none;padding:0.45rem 0.8rem;font-size:0.78rem;">💬 Viber</button>
+            <button class="type-btn" id="resBtnSms" onclick="setResContact('sms')" style="flex:none;padding:0.45rem 0.8rem;font-size:0.78rem;">📩 SMS</button>
+            <button class="type-btn" id="resBtnCall" onclick="setResContact('call')" style="flex:none;padding:0.45rem 0.8rem;font-size:0.78rem;">📞 Call</button>
+            <button class="type-btn" id="resBtnEmail" onclick="setResContact('email')" style="flex:none;padding:0.45rem 0.8rem;font-size:0.78rem;">📧 Email</button>
+          </div>
+          <input type="text" id="resContact" maxlength="120" placeholder="Enter your WhatsApp number" style="margin-bottom:0.75rem;"/>
+          <button class="btn-reserve" onclick="submitReservation()">Submit Reservation Request</button>
+          <div id="resConfirm" style="display:none;margin-top:1rem;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:1rem;text-align:center;"><p style="color:var(--cr);">🎉 Reservation request received! One of our staff will reach out to confirm your booking details shortly. 😊</p></div>
+        </div>
+        <div id="myReservationsList" style="margin-top:1.25rem;"></div>
+      </div>
+      <div class="res-info">
+        <div class="res-info-card"><div class="res-info-icon">🕐</div><h4>Opening Hours</h4><p>Monday – Sunday</p><p class="res-time">3:00 PM – 12:00 Midnight</p></div>
+        <div class="res-info-card"><div class="res-info-icon">📍</div><h4>Find Us</h4><p>Saratoga Avenue, La Mediterranea Subdivision, Governor's Drive</p><p class="res-time">Dasmariñas, Cavite, Philippines</p></div>
+        <div class="res-info-card"><div class="res-info-icon">📞</div><h4>Call or Message</h4><p>Viber / WhatsApp / SMS</p><p class="res-time">0927 692 4831</p></div>
+        <div class="res-info-card"><div class="res-info-icon">👥</div><h4>Booking Guidelines, Admin to Confirm</h4>
+          <p style="margin-bottom:0.4rem;">💑 <strong style="color:rgba(224,212,198,0.8);">Individual/Couple</strong> — Same day, no deposit</p>
+          <p style="margin-bottom:0.4rem;">👨‍👩‍👧 <strong style="color:rgba(224,212,198,0.8);">Small Group (3–5)</strong> — Same day, deposit discussed</p>
+          <p style="margin-bottom:0.4rem;">👥 <strong style="color:rgba(224,212,198,0.8);">Medium Group (6–20)</strong> — 7 days advance booking</p>
+          <p>🎉 <strong style="color:rgba(224,212,198,0.8);">Large Group (21–50)</strong> — 7 days advance booking</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- REVIEWS -->
+<section class="reviews-section" id="reviews">
+  <div class="reviews-inner">
+    <div style="text-align:center;margin-bottom:3rem;"><p class="section-label" style="color:var(--bl);">What People Say</p><h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.75rem;">Customer Reviews</h2></div>
+    <div id="publicReviewsContainer"><p style="text-align:center;color:var(--tl);padding:2rem;">Loading reviews...</p></div>
+  </div>
+
+  <div style="text-align:center;padding-bottom:2.5rem;">
+    <a href="https://www.google.com/maps/search/?api=1&amp;query=Accaza+Coffee+House+Saratoga+Avenue+Dasmarinas+Cavite" target="_blank" rel="noopener noreferrer"
+       style="display:inline-block;background:var(--bd);color:#fff;padding:0.75rem 2rem;
+              border-radius:2rem;font-weight:600;text-decoration:none;font-size:0.95rem;
+              box-shadow:0 2px 10px rgba(0,0,0,0.2);"
+       onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">📍 Find Accaza on Google Maps</a>
+    <p style="margin-top:0.75rem;font-size:0.82rem;color:#aaa;">Your review means the world to us ☕</p>
+  </div>
+</section>
+
+<!-- FEEDBACK -->
+<section class="feedback-section" id="feedback">
+  <div class="feedback-inner">
+    <div style="text-align:center;margin-bottom:3rem;"><p class="section-label" style="color:var(--bl);">We'd Love to Hear From You</p><h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cr);margin-bottom:0.75rem;">Feedback</h2></div>
+    <div class="feedback-layout">
+      <div class="feedback-form-box">
+        <div class="res-field-group"><div class="res-field"><label class="res-label">Your Name</label><input type="text" id="fbName" maxlength="100" placeholder="e.g. Maria Santos"/></div><div class="res-field"><label class="res-label">Phone / Email (optional)</label><input type="text" id="fbContact" maxlength="120" placeholder="So we can follow up"/></div></div>
+        <div class="res-field" style="margin-bottom:1rem;"><label class="res-label">Type of Feedback</label><select id="fbType"><option value="Complaint">😞 Complaint</option><option value="Suggestion">💡 Suggestion</option><option value="Compliment">❤️ Compliment</option><option value="Other">💬 Other</option></select></div>
+        <div class="res-field"><label class="res-label">Your Message <span style="font-size:0.68rem;opacity:0.6;">(max 800 characters)</span></label><textarea id="fbMessage" rows="5" maxlength="800" placeholder="Tell us what's on your mind..." oninput="updateFbCounter()"></textarea><div style="display:flex;justify-content:flex-end;margin-top:0.3rem;"><span id="fbCounter" style="font-size:0.72rem;color:rgba(224,212,198,0.5);">0 / 800</span></div></div>
+        <button class="btn-reserve" style="margin-top:1rem;" onclick="submitFeedback()">Send Feedback</button>
+        <div id="fbConfirm" style="display:none;margin-top:1rem;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:1.25rem;text-align:center;"><p id="fbConfirmMsg" style="color:#fff;font-size:0.95rem;line-height:1.7;"></p></div>
+      </div>
+      <div class="feedback-info">
+        <div class="res-info-card"><div style="font-size:2rem;margin-bottom:0.75rem;">😞</div><h4>Complaints</h4><p>Had a bad experience? Tell us so we can make it right.</p></div>
+        <div class="res-info-card"><div style="font-size:2rem;margin-bottom:0.75rem;">💡</div><h4>Suggestions</h4><p>Have an idea to improve? We're all ears!</p></div>
+        <div class="res-info-card"><div style="font-size:2rem;margin-bottom:0.75rem;">❤️</div><h4>Compliments</h4><p>Loved your experience? Let us know!</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- GALLERY -->
+<section class="gallery-section" id="gallery">
+  <div class="gallery-inner">
+    <div style="text-align:center;margin-bottom:3rem;"><p class="section-label" style="color:var(--bl);">Our Space</p><h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.5rem;">A Peek Inside</h2><p style="color:rgba(224,212,198,0.45);font-size:0.82rem;letter-spacing:0.04em;">Click any photo for a closer look</p></div>
+    <div class="gallery-grid">
+      <div onclick="openLightbox(0)" class="gallery-card tall"><img src="https://i.postimg.cc/g0qrJsnX/6.jpg" alt="Accaza Coffee House gallery" loading="lazy"/></div>
+      <div onclick="openLightbox(1)" class="gallery-card"><img src="https://i.postimg.cc/TwtsR8Gd/image.png" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(2)" class="gallery-card"><img src="https://i.postimg.cc/5yPsM8BH/image.png" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(3)" class="gallery-card"><img src="https://i.postimg.cc/wMbQrgz3/image.png" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(4)" class="gallery-card"><img src="https://i.postimg.cc/BvGckmr5/image.png" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(5)" class="gallery-card"><img src="https://i.postimg.cc/sXJJz5YV/image.png" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(6)" class="gallery-card"><img src="https://i.postimg.cc/B6mT84jW/image.png" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(7)" class="gallery-card"><img src="https://i.postimg.cc/yxJZk9qq/image.png" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(8)" class="gallery-card"><img src="https://i.postimg.cc/CxpqxzcB/image.png" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(9)" class="gallery-card"><img src="https://i.postimg.cc/Pq2pyKTr/image.png" alt="Accaza" loading="lazy" decoding="async"/></div>
+      <div onclick="openLightbox(10)" class="gallery-card"><img src="https://i.postimg.cc/sxZMVrSZ/image.png" alt="Frappe and cold drinks at Accaza" loading="lazy"/></div>
+    </div>
+  </div>
+</section>
+
+<!-- CONTACT -->
+<section class="contact-section" id="contact">
+  <div class="contact-inner">
+    <div style="text-align:center;margin-bottom:3rem;"><p class="section-label" style="color:var(--bl);">Get in Touch</p><h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cr);margin-bottom:0.75rem;">Contact Us</h2></div>
+    <div class="contact-layout">
+      <div class="contact-form-box">
+        <div class="res-field-group"><div class="res-field"><label class="res-label" style="color:rgba(224,212,198,0.55);">Your Name</label><input type="text" id="conName" placeholder="e.g. Juan dela Cruz"/></div><div class="res-field"><label class="res-label" style="color:rgba(224,212,198,0.55);">Phone / Email</label><input type="text" id="conContact" placeholder="09XX or email@email.com"/></div></div>
+        <div class="res-field" style="margin-bottom:1rem;"><label class="res-label" style="color:rgba(224,212,198,0.55);">Subject</label><input type="text" id="conSubject" placeholder="e.g. catering inquiry..."/></div>
+        <div class="res-field"><label class="res-label" style="color:rgba(224,212,198,0.55);">Message</label><textarea id="conMessage" rows="4" placeholder="Write your message here..."></textarea></div>
+        <button class="btn-reserve" style="margin-top:1rem;" onclick="submitContact()">Send Message</button>
+        <div id="conConfirm" style="display:none;margin-top:1rem;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:1rem;text-align:center;"><p style="color:var(--cr);">✅ Message sent! We'll get back to you shortly.</p></div>
+      </div>
+      <div class="contact-info">
+        <div class="contact-info-item"><div class="contact-icon">📍</div><div><h4>Address</h4><p>Saratoga Avenue, La Mediterranea Subdivision,<br/>Governor's Drive, Dasmariñas, Cavite, Philippines</p></div></div>
+        <div style="margin-top:1.25rem;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.2);">
+          <iframe src="https://maps.google.com/maps?q=14.2990898,120.9607271&t=h&z=17&output=embed"
+            width="100%" height="280" style="border:0;display:block;" allowfullscreen="" loading="lazy"
+            referrerpolicy="no-referrer-when-downgrade" title="Accaza Coffee House — La Mediterranea, Dasmariñas, Cavite"></iframe>
+        </div>
+        <div class="contact-info-item"><div class="contact-icon">🕐</div><div><h4>Opening Hours</h4><p>Monday – Sunday<br/><span style="color:#c9a36a;font-weight:500;">3:00 PM – 12:00 Midnight</span></p></div></div>
+        <div class="contact-info-item"><div class="contact-icon">📱</div><div><h4>Viber / WhatsApp / SMS</h4><p>0927 692 4831</p></div></div>
+        <div class="contact-info-item"><div class="contact-icon">✉️</div><div><h4>Email</h4><p><a href="mailto:admin@accazacoffee.com?cc=contact.mariadaniela@gmail.com" style="color:inherit;text-decoration:none;">admin@accazacoffee.com</a></p></div></div>
+        <div class="contact-info-item"><div class="contact-icon">💳</div><div><h4>Online Payment</h4><p>GCash · BDO · UnionBank<br/><span style="color:rgba(224,212,198,0.5);font-size:0.8rem;">All under ACCAZA</span></p></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-logo">Accaza Coffee House</div>
+    <p>Saratoga Ave, La Mediterranea, Dasmariñas, Cavite · Open daily 3PM–12MN</p>
+    <div class="footer-links"><a href="#menu">Menu</a><a href="#order">Order</a><a href="#reserve">Reserve</a><a href="#reviews">Reviews</a><a href="#feedback">Feedback</a><a href="#gallery">Gallery</a><a href="#contact">Contact</a><a href="menu.html">Menu</a><a href="about.html">About</a><a href="reservations.html">Reservations</a><a href="contact.html">Visit</a></div>
+    <p class="footer-copy">© 2026 Accaza Coffee House. All rights reserved.<span class="footer-version">Website version 61</span></p>
+  </div>
+</footer>
+
+<!-- Release 2D: retired embedded admin portal removed; use admin.html. -->
+
+<!-- CUSTOMIZE POPUP -->
