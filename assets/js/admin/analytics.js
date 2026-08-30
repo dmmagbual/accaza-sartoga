@@ -307,7 +307,7 @@ function renderDailyReport(){
     var byMethod={},itemsM={},txns=[],refundsTot=0,netTot=0,byShift={};
     sales.forEach(function(s){var o=s.o;var c=drChannel(o);var ch=chan[c];ch.tx++;var nt;
       if(c==='instore'||c==='online'){ch.gross+=s.gross;ch.disc+=s.discount;ch.net+=s.net;nt=s.net;netTot+=s.net;}
-      else{var g=Number(o.grossPlatform||o.subtotal||o.total)||0;nt=Number(o.netPlatform!=null?o.netPlatform:g)||0;ch.gross+=g;ch.comm+=Number(o.commission)||0;ch.net+=nt;netTot+=nt;}
+      else{var g=s.gross;nt=s.net;ch.gross+=g;ch.disc+=s.discount;ch.comm+=Number(o.commission)||0;ch.net+=nt;netTot+=nt;}
       refundsTot+=s.refund;
       var pays=(o.payments&&o.payments.length)?o.payments:[{method:o.channel==='grabfood'?'GrabFood':o.channel==='foodpanda'?'FoodPanda':(o.payment||'—'),amount:Number(o.total)||0}];
       pays.forEach(function(p){byMethod[p.method]=(byMethod[p.method]||0)+(Number(p.amount)||0);});

@@ -128,8 +128,10 @@ function postingDifference(before, after, type, sourceId, label) {
 
 function orderNetSales(order) {
   order = order || {};
-  const gross = money(order.subtotal != null ? order.subtotal : order.total);
-  return money(Math.max(0, gross - money(order.discount) - money(order.refundAmount)));
+  const channel=safe(order.channel).toLowerCase(),platform=channel==="grabfood"||channel==="foodpanda";
+  const gross = money(platform&&order.grossPlatform!=null?order.grossPlatform:(order.subtotal != null ? order.subtotal : order.total));
+  const discount=platform?(order.netSalesPlatform!=null?money(Math.max(0,gross-money(order.netSalesPlatform))):money(order.platformDiscount)):money(order.discount);
+  return money(Math.max(0, gross - discount - money(order.refundAmount)));
 }
 
 function sourceNetSales(movements, sourceId) {

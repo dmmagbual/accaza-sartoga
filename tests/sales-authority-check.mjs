@@ -13,6 +13,8 @@ assert(!S.qualifies({source:'pos',status:'Completed',paymentStatus:'confirmed',v
 assert(!S.qualifies({source:'pos',status:'Cancelled',paymentStatus:'confirmed'}),'cancelled POS sale was recognized');
 const values=S.amounts({subtotal:1000,discount:125,refundAmount:25,total:875});
 assert(values.gross===1000&&values.discount===125&&values.refund===25&&values.net===850,'authoritative sales amounts are wrong');
+const grab=S.amounts({channel:'grabfood',grossPlatform:725,subtotal:725,total:725,discount:0,platformDiscount:126.25,netSalesPlatform:598.75,commission:108.75,platformAdsMarketing:20,netPlatform:470});
+assert(grab.gross===725&&grab.discount===126.25&&grab.net===598.75,'Grab net sales must subtract customer-related platform discounts but not commission or payout charges');
 assert(S.stamp({completedAt:3,receivedAt:2,timestamp:1})===3,'completed timestamp is not authoritative');
 
 console.log('PASS: shared Admin sales authority enforces status, payment, void, amount, and timestamp rules.');
