@@ -1,0 +1,18 @@
+
+function openPayableDetail(id){
+  var ap=apMap[id];if(!ap)return;
+  var a=A(),mask=document.createElement('div');mask.setAttribute('role','dialog');mask.setAttribute('aria-modal','true');mask.setAttribute('aria-label','Payable details');mask.style.cssText='position:fixed;inset:0;background:rgba(18,35,25,.68);z-index:10020;display:flex;align-items:center;justify-content:center;padding:1rem;';
+  function row(label,value){return '<div style="padding:.55rem 0;border-bottom:1px solid var(--cd);"><span class="pz-lbl">'+esc(label)+'</span><div style="font-size:.92rem;color:var(--td);word-break:break-word;">'+esc(value||'—')+'</div></div>';}
+  function sourceLabel(){return ap.purchaseInvoiceId?'Purchase-linked inventory':'Manual payable';}
+  function content(invoice){
+    var lines=invoice&&Array.isArray(invoice.lines)?invoice.lines:[],lineHtml=lines.length?'<div style="margin-top:.9rem;"><span class="pz-lbl">Purchase items</span><div style="overflow-x:auto;margin-top:.3rem;"><table class="pz-tbl"><thead><tr><th>Item</th><th>Brand</th><th class="r">Quantity</th><th class="r">Amount</th></tr></thead><tbody>'+lines.map(function(x){return '<tr><td>'+esc(x.itemName||x.itemId||'Item')+'</td><td>'+esc(x.skuBrand||'—')+'</td><td class="r">'+esc((x.qty==null?'—':x.qty)+' '+(x.unit||''))+'</td><td class="r">'+peso(x.total)+'</td></tr>';}).join('')+'</tbody></table></div></div>':'';
+    return '<div style="background:#fff;border:1px solid var(--cd);border-radius:14px;max-width:680px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 24px 60px rgba(0,0,0,.28);">'
+      +'<div style="background:var(--dk);color:#fff;padding:1rem 1.2rem;border-radius:13px 13px 0 0;display:flex;justify-content:space-between;gap:1rem;align-items:start;"><div><div style="font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;color:var(--gd);">'+esc(sourceLabel())+'</div><div style="font-family:Georgia,serif;font-size:1.35rem;margin-top:.2rem;">'+esc(ap.party||'Payable')+'</div><div style="font-size:.82rem;opacity:.8;margin-top:.2rem;">'+esc(ap.ref||id)+'</div></div><button type="button" data-apclose aria-label="Close payable details" style="border:0;background:transparent;color:#fff;font-size:1.5rem;cursor:pointer;line-height:1;">×</button></div>'
+      +'<div style="padding:1rem 1.2rem;"><div style="font-size:1.65rem;font-weight:800;color:var(--bd);margin-bottom:.5rem;">'+peso(ap.amount)+'</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 1rem;">'+row('Status',ap.status||'open')+row('Type',ap.type||'other')+row('Bill date',ap.date)+row('Due date',ap.due)+row('Aging',agingBucket(ap.due))+row('Source',sourceLabel())+row('Payable ID',id)+row('Movement ID',ap.movementId)+'</div>'+lineHtml+'<div style="display:flex;justify-content:flex-end;margin-top:1rem;"><button class="pz-btn sec" type="button" data-apclose>Close</button></div></div></div>';
+  }
+  function show(invoice){mask.innerHTML=content(invoice);mask.querySelectorAll('[data-apclose]').forEach(function(b){b.onclick=close;});var first=mask.querySelector('[data-apclose]');if(first)first.focus();}
+  function close(){if(mask.parentNode)mask.parentNode.removeChild(mask);document.removeEventListener('keydown',key);}
+  function key(e){if(e.key==='Escape')close();}
+  document.addEventListener('keydown',key);mask.onclick=function(e){if(e.target===mask)close();};mask.innerHTML='<div class="pz-card" style="padding:1rem 1.2rem;">Loading payable details…</div>';document.body.appendChild(mask);
+  if(ap.purchaseInvoiceId&&a&&a.get)a.get(a.ref(a.db,'purchaseInvoices/'+ap.purchaseInvoiceId)).then(function(s){show(s.val()||null);}).catch(function(){show(null);});else show(null);
+}
