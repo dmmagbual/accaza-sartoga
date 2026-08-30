@@ -39,8 +39,8 @@ exports.mirrorPosMovementToBooks = onValueCreated(
     } else {
       context=await booksMovementContext(db,mv);const built = BooksBridge.buildSingle(mv, cashMap, context);
       const ref = db.ref(`/books/journal/${built.entry.id}`);
-      const existing = await ref.get();
-      if (!existing.exists()) { built.entry.createdAt = Date.now(); await ref.set(built.entry); }
+      built.entry.createdAt = Date.now();
+      await ref.transaction((current)=>current||built.entry,undefined,false);
     }
     const unmapped = BooksBridge.mappedLines(mv, cashMap, context).unmapped;
     await flagUnmappedBooks(db, mv, unmapped);
@@ -115,7 +115,9 @@ exports.ensureBooksJournal = onCall(
       if (!daily[key]&&!singles[key]&&Array.isArray(entry.lines)&&entry.lines.some((line)=>String(line&&line.code||"")==="4995")) writes[`books/journal/${key}`]=Object.assign({},entry,{lines:entry.lines.map((line)=>String(line&&line.code||"")==="4995"?Object.assign({},line,{code:"5905"}):line),legacyAccountMigratedFrom:"4995",legacyAccountMigratedTo:"5905",legacyAccountMigratedAt:Date.now()});
     });
     Object.keys(daily).forEach((key) => { daily[key].updatedAt = Date.now(); writes[`books/journal/${key}`] = daily[key]; });
-    Object.keys(singles).forEach((key) => { writes[`books/journal/${key}`] = singles[key]; });
+    // A rebuild may have read a movement before an in-place edit completed.
+    // Never overwrite a newer audited revision with that older snapshot.
+    for(const key of Object.keys(singles))await db.ref(`/books/journal/${key}`).transaction((current)=>Number(current&&current.revision||0)>Number(singles[key].revision||0)?current:singles[key],undefined,false);
     const registerFloat = resolveRegisterFloat(posSettingsSnap.val(), activeShiftSnap.val());
     writes["books/journal/register_float_control"] = registerFloat.amount > 0 ? registerFloatControlEntry(registerFloat.amount, Date.now(), registerFloat) : null;
     writes["books/journal/historical_suspense_capital_20260826"] = historicalSuspenseCapitalEntry();

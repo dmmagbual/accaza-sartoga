@@ -5,6 +5,10 @@ exports.postFinancialCommand = onCall(
     const db = getDatabase(); const data = request.data || {}; const action = financeText(data.action, 40);
     const perms = action.indexOf("inventory_opening_balance") === 0 ? ["purchases", "cashflow"] : action.includes("payable") ? ["payables", "purchases"] : action.includes("receivable") ? ["receivables"] : ["cashflow", "receivables", "payables", "purchases"];
     const actor = await requirePortalPermission(db, request, perms); const commandId = financeKey(data.commandId, "Command ID");
+    if(action==='cash_journal_history'){
+      if(!['owner','superadmin','admin','manager'].includes(actor.role))throw new HttpsError('permission-denied','A privileged Finance role is required to view cash-journal revisions.');
+      const id=financeKey(data.originalMovementId,'Journal ID');return{revisions:(await db.ref(`/cashJournalRevisions/${id}`).get()).val()||{}};
+    }
     const accounts = (await db.ref("/cfAccounts").get()).val() || {}, chart = await ensureChartAccounts(db); const now = Date.now(); let movement, writes = {}, result = {}, depositReferenceClaim = null;
     function amount(v) { const x = Financial.money(v); if (!(x > 0)) throw new HttpsError("invalid-argument", "Amount must be greater than zero."); return x; }
     function addCash(id, entry) { writes[`cfLedger/${id}`] = cashLedgerRecord(entry, commandId, movement, actor); }

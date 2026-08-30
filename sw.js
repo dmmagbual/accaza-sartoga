@@ -35,7 +35,7 @@ self.addEventListener('notificationclick',function(e){
 
 /* Versioned customer + POS app shells. Customer checkout remains online-only;
    authenticated POS cash sales use the durable IndexedDB continuity queue. */
-const CACHE='accaza-v354';
+const CACHE='accaza-v355';
 const ASSETS=[
   '/','/index.html','/admin.html','/books.html','/manifest.json','/manifest-admin.json',
   '/favicon.ico','/favicon_32x32.png','/favicon_180x180.png','/favicon_192x192.png','/favicon_512x512.png',

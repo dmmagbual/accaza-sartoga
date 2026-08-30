@@ -209,13 +209,14 @@ function buildSingle(mv, cashMap, context) {
   const purchaseText=purchaseJournalText(mv,context);
   return {
     entry: {
-      id: b.key, date: b.date, ref: purchaseText?purchaseText.ref:String(mv.sourceId || mv.id || ""),
-      memo: purchaseText?purchaseText.memo:`POS ${String(mv.type || "movement").replace(/_/g, " ")}${mv.sourceId ? " · " + mv.sourceId : ""}`,
+      id: b.key, date: b.date, ref: purchaseText?purchaseText.ref:String(mv.revision ? mv.reference || mv.sourceId || mv.id || "" : mv.sourceId || mv.id || ""),
+      memo: purchaseText?purchaseText.memo:mv.revision?String(mv.memo||""):`POS ${String(mv.type || "movement").replace(/_/g, " ")}${mv.sourceId ? " · " + mv.sourceId : ""}`,
       lines: lines.map((l) => ({code: l.code, debit: l.debit, credit: l.credit})),
       sources: {[mv.id]: true}, source: "pos-bridge", sourceType: String(mv.sourceType || ""), sourceId: String(mv.sourceId || ""),
       reversalOf: String(mv.reversalOf || ""), reversedByMovementId: String(mv.reversedByMovementId || ""),
       correctsMovementId: String(mv.correctsMovementId || ""), correctionReplacementId: String(mv.correctionReplacementId || ""),
       linkedPayableId: String(mv.linkedPayableId || ""), voided: mv.voided === true, reason: String(mv.reason || mv.correctionReason || ""),
+      revision: Number(mv.revision||0),
     },
     unmapped,
   };

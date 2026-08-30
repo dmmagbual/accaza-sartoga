@@ -273,7 +273,7 @@ const App = {
     m.innerHTML = `
       <div class="modal-head"><h3>${edit?'Correct journal entry':'New journal entry'}</h3><button class="x" onclick="App.closeModal()">×</button></div>
       <div class="modal-body">
-        ${edit?'<div class="hint">Saving creates one grouped correction: the original is neutralized on its original date and the corrected replacement posts on the selected date. The audit history remains available without greying out or deleting either posting.</div><div class="field"><label>Correction reason</label><input id="e_reason" value="'+esc(edit.reason||'')+'" placeholder="Required · explain what was wrong" oninput="App._edit.reason=this.value"/></div>':''}
+        ${edit?'<div class="hint">Eligible open-period cash/Undeposited transfers save in place with revision history and a synchronized pooled balance—no void/repost. Keep the same cash account and direction. A privileged Finance role and reason are required. Closed periods, bank reconciliation locks, or insufficient cash block the save. Other journal types retain their existing correction workflow.</div><div class="field"><label>Correction reason</label><input id="e_reason" value="'+esc(edit.reason||'')+'" placeholder="Required · explain what was wrong" oninput="App._edit.reason=this.value"/></div>':''}
         <div class="grid2">
           <div class="field"><label>Date</label><input type="date" id="e_date" value="${pf.date}" oninput="App._draft.date=this.value"/></div>
           <div class="field"><label>Reference (optional)</label><input id="e_ref" value="${esc(pf.ref)}" placeholder="Receipt, invoice, transfer or approval ID" oninput="App._draft.ref=this.value"/></div>
@@ -290,7 +290,7 @@ const App = {
       </div>
       <div class="modal-foot">
         <button class="btn ghost" onclick="App.closeModal()">Cancel</button>
-        <button class="btn primary" id="postBtn" onclick="App.postEntry()">${edit?'Post correction':'Post entry'}</button>
+        <button class="btn primary" id="postBtn" onclick="App.postEntry()">${edit?'Save correction':'Post entry'}</button>
       </div>`;
     document.getElementById("modalBg").classList.add("show");
     this.refreshBalBar();
@@ -326,15 +326,15 @@ const App = {
     if(this._edit&&!(this._edit.reason||"").trim())return alert("Correction reason is required.");
     const usesAp=lines.some(l=>l.code==='2000'),linkedPayableId=(document.getElementById('e_payable')||{}).value||'',variancePurpose=(document.getElementById('e_purpose')||{}).value==='cash_variance',linkedDiscrepancyId=variancePurpose?((document.getElementById('e_discrepancy')||{}).value||''):'';if(usesAp&&!linkedPayableId)return alert('Select the exact open bill or payable for account 2000.');if(variancePurpose&&!linkedDiscrepancyId)return alert('Select the exact Admin cash shortage or overage this journal corrects.');
     const btn=document.getElementById("postBtn");btn.disabled=true;btn.textContent="Posting…";
-    const commandId=(this._edit?"books_edit_":"books_manual_")+Date.now(),payload={action:this._edit?"correct_manual_journal":"manual_journal",commandId,date:d.date||todayStr(),ref:d.ref||"",memo:d.memo||"",lines,linkedPayableId,linkedDiscrepancyId};if(this._edit){payload.originalMovementId=this._edit.originalMovementId;payload.reason=this._edit.reason.trim();payload.correctionDate=todayStr();}
+    const commandId=this._edit?(this._edit.commandId||(this._edit.commandId="books_edit_"+crypto.randomUUID())):"books_manual_"+Date.now(),payload={action:this._edit?"correct_manual_journal":"manual_journal",commandId,date:d.date||todayStr(),ref:d.ref||"",memo:d.memo||"",lines,linkedPayableId,linkedDiscrepancyId};if(this._edit){payload.originalMovementId=this._edit.originalMovementId;payload.expectedRevision=this._edit.expectedRevision;payload.reason=this._edit.reason.trim();payload.correctionDate=todayStr();}
     window.__financeCmd(payload).then(()=>{
       this.closeModal();CURRENT="journal";this.renderTabs();this.rebuildPeriodSel();this.render();
-    }).catch(e=>{alert("Could not post journal: "+((e&&e.message)||e));btn.disabled=false;btn.textContent="Post entry";});
+    }).catch(e=>{alert("Could not save journal: "+((e&&e.message)||e));btn.disabled=false;btn.textContent=this._edit?"Save correction":"Post entry";});
   },
   rebuildPeriodSel(){
     const p=window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get():{from:todayStr(),to:todayStr()},from=document.getElementById("periodFrom"),to=document.getElementById("periodTo");if(from)from.value=p.from||p.customFrom||todayStr();if(to)to.value=p.to||p.customTo||todayStr();
   },
-  editEntry(id){const e=ENTRIES().find(x=>x.id===id);if(!e||e.reversalOf||e.reversedByMovementId)return;const usesCustomerPayable=(e.lines||[]).some(l=>l.code==='2030'),customerPayableId=usesCustomerPayable?linkedCustomerPayableId(e):'';if(customerPayableId)return App.correctPayable(customerPayableId);if(usesCustomerPayable){CURRENT='payables';this.renderTabs();this.render();return alert('This journal belongs to Customer Change / Refund Payable. Use its Close to capital button so account 2030 and the exact customer subledger close together.');}if(window.__isAccountingPeriodClosed&&window.__isAccountingPeriodClosed(e.date||todayStr()))return alert('This journal belongs to a closed month. Reopen that month in Admin Settings to create its controlled correction.');this.openEntryModal({date:e.date||todayStr(),ref:e.ref||"",memo:e.memo||"",linkedPayableId:e.linkedPayableId||"",linkedDiscrepancyId:e.linkedDiscrepancyId||"",lines:(e.lines||[]).map(l=>({code:l.code,debit:Number(l.debit)||"",credit:Number(l.credit)||""}))},{originalMovementId:id,linkedPayableId:e.linkedPayableId||"",linkedDiscrepancyId:e.linkedDiscrepancyId||"",reason:""});},
+  editEntry(id){const e=ENTRIES().find(x=>x.id===id);if(!e||e.reversalOf||e.reversedByMovementId)return;const usesCustomerPayable=(e.lines||[]).some(l=>l.code==='2030'),customerPayableId=usesCustomerPayable?linkedCustomerPayableId(e):'';if(customerPayableId)return App.correctPayable(customerPayableId);if(usesCustomerPayable){CURRENT='payables';this.renderTabs();this.render();return alert('This journal belongs to Customer Change / Refund Payable. Use its Close to capital button so account 2030 and the exact customer subledger close together.');}if(window.__isAccountingPeriodClosed&&window.__isAccountingPeriodClosed(e.date||todayStr()))return alert('This journal belongs to a closed month. Reopen that month in Admin Settings to create its controlled correction.');this.openEntryModal({date:e.date||todayStr(),ref:e.ref||"",memo:e.memo||"",linkedPayableId:e.linkedPayableId||"",linkedDiscrepancyId:e.linkedDiscrepancyId||"",lines:(e.lines||[]).map(l=>({code:l.code,debit:Number(l.debit)||"",credit:Number(l.credit)||""}))},{originalMovementId:id,expectedRevision:Number(e.revision||0),linkedPayableId:e.linkedPayableId||"",linkedDiscrepancyId:e.linkedDiscrepancyId||"",reason:""});},
   reverseEntry(id,voidIt){
     const e=ENTRIES().find(x=>x.id===id); if(!e||e.reversedByMovementId||e.reversalOf) return;
     if(voidIt&&window.__isAccountingPeriodClosed&&window.__isAccountingPeriodClosed(e.date||todayStr()))return alert('A void uses the original accounting date. Reopen that month in Admin Settings first, or use a current-month reversal to preserve the closed history.');
@@ -343,6 +343,15 @@ const App = {
     window.__financeCmd({action:voidIt?"void_manual_journal":"reverse_manual_journal",commandId:(voidIt?"books_void_":"books_reverse_")+id,originalMovementId:id,date:todayStr(),reason:reason.trim()}).then(()=>this.render()).catch(err=>alert("Could not "+(voidIt?"void":"reverse")+" journal: "+((err&&err.message)||err)));
   },
   closeModal(){ document.getElementById("modalBg").classList.remove("show"); document.getElementById("modal").innerHTML=""; },
+  cashJournalHistory(id){
+    if(!window.__financeCmd)return alert('Sign in before viewing revision history.');
+    window.__financeCmd({action:'cash_journal_history',commandId:'history_'+Date.now(),originalMovementId:id}).then(result=>{
+      const revisions=Object.values(result.revisions||{}).filter(Boolean).sort((a,b)=>b.revision-a.revision),lines=m=>(m.lines||[]).map(l=>esc(l.account)+' · Dr '+peso(l.debit)+' / Cr '+peso(l.credit)).join('<br>');
+      const detail=m=>esc(new Date(m.occurredAt||m.postedAt).toLocaleDateString('en-PH',{timeZone:'Asia/Manila'}))+' · '+esc(m.reference||m.sourceId||'')+'<p>'+esc(m.memo||'')+'</p>'+lines(m);
+      document.getElementById('modal').innerHTML='<div class="modal-head"><h3>Cash journal revision history</h3><button class="x" onclick="App.closeModal()">×</button></div><div class="modal-body">'+revisions.map(r=>'<div class="card card-pad"><b>Revision '+r.revision+'</b><p>'+esc(r.reason)+' · '+esc(r.changedByRole)+' · '+esc(r.changedBy)+'</p><p class="tiny">'+esc(new Date(r.changedAt).toLocaleString('en-PH',{timeZone:'Asia/Manila'}))+' · Philippine time</p><div class="tiny">Before · '+detail(r.before)+'<hr>After · '+detail(r.after)+'<p>Undeposited pool: '+peso(r.poolBefore)+' → '+peso(r.poolAfter)+'</p></div></div>').join('')+'</div>';
+      document.getElementById('modalBg').classList.add('show');
+    }).catch(e=>alert('Could not load revision history: '+e.message));
+  },
 
   /* ---- drill through: show entries touching an account ---- */
   drill(code){
@@ -553,7 +562,7 @@ const PAGES = {
         <td class="journal-date">${e.date}<div class="tiny muted">${esc(e.ref)||'—'} ${e.source==='pos'?'<span class="badge-rev" style="color:#28576b;background:#e9f2f6">POS</span>':''}${status?'<span class="badge-rev">'+status+'</span>':''}</div></td>
         <td class="journal-entry"><b>${esc(e.memo)||'(no memo)'}</b>${e.linkedDiscrepancyId?`<div class="tiny" style="margin-top:.2rem"><span class="badge-rev">Admin variance · ${esc(e.linkedDiscrepancyId)}</span></div>`:''}<div style="margin-top:.35rem;font-size:.8rem">${entryLines(e)}</div>${history}</td>
         <td class="num journal-amount">${closed?peso(0):peso(dr)}</td>
-        <td class="journal-actions">${!closed&&customerPayableId?`<button class="btn sm primary" onclick="App.correctPayable('${customerPayableId}')">Close linked payable</button>`:!closed&&customerPayableControl?`<button class="btn sm ghost" onclick="App.editEntry('${e.id}')">Open customer payable</button>`:!closed&&!posLocked&&!e.reversalOf&&!e.reversedByMovementId?`<button class="btn sm ghost" onclick="App.editEntry('${e.id}')">Edit / correct</button> ${(e.sourceType==='booksManualJournal'||e.type==='manual_books_journal')?`<button class="btn sm ghost" onclick="App.reverseEntry('${e.id}',false)">Reverse</button> <button class="btn sm ghost" onclick="App.reverseEntry('${e.id}',true)">Void</button>`:''}`:'<span class="tiny muted">'+(status||(posLocked?'POS locked':'Automatic posting'))+'</span>'}</td></tr>`;
+        <td class="journal-actions">${e.revision?`<button class="btn sm ghost" onclick="App.cashJournalHistory(\'${e.id}\')">History · r${e.revision}</button>`:""}${!closed&&customerPayableId?`<button class="btn sm primary" onclick="App.correctPayable('${customerPayableId}')">Close linked payable</button>`:!closed&&customerPayableControl?`<button class="btn sm ghost" onclick="App.editEntry('${e.id}')">Open customer payable</button>`:!closed&&!posLocked&&!e.reversalOf&&!e.reversedByMovementId?`<button class="btn sm ghost" onclick="App.editEntry('${e.id}')">Edit / correct</button> ${(!e.revision)&&(e.sourceType==='booksManualJournal'||e.type==='manual_books_journal')?`<button class="btn sm ghost" onclick="App.reverseEntry('${e.id}',false)">Reverse</button> <button class="btn sm ghost" onclick="App.reverseEntry('${e.id}',true)">Void</button>`:''}`:'<span class="tiny muted">'+(status||(posLocked?'POS locked':'Automatic posting'))+'</span>'}</td></tr>`;
     }).join("");
     return `<div class="page-head"><div><h2>Journal</h2><p>${periodLabel()} · ${display.length} displayed entr${display.length===1?'y':'ies'} · correction mechanics grouped into posting history</p></div>
         <button class="btn primary" onclick="App.newEntry()">+ New entry</button></div>

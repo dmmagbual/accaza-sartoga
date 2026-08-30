@@ -24,6 +24,7 @@ const OperationalExceptions = require("./lib/operational-exceptions");
 const BooksBridge = require("./lib/books-bridge");
 const FinancialClose = require("./lib/financial-close");
 const AccountingPeriods = require("./lib/accounting-periods");
+const CashJournalEdit = require("./lib/cash-journal-edit");
 const ReconciliationControls = require("./lib/reconciliation-controls");
 const RecoveryValidation = require("./lib/recovery-validation");
 const ProductionHealth = require("./lib/production-health");
@@ -240,8 +241,8 @@ exports.mirrorPosMovementToBooks = onValueCreated(
     } else {
       context=await booksMovementContext(db,mv);const built = BooksBridge.buildSingle(mv, cashMap, context);
       const ref = db.ref(`/books/journal/${built.entry.id}`);
-      const existing = await ref.get();
-      if (!existing.exists()) { built.entry.createdAt = Date.now(); await ref.set(built.entry); }
+      built.entry.createdAt = Date.now();
+      await ref.transaction((current)=>current||built.entry,undefined,false);
     }
     const unmapped = BooksBridge.mappedLines(mv, cashMap, context).unmapped;
     await flagUnmappedBooks(db, mv, unmapped);
@@ -316,7 +317,9 @@ exports.ensureBooksJournal = onCall(
       if (!daily[key]&&!singles[key]&&Array.isArray(entry.lines)&&entry.lines.some((line)=>String(line&&line.code||"")==="4995")) writes[`books/journal/${key}`]=Object.assign({},entry,{lines:entry.lines.map((line)=>String(line&&line.code||"")==="4995"?Object.assign({},line,{code:"5905"}):line),legacyAccountMigratedFrom:"4995",legacyAccountMigratedTo:"5905",legacyAccountMigratedAt:Date.now()});
     });
     Object.keys(daily).forEach((key) => { daily[key].updatedAt = Date.now(); writes[`books/journal/${key}`] = daily[key]; });
-    Object.keys(singles).forEach((key) => { writes[`books/journal/${key}`] = singles[key]; });
+    // A rebuild may have read a movement before an in-place edit completed.
+    // Never overwrite a newer audited revision with that older snapshot.
+    for(const key of Object.keys(singles))await db.ref(`/books/journal/${key}`).transaction((current)=>Number(current&&current.revision||0)>Number(singles[key].revision||0)?current:singles[key],undefined,false);
     const registerFloat = resolveRegisterFloat(posSettingsSnap.val(), activeShiftSnap.val());
     writes["books/journal/register_float_control"] = registerFloat.amount > 0 ? registerFloatControlEntry(registerFloat.amount, Date.now(), registerFloat) : null;
     writes["books/journal/historical_suspense_capital_20260826"] = historicalSuspenseCapitalEntry();
@@ -1930,6 +1933,12 @@ async function commitFinancial(db, movementId, movement, actor, extraWrites = {}
     throw new HttpsError("aborted", "This financial command is already being processed. Wait a moment, then refresh before trying again.");
   }
   try {
+    // While this claim is processing, guarded cash-journal edits cannot run.
+    // Detect edits completed after a custody calculation but before this claim.
+    if(Object.keys(extraWrites).some(path=>path.startsWith('cashCustody/'))){
+      try{CashJournalEdit.assertCustodyDelta((await db.ref('/cashCustody').get()).val()||{},extraWrites,record.lines);}catch(error){throw new HttpsError('failed-precondition',error.message);}
+    }
+    if(record.reversalOf){const source=(await db.ref(`/financialMovements/${financeKey(record.reversalOf,'Reversal source')}`).get()).val();if(source&&Number(source.revision)>0&&CashJournalEdit.eligible(source))throw new HttpsError('failed-precondition','This cash journal has an audited revision. Refresh and use Edit / correct; journal-only reversal would break its custody link.');}
     const writes = Object.assign({}, extraWrites, {[`financialMovements/${movementId}`]: record,[`financialCommandClaims/${movementId}`]:{status:"posted",token:claimToken,claimedAt,postedAt:Date.now(),actorUid:actor.uid,movementId,operationType:financeText(movement && movement.type,80),schemaVersion:2}});
     await safeFinancialUpdate(db, writes, "financial");
     return {duplicate: false, movement: record};
@@ -2206,6 +2215,10 @@ exports.postFinancialCommand = onCall(
     const db = getDatabase(); const data = request.data || {}; const action = financeText(data.action, 40);
     const perms = action.indexOf("inventory_opening_balance") === 0 ? ["purchases", "cashflow"] : action.includes("payable") ? ["payables", "purchases"] : action.includes("receivable") ? ["receivables"] : ["cashflow", "receivables", "payables", "purchases"];
     const actor = await requirePortalPermission(db, request, perms); const commandId = financeKey(data.commandId, "Command ID");
+    if(action==='cash_journal_history'){
+      if(!['owner','superadmin','admin','manager'].includes(actor.role))throw new HttpsError('permission-denied','A privileged Finance role is required to view cash-journal revisions.');
+      const id=financeKey(data.originalMovementId,'Journal ID');return{revisions:(await db.ref(`/cashJournalRevisions/${id}`).get()).val()||{}};
+    }
     const accounts = (await db.ref("/cfAccounts").get()).val() || {}, chart = await ensureChartAccounts(db); const now = Date.now(); let movement, writes = {}, result = {}, depositReferenceClaim = null;
     function amount(v) { const x = Financial.money(v); if (!(x > 0)) throw new HttpsError("invalid-argument", "Amount must be greater than zero."); return x; }
     function addCash(id, entry) { writes[`cfLedger/${id}`] = cashLedgerRecord(entry, commandId, movement, actor); }
@@ -2323,6 +2336,15 @@ exports.postFinancialCommand = onCall(
     } else if(action==="correct_manual_journal"){
       const originalId=financeKey(data.originalMovementId,"Original movement ID"),original=(await db.ref(`/financialMovements/${originalId}`).get()).val();
       if(!original)throw new HttpsError("not-found","The journal entry was not found.");
+      if(CashJournalEdit.eligible(original)){
+        const reason=financeText(data.reason,300),prepared=await prepareManualBooksJournal(db,data,accounts,actor),expectedRevision=Number(data.expectedRevision);
+        if(data.expectedRevision==null||!Number.isInteger(expectedRevision))throw new HttpsError("failed-precondition","Refresh Books before editing this cash journal.");
+        const input={id:originalId,commandId,expectedRevision,prepared:{date:prepared.date,memo:prepared.memo,reference:prepared.reference,lines:prepared.lines},actor,reason,now};
+        let issue='';const tx=await db.ref().transaction((state)=>{try{return CashJournalEdit.revise(state,{...input,floatFloor:resolveRegisterFloat(state&&state.posSettings,state&&state.posActiveShift).amount});}catch(error){issue=error.message;return undefined;}},undefined,false);
+        const receipt=tx.snapshot.child(`cashJournalEditCommands/${commandId}`).val();
+        if(!tx.committed||!receipt)throw new HttpsError("failed-precondition",issue||"The cash journal could not be saved. Refresh and retry.");
+        return{movementId:originalId,revision:receipt.revision,editedInPlace:true};
+      }
       const originalType=financeText(original.type,100),originalSourceType=financeText(original.sourceType,100),originalReference=financeText(original.reference||original.sourceId,120);
       if(originalSourceType==="order"||/^order_|^pos_/i.test(originalType)||/^POS-/i.test(originalReference))throw new HttpsError("failed-precondition","POS sale and COGS journals are system-controlled and cannot be edited.");
       const reason=financeText(data.reason,300);if(!reason)throw new HttpsError("invalid-argument","Correction reason is required.");
@@ -2365,6 +2387,7 @@ exports.postFinancialCommand = onCall(
     } else if(action==="reverse_manual_journal"||action==="void_manual_journal"){
       const originalId=financeKey(data.originalMovementId,"Original movement ID"),original=(await db.ref(`/financialMovements/${originalId}`).get()).val();
       if(!original||original.type!=="manual_books_journal")throw new HttpsError("failed-precondition","Only a shared manual Books journal can be reversed here.");
+      if(Number(original.revision)>0&&CashJournalEdit.eligible(original))throw new HttpsError('failed-precondition','This revised cash journal maintains a linked custody pool. Use Edit / correct; journal-only void or reversal would break that link.');
       const isVoid=action==="void_manual_journal",reverseId=`books_${isVoid?"void":"reverse"}_${originalId}`,existingReverse=(await db.ref(`/financialMovements/${reverseId}`).get()).val();if(existingReverse)return{movementId:reverseId,duplicate:true};if(original.reversedByMovementId)throw new HttpsError("failed-precondition","This journal has already been reversed, voided, or corrected.");
       const reason=financeText(data.reason,300),date=isVoid?financeDate(BooksBridge.businessDate(original.occurredAt||original.postedAt||now)):financeDate(data.date);if(!reason)throw new HttpsError("invalid-argument","Reversal reason is required.");
       const occurredAt=accountingTimestamp(date,now);
