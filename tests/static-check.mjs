@@ -73,8 +73,10 @@ try{
     vm.runInNewContext(`${helperLine}; result=escHtml(payload);`,sandbox);
     if(/[<>]/.test(sandbox.result)||sandbox.result.includes('"')||sandbox.result.includes("'"))fail(`${file}: escHtml did not neutralize the test payload`);
 
-    const comments=section(appSource,'function renderComments()','function renderAdminReviews()');
-    if(/\+f\.(?:name|contact|date|message|status)\+/.test(comments))fail(`${file}: feedback field still enters HTML directly`);
+    if(appSource.includes('function renderComments()')){
+      const comments=section(appSource,'function renderComments()','function renderAdminReviews()');
+      if(/\+f\.(?:name|contact|date|message|status)\+/.test(comments))fail(`${file}: feedback field still enters HTML directly`);
+    }
     if(file==='admin.html'&&appSource.includes('function renderOrders()')){
       const orders=section(appSource,'function renderOrders()','return {renderOrders');
       if(/\+o\.(?:name|phone|contact|items|address|notes|proof|payment|status|id)\+/.test(orders))fail(`${file}: order field still enters HTML directly`);
@@ -82,6 +84,13 @@ try{
     if(file==='admin.html'&&appSource.includes('function renderReservations()')){
       const reservations=section(appSource,'function renderReservations()','window.openResContactPopup');
       if(/\+r\.(?:name|phone|contact|notes|occasion|date|time|status|id)\+/.test(reservations))fail(`${file}: reservation field still enters HTML directly`);
+    }
+    if(file==='index.html'){
+      for(const forbidden of ['staffAccountsRef','adminAccountsRef','function renderAdminCalendar()','function renderAdminAccounts()','function renderStaffAccounts()','function renderDashboard()','window.printOrder = function']){
+        if(appSource.includes(forbidden))fail(`customer runtime retains privileged Admin implementation: ${forbidden}`);
+      }
+      const customerCore=customerScripts.find(item=>item.name==='core.mjs');
+      if(!customerCore||Buffer.byteLength(customerCore.source,'utf8')>110000)fail('customer runtime has regrown beyond the 110 KB Phase 6 guard');
     }
   }
 

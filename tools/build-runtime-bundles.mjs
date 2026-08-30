@@ -7,13 +7,14 @@ const bundles=[
   {source:'src/admin/register',target:'assets/js/admin/register.js'},
   {source:'src/admin/analytics',target:'assets/js/admin/analytics.js'},
   {source:'src/admin/finance',target:'assets/js/admin/finance.js'},
+  {source:'src/customer/core',target:'assets/js/customer/core.mjs'},
   {source:'src/books/app',target:'assets/js/books/app.js'},
   {source:'src/functions',target:'functions/index.js'}
 ];
 
 for(const bundle of bundles){
   const sourceDir=path.join(root,bundle.source);
-  const files=fs.readdirSync(sourceDir).filter(name=>name.endsWith('.js')).sort();
+  const files=fs.readdirSync(sourceDir).filter(name=>/\.m?js$/.test(name)).sort();
   if(!files.length)throw new Error(`No source sections found in ${bundle.source}`);
   const output=files.map(name=>fs.readFileSync(path.join(sourceDir,name),'utf8')).join('');
   fs.writeFileSync(path.join(root,bundle.target),output);
