@@ -146,21 +146,6 @@ async function prepareManualBooksJournal(db, data, accounts, actor, allowedLinke
   if(sensitive&&!['owner','superadmin','admin','manager'].includes(actor.role))throw new HttpsError("permission-denied","A privileged Finance role must post journals affecting cash, sales, platforms, inventory, receivables, payables, suspense, or equity.");
   return {memo,reference,date,lines,cashLines,debit,sensitive,linkedPayableId,linkedPayable};
 }
-function normalizeAtomicUpdatePaths(writes, context) {
-  const paths = Object.keys(writes).sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b));
-  for (const parentPath of paths) {
-    if (!Object.prototype.hasOwnProperty.call(writes, parentPath)) continue;
-    const parent = writes[parentPath];
-    for (const childPath of paths) {
-      if (childPath === parentPath || !Object.prototype.hasOwnProperty.call(writes, childPath) || !childPath.startsWith(`${parentPath}/`)) continue;
-      if (!parent || typeof parent !== "object" || Array.isArray(parent)) throw new HttpsError("internal", `The ${context || "financial"} update could not be prepared safely. Nothing was posted.`);
-      const segments = childPath.slice(parentPath.length + 1).split("/"); let target = parent;
-      while (segments.length > 1) { const segment = segments.shift(); if (!target[segment] || typeof target[segment] !== "object" || Array.isArray(target[segment])) target[segment] = {}; target = target[segment]; }
-      target[segments[0]] = writes[childPath]; delete writes[childPath];
-    }
-  }
-  return writes;
-}
 function assertNoOverlappingUpdatePaths(writes, context) {
   const paths = Object.keys(writes);
   for (const parentPath of paths) for (const childPath of paths) if (childPath !== parentPath && childPath.startsWith(`${parentPath}/`)) throw new HttpsError("internal", `The ${context || "financial"} update contains conflicting record paths. Nothing was posted.`);
@@ -173,15 +158,20 @@ async function commitFinancial(db, movementId, movement, actor, extraWrites = {}
   await assertAccountingPeriodOpen(db, Number(movement && movement.occurredAt || Date.now()), "creating this financial posting");
   const record = financeRecord(movementId, movement, actor);
   const claimRef = db.ref(`/financialCommandClaims/${movementId}`), claimToken = crypto.randomBytes(12).toString("hex"), claimedAt = Date.now();
-  const claim = await claimRef.transaction((current) => current || {status:"processing",token:claimToken,claimedAt,actorUid:actor.uid,schemaVersion:1});
+  const claim = await claimRef.transaction((current) => {
+    // The longest financial maintenance callable can run for nine minutes.
+    // A 15-minute lease prevents a live invocation from being taken over.
+    const stale = current && current.status === "processing" && Number(current.claimedAt || 0) < claimedAt - 900000;
+    return !current || stale ? {status:"processing",token:claimToken,claimedAt,actorUid:actor.uid,movementId,operationType:financeText(movement && movement.type,80),schemaVersion:2} : current;
+  });
   if (!claim.committed || !claim.snapshot.exists() || claim.snapshot.val().token !== claimToken) {
     const posted = await ref.get();
-    return {duplicate: true, movement: posted.val() || null};
+    if (posted.exists()) return {duplicate: true, movement: posted.val()};
+    throw new HttpsError("aborted", "This financial command is already being processed. Wait a moment, then refresh before trying again.");
   }
   try {
-    const writes = normalizeAtomicUpdatePaths(Object.assign({}, extraWrites, {[`financialMovements/${movementId}`]: record,[`financialCommandClaims/${movementId}`]:{status:"posted",token:claimToken,claimedAt,postedAt:Date.now(),actorUid:actor.uid,schemaVersion:1}}), "financial");
-    assertNoOverlappingUpdatePaths(writes, "financial");
-    await db.ref().update(writes);
+    const writes = Object.assign({}, extraWrites, {[`financialMovements/${movementId}`]: record,[`financialCommandClaims/${movementId}`]:{status:"posted",token:claimToken,claimedAt,postedAt:Date.now(),actorUid:actor.uid,movementId,operationType:financeText(movement && movement.type,80),schemaVersion:2}});
+    await safeFinancialUpdate(db, writes, "financial");
     return {duplicate: false, movement: record};
   } catch (error) {
     await claimRef.transaction((current) => current && current.token === claimToken && current.status === "processing" ? null : current);

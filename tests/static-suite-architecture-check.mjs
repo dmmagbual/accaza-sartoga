@@ -28,6 +28,6 @@ if((combined.match(/\bfail\(/g)||[]).length!==506)throw new Error('Static-check 
 if((combined.match(/spawnSync\(/g)||[]).length!==30)throw new Error('Static-check executable-check inventory changed from the Phase 8 baseline of 30');
 const guardSource=combined.split(/\r?\n/).filter(line=>/\bfail\(|spawnSync\(/.test(line)).map(line=>line.trim()).join('\n');
 const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
-if(guardDigest!=='6f7a81971dc1275141fadb657bc8da22149672820135d7ef81e206bcb8b712b8')throw new Error('Static-check guard source changed; review the assertion-level change and update the Phase 8 baseline deliberately');
+if(guardDigest!=='77d6c300db99b73330271cf7f19da202b85e370bff406192b5ecde6b2bc97f30')throw new Error('Static-check guard source changed; review the assertion-level change and update the Phase 8 baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 506 static guards and 30 executable checks remain byte-equivalent and routed through bounded domain modules.');
