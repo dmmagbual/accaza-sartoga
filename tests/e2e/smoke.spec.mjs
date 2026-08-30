@@ -69,5 +69,12 @@ test('Finance Books starts from the assembled runtime without browser errors',as
   await expect(page.locator('meta[name="accaza-books-build"]')).toHaveAttribute('content',String(release.builds.books));
   await expect(page.locator('#tabs').locator('button')).not.toHaveCount(0);
   await expect(page.locator('#page')).not.toBeEmpty();
+  await page.getByRole('button',{name:'Key Metrics'}).click();
+  await expect(page.locator('#page')).toContainText('Key Financial Metrics');
+  await expect(page.locator('#page')).toContainText('Sign in for verified metrics');
+  await page.evaluate(()=>{window.__booksUser='quality-gate';window.__posEntries=[];window.__booksActiveOrders={};window.__booksArchivedOrders={};window.App.go('insights');});
+  await expect(page.locator('.bi-hero')).toBeVisible();
+  await expect(page.locator('#page')).toContainText('Prioritized management actions');
+  await expect(page.locator('#page')).toContainText('performs no writes');
   expect(pageErrors).toEqual([]);
 });
