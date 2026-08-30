@@ -48,7 +48,7 @@ function pzAddToCart(){
   for(var i=0;i<groups.length;i++){var g=groups[i];if(g.type!=='multi'&&g.required!==false&&!(mSel.opts[g.id]&&mSel.opts[g.id].length)){alert('Please select: '+g.name);return;}}
   var optLabels=[],details=[]; Object.keys(mSel.opts).forEach(function(g){(mSel.opts[g]||[]).forEach(function(c){optLabels.push(c.label);details.push(c.label);});});
   var key=uid('pc_');
-  posCart[key]={itemKey:item.key,name:item.name+(mSel.size&&(hasM||hasAB)?' ('+mSel.size+')':''),size:mSel.size||'S',optLabels:optLabels,details:details.join(', '),qty:mSel.qty,unitTotal:pzUnit()};
+  posCart[key]={itemKey:item.key,name:item.name+(mSel.size&&(hasM||hasAB)?' ('+mSel.size+')':''),cat:item.cat||'',size:mSel.size||'S',optLabels:optLabels,details:details.join(', '),qty:mSel.qty,unitTotal:pzUnit()};
   document.getElementById('pzItemMask').classList.remove('show');
   renderPosCart();
 }

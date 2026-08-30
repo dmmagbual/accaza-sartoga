@@ -7,6 +7,8 @@ const registration=fs.readFileSync('src/books/app/35-business-intelligence.js','
 const shell=fs.readFileSync('src/books/app/10-application-shell.js','utf8');
 const books=fs.readFileSync('books.html','utf8');
 const css=fs.readFileSync('assets/css/books.css','utf8');
+const livePos=fs.readFileSync('assets/js/books/live-pos.mjs','utf8');
+const salePersistence=fs.readFileSync('src/admin/pos/50f-sale-persistence.js','utf8');
 const manifest=JSON.parse(fs.readFileSync('release-manifest.json','utf8'));
 const sw=fs.readFileSync('sw.js','utf8');
 
@@ -23,13 +25,15 @@ for(const [name,pattern] of required)if(!pattern.test(source))throw new Error(`B
 if(!/id:"insights",label:"Key Metrics"/.test(shell))throw new Error('Key Metrics tab is not registered');
 if(!/PAGES\.insights=function/.test(registration))throw new Error('Key Metrics page is not registered');
 if(!/assets\/js\/shared\/sales-authority\.js/.test(books)||!/src\/books\/business-intelligence\.js/.test(books)||!/src\/books\/business-intelligence\.js/.test(sw))throw new Error('Key Metrics engine and shared sales authority are not loaded and cached');
-if(!/accaza-books-build" content="79"/.test(books)||!/build v79/.test(books))throw new Error('Books build 79 markers are not synchronized');
-if(manifest.builds.books!==79||manifest.builds.serviceWorkerCache!==352)throw new Error('Release manifest build markers are not synchronized');
-if(!/const CACHE='accaza-v352'/.test(sw))throw new Error('Service worker cache 352 is not synchronized');
+if(!/accaza-books-build" content="80"/.test(books)||!/build v80/.test(books))throw new Error('Books build 80 markers are not synchronized');
+if(manifest.builds.admin!==401||manifest.builds.books!==80||manifest.builds.serviceWorkerCache!==353)throw new Error('Release manifest build markers are not synchronized');
+if(!/const CACHE='accaza-v353'/.test(sw))throw new Error('Service worker cache 353 is not synchronized');
 if(!manifest.authoritativeFiles.includes('src/books/business-intelligence.js')||!manifest.authoritativeFiles.includes('src/books/app/35-business-intelligence.js'))throw new Error('Business intelligence sources are missing from authoritative files');
 if(!/\.bi-confidence\.verified/.test(css)||!/\.bi-hero/.test(css))throw new Error('Key Metrics visual states are missing');
+if(!/__booksMenuItems/.test(livePos)||!/__booksMenuCategories/.test(livePos))throw new Error('Books must load the menu catalog needed to classify legacy order lines');
+if(!/categoryId:categoryId,categoryName:category\.label/.test(salePersistence))throw new Error('New POS order lines must preserve their menu-category snapshot');
 
-const context={window:{},console};
+const context={window:{},console,r2:value=>Math.round((Number(value)||0)*100)/100};
 vm.createContext(context);
 vm.runInContext(salesAuthority,context,{filename:'sales-authority.js'});
 vm.runInContext(source,context,{filename:'35-business-intelligence.js'});
@@ -44,5 +48,14 @@ const recognized=helpers.orders();
 if(recognized.length!==2||!recognized.some(x=>x.id==='paid')||!recognized.some(x=>x.id==='archived'))throw new Error('Order snapshots must include only completed paid sales, including archived sales');
 if(helpers.orderAmount(recognized.find(x=>x.id==='paid'))!==105||helpers.orderAmount(recognized.find(x=>x.id==='archived'))!==180)throw new Error('Order snapshot amounts must use the shared Admin net-sales treatment');
 if(helpers.orderDate(recognized.find(x=>x.id==='archived'))!=='1970-01-01')throw new Error('Order snapshot dates must use the shared completed-sale timestamp authority');
+context.window.__booksMenuCategories={coffee:{id:'coffee',label:'Coffee Based',order:0},noncaf:{id:'noncaf',label:'Non-Coffee Based',order:1}};
+context.window.__booksMenuItems={latte:{name:'Cafe Latte',cat:'coffee'},matcha:{name:'Matcha Latte',cat:'noncaf'}};
+const categoryRows=helpers.categories([{total:500,subtotal:500,lineItems:[{itemKey:'latte',name:'Cafe Latte (M)',categoryId:'coffee',categoryName:'Coffee Based',qty:2,unitTotal:100},{itemKey:'americano',name:'Americano',categoryId:'coffee',categoryName:'Coffee Based',qty:3,unitTotal:50},{itemKey:'matcha',name:'Old Matcha Name',qty:1,unitTotal:150}]}]);
+if(categoryRows.length!==2||categoryRows[0].name!=='Coffee Based'||categoryRows[0].top.name!=='Americano'||categoryRows[0].top.qty!==3)throw new Error('Menu categories must identify their best-selling item by units');
+if(categoryRows[1].name!=='Non-Coffee Based'||categoryRows[1].top.name!=='Matcha Latte'||categoryRows[1].usesCatalog!==true)throw new Error('Legacy order lines must map through the current menu catalog by item key');
 
+const discounted=helpers.categories([{subtotal:200,total:180,discount:20,refundAmount:20,lineItems:[{itemKey:'latte',qty:2,unitTotal:100}]}]);
+if(discounted[0].sales!==160||discounted[0].top.sales!==160)throw new Error('Category allocations must preserve net sales after discounts and refunds');
+const unmapped=helpers.categories([{subtotal:100,total:100,lineItems:[{itemKey:'deleted',name:'Historical item',qty:1,unitTotal:100}]}]);
+if(unmapped[0].name!=='Uncategorized'||!unmapped[0].unavailable)throw new Error('Unmatched legacy items must remain explicitly unclassified');
 console.log('Business intelligence checks passed.');
