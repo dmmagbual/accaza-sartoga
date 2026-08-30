@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/static-check.mjs",
+    "build:runtime": "node tools/build-runtime-bundles.mjs",
+    "test:bundle-drift": "node tests/runtime-bundle-drift-check.mjs",
+    "test": "npm run test:bundle-drift && node tests/static-check.mjs",
     "test:e2e": "playwright test",
     "test:rules": "firebase emulators:exec --only database \"node tests/rules-ownership-check.mjs\"",
     "test:safety": "node tests/repository-safety-check.mjs",

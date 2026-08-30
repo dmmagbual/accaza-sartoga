@@ -1,0 +1,26 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+const root=process.cwd();
+const bundles=[
+  {source:'src/admin/pos',target:'assets/js/admin/pos.js'},
+  {source:'src/functions',target:'functions/index.js'}
+];
+
+for(const bundle of bundles){
+  const sourceDir=path.join(root,bundle.source);
+  const files=fs.readdirSync(sourceDir).filter(name=>name.endsWith('.js')).sort();
+  const expected=files.map(name=>fs.readFileSync(path.join(sourceDir,name),'utf8')).join('');
+  const actual=fs.readFileSync(path.join(root,bundle.target),'utf8');
+  if(actual!==expected)throw new Error(`${bundle.target} has drifted from ${bundle.source}. Run npm run build:runtime.`);
+}
+console.log('PASS: POS and Functions runtime bundles exactly match their ordered source sections.');
+
+const expectedFunctionExports=[
+  'notifyOnComplete','notifyStaffOnOrder','notifyStaffOnReservation','notifyOnContactMessage','mirrorPosMovementToBooks','mirrorPosCogsToBooks','ensureBooksJournal','syncRegisterCashFloat','syncActiveRegisterCashFloat','manageCashAccount','indexPlatformOrderRef','manageAccountingPeriod','manageStaffMessage','recordClientTelemetry','getOperationalExceptions','repairOrderInventoryMarker','updateOrderStatus','acceptOnlineOrder','createManagerApproval','consumeManagerApproval','manageOrderArchive','reviewDiscrepancy','reopenDiscrepancy','managePettyVoucher','retireRevolvingFund','getUndepositedControlSnapshot','repairClosedShiftTurnover','reconcileUndepositedCustody','legacyOwnerCapitalReset','runFinancialClose','reopenFinancialCloseOnMovement','reopenFinancialCloseOnOrderChange','repairReversedPayoutDeposit','setUndepositedOpeningBalance','repairPettyVoucherFinancial','archiveActivityLog','syncOfflinePosSale','createOnlineOrder','getPaymentProof','confirmOrderReceived','ensureActiveOrders','syncActiveOrderProjection','pruneClosedShiftOrders','syncPublicOrderStatus','validateRecipeDefinition','onOrderFinancialPosting','preservePostedOrderOnDelete','onShiftPayInsFinancial','onShiftPayOutsFinancial','onShiftOpenFinancial','ensureShiftReference','onShiftCloseFinancial','repairPettyExpenseClassifications','onPettyVoucherFinancial','onPettyReplenishmentFinancial','manageFixedAsset','postFinancialCommand','reconcilePurchasePayable','managePurchaseCorrection','correctPlatformPresettlement','settlePlatformPayout','reversePlatformPayout','setPlatformPayoutDate','processOrderAdjustment','recordPlatformCatchup','ensureFinancialLedger','manageBooksAccount','manageChartAccount','autoRepairFinanceDateOnCashLedgerCreate','repairFinanceDates','auditFinancialControls','postInventoryMovements','ensureInventoryLedger','onOrderFinalize','onOrderInventoryReversal','pruneEphemeralNodes','autoCompleteReadyOnlineOrders','backupDatabaseDaily'
+];
+const functionsSource=fs.readFileSync(path.join(root,'functions/index.js'),'utf8');
+const actualFunctionExports=[...functionsSource.matchAll(/^exports\.([A-Za-z0-9_]+)\s*=/gm)].map(match=>match[1]);
+if(JSON.stringify(actualFunctionExports)!==JSON.stringify(expectedFunctionExports))throw new Error('The public Firebase Functions export contract changed. Review deployment, trigger, callable, and removal consequences explicitly.');
+if(new Set(actualFunctionExports).size!==actualFunctionExports.length)throw new Error('A Firebase Function export is registered more than once.');
+console.log(`PASS: all ${actualFunctionExports.length} Firebase Function exports retain their names and registration order.`);
