@@ -54,7 +54,7 @@ function subledgerPage(kind){
     var bkt = agingBucket(d.due), overdue = (bkt!=='Current' && bkt!=='No due date');
     return '<tr><td><b>'+esc(d.party||'—')+'</b>'+(d.ref?'<div class="tiny muted">'+esc(d.ref)+'</div>':'')+'</td><td class="tiny">'+esc(d.type||'')+'</td><td class="tiny">'+esc(d.date||'')+'</td><td class="tiny">'+esc(d.due||'—')+'</td><td><span class="type-pill '+(overdue?'t-expense':'t-income')+'">'+bkt+'</span></td><td class="num">'+peso(d.amount)+'</td>'+(isAr?'':'<td><button class="btn sm ghost" onclick="App.correctPayable(\''+esc(d.id)+'\')">'+(d.type==='customer_change_refund'?'Close to capital':'Pay / correct')+'</button></td>')+'</tr>';}).join('');
   var t = arApTotals();
-  return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+' · '+docs.length+' open · net working capital '+pesoNoDec(t.net)+'</p></div></div>'+
+  return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+' · '+docs.length+' open · open receivables less open payables '+pesoNoDec(t.net)+'</p></div></div>'+
     '<div class="kpis"><div class="kpi '+(isAr?'good':'bad')+'"><div class="lbl">Total '+(isAr?'receivable':'payable')+'</div><div class="val">'+pesoNoDec(total)+'</div><div class="sub">'+docs.length+' open</div></div>'+agingCards+'</div>'+
     '<div class="card"><div class="tbl-wrap"><table><thead><tr><th>Party</th><th>Type</th><th>Date</th><th>Due</th><th>Aging</th><th class="num">Amount</th>'+(isAr?'':'<th></th>')+'</tr></thead><tbody>'+rows+
     '<tr class="total-row"><td colspan="5">Total open '+title.toLowerCase()+'</td><td class="num">'+peso(total)+'</td>'+(isAr?'':'<td></td>')+'</tr></tbody></table></div></div>'+

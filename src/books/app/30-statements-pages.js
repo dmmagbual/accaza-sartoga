@@ -6,6 +6,7 @@ const PAGES = {
     const cash = ["1000","1010","1011","1012","1013","1014","1020","1021"].reduce((s,c)=>s+accountBalance(c,false),0); // cash across all time
     const ar = accountBalance("1100",false);
     const ap = accountBalance("2000",false);
+    const workingCapital = workingCapitalAt(periodBounds().end);
     const cogsPct = pl.netSales>0 ? (pl.totalCogs/pl.netSales*100) : 0;
     const grossPct = pl.netSales>0 ? (pl.gross/pl.netSales*100) : 0;
     const topExp = pl.expense.slice().sort((a,b)=>b.bal-a.bal)[0];
@@ -20,7 +21,7 @@ const PAGES = {
         ${kpi("Net income", pesoNoDec(pl.net), pl.net>=0?'Profit':'Loss', pl.net>=0?'good':'bad')}
         ${kpi("COGS ratio", cogsPct.toFixed(1)+"%", "of sales")}
         ${(function(){var t=arApTotals(); return window.__booksUser
-          ? kpi("Receivables (open)", pesoNoDec(t.ar), "Owed to us", 'good')+kpi("Payables (open)", pesoNoDec(t.ap), "We owe", 'bad')+kpi("Net working capital", pesoNoDec(t.net), t.net>=0?'AR exceeds AP':'AP exceeds AR', t.net>=0?'good':'bad')
+          ? kpi("Receivables (open)", pesoNoDec(t.ar), "Owed to us", 'good')+kpi("Payables (open)", pesoNoDec(t.ap), "We owe", 'bad')+kpi("Working capital", pesoNoDec(workingCapital.amount), "Current assets "+pesoNoDec(workingCapital.currentAssets)+" − current liabilities "+pesoNoDec(workingCapital.currentLiabilities), workingCapital.amount>=0?'good':'bad')
           : kpi("Receivable (Grab/Panda)", pesoNoDec(ar), "From journal")+kpi("Payables", pesoNoDec(ap), "From journal");})()}
         ${kpi("Top expense", topExp?topExp.a.name:"—", topExp?pesoNoDec(topExp.bal):"")}
       </div>
