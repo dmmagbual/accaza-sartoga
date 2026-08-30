@@ -13,6 +13,15 @@
     } else if(action==="correct_manual_journal"){
       const originalId=financeKey(data.originalMovementId,"Original movement ID"),original=(await db.ref(`/financialMovements/${originalId}`).get()).val();
       if(!original)throw new HttpsError("not-found","The journal entry was not found.");
+      if(CashJournalEdit.eligible(original)){
+        const reason=financeText(data.reason,300),prepared=await prepareManualBooksJournal(db,data,accounts,actor),expectedRevision=Number(data.expectedRevision);
+        if(data.expectedRevision==null||!Number.isInteger(expectedRevision))throw new HttpsError("failed-precondition","Refresh Books before editing this cash journal.");
+        const input={id:originalId,commandId,expectedRevision,prepared:{date:prepared.date,memo:prepared.memo,reference:prepared.reference,lines:prepared.lines},actor,reason,now};
+        let issue='';const tx=await db.ref().transaction((state)=>{try{return CashJournalEdit.revise(state,{...input,floatFloor:resolveRegisterFloat(state&&state.posSettings,state&&state.posActiveShift).amount});}catch(error){issue=error.message;return undefined;}},undefined,false);
+        const receipt=tx.snapshot.child(`cashJournalEditCommands/${commandId}`).val();
+        if(!tx.committed||!receipt)throw new HttpsError("failed-precondition",issue||"The cash journal could not be saved. Refresh and retry.");
+        return{movementId:originalId,revision:receipt.revision,editedInPlace:true};
+      }
       const originalType=financeText(original.type,100),originalSourceType=financeText(original.sourceType,100),originalReference=financeText(original.reference||original.sourceId,120);
       if(originalSourceType==="order"||/^order_|^pos_/i.test(originalType)||/^POS-/i.test(originalReference))throw new HttpsError("failed-precondition","POS sale and COGS journals are system-controlled and cannot be edited.");
       const reason=financeText(data.reason,300);if(!reason)throw new HttpsError("invalid-argument","Correction reason is required.");

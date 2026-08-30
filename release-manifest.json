@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 402,
-    "books": 81,
+    "admin": 403,
+    "books": 82,
     "customer": 64,
-    "serviceWorkerCache": 354
+    "serviceWorkerCache": 355
   },
   "authoritativeFiles": [
     "admin.html",
@@ -117,6 +117,7 @@
     "functions/lib/offline-sync.js",
     "functions/lib/payment-verification.js",
     "functions/lib/books-bridge.js",
+    "functions/lib/cash-journal-edit.js",
     "functions/lib/order-status.js",
     "functions/lib/operational-exceptions.js",
     "functions/lib/write-safety.js",

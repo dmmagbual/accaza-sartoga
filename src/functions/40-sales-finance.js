@@ -170,6 +170,12 @@ async function commitFinancial(db, movementId, movement, actor, extraWrites = {}
     throw new HttpsError("aborted", "This financial command is already being processed. Wait a moment, then refresh before trying again.");
   }
   try {
+    // While this claim is processing, guarded cash-journal edits cannot run.
+    // Detect edits completed after a custody calculation but before this claim.
+    if(Object.keys(extraWrites).some(path=>path.startsWith('cashCustody/'))){
+      try{CashJournalEdit.assertCustodyDelta((await db.ref('/cashCustody').get()).val()||{},extraWrites,record.lines);}catch(error){throw new HttpsError('failed-precondition',error.message);}
+    }
+    if(record.reversalOf){const source=(await db.ref(`/financialMovements/${financeKey(record.reversalOf,'Reversal source')}`).get()).val();if(source&&Number(source.revision)>0&&CashJournalEdit.eligible(source))throw new HttpsError('failed-precondition','This cash journal has an audited revision. Refresh and use Edit / correct; journal-only reversal would break its custody link.');}
     const writes = Object.assign({}, extraWrites, {[`financialMovements/${movementId}`]: record,[`financialCommandClaims/${movementId}`]:{status:"posted",token:claimToken,claimedAt,postedAt:Date.now(),actorUid:actor.uid,movementId,operationType:financeText(movement && movement.type,80),schemaVersion:2}});
     await safeFinancialUpdate(db, writes, "financial");
     return {duplicate: false, movement: record};
