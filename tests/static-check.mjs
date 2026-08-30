@@ -31,6 +31,7 @@ const adminHtml=fs.readFileSync(path.join(root,'admin.html'),'utf8');
 const customerHtml=fs.readFileSync(path.join(root,'index.html'),'utf8');
 const adminSource=adminHtml+'\n'+adminScripts.map(item=>item.source).join('\n');
 const customerSource=customerHtml+'\n'+customerScripts.map(item=>item.source).join('\n');
+const financialSource=fs.readFileSync(path.join(root,'functions','lib','financial.js'),'utf8');
 
 try{
   for(const file of htmlFiles){
@@ -173,7 +174,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   for(const marker of ['exports.postFinancialCommand = onCall','exports.settlePlatformPayout = onCall','exports.processOrderAdjustment = onCall','exports.ensureFinancialLedger = onCall','exports.ensureBooksJournal = onCall','exports.onOrderFinancialPosting = onValueWritten','exports.preservePostedOrderOnDelete = onValueDeleted'])if(!functionsSource.includes(marker))fail(`Release 3C server marker missing: ${marker}`);
   for(const marker of ['Financial.platformPayoutPosting','platform_payout_movement_rebuilt','payout_order_missing','platformAr','platform_ar_control_mismatch','void_balance_correction','voided_platform_order_balance_corrected'])if(!functionsSource.includes(marker))fail(`Platform AR reconciliation marker missing: ${marker}`);
   for(const marker of ['destinationAccountId','payout_deposit_${payoutId}','platform_payout_auto_deposit','depositMovementId:payoutRecord.depositMovementId'])if(!functionsSource.includes(marker))fail(`Direct platform payout deposit marker missing: ${marker}`);
-  for(const marker of ['Deposited directly to','select receiving account','payoutCashAccounts'])if(!adminSource.includes(marker))fail(`Selectable payout destination marker missing: ${marker}`);
+  for(const marker of ['Deposited directly to','select receiving account','payoutCashAccounts','Bank transaction / payout reference','platformStatementReference:v.platformStatementReference','depositReference:v.depositReference'])if(!adminSource.includes(marker))fail(`Selectable payout destination or reference marker missing: ${marker}`);
+  for(const marker of ['if(actual>0&&!depositReference)','The bank transaction or payout reference is required.','reference=depositReference','platformStatementReference:platformStatementReference||null'])if(!functionsSource.includes(marker))fail(`Settlement-time payout reference safeguard missing: ${marker}`);
   if(!functionsSource.includes('["1021","FoodPanda GCash Wallet"')||!fs.readFileSync(path.join(root,'books.html'),'utf8').includes('["1021","FoodPanda GCash Wallet"'))fail('Dedicated FoodPanda GCash chart account is missing');
   if(!booksBridgeSource.includes('asset:platform_clearing:')||!booksBridgeSource.includes('code: "1050"'))fail('Platform payout clearing is not separated from account 1100');
   for(const marker of ['action === "inventory_opening_balance"','inventoryReconciliations/openingBalance','expectedDifference','movementId="inventory_opening_balance"'])if(!functionsSource.includes(marker))fail(`Inventory opening-balance control missing: ${marker}`);
@@ -325,7 +327,8 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(grabPosDeductionsCheck.status!==0)fail(`Grab POS deduction regression check failed:\n${grabPosDeductionsCheck.stderr||grabPosDeductionsCheck.stdout}`);
   const platformReferenceCheck=spawnSync(process.execPath,[path.join(root,'tests','platform-reference-check.mjs')],{encoding:'utf8',cwd:root});
   if(platformReferenceCheck.status!==0)fail(`Platform reference duplicate check failed:\n${platformReferenceCheck.stderr||platformReferenceCheck.stdout}`);
-  for(const marker of ['exports.correctPlatformPresettlement = onCall','correct_platform_presettlement','platform_presettlement_correction','Pre-settlement correction','id="poCorrect"','data-pocorrect','type:\'select\''])if(!functionsSource.includes(marker)&&!analyticsSource.includes(marker))fail(`Platform pre-settlement correction control missing: ${marker}`);
+  for(const marker of ['exports.correctPlatformPresettlement = onCall','correct_platform_presettlement','platform_presettlement_correction','Pre-settlement correction','id="poCorrect"','data-pocorrect','type:\'select\'','Merchant-funded promo (₱)','Delivery-fee discount (₱)','Marketing / advertisements (₱)','Marketing fee (₱)','platformAdsMarketing:adsMarketing','platformMarketingFee:marketingFee'])if(!functionsSource.includes(marker)&&!analyticsSource.includes(marker))fail(`Platform pre-settlement correction control missing: ${marker}`);
+  for(const marker of ['expense:platform_variance:va_ads','expense:platform_variance:va_marketing_success','gross - commission - discount - wht - vat - adsMarketing - marketingFee'])if(!financialSource.includes(marker))fail(`Order-level Grab marketing posting missing: ${marker}`);
   for(const marker of ['va_refund_recovery','allocationRefs','automaticPayoutSource','sourceKind:suppliedSourceRef ? "entered_reference" : (payoutSourced ? "payout" : "none")'])if(!functionsSource.includes(marker)&&!analyticsSource.includes(marker))fail(`Grab refund payout-source control missing: ${marker}`);
   if(analyticsSource.includes('data-allocref=')||analyticsSource.includes('Original Grab order or statement reference required when used'))fail('Grab refund payout UI still requires a separate reference box');
   if(!analyticsSource.includes('Source is recorded automatically from this payout'))fail('Grab refund payout-source explanation is missing');
