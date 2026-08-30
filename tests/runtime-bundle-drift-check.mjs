@@ -21,6 +21,19 @@ for(const bundle of bundles){
 }
 console.log('PASS: POS, Admin operations, customer core, Finance Books, and Functions runtime bundles exactly match their ordered source sections.');
 
+const retiredLargeSections=[
+  'src/admin/pos/11-inventory-skus.js',
+  'src/admin/pos/50-register-checkout.js',
+  'src/functions/42-financial-commands.js',
+  'src/functions/43-purchases-platform.js'
+];
+for(const file of retiredLargeSections)if(fs.existsSync(path.join(root,file)))throw new Error(`Retired large source section returned: ${file}`);
+for(const folder of ['src/admin/pos','src/functions'])for(const name of fs.readdirSync(path.join(root,folder)).filter(name=>/\.m?js$/.test(name))){
+  const bytes=fs.statSync(path.join(root,folder,name)).size;
+  if(bytes>70000)throw new Error(`Financially sensitive source section exceeds the 70 KB Phase 9 ceiling: ${folder}/${name}`);
+}
+console.log('PASS: retired checkout/inventory/financial monoliths remain decomposed and no guarded source section exceeds 70 KB.');
+
 const expectedFunctionExports=[
   'notifyOnComplete','notifyStaffOnOrder','notifyStaffOnReservation','notifyOnContactMessage','mirrorPosMovementToBooks','mirrorPosCogsToBooks','ensureBooksJournal','syncRegisterCashFloat','syncActiveRegisterCashFloat','manageCashAccount','indexPlatformOrderRef','manageAccountingPeriod','manageStaffMessage','recordClientTelemetry','getOperationalExceptions','repairOrderInventoryMarker','updateOrderStatus','acceptOnlineOrder','createManagerApproval','consumeManagerApproval','manageOrderArchive','reviewDiscrepancy','reopenDiscrepancy','managePettyVoucher','retireRevolvingFund','getUndepositedControlSnapshot','repairClosedShiftTurnover','reconcileUndepositedCustody','legacyOwnerCapitalReset','runFinancialClose','reopenFinancialCloseOnMovement','reopenFinancialCloseOnOrderChange','repairReversedPayoutDeposit','setUndepositedOpeningBalance','repairPettyVoucherFinancial','archiveActivityLog','syncOfflinePosSale','createOnlineOrder','getPaymentProof','confirmOrderReceived','ensureActiveOrders','syncActiveOrderProjection','pruneClosedShiftOrders','syncPublicOrderStatus','validateRecipeDefinition','onOrderFinancialPosting','preservePostedOrderOnDelete','onShiftPayInsFinancial','onShiftPayOutsFinancial','onShiftOpenFinancial','ensureShiftReference','onShiftCloseFinancial','repairPettyExpenseClassifications','onPettyVoucherFinancial','onPettyReplenishmentFinancial','manageFixedAsset','postFinancialCommand','reconcilePurchasePayable','managePurchaseCorrection','correctPlatformPresettlement','settlePlatformPayout','reversePlatformPayout','setPlatformPayoutDate','processOrderAdjustment','recordPlatformCatchup','ensureFinancialLedger','manageBooksAccount','manageChartAccount','autoRepairFinanceDateOnCashLedgerCreate','repairFinanceDates','auditFinancialControls','postInventoryMovements','ensureInventoryLedger','onOrderFinalize','onOrderInventoryReversal','pruneEphemeralNodes','autoCompleteReadyOnlineOrders','backupDatabaseDaily'
 ];
