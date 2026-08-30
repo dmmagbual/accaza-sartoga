@@ -32,6 +32,11 @@ exports.pruneEphemeralNodes = onSchedule(
     const tel = (await db.ref("/clientTelemetryDaily").get()).val() || {};
     Object.keys(tel).forEach((day) => { if (day < cutoffDay) mark(`clientTelemetryDaily/${day}`); });
 
+    // Production-monitor history is change-only and sanitized; retain the same
+    // bounded four-month window as client telemetry.
+    const monitorHistory = (await db.ref("/systemHealth/productionMonitor/history").get()).val() || {};
+    Object.keys(monitorHistory).forEach((day) => { if (day < cutoffDay) mark(`systemHealth/productionMonitor/history/${day}`); });
+
     const paths = Object.keys(deletions);
     for (let i = 0; i < paths.length; i += 400) {
       const chunk = {};
@@ -110,5 +115,18 @@ exports.backupDatabaseDaily = onSchedule(
     } catch (error) { logger.warn("Backup retention sweep failed", {error: String(error)}); }
     logger.info("backupDatabaseDaily complete", {objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, dataSha256: validation.actualSha256, removed, rev: 3});
     return null;
+  },
+);
+
+// Phase 13: hourly, read-only early-warning evaluation. It records sanitized
+// health evidence only; it never edits an order, stock, subledger, or journal.
+exports.evaluateProductionHealth = onSchedule(
+  {schedule: "every 60 minutes", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 120, memory: "256MiB"},
+  async () => {
+    const db=getDatabase(),now=Date.now(),today=financeDateFromTimestamp(now),yesterday=financeDateFromTimestamp(now-86400000);
+    const [backupSnap,todaySnap,yesterdaySnap,previousSnap,operational]=await Promise.all([db.ref("/systemHealth/backups/latest").get(),db.ref(`/clientTelemetryDaily/${today}`).get(),db.ref(`/clientTelemetryDaily/${yesterday}`).get(),db.ref("/systemHealth/productionMonitor/current").get(),scanOperationalExceptions(db,now)]);
+    const health=ProductionHealth.evaluate({backup:backupSnap.val()||{},telemetry:[todaySnap.val()||{},yesterdaySnap.val()||{}],operational},now),previous=previousSnap.val()||{},writes={"systemHealth/productionMonitor/current":health};
+    if(previous.signature!==health.signature||previous.status!==health.status)writes[`systemHealth/productionMonitor/history/${today}/${now}`]={evaluatedAt:now,status:health.status,signature:health.signature,counts:health.counts,alerts:health.alerts};
+    await db.ref().update(writes);logger.info("Production health evaluated",{status:health.status,critical:health.counts.critical,warning:health.counts.warning,changed:previous.signature!==health.signature});return null;
   },
 );

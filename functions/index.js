@@ -26,6 +26,7 @@ const FinancialClose = require("./lib/financial-close");
 const AccountingPeriods = require("./lib/accounting-periods");
 const ReconciliationControls = require("./lib/reconciliation-controls");
 const RecoveryValidation = require("./lib/recovery-validation");
+const ProductionHealth = require("./lib/production-health");
 
 initializeApp();
 
@@ -610,13 +611,17 @@ exports.getOperationalExceptions = onCall(
   async (request) => {
     const db = getDatabase(), actor = await requirePortalUser(db, request);
     if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Operational exceptions are restricted to management accounts.");
-    const now = Date.now(), days = [];for (let offset = 0; offset < 7; offset++) days.push(financeDateFromTimestamp(now - offset * 86400000));
+    return scanOperationalExceptions(db, Date.now());
+  },
+);
+
+async function scanOperationalExceptions(db, now) {
+    const days = [];for (let offset = 0; offset < 7; offset++) days.push(financeDateFromTimestamp(now - offset * 86400000));
     const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
     const orders = ordersSnap.val() || {},orderIds=Object.keys(orders).slice(0,100),financialPairs=await Promise.all(orderIds.map(async(id)=>{const snap=await db.ref(`/financialMovements/sale_${id}`).get();return[id,snap.exists()?snap.val():null];}));
     const financialMovements = {},inventoryMovementEvidence={};financialPairs.forEach(([id, value]) => {if (value) financialMovements[`sale_${id}`] = value;});Object.values(inventoryMovementSnap.val()||{}).forEach(m=>{if(m&&m.sourceType==="order"&&m.sourceId)inventoryMovementEvidence[m.sourceId]=true;});const telemetry = {};days.forEach((day, i) => {telemetry[day] = telemetrySnaps[i].val() || {};});
     return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry}, now);
-  },
-);
+}
 
 // Restores confirmation metadata only after every expected deterministic
 // ingredient movement is proven to exist with the exact quantity. No stock is
@@ -3435,6 +3440,11 @@ exports.pruneEphemeralNodes = onSchedule(
     const tel = (await db.ref("/clientTelemetryDaily").get()).val() || {};
     Object.keys(tel).forEach((day) => { if (day < cutoffDay) mark(`clientTelemetryDaily/${day}`); });
 
+    // Production-monitor history is change-only and sanitized; retain the same
+    // bounded four-month window as client telemetry.
+    const monitorHistory = (await db.ref("/systemHealth/productionMonitor/history").get()).val() || {};
+    Object.keys(monitorHistory).forEach((day) => { if (day < cutoffDay) mark(`systemHealth/productionMonitor/history/${day}`); });
+
     const paths = Object.keys(deletions);
     for (let i = 0; i < paths.length; i += 400) {
       const chunk = {};
@@ -3513,5 +3523,18 @@ exports.backupDatabaseDaily = onSchedule(
     } catch (error) { logger.warn("Backup retention sweep failed", {error: String(error)}); }
     logger.info("backupDatabaseDaily complete", {objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, dataSha256: validation.actualSha256, removed, rev: 3});
     return null;
+  },
+);
+
+// Phase 13: hourly, read-only early-warning evaluation. It records sanitized
+// health evidence only; it never edits an order, stock, subledger, or journal.
+exports.evaluateProductionHealth = onSchedule(
+  {schedule: "every 60 minutes", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 120, memory: "256MiB"},
+  async () => {
+    const db=getDatabase(),now=Date.now(),today=financeDateFromTimestamp(now),yesterday=financeDateFromTimestamp(now-86400000);
+    const [backupSnap,todaySnap,yesterdaySnap,previousSnap,operational]=await Promise.all([db.ref("/systemHealth/backups/latest").get(),db.ref(`/clientTelemetryDaily/${today}`).get(),db.ref(`/clientTelemetryDaily/${yesterday}`).get(),db.ref("/systemHealth/productionMonitor/current").get(),scanOperationalExceptions(db,now)]);
+    const health=ProductionHealth.evaluate({backup:backupSnap.val()||{},telemetry:[todaySnap.val()||{},yesterdaySnap.val()||{}],operational},now),previous=previousSnap.val()||{},writes={"systemHealth/productionMonitor/current":health};
+    if(previous.signature!==health.signature||previous.status!==health.status)writes[`systemHealth/productionMonitor/history/${today}/${now}`]={evaluatedAt:now,status:health.status,signature:health.signature,counts:health.counts,alerts:health.alerts};
+    await db.ref().update(writes);logger.info("Production health evaluated",{status:health.status,critical:health.counts.critical,warning:health.counts.warning,changed:previous.signature!==health.signature});return null;
   },
 );

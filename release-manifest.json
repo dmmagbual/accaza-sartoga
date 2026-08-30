@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 394,
+    "admin": 395,
     "books": 77,
     "customer": 64,
-    "serviceWorkerCache": 344
+    "serviceWorkerCache": 345
   },
   "authoritativeFiles": [
     "admin.html",
@@ -119,6 +119,7 @@
     "functions/lib/operational-exceptions.js",
     "functions/lib/write-safety.js",
     "functions/lib/recovery-validation.js",
+    "functions/lib/production-health.js",
     "assets/js/shared/costing.js",
     "assets/js/shared/business-date.js",
     "assets/js/shared/sales-authority.js",
@@ -164,6 +165,7 @@
     "tests/performance-budget-check.mjs",
     "tests/recovery-certification-check.mjs",
     "tests/dependency-certification-check.mjs",
+    "tests/production-health-check.mjs",
     "tests/static/00-context.mjs",
     "tests/static/10-syntax-rendering.mjs",
     "tests/static/20-access-customer.mjs",
@@ -186,6 +188,7 @@
     "ADR-028_PRODUCTION_ASSURANCE_AND_WRITE_SAFETY.md",
     "docs/PHASE_11_MEASURED_PERFORMANCE.md",
     "docs/PHASE_12_RECOVERY_AND_PRODUCTION_CERTIFICATION.md",
+    "docs/PHASE_13_PRODUCTION_OBSERVABILITY.md",
     "ADR-029_MEASURED_PERFORMANCE_AND_BOUNDED_CUSTOMER_STATE.md",
     "ADR-027_FINANCIAL_SOURCE_DECOMPOSITION.md",
     "ADR-026_RETIRED_RUNTIME_SURFACE.md",
@@ -261,6 +264,7 @@
     "notifyOnContactMessage",
     "pruneEphemeralNodes",
     "backupDatabaseDaily",
+    "evaluateProductionHealth",
     "syncPublicOrderStatus",
     "autoCompleteReadyOnlineOrders",
     "mirrorPosMovementToBooks",
