@@ -36,17 +36,19 @@ function orderPosting(order, accounts) {
   const lines = [], cashEntries = [], warnings = [];
   if (platform) {
     const gross = money(order.grossPlatform != null ? order.grossPlatform : (order.subtotal != null ? order.subtotal : order.total));
-    const commission = money(order.commission), discount = money(order.platformDiscount), wht = money(order.platformWht), vat = money(order.platformVat);
+    const commission = money(order.commission), discount = money(order.platformDiscount), wht = money(order.platformWht), vat = money(order.platformVat), adsMarketing=money(order.platformAdsMarketing), marketingFee=money(order.platformMarketingFee);
     const hasMappedDiscounts = order.platformMerchantPromo != null || order.platformDeliveryFeeDiscount != null;
     const merchantPromo = hasMappedDiscounts ? money(order.platformMerchantPromo) : 0;
     const deliveryFeeDiscount = hasMappedDiscounts ? money(order.platformDeliveryFeeDiscount) : 0;
     const unmappedDiscount = money(discount - merchantPromo - deliveryFeeDiscount);
-    const net = money(order.netPlatform != null ? order.netPlatform : gross - commission - discount - wht - vat);
+    const net = money(order.netPlatform != null ? order.netPlatform : gross - commission - discount - wht - vat - adsMarketing - marketingFee);
     lines.push(line(`asset:platform_receivable:${channel}`, net, 0, "Platform receivable"));
     if (commission) lines.push(line("expense:platform_commission", commission, 0, "Platform commission"));
     if (merchantPromo) lines.push(line("revenue:platform_discount", merchantPromo, 0, "Merchant-funded promo"));
     if (deliveryFeeDiscount) lines.push(line("revenue:platform_discount", deliveryFeeDiscount, 0, "Delivery fee discount"));
     if (unmappedDiscount) lines.push(line("expense:platform_discount", unmappedDiscount, 0, "Legacy/unclassified platform discount"));
+    if (adsMarketing) lines.push(line("expense:platform_variance:va_ads", adsMarketing, 0, "Platform marketing / advertisements"));
+    if (marketingFee) lines.push(line("expense:platform_variance:va_marketing_success", marketingFee, 0, "Platform marketing fee"));
     if (wht) lines.push(line("asset:withholding_tax", wht, 0, "Withholding tax receivable"));
     if (vat) lines.push(line("expense:platform_service_vat", vat, 0, "Platform service VAT"));
     const debits = totals(lines).debit;
