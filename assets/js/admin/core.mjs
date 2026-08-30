@@ -4,7 +4,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome}from"./admin-orders.mjs";
-import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=395";
+import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=396";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -100,6 +100,7 @@ window.__accaza={
   setPlatformPayoutDate:function(command){return callables.setPlatformPayoutDate(command);},
   ensureShiftReference:function(command){return callables.ensureShiftReference(command);},
   manageStaffMessage:function(command){return callables.manageStaffMessage(command);},
+  manageIncident:function(command){return callables.manageIncident(command);},
   recordClientTelemetry:function(command){return callables.recordClientTelemetry(command);},
   getOperationalExceptions:function(){return callables.getOperationalExceptions({});},
   repairOrderInventoryMarker:function(orderId){return callables.repairOrderInventoryMarker({orderId:orderId});},

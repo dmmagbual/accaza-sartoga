@@ -95,6 +95,24 @@ exports.manageStaffMessage = onCall(
   },
 );
 
+// Phase 14: append-only management incident evidence. No operational or
+// financial business node is writable from this callable.
+exports.manageIncident = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db=getDatabase(),actor=await requirePortalUser(db,request),data=request.data||{},action=String(data.action||"").toLowerCase(),now=Date.now();
+    if(!["owner","superadmin","admin","manager"].includes(actor.role))throw new HttpsError("permission-denied","Incident response is restricted to management accounts.");
+    let requestId;try{requestId=IncidentControls.key(data.requestId,"Request ID");}catch(error){throw new HttpsError("invalid-argument",error.message);}
+    const claimRef=db.ref(`/incidentCommandClaims/${requestId}`),claimed=await claimRef.transaction(current=>current?undefined:{claimedAt:now,actorUid:actor.uid,action});if(!claimed.committed)return{duplicate:true,requestId,incidentId:String(claimed.snapshot.val()&&claimed.snapshot.val().incidentId||"")};
+    try{
+      const incidentId=data.incidentId?IncidentControls.key(data.incidentId,"Incident ID"):`inc_${requestId}`;let incident=(await db.ref(`/incidents/${incidentId}`).get()).val(),writes={};
+      if(action==="create"){if(incident)return{duplicate:true,requestId,incidentId};try{incident=IncidentControls.normalizeCreate(data,actor,now);}catch(error){throw new HttpsError("invalid-argument",error.message);}writes[`incidents/${incidentId}`]=incident;}
+      else{if(!incident)throw new HttpsError("not-found","Incident not found.");if(incident.status==="resolved")throw new HttpsError("failed-precondition","Resolved incidents are immutable.");if(action==="update"){let status;try{status=IncidentControls.nextStatus(incident.status,data.status);}catch(error){throw new HttpsError("failed-precondition",error.message);}writes[`incidents/${incidentId}/status`]=status;writes[`incidents/${incidentId}/updatedAt`]=now;}else if(action==="resolve"){if(incident.financialImpact===true&&incident.createdBy===actor.uid)throw new HttpsError("failed-precondition","A different management reviewer must resolve a financial-impact incident.");let evidence;try{evidence=IncidentControls.resolutionEvidence(data);}catch(error){throw new HttpsError("failed-precondition",error.message);}writes[`incidents/${incidentId}/status`]="resolved";writes[`incidents/${incidentId}/resolvedAt`]=now;writes[`incidents/${incidentId}/resolvedBy`]=actor.uid;writes[`incidents/${incidentId}/resolutionEvidence`]=evidence;writes[`incidents/${incidentId}/updatedAt`]=now;}else throw new HttpsError("invalid-argument","Incident action is invalid.");}
+      const note=IncidentControls.text(data.note||data.summary||`${action} incident`,1000),status=action==="create"?"investigating":(action==="resolve"?"resolved":String(data.status||""));writes[`incidents/${incidentId}/timeline/${requestId}`]={action,note,at:now,actorUid:actor.uid,actorRole:actor.role,status};writes[`incidentCommandClaims/${requestId}/incidentId`]=incidentId;writes[`operationalAudit/${now}_incident_${requestId}`]=operationalAuditRecord(`${action}_incident`,"incident",incidentId,actor,{severity:incident&&incident.severity||String(data.severity||""),financialImpact:incident&&incident.financialImpact===true,status,accounting:"Incident evidence only; no order, stock, subledger, Finance movement, or Books journal changed."});await db.ref().update(writes);return{duplicate:false,requestId,incidentId,status};
+    }catch(error){await claimRef.remove().catch(()=>{});throw error;}
+  },
+);
+
 // Release 6A: privacy-safe, bounded operational telemetry. Only aggregate
 // counters and timings are stored; no order/customer/payment content is accepted.
 const CLIENT_METRICS = new Set(["pos_boot", "pos_build", "cart_render", "charge_to_durable", "offline_flush", "realtime_order_arrival", "module_load", "live_ready"]);

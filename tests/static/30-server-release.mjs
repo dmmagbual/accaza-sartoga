@@ -4,6 +4,7 @@ const {fs,path,vm,spawnSync,root,require,htmlFiles,temp,state,fail,section,admin
 const {rulesRaw}=context;
 const functionsSource=fs.readFileSync(path.join(root,'functions','index.js'),'utf8');
 for(const marker of ['exports.manageStaffMessage = onCall','Please wait 15 seconds','senderUid:actor.uid','staffMessageReceipts','notifyStaff(db,priority','staffMessages'])if(!functionsSource.includes(marker))fail(`Server Staff Inbox control missing: ${marker}`);
+for(const marker of ['exports.manageIncident = onCall','incidentCommandClaims','resolutionEvidence','different management reviewer','Incident evidence only; no order, stock, subledger, Finance movement, or Books journal changed.'])if(!functionsSource.includes(marker))fail(`Phase 14 incident-response control missing: ${marker}`);
 const booksBridgeSource=fs.readFileSync(path.join(root,'functions','lib','books-bridge.js'),'utf8');
 if(!functionsSource.includes('exports.createOnlineOrder = onCall'))fail('createOnlineOrder callable missing');
 if(functionsSource.includes('defineBoolean("ENFORCE_APP_CHECK"'))fail('App Check enforcement must be passed to CallableOptions as a real Boolean, not a truthy parameter object');

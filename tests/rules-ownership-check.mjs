@@ -39,6 +39,7 @@ try{
       pettyCashVouchers:{pv_one:{voucherNo:'PV-1',amount:10,status:'pending',createdAt:1}},
       activityLogArchive:{log_old:{action:'test',ts:1}},
       operationalAudit:{audit_one:{action:'archive_order',ts:1}},
+      incidents:{incident_one:{severity:'SEV2',status:'investigating',createdAt:1}},
       deletionAudit:{orders:{old_deleted:{orderId:'old_deleted',deletedAt:1}}},
       clientTelemetryDaily:{'2026-08-09':{metrics:{pos_boot:{count:1,totalMs:500,maxMs:500,failed:0}}}},
     });
@@ -96,6 +97,10 @@ try{
   await assertFails(update(ref(owner,'activityLogArchive/log_old'),{action:'forged'}));
   await assertSucceeds(get(ref(owner,'operationalAudit/audit_one')));
   await assertFails(set(ref(owner,'operationalAudit/forged'),{action:'forged',ts:2}));
+  await assertSucceeds(get(ref(owner,'incidents/incident_one')));
+  await assertFails(get(ref(staff,'incidents/incident_one')));
+  await assertFails(set(ref(owner,'incidents/forged'),{severity:'SEV1',status:'resolved'}));
+  await assertFails(get(ref(owner,'incidentCommandClaims/claim_one')));
   await assertSucceeds(get(ref(owner,'deletionAudit/orders/old_deleted')));
   await assertFails(set(ref(owner,'deletionAudit/orders/forged'),{deletedAt:2}));
   await assertSucceeds(get(ref(owner,'clientTelemetryDaily/2026-08-09')));
