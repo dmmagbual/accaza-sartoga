@@ -24,6 +24,7 @@ const OperationalExceptions = require("./lib/operational-exceptions");
 const BooksBridge = require("./lib/books-bridge");
 const FinancialClose = require("./lib/financial-close");
 const AccountingPeriods = require("./lib/accounting-periods");
+const ReconciliationControls = require("./lib/reconciliation-controls");
 
 initializeApp();
 
@@ -277,6 +278,10 @@ exports.ensureBooksJournal = onCall(
     const registerFloat = resolveRegisterFloat(posSettingsSnap.val(), activeShiftSnap.val());
     writes["books/journal/register_float_control"] = registerFloat.amount > 0 ? registerFloatControlEntry(registerFloat.amount, Date.now(), registerFloat) : null;
     writes["books/journal/historical_suspense_capital_20260826"] = historicalSuspenseCapitalEntry();
+    // Reconciliation metadata is non-financial. It changes only how the audit
+    // distinguishes verified legacy history from genuinely new exceptions.
+    // It must never create or amend a journal or today's account balances.
+    writes["books/reconciliationConfig"] = ReconciliationControls.DEFAULT_ACCOUNT_RULES;
     writes["books/reviewQueue"] = review;
     writes["books/config/cashAccountMap"] = cashMap;
     const paths = Object.keys(writes); for (let i = 0; i < paths.length; i += 300) { const batch = {}; paths.slice(i, i + 300).forEach((path) => { batch[path] = writes[path]; }); await db.ref().update(batch); }
@@ -2898,14 +2903,12 @@ exports.auditFinancialControls = onCall(
     let custodyValue=0,custodyCount=0;Object.keys(custody).forEach((id)=>{const rem=Financial.money(custody[id].remaining);if(rem>0){custodyCount++;custodyValue=Financial.money(custodyValue+rem);}});let undepositedLedgerValue=0;Object.values(movements).forEach((m)=>(m&&m.lines||[]).forEach((line)=>{if(line.account==="asset:cash_awaiting_deposit")undepositedLedgerValue=Financial.money(undepositedLedgerValue+(Number(line.debit)||0)-(Number(line.credit)||0));}));const undepositedDifference=Financial.money(undepositedLedgerValue-custodyValue);if(Math.abs(undepositedDifference)>0.009)issues.push({severity:"critical",kind:"undeposited_subledger_mismatch",source:"cashCustody",detail:`Finance Books ${undepositedLedgerValue.toFixed(2)}; custody subledger ${custodyValue.toFixed(2)}`,amount:undepositedDifference,expected:custodyValue,actual:undepositedLedgerValue});const openAr=Object.values(ars).filter((x)=>x&&x.status==="open"),openAp=Object.values(aps).filter((x)=>x&&x.status==="open"),undepositedPayouts=Object.values(payouts).filter((x)=>x&&!x.reversed&&!x.depositMovementId&&Financial.money(x.actualPayout)>0);
     // --- Additive control checks (read-only; each guarded so a failure degrades, never breaks the audit) ---
     try {
-      const journal=(await db.ref("/books/journal").get()).val()||{}, bChart=(await db.ref("/booksChart").get()).val()||{}, bal={};
-      Object.keys(journal).forEach((eid)=>{const e=journal[eid]||{};(Array.isArray(e.lines)?e.lines:[]).forEach((l)=>{const c=String((l&&l.code)||"");if(!c)return;bal[c]=Financial.money((bal[c]||0)+(Number(l.debit)||0)-(Number(l.credit)||0));});});
-      const HOLDING={"1900":"Suspense - unmapped POS accounts","1290":"Inventory Receiving Clearing","5090":"Unposted COGS Clearing","2090":"Unrecorded Payables Clearing","1190":"Cash Shortage Under Review","2100":"Cash Overage Under Review"};
-      Object.keys(HOLDING).forEach((code)=>{const b=Financial.money(bal[code]||0);if(Math.abs(b)>0.5)issues.push({severity:Math.abs(b)>=1000?"critical":"warning",kind:"holding_account_balance",source:code,detail:HOLDING[code]+" should clear to zero",amount:b});});
+      const [journalControlSnap,chartControlSnap,reconciliationConfigSnap]=await Promise.all([db.ref("/books/journal").get(),db.ref("/booksChart").get(),db.ref("/books/reconciliationConfig").get()]),journal=journalControlSnap.val()||{},bChart=chartControlSnap.val()||{},reconciliationConfig=ReconciliationControls.accountRules(reconciliationConfigSnap.val()||{}),bal=ReconciliationControls.journalBalances(journal);
+      ReconciliationControls.controlAccountIssues(journal,reconciliationConfig).forEach((item)=>{const period=item.oldestDate&&item.newestDate?(item.oldestDate===item.newestDate?item.oldestDate:`${item.oldestDate} to ${item.newestDate}`):"undated";issues.push({severity:Math.abs(item.balance)>=1000?"critical":"warning",kind:"holding_account_balance",source:item.code,detail:`${item.rule.name||item.code}: ${item.count} post-cutover source entr${item.count===1?"y":"ies"} (${period}) remain uncleared`,amount:item.balance,sourceCount:item.count,oldestDate:item.oldestDate,newestDate:item.newestDate});});
       Object.keys(bal).forEach((code)=>{if(Math.abs(bal[code])<0.5)return;const row=bChart[code];if(!row)issues.push({severity:"critical",kind:"balance_off_chart",source:code,detail:"Account carries a balance but is not in the chart of accounts",amount:Financial.money(bal[code])});else if(row.active===false)issues.push({severity:"warning",kind:"balance_on_inactive_account",source:code,detail:financeText(row.name,60)+" is deactivated but still carries a balance",amount:Financial.money(bal[code])});});
     } catch(e){logger.warn("auditFinancialControls: holding/chart check skipped",{error:String(e)});}
     try {
-      const discrepancies=(await db.ref("/discrepancies").get()).val()||{}, open=Object.keys(discrepancies).map((k)=>discrepancies[k]||{}).filter((d)=>d&&d.status!=="reviewed");
+      const discrepancies=(await db.ref("/discrepancies").get()).val()||{}, open=Object.keys(discrepancies).map((k)=>discrepancies[k]||{}).filter(ReconciliationControls.operationalDiscrepancy);
       if(open.length)issues.push({severity:"warning",kind:"unreviewed_discrepancies",source:"discrepancies",detail:open.length+" cash discrepancy(ies) awaiting manager review in Discrepancies",amount:Financial.money(open.reduce((s,d)=>s+Math.abs(Number(d.value!=null?d.value:d.variance||0)),0))});
     } catch(e){logger.warn("auditFinancialControls: discrepancy check skipped",{error:String(e)});}
     try {

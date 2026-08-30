@@ -13,9 +13,9 @@
   },
   "builds": {
     "admin": 389,
-    "books": 71,
+    "books": 72,
     "customer": 59,
-    "serviceWorkerCache": 330
+    "serviceWorkerCache": 331
   },
   "authoritativeFiles": [
     "admin.html",
@@ -31,6 +31,7 @@
     "functions/lib/costing.js",
     "functions/lib/financial.js",
     "functions/lib/financial-close.js",
+    "functions/lib/reconciliation-controls.js",
     "functions/lib/accounting-periods.js",
     "functions/lib/offline-sync.js",
     "functions/lib/payment-verification.js",
