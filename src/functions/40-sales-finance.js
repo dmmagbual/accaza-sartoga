@@ -72,7 +72,40 @@ const BOOKS_CHART_SEED_ROWS = [
   ["6000","Salaries & Wages","Expense"],["6010","Rent","Expense"],["6020","Utilities","Expense","Electricity, water"],["6030","Internet & Phone","Expense"],["6040","Platform Commissions","Expense","Grab/Panda fees"],["6045","Platform Discounts","Expense","Grab/Panda-funded or shared discounts"],["6046","Platform Service VAT","Expense"],["6050","Marketing & Promotions","Expense"],["6060","Repairs & Maintenance","Expense"],["6070","Cleaning & Operating Supplies","Expense"],["6075","Office & Administrative Supplies","Expense"],["6076","Transportation & Delivery","Expense"],["6077","Staff Consumption & Welfare","Expense","Inventory consumed by staff; never sales COGS or inventory variance"],["6078","Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"],["6080","Bank & Payment Fees","Expense"],["6085","Platform Penalties & Adjustments","Expense"],["6090","Depreciation","Expense"],["6100","Miscellaneous","Expense"],["6110","Cash Short / Over","Expense","Register variance"]
 ];
 function booksChartSeed(){const out={};BOOKS_CHART_SEED_ROWS.forEach(function(r){out[r[0]]={code:r[0],name:r[1],type:r[2],note:r[3]||"",active:true,system:true,sensitive:SENSITIVE_BOOKS_CODES.has(r[0])};});return out;}
-async function ensureBooksChart(db){const seed=booksChartSeed(),snap=await db.ref("/booksChart").get(),current=snap.val()||{},writes={},resolved=Object.assign({},current),now=Date.now();Object.keys(seed).forEach(function(code){if(!current[code]){resolved[code]=Object.assign({},seed[code],{createdAt:now,schemaVersion:1});writes[`booksChart/${code}`]=resolved[code];}});["2100","5900","5905","6077","6078"].forEach(function(code){const canonical=seed[code];if(!canonical)return;resolved[code]=Object.assign({},current[code]||{},canonical);Object.keys(canonical).forEach(function(key){if(!current[code]||current[code][key]!==canonical[key])writes[`booksChart/${code}/${key}`]=canonical[key];});});if(current["4995"]){const retired={active:false,system:true,note:"Retired legacy inventory reconciliation gain account; consolidated into 5905",consolidatedInto:"5905"};resolved["4995"]=Object.assign({},current["4995"],retired);Object.keys(retired).forEach(function(key){if(current["4995"][key]!==retired[key])writes[`booksChart/4995/${key}`]=retired[key];});}if(Object.keys(writes).length)await db.ref().update(writes);return Object.assign({},seed,resolved);}
+async function ensureBooksChart(db) {
+  const seed = booksChartSeed();
+  const snap = await db.ref("/booksChart").get();
+  const current = snap.val() || {}, writes = {}, resolved = Object.assign({}, current), now = Date.now();
+  // A Firebase multi-location update cannot contain both /booksChart/CODE and
+  // /booksChart/CODE/field. Missing or malformed accounts therefore use one
+  // complete-record write; only existing object records receive child updates.
+  Object.keys(seed).forEach(function(code) {
+    const existing = current[code];
+    if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
+      resolved[code] = Object.assign({}, seed[code], {createdAt: now, schemaVersion: 1});
+      writes[`booksChart/${code}`] = resolved[code];
+    } else {
+      resolved[code] = existing;
+    }
+  });
+  ["2100", "5900", "5905", "6077", "6078"].forEach(function(code) {
+    const canonical = seed[code], existing = current[code];
+    if (!canonical || !existing || typeof existing !== "object" || Array.isArray(existing)) return;
+    resolved[code] = Object.assign({}, existing, canonical);
+    Object.keys(canonical).forEach(function(key) {
+      if (existing[key] !== canonical[key]) writes[`booksChart/${code}/${key}`] = canonical[key];
+    });
+  });
+  if (current["4995"]) {
+    const retired = {active: false, system: true, note: "Retired legacy inventory reconciliation gain account; consolidated into 5905", consolidatedInto: "5905"};
+    resolved["4995"] = Object.assign({}, current["4995"], retired);
+    Object.keys(retired).forEach(function(key) {
+      if (current["4995"][key] !== retired[key]) writes[`booksChart/4995/${key}`] = retired[key];
+    });
+  }
+  if (Object.keys(writes).length) await db.ref().update(writes);
+  return Object.assign({}, seed, resolved);
+}
 const DEFAULT_BOOKS_CHART_MANAGERS=["danilomagbual@gmail.com","contact.mariadaniela@gmail.com"];
 function booksManagerKey(email){return String(email||"").toLowerCase().replace(/[^a-z0-9]+/g,"_");}
 async function ensureBooksChartManagers(db){const ref=db.ref("/config/booksChartManagers");const snap=await ref.get();let current=snap.val();if(!current||typeof current!=="object"||!Object.keys(current).length){const seed={};DEFAULT_BOOKS_CHART_MANAGERS.forEach(function(email){seed[booksManagerKey(email)]={email:String(email).toLowerCase(),active:true,seededAt:Date.now()};});await ref.set(seed);current=seed;}const allow=new Set();Object.keys(current).forEach(function(k){const row=current[k];if(row&&row.active!==false&&row.email)allow.add(String(row.email).toLowerCase());});return allow;}
