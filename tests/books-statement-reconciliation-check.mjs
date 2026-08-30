@@ -3,7 +3,12 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const source=fs.readFileSync(path.join(root,'books.html'),'utf8');
+const source=[
+  fs.readFileSync(path.join(root,'books.html'),'utf8'),
+  fs.readFileSync(path.join(root,'assets','js','books','app.js'),'utf8'),
+  fs.readFileSync(path.join(root,'assets','js','books','live-pos.mjs'),'utf8'),
+  fs.readFileSync(path.join(root,'assets','js','books','accounting-periods.mjs'),'utf8')
+].join('\n');
 const start=source.indexOf('function postedAccountNet(code, entries)');
 const end=source.indexOf('/* signed balance',start);
 if(start<0||end<0)throw new Error('Production postedAccountNet helper was not found.');
