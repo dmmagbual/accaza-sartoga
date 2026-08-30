@@ -251,7 +251,7 @@ function defaultAccounts(){
     // COGS
     ["5000","COGS – Coffee & Beans","COGS"],["5010","COGS – Milk & Dairy","COGS"],
     ["5020","COGS – Syrups & Flavors","COGS"],["5030","COGS – Food & Pastries","COGS"],
-    ["5040","COGS – Cups & Packaging","COGS"],["5090","Unposted COGS Clearing","COGS","Costs awaiting complete item-level posting"],["5900","Wastage & Spoilage","COGS"],
+    ["5040","COGS – Cups & Packaging","COGS"],["5090","Unposted COGS Clearing","COGS","Costs awaiting complete item-level posting"],["5900","Wastage & Spoilage","COGS"],["5905","Inventory Reconciliation Gain / (Loss)","COGS","Single net valuation adjustment: debit is loss, credit is gain"],
     // Expenses
     ["6000","Salaries & Wages","Expense"],["6010","Rent","Expense"],["6020","Utilities","Expense","Electricity, water"],
     ["6030","Internet & Phone","Expense"],["6040","Platform Commissions","Expense","Grab/Panda fees"],
@@ -296,7 +296,7 @@ function migrate(p){
     ["3050","Cash Float Clearing","Equity","POS shift float source"],
     ["4910","Sales Returns & Refunds","Income","Existing void and refund adjustments"],
     ["4990","Other Income","Income"],
-    ["5090","Unposted COGS Clearing","COGS","Costs awaiting complete item-level posting"],
+    ["5090","Unposted COGS Clearing","COGS","Costs awaiting complete item-level posting"],["5905","Inventory Reconciliation Gain / (Loss)","COGS","Single net valuation adjustment: debit is loss, credit is gain"],
     ["6045","Platform Discounts","Expense","Grab/Panda-funded or shared discounts"],
     ["6046","Platform Service VAT","Expense"],
     ["6085","Platform Penalties & Adjustments","Expense"],
@@ -304,6 +304,7 @@ function migrate(p){
     ["6110","Cash Short / Over","Expense","Register variance"]
   ];
   need.forEach(function(n){ if(!p.accounts.find(function(a){return a.code===n[0];})) p.accounts.push({code:n[0],name:n[1],type:n[2],note:n[3]||""}); });
+  var inventoryRecon=p.accounts.find(function(a){return a.code==='5905';});if(inventoryRecon){inventoryRecon.name='Inventory Reconciliation Gain / (Loss)';inventoryRecon.type='COGS';inventoryRecon.note='Single net valuation adjustment: debit is loss, credit is gain';}
   var supplies=p.accounts.find(function(a){return a.code==='6070';});if(supplies)supplies.name='Cleaning & Operating Supplies';
   p.accounts.sort(function(x,y){return String(x.code).localeCompare(String(y.code));});
   return p;

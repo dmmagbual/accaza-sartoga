@@ -827,9 +827,10 @@ function autoAdjustInventoryReconciliation(rng,btn){
   if(rng.t!==tsToDate(Date.now())){alert('Set the To date to today before auto-adjusting the current inventory reconciliation.');return;}
   var commandId=uid('invrecon_');btn.disabled=true;btn.textContent='Checking current variance…';
   A().postFinancialCommand({action:'inventory_reconciliation_adjustment',commandId:commandId,preview:true,date:rng.t}).then(function(r){r=r&&r.data?r.data:r||{};
-    var active=(r.adjustmentRows||[]).filter(function(x){return Math.abs(Number(x.difference)||0)>=.005;});
-    if(!active.length){alert('Inventory and Finance Books are already reconciled.');return null;}
+    var active=(r.adjustmentRows||[]).filter(function(x){return Math.abs(Number(x.difference)||0)>=.005;}),legacyGain=Math.abs(Number(r.legacyGainBalance)||0);
+    if(!active.length&&legacyGain<.005){alert('Inventory and Finance Books are already reconciled.');return null;}
     var detail=active.map(function(x){return x.code+' '+(x.difference>0?'increase ':'decrease ')+peso(Math.abs(x.difference));}).join('\n');
+    if(legacyGain>=.005)detail+=(detail?'\n':'')+'Consolidate legacy 4995 into 5905 '+peso(legacyGain);
     if(!confirm('Auto-adjust this inventory variance?\n\n'+detail+'\n\nThis does not change stock quantity or opening balance. It posts one dated Finance adjustment with a permanent audit reference.'))return null;
     btn.textContent='Auto-adjusting…';return A().postFinancialCommand({action:'inventory_reconciliation_adjustment',commandId:commandId,date:rng.t,expectedFingerprint:r.fingerprint});
   }).then(function(r){if(!r){btn.disabled=false;btn.textContent='Auto-adjust inventory variance';return;}r=r&&r.data?r.data:r||{};alert((r.duplicate?'Existing':'New')+' inventory reconciliation adjustment recorded.\nMovement: '+r.movementId+'\n\nFinance Books will refresh automatically.');}).catch(function(e){alert('Inventory variance was not auto-adjusted: '+((e&&e.message)||(e&&e.code)||e));btn.disabled=false;btn.textContent='Auto-adjust inventory variance';});
