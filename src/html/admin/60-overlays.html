@@ -1,0 +1,34 @@
+<div class="customize-overlay" id="customizePopup">
+  <div class="customize-box">
+    <div class="customize-header"><h3 id="custItemName">Customize Your Order</h3><button class="customize-close" onclick="closeCustomize()">✕</button></div>
+    <div id="custItemImgWrap"></div>
+    <div class="customize-body" id="custBody"></div>
+    <div class="customize-footer">
+      <div class="cust-total"><span class="cust-total-label">Total</span><span class="cust-total-amt" id="custTotalDisplay">₱0</span></div>
+      <button class="btn-add-to-cart" id="btnAddToCart">Add to Cart</button>
+    </div>
+  </div>
+</div>
+<!-- CHATBOT -->
+<div class="chat-bubble">
+  <button class="chat-toggle-btn" onclick="toggleChat()"><div class="steam"><span></span><span></span><span></span></div>☕</button>
+  <div class="chat-notif" id="chatNotif"></div>
+  <div class="chat-label">Chat with us!</div>
+</div>
+<div class="chat-window" id="chatWindow">
+  <div class="chat-header"><div class="chat-header-info"><div class="chat-avatar">🐻</div><div><h4>Accaza Coffee</h4><p>🟢 We typically reply instantly</p></div></div><button class="chat-close-btn" onclick="toggleChat()">✕</button></div>
+  <div class="chat-messages" id="chatMessages"></div>
+  <div class="chat-quick">
+    <button class="chat-quick-btn" onclick="quickMsg('Opening hours?')">🕐 Hours</button>
+    <button class="chat-quick-btn" onclick="quickMsg('Where are you located?')">📍 Location</button>
+    <button class="chat-quick-btn" onclick="quickMsg('Do you accept GCash?')">💳 Payment</button>
+    <button class="chat-quick-btn" onclick="quickMsg('Do you have delivery?')">🛵 Delivery</button>
+    <button class="chat-quick-btn" onclick="quickMsg('How do I reserve a table?')">📅 Reserve</button>
+    <button class="chat-quick-btn" onclick="quickMsg('What is on your menu?')">🍽️ Menu</button>
+  </div>
+  <div class="chat-input-row"><input type="text" class="chat-input" id="chatInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendChat()"/><button class="chat-send" onclick="sendChat()">➤</button></div>
+</div>
+
+<link rel="stylesheet" href="assets/css/admin/touch-targets.css" id="accaza-touch-5e"/>
+<link rel="stylesheet" href="assets/css/admin/pos-workflow.css" id="accaza-pos-workflow-7e"/>
+<link rel="stylesheet" href="/assets/css/admin-backoffice.css"/>

@@ -1,0 +1,87 @@
+<section id="availSection" style="display:none;background:var(--cr);padding:6rem 2rem;">
+  <div style="max-width:900px;margin:0 auto;">
+    <div style="text-align:center;margin-bottom:2.5rem;"><p class="section-label">Staff Only</p><h2 style="font-family:'Playfair Display',serif;font-size:2.5rem;color:var(--bd);margin-bottom:0.5rem;">Menu Availability</h2><p style="color:var(--tm);font-size:0.95rem;">Manage categories and menu items.</p></div>
+    <!-- CATEGORY MANAGER -->
+    <div style="background:#fff;border:1px solid var(--cd);border-radius:10px;padding:1.5rem;margin-bottom:2rem;">
+      <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--bd);margin-bottom:1rem;">🗂️ Manage Categories</h3>
+      <div id="categoryList" style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:1rem;"><p style="color:var(--tl);font-size:0.85rem;">Loading categories...</p></div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;margin-top:0.5rem;">
+        <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;">Icon</label><input type="text" id="newCatIcon" placeholder="☕" style="width:65px;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem;font-family:'Inter',sans-serif;font-size:0.88rem;color:var(--td);"/></div>
+        <div style="flex:1;min-width:140px;"><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;">Category Name</label><input type="text" id="newCatLabel" placeholder="e.g. Meals, Desserts..." style="background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.85rem;font-family:'Inter',sans-serif;font-size:0.88rem;color:var(--td);width:100%;"/></div>
+        <button id="btnAddCat" style="background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.6rem 1.2rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;">➕ Add</button>
+      </div>
+      <div id="catAddConfirm" style="display:none;margin-top:0.5rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.5rem 1rem;"><p style="color:#2d6a4f;font-size:0.83rem;">✅ Category added!</p></div>
+    </div>
+    <!-- OPTION GROUPS MANAGER -->
+    <div style="background:#fff;border:1px solid var(--cd);border-radius:10px;padding:1.5rem;margin-bottom:2rem;">
+      <h3 style="font-family:'Playfair Display',serif;font-size:1.1rem;color:var(--bd);margin-bottom:0.4rem;">🧩 Item Options (Variations)</h3>
+      <p style="font-size:0.8rem;color:var(--tl);margin-bottom:1rem;">Create options like Temperature (Hot / Cold) or Sweetness (1 Sugar / 2 Sugars). Each choice has its own price — leave it 0 to show as "Free". Assign options per item in the Add Item form or each item's ✏️ Edit panel.</p>
+      <div id="optGroupList"><p style="color:var(--tl);font-size:0.85rem;">Loading options...</p></div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;margin-top:1rem;padding-top:1rem;border-top:1px dashed var(--cd);">
+        <div style="flex:1;min-width:170px;"><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;">New Option Name</label><input type="text" id="newOgName" placeholder="e.g. Temperature, Spice Level" style="background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.85rem;font-family:'Inter',sans-serif;font-size:0.88rem;color:var(--td);width:100%;"/></div>
+        <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;">Selection</label><select id="newOgType" style="background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.55rem 0.6rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);"><option value="single">Choose one</option><option value="multi">Choose many</option></select></div>
+        <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.8rem;color:var(--td);cursor:pointer;padding-bottom:0.6rem;"><input type="checkbox" id="newOgReq" checked style="width:auto;accent-color:var(--bl);"/> Required</label>
+        <button onclick="addOptionGroup()" style="background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.6rem 1.2rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;">➕ Add Option</button>
+      </div>
+      <div id="ogAddConfirm" style="display:none;margin-top:0.5rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.5rem 1rem;"><p style="color:#2d6a4f;font-size:0.83rem;">✅ Option added! Edit its choices above, then Save.</p></div>
+    </div>
+    <!-- ADD ITEM FORM -->
+    <div class="avail-add-form">
+      <h3>➕ Add New Menu Item</h3>
+      <div class="avail-add-grid">
+        <div><label>Item Name</label><input type="text" id="newItemName" placeholder="e.g. Lavender Latte"/></div>
+        <div><label>Category</label><select id="newItemCat"></select></div>
+        <div style="grid-column:1/-1;"><label>Description</label><textarea id="newItemDesc" rows="2" placeholder="Brief description..."></textarea></div>
+        <div style="grid-column:1/-1;"><label>Image URL (optional)</label><input type="text" id="newItemImg" placeholder="https://i.postimg.cc/..."/></div>
+      </div>
+      <div style="margin-bottom:0.75rem;">
+        <label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.06em;">Item Options <span style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--tl);">— tick everything this item should offer</span></label>
+        <div id="newItemOptions" style="display:flex;flex-wrap:wrap;gap:0.4rem;"></div>
+      </div>
+      <div style="margin-bottom:0.75rem;">
+        <label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.06em;">Pricing Type</label>
+        <div style="display:flex;gap:0.5rem;">
+          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.85rem;color:var(--td);text-transform:none;letter-spacing:0;"><input type="radio" name="pricingType" id="pricingTypeSized" value="sized" checked onchange="setPricingType('sized')" style="width:auto;accent-color:var(--bl);"/> Sized (S / M / L)</label>
+          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.85rem;color:var(--td);text-transform:none;letter-spacing:0;"><input type="radio" name="pricingType" id="pricingTypeTwo" value="two" onchange="setPricingType('two')" style="width:auto;accent-color:var(--bl);"/> Two Options</label>
+          <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer;font-size:0.85rem;color:var(--td);text-transform:none;letter-spacing:0;"><input type="radio" name="pricingType" id="pricingTypeFlat" value="flat" onchange="setPricingType('flat')" style="width:auto;accent-color:var(--bl);"/> Flat Price</label>
+        </div>
+      </div>
+<div class="avail-add-prices" id="priceSizedFields">
+        <div><label>Small (₱)</label><input type="number" id="newItemPriceS" placeholder="e.g. 205"/></div>
+        <div><label>Medium (₱)</label><input type="number" id="newItemPriceM" placeholder="e.g. 215"/></div>
+        <div><label>Large (₱)</label><input type="number" id="newItemPriceL" placeholder="e.g. 225"/></div>
+      </div>
+      <div id="priceTwoFields" style="display:none;margin-bottom:0.75rem;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.5rem;">
+          <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Option 1 Label</label><input type="text" id="newItemLabelS" placeholder="e.g. Small" style="background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.75rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);width:100%;"/></div>
+          <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Option 1 Price (₱)</label><input type="number" id="newItemPriceTwoS" placeholder="e.g. 95" style="background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.75rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);width:100%;"/></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">
+          <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Option 2 Label</label><input type="text" id="newItemLabelL" placeholder="e.g. Large" style="background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.75rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);width:100%;"/></div>
+          <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Option 2 Price (₱)</label><input type="number" id="newItemPriceTwoL" placeholder="e.g. 125" style="background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.75rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);width:100%;"/></div>
+        </div>
+      </div>
+<div id="priceFlatField" style="display:none;margin-bottom:0.75rem;">
+        <label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Price (₱)</label>
+        <input type="number" id="newItemPriceFlat" placeholder="e.g. 95" style="background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.75rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);width:100%;max-width:180px;"/>
+      </div>
+      <button id="btnAddItem" style="background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.7rem 1.5rem;font-size:0.88rem;cursor:pointer;font-family:'Inter',sans-serif;margin-top:0.5rem;">➕ Add Item</button>
+      <div id="addItemConfirm" style="display:none;margin-top:0.75rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.6rem 1rem;"><p style="color:#2d6a4f;font-size:0.85rem;">✅ Item added successfully!</p></div>
+    </div>
+    <div id="availList"></div>
+  </div>
+</section>
+
+<!-- COMMENTS (Admin Only) -->
+<section id="commentsSection" style="display:none;background:var(--cd);padding:6rem 2rem;">
+  <div style="max-width:800px;margin:0 auto;">
+    <div style="text-align:center;margin-bottom:2.5rem;"><p class="section-label">Staff Only</p><h2 style="font-family:'Playfair Display',serif;font-size:2.5rem;color:var(--bd);margin-bottom:0.5rem;">Comments & Feedback</h2></div>
+    <div style="margin-bottom:2rem;"><h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#2f6f8f;margin-bottom:0.75rem;padding-bottom:0.3rem;border-bottom:2px solid #bcd7e2;">✉️ Contact Messages</h3><div id="fbListContact"></div></div>
+    <div style="margin-bottom:2rem;"><h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#c0392b;margin-bottom:0.75rem;padding-bottom:0.3rem;border-bottom:2px solid #f5c6c6;">😞 Complaints</h3><div id="fbListComplaint"></div></div>
+    <div style="margin-bottom:2rem;"><h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#f39c12;margin-bottom:0.75rem;padding-bottom:0.3rem;border-bottom:2px solid #fde8b0;">💡 Suggestions</h3><div id="fbListSuggestion"></div></div>
+    <div style="margin-bottom:2rem;"><h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#2d9e5f;margin-bottom:0.75rem;padding-bottom:0.3rem;border-bottom:2px solid #a8d5b5;">❤️ Compliments</h3><div id="fbListCompliment"></div></div>
+    <div style="margin-bottom:2rem;"><h3 style="font-family:'Playfair Display',serif;font-size:1.2rem;color:#888;margin-bottom:0.75rem;padding-bottom:0.3rem;border-bottom:2px solid #ddd;">💬 Other</h3><div id="fbListOther"></div></div>
+  </div>
+</section>
+
+<!-- ADMIN DASHBOARD -->

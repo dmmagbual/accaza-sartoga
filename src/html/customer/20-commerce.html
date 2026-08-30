@@ -1,0 +1,116 @@
+<section class="menu" id="menu">
+  <div class="menu-inner">
+    <div style="text-align:center;margin-bottom:2rem;">
+      <p class="section-label" style="color:var(--bl);">What We Serve</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--cr);margin-bottom:0.75rem;">Our Menu</h2>
+      <p style="text-align:center;margin-bottom:1.25rem;"><p style="font-size:0.95rem;color:rgba(224,212,198,0.7);">From your morning brew to a full day — crafted fresh, served with love.</p>
+    </div>
+    <div style="text-align:center;margin-bottom:1.25rem;"><p style="font-size:0.95rem;color:rgba(224,212,198,0.7);font-style:italic;">What are you craving today? ☕ Choose a category below to explore our handcrafted drinks and pastries.</p></div>
+    <div class="menu-tabs" id="menuTabsRow"></div>
+    <div id="custPkgWrap" style="display:none;margin:1rem 0 1.5rem;"></div>
+    <div id="menuGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-top:1rem;"></div>
+  </div>
+</section>
+
+<!-- ORDER -->
+<section class="order-section" id="order">
+  <div class="order-inner">
+    <div style="text-align:center;margin-bottom:3rem;">
+      <p class="section-label" style="color:var(--bl);">Place Your Order</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.75rem;">Order Online</h2>
+      <p style="color:var(--tm);max-width:480px;margin:0 auto;font-size:0.95rem;">Pick your items, customize, choose delivery or pick-up, then pay via GCash or bank transfer.</p>
+      <div style="background:#fff3cd;border:1px solid #f0ad4e;border-radius:8px;padding:0.85rem 1.25rem;margin-top:1rem;max-width:600px;margin-left:auto;margin-right:auto;"><p style="font-size:0.85rem;color:#856404;line-height:1.6;text-align:center;">🛵 <strong>Delivery Notice:</strong> We only deliver within <strong>Dasmariñas, Cavite</strong>. Delivery fees shall be shouldered by the customer. Customers may arrange delivery through their preferred courier service. For orders outside Dasmariñas, please order through <strong>🟠 foodpanda</strong> or <strong>🟢 GrabFood</strong>.</p></div>
+    </div>
+    <div class="order-layout">
+      <div>
+        <h3 class="order-section-title">1. Choose Your Items</h3>
+        <div class="order-tabs" id="orderTabsRow"></div>
+        <div class="item-list" id="orderItemList">
+          <div class="order-empty-state"><span class="big-icon">☕</span><h3>What are you craving today?</h3><p>Choose a category above to explore our handcrafted drinks and pastries.</p></div>
+        </div>
+        <div id="qrSection" style="margin-top:1.5rem;background:#fff;border:1px solid var(--cd);border-radius:10px;padding:1.25rem;text-align:center;">
+          <p style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--bd);margin-bottom:1rem;">📲 Scan to Pay</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+            <div id="qrGcash"><img src="assets/img/payment/gcash-qr.jpg" alt="GCash QR Code" loading="lazy" decoding="async" style="width:100%;border-radius:8px;"/></div>
+            <div id="qrBdo"><img src="assets/img/payment/bdo-qr.jpg" alt="BDO QR Code" loading="lazy" decoding="async" style="width:100%;border-radius:8px;"/></div>
+          </div>
+          <p style="font-size:0.75rem;color:var(--tl);margin-top:0.75rem;line-height:1.6;">Scan and pay using your preferred payment channel, then attach your receipt below as proof of payment. ✅</p>
+        </div>
+      </div>
+      <div>
+        <div class="cart-box" onclick="goToCheckout(event)" style="cursor:pointer;">
+          <h3 class="order-section-title">2. Your Order</h3>
+          <div id="cartItems"><p style="color:var(--tl);font-size:0.85rem;">No items added yet.</p></div>
+          <div class="cart-total" id="cartTotal" style="display:none;"><span>Total</span><span id="totalAmt">₱0</span></div>
+          <button id="cartCheckoutBtn" onclick="goToCheckout(event)" style="display:none;width:100%;margin-top:0.85rem;background:var(--bd);color:#fff;border:none;border-radius:8px;padding:0.85rem;font-size:0.95rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;">Proceed to Checkout ↓</button>
+        </div>
+        <div class="form-box">
+          <h3 class="order-section-title">3. Delivery or Pick-up?</h3>
+          <div class="order-type-btns">
+            <button class="type-btn active" id="btnPickup" onclick="setType('pickup')">🏠 Pick-up</button>
+            <button class="type-btn" id="btnDelivery" onclick="setType('delivery')">🛵 Delivery</button>
+          </div>
+          <div id="deliveryField" style="display:none;margin-top:1rem;"><label class="field-label">Delivery Address</label><textarea id="deliveryAddr" rows="2" placeholder="Enter your full delivery address..."></textarea><p style="font-size:0.78rem;color:#856404;background:#fff3cd;border:1px solid #f0ad4e;border-radius:6px;padding:0.55rem 0.85rem;margin-top:0.5rem;line-height:1.5;">📦 Delivery fees shall be shouldered by the customer. You may arrange delivery through your preferred courier service.</p></div>
+          <h3 class="order-section-title" style="margin-top:1.5rem;">4. Your Details</h3><div id="appUserIndicator" style="display:none;background:rgba(176,141,87,0.12);border:1px solid rgba(176,141,87,0.4);border-radius:8px;padding:0.55rem 0.85rem;margin-bottom:0.75rem;font-size:0.8rem;color:var(--tm);">👋 Signed in as <strong id="appUserName"></strong> <a onclick="appLogout()" style="color:var(--bd);cursor:pointer;text-decoration:underline;margin-left:0.35rem;">Not you?</a></div><button id="enableNotifyBtn" onclick="enableNotifications()" style="display:none;width:100%;margin-bottom:0.75rem;background:#19241b;color:#fff;border:none;border-radius:8px;padding:0.6rem 0.9rem;font-size:0.82rem;cursor:pointer;font-family:'Inter',sans-serif;">🔔 Enable order-ready notifications</button>
+          <label class="field-label">Full Name</label><input type="text" id="custName" placeholder="e.g. Maria Santos" style="margin-bottom:0.75rem;"/>
+          <label class="field-label">Phone Number</label><input type="text" id="custPhone" placeholder="e.g. 09XX XXX XXXX" style="margin-bottom:0.75rem;"/>
+          <label class="field-label">Notes (optional)</label><input type="text" id="custNotes" placeholder="e.g. extra hot, no ice..."/>
+          <h3 class="order-section-title" style="margin-top:1.5rem;">5. Payment Method</h3>
+          <div class="order-type-btns">
+            <button class="type-btn active" id="btnGcash" onclick="setPayment('gcash')">📱 GCash</button>
+            <button class="type-btn" id="btnMaya" onclick="setPayment('maya')" style="display:none;">💜 PayMaya</button>
+            <button class="type-btn" id="btnBank" onclick="setPayment('bank')">🏦 Bank Transfer</button>
+          </div>
+          <div class="payment-info">
+            <div id="gcashInfo"><div style="display:flex;gap:1rem;align-items:flex-start;flex-wrap:wrap;"><div style="flex:1;min-width:150px;"><p class="pay-label">GCash Number</p><p class="pay-value" id="gcashNum">0927 692 4831</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="gcashName">ACCAZA.</p></div><div class="pay-qr-app" style="flex:0 0 auto;text-align:center;"><img src="assets/img/payment/gcash-qr.jpg" alt="GCash QR Code" loading="lazy" style="width:150px;max-width:45vw;border-radius:8px;border:1px solid var(--cd);"/><p style="font-size:0.7rem;color:var(--tl);margin-top:0.35rem;">📲 Scan to pay</p></div></div></div>
+            <div id="mayaInfo" style="display:none;"><p class="pay-label">PayMaya Number</p><p class="pay-value" id="mayaNum">—</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="mayaName">—</p></div>
+            <div id="bankInfo" style="display:none;"><div style="display:flex;gap:1rem;align-items:flex-start;flex-wrap:wrap;"><div style="flex:1;min-width:150px;"><div id="bdoRow"><p class="pay-label">BDO Account</p><p class="pay-value" id="bankNum">0068-2050-9919</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="bankAccName">ACCAZA</p></div><div id="ubRow" style="margin-top:0.5rem;"><p class="pay-label">UnionBank Account</p><p class="pay-value" id="bankNum2">1093-3237-9862</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="bankAccName2">ACCAZA</p></div><div id="bank3Row" style="display:none;"><p class="pay-label" style="margin-top:0.5rem;" id="bank3LabelDisp">Other Bank Account</p><p class="pay-value" id="bank3Num">—</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="bank3AccName">—</p></div><div id="bank4Row" style="display:none;"><p class="pay-label" style="margin-top:0.5rem;" id="bank4LabelDisp">Other Bank Account</p><p class="pay-value" id="bank4Num">—</p><p class="pay-label" style="margin-top:0.5rem;">Account Name</p><p class="pay-value" id="bank4AccName">—</p></div></div><div class="pay-qr-app" style="flex:0 0 auto;text-align:center;"><img src="assets/img/payment/bdo-qr.jpg" alt="BDO QR Code" loading="lazy" style="width:150px;max-width:45vw;border-radius:8px;border:1px solid var(--cd);"/><p style="font-size:0.7rem;color:var(--tl);margin-top:0.35rem;">📲 Scan to pay (BDO)</p></div></div></div>
+            <p style="font-size:0.75rem;color:var(--tl);margin-top:0.75rem;line-height:1.5;">After placing your order, send payment and screenshot your receipt. We'll confirm once verified. ✅</p>
+          </div>
+          <h3 class="order-section-title" style="margin-top:1.5rem;">6. Proof of Payment</h3>
+          <div style="background:var(--cr);border:2px dashed var(--cd);border-radius:8px;padding:1.25rem;text-align:center;cursor:pointer;" onclick="document.getElementById('paymentProof').click()" id="uploadBox">
+            <div id="uploadPlaceholder"><div style="font-size:2rem;margin-bottom:0.5rem;">📎</div><p style="font-size:0.85rem;color:var(--tm);font-weight:500;">Click to attach screenshot</p><p style="font-size:0.75rem;color:var(--tl);margin-top:0.25rem;">GCash or bank transfer receipt (JPG, PNG)</p></div>
+            <div id="uploadPreview" style="display:none;"><img id="proofImg" style="max-width:100%;max-height:180px;border-radius:6px;margin-bottom:0.5rem;" alt=""/><p style="font-size:0.75rem;color:#2d9e5f;font-weight:500;">✅ Receipt attached!</p><p style="font-size:0.72rem;color:var(--tl);margin-top:0.2rem;" id="proofFileName"></p><button onclick="removeProof(event)" style="margin-top:0.5rem;background:none;border:1px solid #e0b0b0;border-radius:4px;padding:0.2rem 0.6rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">Remove</button></div>
+          </div>
+          <input type="file" id="paymentProof" accept="image/*" style="display:none;" onchange="previewProof(this)"/>
+          <h3 class="order-section-title" style="margin-top:1.5rem;">7. Preferred Contact for Confirmation</h3>
+          <p style="font-size:0.78rem;color:var(--tl);margin-bottom:0.75rem;">How should we contact you to confirm your order?</p>
+          <div class="order-type-btns" style="flex-wrap:wrap;gap:0.4rem;margin-bottom:0.75rem;">
+            <button class="type-btn active" id="btnWhatsapp" onclick="setContact('whatsapp')" style="flex:none;padding:0.5rem 0.9rem;font-size:0.8rem;">📱 WhatsApp</button>
+            <button class="type-btn" id="btnViber" onclick="setContact('viber')" style="flex:none;padding:0.5rem 0.9rem;font-size:0.8rem;">💬 Viber</button>
+            <button class="type-btn" id="btnSms" onclick="setContact('sms')" style="flex:none;padding:0.5rem 0.9rem;font-size:0.8rem;">📩 SMS</button>
+            <button class="type-btn" id="btnCall" onclick="setContact('call')" style="flex:none;padding:0.5rem 0.9rem;font-size:0.8rem;">📞 Call</button>
+            <button class="type-btn" id="btnEmail" onclick="setContact('email')" style="flex:none;padding:0.5rem 0.9rem;font-size:0.8rem;">📧 Email</button>
+          </div>
+          <input type="text" id="custContact" placeholder="Enter your WhatsApp number" style="margin-bottom:0.25rem;"/>
+          <p style="font-size:0.72rem;color:var(--tl);">We will use this to send you your order confirmation. 😊</p>
+          <button class="btn-place-order" onclick="placeOrder()" disabled aria-disabled="true">Checking order availability…</button>
+          <button id="orderConnectionRetry" onclick="retryCustomerConnection()" style="display:none;width:100%;margin-top:0.5rem;background:#fff6e8;color:#76511d;border:1px solid #d6b77f;border-radius:6px;padding:0.7rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;">↻ Retry connection</button>
+          <button onclick="resetOrder()" style="width:100%;margin-top:0.5rem;background:transparent;color:var(--tl);border:1px solid var(--cd);border-radius:6px;padding:0.7rem;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;">🔄 Reset Order</button>
+          <div id="orderConfirm" style="display:none;margin-top:1rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:8px;padding:1.25rem;text-align:center;">
+            <p style="font-size:1.1rem;font-weight:600;color:#2d6a4f;margin-bottom:0.5rem;">🎉 Order Placed Successfully!</p>
+            <p style="font-size:0.8rem;color:#4a7c59;margin-bottom:0.5rem;">📸 Tag us <strong>@accazacoffeehouse</strong> &amp; use <strong>#AccazaCoffee</strong> to be featured!</p>
+            <p style="font-size:0.85rem;color:#2d6a4f;margin-bottom:0.75rem;">Your Order ID is:</p>
+            <div style="background:#fff;border:2px solid #a8d5b5;border-radius:8px;padding:0.75rem 1.5rem;display:inline-block;margin-bottom:0.75rem;"><span id="displayOrderId" style="font-family:'Playfair Display',serif;font-size:1.6rem;color:var(--bd);font-weight:600;letter-spacing:0.1em;"></span></div>
+            <p style="font-size:0.82rem;color:var(--tm);line-height:1.6;margin-bottom:0.5rem;">📱 We will contact you via your preferred method to confirm your order.</p>
+            <p style="font-size:0.78rem;color:#856404;background:#fef3cd;border-radius:6px;padding:0.5rem 0.75rem;line-height:1.5;">⬇️ Scroll down to the Order Tracker to see your live order status!</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ORDER TRACKER -->
+<section id="orderTracker" style="background:var(--cd);padding:5rem 2rem;">
+  <div style="max-width:1000px;margin:0 auto;">
+    <div style="text-align:center;margin-bottom:2rem;">
+      <p class="section-label" style="color:var(--bl);">Your Orders</p>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.5rem;">Order Tracker</h2>
+      <p style="color:var(--tm);font-size:0.9rem;">Your order will appear here automatically once placed — no refresh needed! 🔥</p>
+    </div>
+    <div id="activeOrdersList"><div style="text-align:center;padding:3rem;color:var(--tl);"><p style="font-size:2.5rem;margin-bottom:0.75rem;">☕</p><p style="font-size:0.95rem;font-weight:500;color:var(--bd);margin-bottom:0.3rem;">No active orders yet</p><p style="font-size:0.85rem;">Place an order above and it will appear here!</p></div></div>
+  </div>
+</section>
+
+<!-- RESERVATIONS -->

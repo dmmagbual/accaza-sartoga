@@ -1,0 +1,318 @@
+<section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
+  <div class="admin-wrap">
+            <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="display:inline-block;font-size:0.74rem;line-height:1.2;color:#5f4524;background:#f3e8d5;border:1px solid #d4bd98;border-radius:999px;padding:.16rem .46rem;font-weight:700;letter-spacing:.045em;vertical-align:middle;white-space:nowrap;">build&nbsp;v392</span></div><p style="font-size:.78rem;color:var(--tl);">Firebase Realtime Database</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><a href="books.html" target="_blank" rel="noopener" title="Open Finance Books in a new tab" style="background:#eef3ff;color:#1c3f8a;border:1px solid #b9c9ef;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;text-decoration:none;">Finance Books</a><button class="admin-logout" onclick="logoutAdmin()">Log out</button></div></div>
+    <div class="admin-stats">
+      <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
+      <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
+      <div class="admin-stat-card"><span class="stat-num" id="statReservations">0</span><span class="stat-lbl">Reservations</span></div>
+      <div class="admin-stat-card"><span class="stat-num" id="statRevenue">₱0</span><span class="stat-lbl">Active Order Value</span></div>
+    </div>
+    <link rel="stylesheet" href="assets/css/admin/navigation.css" id="accaza-admin-nav-7c"/>
+    <div class="admin-tabs" style="display:block;">
+      <div id="adminGroups" aria-label="Admin work areas">
+        <button class="admin-group pos-primary" data-grp="pos" onclick="showTabGroup('pos',this)">POS</button>
+        <button class="admin-group active" data-grp="overview" onclick="showTabGroup('overview',this)">Overview</button>
+        <button class="admin-group" data-grp="orders" onclick="showTabGroup('orders',this)">Orders &amp; Operations</button>
+        <button class="admin-group" data-grp="stock" onclick="showTabGroup('stock',this)">Supplies &amp; Recipes</button>
+        <button class="admin-group" data-grp="finance" onclick="showTabGroup('finance',this)">Financials</button>
+        <button class="admin-group" data-grp="customers" onclick="showTabGroup('customers',this)">Customers</button>
+        <button class="admin-group" data-grp="settings" onclick="showTabGroup('settings',this)">Settings</button>
+      </div>
+      <div class="admin-report-period" aria-label="Shared report date range"><div class="admin-report-period-copy"><span>Reporting scope</span><strong id="overviewRangeLabel">Last 30 days</strong><small id="overviewDataNote">Admin and Finance Books use the same dates.</small></div><div class="admin-report-period-controls" role="group" aria-label="Report date range"><label>From<input id="reportPeriodFrom" type="date" aria-label="Report start date"/></label><label>To<input id="reportPeriodTo" type="date" aria-label="Report end date"/></label><button type="button" id="reportPeriodApply">Apply</button><button type="button" id="reportPeriodAll">All time</button></div></div>
+      <div class="tabgrp" data-grp="pos" data-label="Quick sale" style="display:none;">
+        <button class="admin-tab" id="tabBtnPos" onclick="posSwitchTab('pos',this)">🧾 Open Point of Sale</button>
+        <button class="admin-tab" id="tabBtnStaffInbox" onclick="posSwitchTab('inbox',this)">📨 Staff Inbox <span id="staffInboxBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:.68rem;font-weight:800;padding:.1rem .42rem;margin-left:.25rem;">0</span></button>
+      </div>
+      <div class="tabgrp" data-grp="overview" data-label="Overview">
+        <button class="admin-tab active" onclick="switchTab('dashboard',this)">📊 Dashboard</button>
+        <button class="admin-tab" onclick="posSwitchTab('operations',this)">🚨 Operations Center</button>
+      </div>
+      <div class="tabgrp" data-grp="orders" data-label="Orders &amp; operations" style="display:none;">
+        <button class="admin-tab" id="tabBtnOrders" onclick="switchTab('orders',this)">📋 Orders <span id="ordersBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
+        <button class="admin-tab" onclick="posSwitchTab('ops',this)">🧾 Register Operations</button>
+        <button class="admin-tab" onclick="switchTab('reservations',this)">📅 Reservations</button>
+        <button class="admin-tab" onclick="switchTab('calendar',this)">🗓️ Calendar</button>
+      </div>
+      <div class="tabgrp" data-grp="stock" data-label="Supplies &amp; recipes" style="display:none;">
+        <button class="admin-tab" onclick="posSwitchTab('inventory',this)">📦 Stock Items <span id="lowStockBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
+        <button class="admin-tab" id="tabBtnPurchases" onclick="posSwitchTab('purchases',this)">📥 Purchases <span style="font-size:0.62rem;color:#1c6b47;font-weight:600;">· Receive stock</span></button>
+        <button class="admin-tab" onclick="posSwitchTab('recipes',this)">🧪 Recipes <span id="costGapBadge" style="display:none;background:#e6a817;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;" title="menu items not costed">0</span></button>
+        <button class="admin-tab" onclick="posSwitchTab('usage',this)">🍽️ Internal Usage</button>
+        <button class="admin-tab" onclick="posSwitchTab('packages',this)">🎁 Packages</button>
+      </div>
+      <div class="tabgrp" data-grp="finance" data-label="Financials" style="display:none;">
+        <button class="admin-tab" onclick="posSwitchTab('saleshistory',this)">🧾 Sales History</button>
+        <button class="admin-tab" onclick="posSwitchTab('analytics',this)">📊 Analytics</button>
+        <button class="admin-tab" onclick="posSwitchTab('dailyreport',this)">📆 Daily Report</button>
+        <button class="admin-tab" onclick="posSwitchTab('payouts',this)">💱 Platform Payouts</button>
+        <button class="admin-tab" onclick="posSwitchTab('stockvalue',this)">📊 Inventory</button>
+        <button class="admin-tab" onclick="posSwitchTab('discrepancy',this)">🚩 Discrepancies <span id="discBadge" style="display:none;background:#e63946;color:#fff;border-radius:10px;padding:0 0.4rem;font-size:0.7rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
+        <button class="admin-tab" onclick="posSwitchTab('petty',this)">💵 Cash Payments</button>
+        <button class="admin-tab" onclick="posSwitchTab('undeposited',this)">💰 Undeposited Collection</button>
+      </div>
+      <div class="tabgrp" data-grp="customers" data-label="Customers" style="display:none;">
+        <button class="admin-tab" onclick="switchTab('reviews',this)">⭐ Reviews</button>
+        <button class="admin-tab" onclick="switchTab('appcustomers',this)">👥 App Customers</button>
+      </div>
+      <div class="tabgrp" data-grp="settings" data-label="Settings &amp; maintenance" style="display:none;">
+        <button class="admin-tab" onclick="posSwitchTab('possettings',this)">⚙️ POS Settings</button>
+        <button class="admin-tab" onclick="posSwitchTab('accountingperiods',this)">🔒 Accounting Periods</button>
+        <button class="admin-tab" onclick="posSwitchTab('channelpricing',this)">💱 Channel Pricing</button>
+        <button class="admin-tab" onclick="posSwitchTab('dedupe',this)">🧹 Menu Maintenance</button>
+        <button class="admin-tab" onclick="switchTab('payment',this)">💳 Payment Details</button>
+        <button class="admin-tab" onclick="switchTab('staffaccounts',this)">🔐 Account Setup</button>
+        <button class="admin-tab" onclick="posSwitchTab('staffaccess',this)">🔐 Staff Access</button>
+        <button class="admin-tab" id="tabBtnAdminAccounts" style="display:none;" onclick="switchTab('adminaccounts',this)">👑 Admin Accounts</button>
+        <button class="admin-tab" onclick="switchTab('changepw',this)">🔑 Change Password</button>
+      </div>
+    </div>
+    <div id="adminWorkspaceHeader" aria-live="polite">
+      <div class="awh-copy"><div class="awh-eyebrow" id="adminWorkspaceArea">Overview</div><h2 id="adminWorkspaceTitle">Store overview</h2><p id="adminWorkspaceSubtitle">Today’s activity, service signals, and the work that needs attention.</p>
+        <div class="admin-service-strip" id="adminServiceStrip" aria-label="Live service status">
+          <span class="admin-service-pill" id="adminServiceConnection"><i class="admin-status-dot" aria-hidden="true"></i><strong id="adminServiceConnectionLabel">Online</strong></span><span class="admin-status-sep" aria-hidden="true">·</span>
+          <span class="admin-service-pill" id="adminServiceShift"><strong id="adminServiceShiftLabel">Shift closed</strong><span id="adminServiceCashier"> · No cashier assigned</span></span><span class="admin-status-sep" aria-hidden="true">·</span>
+          <button class="admin-service-pill admin-service-queue" id="adminServiceQueue" type="button" onclick="window.__openOfflineQueue(this)"><strong>Offline queue</strong><span id="adminServiceQueueNote"> · Push to check sync queue</span></button>
+        </div>
+      </div>
+      <div id="adminWorkspaceActions"></div>
+    </div>
+    <!-- DASHBOARD -->
+    <div id="tab-dashboard" class="admin-tab-content">
+      <div id="overviewCommandCenter" aria-live="polite"><div class="occ-loading">Preparing today’s command center…</div></div>
+      <div id="todayResBanner" class="overview-reservation-alert" style="display:none;background:linear-gradient(135deg,#fff3cd,#fde8b0);border:1px solid #f0ad4e;border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;">
+        <div style="display:flex;align-items:center;gap:0.75rem;"><span style="font-size:1.5rem;">⚠️</span><div><p style="font-weight:600;color:#664d03;font-size:0.95rem;" id="todayResText">Reservations today!</p><p style="font-size:0.8rem;color:#856404;">Make sure the team is ready.</p></div></div>
+        <button onclick="openAdminWorkspaceTab('reservations')" style="background:#856404;color:#fff;border:none;border-radius:6px;padding:0.45rem 1rem;font-size:0.8rem;cursor:pointer;font-family:'Inter',sans-serif;">View Reservations →</button>
+      </div>
+      <div class="overview-periods" style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.5rem;">
+        <div style="background:linear-gradient(135deg,#19241b,#243528);border-radius:10px;padding:1.25rem;text-align:center;"><div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(224,212,198,0.6);margin-bottom:0.4rem;">Net sales</div><div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#c9a36a;" id="overviewNetSales">₱0</div><div style="font-size:0.72rem;color:rgba(224,212,198,0.5);">selected period</div></div>
+        <div style="background:linear-gradient(135deg,#19241b,#243528);border-radius:10px;padding:1.25rem;text-align:center;"><div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(224,212,198,0.6);margin-bottom:0.4rem;">Gross sales</div><div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#c9a36a;" id="overviewGrossSales">₱0</div><div style="font-size:0.72rem;color:rgba(224,212,198,0.5);">before discounts/refunds</div></div>
+        <div style="background:linear-gradient(135deg,#19241b,#243528);border-radius:10px;padding:1.25rem;text-align:center;"><div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(224,212,198,0.6);margin-bottom:0.4rem;">Transactions</div><div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#c9a36a;" id="overviewTransactions">0</div><div style="font-size:0.72rem;color:rgba(224,212,198,0.5);">recognized sales</div></div>
+        <div style="background:linear-gradient(135deg,#19241b,#243528);border-radius:10px;padding:1.25rem;text-align:center;"><div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(224,212,198,0.6);margin-bottom:0.4rem;">Average sale</div><div style="font-family:'Playfair Display',serif;font-size:1.5rem;color:#c9a36a;" id="overviewAverageSale">₱0</div><div style="font-size:0.72rem;color:rgba(224,212,198,0.5);">net per transaction</div></div>
+      </div>
+      <div hidden><span id="dashToday">₱0</span><span id="dashTodayCount">0 orders</span><span id="dashWeek">₱0</span><span id="dashWeekCount">0 orders</span><span id="dashMonth">₱0</span><span id="dashMonthCount">0 orders</span><span id="dashAllTime">₱0</span><span id="dashAllTimeCount">0 orders</span></div>
+      <div class="overview-trends" style="display:grid;grid-template-columns:2fr 1fr;gap:1rem;margin-bottom:1.25rem;">
+        <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;"><h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;">📈 Revenue &amp; Orders</h4><div style="display:flex;gap:1rem;font-size:0.72rem;"><span style="display:flex;align-items:center;gap:0.3rem;"><span style="width:12px;height:12px;border-radius:2px;background:#b08d57;display:inline-block;"></span>Net revenue</span><span style="display:flex;align-items:center;gap:0.3rem;"><span style="width:12px;height:12px;border-radius:2px;background:#3b8fd4;display:inline-block;"></span>Orders</span></div></div><canvas id="revenueChart" height="180" style="width:100%;display:block;"></canvas></div>
+        <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;margin-bottom:1rem;">💳 Payment Split</h4><div id="payPendBanner"></div><div id="payMixList" style="margin-top:0.5rem;"></div></div>
+      </div>
+      <div class="overview-insights" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+        <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><div class="overview-card-head"><h4 id="overviewTopTitle" style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;">Top 10 Best Sellers - By Quantity</h4><div class="overview-metric-toggle" aria-label="Rank drinks by"><button type="button" class="active" aria-pressed="true" data-overview-metric="units">Quantity</button><button type="button" aria-pressed="false" data-overview-metric="revenue">Revenue</button></div></div><div id="topItemsList"></div></div>
+        <div style="background:var(--cr);border:1px solid var(--cd);border-radius:10px;padding:1.25rem;"><h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;margin-bottom:1rem;">📦 Order Activity &amp; Outcomes</h4><div id="statusBreakdown"></div></div>
+      </div>
+    </div>
+    <!-- ORDERS -->
+    <div id="tab-orders" class="admin-tab-content" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;"><h3 id="ordersHeading" style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;">Active Orders</h3><button id="archiveToggleBtn" onclick="toggleArchivePanel()" style="background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.45rem 1rem;font-size:0.82rem;cursor:pointer;font-family:'Inter',sans-serif;">📦 View Archive</button></div>
+      <div id="ordersList"><p style="color:var(--tl);text-align:center;padding:2rem;">Loading orders...</p></div>
+      <div class="archive-section" id="archivePanel" style="display:none;">
+        <div class="archive-header"><h3 style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--bd);">📦 Order Archive</h3>
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+            <input type="date" id="archiveFrom" style="font-size:0.78rem;padding:0.3rem 0.6rem;border:1px solid var(--cd);border-radius:6px;background:var(--cr);color:var(--td);"/>
+            <span style="font-size:0.78rem;color:var(--tl);">to</span>
+            <input type="date" id="archiveTo" style="font-size:0.78rem;padding:0.3rem 0.6rem;border:1px solid var(--cd);border-radius:6px;background:var(--cr);color:var(--td);"/>
+            <button onclick="renderArchive()" style="background:var(--bl);color:#fff;border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;">Filter</button>
+            <button onclick="downloadArchivePDF()" style="background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;">⬇️ Download PDF</button>
+            <button onclick="toggleArchivePanel()" style="background:var(--cd);border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.78rem;cursor:pointer;color:var(--tm);font-family:'Inter',sans-serif;">✕ Close</button>
+          </div>
+        </div>
+        <div class="archive-summary" id="archiveSummary"></div>
+        <div id="archiveList"></div>
+      </div>
+    </div>
+    <!-- RESERVATIONS -->
+    <div id="tab-reservations" class="admin-tab-content" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;"><h3 id="resHeading" style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;">Reservations</h3><button id="resArchiveToggleBtn" onclick="toggleResArchivePanel()" style="background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.45rem 1rem;font-size:0.82rem;cursor:pointer;font-family:'Inter',sans-serif;">📦 View Archive</button></div>
+      <div id="resList"></div>
+      <div class="archive-section" id="resArchivePanel" style="display:none;">
+        <div class="archive-header"><h3 style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--bd);">📦 Reservation Archive</h3>
+          <div style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
+            <input type="date" id="resArchiveFrom" style="font-size:0.78rem;padding:0.3rem 0.6rem;border:1px solid var(--cd);border-radius:6px;background:var(--cr);color:var(--td);"/>
+            <input type="date" id="resArchiveTo" style="font-size:0.78rem;padding:0.3rem 0.6rem;border:1px solid var(--cd);border-radius:6px;background:var(--cr);color:var(--td);"/>
+            <button onclick="renderResArchive()" style="background:var(--bl);color:#fff;border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;">Filter</button>
+            <button onclick="printResArchive()" style="background:var(--bd);color:var(--cr);border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.78rem;cursor:pointer;font-family:'Inter',sans-serif;">🖨️ Print</button>
+            <button onclick="toggleResArchivePanel()" style="background:var(--cd);border:none;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.78rem;cursor:pointer;color:var(--tm);font-family:'Inter',sans-serif;">✕ Close</button>
+          </div>
+        </div>
+        <div class="archive-summary" id="resArchiveSummary"></div>
+        <div id="resArchiveList"></div>
+      </div>
+    </div>
+    <!-- CALENDAR -->
+    <div id="tab-calendar" class="admin-tab-content" style="display:none;">
+      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:0.5rem;">🗓️ Reservation Calendar Manager</h3>
+      <p style="font-size:0.85rem;color:var(--tl);margin-bottom:1.5rem;">Click a date to manage time slots.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start;">
+        <div class="admin-cal-wrap">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;"><button onclick="adminCalNavigate(-1)" style="background:var(--cd);border:none;border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:1rem;color:var(--bd);">‹</button><span id="adminCalTitle" style="font-family:'Playfair Display',serif;font-size:1rem;color:var(--bd);font-weight:600;"></span><button onclick="adminCalNavigate(1)" style="background:var(--cd);border:none;border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:1rem;color:var(--bd);">›</button></div>
+          <div class="admin-cal-grid" id="adminCalGrid"></div>
+          <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:1rem;">
+            <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;color:var(--tl);"><div style="width:10px;height:10px;border-radius:50%;background:#2d9e5f;"></div>Open</div>
+            <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;color:var(--tl);"><div style="width:10px;height:10px;border-radius:50%;background:#f39c12;"></div>Partial</div>
+            <div style="display:flex;align-items:center;gap:0.4rem;font-size:0.72rem;color:var(--tl);"><div style="width:10px;height:10px;border-radius:50%;background:#c0392b;"></div>Blocked</div>
+          </div>
+        </div>
+        <div id="adminSlotManager" style="display:none;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;flex-wrap:wrap;gap:0.5rem;">
+            <h4 style="font-family:'Playfair Display',serif;color:var(--bd);font-size:1rem;" id="adminSlotTitle">Slots</h4>
+            <div style="display:flex;gap:0.5rem;"><button onclick="blockAllSlots()" style="background:#fde8e8;border:1px solid #f5c6c6;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.75rem;color:#721c24;cursor:pointer;">❌ Block All</button><button onclick="openAllSlots()" style="background:#d4edda;border:1px solid #a8d5b5;border-radius:6px;padding:0.35rem 0.75rem;font-size:0.75rem;color:#155724;cursor:pointer;">✅ Open All</button></div>
+          </div>
+          <p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.75rem;">🟢 Open &nbsp;🔴 Blocked &nbsp;🔵 Has confirmed booking</p>
+          <div class="slot-grid" id="adminSlotGrid"></div>
+        </div>
+      </div>
+    </div>
+    <!-- REVIEWS -->
+    <div id="tab-reviews" class="admin-tab-content" style="display:none;">
+      <div id="reviewAddSection" class="staff-hide">
+      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:1rem;">Add a New Review</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:0.75rem;"><div><label class="field-label">Customer Name</label><input type="text" id="newReviewName" placeholder="e.g. Maria Santos"/></div><div><label class="field-label">Rating</label><select id="newReviewStars"><option value="5">⭐⭐⭐⭐⭐</option><option value="4">⭐⭐⭐⭐</option><option value="3">⭐⭐⭐</option><option value="2">⭐⭐</option><option value="1">⭐</option></select></div></div><div style="margin-bottom:0.75rem;"><label class="field-label">Date <span style="font-weight:400;color:var(--tl);font-size:0.78rem;">(optional — leave blank to use today)</span></label><input type="text" id="newReviewDate" placeholder="e.g. June 2026 · via Facebook" style="width:100%;"/></div>
+      <label class="field-label">Review Message</label><textarea id="newReviewText" rows="3" placeholder="Amazing coffee and cozy atmosphere!..." style="margin-bottom:0.75rem;"></textarea>
+      <button class="btn-save" style="max-width:200px;" onclick="addReview()">+ Add Review</button>
+      <div id="reviewAddConfirm" style="display:none;margin-top:0.75rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.6rem 1rem;"><p style="color:#2d6a4f;font-size:0.85rem;">✅ Review added!</p></div>
+      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin:1.5rem 0 1rem;">All Reviews</h3>
+      </div>
+      <div id="adminReviewsList"></div>
+    </div>
+    <!-- PAYMENT -->
+    <div id="tab-appcustomers" class="admin-tab-content" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.6rem;margin-bottom:1rem;">
+        <div><h3 style="margin:0;font-family:'Playfair Display',serif;color:var(--bd);">App Customers</h3><p style="font-size:0.8rem;color:var(--tl);margin:0.2rem 0 0;">Customers who signed in on the installed app, ranked by orders in the selected date range — for promos &amp; rewards.</p></div>
+        <div style="display:flex;gap:0.6rem;align-items:center;"><span id="appCustSummary" style="font-size:0.8rem;color:var(--tm);"></span><button onclick="exportAppCustomers()" style="background:#19241b;color:#fff;border:none;border-radius:6px;padding:0.5rem 0.95rem;font-size:0.8rem;cursor:pointer;font-family:'Inter',sans-serif;">⬇ Export CSV</button></div>
+      </div>
+      <div style="display:flex;gap:0.6rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:1rem;padding:0.75rem;background:var(--cr);border:1px solid var(--cd);border-radius:8px;">
+        <div><label style="display:block;font-size:0.72rem;color:var(--tl);margin-bottom:0.2rem;">From</label><input type="date" id="appCustFrom" onchange="renderAppCustomers()" style="padding:0.4rem;border:1px solid var(--cd);border-radius:6px;font-family:'Inter',sans-serif;"/></div>
+        <div><label style="display:block;font-size:0.72rem;color:var(--tl);margin-bottom:0.2rem;">To</label><input type="date" id="appCustTo" onchange="renderAppCustomers()" style="padding:0.4rem;border:1px solid var(--cd);border-radius:6px;font-family:'Inter',sans-serif;"/></div>
+        <div><label style="display:block;font-size:0.72rem;color:var(--tl);margin-bottom:0.2rem;">Free coffee at (orders)</label><input type="number" min="1" id="appPromoTarget" value="10" onchange="savePromoTarget()" style="width:90px;padding:0.4rem;border:1px solid var(--cd);border-radius:6px;font-family:'Inter',sans-serif;"/></div>
+        <button onclick="clearAppCustFilter()" style="background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.45rem 0.9rem;font-size:0.8rem;cursor:pointer;color:var(--tm);font-family:'Inter',sans-serif;">Clear</button>
+        <span style="font-size:0.74rem;color:var(--tl);flex:1;min-width:200px;">Set a date range (e.g. the promo period) to count only orders placed within it. Customers who reach the target number of orders are flagged 🎁.</span>
+      </div>
+      <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+        <thead><tr style="text-align:left;border-bottom:2px solid var(--cd);color:var(--tm);"><th style="padding:0.55rem;">#</th><th style="padding:0.55rem;">Name</th><th style="padding:0.55rem;">Phone</th><th style="padding:0.55rem;text-align:center;">Orders</th><th style="padding:0.55rem;">First Seen</th><th style="padding:0.55rem;">Last Order</th></tr></thead>
+        <tbody id="appCustBody"><tr><td colspan="6" style="padding:1rem;color:var(--tl);text-align:center;">No app customers yet.</td></tr></tbody>
+      </table></div>
+    </div>
+    <div id="tab-payment" class="admin-tab-content" style="display:none;">
+      <div class="payment-edit-grid">
+        <div class="payment-edit-card"><div class="pay-toggle-row"><h4>📱 GCash</h4><label class="pay-switch" title="Enable/Disable for customers"><input type="checkbox" id="chkGcash" onchange="savePayment()" checked/><span class="pay-slider"></span></label></div><p class="pay-disabled-note" id="chkGcashNote">⚠️ Hidden from customers</p><label class="field-label">Number</label><input type="text" id="editGcashNum" value="0927 692 4831"/><label class="field-label" style="margin-top:0.75rem;">Name</label><input type="text" id="editGcashName" value="ACCAZA"/><button class="btn-save" onclick="savePayment()">Save GCash</button></div>
+        <div class="payment-edit-card"><div class="pay-toggle-row"><h4>🏦 BDO</h4><label class="pay-switch" title="Enable/Disable for customers"><input type="checkbox" id="chkBdo" onchange="savePayment()" checked/><span class="pay-slider"></span></label></div><p class="pay-disabled-note" id="chkBdoNote">⚠️ Hidden from customers</p><label class="field-label">Account No.</label><input type="text" id="editBdoNum" value="0068-2050-9919"/><label class="field-label" style="margin-top:0.75rem;">Name</label><input type="text" id="editBdoName" value="ACCAZA"/><button class="btn-save" onclick="savePayment()">Save BDO</button></div>
+        <div class="payment-edit-card"><div class="pay-toggle-row"><h4>🏦 UnionBank</h4><label class="pay-switch" title="Enable/Disable for customers"><input type="checkbox" id="chkUb" onchange="savePayment()" checked/><span class="pay-slider"></span></label></div><p class="pay-disabled-note" id="chkUbNote">⚠️ Hidden from customers</p><label class="field-label">Account No.</label><input type="text" id="editUbNum" value="1093-3237-9862"/><label class="field-label" style="margin-top:0.75rem;">Name</label><input type="text" id="editUbName" value="ACCAZA"/><button class="btn-save" onclick="savePayment()">Save UnionBank</button></div><div class="payment-edit-card"><div class="pay-toggle-row"><h4>💜 PayMaya</h4><label class="pay-switch" title="Enable/Disable for customers"><input type="checkbox" id="chkMaya" onchange="savePayment()" checked/><span class="pay-slider"></span></label></div><p class="pay-disabled-note" id="chkMayaNote">⚠️ Hidden from customers</p><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.75rem;">Leave blank to hide from customers.</p><label class="field-label">Number</label><input type="text" id="editMayaNum" placeholder="e.g. 0917 XXX XXXX"/><label class="field-label" style="margin-top:0.75rem;">Name</label><input type="text" id="editMayaName" placeholder="e.g. ACCAZA"/><button class="btn-save" onclick="savePayment()">Save PayMaya</button></div><div class="payment-edit-card"><div class="pay-toggle-row"><h4>🏦 Extra Bank</h4><label class="pay-switch" title="Enable/Disable for customers"><input type="checkbox" id="chkBank3" onchange="savePayment()" checked/><span class="pay-slider"></span></label></div><p class="pay-disabled-note" id="chkBank3Note">⚠️ Hidden from customers</p><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.75rem;">Leave blank to hide from customers.</p><label class="field-label">Bank Name</label><input type="text" id="editBank3Label" placeholder="e.g. Metrobank"/><label class="field-label" style="margin-top:0.75rem;">Account No.</label><input type="text" id="editBank3Num" placeholder="e.g. 1234-5678-9012"/><label class="field-label" style="margin-top:0.75rem;">Account Name</label><input type="text" id="editBank3Name" placeholder="e.g. ACCAZA"/><button class="btn-save" onclick="savePayment()">Save Extra Bank</button></div><div class="payment-edit-card"><div class="pay-toggle-row"><h4>🏦 Extra Bank 2</h4><label class="pay-switch" title="Enable/Disable for customers"><input type="checkbox" id="chkBank4" onchange="savePayment()" checked/><span class="pay-slider"></span></label></div><p class="pay-disabled-note" id="chkBank4Note">⚠️ Hidden from customers</p><p style="font-size:0.75rem;color:var(--tl);margin-bottom:0.75rem;">Leave blank to hide from customers.</p><label class="field-label">Bank Name</label><input type="text" id="editBank4Label" placeholder="e.g. BPI"/><label class="field-label" style="margin-top:0.75rem;">Account No.</label><input type="text" id="editBank4Num" placeholder="e.g. 1234-5678-9012"/><label class="field-label" style="margin-top:0.75rem;">Account Name</label><input type="text" id="editBank4Name" placeholder="e.g. ACCAZA"/><button class="btn-save" onclick="savePayment()">Save Extra Bank 2</button></div>
+      </div>
+      <div id="saveConfirm" style="display:none;margin-top:1rem;background:#f0faf4;border:1px solid #a8d5b5;border-radius:6px;padding:0.75rem 1rem;"><p style="color:#2d6a4f;">✅ Payment details updated!</p></div>
+    </div>
+
+    <!-- ADMIN ACCOUNTS TAB (super admin only) -->
+    <div id="tab-adminaccounts" class="admin-tab-content" style="display:none;">
+      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:1.5rem;font-size:1.2rem;">👑 Admin Accounts</h3>
+      <div style="max-width:480px;margin-bottom:2rem;">
+        <div style="font-size:0.82rem;font-weight:600;color:var(--bd);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Add New Admin</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.5rem;">
+          <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Username</label>
+          <input type="text" id="adminAccUsername" placeholder="e.g. manager" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.7rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);"/></div>
+          <div><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Password</label>
+          <input type="password" id="adminAccPassword" placeholder="Set password" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.7rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);"/></div>
+        </div>
+        <div style="margin-bottom:0.75rem;"><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.06em;">Access Level</label>
+          <select id="adminAccAccess" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.5rem 0.7rem;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);">
+            <option value="full">✅ Full access — all functionalities</option>
+            <option value="nopay">🔒 All except Payment Details</option>
+          </select></div>
+        <button onclick="addAdminAccount()" style="background:var(--bd);color:#fff;border:none;border-radius:6px;padding:0.5rem 1.2rem;font-size:0.85rem;font-family:'Inter',sans-serif;font-weight:500;cursor:pointer;">➕ Add Admin Account</button>
+        <div id="adminAccMsg" style="display:none;margin-top:0.6rem;padding:0.45rem 0.75rem;border-radius:6px;font-size:0.8rem;font-family:'Inter',sans-serif;"></div>
+      </div>
+      <div style="font-size:0.82rem;font-weight:600;color:var(--bd);margin-bottom:0.75rem;text-transform:uppercase;letter-spacing:0.06em;">Current Admins</div>
+      <div id="adminAccList"><p style="font-size:0.85rem;color:var(--tl);">No admin accounts yet.</p></div>
+    </div>
+
+    <!-- STAFF ACCOUNTS TAB -->
+    <div id="tab-staffaccounts" class="admin-tab-content" style="display:none;">
+      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:1rem;font-size:1.2rem;">🔐 Firebase Account Setup</h3>
+      <div style="max-width:620px;padding:1rem;background:#fff8e8;border:1px solid #e3c778;border-radius:10px;color:var(--td);font-size:0.86rem;line-height:1.65;">
+        <strong>Legacy username accounts are disabled.</strong> They only stored password hashes in the database and were not secure identities.
+        <ol style="margin:0.65rem 0 0 1.2rem;padding:0;"><li>Create the email/password user in Firebase Authentication.</li><li>Copy its UID.</li><li>Add that UID under <code>/admins</code> as <code>true</code> for owner/admin or <code>staff</code> for staff.</li><li>Use Staff Access to assign the staff member's module permissions.</li></ol>
+      </div>
+    </div>
+
+    <!-- CHANGE PASSWORD TAB -->
+    <div id="tab-changepw" class="admin-tab-content" style="display:none;">
+      <div style="max-width:420px;margin-bottom:1.5rem;padding:0.9rem 1rem;border:1px solid #b8dfc4;background:#f3faf5;border-radius:8px;"><div style="font-weight:700;color:#155724;font-size:0.9rem;">📲 Install Accaza POS App</div><p style="font-size:0.78rem;color:var(--tl);margin:0.25rem 0 0.6rem;">Install the admin/POS as an app on this device for faster access and offline sales.</p><button data-accaza-install onclick="accazaInstallApp()" style="background:#e8f5ec;color:#155724;border:1px solid #b8dfc4;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;">📲 Install app</button></div>
+      <h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:1.5rem;font-size:1.2rem;">🔑 Change Password</h3>
+      <div style="max-width:420px;">
+        <div style="margin-bottom:0.75rem;">
+          <label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.06em;">Current Password</label>
+          <div style="position:relative;"><input type="password" id="cpCurrent" placeholder="Enter current password" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.55rem 2.4rem 0.55rem 0.75rem;font-family:'Inter',sans-serif;font-size:0.88rem;color:var(--td);"/><button type="button" onclick="togglePwVis('cpCurrent',this)" style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1rem;padding:0;line-height:1;color:var(--tl);">👁️</button></div>
+        </div>
+        <div style="margin-bottom:0.75rem;">
+          <label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.06em;">New Password</label>
+          <div style="position:relative;"><input type="password" id="cpNew" placeholder="Enter new password" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.55rem 2.4rem 0.55rem 0.75rem;font-family:'Inter',sans-serif;font-size:0.88rem;color:var(--td);"/><button type="button" onclick="togglePwVis('cpNew',this)" style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1rem;padding:0;line-height:1;color:var(--tl);">👁️</button></div>
+        </div>
+        <div style="margin-bottom:1rem;">
+          <label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.06em;">Confirm New Password</label>
+          <div style="position:relative;"><input type="password" id="cpConfirm" placeholder="Confirm new password" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.55rem 2.4rem 0.55rem 0.75rem;font-family:'Inter',sans-serif;font-size:0.88rem;color:var(--td);" onkeydown="if(event.key==='Enter')changeAdminPassword()"/><button type="button" onclick="togglePwVis('cpConfirm',this)" style="position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1rem;padding:0;line-height:1;color:var(--tl);">👁️</button></div>
+        </div>
+        <button onclick="changeAdminPassword()" style="background:var(--bd);color:#fff;border:none;border-radius:6px;padding:0.6rem 1.4rem;font-size:0.88rem;font-family:'Inter',sans-serif;font-weight:500;cursor:pointer;">🔑 Update Password</button>
+        <div id="cpMsg" style="display:none;margin-top:0.75rem;padding:0.55rem 0.85rem;border-radius:6px;font-size:0.82rem;font-family:'Inter',sans-serif;"></div>
+      </div>
+    </div>
+
+    <div id="tab-pos" class="admin-tab-content" style="display:none;"><div id="posRoot"></div></div>
+    <div id="tab-inbox" class="admin-tab-content" style="display:none;"><div id="staffInboxRoot"></div></div>
+    <div id="tab-inventory" class="admin-tab-content" style="display:none;"><div id="inventoryRoot"></div></div>
+    <div id="tab-purchases" class="admin-tab-content" style="display:none;"><div id="purchasesRoot"></div></div>
+    <div id="tab-recipes" class="admin-tab-content" style="display:none;"><div id="recipesRoot"></div></div>
+    <div id="tab-usage" class="admin-tab-content" style="display:none;"><div id="usageRoot"></div></div>
+    <div id="tab-channelpricing" class="admin-tab-content" style="display:none;"><div id="channelPricingRoot"></div></div>
+    <div id="tab-dedupe" class="admin-tab-content" style="display:none;"><div id="dedupeRoot"></div></div>
+    <div id="tab-discrepancy" class="admin-tab-content" style="display:none;"><div id="discrepancyRoot"></div></div>
+    <div id="tab-petty" class="admin-tab-content" style="display:none;"><div id="pettyRoot"></div></div>
+    <div id="tab-undeposited" class="admin-tab-content" style="display:none;"><div id="undepositedRoot"></div></div>
+    <div id="tab-packages" class="admin-tab-content" style="display:none;"><div id="packagesRoot"></div></div>
+    <div id="tab-analytics" class="admin-tab-content" style="display:none;"><div id="analyticsRoot"></div></div>
+    <div id="tab-saleshistory" class="admin-tab-content" style="display:none;"><div id="salesHistoryRoot"></div></div>
+    <div id="tab-dailyreport" class="admin-tab-content" style="display:none;"><div id="dailyReportRoot"></div></div>
+    <div id="tab-payouts" class="admin-tab-content" style="display:none;"><div id="payoutsRoot"></div></div>
+    <div id="tab-stockvalue" class="admin-tab-content" style="display:none;"><div id="stockValueRoot"></div></div>
+    <div id="tab-ops" class="admin-tab-content" style="display:none;"><div id="opsRoot"></div></div>
+    <div id="tab-possettings" class="admin-tab-content" style="display:none;"><div id="posSettingsRoot"></div></div>
+    <div id="tab-accountingperiods" class="admin-tab-content" style="display:none;"><div id="accountingPeriodsRoot"></div></div>
+    <div id="tab-staffaccess" class="admin-tab-content" style="display:none;"><div id="staffAccessRoot"></div></div>
+    <div id="tab-operations" class="admin-tab-content" style="display:none;"><div id="operationsRoot"></div></div>
+
+
+  </div>
+</section>
+
+<!-- POPUPS & OVERLAYS -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-box">
+    <div style="text-align:center;font-family:'Playfair Display',serif;font-size:1.5rem;color:var(--bd);margin-bottom:0.25rem;">Accaza Coffee</div>
+    <p style="text-align:center;font-size:0.8rem;color:var(--tl);margin-bottom:1.25rem;">🔐 Staff &amp; Admin Portal</p>
+    <!-- Role choice is presentation only; Firebase UID + database role remain authoritative. -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:1.25rem;">
+      <button id="roleAdminBtn" onclick="selectLoginRole('admin')" style="padding:0.6rem;border:2px solid var(--cd);border-radius:8px;background:#fff;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);font-weight:500;transition:all 0.2s;">👑 Admin</button>
+      <button id="roleStaffBtn" onclick="selectLoginRole('staff')" style="padding:0.6rem;border:2px solid var(--cd);border-radius:8px;background:#fff;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);font-weight:500;transition:all 0.2s;">👤 Staff</button>
+    </div>
+    <!-- Login form -->
+    <div id="loginForm" style="display:none;">
+      <label class="field-label">Username or Email</label>
+      <input type="text" id="adminUser" placeholder="Enter Firebase account email" autocomplete="username" style="margin-bottom:0.75rem;" onkeydown="if(event.key==='Enter')document.getElementById('adminPass').focus()"/>
+      <label class="field-label">Password</label>
+      <input type="password" id="adminPass" placeholder="Enter password" autocomplete="current-password" style="margin-bottom:1rem;" onkeydown="if(event.key==='Enter')checkLogin()"/>
+      <button id="adminLoginBtn" class="btn-primary" style="width:100%;" onclick="checkLogin()">Log In</button>
+      <p id="loginErr" style="display:none;color:#c0392b;font-size:0.8rem;margin-top:0.75rem;text-align:center;">❌ Incorrect credentials. Try again.</p>
+      <p style="text-align:center;margin-top:0.5rem;">
+        <button id="forgotPwBtn" onclick="__fbForgot()" style="display:none;background:none;border:none;font-size:0.76rem;color:var(--tl);cursor:pointer;text-decoration:underline;">Forgot password?</button>
+      </p>
+    </div>
+    <button data-accaza-install onclick="accazaInstallApp()" style="margin-top:1rem;background:#e8f5ec;color:#155724;border:1px solid #b8dfc4;border-radius:8px;padding:.65rem;width:100%;font-size:.82rem;font-weight:600;cursor:pointer;">📲 Install Accaza POS App</button>
+    <button onclick="closeAdmin()" style="margin-top:.55rem;background:none;border:none;font-size:0.78rem;color:var(--tl);cursor:pointer;width:100%;text-align:center;">← Back to website</button>
+  </div>
+</div>
+<div class="popup-overlay" id="confirmReceivedPopup">
+  <div class="popup-box"><div style="font-size:2.5rem;margin-bottom:0.75rem;">✅</div><h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:0.5rem;">Confirm Receipt</h3><p style="font-size:0.85rem;color:var(--tm);margin-bottom:0.3rem;">Confirming receipt of order:</p><p id="receivedOrderId" style="font-family:'Playfair Display',serif;font-size:1.4rem;color:var(--bd);font-weight:600;margin-bottom:1.5rem;"></p><div style="display:flex;gap:0.75rem;justify-content:center;"><button onclick="document.getElementById('confirmReceivedPopup').classList.remove('show')" style="flex:1;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.7rem;font-size:0.88rem;cursor:pointer;color:var(--tm);">Not Yet</button><button id="confirmReceivedBtn" style="flex:1;background:#2d9e5f;color:#fff;border:none;border-radius:6px;padding:0.7rem;font-size:0.88rem;cursor:pointer;font-weight:500;">Yes, Received ✓</button></div></div>
+</div>
+<div class="popup-overlay" id="resContactPopup">
+  <div class="popup-box" style="max-width:430px;"><div style="font-size:2.5rem;margin-bottom:0.75rem;">📨</div><h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:0.5rem;">Reservation Accepted!</h3><p style="font-size:0.85rem;color:var(--tm);margin-bottom:0.75rem;">Please contact the customer now to confirm the booking details — use their preferred method below.</p><div id="resContactInfo" style="background:var(--cr);border:1px solid var(--cd);border-radius:8px;padding:0.75rem;margin-bottom:1rem;font-size:0.85rem;color:var(--td);text-align:left;line-height:1.6;"></div><div id="resContactBtns" style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;margin-bottom:1.25rem;"></div><button onclick="document.getElementById('resContactPopup').classList.remove('show')" style="width:100%;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.7rem;font-size:0.88rem;cursor:pointer;color:var(--tm);">Done</button></div>
+</div>
+<div class="popup-overlay" id="deletePopup">
+  <div class="popup-box"><div style="font-size:2.5rem;margin-bottom:0.75rem;">🗑️</div><h3 style="font-family:'Playfair Display',serif;color:var(--bd);margin-bottom:0.5rem;">Confirm Action</h3><p style="font-size:0.85rem;color:var(--tm);margin-bottom:0.5rem;">You are about to:</p><p id="deleteLabel" style="font-size:0.82rem;color:var(--bd);font-weight:500;background:var(--cr);padding:0.6rem;border-radius:6px;margin-bottom:1rem;"></p><p style="font-size:0.8rem;color:var(--tl);margin-bottom:1.5rem;">This cannot be undone.</p><div style="display:flex;gap:0.75rem;justify-content:center;"><button onclick="document.getElementById('deletePopup').classList.remove('show')" style="flex:1;background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.7rem;font-size:0.88rem;cursor:pointer;color:var(--tm);">Cancel</button><button id="deleteConfirmBtn" style="flex:1;background:#c0392b;color:#fff;border:none;border-radius:6px;padding:0.7rem;font-size:0.88rem;cursor:pointer;">Confirm</button></div></div>
+</div>
+<!-- CUSTOMIZE POPUP -->

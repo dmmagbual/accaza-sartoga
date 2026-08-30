@@ -1,0 +1,79 @@
+<script src="assets/js/admin/telemetry.js"></script>
+<script src="assets/js/admin/form-dialog.js"></script>
+<script src="assets/js/shared/text-encoding.js"></script>
+<script src="assets/js/shared/business-date.js"></script>
+<script src="assets/js/shared/sales-authority.js"></script>
+<script type="module" src="assets/js/admin/core.mjs?v=392"></script>
+<script type="module" src="assets/js/admin/overview-command.mjs"></script>
+<script type="module" src="assets/js/admin/staff-push.mjs"></script>
+<!-- Lightbox -->
+<div id="lightbox" role="dialog" aria-modal="true" aria-label="Image viewer" onclick="if(event.target===this)closeLightbox()">
+  <button id="lightbox-close" onclick="closeLightbox()" aria-label="Close">✕</button>
+  <button id="lightbox-prev"  onclick="shiftLightbox(-1)" aria-label="Previous">‹</button>
+  <img id="lightbox-img" src="" alt="Gallery photo"/>
+  <button id="lightbox-next"  onclick="shiftLightbox(1)"  aria-label="Next">›</button>
+  <div id="lightbox-counter"></div>
+</div>
+<div id="appTabBar">
+  <a href="#home" class="active">🏠<span>Home</span></a>
+  <a href="#menu">☕<span>Menu</span></a>
+  <a href="#order">🛒<span>Order</span></a>
+  <a href="#orderTracker">📦<span>Track</span></a>
+  <a href="#contact">📞<span>Contact</span></a>
+</div>
+<!-- Release 2D: retired customer navigation script removed from admin portal. -->
+<!-- Release 2D: retired customer UI enhancement script removed from admin portal. -->
+
+<!-- Release 2D: retired customer order-tracker script removed from admin portal. -->
+
+<div id="appLoginOverlay" style="display:none;position:fixed;inset:0;z-index:99999;background:#19241b;color:#e0d4c6;flex-direction:column;align-items:center;justify-content:center;padding:1.5rem;font-family:'Inter',sans-serif;">
+  <div style="max-width:360px;width:100%;text-align:center;">
+    <div style="font-size:2.4rem;margin-bottom:0.4rem;">☕</div>
+    <h2 style="font-family:'Playfair Display',serif;color:#fff;margin:0 0 0.4rem;">Welcome to Accaza</h2>
+    <p style="font-size:0.85rem;color:rgba(224,212,198,0.75);margin:0 0 1.4rem;">Please sign in to start ordering.</p>
+    <input id="appLoginName" type="text" placeholder="Full Name" autocomplete="name" style="width:100%;box-sizing:border-box;padding:0.8rem 1rem;margin-bottom:0.7rem;border:1px solid rgba(176,141,87,0.5);border-radius:8px;background:#11190f;color:#fff;font-size:0.95rem;"/>
+    <input id="appLoginPhone" type="tel" placeholder="Phone Number (09XX XXX XXXX)" autocomplete="tel" style="width:100%;box-sizing:border-box;padding:0.8rem 1rem;margin-bottom:0.5rem;border:1px solid rgba(176,141,87,0.5);border-radius:8px;background:#11190f;color:#fff;font-size:0.95rem;"/>
+    <p id="appLoginErr" style="display:none;color:#ff9b9b;font-size:0.78rem;margin:0 0 0.6rem;"></p>
+    <button onclick="appLoginSubmit()" style="width:100%;padding:0.85rem;border:none;border-radius:8px;background:#b08d57;color:#fff;font-size:0.95rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;">Enter App</button>
+    <p style="font-size:0.7rem;color:rgba(224,212,198,0.5);margin-top:1rem;line-height:1.5;">We use your name and number only to serve you better and keep your order history.</p>
+  </div>
+</div>
+<div id="orderReadyAlert" style="display:none;position:fixed;inset:0;z-index:100000;background:rgba(10,15,10,0.92);color:#fff;flex-direction:column;align-items:center;justify-content:center;padding:1.5rem;text-align:center;font-family:'Inter',sans-serif;">
+  <div style="font-size:3.2rem;margin-bottom:0.5rem;">✅</div>
+  <h2 style="font-family:'Playfair Display',serif;font-size:1.6rem;margin:0 0 0.4rem;">Your order is ready!</h2>
+  <p id="orderReadySub" style="font-size:0.95rem;color:rgba(255,255,255,0.8);margin:0 0 1.5rem;"></p>
+  <button onclick="dismissReadyAlert()" style="background:#b08d57;color:#fff;border:none;border-radius:10px;padding:0.85rem 2.2rem;font-size:1rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;">Got it 🎉</button>
+</div>
+<div id="proofModal" onclick="this.style.display='none';document.getElementById('proofModalImg').src=''" style="display:none;position:fixed;inset:0;z-index:100002;background:rgba(0,0,0,0.9);align-items:center;justify-content:center;padding:1rem;cursor:zoom-out;flex-direction:column;gap:0.75rem;">
+  <img id="proofModalImg" src="" alt="Proof of payment" style="max-width:96vw;max-height:88vh;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,0.6);"/>
+  <p style="color:rgba(255,255,255,0.7);font-size:0.8rem;font-family:'Inter',sans-serif;">Tap anywhere to close</p>
+</div>
+<!-- ═══════════════════ ACCAZA POS · INVENTORY · RECIPES (isolated module) ═══════════════════ -->
+<link rel="stylesheet" href="assets/css/admin/pos-inventory-recipes.css"/>
+<!-- Release 2D: POS module is loaded on demand. -->
+<!-- ═══════════════════ ACCAZA ANALYTICS · P&L (isolated module) ═══════════════════ -->
+<link rel="stylesheet" href="assets/css/admin/analytics.css"/>
+<!-- Release 2D: analytics module is loaded on demand. -->
+<!-- ═══════════════════ ACCAZA REGISTER OPS · shift / Z-report / void / refund (isolated) ═══════════════════ -->
+<!-- Release 2D: register module is loaded on demand. -->
+<script src="assets/js/shared/report-period.js"></script>
+<script>
+/* Use plain text in the staff shell so every supported browser renders it
+   consistently; operational controls do not depend on emoji fonts. */
+(function(){
+  var labels={navAdminPanelLink:'Admin panel',tabBtnPos:'Open Point of Sale'};
+  Object.keys(labels).forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=labels[id];});
+  var header=document.querySelector('.admin-header');if(header){var note=header.querySelector('p');if(note)note.textContent='Firebase Realtime Database';var books=header.querySelector('a[href="books.html"]');if(books)books.textContent='Finance Books';var logout=header.querySelector('.admin-logout');if(logout)logout.textContent='Log out';}
+  var pos=document.querySelector('.admin-group.pos-primary');if(pos)pos.textContent='POS';
+})();
+</script>
+<script src="assets/js/admin/module-loader.js?v=392"></script>
+<script src="assets/js/admin/portal-boot.js"></script>
+<script src="assets/js/pwa-register.js"></script>
+<!-- Release 2D: staff-access module is loaded on demand. -->
+<!-- ═══════════════════ ACCAZA PACKAGES & PROMOS (isolated) ═══════════════════ -->
+<!-- Release 2D: packages module is loaded on demand. -->
+<!-- ═══════════════════ ACCAZA CASH FLOW · bank/e-wallet ledger + receivables + payables (isolated) ═══════════════════ -->
+<!-- Release 2D: finance module is loaded on demand. -->
+</body>
+</html>
