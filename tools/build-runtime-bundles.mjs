@@ -4,6 +4,7 @@ import path from 'node:path';
 const root=process.cwd();
 const bundles=[
   {source:'src/admin/pos',target:'assets/js/admin/pos.js'},
+  {source:'src/books/app',target:'assets/js/books/app.js'},
   {source:'src/functions',target:'functions/index.js'}
 ];
 

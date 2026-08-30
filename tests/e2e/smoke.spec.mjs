@@ -29,3 +29,13 @@ test('admin shell carries the coordinated release marker',async({page})=>{
   await expect(page.locator('meta[name="accaza-admin-build"]')).toHaveAttribute('content',/^[0-9]+$/);
   await expect(page.locator('body')).toContainText(/Accaza Coffee/i);
 });
+
+test('Finance Books starts from the assembled runtime without browser errors',async({page})=>{
+  const pageErrors=[];
+  page.on('pageerror',error=>pageErrors.push(error.message));
+  await page.goto('/books.html',{waitUntil:'domcontentloaded'});
+  await expect(page.locator('meta[name="accaza-books-build"]')).toHaveAttribute('content','77');
+  await expect(page.locator('#tabs').locator('button')).not.toHaveCount(0);
+  await expect(page.locator('#page')).not.toBeEmpty();
+  expect(pageErrors).toEqual([]);
+});

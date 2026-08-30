@@ -1,0 +1,188 @@
+
+/* ---- Transactions: finance-originated postings via postFinancialCommand ---- */
+function uid(){ try{return crypto.randomUUID();}catch(_e){return 'id_'+Date.now()+'_'+Math.floor(Math.random()*1e6);} }
+function fval(id){ var el=document.getElementById(id); return el?String(el.value).trim():''; }
+function cashAccountOptions(sel){ var m=window.__cfAccounts||{}, ks=Object.keys(m); if(!ks.length) return '<option value="">(no cash accounts found)</option>'; return ks.map(function(k){return '<option value="'+esc(k)+'"'+(k===sel?' selected':'')+'>'+esc(m[k].name||k)+'</option>';}).join(''); }
+function billPaymentSourceOptions(){var m=window.__cfAccounts||{},ks=Object.keys(m).filter(function(k){return m[k]&&m[k].active!==false&&m[k].disabled!==true;}).sort(function(a,b){return Number(m[a].order||0)-Number(m[b].order||0)||String(m[a].name||a).localeCompare(String(m[b].name||b));});return '<optgroup label="Business cash"><option value="cash_on_hand">Cash on Hand</option><option value="cash_float" disabled>Register Cash Float · protected imprest</option><option value="undeposited">Undeposited Collection</option><option value="revolving_fund">Revolving Fund</option></optgroup><optgroup label="Banks and e-wallets">'+ks.map(function(k){return '<option value="'+esc(k)+'">'+esc(m[k].name||k)+'</option>';}).join('')+'</optgroup><optgroup label="Paid personally"><option value="owner_capital">Owner\'s Capital · owner paid from own pocket</option></optgroup>';}
+function openDocOptions(map){ var d=openDocs(map); if(!d.length) return ''; return d.map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.party||'—')+' · '+peso(x.amount)+(x.due?' · due '+esc(x.due):'')+(x.ref?' · '+esc(x.ref):'')+'</option>';}).join(''); }
+var TXN_CATS = [['rent','Rent'],['utilities','Utilities'],['salaries','Salaries'],['bank charges','Bank charges'],['repairs','Repairs & maintenance'],['marketing','Marketing'],['supplies','Supplies'],['internet','Internet & phone'],['other','Other']];
+function catOptions(sel){ return TXN_CATS.map(function(c){return '<option value="'+c[0]+'"'+(c[0]===sel?' selected':'')+'>'+c[1]+'</option>';}).join(''); }
+
+PAGES.transactions = function(){
+  if(!window.__booksUser) return '<div class="page-head"><div><h2>Transactions</h2><p>Record finance transactions</p></div></div><div class="empty"><div class="big">🧾</div><b>Sign in to record transactions</b><br><span class="tiny">These post to your shared finance ledger through your server functions. Click the status pill (top-right) to sign in, or open from your Accaza domain.</span></div>';
+  var tile=function(icon,label,desc,fn){return '<button class="card card-pad" style="text-align:left;cursor:pointer" onclick="App.'+fn+'()"><div style="font-size:1.5rem">'+icon+'</div><div style="font-weight:750;margin-top:.3rem">'+label+'</div><div class="tiny muted">'+desc+'</div></button>';};
+  return '<div class="page-head"><div><h2>Transactions</h2><p>Post finance transactions to the shared ledger through your server functions</p></div></div>'+
+    '<div class="hint">Each of these posts a real double-entry movement server-side (with your approval controls), then flows into the Journal, subledgers, and statements. A fixed-assets register is coming next.</div>'+
+    '<div class="kpis">'+
+      tile('🧾','New bill','Vendor bill → Accounts Payable','txnBill')+
+      tile('💵','Pay a bill','Settle an open payable from cash','txnPay')+
+      tile('📥','Collect receivable','Receive payment on an open AR','txnCollect')+
+      tile('🔄','Bank transfer','Move money between cash accounts','txnTransfer')+
+      tile('🧮','Cash in / out','Expense paid now, or other cash','txnManual')+
+      tile('👤','Owner/partner paid','Business cost paid personally','txnOwnerPaid')+
+      tile('👤','Owner capital','Owner puts money in','txnCapital')+
+      tile('💸','Owner drawing','Owner takes money out','txnDraw')+
+      tile('🏭','Fixed assets','Register · depreciation · disposal','txnAssets')+
+      tile('📦','Purchases','Goods-received invoices register','txnPurchases')+
+    '</div>'+ownerFundingHistory();
+};
+function ownerFundingHistory(){var m=window.__personalFundings||{},rows=Object.keys(m).map(function(id){return Object.assign({id:id},m[id]||{});}).sort(function(a,b){return Number(b.createdAt||0)-Number(a.createdAt||0);}).slice(0,30);if(!rows.length)return'';return '<div class="card card-pad" style="margin-top:1rem"><h3>Owner / partner funded costs</h3><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Owner / partner</th><th>Reference</th><th>Treatment</th><th class="num">Amount</th><th></th></tr></thead><tbody>'+rows.map(function(x){return '<tr class="'+(x.status==='reversed'?'reversed':'')+'"><td>'+esc(x.date||'')+'</td><td>'+esc(x.ownerName||'')+'</td><td>'+esc(x.ref||'')+'</td><td>'+esc(x.ownerTreatment==='reimburse'?'Reimburse later':'Capital contribution')+'</td><td class="num">'+peso(x.amount)+'</td><td>'+(x.status==='reversed'?'Reversed':'<button class="btn sm ghost" onclick="App.reverseOwnerCost(&#39;'+esc(x.id)+'&#39;)">Reverse</button>')+'</td></tr>';}).join('')+'</tbody></table></div></div>';}
+App.reverseOwnerCost=function(id){App._txnModal('Reverse owner/partner-funded cost','<div class="field"><label>Reversal reason</label><input id="opr_reason"/></div>','Reverse',function(btn){if(!fval('opr_reason'))return alert('Enter a reversal reason.');App._txnRun(btn,{action:'reverse_personal_business_cost',commandId:uid(),fundingId:id,reason:fval('opr_reason')});});};
+App._txnRun=function(btn, payload, onSuccess){ if(!window.__financeCmd){alert('Live connection not ready — sign in first.');return;} btn.disabled=true; var old=btn.textContent; btn.textContent='Posting…'; window.__financeCmd(payload).then(function(result){ App.closeModal(); if(typeof onSuccess==='function')onSuccess((result&&result.data)||result||{});else App.render(); }).catch(function(e){ alert('Could not post: '+((e&&e.message)||e)); btn.disabled=false; btn.textContent=old; }); };
+App._txnModal=function(title, body, submitLabel, onSubmit){ var m=document.getElementById('modal'); m.innerHTML='<div class="modal-head"><h3>'+title+'</h3><button class="x" onclick="App.closeModal()">×</button></div><div class="modal-body">'+body+'</div><div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Cancel</button><button class="btn primary" id="txnGo">'+submitLabel+'</button></div>'; document.getElementById('modalBg').classList.add('show'); document.getElementById('txnGo').onclick=function(){ onSubmit(this); }; };
+App.txnBill=function(){ App._txnModal('New bill','<div class="grid2"><div class="field"><label>Supplier / vendor</label><input id="tb_party"/></div><div class="field"><label>Category</label><select id="tb_type">'+catOptions('rent')+'</select></div></div><div class="grid2"><div class="field"><label>Amount</label><input id="tb_amount" type="number" step="0.01" min="0"/></div><div class="field"><label>Bill date</label><input id="tb_date" type="date" value="'+todayStr()+'"/></div></div><div class="grid2"><div class="field"><label>Due date</label><input id="tb_due" type="date"/></div><div class="field"><label>Bill / invoice reference</label><input id="tb_ref" required placeholder="Required"/></div></div>','Post bill',function(btn){ var party=fval('tb_party'), amount=Number(fval('tb_amount'))||0; if(!party) return alert('Supplier is required.'); if(!(amount>0)) return alert('Amount must be greater than zero.'); if(!fval('tb_ref')) return alert('Bill or invoice reference is required.'); App._txnRun(btn,{action:'create_payable',commandId:uid(),documentId:uid(),party:party,type:fval('tb_type'),amount:amount,date:fval('tb_date'),due:fval('tb_due'),ref:fval('tb_ref')}); }); };
+App._paySourceToggle=function(){var owner=fval('tp_source')==='owner_capital',wrap=document.getElementById('tp_owner_wrap');if(wrap)wrap.style.display=owner?'':'none';};
+App.txnPay=function(){ var opts=openDocOptions(window.__apMap); if(!opts) return alert('No open payables to pay.'); App._txnModal('Pay a bill','<div class="field"><label>Open payable</label><select id="tp_doc">'+opts+'</select></div><div class="grid2"><div class="field"><label>Pay from</label><select id="tp_source" onchange="App._paySourceToggle()">'+billPaymentSourceOptions()+'</select></div><div class="field"><label>Date</label><input id="tp_date" type="date" value="'+todayStr()+'"/></div></div><div class="field" id="tp_owner_wrap" style="display:none"><label>Owner / partner who paid</label><input id="tp_owner" placeholder="Required for Owner\'s Capital"/></div><div class="hint">Register Cash Float is protected and cannot pay bills. Owner-paid bills credit Owner\'s Capital and do not reduce business cash.</div><div class="field"><label>Payment reference</label><input id="tp_ref" required placeholder="Required · receipt, transfer, cheque or voucher ID"/></div>','Pay',function(btn){var source=fval('tp_source'),owner=fval('tp_owner');if(!source)return alert('Choose a payment source.');if(source==='cash_float')return alert('Register Cash Float is protected and cannot be used to pay bills.');if(source==='owner_capital'&&!owner)return alert('Enter the owner or partner who paid.');if(!fval('tp_ref'))return alert('Payment reference is required.');App._txnRun(btn,{action:'pay_payable',commandId:uid(),documentId:fval('tp_doc'),paymentSource:source,accountId:source,date:fval('tp_date'),ref:fval('tp_ref'),ownerName:owner}); }); };
+App.txnCollect=function(){ var opts=openDocOptions(window.__arMap); if(!opts) return alert('No open receivables to collect.'); App._txnModal('Collect receivable','<div class="field"><label>Open receivable</label><select id="tc_doc">'+opts+'</select></div><div class="grid2"><div class="field"><label>Deposit to</label><select id="tc_acct">'+cashAccountOptions()+'</select></div><div class="field"><label>Date</label><input id="tc_date" type="date" value="'+todayStr()+'"/></div></div><div class="field"><label>Collection reference</label><input id="tc_ref" required placeholder="Required · receipt, deposit or transfer ID"/></div>','Collect',function(btn){ if(!fval('tc_acct')) return alert('Choose a cash account.'); if(!fval('tc_ref'))return alert('Collection reference is required.'); App._txnRun(btn,{action:'collect_receivable',commandId:uid(),documentId:fval('tc_doc'),accountId:fval('tc_acct'),date:fval('tc_date'),ref:fval('tc_ref')}); }); };
+App.txnTransfer=function(){ App._txnModal('Bank transfer','<div class="grid2"><div class="field"><label>From</label><select id="tt_from">'+cashAccountOptions()+'</select></div><div class="field"><label>To</label><select id="tt_to">'+cashAccountOptions()+'</select></div></div><div class="grid2"><div class="field"><label>Amount</label><input id="tt_amount" type="number" step="0.01" min="0"/></div><div class="field"><label>Date</label><input id="tt_date" type="date" value="'+todayStr()+'"/></div></div><div class="field"><label>Transfer reference</label><input id="tt_ref" required placeholder="Required · bank or wallet transaction ID"/></div>','Transfer',function(btn){ var a=Number(fval('tt_amount'))||0; if(fval('tt_from')===fval('tt_to')) return alert('Choose two different accounts.'); if(!(a>0)) return alert('Amount must be greater than zero.'); if(!fval('tt_ref'))return alert('Transfer reference is required.'); App._txnRun(btn,{action:'transfer',commandId:uid(),fromAccountId:fval('tt_from'),toAccountId:fval('tt_to'),amount:a,date:fval('tt_date'),ref:fval('tt_ref')}); }); };
+App.txnManual=function(prefill){ prefill=prefill||{}; App._txnModal(prefill.title||'Cash in / out','<div class="grid2"><div class="field"><label>Cash account</label><select id="tm_acct">'+cashAccountOptions()+'</select></div><div class="field"><label>Direction</label><select id="tm_dir"><option value="out"'+(prefill.dir==='in'?'':' selected')+'>Money out</option><option value="in"'+(prefill.dir==='in'?' selected':'')+'>Money in</option></select></div></div><div class="grid2"><div class="field"><label>Category</label><select id="tm_cat">'+catOptions(prefill.category||'other')+'</select></div><div class="field"><label>Amount</label><input id="tm_amount" type="number" step="0.01" min="0"/></div></div><div class="grid2"><div class="field"><label>Date</label><input id="tm_date" type="date" value="'+todayStr()+'"/></div><div class="field"><label>Party (optional)</label><input id="tm_party"/></div></div><div class="field"><label>Reference (optional)</label><input id="tm_ref"/></div>','Post',function(btn){ var a=Number(fval('tm_amount'))||0; if(!fval('tm_acct')) return alert('Choose a cash account.'); if(!(a>0)) return alert('Amount must be greater than zero.'); App._txnRun(btn,{action:'manual',commandId:uid(),accountId:fval('tm_acct'),amount:a,dir:fval('tm_dir'),category:fval('tm_cat'),date:fval('tm_date'),party:fval('tm_party'),ref:fval('tm_ref')}); }); };
+App.txnOwnerPaid=function(){App._txnModal('PAID PERSONALLY BY OWNER/PARTNER','<div class="grid2"><div class="field"><label>Owner / partner who paid</label><input id="op_owner"/></div><div class="field"><label>Treatment</label><select id="op_treatment"><option value="capital">Capital contribution</option><option value="reimburse">Reimburse later</option></select></div></div><div class="grid2"><div class="field"><label>Expense category</label><select id="op_cat">'+catOptions('other')+'</select></div><div class="field"><label>Amount</label><input id="op_amount" type="number" step="0.01" min="0"/></div></div><div class="grid2"><div class="field"><label>Date</label><input id="op_date" type="date" value="'+todayStr()+'"/></div><div class="field"><label>Supplier / payee</label><input id="op_party"/></div></div><div class="field"><label>Receipt / reference</label><input id="op_ref" placeholder="Required for audit trail"/></div>','Post owner-funded cost',function(btn){var amount=Number(fval('op_amount'))||0;if(!fval('op_owner'))return alert('Owner or partner name is required.');if(!(amount>0))return alert('Amount must be greater than zero.');if(!fval('op_ref'))return alert('Receipt or reference is required.');App._txnRun(btn,{action:'personal_business_cost',commandId:uid(),ownerName:fval('op_owner'),ownerTreatment:fval('op_treatment'),category:fval('op_cat'),amount:amount,date:fval('op_date'),party:fval('op_party'),ref:fval('op_ref')});});};
+App.txnCapital=function(){ App.txnManual({title:'Owner capital in',dir:'in',category:'capital in'}); };
+App.legacyReset=function(){if(!window.__legacyReset)return alert('Finance connection is not ready.');var date=todayStr(),reason=prompt('Reason for legacy reset','Start a clean operating balance after historical reconciliation.');if(!reason)return;window.__legacyReset({preview:true,date}).then(function(p){var b=p.balances||{},text=['4990 Other Income: '+peso(b['4990']||0),'6110 Cash Short / Over: '+peso(b['6110']||0),'1190 Cash Shortage Under Review: '+peso(b['1190']||0),'2100 Cash Overage Under Review: '+peso(b['2100']||0),'Admin discrepancies to close: '+(p.affectedDiscrepancies||0)].join('\n');if(!confirm('Legacy reset preview\n\n'+text+'\n\nClose these balances to Owner\'s Capital?'))return;return window.__legacyReset({date,reason:reason});}).then(function(r){if(r)alert('Legacy reset posted. Refresh Admin and Finance Books.');}).catch(function(e){alert('Could not run legacy reset: '+((e&&e.message)||e));});};
+App.txnDraw=function(){ App.txnManual({title:'Owner drawing',dir:'out',category:'owner draw'}); };
+App.txnAssets=function(){ App.go('fixedassets'); };
+
+/* ---- Fixed assets register ---- */
+function faList(){ var m=window.__faMap||{}; return Object.keys(m).map(function(k){return Object.assign({id:k},m[k]||{});}); }
+function faMonthly(a){ var life=Math.max(1,Math.round(Number(a.usefulLifeMonths)||0)); return r2(((Number(a.cost)||0)-Math.max(0,Number(a.salvage)||0))/life); }
+function faNBV(a){ return r2((Number(a.cost)||0)-(Number(a.accumulatedDepreciation)||0)); }
+App._faRun=function(btn, payload, done){ if(!window.__fixedAsset){alert('Live connection not ready — sign in first.');return;} btn.disabled=true; var old=btn.textContent; btn.textContent='Working…'; window.__fixedAsset(payload).then(function(res){ App.closeModal(); if(done)done(res); App.render(); }).catch(function(e){ alert('Could not post: '+((e&&e.message)||e)); btn.disabled=false; btn.textContent=old; }); };
+PAGES.fixedassets = function(){
+  if(!window.__booksUser) return '<div class="page-head"><div><h2>Fixed assets</h2><p>Register · depreciation · disposal</p></div></div><div class="empty"><div class="big">🏭</div><b>Sign in to manage fixed assets</b><br><span class="tiny">Click the status pill (top-right) to sign in, or open from your Accaza domain.</span></div>';
+  var assets=faList(), active=assets.filter(function(a){return a.status!=='disposed'&&a.status!=='acquisition_reversed';});
+  var totCost=0, totAccum=0; active.forEach(function(a){ totCost+=Number(a.cost)||0; totAccum+=Number(a.accumulatedDepreciation)||0; });
+  var head='<div class="page-head"><div><h2>Fixed assets</h2><p><span class="linkish" onclick="App.go(&#39;transactions&#39;)">← Transactions</span> · '+active.length+' active · net book value '+pesoNoDec(totCost-totAccum)+'</p></div><div class="btn-row"><button class="btn" onclick="App.faDepreciate()">Run depreciation</button><button class="btn primary" onclick="window.open(&#39;admin.html&#39;,&#39;_blank&#39;)">Acquire through Purchasing ↗</button></div></div>';
+  if(!assets.length) return head+'<div class="empty"><div class="big">🏭</div>No fixed assets yet. Record equipment through Admin Purchasing to create its card and financial entry together.</div>';
+  var rows=assets.sort(function(a,b){return String(b.acquiredDate||'').localeCompare(String(a.acquiredDate||''));}).map(function(a){
+    var disposed=a.status==='disposed', reversed=a.status==='acquisition_reversed', full=a.status==='fully_depreciated';
+    return '<tr'+(disposed?' class="reversed"':'')+'><td><b>'+esc(a.name||'Asset')+'</b><div class="tiny muted">'+esc(a.category||'')+' · in service '+esc(a.inServiceDate||a.acquiredDate||'')+(a.location?' · '+esc(a.location):'')+(a.custodian?' · custodian '+esc(a.custodian):'')+(a.reference?' · ref '+esc(a.reference):'')+'</div></td>'+
+      '<td class="num">'+peso(a.cost)+'</td>'+
+      '<td class="num tiny">'+esc(a.usefulLifeMonths||'')+' mo<div class="muted">'+peso(faMonthly(a))+'/mo</div></td>'+
+      '<td class="num">'+peso(a.accumulatedDepreciation||0)+'</td>'+
+      '<td class="num"><b>'+peso(faNBV(a))+'</b></td>'+
+      '<td><span class="type-pill '+(disposed||reversed?'t-expense':full?'t-liability':'t-asset')+'">'+(reversed?'Acquisition reversed':disposed?'Disposed':full?'Fully dep.':'Active')+'</span></td>'+
+      '<td>'+(disposed||reversed?'':(a.fundingType==='owner_funded'&&!Number(a.accumulatedDepreciation||0)?'<button class="btn sm ghost" onclick="App.faReverseAcquire(&#39;'+esc(a.id)+'&#39;)">Reverse acquisition</button> ':'')+'<button class="btn sm ghost" onclick="App.faDispose(&#39;'+esc(a.id)+'&#39;)">Dispose</button>')+'</td></tr>';
+  }).join('');
+  return head+'<div class="card"><div class="tbl-wrap"><table><thead><tr><th>Asset</th><th class="num">Cost</th><th class="num">Life</th><th class="num">Accum. dep.</th><th class="num">Net book value</th><th>Status</th><th></th></tr></thead><tbody>'+rows+
+    '<tr class="total-row"><td>Totals (active)</td><td class="num">'+peso(totCost)+'</td><td></td><td class="num">'+peso(totAccum)+'</td><td class="num">'+peso(totCost-totAccum)+'</td><td colspan="2"></td></tr></tbody></table></div></div>'+
+    '<p class="tiny muted" style="margin-top:.6rem">Straight-line. Depreciation posts only when you run it (Dr Depreciation 6090 / Cr Accumulated Depreciation 1590) — idempotent per month.</p>';
+};
+App.faAcquire=function(){ App._txnModal('Acquire fixed asset',
+  '<div class="grid2"><div class="field"><label>Asset name</label><input id="fa_name"/></div><div class="field"><label>Category</label><select id="fa_cat"><option value="equipment">Equipment</option><option value="furniture">Furniture &amp; fixtures</option><option value="other">Other</option></select></div></div>'+
+  '<div class="grid2"><div class="field"><label>Cost</label><input id="fa_cost" type="number" step="0.01" min="0"/></div><div class="field"><label>Salvage value</label><input id="fa_salvage" type="number" step="0.01" min="0" value="0"/></div></div>'+
+  '<div class="grid2"><div class="field"><label>Useful life (months)</label><input id="fa_life" type="number" step="1" min="1" placeholder="e.g. 60"/></div><div class="field"><label>Acquired date</label><input id="fa_date" type="date" value="'+todayStr()+'"/></div></div>'+
+  '<div class="grid2"><div class="field"><label>Funded by</label><select id="fa_fund" onchange="App._faFundToggle()"><option value="cash">Paid from business cash</option><option value="payable">On account (supplier)</option><option value="owner_capital">PAID PERSONALLY BY OWNER/PARTNER — capital contribution</option><option value="owner_reimburse">PAID PERSONALLY BY OWNER/PARTNER — reimburse later</option></select></div><div class="field" id="fa_acctWrap"><label>Cash account</label><select id="fa_acct">'+cashAccountOptions()+'</select></div></div>'+
+  '<div class="field"><label>Receipt / invoice / acquisition reference</label><input id="fa_ref" required placeholder="Required for audit trail"/></div>'+
+  '<div class="field" id="fa_partyWrap" style="display:none"><label>Supplier</label><input id="fa_party"/></div><div class="field" id="fa_ownerWrap" style="display:none"><label>Owner / partner who paid</label><input id="fa_owner" placeholder="Required for personal payment"/></div>',
+  'Acquire',function(btn){ var name=fval('fa_name'), cost=Number(fval('fa_cost'))||0, life=Number(fval('fa_life'))||0,reference=fval('fa_ref'); if(!name) return alert('Asset name required.'); if(!(cost>0)) return alert('Cost must be greater than zero.'); if(!(life>=1)) return alert('Useful life in months is required.');if(!reference)return alert('Receipt, invoice, or acquisition reference is required.'); var fund=fval('fa_fund'),personal=fund.indexOf('owner_')===0,owner=fval('fa_owner'); var funding = fund==='payable' ? {type:'payable',party:fval('fa_party')||name,ref:reference} : personal?{type:'owner_funded',ownerName:owner,treatment:fund==='owner_reimburse'?'reimburse':'capital',ref:reference}:{type:'cash',accountId:fval('fa_acct'),ref:reference}; if(fund==='cash'&&!funding.accountId) return alert('Choose a cash account.');if(personal&&!owner)return alert('Enter the owner or partner who paid.'); App._faRun(btn,{action:'create',commandId:uid(),assetId:uid(),name:name,category:fval('fa_cat'),cost:cost,salvage:Number(fval('fa_salvage'))||0,usefulLifeMonths:life,acquiredDate:fval('fa_date'),ref:reference,funding:funding}); }); };
+App._faFundToggle=function(){ var v=fval('fa_fund'); document.getElementById('fa_acctWrap').style.display=(v==='cash')?'':'none'; document.getElementById('fa_partyWrap').style.display=(v==='payable')?'':'none';document.getElementById('fa_ownerWrap').style.display=(v.indexOf('owner_')===0)?'':'none'; };
+App.faReverseAcquire=function(assetId){var a=(window.__faMap||{})[assetId]||{};App._txnModal('Reverse acquisition: '+esc(a.name||'asset'),'<p class="tiny muted">This removes the asset cost and reverses the owner/partner capital or reimbursement obligation. The original remains in the audit trail.</p><div class="field"><label>Reason</label><input id="far_reason"/></div>','Reverse acquisition',function(btn){if(!fval('far_reason'))return alert('Enter a reversal reason.');App._faRun(btn,{action:'reverse_acquisition',commandId:uid(),assetId:assetId,reason:fval('far_reason')});});};
+App.faDepreciate=function(){ App._txnModal('Run depreciation','<p class="tiny muted" style="margin-top:0">Posts one month of straight-line depreciation for every active asset that has not been depreciated for this period yet. Safe to re-run — it never double-posts a month.</p><div class="field"><label>Period (month)</label><input id="fa_period" type="month" value="'+todayStr().slice(0,7)+'"/></div>','Run depreciation',function(btn){ var period=fval('fa_period'); if(!/^\d{4}-\d{2}$/.test(period)) return alert('Pick a month.'); App._faRun(btn,{action:'depreciate',commandId:uid(),period:period},function(res){ (window.alert)('Depreciation for '+period+': '+((res&&res.count)||0)+' asset(s) posted.'); }); }); };
+App.faDispose=function(assetId){ var a=(window.__faMap||{})[assetId]||{}; App._txnModal('Dispose: '+esc(a.name||'asset'),'<p class="tiny muted" style="margin-top:0">Removes cost and accumulated depreciation and books any gain or loss. Net book value now: '+peso(faNBV(Object.assign({id:assetId},a)))+'.</p><div class="grid2"><div class="field"><label>Proceeds (0 if scrapped)</label><input id="fd_proceeds" type="number" step="0.01" min="0" value="0"/></div><div class="field"><label>Date</label><input id="fd_date" type="date" value="'+todayStr()+'"/></div></div><div class="field"><label>Disposal / sale reference (optional)</label><input id="fd_ref" placeholder="Disposal approval, receipt, or scrap record"/></div><div class="field"><label>Proceeds deposited to</label><select id="fd_acct">'+cashAccountOptions()+'</select></div>','Dispose',function(btn){App._faRun(btn,{action:'dispose',commandId:uid(),assetId:assetId,proceeds:Number(fval('fd_proceeds'))||0,accountId:fval('fd_acct'),date:fval('fd_date'),ref:fval('fd_ref')}); }); };
+
+/* ---- Purchases register (read-only view of /purchaseInvoices) ---- */
+App.txnPurchases=function(){ App.go('purchases'); };
+PAGES.purchases = function(){
+  if(!window.__booksUser) return '<div class="page-head"><div><h2>Purchases</h2><p>Goods-received invoices</p></div></div><div class="empty"><div class="big">📦</div><b>Sign in for purchases</b><br><span class="tiny">Reads your goods-received invoices. Click the status pill (top-right) to sign in.</span></div>';
+  var map=window.__piMap||{};
+  var invs=Object.keys(map).map(function(k){return Object.assign({id:k},map[k]||{});}).sort(function(a,b){return String(b.date||'').localeCompare(String(a.date||''));});
+  var total=invs.reduce(function(s,x){return s+(Number(x.total)||0);},0);
+  var unpaid=invs.filter(function(x){return x.payMode==='account'||x.payMode==='pending';}).reduce(function(s,x){return s+(Number(x.total)||0);},0);
+  var head='<div class="page-head"><div><h2>Purchases</h2><p><span class="linkish" onclick="App.go(&#39;transactions&#39;)">← Transactions</span> · '+invs.length+' invoices · '+pesoNoDec(total)+' total</p></div></div>';
+  if(!invs.length) return head+'<div class="empty"><div class="big">📦</div>No purchase invoices yet.</div>';
+  var payBadge=function(x){ if(x.payMode==='paid')return '<span class="type-pill t-income">Paid</span>'; if(x.payMode==='account')return '<span class="type-pill t-liability">On account'+(x.due?' · due '+esc(x.due):'')+'</span>'; return '<span class="type-pill t-expense">Pending invoice</span>'; };
+  var rows=invs.map(function(x){ return '<tr><td class="tiny">'+esc(x.date||'')+'</td><td><b>'+esc(x.supplier||'—')+'</b>'+(x.ref?'<div class="tiny muted">'+esc(x.ref)+'</div>':'')+'</td><td class="tiny">'+(((x.lines&&x.lines.length))||x.lineCount||0)+' item(s)</td><td>'+payBadge(x)+'</td><td class="num">'+peso(x.total)+'</td><td><button class="btn sm ghost" onclick="App.piDetail(&#39;'+esc(x.id)+'&#39;)">Details</button></td></tr>'; }).join('');
+  return head+'<div class="kpis"><div class="kpi"><div class="lbl">Total purchases</div><div class="val">'+pesoNoDec(total)+'</div><div class="sub">'+invs.length+' invoices</div></div><div class="kpi bad"><div class="lbl">Unpaid / on account</div><div class="val">'+pesoNoDec(unpaid)+'</div><div class="sub">still owed</div></div></div>'+
+    '<div class="card"><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Supplier</th><th>Items</th><th>Payment</th><th class="num">Total</th><th></th></tr></thead><tbody>'+rows+'<tr class="total-row"><td colspan="4">Total</td><td class="num">'+peso(total)+'</td><td></td></tr></tbody></table></div></div>'+
+    '<p class="tiny muted" style="margin-top:.6rem">Read-only register. Receiving new stock still runs in the POS admin for now (it is tied to inventory, recipes, brands and weighted-average cost); moving receiving into finance is the next decision.</p>';
+};
+App.piDetail=function(id){ var x=(window.__piMap||{})[id]; if(!x)return; var lines=x.lines||[]; var rows=lines.map(function(l){return '<tr><td>'+esc(l.itemName||l.itemId||'')+(l.skuBrand?'<div class="tiny muted">'+esc(l.skuBrand)+'</div>':'')+'</td><td class="num tiny">'+esc(l.qty||'')+' '+esc(l.unit||'')+'</td><td class="num tiny">'+peso(l.unitCost||0)+'</td><td class="num">'+peso(l.total||0)+'</td></tr>';}).join(''); var m=document.getElementById('modal'); m.innerHTML='<div class="modal-head"><h3>'+esc(x.supplier||'Purchase')+(x.ref?' · '+esc(x.ref):'')+'</h3><button class="x" onclick="App.closeModal()">×</button></div><div class="modal-body"><div class="tiny muted" style="margin-bottom:.5rem">'+esc(x.date||'')+' · '+esc(x.payMode||'')+' · received by '+esc(x.by||'—')+'</div><div class="tbl-wrap"><table><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Unit cost</th><th class="num">Total</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4" class="muted">No line detail</td></tr>')+'<tr class="total-row"><td colspan="3">Invoice total</td><td class="num">'+peso(x.total||0)+'</td></tr></tbody></table></div></div><div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Close</button></div>'; document.getElementById('modalBg').classList.add('show'); };
+
+/* ---- account add/edit ---- */
+App.editAccount = function(code){
+  if(isMainAccount(code)) return alert("Main accounts are protected calculated totals and cannot be edited.");
+  const a = code?acc(code):{code:"",name:"",type:"Expense",note:""};
+  const m=document.getElementById("modal");
+  m.innerHTML=`<div class="modal-head"><h3>${code?'Edit':'Add'} account</h3><button class="x" onclick="App.closeModal()">×</button></div>
+    <div class="modal-body">
+      <div class="grid2">
+        <div class="field"><label>Code</label><input id="a_code" value="${esc(a.code)}" ${code?'readonly':''} placeholder="e.g. 6110"/></div>
+        <div class="field"><label>Type</label><select id="a_type">${TYPES.map(t=>`<option ${t===a.type?'selected':''}>${t}</option>`).join("")}</select></div>
+      </div>
+      <div class="field"><label>Name</label><input id="a_name" value="${esc(a.name)}" placeholder="Account name"/></div>
+      <div class="field"><label>Note (optional)</label><input id="a_note" value="${esc(a.note)}"/></div>
+    </div>
+    <div class="modal-foot">
+      ${code?(window.__booksUser?(a.active===false?`<button class="btn" onclick="App.reactivateAccount('${code}')" style="margin-right:auto">Reactivate</button>`:`<button class="btn danger" onclick="App.deleteAccount('${code}')" style="margin-right:auto">Deactivate</button>`):`<button class="btn danger" onclick="App.deleteAccount('${code}')" style="margin-right:auto">Delete</button>`):''}
+      <button class="btn ghost" onclick="App.closeModal()">Cancel</button>
+      <button class="btn primary" onclick="App.saveAccount('${code||''}')">Save</button></div>`;
+  document.getElementById("modalBg").classList.add("show");
+};
+App.saveAccount=function(orig){
+  const code=document.getElementById("a_code").value.trim(), name=document.getElementById("a_name").value.trim(),
+        type=document.getElementById("a_type").value, note=document.getElementById("a_note").value.trim();
+  if(!code||!name) return alert("Code and name are required.");
+  if(isMainAccount(code)) return alert("That code belongs to a protected main account.");
+  if(!/^\d{4}$/.test(code)) return alert("Account code must be exactly four digits (e.g. 2310).");
+  if(!orig && acc(code)) return alert("That code already exists.");
+  if(window.__booksUser){
+    if(!window.__booksChartManager) return alert("Only the finance owners (Danilo / Maria) can add or edit chart accounts.");
+    if(!window.__manageBooksAccount) return alert("Live sync isn't ready yet - try again in a moment.");
+    var self=this;
+    window.__manageBooksAccount({action:'upsert',code:code,name:name,type:type,note:note}).then(function(){ self.closeModal(); }).catch(function(e){ alert("Could not save account: "+(e&&e.message||e)); });
+    return;
+  }
+  if(orig){ const a=acc(orig); a.name=name; a.type=type; a.note=note; }
+  else DB.accounts.push({code,name,type,note,active:true});
+  DB.accounts.sort((x,y)=>x.code.localeCompare(y.code));
+  save(); this.closeModal(); this.render();
+};
+App.deleteAccount=function(code){
+  if(isMainAccount(code)) return alert("Main accounts are protected and cannot be deleted.");
+  if(window.__booksUser){
+    if(!window.__booksChartManager) return alert("Only the finance owners (Danilo / Maria) can change chart accounts.");
+    var __row=acc(code)||{}; if(__row.system) return alert("System accounts are required by the ledger and can't be deactivated. Rename it instead if needed.");
+    if(!confirm("Deactivate account "+code+"? It stays in your reports where it has balances, but can't be used for new postings. History is never deleted.")) return;
+    var self=this;
+    window.__manageBooksAccount({action:'deactivate',code:code}).then(function(){ self.closeModal(); }).catch(function(e){ alert("Could not deactivate: "+(e&&e.message||e)); });
+    return;
+  }
+  const used = ENTRIES().some(e=>e.lines.some(l=>l.code===code));
+  if(used) return alert("This account is used in journal entries and can't be deleted. You can rename it instead.");
+  if(!confirm("Delete this account?")) return;
+  DB.accounts = DB.accounts.filter(a=>a.code!==code); save(); this.closeModal(); this.render();
+};
+App.reactivateAccount=function(code){
+  if(!window.__booksChartManager) return alert("Only the finance owners can change chart accounts.");
+  var self=this;
+  window.__manageBooksAccount({action:'reactivate',code:code}).then(function(){ self.closeModal(); }).catch(function(e){ alert("Could not reactivate: "+(e&&e.message||e)); });
+};
+App.applyServerChart=function(){
+  var map=window.__booksChart; if(!map||typeof map!=='object')return;
+  var list=Object.keys(map).map(function(code){var a=map[code]||{};return {code:String(a.code||code),name:a.name||('? '+code),type:a.type||'Expense',note:a.note||'',active:a.active!==false,system:a.system===true};});
+  if(!list.length)return;
+  list.sort(function(x,y){return String(x.code).localeCompare(String(y.code));});
+  DB.accounts=list; window.__booksChartLive=true;
+  try{save();}catch(_e){}
+  if(this.render)this.render();
+};
+App.importLocalChart=function(){
+  if(!window.__booksChartManager) return alert("Only the finance owners can import accounts.");
+  var raw; try{ raw=JSON.parse(localStorage.getItem(STORE_KEY)||"{}"); }catch(_e){ raw={}; }
+  var local=(raw&&raw.accounts)||[]; var server=window.__booksChart||{};
+  var toAdd=[], conflicts=[];
+  local.forEach(function(a){ if(!a||!/^\d{4}$/.test(String(a.code||'')))return; if(isMainAccount(a.code))return; var srv=server[a.code]; if(!srv){toAdd.push(a);} else if(srv.name!==a.name||srv.type!==a.type){conflicts.push({code:a.code,local:a,server:srv});} });
+  window.__importPlan={toAdd:toAdd};
+  var addHtml = toAdd.length ? toAdd.map(function(a){return '<tr><td><span class="acc-code">'+esc(a.code)+'</span></td><td>'+esc(a.name)+'</td><td class="tiny muted">'+esc(a.type)+'</td></tr>';}).join('') : '<tr><td colspan="3" class="muted">Nothing new - your local accounts are already on the server.</td></tr>';
+  var confHtml = conflicts.length ? '<div class="hint" style="margin-top:.6rem">&#9888; '+conflicts.length+' code(s) exist on the server with a different name/type and were left untouched: '+conflicts.map(function(c){return esc(c.code)+' (local &#39;'+esc(c.local.name)+'&#39; vs server &#39;'+esc(c.server.name)+'&#39;)';}).join('; ')+'.</div>' : '';
+  var m=document.getElementById("modal");
+  m.innerHTML='<div class="modal-head"><h3>Import local accounts</h3><button class="x" onclick="App.closeModal()">&times;</button></div><div class="modal-body"><p class="tiny muted" style="margin-top:0">These custom accounts exist in <b>this browser only</b>. They will be added to the shared server chart. Nothing is written until you confirm. System accounts and codes already on the server are skipped.</p><div class="tbl-wrap"><table><thead><tr><th>Code</th><th>Name</th><th>Type</th></tr></thead><tbody>'+addHtml+'</tbody></table></div>'+confHtml+'</div><div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Cancel</button>'+(toAdd.length?'<button class="btn primary" onclick="App.runImport(this)">Import '+toAdd.length+' account(s)</button>':'')+'</div>';
+  document.getElementById("modalBg").classList.add("show");
+};
+App.runImport=function(btn){
+  var plan=window.__importPlan; if(!plan||!plan.toAdd||!plan.toAdd.length)return this.closeModal();
+  if(btn){btn.disabled=true;btn.textContent="Importing...";}
+  var payload=plan.toAdd.map(function(a){return {code:a.code,name:a.name,type:a.type,note:a.note||""};});
+  var self=this;
+  window.__manageBooksAccount({action:'import',accounts:payload}).then(function(r){ self.closeModal(); alert("Imported "+(r&&r.added?r.added.length:0)+" account(s)."+(r&&r.conflicts&&r.conflicts.length?" "+r.conflicts.length+" conflict(s) skipped.":"")); }).catch(function(e){ if(btn){btn.disabled=false;btn.textContent="Import";} alert("Import failed: "+(e&&e.message||e)); });
+};

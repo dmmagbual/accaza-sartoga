@@ -4,6 +4,7 @@ import path from 'node:path';
 const root=process.cwd();
 const bundles=[
   {source:'src/admin/pos',target:'assets/js/admin/pos.js'},
+  {source:'src/books/app',target:'assets/js/books/app.js'},
   {source:'src/functions',target:'functions/index.js'}
 ];
 
@@ -14,7 +15,7 @@ for(const bundle of bundles){
   const actual=fs.readFileSync(path.join(root,bundle.target),'utf8');
   if(actual!==expected)throw new Error(`${bundle.target} has drifted from ${bundle.source}. Run npm run build:runtime.`);
 }
-console.log('PASS: POS and Functions runtime bundles exactly match their ordered source sections.');
+console.log('PASS: POS, Finance Books, and Functions runtime bundles exactly match their ordered source sections.');
 
 const expectedFunctionExports=[
   'notifyOnComplete','notifyStaffOnOrder','notifyStaffOnReservation','notifyOnContactMessage','mirrorPosMovementToBooks','mirrorPosCogsToBooks','ensureBooksJournal','syncRegisterCashFloat','syncActiveRegisterCashFloat','manageCashAccount','indexPlatformOrderRef','manageAccountingPeriod','manageStaffMessage','recordClientTelemetry','getOperationalExceptions','repairOrderInventoryMarker','updateOrderStatus','acceptOnlineOrder','createManagerApproval','consumeManagerApproval','manageOrderArchive','reviewDiscrepancy','reopenDiscrepancy','managePettyVoucher','retireRevolvingFund','getUndepositedControlSnapshot','repairClosedShiftTurnover','reconcileUndepositedCustody','legacyOwnerCapitalReset','runFinancialClose','reopenFinancialCloseOnMovement','reopenFinancialCloseOnOrderChange','repairReversedPayoutDeposit','setUndepositedOpeningBalance','repairPettyVoucherFinancial','archiveActivityLog','syncOfflinePosSale','createOnlineOrder','getPaymentProof','confirmOrderReceived','ensureActiveOrders','syncActiveOrderProjection','pruneClosedShiftOrders','syncPublicOrderStatus','validateRecipeDefinition','onOrderFinancialPosting','preservePostedOrderOnDelete','onShiftPayInsFinancial','onShiftPayOutsFinancial','onShiftOpenFinancial','ensureShiftReference','onShiftCloseFinancial','repairPettyExpenseClassifications','onPettyVoucherFinancial','onPettyReplenishmentFinancial','manageFixedAsset','postFinancialCommand','reconcilePurchasePayable','managePurchaseCorrection','correctPlatformPresettlement','settlePlatformPayout','reversePlatformPayout','setPlatformPayoutDate','processOrderAdjustment','recordPlatformCatchup','ensureFinancialLedger','manageBooksAccount','manageChartAccount','autoRepairFinanceDateOnCashLedgerCreate','repairFinanceDates','auditFinancialControls','postInventoryMovements','ensureInventoryLedger','onOrderFinalize','onOrderInventoryReversal','pruneEphemeralNodes','autoCompleteReadyOnlineOrders','backupDatabaseDaily'

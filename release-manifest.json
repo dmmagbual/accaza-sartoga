@@ -13,9 +13,9 @@
   },
   "builds": {
     "admin": 392,
-    "books": 76,
+    "books": 77,
     "customer": 61,
-    "serviceWorkerCache": 338
+    "serviceWorkerCache": 339
   },
   "authoritativeFiles": [
     "admin.html",
@@ -50,6 +50,13 @@
     "assets/css/admin/pos-inventory-recipes.css",
     "assets/css/admin/analytics.css",
     "assets/js/books/app.js",
+    "src/books/app/00-accounting-model.js",
+    "src/books/app/10-application-shell.js",
+    "src/books/app/20-cash-flow.js",
+    "src/books/app/30-statements-pages.js",
+    "src/books/app/40-subledgers.js",
+    "src/books/app/50-controlled-transactions.js",
+    "src/books/app/60-startup-templates.js",
     "assets/js/books/live-pos.mjs",
     "assets/js/books/accounting-periods.mjs",
     "assets/js/customer/core.mjs",
@@ -106,8 +113,10 @@
     "tools/build-html-pages.mjs",
     "tests/runtime-bundle-drift-check.mjs",
     "tests/html-page-drift-check.mjs",
+    "tests/e2e/smoke.spec.mjs",
     "docs/PHASE_2_MODULE_MAP.md",
     "docs/PHASE_3_HTML_MAP.md",
+    "docs/PHASE_4_BOOKS_MODULE_MAP.md",
     "assets/js/admin/register.js",
     "assets/js/admin/analytics.js",
     "assets/js/admin/sales-history.js",
