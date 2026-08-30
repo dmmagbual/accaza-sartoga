@@ -143,7 +143,7 @@ const groupChildren = group => DB.accounts.filter(a=>accountMatchesGroup(a,group
 function groupBalance(group, entries){
   return r2(groupChildren(group).reduce((sum,a)=>sum+normalBalanceFor(a.code,entries),0));
 }
-function todayStr(){ const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function todayStr(){ return window.AccazaDate.key(); }
 
 /* Shared statement periods: current month is always the initial view. */
 const REPORT_PERIOD_KEY = "accaza-report-period";
