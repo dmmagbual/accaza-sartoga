@@ -234,7 +234,15 @@ ok(invRecon.unmapped.length===0&&invRecon.clearingBalance===0,'clean inventory r
 }
 // --- Job 2: manual inventory movements post to the correct books accounts ---
 ok(B.mapAccount('coa:5900','instore',{}).code==='5900','waste/staff/adjustment-loss expense -> 5900 Wastage & Spoilage');
-ok(B.mapAccount('coa:4990','instore',{}).code==='4990','inventory overage gain -> 4990 Other Income');
+ok(B.mapAccount('coa:4990','instore',{}).code==='4990','genuine non-variance other income remains in 4990');
+{
+  const julyGain={type:'inventory_adjustment',sourceType:'inventoryMovement',occurredAt:Date.parse('2026-07-15T12:00:00+08:00'),lines:[{account:'coa:1210',debit:25,credit:0},{account:'coa:4990',debit:0,credit:25}]};
+  const augustLoss={type:'inventory_manual_edit',sourceType:'inventoryMovement',occurredAt:Date.parse('2026-08-20T12:00:00+08:00'),lines:[{account:'coa:5900',debit:10,credit:0},{account:'coa:1210',debit:0,credit:10}]};
+  const gain=B.mappedLines(julyGain,{}).lines,loss=B.mappedLines(augustLoss,{}).lines;
+  ok(gain.some(l=>l.code==='5905'&&l.credit===25)&&!gain.some(l=>l.code==='4990'),'historical inventory adjustment gain reclassifies into 5905');
+  ok(loss.some(l=>l.code==='5905'&&l.debit===10)&&!loss.some(l=>l.code==='5900'),'historical inventory adjustment loss reclassifies into 5905');
+  ok(B.bucketFor(julyGain).date==='2026-07-15'&&B.bucketFor(augustLoss).date==='2026-08-20','variance reclassification preserves the original July/August accounting date');
+}
 {
   // a waste movement of 100 credits inventory (1210) and debits 5900, balanced
   const wasteLines=[{account:'coa:5900',debit:100,credit:0},{account:'coa:1210',debit:0,credit:100}];

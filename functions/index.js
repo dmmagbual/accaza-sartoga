@@ -3003,9 +3003,10 @@ function inventoryBookAccountCode(item) {
   return /^12[0-8]0$/.test(code) ? code : "1290";
 }
 // Every value-changing manual inventory movement posts a matching balanced
-// Finance entry so inventory and the books can never diverge. Stock reduced ->
-// Cr inventory / Dr 5900 Wastage & Spoilage (waste/staff/R&D/adjustment loss);
-// stock increased (positive adjustment) -> Dr inventory / Cr 4990 Other Income.
+// Finance entry so inventory and the books can never diverge. Reconciliation
+// adjustments/manual edits use one COGS basket (5905): debit is a loss and
+// credit is a gain. Genuine waste/staff/R&D usage remains in 5900, while a
+// positive non-variance restoration retains its existing 4990 treatment.
 // Idempotent via commitFinancial(`invmove_${id}`); auto-mirrors to /books/journal.
 async function postInventoryMovementToBooks(db, movement, item, actor) {
   const type = String(movement && movement.type || "");
@@ -3014,12 +3015,13 @@ async function postInventoryMovementToBooks(db, movement, item, actor) {
   if (Math.abs(value) < 0.005) return;
   const invCode = inventoryBookAccountCode(item);
   const label = `${type.replace(/_/g, " ")} \u00b7 ${String(item && item.name || movement.itemId || "").slice(0, 120)}`;
+  const varianceBasket = type === "adjustment" || type === "manual_edit";
   let lines;
   if (value < 0) {
     const out = Financial.money(-value);
-    lines = [Financial.line("coa:5900", out, 0, label), Financial.line(`coa:${invCode}`, 0, out, label)];
+    lines = [Financial.line(varianceBasket ? "coa:5905" : "coa:5900", out, 0, label), Financial.line(`coa:${invCode}`, 0, out, label)];
   } else {
-    lines = [Financial.line(`coa:${invCode}`, value, 0, label), Financial.line("coa:4990", 0, value, label)];
+    lines = [Financial.line(`coa:${invCode}`, value, 0, label), Financial.line(varianceBasket ? "coa:5905" : "coa:4990", 0, value, label)];
   }
   const mv = Financial.movement(`inventory_${type}`, "inventoryMovement", String(movement.id || ""), lines, {occurredAt: Number(movement.occurredAt || movement.createdAt || Date.now()), actorName: String(actor && actor.role || "server"), itemId: String(movement.itemId || ""), invAccount: invCode});
   await commitFinancial(db, `invmove_${String(movement.id || "")}`, mv, actor || {uid: "server", role: "server"});
