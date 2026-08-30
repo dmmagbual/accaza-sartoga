@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import fs from 'node:fs';
+const require=createRequire(import.meta.url),V=require('../functions/lib/production-validation.js'),now=1788105600000;
+const base={menuItems:{coffee:{name:'Coffee',active:true}},categories:{coffee:{name:'Coffee'}},publicOrderStatus:{acceptingOrders:true,updatedAt:now-1000},calendarReadable:true,calendarBlockCount:0,reviewsReadable:true,reviewCount:0,payment:{gcashEnabled:true},orders:{one:{status:'Pending'}},certification:{status:'operator_review_required',readyForOperatorReview:true}};
+const result=V.evaluate(base,now);assert.equal(result.status,'operator_validation_required');assert.equal(result.safeMode,'read_only');assert.equal(result.productionValidated,false);assert.equal(result.counts.blocked,0);assert.equal(result.counts.operatorRequired,5);
+const blocked=V.evaluate({...base,menuItems:{},publicOrderStatus:{acceptingOrders:true,updatedAt:now-40*3600000},payment:{},certification:{status:'blocked',readyForOperatorReview:false}},now);assert.equal(blocked.status,'blocked');assert.ok(blocked.counts.blocked>=4);
+const source=fs.readFileSync(new URL('../src/functions/20-portal-auth.js',import.meta.url),'utf8');for(const marker of ['exports.getProductionValidation = onCall','limitToLast(25)','ProductionValidation.evaluate','calendarReadable:true','reviewsReadable:true'])assert.ok(source.includes(marker),`Phase 17 safeguard missing: ${marker}`);
+const start=source.indexOf('exports.getProductionValidation = onCall'),end=source.indexOf('\nexports.',start+10),section=source.slice(start,end);for(const forbidden of ['.set(','.update(','.transaction(','.remove('])assert.equal(section.includes(forbidden),false,`Phase 17 validation must remain read-only: ${forbidden}`);
+console.log('PASS: Phase 17 production validation is bounded, privacy-safe, read-only, and cannot self-certify witnessed or financial controls.');

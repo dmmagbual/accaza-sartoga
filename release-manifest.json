@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 398,
+    "admin": 399,
     "books": 77,
     "customer": 64,
-    "serviceWorkerCache": 348
+    "serviceWorkerCache": 349
   },
   "authoritativeFiles": [
     "admin.html",
@@ -122,6 +122,7 @@
     "functions/lib/production-health.js",
     "functions/lib/incident-controls.js",
     "functions/lib/release-certification.js",
+    "functions/lib/production-validation.js",
     "assets/js/shared/costing.js",
     "assets/js/shared/business-date.js",
     "assets/js/shared/sales-authority.js",
@@ -171,6 +172,7 @@
     "tests/incident-controls-check.mjs",
     "tests/business-continuity-check.mjs",
     "tests/release-certification-check.mjs",
+    "tests/production-validation-check.mjs",
     "tests/static/00-context.mjs",
     "tests/static/10-syntax-rendering.mjs",
     "tests/static/20-access-customer.mjs",
@@ -197,6 +199,7 @@
     "docs/PHASE_14_CONTROLLED_INCIDENT_RESPONSE.md",
     "docs/PHASE_15_BUSINESS_CONTINUITY.md",
     "docs/PHASE_16_PRODUCTION_CERTIFICATION.md",
+    "docs/PHASE_17_PRODUCTION_VALIDATION.md",
     "ADR-029_MEASURED_PERFORMANCE_AND_BOUNDED_CUSTOMER_STATE.md",
     "ADR-027_FINANCIAL_SOURCE_DECOMPOSITION.md",
     "ADR-026_RETIRED_RUNTIME_SURFACE.md",
@@ -244,6 +247,7 @@
     "acceptOnlineOrder",
     "getOperationalExceptions",
     "getProductionCertification",
+    "getProductionValidation",
     "confirmOrderReceived",
     "getPaymentProof",
     "syncOfflinePosSale",
@@ -328,6 +332,7 @@
     "quarterlyPermissionReview": "pending",
     "quarterlyDependencyReview": "pending",
     "phase12RecoveryTooling": "passed_2026-08-31",
-    "phase16CertificationTooling": "passed_2026-08-31"
+    "phase16CertificationTooling": "passed_2026-08-31",
+    "phase17ProductionValidationTooling": "passed_2026-08-31"
   }
 }
