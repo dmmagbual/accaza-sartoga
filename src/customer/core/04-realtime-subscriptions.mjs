@@ -4,9 +4,9 @@ onValue(categoriesRef,snap=>{
   const saved=snap.val();
   if(saved){categoriesMap=saved;}
   else{const seed={};DEFAULT_CATS.forEach(c=>{seed[c.id]=c;});set(categoriesRef,seed);categoriesMap=seed;}
+  categoriesListCache=null;
   rebuildTabs();
-  renderMenuSection();
-  renderOrderSection();
+  scheduleCatalogRender();
 });
 
 function migrateItemOptions(){
@@ -93,9 +93,9 @@ onValue(menuRef,snap=>{
     defaultMenu.forEach((item,i)=>{seed['item_'+String(i).padStart(3,'0')]=item;});
     set(menuRef,seed);menuItemsMap=seed;
   }
+  menuItemsListCache=null;
   migrateItemOptions();
-  renderMenuSection();
-  renderOrderSection();
+  scheduleCatalogRender();
 });
 
 // ── NEW ORDER ALERTS (admin/staff) ──────────────────────────
@@ -205,7 +205,7 @@ onValue(reviewsRef,snap=>{
   }
   renderPublicReviews();
 });
-onValue(availRef,snap=>{const s=snap.val();if(s)Object.keys(s).forEach(k=>availability[k]=s[k]);renderMenuSection();renderOrderSection();});
+onValue(availRef,snap=>{const s=snap.val();if(s)Object.keys(s).forEach(k=>availability[k]=s[k]);scheduleCatalogRender();});
 onValue(paymentRef,snap=>{
   const p=snap.val();if(!p)return;
   if(p.gcashNum)document.getElementById('gcashNum').textContent=p.gcashNum;

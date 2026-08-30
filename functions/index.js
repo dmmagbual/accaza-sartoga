@@ -578,7 +578,7 @@ exports.manageStaffMessage = onCall(
 
 // Release 6A: privacy-safe, bounded operational telemetry. Only aggregate
 // counters and timings are stored; no order/customer/payment content is accepted.
-const CLIENT_METRICS = new Set(["pos_boot", "pos_build", "cart_render", "charge_to_durable", "offline_flush", "realtime_order_arrival"]);
+const CLIENT_METRICS = new Set(["pos_boot", "pos_build", "cart_render", "charge_to_durable", "offline_flush", "realtime_order_arrival", "module_load", "live_ready"]);
 function telemetryKey(value) {return String(value || "").toLowerCase().replace(/[^a-z0-9_-]/g, "_").slice(0, 50);}
 exports.recordClientTelemetry = onCall(
   {region: ORDER_REGION, enforceAppCheck: false},

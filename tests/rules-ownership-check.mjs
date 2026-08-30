@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import {initializeTestEnvironment,assertFails,assertSucceeds} from '@firebase/rules-unit-testing';
-import {get,ref,set,update} from 'firebase/database';
+import {get,ref,set,update,query,orderByChild,limitToLast} from 'firebase/database';
 
 const projectId='accaza-sartoga';
 const rules=fs.readFileSync('database.rules.json','utf8');
@@ -111,7 +111,9 @@ try{
   await assertFails(update(ref(a,'orders/legacy'),{status:'Received',receivedByCustomer:true}));
 
   await assertSucceeds(get(ref(a,'customerOrders/customer-a')));
+  await assertSucceeds(get(query(ref(a,'customerOrders/customer-a'),orderByChild('createdAt'),limitToLast(20))));
   await assertFails(get(ref(a,'customerOrders/customer-b')));
+  await assertFails(get(query(ref(a,'customerOrders/customer-b'),orderByChild('createdAt'),limitToLast(20))));
   await assertFails(set(ref(a,'customerOrders/customer-a/fake'),{createdAt:2,status:'Pending'}));
 
   await assertSucceeds(update(ref(a,'appCustomers/customer-a'),{name:'Customer A Updated',phone:'09123456789',lastSeen:2}));

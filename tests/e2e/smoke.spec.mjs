@@ -1,5 +1,8 @@
 import {test,expect} from '@playwright/test';
+import fs from 'node:fs';
 import {installCustomerFirebaseFixture} from './customer-firebase-fixture.mjs';
+
+const release=JSON.parse(fs.readFileSync(new URL('../../release-manifest.json',import.meta.url),'utf8'));
 
 test.beforeEach(async({page})=>{await page.route(/^https?:\/\/(?!127\.0\.0\.1:4173)/,route=>route.abort());});
 
@@ -30,7 +33,7 @@ test('customer live runtime initializes ordering, tracker, reservations, and rev
   const pageErrors=[];
   page.on('pageerror',error=>pageErrors.push(error.message));
   await page.goto('/',{waitUntil:'domcontentloaded'});
-  await expect(page.locator('meta[name="accaza-customer-build"]')).toHaveAttribute('content','63');
+  await expect(page.locator('meta[name="accaza-customer-build"]')).toHaveAttribute('content',String(release.builds.customer));
   await expect(page.locator('#orderServiceHeadline')).toHaveText('OPEN FOR ONLINE ORDERS',{timeout:20000});
   await expect(page.locator('#menuGrid .menu-card').first()).toBeVisible({timeout:20000});
   await page.locator('#orderTabsRow .otab').first().click();
@@ -63,7 +66,7 @@ test('Finance Books starts from the assembled runtime without browser errors',as
   const pageErrors=[];
   page.on('pageerror',error=>pageErrors.push(error.message));
   await page.goto('/books.html',{waitUntil:'domcontentloaded'});
-  await expect(page.locator('meta[name="accaza-books-build"]')).toHaveAttribute('content','77');
+  await expect(page.locator('meta[name="accaza-books-build"]')).toHaveAttribute('content',String(release.builds.books));
   await expect(page.locator('#tabs').locator('button')).not.toHaveCount(0);
   await expect(page.locator('#page')).not.toBeEmpty();
   expect(pageErrors).toEqual([]);
