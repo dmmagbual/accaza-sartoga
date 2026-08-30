@@ -28,6 +28,7 @@ const ReconciliationControls = require("./lib/reconciliation-controls");
 const RecoveryValidation = require("./lib/recovery-validation");
 const ProductionHealth = require("./lib/production-health");
 const IncidentControls = require("./lib/incident-controls");
+const ReleaseCertification = require("./lib/release-certification");
 
 initializeApp();
 
