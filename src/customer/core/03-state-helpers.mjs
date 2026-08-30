@@ -1,6 +1,6 @@
 
 // State
-let categoriesMap={},menuItemsMap={},adminResMap={},reviewsMap={},availability={},cart={};
+let categoriesMap={},menuItemsMap={},adminResMap={},reviewsMap={},availability={},cart={},categoriesListCache=null,menuItemsListCache=null,catalogRenderPending=false;
 function onlineOrderingAvailable(){return publicOrdersOpen&&customerLiveConnected&&!!auth.currentUser&&!customerAuthProblem;}
 function syncPlaceOrderButton(){
   var button=document.querySelector('.btn-place-order');if(!button||window._placingOrder)return;
@@ -32,8 +32,9 @@ onValue(ref(db,'.info/connected'),function(snap){
 let optionGroupsMap={},optSeedStarted=false,itemOptMigrated=false;
 let knownOrderIds=null,unseenOrders=0,orderChimeTimer=null,audioCtx=null;
 let orderType='pickup',paymentType='gcash',contactMethod='whatsapp',resContactMethod='whatsapp';
-let myOrderIds=JSON.parse(localStorage.getItem('accaza_my_orders')||'[]');
-let myReservationIds=JSON.parse(localStorage.getItem('accaza_my_reservations')||'[]');
+function storedIdList(key,limit){try{var value=JSON.parse(localStorage.getItem(key)||'[]'),trimmed=recentOwnedIds(Array.isArray(value)?value:[],limit);if(!Array.isArray(value)||value.length!==trimmed.length)localStorage.setItem(key,JSON.stringify(trimmed));return trimmed;}catch(e){try{localStorage.removeItem(key);}catch(_e){}return[];}}
+let myOrderIds=storedIdList('accaza_my_orders',CUSTOMER_LIVE_ORDER_LIMIT);
+let myReservationIds=storedIdList('accaza_my_reservations',CUSTOMER_LIVE_RESERVATION_LIMIT);
 let calBlocks={};
 let calYear,calMonth,selectedDate=null,selectedTime=null;
 let adminCalYear,adminCalMonth,adminSelectedDate=null;
@@ -46,13 +47,14 @@ calYear=now.getFullYear();calMonth=now.getMonth();
 adminCalYear=now.getFullYear();adminCalMonth=now.getMonth();
 
 // Helpers
-function getCats(){return Object.values(categoriesMap).sort((a,b)=>(a.order||0)-(b.order||0));}
+function getCats(){if(!categoriesListCache)categoriesListCache=Object.values(categoriesMap).sort((a,b)=>(a.order||0)-(b.order||0));return categoriesListCache;}
 function getCatLabel(id){const c=categoriesMap[id];return c?c.icon+' '+c.label:id;}
 function getCatIcon(id){const c=categoriesMap[id];return c?c.icon:'☕';}
-function getMenuItems(){return Object.entries(menuItemsMap).map(([k,v])=>({...v,key:k}));}
+function getMenuItems(){if(!menuItemsListCache)menuItemsListCache=Object.entries(menuItemsMap).map(([k,v])=>({...v,key:k}));return menuItemsListCache;}
 function isAvail(name){return availability[name]!==false;}
 function isDrink(cat){return DRINK_CATS.includes(cat);}
 function formatPrice(item){if(item.priceM&&item.priceL)return'S ₱'+item.priceS+' · M ₱'+item.priceM+' · L ₱'+item.priceL;return'₱'+item.priceS;}
+function scheduleCatalogRender(){if(catalogRenderPending)return;catalogRenderPending=true;var run=function(){catalogRenderPending=false;renderMenuSection();renderOrderSection();};if(typeof requestAnimationFrame==='function')requestAnimationFrame(run);else setTimeout(run,0);}
 
 // ── SEED TABS FROM DEFAULTS IMMEDIATELY ──
 function seedTabsFromDefaults(){

@@ -19,11 +19,12 @@
     if(name==='pos'&&!window.AccazaOfflineQueue)return load('offlinequeue').then(function(){if(!window.AccazaOfflineQueue)throw new Error('Durable offline queue did not initialize.');return load('pos');});
     if(name==='pos'&&!window.AccazaCosting)return load('costing').then(function(){if(!window.AccazaCosting)throw new Error('Shared costing engine did not initialize.');return load('pos');});
     promises[name]=new Promise(function(resolve,reject){
+      var started=window.performance&&performance.now?performance.now():Date.now();
       var script=document.createElement('script');
       if(name==='analytics')script.type='module';
       script.src=base+files[name]+(build?'?v='+encodeURIComponent(build):'');script.async=true;script.dataset.accazaModule=name;
-      script.onload=resolve;
-      script.onerror=function(){delete promises[name];reject(new Error('Could not load '+name+' module.'));};
+      script.onload=function(){try{if(window.AccazaTelemetry)window.AccazaTelemetry.metric('module_load',(window.performance&&performance.now?performance.now():Date.now())-started,true);}catch(_e){}resolve();};
+      script.onerror=function(){try{if(window.AccazaTelemetry)window.AccazaTelemetry.metric('module_load',(window.performance&&performance.now?performance.now():Date.now())-started,false);}catch(_e){}delete promises[name];reject(new Error('Could not load '+name+' module.'));};
       document.head.appendChild(script);
     });
     return promises[name];

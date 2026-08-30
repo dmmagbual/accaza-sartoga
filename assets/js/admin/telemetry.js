@@ -1,6 +1,6 @@
 (function(global){
   'use strict';
-  var ALLOWED={pos_boot:1,pos_build:1,cart_render:1,charge_to_durable:1,offline_flush:1,realtime_order_arrival:1};
+  var ALLOWED={pos_boot:1,pos_build:1,cart_render:1,charge_to_durable:1,offline_flush:1,realtime_order_arrival:1,module_load:1,live_ready:1};
   var queue=[],marks={},lastFlush=0,flushing=false,local={};
   function buildLabel(){var meta=global.document&&document.querySelector('meta[name="accaza-admin-build"]');var value=String(meta&&meta.content||'').replace(/[^0-9a-z._-]/gi,'').slice(0,16);return value?'admin-v'+value:'admin-unknown';}
   function now(){return global.performance&&performance.now?performance.now():Date.now();}

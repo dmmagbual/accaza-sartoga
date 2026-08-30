@@ -1,5 +1,5 @@
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import{getDatabase,ref,get,set,push,update,remove,onValue}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import{getDatabase,ref,get,set,push,update,remove,onValue,query,orderByChild,limitToLast}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import{getMessaging,getToken,onMessage,isSupported}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
 import{getAuth,signInAnonymously,signOut,onAuthStateChanged}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import{getFunctions,httpsCallable}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
@@ -14,12 +14,14 @@ const auth=getAuth(app);
 const functions=getFunctions(app,'asia-southeast1');
 const createOnlineOrderCall=httpsCallable(functions,'createOnlineOrder');
 const confirmOrderReceivedCall=httpsCallable(functions,'confirmOrderReceived');
+const CUSTOMER_LIVE_ORDER_LIMIT=20,CUSTOMER_LIVE_RESERVATION_LIMIT=12;
 var myOrdersMap={},_myOrdersSub={},customerUid=null,_customerIndexUnsub=null;
 var customerAuthProblem=null,customerAuthRetryTimer=null,customerAuthFailures=0;
 var myResMap={},_myResSub={};
 let publicOrdersOpen=null,customerLiveConnected=null;
-function subscribeMyOrders(){try{(myOrderIds||[]).forEach(function(id){if(_myOrdersSub[id])return;_myOrdersSub[id]=true;onValue(ref(db,'orders/'+id),function(s){if(s.exists())myOrdersMap[id]=s.val();if(typeof renderCustomerOrders==='function')renderCustomerOrders();if(typeof checkMyReadyOrders==='function')checkMyReadyOrders();},function(){});});}catch(e){}}
-function subscribeCustomerOrderIndex(uid){try{if(_customerIndexUnsub)_customerIndexUnsub();_customerIndexUnsub=onValue(ref(db,'customerOrders/'+uid),function(s){var ids=Object.keys(s.val()||{});ids.forEach(function(id){if(myOrderIds.indexOf(id)<0)myOrderIds.push(id);});try{localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));}catch(e){}subscribeMyOrders();});}catch(e){}}
+function recentOwnedIds(ids,limit){var seen={},out=[];(ids||[]).forEach(function(id){id=String(id||'');if(!id||seen[id])return;seen[id]=true;out.push(id);});return out.slice(-limit);}
+function subscribeMyOrders(){try{var wanted=recentOwnedIds(myOrderIds,CUSTOMER_LIVE_ORDER_LIMIT),keep={};wanted.forEach(function(id){keep[id]=true;});Object.keys(_myOrdersSub).forEach(function(id){if(keep[id])return;try{_myOrdersSub[id]();}catch(e){}delete _myOrdersSub[id];delete myOrdersMap[id];});wanted.forEach(function(id){if(_myOrdersSub[id])return;_myOrdersSub[id]=onValue(ref(db,'orders/'+id),function(s){if(s.exists())myOrdersMap[id]=s.val();else delete myOrdersMap[id];if(typeof renderCustomerOrders==='function')renderCustomerOrders();if(typeof checkMyReadyOrders==='function')checkMyReadyOrders();},function(){});});}catch(e){}}
+function subscribeCustomerOrderIndex(uid){try{if(_customerIndexUnsub)_customerIndexUnsub();var ownedQuery=query(ref(db,'customerOrders/'+uid),orderByChild('createdAt'),limitToLast(CUSTOMER_LIVE_ORDER_LIMIT));_customerIndexUnsub=onValue(ownedQuery,function(s){var ids=[];s.forEach(function(child){ids.push(child.key);});myOrderIds=recentOwnedIds(recentOwnedIds(myOrderIds,CUSTOMER_LIVE_ORDER_LIMIT).concat(ids),CUSTOMER_LIVE_ORDER_LIMIT);try{localStorage.setItem('accaza_my_orders',JSON.stringify(myOrderIds));}catch(e){}subscribeMyOrders();});}catch(e){}}
 async function ensureCustomerAuth(forceRefresh){
   var user=auth.currentUser;
   if(!user){
@@ -35,7 +37,7 @@ async function ensureCustomerAuth(forceRefresh){
   return user;
 }
 window.__subscribeMyOrders=subscribeMyOrders;
-function subscribeMyReservations(){try{(myReservationIds||[]).forEach(function(id){if(_myResSub[id])return;_myResSub[id]=true;onValue(ref(db,'reservations/'+id),function(s){if(s.exists())myResMap[id]=s.val();else delete myResMap[id];if(typeof renderMyReservations==='function')renderMyReservations();},function(){});});}catch(e){}}
+function subscribeMyReservations(){try{var wanted=recentOwnedIds(myReservationIds,CUSTOMER_LIVE_RESERVATION_LIMIT),keep={};wanted.forEach(function(id){keep[id]=true;});Object.keys(_myResSub).forEach(function(id){if(keep[id])return;try{_myResSub[id]();}catch(e){}delete _myResSub[id];delete myResMap[id];});wanted.forEach(function(id){if(_myResSub[id])return;_myResSub[id]=onValue(ref(db,'reservations/'+id),function(s){if(s.exists())myResMap[id]=s.val();else delete myResMap[id];if(typeof renderMyReservations==='function')renderMyReservations();},function(){});});}catch(e){}}
 window.__subscribeMyReservations=subscribeMyReservations;
 function scheduleCustomerAuthRetry(){
   if(customerAuthRetryTimer||!navigator.onLine)return;
@@ -161,7 +163,7 @@ function getItemOptionGroups(item){
 }
 
 // State
-let categoriesMap={},menuItemsMap={},adminResMap={},reviewsMap={},availability={},cart={};
+let categoriesMap={},menuItemsMap={},adminResMap={},reviewsMap={},availability={},cart={},categoriesListCache=null,menuItemsListCache=null,catalogRenderPending=false;
 function onlineOrderingAvailable(){return publicOrdersOpen&&customerLiveConnected&&!!auth.currentUser&&!customerAuthProblem;}
 function syncPlaceOrderButton(){
   var button=document.querySelector('.btn-place-order');if(!button||window._placingOrder)return;
@@ -193,8 +195,9 @@ onValue(ref(db,'.info/connected'),function(snap){
 let optionGroupsMap={},optSeedStarted=false,itemOptMigrated=false;
 let knownOrderIds=null,unseenOrders=0,orderChimeTimer=null,audioCtx=null;
 let orderType='pickup',paymentType='gcash',contactMethod='whatsapp',resContactMethod='whatsapp';
-let myOrderIds=JSON.parse(localStorage.getItem('accaza_my_orders')||'[]');
-let myReservationIds=JSON.parse(localStorage.getItem('accaza_my_reservations')||'[]');
+function storedIdList(key,limit){try{var value=JSON.parse(localStorage.getItem(key)||'[]'),trimmed=recentOwnedIds(Array.isArray(value)?value:[],limit);if(!Array.isArray(value)||value.length!==trimmed.length)localStorage.setItem(key,JSON.stringify(trimmed));return trimmed;}catch(e){try{localStorage.removeItem(key);}catch(_e){}return[];}}
+let myOrderIds=storedIdList('accaza_my_orders',CUSTOMER_LIVE_ORDER_LIMIT);
+let myReservationIds=storedIdList('accaza_my_reservations',CUSTOMER_LIVE_RESERVATION_LIMIT);
 let calBlocks={};
 let calYear,calMonth,selectedDate=null,selectedTime=null;
 let adminCalYear,adminCalMonth,adminSelectedDate=null;
@@ -207,13 +210,14 @@ calYear=now.getFullYear();calMonth=now.getMonth();
 adminCalYear=now.getFullYear();adminCalMonth=now.getMonth();
 
 // Helpers
-function getCats(){return Object.values(categoriesMap).sort((a,b)=>(a.order||0)-(b.order||0));}
+function getCats(){if(!categoriesListCache)categoriesListCache=Object.values(categoriesMap).sort((a,b)=>(a.order||0)-(b.order||0));return categoriesListCache;}
 function getCatLabel(id){const c=categoriesMap[id];return c?c.icon+' '+c.label:id;}
 function getCatIcon(id){const c=categoriesMap[id];return c?c.icon:'☕';}
-function getMenuItems(){return Object.entries(menuItemsMap).map(([k,v])=>({...v,key:k}));}
+function getMenuItems(){if(!menuItemsListCache)menuItemsListCache=Object.entries(menuItemsMap).map(([k,v])=>({...v,key:k}));return menuItemsListCache;}
 function isAvail(name){return availability[name]!==false;}
 function isDrink(cat){return DRINK_CATS.includes(cat);}
 function formatPrice(item){if(item.priceM&&item.priceL)return'S ₱'+item.priceS+' · M ₱'+item.priceM+' · L ₱'+item.priceL;return'₱'+item.priceS;}
+function scheduleCatalogRender(){if(catalogRenderPending)return;catalogRenderPending=true;var run=function(){catalogRenderPending=false;renderMenuSection();renderOrderSection();};if(typeof requestAnimationFrame==='function')requestAnimationFrame(run);else setTimeout(run,0);}
 
 // ── SEED TABS FROM DEFAULTS IMMEDIATELY ──
 function seedTabsFromDefaults(){
@@ -253,9 +257,9 @@ onValue(categoriesRef,snap=>{
   const saved=snap.val();
   if(saved){categoriesMap=saved;}
   else{const seed={};DEFAULT_CATS.forEach(c=>{seed[c.id]=c;});set(categoriesRef,seed);categoriesMap=seed;}
+  categoriesListCache=null;
   rebuildTabs();
-  renderMenuSection();
-  renderOrderSection();
+  scheduleCatalogRender();
 });
 
 function migrateItemOptions(){
@@ -342,9 +346,9 @@ onValue(menuRef,snap=>{
     defaultMenu.forEach((item,i)=>{seed['item_'+String(i).padStart(3,'0')]=item;});
     set(menuRef,seed);menuItemsMap=seed;
   }
+  menuItemsListCache=null;
   migrateItemOptions();
-  renderMenuSection();
-  renderOrderSection();
+  scheduleCatalogRender();
 });
 
 // ── NEW ORDER ALERTS (admin/staff) ──────────────────────────
@@ -454,7 +458,7 @@ onValue(reviewsRef,snap=>{
   }
   renderPublicReviews();
 });
-onValue(availRef,snap=>{const s=snap.val();if(s)Object.keys(s).forEach(k=>availability[k]=s[k]);renderMenuSection();renderOrderSection();});
+onValue(availRef,snap=>{const s=snap.val();if(s)Object.keys(s).forEach(k=>availability[k]=s[k]);scheduleCatalogRender();});
 onValue(paymentRef,snap=>{
   const p=snap.val();if(!p)return;
   if(p.gcashNum)document.getElementById('gcashNum').textContent=p.gcashNum;
