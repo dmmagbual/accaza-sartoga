@@ -506,6 +506,7 @@ if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check en
   if(approvalMatrixCheck.status!==0)fail(`Privileged approval matrix checks failed:\n${approvalMatrixCheck.stderr||approvalMatrixCheck.stdout}`);
   const financialCloseCheck=spawnSync(process.execPath,[path.join(root,'tests','financial-close-check.cjs')],{encoding:'utf8',cwd:root});
   if(financialCloseCheck.status!==0)fail(`Financial close checks failed:\n${financialCloseCheck.stderr||financialCloseCheck.stdout}`);
+  const financialCloseUi=fs.readFileSync(path.join(root,'books.html'),'utf8');for(const marker of ["x.measurement==='status'","Matched open balance","GL '+peso(c.glBalance)","non-monetary controls are never displayed as pesos","<th class=\"num\">Result</th>"])if(!financialCloseUi.includes(marker))fail(`Typed Financial Close presentation safeguard missing: ${marker}`);
 
   const pricing=spawnSync(process.execPath,[path.join(root,'tests','order-pricing-check.mjs')],{encoding:'utf8',cwd:root});
   if(pricing.status!==0)fail(`server pricing checks failed:\n${pricing.stderr||pricing.stdout}`);
