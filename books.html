@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<meta name="accaza-books-build" content="74"/>
+<meta name="accaza-books-build" content="75"/>
 <title>Accaza Books</title>
 <style>
 :root{
@@ -152,6 +152,8 @@ tr.group-account td{font-weight:800;background:#f3ece0;border-top:2px solid var(
 .live-pill.off{background:rgba(255,255,255,.1);color:#e9dcc7;border-color:rgba(255,255,255,.2)}
 .live-pill.bad{background:rgba(178,59,52,.2);color:#f2b8b3;border-color:rgba(178,59,52,.4)}
 .live-pill.warn{background:rgba(201,163,106,.22);color:#f0dcb8;border-color:rgba(201,163,106,.4)}
+.settings-nav{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:1rem;padding:.45rem;background:#ede3d4;border:1px solid #ddcfbc;border-radius:10px}
+.settings-nav .btn{background:transparent;border-color:transparent}.settings-nav .btn:hover{background:rgba(255,255,255,.65);border-color:#d5c4ad}.settings-nav .btn.active{background:var(--bd);border-color:var(--bd);color:#fff}
 @media(max-width:760px){
   .topbar-in{gap:.6rem;padding:.55rem .75rem}.brand{width:100%}.brand .logo{width:30px;height:30px}
   .topbar .period{order:3;margin-left:0;width:100%;overflow-x:auto;padding-bottom:.15rem}.topbar .period input{min-width:128px}
@@ -169,10 +171,9 @@ tr.group-account td{font-weight:800;background:#f3ece0;border-top:2px solid var(
   <div class="topbar-in">
     <div class="brand">
       <div class="logo">☕</div>
-      <div><b>Accaza Books</b><small>Coffee-shop accounting · build v74</small></div>
+      <div><b>Accaza Books</b><small>Coffee-shop accounting · build v75</small></div>
     </div>
     <span id="liveStatus" class="live-pill off" title="Live POS auto-capture status — click to sign in" onclick="App.signInPrompt()">● Connecting…</span>
-    <span id="reviewBadge" class="live-pill warn" style="display:none" title="Unmapped POS accounts to review" onclick="App.go('journal')"></span>
     <div class="period" aria-label="Shared report date range">
       <span>Dates</span>
       <input id="periodFrom" type="date" aria-label="Report start date"/>
@@ -182,11 +183,7 @@ tr.group-account td{font-weight:800;background:#f3ece0;border-top:2px solid var(
       <button type="button" onclick="window.AccazaReportPeriod.set({mode:'all'})">All time</button>
     </div>
     <div class="tb-actions">
-      <button onclick="App.go('settings')" title="Accounting periods and legacy cutover">Settings</button>
       <a href="admin.html" title="Switch to the POS / Admin panel" style="display:inline-flex;align-items:center;background:rgba(201,163,106,.22);color:#fff;border:1px solid rgba(201,163,106,.5);border-radius:7px;padding:.34rem .6rem;font-size:.74rem;font-weight:700;text-decoration:none">⇄ POS / Admin</a>
-      <button onclick="App.exportJSON()" title="Download a backup of all books">⬇ Backup</button>
-      <button onclick="document.getElementById('importFile').click()" title="Restore from a backup file">⬆ Restore</button>
-      <input type="file" id="importFile" accept="application/json" style="display:none" onchange="App.importJSON(this.files[0])"/>
     </div>
   </div>
 </div>
@@ -194,7 +191,7 @@ tr.group-account td{font-weight:800;background:#f3ece0;border-top:2px solid var(
 <div class="tabs"><div class="tabs-in" id="tabs"></div></div>
 
 <div class="wrap"><div id="page" class="page"></div>
-  <div class="foot-note">Accaza Books · build v74 · double-entry, append-only ledger · shared server-authoritative Finance data</div>
+  <div class="foot-note">Accaza Books · build v75 · double-entry, append-only ledger · shared server-authoritative Finance data</div>
 </div>
 
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
@@ -413,7 +410,7 @@ function plData(){
 
 /* ============================================================ TABS ============================================================ */
 const TABS = [
-  /* Release compatibility markers: {id:"cashflow",label:"Cash Flow"} {id:"settings",label:"Settings"} */
+  /* Release compatibility markers: {id:"cashflow",label:"Cash Flow"} {id:"settings",label:"Settings"} {id:"close",label:"Financial Close"} {id:"coa",label:"Chart of Accounts"} */
   {id:"dashboard",label:"Dashboard",group:"Overview",groupStart:true},
   {id:"transactions",label:"Transactions",group:"Record",groupStart:true},
   {id:"receivables",label:"Receivables",group:"Record"},
@@ -424,9 +421,7 @@ const TABS = [
   {id:"cashflow",label:"Cash Flow",group:"Reports"},
   {id:"ledger",label:"General Ledger",group:"Reports"},
   {id:"tb",label:"Trial Balance",group:"Reports"},
-  {id:"close",label:"Financial Close",group:"Controls",groupStart:true},
-  {id:"coa",label:"Chart of Accounts",group:"Controls"},
-  {id:"settings",label:"Settings",group:"Controls"}
+  {id:"settings",label:"Settings",group:"Controls",groupStart:true}
 ];
 let CURRENT = "dashboard";
 
@@ -434,7 +429,7 @@ const App = {
   init(){
     // period selector
     this.rebuildPeriodSel();
-    const requested=new URLSearchParams(location.search).get("tab"); if(TABS.some(t=>t.id===requested))CURRENT=requested;
+    const requested=new URLSearchParams(location.search).get("tab"); if(requested==='close'||requested==='coa'){CURRENT='settings';window.__booksSettingsSection=requested;}else if(TABS.some(t=>t.id===requested))CURRENT=requested;
     this.renderTabs(); this.render();
   },
   setPeriod(v){ var p=window.AccazaReportPeriod&&window.AccazaReportPeriod.set?window.AccazaReportPeriod.set({mode:v}):{mode:'month'};PERIOD=p.mode||'month';this.rebuildPeriodSel();this.render(); },
@@ -445,6 +440,7 @@ const App = {
     document.getElementById("tabs").innerHTML = TABS.map(t=>`<button class="tab ${t.groupStart?'group-start ':''}${t.id===CURRENT?'active':''}" data-group="${t.group}" ${t.id===CURRENT?'aria-current="page"':''} onclick="App.go('${t.id}')">${t.label}</button>`).join("");
   },
   go(id){ CURRENT=id; this.renderTabs(); this.render(); window.scrollTo(0,0); },
+  settingsSection(id){ window.__booksSettingsSection=id;CURRENT='settings';this.renderTabs();this.render();window.scrollTo(0,0); },
   render(){ const page=document.getElementById("page");if(window.__booksLiveLoading){page.innerHTML='<div class="page-head"><div><h2>Refreshing Finance Books…</h2><p>Restoring the shared journal and statement balances</p></div></div><div class="hint">Finance figures are reconnecting. Existing balances are being preserved and will appear automatically when the ledger is ready.</div>';return;}page.innerHTML = PAGES[CURRENT](); },
 
   /* ---- backup / restore ---- */
@@ -968,7 +964,7 @@ function subledgerPage(kind){
 PAGES.receivables = receivablesPage;
 PAGES.payables = function(){ return subledgerPage('ap'); };
 App.correctPayable=function(id){var d=(window.__apMap||{})[id];if(!d)return alert('This payable is no longer available.');if(d.type!=='customer_change_refund')return App.txnPay();var value=r2(Number(d.remainingAmount!=null?d.remainingAmount:d.amount)||0);if(!(value>0))return alert('This payable has no remaining balance.');App._txnModal('Close customer payable to Owner\'s Capital','<div class="hint">This closes the exact '+esc(d.party||id)+' payable. Finance will debit Customer Change / Refund Payable and credit Owner\'s Capital. No cash is paid or moved.</div><div class="grid2"><div class="field"><label>Amount</label><input value="'+value.toFixed(2)+'" disabled/></div><div class="field"><label>Accounting date</label><input id="pc_date" type="date" value="'+todayStr()+'"/></div></div><div class="field"><label>Owner / partner accepting the balance</label><input id="pc_owner" placeholder="Required"/></div><div class="field"><label>Correction reference</label><input id="pc_ref" value="'+esc(d.ref||id)+'" placeholder="Required · source reference"/></div><div class="field"><label>Reason for closing to capital</label><textarea id="pc_reason" maxlength="300" placeholder="Required · explain why this is not payable to the customer"></textarea></div>','Post correction',function(btn){var owner=fval('pc_owner'),reference=fval('pc_ref'),reason=fval('pc_reason'),date=fval('pc_date');if(!owner)return alert('Enter the owner or partner accepting this balance.');if(!reference)return alert('Enter the correction reference.');if(!reason)return alert('Enter the correction reason.');if(window.__isAccountingPeriodClosed&&window.__isAccountingPeriodClosed(date))return alert('This accounting month is closed. Reopen it in Finance Settings before posting the correction.');App._txnRun(btn,{action:'close_customer_payable_to_capital',commandId:'payable_capital_'+id,documentId:id,ownerName:owner,date:date,ref:reference,reason:reason},function(){CURRENT='journal';App.renderTabs();App.rebuildPeriodSel();App.render();});});};
-PAGES.settings = function(){
+PAGES.settingsGeneral = function(){
   var periods=window.__accountingPeriods||{},now=todayStr().slice(0,7),selected=window.__booksSettingsPeriod||now,record=periods[selected]||{},closed=record.status==='closed',cutoff='2026-08-29';
   return '<div class="page-head"><div><h2>Finance settings</h2><p>Accounting-period control and one-time legacy cutover</p></div></div>'+
     '<div class="card card-pad"><div class="section-label">Accounting period</div><div class="grid2"><div class="field"><label>Month</label><input id="bookPeriodMonth" type="month" value="'+esc(selected)+'" onchange="App.refreshPeriodSetting()"/></div><div class="field"><label>Current status</label><div id="bookPeriodStatus" class="balance-bar '+(closed?'off':'ok')+'"><span>'+(closed?'Closed — dated manual work is protected':'Open — controlled manual corrections are allowed')+'</span></div></div></div><div class="hint">Close a reviewed month to prevent new or amended manual journals, Admin cash payments, and discrepancy adjustments dated in that month. Reopen it when a controlled correction is needed. The original entry is preserved; Finance Books creates the linked correction or reversal instead of rewriting history.</div><div class="btn-row"><button class="btn '+(closed?'primary':'ghost')+'" onclick="App.changeAccountingPeriod(&quot;reopen&quot;)" '+(closed?'':'disabled')+'>Reopen selected month</button><button class="btn '+(closed?'ghost':'primary')+'" onclick="App.changeAccountingPeriod(&quot;close&quot;)" '+(closed?'disabled':'')+'>Close selected month</button></div></div>'+
@@ -990,6 +986,19 @@ PAGES.close = function(){
 App.loadFinancialClose=function(){var date=(document.getElementById('bc_date')||{}).value||window.__booksCloseDate||todayStr();window.__booksCloseDate=date;if(!window.__booksFinancialClose)return alert('Close service is not ready.');window.__booksFinancialClose({action:'get',closeType:'DAILY_CLOSE',businessDate:date}).then(function(x){window.__booksCloseCurrent=x.current||null;App.render();}).catch(function(e){alert('Could not load close: '+((e&&e.message)||e));});};
 App.runFinancialClose=function(btn){var date=(document.getElementById('bc_date')||{}).value||todayStr();window.__booksCloseDate=date;if(!window.__booksFinancialClose)return alert('Close service is not ready.');btn.disabled=true;btn.textContent='Reconciling…';window.__booksFinancialClose({closeType:'DAILY_CLOSE',businessDate:date}).then(function(x){window.__booksCloseCurrent=x;App.render();alert(x.status==='EXCEPTIONS_OPEN'?'Close completed with '+(x.exceptions||[]).length+' exception(s). Certification is blocked.':'Close reconciled. Review timing items and certify.');}).catch(function(e){alert('Could not run close: '+((e&&e.message)||e));btn.disabled=false;btn.textContent='Run reconciliation';});};
 App.certifyFinancialClose=function(btn){var row=window.__booksCloseCurrent;if(!row)return;var reason=prompt('Certification note — confirm you reviewed Admin, Finance, cash custody, inventory, AP/AR and timing items:','Reviewed all close controls');if(!reason||!reason.trim())return;btn.disabled=true;window.__booksCertifyClose({businessDate:row.businessDate,closeId:row.closeId,revision:row.revision,reason:reason.trim()}).then(function(x){window.__booksCloseCurrent=Object.assign({},row,{status:'CERTIFIED',certification:x.certification});App.render();alert('Daily close certified.');}).catch(function(e){alert('Could not certify: '+((e&&e.message)||e));btn.disabled=false;});};
+
+function settingsNavigation(section){
+  var items=[['general','General'],['close','Financial Close'],['coa','Chart of Accounts'],['data','Backup & Restore']];
+  return '<div class="page-head"><div><h2>Settings</h2><p>Finance controls, account structure, and data protection</p></div></div><div class="settings-nav" role="navigation" aria-label="Finance settings">'+items.map(function(x){return '<button class="btn '+(section===x[0]?'active':'')+'" '+(section===x[0]?'aria-current="page" ':'')+'onclick="App.settingsSection(\''+x[0]+'\')">'+x[1]+'</button>';}).join('')+'</div>';
+}
+PAGES.settings=function(){
+  var section=window.__booksSettingsSection||'general',content='';
+  if(section==='close')content=PAGES.close();
+  else if(section==='coa')content=PAGES.coa();
+  else if(section==='data')content='<div class="card card-pad"><div class="section-label">Books backup</div><p class="muted">Download a local copy of the chart of accounts and journal, or restore a previously downloaded Accaza Books backup.</p><div class="hint">Restore replaces the current browser-held Books data after confirmation. Live server-authoritative Finance entries remain protected by their server controls.</div><div class="btn-row"><button class="btn primary" onclick="App.exportJSON()">↓ Download backup</button><button class="btn" onclick="document.getElementById(\'importFile\').click()">↑ Restore backup</button><input type="file" id="importFile" accept="application/json" style="display:none" onchange="App.importJSON(this.files[0])"/></div></div>';
+  else {section='general';content=PAGES.settingsGeneral();}
+  return settingsNavigation(section)+content;
+};
 
 /* ---- Transactions: finance-originated postings via postFinancialCommand ---- */
 function uid(){ try{return crypto.randomUUID();}catch(_e){return 'id_'+Date.now()+'_'+Math.floor(Math.random()*1e6);} }
@@ -1250,8 +1259,6 @@ if(auth){
       if(lines.length) out.push({id:k,date:n.date||String(k).slice(0,10),ref:n.ref||k,memo:n.memo||"POS entry",lines,source:"pos",channel:n.channel||"",type:n.type||"",sourceType:n.sourceType||"",sourceId:n.sourceId||"",reversalOf:n.reversalOf||"",reversedByMovementId:n.reversedByMovementId||"",correctsMovementId:n.correctsMovementId||"",correctionReplacementId:n.correctionReplacementId||"",correctionReversalMovementId:n.correctionReversalMovementId||"",linkedPayableId:n.linkedPayableId||"",linkedDiscrepancyId:n.linkedDiscrepancyId||"",voided:n.voided===true,reason:n.reason||n.correctionReason||""}); });
     return out; }
   function refresh(){ window.__posEntries=toEntries(journalCache);
-    const n=Object.keys(reviewCache||{}).length; const rb=document.getElementById("reviewBadge");
-    if(rb){ rb.style.display=n?"inline-block":"none"; rb.textContent="⚠ "+n+" to review"; }
     if(window.App&&App.render){ App.rebuildPeriodSel&&App.rebuildPeriodSel(); App.render(); } }
   let journalUnsub=null;
   function bindPeriodJournal(){
