@@ -69,6 +69,9 @@ test('Finance Books starts from the assembled runtime without browser errors',as
   await expect(page.locator('meta[name="accaza-books-build"]')).toHaveAttribute('content',String(release.builds.books));
   await expect(page.locator('#tabs').locator('button')).not.toHaveCount(0);
   await expect(page.locator('#page')).not.toBeEmpty();
+  // CI intentionally has no Firebase credentials or dependable network. End the
+  // connection placeholder explicitly before testing the signed-out report state.
+  await page.evaluate(()=>{window.__booksLiveLoading=false;});
   await page.getByRole('button',{name:'Key Metrics'}).click();
   await expect(page.locator('#page')).toContainText('Key Financial Metrics');
   await expect(page.locator('#page')).toContainText('Sign in for verified metrics');
