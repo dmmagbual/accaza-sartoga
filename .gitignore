@@ -13,6 +13,7 @@ functions/node_modules/
 coverage/
 dist/
 .cache/
+test-results/
 *.log
 
 # Private business data and database exports
@@ -40,4 +41,3 @@ Thumbs.db
 desktop.ini
 .vscode/
 .idea/
-
