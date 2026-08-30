@@ -35,7 +35,7 @@ self.addEventListener('notificationclick',function(e){
 
 /* Versioned customer + POS app shells. Customer checkout remains online-only;
    authenticated POS cash sales use the durable IndexedDB continuity queue. */
-const CACHE='accaza-v350';
+const CACHE='accaza-v351';
 const ASSETS=[
   '/','/index.html','/admin.html','/books.html','/manifest.json','/manifest-admin.json',
   '/favicon.ico','/favicon_32x32.png','/favicon_180x180.png','/favicon_192x192.png','/favicon_512x512.png',
@@ -44,7 +44,7 @@ const ASSETS=[
   '/assets/js/customer/core.mjs','/assets/js/customer/navigation.js','/assets/js/customer/ui.js','/assets/js/customer/order-tracker.js','/assets/js/customer/packages.js',
   '/assets/js/admin/core.mjs','/assets/js/admin/archive-order-sort.mjs','/assets/js/admin/inventory-books-reconciliation.mjs','/assets/js/admin/workspace-shell.mjs','/assets/js/admin/overview-command.mjs','/assets/js/admin/overview-insights.mjs','/assets/js/admin/firebase-client.mjs','/assets/js/admin/realtime-hub.mjs','/assets/js/admin/history-pager.mjs','/assets/js/admin/manager-approval.mjs','/assets/js/admin/portal-auth.mjs','/assets/js/admin/admin-orders.mjs','/assets/js/admin/customer-registry.mjs','/assets/js/admin/reservations.mjs','/assets/js/admin/catalog-admin.mjs','/assets/js/admin/app-customer-session.mjs','/assets/js/admin/customer-order-tracker.mjs','/assets/js/admin/shared-ui.mjs','/assets/js/admin/telemetry.js','/assets/js/admin/operations-dashboard.js','/assets/js/admin/form-dialog.js','/assets/js/admin/module-loader.js','/assets/js/admin/offline-queue.js','/assets/js/admin/portal-boot.js',
   '/assets/js/shared/costing.js','/assets/js/admin/pos.js','/assets/js/admin/channel-pricing.js','/assets/js/admin/analytics.js','/assets/js/admin/sales-history.js','/assets/js/admin/register.js','/assets/js/admin/staff-access.js','/assets/js/admin/packages.js','/assets/js/admin/finance.js','/assets/js/admin/staff-inbox.js',
-  '/assets/css/books.css','/assets/js/books/app.js','/assets/js/books/live-pos.mjs','/assets/js/books/accounting-periods.mjs'
+  '/assets/css/books.css','/assets/js/books/app.js','/src/books/business-intelligence.js','/assets/js/books/live-pos.mjs','/assets/js/books/accounting-periods.mjs'
 ];
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>Promise.all(ASSETS.map(asset=>c.add(asset).catch(()=>null)))));

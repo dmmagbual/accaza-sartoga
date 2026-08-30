@@ -10,6 +10,7 @@ const TABS = [
   {id:"pl",label:"Profit & Loss",group:"Reports",groupStart:true},
   {id:"bs",label:"Balance Sheet",group:"Reports"},
   {id:"cashflow",label:"Cash Flow",group:"Reports"},
+  {id:"insights",label:"Key Metrics",group:"Reports"},
   {id:"ledger",label:"General Ledger",group:"Reports"},
   {id:"tb",label:"Trial Balance",group:"Reports"},
   {id:"settings",label:"Settings",group:"Controls",groupStart:true}

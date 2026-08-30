@@ -219,6 +219,7 @@ const TABS = [
   {id:"pl",label:"Profit & Loss",group:"Reports",groupStart:true},
   {id:"bs",label:"Balance Sheet",group:"Reports"},
   {id:"cashflow",label:"Cash Flow",group:"Reports"},
+  {id:"insights",label:"Key Metrics",group:"Reports"},
   {id:"ledger",label:"General Ledger",group:"Reports"},
   {id:"tb",label:"Trial Balance",group:"Reports"},
   {id:"settings",label:"Settings",group:"Controls",groupStart:true}
@@ -698,6 +699,13 @@ const PAGES = {
       <div class="hint">Main accounts are read-only totals. Transactions must be posted to their indented subaccounts, preserving detailed inventory and cash audit trails.</div>
       <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Code</th><th>Account</th><th>Note</th><th class="num">Balance</th><th></th></tr></thead><tbody>${body}</tbody></table></div></div>`;
   }
+};
+/* The analytics engine is kept outside the core Books bundle so ordinary
+   accounting pages retain their startup performance budget. */
+PAGES.insights=function(){
+  return window.AccazaBusinessIntelligencePage
+    ? window.AccazaBusinessIntelligencePage()
+    : '<div class="empty"><b>Key Metrics is loading…</b></div>';
 };
 
 /* ---- AR / AP subledgers + aging (read live from /receivables, /payables) ---- */
