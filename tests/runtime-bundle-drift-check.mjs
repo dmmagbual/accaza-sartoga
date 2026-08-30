@@ -39,6 +39,7 @@ const expectedFunctionExports=[
 ];
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageStaffMessage')+1,0,'manageIncident');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('getOperationalExceptions')+1,0,'getProductionCertification');
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('getProductionCertification')+1,0,'getProductionValidation');
 const functionsSource=fs.readFileSync(path.join(root,'functions/index.js'),'utf8');
 const actualFunctionExports=[...functionsSource.matchAll(/^exports\.([A-Za-z0-9_]+)\s*=/gm)].map(match=>match[1]);
 if(JSON.stringify(actualFunctionExports)!==JSON.stringify(expectedFunctionExports))throw new Error('The public Firebase Functions export contract changed. Review deployment, trigger, callable, and removal consequences explicitly.');
