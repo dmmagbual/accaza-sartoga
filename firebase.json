@@ -6,7 +6,7 @@
       "source": "functions",
       "codebase": "default",
       "runtime": "nodejs22",
-      "predeploy": ["node tools/sync-costing.mjs"],
+      "predeploy": ["node tools/build-runtime-bundles.mjs", "node tools/sync-costing.mjs"],
       "ignore": ["node_modules", ".git", "*.log"]
     }
   ]
