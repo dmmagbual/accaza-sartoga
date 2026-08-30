@@ -49,7 +49,7 @@ exports.ensureFinancialLedger = onCall(
 
 exports.manageBooksAccount = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
-  async (request) => {
+  async (request) => observeFinancialOperation(request, "manageBooksAccount", async () => {
     const db = getDatabase();
     const actor = await requireBooksChartManager(db, request);
     const data = request.data || {};
@@ -100,7 +100,7 @@ exports.manageBooksAccount = onCall(
       return results;
     }
     throw new HttpsError("invalid-argument", "Unknown chart action.");
-  },
+  }),
 );
 
 exports.manageChartAccount = onCall(

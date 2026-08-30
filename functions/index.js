@@ -157,6 +157,41 @@ exports.notifyOnContactMessage = onValueCreated(
 // Sale movements roll up into a daily-summary-per-channel entry; all other
 // movements post as their own discrete entry. Idempotent by sources[id].
 // ---------------------------------------------------------------------------
+const WriteSafety = require("./lib/write-safety");
+
+function operationCorrelationId(request, operation) {
+  const rawTrace = String(request && request.rawRequest && request.rawRequest.headers && request.rawRequest.headers["x-cloud-trace-context"] || "").split("/")[0];
+  const trace = rawTrace.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40);
+  return trace || `${String(operation || "operation").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 20)}_${crypto.randomBytes(8).toString("hex")}`;
+}
+
+function safeErrorCode(error) { return String(error && (error.code || error.name) || "unknown").replace(/[^A-Za-z0-9_/-]/g, "").slice(0, 80); }
+
+async function observeFinancialOperation(request, operation, handler) {
+  const correlationId = operationCorrelationId(request, operation), startedAt = Date.now();
+  logger.info("Financial operation started", {operation, correlationId, authenticated:!!(request && request.auth && request.auth.uid)});
+  try {
+    const result = await handler({correlationId});
+    logger.info("Financial operation completed", {operation, correlationId, durationMs:Date.now()-startedAt, duplicate:!!(result && result.duplicate)});
+    return result && typeof result === "object" && !Array.isArray(result) ? Object.assign({}, result, {correlationId}) : result;
+  } catch (error) {
+    logger.error("Financial operation failed", {operation, correlationId, durationMs:Date.now()-startedAt, code:safeErrorCode(error), expected:error instanceof HttpsError});
+    if (error instanceof HttpsError) {
+      const details = error.details && typeof error.details === "object" ? Object.assign({}, error.details, {correlationId}) : {correlationId};
+      throw new HttpsError(error.code, error.message, details);
+    }
+    throw new HttpsError("internal", `The financial operation could not be completed. Nothing was posted. Reference: ${correlationId}.`, {correlationId});
+  }
+}
+
+async function safeFinancialUpdate(db, writes, context) {
+  try { return await WriteSafety.safeAtomicUpdate(db, writes); }
+  catch (error) {
+    if (!(error instanceof WriteSafety.UnsafeAtomicUpdateError)) throw error;
+    logger.error("Unsafe atomic update blocked", {context:financeText(context || "financial", 80), code:error.code, details:error.details || {}});
+    throw new HttpsError("internal", `The ${context || "financial"} update could not be prepared safely. Nothing was posted.`);
+  }
+}
 async function flagUnmappedBooks(db, mv, unmapped) {
   if (!unmapped || !unmapped.length) return;
   await db.ref(`/books/reviewQueue/${mv.id}`).set({movementId: String(mv.id || ""), type: String(mv.type || ""), sourceId: String(mv.sourceId || ""), accounts: unmapped, at: Date.now()});
@@ -1813,21 +1848,6 @@ async function prepareManualBooksJournal(db, data, accounts, actor, allowedLinke
   if(sensitive&&!['owner','superadmin','admin','manager'].includes(actor.role))throw new HttpsError("permission-denied","A privileged Finance role must post journals affecting cash, sales, platforms, inventory, receivables, payables, suspense, or equity.");
   return {memo,reference,date,lines,cashLines,debit,sensitive,linkedPayableId,linkedPayable};
 }
-function normalizeAtomicUpdatePaths(writes, context) {
-  const paths = Object.keys(writes).sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b));
-  for (const parentPath of paths) {
-    if (!Object.prototype.hasOwnProperty.call(writes, parentPath)) continue;
-    const parent = writes[parentPath];
-    for (const childPath of paths) {
-      if (childPath === parentPath || !Object.prototype.hasOwnProperty.call(writes, childPath) || !childPath.startsWith(`${parentPath}/`)) continue;
-      if (!parent || typeof parent !== "object" || Array.isArray(parent)) throw new HttpsError("internal", `The ${context || "financial"} update could not be prepared safely. Nothing was posted.`);
-      const segments = childPath.slice(parentPath.length + 1).split("/"); let target = parent;
-      while (segments.length > 1) { const segment = segments.shift(); if (!target[segment] || typeof target[segment] !== "object" || Array.isArray(target[segment])) target[segment] = {}; target = target[segment]; }
-      target[segments[0]] = writes[childPath]; delete writes[childPath];
-    }
-  }
-  return writes;
-}
 function assertNoOverlappingUpdatePaths(writes, context) {
   const paths = Object.keys(writes);
   for (const parentPath of paths) for (const childPath of paths) if (childPath !== parentPath && childPath.startsWith(`${parentPath}/`)) throw new HttpsError("internal", `The ${context || "financial"} update contains conflicting record paths. Nothing was posted.`);
@@ -1840,15 +1860,20 @@ async function commitFinancial(db, movementId, movement, actor, extraWrites = {}
   await assertAccountingPeriodOpen(db, Number(movement && movement.occurredAt || Date.now()), "creating this financial posting");
   const record = financeRecord(movementId, movement, actor);
   const claimRef = db.ref(`/financialCommandClaims/${movementId}`), claimToken = crypto.randomBytes(12).toString("hex"), claimedAt = Date.now();
-  const claim = await claimRef.transaction((current) => current || {status:"processing",token:claimToken,claimedAt,actorUid:actor.uid,schemaVersion:1});
+  const claim = await claimRef.transaction((current) => {
+    // The longest financial maintenance callable can run for nine minutes.
+    // A 15-minute lease prevents a live invocation from being taken over.
+    const stale = current && current.status === "processing" && Number(current.claimedAt || 0) < claimedAt - 900000;
+    return !current || stale ? {status:"processing",token:claimToken,claimedAt,actorUid:actor.uid,movementId,operationType:financeText(movement && movement.type,80),schemaVersion:2} : current;
+  });
   if (!claim.committed || !claim.snapshot.exists() || claim.snapshot.val().token !== claimToken) {
     const posted = await ref.get();
-    return {duplicate: true, movement: posted.val() || null};
+    if (posted.exists()) return {duplicate: true, movement: posted.val()};
+    throw new HttpsError("aborted", "This financial command is already being processed. Wait a moment, then refresh before trying again.");
   }
   try {
-    const writes = normalizeAtomicUpdatePaths(Object.assign({}, extraWrites, {[`financialMovements/${movementId}`]: record,[`financialCommandClaims/${movementId}`]:{status:"posted",token:claimToken,claimedAt,postedAt:Date.now(),actorUid:actor.uid,schemaVersion:1}}), "financial");
-    assertNoOverlappingUpdatePaths(writes, "financial");
-    await db.ref().update(writes);
+    const writes = Object.assign({}, extraWrites, {[`financialMovements/${movementId}`]: record,[`financialCommandClaims/${movementId}`]:{status:"posted",token:claimToken,claimedAt,postedAt:Date.now(),actorUid:actor.uid,movementId,operationType:financeText(movement && movement.type,80),schemaVersion:2}});
+    await safeFinancialUpdate(db, writes, "financial");
     return {duplicate: false, movement: record};
   } catch (error) {
     await claimRef.transaction((current) => current && current.token === claimToken && current.status === "processing" ? null : current);
@@ -2119,7 +2144,7 @@ exports.manageFixedAsset = onCall(
 
 exports.postFinancialCommand = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
-  async (request) => {
+  async (request) => observeFinancialOperation(request, "postFinancialCommand", async () => {
     const db = getDatabase(); const data = request.data || {}; const action = financeText(data.action, 40);
     const perms = action.indexOf("inventory_opening_balance") === 0 ? ["purchases", "cashflow"] : action.includes("payable") ? ["payables", "purchases"] : action.includes("receivable") ? ["receivables"] : ["cashflow", "receivables", "payables", "purchases"];
     const actor = await requirePortalPermission(db, request, perms); const commandId = financeKey(data.commandId, "Command ID");
@@ -2334,7 +2359,7 @@ exports.postFinancialCommand = onCall(
       movement = Financial.movement("register_cash_deposit", "cashCustody", ids.join("_"), [Financial.line(`asset:cash_account:${accountId}`, value, 0, "Register cash deposited"), Financial.line("asset:cash_awaiting_deposit", 0, value, "Clear cash custody")], {occurredAt: accountingTimestamp(depositDate,now),actorName:actor.role,reference:depositReference,accountId,custodyAllocations:allocations}); addCash(`fm_${commandId}`, {date: depositDate, accountId, dir: "in", category: "Register cash deposit", amount: value, party: "Register cash custody", ref: depositReference});writes[`operationalAudit/${now}_cash_deposit_${commandId}`]=operationalAuditRecord("cash_deposit","cashCustody",ids.join("_"),actor,{movementId:commandId,amount:value,date:depositDate,destinationAccountId:accountId,reference:depositReference,custodyAllocations:allocations,accounting:"Debit destination cash account; credit Undeposited Collection; total cash and income unchanged."}); result.amount = value;result.date=depositDate;
     } else throw new HttpsError("invalid-argument", "Unsupported financial command.");
     try {const committed = await commitFinancial(db, commandId, movement, actor, writes);if(depositReferenceClaim&&committed.duplicate)await depositReferenceClaim.ref.update({status:"posted",movementId:commandId,amount:result.amount,date:result.date,postedAt:Date.now()});return Object.assign(result, {movementId: commandId, duplicate: committed.duplicate});}catch(error){if(depositReferenceClaim)await depositReferenceClaim.ref.transaction((current)=>current&&current.token===depositReferenceClaim.token&&current.status==="processing"?null:current);throw error;}
-  },
+  }),
 );
 
 // Reconciles the one-to-one link between an on-account purchase invoice and
@@ -2749,7 +2774,7 @@ exports.ensureFinancialLedger = onCall(
 
 exports.manageBooksAccount = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
-  async (request) => {
+  async (request) => observeFinancialOperation(request, "manageBooksAccount", async () => {
     const db = getDatabase();
     const actor = await requireBooksChartManager(db, request);
     const data = request.data || {};
@@ -2800,7 +2825,7 @@ exports.manageBooksAccount = onCall(
       return results;
     }
     throw new HttpsError("invalid-argument", "Unknown chart action.");
-  },
+  }),
 );
 
 exports.manageChartAccount = onCall(
