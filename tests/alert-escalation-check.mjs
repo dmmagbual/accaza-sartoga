@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import fs from 'node:fs';
+const require=createRequire(import.meta.url),A=require('../functions/lib/alert-escalation.js'),now=1788105600000;
+const healthy={status:'healthy',signature:'healthy',counts:{critical:0,warning:0}},warning={status:'warning',signature:'warning-a',counts:{critical:0,warning:2}},critical={status:'critical',signature:'critical-a',counts:{critical:1,warning:1}};
+const first=A.decide(healthy,warning,{},now);assert.equal(first.notify,true);assert.equal(first.reason,'first_alert');assert.equal(first.audience,'management');assert.ok(!first.body.includes('customer'));
+const suppressed=A.decide(warning,warning,first.nextState,now+3600000);assert.equal(suppressed.notify,false);
+const reminder=A.decide(warning,warning,first.nextState,now+A.COOLDOWN_MS.warning);assert.equal(reminder.notify,true);assert.equal(reminder.reason,'reminder');
+const worse=A.decide(warning,critical,first.nextState,now+1000);assert.equal(worse.notify,true);assert.equal(worse.reason,'severity_increased');
+const changed=A.decide(critical,{...critical,signature:'critical-b'},worse.nextState,now+2000);assert.equal(changed.notify,true);assert.equal(changed.reason,'critical_signal_changed');
+const recovered=A.decide(critical,healthy,changed.nextState,now+3000);assert.equal(recovered.notify,true);assert.equal(recovered.reason,'recovered');
+const source=fs.readFileSync(new URL('../src/functions/60-maintenance.js',import.meta.url),'utf8');for(const marker of ['AlertEscalation.decide','productionMonitor/notificationState','decision.audience','notification:decision.reason'])assert.ok(source.includes(marker),`Phase 18 alert safeguard missing: ${marker}`);
+console.log('PASS: Phase 18 production alerts escalate, cool down, remind, and recover without operational or financial auto-repair.');
