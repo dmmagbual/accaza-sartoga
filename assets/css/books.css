@@ -43,6 +43,8 @@ a{color:var(--info)}
 .tab{border:none;background:none;padding:.68rem .72rem .55rem;font-size:.79rem;font-weight:680;color:var(--tm);border-bottom:3px solid transparent;white-space:nowrap;transition:background .15s ease,color .15s ease}
 .tab:hover{color:var(--bd);background:rgba(255,255,255,.48)}
 .tab.active{color:var(--bd);border-bottom-color:var(--bl);background:#fffaf3}
+.export-btn{border-style:dashed;background:#fffaf3;color:var(--bd)}
+.export-btn:hover{border-style:solid;background:#fff}
 
 .page{padding-top:1.2rem}
 .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}
