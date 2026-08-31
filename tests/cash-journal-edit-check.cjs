@@ -41,9 +41,9 @@ blocked((s,a)=>a.actor.role='cashier',/privileged Finance/);
 blocked((s,a)=>a.reason='',/reason/);
 blocked((s,a)=>a.prepared.date='2026-09-02',/future/);
 blocked((s,a)=>a.prepared.date='2026-02-30',/valid Philippine/);
-blocked((s,a)=>a.prepared.lines=[line(bank,0,0),line(pool,0,0)],/direction/);
+blocked((s,a)=>a.prepared.lines=[line(bank,0,0),line(pool,0,0)],/cash accounts/);
 blocked((s,a)=>a.prepared.lines=[line(bank,11000,0),line(pool,0,11000)],/whole Undeposited/);
-blocked((s,a)=>a.prepared.lines=[line(bank,0,6907),line(pool,6907,0)],/direction/);
+blocked((s,a)=>a.prepared.lines=[line(bank,0,6907),line(pool,6907,0)],/cash accounts/);
 blocked((s,a)=>a.prepared.lines=[line('revenue:sales',6907,0),line(pool,0,6907)],/matching account/);
 blocked((s)=>s.cashCustody.one.remaining+=10,/already differs/);
 blocked((s)=>s.financialMovements.deposit.reversedByMovementId='reversed',/reversed/);
@@ -81,6 +81,18 @@ assert.equal(Object.keys(capitalOut.financialMovements).length,2,'no void or rep
 assert.equal(E.eligible({type:'manual_books_journal',lines:[line('coa:6100',504,0),line('asset:register_cash',0,504)]}),true,'ordinary expense counterpart is also eligible');
 assert.equal(E.eligible({type:'manual_books_journal',lines:[line('liability:accounts_payable',504,0),line('asset:register_cash',0,504)]}),false,'payables remain on their dedicated subledger workflow');
 assert.equal(E.eligible({type:'manual_books_journal',lines:[line('asset:inventory',504,0),line('asset:register_cash',0,504)]}),false,'inventory remains on its dedicated workflow');
+// An unreconciled bank-to-wallet transfer may reverse direction in place: both
+// cash-ledger rows must follow the revised transfer, without creating a void.
+const wallet='asset:cash_account:wallet',transferState={cfAccounts:{bank:{name:'Union Bank',active:true},wallet:{name:'GCash',active:true}},financialMovements:{bankOpening:{id:'bankOpening',occurredAt:stamp('2026-08-01'),lines:[line(bank,30000,0),line('equity:owner_capital',0,30000)]},walletOpening:{id:'walletOpening',occurredAt:stamp('2026-08-01'),lines:[line(wallet,20000,0),line('equity:owner_capital',0,20000)]},transfer:{id:'transfer',type:'manual_books_journal',sourceType:'booksManualJournal',sourceId:'transfer',occurredAt:stamp('2026-08-31'),postedAt:stamp('2026-08-31'),amount:11862,lines:[line(bank,11862,0),line(wallet,0,11862)]}},cfLedger:{bank:{movementId:'transfer',accountId:'bank',amount:11862,dir:'in'},wallet:{movementId:'transfer',accountId:'wallet',amount:11862,dir:'out'}},books:{journal:{}},accountingPeriods:{},financialCloseIndex:{},financialCloses:{},cashCustody:{}};
+transferState.books.journal.transfer=B.buildSingle(transferState.financialMovements.transfer,{bank:'1011',wallet:'1020'}).entry;
+const transferOut=E.revise(transferState,{id:'transfer',commandId:'transfer-reverse',expectedRevision:0,prepared:{date:'2026-08-31',memo:'Correct transfer direction and amount',reference:'TRANSFER-1',lines:[line(bank,0,11000),line(wallet,11000,0)]},reason:'Bank and wallet were reversed; correct amount is 11000',actor:{uid:'manager1',role:'manager'},now:stamp('2026-09-01'),floatFloor:4000});
+assert.equal(transferOut.financialMovements.transfer.lines[0].credit,11000,'the bank direction and amount change in place');
+assert.equal(transferOut.financialMovements.transfer.lines[1].debit,11000,'the wallet direction and amount change in place');
+assert.equal(transferOut.cfLedger.fm_transfer_0.accountId,'bank','the bank ledger remains linked');
+assert.equal(transferOut.cfLedger.fm_transfer_0.dir,'out','the bank ledger direction follows the corrected transfer');
+assert.equal(transferOut.cfLedger.fm_transfer_1.accountId,'wallet','the wallet ledger remains linked');
+assert.equal(transferOut.cfLedger.fm_transfer_1.dir,'in','the wallet ledger direction follows the corrected transfer');
+assert.equal(Object.keys(transferOut.financialMovements).length,3,'reversing a cash transfer does not add a void or replacement movement');
 console.log('PASS: in-place cash journals preserve one ID, revenue, pooled custody, history and replay/period/concurrency safeguards.');
 
 // Exercise the real callable routing, account mapping and browser submission.
