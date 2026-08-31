@@ -25,6 +25,7 @@ const BooksBridge = require("./lib/books-bridge");
 const FinancialClose = require("./lib/financial-close");
 const AccountingPeriods = require("./lib/accounting-periods");
 const CashJournalEdit = require("./lib/cash-journal-edit");
+const JournalReclassification = require("./lib/journal-reclassification");
 const ReconciliationControls = require("./lib/reconciliation-controls");
 const RecoveryValidation = require("./lib/recovery-validation");
 const ProductionHealth = require("./lib/production-health");
@@ -1909,6 +1910,38 @@ async function prepareManualBooksJournal(db, data, accounts, actor, allowedLinke
   if(sensitive&&!['owner','superadmin','admin','manager'].includes(actor.role))throw new HttpsError("permission-denied","A privileged Finance role must post journals affecting cash, sales, platforms, inventory, receivables, payables, suspense, or equity.");
   return {memo,reference,date,lines,cashLines,debit,sensitive,linkedPayableId,linkedPayable};
 }
+async function reviseJournalClassification(db,id,data,prepared,actor,commandId,now){
+  if(!['owner','superadmin','admin','manager'].includes(actor.role))throw new HttpsError('permission-denied','A privileged Finance role is required.');
+  const expected=Number(data.expectedRevision),reason=financeText(data.reason,300);
+  if(data.expectedRevision==null||!Number.isInteger(expected)||expected<0||!reason)throw new HttpsError('failed-precondition','Refresh the journal and provide a correction reason.');
+  const signature=JournalReclassification.signature(id,data,actor),lockRef=db.ref('/financialControlLocks/cashJournalEdit'),token=crypto.randomBytes(12).toString('hex');
+  const lock=await lockRef.transaction(current=>!current||Number(current.claimedAt||0)<now-120000?{token,claimedAt:now,commandId,actorUid:actor.uid}:undefined,undefined,false);
+  if(!lock.committed)throw new HttpsError('aborted','Another journal correction is being saved. Refresh and retry.');
+  try{
+    const receipt=(await db.ref(`/cashJournalEditCommands/${commandId}`).get()).val();
+    if(receipt){if(receipt.signature!==signature)throw new HttpsError('failed-precondition','This submission ID was used for a different edit.');return{movementId:id,revision:receipt.revision,editedInPlace:true,duplicate:true};}
+    const original=(await db.ref(`/financialMovements/${id}`).get()).val();
+    if(!JournalReclassification.allowed(original,prepared)||Number(original.revision||0)!==expected)throw new HttpsError('failed-precondition','The journal changed since you opened it. Refresh before editing.');
+    if((await db.ref(`/financialControlLinks/correctionMovements/${id}`).get()).exists())throw new HttpsError('failed-precondition','This journal is linked to an operational correction. Use its source workflow.');
+    const pending=(await db.ref('/financialCommandClaims').orderByChild('status').equalTo('processing').get()).val()||{};
+    if(Object.values(pending).some(x=>x.status==='processing'&&Number(x.claimedAt||0)>now-900000))throw new HttpsError('aborted','A Finance posting is in progress. Wait and retry.');
+    await assertAccountingPeriodOpen(db,prepared.date,'reclassifying this journal');
+    const journal=(await db.ref(`/books/journal/${id}`).get()).val(),cashMap=(await db.ref('/books/config/cashAccountMap').get()).val()||{};
+    if(!journal)throw new HttpsError('failed-precondition','The journal projection is missing. Refresh Finance Books first.');
+    const revision=expected+1,edited={...original,id,lines:prepared.lines,memo:prepared.memo,reference:prepared.reference,amount:prepared.debit,revision,classificationRevision:revision,updatedAt:now,updatedBy:actor.uid};
+    const writes={
+      [`financialMovements/${id}`]:edited,
+      [`books/journal/${id}`]:{...journal,...BooksBridge.buildSingle(edited,cashMap).entry,revision,updatedAt:now,updatedBy:actor.uid},
+      [`cashJournalRevisions/${id}/${revision}`]:{revision,commandId,reason,changedAt:now,changedBy:actor.uid,changedByRole:actor.role,before:original,after:edited,journalBefore:journal,kind:'classification_only'},
+      [`cashJournalEditCommands/${commandId}`]:{signature,movementId:id,revision,postedAt:now,actorUid:actor.uid,kind:'classification_only'},
+      [`operationalAudit/${commandId}`]:{action:'reclassify_open_journal',sourceId:id,revision,reason,actorUid:actor.uid,actorRole:actor.role,ts:now,date:prepared.date}
+    };
+    const indexes=(await db.ref(`/financialCloseIndex/${prepared.date}`).get()).val()||{};
+    for(const closeId of Object.keys(indexes)){const current=(await db.ref(`/financialCloses/${closeId}/current`).get()).val();if(current){writes[`financialCloses/${closeId}/current/status`]='REOPENED';writes[`financialCloses/${closeId}/current/reopenedAt`]=now;writes[`financialCloses/${closeId}/current/reopenedByActivityId`]=commandId;writes[`financialCloseIndex/${prepared.date}/${closeId}/status`]='REOPENED';}}
+    await safeFinancialUpdate(db,writes,'journal classification edit');
+    return{movementId:id,revision,editedInPlace:true};
+  }finally{await lockRef.transaction(current=>current&&current.token===token?null:undefined,undefined,false);}
+}
 function assertNoOverlappingUpdatePaths(writes, context) {
   const paths = Object.keys(writes);
   for (const parentPath of paths) for (const childPath of paths) if (childPath !== parentPath && childPath.startsWith(`${parentPath}/`)) throw new HttpsError("internal", `The ${context || "financial"} update contains conflicting record paths. Nothing was posted.`);
@@ -2341,6 +2374,11 @@ exports.postFinancialCommand = onCall(
     } else if(action==="correct_manual_journal"){
       const originalId=financeKey(data.originalMovementId,"Original movement ID"),original=(await db.ref(`/financialMovements/${originalId}`).get()).val();
       if(!original)throw new HttpsError("not-found","The journal entry was not found.");
+      const priorClassification=(await db.ref(`/cashJournalEditCommands/${commandId}`).get()).val();
+      if(priorClassification&&priorClassification.kind==='classification_only'){
+        if(priorClassification.signature!==JournalReclassification.signature(originalId,data,actor))throw new HttpsError('failed-precondition','This submission ID was used for a different edit.');
+        return{movementId:originalId,revision:priorClassification.revision,editedInPlace:true,duplicate:true};
+      }
       if(CashJournalEdit.eligible(original)){
         const reason=financeText(data.reason,300),prepared=await prepareManualBooksJournal(db,data,accounts,actor),expectedRevision=Number(data.expectedRevision);
         if(data.expectedRevision==null||!Number.isInteger(expectedRevision))throw new HttpsError("failed-precondition","Refresh Books before editing this cash journal.");
@@ -2366,6 +2404,8 @@ exports.postFinancialCommand = onCall(
       if(originalSourceType==="order"||/^order_|^pos_/i.test(originalType)||/^POS-/i.test(originalReference))throw new HttpsError("failed-precondition","POS sale and COGS journals are system-controlled and cannot be edited.");
       const reason=financeText(data.reason,300);if(!reason)throw new HttpsError("invalid-argument","Correction reason is required.");
       const prepared=await prepareManualBooksJournal(db,data,accounts,actor,original.linkedPayableId?{id:original.linkedPayableId,movementId:originalId}:null),reverseId=`books_edit_reverse_${originalId}`,replacementId=commandId;
+      if(JournalReclassification.allowed(original,prepared))return await reviseJournalClassification(db,originalId,data,prepared,actor,commandId,now);
+      if(original.classificationRevision)throw new HttpsError('failed-precondition','Keep the date and all operational account balances unchanged when editing this reclassified journal.');
       const controlAccount=(account)=>/^asset:(register_cash|register_float|cash_awaiting_deposit|petty_cash|cash_account:|inventory|platform_receivable|other_receivable)/.test(String(account||""))||/^liability:(accounts_payable|customer_change_refund|due_to_|cash_overage)/.test(String(account||""))||/^coa:(1100|1110|1190|12\d0|1290|2000|2020|2030|2050|2090|2100|3000|3050|3100|3900)$/.test(String(account||""));
       const controlNet=(lines)=>{const out={};(lines||[]).forEach((line)=>{const account=String(line.account||"");if(controlAccount(account))out[account]=Financial.money((out[account]||0)+(Number(line.debit)||0)-(Number(line.credit)||0));});return out;};
       const before=controlNet(original.lines),after=controlNet(prepared.lines),controlKeys=new Set([...Object.keys(before),...Object.keys(after)]);for(const account of controlKeys)if(Math.abs(Financial.money(before[account])-Financial.money(after[account]))>.009)throw new HttpsError("failed-precondition","This edit changes a cash, payable, receivable, inventory, or equity control balance. Use that account's dedicated Admin or Finance workflow so its subledger changes with the journal.");
@@ -2404,6 +2444,7 @@ exports.postFinancialCommand = onCall(
     } else if(action==="reverse_manual_journal"||action==="void_manual_journal"){
       const originalId=financeKey(data.originalMovementId,"Original movement ID"),original=(await db.ref(`/financialMovements/${originalId}`).get()).val();
       if(!original||original.type!=="manual_books_journal")throw new HttpsError("failed-precondition","Only a shared manual Books journal can be reversed here.");
+      if(original.classificationRevision)throw new HttpsError('failed-precondition','This journal has audited classification revisions. Use Edit / correct or its original source workflow.');
       if(Number(original.revision)>0&&CashJournalEdit.eligible(original))throw new HttpsError('failed-precondition','This revised cash journal maintains a linked custody pool. Use Edit / correct; journal-only void or reversal would break that link.');
       const isVoid=action==="void_manual_journal",reverseId=`books_${isVoid?"void":"reverse"}_${originalId}`,existingReverse=(await db.ref(`/financialMovements/${reverseId}`).get()).val();if(existingReverse)return{movementId:reverseId,duplicate:true};if(original.reversedByMovementId)throw new HttpsError("failed-precondition","This journal has already been reversed, voided, or corrected.");
       const reason=financeText(data.reason,300),date=isVoid?financeDate(BooksBridge.businessDate(original.occurredAt||original.postedAt||now)):financeDate(data.date);if(!reason)throw new HttpsError("invalid-argument","Reversal reason is required.");

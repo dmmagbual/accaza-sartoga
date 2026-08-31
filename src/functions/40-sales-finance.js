@@ -146,6 +146,38 @@ async function prepareManualBooksJournal(db, data, accounts, actor, allowedLinke
   if(sensitive&&!['owner','superadmin','admin','manager'].includes(actor.role))throw new HttpsError("permission-denied","A privileged Finance role must post journals affecting cash, sales, platforms, inventory, receivables, payables, suspense, or equity.");
   return {memo,reference,date,lines,cashLines,debit,sensitive,linkedPayableId,linkedPayable};
 }
+async function reviseJournalClassification(db,id,data,prepared,actor,commandId,now){
+  if(!['owner','superadmin','admin','manager'].includes(actor.role))throw new HttpsError('permission-denied','A privileged Finance role is required.');
+  const expected=Number(data.expectedRevision),reason=financeText(data.reason,300);
+  if(data.expectedRevision==null||!Number.isInteger(expected)||expected<0||!reason)throw new HttpsError('failed-precondition','Refresh the journal and provide a correction reason.');
+  const signature=JournalReclassification.signature(id,data,actor),lockRef=db.ref('/financialControlLocks/cashJournalEdit'),token=crypto.randomBytes(12).toString('hex');
+  const lock=await lockRef.transaction(current=>!current||Number(current.claimedAt||0)<now-120000?{token,claimedAt:now,commandId,actorUid:actor.uid}:undefined,undefined,false);
+  if(!lock.committed)throw new HttpsError('aborted','Another journal correction is being saved. Refresh and retry.');
+  try{
+    const receipt=(await db.ref(`/cashJournalEditCommands/${commandId}`).get()).val();
+    if(receipt){if(receipt.signature!==signature)throw new HttpsError('failed-precondition','This submission ID was used for a different edit.');return{movementId:id,revision:receipt.revision,editedInPlace:true,duplicate:true};}
+    const original=(await db.ref(`/financialMovements/${id}`).get()).val();
+    if(!JournalReclassification.allowed(original,prepared)||Number(original.revision||0)!==expected)throw new HttpsError('failed-precondition','The journal changed since you opened it. Refresh before editing.');
+    if((await db.ref(`/financialControlLinks/correctionMovements/${id}`).get()).exists())throw new HttpsError('failed-precondition','This journal is linked to an operational correction. Use its source workflow.');
+    const pending=(await db.ref('/financialCommandClaims').orderByChild('status').equalTo('processing').get()).val()||{};
+    if(Object.values(pending).some(x=>x.status==='processing'&&Number(x.claimedAt||0)>now-900000))throw new HttpsError('aborted','A Finance posting is in progress. Wait and retry.');
+    await assertAccountingPeriodOpen(db,prepared.date,'reclassifying this journal');
+    const journal=(await db.ref(`/books/journal/${id}`).get()).val(),cashMap=(await db.ref('/books/config/cashAccountMap').get()).val()||{};
+    if(!journal)throw new HttpsError('failed-precondition','The journal projection is missing. Refresh Finance Books first.');
+    const revision=expected+1,edited={...original,id,lines:prepared.lines,memo:prepared.memo,reference:prepared.reference,amount:prepared.debit,revision,classificationRevision:revision,updatedAt:now,updatedBy:actor.uid};
+    const writes={
+      [`financialMovements/${id}`]:edited,
+      [`books/journal/${id}`]:{...journal,...BooksBridge.buildSingle(edited,cashMap).entry,revision,updatedAt:now,updatedBy:actor.uid},
+      [`cashJournalRevisions/${id}/${revision}`]:{revision,commandId,reason,changedAt:now,changedBy:actor.uid,changedByRole:actor.role,before:original,after:edited,journalBefore:journal,kind:'classification_only'},
+      [`cashJournalEditCommands/${commandId}`]:{signature,movementId:id,revision,postedAt:now,actorUid:actor.uid,kind:'classification_only'},
+      [`operationalAudit/${commandId}`]:{action:'reclassify_open_journal',sourceId:id,revision,reason,actorUid:actor.uid,actorRole:actor.role,ts:now,date:prepared.date}
+    };
+    const indexes=(await db.ref(`/financialCloseIndex/${prepared.date}`).get()).val()||{};
+    for(const closeId of Object.keys(indexes)){const current=(await db.ref(`/financialCloses/${closeId}/current`).get()).val();if(current){writes[`financialCloses/${closeId}/current/status`]='REOPENED';writes[`financialCloses/${closeId}/current/reopenedAt`]=now;writes[`financialCloses/${closeId}/current/reopenedByActivityId`]=commandId;writes[`financialCloseIndex/${prepared.date}/${closeId}/status`]='REOPENED';}}
+    await safeFinancialUpdate(db,writes,'journal classification edit');
+    return{movementId:id,revision,editedInPlace:true};
+  }finally{await lockRef.transaction(current=>current&&current.token===token?null:undefined,undefined,false);}
+}
 function assertNoOverlappingUpdatePaths(writes, context) {
   const paths = Object.keys(writes);
   for (const parentPath of paths) for (const childPath of paths) if (childPath !== parentPath && childPath.startsWith(`${parentPath}/`)) throw new HttpsError("internal", `The ${context || "financial"} update contains conflicting record paths. Nothing was posted.`);

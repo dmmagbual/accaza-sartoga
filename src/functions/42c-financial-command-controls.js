@@ -13,6 +13,11 @@
     } else if(action==="correct_manual_journal"){
       const originalId=financeKey(data.originalMovementId,"Original movement ID"),original=(await db.ref(`/financialMovements/${originalId}`).get()).val();
       if(!original)throw new HttpsError("not-found","The journal entry was not found.");
+      const priorClassification=(await db.ref(`/cashJournalEditCommands/${commandId}`).get()).val();
+      if(priorClassification&&priorClassification.kind==='classification_only'){
+        if(priorClassification.signature!==JournalReclassification.signature(originalId,data,actor))throw new HttpsError('failed-precondition','This submission ID was used for a different edit.');
+        return{movementId:originalId,revision:priorClassification.revision,editedInPlace:true,duplicate:true};
+      }
       if(CashJournalEdit.eligible(original)){
         const reason=financeText(data.reason,300),prepared=await prepareManualBooksJournal(db,data,accounts,actor),expectedRevision=Number(data.expectedRevision);
         if(data.expectedRevision==null||!Number.isInteger(expectedRevision))throw new HttpsError("failed-precondition","Refresh Books before editing this cash journal.");
@@ -38,6 +43,8 @@
       if(originalSourceType==="order"||/^order_|^pos_/i.test(originalType)||/^POS-/i.test(originalReference))throw new HttpsError("failed-precondition","POS sale and COGS journals are system-controlled and cannot be edited.");
       const reason=financeText(data.reason,300);if(!reason)throw new HttpsError("invalid-argument","Correction reason is required.");
       const prepared=await prepareManualBooksJournal(db,data,accounts,actor,original.linkedPayableId?{id:original.linkedPayableId,movementId:originalId}:null),reverseId=`books_edit_reverse_${originalId}`,replacementId=commandId;
+      if(JournalReclassification.allowed(original,prepared))return await reviseJournalClassification(db,originalId,data,prepared,actor,commandId,now);
+      if(original.classificationRevision)throw new HttpsError('failed-precondition','Keep the date and all operational account balances unchanged when editing this reclassified journal.');
       const controlAccount=(account)=>/^asset:(register_cash|register_float|cash_awaiting_deposit|petty_cash|cash_account:|inventory|platform_receivable|other_receivable)/.test(String(account||""))||/^liability:(accounts_payable|customer_change_refund|due_to_|cash_overage)/.test(String(account||""))||/^coa:(1100|1110|1190|12\d0|1290|2000|2020|2030|2050|2090|2100|3000|3050|3100|3900)$/.test(String(account||""));
       const controlNet=(lines)=>{const out={};(lines||[]).forEach((line)=>{const account=String(line.account||"");if(controlAccount(account))out[account]=Financial.money((out[account]||0)+(Number(line.debit)||0)-(Number(line.credit)||0));});return out;};
       const before=controlNet(original.lines),after=controlNet(prepared.lines),controlKeys=new Set([...Object.keys(before),...Object.keys(after)]);for(const account of controlKeys)if(Math.abs(Financial.money(before[account])-Financial.money(after[account]))>.009)throw new HttpsError("failed-precondition","This edit changes a cash, payable, receivable, inventory, or equity control balance. Use that account's dedicated Admin or Finance workflow so its subledger changes with the journal.");
