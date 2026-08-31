@@ -71,7 +71,7 @@ function defaultAccounts(){
     ["6050","Marketing & Promotions","Expense"],["6060","Repairs & Maintenance","Expense"],
     ["6070","Cleaning & Operating Supplies","Expense"],["6075","Office & Administrative Supplies","Expense"],["6076","Transportation & Delivery","Expense"],["6077","Staff Consumption & Welfare","Expense","Inventory consumed by staff"],["6078","Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"],["6080","Bank & Payment Fees","Expense"],
     ["6085","Platform Penalties & Adjustments","Expense"],["6090","Depreciation","Expense"],["6100","Miscellaneous","Expense"]
-  ].map(a=>({code:a[0],name:a[1],type:a[2],note:a[3]||""}));
+  ].map(a=>a[0]==='1000'?['1000','Cash on Hand - Cash in Register','Asset']:a[0]==='1030'?['1001','Cash on Hand - Undeposited Collection','Asset','Cash awaiting bank deposit; controlled by cash custody']:a).map(a=>({code:a[0],name:a[1],type:a[2],note:a[3]||""}));
 }
 
 /* ---------- remove the original browser-only demo journal ---------- */
@@ -91,6 +91,7 @@ function migrate(p){
   p.accounts=p.accounts||defaultAccounts(); p.entries=p.entries||[]; p.meta=p.meta||{name:"Accaza Coffee House",created:Date.now()};
   // accounts the POS→journal bridge maps into, plus VAT-activation accounts (kept even while Non-VAT)
   var need=[
+    ["1001","Cash on Hand - Undeposited Collection","Asset","Cash awaiting bank deposit; controlled by cash custody"],
     ["1005","Register Cash Float","Asset","Fixed imprest tied to POS Settings"],
     ["1030","Undeposited Collection","Asset","Cash awaiting bank deposit"],
     ["1040","Revolving Fund","Asset"],["1050","Platform Payouts in Transit","Asset","Settled platform payouts awaiting bank deposit"],
