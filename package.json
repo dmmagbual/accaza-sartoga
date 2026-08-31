@@ -28,7 +28,7 @@
     "test:security-accounting-assurance": "node tests/security-accounting-assurance-check.mjs",
     "test:final-stabilization": "node tests/final-stabilization-check.mjs",
     "test:business-intelligence": "node tests/business-intelligence-check.mjs && node tests/philippine-report-date-check.mjs",
-    "test:cash-journal-edit": "node tests/cash-journal-edit-check.cjs",
+    "test:cash-journal-edit": "node tests/cash-journal-edit-check.cjs && node tests/journal-reclassification-check.cjs",
     "test:working-capital": "node tests/working-capital-check.cjs",
     "test:admin-navigation": "node tests/admin-navigation-check.mjs",
     "test:books-navigation": "node tests/books-navigation-check.mjs",

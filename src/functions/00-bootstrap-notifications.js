@@ -25,6 +25,7 @@ const BooksBridge = require("./lib/books-bridge");
 const FinancialClose = require("./lib/financial-close");
 const AccountingPeriods = require("./lib/accounting-periods");
 const CashJournalEdit = require("./lib/cash-journal-edit");
+const JournalReclassification = require("./lib/journal-reclassification");
 const ReconciliationControls = require("./lib/reconciliation-controls");
 const RecoveryValidation = require("./lib/recovery-validation");
 const ProductionHealth = require("./lib/production-health");
