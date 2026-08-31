@@ -15,8 +15,8 @@ const expected={
   overview:['dashboard','operations'],
   orders:['orders','reservations','calendar','availSection'],
   reports:['saleshistory','analytics','dailyreport'],
-  stock:['inventory','purchases','recipes','usage','packages'],
-  finance:['petty','undeposited','payouts','stockvalue','discrepancy','accountingperiods'],
+  stock:['inventory','stockvalue','purchases','recipes','usage','packages'],
+  finance:['petty','undeposited','payouts','discrepancy','accountingperiods'],
   customers:['appcustomers','reviews','commentsSection'],
   settings:['possettings','channelpricing','dedupe','payment','staffaccounts','staffaccess','adminaccounts','changepw']
 };
