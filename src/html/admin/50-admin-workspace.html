@@ -1,6 +1,6 @@
 <section id="adminDash" style="background:var(--cr);min-height:100vh;padding:5rem 1rem 3rem;display:none;">
   <div class="admin-wrap">
-            <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="display:inline-block;font-size:0.74rem;line-height:1.2;color:#5f4524;background:#f3e8d5;border:1px solid #d4bd98;border-radius:999px;padding:.16rem .46rem;font-weight:700;letter-spacing:.045em;vertical-align:middle;white-space:nowrap;">build&nbsp;v404</span></div><p style="font-size:.78rem;color:var(--tl);">Firebase Realtime Database</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><a href="books.html" target="_blank" rel="noopener" title="Open Finance Books in a new tab" style="background:#eef3ff;color:#1c3f8a;border:1px solid #b9c9ef;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;text-decoration:none;">Finance Books</a><button class="admin-logout" onclick="logoutAdmin()">Log out</button></div></div>
+            <div class="admin-header"><div><div class="admin-logo">Accaza Coffee <span>Admin</span> <span style="display:inline-block;font-size:0.74rem;line-height:1.2;color:#5f4524;background:#f3e8d5;border:1px solid #d4bd98;border-radius:999px;padding:.16rem .46rem;font-weight:700;letter-spacing:.045em;vertical-align:middle;white-space:nowrap;">build&nbsp;v405</span></div><p style="font-size:.78rem;color:var(--tl);">Firebase Realtime Database</p></div><div style="display:flex;gap:.5rem;flex-wrap:wrap;"><a href="books.html" target="_blank" rel="noopener" title="Open Finance Books in a new tab" style="background:#eef3ff;color:#1c3f8a;border:1px solid #b9c9ef;border-radius:6px;padding:.5rem .8rem;cursor:pointer;font-size:.78rem;font-weight:600;text-decoration:none;">Finance Books</a><button class="admin-logout" onclick="logoutAdmin()">Log out</button></div></div>
     <div class="admin-stats">
       <div class="admin-stat-card"><span class="stat-num" id="statOrders">0</span><span class="stat-lbl">Active Orders</span></div>
       <div class="admin-stat-card"><span class="stat-num" id="statPending">0</span><span class="stat-lbl">Pending</span></div>
@@ -11,52 +11,57 @@
     <div class="admin-tabs" style="display:block;">
       <div id="adminGroups" aria-label="Admin work areas">
         <button class="admin-group pos-primary" data-grp="pos" onclick="showTabGroup('pos',this)">POS</button>
-        <button class="admin-group active" data-grp="overview" onclick="showTabGroup('overview',this)">Overview</button>
-        <button class="admin-group" data-grp="orders" onclick="showTabGroup('orders',this)">Orders &amp; Operations</button>
-        <button class="admin-group" data-grp="stock" onclick="showTabGroup('stock',this)">Supplies &amp; Recipes</button>
-        <button class="admin-group" data-grp="finance" onclick="showTabGroup('finance',this)">Financials</button>
+        <button class="admin-group active" data-grp="overview" onclick="showTabGroup('overview',this)">Home</button>
+        <button class="admin-group" data-grp="orders" onclick="showTabGroup('orders',this)">Sales &amp; Service</button>
+        <button class="admin-group" data-grp="reports" onclick="showTabGroup('reports',this)">Reports</button>
+        <button class="admin-group" data-grp="stock" onclick="showTabGroup('stock',this)">Inventory</button>
+        <button class="admin-group" data-grp="finance" onclick="showTabGroup('finance',this)">Cash &amp; Controls</button>
         <button class="admin-group" data-grp="customers" onclick="showTabGroup('customers',this)">Customers</button>
         <button class="admin-group" data-grp="settings" onclick="showTabGroup('settings',this)">Settings</button>
       </div>
       <div class="admin-report-period" aria-label="Shared report date range"><div class="admin-report-period-copy"><span>Reporting scope</span><strong id="overviewRangeLabel">Last 30 days</strong><small id="overviewDataNote">Admin and Finance Books use the same dates.</small></div><div class="admin-report-period-controls" role="group" aria-label="Report date range"><label>From<input id="reportPeriodFrom" type="date" aria-label="Report start date"/></label><label>To<input id="reportPeriodTo" type="date" aria-label="Report end date"/></label><button type="button" id="reportPeriodApply">Apply</button><button type="button" id="reportPeriodAll">All time</button></div></div>
-      <div class="tabgrp" data-grp="pos" data-label="Quick sale" style="display:none;">
+      <div class="tabgrp" data-grp="pos" data-label="Point of sale" style="display:none;">
         <button class="admin-tab" id="tabBtnPos" onclick="posSwitchTab('pos',this)">🧾 Open Point of Sale</button>
+        <button class="admin-tab" onclick="posSwitchTab('ops',this)">🧮 Shift &amp; Register</button>
         <button class="admin-tab" id="tabBtnStaffInbox" onclick="posSwitchTab('inbox',this)">📨 Staff Inbox <span id="staffInboxBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:.68rem;font-weight:800;padding:.1rem .42rem;margin-left:.25rem;">0</span></button>
       </div>
-      <div class="tabgrp" data-grp="overview" data-label="Overview">
+      <div class="tabgrp" data-grp="overview" data-label="Home">
         <button class="admin-tab active" onclick="switchTab('dashboard',this)">📊 Dashboard</button>
         <button class="admin-tab" onclick="posSwitchTab('operations',this)">🚨 Operations Center</button>
       </div>
-      <div class="tabgrp" data-grp="orders" data-label="Orders &amp; operations" style="display:none;">
+      <div class="tabgrp" data-grp="orders" data-label="Sales &amp; service" style="display:none;">
         <button class="admin-tab" id="tabBtnOrders" onclick="switchTab('orders',this)">📋 Orders <span id="ordersBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
-        <button class="admin-tab" onclick="posSwitchTab('ops',this)">🧾 Register Operations</button>
         <button class="admin-tab" onclick="switchTab('reservations',this)">📅 Reservations</button>
         <button class="admin-tab" onclick="switchTab('calendar',this)">🗓️ Calendar</button>
+        <button class="admin-tab" id="tabBtnAvailability" onclick="showAdminSection('availSection',this)">☕ Menu Availability</button>
       </div>
-      <div class="tabgrp" data-grp="stock" data-label="Supplies &amp; recipes" style="display:none;">
+      <div class="tabgrp" data-grp="reports" data-label="Reports" style="display:none;">
+        <button class="admin-tab" onclick="posSwitchTab('saleshistory',this)">🧾 Sales History</button>
+        <button class="admin-tab" onclick="posSwitchTab('analytics',this)">📊 Sales Analytics</button>
+        <button class="admin-tab" onclick="posSwitchTab('dailyreport',this)">📆 Daily Report</button>
+      </div>
+      <div class="tabgrp" data-grp="stock" data-label="Inventory" style="display:none;">
         <button class="admin-tab" onclick="posSwitchTab('inventory',this)">📦 Stock Items <span id="lowStockBadge" style="display:none;background:#e63946;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
         <button class="admin-tab" id="tabBtnPurchases" onclick="posSwitchTab('purchases',this)">📥 Purchases <span style="font-size:0.62rem;color:#1c6b47;font-weight:600;">· Receive stock</span></button>
         <button class="admin-tab" onclick="posSwitchTab('recipes',this)">🧪 Recipes <span id="costGapBadge" style="display:none;background:#e6a817;color:#fff;border-radius:999px;font-size:0.68rem;font-weight:700;padding:0.1rem 0.45rem;margin-left:0.25rem;vertical-align:middle;" title="menu items not costed">0</span></button>
         <button class="admin-tab" onclick="posSwitchTab('usage',this)">🍽️ Internal Usage</button>
         <button class="admin-tab" onclick="posSwitchTab('packages',this)">🎁 Packages</button>
       </div>
-      <div class="tabgrp" data-grp="finance" data-label="Financials" style="display:none;">
-        <button class="admin-tab" onclick="posSwitchTab('saleshistory',this)">🧾 Sales History</button>
-        <button class="admin-tab" onclick="posSwitchTab('analytics',this)">📊 Analytics</button>
-        <button class="admin-tab" onclick="posSwitchTab('dailyreport',this)">📆 Daily Report</button>
-        <button class="admin-tab" onclick="posSwitchTab('payouts',this)">💱 Platform Payouts</button>
-        <button class="admin-tab" onclick="posSwitchTab('stockvalue',this)">📊 Inventory</button>
-        <button class="admin-tab" onclick="posSwitchTab('discrepancy',this)">🚩 Discrepancies <span id="discBadge" style="display:none;background:#e63946;color:#fff;border-radius:10px;padding:0 0.4rem;font-size:0.7rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
+      <div class="tabgrp" data-grp="finance" data-label="Cash &amp; controls" style="display:none;">
         <button class="admin-tab" onclick="posSwitchTab('petty',this)">💵 Cash Payments</button>
         <button class="admin-tab" onclick="posSwitchTab('undeposited',this)">💰 Undeposited Collection</button>
+        <button class="admin-tab" onclick="posSwitchTab('payouts',this)">💱 Platform Payouts</button>
+        <button class="admin-tab" onclick="posSwitchTab('stockvalue',this)">📦 Inventory Valuation</button>
+        <button class="admin-tab" onclick="posSwitchTab('discrepancy',this)">🚩 Reconciliation Issues <span id="discBadge" style="display:none;background:#e63946;color:#fff;border-radius:10px;padding:0 0.4rem;font-size:0.7rem;margin-left:0.25rem;vertical-align:middle;">0</span></button>
+        <button class="admin-tab" onclick="posSwitchTab('accountingperiods',this)">🔒 Accounting Periods</button>
       </div>
       <div class="tabgrp" data-grp="customers" data-label="Customers" style="display:none;">
+        <button class="admin-tab" onclick="switchTab('appcustomers',this)">👥 Customer List</button>
         <button class="admin-tab" onclick="switchTab('reviews',this)">⭐ Reviews</button>
-        <button class="admin-tab" onclick="switchTab('appcustomers',this)">👥 App Customers</button>
+        <button class="admin-tab" id="tabBtnComments" onclick="showAdminSection('commentsSection',this)">💬 Comments</button>
       </div>
       <div class="tabgrp" data-grp="settings" data-label="Settings &amp; maintenance" style="display:none;">
         <button class="admin-tab" onclick="posSwitchTab('possettings',this)">⚙️ POS Settings</button>
-        <button class="admin-tab" onclick="posSwitchTab('accountingperiods',this)">🔒 Accounting Periods</button>
         <button class="admin-tab" onclick="posSwitchTab('channelpricing',this)">💱 Channel Pricing</button>
         <button class="admin-tab" onclick="posSwitchTab('dedupe',this)">🧹 Menu Maintenance</button>
         <button class="admin-tab" onclick="switchTab('payment',this)">💳 Payment Details</button>
