@@ -593,7 +593,7 @@ const PAGES = {
     }).join("");
     return `<div class="page-head"><div><h2>Journal</h2><p>${periodLabel()} · ${display.length} displayed entr${display.length===1?'y':'ies'} · correction mechanics grouped into posting history</p></div>
         <div class="btn-row">${csvButton('journal')}<button class="btn primary" onclick="App.newEntry()">+ New entry</button></div></div>
-      <div class="hint">Every non-POS journal can be corrected while its accounting month is open. POS sale and COGS journals remain locked. Saving an edit creates a linked reversal and replacement, so the original audit trail is never erased.</div>
+      <div class="hint">Every non-POS journal can be corrected while its accounting month is open. Safe classification-only edits stay on the same journal with revision history; other corrections use a linked reversal and replacement. POS sale and COGS journals remain locked.</div>
       <div class="card"><div class="tbl-wrap"><table class="journal-table">
         <colgroup><col style="width:155px"><col><col style="width:120px"><col style="width:205px"></colgroup><thead><tr><th>Date</th><th>Entry &amp; lines</th><th class="num">Amount</th><th>Actions</th></tr></thead>
         <tbody>${rows||'<tr><td colspan=4><div class="empty"><div class="big">📓</div>No entries in this period.<br><button class="btn primary" style="margin-top:.8rem" onclick="App.newEntry()">Post your first entry</button></div></td></tr>'}</tbody>
