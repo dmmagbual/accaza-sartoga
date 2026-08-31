@@ -89,11 +89,17 @@ function stripSampleEntries(p){
 let DB = load();
 function migrate(p){
   p.accounts=p.accounts||defaultAccounts(); p.entries=p.entries||[]; p.meta=p.meta||{name:"Accaza Coffee House",created:Date.now()};
+  // Local recovery data may still carry the previous display code. Move the
+  // chart and projection together, leaving the server-side financial account
+  // identity and Admin cash-custody link untouched.
+  p.accounts=p.accounts.map(a=>a&&a.code==='1030'?Object.assign({},a,{code:'1001',name:'Cash on Hand - Undeposited Collection',note:'Cash awaiting bank deposit; controlled by cash custody'}):a);
+  p.entries=p.entries.map(e=>Object.assign({},e,{lines:(e.lines||[]).map(l=>l&&l.code==='1030'?Object.assign({},l,{code:'1001'}):l)}));
+  p.accounts=p.accounts.filter((a,index,all)=>a&&all.findIndex(x=>x&&x.code===a.code)===index);
   // accounts the POS→journal bridge maps into, plus VAT-activation accounts (kept even while Non-VAT)
   var need=[
     ["1001","Cash on Hand - Undeposited Collection","Asset","Cash awaiting bank deposit; controlled by cash custody"],
     ["1005","Register Cash Float","Asset","Fixed imprest tied to POS Settings"],
-    ["1030","Undeposited Collection","Asset","Cash awaiting bank deposit"],
+    ["1001","Cash on Hand - Undeposited Collection","Asset","Cash awaiting bank deposit; controlled by cash custody"],
     ["1040","Revolving Fund","Asset"],["1050","Platform Payouts in Transit","Asset","Settled platform payouts awaiting bank deposit"],
     ["1011","Union Bank","Asset"],["1012","BDO","Asset"],["1013","Security Bank – 4538","Asset"],["1014","Security Bank – 4389","Asset"],["1021","FoodPanda GCash Wallet","Asset","Dedicated FoodPanda payout destination"],
     ["1110","Other Receivables","Asset"],["1190","Cash Shortage Under Review","Asset","Pending manager reconciliation"],
