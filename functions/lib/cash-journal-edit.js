@@ -10,7 +10,7 @@ function locked(row){return !!row&&(row.bankReconciled===true||row.reconciled===
 // Admin subledger. Control accounts stay on their dedicated workflows.
 function editableCounterparty(account){
   const value=String(account||'');
-  if(['equity:owner_capital','equity:opening_balance'].includes(value))return true;
+  if(['equity:owner_capital','equity:opening_balance','coa:3000'].includes(value))return true;
   const code=/^coa:(\d{4})$/.exec(value);
   if(!code)return false;
   const number=Number(code[1]);
