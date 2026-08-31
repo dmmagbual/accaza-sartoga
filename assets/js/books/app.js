@@ -187,6 +187,16 @@ function normalBalanceFor(code, entries){
   return DEBIT_NORMAL[a?a.type:"Asset"]?net:-net;
 }
 
+/* Working capital is a balance-sheet measure as of the selected end date.
+   Current assets occupy 1000–1499; current liabilities occupy 2000–2299.
+   Fixed assets (1500+) and loans (2300+) are deliberately excluded. */
+function workingCapitalAt(end){
+  const entries=ENTRIES().filter(e=>{const d=String(e&&e.date||"").slice(0,10);return !!d&&(!end||d<=end);});
+  const sum=(type,min,max)=>r2(DB.accounts.filter(a=>a.type===type&&Number(a.code)>=min&&Number(a.code)<max).reduce((total,a)=>total+normalBalanceFor(a.code,entries),0));
+  const currentAssets=sum("Asset",1000,1500),currentLiabilities=sum("Liability",2000,2300);
+  return {currentAssets,currentLiabilities,amount:r2(currentAssets-currentLiabilities)};
+}
+
 /* P&L numbers for the current period */
 function plData(){
   const ents = entriesInPeriod();
@@ -472,6 +482,7 @@ const PAGES = {
     const cash = ["1000","1010","1011","1012","1013","1014","1020","1021"].reduce((s,c)=>s+accountBalance(c,false),0); // cash across all time
     const ar = accountBalance("1100",false);
     const ap = accountBalance("2000",false);
+    const workingCapital = workingCapitalAt(periodBounds().end);
     const cogsPct = pl.netSales>0 ? (pl.totalCogs/pl.netSales*100) : 0;
     const grossPct = pl.netSales>0 ? (pl.gross/pl.netSales*100) : 0;
     const topExp = pl.expense.slice().sort((a,b)=>b.bal-a.bal)[0];
@@ -486,7 +497,7 @@ const PAGES = {
         ${kpi("Net income", pesoNoDec(pl.net), pl.net>=0?'Profit':'Loss', pl.net>=0?'good':'bad')}
         ${kpi("COGS ratio", cogsPct.toFixed(1)+"%", "of sales")}
         ${(function(){var t=arApTotals(); return window.__booksUser
-          ? kpi("Receivables (open)", pesoNoDec(t.ar), "Owed to us", 'good')+kpi("Payables (open)", pesoNoDec(t.ap), "We owe", 'bad')+kpi("Net working capital", pesoNoDec(t.net), t.net>=0?'AR exceeds AP':'AP exceeds AR', t.net>=0?'good':'bad')
+          ? kpi("Receivables (open)", pesoNoDec(t.ar), "Owed to us", 'good')+kpi("Payables (open)", pesoNoDec(t.ap), "We owe", 'bad')+kpi("Working capital", pesoNoDec(workingCapital.amount), "Current assets "+pesoNoDec(workingCapital.currentAssets)+" − current liabilities "+pesoNoDec(workingCapital.currentLiabilities), workingCapital.amount>=0?'good':'bad')
           : kpi("Receivable (Grab/Panda)", pesoNoDec(ar), "From journal")+kpi("Payables", pesoNoDec(ap), "From journal");})()}
         ${kpi("Top expense", topExp?topExp.a.name:"—", topExp?pesoNoDec(topExp.bal):"")}
       </div>
@@ -772,7 +783,7 @@ function subledgerPage(kind){
     var bkt = agingBucket(d.due), overdue = (bkt!=='Current' && bkt!=='No due date');
     return '<tr><td><b>'+esc(d.party||'—')+'</b>'+(d.ref?'<div class="tiny muted">'+esc(d.ref)+'</div>':'')+'</td><td class="tiny">'+esc(d.type||'')+'</td><td class="tiny">'+esc(d.date||'')+'</td><td class="tiny">'+esc(d.due||'—')+'</td><td><span class="type-pill '+(overdue?'t-expense':'t-income')+'">'+bkt+'</span></td><td class="num">'+peso(d.amount)+'</td>'+(isAr?'':'<td><button class="btn sm ghost" onclick="App.correctPayable(\''+esc(d.id)+'\')">'+(d.type==='customer_change_refund'?'Close to capital':'Pay / correct')+'</button></td>')+'</tr>';}).join('');
   var t = arApTotals();
-  return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+' · '+docs.length+' open · net working capital '+pesoNoDec(t.net)+'</p></div></div>'+
+  return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+' · '+docs.length+' open · open receivables less open payables '+pesoNoDec(t.net)+'</p></div></div>'+
     '<div class="kpis"><div class="kpi '+(isAr?'good':'bad')+'"><div class="lbl">Total '+(isAr?'receivable':'payable')+'</div><div class="val">'+pesoNoDec(total)+'</div><div class="sub">'+docs.length+' open</div></div>'+agingCards+'</div>'+
     '<div class="card"><div class="tbl-wrap"><table><thead><tr><th>Party</th><th>Type</th><th>Date</th><th>Due</th><th>Aging</th><th class="num">Amount</th>'+(isAr?'':'<th></th>')+'</tr></thead><tbody>'+rows+
     '<tr class="total-row"><td colspan="5">Total open '+title.toLowerCase()+'</td><td class="num">'+peso(total)+'</td>'+(isAr?'':'<td></td>')+'</tr></tbody></table></div></div>'+

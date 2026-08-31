@@ -187,6 +187,16 @@ function normalBalanceFor(code, entries){
   return DEBIT_NORMAL[a?a.type:"Asset"]?net:-net;
 }
 
+/* Working capital is a balance-sheet measure as of the selected end date.
+   Current assets occupy 1000–1499; current liabilities occupy 2000–2299.
+   Fixed assets (1500+) and loans (2300+) are deliberately excluded. */
+function workingCapitalAt(end){
+  const entries=ENTRIES().filter(e=>{const d=String(e&&e.date||"").slice(0,10);return !!d&&(!end||d<=end);});
+  const sum=(type,min,max)=>r2(DB.accounts.filter(a=>a.type===type&&Number(a.code)>=min&&Number(a.code)<max).reduce((total,a)=>total+normalBalanceFor(a.code,entries),0));
+  const currentAssets=sum("Asset",1000,1500),currentLiabilities=sum("Liability",2000,2300);
+  return {currentAssets,currentLiabilities,amount:r2(currentAssets-currentLiabilities)};
+}
+
 /* P&L numbers for the current period */
 function plData(){
   const ents = entriesInPeriod();
