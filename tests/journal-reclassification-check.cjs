@@ -14,6 +14,11 @@ const prepared={date:'2026-08-01',memo:'Opening inventory',reference:'OPEN',debi
 assert.ok(R.allowed(original,prepared));
 assert.ok(R.allowed({...original,type:'inventory_manual_edit',sourceType:'inventoryMovement'},prepared));
 assert.ok(R.allowed({...original,type:'inventory_adjustment',sourceType:'inventoryMovement'},prepared));
+const legacyReset={type:'legacy_owner_capital_reset',sourceType:'legacyCutover',occurredAt:Date.parse('2026-08-29T12:00:00+08:00'),lines:[{account:'coa:4990',debit:6445.28,credit:0},{account:'equity:owner_capital',debit:0,credit:6445.28}]};
+const legacyNetOfCorrectedInventory={date:'2026-08-29',lines:[{account:'coa:4990',debit:1495.28,credit:0},{account:'equity:owner_capital',debit:0,credit:1495.28}]};
+assert.ok(R.allowed(legacyReset,legacyNetOfCorrectedInventory),'legacy reset may be reduced in place when a corrected source now posts directly to capital');
+assert.ok(!R.allowed(legacyReset,{...legacyNetOfCorrectedInventory,date:'2026-08-30'}),'legacy reset date cannot move periods');
+assert.ok(!R.allowed(legacyReset,{date:'2026-08-29',lines:[{account:'coa:4990',debit:1495.28,credit:0},{account:'asset:register_cash',debit:0,credit:1495.28}]}),'legacy reset cannot be redirected to cash');
 assert.ok(!R.allowed(original,{...prepared,date:'2026-08-02'}));
 assert.ok(!R.allowed(original,{...prepared,lines:prepared.lines.map(l=>({...l,debit:l.debit?5000:0,credit:l.credit?5000:0}))}));
 for(const key of ['linkedPayableId','linkedDiscrepancyId','reversedByMovementId','reversalOf'])assert.ok(!R.allowed({...original,[key]:'linked'},prepared));

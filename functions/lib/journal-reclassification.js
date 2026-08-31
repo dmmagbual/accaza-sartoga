@@ -2,8 +2,8 @@
 const B=require('./books-bridge');
 const crypto=require('node:crypto');
 function allowed(original,prepared){
-  if(!original||!['manual_books_journal','inventory_reconciliation_adjustment','inventory_opening_balance','inventory_adjustment','inventory_manual_edit'].includes(original.type))return false;
-  if(!['booksManualJournal','inventoryReconciliation','inventoryMovement'].includes(original.sourceType))return false;
+  if(!original||!['manual_books_journal','inventory_reconciliation_adjustment','inventory_opening_balance','inventory_adjustment','inventory_manual_edit','legacy_owner_capital_reset'].includes(original.type))return false;
+  if(!['booksManualJournal','inventoryReconciliation','inventoryMovement','legacyCutover'].includes(original.sourceType))return false;
   if(original.linkedPayableId||original.linkedDiscrepancyId||original.reversalOf||original.reversedByMovementId)return false;
   if(original.bankReconciled||original.reconciled||original.reconciledAt||original.bankReconciliationId||original.statementId)return false;
   if(B.businessDate(original.occurredAt||original.postedAt)!==prepared.date)return false;

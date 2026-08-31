@@ -85,6 +85,14 @@ function internalUsageAccount(type,movement){
   if(!/^(5900|60\d{2})$/.test(requested)||requested==="5905")throw new HttpsError("failed-precondition","Internal usage requires an approved operating-expense account and cannot use inventory reconciliation 5905.");
   return requested;
 }
+function inventoryAdjustmentOffset(type,movement){
+  if(!["adjustment","manual_edit","waste"].includes(type))return "";
+  const requested=String(movement&&movement.offsetAccount||"").trim(),nature=String(movement&&movement.adjustmentNature||movement&&movement.note||"").trim().toLowerCase();
+  if(!["3000","5900","5905"].includes(requested))throw new HttpsError("failed-precondition","Choose one approved Finance offset account: 3000 Owner's Capital, 5900 Wastage & Spoilage, or 5905 Inventory Reconciliation Gain / (Loss).");
+  if(requested==="3000"&&nature!=="beginning-inventory")throw new HttpsError("failed-precondition","Owner's Capital may only offset a beginning inventory correction.");
+  if(String(movement&&movement.sourceType||"")==="new-inventory-item"&&requested!=="3000")throw new HttpsError("failed-precondition","New-item opening inventory must offset Owner's Capital.");
+  return requested;
+}
 async function postInventoryMovementToBooks(db, movement, item, actor, context) {
   const type = String(movement && movement.type || "");
   if (!INVENTORY_BOOK_POSTING_TYPES.has(type)) return;
@@ -92,7 +100,7 @@ async function postInventoryMovementToBooks(db, movement, item, actor, context) 
   if (Math.abs(value) < 0.005) return;
   const invCode = inventoryBookAccountCode(item);
   const label = `${type.replace(/_/g, " ")} \u00b7 ${String(item && item.name || movement.itemId || "").slice(0, 120)}`;
-  const varianceBasket = type === "adjustment" || type === "manual_edit",usageBasket=type==="staff_use"||type==="rnd_testing"?internalUsageAccount(type,movement):"";
+  const varianceBasket = type === "adjustment" || type === "manual_edit",usageBasket=type==="staff_use"||type==="rnd_testing"?internalUsageAccount(type,movement):"",adjustmentOffset=inventoryAdjustmentOffset(type,movement);
   let lines;
   if(type==="usage_reversal"){
     const original=context&&context.originalFinancial;
@@ -101,11 +109,11 @@ async function postInventoryMovementToBooks(db, movement, item, actor, context) 
   } else
   if (value < 0) {
     const out = Financial.money(-value);
-    lines = [Financial.line(varianceBasket ? "coa:5905" : usageBasket?`coa:${usageBasket}`:"coa:5900", out, 0, label), Financial.line(`coa:${invCode}`, 0, out, label)];
+    lines = [Financial.line(adjustmentOffset?`coa:${adjustmentOffset}`:varianceBasket ? "coa:5905" : usageBasket?`coa:${usageBasket}`:"coa:5900", out, 0, label), Financial.line(`coa:${invCode}`, 0, out, label)];
   } else {
-    lines = [Financial.line(`coa:${invCode}`, value, 0, label), Financial.line(varianceBasket ? "coa:5905" : "coa:4990", 0, value, label)];
+    lines = [Financial.line(`coa:${invCode}`, value, 0, label), Financial.line(adjustmentOffset?`coa:${adjustmentOffset}`:varianceBasket ? "coa:5905" : "coa:4990", 0, value, label)];
   }
-  const mv = Financial.movement(`inventory_${type}`, "inventoryMovement", String(movement.id || ""), lines, {occurredAt: Number(movement.occurredAt || movement.createdAt || Date.now()), actorName: String(actor && actor.role || "server"), itemId: String(movement.itemId || ""), invAccount: invCode,inventorySourceType:String(movement.sourceType||""),usageAccount:usageBasket||String(originalUsageAccount(context)||"")});
+  const mv = Financial.movement(`inventory_${type}`, "inventoryMovement", String(movement.id || ""), lines, {occurredAt: Number(movement.occurredAt || movement.createdAt || Date.now()), actorName: String(actor && actor.role || "server"), itemId: String(movement.itemId || ""), invAccount: invCode,inventorySourceType:String(movement.sourceType||""),adjustmentOffsetAccount:adjustmentOffset,adjustmentNature:String(movement.adjustmentNature||""),usageAccount:usageBasket||String(originalUsageAccount(context)||"")});
   await commitFinancial(db, `invmove_${String(movement.id || "")}`, mv, actor || {uid: "server", role: "server"});
 }
 function originalUsageAccount(context){const original=context&&context.originalFinancial,line=original&&Array.isArray(original.lines)&&original.lines.find((row)=>/^coa:(5900|60\d{2})$/.test(String(row.account||"")));return line?String(line.account).slice(4):"";}
@@ -186,7 +194,7 @@ async function applyInventoryMovement(db, raw, actor) {
       note: String(raw.note || "").slice(0, 500),
       actorUid: actor && actor.uid || "server", actorName: String(raw.actorName || actor && actor.role || "server").slice(0, 120),
       occurredAt: Number(raw.occurredAt || now), createdAt: now,
-      reversalOf: String(raw.reversalOf || "").slice(0, 160), usageKind:String(raw.usageKind||"").slice(0,80),usageAccount:String(raw.usageAccount||"").slice(0,4), version, schemaVersion: 2,
+      reversalOf: String(raw.reversalOf || "").slice(0, 160), usageKind:String(raw.usageKind||"").slice(0,80),usageAccount:String(raw.usageAccount||"").slice(0,4),offsetAccount:String(raw.offsetAccount||"").slice(0,4),adjustmentNature:String(raw.adjustmentNature||"").slice(0,80), version, schemaVersion: 3,
     };
     state.balance = after; state.unitCost = costAfter; state.version = version;
     state.lastMovementId = movementId; state.lastMovementAt = now;
