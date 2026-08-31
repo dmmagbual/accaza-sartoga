@@ -4,7 +4,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome}from"./admin-orders.mjs";
-import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=404";
+import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=405";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -1131,12 +1131,17 @@ window.selectLoginRole=function(role){
 };
 
 var DEFAULT_STAFF_PERMS={orders:true,reservations:true,pos:true,inventory:true,purchases:false,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,dailyreport:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false,cashflow:false,receivables:false,payables:false,stockvalue:false},roleLandingDone=false;
-var _permTabMap={"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'purchases'":'purchases',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'dedupe'":'dedupe',"'cashflow'":'cashflow',"'receivables'":'receivables',"'payables'":'payables',"'stockvalue'":'stockvalue',"'dailyreport'":'dailyreport',"'analytics'":'analytics',"'pnl'":'pnl',"'ops'":'registerOps',"'possettings'":'possettings'};
+var _permTabMap={"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'availSection'":'availability',"'commentsSection'":'comments',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'purchases'":'purchases',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'dedupe'":'dedupe',"'cashflow'":'cashflow',"'receivables'":'receivables',"'payables'":'payables',"'stockvalue'":'stockvalue',"'dailyreport'":'dailyreport',"'analytics'":'analytics',"'pnl'":'pnl',"'ops'":'registerOps',"'possettings'":'possettings'};
 var _permAlwaysHide=["'payment'","'staffaccounts'","'adminaccounts'","'staffaccess'","'packages'","'operations'"];
-window.showAdminSection=function(id){
+function mountLegacyAdminPanels(){
+  var wrap=document.querySelector('#adminDash .admin-wrap');if(!wrap)return;
+  ['availSection','commentsSection'].forEach(function(id){var panel=document.getElementById(id);if(!panel)return;panel.classList.add('admin-tab-content','admin-integrated-panel');wrap.appendChild(panel);});
+}
+mountLegacyAdminPanels();
+window.showAdminSection=function(id,btn){
   var av=document.getElementById('availSection'),cm=document.getElementById('commentsSection');
-  if(id==='availSection'){ if(cm)cm.style.display='none'; if(av)av.style.display='block'; if(typeof buildAvail==='function')buildAvail(); if(av)av.scrollIntoView({behavior:'smooth'}); }
-  else if(id==='commentsSection'){ if(av)av.style.display='none'; if(cm)cm.style.display='block'; subscriptionHub.activate('comments'); if(typeof renderComments==='function')renderComments(); if(cm)cm.scrollIntoView({behavior:'smooth'}); }
+  if(id==='availSection'){ document.querySelectorAll('.admin-tab').forEach(function(b){b.classList.remove('active');});document.querySelectorAll('.admin-tab-content').forEach(function(t){t.style.display='none';});if(btn)btn.classList.add('active');if(av)av.style.display='block';if(typeof buildAvail==='function')buildAvail();workspaceShell.update('availability');window.scrollTo({top:document.getElementById('adminDash').offsetTop,behavior:'smooth'}); }
+  else if(id==='commentsSection'){ document.querySelectorAll('.admin-tab').forEach(function(b){b.classList.remove('active');});document.querySelectorAll('.admin-tab-content').forEach(function(t){t.style.display='none';});if(btn)btn.classList.add('active');if(cm)cm.style.display='block';subscriptionHub.activate('comments');if(typeof renderComments==='function')renderComments();workspaceShell.update('comments');window.scrollTo({top:document.getElementById('adminDash').offsetTop,behavior:'smooth'}); }
   else { if(av)av.style.display='none'; if(cm)cm.style.display='none'; window.scrollTo({top:0,behavior:'smooth'}); }
 };
 function applyStaffPerms(perms){
@@ -1145,8 +1150,8 @@ function applyStaffPerms(perms){
     if(_permAlwaysHide.some(function(t){return oc.indexOf(t)!==-1;})){btn.style.display='none';return;}
     for(var k in _permTabMap){ if(oc.indexOf(k)!==-1){ btn.style.display=perms[_permTabMap[k]]?'':'none'; return; } }
   });
-  var na=document.getElementById('navAvail'); if(na)na.style.display=perms.availability?'block':'none';
-  var nc=document.getElementById('navComments'); if(nc)nc.style.display=perms.comments?'block':'none';
+  var na=document.getElementById('navAvail'); if(na)na.style.display='none';
+  var nc=document.getElementById('navComments'); if(nc)nc.style.display='none';
   document.querySelectorAll('.admin-group').forEach(function(gb){var g=gb.getAttribute('data-grp');var row=document.querySelector('.tabgrp[data-grp="'+g+'"]');var vis=false;if(row)row.querySelectorAll('.admin-tab').forEach(function(b){if(b.style.display!=='none')vis=true;});gb.style.display=vis?'':'none';});
   var curG=document.querySelector('.admin-group.active');
   if(!curG||curG.style.display==='none'){var fg=null;document.querySelectorAll('.admin-group').forEach(function(gb){if(!fg&&gb.style.display!=='none')fg=gb;});if(fg)window.showTabGroup(fg.getAttribute('data-grp'),fg);}
@@ -1182,7 +1187,9 @@ async function loginSuccess(role,username,uid,serverRole){
   if(role==='superadmin'||role==='admin'){
     adminLoggedIn=true;superAdminLoggedIn=(role==='superadmin');staffLoggedIn=false;
     document.getElementById('adminDash').style.display='block';
-    ['navAvail','navComments','navAdminPanel'].forEach(function(id){document.getElementById(id).style.display='block';});
+    document.getElementById('navAdminPanel').style.display='block';
+    document.getElementById('navAvail').style.display='none';
+    document.getElementById('navComments').style.display='none';
     document.getElementById('navAdminPanelLink').textContent='Admin panel';
     if(superAdminLoggedIn&&aaccTab)aaccTab.style.removeProperty('display');
     var hdr=document.querySelector('#adminDash .admin-header p');
@@ -1205,7 +1212,7 @@ async function loginSuccess(role,username,uid,serverRole){
     document.body.classList.add('staff-mode');
     document.getElementById('adminDash').style.display='block';
     document.getElementById('navAdminPanel').style.display='block';
-    document.getElementById('navComments').style.display='block';
+    document.getElementById('navComments').style.display='none';
     document.getElementById('navAdminPanelLink').textContent='Staff panel';
     (function(){ applyStaffPerms(Object.assign({},DEFAULT_STAFF_PERMS)); get(ref(db,'adminPerms/'+uid)).then(function(sn){ var v=sn.val(); if(v)applyStaffPerms(Object.assign({},DEFAULT_STAFF_PERMS,v)); }).catch(function(){}); })();
     var hdr=document.querySelector('#adminDash .admin-header p');
@@ -1224,6 +1231,8 @@ const workspaceShell=installWorkspaceShell({currentUser:function(){return curren
 window.switchTab=function(tab,btn){
   if(tab==='payment'&&currentUser&&currentUser.role==='admin'&&currentUser.uid&&adminAccountsMap[currentUser.uid]&&adminAccountsMap[currentUser.uid].access==='nopay'){alert('â›” You do not have access to Payment Details.');return;}
   subscriptionHub.activate(tab);
+  var legacyAvailability=document.getElementById('availSection'),legacyComments=document.getElementById('commentsSection');
+  if(legacyAvailability)legacyAvailability.style.display='none';if(legacyComments)legacyComments.style.display='none';
   document.querySelectorAll('.admin-tab').forEach(function(b){b.classList.remove('active');});
   if(btn)btn.classList.add('active');
   document.querySelectorAll('.admin-tab-content').forEach(function(t){t.style.display='none';});
