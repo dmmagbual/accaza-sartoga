@@ -6,12 +6,24 @@ const money=n=>Math.round((Number(n)||0)*100)/100;
 const pool='asset:cash_awaiting_deposit';
 function fail(message){throw new Error(message);}
 function locked(row){return !!row&&(row.bankReconciled===true||row.reconciled===true||!!row.reconciledAt||!!row.bankReconciliationId||!!row.statementId);}
+// These are ordinary General Ledger counterparts: they do not carry a separate
+// Admin subledger. Control accounts stay on their dedicated workflows.
+function editableCounterparty(account){
+  const value=String(account||'');
+  if(['equity:owner_capital','equity:opening_balance'].includes(value))return true;
+  const code=/^coa:(\d{4})$/.exec(value);
+  if(!code)return false;
+  const number=Number(code[1]);
+  return number>=4000&&number<7000&&number!==6110;
+}
 function shape(lines){
   if(!Array.isArray(lines)||lines.length!==2)return null;
   if(lines.some(l=>!Number.isFinite(Number(l.debit))||!Number.isFinite(Number(l.credit))||Number(l.debit)<0||Number(l.credit)<0||(Number(l.debit)>0)===(Number(l.credit)>0)))return null;
   const p=lines.find(l=>l.account===pool),cash=lines.find(l=>l.account==='asset:register_cash'||/^asset:cash_account:[A-Za-z0-9_-]+$/.test(l.account||''));
-  if(!p||!cash||Math.abs(money(p.debit-cash.credit))>.009||Math.abs(money(p.credit-cash.debit))>.009)return null;
-  return {account:cash.account,poolNet:money(p.debit-p.credit),value:money(p.debit+p.credit)};
+  if(p&&cash&&Math.abs(money(p.debit-cash.credit))<.009&&Math.abs(money(p.credit-cash.debit))<.009)return {kind:'pooled_transfer',account:cash.account,poolNet:money(p.debit-p.credit),cashNet:money(cash.debit-cash.credit),value:money(p.debit+p.credit)};
+  const counterparty=lines.find(l=>l!==cash&&editableCounterparty(l.account));
+  if(counterparty&&cash&&Math.abs(money(cash.debit-counterparty.credit))<.009&&Math.abs(money(cash.credit-counterparty.debit))<.009)return {kind:'cash_manual',account:cash.account,counterparty:counterparty.account,cashNet:money(cash.debit-cash.credit),value:money(cash.debit+cash.credit)};
+  return null;
 }
 function eligible(m){return !!m&&['manual_books_journal','register_cash_deposit'].includes(m.type)&&!!shape(m.lines);}
 function fingerprint(payload){return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');}
@@ -57,12 +69,12 @@ function revise(root,input){
   if(!['owner','superadmin','admin','manager'].includes(actor.role))fail('A privileged Finance role must approve this cash-journal edit.');
   if(!String(reason||'').trim())fail('A correction reason is required.');
   const original=root.financialMovements&&root.financialMovements[id],journal=root.books&&root.books.journal&&root.books.journal[id];
-  if(!eligible(original)||!journal)fail('Only a posted two-account cash/Undeposited Collection journal can use this edit.');
+  if(!eligible(original)||!journal)fail('Only a posted two-account cash transfer or cash journal with an ordinary income, expense, or equity counterpart can use this edit.');
   if(!Number.isInteger(expectedRevision)||expectedRevision!==Number(original.revision||0))fail('This journal changed since you opened it. Refresh and review it again.');
   if(original.voided||original.reversalOf||original.reversedByMovementId||original.correctionReplacementId||original.linkedPayableId||original.linkedDiscrepancyId)fail('A reversed, voided, or linked-control journal cannot use this edit.');
   if(root.financialControlLinks&&root.financialControlLinks.correctionMovements&&root.financialControlLinks.correctionMovements[id])fail('Use the linked variance workflow for this journal.');
   const before=shape(original.lines),after=shape(prepared.lines);
-  if(!after||before.account!==after.account||Math.sign(before.poolNet)!==Math.sign(after.poolNet))fail('Keep the same cash account and transfer direction. Revenue, drawings, inventory, and other accounts cannot be changed here.');
+  if(!after||before.kind!==after.kind||before.account!==after.account||before.counterparty!==after.counterparty||Math.sign(before.cashNet)!==Math.sign(after.cashNet))fail('Keep the same cash account, matching account, and direction. Inventory, receivables, payables, and other controlled accounts cannot be changed here.');
   const oldDate=B.businessDate(original.occurredAt||original.postedAt),date=prepared.date;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(date+'T00:00:00+08:00'))||B.businessDate(Date.parse(date+'T00:00:00+08:00'))!==date)fail('A valid Philippine accounting date is required.');
   if(date>B.businessDate(now))fail('A future planned deposit cannot be posted as completed.');
@@ -75,19 +87,22 @@ function revise(root,input){
   if(Object.values(root.financialCommandClaims||{}).some(c=>c.status==='processing'&&Number(c.claimedAt)>now-900000))fail('Another financial posting is in progress. Retry after it completes.');
   const movements=Object.entries(root.financialMovements||{}).map(([id,m])=>({...m,id})),balance=(acct)=>money(movements.reduce((s,m)=>s+(m.lines||[]).reduce((n,l)=>n+(l.account===acct?Number(l.debit||0)-Number(l.credit||0):0),0),0));
   const poolBefore=balance(pool),custodyBefore=money(Object.values(root.cashCustody||{}).reduce((s,r)=>s+Number(r.remaining||0),0));
-  if(Math.abs(poolBefore-custodyBefore)>.009)fail('Undeposited Collection already differs from cash custody. Reconcile that existing difference before editing; no automatic balancing entry was created.');
-  const delta=money(after.poolNet-before.poolNet),poolAfter=money(poolBefore+delta),cashAfter=money(balance(before.account)-delta);
-  if(poolAfter<-.009)fail('The revised transfer exceeds the whole Undeposited Collection pool.');
+  let delta=money(after.cashNet-before.cashNet),poolAfter=poolBefore,cashAfter=money(balance(before.account)+delta);
+  if(before.kind==='pooled_transfer'){
+    if(Math.abs(poolBefore-custodyBefore)>.009)fail('Undeposited Collection already differs from cash custody. Reconcile that existing difference before editing; no automatic balancing entry was created.');
+    delta=money(after.poolNet-before.poolNet);poolAfter=money(poolBefore+delta);cashAfter=money(balance(before.account)-delta);
+    if(poolAfter<-.009)fail('The revised transfer exceeds the whole Undeposited Collection pool.');
+  }
   if(cashAfter<(cashId==='register'?floatFloor:0)-.009)fail('The revised transfer would overdraw cash or use the protected register float.');
   // Reject backdating that creates a negative closing daily balance in either account.
-  for(const acct of [pool,before.account]){
+  for(const acct of (before.kind==='pooled_transfer'?[pool,before.account]:[before.account])){
     const daily={};for(const m of movements){const d=B.businessDate(m.occurredAt||m.postedAt),value=(m.id===id?prepared.lines:m.lines||[]).reduce((s,l)=>s+(l.account===acct?Number(l.debit||0)-Number(l.credit||0):0),0),key=m.id===id?date:d;daily[key]=money((daily[key]||0)+value);}
     let running=0;for(const d of Object.keys(daily).sort()){running=money(running+daily[d]);if(d>= (oldDate<date?oldDate:date)&&running<-.009)fail('This date/amount would leave a negative historical cash balance. Check the actual transfer date.');}
   }
   const next=structuredClone(root),custody=next.cashCustody||(next.cashCustody={}),revision=expectedRevision+1,changedCustody={};
   // The user edits one pooled amount. Existing positive custody rows remain
   // supporting evidence; no individual remittance selection or amount limit.
-  if(delta<0){
+  if(before.kind==='pooled_transfer'&&delta<0){
     let left=-delta;const deposit=before.account.startsWith('asset:cash_account:');
     for(const key of Object.keys(custody).sort((a,b)=>Number(custody[a].closedAt||0)-Number(custody[b].closedAt||0)||a.localeCompare(b))){
       const row=custody[key],use=money(Math.min(left,Math.max(0,Number(row.remaining)||0)));if(!use)continue;
@@ -98,7 +113,7 @@ function revise(root,input){
     }
     if(left>.009)fail('The available custody pool changed. Refresh and retry.');
   }
-  if(delta>0){const key='journal_edit_'+commandId;custody[key]={amount:delta,remaining:delta,depositedAmount:0,paidOutAmount:0,status:'awaiting_deposit',closedAt:Date.parse(date+'T00:00:00+08:00'),movementId:id,source:'journal_edit_pool_return',staff:'Pooled journal correction',reference:prepared.reference,revision,schemaVersion:1};changedCustody[key]={before:null,after:structuredClone(custody[key])};}
+  if(before.kind==='pooled_transfer'&&delta>0){const key='journal_edit_'+commandId;custody[key]={amount:delta,remaining:delta,depositedAmount:0,paidOutAmount:0,status:'awaiting_deposit',closedAt:Date.parse(date+'T00:00:00+08:00'),movementId:id,source:'journal_edit_pool_return',staff:'Pooled journal correction',reference:prepared.reference,revision,schemaVersion:1};changedCustody[key]={before:null,after:structuredClone(custody[key])};}
   const edited={...original,lines:prepared.lines,amount:after.value,occurredAt:Date.parse(date+'T00:00:00+08:00'),memo:prepared.memo,reference:prepared.reference,revision,updatedAt:now,updatedBy:actor.uid,lastCorrectionReason:reason};
   // Legacy allocations describe the original receipt evidence, not a limit on
   // the corrected pooled journal. Retain them explicitly as historical data.
@@ -119,11 +134,11 @@ function revise(root,input){
   const cashBefore=Object.fromEntries(ledgerRows);
   for(const [key]of ledgerRows)delete next.cfLedger[key];
   next.cfLedger=next.cfLedger||{};
-  prepared.lines.forEach((l,index)=>{const value=money(l.debit-l.credit);next.cfLedger['fm_'+id+'_'+index]={date,accountId:l.account===pool?'undeposited':cashId,dir:value>0?'in':'out',category:'Cash journal',amount:Math.abs(value),party:prepared.memo,ref:prepared.reference,source:original.sourceType,linkId:original.sourceId||id,movementId:id,auto:true,immutable:true,ts:edited.occurredAt,by:actor.role,revision};});
+  prepared.lines.forEach((l,index)=>{if(before.kind==='cash_manual'&&l.account!==before.account)return;const value=money(l.debit-l.credit);next.cfLedger['fm_'+id+'_'+index]={date,accountId:l.account===pool?'undeposited':cashId,dir:value>0?'in':'out',category:'Cash journal',amount:Math.abs(value),party:prepared.memo,ref:prepared.reference,source:original.sourceType,linkId:original.sourceId||id,movementId:id,auto:true,immutable:true,ts:edited.occurredAt,by:actor.role,revision};});
   const history=next.cashJournalRevisions||(next.cashJournalRevisions={});(history[id]||(history[id]={}))[String(revision)]={revision,commandId,reason,changedAt:now,changedBy:actor.uid,changedByRole:actor.role,before:original,after:edited,journalBefore:journal,cashLedgerBefore:cashBefore,custodyChanges:changedCustody,poolBefore,poolAfter};
   // Created-only close triggers do not fire on edits; reopen affected close snapshots atomically.
   for(const d of new Set([oldDate,date]))for(const [closeId,index]of Object.entries((next.financialCloseIndex||{})[d]||{})){const close=next.financialCloses&&next.financialCloses[closeId];if(close&&close.current){close.current.status='REOPENED';close.current.reopenedAt=now;close.current.reopenedByActivityId=commandId;index.status='REOPENED';index.reopenedAt=now;}}
-  (next.operationalAudit||(next.operationalAudit={}))[commandId]={action:'edit_open_cash_journal',sourceId:id,revision,reason,actorUid:actor.uid,actorRole:actor.role,ts:now,originalDate:oldDate,date,amount:after.value,poolBefore,poolAfter};
+  (next.operationalAudit||(next.operationalAudit={}))[commandId]={action:before.kind==='cash_manual'?'edit_open_manual_cash_journal':'edit_open_cash_journal',sourceId:id,revision,reason,actorUid:actor.uid,actorRole:actor.role,ts:now,originalDate:oldDate,date,amount:after.value,poolBefore:before.kind==='pooled_transfer'?poolBefore:null,poolAfter:before.kind==='pooled_transfer'?poolAfter:null};
   (next.cashJournalEditCommands||(next.cashJournalEditCommands={}))[commandId]={signature,movementId:id,revision,postedAt:now,actorUid:actor.uid};
   return next;
 }

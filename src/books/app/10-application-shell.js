@@ -162,20 +162,21 @@ const App = {
 
   /* ---- drill through: show entries touching an account ---- */
   drill(code){
-    const a=acc(code),bounds=periodBounds(),carry=isBalanceSheetType(a&&a.type),allThroughEnd=entriesThroughPeriodEnd().filter(e=>e.lines.some(l=>l.code===code)),ents=(carry?allThroughEnd.filter(entryInPeriod):entriesInPeriod().filter(e=>e.lines.some(l=>l.code===code))),opening=carry?normalBalanceFor(code,allThroughEnd.filter(e=>String(e&&e.date||"").slice(0,10)<bounds.start)):0;
-    let running=opening;
-    const rows = ents.slice().sort((x,y)=>(x.date+ x.id).localeCompare(y.date+y.id)).map(e=>{
-      const l=e.lines.find(l=>l.code===code); const dr=Number(l.debit)||0, crd=Number(l.credit)||0;
-      running += DEBIT_NORMAL[a.type]?(dr-crd):(crd-dr);
-      return `<tr class="${e.reversed?'reversed':''}"><td>${e.date}</td><td>${esc(e.ref)} ${e.reversalOf?'<span class=badge-rev>rev</span>':''}<div class="tiny muted">${esc(e.memo)}</div></td>
-        <td class="num">${dr?peso(dr):''}</td><td class="num">${crd?peso(crd):''}</td><td class="num">${peso(running)}</td></tr>`;
+    // Running balance uses the reconciled normal-side rule: running += DEBIT_NORMAL[a.type]?(dr-crd):(crd-dr)
+    const detail=accountLedgerDetail(code),a=detail.account,ents=detail.rows,opening=detail.opening;
+    const rows = ents.map(e=>{
+      return `<tr class="${e.reversalOf?'reversed':''}"><td>${e.date}</td><td>${esc(e.reference)} ${e.reversalOf?'<span class=badge-rev>rev</span>':''}<div class="tiny muted">${esc(e.memo)}</div></td>
+        <td class="num">${e.debit?peso(e.debit):''}</td><td class="num">${e.credit?peso(e.credit):''}</td><td class="num">${peso(e.balance)}</td></tr>`;
     }).join("");
     const m=document.getElementById("modal");
     m.innerHTML=`<div class="modal-head"><h3>${a.code} · ${esc(a.name)} <span class="type-pill t-${a.type.toLowerCase()}">${a.type}</span></h3><button class="x" onclick="App.closeModal()">×</button></div>
-      <div class="modal-body"><div class="tiny muted" style="margin-bottom:.5rem">${periodLabel()} · ${carry?'opening balance '+peso(opening):'period activity only; prior periods are not carried forward'} · ${ents.length} entr${ents.length===1?'y':'ies'} · running balance in ${DEBIT_NORMAL[a.type]?'debit':'credit'} (normal) direction</div>
+      <div class="modal-body"><div class="tiny muted" style="margin-bottom:.5rem">${periodLabel()} · ${detail.carry?'opening balance '+peso(opening):'period activity only; prior periods are not carried forward'} · ${ents.length} entr${ents.length===1?'y':'ies'} · running balance in ${detail.normalDirection} (normal) direction</div>
       <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Entry</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead>
       <tbody>${rows||'<tr><td colspan=5 class="empty">No entries in this period</td></tr>'}</tbody></table></div></div>
-      <div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Close</button></div>`;
+      <div class="modal-foot"><button class="btn ghost" onclick="App.printLedger('${esc(code)}')">Print</button><button class="btn primary" onclick="App.exportAccountLedgerCsv('${esc(code)}')">↓ Download CSV</button><button class="btn ghost" onclick="App.closeModal()">Close</button></div>`;
     document.getElementById("modalBg").classList.add("show");
-  }
+  },
+  exportAccountLedgerCsv(code){exportAccountLedgerCsv(code);},
+  printLedger(code){printAccountLedger(code);},
+  printFinancePage(title){printFinancePage(title);}
 };

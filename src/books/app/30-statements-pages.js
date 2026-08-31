@@ -100,7 +100,7 @@ const PAGES = {
         <td class="journal-actions">${e.revision?`<button class="btn sm ghost" onclick="App.cashJournalHistory(\'${e.id}\')">History · r${e.revision}</button>`:""}${!closed&&customerPayableId?`<button class="btn sm primary" onclick="App.correctPayable('${customerPayableId}')">Close linked payable</button>`:!closed&&customerPayableControl?`<button class="btn sm ghost" onclick="App.editEntry('${e.id}')">Open customer payable</button>`:!closed&&!posLocked&&!e.reversalOf&&!e.reversedByMovementId?`<button class="btn sm ghost" onclick="App.editEntry('${e.id}')">Edit / correct</button> ${(!e.revision)&&(e.sourceType==='booksManualJournal'||e.type==='manual_books_journal')?`<button class="btn sm ghost" onclick="App.reverseEntry('${e.id}',false)">Reverse</button> <button class="btn sm ghost" onclick="App.reverseEntry('${e.id}',true)">Void</button>`:''}`:'<span class="tiny muted">'+(status||(posLocked?'POS locked':'Automatic posting'))+'</span>'}</td></tr>`;
     }).join("");
     return `<div class="page-head"><div><h2>Journal</h2><p>${periodLabel()} · ${display.length} displayed entr${display.length===1?'y':'ies'} · correction mechanics grouped into posting history</p></div>
-        <div class="btn-row">${csvButton('journal')}<button class="btn primary" onclick="App.newEntry()">+ New entry</button></div></div>
+        <div class="btn-row"><button class="btn ghost" onclick="App.printFinancePage('Journal')">Print</button>${csvButton('journal')}<button class="btn primary" onclick="App.newEntry()">+ New entry</button></div></div>
       <div class="hint">Every non-POS journal can be corrected while its accounting month is open. Safe classification-only edits stay on the same journal with revision history; other corrections use a linked reversal and replacement. POS sale and COGS journals remain locked.</div>
       <div class="card"><div class="tbl-wrap"><table class="journal-table">
         <colgroup><col style="width:155px"><col><col style="width:120px"><col style="width:205px"></colgroup><thead><tr><th>Date</th><th>Entry &amp; lines</th><th class="num">Amount</th><th>Actions</th></tr></thead>
@@ -117,7 +117,7 @@ const PAGES = {
           <td class="num">${has?peso(bal):'<span class="muted">'+peso(0)+'</span>'}</td></tr>`; }).join("");
       return `<tr class="sub-row"><td colspan="3"><span class="type-pill t-${g.t.toLowerCase()}">${g.t}</span></td></tr>`+rws;
     }).join("");
-    return `<div class="page-head"><div><h2>General Ledger</h2><p>Assets, liabilities and equity through ${periodBounds().end}; income, COGS and expenses for ${periodLabel()} only</p></div>${csvButton('ledger')}</div>
+    return `<div class="page-head"><div><h2>General Ledger</h2><p>Assets, liabilities and equity through ${periodBounds().end}; income, COGS and expenses for ${periodLabel()} only</p></div><div class="btn-row"><button class="btn ghost" onclick="App.printFinancePage('General Ledger')">Print</button>${csvButton('ledger')}</div></div>
       <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Code</th><th>Account</th><th class="num">Balance (normal side)</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
   },
 
