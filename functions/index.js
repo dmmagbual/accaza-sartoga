@@ -441,7 +441,7 @@ exports.manageCashAccount = onCall(
 // entry to block a re-key, and records any duplicate that still slips through
 // (offline/race) so nothing is silently double-counted in the receivable.
 function platformRefKey(ref) {
-  return String(ref || "").trim().toUpperCase().replace(/[.#$/\[\] -]/g, "_");
+  return String(ref || "").trim().toUpperCase().replace(/[.#$/\[\]\x00-\x1f\x7f]/g, "_");
 }
 async function existingPlatformOrder(db, channel, ref, excludeOrderId) {
   const [ordersSnap, archiveSnap] = await Promise.all([db.ref("/orders").get(), db.ref("/archivedOrders").get()]);

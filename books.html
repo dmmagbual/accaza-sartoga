@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<meta name="accaza-books-build" content="92"/>
+<meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta name="accaza-books-build" content="93"/>
 <title>Accaza Books</title>
 <link rel="stylesheet" href="assets/css/books.css"/>
 </head>
@@ -12,7 +13,7 @@
   <div class="topbar-in">
     <div class="brand">
       <div class="logo">☕</div>
-      <div><b>Accaza Books</b><small>Coffee-shop accounting · build v92</small></div>
+      <div><b>Accaza Books</b><small>Coffee-shop accounting · build v93</small></div>
     </div>
     <span id="liveStatus" class="live-pill off" title="Live POS auto-capture status — click to sign in" onclick="App.signInPrompt()">● Connecting…</span>
     <div class="period" aria-label="Shared report date range">
@@ -35,7 +36,7 @@
 </nav>
 
 <div class="wrap"><div id="page" class="page"></div>
-  <div class="foot-note">Accaza Books · build v92 · double-entry, audited ledger · shared server-authoritative Finance data</div>
+  <div class="foot-note">Accaza Books · build v93 · double-entry, audited ledger · shared server-authoritative Finance data</div>
 </div>
 
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
