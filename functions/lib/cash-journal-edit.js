@@ -15,6 +15,7 @@ function shape(lines){
 }
 function eligible(m){return !!m&&['manual_books_journal','register_cash_deposit'].includes(m.type)&&!!shape(m.lines);}
 function fingerprint(payload){return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');}
+function editSignature(input){const {id,expectedRevision,prepared,reason,actor}=input;return fingerprint({id,expectedRevision,prepared,reason,actorUid:actor.uid});}
 // Existing posting workflows calculate custody changes before claiming their
 // movement. Recheck the proposed delta after the claim: a journal edit that
 // finished between those steps must not be overwritten by a stale calculation.
@@ -27,12 +28,30 @@ function assertCustodyDelta(custody,writes,lines){
   const expected=money((lines||[]).reduce((s,l)=>s+(l.account===pool?Number(l.debit||0)-Number(l.credit||0):0),0));
   if(Math.abs(money(sum(next)-sum(custody))-expected)>.009)fail('The custody balance changed while this posting was prepared. Refresh and retry; nothing was posted.');
 }
+function revisionWrites(before,next,id,commandId){
+  const receipt=next.cashJournalEditCommands&&next.cashJournalEditCommands[commandId];
+  if(!receipt)fail('The revised journal receipt is missing.');
+  const revision=String(receipt.revision),history=next.cashJournalRevisions[id][revision],writes={
+    [`financialMovements/${id}`]:next.financialMovements[id],
+    [`books/journal/${id}`]:next.books.journal[id],
+    [`cashJournalRevisions/${id}/${revision}`]:history,
+    [`cashJournalEditCommands/${commandId}`]:receipt,
+    [`operationalAudit/${commandId}`]:next.operationalAudit[commandId]
+  };
+  Object.keys(history.custodyChanges||{}).forEach(key=>{writes[`cashCustody/${key}`]=next.cashCustody[key]||null;});
+  Object.keys(before.cfLedger||{}).forEach(key=>{if(!next.cfLedger||!next.cfLedger[key])writes[`cfLedger/${key}`]=null;});
+  Object.keys(next.cfLedger||{}).forEach(key=>{if(!before.cfLedger||JSON.stringify(before.cfLedger[key])!==JSON.stringify(next.cfLedger[key]))writes[`cfLedger/${key}`]=next.cfLedger[key];});
+  Object.keys(next.financialCloses||{}).forEach(key=>{if(JSON.stringify((before.financialCloses||{})[key])!==JSON.stringify(next.financialCloses[key]))writes[`financialCloses/${key}/current`]=next.financialCloses[key].current;});
+  Object.keys(next.financialCloseIndex||{}).forEach(date=>Object.keys(next.financialCloseIndex[date]||{}).forEach(key=>{if(JSON.stringify(((before.financialCloseIndex||{})[date]||{})[key])!==JSON.stringify(next.financialCloseIndex[date][key]))writes[`financialCloseIndex/${date}/${key}`]=next.financialCloseIndex[date][key];}));
+  Object.keys(next.cashDepositReferences||{}).forEach(account=>Object.keys(next.cashDepositReferences[account]||{}).forEach(key=>{if(JSON.stringify((((before.cashDepositReferences||{})[account]||{})[key]))!==JSON.stringify(next.cashDepositReferences[account][key]))writes[`cashDepositReferences/${account}/${key}`]=next.cashDepositReferences[account][key];}));
+  return writes;
+}
 // Pure transaction reducer. No network calls or side effects: every retry checks
 // the latest source, period locks, cash balances, and complete custody pool.
 function revise(root,input){
   if(!root)return root;
   const {id,commandId,expectedRevision,prepared,actor,reason,now,floatFloor}=input;
-  const signature=fingerprint({id,expectedRevision,prepared,reason,actorUid:actor.uid});
+  const signature=editSignature(input);
   const prior=root.cashJournalEditCommands&&root.cashJournalEditCommands[commandId];
   if(prior){if(prior.signature!==signature)fail('This submission ID was already used for a different edit.');return root;}
   if(!['owner','superadmin','admin','manager'].includes(actor.role))fail('A privileged Finance role must approve this cash-journal edit.');
@@ -108,4 +127,4 @@ function revise(root,input){
   (next.cashJournalEditCommands||(next.cashJournalEditCommands={}))[commandId]={signature,movementId:id,revision,postedAt:now,actorUid:actor.uid};
   return next;
 }
-module.exports={eligible,shape,revise,assertCustodyDelta};
+module.exports={eligible,shape,revise,assertCustodyDelta,revisionWrites,editSignature};
