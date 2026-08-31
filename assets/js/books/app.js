@@ -221,18 +221,28 @@ function plData(){
 /* ============================================================ TABS ============================================================ */
 const TABS = [
   /* Release compatibility markers: {id:"cashflow",label:"Cash Flow"} {id:"settings",label:"Settings"} {id:"close",label:"Financial Close"} {id:"coa",label:"Chart of Accounts"} */
-  {id:"dashboard",label:"Dashboard",group:"Overview",groupStart:true},
-  {id:"transactions",label:"Transactions",group:"Record",groupStart:true},
-  {id:"receivables",label:"Receivables",group:"Record"},
-  {id:"payables",label:"Payables",group:"Record"},
-  {id:"journal",label:"Journal",group:"Record"},
-  {id:"pl",label:"Profit & Loss",group:"Reports",groupStart:true},
-  {id:"bs",label:"Balance Sheet",group:"Reports"},
-  {id:"cashflow",label:"Cash Flow",group:"Reports"},
-  {id:"insights",label:"Key Metrics",group:"Reports"},
-  {id:"ledger",label:"General Ledger",group:"Reports"},
-  {id:"tb",label:"Trial Balance",group:"Reports"},
-  {id:"settings",label:"Settings",group:"Controls",groupStart:true}
+  {id:"dashboard",label:"Dashboard",group:"overview"},
+  {id:"insights",label:"Key Metrics",group:"overview"},
+  {id:"transactions",label:"Transactions",group:"entries"},
+  {id:"journal",label:"Journal",group:"entries"},
+  {id:"ledger",label:"General Ledger",group:"ledgers"},
+  {id:"receivables",label:"Receivables",group:"ledgers"},
+  {id:"payables",label:"Payables",group:"ledgers"},
+  {id:"pl",label:"Profit & Loss",group:"statements"},
+  {id:"bs",label:"Balance Sheet",group:"statements"},
+  {id:"cashflow",label:"Cash Flow",group:"statements"},
+  {id:"tb",label:"Trial Balance",group:"statements"},
+  {id:"close",label:"Financial Close",group:"controls",settingsSection:"close"},
+  {id:"coa",label:"Chart of Accounts",group:"controls",settingsSection:"coa"},
+  {id:"settings",label:"Settings",group:"controls",settingsSection:"general"},
+  {id:"data",label:"Backup & Restore",group:"controls",settingsSection:"data"}
+];
+const TAB_GROUPS = [
+  {id:"overview",label:"Overview"},
+  {id:"entries",label:"Entries"},
+  {id:"ledgers",label:"Ledgers"},
+  {id:"statements",label:"Statements"},
+  {id:"controls",label:"Controls"}
 ];
 let CURRENT = "dashboard";
 
@@ -240,7 +250,8 @@ const App = {
   init(){
     // period selector
     this.rebuildPeriodSel();
-    const requested=new URLSearchParams(location.search).get("tab"); if(requested==='close'||requested==='coa'){CURRENT='settings';window.__booksSettingsSection=requested;}else if(TABS.some(t=>t.id===requested))CURRENT=requested;
+    const requested=new URLSearchParams(location.search).get("tab"); if(TABS.some(t=>t.id===requested))CURRENT=requested;
+    const selected=TABS.find(t=>t.id===CURRENT);if(selected&&selected.settingsSection)window.__booksSettingsSection=selected.settingsSection;
     this.renderTabs(); this.render();
   },
   setPeriod(v){ var p=window.AccazaReportPeriod&&window.AccazaReportPeriod.set?window.AccazaReportPeriod.set({mode:v}):{mode:'month'};PERIOD=p.mode||'month';this.rebuildPeriodSel();this.render(); },
@@ -248,11 +259,14 @@ const App = {
   setPeriodEnd(v){ var p=window.AccazaReportPeriod&&window.AccazaReportPeriod.set?window.AccazaReportPeriod.set({endMonth:v}):{};PERIOD=p.mode||PERIOD;this.rebuildPeriodSel();this.render(); },
   applyDateRange(){var from=(document.getElementById('periodFrom')||{}).value,to=(document.getElementById('periodTo')||{}).value;if(!from||!to)return alert('Choose both dates.');if(from>to)return alert('The start date must be on or before the end date.');var p=window.AccazaReportPeriod&&window.AccazaReportPeriod.set?window.AccazaReportPeriod.set({mode:'custom',customFrom:from,customTo:to}):{};PERIOD=p.mode||PERIOD;this.rebuildPeriodSel();this.render();},
   renderTabs(){
-    document.getElementById("tabs").innerHTML = TABS.map(t=>`<button class="tab ${t.groupStart?'group-start ':''}${t.id===CURRENT?'active':''}" data-group="${t.group}" ${t.id===CURRENT?'aria-current="page"':''} onclick="App.go('${t.id}')">${t.label}</button>`).join("");
+    const selected=TABS.find(t=>t.id===CURRENT)||TABS[0],activeGroup=selected.group;
+    document.getElementById("bookGroups").innerHTML=TAB_GROUPS.map(g=>`<button class="book-group ${g.id===activeGroup?'active':''}" ${g.id===activeGroup?'aria-current="true"':''} onclick="App.openGroup('${g.id}')">${g.label}</button>`).join("");
+    document.getElementById("tabs").innerHTML = TABS.filter(t=>t.group===activeGroup).map(t=>`<button class="tab ${t.id===CURRENT?'active':''}" ${t.id===CURRENT?'aria-current="page"':''} onclick="App.go('${t.id}')">${t.label}</button>`).join("");
   },
-  go(id){ CURRENT=id; this.renderTabs(); this.render(); window.scrollTo(0,0); },
-  settingsSection(id){ window.__booksSettingsSection=id;CURRENT='settings';this.renderTabs();this.render();window.scrollTo(0,0); },
-  render(){ const page=document.getElementById("page");if(window.__booksLiveLoading){page.innerHTML='<div class="page-head"><div><h2>Refreshing Finance Books…</h2><p>Restoring the shared journal and statement balances</p></div></div><div class="hint">Finance figures are reconnecting. Existing balances are being preserved and will appear automatically when the ledger is ready.</div>';return;}page.innerHTML = PAGES[CURRENT](); },
+  openGroup(id){const first=TABS.find(t=>t.group===id);if(first)this.go(first.id);},
+  go(id){ const selected=TABS.find(t=>t.id===id);if(!selected)return;CURRENT=id;if(selected.settingsSection)window.__booksSettingsSection=selected.settingsSection;this.renderTabs();this.render();window.scrollTo(0,0); },
+  settingsSection(id){ const selected=TABS.find(t=>t.settingsSection===id);this.go(selected?selected.id:'settings'); },
+  render(){ const page=document.getElementById("page"),selected=TABS.find(t=>t.id===CURRENT);if(window.__booksLiveLoading){page.innerHTML='<div class="page-head"><div><h2>Refreshing Finance Books…</h2><p>Restoring the shared journal and statement balances</p></div></div><div class="hint">Finance figures are reconnecting. Existing balances are being preserved and will appear automatically when the ledger is ready.</div>';return;}page.innerHTML = selected&&selected.settingsSection?PAGES.settings():PAGES[CURRENT](); },
 
   /* ---- backup / restore ---- */
   exportJSON(){
@@ -816,17 +830,13 @@ App.loadFinancialClose=function(){var date=(document.getElementById('bc_date')||
 App.runFinancialClose=function(btn){var date=(document.getElementById('bc_date')||{}).value||todayStr();window.__booksCloseDate=date;if(!window.__booksFinancialClose)return alert('Close service is not ready.');btn.disabled=true;btn.textContent='Reconciling…';window.__booksFinancialClose({closeType:'DAILY_CLOSE',businessDate:date}).then(function(x){window.__booksCloseCurrent=x;App.render();alert(x.status==='EXCEPTIONS_OPEN'?'Close completed with '+(x.exceptions||[]).length+' exception(s). Certification is blocked.':'Close reconciled. Review timing items and certify.');}).catch(function(e){alert('Could not run close: '+((e&&e.message)||e));btn.disabled=false;btn.textContent='Run reconciliation';});};
 App.certifyFinancialClose=function(btn){var row=window.__booksCloseCurrent;if(!row)return;var reason=prompt('Certification note — confirm you reviewed Admin, Finance, cash custody, inventory, AP/AR and timing items:','Reviewed all close controls');if(!reason||!reason.trim())return;btn.disabled=true;window.__booksCertifyClose({businessDate:row.businessDate,closeId:row.closeId,revision:row.revision,reason:reason.trim()}).then(function(x){window.__booksCloseCurrent=Object.assign({},row,{status:'CERTIFIED',certification:x.certification});App.render();alert('Daily close certified.');}).catch(function(e){alert('Could not certify: '+((e&&e.message)||e));btn.disabled=false;});};
 
-function settingsNavigation(section){
-  var items=[['general','General'],['close','Financial Close'],['coa','Chart of Accounts'],['data','Backup & Restore']];
-  return '<div class="page-head"><div><h2>Settings</h2><p>Finance controls, account structure, and data protection</p></div></div><div class="settings-nav" role="navigation" aria-label="Finance settings">'+items.map(function(x){return '<button class="btn '+(section===x[0]?'active':'')+'" '+(section===x[0]?'aria-current="page" ':'')+'onclick="App.settingsSection(\''+x[0]+'\')">'+x[1]+'</button>';}).join('')+'</div>';
-}
 PAGES.settings=function(){
   var section=window.__booksSettingsSection||'general',content='';
   if(section==='close')content=PAGES.close();
   else if(section==='coa')content=PAGES.coa();
   else if(section==='data')content='<div class="card card-pad"><div class="section-label">Books backup</div><p class="muted">Download a local copy of the chart of accounts and journal, or restore a previously downloaded Accaza Books backup.</p><div class="hint">Restore replaces the current browser-held Books data after confirmation. Live server-authoritative Finance entries remain protected by their server controls.</div><div class="btn-row"><button class="btn primary" onclick="App.exportJSON()">↓ Download backup</button><button class="btn" onclick="document.getElementById(\'importFile\').click()">↑ Restore backup</button><input type="file" id="importFile" accept="application/json" style="display:none" onchange="App.importJSON(this.files[0])"/></div></div>';
   else {section='general';content=PAGES.settingsGeneral();}
-  return settingsNavigation(section)+content;
+  return content;
 };
 
 /* ---- Transactions: finance-originated postings via postFinancialCommand ---- */

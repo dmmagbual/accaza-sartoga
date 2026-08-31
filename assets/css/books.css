@@ -31,14 +31,16 @@ a{color:var(--info)}
 .tb-actions button{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:7px;padding:.34rem .6rem;font-size:.74rem;font-weight:600}
 .tb-actions button:hover{background:rgba(255,255,255,.22)}
 
-/* Tabs */
-.tabs{overflow-x:auto;background:#f3ecdf;border-bottom:1px solid #d9cbb8;position:sticky;top:53px;z-index:30;box-shadow:0 4px 12px rgba(60,40,20,.04);scrollbar-width:thin}
-.tabs-in{max-width:1180px;margin:0 auto;display:flex;align-items:stretch;gap:.12rem;padding:0 .75rem}
-.tab{position:relative;border:none;background:none;padding:1.05rem .72rem .6rem;font-size:.79rem;font-weight:680;color:var(--tm);border-bottom:3px solid transparent;white-space:nowrap;transition:background .15s ease,color .15s ease}
-.tab::before{content:attr(data-group);position:absolute;top:.16rem;left:.72rem;color:#a18f7b;font-size:.52rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;opacity:0}
-.tab.group-start{margin-left:.55rem;padding-left:1rem;border-left:1px solid #d8cab6}
-.tab.group-start::before{left:1rem;opacity:1}
-.tab:first-child{margin-left:0;border-left:0;padding-left:.72rem}.tab:first-child::before{left:.72rem}
+/* Finance navigation: work area first, then the screens inside it */
+.books-navigation{background:#f3ecdf;border-bottom:1px solid #d9cbb8;position:sticky;top:53px;z-index:30;box-shadow:0 4px 12px rgba(60,40,20,.04)}
+.book-groups,.tabs-in{max-width:1180px;margin:0 auto;display:flex;align-items:stretch;gap:.3rem;padding:0 .75rem}
+.book-groups{padding-top:.45rem;flex-wrap:wrap}
+.book-group{border:1px solid transparent;border-radius:7px;background:transparent;color:#746350;padding:.38rem .7rem;font-size:.72rem;font-weight:800;letter-spacing:.035em}
+.book-group:hover{background:rgba(255,255,255,.55);color:var(--bd)}
+.book-group.active{background:var(--bd);border-color:var(--bd);color:#fff}
+.tabs{background:rgba(255,255,255,.28)}
+.tabs-in{flex-wrap:wrap;gap:.12rem}
+.tab{border:none;background:none;padding:.68rem .72rem .55rem;font-size:.79rem;font-weight:680;color:var(--tm);border-bottom:3px solid transparent;white-space:nowrap;transition:background .15s ease,color .15s ease}
 .tab:hover{color:var(--bd);background:rgba(255,255,255,.48)}
 .tab.active{color:var(--bd);border-bottom-color:var(--bl);background:#fffaf3}
 
@@ -149,12 +151,12 @@ tr.group-account td{font-weight:800;background:#f3ece0;border-top:2px solid var(
 @media(max-width:760px){
   .topbar-in{gap:.6rem;padding:.55rem .75rem}.brand{width:100%}.brand .logo{width:30px;height:30px}
   .topbar .period{order:3;margin-left:0;width:100%;overflow-x:auto;padding-bottom:.15rem}.topbar .period input{min-width:128px}
-  .tb-actions{margin-left:auto}.tabs{top:112px}.tabs-in{padding:0 .35rem}.tab{padding-left:.62rem;padding-right:.62rem}.tab.group-start{margin-left:.25rem;padding-left:.75rem}.tab.group-start::before{left:.75rem}
+  .tb-actions{margin-left:auto}.books-navigation{top:112px}.book-groups,.tabs-in{padding-left:.35rem;padding-right:.35rem}.book-groups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.25rem}.book-group{padding:.4rem .25rem}.tab{padding-left:.62rem;padding-right:.62rem}
   .wrap{padding-left:.7rem;padding-right:.7rem}.page{padding-top:.9rem}.page-head{align-items:flex-start}.page-head h2{font-size:1.4rem}
   .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:.55rem}.kpi{padding:.72rem}.kpi .val{font-size:1.22rem;overflow-wrap:anywhere}
   .card-pad{padding:.85rem}.grid2,.grid3{grid-template-columns:1fr}.modal-bg{padding:1rem .5rem}.modal{border-radius:10px}
 }
-@media(max-width:430px){.kpis{grid-template-columns:1fr}.tb-actions button:nth-of-type(n+2){display:none}}
+@media(max-width:430px){.book-groups{grid-template-columns:repeat(2,minmax(0,1fr))}.kpis{grid-template-columns:1fr}.tb-actions button:nth-of-type(n+2){display:none}}
 @media(prefers-reduced-motion:reduce){.tab,.modal{transition:none;animation:none}}
 
 /* Key Financial Metrics · management-ledger treatment */
