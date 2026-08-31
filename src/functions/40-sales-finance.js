@@ -89,7 +89,7 @@ async function ensureBooksChart(db) {
       resolved[code] = existing;
     }
   });
-  ["1000", "1001", "2100", "5900", "5905", "6077", "6078"].forEach(function(code) {
+  ["1000", "2100", "5900", "5905", "6077", "6078"].forEach(function(code) {
     const canonical = seed[code], existing = current[code];
     if (!canonical || !existing || typeof existing !== "object" || Array.isArray(existing)) return;
     resolved[code] = Object.assign({}, existing, canonical);
@@ -98,9 +98,13 @@ async function ensureBooksChart(db) {
     });
   });
   if (current["1030"] && typeof current["1030"] === "object" && !Array.isArray(current["1030"])) {
-    const legacy = {active:false,system:true,name:"Legacy 1030 - Cash on Hand - Undeposited Collection",note:"Legacy display code; use 1001. The underlying cash-custody account is unchanged.",replacedBy:"1001"};
-    resolved["1030"] = Object.assign({}, current["1030"], legacy);
-    Object.keys(legacy).forEach(function(key) {if (current["1030"][key] !== legacy[key]) writes[`booksChart/1030/${key}`] = legacy[key];});
+    // Move the existing chart record and its journal presentation lines. The
+    // durable financial account is asset:cash_awaiting_deposit, so movements,
+    // cash custody, deposits, and audit links are intentionally untouched.
+    const journal=(await db.ref("/books/journal").get()).val()||{},legacy=current["1030"],canonical=Object.assign({},seed["1001"],current["1001"]||{}, {code:"1001",name:"Cash on Hand - Undeposited Collection",type:"Asset",note:"Cash awaiting bank deposit; controlled by cash custody",active:true,system:true,sensitive:true,migratedFrom:"1030",migratedAt:now}),changed=[];
+    Object.keys(journal).forEach(function(id){const entry=journal[id]||{},lines=Array.isArray(entry.lines)?entry.lines:[],next=lines.map(function(line){return line&&line.code==="1030"?Object.assign({},line,{code:"1001"}):line;});if(next.some(function(line,index){return line!==lines[index];})){writes[`books/journal/${id}/lines`]=next;changed.push(id);}});
+    writes["booksChart/1001"]=canonical;writes["booksChart/1030"]=null;writes["books/chartCodeMigrations/1030_to_1001"]={from:"1030",to:"1001",migratedAt:now,journalEntriesMoved:changed.length,legacyChartCreatedAt:legacy.createdAt||null,schemaVersion:1};writes[`operationalAudit/${now}_books_chart_1030_to_1001`]={action:"move_books_chart_code",sourceType:"booksChart",sourceId:"1030",replacementCode:"1001",journalEntriesMoved:changed.length,ts:now};
+    delete resolved["1030"];resolved["1001"]=canonical;
   }
   if (current["4995"]) {
     const retired = {active: false, system: true, note: "Retired legacy inventory reconciliation gain account; consolidated into 5905", consolidatedInto: "5905"};
