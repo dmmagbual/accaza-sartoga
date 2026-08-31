@@ -16,9 +16,9 @@ const expected={
   orders:['orders','reservations','calendar','availSection'],
   reports:['saleshistory','analytics','dailyreport'],
   stock:['inventory','stockvalue','purchases','recipes','usage','packages'],
-  finance:['petty','undeposited','payouts','discrepancy','accountingperiods'],
+  finance:['petty','undeposited','payouts','discrepancy'],
   customers:['appcustomers','reviews','commentsSection'],
-  settings:['possettings','channelpricing','dedupe','payment','staffaccounts','staffaccess','adminaccounts','changepw']
+  settings:['possettings','accountingperiods','channelpricing','dedupe','payment','staffaccounts','staffaccess','adminaccounts','changepw']
 };
 for(const [group,tabs] of Object.entries(expected)){
   const row=(navigation.match(new RegExp(`<div class="tabgrp" data-grp="${group}"[\\s\\S]*?</div>`))||[])[0]||'';
