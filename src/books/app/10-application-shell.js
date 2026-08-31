@@ -28,6 +28,7 @@ const TAB_GROUPS = [
 let CURRENT = "dashboard";
 
 const App = {
+  exportCsv(kind){return exportFinanceCsv(kind);},
   init(){
     // period selector
     this.rebuildPeriodSel();
