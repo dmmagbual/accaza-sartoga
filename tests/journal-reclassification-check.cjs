@@ -20,7 +20,15 @@ async function run(){
   const read=path=>path.split('/').filter(Boolean).reduce((s,k)=>s?.[k],state)??null;
   const write=(path,value)=>{const keys=path.split('/').filter(Boolean);let s=state;while(keys.length>1){const k=keys.shift();s=s[k]??(s[k]={});}if(value===null)delete s[keys[0]];else s[keys[0]]=structuredClone(value);};
   const snap=v=>({val:()=>structuredClone(v),exists:()=>v!=null});
-  const db={ref:(path='')=>({get:async()=>snap(read(path)),orderByChild(){return this;},equalTo(){return this;},transaction:async fn=>{const value=fn(read(path));if(value===undefined)return{committed:false};write(path,value);return{committed:true};}})};
+  let foreignLock=false;
+  const db={ref:(path='')=>({get:async()=>snap(read(path)),orderByChild(){return this;},equalTo(){return this;},transaction:async fn=>{
+    // Firebase can first invoke the updater with stale local data. A release
+    // must not abort at null before the SDK retries against the owned lock.
+    const stale=fn(null);if(stale===undefined)return{committed:false,snapshot:snap(read(path))};
+    if(foreignLock)write(path,{token:'another-editor',claimedAt:123456});
+    const value=fn(read(path));if(value===undefined)return{committed:false,snapshot:snap(read(path))};
+    write(path,value);return{committed:true,snapshot:snap(value)};
+  }})};
   const ctx=vm.createContext({JournalReclassification:R,BooksBridge:B,crypto:require('node:crypto'),HttpsError:class extends Error{constructor(code,msg){super(msg);}},financeText:s=>String(s||''),assertAccountingPeriodOpen:async()=>{if(closed)throw Error('closed');},safeFinancialUpdate:async(_,writes)=>{assert.ok(Object.keys(writes).every(k=>!/^inventory\/|^cashCustody\/|^cfLedger\/|^payables\//.test(k)));for(const [p,v]of Object.entries(writes))write(p,v);}});
   vm.runInContext(body,ctx);
   const data={expectedRevision:0,reason:'Opening reclassification',date:prepared.date,lines:prepared.lines},actor={uid:'owner',role:'owner'};
@@ -30,10 +38,14 @@ async function run(){
   assert.equal(state.books.journal.one.lines.find(l=>l.code==='3000').credit,4950);
   assert.equal(state.cashJournalRevisions.one['1'].before.lines[1].account,'coa:5905');
   assert.equal(state.financialCloses.daily.current.status,'REOPENED');
+  assert.equal(read('/financialControlLocks/cashJournalEdit'),null,'release must reach server despite initially empty cache');
   assert.equal((await ctx.reviseJournalClassification(db,'one',data,prepared,actor,'edit1',123456)).duplicate,true);
   const second={...prepared,lines:original.lines};
   await assert.rejects(()=>ctx.reviseJournalClassification(db,'one',data,second,actor,'stale',123456),/changed/);
   closed=true;await assert.rejects(()=>ctx.reviseJournalClassification(db,'one',{...data,expectedRevision:1},second,actor,'closed',123456),/closed/);
+  assert.equal(read('/financialControlLocks/cashJournalEdit'),null,'failed edits must release the lock');
+  foreignLock=true;await assert.rejects(()=>ctx.reviseJournalClassification(db,'one',data,second,actor,'busy',123456),/Another journal correction/);
+  assert.equal(read('/financialControlLocks/cashJournalEdit').token,'another-editor','never steal or release another editor lock');
   console.log('PASS: reclassification stays in place, preserves inventory, audit history, source ID, replay, revision, period and close safeguards.');
 }
 run().catch(e=>{console.error(e);process.exitCode=1;});
