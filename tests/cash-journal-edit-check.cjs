@@ -42,7 +42,7 @@ blocked((s,a)=>a.prepared.date='2026-02-30',/valid Philippine/);
 blocked((s,a)=>a.prepared.lines=[line(bank,0,0),line(pool,0,0)],/direction/);
 blocked((s,a)=>a.prepared.lines=[line(bank,11000,0),line(pool,0,11000)],/whole Undeposited/);
 blocked((s,a)=>a.prepared.lines=[line(bank,0,6907),line(pool,6907,0)],/direction/);
-blocked((s,a)=>a.prepared.lines=[line('revenue:sales',6907,0),line(pool,0,6907)],/Revenue/);
+blocked((s,a)=>a.prepared.lines=[line('revenue:sales',6907,0),line(pool,0,6907)],/matching account/);
 blocked((s)=>s.cashCustody.one.remaining+=10,/already differs/);
 blocked((s)=>s.financialMovements.deposit.reversedByMovementId='reversed',/reversed/);
 blocked((s)=>s.financialCommandClaims={other:{status:'processing',claimedAt:input.now}},/in progress/);
@@ -66,6 +66,19 @@ const registerInput={...input,prepared:{...input.prepared,lines:[line('asset:reg
 assert.equal(E.revise(registerState,registerInput).financialMovements.deposit.amount,6907);
 registerState.financialMovements.payment={id:'payment',occurredAt:stamp('2026-09-01'),lines:[line('expense:rent',6717,0),line('asset:register_cash',0,6717)]};
 assert.throws(()=>E.revise(registerState,{...registerInput,prepared:{...registerInput.prepared,lines:[line('asset:register_cash',6500,0),line(pool,0,6500)]}}),/protected register float/);
+// An open-period two-line manual cash journal may change only its amount when
+// its counterpart has no Admin subledger. Its cash-ledger record must change
+// in the same revision; inventory/AP/AR remain ineligible.
+const capitalState={financialMovements:{opening:{id:'opening',occurredAt:stamp('2026-08-01'),lines:[line('asset:register_cash',5000,0),line('equity:owner_capital',0,5000)]},draw:{id:'draw',type:'manual_books_journal',sourceType:'booksManualJournal',sourceId:'draw',occurredAt:stamp('2026-08-28'),postedAt:stamp('2026-08-28'),amount:504,lines:[line('equity:owner_capital',504,0),line('asset:register_cash',0,504)]}},cfLedger:{drawcash:{movementId:'draw',accountId:'register',amount:504,dir:'out'}},books:{journal:{}},accountingPeriods:{},financialCloseIndex:{},financialCloses:{},cashCustody:{}};
+capitalState.books.journal.draw=B.buildSingle(capitalState.financialMovements.draw,{}).entry;
+const capitalOut=E.revise(capitalState,{id:'draw',commandId:'capital-edit',expectedRevision:0,prepared:{date:'2026-08-28',memo:'Correct owner withdrawal',reference:'VOUCHER-1',lines:[line('equity:owner_capital',494,0),line('asset:register_cash',0,494)]},reason:'Correct posting amount',actor:{uid:'manager1',role:'manager'},now:stamp('2026-09-01'),floatFloor:4000});
+assert.equal(capitalOut.financialMovements.draw.amount,494,'Finance Books journal changes in place');
+assert.equal(capitalOut.cfLedger.fm_draw_1.amount,494,'Cash on Hand ledger changes in the same revision');
+assert.equal(capitalOut.cashJournalRevisions.draw['1'].before.amount,504,'the original remains in the audit history');
+assert.equal(Object.keys(capitalOut.financialMovements).length,2,'no void or replacement journal is created');
+assert.equal(E.eligible({type:'manual_books_journal',lines:[line('coa:6100',504,0),line('asset:register_cash',0,504)]}),true,'ordinary expense counterpart is also eligible');
+assert.equal(E.eligible({type:'manual_books_journal',lines:[line('liability:accounts_payable',504,0),line('asset:register_cash',0,504)]}),false,'payables remain on their dedicated subledger workflow');
+assert.equal(E.eligible({type:'manual_books_journal',lines:[line('asset:inventory',504,0),line('asset:register_cash',0,504)]}),false,'inventory remains on its dedicated workflow');
 console.log('PASS: in-place cash journals preserve one ID, revenue, pooled custody, history and replay/period/concurrency safeguards.');
 
 // Exercise the real callable routing, account mapping and browser submission.
