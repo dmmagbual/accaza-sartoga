@@ -147,6 +147,7 @@ async function integration(){
   const controls=fs.readFileSync('src/functions/42c-financial-command-controls.js','utf8');
   assert.doesNotMatch(controls,/db\.ref\(\)\.transaction/,'cash correction must not load the whole database into a transaction');
   assert.match(controls,/financialControlLocks\/cashJournalEdit/);
+  assert.doesNotMatch(controls,/shape\.account\.startsWith/,'the callable wrapper must support two-account cash transfers as well as pooled transfers');
   console.log('PASS: real callable/account mapping, scoped lock/update, history permissions and browser revision/retry payload.');
 }
 integration().catch(error=>{console.error(error);process.exitCode=1;});
