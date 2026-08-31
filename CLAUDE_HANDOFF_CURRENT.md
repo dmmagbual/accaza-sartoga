@@ -1,147 +1,152 @@
-# Accaza Coffee Shop — Current Claude Handover
+# Accaza Coffee Shop — Current Handover for Claude
 
-**Updated:** 21 August 2026
-
-**Project:** `accaza-sartoga`
-
+**Updated:** 1 September 2026
 **Workspace:** `C:\AKALIKO\DMM\PERSONAL\CLAUDE\Projects\Accaza Coffee Shop`
-
 **Production:** <https://accazacoffee.com>
-
 **Repository:** <https://github.com/dmmagbual/accaza-sartoga>
+**Firebase project / region:** `accaza-sartoga` / `asia-southeast1`
+**Release manifest:** 7M, candidate pending production evidence
 
 ## Start Here
 
-This document is the current continuation point. The older `CLAUDE_HANDOFF.md` is useful architecture background but contains stale build and deployment details. Trust the current source, `release-manifest.json`, GitHub, and Firebase over older release notes.
-
-Before changing anything:
+Read `AGENTS.md` first. It is mandatory: preserve unrelated work, use `apply_patch` for edits, run the three required checks, increment visible builds/cache, stage only task files, and push only when Danilo says **push**.
 
 ```powershell
 Set-Location -LiteralPath "C:\AKALIKO\DMM\PERSONAL\CLAUDE\Projects\Accaza Coffee Shop"
 git fetch origin --prune
-git status --short
-git log -5 --oneline --decorate
+git status --short --branch
+git log -6 --oneline --decorate
 npm test
 npm run test:release
 npm run test:safety
 ```
 
-Read `AGENTS.md` before working. It contains mandatory build, testing, GitHub, deployment, and handoff rules.
+The current local branch is `codex/reconcile-legacy-other-income`. Its sole commit, `fde0161`, is already merged into `main` as [PR #318](https://github.com/dmmagbual/accaza-sartoga/pull/318), merge commit `12aae5885a0ebd3a997639f496cf35d322d61f2c`. GitHub quality gate and the merge-triggered workflows passed. Do not create another PR for this change.
 
-## Current Delivery State
+## Live Application Status — Verified 31 August 2026
 
-- Latest merged PR: [#49 — Redesign purchases as a unified receiving sheet](https://github.com/dmmagbual/accaza-sartoga/pull/49)
-- PR #49 merge commit on `main`: `448b85d4fe01b1235495bed10b834390dca0abe8`
-- PR #49 GitHub quality gate: passed.
-- PR #49 GitHub Pages deployment: passed. The Purchases redesign is live.
-- Previous merged PR: [#48 — Configurable payment verification policies](https://github.com/dmmagbual/accaza-sartoga/pull/48)
-- PR #48 quality gate, GitHub Pages deployment, and Firebase Functions/rules deployment: passed.
-- No pull request is currently awaiting work from this handover.
-- Local branch at handover time: `codex/recover-pos-storage-quota` at `79095b2`. It predates the PR #49 merge commit. Fetch and start new work from current `origin/main`; do not assume the old branch is current.
+Current visible builds:
 
-## Current Builds
+| Surface | Build |
+|---|---:|
+| Admin | v409 |
+| Finance Books | v89 |
+| Customer | v64 |
+| Service-worker cache | v367 |
 
-- Admin application: **v238**
-- Customer application: **v57**
-- Service-worker cache: **v140**
-- Release manifest line: **7M**
-- Firebase Functions runtime: Node.js 22, `asia-southeast1`
+The signed-in production Admin portal and Finance Books were accessible. Admin showed an active operational dashboard; Finance Books was live for `danilomagbual@gmail.com` and its General Ledger loaded successfully.
 
-For an admin-facing change, increment and synchronize:
+Verified Finance snapshot at that time:
 
-1. `admin.html` meta `accaza-admin-build`
-2. visible `build v...` label in `admin.html`
-3. `release-manifest.json` → `builds.admin`
+- Cash position: ₱56,912.
+- Platform Accounts Receivable: ₱6,933.66.
+- Supplier Accounts Payable: ₱27,743.43; total listed current liabilities included loans and customer refund payable.
+- Inventory Receiving Clearing (1290): ₱0.00.
+- Other Income (4990): ₱0.00 after the reconciliation below.
+- Inventory Reconciliation Gain / (Loss) (5905): ₱-715.83. This is a separate current balance; it was not changed by the legacy reset correction and still needs normal accounting review before month close.
 
-For a frontend or cached-asset change, also increment and synchronize:
+These are live UI observations, not a signed financial close or tax filing. Qualified accounting review remains required before formal sign-off.
 
-1. `sw.js` → `const CACHE='accaza-v...'`
-2. `release-manifest.json` → `builds.serviceWorkerCache`
+## Completed Financial Reconciliation
 
-Only increment the customer build when the customer application changes.
+### Legacy Other Income / Owner's Capital correction — completed in production
 
-## Most Recent Product Changes
+The journal `legacy_owner_capital_reset_v2_2026-08-29` was historically posted as:
 
-### Purchases — live in v238/cache v140
+| Account | Original amount |
+|---|---:|
+| Dr 4990 Other Income | ₱6,445.28 |
+| Cr 3000 Owner's Capital | ₱6,445.28 |
 
-The Goods Received entry was redesigned as one unified supplier-invoice card in:
+Root cause of the later mismatch: ₱5,960.78 of the legacy reset related to inventory adjustments that Finance Books now classifies separately, so it was duplicated in the old reset.
 
-- `assets/js/admin/pos.js`
-- `assets/css/admin-backoffice.css`
-- `admin.html`
-- `sw.js`
-- `release-manifest.json`
+| Component | Amount | Current treatment |
+|---|---:|---|
+| Biscuit spread opening adjustment | ₱4,950.00 | Inventory against Owner's Capital |
+| Strawless lid adjustment | ₱589.26 | Inventory reconciliation |
+| Thin straw adjustment | ₱421.52 | Inventory reconciliation |
+| Total duplicated legacy content | **₱5,960.78** | Removed from the reset |
+| Grab refund recovery GF-746 | **₱484.50** | Genuine Other Income retained |
 
-The receiving workflow now has four visually connected parts:
+On 31 August 2026, Danilo explicitly authorized and confirmed the in-app production journal edit. The journal was revised **in place**, with audit history:
 
-1. Delivery details
-2. Whole-invoice payment choice
-3. Numbered stock-item lines
-4. Invoice total and `Receive stock` action
+| Account | Revised amount |
+|---|---:|
+| Dr 4990 Other Income | ₱484.50 |
+| Cr 3000 Owner's Capital | ₱484.50 |
 
-Payment choices remain financially explicit:
+Revision reason: `Remove inventory adjustments already reclassified from Other Income`.
 
-- `Invoice pending — provisional obligation`
-- `Paid now` from a Cash Flow account
-- `On account` with a due date
+Verification completed after save:
 
-Correction, reversal, and payable-repair tools are now secondary controls inside a collapsible section. Existing posting, inventory, weighted-average cost, payable, and correction behavior was not changed.
+- Journal displays `History · r1` and ₱484.50 on both lines.
+- General Ledger 4990 Other Income = **₱0.00**.
+- No Admin inventory quantities, inventory value, cash, or net revenue were changed.
+- The correction preserved the original journal ID and the audit history rather than deleting/voiding it.
 
-If Danilo asks for further Purchases work, begin at `renderPurchases()` in `assets/js/admin/pos.js` and the `Purchases — one receiving sheet` block in `assets/css/admin-backoffice.css`. Test desktop and narrow/mobile layouts, keyboard focus, adding/removing lines, all three payment modes, total updates, and `Receive stock` validation.
+Do **not** rerun or reverse this correction unless a qualified reviewer identifies new evidence. The journal must remain at ₱484.50 unless the underlying Grab recovery is separately corrected.
 
-### Payment verification — live in v237/cache v139 and Firebase
+## Finance Safeguards Now Live — PR #318
 
-POS Settings supports only these two policies for GCash, Maya, bank, and other direct online payments:
+Future stock adjustments now require one explicit Finance offset account at the time of posting. The choice is stored on both the Admin movement and the Finance movement; server-side validation rejects missing or disallowed offsets.
 
-- Cashier verification followed by manager review
-- Manager-only verification
+| Adjustment purpose | Required / suggested offset |
+|---|---|
+| Beginning inventory correction | 3000 Owner's Capital only |
+| Physical-count variance or standard reconciliation | 5905 Inventory Reconciliation Gain / (Loss) |
+| Wastage / spoilage | 5900 Wastage & Spoilage |
 
-There is deliberately no cashier-final-verification option. GrabFood and FoodPanda remain platform-settlement flows.
+Important rules:
 
-Authority is enforced in both the frontend and Cloud Functions. Key files:
+- Inventory is automatically the other side of the entry.
+- 3000 Owner's Capital is blocked unless the adjustment nature is `beginning-inventory`.
+- New-item opening inventory must use 3000.
+- The Finance journal guard now permits a safe, classification-only in-place revision of legacy cutover journals while their period is open. It preserves source ID, revision history, date, and all operational account balances.
+- Do not bypass this via direct Realtime Database writes.
 
-- `functions/lib/payment-verification.js`
-- `functions/lib/offline-sync.js`
-- `functions/index.js`
-- `assets/js/admin/register.js`
-- `assets/js/admin/pos.js`
-- `assets/js/admin/admin-orders.mjs`
-- `assets/css/admin-backoffice.css`
+Key implementation files:
 
-Do not weaken the server-side verification checks while changing labels or UI.
+- `src/admin/pos/11d-stock-adjustments.js`
+- `src/admin/pos/11f-inventory-spreadsheets.js`
+- `src/functions/50-inventory.js`
+- `functions/lib/journal-reclassification.js`
+- `src/books/app/30-statements-pages.js`
+- `tests/inventory-adjustment-offset-check.cjs`
 
-### Recent POS reliability/UI fixes
+## Recent Previously-Merged Finance Work
 
-- The Transaction Sync Queue button is clickable even when empty and reports `Nothing to sync`.
-- Synced queue records are pruned so the list does not grow forever.
-- Sync is automatic; the retry control is a recovery action, not a normal required step.
-- The receipt no longer exposes Firebase confirmation wording to customers.
-- Durable sale failures distinguish browser/device quota problems from Firebase failures. `QuotaExceededError` is local browser storage pressure, not Firebase Storage quota.
-- Reversed purchases are hidden from Purchase history by default but remain available in the audit trail.
-- Completed active-order cards use a compact layout rather than leaving large blank areas.
+- [PR #315](https://github.com/dmmagbual/accaza-sartoga/pull/315): guarded in-place journal reclassifications.
+- [PR #316](https://github.com/dmmagbual/accaza-sartoga/pull/316): journal correction lock retry/release fix.
+- [PR #317](https://github.com/dmmagbual/accaza-sartoga/pull/317): database indexes required for journal edits.
+- [PR #318](https://github.com/dmmagbual/accaza-sartoga/pull/318): inventory-adjustment offset selection plus legacy reset reconciliation safeguard.
 
-Inspect the current code and tests before assuming the exact implementation details of these fixes.
+Other recently delivered product changes include Admin/Finance tab cleanup, Inventory visibility restoration, Accounting Periods under Settings, CSV downloads for Finance reports/journals/ledgers/transactions, Philippine business-date reporting, working-capital terminology, sales-source reconciliation guards, and category-level product reporting. Inspect current source and UI before changing any of these.
 
 ## Architecture and Deployment Truth
 
-- Static frontend hosting is GitHub Pages. This repository has no Firebase Hosting target.
-- Frontend changes become live after merge to `main` and successful Pages deployment.
-- Firebase Functions and rules deploy through the repository workflow after relevant changes merge to `main`.
-- Never advise `firebase deploy --only hosting` for this project.
-- If a manual Functions deployment is genuinely required, use:
+- Frontend static assets deploy through GitHub Pages after merge to `main`; there is no Firebase Hosting target.
+- Firebase Functions and rules deploy through repository workflows after relevant merges. Use `firebase deploy --only "functions" --project "accaza-sartoga"` only when a manual Functions deployment is genuinely necessary.
+- `orders` is authoritative; `activeOrders` is the bounded live projection.
+- Inventory quantities and weighted-average value are server-authoritative movement records.
+- `financialMovements` are balanced, source-linked, immutable evidence. Corrections must use a supported correction/reclassification workflow and preserve audit links.
+- Each financial/inventory workflow must handle original posting, source reference, subledger effect, settlement/allocation, correction/reversal, audit trail, and idempotency.
+- Reports use Philippine business-date boundaries, independent of the operator device timezone.
 
-```powershell
-firebase deploy --only "functions" --project "accaza-sartoga"
-```
+## Current Known Items / Do Not Misstate
 
-- `/orders` is authoritative; `/activeOrders` is the bounded live projection.
-- Inventory movements, weighted-average costing, protected financial movements, approvals, and offline replay are server-authoritative and idempotent.
-- Firebase Realtime Database is the operational data store. Private payment-proof images use Firebase Storage through authorized Functions.
-- The offline POS queue uses IndexedDB. A sale must not be called synced until Firebase confirms it.
+1. `release-manifest.json` remains `candidate_pending_production_verification`. The following evidence is still pending and must not be claimed complete without actual evidence:
+   - production performance review
+   - backup restore test
+   - quarterly permission review
+   - quarterly dependency review
+2. The visible 5905 balance of ₱-715.83 is not the legacy reset defect. Reconcile it against detailed inventory movements before posting anything.
+3. Admin inventory balances were not changed by the legacy journal correction. Any inventory adjustment must be posted from Admin so the Admin movement and Finance Books source stay linked.
+4. Do not treat a successful static deployment as proof that Functions/rules have deployed; verify workflow results when those files change.
+5. Preserve existing local user changes. Do not reset, clean broadly, or stage all files.
 
-## Required Verification
+## Required Verification and Handoff
 
-For normal application changes, run at minimum:
+For normal changes:
 
 ```powershell
 npm test
@@ -149,37 +154,19 @@ npm run test:release
 npm run test:safety
 ```
 
-The last local run passed all three. `test:release` still reports these existing pending production-evidence items:
+The last run for PR #318 passed all three. `test:release` reported the pending production evidence above, which is expected and not a test failure.
 
-- `productionPerformanceReview`
-- `backupRestoreTest`
-- `quarterlyPermissionReview`
-- `quarterlyDependencyReview`
+When Danilo says **push it**:
 
-Do not describe those evidence items as complete without real proof.
-
-## Working-Tree Safety
-
-At handover time the workspace also contains an unrelated modified `.gitignore` and many unrelated untracked ADR, release, setup, and helper files. They belong to the user. Preserve them and stage only files for the current task.
-
-Never use broad cleanup, reset, checkout, or deletion commands. Never stage everything for a scoped task.
-
-## GitHub Workflow
-
-When Danilo says `push it`:
-
-1. Commit only the current task files.
+1. Commit only current-task files.
 2. Fetch and ensure the branch is current with `main`.
-3. Push the working branch.
-4. Create a new PR if the preceding PR is merged or closed.
-5. Confirm the pushed commit appears in the open PR.
-6. Wait for and report the GitHub quality gate.
-7. Do not merge unless Danilo explicitly asks.
+3. Push the branch; create a PR if none is open.
+4. Confirm the exact commit appears in the PR and wait for the quality gate.
+5. Do not merge unless Danilo explicitly asks.
+6. State accurately whether work is local, pushed, PR-open, merged, and deployed.
 
-Always give the clickable PR link and distinguish local, pushed, PR-open, merged, and deployed states.
+After frontend changes, remind Danilo to hard refresh with `Ctrl + Shift + R` and confirm the visible build marker.
 
-## Recommended Next Action for Claude
+## Recommended Claude Continuation
 
-There is no unfinished code change. Start by asking Danilo what he wants to improve next, or review the live Purchases page with him after a hard refresh (`Ctrl + Shift + R`) and confirm the visible admin build is v238.
-
-If he reports a defect, reproduce and diagnose it before editing. Preserve financial and inventory behavior while changing presentation. Discuss materially different business-policy choices before implementing them.
+Start from current `origin/main`, not the older local branch. Ask Danilo what he wants next. If he asks about finance, first identify the exact movement/source and show how Admin subledger and Finance Books behave together. For inventory issues, never change a GL inventory control account manually when it would disconnect quantity/value from the stock movement.
