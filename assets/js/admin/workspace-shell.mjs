@@ -18,7 +18,7 @@ const META={
   cashflow:['Financials','Cash flow','Track controlled cash, bank, and ledger movements.',''],
   receivables:['Financials','Receivables','Follow money owed to the business.',''],
   payables:['Financials','Payables','Review obligations and payment status.',''],
-  stockvalue:['Cash & controls','Inventory valuation','Reconcile beginning stock, movements, ending balance, and inventory value.',''],
+  stockvalue:['Inventory','Inventory','Reconcile beginning stock, movements, ending balance, and inventory value.',''],
   discrepancy:['Cash & controls','Reconciliation issues','Investigate and approve register exceptions.',''],
   petty:['Cash & controls','Cash payments','Record approved expenses, owner withdrawals, and supplier payments from Undeposited Collection.','undeposited:View cash pool'],
   undeposited:['Cash & controls','Undeposited Collection','Reconcile cash on hand, approved payments, and amounts awaiting bank deposit.','petty:Record cash payment'],
