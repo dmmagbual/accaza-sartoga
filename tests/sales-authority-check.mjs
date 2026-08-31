@@ -7,6 +7,7 @@ const S=context.window.AccazaSales;
 function assert(ok,message){if(!ok)throw new Error(message);}
 
 assert(S.qualifies({status:'Completed',paymentStatus:'confirmed'}),'confirmed completed sale was excluded');
+assert(S.qualifies({source:'online',channel:'online',status:'Completed',paymentStatus:'confirmed'}),'confirmed online sale was excluded');
 assert(S.qualifies({status:'Archived',prevStatus:'Received',paymentStatus:'confirmed'}),'archived received sale was excluded');
 assert(!S.qualifies({source:'pos',status:'Completed',paymentStatus:'pending'}),'pending POS sale was recognized');
 assert(!S.qualifies({source:'pos',status:'Completed',paymentStatus:'confirmed',voided:true}),'voided POS sale was recognized');
