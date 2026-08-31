@@ -45,13 +45,15 @@ balances. It rejects existing ledger-to-custody mismatches instead of concealing
 them with an automatic balancing entry. Linked-control or already reversed
 journals are excluded.
 
-A root database transaction validates the latest state and commits the movement,
-journal, cash-ledger legs, custody availability, close status, command receipt and
-revision history together. Exact retries reuse the stored result; a reused command
-ID with a different payload fails. The browser carries the opened revision and a
-stable submission ID. Existing financial posting claims block the edit; pending
-custody writes are rechecked after acquiring their posting claim so they cannot
-overwrite a correction completed during preparation.
+A narrow server lock serializes cash-journal corrections. The Function reads only
+the Finance movements and directly related journal, cash-ledger, custody, close,
+period and revision records, validates their latest state, then atomically updates
+those paths together. It never transacts over or clones the whole production
+database. Exact retries reuse the stored result; a reused command ID with a
+different payload fails. The browser carries the opened revision and a stable
+submission ID. Existing financial posting claims block the edit; pending custody
+writes are rechecked after acquiring their posting claim so they cannot overwrite
+a correction completed during preparation.
 
 History is server-written under `cashJournalRevisions/<movementId>/<revision>` and
 read through the privileged `cash_journal_history` callable. Books exposes a
@@ -71,11 +73,10 @@ revenue and IDs, revision history, retries, stale revisions, role/period/bank lo
 historical negative cash, float protection, duplicate bank references, stale
 custody writes, callable routing, real account mapping and browser payloads.
 
-The root transaction is intentionally an infrequent correction operation. It
-reads the database root, so production database size, memory and contention must
-be monitored; local fixture tests do not establish production performance. No
-production transactions are needed or authorized by building this feature.
+The correction remains intentionally infrequent and serialized, but its memory
+use no longer scales with unrelated orders, images or operational records. No
+production transaction is needed or authorized by building or testing this feature.
 
 Both Functions and the Books frontend must be deployed before use. This local
-build does not certify that deployment. Admin build 403, Books build 82 and
-service-worker cache 355 identify this release; customer build stays 64.
+build does not certify that deployment. Admin build 404, Books build 84 and
+service-worker cache 358 identify this release; customer build stays 64.

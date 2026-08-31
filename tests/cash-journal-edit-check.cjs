@@ -74,26 +74,27 @@ async function integration(){
   let state=structuredClone(base),role='manager';
   state.cfAccounts.bank.name='UnionBank';
   const read=(value,path)=>path.split('/').filter(Boolean).reduce((r,k)=>r&&r[k],value)??null;
+  const write=(path,value)=>{const parts=path.split('/').filter(Boolean);let node=state;while(parts.length>1){const key=parts.shift();node=node[key]||(node[key]={});}const key=parts[0];if(value===null)delete node[key];else node[key]=structuredClone(value);};
   const snapshot=value=>({val:()=>value,exists:()=>value!=null,child:path=>snapshot(read(value,path))});
   const db={ref(path=''){return{
     get:async()=>snapshot(structuredClone(read(state,path))),
+    orderByChild(){return this;},equalTo(){return this;},
     transaction:async reducer=>{
-      assert.equal(path,'','cash edit commits journal, custody and history at their common ancestor');
-      assert.equal(reducer(null),null,'cold-cache callback must not manufacture a root');
-      const next=reducer(structuredClone(state));
-      if(next===undefined)return{committed:false,snapshot:snapshot(state)};
-      state=next;return{committed:true,snapshot:snapshot(state)};
+      assert.notEqual(path,'','cash edit must never transact over the database root');
+      const current=structuredClone(read(state,path)),next=reducer(current);
+      if(next===undefined)return{committed:false,snapshot:snapshot(current)};
+      write(path,next);return{committed:true,snapshot:snapshot(next)};
     }
   };}};
   class Clock extends Date{static now(){return input.now;}}
   class HttpsError extends Error{constructor(code,message){super(message);this.code=code;}}
-  const ctx={exports:{},Date:Clock,ORDER_REGION:'test',ENFORCE_APP_CHECK:false,HttpsError,Financial,BooksBridge:B,CashJournalEdit:E,
+  const ctx={exports:{},Date:Clock,crypto:require('node:crypto'),logger:{error(){}},ORDER_REGION:'test',ENFORCE_APP_CHECK:false,HttpsError,Financial,BooksBridge:B,CashJournalEdit:E,
     getDatabase:()=>db,onCall:(_,fn)=>fn,observeFinancialOperation:(_,__,fn)=>fn(),
     requirePortalPermission:async()=>({uid:'manager1',role}),financeText:(s,n)=>String(s||'').trim().slice(0,n),
     financeKey:s=>{assert.match(s,/^[A-Za-z0-9_-]+$/);return s;},financeDate:s=>s,
     ensureChartAccounts:async()=>({}),ensureBooksChart:async()=>({}),SENSITIVE_BOOKS_CODES:new Set(['1011','1030']),
     assertAccountingPeriodOpen:async(_,date)=>{if((state.accountingPeriods[date.slice(0,7)]||{}).status==='closed')throw new HttpsError('failed-precondition','closed period');},
-    resolveRegisterFloat:()=>({amount:4000})};
+    resolveRegisterFloat:()=>({amount:4000}),safeFinancialUpdate:async(_,writes)=>{Object.keys(writes).forEach(path=>write(path,writes[path]));}};
   vm.createContext(ctx);
   const finance=fs.readFileSync('src/functions/40-sales-finance.js','utf8');
   vm.runInContext(finance.slice(finance.indexOf('function booksCodeAccount('),finance.indexOf('function assertNoOverlappingUpdatePaths(')),ctx);
@@ -103,6 +104,9 @@ async function integration(){
   assert.equal(result.editedInPlace,true);assert.equal(result.movementId,'deposit');assert.equal(result.revision,1);
   assert.equal(state.books.journal.deposit.lines[0].code,'1011');
   assert.equal((await ctx.exports.postFinancialCommand({data})).revision,1,'same callable retry is idempotent');
+  await assert.rejects(ctx.exports.postFinancialCommand({data:{...data,memo:'Different payload'}}),/submission ID/);
+  const status=await ctx.exports.postFinancialCommand({data:{action:'cash_journal_edit_status',commandId:'status',editCommandId:'ui_edit',originalMovementId:'deposit'}});
+  assert.equal(status.committed,true);assert.equal(status.revision,1);
   await assert.rejects(ctx.exports.postFinancialCommand({data:{...data,commandId:'stale_edit'}}),/changed since/);
   const historyData={action:'cash_journal_history',commandId:'history',originalMovementId:'deposit'};
   assert.equal((await ctx.exports.postFinancialCommand({data:historyData})).revisions['1'].before.amount,6717);
@@ -113,6 +117,9 @@ async function integration(){
   vm.createContext(ui);vm.runInContext(fs.readFileSync('src/books/app/10-application-shell.js','utf8')+'\nglobalThis.app=App;',ui);
   ui.app._draft={date:data.date,memo:data.memo,ref:data.ref,lines:data.lines};ui.app._edit={originalMovementId:'deposit',expectedRevision:1,reason:'Correction'};
   ui.app.postEntry();ui.app.postEntry();assert.equal(sent.length,2);assert.equal(sent[0].expectedRevision,1);assert.equal(sent[0].commandId,sent[1].commandId,'uncertain retries retain the submission ID');
-  console.log('PASS: real callable/account mapping, cold-cache transaction, history permissions and browser revision/retry payload.');
+  const controls=fs.readFileSync('src/functions/42c-financial-command-controls.js','utf8');
+  assert.doesNotMatch(controls,/db\.ref\(\)\.transaction/,'cash correction must not load the whole database into a transaction');
+  assert.match(controls,/financialControlLocks\/cashJournalEdit/);
+  console.log('PASS: real callable/account mapping, scoped lock/update, history permissions and browser revision/retry payload.');
 }
 integration().catch(error=>{console.error(error);process.exitCode=1;});

@@ -5,6 +5,11 @@ exports.postFinancialCommand = onCall(
     const db = getDatabase(); const data = request.data || {}; const action = financeText(data.action, 40);
     const perms = action.indexOf("inventory_opening_balance") === 0 ? ["purchases", "cashflow"] : action.includes("payable") ? ["payables", "purchases"] : action.includes("receivable") ? ["receivables"] : ["cashflow", "receivables", "payables", "purchases"];
     const actor = await requirePortalPermission(db, request, perms); const commandId = financeKey(data.commandId, "Command ID");
+    if(action==='cash_journal_edit_status'){
+      if(!['owner','superadmin','admin','manager'].includes(actor.role))throw new HttpsError('permission-denied','A privileged Finance role is required to verify a cash-journal edit.');
+      const editCommandId=financeKey(data.editCommandId,'Edit submission ID'),movementId=financeKey(data.originalMovementId,'Journal ID'),receipt=(await db.ref(`/cashJournalEditCommands/${editCommandId}`).get()).val();
+      return{committed:!!(receipt&&receipt.movementId===movementId&&receipt.actorUid===actor.uid),movementId:receipt&&receipt.movementId||'',revision:Number(receipt&&receipt.revision||0)};
+    }
     if(action==='cash_journal_history'){
       if(!['owner','superadmin','admin','manager'].includes(actor.role))throw new HttpsError('permission-denied','A privileged Finance role is required to view cash-journal revisions.');
       const id=financeKey(data.originalMovementId,'Journal ID');return{revisions:(await db.ref(`/cashJournalRevisions/${id}`).get()).val()||{}};

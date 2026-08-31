@@ -337,9 +337,10 @@ const App = {
     const usesAp=lines.some(l=>l.code==='2000'),linkedPayableId=(document.getElementById('e_payable')||{}).value||'',variancePurpose=(document.getElementById('e_purpose')||{}).value==='cash_variance',linkedDiscrepancyId=variancePurpose?((document.getElementById('e_discrepancy')||{}).value||''):'';if(usesAp&&!linkedPayableId)return alert('Select the exact open bill or payable for account 2000.');if(variancePurpose&&!linkedDiscrepancyId)return alert('Select the exact Admin cash shortage or overage this journal corrects.');
     const btn=document.getElementById("postBtn");btn.disabled=true;btn.textContent="Posting…";
     const commandId=this._edit?(this._edit.commandId||(this._edit.commandId="books_edit_"+crypto.randomUUID())):"books_manual_"+Date.now(),payload={action:this._edit?"correct_manual_journal":"manual_journal",commandId,date:d.date||todayStr(),ref:d.ref||"",memo:d.memo||"",lines,linkedPayableId,linkedDiscrepancyId};if(this._edit){payload.originalMovementId=this._edit.originalMovementId;payload.expectedRevision=this._edit.expectedRevision;payload.reason=this._edit.reason.trim();payload.correctionDate=todayStr();}
+    const saved=()=>{this.closeModal();CURRENT="journal";this.renderTabs();this.rebuildPeriodSel();this.render();},failed=e=>{alert("Could not save journal: "+((e&&e.message)||e));btn.disabled=false;btn.textContent=this._edit?"Save correction":"Post entry";};
     window.__financeCmd(payload).then(()=>{
-      this.closeModal();CURRENT="journal";this.renderTabs();this.rebuildPeriodSel();this.render();
-    }).catch(e=>{alert("Could not save journal: "+((e&&e.message)||e));btn.disabled=false;btn.textContent=this._edit?"Save correction":"Post entry";});
+      saved();
+    }).catch(e=>{if(!this._edit)return failed(e);window.__financeCmd({action:'cash_journal_edit_status',commandId:'edit_status_'+Date.now(),editCommandId:commandId,originalMovementId:this._edit.originalMovementId}).then(status=>{if(status&&status.committed){saved();alert('The journal was saved, although the original confirmation was interrupted. Revision '+status.revision+' is recorded.');}else failed(e);}).catch(()=>failed(e));});
   },
   rebuildPeriodSel(){
     const p=window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get():{from:todayStr(),to:todayStr()},from=document.getElementById("periodFrom"),to=document.getElementById("periodTo");if(from)from.value=p.from||p.customFrom||todayStr();if(to)to.value=p.to||p.customTo||todayStr();

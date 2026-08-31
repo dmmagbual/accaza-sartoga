@@ -2215,6 +2215,11 @@ exports.postFinancialCommand = onCall(
     const db = getDatabase(); const data = request.data || {}; const action = financeText(data.action, 40);
     const perms = action.indexOf("inventory_opening_balance") === 0 ? ["purchases", "cashflow"] : action.includes("payable") ? ["payables", "purchases"] : action.includes("receivable") ? ["receivables"] : ["cashflow", "receivables", "payables", "purchases"];
     const actor = await requirePortalPermission(db, request, perms); const commandId = financeKey(data.commandId, "Command ID");
+    if(action==='cash_journal_edit_status'){
+      if(!['owner','superadmin','admin','manager'].includes(actor.role))throw new HttpsError('permission-denied','A privileged Finance role is required to verify a cash-journal edit.');
+      const editCommandId=financeKey(data.editCommandId,'Edit submission ID'),movementId=financeKey(data.originalMovementId,'Journal ID'),receipt=(await db.ref(`/cashJournalEditCommands/${editCommandId}`).get()).val();
+      return{committed:!!(receipt&&receipt.movementId===movementId&&receipt.actorUid===actor.uid),movementId:receipt&&receipt.movementId||'',revision:Number(receipt&&receipt.revision||0)};
+    }
     if(action==='cash_journal_history'){
       if(!['owner','superadmin','admin','manager'].includes(actor.role))throw new HttpsError('permission-denied','A privileged Finance role is required to view cash-journal revisions.');
       const id=financeKey(data.originalMovementId,'Journal ID');return{revisions:(await db.ref(`/cashJournalRevisions/${id}`).get()).val()||{}};
@@ -2340,10 +2345,22 @@ exports.postFinancialCommand = onCall(
         const reason=financeText(data.reason,300),prepared=await prepareManualBooksJournal(db,data,accounts,actor),expectedRevision=Number(data.expectedRevision);
         if(data.expectedRevision==null||!Number.isInteger(expectedRevision))throw new HttpsError("failed-precondition","Refresh Books before editing this cash journal.");
         const input={id:originalId,commandId,expectedRevision,prepared:{date:prepared.date,memo:prepared.memo,reference:prepared.reference,lines:prepared.lines},actor,reason,now};
-        let issue='';const tx=await db.ref().transaction((state)=>{try{return CashJournalEdit.revise(state,{...input,floatFloor:resolveRegisterFloat(state&&state.posSettings,state&&state.posActiveShift).amount});}catch(error){issue=error.message;return undefined;}},undefined,false);
-        const receipt=tx.snapshot.child(`cashJournalEditCommands/${commandId}`).val();
-        if(!tx.committed||!receipt)throw new HttpsError("failed-precondition",issue||"The cash journal could not be saved. Refresh and retry.");
-        return{movementId:originalId,revision:receipt.revision,editedInPlace:true};
+        const lockRef=db.ref('/financialControlLocks/cashJournalEdit'),lockToken=crypto.randomBytes(12).toString('hex'),lock=await lockRef.transaction(current=>!current||Number(current.claimedAt||0)<now-120000?{token:lockToken,commandId,claimedAt:now,actorUid:actor.uid}:current,undefined,false);
+        if(!lock.committed||!lock.snapshot.exists()||lock.snapshot.val().token!==lockToken)throw new HttpsError('aborted','Another cash correction is being saved. Wait a moment, refresh, and try again.');
+        try{
+          const existingReceipt=(await db.ref(`/cashJournalEditCommands/${commandId}`).get()).val();
+          if(existingReceipt){if(existingReceipt.signature!==CashJournalEdit.editSignature(input))throw new HttpsError('failed-precondition','This submission ID was already used for a different edit.');return{movementId:originalId,revision:existingReceipt.revision,editedInPlace:true,duplicate:true};}
+          const shape=CashJournalEdit.shape(original.lines),cashId=shape.account.startsWith('asset:cash_account:')?shape.account.slice(19):'register',oldDate=BooksBridge.businessDate(original.occurredAt||original.postedAt),dates=[...new Set([oldDate,prepared.date])];
+          const [movementsSnap,custodySnap,ledgerSnap,journalSnap,cashMapSnap,periodsSnap,claimsSnap,linkSnap,accountsSnap,settingsSnap,shiftSnap,historySnap,depositRefsSnap,...indexSnaps]=await Promise.all([
+            db.ref('/financialMovements').get(),db.ref('/cashCustody').get(),db.ref('/cfLedger').orderByChild('movementId').equalTo(originalId).get(),db.ref(`/books/journal/${originalId}`).get(),db.ref('/books/config/cashAccountMap').get(),db.ref('/accountingPeriods').get(),db.ref('/financialCommandClaims').orderByChild('status').equalTo('processing').get(),db.ref(`/financialControlLinks/correctionMovements/${originalId}`).get(),db.ref('/cfAccounts').get(),db.ref('/posSettings').get(),db.ref('/posActiveShift').get(),db.ref(`/cashJournalRevisions/${originalId}`).get(),db.ref(`/cashDepositReferences/${cashId}`).get(),...dates.map(date=>db.ref(`/financialCloseIndex/${date}`).get())
+          ]);
+          const indexes={};dates.forEach((date,index)=>{indexes[date]=indexSnaps[index].val()||{};});const closeIds=[...new Set(Object.values(indexes).flatMap(rows=>Object.keys(rows||{})))],closeSnaps=await Promise.all(closeIds.map(id=>db.ref(`/financialCloses/${id}`).get())),closes={};closeIds.forEach((id,index)=>{closes[id]=closeSnaps[index].val()||{};});
+          const before={financialMovements:movementsSnap.val()||{},cashCustody:custodySnap.val()||{},cfLedger:ledgerSnap.val()||{},books:{journal:{[originalId]:journalSnap.val()},config:{cashAccountMap:cashMapSnap.val()||{}}},accountingPeriods:periodsSnap.val()||{},financialCommandClaims:claimsSnap.val()||{},financialControlLinks:{correctionMovements:linkSnap.exists()?{[originalId]:linkSnap.val()}:{}},cfAccounts:accountsSnap.val()||{},posSettings:settingsSnap.val()||{},posActiveShift:shiftSnap.val()||{},cashJournalRevisions:{[originalId]:historySnap.val()||{}},cashDepositReferences:{[cashId]:depositRefsSnap.val()||{}},financialCloseIndex:indexes,financialCloses:closes};
+          const next=CashJournalEdit.revise(before,{...input,floatFloor:resolveRegisterFloat(before.posSettings,before.posActiveShift).amount}),writes=CashJournalEdit.revisionWrites(before,next,originalId,commandId);
+          await safeFinancialUpdate(db,writes,'cash journal edit');
+          return{movementId:originalId,revision:next.cashJournalEditCommands[commandId].revision,editedInPlace:true};
+        }catch(error){if(error instanceof HttpsError)throw error;throw new HttpsError('failed-precondition',error.message||'The cash journal could not be saved. Refresh and retry.');}
+        finally{try{await lockRef.transaction(current=>current&&current.token===lockToken?null:current,undefined,false);}catch(error){logger.error('Cash-journal edit lock release failed',{commandId,message:error.message});}}
       }
       const originalType=financeText(original.type,100),originalSourceType=financeText(original.sourceType,100),originalReference=financeText(original.reference||original.sourceId,120);
       if(originalSourceType==="order"||/^order_|^pos_/i.test(originalType)||/^POS-/i.test(originalReference))throw new HttpsError("failed-precondition","POS sale and COGS journals are system-controlled and cannot be edited.");
