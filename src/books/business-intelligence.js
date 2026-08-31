@@ -13,7 +13,7 @@ function biPeriod(range){
   var salesCodes={4000:1,4010:1,4020:1,4030:1,4900:1,4910:1},ents=biEntries(range),pos=ents.filter(function(e){return e&&e.source==='pos';}),sales=r2(DB.accounts.filter(function(a){return a.type==='Income'&&salesCodes[a.code];}).reduce(function(s,a){return s+normalBalanceFor(a.code,pos);},0)),cogs=biAccountTotal('COGS',range),expense=biAccountTotal('Expense',range),other=biAccountTotal('Income',range,function(a){return !salesCodes[a.code];}),labor=biAccountTotal('Expense',range,function(a){return /labor|salary|salaries|wage|payroll|benefit/i.test((a.name||'')+' '+(a.note||''));});
   return{sales:sales,cogs:cogs,expense:expense,otherIncome:other,gross:r2(sales-cogs),net:r2(sales-cogs+other-expense),labor:labor};
 }
-function biOrders(){var all=Object.assign({},window.__booksArchivedOrders||{},window.__booksActiveOrders||{}),sales=window.AccazaSales;return Object.keys(all).map(function(id){return Object.assign({id:id},all[id]||{});}).filter(function(o){return o.source==='pos'&&sales&&sales.qualifies(o);});}
+function biOrders(){var all=Object.assign({},window.__booksArchivedOrders||{},window.__booksActiveOrders||{}),sales=window.AccazaSales;return Object.keys(all).map(function(id){return Object.assign({id:id},all[id]||{});}).filter(function(o){return sales&&sales.qualifies(o);});}
 function biOrderDate(o){var sales=window.AccazaSales;return biDate(sales&&sales.stamp(o));}
 function biOrderAmount(o){var sales=window.AccazaSales;return sales?sales.amounts(o).net:0;}
 function biInRange(d,r){return !!d&&d>=r.start&&d<=r.end;}
