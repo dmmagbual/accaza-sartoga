@@ -1,5 +1,5 @@
 .admin-tabs{border:0;margin-bottom:1.15rem;}
-      #adminGroups{display:flex;align-items:stretch;gap:0.4rem;margin-bottom:0.55rem;padding:0.45rem;background:#19241b;border:1px solid #2e3d31;border-radius:12px;box-shadow:0 8px 24px rgba(25,36,27,.12);overflow-x:auto;scrollbar-width:thin;}
+      #adminGroups{display:flex;flex-wrap:wrap;align-items:stretch;gap:0.4rem;margin-bottom:0.55rem;padding:0.45rem;background:#19241b;border:1px solid #2e3d31;border-radius:12px;box-shadow:0 8px 24px rgba(25,36,27,.12);overflow:visible;}
       .admin-group{flex:0 0 auto;padding:0.62rem 0.9rem;border-radius:8px;border:1px solid transparent;background:transparent;color:#d9d0c5;font-weight:650;font-size:0.82rem;letter-spacing:.01em;cursor:pointer;white-space:nowrap;transition:background .16s ease,color .16s ease,border-color .16s ease;}
       .admin-group:hover{background:#27362b;color:#fff;}
       .admin-group.active{background:#f4eee5;color:#3f2f24;border-color:#d5c3ab;box-shadow:0 2px 8px rgba(0,0,0,.16);}
@@ -8,7 +8,7 @@
       .tabgrp{display:flex;flex-wrap:wrap;gap:0.35rem;min-height:39px;padding:.45rem .25rem .2rem;border-bottom:1px solid #e6ddd2;}
       .tabgrp:before{content:attr(data-label);align-self:center;margin-right:.35rem;color:#8a7869;font-size:.68rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;}
       .tabgrp[data-grp="pos"]:before{content:"Point of sale";}
-      @media(max-width:720px){#adminGroups{margin-inline:-.25rem;border-radius:9px;padding:.35rem}.admin-group{padding:.56rem .72rem;font-size:.76rem}.admin-group.pos-primary{padding-inline:.95rem}.tabgrp{flex-wrap:nowrap;overflow-x:auto;padding-bottom:.55rem}.tabgrp .admin-tab{flex:0 0 auto}.admin-stats{grid-template-columns:repeat(2,1fr)!important;}}
+      @media(max-width:720px){#adminGroups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin-inline:-.25rem;border-radius:9px;padding:.35rem}.admin-group{width:100%;padding:.56rem .55rem;font-size:.76rem;text-align:center}.admin-group.pos-primary{padding-inline:.55rem}.tabgrp{flex-wrap:wrap;overflow:visible;padding-bottom:.55rem}.tabgrp .admin-tab{flex:0 1 auto}.admin-stats{grid-template-columns:repeat(2,1fr)!important;}}
       @media(prefers-reduced-motion:reduce){.admin-group{transition:none;}}
       #adminWorkspaceHeader{display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap;margin:.2rem 0 1rem;padding:.95rem 1rem;background:#fff;border:1px solid #ded4c8;border-radius:10px;}
       .awh-eyebrow{font-size:.66rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#9a7b50;margin-bottom:.2rem;}
