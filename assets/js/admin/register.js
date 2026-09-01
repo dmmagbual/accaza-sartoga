@@ -589,6 +589,7 @@ function renderPosSettings(){
     +'<table class="pz-tbl" style="margin-top:0.6rem;"><tbody>'+(staffArr().length?staffArr().map(function(s){return '<tr><td>'+esc(s.name)+'</td><td>'+esc(s.role||'cashier')+'</td><td style="color:var(--tl);">PIN ••••</td><td style="white-space:nowrap;"><button class="pz-btn sec" style="padding:0.2rem 0.5rem;" data-stpin="'+s.id+'">Change PIN</button> <button class="pz-btn warn" style="padding:0.2rem 0.5rem;" data-stdel="'+s.id+'">✕</button></td></tr>';}).join(''):'<tr><td class="az-note" style="padding:0.5rem;">No staff yet.</td></tr>')+'</tbody></table></div>';
   html+='<div class="az-sec">Settings</div><div class="pz-card" style="margin-bottom:1rem;"><label style="font-size:0.85rem;cursor:pointer;display:block;"><input type="checkbox" id="opsRound"/> Round cash totals to the nearest peso</label><label style="font-size:0.85rem;cursor:pointer;display:block;margin-top:0.5rem;"><input type="checkbox" id="opsDenom"/> Track cash by denomination at checkout (running drawer + per-denomination shift reconciliation)</label><label style="font-size:0.85rem;cursor:pointer;display:block;margin-top:0.5rem;"><input type="checkbox" id="opsTotalOnly"/> Reconcile on total only at close (still count denominations to reach the total, but skip the per-denomination variance)</label><div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.6rem;"><span style="font-size:0.85rem;">Cash variance tolerance ₱</span><input class="pz-in" id="opsTolerance" type="number" step="any" style="width:90px;"/><span style="font-size:0.75rem;color:var(--tl);">a discrepancy is only logged when the total is off by more than this</span></div><div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.6rem;"><span style="font-size:0.85rem;">Fixed cash float (imprest) ₱</span><input class="pz-in" id="opsFloat" type="number" step="any" placeholder="opening float" style="width:110px;"/><span style="font-size:0.75rem;color:var(--tl);">Optional. Blank = cashier keeps her opening float and remits the takings. Set a number for a fixed imprest float (0 = remit the whole drawer).</span></div></div>';
   html+='<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">💳 Payment methods</div><div id="payMethodsBox"></div></div>';
+  html+='<div class="az-sec">Data backup &amp; off-site copy</div><div class="pz-card" style="margin-bottom:1rem;"><div style="font-size:0.85rem;color:var(--tm);margin-bottom:0.5rem;">Your data is backed up automatically every day. For extra safety, also keep a copy <b>off this computer</b> once a week &mdash; a USB stick, another drive, or your own cloud.</div><div id="bkStatus" style="font-size:0.85rem;margin:0.4rem 0 0.7rem;">&hellip;</div><button class="pz-btn" id="bkDownload">&#11015; Download a backup copy</button><div style="font-size:0.75rem;color:var(--tl);margin-top:0.5rem;">Saves a copy of your current books, sales and inventory data as a file. After it downloads, move it somewhere off this computer.</div></div>';
   root.innerHTML=html;
   var sa=document.getElementById('stAdd');if(sa)sa.onclick=addStaff;
   root.querySelectorAll('[data-stpin]').forEach(function(b){b.onclick=function(){changeStaffPin(b.getAttribute('data-stpin'));};});
@@ -598,10 +599,41 @@ function renderPosSettings(){
   var to=document.getElementById('opsTotalOnly');if(to){var a3=A();a3.get(a3.ref(a3.db,'posSettings')).then(function(s){var v=s.val()||{};to.checked=!!v.reconcileTotalOnly;});to.onchange=function(){var a=A();a.update(a.ref(a.db,'posSettings'),{reconcileTotalOnly:to.checked});};}
   var tol=document.getElementById('opsTolerance');if(tol){var a4=A();a4.get(a4.ref(a4.db,'posSettings')).then(function(s){var v=s.val()||{};tol.value=((v.tolerances&&v.tolerances.cashPeso!=null)?v.tolerances.cashPeso:20);});tol.onchange=function(){var a=A();a.update(a.ref(a.db,'posSettings/tolerances'),{cashPeso:Number(tol.value)||0});};}
   var ff=document.getElementById('opsFloat');if(ff){var a5=A();a5.get(a5.ref(a5.db,'posSettings')).then(function(s){var v=s.val()||{};ff.value=(v.fixedFloat!=null?v.fixedFloat:'');});ff.onchange=function(){var a=A();var raw=String(ff.value).trim();a.update(a.ref(a.db,'posSettings'),{fixedFloat:raw===''?null:(Number(raw)||0)});};}
+  var bk=document.getElementById('bkDownload');
+  if(bk){var a6=A();a6.get(a6.ref(a6.db,'posSettings/offsiteBackup')).then(function(s){renderBackupStatus((s.val()||{}).lastAt);}).catch(function(){renderBackupStatus(0);});bk.onclick=exportDataBackup;}
   renderPayMethods();
 }
 function kpi(l,v){return '<div class="az-kpi"><div class="v">'+v+'</div><div class="l">'+esc(l)+'</div></div>';}
 
+function renderBackupStatus(lastAt){
+  var el=document.getElementById('bkStatus'); if(!el)return;
+  var now=Date.now(), ms=Number(lastAt)||0, due=!ms||(now-ms)>=7*86400000, when=ms?new Date(ms).toLocaleDateString():'never';
+  var days=ms?Math.floor((now-ms)/86400000):null;
+  el.innerHTML = due
+    ? '<span style="color:#c0392b;font-weight:600;">\u26A0 Off-site copy is due</span> <span style="color:var(--tl);">(last: '+esc(when)+')</span>'
+    : '<span style="color:#1C6B54;font-weight:600;">\u2713 Up to date</span> <span style="color:var(--tl);">(last copy: '+esc(when)+(days!=null?', '+days+' day'+(days===1?'':'s')+' ago':'')+')</span>';
+}
+function exportDataBackup(){
+  var btn=document.getElementById('bkDownload'); if(btn){btn.disabled=true;btn.textContent='Preparing\u2026';}
+  var a=A();
+  var nodes=['books','financialMovements','orders','archivedOrders','inventory','inventoryBalances','inventoryMovements','recipes','optionRecipes','purchaseInvoices','payables','receivables','platformPayouts','cashCustody','booksChart','chartOfAccounts','fixedAssets','personalFundings','expenses','monthlyExpenses','expenseCategories','expenseItems','shifts','posStaff','posSettings','channelPrices','inventorySku','inventoryBatch','stockReceipts','internalUsage','packages','menuItems','categories','optionGroups','reservations','appCustomers','discrepancies','pettyCashVouchers'];
+  Promise.all(nodes.map(function(n){return a.get(a.ref(a.db,n)).then(function(s){return [n,s.val()];}).catch(function(){return [n,null];});})).then(function(pairs){
+    var data={}, included=[];
+    pairs.forEach(function(p){ if(p[1]!=null){ data[p[0]]=p[1]; included.push(p[0]); } });
+    var envelope={exportedAt:Date.now(),exportedAtISO:new Date().toISOString(),kind:'accaza-admin-data-export',note:'Off-site data copy from the Admin app. Current live business data (not the sealed nightly server backup). Keep it somewhere safe off this computer.',includedNodes:included,data:data};
+    var blob=new Blob([JSON.stringify(envelope)],{type:'application/json'}), url=URL.createObjectURL(blob);
+    var stamp=new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+    var lnk=document.createElement('a'); lnk.href=url; lnk.download='accaza-data-'+stamp+'.json'; document.body.appendChild(lnk); lnk.click(); document.body.removeChild(lnk);
+    setTimeout(function(){URL.revokeObjectURL(url);},4000);
+    a.update(a.ref(a.db,'posSettings/offsiteBackup'),{lastAt:Date.now(),nodes:included.length}).catch(function(){});
+    renderBackupStatus(Date.now());
+    if(btn){btn.disabled=false;btn.textContent='\u2B07 Download a backup copy';}
+    alert('Backup copy downloaded ('+included.length+' data sets). Now move that file somewhere off this computer \u2014 a USB stick, another drive, or your own cloud.');
+  }).catch(function(e){
+    if(btn){btn.disabled=false;btn.textContent='\u2B07 Download a backup copy';}
+    alert('Could not build the backup copy: '+((e&&e.message)||e));
+  });
+}
 function addStaff(){var name=(document.getElementById('stName').value||'').trim();var pin=(document.getElementById('stPin').value||'').trim();var role=document.getElementById('stRole').value;if(!name||!pin){alert('Enter name and PIN.');return;}if(!/^[0-9]{4,6}$/.test(pin)){alert('PIN must be 4-6 digits.');return;}var a=A();a.set(a.ref(a.db,'posStaff/'+uid('st_')),{name:name,pin:pin,role:role,ts:Date.now()});document.getElementById('stName').value='';document.getElementById('stPin').value='';}
 function changeStaffPin(id){
   var s=staffList[id]; if(!s)return;
