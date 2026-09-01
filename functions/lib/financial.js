@@ -1,5 +1,10 @@
 "use strict";
 
+// Single source of truth for the double-entry balance tolerance (centavo precision).
+// A balanced movement of r2 peso amounts always differs by exactly 0; any real
+// imbalance is >= 0.01, so this rejects nothing a 0.009 check accepted.
+const BALANCE_EPSILON = 0.005;
+
 function money(value) { return Math.round((Number(value) || 0) * 100) / 100; }
 function safe(value) { return String(value == null ? "" : value).trim().slice(0, 160); }
 function line(account, debit, credit, label) {
@@ -14,7 +19,7 @@ function totals(lines) {
 }
 function assertBalanced(lines) {
   const sum = totals(lines);
-  if (Math.abs(sum.debit - sum.credit) > 0.009) throw new Error(`Unbalanced financial movement: debit ${sum.debit}, credit ${sum.credit}`);
+  if (Math.abs(sum.debit - sum.credit) > BALANCE_EPSILON) throw new Error(`Unbalanced financial movement: debit ${sum.debit}, credit ${sum.credit}`);
   return sum;
 }
 function paymentRows(order) {
@@ -177,4 +182,4 @@ function platformPayoutPosting(payout, definitions) {
   return movement("platform_payout_settlement", "platformPayout", safe(payout.id), lines, {occurredAt:Number(payout.settledAt||Date.now()),approvalId:safe(payout.approvalId),approvedBy:safe(payout.approvedBy),reconstructedFromPayoutRecord:payout.reconstructedFromPayoutRecord===true});
 }
 
-module.exports = {money, safe, line, totals, assertBalanced, accountForMethod, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting};
+module.exports = {BALANCE_EPSILON, money, safe, line, totals, assertBalanced, accountForMethod, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting};
