@@ -6,6 +6,36 @@ function rows(value) {return Object.keys(value || {}).map((id) => Object.assign(
 function stamp(row) {return Number(row.updatedAt || row.completedAt || row.receivedAt || row.timestamp || row.createdAt || row.closedAt || 0);}
 function item(category, severity, id, title, detail, at, tab) {return {category, severity, id: String(id || "").slice(0, 160), title, detail, at: Number(at || 0), tab};}
 
+// M-3: clearing/suspense accounts that must always settle to zero.
+const CLEARING_ACCOUNTS = [
+  {code: "1190", name: "Cash Shortage Under Review"},
+  {code: "1290", name: "Inventory Receiving Clearing"},
+  {code: "1900", name: "Suspense"},
+  {code: "2090", name: "Unrecorded Payables Clearing"},
+  {code: "5090", name: "Unposted COGS Clearing"},
+];
+const CLEARING_CODES = new Set(CLEARING_ACCOUNTS.map((a) => a.code));
+// A standing General Ledger residual above this many pesos is flagged for review.
+const CLEARING_RESIDUAL_THRESHOLD = 50;
+function round2(n) {return Math.round((Number(n) || 0) * 100) / 100;}
+// Authoritative per-code balances from the Books General Ledger (/books/journal),
+// where the POS semantic->chart-code mapping is already applied. Handles daily
+// summary nodes (net map) and single journal entries (lines array), so the number
+// always equals what Finance Books shows for that account.
+function clearingBalancesFromJournal(journal) {
+  const bal = {};
+  Object.keys(journal || {}).forEach((key) => {
+    const entry = journal[key];
+    if (!entry || typeof entry !== "object") return;
+    if (entry.net && typeof entry.net === "object") {
+      Object.keys(entry.net).forEach((code) => {if (CLEARING_CODES.has(code)) bal[code] = round2((bal[code] || 0) + Number(entry.net[code] || 0));});
+    } else if (Array.isArray(entry.lines)) {
+      entry.lines.forEach((l) => {const code = String((l && l.code) || ""); if (CLEARING_CODES.has(code)) bal[code] = round2((bal[code] || 0) + (Number(l.debit) || 0) - (Number(l.credit) || 0));});
+    }
+  });
+  return bal;
+}
+
 function buildOperationalExceptions(input, now = Date.now()) {
   const exceptions = [], active = rows(input.activeOrders), orders = rows(input.orders);
   const financial = input.financialMovements || {},inventoryEvidence=input.inventoryMovementEvidence||{}, offline = rows(input.offlinePosSync), custody = rows(input.cashCustody);
@@ -17,7 +47,13 @@ function buildOperationalExceptions(input, now = Date.now()) {
   let proofFailures = 0, clientErrors = 0;rows(input.telemetry).forEach((day) => {proofFailures += Number(day.errors && day.errors.proof_access) || 0;Object.keys(day.errors || {}).forEach((key) => {clientErrors += Number(day.errors[key]) || 0;});});
   if (proofFailures) exceptions.push(item("payment_proof", "warning", "payment-proof", `${proofFailures} payment-proof failure${proofFailures === 1 ? "" : "s"}`, "Review recent proof access attempts and confirm Storage and getPaymentProof are available.", now, "orders"));
   if (clientErrors - proofFailures > 0) exceptions.push(item("client_error", "warning", "client-errors", `${clientErrors - proofFailures} other client error${clientErrors - proofFailures === 1 ? "" : "s"}`, "Review System Health release signals before the next deployment.", now, "operations"));
+  const clearingThreshold = Number(input.clearingThreshold) > 0 ? Number(input.clearingThreshold) : CLEARING_RESIDUAL_THRESHOLD;
+  const clearingBalances = clearingBalancesFromJournal(input.booksJournal);
+  CLEARING_ACCOUNTS.forEach(({code, name}) => {
+    const bal = round2(clearingBalances[code] || 0);
+    if (Math.abs(bal) > clearingThreshold) exceptions.push(item("clearing_residual", "warning", `clearing_${code}`, `${name} (${code}) has not cleared to zero`, `Books General Ledger shows a ${bal > 0 ? "debit" : "credit"} residual of PHP ${Math.abs(bal).toFixed(2)} in ${code} ${name}. This clearing/suspense account must settle to zero \u2014 review and clear the pending posting in Finance Books.`, now, "cashflow"));
+  });
   const rank = {critical: 0, warning: 1};exceptions.sort((a, b) => (rank[a.severity] - rank[b.severity]) || (b.at - a.at));
   return {generatedAt: now, scanned: {activeOrders: active.length, recentOrders: orders.length, offlineSyncs: offline.length, custodyRecords: custody.length}, counts: {critical: exceptions.filter((x) => x.severity === "critical").length, warning: exceptions.filter((x) => x.severity === "warning").length, total: exceptions.length}, exceptions: exceptions.slice(0, 100)};
 }
-module.exports = {buildOperationalExceptions};
+module.exports = {buildOperationalExceptions, CLEARING_ACCOUNTS, CLEARING_RESIDUAL_THRESHOLD, clearingBalancesFromJournal};
