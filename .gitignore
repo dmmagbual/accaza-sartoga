@@ -41,3 +41,7 @@ Thumbs.db
 desktop.ini
 .vscode/
 .idea/
+
+# Local backup-drill downloads — full production DB dumps with customer data. NEVER commit.
+restore-drill-backup.json
+*restore-drill*.json
