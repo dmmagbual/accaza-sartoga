@@ -1,4 +1,5 @@
 "use strict";
+const { BALANCE_EPSILON } = require("./financial");
 /* ============================================================
    Accaza Books — POS → journal bridge (server side)
    Maps POS financialMovements (see ./financial.js) into Accaza
@@ -230,7 +231,7 @@ function netToLines(net) {
 }
 function linesBalanced(lines) {
   let dr = 0, cr = 0; (lines || []).forEach((l) => { dr += Number(l.debit) || 0; cr += Number(l.credit) || 0; });
-  return Math.abs(r2(dr) - r2(cr)) < 0.005;
+  return Math.abs(r2(dr) - r2(cr)) < BALANCE_EPSILON;
 }
 
 /* Net completed sales represented by a Books net map: sales credits less
