@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var inventoryMap={}, inventorySkuMap={}, purchaseInvoicesMap={}, purchaseShiftMap={}, purchaseFundAdvanceMap={}, recipesMap={}, posMeta={vat:false,vatRate:12}, optRecipesMap={}, usageMap={}, channelPricesMap={}, posAvailMap={}, inventoryMovementsMap={};
+var inventoryMap={}, inventorySkuMap={}, purchaseInvoicesMap={}, purchaseShiftMap={}, purchaseFundAdvanceMap={}, recipesMap={}, posMeta={vat:false,vatRate:12}, optRecipesMap={}, usageMap={}, channelPricesMap={}, posAvailMap={}, inventoryMovementsMap={},paymentAccountsMap={};
 // Order reference: PREFIX-XXXXXX (6 base36 chars from a monotonic timestamp).
 // Prefix namespaces the channel so IDs never collide across channels; the
 // monotonic counter guarantees uniqueness for rapid same-device sales offline.
@@ -181,12 +181,17 @@ window.__showOfflineQueue=function(note){offlineQueue().all().then(function(rows
 window.__flushOfflineQueue=flushOfflineQueue;
 function posMethods(){
   var pm=(window.__posSettings&&window.__posSettings.payMethods);
-  if(!pm||!pm.length)pm=[{name:'Cash',active:true,cash:true},{name:'GCash',active:true,cash:false,verificationPolicy:'cashier_manager'},{name:'Bank Transfer',active:true,cash:false,verificationPolicy:'manager_only'},{name:'Card / EFTPOS',active:false,cash:false,verificationPolicy:'manager_only'}];
+  if(!pm||!pm.length)pm=[{name:'Cash',active:true,cash:true},{name:'Bank Transfer',active:true,cash:false,verificationPolicy:'cashier_manager'},{name:'GCash',active:true,cash:false,verificationPolicy:'cashier_manager'},{name:'PayMaya',active:true,cash:false,verificationPolicy:'cashier_manager'}];
   return pm;
 }
+function posMethod(name){return posMethods().find(function(m){return String(m&&m.name||'').toLowerCase()===String(name||'').toLowerCase();})||{};}
+function defaultPaymentAccountIds(method){var key=String(method&&method.name||'').toLowerCase(),ids=[];Object.keys(paymentAccountsMap).forEach(function(id){var a=paymentAccountsMap[id]||{},name=String(a.name||'').toLowerCase(),feeds=Array.isArray(a.feedMethods)?a.feedMethods:[];if(feeds.some(function(x){return String(x).toLowerCase()===key;}))ids.push(id);else if(key==='bank transfer'&&(name==='bdo'||name==='union bank'))ids.push(id);else if(key==='gcash'&&(name==='g-cash'||name==='gcash'))ids.push(id);else if(key==='paymaya'&&/paymaya|maya/.test(name))ids.push(id);});return ids;}
+function paymentAccountIds(method){var m=posMethod(method),ids=Array.isArray(m.accountIds)?m.accountIds.filter(function(id){return paymentAccountsMap[id]&&paymentAccountsMap[id].active!==false;}):defaultPaymentAccountIds(m);return ids.filter(function(id,i){return ids.indexOf(id)===i;});}
+function paymentAccountOptions(method){return paymentAccountIds(method).map(function(id){return{id:id,name:(paymentAccountsMap[id]&&paymentAccountsMap[id].name)||id};});}
+function resolvedPayment(method,accountId,amount,ref){var opts=paymentAccountOptions(method),chosen=opts.find(function(a){return a.id===accountId;})||(opts.length===1?opts[0]:null);if(!chosen)return null;return{method:method+' · '+chosen.name,paymentMethod:method,receivingAccountId:chosen.id,receivingAccountName:chosen.name,amount:Number(amount)||0,tendered:0,change:0,ref:String(ref||'').trim()};}
 function directPaymentRows(payments){return(payments||[]).filter(function(p){var m=String(p&&p.method||'').trim().toLowerCase();return m&&m!=='cash'&&m!=='grabfood'&&m!=='foodpanda';});}
 function defaultPaymentVerificationPolicy(method){return /gcash|maya/i.test(String(method||''))?'cashier_manager':'manager_only';}
-function paymentVerificationPolicy(payments){var direct=directPaymentRows(payments),methods=posMethods();if(!direct.length)return null;return direct.some(function(p){var row=methods.find(function(m){return String(m&&m.name||'').trim().toLowerCase()===String(p.method||'').trim().toLowerCase();}),policy=row&&row.verificationPolicy;return (policy==='cashier_manager'||policy==='manager_only'?policy:defaultPaymentVerificationPolicy(p.method))==='manager_only';})?'manager_only':'cashier_manager';}
+function paymentVerificationPolicy(payments){var direct=directPaymentRows(payments),methods=posMethods();if(!direct.length)return null;return direct.some(function(p){var base=p.paymentMethod||p.method,row=methods.find(function(m){return String(m&&m.name||'').trim().toLowerCase()===String(base||'').trim().toLowerCase();}),policy=row&&row.verificationPolicy;return (policy==='cashier_manager'||policy==='manager_only'?policy:defaultPaymentVerificationPolicy(base))==='manager_only';})?'manager_only':'cashier_manager';}
 function posActiveMethods(){return posMethods().filter(function(m){return m.active!==false;});}
 function isCashMethod(name){var m=posMethods().filter(function(x){return x.name===name;})[0];return m?!!m.cash:(name==='Cash');}
 window.__isCashMethod=isCashMethod;
@@ -194,6 +199,7 @@ function init(){
   var a=A();
   window.__online=(typeof navigator!=='undefined')?navigator.onLine:true;
   a.subscribe('posSettings', function(s){ window.__posSettings=s.val()||{}; if(document.getElementById('posPay'))renderPosCart(); if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); });
+  a.subscribe('cfAccounts',function(s){paymentAccountsMap=s.val()||{};if(document.getElementById('posPay'))renderPosCart();});
   a.subscribe('.info/connected', function(sn){ window.__online=(sn.val()===true); updateOfflineUI(); if(window.__online) flushOfflineQueue(); });
   try{ window.addEventListener('online', function(){ window.__online=true; updateOfflineUI(); flushOfflineQueue(); }); window.addEventListener('offline', function(){ window.__online=false; updateOfflineUI(); }); }catch(e){}
   checkPosStorageHealth();
@@ -1835,7 +1841,7 @@ function updatePosOrderCounts(){updateOnlineOrderCount();updateActiveOrderCount(
 function activeChannelLabel(o){return o.channel==='online'?'Online':o.channel==='grabfood'?'GrabFood':o.channel==='foodpanda'?'FoodPanda':'In-store';}
 function paymentVerificationSignature(payments,total){
   var cart=Object.keys(posCart).sort().map(function(k){var c=posCart[k]||{};return[k,Number(c.qty)||0,Number(c.unitTotal)||0];});
-  var direct=directPaymentRows(payments).map(function(p){return[String(p.method||''),Math.round((Number(p.amount)||0)*100)/100,String(p.ref||'').trim()];});
+  var direct=directPaymentRows(payments).map(function(p){return[String(p.method||''),String(p.receivingAccountId||''),Math.round((Number(p.amount)||0)*100)/100,String(p.ref||'').trim()];});
   return JSON.stringify({cart:cart,total:Math.round((Number(total)||0)*100)/100,direct:direct});
 }
 function cashierVerificationGate(payments,total,context){
@@ -2070,7 +2076,7 @@ function renderPosCart(options){
         +'<div id="posPaySingle"><select class="pz-in" id="posPay" style="margin-top:0.3rem;">'+posActiveMethods().map(function(m){return '<option value="'+m.name+'">'+m.name+'</option>';}).join('')+'</select>'
           +'<div id="posCashWrap" style="margin-top:0.5rem;">'+(denomTrackingOn()?posDenomPadHtml():'<span class="pz-lbl">Cash tendered ₱</span><input class="pz-in" id="posTender" type="number" step="any" placeholder="0"/><div id="posChange" style="font-size:0.82rem;color:var(--bd);font-weight:600;margin-top:0.3rem;"></div>')+'</div>'
           +'<div id="posKeepWrap" style="display:none;margin-top:0.4rem;padding:0.4rem 0.55rem;background:#fff6e5;border:1px solid #f0dcae;border-radius:6px;"><label style="font-size:0.8rem;display:flex;align-items:center;gap:0.4rem;cursor:pointer;"><input type="checkbox" id="posKeep"/> Customer kept the change (tip / no small change)</label><div id="posKeepAmtWrap" style="display:none;margin-top:0.3rem;font-size:0.8rem;">Amount kept ₱ <input class="pz-in" id="posKeepAmt" type="number" step="any" style="width:90px;text-align:right;"/> <span style="color:var(--tl);">→ Other Income (Tips)</span></div></div>'
-          +'<div id="posRefWrap" style="display:none;margin-top:0.5rem;"><span class="pz-lbl">Ref no. (GCash / bank) — required</span><input class="pz-in" id="posPayRef" placeholder="e.g. GCash ref / bank txn ref"/><div style="font-size:0.72rem;color:var(--tl);margin-top:0.2rem;">The cashier must find this payment in the actual receiving account before completing the sale.</div></div></div>'
+          +'<div id="posRefWrap" style="display:none;margin-top:0.5rem;"><div id="posAccountWrap" style="margin-bottom:0.45rem;"></div><span class="pz-lbl">Transaction reference — required</span><input class="pz-in" id="posPayRef" placeholder="e.g. wallet ref / bank txn ref"/><div style="font-size:0.72rem;color:var(--tl);margin-top:0.2rem;">The cashier must find this payment in the selected receiving account before completing the sale.</div></div></div>'
         +'<div id="posPaySplit" style="display:none;margin-top:0.4rem;"><div id="posSplitRows"></div><button class="pz-btn sec" id="posAddPay" style="padding:0.25rem 0.6rem;">+ payment</button><div id="posSplitInfo" style="font-size:0.76rem;color:var(--tl);margin-top:0.3rem;"></div></div>')
     +'<div id="posVerifyState" style="display:none;margin-top:0.7rem;padding:0.45rem 0.6rem;border-radius:6px;font-size:0.76rem;"></div>'
     +'<button class="pz-btn ok" id="posCharge" style="width:100%;margin-top:0.8rem;padding:0.7rem;font-size:0.95rem;"'+((keys.length&&shift)?'':' disabled')+'>'+(isPlat?'Record '+esc(chLabel)+' sale':'Charge &amp; Complete')+'</button>'
@@ -2089,7 +2095,7 @@ function renderPosCart(options){
     if(isPlat)return[];
     var tot=grandTotal();
     if(splitChk&&splitChk.checked)return splitRows.filter(function(r){return !isCashMethod(r.method);}).map(function(r){return{method:r.method,amount:Number(r.amount)||0,ref:String(r.ref||'').trim()};});
-    var method=pay?pay.value:'Cash';return isCashMethod(method)?[]:[{method:method,amount:tot,ref:String((document.getElementById('posPayRef')||{}).value||'').trim()}];
+    var method=pay?pay.value:'Cash',acct=document.getElementById('posReceivingAccount');return isCashMethod(method)?[]:[resolvedPayment(method,acct&&acct.value,tot,String((document.getElementById('posPayRef')||{}).value||'').trim())].filter(Boolean);
   }
   function refreshChargeAction(){
     var button=document.getElementById('posCharge'),state=document.getElementById('posVerifyState');if(!button)return;
@@ -2133,7 +2139,8 @@ function renderPosCart(options){
   function updateKeep(){ var w=document.getElementById('posKeepWrap'); if(!w)return; var isc=isCashMethod(pay?pay.value:'Cash'); var show=isc&&curChange>0.001; w.style.display=show?'block':'none'; var k=document.getElementById('posKeep'); var kw=document.getElementById('posKeepAmtWrap'); var amt=document.getElementById('posKeepAmt'); if(!show){ if(k)k.checked=false; if(kw)kw.style.display='none'; return; } if(amt){amt.max=curChange;amt.placeholder=String(curChange);} if(k&&k.checked){ if(kw)kw.style.display='block'; if(amt&&!amt.value)amt.value=curChange; } }
   function refreshSingle(){ var tot=grandTotal(); var tender=document.getElementById('posTender'); var t=Number(tender&&tender.value)||0; curChange=t?Math.max(0,Math.round((t-tot)*100)/100):0; var ch=document.getElementById('posChange'); if(ch)ch.textContent=t?('Change: '+peso(curChange)):''; updateKeep(); }
   pay=document.getElementById('posPay');
-  pay.onchange=function(){var isc=isCashMethod(pay.value);document.getElementById('posCashWrap').style.display=isc?'block':'none';var rw=document.getElementById('posRefWrap');if(rw)rw.style.display=isc?'none':'block';updateKeep();invalidatePaymentVerification();};
+  function renderReceivingAccount(){var wrap=document.getElementById('posAccountWrap');if(!wrap)return;var opts=paymentAccountOptions(pay.value);if(!opts.length){wrap.innerHTML='<div style="color:#c0392b;font-weight:600;font-size:.75rem;">No receiving account is assigned in POS Settings. This method cannot be charged.</div>';return;}wrap.innerHTML='<span class="pz-lbl">Receiving account</span><select class="pz-in" id="posReceivingAccount">'+opts.map(function(a){return '<option value="'+esc(a.id)+'">'+esc(a.name)+'</option>';}).join('')+'</select>'+(opts.length>1?'<div style="font-size:.7rem;color:var(--tl);margin-top:.15rem;">Select the account where this customer transfer was actually received.</div>':'');var sel=document.getElementById('posReceivingAccount');if(sel)sel.onchange=invalidatePaymentVerification;}
+  pay.onchange=function(){var isc=isCashMethod(pay.value);document.getElementById('posCashWrap').style.display=isc?'block':'none';var rw=document.getElementById('posRefWrap');if(rw)rw.style.display=isc?'none':'block';if(!isc)renderReceivingAccount();updateKeep();invalidatePaymentVerification();};
   pay.onchange();
   var tender0=document.getElementById('posTender'); if(tender0)tender0.oninput=refreshSingle;
   var pk=document.getElementById('posKeep'); if(pk)pk.onchange=function(){var kw=document.getElementById('posKeepAmtWrap'); if(kw)kw.style.display=this.checked?'block':'none'; var amt=document.getElementById('posKeepAmt'); if(this.checked&&amt&&!amt.value)amt.value=curChange;};
@@ -2161,15 +2168,16 @@ function renderPosCart(options){
     var tot=grandTotal(); if(!splitRows.length)splitRows=[{method:'Cash',amount:tot}];
     var cont=document.getElementById('posSplitRows');
     cont.innerHTML=splitRows.map(function(r,i){var opts=posActiveMethods().map(function(m){return '<option'+(r.method===m.name?' selected':'')+'>'+m.name+'</option>';}).join('');var row='<div style="display:flex;gap:0.3rem;margin-bottom:0.3rem;"><select class="pz-in" data-pm="'+i+'" style="flex:1;">'+opts+'</select><input class="pz-in" data-pa="'+i+'" type="number" step="any" style="width:100px;" value="'+r.amount+'"/>'+(splitRows.length>1?'<button class="pz-btn warn" data-pd="'+i+'" style="padding:0.2rem 0.45rem;">✕</button>':'')+'</div>';
-      if(!isCashMethod(r.method)){row+='<input class="pz-in" data-pr="'+i+'" placeholder="Ref no. for '+r.method+' — required" value="'+(r.ref||'')+'" style="margin-bottom:0.5rem;font-size:0.78rem;"/>';}
+      if(!isCashMethod(r.method)){var accts=paymentAccountOptions(r.method);if(!r.receivingAccountId&&accts.length===1)r.receivingAccountId=accts[0].id;row+='<select class="pz-in" data-pacct="'+i+'" style="margin-bottom:.3rem;font-size:.78rem;">'+(accts.length?accts.map(function(a){return '<option value="'+esc(a.id)+'"'+(r.receivingAccountId===a.id?' selected':'')+'>'+esc(a.name)+'</option>';}).join(''):'<option value="">No receiving account assigned</option>')+'</select><input class="pz-in" data-pr="'+i+'" placeholder="Ref no. for '+r.method+' — required" value="'+(r.ref||'')+'" style="margin-bottom:0.5rem;font-size:0.78rem;"/>';}
       else if(denomTrackingOn()){row+='<div style="margin:0 0 0.5rem 0;padding:0.35rem 0.45rem;background:#f7f3ec;border-radius:6px;"><div style="font-size:0.7rem;color:var(--tl);margin-bottom:0.2rem;">Cash received for this portion — enter notes/coins</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(60px,1fr));gap:0.25rem;">'+POS_DENOMS.map(function(d){return '<label style="font-size:0.6rem;color:var(--tm);display:flex;flex-direction:column;">'+d.lbl+'<input class="pz-in" type="number" min="0" step="1" data-sdrow="'+i+'" data-sdk="'+d.k+'" data-sdv="'+d.v+'" placeholder="0" style="padding:0.08rem 0.2rem;"/></label>';}).join('')+'</div><div data-sdinfo="'+i+'" style="font-size:0.72rem;font-weight:600;margin-top:0.2rem;"></div></div>';}
       return row;}).join('');
     var assigned=splitRows.reduce(function(s,r){return s+(Number(r.amount)||0);},0);
     document.getElementById('posSplitInfo').innerHTML='Assigned '+peso(assigned)+' / Total '+peso(tot)+' · '+(Math.abs(assigned-tot)<0.01?'<span style="color:#2a9d5c;">balanced</span>':'<span style="color:#e63946;">off by '+peso(tot-assigned)+'</span>');
     function sdRecalc(i){var received=0;cont.querySelectorAll('[data-sdrow="'+i+'"]').forEach(function(inp){received+=(Number(inp.value)||0)*(Number(inp.getAttribute('data-sdv'))||0);});received=Math.round(received*100)/100;var amt=Number(splitRows[i].amount)||0;var info=cont.querySelector('[data-sdinfo="'+i+'"]');if(!info)return;if(received<amt-0.001){info.innerHTML='<span style="color:#c0392b;">Received '+peso(received)+' · short '+peso(amt-received)+'</span>';}else{info.innerHTML='Received '+peso(received)+' · change '+peso(Math.round((received-amt)*100)/100);}}
-    cont.querySelectorAll('[data-pm]').forEach(function(s){s.onchange=function(){splitRows[+s.getAttribute('data-pm')].method=s.value;posPaymentVerification=null;renderSplit();refreshChargeAction();};});
+    cont.querySelectorAll('[data-pm]').forEach(function(s){s.onchange=function(){var row=splitRows[+s.getAttribute('data-pm')],opts=paymentAccountOptions(s.value);row.method=s.value;row.receivingAccountId=opts.length?opts[0].id:'';posPaymentVerification=null;renderSplit();refreshChargeAction();};});
     cont.querySelectorAll('[data-pa]').forEach(function(inp){inp.oninput=function(){splitRows[+inp.getAttribute('data-pa')].amount=Number(inp.value)||0;posPaymentVerification=null;renderSplit();refreshChargeAction();};});
     cont.querySelectorAll('[data-pr]').forEach(function(inp){inp.oninput=function(){splitRows[+inp.getAttribute('data-pr')].ref=inp.value;invalidatePaymentVerification();};});
+    cont.querySelectorAll('[data-pacct]').forEach(function(inp){inp.onchange=function(){splitRows[+inp.getAttribute('data-pacct')].receivingAccountId=inp.value;invalidatePaymentVerification();};});
     cont.querySelectorAll('[data-sdrow]').forEach(function(inp){inp.oninput=function(){sdRecalc(+inp.getAttribute('data-sdrow'));};});
     cont.querySelectorAll('[data-pd]').forEach(function(b){b.onclick=function(){splitRows.splice(+b.getAttribute('data-pd'),1);posPaymentVerification=null;renderSplit();refreshChargeAction();};});
   }
@@ -2218,19 +2226,19 @@ function renderPosCart(options){
     }
     var d=Number(disc&&disc.value)||0,discountApproval=null;
     var payments;
-    if(splitChk.checked){ var assigned=splitRows.reduce(function(s,r){return s+(Number(r.amount)||0);},0); if(Math.abs(assigned-tot)>0.01){alert('Split payments must add up to the total.');return;} if(splitRows.some(function(r){return !isCashMethod(r.method)&&!String(r.ref||'').trim();})){alert('Enter a reference number for every GCash/bank payment before charging.');return;}
+    if(splitChk.checked){ var assigned=splitRows.reduce(function(s,r){return s+(Number(r.amount)||0);},0); if(Math.abs(assigned-tot)>0.01){alert('Split payments must add up to the total.');return;} if(splitRows.some(function(r){return !isCashMethod(r.method)&&!String(r.ref||'').trim();})){alert('Enter a reference number for every non-cash payment before charging.');return;}if(splitRows.some(function(r){return !isCashMethod(r.method)&&!resolvedPayment(r.method,r.receivingAccountId,r.amount,r.ref);})){alert('Assign a valid receiving account to every non-cash payment in POS Settings.');return;}
       var _splitBad=false;
       payments=splitRows.map(function(r,i){
         if(isCashMethod(r.method)){ var amt=Number(r.amount)||0;
           if(denomTrackingOn()){ var rc={},rt=0; document.querySelectorAll('[data-sdrow="'+i+'"]').forEach(function(inp){var q=Number(inp.value)||0;if(q>0){rc[inp.getAttribute('data-sdk')]=(rc[inp.getAttribute('data-sdk')]||0)+q;rt+=q*(Number(inp.getAttribute('data-sdv'))||0);}}); rt=Math.round(rt*100)/100; if(rt<amt-0.001)_splitBad=true; var chg=Math.round((rt-amt)*100)/100; var mc=makeChange(chg, mergeDenoms(shiftDrawer(),rc)); return {method:r.method,amount:amt,tendered:rt,change:chg,ref:'',cashReceived:rc,cashChange:mc.denoms,changeShort:mc.ok?0:mc.short}; }
           return {method:r.method,amount:amt,tendered:0,change:0,ref:''};
         }
-        return {method:r.method,amount:Number(r.amount)||0,ref:String(r.ref||'').trim()};
+        return resolvedPayment(r.method,r.receivingAccountId,r.amount,r.ref);
       });
       if(_splitBad){alert('The cash received for a cash portion is less than that portion — enter the notes/coins received.');return;}
     }
     else { var m=pay.value; var isc=isCashMethod(m);
-      if(!isc){ var ref1=(document.getElementById('posPayRef').value||'').trim(); if(!ref1){alert('Enter the '+m+' reference number before charging.');return;} payments=[{method:m,amount:tot,tendered:0,change:0,ref:ref1}]; }
+      if(!isc){ var ref1=(document.getElementById('posPayRef').value||'').trim(),acct1=(document.getElementById('posReceivingAccount')||{}).value||''; if(!ref1){alert('Enter the '+m+' reference number before charging.');return;}var resolved=resolvedPayment(m,acct1,tot,ref1);if(!resolved){alert('Assign a valid receiving account to '+m+' in POS Settings before charging.');return;}payments=[resolved]; }
       else if(denomTrackingOn()){ var r=posRcvRead(); if(r.total<tot-0.001){alert('Cash received ('+peso(r.total)+') is less than the total ('+peso(tot)+').');return;} var chg=Math.round((r.total-tot)*100)/100; var tip=posKeepTip(chg); var giveChg=Math.round((chg-tip)*100)/100; var mc=makeChange(giveChg, mergeDenoms(shiftDrawer(),r.counts)); payments=[{method:m,amount:tot,tendered:r.total,change:giveChg,ref:'',cashReceived:r.counts,cashChange:mc.denoms,changeShort:mc.ok?0:mc.short,tipRounding:tip}]; }
       else { var tv=Number((document.getElementById('posTender')||{}).value)||0; if(tv&&tv<tot){alert('Cash tendered is less than the total.');return;} var chg2=tv?Math.max(0,Math.round((tv-tot)*100)/100):0; var tip2=posKeepTip(chg2); payments=[{method:m,amount:tot,tendered:tv,change:Math.round((chg2-tip2)*100)/100,ref:'',tipRounding:tip2}]; }
     }

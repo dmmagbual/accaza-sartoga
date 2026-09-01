@@ -17,7 +17,7 @@ function methodPolicy(method, payMethods) {
 function paymentPolicy(payments, payMethods) {
   const direct = directPaymentRows(payments);
   if (!direct.length) return null;
-  return direct.some((row) => methodPolicy(row.method, payMethods) === MANAGER_ONLY) ? MANAGER_ONLY : CASHIER_MANAGER;
+  return direct.some((row) => methodPolicy(row.paymentMethod||row.method, payMethods) === MANAGER_ONLY) ? MANAGER_ONLY : CASHIER_MANAGER;
 }
 
 module.exports={CASHIER_MANAGER,MANAGER_ONLY,directPaymentRows,defaultPolicy,methodPolicy,paymentPolicy};

@@ -29,7 +29,7 @@ function updatePosOrderCounts(){updateOnlineOrderCount();updateActiveOrderCount(
 function activeChannelLabel(o){return o.channel==='online'?'Online':o.channel==='grabfood'?'GrabFood':o.channel==='foodpanda'?'FoodPanda':'In-store';}
 function paymentVerificationSignature(payments,total){
   var cart=Object.keys(posCart).sort().map(function(k){var c=posCart[k]||{};return[k,Number(c.qty)||0,Number(c.unitTotal)||0];});
-  var direct=directPaymentRows(payments).map(function(p){return[String(p.method||''),Math.round((Number(p.amount)||0)*100)/100,String(p.ref||'').trim()];});
+  var direct=directPaymentRows(payments).map(function(p){return[String(p.method||''),String(p.receivingAccountId||''),Math.round((Number(p.amount)||0)*100)/100,String(p.ref||'').trim()];});
   return JSON.stringify({cart:cart,total:Math.round((Number(total)||0)*100)/100,direct:direct});
 }
 function cashierVerificationGate(payments,total,context){

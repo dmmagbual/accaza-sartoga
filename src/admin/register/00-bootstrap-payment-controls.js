@@ -14,7 +14,7 @@ function paysOf(o){return(o.payments&&o.payments.length)?o.payments:[{method:o.p
 function channelLabel(o){var c=o&&o.channel||'instore';return c==='online'?'Online Orders':c==='grabfood'?'GrabFood':c==='foodpanda'?'FoodPanda':'In-store';}
 function directRows(o){return paysOf(o).filter(function(p){var m=String(p&&p.method||'').trim().toLowerCase();return m&&m!=='cash'&&m!=='grabfood'&&m!=='foodpanda';});}
 function defaultVerificationPolicy(method){return /gcash|maya/i.test(String(method||''))?'cashier_manager':'manager_only';}
-function verificationPolicyForOrder(o){var pm=(window.__posSettings&&window.__posSettings.payMethods)||[],direct=directRows(o);if(!direct.length)return null;return direct.some(function(p){var row=pm.find(function(m){return String(m&&m.name||'').trim().toLowerCase()===String(p.method||'').trim().toLowerCase();}),policy=row&&row.verificationPolicy;return (policy==='cashier_manager'||policy==='manager_only'?policy:defaultVerificationPolicy(p.method))==='manager_only';})?'manager_only':'cashier_manager';}
+function verificationPolicyForOrder(o){var pm=(window.__posSettings&&window.__posSettings.payMethods)||[],direct=directRows(o);if(!direct.length)return null;return direct.some(function(p){var base=p.paymentMethod||p.method,row=pm.find(function(m){return String(m&&m.name||'').trim().toLowerCase()===String(base||'').trim().toLowerCase();}),policy=row&&row.verificationPolicy;return (policy==='cashier_manager'||policy==='manager_only'?policy:defaultVerificationPolicy(base))==='manager_only';})?'manager_only':'cashier_manager';}
 
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
 function init(){
@@ -27,7 +27,7 @@ function init(){
   a.subscribe('activeOrders',function(s){ordersMap=s.val()||{};if(isTab('ops'))renderOps();});
   a.subscribe('discrepancies',function(s){discMap=s.val()||{};updateDiscBadge();if(isTab('discrepancy'))renderDiscrepancies();});
   a.subscribe('booksChart',function(s){booksChartMap=s.val()||{};});
-  a.subscribe('cfAccounts',function(s){cashAccountsMap=s.val()||{};});
+  a.subscribe('cfAccounts',function(s){cashAccountsMap=s.val()||{};if(isTab('possettings'))renderPosSettings();});
   a.subscribe('financialMovements',function(s){financialMovementsMap=s.val()||{};});
   a.subscribe('pettyCashVouchers',function(s){pettyVouchers=s.val()||{};if(isTab('petty'))renderPetty();});
   a.subscribe('pettyCashReplenishments',function(s){pettyRepl=s.val()||{};if(isTab('petty'))renderPetty();});
