@@ -12,5 +12,10 @@
   "private": true,
   "scripts": {
     "backfill:cost-categories": "node tools/backfill-cost-categories.js"
+  },
+  "overrides": {
+    "uuid": "^11.1.1",
+    "teeny-request": "^11.0.1",
+    "retry-request": "^9.0.1"
   }
 }
