@@ -97,12 +97,20 @@ function revise(root,input){
     delta=money(after.poolNet-before.poolNet);poolAfter=money(poolBefore+delta);cashAfter=money(balance(before.account)-delta);
     if(poolAfter<-.009)fail('The revised transfer exceeds the whole Undeposited Collection pool.');
   }
-  if(before.kind==='cash_transfer'){for(const account of before.accounts){const nextBalance=money(balance(account)+(after.cashNet[account]-before.cashNet[account]));if(nextBalance<(cashIdFor(account)==='register'?floatFloor:0)-.009)fail('The revised transfer would overdraw a cash account or use the protected register float.');}}
-  else if(cashAfter<(cashIdFor(before.account)==='register'?floatFloor:0)-.009)fail('The revised transfer would overdraw cash or use the protected register float.');
-  // Reject backdating that creates a negative closing daily balance in either account.
-  for(const acct of (before.kind==='pooled_transfer'?[pool,before.account]:before.kind==='cash_transfer'?before.accounts:[before.account])){
+  const affectedCashAccounts=before.kind==='pooled_transfer'?[pool,before.account]:before.kind==='cash_transfer'?before.accounts:[before.account];
+  const cashBalancesBefore=Object.fromEntries(affectedCashAccounts.map(account=>[account,balance(account)]));
+  const cashBalancesAfter=Object.fromEntries(affectedCashAccounts.map(account=>[account,money(balance(account)+(prepared.lines.reduce((s,l)=>s+(l.account===account?Number(l.debit||0)-Number(l.credit||0):0),0)-original.lines.reduce((s,l)=>s+(l.account===account?Number(l.debit||0)-Number(l.credit||0):0),0)))]));
+  // A negative bank or wallet GL balance is a reconciliation exception, not a
+  // reason to preserve a known-wrong journal. Physical register float and the
+  // pooled Undeposited Collection custody balance remain hard controls.
+  if(cashBalancesAfter['asset:register_cash']<Number(floatFloor||0)-.009)fail('The revised journal would use the protected register float.');
+  // Reject backdating only when it breaches a true custody/control balance.
+  // Ordinary bank/wallet history may be negative while missing bank activity
+  // or an opening balance is identified and reconciled.
+  for(const acct of affectedCashAccounts.filter(account=>account===pool||cashIdFor(account)==='register')){
     const daily={};for(const m of movements){const d=B.businessDate(m.occurredAt||m.postedAt),value=(m.id===id?prepared.lines:m.lines||[]).reduce((s,l)=>s+(l.account===acct?Number(l.debit||0)-Number(l.credit||0):0),0),key=m.id===id?date:d;daily[key]=money((daily[key]||0)+value);}
-    let running=0;for(const d of Object.keys(daily).sort()){running=money(running+daily[d]);if(d>= (oldDate<date?oldDate:date)&&running<-.009)fail('This date/amount would leave a negative historical cash balance. Check the actual transfer date.');}
+    const floor=acct==='asset:register_cash'?Number(floatFloor||0):0;
+    let running=0;for(const d of Object.keys(daily).sort()){running=money(running+daily[d]);if(d>= (oldDate<date?oldDate:date)&&running<floor-.009)fail(acct==='asset:register_cash'?'This correction would use the protected register float on a historical date. Check the actual transfer date.':'This date/amount would leave a negative historical Undeposited Collection balance. Check the actual transfer date.');}
   }
   const next=structuredClone(root),custody=next.cashCustody||(next.cashCustody={}),revision=expectedRevision+1,changedCustody={};
   // The user edits one pooled amount. Existing positive custody rows remain
@@ -140,10 +148,11 @@ function revise(root,input){
   for(const [key]of ledgerRows)delete next.cfLedger[key];
   next.cfLedger=next.cfLedger||{};
   prepared.lines.forEach((l,index)=>{if(before.kind==='cash_manual'&&l.account!==before.account)return;if(before.kind==='cash_transfer'&&!cashAccount(l.account))return;const value=money(l.debit-l.credit),ledgerAccount=l.account===pool?'undeposited':cashIdFor(l.account);next.cfLedger['fm_'+id+'_'+index]={date,accountId:ledgerAccount,dir:value>0?'in':'out',category:'Cash journal',amount:Math.abs(value),party:prepared.memo,ref:prepared.reference,source:original.sourceType,linkId:original.sourceId||id,movementId:id,auto:true,immutable:true,ts:edited.occurredAt,by:actor.role,revision};});
-  const history=next.cashJournalRevisions||(next.cashJournalRevisions={});(history[id]||(history[id]={}))[String(revision)]={revision,commandId,reason,changedAt:now,changedBy:actor.uid,changedByRole:actor.role,before:original,after:edited,journalBefore:journal,cashLedgerBefore:cashBefore,custodyChanges:changedCustody,poolBefore,poolAfter};
+  const negativeCashAccountsAfter=Object.keys(cashBalancesAfter).filter(account=>account!==pool&&cashIdFor(account)!=='register'&&cashBalancesAfter[account]<-.009);
+  const history=next.cashJournalRevisions||(next.cashJournalRevisions={});(history[id]||(history[id]={}))[String(revision)]={revision,commandId,reason,changedAt:now,changedBy:actor.uid,changedByRole:actor.role,before:original,after:edited,journalBefore:journal,cashLedgerBefore:cashBefore,custodyChanges:changedCustody,poolBefore,poolAfter,cashBalancesBefore,cashBalancesAfter,negativeCashAccountsAfter};
   // Created-only close triggers do not fire on edits; reopen affected close snapshots atomically.
   for(const d of new Set([oldDate,date]))for(const [closeId,index]of Object.entries((next.financialCloseIndex||{})[d]||{})){const close=next.financialCloses&&next.financialCloses[closeId];if(close&&close.current){close.current.status='REOPENED';close.current.reopenedAt=now;close.current.reopenedByActivityId=commandId;index.status='REOPENED';index.reopenedAt=now;}}
-  (next.operationalAudit||(next.operationalAudit={}))[commandId]={action:before.kind==='cash_transfer'?'edit_open_cash_transfer_journal':before.kind==='cash_manual'?'edit_open_manual_cash_journal':'edit_open_cash_journal',sourceId:id,revision,reason,actorUid:actor.uid,actorRole:actor.role,ts:now,originalDate:oldDate,date,amount:after.value,poolBefore:before.kind==='pooled_transfer'?poolBefore:null,poolAfter:before.kind==='pooled_transfer'?poolAfter:null};
+  (next.operationalAudit||(next.operationalAudit={}))[commandId]={action:before.kind==='cash_transfer'?'edit_open_cash_transfer_journal':before.kind==='cash_manual'?'edit_open_manual_cash_journal':'edit_open_cash_journal',sourceId:id,revision,reason,actorUid:actor.uid,actorRole:actor.role,ts:now,originalDate:oldDate,date,amount:after.value,poolBefore:before.kind==='pooled_transfer'?poolBefore:null,poolAfter:before.kind==='pooled_transfer'?poolAfter:null,cashBalancesBefore,cashBalancesAfter,negativeCashAccountsAfter};
   (next.cashJournalEditCommands||(next.cashJournalEditCommands={}))[commandId]={signature,movementId:id,revision,postedAt:now,actorUid:actor.uid};
   return next;
 }
