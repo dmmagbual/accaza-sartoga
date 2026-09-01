@@ -41,15 +41,21 @@ function exportDataBackup(){
   Promise.all(nodes.map(function(n){return a.get(a.ref(a.db,n)).then(function(s){return [n,s.val()];}).catch(function(){return [n,null];});})).then(function(pairs){
     var data={}, included=[];
     pairs.forEach(function(p){ if(p[1]!=null){ data[p[0]]=p[1]; included.push(p[0]); } });
-    var envelope={exportedAt:Date.now(),exportedAtISO:new Date().toISOString(),kind:'accaza-admin-data-export',note:'Off-site data copy from the Admin app. Current live business data (not the sealed nightly server backup). Keep it somewhere safe off this computer.',includedNodes:included,data:data};
-    var blob=new Blob([JSON.stringify(envelope)],{type:'application/json'}), url=URL.createObjectURL(blob);
-    var stamp=new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
-    var lnk=document.createElement('a'); lnk.href=url; lnk.download='accaza-data-'+stamp+'.json'; document.body.appendChild(lnk); lnk.click(); document.body.removeChild(lnk);
-    setTimeout(function(){URL.revokeObjectURL(url);},4000);
-    a.update(a.ref(a.db,'posSettings/offsiteBackup'),{lastAt:Date.now(),nodes:included.length}).catch(function(){});
-    renderBackupStatus(Date.now());
-    if(btn){btn.disabled=false;btn.textContent='\u2B07 Download a backup copy';}
-    alert('Backup copy downloaded ('+included.length+' data sets). Now move that file somewhere off this computer \u2014 a USB stick, another drive, or your own cloud.');
+    var excluded=nodes.filter(function(n){return included.indexOf(n)<0;}).sort();
+    function _stable(v){ if(Array.isArray(v))return v.map(_stable); if(!v||typeof v!=='object')return v; return Object.keys(v).sort().reduce(function(o,k){o[k]=_stable(v[k]);return o;},{}); }
+    return crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(_stable(data)))).then(function(buf){
+      var hash=Array.prototype.map.call(new Uint8Array(buf),function(b){return ('0'+b.toString(16)).slice(-2);}).join('');
+      var takenAt=Date.now();
+      var envelope={version:'backup-v2',takenAt:takenAt,excluded:excluded,integrity:{algorithm:'sha256',canonical:'sorted-json-v1',dataSha256:hash},kind:'accaza-admin-data-export',note:'Off-site data copy from the Admin app, sealed with a SHA-256 integrity fingerprint (verify with tools/verify-backup.mjs). Keep it somewhere safe off this computer.',includedNodes:included,exportedAtISO:new Date(takenAt).toISOString(),data:data};
+      var blob=new Blob([JSON.stringify(envelope)],{type:'application/json'}), url=URL.createObjectURL(blob);
+      var stamp=new Date(takenAt).toISOString().slice(0,19).replace(/[:T]/g,'-');
+      var lnk=document.createElement('a'); lnk.href=url; lnk.download='accaza-data-'+stamp+'.json'; document.body.appendChild(lnk); lnk.click(); document.body.removeChild(lnk);
+      setTimeout(function(){URL.revokeObjectURL(url);},4000);
+      a.update(a.ref(a.db,'posSettings/offsiteBackup'),{lastAt:takenAt,nodes:included.length}).catch(function(){});
+      renderBackupStatus(takenAt);
+      if(btn){btn.disabled=false;btn.textContent='\u2B07 Download a backup copy';}
+      alert('Backup copy downloaded ('+included.length+' data sets, sealed). Now move that file somewhere off this computer \u2014 a USB stick, another drive, or your own cloud.');
+    });
   }).catch(function(e){
     if(btn){btn.disabled=false;btn.textContent='\u2B07 Download a backup copy';}
     alert('Could not build the backup copy: '+((e&&e.message)||e));
@@ -60,7 +66,7 @@ function changeStaffPin(id){
   var s=staffList[id]; if(!s)return;
   var mask=document.createElement('div'); mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
   mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:380px;width:100%;padding:1.2rem;">'
-    +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.5rem;">Change PIN — '+esc(s.name)+'</div>'
+    +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.5rem;">Change PIN \u2014 '+esc(s.name)+'</div>'
     +'<div><span class="pz-lbl">Current PIN</span><input class="pz-in" id="cpCur" type="password" inputmode="numeric"/></div>'
     +'<div style="margin-top:0.5rem;"><span class="pz-lbl">New PIN (4–6 digits)</span><input class="pz-in" id="cpN1" type="password" inputmode="numeric"/></div>'
     +'<div style="margin-top:0.5rem;"><span class="pz-lbl">Confirm new PIN</span><input class="pz-in" id="cpN2" type="password" inputmode="numeric"/></div>'
@@ -74,7 +80,7 @@ function changeStaffPin(id){
     if(!/^[0-9]{4,6}$/.test(n1)){alert('New PIN must be 4–6 digits.');return;}
     var n2=String(mask.querySelector('#cpN2').value||'').trim();
     if(n1!==n2){alert('The two PINs do not match.');return;}
-    if(Object.keys(staffList).some(function(k){return k!==id&&String(staffList[k].pin)===n1;})){alert('That PIN is already used by another staff — choose a different one.');return;}
+    if(Object.keys(staffList).some(function(k){return k!==id&&String(staffList[k].pin)===n1;})){alert('That PIN is already used by another staff \u2014 choose a different one.');return;}
     var a=A();a.update(a.ref(a.db,'posStaff/'+id),{pin:n1});
     if(window.__posLog)window.__posLog('pin-change',s.name,'');
     document.body.removeChild(mask);
