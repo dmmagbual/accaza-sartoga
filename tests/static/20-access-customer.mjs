@@ -41,6 +41,7 @@ for(const marker of ["window.__accazaRegisterModule('inbox'","a.subscribe('staff
 for(const marker of ['"staffMessages"','"staffMessageReceipts"','".write": false'])if(!rulesRaw.includes(marker))fail(`Staff Inbox database protection missing: ${marker}`);
 if((adminSource.match(/window\.posSwitchTab=function/g)||[]).length!==1)fail('lazy module loader must be the sole POS tab router');
 if(!rulesRaw.includes("root.child('adminPerms').child(auth.uid).child('inventory').val() === true"))fail('inventory permission enforcement missing');
+if(!rulesRaw.includes("root.child('adminPerms').child(auth.uid).child('possettings').val() === true"))fail('POS Settings users cannot read existing Finance cash accounts for controlled payment routing');
 if(!rulesRaw.includes("newData.child('refundAmount').val() === data.child('refundAmount').val()"))fail('cashier refund-field protection missing');
 if(!rulesRaw.includes('auth.uid === $uid'))fail('signed-in user cannot read their own role record');
 if(!rulesRaw.includes('"activeOrders"'))fail('activeOrders security rules missing');

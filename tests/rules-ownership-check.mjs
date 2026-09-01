@@ -10,7 +10,7 @@ try{
   await env.withSecurityRulesDisabled(async(context)=>{
     await set(ref(context.database()),{
       admins:{owner:true,manager:'manager',staff:'staff',kitchen:'kitchen'},
-      adminPerms:{staff:{orders:true,pos:true,discrepancy:true,petty:true,availability:true},kitchen:{orders:true}},
+      adminPerms:{staff:{orders:true,pos:true,possettings:true,discrepancy:true,petty:true,availability:true},kitchen:{orders:true}},
       menuItems:{latte:{name:'Latte',cat:'coffee',priceS:100}},
       availability:{Latte:true},
       orders:{
@@ -28,6 +28,7 @@ try{
       inventoryMovements:{opening_milk:{id:'opening_milk',itemId:'milk',type:'opening_balance',occurredAt:1}},
       financialMovements:{sale_own:{id:'sale_own',type:'order_sale',occurredAt:1,amount:100}},
       cfLedger:{cfauto_own:{movementId:'sale_own',accountId:'bank',dir:'in',amount:100,ts:1}},
+      cfAccounts:{bank:{name:'BDO',type:'bank',opening:0}},
       receivables:{ar_one:{party:'Test',amount:10,status:'open'}},
       payables:{ap_one:{party:'Supplier',amount:20,status:'open'}},
       platformPayouts:{po_one:{channel:'grabfood',actualPayout:50,settledAt:1}},
@@ -79,6 +80,9 @@ try{
   await assertSucceeds(get(ref(owner,'financialMovements/sale_own')));
   await assertFails(set(ref(owner,'financialMovements/forged'),{id:'forged',amount:999,occurredAt:2}));
   await assertFails(set(ref(owner,'cfLedger/forged'),{amount:999,ts:2}));
+  await assertSucceeds(get(ref(staff,'cfAccounts/bank')));
+  await assertFails(get(ref(kitchen,'cfAccounts/bank')));
+  await assertFails(update(ref(staff,'cfAccounts/bank'),{name:'Forged bank'}));
   await assertFails(update(ref(owner,'receivables/ar_one'),{amount:999}));
   await assertFails(update(ref(owner,'payables/ap_one'),{amount:999}));
   await assertFails(update(ref(owner,'platformPayouts/po_one'),{actualPayout:999}));
