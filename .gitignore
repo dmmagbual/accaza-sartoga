@@ -45,3 +45,7 @@ desktop.ini
 # Local backup-drill downloads — full production DB dumps with customer data. NEVER commit.
 restore-drill-backup.json
 *restore-drill*.json
+
+# Off-site data copies downloaded from the Admin backup button — live business data. NEVER commit.
+accaza-data-*.json
+BACKUP FOLDER/
