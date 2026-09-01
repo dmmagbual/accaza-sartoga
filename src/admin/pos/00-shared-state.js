@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var inventoryMap={}, inventorySkuMap={}, purchaseInvoicesMap={}, purchaseShiftMap={}, purchaseFundAdvanceMap={}, recipesMap={}, posMeta={vat:false,vatRate:12}, optRecipesMap={}, usageMap={}, channelPricesMap={}, posAvailMap={}, inventoryMovementsMap={};
+var inventoryMap={}, inventorySkuMap={}, purchaseInvoicesMap={}, purchaseShiftMap={}, purchaseFundAdvanceMap={}, recipesMap={}, posMeta={vat:false,vatRate:12}, optRecipesMap={}, usageMap={}, channelPricesMap={}, posAvailMap={}, inventoryMovementsMap={},paymentAccountsMap={};
 // Order reference: PREFIX-XXXXXX (6 base36 chars from a monotonic timestamp).
 // Prefix namespaces the channel so IDs never collide across channels; the
 // monotonic counter guarantees uniqueness for rapid same-device sales offline.
@@ -181,12 +181,17 @@ window.__showOfflineQueue=function(note){offlineQueue().all().then(function(rows
 window.__flushOfflineQueue=flushOfflineQueue;
 function posMethods(){
   var pm=(window.__posSettings&&window.__posSettings.payMethods);
-  if(!pm||!pm.length)pm=[{name:'Cash',active:true,cash:true},{name:'GCash',active:true,cash:false,verificationPolicy:'cashier_manager'},{name:'Bank Transfer',active:true,cash:false,verificationPolicy:'manager_only'},{name:'Card / EFTPOS',active:false,cash:false,verificationPolicy:'manager_only'}];
+  if(!pm||!pm.length)pm=[{name:'Cash',active:true,cash:true},{name:'Bank Transfer',active:true,cash:false,verificationPolicy:'cashier_manager'},{name:'GCash',active:true,cash:false,verificationPolicy:'cashier_manager'},{name:'PayMaya',active:true,cash:false,verificationPolicy:'cashier_manager'}];
   return pm;
 }
+function posMethod(name){return posMethods().find(function(m){return String(m&&m.name||'').toLowerCase()===String(name||'').toLowerCase();})||{};}
+function defaultPaymentAccountIds(method){var key=String(method&&method.name||'').toLowerCase(),ids=[];Object.keys(paymentAccountsMap).forEach(function(id){var a=paymentAccountsMap[id]||{},name=String(a.name||'').toLowerCase(),feeds=Array.isArray(a.feedMethods)?a.feedMethods:[];if(feeds.some(function(x){return String(x).toLowerCase()===key;}))ids.push(id);else if(key==='bank transfer'&&(name==='bdo'||name==='union bank'))ids.push(id);else if(key==='gcash'&&(name==='g-cash'||name==='gcash'))ids.push(id);else if(key==='paymaya'&&/paymaya|maya/.test(name))ids.push(id);});return ids;}
+function paymentAccountIds(method){var m=posMethod(method),ids=Array.isArray(m.accountIds)?m.accountIds.filter(function(id){return paymentAccountsMap[id]&&paymentAccountsMap[id].active!==false;}):defaultPaymentAccountIds(m);return ids.filter(function(id,i){return ids.indexOf(id)===i;});}
+function paymentAccountOptions(method){return paymentAccountIds(method).map(function(id){return{id:id,name:(paymentAccountsMap[id]&&paymentAccountsMap[id].name)||id};});}
+function resolvedPayment(method,accountId,amount,ref){var opts=paymentAccountOptions(method),chosen=opts.find(function(a){return a.id===accountId;})||(opts.length===1?opts[0]:null);if(!chosen)return null;return{method:method+' · '+chosen.name,paymentMethod:method,receivingAccountId:chosen.id,receivingAccountName:chosen.name,amount:Number(amount)||0,tendered:0,change:0,ref:String(ref||'').trim()};}
 function directPaymentRows(payments){return(payments||[]).filter(function(p){var m=String(p&&p.method||'').trim().toLowerCase();return m&&m!=='cash'&&m!=='grabfood'&&m!=='foodpanda';});}
 function defaultPaymentVerificationPolicy(method){return /gcash|maya/i.test(String(method||''))?'cashier_manager':'manager_only';}
-function paymentVerificationPolicy(payments){var direct=directPaymentRows(payments),methods=posMethods();if(!direct.length)return null;return direct.some(function(p){var row=methods.find(function(m){return String(m&&m.name||'').trim().toLowerCase()===String(p.method||'').trim().toLowerCase();}),policy=row&&row.verificationPolicy;return (policy==='cashier_manager'||policy==='manager_only'?policy:defaultPaymentVerificationPolicy(p.method))==='manager_only';})?'manager_only':'cashier_manager';}
+function paymentVerificationPolicy(payments){var direct=directPaymentRows(payments),methods=posMethods();if(!direct.length)return null;return direct.some(function(p){var base=p.paymentMethod||p.method,row=methods.find(function(m){return String(m&&m.name||'').trim().toLowerCase()===String(base||'').trim().toLowerCase();}),policy=row&&row.verificationPolicy;return (policy==='cashier_manager'||policy==='manager_only'?policy:defaultPaymentVerificationPolicy(base))==='manager_only';})?'manager_only':'cashier_manager';}
 function posActiveMethods(){return posMethods().filter(function(m){return m.active!==false;});}
 function isCashMethod(name){var m=posMethods().filter(function(x){return x.name===name;})[0];return m?!!m.cash:(name==='Cash');}
 window.__isCashMethod=isCashMethod;
@@ -194,6 +199,7 @@ function init(){
   var a=A();
   window.__online=(typeof navigator!=='undefined')?navigator.onLine:true;
   a.subscribe('posSettings', function(s){ window.__posSettings=s.val()||{}; if(document.getElementById('posPay'))renderPosCart(); if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); });
+  a.subscribe('cfAccounts',function(s){paymentAccountsMap=s.val()||{};if(document.getElementById('posPay'))renderPosCart();});
   a.subscribe('.info/connected', function(sn){ window.__online=(sn.val()===true); updateOfflineUI(); if(window.__online) flushOfflineQueue(); });
   try{ window.addEventListener('online', function(){ window.__online=true; updateOfflineUI(); flushOfflineQueue(); }); window.addEventListener('offline', function(){ window.__online=false; updateOfflineUI(); }); }catch(e){}
   checkPosStorageHealth();

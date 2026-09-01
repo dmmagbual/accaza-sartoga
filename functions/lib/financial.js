@@ -24,15 +24,21 @@ function assertBalanced(lines) {
 }
 function paymentRows(order) {
   const rows = Array.isArray(order && order.payments) && order.payments.length ? order.payments : [{method: order && order.payment, amount: order && order.total}];
-  return rows.map((row) => ({method: safe(row.method || "Unknown"), amount: money(row.amount)})).filter((row) => row.amount > 0);
+  return rows.map((row) => ({method: safe(row.method || "Unknown"), paymentMethod:safe(row.paymentMethod||row.method||"Unknown"),receivingAccountId:safe(row.receivingAccountId),receivingAccountName:safe(row.receivingAccountName), amount: money(row.amount)})).filter((row) => row.amount > 0);
 }
 function accountForMethod(method, accounts) {
   const wanted = safe(method).toLowerCase(); let match = "";
   Object.keys(accounts || {}).forEach((id) => {
     const methods = Array.isArray(accounts[id] && accounts[id].feedMethods) ? accounts[id].feedMethods : [];
-    if (methods.some((name) => safe(name).toLowerCase() === wanted)) match = id;
+    const accountName=safe(accounts[id]&&accounts[id].name).toLowerCase();
+    if (methods.some((name) => safe(name).toLowerCase() === wanted)||(accountName&&wanted.endsWith(` · ${accountName}`))) match = id;
   });
   return match;
+}
+function accountForPayment(payment,accounts){
+  payment=payment||{};const selected=safe(payment.receivingAccountId);
+  if(selected&&accounts&&accounts[selected])return selected;
+  return accountForMethod(payment.paymentMethod||payment.method,accounts);
 }
 function orderPosting(order, accounts) {
   order = order || {}; const id = safe(order.id); if (!id) throw new Error("Order ID is required.");
@@ -64,7 +70,7 @@ function orderPosting(order, accounts) {
     const gross = money(order.subtotal != null ? order.subtotal : total + discount);
     payments.forEach((payment, index) => {
       const isCash = payment.method.toLowerCase() === "cash";
-      const accountId = isCash ? "" : accountForMethod(payment.method, accounts);
+      const accountId = isCash ? "" : accountForPayment(payment, accounts);
       const asset = isCash ? "asset:register_cash" : (accountId ? `asset:cash_account:${accountId}` : `asset:unmapped_payment:${payment.method.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`);
       lines.push(line(asset, payment.amount, 0, payment.method));
       if (!isCash && accountId) {const slug = payment.method.replace(/[^A-Za-z0-9]/g, "") || String(index); cashEntries.push({id: `cfauto_${id}_${slug}`, accountId, dir: "in", amount: payment.amount, category: `Sale · ${payment.method}`, method: payment.method});}
@@ -85,9 +91,9 @@ function reversalPosting(order, amount, kind, accounts, settlementPayments) {
   if (platform) lines.push(line(`asset:platform_receivable:${channel}`, 0, value, "Reduce platform receivable"));
   else {
     let settlements = Array.isArray(settlementPayments) ? settlementPayments.map((row) => ({method: safe(row.method), amount: money(row.amount)})).filter((row) => row.method && row.amount > 0) : [];
-    if (!settlements.length) {const payments = paymentRows(order), cash = payments.find((row) => row.method.toLowerCase() === "cash"), chosen = cash || payments[0] || {method: "Cash"}; settlements = [{method: chosen.method, amount: value}];}
+    if (!settlements.length) {const payments = paymentRows(order), cash = payments.find((row) => row.method.toLowerCase() === "cash"), chosen = cash || payments[0] || {method: "Cash"}; settlements = [{method: chosen.method,paymentMethod:chosen.paymentMethod,receivingAccountId:chosen.receivingAccountId,receivingAccountName:chosen.receivingAccountName, amount: value}];}
     if (Math.abs(settlements.reduce((sum, row) => money(sum + row.amount), 0) - value) > 0.009) throw new Error("Refund/void tender allocations must equal the reversal amount.");
-    settlements.forEach((chosen) => {if (chosen.method.toLowerCase() === "cash") lines.push(line("asset:register_cash", 0, chosen.amount, "Refund/void settlement")); else { const accountId = accountForMethod(chosen.method, accounts || {}); lines.push(line(accountId ? `asset:cash_account:${accountId}` : `asset:unmapped_payment:${chosen.method.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`, 0, chosen.amount, "Refund/void settlement")); if (accountId) cashEntries.push({id: "", accountId, dir: "out", amount: chosen.amount, category: kind === "void" ? "Void reversal" : "Refund", method: chosen.method}); else warnings.push(`No cash-flow account mapping for ${chosen.method}.`); }});
+    settlements.forEach((chosen) => {if (chosen.method.toLowerCase() === "cash") lines.push(line("asset:register_cash", 0, chosen.amount, "Refund/void settlement")); else { const accountId = accountForPayment(chosen, accounts || {}); lines.push(line(accountId ? `asset:cash_account:${accountId}` : `asset:unmapped_payment:${chosen.method.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`, 0, chosen.amount, "Refund/void settlement")); if (accountId) cashEntries.push({id: "", accountId, dir: "out", amount: chosen.amount, category: kind === "void" ? "Void reversal" : "Refund", method: chosen.method}); else warnings.push(`No cash-flow account mapping for ${chosen.method}.`); }});
   }
   assertBalanced(lines);
   return {type: kind === "void" ? "order_void" : "order_refund", sourceType: "order", sourceId: safe(order.id), channel, amount: value, lines, cashEntries, warnings, settlementPayments: Array.isArray(settlementPayments) ? settlementPayments : []};
@@ -182,4 +188,4 @@ function platformPayoutPosting(payout, definitions) {
   return movement("platform_payout_settlement", "platformPayout", safe(payout.id), lines, {occurredAt:Number(payout.settledAt||Date.now()),approvalId:safe(payout.approvalId),approvedBy:safe(payout.approvedBy),reconstructedFromPayoutRecord:payout.reconstructedFromPayoutRecord===true});
 }
 
-module.exports = {BALANCE_EPSILON, money, safe, line, totals, assertBalanced, accountForMethod, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting};
+module.exports = {BALANCE_EPSILON, money, safe, line, totals, assertBalanced, accountForMethod,accountForPayment, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting};
