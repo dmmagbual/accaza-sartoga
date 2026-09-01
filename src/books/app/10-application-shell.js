@@ -145,7 +145,7 @@ const App = {
   reverseEntry(id,voidIt){
     const e=ENTRIES().find(x=>x.id===id); if(!e||e.reversedByMovementId||e.reversalOf) return;
     if(voidIt&&window.__isAccountingPeriodClosed&&window.__isAccountingPeriodClosed(e.date||todayStr()))return alert('A void uses the original accounting date. Reopen that month in Admin Settings first, or use a current-month reversal to preserve the closed history.');
-    const reason=prompt((voidIt?"Why was this journal wrong from the beginning? It will be voided on its original accounting date.":"Why is this valid journal being reversed now? The reversal will use today's date.")+" The original stays in the audit history.","");if(!reason||!reason.trim())return;
+    const reason=prompt((voidIt?"Why was this journal wrong from the beginning? It will be voided on its original accounting date and both cash-account legs will be cancelled.":"Why is this valid journal being reversed now? The reversal will use today's date.")+" The original stays in the audit history.","");if(!reason||!reason.trim())return;
     if(!window.__financeCmd) return alert("Live connection not ready — sign in first.");
     window.__financeCmd({action:voidIt?"void_manual_journal":"reverse_manual_journal",commandId:(voidIt?"books_void_":"books_reverse_")+id,originalMovementId:id,date:todayStr(),reason:reason.trim()}).then(()=>this.render()).catch(err=>alert("Could not "+(voidIt?"void":"reverse")+" journal: "+((err&&err.message)||err)));
   },

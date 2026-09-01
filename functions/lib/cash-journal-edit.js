@@ -28,7 +28,7 @@ function shape(lines){
   if(counterparty&&cash&&Math.abs(money(cash.debit-counterparty.credit))<.009&&Math.abs(money(cash.credit-counterparty.debit))<.009)return {kind:'cash_manual',account:cash.account,counterparty:counterparty.account,cashNet:money(cash.debit-cash.credit),value:money(cash.debit+cash.credit)};
   return null;
 }
-function eligible(m){return !!m&&['manual_books_journal','register_cash_deposit'].includes(m.type)&&!!shape(m.lines);}
+function eligible(m){return !!m&&['manual_books_journal','register_cash_deposit','cash_transfer'].includes(m.type)&&!!shape(m.lines);}
 function fingerprint(payload){return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');}
 function editSignature(input){const {id,expectedRevision,prepared,reason,actor}=input;return fingerprint({id,expectedRevision,prepared,reason,actorUid:actor.uid});}
 // Existing posting workflows calculate custody changes before claiming their

@@ -84,6 +84,7 @@ assert.equal(E.eligible({type:'manual_books_journal',lines:[line('asset:inventor
 // An unreconciled bank-to-wallet transfer may reverse direction in place: both
 // cash-ledger rows must follow the revised transfer, without creating a void.
 const wallet='asset:cash_account:wallet',transferState={cfAccounts:{bank:{name:'Union Bank',active:true},wallet:{name:'GCash',active:true}},financialMovements:{bankOpening:{id:'bankOpening',occurredAt:stamp('2026-08-01'),lines:[line(bank,30000,0),line('equity:owner_capital',0,30000)]},walletOpening:{id:'walletOpening',occurredAt:stamp('2026-08-01'),lines:[line(wallet,20000,0),line('equity:owner_capital',0,20000)]},transfer:{id:'transfer',type:'manual_books_journal',sourceType:'booksManualJournal',sourceId:'transfer',occurredAt:stamp('2026-08-31'),postedAt:stamp('2026-08-31'),amount:11862,lines:[line(bank,11862,0),line(wallet,0,11862)]}},cfLedger:{bank:{movementId:'transfer',accountId:'bank',amount:11862,dir:'in'},wallet:{movementId:'transfer',accountId:'wallet',amount:11862,dir:'out'}},books:{journal:{}},accountingPeriods:{},financialCloseIndex:{},financialCloses:{},cashCustody:{}};
+assert.equal(E.eligible({type:'cash_transfer',lines:[line(bank,504,0),line(wallet,0,504)]}),true,'a native Finance cash transfer is eligible for controlled correction');
 transferState.books.journal.transfer=B.buildSingle(transferState.financialMovements.transfer,{bank:'1011',wallet:'1020'}).entry;
 const transferOut=E.revise(transferState,{id:'transfer',commandId:'transfer-reverse',expectedRevision:0,prepared:{date:'2026-08-31',memo:'Correct transfer direction and amount',reference:'TRANSFER-1',lines:[line(bank,0,11000),line(wallet,11000,0)]},reason:'Bank and wallet were reversed; correct amount is 11000',actor:{uid:'manager1',role:'manager'},now:stamp('2026-09-01'),floatFloor:4000});
 assert.equal(transferOut.financialMovements.transfer.lines[0].credit,11000,'the bank direction and amount change in place');
@@ -148,8 +149,8 @@ async function integration(){
     requirePortalPermission:async()=>({uid:'manager1',role}),financeText:(s,n)=>String(s||'').trim().slice(0,n),
     financeKey:s=>{assert.match(s,/^[A-Za-z0-9_-]+$/);return s;},financeDate:s=>s,
     ensureChartAccounts:async()=>({}),ensureBooksChart:async()=>({}),SENSITIVE_BOOKS_CODES:new Set(['1011','1030']),
-    assertAccountingPeriodOpen:async(_,date)=>{if((state.accountingPeriods[date.slice(0,7)]||{}).status==='closed')throw new HttpsError('failed-precondition','closed period');},
-    resolveRegisterFloat:()=>({amount:4000}),safeFinancialUpdate:async(_,writes)=>{Object.keys(writes).forEach(path=>write(path,writes[path]));}};
+    assertAccountingPeriodOpen:async(_,date)=>{if((state.accountingPeriods[String(date).slice(0,7)]||{}).status==='closed')throw new HttpsError('failed-precondition','closed period');},accountingTimestamp:(date,fallback)=>Date.parse(String(date)+'T12:00:00+08:00')||fallback,
+    resolveRegisterFloat:()=>({amount:4000}),cashLedgerRecord:(entry,movementId,movement,actor)=>({...entry,movementId,source:movement.sourceType,linkId:movement.sourceId,ts:movement.occurredAt,by:actor.role}),operationalAuditRecord:(action,sourceType,sourceId,actor,details)=>({action,sourceType,sourceId,actorUid:actor.uid,actorRole:actor.role,...details}),safeFinancialUpdate:async(_,writes)=>{Object.keys(writes).forEach(path=>write(path,writes[path]));},commitFinancial:async(_,movementId,movement,actor,writes={})=>{if(state.financialMovements[movementId])return{duplicate:true,movement:state.financialMovements[movementId]};Object.keys(writes).forEach(path=>write(path,writes[path]));write('financialMovements/'+movementId,{...movement,id:movementId,postedAt:Clock.now(),actorUid:actor.uid,actorRole:actor.role});return{duplicate:false,movement:state.financialMovements[movementId]};}};
   vm.createContext(ctx);
   const finance=fs.readFileSync('src/functions/40-sales-finance.js','utf8');
   vm.runInContext(finance.slice(finance.indexOf('function booksCodeAccount('),finance.indexOf('function assertNoOverlappingUpdatePaths(')),ctx);
@@ -165,6 +166,15 @@ async function integration(){
   await assert.rejects(ctx.exports.postFinancialCommand({data:{...data,commandId:'stale_edit'}}),/changed since/);
   const historyData={action:'cash_journal_history',commandId:'history',originalMovementId:'deposit'};
   assert.equal((await ctx.exports.postFinancialCommand({data:historyData})).revisions['1'].before.amount,6717);
+  state.cfAccounts.wallet={name:'GCash / Maya Wallet',active:true};
+  const addTransfer=(id,amount)=>{state.financialMovements[id]={id,type:'cash_transfer',sourceType:'transfer',sourceId:id,occurredAt:stamp('2026-09-01'),postedAt:stamp('2026-09-01'),amount,reference:id,lines:[line(bank,amount,0),line(wallet,0,amount)]};state.books.journal[id]=B.buildSingle(state.financialMovements[id],{bank:'1011',wallet:'1020'}).entry;state.cfLedger[id+'_bank']={movementId:id,accountId:'bank',amount,dir:'in'};state.cfLedger[id+'_wallet']={movementId:id,accountId:'wallet',amount,dir:'out'};};
+  addTransfer('duplicateTransfer',4000);
+  const voidResult=await ctx.exports.postFinancialCommand({data:{action:'void_manual_journal',commandId:'books_void_duplicateTransfer',originalMovementId:'duplicateTransfer',date:'2026-09-01',reason:'Duplicate transfer'}});
+  assert.equal(voidResult.movementId,'books_void_duplicateTransfer');assert.equal(state.financialMovements.books_void_duplicateTransfer.type,'cash_transfer_void');assert.equal(state.financialMovements.books_void_duplicateTransfer.voided,true);assert.equal(state.financialMovements.duplicateTransfer.reversedByMovementId,'books_void_duplicateTransfer');assert.equal(state.books.journal.duplicateTransfer.voidedAt,input.now);
+  assert.equal((await ctx.exports.postFinancialCommand({data:{action:'void_manual_journal',commandId:'books_void_duplicateTransfer',originalMovementId:'duplicateTransfer',date:'2026-09-01',reason:'Duplicate transfer'}})).duplicate,true,'cash-transfer void retries are idempotent');
+  addTransfer('validTransfer',500);
+  const reverseResult=await ctx.exports.postFinancialCommand({data:{action:'reverse_manual_journal',commandId:'books_reverse_validTransfer',originalMovementId:'validTransfer',date:'2026-09-01',reason:'Funds moved back later'}});
+  assert.equal(reverseResult.movementId,'books_reverse_validTransfer');assert.equal(state.financialMovements.books_reverse_validTransfer.type,'cash_transfer_reversal');assert.equal(state.financialMovements.books_reverse_validTransfer.voided,false);assert.equal(state.financialMovements.validTransfer.reversedAt,input.now);
   role='cashier';await assert.rejects(ctx.exports.postFinancialCommand({data:historyData}),/privileged Finance role/);
   await assert.rejects(ctx.exports.postFinancialCommand({data:{...data,commandId:'cashier_edit',expectedRevision:1}}),/privileged Finance role/);
   const elements={postBtn:{},e_payable:{value:''},e_purpose:{value:''}},sent=[];
