@@ -93,6 +93,34 @@ assert.equal(transferOut.cfLedger.fm_transfer_0.dir,'out','the bank ledger direc
 assert.equal(transferOut.cfLedger.fm_transfer_1.accountId,'wallet','the wallet ledger remains linked');
 assert.equal(transferOut.cfLedger.fm_transfer_1.dir,'in','the wallet ledger direction follows the corrected transfer');
 assert.equal(Object.keys(transferOut.financialMovements).length,3,'reversing a cash transfer does not add a void or replacement movement');
+// Correct accounting first: a bank/wallet correction may reveal a negative GL
+// balance that must be reconciled, but it must not preserve a known-wrong entry.
+const negativeTransferState=structuredClone(transferState);
+negativeTransferState.financialMovements.bankOpening.lines[0].debit=5000;
+negativeTransferState.financialMovements.bankOpening.lines[1].credit=5000;
+const negativeTransferOut=E.revise(negativeTransferState,{id:'transfer',commandId:'transfer-negative',expectedRevision:0,prepared:{date:'2026-08-31',memo:'Correct transfer direction',reference:'TRANSFER-NEG',lines:[line(bank,0,11862),line(wallet,11862,0)]},reason:'Correct reversed bank and wallet accounts',actor:{uid:'manager1',role:'manager'},now:stamp('2026-09-01'),floatFloor:4000});
+assert.equal(negativeTransferOut.cashJournalRevisions.transfer['1'].cashBalancesAfter[bank],-6862,'the corrected bank balance is preserved for reconciliation');
+assert.deepEqual(negativeTransferOut.cashJournalRevisions.transfer['1'].negativeCashAccountsAfter,[bank],'the audit identifies the ordinary cash account requiring reconciliation');
+assert.deepEqual(negativeTransferOut.operationalAudit['transfer-negative'].negativeCashAccountsAfter,[bank],'the operational audit retains the reconciliation exception');
+// The same policy applies to ordinary cash journals: correcting a bank expense
+// can reveal a negative bank GL balance, while physical register float remains protected.
+const bankExpenseState=structuredClone(capitalState);
+bankExpenseState.cfAccounts={bank:{name:'Union Bank',active:true}};
+bankExpenseState.financialMovements.opening.lines=[line(bank,100,0),line('equity:owner_capital',0,100)];
+bankExpenseState.financialMovements.draw.lines=[line('coa:6100',50,0),line(bank,0,50)];
+bankExpenseState.books.journal.draw=B.buildSingle(bankExpenseState.financialMovements.draw,{bank:'1011'}).entry;
+const bankExpenseOut=E.revise(bankExpenseState,{id:'draw',commandId:'bank-expense-negative',expectedRevision:0,prepared:{date:'2026-08-28',memo:'Correct bank expense',reference:'EXP-1',lines:[line('coa:6100',150,0),line(bank,0,150)]},reason:'Correct expense amount',actor:{uid:'manager1',role:'manager'},now:stamp('2026-09-01'),floatFloor:4000});
+assert.equal(bankExpenseOut.cashJournalRevisions.draw['1'].cashBalancesAfter[bank],-50,'ordinary bank journal correction may expose a reconciling deficit');
+// A cash-to-cash correction involving the physical register still cannot use
+// the protected float, even though the bank/wallet side is unrestricted.
+const registerTransferState=structuredClone(transferState);
+registerTransferState.cfAccounts={bank:{name:'Union Bank',active:true}};
+registerTransferState.financialMovements.walletOpening.lines=[line('asset:register_cash',5000,0),line('equity:owner_capital',0,5000)];
+registerTransferState.financialMovements.transfer.lines=[line(bank,500,0),line('asset:register_cash',0,500)];
+registerTransferState.financialMovements.transfer.amount=500;
+registerTransferState.cfLedger={bank:{movementId:'transfer',accountId:'bank',amount:500,dir:'in'},register:{movementId:'transfer',accountId:'register',amount:500,dir:'out'}};
+registerTransferState.books.journal.transfer=B.buildSingle(registerTransferState.financialMovements.transfer,{bank:'1011'}).entry;
+assert.throws(()=>E.revise(registerTransferState,{id:'transfer',commandId:'register-transfer',expectedRevision:0,prepared:{date:'2026-08-31',memo:'Correct register transfer',reference:'REGISTER-1',lines:[line(bank,1500,0),line('asset:register_cash',0,1500)]},reason:'Correct transfer amount',actor:{uid:'manager1',role:'manager'},now:stamp('2026-09-01'),floatFloor:4000}),/protected register float/);
 console.log('PASS: in-place cash journals preserve one ID, revenue, pooled custody, history and replay/period/concurrency safeguards.');
 
 // Exercise the real callable routing, account mapping and browser submission.
