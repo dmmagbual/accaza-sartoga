@@ -43,15 +43,15 @@ gsutil cp "gs://accaza-sartoga.firebasestorage.app/db-backups/accaza-<STAMP>.jso
 
 Windows PowerShell is identical (`gsutil` is cross-platform). Do **not** delete or overwrite anything in the bucket.
 
-## 4. Step 2 — Validate the envelope offline (integrity + double-entry)
+## 4. Step 2 — Verify the backup (one command, integrity + double-entry)
 
-Use the project's **own** shipped validator — full reconcile (financial checks ON):
+Run the committed verifier — pure Node, no GCP or emulator needed:
 
 ```bash
-node -e "const R=require('./functions/lib/recovery-validation');const fs=require('fs');const env=JSON.parse(fs.readFileSync('restore-drill-backup.json','utf8'));const r=R.validateEnvelope(env,{});console.log('version:',env.version,'| takenAt:',new Date(env.takenAt).toISOString());console.log('excluded:',env.excluded.join(', '));console.log('nodes:',Object.keys(env.data||{}).length);console.log('SHA-256 recomputed:',r.actualSha256);console.log('matches envelope:',r.actualSha256===env.integrity.dataSha256);console.log('VALID:',r.ok);if(!r.ok)console.log('ISSUES:\n - '+r.issues.join('\n - '));"
+node tools/verify-backup.mjs restore-drill-backup.json
 ```
 
-**Pass criteria:** `VALID: true`, `matches envelope: true`, and no ISSUES. If VALID is false, the printed issues name the exact node/row (e.g. `financialMovements/<id>: debits and credits differ by N cent(s)`). A failure here means the backup itself is suspect — stop and investigate before trusting it.
+It prints INTACT (SHA-256 matches the sealed envelope), BALANCED (every financialMovement and Books journal balances), the clearing/suspense standing at backup time, and a final **PASS** / **FAIL** (exit 0 / 1). A FAIL names the exact node/row (e.g. `financialMovements/<id>: debits and credits differ by N cent(s)`) — stop and investigate before trusting that backup. This step alone (download + verify) is a valid quick "is my latest backup good?" check; Steps 3–4 add the full restore-fidelity drill.
 
 ## 5. Step 3 — Stand up an ISOLATED target
 
