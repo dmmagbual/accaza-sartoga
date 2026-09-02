@@ -976,8 +976,8 @@ function renderDashboard(){
   ensureOverviewFullHistory();
   const fullHistory=overviewHistoryLoader.snapshot();
   const active=_rows(adminOrdersMap);
-  const historyOrders=_rows(subscriptionHub.historyStatus('orders').periodKey&& !subscriptionHub.historyStatus('orders').loading?overviewOrdersMap:fullHistory.orders);
-  const archived=_rows(subscriptionHub.historyStatus('archivedOrders').periodKey&&!subscriptionHub.historyStatus('archivedOrders').loading?archivedOrdersMap:fullHistory.archived);
+  const historyOrders=_rows(subscriptionHub.historyStatus('orders').periodKey&&subscriptionHub.historyStatus('orders').ready?overviewOrdersMap:fullHistory.orders);
+  const archived=_rows(subscriptionHub.historyStatus('archivedOrders').periodKey&&subscriptionHub.historyStatus('archivedOrders').ready?archivedOrdersMap:fullHistory.archived);
   function _isSale(o){return window.AccazaSales.qualifies(o);}
   function _tsOf(o){return window.AccazaSales.stamp(o);}
   const outcomes=mergeOverviewOrders(active,historyOrders,archived);
@@ -991,7 +991,7 @@ function renderDashboard(){
   const t=sumOrders(sales.filter(o=>_tsOf(o)>=startToday)),w=sumOrders(sales.filter(o=>_tsOf(o)>=startWeek)),m=sumOrders(sales.filter(o=>_tsOf(o)>=startMonth)),a=sumOrders(sales);
   function setCard(id,rev,cnt){const el=document.getElementById(id);if(el)el.textContent='â‚±'+rev.toLocaleString();const cel=document.getElementById(id+'Count');if(cel)cel.textContent=cnt+' order'+(cnt!==1?'s':'');}
   setCard('dashToday',t.rev,t.cnt);setCard('dashWeek',w.rev,w.cnt);setCard('dashMonth',m.rev,m.cnt);setCard('dashAllTime',a.rev,a.cnt);
-  overviewInsights.render({active:active,orders:historyOrders,archived:archived,outcomes:outcomes,sales:sales,feedReady:{orders:overviewOrdersLoaded,archivedOrders:archivedOrdersLoaded,financialMovements:overviewFinancialMovementsLoaded},historyComplete:fullHistory.complete&&!subscriptionHub.historyStatus('orders').loading&&!subscriptionHub.historyStatus('archivedOrders').loading,menuItems:menuItemsMap||{},catType:overviewCatType,drinkCategories:DRINK_CATS});
+  overviewInsights.render({active:active,orders:historyOrders,archived:archived,outcomes:outcomes,sales:sales,feedReady:{orders:overviewOrdersLoaded,archivedOrders:archivedOrdersLoaded,financialMovements:overviewFinancialMovementsLoaded},historyComplete:fullHistory.complete&&subscriptionHub.historyStatus('orders').ready&&subscriptionHub.historyStatus('archivedOrders').ready,menuItems:menuItemsMap||{},catType:overviewCatType,drinkCategories:DRINK_CATS});
 }
 
 function drawPaymentPie(gcashR,bankR){

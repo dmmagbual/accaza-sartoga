@@ -51,7 +51,7 @@ const calls=[],listeners=[];
 function rank(v){return v==null?0:typeof v==='boolean'?1:typeof v==='number'?2:typeof v==='string'?3:4;}
 function compare(a,b){return rank(a)-rank(b)||(a==null?0:a<b?-1:a>b?1:0);}
 function snapshot(target){let entries=Object.entries(data[target.path]||{}),f=target.field;if(f)entries=entries.filter(([,row])=>(!('start' in target)||compare(row[f],target.start)>=0)&&(!('end' in target)||compare(row[f],target.end)<=0));if(target.limit)entries=entries.slice(-target.limit);const map=Object.fromEntries(entries);return{val:()=>map,forEach:fn=>entries.forEach(([key,value])=>fn({key,val:()=>value}))};}
-const ops={ref:(_db,path)=>({path}),orderByChild:field=>({field}),startAt:start=>({start}),endAt:end=>({end}),endBefore:end=>({end}),limitToLast:limit=>({limit}),query:(base,...constraints)=>Object.assign({},base,...constraints),get:async target=>{calls.push(target);return snapshot(target);},onValue:(target,callback)=>{const entry={target,callback,stopped:false};listeners.push(entry);queueMicrotask(()=>{if(!entry.stopped)callback(snapshot(target));});return()=>{entry.stopped=true;};}};
+const ops={ref:(_db,path)=>({path}),orderByChild:field=>({field}),startAt:start=>({start}),endAt:end=>({end}),endBefore:end=>({end}),limitToLast:limit=>({limit}),query:(base,...constraints)=>Object.assign({},base,...constraints),get:async target=>{calls.push(target);return snapshot(target);},onValue:(target,callback,onError)=>{const entry={target,callback,onError,stopped:false};listeners.push(entry);queueMicrotask(()=>{if(!entry.stopped)callback(snapshot(target));});return()=>{entry.stopped=true;};}};
 const actual=await readSalesPeriod({},ops,'orders',p),expected=Object.keys(data.orders).filter(k=>salesStamp(data.orders[k])>=p.startAt&&salesStamp(data.orders[k])<=p.endAt).sort();
 assert.deepEqual(Object.keys(actual).sort(),expected);assert(!calls.some(q=>q.limit));
 assert(calls.some(q=>q.field==='completedAt'));assert(calls.some(q=>q.field==='receivedAt'));assert(calls.some(q=>q.field==='archivedAt'));
@@ -64,6 +64,10 @@ hub.activate('saleshistory');hub.authorize();await hub.whenReady(['orders','arch
 assert.deepEqual(Object.keys(feeds.orders).sort(),expected);assert(feeds.activeOrders.ancient);
 assert(feeds.financialMovements.refund_cross,'Later refund must be fetched by source reference');assert(!feeds.financialMovements.unrelated);
 assert.equal(hub.historyStatus('orders').hasOlder,false);
+const failing=listeners.find(l=>!l.stopped&&l.target.path==='orders');const log=console.error;console.error=()=>{};failing.onError(new Error('TEST_PERMISSION_DENIED'));console.error=log;
+assert.equal(hub.historyStatus('orders').ready,false);await assert.rejects(hub.whenReady(['orders']),/TEST_PERMISSION_DENIED/);
+periods.setMonth('sales','2026-09');await hub.whenReady(['orders','archivedOrders','financialMovements']);assert.equal(hub.historyStatus('orders').ready,true);
+
 hub.activate('analytics');await hub.whenReady(['orders','archivedOrders']);assert(feeds.orders.prior,'Analytics previous-period comparisons must be loaded');
 hub.activate('dashboard');await hub.whenReady(['orders','archivedOrders']);assert(!feeds.orders.prior);
 periods.setMonth('sales','2026-08');assert.equal(hub.historyStatus('orders').loading,true);await hub.whenReady(['orders','archivedOrders']);assert(feeds.orders.prior);assert(!feeds.orders.cross);
