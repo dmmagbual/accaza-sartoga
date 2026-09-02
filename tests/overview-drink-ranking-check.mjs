@@ -5,7 +5,7 @@ globalThis.window={AccazaDate:{key(){return'2026-09-02';}},AccazaSales:{
   stamp(order){return Number(order.completedAt)||Number(order.receivedAt)||Number(order.timestamp)||0;}
 }};
 
-const {buildDrinkRanking,overviewDayRange}=await import('../assets/js/admin/overview-insights.mjs');
+const {buildDrinkRanking,overviewDayRange,overviewRankingRange}=await import('../assets/js/admin/overview-insights.mjs');
 const day=overviewDayRange('2026-09-02'),inside=Date.parse('2026-09-02T12:00:00+08:00'),outside=Date.parse('2026-09-03T00:00:00+08:00');
 const data={
   menuItems:{espresso:{name:'Espresso',cat:'coffee'},croissant:{name:'Croissant',cat:'pastry'},latte:{name:'Latte',cat:'coffee'},mocha:{name:'Mocha',cat:'coffee'}},
@@ -27,7 +27,10 @@ const byKey=Object.fromEntries(ranking.items.map((item)=>[item.key,item]));
 if(byKey.espresso.units!==2||Math.round(byKey.espresso.revenue)!==200)throw new Error('Completed drink quantity or revenue was calculated incorrectly.');
 if(byKey.latte.units!==1||Math.round(byKey.latte.revenue)!==100)throw new Error('Partial refunds were not allocated to net revenue correctly.');
 if(byKey.mocha.units!==1||Math.round(byKey.mocha.revenue)!==0)throw new Error('A completed fully refunded sale changed item units even though the refund has no item-level quantity.');
+const period=overviewRankingRange('2026-08-01','2026-08-31');
+if(period.from!=='2026-08-01'||period.to!=='2026-08-31'||period.start!==Date.parse('2026-08-01T00:00:00+08:00')||period.end!==Date.parse('2026-08-31T23:59:59.999+08:00'))throw new Error('Full ranking custom date range does not use Philippine calendar boundaries.');
 const fs=await import('node:fs/promises');
 const [html,source,styles]=await Promise.all([fs.readFile(new URL('../src/html/admin/60-overlays.html',import.meta.url),'utf8'),fs.readFile(new URL('../assets/js/admin/overview-insights.mjs',import.meta.url),'utf8'),fs.readFile(new URL('../assets/css/admin-backoffice.css',import.meta.url),'utf8')]);
 if(!html.includes('id="printDrinkRankingBtn"')||!source.includes("document.title='Accaza Drink Ranking - '")||!source.includes('window.print()')||!styles.includes('body.overview-ranking-print #drinkRankingModal'))throw new Error('Full ranking PDF print action or complete-list print layout is missing.');
+for(const marker of ['id="drinkRankingFrom"','id="drinkRankingTo"','id="drinkRankingMonth"','id="drinkRankingApply"'])if(!html.includes(marker))throw new Error('Full ranking date range or monthly filter is missing: '+marker);
 console.log('PASS: Full drink ranking uses the Sales History sale authority, Manila date, drink-only lines, and exact completed unit total.');
