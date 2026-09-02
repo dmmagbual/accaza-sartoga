@@ -4,7 +4,7 @@ function receiveStock(id){
   if(recipeRequired&&!activeSkus.length){alert('“'+i.name+'” is a recipe SKU with no active approved brand. Add a brand before receiving stock.');openSkuManager(id);return;}
   var before=Number(i.stock)||0, oldCost=Number(i.cost)||0, unit=i.unit||'';
   var cf=window.__cf; var accs=(cf&&cf.accounts&&cf.accounts())||[],payAccs=accs.filter(function(x){return !x.disabled;});
-  var accOpts=accs.map(function(x){return '<option value="'+esc(x.id)+'"'+(x.disabled?' disabled':'')+'>'+esc(x.name)+' · '+peso(x.balance)+(x.disabled?' · unavailable for purchases':'')+'</option>';}).join('');
+  var accOpts='<option value="">\u2014 choose cash / bank / e-wallet \u2014</option>'+accs.map(function(x){return '<option value="'+esc(x.id)+'"'+(x.disabled?' disabled':'')+'>'+esc(x.name)+' · '+peso(x.balance)+(x.disabled?' · unavailable for purchases':'')+'</option>';}).join('');
   var mask=document.createElement('div'); mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
   mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:460px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
     +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Receive stock — '+esc(i.name)+'</div>'
@@ -27,6 +27,9 @@ function receiveStock(id){
   mask.querySelector('#rcQty').oninput=prev; mask.querySelector('#rcCost').oninput=prev; mask.querySelector('#rcAvg').onchange=prev;
   function syncReceiptSku(){var sid=mask.querySelector('#rcSku').value,sk=inventorySkuMap[sid];if(sk)mask.querySelector('#rcBrand').value=sk.brand||'';else if(recipeRequired)mask.querySelector('#rcBrand').value='';}
   mask.querySelector('#rcSku').onchange=syncReceiptSku; syncReceiptSku();
+  function rcChoosePay(value){var r=mask.querySelector('input[name=rcPay][value="'+value+'"]');if(r&&!r.disabled&&!r.checked){r.checked=true;}}
+  var rcAcctEl=mask.querySelector('#rcAcct');if(rcAcctEl){rcAcctEl.onfocus=function(){rcChoosePay('paid');};rcAcctEl.onchange=function(){rcChoosePay('paid');};}
+  var rcDueEl=mask.querySelector('#rcDue');if(rcDueEl){rcDueEl.onfocus=function(){rcChoosePay('account');};rcDueEl.onchange=function(){rcChoosePay('account');};}
   mask.querySelector('#rcCancel').onclick=close;
   var pendingReceiptId='';
   mask.querySelector('#rcOk').onclick=function(){
