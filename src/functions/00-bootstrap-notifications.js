@@ -20,6 +20,7 @@ const Financial = require("./lib/financial");
 const OfflineSync = require("./lib/offline-sync");
 const PaymentVerification = require("./lib/payment-verification");
 const OrderStatus = require("./lib/order-status");
+const SupplierMaster = require("./lib/supplier-master");
 const OperationalExceptions = require("./lib/operational-exceptions");
 const BooksBridge = require("./lib/books-bridge");
 const FinancialClose = require("./lib/financial-close");

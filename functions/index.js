@@ -20,6 +20,7 @@ const Financial = require("./lib/financial");
 const OfflineSync = require("./lib/offline-sync");
 const PaymentVerification = require("./lib/payment-verification");
 const OrderStatus = require("./lib/order-status");
+const SupplierMaster = require("./lib/supplier-master");
 const OperationalExceptions = require("./lib/operational-exceptions");
 const BooksBridge = require("./lib/books-bridge");
 const FinancialClose = require("./lib/financial-close");
@@ -561,7 +562,10 @@ exports.manageSupplier = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => {
     const db=getDatabase(),actor=await requirePortalPermission(db,request,["purchases","petty","payables"]),data=request.data||{},action=financeText(data.action,20).toLowerCase(),now=Date.now();
-    if(!["create","update","deactivate","reactivate","initialize_legacy","validate"].includes(action))throw new HttpsError("invalid-argument","Supplier action is invalid.");
+    if(!["create","update","deactivate","reactivate","initialize_legacy","validate","merge","delete","references"].includes(action))throw new HttpsError("invalid-argument","Supplier action is invalid.");
+    /* Merging and deleting a master record rewrite or remove links that purchases, payables,
+       advances, stock receipts and brands depend on, so they are owner-level operations. */
+    if(["merge","delete"].includes(action)&&!["owner","superadmin"].includes(actor.role))throw new HttpsError("permission-denied","Only an owner or superadmin can merge or delete a supplier master record.");
     if(action==="validate"){const supplier=await requireActiveSupplier(db,data.supplierId,data.name);return{supplierId:supplier.id,name:supplier.name,active:true};}
     if(action==="initialize_legacy"){
       const [suppliersSnap,purchasesSnap,vouchersSnap,payablesSnap,receiptsSnap,batchesSnap]=await Promise.all([db.ref("/suppliers").get(),db.ref("/purchaseInvoices").get(),db.ref("/pettyCashVouchers").get(),db.ref("/payables").get(),db.ref("/stockReceipts").get(),db.ref("/inventoryBatch").get()]),suppliers=suppliersSnap.val()||{},purchases=purchasesSnap.val()||{},vouchers=vouchersSnap.val()||{},payables=payablesSnap.val()||{},receipts=receiptsSnap.val()||{},batches=batchesSnap.val()||{},byKey={},writes={};
@@ -588,6 +592,52 @@ exports.manageSupplier = onCall(
     }
     if(action==="reactivate"){
       await db.ref().update({[`suppliers/${supplierId}/active`]:true,[`suppliers/${supplierId}/deactivatedAt`]:null,[`suppliers/${supplierId}/deactivatedBy`]:null,[`suppliers/${supplierId}/reactivatedAt`]:now,[`suppliers/${supplierId}/reactivatedBy`]:actor.uid,[`operationalAudit/${now}_supplier_reactivate_${supplierId}`]:operationalAuditRecord("reactivate_supplier","supplier",supplierId,actor,{name:supplier.name||""})});return{supplierId,active:true};
+    }
+    /* SupplierMaster owns the list of places a supplier id is stored and still drives
+       behaviour, and the write plan that repoints them. See functions/lib/supplier-master.js
+       for why posted Finance movements are deliberately excluded. */
+    const supplierReferences=async(id)=>{
+      const names=SupplierMaster.REFERENCE_COLLECTIONS.concat(["shifts"]);
+      const snaps=await Promise.all(names.map((name)=>db.ref(`/${name}`).get()));
+      const collections={};names.forEach((name,ix)=>{collections[name]=snaps[ix].val()||{};});
+      return SupplierMaster.collectReferences(collections,id);
+    };
+    if(action==="references"){const hits=await supplierReferences(supplierId);return{supplierId,name:financeText(supplier.name,120),references:hits,total:hits.total};}
+    if(action==="merge"){
+      /* Fold a duplicate into the record that survives. Live links are repointed so future
+         lookups, advance matching and brand mapping follow the survivor; the point-in-time
+         supplier NAME already written on each historical document is left exactly as posted,
+         and no cash, inventory quantity, subledger balance or Books journal amount moves. */
+      const targetId=financeKey(data.targetId,"Surviving supplier ID"),reason=financeText(data.reason,300);
+      if(!reason)throw new HttpsError("invalid-argument","A merge reason is required.");
+      if(targetId===supplierId)throw new HttpsError("invalid-argument","Choose a different surviving supplier.");
+      if(supplier.mergedInto)throw new HttpsError("failed-precondition",`This supplier was already merged into ${supplier.mergedInto}.`);
+      const target=(await db.ref(`/suppliers/${targetId}`).get()).val();
+      if(!target)throw new HttpsError("not-found","The surviving supplier was not found.");
+      if(target.mergedInto)throw new HttpsError("failed-precondition","The surviving supplier has itself been merged. Choose the final record.");
+      if(target.active===false)throw new HttpsError("failed-precondition","The surviving supplier is inactive. Reactivate it first.");
+      const hits=await supplierReferences(supplierId),targetName=financeText(target.name,120),writes=SupplierMaster.planMergeWrites(hits,targetId);
+      const mergedKey=supplierNameKey(supplier.name),mergedIndexId=crypto.createHash("sha256").update(mergedKey).digest("hex").slice(0,32);
+      /* The duplicate's spelling now resolves to the survivor instead of blocking reuse. */
+      if(mergedKey)writes[`supplierNameIndex/${mergedIndexId}`]={supplierId:targetId,normalizedName:mergedKey,claimedAt:now,redirectedFrom:supplierId};
+      Object.assign(writes,{[`suppliers/${supplierId}/mergedInto`]:targetId,[`suppliers/${supplierId}/mergedAt`]:now,[`suppliers/${supplierId}/mergedBy`]:actor.uid,[`suppliers/${supplierId}/active`]:false,
+        [`operationalAudit/${now}_supplier_merge_${supplierId}`]:operationalAuditRecord("merge_supplier","supplier",supplierId,actor,{mergedInto:targetId,mergedName:financeText(supplier.name,120),survivingName:targetName,reason,repointed:{purchaseInvoices:hits.purchaseInvoices.length,payables:hits.payables.length,pettyCashVouchers:hits.pettyCashVouchers.length,stockReceipts:hits.stockReceipts.length,inventoryBatch:hits.inventoryBatch.length,inventorySku:hits.inventorySku.length,shiftAdvances:hits.shiftAdvances.length},accounting:"No cash, inventory quantity, subledger balance, Finance movement or Books journal amount changed. Historical supplier name snapshots and posted financial movements are untouched; only the live supplier link moved to the surviving master."})});
+      await db.ref().update(writes);
+      return{supplierId,mergedInto:targetId,survivingName:targetName,repointed:hits.total};
+    }
+    if(action==="delete"){
+      /* Only a record that nothing points at can be removed. Anything with history is merged
+         or deactivated instead, so no document is ever left pointing at a missing master. */
+      const reason=financeText(data.reason,300);if(!reason)throw new HttpsError("invalid-argument","A deletion reason is required.");
+      if(supplier.mergedInto)throw new HttpsError("failed-precondition","A merged supplier is part of the audit trail and cannot be deleted.");
+      const hits=await supplierReferences(supplierId);
+      if(hits.total>0)throw new HttpsError("failed-precondition",`This supplier is used by ${SupplierMaster.referenceSummary(hits)}. Merge it into the correct supplier instead of deleting it.`);
+      const key=supplierNameKey(supplier.name),indexId=crypto.createHash("sha256").update(key).digest("hex").slice(0,32),writes={[`suppliers/${supplierId}`]:null};
+      const index=(await db.ref(`/supplierNameIndex/${indexId}`).get()).val();
+      if(index&&financeText(index.supplierId,160)===supplierId)writes[`supplierNameIndex/${indexId}`]=null;
+      writes[`operationalAudit/${now}_supplier_delete_${supplierId}`]=operationalAuditRecord("delete_supplier","supplier",supplierId,actor,{name:financeText(supplier.name,120),reason,accounting:"The record had no purchases, payables, advances, stock receipts, batches or brands linked to it, so nothing financial or operational referenced it."});
+      await db.ref().update(writes);
+      return{supplierId,deleted:true};
     }
     const name=financeText(data.name,120).trim().replace(/\s+/g," "),key=supplierNameKey(name),oldKey=supplierNameKey(supplier.name);if(!name)throw new HttpsError("invalid-argument","Supplier name is required.");
     const indexId=crypto.createHash("sha256").update(key).digest("hex").slice(0,32),index=(await db.ref(`/supplierNameIndex/${indexId}`).get()).val();if(index&&index.supplierId!==supplierId)throw new HttpsError("already-exists","Another supplier already uses this name.");
