@@ -39,7 +39,7 @@ function rerenderOrderTabs(){
 }
 function init(){
   var a=A();
-  a.subscribe('orders',function(s){ordersMap=s.val()||{};captureCompletedAt(ordersMap);rerenderOrderTabs();});
+  a.subscribe('orders',function(s){ordersMap=s.val()||{};rerenderOrderTabs();});
   a.subscribe('archivedOrders',function(s){archMap=s.val()||{};rerenderOrderTabs();});
   a.subscribe('reviews',function(s){reviewsMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
   a.subscribe('feedbacks',function(s){feedbacksMap=s.val()||{};});
@@ -60,5 +60,4 @@ function init(){
 // extend the POS tab switcher to also render our tabs
 window.__accazaRegisterModule('analytics',function(name){ if(name==='analytics')renderAnalytics(); if(name==='payouts')renderPayouts(); if(name==='stockvalue')renderStockValue(); if(name==='dailyreport')renderDailyReport(); });
 
-// capture completedAt for ops metrics (idempotent, additive)
-function captureCompletedAt(all){var a=A();Object.keys(all).forEach(function(id){var o=all[id];if(o&&o.status==='Completed'&&!o.completedAt){a.update(a.ref(a.db,'orders/'+id),{completedAt:Date.now()});}});}
+// Reporting is read-only: missing historical dates use the shared sales authority fallback.

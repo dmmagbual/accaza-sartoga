@@ -2,12 +2,13 @@
 /* ══════════ ANALYTICS ══════════ */
 function renderAnalytics(){
   var root=document.getElementById('analyticsRoot'); if(!root)return;
+  if(window.AccazaAdminPeriods)window.AccazaAdminPeriods.bind({scope:'sales',fromId:'analyticsPeriodFrom',toId:'analyticsPeriodTo',monthId:'analyticsPeriodMonth',applyId:'analyticsPeriodApply',labelId:'analyticsPeriodLabel'});
   sharedPeriod();
-  try{ renderAnalyticsBody();ensureAnalyticsHistory(); }
+  try{ ensureAnalyticsHistory();if(analyticsHistoryLoading){root.innerHTML='<div class="az-note">Loading the selected sales period and comparison period… If loading fails, press Apply to retry.</div>';return;}renderAnalyticsBody(); }
   catch(err){ console.error('renderAnalytics error',err);
     root.innerHTML='<div class="pz-h">📊 Analytics</div><div style="background:#fde8e8;border:1px solid #f5b5b5;border-radius:8px;padding:1rem;color:#a11;font-size:0.85rem;">Analytics couldn’t finish building the shared-period report: <b>'+esc(String((err&&err.message)||err))+'</b>.</div>'; }
 }
-window.addEventListener('accaza-report-period',function(){var root=document.getElementById('analyticsRoot');if(root&&root.offsetParent!==null)renderAnalytics();});
+window.addEventListener('accaza-admin-period',function(e){if(!e.detail||e.detail.scope!=='sales')return;var root=document.getElementById('analyticsRoot');if(root&&root.offsetParent!==null)renderAnalytics();});
 function renderAnalyticsBody(){
   var root=document.getElementById('analyticsRoot');if(!root)return;
   var b=rangeBounds(),from=b[0],to=b[1];var span=to-from;
@@ -27,17 +28,17 @@ function renderAnalyticsBody(){
   var maxDay=Math.max.apply(null,dayKeys.map(function(k){return byDay[k]||0;}).concat([1]));
   var hi=null,lo=null;dayKeys.forEach(function(k){var v=byDay[k]||0;if(hi===null||v>byDay[hi])hi=k;if(lo===null||v<byDay[lo])lo=k;});
   // hour
-  var byHour={};cur.forEach(function(x){var h=new Date(x.ts).getHours();byHour[h]=(byHour[h]||0)+x.net;});
+  var byHour={};cur.forEach(function(x){var h=new Date(x.ts+8*3600000).getUTCHours();byHour[h]=(byHour[h]||0)+x.net;});
   var maxHour=Math.max.apply(null,Object.keys(byHour).map(function(h){return byHour[h];}).concat([1]));
   // dow
-  var dowN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],byDow={};cur.forEach(function(x){var d=new Date(x.ts).getDay();byDow[d]=(byDow[d]||0)+x.net;});
+  var dowN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],byDow={};cur.forEach(function(x){var d=new Date(x.ts+8*3600000).getUTCDay();byDow[d]=(byDow[d]||0)+x.net;});
   var maxDow=Math.max.apply(null,Object.keys(byDow).map(function(d){return byDow[d];}).concat([1]));
   // category / payment / type / items
   var byCat={},byPay={},byType={},items={};var totItems=0;
   cur.forEach(function(x){
     byPay[x.payment]=(byPay[x.payment]||0)+x.net;
     byType[x.type]=(byType[x.type]||0)+x.net;
-    var itemFactor=x.gross>0?Math.max(0,x.net/x.gross):0;if(itemFactor<=0)return;(x.lineItems||[]).forEach(function(li){
+    var itemFactor=x.gross>0?Math.max(0,x.net/x.gross):0;(x.lineItems||[]).forEach(function(li){
       var mi=A().menuItemsMap[li.itemKey];var cat=mi?(A().getCatLabel?A().getCatLabel(mi.cat):mi.cat):'Other';
       byCat[cat]=(byCat[cat]||0)+li.qty*li.unitTotal;
       totItems+=li.qty;
@@ -47,7 +48,7 @@ function renderAnalyticsBody(){
     });
   });
   // prev-period item units for trend
-  var pItems={};prev.forEach(function(x){if(x.net<=0)return;(x.lineItems||[]).forEach(function(li){var mi=A().menuItemsMap[li.itemKey],ct=(window.__posSettings&&window.__posSettings.catType)||{};if(mi&&ct[mi.cat]==='food')return;pItems[li.name]=(pItems[li.name]||0)+li.qty;});});
+  var pItems={};prev.forEach(function(x){(x.lineItems||[]).forEach(function(li){var mi=A().menuItemsMap[li.itemKey],ct=(window.__posSettings&&window.__posSettings.catType)||{};if(mi&&ct[mi.cat]==='food')return;pItems[li.name]=(pItems[li.name]||0)+li.qty;});});
   var itemArr=Object.values(items);
   var topByRev=itemArr.slice().sort(function(a,b){return b.rev-a.rev;});
   var topByProfit=itemArr.slice().filter(function(i){return i.cost>0;}).map(function(i){return Object.assign({profit:i.rev-i.cost,margin:i.rev>0?(i.rev-i.cost)/i.rev*100:0},i);}).sort(function(a,b){return b.profit-a.profit;});
@@ -66,22 +67,22 @@ function renderAnalyticsBody(){
   var rIn=rlist.filter(function(r){return r.ts>=from&&r.ts<to;});
   var avgAll=rlist.length?rlist.reduce(function(s,r){return s+r.rating;},0)/rlist.length:0;
   // ops
-  var ordersInRange=allOrders().filter(function(o){var ts=o.timestamp||Date.parse(o.date)||0;return ts>=from&&ts<to;});
+  var ordersInRange=allOrders().filter(function(o){var ts=window.AccazaSales.stamp(o);return ts>=from&&ts<to;});
   var cancelled=ordersInRange.filter(function(o){return['Declined','Cancelled','Canceled','Voided'].indexOf(o.status)>-1||o.voided||(o.status==='Archived'&&['Declined','Cancelled'].indexOf(o.prevStatus)>-1);}).length;
   var cancelRate=ordersInRange.length?cancelled/ordersInRange.length*100:0;
-  var prepList=cur.filter(function(x){return x.o.completedAt&&x.ts&&x.o.source!=='pos';}).map(function(x){return(x.o.completedAt-x.ts)/60000;}).filter(function(m){return m>0&&m<600;});
+  var prepList=cur.filter(function(x){return x.o.completedAt&&x.ts&&x.o.source!=='pos';}).map(function(x){return(Number(x.o.completedAt)-Number(x.o.timestamp))/60000;}).filter(function(m){return m>0&&m<600;});
   var avgPrep=prepList.length?prepList.reduce(function(s,m){return s+m;},0)/prepList.length:null;
   var target=15;var onTime=prepList.length?prepList.filter(function(m){return m<=target;}).length/prepList.length*100:null;
   var html='<div class="pz-h">📊 Analytics</div><p class="pz-sub">Every figure here traces to your own orders, recipes, and reviews.</p>';
   var _azF=tsToDate(from), _azT=tsToDate(to-86400000); // local date parts (not UTC) so date inputs match the range in UTC+10
-  html+='<div class="az-note" id="azActive" style="margin:0 0 0.25rem;font-weight:600;color:var(--bd);">📅 Shared sales period: '+azRangeLabel(from,to)+'</div>'
-    +'<div class="az-note" id="azHistoryNote" style="margin:0 0 0.7rem;">'+(analyticsHistoryLoading?'Loading complete sales history…':'Complete available sales history loaded.')+'</div>';
+  html+='<div class="az-note" id="azActive" style="margin:0 0 0.25rem;font-weight:600;color:var(--bd);">📅 Sales period: '+azRangeLabel(from,to)+'</div>'
+    +'<div class="az-note" id="azHistoryNote" style="margin:0 0 0.7rem;">'+(analyticsHistoryLoading?'Loading complete sales history…':'Selected sales period and equal-length previous period loaded.')+'</div>';
   // KPIs
   html+='<div class="az-kpis">'
-    +kpi('Net sales',peso0(net),trend)
-    +kpi('Gross sales',peso0(gross))
+    +kpi('Net sales',peso(net),trend)
+    +kpi('Gross sales',peso(gross))
     +kpi('Transactions',tx)
-    +kpi('Avg order value',peso0(aov))
+    +kpi('Avg order value',peso(aov))
     +kpi('Avg daily net',peso0(net/days))
     +kpi('Gross margin',(Math.round(margin*10)/10)+'%')
     +'</div>';
