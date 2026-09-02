@@ -1,4 +1,5 @@
   var accOpts=accs.map(function(x){return '<option value="'+esc(x.id)+'"'+(P.acct===x.id?' selected':'')+(x.disabled?' disabled':'')+'>'+esc(x.name)+' · '+peso(x.balance)+(x.disabled?' · unavailable for purchases':'')+'</option>';}).join('');
+  var supplierOpts=purchaseSupplierNames().map(function(name){return '<option value="'+esc(name)+'"></option>';}).join('');
   var invList=ings().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
   function itemOpts(sel){return '<option value="">— pick item —</option>'+invList.map(function(i){var required=recipeUsesInventory(i.id),n=activeSkusFor(i.id).length;return '<option value="'+esc(i.id)+'"'+(i.id===sel?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+') · '+ingType(i)+(required?(n?' · '+n+' approved brand'+(n===1?'':'s'):' · BRAND REQUIRED'):'')+'</option>';}).join('');}
   function unitOpts(list,sel){return list.map(function(u){return '<option'+(uNorm(u)===uNorm(sel)?' selected':'')+'>'+esc(u)+'</option>';}).join('');}
@@ -70,7 +71,7 @@
   root.innerHTML='<div class="purchase-page-head"><div><div class="pz-h">Purchases <span>Goods received</span></div><p class="pz-sub">Record a supplier delivery and update stock in one clear receiving sheet.</p></div><div class="purchase-head-note">Approved brands keep receipts accurate while stock and costing stay pooled under the common item.</div></div>'
     +'<div class="pz-card purchase-sheet"><div class="purchase-sheet-banner"><div><span class="purchase-eyebrow">New delivery</span><h3>Supplier invoice</h3></div><span class="purchase-draft-status">Draft · not yet received</span></div>'
     +'<div class="purchase-section"><div class="purchase-section-head"><span class="purchase-step">1</span><div><b>Delivery details</b><small>Identify who supplied the stock and when it arrived.</small></div></div><div class="purchase-details-grid">'
-      +'<div><span class="pz-lbl">Supplier</span><input class="pz-in" id="purSupplier" value="'+esc(P.supplier)+'" placeholder="Supplier name"/></div>'
+      +'<div><span class="pz-lbl">Supplier</span><input class="pz-in" id="purSupplier" list="purSupplierOptions" autocomplete="off" value="'+esc(P.supplier)+'" placeholder="Type to find a supplier"/><datalist id="purSupplierOptions">'+supplierOpts+'</datalist></div>'
       +'<div><span class="pz-lbl">Invoice / reference</span><input class="pz-in" id="purRef" value="'+esc(P.ref)+'" placeholder="Optional"/></div>'
       +'<div><span class="pz-lbl">Date</span><input class="pz-in" id="purDate" type="date" value="'+esc(P.date)+'"/></div>'
       +'<div><span class="pz-lbl">Received by</span><input class="pz-in" id="purBy" value="'+esc(P.by)+'" placeholder="Staff name"/></div>'
