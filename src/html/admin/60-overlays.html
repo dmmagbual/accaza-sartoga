@@ -9,6 +9,32 @@
     </div>
   </div>
 </div>
+<div class="overview-ranking-modal" id="drinkRankingModal" role="dialog" aria-modal="true" aria-labelledby="drinkRankingHeading" hidden>
+  <section class="overview-ranking-panel" tabindex="-1">
+    <header class="overview-ranking-header">
+      <div><p>Completed drink sales</p><h2 id="drinkRankingHeading">Full drink ranking</h2><span id="drinkRankingMetricTitle">Ranked by quantity</span><span id="drinkRankingDateLabel">Today</span></div>
+      <button type="button" id="closeDrinkRankingBtn" aria-label="Close full drink ranking">✕</button>
+    </header>
+    <div class="overview-ranking-controls">
+      <label for="drinkRankingDate">Sales date<input type="date" id="drinkRankingDate"/></label>
+      <button type="button" id="drinkRankingToday">Today</button>
+      <button type="button" class="overview-ranking-print-button" id="printDrinkRankingBtn" disabled>Print / Save PDF</button>
+      <div class="overview-metric-toggle" aria-label="Rank full drink list by"><button type="button" class="active" aria-pressed="true" data-overview-metric="units">Quantity</button><button type="button" aria-pressed="false" data-overview-metric="revenue">Revenue</button></div>
+    </div>
+    <div class="overview-ranking-summary" aria-label="Selected date drink totals">
+      <div><span>Completed drinks</span><strong id="drinkRankingTotal">—</strong></div>
+      <div><span>Ranked drinks</span><strong id="drinkRankingCount">—</strong></div>
+      <div><span>Sales with drinks</span><strong id="drinkRankingOrders">—</strong></div>
+    </div>
+    <p class="overview-ranking-status" id="drinkRankingStatus">Loading complete Sales History data…</p>
+    <div class="overview-ranking-table-wrap">
+      <table class="overview-ranking-table">
+        <thead><tr><th>Rank</th><th>Drink</th><th>Quantity</th><th>Net revenue</th></tr></thead>
+        <tbody id="drinkRankingBody"><tr><td colspan="4" class="overview-ranking-empty">Choose a sales date to see the complete ranking.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</div>
 <!-- CHATBOT -->
 <div class="chat-bubble">
   <button class="chat-toggle-btn" onclick="toggleChat()"><div class="steam"><span></span><span></span><span></span></div>☕</button>
