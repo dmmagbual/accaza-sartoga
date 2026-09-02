@@ -21,8 +21,34 @@ function createOverviewHistoryLoader(deps){
   return{load:load,snapshot:function(){return{orders:state.orders,archived:state.archived,complete:!!(state.orders&&state.archived),loading:state.loading};}};
 }
 
+function overviewDateKey(){return window.AccazaDate&&window.AccazaDate.key?window.AccazaDate.key():new Date().toISOString().slice(0,10);}
+function overviewDayRange(date){var key=/^\d{4}-\d{2}-\d{2}$/.test(date||'')?date:overviewDateKey();return{date:key,start:Date.parse(key+'T00:00:00+08:00'),end:Date.parse(key+'T23:59:59.999+08:00')};}
+function overviewDateLabel(date){var p=String(date||'').split('-'),d=new Date(Date.UTC(Number(p[0]),Number(p[1])-1,Number(p[2]),12));return d.toLocaleDateString('en-PH',{timeZone:'Asia/Manila',year:'numeric',month:'long',day:'numeric'});}
+function overviewDrinkLine(li,data){
+  var menu=(data&&data.menuItems)||{},types=(data&&data.catType)||{},mi=menu[li&&li.itemKey],cat=(mi&&mi.cat)||(li&&li.categoryId)||'',type=types[cat];
+  if(type)return type==='drink';
+  if(((data&&data.drinkCategories)||[]).indexOf(cat)>-1)return true;
+  return !/(?:food|pastr|bakery|meal)/i.test([cat,li&&li.categoryName].filter(Boolean).join(' '));
+}
+function buildDrinkRanking(rows,data,dateRange){
+  var items={},totalUnits=0,orderIds={},r=dateRange||null;
+  (rows||[]).forEach(function(o,index){
+    if(!o||(window.AccazaSales.qualifies&&!window.AccazaSales.qualifies(o)))return;
+    var ts=window.AccazaSales.stamp(o);if(r&&(ts<r.start||ts>r.end))return;
+    var amounts=window.AccazaSales.amounts(o),factor=amounts.gross>0?Math.max(0,amounts.net/amounts.gross):0,hasDrink=false;
+    (Array.isArray(o.lineItems)?o.lineItems:[]).forEach(function(li){
+      if(!li||!overviewDrinkLine(li,data))return;
+      var qty=Math.max(0,Number(li.qty)||0),menu=(data&&data.menuItems)||{},mi=menu[li.itemKey],name=li.name||(mi&&mi.name)||li.itemKey;if(!name||qty<=0)return;
+      var key=String(li.itemKey||name).toLowerCase(),item=items[key]||(items[key]={key:key,name:name,units:0,revenue:0});
+      item.units+=qty;item.revenue+=qty*(Number(li.unitTotal)||0)*factor;totalUnits+=qty;hasDrink=true;
+    });
+    if(hasDrink)orderIds[String(o.id||o.orderId||o.key||o._overviewKey||('sale-'+index))]=true;
+  });
+  return{items:Object.values(items),totalUnits:totalUnits,orderCount:Object.keys(orderIds).length};
+}
+
 function createOverviewInsights(deps){
-  var state={metric:'units',latest:null,bound:false};
+  var state={metric:'units',latest:null,bound:false,rankingDate:'',rankingOpen:false,lastFocus:null};
   function reportPeriod(){return window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get():{mode:'30d',count:1,from:'',to:'',label:'Last 30 days'};}
   function stamp(o){return window.AccazaSales.stamp(o);}
   function dayStart(d){var x=new Date(d);x.setHours(0,0,0,0);return x.getTime();}
@@ -39,12 +65,21 @@ function createOverviewInsights(deps){
   }
   function bind(){
     if(state.bound)return;state.bound=true;
-    var from=document.getElementById('reportPeriodFrom'),to=document.getElementById('reportPeriodTo'),apply=document.getElementById('reportPeriodApply'),all=document.getElementById('reportPeriodAll');
+    var from=document.getElementById('reportPeriodFrom'),to=document.getElementById('reportPeriodTo'),apply=document.getElementById('reportPeriodApply'),all=document.getElementById('reportPeriodAll'),open=document.getElementById('openDrinkRankingBtn'),modal=document.getElementById('drinkRankingModal'),close=document.getElementById('closeDrinkRankingBtn'),date=document.getElementById('drinkRankingDate'),today=document.getElementById('drinkRankingToday'),print=document.getElementById('printDrinkRankingBtn');
     function renderPeriodControls(){var p=reportPeriod();if(from)from.value=p.from||p.customFrom||'';if(to)to.value=p.to||p.customTo||'';}
     if(apply)apply.addEventListener('click',function(){if(!from||!to||!from.value||!to.value)return;if(from.value>to.value){alert('The start date must be on or before the end date.');return;}window.AccazaReportPeriod.set({mode:'custom',customFrom:from.value,customTo:to.value});});
     if(all)all.addEventListener('click',function(){window.AccazaReportPeriod.set({mode:'all'});});
     if(window.addEventListener)window.addEventListener('accaza-report-period',function(){renderPeriodControls();paint();});renderPeriodControls();
     document.querySelectorAll('[data-overview-metric]').forEach(function(btn){btn.addEventListener('click',function(){state.metric=this.dataset.overviewMetric;select();paint();});});
+    function closeRanking(){if(!modal||modal.hidden)return;modal.hidden=true;state.rankingOpen=false;document.body.classList.remove('overview-ranking-open');if(state.lastFocus&&state.lastFocus.focus)state.lastFocus.focus();}
+    function openRanking(){if(!modal)return;state.rankingDate=state.rankingDate||overviewDateKey();state.lastFocus=document.activeElement;state.rankingOpen=true;modal.hidden=false;document.body.classList.add('overview-ranking-open');if(date){date.value=state.rankingDate;date.max=overviewDateKey();}renderFullRanking();var panel=modal.querySelector('.overview-ranking-panel');if(panel&&panel.focus)panel.focus();}
+    if(open)open.addEventListener('click',openRanking);
+    if(close)close.addEventListener('click',closeRanking);
+    if(modal)modal.addEventListener('click',function(event){if(event.target===modal)closeRanking();});
+    if(date)date.addEventListener('change',function(){if(!this.value)return;state.rankingDate=this.value;renderFullRanking();});
+    if(today)today.addEventListener('click',function(){state.rankingDate=overviewDateKey();if(date)date.value=state.rankingDate;renderFullRanking();});
+    if(print)print.addEventListener('click',function(){if(!state.latest||state.latest.historyComplete!==true){alert('The complete Sales History data is still loading. Try printing again in a moment.');return;}var oldTitle=document.title,cleaned=false;function cleanup(){if(cleaned)return;cleaned=true;document.body.classList.remove('overview-ranking-print');document.title=oldTitle;}document.title='Accaza Drink Ranking - '+(state.rankingDate||overviewDateKey());document.body.classList.add('overview-ranking-print');if(window.addEventListener)window.addEventListener('afterprint',cleanup,{once:true});window.print();setTimeout(cleanup,1000);});
+    if(document.addEventListener)document.addEventListener('keydown',function(event){if(event.key==='Escape'&&state.rankingOpen)closeRanking();});
     select();
   }
   function select(){document.querySelectorAll('[data-overview-metric]').forEach(function(btn){var on=btn.dataset.overviewMetric===state.metric;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');});}
@@ -56,9 +91,15 @@ function createOverviewInsights(deps){
     if(el)el.innerHTML=keys.length?keys.map(function(k){return'<div class="overview-payment-row"><span class="overview-payment-dot" style="background:'+(colors[k]||'#999')+'"></span><span>'+deps.esc(k)+'</span><strong>'+money(mix[k])+' <small>'+Math.round(mix[k]/total*100)+'%</small></strong></div>';}).join(''):'<p class="overview-empty">No completed sales in this period.</p>';
   }
   function renderTop(rows,data){
-    var items={},menu=data.menuItems||{},types=data.catType||{};function drink(li){var mi=menu[li&&li.itemKey];return!mi||types[mi.cat]!=='food';}
-    rows.forEach(function(o){var gross=Number(o.subtotal!=null?o.subtotal:o.total)||0,net=Math.max(0,gross-(Number(o.discount)||0)-(Number(o.refundAmount)||0)),factor=gross>0?net/gross:0;if(net<=0||!Array.isArray(o.lineItems))return;o.lineItems.forEach(function(li){if(!li||!drink(li))return;var name=li.name||(menu[li.itemKey]&&menu[li.itemKey].name)||li.itemKey,qty=Number(li.qty)||0;if(!name)return;var row=items[name]||(items[name]={name:name,units:0,revenue:0});row.units+=qty;row.revenue+=qty*(Number(li.unitTotal)||0)*factor;});});
-    var metric=state.metric,top=Object.values(items).sort(function(a,b){return b[metric]-a[metric];}).slice(0,10),medals=['🥇','🥈','🥉','4','5','6','7','8','9','10'],el=document.getElementById('topItemsList'),title=document.getElementById('overviewTopTitle');if(title)title.textContent='Top 10 Best Sellers - By '+(metric==='units'?'Quantity':'Revenue');if(el)el.innerHTML=top.length?top.map(function(x,i){return'<div class="overview-rank-row"><span>'+medals[i]+'</span><span>'+deps.esc(x.name)+'</span><strong>'+(metric==='units'?x.units+' sold':money(x.revenue))+'</strong></div>';}).join(''):'<p class="overview-empty">No structured drink sales in this period.</p>';
+    var metric=state.metric,result=buildDrinkRanking(rows,data),top=result.items.slice().sort(function(a,b){return(b[metric]-a[metric])||(b[metric==='units'?'revenue':'units']-a[metric==='units'?'revenue':'units'])||a.name.localeCompare(b.name);}).slice(0,10),medals=['🥇','🥈','🥉','4','5','6','7','8','9','10'],el=document.getElementById('topItemsList'),title=document.getElementById('overviewTopTitle'),open=document.getElementById('openDrinkRankingBtn');if(title)title.textContent='Top 10 Best Sellers - By '+(metric==='units'?'Quantity':'Revenue');if(el)el.innerHTML=top.length?top.map(function(x,i){return'<div class="overview-rank-row"><span>'+medals[i]+'</span><span>'+deps.esc(x.name)+'</span><strong>'+(metric==='units'?formatUnits(x.units)+' sold':money(x.revenue))+'</strong></div>';}).join(''):'<p class="overview-empty">No completed drink sales in this period.</p>';if(open)open.textContent='View full ranking';
+  }
+  function formatUnits(value){return Number(value||0).toLocaleString('en-PH',{maximumFractionDigits:2});}
+  function renderFullRanking(){
+    if(!state.rankingOpen||!state.latest)return;var data=state.latest,body=document.getElementById('drinkRankingBody'),total=document.getElementById('drinkRankingTotal'),count=document.getElementById('drinkRankingCount'),orders=document.getElementById('drinkRankingOrders'),status=document.getElementById('drinkRankingStatus'),title=document.getElementById('drinkRankingMetricTitle'),dateLabel=document.getElementById('drinkRankingDateLabel'),print=document.getElementById('printDrinkRankingBtn');if(!body)return;if(dateLabel)dateLabel.textContent=overviewDateLabel(state.rankingDate||overviewDateKey());
+    if(data.historyComplete!==true){body.innerHTML='<tr><td colspan="4" class="overview-ranking-empty">Loading complete Sales History data…</td></tr>';if(total)total.textContent='—';if(count)count.textContent='—';if(orders)orders.textContent='—';if(status)status.textContent='Loading all completed and archived sales before calculating the total.';if(print)print.disabled=true;return;}
+    var r=overviewDayRange(state.rankingDate||overviewDateKey()),result=buildDrinkRanking(data.sales||[],data,r),metric=state.metric,ranked=result.items.slice().sort(function(a,b){return(b[metric]-a[metric])||(b[metric==='units'?'revenue':'units']-a[metric==='units'?'revenue':'units'])||a.name.localeCompare(b.name);});
+    if(total)total.textContent=formatUnits(result.totalUnits);if(count)count.textContent=String(ranked.length);if(orders)orders.textContent=String(result.orderCount);if(title)title.textContent=metric==='units'?'Ranked by quantity':'Ranked by net revenue';if(status)status.textContent='Sales History basis: Completed or Received, payment confirmed, not voided. Refunds reduce revenue; units remain unchanged because refunds are not item-specific.';if(print)print.disabled=false;
+    body.innerHTML=ranked.length?ranked.map(function(item,index){return'<tr><td class="overview-ranking-position">'+(index+1)+'</td><td><strong>'+deps.esc(item.name)+'</strong></td><td class="overview-ranking-number">'+formatUnits(item.units)+'</td><td class="overview-ranking-number">'+money(item.revenue)+'</td></tr>';}).join(''):'<tr><td colspan="4" class="overview-ranking-empty">No completed drink sales were recorded on this date.</td></tr>';
   }
   function renderOutcomes(all,active){
     var names=['Completed','Received','Cancelled / Rejected','Voided','Refunded','Partially refunded'],colors={'Completed':['#d4edda','#155724'],'Received':['#c8e6c9','#1b5e20'],'Cancelled / Rejected':['#f8d7da','#721c24'],'Voided':['#f5d0d0','#7f1d1d'],'Refunded':['#fff3cd','#856404'],'Partially refunded':['#fff1d6','#8a510b']},counts={},total=0;names.forEach(function(n){counts[n]=0;});all.forEach(function(o){var x=outcome(o);if(x){counts[x]++;total++;}});
@@ -78,10 +119,10 @@ function createOverviewInsights(deps){
     if(!complete){['overviewNetSales','overviewGrossSales','overviewTransactions','overviewAverageSale'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent='—';});var pending=document.getElementById('overviewDataNote');if(pending)pending.textContent='Verifying complete order history…';return;}
     var periodSales=(data.sales||[]).filter(function(o){return inRange(o,r);}),periodOrders=(data.outcomes||[]).filter(function(o){return inRange(o,r);});
     var gross=0,net=0;periodSales.forEach(function(o){var v=window.AccazaSales.amounts(o);gross+=v.gross;net+=v.net;});function set(id,value){var el=document.getElementById(id);if(el)el.textContent=value;}set('overviewNetSales',money(net));set('overviewGrossSales',money(gross));set('overviewTransactions',String(periodSales.length));set('overviewAverageSale',money(periodSales.length?net/periodSales.length:0));
-    renderPayments(periodSales);renderTop(periodSales,data);renderOutcomes(periodOrders,data.active||[]);chart(periodSales,r);
+    renderPayments(periodSales);renderTop(periodSales,data);renderOutcomes(periodOrders,data.active||[]);chart(periodSales,r);renderFullRanking();
     var note=document.getElementById('overviewDataNote');if(note)note.textContent='Every completed paid order in the selected dates is loaded, including archived orders.';
   }
   return{render:function(data){state.latest=data;paint();},ensureHistory:ensureHistory};
 }
 
-export{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders};
+export{buildDrinkRanking,createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders,overviewDayRange};
