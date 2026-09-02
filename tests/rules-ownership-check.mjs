@@ -9,8 +9,8 @@ const env=await initializeTestEnvironment({projectId,database:{rules}});
 try{
   await env.withSecurityRulesDisabled(async(context)=>{
     await set(ref(context.database()),{
-      admins:{owner:true,manager:'manager',staff:'staff',kitchen:'kitchen'},
-      adminPerms:{staff:{orders:true,pos:true,possettings:true,discrepancy:true,petty:true,availability:true},kitchen:{orders:true}},
+      admins:{owner:true,manager:'manager',staff:'staff',cashier:'staff',kitchen:'kitchen'},
+      adminPerms:{staff:{orders:true,pos:true,possettings:true,discrepancy:true,petty:true,availability:true},cashier:{pos:true},kitchen:{orders:true}},
       menuItems:{latte:{name:'Latte',cat:'coffee',priceS:100}},
       availability:{Latte:true},
       orders:{
@@ -51,6 +51,7 @@ try{
   const owner=env.authenticatedContext('owner').database();
   const manager=env.authenticatedContext('manager').database();
   const staff=env.authenticatedContext('staff').database();
+  const cashier=env.authenticatedContext('cashier').database();
   const kitchen=env.authenticatedContext('kitchen').database();
   const guest=env.unauthenticatedContext().database();
 
@@ -81,6 +82,8 @@ try{
   await assertFails(set(ref(owner,'financialMovements/forged'),{id:'forged',amount:999,occurredAt:2}));
   await assertFails(set(ref(owner,'cfLedger/forged'),{amount:999,ts:2}));
   await assertSucceeds(get(ref(staff,'cfAccounts/bank')));
+  await assertSucceeds(get(ref(cashier,'cfAccounts/bank')));
+  await assertFails(update(ref(cashier,'cfAccounts/bank'),{name:'Cashier edit'}));
   await assertFails(get(ref(kitchen,'cfAccounts/bank')));
   await assertFails(update(ref(staff,'cfAccounts/bank'),{name:'Forged bank'}));
   await assertFails(update(ref(owner,'receivables/ar_one'),{amount:999}));
