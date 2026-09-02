@@ -53,6 +53,53 @@ async function requirePortalPermission(db, request, permissions) {
   return portal;
 }
 
+function supplierNameKey(value) {
+  return financeText(value, 120).trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+async function requireActiveSupplier(db, supplierId, supplierName) {
+  const id = financeKey(supplierId, "Supplier ID"), row = (await db.ref(`/suppliers/${id}`).get()).val();
+  if (!row || row.active === false || row.mergedInto) throw new HttpsError("failed-precondition", "Select an active supplier from the supplier master.");
+  const name = financeText(row.name, 120); if (!name) throw new HttpsError("failed-precondition", "The selected supplier master record has no valid name.");
+  if (supplierName && supplierNameKey(supplierName) !== supplierNameKey(name)) throw new HttpsError("failed-precondition", "The supplier name changed. Refresh and select the current supplier record.");
+  return {id, name, row};
+}
+
+exports.manageSupplier = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db=getDatabase(),actor=await requirePortalPermission(db,request,["purchases","petty","payables"]),data=request.data||{},action=financeText(data.action,20).toLowerCase(),now=Date.now();
+    if(!["create","update","deactivate","initialize_legacy","validate"].includes(action))throw new HttpsError("invalid-argument","Supplier action is invalid.");
+    if(action==="validate"){const supplier=await requireActiveSupplier(db,data.supplierId,data.name);return{supplierId:supplier.id,name:supplier.name,active:true};}
+    if(action==="initialize_legacy"){
+      const [suppliersSnap,purchasesSnap,vouchersSnap,payablesSnap,receiptsSnap,batchesSnap]=await Promise.all([db.ref("/suppliers").get(),db.ref("/purchaseInvoices").get(),db.ref("/pettyCashVouchers").get(),db.ref("/payables").get(),db.ref("/stockReceipts").get(),db.ref("/inventoryBatch").get()]),suppliers=suppliersSnap.val()||{},purchases=purchasesSnap.val()||{},vouchers=vouchersSnap.val()||{},payables=payablesSnap.val()||{},receipts=receiptsSnap.val()||{},batches=batchesSnap.val()||{},byKey={},writes={};
+      Object.keys(suppliers).forEach(id=>{const row=suppliers[id]||{},key=supplierNameKey(row.name);if(key)byKey[key]={id,name:financeText(row.name,120)};});
+      const ensure=(value)=>{const name=financeText(value,120).trim().replace(/\s+/g," "),key=supplierNameKey(name);if(!key)return null;if(byKey[key])return byKey[key];const hash=crypto.createHash("sha256").update(key).digest("hex").slice(0,32),id=`sup_${hash}`,row={id,name};byKey[key]=row;writes[`suppliers/${id}`]={name,normalizedName:key,active:true,createdAt:now,createdBy:actor.uid,createdByRole:actor.role,updatedAt:now,legacyInitialized:true,schemaVersion:1};writes[`supplierNameIndex/${hash}`]={supplierId:id,normalizedName:key,claimedAt:now};return row;};
+      Object.keys(purchases).forEach(id=>{const x=purchases[id]||{},s=ensure(x.supplier);if(s&&!x.supplierId){writes[`purchaseInvoices/${id}/supplierId`]=s.id;writes[`purchaseInvoices/${id}/supplier`]=s.name;}});
+      Object.keys(vouchers).forEach(id=>{const x=vouchers[id]||{};if(x.transactionType!=="purchase_advance")return;const s=ensure(x.supplierName||x.recipient);if(s&&!x.supplierId){writes[`pettyCashVouchers/${id}/supplierId`]=s.id;writes[`pettyCashVouchers/${id}/supplierName`]=s.name;writes[`pettyCashVouchers/${id}/recipient`]=s.name;}});
+      Object.keys(payables).forEach(id=>{const x=payables[id]||{};if(x.type==="customer_change_refund"||x.type==="owner reimbursement")return;const s=ensure(x.party);if(s&&!x.supplierId){writes[`payables/${id}/supplierId`]=s.id;writes[`payables/${id}/party`]=s.name;}});
+      Object.keys(receipts).forEach(id=>{const x=receipts[id]||{},s=ensure(x.supplier);if(s&&!x.supplierId)writes[`stockReceipts/${id}/supplierId`]=s.id;});Object.keys(batches).forEach(id=>{const x=batches[id]||{},s=ensure(x.supplier);if(s&&!x.supplierId)writes[`inventoryBatch/${id}/supplierId`]=s.id;});
+      const count=Object.keys(writes).length;if(count){writes[`supplierMigrations/legacyToMaster`]={status:"complete",linkedWrites:count,completedAt:now,completedBy:actor.uid,schemaVersion:1};writes[`operationalAudit/${now}_supplier_legacy_initialize`]=operationalAuditRecord("initialize_legacy_suppliers","supplierMaster","legacyToMaster",actor,{linkedWrites:count,accounting:"No cash, inventory quantity, subledger balance, Finance movement, or Books journal amount changed; stable supplier IDs were added to existing records."});await db.ref().update(writes);}return{initialized:true,linkedWrites:count,supplierCount:Object.keys(byKey).length};
+    }
+    if(action==="create"){
+      const name=financeText(data.name,120).trim().replace(/\s+/g," "),key=supplierNameKey(name);if(!name)throw new HttpsError("invalid-argument","Supplier name is required.");
+      const indexId=crypto.createHash("sha256").update(key).digest("hex").slice(0,32),indexRef=db.ref(`/supplierNameIndex/${indexId}`),claim=await indexRef.transaction(current=>current||{supplierId:`sup_${indexId}`,normalizedName:key,claimedAt:now});
+      const supplierId=financeKey(claim.snapshot.val().supplierId,"Supplier ID"),existing=(await db.ref(`/suppliers/${supplierId}`).get()).val();
+      if(existing){if(supplierNameKey(existing.name)!==key)throw new HttpsError("already-exists","A supplier-name index conflict requires management review.");return{supplierId,name:existing.name,duplicate:true};}
+      const record={name,normalizedName:key,active:true,createdAt:now,createdBy:actor.uid,createdByRole:actor.role,updatedAt:now,schemaVersion:1};
+      await db.ref().update({[`suppliers/${supplierId}`]:record,[`operationalAudit/${now}_supplier_create_${supplierId}`]:operationalAuditRecord("create_supplier","supplier",supplierId,actor,{name})});return{supplierId,name,duplicate:false};
+    }
+    const supplierId=financeKey(data.supplierId,"Supplier ID"),supplier=(await db.ref(`/suppliers/${supplierId}`).get()).val();if(!supplier)throw new HttpsError("not-found","Supplier was not found.");
+    if(action==="deactivate"){
+      const linked=await Promise.all([db.ref("/pettyCashVouchers").orderByChild("supplierId").equalTo(supplierId).limitToFirst(1).get(),db.ref("/purchaseInvoices").orderByChild("supplierId").equalTo(supplierId).limitToFirst(1).get()]);
+      await db.ref().update({[`suppliers/${supplierId}/active`]:false,[`suppliers/${supplierId}/deactivatedAt`]:now,[`suppliers/${supplierId}/deactivatedBy`]:actor.uid,[`operationalAudit/${now}_supplier_deactivate_${supplierId}`]:operationalAuditRecord("deactivate_supplier","supplier",supplierId,actor,{name:supplier.name||"",hasTransactions:linked.some(s=>s.exists())})});return{supplierId,active:false};
+    }
+    const name=financeText(data.name,120).trim().replace(/\s+/g," "),key=supplierNameKey(name),oldKey=supplierNameKey(supplier.name);if(!name)throw new HttpsError("invalid-argument","Supplier name is required.");
+    const indexId=crypto.createHash("sha256").update(key).digest("hex").slice(0,32),index=(await db.ref(`/supplierNameIndex/${indexId}`).get()).val();if(index&&index.supplierId!==supplierId)throw new HttpsError("already-exists","Another supplier already uses this name.");
+    const oldIndexId=crypto.createHash("sha256").update(oldKey).digest("hex").slice(0,32),writes={[`suppliers/${supplierId}/name`]:name,[`suppliers/${supplierId}/normalizedName`]:key,[`suppliers/${supplierId}/updatedAt`]:now,[`suppliers/${supplierId}/updatedBy`]:actor.uid,[`supplierNameIndex/${indexId}`]:{supplierId,normalizedName:key,claimedAt:now},[`operationalAudit/${now}_supplier_update_${supplierId}`]:operationalAuditRecord("update_supplier","supplier",supplierId,actor,{beforeName:supplier.name||"",afterName:name})};if(oldIndexId!==indexId)writes[`supplierNameIndex/${oldIndexId}`]=null;await db.ref().update(writes);return{supplierId,name,active:supplier.active!==false};
+  },
+);
+
 // Period status is a controlled setting, not a client-editable flag. Reopening
 // restores purpose-built correction workflows; it never edits posted history.
 exports.manageAccountingPeriod = onCall(

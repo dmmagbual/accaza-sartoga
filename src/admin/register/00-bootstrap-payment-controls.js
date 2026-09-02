@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 var staffList={},activeShift=null,shiftsMap={},activityMap={},heldMap={},ordersMap={},discMap={},booksChartMap={},cashAccountsMap={},financialMovementsMap={},toleranceCfg={cashPeso:20,invPct:5},fixedFloatCfg=null,logCollapsed=true,cardShiftId=null,shiftReferenceRequests={};
-var pettyVouchers={},pettyRepl={},pettySettings={};
+var pettyVouchers={},pettyRepl={},pettySettings={},supplierMap={};
 function A(){return window.__accaza;}
 function F(){if(!window.AccazaFormDialog)throw new Error('Form service unavailable. Refresh the portal.');return window.AccazaFormDialog;}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -30,6 +30,7 @@ function init(){
   a.subscribe('cfAccounts',function(s){cashAccountsMap=s.val()||{};if(isTab('possettings'))renderPosSettings();});
   a.subscribe('financialMovements',function(s){financialMovementsMap=s.val()||{};});
   a.subscribe('pettyCashVouchers',function(s){pettyVouchers=s.val()||{};if(isTab('petty'))renderPetty();});
+  a.subscribe('suppliers',function(s){supplierMap=s.val()||{};window.__accazaSuppliers=supplierMap;if(!window.__supplierLegacyInitRequested&&a.manageSupplier){window.__supplierLegacyInitRequested=true;a.manageSupplier({action:'initialize_legacy'}).catch(function(){window.__supplierLegacyInitRequested=false;});}if(isTab('petty'))renderPetty();});
   a.subscribe('pettyCashReplenishments',function(s){pettyRepl=s.val()||{};if(isTab('petty'))renderPetty();});
   a.subscribe('pettyCashSettings',function(s){pettySettings=s.val()||{};if(isTab('petty'))renderPetty();});
   a.subscribe('posSettings',function(s){var v=s.val()||{};if(v.tolerances)toleranceCfg=Object.assign({cashPeso:20,invPct:5},v.tolerances);fixedFloatCfg=(v.fixedFloat!=null?(Number(v.fixedFloat)||0):null);if(isTab('ops'))renderOps();});
