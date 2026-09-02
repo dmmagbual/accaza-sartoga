@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var inventoryMap={}, inventorySkuMap={}, purchaseInvoicesMap={}, purchaseShiftMap={}, purchaseFundAdvanceMap={}, recipesMap={}, posMeta={vat:false,vatRate:12}, optRecipesMap={}, usageMap={}, channelPricesMap={}, posAvailMap={}, inventoryMovementsMap={},paymentAccountsMap={};
+var inventoryMap={}, inventorySkuMap={}, purchaseInvoicesMap={}, purchaseShiftMap={}, purchaseFundAdvanceMap={}, supplierMap={}, recipesMap={}, posMeta={vat:false,vatRate:12}, optRecipesMap={}, usageMap={}, channelPricesMap={}, posAvailMap={}, inventoryMovementsMap={},paymentAccountsMap={};
 // Order reference: PREFIX-XXXXXX (6 base36 chars from a monotonic timestamp).
 // Prefix namespaces the channel so IDs never collide across channels; the
 // monotonic counter guarantees uniqueness for rapid same-device sales offline.
@@ -211,6 +211,7 @@ function init(){
   a.subscribe('purchaseInvoices', function(s){ purchaseInvoicesMap=s.val()||{}; if(isTab('purchases'))renderPurchases(); });
   a.subscribe('shifts', function(s){ purchaseShiftMap=s.val()||{}; if(isTab('purchases'))renderPurchases(); });
   a.subscribe('pettyCashVouchers', function(s){ purchaseFundAdvanceMap=s.val()||{}; if(isTab('purchases'))renderPurchases(); });
+  a.subscribe('suppliers', function(s){ supplierMap=s.val()||{}; window.__accazaSuppliers=supplierMap;if(!window.__supplierLegacyInitRequested&&a.manageSupplier){window.__supplierLegacyInitRequested=true;a.manageSupplier({action:'initialize_legacy'}).catch(function(){window.__supplierLegacyInitRequested=false;});} if(isTab('purchases'))renderPurchases(); });
   a.subscribe('recipes', function(s){ recipesMap=s.val()||{}; if(isTab('recipes')&&!recipeEditing)renderRecipes(); if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); updateCostBadge(); });
   a.subscribe('optionRecipes', function(s){ var raw=s.val()||{}; var m={}; Object.keys(raw).forEach(function(k){var v=raw[k]||{}; var lb=v.label||k; m[lb]=v;}); optRecipesMap=m; if(isTab('recipes')&&!recipeEditing)renderRecipes(); if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); });
   a.subscribe('internalUsage', function(s){ usageMap=s.val()||{}; if(isTab('usage'))renderUsage(); });
