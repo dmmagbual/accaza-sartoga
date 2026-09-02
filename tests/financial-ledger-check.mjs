@@ -58,6 +58,8 @@ const grabSettlement=F.movement('platform_payout_settlement','platformPayout','G
 balanced(grabSettlement,'Grab statement-only deductions');
 const rebuiltGrab=F.platformPayoutPosting({id:'GRAB-PAYOUT-1',channel:'grabfood',expectedNet:125,actualPayout:100,allocations:{va_marketing_success:15,va_ads:10},allocationMeta:{va_marketing_success:{name:'Marketing success',type:'expense'},va_ads:{name:'Ads',type:'expense'}},settledAt:1},{});
 balanced(rebuiltGrab,'rebuilt Grab payout');
+const payoutDatedGrab=F.platformPayoutPosting({id:'GRAB-PAYOUT-DATED',channel:'grabfood',expectedNet:125,actualPayout:125,accountingOccurredAt:123456789,settledAt:987654321},{});
+assert(payoutDatedGrab.occurredAt===123456789,'payout settlement did not use the authoritative payout accounting date');
 assert(rebuiltGrab.lines.some(x=>x.account==='asset:platform_receivable:grabfood'&&x.credit===125),'rebuilt payout did not clear the exact platform receivable');
 assert(rebuiltGrab.lines.some(x=>x.account==='asset:platform_clearing:grabfood'&&x.debit===100),'rebuilt payout lost actual clearing');
 assert(rebuiltGrab.lines.filter(x=>x.account.indexOf('expense:platform_variance:')===0).reduce((s,x)=>s+x.debit,0)===25,'rebuilt payout lost detailed variance allocations');

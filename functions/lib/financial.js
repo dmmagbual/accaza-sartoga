@@ -185,7 +185,7 @@ function platformPayoutPosting(payout, definitions) {
   else {lines.push(line(`asset:platform_clearing:${channel}`, actual, 0, "Actual payout clearing"));if (owingApplied > 0) lines.push(line(`liability:platform_owing:${channel}`, owingApplied, 0, "Recover prior owing to platform"));}
   Object.keys(allocations).sort().forEach((id) => {const value=money(allocations[id]);if (!(value>0)) return;const def=meta[id]||definitions[id]||{},sourceRef=safe(def.sourceRef||refs[id]),name=safe(def.name||id),label=`${name}${sourceRef?` · ${sourceRef}`:""}`;if(def.type==="revenue")lines.push(line(`revenue:platform_variance:${id}`,0,value,label));else lines.push(line(`expense:platform_variance:${id}`,value,0,label));});
   lines.push(line(`asset:platform_receivable:${channel}`, 0, expected, "Settle platform receivable"));
-  return movement("platform_payout_settlement", "platformPayout", safe(payout.id), lines, {occurredAt:Number(payout.settledAt||Date.now()),approvalId:safe(payout.approvalId),approvedBy:safe(payout.approvedBy),reconstructedFromPayoutRecord:payout.reconstructedFromPayoutRecord===true});
+  return movement("platform_payout_settlement", "platformPayout", safe(payout.id), lines, {occurredAt:Number(payout.accountingOccurredAt||payout.settledAt||Date.now()),approvalId:safe(payout.approvalId),approvedBy:safe(payout.approvedBy),reconstructedFromPayoutRecord:payout.reconstructedFromPayoutRecord===true});
 }
 
 module.exports = {BALANCE_EPSILON, money, safe, line, totals, assertBalanced, accountForMethod,accountForPayment, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting};
