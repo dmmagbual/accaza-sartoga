@@ -16,12 +16,15 @@
       <button type="button" id="closeDrinkRankingBtn" aria-label="Close full drink ranking">✕</button>
     </header>
     <div class="overview-ranking-controls">
-      <label for="drinkRankingDate">Sales date<input type="date" id="drinkRankingDate"/></label>
+      <label for="drinkRankingFrom">From<input type="date" id="drinkRankingFrom"/></label>
+      <label for="drinkRankingTo">To<input type="date" id="drinkRankingTo"/></label>
+      <label for="drinkRankingMonth">Month<input type="month" id="drinkRankingMonth"/></label>
+      <button type="button" id="drinkRankingApply">Apply</button>
       <button type="button" id="drinkRankingToday">Today</button>
       <button type="button" class="overview-ranking-print-button" id="printDrinkRankingBtn" disabled>Print / Save PDF</button>
       <div class="overview-metric-toggle" aria-label="Rank full drink list by"><button type="button" class="active" aria-pressed="true" data-overview-metric="units">Quantity</button><button type="button" aria-pressed="false" data-overview-metric="revenue">Revenue</button></div>
     </div>
-    <div class="overview-ranking-summary" aria-label="Selected date drink totals">
+    <div class="overview-ranking-summary" aria-label="Selected period drink totals">
       <div><span>Completed drinks</span><strong id="drinkRankingTotal">—</strong></div>
       <div><span>Ranked drinks</span><strong id="drinkRankingCount">—</strong></div>
       <div><span>Sales with drinks</span><strong id="drinkRankingOrders">—</strong></div>
@@ -30,7 +33,7 @@
     <div class="overview-ranking-table-wrap">
       <table class="overview-ranking-table">
         <thead><tr><th>Rank</th><th>Drink</th><th>Quantity</th><th>Net revenue</th></tr></thead>
-        <tbody id="drinkRankingBody"><tr><td colspan="4" class="overview-ranking-empty">Choose a sales date to see the complete ranking.</td></tr></tbody>
+        <tbody id="drinkRankingBody"><tr><td colspan="4" class="overview-ranking-empty">Choose a sales period to see the complete ranking.</td></tr></tbody>
       </table>
     </div>
   </section>
