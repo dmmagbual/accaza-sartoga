@@ -35,8 +35,10 @@ self.addEventListener('notificationclick',function(e){
 
 /* Versioned customer + POS app shells. Customer checkout remains online-only;
    authenticated POS cash sales use the durable IndexedDB continuity queue. */
-const CACHE='accaza-v385';
+const CACHE='accaza-v386';
 const ASSETS=[
+  './assets/js/shared/admin-report-periods.js',
+  './assets/js/admin/sales-period-data.mjs',
   '/','/index.html','/admin.html','/books.html','/manifest.json','/manifest-admin.json',
   '/favicon.ico','/favicon_32x32.png','/favicon_180x180.png','/favicon_192x192.png','/favicon_512x512.png',
   '/assets/js/pwa-register.js','/assets/css/admin-backoffice.css','/assets/css/customer/app-shell.css','/assets/css/customer/retired-admin.css','/assets/css/customer/site.css','/assets/css/customer/packages.css','/assets/css/admin/app-shell.css','/assets/css/admin/portal.css','/assets/css/admin/site.css','/assets/css/admin/navigation.css','/assets/css/admin/touch-targets.css','/assets/css/admin/pos-workflow.css','/assets/css/admin/pos-inventory-recipes.css','/assets/css/admin/analytics.css','/assets/js/shared/text-encoding.js','/assets/js/shared/business-date.js','/assets/js/shared/sales-authority.js',

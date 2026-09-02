@@ -1,7 +1,7 @@
 
 /* ---------- sales model ---------- */
 function isSale(o){return window.AccazaSales.qualifies(o);}
-function allOrders(){var out=[];[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){out.push(m[k]);});});return out;}
+function allOrders(){var out={};[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k];if(o)out[String(o.id||k)]=o;});});return Object.values(out);}
 function itemCost(li){var rec=recMap[li.itemKey];if(!rec)return null;var mult=(rec.sizeMult&&rec.sizeMult[li.size]!=null)?rec.sizeMult[li.size]:1;var c=0;(rec.base||[]).forEach(function(b){var ing=invMap[b.ing];if(!ing)return;var per=b['qty'+(li.size||'M')];var q=(per!=null&&per!=='')?(Number(per)||0):(Number(b.qty)||0)*mult;c+=q*(Number(ing.cost)||0);});var labels=li.optLabels||[];var _it=((A()&&A().menuItemsMap)||{})[li.itemKey]||{key:li.itemKey};var getChoiceIngs=window.__accazaChoiceIngs;labels.forEach(function(lb){(getChoiceIngs?getChoiceIngs(_it,rec,lb,li.size):[]).forEach(function(r){var ing=invMap[r.ing];if(ing)c+=(Number(r.qty)||0)*(Number(ing.cost)||0);});});return c*(Number(li.qty)||1);}
 function orderCOGS(o){var _x=Number(o.extraCost)||0;
   if(o.cogsSnapshot!=null)return{cost:(Number(o.cogsSnapshot)||0)+_x,covered:o.cogsCovered!==false};
@@ -20,29 +20,16 @@ function dateKeys(from,to){var out=[],d=new Date(Date.parse(businessDate(from)+'
 function fmtD(value){var key=/^\d{4}-\d{2}-\d{2}$/.test(String(value||''))?String(value):businessDate(value);return new Date(key+'T12:00:00+08:00').toLocaleDateString('en-PH',{month:'short',day:'numeric'});}
 function azRangeLabel(from,to){var nm={today:'Today','7d':'Last 7 days','30d':'Last 30 days',month:'This month',all:'All time',custom:'Custom range'};return (nm[azRange]||azRange)+' · '+fmtD(from)+' – '+fmtD(to-86400000);}
 function sharedPeriod(v){
-  v=v||(window.AccazaReportPeriod&&window.AccazaReportPeriod.get&&window.AccazaReportPeriod.get());if(!v)return;
-  azRange=v.mode||v.period||'month';
+  v=v||(window.AccazaAdminPeriods&&window.AccazaAdminPeriods.get&&window.AccazaAdminPeriods.get('sales'));if(!v)return;
+  azRange='custom';
   azFrom=Number(v.startAt)||null;
   azTo=Number(v.endAt)||null;
 }
 async function ensureAnalyticsHistory(){
-  var a=A(),hub=a&&a.hub;if(analyticsHistoryLoading||!hub)return;
-  var from=rangeBounds()[0],paths=[{path:'orders',map:function(){return ordersMap;},field:'timestamp'},{path:'archivedOrders',map:function(){return archMap;},field:'timestamp'}];
-  function oldest(cfg){return Object.values(cfg.map()).reduce(function(min,o){var ts=Number(o&&o[cfg.field])||0;return ts&&(!min||ts<min)?ts:min;},0);}
-  function needsOlder(cfg){var status=hub.historyStatus(cfg.path),old=oldest(cfg);return status.hasOlder&&(azRange==='all'||!old||old>from);}
-  if(!paths.some(needsOlder))return;
-  analyticsHistoryLoading=true;var note=document.getElementById('azHistoryNote');if(note)note.textContent='Loading complete sales history…';
-  try{
-    for(var p=0;p<paths.length;p++){
-      var cfg=paths[p],status=hub.historyStatus(cfg.path),loops=0;
-      while(status.hasOlder&&loops<100){
-        var oldestTs=oldest(cfg);
-        if(azRange!=='all'&&oldestTs&&oldestTs<=from)break;
-        await hub.loadOlder(cfg.path);status=hub.historyStatus(cfg.path);loops++;
-      }
-    }
-  }catch(e){console.error('analytics history load error',e);}
-  finally{analyticsHistoryLoading=false;renderAnalytics();}
+  // The hub loads the selected period plus the equally sized comparison period.
+  // No creation-date pagination or full-history scan is needed here.
+  var hub=A()&&A().hub;
+  analyticsHistoryLoading=!!(hub&&['orders','archivedOrders'].some(function(path){var status=hub.historyStatus(path);return status.loading||status.error;}));
 }
 
 function bar(label,val,max,disp){var w=max>0?Math.max(2,Math.round(val/max*100)):0;return '<div class="az-bar-row"><div class="az-bar-lbl">'+esc(label)+'</div><div class="az-bar-track"><div class="az-bar-fill" style="width:'+w+'%;"></div></div><div class="az-bar-val">'+(disp!=null?disp:val)+'</div></div>';}

@@ -17,11 +17,11 @@ const {createOverviewInsights,mergeOverviewOrders}=await import('../assets/js/ad
 const states={orders:{loaded:250,hasOlder:true},archivedOrders:{loaded:100,hasOlder:true},financialMovements:{loaded:300,hasOlder:true}};
 const calls=[];
 const overview=createOverviewInsights({esc:String,historyStatus(path){return states[path];},async loadOlder(path){calls.push(path);states[path]={loaded:states[path].loaded+1,hasOlder:false};}});
-overview.render({active:[],orders:[],archived:[],outcomes:[],sales:[],feedReady:{orders:true,archivedOrders:true,financialMovements:false}});
+overview.render({historyComplete:true,active:[],orders:[],archived:[],outcomes:[],sales:[],feedReady:{orders:true,archivedOrders:true,financialMovements:false}});
 await new Promise((r)=>setTimeout(r,5));
 if(calls.length!==0)throw new Error('Overview paged history before all bounded feeds were ready.');
 // The final feed becomes ready; no Sales History tab is ever opened.
-overview.render({active:[],orders:[],archived:[],outcomes:[],sales:[],feedReady:{orders:true,archivedOrders:true,financialMovements:true}});
+overview.render({historyComplete:true,active:[],orders:[],archived:[],outcomes:[],sales:[],feedReady:{orders:true,archivedOrders:true,financialMovements:true}});
 for(var i=0;i<5;i++)await new Promise((r)=>setTimeout(r,0));
 if(calls.length)throw new Error('Overview downloaded older pages outside the selected reporting period.');
 if(elements.overviewDataNote.textContent!=='Every completed paid order in the selected dates is loaded, including archived orders.')throw new Error('Overview did not identify the selected-date boundary.');

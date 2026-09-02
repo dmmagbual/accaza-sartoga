@@ -49,7 +49,7 @@ for(const marker of ['action === "inventory_opening_balance"','inventoryReconcil
 if(adminSource.includes('function reconcileAuto()'))fail('retired browser-authored financial reconciliation still exists');
 if(!adminSource.includes("'postFinancialCommand'")||!adminSource.includes("'settlePlatformPayout'")||!adminSource.includes('postFinancialCommand:postFinancialCommandCall'))fail('Release 3C callable bridge missing');
 for(const node of ['financialMovements','cfLedger','receivables','payables','platformPayouts'])if(!rulesRaw.includes(`"${node}"`))fail(`Release 3C rules missing ${node}`);
-if(!rulesRaw.includes('"financialMovements": { ".indexOn": "occurredAt"')||!rulesRaw.includes('"cfLedger":')||!rulesRaw.includes('"platformPayouts":'))fail('Release 3C financial projections are not declared');
+if(!rulesRaw.includes('"financialMovements": { ".indexOn": ["occurredAt", "sourceId"]')||!rulesRaw.includes('"cfLedger":')||!rulesRaw.includes('"platformPayouts":'))fail('Financial projections require posting-date and source-reference indexes');
 for(const marker of ['exports.createManagerApproval = onCall','exports.consumeManagerApproval = onCall','exports.manageChartAccount = onCall','exports.auditFinancialControls = onCall','exports.onShiftOpenFinancial = onValueWritten'])if(!functionsSource.includes(marker))fail(`Release 3D server marker missing: ${marker}`);
 for(const marker of ['resolvedPaymentMappings=new Set()','m.type==="payment_account_reclassification"','if(!resolved)issues.push'])if(!functionsSource.includes(marker))fail(`Resolved payment-mapping audit marker missing: ${marker}`);
 for(const node of ['financialApprovals','chartOfAccounts','cashCustody'])if(!rulesRaw.includes(`"${node}"`))fail(`Release 3D rules missing ${node}`);

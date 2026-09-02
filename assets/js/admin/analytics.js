@@ -39,7 +39,7 @@ function rerenderOrderTabs(){
 }
 function init(){
   var a=A();
-  a.subscribe('orders',function(s){ordersMap=s.val()||{};captureCompletedAt(ordersMap);rerenderOrderTabs();});
+  a.subscribe('orders',function(s){ordersMap=s.val()||{};rerenderOrderTabs();});
   a.subscribe('archivedOrders',function(s){archMap=s.val()||{};rerenderOrderTabs();});
   a.subscribe('reviews',function(s){reviewsMap=s.val()||{};if(isTab('analytics'))renderAnalytics();});
   a.subscribe('feedbacks',function(s){feedbacksMap=s.val()||{};});
@@ -60,12 +60,11 @@ function init(){
 // extend the POS tab switcher to also render our tabs
 window.__accazaRegisterModule('analytics',function(name){ if(name==='analytics')renderAnalytics(); if(name==='payouts')renderPayouts(); if(name==='stockvalue')renderStockValue(); if(name==='dailyreport')renderDailyReport(); });
 
-// capture completedAt for ops metrics (idempotent, additive)
-function captureCompletedAt(all){var a=A();Object.keys(all).forEach(function(id){var o=all[id];if(o&&o.status==='Completed'&&!o.completedAt){a.update(a.ref(a.db,'orders/'+id),{completedAt:Date.now()});}});}
+// Reporting is read-only: missing historical dates use the shared sales authority fallback.
 
 /* ---------- sales model ---------- */
 function isSale(o){return window.AccazaSales.qualifies(o);}
-function allOrders(){var out=[];[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){out.push(m[k]);});});return out;}
+function allOrders(){var out={};[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k];if(o)out[String(o.id||k)]=o;});});return Object.values(out);}
 function itemCost(li){var rec=recMap[li.itemKey];if(!rec)return null;var mult=(rec.sizeMult&&rec.sizeMult[li.size]!=null)?rec.sizeMult[li.size]:1;var c=0;(rec.base||[]).forEach(function(b){var ing=invMap[b.ing];if(!ing)return;var per=b['qty'+(li.size||'M')];var q=(per!=null&&per!=='')?(Number(per)||0):(Number(b.qty)||0)*mult;c+=q*(Number(ing.cost)||0);});var labels=li.optLabels||[];var _it=((A()&&A().menuItemsMap)||{})[li.itemKey]||{key:li.itemKey};var getChoiceIngs=window.__accazaChoiceIngs;labels.forEach(function(lb){(getChoiceIngs?getChoiceIngs(_it,rec,lb,li.size):[]).forEach(function(r){var ing=invMap[r.ing];if(ing)c+=(Number(r.qty)||0)*(Number(ing.cost)||0);});});return c*(Number(li.qty)||1);}
 function orderCOGS(o){var _x=Number(o.extraCost)||0;
   if(o.cogsSnapshot!=null)return{cost:(Number(o.cogsSnapshot)||0)+_x,covered:o.cogsCovered!==false};
@@ -84,29 +83,16 @@ function dateKeys(from,to){var out=[],d=new Date(Date.parse(businessDate(from)+'
 function fmtD(value){var key=/^\d{4}-\d{2}-\d{2}$/.test(String(value||''))?String(value):businessDate(value);return new Date(key+'T12:00:00+08:00').toLocaleDateString('en-PH',{month:'short',day:'numeric'});}
 function azRangeLabel(from,to){var nm={today:'Today','7d':'Last 7 days','30d':'Last 30 days',month:'This month',all:'All time',custom:'Custom range'};return (nm[azRange]||azRange)+' · '+fmtD(from)+' – '+fmtD(to-86400000);}
 function sharedPeriod(v){
-  v=v||(window.AccazaReportPeriod&&window.AccazaReportPeriod.get&&window.AccazaReportPeriod.get());if(!v)return;
-  azRange=v.mode||v.period||'month';
+  v=v||(window.AccazaAdminPeriods&&window.AccazaAdminPeriods.get&&window.AccazaAdminPeriods.get('sales'));if(!v)return;
+  azRange='custom';
   azFrom=Number(v.startAt)||null;
   azTo=Number(v.endAt)||null;
 }
 async function ensureAnalyticsHistory(){
-  var a=A(),hub=a&&a.hub;if(analyticsHistoryLoading||!hub)return;
-  var from=rangeBounds()[0],paths=[{path:'orders',map:function(){return ordersMap;},field:'timestamp'},{path:'archivedOrders',map:function(){return archMap;},field:'timestamp'}];
-  function oldest(cfg){return Object.values(cfg.map()).reduce(function(min,o){var ts=Number(o&&o[cfg.field])||0;return ts&&(!min||ts<min)?ts:min;},0);}
-  function needsOlder(cfg){var status=hub.historyStatus(cfg.path),old=oldest(cfg);return status.hasOlder&&(azRange==='all'||!old||old>from);}
-  if(!paths.some(needsOlder))return;
-  analyticsHistoryLoading=true;var note=document.getElementById('azHistoryNote');if(note)note.textContent='Loading complete sales history…';
-  try{
-    for(var p=0;p<paths.length;p++){
-      var cfg=paths[p],status=hub.historyStatus(cfg.path),loops=0;
-      while(status.hasOlder&&loops<100){
-        var oldestTs=oldest(cfg);
-        if(azRange!=='all'&&oldestTs&&oldestTs<=from)break;
-        await hub.loadOlder(cfg.path);status=hub.historyStatus(cfg.path);loops++;
-      }
-    }
-  }catch(e){console.error('analytics history load error',e);}
-  finally{analyticsHistoryLoading=false;renderAnalytics();}
+  // The hub loads the selected period plus the equally sized comparison period.
+  // No creation-date pagination or full-history scan is needed here.
+  var hub=A()&&A().hub;
+  analyticsHistoryLoading=!!(hub&&['orders','archivedOrders'].some(function(path){var status=hub.historyStatus(path);return status.loading||status.error;}));
 }
 
 function bar(label,val,max,disp){var w=max>0?Math.max(2,Math.round(val/max*100)):0;return '<div class="az-bar-row"><div class="az-bar-lbl">'+esc(label)+'</div><div class="az-bar-track"><div class="az-bar-fill" style="width:'+w+'%;"></div></div><div class="az-bar-val">'+(disp!=null?disp:val)+'</div></div>';}
@@ -115,12 +101,13 @@ function kpi(label,val,delta){var d='';if(delta!=null&&isFinite(delta))d='<div c
 /* ══════════ ANALYTICS ══════════ */
 function renderAnalytics(){
   var root=document.getElementById('analyticsRoot'); if(!root)return;
+  if(window.AccazaAdminPeriods)window.AccazaAdminPeriods.bind({scope:'sales',fromId:'analyticsPeriodFrom',toId:'analyticsPeriodTo',monthId:'analyticsPeriodMonth',applyId:'analyticsPeriodApply',labelId:'analyticsPeriodLabel'});
   sharedPeriod();
-  try{ renderAnalyticsBody();ensureAnalyticsHistory(); }
+  try{ ensureAnalyticsHistory();if(analyticsHistoryLoading){root.innerHTML='<div class="az-note">Loading the selected sales period and comparison period… If loading fails, press Apply to retry.</div>';return;}renderAnalyticsBody(); }
   catch(err){ console.error('renderAnalytics error',err);
     root.innerHTML='<div class="pz-h">📊 Analytics</div><div style="background:#fde8e8;border:1px solid #f5b5b5;border-radius:8px;padding:1rem;color:#a11;font-size:0.85rem;">Analytics couldn’t finish building the shared-period report: <b>'+esc(String((err&&err.message)||err))+'</b>.</div>'; }
 }
-window.addEventListener('accaza-report-period',function(){var root=document.getElementById('analyticsRoot');if(root&&root.offsetParent!==null)renderAnalytics();});
+window.addEventListener('accaza-admin-period',function(e){if(!e.detail||e.detail.scope!=='sales')return;var root=document.getElementById('analyticsRoot');if(root&&root.offsetParent!==null)renderAnalytics();});
 function renderAnalyticsBody(){
   var root=document.getElementById('analyticsRoot');if(!root)return;
   var b=rangeBounds(),from=b[0],to=b[1];var span=to-from;
@@ -140,17 +127,17 @@ function renderAnalyticsBody(){
   var maxDay=Math.max.apply(null,dayKeys.map(function(k){return byDay[k]||0;}).concat([1]));
   var hi=null,lo=null;dayKeys.forEach(function(k){var v=byDay[k]||0;if(hi===null||v>byDay[hi])hi=k;if(lo===null||v<byDay[lo])lo=k;});
   // hour
-  var byHour={};cur.forEach(function(x){var h=new Date(x.ts).getHours();byHour[h]=(byHour[h]||0)+x.net;});
+  var byHour={};cur.forEach(function(x){var h=new Date(x.ts+8*3600000).getUTCHours();byHour[h]=(byHour[h]||0)+x.net;});
   var maxHour=Math.max.apply(null,Object.keys(byHour).map(function(h){return byHour[h];}).concat([1]));
   // dow
-  var dowN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],byDow={};cur.forEach(function(x){var d=new Date(x.ts).getDay();byDow[d]=(byDow[d]||0)+x.net;});
+  var dowN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],byDow={};cur.forEach(function(x){var d=new Date(x.ts+8*3600000).getUTCDay();byDow[d]=(byDow[d]||0)+x.net;});
   var maxDow=Math.max.apply(null,Object.keys(byDow).map(function(d){return byDow[d];}).concat([1]));
   // category / payment / type / items
   var byCat={},byPay={},byType={},items={};var totItems=0;
   cur.forEach(function(x){
     byPay[x.payment]=(byPay[x.payment]||0)+x.net;
     byType[x.type]=(byType[x.type]||0)+x.net;
-    var itemFactor=x.gross>0?Math.max(0,x.net/x.gross):0;if(itemFactor<=0)return;(x.lineItems||[]).forEach(function(li){
+    var itemFactor=x.gross>0?Math.max(0,x.net/x.gross):0;(x.lineItems||[]).forEach(function(li){
       var mi=A().menuItemsMap[li.itemKey];var cat=mi?(A().getCatLabel?A().getCatLabel(mi.cat):mi.cat):'Other';
       byCat[cat]=(byCat[cat]||0)+li.qty*li.unitTotal;
       totItems+=li.qty;
@@ -160,7 +147,7 @@ function renderAnalyticsBody(){
     });
   });
   // prev-period item units for trend
-  var pItems={};prev.forEach(function(x){if(x.net<=0)return;(x.lineItems||[]).forEach(function(li){var mi=A().menuItemsMap[li.itemKey],ct=(window.__posSettings&&window.__posSettings.catType)||{};if(mi&&ct[mi.cat]==='food')return;pItems[li.name]=(pItems[li.name]||0)+li.qty;});});
+  var pItems={};prev.forEach(function(x){(x.lineItems||[]).forEach(function(li){var mi=A().menuItemsMap[li.itemKey],ct=(window.__posSettings&&window.__posSettings.catType)||{};if(mi&&ct[mi.cat]==='food')return;pItems[li.name]=(pItems[li.name]||0)+li.qty;});});
   var itemArr=Object.values(items);
   var topByRev=itemArr.slice().sort(function(a,b){return b.rev-a.rev;});
   var topByProfit=itemArr.slice().filter(function(i){return i.cost>0;}).map(function(i){return Object.assign({profit:i.rev-i.cost,margin:i.rev>0?(i.rev-i.cost)/i.rev*100:0},i);}).sort(function(a,b){return b.profit-a.profit;});
@@ -179,22 +166,22 @@ function renderAnalyticsBody(){
   var rIn=rlist.filter(function(r){return r.ts>=from&&r.ts<to;});
   var avgAll=rlist.length?rlist.reduce(function(s,r){return s+r.rating;},0)/rlist.length:0;
   // ops
-  var ordersInRange=allOrders().filter(function(o){var ts=o.timestamp||Date.parse(o.date)||0;return ts>=from&&ts<to;});
+  var ordersInRange=allOrders().filter(function(o){var ts=window.AccazaSales.stamp(o);return ts>=from&&ts<to;});
   var cancelled=ordersInRange.filter(function(o){return['Declined','Cancelled','Canceled','Voided'].indexOf(o.status)>-1||o.voided||(o.status==='Archived'&&['Declined','Cancelled'].indexOf(o.prevStatus)>-1);}).length;
   var cancelRate=ordersInRange.length?cancelled/ordersInRange.length*100:0;
-  var prepList=cur.filter(function(x){return x.o.completedAt&&x.ts&&x.o.source!=='pos';}).map(function(x){return(x.o.completedAt-x.ts)/60000;}).filter(function(m){return m>0&&m<600;});
+  var prepList=cur.filter(function(x){return x.o.completedAt&&x.ts&&x.o.source!=='pos';}).map(function(x){return(Number(x.o.completedAt)-Number(x.o.timestamp))/60000;}).filter(function(m){return m>0&&m<600;});
   var avgPrep=prepList.length?prepList.reduce(function(s,m){return s+m;},0)/prepList.length:null;
   var target=15;var onTime=prepList.length?prepList.filter(function(m){return m<=target;}).length/prepList.length*100:null;
   var html='<div class="pz-h">📊 Analytics</div><p class="pz-sub">Every figure here traces to your own orders, recipes, and reviews.</p>';
   var _azF=tsToDate(from), _azT=tsToDate(to-86400000); // local date parts (not UTC) so date inputs match the range in UTC+10
-  html+='<div class="az-note" id="azActive" style="margin:0 0 0.25rem;font-weight:600;color:var(--bd);">📅 Shared sales period: '+azRangeLabel(from,to)+'</div>'
-    +'<div class="az-note" id="azHistoryNote" style="margin:0 0 0.7rem;">'+(analyticsHistoryLoading?'Loading complete sales history…':'Complete available sales history loaded.')+'</div>';
+  html+='<div class="az-note" id="azActive" style="margin:0 0 0.25rem;font-weight:600;color:var(--bd);">📅 Sales period: '+azRangeLabel(from,to)+'</div>'
+    +'<div class="az-note" id="azHistoryNote" style="margin:0 0 0.7rem;">'+(analyticsHistoryLoading?'Loading complete sales history…':'Selected sales period and equal-length previous period loaded.')+'</div>';
   // KPIs
   html+='<div class="az-kpis">'
-    +kpi('Net sales',peso0(net),trend)
-    +kpi('Gross sales',peso0(gross))
+    +kpi('Net sales',peso(net),trend)
+    +kpi('Gross sales',peso(gross))
     +kpi('Transactions',tx)
-    +kpi('Avg order value',peso0(aov))
+    +kpi('Avg order value',peso(aov))
     +kpi('Avg daily net',peso0(net/days))
     +kpi('Gross margin',(Math.round(margin*10)/10)+'%')
     +'</div>';
@@ -275,6 +262,7 @@ function pnlExpenseGroups(byItem){var out={operating:{},other:{interest:0,bank:0
 function emptyCogsCategories(){return{food:0,beverage:0,packaging:0,directLabor:0,unallocated:0};}
 function cogsBucketForIngredient(id){var item=invMap[id]||{},cat=((posSettingsMap.invCategories||{})[item.category])||{};var label=String(cat.name||item.category||'').toLowerCase();if(/packag|cup|lid|straw|napkin|container/.test(label))return'packaging';if(/beverage|drink|coffee|tea|milk|syrup|powder/.test(label))return'beverage';if(/food|ingredient|bakery|kitchen|pastry|meal/.test(label))return'food';return'unallocated';}
 function orderCogsCategories(o){var out=emptyCogsCategories(),snap=o&&o.cogsCategorySnapshot;if(snap){Object.keys(out).forEach(function(k){out[k]=Number(snap[k])||0;});return out;}var lines=o&&o.cogsDetail&&o.cogsDetail.lines;if(Array.isArray(lines)&&lines.length){lines.forEach(function(line){var b=cogsBucketForIngredient(line.ingredientId);out[b]+=Number(line.totalCost)||0;});return out;}out.unallocated=Number(o&&o.cogsSnapshot)||0;return out;}
+
 /* ══════════ DAILY REPORT (all channels + register expenses) ══════════ */
 function drNum(n){return (Math.round((Number(n)||0)*1000)/1000).toLocaleString('en-PH');}
 function dailyBounds(dstr){var s=new Date(dstr+'T00:00:00').getTime();return [s,s+86400000];}

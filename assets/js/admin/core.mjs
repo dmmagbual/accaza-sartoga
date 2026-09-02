@@ -1,10 +1,11 @@
 import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,runTransaction,query,orderByChild,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
-import{createSubscriptionHub}from"./realtime-hub.mjs";
+import{createSubscriptionHub}from"./realtime-hub.mjs?v=425";
+import{readSalesPeriod,periodKey}from'./sales-period-data.mjs?v=425';
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome}from"./admin-orders.mjs";
-import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=424";
+import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=425";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -166,7 +167,7 @@ let chatOpen=false,chatStarted=false;
 let custItem=null,custSize=null,custSel={},custQty=1;
 let menuFilter='coffee',orderFilter=null;
 
-const overviewInsights=createOverviewInsights({esc:escHtml,historyStatus:function(path){return subscriptionHub.historyStatus(path);},loadOlder:function(path){return subscriptionHub.loadOlder(path);}});
+const overviewInsights=createOverviewInsights({esc:escHtml,historyStatus:function(path){return subscriptionHub.historyStatus(path);},loadOlder:function(path){return subscriptionHub.loadOlder(path);},readRanking:async function(r){var p={startAt:r.start,endAt:r.end},maps=await Promise.all(['orders','archivedOrders'].map(function(path){return readSalesPeriod(db,{ref,get,query,orderByChild,startAt,endAt},path,p);}));return mergeOverviewOrders([],Object.entries(maps[0]).map(function(x){return Object.assign({_overviewKey:x[0]},x[1]);}),Object.entries(maps[1]).map(function(x){return Object.assign({_overviewKey:x[0]},x[1]);}));},refreshHistory:function(){return ensureOverviewFullHistory(true);}});
 
 const appCustomerSession=createAppCustomerSession({setupPush:setupPush,refreshNotifyPrompt:refreshNotifyPrompt});
 const customerOrderTracker=createCustomerOrderTracker({getOrders:function(){return adminOrdersMap;},escHtml:escHtml});
@@ -962,19 +963,21 @@ function renderPublicReviews(){
 
 
 const overviewHistoryLoader=createOverviewHistoryLoader({
-  read:async function(){var res=await Promise.all([get(ref(db,'orders')),get(ref(db,'archivedOrders'))]);return{orders:res[0].val()||{},archived:res[1].val()||{}};},
+  key:function(){return periodKey(window.AccazaAdminPeriods.get('sales'));},
+  read:async function(key){var parts=key.split(':'),p={startAt:Number(parts[0]),endAt:Number(parts[1])},res=await Promise.all(['orders','archivedOrders'].map(function(path){return readSalesPeriod(db,{ref,get,query,orderByChild,startAt,endAt},path,p);}));return{orders:res[0],archived:res[1]};},
   onData:function(){var dt=document.getElementById('tab-dashboard');if(adminLoggedIn&&dt&&dt.style.display!=='none')renderDashboard();},
   onError:function(e){console.error('Overview full history load failed; retry scheduled',e);}
 });
 function ensureOverviewFullHistory(force){return overviewHistoryLoader.load(force);}
+if(window.AccazaAdminPeriods)window.AccazaAdminPeriods.setWaiter(function(){var scope=subscriptionHub.stats().activeScope,paths=scope==='saleshistory'?['orders','archivedOrders','financialMovements']:['orders','archivedOrders'];return subscriptionHub.whenReady(paths);});
 function renderDashboard(){
   function _rows(map){return Object.entries(map||{}).map(function(pair){var o=pair[1];return o&&o.id?o:Object.assign({_overviewKey:pair[0]},o||{});});}
   function _mergedMap(snapshot,live){return Object.assign({},snapshot||{},live||{});}
   ensureOverviewFullHistory();
   const fullHistory=overviewHistoryLoader.snapshot();
   const active=_rows(adminOrdersMap);
-  const historyOrders=_rows(_mergedMap(fullHistory.orders,overviewOrdersMap));
-  const archived=_rows(_mergedMap(fullHistory.archived,archivedOrdersMap));
+  const historyOrders=_rows(subscriptionHub.historyStatus('orders').periodKey&& !subscriptionHub.historyStatus('orders').loading?overviewOrdersMap:fullHistory.orders);
+  const archived=_rows(subscriptionHub.historyStatus('archivedOrders').periodKey&&!subscriptionHub.historyStatus('archivedOrders').loading?archivedOrdersMap:fullHistory.archived);
   function _isSale(o){return window.AccazaSales.qualifies(o);}
   function _tsOf(o){return window.AccazaSales.stamp(o);}
   const outcomes=mergeOverviewOrders(active,historyOrders,archived);
@@ -988,7 +991,7 @@ function renderDashboard(){
   const t=sumOrders(sales.filter(o=>_tsOf(o)>=startToday)),w=sumOrders(sales.filter(o=>_tsOf(o)>=startWeek)),m=sumOrders(sales.filter(o=>_tsOf(o)>=startMonth)),a=sumOrders(sales);
   function setCard(id,rev,cnt){const el=document.getElementById(id);if(el)el.textContent='â‚±'+rev.toLocaleString();const cel=document.getElementById(id+'Count');if(cel)cel.textContent=cnt+' order'+(cnt!==1?'s':'');}
   setCard('dashToday',t.rev,t.cnt);setCard('dashWeek',w.rev,w.cnt);setCard('dashMonth',m.rev,m.cnt);setCard('dashAllTime',a.rev,a.cnt);
-  overviewInsights.render({active:active,orders:historyOrders,archived:archived,outcomes:outcomes,sales:sales,feedReady:{orders:overviewOrdersLoaded,archivedOrders:archivedOrdersLoaded,financialMovements:overviewFinancialMovementsLoaded},historyComplete:fullHistory.complete?true:undefined,menuItems:menuItemsMap||{},catType:overviewCatType,drinkCategories:DRINK_CATS});
+  overviewInsights.render({active:active,orders:historyOrders,archived:archived,outcomes:outcomes,sales:sales,feedReady:{orders:overviewOrdersLoaded,archivedOrders:archivedOrdersLoaded,financialMovements:overviewFinancialMovementsLoaded},historyComplete:fullHistory.complete&&!subscriptionHub.historyStatus('orders').loading&&!subscriptionHub.historyStatus('archivedOrders').loading,menuItems:menuItemsMap||{},catType:overviewCatType,drinkCategories:DRINK_CATS});
 }
 
 function drawPaymentPie(gcashR,bankR){
