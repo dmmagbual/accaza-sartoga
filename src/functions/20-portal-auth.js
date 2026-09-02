@@ -69,7 +69,7 @@ exports.manageSupplier = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => {
     const db=getDatabase(),actor=await requirePortalPermission(db,request,["purchases","petty","payables"]),data=request.data||{},action=financeText(data.action,20).toLowerCase(),now=Date.now();
-    if(!["create","update","deactivate","initialize_legacy","validate"].includes(action))throw new HttpsError("invalid-argument","Supplier action is invalid.");
+    if(!["create","update","deactivate","reactivate","initialize_legacy","validate"].includes(action))throw new HttpsError("invalid-argument","Supplier action is invalid.");
     if(action==="validate"){const supplier=await requireActiveSupplier(db,data.supplierId,data.name);return{supplierId:supplier.id,name:supplier.name,active:true};}
     if(action==="initialize_legacy"){
       const [suppliersSnap,purchasesSnap,vouchersSnap,payablesSnap,receiptsSnap,batchesSnap]=await Promise.all([db.ref("/suppliers").get(),db.ref("/purchaseInvoices").get(),db.ref("/pettyCashVouchers").get(),db.ref("/payables").get(),db.ref("/stockReceipts").get(),db.ref("/inventoryBatch").get()]),suppliers=suppliersSnap.val()||{},purchases=purchasesSnap.val()||{},vouchers=vouchersSnap.val()||{},payables=payablesSnap.val()||{},receipts=receiptsSnap.val()||{},batches=batchesSnap.val()||{},byKey={},writes={};
@@ -93,6 +93,9 @@ exports.manageSupplier = onCall(
     if(action==="deactivate"){
       const linked=await Promise.all([db.ref("/pettyCashVouchers").orderByChild("supplierId").equalTo(supplierId).limitToFirst(1).get(),db.ref("/purchaseInvoices").orderByChild("supplierId").equalTo(supplierId).limitToFirst(1).get()]);
       await db.ref().update({[`suppliers/${supplierId}/active`]:false,[`suppliers/${supplierId}/deactivatedAt`]:now,[`suppliers/${supplierId}/deactivatedBy`]:actor.uid,[`operationalAudit/${now}_supplier_deactivate_${supplierId}`]:operationalAuditRecord("deactivate_supplier","supplier",supplierId,actor,{name:supplier.name||"",hasTransactions:linked.some(s=>s.exists())})});return{supplierId,active:false};
+    }
+    if(action==="reactivate"){
+      await db.ref().update({[`suppliers/${supplierId}/active`]:true,[`suppliers/${supplierId}/deactivatedAt`]:null,[`suppliers/${supplierId}/deactivatedBy`]:null,[`suppliers/${supplierId}/reactivatedAt`]:now,[`suppliers/${supplierId}/reactivatedBy`]:actor.uid,[`operationalAudit/${now}_supplier_reactivate_${supplierId}`]:operationalAuditRecord("reactivate_supplier","supplier",supplierId,actor,{name:supplier.name||""})});return{supplierId,active:true};
     }
     const name=financeText(data.name,120).trim().replace(/\s+/g," "),key=supplierNameKey(name),oldKey=supplierNameKey(supplier.name);if(!name)throw new HttpsError("invalid-argument","Supplier name is required.");
     const indexId=crypto.createHash("sha256").update(key).digest("hex").slice(0,32),index=(await db.ref(`/supplierNameIndex/${indexId}`).get()).val();if(index&&index.supplierId!==supplierId)throw new HttpsError("already-exists","Another supplier already uses this name.");
