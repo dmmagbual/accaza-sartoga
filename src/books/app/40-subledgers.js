@@ -39,13 +39,25 @@ function receivablesPage(){
     '<div class="card" style="margin-bottom:1rem"><div class="card-pad"><div class="section-label">Platform AR control ledger · 1100</div><div class="tiny muted">Append-only journal activity with a running debit balance.</div></div><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Source</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead><tbody>'+(platformRows.join('')||'<tr><td colspan="5" class="empty">No platform receivable activity.</td></tr>')+'<tr class="total-row"><td colspan="4">Platform receivable control balance</td><td class="num">'+peso(platformControl)+'</td></tr></tbody></table></div><div class="card-pad"><span class="balance-bar '+(platformTies?'ok':'off')+'" style="display:flex">'+(platformTies?'✓ Account 1100 agrees with Admin Sales AR':'✗ Account 1100 differs from Admin Sales AR by '+peso(Math.abs(platformDifference)))+'<span>'+peso(platformBalance)+' Admin Sales · '+peso(platformControl)+' control</span></span></div></div>'+
     '<div class="card"><div class="card-pad"><div class="section-label">Other open receivables · 1110</div></div><div class="tbl-wrap"><table><thead><tr><th>Party</th><th>Type</th><th>Date</th><th>Due</th><th>Aging</th><th class="num">Amount</th></tr></thead><tbody>'+(docRows||'<tr><td colspan="6" class="empty">No other open receivables.</td></tr>')+'<tr class="total-row"><td colspan="5">Total detailed open receivables</td><td class="num">'+peso(docsTotal)+'</td></tr></tbody></table></div><div class="card-pad"><span class="balance-bar '+(ties?'ok':'off')+'" style="display:flex">'+(ties?'✓ Other receivables subledger agrees with account 1110':'✗ Other receivables differ from account 1110 by '+peso(Math.abs(difference)))+'<span>'+peso(docsTotal)+' detailed · '+peso(otherControl)+' control</span></span></div></div>';
 }
+var SHOW_SETTLED=false;
+/* Paid bills are hidden from the open list by design, but a payment recorded in error can only be
+   corrected from the bill it settled — so they still have to be reachable. */
+function settledDocs(map){return Object.keys(map||{}).map(function(k){return Object.assign({id:k},map[k]||{});}).filter(function(d){return String(d.status||'')==='paid'&&(Number(d.amount)||0)>0;}).sort(function(a,b){return Number(b.paidAt||0)-Number(a.paidAt||0);});}
+App.toggleSettled=function(){SHOW_SETTLED=!SHOW_SETTLED;App.render();};
+function settledSection(map){
+  var docs=settledDocs(map),head='<div class="card-pad" style="display:flex;justify-content:space-between;align-items:center"><div class="section-label">Settled bills \u00b7 '+docs.length+'</div><button class="btn sm ghost" onclick="App.toggleSettled()">'+(SHOW_SETTLED?'Hide':'Show')+' settled</button></div>';
+  if(!SHOW_SETTLED||!docs.length)return '<div class="card">'+head+(SHOW_SETTLED?'<div class="card-pad"><span class="tiny muted">No settled bills.</span></div>':'')+'</div>';
+  return '<div class="card">'+head+'<div class="tbl-wrap"><table><thead><tr><th>Party</th><th>Bill date</th><th>Payment ref</th><th class="num">Amount</th><th></th></tr></thead><tbody>'+docs.map(function(d){
+    var reversed=!!d.paymentReversalMovementId;
+    return '<tr><td><b>'+esc(d.party||'\u2014')+'</b>'+(d.ref?'<div class="tiny muted">'+esc(d.ref)+'</div>':'')+'</td><td class="tiny">'+esc(d.date||'')+'</td><td class="tiny">'+esc(d.settlementReference||'\u2014')+'</td><td class="num">'+peso(d.amount)+'</td><td>'+(reversed?'<span class="tiny muted">Payment reversed</span>':d.settlementMovementId?'<button class="btn sm ghost" onclick="App.reversePayablePayment(\''+esc(d.id)+'\')">Reverse payment</button>':'<span class="tiny muted">No settlement record</span>')+'</td></tr>';}).join('')+'</tbody></table></div></div>';
+}
 function subledgerPage(kind){
   var isAr = kind==='ar', map = isAr?window.__arMap:window.__apMap, live = !!window.__booksUser;
   var title = isAr?'Receivables':'Payables', sub = isAr?'Money owed to you':'Money you owe';
   if(!live) return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+'</p></div></div>'+
     '<div class="empty"><div class="big">'+(isAr?'📥':'📤')+'</div><b>Sign in for live '+title.toLowerCase()+'</b><br><span class="tiny">This subledger reads your live finance data. Click the status pill (top-right) to sign in with your Accaza admin account, or open this app from your Accaza domain.</span></div>';
   var docs = openDocs(map).sort(function(a,b){return String(a.due||'9999-99-99').localeCompare(String(b.due||'9999-99-99'));});
-  if(!docs.length) return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+'</p></div></div><div class="empty"><div class="big">✓</div>No open '+title.toLowerCase()+'.</div>';
+  if(!docs.length) return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+'</p></div></div><div class="empty"><div class="big">✓</div>No open '+title.toLowerCase()+'.</div>'+(isAr?'':settledSection(map));
   var buckets={}; AGING_ORDER.forEach(function(b){buckets[b]=0;});
   var total=0; docs.forEach(function(d){var amt=Number(d.amount)||0; total+=amt; buckets[agingBucket(d.due)]+=amt;});
   var agingCards = AGING_ORDER.filter(function(b){return buckets[b]>0.005;}).map(function(b){
@@ -58,6 +70,7 @@ function subledgerPage(kind){
     '<div class="kpis"><div class="kpi '+(isAr?'good':'bad')+'"><div class="lbl">Total '+(isAr?'receivable':'payable')+'</div><div class="val">'+pesoNoDec(total)+'</div><div class="sub">'+docs.length+' open</div></div>'+agingCards+'</div>'+
     '<div class="card"><div class="tbl-wrap"><table><thead><tr><th>Party</th><th>Type</th><th>Date</th><th>Due</th><th>Aging</th><th class="num">Amount</th>'+(isAr?'':'<th></th>')+'</tr></thead><tbody>'+rows+
     '<tr class="total-row"><td colspan="5">Total open '+title.toLowerCase()+'</td><td class="num">'+peso(total)+'</td>'+(isAr?'':'<td></td>')+'</tr></tbody></table></div></div>'+
+    (isAr?'':settledSection(map))+
     '<p class="tiny muted" style="margin-top:.6rem">Aging as of today. Recording a '+(isAr?'collection':'payment')+' or creating a new one comes with the Transactions tab.</p>';
 }
 PAGES.receivables = receivablesPage;

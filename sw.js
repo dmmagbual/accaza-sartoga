@@ -35,7 +35,7 @@ self.addEventListener('notificationclick',function(e){
 
 /* Versioned customer + POS app shells. Customer checkout remains online-only;
    authenticated POS cash sales use the durable IndexedDB continuity queue. */
-const CACHE='accaza-v391';
+const CACHE='accaza-v392';
 const ASSETS=[
   './assets/js/shared/admin-report-periods.js',
   './assets/js/admin/sales-period-data.mjs',
