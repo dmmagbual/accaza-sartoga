@@ -36,7 +36,7 @@ function renderAnalyticsBody(){
   // category / payment / type / items
   var byCat={},byPay={},byType={},items={};var totItems=0;
   cur.forEach(function(x){
-    byPay[x.payment]=(byPay[x.payment]||0)+x.net;
+    var payKey=window.AccazaSales.paymentKey(x.payment);byPay[payKey]=(byPay[payKey]||0)+x.net;
     byType[x.type]=(byType[x.type]||0)+x.net;
     var itemFactor=x.gross>0?Math.max(0,x.net/x.gross):0;(x.lineItems||[]).forEach(function(li){
       var mi=A().menuItemsMap[li.itemKey];var cat=mi?(A().getCatLabel?A().getCatLabel(mi.cat):mi.cat):'Other';

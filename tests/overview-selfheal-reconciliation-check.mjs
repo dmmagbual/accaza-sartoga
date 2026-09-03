@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 // Overview bounded-reporting + Sales History reconciliation regression.
 // 1) The Overview dashboard must not page outside the selected reporting period.
 // 2) The recognised-sale universe must equal Sales History's orders+archived set,
@@ -6,11 +7,8 @@ const elements={overviewDataNote:{textContent:''},overviewRangeLabel:{textConten
 globalThis.localStorage={getItem(){return JSON.stringify({period:'all'});},setItem(){}};
 globalThis.document={querySelectorAll(){return[];},getElementById(id){return elements[id]||null;}};
 globalThis.CustomEvent=function(){};
-globalThis.window={dispatchEvent(){},AccazaReportPeriod:{get(){return{mode:'month',count:1,label:'This month',startAt:new Date().setHours(0,0,0,0),endAt:Date.now()};}},AccazaSales:{
-  stamp(o){return Number(o.completedAt)||Number(o.receivedAt)||Number(o.timestamp)||Date.parse(o.date)||Number(o.archivedAt)||0;},
-  qualifies(o){return !!o&&!o.voided&&o.paymentStatus!=='pending'&&(o.status==='Completed'||o.status==='Received'||(o.status==='Archived'&&(o.prevStatus==='Completed'||o.prevStatus==='Received')));},
-  amounts(o){var gross=Number(o.subtotal!=null?o.subtotal:o.total)||0,discount=Number(o.discount)||0,refund=Number(o.refundAmount)||0;return{gross:gross,discount:discount,refund:refund,net:Math.max(0,gross-discount-refund)};}
-}};
+globalThis.window={dispatchEvent(){},AccazaReportPeriod:{get(){return{mode:'month',count:1,label:'This month',startAt:new Date().setHours(0,0,0,0),endAt:Date.now()};}}};
+Object.assign(globalThis.window,(function(){var w={};new Function('window',fs.readFileSync(new URL('../assets/js/shared/sales-authority.js',import.meta.url),'utf8'))(w);return w;})());
 const {createOverviewInsights,mergeOverviewOrders}=await import('../assets/js/admin/overview-insights.mjs');
 
 // ---- 1) Bounded reporting without opening Sales History ----

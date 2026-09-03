@@ -86,9 +86,27 @@ function createOverviewInsights(deps){
   function ensureHistory(){}
   function money(v){return'₱'+(Number(v)||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});}
   function renderPayments(rows){
-    var mix={};rows.forEach(function(o){var pays=Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment||'Other',amount:o.total||0}],refunds=o.refundPayments||{};pays.forEach(function(p){var method=p.method||'Other',net=Math.max(0,(Number(p.amount)||0)-(Number(refunds[method])||0));mix[method]=(mix[method]||0)+net;});});
-    var keys=Object.keys(mix).filter(function(k){return mix[k]>.009;}).sort(function(a,b){return mix[b]-mix[a];}),total=keys.reduce(function(s,k){return s+mix[k];},0)||1,colors={'Cash':'#2a9d5c','GCash':'#b08d57','Bank Transfer':'#3b8fd4','PayMaya':'#7360f2','Split':'#e67e00'},el=document.getElementById('payMixList');
-    if(el)el.innerHTML=keys.length?keys.map(function(k){return'<div class="overview-payment-row"><span class="overview-payment-dot" style="background:'+(colors[k]||'#999')+'"></span><span>'+deps.esc(k)+'</span><strong>'+money(mix[k])+' <small>'+Math.round(mix[k]/total*100)+'%</small></strong></div>';}).join(''):'<p class="overview-empty">No completed sales in this period.</p>';
+    var mix={},detail={};
+    rows.forEach(function(o){
+      var pays=Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment||'Other',amount:o.total||0}],refunds=o.refundPayments||{};
+      pays.forEach(function(p){
+        var label=p.method||'Other',net=Math.max(0,(Number(p.amount)||0)-(Number(refunds[label])||0)),method=window.AccazaSales.paymentKey(p),account=window.AccazaSales.paymentAccount(p);
+        mix[method]=(mix[method]||0)+net;
+        /* A classification is the headline; the receiving account is the detail underneath it.
+           One "E-Wallet" figure hides whether the money landed in G-Cash or PayMaya. */
+        var bucket=detail[method]||(detail[method]={});bucket[account||'']=(bucket[account||'']||0)+net;
+      });
+    });
+    var keys=Object.keys(mix).filter(function(k){return mix[k]>.009;}).sort(function(a,b){return mix[b]-mix[a];}),total=keys.reduce(function(s,k){return s+mix[k];},0)||1,colors={'Cash':'#2a9d5c','E-Wallet':'#b08d57','GCash':'#b08d57','Bank Transfer':'#3b8fd4','PayMaya':'#7360f2','Split':'#e67e00'},el=document.getElementById('payMixList');
+    function accountLines(method){
+      var bucket=detail[method]||{},names=Object.keys(bucket).filter(function(n){return n&&bucket[n]>.009;}).sort(function(a,b){return bucket[b]-bucket[a];});
+      if(!names.length)return'';
+      var unnamed=Number(bucket['']||0);
+      if(names.length===1&&unnamed<=.009&&names[0].toLowerCase()===method.toLowerCase())return'';
+      return names.map(function(n){return'<div class="overview-payment-row overview-payment-sub"><span></span><span>'+deps.esc(n)+'</span><strong>'+money(bucket[n])+'</strong></div>';}).join('')
+        +(unnamed>.009?'<div class="overview-payment-row overview-payment-sub"><span></span><span>Account not recorded</span><strong>'+money(unnamed)+'</strong></div>':'');
+    }
+    if(el)el.innerHTML=keys.length?keys.map(function(k){return'<div class="overview-payment-row"><span class="overview-payment-dot" style="background:'+(colors[k]||'#999')+'"></span><span>'+deps.esc(k)+'</span><strong>'+money(mix[k])+' <small>'+Math.round(mix[k]/total*100)+'%</small></strong></div>'+accountLines(k);}).join(''):'<p class="overview-empty">No completed sales in this period.</p>';
   }
   function renderTop(rows,data){
     var metric=state.metric,result=buildDrinkRanking(rows,data),top=result.items.slice().sort(function(a,b){return(b[metric]-a[metric])||(b[metric==='units'?'revenue':'units']-a[metric==='units'?'revenue':'units'])||a.name.localeCompare(b.name);}).slice(0,10),medals=['🥇','🥈','🥉','4','5','6','7','8','9','10'],el=document.getElementById('topItemsList'),title=document.getElementById('overviewTopTitle'),open=document.getElementById('openDrinkRankingBtn');if(title)title.textContent='Top 10 Best Sellers - By '+(metric==='units'?'Quantity':'Revenue');if(el)el.innerHTML=top.length?top.map(function(x,i){return'<div class="overview-rank-row"><span>'+medals[i]+'</span><span>'+deps.esc(x.name)+'</span><strong>'+(metric==='units'?formatUnits(x.units)+' sold':money(x.revenue))+'</strong></div>';}).join(''):'<p class="overview-empty">No completed drink sales in this period.</p>';if(open)open.textContent='View full ranking';

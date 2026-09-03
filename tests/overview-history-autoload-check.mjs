@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 const elements={overviewDataNote:{textContent:''},overviewRangeLabel:{textContent:''},overviewNetSales:{textContent:''},overviewGrossSales:{textContent:''},overviewTransactions:{textContent:''},overviewAverageSale:{textContent:''}};
 globalThis.localStorage={getItem(){return JSON.stringify({period:'all'});},setItem(){}};
 globalThis.document={querySelectorAll(){return[];},getElementById(id){return elements[id]||null;}};
@@ -6,7 +7,8 @@ globalThis.CustomEvent=function(){};
    admin.html does. Without this stub the fallback in overview-insights.mjs uses the UTC date, so
    between 16:00 and 24:00 UTC (00:00-08:00 Manila) the month-to-date period ends before now and a
    just-completed order falls outside it. That made this check fail for eight hours every day. */
-globalThis.window={dispatchEvent(){},AccazaDate:{key(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}},AccazaReportPeriod:{get(){return{mode:'month',count:1,label:'This month',startAt:new Date().setHours(0,0,0,0),endAt:Date.now()};},set(){return this.get();}},AccazaSales:{stamp(o){return Number(o.completedAt)||Number(o.receivedAt)||Number(o.timestamp)||Date.parse(o.date)||Number(o.archivedAt)||0;},amounts(o){return{gross:Number(o.total)||0,net:Number(o.total)||0};}}};
+globalThis.window={dispatchEvent(){},AccazaDate:{key(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}},AccazaReportPeriod:{get(){return{mode:'month',count:1,label:'This month',startAt:new Date().setHours(0,0,0,0),endAt:Date.now()};},set(){return this.get();}}};
+Object.assign(globalThis.window,(function(){var w={};new Function('window',fs.readFileSync(new URL('../assets/js/shared/sales-authority.js',import.meta.url),'utf8'))(w);return w;})());
 const {createOverviewInsights,mergeOverviewOrders}=await import('../assets/js/admin/overview-insights.mjs');
 const states={orders:{loaded:1,hasOlder:true},archivedOrders:{loaded:1,hasOlder:true},financialMovements:{loaded:1,hasOlder:true}},calls=[];
 const overview=createOverviewInsights({esc:String,historyStatus(path){return states[path];},async loadOlder(path){calls.push(path);states[path]={loaded:2,hasOlder:false};}});
