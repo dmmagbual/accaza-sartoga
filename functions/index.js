@@ -2390,9 +2390,9 @@ exports.postFinancialCommand = onCall(
       if(!['owner','superadmin','admin','manager'].includes(actor.role))throw new HttpsError('permission-denied','A privileged Finance role is required to view cash-journal revisions.');
       const id=financeKey(data.originalMovementId,'Journal ID');return{revisions:(await db.ref(`/cashJournalRevisions/${id}`).get()).val()||{}};
     }
-    const accounts = (await db.ref("/cfAccounts").get()).val() || {}, chart = await ensureChartAccounts(db); const now = Date.now(); let movement, writes = {}, result = {}, depositReferenceClaim = null;
+    const accounts = (await db.ref("/cfAccounts").get()).val() || {}, chart = await ensureChartAccounts(db); const now = Date.now(); let movement, writes = {}, result = {}, depositReferenceClaim = null, movementIdOverride = null;
     function amount(v) { const x = Financial.money(v); if (!(x > 0)) throw new HttpsError("invalid-argument", "Amount must be greater than zero."); return x; }
-    function addCash(id, entry) { writes[`cfLedger/${id}`] = cashLedgerRecord(entry, commandId, movement, actor); }
+    function addCash(id, entry) { writes[`cfLedger/${id}`] = cashLedgerRecord(entry, movementIdOverride || commandId, movement, actor); }
     function manualCashWrites(target,movementId,mv,date,cashLines,category,party,reference){(cashLines||[]).forEach(({mapped,dr,cr,index})=>{if(mapped.cashKey==="float")return;const value=Financial.money(dr-cr);if(!value)return;const accountId=mapped.cashKey==="register"?"register":mapped.cashKey==="undeposited"?"undeposited":mapped.cashKey==="petty"?"petty":mapped.cashKey;target[`cfLedger/fm_${movementId}_${index}`]=cashLedgerRecord({date,accountId,dir:value>0?"in":"out",category,amount:Math.abs(value),party,ref:reference,auto:category!=="Manual journal"},movementId,mv,actor);});}
     if (action === "inventory_opening_balance") {
       const inventory = (await db.ref("/inventory").get()).val() || {}, journal = (await db.ref("/books/journal").get()).val() || {}, reconciliation = BooksBridge.inventoryReconciliationSnapshot(inventory, journal);
@@ -2642,8 +2642,58 @@ exports.postFinancialCommand = onCall(
       if(!referenceClaim.committed||referenceState.token!==referenceToken){if(referenceState.status==="posted")return{movementId:referenceState.movementId,duplicate:true,amount:Number(referenceState.amount)||0,date:referenceState.date||""};throw new HttpsError("aborted","This deposit reference is already being processed. Refresh before trying again.");}
       depositReferenceClaim={ref:referenceRef,token:referenceToken};writes[`cashDepositReferences/${accountId}/${referenceKey}`]={status:"posted",token:referenceToken,movementId:commandId,amount:value,date:depositDate,reference:depositReference,claimedAt:now,postedAt:now,actorUid:actor.uid,schemaVersion:1};
       movement = Financial.movement("register_cash_deposit", "cashCustody", ids.join("_"), [Financial.line(`asset:cash_account:${accountId}`, value, 0, "Register cash deposited"), Financial.line("asset:cash_awaiting_deposit", 0, value, "Clear cash custody")], {occurredAt: accountingTimestamp(depositDate,now),actorName:actor.role,reference:depositReference,accountId,custodyAllocations:allocations}); addCash(`fm_${commandId}`, {date: depositDate, accountId, dir: "in", category: "Register cash deposit", amount: value, party: "Register cash custody", ref: depositReference});writes[`operationalAudit/${now}_cash_deposit_${commandId}`]=operationalAuditRecord("cash_deposit","cashCustody",ids.join("_"),actor,{movementId:commandId,amount:value,date:depositDate,destinationAccountId:accountId,reference:depositReference,custodyAllocations:allocations,accounting:"Debit destination cash account; credit Undeposited Collection; total cash and income unchanged."}); result.amount = value;result.date=depositDate;
+    } else if (action === "reverse_payable_payment") {
+      /* Undo a supplier bill payment that was recorded but never actually made. The bill returns to outstanding and the
+         cash account is restored, in one atomic commit, so the AP control account and the supplier subledger never diverge. */
+      if (!["owner", "superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner can reverse a recorded supplier payment.");
+      const docId = financeKey(data.documentId, "Payable ID"), reason = financeText(data.reason, 300);
+      if (!reason) throw new HttpsError("invalid-argument", "A reversal reason is required.");
+      const snap = await db.ref(`/payables/${docId}`).get();
+      if (!snap.exists()) throw new HttpsError("not-found", "Payable was not found.");
+      const doc = snap.val(), status = financeText(doc.status, 40);
+      if (status === "open") throw new HttpsError("failed-precondition", "This bill is already outstanding. There is no recorded payment to reverse.");
+      if (status === "reversed") throw new HttpsError("failed-precondition", "This bill was reversed at its source transaction. Correct it there so the cost and the liability stay synchronized.");
+      if (status !== "paid") throw new HttpsError("failed-precondition", `A bill with status ${status || "unknown"} cannot have its payment reversed here.`);
+      if (doc.type === "customer_change_refund") throw new HttpsError("failed-precondition", "A customer change / refund payable settles through its own refund path. Correct it there so the customer subledger stays aligned.");
+      if (doc.paymentReversalMovementId) throw new HttpsError("failed-precondition", "This payment has already been reversed.");
+      const paymentId = financeText(doc.settlementMovementId, 160);
+      if (!paymentId) throw new HttpsError("failed-precondition", "This bill records no settlement movement, so there is nothing to reverse cleanly. Review it before correcting.");
+      const original = (await db.ref(`/financialMovements/${paymentId}`).get()).val();
+      if (!original || !Array.isArray(original.lines) || !original.lines.length) throw new HttpsError("failed-precondition", "The original payment movement is missing. Repair the ledger before reversing this payment.");
+      if (!["payable_paid", "payable_paid_owner_capital"].includes(financeText(original.type, 60))) throw new HttpsError("failed-precondition", "Only a recorded supplier bill payment can be reversed here.");
+      if (financeText(original.sourceId, 160) !== docId) throw new HttpsError("failed-precondition", "The recorded settlement belongs to a different bill. Repair the settlement link before reversing anything.");
+      if (original.reversedByMovementId) throw new HttpsError("failed-precondition", "This payment movement has already been reversed.");
+      const paidFrom = financeText(doc.accountId, 120);
+      if (paidFrom === "undeposited") throw new HttpsError("failed-precondition", "This bill was paid from Undeposited Collection. Reversing it must also restore the exact cash custody allocations, which this correction does not do.");
+      const reverseId = `payable_payment_reverse_${paymentId}`;
+      if ((await db.ref(`/financialMovements/${reverseId}`).get()).exists()) return {movementId: reverseId, documentId: docId, duplicate: true};
+      const date = financeDate(data.date), reference = financeText(data.ref, 120) || financeText(doc.settlementReference, 120);
+      if (!reference) throw new HttpsError("invalid-argument", "A correction reference is required.");
+      await assertAccountingPeriodOpen(db, date, "reversing this supplier payment");
+      const reversal = Financial.reverseMovement(Object.assign({}, original, {id: paymentId}), "payable_payment_reversed", "Reverse payment");
+      if (!BooksBridge.linesBalanced(reversal.lines)) throw new HttpsError("failed-precondition", "The calculated payment reversal is unbalanced. Review the original movement before correcting.");
+      const value = amount(Financial.totals(reversal.lines).debit);
+      movementIdOverride = reverseId;
+      movement = Object.assign(reversal, {sourceType: "payable", sourceId: docId, occurredAt: accountingTimestamp(date, now), actorName: actor.role, reference, sourceReference: financeText(doc.ref, 120), reason, reversalOf: paymentId, reversesMovementId: paymentId, paymentSource: paidFrom});
+      if (financeText(original.type, 60) !== "payable_paid_owner_capital" && paidFrom && paidFrom !== "owner_capital") addCash(`fm_${reverseId}`, {date, accountId: paidFrom, dir: "in", category: "AP payment reversed", amount: value, party: doc.party, ref: reference});
+      writes[`payables/${docId}/status`] = "open";
+      writes[`payables/${docId}/remainingAmount`] = Financial.money(doc.amount);
+      writes[`payables/${docId}/paidAmount`] = 0;
+      writes[`payables/${docId}/paidAt`] = null;
+      writes[`payables/${docId}/settlementReference`] = null;
+      writes[`payables/${docId}/settlementMovementId`] = null;
+      writes[`payables/${docId}/accountId`] = null;
+      writes[`payables/${docId}/paidPersonallyBy`] = null;
+      writes[`payables/${docId}/paymentReversalMovementId`] = reverseId;
+      writes[`payables/${docId}/reversedPaymentMovementId`] = paymentId;
+      writes[`payables/${docId}/paymentReversedAt`] = now;
+      writes[`payables/${docId}/paymentReversalReason`] = reason;
+      writes[`financialMovements/${paymentId}/reversedByMovementId`] = reverseId;
+      writes[`operationalAudit/${now}_payable_payment_reverse_${docId}`] = operationalAuditRecord("payable_payment_reversed", "payable", docId, actor, {movementId: reverseId, reversedMovementId: paymentId, amount: value, date, reference, reason, party: financeText(doc.party, 120), paidFrom, accounting: "Debit the cash or equity account originally credited; credit Accounts Payable. The bill returns to outstanding and total cash is restored."});
+      result.documentId = docId; result.amount = value; result.party = financeText(doc.party, 120);
     } else throw new HttpsError("invalid-argument", "Unsupported financial command.");
-    try {const committed = await commitFinancial(db, commandId, movement, actor, writes);if(depositReferenceClaim&&committed.duplicate)await depositReferenceClaim.ref.update({status:"posted",movementId:commandId,amount:result.amount,date:result.date,postedAt:Date.now()});return Object.assign(result, {movementId: commandId, duplicate: committed.duplicate});}catch(error){if(depositReferenceClaim)await depositReferenceClaim.ref.transaction((current)=>current&&current.token===depositReferenceClaim.token&&current.status==="processing"?null:current);throw error;}
+    const postingId = movementIdOverride || commandId;
+    try {const committed = await commitFinancial(db, postingId, movement, actor, writes);if(depositReferenceClaim&&committed.duplicate)await depositReferenceClaim.ref.update({status:"posted",movementId:commandId,amount:result.amount,date:result.date,postedAt:Date.now()});return Object.assign(result, {movementId: postingId, duplicate: committed.duplicate});}catch(error){if(depositReferenceClaim)await depositReferenceClaim.ref.transaction((current)=>current&&current.token===depositReferenceClaim.token&&current.status==="processing"?null:current);throw error;}
   }),
 );
 
