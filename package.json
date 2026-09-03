@@ -38,7 +38,7 @@
     "test:books-navigation": "node tests/books-navigation-check.mjs",
     "test:books-csv": "node tests/books-csv-export-check.mjs",
     "audit:dependencies": "npm audit --omit=dev --audit-level=high && npm --prefix functions audit --omit=dev --audit-level=high",
-    "test": "npm run test:bundle-drift && npm run test:html-drift && npm run test:static-architecture && npm run test:customer-startup && npm run test:production-assurance && npm run test:performance-budget && npm run test:recovery-certification && npm run test:dependency-certification && npm run test:production-health && npm run test:incident-controls && npm run test:business-continuity && npm run test:release-certification && npm run test:production-validation && npm run test:alert-escalation && npm run test:security-accounting-assurance && npm run test:final-stabilization && npm run test:business-intelligence && npm run test:cash-journal-edit && npm run test:inventory-adjustment-offset && npm run test:working-capital && npm run test:admin-navigation && npm run test:purchase-settlement && npm run test:books-payable-target && npm run test:payable-payment-reversal && npm run test:payment-routing && npm run test:payment-method-grouping && npm run test:payment-routing-consistency && npm run test:inventory-revaluation && npm run test:document-number && npm run test:recipe-temperature && npm run test:cogs-duplication && npm run test:serve-style-packaging && npm run test:supplier-master && npm run test:books-navigation && npm run test:books-csv && npm run test:static",
+    "test": "npm run test:bundle-drift && npm run test:html-drift && npm run test:static-architecture && npm run test:customer-startup && npm run test:production-assurance && npm run test:performance-budget && npm run test:recovery-certification && npm run test:dependency-certification && npm run test:production-health && npm run test:incident-controls && npm run test:business-continuity && npm run test:release-certification && npm run test:production-validation && npm run test:alert-escalation && npm run test:security-accounting-assurance && npm run test:final-stabilization && npm run test:business-intelligence && npm run test:cash-journal-edit && npm run test:inventory-adjustment-offset && npm run test:working-capital && npm run test:admin-navigation && npm run test:purchase-settlement && npm run test:books-payable-target && npm run test:payable-payment-reversal && npm run test:payment-routing && npm run test:payment-method-grouping && npm run test:payment-routing-consistency && npm run test:inventory-revaluation && npm run test:document-number && npm run test:recipe-temperature && npm run test:cogs-duplication && npm run test:serve-style-packaging && npm run test:option-reduce && npm run test:supplier-master && npm run test:books-navigation && npm run test:books-csv && npm run test:static",
     "test:e2e": "playwright test",
     "test:rules": "firebase emulators:exec --only database \"node tests/rules-ownership-check.mjs\"",
     "test:safety": "node tests/repository-safety-check.mjs",
@@ -52,7 +52,8 @@
     "test:document-number": "node tests/document-number-check.mjs",
     "test:recipe-temperature": "node tests/recipe-temperature-check.mjs",
     "test:cogs-duplication": "node tests/cogs-duplication-check.mjs",
-    "test:serve-style-packaging": "node tests/serve-style-packaging-check.mjs"
+    "test:serve-style-packaging": "node tests/serve-style-packaging-check.mjs",
+    "test:option-reduce": "node tests/option-reduce-check.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.1",

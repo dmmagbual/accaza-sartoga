@@ -27,6 +27,18 @@
       return out;
     }).sort(function(a,b){return a.ing<b.ing?-1:a.ing>b.ing?1:0;});
   }
+  /* A shared definition that TAKES something out has to say so, not carry a fixed minus. Held as
+     op:'reduce' it removes what the drink actually uses and nothing more, so the same "Not Sweet"
+     works on a latte that has condensed milk and on a soda that has none. */
+  function asReducers(rows){
+    return (rows||[]).map(function(row){
+      var negative=SIZES.every(function(s){return n(row['qty'+s])<=0;})&&SIZES.some(function(s){return n(row['qty'+s])<0;});
+      if(!negative)return row;
+      var out={ing:row.ing,unit:row.unit,stockUnit:row.stockUnit,op:'reduce'};
+      SIZES.forEach(function(s){out['qty'+s]=q6(Math.abs(n(row['qty'+s])));});
+      return out;
+    });
+  }
   function signature(rows){
     return (rows||[]).map(function(r){return r.ing+':'+SIZES.map(function(s){return q6(r['qty'+s]);}).join('/');}).sort().join('|');
   }
@@ -69,7 +81,7 @@
       var sharedRows=fromLibrary?normalise(saved.ings,null,inventory):winner.rows;
       var sharedSig=signature(sharedRows);
       library[record.gid]=library[record.gid]||{};
-      library[record.gid][record.key]={label:record.label,ings:sharedRows};
+      library[record.gid][record.key]={label:record.label,ings:asReducers(sharedRows)};
       var overrides=[];
       variants.forEach(function(variant){
         var matches=variant.signature===sharedSig;
@@ -102,5 +114,5 @@
     });
     return out;
   }
-  return {VERSION:VERSION,SIZES:SIZES,plan:plan,survey:survey,applyTo:applyTo,normalise:normalise,signature:signature};
+  return {VERSION:VERSION,SIZES:SIZES,plan:plan,survey:survey,applyTo:applyTo,normalise:normalise,signature:signature,asReducers:asReducers};
 });
