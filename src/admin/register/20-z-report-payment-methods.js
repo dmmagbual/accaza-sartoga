@@ -55,6 +55,10 @@ function renderPayMethods(){
          A rename that only changed the label would orphan all three, so it also records the old name
          as an alias and teaches the linked accounts to accept the new one. */
       var i=+b.getAttribute('data-pmrename'),old=String(pm[i].name||'');
+      /* The ledger decides a sale is cash by the literal name "cash" (financial.js orderPosting),
+         not by this method's cash flag. Renaming it would keep the till treating it as cash while
+         the ledger posted it to an unmapped suspense account. */
+      if(pm[i].cash===true||old.toLowerCase()==='cash'){alert('The cash method cannot be renamed. Finance identifies a cash sale by the name \u201cCash\u201d, so renaming it would post cash to an unmapped suspense account while the till still treated it as cash.');return;}
       F().run({title:'Rename payment method',subtitle:'Sales already posted as \u201c'+old+'\u201d keep reporting under the new name, and its receiving accounts will accept both.',submitLabel:'Rename',busyLabel:'Renaming\u2026',fields:[{name:'name',label:'New name',required:true,value:old,maxLength:60}]},function(v){
         var nm=String(v.name||'').trim();
         if(!nm||nm===old)return Promise.resolve();

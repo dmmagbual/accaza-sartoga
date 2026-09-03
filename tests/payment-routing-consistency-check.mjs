@@ -51,6 +51,15 @@ check(/two different accounts/.test(split[0].detail),
 
 /* Cash and deactivated methods route no electronic money and must stay quiet. */
 check(paymentRoutingIssues([{name:'Cash', cash:true}], {}, now).length === 0, 'Cash must not be checked for a receiving account.');
+
+/* orderPosting decides a sale is cash by the LITERAL name, not by the method's cash flag. A cash
+   method named anything else keeps the till treating it as cash while the ledger sends it to an
+   unmapped suspense account. */
+const renamedCash = paymentRoutingIssues([{name:'Cash on Hand', cash:true}], {}, now);
+check(renamedCash.length === 1 && renamedCash[0].severity === 'critical',
+  'A cash-flagged method not named Cash must raise a critical exception.');
+check(/suspense/.test(renamedCash[0].detail),
+  'The exception must say where the money actually goes.');
 check(paymentRoutingIssues([{name:'Old Wallet', active:false}], {}, now).length === 0, 'A deactivated method must not raise noise.');
 check(paymentRoutingIssues(undefined, undefined, now).length === 0, 'Missing settings must not throw or invent exceptions.');
 

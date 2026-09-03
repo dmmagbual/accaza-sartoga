@@ -1,7 +1,7 @@
 const INVENTORY_MOVEMENT_TYPES = new Set([
   "opening_balance", "purchase", "sale_usage", "staff_use", "rnd_testing",
   "waste", "adjustment", "manual_edit", "usage_reversal",
-  "void_reversal", "refund_reversal", "purchase_reversal",
+  "void_reversal", "refund_reversal", "purchase_reversal", "revaluation",
 ]);
 function qty6(value) {
   return Math.round((Number(value) || 0) * 1000000) / 1000000;
@@ -69,7 +69,7 @@ async function repairInventoryProjections(db, itemId, accounting, item) {
   ]);
   return projection;
 }
-const INVENTORY_BOOK_POSTING_TYPES = new Set(["waste", "staff_use", "rnd_testing", "adjustment", "manual_edit", "usage_reversal"]);
+const INVENTORY_BOOK_POSTING_TYPES = new Set(["waste", "staff_use", "rnd_testing", "adjustment", "manual_edit", "usage_reversal", "revaluation"]);
 function inventoryBookAccountCode(item) {
   const code = String(item && item.inventoryAccount || "");
   return /^12[0-8]0$/.test(code) ? code : "1290";
@@ -86,6 +86,15 @@ function internalUsageAccount(type,movement){
   return requested;
 }
 function inventoryAdjustmentOffset(type,movement){
+  if(type==="revaluation"){
+    /* A revaluation restates the cost of stock still on hand. It is a costing correction, not wastage,
+       so 5900 is not offered. Owner's Capital is allowed only where the quantity path allows it too:
+       correcting inventory the owner brought in, never an operating costing error. */
+    const want=String(movement&&movement.offsetAccount||"5905").trim(),why=String(movement&&movement.adjustmentNature||"").trim().toLowerCase();
+    if(!["3000","5905"].includes(want))throw new HttpsError("failed-precondition","A revaluation must offset 5905 Inventory Reconciliation Gain / (Loss), or 3000 Owner's Capital for a beginning inventory correction.");
+    if(want==="3000"&&why!=="beginning-inventory")throw new HttpsError("failed-precondition","Owner's Capital may only offset a beginning inventory correction.");
+    return want;
+  }
   if(!["adjustment","manual_edit","waste"].includes(type))return "";
   const requested=String(movement&&movement.offsetAccount||"").trim(),nature=String(movement&&movement.adjustmentNature||movement&&movement.note||"").trim().toLowerCase();
   if(!["3000","5900","5905"].includes(requested))throw new HttpsError("failed-precondition","Choose one approved Finance offset account: 3000 Owner's Capital, 5900 Wastage & Spoilage, or 5905 Inventory Reconciliation Gain / (Loss).");
@@ -127,7 +136,11 @@ async function applyInventoryMovement(db, raw, actor) {
   }
   const qty = qty6(raw.qty);
   const requestedCost = qty6(raw.unitCost);
-  const setCost = raw.setCost === true || type === "purchase" || type === "purchase_reversal";
+  const setCost = raw.setCost === true || type === "purchase" || type === "purchase_reversal" || type === "revaluation";
+  if (type === "revaluation") {
+    if (qty !== 0) throw new HttpsError("invalid-argument", "A revaluation changes the unit cost only. Use a stock adjustment to move quantity.");
+    if (!(requestedCost >= 0)) throw new HttpsError("invalid-argument", "Enter the corrected unit cost.");
+  }
   if (!Number.isFinite(qty) || Math.abs(qty) > 100000000) throw new HttpsError("invalid-argument", "Inventory quantity is invalid.");
   if (qty === 0 && !setCost) throw new HttpsError("invalid-argument", "Inventory movement quantity cannot be zero.");
   if (requestedCost < 0 || requestedCost > 100000000) throw new HttpsError("invalid-argument", "Inventory unit cost is invalid.");
@@ -153,7 +166,7 @@ async function applyInventoryMovement(db, raw, actor) {
   }
   const now = Date.now();
   if (Number(raw.occurredAt) && Number(raw.occurredAt) > now + 2 * 86400000) throw new HttpsError("invalid-argument", "An inventory movement can\u2019t be dated in the future.");
-  let duplicate = false, insufficient = false, insufficientValue = false;
+  let duplicate = false, insufficient = false, insufficientValue = false, nothingToRevalue = false;
   const accountingRef = db.ref(`/inventoryAccounting/${itemId}`);
   // RTDB transactions may invoke the updater once with an empty local cache
   // before the server value arrives.  A purchase reversal must not seed that
@@ -168,6 +181,7 @@ async function applyInventoryMovement(db, raw, actor) {
     const costBefore = qty6(state.unitCost || item.cost);
     const after = qty6(before + qty);
     if (type === "purchase_reversal" && after < 0) {insufficient = true; return;}
+    if (type === "revaluation" && !(before > 0)) {nothingToRevalue = true; return;}
     let costAfter = costBefore;
     if (type === "purchase" && qty > 0 && requestedCost >= 0) {
       const denominator = before + qty;
@@ -185,8 +199,10 @@ async function applyInventoryMovement(db, raw, actor) {
     const movement = {
       id: movementId, itemId,
       itemName: String(item.name || itemId).slice(0, 160), unit: String(item.unit || "").slice(0, 40),
-      type, qty, unitCost: ["purchase", "purchase_reversal"].includes(type) ? requestedCost : costBefore,
-      totalCost: money(qty * (["purchase", "purchase_reversal"].includes(type) ? requestedCost : costBefore)),
+      type, qty, unitCost: (type === "revaluation" || ["purchase", "purchase_reversal"].includes(type)) ? requestedCost : costBefore,
+      /* A revaluation moves no quantity, so qty * cost is zero and nothing would reach the ledger.
+         Its value is the restatement of the stock still on hand: qty on hand * (new cost - old cost). */
+      totalCost: type === "revaluation" ? money(before * (requestedCost - costBefore)) : money(qty * (["purchase", "purchase_reversal"].includes(type) ? requestedCost : costBefore)),
       balanceBefore: before, balanceAfter: after, costBefore, costAfter,
       sourceType: String(raw.sourceType || type).slice(0, 80),
       sourceId: String(raw.sourceId || "").slice(0, 160),
@@ -201,7 +217,7 @@ async function applyInventoryMovement(db, raw, actor) {
     state.applied[movementId] = movement;
     return state;
   });
-  if (!result.committed) {if (insufficient) throw new HttpsError("failed-precondition", `Not enough remaining stock to reverse ${item.name || itemId}.`);if (insufficientValue) throw new HttpsError("failed-precondition", `The remaining stock value for ${item.name || itemId} cannot support this reversal.`);throw new Error(`Inventory transaction was not committed for ${itemId}`);}
+  if (!result.committed) {if (nothingToRevalue) throw new HttpsError("failed-precondition", `${item.name || itemId} has no stock on hand, so there is no value to restate. Receive stock first.`);if (insufficient) throw new HttpsError("failed-precondition", `Not enough remaining stock to reverse ${item.name || itemId}.`);if (insufficientValue) throw new HttpsError("failed-precondition", `The remaining stock value for ${item.name || itemId} cannot support this reversal.`);throw new Error(`Inventory transaction was not committed for ${itemId}`);}
   const accounting = result.snapshot.val();
   const movement = accounting.applied[movementId];
   const opening = accounting.applied[`opening_${itemId}`];
