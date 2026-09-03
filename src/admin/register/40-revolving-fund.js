@@ -66,7 +66,7 @@ function renderPetty(){
       +'<div class="pz-card" style="flex:1;min-width:180px;"><div style="font-size:0.75rem;color:var(--tl);">Payments awaiting inventory allocation</div><div style="font-weight:700;color:#8a5a00;">'+peso(bal.advances)+'</div></div>'
     +'</div>'
     +'<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">'
-      +'<div class="pz-card" style="flex:2;min-width:280px;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Record a cash payment</div>'
+      +'<div class="pz-card" style="flex:2;min-width:280px;"><div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Record a cash payment</div><p class="pz-sub" style="margin:-0.25rem 0 0.6rem;">For costs with no itemised supplier invoice, and for paying a supplier before delivery. Goods or an itemised invoice belong in Purchases; a bill already raised is settled in Finance Books → Payables.</p>'
         +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">'
           +'<div><span class="pz-lbl">Transaction type</span><select class="pz-in" id="pvType"><option value="expense">Operating expense</option><option value="owner_withdrawal">Owner withdrawal — not an expense</option><option value="purchase_advance">Payment to supplier — allocate to inventories</option></select></div>'
           +'<div><span class="pz-lbl">Date</span><input class="pz-in" id="pvDate" type="date" value="'+today+'"/></div>'
