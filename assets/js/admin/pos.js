@@ -1998,7 +1998,13 @@ function packStyleEngine(){
 }
 function packStyleCategories(){return (posMeta&&posMeta.invCategories)||(A()&&A().invCategories)||{};}
 function packStyleBuild(){
-  packStylePlan=packStyleEngine().applyPlan(recipesMap,inventoryMap,(A()&&A().menuItemsMap)||{},packStyleCategories());
+  var engine=packStyleEngine(),menu=(A()&&A().menuItemsMap)||{},cats=packStyleCategories();
+  var seed=engine.applyPlan(recipesMap,inventoryMap,menu,cats);
+  var draft=packDraftInit(seed);
+  /* Rebuild against the styles actually on screen, so what is assigned, stripped and priced is
+     what the user is looking at - never what was proposed before they edited it. */
+  packStylePlan=engine.applyPlan(recipesMap,inventoryMap,menu,cats,{styles:draft});
+  packStylePlan.proposal=seed.proposal;
   return packStylePlan;
 }
 function packStyleSnapshot(){
@@ -2059,7 +2065,7 @@ function packStyleCost(plan,key,size,labels,useStyles){
   var recipes=recipesMap,menu=(A()&&A().menuItemsMap)||{},groups=(A()&&A().optionGroupsMap)||{},rules={};
   if(useStyles){
     recipes=JSON.parse(JSON.stringify(recipesMap));menu=JSON.parse(JSON.stringify(menu));groups=JSON.parse(JSON.stringify(groups));
-    rules=plan.styles;
+    rules=packDraftInit(plan);
     Object.keys(plan.updates).forEach(function(path){
       var parts=path.split('/'),value=plan.updates[path];
       if(parts[0]==='recipes'){
@@ -2077,6 +2083,192 @@ function packStyleCost(plan,key,size,labels,useStyles){
     lineItems:[{itemKey:key,size:size,qty:1,optLabels:labels||[]}]}));
   return out.totalCost;
 }
+
+/* ---- The serve styles are yours to edit -------------------------------------------------
+   Add an item, take one out, change a quantity, rename a style, add a whole new one. What is
+   here to begin with is only what your recipes already did - it is a starting point, not a rule. */
+var packDraft=null, packDraftSeeded=false;
+
+function packDraftClone(value){return JSON.parse(JSON.stringify(value||{}));}
+function packDraftInit(plan,force){
+  if(packDraft&&!force)return packDraft;
+  var live=(typeof packagingRulesMap==='object'&&packagingRulesMap)||{};
+  packDraft=Object.keys(live).length?packDraftClone(live):packDraftClone(plan.styles);
+  packDraftSeeded=!Object.keys(live).length;
+  Object.keys(packDraft).forEach(function(id){
+    var style=packDraft[id];
+    style.rows=(style.rows||[]).map(function(r){
+      var inv=inventoryMap[r.ing]||{};
+      return {ing:r.ing,unit:r.unit||inv.unit||'',stockUnit:r.stockUnit||inv.unit||'',
+        qtyS:Number(r.qtyS)||0,qtyM:Number(r.qtyM)||0,qtyL:Number(r.qtyL)||0};
+    });
+  });
+  return packDraft;
+}
+/* Read every input back out of the screen, so nothing typed is lost when the view redraws. */
+function packDraftRead(){
+  if(!packDraft)return packDraft;
+  Object.keys(packDraft).forEach(function(id){
+    var nameEl=document.querySelector('[data-pack-name="'+id+'"]');
+    if(nameEl)packDraft[id].name=String(nameEl.value||'').trim()||id;
+    var noteEl=document.querySelector('[data-pack-note="'+id+'"]');
+    if(noteEl)packDraft[id].description=String(noteEl.value||'').trim();
+    (packDraft[id].rows||[]).forEach(function(row,ix){
+      var pick=document.querySelector('[data-pack-ing="'+id+'|'+ix+'"]');
+      if(pick){var chosen=String(pick.value||'');if(chosen){row.ing=chosen;var inv=inventoryMap[chosen]||{};row.unit=inv.unit||'';row.stockUnit=inv.unit||'';}}
+      ['S','M','L'].forEach(function(size){
+        var box=document.querySelector('[data-pack-qty="'+id+'|'+ix+'|'+size+'"]');
+        if(box)row['qty'+size]=Number(box.value)||0;
+      });
+    });
+  });
+  return packDraft;
+}
+function packIngredientOptions(selected){
+  var list=Object.keys(inventoryMap).map(function(id){return {id:id,name:String((inventoryMap[id]||{}).name||id),unit:String((inventoryMap[id]||{}).unit||'')};});
+  list.sort(function(a,b){return a.name.localeCompare(b.name);});
+  return '<option value="">— choose an item —</option>'+list.map(function(x){
+    return '<option value="'+esc(x.id)+'"'+(x.id===selected?' selected':'')+'>'+esc(x.name)+(x.unit?' ('+esc(x.unit)+')':'')+'</option>';
+  }).join('');
+}
+function packRowCost(row){
+  var cost=Number((inventoryMap[row.ing]||{}).cost)||0;
+  return {S:cost*(Number(row.qtyS)||0),M:cost*(Number(row.qtyM)||0),L:cost*(Number(row.qtyL)||0)};
+}
+function packStyleEditorHtml(plan){
+  var draft=packDraftInit(plan),ids=Object.keys(draft);
+  var html='<div class="pz-card" style="margin-bottom:1rem;">'
+    +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.15rem;">Step 2 — The serve styles</div>'
+    +'<div style="font-size:0.85rem;color:var(--tm);margin-bottom:0.7rem;">'
+    +(packDraftSeeded
+      ? plan.proposal.styles.length+' different packaging sets are scattered through the recipes today. They start out collapsed into '+ids.length+', taken from what most of your drinks already do — <b>change anything below</b>. Add an item, take one out, fix a quantity, or add a whole new style.'
+      : 'These are your saved serve styles. Add an item, take one out, fix a quantity, or add a new style.')
+    +'</div>';
+  if(!ids.length){
+    html+='<div style="font-size:0.85rem;color:var(--tm);padding:0.6rem;background:#fff8ec;border:1px solid #e6cfa4;border-radius:6px;">No serve styles yet. Add one below and put the cup, lid and straw in it.</div>';
+  }
+  ids.forEach(function(id){
+    var style=draft[id],totals={S:0,M:0,L:0};
+    (style.rows||[]).forEach(function(r){var c=packRowCost(r);totals.S+=c.S;totals.M+=c.M;totals.L+=c.L;});
+    html+='<div style="border:1px solid var(--ln,#e3d9c8);border-radius:8px;padding:0.7rem;margin-bottom:0.7rem;">'
+      +'<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.4rem;">'
+      +'<input class="pz-in" data-pack-name="'+esc(id)+'" value="'+esc(style.name||id)+'" style="max-width:180px;font-weight:600;"/>'
+      +'<span style="font-size:0.75rem;color:var(--tl);">id: '+esc(id)+'</span>'
+      +'<button class="pz-btn warn" data-pack-delstyle="'+esc(id)+'" style="padding:0.15rem 0.55rem;margin-left:auto;">Remove this style</button></div>'
+      +'<input class="pz-in" data-pack-note="'+esc(id)+'" value="'+esc(style.description||'')+'" placeholder="What is it, in plain words" style="margin-bottom:0.5rem;font-size:0.82rem;"/>'
+      +'<div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th style="min-width:200px;">Item</th><th class="r">S</th><th class="r">M</th><th class="r">L</th><th class="r">Cost M</th><th></th></tr></thead><tbody>';
+    (style.rows||[]).forEach(function(row,ix){
+      var cost=packRowCost(row),key=id+'|'+ix;
+      html+='<tr><td><select class="pz-in" data-pack-ing="'+esc(key)+'">'+packIngredientOptions(row.ing)+'</select></td>'
+        +['S','M','L'].map(function(size){
+          return '<td class="r"><input class="pz-in" type="number" step="any" min="0" style="width:70px;text-align:right;" data-pack-qty="'+esc(key+'|'+size)+'" value="'+esc(String(row['qty'+size]))+'"/></td>';
+        }).join('')
+        +'<td class="r" style="color:var(--tl);">'+peso(cost.M)+'</td>'
+        +'<td class="r"><button class="pz-btn warn" data-pack-delrow="'+esc(key)+'" style="padding:0.15rem 0.5rem;">✕</button></td></tr>';
+    });
+    html+='</tbody><tfoot><tr><td style="font-weight:600;">Cost of this style</td>'
+      +'<td class="r" style="font-weight:600;">'+peso(totals.S)+'</td><td class="r" style="font-weight:600;">'+peso(totals.M)+'</td><td class="r" style="font-weight:600;">'+peso(totals.L)+'</td><td></td><td></td></tr></tfoot></table></div>'
+      +'<button class="pz-btn sec" data-pack-addrow="'+esc(id)+'" style="padding:0.2rem 0.7rem;margin-top:0.4rem;">+ Add an item</button>'
+      +'</div>';
+  });
+  html+='<div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;margin-top:0.5rem;">'
+    +'<input class="pz-in" id="packNewStyle" placeholder="New style name, e.g. Takeaway bag" style="max-width:240px;"/>'
+    +'<button class="pz-btn sec" id="packAddStyle" style="padding:0.3rem 0.8rem;">+ Add a serve style</button>'
+    +'<button class="pz-btn" id="packRecalc" style="padding:0.3rem 0.8rem;">↻ Update the costs below</button>'
+    +'<button class="pz-btn ok" id="packSaveStyles" style="padding:0.3rem 0.8rem;">Save the styles</button>'
+    +'<button class="pz-btn sec" id="packReseed" style="padding:0.3rem 0.8rem;">Start again from my recipes</button>'
+    +'</div>'
+    +'<div style="font-size:0.78rem;color:var(--tl);margin-top:0.4rem;">Saving the styles alone changes no recipe and no drink cost — a drink only picks one up once you apply in step 4.</div>'
+    +'</div>';
+  return html;
+}
+function packStyleBindEditor(plan){
+  var host=document.getElementById('packagingRoot'); if(!host)return;
+  host.querySelectorAll('[data-pack-delrow]').forEach(function(btn){
+    btn.onclick=function(){
+      packDraftRead();
+      var parts=btn.getAttribute('data-pack-delrow').split('|'),style=packDraft[parts[0]];
+      if(style)style.rows.splice(Number(parts[1]),1);
+      renderServeStylePackaging();
+    };
+  });
+  host.querySelectorAll('[data-pack-addrow]').forEach(function(btn){
+    btn.onclick=function(){
+      packDraftRead();
+      var style=packDraft[btn.getAttribute('data-pack-addrow')];
+      if(style)(style.rows=style.rows||[]).push({ing:'',unit:'',stockUnit:'',qtyS:0,qtyM:0,qtyL:0});
+      renderServeStylePackaging();
+    };
+  });
+  host.querySelectorAll('[data-pack-delstyle]').forEach(function(btn){
+    btn.onclick=function(){
+      var id=btn.getAttribute('data-pack-delstyle');
+      if(!confirm('Remove the "'+((packDraft[id]||{}).name||id)+'" style?\n\nAny drink served this way will have no packaging until you give it another one.'))return;
+      packDraftRead();delete packDraft[id];renderServeStylePackaging();
+    };
+  });
+  var add=document.getElementById('packAddStyle');
+  if(add)add.onclick=function(){
+    packDraftRead();
+    var box=document.getElementById('packNewStyle'),label=String((box&&box.value)||'').trim();
+    if(!label){alert('Give the new style a name first.');return;}
+    var id=String(label).toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'').slice(0,40);
+    if(!id){alert('That name cannot be used. Try letters and numbers.');return;}
+    if(packDraft[id]){alert('A style called that already exists.');return;}
+    packDraft[id]={name:label,description:'',rows:[{ing:'',unit:'',stockUnit:'',qtyS:0,qtyM:0,qtyL:0}]};
+    renderServeStylePackaging();
+  };
+  var recalc=document.getElementById('packRecalc');
+  if(recalc)recalc.onclick=function(){packDraftRead();renderServeStylePackaging();};
+  var reseed=document.getElementById('packReseed');
+  if(reseed)reseed.onclick=function(){
+    if(!confirm('Throw away the styles on screen and work them out again from your recipes?'))return;
+    packDraft=null;packStylePlan=null;renderServeStylePackaging();
+  };
+  var save=document.getElementById('packSaveStyles');
+  if(save)save.onclick=packStyleSaveStyles;
+}
+function packStyleValidate(draft){
+  var problems=[];
+  Object.keys(draft||{}).forEach(function(id){
+    var style=draft[id],rows=style.rows||[],seen={};
+    if(!rows.length){problems.push('"'+(style.name||id)+'" has no items in it.');return;}
+    rows.forEach(function(row,ix){
+      if(!row.ing){problems.push('"'+(style.name||id)+'" row '+(ix+1)+' has no item chosen.');return;}
+      if(!inventoryMap[row.ing]){problems.push('"'+(style.name||id)+'" points at an item that no longer exists.');return;}
+      if(seen[row.ing])problems.push('"'+(style.name||id)+'" lists '+((inventoryMap[row.ing]||{}).name||row.ing)+' twice — the quantities will add up.');
+      seen[row.ing]=1;
+      ['S','M','L'].forEach(function(size){if(Number(row['qty'+size])<0)problems.push('"'+(style.name||id)+'" has a negative quantity for '+((inventoryMap[row.ing]||{}).name||row.ing)+'.');});
+      if(!Number(row.qtyS)&&!Number(row.qtyM)&&!Number(row.qtyL))problems.push('"'+(style.name||id)+'" has '+((inventoryMap[row.ing]||{}).name||row.ing)+' at zero for every size.');
+    });
+  });
+  return problems;
+}
+function packStyleSaveStyles(){
+  var draft=packDraftRead();
+  var problems=packStyleValidate(draft);
+  if(problems.length){alert('Fix these first:\n\n• '+problems.join('\n• ')+'\n\nNothing was saved.');return;}
+  var clean={};
+  Object.keys(draft).forEach(function(id){
+    clean[id]={name:String(draft[id].name||id),description:String(draft[id].description||''),
+      rows:(draft[id].rows||[]).map(function(r){
+        var inv=inventoryMap[r.ing]||{};
+        return {ing:r.ing,unit:String(inv.unit||''),stockUnit:String(inv.unit||''),
+          qtyS:Number(r.qtyS)||0,qtyM:Number(r.qtyM)||0,qtyL:Number(r.qtyL)||0};
+      })};
+  });
+  var btn=document.getElementById('packSaveStyles'); if(btn){btn.disabled=true;btn.textContent='Saving…';}
+  var a=A();
+  a.set(a.ref(a.db,'packagingRules'),clean).then(function(){
+    packDraft=null;packStylePlan=null;
+    alert('Serve styles saved.\n\nNo drink cost has moved yet — a drink only picks its packaging up once you apply in step 4.');
+    setTimeout(renderServeStylePackaging,300);
+  }).catch(function(e){
+    if(btn){btn.disabled=false;btn.textContent='Save the styles';}
+    alert('The styles were NOT saved: '+((e&&e.code)||(e&&e.message)||e)+'\n\nLog in with your admin email and try again.');
+  });
+}
+
 function renderServeStylePackaging(){
   var host=document.getElementById('packagingRoot'); if(!host)return;
   var plan;
@@ -2099,18 +2291,7 @@ function renderServeStylePackaging(){
     return;
   }
 
-  html+='<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:700;color:var(--bd);margin-bottom:0.15rem;">Step 2 — The serve styles</div>'
-    +'<div style="font-size:0.85rem;color:var(--tm);margin-bottom:0.6rem;">'+plan.proposal.styles.length+' different packaging sets are scattered through the recipes today. They collapse into '+styleIds.length+'. Each one is taken from what most of your drinks already do.</div>';
-  styleIds.forEach(function(id){
-    var style=plan.styles[id];
-    html+='<div style="margin-bottom:0.7rem;"><div style="font-weight:600;color:var(--bd);">'+esc(style.name)+'</div>'
-      +'<div style="font-size:0.8rem;color:var(--tl);margin-bottom:0.25rem;">'+esc(style.description)+'</div>'
-      +'<table class="pz-tbl" style="max-width:520px;"><thead><tr><th>Item</th><th class="r">S</th><th class="r">M</th><th class="r">L</th></tr></thead><tbody>'
-      +style.rows.map(function(r){var inv=inventoryMap[r.ing]||{};
-        return '<tr><td>'+esc(inv.name||r.ing)+'</td><td class="r">'+esc(String(r.qtyS))+'</td><td class="r">'+esc(String(r.qtyM))+'</td><td class="r">'+esc(String(r.qtyL))+'</td></tr>';}).join('')
-      +'</tbody></table></div>';
-  });
-  html+='</div>';
+  html+=packStyleEditorHtml(plan);
 
   var rows=[],added=0,covered=0,total=0;
   Object.keys(recipesMap).forEach(function(key){
@@ -2145,6 +2326,7 @@ function renderServeStylePackaging(){
     +'<input type="file" accept="application/json,.json" id="packRestore" class="pz-in" style="max-width:420px;"/></div>';
 
   host.innerHTML=html;
+  packStyleBindEditor(plan);
   var snap=document.getElementById('packSnapshot'); if(snap&&!packStyleSnapshotTaken)snap.onclick=packStyleSnapshot;
   var apply=document.getElementById('packApply'); if(apply)apply.onclick=packStyleApply;
   var restore=document.getElementById('packRestore'); if(restore)restore.onchange=function(){packStyleRestore(restore.files&&restore.files[0]);};

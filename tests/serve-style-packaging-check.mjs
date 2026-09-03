@@ -71,7 +71,8 @@ check(Object.keys(plan.styles).length>=2,'the scattered packaging collapses into
 check(plan.stripped.length===2,'every recipe that carried packaging has it removed - and only those');
 const strippedSoda=plan.updates['recipes/soda/base'];
 check(Array.isArray(strippedSoda)&&strippedSoda.length===1&&strippedSoda[0].ing==='milk','stripping a base leaves the drink ingredients untouched');
-check(Object.keys(plan.updates).every(p=>/^(packagingRules|menuItems|recipes)\//.test(p)),'the plan writes only packaging, serve styles and recipe rows');
+check(Object.keys(plan.updates).every(p=>p==='packagingRules'||/^(menuItems|recipes)\//.test(p)),'the plan writes only packaging, serve styles and recipe rows');
+check(plan.updates.packagingRules&&typeof plan.updates.packagingRules==='object','the packaging table is written as one node, so a removed style is removed in the data');
 check(plan.choiceUpdates.og_temp.Hot==='hot'&&plan.choiceUpdates.og_temp.Iced==='iced','the temperature choice itself carries the serve style');
 
 /* 4. applying it must leave a drink that already had packaging costing exactly the same */
@@ -125,6 +126,30 @@ check(/packStyleSnapshotTaken/.test(ui),'the change stays locked until a restore
 check(/packApply/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built admin bundle carries the packaging screen');
 check(/serve-style-plan\.js/.test(fs.readFileSync('admin.html','utf8')),'admin.html loads the planner');
 check(/serve-style-plan\.js/.test(fs.readFileSync('sw.js','utf8')),'the service worker caches the planner');
+
+/* 7. a hot cup is handed over with the same serviette as a cold one */
+const tissueInv=Object.assign({},inventory,{tissue:{name:'Quarterfold brown tissue',unit:'pc',cost:0.24,category:'cat_packaging'}});
+const tissueRecipes=JSON.parse(JSON.stringify(recipes));
+tissueRecipes.soda.base.push({ing:'tissue',unit:'pc',stockUnit:'pc',qtyS:5,qtyM:5,qtyL:5});
+const tissuePlan=Plan.applyPlan(tissueRecipes,tissueInv,menuItems,categories);
+check(!tissuePlan.styles.hot||tissuePlan.styles.hot.rows.some(r=>r.ing==='tissue'),'a serviette on the cold cup is carried across to the hot one');
+check(!tissuePlan.styles.iced||tissuePlan.styles.iced.rows.some(r=>r.ing==='tissue'),'the cold cup keeps its serviette');
+
+/* 8. the styles are the user's to change, and bad edits are caught before they are saved */
+const ui2=fs.readFileSync('src/admin/pos/32-serve-style-packaging.js','utf8');
+check(/data-pack-addrow/.test(ui2)&&/data-pack-delrow/.test(ui2),'an item can be added to a style and taken out of it');
+check(/packAddStyle/.test(ui2)&&/data-pack-delstyle/.test(ui2),'a whole serve style can be added and removed');
+check(/data-pack-qty/.test(ui2)&&/data-pack-name/.test(ui2),'quantities and the style name are editable');
+check(/packStyleSaveStyles/.test(ui2)&&/a\.set\(a\.ref\(a\.db,'packagingRules'\)/.test(ui2),'the styles save on their own, without touching a recipe');
+check(/packStyleValidate/.test(ui2),'edits are checked before they are saved');
+['has no items in it','has no item chosen','twice','negative quantity','zero for every size'].forEach(phrase=>{
+  if(!ui2.includes(phrase))fail('the check for "'+phrase+'" is missing');
+});
+ok('an empty style, a blank row, a duplicate item, a negative and an all-zero row are all refused');
+check(/packDraftRead/.test(ui2),'what is typed survives the screen redrawing');
+check(/packReseed/.test(ui2),'the user can start again from what the recipes already do');
+check(/styles:draft/.test(ui2),'costs and assignments follow the edited styles, not the original proposal');
+check(/packAddStyle/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built admin bundle carries the editor');
 
 console.log(failures?`\n${failures} check(s) failed.`:'\nAll serve-style packaging checks passed.');
 process.exit(failures?1:0);

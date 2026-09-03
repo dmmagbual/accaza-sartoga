@@ -108,18 +108,33 @@
     var best=null;
     (proposal.styles||[]).forEach(function(style){
       if(names.indexOf(style.name)<0)return;
-      if(!best||style.drinks.length>best.drinks.length)best=style;
+      /* The set most drinks already use wins. On a tie the fuller set wins, because a set that
+         is missing the serviette is the incomplete one, not a different style. */
+      if(!best)best=style;
+      else if(style.drinks.length>best.drinks.length)best=style;
+      else if(style.drinks.length===best.drinks.length&&style.rows.length>best.rows.length)best=style;
     });
     return best?best.rows.slice():null;
   }
-  function canonical(proposal){
+  function canonical(proposal,inventory){
     var blended=majorityStyle(proposal,['Blended cup']),
         iced=majorityStyle(proposal,['Soda cup','Iced cup']),
         hot=majorityStyle(proposal,['Hot cup']);
+    /* A hot cup is handed over with the same serviette as a cold one. Only one drink had ever
+       defined a hot style and it listed none, so carry the cold count across rather than let
+       hot drinks look cheaper than they are. */
+    if(hot&&iced){
+      var serviette=null;
+      iced.forEach(function(row){
+        var name=String(((inventory||{})[row.ing]||{}).name||'');
+        if(!serviette&&/tissue|napkin|serviette/i.test(name))serviette=row;
+      });
+      if(serviette&&!hot.some(function(row){return row.ing===serviette.ing;}))hot=hot.concat([JSON.parse(JSON.stringify(serviette))]);
+    }
     var styles={};
-    if(hot)styles.hot={name:'Hot',description:'Served hot - double wall cup and a flat lid.',rows:hot};
-    if(iced)styles.iced={name:'Iced',description:'Served over ice - cold cup, strawless lid and a thin straw.',rows:iced};
-    if(blended)styles.blended={name:'Blended',description:'Blended - cold cup, dome lid and a thick straw.',rows:blended};
+    if(hot)styles.hot={name:'Hot',description:'Served hot - double wall cup, flat lid and a serviette.',rows:hot};
+    if(iced)styles.iced={name:'Iced',description:'Served over ice - cold cup, strawless lid, thin straw and a serviette.',rows:iced};
+    if(blended)styles.blended={name:'Blended',description:'Blended - cold cup, dome lid, thick straw and a serviette.',rows:blended};
     return styles;
   }
   /* Which style a drink gets. A drink that offers Temperature is answered by the choice itself,
@@ -153,10 +168,11 @@
   function applyPlan(recipes,inventory,menuItems,categories,options){
     options=options||{};
     var proposal=propose(recipes,inventory,menuItems,categories);
-    var styles=options.styles||canonical(proposal);
+    var styles=options.styles||canonical(proposal,inventory);
     var mapping=assign(recipes,menuItems,styles);
     var updates={},stripped=[];
-    Object.keys(styles).forEach(function(id){updates['packagingRules/'+id]=styles[id];});
+    /* Written as one node so a style removed on screen is removed in the data too. */
+    updates['packagingRules']=styles;
     Object.keys(mapping.items).forEach(function(key){updates['menuItems/'+key+'/serveStyle']=mapping.items[key];});
     Object.keys(recipes||{}).forEach(function(key){
       var recipe=recipes[key]||{},found=packagingOf(recipe,inventory,categories);
