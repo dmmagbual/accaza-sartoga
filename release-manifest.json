@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 437,
+    "admin": 438,
     "books": 97,
     "customer": 65,
-    "serviceWorkerCache": 400
+    "serviceWorkerCache": 401
   },
   "authoritativeFiles": [
     "admin.html",
@@ -301,15 +301,15 @@
     "indexPlatformOrderRef",
     "recordPlatformCatchup",
     "reversePlatformPayout",
-    "setPlatformPayoutDate"
-    ,"manageStaffMessage"
-    ,"manageIncident"
-    ,"repairClosedShiftTurnover"
-    ,"repairReversedPayoutDeposit"
-    ,"reconcileUndepositedCustody"
-    ,"runFinancialClose"
-    ,"reopenFinancialCloseOnMovement"
-    ,"reopenFinancialCloseOnOrderChange"
+    "setPlatformPayoutDate",
+    "manageStaffMessage",
+    "manageIncident",
+    "repairClosedShiftTurnover",
+    "repairReversedPayoutDeposit",
+    "reconcileUndepositedCustody",
+    "runFinancialClose",
+    "reopenFinancialCloseOnMovement",
+    "reopenFinancialCloseOnOrderChange"
   ],
   "requiredProtectedNodes": [
     "activeOrders",
@@ -334,9 +334,9 @@
     "books",
     "fixedAssets",
     "platformRefIndex",
-    "platformRefDuplicates"
-    ,"staffMessages"
-    ,"staffMessageReceipts"
+    "platformRefDuplicates",
+    "staffMessages",
+    "staffMessageReceipts"
   ],
   "verification": {
     "localQualityGate": "passed_2026-08-14",
