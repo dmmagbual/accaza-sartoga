@@ -15,6 +15,12 @@ assert.equal(offset('manual_edit',{offsetAccount:'3000',adjustmentNature:'beginn
 assert.throws(()=>offset('adjustment',{adjustmentNature:'count-variance'}),/Choose one approved Finance offset account/);
 assert.throws(()=>offset('adjustment',{offsetAccount:'3000',adjustmentNature:'count-variance'}),/beginning inventory correction/);
 assert.throws(()=>offset('manual_edit',{offsetAccount:'5905',adjustmentNature:'beginning-inventory',sourceType:'new-inventory-item'}),/must offset Owner's Capital/);
+assert.equal(offset('adjustment',{offsetAccount:'5000',adjustmentNature:'costing-correction'}),'5000','a costing correction may credit cost of sales');
+assert.equal(offset('adjustment',{offsetAccount:'5040',adjustmentNature:'costing-correction'}),'5040','packaging cost of sales is allowed too');
+assert.throws(()=>offset('adjustment',{offsetAccount:'5000',adjustmentNature:'count-variance'}),/only offset a costing correction/,'a count variance may not reach cost of sales');
+assert.throws(()=>offset('waste',{offsetAccount:'5000',adjustmentNature:'costing-correction'}),/must be posted as a stock adjustment/,'wastage may not reach cost of sales');
+assert.throws(()=>offset('revaluation',{offsetAccount:'5000',adjustmentNature:'costing-correction'}),/must offset 5905/,'a revaluation may not reach cost of sales');
+assert.throws(()=>offset('adjustment',{offsetAccount:'5905',adjustmentNature:'costing-correction'}),/must offset the cost of sales account/,'a costing correction may not be parked in reconciliation');
 for(const marker of ['adjustmentOffset?`coa:${adjustmentOffset}`','adjustmentOffsetAccount:adjustmentOffset','offsetAccount:String(raw.offsetAccount','adjustmentNature:String(raw.adjustmentNature'])assert.ok(source.includes(marker),`missing posting/audit marker: ${marker}`);
 const ui=fs.readFileSync('src/admin/pos/11d-stock-adjustments.js','utf8');
 for(const marker of ['Finance offset account','5905 · Inventory Reconciliation',"3000 · Owner\\'s Capital",'offsetAccount:offsetAccount','adjustmentNature:reason'])assert.ok(ui.includes(marker),`missing Admin confirmation marker: ${marker}`);
