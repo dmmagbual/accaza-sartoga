@@ -86,6 +86,7 @@ function internalUsageAccount(type,movement){
   return requested;
 }
 function inventoryAdjustmentOffset(type,movement){
+  const COST_OF_SALES_ACCOUNTS=["5000","5030","5040"];
   if(type==="revaluation"){
     /* A revaluation restates the cost of stock still on hand. It is a costing correction, not wastage,
        so 5900 is not offered. Owner's Capital is allowed only where the quantity path allows it too:
@@ -97,6 +98,15 @@ function inventoryAdjustmentOffset(type,movement){
   }
   if(!["adjustment","manual_edit","waste"].includes(type))return "";
   const requested=String(movement&&movement.offsetAccount||"").trim(),nature=String(movement&&movement.adjustmentNature||movement&&movement.note||"").trim().toLowerCase();
+  /* A costing correction puts back stock that was expensed but never consumed, so it credits the
+     cost-of-sales account the error was charged to. It is not wastage and not a reconciliation
+     gain, and no other adjustment may reach a cost-of-sales account. */
+  if(COST_OF_SALES_ACCOUNTS.includes(requested)){
+    if(nature!=="costing-correction")throw new HttpsError("failed-precondition","A cost of sales account may only offset a costing correction.");
+    if(type!=="adjustment")throw new HttpsError("failed-precondition","A costing correction must be posted as a stock adjustment.");
+    return requested;
+  }
+  if(nature==="costing-correction")throw new HttpsError("failed-precondition","A costing correction must offset the cost of sales account it was charged to.");
   if(!["3000","5900","5905"].includes(requested))throw new HttpsError("failed-precondition","Choose one approved Finance offset account: 3000 Owner's Capital, 5900 Wastage & Spoilage, or 5905 Inventory Reconciliation Gain / (Loss).");
   if(requested==="3000"&&nature!=="beginning-inventory")throw new HttpsError("failed-precondition","Owner's Capital may only offset a beginning inventory correction.");
   if(String(movement&&movement.sourceType||"")==="new-inventory-item"&&requested!=="3000")throw new HttpsError("failed-precondition","New-item opening inventory must offset Owner's Capital.");
