@@ -592,7 +592,8 @@ function adjustStock(id){
     +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Adjust stock — '+esc(i.name)+'</div>'
     +'<p class="pz-sub" style="margin:0.2rem 0 0.7rem;">Book stock now: <b>'+num(before)+' '+esc(i.unit||'')+'</b></p>'
     +'<label style="display:block;font-size:0.85rem;margin-bottom:0.35rem;cursor:pointer;"><input type="radio" name="adjmode" value="count" checked/> Enter physical count (system computes the variance)</label>'
-    +'<label style="display:block;font-size:0.85rem;margin-bottom:0.6rem;cursor:pointer;"><input type="radio" name="adjmode" value="delta"/> Enter a +/- adjustment (e.g. -3 wastage)</label>'
+    +'<label style="display:block;font-size:0.85rem;margin-bottom:0.35rem;cursor:pointer;"><input type="radio" name="adjmode" value="delta"/> Enter a +/- adjustment (e.g. -3 wastage)</label>'
+    +'<label style="display:block;font-size:0.85rem;margin-bottom:0.6rem;cursor:pointer;"><input type="radio" name="adjmode" value="reval"/> Restate the unit cost (weighted average) \u2014 no quantity change</label>'
     +'<div><span class="pz-lbl" id="adjLbl">Physical count ('+esc(i.unit||'units')+')</span><input class="pz-in" id="adjVal" type="number" step="any"/></div>'
     +'<div style="margin-top:0.5rem;"><span class="pz-lbl">Reason</span><select class="pz-in" id="adjReason"><option value="count-variance">Physical count variance</option><option value="beginning-inventory">Beginning inventory correction</option><option value="wastage">Wastage / spoilage</option><option value="staff-drink">Staff drink</option><option value="extra-cup">Extra cup</option><option value="comp">Complimentary item</option><option value="other">Other</option></select></div>'
     +'<div style="margin-top:0.5rem;"><span class="pz-lbl">Finance offset account</span><select class="pz-in" id="adjOffset"><option value="5905">5905 · Inventory Reconciliation Gain / (Loss)</option><option value="5900">5900 · Wastage &amp; Spoilage</option><option value="3000">3000 · Owner\'s Capital (beginning inventory only)</option></select><div class="ei-help" style="margin-top:.25rem;">Inventory is the other side automatically. Choose one offset account for this adjustment.</div></div>'
@@ -602,14 +603,51 @@ function adjustStock(id){
   function mode(){return (mask.querySelector('input[name=adjmode]:checked')||{}).value||'count';}
   function calcDelta(){var v=Number((mask.querySelector('#adjVal')||{}).value)||0;return mode()==='count'?(v-before):v;}
   function suggestedOffset(){var reason=(mask.querySelector('#adjReason')||{}).value||'count-variance';return reason==='beginning-inventory'?'3000':reason==='wastage'?'5900':'5905';}
-  function refresh(){var d=calcDelta();var after=before+d;var cost=Number(i.cost)||0,value=Math.abs(d*cost),offset=(mask.querySelector('#adjOffset')||{}).value||'5905',direction=d>0?'Debit Inventory · Credit '+offset:'Debit '+offset+' · Credit Inventory';mask.querySelector('#adjLbl').textContent=(mode()==='count'?'Physical count':'Adjustment +/-')+' ('+(i.unit||'units')+')';mask.querySelector('#adjPreview').innerHTML=d?('New stock: <b>'+num(after)+' '+esc(i.unit||'')+'</b><br/>Finance entry: <b>'+esc(direction)+' '+peso(value)+'</b>'):'';}
+  function isReval(){return mode()==='reval';}
+  function revalDelta(){var nc=Number((mask.querySelector('#adjVal')||{}).value);if(!isFinite(nc)||nc<0)return null;return{newCost:nc,valueDelta:Math.round(before*(nc-(Number(i.cost)||0))*100)/100};}
+  function syncOffsets(){
+    /* A revaluation restates cost, so wastage is not an option; capital only for beginning inventory. */
+    var sel=mask.querySelector('#adjOffset'),want=sel.value;
+    var opts=isReval()?[['5905','5905 · Inventory Reconciliation Gain / (Loss)'],['3000','3000 · Owner\'s Capital (beginning inventory only)']]
+      :[['5905','5905 · Inventory Reconciliation Gain / (Loss)'],['5900','5900 · Wastage & Spoilage'],['3000','3000 · Owner\'s Capital (beginning inventory only)']];
+    sel.innerHTML=opts.map(function(o){return '<option value="'+o[0]+'">'+esc(o[1])+'</option>';}).join('');
+    sel.value=opts.some(function(o){return o[0]===want;})?want:'5905';
+  }
+  function refreshReval(){
+    var r=revalDelta(),cost=Number(i.cost)||0,offset=(mask.querySelector('#adjOffset')||{}).value||'5905';
+    mask.querySelector('#adjLbl').textContent='New unit cost per '+(i.unit||'unit')+' (now '+peso(cost)+')';
+    if(!r){mask.querySelector('#adjPreview').innerHTML='Enter the corrected unit cost.';return;}
+    var vb=Math.round(before*cost*100)/100,va=Math.round(before*r.newCost*100)/100,dir=r.valueDelta>0?'Debit Inventory · Credit '+offset:'Debit '+offset+' · Credit Inventory';
+    mask.querySelector('#adjPreview').innerHTML='Stock stays '+num(before)+' '+esc(i.unit||'')+'.<br/>Stock value '+peso(vb)+' → '+peso(va)+'<br/>'+(Math.abs(r.valueDelta)<0.005?'No value change — nothing will post.':'Finance entry: <b>'+dir+' '+peso(Math.abs(r.valueDelta))+'</b>')+'<br/><span style="color:var(--tl);">Completed orders keep the cost they were sold at. This changes what future orders consume.</span>';
+  }
+  function refresh(){if(isReval()){syncOffsets();refreshReval();return;}syncOffsets();var d=calcDelta();var after=before+d;var cost=Number(i.cost)||0,value=Math.abs(d*cost),offset=(mask.querySelector('#adjOffset')||{}).value||'5905',direction=d>0?'Debit Inventory · Credit '+offset:'Debit '+offset+' · Credit Inventory';mask.querySelector('#adjLbl').textContent=(mode()==='count'?'Physical count':'Adjustment +/-')+' ('+(i.unit||'units')+')';mask.querySelector('#adjPreview').innerHTML=d?('New stock: <b>'+num(after)+' '+esc(i.unit||'')+'</b><br/>Finance entry: <b>'+esc(direction)+' '+peso(value)+'</b>'):'';}
   mask.querySelectorAll('input[name=adjmode]').forEach(function(r){r.onchange=refresh;});
   mask.querySelector('#adjVal').oninput=refresh;
   mask.querySelector('#adjReason').onchange=function(){mask.querySelector('#adjOffset').value=suggestedOffset();refresh();};
   mask.querySelector('#adjOffset').onchange=refresh;
   mask.querySelector('#adjCancel').onclick=function(){document.body.removeChild(mask);};
-  mask.querySelector('#adjSubmit').onclick=function(){var d=calcDelta();if(!d){alert('No change entered.');return;}var reason=mask.querySelector('#adjReason').value||'other',offset=mask.querySelector('#adjOffset').value||'';if(offset==='3000'&&reason!=='beginning-inventory'){alert('Owner\'s Capital may only be used for a beginning inventory correction.');return;}document.body.removeChild(mask);finalizeAdjust(id,before,d,reason,offset);};
+  mask.querySelector('#adjSubmit').onclick=function(){
+    if(isReval()){
+      var r=revalDelta();if(!r){alert('Enter the corrected unit cost.');return;}
+      if(Math.abs(r.valueDelta)<0.005){alert('That is the cost already on file — nothing to restate.');return;}
+      if(!(before>0)){alert('There is no stock on hand, so there is no value to restate.');return;}
+      var rr=mask.querySelector('#adjReason').value||'other',ro=mask.querySelector('#adjOffset').value||'5905';
+      if(ro==='3000'&&rr!=='beginning-inventory'){alert('Owner\'s Capital may only be used for a beginning inventory correction.');return;}
+      document.body.removeChild(mask);finalizeRevaluation(id,before,r.newCost,rr,ro);return;
+    }
+    var d=calcDelta();if(!d){alert('No change entered.');return;}var reason=mask.querySelector('#adjReason').value||'other',offset=mask.querySelector('#adjOffset').value||'';if(offset==='3000'&&reason!=='beginning-inventory'){alert('Owner\'s Capital may only be used for a beginning inventory correction.');return;}document.body.removeChild(mask);finalizeAdjust(id,before,d,reason,offset);};
   refresh();
+}
+function finalizeRevaluation(id,onHand,newCost,reason,offsetAccount){
+  var i=inventoryMap[id]; if(!i)return;
+  var oldCost=Number(i.cost)||0,valueDelta=Math.round(onHand*(newCost-oldCost)*100)/100;
+  var a=A(),revId=uid('rev_'),mid=movementId('revaluation',revId,id),now=Date.now();
+  postMovements([{movementId:mid,itemId:id,type:'revaluation',qty:0,unitCost:newCost,setCost:true,offsetAccount:offsetAccount,adjustmentNature:reason,sourceType:'inventory-revaluation',sourceId:revId,note:reason,actorName:(window.__posShift&&window.__posShift.staff)||'Admin',occurredAt:now}]).then(function(){
+    return a.set(a.ref(a.db,'inventoryRevaluations/'+revId),{ing:id,name:i.name,unit:i.unit||'',onHand:onHand,costBefore:oldCost,costAfter:newCost,valueDelta:valueDelta,reason:reason,offsetAccount:offsetAccount,movementId:mid,ts:now});
+  }).then(function(){
+    if(window.__posLog)window.__posLog('inv-revalue',i.name,peso(oldCost)+' → '+peso(newCost)+' · '+num(onHand)+' '+(i.unit||'')+' on hand · offset '+offsetAccount+' · '+peso(Math.abs(valueDelta)));
+    alert('Restated '+i.name+' to '+peso(newCost)+' per '+(i.unit||'unit')+'.\nFinance offset: '+offsetAccount+' · '+peso(Math.abs(valueDelta))+'.\nCompleted orders are unchanged; future orders consume at the new cost.');
+  }).catch(function(e){alert('Revaluation FAILED — cost was not changed: '+((e&&e.message)||e));});
 }
 function finalizeAdjust(id,before,delta,reason,offsetAccount){
   var i=inventoryMap[id]; if(!i)return;

@@ -120,6 +120,7 @@ for (const file of ['assets/js/admin/register.js', 'src/admin/register/20-z-repo
   must(s, 'z.byMethodAccount[m][acct', `${file}: the Z-report must capture the receiving-account split.`);
   must(s, 'data-pmalias', `${file}: POS Settings must let an operator record the old names a method absorbs.`);
   must(s, 'data-pmrename', `${file}: POS Settings must offer a rename, or an operator has to delete and recreate a method and orphan its history.`);
+  must(s, "if(pm[i].cash===true||old.toLowerCase()==='cash')", `${file}: the cash method must refuse a rename — Finance identifies cash by the literal name, so renaming it diverts cash to a suspense account.`);
   must(s, 'if(lower.indexOf(old.toLowerCase())<0)aliases.push(old);', `${file}: a rename must record the old name as an alias so posted sales keep reporting under the method.`);
   must(s, "feedMethods:list.concat([nm])", `${file}: a rename must teach the linked receiving accounts the new name, or bare-method payments stop mapping to an account.`);
 }

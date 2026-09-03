@@ -45,7 +45,15 @@ function paymentRoutingIssues(payMethods, cfAccounts, now) {
   const out = [], methods = Array.isArray(payMethods) ? payMethods : [], accounts = cfAccounts || {};
   const lower = (v) => String(v == null ? "" : v).trim().toLowerCase();
   methods.forEach((method) => {
-    if (!method || method.cash === true || method.active === false) return;
+    if (!method || method.active === false) return;
+    if (method.cash === true) {
+      /* orderPosting decides a sale is cash by the literal name, not by this flag. */
+      if (lower(method.name) !== "cash") out.push(item("payment_routing", "critical", `routing_cash_${lower(method.name)}`,
+        `Cash method "${String(method.name || "").trim()}" is not named Cash`,
+        `The till treats this method as cash, but Finance identifies a cash sale by the literal name "Cash". Sales taken on it post to an unmapped suspense account instead of Register Cash. Rename it back to Cash, or clear its cash flag.`,
+        now, "possettings"));
+      return;
+    }
     const name = String(method.name || "").trim(); if (!name) return;
     const claimants = Object.keys(accounts).filter((id) => {
       const account = accounts[id] || {};
