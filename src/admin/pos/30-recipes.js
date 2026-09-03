@@ -25,12 +25,13 @@ function menuCostGaps(){
 function updateCostBadge(){ var n=menuCostGaps().length; var b=document.getElementById('costGapBadge'); if(!b)return; if(n>0){b.textContent=n;b.style.display='inline-block';}else{b.style.display='none';} }
 function renderRecipes(){
   var root=document.getElementById('recipesRoot'); if(!root)return;
-  var tabs=[['base','🧪 Recipe (base + consumables)'],['saved','📋 Saved Recipes'],['options','➕ Optional ingredients'],['repair','🛟 Repair & restore']];
+  var tabs=[['base','🧪 Recipe (base + consumables)'],['saved','📋 Saved Recipes'],['options','➕ Optional ingredients'],['packaging','📦 Packaging'],['repair','🛟 Repair & restore']];
   var nav='<div style="display:flex;gap:0.4rem;margin:0.4rem 0 1rem;flex-wrap:wrap;">'+tabs.map(function(t){return '<button class="pz-btn '+(recSub===t[0]?'ok':'sec')+'" data-recsub="'+t[0]+'" style="padding:0.4rem 0.9rem;">'+t[1]+'</button>';}).join('')+'</div>';
   if(recSub==='consumables')recSub='base';
   var body;
   if(recSub==='options'){ body='<div id="optMasterRoot"></div>'; }
   else if(recSub==='repair'){ body='<div id="recRepairRoot"></div>'; }
+  else if(recSub==='packaging'){ body='<div id="packagingRoot"></div>'; }
   else if(recSub==='saved'){
     var sitems=menuList().filter(function(it){return !!recipesMap[it.key];});
     var savedRows=sitems.length?sitems.map(function(it){var rec=recipesMap[it.key];return '<tr style="cursor:pointer;" data-recopen="'+esc(it.key)+'"><td>'+esc(it.name)+'</td><td style="color:var(--tl);font-size:0.8rem;">'+esc(A().getCatLabel?A().getCatLabel(it.cat):(it.cat||''))+'</td><td class="r">'+((rec.base&&rec.base.length)||0)+'</td><td class="r">'+peso(recipeCost(rec,'S'))+'</td><td class="r">'+peso(recipeCost(rec,'M'))+'</td><td class="r">'+peso(recipeCost(rec,'L'))+'</td><td class="r"><button class="pz-btn ok" data-recopen="'+esc(it.key)+'" style="padding:0.15rem 0.6rem;">Open</button></td></tr>';}).join(''):'<tr><td colspan="7" style="color:var(--tl);padding:0.6rem;">No saved recipes yet. Build one in the Recipe tab.</td></tr>';
@@ -72,6 +73,7 @@ function renderRecipes(){
   if(_rb&&_rf){ _rb.onclick=function(){_rf.value='';_rf.click();}; _rf.onchange=function(){ if(_rf.files&&_rf.files[0])importRecipesXlsx(_rf.files[0]); }; }
   if(recSub==='options'){ renderOptionsMaster(); }
   else if(recSub==='repair'){ renderRecipeRepair(); }
+  else if(recSub==='packaging'){ renderServeStylePackaging(); }
   else if(recSub==='saved'){ root.querySelectorAll('[data-recopen]').forEach(function(b){b.onclick=function(){curRecipeKey=b.getAttribute('data-recopen');recSub='base';recipeEditing=false;renderRecipes();};}); }
   else { var rp=document.getElementById('recPick'); if(rp)rp.onchange=function(){ curRecipeKey=this.value||null; openRecipe(curRecipeKey); };
     if(curRecipeKey)openRecipe(curRecipeKey); }

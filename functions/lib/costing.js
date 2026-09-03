@@ -4,7 +4,7 @@
   else root.AccazaCosting=api;
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
-  var VERSION='3B-1';
+  var VERSION='3C-1';
   var SIZES=['S','M','L'];
   var UNITS={
     ml:{dim:'volume',factor:1},l:{dim:'volume',factor:1000},tsp:{dim:'volume',factor:4.92892},tbsp:{dim:'volume',factor:14.7868},cup:{dim:'volume',factor:240},'fl oz':{dim:'volume',factor:29.5735},
@@ -80,6 +80,26 @@
     if(!found){var legacy=null;if(recipe&&Array.isArray(recipe.options))legacy=recipe.options.find(function(x){return x&&x.label===label;})||null;if(!legacy)legacy=(ctx.optionRecipes||{})[label]||null;if(legacy&&legacy.ing)rows.push({row:{ing:legacy.ing,qtyS:legacy.qty,qtyM:legacy.qty,qtyL:legacy.qty},source:'option_legacy'});}
     return rows;
   }
+  /* Which cup, lid and straw a drink is served in depends on how it is served, not on which
+     drink it is. A choice may name the serve style (Hot, Iced); otherwise the menu item does.
+     Nothing happens at all until a serve style is named, so this is inert on existing data. */
+  function serveStyleFor(item,optLabels,ctx){
+    var groups=ctx.optionGroups||{},ids=Array.isArray(item&&item.options)?item.options:[];
+    var labels=Array.isArray(optLabels)?optLabels:[];
+    for(var i=0;i<labels.length;i++){
+      for(var j=0;j<ids.length;j++){
+        var group=groups[ids[j]]||{},choices=Array.isArray(group.choices)?group.choices:[];
+        for(var c=0;c<choices.length;c++){
+          if(choices[c]&&choices[c].label===labels[i]&&choices[c].serveStyle)return String(choices[c].serveStyle);
+        }
+      }
+    }
+    return String((item&&item.serveStyle)||'');
+  }
+  function packagingRows(style,ctx){
+    var rule=style?(ctx.packagingRules||{})[style]:null;
+    return rule&&Array.isArray(rule.rows)?rule.rows:[];
+  }
   function costOrder(ctx){
     ctx=ctx||{};var inventory=ctx.inventory||{},recipes=ctx.recipes||{},menu=ctx.menuItems||{};var lines=[],usage={},errors=[],warnings=[];
     (ctx.lineItems||[]).forEach(function(li,lix){
@@ -89,12 +109,18 @@
       if(!recipe||!Array.isArray(recipe.base)||!recipe.base.length){warnings.push({code:'MISSING_RECIPE',itemKey:li.itemKey,message:(item.name||li.itemKey)+' has no recipe.'});return;}
       var contributions=(recipe.base||[]).map(function(row){return {row:row,source:'base'};});
       (li.optLabels||[]).forEach(function(label){var found=optionRows(item,recipe,label,size,ctx);if(!found.length)warnings.push({code:'UNMAPPED_OPTION',itemKey:li.itemKey,label:label,message:'No ingredient cost is mapped to option '+label+'.'});contributions=contributions.concat(found);});
+      var serveStyle=serveStyleFor(item,li.optLabels,ctx);
+      if(serveStyle){
+        var packing=packagingRows(serveStyle,ctx);
+        if(!packing.length)warnings.push({code:'UNMAPPED_SERVE_STYLE',itemKey:li.itemKey,serveStyle:serveStyle,message:'No packaging is set for serve style '+serveStyle+'.'});
+        packing.forEach(function(row){if(row&&row.ing)contributions.push({row:row,source:'packaging'});});
+      }
       contributions.forEach(function(entry,rix){var row=entry.row||{},id=row.ing,inv=inventory[id];if(!id||!inv){errors.push({code:'BROKEN_INVENTORY_REFERENCE',itemKey:li.itemKey,itemId:id||'',message:'Recipe points to a missing inventory item.'});return;}var per=rawSize(row,size,recipe),adjustment=entry.source!=='base';if(!Number.isFinite(per)||(!adjustment&&per<0)){errors.push({code:'INVALID_QUANTITY',itemKey:li.itemKey,itemId:id,message:'Recipe quantity is invalid.'});return;}var totalQty=q6(per*orderQty);if(!totalQty)return;var unitCost=n(inv.cost);if(!(unitCost>0))warnings.push({code:'MISSING_COST',itemKey:li.itemKey,itemId:id,message:(inv.name||id)+' has no current unit cost.'});var totalCost=q6(totalQty*unitCost);usage[id]=q6((usage[id]||0)+totalQty);lines.push({itemKey:li.itemKey,itemName:item.name||li.itemKey,size:size,orderQty:orderQty,source:entry.source,ingredientId:id,ingredientName:inv.name||id,quantityPerServing:q6(per),totalQuantity:totalQty,stockUnit:unit(inv.unit),unitCost:q6(unitCost),totalCost:totalCost,costSource:inv.ledgerVersion?'inventory-ledger-wac':'inventory-wac',costEffectiveAt:n(inv.ledgerUpdatedAt||inv.updatedAt)||null});});
     });
     Object.keys(usage).forEach(function(id){if(usage[id]<0){errors.push({code:'NEGATIVE_TOTAL_USAGE',itemId:id,message:'Recipe option adjustments cannot reduce total ingredient usage below zero.'});}});
     var total=money(lines.reduce(function(sum,line){return sum+n(line.totalCost);},0));
-    return {ok:errors.length===0,engineVersion:VERSION,usage:usage,lines:lines,totalCost:total,cogsCovered:errors.length===0&&!warnings.some(function(w){return w.code==='MISSING_COST'||w.code==='MISSING_RECIPE'||w.code==='UNMAPPED_OPTION';}),errors:errors,warnings:warnings};
+    return {ok:errors.length===0,engineVersion:VERSION,usage:usage,lines:lines,totalCost:total,cogsCovered:errors.length===0&&!warnings.some(function(w){return w.code==='MISSING_COST'||w.code==='MISSING_RECIPE'||w.code==='UNMAPPED_OPTION'||w.code==='UNMAPPED_SERVE_STYLE';}),errors:errors,warnings:warnings};
   }
-  function costRecipe(args){args=args||{};return costOrder({lineItems:[{itemKey:args.itemKey||'item',size:args.size||'M',qty:args.qty||1,optLabels:args.optLabels||[]}],recipes:(function(){var o={};o[args.itemKey||'item']=args.recipe;return o;})(),inventory:args.inventory||{},menuItems:(function(){var o={};o[args.itemKey||'item']=args.item||{};return o;})(),optionCosts:args.optionCosts||{},optionRecipes:args.optionRecipes||{},optionGroups:args.optionGroups||{}});}
-  return {VERSION:VERSION,SIZES:SIZES,normalizeUnit:unit,unitInfo:unitInfo,compatible:compatible,convert:convert,normalizeRecipe:normalizeRecipe,costOrder:costOrder,costRecipe:costRecipe,optKey:optKey};
+  function costRecipe(args){args=args||{};return costOrder({lineItems:[{itemKey:args.itemKey||'item',size:args.size||'M',qty:args.qty||1,optLabels:args.optLabels||[]}],recipes:(function(){var o={};o[args.itemKey||'item']=args.recipe;return o;})(),inventory:args.inventory||{},menuItems:(function(){var o={};o[args.itemKey||'item']=args.item||{};return o;})(),optionCosts:args.optionCosts||{},optionRecipes:args.optionRecipes||{},optionGroups:args.optionGroups||{},packagingRules:args.packagingRules||{}});}
+  return {VERSION:VERSION,SIZES:SIZES,normalizeUnit:unit,unitInfo:unitInfo,compatible:compatible,convert:convert,normalizeRecipe:normalizeRecipe,costOrder:costOrder,costRecipe:costRecipe,optKey:optKey,serveStyleFor:serveStyleFor,packagingRows:packagingRows};
 });

@@ -788,9 +788,9 @@ exports.repairOrderInventoryMarker = onCall(
     const db=getDatabase(),actor=await requirePortalPermission(db,request,["inventory"]),orderId=financeKey((request.data||{}).orderId,"Order ID"),order=(await db.ref(`/orders/${orderId}`).get()).val();
     if(!order||!["Completed","Received"].includes(order.status)||order.voided===true)throw new HttpsError("failed-precondition","Only a completed, non-voided order can restore inventory confirmation.");
     if(order.inventoryDeducted===true&&order.inventoryLedgerVersion===1)return{orderId,duplicate:true,items:Object.keys(order.inventoryUsage||{}).length};
-    const [recSnap,optSnap,invSnap,miSnap,psSnap,ogSnap,movementSnap]=await Promise.all([db.ref("/recipes").get(),db.ref("/optionRecipes").get(),db.ref("/inventory").get(),db.ref("/menuItems").get(),db.ref("/posSettings").get(),db.ref("/optionGroups").get(),db.ref("/inventoryMovements").orderByKey().startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\uf8ff`).get()]),recipes=recSnap.val()||{},inventory=invSnap.val()||{},menuItems=miSnap.val()||{},settings=psSnap.val()||{},optionRaw=optSnap.val()||{},optionRecipes={};
+    const [recSnap,optSnap,invSnap,miSnap,psSnap,ogSnap,pkSnap,movementSnap]=await Promise.all([db.ref("/recipes").get(),db.ref("/optionRecipes").get(),db.ref("/inventory").get(),db.ref("/menuItems").get(),db.ref("/posSettings").get(),db.ref("/optionGroups").get(),db.ref("/packagingRules").get(),db.ref("/inventoryMovements").orderByKey().startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\uf8ff`).get()]),recipes=recSnap.val()||{},inventory=invSnap.val()||{},menuItems=miSnap.val()||{},settings=psSnap.val()||{},optionRaw=optSnap.val()||{},optionRecipes={};
     Object.keys(optionRaw).forEach(k=>{const row=optionRaw[k]||{};optionRecipes[row.label||k]=row;});
-    const costing=Costing.costOrder({lineItems:order.lineItems||[],recipes,inventory,menuItems,optionCosts:settings.optionCosts||{},optionRecipes,optionGroups:ogSnap.val()||{}});if(!costing.ok)throw new HttpsError("failed-precondition","The saved order recipe no longer produces a valid inventory calculation.");
+    const costing=Costing.costOrder({lineItems:order.lineItems||[],recipes,inventory,menuItems,optionCosts:settings.optionCosts||{},optionRecipes,optionGroups:ogSnap.val()||{},packagingRules:pkSnap.val()||{}});if(!costing.ok)throw new HttpsError("failed-precondition","The saved order recipe no longer produces a valid inventory calculation.");
     const rawUsage=costing.usage||{},usage={};Object.keys(rawUsage).forEach(itemId=>{const quantity=qty6(rawUsage[itemId]);if(Math.abs(quantity)>.000001)usage[itemId]=quantity;});const expectedIds=Object.keys(usage).sort(),movements=movementSnap.val()||{},actualIds=Object.keys(movements).sort();if(!expectedIds.length||expectedIds.length!==actualIds.length)throw new HttpsError("failed-precondition","Order inventory movements are incomplete; no marker was restored.");
     expectedIds.forEach(itemId=>{const movementId=`sale_${orderId}_${itemId}`,movement=movements[movementId],expected=-qty6(usage[itemId]);if(!movement||movement.sourceType!=="order"||movement.sourceId!==orderId||movement.itemId!==itemId||Math.abs(Number(movement.qty)-expected)>.000001)throw new HttpsError("failed-precondition",`Inventory evidence does not match the expected order usage for ${itemId}.`);});
     const invCategories=settings.invCategories||{},cogsCategorySnapshot={food:0,beverage:0,packaging:0,directLabor:0,unallocated:0},cogsAccountSnapshot={};costing.lines.forEach(line=>{const inv=inventory[line.ingredientId]||{},category=invCategories[inv.category]||{},label=String(category.name||inv.category||"").toLowerCase();let bucket="unallocated";if(/packag|cup|lid|straw|napkin|container/.test(label))bucket="packaging";else if(/beverage|drink|coffee|tea|milk|syrup|powder/.test(label))bucket="beverage";else if(/food|ingredient|bakery|kitchen|pastry|meal/.test(label))bucket="food";cogsCategorySnapshot[bucket]+=Number(line.totalCost)||0;const mapping=BooksBridge.itemAccounts(inv),key=mapping.inventory&&mapping.cost?`${mapping.inventory}|${mapping.cost}`:"1290|5090";cogsAccountSnapshot[key]=Financial.money((cogsAccountSnapshot[key]||0)+Number(line.totalCost||0));});Object.keys(cogsCategorySnapshot).forEach(k=>{cogsCategorySnapshot[k]=Math.round(cogsCategorySnapshot[k]*100)/100;});
@@ -3693,13 +3693,14 @@ exports.onOrderFinalize = onValueWritten(
     if (o.inventoryDeducted && o.inventoryLedgerVersion === 1) return;
 
     try {
-      const [recSnap, optSnap, invSnap, miSnap, psSnap, ogSnap] = await Promise.all([
+      const [recSnap, optSnap, invSnap, miSnap, psSnap, ogSnap, pkSnap] = await Promise.all([
         db.ref("/recipes").get(),
         db.ref("/optionRecipes").get(),
         db.ref("/inventory").get(),
         db.ref("/menuItems").get(),
         db.ref("/posSettings").get(),
         db.ref("/optionGroups").get(),
+        db.ref("/packagingRules").get(),
       ]);
       const recipes = recSnap.val() || {};
       const inv = invSnap.val() || {};
@@ -3717,6 +3718,9 @@ exports.onOrderFinalize = onValueWritten(
       const costing = Costing.costOrder({
         lineItems: o.lineItems, recipes, inventory: inv, menuItems: mi,
         optionCosts, optionRecipes: optMap, optionGroups,
+        // Packaging follows how a drink is served, from one shared table. The server reads it
+        // here so the cost it posts is the cost the till showed.
+        packagingRules: pkSnap.val() || {},
       });
       if (!costing.ok) {
         const summary = costing.errors.slice(0, 5).map((x) => x.code + ": " + x.message).join(" | ");

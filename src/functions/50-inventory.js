@@ -306,13 +306,14 @@ exports.onOrderFinalize = onValueWritten(
     if (o.inventoryDeducted && o.inventoryLedgerVersion === 1) return;
 
     try {
-      const [recSnap, optSnap, invSnap, miSnap, psSnap, ogSnap] = await Promise.all([
+      const [recSnap, optSnap, invSnap, miSnap, psSnap, ogSnap, pkSnap] = await Promise.all([
         db.ref("/recipes").get(),
         db.ref("/optionRecipes").get(),
         db.ref("/inventory").get(),
         db.ref("/menuItems").get(),
         db.ref("/posSettings").get(),
         db.ref("/optionGroups").get(),
+        db.ref("/packagingRules").get(),
       ]);
       const recipes = recSnap.val() || {};
       const inv = invSnap.val() || {};
@@ -330,6 +331,9 @@ exports.onOrderFinalize = onValueWritten(
       const costing = Costing.costOrder({
         lineItems: o.lineItems, recipes, inventory: inv, menuItems: mi,
         optionCosts, optionRecipes: optMap, optionGroups,
+        // Packaging follows how a drink is served, from one shared table. The server reads it
+        // here so the cost it posts is the cost the till showed.
+        packagingRules: pkSnap.val() || {},
       });
       if (!costing.ok) {
         const summary = costing.errors.slice(0, 5).map((x) => x.code + ": " + x.message).join(" | ");

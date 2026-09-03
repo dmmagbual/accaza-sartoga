@@ -1,4 +1,4 @@
-import{watchSalesPeriod,periodKey}from'./sales-period-data.mjs?v=439';
+import{watchSalesPeriod,periodKey}from'./sales-period-data.mjs?v=440';
 // One managed subscription per path. Sales reports combine indexed date queries;
 // POS-critical paths stay live and back-office paths attach only when needed.
 const HISTORY_BOUNDS={
@@ -21,7 +21,7 @@ function createSubscriptionHub(database,ops){
     orders:['dashboard','saleshistory','analytics','pnl','payouts','stockvalue','dailyreport','cashflow','receivables'],staffAccounts:['staffaccounts'],adminAccounts:['adminaccounts'],admins:['staffaccess'],adminPerms:['staffaccess'],
     archivedOrders:['dashboard','archive','appcustomers','saleshistory','analytics','pnl','payouts','stockvalue','cashflow','receivables','dailyreport'],archivedReservations:['reservations','calendar'],reservations:['dashboard','reservations','calendar'],
     feedbacks:['comments','analytics'],reviews:['dashboard','reviews','analytics'],payment:['payment'],calBlocks:['reservations','calendar'],appCustomers:['appcustomers','analytics'],inventory:['inventory','purchases','recipes','usage','stockvalue'],inventoryMovements:['inventory','purchases','usage','stockvalue'],
-    recipes:['recipes','usage','analytics','pnl'],optionRecipes:['recipes','usage'],internalUsage:['usage','pnl','stockvalue'],usageTypes:['usage'],expenseItems:['pnl'],monthlyExpenses:['pnl'],inventoryAdjustments:['pnl','stockvalue'],stockReceipts:['purchases','stockvalue'],purchaseInvoices:['purchases'],
+    recipes:['recipes','usage','analytics','pnl'],packagingRules:['recipes','usage','analytics','pnl','inventory'],optionRecipes:['recipes','usage'],internalUsage:['usage','pnl','stockvalue'],usageTypes:['usage'],expenseItems:['pnl'],monthlyExpenses:['pnl'],inventoryAdjustments:['pnl','stockvalue'],stockReceipts:['purchases','stockvalue'],purchaseInvoices:['purchases'],
     suppliers:['purchases','petty','undeposited'],inventorySku:['inventory','purchases'],booksChart:['discrepancy'],
     platformPayouts:['payouts','pnl','analytics','cashflow','receivables'],platformVarAccounts:['payouts','pnl'],shifts:['ops'],activityLog:['ops'],heldOrders:['pos','ops'],discrepancies:['discrepancy'],
     pettyCashVouchers:['petty','purchases','undeposited'],pettyCashReplenishments:['petty'],pettyCashSettings:['petty'],cfAccounts:['dashboard','pos','purchases','cashflow','receivables','payables','payouts','undeposited','possettings'],cfLedger:['cashflow'],'books/journal':['stockvalue'],financialMovements:['purchases','cashflow','receivables','payables','payouts','saleshistory','undeposited','discrepancy'],chartOfAccounts:['cashflow'],cashCustody:['cashflow','undeposited'],receivables:['receivables'],payables:['payables'],accountingPeriods:['accountingperiods']
