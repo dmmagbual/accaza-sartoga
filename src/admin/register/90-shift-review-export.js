@@ -7,7 +7,7 @@ function openShiftReview(){
   if(!activeShift){alert('No open shift to review.');return;}
   var shift=activeShift,z=computeZ(shift),sales=shiftSales(shift),items=shiftItemsSummary(shift);
   var reviewMethodTotal=Object.keys(z.byMethod).reduce(function(s,m){return s+(Number(z.byMethod[m])||0);},0),reviewTxnTotal=sales.reduce(function(s,o){return s+(Number(o.total)||0)-(Number(o.refundAmount)||0);},0);
-  var methodRows=Object.keys(z.byMethod).map(function(m){return '<tr><td>'+esc(m)+'</td><td class="r">'+peso(z.byMethod[m])+'</td></tr>';}).join('')||'<tr><td colspan="2" style="color:var(--tl);">No sales yet.</td></tr>';
+  var methodRows=zMethodRows(z,'class="r"')||'<tr><td colspan="2" style="color:var(--tl);">No sales yet.</td></tr>';
   var txnRows=sales.map(function(o){var ch=channelLabel(o);var tag=Number(o.refundAmount)>0?' · R '+peso(o.refundAmount):'';return '<tr><td>'+esc(o.time||'')+'</td><td>'+esc(o.id)+'</td><td>'+esc(ch)+'</td><td>'+esc(shiftTxnMethod(o))+'</td><td class="r">'+peso(o.total)+esc(tag)+'</td></tr>';}).join('')||'<tr><td colspan="5" style="color:var(--tl);">No sales yet.</td></tr>';
   var itemRows=items.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td class="r">'+num(x.qty)+'</td><td class="r">'+peso(x.sales)+'</td></tr>';}).join('')||'<tr><td colspan="3" style="color:var(--tl);">No items yet.</td></tr>';
   var mask=document.createElement('div');mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';

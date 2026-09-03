@@ -82,7 +82,7 @@ async function finalizeClose(shift,counted,counts){
 }
 function showZ(shift,z,existingWindow){
   var w=existingWindow||window.open('','_blank','width=380,height=680');if(!w){alert('Shift closed. Allow pop-ups to print the Z-report.');return;}
-  var methods=Object.keys(z.byMethod).map(function(m){return '<tr><td>'+esc(m)+'</td><td style="text-align:right;">'+peso(z.byMethod[m])+'</td></tr>';}).join('');
+  var methods=zMethodRows(z,'style="text-align:right;"');
   var methodTotal=Object.keys(z.byMethod||{}).reduce(function(s,m){return s+(Number(z.byMethod[m])||0);},0),channelTotal=Object.keys(z.byChannel||{}).reduce(function(s,c){return s+(Number(z.byChannel[c])||0);},0);
   var cashMoves=(z.payInEntries||[]).map(function(x){return{kind:'Cash in',sign:'+',amount:x.amount,reason:x.reason,by:x.by,ts:x.ts};}).concat((z.payOutEntries||[]).map(function(x){return{kind:'Cash out',sign:'−',amount:x.amount,reason:x.reason,by:x.by,ts:x.ts};})).sort(function(a,b){return(Number(a.ts)||0)-(Number(b.ts)||0);});
   var cashMoveRows=cashMoves.map(function(x){return '<tr><td>'+esc(x.ts?new Date(x.ts).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}):'')+' '+esc(x.kind)+'<div style="font-size:9px;">'+esc(x.reason||'')+(x.by?' · '+esc(x.by):'')+'</div></td><td style="text-align:right;">'+x.sign+peso(x.amount)+'</td></tr>';}).join('');
