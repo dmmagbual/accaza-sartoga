@@ -1,4 +1,4 @@
-import{watchSalesPeriod,periodKey}from'./sales-period-data.mjs?v=432';
+import{watchSalesPeriod,periodKey}from'./sales-period-data.mjs?v=433';
 // One managed subscription per path. Sales reports combine indexed date queries;
 // POS-critical paths stay live and back-office paths attach only when needed.
 const HISTORY_BOUNDS={
@@ -24,7 +24,7 @@ function createSubscriptionHub(database,ops){
     recipes:['recipes','usage','analytics','pnl'],optionRecipes:['recipes','usage'],internalUsage:['usage','pnl','stockvalue'],usageTypes:['usage'],expenseItems:['pnl'],monthlyExpenses:['pnl'],inventoryAdjustments:['pnl','stockvalue'],stockReceipts:['purchases','stockvalue'],purchaseInvoices:['purchases'],
     suppliers:['purchases','petty','undeposited'],inventorySku:['inventory','purchases'],booksChart:['discrepancy'],
     platformPayouts:['payouts','pnl','analytics','cashflow','receivables'],platformVarAccounts:['payouts','pnl'],shifts:['ops'],activityLog:['ops'],heldOrders:['pos','ops'],discrepancies:['discrepancy'],
-    pettyCashVouchers:['petty','purchases','undeposited'],pettyCashReplenishments:['petty'],pettyCashSettings:['petty'],cfAccounts:['pos','purchases','cashflow','receivables','payables','payouts','undeposited','possettings'],cfLedger:['cashflow'],'books/journal':['stockvalue'],financialMovements:['purchases','cashflow','receivables','payables','payouts','saleshistory','undeposited','discrepancy'],chartOfAccounts:['cashflow'],cashCustody:['cashflow','undeposited'],receivables:['receivables'],payables:['payables'],accountingPeriods:['accountingperiods']
+    pettyCashVouchers:['petty','purchases','undeposited'],pettyCashReplenishments:['petty'],pettyCashSettings:['petty'],cfAccounts:['dashboard','pos','purchases','cashflow','receivables','payables','payouts','undeposited','possettings'],cfLedger:['cashflow'],'books/journal':['stockvalue'],financialMovements:['purchases','cashflow','receivables','payables','payouts','saleshistory','undeposited','discrepancy'],chartOfAccounts:['cashflow'],cashCustody:['cashflow','undeposited'],receivables:['receivables'],payables:['payables'],accountingPeriods:['accountingperiods']
   };
   function policy(path,opts){opts=opts||{};return {critical:opts.critical===true||critical[path]===1,scopes:opts.scopes||scopes[path]||[]};}
   function consumerActive(c){return authorized&&(c.critical||c.scopes.indexOf(activeScope)>-1);}

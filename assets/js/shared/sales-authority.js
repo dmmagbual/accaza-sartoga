@@ -60,12 +60,27 @@
     if(!raw)return'Other';
     return methodAliases()[raw.toLowerCase()]||raw;
   }
-  /* The receiving account is the detail under a classification: which wallet, which bank. */
-  function paymentAccount(payment){
+  /* The receiving account is the detail under a classification: which wallet, which bank.
+     Online orders are created server-side without one, so the report resolves it exactly the way
+     Financial.accountForPayment does for the ledger \u2014 by the account whose feedMethods claims the
+     method. Report and ledger then name the same account by construction, not by coincidence. */
+  function accountNameForMethod(method,accounts){
+    var wanted=text(method).toLowerCase(),found='';
+    if(!wanted||!accounts)return'';
+    Object.keys(accounts).forEach(function(id){
+      var a=accounts[id]||{},feeds=Array.isArray(a.feedMethods)?a.feedMethods:[];
+      if(feeds.some(function(n){return text(n).toLowerCase()===wanted;}))found=text(a.name)||id;
+    });
+    return found;
+  }
+  function paymentAccount(payment,accounts){
     if(!payment||typeof payment==='string')return'';
     var named=text(payment.receivingAccountName);if(named)return named;
+    var id=text(payment.receivingAccountId);
+    if(id&&accounts&&accounts[id])return text(accounts[id].name)||id;
     var label=text(payment.method),cut=label.lastIndexOf(' \u00b7 ');
-    return cut>0?label.slice(cut+3).trim():'';
+    if(cut>0)return label.slice(cut+3).trim();
+    return accountNameForMethod(text(payment.paymentMethod)||label,accounts);
   }
   function splitMethod(label,accountName){
     var name=text(label);if(!name)return'';

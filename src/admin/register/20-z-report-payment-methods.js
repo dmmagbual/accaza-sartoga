@@ -12,7 +12,7 @@ function computeZ(shift,sourceOrders){
     var _ch=(o.channel&&z.byChannel[o.channel]!=null)?o.channel:'instore';z.byChannel[_ch]+=Number(o.total)||0;
     if(o.paymentStatus==='pending'){z.pending+=(Number(o.total)||0);z.pendingCount++;}
     if(o.paymentStatus==='cashier_verified'){z.managerPending+=(Number(o.total)||0);z.managerPendingCount++;}
-    paysOf(o).forEach(function(p){var m=window.AccazaSales.paymentKey(p),acct=window.AccazaSales.paymentAccount(p),amt=Number(p.amount)||0;z.byMethod[m]=(z.byMethod[m]||0)+amt;z.byMethodAccount[m]=z.byMethodAccount[m]||{};z.byMethodAccount[m][acct||'']=(z.byMethodAccount[m][acct||'']||0)+amt;});
+    paysOf(o).forEach(function(p){var m=window.AccazaSales.paymentKey(p),acct=window.AccazaSales.paymentAccount(p,cashAccountsMap),amt=Number(p.amount)||0;z.byMethod[m]=(z.byMethod[m]||0)+amt;z.byMethodAccount[m]=z.byMethodAccount[m]||{};z.byMethodAccount[m][acct||'']=(z.byMethodAccount[m][acct||'']||0)+amt;});
   });
   z.cashSales=z.byMethod['Cash']||0;
   z.payIns=(shift.payIns||[]).reduce(function(s,x){return s+(Number(x.amount)||0);},0);
@@ -35,7 +35,8 @@ function zMethodRows(z,cell){
   return Object.keys(z.byMethod||{}).sort().map(function(m){
     var sub=(z.byMethodAccount||{})[m]||{},names=Object.keys(sub).filter(function(n){return n&&Math.abs(sub[n])>0.009;}).sort(),
         row='<tr><td>'+esc(m)+'</td><td '+cell+'>'+peso(z.byMethod[m])+'</td></tr>';
-    if(!names.length||(names.length===1&&names[0].toLowerCase()===String(m).toLowerCase()))return row;
+    var plain=function(v){return String(v||'').toLowerCase().replace(/[^a-z0-9]/g,'');};
+    if(!names.length||(names.length===1&&plain(names[0])===plain(m)))return row;
     return row+names.map(function(n){return '<tr><td style="padding-left:1.3rem;color:var(--tl);">'+esc(n)+'</td><td '+cell+' style="color:var(--tl);">'+peso(sub[n])+'</td></tr>';}).join('');
   }).join('');
 }
