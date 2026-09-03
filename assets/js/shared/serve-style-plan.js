@@ -165,6 +165,22 @@
   }
   /* Everything the repair writes: the styles, the style each drink is served in, and the removal
      of the packaging rows the recipes carried themselves. Recipe ingredients are untouched. */
+  /* The shared option library can hold packaging too - its Hot and Iced entries carry the cup.
+     Once a serve style supplies it, leaving it there charges the cup twice. */
+  function stripLibrary(optionCosts,inventory,categories){
+    var updates={},stripped=[];
+    Object.keys(optionCosts||{}).forEach(function(gid){
+      Object.keys(optionCosts[gid]||{}).forEach(function(key){
+        var entry=optionCosts[gid][key]||{},rows=Array.isArray(entry.ings)?entry.ings:[];
+        var kept=rows.filter(function(r){return !(r&&r.ing&&isPackaging(r.ing,inventory,categories));});
+        if(kept.length===rows.length)return;
+        stripped.push({gid:gid,key:key,label:String(entry.label||key),
+          removed:rows.length-kept.length,emptied:kept.length===0});
+        updates['posSettings/optionCosts/'+gid+'/'+key]=kept.length?{label:entry.label||key,ings:kept}:null;
+      });
+    });
+    return {updates:updates,stripped:stripped};
+  }
   function applyPlan(recipes,inventory,menuItems,categories,options){
     options=options||{};
     var proposal=propose(recipes,inventory,menuItems,categories);
@@ -193,10 +209,13 @@
       });
       if(removed.length)stripped.push({key:key,name:String(((menuItems||{})[key]||{}).name||key),removed:removed});
     });
+    var library=stripLibrary(options.optionCosts,inventory,categories);
+    Object.keys(library.updates).forEach(function(path){updates[path]=library.updates[path];});
     return {version:VERSION,styles:styles,mapping:mapping,updates:updates,stripped:stripped,
-      proposal:proposal,choiceUpdates:mapping.choices,unassigned:mapping.unassigned};
+      proposal:proposal,choiceUpdates:mapping.choices,unassigned:mapping.unassigned,
+      libraryStripped:library.stripped};
   }
   return {VERSION:VERSION,SIZES:SIZES,TEMP_GROUP:TEMP_GROUP,propose:propose,isPackaging:isPackaging,
     packagingOf:packagingOf,normalise:normalise,signature:signature,styleIdFor:styleIdFor,effQty:effQty,
-    canonical:canonical,assign:assign,applyPlan:applyPlan};
+    canonical:canonical,assign:assign,applyPlan:applyPlan,stripLibrary:stripLibrary};
 });

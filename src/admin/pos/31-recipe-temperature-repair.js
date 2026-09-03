@@ -220,6 +220,15 @@ function cogsFixRender(){
     +'<br/><br/><b>Left over: '+peso(r.residualValue)+'</b><br/>'
     +'<span style="color:var(--tm);">Charged at '+peso(r.historicCost)+' when it was rung up, worth '+peso(r.restoredValue)+' at today’s weighted average. That gap is real — the stock lost value while it sat wrongly expensed. It is <b>not</b> posted here. Post it in Books as a manual entry: debit 5905 Inventory Reconciliation, credit 5000 Cost of Sales, '+peso(r.residualValue)+'.</span>'
     +'</div>';
+  if((a.review||[]).length){
+    var reviewTotal=a.review.reduce(function(sum,x){return sum+x.cost;},0);
+    var reviewDrinks={};a.review.forEach(function(x){reviewDrinks[x.drink]=(reviewDrinks[x.drink]||0)+x.cost;});
+    html+='<div style="font-size:0.82rem;margin-top:0.6rem;padding:0.55rem 0.7rem;background:#fff8ec;border:1px solid #e6cfa4;border-radius:6px;">'
+      +'<b>'+a.review.length+' more line'+(a.review.length===1?'':'s')+', worth '+peso(reviewTotal)+', need your eye.</b> '
+      +'The shared option library and the drink\'s own copy of the same choice both charged. The record says which <i>source</i> a row came from, not which <i>choice</i> — so on an order with more than one choice these cannot be told apart, and I will not post them blind. '
+      +esc(Object.keys(reviewDrinks).sort(function(x,y){return reviewDrinks[y]-reviewDrinks[x];}).slice(0,5).map(function(d){return d;}).join(', '))
+      +'. Tidying the option library stops it recurring.</div>';
+  }
   if(a.skipped.length){
     html+='<div style="font-size:0.82rem;margin-top:0.6rem;padding:0.55rem 0.7rem;background:#fff8ec;border:1px solid #e6cfa4;border-radius:6px;">'
       +'<b>'+a.skipped.length+' line'+(a.skipped.length===1?'':'s')+' left alone.</b> The customer also chose an extra, so the second helping of that ingredient may have been genuine. Worth '+peso(a.skipped.reduce(function(s,x){return s+x.cost;},0))+' — check by hand: '

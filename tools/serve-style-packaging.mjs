@@ -22,7 +22,8 @@ const recipes=JSON.parse(fs.readFileSync(process.argv[2],'utf8')).recipes;
 const data=JSON.parse(fs.readFileSync(process.argv[3],'utf8')).data;
 const menuItems=data.menuItems||{},inventory=data.inventory||{},optionGroups=data.optionGroups||{};
 const categories=(data.posSettings&&data.posSettings.invCategories)||{};
-const result=Plan.applyPlan(recipes,inventory,menuItems,categories);
+const settings=data.posSettings||{};
+const result=Plan.applyPlan(recipes,inventory,menuItems,categories,{optionCosts:settings.optionCosts||{}});
 const nm=(id)=>(inventory[id]||{}).name||id;
 const peso=(v)=>Number(v||0).toFixed(2).padStart(8);
 
@@ -30,6 +31,7 @@ console.log('\nAccaza - serve-style packaging, dry run');
 console.log('recipes read        :',Object.keys(recipes).length);
 console.log('packaging sets found:',result.proposal.styles.length,'-> collapsed into',Object.keys(result.styles).length,'serve styles');
 console.log('recipes stripped    :',result.stripped.length);
+console.log('library entries stripped of packaging:',(result.libraryStripped||[]).map(x=>x.label+(x.emptied?' (now empty)':'')).join(', ')||'none');
 console.log('write paths         :',Object.keys(result.updates).length);
 Object.entries(result.styles).forEach(([id,style])=>{
   console.log(`\n  ${id.toUpperCase()} - ${style.description}`);

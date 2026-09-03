@@ -1954,6 +1954,15 @@ function cogsFixRender(){
     +'<br/><br/><b>Left over: '+peso(r.residualValue)+'</b><br/>'
     +'<span style="color:var(--tm);">Charged at '+peso(r.historicCost)+' when it was rung up, worth '+peso(r.restoredValue)+' at today’s weighted average. That gap is real — the stock lost value while it sat wrongly expensed. It is <b>not</b> posted here. Post it in Books as a manual entry: debit 5905 Inventory Reconciliation, credit 5000 Cost of Sales, '+peso(r.residualValue)+'.</span>'
     +'</div>';
+  if((a.review||[]).length){
+    var reviewTotal=a.review.reduce(function(sum,x){return sum+x.cost;},0);
+    var reviewDrinks={};a.review.forEach(function(x){reviewDrinks[x.drink]=(reviewDrinks[x.drink]||0)+x.cost;});
+    html+='<div style="font-size:0.82rem;margin-top:0.6rem;padding:0.55rem 0.7rem;background:#fff8ec;border:1px solid #e6cfa4;border-radius:6px;">'
+      +'<b>'+a.review.length+' more line'+(a.review.length===1?'':'s')+', worth '+peso(reviewTotal)+', need your eye.</b> '
+      +'The shared option library and the drink\'s own copy of the same choice both charged. The record says which <i>source</i> a row came from, not which <i>choice</i> — so on an order with more than one choice these cannot be told apart, and I will not post them blind. '
+      +esc(Object.keys(reviewDrinks).sort(function(x,y){return reviewDrinks[y]-reviewDrinks[x];}).slice(0,5).map(function(d){return d;}).join(', '))
+      +'. Tidying the option library stops it recurring.</div>';
+  }
   if(a.skipped.length){
     html+='<div style="font-size:0.82rem;margin-top:0.6rem;padding:0.55rem 0.7rem;background:#fff8ec;border:1px solid #e6cfa4;border-radius:6px;">'
       +'<b>'+a.skipped.length+' line'+(a.skipped.length===1?'':'s')+' left alone.</b> The customer also chose an extra, so the second helping of that ingredient may have been genuine. Worth '+peso(a.skipped.reduce(function(s,x){return s+x.cost;},0))+' — check by hand: '
@@ -1999,11 +2008,12 @@ function packStyleEngine(){
 function packStyleCategories(){return (posMeta&&posMeta.invCategories)||(A()&&A().invCategories)||{};}
 function packStyleBuild(){
   var engine=packStyleEngine(),menu=(A()&&A().menuItemsMap)||{},cats=packStyleCategories();
-  var seed=engine.applyPlan(recipesMap,inventoryMap,menu,cats);
+  var costs=optCostStore()||{};
+  var seed=engine.applyPlan(recipesMap,inventoryMap,menu,cats,{optionCosts:costs});
   var draft=packDraftInit(seed);
   /* Rebuild against the styles actually on screen, so what is assigned, stripped and priced is
      what the user is looking at - never what was proposed before they edited it. */
-  packStylePlan=engine.applyPlan(recipesMap,inventoryMap,menu,cats,{styles:draft});
+  packStylePlan=engine.applyPlan(recipesMap,inventoryMap,menu,cats,{styles:draft,optionCosts:costs});
   packStylePlan.proposal=seed.proposal;
   return packStylePlan;
 }
@@ -2314,7 +2324,9 @@ function renderServeStylePackaging(){
     +'<div style="font-size:0.85rem;margin-top:0.6rem;padding:0.55rem 0.7rem;background:#f6f8f6;border-radius:6px;">'
     +'True cost that was missing: <b>'+peso(added)+'</b> across '+total+' drink and serve combinations — about <b>'+peso(added/(total||1))+'</b> a cup on the drinks that had none. '
     +'This does not change a single price. It stops the margin on those drinks reading better than it is.</div>'
-    +'<div style="font-size:0.85rem;margin-top:0.5rem;color:var(--tm);">'+plan.stripped.length+' recipes have their packaging rows removed, because the serve style supplies them now. Recipe ingredients are untouched.</div>'
+    +'<div style="font-size:0.85rem;margin-top:0.5rem;color:var(--tm);">'+plan.stripped.length+' recipes have their packaging rows removed, because the serve style supplies them now. Recipe ingredients are untouched.'
+    +((plan.libraryStripped||[]).length?' The shared option library also holds packaging on '+plan.libraryStripped.map(function(x){return esc(x.label);}).join(', ')+' — removed too, or the cup would be charged twice.':'')
+    +'</div>'
     +'</div>';
 
   html+='<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:700;color:var(--bd);">Step 4 — Apply</div>'

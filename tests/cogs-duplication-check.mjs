@@ -41,6 +41,7 @@ const orders={
 const result=Audit.audit(orders);
 check(result.ordersRead===4,'every posted order is read');
 check(result.linesCorrected===2,'only the lines that chose Hot and double-charged are corrected');
+check(Array.isArray(result.review),'lines where the library and the drink both charged are reported separately');
 check(near(result.historicCost,25+26.6+25),'the amount corrected is exactly what was charged twice');
 check(result.rows.every(r=>r.itemId!=='syrup'),'a syrup the base never held is left alone');
 check(result.rows.every(r=>r.itemId!=='ice'),'an iced order is left alone');

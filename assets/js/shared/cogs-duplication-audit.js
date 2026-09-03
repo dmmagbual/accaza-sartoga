@@ -35,7 +35,7 @@
   }
   function audit(orders,options){
     options=options||{};
-    var rows={},skipped=[],orderCount=0,lineCount=0,postedTotal=0,byMonth={},byDrink={};
+    var rows={},skipped=[],review=[],orderCount=0,lineCount=0,postedTotal=0,byMonth={},byDrink={};
     Object.keys(orders||{}).forEach(function(orderId){
       var order=orders[orderId]||{},detail=order.cogsDetail;
       if(!detail||!Array.isArray(detail.lines)||!detail.lines.length)return;
@@ -49,29 +49,46 @@
       (order.lineItems||[]).forEach(function(item){
         if(!item)return;
         var labels=(item.optLabels||[]).map(String);
-        if(labels.indexOf('Hot')<0&&labels.indexOf('hot')<0)return;
+        /* Only a Hot choice was ever written as the whole recipe over again. A milk or syrup
+           choice that adds an ingredient the base already holds is a genuine addition, so the
+           base test is asked only of Hot. The library-versus-own test needs no such gate: one
+           choice defined twice is wrong whatever was chosen. */
+        var repeatsBase=labels.indexOf('Hot')>=0||labels.indexOf('hot')>=0;
         var group=groups[String(item.itemKey||'')+'|'+String(item.size||'')];
         if(!group)return;
         /* An extra shot legitimately adds an ingredient the base already holds, so a line that
            chose one cannot be told apart from the duplicate. Report it, never correct it. */
         var ambiguous=labels.some(function(label){return /shot|extra|add/i.test(label);});
-        var base={},choice={};
+        /* Three places one ingredient can be charged from: the base recipe, the shared option
+           library, and the drink's own copy of that same choice. Only one option definition
+           should ever apply, and a choice that repeats the base adds nothing on top of it. */
+        var base={},shared={},own={},names={};
         group.forEach(function(line){
-          var side=(String(line.source||'')==='base')?base:choice,id=String(line.ingredientId||'');
-          if(!id)return;
-          var cell=side[id]||(side[id]={cost:0,qty:0,name:String(line.ingredientName||id),unit:String(line.stockUnit||'')});
+          var id=String(line.ingredientId||'');if(!id)return;
+          var source=String(line.source||'');
+          var side=source==='base'?base:source==='option_global'?shared:own;
+          var cell=side[id]||(side[id]={cost:0,qty:0});
           cell.cost+=n(line.totalCost);cell.qty+=n(line.totalQuantity);
+          names[id]=names[id]||{name:String(line.ingredientName||id),unit:String(line.stockUnit||'')};
         });
         var month=monthKey(order),drink=String(item.name||(group[0]&&group[0].itemName)||item.itemKey||'');
         var found=0;
-        Object.keys(choice).forEach(function(id){
-          if(!base[id])return;
-          var cost=money(Math.min(choice[id].cost,base[id].cost)),qty=q6(Math.min(choice[id].qty,base[id].qty));
+        Object.keys(names).forEach(function(id){
+          var b=base[id]||{cost:0,qty:0},g=shared[id]||{cost:0,qty:0},r=own[id]||{cost:0,qty:0};
+          /* Only what a choice ADDS can duplicate the base. A milk swap takes milk away in the
+             same breath, and subtracting that first would hide the duplicate behind it. */
+          var addedCost=Math.max(g.cost,0)+Math.max(r.cost,0),addedQty=Math.max(g.qty,0)+Math.max(r.qty,0);
+          var cost=repeatsBase?money(Math.min(addedCost,b.cost)):0,qty=repeatsBase?q6(Math.min(addedQty,b.qty)):0;
+          /* The library and the drink's own copy both firing is also a duplicate, but the posted
+             record says which SOURCE a row came from, not which choice - so on an order with more
+             than one choice the two cannot be told apart. Report it; never post it blind. */
+          if(g.cost>0&&r.cost>0)review.push({orderId:orderId,drink:drink,ingredient:names[id].name,
+            labels:labels.join(' / '),cost:money(Math.min(g.cost,r.cost))});
           if(cost<=0||qty<=0)return;
           found+=cost;
           if(ambiguous)return;
           var key=id+'|'+month;
-          var row=rows[key]||(rows[key]={itemId:id,name:choice[id].name,unit:choice[id].unit,month:month,qty:0,cost:0,orders:0});
+          var row=rows[key]||(rows[key]={itemId:id,name:names[id].name,unit:names[id].unit,month:month,qty:0,cost:0,orders:0});
           row.qty=q6(row.qty+qty);row.cost=money(row.cost+cost);row.orders++;
         });
         if(!found)return;
@@ -84,7 +101,7 @@
     var list=Object.keys(rows).map(function(k){return rows[k];}).sort(function(a,b){
       return a.month<b.month?-1:a.month>b.month?1:(b.cost-a.cost);
     });
-    return {version:VERSION,rows:list,skipped:skipped,
+    return {version:VERSION,rows:list,skipped:skipped,review:review,
       ordersRead:orderCount,linesCorrected:lineCount,postedTotal:money(postedTotal),
       historicCost:money(list.reduce(function(s,r){return s+r.cost;},0)),
       byMonth:byMonth,byDrink:byDrink};

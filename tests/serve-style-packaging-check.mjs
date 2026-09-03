@@ -71,7 +71,7 @@ check(Object.keys(plan.styles).length>=2,'the scattered packaging collapses into
 check(plan.stripped.length===2,'every recipe that carried packaging has it removed - and only those');
 const strippedSoda=plan.updates['recipes/soda/base'];
 check(Array.isArray(strippedSoda)&&strippedSoda.length===1&&strippedSoda[0].ing==='milk','stripping a base leaves the drink ingredients untouched');
-check(Object.keys(plan.updates).every(p=>p==='packagingRules'||/^(menuItems|recipes)\//.test(p)),'the plan writes only packaging, serve styles and recipe rows');
+check(Object.keys(plan.updates).every(p=>p==='packagingRules'||/^(menuItems|recipes|posSettings\/optionCosts)\//.test(p)),'the plan writes only packaging, serve styles, recipe rows and the option library');
 check(plan.updates.packagingRules&&typeof plan.updates.packagingRules==='object','the packaging table is written as one node, so a removed style is removed in the data');
 check(plan.choiceUpdates.og_temp.Hot==='hot'&&plan.choiceUpdates.og_temp.Iced==='iced','the temperature choice itself carries the serve style');
 
@@ -150,6 +150,16 @@ check(/packDraftRead/.test(ui2),'what is typed survives the screen redrawing');
 check(/packReseed/.test(ui2),'the user can start again from what the recipes already do');
 check(/styles:draft/.test(ui2),'costs and assignments follow the edited styles, not the original proposal');
 check(/packAddStyle/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built admin bundle carries the editor');
+
+/* 9. the shared option library can hold packaging too - leaving it there charges the cup twice */
+const libraryCosts={og_temp:{Hot:{label:'Hot',ings:[row('hotcup',1,1,1),row('flat',1,1,1)]},
+  Iced:{label:'Iced',ings:[row('cup16',1,1,1),row('milk',10,10,10)]}}};
+const libPlan=Plan.applyPlan(recipes,inventory,menuItems,categories,{optionCosts:libraryCosts});
+check(libPlan.updates['posSettings/optionCosts/og_temp/Hot']===null,'a library entry that was only packaging is emptied');
+const icedEntry=libPlan.updates['posSettings/optionCosts/og_temp/Iced'];
+check(icedEntry&&icedEntry.ings.length===1&&icedEntry.ings[0].ing==='milk','a library entry keeps its real ingredients and loses only the packaging');
+check((libPlan.libraryStripped||[]).length===2,'both library entries carrying packaging are reported');
+check(Plan.applyPlan(recipes,inventory,menuItems,categories).libraryStripped.length===0,'a library with no packaging in it is left alone');
 
 console.log(failures?`\n${failures} check(s) failed.`:'\nAll serve-style packaging checks passed.');
 process.exit(failures?1:0);

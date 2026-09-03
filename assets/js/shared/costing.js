@@ -4,7 +4,7 @@
   else root.AccazaCosting=api;
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
-  var VERSION='3C-1';
+  var VERSION='3D-1';
   var SIZES=['S','M','L'];
   var UNITS={
     ml:{dim:'volume',factor:1},l:{dim:'volume',factor:1000},tsp:{dim:'volume',factor:4.92892},tbsp:{dim:'volume',factor:14.7868},cup:{dim:'volume',factor:240},'fl oz':{dim:'volume',factor:29.5735},
@@ -75,8 +75,12 @@
   function optionRows(item,recipe,label,size,ctx){
     var gid=groupIdForLabel(item,label,ctx.optionGroups||{}),key=optKey(label),rows=[],found=false;
     function add(arr,source){(arr||[]).forEach(function(r){if(r&&r.ing)rows.push({row:r,source:source});});if((arr||[]).length)found=true;}
-    if(gid&&ctx.optionCosts&&ctx.optionCosts[gid]&&ctx.optionCosts[gid][key])add(ctx.optionCosts[gid][key].ings,'option_global');
-    if(gid&&recipe&&recipe.choiceAdd&&recipe.choiceAdd[gid]&&recipe.choiceAdd[gid][key])add(recipe.choiceAdd[gid][key].ings,'option_recipe');
+    /* One definition wins, never both. A drink that spells the choice out for itself OVERRIDES the
+       shared library; it does not add to it. Stacking them charged the customer twice. */
+    var own=gid&&recipe&&recipe.choiceAdd&&recipe.choiceAdd[gid]&&recipe.choiceAdd[gid][key];
+    var shared=gid&&ctx.optionCosts&&ctx.optionCosts[gid]&&ctx.optionCosts[gid][key];
+    if(own)add(own.ings,'option_recipe');
+    else if(shared)add(shared.ings,'option_global');
     if(!found){var legacy=null;if(recipe&&Array.isArray(recipe.options))legacy=recipe.options.find(function(x){return x&&x.label===label;})||null;if(!legacy)legacy=(ctx.optionRecipes||{})[label]||null;if(legacy&&legacy.ing)rows.push({row:{ing:legacy.ing,qtyS:legacy.qty,qtyM:legacy.qty,qtyL:legacy.qty},source:'option_legacy'});}
     return rows;
   }

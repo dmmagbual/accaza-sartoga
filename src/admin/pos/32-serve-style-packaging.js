@@ -12,11 +12,12 @@ function packStyleEngine(){
 function packStyleCategories(){return (posMeta&&posMeta.invCategories)||(A()&&A().invCategories)||{};}
 function packStyleBuild(){
   var engine=packStyleEngine(),menu=(A()&&A().menuItemsMap)||{},cats=packStyleCategories();
-  var seed=engine.applyPlan(recipesMap,inventoryMap,menu,cats);
+  var costs=optCostStore()||{};
+  var seed=engine.applyPlan(recipesMap,inventoryMap,menu,cats,{optionCosts:costs});
   var draft=packDraftInit(seed);
   /* Rebuild against the styles actually on screen, so what is assigned, stripped and priced is
      what the user is looking at - never what was proposed before they edited it. */
-  packStylePlan=engine.applyPlan(recipesMap,inventoryMap,menu,cats,{styles:draft});
+  packStylePlan=engine.applyPlan(recipesMap,inventoryMap,menu,cats,{styles:draft,optionCosts:costs});
   packStylePlan.proposal=seed.proposal;
   return packStylePlan;
 }
@@ -327,7 +328,9 @@ function renderServeStylePackaging(){
     +'<div style="font-size:0.85rem;margin-top:0.6rem;padding:0.55rem 0.7rem;background:#f6f8f6;border-radius:6px;">'
     +'True cost that was missing: <b>'+peso(added)+'</b> across '+total+' drink and serve combinations — about <b>'+peso(added/(total||1))+'</b> a cup on the drinks that had none. '
     +'This does not change a single price. It stops the margin on those drinks reading better than it is.</div>'
-    +'<div style="font-size:0.85rem;margin-top:0.5rem;color:var(--tm);">'+plan.stripped.length+' recipes have their packaging rows removed, because the serve style supplies them now. Recipe ingredients are untouched.</div>'
+    +'<div style="font-size:0.85rem;margin-top:0.5rem;color:var(--tm);">'+plan.stripped.length+' recipes have their packaging rows removed, because the serve style supplies them now. Recipe ingredients are untouched.'
+    +((plan.libraryStripped||[]).length?' The shared option library also holds packaging on '+plan.libraryStripped.map(function(x){return esc(x.label);}).join(', ')+' — removed too, or the cup would be charged twice.':'')
+    +'</div>'
     +'</div>';
 
   html+='<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:700;color:var(--bd);">Step 4 — Apply</div>'
