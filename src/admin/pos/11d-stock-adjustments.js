@@ -71,13 +71,15 @@ function adjustStock(id){
 function finalizeRevaluation(id,onHand,newCost,reason,offsetAccount){
   var i=inventoryMap[id]; if(!i)return;
   var oldCost=Number(i.cost)||0,valueDelta=Math.round(onHand*(newCost-oldCost)*100)/100;
-  var a=A(),revId=uid('rev_'),mid=movementId('revaluation',revId,id),now=Date.now();
+  var revId=uid('rev_'),mid=movementId('revaluation',revId,id),now=Date.now();
+  /* The movement itself is the audit record: it carries costBefore, costAfter, the value delta, the
+     offset account, the reason and the actor. Do NOT write a second node for this — an extra path
+     needs its own database rule, and a failure there used to report "cost was not changed" after the
+     server had already changed it, inviting a duplicate restatement. */
   postMovements([{movementId:mid,itemId:id,type:'revaluation',qty:0,unitCost:newCost,setCost:true,offsetAccount:offsetAccount,adjustmentNature:reason,sourceType:'inventory-revaluation',sourceId:revId,note:reason,actorName:(window.__posShift&&window.__posShift.staff)||'Admin',occurredAt:now}]).then(function(){
-    return a.set(a.ref(a.db,'inventoryRevaluations/'+revId),{ing:id,name:i.name,unit:i.unit||'',onHand:onHand,costBefore:oldCost,costAfter:newCost,valueDelta:valueDelta,reason:reason,offsetAccount:offsetAccount,movementId:mid,ts:now});
-  }).then(function(){
     if(window.__posLog)window.__posLog('inv-revalue',i.name,peso(oldCost)+' → '+peso(newCost)+' · '+num(onHand)+' '+(i.unit||'')+' on hand · offset '+offsetAccount+' · '+peso(Math.abs(valueDelta)));
     alert('Restated '+i.name+' to '+peso(newCost)+' per '+(i.unit||'unit')+'.\nFinance offset: '+offsetAccount+' · '+peso(Math.abs(valueDelta))+'.\nCompleted orders are unchanged; future orders consume at the new cost.');
-  }).catch(function(e){alert('Revaluation FAILED — cost was not changed: '+((e&&e.message)||e));});
+  }).catch(function(e){alert('Revaluation was NOT applied — the cost is unchanged: '+((e&&e.message)||e)+'\n\nCheck the item cost before retrying.');});
 }
 function finalizeAdjust(id,before,delta,reason,offsetAccount){
   var i=inventoryMap[id]; if(!i)return;

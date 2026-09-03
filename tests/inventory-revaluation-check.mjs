@@ -57,6 +57,10 @@ for (const file of ['assets/js/admin/pos.js', 'src/admin/pos/11d-stock-adjustmen
   must(s, 'Completed orders keep the cost they were sold at', `${file}: the dialog must say plainly that completed orders are untouched.`);
   must(s, "if(ro==='3000'&&rr!=='beginning-inventory')", `${file}: the client must gate Owner's Capital the same way the server does.`);
   must(s, "That is the cost already on file", `${file}: a no-op restatement must be refused before it posts.`);
+  /* A write to a path with no database rule is denied, and a catch after a SUCCEEDED server call
+     reported "cost was not changed" when it had been — inviting a duplicate restatement. */
+  check(!s.includes('inventoryRevaluations'), `${file}: the revaluation must not write a second node — the movement is the audit record, and an unruled path is denied.`);
+  must(s, 'Revaluation was NOT applied — the cost is unchanged', `${file}: a failure message must not claim more than it knows.`);
 }
 
 if (failures.length) { console.error('Inventory revaluation check failed:\n- ' + failures.join('\n- ')); process.exit(1); }
