@@ -2073,6 +2073,31 @@ function assertNoOverlappingUpdatePaths(writes, context) {
   const paths = Object.keys(writes);
   for (const parentPath of paths) for (const childPath of paths) if (childPath !== parentPath && childPath.startsWith(`${parentPath}/`)) throw new HttpsError("internal", `The ${context || "financial"} update contains conflicting record paths. Nothing was posted.`);
 }
+/* Human document numbers. The movement id stays the stable join and idempotency key; this is the
+   reference a person reads in the journal. Written by the admin SDK, so no database rule is needed.
+   Sequential per prefix per year: a failed posting after the counter moves leaves a visible gap,
+   which is the honest behaviour for an audit trail. */
+const DOCUMENT_PREFIXES = [
+  [/^payable_paid|^payable_payment_reversed|^customer_change_refunded/, "PV"],
+  [/^receivable_collected|^platform_payout_deposit|^register_cash_deposit/, "RV"],
+  [/^purchase/, "PI"],
+  [/^fixed_asset/, "FA"],
+  [/revaluation/, "IR"],
+  [/adjustment|manual_edit|^waste|^staff_use|^rnd_testing|^usage_reversal|inventory/, "IA"],
+  [/^manual_books_journal|^manual_cash|^cash_transfer|^books_|^payable_created|^receivable_created|^payable_reversed|^receivable_reversed|^personal_business_cost/, "JE"],
+];
+function documentPrefix(movement) {
+  const type = financeText(movement && movement.type, 80).toLowerCase();
+  if (!type) return "";
+  for (const [pattern, prefix] of DOCUMENT_PREFIXES) if (pattern.test(type)) return prefix;
+  return "JE";
+}
+async function nextDocumentNumber(db, prefix, year) {
+  const result = await db.ref(`/documentCounters/${prefix}/${year}`).transaction((current) => (Number(current) || 0) + 1);
+  const seq = Number(result.snapshot && result.snapshot.val()) || 0;
+  if (!seq) return "";
+  return `${prefix}-${year}-${String(seq).padStart(4, "0")}`;
+}
 async function commitFinancial(db, movementId, movement, actor, extraWrites = {}) {
   movementId = financeKey(movementId, "Movement ID");
   const ref = db.ref(`/financialMovements/${movementId}`);
@@ -2080,6 +2105,13 @@ async function commitFinancial(db, movementId, movement, actor, extraWrites = {}
   if (existing.exists()) return {duplicate: true, movement: existing.val()};
   await assertAccountingPeriodOpen(db, Number(movement && movement.occurredAt || Date.now()), "creating this financial posting");
   const record = financeRecord(movementId, movement, actor);
+  if (!financeText(record.documentNo, 40)) {
+    const prefix = documentPrefix(record);
+    if (prefix) {
+      const year = financeDateFromTimestamp(Number(record.occurredAt) || Date.now()).slice(0, 4);
+      try { record.documentNo = await nextDocumentNumber(db, prefix, year); } catch (error) { record.documentNo = ""; }
+    }
+  }
   const claimRef = db.ref(`/financialCommandClaims/${movementId}`), claimToken = crypto.randomBytes(12).toString("hex"), claimedAt = Date.now();
   const claim = await claimRef.transaction((current) => {
     // The longest financial maintenance callable can run for nine minutes.
