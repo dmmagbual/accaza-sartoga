@@ -36,6 +36,49 @@ function clearingBalancesFromJournal(journal) {
   return bal;
 }
 
+
+/* Payment routing: a walk-in sale stores the receiving account the cashier picked, but an online sale
+   stores no account at all, so the ledger resolves it through accountForMethod - the account whose
+   feedMethods claims that method. The two agree only by configuration, never by construction. These
+   checks make a divergence visible instead of letting online and POS money drift into two accounts. */
+function paymentRoutingIssues(payMethods, cfAccounts, now) {
+  const out = [], methods = Array.isArray(payMethods) ? payMethods : [], accounts = cfAccounts || {};
+  const lower = (v) => String(v == null ? "" : v).trim().toLowerCase();
+  methods.forEach((method) => {
+    if (!method || method.cash === true || method.active === false) return;
+    const name = String(method.name || "").trim(); if (!name) return;
+    const claimants = Object.keys(accounts).filter((id) => {
+      const account = accounts[id] || {};
+      if (account.active === false) return false;
+      const feeds = Array.isArray(account.feedMethods) ? account.feedMethods : [];
+      return feeds.some((feed) => lower(feed) === lower(name));
+    });
+    const label = (id) => String((accounts[id] || {}).name || id);
+    if (claimants.length > 1) {
+      out.push(item("payment_routing", "critical", `routing_multi_${lower(name)}`,
+        `${claimants.length} accounts claim payment method ${name}`,
+        `${claimants.map(label).join(", ")} all list ${name} in their feed methods. An online ${name} sale carries no receiving account, so the ledger posts it to whichever of these resolves last - not necessarily the one a cashier picks at the till. Leave ${name} on exactly one account.`,
+        now, "possettings"));
+      return;
+    }
+    if (!claimants.length) {
+      out.push(item("payment_routing", "warning", `routing_none_${lower(name)}`,
+        `No receiving account claims payment method ${name}`,
+        `An online ${name} sale carries no receiving account, and no account lists ${name} in its feed methods, so it cannot be mapped to one. Add ${name} to the real receiving account's feed methods.`,
+        now, "possettings"));
+      return;
+    }
+    const configured = Array.isArray(method.accountIds) ? method.accountIds.filter((id) => accounts[id]) : [];
+    if (configured.length && configured.indexOf(claimants[0]) < 0) {
+      out.push(item("payment_routing", "critical", `routing_split_${lower(name)}`,
+        `${name} posts to different accounts at the till and online`,
+        `A cashier can only pick ${configured.map(label).join(", ")}, but an online ${name} sale resolves to ${label(claimants[0])}. Past and current ${name} money is landing in two different accounts. Align the allowed receiving account with the account whose feed methods claim ${name}.`,
+        now, "possettings"));
+    }
+  });
+  return out;
+}
+
 function buildOperationalExceptions(input, now = Date.now()) {
   const exceptions = [], active = rows(input.activeOrders), orders = rows(input.orders);
   const financial = input.financialMovements || {},inventoryEvidence=input.inventoryMovementEvidence||{}, offline = rows(input.offlinePosSync), custody = rows(input.cashCustody);
@@ -53,7 +96,8 @@ function buildOperationalExceptions(input, now = Date.now()) {
     const bal = round2(clearingBalances[code] || 0);
     if (Math.abs(bal) > clearingThreshold) exceptions.push(item("clearing_residual", "warning", `clearing_${code}`, `${name} (${code}) has not cleared to zero`, `Books General Ledger shows a ${bal > 0 ? "debit" : "credit"} residual of PHP ${Math.abs(bal).toFixed(2)} in ${code} ${name}. This clearing/suspense account must settle to zero \u2014 review and clear the pending posting in Finance Books.`, now, "cashflow"));
   });
+  paymentRoutingIssues(input.payMethods, input.cfAccounts, now).forEach((x) => exceptions.push(x));
   const rank = {critical: 0, warning: 1};exceptions.sort((a, b) => (rank[a.severity] - rank[b.severity]) || (b.at - a.at));
   return {generatedAt: now, scanned: {activeOrders: active.length, recentOrders: orders.length, offlineSyncs: offline.length, custodyRecords: custody.length}, counts: {critical: exceptions.filter((x) => x.severity === "critical").length, warning: exceptions.filter((x) => x.severity === "warning").length, total: exceptions.length}, exceptions: exceptions.slice(0, 100)};
 }
-module.exports = {buildOperationalExceptions, CLEARING_ACCOUNTS, CLEARING_RESIDUAL_THRESHOLD, clearingBalancesFromJournal};
+module.exports = {buildOperationalExceptions, CLEARING_ACCOUNTS, CLEARING_RESIDUAL_THRESHOLD, clearingBalancesFromJournal, paymentRoutingIssues};
