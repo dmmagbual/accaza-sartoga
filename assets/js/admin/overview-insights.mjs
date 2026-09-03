@@ -26,10 +26,7 @@ function overviewDayRange(date){var key=/^\d{4}-\d{2}-\d{2}$/.test(date||'')?dat
 function overviewDateLabel(date){var p=String(date||'').split('-'),d=new Date(Date.UTC(Number(p[0]),Number(p[1])-1,Number(p[2]),12));return d.toLocaleDateString('en-PH',{timeZone:'Asia/Manila',year:'numeric',month:'long',day:'numeric'});}
 function overviewRankingRange(from,to){var today=overviewDateKey(),start=/^\d{4}-\d{2}-\d{2}$/.test(from||'')?from:today,end=/^\d{4}-\d{2}-\d{2}$/.test(to||'')?to:start;if(start>end){var swap=start;start=end;end=swap;}return{from:start,to:end,start:Date.parse(start+'T00:00:00+08:00'),end:Date.parse(end+'T23:59:59.999+08:00'),label:start===end?overviewDateLabel(start):overviewDateLabel(start)+' to '+overviewDateLabel(end)};}
 function overviewDrinkLine(li,data){
-  var menu=(data&&data.menuItems)||{},types=(data&&data.catType)||{},mi=menu[li&&li.itemKey],cat=(mi&&mi.cat)||(li&&li.categoryId)||'',type=types[cat];
-  if(type)return type==='drink';
-  if(((data&&data.drinkCategories)||[]).indexOf(cat)>-1)return true;
-  return !/(?:food|pastr|bakery|meal)/i.test([cat,li&&li.categoryName].filter(Boolean).join(' '));
+  return window.AccazaSales.isDrinkLine(li,{menuItems:(data&&data.menuItems)||{},catType:(data&&data.catType)||{},drinkCategories:(data&&data.drinkCategories)||null});
 }
 function buildDrinkRanking(rows,data,dateRange){
   var items={},totalUnits=0,orderIds={},r=dateRange||null;
@@ -39,8 +36,8 @@ function buildDrinkRanking(rows,data,dateRange){
     var amounts=window.AccazaSales.amounts(o),factor=amounts.gross>0?Math.max(0,amounts.net/amounts.gross):0,hasDrink=false;
     (Array.isArray(o.lineItems)?o.lineItems:[]).forEach(function(li){
       if(!li||!overviewDrinkLine(li,data))return;
-      var qty=Math.max(0,Number(li.qty)||0),menu=(data&&data.menuItems)||{},mi=menu[li.itemKey],name=li.name||(mi&&mi.name)||li.itemKey;if(!name||qty<=0)return;
-      var key=String(li.itemKey||name).toLowerCase(),item=items[key]||(items[key]={key:key,name:name,units:0,revenue:0});
+      var qty=Math.max(0,Number(li.qty)||0),menu=(data&&data.menuItems)||{},name=window.AccazaSales.drinkLabel(li,menu)||li.name||li.itemKey;if(!name||qty<=0)return;
+      var key=window.AccazaSales.drinkKey(li)||String(name).toLowerCase(),item=items[key]||(items[key]={key:key,name:name,units:0,revenue:0});
       item.units+=qty;item.revenue+=qty*(Number(li.unitTotal)||0)*factor;totalUnits+=qty;hasDrink=true;
     });
     if(hasDrink)orderIds[String(o.id||o.orderId||o.key||o._overviewKey||('sale-'+index))]=true;

@@ -42,13 +42,13 @@ function renderAnalyticsBody(){
       var mi=A().menuItemsMap[li.itemKey];var cat=mi?(A().getCatLabel?A().getCatLabel(mi.cat):mi.cat):'Other';
       byCat[cat]=(byCat[cat]||0)+li.qty*li.unitTotal;
       totItems+=li.qty;
-      var _ct=(window.__posSettings&&window.__posSettings.catType)||{}; if(mi&&_ct[mi.cat]==='food')return; /* Top items = drinks only: exclude food/pastry categories. Add-ons are options (optLabels), never line items, so already excluded. */
-      var key=li.name;items[key]=items[key]||{name:li.name,units:0,rev:0,cost:0};
+      var _ct=(window.__posSettings&&window.__posSettings.catType)||{}; if(!window.AccazaSales.isDrinkLine(li,{menuItems:A().menuItemsMap,catType:_ct}))return; /* Top items = drinks only, using the same shared test Home Overview uses. Add-ons are options (optLabels), never line items, so already excluded. */
+      var key=window.AccazaSales.drinkKey(li);if(!key)return;items[key]=items[key]||{key:key,name:window.AccazaSales.drinkLabel(li,A().menuItemsMap)||li.name||key,units:0,rev:0,cost:0};
       items[key].units+=li.qty;items[key].rev+=li.qty*li.unitTotal*itemFactor;var c=itemCost(li);if(c!=null)items[key].cost+=c;
     });
   });
   // prev-period item units for trend
-  var pItems={};prev.forEach(function(x){(x.lineItems||[]).forEach(function(li){var mi=A().menuItemsMap[li.itemKey],ct=(window.__posSettings&&window.__posSettings.catType)||{};if(mi&&ct[mi.cat]==='food')return;pItems[li.name]=(pItems[li.name]||0)+li.qty;});});
+  var pItems={};prev.forEach(function(x){(x.lineItems||[]).forEach(function(li){var ct=(window.__posSettings&&window.__posSettings.catType)||{};if(!window.AccazaSales.isDrinkLine(li,{menuItems:A().menuItemsMap,catType:ct}))return;var pk=window.AccazaSales.drinkKey(li);if(!pk)return;pItems[pk]=(pItems[pk]||0)+li.qty;});});
   var itemArr=Object.values(items);
   var topByRev=itemArr.slice().sort(function(a,b){return b.rev-a.rev;});
   var topByProfit=itemArr.slice().filter(function(i){return i.cost>0;}).map(function(i){return Object.assign({profit:i.rev-i.cost,margin:i.rev>0?(i.rev-i.cost)/i.rev*100:0},i);}).sort(function(a,b){return b.profit-a.profit;});
@@ -106,7 +106,7 @@ function renderAnalyticsBody(){
   html+='<div class="az-sec">Sales channel</div><div class="pz-card"><div class="az-kpis" style="margin:0;">'+kpi('Walk-in (counter)',peso0(walkInRev)+' · '+Math.round(walkInRev/chTot*100)+'%')+kpi('Online',peso0(onlineRev)+' · '+Math.round(onlineRev/chTot*100)+'%')+kpi('Events',peso0(eventRev)+' · '+Math.round(eventRev/chTot*100)+'%')+kpi('Promos',peso0(promoRev)+' · '+Math.round(promoRev/chTot*100)+'%')+'</div><div class="az-note">Revenue share by channel — walk-in, online, event packages, promos.</div></div>';
   // items
   html+='<div class="az-sec">Top drinks by net revenue</div><div class="pz-card"><table class="pz-tbl"><thead><tr><th>Drink</th><th>Units</th><th>Net revenue</th><th>Unit trend</th></tr></thead><tbody>'
-    +topByRev.slice(0,10).map(function(i){var pv=pItems[i.name]||0;var tr=pv>0?(i.units-pv)/pv*100:(i.units>0?100:0);return '<tr><td>'+esc(i.name)+'</td><td>'+i.units+'</td><td>'+peso0(i.rev)+'</td><td class="'+(tr>0?'az-up':tr<0?'az-down':'az-flat')+'">'+(pv>0||i.units>0?pct(tr):'—')+'</td></tr>';}).join('')
+    +topByRev.slice(0,10).map(function(i){var pv=pItems[i.key]||0;var tr=pv>0?(i.units-pv)/pv*100:(i.units>0?100:0);return '<tr><td>'+esc(i.name)+'</td><td>'+i.units+'</td><td>'+peso0(i.rev)+'</td><td class="'+(tr>0?'az-up':tr<0?'az-down':'az-flat')+'">'+(pv>0||i.units>0?pct(tr):'—')+'</td></tr>';}).join('')
     +'</tbody></table></div>';
   html+='<div class="az-sec">Most profitable items <span class="az-note">(revenue − recipe cost)</span></div><div class="pz-card">'
     +(topByProfit.length?'<table class="pz-tbl"><thead><tr><th>Item</th><th>Units</th><th>Profit</th><th>Margin</th></tr></thead><tbody>'
