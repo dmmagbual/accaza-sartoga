@@ -76,6 +76,32 @@ check(rolled['E-Wallet'] === 1065, 'E-Wallet must total both wallets.');
 check(byAccount['E-Wallet']['G-Cash'] === 605 && byAccount['E-Wallet']['PayMaya'] === 460,
   'The receiving-account split must survive the merge — a single E-Wallet figure with no breakdown is a headline without its backup.');
 
+/* ---------- online orders carry no receiving account; resolve it the way the ledger does ---------- */
+const accounts = {
+  acc_bdo:{name:'BDO', type:'bank', feedMethods:['Bank Transfer']},
+  acc_gcash:{name:'G-Cash', type:'ewallet', feedMethods:['GCash']},
+};
+check(account({method:'GCash', amount:605}, accounts) === 'G-Cash',
+  'An online GCash payment must resolve to the account whose feedMethods claims it — the same lookup Financial.accountForPayment uses for the ledger.');
+check(account({method:'Bank Transfer'}, accounts) === 'BDO',
+  'An online bank transfer must resolve the same way.');
+check(account({method:'GCash · G-Cash', receivingAccountName:'G-Cash'}, accounts) === 'G-Cash',
+  'A stored account name must still win over the lookup.');
+check(account({receivingAccountId:'acc_bdo', method:'Bank Transfer'}, accounts) === 'BDO',
+  'A stored account id must resolve to that account, mirroring accountForPayment.');
+check(account({method:'Cash'}, accounts) === '',
+  'Cash has no receiving account and must not be invented one.');
+check(account({method:'GCash'}, {}) === '' && account({method:'GCash'}) === '',
+  'With no accounts loaded the resolver must stay silent rather than guess.');
+
+/* The dashboard scope must be registered or the cfAccounts listener silently never attaches. */
+must(read('assets/js/admin/realtime-hub.mjs'), "cfAccounts:['dashboard'",
+  'realtime-hub.mjs: cfAccounts must be in the dashboard scope, or Overview never receives the accounts map.');
+must(read('assets/js/admin/core.mjs'), "subscriptionHub.subscribe('cfAccounts'",
+  'core.mjs: Overview must subscribe to cfAccounts.');
+must(read('assets/js/admin/core.mjs'), 'cashAccounts:overviewCashAccounts',
+  'core.mjs: the accounts map must reach the Overview renderer.');
+
 /* ---------- every surface that totals payments must use it ---------- */
 must(read('assets/js/shared/sales-authority.js'), 'paymentKey:paymentKey',
   'sales-authority.js: paymentKey must be exported on AccazaSales.');
@@ -84,12 +110,13 @@ for (const file of ['assets/js/admin/overview-insights.mjs']) {
   const s = read(file);
   must(s, 'method=window.AccazaSales.paymentKey(p)', `${file}: Payment Split must bucket on the resolved method.`);
   must(s, 'Number(refunds[label])', `${file}: the refund lookup must stay on the FULL label — refundPayments is keyed by it.`);
-  must(s, 'window.AccazaSales.paymentAccount(p)', `${file}: Payment Split must capture the receiving account.`);
+  must(s, 'window.AccazaSales.paymentAccount(p,accounts)', `${file}: Payment Split must resolve the receiving account against the accounts map.`);
   must(s, 'function accountLines(method)', `${file}: Payment Split must render the receiving-account breakdown under each method.`);
 }
 for (const file of ['assets/js/admin/register.js', 'src/admin/register/20-z-report-payment-methods.js']) {
   const s = read(file);
   must(s, 'function zMethodRows(z,cell)', `${file}: one shared row-builder must render the Z-report method + account rows.`);
+  must(s, 'window.AccazaSales.paymentAccount(p,cashAccountsMap)', `${file}: the Z-report must resolve the receiving account against the accounts map.`);
   must(s, 'z.byMethodAccount[m][acct', `${file}: the Z-report must capture the receiving-account split.`);
   must(s, 'data-pmalias', `${file}: POS Settings must let an operator record the old names a method absorbs.`);
 }

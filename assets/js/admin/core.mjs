@@ -1,11 +1,11 @@
 import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,runTransaction,query,orderByChild,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
-import{createSubscriptionHub}from"./realtime-hub.mjs?v=432";
-import{readSalesPeriod,periodKey}from'./sales-period-data.mjs?v=432';
+import{createSubscriptionHub}from"./realtime-hub.mjs?v=433";
+import{readSalesPeriod,periodKey}from'./sales-period-data.mjs?v=433';
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome}from"./admin-orders.mjs";
-import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=432";
+import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=433";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -158,7 +158,7 @@ function getItemOptionGroups(item){
   return getEffectiveOptionIds(item).map(function(id){var g=optionGroupsMap[id];return g?Object.assign({},g,{id:id}):null;}).filter(Boolean).sort(function(a,b){return(a.order||0)-(b.order||0);});
 }
 
-let categoriesMap={},menuItemsMap={},adminOrdersMap={},overviewOrdersMap={},archivedOrdersMap={},feedbacksMap={},reviewsMap={},availability={},cart={},overviewOrdersLoaded=false,archivedOrdersLoaded=false,overviewFinancialMovementsLoaded=false,overviewCatType={};
+let overviewCashAccounts={},categoriesMap={},menuItemsMap={},adminOrdersMap={},overviewOrdersMap={},archivedOrdersMap={},feedbacksMap={},reviewsMap={},availability={},cart={},overviewOrdersLoaded=false,archivedOrdersLoaded=false,overviewFinancialMovementsLoaded=false,overviewCatType={};
 let optionGroupsMap={},optSeedStarted=false,itemOptMigrated=false;
 let knownOrderIds=null,unseenOrders=0,orderChimeTimer=null,audioCtx=null;
 let orderType='pickup',paymentType='gcash',contactMethod='whatsapp';
@@ -265,6 +265,11 @@ subscriptionHub.subscribe('optionGroups',snap=>{
   migrateItemOptions();
   if(adminLoggedIn)renderOptionManager();
   renderNewItemOptionChecklist();
+});
+
+subscriptionHub.subscribe('cfAccounts',snap=>{
+  overviewCashAccounts=snap.val()||{};
+  if(adminLoggedIn||staffLoggedIn){var ct=document.getElementById('tab-dashboard');if(ct&&ct.style.display!=='none')renderDashboard();}
 });
 
 subscriptionHub.subscribe('posSettings',snap=>{
@@ -991,7 +996,7 @@ function renderDashboard(){
   const t=sumOrders(sales.filter(o=>_tsOf(o)>=startToday)),w=sumOrders(sales.filter(o=>_tsOf(o)>=startWeek)),m=sumOrders(sales.filter(o=>_tsOf(o)>=startMonth)),a=sumOrders(sales);
   function setCard(id,rev,cnt){const el=document.getElementById(id);if(el)el.textContent='â‚±'+rev.toLocaleString();const cel=document.getElementById(id+'Count');if(cel)cel.textContent=cnt+' order'+(cnt!==1?'s':'');}
   setCard('dashToday',t.rev,t.cnt);setCard('dashWeek',w.rev,w.cnt);setCard('dashMonth',m.rev,m.cnt);setCard('dashAllTime',a.rev,a.cnt);
-  overviewInsights.render({active:active,orders:historyOrders,archived:archived,outcomes:outcomes,sales:sales,feedReady:{orders:overviewOrdersLoaded,archivedOrders:archivedOrdersLoaded,financialMovements:overviewFinancialMovementsLoaded},historyComplete:fullHistory.complete&&subscriptionHub.historyStatus('orders').ready&&subscriptionHub.historyStatus('archivedOrders').ready,menuItems:menuItemsMap||{},catType:overviewCatType,drinkCategories:DRINK_CATS});
+  overviewInsights.render({active:active,orders:historyOrders,archived:archived,outcomes:outcomes,sales:sales,feedReady:{orders:overviewOrdersLoaded,archivedOrders:archivedOrdersLoaded,financialMovements:overviewFinancialMovementsLoaded},historyComplete:fullHistory.complete&&subscriptionHub.historyStatus('orders').ready&&subscriptionHub.historyStatus('archivedOrders').ready,menuItems:menuItemsMap||{},catType:overviewCatType,drinkCategories:DRINK_CATS,cashAccounts:overviewCashAccounts||{}});
 }
 
 function drawPaymentPie(gcashR,bankR){

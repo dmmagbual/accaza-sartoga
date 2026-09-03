@@ -85,12 +85,12 @@ function createOverviewInsights(deps){
   function select(){document.querySelectorAll('[data-overview-metric]').forEach(function(btn){var on=btn.dataset.overviewMetric===state.metric;btn.classList.toggle('active',on);btn.setAttribute('aria-pressed',on?'true':'false');});}
   function ensureHistory(){}
   function money(v){return'₱'+(Number(v)||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});}
-  function renderPayments(rows){
+  function renderPayments(rows,accounts){
     var mix={},detail={};
     rows.forEach(function(o){
       var pays=Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment||'Other',amount:o.total||0}],refunds=o.refundPayments||{};
       pays.forEach(function(p){
-        var label=p.method||'Other',net=Math.max(0,(Number(p.amount)||0)-(Number(refunds[label])||0)),method=window.AccazaSales.paymentKey(p),account=window.AccazaSales.paymentAccount(p);
+        var label=p.method||'Other',net=Math.max(0,(Number(p.amount)||0)-(Number(refunds[label])||0)),method=window.AccazaSales.paymentKey(p),account=window.AccazaSales.paymentAccount(p,accounts);
         mix[method]=(mix[method]||0)+net;
         /* A classification is the headline; the receiving account is the detail underneath it.
            One "E-Wallet" figure hides whether the money landed in G-Cash or PayMaya. */
@@ -102,7 +102,8 @@ function createOverviewInsights(deps){
       var bucket=detail[method]||{},names=Object.keys(bucket).filter(function(n){return n&&bucket[n]>.009;}).sort(function(a,b){return bucket[b]-bucket[a];});
       if(!names.length)return'';
       var unnamed=Number(bucket['']||0);
-      if(names.length===1&&unnamed<=.009&&names[0].toLowerCase()===method.toLowerCase())return'';
+      var plain=function(v){return String(v||'').toLowerCase().replace(/[^a-z0-9]/g,'');};
+      if(names.length===1&&unnamed<=.009&&plain(names[0])===plain(method))return'';
       return names.map(function(n){return'<div class="overview-payment-row overview-payment-sub"><span></span><span>'+deps.esc(n)+'</span><strong>'+money(bucket[n])+'</strong></div>';}).join('')
         +(unnamed>.009?'<div class="overview-payment-row overview-payment-sub"><span></span><span>Account not recorded</span><strong>'+money(unnamed)+'</strong></div>':'');
     }
@@ -143,7 +144,7 @@ function createOverviewInsights(deps){
     if(!complete){renderFullRanking();['overviewNetSales','overviewGrossSales','overviewTransactions','overviewAverageSale'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent='—';});var pending=document.getElementById('overviewDataNote');if(pending)pending.textContent='Loading the selected sales period…';['topItemsList','payMixList','statusBreakdown'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent='Loading…';});var canvas=document.getElementById('revenueChart');if(canvas)canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);return;}
     var periodSales=(data.sales||[]).filter(function(o){return inRange(o,r);}),periodOrders=(data.outcomes||[]).filter(function(o){return inRange(o,r);});
     var gross=0,net=0;periodSales.forEach(function(o){var v=window.AccazaSales.amounts(o);gross+=v.gross;net+=v.net;});function set(id,value){var el=document.getElementById(id);if(el)el.textContent=value;}set('overviewNetSales',money(net));set('overviewGrossSales',money(gross));set('overviewTransactions',String(periodSales.length));set('overviewAverageSale',money(periodSales.length?net/periodSales.length:0));
-    renderPayments(periodSales);renderTop(periodSales,data);renderOutcomes(periodOrders,data.active||[]);chart(periodSales,r);renderFullRanking();
+    renderPayments(periodSales,data.cashAccounts||{});renderTop(periodSales,data);renderOutcomes(periodOrders,data.active||[]);chart(periodSales,r);renderFullRanking();
     var note=document.getElementById('overviewDataNote');if(note)note.textContent='Every completed paid order in the selected dates is loaded, including archived orders.';
   }
   return{render:function(data){state.latest=data;paint();},ensureHistory:ensureHistory};
