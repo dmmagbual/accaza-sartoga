@@ -210,7 +210,7 @@ function buildSingle(mv, cashMap, context) {
   const purchaseText=purchaseJournalText(mv,context);
   return {
     entry: {
-      id: b.key, date: b.date, ref: purchaseText?purchaseText.ref:String(mv.revision ? mv.reference || mv.sourceId || mv.id || "" : mv.sourceId || mv.id || ""),
+      id: b.key, date: b.date, ref: purchaseText?purchaseText.ref:String(mv.documentNo || (mv.revision ? mv.reference || mv.sourceId || mv.id : mv.sourceId || mv.id) || ""),
       memo: purchaseText?purchaseText.memo:mv.revision?String(mv.memo||""):`POS ${String(mv.type || "movement").replace(/_/g, " ")}${mv.sourceId ? " · " + mv.sourceId : ""}`,
       lines: lines.map((l) => ({code: l.code, debit: l.debit, credit: l.credit})),
       sources: {[mv.id]: true}, source: "pos-bridge", sourceType: String(mv.sourceType || ""), sourceId: String(mv.sourceId || ""),
