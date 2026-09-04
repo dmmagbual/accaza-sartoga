@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var inventoryMap={}, inventorySkuMap={}, purchaseInvoicesMap={}, purchaseShiftMap={}, purchaseFundAdvanceMap={}, supplierMap={}, recipesMap={}, posMeta={vat:false,vatRate:12}, optRecipesMap={}, usageMap={}, channelPricesMap={}, posAvailMap={}, inventoryMovementsMap={},paymentAccountsMap={};
+var inventoryMap={}, inventorySkuMap={}, purchaseInvoicesMap={}, purchaseShiftMap={}, purchaseFundAdvanceMap={}, supplierMap={}, recipesMap={}, posMeta={vat:false,vatRate:12}, optRecipesMap={}, usageMap={}, channelPricesMap={}, posAvailMap={}, inventoryMovementsMap={},paymentAccountsMap={},packagingRulesMap={};
 // Order reference: PREFIX-XXXXXX (6 base36 chars from a monotonic timestamp).
 // Prefix namespaces the channel so IDs never collide across channels; the
 // monotonic counter guarantees uniqueness for rapid same-device sales offline.
@@ -42,7 +42,7 @@ function A(){return window.__accaza;}
 function platformRefKey(r){return String(r||'').trim().toUpperCase().replace(/[.#$/\[\]\u0000-\u001f\u007f]/g,'_');}
 function F(){if(!window.AccazaFormDialog)throw new Error('Form service unavailable. Refresh the portal.');return window.AccazaFormDialog;}
 function Costing(){if(!window.AccazaCosting)throw new Error('The shared costing engine did not load. Refresh the portal and try again.');return window.AccazaCosting;}
-function costingContext(extra){return Object.assign({inventory:inventoryMap,recipes:recipesMap,menuItems:(A()&&A().menuItemsMap)||{},optionCosts:optCostStore(),optionRecipes:optRecipesMap,optionGroups:(A()&&A().optionGroupsMap)||{}},extra||{});}
+function costingContext(extra){return Object.assign({inventory:inventoryMap,recipes:recipesMap,menuItems:(A()&&A().menuItemsMap)||{},optionCosts:optCostStore(),optionRecipes:optRecipesMap,optionGroups:(A()&&A().optionGroupsMap)||{},packagingRules:packagingRulesMap},extra||{});}
 function movementId(prefix,source,item){return (String(prefix)+'_'+String(source)+'_'+String(item)).replace(/[^A-Za-z0-9_-]/g,'_').slice(0,160);}
 function postMovements(rows){var a=A();if(!a||!a.postInventoryMovements)return Promise.reject(new Error('Inventory movement service is not available. Refresh the portal.'));rows=(rows||[]).filter(function(x){return x&&x.itemId;});var chunks=[];while(rows.length)chunks.push(rows.splice(0,100));var out={count:0,duplicates:0,movements:[]};return chunks.reduce(function(p,chunk){return p.then(function(){return a.postInventoryMovements(chunk);}).then(function(r){r=r&&r.data?r.data:r||{};out.count+=Number(r.count)||0;out.duplicates+=Number(r.duplicates)||0;out.movements=out.movements.concat(r.movements||[]);});},Promise.resolve()).then(function(){return out;});}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -212,6 +212,7 @@ function init(){
   a.subscribe('shifts', function(s){ purchaseShiftMap=s.val()||{}; if(isTab('purchases'))renderPurchases(); });
   a.subscribe('pettyCashVouchers', function(s){ purchaseFundAdvanceMap=s.val()||{}; if(isTab('purchases'))renderPurchases(); });
   a.subscribe('suppliers', function(s){ supplierMap=s.val()||{}; window.__accazaSuppliers=supplierMap;if(!window.__supplierLegacyInitRequested&&a.manageSupplier){window.__supplierLegacyInitRequested=true;a.manageSupplier({action:'initialize_legacy'}).catch(function(){window.__supplierLegacyInitRequested=false;});} if(isTab('purchases'))renderPurchases(); });
+  a.subscribe('packagingRules', function(s){ packagingRulesMap=s.val()||{}; if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateCostBadge(); });
   a.subscribe('recipes', function(s){ recipesMap=s.val()||{}; if(isTab('recipes')&&!recipeEditing)renderRecipes(); if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); updateCostBadge(); });
   a.subscribe('optionRecipes', function(s){ var raw=s.val()||{}; var m={}; Object.keys(raw).forEach(function(k){var v=raw[k]||{}; var lb=v.label||k; m[lb]=v;}); optRecipesMap=m; if(isTab('recipes')&&!recipeEditing)renderRecipes(); if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); });
   a.subscribe('internalUsage', function(s){ usageMap=s.val()||{}; if(isTab('usage'))renderUsage(); });
