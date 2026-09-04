@@ -110,6 +110,33 @@ function openRecipe(key){
   window.__recCostSel=_sel;
   drawRecipeEditor(item);
 }
+
+/* How a drink is served decides its cup, lid and straw. A drink that offers Temperature is
+   answered by that choice; every other drink needs to be told here, or it goes out with no
+   packaging costed at all. */
+function recServeStyleControl(item){
+  var rules=(typeof packagingRulesMap==='object'&&packagingRulesMap)||{};
+  var ids=Object.keys(rules);
+  var groups=(A().getItemOptionGroups?A().getItemOptionGroups(item):[])||[];
+  var byChoice=groups.some(function(g){return (g.choices||[]).some(function(c){return c&&c.serveStyle;});});
+  if(!ids.length){
+    return '<div style="font-size:0.76rem;color:#8a5a00;background:#fff8ec;border:1px solid #e6cfa4;border-radius:6px;padding:0.4rem 0.6rem;margin-bottom:0.5rem;">'
+      +'No serve styles set up yet, so no drink is carrying a cup. Set them up in <b>Recipes → 📦 Packaging</b>.</div>';
+  }
+  var current=String(item.serveStyle||'');
+  var options='<option value="">— not set —</option>'+ids.map(function(id){
+    return '<option value="'+esc(id)+'"'+(id===current?' selected':'')+'>'+esc(rules[id].name||id)+'</option>';
+  }).join('');
+  var note=byChoice
+    ? 'This drink asks the customer Hot or Iced, so the cup follows that choice. The setting here is only the fallback.'
+    : (current?'Cup, lid and straw come from this. Change what is in it under Recipes → 📦 Packaging.'
+              :'<b style="color:#8b1e1e;">Not set — this drink is going out with no cup costed.</b> Pick how it is served.');
+  return '<div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.5rem;">'
+    +'<span class="pz-lbl" style="display:inline;margin:0;">Served</span>'
+    +'<select class="pz-in" id="recServeStyle" style="max-width:180px;">'+options+'</select>'
+    +'<span style="font-size:0.72rem;color:var(--tl);flex:1 1 240px;">'+note+'</span></div>';
+}
+
 function drawRecipeEditor(item){
   var ed=document.getElementById('recEditor'); if(!ed)return;
   var d=recipeDraft; var size=recSize||'M';
@@ -157,7 +184,7 @@ function drawRecipeEditor(item){
     return '<div style="margin-bottom:0.6rem;"><div style="font-weight:600;color:var(--bd);font-size:0.85rem;">'+esc(g.name)+'</div>'+choices+'</div>';
   }).join('');
   var caManage=caGroupsAll.map(function(g){var on=caAllow.indexOf(g.id)>=0;return '<label style="display:inline-flex;align-items:center;gap:0.3rem;font-size:0.72rem;margin:0 0.7rem 0.25rem 0;cursor:pointer;"><input type="checkbox" data-cagrp="'+esc(g.id)+'"'+(on?' checked':'')+'/>'+esc(g.name)+'</label>';}).join('');
-  var caSection=caGroupsAll.length?('<div style="border-top:2px solid var(--cd);margin-top:0.8rem;padding-top:0.6rem;"><div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Extra ingredients per choice — this drink only</div><p class="pz-sub" style="margin-top:0;">Stacks on top of the base recipe and the shared Optional-ingredients cost (cups, ice, milk). Use for drink-specific deltas — e.g. Hot → extra coffee for this drink. Blank = 0 for that size.</p>'+'<div style="background:var(--cd);border-radius:6px;padding:0.4rem 0.55rem;margin-bottom:0.5rem;font-size:0.72rem;"><b>Which choices can carry per-drink extras</b> <span style="color:var(--tl);">(applies to all drinks — Temperature only by default):</span><div style="margin-top:0.3rem;">'+caManage+'</div></div>'+(caCards||'<p class="pz-sub" style="margin:0;">No choices enabled — tick one above to add a per-drink extra.</p>')+'</div>'):'';
+  var caSection=caGroupsAll.length?('<div style="border-top:2px solid var(--cd);margin-top:0.8rem;padding-top:0.6rem;"><div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Extra ingredients per choice — this drink only</div><p class="pz-sub" style="margin-top:0;">Say only what is DIFFERENT about that choice for this drink — never the whole recipe again. What you put here REPLACES the shared Optional-ingredients definition for this drink; the two are never added together. Leave it empty and the shared one is used — e.g. Hot → extra coffee for this drink. Blank = 0 for that size.</p>'+'<div style="background:var(--cd);border-radius:6px;padding:0.4rem 0.55rem;margin-bottom:0.5rem;font-size:0.72rem;"><b>Which choices can carry per-drink extras</b> <span style="color:var(--tl);">(applies to all drinks — Temperature only by default):</span><div style="margin-top:0.3rem;">'+caManage+'</div></div>'+(caCards||'<p class="pz-sub" style="margin:0;">No choices enabled — tick one above to add a per-drink extra.</p>')+'</div>'):'';
   // ── COST PER DRINK calculator: base + selected choices (per-recipe extra + shared optional) ──
   var tempRec={choiceAdd:d.choiceAdd};
   var previewNorm=Costing().normalizeRecipe(recipeDraftRaw(d),inventoryMap);
@@ -187,12 +214,13 @@ function drawRecipeEditor(item){
   ed.innerHTML=
     '<div class="pz-card" style="margin-bottom:1rem;">'
       +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.6rem;"><div style="font-weight:600;color:var(--bd);">Recipe for “'+esc(item.name)+'”'+(cat?' · <span style="color:var(--tl);font-size:0.82rem;">'+esc(A().getCatLabel?A().getCatLabel(cat):cat)+(ct?' ('+ct+')':'')+'</span>':'')+'</div><div><span class="pz-lbl" style="display:inline;margin-right:0.4rem;">Cost for size</span>'+sizeBtns+'</div></div>'
+      +recServeStyleControl(item)
       +'<label style="display:inline-flex;align-items:center;gap:0.35rem;font-size:0.76rem;color:var(--tl);margin-bottom:0.5rem;cursor:pointer;"><input type="checkbox" id="recNoNeed"'+(item.noRecipe?' checked':'')+'/> No recipe needed (resale / bought-in item — hide from the not-costed flag)</label>'
       +(ings().length?'':'<p class="pz-low" style="font-size:0.8rem;">Add items in the Inventory tab first.</p>')
       +'<span class="pz-lbl">Recipe ingredients — base &amp; consumables (cups, lids, straws…). Enter qty per size.</span>'
       +'<table class="pz-tbl" style="margin-bottom:0.4rem;"><thead><tr><th>Ingredient</th><th>Recipe unit</th><th>S</th><th>M</th><th>L</th><th>Amount ('+size+')</th></tr></thead><tbody>'+(baseRows||'<tr><td colspan="6" style="color:var(--tl);padding:0.5rem;">No ingredients yet.</td></tr>')+'</tbody></table>'
       +'<button class="pz-btn sec" id="recAddBase" style="padding:0.3rem 0.7rem;">+ ingredient</button>'
-      +'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;">Add cups / lids / straws / tissue here too — pick the inventory item (tagged consumable) and its qty. Optional add-ons are costed separately in the Optional ingredients tab and only trigger when a customer picks them.</div>'
+      +'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;"><b>Do not add cups, lids, straws or tissue here.</b> Packaging comes from how the drink is served — set that just above, and change what is in it under Recipes → Packaging. Adding it here as well charges it twice. Optional add-ons are costed in the Optional ingredients tab and only trigger when a customer picks them.</div>'
       +'<div style="border-top:2px solid var(--bd);margin-top:0.8rem;padding-top:0.6rem;display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:var(--bd);">BASE COST / '+size+'</span><span style="font-weight:700;font-size:1.1rem;color:var(--bd);">'+peso(grand)+'</span></div>'
       +'<div style="font-size:0.68rem;color:var(--tl);margin-top:0.2rem;">Base ingredients only. The full cost per drink (base + extras + optional) is in the calculator below.</div>'
       +tracePanel
@@ -231,6 +259,14 @@ function drawRecipeEditor(item){
   ed.querySelectorAll('select[data-caf="ing"]').forEach(function(s){s.onchange=function(){syncAll();drawRecipeEditor(item);};});
   ed.querySelectorAll('input[data-caf]').forEach(function(inp){inp.oninput=function(){var tr=inp.closest('[data-carow]');if(!tr)return;var g=tr.getAttribute('data-ca-g'),lk=tr.getAttribute('data-ca-l');var rows=[];ed.querySelectorAll('[data-carow][data-ca-g="'+g+'"][data-ca-l="'+lk+'"]').forEach(function(r){var ing=(r.querySelector('[data-caf="ing"]')||{}).value||'';function v(f){var el=r.querySelector('[data-caf="'+f+'"]');return (el&&el.value!=='')?(Number(el.value)||0):null;}rows.push({ing:ing,qtyS:v('qtyS'),qtyM:v('qtyM'),qtyL:v('qtyL')});});var lab=ed.querySelector('[data-cacost="'+g+'|'+lk+'"]');if(lab)lab.textContent='extra — S '+peso(ocChoiceCost(rows,'S'))+' · M '+peso(ocChoiceCost(rows,'M'))+' · L '+peso(ocChoiceCost(rows,'L'));};});
   ed.querySelectorAll('[data-rcsel]').forEach(function(b){b.onclick=function(){syncAll();var gid=b.getAttribute('data-rcsel');var multi=b.getAttribute('data-rcmulti')==='1';var lb=b.getAttribute('data-rclabel');var sel=window.__recCostSel||{};if(multi){var arr=Array.isArray(sel[gid])?sel[gid].slice():[];var i=arr.indexOf(lb);if(i>-1)arr.splice(i,1);else arr.push(lb);sel[gid]=arr;}else{sel[gid]=(sel[gid]===lb)?null:lb;}window.__recCostSel=sel;drawRecipeEditor(item);};});
+  var _ss=document.getElementById('recServeStyle');
+  if(_ss)_ss.onchange=function(){
+    var style=String(_ss.value||''),a=A();
+    a.set(a.ref(a.db,'menuItems/'+item.key+'/serveStyle'),style||null).then(function(){
+      if(A().menuItemsMap&&A().menuItemsMap[item.key])A().menuItemsMap[item.key].serveStyle=style;
+      drawRecipeEditor(item);
+    }).catch(function(e){alert('Could not save how this drink is served: '+((e&&e.code)||e)+'. Log in with your admin email.');});
+  };
   var _nn=document.getElementById('recNoNeed'); if(_nn)_nn.onchange=function(){ markNoRecipe(item.key,this.checked); };
   document.getElementById('recSave').onclick=function(){ try{ syncAll(); saveRecipe(item.key); }catch(err){ alert('Recipe save hit an error: '+(err&&err.message?err.message:err)+'. Nothing was saved — tell support this message.'); } };
   document.getElementById('recClose').onclick=function(){ recipeEditing=false; curRecipeKey=null; renderRecipes(); };

@@ -13,7 +13,8 @@ Recipe costing had grown by hand over a year. Nobody had written down what a rec
 criticism of whoever typed them — it is what happens without a rule. Three defects came out
 of it, all of them the same shape: **the same thing said twice.**
 
-Read section 3 before you edit anything. It is the whole rule.
+Read section 3 before you edit anything — it is the whole rule. Section 5 is the
+step-by-step for building a recipe.
 
 ---
 
@@ -103,7 +104,64 @@ flattering itself.
 
 ---
 
-## 5. The screens, and when to use each
+## 5. Creating a recipe — step by step
+
+**Before you start:** every ingredient must already exist in **Inventory**, with a unit and a
+cost. The recipe screen can only pick from what is there.
+
+### 1. Open the drink
+Recipes → 🧪 Recipe → pick the item from the dropdown.
+
+If it is something you buy in and sell as-is — bottled water, a packaged cookie — tick
+**"No recipe needed"** and stop. That takes it out of the not-costed flag.
+
+### 2. Say how it is served
+The **Served** dropdown, just above the ingredients. Hot, Iced, Blended — whatever your serve
+styles are. This is where the cup, lid, straw and serviette come from.
+
+- A drink that asks the customer **Hot or Iced** takes its cup from that choice. The dropdown
+  is only the fallback.
+- Every other drink **must** be set here. Left blank, it goes out with no cup costed and the
+  screen says so in red.
+
+### 3. Add what is in the cup
+**+ ingredient** for each one.
+
+| Column | What goes in it |
+|---|---|
+| Ingredient | pick from inventory |
+| Recipe unit | the unit you think in — it converts to the stock unit for costing |
+| S / M / L | how much, per size |
+
+**Amount** shows what that row costs at the size selected. **BASE COST / M** underneath is the
+running total.
+
+> Fill in **every size**. A blank is treated as zero, not as "same as medium."
+
+### 4. Do NOT add the cup, lid, straw or serviette
+Step 2 already handles it. Adding it here as well charges it twice.
+
+### 5. Only if this drink genuinely differs on a choice
+Under **"Extra ingredients per choice — this drink only"**, add the rows that differ. Most
+drinks need nothing here — the shared library covers it.
+
+What you put here **replaces** the shared definition for this drink. It is not added to it.
+Never type the whole recipe again; only the difference.
+
+### 6. Check it before saving
+Use **💰 Cost per drink — by selection**: pick the choices a customer would make, switch
+between S, M and L, read the total. Open **Cost trace** for every line — where it came from,
+quantity, unit cost, amount.
+
+If an ingredient appears twice in the trace, that is one of the defects in section 4. Fix it
+before saving.
+
+### 7. 💾 Save recipe
+The server validates it. If it refuses, it names the row and nothing is saved.
+
+---
+
+## 6. The screens, and when to use each
 
 All four live under **Recipes**. Each one takes a **restore point** before it will act, and each
 one loads that file back to undo. Keep those files.
@@ -128,7 +186,7 @@ already defined.
 
 ---
 
-## 6. What to check monthly
+## 7. What to check monthly
 
 1. **Cost gap badge** on the Recipes tab — any drink with no recipe, a ₱0 cost, or an
    ingredient with no cost.
@@ -142,7 +200,7 @@ already defined.
 
 ---
 
-## 7. Decisions still open
+## 8. Decisions still open
 
 - **`Regular` sweetness.** It is defined as *add condensed milk 0.75*. Most drinks already have
   condensed milk in the base, so sharing that definition would sweeten them twice on paper.
@@ -156,7 +214,7 @@ already defined.
 
 ---
 
-## 8. If something looks wrong
+## 9. If something looks wrong
 
 **A drink suddenly costs about double.** A choice has been filled in with the whole recipe.
 Open Repair & restore; it will name the drink.
@@ -172,7 +230,7 @@ SHA-256 fingerprint. Load it back on the same screen. It refuses a file that has
 
 ---
 
-## 9. Proving a change before you make it — no login needed
+## 10. Proving a change before you make it — no login needed
 
 ```powershell
 Set-Location -LiteralPath "C:\AKALIKO\DMM\PERSONAL\CLAUDE\Projects\Accaza Coffee Shop"
