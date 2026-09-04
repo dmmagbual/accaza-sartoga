@@ -81,23 +81,38 @@
       var sharedRows=fromLibrary?normalise(saved.ings,null,inventory):winner.rows;
       var sharedSig=signature(sharedRows);
       library[record.gid]=library[record.gid]||{};
-      library[record.gid][record.key]={label:record.label,ings:asReducers(sharedRows)};
-      var overrides=[];
+
+      var overrides=[],entryUpdates={},shared=asReducers(sharedRows);
+      library[record.gid][record.key]={label:record.label,ings:shared};
+      entryUpdates['posSettings/optionCosts/'+record.gid+'/'+record.key]={label:record.label,ings:shared};
       variants.forEach(function(variant){
         var matches=variant.signature===sharedSig;
         variant.drinks.forEach(function(drink){
-          if(matches){updates['recipes/'+drink.key+'/choiceAdd/'+record.gid+'/'+record.key]=null;removed++;}
+          if(matches){entryUpdates['recipes/'+drink.key+'/choiceAdd/'+record.gid+'/'+record.key]=null;removed++;}
           else{overrides.push(drink);kept++;}
         });
       });
-      entries.push({gid:record.gid,key:record.key,label:record.label,copies:record.copies,
-        variants:variants.length,fromLibrary:fromLibrary,rows:sharedRows,
-        agreed:record.copies-overrides.length,overrides:overrides});
+      Object.keys(entryUpdates).forEach(function(path){if(path.indexOf('recipes/')===0)updates[path]=entryUpdates[path];});
+      entries.push({id:record.gid+'|'+record.key,gid:record.gid,key:record.key,label:record.label,copies:record.copies,
+        variants:variants.length,fromLibrary:fromLibrary,rows:shared,
+        agreed:record.copies-overrides.length,overrides:overrides,updates:entryUpdates});
     });
     updates['posSettings/optionCosts']=library;
     return {version:VERSION,library:library,entries:entries,updates:updates,
       summary:{definitions:entries.length,copies:copies,copiesRemoved:removed,overridesKept:kept,
         disagreeing:entries.filter(function(e){return e.variants>1;}).length}};
+  }
+  /* Compose the writes for just the choices the user ticked, so nothing else moves. */
+  function updatesFor(result,selectedIds){
+    var wanted={},updates={},library={};
+    (selectedIds||[]).forEach(function(id){wanted[id]=1;});
+    (result.entries||[]).forEach(function(entry){
+      if(!wanted[entry.id])return;
+      Object.keys(entry.updates).forEach(function(path){updates[path]=entry.updates[path];});
+      library[entry.gid]=library[entry.gid]||{};
+      library[entry.gid][entry.key]={label:entry.label,ings:entry.rows};
+    });
+    return {updates:updates,library:library,count:Object.keys(wanted).length};
   }
   /* Rebuild recipes with the plan applied, so the costs can be proved before anything is written. */
   function applyTo(recipes,result){
@@ -114,5 +129,5 @@
     });
     return out;
   }
-  return {VERSION:VERSION,SIZES:SIZES,plan:plan,survey:survey,applyTo:applyTo,normalise:normalise,signature:signature,asReducers:asReducers};
+  return {VERSION:VERSION,SIZES:SIZES,plan:plan,survey:survey,applyTo:applyTo,normalise:normalise,signature:signature,asReducers:asReducers,updatesFor:updatesFor};
 });
