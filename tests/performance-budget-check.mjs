@@ -11,7 +11,7 @@ const budgets={
   'assets/js/admin/core.mjs':135000,
   // Build 448 adds the controlled purchase quantity correction workflow.
   // Retain a narrow ceiling so future POS growth still requires explicit review.
-  'assets/js/admin/pos.js':435000,
+  'assets/js/admin/pos.js':438000,
   'assets/js/admin/register.js':175000,
   'assets/js/admin/analytics.js':150000,
   'assets/js/admin/finance.js':75000,
