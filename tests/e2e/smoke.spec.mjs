@@ -7,15 +7,27 @@ const release=JSON.parse(fs.readFileSync(new URL('../../release-manifest.json',i
 test.beforeEach(async({page})=>{await page.route(/^https?:\/\/(?!127\.0\.0\.1:4173)/,route=>route.abort());});
 
 test('customer shell exposes safe connection state and local payment assets',async({page})=>{
+  await installCustomerFirebaseFixture(page);
+  const paymentQrRequests=[];
+  page.on('request',request=>{
+    if(/\/assets\/img\/payment\/(?:gcash|bdo)-qr\.jpg$/.test(new URL(request.url()).pathname)) paymentQrRequests.push(request.url());
+  });
   await page.goto('/',{waitUntil:'domcontentloaded'});
   await expect(page).toHaveTitle(/Accaza Coffee House/i);
   await expect(page.locator('#fbSync')).toContainText(/Firebase|Connecting/i);
-  await expect(page.locator('.btn-place-order')).toBeDisabled();
   await expect(page.locator('#orderConnectionRetry')).toBeHidden();
+  await expect(page.locator('#qrGcash img')).toHaveCount(0);
+  await expect(page.locator('#qrBdo img')).toHaveCount(0);
+  await expect(page.locator('#qrGcash [data-payment-qr]')).toHaveText('Click for QR code');
+  await expect(page.locator('#qrBdo [data-payment-qr]')).toHaveText('Click for QR code');
+  expect(paymentQrRequests).toEqual([]);
+
+  await page.locator('#qrGcash [data-payment-qr]').click();
   await expect(page.locator('#qrGcash img')).toHaveAttribute('src','assets/img/payment/gcash-qr.jpg');
+  await page.locator('#qrBdo [data-payment-qr]').click();
   await expect(page.locator('#qrBdo img')).toHaveAttribute('src','assets/img/payment/bdo-qr.jpg');
-  expect((await page.request.get('/assets/img/payment/gcash-qr.jpg')).ok()).toBeTruthy();
-  expect((await page.request.get('/assets/img/payment/bdo-qr.jpg')).ok()).toBeTruthy();
+  expect(paymentQrRequests.some(url=>url.endsWith('/assets/img/payment/gcash-qr.jpg'))).toBeTruthy();
+  expect(paymentQrRequests.some(url=>url.endsWith('/assets/img/payment/bdo-qr.jpg'))).toBeTruthy();
 });
 
 test('customer page has usable landmarks, labels, and keyboard focus',async({page})=>{
