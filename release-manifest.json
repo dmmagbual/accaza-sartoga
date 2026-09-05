@@ -13,9 +13,9 @@
   },
   "builds": {
     "admin": 449,
-    "books": 101,
+    "books": 102,
     "customer": 67,
-    "serviceWorkerCache": 417
+    "serviceWorkerCache": 418
   },
   "authoritativeFiles": [
     "admin.html",
@@ -60,6 +60,7 @@
     "src/books/app/50-controlled-transactions.js",
     "src/books/app/60-startup-templates.js",
     "assets/js/books/live-pos.mjs",
+    "assets/js/books/suspense-advance.mjs",
     "assets/js/books/accounting-periods.mjs",
     "assets/js/customer/core.mjs",
     "src/customer/core/00-firebase-auth.mjs",
@@ -325,6 +326,7 @@
     "financialCloseIndex",
     "financialCloseClaims",
     "financialCommandClaims",
+    "suspenseAdvanceConversions",
     "incidentCommandClaims",
     "incidents",
     "financialApprovals",
