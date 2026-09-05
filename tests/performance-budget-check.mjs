@@ -9,7 +9,7 @@ const fail=message=>{throw new Error(message);};
 const budgets={
   'assets/js/customer/core.mjs':115000,
   'assets/js/admin/core.mjs':135000,
-  // Build 447's recipe coverage warning increases the bundle to 434,578 bytes.
+  // Build 448 adds the controlled purchase quantity correction workflow.
   // Retain a narrow ceiling so future POS growth still requires explicit review.
   'assets/js/admin/pos.js':435000,
   'assets/js/admin/register.js':175000,
@@ -29,6 +29,6 @@ if(customer.includes('onValue(ordersRef'))fail('Customer runtime must never subs
 for(const source of [moduleLoader,hub,telemetry,functions])for(const marker of source===moduleLoader?['module_load','performance.now']:source===hub?['live_ready','liveStartedAt']:['module_load','live_ready'])if(!source.includes(marker))fail(`Measured performance telemetry missing: ${marker}`);
 
 const manifest=JSON.parse(read('release-manifest.json'));
-if(manifest.builds.admin!==447||manifest.builds.customer!==67||manifest.builds.books!==99||manifest.builds.serviceWorkerCache!==413)fail('Current build/cache versions are not synchronized');
+if(manifest.builds.admin!==448||manifest.builds.customer!==67||manifest.builds.books!==99||manifest.builds.serviceWorkerCache!==414)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');
