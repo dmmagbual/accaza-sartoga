@@ -1,7 +1,7 @@
 const INVENTORY_MOVEMENT_TYPES = new Set([
   "opening_balance", "purchase", "sale_usage", "staff_use", "rnd_testing",
   "waste", "adjustment", "manual_edit", "usage_reversal",
-  "void_reversal", "refund_reversal", "purchase_reversal", "revaluation",
+  "void_reversal", "refund_reversal", "purchase_reversal", "purchase_quantity_correction", "revaluation",
 ]);
 function qty6(value) {
   return Math.round((Number(value) || 0) * 1000000) / 1000000;
@@ -146,7 +146,7 @@ async function applyInventoryMovement(db, raw, actor) {
   }
   const qty = qty6(raw.qty);
   const requestedCost = qty6(raw.unitCost);
-  const setCost = raw.setCost === true || type === "purchase" || type === "purchase_reversal" || type === "revaluation";
+  const setCost = raw.setCost === true || type === "purchase" || type === "purchase_reversal" || type === "purchase_quantity_correction" || type === "revaluation";
   if (type === "revaluation") {
     if (qty !== 0) throw new HttpsError("invalid-argument", "A revaluation changes the unit cost only. Use a stock adjustment to move quantity.");
     if (!(requestedCost >= 0)) throw new HttpsError("invalid-argument", "Enter the corrected unit cost.");
@@ -190,7 +190,7 @@ async function applyInventoryMovement(db, raw, actor) {
     const before = qty6(state.balance);
     const costBefore = qty6(state.unitCost || item.cost);
     const after = qty6(before + qty);
-    if (type === "purchase_reversal" && after < 0) {insufficient = true; return;}
+    if (["purchase_reversal", "purchase_quantity_correction"].includes(type) && after < 0) {insufficient = true; return;}
     if (type === "revaluation" && !(before > 0)) {nothingToRevalue = true; return;}
     let costAfter = costBefore;
     if (type === "purchase" && qty > 0 && requestedCost >= 0) {
@@ -202,6 +202,10 @@ async function applyInventoryMovement(db, raw, actor) {
     } else if (type === "purchase_reversal" && qty < 0 && requestedCost >= 0) {
       const remainingValue = (before * costBefore) + (qty * requestedCost);if (after > 0 && remainingValue < -0.000001) {insufficientValue=true;return;}
       costAfter = after > 0 ? qty6(remainingValue / after) : costBefore;
+    } else if (type === "purchase_quantity_correction") {
+      // This fixes units on the source document without changing money. Keep
+      // the current carrying value and spread it over the corrected quantity.
+      costAfter = after > 0 ? qty6((before * costBefore) / after) : costBefore;
     } else if (setCost) {
       costAfter = requestedCost;
     }
@@ -212,7 +216,7 @@ async function applyInventoryMovement(db, raw, actor) {
       type, qty, unitCost: (type === "revaluation" || ["purchase", "purchase_reversal"].includes(type)) ? requestedCost : costBefore,
       /* A revaluation moves no quantity, so qty * cost is zero and nothing would reach the ledger.
          Its value is the restatement of the stock still on hand: qty on hand * (new cost - old cost). */
-      totalCost: type === "revaluation" ? money(before * (requestedCost - costBefore)) : money(qty * (["purchase", "purchase_reversal"].includes(type) ? requestedCost : costBefore)),
+      totalCost: type === "purchase_quantity_correction" ? 0 : type === "revaluation" ? money(before * (requestedCost - costBefore)) : money(qty * (["purchase", "purchase_reversal"].includes(type) ? requestedCost : costBefore)),
       balanceBefore: before, balanceAfter: after, costBefore, costAfter,
       sourceType: String(raw.sourceType || type).slice(0, 80),
       sourceId: String(raw.sourceId || "").slice(0, 160),
@@ -246,7 +250,7 @@ exports.postInventoryMovements = onCall(
     const db = getDatabase();
     const movements = listFromFirebase(request.data && request.data.movements);
     if (!movements.length || movements.length > 100) throw new HttpsError("invalid-argument", "Submit 1 to 100 inventory movements.");
-    const serverOnly = new Set(["opening_balance", "sale_usage", "void_reversal", "refund_reversal", "purchase_reversal"]);
+    const serverOnly = new Set(["opening_balance", "sale_usage", "void_reversal", "refund_reversal", "purchase_reversal", "purchase_quantity_correction"]);
     if (movements.some((movement) => serverOnly.has(String(movement && movement.type || "")))) {
       throw new HttpsError("permission-denied", "That inventory movement type can only be posted by the server.");
     }
