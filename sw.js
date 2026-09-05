@@ -33,17 +33,21 @@ self.addEventListener('notificationclick',function(e){
   }));
 });
 
-/* Versioned customer + POS app shells. Customer checkout remains online-only;
+/* Versioned customer + POS app shells. Installation downloads only the customer
+   shell. Admin explicitly warms its larger offline shell after opening Admin;
    authenticated POS cash sales use the durable IndexedDB continuity queue. */
-const CACHE='accaza-v408';
+const CACHE='accaza-v409';
 const ASSETS=[
-  './assets/js/shared/admin-report-periods.js',
-  './assets/js/admin/sales-period-data.mjs',
-  '/','/index.html','/admin.html','/books.html','/manifest.json','/manifest-admin.json',
-  '/favicon.ico','/favicon_32x32.png','/favicon_180x180.png','/favicon_192x192.png','/favicon_512x512.png',
-  '/assets/js/pwa-register.js','/assets/css/admin-backoffice.css','/assets/css/customer/app-shell.css','/assets/css/customer/retired-admin.css','/assets/css/customer/site.css','/assets/css/customer/packages.css','/assets/css/admin/app-shell.css','/assets/css/admin/portal.css','/assets/css/admin/site.css','/assets/css/admin/navigation.css','/assets/css/admin/touch-targets.css','/assets/css/admin/pos-workflow.css','/assets/css/admin/pos-inventory-recipes.css','/assets/css/admin/analytics.css','/assets/js/shared/text-encoding.js','/assets/js/shared/business-date.js','/assets/js/shared/sales-authority.js',
+  '/','/index.html','/manifest.json',
+  '/favicon.ico','/favicon_32x32.png','/favicon_180x180.png','/favicon_192x192.png',
+  '/assets/js/pwa-register.js','/assets/css/customer/app-shell.css','/assets/css/customer/retired-admin.css','/assets/css/customer/site.css','/assets/css/customer/packages.css',
   '/assets/img/payment/gcash-qr.jpg','/assets/img/payment/bdo-qr.jpg',
-  '/assets/js/customer/core.mjs','/assets/js/customer/navigation.js','/assets/js/customer/ui.js','/assets/js/customer/order-tracker.js','/assets/js/customer/packages.js',
+  '/assets/js/customer/core.mjs','/assets/js/customer/navigation.js','/assets/js/customer/ui.js','/assets/js/customer/order-tracker.js','/assets/js/customer/packages.js'
+];
+const ADMIN_ASSETS=[
+  './assets/js/shared/admin-report-periods.js','./assets/js/admin/sales-period-data.mjs',
+  '/admin.html','/books.html','/manifest-admin.json',
+  '/assets/css/admin-backoffice.css','/assets/css/admin/app-shell.css','/assets/css/admin/portal.css','/assets/css/admin/site.css','/assets/css/admin/navigation.css','/assets/css/admin/touch-targets.css','/assets/css/admin/pos-workflow.css','/assets/css/admin/pos-inventory-recipes.css','/assets/css/admin/analytics.css','/assets/js/shared/text-encoding.js','/assets/js/shared/business-date.js','/assets/js/shared/sales-authority.js',
   '/assets/js/admin/core.mjs','/assets/js/admin/archive-order-sort.mjs','/assets/js/admin/inventory-books-reconciliation.mjs','/assets/js/admin/workspace-shell.mjs','/assets/js/admin/overview-command.mjs','/assets/js/admin/overview-insights.mjs','/assets/js/admin/firebase-client.mjs','/assets/js/admin/realtime-hub.mjs','/assets/js/admin/history-pager.mjs','/assets/js/admin/manager-approval.mjs','/assets/js/admin/portal-auth.mjs','/assets/js/admin/admin-orders.mjs','/assets/js/admin/customer-registry.mjs','/assets/js/admin/reservations.mjs','/assets/js/admin/catalog-admin.mjs','/assets/js/admin/app-customer-session.mjs','/assets/js/admin/customer-order-tracker.mjs','/assets/js/admin/shared-ui.mjs','/assets/js/admin/telemetry.js','/assets/js/admin/operations-dashboard.js','/assets/js/admin/form-dialog.js','/assets/js/admin/identity-autofill.js','/assets/js/admin/module-loader.js','/assets/js/admin/offline-queue.js','/assets/js/admin/portal-boot.js',
   '/assets/js/shared/costing.js','/assets/js/shared/recipe-temperature-plan.js','/assets/js/shared/cogs-duplication-audit.js','/assets/js/shared/serve-style-plan.js','/assets/js/shared/option-library-plan.js','/assets/js/admin/pos.js','/assets/js/admin/channel-pricing.js','/assets/js/admin/analytics.js','/assets/js/admin/sales-history.js','/assets/js/admin/register.js','/assets/js/admin/staff-access.js','/assets/js/admin/packages.js','/assets/js/admin/finance.js','/assets/js/admin/staff-inbox.js',
   '/assets/css/books.css','/assets/js/books/app.js','/src/books/csv-exports.js','/src/books/business-intelligence.js','/assets/js/books/live-pos.mjs','/assets/js/books/accounting-periods.mjs'
@@ -51,6 +55,10 @@ const ASSETS=[
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>Promise.all(ASSETS.map(asset=>c.add(asset).catch(()=>null)))));
   self.skipWaiting();
+});
+self.addEventListener('message',e=>{
+  if(!e.data||e.data.type!=='ACCAZA_PRECACHE_ADMIN')return;
+  e.waitUntil(caches.open(CACHE).then(c=>Promise.all(ADMIN_ASSETS.map(asset=>c.add(asset).catch(()=>null)))));
 });
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));self.clients.claim();});
 self.addEventListener('fetch',e=>{

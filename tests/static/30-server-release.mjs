@@ -112,7 +112,10 @@ const swSource=fs.readFileSync(path.join(root,'sw.js'),'utf8');
 const assetMatch=swSource.match(/const ASSETS=(\[[^;]+\])/);
 if(!assetMatch)fail('service-worker precache manifest missing');
 const precache=vm.runInNewContext(assetMatch[1]);
-for(const url of precache){
+const adminAssetMatch=swSource.match(/const ADMIN_ASSETS=(\[[^;]+\])/);
+if(!adminAssetMatch)fail('admin service-worker precache manifest missing');
+const adminPrecache=vm.runInNewContext(adminAssetMatch[1]);
+for(const url of precache.concat(adminPrecache)){
   if(url==='/')continue;
   const local=path.join(root,String(url).replace(/^\//,''));
   if(!fs.existsSync(local))fail(`service-worker precache file does not exist: ${url}`);
@@ -127,13 +130,16 @@ const pwaRegister=fs.readFileSync(path.join(root,'assets','js','pwa-register.js'
 if(!adminHtml.includes('/manifest-admin.json')||!customerHtml.includes('/manifest.json'))fail('Phase 5A customer/admin manifests are not separated');
 if(!adminHtml.includes('assets/js/pwa-register.js')||!customerHtml.includes('assets/js/pwa-register.js'))fail('Phase 5A service worker is not registered by both entry pages');
 if(!pwaRegister.includes("serviceWorker.register('/sw.js'"))fail('Phase 5A shared service-worker registration missing');
+if(!pwaRegister.includes('if(isAdmin())')||!pwaRegister.includes("type:'ACCAZA_PRECACHE_ADMIN'")||!pwaRegister.includes("addEventListener('controllerchange',warmAdminShell)"))fail('Admin offline shell must be requested only from Admin and survive worker upgrades');
+for(const adminOnlyAsset of ['/admin.html','/books.html','/assets/js/admin/core.mjs','/assets/js/books/app.js'])if(precache.includes(adminOnlyAsset)||!adminPrecache.includes(adminOnlyAsset))fail(`Back-office asset must be excluded from customer install and retained in Admin cache: ${adminOnlyAsset}`);
+if(precache.includes('/favicon_512x512.png'))fail('Oversized 512px icon must not be downloaded during customer service-worker install');
 if(fs.readFileSync(path.join(root,'assets','js','customer','navigation.js'),'utf8').includes('serviceWorker.register'))fail('Phase 5A duplicate customer service-worker registration remains');
 if((pwaRegister.match(/beforeinstallprompt/g)||[]).length!==1||!pwaRegister.includes('window.accazaInstallApp=function'))fail('Phase 5C shared install controller missing or duplicated');
 if(!adminHtml.includes('data-accaza-install')||!adminHtml.includes('Install Accaza POS App'))fail('Phase 5C visible POS install controls missing');
 if(fs.readFileSync(path.join(root,'assets','js','customer','navigation.js'),'utf8').includes('beforeinstallprompt'))fail('Phase 5C legacy customer install owner remains');
 if(!pwaRegister.includes("window.addEventListener('appinstalled'")||!pwaRegister.includes('accazaUpdateReady'))fail('Phase 5C install completion or update-ready UX missing');
-for(const shellAsset of ['/admin.html','/assets/js/admin/core.mjs','/assets/js/admin/pos.js','/assets/js/admin/register.js'])if(!precache.includes(shellAsset))fail(`Phase 5A POS shell asset missing from cache: ${shellAsset}`);
+for(const shellAsset of ['/admin.html','/assets/js/admin/core.mjs','/assets/js/admin/pos.js','/assets/js/admin/register.js'])if(!adminPrecache.includes(shellAsset))fail(`Phase 5A POS shell asset missing from Admin cache: ${shellAsset}`);
 if(!swSource.includes("url.pathname.indexOf('/admin')===0?'/admin.html':'/index.html'"))fail('Phase 5A navigation fallback can redirect admin/POS to the customer shell');
 if(!swSource.includes("new Response('Offline asset unavailable',{status:503"))fail('Phase 5A missing offline asset failure response');
-Object.assign(context,{functionsSource,booksBridgeSource,adminCoreItem,precache,swSource});
+Object.assign(context,{functionsSource,booksBridgeSource,adminCoreItem,precache:precache.concat(adminPrecache),customerPrecache:precache,adminPrecache,swSource});
 }

@@ -31,6 +31,12 @@
   window.addEventListener('load',function(){
     navigator.serviceWorker.register('/sw.js',{scope:'/'}).then(function(registration){
       registration.update();
+      if(isAdmin()){
+        var warmAdminShell=function(){var worker=registration.active||registration.waiting;if(worker)worker.postMessage({type:'ACCAZA_PRECACHE_ADMIN'});};
+        warmAdminShell();
+        navigator.serviceWorker.ready.then(warmAdminShell);
+        navigator.serviceWorker.addEventListener('controllerchange',warmAdminShell);
+      }
       registration.addEventListener('updatefound',function(){
         var worker=registration.installing;if(!worker)return;
         worker.addEventListener('statechange',function(){
