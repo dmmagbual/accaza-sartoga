@@ -1393,8 +1393,27 @@ function recipeDraftRaw(d){
   return rec;
 }
 function costingIssues(list){return (list||[]).map(function(x){return '• '+(x.message||x.code||'Costing error');}).join('\n');}
-/* Menu items with a costing gap: no recipe, ₱0 recipe cost, or a base ingredient with no cost. */
+/* Menu items with a costing gap: recipe/cost failures, or a drink sale path with no packaging. */
 function markNoRecipe(key,val){ var a=A(); a.set(a.ref(a.db,'menuItems/'+key+'/noRecipe'),val?true:null).then(function(){ updateCostBadge(); }).catch(function(e){ alert('Could not update: '+((e&&e.code)||e)+'. Log in with your admin EMAIL.'); }); }
+function recipeItemIsDrink(it){
+  var cat=String((it&&it.cat)||''),types=(window.__posSettings&&window.__posSettings.catType)||{};
+  if(types[cat])return types[cat]==='drink';
+  return ['coffee','noncaf','frappe','nonfrappe','soda'].indexOf(cat)>=0||(it&&it.type==='drink');
+}
+function recipePackagingGap(it){
+  if(!recipeItemIsDrink(it))return null;
+  var fallback=String((it&&it.serveStyle)||''),groups=(A().getItemOptionGroups?A().getItemOptionGroups(it):[])||[];
+  var styleGroups=groups.filter(function(g){return (g.choices||[]).some(function(c){return !!(c&&c.serveStyle);});});
+  var paths=[];
+  if(styleGroups.length){
+    styleGroups.forEach(function(g){(g.choices||[]).forEach(function(c){paths.push({label:c.label||g.name||'choice',style:String((c&&c.serveStyle)||fallback)});});});
+  }else paths.push({label:'drink',style:fallback});
+  var missing=paths.filter(function(p){return !p.style;});
+  if(missing.length)return 'No effective serve style'+(missing[0].label==='drink'?'':' for '+missing[0].label);
+  var uncovered=paths.filter(function(p){var rule=packagingRulesMap[p.style];return !(rule&&Array.isArray(rule.rows)&&rule.rows.some(function(r){return r&&r.ing;}));});
+  if(uncovered.length)return 'No packaging set for '+uncovered[0].style;
+  return null;
+}
 function menuCostGaps(){
   var out=[];
   menuList().forEach(function(it){
@@ -1403,7 +1422,9 @@ function menuCostGaps(){
     if(!rec||!(rec.base&&rec.base.length)){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'No recipe yet'}); return; }
     if((rec.base||[]).some(function(b){return b.ing&&!inventoryMap[b.ing];})){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'An ingredient was deleted (broken link)'}); return; }
     if(!(recipeCost(rec,'M')>0)){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'Recipe cost is ₱0'}); return; }
-    if((rec.base||[]).some(function(b){return b.ing&&!(Number((inventoryMap[b.ing]||{}).cost)>0);})){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'An ingredient has no cost'}); }
+    if((rec.base||[]).some(function(b){return b.ing&&!(Number((inventoryMap[b.ing]||{}).cost)>0);})){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'An ingredient has no cost'}); return; }
+    var packagingGap=recipePackagingGap(it);
+    if(packagingGap)out.push({key:it.key,name:it.name,cat:it.cat,reason:packagingGap});
   });
   return out;
 }
