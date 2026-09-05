@@ -2,6 +2,16 @@
 // ── INIT ──
 renderCustomerCalendar();
 renderCustomerOrders();
+document.addEventListener('click',function(event){
+  var button=event.target&&event.target.closest&&event.target.closest('[data-payment-qr]');if(!button)return;
+  var src=button.getAttribute('data-payment-qr'),alt=button.getAttribute('data-payment-qr-alt')||'Payment QR code',style=button.getAttribute('data-payment-qr-style')||'';
+  if(!src||button.disabled)return;
+  button.disabled=true;button.textContent='Loading QR code…';
+  var image=new Image();image.alt=alt;image.decoding='async';image.style.cssText=style;
+  image.onload=function(){button.replaceWith(image);};
+  image.onerror=function(){button.disabled=false;button.textContent='Click for QR code';(window.accazaToast||function(){})('QR code could not be loaded. Check your connection and try again.','error');};
+  image.src=src;
+});
 const nm=new Date();
 const archFrom=document.getElementById('archiveFrom'),archTo=document.getElementById('archiveTo');
 if(archFrom)archFrom.value=new Date(nm.getFullYear(),nm.getMonth(),1).toISOString().slice(0,10);
