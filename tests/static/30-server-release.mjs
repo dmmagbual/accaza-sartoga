@@ -132,7 +132,7 @@ if(!adminHtml.includes('assets/js/pwa-register.js')||!customerHtml.includes('ass
 if(!pwaRegister.includes("serviceWorker.register('/sw.js'"))fail('Phase 5A shared service-worker registration missing');
 if(!pwaRegister.includes('if(isAdmin())')||!pwaRegister.includes("type:'ACCAZA_PRECACHE_ADMIN'")||!pwaRegister.includes("addEventListener('controllerchange',warmAdminShell)"))fail('Admin offline shell must be requested only from Admin and survive worker upgrades');
 for(const adminOnlyAsset of ['/admin.html','/books.html','/assets/js/admin/core.mjs','/assets/js/books/app.js'])if(precache.includes(adminOnlyAsset)||!adminPrecache.includes(adminOnlyAsset))fail(`Back-office asset must be excluded from customer install and retained in Admin cache: ${adminOnlyAsset}`);
-if(precache.includes('/favicon_512x512.png'))fail('Oversized 512px icon must not be downloaded during customer service-worker install');
+if(precache.includes('/favicon_512x512.png')||precache.includes('/')||precache.includes('/assets/img/payment/gcash-qr.jpg')||precache.includes('/assets/img/payment/bdo-qr.jpg'))fail('Customer install must not eagerly download oversized, duplicate, or on-demand assets');
 if(fs.readFileSync(path.join(root,'assets','js','customer','navigation.js'),'utf8').includes('serviceWorker.register'))fail('Phase 5A duplicate customer service-worker registration remains');
 if((pwaRegister.match(/beforeinstallprompt/g)||[]).length!==1||!pwaRegister.includes('window.accazaInstallApp=function'))fail('Phase 5C shared install controller missing or duplicated');
 if(!adminHtml.includes('data-accaza-install')||!adminHtml.includes('Install Accaza POS App'))fail('Phase 5C visible POS install controls missing');
