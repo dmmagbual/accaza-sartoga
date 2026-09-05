@@ -1,5 +1,5 @@
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import {getDatabase, ref, onValue, query, orderByChild, startAt, endAt} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import {getDatabase, ref, onValue, query, orderByChild, endAt} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import {getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {getFunctions, httpsCallable} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 const cfg={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
@@ -34,8 +34,11 @@ if(auth){
   function bindPeriodFinancial(){
     if(!auth||!auth.currentUser)return;
     if(financialUnsub)financialUnsub();
-    const p=window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get():{startAt:0,endAt:Date.now()};
-    financialUnsub=onValue(query(ref(db,"/financialMovements"),orderByChild("occurredAt"),startAt(Number(p.startAt)||0),endAt(Number(p.endAt)||Date.now())),s=>{window.__financialMovements=s.val()||{};if(window.App&&App.render)App.render();},()=>{});
+    const p=window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get():{endAt:Date.now()};
+    // Cash Flow needs every movement through the report end date to derive the
+    // real opening balance. Starting at the selected From date hid prior bank
+    // withdrawals while the account fallback still supplied opening deposits.
+    financialUnsub=onValue(query(ref(db,"/financialMovements"),orderByChild("occurredAt"),endAt(Number(p.endAt)||Date.now())),s=>{window.__financialMovements=s.val()||{};if(window.App&&App.render)App.render();},()=>{});
   }
   window.__booksRebindPeriod=function(){bindPeriodJournal();bindPeriodFinancial();};
   onAuthStateChanged(auth, user=>{
