@@ -161,5 +161,19 @@ check(icedEntry&&icedEntry.ings.length===1&&icedEntry.ings[0].ing==='milk','a li
 check((libPlan.libraryStripped||[]).length===2,'both library entries carrying packaging are reported');
 check(Plan.applyPlan(recipes,inventory,menuItems,categories).libraryStripped.length===0,'a library with no packaging in it is left alone');
 
+/* 10. a drink created after the bulk apply must still be tellable how it is served */
+const recipesUi=fs.readFileSync('src/admin/pos/30-recipes.js','utf8');
+check(/recServeStyleControl/.test(recipesUi),'the recipe editor asks how the drink is served');
+check(/menuItems\/'\+item\.key\+'\/serveStyle/.test(recipesUi),'and saves it against that drink');
+check(/no cup costed/.test(recipesUi),'a drink with none set is called out, not left silent');
+check(/only the fallback/.test(recipesUi),'a drink that asks Hot or Iced is told the choice decides it');
+check(/No serve styles set up yet/.test(recipesUi),'with no styles at all, it says where to set them up');
+/* the screen must not tell people to do the thing that charges twice */
+check(!/Add cups \/ lids \/ straws \/ tissue here too/.test(recipesUi),'the old "add cups here too" instruction is gone');
+check(/Do not add cups, lids, straws or tissue here/.test(recipesUi),'and is replaced by the rule that actually applies');
+check(!/Stacks on top of the base recipe and the shared Optional-ingredients cost/.test(recipesUi),'the old "stacks on top" wording is gone');
+check(/REPLACES the shared Optional-ingredients definition/.test(recipesUi),'the per-choice section says it overrides, matching the engine');
+check(/recServeStyle/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built admin bundle carries the control');
+
 console.log(failures?`\n${failures} check(s) failed.`:'\nAll serve-style packaging checks passed.');
 process.exit(failures?1:0);
