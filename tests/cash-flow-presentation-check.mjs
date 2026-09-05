@@ -47,8 +47,21 @@ assert.equal(result.totEnd,17050,'internal transfer preserves total closing cash
 assert.equal(result.detail.some(row=>row.id==='deposit'),false,'Undeposited-to-bank transfer must not appear as cash-flow activity');
 assert.equal(result.totBegin+result.totAdd-result.totDed+result.corrections,result.totEnd,'restructured statement must reconcile');
 
+context.window.__cfAccounts={security458:{name:'Security Bank-4538',opening:10050,openingDate:'2026-08-23'}};
+context.window.__financialMovements={
+  opening:{id:'opening',type:'opening_balance',sourceType:'cashAccount',sourceId:'security458',occurredAt:stamp('2026-08-23'),lines:[line('asset:cash_account:security458',10050,0),line('equity:opening_balance',0,10050)]},
+  draw:{id:'draw',type:'manual_books_owner_draw',sourceType:'booksManualJournal',sourceId:'draw25',occurredAt:stamp('2026-08-25'),lines:[line('equity:owner_draw',10050,0),line('asset:cash_account:security458',0,10050)]}
+};
+const withdrawn=context.__cashFlowTest.cfStatement();
+assert.equal(withdrawn.begin.security458||0,0,'an August Security Bank opening fully withdrawn before September must produce a zero September opening balance');
+assert.equal(withdrawn.totBegin,0,'the consolidated September opening must include both sides of prior-period Security Bank activity');
+
+const live=fs.readFileSync(path.join(root,'assets','js','books','live-pos.mjs'),'utf8');
+assert.ok(live.includes('query(ref(db,"/financialMovements"),orderByChild("occurredAt"),endAt('),'the Finance movement feed must load all history through the report end date');
+assert.equal(live.includes('startAt(Number(p.startAt)'),false,'the Finance movement feed must not discard activity before the report From date');
+
 const page=fs.readFileSync(path.join(root,'src','books','app','30-statements-pages.js'),'utf8');
 for(const marker of ['Opening cash · before','Cash received from outside the business','Cash paid outside the business'])assert.ok(page.includes(marker),`missing cash-flow presentation marker: ${marker}`);
 assert.equal(page.includes('Banking actions · excluded from cash flow'),false,'Cash Flow must not show the Banking Actions card');
 
-console.log('PASS: Cash Flow uses prior-day opening cash, reports external inflows/outflows, excludes internal deposits, and still reconciles.');
+console.log('PASS: Cash Flow loads complete prior activity, derives zero after a fully withdrawn Security Bank opening, reports external flows, excludes internal deposits, and reconciles.');
