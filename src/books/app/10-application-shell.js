@@ -5,6 +5,8 @@ const TABS = [
   {id:"dashboard",label:"Dashboard",group:"overview"},
   {id:"insights",label:"Key Metrics",group:"overview"},
   {id:"transactions",label:"Transactions",group:"entries"},
+  {id:"fixedassets",label:"Fixed assets",group:"entries",hidden:true},
+  {id:"purchases",label:"Purchases",group:"entries",hidden:true},
   {id:"journal",label:"Journal",group:"entries"},
   {id:"ledger",label:"General Ledger",group:"ledgers"},
   {id:"receivables",label:"Receivables",group:"ledgers"},
@@ -43,7 +45,7 @@ const App = {
   renderTabs(){
     const selected=TABS.find(t=>t.id===CURRENT)||TABS[0],activeGroup=selected.group;
     document.getElementById("bookGroups").innerHTML=TAB_GROUPS.map(g=>`<button class="book-group ${g.id===activeGroup?'active':''}" ${g.id===activeGroup?'aria-current="true"':''} onclick="App.openGroup('${g.id}')">${g.label}</button>`).join("");
-    document.getElementById("tabs").innerHTML = TABS.filter(t=>t.group===activeGroup).map(t=>`<button class="tab ${t.id===CURRENT?'active':''}" ${t.id===CURRENT?'aria-current="page"':''} onclick="App.go('${t.id}')">${t.label}</button>`).join("");
+    document.getElementById("tabs").innerHTML = TABS.filter(t=>t.group===activeGroup&&!t.hidden).map(t=>`<button class="tab ${t.id===CURRENT?'active':''}" ${t.id===CURRENT?'aria-current="page"':''} onclick="App.go('${t.id}')">${t.label}</button>`).join("");
   },
   openGroup(id){const first=TABS.find(t=>t.group===id);if(first)this.go(first.id);},
   go(id){ const selected=TABS.find(t=>t.id===id);if(!selected)return;CURRENT=id;if(selected.settingsSection)window.__booksSettingsSection=selected.settingsSection;this.renderTabs();this.render();window.scrollTo(0,0); },
