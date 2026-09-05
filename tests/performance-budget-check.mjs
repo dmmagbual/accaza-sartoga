@@ -9,7 +9,9 @@ const fail=message=>{throw new Error(message);};
 const budgets={
   'assets/js/customer/core.mjs':115000,
   'assets/js/admin/core.mjs':135000,
-  'assets/js/admin/pos.js':432000,
+  // Build 445's reviewed recipe guidance increased the bundle to 433,163 bytes.
+  // Retain a narrow ceiling so future POS growth still requires explicit review.
+  'assets/js/admin/pos.js':434000,
   'assets/js/admin/register.js':175000,
   'assets/js/admin/analytics.js':150000,
   'assets/js/admin/finance.js':75000,
