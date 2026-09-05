@@ -11,6 +11,8 @@ Before changing this project:
 
 Danilo prefers concise, high-signal communication, explicit assumptions, exact deployment file lists, brutal honesty, and traceable financial numbers. Discuss major feature/design choices before building them.
 
+After every completed and verified Accaza code or configuration change, automatically commit only the current task's files, push the working branch, and create a pull request if no open PR exists. If the branch already has an open PR, verify that the new commit appears there. Never stage unrelated workspace changes, never merge into `main` without an explicit request, and report the exact local, branch, PR, merge, and deployment state.
+
 For every investigation or correction, work top to bottom and resolve the whole issue in one pass. Trace the authoritative source data through operational records, inventory/cash custody, subledgers, Finance Books/General Ledger, reports, corrections, reversals, audit history, migration/backfill, permissions, and idempotency before presenting a solution. Do not spend tokens on piecemeal guesses, repeated partial patches, or status checks the user did not request.
 
 ## Permanent decision safeguards

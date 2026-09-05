@@ -6,7 +6,7 @@ const css=fs.readFileSync('assets/css/books.css','utf8');
 
 const expected={
   overview:['dashboard','insights'],
-  entries:['transactions','journal'],
+  entries:['transactions','fixedassets','purchases','journal'],
   ledgers:['ledger','receivables','payables'],
   statements:['pl','bs','cashflow','tb'],
   controls:['close','coa','settings','data']
@@ -21,7 +21,11 @@ for(const [group,ids] of Object.entries(expected)){
 }
 
 const allIds=Object.values(expected).flat();
-if(new Set(allIds).size!==15)throw new Error('Finance navigation must retain all 15 destinations');
+if(new Set(allIds).size!==17)throw new Error('Finance navigation must retain all 17 destinations');
+for(const id of ['fixedassets','purchases']){
+  if(!shell.includes(`{id:"${id}",label:`)||!shell.includes(`group:"entries",hidden:true`))throw new Error(`Finance card destination ${id} must be a registered hidden route`);
+}
+if(!shell.includes('t=>t.group===activeGroup&&!t.hidden'))throw new Error('Finance subpages must remain card destinations instead of duplicating primary navigation tabs');
 if(!html.includes('id="bookGroups"')||!html.includes('id="tabs"'))throw new Error('Two-level Finance navigation containers are missing');
 if(!shell.includes("selected&&selected.settingsSection?PAGES.settings():PAGES[CURRENT]()"))throw new Error('Finance control screens are not routed through their existing pages');
 if(!css.includes('.tabs-in{flex-wrap:wrap')||!css.includes('.book-groups{display:grid'))throw new Error('Finance navigation is not protected against hidden mobile tabs');

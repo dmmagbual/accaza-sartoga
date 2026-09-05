@@ -29,6 +29,6 @@ if(customer.includes('onValue(ordersRef'))fail('Customer runtime must never subs
 for(const source of [moduleLoader,hub,telemetry,functions])for(const marker of source===moduleLoader?['module_load','performance.now']:source===hub?['live_ready','liveStartedAt']:['module_load','live_ready'])if(!source.includes(marker))fail(`Measured performance telemetry missing: ${marker}`);
 
 const manifest=JSON.parse(read('release-manifest.json'));
-if(manifest.builds.admin!==448||manifest.builds.customer!==67||manifest.builds.books!==100||manifest.builds.serviceWorkerCache!==415)fail('Current build/cache versions are not synchronized');
+if(manifest.builds.admin!==448||manifest.builds.customer!==67||manifest.builds.books!==101||manifest.builds.serviceWorkerCache!==416)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');
