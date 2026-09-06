@@ -90,6 +90,7 @@ function mapAccount(posAccount, channel, cashAccountMap) {
   if (a.indexOf("asset:platform_receivable:") === 0) return {code: "1100", unmapped: false};
   if (a.indexOf("asset:platform_clearing:") === 0) return {code: "1050", unmapped: false};
   if (a.indexOf("asset:receivable:") === 0) return {code: "1110", unmapped: false};
+  if (a.indexOf("asset:purchase_cash_advance:") === 0) return {code: "1115", unmapped: false};
   if (a.indexOf("asset:fixed_asset:") === 0) return {code: a.split(":")[2] === "furniture" ? "1510" : "1500", unmapped: false};
   if (a.indexOf("inventory:") === 0) return {code: "1290", unmapped: true};
   if (a.indexOf("liability:grni:") === 0) return {code: "2090", unmapped: true};

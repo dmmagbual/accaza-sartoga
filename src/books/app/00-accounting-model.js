@@ -14,6 +14,15 @@
 const TYPES = ["Asset","Liability","Equity","Income","COGS","Expense"];
 const DEBIT_NORMAL = {Asset:true, COGS:true, Expense:true, Liability:false, Equity:false, Income:false};
 const TYPE_ORDER = {Asset:1, Liability:2, Equity:3, Income:4, COGS:5, Expense:6};
+const SYSTEM_ACCOUNT_CONTROLS = {
+  "1000":"Use Admin > Register", "1001":"Use Finance > Undeposited Collection", "1005":"Use Admin > POS Settings",
+  "1010":"Use Finance > Cash Flow", "1011":"Use Finance > Cash Flow", "1012":"Use Finance > Cash Flow", "1013":"Use Finance > Cash Flow", "1014":"Use Finance > Cash Flow", "1020":"Use Finance > Cash Flow", "1021":"Use Finance > Cash Flow",
+  "1050":"Use Finance > Platform Payouts", "1100":"Use Admin Sales or Finance > Receivables", "1110":"Use Finance > Receivables", "1115":"Use Admin > Cash Payments, then Admin > Purchases", "1120":"Reserved for the controlled Staff Advances workflow (not yet available)",
+  "1190":"Use Admin > cash variance review", "1200":"Use Admin > Purchases or Inventory", "1210":"Use Admin > Purchases or Inventory", "1220":"Use Admin > Purchases or Inventory", "1230":"Use Admin > Purchases or Inventory", "1240":"Use Admin > Purchases or Inventory", "1270":"Use Admin > Purchases or Inventory", "1280":"Use Admin > Purchases or Inventory", "1290":"Use Admin > Purchases repair",
+  "1900":"Review the source in Finance; do not clear without evidence", "2000":"Use Finance > Payables or Admin > Purchases", "2020":"Use Finance > Platform Payouts", "2030":"Use Finance > Payables", "2050":"Use Finance > Payables", "2090":"Use Admin > Purchases repair", "2100":"Use Admin > cash variance review",
+  "3000":"Use Finance > owner funding", "3050":"Use Admin > POS Settings", "3100":"Use Finance > owner withdrawal", "3900":"System closing account"
+};
+const systemAccountWorkflow = code => SYSTEM_ACCOUNT_CONTROLS[String(code)]||"";
 
 /* Display-only control accounts. They never enter the journal or stored ledger. */
 const ACCOUNT_GROUPS = [
@@ -44,7 +53,7 @@ function defaultAccounts(){
     // Assets
     ["1000","Cash on Hand","Asset"],["1005","Register Cash Float","Asset","Fixed imprest tied to POS Settings"],["1010","Other Bank Accounts","Asset"],["1011","Union Bank","Asset"],["1012","BDO","Asset"],
     ["1013","Security Bank – 4538","Asset"],["1014","Security Bank – 4389","Asset"],["1020","GCash / Maya Wallet","Asset"],["1021","FoodPanda GCash Wallet","Asset","Dedicated FoodPanda payout destination"],["1050","Platform Payouts in Transit","Asset","Temporary platform payout clearing account"],
-    ["1100","Accounts Receivable – Platforms","Asset","Grab/Panda settlements owed to us"],
+    ["1100","Accounts Receivable – Platforms","Asset","Grab/Panda settlements owed to us"],["1115","Supplier Advances","Asset","Unallocated supplier payments; controlled by Cash Payments and Purchases"],["1120","Staff Advances","Asset","Amounts advanced to staff pending liquidation or return"],
     ["1200","Inventory – Coffee & Beans","Asset"],["1210","Inventory – Milk & Dairy","Asset"],
     ["1220","Inventory – Syrups & Flavors","Asset"],["1230","Inventory – Cups & Packaging","Asset"],
     ["1240","Inventory – Food & Pastries","Asset"],["1270","Inventory – Operating & Cleaning Supplies","Asset"],["1280","Inventory – Office Supplies","Asset"],["1290","Inventory Receiving Clearing","Asset","Received inventory awaiting complete posting"],
@@ -102,7 +111,7 @@ function migrate(p){
     ["1001","Cash on Hand - Undeposited Collection","Asset","Cash awaiting bank deposit; controlled by cash custody"],
     ["1040","Revolving Fund","Asset"],["1050","Platform Payouts in Transit","Asset","Settled platform payouts awaiting bank deposit"],
     ["1011","Union Bank","Asset"],["1012","BDO","Asset"],["1013","Security Bank – 4538","Asset"],["1014","Security Bank – 4389","Asset"],["1021","FoodPanda GCash Wallet","Asset","Dedicated FoodPanda payout destination"],
-    ["1110","Other Receivables","Asset"],["1190","Cash Shortage Under Review","Asset","Pending manager reconciliation"],
+    ["1110","Other Receivables","Asset"],["1115","Supplier Advances","Asset","Unallocated supplier payments; controlled by Cash Payments and Purchases"],["1120","Staff Advances","Asset","Amounts advanced to staff pending liquidation or return"],["1190","Cash Shortage Under Review","Asset","Pending manager reconciliation"],
     ["1250","Input VAT (creditable)","Asset","Used when VAT-registered"],
     ["1260","Creditable Withholding Tax","Asset","CWT withheld by platforms/customers"],
     ["1900","Suspense","Asset","Post-cutover unmapped Finance sources only; every item must retain its source and clear through the controlled mapping workflow"],
@@ -124,7 +133,7 @@ function migrate(p){
     ["6110","Cash Short / Over","Expense","Register variance"]
   ];
   need.forEach(function(n){ if(!p.accounts.find(function(a){return a.code===n[0];})) p.accounts.push({code:n[0],name:n[1],type:n[2],note:n[3]||""}); });
-  var canonical={"5900":["Wastage & Spoilage","COGS","Physical spoilage, expiry, spillage, or discard only"],"5905":["Inventory Reconciliation Gain / (Loss)","COGS","Count or valuation variance only: debit is loss, credit is gain"],"6077":["Staff Consumption & Welfare","Expense","Inventory consumed by staff"],"6078":["Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"]};Object.keys(canonical).forEach(function(code){var a=p.accounts.find(function(row){return row.code===code;}),v=canonical[code];if(a){a.name=v[0];a.type=v[1];a.note=v[2];}});p.accounts=p.accounts.filter(function(a){return a.code!=='4995';});(p.entries||[]).forEach(function(e){(e.lines||[]).forEach(function(line){if(String(line.code)==='4995')line.code='5905';});});
+  var canonical={"1115":["Supplier Advances","Asset","Unallocated supplier payments; controlled by Cash Payments and Purchases"],"1120":["Staff Advances","Asset","Amounts advanced to staff pending liquidation or return"],"5900":["Wastage & Spoilage","COGS","Physical spoilage, expiry, spillage, or discard only"],"5905":["Inventory Reconciliation Gain / (Loss)","COGS","Count or valuation variance only: debit is loss, credit is gain"],"6077":["Staff Consumption & Welfare","Expense","Inventory consumed by staff"],"6078":["Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"]};Object.keys(canonical).forEach(function(code){var a=p.accounts.find(function(row){return row.code===code;}),v=canonical[code];if(a){a.name=v[0];a.type=v[1];a.note=v[2];}});p.accounts=p.accounts.filter(function(a){return a.code!=='4995';});(p.entries||[]).forEach(function(e){(e.lines||[]).forEach(function(line){if(String(line.code)==='4995')line.code='5905';});});
   var supplies=p.accounts.find(function(a){return a.code==='6070';});if(supplies)supplies.name='Cleaning & Operating Supplies';
   p.accounts.sort(function(x,y){return String(x.code).localeCompare(String(y.code));});
   return p;

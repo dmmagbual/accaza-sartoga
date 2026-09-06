@@ -15,7 +15,8 @@ const budgets={
   'assets/js/admin/register.js':175000,
   'assets/js/admin/analytics.js':150000,
   'assets/js/admin/finance.js':75000,
-  'assets/js/books/app.js':185000
+  // Build 103 adds visible system-account ownership and correction guidance.
+  'assets/js/books/app.js':189000
 };
 for(const [file,maximum] of Object.entries(budgets))if(size(file)>maximum)fail(`${file} exceeds its Phase 11 byte budget: ${size(file)} > ${maximum}`);
 
@@ -29,6 +30,6 @@ if(customer.includes('onValue(ordersRef'))fail('Customer runtime must never subs
 for(const source of [moduleLoader,hub,telemetry,functions])for(const marker of source===moduleLoader?['module_load','performance.now']:source===hub?['live_ready','liveStartedAt']:['module_load','live_ready'])if(!source.includes(marker))fail(`Measured performance telemetry missing: ${marker}`);
 
 const manifest=JSON.parse(read('release-manifest.json'));
-if(manifest.builds.admin!==450||manifest.builds.customer!==68||manifest.builds.books!==102||manifest.builds.serviceWorkerCache!==419)fail('Current build/cache versions are not synchronized');
+if(manifest.builds.admin!==450||manifest.builds.customer!==68||manifest.builds.books!==103||manifest.builds.serviceWorkerCache!==420)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');
