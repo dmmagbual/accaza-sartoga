@@ -296,6 +296,21 @@ exports.ensureInventoryLedger = onCall(
   },
 );
 
+function buildOrderInventoryPlan(costing, inv, ps, capturedAt) {
+  const invCategories=ps.invCategories||{},categorySnapshot={food:0,beverage:0,packaging:0,directLabor:0,unallocated:0},accountSnapshot={};
+  costing.lines.forEach((line)=>{const item=inv[line.ingredientId]||{},category=invCategories[item.category]||{},label=String(category.name||item.category||"").toLowerCase();let bucket="unallocated";if(/packag|cup|lid|straw|napkin|container/.test(label))bucket="packaging";else if(/beverage|drink|coffee|tea|milk|syrup|powder/.test(label))bucket="beverage";else if(/food|ingredient|bakery|kitchen|pastry|meal/.test(label))bucket="food";categorySnapshot[bucket]+=Number(line.totalCost)||0;const mapping=BooksBridge.itemAccounts(item),key=mapping.inventory&&mapping.cost?`${mapping.inventory}|${mapping.cost}`:"1290|5090";accountSnapshot[key]=Financial.money((accountSnapshot[key]||0)+Number(line.totalCost||0));});
+  Object.keys(categorySnapshot).forEach((key)=>{categorySnapshot[key]=Math.round(categorySnapshot[key]*100)/100;});
+  return{schemaVersion:1,capturedAt,capturedBy:"server",engineVersion:costing.engineVersion,usage:costing.usage,totalCost:costing.totalCost,categorySnapshot,accountSnapshot,cogsCovered:costing.cogsCovered,lines:costing.lines,warnings:costing.warnings};
+}
+
+async function calculateOrderInventoryPlan(db,order,capturedAt=Date.now()) {
+  const [recSnap,optSnap,invSnap,miSnap,psSnap,ogSnap,pkSnap]=await Promise.all([db.ref("/recipes").get(),db.ref("/optionRecipes").get(),db.ref("/inventory").get(),db.ref("/menuItems").get(),db.ref("/posSettings").get(),db.ref("/optionGroups").get(),db.ref("/packagingRules").get()]),optionRaw=optSnap.val()||{},optionRecipes={};
+  Object.keys(optionRaw).forEach((key)=>{const row=optionRaw[key]||{};optionRecipes[row.label||key]=row;});
+  const ps=psSnap.val()||{},inv=invSnap.val()||{},costing=Costing.costOrder({lineItems:order.lineItems||[],recipes:recSnap.val()||{},inventory:inv,menuItems:miSnap.val()||{},optionCosts:ps.optionCosts||{},optionRecipes,optionGroups:ogSnap.val()||{},packagingRules:pkSnap.val()||{},packagingAssignments:ps.packagingAssignments||{}});
+  if(!costing.ok)throw new Error("Authoritative costing rejected order: "+costing.errors.slice(0,5).map(row=>row.code+": "+row.message).join(" | "));
+  return buildOrderInventoryPlan(costing,inv,ps,capturedAt);
+}
+
 exports.onOrderFinalize = onValueWritten(
   // Watch the complete order. A later POS retry can replace the order after
   // finalization and accidentally drop the confirmation metadata. Re-running
@@ -310,7 +325,7 @@ exports.onOrderFinalize = onValueWritten(
     if (o.inventoryDeducted && o.inventoryLedgerVersion === 1) return;
 
     try {
-      const [recSnap, optSnap, invSnap, miSnap, psSnap, ogSnap, pkSnap] = await Promise.all([
+      const [recSnap, optSnap, invSnap, miSnap, psSnap, ogSnap, pkSnap, planSnap] = await Promise.all([
         db.ref("/recipes").get(),
         db.ref("/optionRecipes").get(),
         db.ref("/inventory").get(),
@@ -318,6 +333,7 @@ exports.onOrderFinalize = onValueWritten(
         db.ref("/posSettings").get(),
         db.ref("/optionGroups").get(),
         db.ref("/packagingRules").get(),
+        db.ref(`/orderInventoryPlans/${orderId}`).get(),
       ]);
       const recipes = recSnap.val() || {};
       const inv = invSnap.val() || {};
@@ -332,7 +348,7 @@ exports.onOrderFinalize = onValueWritten(
       const optionCosts = ps.optionCosts || {};
       const optionGroups = ogSnap.val() || {};
 
-      const costing = Costing.costOrder({
+      const costing = planSnap.exists()?null:Costing.costOrder({
         lineItems: o.lineItems, recipes, inventory: inv, menuItems: mi,
         optionCosts, optionRecipes: optMap, optionGroups,
         // Packaging follows how a drink is served, from one shared table. The server reads it
@@ -340,32 +356,16 @@ exports.onOrderFinalize = onValueWritten(
         packagingRules: pkSnap.val() || {},
         packagingAssignments: ps.packagingAssignments || {},
       });
-      if (!costing.ok) {
+      if (costing && !costing.ok) {
         const summary = costing.errors.slice(0, 5).map((x) => x.code + ": " + x.message).join(" | ");
         throw new Error("Authoritative costing rejected order " + orderId + ": " + summary);
       }
-      const usage = costing.usage;
+      const capturedAt=Date.now(),candidate=costing?buildOrderInventoryPlan(costing,inv,ps,capturedAt):null;
+      const planResult=await db.ref(`/orderInventoryPlans/${orderId}`).transaction((current)=>current||candidate,undefined,false),plan=planResult.snapshot.val();
+      if(!plan||plan.capturedBy!=="server"||Number(plan.schemaVersion)!==1||!plan.usage)throw new Error("Immutable server inventory plan is missing for order "+orderId);
+      const usage = plan.usage;
       const ids = Object.keys(usage);
-      const cogs = costing.totalCost;
-      const invCategories = ps.invCategories || {};
-      const cogsCategorySnapshot = {food: 0, beverage: 0, packaging: 0, directLabor: 0, unallocated: 0};
-      costing.lines.forEach((costLine) => {
-        const item = inv[costLine.ingredientId] || {};
-        const category = invCategories[item.category] || {};
-        const label = String(category.name || item.category || "").toLowerCase();
-        let bucket = "unallocated";
-        if (/packag|cup|lid|straw|napkin|container/.test(label)) bucket = "packaging";
-        else if (/beverage|drink|coffee|tea|milk|syrup|powder/.test(label)) bucket = "beverage";
-        else if (/food|ingredient|bakery|kitchen|pastry|meal/.test(label)) bucket = "food";
-        cogsCategorySnapshot[bucket] += Number(costLine.totalCost) || 0;
-      });
-      Object.keys(cogsCategorySnapshot).forEach((key) => {cogsCategorySnapshot[key] = Math.round(cogsCategorySnapshot[key] * 100) / 100;});
-      const cogsAccountSnapshot = {};
-      costing.lines.forEach((costLine) => {
-        const item = inv[costLine.ingredientId] || {}, mapping = BooksBridge.itemAccounts(item);
-        const key = mapping.inventory && mapping.cost ? `${mapping.inventory}|${mapping.cost}` : "1290|5090";
-        cogsAccountSnapshot[key] = Financial.money((cogsAccountSnapshot[key] || 0) + Number(costLine.totalCost || 0));
-      });
+      const cogs = Number(plan.totalCost)||0,cogsCategorySnapshot=plan.categorySnapshot||{},cogsAccountSnapshot=plan.accountSnapshot||{};
 
       await Promise.all(ids.map((ing) => applyInventoryMovement(db, {
         movementId: `sale_${orderId}_${ing}`,
@@ -384,12 +384,12 @@ exports.onOrderFinalize = onValueWritten(
         cogsCategorySnapshotVersion: 1,
         cogsAccountSnapshot,
         cogsAccountSnapshotVersion: 1,
-        cogsCovered: costing.cogsCovered,
+        cogsCovered: plan.cogsCovered,
         cogsDetail: {
-          engineVersion: costing.engineVersion, computedAt: Date.now(),
-          totalCost: cogs, lines: costing.lines, warnings: costing.warnings,
+          engineVersion: plan.engineVersion, computedAt: plan.capturedAt,
+          totalCost: cogs, lines: plan.lines||[], warnings: plan.warnings||[],
         },
-        costingEngineVersion: costing.engineVersion,
+        costingEngineVersion: plan.engineVersion,
         deductedBy: "server",
         inventoryLedgerVersion: 1,
       };
