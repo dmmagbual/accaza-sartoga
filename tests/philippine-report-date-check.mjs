@@ -15,8 +15,8 @@ if(!process.env.ACCAZA_DATE_TEST_CHILD){
   for(const file of ['assets/js/shared/business-date.js','assets/js/shared/sales-authority.js','assets/js/shared/report-period.js','src/books/business-intelligence.js'])vm.runInContext(fs.readFileSync(file,'utf8'),ctx);
   const helpers=ctx.window.AccazaBusinessIntelligenceTest,p=ctx.window.AccazaReportPeriod;
   assert.equal(ctx.window.AccazaDate.key(),'2026-08-31');
-  assert.equal(p.get().from,'2026-08-02');assert.equal(p.get().to,'2026-08-31');
-  assert.equal(p.get().endAt-p.get().startAt+1,30*86400000);
+  assert.equal(p.get().from,'2026-08-01');assert.equal(p.get().to,'2026-08-31');
+  assert.equal(p.get().endAt-p.get().startAt+1,31*86400000);
   const custom=p.set({mode:'custom',customFrom:'2026-08-01',customTo:'2026-08-31'});
   assert.equal(custom.startAt,Date.parse('2026-07-31T16:00:00Z'));
   assert.equal(custom.endAt,Date.parse('2026-08-31T15:59:59.999Z'));
