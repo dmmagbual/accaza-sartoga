@@ -279,7 +279,7 @@ exports.indexPlatformOrderRef = onValueCreated(
       duplicateOf: existing.orderId || "", orderId,
       total: Number(o.total) || 0, detectedAt: Date.now(),
     });
-    await db.ref(`/orders/${orderId}/dupPlatformRef`).set(true);
+    await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, orderId, {dupPlatformRef:true});
     logger.warn("Duplicate platform reference", {channel, ref: String(rawRef), orderId, duplicateOf: existing.orderId});
   },
 );

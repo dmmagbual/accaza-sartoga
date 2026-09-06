@@ -375,7 +375,7 @@ exports.onOrderFinalize = onValueWritten(
         occurredAt: Number(o.completedAt || o.receivedAt || Date.now()),
         actorName: o.onDuty || o.staff || "Order finalization",
       }, {uid: "server", role: "server"})));
-      await oref.update({
+      const finalizationMetadata = {
         inventoryDeducted: true,
         inventoryUsage: usage,
         inventoryDeductedAt: Date.now(),
@@ -392,7 +392,11 @@ exports.onOrderFinalize = onValueWritten(
         costingEngineVersion: costing.engineVersion,
         deductedBy: "server",
         inventoryLedgerVersion: 1,
-      });
+      };
+      // Archiving can win the race while costing is running. A transaction will
+      // never recreate a deleted live order; if it has already moved, attach the
+      // exact same confirmation metadata to the archived source record instead.
+      await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, orderId, finalizationMetadata);
       logger.info("Server deducted order", {orderId, items: ids.length, cogs});
     } catch (err) {
       logger.error("onOrderFinalize failed", {orderId, error: String(err)});
@@ -424,7 +428,7 @@ exports.onOrderInventoryReversal = onValueWritten(
       note: String(order.inventoryReversalReason || order.refundReason || order.voidReason || "Inventory returned").slice(0, 500),
       reversalOf: `sale_${orderId}_${itemId}`, actorName: order.onDuty || order.staff || "Order reversal",
     }, {uid: "server", role: "server"})));
-    await orderRef.update({
+    await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, orderId, {
       inventoryReversed: true, inventoryReversedAt: Date.now(), inventoryReversalRequested: null,
       inventoryReversalLedgerVersion: 1,
     });

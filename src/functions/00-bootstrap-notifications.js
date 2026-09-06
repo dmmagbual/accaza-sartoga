@@ -35,6 +35,7 @@ const ReleaseCertification = require("./lib/release-certification");
 const ProductionValidation = require("./lib/production-validation");
 const AlertEscalation = require("./lib/alert-escalation");
 const AssuranceControls = require("./lib/assurance-controls");
+const OrderRecords = require("./lib/order-records");
 
 initializeApp();
 
@@ -82,7 +83,7 @@ exports.notifyOnComplete = onValueUpdated(
         data: {title: title, body: body, orderId: String(orderId), link: "/"},
         webpush: {headers: {Urgency: "high"}, fcmOptions: {link: "/"}},
       });
-      await db.ref("/orders/" + orderId).update({pushNotified: true, pushNotifiedAt: Date.now()});
+      await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, orderId, {pushNotified: true, pushNotifiedAt: Date.now()});
       logger.info("Push sent", {orderId, customerKey});
     } catch (err) {
       const code = err && err.code;

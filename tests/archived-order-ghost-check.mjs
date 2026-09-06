@@ -1,0 +1,16 @@
+import fs from 'node:fs';
+import {createRequire} from 'node:module';
+import assert from 'node:assert/strict';
+const require=createRequire(import.meta.url),OrderRecords=require('../functions/lib/order-records.js');
+const inventory=fs.readFileSync('src/functions/50-inventory.js','utf8'),portal=fs.readFileSync('src/functions/20-portal-auth.js','utf8'),notifications=fs.readFileSync('src/functions/00-bootstrap-notifications.js','utf8'),bridge=fs.readFileSync('src/functions/10-books-bridge.js','utf8'),orderRecords=fs.readFileSync('functions/lib/order-records.js','utf8');
+const audit=fs.readFileSync('src/functions/44-reconciliation.js','utf8');
+const must=(source,marker,message)=>{if(!source.includes(marker))throw new Error(`${message}: ${marker}`);};
+for(const marker of ['liveRef.transaction((current) => current ? Object.assign({}, current, metadata) : undefined)','archivedRef.transaction((current) => current ? Object.assign({}, current, metadata) : undefined)','has no authoritative live or archived record'])must(orderRecords,marker,'Shared authoritative-order update guard missing');
+for(const [source,label] of [[inventory,'inventory finalization/reversal'],[portal,'inventory marker repair'],[notifications,'customer notification'],[bridge,'platform duplicate marker']])must(source,'OrderRecords.mergeMetadataIntoAuthoritativeOrder',`Archive-safe ${label} update missing`);
+for(const marker of ['ARCHIVED_ORDER_METADATA_FIELDS','isArchivedOrderMetadataGhost','live.id || live.status || live.lineItems || live.total != null || live.timestamp','writes[`orders/${id}`] = null','repair_archived_order_metadata_ghost','No sale, payout, inventory movement, or journal changed','await repairArchivedOrderMetadataGhosts(db,liveOrders,archivedOrders)'])must(audit,marker,'Archived-order ghost repair safeguard missing');
+const state={orders:{},archivedOrders:{GF1:{id:'GF1',status:'Archived',payoutId:'po1',settlementStatus:'settled'}}};
+const db={ref(path){const parts=path.split('/').filter(Boolean);return{async transaction(fn){let parent=state;for(const p of parts.slice(0,-1))parent=parent[p]||(parent[p]={});const key=parts.at(-1),next=fn(parent[key]??null);if(next===undefined)return{committed:false,snapshot:{val:()=>parent[key]??null}};parent[key]=next;return{committed:true,snapshot:{val:()=>next}};}};}};
+const result=await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db,'GF1',{cogsSnapshot:98.88});
+assert.equal(result.node,'archivedOrders');assert.equal(state.orders.GF1,undefined);assert.equal(state.archivedOrders.GF1.payoutId,'po1');assert.equal(state.archivedOrders.GF1.cogsSnapshot,98.88);
+await assert.rejects(()=>OrderRecords.mergeMetadataIntoAuthoritativeOrder(db,'MISSING',{cogsSnapshot:1}),/no authoritative live or archived record/);
+console.log('PASS: late inventory finalization cannot recreate an archived order, and confirmed metadata-only ghosts consolidate without changing sales, payouts, stock movements, or journals.');

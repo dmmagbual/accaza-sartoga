@@ -35,6 +35,7 @@ const ReleaseCertification = require("./lib/release-certification");
 const ProductionValidation = require("./lib/production-validation");
 const AlertEscalation = require("./lib/alert-escalation");
 const AssuranceControls = require("./lib/assurance-controls");
+const OrderRecords = require("./lib/order-records");
 
 initializeApp();
 
@@ -82,7 +83,7 @@ exports.notifyOnComplete = onValueUpdated(
         data: {title: title, body: body, orderId: String(orderId), link: "/"},
         webpush: {headers: {Urgency: "high"}, fcmOptions: {link: "/"}},
       });
-      await db.ref("/orders/" + orderId).update({pushNotified: true, pushNotifiedAt: Date.now()});
+      await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, orderId, {pushNotified: true, pushNotifiedAt: Date.now()});
       logger.info("Push sent", {orderId, customerKey});
     } catch (err) {
       const code = err && err.code;
@@ -483,7 +484,7 @@ exports.indexPlatformOrderRef = onValueCreated(
       duplicateOf: existing.orderId || "", orderId,
       total: Number(o.total) || 0, detectedAt: Date.now(),
     });
-    await db.ref(`/orders/${orderId}/dupPlatformRef`).set(true);
+    await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, orderId, {dupPlatformRef:true});
     logger.warn("Duplicate platform reference", {channel, ref: String(rawRef), orderId, duplicateOf: existing.orderId});
   },
 );
@@ -794,7 +795,7 @@ exports.repairOrderInventoryMarker = onCall(
     const rawUsage=costing.usage||{},usage={};Object.keys(rawUsage).forEach(itemId=>{const quantity=qty6(rawUsage[itemId]);if(Math.abs(quantity)>.000001)usage[itemId]=quantity;});const expectedIds=Object.keys(usage).sort(),movements=movementSnap.val()||{},actualIds=Object.keys(movements).sort();if(!expectedIds.length||expectedIds.length!==actualIds.length)throw new HttpsError("failed-precondition","Order inventory movements are incomplete; no marker was restored.");
     expectedIds.forEach(itemId=>{const movementId=`sale_${orderId}_${itemId}`,movement=movements[movementId],expected=-qty6(usage[itemId]);if(!movement||movement.sourceType!=="order"||movement.sourceId!==orderId||movement.itemId!==itemId||Math.abs(Number(movement.qty)-expected)>.000001)throw new HttpsError("failed-precondition",`Inventory evidence does not match the expected order usage for ${itemId}.`);});
     const invCategories=settings.invCategories||{},cogsCategorySnapshot={food:0,beverage:0,packaging:0,directLabor:0,unallocated:0},cogsAccountSnapshot={};costing.lines.forEach(line=>{const inv=inventory[line.ingredientId]||{},category=invCategories[inv.category]||{},label=String(category.name||inv.category||"").toLowerCase();let bucket="unallocated";if(/packag|cup|lid|straw|napkin|container/.test(label))bucket="packaging";else if(/beverage|drink|coffee|tea|milk|syrup|powder/.test(label))bucket="beverage";else if(/food|ingredient|bakery|kitchen|pastry|meal/.test(label))bucket="food";cogsCategorySnapshot[bucket]+=Number(line.totalCost)||0;const mapping=BooksBridge.itemAccounts(inv),key=mapping.inventory&&mapping.cost?`${mapping.inventory}|${mapping.cost}`:"1290|5090";cogsAccountSnapshot[key]=Financial.money((cogsAccountSnapshot[key]||0)+Number(line.totalCost||0));});Object.keys(cogsCategorySnapshot).forEach(k=>{cogsCategorySnapshot[k]=Math.round(cogsCategorySnapshot[k]*100)/100;});
-    const repairedAt=Date.now(),writes={},movementTimes=actualIds.map(id=>Number(movements[id].createdAt||movements[id].occurredAt||0)).filter(Boolean);writes[`orders/${orderId}/inventoryDeducted`]=true;writes[`orders/${orderId}/inventoryUsage`]=usage;writes[`orders/${orderId}/inventoryDeductedAt`]=movementTimes.length?Math.max(...movementTimes):repairedAt;writes[`orders/${orderId}/cogsSnapshot`]=costing.totalCost;writes[`orders/${orderId}/cogsCategorySnapshot`]=cogsCategorySnapshot;writes[`orders/${orderId}/cogsCategorySnapshotVersion`]=1;writes[`orders/${orderId}/cogsAccountSnapshot`]=cogsAccountSnapshot;writes[`orders/${orderId}/cogsAccountSnapshotVersion`]=1;writes[`orders/${orderId}/cogsCovered`]=costing.cogsCovered;writes[`orders/${orderId}/cogsDetail`]={engineVersion:costing.engineVersion,computedAt:repairedAt,totalCost:costing.totalCost,lines:costing.lines,warnings:costing.warnings};writes[`orders/${orderId}/costingEngineVersion`]=costing.engineVersion;writes[`orders/${orderId}/deductedBy`]="server-marker-repair";writes[`orders/${orderId}/inventoryLedgerVersion`]=1;writes[`orders/${orderId}/inventoryMarkerRepairedAt`]=repairedAt;writes[`operationalAudit/${repairedAt}_inventory_marker_${orderId}`]=operationalAuditRecord("repair_order_inventory_marker","order",orderId,actor,{items:expectedIds.length,cogs:costing.totalCost,movementIds:actualIds,accounting:"Restore confirmation metadata from exact existing inventory movements; no stock or Finance movement posted."});await db.ref().update(writes);return{orderId,duplicate:false,items:expectedIds.length,cogs:costing.totalCost};
+    const repairedAt=Date.now(),movementTimes=actualIds.map(id=>Number(movements[id].createdAt||movements[id].occurredAt||0)).filter(Boolean),metadata={inventoryDeducted:true,inventoryUsage:usage,inventoryDeductedAt:movementTimes.length?Math.max(...movementTimes):repairedAt,cogsSnapshot:costing.totalCost,cogsCategorySnapshot,cogsCategorySnapshotVersion:1,cogsAccountSnapshot,cogsAccountSnapshotVersion:1,cogsCovered:costing.cogsCovered,cogsDetail:{engineVersion:costing.engineVersion,computedAt:repairedAt,totalCost:costing.totalCost,lines:costing.lines,warnings:costing.warnings},costingEngineVersion:costing.engineVersion,deductedBy:"server-marker-repair",inventoryLedgerVersion:1,inventoryMarkerRepairedAt:repairedAt};const target=await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db,orderId,metadata);await db.ref(`operationalAudit/${repairedAt}_inventory_marker_${orderId}`).set(operationalAuditRecord("repair_order_inventory_marker","order",orderId,actor,{items:expectedIds.length,cogs:costing.totalCost,movementIds:actualIds,targetNode:target.node,accounting:"Restore confirmation metadata from exact existing inventory movements; no stock or Finance movement posted."}));return{orderId,duplicate:false,items:expectedIds.length,cogs:costing.totalCost,targetNode:target.node};
   },
 );
 
@@ -3366,12 +3367,35 @@ function financialControlResolution(issue) {
   return Object.assign(issue, {title:titles[issue.kind] || String(issue.kind || "Control exception").replace(/_/g, " "), solution:resolution[0], actionTarget:resolution[1], actionLabel:resolution[2]});
 }
 
+const ARCHIVED_ORDER_METADATA_FIELDS = new Set(["inventoryDeducted","inventoryUsage","inventoryDeductedAt","cogsSnapshot","cogsCategorySnapshot","cogsCategorySnapshotVersion","cogsAccountSnapshot","cogsAccountSnapshotVersion","cogsCovered","cogsDetail","costingEngineVersion","deductedBy","inventoryLedgerVersion","inventoryMarkerRepairedAt","inventoryReversed","inventoryReversedAt","inventoryReversalRequested","inventoryReversalLedgerVersion","pushNotified","pushNotifiedAt","dupPlatformRef"]);
+function isArchivedOrderMetadataGhost(live, archived) {
+  if (!live || !archived || archived.status !== "Archived" || !archived.id) return false;
+  if (live.id || live.status || live.lineItems || live.total != null || live.timestamp) return false;
+  const keys = Object.keys(live);
+  return keys.length > 0 && keys.every((key) => ARCHIVED_ORDER_METADATA_FIELDS.has(key));
+}
+async function repairArchivedOrderMetadataGhosts(db, liveOrders, archivedOrders) {
+  const writes = {}, repaired = [], now = Date.now();
+  Object.keys(liveOrders).forEach((id) => {
+    const live = liveOrders[id], archived = archivedOrders[id];
+    if (!isArchivedOrderMetadataGhost(live, archived)) return;
+    Object.keys(live).forEach((key) => { writes[`archivedOrders/${id}/${key}`] = live[key]; });
+    writes[`orders/${id}`] = null;
+    writes[`operationalAudit/${now}_archived_order_ghost_${id}`] = operationalAuditRecord("repair_archived_order_metadata_ghost", "order", id, {uid:"server",role:"server"}, {metadataFields:Object.keys(live),accounting:"No sale, payout, inventory movement, or journal changed; confirmation metadata was consolidated into the authoritative archived order."});
+    archivedOrders[id] = Object.assign({}, archived, live);
+    delete liveOrders[id];
+    repaired.push(id);
+  });
+  if (repaired.length) await db.ref().update(writes);
+  return repaired;
+}
+
 exports.auditFinancialControls = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 120, memory: "512MiB"},
   async (request) => {
     const db=getDatabase();await requirePortalPermission(db,request,["cashflow","receivables","payables"]);
     const snaps=await Promise.all([db.ref("/orders").get(),db.ref("/archivedOrders").get(),db.ref("/financialMovements").get(),db.ref("/cfLedger").get(),db.ref("/receivables").get(),db.ref("/payables").get(),db.ref("/platformPayouts").get(),db.ref("/cashCustody").get(),db.ref("/cfAccounts").get(),db.ref("/posSettings").get(),db.ref("/posActiveShift").get()]);
-    const orders=Object.assign({},snaps[1].val()||{},snaps[0].val()||{}),cash=snaps[3].val()||{},ars=snaps[4].val()||{},aps=snaps[5].val()||{},payouts=snaps[6].val()||{},custody=snaps[7].val()||{},accounts=snaps[8].val()||{},issues=[];let movements=snaps[2].val()||{};
+    const liveOrders=snaps[0].val()||{},archivedOrders=snaps[1].val()||{};await repairArchivedOrderMetadataGhosts(db,liveOrders,archivedOrders);const orders=Object.assign({},archivedOrders,liveOrders),cash=snaps[3].val()||{},ars=snaps[4].val()||{},aps=snaps[5].val()||{},payouts=snaps[6].val()||{},custody=snaps[7].val()||{},accounts=snaps[8].val()||{},issues=[];let movements=snaps[2].val()||{};
     const dateMaintenance=await automaticallyRepairFinanceDates(db,cash,movements,"financial_control_audit");if(dateMaintenance.repaired)movements=(await db.ref("/financialMovements").get()).val()||{};
     const resolvedPaymentMappings=new Set();Object.values(movements).forEach((m)=>{if(m&&m.type==="payment_account_reclassification"&&m.originalMovementId&&m.method)resolvedPaymentMappings.add(`${m.originalMovementId}|${financeText(m.method,60).toLowerCase()}`);});
     Object.keys(movements).forEach((id)=>{const m=movements[id],sum=Financial.totals(m.lines||[]);if(Math.abs(sum.debit-sum.credit)>0.009)issues.push({severity:"critical",kind:"unbalanced",source:id,amount:Financial.money(sum.debit-sum.credit)});(m.warnings||[]).forEach((w)=>{const match=/^No cash-flow account mapping for (.+)\.$/.exec(String(w||"")),resolved=match&&resolvedPaymentMappings.has(`${id}|${financeText(match[1],60).toLowerCase()}`);if(!resolved)issues.push({severity:"warning",kind:"movement_warning",source:id,detail:w});});});
@@ -3805,7 +3829,7 @@ exports.onOrderFinalize = onValueWritten(
         occurredAt: Number(o.completedAt || o.receivedAt || Date.now()),
         actorName: o.onDuty || o.staff || "Order finalization",
       }, {uid: "server", role: "server"})));
-      await oref.update({
+      const finalizationMetadata = {
         inventoryDeducted: true,
         inventoryUsage: usage,
         inventoryDeductedAt: Date.now(),
@@ -3822,7 +3846,11 @@ exports.onOrderFinalize = onValueWritten(
         costingEngineVersion: costing.engineVersion,
         deductedBy: "server",
         inventoryLedgerVersion: 1,
-      });
+      };
+      // Archiving can win the race while costing is running. A transaction will
+      // never recreate a deleted live order; if it has already moved, attach the
+      // exact same confirmation metadata to the archived source record instead.
+      await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, orderId, finalizationMetadata);
       logger.info("Server deducted order", {orderId, items: ids.length, cogs});
     } catch (err) {
       logger.error("onOrderFinalize failed", {orderId, error: String(err)});
@@ -3854,7 +3882,7 @@ exports.onOrderInventoryReversal = onValueWritten(
       note: String(order.inventoryReversalReason || order.refundReason || order.voidReason || "Inventory returned").slice(0, 500),
       reversalOf: `sale_${orderId}_${itemId}`, actorName: order.onDuty || order.staff || "Order reversal",
     }, {uid: "server", role: "server"})));
-    await orderRef.update({
+    await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, orderId, {
       inventoryReversed: true, inventoryReversedAt: Date.now(), inventoryReversalRequested: null,
       inventoryReversalLedgerVersion: 1,
     });

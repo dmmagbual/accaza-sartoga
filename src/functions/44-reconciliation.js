@@ -216,12 +216,35 @@ function financialControlResolution(issue) {
   return Object.assign(issue, {title:titles[issue.kind] || String(issue.kind || "Control exception").replace(/_/g, " "), solution:resolution[0], actionTarget:resolution[1], actionLabel:resolution[2]});
 }
 
+const ARCHIVED_ORDER_METADATA_FIELDS = new Set(["inventoryDeducted","inventoryUsage","inventoryDeductedAt","cogsSnapshot","cogsCategorySnapshot","cogsCategorySnapshotVersion","cogsAccountSnapshot","cogsAccountSnapshotVersion","cogsCovered","cogsDetail","costingEngineVersion","deductedBy","inventoryLedgerVersion","inventoryMarkerRepairedAt","inventoryReversed","inventoryReversedAt","inventoryReversalRequested","inventoryReversalLedgerVersion","pushNotified","pushNotifiedAt","dupPlatformRef"]);
+function isArchivedOrderMetadataGhost(live, archived) {
+  if (!live || !archived || archived.status !== "Archived" || !archived.id) return false;
+  if (live.id || live.status || live.lineItems || live.total != null || live.timestamp) return false;
+  const keys = Object.keys(live);
+  return keys.length > 0 && keys.every((key) => ARCHIVED_ORDER_METADATA_FIELDS.has(key));
+}
+async function repairArchivedOrderMetadataGhosts(db, liveOrders, archivedOrders) {
+  const writes = {}, repaired = [], now = Date.now();
+  Object.keys(liveOrders).forEach((id) => {
+    const live = liveOrders[id], archived = archivedOrders[id];
+    if (!isArchivedOrderMetadataGhost(live, archived)) return;
+    Object.keys(live).forEach((key) => { writes[`archivedOrders/${id}/${key}`] = live[key]; });
+    writes[`orders/${id}`] = null;
+    writes[`operationalAudit/${now}_archived_order_ghost_${id}`] = operationalAuditRecord("repair_archived_order_metadata_ghost", "order", id, {uid:"server",role:"server"}, {metadataFields:Object.keys(live),accounting:"No sale, payout, inventory movement, or journal changed; confirmation metadata was consolidated into the authoritative archived order."});
+    archivedOrders[id] = Object.assign({}, archived, live);
+    delete liveOrders[id];
+    repaired.push(id);
+  });
+  if (repaired.length) await db.ref().update(writes);
+  return repaired;
+}
+
 exports.auditFinancialControls = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 120, memory: "512MiB"},
   async (request) => {
     const db=getDatabase();await requirePortalPermission(db,request,["cashflow","receivables","payables"]);
     const snaps=await Promise.all([db.ref("/orders").get(),db.ref("/archivedOrders").get(),db.ref("/financialMovements").get(),db.ref("/cfLedger").get(),db.ref("/receivables").get(),db.ref("/payables").get(),db.ref("/platformPayouts").get(),db.ref("/cashCustody").get(),db.ref("/cfAccounts").get(),db.ref("/posSettings").get(),db.ref("/posActiveShift").get()]);
-    const orders=Object.assign({},snaps[1].val()||{},snaps[0].val()||{}),cash=snaps[3].val()||{},ars=snaps[4].val()||{},aps=snaps[5].val()||{},payouts=snaps[6].val()||{},custody=snaps[7].val()||{},accounts=snaps[8].val()||{},issues=[];let movements=snaps[2].val()||{};
+    const liveOrders=snaps[0].val()||{},archivedOrders=snaps[1].val()||{};await repairArchivedOrderMetadataGhosts(db,liveOrders,archivedOrders);const orders=Object.assign({},archivedOrders,liveOrders),cash=snaps[3].val()||{},ars=snaps[4].val()||{},aps=snaps[5].val()||{},payouts=snaps[6].val()||{},custody=snaps[7].val()||{},accounts=snaps[8].val()||{},issues=[];let movements=snaps[2].val()||{};
     const dateMaintenance=await automaticallyRepairFinanceDates(db,cash,movements,"financial_control_audit");if(dateMaintenance.repaired)movements=(await db.ref("/financialMovements").get()).val()||{};
     const resolvedPaymentMappings=new Set();Object.values(movements).forEach((m)=>{if(m&&m.type==="payment_account_reclassification"&&m.originalMovementId&&m.method)resolvedPaymentMappings.add(`${m.originalMovementId}|${financeText(m.method,60).toLowerCase()}`);});
     Object.keys(movements).forEach((id)=>{const m=movements[id],sum=Financial.totals(m.lines||[]);if(Math.abs(sum.debit-sum.credit)>0.009)issues.push({severity:"critical",kind:"unbalanced",source:id,amount:Financial.money(sum.debit-sum.credit)});(m.warnings||[]).forEach((w)=>{const match=/^No cash-flow account mapping for (.+)\.$/.exec(String(w||"")),resolved=match&&resolvedPaymentMappings.has(`${id}|${financeText(match[1],60).toLowerCase()}`);if(!resolved)issues.push({severity:"warning",kind:"movement_warning",source:id,detail:w});});});
