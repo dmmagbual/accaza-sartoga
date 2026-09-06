@@ -59,6 +59,10 @@ if(!precache.includes('/assets/js/admin/operations-dashboard.js')||!swSource.inc
 const analyticsSource=fs.readFileSync(path.join(root,'assets','js','admin','analytics.js'),'utf8');
 if(!analyticsSource.includes('build(payouts,shiftRows,chan,byMethod,items,txns,refundsTot,netTot,sales)')||!analyticsSource.includes('function build(payouts,shiftRows,chan,byMethod,items,txns,refundsTot,netTot,sales)'))fail('Daily Report renderer is missing calculated report inputs');
 if(!analyticsSource.includes('function settledPayoutOrderIds()')||!analyticsSource.includes("&&!paid[id]"))fail('Payout queue does not cross-check authoritative settled payout order IDs');
+for(const marker of ['function payoutAuditOrders(p)','function payoutAuditContent(p,printMode)','data-poreview','data-poprint','Search payout, reference or order #','Legacy payout: order details are reconstructed','Order audit <b'])if(!analyticsSource.includes(marker))fail(`Settled payout audit review missing: ${marker}`);
+for(const marker of ['const orderSnapshots = found.map','orderSnapshotTotal:Financial.money','sourceNode:entry.node','schemaVersion: 2'])if(!functionsSource.includes(marker))fail(`Immutable payout order snapshot missing: ${marker}`);
+const payoutAuditCheck=spawnSync(process.execPath,[path.join(root,'tests','platform-payout-audit-check.mjs')],{encoding:'utf8',cwd:root});
+if(payoutAuditCheck.status!==0)fail(`Payout audit regression check failed:\n${payoutAuditCheck.stderr||payoutAuditCheck.stdout}`);
 const payoutQueueCheck=spawnSync(process.execPath,[path.join(root,'tests','payout-queue-check.mjs')],{encoding:'utf8',cwd:root});
 if(payoutQueueCheck.status!==0)fail(`Payout queue regression check failed:\n${payoutQueueCheck.stderr||payoutQueueCheck.stdout}`);
 const grabPosDeductionsCheck=spawnSync(process.execPath,[path.join(root,'tests','grab-pos-deductions-check.mjs')],{encoding:'utf8',cwd:root});
