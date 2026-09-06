@@ -172,16 +172,16 @@ const App = {
     // Running balance uses the reconciled normal-side rule: running += DEBIT_NORMAL[a.type]?(dr-crd):(crd-dr)
     const detail=accountLedgerDetail(code),a=detail.account,ents=detail.rows,opening=detail.opening;
     const rows = ents.map(e=>{
-      return `<tr class="${e.reversalOf?'reversed':''}"><td>${e.date}</td><td>${esc(e.reference)} ${e.reversalOf?'<span class=badge-rev>rev</span>':''}<div class="tiny muted">${esc(e.memo)}</div></td>
+      return `<tr class="${e.reversalOf?'reversed':''}"><td>${e.date}</td><td>${esc(e.reference)} ${e.reversalOf?'<span class=badge-rev>rev</span>':''}</td><td>${esc(e.memo)}</td>
         <td class="num">${e.debit?peso(e.debit):''}</td><td class="num">${e.credit?peso(e.credit):''}</td><td class="num">${peso(e.balance)}</td></tr>`;
     }).join("");
     const m=document.getElementById("modal");
     m.innerHTML=`<div class="modal-head"><h3>${a.code} · ${esc(a.name)} <span class="type-pill t-${a.type.toLowerCase()}">${a.type}</span></h3><button class="x" onclick="App.closeModal()">×</button></div>
-      <div class="modal-body"><div class="tiny muted" style="margin-bottom:.5rem">${periodLabel()} · ${detail.carry?'opening balance '+peso(opening):'period activity only; prior periods are not carried forward'} · ${ents.length} entr${ents.length===1?'y':'ies'} · running balance in ${detail.normalDirection} (normal) direction</div>
-      <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Entry</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead>
-      <tbody>${rows||'<tr><td colspan=5 class="empty">No entries in this period</td></tr>'}</tbody></table></div></div>
+      <div class="modal-body ledger-modal-body"><div class="ledger-current-balance"><span>Latest balance</span><strong>${peso(detail.closing)}</strong></div><div class="tiny muted ledger-period-note">${periodLabel()} · ${detail.carry?'opening balance '+peso(opening):'period activity only; prior periods are not carried forward'} · ${ents.length} entr${ents.length===1?'y':'ies'} · newest first · running balance in ${detail.normalDirection} (normal) direction</div>
+      <div class="tbl-wrap"><table class="account-ledger-table"><thead><tr><th>Date</th><th>Reference</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan=6 class="empty">No entries in this period</td></tr>'}</tbody></table></div></div>
       <div class="modal-foot"><button class="btn ghost" onclick="App.printLedger('${esc(code)}')">Print</button><button class="btn primary" onclick="App.exportAccountLedgerCsv('${esc(code)}')">↓ Download CSV</button><button class="btn ghost" onclick="App.closeModal()">Close</button></div>`;
-    document.getElementById("modalBg").classList.add("show");
+    document.getElementById("modalBg").classList.add("show");if(window.AccazaReportPagination)window.AccazaReportPagination.apply(m,'ledger-'+code,true);
   },
   exportAccountLedgerCsv(code){exportAccountLedgerCsv(code);},
   printLedger(code){printAccountLedger(code);},
