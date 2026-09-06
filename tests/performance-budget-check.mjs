@@ -9,9 +9,9 @@ const fail=message=>{throw new Error(message);};
 const budgets={
   'assets/js/customer/core.mjs':115000,
   'assets/js/admin/core.mjs':135000,
-  // Build 449 restores the cash-payment explanation and receipt controls.
+  // Build 451 adds reconciled recipe, option and packaging subtotals plus unit-aware option rows.
   // Retain a narrow ceiling so future POS growth still requires explicit review.
-  'assets/js/admin/pos.js':438000,
+  'assets/js/admin/pos.js':439000,
   'assets/js/admin/register.js':175000,
   'assets/js/admin/analytics.js':150000,
   'assets/js/admin/finance.js':75000,
@@ -31,6 +31,6 @@ if(customer.includes('onValue(ordersRef'))fail('Customer runtime must never subs
 for(const source of [moduleLoader,hub,telemetry,functions])for(const marker of source===moduleLoader?['module_load','performance.now']:source===hub?['live_ready','liveStartedAt']:['module_load','live_ready'])if(!source.includes(marker))fail(`Measured performance telemetry missing: ${marker}`);
 
 const manifest=JSON.parse(read('release-manifest.json'));
-if(manifest.builds.admin!==451||manifest.builds.customer!==68||manifest.builds.books!==105||manifest.builds.serviceWorkerCache!==422)fail('Current build/cache versions are not synchronized');
+if(manifest.builds.admin!==452||manifest.builds.customer!==68||manifest.builds.books!==105||manifest.builds.serviceWorkerCache!==423)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');

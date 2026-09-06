@@ -151,7 +151,16 @@ check(/packReseed/.test(ui2),'the user can start again from what the recipes alr
 check(/styles:draft/.test(ui2),'costs and assignments follow the edited styles, not the original proposal');
 check(/packAddStyle/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built admin bundle carries the editor');
 
-/* 9. the shared option library can hold packaging too - leaving it there charges the cup twice */
+/* 9. the recipe calculator must show exactly what the sale-costing engine will post */
+const recipeUi=fs.readFileSync('src/admin/pos/30-recipes.js','utf8');
+check(/packagingRules:packagingRulesMap/.test(recipeUi)&&/packagingAssignments:previewAssignments/.test(recipeUi),'the recipe calculator includes assigned packaging in its total');
+check(/Base recipe/.test(recipeUi)&&/Selected option ingredients/.test(recipeUi)&&/Packaging ·/.test(recipeUi),'the calculator separates base, selected options and packaging');
+check(/line\.source==='base'/.test(recipeUi)&&/line\.source==='packaging'/.test(recipeUi),'the displayed subtotals come from the same engine lines as the final total');
+check(/<th>Recipe unit<\/th>/.test(recipeUi)&&/Amount \('\+size\+'\)/.test(recipeUi),'every per-choice recipe table shows recipe unit and current-size amount');
+check(/data-caf="unit"/.test(recipeUi)&&/dispS:r\.dS/.test(recipeUi),'per-choice units and display quantities are converted and saved through the costing engine');
+check(/table-layout:fixed/.test(recipeUi)&&/class="r">Amount/.test(recipeUi),'base and option recipe columns share a fixed grid with right-aligned amounts');
+
+/* 10. the shared option library can hold packaging too - leaving it there charges the cup twice */
 const libraryCosts={og_temp:{Hot:{label:'Hot',ings:[row('hotcup',1,1,1),row('flat',1,1,1)]},
   Iced:{label:'Iced',ings:[row('cup16',1,1,1),row('milk',10,10,10)]}}};
 const libPlan=Plan.applyPlan(recipes,inventory,menuItems,categories,{optionCosts:libraryCosts});

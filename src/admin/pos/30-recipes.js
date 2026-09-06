@@ -4,7 +4,7 @@ function recipeDraftRaw(d){
   d=d||{};
   var base=(d.base||[]).filter(function(r){return r&&r.ing&&['S','M','L'].some(function(sz){return r['d'+sz]!=null&&r['d'+sz]!=='';});}).map(function(r){var inv=inventoryMap[r.ing]||{};return {ing:r.ing,unit:r.unit||inv.unit||'',dispS:r.dS===''?null:r.dS,dispM:r.dM===''?null:r.dM,dispL:r.dL===''?null:r.dL};});
   var rec={base:base,updatedAt:Date.now()};
-  Object.keys(d.choiceAdd||{}).forEach(function(g){var group={};Object.keys(d.choiceAdd[g]||{}).forEach(function(lk){var e=d.choiceAdd[g][lk]||{};var rows=(e.ings||[]).filter(function(r){return r&&r.ing&&['S','M','L'].some(function(sz){return r['qty'+sz]!=null&&r['qty'+sz]!=='';});});if(rows.length)group[lk]={label:e.label||lk,ings:rows};});if(Object.keys(group).length){rec.choiceAdd=rec.choiceAdd||{};rec.choiceAdd[g]=group;}});
+  Object.keys(d.choiceAdd||{}).forEach(function(g){var group={};Object.keys(d.choiceAdd[g]||{}).forEach(function(lk){var e=d.choiceAdd[g][lk]||{};var rows=(e.ings||[]).filter(function(r){return r&&r.ing&&['S','M','L'].some(function(sz){return r['d'+sz]!=null&&r['d'+sz]!=='';});}).map(function(r){var inv=inventoryMap[r.ing]||{};return {ing:r.ing,unit:r.unit||inv.unit||'',dispS:r.dS===''?null:r.dS,dispM:r.dM===''?null:r.dM,dispL:r.dL===''?null:r.dL,op:r.op||undefined};});if(rows.length)group[lk]={label:e.label||lk,ings:rows};});if(Object.keys(group).length){rec.choiceAdd=rec.choiceAdd||{};rec.choiceAdd[g]=group;}});
   return rec;
 }
 function costingIssues(list){return (list||[]).map(function(x){return '• '+(x.message||x.code||'Costing error');}).join('\n');}
@@ -117,7 +117,7 @@ function openRecipe(key){
       function display(stored,shown){if(shown!=null)return shown;var cv=Costing().convert(Number(stored)||0,inv.unit||u,u);return cv.ok?cv.qty:stored;}
       return {ing:b.ing,unit:u,dS:display(qS,b.dispS),dM:display(qM,b.dispM),dL:display(qL,b.dispL)};
     }):[]),
-    choiceAdd:ocClone(saved.choiceAdd),
+    choiceAdd:(function(){var out={};Object.keys(saved.choiceAdd||{}).forEach(function(g){out[g]={};Object.keys(saved.choiceAdd[g]||{}).forEach(function(lk){var e=saved.choiceAdd[g][lk]||{};out[g][lk]={label:e.label||lk,ings:(e.ings||[]).map(function(r){var inv=inventoryMap[r.ing]||{},u=r.unit||inv.unit||'';if(uNorm(u)==='oz'){var dim=itemDim(inv);u=dim==='volume'?'fl oz':(dim==='weight'?'oz wt':u);}function display(sz){var shown=r['disp'+sz];if(shown!=null)return shown;var cv=Costing().convert(Number(r['qty'+sz])||0,inv.unit||u,u);return cv.ok?cv.qty:r['qty'+sz];}return {ing:r.ing,unit:u,dS:display('S'),dM:display('M'),dL:display('L'),op:r.op};})};});});return out;})(),
     _optPreview:[]
   };
   var _sel={}; (A().getItemOptionGroups?A().getItemOptionGroups(item):[]).forEach(function(g){ if(g.required&&g.type!=='multi'&&(g.choices||[]).length)_sel[g.id]=g.choices[0].label; });
@@ -127,6 +127,7 @@ function openRecipe(key){
 function drawRecipeEditor(item){
   var ed=document.getElementById('recEditor'); if(!ed)return;
   var d=recipeDraft; var size=recSize||'M';
+  var recipeCols='<colgroup><col style="width:32%"><col style="width:13%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:25%"></colgroup>';
   var cat=item.cat||''; var ct=catType(cat);
   function ingSelect(val,attr){return '<select class="pz-in" '+attr+' style="min-width:150px;"><option value="">— ingredient —</option>'+ingsByType('base').concat(ingsByType('both')).concat(ingsByType('consumable')).map(function(i){return '<option value="'+i.id+'"'+(i.id===val?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+') · '+ingType(i)+'</option>';}).join('')+'</select>';}
   var baseTotal=0;
@@ -136,11 +137,11 @@ function drawRecipeEditor(item){
     var amt=(Number.isFinite(stockQ)?stockQ:0)*ingCost(r.ing); baseTotal+=amt;
     var cu=compatUnits(inv); var uOpts=cu.map(function(u){return '<option'+(uNorm(u)===uNorm(r.unit)?' selected':'')+'>'+esc(u)+'</option>';}).join('');
     var stkNote=!Number.isFinite(stockQ)?'<div style="font-size:0.62rem;color:#b44336;">incompatible unit</div>':((inv.unit&&uNorm(inv.unit)!==uNorm(r.unit))?('<div style="font-size:0.62rem;color:var(--tl);">=&nbsp;'+num(Math.round(stockQ*1000)/1000)+' '+esc(inv.unit)+'</div>'):'');
-    function qc(sz){return '<input class="pz-in" type="number" step="any" style="width:80px;text-align:right;" value="'+(r['d'+sz]!=null&&r['d'+sz]!==''?r['d'+sz]:'')+'" data-brow="'+ix+'" data-bfield="d'+sz+'" placeholder="0"/>';}
+    function qc(sz){return '<input class="pz-in" type="number" step="any" style="width:100%;max-width:90px;text-align:right;" value="'+(r['d'+sz]!=null&&r['d'+sz]!==''?r['d'+sz]:'')+'" data-brow="'+ix+'" data-bfield="d'+sz+'" placeholder="0"/>';}
     return '<tr><td>'+ingSelect(r.ing,'data-brow="'+ix+'" data-bfield="ing"')+'</td>'
       +'<td style="white-space:nowrap;"><select class="pz-in" data-brow="'+ix+'" data-bfield="unit" style="width:70px;padding-left:0.3rem;padding-right:0.2rem;" title="Unit you are entering — converts to the item stock unit for costing">'+(uOpts||'<option></option>')+'</select>'+stkNote+'</td>'
-      +'<td>'+qc('S')+'</td><td>'+qc('M')+'</td><td>'+qc('L')+'</td>'
-      +'<td style="white-space:nowrap;font-weight:600;">'+peso(amt)+' <button class="pz-btn warn" style="padding:0.2rem 0.45rem;font-weight:400;" data-brem="'+ix+'">✕</button></td></tr>';
+      +'<td class="r">'+qc('S')+'</td><td class="r">'+qc('M')+'</td><td class="r">'+qc('L')+'</td>'
+      +'<td class="r" style="white-space:nowrap;font-weight:600;">'+peso(amt)+' <button class="pz-btn warn" style="padding:0.2rem 0.45rem;font-weight:400;" data-brem="'+ix+'">✕</button></td></tr>';
   }).join('');
   var sizeBtns=['S','M','L'].map(function(sz){return '<button class="pz-btn '+(sz===size?'ok':'sec')+'" data-recsize="'+sz+'" style="padding:0.25rem 0.8rem;">'+sz+'</button>';}).join(' ');
   var grand=baseTotal;
@@ -150,21 +151,25 @@ function drawRecipeEditor(item){
   var caGroups=caGroupsAll.filter(function(g){return caAllow.indexOf(g.id)>=0;});
   var caInv=ings().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
   function caIngSel(val){return '<select class="pz-in" data-caf="ing" style="min-width:150px;"><option value="">— ingredient —</option>'+caInv.map(function(i){return '<option value="'+i.id+'"'+(i.id===val?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+') · '+ingType(i)+'</option>';}).join('')+'</select>';}
+  function caDraftCost(rows,sz){var total=0;(rows||[]).forEach(function(r){var inv=inventoryMap[r.ing]||{},q=convertToStock((r['d'+sz]===''||r['d'+sz]==null)?0:Number(r['d'+sz]),r.unit||inv.unit,inv);if(Number.isFinite(q))total+=q*ingCost(r.ing);});return total;}
   var caCards=caGroups.map(function(g){
     var choices=(g.choices||[]).map(function(c){
       var lk=optKey(c.label); var rows=(d.choiceAdd&&d.choiceAdd[g.id]&&d.choiceAdd[g.id][lk]&&d.choiceAdd[g.id][lk].ings)||[];
       var ingRows=rows.map(function(r,ix){
-        return '<tr data-carow data-ca-g="'+esc(g.id)+'" data-ca-l="'+esc(lk)+'" data-ca-label="'+esc(c.label)+'" data-ca-ix="'+ix+'">'
+        var inv=inventoryMap[r.ing]||{},cu=compatUnits(inv),u=r.unit||inv.unit||'',uOpts=cu.map(function(x){return '<option'+(uNorm(x)===uNorm(u)?' selected':'')+'>'+esc(x)+'</option>';}).join('');
+        var stockQ=convertToStock((r['d'+size]===''||r['d'+size]==null)?0:Number(r['d'+size]),u,inv),amount=(Number.isFinite(stockQ)?stockQ:0)*ingCost(r.ing);
+        return '<tr data-carow data-ca-g="'+esc(g.id)+'" data-ca-l="'+esc(lk)+'" data-ca-label="'+esc(c.label)+'" data-ca-op="'+esc(r.op||'')+'" data-ca-ix="'+ix+'">'
           +'<td>'+caIngSel(r.ing)+'</td>'
-          +'<td><input class="pz-in" type="number" step="any" style="width:60px;" data-caf="qtyS" value="'+(r.qtyS!=null&&r.qtyS!==''?r.qtyS:'')+'" placeholder="0"/></td>'
-          +'<td><input class="pz-in" type="number" step="any" style="width:60px;" data-caf="qtyM" value="'+(r.qtyM!=null&&r.qtyM!==''?r.qtyM:'')+'" placeholder="0"/></td>'
-          +'<td><input class="pz-in" type="number" step="any" style="width:60px;" data-caf="qtyL" value="'+(r.qtyL!=null&&r.qtyL!==''?r.qtyL:'')+'" placeholder="0"/></td>'
-          +'<td><button class="pz-btn warn" data-carem data-g="'+esc(g.id)+'" data-l="'+esc(lk)+'" data-ix="'+ix+'" style="padding:0.15rem 0.45rem;">✕</button></td></tr>';
+          +'<td><select class="pz-in" data-caf="unit" style="width:70px;" title="Unit you are entering — converts to the item stock unit for costing">'+(uOpts||'<option></option>')+'</select></td>'
+          +'<td class="r"><input class="pz-in" type="number" step="any" style="width:100%;max-width:90px;text-align:right;" data-caf="dS" value="'+(r.dS!=null&&r.dS!==''?r.dS:'')+'" placeholder="0"/></td>'
+          +'<td class="r"><input class="pz-in" type="number" step="any" style="width:100%;max-width:90px;text-align:right;" data-caf="dM" value="'+(r.dM!=null&&r.dM!==''?r.dM:'')+'" placeholder="0"/></td>'
+          +'<td class="r"><input class="pz-in" type="number" step="any" style="width:100%;max-width:90px;text-align:right;" data-caf="dL" value="'+(r.dL!=null&&r.dL!==''?r.dL:'')+'" placeholder="0"/></td>'
+          +'<td class="r" style="white-space:nowrap;font-weight:600;"><span data-caamount>'+peso(amount)+'</span> <button class="pz-btn warn" data-carem data-g="'+esc(g.id)+'" data-l="'+esc(lk)+'" data-ix="'+ix+'" style="padding:0.15rem 0.45rem;font-weight:400;">✕</button></td></tr>';
       }).join('');
       return '<div style="border-top:1px solid var(--cd);padding:0.4rem 0;">'
         +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.3rem;"><b>'+esc(c.label)+'</b>'
-        +'<span data-cacost="'+esc(g.id)+'|'+esc(lk)+'" style="font-size:0.72rem;color:var(--tl);">extra — S '+peso(ocChoiceCost(rows,'S'))+' · M '+peso(ocChoiceCost(rows,'M'))+' · L '+peso(ocChoiceCost(rows,'L'))+'</span></div>'
-        +(ingRows?'<table class="pz-tbl" style="margin:0.3rem 0;"><thead><tr><th>Extra ingredient</th><th>S</th><th>M</th><th>L</th><th></th></tr></thead><tbody>'+ingRows+'</tbody></table>':'')
+        +'<span data-cacost="'+esc(g.id)+'|'+esc(lk)+'" style="font-size:0.72rem;color:var(--tl);">extra — S '+peso(caDraftCost(rows,'S'))+' · M '+peso(caDraftCost(rows,'M'))+' · L '+peso(caDraftCost(rows,'L'))+'</span></div>'
+        +(ingRows?'<table class="pz-tbl" style="margin:0.3rem 0;width:100%;table-layout:fixed;">'+recipeCols+'<thead><tr><th>Extra ingredient</th><th>Recipe unit</th><th class="r">S</th><th class="r">M</th><th class="r">L</th><th class="r">Amount ('+size+')</th></tr></thead><tbody>'+ingRows+'</tbody></table>':'')
         +'<button class="pz-btn sec" data-caadd data-g="'+esc(g.id)+'" data-l="'+esc(lk)+'" data-label="'+esc(c.label)+'" style="padding:0.15rem 0.55rem;font-size:0.76rem;">+ extra ingredient</button>'
         +'</div>';
     }).join('');
@@ -172,17 +177,23 @@ function drawRecipeEditor(item){
   }).join('');
   var caSection=caGroupsAll.length?('<div style="border-top:2px solid var(--cd);margin-top:0.8rem;padding-top:0.6rem;"><div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Menu choices for this drink</div><p class="pz-sub" style="margin-top:0;">These sections come directly from Menu Availability. Enter only this drink’s additional or reduced ingredients for a choice. A drink-specific definition overrides the shared choice definition, so the same ingredient is never counted twice.</p>'+(caCards||'<p class="pz-sub" style="margin:0;">No choices are assigned to this drink in Menu Availability.</p>')+'</div>'):'';
   // ── COST PER DRINK calculator: base + selected choices (per-recipe extra + shared optional) ──
-  var tempRec={choiceAdd:d.choiceAdd};
   var previewNorm=Costing().normalizeRecipe(recipeDraftRaw(d),inventoryMap);
   var previewRec=previewNorm.ok?previewNorm.recipe:null;
   if(previewRec){var _basePreview=Costing().costRecipe({itemKey:item.key,recipe:previewRec,inventory:inventoryMap,item:item,size:size});baseTotal=_basePreview.totalCost;grand=baseTotal;}
-  function selLabelCost(lb){var c=0;choiceIngs(item,tempRec,lb,size).forEach(function(r){c+=(Number(r.qty)||0)*ingCost(r.ing);});return c;}
   var selState=window.__recCostSel||{};
-  var selLines=[],extrasTotal=0,selectedLabels=[];
-  caGroupsAll.forEach(function(g){var v=selState[g.id];var labels=Array.isArray(v)?v:(v?[v]:[]);labels.forEach(function(lb){var cc=selLabelCost(lb);extrasTotal+=cc;selLines.push('<div style="display:flex;justify-content:space-between;"><span style="color:var(--tl);">'+esc(g.name)+': '+esc(lb)+'</span><span>'+peso(cc)+'</span></div>');});});
+  var selectedLabels=[];
   caGroupsAll.forEach(function(g){var v=selState[g.id];(Array.isArray(v)?v:(v?[v]:[])).forEach(function(lb){selectedLabels.push(lb);});});
-  var drinkPreview=previewRec?Costing().costRecipe({itemKey:item.key,recipe:previewRec,inventory:inventoryMap,item:item,size:size,optLabels:selectedLabels,optionCosts:optCostStore(),optionRecipes:optRecipesMap,optionGroups:(A()&&A().optionGroupsMap)||{}}):{totalCost:0,lines:[],errors:previewNorm.errors||[],warnings:previewNorm.warnings||[]};
-  var drinkTotal=previewRec?drinkPreview.totalCost:(baseTotal+extrasTotal);
+  var previewGroups=(A()&&A().optionGroupsMap)||{},previewAssignments=(window.__posSettings&&window.__posSettings.packagingAssignments)||{};
+  var drinkPreview=previewRec?Costing().costRecipe({itemKey:item.key,recipe:previewRec,inventory:inventoryMap,item:item,size:size,optLabels:selectedLabels,optionCosts:optCostStore(),optionRecipes:optRecipesMap,optionGroups:previewGroups,packagingRules:packagingRulesMap,packagingAssignments:previewAssignments}):{totalCost:0,lines:[],errors:previewNorm.errors||[],warnings:previewNorm.warnings||[]};
+  var drinkTotal=previewRec?drinkPreview.totalCost:baseTotal;
+  var breakdown={base:0,options:0,packaging:0};
+  (drinkPreview.lines||[]).forEach(function(line){var amount=Number(line.totalCost)||0;if(line.source==='base')breakdown.base+=amount;else if(line.source==='packaging')breakdown.packaging+=amount;else breakdown.options+=amount;});
+  var serveStyle=Costing().serveStyleFor(item,selectedLabels,{optionGroups:previewGroups,packagingAssignments:previewAssignments});
+  var serveName=(serveStyle&&packagingRulesMap[serveStyle]&&packagingRulesMap[serveStyle].name)||serveStyle||'not assigned';
+  var selectedSummary=selectedLabels.length?selectedLabels.join(', '):'none selected';
+  var costBreakdown='<div style="display:flex;justify-content:space-between;"><span style="color:var(--tl);">Base recipe</span><span>'+peso(breakdown.base)+'</span></div>'
+    +'<div style="display:flex;justify-content:space-between;"><span style="color:var(--tl);">Selected option ingredients · '+esc(selectedSummary)+'</span><span>'+peso(breakdown.options)+'</span></div>'
+    +'<div style="display:flex;justify-content:space-between;"><span style="color:var(--tl);">Packaging · '+esc(serveName)+'</span><span>'+peso(breakdown.packaging)+'</span></div>';
   var traceRows=(drinkPreview.lines||[]).map(function(line){return '<tr><td>'+esc(line.source.replace(/_/g,' '))+'</td><td>'+esc(line.ingredientName)+'</td><td class="r">'+num(line.totalQuantity)+' '+esc(line.stockUnit)+'</td><td class="r">'+peso(line.unitCost)+'</td><td class="r">'+peso(line.totalCost)+'</td></tr>';}).join('');
   var previewIssues=(drinkPreview.errors||[]).concat(drinkPreview.warnings||[]);
   var tracePanel='<details style="margin-top:0.55rem;"><summary style="cursor:pointer;font-size:0.75rem;color:var(--bd);font-weight:600;">Cost trace · engine '+esc(Costing().VERSION)+'</summary>'+(previewIssues.length?'<div style="margin:0.4rem 0;padding:0.45rem;background:#fff8e8;color:#8a5a00;font-size:0.72rem;white-space:pre-line;">'+esc(costingIssues(previewIssues))+'</div>':'')+(traceRows?'<div style="overflow-x:auto;"><table class="pz-tbl" style="font-size:0.7rem;"><thead><tr><th>Source</th><th>Ingredient</th><th class="r">Usage</th><th class="r">Unit cost</th><th class="r">Cost</th></tr></thead><tbody>'+traceRows+'</tbody></table></div>':'<div style="font-size:0.72rem;color:var(--tl);padding:0.4rem 0;">Add a valid ingredient and quantity to see the trace.</div>')+'</details>';
@@ -194,7 +205,7 @@ function drawRecipeEditor(item){
     +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.4rem;margin-bottom:0.4rem;"><span style="font-weight:700;color:var(--bd);">💰 Cost per drink — by selection</span><span><span class="pz-lbl" style="display:inline;margin-right:0.4rem;">Size</span>'+sizeBtns+'</span></div>'
     +'<p class="pz-sub" style="margin-top:0;">Pick the choices a customer would make; this stacks the base, this drink’s per-choice extras, and the shared Optional-ingredients cost, at the '+size+' size.</p>'
     +calcGroups
-    +'<div style="border-top:1px solid var(--cd);margin-top:0.4rem;padding-top:0.4rem;font-size:0.8rem;"><div style="display:flex;justify-content:space-between;"><span style="color:var(--tl);">Base</span><span>'+peso(baseTotal)+'</span></div>'+selLines.join('')+'</div>'
+    +'<div style="border-top:1px solid var(--cd);margin-top:0.4rem;padding-top:0.4rem;font-size:0.8rem;">'+costBreakdown+'</div>'
     +'<div style="border-top:2px solid var(--bd);margin-top:0.4rem;padding-top:0.5rem;display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:var(--bd);">COST PER DRINK / '+size+'</span><span style="font-weight:700;font-size:1.2rem;color:var(--bd);">'+peso(drinkTotal)+'</span></div>'
     +'</div>'):'';
   ed.innerHTML=
@@ -203,7 +214,7 @@ function drawRecipeEditor(item){
       +'<label style="display:inline-flex;align-items:center;gap:0.35rem;font-size:0.76rem;color:var(--tl);margin-bottom:0.5rem;cursor:pointer;"><input type="checkbox" id="recNoNeed"'+(item.noRecipe?' checked':'')+'/> No recipe needed (resale / bought-in item — hide from the not-costed flag)</label>'
       +(ings().length?'':'<p class="pz-low" style="font-size:0.8rem;">Add items in the Inventory tab first.</p>')
       +'<span class="pz-lbl">Base recipe ingredients — enter quantity per size</span>'
-      +'<table class="pz-tbl" style="margin-bottom:0.4rem;"><thead><tr><th>Ingredient</th><th>Recipe unit</th><th>S</th><th>M</th><th>L</th><th>Amount ('+size+')</th></tr></thead><tbody>'+(baseRows||'<tr><td colspan="6" style="color:var(--tl);padding:0.5rem;">No ingredients yet.</td></tr>')+'</tbody></table>'
+      +'<table class="pz-tbl" style="margin-bottom:0.4rem;width:100%;table-layout:fixed;">'+recipeCols+'<thead><tr><th>Ingredient</th><th>Recipe unit</th><th class="r">S</th><th class="r">M</th><th class="r">L</th><th class="r">Amount ('+size+')</th></tr></thead><tbody>'+(baseRows||'<tr><td colspan="6" style="color:var(--tl);padding:0.5rem;">No ingredients yet.</td></tr>')+'</tbody></table>'
       +'<button class="pz-btn sec" id="recAddBase" style="padding:0.3rem 0.7rem;">+ ingredient</button>'
       +'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;"><b>Do not add cups, lids, straws or tissue here.</b> Packaging is costed once through Packaging Costing. Every ingredient selected here is linked to its Inventory record and is included in sale COGS.</div>'
       +'<div style="border-top:2px solid var(--bd);margin-top:0.8rem;padding-top:0.6rem;display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:var(--bd);">BASE COST / '+size+'</span><span style="font-weight:700;font-size:1.1rem;color:var(--bd);">'+peso(grand)+'</span></div>'
@@ -228,8 +239,9 @@ function drawRecipeEditor(item){
       var g=tr.getAttribute('data-ca-g'),lk=tr.getAttribute('data-ca-l'),lbl=tr.getAttribute('data-ca-label')||'';
       var ing=(tr.querySelector('[data-caf="ing"]')||{}).value||''; if(!ing)return;
       function v(f){var el=tr.querySelector('[data-caf="'+f+'"]');return (el&&el.value!=='')?(Number(el.value)||0):null;}
+      var inv=inventoryMap[ing]||{},unitEl=tr.querySelector('[data-caf="unit"]'),u=unitEl?unitEl.value:(inv.unit||'');if(compatUnits(inv).map(uNorm).indexOf(uNorm(u))<0)u=inv.unit||u;
       next[g]=next[g]||{}; next[g][lk]=next[g][lk]||{label:lbl,ings:[]};
-      next[g][lk].ings.push({ing:ing,qtyS:v('qtyS'),qtyM:v('qtyM'),qtyL:v('qtyL')});
+      next[g][lk].ings.push({ing:ing,unit:u,dS:v('dS'),dM:v('dM'),dL:v('dL'),op:tr.getAttribute('data-ca-op')||undefined});
     });
     d.choiceAdd=next;
   }
@@ -238,10 +250,10 @@ function drawRecipeEditor(item){
   ed.querySelectorAll('[data-recsize]').forEach(function(b){b.onclick=function(){syncAll();recSize=b.getAttribute('data-recsize');drawRecipeEditor(item);};});
   ed.querySelectorAll('[data-brem]').forEach(function(b){b.onclick=function(){syncAll();d.base.splice(Number(b.getAttribute('data-brem')),1);drawRecipeEditor(item);};});
   ed.querySelectorAll('select[data-brow]').forEach(function(s){s.onchange=function(){syncAll();drawRecipeEditor(item);};});
-  ed.querySelectorAll('[data-caadd]').forEach(function(b){b.onclick=function(){syncAll();var g=b.getAttribute('data-g'),lk=b.getAttribute('data-l'),lbl=b.getAttribute('data-label');d.choiceAdd=d.choiceAdd||{};d.choiceAdd[g]=d.choiceAdd[g]||{};d.choiceAdd[g][lk]=d.choiceAdd[g][lk]||{label:lbl,ings:[]};d.choiceAdd[g][lk].ings.push({ing:'',qtyS:null,qtyM:null,qtyL:null});drawRecipeEditor(item);};});
+  ed.querySelectorAll('[data-caadd]').forEach(function(b){b.onclick=function(){syncAll();var g=b.getAttribute('data-g'),lk=b.getAttribute('data-l'),lbl=b.getAttribute('data-label');d.choiceAdd=d.choiceAdd||{};d.choiceAdd[g]=d.choiceAdd[g]||{};d.choiceAdd[g][lk]=d.choiceAdd[g][lk]||{label:lbl,ings:[]};d.choiceAdd[g][lk].ings.push({ing:'',unit:'',dS:null,dM:null,dL:null});drawRecipeEditor(item);};});
   ed.querySelectorAll('[data-carem]').forEach(function(b){b.onclick=function(){syncAll();var g=b.getAttribute('data-g'),lk=b.getAttribute('data-l'),ix=Number(b.getAttribute('data-ix'));if(d.choiceAdd&&d.choiceAdd[g]&&d.choiceAdd[g][lk]&&d.choiceAdd[g][lk].ings)d.choiceAdd[g][lk].ings.splice(ix,1);drawRecipeEditor(item);};});
-  ed.querySelectorAll('select[data-caf="ing"]').forEach(function(s){s.onchange=function(){syncAll();drawRecipeEditor(item);};});
-  ed.querySelectorAll('input[data-caf]').forEach(function(inp){inp.oninput=function(){var tr=inp.closest('[data-carow]');if(!tr)return;var g=tr.getAttribute('data-ca-g'),lk=tr.getAttribute('data-ca-l');var rows=[];ed.querySelectorAll('[data-carow][data-ca-g="'+g+'"][data-ca-l="'+lk+'"]').forEach(function(r){var ing=(r.querySelector('[data-caf="ing"]')||{}).value||'';function v(f){var el=r.querySelector('[data-caf="'+f+'"]');return (el&&el.value!=='')?(Number(el.value)||0):null;}rows.push({ing:ing,qtyS:v('qtyS'),qtyM:v('qtyM'),qtyL:v('qtyL')});});var lab=ed.querySelector('[data-cacost="'+g+'|'+lk+'"]');if(lab)lab.textContent='extra — S '+peso(ocChoiceCost(rows,'S'))+' · M '+peso(ocChoiceCost(rows,'M'))+' · L '+peso(ocChoiceCost(rows,'L'));};});
+  ed.querySelectorAll('select[data-caf]').forEach(function(s){s.onchange=function(){syncAll();drawRecipeEditor(item);};});
+  ed.querySelectorAll('input[data-caf]').forEach(function(inp){inp.oninput=function(){var tr=inp.closest('[data-carow]');if(!tr)return;var g=tr.getAttribute('data-ca-g'),lk=tr.getAttribute('data-ca-l'),rows=[];ed.querySelectorAll('[data-carow][data-ca-g="'+g+'"][data-ca-l="'+lk+'"]').forEach(function(r){var ing=(r.querySelector('[data-caf="ing"]')||{}).value||'',inv=inventoryMap[ing]||{},unitEl=r.querySelector('[data-caf="unit"]');function v(f){var el=r.querySelector('[data-caf="'+f+'"]');return (el&&el.value!=='')?(Number(el.value)||0):null;}var row={ing:ing,unit:unitEl?unitEl.value:(inv.unit||''),dS:v('dS'),dM:v('dM'),dL:v('dL')};rows.push(row);var amount=r.querySelector('[data-caamount]');if(amount)amount.textContent=peso(caDraftCost([row],size));});var lab=ed.querySelector('[data-cacost="'+g+'|'+lk+'"]');if(lab)lab.textContent='extra — S '+peso(caDraftCost(rows,'S'))+' · M '+peso(caDraftCost(rows,'M'))+' · L '+peso(caDraftCost(rows,'L'));};});
   ed.querySelectorAll('[data-rcsel]').forEach(function(b){b.onclick=function(){syncAll();var gid=b.getAttribute('data-rcsel');var multi=b.getAttribute('data-rcmulti')==='1';var lb=b.getAttribute('data-rclabel');var sel=window.__recCostSel||{};if(multi){var arr=Array.isArray(sel[gid])?sel[gid].slice():[];var i=arr.indexOf(lb);if(i>-1)arr.splice(i,1);else arr.push(lb);sel[gid]=arr;}else{sel[gid]=(sel[gid]===lb)?null:lb;}window.__recCostSel=sel;drawRecipeEditor(item);};});
   var _nn=document.getElementById('recNoNeed'); if(_nn)_nn.onchange=function(){ markNoRecipe(item.key,this.checked); };
   document.getElementById('recSave').onclick=function(){ try{ syncAll(); saveRecipe(item.key); }catch(err){ alert('Recipe save hit an error: '+(err&&err.message?err.message:err)+'. Nothing was saved — tell support this message.'); } };
