@@ -112,6 +112,7 @@ async function createVerifiedDatabaseBackup(now = Date.now()) {
       }));
     } catch (error) { logger.warn("Backup retention sweep failed", {error: String(error)}); }
     logger.info("backupDatabaseDaily complete", {objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, dataSha256: validation.actualSha256, removed, rev: 3});
+    await evaluateProductionHealthNow(db,Date.now());
     return {takenAt:now,objectName,bytes:payload.length,nodes:Object.keys(snapshot).length,dataSha256:validation.actualSha256,validation:"passed",version:"backup-v2"};
 }
 exports.backupDatabaseDaily = onSchedule(
@@ -126,17 +127,19 @@ exports.runDatabaseBackupNow = onCall(
   async (request) => {const db=getDatabase(),actor=await requirePortalUser(db,request);if(!["owner","superadmin","admin","manager"].includes(actor.role))throw new HttpsError("permission-denied","Database backup is restricted to management accounts.");return createVerifiedDatabaseBackup();},
 );
 
-// Phase 13: hourly, read-only early-warning evaluation. It records sanitized
-// health evidence only; it never edits an order, stock, subledger, or journal.
-exports.evaluateProductionHealth = onSchedule(
-  {schedule: "every 60 minutes", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 120, memory: "256MiB"},
-  async () => {
-    const db=getDatabase(),now=Date.now(),today=financeDateFromTimestamp(now),yesterday=financeDateFromTimestamp(now-86400000);
+async function evaluateProductionHealthNow(db=getDatabase(),now=Date.now()) {
+    const today=financeDateFromTimestamp(now),yesterday=financeDateFromTimestamp(now-86400000);
     const [backupSnap,todaySnap,yesterdaySnap,previousSnap,notificationSnap,operational]=await Promise.all([db.ref("/systemHealth/backups/latest").get(),db.ref(`/clientTelemetryDaily/${today}`).get(),db.ref(`/clientTelemetryDaily/${yesterday}`).get(),db.ref("/systemHealth/productionMonitor/current").get(),db.ref("/systemHealth/productionMonitor/notificationState").get(),scanOperationalExceptions(db,now)]);
     const health=ProductionHealth.evaluate({backup:backupSnap.val()||{},telemetry:[todaySnap.val()||{},yesterdaySnap.val()||{}],operational},now),previous=previousSnap.val()||{},decision=AlertEscalation.decide(previous,health,notificationSnap.val()||{},now),writes={"systemHealth/productionMonitor/current":health};
     if(previous.signature!==health.signature||previous.status!==health.status)writes[`systemHealth/productionMonitor/history/${today}/${now}`]={evaluatedAt:now,status:health.status,signature:health.signature,counts:health.counts,alerts:health.alerts};
     await db.ref().update(writes);
     if(decision.notify){await notifyStaff(db,decision.title,decision.body,decision.link,decision.audience);await db.ref("/systemHealth/productionMonitor/notificationState").set(decision.nextState);}
-    logger.info("Production health evaluated",{status:health.status,critical:health.counts.critical,warning:health.counts.warning,changed:previous.signature!==health.signature,notification:decision.reason});return null;
-  },
+    logger.info("Production health evaluated",{status:health.status,critical:health.counts.critical,warning:health.counts.warning,changed:previous.signature!==health.signature,notification:decision.reason});return health;
+}
+
+// Phase 13: hourly, read-only early-warning evaluation. It records sanitized
+// health evidence only; it never edits an order, stock, subledger, or journal.
+exports.evaluateProductionHealth = onSchedule(
+  {schedule: "every 60 minutes", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 120, memory: "256MiB"},
+  async () => {await evaluateProductionHealthNow();return null;},
 );

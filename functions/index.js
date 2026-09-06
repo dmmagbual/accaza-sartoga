@@ -757,8 +757,8 @@ exports.getProductionCertification = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
     const db=getDatabase(),actor=await requirePortalUser(db,request);if(!["owner","superadmin","admin","manager"].includes(actor.role))throw new HttpsError("permission-denied","Production certification is restricted to management accounts.");
-    const now=Date.now(),today=financeDateFromTimestamp(now),yesterday=financeDateFromTimestamp(now-86400000),[backup,health,incidents,admins,permissions,todayClose,yesterdayClose,operational]=await Promise.all([db.ref("/systemHealth/backups/latest").get(),db.ref("/systemHealth/productionMonitor/current").get(),db.ref("/incidents").orderByChild("createdAt").limitToLast(100).get(),db.ref("/admins").get(),db.ref("/adminPerms").get(),db.ref(`/financialCloseIndex/${today}`).get(),db.ref(`/financialCloseIndex/${yesterday}`).get(),scanOperationalExceptions(db,now)]);
-    return ReleaseCertification.evaluate({backup:backup.val()||{},health:health.val()||{},incidents:incidents.val()||{},admins:admins.val()||{},permissions:permissions.val()||{},closeIndexes:[todayClose.val()||{},yesterdayClose.val()||{}],operational},now);
+    const now=Date.now(),today=financeDateFromTimestamp(now),yesterday=financeDateFromTimestamp(now-86400000),[backup,todayTelemetry,yesterdayTelemetry,incidents,admins,permissions,todayClose,yesterdayClose,operational]=await Promise.all([db.ref("/systemHealth/backups/latest").get(),db.ref(`/clientTelemetryDaily/${today}`).get(),db.ref(`/clientTelemetryDaily/${yesterday}`).get(),db.ref("/incidents").orderByChild("createdAt").limitToLast(100).get(),db.ref("/admins").get(),db.ref("/adminPerms").get(),db.ref(`/financialCloseIndex/${today}`).get(),db.ref(`/financialCloseIndex/${yesterday}`).get(),scanOperationalExceptions(db,now)]),backupValue=backup.val()||{},health=ProductionHealth.evaluate({backup:backupValue,telemetry:[todayTelemetry.val()||{},yesterdayTelemetry.val()||{}],operational},now);
+    return ReleaseCertification.evaluate({backup:backupValue,health,incidents:incidents.val()||{},admins:admins.val()||{},permissions:permissions.val()||{},closeIndexes:[todayClose.val()||{},yesterdayClose.val()||{}],operational},now);
   },
 );
 
@@ -770,36 +770,33 @@ exports.getProductionValidation = onCall(
   async (request) => {
     const db=getDatabase(),actor=await requirePortalUser(db,request);if(!["owner","superadmin","admin","manager"].includes(actor.role))throw new HttpsError("permission-denied","Production validation is restricted to management accounts.");
     const now=Date.now(),today=financeDateFromTimestamp(now),yesterday=financeDateFromTimestamp(now-86400000);
-    const [menu,categories,publicStatus,calendar,reviews,payment,orders,backup,health,incidents,admins,permissions,todayClose,yesterdayClose,movements,audits,approvals,operational]=await Promise.all([
+    const [menu,categories,publicStatus,calendar,reviews,payment,orders,backup,todayTelemetry,yesterdayTelemetry,incidents,admins,permissions,todayClose,yesterdayClose,movements,audits,approvals,operational]=await Promise.all([
       db.ref("/menuItems").get(),db.ref("/categories").get(),db.ref("/publicOrderStatus").get(),db.ref("/calBlocks").get(),db.ref("/reviews").get(),db.ref("/payment").get(),
-      db.ref("/orders").limitToLast(25).get(),db.ref("/systemHealth/backups/latest").get(),db.ref("/systemHealth/productionMonitor/current").get(),
+      db.ref("/orders").limitToLast(25).get(),db.ref("/systemHealth/backups/latest").get(),db.ref(`/clientTelemetryDaily/${today}`).get(),db.ref(`/clientTelemetryDaily/${yesterday}`).get(),
       db.ref("/incidents").orderByChild("createdAt").limitToLast(100).get(),db.ref("/admins").get(),db.ref("/adminPerms").get(),db.ref(`/financialCloseIndex/${today}`).get(),db.ref(`/financialCloseIndex/${yesterday}`).get(),db.ref("/financialMovements").limitToLast(100).get(),db.ref("/operationalAudit").limitToLast(100).get(),db.ref("/financialApprovals").limitToLast(100).get(),scanOperationalExceptions(db,now)
     ]);
-    const certification=ReleaseCertification.evaluate({backup:backup.val()||{},health:health.val()||{},incidents:incidents.val()||{},admins:admins.val()||{},permissions:permissions.val()||{},closeIndexes:[todayClose.val()||{},yesterdayClose.val()||{}],operational},now);
+    const backupValue=backup.val()||{},health=ProductionHealth.evaluate({backup:backupValue,telemetry:[todayTelemetry.val()||{},yesterdayTelemetry.val()||{}],operational},now),certification=ReleaseCertification.evaluate({backup:backupValue,health,incidents:incidents.val()||{},admins:admins.val()||{},permissions:permissions.val()||{},closeIndexes:[todayClose.val()||{},yesterdayClose.val()||{}],operational},now);
     const validation=ProductionValidation.evaluate({menuItems:menu.val()||{},categories:categories.val()||{},publicOrderStatus:publicStatus.val()||{},calendarReadable:true,calendarBlockCount:calendar.numChildren(),reviewsReadable:true,reviewCount:reviews.numChildren(),payment:payment.val()||{},orders:orders.val()||{},certification},now);validation.assurance=AssuranceControls.evaluate({movements:movements.val()||{},audits:audits.val()||{},approvals:approvals.val()||{},admins:admins.val()||{},permissions:permissions.val()||{}});return validation;
   },
 );
 
-// Restores confirmation metadata only after every expected deterministic
-// ingredient movement is proven to exist with the exact quantity. No stock is
-// changed by this repair.
+// Future orders recover against an immutable server plan captured before the
+// first stock write. Legacy orders predate that safeguard, so their existing
+// immutable movement evidence is sealed without guessing from today's recipe.
 exports.repairOrderInventoryMarker = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
     const db=getDatabase(),actor=await requirePortalPermission(db,request,["inventory"]),orderId=financeKey((request.data||{}).orderId,"Order ID"),order=(await db.ref(`/orders/${orderId}`).get()).val();
     if(!order||!["Completed","Received"].includes(order.status)||order.voided===true)throw new HttpsError("failed-precondition","Only a completed, non-voided order can restore inventory confirmation.");
     if(order.inventoryDeducted===true&&order.inventoryLedgerVersion===1)return{orderId,duplicate:true,items:Object.keys(order.inventoryUsage||{}).length};
-    const [recSnap,optSnap,invSnap,miSnap,psSnap,ogSnap,pkSnap,movementSnap]=await Promise.all([db.ref("/recipes").get(),db.ref("/optionRecipes").get(),db.ref("/inventory").get(),db.ref("/menuItems").get(),db.ref("/posSettings").get(),db.ref("/optionGroups").get(),db.ref("/packagingRules").get(),db.ref("/inventoryMovements").orderByKey().startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\uf8ff`).get()]),recipes=recSnap.val()||{},inventory=invSnap.val()||{},menuItems=miSnap.val()||{},settings=psSnap.val()||{},optionRaw=optSnap.val()||{},optionRecipes={};
-    Object.keys(optionRaw).forEach(k=>{const row=optionRaw[k]||{};optionRecipes[row.label||k]=row;});
-    const costing=Costing.costOrder({lineItems:order.lineItems||[],recipes,inventory,menuItems,optionCosts:settings.optionCosts||{},optionRecipes,optionGroups:ogSnap.val()||{},packagingRules:pkSnap.val()||{},packagingAssignments:settings.packagingAssignments||{}});if(!costing.ok)throw new HttpsError("failed-precondition","The saved order recipe no longer produces a valid inventory calculation.");
-    const rawUsage=costing.usage||{},usage={};Object.keys(rawUsage).forEach(itemId=>{const quantity=qty6(rawUsage[itemId]);if(Math.abs(quantity)>.000001)usage[itemId]=quantity;});const expectedIds=Object.keys(usage).sort(),movements=movementSnap.val()||{},actualIds=Object.keys(movements).sort();if(!expectedIds.length)throw new HttpsError("failed-precondition","The saved order has no inventory usage to restore.");
-    actualIds.forEach(movementId=>{const movement=movements[movementId],itemId=String(movement&&movement.itemId||""),expected=-qty6(usage[itemId]);if(!expectedIds.includes(itemId)||movementId!==`sale_${orderId}_${itemId}`||movement.sourceType!=="order"||movement.sourceId!==orderId||Math.abs(Number(movement.qty)-expected)>.000001)throw new HttpsError("failed-precondition",`Existing inventory evidence does not match the saved order for ${itemId||movementId}. No stock was changed.`);});
-    const invCategories=settings.invCategories||{},cogsCategorySnapshot={food:0,beverage:0,packaging:0,directLabor:0,unallocated:0},cogsAccountSnapshot={};costing.lines.forEach(line=>{const inv=inventory[line.ingredientId]||{},category=invCategories[inv.category]||{},label=String(category.name||inv.category||"").toLowerCase();let bucket="unallocated";if(/packag|cup|lid|straw|napkin|container/.test(label))bucket="packaging";else if(/beverage|drink|coffee|tea|milk|syrup|powder/.test(label))bucket="beverage";else if(/food|ingredient|bakery|kitchen|pastry|meal/.test(label))bucket="food";cogsCategorySnapshot[bucket]+=Number(line.totalCost)||0;const mapping=BooksBridge.itemAccounts(inv),key=mapping.inventory&&mapping.cost?`${mapping.inventory}|${mapping.cost}`:"1290|5090";cogsAccountSnapshot[key]=Financial.money((cogsAccountSnapshot[key]||0)+Number(line.totalCost||0));});Object.keys(cogsCategorySnapshot).forEach(k=>{cogsCategorySnapshot[k]=Math.round(cogsCategorySnapshot[k]*100)/100;});
-    // Interrupted Promise.all finalization may leave a proven subset. Complete
-    // only absent deterministic IDs; matching IDs remain idempotent and any
-    // conflicting/extra evidence was rejected above before stock can change.
-    const missingIds=expectedIds.filter(itemId=>!movements[`sale_${orderId}_${itemId}`]);if(missingIds.length)for(const itemId of missingIds)await applyInventoryMovement(db,{movementId:`sale_${orderId}_${itemId}`,itemId,type:"sale_usage",qty:-qty6(usage[itemId]),sourceType:"order",sourceId:orderId,sourceLine:itemId,note:`Complete interrupted ingredient usage for order ${orderId}`,occurredAt:Number(order.completedAt||order.receivedAt||order.timestamp||Date.now()),actorName:actor.role},{uid:actor.uid,role:actor.role});
-    const repairedAt=Date.now(),verifiedSnap=await db.ref("/inventoryMovements").orderByKey().startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\uf8ff`).get(),verifiedMovements=verifiedSnap.val()||{},verifiedIds=Object.keys(verifiedMovements).sort();if(verifiedIds.length!==expectedIds.length)throw new HttpsError("internal","Inventory completion did not produce the full deterministic movement set.");const movementTimes=verifiedIds.map(id=>Number(verifiedMovements[id].createdAt||verifiedMovements[id].occurredAt||0)).filter(Boolean),metadata={inventoryDeducted:true,inventoryUsage:usage,inventoryDeductedAt:movementTimes.length?Math.max(...movementTimes):repairedAt,cogsSnapshot:costing.totalCost,cogsCategorySnapshot,cogsCategorySnapshotVersion:1,cogsAccountSnapshot,cogsAccountSnapshotVersion:1,cogsCovered:costing.cogsCovered,cogsDetail:{engineVersion:costing.engineVersion,computedAt:repairedAt,totalCost:costing.totalCost,lines:costing.lines,warnings:costing.warnings},costingEngineVersion:costing.engineVersion,deductedBy:missingIds.length?"server-partial-finalization-repair":"server-marker-repair",inventoryLedgerVersion:1,inventoryMarkerRepairedAt:repairedAt};const target=await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db,orderId,metadata);await db.ref(`operationalAudit/${repairedAt}_inventory_marker_${orderId}`).set(operationalAuditRecord("repair_order_inventory_marker","order",orderId,actor,{items:expectedIds.length,cogs:costing.totalCost,movementIds:verifiedIds,completedMovementIds:missingIds.map(itemId=>`sale_${orderId}_${itemId}`),targetNode:target.node,accounting:missingIds.length?"Completed only missing deterministic stock usage; the full COGS snapshot now posts once to Finance Books through the order source link.":"Restored confirmation metadata from exact existing inventory movements; no stock or Finance movement posted."}));return{orderId,duplicate:false,items:expectedIds.length,completed:missingIds.length,cogs:costing.totalCost,targetNode:target.node};
+    const [planSnap,movementSnap,invSnap,settingsSnap]=await Promise.all([db.ref(`/orderInventoryPlans/${orderId}`).get(),db.ref("/inventoryMovements").orderByKey().startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\uf8ff`).get(),db.ref("/inventory").get(),db.ref("/posSettings").get()]),movements=movementSnap.val()||{},actualIds=Object.keys(movements).sort(),repairedAt=Date.now();
+    if(!actualIds.length)throw new HttpsError("failed-precondition","No order-linked inventory movements exist. No stock was changed.");
+    actualIds.forEach(movementId=>{const movement=movements[movementId]||{},itemId=String(movement.itemId||"");if(!itemId||movementId!==`sale_${orderId}_${itemId}`||movement.sourceType!=="order"||movement.sourceId!==orderId||movement.type!=="sale_usage"||!(Number(movement.qty)<0))throw new HttpsError("failed-precondition",`Inventory evidence is invalid for ${itemId||movementId}. No stock was changed.`);});
+    let plan=planSnap.val(),legacy=!plan;if(legacy){const usage={},lines=actualIds.map(id=>{const m=movements[id],quantity=qty6(-Number(m.qty)),cost=Math.abs(Number(m.totalCost)||quantity*Number(m.unitCost||0));usage[m.itemId]=quantity;return{itemKey:"legacy-order",itemName:String(m.itemName||m.itemId),size:"",orderQty:1,source:"historical-movement-evidence",ingredientId:m.itemId,ingredientName:String(m.itemName||m.itemId),quantityPerServing:quantity,totalQuantity:quantity,stockUnit:String(m.unit||"unit"),unitCost:qty6(m.unitCost),totalCost:qty6(cost),costSource:"recorded-inventory-movement",costEffectiveAt:Number(m.createdAt||m.occurredAt||0)};}),totalCost=Financial.money(lines.reduce((sum,line)=>sum+Number(line.totalCost||0),0));plan=buildOrderInventoryPlan({engineVersion:"movement-evidence-v1",usage,lines,totalCost,cogsCovered:lines.every(line=>line.unitCost>0),warnings:[{code:"LEGACY_PLAN_SEALED",message:"Original recipe snapshot was unavailable; immutable posted movements were retained without using the current recipe."}]},invSnap.val()||{},settingsSnap.val()||{},repairedAt);await db.ref(`/orderInventoryPlans/${orderId}`).transaction(current=>current||plan,undefined,false);}
+    const usage=plan.usage||{},expectedIds=Object.keys(usage).sort();if(!expectedIds.length)throw new HttpsError("failed-precondition","The immutable inventory plan is empty.");
+    actualIds.forEach(movementId=>{const movement=movements[movementId],itemId=movement.itemId,expected=-qty6(usage[itemId]);if(!expectedIds.includes(itemId)||Math.abs(Number(movement.qty)-expected)>.000001)throw new HttpsError("failed-precondition",`Inventory evidence conflicts with the immutable sale-time plan for ${itemId}. No stock was changed.`);});
+    const missingIds=legacy?[]:expectedIds.filter(itemId=>!movements[`sale_${orderId}_${itemId}`]);for(const itemId of missingIds)await applyInventoryMovement(db,{movementId:`sale_${orderId}_${itemId}`,itemId,type:"sale_usage",qty:-qty6(usage[itemId]),sourceType:"order",sourceId:orderId,sourceLine:itemId,note:`Complete interrupted ingredient usage for order ${orderId}`,occurredAt:Number(order.completedAt||order.receivedAt||order.timestamp||Date.now()),actorName:actor.role},{uid:actor.uid,role:actor.role});
+    const verifiedSnap=await db.ref("/inventoryMovements").orderByKey().startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\uf8ff`).get(),verifiedMovements=verifiedSnap.val()||{},verifiedIds=Object.keys(verifiedMovements).sort();if(verifiedIds.length!==expectedIds.length)throw new HttpsError("internal","Inventory completion did not produce the immutable movement set.");const movementTimes=verifiedIds.map(id=>Number(verifiedMovements[id].createdAt||verifiedMovements[id].occurredAt||0)).filter(Boolean),metadata={inventoryDeducted:true,inventoryUsage:usage,inventoryDeductedAt:movementTimes.length?Math.max(...movementTimes):repairedAt,cogsSnapshot:plan.totalCost,cogsCategorySnapshot:plan.categorySnapshot||{},cogsCategorySnapshotVersion:1,cogsAccountSnapshot:plan.accountSnapshot||{},cogsAccountSnapshotVersion:1,cogsCovered:plan.cogsCovered,cogsDetail:{engineVersion:plan.engineVersion,computedAt:plan.capturedAt,totalCost:plan.totalCost,lines:plan.lines||[],warnings:plan.warnings||[]},costingEngineVersion:plan.engineVersion,deductedBy:legacy?"server-legacy-movement-seal":missingIds.length?"server-partial-finalization-repair":"server-marker-repair",inventoryLedgerVersion:1,inventoryMarkerRepairedAt:repairedAt};const target=await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db,orderId,metadata);await db.ref(`operationalAudit/${repairedAt}_inventory_marker_${orderId}`).set(operationalAuditRecord("repair_order_inventory_marker","order",orderId,actor,{items:expectedIds.length,cogs:plan.totalCost,movementIds:verifiedIds,completedMovementIds:missingIds.map(itemId=>`sale_${orderId}_${itemId}`),legacyMovementEvidenceSealed:legacy,targetNode:target.node,accounting:legacy?"Sealed the order's existing immutable stock movements and COGS evidence; the current editable recipe was not used and no stock changed.":missingIds.length?"Completed only movements missing from the immutable sale-time plan; COGS posts once through the order source link.":"Restored confirmation metadata from the immutable sale-time plan; no stock changed."}));return{orderId,duplicate:false,items:expectedIds.length,completed:missingIds.length,legacyEvidenceSealed:legacy,cogs:plan.totalCost,targetNode:target.node};
   },
 );
 
@@ -1476,7 +1473,7 @@ exports.syncOfflinePosSale = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
     const db = getDatabase(), actor = await requirePortalPermission(db, request, ["pos"]), data = request.data || {};
-    return OfflineSync.syncOfflinePosSaleCommand({db, actor, data, textField, money, listFromFirebase, activeOrderProjection});
+    return OfflineSync.syncOfflinePosSaleCommand({db, actor, data, textField, money, listFromFirebase, activeOrderProjection,prepareOrder:async(order,now)=>({order,inventoryPlan:await calculateOrderInventoryPlan(db,order,now)})});
   },
 );
 
@@ -3754,6 +3751,21 @@ exports.ensureInventoryLedger = onCall(
   },
 );
 
+function buildOrderInventoryPlan(costing, inv, ps, capturedAt) {
+  const invCategories=ps.invCategories||{},categorySnapshot={food:0,beverage:0,packaging:0,directLabor:0,unallocated:0},accountSnapshot={};
+  costing.lines.forEach((line)=>{const item=inv[line.ingredientId]||{},category=invCategories[item.category]||{},label=String(category.name||item.category||"").toLowerCase();let bucket="unallocated";if(/packag|cup|lid|straw|napkin|container/.test(label))bucket="packaging";else if(/beverage|drink|coffee|tea|milk|syrup|powder/.test(label))bucket="beverage";else if(/food|ingredient|bakery|kitchen|pastry|meal/.test(label))bucket="food";categorySnapshot[bucket]+=Number(line.totalCost)||0;const mapping=BooksBridge.itemAccounts(item),key=mapping.inventory&&mapping.cost?`${mapping.inventory}|${mapping.cost}`:"1290|5090";accountSnapshot[key]=Financial.money((accountSnapshot[key]||0)+Number(line.totalCost||0));});
+  Object.keys(categorySnapshot).forEach((key)=>{categorySnapshot[key]=Math.round(categorySnapshot[key]*100)/100;});
+  return{schemaVersion:1,capturedAt,capturedBy:"server",engineVersion:costing.engineVersion,usage:costing.usage,totalCost:costing.totalCost,categorySnapshot,accountSnapshot,cogsCovered:costing.cogsCovered,lines:costing.lines,warnings:costing.warnings};
+}
+
+async function calculateOrderInventoryPlan(db,order,capturedAt=Date.now()) {
+  const [recSnap,optSnap,invSnap,miSnap,psSnap,ogSnap,pkSnap]=await Promise.all([db.ref("/recipes").get(),db.ref("/optionRecipes").get(),db.ref("/inventory").get(),db.ref("/menuItems").get(),db.ref("/posSettings").get(),db.ref("/optionGroups").get(),db.ref("/packagingRules").get()]),optionRaw=optSnap.val()||{},optionRecipes={};
+  Object.keys(optionRaw).forEach((key)=>{const row=optionRaw[key]||{};optionRecipes[row.label||key]=row;});
+  const ps=psSnap.val()||{},inv=invSnap.val()||{},costing=Costing.costOrder({lineItems:order.lineItems||[],recipes:recSnap.val()||{},inventory:inv,menuItems:miSnap.val()||{},optionCosts:ps.optionCosts||{},optionRecipes,optionGroups:ogSnap.val()||{},packagingRules:pkSnap.val()||{},packagingAssignments:ps.packagingAssignments||{}});
+  if(!costing.ok)throw new Error("Authoritative costing rejected order: "+costing.errors.slice(0,5).map(row=>row.code+": "+row.message).join(" | "));
+  return buildOrderInventoryPlan(costing,inv,ps,capturedAt);
+}
+
 exports.onOrderFinalize = onValueWritten(
   // Watch the complete order. A later POS retry can replace the order after
   // finalization and accidentally drop the confirmation metadata. Re-running
@@ -3768,7 +3780,7 @@ exports.onOrderFinalize = onValueWritten(
     if (o.inventoryDeducted && o.inventoryLedgerVersion === 1) return;
 
     try {
-      const [recSnap, optSnap, invSnap, miSnap, psSnap, ogSnap, pkSnap] = await Promise.all([
+      const [recSnap, optSnap, invSnap, miSnap, psSnap, ogSnap, pkSnap, planSnap] = await Promise.all([
         db.ref("/recipes").get(),
         db.ref("/optionRecipes").get(),
         db.ref("/inventory").get(),
@@ -3776,6 +3788,7 @@ exports.onOrderFinalize = onValueWritten(
         db.ref("/posSettings").get(),
         db.ref("/optionGroups").get(),
         db.ref("/packagingRules").get(),
+        db.ref(`/orderInventoryPlans/${orderId}`).get(),
       ]);
       const recipes = recSnap.val() || {};
       const inv = invSnap.val() || {};
@@ -3790,7 +3803,7 @@ exports.onOrderFinalize = onValueWritten(
       const optionCosts = ps.optionCosts || {};
       const optionGroups = ogSnap.val() || {};
 
-      const costing = Costing.costOrder({
+      const costing = planSnap.exists()?null:Costing.costOrder({
         lineItems: o.lineItems, recipes, inventory: inv, menuItems: mi,
         optionCosts, optionRecipes: optMap, optionGroups,
         // Packaging follows how a drink is served, from one shared table. The server reads it
@@ -3798,32 +3811,16 @@ exports.onOrderFinalize = onValueWritten(
         packagingRules: pkSnap.val() || {},
         packagingAssignments: ps.packagingAssignments || {},
       });
-      if (!costing.ok) {
+      if (costing && !costing.ok) {
         const summary = costing.errors.slice(0, 5).map((x) => x.code + ": " + x.message).join(" | ");
         throw new Error("Authoritative costing rejected order " + orderId + ": " + summary);
       }
-      const usage = costing.usage;
+      const capturedAt=Date.now(),candidate=costing?buildOrderInventoryPlan(costing,inv,ps,capturedAt):null;
+      const planResult=await db.ref(`/orderInventoryPlans/${orderId}`).transaction((current)=>current||candidate,undefined,false),plan=planResult.snapshot.val();
+      if(!plan||plan.capturedBy!=="server"||Number(plan.schemaVersion)!==1||!plan.usage)throw new Error("Immutable server inventory plan is missing for order "+orderId);
+      const usage = plan.usage;
       const ids = Object.keys(usage);
-      const cogs = costing.totalCost;
-      const invCategories = ps.invCategories || {};
-      const cogsCategorySnapshot = {food: 0, beverage: 0, packaging: 0, directLabor: 0, unallocated: 0};
-      costing.lines.forEach((costLine) => {
-        const item = inv[costLine.ingredientId] || {};
-        const category = invCategories[item.category] || {};
-        const label = String(category.name || item.category || "").toLowerCase();
-        let bucket = "unallocated";
-        if (/packag|cup|lid|straw|napkin|container/.test(label)) bucket = "packaging";
-        else if (/beverage|drink|coffee|tea|milk|syrup|powder/.test(label)) bucket = "beverage";
-        else if (/food|ingredient|bakery|kitchen|pastry|meal/.test(label)) bucket = "food";
-        cogsCategorySnapshot[bucket] += Number(costLine.totalCost) || 0;
-      });
-      Object.keys(cogsCategorySnapshot).forEach((key) => {cogsCategorySnapshot[key] = Math.round(cogsCategorySnapshot[key] * 100) / 100;});
-      const cogsAccountSnapshot = {};
-      costing.lines.forEach((costLine) => {
-        const item = inv[costLine.ingredientId] || {}, mapping = BooksBridge.itemAccounts(item);
-        const key = mapping.inventory && mapping.cost ? `${mapping.inventory}|${mapping.cost}` : "1290|5090";
-        cogsAccountSnapshot[key] = Financial.money((cogsAccountSnapshot[key] || 0) + Number(costLine.totalCost || 0));
-      });
+      const cogs = Number(plan.totalCost)||0,cogsCategorySnapshot=plan.categorySnapshot||{},cogsAccountSnapshot=plan.accountSnapshot||{};
 
       await Promise.all(ids.map((ing) => applyInventoryMovement(db, {
         movementId: `sale_${orderId}_${ing}`,
@@ -3842,12 +3839,12 @@ exports.onOrderFinalize = onValueWritten(
         cogsCategorySnapshotVersion: 1,
         cogsAccountSnapshot,
         cogsAccountSnapshotVersion: 1,
-        cogsCovered: costing.cogsCovered,
+        cogsCovered: plan.cogsCovered,
         cogsDetail: {
-          engineVersion: costing.engineVersion, computedAt: Date.now(),
-          totalCost: cogs, lines: costing.lines, warnings: costing.warnings,
+          engineVersion: plan.engineVersion, computedAt: plan.capturedAt,
+          totalCost: cogs, lines: plan.lines||[], warnings: plan.warnings||[],
         },
-        costingEngineVersion: costing.engineVersion,
+        costingEngineVersion: plan.engineVersion,
         deductedBy: "server",
         inventoryLedgerVersion: 1,
       };
@@ -4014,6 +4011,7 @@ async function createVerifiedDatabaseBackup(now = Date.now()) {
       }));
     } catch (error) { logger.warn("Backup retention sweep failed", {error: String(error)}); }
     logger.info("backupDatabaseDaily complete", {objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, dataSha256: validation.actualSha256, removed, rev: 3});
+    await evaluateProductionHealthNow(db,Date.now());
     return {takenAt:now,objectName,bytes:payload.length,nodes:Object.keys(snapshot).length,dataSha256:validation.actualSha256,validation:"passed",version:"backup-v2"};
 }
 exports.backupDatabaseDaily = onSchedule(
@@ -4028,17 +4026,19 @@ exports.runDatabaseBackupNow = onCall(
   async (request) => {const db=getDatabase(),actor=await requirePortalUser(db,request);if(!["owner","superadmin","admin","manager"].includes(actor.role))throw new HttpsError("permission-denied","Database backup is restricted to management accounts.");return createVerifiedDatabaseBackup();},
 );
 
-// Phase 13: hourly, read-only early-warning evaluation. It records sanitized
-// health evidence only; it never edits an order, stock, subledger, or journal.
-exports.evaluateProductionHealth = onSchedule(
-  {schedule: "every 60 minutes", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 120, memory: "256MiB"},
-  async () => {
-    const db=getDatabase(),now=Date.now(),today=financeDateFromTimestamp(now),yesterday=financeDateFromTimestamp(now-86400000);
+async function evaluateProductionHealthNow(db=getDatabase(),now=Date.now()) {
+    const today=financeDateFromTimestamp(now),yesterday=financeDateFromTimestamp(now-86400000);
     const [backupSnap,todaySnap,yesterdaySnap,previousSnap,notificationSnap,operational]=await Promise.all([db.ref("/systemHealth/backups/latest").get(),db.ref(`/clientTelemetryDaily/${today}`).get(),db.ref(`/clientTelemetryDaily/${yesterday}`).get(),db.ref("/systemHealth/productionMonitor/current").get(),db.ref("/systemHealth/productionMonitor/notificationState").get(),scanOperationalExceptions(db,now)]);
     const health=ProductionHealth.evaluate({backup:backupSnap.val()||{},telemetry:[todaySnap.val()||{},yesterdaySnap.val()||{}],operational},now),previous=previousSnap.val()||{},decision=AlertEscalation.decide(previous,health,notificationSnap.val()||{},now),writes={"systemHealth/productionMonitor/current":health};
     if(previous.signature!==health.signature||previous.status!==health.status)writes[`systemHealth/productionMonitor/history/${today}/${now}`]={evaluatedAt:now,status:health.status,signature:health.signature,counts:health.counts,alerts:health.alerts};
     await db.ref().update(writes);
     if(decision.notify){await notifyStaff(db,decision.title,decision.body,decision.link,decision.audience);await db.ref("/systemHealth/productionMonitor/notificationState").set(decision.nextState);}
-    logger.info("Production health evaluated",{status:health.status,critical:health.counts.critical,warning:health.counts.warning,changed:previous.signature!==health.signature,notification:decision.reason});return null;
-  },
+    logger.info("Production health evaluated",{status:health.status,critical:health.counts.critical,warning:health.counts.warning,changed:previous.signature!==health.signature,notification:decision.reason});return health;
+}
+
+// Phase 13: hourly, read-only early-warning evaluation. It records sanitized
+// health evidence only; it never edits an order, stock, subledger, or journal.
+exports.evaluateProductionHealth = onSchedule(
+  {schedule: "every 60 minutes", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 120, memory: "256MiB"},
+  async () => {await evaluateProductionHealthNow();return null;},
 );
