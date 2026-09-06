@@ -338,6 +338,7 @@ exports.onOrderFinalize = onValueWritten(
         // Packaging follows how a drink is served, from one shared table. The server reads it
         // here so the cost it posts is the cost the till showed.
         packagingRules: pkSnap.val() || {},
+        packagingAssignments: ps.packagingAssignments || {},
       });
       if (!costing.ok) {
         const summary = costing.errors.slice(0, 5).map((x) => x.code + ": " + x.message).join(" | ");

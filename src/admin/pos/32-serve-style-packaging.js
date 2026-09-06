@@ -283,69 +283,38 @@ function packStyleSaveStyles(){
   });
 }
 
+function packStyleOptions(selected){
+  var rules=packDraft||packagingRulesMap||{},ids=Object.keys(rules);
+  return '<option value="">— packaging not set —</option>'+ids.map(function(id){return '<option value="'+esc(id)+'"'+(id===selected?' selected':'')+'>'+esc((rules[id]&&rules[id].name)||id)+'</option>';}).join('');
+}
+function packagingAssignmentHtml(){
+  var allowed=['coffee','noncaf','frappe','nonfrappe','soda','pastry'],cats=(A().getCats?A().getCats():[]).filter(function(c){return allowed.indexOf(c.id)>=0;}),menu=menuList(),saved=(window.__posSettings&&window.__posSettings.packagingAssignments)||{};
+  return '<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Category applicability</div><p class="pz-sub" style="margin-top:0;">All six menu categories are shown. Options come directly from Menu Availability. A category with Temperature shows its current choices; a category without it uses one default packaging style.</p>'+cats.map(function(cat){
+    var items=menu.filter(function(it){return it.cat===cat.id;}),groups={},assignment=saved[cat.id]||{},mapped=assignment.choices||{};
+    items.forEach(function(it){(A().getItemOptionGroups?A().getItemOptionGroups(it):[]).forEach(function(g){if(/temperature/i.test(String(g.name||'')))groups[g.id]=g;});});
+    var groupIds=Object.keys(groups),controls='';
+    groupIds.forEach(function(gid){var g=groups[gid],gm=mapped[gid]||{};controls+=(g.choices||[]).map(function(c){var key=Costing().optKey(c.label);return '<label style="min-width:190px;flex:1 1 210px;"><span class="pz-lbl">'+esc(c.label)+'</span><select class="pz-in" data-packassign="'+esc(cat.id)+'|'+esc(gid)+'|'+esc(key)+'">'+packStyleOptions(gm[key]||'')+'</select></label>';}).join('');});
+    if(!groupIds.length)controls='<label style="min-width:240px;"><span class="pz-lbl">Default packaging</span><select class="pz-in" data-packdefault="'+esc(cat.id)+'">'+packStyleOptions(assignment.defaultStyle||'')+'</select></label>';
+    else controls+='<label style="min-width:190px;flex:1 1 210px;"><span class="pz-lbl">Fallback for items without Temperature</span><select class="pz-in" data-packdefault="'+esc(cat.id)+'">'+packStyleOptions(assignment.defaultStyle||'')+'</select></label>';
+    return '<div style="border-top:1px solid var(--cd);padding:0.65rem 0;"><div style="font-weight:600;">'+esc((cat.icon||'')+' '+cat.label)+'</div><div style="font-size:0.72rem;color:var(--tl);margin:0.15rem 0 0.45rem;">Applies to '+items.length+' item'+(items.length===1?'':'s')+(items.length?' — '+esc(items.map(function(i){return i.name;}).join(', ')):'')+'</div><div style="display:flex;gap:0.55rem;flex-wrap:wrap;">'+controls+'</div></div>';
+  }).join('')+'<button class="pz-btn ok" id="packSaveAssignments">Save category assignments</button><span id="packAssignmentMsg" style="font-size:0.78rem;color:var(--tl);margin-left:0.5rem;"></span></div>';
+}
+function savePackagingAssignments(){
+  var root=document.getElementById('packagingRoot'),next={};
+  root.querySelectorAll('[data-packdefault]').forEach(function(el){var cat=el.getAttribute('data-packdefault'),value=String(el.value||'');next[cat]=next[cat]||{};if(value)next[cat].defaultStyle=value;});
+  root.querySelectorAll('[data-packassign]').forEach(function(el){var p=el.getAttribute('data-packassign').split('|'),value=String(el.value||'');next[p[0]]=next[p[0]]||{};if(value){next[p[0]].choices=next[p[0]].choices||{};next[p[0]].choices[p[1]]=next[p[0]].choices[p[1]]||{};next[p[0]].choices[p[1]][p[2]]=value;}});
+  Object.keys(next).forEach(function(cat){if(!next[cat].defaultStyle&&!next[cat].choices)delete next[cat];});
+  A().update(A().ref(A().db,'posSettings'),{packagingAssignments:next}).then(function(){window.__posSettings=window.__posSettings||{};window.__posSettings.packagingAssignments=next;var m=document.getElementById('packAssignmentMsg');if(m)m.textContent='✓ Saved '+new Date().toLocaleTimeString();updateCostBadge();}).catch(function(e){alert('Could not save packaging applicability: '+((e&&e.code)||e));});
+}
 function renderServeStylePackaging(){
   var host=document.getElementById('packagingRoot'); if(!host)return;
-  var plan;
-  try{plan=packStyleBuild();}
-  catch(e){host.innerHTML='<div class="pz-card" style="border-color:#f1b7b7;background:#fff5f5;color:#8b1e1e;">'+esc((e&&e.message)||e)+'</div>';return;}
-  var menu=(A()&&A().menuItemsMap)||{},styleIds=Object.keys(plan.styles);
-  var html='';
-  html+='<p class="pz-sub">A cup, a lid and a straw depend on <b>how</b> a drink is served, not on which drink it is. Today the packaging is typed into each recipe by hand, so most drinks have none. This puts it in one place — change a cup once, every drink follows.</p>';
-
-  html+='<div class="pz-card" style="margin-bottom:1rem;border-left:4px solid #1C6B54;">'
-    +'<div style="font-weight:700;color:var(--bd);">Step 1 — Save a restore point</div>'
-    +'<div style="font-size:0.85rem;color:var(--tm);margin:0.35rem 0 0.6rem;">Recipes, menu items, option groups and packaging as they stand now. Loading it back below undoes everything on this screen.</div>'
-    +'<button class="pz-btn" id="packSnapshot"'+(packStyleSnapshotTaken?' disabled':'')+'>'+(packStyleSnapshotTaken?'✓ Restore point saved':'⬇ Save a restore point')+'</button></div>';
-
-  if(!styleIds.length){
-    html+='<div class="pz-card"><div style="font-weight:700;color:#8a6d3b;">No packaging found in any recipe</div>'
-      +'<div style="font-size:0.85rem;color:var(--tm);margin-top:0.35rem;">There is nothing to collapse into serve styles yet. Add the cup, lid and straw to one drink of each kind first, then come back.</div></div>';
-    host.innerHTML=html;
-    var s0=document.getElementById('packSnapshot'); if(s0&&!packStyleSnapshotTaken)s0.onclick=packStyleSnapshot;
-    return;
-  }
-
-  html+=packStyleEditorHtml(plan);
-
-  var rows=[],added=0,covered=0,total=0;
-  Object.keys(recipesMap).forEach(function(key){
-    var item=menu[key];if(!item)return;
-    var temp=Array.isArray(item.options)&&item.options.indexOf('og_temp')>=0;
-    (temp?[['Hot'],['Iced']]:[[]]).forEach(function(labels){
-      var before=packStyleCost(plan,key,'M',labels,false),after=packStyleCost(plan,key,'M',labels,true);
-      total++;if(after>before+0.005)added+=(after-before);if(Math.abs(after-before)>0.005||before>0)covered++;
-      rows.push({name:String(item.name||key),serve:labels[0]||'—',before:before,after:after});
-    });
-  });
-  rows.sort(function(a,b){return (b.after-b.before)-(a.after-a.before);});
-  html+='<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:700;color:var(--bd);margin-bottom:0.15rem;">Step 3 — What it costs</div>'
-    +'<div style="font-size:0.85rem;color:var(--tm);margin-bottom:0.6rem;">Every drink at size M. A drink that already carried its packaging does not move — that is the proof this only fills gaps.</div>'
-    +'<div style="max-height:22rem;overflow:auto;"><table class="pz-tbl"><thead><tr><th>Drink</th><th>Served</th><th class="r">Now</th><th class="r">After</th><th class="r">Change</th></tr></thead><tbody>'
-    +rows.map(function(r){var d=r.after-r.before;
-      return '<tr><td>'+esc(r.name)+'</td><td style="color:var(--tl);">'+esc(r.serve)+'</td><td class="r">'+peso(r.before)+'</td><td class="r" style="font-weight:600;">'+peso(r.after)+'</td>'
-        +'<td class="r" style="color:'+(d>0.005?'#8b1e1e':'var(--tl)')+';">'+(Math.abs(d)>0.005?peso(d):'—')+'</td></tr>';}).join('')
-    +'</tbody></table></div>'
-    +'<div style="font-size:0.85rem;margin-top:0.6rem;padding:0.55rem 0.7rem;background:#f6f8f6;border-radius:6px;">'
-    +'True cost that was missing: <b>'+peso(added)+'</b> across '+total+' drink and serve combinations — about <b>'+peso(added/(total||1))+'</b> a cup on the drinks that had none. '
-    +'This does not change a single price. It stops the margin on those drinks reading better than it is.</div>'
-    +'<div style="font-size:0.85rem;margin-top:0.5rem;color:var(--tm);">'+plan.stripped.length+' recipes have their packaging rows removed, because the serve style supplies them now. Recipe ingredients are untouched.'
-    +((plan.libraryStripped||[]).length?' The shared option library also holds packaging on '+plan.libraryStripped.map(function(x){return esc(x.label);}).join(', ')+' — removed too, or the cup would be charged twice.':'')
-    +'</div>'
-    +'</div>';
-
-  html+='<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:700;color:var(--bd);">Step 4 — Apply</div>'
-    +'<div style="font-size:0.85rem;color:var(--tm);margin:0.35rem 0 0.6rem;">'+(packStyleSnapshotTaken?'Writes all '+Object.keys(plan.updates).length+' changes in one go — either every one lands or none does. Completed orders keep the cost they were posted with.':'Save the restore point above first.')+'</div>'
-    +'<button class="pz-btn ok" id="packApply"'+(packStyleSnapshotTaken?'':' disabled')+'>✓ Move packaging to serve styles</button></div>';
-
-  html+='<div class="pz-card" style="border-left:4px solid #b5651d;"><div style="font-weight:700;color:var(--bd);">Undo — restore from a saved file</div>'
-    +'<div style="font-size:0.85rem;color:var(--tm);margin:0.35rem 0 0.6rem;">Puts recipes, menu items, option groups and packaging back to the moment that file was saved.</div>'
-    +'<input type="file" accept="application/json,.json" id="packRestore" class="pz-in" style="max-width:420px;"/></div>';
-
-  host.innerHTML=html;
+  var plan;try{plan=packStyleBuild();}catch(e){host.innerHTML='<div class="pz-card" style="border-color:#f1b7b7;background:#fff5f5;color:#8b1e1e;">'+esc((e&&e.message)||e)+'</div>';return;}
+  host.innerHTML='<p class="pz-sub">Define the physical packaging first, then confirm exactly which menu category and serving choice uses it. Packaging items are Inventory records and flow into inventory usage, Packaging COGS and Finance Books when a sale is completed.</p>'+packStyleEditorHtml(plan)+packagingAssignmentHtml()
+    +'<details class="pz-card"><summary style="cursor:pointer;font-weight:700;color:var(--bd);">Maintenance and recovery tools</summary><p class="pz-sub">The former migration and restore workflow is retained here for controlled recovery, not normal costing.</p><button class="pz-btn" id="packSnapshot">⬇ Save restore point</button> <input type="file" accept="application/json,.json" id="packRestore" class="pz-in" style="max-width:320px;display:inline-block;"/></details>';
   packStyleBindEditor(plan);
-  var snap=document.getElementById('packSnapshot'); if(snap&&!packStyleSnapshotTaken)snap.onclick=packStyleSnapshot;
-  var apply=document.getElementById('packApply'); if(apply)apply.onclick=packStyleApply;
-  var restore=document.getElementById('packRestore'); if(restore)restore.onchange=function(){packStyleRestore(restore.files&&restore.files[0]);};
+  var save=document.getElementById('packSaveAssignments');if(save)save.onclick=savePackagingAssignments;
+  var snap=document.getElementById('packSnapshot');if(snap)snap.onclick=packStyleSnapshot;
+  var restore=document.getElementById('packRestore');if(restore)restore.onchange=function(){packStyleRestore(restore.files&&restore.files[0]);};
 }
 function packStyleApply(){
   if(packStyleBusy)return;
