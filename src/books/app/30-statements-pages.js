@@ -61,7 +61,7 @@ const PAGES = {
       ${orphanedPayoutDeposits.length?`<div class="card" style="margin-bottom:1rem;border-color:#c96b62"><div class="card-pad"><div class="section-label" style="color:#9d3028">Financial control exceptions · ${orphanedPayoutDeposits.length}</div><div class="tiny muted">These deposits were posted after their payouts had already been reversed. Repairing appends an approved correction; original entries remain in the audit trail.</div></div><div class="tbl-wrap"><table><thead><tr><th>Issue</th><th>Cash account</th><th class="num">Amount</th><th></th></tr></thead><tbody>${exceptionRows}</tbody></table></div></div>`:''}
       ${lateCorrections.length?`<div class="card" style="margin-bottom:1rem;border-color:#c96b62"><div class="card-pad"><div class="section-label" style="color:#9d3028">Journal period exceptions · ${lateCorrections.length}</div><div class="tiny muted">These corrected cash journals used a later date for their mechanical reversal. Repairing appends two matched entries so the original and late periods both net correctly; the corrected replacement and full audit history remain.</div></div><div class="tbl-wrap"><table><thead><tr><th>Issue</th><th>Scope</th><th class="num">Amount</th><th></th></tr></thead><tbody>${lateCorrectionRows}</tbody></table></div></div>`:''}
       <div class="kpis">${cards}</div>
-      <div class="card card-pad" style="margin-bottom:1rem"><div class="page-head" style="margin-bottom:.6rem"><div><div class="section-label">Cash flow statement</div></div><div class="tiny">From <input type="date" value="${CF_FROM}" onchange="App.cfRange('from',this.value)"/> to <input type="date" value="${CF_TO}" onchange="App.cfRange('to',this.value)"/></div></div>
+      <div class="card card-pad" style="margin-bottom:1rem"><div class="page-head" style="margin-bottom:.6rem"><div><div class="section-label">Cash flow statement</div></div><div class="tiny">${esc(periodLabel())}</div></div>
         <div class="tbl-wrap"><table><thead><tr><th>Cash movement</th><th class="num">Amount</th></tr></thead><tbody>
           <tr class="group-account"><td>Opening cash · before ${CF_FROM}</td><td class="num">${peso(s.totBegin)}</td></tr>${balRows(s.begin)}
           <tr class="sub-row"><td>Cash received from outside the business</td><td class="num pos">${peso(s.totAdd)}</td></tr>${receiptRows}
@@ -148,7 +148,6 @@ const PAGES = {
     const netPct = pl.netSales>0?(pl.net/pl.netSales*100):0;
     return `<div class="page-head"><div><h2>Profit &amp; Loss</h2><p>${periodLabel()}</p></div>
       <div class="btn-row">${csvButton('pl')}<button class="btn primary" onclick="App.newEntry()">+ New entry</button></div></div>
-      ${periodButtons()}
       <div class="card"><div class="tbl-wrap"><table>
         <thead><tr><th>Account</th><th class="num">Amount</th></tr></thead>
         <tbody>
