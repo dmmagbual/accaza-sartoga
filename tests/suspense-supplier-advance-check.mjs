@@ -19,7 +19,7 @@ must(auth,'"convert_suspense_supplier_advance"','Manager approval action is not 
 for(const marker of ['Convert to supplier advance','suspenseAdvanceEligible','__suspenseAdvanceConversions'])must(journal,marker,'Journal conversion action missing');
 for(const marker of ['App.convertSuspenseAdvance','This does not pay cash again','supplierId','reference','purpose','reason'])must(ui,marker,'Conversion form safeguard missing');
 for(const marker of ['createManagerApproval','postFinancialCommand','suspense_advance_reclass_','/suspenseAdvanceConversions'])must(bridge,marker,'Authenticated conversion bridge missing');
-must(html,'assets/js/books/suspense-advance.mjs?v=104','Conversion bridge is not loaded by Books');
+must(html,'assets/js/books/suspense-advance.mjs?v=105','Conversion bridge is not loaded by Books');
 must(sw,"'/assets/js/books/suspense-advance.mjs'",'Conversion bridge is not cached');
 if(!manifest.authoritativeFiles.includes('assets/js/books/suspense-advance.mjs'))throw new Error('Conversion bridge is not release-authoritative');
 must(rules,'"suspenseAdvanceConversions"','Conversion status is not readable to signed-in Admin Books users');
