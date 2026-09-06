@@ -26,8 +26,8 @@ if(!/id:"insights",label:"Key Metrics"/.test(shell))throw new Error('Key Metrics
 if(!/PAGES\.insights=function/.test(registration))throw new Error('Key Metrics page is not registered');
 if(!/assets\/js\/shared\/sales-authority\.js/.test(books)||!/src\/books\/business-intelligence\.js/.test(books)||!/src\/books\/business-intelligence\.js/.test(sw))throw new Error('Key Metrics engine and shared sales authority are not loaded and cached');
 if(!/accaza-books-build" content="105"/.test(books)||!/build v105/.test(books))throw new Error('Books build 105 markers are not synchronized');
-if(manifest.builds.admin!==453||manifest.builds.books!==105||manifest.builds.serviceWorkerCache!==424)throw new Error('Release manifest build markers are not synchronized');
-if(!/const CACHE='accaza-v424'/.test(sw))throw new Error('Service worker cache 424 is not synchronized');
+if(manifest.builds.admin!==454||manifest.builds.books!==105||manifest.builds.serviceWorkerCache!==425)throw new Error('Release manifest build markers are not synchronized');
+if(!/const CACHE='accaza-v425'/.test(sw))throw new Error('Service worker cache 425 is not synchronized');
 if(!manifest.authoritativeFiles.includes('src/books/business-intelligence.js')||!manifest.authoritativeFiles.includes('src/books/app/35-business-intelligence.js'))throw new Error('Business intelligence sources are missing from authoritative files');
 if(!/\.bi-confidence\.verified/.test(css)||!/\.bi-hero/.test(css))throw new Error('Key Metrics visual states are missing');
 if(!/__booksMenuItems/.test(livePos)||!/__booksMenuCategories/.test(livePos))throw new Error('Books must load the menu catalog needed to classify legacy order lines');
