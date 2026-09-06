@@ -101,7 +101,9 @@ function buildOperationalExceptions(input, now = Date.now()) {
   // remains available in Technical diagnostics as history, not as a live task.
   let proofFailures = 0, clientErrors = 0;const currentTelemetry=Object.values(input.telemetry||{})[0]||{};proofFailures=Number(currentTelemetry.errors&&currentTelemetry.errors.proof_access)||0;Object.keys(currentTelemetry.errors||{}).forEach((key)=>{clientErrors+=Number(currentTelemetry.errors[key])||0;});
   if (proofFailures) exceptions.push(item("payment_proof", "warning", "payment-proof", `${proofFailures} payment-proof failure${proofFailures === 1 ? "" : "s"}`, "Review recent proof access attempts and confirm Storage and getPaymentProof are available.", now, "orders"));
-  if (clientErrors - proofFailures > 0) exceptions.push(item("client_error", "warning", "client-errors", `${clientErrors - proofFailures} client error${clientErrors - proofFailures === 1 ? "" : "s"} today`, "Review Technical diagnostics. Older errors remain visible as history but do not stay in the action queue.", now, "operations"));
+  // Generic browser telemetry belongs in technical diagnostics. It does not
+  // identify a business workflow that staff can repair, so it must not enter
+  // the operational work queue or imply that normal service is unsafe.
   const clearingThreshold = Number(input.clearingThreshold) > 0 ? Number(input.clearingThreshold) : CLEARING_RESIDUAL_THRESHOLD;
   const clearingBalances = clearingBalancesFromJournal(input.booksJournal);
   CLEARING_ACCOUNTS.forEach(({code, name}) => {

@@ -12,8 +12,9 @@ const result=buildOperationalExceptions({
   telemetry:{today:{errors:{proof_access:2,js_core:1}}},
 },now);
 const cats=result.exceptions.map(x=>x.category);
-for(const expected of ['stuck_order','offline_sync','inventory_gap','inventory_marker_gap','financial_gap','payment_proof','client_error'])if(!cats.includes(expected))throw new Error('missing exception '+expected);
-if(result.counts.critical!==4||result.counts.warning!==3)throw new Error('severity counts are incorrect');
+for(const expected of ['stuck_order','offline_sync','inventory_gap','inventory_marker_gap','financial_gap','payment_proof'])if(!cats.includes(expected))throw new Error('missing exception '+expected);
+if(cats.includes('client_error'))throw new Error('generic client telemetry must stay in technical diagnostics');
+if(result.counts.critical!==4||result.counts.warning!==2)throw new Error('severity counts are incorrect');
 if(result.exceptions.find(x=>x.id==='marker').severity!=='warning')throw new Error('existing inventory movement evidence was still classified as a critical stock gap');
 if(result.exceptions.some(x=>x.category==='cash_custody'))throw new Error('normal undeposited cash was incorrectly classified as an operational exception');
 if(cats.includes('fresh')||result.exceptions.some(x=>x.id==='done'||x.id==='new'||x.id==='good'))throw new Error('healthy records produced false exceptions');
