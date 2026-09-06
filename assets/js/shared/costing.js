@@ -4,7 +4,7 @@
   else root.AccazaCosting=api;
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
-  var VERSION='3E-2';
+  var VERSION='3E-3';
   var SIZES=['S','M','L'];
   var UNITS={
     ml:{dim:'volume',factor:1},l:{dim:'volume',factor:1000},tsp:{dim:'volume',factor:4.92892},tbsp:{dim:'volume',factor:14.7868},cup:{dim:'volume',factor:240},'fl oz':{dim:'volume',factor:29.5735},
@@ -37,7 +37,7 @@
     if(!row||row.qty==null||row.qty==='')return 0;
     var base=Number(row.qty),sm=recipe&&recipe.sizeMult||{S:1,M:1.3,L:1.6},mult=Number(sm[size]==null?1:sm[size]);return Number.isFinite(base)&&Number.isFinite(mult)?base*mult:NaN;
   }
-  function normalizeRow(row,inventory,path,errors,warnings,allowNegative){
+  function normalizeRow(row,inventory,path,errors,warnings,allowNegative,choiceLabel){
     row=row||{};var id=String(row.ing||'').trim(),item=inventory[id];
     if(!id){errors.push({code:'MISSING_INGREDIENT',path:path,message:'Ingredient is required.'});return null;}
     if(!item){errors.push({code:'BROKEN_INVENTORY_REFERENCE',path:path,itemId:id,message:'Inventory item '+id+' does not exist.'});return null;}
@@ -60,14 +60,14 @@
       if(!Number.isFinite(Number(qty))||(!allowNegative&&qty<0))errors.push({code:'INVALID_QUANTITY',path:path+'.'+size,itemId:id,message:allowNegative?'Quantity must be a valid number.':'Quantity must be zero or positive.'});
       out['qty'+size]=q6(allowNegative?n(qty):Math.max(0,n(qty)));if(out['qty'+size]!==0)any=true;
     });
-    if(!any)warnings.push({code:'ZERO_QUANTITY_ROW',path:path,itemId:id,message:(item.name||id)+' has zero quantity for every size.'});
+    if(!any)warnings.push({code:'ZERO_QUANTITY_ROW',path:path,itemId:id,choiceLabel:choiceLabel||'',message:(item.name||id)+(choiceLabel?' has zero additional quantity for every size under “'+choiceLabel+'”.':' has zero quantity for every size.')});
     return out;
   }
   function normalizeRecipe(recipe,inventory){
     recipe=recipe||{};inventory=inventory||{};var errors=[],warnings=[],seen={};
     var base=(Array.isArray(recipe.base)?recipe.base:[]).map(function(row,ix){var r=normalizeRow(row,inventory,'base['+ix+']',errors,warnings);if(r){if(seen[r.ing])warnings.push({code:'DUPLICATE_INGREDIENT',path:'base['+ix+']',itemId:r.ing,message:'Ingredient appears more than once; quantities will stack.'});seen[r.ing]=1;}return r;}).filter(Boolean);
     if(!base.length)errors.push({code:'EMPTY_RECIPE',path:'base',message:'Add at least one base ingredient or consumable.'});
-    var choiceAdd={};Object.keys(recipe.choiceAdd||{}).forEach(function(gid){var group={};Object.keys(recipe.choiceAdd[gid]||{}).forEach(function(key){var entry=recipe.choiceAdd[gid][key]||{};var rows=(entry.ings||[]).map(function(row,ix){return normalizeRow(row,inventory,'choiceAdd.'+gid+'.'+key+'['+ix+']',errors,warnings,true);}).filter(Boolean);if(rows.length)group[key]={label:entry.label||key,ings:rows};});if(Object.keys(group).length)choiceAdd[gid]=group;});
+    var choiceAdd={};Object.keys(recipe.choiceAdd||{}).forEach(function(gid){var group={};Object.keys(recipe.choiceAdd[gid]||{}).forEach(function(key){var entry=recipe.choiceAdd[gid][key]||{},label=entry.label||key;var rows=(entry.ings||[]).map(function(row,ix){return normalizeRow(row,inventory,'choiceAdd.'+gid+'.'+key+'['+ix+']',errors,warnings,true,label);}).filter(Boolean);if(rows.length)group[key]={label:label,ings:rows};});if(Object.keys(group).length)choiceAdd[gid]=group;});
     var normalized={base:base,choiceAdd:choiceAdd,schemaVersion:2,costingEngineVersion:VERSION,updatedAt:n(recipe.updatedAt)||Date.now()};
     if(Array.isArray(recipe.options))normalized.options=recipe.options;
     return {ok:errors.length===0,recipe:normalized,errors:errors,warnings:warnings,engineVersion:VERSION};

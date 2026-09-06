@@ -69,6 +69,9 @@ const noCost=Costing.costRecipe({itemKey:'latte',recipe:normalized.recipe,invent
 if(noCost.cogsCovered||!noCost.warnings.some(x=>x.code==='MISSING_COST'))throw new Error('missing inventory cost was not surfaced');
 const broken=Costing.normalizeRecipe({base:[{ing:'deleted',unit:'g',dispM:1}]},inventory);
 if(broken.ok||!broken.errors.some(x=>x.code==='BROKEN_INVENTORY_REFERENCE'))throw new Error('broken inventory reference was not blocked');
+const zeroChoice=Costing.normalizeRecipe({base:[{ing:'bean',unit:'g',dispM:18}],choiceAdd:{og_shot:{'Add 1 Shot':{label:'Add 1 Shot',ings:[{ing:'bean',unit:'g',dispS:0,dispM:0,dispL:0}]}}}},{...inventory,bean:{name:'Coffee Beans',unit:'g',cost:0.05}});
+const zeroChoiceWarning=zeroChoice.warnings.find(x=>x.code==='ZERO_QUANTITY_ROW');
+if(!zeroChoiceWarning||zeroChoiceWarning.choiceLabel!=='Add 1 Shot'||zeroChoiceWarning.message!=='Coffee Beans has zero additional quantity for every size under “Add 1 Shot”.')throw new Error('zero choice quantity warning does not identify the affected menu choice');
 const corrupt=Costing.costRecipe({itemKey:'bad',recipe:{base:[{ing:'beans',qtyM:'not-a-number'}]},inventory,item:{name:'Bad'},size:'M'});
 if(corrupt.ok||!corrupt.errors.some(x=>x.code==='INVALID_QUANTITY'))throw new Error('corrupt stored quantity was not blocked');
 const reduced=Costing.costOrder({lineItems:[{itemKey:'hot',size:'M',qty:1,optLabels:['Hot']}],recipes:{hot:{base:[{ing:'milk',qtyM:250}],choiceAdd:{temp:{Hot:{label:'Hot',ings:[{ing:'milk',qtyM:-20}]}}}}},inventory,menuItems:{hot:{name:'Hot latte',options:['temp']}},optionGroups:{temp:{choices:[{label:'Hot'}]}}});
