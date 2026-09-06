@@ -82,10 +82,8 @@ exports.autoCompleteReadyOnlineOrders = onSchedule(
 // sync scratch, daily telemetry) are excluded — a restore rebuilds those. This
 // is the safety net behind a corrupt write, a bad delete, or human error.
 const BACKUP_EXCLUDE = new Set(["activeOrders", "orderLocks", "rateLimits", "orderStatusCommands", "offlinePosSync", "clientTelemetryDaily"]);
-exports.backupDatabaseDaily = onSchedule(
-  {schedule: "every day 03:00", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "256MiB"},
-  async () => {
-    const db = getDatabase(), bucket = getStorage().bucket(PROOF_BUCKET), now = Date.now();
+async function createVerifiedDatabaseBackup(now = Date.now()) {
+    const db = getDatabase(), bucket = getStorage().bucket(PROOF_BUCKET);
     const root = (await db.ref("/").get()).val() || {};
     const snapshot = {};
     Object.keys(root).forEach((node) => { if (!BACKUP_EXCLUDE.has(node)) snapshot[node] = root[node]; });
@@ -114,8 +112,18 @@ exports.backupDatabaseDaily = onSchedule(
       }));
     } catch (error) { logger.warn("Backup retention sweep failed", {error: String(error)}); }
     logger.info("backupDatabaseDaily complete", {objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, dataSha256: validation.actualSha256, removed, rev: 3});
-    return null;
-  },
+    return {takenAt:now,objectName,bytes:payload.length,nodes:Object.keys(snapshot).length,dataSha256:validation.actualSha256,validation:"passed",version:"backup-v2"};
+}
+exports.backupDatabaseDaily = onSchedule(
+  {schedule: "every day 03:00", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "256MiB"},
+  async () => {await createVerifiedDatabaseBackup();return null;},
+);
+
+// A manager may recover a missed schedule without console access. This uses
+// the exact scheduled path and returns metadata only, never backup contents.
+exports.runDatabaseBackupNow = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 300, memory: "256MiB"},
+  async (request) => {const db=getDatabase(),actor=await requirePortalUser(db,request);if(!["owner","superadmin","admin","manager"].includes(actor.role))throw new HttpsError("permission-denied","Database backup is restricted to management accounts.");return createVerifiedDatabaseBackup();},
 );
 
 // Phase 13: hourly, read-only early-warning evaluation. It records sanitized
