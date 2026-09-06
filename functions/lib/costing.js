@@ -4,7 +4,7 @@
   else root.AccazaCosting=api;
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
-  var VERSION='3E-1';
+  var VERSION='3E-2';
   var SIZES=['S','M','L'];
   var UNITS={
     ml:{dim:'volume',factor:1},l:{dim:'volume',factor:1000},tsp:{dim:'volume',factor:4.92892},tbsp:{dim:'volume',factor:14.7868},cup:{dim:'volume',factor:240},'fl oz':{dim:'volume',factor:29.5735},
@@ -74,14 +74,14 @@
   }
   function optionRows(item,recipe,label,size,ctx){
     var gid=groupIdForLabel(item,label,ctx.optionGroups||{}),key=optKey(label),rows=[],found=false;
-    function add(arr,source){(arr||[]).forEach(function(r){if(r&&r.ing)rows.push({row:r,source:source});});if((arr||[]).length)found=true;}
+    function add(arr,source){(arr||[]).forEach(function(r){if(r&&r.ing)rows.push({row:r,source:source,optionGroupId:gid||null,optionLabel:label});});if((arr||[]).length)found=true;}
     /* One definition wins, never both. A drink that spells the choice out for itself OVERRIDES the
        shared library; it does not add to it. Stacking them charged the customer twice. */
     var own=gid&&recipe&&recipe.choiceAdd&&recipe.choiceAdd[gid]&&recipe.choiceAdd[gid][key];
     var shared=gid&&ctx.optionCosts&&ctx.optionCosts[gid]&&ctx.optionCosts[gid][key];
     if(own)add(own.ings,'option_recipe');
     else if(shared)add(shared.ings,'option_global');
-    if(!found){var legacy=null;if(recipe&&Array.isArray(recipe.options))legacy=recipe.options.find(function(x){return x&&x.label===label;})||null;if(!legacy)legacy=(ctx.optionRecipes||{})[label]||null;if(legacy&&legacy.ing)rows.push({row:{ing:legacy.ing,qtyS:legacy.qty,qtyM:legacy.qty,qtyL:legacy.qty},source:'option_legacy'});}
+    if(!found){var legacy=null;if(recipe&&Array.isArray(recipe.options))legacy=recipe.options.find(function(x){return x&&x.label===label;})||null;if(!legacy)legacy=(ctx.optionRecipes||{})[label]||null;if(legacy&&legacy.ing)rows.push({row:{ing:legacy.ing,qtyS:legacy.qty,qtyM:legacy.qty,qtyL:legacy.qty},source:'option_legacy',optionGroupId:gid||null,optionLabel:label});}
     return rows;
   }
   /* Which cup, lid and straw a drink is served in depends on how it is served, not on which
@@ -138,7 +138,7 @@
         if(entry&&entry.row&&String(entry.row.op||'')==='reduce'&&entry.source!=='base'){reducers.push(entry);return false;}
         return true;
       });
-      contributions.forEach(function(entry,rix){var row=entry.row||{},id=row.ing,inv=inventory[id];if(!id||!inv){errors.push({code:'BROKEN_INVENTORY_REFERENCE',itemKey:li.itemKey,itemId:id||'',message:'Recipe points to a missing inventory item.'});return;}var per=rawSize(row,size,recipe),adjustment=entry.source!=='base';if(!Number.isFinite(per)||(!adjustment&&per<0)){errors.push({code:'INVALID_QUANTITY',itemKey:li.itemKey,itemId:id,message:'Recipe quantity is invalid.'});return;}var totalQty=q6(per*orderQty);if(!totalQty)return;var unitCost=n(inv.cost);if(!(unitCost>0))warnings.push({code:'MISSING_COST',itemKey:li.itemKey,itemId:id,message:(inv.name||id)+' has no current unit cost.'});var totalCost=q6(totalQty*unitCost);usage[id]=q6((usage[id]||0)+totalQty);lineUsage[id]=q6((lineUsage[id]||0)+totalQty);lines.push({itemKey:li.itemKey,itemName:item.name||li.itemKey,size:size,orderQty:orderQty,source:entry.source,ingredientId:id,ingredientName:inv.name||id,quantityPerServing:q6(per),totalQuantity:totalQty,stockUnit:unit(inv.unit),unitCost:q6(unitCost),totalCost:totalCost,costSource:inv.ledgerVersion?'inventory-ledger-wac':'inventory-wac',costEffectiveAt:n(inv.ledgerUpdatedAt||inv.updatedAt)||null});});
+      contributions.forEach(function(entry,rix){var row=entry.row||{},id=row.ing,inv=inventory[id];if(!id||!inv){errors.push({code:'BROKEN_INVENTORY_REFERENCE',itemKey:li.itemKey,itemId:id||'',message:'Recipe points to a missing inventory item.'});return;}var per=rawSize(row,size,recipe),adjustment=entry.source!=='base';if(!Number.isFinite(per)||(!adjustment&&per<0)){errors.push({code:'INVALID_QUANTITY',itemKey:li.itemKey,itemId:id,message:'Recipe quantity is invalid.'});return;}var totalQty=q6(per*orderQty);if(!totalQty)return;var unitCost=n(inv.cost);if(!(unitCost>0))warnings.push({code:'MISSING_COST',itemKey:li.itemKey,itemId:id,message:(inv.name||id)+' has no current unit cost.'});var totalCost=q6(totalQty*unitCost);usage[id]=q6((usage[id]||0)+totalQty);lineUsage[id]=q6((lineUsage[id]||0)+totalQty);lines.push({itemKey:li.itemKey,itemName:item.name||li.itemKey,size:size,orderQty:orderQty,source:entry.source,optionGroupId:entry.optionGroupId||null,optionLabel:entry.optionLabel||null,ingredientId:id,ingredientName:inv.name||id,quantityPerServing:q6(per),totalQuantity:totalQty,stockUnit:unit(inv.unit),unitCost:q6(unitCost),totalCost:totalCost,costSource:inv.ledgerVersion?'inventory-ledger-wac':'inventory-wac',costEffectiveAt:n(inv.ledgerUpdatedAt||inv.updatedAt)||null});});
       reducers.forEach(function(entry){
         var row=entry.row||{},id=row.ing,inv=inventory[id];
         if(!id||!inv){errors.push({code:'BROKEN_INVENTORY_REFERENCE',itemKey:li.itemKey,itemId:id||'',message:'Recipe points to a missing inventory item.'});return;}
@@ -150,7 +150,7 @@
         var unitCost=n(inv.cost),takeCost=q6(takeQty*unitCost);
         usage[id]=q6((usage[id]||0)+takeQty);lineUsage[id]=q6((lineUsage[id]||0)+takeQty);
         lines.push({itemKey:li.itemKey,itemName:item.name||li.itemKey,size:size,orderQty:orderQty,source:entry.source,
-          ingredientId:id,ingredientName:inv.name||id,quantityPerServing:q6(takeQty/orderQty),totalQuantity:takeQty,
+          optionGroupId:entry.optionGroupId||null,optionLabel:entry.optionLabel||null,ingredientId:id,ingredientName:inv.name||id,quantityPerServing:q6(takeQty/orderQty),totalQuantity:takeQty,
           stockUnit:unit(inv.unit),unitCost:q6(unitCost),totalCost:takeCost,
           costSource:inv.ledgerVersion?'inventory-ledger-wac':'inventory-wac',
           costEffectiveAt:n(inv.ledgerUpdatedAt||inv.updatedAt)||null});
