@@ -90,6 +90,16 @@
   function serveStyleFor(item,optLabels,ctx){
     var groups=ctx.optionGroups||{},ids=Array.isArray(item&&item.options)?item.options:[];
     var labels=Array.isArray(optLabels)?optLabels:[];
+    /* Category + menu-choice assignments are the current source of truth. This lets Hot/Iced
+       packaging differ by menu category without hiding metadata inside the customer option. */
+    var assignment=((ctx.packagingAssignments||{})[String((item&&item.cat)||'')])||{};
+    var mapped=assignment.choices||{};
+    for(var a=0;a<labels.length;a++){
+      var mappedGroup=groupIdForLabel(item,labels[a],groups),byGroup=mappedGroup&&mapped[mappedGroup];
+      var mappedStyle=byGroup&&(byGroup[optKey(labels[a])]||byGroup[labels[a]]);
+      if(mappedStyle)return String(mappedStyle);
+    }
+    if(assignment.defaultStyle)return String(assignment.defaultStyle);
     for(var i=0;i<labels.length;i++){
       for(var j=0;j<ids.length;j++){
         var group=groups[ids[j]]||{},choices=Array.isArray(group.choices)?group.choices:[];
@@ -150,6 +160,6 @@
     var total=money(lines.reduce(function(sum,line){return sum+n(line.totalCost);},0));
     return {ok:errors.length===0,engineVersion:VERSION,usage:usage,lines:lines,totalCost:total,cogsCovered:errors.length===0&&!warnings.some(function(w){return w.code==='MISSING_COST'||w.code==='MISSING_RECIPE'||w.code==='UNMAPPED_OPTION'||w.code==='UNMAPPED_SERVE_STYLE';}),errors:errors,warnings:warnings};
   }
-  function costRecipe(args){args=args||{};return costOrder({lineItems:[{itemKey:args.itemKey||'item',size:args.size||'M',qty:args.qty||1,optLabels:args.optLabels||[]}],recipes:(function(){var o={};o[args.itemKey||'item']=args.recipe;return o;})(),inventory:args.inventory||{},menuItems:(function(){var o={};o[args.itemKey||'item']=args.item||{};return o;})(),optionCosts:args.optionCosts||{},optionRecipes:args.optionRecipes||{},optionGroups:args.optionGroups||{},packagingRules:args.packagingRules||{}});}
+  function costRecipe(args){args=args||{};return costOrder({lineItems:[{itemKey:args.itemKey||'item',size:args.size||'M',qty:args.qty||1,optLabels:args.optLabels||[]}],recipes:(function(){var o={};o[args.itemKey||'item']=args.recipe;return o;})(),inventory:args.inventory||{},menuItems:(function(){var o={};o[args.itemKey||'item']=args.item||{};return o;})(),optionCosts:args.optionCosts||{},optionRecipes:args.optionRecipes||{},optionGroups:args.optionGroups||{},packagingRules:args.packagingRules||{},packagingAssignments:args.packagingAssignments||{}});}
   return {VERSION:VERSION,SIZES:SIZES,normalizeUnit:unit,unitInfo:unitInfo,compatible:compatible,convert:convert,normalizeRecipe:normalizeRecipe,costOrder:costOrder,costRecipe:costRecipe,optKey:optKey,serveStyleFor:serveStyleFor,packagingRows:packagingRows};
 });

@@ -184,11 +184,11 @@ function createCatalogAdmin(deps){
         if(!name){alert('Please enter the option name.');return;}
         var type=card.querySelector('[data-ogtype]').value;
         var required=card.querySelector('[data-ogreq]').checked;
-        var choices=[];
+        var previous=(deps.getOptionGroupsMap()[id]&&deps.getOptionGroupsMap()[id].choices)||[],choices=[];
         card.querySelectorAll('[data-ogchoicerow]').forEach(function(r){
           var lbl=(r.querySelector('[data-choicelabel]').value||'').trim();
           var pr=parseInt(r.querySelector('[data-choiceprice]').value)||0;
-          if(lbl)choices.push({label:lbl,price:pr});
+          if(lbl){var prior=previous.find(function(c){return c&&c.label===lbl;})||{};choices.push(Object.assign({},prior,{label:lbl,price:pr}));}
         });
         if(!choices.length){alert('Please add at least one choice.');return;}
         try{

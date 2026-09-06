@@ -3,8 +3,8 @@ function recipeCost(rec,size){var key='preview';var result=Costing().costRecipe(
 function recipeDraftRaw(d){
   d=d||{};
   var base=(d.base||[]).filter(function(r){return r&&r.ing&&['S','M','L'].some(function(sz){return r['d'+sz]!=null&&r['d'+sz]!=='';});}).map(function(r){var inv=inventoryMap[r.ing]||{};return {ing:r.ing,unit:r.unit||inv.unit||'',dispS:r.dS===''?null:r.dS,dispM:r.dM===''?null:r.dM,dispL:r.dL===''?null:r.dL};});
-  var rec={base:base,updatedAt:Date.now()},allow=caAllowGroups();
-  Object.keys(d.choiceAdd||{}).forEach(function(g){if(allow.indexOf(g)<0)return;var group={};Object.keys(d.choiceAdd[g]||{}).forEach(function(lk){var e=d.choiceAdd[g][lk]||{};var rows=(e.ings||[]).filter(function(r){return r&&r.ing&&['S','M','L'].some(function(sz){return r['qty'+sz]!=null&&r['qty'+sz]!=='';});});if(rows.length)group[lk]={label:e.label||lk,ings:rows};});if(Object.keys(group).length){rec.choiceAdd=rec.choiceAdd||{};rec.choiceAdd[g]=group;}});
+  var rec={base:base,updatedAt:Date.now()};
+  Object.keys(d.choiceAdd||{}).forEach(function(g){var group={};Object.keys(d.choiceAdd[g]||{}).forEach(function(lk){var e=d.choiceAdd[g][lk]||{};var rows=(e.ings||[]).filter(function(r){return r&&r.ing&&['S','M','L'].some(function(sz){return r['qty'+sz]!=null&&r['qty'+sz]!=='';});});if(rows.length)group[lk]={label:e.label||lk,ings:rows};});if(Object.keys(group).length){rec.choiceAdd=rec.choiceAdd||{};rec.choiceAdd[g]=group;}});
   return rec;
 }
 function costingIssues(list){return (list||[]).map(function(x){return '• '+(x.message||x.code||'Costing error');}).join('\n');}
@@ -17,12 +17,10 @@ function recipeItemIsDrink(it){
 }
 function recipePackagingGap(it){
   if(!recipeItemIsDrink(it))return null;
-  var fallback=String((it&&it.serveStyle)||''),groups=(A().getItemOptionGroups?A().getItemOptionGroups(it):[])||[];
-  var styleGroups=groups.filter(function(g){return (g.choices||[]).some(function(c){return !!(c&&c.serveStyle);});});
-  var paths=[];
-  if(styleGroups.length){
-    styleGroups.forEach(function(g){(g.choices||[]).forEach(function(c){paths.push({label:c.label||g.name||'choice',style:String((c&&c.serveStyle)||fallback)});});});
-  }else paths.push({label:'drink',style:fallback});
+  var groups=(A().getItemOptionGroups?A().getItemOptionGroups(it):[])||[],assignments=(window.__posSettings&&window.__posSettings.packagingAssignments)||{},assignment=assignments[it.cat]||{},paths=[];
+  var mappedGroups=assignment.choices||{},usedMapped=false;
+  groups.forEach(function(g){if(!mappedGroups[g.id])return;usedMapped=true;(g.choices||[]).forEach(function(c){paths.push({label:c.label||g.name||'choice',style:Costing().serveStyleFor(it,[c.label],costingContext())});});});
+  if(!usedMapped)paths.push({label:'drink',style:Costing().serveStyleFor(it,[],costingContext())});
   var missing=paths.filter(function(p){return !p.style;});
   if(missing.length)return 'No effective serve style'+(missing[0].label==='drink'?'':' for '+missing[0].label);
   var uncovered=paths.filter(function(p){var rule=packagingRulesMap[p.style];return !(rule&&Array.isArray(rule.rows)&&rule.rows.some(function(r){return r&&r.ing;}));});
@@ -32,6 +30,7 @@ function recipePackagingGap(it){
 function menuCostGaps(){
   var out=[];
   menuList().forEach(function(it){
+    if(!recipeItemIsDrink(it))return;
     if(it.noRecipe)return; /* resale / bought-in items opted out of costing */
     var rec=recipesMap[it.key];
     if(!rec||!(rec.base&&rec.base.length)){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'No recipe yet'}); return; }
@@ -46,14 +45,15 @@ function menuCostGaps(){
 function updateCostBadge(){ var n=menuCostGaps().length; var b=document.getElementById('costGapBadge'); if(!b)return; if(n>0){b.textContent=n;b.style.display='inline-block';}else{b.style.display='none';} }
 function renderRecipes(){
   var root=document.getElementById('recipesRoot'); if(!root)return;
-  var tabs=[['base','🧪 Recipe (base + consumables)'],['saved','📋 Saved Recipes'],['options','➕ Optional ingredients'],['optlibrary','📚 Share choices'],['packaging','📦 Packaging'],['repair','🛟 Repair & restore']];
+  if(['options','optlibrary','repair','consumables'].indexOf(recSub)>=0)recSub='base';
+  var tabs=[['base','🧪 Recipe Costing'],['packaging','📦 Packaging Costing'],['saved','📋 Saved Recipes'],['export','⬇ Export Recipes']];
   var nav='<div style="display:flex;gap:0.4rem;margin:0.4rem 0 1rem;flex-wrap:wrap;">'+tabs.map(function(t){return '<button class="pz-btn '+(recSub===t[0]?'ok':'sec')+'" data-recsub="'+t[0]+'" style="padding:0.4rem 0.9rem;">'+t[1]+'</button>';}).join('')+'</div>';
-  if(recSub==='consumables')recSub='base';
   var body;
-  if(recSub==='options'){ body='<div id="optMasterRoot"></div>'; }
-  else if(recSub==='repair'){ body='<div id="recRepairRoot"></div>'; }
-  else if(recSub==='packaging'){ body='<div id="packagingRoot"></div>'; }
-  else if(recSub==='optlibrary'){ body='<div id="optLibraryRoot"></div>'; }
+  if(recSub==='packaging'){ body='<div id="packagingRoot"></div>'; }
+  else if(recSub==='export'){
+    body='<p class="pz-sub">Download recipe costing for review, backup or controlled spreadsheet maintenance.</p><div class="pz-card"><div style="display:flex;gap:0.5rem;flex-wrap:wrap;">'
+      +'<button class="pz-btn sec" id="recCostSheet">📊 Cost sheet</button><button class="pz-btn sec" id="recExport">⬇ Export recipes</button><button class="pz-btn sec" id="recTemplate">⬇ Import template</button><button class="pz-btn ok" id="recImportBtn">⬆ Import recipes</button><input type="file" id="recImportFile" accept=".xlsx,.xls,.csv" style="display:none;"/></div><p class="pz-sub" style="margin-bottom:0;">Import remains available here for controlled maintenance. It validates recipes before saving and does not change completed order snapshots.</p></div>';
+  }
   else if(recSub==='saved'){
     var sitems=menuList().filter(function(it){return !!recipesMap[it.key];});
     var savedRows=sitems.length?sitems.map(function(it){var rec=recipesMap[it.key];return '<tr style="cursor:pointer;" data-recopen="'+esc(it.key)+'"><td>'+esc(it.name)+'</td><td style="color:var(--tl);font-size:0.8rem;">'+esc(A().getCatLabel?A().getCatLabel(it.cat):(it.cat||''))+'</td><td class="r">'+((rec.base&&rec.base.length)||0)+'</td><td class="r">'+peso(recipeCost(rec,'S'))+'</td><td class="r">'+peso(recipeCost(rec,'M'))+'</td><td class="r">'+peso(recipeCost(rec,'L'))+'</td><td class="r"><button class="pz-btn ok" data-recopen="'+esc(it.key)+'" style="padding:0.15rem 0.6rem;">Open</button></td></tr>';}).join(''):'<tr><td colspan="7" style="color:var(--tl);padding:0.6rem;">No saved recipes yet. Build one in the Recipe tab.</td></tr>';
@@ -61,44 +61,37 @@ function renderRecipes(){
       +'<div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th>Category</th><th class="r">Ingredients</th><th class="r">Cost S</th><th class="r">Cost M</th><th class="r">Cost L</th><th></th></tr></thead><tbody>'+savedRows+'</tbody></table></div></div>';
   }
   else {
-    var items=menuList();
+    var drinkCats=(A().getCats?A().getCats():[]).filter(function(c){return ['coffee','noncaf','frappe','nonfrappe','soda'].indexOf(c.id)>=0;});
+    if(!recCategory&&drinkCats.length)recCategory=drinkCats[0].id;
+    var items=menuList().filter(function(it){return recipeItemIsDrink(it)&&(!recCategory||it.cat===recCategory);});
     var opts=items.map(function(it){var has=!!recipesMap[it.key];return '<option value="'+esc(it.key)+'"'+(it.key===curRecipeKey?' selected':'')+'>'+(has?'✓ ':'○ ')+esc(it.name)+'</option>';}).join('');
     var covered=items.filter(function(it){return !!recipesMap[it.key];}).length;
-    body='<p class="pz-sub">Build each drink from its ingredients — base + consumables (cups, lids, straws) — with the quantity per size. Cost per drink is the sum. Optional add-ons are costed separately in the Optional ingredients tab and only trigger when a customer picks them. Saved recipes are listed in the <b>Saved Recipes</b> tab. <b>'+covered+' of '+items.length+'</b> items have a recipe.</p>'
-      +'<div class="pz-card" style="margin-bottom:1rem;"><span class="pz-lbl">Start / edit a recipe — pick a menu item</span>'
-      +'<select class="pz-in" id="recPick" style="max-width:420px;"><option value="">— choose an item —</option>'+opts+'</select></div>'
-      +'<div id="recEditor"></div>';
+    var catOpts=drinkCats.map(function(c){return '<option value="'+esc(c.id)+'"'+(c.id===recCategory?' selected':'')+'>'+esc(c.icon+' '+c.label)+'</option>';}).join('');
+    body='<p class="pz-sub">Menu Availability is the source of truth. Choose a category, then a drink. Only the option groups assigned to that drink—Temperature, Milk, Sweetness, Shots, Syrups, Toppings or future choices—appear below. <b>'+covered+' of '+items.length+'</b> drinks in this category have a saved recipe.</p>'
+      +'<div class="pz-card" style="margin-bottom:1rem;"><div style="display:flex;gap:0.7rem;flex-wrap:wrap;"><label style="flex:1 1 240px;"><span class="pz-lbl">1. Drink category</span><select class="pz-in" id="recCategoryPick">'+catOpts+'</select></label><label style="flex:1 1 280px;"><span class="pz-lbl">2. Drink</span><select class="pz-in" id="recPick"><option value="">— choose a drink —</option>'+opts+'</select></label></div><button class="pz-btn sec" id="recSharedOptions" style="margin-top:0.6rem;">Shared option ingredient costs</button></div>'
+      +'<div id="recSharedOptionsRoot" style="display:none;"><div id="optMasterRoot"></div></div><div id="recEditor"></div>';
   }
-  var tools='<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">'
-    +'<button class="pz-btn sec" id="recCostSheet">📊 Cost sheet</button>'
-    +'<button class="pz-btn sec" id="recExport">⬇ Export recipes</button>'
-    +'<button class="pz-btn sec" id="recTemplate">⬇ Import template</button>'
-    +'<button class="pz-btn ok" id="recImportBtn">⬆ Import recipes</button>'
-    +'<input type="file" id="recImportFile" accept=".xlsx,.xls,.csv" style="display:none;"/>'
-    +'</div>';
+  var tools='';
   var _gaps=menuCostGaps();
   var _editingNow=(recSub==='base'&&!!curRecipeKey);
   var gapPanel;
-  if(!_gaps.length){ gapPanel='<div class="pz-card" style="border:1px solid #a8d5b5;background:#f0faf4;margin-bottom:0.8rem;color:#2d6a4f;font-weight:600;">✓ All menu items are costed.</div>'; }
+  if(!_gaps.length){ gapPanel='<div class="pz-card" style="border:1px solid #a8d5b5;background:#f0faf4;margin-bottom:0.8rem;color:#2d6a4f;font-weight:600;">✓ All drinks have complete costing.</div>'; }
   else if(_editingNow){ gapPanel='<div class="pz-card" style="border:1px solid #f0c36d;background:#fff8e8;margin-bottom:0.6rem;padding:0.45rem 0.8rem;display:flex;justify-content:space-between;align-items:center;gap:0.5rem;"><span style="color:#8a5a00;font-weight:600;">⚠ '+_gaps.length+' menu item'+(_gaps.length===1?'':'s')+' still not costed — finish below, the list updates.</span><button class="pz-btn sec" id="recBackToList" style="padding:0.15rem 0.6rem;">◂ Back to list</button></div>'; }
-  else { gapPanel='<div class="pz-card" style="border:1px solid #f0c36d;background:#fff8e8;margin-bottom:0.8rem;"><div style="font-weight:700;color:#8a5a00;">⚠ '+_gaps.length+' menu item'+(_gaps.length===1?'':'s')+' not costed yet</div><p class="pz-sub" style="margin:0.2rem 0 0.4rem;">These can be sold without a reliable COGS. Click “Cost it” to open its costing page.</p>'+_gaps.map(function(g){return '<div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;padding:0.25rem 0;border-top:1px solid #f0e0c0;"><span>'+esc(g.name)+' <span style="color:#a06a10;font-size:0.75rem;">· '+esc(g.reason)+'</span></span><span style="white-space:nowrap;"><button class="pz-btn sec" data-noneed="'+esc(g.key)+'" style="padding:0.12rem 0.5rem;font-size:0.72rem;">not a recipe item</button> <button class="pz-btn ok" data-recopen="'+esc(g.key)+'" style="padding:0.12rem 0.6rem;">Cost it</button></span></div>';}).join('')+'</div>'; }
+  else { gapPanel='<div class="pz-card" style="border:1px solid #f0c36d;background:#fff8e8;margin-bottom:0.8rem;"><div style="font-weight:700;color:#8a5a00;">⚠ Costing Incomplete — '+_gaps.length+' drink'+(_gaps.length===1?'':'s')+'</div><p class="pz-sub" style="margin:0.2rem 0 0.4rem;">Every drink remains sellable. These flags identify missing recipe, inventory-cost or packaging links so COGS can be completed.</p>'+_gaps.map(function(g){return '<div style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;padding:0.25rem 0;border-top:1px solid #f0e0c0;"><span>'+esc(g.name)+' <span style="color:#a06a10;font-size:0.75rem;">· '+esc(g.reason)+'</span></span><button class="pz-btn ok" data-recopen="'+esc(g.key)+'" style="padding:0.12rem 0.6rem;">Cost it</button></div>';}).join('')+'</div>'; }
   root.innerHTML='<div class="pz-h">🧪 Recipe &amp; Costing</div>'+gapPanel+nav+tools+body;
   updateCostBadge();
   var _btl=document.getElementById('recBackToList'); if(_btl)_btl.onclick=function(){ curRecipeKey=null; recipeEditing=false; renderRecipes(); };
   root.querySelectorAll('[data-recsub]').forEach(function(b){b.onclick=function(){recSub=b.getAttribute('data-recsub');recipeEditing=false;renderRecipes();};});
-  root.querySelectorAll('[data-recopen]').forEach(function(b){b.onclick=function(){curRecipeKey=b.getAttribute('data-recopen');recSub='base';recipeEditing=false;renderRecipes();var e=document.getElementById('recEditor');if(e)e.scrollIntoView({behavior:'smooth',block:'start'});};});
+  root.querySelectorAll('[data-recopen]').forEach(function(b){b.onclick=function(){curRecipeKey=b.getAttribute('data-recopen');var target=(A().menuItemsMap||{})[curRecipeKey];if(target&&target.cat)recCategory=target.cat;recSub='base';recipeEditing=false;renderRecipes();var e=document.getElementById('recEditor');if(e)e.scrollIntoView({behavior:'smooth',block:'start'});};});
   root.querySelectorAll('[data-noneed]').forEach(function(b){b.onclick=function(){ if(confirm('Mark this as a resale / bought-in item that needs no recipe? It will be hidden from the not-costed flag. Its COGS won\'t be tracked by recipe — record its cost via the purchase price instead.')) markNoRecipe(b.getAttribute('data-noneed'),true); renderRecipes(); };});
   var _cs=document.getElementById('recCostSheet'); if(_cs)_cs.onclick=exportCostSheet;
   var _re=document.getElementById('recExport'); if(_re)_re.onclick=exportRecipesXlsx;
   var _rt=document.getElementById('recTemplate'); if(_rt)_rt.onclick=downloadRecipeTemplate;
   var _rb=document.getElementById('recImportBtn'), _rf=document.getElementById('recImportFile');
   if(_rb&&_rf){ _rb.onclick=function(){_rf.value='';_rf.click();}; _rf.onchange=function(){ if(_rf.files&&_rf.files[0])importRecipesXlsx(_rf.files[0]); }; }
-  if(recSub==='options'){ renderOptionsMaster(); }
-  else if(recSub==='repair'){ renderRecipeRepair(); }
-  else if(recSub==='packaging'){ renderServeStylePackaging(); }
-  else if(recSub==='optlibrary'){ renderOptionLibrary(); }
+  if(recSub==='packaging'){ renderServeStylePackaging(); }
   else if(recSub==='saved'){ root.querySelectorAll('[data-recopen]').forEach(function(b){b.onclick=function(){curRecipeKey=b.getAttribute('data-recopen');recSub='base';recipeEditing=false;renderRecipes();};}); }
-  else { var rp=document.getElementById('recPick'); if(rp)rp.onchange=function(){ curRecipeKey=this.value||null; openRecipe(curRecipeKey); };
+  else if(recSub==='base'){ var cp=document.getElementById('recCategoryPick');if(cp)cp.onchange=function(){recCategory=this.value;curRecipeKey=null;recipeEditing=false;renderRecipes();};var so=document.getElementById('recSharedOptions'),sor=document.getElementById('recSharedOptionsRoot');if(so&&sor)so.onclick=function(){var show=sor.style.display==='none';sor.style.display=show?'block':'none';if(show)renderOptionsMaster();};var rp=document.getElementById('recPick'); if(rp)rp.onchange=function(){ curRecipeKey=this.value||null; openRecipe(curRecipeKey); };
     if(curRecipeKey)openRecipe(curRecipeKey); }
 }
 function optLabelsForItem(item){
@@ -131,33 +124,6 @@ function openRecipe(key){
   window.__recCostSel=_sel;
   drawRecipeEditor(item);
 }
-
-/* How a drink is served decides its cup, lid and straw. A drink that offers Temperature is
-   answered by that choice; every other drink needs to be told here, or it goes out with no
-   packaging costed at all. */
-function recServeStyleControl(item){
-  var rules=(typeof packagingRulesMap==='object'&&packagingRulesMap)||{};
-  var ids=Object.keys(rules);
-  var groups=(A().getItemOptionGroups?A().getItemOptionGroups(item):[])||[];
-  var byChoice=groups.some(function(g){return (g.choices||[]).some(function(c){return c&&c.serveStyle;});});
-  if(!ids.length){
-    return '<div style="font-size:0.76rem;color:#8a5a00;background:#fff8ec;border:1px solid #e6cfa4;border-radius:6px;padding:0.4rem 0.6rem;margin-bottom:0.5rem;">'
-      +'No serve styles set up yet, so no drink is carrying a cup. Set them up in <b>Recipes → 📦 Packaging</b>.</div>';
-  }
-  var current=String(item.serveStyle||'');
-  var options='<option value="">— not set —</option>'+ids.map(function(id){
-    return '<option value="'+esc(id)+'"'+(id===current?' selected':'')+'>'+esc(rules[id].name||id)+'</option>';
-  }).join('');
-  var note=byChoice
-    ? 'This drink asks the customer Hot or Iced, so the cup follows that choice. The setting here is only the fallback.'
-    : (current?'Cup, lid and straw come from this. Change what is in it under Recipes → 📦 Packaging.'
-              :'<b style="color:#8b1e1e;">Not set — this drink is going out with no cup costed.</b> Pick how it is served.');
-  return '<div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.5rem;">'
-    +'<span class="pz-lbl" style="display:inline;margin:0;">Served</span>'
-    +'<select class="pz-in" id="recServeStyle" style="max-width:180px;">'+options+'</select>'
-    +'<span style="font-size:0.72rem;color:var(--tl);flex:1 1 240px;">'+note+'</span></div>';
-}
-
 function drawRecipeEditor(item){
   var ed=document.getElementById('recEditor'); if(!ed)return;
   var d=recipeDraft; var size=recSize||'M';
@@ -179,7 +145,7 @@ function drawRecipeEditor(item){
   var sizeBtns=['S','M','L'].map(function(sz){return '<button class="pz-btn '+(sz===size?'ok':'sec')+'" data-recsize="'+sz+'" style="padding:0.25rem 0.8rem;">'+sz+'</button>';}).join(' ');
   var grand=baseTotal;
   var caGroupsAll=(A().getItemOptionGroups?A().getItemOptionGroups(item):[])||[];
-  var caAllow=caAllowGroups();
+  var caAllow=caGroupsAll.map(function(g){return g.id;});
   if(d.choiceAdd){Object.keys(d.choiceAdd).forEach(function(_g){if(caAllow.indexOf(_g)<0)delete d.choiceAdd[_g];});}
   var caGroups=caGroupsAll.filter(function(g){return caAllow.indexOf(g.id)>=0;});
   var caInv=ings().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
@@ -204,8 +170,7 @@ function drawRecipeEditor(item){
     }).join('');
     return '<div style="margin-bottom:0.6rem;"><div style="font-weight:600;color:var(--bd);font-size:0.85rem;">'+esc(g.name)+'</div>'+choices+'</div>';
   }).join('');
-  var caManage=caGroupsAll.map(function(g){var on=caAllow.indexOf(g.id)>=0;return '<label style="display:inline-flex;align-items:center;gap:0.3rem;font-size:0.72rem;margin:0 0.7rem 0.25rem 0;cursor:pointer;"><input type="checkbox" data-cagrp="'+esc(g.id)+'"'+(on?' checked':'')+'/>'+esc(g.name)+'</label>';}).join('');
-  var caSection=caGroupsAll.length?('<div style="border-top:2px solid var(--cd);margin-top:0.8rem;padding-top:0.6rem;"><div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Extra ingredients per choice — this drink only</div><p class="pz-sub" style="margin-top:0;">Say only what is DIFFERENT about that choice for this drink — never the whole recipe again. What you put here REPLACES the shared Optional-ingredients definition for this drink; the two are never added together. Leave it empty and the shared one is used — e.g. Hot → extra coffee for this drink. Blank = 0 for that size.</p>'+'<div style="background:var(--cd);border-radius:6px;padding:0.4rem 0.55rem;margin-bottom:0.5rem;font-size:0.72rem;"><b>Which choices can carry per-drink extras</b> <span style="color:var(--tl);">(applies to all drinks — Temperature only by default):</span><div style="margin-top:0.3rem;">'+caManage+'</div></div>'+(caCards||'<p class="pz-sub" style="margin:0;">No choices enabled — tick one above to add a per-drink extra.</p>')+'</div>'):'';
+  var caSection=caGroupsAll.length?('<div style="border-top:2px solid var(--cd);margin-top:0.8rem;padding-top:0.6rem;"><div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Menu choices for this drink</div><p class="pz-sub" style="margin-top:0;">These sections come directly from Menu Availability. Enter only this drink’s additional or reduced ingredients for a choice. A drink-specific definition overrides the shared choice definition, so the same ingredient is never counted twice.</p>'+(caCards||'<p class="pz-sub" style="margin:0;">No choices are assigned to this drink in Menu Availability.</p>')+'</div>'):'';
   // ── COST PER DRINK calculator: base + selected choices (per-recipe extra + shared optional) ──
   var tempRec={choiceAdd:d.choiceAdd};
   var previewNorm=Costing().normalizeRecipe(recipeDraftRaw(d),inventoryMap);
@@ -235,13 +200,12 @@ function drawRecipeEditor(item){
   ed.innerHTML=
     '<div class="pz-card" style="margin-bottom:1rem;">'
       +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.6rem;"><div style="font-weight:600;color:var(--bd);">Recipe for “'+esc(item.name)+'”'+(cat?' · <span style="color:var(--tl);font-size:0.82rem;">'+esc(A().getCatLabel?A().getCatLabel(cat):cat)+(ct?' ('+ct+')':'')+'</span>':'')+'</div><div><span class="pz-lbl" style="display:inline;margin-right:0.4rem;">Cost for size</span>'+sizeBtns+'</div></div>'
-      +recServeStyleControl(item)
       +'<label style="display:inline-flex;align-items:center;gap:0.35rem;font-size:0.76rem;color:var(--tl);margin-bottom:0.5rem;cursor:pointer;"><input type="checkbox" id="recNoNeed"'+(item.noRecipe?' checked':'')+'/> No recipe needed (resale / bought-in item — hide from the not-costed flag)</label>'
       +(ings().length?'':'<p class="pz-low" style="font-size:0.8rem;">Add items in the Inventory tab first.</p>')
-      +'<span class="pz-lbl">Recipe ingredients — base &amp; consumables (cups, lids, straws…). Enter qty per size.</span>'
+      +'<span class="pz-lbl">Base recipe ingredients — enter quantity per size</span>'
       +'<table class="pz-tbl" style="margin-bottom:0.4rem;"><thead><tr><th>Ingredient</th><th>Recipe unit</th><th>S</th><th>M</th><th>L</th><th>Amount ('+size+')</th></tr></thead><tbody>'+(baseRows||'<tr><td colspan="6" style="color:var(--tl);padding:0.5rem;">No ingredients yet.</td></tr>')+'</tbody></table>'
       +'<button class="pz-btn sec" id="recAddBase" style="padding:0.3rem 0.7rem;">+ ingredient</button>'
-      +'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;"><b>Do not add cups, lids, straws or tissue here.</b> Packaging comes from how the drink is served — set that just above, and change what is in it under Recipes → Packaging. Adding it here as well charges it twice. Optional add-ons are costed in the Optional ingredients tab and only trigger when a customer picks them.</div>'
+      +'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;"><b>Do not add cups, lids, straws or tissue here.</b> Packaging is costed once through Packaging Costing. Every ingredient selected here is linked to its Inventory record and is included in sale COGS.</div>'
       +'<div style="border-top:2px solid var(--bd);margin-top:0.8rem;padding-top:0.6rem;display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:var(--bd);">BASE COST / '+size+'</span><span style="font-weight:700;font-size:1.1rem;color:var(--bd);">'+peso(grand)+'</span></div>'
       +'<div style="font-size:0.68rem;color:var(--tl);margin-top:0.2rem;">Base ingredients only. The full cost per drink (base + extras + optional) is in the calculator below.</div>'
       +tracePanel
@@ -276,18 +240,9 @@ function drawRecipeEditor(item){
   ed.querySelectorAll('select[data-brow]').forEach(function(s){s.onchange=function(){syncAll();drawRecipeEditor(item);};});
   ed.querySelectorAll('[data-caadd]').forEach(function(b){b.onclick=function(){syncAll();var g=b.getAttribute('data-g'),lk=b.getAttribute('data-l'),lbl=b.getAttribute('data-label');d.choiceAdd=d.choiceAdd||{};d.choiceAdd[g]=d.choiceAdd[g]||{};d.choiceAdd[g][lk]=d.choiceAdd[g][lk]||{label:lbl,ings:[]};d.choiceAdd[g][lk].ings.push({ing:'',qtyS:null,qtyM:null,qtyL:null});drawRecipeEditor(item);};});
   ed.querySelectorAll('[data-carem]').forEach(function(b){b.onclick=function(){syncAll();var g=b.getAttribute('data-g'),lk=b.getAttribute('data-l'),ix=Number(b.getAttribute('data-ix'));if(d.choiceAdd&&d.choiceAdd[g]&&d.choiceAdd[g][lk]&&d.choiceAdd[g][lk].ings)d.choiceAdd[g][lk].ings.splice(ix,1);drawRecipeEditor(item);};});
-  ed.querySelectorAll('[data-cagrp]').forEach(function(cb){cb.onchange=function(){syncAll();var picked=[];ed.querySelectorAll('[data-cagrp]').forEach(function(x){if(x.checked)picked.push(x.getAttribute('data-cagrp'));});window.__posSettings=window.__posSettings||{};window.__posSettings.choiceAddGroups=picked;var a=A();a.update(a.ref(a.db,'posSettings'),{choiceAddGroups:picked}).catch(function(e){alert('Could not save the choice list: '+((e&&e.code)||e)+'. Log in with your admin email.');});drawRecipeEditor(item);};});
   ed.querySelectorAll('select[data-caf="ing"]').forEach(function(s){s.onchange=function(){syncAll();drawRecipeEditor(item);};});
   ed.querySelectorAll('input[data-caf]').forEach(function(inp){inp.oninput=function(){var tr=inp.closest('[data-carow]');if(!tr)return;var g=tr.getAttribute('data-ca-g'),lk=tr.getAttribute('data-ca-l');var rows=[];ed.querySelectorAll('[data-carow][data-ca-g="'+g+'"][data-ca-l="'+lk+'"]').forEach(function(r){var ing=(r.querySelector('[data-caf="ing"]')||{}).value||'';function v(f){var el=r.querySelector('[data-caf="'+f+'"]');return (el&&el.value!=='')?(Number(el.value)||0):null;}rows.push({ing:ing,qtyS:v('qtyS'),qtyM:v('qtyM'),qtyL:v('qtyL')});});var lab=ed.querySelector('[data-cacost="'+g+'|'+lk+'"]');if(lab)lab.textContent='extra — S '+peso(ocChoiceCost(rows,'S'))+' · M '+peso(ocChoiceCost(rows,'M'))+' · L '+peso(ocChoiceCost(rows,'L'));};});
   ed.querySelectorAll('[data-rcsel]').forEach(function(b){b.onclick=function(){syncAll();var gid=b.getAttribute('data-rcsel');var multi=b.getAttribute('data-rcmulti')==='1';var lb=b.getAttribute('data-rclabel');var sel=window.__recCostSel||{};if(multi){var arr=Array.isArray(sel[gid])?sel[gid].slice():[];var i=arr.indexOf(lb);if(i>-1)arr.splice(i,1);else arr.push(lb);sel[gid]=arr;}else{sel[gid]=(sel[gid]===lb)?null:lb;}window.__recCostSel=sel;drawRecipeEditor(item);};});
-  var _ss=document.getElementById('recServeStyle');
-  if(_ss)_ss.onchange=function(){
-    var style=String(_ss.value||''),a=A();
-    a.set(a.ref(a.db,'menuItems/'+item.key+'/serveStyle'),style||null).then(function(){
-      if(A().menuItemsMap&&A().menuItemsMap[item.key])A().menuItemsMap[item.key].serveStyle=style;
-      drawRecipeEditor(item);
-    }).catch(function(e){alert('Could not save how this drink is served: '+((e&&e.code)||e)+'. Log in with your admin email.');});
-  };
   var _nn=document.getElementById('recNoNeed'); if(_nn)_nn.onchange=function(){ markNoRecipe(item.key,this.checked); };
   document.getElementById('recSave').onclick=function(){ try{ syncAll(); saveRecipe(item.key); }catch(err){ alert('Recipe save hit an error: '+(err&&err.message?err.message:err)+'. Nothing was saved — tell support this message.'); } };
   document.getElementById('recClose').onclick=function(){ recipeEditing=false; curRecipeKey=null; renderRecipes(); };

@@ -23,6 +23,8 @@ const inventory={
   milk:{name:'Milk',unit:'ml',cost:0.02,ledgerVersion:1,ledgerUpdatedAt:100},
   syrup:{name:'Syrup',unit:'ml',cost:0.10,ledgerVersion:1,ledgerUpdatedAt:100},
   cream:{name:'Cream',unit:'ml',cost:0.10,ledgerVersion:1,ledgerUpdatedAt:100},
+  hotCup:{name:'Hot Cup',unit:'pc',cost:4,ledgerVersion:1,ledgerUpdatedAt:100},
+  icedCup:{name:'Iced Cup',unit:'pc',cost:5,ledgerVersion:1,ledgerUpdatedAt:100},
 };
 const raw={
   base:[
@@ -52,6 +54,16 @@ near(result.usage.cream,20,'per-recipe choice usage');
 near(result.totalCost,12.8,'traceable total COGS');
 if(!result.lines.every(line=>line.costSource&&line.stockUnit&&Number.isFinite(line.totalCost)))throw new Error('cost trace is incomplete');
 if(!result.cogsCovered)throw new Error('fully costed order marked uncovered');
+
+const categoryPackaging=Costing.costOrder({
+  lineItems:[{itemKey:'latte',size:'M',qty:1,optLabels:['Iced']}],recipes:{latte:normalized.recipe},inventory,
+  menuItems:{latte:{name:'Latte',cat:'coffee',options:['temp']}},optionGroups:{temp:{choices:[{label:'Hot'},{label:'Iced'}]}},
+  packagingRules:{hot:{rows:[{ing:'hotCup',qtyM:1}]},iced:{rows:[{ing:'icedCup',qtyM:1}]}},
+  packagingAssignments:{coffee:{choices:{temp:{Hot:'hot',Iced:'iced'}}}},
+});
+near(categoryPackaging.usage.icedCup,1,'category and current menu choice select iced packaging inventory');
+near(categoryPackaging.totalCost,9.9,'category packaging flows into total COGS');
+if(!categoryPackaging.lines.some(line=>line.source==='packaging'&&line.ingredientId==='icedCup'))throw new Error('packaging COGS trace is missing');
 
 const noCost=Costing.costRecipe({itemKey:'latte',recipe:normalized.recipe,inventory:{...inventory,milk:{...inventory.milk,cost:0}},item:{name:'Latte'},size:'M'});
 if(noCost.cogsCovered||!noCost.warnings.some(x=>x.code==='MISSING_COST'))throw new Error('missing inventory cost was not surfaced');

@@ -30,7 +30,7 @@ function usageTypeName(id){return (usageTypesMap[id]&&usageTypesMap[id].name)||(
 function usageTypeReasons(id){var t=usageTypesMap[id]||DEFAULT_USAGE_TYPES.filter(function(d){return d.id===id;})[0];return (t&&t.reasons)||[];}
 function usageTypeAccount(id){var t=usageTypesMap[id]||DEFAULT_USAGE_TYPES.filter(function(d){return d.id===id;})[0]||{};return String(t.expenseAccount||(id==='rnd'?'6078':id==='waste'?'5900':'6077'));}
 function usageAccountOptions(selected){return USAGE_ACCOUNT_OPTIONS.map(function(a){return '<option value="'+a.code+'"'+(a.code===String(selected)?' selected':'')+'>'+a.code+' · '+esc(a.name)+'</option>';}).join('');}
-var posCart={}, posCat='ALL', posSearch='', posBuilt=false, recipeEditing=false, curRecipeKey=null, recipeDraft=null, recSub='base', recSize='M', posScopedDisc=[], posChannel='instore', posView='counter', onlineOrdersMap={};
+var posCart={}, posCat='ALL', posSearch='', posBuilt=false, recipeEditing=false, curRecipeKey=null, recipeDraft=null, recSub='base', recCategory='', recSize='M', posScopedDisc=[], posChannel='instore', posView='counter', onlineOrdersMap={};
 var posDraft={},posChargeBusy=false,posPaymentVerification=null;
 function telemetry(){return window.AccazaTelemetry||{start:function(){},end:function(){},metric:function(){},error:function(){}};}
 function capturePosDraft(root){if(!root)return;var active=document.activeElement,focusId=active&&root.contains(active)?active.id:'';root.querySelectorAll('input[id],textarea[id]').forEach(function(el){posDraft[el.id]={value:el.value,checked:!!el.checked,type:el.type};});posDraft.__focus=focusId;}
@@ -42,7 +42,7 @@ function A(){return window.__accaza;}
 function platformRefKey(r){return String(r||'').trim().toUpperCase().replace(/[.#$/\[\]\u0000-\u001f\u007f]/g,'_');}
 function F(){if(!window.AccazaFormDialog)throw new Error('Form service unavailable. Refresh the portal.');return window.AccazaFormDialog;}
 function Costing(){if(!window.AccazaCosting)throw new Error('The shared costing engine did not load. Refresh the portal and try again.');return window.AccazaCosting;}
-function costingContext(extra){return Object.assign({inventory:inventoryMap,recipes:recipesMap,menuItems:(A()&&A().menuItemsMap)||{},optionCosts:optCostStore(),optionRecipes:optRecipesMap,optionGroups:(A()&&A().optionGroupsMap)||{},packagingRules:packagingRulesMap},extra||{});}
+function costingContext(extra){return Object.assign({inventory:inventoryMap,recipes:recipesMap,menuItems:(A()&&A().menuItemsMap)||{},optionCosts:optCostStore(),optionRecipes:optRecipesMap,optionGroups:(A()&&A().optionGroupsMap)||{},packagingRules:packagingRulesMap,packagingAssignments:(window.__posSettings&&window.__posSettings.packagingAssignments)||{}},extra||{});}
 function movementId(prefix,source,item){return (String(prefix)+'_'+String(source)+'_'+String(item)).replace(/[^A-Za-z0-9_-]/g,'_').slice(0,160);}
 function postMovements(rows){var a=A();if(!a||!a.postInventoryMovements)return Promise.reject(new Error('Inventory movement service is not available. Refresh the portal.'));rows=(rows||[]).filter(function(x){return x&&x.itemId;});var chunks=[];while(rows.length)chunks.push(rows.splice(0,100));var out={count:0,duplicates:0,movements:[]};return chunks.reduce(function(p,chunk){return p.then(function(){return a.postInventoryMovements(chunk);}).then(function(r){r=r&&r.data?r.data:r||{};out.count+=Number(r.count)||0;out.duplicates+=Number(r.duplicates)||0;out.movements=out.movements.concat(r.movements||[]);});},Promise.resolve()).then(function(){return out;});}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -213,6 +213,9 @@ function init(){
   a.subscribe('pettyCashVouchers', function(s){ purchaseFundAdvanceMap=s.val()||{}; if(isTab('purchases'))renderPurchases(); });
   a.subscribe('suppliers', function(s){ supplierMap=s.val()||{}; window.__accazaSuppliers=supplierMap;if(!window.__supplierLegacyInitRequested&&a.manageSupplier){window.__supplierLegacyInitRequested=true;a.manageSupplier({action:'initialize_legacy'}).catch(function(){window.__supplierLegacyInitRequested=false;});} if(isTab('purchases'))renderPurchases(); });
   a.subscribe('packagingRules', function(s){ packagingRulesMap=s.val()||{}; if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateCostBadge(); });
+  a.subscribe('menuItems', function(){ if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateCostBadge(); });
+  a.subscribe('categories', function(){ if(isTab('recipes')&&!recipeEditing)renderRecipes(); });
+  a.subscribe('optionGroups', function(){ if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateCostBadge(); });
   a.subscribe('recipes', function(s){ recipesMap=s.val()||{}; if(isTab('recipes')&&!recipeEditing)renderRecipes(); if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); updateCostBadge(); });
   a.subscribe('optionRecipes', function(s){ var raw=s.val()||{}; var m={}; Object.keys(raw).forEach(function(k){var v=raw[k]||{}; var lb=v.label||k; m[lb]=v;}); optRecipesMap=m; if(isTab('recipes')&&!recipeEditing)renderRecipes(); if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); });
   a.subscribe('internalUsage', function(s){ usageMap=s.val()||{}; if(isTab('usage'))renderUsage(); });
