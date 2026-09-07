@@ -162,6 +162,11 @@ check(/selectedChoices\.map/.test(recipeUi)&&/groupName/.test(recipeUi)&&/option
 check(/<th>Recipe unit<\/th>/.test(recipeUi)&&/Amount \('\+size\+'\)/.test(recipeUi),'every per-choice recipe table shows recipe unit and current-size amount');
 check(/data-caf="unit"/.test(recipeUi)&&/dispS:r\.dS/.test(recipeUi),'per-choice units and display quantities are converted and saved through the costing engine');
 check(/table-layout:fixed/.test(recipeUi)&&/class="r">Amount/.test(recipeUi),'base and option recipe columns share a fixed grid with right-aligned amounts');
+check(/data-effective-override/.test(recipeUi)&&/data-override-source/.test(recipeUi),'the effective recipe table provides row-level shared overrides');
+check(/data-rcselect/.test(recipeUi)&&/data-rcmulti-check/.test(recipeUi),'required choices use selectors and optional add-ons use checkboxes');
+check(/selectedDetail\(line\)/.test(recipeUi)&&/packagingDetail/.test(recipeUi),'selected option and packaging lines enumerate quantity, unit and cost');
+check(/Active choice overrides/.test(recipeUi)&&/caGroupsAll\.filter/.test(recipeUi),'untouched shared choices stay hidden from the recipe editor');
+check(/isPackagingCostItem/.test(recipeUi)&&/Packaging Costing only/.test(recipeUi),'packaging items cannot be newly selected as shared choice ingredients');
 
 /* 10. the shared option library can hold packaging too - leaving it there charges the cup twice */
 const libraryCosts={og_temp:{Hot:{label:'Hot',ings:[row('hotcup',1,1,1),row('flat',1,1,1)]},
