@@ -4,7 +4,7 @@
   else root.AccazaCosting=api;
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
-  var VERSION='3F-1';
+  var VERSION='3F-2';
   var SIZES=['S','M','L'];
   var UNITS={
     ml:{dim:'volume',factor:1},l:{dim:'volume',factor:1000},tsp:{dim:'volume',factor:4.92892},tbsp:{dim:'volume',factor:14.7868},cup:{dim:'volume',factor:240},'fl oz':{dim:'volume',factor:29.5735},
@@ -42,7 +42,7 @@
     if(!id){errors.push({code:'MISSING_INGREDIENT',path:path,message:'Ingredient is required.'});return null;}
     if(!item){errors.push({code:'BROKEN_INVENTORY_REFERENCE',path:path,itemId:id,message:'Inventory item '+id+' does not exist.'});return null;}
     var stockUnit=unit(item.unit),inputUnit=unit(row.inputUnit||row.unit||item.unit);
-    var out={ing:id,unit:inputUnit,stockUnit:stockUnit};
+    var out={ing:id,unit:inputUnit,stockUnit:stockUnit};if(row.op)out.op=String(row.op);
     var any=false;
     SIZES.forEach(function(size){
       var display=row['disp'+size];if(display==null||display==='')display=row['input'+size];
@@ -142,7 +142,9 @@
          sweetener, not minus three quarters of an ounce - on a drink with no condensed milk it
          removes nothing rather than driving the count below zero. Rows marked op:'reduce' are
          held back and applied last, capped at what the drink actually uses. */
-      var reducers=[],lineUsage={};
+      var reducers=[],lineUsage={},replaced={};
+      contributions.forEach(function(entry){if(entry&&entry.row&&entry.row.op==='replace'){var id=entry.row.ing;if(replaced[id]&&replaced[id]!==entry.optionGroupId+'|'+entry.optionLabel)errors.push({code:'CONFLICTING_REQUIRED_REPLACEMENT',itemKey:li.itemKey,itemId:id,message:'Two selected choices replace the same ingredient.'});replaced[id]=entry.optionGroupId+'|'+entry.optionLabel;}});
+      contributions=contributions.filter(function(entry){return !(String(entry.source).indexOf('base_')===0&&replaced[entry.row&&entry.row.ing]);});
       contributions=contributions.filter(function(entry){
         if(entry&&entry.row&&String(entry.row.op||'')==='reduce'&&String(entry.source).indexOf('base_')!==0){reducers.push(entry);return false;}
         return true;
