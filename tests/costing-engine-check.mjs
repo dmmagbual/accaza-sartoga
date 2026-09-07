@@ -36,7 +36,7 @@ const raw={
 const normalized=Costing.normalizeRecipe(raw,inventory);
 if(!normalized.ok)throw new Error('valid recipe normalization failed: '+JSON.stringify(normalized.errors));
 near(normalized.recipe.base[1].qtyM,200,'recipe display quantity normalized to stock unit');
-equal(normalized.recipe.schemaVersion,2,'normalized recipe schema stamp');
+equal(normalized.recipe.schemaVersion,3,'normalized recipe schema stamp');
 
 const result=Costing.costOrder({
   lineItems:[{itemKey:'latte',size:'M',qty:2,optLabels:['Vanilla','Hot']}],
@@ -67,6 +67,11 @@ if(!categoryPackaging.lines.some(line=>line.source==='packaging'&&line.ingredien
 
 const noCost=Costing.costRecipe({itemKey:'latte',recipe:normalized.recipe,inventory:{...inventory,milk:{...inventory.milk,cost:0}},item:{name:'Latte'},size:'M'});
 if(noCost.cogsCovered||!noCost.warnings.some(x=>x.code==='MISSING_COST'))throw new Error('missing inventory cost was not surfaced');
+const inherited=Costing.costRecipe({itemKey:'latte',recipe:{sharedBase:[{ing:'beans'},{ing:'milk'}],base:[{ing:'milk',qtyS:90,qtyM:120,qtyL:150}]},inventory,item:{key:'latte',name:'Latte',cat:'coffee'},size:'M',sharedBaseIngredients:{coffee:{ings:[{ing:'beans',qtyS:18,qtyM:19,qtyL:20},{ing:'milk',qtyS:120,qtyM:160,qtyL:200}]}}});
+if(!inherited.ok)throw new Error('shared base recipe should cost successfully');
+if(inherited.usage.beans!==19||inherited.usage.milk!==120)throw new Error('recipe-specific quantity must replace, not stack with, shared base');
+if(!inherited.lines.some(line=>line.source==='base_shared'&&line.ingredientId==='beans'))throw new Error('shared source trace missing');
+if(!inherited.lines.some(line=>line.source==='base_override'&&line.ingredientId==='milk'))throw new Error('override source trace missing');
 const broken=Costing.normalizeRecipe({base:[{ing:'deleted',unit:'g',dispM:1}]},inventory);
 if(broken.ok||!broken.errors.some(x=>x.code==='BROKEN_INVENTORY_REFERENCE'))throw new Error('broken inventory reference was not blocked');
 const zeroChoice=Costing.normalizeRecipe({base:[{ing:'bean',unit:'g',dispM:18}],choiceAdd:{og_shot:{'Add 1 Shot':{label:'Add 1 Shot',ings:[{ing:'bean',unit:'g',dispS:0,dispM:0,dispL:0}]}}}},{...inventory,bean:{name:'Coffee Beans',unit:'g',cost:0.05}});

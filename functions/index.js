@@ -3762,7 +3762,7 @@ function buildOrderInventoryPlan(costing, inv, ps, capturedAt) {
 async function calculateOrderInventoryPlan(db,order,capturedAt=Date.now()) {
   const [recSnap,optSnap,invSnap,miSnap,psSnap,ogSnap,pkSnap]=await Promise.all([db.ref("/recipes").get(),db.ref("/optionRecipes").get(),db.ref("/inventory").get(),db.ref("/menuItems").get(),db.ref("/posSettings").get(),db.ref("/optionGroups").get(),db.ref("/packagingRules").get()]),optionRaw=optSnap.val()||{},optionRecipes={};
   Object.keys(optionRaw).forEach((key)=>{const row=optionRaw[key]||{};optionRecipes[row.label||key]=row;});
-  const ps=psSnap.val()||{},inv=invSnap.val()||{},costing=Costing.costOrder({lineItems:order.lineItems||[],recipes:recSnap.val()||{},inventory:inv,menuItems:miSnap.val()||{},optionCosts:ps.optionCosts||{},optionRecipes,optionGroups:ogSnap.val()||{},packagingRules:pkSnap.val()||{},packagingAssignments:ps.packagingAssignments||{}});
+  const ps=psSnap.val()||{},inv=invSnap.val()||{},costing=Costing.costOrder({lineItems:order.lineItems||[],recipes:recSnap.val()||{},inventory:inv,menuItems:miSnap.val()||{},sharedBaseIngredients:ps.sharedBaseIngredients||{},optionCosts:ps.optionCosts||{},optionRecipes,optionGroups:ogSnap.val()||{},packagingRules:pkSnap.val()||{},packagingAssignments:ps.packagingAssignments||{}});
   if(!costing.ok)throw new Error("Authoritative costing rejected order: "+costing.errors.slice(0,5).map(row=>row.code+": "+row.message).join(" | "));
   return buildOrderInventoryPlan(costing,inv,ps,capturedAt);
 }
@@ -3806,7 +3806,7 @@ exports.onOrderFinalize = onValueWritten(
 
       const costing = planSnap.exists()?null:Costing.costOrder({
         lineItems: o.lineItems, recipes, inventory: inv, menuItems: mi,
-        optionCosts, optionRecipes: optMap, optionGroups,
+        sharedBaseIngredients: ps.sharedBaseIngredients || {}, optionCosts, optionRecipes: optMap, optionGroups,
         // Packaging follows how a drink is served, from one shared table. The server reads it
         // here so the cost it posts is the cost the till showed.
         packagingRules: pkSnap.val() || {},
