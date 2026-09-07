@@ -4,7 +4,7 @@
   else root.AccazaCosting=api;
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
-  var VERSION='3E-3';
+  var VERSION='3F-1';
   var SIZES=['S','M','L'];
   var UNITS={
     ml:{dim:'volume',factor:1},l:{dim:'volume',factor:1000},tsp:{dim:'volume',factor:4.92892},tbsp:{dim:'volume',factor:14.7868},cup:{dim:'volume',factor:240},'fl oz':{dim:'volume',factor:29.5735},
@@ -66,11 +66,20 @@
   function normalizeRecipe(recipe,inventory){
     recipe=recipe||{};inventory=inventory||{};var errors=[],warnings=[],seen={};
     var base=(Array.isArray(recipe.base)?recipe.base:[]).map(function(row,ix){var r=normalizeRow(row,inventory,'base['+ix+']',errors,warnings);if(r){if(seen[r.ing])warnings.push({code:'DUPLICATE_INGREDIENT',path:'base['+ix+']',itemId:r.ing,message:'Ingredient appears more than once; quantities will stack.'});seen[r.ing]=1;}return r;}).filter(Boolean);
-    if(!base.length)errors.push({code:'EMPTY_RECIPE',path:'base',message:'Add at least one base ingredient or consumable.'});
+    var sharedBase=(Array.isArray(recipe.sharedBase)?recipe.sharedBase:[]).map(function(ref){return typeof ref==='string'?{ing:ref}:{ing:String((ref&&ref.ing)||'')};}).filter(function(ref){return !!ref.ing;});
+    if(!base.length&&!sharedBase.length)errors.push({code:'EMPTY_RECIPE',path:'base',message:'Select at least one shared base ingredient or add a recipe-specific ingredient.'});
     var choiceAdd={};Object.keys(recipe.choiceAdd||{}).forEach(function(gid){var group={};Object.keys(recipe.choiceAdd[gid]||{}).forEach(function(key){var entry=recipe.choiceAdd[gid][key]||{},label=entry.label||key;var rows=(entry.ings||[]).map(function(row,ix){return normalizeRow(row,inventory,'choiceAdd.'+gid+'.'+key+'['+ix+']',errors,warnings,true,label);}).filter(Boolean);if(rows.length)group[key]={label:label,ings:rows};});if(Object.keys(group).length)choiceAdd[gid]=group;});
-    var normalized={base:base,choiceAdd:choiceAdd,schemaVersion:2,costingEngineVersion:VERSION,updatedAt:n(recipe.updatedAt)||Date.now()};
+    var normalized={base:base,sharedBase:sharedBase,choiceAdd:choiceAdd,schemaVersion:3,costingEngineVersion:VERSION,updatedAt:n(recipe.updatedAt)||Date.now()};
     if(Array.isArray(recipe.options))normalized.options=recipe.options;
     return {ok:errors.length===0,recipe:normalized,errors:errors,warnings:warnings,engineVersion:VERSION};
+  }
+  function effectiveBaseRows(item,recipe,ctx,warnings){
+    var own={},out=[];(recipe.base||[]).forEach(function(row){if(row&&row.ing)own[row.ing]=1;});
+    var library=((ctx.sharedBaseIngredients||{})[String((item&&item.cat)||'')]||{}).ings||[];
+    var byIng={};library.forEach(function(row){if(row&&row.ing)byIng[row.ing]=row;});
+    (recipe.sharedBase||[]).forEach(function(ref){var id=typeof ref==='string'?ref:ref&&ref.ing;if(!id||own[id])return;var row=byIng[id];if(row)out.push({row:row,source:'base_shared'});else warnings.push({code:'MISSING_SHARED_BASE',itemKey:item&&item.key,itemId:id,message:'A selected shared base ingredient is no longer defined for this menu category.'});});
+    (recipe.base||[]).forEach(function(row){out.push({row:row,source:byIng[row.ing]?'base_override':'base_recipe'});});
+    return out;
   }
   function optionRows(item,recipe,label,size,ctx){
     var gid=groupIdForLabel(item,label,ctx.optionGroups||{}),key=optKey(label),rows=[],found=false;
@@ -120,8 +129,8 @@
       if(!li||!li.itemKey){errors.push({code:'INVALID_ORDER_LINE',path:'lineItems['+lix+']',message:'Menu item is required.'});return;}
       var orderQty=Number(li.qty),size=SIZES.indexOf(li.size)>=0?li.size:'M';if(!Number.isFinite(orderQty)||orderQty<=0){errors.push({code:'INVALID_ORDER_QUANTITY',path:'lineItems['+lix+'].qty',message:'Order quantity must be positive.'});return;}
       var recipe=recipes[li.itemKey],item=Object.assign({key:li.itemKey},menu[li.itemKey]||{});
-      if(!recipe||!Array.isArray(recipe.base)||!recipe.base.length){warnings.push({code:'MISSING_RECIPE',itemKey:li.itemKey,message:(item.name||li.itemKey)+' has no recipe.'});return;}
-      var contributions=(recipe.base||[]).map(function(row){return {row:row,source:'base'};});
+      if(!recipe||(!(recipe.base&&recipe.base.length)&&!(recipe.sharedBase&&recipe.sharedBase.length))){warnings.push({code:'MISSING_RECIPE',itemKey:li.itemKey,message:(item.name||li.itemKey)+' has no recipe.'});return;}
+      var contributions=effectiveBaseRows(item,recipe,ctx,warnings);
       (li.optLabels||[]).forEach(function(label){var found=optionRows(item,recipe,label,size,ctx);if(!found.length)warnings.push({code:'UNMAPPED_OPTION',itemKey:li.itemKey,label:label,message:'No ingredient cost is mapped to option '+label+'.'});contributions=contributions.concat(found);});
       var serveStyle=serveStyleFor(item,li.optLabels,ctx);
       if(serveStyle){
@@ -135,10 +144,10 @@
          held back and applied last, capped at what the drink actually uses. */
       var reducers=[],lineUsage={};
       contributions=contributions.filter(function(entry){
-        if(entry&&entry.row&&String(entry.row.op||'')==='reduce'&&entry.source!=='base'){reducers.push(entry);return false;}
+        if(entry&&entry.row&&String(entry.row.op||'')==='reduce'&&String(entry.source).indexOf('base_')!==0){reducers.push(entry);return false;}
         return true;
       });
-      contributions.forEach(function(entry,rix){var row=entry.row||{},id=row.ing,inv=inventory[id];if(!id||!inv){errors.push({code:'BROKEN_INVENTORY_REFERENCE',itemKey:li.itemKey,itemId:id||'',message:'Recipe points to a missing inventory item.'});return;}var per=rawSize(row,size,recipe),adjustment=entry.source!=='base';if(!Number.isFinite(per)||(!adjustment&&per<0)){errors.push({code:'INVALID_QUANTITY',itemKey:li.itemKey,itemId:id,message:'Recipe quantity is invalid.'});return;}var totalQty=q6(per*orderQty);if(!totalQty)return;var unitCost=n(inv.cost);if(!(unitCost>0))warnings.push({code:'MISSING_COST',itemKey:li.itemKey,itemId:id,message:(inv.name||id)+' has no current unit cost.'});var totalCost=q6(totalQty*unitCost);usage[id]=q6((usage[id]||0)+totalQty);lineUsage[id]=q6((lineUsage[id]||0)+totalQty);lines.push({itemKey:li.itemKey,itemName:item.name||li.itemKey,size:size,orderQty:orderQty,source:entry.source,optionGroupId:entry.optionGroupId||null,optionLabel:entry.optionLabel||null,ingredientId:id,ingredientName:inv.name||id,quantityPerServing:q6(per),totalQuantity:totalQty,stockUnit:unit(inv.unit),unitCost:q6(unitCost),totalCost:totalCost,costSource:inv.ledgerVersion?'inventory-ledger-wac':'inventory-wac',costEffectiveAt:n(inv.ledgerUpdatedAt||inv.updatedAt)||null});});
+      contributions.forEach(function(entry,rix){var row=entry.row||{},id=row.ing,inv=inventory[id];if(!id||!inv){errors.push({code:'BROKEN_INVENTORY_REFERENCE',itemKey:li.itemKey,itemId:id||'',message:'Recipe points to a missing inventory item.'});return;}var per=rawSize(row,size,recipe),adjustment=String(entry.source).indexOf('base_')!==0;if(!Number.isFinite(per)||(!adjustment&&per<0)){errors.push({code:'INVALID_QUANTITY',itemKey:li.itemKey,itemId:id,message:'Recipe quantity is invalid.'});return;}var totalQty=q6(per*orderQty);if(!totalQty)return;var unitCost=n(inv.cost);if(!(unitCost>0))warnings.push({code:'MISSING_COST',itemKey:li.itemKey,itemId:id,message:(inv.name||id)+' has no current unit cost.'});var totalCost=q6(totalQty*unitCost);usage[id]=q6((usage[id]||0)+totalQty);lineUsage[id]=q6((lineUsage[id]||0)+totalQty);lines.push({itemKey:li.itemKey,itemName:item.name||li.itemKey,size:size,orderQty:orderQty,source:entry.source,optionGroupId:entry.optionGroupId||null,optionLabel:entry.optionLabel||null,ingredientId:id,ingredientName:inv.name||id,quantityPerServing:q6(per),totalQuantity:totalQty,stockUnit:unit(inv.unit),unitCost:q6(unitCost),totalCost:totalCost,costSource:inv.ledgerVersion?'inventory-ledger-wac':'inventory-wac',costEffectiveAt:n(inv.ledgerUpdatedAt||inv.updatedAt)||null});});
       reducers.forEach(function(entry){
         var row=entry.row||{},id=row.ing,inv=inventory[id];
         if(!id||!inv){errors.push({code:'BROKEN_INVENTORY_REFERENCE',itemKey:li.itemKey,itemId:id||'',message:'Recipe points to a missing inventory item.'});return;}
@@ -160,6 +169,6 @@
     var total=money(lines.reduce(function(sum,line){return sum+n(line.totalCost);},0));
     return {ok:errors.length===0,engineVersion:VERSION,usage:usage,lines:lines,totalCost:total,cogsCovered:errors.length===0&&!warnings.some(function(w){return w.code==='MISSING_COST'||w.code==='MISSING_RECIPE'||w.code==='UNMAPPED_OPTION'||w.code==='UNMAPPED_SERVE_STYLE';}),errors:errors,warnings:warnings};
   }
-  function costRecipe(args){args=args||{};return costOrder({lineItems:[{itemKey:args.itemKey||'item',size:args.size||'M',qty:args.qty||1,optLabels:args.optLabels||[]}],recipes:(function(){var o={};o[args.itemKey||'item']=args.recipe;return o;})(),inventory:args.inventory||{},menuItems:(function(){var o={};o[args.itemKey||'item']=args.item||{};return o;})(),optionCosts:args.optionCosts||{},optionRecipes:args.optionRecipes||{},optionGroups:args.optionGroups||{},packagingRules:args.packagingRules||{},packagingAssignments:args.packagingAssignments||{}});}
-  return {VERSION:VERSION,SIZES:SIZES,normalizeUnit:unit,unitInfo:unitInfo,compatible:compatible,convert:convert,normalizeRecipe:normalizeRecipe,costOrder:costOrder,costRecipe:costRecipe,optKey:optKey,serveStyleFor:serveStyleFor,packagingRows:packagingRows};
+  function costRecipe(args){args=args||{};return costOrder({lineItems:[{itemKey:args.itemKey||'item',size:args.size||'M',qty:args.qty||1,optLabels:args.optLabels||[]}],recipes:(function(){var o={};o[args.itemKey||'item']=args.recipe;return o;})(),inventory:args.inventory||{},menuItems:(function(){var o={};o[args.itemKey||'item']=args.item||{};return o;})(),sharedBaseIngredients:args.sharedBaseIngredients||{},optionCosts:args.optionCosts||{},optionRecipes:args.optionRecipes||{},optionGroups:args.optionGroups||{},packagingRules:args.packagingRules||{},packagingAssignments:args.packagingAssignments||{}});}
+  return {VERSION:VERSION,SIZES:SIZES,normalizeUnit:unit,unitInfo:unitInfo,compatible:compatible,convert:convert,normalizeRecipe:normalizeRecipe,effectiveBaseRows:effectiveBaseRows,costOrder:costOrder,costRecipe:costRecipe,optKey:optKey,serveStyleFor:serveStyleFor,packagingRows:packagingRows};
 });

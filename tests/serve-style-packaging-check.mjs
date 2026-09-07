@@ -153,9 +153,9 @@ check(/packAddStyle/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the
 
 /* 9. the recipe calculator must show exactly what the sale-costing engine will post */
 const recipeUi=fs.readFileSync('src/admin/pos/30-recipes.js','utf8');
-check(/packagingRules:packagingRulesMap/.test(recipeUi)&&/packagingAssignments:previewAssignments/.test(recipeUi),'the recipe calculator includes assigned packaging in its total');
+check(/costingContext\(\)/.test(recipeUi)&&/packagingRules:packagingRulesMap/.test(fs.readFileSync('src/admin/pos/00-shared-state.js','utf8')),'the recipe calculator includes assigned packaging in its total');
 check(/Base recipe/.test(recipeUi)&&/Selected option ingredients/.test(recipeUi)&&/Packaging ·/.test(recipeUi),'the calculator separates base, selected options and packaging');
-check(/line\.source==='base'/.test(recipeUi)&&/line\.source==='packaging'/.test(recipeUi),'the displayed subtotals come from the same engine lines as the final total');
+check(/String\(line\.source\)\.indexOf\('base_'\)===0/.test(recipeUi)&&/line\.source==='packaging'/.test(recipeUi),'the displayed subtotals come from the same engine lines as the final total');
 const labeledOption=cost(recipes,menuItems,optionGroups,{},'latte','M',['Hot']).lines.filter(line=>/^option_/.test(line.source));
 check(labeledOption.length>0&&labeledOption.every(line=>line.optionGroupId==='og_temp'&&line.optionLabel==='Hot'),'costing-engine option lines retain their group and choice for itemized review');
 check(/selectedChoices\.map/.test(recipeUi)&&/groupName/.test(recipeUi)&&/optionAmounts/.test(recipeUi),'every selected menu option is shown on its own costing line');
