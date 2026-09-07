@@ -12,10 +12,11 @@ function renderInventory(){
   var missingBrand=list.filter(function(i){return recipeUsesInventory(i.id)&&!activeSkusFor(i.id).length;});
   var shown=!catFilter?list:(catFilter==='__none__'?uncat:(catFilter==='__brand_missing__'?missingBrand:list.filter(function(i){return (i.category||'')===catFilter;})));
   var unledgered=list.filter(function(i){return !i.ledgerVersion;});
+  var uncosted=list.filter(function(i){return Number(i.stock)>0&&!(Number(i.cost)>0);});
   var movements=Object.keys(inventoryMovementsMap||{}).map(function(k){return Object.assign({id:k},inventoryMovementsMap[k]);}).sort(function(x,y){return (Number(y.occurredAt)||0)-(Number(x.occurredAt)||0);}).slice(0,100);
   var movementRows=movements.map(function(m){var q=Number(m.qty)||0;return '<tr><td>'+new Date(Number(m.occurredAt)||0).toLocaleString('en-PH')+'</td><td>'+esc(String(m.type||'').replace(/_/g,' '))+'</td><td>'+esc(m.itemName||m.itemId||'')+'</td><td class="r" style="color:'+(q<0?'#b44336':'#267354')+';">'+(q>0?'+':'')+num(q)+' '+esc(m.unit||'')+'</td><td class="r">'+num(m.balanceBefore)+' → <b>'+num(m.balanceAfter)+'</b></td><td class="r">'+peso(m.unitCost)+'</td><td>'+esc(m.sourceId||m.sourceType||'')+'</td><td>'+esc(m.actorName||'server')+'</td></tr>';}).join('');
   var rows=shown.map(function(i){
-    var st=Number(i.stock)||0; var isLow=st<=Number(i.reorder||0)&&st>=0; var isNeg=st<0;
+    var st=Number(i.stock)||0; var isLow=st<=Number(i.reorder||0)&&st>=0; var isNeg=st<0; var isUncosted=st>0&&!(Number(i.cost)>0);
     var ty=ingType(i);
     var recipeLinked=recipeUsesInventory(i.id), brandCount=activeSkusFor(i.id).length;
     var linkBadge=recipeLinked?(brandCount?'<span class="inv-sku-link linked">✓ Recipe · '+brandCount+' approved brand'+(brandCount===1?'':'s')+'</span>':'<span class="inv-sku-link pending" title="This stock item is the SKU. Add an approved purchasing brand before receiving it.">✓ Recipe · SKU ready</span>'):'<span class="inv-sku-link neutral">Not in a recipe</span>';
@@ -26,7 +27,7 @@ function renderInventory(){
       +'<td style="font-size:0.78rem;">'+(i.category?esc(invCatName(i.category)):'<span style="color:var(--tl);">—</span>')+(function(){var m=invItemAccounts(i);return m.inventoryAccount&&m.costAccount?' <span style="color:#267354;font-size:0.66rem;">'+m.inventoryAccount+' / '+m.costAccount+'</span>':' <span style="color:#b44336;font-size:0.66rem;">unmapped</span>'})()+'</td>'
       +'<td class="'+((isNeg||isLow)?'pz-low':'')+'">'+num(st)+' '+esc(i.unit||'')+(isNeg?' 🔴 NEGATIVE':(isLow?' ⚠️':''))+'</td>'
       +'<td>'+num(i.reorder||0)+'</td>'
-      +'<td>'+(i.cost?peso(i.cost):'—')+'</td>'
+      +'<td>'+(isUncosted?'<button class="pz-btn warn" data-inv-adjust="'+i.id+'" title="Positive stock has no weighted-average cost. Restate the invoice-backed unit cost.">Set unit cost</button>':(Number(i.cost)>0?peso(i.cost):'—'))+'</td>'
       +'<td>'+linkBadge+'</td>'
       +'<td class="inventory-actions-cell"><div class="inventory-actions">'
         +'<button class="pz-btn sec" style="'+(recipeLinked&&!brandCount?'border-color:#c98a2b;color:#8a5a00;':'border-color:#3a8a6a;color:#256b52;')+'" data-inv-skus="'+i.id+'">'+(recipeLinked&&!brandCount?'Add brand':'Brands ('+brandCount+')')+'</button>'
@@ -37,7 +38,7 @@ function renderInventory(){
   }).join('');
   root.innerHTML=
     '<div class="pz-h">📦 Stock Items</div>'
-    +'<p class="pz-sub">Each inventory row is the common SKU used by recipes. Inventory Asset and Cost accounts belong to the individual item; Category is only an organizational label.'+(low.length?' <b class="pz-low">'+low.length+' low.</b>':'')+(neg.length?' <b class="pz-low">'+neg.length+' negative.</b>':'')+(uncat.length?' <b style="color:#8a5a00;">'+uncat.length+' uncategorized.</b>':'')+(unmapped.length?' <b style="color:#b44336;">'+unmapped.length+' without accounting mapping.</b>':'')+(missingBrand.length?' <b style="color:#8a5a00;">'+missingBrand.length+' recipe item'+(missingBrand.length===1?'':'s')+' without an approved purchasing brand.</b>':'')+'</p>'
+    +'<p class="pz-sub">Each inventory row is the common SKU used by recipes. Inventory Asset and Cost accounts belong to the individual item; Category is only an organizational label.'+(low.length?' <b class="pz-low">'+low.length+' low.</b>':'')+(neg.length?' <b class="pz-low">'+neg.length+' negative.</b>':'')+(uncosted.length?' <b style="color:#b44336;">'+uncosted.length+' positive-stock item'+(uncosted.length===1?'':'s')+' without a unit cost.</b>':'')+(uncat.length?' <b style="color:#8a5a00;">'+uncat.length+' uncategorized.</b>':'')+(unmapped.length?' <b style="color:#b44336;">'+unmapped.length+' without accounting mapping.</b>':'')+(missingBrand.length?' <b style="color:#8a5a00;">'+missingBrand.length+' recipe item'+(missingBrand.length===1?'':'s')+' without an approved purchasing brand.</b>':'')+'</p>'
     +'<div class="pz-card" style="margin-bottom:1rem;border:1px solid #b8dfc4;background:#f3faf5;display:flex;gap:0.9rem;align-items:center;flex-wrap:wrap;">'
       +'<div style="flex:1;min-width:240px;"><div style="font-weight:700;color:#1c6b47;font-size:0.92rem;">📥 Receiving a delivery?</div><p style="font-size:0.79rem;color:var(--tm);margin:0.25rem 0 0;line-height:1.35;">Book stock in through the <b>Goods-Received Note</b> — capture supplier, invoice&nbsp;#, quantities and unit costs in one card. It updates the weighted-average cost and raises the payable automatically. <b>Adjust</b> and <b>Edit</b> below are only for count corrections, not for receiving purchases.</p></div>'
       +'<button class="pz-btn ok" id="invReceiveStock" style="white-space:nowrap;">📥 Receive stock →</button>'
