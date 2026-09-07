@@ -1797,9 +1797,7 @@ function ocDraw(){
   root.querySelectorAll('input[data-ocf]').forEach(function(inp){inp.oninput=function(){var tr=inp.closest('[data-oc-row]');if(!tr)return;var g=tr.getAttribute('data-oc-g'),lk=tr.getAttribute('data-oc-l');ocSync();var e=window.__optCostDraft[g]&&window.__optCostDraft[g][lk],lab=root.querySelector('[data-occost="'+g+'|'+lk+'"]'),rows=(e&&e.ings)||[];if(lab)lab.textContent='cost/serving — S '+peso(ocChoiceCost(rows,'S'))+' · M '+peso(ocChoiceCost(rows,'M'))+' · L '+peso(ocChoiceCost(rows,'L'));};});
   var saveBtn=document.getElementById('optCostSaveAll'); if(saveBtn)saveBtn.onclick=function(){ var button=this,original=button.textContent;ocSync(); var d=window.__optCostDraft||{}; var clean={},invalid='';
     Object.keys(d).forEach(function(g){ var gc={}; Object.keys(d[g]).forEach(function(lk){ var e=d[g][lk]; var kept=(e.ings||[]).filter(function(r){return r&&r.ing&&(r.qtyS!=null||r.qtyM!=null||r.qtyL!=null);});kept.forEach(function(r){if(isPackagingCostItem(r.ing))invalid=((inventoryMap[r.ing]||{}).name||r.ing)+' belongs in Packaging Costing';else if(['S','M','L'].some(function(sz){return !Number.isFinite(r['qty'+sz])||(!r.op&&r['qty'+sz]<0);}))invalid='Choose a compatible recipe unit and enter valid quantities for every size';}); if(kept.length)gc[lk]={label:e.label||lk,ings:kept}; }); if(Object.keys(gc).length)clean[g]=gc; });if(invalid){alert(invalid+'. Nothing was saved.');return;}
-    var a=A();if(!a||!a.update||!a.ref||!a.db){alert('Shared choice saving is unavailable. Refresh the Admin portal and try again.');return;}
-    button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Saving choices…';
-    a.update(a.ref(a.db,'posSettings'),{optionCosts:clean}).then(function(){window.__posSettings=window.__posSettings||{};window.__posSettings.optionCosts=clean;var m=document.getElementById('optCostSaveMsg');if(m)m.textContent='✓ Saved '+new Date().toLocaleTimeString();(window.accazaToast||function(){})('Shared choice ingredients saved','ok');}).catch(function(e){alert('Could not save shared choice ingredients: '+((e&&e.message)||(e&&e.code)||e)+'. Nothing was saved.');}).finally(function(){if(document.body.contains(button)){button.disabled=false;button.removeAttribute('aria-busy');button.textContent=original;}});
+    saveSharedChoiceCosts(button,original,clean);
   };
 }
 function renderConsumables(){
@@ -1833,6 +1831,15 @@ function saveRecipe(key){
   var saved=recipesMap[key];if(saved&&saved.options)raw.options=saved.options;
   var a=A();if(!a.validateRecipeDefinition){alert('The 3B recipe validator is not available. Refresh the portal. Nothing was saved.');return Promise.resolve(false);}
   return a.validateRecipeDefinition(raw).then(function(res){var data=res&&res.data?res.data:res,rec=data&&data.recipe;if(!rec)throw new Error('The server did not return a normalized recipe.');return a.set(a.ref(a.db,'recipes/'+key),rec).then(function(){return data;});}).then(function(data){recipeEditing=false;var note=(data.warnings&&data.warnings.length)?'\n\nWarnings:\n'+costingIssues(data.warnings):'';alert('Recipe saved for '+(A().menuItemsMap[key]?A().menuItemsMap[key].name:key)+'.\nCosting engine '+(data.engineVersion||Costing().VERSION)+'.'+note);curRecipeKey=key;setTimeout(renderRecipes,150);return true;}).catch(function(e){var details=e&&e.details&&e.details.errors;alert('Could not save the recipe: '+((e&&e.message)||(e&&e.code)||e)+(details?'\n\n'+costingIssues(details):'')+'\n\nNothing was saved.');return false;});
+}
+function saveSharedChoiceCosts(button,original,clean){
+  var a=A(),message=document.getElementById('optCostSaveMsg'),settled=false,timer;
+  if(!a||!a.update||!a.ref||!a.db){alert('Shared choice saving is unavailable. Refresh the Admin portal and try again.');return;}
+  if(window.__online===false){alert('Shared choice ingredients cannot be saved while Admin is offline. Reconnect, then try again.');return;}
+  function restore(){if(document.body.contains(button)){button.disabled=false;button.removeAttribute('aria-busy');button.textContent=original;}}
+  button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Saving choices…';if(message)message.textContent='Waiting for the server…';
+  timer=setTimeout(function(){if(settled)return;settled=true;restore();if(message)message.textContent='Save not confirmed — check the connection, then reload to verify.';(window.accazaToast||function(){})('Shared choice save was not confirmed. Check the connection and reload before retrying.','err');},15000);
+  a.update(a.ref(a.db,'posSettings'),{optionCosts:clean}).then(function(){clearTimeout(timer);window.__posSettings=window.__posSettings||{};window.__posSettings.optionCosts=clean;var late=settled;settled=true;if(message)message.textContent='✓ Saved '+new Date().toLocaleTimeString();(window.accazaToast||function(){})(late?'Shared choice ingredients saved after the connection recovered':'Shared choice ingredients saved','ok');restore();}).catch(function(e){clearTimeout(timer);if(settled)return;settled=true;restore();if(message)message.textContent='Save failed — nothing was confirmed.';alert('Could not save shared choice ingredients: '+((e&&e.message)||(e&&e.code)||e)+'. Nothing was saved.');});
 }
 
 /* Recipe repair & restore.

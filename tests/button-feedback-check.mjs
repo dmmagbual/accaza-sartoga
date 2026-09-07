@@ -5,7 +5,7 @@ const recipe=read('src/admin/pos/30-recipes.js')+read('src/admin/pos/31-recipe-s
 const adminCss=read('assets/css/admin/site.css');
 const booksCss=read('assets/css/books.css');
 
-for(const marker of ["button.textContent='Saving recipe…'","button.setAttribute('aria-busy','true')","return a.validateRecipeDefinition(raw)","button.removeAttribute('aria-busy')","button.textContent='Saving choices…'","Shared choice ingredients saved","window.__posSettings.optionCosts=clean"]){
+for(const marker of ["button.textContent='Saving recipe…'","button.setAttribute('aria-busy','true')","return a.validateRecipeDefinition(raw)","button.removeAttribute('aria-busy')","button.textContent='Saving choices…'","window.__online===false","Save not confirmed","},15000)","saved after the connection recovered","window.__posSettings.optionCosts=clean"]){
   if(!recipe.includes(marker))throw new Error(`Recipe button feedback missing: ${marker}`);
 }
 for(const [name,css] of [['Admin',adminCss],['Finance Books',booksCss]]){
