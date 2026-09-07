@@ -76,6 +76,10 @@ const selectedReplacement=Costing.costOrder({lineItems:[{itemKey:'americano',siz
 if(!selectedReplacement.ok||selectedReplacement.usage.milk!==15)throw new Error('required choice full quantity must replace the inherited quantity');
 const regularDefault=Costing.costOrder({lineItems:[{itemKey:'americano',size:'M',qty:1,optLabels:['Regular']}],recipes:{americano:{base:[{ing:'milk',qtyM:20}],choiceAdd:{sweet:{'Less Sweet':{label:'Less Sweet',ings:[{ing:'milk',qtyM:15,op:'replace'}]}}}}},inventory,menuItems:{americano:{name:'Americano',options:['sweet']}},optionGroups:{sweet:{required:true,choices:[{label:'Regular'},{label:'Less Sweet'}]}}});
 if(regularDefault.usage.milk!==20)throw new Error('unselected required-choice override changed the default quantity');
+const temperatureSpecific={americano:{base:[{ing:'beans',qtyM:18}],choiceAdd:{temp:{Hot:{label:'Hot',ings:[{ing:'milk',qtyM:30}]},Iced:{label:'Iced',ings:[{ing:'milk',qtyM:12}]}}}}};
+const hotSpecific=Costing.costOrder({lineItems:[{itemKey:'americano',size:'M',qty:1,optLabels:['Hot']}],recipes:temperatureSpecific,inventory,menuItems:{americano:{name:'Americano',options:['temp']}},optionGroups:{temp:{required:true,choices:[{label:'Hot'},{label:'Iced'}]}}});
+const icedSpecific=Costing.costOrder({lineItems:[{itemKey:'americano',size:'M',qty:1,optLabels:['Iced']}],recipes:temperatureSpecific,inventory,menuItems:{americano:{name:'Americano',options:['temp']}},optionGroups:{temp:{required:true,choices:[{label:'Hot'},{label:'Iced'}]}}});
+if(hotSpecific.usage.milk!==30||icedSpecific.usage.milk!==12)throw new Error('Hot and Iced choice-specific quantities were not isolated');
 const broken=Costing.normalizeRecipe({base:[{ing:'deleted',unit:'g',dispM:1}]},inventory);
 if(broken.ok||!broken.errors.some(x=>x.code==='BROKEN_INVENTORY_REFERENCE'))throw new Error('broken inventory reference was not blocked');
 const zeroChoice=Costing.normalizeRecipe({base:[{ing:'bean',unit:'g',dispM:18}],choiceAdd:{og_shot:{'Add 1 Shot':{label:'Add 1 Shot',ings:[{ing:'bean',unit:'g',dispS:0,dispM:0,dispL:0}]}}}},{...inventory,bean:{name:'Coffee Beans',unit:'g',cost:0.05}});
