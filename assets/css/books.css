@@ -12,6 +12,11 @@ html,body{margin:0;padding:0}
 body{background:var(--cr);color:var(--tx);font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
 h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.01em}
 button{font-family:inherit;cursor:pointer}
+button:not(:disabled){touch-action:manipulation}
+button:not(:disabled):active{transform:translateY(1px) scale(.98);filter:brightness(.9)}
+button:disabled{cursor:not-allowed;opacity:.62}
+button[aria-busy="true"]{cursor:progress}
+@media(prefers-reduced-motion:reduce){button:not(:disabled):active{transform:none}}
 input,select{font-family:inherit;font-size:14px}
 a{color:var(--info)}
 .wrap{max-width:1180px;margin:0 auto;padding:0 1rem 4rem}

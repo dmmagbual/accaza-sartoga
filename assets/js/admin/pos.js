@@ -1708,7 +1708,13 @@ function drawRecipeEditor(item){
   ed.querySelectorAll('[data-effective-replace]').forEach(function(b){b.onchange=function(){syncAll();var ing=b.getAttribute('data-effective-replace'),gid=b.getAttribute('data-replace-group'),label=b.getAttribute('data-replace-label'),lk=optKey(label);d.choiceAdd=d.choiceAdd||{};d.choiceAdd[gid]=d.choiceAdd[gid]||{};if(!b.checked){var old=d.choiceAdd[gid][lk];if(old){old.ings=(old.ings||[]).filter(function(x){return !(x.ing===ing&&x.op==='replace');});if(!old.ings.length)delete d.choiceAdd[gid][lk];}drawRecipeEditor(item);return;}var shared=optCostStore()[gid]&&optCostStore()[gid][lk],base=sharedLibrary.filter(function(x){return x.ing===ing;})[0],inv=inventoryMap[ing]||{},u=(base&&base.unit)||inv.unit||'';if(!d.choiceAdd[gid][lk])d.choiceAdd[gid][lk]={label:label,ings:(shared&&shared.ings||[]).map(function(x){return {ing:x.ing,unit:x.unit||(inventoryMap[x.ing]||{}).unit||'',dS:x.dispS!=null?x.dispS:x.qtyS,dM:x.dispM!=null?x.dispM:x.qtyM,dL:x.dispL!=null?x.dispL:x.qtyL,op:x.op};})};var rows=d.choiceAdd[gid][lk].ings,existing=rows.filter(function(x){return x.ing===ing;})[0],values={ing:ing,unit:u,dS:base&&base.dispS!=null?base.dispS:base&&base.qtyS,dM:base&&base.dispM!=null?base.dispM:base&&base.qtyM,dL:base&&base.dispL!=null?base.dispL:base&&base.qtyL,op:'replace'};if(existing)Object.assign(existing,values);else rows.push(values);drawRecipeEditor(item);};});
   ed.querySelectorAll('[data-effective-choice-override]').forEach(function(b){b.onchange=function(){syncAll();setRecipeChoiceOverride(d,b.getAttribute('data-effective-choice-override'),b.getAttribute('data-replace-group'),b.getAttribute('data-replace-label'),b.checked);drawRecipeEditor(item);};});
   var _nn=document.getElementById('recNoNeed'); if(_nn)_nn.onchange=function(){ markNoRecipe(item.key,this.checked); };
-  document.getElementById('recSave').onclick=function(){ try{ syncAll(); saveRecipe(item.key); }catch(err){ alert('Recipe save hit an error: '+(err&&err.message?err.message:err)+'. Nothing was saved — tell support this message.'); } };
+  document.getElementById('recSave').onclick=function(){
+    var button=this,original=button.textContent;
+    try{
+      syncAll();button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Saving recipe…';
+      Promise.resolve(saveRecipe(item.key)).finally(function(){if(document.body.contains(button)){button.disabled=false;button.removeAttribute('aria-busy');button.textContent=original;}});
+    }catch(err){button.disabled=false;button.removeAttribute('aria-busy');button.textContent=original;alert('Recipe save hit an error: '+(err&&err.message?err.message:err)+'. Nothing was saved — tell support this message.');}
+  };
   document.getElementById('recClose').onclick=function(){ recipeEditing=false; curRecipeKey=null; renderRecipes(); };
   if(document.getElementById('recDel'))document.getElementById('recDel').onclick=function(){ if(!confirm('Delete this recipe? '+esc(item.name)+' will no longer deduct stock.'))return; var a=A();a.remove(a.ref(a.db,'recipes/'+item.key));recipeEditing=false;curRecipeKey=null;setTimeout(renderRecipes,200);};
 }
@@ -1731,14 +1737,6 @@ function exportCostSheet(){
   });
   if(aoa.length<=1){alert('No recipes yet to build a cost sheet.');return;}
   var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'CostSheet');XLSX.writeFile(wb,'accaza-cost-sheet-'+window.AccazaDate.key()+'.xlsx');
-}
-function saveRecipe(key){
-  var d=recipeDraft; if(!d){alert('Nothing to save — reopen the recipe and try again.');return;}
-  var raw=recipeDraftRaw(d),choicePackaging=[];Object.keys(raw.choiceAdd||{}).forEach(function(g){Object.keys(raw.choiceAdd[g]||{}).forEach(function(k){((raw.choiceAdd[g][k]||{}).ings||[]).forEach(function(row){if(isPackagingCostItem(row.ing))choicePackaging.push((inventoryMap[row.ing]||{}).name||row.ing);});});});if(choicePackaging.length){alert('Move these items to Packaging Costing before saving: '+choicePackaging.join(', ')+'. Packaging cannot also be an option ingredient because it would be costed twice.');return;}var local=Costing().normalizeRecipe(raw,inventoryMap);
-  if(!local.ok){alert('Recipe was not saved. Fix these costing errors:\n\n'+costingIssues(local.errors));return;}
-  var saved=recipesMap[key];if(saved&&saved.options)raw.options=saved.options;
-  var a=A();if(!a.validateRecipeDefinition){alert('The 3B recipe validator is not available. Refresh the portal. Nothing was saved.');return;}
-  a.validateRecipeDefinition(raw).then(function(res){var data=res&&res.data?res.data:res;var rec=data&&data.recipe;if(!rec)throw new Error('The server did not return a normalized recipe.');return a.set(a.ref(a.db,'recipes/'+key),rec).then(function(){return data;});}).then(function(data){recipeEditing=false;var note=(data.warnings&&data.warnings.length)?'\n\nWarnings:\n'+costingIssues(data.warnings):'';alert('Recipe saved for '+(A().menuItemsMap[key]?A().menuItemsMap[key].name:key)+'.\nCosting engine '+(data.engineVersion||Costing().VERSION)+'.'+note);curRecipeKey=key;setTimeout(function(){renderRecipes();},150);}).catch(function(e){var details=e&&e.details&&e.details.errors;alert('Could not save the recipe: '+((e&&e.message)||(e&&e.code)||e)+(details?'\n\n'+costingIssues(details):'')+'\n\nNothing was saved.');});
 }
 function optKey(label){return String(label).replace(/[.#$\[\]\/]/g,'_');}
 function allOptionLabels(){
@@ -1797,9 +1795,11 @@ function ocDraw(){
   root.querySelectorAll('[data-ocrem]').forEach(function(b){b.onclick=function(){ ocSync(); var d=window.__optCostDraft; var g=b.getAttribute('data-g'),lk=b.getAttribute('data-l'),ix=Number(b.getAttribute('data-ix')); if(d[g]&&d[g][lk]&&d[g][lk].ings){d[g][lk].ings.splice(ix,1);} ocDraw(); };});
   root.querySelectorAll('select[data-ocf]').forEach(function(s){s.onchange=function(){ ocSync(); ocDraw(); };});
   root.querySelectorAll('input[data-ocf]').forEach(function(inp){inp.oninput=function(){var tr=inp.closest('[data-oc-row]');if(!tr)return;var g=tr.getAttribute('data-oc-g'),lk=tr.getAttribute('data-oc-l');ocSync();var e=window.__optCostDraft[g]&&window.__optCostDraft[g][lk],lab=root.querySelector('[data-occost="'+g+'|'+lk+'"]'),rows=(e&&e.ings)||[];if(lab)lab.textContent='cost/serving — S '+peso(ocChoiceCost(rows,'S'))+' · M '+peso(ocChoiceCost(rows,'M'))+' · L '+peso(ocChoiceCost(rows,'L'));};});
-  var saveBtn=document.getElementById('optCostSaveAll'); if(saveBtn)saveBtn.onclick=function(){ ocSync(); var d=window.__optCostDraft||{}; var clean={},invalid='';
+  var saveBtn=document.getElementById('optCostSaveAll'); if(saveBtn)saveBtn.onclick=function(){ var button=this,original=button.textContent;ocSync(); var d=window.__optCostDraft||{}; var clean={},invalid='';
     Object.keys(d).forEach(function(g){ var gc={}; Object.keys(d[g]).forEach(function(lk){ var e=d[g][lk]; var kept=(e.ings||[]).filter(function(r){return r&&r.ing&&(r.qtyS!=null||r.qtyM!=null||r.qtyL!=null);});kept.forEach(function(r){if(isPackagingCostItem(r.ing))invalid=((inventoryMap[r.ing]||{}).name||r.ing)+' belongs in Packaging Costing';else if(['S','M','L'].some(function(sz){return !Number.isFinite(r['qty'+sz])||(!r.op&&r['qty'+sz]<0);}))invalid='Choose a compatible recipe unit and enter valid quantities for every size';}); if(kept.length)gc[lk]={label:e.label||lk,ings:kept}; }); if(Object.keys(gc).length)clean[g]=gc; });if(invalid){alert(invalid+'. Nothing was saved.');return;}
-    var a=A(); a.update(a.ref(a.db,'posSettings'),{optionCosts:clean}).then(function(){ var m=document.getElementById('optCostSaveMsg'); if(m)m.textContent='✓ Saved '+new Date().toLocaleTimeString(); }).catch(function(e){ alert('Could not save option costs: '+((e&&e.code)||e)+'. If PERMISSION_DENIED, log in with your admin email and publish the DB rules.'); });
+    var a=A();if(!a||!a.update||!a.ref||!a.db){alert('Shared choice saving is unavailable. Refresh the Admin portal and try again.');return;}
+    button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='Saving choices…';
+    a.update(a.ref(a.db,'posSettings'),{optionCosts:clean}).then(function(){window.__posSettings=window.__posSettings||{};window.__posSettings.optionCosts=clean;var m=document.getElementById('optCostSaveMsg');if(m)m.textContent='✓ Saved '+new Date().toLocaleTimeString();(window.accazaToast||function(){})('Shared choice ingredients saved','ok');}).catch(function(e){alert('Could not save shared choice ingredients: '+((e&&e.message)||(e&&e.code)||e)+'. Nothing was saved.');}).finally(function(){if(document.body.contains(button)){button.disabled=false;button.removeAttribute('aria-busy');button.textContent=original;}});
   };
 }
 function renderConsumables(){
@@ -1825,6 +1825,15 @@ function renderConsumables(){
 }
 
 /* ══════════ INTERNAL USAGE (Staff consumption + R&D) ══════════ */
+function saveRecipe(key){
+  var d=recipeDraft;if(!d){alert('Nothing to save — reopen the recipe and try again.');return Promise.resolve(false);}
+  var raw=recipeDraftRaw(d),choicePackaging=[];Object.keys(raw.choiceAdd||{}).forEach(function(g){Object.keys(raw.choiceAdd[g]||{}).forEach(function(k){((raw.choiceAdd[g][k]||{}).ings||[]).forEach(function(row){if(isPackagingCostItem(row.ing))choicePackaging.push((inventoryMap[row.ing]||{}).name||row.ing);});});});
+  if(choicePackaging.length){alert('Move these items to Packaging Costing before saving: '+choicePackaging.join(', ')+'. Packaging cannot also be an option ingredient because it would be costed twice.');return Promise.resolve(false);}
+  var local=Costing().normalizeRecipe(raw,inventoryMap);if(!local.ok){alert('Recipe was not saved. Fix these costing errors:\n\n'+costingIssues(local.errors));return Promise.resolve(false);}
+  var saved=recipesMap[key];if(saved&&saved.options)raw.options=saved.options;
+  var a=A();if(!a.validateRecipeDefinition){alert('The 3B recipe validator is not available. Refresh the portal. Nothing was saved.');return Promise.resolve(false);}
+  return a.validateRecipeDefinition(raw).then(function(res){var data=res&&res.data?res.data:res,rec=data&&data.recipe;if(!rec)throw new Error('The server did not return a normalized recipe.');return a.set(a.ref(a.db,'recipes/'+key),rec).then(function(){return data;});}).then(function(data){recipeEditing=false;var note=(data.warnings&&data.warnings.length)?'\n\nWarnings:\n'+costingIssues(data.warnings):'';alert('Recipe saved for '+(A().menuItemsMap[key]?A().menuItemsMap[key].name:key)+'.\nCosting engine '+(data.engineVersion||Costing().VERSION)+'.'+note);curRecipeKey=key;setTimeout(renderRecipes,150);return true;}).catch(function(e){var details=e&&e.details&&e.details.errors;alert('Could not save the recipe: '+((e&&e.message)||(e&&e.code)||e)+(details?'\n\n'+costingIssues(details):'')+'\n\nNothing was saved.');return false;});
+}
 
 /* Recipe repair & restore.
    A "Hot" choice written as the complete hot recipe was ADDED to the base, so every hot

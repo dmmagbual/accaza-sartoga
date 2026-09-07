@@ -1,0 +1,9 @@
+function saveRecipe(key){
+  var d=recipeDraft;if(!d){alert('Nothing to save — reopen the recipe and try again.');return Promise.resolve(false);}
+  var raw=recipeDraftRaw(d),choicePackaging=[];Object.keys(raw.choiceAdd||{}).forEach(function(g){Object.keys(raw.choiceAdd[g]||{}).forEach(function(k){((raw.choiceAdd[g][k]||{}).ings||[]).forEach(function(row){if(isPackagingCostItem(row.ing))choicePackaging.push((inventoryMap[row.ing]||{}).name||row.ing);});});});
+  if(choicePackaging.length){alert('Move these items to Packaging Costing before saving: '+choicePackaging.join(', ')+'. Packaging cannot also be an option ingredient because it would be costed twice.');return Promise.resolve(false);}
+  var local=Costing().normalizeRecipe(raw,inventoryMap);if(!local.ok){alert('Recipe was not saved. Fix these costing errors:\n\n'+costingIssues(local.errors));return Promise.resolve(false);}
+  var saved=recipesMap[key];if(saved&&saved.options)raw.options=saved.options;
+  var a=A();if(!a.validateRecipeDefinition){alert('The 3B recipe validator is not available. Refresh the portal. Nothing was saved.');return Promise.resolve(false);}
+  return a.validateRecipeDefinition(raw).then(function(res){var data=res&&res.data?res.data:res,rec=data&&data.recipe;if(!rec)throw new Error('The server did not return a normalized recipe.');return a.set(a.ref(a.db,'recipes/'+key),rec).then(function(){return data;});}).then(function(data){recipeEditing=false;var note=(data.warnings&&data.warnings.length)?'\n\nWarnings:\n'+costingIssues(data.warnings):'';alert('Recipe saved for '+(A().menuItemsMap[key]?A().menuItemsMap[key].name:key)+'.\nCosting engine '+(data.engineVersion||Costing().VERSION)+'.'+note);curRecipeKey=key;setTimeout(renderRecipes,150);return true;}).catch(function(e){var details=e&&e.details&&e.details.errors;alert('Could not save the recipe: '+((e&&e.message)||(e&&e.code)||e)+(details?'\n\n'+costingIssues(details):'')+'\n\nNothing was saved.');return false;});
+}
