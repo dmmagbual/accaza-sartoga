@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 470,
+    "admin": 471,
     "books": 106,
     "customer": 68,
-    "serviceWorkerCache": 441
+    "serviceWorkerCache": 442
   },
   "authoritativeFiles": [
     "admin.html",
@@ -274,6 +274,7 @@
     "preservePostedOrderOnDelete",
     "postInventoryMovements",
     "ensureInventoryLedger",
+    "saveSharedChoiceIngredients",
     "postFinancialCommand",
     "manageAccountingPeriod",
     "legacyOwnerCapitalReset",
