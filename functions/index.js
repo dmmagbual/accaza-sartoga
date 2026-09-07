@@ -1895,6 +1895,20 @@ exports.validateRecipeDefinition = onCall(
   },
 );
 
+exports.saveSharedChoiceIngredients = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db=getDatabase(),actor=await requirePortalPermission(db,request,["recipes"]),optionCosts=request.data&&request.data.optionCosts;
+    if (!optionCosts || typeof optionCosts!=="object" || Array.isArray(optionCosts)) throw new HttpsError("invalid-argument","Shared choice ingredients are invalid.");
+    if (Buffer.byteLength(JSON.stringify(optionCosts),"utf8")>250000) throw new HttpsError("invalid-argument","Shared choice ingredients are too large to save safely.");
+    const [inventorySnap,groupsSnap]=await Promise.all([db.ref("/inventory").get(),db.ref("/optionGroups").get()]),inventory=inventorySnap.val()||{},groups=groupsSnap.val()||{};let rows=0;
+    for (const groupId of Object.keys(optionCosts)) {const group=groups[groupId],choices=optionCosts[groupId];if(!group||!choices||typeof choices!=="object"||Array.isArray(choices))throw new HttpsError("invalid-argument",`Choice group ${groupId} is invalid.`);for(const key of Object.keys(choices)){const entry=choices[key],lines=entry&&entry.ings;if(!entry||!Array.isArray(lines)||!lines.length||lines.length>20)throw new HttpsError("invalid-argument",`Shared choice ${key} has invalid ingredient rows.`);for(const line of lines){rows++;const ing=String(line&&line.ing||"");if(!inventory[ing])throw new HttpsError("invalid-argument",`Shared choice ingredient ${ing||"(blank)"} is missing from Inventory.`);for(const size of ["S","M","L"]){const qty=Number(line[`qty${size}`]);if(!Number.isFinite(qty)||qty<0||qty>1000000)throw new HttpsError("invalid-argument",`Shared choice ${key} has an invalid ${size} quantity.`);}}}}
+    if(rows>500)throw new HttpsError("invalid-argument","Shared choice ingredients contain too many rows.");
+    const now=Date.now();await db.ref().update({"posSettings/optionCosts":optionCosts,[`operationalAudit/${now}_shared_choice_ingredients`]:operationalAuditRecord("save_shared_choice_ingredients","posSettings","optionCosts",actor,{groups:Object.keys(optionCosts).length,rows,accounting:"Updates future recipe costing and inventory usage definitions only; no posted sale, inventory movement, or Finance entry was changed."})});
+    logger.info("Shared choice ingredients saved",{uid:actor.uid,groups:Object.keys(optionCosts).length,rows});return{saved:true,groups:Object.keys(optionCosts).length,rows,savedAt:now};
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Release 3C: immutable, idempotent financial movements and server projections.
 // ---------------------------------------------------------------------------
