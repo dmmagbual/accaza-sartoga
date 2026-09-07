@@ -153,6 +153,7 @@ check(/packAddStyle/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the
 
 /* 9. the recipe calculator must show exactly what the sale-costing engine will post */
 const recipeUi=fs.readFileSync('src/admin/pos/30-recipes.js','utf8');
+const choiceScope=fs.readFileSync('src/admin/pos/29-recipe-choice-scope.js','utf8');
 check(/costingContext\(\)/.test(recipeUi)&&/packagingRules:packagingRulesMap/.test(fs.readFileSync('src/admin/pos/00-shared-state.js','utf8')),'the recipe calculator includes assigned packaging in its total');
 check(/Base recipe/.test(recipeUi)&&/Selected option ingredients/.test(recipeUi)&&/Packaging ·/.test(recipeUi),'the calculator separates base, selected options and packaging');
 check(/String\(line\.source\)\.indexOf\('base_'\)===0/.test(recipeUi)&&/line\.source==='packaging'/.test(recipeUi),'the displayed subtotals come from the same engine lines as the final total');
@@ -165,7 +166,9 @@ check(/table-layout:fixed/.test(recipeUi)&&/class="r">Amount/.test(recipeUi),'ba
 check(/data-effective-replace/.test(recipeUi)&&/requiredSelections\.map/.test(recipeUi),'the effective recipe table provides choice-specific shared overrides');
 check(/data-rcradio/.test(recipeUi)&&/type="'\+\(isMulti\?'checkbox':'radio'\)/.test(recipeUi)&&/data-rcmulti-check/.test(recipeUi),'required choices use compact exclusive ticks and optional add-ons use checkboxes');
 check(/selectedDetail\(line\)/.test(recipeUi)&&/packagingDetail/.test(recipeUi),'selected option and packaging lines enumerate quantity, unit and cost');
-check(/Active choice overrides/.test(recipeUi)&&/caGroupsAll\.filter/.test(recipeUi),'untouched shared choices stay hidden from the recipe editor');
+check(/Ingredients for selected choices/.test(recipeUi)&&/caSelected\(g,c\)/.test(recipeUi),'only the currently selected choice is shown in the choice-specific editor');
+check(/var next=ocClone\(d\.choiceAdd\|\|\{\}\)/.test(recipeUi)&&/data-ca-choice/.test(recipeUi),'editing one choice preserves hidden choice-specific recipes');
+check(/Ingredients used for every choice/.test(recipeUi)&&/ingredient for '\+esc\(c\.label\)/.test(recipeUi),'the editor clearly separates all-choice ingredients from exact-choice ingredients');
 check(/isPackagingCostItem/.test(recipeUi)&&/Packaging Costing only/.test(recipeUi),'packaging items cannot be newly selected as shared choice ingredients');
 check(/data-sbf="unit"/.test(recipeUi)&&/data-sbf="disp'\+sz\+'"/.test(recipeUi)&&/convertToStock\(display,u,item\)/.test(recipeUi),'shared base quantities use an editable recipe unit and normalize to the stock unit');
 check(/data-ocf="unit"/.test(recipeUi)&&/data-ocf="disp'\+sz\+'"/.test(recipeUi)&&/row\['qty'\+sz\]=convertToStock/.test(recipeUi),'shared choice quantities use an editable recipe unit and normalize to the stock unit');
@@ -174,6 +177,9 @@ check(/sectionRows\('packaging'/.test(recipeUi)&&/sectionRows\('base'/.test(reci
 check(/data-effective-include/.test(recipeUi)&&/d\.sharedBase=.*filter/.test(recipeUi),'an inherited shared base ingredient can be excluded from one drink in the effective recipe');
 check(/colspan=.*requiredSelections\.length/.test(recipeUi)&&/Override/.test(recipeUi)&&/data-effective-replace/.test(recipeUi),'the grouped Override header follows the currently selected required choices');
 check(/x\.ing===ing&&x\.op==='replace'/.test(recipeUi),'excluding an inherited ingredient also clears its now-invalid choice replacements');
+check(/!\/\(sweet\|milk\)\//.test(recipeUi),'Sweetness and Choice of Milk start without a costing preview default');
+check(/data-effective-choice-override/.test(recipeUi)&&/setRecipeChoiceOverride/.test(recipeUi)&&/choice_override/.test(choiceScope),'a selected shared-choice ingredient supports a drink-and-choice-specific quantity override');
+check(/if\(!row\)own\.ings\.push\(values\)/.test(choiceScope),'creating one shared-choice override preserves every other inherited shared-choice ingredient');
 
 /* 10. the shared option library can hold packaging too - leaving it there charges the cup twice */
 const libraryCosts={og_temp:{Hot:{label:'Hot',ings:[row('hotcup',1,1,1),row('flat',1,1,1)]},
