@@ -162,16 +162,18 @@ check(/selectedChoices\.map/.test(recipeUi)&&/groupName/.test(recipeUi)&&/option
 check(/<th>Recipe unit<\/th>/.test(recipeUi)&&/Amount \('\+size\+'\)/.test(recipeUi),'every per-choice recipe table shows recipe unit and current-size amount');
 check(/data-caf="unit"/.test(recipeUi)&&/dispS:r\.dS/.test(recipeUi),'per-choice units and display quantities are converted and saved through the costing engine');
 check(/table-layout:fixed/.test(recipeUi)&&/class="r">Amount/.test(recipeUi),'base and option recipe columns share a fixed grid with right-aligned amounts');
-check(/data-effective-override/.test(recipeUi)&&/data-override-source/.test(recipeUi),'the effective recipe table provides row-level shared overrides');
+check(/data-effective-replace/.test(recipeUi)&&/requiredSelections\.map/.test(recipeUi),'the effective recipe table provides choice-specific shared overrides');
 check(/data-rcradio/.test(recipeUi)&&/type="'\+\(isMulti\?'checkbox':'radio'\)/.test(recipeUi)&&/data-rcmulti-check/.test(recipeUi),'required choices use compact exclusive ticks and optional add-ons use checkboxes');
 check(/selectedDetail\(line\)/.test(recipeUi)&&/packagingDetail/.test(recipeUi),'selected option and packaging lines enumerate quantity, unit and cost');
 check(/Active choice overrides/.test(recipeUi)&&/caGroupsAll\.filter/.test(recipeUi),'untouched shared choices stay hidden from the recipe editor');
 check(/isPackagingCostItem/.test(recipeUi)&&/Packaging Costing only/.test(recipeUi),'packaging items cannot be newly selected as shared choice ingredients');
 check(/data-sbf="unit"/.test(recipeUi)&&/data-sbf="disp'\+sz\+'"/.test(recipeUi)&&/convertToStock\(display,u,item\)/.test(recipeUi),'shared base quantities use an editable recipe unit and normalize to the stock unit');
 check(/data-ocf="unit"/.test(recipeUi)&&/data-ocf="disp'\+sz\+'"/.test(recipeUi)&&/row\['qty'\+sz\]=convertToStock/.test(recipeUi),'shared choice quantities use an editable recipe unit and normalize to the stock unit');
-check(/effectiveSection/.test(recipeUi)&&/Additional ingredients/.test(recipeUi)&&/Added only when an optional choice is selected/.test(recipeUi),'selected optional ingredients render outside the effective base table');
-check(/sectionTable\('packaging'/.test(recipeUi)&&/sectionTable\('base'/.test(recipeUi),'base and serve-style packaging have independent reconciled sections');
+check(/effectiveSection/.test(recipeUi)&&/Additional ingredients/.test(recipeUi)&&/Included only when selected/.test(recipeUi),'selected optional ingredients remain distinctly labelled in the unified effective table');
+check(/sectionRows\('packaging'/.test(recipeUi)&&/sectionRows\('base'/.test(recipeUi)&&/sectionRows\('additional'/.test(recipeUi),'base, packaging and additional ingredients share one aligned table with separate reconciled sections');
 check(/data-effective-include/.test(recipeUi)&&/d\.sharedBase=.*filter/.test(recipeUi),'an inherited shared base ingredient can be excluded from one drink in the effective recipe');
+check(/colspan=.*requiredSelections\.length/.test(recipeUi)&&/Override/.test(recipeUi)&&/data-effective-replace/.test(recipeUi),'the grouped Override header follows the currently selected required choices');
+check(/x\.ing===ing&&x\.op==='replace'/.test(recipeUi),'excluding an inherited ingredient also clears its now-invalid choice replacements');
 
 /* 10. the shared option library can hold packaging too - leaving it there charges the cup twice */
 const libraryCosts={og_temp:{Hot:{label:'Hot',ings:[row('hotcup',1,1,1),row('flat',1,1,1)]},
