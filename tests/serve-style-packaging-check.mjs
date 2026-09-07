@@ -171,6 +171,7 @@ check(/data-sbf="unit"/.test(recipeUi)&&/data-sbf="disp'\+sz\+'"/.test(recipeUi)
 check(/data-ocf="unit"/.test(recipeUi)&&/data-ocf="disp'\+sz\+'"/.test(recipeUi)&&/row\['qty'\+sz\]=convertToStock/.test(recipeUi),'shared choice quantities use an editable recipe unit and normalize to the stock unit');
 check(/effectiveSection/.test(recipeUi)&&/Additional ingredients/.test(recipeUi)&&/Added only when an optional choice is selected/.test(recipeUi),'selected optional ingredients render outside the effective base table');
 check(/sectionTable\('packaging'/.test(recipeUi)&&/sectionTable\('base'/.test(recipeUi),'base and serve-style packaging have independent reconciled sections');
+check(/data-effective-include/.test(recipeUi)&&/d\.sharedBase=.*filter/.test(recipeUi),'an inherited shared base ingredient can be excluded from one drink in the effective recipe');
 
 /* 10. the shared option library can hold packaging too - leaving it there charges the cup twice */
 const libraryCosts={og_temp:{Hot:{label:'Hot',ings:[row('hotcup',1,1,1),row('flat',1,1,1)]},
