@@ -9,13 +9,13 @@ const fail=message=>{throw new Error(message);};
 const budgets={
   'assets/js/customer/core.mjs':115000,
   'assets/js/admin/core.mjs':135000,
-  // Build 468 leaves Sweetness and Milk blank and adds shared-choice quantity overrides.
+  // Build 469 adds immediate, duplicate-safe recipe and shared-choice save feedback.
   // Retain a narrow ceiling so future POS growth still requires explicit review.
-  'assets/js/admin/pos.js':460000,
+  'assets/js/admin/pos.js':461000,
   'assets/js/admin/register.js':175000,
   'assets/js/admin/analytics.js':150000,
   'assets/js/admin/finance.js':75000,
-  // Build 105 adds correct compound-entry ledger balances and six-column views.
+  // Build 106 adds consistent interactive feedback to Finance Books buttons.
   // Retain a narrow ceiling so future Finance Books growth requires review.
   'assets/js/books/app.js':191000
 };
@@ -31,6 +31,6 @@ if(customer.includes('onValue(ordersRef'))fail('Customer runtime must never subs
 for(const source of [moduleLoader,hub,telemetry,functions])for(const marker of source===moduleLoader?['module_load','performance.now']:source===hub?['live_ready','liveStartedAt']:['module_load','live_ready'])if(!source.includes(marker))fail(`Measured performance telemetry missing: ${marker}`);
 
 const manifest=JSON.parse(read('release-manifest.json'));
-if(manifest.builds.admin!==468||manifest.builds.customer!==68||manifest.builds.books!==105||manifest.builds.serviceWorkerCache!==439)fail('Current build/cache versions are not synchronized');
+if(manifest.builds.admin!==469||manifest.builds.customer!==68||manifest.builds.books!==106||manifest.builds.serviceWorkerCache!==440)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');
