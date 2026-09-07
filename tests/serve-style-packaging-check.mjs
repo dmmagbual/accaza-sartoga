@@ -30,7 +30,8 @@ const inventory={
   lid:{name:'Strawless lid',unit:'pc',cost:1.22,category:'cat_packaging'},
   thin:{name:'Thin Straw',unit:'pc',cost:0.88,category:'cat_packaging'},
   hotcup:{name:'16oz Double Wall Cup',unit:'pc',cost:5.6,category:'cat_packaging'},
-  flat:{name:'WHITE FLAT LID',unit:'pc',cost:3.31,category:'cat_packaging'}
+  flat:{name:'WHITE FLAT LID',unit:'pc',cost:3.31,category:'cat_packaging'},
+  ice:{name:'Ice',unit:'g',cost:0.01,category:'cat_other'}
 };
 const categories={cat_packaging:{name:'Packaging'},cat_milk:{name:'Milk'},cat_syrup:{name:'Syrup'}};
 const row=(ing,s,m,l)=>({ing,unit:inventory[ing].unit,stockUnit:inventory[ing].unit,qtyS:s,qtyM:m,qtyL:l});
@@ -177,7 +178,7 @@ check(/data-rcradio/.test(recipeUi)&&/type="'\+\(isMulti\?'checkbox':'radio'\)/.
 check(/selectedDetail\(line\)/.test(recipeUi)&&/packagingDetail/.test(recipeUi),'selected option and packaging lines enumerate quantity, unit and cost');
 check(/Ingredients for selected choices/.test(recipeUi)&&/caSelected\(g,c\)/.test(recipeUi),'only the currently selected choice is shown in the choice-specific editor');
 check(/var next=ocClone\(d\.choiceAdd\|\|\{\}\)/.test(recipeUi)&&/data-ca-choice/.test(recipeUi),'editing one choice preserves hidden choice-specific recipes');
-check(/Ingredients used for every choice/.test(recipeUi)&&/ingredient for '\+esc\(c\.label\)/.test(recipeUi),'the editor clearly separates all-choice ingredients from exact-choice ingredients');
+check(/Existing all-choice ingredients/.test(recipeUi)&&/ingredient for '\+esc\(c\.label\)/.test(recipeUi),'the editor clearly separates legacy all-choice ingredients from exact-choice ingredients');
 check(/isPackagingCostItem/.test(recipeUi)&&/Packaging Costing only/.test(recipeUi),'packaging items cannot be newly selected as shared choice ingredients');
 check(/data-sbf="unit"/.test(recipeUi)&&/data-sbf="disp'\+sz\+'"/.test(recipeUi)&&/convertToStock\(display,u,item\)/.test(recipeUi),'shared base quantities use an editable recipe unit and normalize to the stock unit');
 check(/data-ocf="unit"/.test(recipeUi)&&/data-ocf="disp'\+sz\+'"/.test(recipeUi)&&/row\['qty'\+sz\]=convertToStock/.test(recipeUi),'shared choice quantities use an editable recipe unit and normalize to the stock unit');
@@ -194,6 +195,13 @@ check(/data-ca-temp-scope/.test(choiceScope)&&/Use for:/.test(choiceScope)&&/Not
 check(/data-effective-choice-include/.test(recipeUi)&&/setRecipeChoiceOverrideTemperature/.test(choiceScope),'the main effective-recipe Include column controls a shared-choice override for the selected temperature');
 check(/bindChoiceIngredientSelectors/.test(recipeUi)&&/markInheritedChoiceOverride/.test(choiceScope)&&/row\.op='choice_override'/.test(choiceScope)&&/row\.when=recipeTemperatureScope/.test(choiceScope),'adding an inherited shared-choice ingredient creates a separate override for the selected temperature');
 check(/if\(!row\)own\.ings\.push\(values\)/.test(choiceScope),'creating one shared-choice override preserves every other inherited shared-choice ingredient');
+check(/data-bmove/.test(recipeUi)&&/moveRecipeBaseToChoice/.test(recipeUi)&&/Move to /.test(choiceScope),'an existing all-choice ingredient can be moved to the selected temperature');
+check(!/id="recAddBase"/.test(recipeUi)&&!/\+ all-choice ingredient/.test(recipeUi),'new recipe-specific ingredients cannot accidentally be added to every temperature');
+check(/sharedSelected&&sharedSelected\[row\.ing\]\?'replace'/.test(choiceScope),'moving a shared-base ingredient creates a full-quantity replacement for only that choice');
+const iceScoped={latte:{base:[row('milk',200,250,300)],choiceAdd:{og_temp:{Iced:{label:'Iced',ings:[row('ice',120,160,200)]}}}}};
+const hotIce=cost(iceScoped,menuItems,optionGroups,{},'latte','M',['Hot']).lines.filter(line=>line.ingredientId==='ice');
+const icedIce=cost(iceScoped,menuItems,optionGroups,{},'latte','M',['Iced']).lines.filter(line=>line.ingredientId==='ice');
+check(hotIce.length===0&&icedIce.length===1&&icedIce[0].quantityPerServing===160,'Ice saved for Iced is absent from Hot and keeps its Iced quantity');
 
 /* 10. the shared option library can hold packaging too - leaving it there charges the cup twice */
 const libraryCosts={og_temp:{Hot:{label:'Hot',ings:[row('hotcup',1,1,1),row('flat',1,1,1)]},

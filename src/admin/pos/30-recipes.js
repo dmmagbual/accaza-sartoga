@@ -156,6 +156,7 @@ function drawRecipeEditor(item){
   var d=recipeDraft; var size=recSize||'M';
   var recipeCols='<colgroup><col style="width:32%"><col style="width:13%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:25%"></colgroup>';
   var cat=item.cat||''; var ct=catType(cat);
+  var tempSelection=recipeTemperatureSelection((A().getItemOptionGroups?A().getItemOptionGroups(item):[])||[],window.__recCostSel||{}),tempGroup=tempSelection.group,tempLabel=Array.isArray(tempSelection.label)?'':tempSelection.label;
   var sharedLibrary=(((window.__posSettings&&window.__posSettings.sharedBaseIngredients)||{})[cat]||{}).ings||[],sharedSelected={};(d.sharedBase||[]).forEach(function(x){sharedSelected[typeof x==='string'?x:x.ing]=1;});
   var sharedPicker=sharedLibrary.length?'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.35rem;">'+sharedLibrary.map(function(r){var inv=inventoryMap[r.ing]||{};return '<label style="display:flex;gap:.45rem;align-items:flex-start;padding:.45rem;border:1px solid var(--cd);border-radius:7px;background:#fff"><input type="checkbox" data-sharedpick="'+esc(r.ing)+'"'+(sharedSelected[r.ing]?' checked':'')+'><span><b>'+esc(inv.name||r.ing)+'</b><small style="display:block;color:var(--tl)">'+num(r.qtyS)+' / '+num(r.qtyM)+' / '+num(r.qtyL)+' '+esc(inv.unit||'')+' · inherited</small></span></label>';}).join('')+'</div>':'<p class="pz-sub">No shared base is defined for this category. Add it under Shared Ingredients, or add recipe-specific ingredients below.</p>';
   function ingSelect(val,attr){return '<select class="pz-in" '+attr+' style="min-width:150px;"><option value="">— ingredient —</option>'+ingsByType('base').concat(ingsByType('both')).concat(ingsByType('consumable')).map(function(i){return '<option value="'+i.id+'"'+(i.id===val?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+') · '+ingType(i)+'</option>';}).join('')+'</select>';}
@@ -170,7 +171,7 @@ function drawRecipeEditor(item){
     return '<tr><td>'+ingSelect(r.ing,'data-brow="'+ix+'" data-bfield="ing"')+'</td>'
       +'<td style="white-space:nowrap;"><select class="pz-in" data-brow="'+ix+'" data-bfield="unit" style="width:70px;padding-left:0.3rem;padding-right:0.2rem;" title="Unit you are entering — converts to the item stock unit for costing">'+(uOpts||'<option></option>')+'</select>'+stkNote+'</td>'
       +'<td class="r">'+qc('S')+'</td><td class="r">'+qc('M')+'</td><td class="r">'+qc('L')+'</td>'
-      +'<td class="r" style="white-space:nowrap;font-weight:600;">'+peso(amt)+' <button class="pz-btn warn" style="padding:0.2rem 0.45rem;font-weight:400;" data-brem="'+ix+'">✕</button></td></tr>';
+      +'<td class="r" style="white-space:nowrap;font-weight:600;">'+peso(amt)+recipeBaseMoveButton(ix,tempLabel)+' <button class="pz-btn warn" style="padding:0.2rem 0.45rem;font-weight:400;" data-brem="'+ix+'">✕</button></td></tr>';
   }).join('');
   var sizeBtns=['S','M','L'].map(function(sz){return '<button class="pz-btn '+(sz===size?'ok':'sec')+'" data-recsize="'+sz+'" style="padding:0.25rem 0.8rem;">'+sz+'</button>';}).join(' ');
   var grand=baseTotal;
@@ -258,9 +259,9 @@ function drawRecipeEditor(item){
       +'<label style="display:inline-flex;align-items:center;gap:0.35rem;font-size:0.76rem;color:var(--tl);margin-bottom:0.5rem;cursor:pointer;"><input type="checkbox" id="recNoNeed"'+(item.noRecipe?' checked':'')+'/> No recipe needed (resale / bought-in item — hide from the not-costed flag)</label>'
       +(ings().length?'':'<p class="pz-low" style="font-size:0.8rem;">Add items in the Inventory tab first.</p>')
       +'<span class="pz-lbl">Shared base ingredients — select what this drink uses</span>'+sharedPicker
-      +'<details style="margin-top:.7rem;"'+(baseRows?' open':'')+'><summary style="cursor:pointer;font-weight:700;color:var(--bd)">Ingredients used for every choice</summary><p class="pz-sub">These apply to every choice. Add Hot- or Iced-only ingredients below.</p>'
+      +'<details style="margin-top:.7rem;"'+(baseRows?' open':'')+'><summary style="cursor:pointer;font-weight:700;color:var(--bd)">Existing all-choice ingredients</summary><p class="pz-sub">All choices. Move rows to Hot or Iced for exclusive use. Add temperature-only ingredients below.</p>'
       +'<table class="pz-tbl" style="margin-bottom:0.4rem;width:100%;table-layout:fixed;">'+recipeCols+'<thead><tr><th>Ingredient</th><th>Recipe unit</th><th class="r">S</th><th class="r">M</th><th class="r">L</th><th class="r">Amount ('+size+')</th></tr></thead><tbody>'+(baseRows||'<tr><td colspan="6" style="color:var(--tl);padding:0.5rem;">No ingredients yet.</td></tr>')+'</tbody></table>'
-      +'<button class="pz-btn sec" id="recAddBase" style="padding:0.3rem 0.7rem;">+ all-choice ingredient</button></details>'
+      +'</details>'
       +'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;"><b>Do not add cups, lids, straws or tissue here.</b> Packaging is costed once through Packaging Costing. Every ingredient selected here is linked to its Inventory record and is included in sale COGS.</div>'
       +'<div style="border-top:2px solid var(--bd);margin-top:0.8rem;padding-top:0.6rem;display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:700;color:var(--bd);">BASE COST / '+size+'</span><span style="font-weight:700;font-size:1.1rem;color:var(--bd);">'+peso(grand)+'</span></div>'
       +'<div style="font-size:0.68rem;color:var(--tl);margin-top:0.2rem;">Base ingredients only. The full cost per drink (base + extras + optional) is in the calculator below.</div>'
@@ -293,9 +294,9 @@ function drawRecipeEditor(item){
   }
   function syncAll(){syncDraft();syncChoiceAdd();}
   ed.querySelectorAll('[data-sharedpick]').forEach(function(cb){cb.onchange=function(){syncAll();d.sharedBase=[];ed.querySelectorAll('[data-sharedpick]:checked').forEach(function(x){d.sharedBase.push({ing:x.getAttribute('data-sharedpick')});});drawRecipeEditor(item);};});
-  document.getElementById('recAddBase').onclick=function(){syncAll();d.base.push({ing:'',unit:'',dS:'',dM:'',dL:''});drawRecipeEditor(item);};
   ed.querySelectorAll('[data-recsize]').forEach(function(b){b.onclick=function(){syncAll();recSize=b.getAttribute('data-recsize');drawRecipeEditor(item);};});
   ed.querySelectorAll('[data-brem]').forEach(function(b){b.onclick=function(){syncAll();d.base.splice(Number(b.getAttribute('data-brem')),1);drawRecipeEditor(item);};});
+  ed.querySelectorAll('[data-bmove]').forEach(function(b){b.onclick=function(){syncAll();if(!tempGroup||!tempLabel)return;moveRecipeBaseToChoice(d,Number(b.getAttribute('data-bmove')),tempGroup.id,tempLabel,sharedSelected);drawRecipeEditor(item);};});
   ed.querySelectorAll('select[data-brow]').forEach(function(s){s.onchange=function(){syncAll();drawRecipeEditor(item);};});
   ed.querySelectorAll('[data-caadd]').forEach(function(b){b.onclick=function(){syncAll();var g=b.getAttribute('data-g'),lk=b.getAttribute('data-l'),lbl=b.getAttribute('data-label');d.choiceAdd=d.choiceAdd||{};d.choiceAdd[g]=d.choiceAdd[g]||{};d.choiceAdd[g][lk]=d.choiceAdd[g][lk]||{label:lbl,ings:[]};d.choiceAdd[g][lk].ings.push({ing:'',unit:'',dS:null,dM:null,dL:null});drawRecipeEditor(item);};});
   ed.querySelectorAll('[data-carem]').forEach(function(b){b.onclick=function(){syncAll();var g=b.getAttribute('data-g'),lk=b.getAttribute('data-l'),ix=Number(b.getAttribute('data-ix'));if(d.choiceAdd&&d.choiceAdd[g]&&d.choiceAdd[g][lk]&&d.choiceAdd[g][lk].ings)d.choiceAdd[g][lk].ings.splice(ix,1);drawRecipeEditor(item);};});
