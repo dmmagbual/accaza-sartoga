@@ -147,6 +147,7 @@ async function applyInventoryMovement(db, raw, actor) {
   const qty = qty6(raw.qty);
   const requestedCost = qty6(raw.unitCost);
   const setCost = raw.setCost === true || type === "purchase" || type === "purchase_reversal" || type === "purchase_quantity_correction" || type === "revaluation";
+  if (type === "purchase" && qty > 0 && !(requestedCost > 0)) throw new HttpsError("invalid-argument", "A received purchase must have a unit cost greater than zero.");
   if (type === "revaluation") {
     if (qty !== 0) throw new HttpsError("invalid-argument", "A revaluation changes the unit cost only. Use a stock adjustment to move quantity.");
     if (!(requestedCost >= 0)) throw new HttpsError("invalid-argument", "Enter the corrected unit cost.");
@@ -178,11 +179,13 @@ async function applyInventoryMovement(db, raw, actor) {
   if (Number(raw.occurredAt) && Number(raw.occurredAt) > now + 2 * 86400000) throw new HttpsError("invalid-argument", "An inventory movement can\u2019t be dated in the future.");
   let duplicate = false, insufficient = false, insufficientValue = false, nothingToRevalue = false;
   const accountingRef = db.ref(`/inventoryAccounting/${itemId}`);
+  const existingAccounting = (await accountingRef.get()).val();
+  if (!existingAccounting && qty6(item.stock) > 0 && !(qty6(item.cost) > 0) && type !== "purchase") throw new HttpsError("failed-precondition", `${String(item.name || itemId)} has positive opening stock without a unit cost. Restate its invoice-backed opening cost before posting inventory usage or adjustments.`);
   // RTDB transactions may invoke the updater once with an empty local cache
   // before the server value arrives.  A purchase reversal must not seed that
   // pass from the legacy inventory projection because its stock can be stale.
   // Preload the authoritative ledger so the first pass uses the real balance.
-  const accountingSeed = (await accountingRef.get()).val() || seedInventoryAccounting(itemId, item, now);
+  const accountingSeed = existingAccounting || seedInventoryAccounting(itemId, item, now);
   const result = await accountingRef.transaction((current) => {
     const base = current || accountingSeed;
     const state = Object.assign({}, base, {applied: Object.assign({}, base.applied || {})});
@@ -278,6 +281,8 @@ exports.ensureInventoryLedger = onCall(
       return {skipped: true, initializedAt: marker};
     }
     const inventory = (await db.ref("/inventory").get()).val() || {};
+    const uncosted = Object.keys(inventory).filter((itemId) => qty6(inventory[itemId] && inventory[itemId].stock) > 0 && !(qty6(inventory[itemId] && inventory[itemId].cost) > 0));
+    if (uncosted.length) throw new HttpsError("failed-precondition", `Inventory ledger initialization stopped: ${uncosted.slice(0, 8).map((itemId) => String(inventory[itemId].name || itemId)).join(", ")} ${uncosted.length > 8 ? `and ${uncosted.length - 8} more ` : ""}have positive stock without a unit cost. Enter invoice-backed opening costs first.`);
     let initialized = 0;
     for (const itemId of Object.keys(inventory)) {
       const ref = db.ref(`/inventoryAccounting/${itemId}`);

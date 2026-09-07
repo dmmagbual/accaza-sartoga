@@ -1,5 +1,6 @@
 function menuList(){ return (A().getMenuItems?A().getMenuItems():[]).slice().sort(function(a,b){return (a.cat||'').localeCompare(b.cat||'')||(a.name||'').localeCompare(b.name||'');}); }
-function recipeCost(rec,size,item){item=item||{name:'Recipe'};var key=item.key||'preview';var result=Costing().costRecipe(Object.assign({itemKey:key,recipe:rec,item:item,size:size},costingContext()));return result.totalCost;}
+function recipeCostResult(rec,size,item){item=item||{name:'Recipe'};var key=item.key||'preview';return Costing().costRecipe(Object.assign({itemKey:key,recipe:rec,item:item,size:size},costingContext()));}
+function recipeCost(rec,size,item){return recipeCostResult(rec,size,item).totalCost;}
 function recipeDraftRaw(d){
   d=d||{};
   var base=(d.base||[]).filter(function(r){return r&&r.ing&&['S','M','L'].some(function(sz){return r['d'+sz]!=null&&r['d'+sz]!=='';});}).map(function(r){var inv=inventoryMap[r.ing]||{};return {ing:r.ing,unit:r.unit||inv.unit||'',dispS:r.dS===''?null:r.dS,dispM:r.dM===''?null:r.dM,dispL:r.dL===''?null:r.dL};});
@@ -35,8 +36,9 @@ function menuCostGaps(){
     var rec=recipesMap[it.key];
     if(!rec||(!(rec.base&&rec.base.length)&&!(rec.sharedBase&&rec.sharedBase.length))){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'No recipe yet'}); return; }
     if((rec.base||[]).some(function(b){return b.ing&&!inventoryMap[b.ing];})){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'An ingredient was deleted (broken link)'}); return; }
-    if(!(recipeCost(rec,'M',it)>0)){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'Recipe cost is ₱0'}); return; }
-    if((rec.base||[]).some(function(b){return b.ing&&!(Number((inventoryMap[b.ing]||{}).cost)>0);})){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'An ingredient has no cost'}); return; }
+    var costResult=recipeCostResult(rec,'M',it),missingCost=(costResult.warnings||[]).filter(function(w){return w.code==='MISSING_COST';})[0];
+    if(missingCost){var missingItem=inventoryMap[missingCost.itemId]||{};out.push({key:it.key,name:it.name,cat:it.cat,reason:(missingItem.name||missingCost.itemId||'An ingredient')+' has no unit cost'});return;}
+    if(!(costResult.totalCost>0)){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'Recipe cost is ₱0'}); return; }
     var packagingGap=recipePackagingGap(it);
     if(packagingGap)out.push({key:it.key,name:it.name,cat:it.cat,reason:packagingGap});
   });

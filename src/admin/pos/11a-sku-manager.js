@@ -18,6 +18,7 @@ function openSkuManager(id,onUse){
   function draw(mine){
     var rows=mine.map(function(sk,ix){
       var per=Number(sk.costPerBase)||0;
+      var quoteIncomplete=(Number(sk.purchaseCost)>0)!==(Number(sk.packSize)>0);
       var pack=(sk.packSize!=null&&sk.packSize!=='')?(num(sk.packSize)+' '+esc(sk.purchaseUnit||'')):'—';
       return '<tr'+(sk.active===false?' style="opacity:0.5;"':'')+'>'
         +'<td style="white-space:nowrap;"><button class="pz-btn sec" data-skup="'+sk.id+'" '+(ix===0?'disabled':'')+' style="padding:0.05rem 0.35rem;">▲</button> <button class="pz-btn sec" data-skdn="'+sk.id+'" '+(ix===mine.length-1?'disabled':'')+' style="padding:0.05rem 0.35rem;">▼</button></td>'
@@ -26,7 +27,7 @@ function openSkuManager(id,onUse){
         +'<td style="font-size:0.8rem;">'+pack+'</td>'
         +'<td style="font-size:0.8rem;">'+(sk.purchaseCost?peso(sk.purchaseCost):'—')+'</td>'
         +'<td style="font-size:0.8rem;white-space:nowrap;">'+(per?('₱'+per.toFixed(4)+'/'+esc(baseU)):'—')+'</td>'
-        +'<td style="font-size:0.8rem;">'+(sk.active===false?'<span style="color:#a55;">inactive</span>':'<span style="color:#2a7;">active</span>')+'</td>'
+        +'<td style="font-size:0.8rem;">'+(sk.active===false?'<span style="color:#a55;">inactive</span>':quoteIncomplete?'<span style="color:#a55;">active · quote incomplete</span>':'<span style="color:#2a7;">active</span>')+'</td>'
         +'<td style="white-space:nowrap;">'+(onUse&&sk.active!==false?'<button class="pz-btn ok" data-skuse="'+sk.id+'" style="padding:0.15rem 0.5rem;">Use this brand</button> ':'')+'<button class="pz-btn sec" data-sked="'+sk.id+'" style="padding:0.15rem 0.5rem;">Edit</button> <button class="pz-btn sec" data-sktog="'+sk.id+'" style="padding:0.15rem 0.5rem;">'+(sk.active===false?'Activate':'Deactivate')+'</button> <button class="pz-btn warn" data-skdel="'+sk.id+'" style="padding:0.15rem 0.45rem;">✕</button></td></tr>';
     }).join('');
     var e=editId?(mine.filter(function(x){return x.id===editId;})[0]||{}):{};
@@ -56,6 +57,7 @@ function openSkuManager(id,onUse){
       var brand=(document.getElementById('skBrand').value||'').trim(); if(!brand){alert('Enter a brand name.');return;}
       var duplicate=mine.some(function(sk){return sk.id!==editId&&uNorm(sk.brand)===uNorm(brand);});if(duplicate){alert('This brand is already approved for '+(item.name||'this item')+'. Select the existing brand instead.');return;}
       var pack=document.getElementById('skPack').value, punit=document.getElementById('skUnit').value, pcost=document.getElementById('skCost').value;
+      var hasPack=Number(pack)>0,hasCost=Number(pcost)>0;if(hasPack!==hasCost){alert('Enter both pack size and purchase cost, or leave both blank. The unit cost cannot be calculated from only one value.');return;}
       var p=skuCostPerBase(item,pack,punit,pcost);
       var rec={masterId:id,brand:brand,supplier:(document.getElementById('skSup').value||'').trim(),purchaseUnit:punit,packSize:(pack===''?null:Number(pack)||0),purchaseCost:(pcost===''?null:Number(pcost)||0),convToBase:p.base,costPerBase:p.per,branchAvail:['main'],updatedAt:Date.now()};
       if(editId){ a.update(a.ref(a.db,'inventorySku/'+editId),rec).then(function(){editId=null;load();}).catch(skErr); }

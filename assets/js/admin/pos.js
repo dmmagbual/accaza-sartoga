@@ -242,10 +242,11 @@ function renderInventory(){
   var missingBrand=list.filter(function(i){return recipeUsesInventory(i.id)&&!activeSkusFor(i.id).length;});
   var shown=!catFilter?list:(catFilter==='__none__'?uncat:(catFilter==='__brand_missing__'?missingBrand:list.filter(function(i){return (i.category||'')===catFilter;})));
   var unledgered=list.filter(function(i){return !i.ledgerVersion;});
+  var uncosted=list.filter(function(i){return Number(i.stock)>0&&!(Number(i.cost)>0);});
   var movements=Object.keys(inventoryMovementsMap||{}).map(function(k){return Object.assign({id:k},inventoryMovementsMap[k]);}).sort(function(x,y){return (Number(y.occurredAt)||0)-(Number(x.occurredAt)||0);}).slice(0,100);
   var movementRows=movements.map(function(m){var q=Number(m.qty)||0;return '<tr><td>'+new Date(Number(m.occurredAt)||0).toLocaleString('en-PH')+'</td><td>'+esc(String(m.type||'').replace(/_/g,' '))+'</td><td>'+esc(m.itemName||m.itemId||'')+'</td><td class="r" style="color:'+(q<0?'#b44336':'#267354')+';">'+(q>0?'+':'')+num(q)+' '+esc(m.unit||'')+'</td><td class="r">'+num(m.balanceBefore)+' → <b>'+num(m.balanceAfter)+'</b></td><td class="r">'+peso(m.unitCost)+'</td><td>'+esc(m.sourceId||m.sourceType||'')+'</td><td>'+esc(m.actorName||'server')+'</td></tr>';}).join('');
   var rows=shown.map(function(i){
-    var st=Number(i.stock)||0; var isLow=st<=Number(i.reorder||0)&&st>=0; var isNeg=st<0;
+    var st=Number(i.stock)||0; var isLow=st<=Number(i.reorder||0)&&st>=0; var isNeg=st<0; var isUncosted=st>0&&!(Number(i.cost)>0);
     var ty=ingType(i);
     var recipeLinked=recipeUsesInventory(i.id), brandCount=activeSkusFor(i.id).length;
     var linkBadge=recipeLinked?(brandCount?'<span class="inv-sku-link linked">✓ Recipe · '+brandCount+' approved brand'+(brandCount===1?'':'s')+'</span>':'<span class="inv-sku-link pending" title="This stock item is the SKU. Add an approved purchasing brand before receiving it.">✓ Recipe · SKU ready</span>'):'<span class="inv-sku-link neutral">Not in a recipe</span>';
@@ -256,7 +257,7 @@ function renderInventory(){
       +'<td style="font-size:0.78rem;">'+(i.category?esc(invCatName(i.category)):'<span style="color:var(--tl);">—</span>')+(function(){var m=invItemAccounts(i);return m.inventoryAccount&&m.costAccount?' <span style="color:#267354;font-size:0.66rem;">'+m.inventoryAccount+' / '+m.costAccount+'</span>':' <span style="color:#b44336;font-size:0.66rem;">unmapped</span>'})()+'</td>'
       +'<td class="'+((isNeg||isLow)?'pz-low':'')+'">'+num(st)+' '+esc(i.unit||'')+(isNeg?' 🔴 NEGATIVE':(isLow?' ⚠️':''))+'</td>'
       +'<td>'+num(i.reorder||0)+'</td>'
-      +'<td>'+(i.cost?peso(i.cost):'—')+'</td>'
+      +'<td>'+(isUncosted?'<button class="pz-btn warn" data-inv-adjust="'+i.id+'" title="Positive stock has no weighted-average cost. Restate the invoice-backed unit cost.">Set unit cost</button>':(Number(i.cost)>0?peso(i.cost):'—'))+'</td>'
       +'<td>'+linkBadge+'</td>'
       +'<td class="inventory-actions-cell"><div class="inventory-actions">'
         +'<button class="pz-btn sec" style="'+(recipeLinked&&!brandCount?'border-color:#c98a2b;color:#8a5a00;':'border-color:#3a8a6a;color:#256b52;')+'" data-inv-skus="'+i.id+'">'+(recipeLinked&&!brandCount?'Add brand':'Brands ('+brandCount+')')+'</button>'
@@ -267,7 +268,7 @@ function renderInventory(){
   }).join('');
   root.innerHTML=
     '<div class="pz-h">📦 Stock Items</div>'
-    +'<p class="pz-sub">Each inventory row is the common SKU used by recipes. Inventory Asset and Cost accounts belong to the individual item; Category is only an organizational label.'+(low.length?' <b class="pz-low">'+low.length+' low.</b>':'')+(neg.length?' <b class="pz-low">'+neg.length+' negative.</b>':'')+(uncat.length?' <b style="color:#8a5a00;">'+uncat.length+' uncategorized.</b>':'')+(unmapped.length?' <b style="color:#b44336;">'+unmapped.length+' without accounting mapping.</b>':'')+(missingBrand.length?' <b style="color:#8a5a00;">'+missingBrand.length+' recipe item'+(missingBrand.length===1?'':'s')+' without an approved purchasing brand.</b>':'')+'</p>'
+    +'<p class="pz-sub">Each inventory row is the common SKU used by recipes. Inventory Asset and Cost accounts belong to the individual item; Category is only an organizational label.'+(low.length?' <b class="pz-low">'+low.length+' low.</b>':'')+(neg.length?' <b class="pz-low">'+neg.length+' negative.</b>':'')+(uncosted.length?' <b style="color:#b44336;">'+uncosted.length+' positive-stock item'+(uncosted.length===1?'':'s')+' without a unit cost.</b>':'')+(uncat.length?' <b style="color:#8a5a00;">'+uncat.length+' uncategorized.</b>':'')+(unmapped.length?' <b style="color:#b44336;">'+unmapped.length+' without accounting mapping.</b>':'')+(missingBrand.length?' <b style="color:#8a5a00;">'+missingBrand.length+' recipe item'+(missingBrand.length===1?'':'s')+' without an approved purchasing brand.</b>':'')+'</p>'
     +'<div class="pz-card" style="margin-bottom:1rem;border:1px solid #b8dfc4;background:#f3faf5;display:flex;gap:0.9rem;align-items:center;flex-wrap:wrap;">'
       +'<div style="flex:1;min-width:240px;"><div style="font-weight:700;color:#1c6b47;font-size:0.92rem;">📥 Receiving a delivery?</div><p style="font-size:0.79rem;color:var(--tm);margin:0.25rem 0 0;line-height:1.35;">Book stock in through the <b>Goods-Received Note</b> — capture supplier, invoice&nbsp;#, quantities and unit costs in one card. It updates the weighted-average cost and raises the payable automatically. <b>Adjust</b> and <b>Edit</b> below are only for count corrections, not for receiving purchases.</p></div>'
       +'<button class="pz-btn ok" id="invReceiveStock" style="white-space:nowrap;">📥 Receive stock →</button>'
@@ -414,6 +415,7 @@ function openSkuManager(id,onUse){
   function draw(mine){
     var rows=mine.map(function(sk,ix){
       var per=Number(sk.costPerBase)||0;
+      var quoteIncomplete=(Number(sk.purchaseCost)>0)!==(Number(sk.packSize)>0);
       var pack=(sk.packSize!=null&&sk.packSize!=='')?(num(sk.packSize)+' '+esc(sk.purchaseUnit||'')):'—';
       return '<tr'+(sk.active===false?' style="opacity:0.5;"':'')+'>'
         +'<td style="white-space:nowrap;"><button class="pz-btn sec" data-skup="'+sk.id+'" '+(ix===0?'disabled':'')+' style="padding:0.05rem 0.35rem;">▲</button> <button class="pz-btn sec" data-skdn="'+sk.id+'" '+(ix===mine.length-1?'disabled':'')+' style="padding:0.05rem 0.35rem;">▼</button></td>'
@@ -422,7 +424,7 @@ function openSkuManager(id,onUse){
         +'<td style="font-size:0.8rem;">'+pack+'</td>'
         +'<td style="font-size:0.8rem;">'+(sk.purchaseCost?peso(sk.purchaseCost):'—')+'</td>'
         +'<td style="font-size:0.8rem;white-space:nowrap;">'+(per?('₱'+per.toFixed(4)+'/'+esc(baseU)):'—')+'</td>'
-        +'<td style="font-size:0.8rem;">'+(sk.active===false?'<span style="color:#a55;">inactive</span>':'<span style="color:#2a7;">active</span>')+'</td>'
+        +'<td style="font-size:0.8rem;">'+(sk.active===false?'<span style="color:#a55;">inactive</span>':quoteIncomplete?'<span style="color:#a55;">active · quote incomplete</span>':'<span style="color:#2a7;">active</span>')+'</td>'
         +'<td style="white-space:nowrap;">'+(onUse&&sk.active!==false?'<button class="pz-btn ok" data-skuse="'+sk.id+'" style="padding:0.15rem 0.5rem;">Use this brand</button> ':'')+'<button class="pz-btn sec" data-sked="'+sk.id+'" style="padding:0.15rem 0.5rem;">Edit</button> <button class="pz-btn sec" data-sktog="'+sk.id+'" style="padding:0.15rem 0.5rem;">'+(sk.active===false?'Activate':'Deactivate')+'</button> <button class="pz-btn warn" data-skdel="'+sk.id+'" style="padding:0.15rem 0.45rem;">✕</button></td></tr>';
     }).join('');
     var e=editId?(mine.filter(function(x){return x.id===editId;})[0]||{}):{};
@@ -452,6 +454,7 @@ function openSkuManager(id,onUse){
       var brand=(document.getElementById('skBrand').value||'').trim(); if(!brand){alert('Enter a brand name.');return;}
       var duplicate=mine.some(function(sk){return sk.id!==editId&&uNorm(sk.brand)===uNorm(brand);});if(duplicate){alert('This brand is already approved for '+(item.name||'this item')+'. Select the existing brand instead.');return;}
       var pack=document.getElementById('skPack').value, punit=document.getElementById('skUnit').value, pcost=document.getElementById('skCost').value;
+      var hasPack=Number(pack)>0,hasCost=Number(pcost)>0;if(hasPack!==hasCost){alert('Enter both pack size and purchase cost, or leave both blank. The unit cost cannot be calculated from only one value.');return;}
       var p=skuCostPerBase(item,pack,punit,pcost);
       var rec={masterId:id,brand:brand,supplier:(document.getElementById('skSup').value||'').trim(),purchaseUnit:punit,packSize:(pack===''?null:Number(pack)||0),purchaseCost:(pcost===''?null:Number(pcost)||0),convToBase:p.base,costPerBase:p.per,branchAvail:['main'],updatedAt:Date.now()};
       if(editId){ a.update(a.ref(a.db,'inventorySku/'+editId),rec).then(function(){editId=null;load();}).catch(skErr); }
@@ -1405,7 +1408,8 @@ function recipeSharedChoiceRow(ing,c){var entry=optCostStore()[c.groupId]&&optCo
 function recipeChoiceOverridden(d,ing,c){var entry=d.choiceAdd&&d.choiceAdd[c.groupId]&&d.choiceAdd[c.groupId][optKey(c.label)];return entry&&(entry.ings||[]).some(function(x){return x.ing===ing&&x.op==='choice_override';});}
 function setRecipeChoiceOverride(d,ing,gid,label,on){var lk=optKey(label),shared=optCostStore()[gid]&&optCostStore()[gid][lk];if(!shared)return false;d.choiceAdd=d.choiceAdd||{};d.choiceAdd[gid]=d.choiceAdd[gid]||{};var own=d.choiceAdd[gid][lk]||(d.choiceAdd[gid][lk]={label:label,ings:[]}),sharedTarget;(shared.ings||[]).forEach(function(x){var inv=inventoryMap[x.ing]||{},u=x.unit||inv.unit||'',row=(own.ings||[]).filter(function(y){return y.ing===x.ing;})[0],values={ing:x.ing,unit:u,dS:x.dispS!=null?x.dispS:x.qtyS,dM:x.dispM!=null?x.dispM:x.qtyM,dL:x.dispL!=null?x.dispL:x.qtyL,op:x.op};if(x.ing===ing)sharedTarget=values;if(!row)own.ings.push(values);});var target=own.ings.filter(function(x){return x.ing===ing;})[0];if(!target)return false;if(on)target.op='choice_override';else Object.assign(target,sharedTarget||{op:undefined});return true;}
 function menuList(){ return (A().getMenuItems?A().getMenuItems():[]).slice().sort(function(a,b){return (a.cat||'').localeCompare(b.cat||'')||(a.name||'').localeCompare(b.name||'');}); }
-function recipeCost(rec,size,item){item=item||{name:'Recipe'};var key=item.key||'preview';var result=Costing().costRecipe(Object.assign({itemKey:key,recipe:rec,item:item,size:size},costingContext()));return result.totalCost;}
+function recipeCostResult(rec,size,item){item=item||{name:'Recipe'};var key=item.key||'preview';return Costing().costRecipe(Object.assign({itemKey:key,recipe:rec,item:item,size:size},costingContext()));}
+function recipeCost(rec,size,item){return recipeCostResult(rec,size,item).totalCost;}
 function recipeDraftRaw(d){
   d=d||{};
   var base=(d.base||[]).filter(function(r){return r&&r.ing&&['S','M','L'].some(function(sz){return r['d'+sz]!=null&&r['d'+sz]!=='';});}).map(function(r){var inv=inventoryMap[r.ing]||{};return {ing:r.ing,unit:r.unit||inv.unit||'',dispS:r.dS===''?null:r.dS,dispM:r.dM===''?null:r.dM,dispL:r.dL===''?null:r.dL};});
@@ -1441,8 +1445,9 @@ function menuCostGaps(){
     var rec=recipesMap[it.key];
     if(!rec||(!(rec.base&&rec.base.length)&&!(rec.sharedBase&&rec.sharedBase.length))){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'No recipe yet'}); return; }
     if((rec.base||[]).some(function(b){return b.ing&&!inventoryMap[b.ing];})){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'An ingredient was deleted (broken link)'}); return; }
-    if(!(recipeCost(rec,'M',it)>0)){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'Recipe cost is ₱0'}); return; }
-    if((rec.base||[]).some(function(b){return b.ing&&!(Number((inventoryMap[b.ing]||{}).cost)>0);})){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'An ingredient has no cost'}); return; }
+    var costResult=recipeCostResult(rec,'M',it),missingCost=(costResult.warnings||[]).filter(function(w){return w.code==='MISSING_COST';})[0];
+    if(missingCost){var missingItem=inventoryMap[missingCost.itemId]||{};out.push({key:it.key,name:it.name,cat:it.cat,reason:(missingItem.name||missingCost.itemId||'An ingredient')+' has no unit cost'});return;}
+    if(!(costResult.totalCost>0)){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'Recipe cost is ₱0'}); return; }
     var packagingGap=recipePackagingGap(it);
     if(packagingGap)out.push({key:it.key,name:it.name,cat:it.cat,reason:packagingGap});
   });
