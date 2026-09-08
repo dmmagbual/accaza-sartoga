@@ -182,6 +182,7 @@ check(/data-effective-choice-override/.test(recipeUi)&&/setRecipeChoiceOverride/
 check(/recipeTemperatureScope/.test(choiceScope)&&/data-ca-when/.test(recipeUi)&&/when:r\.when/.test(recipeUi),'shared-choice overrides retain an explicit Hot or Iced scope');
 check(/op==='choice_override'&&!Object\.keys\(when\)\.length/.test(recipeUi),'an existing unscoped shared-choice override adopts the selected temperature when resaved');
 check(/data-ca-temp-scope/.test(choiceScope)&&/Use for:/.test(choiceScope)&&/Not used for/.test(recipeUi),'shared-choice overrides expose explicit Hot and Iced include controls');
+check(/data-effective-choice-include/.test(recipeUi)&&/setRecipeChoiceOverrideTemperature/.test(choiceScope),'the main effective-recipe Include column controls a shared-choice override for the selected temperature');
 check(/if\(!row\)own\.ings\.push\(values\)/.test(choiceScope),'creating one shared-choice override preserves every other inherited shared-choice ingredient');
 
 /* 10. the shared option library can hold packaging too - leaving it there charges the cup twice */
