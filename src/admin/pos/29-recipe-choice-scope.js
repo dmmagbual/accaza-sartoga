@@ -42,3 +42,7 @@ function ocClone(o){try{return JSON.parse(JSON.stringify(o||{}));}catch(e){retur
 function ocGroups(){var m=(A()&&A().optionGroupsMap)||{};return Object.keys(m).map(function(id){return Object.assign({id:id},m[id]);}).sort(function(a,b){return (a.order||0)-(b.order||0);});}
 function ocChoiceCost(ings,size,tempGroup,tempLabel){var c=0;(ings||[]).forEach(function(r){if(!r||!r.ing||tempLabel&&r.when&&r.when[tempGroup.id]!==tempLabel)return;var q=r['qty'+size];if(q==null||q==='')q=0;c+=(Number(q)||0)*ingCost(r.ing);});return c;}
 function renderOptionsMaster(){window.__optCostDraft=ocClone(optCostStore());ocDraw();}
+function recipeRequiredPaths(it){
+  var paths=[[]],groups=(A().getItemOptionGroups?A().getItemOptionGroups(it):[])||[];groups.filter(function(g){return g&&g.required&&g.type!=='multi'&&(g.choices||[]).length;}).forEach(function(g){var next=[];paths.forEach(function(path){g.choices.forEach(function(c){next.push(path.concat([{group:g,label:c.label}]));});});paths=next;});return paths;
+}
+function recipePathLabel(path){return (path||[]).map(function(x){return (x.group.name||x.group.id)+': '+x.label;}).join(', ');}
