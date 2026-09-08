@@ -67,12 +67,13 @@
     recipe=recipe||{};inventory=inventory||{};var errors=[],warnings=[],seen={};
     var base=(Array.isArray(recipe.base)?recipe.base:[]).map(function(row,ix){var r=normalizeRow(row,inventory,'base['+ix+']',errors,warnings);if(r){if(seen[r.ing])warnings.push({code:'DUPLICATE_INGREDIENT',path:'base['+ix+']',itemId:r.ing,message:'Ingredient appears more than once; quantities will stack.'});seen[r.ing]=1;}return r;}).filter(Boolean);
     var sharedBase=(Array.isArray(recipe.sharedBase)?recipe.sharedBase:[]).map(function(ref){return typeof ref==='string'?{ing:ref}:{ing:String((ref&&ref.ing)||'')};}).filter(function(ref){return !!ref.ing;});
-    if(!base.length&&!sharedBase.length)errors.push({code:'EMPTY_RECIPE',path:'base',message:'Select at least one shared base ingredient or add a recipe-specific ingredient.'});
     var choiceAdd={};Object.keys(recipe.choiceAdd||{}).forEach(function(gid){var group={};Object.keys(recipe.choiceAdd[gid]||{}).forEach(function(key){var entry=recipe.choiceAdd[gid][key]||{},label=entry.label||key;var rows=(entry.ings||[]).map(function(row,ix){return normalizeRow(row,inventory,'choiceAdd.'+gid+'.'+key+'['+ix+']',errors,warnings,true,label);}).filter(Boolean);if(rows.length)group[key]={label:label,ings:rows};});if(Object.keys(group).length)choiceAdd[gid]=group;});
+    if(!base.length&&!sharedBase.length&&!hasChoiceRows(choiceAdd))errors.push({code:'EMPTY_RECIPE',path:'base',message:'Select a shared base ingredient or add an ingredient to a required choice.'});
     var normalized={base:base,sharedBase:sharedBase,choiceAdd:choiceAdd,schemaVersion:3,costingEngineVersion:VERSION,updatedAt:n(recipe.updatedAt)||Date.now()};
     if(Array.isArray(recipe.options))normalized.options=recipe.options;
     return {ok:errors.length===0,recipe:normalized,errors:errors,warnings:warnings,engineVersion:VERSION};
   }
+  function hasChoiceRows(choiceAdd){return Object.keys(choiceAdd||{}).some(function(gid){return Object.keys(choiceAdd[gid]||{}).some(function(key){return !!(((choiceAdd[gid]||{})[key]||{}).ings||[]).length;});});}
   function effectiveBaseRows(item,recipe,ctx,warnings){
     var own={},out=[];(recipe.base||[]).forEach(function(row){if(row&&row.ing)own[row.ing]=1;});
     var library=((ctx.sharedBaseIngredients||{})[String((item&&item.cat)||'')]||{}).ings||[];
@@ -130,7 +131,7 @@
       if(!li||!li.itemKey){errors.push({code:'INVALID_ORDER_LINE',path:'lineItems['+lix+']',message:'Menu item is required.'});return;}
       var orderQty=Number(li.qty),size=SIZES.indexOf(li.size)>=0?li.size:'M';if(!Number.isFinite(orderQty)||orderQty<=0){errors.push({code:'INVALID_ORDER_QUANTITY',path:'lineItems['+lix+'].qty',message:'Order quantity must be positive.'});return;}
       var recipe=recipes[li.itemKey],item=Object.assign({key:li.itemKey},menu[li.itemKey]||{});
-      if(!recipe||(!(recipe.base&&recipe.base.length)&&!(recipe.sharedBase&&recipe.sharedBase.length))){warnings.push({code:'MISSING_RECIPE',itemKey:li.itemKey,message:(item.name||li.itemKey)+' has no recipe.'});return;}
+      if(!recipe||(!(recipe.base&&recipe.base.length)&&!(recipe.sharedBase&&recipe.sharedBase.length)&&!hasChoiceRows(recipe.choiceAdd))){warnings.push({code:'MISSING_RECIPE',itemKey:li.itemKey,message:(item.name||li.itemKey)+' has no recipe.'});return;}
       var contributions=effectiveBaseRows(item,recipe,ctx,warnings);
       (li.optLabels||[]).forEach(function(label){var found=optionRows(item,recipe,label,size,ctx,li.optLabels||[]);if(!found.length)warnings.push({code:'UNMAPPED_OPTION',itemKey:li.itemKey,label:label,message:'No ingredient cost is mapped to option '+label+'.'});contributions=contributions.concat(found);});
       var serveStyle=serveStyleFor(item,li.optLabels,ctx);

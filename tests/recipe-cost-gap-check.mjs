@@ -15,6 +15,7 @@ const context={
   window:{__posSettings:{catType:{custom_drinks:'drink',meals:'food'},packagingAssignments:{coffee:{choices:{temp:{Hot:'hot',Iced:'iced'}}}}}},
   packagingRulesMap:{hot:{rows:[{ing:'hot_cup'}]},iced:{rows:[{ing:'iced_cup'}]},empty:{rows:[]}},
   inventoryMap:{beans:{cost:10}},recipesMap:{},
+  recipeHasIngredientRows(rec){return !!(rec&&((rec.base||[]).length||(rec.sharedBase||[]).length||Object.values(rec.choiceAdd||{}).some(group=>Object.values(group||{}).some(entry=>(entry.ings||[]).length))));},
   A(){return {getMenuItems(){return menuItems;},getItemOptionGroups(item){return item.groups||[];}};},
   costingContext(){return {packagingAssignments:context.window.__posSettings.packagingAssignments};},
   Costing(){return {costRecipe(args){costedItems.push(args.item);var missing=args.item&&args.item.key==='uncosted';return {totalCost:args.item&&args.item.key?10:0,warnings:missing?[{code:'MISSING_COST',itemId:'beans'}]:[]};},serveStyleFor(item,labels){var a=context.window.__posSettings.packagingAssignments[item.cat]||{},g=(a.choices||{}).temp||{};if(labels&&labels[0]&&g[labels[0]])return g[labels[0]];var groups=item.groups||[];for(var i=0;i<groups.length;i++){for(var j=0;j<(groups[i].choices||[]).length;j++){var c=groups[i].choices[j];if(labels.indexOf(c.label)>=0&&c.serveStyle)return c.serveStyle;}}return a.defaultStyle||item.serveStyle||'';}};}
@@ -31,6 +32,7 @@ function gapsFor(items){
 const choices=[{label:'Hot'},{label:'Iced'}];
 check(gapsFor([{key:'latte',name:'Latte',cat:'coffee',groups:[{id:'temp',name:'Temperature',choices}]}]).length===0,'category plus live Hot/Iced choices provide packaging coverage');
 check(costedItems.some(item=>item&&item.key==='latte'&&item.cat==='coffee'),'recipe completeness costing receives the real menu item context');
+context.recipesMap={choice_only:{choiceAdd:{temp:{Iced:{label:'Iced',ings:[{ing:'beans',qtyM:1}]}}}}};menuItems.splice(0,menuItems.length,{key:'choice_only',name:'Choice only',cat:'coffee',groups:[{id:'temp',name:'Temperature',choices}]});check(context.menuCostGaps().length===0,'a recipe made entirely from Hot or Iced rows is not treated as missing');
 check(gapsFor([{key:'uncosted',name:'Uncosted drink',cat:'coffee',groups:[{id:'temp',name:'Temperature',choices}]}])[0].reason==='beans has no unit cost','effective costing warnings name an uncosted ingredient even when the recipe total is positive');
 delete context.window.__posSettings.packagingAssignments.coffee.choices.temp.Iced;
 check(gapsFor([{key:'latte',name:'Latte',cat:'coffee',groups:[{id:'temp',name:'Temperature',choices}]}])[0].reason==='No effective serve style for Iced','a drink is flagged when one current Menu Availability choice lacks packaging');
