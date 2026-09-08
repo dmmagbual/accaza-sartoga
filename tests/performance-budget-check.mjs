@@ -11,7 +11,7 @@ const budgets={
   'assets/js/admin/core.mjs':135000,
   // Build 476 exposes shared-choice temperature applicability in the main Include column.
   // Retain a narrow ceiling so future POS growth still requires explicit review.
-  'assets/js/admin/pos.js':468000,
+  'assets/js/admin/pos.js':469000,
   'assets/js/admin/register.js':175000,
   'assets/js/admin/analytics.js':150000,
   'assets/js/admin/finance.js':75000,

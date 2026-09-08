@@ -58,6 +58,15 @@ function cost(recipeMap,menuMap,groups,rules,key,size,labels){
     optionCosts:{},optionRecipes:{},packagingRules:rules||{},
     lineItems:[{itemKey:key,size,qty:1,optLabels:labels||[]}]});
 }
+const scopedMilkGroups={og_temp:optionGroups.og_temp,og_milk:{name:'Choice of Milk',required:true,choices:[{label:'Whole Milk'}]}};
+const scopedMilkRecipe={base:[row('straw',1,1,1)],choiceAdd:{og_milk:{'Whole Milk':{label:'Whole Milk',ings:[
+  Object.assign(row('milk',200,250,300),{op:'choice_override',when:{og_temp:'Hot'}}),
+  Object.assign(row('milk',300,350,400),{op:'choice_override',when:{og_temp:'Iced'}})
+]}}}};
+const scopedMilkMenu={latte:{name:'Latte',cat:'coffee',options:['og_temp','og_milk']}};
+const hotMilk=cost({latte:scopedMilkRecipe},scopedMilkMenu,scopedMilkGroups,{},'latte','S',['Hot','Whole Milk']);
+const icedMilk=cost({latte:scopedMilkRecipe},scopedMilkMenu,scopedMilkGroups,{},'latte','S',['Iced','Whole Milk']);
+check(near(hotMilk.totalCost,20.12)&&near(icedMilk.totalCost,30.12),'duplicate shared-choice ingredients cost only the row assigned to Hot or Iced');
 ['latte','soda','blend'].forEach(key=>['S','M','L'].forEach(size=>{
   const bare=cost(recipes,menuItems,optionGroups,{},key,size,key==='latte'?['Iced']:[]);
   const withRules=cost(recipes,menuItems,optionGroups,{iced:{rows:[row('cup16',1,1,1)]}},key,size,key==='latte'?['Iced']:[]);
@@ -183,6 +192,7 @@ check(/recipeTemperatureScope/.test(choiceScope)&&/data-ca-when/.test(recipeUi)&
 check(/op==='choice_override'&&!Object\.keys\(when\)\.length/.test(recipeUi),'an existing unscoped shared-choice override adopts the selected temperature when resaved');
 check(/data-ca-temp-scope/.test(choiceScope)&&/Use for:/.test(choiceScope)&&/Not used for/.test(recipeUi),'shared-choice overrides expose explicit Hot and Iced include controls');
 check(/data-effective-choice-include/.test(recipeUi)&&/setRecipeChoiceOverrideTemperature/.test(choiceScope),'the main effective-recipe Include column controls a shared-choice override for the selected temperature');
+check(/bindChoiceIngredientSelectors/.test(recipeUi)&&/markInheritedChoiceOverride/.test(choiceScope)&&/row\.op='choice_override'/.test(choiceScope)&&/row\.when=recipeTemperatureScope/.test(choiceScope),'adding an inherited shared-choice ingredient creates a separate override for the selected temperature');
 check(/if\(!row\)own\.ings\.push\(values\)/.test(choiceScope),'creating one shared-choice override preserves every other inherited shared-choice ingredient');
 
 /* 10. the shared option library can hold packaging too - leaving it there charges the cup twice */
