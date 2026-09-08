@@ -1421,6 +1421,26 @@ function setRecipeChoiceOverride(d,ing,gid,label,on,when){var lk=optKey(label),s
 function moveRecipeBaseToChoice(d,ix,gid,label,sharedSelected){var row=(d.base||[])[ix];if(!row||!row.ing||!gid||!label)return false;var lk=optKey(label);d.choiceAdd=d.choiceAdd||{};d.choiceAdd[gid]=d.choiceAdd[gid]||{};var entry=d.choiceAdd[gid][lk]||(d.choiceAdd[gid][lk]={label:label,ings:[]}),values={ing:row.ing,unit:row.unit,dS:row.dS,dM:row.dM,dL:row.dL,op:sharedSelected&&sharedSelected[row.ing]?'replace':undefined},existing=(entry.ings||[]).filter(function(x){return x.ing===row.ing;})[0];if(existing)Object.assign(existing,values);else entry.ings.push(values);d.base.splice(ix,1);return true;}
 function recipeBaseMoveButton(ix,label){return label?' <button class="pz-btn sec" style="padding:0.2rem 0.45rem;font-weight:600;" data-bmove="'+ix+'" title="Use only when '+esc(label)+' is selected">Move to '+esc(label)+'</button>':'';}
 function recipeTemperatureSelection(groups,state){var group=(groups||[]).filter(function(g){return /temperature/i.test(g.name||'');})[0];return {group:group,label:group&&state[group.id]};}
+function sharedChoiceDuplicate(rows,ing){return !!ing&&(rows||[]).filter(function(r){return r&&r.ing===ing;}).length>1;}
+function sharedChoiceTemperatureScope(row,rows,tempGroup,currentGroupId){
+  if(!tempGroup||tempGroup.id===currentGroupId||!sharedChoiceDuplicate(rows,row&&row.ing))return{when:{},html:''};
+  var labels=(tempGroup.choices||[]).map(function(c){return c.label;}),when=row.when||{},picked=when[tempGroup.id]?[when[tempGroup.id]]:labels;
+  return{when:when,html:'<small style="display:flex;gap:.55rem;margin-top:.25rem;color:var(--tl)"><span>Use for:</span>'+labels.map(function(label){return '<label><input type="checkbox" data-oc-temp="'+esc(label)+'"'+(picked.indexOf(label)>=0?' checked':'')+'> '+esc(label)+'</label>';}).join('')+'</small>'};
+}
+function sharedChoiceScopeFromRow(tr,tempGroup){
+  var boxes=tr.querySelectorAll('[data-oc-temp]'),picked=[];boxes.forEach(function(cb){if(cb.checked)picked.push(cb.getAttribute('data-oc-temp'));});
+  if(!boxes.length||picked.length===boxes.length)return{valid:true,when:{}};
+  if(!picked.length)return{valid:false,when:{}};
+  var when={};when[tempGroup.id]=picked[0];return{valid:true,when:when};
+}
+function sharedChoiceScopeError(optionCosts,tempGroup){
+  if(!tempGroup)return'';var error='';Object.keys(optionCosts||{}).some(function(gid){return Object.keys(optionCosts[gid]||{}).some(function(key){var rows=optionCosts[gid][key].ings||[],seen={};rows.forEach(function(row){if(row&&row.ing)(seen[row.ing]=seen[row.ing]||[]).push(row);});return Object.keys(seen).some(function(ing){var list=seen[ing];if(list.length<2)return false;var coverage={};return list.some(function(row){var label=(row.when||{})[tempGroup.id];var labels=label?[label]:(tempGroup.choices||[]).map(function(c){return c.label;});return labels.some(function(lb){if(coverage[lb]){error='Assign each duplicate ingredient to a different temperature.';return true;}coverage[lb]=1;return false;});});});});});return error;
+}
+function sharedChoiceCostText(rows,tempGroup,groupId){var scoped=tempGroup&&tempGroup.id!==groupId&&(rows||[]).some(function(r){return sharedChoiceDuplicate(rows,r.ing);});return scoped?(tempGroup.choices||[]).map(function(t){return esc(t.label)+' — S '+peso(ocChoiceCost(rows,'S',tempGroup,t.label))+' · M '+peso(ocChoiceCost(rows,'M',tempGroup,t.label))+' · L '+peso(ocChoiceCost(rows,'L',tempGroup,t.label));}).join(' | '):'cost/serving — S '+peso(ocChoiceCost(rows,'S'))+' · M '+peso(ocChoiceCost(rows,'M'))+' · L '+peso(ocChoiceCost(rows,'L'));}
+function ocClone(o){try{return JSON.parse(JSON.stringify(o||{}));}catch(e){return {};}}
+function ocGroups(){var m=(A()&&A().optionGroupsMap)||{};return Object.keys(m).map(function(id){return Object.assign({id:id},m[id]);}).sort(function(a,b){return (a.order||0)-(b.order||0);});}
+function ocChoiceCost(ings,size,tempGroup,tempLabel){var c=0;(ings||[]).forEach(function(r){if(!r||!r.ing||tempLabel&&r.when&&r.when[tempGroup.id]!==tempLabel)return;var q=r['qty'+size];if(q==null||q==='')q=0;c+=(Number(q)||0)*ingCost(r.ing);});return c;}
+function renderOptionsMaster(){window.__optCostDraft=ocClone(optCostStore());ocDraw();}
 function menuList(){ return (A().getMenuItems?A().getMenuItems():[]).slice().sort(function(a,b){return (a.cat||'').localeCompare(b.cat||'')||(a.name||'').localeCompare(b.name||'');}); }
 function recipeCostResult(rec,size,item){item=item||{name:'Recipe'};var key=item.key||'preview';return Costing().costRecipe(Object.assign({itemKey:key,recipe:rec,item:item,size:size},costingContext()));}
 function recipeCost(rec,size,item){return recipeCostResult(rec,size,item).totalCost;}
@@ -1769,10 +1789,6 @@ function allOptionLabels(){
   menuList().forEach(function(it){ (optLabelsForItem(it)||[]).forEach(function(o){ if(o.label&&!seen[o.label]){seen[o.label]=1;out.push(o);} }); });
   return out.sort(function(a,b){return (a.label||'').localeCompare(b.label||'');});
 }
-function ocClone(o){try{return JSON.parse(JSON.stringify(o||{}));}catch(e){return {};}}
-function ocGroups(){var m=(A()&&A().optionGroupsMap)||{};return Object.keys(m).map(function(id){return Object.assign({id:id},m[id]);}).sort(function(a,b){return (a.order||0)-(b.order||0);});}
-function ocChoiceCost(ings,size){var c=0;(ings||[]).forEach(function(r){if(!r||!r.ing)return;var q=r['qty'+size];if(q==null||q==='')q=0;c+=(Number(q)||0)*ingCost(r.ing);});return c;}
-function renderOptionsMaster(){ window.__optCostDraft=ocClone(optCostStore()); ocDraw(); }
 function ocSync(){
   var root=document.getElementById('optMasterRoot'); if(!root)return;
   var next={};
@@ -1782,13 +1798,14 @@ function ocSync(){
     if(!ing)return;
     var item=inventoryMap[ing]||{},unitEl=tr.querySelector('[data-ocf="unit"]'),u=(unitEl&&unitEl.value)||item.unit||'';function v(f){var el=tr.querySelector('[data-ocf="'+f+'"]');return (el&&el.value!=='')?Number(el.value):0;}
     next[g]=next[g]||{}; next[g][lk]=next[g][lk]||{label:lbl,ings:[]};
-    var row={ing:ing,unit:u,op:tr.getAttribute('data-oc-op')||undefined};['S','M','L'].forEach(function(sz){var display=v('disp'+sz);row['disp'+sz]=display;row['qty'+sz]=convertToStock(display,u,item);});next[g][lk].ings.push(row);
+    var scope=sharedChoiceScopeFromRow(tr,recipeTemperatureGroup(ocGroups())),row={ing:ing,unit:u,op:tr.getAttribute('data-oc-op')||undefined,when:Object.keys(scope.when).length?scope.when:undefined};['S','M','L'].forEach(function(sz){var display=v('disp'+sz);row['disp'+sz]=display;row['qty'+sz]=convertToStock(display,u,item);});next[g][lk].ings.push(row);
   });
   window.__optCostDraft=next;
 }
 function ocDraw(){
   var root=document.getElementById('optMasterRoot'); if(!root)return;
   var d=window.__optCostDraft||{};
+  var tempGroup=recipeTemperatureGroup(ocGroups());
   var invList=ings().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
   function ingSel(val){return '<select class="pz-in" data-ocf="ing" style="min-width:150px;"><option value="">— ingredient —</option>'+invList.map(function(i){var blocked=isPackagingCostItem(i.id)&&i.id!==val;return '<option value="'+i.id+'"'+(i.id===val?' selected':'')+(blocked?' disabled':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+') · '+(blocked?'Packaging Costing only':ingType(i))+'</option>';}).join('')+'</select>';}
   var cards=ocGroups().map(function(g){
@@ -1797,16 +1814,18 @@ function ocDraw(){
       var lk=optKey(c.label); var rows=(d[g.id]&&d[g.id][lk]&&d[g.id][lk].ings)||[];
       var ingRows=rows.map(function(r,ix){
         var item=inventoryMap[r.ing]||{},u=r.unit||item.unit||'',units=compatUnits(item);function shown(sz){if(r['disp'+sz]!=null)return r['disp'+sz];var cv=Costing().convert(Number(r['qty'+sz])||0,item.unit||u,u);return cv.ok?cv.qty:r['qty'+sz];}
+        var scope=sharedChoiceTemperatureScope(r,rows,tempGroup,g.id);
         return '<tr data-oc-row data-oc-g="'+esc(g.id)+'" data-oc-l="'+esc(lk)+'" data-oc-label="'+esc(c.label)+'" data-oc-op="'+esc(r.op||'')+'" data-oc-ix="'+ix+'">'
-          +'<td>'+ingSel(r.ing)+'</td>'
+          +'<td>'+ingSel(r.ing)+scope.html+'</td>'
           +'<td><select class="pz-in" data-ocf="unit" style="width:78px">'+units.map(function(x){return '<option'+(uNorm(x)===uNorm(u)?' selected':'')+'>'+esc(x)+'</option>';}).join('')+'</select><small style="display:block;color:var(--tl)">stock: '+esc(item.unit||'—')+'</small></td>'
           +['S','M','L'].map(function(sz){return '<td><input class="pz-in" type="number" step="any" style="width:64px;" data-ocf="disp'+sz+'" value="'+(shown(sz)!=null?shown(sz):'')+'" placeholder="0"/></td>';}).join('')
           +'<td><button class="pz-btn warn" data-ocrem data-g="'+esc(g.id)+'" data-l="'+esc(lk)+'" data-ix="'+ix+'" style="padding:0.15rem 0.45rem;">✕</button></td></tr>';
       }).join('');
       var priceTag=(c.price?'<span style="color:#8a5a00;">+'+peso(c.price)+' price</span>':'<span style="color:var(--tl);">free</span>');
+      var costText=sharedChoiceCostText(rows,tempGroup,g.id);
       return '<div style="border-top:1px solid var(--cd);padding:0.5rem 0;">'
         +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.4rem;"><b>'+esc(c.label)+'</b> <span style="font-size:0.72rem;">'+priceTag+'</span>'
-        +'<span data-occost="'+esc(g.id)+'|'+esc(lk)+'" style="font-size:0.72rem;color:var(--tl);">cost/serving — S '+peso(ocChoiceCost(rows,'S'))+' · M '+peso(ocChoiceCost(rows,'M'))+' · L '+peso(ocChoiceCost(rows,'L'))+'</span></div>'
+        +'<span data-occost="'+esc(g.id)+'|'+esc(lk)+'" style="font-size:0.72rem;color:var(--tl);">'+costText+'</span></div>'
         +(ingRows?'<table class="pz-tbl" style="margin:0.35rem 0;"><thead><tr><th>Ingredient</th><th>Recipe unit</th><th>S</th><th>M</th><th>L</th><th></th></tr></thead><tbody>'+ingRows+'</tbody></table>':'')
         +'<button class="pz-btn sec" data-ocadd data-g="'+esc(g.id)+'" data-l="'+esc(lk)+'" data-label="'+esc(c.label)+'" style="padding:0.2rem 0.6rem;font-size:0.78rem;">+ ingredient</button>'
         +'</div>';
@@ -1819,10 +1838,11 @@ function ocDraw(){
   root.querySelectorAll('[data-ocadd]').forEach(function(b){b.onclick=function(){ ocSync(); var d=window.__optCostDraft; var g=b.getAttribute('data-g'),lk=b.getAttribute('data-l'),lbl=b.getAttribute('data-label'); d[g]=d[g]||{}; d[g][lk]=d[g][lk]||{label:lbl,ings:[]}; d[g][lk].ings.push({ing:'',unit:'',dispS:null,dispM:null,dispL:null}); ocDraw(); };});
   root.querySelectorAll('[data-ocrem]').forEach(function(b){b.onclick=function(){ ocSync(); var d=window.__optCostDraft; var g=b.getAttribute('data-g'),lk=b.getAttribute('data-l'),ix=Number(b.getAttribute('data-ix')); if(d[g]&&d[g][lk]&&d[g][lk].ings){d[g][lk].ings.splice(ix,1);} ocDraw(); };});
   root.querySelectorAll('select[data-ocf]').forEach(function(s){s.onchange=function(){ ocSync(); ocDraw(); };});
-  root.querySelectorAll('input[data-ocf]').forEach(function(inp){inp.oninput=function(){var tr=inp.closest('[data-oc-row]');if(!tr)return;var g=tr.getAttribute('data-oc-g'),lk=tr.getAttribute('data-oc-l');ocSync();var e=window.__optCostDraft[g]&&window.__optCostDraft[g][lk],lab=root.querySelector('[data-occost="'+g+'|'+lk+'"]'),rows=(e&&e.ings)||[];if(lab)lab.textContent='cost/serving — S '+peso(ocChoiceCost(rows,'S'))+' · M '+peso(ocChoiceCost(rows,'M'))+' · L '+peso(ocChoiceCost(rows,'L'));};});
+  root.querySelectorAll('input[data-ocf]').forEach(function(inp){inp.oninput=function(){var tr=inp.closest('[data-oc-row]');if(!tr)return;var g=tr.getAttribute('data-oc-g'),lk=tr.getAttribute('data-oc-l');ocSync();var e=window.__optCostDraft[g]&&window.__optCostDraft[g][lk],lab=root.querySelector('[data-occost="'+g+'|'+lk+'"]'),rows=(e&&e.ings)||[];if(lab)lab.textContent=sharedChoiceCostText(rows,tempGroup,g);};});
+  root.querySelectorAll('[data-oc-temp]').forEach(function(cb){cb.onchange=function(){var tr=cb.closest('[data-oc-row]'),checked=tr.querySelectorAll('[data-oc-temp]:checked');if(!checked.length){cb.checked=true;alert('Keep at least one temperature selected.');return;}ocSync();ocDraw();};});
   var saveBtn=document.getElementById('optCostSaveAll'); if(saveBtn)saveBtn.onclick=function(){ var button=this,original=button.textContent;ocSync(); var d=window.__optCostDraft||{}; var clean={},invalid='';
     Object.keys(d).forEach(function(g){ var gc={}; Object.keys(d[g]).forEach(function(lk){ var e=d[g][lk]; var kept=(e.ings||[]).filter(function(r){return r&&r.ing&&(r.qtyS!=null||r.qtyM!=null||r.qtyL!=null);});kept.forEach(function(r){if(isPackagingCostItem(r.ing))invalid=((inventoryMap[r.ing]||{}).name||r.ing)+' belongs in Packaging Costing';else if(['S','M','L'].some(function(sz){return !Number.isFinite(r['qty'+sz])||(!r.op&&r['qty'+sz]<0);}))invalid='Choose a compatible recipe unit and enter valid quantities for every size';}); if(kept.length)gc[lk]={label:e.label||lk,ings:kept}; }); if(Object.keys(gc).length)clean[g]=gc; });if(invalid){alert(invalid+'. Nothing was saved.');return;}
-    saveSharedChoiceCosts(button,original,clean);
+    invalid=invalid||sharedChoiceScopeError(clean,tempGroup);if(invalid){alert(invalid+' Nothing was saved.');return;}saveSharedChoiceCosts(button,original,clean);
   };
 }
 function renderConsumables(){

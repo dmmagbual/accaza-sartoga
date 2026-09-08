@@ -81,6 +81,9 @@ const scopedCtx={recipes:scopedMilk,inventory,menuItems:{latte:{name:'Latte',opt
 const scopedHot=Costing.costOrder({...scopedCtx,lineItems:[{itemKey:'latte',size:'M',qty:1,optLabels:['Hot','Whole Milk']}]});
 const scopedIced=Costing.costOrder({...scopedCtx,lineItems:[{itemKey:'latte',size:'M',qty:1,optLabels:['Iced','Whole Milk']}]});
 if(scopedHot.usage.milk!==295||scopedIced.usage.milk!==250)throw new Error('a Hot-only shared milk override leaked into Iced');
+const splitShared={...scopedCtx,recipes:{latte:{base:[{ing:'beans',qtyM:18}]}},optionCosts:{milk:{'Whole Milk':{label:'Whole Milk',ings:[{ing:'milk',qtyM:240,when:{temp:'Hot'}},{ing:'milk',qtyM:180,when:{temp:'Iced'}}]}}}};
+const splitHot=Costing.costOrder({...splitShared,lineItems:[{itemKey:'latte',size:'M',qty:1,optLabels:['Hot','Whole Milk']}]}),splitIced=Costing.costOrder({...splitShared,lineItems:[{itemKey:'latte',size:'M',qty:1,optLabels:['Iced','Whole Milk']} ]});
+if(splitHot.usage.milk!==240||splitIced.usage.milk!==180)throw new Error('duplicate shared-choice ingredients did not stay exclusive to Hot and Iced');
 const temperatureSpecific={americano:{base:[{ing:'beans',qtyM:18}],choiceAdd:{temp:{Hot:{label:'Hot',ings:[{ing:'milk',qtyM:30}]},Iced:{label:'Iced',ings:[{ing:'milk',qtyM:12}]}}}}};
 const hotSpecific=Costing.costOrder({lineItems:[{itemKey:'americano',size:'M',qty:1,optLabels:['Hot']}],recipes:temperatureSpecific,inventory,menuItems:{americano:{name:'Americano',options:['temp']}},optionGroups:{temp:{required:true,choices:[{label:'Hot'},{label:'Iced'}]}}});
 const icedSpecific=Costing.costOrder({lineItems:[{itemKey:'americano',size:'M',qty:1,optLabels:['Iced']}],recipes:temperatureSpecific,inventory,menuItems:{americano:{name:'Americano',options:['temp']}},optionGroups:{temp:{required:true,choices:[{label:'Hot'},{label:'Iced'}]}}});
