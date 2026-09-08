@@ -1873,10 +1873,21 @@ function renderConsumables(){
 }
 
 /* ══════════ INTERNAL USAGE (Staff consumption + R&D) ══════════ */
+function recipeChoicePackagingRows(raw){
+  var groups=A().optionGroupsMap||{},out=[];Object.keys((raw&&raw.choiceAdd)||{}).forEach(function(g){Object.keys(raw.choiceAdd[g]||{}).forEach(function(k){var e=raw.choiceAdd[g][k]||{};(e.ings||[]).forEach(function(r){if(isPackagingCostItem(r.ing))out.push({groupName:(groups[g]&&groups[g].name)||g,choiceLabel:e.label||k,name:(inventoryMap[r.ing]||{}).name||r.ing});});});});return out;
+}
+function removeRecipeChoicePackaging(raw){
+  Object.keys((raw&&raw.choiceAdd)||{}).forEach(function(g){Object.keys(raw.choiceAdd[g]||{}).forEach(function(k){var e=raw.choiceAdd[g][k]||{};e.ings=(e.ings||[]).filter(function(r){return !isPackagingCostItem(r.ing)});if(!e.ings.length)delete raw.choiceAdd[g][k];});if(!Object.keys(raw.choiceAdd[g]||{}).length)delete raw.choiceAdd[g];});
+}
 function saveRecipe(key){
   var d=recipeDraft;if(!d){alert('Nothing to save — reopen the recipe and try again.');return Promise.resolve(false);}
-  var raw=recipeDraftRaw(d),choicePackaging=[];Object.keys(raw.choiceAdd||{}).forEach(function(g){Object.keys(raw.choiceAdd[g]||{}).forEach(function(k){((raw.choiceAdd[g][k]||{}).ings||[]).forEach(function(row){if(isPackagingCostItem(row.ing))choicePackaging.push((inventoryMap[row.ing]||{}).name||row.ing);});});});
-  if(choicePackaging.length){alert('Move these items to Packaging Costing before saving: '+choicePackaging.join(', ')+'. Packaging cannot also be an option ingredient because it would be costed twice.');return Promise.resolve(false);}
+  var raw=recipeDraftRaw(d),choicePackaging=recipeChoicePackagingRows(raw),item=(A().menuItemsMap||{})[key]||{};
+  if(choicePackaging.length){
+    var locations=choicePackaging.map(function(x){return x.name+' ('+x.groupName+' → '+x.choiceLabel+')';}),packagingGap=recipePackagingGap(item);
+    if(packagingGap){alert('• '+locations.join('\n• ')+'\n\nShared Packaging is incomplete: '+packagingGap);return Promise.resolve(false);}
+    if(!confirm('Clean up and save?\n• '+locations.join('\n• ')+'\n\nThis prevents packaging cost and stock usage from being counted twice.'))return Promise.resolve(false);
+    removeRecipeChoicePackaging(raw);
+  }
   var local=Costing().normalizeRecipe(raw,inventoryMap);if(!local.ok){alert('Recipe was not saved. Fix these costing errors:\n\n'+costingIssues(local.errors));return Promise.resolve(false);}
   var saved=recipesMap[key];if(saved&&saved.options)raw.options=saved.options;
   var a=A();if(!a.validateRecipeDefinition){alert('The 3B recipe validator is not available. Refresh the portal. Nothing was saved.');return Promise.resolve(false);}

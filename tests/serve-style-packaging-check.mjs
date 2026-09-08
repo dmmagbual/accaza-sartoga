@@ -204,6 +204,18 @@ check(/sharedSelected&&sharedSelected\[row\.ing\]\?'replace'/.test(choiceScope),
 check(/sharedChoiceDuplicate/.test(choiceScope)&&/data-oc-temp/.test(choiceScope)&&/sharedChoiceScopeFromRow/.test(recipeUi),'duplicate ingredients in every shared choice expose Hot and Iced assignments');
 check(/sharedChoiceScopeError/.test(choiceScope)&&/different temperature/.test(choiceScope),'overlapping duplicate temperature assignments are blocked before saving');
 check(/recipeHasIngredientRows\(rec\)/.test(recipeUi),'choice-only Hot and Iced recipes are recognized by recipe completeness checks');
+const recipeSaveUi=fs.readFileSync('src/admin/pos/31-recipe-save.js','utf8');
+check(/recipeChoicePackagingRows/.test(recipeSaveUi)&&/groupName/.test(recipeSaveUi)&&/choiceLabel/.test(recipeSaveUi),'legacy packaging warnings identify the exact hidden group and choice');
+check(/packagingGap=recipePackagingGap\(item\)/.test(recipeSaveUi)&&/Shared Packaging is incomplete/.test(recipeSaveUi),'legacy packaging is never auto-removed while a serving path lacks shared packaging');
+check(/removeRecipeChoicePackaging\(raw\)/.test(recipeSaveUi)&&/prevents packaging cost and stock usage from being counted twice/.test(recipeSaveUi),'covered legacy packaging can be removed with explicit confirmation before save');
+const saveHelpers=recipeSaveUi.slice(0,recipeSaveUi.indexOf('function saveRecipe'));
+const saveContext={inventoryMap:{cup:{name:'Cold Cup'},lid:{name:'Lid'},milk:{name:'Milk'}},A(){return {optionGroupsMap:{temp:{name:'Temperature'}}};},isPackagingCostItem(id){return id==='cup'||id==='lid';}};
+vm.createContext(saveContext);vm.runInContext(saveHelpers,saveContext);
+const legacy={choiceAdd:{temp:{Iced:{label:'Iced',ings:[{ing:'cup'},{ing:'milk'}]},Hot:{label:'Hot',ings:[{ing:'lid'}]}}}};
+const foundLegacy=saveContext.recipeChoicePackagingRows(legacy);
+check(foundLegacy.length===2&&foundLegacy[0].groupName==='Temperature'&&foundLegacy[0].choiceLabel==='Iced','hidden packaging rows are reported with user-facing locations');
+saveContext.removeRecipeChoicePackaging(legacy);
+check(legacy.choiceAdd.temp.Iced.ings.length===1&&legacy.choiceAdd.temp.Iced.ings[0].ing==='milk'&&!legacy.choiceAdd.temp.Hot,'cleanup removes only packaging and preserves real choice ingredients');
 const iceScoped={latte:{base:[row('milk',200,250,300)],choiceAdd:{og_temp:{Iced:{label:'Iced',ings:[row('ice',120,160,200)]}}}}};
 const hotIce=cost(iceScoped,menuItems,optionGroups,{},'latte','M',['Hot']).lines.filter(line=>line.ingredientId==='ice');
 const icedIce=cost(iceScoped,menuItems,optionGroups,{},'latte','M',['Iced']).lines.filter(line=>line.ingredientId==='ice');
