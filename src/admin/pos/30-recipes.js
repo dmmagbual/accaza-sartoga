@@ -29,9 +29,8 @@ function menuCostGaps(){
     var rec=recipesMap[it.key];
     if(!recipeHasIngredientRows(rec)){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'No recipe yet'}); return; }
     if((rec.base||[]).some(function(b){return b.ing&&!inventoryMap[b.ing];})){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'An ingredient was deleted (broken link)'}); return; }
-    var costResult=recipeCostResult(rec,'M',it),missingCost=(costResult.warnings||[]).filter(function(w){return w.code==='MISSING_COST';})[0];
-    if(missingCost){var missingItem=inventoryMap[missingCost.itemId]||{};out.push({key:it.key,name:it.name,cat:it.cat,reason:(missingItem.name||missingCost.itemId||'An ingredient')+' has no unit cost'});return;}
-    if(!(costResult.totalCost>0)){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'Recipe cost is ₱0'}); return; }
+    var failedPath=null;recipeRequiredPaths(it).some(function(path){var result=Costing().costRecipe(Object.assign({itemKey:it.key,recipe:rec,item:it,size:'M',optLabels:path.map(function(x){return x.label;})},costingContext())),missing=(result.warnings||[]).filter(function(w){return w.code==='MISSING_COST';})[0];if(missing||!(result.totalCost>0)){failedPath={path:path,result:result,missing:missing};return true;}return false;});
+    if(failedPath){var suffix=failedPath.path.length?' for '+recipePathLabel(failedPath.path):'';if(failedPath.missing){var missingItem=inventoryMap[failedPath.missing.itemId]||{};out.push({key:it.key,name:it.name,cat:it.cat,reason:(missingItem.name||failedPath.missing.itemId||'An ingredient')+' has no unit cost'+suffix});}else out.push({key:it.key,name:it.name,cat:it.cat,reason:'Recipe cost is ₱0'+suffix});return;}
     var packagingGap=recipePackagingGap(it);
     if(packagingGap)out.push({key:it.key,name:it.name,cat:it.cat,reason:packagingGap});
   });
