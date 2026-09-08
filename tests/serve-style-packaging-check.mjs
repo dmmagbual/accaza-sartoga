@@ -179,6 +179,8 @@ check(/colspan=.*requiredSelections\.length/.test(recipeUi)&&/Override/.test(rec
 check(/x\.ing===ing&&x\.op==='replace'/.test(recipeUi),'excluding an inherited ingredient also clears its now-invalid choice replacements');
 check(/!\/\(sweet\|milk\)\//.test(recipeUi),'Sweetness and Choice of Milk start without a costing preview default');
 check(/data-effective-choice-override/.test(recipeUi)&&/setRecipeChoiceOverride/.test(recipeUi)&&/choice_override/.test(choiceScope),'a selected shared-choice ingredient supports a drink-and-choice-specific quantity override');
+check(/recipeTemperatureScope/.test(choiceScope)&&/data-ca-when/.test(recipeUi)&&/when:r\.when/.test(recipeUi),'shared-choice overrides retain an explicit Hot or Iced scope');
+check(/op==='choice_override'&&!Object\.keys\(when\)\.length/.test(recipeUi),'an existing unscoped shared-choice override adopts the selected temperature when resaved');
 check(/if\(!row\)own\.ings\.push\(values\)/.test(choiceScope),'creating one shared-choice override preserves every other inherited shared-choice ingredient');
 
 /* 10. the shared option library can hold packaging too - leaving it there charges the cup twice */
