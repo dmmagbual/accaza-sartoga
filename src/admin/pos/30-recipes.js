@@ -34,7 +34,7 @@ function menuCostGaps(){
     if(!recipeItemIsDrink(it))return;
     if(it.noRecipe)return; /* resale / bought-in items opted out of costing */
     var rec=recipesMap[it.key];
-    if(!rec||(!(rec.base&&rec.base.length)&&!(rec.sharedBase&&rec.sharedBase.length))){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'No recipe yet'}); return; }
+    if(!recipeHasIngredientRows(rec)){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'No recipe yet'}); return; }
     if((rec.base||[]).some(function(b){return b.ing&&!inventoryMap[b.ing];})){ out.push({key:it.key,name:it.name,cat:it.cat,reason:'An ingredient was deleted (broken link)'}); return; }
     var costResult=recipeCostResult(rec,'M',it),missingCost=(costResult.warnings||[]).filter(function(w){return w.code==='MISSING_COST';})[0];
     if(missingCost){var missingItem=inventoryMap[missingCost.itemId]||{};out.push({key:it.key,name:it.name,cat:it.cat,reason:(missingItem.name||missingCost.itemId||'An ingredient')+' has no unit cost'});return;}

@@ -53,6 +53,7 @@ function ings(){return Object.keys(inventoryMap).map(function(k){return Object.a
 function activeSkusFor(masterId){return Object.keys(inventorySkuMap).map(function(k){return Object.assign({id:k},inventorySkuMap[k]);}).filter(function(s){return s.masterId===masterId&&s.active!==false;}).sort(function(a,b){return (Number(a.priority)||0)-(Number(b.priority)||0)||(a.brand||'').localeCompare(b.brand||'');});}
 function treeUsesIngredient(value,id){if(!value||typeof value!=='object')return false;if(value.ing===id)return true;if(Array.isArray(value))return value.some(function(x){return treeUsesIngredient(x,id);});return Object.keys(value).some(function(k){return treeUsesIngredient(value[k],id);});}
 function recipeUsesInventory(id){var item=inventoryMap[id]||{};return item.recipeItem===true||ingType(item)==='consumable'||treeUsesIngredient(recipesMap,id)||treeUsesIngredient(optRecipesMap,id)||treeUsesIngredient(optCostStore(),id);}
+function recipeHasIngredientRows(rec){return !!(rec&&((rec.base||[]).length||(rec.sharedBase||[]).length||Object.keys(rec.choiceAdd||{}).some(function(g){return Object.keys(rec.choiceAdd[g]||{}).some(function(k){return !!(((rec.choiceAdd[g]||{})[k]||{}).ings||[]).length;});})));}
 function skuDisplay(s){return ((s&&s.brand)||'Unnamed brand')+((s&&s.supplier)?' · '+s.supplier:'');}
 function ingName(id){var i=inventoryMap[id];return i?i.name:'(deleted)';}
 function ingUnit(id){var i=inventoryMap[id];return i?(i.unit||''):'';}
@@ -62,7 +63,7 @@ function ingCost(id){var i=inventoryMap[id];return i?(Number(i.cost)||0):0;}
 function stdCostMethod(){return (window.__posSettings&&window.__posSettings.stdCostMethod)||'wac';}
 function stdCostOf(item){ if(!item)return 0; if(stdCostMethod()==='manual'&&item.stdCost!=null&&item.stdCost!=='')return Number(item.stdCost)||0; return Number(item.cost)||0; }
 function stdIngCost(id){return stdCostOf(inventoryMap[id]);}
-function recipeStdCost(key,size){ var rec=recipesMap[key]; if(!rec||(!(rec.base&&rec.base.length)&&!(rec.sharedBase&&rec.sharedBase.length)))return {cost:0,covered:false,has:false};var stdInv={};Object.keys(inventoryMap).forEach(function(id){stdInv[id]=Object.assign({},inventoryMap[id],{cost:stdIngCost(id)});});var result=Costing().costRecipe(Object.assign({},costingContext(),{itemKey:key,recipe:rec,inventory:stdInv,item:((A()&&A().menuItemsMap)||{})[key]||{},size:size}));return {cost:result.totalCost,covered:result.cogsCovered,has:true}; }
+function recipeStdCost(key,size){ var rec=recipesMap[key]; if(!recipeHasIngredientRows(rec))return {cost:0,covered:false,has:false};var stdInv={};Object.keys(inventoryMap).forEach(function(id){stdInv[id]=Object.assign({},inventoryMap[id],{cost:stdIngCost(id)});});var result=Costing().costRecipe(Object.assign({},costingContext(),{itemKey:key,recipe:rec,inventory:stdInv,item:((A()&&A().menuItemsMap)||{})[key]||{},size:size}));return {cost:result.totalCost,covered:result.cogsCovered,has:true}; }
 function ingType(i){return (i&&i.type)||'base';}
 function ingsByType(t){return ings().filter(function(i){return ingType(i)===t;});}
 function isSupplyType(type){return type==='operating_supply'||type==='office_supply';}
