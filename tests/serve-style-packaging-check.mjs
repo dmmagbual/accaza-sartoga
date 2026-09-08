@@ -198,6 +198,8 @@ check(/if\(!row\)own\.ings\.push\(values\)/.test(choiceScope),'creating one shar
 check(/data-bmove/.test(recipeUi)&&/moveRecipeBaseToChoice/.test(recipeUi)&&/Move to /.test(choiceScope),'an existing all-choice ingredient can be moved to the selected temperature');
 check(!/id="recAddBase"/.test(recipeUi)&&!/\+ all-choice ingredient/.test(recipeUi),'new recipe-specific ingredients cannot accidentally be added to every temperature');
 check(/sharedSelected&&sharedSelected\[row\.ing\]\?'replace'/.test(choiceScope),'moving a shared-base ingredient creates a full-quantity replacement for only that choice');
+check(/sharedChoiceDuplicate/.test(choiceScope)&&/data-oc-temp/.test(choiceScope)&&/sharedChoiceScopeFromRow/.test(recipeUi),'duplicate ingredients in every shared choice expose Hot and Iced assignments');
+check(/sharedChoiceScopeError/.test(choiceScope)&&/different temperature/.test(choiceScope),'overlapping duplicate temperature assignments are blocked before saving');
 const iceScoped={latte:{base:[row('milk',200,250,300)],choiceAdd:{og_temp:{Iced:{label:'Iced',ings:[row('ice',120,160,200)]}}}}};
 const hotIce=cost(iceScoped,menuItems,optionGroups,{},'latte','M',['Hot']).lines.filter(line=>line.ingredientId==='ice');
 const icedIce=cost(iceScoped,menuItems,optionGroups,{},'latte','M',['Iced']).lines.filter(line=>line.ingredientId==='ice');
