@@ -4,7 +4,7 @@
   else root.AccazaCosting=api;
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
-  var VERSION='3F-2';
+  var VERSION='3F-3';
   var SIZES=['S','M','L'];
   var UNITS={
     ml:{dim:'volume',factor:1},l:{dim:'volume',factor:1000},tsp:{dim:'volume',factor:4.92892},tbsp:{dim:'volume',factor:14.7868},cup:{dim:'volume',factor:240},'fl oz':{dim:'volume',factor:29.5735},
@@ -42,7 +42,7 @@
     if(!id){errors.push({code:'MISSING_INGREDIENT',path:path,message:'Ingredient is required.'});return null;}
     if(!item){errors.push({code:'BROKEN_INVENTORY_REFERENCE',path:path,itemId:id,message:'Inventory item '+id+' does not exist.'});return null;}
     var stockUnit=unit(item.unit),inputUnit=unit(row.inputUnit||row.unit||item.unit);
-    var out={ing:id,unit:inputUnit,stockUnit:stockUnit};if(row.op)out.op=String(row.op);
+    var out={ing:id,unit:inputUnit,stockUnit:stockUnit};if(row.op)out.op=String(row.op);var when={};Object.keys(row.when||{}).forEach(function(gid){var label=String(row.when[gid]||'').trim();if(gid&&label)when[String(gid)]=label;});if(Object.keys(when).length)out.when=when;
     var any=false;
     SIZES.forEach(function(size){
       var display=row['disp'+size];if(display==null||display==='')display=row['input'+size];
@@ -81,15 +81,16 @@
     (recipe.base||[]).forEach(function(row){out.push({row:row,source:byIng[row.ing]?'base_override':'base_recipe'});});
     return out;
   }
-  function optionRows(item,recipe,label,size,ctx){
+  function rowMatchesSelections(item,row,optLabels,groups){var when=row&&row.when||{};return Object.keys(when).every(function(gid){return (optLabels||[]).some(function(selected){return groupIdForLabel(item,selected,groups||{})===gid&&optKey(selected)===optKey(when[gid]);});});}
+  function optionRows(item,recipe,label,size,ctx,optLabels){
     var gid=groupIdForLabel(item,label,ctx.optionGroups||{}),key=optKey(label),rows=[],found=false;
-    function add(arr,source){(arr||[]).forEach(function(r){if(r&&r.ing)rows.push({row:r,source:source,optionGroupId:gid||null,optionLabel:label});});if((arr||[]).length)found=true;}
+    function add(arr,source){var matched=(arr||[]).filter(function(r){return r&&r.ing&&rowMatchesSelections(item,r,optLabels,ctx.optionGroups||{});});matched.forEach(function(r){rows.push({row:r,source:source,optionGroupId:gid||null,optionLabel:label});});if(matched.length)found=true;}
     /* One definition wins, never both. A drink that spells the choice out for itself OVERRIDES the
        shared library; it does not add to it. Stacking them charged the customer twice. */
     var own=gid&&recipe&&recipe.choiceAdd&&recipe.choiceAdd[gid]&&recipe.choiceAdd[gid][key];
     var shared=gid&&ctx.optionCosts&&ctx.optionCosts[gid]&&ctx.optionCosts[gid][key];
     if(own)add(own.ings,'option_recipe');
-    else if(shared)add(shared.ings,'option_global');
+    if(!found&&shared)add(shared.ings,'option_global');
     if(!found){var legacy=null;if(recipe&&Array.isArray(recipe.options))legacy=recipe.options.find(function(x){return x&&x.label===label;})||null;if(!legacy)legacy=(ctx.optionRecipes||{})[label]||null;if(legacy&&legacy.ing)rows.push({row:{ing:legacy.ing,qtyS:legacy.qty,qtyM:legacy.qty,qtyL:legacy.qty},source:'option_legacy',optionGroupId:gid||null,optionLabel:label});}
     return rows;
   }
@@ -131,7 +132,7 @@
       var recipe=recipes[li.itemKey],item=Object.assign({key:li.itemKey},menu[li.itemKey]||{});
       if(!recipe||(!(recipe.base&&recipe.base.length)&&!(recipe.sharedBase&&recipe.sharedBase.length))){warnings.push({code:'MISSING_RECIPE',itemKey:li.itemKey,message:(item.name||li.itemKey)+' has no recipe.'});return;}
       var contributions=effectiveBaseRows(item,recipe,ctx,warnings);
-      (li.optLabels||[]).forEach(function(label){var found=optionRows(item,recipe,label,size,ctx);if(!found.length)warnings.push({code:'UNMAPPED_OPTION',itemKey:li.itemKey,label:label,message:'No ingredient cost is mapped to option '+label+'.'});contributions=contributions.concat(found);});
+      (li.optLabels||[]).forEach(function(label){var found=optionRows(item,recipe,label,size,ctx,li.optLabels||[]);if(!found.length)warnings.push({code:'UNMAPPED_OPTION',itemKey:li.itemKey,label:label,message:'No ingredient cost is mapped to option '+label+'.'});contributions=contributions.concat(found);});
       var serveStyle=serveStyleFor(item,li.optLabels,ctx);
       if(serveStyle){
         var packing=packagingRows(serveStyle,ctx);
