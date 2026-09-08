@@ -372,7 +372,7 @@ exports.preservePostedOrderOnDelete = onValueDeleted(
     const db = getDatabase(), archivedRef = db.ref(`/archivedOrders/${id}`);
     if ((await archivedRef.get()).exists() || !(await db.ref(`/financialMovements/sale_${id}`).get()).exists()) return;
     const now = Date.now(), effectiveStatus = order.status === "Archived" ? order.prevStatus : order.status;
-    const retained = Object.assign({}, order, {id, status: "Archived", prevStatus: effectiveStatus || "Completed", archivedAt: now, archiveReason: "Automatically preserved after unexpected deletion", recoveredFromDeletion: true, schemaVersion: Math.max(2, Number(order.schemaVersion) || 0)});
+    const retained = Object.assign({}, order, {id, timestamp: Number(order.timestamp || order.completedAt || order.receivedAt || now), status: "Archived", prevStatus: effectiveStatus || "Completed", archivedAt: now, archiveReason: "Automatically preserved after unexpected deletion", recoveredFromDeletion: true, schemaVersion: Math.max(2, Number(order.schemaVersion) || 0)});
     const result = await archivedRef.transaction((current) => current || retained);
     if (result.committed) await db.ref(`/deletionAudit/${now}_order_${id}`).set({action: "posted_order_auto_preserved", sourceType: "order", sourceId: id, reason: "Posted sale had no archived order after deletion", ts: now, actorUid: "server", schemaVersion: 1});
   },

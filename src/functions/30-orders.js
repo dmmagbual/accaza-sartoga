@@ -42,6 +42,7 @@ exports.syncOfflinePosSale = onCall(
 
 function archivedOrderRecord(order, now = Date.now(), reason = "closed-shift") {
   return Object.assign({}, order, {
+    timestamp: Number(order.timestamp || order.completedAt || order.receivedAt || now),
     status: "Archived", prevStatus: order.status || "Completed", archivedAt: now,
     archivedDate: new Intl.DateTimeFormat("en-PH", {timeZone: "Asia/Manila", year: "numeric", month: "long", day: "numeric"}).format(new Date(now)),
     archiveReason: reason,
