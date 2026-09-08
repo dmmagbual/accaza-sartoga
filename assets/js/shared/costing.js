@@ -65,7 +65,8 @@
   }
   function normalizeRecipe(recipe,inventory){
     recipe=recipe||{};inventory=inventory||{};var errors=[],warnings=[],seen={};
-    var base=(Array.isArray(recipe.base)?recipe.base:[]).map(function(row,ix){var r=normalizeRow(row,inventory,'base['+ix+']',errors,warnings);if(r){if(seen[r.ing])warnings.push({code:'DUPLICATE_INGREDIENT',path:'base['+ix+']',itemId:r.ing,message:'Ingredient appears more than once; quantities will stack.'});seen[r.ing]=1;}return r;}).filter(Boolean);
+    var base=(Array.isArray(recipe.base)?recipe.base:[]).map(function(row,ix){var r=normalizeRow(row,inventory,'base['+ix+']',errors,warnings);if(r){(seen[r.ing]=seen[r.ing]||[]).push({row:r,ix:ix});}return r;}).filter(Boolean);
+    Object.keys(seen).forEach(function(ing){var rows=seen[ing];if(rows.length<2)return;for(var i=0;i<rows.length;i++)for(var j=i+1;j<rows.length;j++)if(scopesOverlap(rows[i].row.when,rows[j].row.when)){errors.push({code:'DUPLICATE_BASE_SCOPE',path:'base['+rows[j].ix+']',itemId:ing,message:'Assign each duplicate base ingredient to a different temperature.'});return;}});
     var sharedBase=(Array.isArray(recipe.sharedBase)?recipe.sharedBase:[]).map(function(ref){return typeof ref==='string'?{ing:ref}:{ing:String((ref&&ref.ing)||'')};}).filter(function(ref){return !!ref.ing;});
     var choiceAdd={};Object.keys(recipe.choiceAdd||{}).forEach(function(gid){var group={};Object.keys(recipe.choiceAdd[gid]||{}).forEach(function(key){var entry=recipe.choiceAdd[gid][key]||{},label=entry.label||key;var rows=(entry.ings||[]).map(function(row,ix){return normalizeRow(row,inventory,'choiceAdd.'+gid+'.'+key+'['+ix+']',errors,warnings,true,label);}).filter(Boolean);if(rows.length)group[key]={label:label,ings:rows};});if(Object.keys(group).length)choiceAdd[gid]=group;});
     if(!base.length&&!sharedBase.length&&!hasChoiceRows(choiceAdd))errors.push({code:'EMPTY_RECIPE',path:'base',message:'Select a shared base ingredient or add an ingredient to a required choice.'});
@@ -73,13 +74,14 @@
     if(Array.isArray(recipe.options))normalized.options=recipe.options;
     return {ok:errors.length===0,recipe:normalized,errors:errors,warnings:warnings,engineVersion:VERSION};
   }
+  function scopesOverlap(a,b){a=a||{};b=b||{};var shared=Object.keys(a).filter(function(gid){return Object.prototype.hasOwnProperty.call(b,gid);});return !shared.some(function(gid){return optKey(a[gid])!==optKey(b[gid]);});}
   function hasChoiceRows(choiceAdd){return Object.keys(choiceAdd||{}).some(function(gid){return Object.keys(choiceAdd[gid]||{}).some(function(key){return !!(((choiceAdd[gid]||{})[key]||{}).ings||[]).length;});});}
-  function effectiveBaseRows(item,recipe,ctx,warnings){
+  function effectiveBaseRows(item,recipe,ctx,warnings,optLabels){
     var own={},out=[];(recipe.base||[]).forEach(function(row){if(row&&row.ing)own[row.ing]=1;});
     var library=((ctx.sharedBaseIngredients||{})[String((item&&item.cat)||'')]||{}).ings||[];
     var byIng={};library.forEach(function(row){if(row&&row.ing)byIng[row.ing]=row;});
-    (recipe.sharedBase||[]).forEach(function(ref){var id=typeof ref==='string'?ref:ref&&ref.ing;if(!id||own[id])return;var row=byIng[id];if(row)out.push({row:row,source:'base_shared'});else warnings.push({code:'MISSING_SHARED_BASE',itemKey:item&&item.key,itemId:id,message:'A selected shared base ingredient is no longer defined for this menu category.'});});
-    (recipe.base||[]).forEach(function(row){out.push({row:row,source:byIng[row.ing]?'base_override':'base_recipe'});});
+    (recipe.sharedBase||[]).forEach(function(ref){var id=typeof ref==='string'?ref:ref&&ref.ing;if(!id||own[id])return;var row=byIng[id];if(row&&rowMatchesSelections(item,row,optLabels,ctx.optionGroups||{}))out.push({row:row,source:'base_shared'});else if(!row)warnings.push({code:'MISSING_SHARED_BASE',itemKey:item&&item.key,itemId:id,message:'A selected shared base ingredient is no longer defined for this menu category.'});});
+    (recipe.base||[]).forEach(function(row){if(rowMatchesSelections(item,row,optLabels,ctx.optionGroups||{}))out.push({row:row,source:byIng[row.ing]?'base_override':'base_recipe'});});
     return out;
   }
   function rowMatchesSelections(item,row,optLabels,groups){var when=row&&row.when||{};return Object.keys(when).every(function(gid){return (optLabels||[]).some(function(selected){return groupIdForLabel(item,selected,groups||{})===gid&&optKey(selected)===optKey(when[gid]);});});}
@@ -132,7 +134,7 @@
       var orderQty=Number(li.qty),size=SIZES.indexOf(li.size)>=0?li.size:'M';if(!Number.isFinite(orderQty)||orderQty<=0){errors.push({code:'INVALID_ORDER_QUANTITY',path:'lineItems['+lix+'].qty',message:'Order quantity must be positive.'});return;}
       var recipe=recipes[li.itemKey],item=Object.assign({key:li.itemKey},menu[li.itemKey]||{});
       if(!recipe||(!(recipe.base&&recipe.base.length)&&!(recipe.sharedBase&&recipe.sharedBase.length)&&!hasChoiceRows(recipe.choiceAdd))){warnings.push({code:'MISSING_RECIPE',itemKey:li.itemKey,message:(item.name||li.itemKey)+' has no recipe.'});return;}
-      var contributions=effectiveBaseRows(item,recipe,ctx,warnings);
+      var contributions=effectiveBaseRows(item,recipe,ctx,warnings,li.optLabels||[]);
       (li.optLabels||[]).forEach(function(label){var found=optionRows(item,recipe,label,size,ctx,li.optLabels||[]);if(!found.length)warnings.push({code:'UNMAPPED_OPTION',itemKey:li.itemKey,label:label,message:'No ingredient cost is mapped to option '+label+'.'});contributions=contributions.concat(found);});
       var serveStyle=serveStyleFor(item,li.optLabels,ctx);
       if(serveStyle){
@@ -174,5 +176,5 @@
     return {ok:errors.length===0,engineVersion:VERSION,usage:usage,lines:lines,totalCost:total,cogsCovered:errors.length===0&&!warnings.some(function(w){return w.code==='MISSING_COST'||w.code==='MISSING_RECIPE'||w.code==='UNMAPPED_OPTION'||w.code==='UNMAPPED_SERVE_STYLE';}),errors:errors,warnings:warnings};
   }
   function costRecipe(args){args=args||{};return costOrder({lineItems:[{itemKey:args.itemKey||'item',size:args.size||'M',qty:args.qty||1,optLabels:args.optLabels||[]}],recipes:(function(){var o={};o[args.itemKey||'item']=args.recipe;return o;})(),inventory:args.inventory||{},menuItems:(function(){var o={};o[args.itemKey||'item']=args.item||{};return o;})(),sharedBaseIngredients:args.sharedBaseIngredients||{},optionCosts:args.optionCosts||{},optionRecipes:args.optionRecipes||{},optionGroups:args.optionGroups||{},packagingRules:args.packagingRules||{},packagingAssignments:args.packagingAssignments||{}});}
-  return {VERSION:VERSION,SIZES:SIZES,normalizeUnit:unit,unitInfo:unitInfo,compatible:compatible,convert:convert,normalizeRecipe:normalizeRecipe,effectiveBaseRows:effectiveBaseRows,costOrder:costOrder,costRecipe:costRecipe,optKey:optKey,serveStyleFor:serveStyleFor,packagingRows:packagingRows};
+  return {VERSION:VERSION,SIZES:SIZES,normalizeUnit:unit,unitInfo:unitInfo,compatible:compatible,convert:convert,normalizeRecipe:normalizeRecipe,effectiveBaseRows:effectiveBaseRows,rowMatchesSelections:rowMatchesSelections,costOrder:costOrder,costRecipe:costRecipe,optKey:optKey,serveStyleFor:serveStyleFor,packagingRows:packagingRows};
 });
