@@ -37,6 +37,7 @@
     if(!row||row.qty==null||row.qty==='')return 0;
     var base=Number(row.qty),sm=recipe&&recipe.sizeMult||{S:1,M:1.3,L:1.6},mult=Number(sm[size]==null?1:sm[size]);return Number.isFinite(base)&&Number.isFinite(mult)?base*mult:NaN;
   }
+  function recipeDisplay(row,size,stockQty,stockUnit,useStoredDisplay){var recipeUnit=unit(row&&row.unit||stockUnit),display=useStoredDisplay&&row&&row['disp'+size],qty;if(display!=null&&display!=='')qty=Number(display);else{var cv=convert(stockQty,stockUnit,recipeUnit);qty=cv.ok?cv.qty:stockQty;}return {qty:q6(qty),unit:recipeUnit};}
   function normalizeRow(row,inventory,path,errors,warnings,allowNegative,choiceLabel){
     row=row||{};var id=String(row.ing||'').trim(),item=inventory[id];
     if(!id){errors.push({code:'MISSING_INGREDIENT',path:path,message:'Ingredient is required.'});return null;}
@@ -153,7 +154,7 @@
         if(entry&&entry.row&&String(entry.row.op||'')==='reduce'&&String(entry.source).indexOf('base_')!==0){reducers.push(entry);return false;}
         return true;
       });
-      contributions.forEach(function(entry,rix){var row=entry.row||{},id=row.ing,inv=inventory[id];if(!id||!inv){errors.push({code:'BROKEN_INVENTORY_REFERENCE',itemKey:li.itemKey,itemId:id||'',message:'Recipe points to a missing inventory item.'});return;}var per=rawSize(row,size,recipe),adjustment=String(entry.source).indexOf('base_')!==0;if(!Number.isFinite(per)||(!adjustment&&per<0)){errors.push({code:'INVALID_QUANTITY',itemKey:li.itemKey,itemId:id,message:'Recipe quantity is invalid.'});return;}var totalQty=q6(per*orderQty);if(!totalQty)return;var unitCost=n(inv.cost);if(!(unitCost>0))warnings.push({code:'MISSING_COST',itemKey:li.itemKey,itemId:id,message:(inv.name||id)+' has no current unit cost.'});var totalCost=q6(totalQty*unitCost);usage[id]=q6((usage[id]||0)+totalQty);lineUsage[id]=q6((lineUsage[id]||0)+totalQty);lines.push({itemKey:li.itemKey,itemName:item.name||li.itemKey,size:size,orderQty:orderQty,source:entry.source,optionGroupId:entry.optionGroupId||null,optionLabel:entry.optionLabel||null,ingredientId:id,ingredientName:inv.name||id,quantityPerServing:q6(per),totalQuantity:totalQty,stockUnit:unit(inv.unit),unitCost:q6(unitCost),totalCost:totalCost,costSource:inv.ledgerVersion?'inventory-ledger-wac':'inventory-wac',costEffectiveAt:n(inv.ledgerUpdatedAt||inv.updatedAt)||null});});
+      contributions.forEach(function(entry,rix){var row=entry.row||{},id=row.ing,inv=inventory[id];if(!id||!inv){errors.push({code:'BROKEN_INVENTORY_REFERENCE',itemKey:li.itemKey,itemId:id||'',message:'Recipe points to a missing inventory item.'});return;}var per=rawSize(row,size,recipe),adjustment=String(entry.source).indexOf('base_')!==0;if(!Number.isFinite(per)||(!adjustment&&per<0)){errors.push({code:'INVALID_QUANTITY',itemKey:li.itemKey,itemId:id,message:'Recipe quantity is invalid.'});return;}var totalQty=q6(per*orderQty);if(!totalQty)return;var unitCost=n(inv.cost);if(!(unitCost>0))warnings.push({code:'MISSING_COST',itemKey:li.itemKey,itemId:id,message:(inv.name||id)+' has no current unit cost.'});var totalCost=q6(totalQty*unitCost),shown=recipeDisplay(row,size,per,inv.unit,true);usage[id]=q6((usage[id]||0)+totalQty);lineUsage[id]=q6((lineUsage[id]||0)+totalQty);lines.push({itemKey:li.itemKey,itemName:item.name||li.itemKey,size:size,orderQty:orderQty,source:entry.source,optionGroupId:entry.optionGroupId||null,optionLabel:entry.optionLabel||null,ingredientId:id,ingredientName:inv.name||id,recipeQuantityPerServing:shown.qty,recipeUnit:shown.unit,quantityPerServing:q6(per),totalQuantity:totalQty,stockUnit:unit(inv.unit),unitCost:q6(unitCost),totalCost:totalCost,costSource:inv.ledgerVersion?'inventory-ledger-wac':'inventory-wac',costEffectiveAt:n(inv.ledgerUpdatedAt||inv.updatedAt)||null});});
       reducers.forEach(function(entry){
         var row=entry.row||{},id=row.ing,inv=inventory[id];
         if(!id||!inv){errors.push({code:'BROKEN_INVENTORY_REFERENCE',itemKey:li.itemKey,itemId:id||'',message:'Recipe points to a missing inventory item.'});return;}
@@ -162,10 +163,10 @@
         var want=q6(Math.abs(per)*orderQty),available=q6(Math.max(0,lineUsage[id]||0));
         var takeQty=q6(-Math.min(want,available));
         if(!takeQty)return;
-        var unitCost=n(inv.cost),takeCost=q6(takeQty*unitCost);
+        var unitCost=n(inv.cost),takeCost=q6(takeQty*unitCost),shown=recipeDisplay(row,size,takeQty/orderQty,inv.unit,false);
         usage[id]=q6((usage[id]||0)+takeQty);lineUsage[id]=q6((lineUsage[id]||0)+takeQty);
         lines.push({itemKey:li.itemKey,itemName:item.name||li.itemKey,size:size,orderQty:orderQty,source:entry.source,
-          optionGroupId:entry.optionGroupId||null,optionLabel:entry.optionLabel||null,ingredientId:id,ingredientName:inv.name||id,quantityPerServing:q6(takeQty/orderQty),totalQuantity:takeQty,
+          optionGroupId:entry.optionGroupId||null,optionLabel:entry.optionLabel||null,ingredientId:id,ingredientName:inv.name||id,recipeQuantityPerServing:shown.qty,recipeUnit:shown.unit,quantityPerServing:q6(takeQty/orderQty),totalQuantity:takeQty,
           stockUnit:unit(inv.unit),unitCost:q6(unitCost),totalCost:takeCost,
           costSource:inv.ledgerVersion?'inventory-ledger-wac':'inventory-wac',
           costEffectiveAt:n(inv.ledgerUpdatedAt||inv.updatedAt)||null});

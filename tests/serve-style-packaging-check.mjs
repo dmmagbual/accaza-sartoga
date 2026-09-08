@@ -177,6 +177,7 @@ check(/table-layout:fixed/.test(recipeUi)&&/class="r">Amount/.test(recipeUi),'ba
 check(/data-effective-replace/.test(recipeUi)&&/requiredSelections\.map/.test(recipeUi),'the effective recipe table provides choice-specific shared overrides');
 check(/data-rcradio/.test(recipeUi)&&/type="'\+\(isMulti\?'checkbox':'radio'\)/.test(recipeUi)&&/data-rcmulti-check/.test(recipeUi),'required choices use compact exclusive ticks and optional add-ons use checkboxes');
 check(/selectedDetail\(line\)/.test(recipeUi)&&/packagingDetail/.test(recipeUi),'selected option and packaging lines enumerate quantity, unit and cost');
+check(/line\.recipeQuantityPerServing\?\?line\.quantityPerServing/.test(recipeUi)&&/line\.recipeUnit\|\|line\.stockUnit/.test(recipeUi),'effective recipe rows use the chosen recipe measurement while retaining stock-unit fallback');
 check(/Ingredients for selected choices/.test(recipeUi)&&/caSelected\(g,c\)/.test(recipeUi),'only the currently selected choice is shown in the choice-specific editor');
 check(/var next=ocClone\(d\.choiceAdd\|\|\{\}\)/.test(recipeUi)&&/data-ca-choice/.test(recipeUi),'editing one choice preserves hidden choice-specific recipes');
 check(/Recipe-specific base ingredients/.test(recipeUi)&&/ingredient for '\+esc\(c\.label\)/.test(recipeUi),'the editor clearly separates base ingredients from exact-choice ingredients');

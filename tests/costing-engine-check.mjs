@@ -54,6 +54,12 @@ near(result.usage.cream,20,'per-recipe choice usage');
 near(result.totalCost,12.8,'traceable total COGS');
 if(!result.lines.every(line=>line.costSource&&line.stockUnit&&Number.isFinite(line.totalCost)))throw new Error('cost trace is incomplete');
 if(!result.cogsCovered)throw new Error('fully costed order marked uncovered');
+const waterInventory={water:{name:'Water',unit:'fl oz',cost:0.03}},waterRecipe=Costing.normalizeRecipe({base:[{ing:'water',unit:'ml',dispS:100,dispM:100,dispL:100}]},waterInventory).recipe,waterResult=Costing.costRecipe({itemKey:'water',recipe:waterRecipe,inventory:waterInventory,item:{name:'Water test'},size:'M'}),waterLine=waterResult.lines[0];
+near(waterResult.usage.water,3.381406,'water usage remains normalized to inventory fluid ounces');
+near(waterLine.recipeQuantityPerServing,100,'cost trace retains the recipe display quantity');
+equal(waterLine.recipeUnit,'ml','cost trace retains the recipe display unit');
+near(waterLine.quantityPerServing,3.381406,'cost trace retains the normalized stock quantity');
+equal(waterLine.stockUnit,'fl oz','cost trace retains the inventory stock unit');
 
 const categoryPackaging=Costing.costOrder({
   lineItems:[{itemKey:'latte',size:'M',qty:1,optLabels:['Iced']}],recipes:{latte:normalized.recipe},inventory,
