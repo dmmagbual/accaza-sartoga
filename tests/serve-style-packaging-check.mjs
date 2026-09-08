@@ -164,6 +164,7 @@ check(/packAddStyle/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the
 /* 9. the recipe calculator must show exactly what the sale-costing engine will post */
 const recipeUi=fs.readFileSync('src/admin/pos/30-recipes.js','utf8');
 const choiceScope=fs.readFileSync('src/admin/pos/29-recipe-choice-scope.js','utf8');
+const costingSource=fs.readFileSync('assets/js/shared/costing.js','utf8');
 check(/costingContext\(\)/.test(recipeUi)&&/packagingRules:packagingRulesMap/.test(fs.readFileSync('src/admin/pos/00-shared-state.js','utf8')),'the recipe calculator includes assigned packaging in its total');
 check(/Base recipe/.test(recipeUi)&&/Selected option ingredients/.test(recipeUi)&&/Packaging ·/.test(recipeUi),'the calculator separates base, selected options and packaging');
 check(/String\(line\.source\)\.indexOf\('base_'\)===0/.test(recipeUi)&&/line\.source==='packaging'/.test(recipeUi),'the displayed subtotals come from the same engine lines as the final total');
@@ -171,14 +172,14 @@ const labeledOption=cost(recipes,menuItems,optionGroups,{},'latte','M',['Hot']).
 check(labeledOption.length>0&&labeledOption.every(line=>line.optionGroupId==='og_temp'&&line.optionLabel==='Hot'),'costing-engine option lines retain their group and choice for itemized review');
 check(/selectedChoices\.map/.test(recipeUi)&&/groupName/.test(recipeUi)&&/optionAmounts/.test(recipeUi),'every selected menu option is shown on its own costing line');
 check(/<th>Recipe unit<\/th>/.test(recipeUi)&&/Amount \('\+size\+'\)/.test(recipeUi),'every per-choice recipe table shows recipe unit and current-size amount');
-check(/data-caf="unit"/.test(recipeUi)&&/dispS:r\.dS/.test(recipeUi),'per-choice units and display quantities are converted and saved through the costing engine');
+check(/data-caf="unit"/.test(recipeUi)&&/dispS:r\.dS/.test(choiceScope),'per-choice units and display quantities are converted and saved through the costing engine');
 check(/table-layout:fixed/.test(recipeUi)&&/class="r">Amount/.test(recipeUi),'base and option recipe columns share a fixed grid with right-aligned amounts');
 check(/data-effective-replace/.test(recipeUi)&&/requiredSelections\.map/.test(recipeUi),'the effective recipe table provides choice-specific shared overrides');
 check(/data-rcradio/.test(recipeUi)&&/type="'\+\(isMulti\?'checkbox':'radio'\)/.test(recipeUi)&&/data-rcmulti-check/.test(recipeUi),'required choices use compact exclusive ticks and optional add-ons use checkboxes');
 check(/selectedDetail\(line\)/.test(recipeUi)&&/packagingDetail/.test(recipeUi),'selected option and packaging lines enumerate quantity, unit and cost');
 check(/Ingredients for selected choices/.test(recipeUi)&&/caSelected\(g,c\)/.test(recipeUi),'only the currently selected choice is shown in the choice-specific editor');
 check(/var next=ocClone\(d\.choiceAdd\|\|\{\}\)/.test(recipeUi)&&/data-ca-choice/.test(recipeUi),'editing one choice preserves hidden choice-specific recipes');
-check(/Existing all-choice ingredients/.test(recipeUi)&&/ingredient for '\+esc\(c\.label\)/.test(recipeUi),'the editor clearly separates legacy all-choice ingredients from exact-choice ingredients');
+check(/Recipe-specific base ingredients/.test(recipeUi)&&/ingredient for '\+esc\(c\.label\)/.test(recipeUi),'the editor clearly separates base ingredients from exact-choice ingredients');
 check(/isPackagingCostItem/.test(recipeUi)&&/Packaging Costing only/.test(recipeUi),'packaging items cannot be newly selected as shared choice ingredients');
 check(/data-sbf="unit"/.test(recipeUi)&&/data-sbf="disp'\+sz\+'"/.test(recipeUi)&&/convertToStock\(display,u,item\)/.test(recipeUi),'shared base quantities use an editable recipe unit and normalize to the stock unit');
 check(/data-ocf="unit"/.test(recipeUi)&&/data-ocf="disp'\+sz\+'"/.test(recipeUi)&&/row\['qty'\+sz\]=convertToStock/.test(recipeUi),'shared choice quantities use an editable recipe unit and normalize to the stock unit');
@@ -196,7 +197,9 @@ check(/data-effective-choice-include/.test(recipeUi)&&/setRecipeChoiceOverrideTe
 check(/bindChoiceIngredientSelectors/.test(recipeUi)&&/markInheritedChoiceOverride/.test(choiceScope)&&/row\.op='choice_override'/.test(choiceScope)&&/row\.when=recipeTemperatureScope/.test(choiceScope),'adding an inherited shared-choice ingredient creates a separate override for the selected temperature');
 check(/if\(!row\)own\.ings\.push\(values\)/.test(choiceScope),'creating one shared-choice override preserves every other inherited shared-choice ingredient');
 check(/data-bmove/.test(recipeUi)&&/moveRecipeBaseToChoice/.test(recipeUi)&&/Move to /.test(choiceScope),'an existing all-choice ingredient can be moved to the selected temperature');
-check(!/id="recAddBase"/.test(recipeUi)&&!/\+ all-choice ingredient/.test(recipeUi),'new recipe-specific ingredients cannot accidentally be added to every temperature');
+check(/id="recAddBase"/.test(recipeUi)&&/\+ ingredient for all choices/.test(recipeUi),'recipe-specific base ingredients can be added again');
+check(/recipeBaseTemperatureScope/.test(recipeUi)&&/data-base-temp/.test(choiceScope)&&/recipeBaseScopeFromRow/.test(recipeUi),'duplicate base ingredients expose Hot and Iced assignments and retain their scope');
+check(/DUPLICATE_BASE_SCOPE/.test(costingSource)&&/different temperature/.test(costingSource),'overlapping duplicate base ingredient assignments are blocked by canonical validation');
 check(/sharedSelected&&sharedSelected\[row\.ing\]\?'replace'/.test(choiceScope),'moving a shared-base ingredient creates a full-quantity replacement for only that choice');
 check(/sharedChoiceDuplicate/.test(choiceScope)&&/data-oc-temp/.test(choiceScope)&&/sharedChoiceScopeFromRow/.test(recipeUi),'duplicate ingredients in every shared choice expose Hot and Iced assignments');
 check(/sharedChoiceScopeError/.test(choiceScope)&&/different temperature/.test(choiceScope),'overlapping duplicate temperature assignments are blocked before saving');
