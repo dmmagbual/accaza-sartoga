@@ -11,6 +11,7 @@ const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {initializeApp} = require("firebase-admin/app");
 const {getAuth: getAdminAuth} = require("firebase-admin/auth");
 const {getDatabase} = require("firebase-admin/database");
+const {getFirestore} = require("firebase-admin/firestore");
 const {getMessaging} = require("firebase-admin/messaging");
 const {getStorage} = require("firebase-admin/storage");
 const logger = require("firebase-functions/logger");
@@ -37,6 +38,7 @@ const AlertEscalation = require("./lib/alert-escalation");
 const AssuranceControls = require("./lib/assurance-controls");
 const OrderRecords = require("./lib/order-records");
 const SharedChoiceValidation = require("./lib/shared-choice-validation");
+const HistoricalArchive = require("./lib/historical-archive");
 
 initializeApp();
 
