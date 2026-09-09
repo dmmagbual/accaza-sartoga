@@ -270,6 +270,7 @@ const App = {
     // period selector
     this.rebuildPeriodSel();
     const requested=new URLSearchParams(location.search).get("tab"); if(TABS.some(t=>t.id===requested))CURRENT=requested;
+    window.__booksCurrentTab=CURRENT;
     const selected=TABS.find(t=>t.id===CURRENT);if(selected&&selected.settingsSection)window.__booksSettingsSection=selected.settingsSection;
     this.renderTabs(); this.render();
   },
@@ -285,7 +286,7 @@ const App = {
     document.getElementById("tabs").innerHTML = TABS.filter(t=>t.group===activeGroup&&!t.hidden).map(t=>`<button class="tab ${t.id===CURRENT?'active':''}" ${t.id===CURRENT?'aria-current="page"':''} onclick="App.go('${t.id}')">${t.label}</button>`).join("");
   },
   openGroup(id){const first=TABS.find(t=>t.group===id);if(first)this.go(first.id);},
-  go(id){ const selected=TABS.find(t=>t.id===id);if(!selected)return;CURRENT=id;if(selected.settingsSection)window.__booksSettingsSection=selected.settingsSection;this.renderTabs();this.render();window.scrollTo(0,0); },
+  go(id){ const selected=TABS.find(t=>t.id===id);if(!selected)return;CURRENT=id;window.__booksCurrentTab=CURRENT;if(selected.settingsSection)window.__booksSettingsSection=selected.settingsSection;this.renderTabs();this.render();if(typeof window!=='undefined'&&window.dispatchEvent)window.dispatchEvent(new CustomEvent('accaza-books-tab',{detail:{id:CURRENT}}));window.scrollTo(0,0); },
   settingsSection(id){ const selected=TABS.find(t=>t.settingsSection===id);this.go(selected?selected.id:'settings'); },
   reportFilter(){var selected=TABS.find(t=>t.id===CURRENT);if(!selected||selected.group==='controls')return'';var p=window.AccazaReportPeriod.get();if(CURRENT==='bs')return '<div class="report-filter as-of"><label>As of<input id="periodAsOf" type="date" value="'+esc(p.to)+'" max="'+todayStr()+'"/></label><button type="button" onclick="App.applyAsOf()">Apply</button></div>';return '<div class="report-filter"><label>From<input id="periodFrom" type="date" value="'+esc(p.from)+'" max="'+todayStr()+'"/></label><label>To<input id="periodTo" type="date" value="'+esc(p.to)+'" max="'+todayStr()+'"/></label><label>Month<input id="periodMonth" type="month" value="'+esc(p.endMonth||p.to.slice(0,7))+'" max="'+todayStr().slice(0,7)+'" onchange="App.applyReportMonth()"/></label><button type="button" onclick="App.applyDateRange()">Apply</button></div>';},
   render(){ const page=document.getElementById("page"),selected=TABS.find(t=>t.id===CURRENT);if(window.__booksLiveLoading){page.innerHTML='<div class="page-head"><div><h2>Refreshing Finance Books…</h2><p>Restoring the shared journal and statement balances</p></div></div><div class="hint">Finance figures are reconnecting. Existing balances are being preserved and will appear automatically when the ledger is ready.</div>';return;}page.innerHTML = this.reportFilter()+(selected&&selected.settingsSection?PAGES.settings():PAGES[CURRENT]());if(window.AccazaReportPagination)window.AccazaReportPagination.apply(page,'books-'+CURRENT); },
