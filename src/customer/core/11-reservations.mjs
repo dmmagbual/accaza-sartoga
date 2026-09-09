@@ -16,10 +16,11 @@ window.renderMyReservations=renderMyReservations;
 function getConfirmedGuestsForDate(k){return Object.values(adminResMap).filter(r=>r.date===k&&(r.status==='Accepted'||r.status==='Confirmed')).reduce((s,r)=>s+(parseInt(r.guests)||0),0);}
 function getConfirmedSlotsForDate(k){const s=new Set();Object.values(adminResMap).filter(r=>r.date===k&&(r.status==='Accepted'||r.status==='Confirmed')).forEach(r=>s.add(r.time));return s;}
 function dateKey(y,m,d){return y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');}
-function getDateStatus(y,m,d){const k=dateKey(y,m,d);const bl=calBlocks[k];if(bl&&bl.blocked)return'blocked';const g=getConfirmedGuestsForDate(k);if(g>=MAX_GUESTS)return'blocked';if(g>0)return'partial';if(bl&&bl.slots&&Object.values(bl.slots).some(v=>v===false))return'partial';return'open';}
+function getDateStatus(y,m,d){if(window.__customerCalendarBlocksLoading)return'loading';const k=dateKey(y,m,d);const bl=calBlocks[k];if(bl&&bl.blocked)return'blocked';const g=getConfirmedGuestsForDate(k);if(g>=MAX_GUESTS)return'blocked';if(g>0)return'partial';if(bl&&bl.slots&&Object.values(bl.slots).some(v=>v===false))return'partial';return'open';}
 function isSlotBlocked(k,slot){const b=calBlocks[k];if(b&&b.blocked)return true;if(b&&b.slots&&b.slots[slot]===false)return true;return false;}
 function renderCustomerCalendar(){
   if(!document.getElementById('calGrid'))return;
+  if(window.__loadCustomerCalendarBlocks)window.__loadCustomerCalendarBlocks(calYear,calMonth);
   const title=new Date(calYear,calMonth).toLocaleDateString('en-PH',{month:'long',year:'numeric'});
   document.getElementById('calTitle').textContent=title;
   const today=new Date();today.setHours(0,0,0,0);
@@ -33,10 +34,10 @@ function renderCustomerCalendar(){
     const date=new Date(calYear,calMonth,d);date.setHours(0,0,0,0);
     const isPast=date<today,isToday=date.getTime()===today.getTime();
     const status=getDateStatus(calYear,calMonth,d),k=dateKey(calYear,calMonth,d);
-    let cls='cal-day';if(isPast)cls+=' past';else if(status==='blocked')cls+=' blocked';else if(status==='partial')cls+=' partial';else cls+=' open';
+    let cls='cal-day';if(isPast)cls+=' past';else if(status==='loading')cls+=' loading';else if(status==='blocked')cls+=' blocked';else if(status==='partial')cls+=' partial';else cls+=' open';
     if(isToday)cls+=' today';if(selectedDate===k)cls+=' selected';
-    const clickable=!isPast&&status!=='blocked';
-    html+='<div class="'+cls+'" '+(clickable?'data-y="'+calYear+'" data-m="'+calMonth+'" data-d="'+d+'"':'')+'>'+d+'</div>';
+    const clickable=!isPast&&status!=='blocked'&&status!=='loading';
+    html+='<div class="'+cls+'" '+(clickable?'data-y="'+calYear+'" data-m="'+calMonth+'" data-d="'+d+'"':'aria-disabled="'+(clickable?'false':'true')+'"')+'>'+d+'</div>';
   }
   const grid=document.getElementById('calGrid');
   grid.innerHTML=html;

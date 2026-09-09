@@ -14,8 +14,8 @@
   "builds": {
     "admin": 487,
     "books": 108,
-    "customer": 68,
-    "serviceWorkerCache": 460
+    "customer": 69,
+    "serviceWorkerCache": 461
   },
   "authoritativeFiles": [
     "admin.html",
@@ -181,6 +181,7 @@
     "tests/static-check.mjs",
     "tests/static-suite-architecture-check.mjs",
     "tests/customer-startup-check.mjs",
+    "tests/customer-public-read-scope-check.mjs",
     "tests/production-assurance-check.mjs",
     "tests/performance-budget-check.mjs",
     "tests/cash-balance-summary-check.mjs",
