@@ -68,7 +68,7 @@ jobs:
       # retry-on-failure. Keep --force scoped to these named functions so the
       # full deployment cannot silently delete unrelated production functions.
       - name: Acknowledge retry policy for durable order functions
-        run: firebase deploy --only functions:preservePostedOrderOnDelete,functions:replicateArchivedOrderToFirestore,functions:refreshHistoricalOrderAfterJournal,functions:refreshHistoricalOrderAfterInventoryPlan,functions:updateCashBalanceSummary --project accaza-sartoga --non-interactive --force
+        run: firebase deploy --only functions:preservePostedOrderOnDelete,functions:replicateArchivedOrderToFirestore,functions:refreshHistoricalOrderAfterJournal,functions:refreshHistoricalOrderAfterInventoryPlan,functions:updateCashBalanceSummary,functions:updatePublicCatalogVersionOnCategories,functions:updatePublicCatalogVersionOnMenuItems,functions:updatePublicCatalogVersionOnOptionGroups --project accaza-sartoga --non-interactive --force
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
 

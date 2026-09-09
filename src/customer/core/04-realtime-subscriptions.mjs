@@ -39,14 +39,14 @@ window.__loadCustomerCalendarBlocks=function(year,month){
 };
 
 // ── FIREBASE LISTENERS ──
-onValue(categoriesRef,snap=>{
+function applyCategoriesSnapshot(snap){
   const saved=snap.val();
   if(saved){categoriesMap=saved;}
   else{const seed={};DEFAULT_CATS.forEach(c=>{seed[c.id]=c;});set(categoriesRef,seed);categoriesMap=seed;}
   categoriesListCache=null;
   rebuildTabs();
   scheduleCatalogRender();
-});
+}
 
 function migrateItemOptions(){
   if(itemOptMigrated)return;
@@ -63,7 +63,7 @@ function migrateItemOptions(){
   itemOptMigrated=true;
   if(Object.keys(updates).length)update(ref(db),updates).catch(function(){});
 }
-onValue(optionGroupsRef,snap=>{
+function applyOptionGroupsSnapshot(snap){
   if(snap.exists()){optionGroupsMap=snap.val();}
   else if(!optSeedStarted){
     optSeedStarted=true;
@@ -71,9 +71,9 @@ onValue(optionGroupsRef,snap=>{
     set(optionGroupsRef,DEFAULT_OPTION_GROUPS).catch(function(){});
   }
   migrateItemOptions();
-});
+}
 
-onValue(menuRef,snap=>{
+function applyMenuSnapshot(snap){
   const saved=snap.val();
   if(saved){menuItemsMap=saved;}
   else{
@@ -135,8 +135,13 @@ onValue(menuRef,snap=>{
   menuItemsListCache=null;
   migrateItemOptions();
   scheduleCatalogRender();
-});
-
+}
+var _publicCatalogVersionKey='bootstrap',_pReq=0,_publicCatalogLoading=null;
+var PUBLIC_CATALOG_CACHE_KEY='accaza_public_catalog_v1';
+function readPublicCatalogCache(){try{var c=JSON.parse(localStorage.getItem(PUBLIC_CATALOG_CACHE_KEY)||'null');return c&&c.categories&&c.optionGroups&&c.menuItems?c:null;}catch(e){return null;}}
+function applyCachedPublicCatalog(c){applyCategoriesSnapshot({val:()=>c.categories});applyOptionGroupsSnapshot({exists:()=>true,val:()=>c.optionGroups});applyMenuSnapshot({val:()=>c.menuItems});}
+async function loadVersionedPublicCatalog(k){if(_publicCatalogLoading===k)return;_publicCatalogLoading=k;var id=++_pReq,c=readPublicCatalogCache();if(c&&String(c.version||'')===k){applyCachedPublicCatalog(c);_publicCatalogLoading=null;return;}try{var s=await Promise.all([get(categoriesRef),get(optionGroupsRef),get(menuRef)]);if(id!==_pReq||k!==_publicCatalogVersionKey)return;applyCategoriesSnapshot(s[0]);applyOptionGroupsSnapshot(s[1]);applyMenuSnapshot(s[2]);try{localStorage.setItem(PUBLIC_CATALOG_CACHE_KEY,JSON.stringify({version:k,categories:categoriesMap,optionGroups:optionGroupsMap,menuItems:menuItemsMap}));}catch(e){}}catch(e){if(id===_pReq&&c)applyCachedPublicCatalog(c);}if(id===_pReq)_publicCatalogLoading=null;}
+onValue(publicCatalogVersionRef,s=>{var v=s&&s.val?s.val():null;v=v&&typeof v==='object'?v.version:v;_publicCatalogVersionKey=v==null||v===''?'bootstrap':String(v);loadVersionedPublicCatalog(_publicCatalogVersionKey);},()=>{_publicCatalogVersionKey='bootstrap';loadVersionedPublicCatalog('bootstrap');});
 // ── NEW ORDER ALERTS (admin/staff) ──────────────────────────
 function playChime(){
   try{
