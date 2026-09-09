@@ -102,7 +102,17 @@ for(const privatePath of ['functions','database.rules.json','storage.rules','fir
 const deployWorkflow=fs.readFileSync(path.join(root,'.github','workflows','deploy-functions.yml'),'utf8');
 if(!deployWorkflow.includes('branches: [main]'))fail('production Firebase deployment is not restricted to main');
 const forcedDeployLines=deployWorkflow.split(/\r?\n/).filter(line=>line.includes('firebase deploy')&&line.includes('--force'));
-if(forcedDeployLines.length!==1||!forcedDeployLines[0].includes('--only functions:preservePostedOrderOnDelete '))fail('production Firebase deployment may silently delete functions');
+const retryPolicyFunctions=['preservePostedOrderOnDelete','replicateArchivedOrderToFirestore','refreshHistoricalOrderAfterJournal'];
+const forcedTargets=forcedDeployLines.length===1?((forcedDeployLines[0].match(/--only\s+([^\s]+)/)||[])[1]||'').split(',').sort():[];
+const expectedForcedTargets=retryPolicyFunctions.map(name=>`functions:${name}`).sort();
+if(forcedDeployLines.length!==1||JSON.stringify(forcedTargets)!==JSON.stringify(expectedForcedTargets))fail('retry-policy acknowledgement must use one --force deploy scoped to the exact durable order functions');
+const fullDeployLine=deployWorkflow.split(/\r?\n/).find(line=>line.includes('firebase deploy')&&line.includes('--only functions,database,firestore,storage'))||'';
+if(!fullDeployLine||fullDeployLine.includes('--force'))fail('full production Firebase deployment must never use --force');
+for(const name of retryPolicyFunctions)if(!functionsSource.includes(`exports.${name} = `))fail(`retry-policy deployment target is not exported: ${name}`);
+for(const marker of ['exports.backupDatabaseDaily = onSchedule(','exports.runDatabaseBackupNow = onCall(']){
+  const backupDeclaration=section(functionsSource,marker,');');
+  if(!backupDeclaration.includes('memory: "512MiB"'))fail(`database backup memory safeguard missing: ${marker}`);
+}
 if(!deployWorkflow.includes('concurrency:')||!deployWorkflow.includes('environment: production'))fail('production Firebase deployment safeguards are incomplete');
 if(/actions\/(?:checkout|setup-node|setup-java)@v4/.test(deployWorkflow))fail('Firebase deployment workflow still uses deprecated Node 20-based actions');
 const qualityWorkflow=fs.readFileSync(path.join(root,'.github','workflows','quality-gate.yml'),'utf8');
