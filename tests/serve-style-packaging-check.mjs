@@ -133,7 +133,8 @@ check(/packagingRules:\['recipes'/.test(fs.readFileSync('assets/js/admin/realtim
 check(/"packagingRules"/.test(fs.readFileSync('database.rules.json','utf8')),'the database rules cover the packaging table');
 const ui=fs.readFileSync('src/admin/pos/32-serve-style-packaging.js','utf8');
 check(/accaza-packaging-restore-v2/.test(ui)&&/posSettings\/packagingAssignments/.test(ui),'restore point includes current menu packaging assignments');
-check(!/data-packitem/.test(ui)&&/Every pastry inherits the single Pastries category packaging set/.test(ui),'pastries use one inherited category packaging assignment without a per-item grid');
+check(!/data-packitem="/.test(ui)&&/data-packcustomize=/.test(ui)&&/data-packrevert=/.test(ui)&&/Uses the shared /.test(ui),'a pastry inherits the shared packaging by default, with no old-style per-item select, and can be Customized/Reverted individually');
+check(/itemStyleId\(key\)/.test(ui)&&/updates\['packagingRules\/'\+custId\]=clean/.test(ui)&&/updates\['posSettings\/packagingAssignments\/'\+catId\+'\/items\/'\+key\]=custId/.test(ui),'a per-item Customize writes its own private packagingRules/item_<key> record, never the shared style');
 check(/packSnapshot/.test(ui)&&/packRestore/.test(ui),'the screen takes a restore point and can undo from it');
 check(/packStyleSnapshot\(\{silent:true,keepView:true\}\)/.test(ui)&&/Backing up/.test(ui),'category save automatically downloads its restore point instead of showing a prerequisite popup');
 check(/role="status" aria-live="polite"/.test(ui)&&/Restore point downloaded and assignments saved/.test(ui),'category save reports busy and successful completion inline');
