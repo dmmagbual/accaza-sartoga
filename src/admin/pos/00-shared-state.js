@@ -216,7 +216,7 @@ window.__isCashMethod=isCashMethod;
 function init(){
   var a=A();
   window.__online=(typeof navigator!=='undefined')?navigator.onLine:true;
-  a.subscribe('posSettings', function(s){ window.__posSettings=s.val()||{}; if(document.getElementById('posPay'))renderPosCart(); if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); });
+  a.subscribe('posSettings', function(s){ window.__posSettings=s.val()||{}; if(document.getElementById('posPay'))renderPosCart(); if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateCostBadge(); });
   a.subscribe('cfAccounts',function(s){paymentAccountsMap=s.val()||{};if(document.getElementById('posPay'))renderPosCart();});
   a.subscribe('.info/connected', function(sn){ window.__online=(sn.val()===true); updateOfflineUI(); if(window.__online) flushOfflineQueue(); });
   try{ window.addEventListener('online', function(){ window.__online=true; updateOfflineUI(); flushOfflineQueue(); }); window.addEventListener('offline', function(){ window.__online=false; updateOfflineUI(); }); }catch(e){}
