@@ -71,6 +71,17 @@ near(categoryPackaging.usage.icedCup,1,'category and current menu choice select 
 near(categoryPackaging.totalCost,9.9,'category packaging flows into total COGS');
 if(!categoryPackaging.lines.some(line=>line.source==='packaging'&&line.ingredientId==='icedCup'))throw new Error('packaging COGS trace is missing');
 
+const flatPastry=Costing.costOrder({
+  lineItems:[{itemKey:'muesli',size:'L',qty:2,optLabels:['Banana']}],
+  recipes:{muesli:{base:[{ing:'beans',qtyS:10,qtyM:99,qtyL:999}],choiceAdd:{toppings:{Banana:{label:'Banana',ings:[{ing:'cream',qtyS:5,qtyM:55,qtyL:555}]}}}}},
+  inventory,menuItems:{muesli:{name:'MUESLI',cat:'pastry',priceS:180,options:['toppings']}},optionGroups:{toppings:{type:'multi',choices:[{label:'Banana',price:20}]}},
+  packagingRules:{bowl:{rows:[{ing:'hotCup',qtyS:1,qtyM:9,qtyL:99}]}},packagingAssignments:{pastry:{defaultStyle:'hot',items:{muesli:'bowl'}}},
+});
+near(flatPastry.usage.beans,20,'single-price pastry always uses its one base quantity');
+near(flatPastry.usage.cream,10,'single-price pastry option always uses its one topping quantity');
+near(flatPastry.usage.hotCup,2,'single-price pastry uses one item-specific packaging set');
+if(!flatPastry.lines.every(line=>line.size==='S'))throw new Error('single-price pastry did not canonicalize stale size to one serving');
+
 const noCost=Costing.costRecipe({itemKey:'latte',recipe:normalized.recipe,inventory:{...inventory,milk:{...inventory.milk,cost:0}},item:{name:'Latte'},size:'M'});
 if(noCost.cogsCovered||!noCost.warnings.some(x=>x.code==='MISSING_COST'))throw new Error('missing inventory cost was not surfaced');
 const inherited=Costing.costRecipe({itemKey:'latte',recipe:{sharedBase:[{ing:'beans'},{ing:'milk'}],base:[{ing:'milk',qtyS:90,qtyM:120,qtyL:150}]},inventory,item:{key:'latte',name:'Latte',cat:'coffee'},size:'M',sharedBaseIngredients:{coffee:{ings:[{ing:'beans',qtyS:18,qtyM:19,qtyL:20},{ing:'milk',qtyS:120,qtyM:160,qtyL:200}]}}});

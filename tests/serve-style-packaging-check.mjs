@@ -132,6 +132,8 @@ check(/packagingRules:packagingRulesMap/.test(state),'the till prices with the s
 check(/packagingRules:\['recipes'/.test(fs.readFileSync('assets/js/admin/realtime-hub.mjs','utf8')),'the realtime hub registers the packaging scope, so the subscription actually attaches');
 check(/"packagingRules"/.test(fs.readFileSync('database.rules.json','utf8')),'the database rules cover the packaging table');
 const ui=fs.readFileSync('src/admin/pos/32-serve-style-packaging.js','utf8');
+check(/accaza-packaging-restore-v2/.test(ui)&&/posSettings\/packagingAssignments/.test(ui),'restore point includes current menu packaging assignments');
+check(/data-packitem/.test(ui)&&/Save a restore point first/.test(ui),'pastry item packaging is available only behind the restore-point safeguard');
 check(/packSnapshot/.test(ui)&&/packRestore/.test(ui),'the screen takes a restore point and can undo from it');
 check(/packStyleSnapshotTaken/.test(ui),'the change stays locked until a restore point has been taken');
 check(/packApply/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built admin bundle carries the packaging screen');
@@ -163,7 +165,7 @@ check(/styles:draft/.test(ui2),'costs and assignments follow the edited styles, 
 check(/packAddStyle/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built admin bundle carries the editor');
 
 /* 9. the recipe calculator must show exactly what the sale-costing engine will post */
-const recipeUi=fs.readFileSync('src/admin/pos/30-recipes.js','utf8');
+const recipeUi=fs.readFileSync('src/admin/pos/29a-recipe-cost-coverage.js','utf8')+fs.readFileSync('src/admin/pos/30-recipes.js','utf8');
 const choiceScope=fs.readFileSync('src/admin/pos/29-recipe-choice-scope.js','utf8');
 const costingSource=fs.readFileSync('assets/js/shared/costing.js','utf8');
 check(/costingContext\(\)/.test(recipeUi)&&/packagingRules:packagingRulesMap/.test(fs.readFileSync('src/admin/pos/00-shared-state.js','utf8')),'the recipe calculator includes assigned packaging in its total');
@@ -172,7 +174,7 @@ check(/String\(line\.source\)\.indexOf\('base_'\)===0/.test(recipeUi)&&/line\.so
 const labeledOption=cost(recipes,menuItems,optionGroups,{},'latte','M',['Hot']).lines.filter(line=>/^option_/.test(line.source));
 check(labeledOption.length>0&&labeledOption.every(line=>line.optionGroupId==='og_temp'&&line.optionLabel==='Hot'),'costing-engine option lines retain their group and choice for itemized review');
 check(/selectedChoices\.map/.test(recipeUi)&&/groupName/.test(recipeUi)&&/optionAmounts/.test(recipeUi),'every selected menu option is shown on its own costing line');
-check(/<th>Recipe unit<\/th>/.test(recipeUi)&&/Amount \('\+size\+'\)/.test(recipeUi),'every per-choice recipe table shows recipe unit and current-size amount');
+check(/<th>Recipe unit<\/th>/.test(recipeUi)&&/Amount/.test(recipeUi)&&/Quantity\/serving/.test(recipeUi),'per-choice recipe tables show units, current-size amounts, and one flat-serving quantity');
 check(/data-caf="unit"/.test(recipeUi)&&/dispS:r\.dS/.test(choiceScope),'per-choice units and display quantities are converted and saved through the costing engine');
 check(/table-layout:fixed/.test(recipeUi)&&/class="r">Amount/.test(recipeUi),'base and option recipe columns share a fixed grid with right-aligned amounts');
 check(/data-effective-replace/.test(recipeUi)&&/requiredSelections\.map/.test(recipeUi),'the effective recipe table provides choice-specific shared overrides');

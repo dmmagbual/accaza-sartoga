@@ -4,25 +4,28 @@ import vm from 'node:vm';
 let failures=0;
 function check(condition,message){if(!condition){failures++;console.error('✗ '+message);}else console.log('✓ '+message);}
 
-const source=fs.readFileSync('src/admin/pos/30-recipes.js','utf8');
+const recipeSource=fs.readFileSync('src/admin/pos/30-recipes.js','utf8');
+const coverageSource=fs.readFileSync('src/admin/pos/29a-recipe-cost-coverage.js','utf8');
+const source=coverageSource+'\n'+recipeSource;
 const choiceScopeSource=fs.readFileSync('src/admin/pos/29-recipe-choice-scope.js','utf8');
-const start=source.indexOf('function recipeItemIsDrink');
+const start=source.indexOf('function recipeItemIsSingleServing');
 const end=source.indexOf('function updateCostBadge');
 if(start<0||end<0)throw new Error('Recipes cost-gap functions were not found');
 
 const menuItems=[];
 const costedItems=[];
 const context={
-  window:{__posSettings:{catType:{custom_drinks:'drink',meals:'food'},packagingAssignments:{coffee:{choices:{temp:{Hot:'hot',Iced:'iced'}}}}}},
+  window:{__posSettings:{catType:{custom_drinks:'drink',meals:'food'},packagingAssignments:{coffee:{choices:{temp:{Hot:'hot',Iced:'iced'}}},pastry:{items:{muesli:'iced'}}}}},
   packagingRulesMap:{hot:{rows:[{ing:'hot_cup'}]},iced:{rows:[{ing:'iced_cup'}]},empty:{rows:[]}},
   inventoryMap:{beans:{cost:10}},recipesMap:{},
+  menuList(){return menuItems;},
   recipeHasIngredientRows(rec){return !!(rec&&((rec.base||[]).length||(rec.sharedBase||[]).length||Object.values(rec.choiceAdd||{}).some(group=>Object.values(group||{}).some(entry=>(entry.ings||[]).length))));},
   A(){return {getMenuItems(){return menuItems;},getItemOptionGroups(item){return item.groups||[];}};},
   costingContext(){return {packagingAssignments:context.window.__posSettings.packagingAssignments};},
   Costing(){return {costRecipe(args){costedItems.push(args.item);var missing=args.item&&args.item.key==='uncosted',scoped=args.item&&args.item.key==='scoped';return {totalCost:scoped?(args.optLabels||[]).some(x=>x==='Hot'||x==='Iced')?10:0:args.item&&args.item.key?10:0,warnings:missing?[{code:'MISSING_COST',itemId:'beans'}]:[]};},serveStyleFor(item,labels){var a=context.window.__posSettings.packagingAssignments[item.cat]||{},g=(a.choices||{}).temp||{};if(labels&&labels[0]&&g[labels[0]])return g[labels[0]];var groups=item.groups||[];for(var i=0;i<groups.length;i++){for(var j=0;j<(groups[i].choices||[]).length;j++){var c=groups[i].choices[j];if(labels.indexOf(c.label)>=0&&c.serveStyle)return c.serveStyle;}}return a.defaultStyle||item.serveStyle||'';}};}
 };
 vm.createContext(context);
-vm.runInContext(choiceScopeSource+source.slice(0,source.indexOf('function recipeDraftRaw'))+source.slice(start,end),context);
+vm.runInContext(choiceScopeSource+source.slice(start,end),context);
 
 function gapsFor(items){
   menuItems.splice(0,menuItems.length,...items);
@@ -42,12 +45,14 @@ check(gapsFor([{key:'latte',name:'Latte',cat:'coffee',groups:[{id:'temp',name:'T
 context.window.__posSettings.packagingAssignments.coffee.choices.temp.Iced='iced';
 check(gapsFor([{key:'soda',name:'Soda',cat:'soda',serveStyle:'empty'}])[0].reason==='No packaging set for empty','a mapped style with no packaging rows is warned');
 check(gapsFor([{key:'meal',name:'Meal',cat:'meals'}]).length===0,'food is not falsely treated as a drink');
+check(gapsFor([{key:'muesli',name:'MUESLI',cat:'pastry',priceS:180,serveStyle:'iced'}]).length===0,'single-price pastry is audited with its item packaging assignment');
 check(gapsFor([{key:'special',name:'Special',cat:'custom_drinks',serveStyle:'iced'}]).length===0,'a custom category tagged drink is checked and can be covered');
 check(gapsFor([{key:'resale',name:'Bottled Water',cat:'soda',noRecipe:true}]).length===0,'no-recipe items remain exempt from every cost-gap warning');
 check(!/books|financial|journal|ledger/i.test(source.slice(start,end)),'the warning logic has no Finance Books posting behavior');
 check(/recipePackagingGap/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built Admin bundle carries the coverage warning');
-check(/Costing Incomplete/.test(source)&&/Every drink remains sellable/.test(source),'the UI flags incomplete costing without blocking sales');
+check(/Costing Incomplete/.test(source)&&/Every item remains sellable/.test(source),'the UI flags incomplete costing without blocking sales');
 check(/recipeCost\(rec,'S',it\)/.test(source)&&/recipeCost\(rec,'M',it\)/.test(source)&&/recipeCost\(rec,'L',it\)/.test(source),'saved recipe costs use the real menu item context for every size');
+check(/single-price pastries use one quantity per serving/.test(source)&&/Effective Price &amp; Cost/.test(source),'single-price pastry UI uses one serving quantity and effective price card');
 
 console.log(failures?'\n'+failures+' check(s) failed.':'\nAll recipe cost-gap checks passed.');
 process.exit(failures?1:0);

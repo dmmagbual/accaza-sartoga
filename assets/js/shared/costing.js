@@ -6,6 +6,8 @@
   'use strict';
   var VERSION='3F-3';
   var SIZES=['S','M','L'];
+  function isSingleServing(item){return !!(item&&item.priceS!=null)&&!(Number(item.priceM)>0)&&!(Number(item.priceL)>0)&&!item.labelS&&!item.labelL;}
+  function effectiveSize(item,size){return isSingleServing(item)?'S':(SIZES.indexOf(size)>=0?size:'M');}
   var UNITS={
     ml:{dim:'volume',factor:1},l:{dim:'volume',factor:1000},tsp:{dim:'volume',factor:4.92892},tbsp:{dim:'volume',factor:14.7868},cup:{dim:'volume',factor:240},'fl oz':{dim:'volume',factor:29.5735},
     mg:{dim:'weight',factor:0.001},g:{dim:'weight',factor:1},kg:{dim:'weight',factor:1000},lb:{dim:'weight',factor:453.592},'oz wt':{dim:'weight',factor:28.3495},
@@ -114,6 +116,8 @@
       var mappedStyle=byGroup&&(byGroup[optKey(labels[a])]||byGroup[labels[a]]);
       if(mappedStyle)return String(mappedStyle);
     }
+    var itemStyle=(assignment.items||{})[String((item&&item.key)||'')];
+    if(itemStyle)return String(itemStyle);
     if(assignment.defaultStyle)return String(assignment.defaultStyle);
     for(var i=0;i<labels.length;i++){
       for(var j=0;j<ids.length;j++){
@@ -133,8 +137,8 @@
     ctx=ctx||{};var inventory=ctx.inventory||{},recipes=ctx.recipes||{},menu=ctx.menuItems||{};var lines=[],usage={},errors=[],warnings=[];
     (ctx.lineItems||[]).forEach(function(li,lix){
       if(!li||!li.itemKey){errors.push({code:'INVALID_ORDER_LINE',path:'lineItems['+lix+']',message:'Menu item is required.'});return;}
-      var orderQty=Number(li.qty),size=SIZES.indexOf(li.size)>=0?li.size:'M';if(!Number.isFinite(orderQty)||orderQty<=0){errors.push({code:'INVALID_ORDER_QUANTITY',path:'lineItems['+lix+'].qty',message:'Order quantity must be positive.'});return;}
-      var recipe=recipes[li.itemKey],item=Object.assign({key:li.itemKey},menu[li.itemKey]||{});
+      var orderQty=Number(li.qty),item=Object.assign({key:li.itemKey},menu[li.itemKey]||{}),size=effectiveSize(item,li.size);if(!Number.isFinite(orderQty)||orderQty<=0){errors.push({code:'INVALID_ORDER_QUANTITY',path:'lineItems['+lix+'].qty',message:'Order quantity must be positive.'});return;}
+      var recipe=recipes[li.itemKey];
       if(!recipe||(!(recipe.base&&recipe.base.length)&&!(recipe.sharedBase&&recipe.sharedBase.length)&&!hasChoiceRows(recipe.choiceAdd))){warnings.push({code:'MISSING_RECIPE',itemKey:li.itemKey,message:(item.name||li.itemKey)+' has no recipe.'});return;}
       var contributions=effectiveBaseRows(item,recipe,ctx,warnings,li.optLabels||[]);
       (li.optLabels||[]).forEach(function(label){var found=optionRows(item,recipe,label,size,ctx,li.optLabels||[]);if(!found.length)warnings.push({code:'UNMAPPED_OPTION',itemKey:li.itemKey,label:label,message:'No ingredient cost is mapped to option '+label+'.'});contributions=contributions.concat(found);});
@@ -178,5 +182,5 @@
     return {ok:errors.length===0,engineVersion:VERSION,usage:usage,lines:lines,totalCost:total,cogsCovered:errors.length===0&&!warnings.some(function(w){return w.code==='MISSING_COST'||w.code==='MISSING_RECIPE'||w.code==='UNMAPPED_OPTION'||w.code==='UNMAPPED_SERVE_STYLE';}),errors:errors,warnings:warnings};
   }
   function costRecipe(args){args=args||{};return costOrder({lineItems:[{itemKey:args.itemKey||'item',size:args.size||'M',qty:args.qty||1,optLabels:args.optLabels||[]}],recipes:(function(){var o={};o[args.itemKey||'item']=args.recipe;return o;})(),inventory:args.inventory||{},menuItems:(function(){var o={};o[args.itemKey||'item']=args.item||{};return o;})(),sharedBaseIngredients:args.sharedBaseIngredients||{},optionCosts:args.optionCosts||{},optionRecipes:args.optionRecipes||{},optionGroups:args.optionGroups||{},packagingRules:args.packagingRules||{},packagingAssignments:args.packagingAssignments||{}});}
-  return {VERSION:VERSION,SIZES:SIZES,normalizeUnit:unit,unitInfo:unitInfo,compatible:compatible,convert:convert,normalizeRecipe:normalizeRecipe,effectiveBaseRows:effectiveBaseRows,rowMatchesSelections:rowMatchesSelections,costOrder:costOrder,costRecipe:costRecipe,optKey:optKey,serveStyleFor:serveStyleFor,packagingRows:packagingRows};
+  return {VERSION:VERSION,SIZES:SIZES,isSingleServing:isSingleServing,effectiveSize:effectiveSize,normalizeUnit:unit,unitInfo:unitInfo,compatible:compatible,convert:convert,normalizeRecipe:normalizeRecipe,effectiveBaseRows:effectiveBaseRows,rowMatchesSelections:rowMatchesSelections,costOrder:costOrder,costRecipe:costRecipe,optKey:optKey,serveStyleFor:serveStyleFor,packagingRows:packagingRows};
 });

@@ -28,16 +28,17 @@ function packStyleSnapshot(){
     a.get(a.ref(a.db,'recipes')).then(function(s){return s.val()||{};}),
     a.get(a.ref(a.db,'menuItems')).then(function(s){return s.val()||{};}),
     a.get(a.ref(a.db,'optionGroups')).then(function(s){return s.val()||{};}),
-    a.get(a.ref(a.db,'packagingRules')).then(function(s){return s.val()||{};}).catch(function(){return {};})
+    a.get(a.ref(a.db,'packagingRules')).then(function(s){return s.val()||{};}).catch(function(){return {};}),
+    a.get(a.ref(a.db,'posSettings/packagingAssignments')).then(function(s){return s.val()||{};}).catch(function(){return {};})
   ]).then(function(parts){
-    var payload={recipes:parts[0],menuItems:parts[1],optionGroups:parts[2],packagingRules:parts[3]};
+    var payload={recipes:parts[0],menuItems:parts[1],optionGroups:parts[2],packagingRules:parts[3],packagingAssignments:parts[4]};
     return recTempSeal(payload).then(function(hash){
       var takenAt=Date.now();
-      var envelope={version:'accaza-packaging-restore-v1',kind:'accaza-packaging-restore-point',takenAt:takenAt,
+      var envelope={version:'accaza-packaging-restore-v2',kind:'accaza-packaging-restore-point',takenAt:takenAt,
         takenAtISO:new Date(takenAt).toISOString(),
         counts:{recipes:Object.keys(payload.recipes).length,menuItems:Object.keys(payload.menuItems).length,optionGroups:Object.keys(payload.optionGroups).length},
         integrity:{algorithm:'sha256',canonical:'sorted-json-v1',dataSha256:hash},
-        note:'Recipes, menu items, option groups and packaging rules exactly as they stood before packaging moved to serve styles. Load this back on the same screen to undo it completely.',
+        note:'Recipes, menu items, option groups, packaging rules and packaging assignments exactly as they stood before changes. Load this back on the same screen to undo them completely.',
         data:payload};
       var blob=new Blob([JSON.stringify(envelope)],{type:'application/json'}),url=URL.createObjectURL(blob);
       var stamp=new Date(takenAt).toISOString().slice(0,19).replace(/[:T]/g,'-');
@@ -58,13 +59,14 @@ function packStyleRestore(file){
   reader.onload=function(){
     var envelope;
     try{envelope=JSON.parse(String(reader.result));}catch(e){alert('That file is not a restore point. Nothing was changed.');return;}
-    if(!envelope||envelope.version!=='accaza-packaging-restore-v1'||!envelope.data){alert('That file is not an Accaza packaging restore point. Nothing was changed.');return;}
+    if(!envelope||['accaza-packaging-restore-v1','accaza-packaging-restore-v2'].indexOf(envelope.version)<0||!envelope.data){alert('That file is not an Accaza packaging restore point. Nothing was changed.');return;}
     recTempSeal(envelope.data).then(function(hash){
       var sealed=envelope.integrity&&envelope.integrity.dataSha256;
       if(sealed&&sealed!==hash){alert('That restore point has been altered since it was saved. Nothing was changed.');return;}
       if(!confirm('Put recipes, menu items, option groups and packaging back to '+new Date(envelope.takenAt||0).toLocaleString()+'?\n\nAnything changed since then is lost.'))return;
       var a=A(),d=envelope.data;
-      a.update(a.ref(a.db,'/'),{recipes:d.recipes,menuItems:d.menuItems,optionGroups:d.optionGroups,packagingRules:d.packagingRules||null}).then(function(){
+      var restore={recipes:d.recipes,menuItems:d.menuItems,optionGroups:d.optionGroups,packagingRules:d.packagingRules||null};if(envelope.version==='accaza-packaging-restore-v2')restore['posSettings/packagingAssignments']=d.packagingAssignments||null;
+      a.update(a.ref(a.db,'/'),restore).then(function(){
         packStylePlan=null;
         alert('Restored to '+new Date(envelope.takenAt||0).toLocaleString()+'.');
         setTimeout(renderRecipes,300);
@@ -289,21 +291,24 @@ function packStyleOptions(selected){
 }
 function packagingAssignmentHtml(){
   var allowed=['coffee','noncaf','frappe','nonfrappe','soda','pastry'],cats=(A().getCats?A().getCats():[]).filter(function(c){return allowed.indexOf(c.id)>=0;}),menu=menuList(),saved=(window.__posSettings&&window.__posSettings.packagingAssignments)||{};
-  return '<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Category applicability</div><p class="pz-sub" style="margin-top:0;">All six menu categories are shown. Options come directly from Menu Availability. A category with Temperature shows its current choices; a category without it uses one default packaging style.</p>'+cats.map(function(cat){
+  return '<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Menu applicability</div><p class="pz-sub" style="margin-top:0;">Drinks can vary by Temperature. Pastries select packaging per menu item because a croissant bag, croffle box and MUESLI bowl are different physical sets. Save a restore point before changing these assignments.</p>'+cats.map(function(cat){
     var items=menu.filter(function(it){return it.cat===cat.id;}),groups={},assignment=saved[cat.id]||{},mapped=assignment.choices||{};
     items.forEach(function(it){(A().getItemOptionGroups?A().getItemOptionGroups(it):[]).forEach(function(g){if(/temperature/i.test(String(g.name||'')))groups[g.id]=g;});});
     var groupIds=Object.keys(groups),controls='';
     groupIds.forEach(function(gid){var g=groups[gid],gm=mapped[gid]||{};controls+=(g.choices||[]).map(function(c){var key=Costing().optKey(c.label);return '<label style="min-width:190px;flex:1 1 210px;"><span class="pz-lbl">'+esc(c.label)+'</span><select class="pz-in" data-packassign="'+esc(cat.id)+'|'+esc(gid)+'|'+esc(key)+'">'+packStyleOptions(gm[key]||'')+'</select></label>';}).join('');});
     if(!groupIds.length)controls='<label style="min-width:240px;"><span class="pz-lbl">Default packaging</span><select class="pz-in" data-packdefault="'+esc(cat.id)+'">'+packStyleOptions(assignment.defaultStyle||'')+'</select></label>';
     else controls+='<label style="min-width:190px;flex:1 1 210px;"><span class="pz-lbl">Fallback for items without Temperature</span><select class="pz-in" data-packdefault="'+esc(cat.id)+'">'+packStyleOptions(assignment.defaultStyle||'')+'</select></label>';
-    return '<div style="border-top:1px solid var(--cd);padding:0.65rem 0;"><div style="font-weight:600;">'+esc((cat.icon||'')+' '+cat.label)+'</div><div style="font-size:0.72rem;color:var(--tl);margin:0.15rem 0 0.45rem;">Applies to '+items.length+' item'+(items.length===1?'':'s')+(items.length?' — '+esc(items.map(function(i){return i.name;}).join(', ')):'')+'</div><div style="display:flex;gap:0.55rem;flex-wrap:wrap;">'+controls+'</div></div>';
+    var itemControls=cat.id==='pastry'?'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.55rem;margin-top:0.55rem;">'+items.map(function(it){return '<label><span class="pz-lbl">'+esc(it.name)+'</span><select class="pz-in" data-packitem="'+esc(cat.id)+'|'+esc(it.key)+'">'+packStyleOptions(((assignment.items||{})[it.key])||'')+'</select></label>';}).join('')+'</div>':'';
+    return '<div style="border-top:1px solid var(--cd);padding:0.65rem 0;"><div style="font-weight:600;">'+esc((cat.icon||'')+' '+cat.label)+'</div><div style="font-size:0.72rem;color:var(--tl);margin:0.15rem 0 0.45rem;">'+(cat.id==='pastry'?'Choose each pastry’s actual packaging. The category default is only a fallback.':'Applies to '+items.length+' item'+(items.length===1?'':'s')+(items.length?' — '+esc(items.map(function(i){return i.name;}).join(', ')) : ''))+'</div><div style="display:flex;gap:0.55rem;flex-wrap:wrap;">'+controls+'</div>'+itemControls+'</div>';
   }).join('')+'<button class="pz-btn ok" id="packSaveAssignments">Save category assignments</button><span id="packAssignmentMsg" style="font-size:0.78rem;color:var(--tl);margin-left:0.5rem;"></span></div>';
 }
 function savePackagingAssignments(){
+  if(!packStyleSnapshotTaken){alert('Save a restore point first. Nothing was changed.');return;}
   var root=document.getElementById('packagingRoot'),next={};
   root.querySelectorAll('[data-packdefault]').forEach(function(el){var cat=el.getAttribute('data-packdefault'),value=String(el.value||'');next[cat]=next[cat]||{};if(value)next[cat].defaultStyle=value;});
   root.querySelectorAll('[data-packassign]').forEach(function(el){var p=el.getAttribute('data-packassign').split('|'),value=String(el.value||'');next[p[0]]=next[p[0]]||{};if(value){next[p[0]].choices=next[p[0]].choices||{};next[p[0]].choices[p[1]]=next[p[0]].choices[p[1]]||{};next[p[0]].choices[p[1]][p[2]]=value;}});
-  Object.keys(next).forEach(function(cat){if(!next[cat].defaultStyle&&!next[cat].choices)delete next[cat];});
+  root.querySelectorAll('[data-packitem]').forEach(function(el){var p=el.getAttribute('data-packitem').split('|'),value=String(el.value||'');next[p[0]]=next[p[0]]||{};if(value){next[p[0]].items=next[p[0]].items||{};next[p[0]].items[p[1]]=value;}});
+  Object.keys(next).forEach(function(cat){if(!next[cat].defaultStyle&&!next[cat].choices&&!next[cat].items)delete next[cat];});
   A().update(A().ref(A().db,'posSettings'),{packagingAssignments:next}).then(function(){window.__posSettings=window.__posSettings||{};window.__posSettings.packagingAssignments=next;var m=document.getElementById('packAssignmentMsg');if(m)m.textContent='✓ Saved '+new Date().toLocaleTimeString();updateCostBadge();}).catch(function(e){alert('Could not save packaging applicability: '+((e&&e.code)||e));});
 }
 function renderServeStylePackaging(){
