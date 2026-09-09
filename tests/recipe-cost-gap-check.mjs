@@ -46,6 +46,8 @@ context.window.__posSettings.packagingAssignments.coffee.choices.temp.Iced='iced
 check(gapsFor([{key:'soda',name:'Soda',cat:'soda',serveStyle:'empty'}])[0].reason==='No packaging set for empty','a mapped style with no packaging rows is warned');
 check(gapsFor([{key:'meal',name:'Meal',cat:'meals'}]).length===0,'food is not falsely treated as a drink');
 check(gapsFor([{key:'muesli',name:'MUESLI',cat:'pastry',priceS:180}]).length===0,'single-price pastry is audited with its inherited category packaging assignment');
+context.recipesMap={};menuItems.splice(0,menuItems.length,{key:'croissant',name:'Croissant',cat:'pastry',priceS:95,needsBuilding:false});check(context.menuCostGaps().length===0,'ready-to-sell pastry requires packaging but not an ingredient recipe');
+context.recipesMap={};menuItems.splice(0,menuItems.length,{key:'muesli',name:'MUESLI',cat:'pastry',priceS:180,needsBuilding:true});check(context.menuCostGaps()[0].reason==='No recipe yet','build-required pastry is flagged until its ingredient recipe is saved');
 delete context.window.__posSettings.packagingAssignments.pastry;
 check(gapsFor([{key:'muesli',name:'MUESLI',cat:'pastry',priceS:180,serveStyle:'iced'}])[0].reason==='No effective serve style','a removed pastry category assignment cannot silently fall back to legacy item packaging');
 context.window.__posSettings.packagingAssignments.pastry={defaultStyle:'iced'};
@@ -56,6 +58,8 @@ check(/recipePackagingGap/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')
 check(/Costing Incomplete/.test(source)&&/Every item remains sellable/.test(source),'the UI flags incomplete costing without blocking sales');
 check(/recipeCost\(rec,'S',it\)/.test(source)&&/recipeCost\(rec,'M',it\)/.test(source)&&/recipeCost\(rec,'L',it\)/.test(source),'saved recipe costs use the real menu item context for every size');
 check(/single-price pastries use one quantity per serving/.test(source)&&/Effective Price &amp; Cost/.test(source),'single-price pastry UI uses one serving quantity and effective price card');
+const catalog=fs.readFileSync('assets/js/admin/catalog-admin.mjs','utf8'),catalogHtml=fs.readFileSync('src/html/admin/40-admin-catalog.html','utf8');
+check(/needsBuilding/.test(catalog)&&/newItemNeedsBuilding/.test(catalogHtml)&&/Needs building before sale/.test(catalogHtml),'pastry build mode is available when adding and editing menu items');
 
 console.log(failures?'\n'+failures+' check(s) failed.':'\nAll recipe cost-gap checks passed.');
 process.exit(failures?1:0);

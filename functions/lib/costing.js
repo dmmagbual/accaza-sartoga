@@ -139,10 +139,17 @@
     (ctx.lineItems||[]).forEach(function(li,lix){
       if(!li||!li.itemKey){errors.push({code:'INVALID_ORDER_LINE',path:'lineItems['+lix+']',message:'Menu item is required.'});return;}
       var orderQty=Number(li.qty),item=Object.assign({key:li.itemKey},menu[li.itemKey]||{}),size=effectiveSize(item,li.size);if(!Number.isFinite(orderQty)||orderQty<=0){errors.push({code:'INVALID_ORDER_QUANTITY',path:'lineItems['+lix+'].qty',message:'Order quantity must be positive.'});return;}
-      var recipe=recipes[li.itemKey];
-      if(!recipe||(!(recipe.base&&recipe.base.length)&&!(recipe.sharedBase&&recipe.sharedBase.length)&&!hasChoiceRows(recipe.choiceAdd))){warnings.push({code:'MISSING_RECIPE',itemKey:li.itemKey,message:(item.name||li.itemKey)+' has no recipe.'});return;}
-      var contributions=effectiveBaseRows(item,recipe,ctx,warnings,li.optLabels||[]);
-      (li.optLabels||[]).forEach(function(label){var found=optionRows(item,recipe,label,size,ctx,li.optLabels||[]);if(!found.length)warnings.push({code:'UNMAPPED_OPTION',itemKey:li.itemKey,label:label,message:'No ingredient cost is mapped to option '+label+'.'});contributions=contributions.concat(found);});
+      var recipe=recipes[li.itemKey],pastry=String(item.cat||'')==='pastry';
+      var hasRecipe=!!(recipe&&((recipe.base&&recipe.base.length)||(recipe.sharedBase&&recipe.sharedBase.length)||hasChoiceRows(recipe.choiceAdd)));
+      /* Existing pastry recipes remain build-required until the item is explicitly saved.
+         A ready-to-sell pastry skips preparation ingredients but still consumes packaging. */
+      var needsRecipe=!pastry||(item.noRecipe!==true&&(item.needsBuilding===true||(item.needsBuilding==null&&hasRecipe)));
+      if(!hasRecipe&&needsRecipe){warnings.push({code:'MISSING_RECIPE',itemKey:li.itemKey,message:(item.name||li.itemKey)+' has no recipe.'});return;}
+      var useRecipe=hasRecipe&&needsRecipe,contributions=[];
+      if(useRecipe){
+        contributions=effectiveBaseRows(item,recipe,ctx,warnings,li.optLabels||[]);
+        (li.optLabels||[]).forEach(function(label){var found=optionRows(item,recipe,label,size,ctx,li.optLabels||[]);if(!found.length)warnings.push({code:'UNMAPPED_OPTION',itemKey:li.itemKey,label:label,message:'No ingredient cost is mapped to option '+label+'.'});contributions=contributions.concat(found);});
+      }
       var serveStyle=serveStyleFor(item,li.optLabels,ctx);
       if(serveStyle){
         var packing=packagingRows(serveStyle,ctx);

@@ -39,6 +39,7 @@ function createCatalogAdmin(deps){
     if(!name||!priceS){alert('Please enter item name and price.');return;}
     const catItems=deps.getMenuItems().filter(i=>i.cat===cat);
     const newItem={cat,name,desc,priceS,order:catItems.length,optionsSet:true};
+    if(cat==='pastry')newItem.needsBuilding=!!document.getElementById('newItemNeedsBuilding')?.checked;
     var selOgs=[];document.querySelectorAll('#newItemOptions input[data-ogid]:checked').forEach(function(c){selOgs.push(c.dataset.ogid);});
     if(selOgs.length)newItem.options=selOgs;
     if(priceM)newItem.priceM=priceM;
@@ -54,6 +55,7 @@ function createCatalogAdmin(deps){
       document.getElementById('newItemPriceFlat').value='';
       ['newItemPriceTwoS','newItemPriceTwoL','newItemLabelS','newItemLabelL'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
       document.querySelectorAll('#newItemOptions input[data-ogid]').forEach(function(c){c.checked=false;c.parentElement.style.background='#fff';});
+      document.getElementById('newItemNeedsBuilding').checked=false;
       document.getElementById('pricingTypeSized').checked=true;setPricingType('sized');
       const c=document.getElementById('addItemConfirm');c.style.display='block';setTimeout(()=>c.style.display='none',2500);
     }catch(e){alert('Error: '+e.message);}
@@ -278,6 +280,7 @@ function createCatalogAdmin(deps){
     var pType=ptRadio.value;
     if(!newName){alert('Name is required.');return;}
     var updates={cat:newCat,name:newName,desc:newDesc||null,img:newImg,optionsSet:true};
+    if(newCat==='pastry'){var buildEl=document.getElementById('ep_'+key+'_needsBuilding');updates.needsBuilding=!!(buildEl&&buildEl.checked);updates.noRecipe=null;}else updates.needsBuilding=null;
     var selOg=[];var epnl=document.getElementById('ep_'+key);
     if(epnl)epnl.querySelectorAll('input[data-ogid]:checked').forEach(function(c){selOg.push(c.dataset.ogid);});
     updates.options=selOg.length?selOg:null;
@@ -411,6 +414,7 @@ function createCatalogAdmin(deps){
         // Item options
         +'<div style="margin-bottom:0.7rem;"><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.3rem;text-transform:uppercase;letter-spacing:0.05em;">Item Options — tick everything this item should offer</label>'
         +'<div style="display:flex;flex-wrap:wrap;gap:0.4rem;">'+buildOptionChecklistHtml(deps.getEffectiveOptionIds(item))+'</div></div>'
+        +(item.cat==='pastry'?'<label style="display:flex;align-items:flex-start;gap:0.4rem;margin-bottom:0.7rem;font-size:0.8rem;color:var(--td);text-transform:none;letter-spacing:0;"><input type="checkbox" id="ep_'+key+'_needsBuilding"'+(item.needsBuilding===true?' checked':'')+' style="width:auto;margin-top:0.15rem;accent-color:var(--bl);"/><span><b>Needs building before sale</b><br/><small style="color:var(--tl);">Checked: ingredients plus packaging. Unchecked: packaging only.</small></span></label>':'')
         // Image URL
         +'<div style="margin-bottom:0.7rem;"><label style="font-size:0.72rem;color:var(--tl);display:block;margin-bottom:0.2rem;text-transform:uppercase;letter-spacing:0.05em;">Image URL</label>'
         +'<input type="text" id="ep_'+key+'_img" value="'+escHtml(item.img||'')+'" placeholder="https://i.postimg.cc/..." style="width:100%;background:#fff;border:1px solid var(--cd);border-radius:6px;padding:0.42rem 0.55rem;font-size:0.8rem;color:var(--td);font-family:\'Inter\',sans-serif;"/></div>'
