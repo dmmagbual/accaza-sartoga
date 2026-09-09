@@ -82,6 +82,23 @@ near(flatPastry.usage.cream,10,'single-price pastry option always uses its one t
 near(flatPastry.usage.hotCup,2,'single-price pastry inherits the category packaging set');
 if(flatPastry.usage.icedCup)throw new Error('stale item packaging overrode the inherited pastry category set');
 if(!flatPastry.lines.every(line=>line.size==='S'))throw new Error('single-price pastry did not canonicalize stale size to one serving');
+const packagedPastry=Costing.costOrder({
+  lineItems:[{itemKey:'croissant',size:'S',qty:2,optLabels:[]}],recipes:{},inventory,
+  menuItems:{croissant:{name:'Croissant',cat:'pastry',priceS:95,needsBuilding:false}},
+  packagingRules:{bowl:{rows:[{ing:'hotCup',qtyS:1}]}},packagingAssignments:{pastry:{defaultStyle:'bowl'}},
+});
+near(packagedPastry.usage.hotCup,2,'ready-to-sell pastry consumes its packaging without a recipe');
+if(packagedPastry.warnings.some(x=>x.code==='MISSING_RECIPE')||!packagedPastry.cogsCovered)throw new Error('ready-to-sell pastry was incorrectly marked as missing a recipe');
+const ignoredRecipe=Costing.costOrder({
+  lineItems:[{itemKey:'croissant',size:'S',qty:1,optLabels:[]}],recipes:{croissant:{base:[{ing:'beans',qtyS:10}]}},inventory,
+  menuItems:{croissant:{name:'Croissant',cat:'pastry',priceS:95,needsBuilding:false}},
+  packagingRules:{bowl:{rows:[{ing:'hotCup',qtyS:1}]}},packagingAssignments:{pastry:{defaultStyle:'bowl'}},
+});
+if(ignoredRecipe.usage.beans||ignoredRecipe.usage.hotCup!==1)throw new Error('explicit packaging-only pastry still consumed a stale preparation recipe');
+const legacyResale=Costing.costOrder({lineItems:[{itemKey:'croissant',size:'S',qty:1,optLabels:[]}],recipes:{croissant:{base:[{ing:'beans',qtyS:10}]}},inventory,menuItems:{croissant:{name:'Croissant',cat:'pastry',priceS:95,noRecipe:true}},packagingRules:{bowl:{rows:[{ing:'hotCup',qtyS:1}]}},packagingAssignments:{pastry:{defaultStyle:'bowl'}}});
+if(legacyResale.usage.beans||legacyResale.usage.hotCup!==1)throw new Error('legacy no-recipe pastry still consumed a stale preparation recipe');
+const missingBuiltPastry=Costing.costOrder({lineItems:[{itemKey:'muesli',size:'S',qty:1,optLabels:[]}],recipes:{},inventory,menuItems:{muesli:{name:'MUESLI',cat:'pastry',needsBuilding:true}},packagingRules:{bowl:{rows:[{ing:'hotCup',qtyS:1}]}},packagingAssignments:{pastry:{defaultStyle:'bowl'}}});
+if(!missingBuiltPastry.warnings.some(x=>x.code==='MISSING_RECIPE')||missingBuiltPastry.cogsCovered)throw new Error('build-required pastry did not require an ingredient recipe');
 const unassignedPastry=Costing.costOrder({
   lineItems:[{itemKey:'muesli',size:'S',qty:1}],recipes:{muesli:{base:[{ing:'beans',qtyS:1}]}},inventory,
   menuItems:{muesli:{name:'MUESLI',cat:'pastry',priceS:180,serveStyle:'hot'}},packagingRules:{hot:{rows:[{ing:'hotCup',qtyS:1}]}},packagingAssignments:{},
