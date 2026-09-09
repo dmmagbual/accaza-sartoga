@@ -4081,6 +4081,11 @@ async function historicalArchiveInputs(db, orderId, order) {
   const saleMovement = saleMovementSnap.val() || null;
   const refundMovement = refundMovementSnap && refundMovementSnap.val() || null;
   const voidMovement = voidMovementSnap && voidMovementSnap.val() || null;
+  const inventoryPlan = inventoryPlanSnap.val() || null;
+  // Legacy orders predate sale-time plans. Read only their deterministic
+  // order-linked movement prefix; never recalculate history from current recipes.
+  const inventoryMovements = HistoricalArchive.validInventoryPlan(inventoryPlan) ? null :
+    (await db.ref("/inventoryMovements").orderByKey().startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\uf8ff`).get()).val() || null;
   const movements = [
     {name: "sale", id: `sale_${orderId}`, movement: saleMovement},
     {name: "refund", id: refundMovementId, movement: refundMovement},
@@ -4101,7 +4106,8 @@ async function historicalArchiveInputs(db, orderId, order) {
     saleJournal: linked.sale.journal, saleJournalId: linked.sale.journalId,
     refundMovement, refundMovementId, refundJournal: linked.refund.journal, refundJournalId: linked.refund.journalId,
     voidMovement, voidMovementId, voidJournal: linked.void.journal, voidJournalId: linked.void.journalId,
-    inventoryPlan: inventoryPlanSnap.val() || null,
+    inventoryPlan,
+    inventoryMovements,
   };
 }
 
@@ -4148,6 +4154,19 @@ exports.refreshHistoricalOrderAfterJournal = onValueWritten(
       const archived = (await db.ref(`/archivedOrders/${sourceId}`).get()).val();
       if (archived) await replicateHistoricalOrder(db, firestore, sourceId, archived);
     }
+  },
+);
+
+// If inventory finalization finishes after an order is archived, refresh the
+// replica from the immutable plan. This closes the trigger race without using
+// current recipes or changing the archived RTDB source.
+exports.refreshHistoricalOrderAfterInventoryPlan = onValueWritten(
+  {ref: "/orderInventoryPlans/{orderId}", region: ORDER_REGION, retry: true},
+  async (event) => {
+    if (!event.data.after.exists()) return;
+    const db = getDatabase(), orderId = event.params.orderId;
+    const archived = (await db.ref(`/archivedOrders/${orderId}`).get()).val();
+    if (archived) await replicateHistoricalOrder(db, getFirestore(), orderId, archived);
   },
 );
 
