@@ -9,6 +9,7 @@ import vm from 'node:vm';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
 const Costing=require('../functions/lib/costing.js');
+const SharedChoiceValidation=require('../functions/lib/shared-choice-validation.js');
 let failures=0;
 const fail=m=>{failures++;console.error('FAIL: '+m);};
 const ok=m=>console.log('PASS: '+m);
@@ -206,6 +207,15 @@ check(/sharedChoiceDuplicate/.test(choiceScope)&&/data-oc-temp/.test(choiceScope
 check(/recipeServingScopeLabels/.test(choiceScope)&&/Blended/.test(choiceScope)&&/useFor:picked/.test(choiceScope),'shared choices support explicit multi-select Hot, Iced and Blended scopes');
 check(/sharedChoiceScopeError/.test(choiceScope)&&/different serving style/.test(choiceScope),'overlapping duplicate serving-style assignments are blocked before saving');
 check(/useFor:scope\.useFor/.test(recipeUi)&&/at least one serving style/.test(recipeUi),'shared-choice multi-style selections persist and cannot be left empty');
+const sharedInventory={milk:{name:'Whole Milk'}};
+const sharedGroups={temp:{name:'Temperature',choices:[{label:'Hot'},{label:'Iced'}]},milk:{name:'Milk',choices:[{label:'Whole Milk'}]}};
+function sharedRow(useFor){return {ing:'milk',qtyS:100,qtyM:150,qtyL:200,...(useFor?{useFor}: {})};}
+const blendedLibrary={milk:{'Whole Milk':{label:'Whole Milk',ings:[sharedRow(['Hot','Iced']),sharedRow(['Blended'])]}}};
+check(SharedChoiceValidation.validate(blendedLibrary,sharedInventory,sharedGroups).rows===2,'server accepts separate Whole Milk rows for Hot/Iced and Blended');
+let overlap='';try{SharedChoiceValidation.validate({milk:{'Whole Milk':{label:'Whole Milk',ings:[sharedRow(['Hot']),sharedRow(['Hot','Blended'])]}}},sharedInventory,sharedGroups);}catch(error){overlap=error.message;}
+check(/to Hot more than once/.test(overlap),'server still rejects overlapping shared-choice serving styles');
+let malformed='';try{SharedChoiceValidation.validate({milk:{'Whole Milk':{label:'Whole Milk',ings:[sharedRow(['Frozen'])]}}},sharedInventory,sharedGroups);}catch(error){malformed=error.message;}
+check(/invalid serving-style assignment/.test(malformed),'server rejects unknown shared-choice serving styles');
 check(/recipeHasIngredientRows\(rec\)/.test(recipeUi),'choice-only Hot and Iced recipes are recognized by recipe completeness checks');
 const recipeSaveUi=fs.readFileSync('src/admin/pos/31-recipe-save.js','utf8');
 check(/recipeChoicePackagingRows/.test(recipeSaveUi)&&/groupName/.test(recipeSaveUi)&&/choiceLabel/.test(recipeSaveUi),'legacy packaging warnings identify the exact hidden group and choice');

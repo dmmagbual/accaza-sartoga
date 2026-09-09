@@ -34,7 +34,7 @@ if(!functionsSource.includes('[`activeOrders/${orderId}`]: activeOrderProjection
 if(!functionsSource.includes('Costing.costOrder({'))fail('Release 3B server-authoritative costing engine is not used at finalization');
 if(!functionsSource.includes('exports.validateRecipeDefinition = onCall'))fail('Release 3B server recipe validator missing');
 if(!functionsSource.includes('exports.saveSharedChoiceIngredients = onCall')||!adminSource.includes('saveSharedChoiceIngredients:function(optionCosts)'))fail('Shared choice ingredients are not routed through the authenticated server save');
-if(!functionsSource.includes('invalid temperature assignment')||!functionsSource.includes('assigns ${ing} to ${label} more than once'))fail('Shared choice temperature scopes are not validated server-side');
+if(!functionsSource.includes('SharedChoiceValidation.validate(optionCosts,inventory,groups)'))fail('Shared choice serving-style scopes are not validated server-side');
 if(!functionsSource.includes('cogsDetail: {'))fail('Release 3B traceable COGS snapshot missing');
 if(!adminSource.includes("'validateRecipeDefinition'")||!adminSource.includes('validateRecipeDefinition:validateRecipeDefinitionCall'))fail('admin recipe save is not connected to the server validator');
 if(!adminSource.includes('Costing().normalizeRecipe(raw,inventoryMap)'))fail('admin recipe save does not run shared normalization');

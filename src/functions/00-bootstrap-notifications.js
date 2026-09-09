@@ -36,6 +36,7 @@ const ProductionValidation = require("./lib/production-validation");
 const AlertEscalation = require("./lib/alert-escalation");
 const AssuranceControls = require("./lib/assurance-controls");
 const OrderRecords = require("./lib/order-records");
+const SharedChoiceValidation = require("./lib/shared-choice-validation");
 
 initializeApp();
 
