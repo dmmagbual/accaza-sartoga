@@ -15,14 +15,14 @@ if(start<0||end<0)throw new Error('Recipes cost-gap functions were not found');
 const menuItems=[];
 const costedItems=[];
 const context={
-  window:{__posSettings:{catType:{custom_drinks:'drink',meals:'food'},packagingAssignments:{coffee:{choices:{temp:{Hot:'hot',Iced:'iced'}}},pastry:{items:{muesli:'iced'}}}}},
+  window:{__posSettings:{catType:{custom_drinks:'drink',meals:'food'},packagingAssignments:{coffee:{choices:{temp:{Hot:'hot',Iced:'iced'}}},pastry:{defaultStyle:'iced'}}}},
   packagingRulesMap:{hot:{rows:[{ing:'hot_cup'}]},iced:{rows:[{ing:'iced_cup'}]},empty:{rows:[]}},
   inventoryMap:{beans:{cost:10}},recipesMap:{},
   menuList(){return menuItems;},
   recipeHasIngredientRows(rec){return !!(rec&&((rec.base||[]).length||(rec.sharedBase||[]).length||Object.values(rec.choiceAdd||{}).some(group=>Object.values(group||{}).some(entry=>(entry.ings||[]).length))));},
   A(){return {getMenuItems(){return menuItems;},getItemOptionGroups(item){return item.groups||[];}};},
   costingContext(){return {packagingAssignments:context.window.__posSettings.packagingAssignments};},
-  Costing(){return {costRecipe(args){costedItems.push(args.item);var missing=args.item&&args.item.key==='uncosted',scoped=args.item&&args.item.key==='scoped';return {totalCost:scoped?(args.optLabels||[]).some(x=>x==='Hot'||x==='Iced')?10:0:args.item&&args.item.key?10:0,warnings:missing?[{code:'MISSING_COST',itemId:'beans'}]:[]};},serveStyleFor(item,labels){var a=context.window.__posSettings.packagingAssignments[item.cat]||{},g=(a.choices||{}).temp||{};if(labels&&labels[0]&&g[labels[0]])return g[labels[0]];var groups=item.groups||[];for(var i=0;i<groups.length;i++){for(var j=0;j<(groups[i].choices||[]).length;j++){var c=groups[i].choices[j];if(labels.indexOf(c.label)>=0&&c.serveStyle)return c.serveStyle;}}return a.defaultStyle||item.serveStyle||'';}};}
+  Costing(){return {costRecipe(args){costedItems.push(args.item);var missing=args.item&&args.item.key==='uncosted',scoped=args.item&&args.item.key==='scoped';return {totalCost:scoped?(args.optLabels||[]).some(x=>x==='Hot'||x==='Iced')?10:0:args.item&&args.item.key?10:0,warnings:missing?[{code:'MISSING_COST',itemId:'beans'}]:[]};},serveStyleFor(item,labels){var a=context.window.__posSettings.packagingAssignments[item.cat]||{};if(item.cat==='pastry')return a.defaultStyle||'';var g=(a.choices||{}).temp||{};if(labels&&labels[0]&&g[labels[0]])return g[labels[0]];var groups=item.groups||[];for(var i=0;i<groups.length;i++){for(var j=0;j<(groups[i].choices||[]).length;j++){var c=groups[i].choices[j];if(labels.indexOf(c.label)>=0&&c.serveStyle)return c.serveStyle;}}return a.defaultStyle||item.serveStyle||'';}};}
 };
 vm.createContext(context);
 vm.runInContext(choiceScopeSource+source.slice(start,end),context);
@@ -45,7 +45,10 @@ check(gapsFor([{key:'latte',name:'Latte',cat:'coffee',groups:[{id:'temp',name:'T
 context.window.__posSettings.packagingAssignments.coffee.choices.temp.Iced='iced';
 check(gapsFor([{key:'soda',name:'Soda',cat:'soda',serveStyle:'empty'}])[0].reason==='No packaging set for empty','a mapped style with no packaging rows is warned');
 check(gapsFor([{key:'meal',name:'Meal',cat:'meals'}]).length===0,'food is not falsely treated as a drink');
-check(gapsFor([{key:'muesli',name:'MUESLI',cat:'pastry',priceS:180,serveStyle:'iced'}]).length===0,'single-price pastry is audited with its item packaging assignment');
+check(gapsFor([{key:'muesli',name:'MUESLI',cat:'pastry',priceS:180}]).length===0,'single-price pastry is audited with its inherited category packaging assignment');
+delete context.window.__posSettings.packagingAssignments.pastry;
+check(gapsFor([{key:'muesli',name:'MUESLI',cat:'pastry',priceS:180,serveStyle:'iced'}])[0].reason==='No effective serve style','a removed pastry category assignment cannot silently fall back to legacy item packaging');
+context.window.__posSettings.packagingAssignments.pastry={defaultStyle:'iced'};
 check(gapsFor([{key:'special',name:'Special',cat:'custom_drinks',serveStyle:'iced'}]).length===0,'a custom category tagged drink is checked and can be covered');
 check(gapsFor([{key:'resale',name:'Bottled Water',cat:'soda',noRecipe:true}]).length===0,'no-recipe items remain exempt from every cost-gap warning');
 check(!/books|financial|journal|ledger/i.test(source.slice(start,end)),'the warning logic has no Finance Books posting behavior');

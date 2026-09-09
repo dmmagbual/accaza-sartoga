@@ -133,9 +133,11 @@ check(/packagingRules:\['recipes'/.test(fs.readFileSync('assets/js/admin/realtim
 check(/"packagingRules"/.test(fs.readFileSync('database.rules.json','utf8')),'the database rules cover the packaging table');
 const ui=fs.readFileSync('src/admin/pos/32-serve-style-packaging.js','utf8');
 check(/accaza-packaging-restore-v2/.test(ui)&&/posSettings\/packagingAssignments/.test(ui),'restore point includes current menu packaging assignments');
-check(/data-packitem/.test(ui)&&/Save a restore point first/.test(ui),'pastry item packaging is available only behind the restore-point safeguard');
+check(!/data-packitem/.test(ui)&&/Every pastry inherits the single Pastries category packaging set/.test(ui),'pastries use one inherited category packaging assignment without a per-item grid');
 check(/packSnapshot/.test(ui)&&/packRestore/.test(ui),'the screen takes a restore point and can undo from it');
-check(/packStyleSnapshotTaken/.test(ui),'the change stays locked until a restore point has been taken');
+check(/packStyleSnapshot\(\{silent:true,keepView:true\}\)/.test(ui)&&/Backing up/.test(ui),'category save automatically downloads its restore point instead of showing a prerequisite popup');
+check(/role="status" aria-live="polite"/.test(ui)&&/Restore point downloaded and assignments saved/.test(ui),'category save reports busy and successful completion inline');
+check(/data-pack-addrow/.test(ui)&&/data-pack-delrow/.test(ui)&&/quantities/.test(ui),'inherited packaging contents remain editable, removable and addable in the shared packaging set');
 check(/packApply/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built admin bundle carries the packaging screen');
 check(/serve-style-plan\.js/.test(fs.readFileSync('admin.html','utf8')),'admin.html loads the planner');
 check(/serve-style-plan\.js/.test(fs.readFileSync('sw.js','utf8')),'the service worker caches the planner');

@@ -110,14 +110,15 @@
     /* Category + menu-choice assignments are the current source of truth. This lets Hot/Iced
        packaging differ by menu category without hiding metadata inside the customer option. */
     var assignment=((ctx.packagingAssignments||{})[String((item&&item.cat)||'')])||{};
+    /* Pastries intentionally have one inherited category set. Ignore legacy item/choice/menu
+       styles so removing or replacing that one assignment has one predictable result. */
+    if(String((item&&item.cat)||'')==='pastry')return String(assignment.defaultStyle||'');
     var mapped=assignment.choices||{};
     for(var a=0;a<labels.length;a++){
       var mappedGroup=groupIdForLabel(item,labels[a],groups),byGroup=mappedGroup&&mapped[mappedGroup];
       var mappedStyle=byGroup&&(byGroup[optKey(labels[a])]||byGroup[labels[a]]);
       if(mappedStyle)return String(mappedStyle);
     }
-    var itemStyle=(assignment.items||{})[String((item&&item.key)||'')];
-    if(itemStyle)return String(itemStyle);
     if(assignment.defaultStyle)return String(assignment.defaultStyle);
     for(var i=0;i<labels.length;i++){
       for(var j=0;j<ids.length;j++){
