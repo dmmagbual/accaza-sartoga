@@ -64,8 +64,11 @@ jobs:
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
 
-      - name: Acknowledge retry policy for order preservation
-        run: firebase deploy --only functions:preservePostedOrderOnDelete --project accaza-sartoga --non-interactive --force
+      # Firebase requires an explicit acknowledgement when a function enables
+      # retry-on-failure. Keep --force scoped to these named functions so the
+      # full deployment cannot silently delete unrelated production functions.
+      - name: Acknowledge retry policy for durable order functions
+        run: firebase deploy --only functions:preservePostedOrderOnDelete,functions:replicateArchivedOrderToFirestore,functions:refreshHistoricalOrderAfterJournal --project accaza-sartoga --non-interactive --force
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
 
