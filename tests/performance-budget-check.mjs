@@ -11,8 +11,10 @@ const budgets={
   'assets/js/admin/core.mjs':135000,
   // Build 491 adds stock-item archiving: a retire path for ledger items that cannot be deleted,
   // with the guards, pickers and filter that go with it.
+  // Per-item pastry packaging overrides (Customize/Edit/Revert) add ~11.6 KB: private
+  // packagingRules/item_<key> drafts, their editor, and Menu applicability wiring.
   // Retain a narrow ceiling so future POS growth still requires explicit review.
-  'assets/js/admin/pos.js':488000,
+  'assets/js/admin/pos.js':502000,
   'assets/js/admin/register.js':175000,
   'assets/js/admin/analytics.js':150000,
   'assets/js/admin/finance.js':75000,
