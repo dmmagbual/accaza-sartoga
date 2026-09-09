@@ -131,9 +131,9 @@ function openRecipe(key){
       if(b.qtyS!=null||b.qtyM!=null||b.qtyL!=null){qS=b.qtyS;qM=b.qtyM;qL=b.qtyL;}
       else{var q=Number(b.qty)||0;qS=q*(sm.S!=null?sm.S:1);qM=q*(sm.M!=null?sm.M:1);qL=q*(sm.L!=null?sm.L:1);}
       function display(stored,shown){if(shown!=null)return shown;var cv=Costing().convert(Number(stored)||0,inv.unit||u,u);return cv.ok?cv.qty:stored;}
-      return {ing:b.ing,unit:u,dS:display(qS,b.dispS),dM:display(qM,b.dispM),dL:display(qL,b.dispL),when:b.when};
+      return {ing:b.ing,unit:u,dS:display(qS,b.dispS),dM:display(qM,b.dispM),dL:display(qL,b.dispL),when:b.when,useFor:b.useFor};
     }):[]),
-    choiceAdd:(function(){var out={};Object.keys(saved.choiceAdd||{}).forEach(function(g){out[g]={};Object.keys(saved.choiceAdd[g]||{}).forEach(function(lk){var e=saved.choiceAdd[g][lk]||{};out[g][lk]={label:e.label||lk,ings:(e.ings||[]).map(function(r){var inv=inventoryMap[r.ing]||{},u=r.unit||inv.unit||'';if(uNorm(u)==='oz'){var dim=itemDim(inv);u=dim==='volume'?'fl oz':(dim==='weight'?'oz wt':u);}function display(sz){var shown=r['disp'+sz];if(shown!=null)return shown;var cv=Costing().convert(Number(r['qty'+sz])||0,inv.unit||u,u);return cv.ok?cv.qty:r['qty'+sz];}return {ing:r.ing,unit:u,dS:display('S'),dM:display('M'),dL:display('L'),op:r.op,when:r.when};})};});});return out;})(),
+    choiceAdd:(function(){var out={};Object.keys(saved.choiceAdd||{}).forEach(function(g){out[g]={};Object.keys(saved.choiceAdd[g]||{}).forEach(function(lk){var e=saved.choiceAdd[g][lk]||{};out[g][lk]={label:e.label||lk,ings:(e.ings||[]).map(function(r){var inv=inventoryMap[r.ing]||{},u=r.unit||inv.unit||'';if(uNorm(u)==='oz'){var dim=itemDim(inv);u=dim==='volume'?'fl oz':(dim==='weight'?'oz wt':u);}function display(sz){var shown=r['disp'+sz];if(shown!=null)return shown;var cv=Costing().convert(Number(r['qty'+sz])||0,inv.unit||u,u);return cv.ok?cv.qty:r['qty'+sz];}return {ing:r.ing,unit:u,dS:display('S'),dM:display('M'),dL:display('L'),op:r.op,when:r.when,useFor:r.useFor};})};});});return out;})(),
     _optPreview:[]
   };
   var _sel={}; (A().getItemOptionGroups?A().getItemOptionGroups(item):[]).forEach(function(g){
@@ -351,7 +351,7 @@ function ocSync(){
     if(!ing)return;
     var item=inventoryMap[ing]||{},unitEl=tr.querySelector('[data-ocf="unit"]'),u=(unitEl&&unitEl.value)||item.unit||'';function v(f){var el=tr.querySelector('[data-ocf="'+f+'"]');return (el&&el.value!=='')?Number(el.value):0;}
     next[g]=next[g]||{}; next[g][lk]=next[g][lk]||{label:lbl,ings:[]};
-    var scope=sharedChoiceScopeFromRow(tr,recipeTemperatureGroup(ocGroups())),row={ing:ing,unit:u,op:tr.getAttribute('data-oc-op')||undefined,when:Object.keys(scope.when).length?scope.when:undefined};['S','M','L'].forEach(function(sz){var display=v('disp'+sz);row['disp'+sz]=display;row['qty'+sz]=convertToStock(display,u,item);});next[g][lk].ings.push(row);
+    var scope=sharedChoiceScopeFromRow(tr,recipeTemperatureGroup(ocGroups())),row={ing:ing,unit:u,op:tr.getAttribute('data-oc-op')||undefined,when:Object.keys(scope.when).length?scope.when:undefined,useFor:scope.useFor};['S','M','L'].forEach(function(sz){var display=v('disp'+sz);row['disp'+sz]=display;row['qty'+sz]=convertToStock(display,u,item);});next[g][lk].ings.push(row);
   });
   window.__optCostDraft=next;
 }
@@ -392,7 +392,7 @@ function ocDraw(){
   root.querySelectorAll('[data-ocrem]').forEach(function(b){b.onclick=function(){ ocSync(); var d=window.__optCostDraft; var g=b.getAttribute('data-g'),lk=b.getAttribute('data-l'),ix=Number(b.getAttribute('data-ix')); if(d[g]&&d[g][lk]&&d[g][lk].ings){d[g][lk].ings.splice(ix,1);} ocDraw(); };});
   root.querySelectorAll('select[data-ocf]').forEach(function(s){s.onchange=function(){ ocSync(); ocDraw(); };});
   root.querySelectorAll('input[data-ocf]').forEach(function(inp){inp.oninput=function(){var tr=inp.closest('[data-oc-row]');if(!tr)return;var g=tr.getAttribute('data-oc-g'),lk=tr.getAttribute('data-oc-l');ocSync();var e=window.__optCostDraft[g]&&window.__optCostDraft[g][lk],lab=root.querySelector('[data-occost="'+g+'|'+lk+'"]'),rows=(e&&e.ings)||[];if(lab)lab.textContent=sharedChoiceCostText(rows,tempGroup,g);};});
-  root.querySelectorAll('[data-oc-temp]').forEach(function(cb){cb.onchange=function(){var tr=cb.closest('[data-oc-row]'),checked=tr.querySelectorAll('[data-oc-temp]:checked');if(!checked.length){cb.checked=true;alert('Keep at least one temperature selected.');return;}ocSync();ocDraw();};});
+  root.querySelectorAll('[data-oc-temp]').forEach(function(cb){cb.onchange=function(){var tr=cb.closest('[data-oc-row]'),checked=tr.querySelectorAll('[data-oc-temp]:checked');if(!checked.length){cb.checked=true;alert('Keep at least one serving style selected.');return;}ocSync();ocDraw();};});
   var saveBtn=document.getElementById('optCostSaveAll'); if(saveBtn)saveBtn.onclick=function(){ var button=this,original=button.textContent;ocSync(); var d=window.__optCostDraft||{}; var clean={},invalid='';
     Object.keys(d).forEach(function(g){ var gc={}; Object.keys(d[g]).forEach(function(lk){ var e=d[g][lk]; var kept=(e.ings||[]).filter(function(r){return r&&r.ing&&(r.qtyS!=null||r.qtyM!=null||r.qtyL!=null);});kept.forEach(function(r){if(isPackagingCostItem(r.ing))invalid=((inventoryMap[r.ing]||{}).name||r.ing)+' belongs in Packaging Costing';else if(['S','M','L'].some(function(sz){return !Number.isFinite(r['qty'+sz])||(!r.op&&r['qty'+sz]<0);}))invalid='Choose a compatible recipe unit and enter valid quantities for every size';}); if(kept.length)gc[lk]={label:e.label||lk,ings:kept}; }); if(Object.keys(gc).length)clean[g]=gc; });if(invalid){alert(invalid+'. Nothing was saved.');return;}
     invalid=invalid||sharedChoiceScopeError(clean,tempGroup);if(invalid){alert(invalid+' Nothing was saved.');return;}saveSharedChoiceCosts(button,original,clean);

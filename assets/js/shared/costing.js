@@ -43,7 +43,7 @@
     if(!id){errors.push({code:'MISSING_INGREDIENT',path:path,message:'Ingredient is required.'});return null;}
     if(!item){errors.push({code:'BROKEN_INVENTORY_REFERENCE',path:path,itemId:id,message:'Inventory item '+id+' does not exist.'});return null;}
     var stockUnit=unit(item.unit),inputUnit=unit(row.inputUnit||row.unit||item.unit);
-    var out={ing:id,unit:inputUnit,stockUnit:stockUnit};if(row.op)out.op=String(row.op);var when={};Object.keys(row.when||{}).forEach(function(gid){var label=String(row.when[gid]||'').trim();if(gid&&label)when[String(gid)]=label;});if(Object.keys(when).length)out.when=when;
+    var out={ing:id,unit:inputUnit,stockUnit:stockUnit};if(row.op)out.op=String(row.op);var useFor=Array.isArray(row.useFor)?row.useFor.map(function(label){return String(label||'').trim();}).filter(function(label,ix,all){return !!label&&all.indexOf(label)===ix;}):[];if(useFor.length)out.useFor=useFor;var when={};Object.keys(row.when||{}).forEach(function(gid){var label=String(row.when[gid]||'').trim();if(gid&&label)when[String(gid)]=label;});if(Object.keys(when).length)out.when=when;
     var any=false;
     SIZES.forEach(function(size){
       var display=row['disp'+size];if(display==null||display==='')display=row['input'+size];
@@ -67,7 +67,7 @@
   function normalizeRecipe(recipe,inventory){
     recipe=recipe||{};inventory=inventory||{};var errors=[],warnings=[],seen={};
     var base=(Array.isArray(recipe.base)?recipe.base:[]).map(function(row,ix){var r=normalizeRow(row,inventory,'base['+ix+']',errors,warnings);if(r){(seen[r.ing]=seen[r.ing]||[]).push({row:r,ix:ix});}return r;}).filter(Boolean);
-    Object.keys(seen).forEach(function(ing){var rows=seen[ing];if(rows.length<2)return;for(var i=0;i<rows.length;i++)for(var j=i+1;j<rows.length;j++)if(scopesOverlap(rows[i].row.when,rows[j].row.when)){errors.push({code:'DUPLICATE_BASE_SCOPE',path:'base['+rows[j].ix+']',itemId:ing,message:'Assign each duplicate base ingredient to a different temperature.'});return;}});
+    Object.keys(seen).forEach(function(ing){var rows=seen[ing];if(rows.length<2)return;for(var i=0;i<rows.length;i++)for(var j=i+1;j<rows.length;j++)if(scopesOverlap(rows[i].row,rows[j].row)){errors.push({code:'DUPLICATE_BASE_SCOPE',path:'base['+rows[j].ix+']',itemId:ing,message:'Assign each duplicate base ingredient to a different serving style.'});return;}});
     var sharedBase=(Array.isArray(recipe.sharedBase)?recipe.sharedBase:[]).map(function(ref){return typeof ref==='string'?{ing:ref}:{ing:String((ref&&ref.ing)||'')};}).filter(function(ref){return !!ref.ing;});
     var choiceAdd={};Object.keys(recipe.choiceAdd||{}).forEach(function(gid){var group={};Object.keys(recipe.choiceAdd[gid]||{}).forEach(function(key){var entry=recipe.choiceAdd[gid][key]||{},label=entry.label||key;var rows=(entry.ings||[]).map(function(row,ix){return normalizeRow(row,inventory,'choiceAdd.'+gid+'.'+key+'['+ix+']',errors,warnings,true,label);}).filter(Boolean);if(rows.length)group[key]={label:label,ings:rows};});if(Object.keys(group).length)choiceAdd[gid]=group;});
     if(!base.length&&!sharedBase.length&&!hasChoiceRows(choiceAdd))errors.push({code:'EMPTY_RECIPE',path:'base',message:'Select a shared base ingredient or add an ingredient to a required choice.'});
@@ -75,7 +75,7 @@
     if(Array.isArray(recipe.options))normalized.options=recipe.options;
     return {ok:errors.length===0,recipe:normalized,errors:errors,warnings:warnings,engineVersion:VERSION};
   }
-  function scopesOverlap(a,b){a=a||{};b=b||{};var shared=Object.keys(a).filter(function(gid){return Object.prototype.hasOwnProperty.call(b,gid);});return !shared.some(function(gid){return optKey(a[gid])!==optKey(b[gid]);});}
+  function scopesOverlap(a,b){a=a||{};b=b||{};var au=Array.isArray(a.useFor)?a.useFor:[],bu=Array.isArray(b.useFor)?b.useFor:[];if(au.length&&bu.length&&!au.some(function(label){return bu.some(function(other){return optKey(label)===optKey(other);});}))return false;var aw=a.when||{},bw=b.when||{},shared=Object.keys(aw).filter(function(gid){return Object.prototype.hasOwnProperty.call(bw,gid);});return !shared.some(function(gid){return optKey(aw[gid])!==optKey(bw[gid]);});}
   function hasChoiceRows(choiceAdd){return Object.keys(choiceAdd||{}).some(function(gid){return Object.keys(choiceAdd[gid]||{}).some(function(key){return !!(((choiceAdd[gid]||{})[key]||{}).ings||[]).length;});});}
   function effectiveBaseRows(item,recipe,ctx,warnings,optLabels){
     var own={},out=[];(recipe.base||[]).forEach(function(row){if(row&&row.ing)own[row.ing]=1;});
@@ -85,7 +85,8 @@
     (recipe.base||[]).forEach(function(row){if(rowMatchesSelections(item,row,optLabels,ctx.optionGroups||{}))out.push({row:row,source:byIng[row.ing]?'base_override':'base_recipe'});});
     return out;
   }
-  function rowMatchesSelections(item,row,optLabels,groups){var when=row&&row.when||{};return Object.keys(when).every(function(gid){return (optLabels||[]).some(function(selected){return groupIdForLabel(item,selected,groups||{})===gid&&optKey(selected)===optKey(when[gid]);});});}
+  function selectedServingStyle(item,optLabels,groups){var selected='';(optLabels||[]).some(function(label){var gid=groupIdForLabel(item,label,groups||{}),group=gid&&(groups||{})[gid]||{};if((/temperature/i.test(group.name||'')||/temp/i.test(gid||''))&&/^(hot|iced)$/i.test(String(label||''))){selected=/^hot$/i.test(label)?'Hot':'Iced';return true;}return false;});if(selected)return selected;var cat=String(item&&item.cat||'').toLowerCase();return cat==='frappe'||cat==='nonfrappe'?'Blended':'';}
+  function rowMatchesSelections(item,row,optLabels,groups){var useFor=Array.isArray(row&&row.useFor)?row.useFor:[],style=selectedServingStyle(item,optLabels,groups);if(useFor.length&&!useFor.some(function(label){return optKey(label)===optKey(style);}))return false;var when=row&&row.when||{};return Object.keys(when).every(function(gid){return (optLabels||[]).some(function(selected){return groupIdForLabel(item,selected,groups||{})===gid&&optKey(selected)===optKey(when[gid]);});});}
   function optionRows(item,recipe,label,size,ctx,optLabels){
     var gid=groupIdForLabel(item,label,ctx.optionGroups||{}),key=optKey(label),rows=[],found=false;
     function add(arr,source){var matched=(arr||[]).filter(function(r){return r&&r.ing&&rowMatchesSelections(item,r,optLabels,ctx.optionGroups||{});});matched.forEach(function(r){rows.push({row:r,source:source,optionGroupId:gid||null,optionLabel:label});});if(matched.length)found=true;}

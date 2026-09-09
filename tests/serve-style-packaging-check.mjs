@@ -200,10 +200,12 @@ check(/if\(!row\)own\.ings\.push\(values\)/.test(choiceScope),'creating one shar
 check(/data-bmove/.test(recipeUi)&&/moveRecipeBaseToChoice/.test(recipeUi)&&/Move to /.test(choiceScope),'an existing all-choice ingredient can be moved to the selected temperature');
 check(/id="recAddBase"/.test(recipeUi)&&/\+ ingredient for all choices/.test(recipeUi),'recipe-specific base ingredients can be added again');
 check(/recipeBaseTemperatureScope/.test(recipeUi)&&/data-base-temp/.test(choiceScope)&&/recipeBaseScopeFromRow/.test(recipeUi),'duplicate base ingredients expose Hot and Iced assignments and retain their scope');
-check(/DUPLICATE_BASE_SCOPE/.test(costingSource)&&/different temperature/.test(costingSource),'overlapping duplicate base ingredient assignments are blocked by canonical validation');
+check(/DUPLICATE_BASE_SCOPE/.test(costingSource)&&/different serving style/.test(costingSource),'overlapping duplicate base ingredient assignments are blocked by canonical validation');
 check(/sharedSelected&&sharedSelected\[row\.ing\]\?'replace'/.test(choiceScope),'moving a shared-base ingredient creates a full-quantity replacement for only that choice');
 check(/sharedChoiceDuplicate/.test(choiceScope)&&/data-oc-temp/.test(choiceScope)&&/sharedChoiceScopeFromRow/.test(recipeUi),'duplicate ingredients in every shared choice expose Hot and Iced assignments');
-check(/sharedChoiceScopeError/.test(choiceScope)&&/different temperature/.test(choiceScope),'overlapping duplicate temperature assignments are blocked before saving');
+check(/recipeServingScopeLabels/.test(choiceScope)&&/Blended/.test(choiceScope)&&/useFor:picked/.test(choiceScope),'shared choices support explicit multi-select Hot, Iced and Blended scopes');
+check(/sharedChoiceScopeError/.test(choiceScope)&&/different serving style/.test(choiceScope),'overlapping duplicate serving-style assignments are blocked before saving');
+check(/useFor:scope\.useFor/.test(recipeUi)&&/at least one serving style/.test(recipeUi),'shared-choice multi-style selections persist and cannot be left empty');
 check(/recipeHasIngredientRows\(rec\)/.test(recipeUi),'choice-only Hot and Iced recipes are recognized by recipe completeness checks');
 const recipeSaveUi=fs.readFileSync('src/admin/pos/31-recipe-save.js','utf8');
 check(/recipeChoicePackagingRows/.test(recipeSaveUi)&&/groupName/.test(recipeSaveUi)&&/choiceLabel/.test(recipeSaveUi),'legacy packaging warnings identify the exact hidden group and choice');
