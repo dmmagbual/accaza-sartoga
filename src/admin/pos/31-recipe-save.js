@@ -6,7 +6,7 @@ function removeRecipeChoicePackaging(raw){
 }
 function saveRecipe(key){
   var d=recipeDraft;if(!d){alert('Nothing to save — reopen the recipe and try again.');return Promise.resolve(false);}
-  var raw=recipeDraftRaw(d),choicePackaging=recipeChoicePackagingRows(raw),item=(A().menuItemsMap||{})[key]||{};
+  var item=(A().menuItemsMap||{})[key]||{},raw=recipeDraftRaw(d,item),choicePackaging=recipeChoicePackagingRows(raw);
   if(choicePackaging.length){
     var locations=choicePackaging.map(function(x){return x.name+' ('+x.groupName+' → '+x.choiceLabel+')';}),packagingGap=recipePackagingGap(item);
     if(packagingGap){alert('• '+locations.join('\n• ')+'\n\nShared Packaging is incomplete: '+packagingGap);return Promise.resolve(false);}

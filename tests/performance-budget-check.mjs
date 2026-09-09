@@ -9,9 +9,9 @@ const fail=message=>{throw new Error(message);};
 const budgets={
   'assets/js/customer/core.mjs':115000,
   'assets/js/admin/core.mjs':135000,
-  // Build 485 adds explicit multi-select Hot, Iced and Blended shared-choice scopes.
-  // Retain a narrow ceiling so future POS growth still requires explicit review (current 477,593 bytes).
-  'assets/js/admin/pos.js':478000,
+  // Build 488 adds flat-serving pastry recipes, topping costing and item packaging assignments.
+  // Retain a narrow ceiling so future POS growth still requires explicit review (current 481,831 bytes).
+  'assets/js/admin/pos.js':482000,
   'assets/js/admin/register.js':175000,
   'assets/js/admin/analytics.js':150000,
   'assets/js/admin/finance.js':75000,
@@ -34,6 +34,6 @@ if(salesPeriod.includes("ops.startAt(String")||salesPeriod.includes("orderByChil
 for(const source of [moduleLoader,hub,telemetry,functions])for(const marker of source===moduleLoader?['module_load','performance.now']:source===hub?['live_ready','liveStartedAt']:['module_load','live_ready'])if(!source.includes(marker))fail(`Measured performance telemetry missing: ${marker}`);
 
 const manifest=JSON.parse(read('release-manifest.json'));
-if(manifest.builds.admin!==487||manifest.builds.customer!==70||manifest.builds.books!==108||manifest.builds.serviceWorkerCache!==462)fail('Current build/cache versions are not synchronized');
+if(manifest.builds.admin!==488||manifest.builds.customer!==70||manifest.builds.books!==108||manifest.builds.serviceWorkerCache!==463)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');
