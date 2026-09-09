@@ -38,7 +38,7 @@
     "test:supplier-master": "node tests/supplier-master-merge-check.cjs",
     "test:books-navigation": "node tests/books-navigation-check.mjs",
     "test:books-csv": "node tests/books-csv-export-check.mjs",
-    "test:historical-archive": "node tests/historical-archive-check.cjs",
+    "test:historical-archive": "node tests/historical-archive-check.cjs && node tests/historical-reader-check.mjs",
     "test:cash-flow-presentation": "node tests/cash-flow-presentation-check.mjs",
     "test:cash-payment-evidence": "node tests/cash-payment-evidence-form-check.mjs && node tests/suspense-supplier-advance-check.mjs && node tests/archived-order-ghost-check.mjs && node tests/unmapped-payment-audit-check.cjs",
     "audit:dependencies": "npm audit --omit=dev --audit-level=high && npm --prefix functions audit --omit=dev --audit-level=high",

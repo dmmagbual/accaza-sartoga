@@ -169,11 +169,15 @@ function cogsFixEngine(){
   if(!window.AccazaCogsDuplicationAudit)throw new Error('The COGS audit did not load. Refresh the portal and try again.');
   return window.AccazaCogsDuplicationAudit;
 }
+function cogsFixLoadArchived(cursor,rows){
+  var a=A(),payload={mode:cursor?'before':'latest',limit:100};if(cursor)payload.cursor=cursor;
+  return a.readHistoricalOrders(payload).then(function(page){Object.assign(rows,page.orders||{});return page.hasMore?cogsFixLoadArchived(page.cursor,rows):rows;});
+}
 function cogsFixLoadOrders(){
   if(cogsFixOrders)return Promise.resolve(cogsFixOrders);
   var a=A();
   return Promise.all([
-    a.get(a.ref(a.db,'archivedOrders')).then(function(s){return s.val()||{};}).catch(function(){return {};}),
+    cogsFixLoadArchived(null,{}),
     a.get(a.ref(a.db,'orders')).then(function(s){return s.val()||{};}).catch(function(){return {};})
   ]).then(function(parts){
     var all={};

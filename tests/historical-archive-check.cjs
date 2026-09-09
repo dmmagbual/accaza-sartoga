@@ -16,6 +16,8 @@ const evidence = {
   inventoryPlan: {schemaVersion: 1, usage: {beans: 0.02}},
 };
 const doc = HistoricalArchive.buildDocument("POS-1", evidence, 300);
+assert.equal(HistoricalArchive.salesAt(completed), 100);
+assert.equal(HistoricalArchive.salesAt({completedAt: 300, receivedAt: 200, timestamp: 100}), 300, "completed date must remain the sales authority");
 assert.equal(doc.evidence.verified, true);
 assert.equal(doc.evidence.eligibleForFutureRtdbRetirement, true);
 assert.equal(doc.source.saleJournalId, "2026-09-09_instore");
@@ -75,15 +77,18 @@ assert.equal(corrected.evidence.verified, true, "a refund is verified only with 
 const source = fs.readFileSync("src/functions/61-historical-archive.js", "utf8");
 for (const marker of [
   "exports.replicateArchivedOrderToFirestore", "exports.refreshHistoricalOrderAfterJournal", "exports.refreshHistoricalOrderAfterInventoryPlan",
-  "exports.manageHistoricalOrderArchive", "HistoricalArchive.unchanged", "deletionEnabled: false",
+  "exports.manageHistoricalOrderArchive", "exports.readHistoricalOrders", "historicalOrdersFromDocuments", "HistoricalArchive.unchanged", "deletionEnabled: false",
   '["preview", "backfill", "verify"]', "orderByKey()", "HISTORICAL_ARCHIVE_BATCH_LIMIT = 100",
-  'startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\\uf8ff`)', "never recalculate history from current recipes",
+  'startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\\uf8ff`)', "never recalculate history from current recipes", 'db.ref(`/archivedOrders/${orderId}`).get()',
+  'db.ref("/historicalArchiveSync").set', 'firestore.collection(HistoricalArchive.COLLECTION).doc(orderId).delete()',
 ]) assert(source.includes(marker), `historical archive safeguard missing: ${marker}`);
 assert(!/Costing\.|ref\([`'"]\/(?:recipes|menuItems|optionRecipes)/.test(source), "historical archive must not use mutable current costing inputs");
 assert(!/\.remove\(|\[[`'"]archivedOrders\//.test(source), "historical archive phase 1 must not delete RTDB data");
 
 const rules = fs.readFileSync("firestore.rules", "utf8");
 assert(rules.includes("allow read, write: if false"), "Firestore historical replica must be server-only");
+const databaseRules = fs.readFileSync("database.rules.json", "utf8");
+assert(databaseRules.includes('"historicalArchiveSync"') && databaseRules.includes('".write": false'), "archive change marker must be readable but server-written");
 const config = JSON.parse(fs.readFileSync("firebase.json", "utf8"));
 assert.deepEqual(config.firestore, {rules: "firestore.rules", indexes: "firestore.indexes.json"});
 const workflow = fs.readFileSync(".github/workflows/deploy-functions.yml", "utf8");
