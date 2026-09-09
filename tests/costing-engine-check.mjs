@@ -75,12 +75,18 @@ const flatPastry=Costing.costOrder({
   lineItems:[{itemKey:'muesli',size:'L',qty:2,optLabels:['Banana']}],
   recipes:{muesli:{base:[{ing:'beans',qtyS:10,qtyM:99,qtyL:999}],choiceAdd:{toppings:{Banana:{label:'Banana',ings:[{ing:'cream',qtyS:5,qtyM:55,qtyL:555}]}}}}},
   inventory,menuItems:{muesli:{name:'MUESLI',cat:'pastry',priceS:180,options:['toppings']}},optionGroups:{toppings:{type:'multi',choices:[{label:'Banana',price:20}]}},
-  packagingRules:{bowl:{rows:[{ing:'hotCup',qtyS:1,qtyM:9,qtyL:99}]}},packagingAssignments:{pastry:{defaultStyle:'hot',items:{muesli:'bowl'}}},
+  packagingRules:{bowl:{rows:[{ing:'hotCup',qtyS:1,qtyM:9,qtyL:99}]},hot:{rows:[{ing:'icedCup',qtyS:7}]}},packagingAssignments:{pastry:{defaultStyle:'bowl',items:{muesli:'hot'}}},
 });
 near(flatPastry.usage.beans,20,'single-price pastry always uses its one base quantity');
 near(flatPastry.usage.cream,10,'single-price pastry option always uses its one topping quantity');
-near(flatPastry.usage.hotCup,2,'single-price pastry uses one item-specific packaging set');
+near(flatPastry.usage.hotCup,2,'single-price pastry inherits the category packaging set');
+if(flatPastry.usage.icedCup)throw new Error('stale item packaging overrode the inherited pastry category set');
 if(!flatPastry.lines.every(line=>line.size==='S'))throw new Error('single-price pastry did not canonicalize stale size to one serving');
+const unassignedPastry=Costing.costOrder({
+  lineItems:[{itemKey:'muesli',size:'S',qty:1}],recipes:{muesli:{base:[{ing:'beans',qtyS:1}]}},inventory,
+  menuItems:{muesli:{name:'MUESLI',cat:'pastry',priceS:180,serveStyle:'hot'}},packagingRules:{hot:{rows:[{ing:'hotCup',qtyS:1}]}},packagingAssignments:{},
+});
+if(unassignedPastry.usage.hotCup)throw new Error('removed pastry category packaging fell back to a legacy item style');
 
 const noCost=Costing.costRecipe({itemKey:'latte',recipe:normalized.recipe,inventory:{...inventory,milk:{...inventory.milk,cost:0}},item:{name:'Latte'},size:'M'});
 if(noCost.cogsCovered||!noCost.warnings.some(x=>x.code==='MISSING_COST'))throw new Error('missing inventory cost was not surfaced');
