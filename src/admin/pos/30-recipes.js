@@ -69,7 +69,7 @@ function renderSharedIngredients(){
   if(view==='choice'){root.innerHTML='<div id="optMasterRoot"></div>';renderOptionsMaster();return;}
   var cats=(A().getCats?A().getCats():[]).filter(function(c){return menuList().some(function(it){return it.cat===c.id&&recipeItemIsDrink(it);});});
   if(!window.__sharedBaseCat&&cats.length)window.__sharedBaseCat=cats[0].id;
-  var cat=window.__sharedBaseCat||'',store=(window.__posSettings&&window.__posSettings.sharedBaseIngredients)||{},rows=ocClone((store[cat]||{}).ings||[]),inv=ings();
+  var cat=window.__sharedBaseCat||'',store=(window.__posSettings&&window.__posSettings.sharedBaseIngredients)||{},rows=ocClone((store[cat]||{}).ings||[]),inv=ingsActive();
   function sel(v){return '<select class="pz-in" data-sbf="ing"><option value="">— ingredient —</option>'+inv.map(function(i){return '<option value="'+esc(i.id)+'"'+(i.id===v?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+')</option>';}).join('')+'</select>';}
   var body=rows.map(function(r,i){var item=inventoryMap[r.ing]||{},u=r.unit||item.unit||'',units=compatUnits(item);function shown(sz){if(r['disp'+sz]!=null)return r['disp'+sz];var cv=Costing().convert(Number(r['qty'+sz])||0,item.unit||u,u);return cv.ok?cv.qty:r['qty'+sz];}return '<tr data-sbrow="'+i+'"><td>'+sel(r.ing)+'</td><td><select class="pz-in" data-sbf="unit" style="width:82px">'+units.map(function(x){return '<option'+(uNorm(x)===uNorm(u)?' selected':'')+'>'+esc(x)+'</option>';}).join('')+'</select><small style="display:block;color:var(--tl)">stock: '+esc(item.unit||'—')+'</small></td>'+['S','M','L'].map(function(sz){return '<td><input class="pz-in" data-sbf="disp'+sz+'" type="number" step="any" value="'+(shown(sz)!=null?shown(sz):'')+'" style="width:82px;text-align:right"></td>';}).join('')+'<td><button class="pz-btn warn" data-sbrem="'+i+'">✕</button></td></tr>';}).join('');
   root.innerHTML='<div class="pz-card"><label><span class="pz-lbl">Menu category</span><select id="sharedBaseCat" class="pz-in">'+cats.map(function(c){return '<option value="'+esc(c.id)+'"'+(c.id===cat?' selected':'')+'>'+esc(c.label||c.id)+'</option>';}).join('')+'</select></label><p class="pz-sub">Choose the recipe unit you actually measure. Quantities are converted to the Inventory stock unit for costing and stock deduction. Changes affect future sales only.</p><div style="overflow-x:auto"><table class="pz-tbl"><thead><tr><th>Ingredient</th><th>Recipe unit</th><th>S quantity</th><th>M quantity</th><th>L quantity</th><th></th></tr></thead><tbody>'+(body||'<tr><td colspan="6" style="color:var(--tl)">No shared base ingredients defined.</td></tr>')+'</tbody></table></div><div style="display:flex;gap:.5rem;margin-top:.6rem"><button class="pz-btn sec" id="sharedBaseAdd">+ ingredient</button><button class="pz-btn ok" id="sharedBaseSave">Save shared base</button><span id="sharedBaseMsg" class="pz-sub"></span></div></div>';
@@ -142,7 +142,7 @@ function drawRecipeEditor(item){
   var caAllow=caGroupsAll.map(function(g){return g.id;});
   if(d.choiceAdd){Object.keys(d.choiceAdd).forEach(function(_g){if(caAllow.indexOf(_g)<0)delete d.choiceAdd[_g];});}
   var caGroups=caGroupsAll.filter(function(g){return (g.choices||[]).some(function(c){return caSelected(g,c);});});
-  var caInv=ings().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
+  var caInv=ingsActive().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
   function caIngSel(val){return '<select class="pz-in" data-caf="ing" style="min-width:150px;"><option value="">— ingredient —</option>'+caInv.map(function(i){var blocked=isPackagingCostItem(i.id)&&i.id!==val;return '<option value="'+i.id+'"'+(i.id===val?' selected':'')+(blocked?' disabled':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+') · '+(blocked?'Packaging Costing only':ingType(i))+'</option>';}).join('')+'</select>';}
   function caDraftCost(rows,sz){var total=0;(rows||[]).forEach(function(r){var inv=inventoryMap[r.ing]||{},q=convertToStock((r['d'+sz]===''||r['d'+sz]==null)?0:Number(r['d'+sz]),r.unit||inv.unit,inv);if(Number.isFinite(q))total+=q*ingCost(r.ing);});return total;}
   var caCards=caGroups.map(function(g){
@@ -327,7 +327,7 @@ function ocDraw(){
   var root=document.getElementById('optMasterRoot'); if(!root)return;
   var d=window.__optCostDraft||{};
   var tempGroup=recipeTemperatureGroup(ocGroups());
-  var invList=ings().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
+  var invList=ingsActive().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
   function ingSel(val){return '<select class="pz-in" data-ocf="ing" style="min-width:150px;"><option value="">— ingredient —</option>'+invList.map(function(i){var blocked=isPackagingCostItem(i.id)&&i.id!==val;return '<option value="'+i.id+'"'+(i.id===val?' selected':'')+(blocked?' disabled':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+') · '+(blocked?'Packaging Costing only':ingType(i))+'</option>';}).join('')+'</select>';}
   var cards=ocGroups().map(function(g){
     var badge=(g.required?'required':'optional')+' · '+(g.type==='multi'?'multi-select':'single');

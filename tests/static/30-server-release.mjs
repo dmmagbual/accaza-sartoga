@@ -88,6 +88,8 @@ if(!visibleAdminBuild||!adminHtml.includes(`assets/js/admin/core.mjs?v=${visible
 if(!adminCoreItem.source.includes('mergeOverviewOrders(active,historyOrders,archived)'))fail('Overview does not preserve authoritative order-history precedence over active projections');
 if(adminSource.includes("remove(ref(db,'archivedOrders/'")||adminSource.includes("a.update(a.ref(a.db,'discrepancies/'+id)"))fail('Release 3E retired browser authority remains');
 if(!rulesRaw.includes('"archivedOrders":')||!rulesRaw.includes('"operationalAudit":')||!rulesRaw.includes('"deletionAudit":'))fail('Release 3E controlled archive/audit rules missing');
+for(const marker of ['function archiveIngredient(id)','function restoreIngredient(id)','data-inv-archive','data-inv-restore','function ingsActive()','archivedAt:Date.now()','Take the balance to zero through Adjust stock first'])if(!adminSource.includes(marker))fail(`Stock-item archiving safeguard missing: ${marker}`);
+if(!rulesRaw.includes("newData.exists() || !data.hasChild('ledgerVersion')"))fail('Ledger inventory items can still be deleted outright: the rules delete guard is missing');
 
 const storageRules=fs.readFileSync(path.join(root,'storage.rules'),'utf8');
 if(!storageRules.includes('allow read, write: if false'))fail('Storage is not locked to server-only access');

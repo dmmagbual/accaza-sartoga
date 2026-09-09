@@ -199,7 +199,7 @@ for(const marker of ['SKU / stock item','✓ Recipe · SKU ready','Add brand','B
 if(posSource.includes('Recipe · no SKU')||posSource.includes('Recipe items without SKU'))fail('Inventory still incorrectly describes its common stock items as missing SKUs');
 const inventoryRenderBlock=section(posSource,'function renderInventory()','/* ══════════ INVENTORY ARCHITECTURE v2');
 if(inventoryRenderBlock.includes('data-inv-receive')||inventoryRenderBlock.includes('data-inv-brands')||inventoryRenderBlock.includes('>+ Stock</button>')||inventoryRenderBlock.includes('>History</button>'))fail('Inventory rows still expose retired Stock or History actions');
-if(!posSource.includes('class="inventory-actions-cell"><div class="inventory-actions">')||!backofficeCss.includes('grid-template-columns:112px 72px 58px 42px'))fail('Inventory actions do not use the compact fixed alignment grid');
+if(!posSource.includes('class="inventory-actions-cell"><div class="inventory-actions">')||!backofficeCss.includes('grid-template-columns:112px 72px 58px 68px 42px'))fail('Inventory actions do not use the compact fixed alignment grid');
 var skuRule=rulesRaw.slice(rulesRaw.indexOf('"inventorySku"'),rulesRaw.indexOf('"inventoryBatch"')),batchRule=rulesRaw.slice(rulesRaw.indexOf('"inventoryBatch"'),rulesRaw.indexOf('"purchaseInvoices"'));
 if((skuRule.match(/child\('purchases'\)/g)||[]).length<2||(batchRule.match(/child\('purchases'\)/g)||[]).length<2)fail('Release 7H purchasing permission is missing from inventorySku or inventoryBatch');
 if(!workspaceShellSource.includes('dataset.adminWorkspace')||!workspaceShellSource.includes('dataset.adminArea')||!workspaceShellSource.includes('operations:System health'))fail('Phase 7F domain ledger rail or System Health shortcut missing');
