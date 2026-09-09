@@ -29,6 +29,12 @@ function effectiveStatus(order) {
   return String(order && order.status === "Archived" ? order.prevStatus : order && order.status || "");
 }
 
+function salesAt(order) {
+  return Number(order && order.completedAt) || Number(order && order.receivedAt) ||
+    Number(order && order.timestamp) || Date.parse(order && order.date || "") ||
+    Number(order && order.archivedAt) || 0;
+}
+
 function validInventoryPlan(plan) {
   return !!(plan && Number(plan.schemaVersion) === 1 && plan.usage && typeof plan.usage === "object" &&
     !Array.isArray(plan.usage));
@@ -141,4 +147,4 @@ function unchanged(existing, next) {
     existing.sourceChecksum === next.sourceChecksum && existing.evidenceChecksum === next.evidenceChecksum;
 }
 
-module.exports = {SCHEMA_VERSION, COLLECTION, clean, checksum, effectiveStatus, validInventoryPlan, legacyInventoryEvidence, assessEvidence, buildDocument, unchanged};
+module.exports = {SCHEMA_VERSION, COLLECTION, clean, checksum, effectiveStatus, salesAt, validInventoryPlan, legacyInventoryEvidence, assessEvidence, buildDocument, unchanged};

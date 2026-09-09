@@ -1,4 +1,4 @@
-import{watchSalesPeriod,periodKey}from'./sales-period-data.mjs?v=485';
+import{watchSalesPeriod,periodKey}from'./sales-period-data.mjs?v=486';
 // One managed subscription per path. Sales reports combine indexed date queries;
 // POS-critical paths stay live and back-office paths attach only when needed.
 const HISTORY_BOUNDS={
@@ -16,6 +16,16 @@ function createSubscriptionHub(database,ops){
   function selectedPeriod(){var p=reportPeriod();if(p&&activeScope==='analytics')return Object.assign({},p,{startAt:p.startAt-(p.endAt-p.startAt+1)});return p;}
   function liveTarget(path){var base=ref(database,path),spec=HISTORY_BOUNDS[path],period=reportPeriod();if(!spec)return base;if(period&&path==='financialMovements'&&Number(period.startAt)&&Number(period.endAt))return query(base,orderByChild(spec.field),startAt(Number(period.startAt)),endAt(Number(period.endAt)));return query(base,orderByChild(spec.field),limitToLast(spec.limit));}
   var entries={},authorized=false,activeScope='dashboard',nextId=1,liveStartedAt=0,liveReadyRecorded=false;
+  async function readHistoricalPeriod(period){
+    if(!ops.readHistoricalOrders)throw new Error('Historical Firestore reader is unavailable. Refresh the portal.');
+    var cursor=null,rows={},hasMore=true,pages=0;
+    while(hasMore){
+      var result=await ops.readHistoricalOrders({mode:'period',startAt:Number(period.startAt),endAt:Number(period.endAt),cursor:cursor,limit:HISTORY_BOUNDS.archivedOrders.page});
+      Object.assign(rows,result.orders||{});cursor=result.cursor||null;hasMore=result.hasMore===true;pages++;
+      if(pages>200)throw new Error('Historical period exceeded the safe page limit. Narrow the selected dates.');
+    }
+    return rows;
+  }
   var critical={categories:1,settings:1,posSettings:1,activeOrders:1,optionGroups:1,menuItems:1,availability:1,channelPrices:1,posStaff:1,posActiveShift:1,packages:1,'.info/connected':1};
   var scopes={
     orders:['dashboard','saleshistory','analytics','pnl','payouts','stockvalue','dailyreport','cashflow','receivables'],staffAccounts:['staffaccounts'],adminAccounts:['adminaccounts'],admins:['staffaccess'],adminPerms:['staffaccess'],
@@ -31,7 +41,7 @@ function createSubscriptionHub(database,ops){
   function reportError(path,error){console.error('ACCAZA LIVE DATA ERROR ['+path+']',error);try{(window.accazaToast||function(){})('Live data failed for '+path+'. Check connection or access.','err');}catch(_e){}}
   function facade(entry){var merged=Object.assign({},entry.older||{},entry.live||{});return {val:function(){return merged;},exists:function(){return Object.keys(merged).length>0;}};}
   function dispatch(entry,snapshot){entry.last=snapshot;Object.keys(entry.consumers).forEach(function(id){var c=entry.consumers[id];if(consumerActive(c)){try{c.callback(snapshot);}catch(e){console.error('ACCAZA RENDER ERROR ['+entry.path+']',e);}}});}
-  function resetEntry(entry){if(entry.unsub)entry.unsub();entry.unsub=null;entry.generation=(entry.generation||0)+1;entry.live={};entry.older={};entry.last=null;entry.loading=true;entry.error=null;entry.hasOlder=true;}
+  function resetEntry(entry){if(entry.unsub)entry.unsub();entry.unsub=null;entry.generation=(entry.generation||0)+1;entry.live={};entry.older={};entry.archiveCursor=null;entry.last=null;entry.loading=true;entry.error=null;entry.hasOlder=true;}
   function attach(entry){
     entry.loading=true;entry.error=null;var generation=entry.generation||0,p=selectedPeriod(),failure=null;
     entry.periodKey=p?periodKey(p):'';
@@ -43,6 +53,24 @@ function createSubscriptionHub(database,ops){
       if(HISTORY_BOUNDS[entry.path]){entry.live=snapshot.val()||{};entry.hasOlder=!(p&&(salesPath(entry.path)||entry.path==='financialMovements'))&&Object.keys(entry.live).length>=HISTORY_BOUNDS[entry.path].limit;dispatch(entry,facade(entry));}
       else dispatch(entry,snapshot);
       if(salesPath(entry.path)&&entries.financialMovements&&entries.financialMovements.refreshSources)entries.financialMovements.refreshSources();
+    }
+    if(entry.path==='archivedOrders'&&ops.readHistoricalOrders){
+      var stopped=false,refreshing=false,queued=false;
+      async function refreshArchive(){
+        if(stopped||generation!==(entry.generation||0))return;if(refreshing){queued=true;return;}refreshing=true;entry.loading=true;
+        try{
+          if(p){entry.live=await readHistoricalPeriod(p);entry.archiveCursor=null;entry.hasOlder=false;}
+          else{var result=await ops.readHistoricalOrders({mode:'latest',limit:HISTORY_BOUNDS.archivedOrders.limit});entry.live=result.orders||{};entry.archiveCursor=result.cursor||null;entry.hasOlder=result.hasMore===true;}
+          if(stopped||generation!==(entry.generation||0))return;entry.loading=false;entry.error=null;dispatch(entry,facade(entry));
+          if(entries.financialMovements&&entries.financialMovements.refreshSources)entries.financialMovements.refreshSources();
+        }catch(error){failed(error);}finally{refreshing=false;if(queued&&!stopped){queued=false;refreshArchive();}}
+      }
+      var stopMarker=onValue(ref(database,'historicalArchiveSync'),function(snapshot){
+        var marker=snapshot.val()||{};
+        if(marker.deleted&&marker.orderId){delete entry.live[marker.orderId];delete entry.older[marker.orderId];}
+        refreshArchive();
+      },failed);
+      entry.unsub=function(){stopped=true;stopMarker();};return;
     }
     if(p&&salesPath(entry.path)){entry.unsub=watchSalesPeriod(database,ops,entry.path,p,function(rows){receive({val:function(){return rows;}});},failed);return;}
     if(p&&entry.path==='financialMovements'&&activeScope==='saleshistory'){
@@ -67,7 +95,8 @@ function createSubscriptionHub(database,ops){
   return {
     subscribe:function(path,callback,opts){var p=policy(path,opts),entry=entries[path]||(entries[path]={path:path,consumers:{},unsub:null,last:null,live:{},older:{},hasOlder:true}),id=String(nextId++);entry.consumers[id]={callback:callback,critical:p.critical,scopes:p.scopes,wasActive:false};reconcileEntry(entry);return function(){delete entry.consumers[id];reconcileEntry(entry);};},
     authorize:function(){authorized=true;liveStartedAt=typeof performance!=='undefined'&&performance.now?performance.now():Date.now();liveReadyRecorded=false;try{performance.mark('accaza-live-start');}catch(_e){}reconcile();},deauthorize:function(){authorized=false;reconcile();},activate:function(scope){var nextScope=scope||'dashboard',changed=nextScope!==activeScope;activeScope=nextScope;if(changed){Object.keys(entries).forEach(function(path){var entry=entries[path];if(!HISTORY_BOUNDS[path]||!entry.unsub)return;resetEntry(entry);});}reconcile();},
-    loadOlder:async function(path){var spec=HISTORY_BOUNDS[path],entry=entries[path];if(reportPeriod()&&(salesPath(path)||path==='financialMovements'))return {loaded:0,hasOlder:entry?entry.loading:false};if(!spec||!entry)throw new Error('No paginated subscription for '+path);var merged=Object.assign({},entry.older||{},entry.live||{}),keys=Object.keys(merged),oldest=null;keys.forEach(function(k){var v=merged[k]||{},sv=Number(v[spec.field])||0;if(!oldest||sv<oldest.value||(sv===oldest.value&&k<oldest.key))oldest={value:sv,key:k};});if(!oldest){entry.hasOlder=false;return {loaded:0,hasOlder:false};}var snap=await get(query(ref(database,path),orderByChild(spec.field),endBefore(oldest.value,oldest.key),limitToLast(spec.page+1))),rows=[];snap.forEach(function(ch){rows.push({key:ch.key,value:ch.val()||{}});});var hasOlder=rows.length>spec.page;if(hasOlder)rows.shift();rows.forEach(function(r){entry.older[r.key]=r.value;});entry.hasOlder=hasOlder;dispatch(entry,facade(entry));return {loaded:rows.length,hasOlder:hasOlder};},
+    loadOlder:async function(path){var spec=HISTORY_BOUNDS[path],entry=entries[path];if(reportPeriod()&&(salesPath(path)||path==='financialMovements'))return {loaded:0,hasOlder:entry?entry.loading:false};if(!spec||!entry)throw new Error('No paginated subscription for '+path);var merged=Object.assign({},entry.older||{},entry.live||{}),keys=Object.keys(merged),oldest=null;keys.forEach(function(k){var v=merged[k]||{},sv=Number(v[spec.field])||0;if(!oldest||sv<oldest.value||(sv===oldest.value&&k<oldest.key))oldest={value:sv,key:k};});if(!oldest){entry.hasOlder=false;return {loaded:0,hasOlder:false};}if(path==='archivedOrders'&&ops.readHistoricalOrders){var page=await ops.readHistoricalOrders({mode:'before',cursor:entry.archiveCursor||{value:oldest.value,id:oldest.key},limit:spec.page}),archiveRows=page.orders||{};Object.assign(entry.older,archiveRows);entry.archiveCursor=page.cursor||entry.archiveCursor;entry.hasOlder=page.hasMore===true;dispatch(entry,facade(entry));return {loaded:Object.keys(archiveRows).length,hasOlder:entry.hasOlder};}var snap=await get(query(ref(database,path),orderByChild(spec.field),endBefore(oldest.value,oldest.key),limitToLast(spec.page+1))),rows=[];snap.forEach(function(ch){rows.push({key:ch.key,value:ch.val()||{}});});var hasOlder=rows.length>spec.page;if(hasOlder)rows.shift();rows.forEach(function(r){entry.older[r.key]=r.value;});entry.hasOlder=hasOlder;dispatch(entry,facade(entry));return {loaded:rows.length,hasOlder:hasOlder};},
+    readHistoricalPeriod:readHistoricalPeriod,
     whenReady:function(paths){var key=reportPeriod()&&periodKey(reportPeriod()),scope=activeScope;return new Promise(function(resolve,reject){var started=Date.now();function check(){if(activeScope!==scope||key!==(reportPeriod()&&periodKey(reportPeriod())))return reject(new Error('The reporting period changed. Apply the current selection again.'));var list=paths.map(function(path){return entries[path];}),bad=list.find(function(e){return e&&e.error;});if(bad)return reject(bad.error);if(list.every(function(e){return e&&!e.loading&&e.last;}))return resolve(true);if(Date.now()-started>30000)return reject(new Error('The selected report is still loading. Check your connection and retry.'));setTimeout(check,80);}check();});},
     historyStatus:function(path){var e=entries[path],s=HISTORY_BOUNDS[path];return {bounded:!!s,ready:!!(e&&e.last&&!e.loading&&!e.error),loading:!!(e&&e.loading),error:e&&e.error,periodKey:e&&e.periodKey,loaded:e?Object.keys(Object.assign({},e.older||{},e.live||{})).length:0,hasOlder:e?e.hasOlder:false};},stats:function(){var attached=Object.keys(entries).filter(function(k){return !!entries[k].unsub;});return {authorized:authorized,activeScope:activeScope,attached:attached,attachedCount:attached.length,registeredPaths:Object.keys(entries).length};}
   };
