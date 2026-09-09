@@ -1,5 +1,5 @@
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import{getDatabase,ref,get,set,push,update,remove,onValue,query,orderByChild,limitToLast}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import{getDatabase,ref,get,set,push,update,remove,onValue,query,orderByChild,orderByKey,startAt,endAt,limitToLast}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import{getMessaging,getToken,onMessage,isSupported}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
 import{getAuth,signInAnonymously,signOut,onAuthStateChanged}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import{getFunctions,httpsCallable}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
@@ -252,6 +252,45 @@ function rebuildTabs(){
   attachTabListeners();
 }
 
+// ── BOUNDED CUSTOMER CALENDAR READ ──
+// Calendar blocks are keyed by YYYY-MM-DD. Keep only the month currently shown
+// in memory and on the wire; the reservation UI requests this when it becomes
+// visible or when the customer changes month.
+var _customerCalendarBlocksUnsub=null;
+var _customerCalendarBlocksKey='';
+var _customerCalendarBlocksRequest=0;
+window.__customerCalendarBlocksLoading=false;
+window.__customerCalendarBlocksReady=false;
+window.__loadCustomerCalendarBlocks=function(year,month){
+  var key=String(year)+'-'+String(month+1).padStart(2,'0');
+  if(key===_customerCalendarBlocksKey&&window.__customerCalendarBlocksReady)return;
+  _customerCalendarBlocksKey=key;
+  _customerCalendarBlocksRequest++;
+  var requestId=_customerCalendarBlocksRequest;
+  if(_customerCalendarBlocksUnsub){_customerCalendarBlocksUnsub();_customerCalendarBlocksUnsub=null;}
+  calBlocks={};
+  window.__customerCalendarBlocksLoading=true;
+  window.__customerCalendarBlocksReady=false;
+  var lastDay=new Date(year,month+1,0).getDate();
+  var monthPrefix=key+'-';
+  var boundedQuery=query(calBlocksRef,orderByKey(),startAt(monthPrefix+'01'),endAt(monthPrefix+String(lastDay).padStart(2,'0')));
+  _customerCalendarBlocksUnsub=onValue(boundedQuery,function(snap){
+    if(requestId!==_customerCalendarBlocksRequest)return;
+    calBlocks=snap.val()||{};
+    window.__customerCalendarBlocksLoading=false;
+    window.__customerCalendarBlocksReady=true;
+    renderCustomerCalendar();
+  },function(){
+    if(requestId!==_customerCalendarBlocksRequest)return;
+    // Preserve the existing fail-open behavior if Firebase is temporarily
+    // unavailable, but never leave the calendar permanently in a loading state.
+    calBlocks={};
+    window.__customerCalendarBlocksLoading=false;
+    window.__customerCalendarBlocksReady=true;
+    renderCustomerCalendar();
+  });
+};
+
 // ── FIREBASE LISTENERS ──
 onValue(categoriesRef,snap=>{
   const saved=snap.val();
@@ -444,20 +483,6 @@ function checkMyReadyOrders(){
   }catch(e){}
 }
 (function(){var un=function(){try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}document.removeEventListener('touchstart',un);document.removeEventListener('click',un);};document.addEventListener('touchstart',un,{passive:true});document.addEventListener('click',un);})();
-onValue(reviewsRef,snap=>{
-  const saved=snap.val();
-  if(saved){reviewsMap=saved;}
-  else{
-    const seed={
-      'rev_001':{name:'Maria Theresa & Quinn Isabella Margaux',stars:5,date:'June 2, 2026',text:'Accaza Coffee House is a hidden gem right along the roadside near SM Dasmariñas — easy to find whether you\'re commuting or driving. Inside, it\'s surprisingly spacious with a calm, serene atmosphere that\'s rare among today\'s cramped cafés.\n\nThe coffee is outstanding, with well-crafted flavors from bold to smooth. But what truly sets Accaza apart is how perfectly it serves both students and professionals — it\'s a productive sanctuary where you can focus, study, or work in peace.\n\nHighly recommended for anyone looking for great coffee and a place to get things done. ☕✨'},
-      'rev_002':{name:'Molina Page',stars:5,date:'June 2026',text:'The coffee was absolutely delightful — perfectly brewed, rich in flavor, and made with genuine care. Every sip spoke to your passion and quality.\n\nBeyond the coffee, your staff made the visit truly special. From the warm greeting to the attentive service, everyone made me feel genuinely valued. It\'s rare to find a team so professional yet so kind and approachable.'},
-      'rev_003':{name:'Camilla Andrea',stars:5,date:'April 6, 2026 · via Facebook',text:'Nasa may highway ang coffee shop, ngunit nakakubli ang ganda nitong hindi mo mamamalas kung hindi sasadyain. Mukha siyang maliit sa labas, subalit malaki ang espasyo pagpasok, na tila napunta ka na sa ibang lugar.\n\nGusto ko mang ipagdamot ang lugar para patuloy akong makatambay nang matiwasay, subalit tingin ko\'y kasalanan ito sa mga mahilig sa kape (at sa may-ari rin) kung hindi ito maibabahagi sa iba.'},
-      'rev_004':{name:'Cess Borja',stars:5,date:'July 2025',text:'"10/10 would recommend!! we will surely come back 🤌"'}
-    };
-    set(reviewsRef,seed);reviewsMap=seed;
-  }
-  renderPublicReviews();
-});
 onValue(availRef,snap=>{const s=snap.val();if(s)Object.keys(s).forEach(k=>availability[k]=s[k]);scheduleCatalogRender();});
 onValue(paymentRef,snap=>{
   const p=snap.val();if(!p)return;
@@ -544,7 +569,6 @@ onValue(paymentRef,snap=>{
     if(b4row)b4row.style.display=p.bank4Enabled!==false?'block':'none';
   }else{if(b4row)b4row.style.display='none';}
 });
-onValue(calBlocksRef,snap=>{calBlocks=snap.val()||{};renderCustomerCalendar();});
 
 // ── WIRE BUTTONS VIA addEventListener (avoids ES module scope issues) ──
 const btnAddCat=document.getElementById('btnAddCat');
@@ -966,10 +990,11 @@ window.renderMyReservations=renderMyReservations;
 function getConfirmedGuestsForDate(k){return Object.values(adminResMap).filter(r=>r.date===k&&(r.status==='Accepted'||r.status==='Confirmed')).reduce((s,r)=>s+(parseInt(r.guests)||0),0);}
 function getConfirmedSlotsForDate(k){const s=new Set();Object.values(adminResMap).filter(r=>r.date===k&&(r.status==='Accepted'||r.status==='Confirmed')).forEach(r=>s.add(r.time));return s;}
 function dateKey(y,m,d){return y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');}
-function getDateStatus(y,m,d){const k=dateKey(y,m,d);const bl=calBlocks[k];if(bl&&bl.blocked)return'blocked';const g=getConfirmedGuestsForDate(k);if(g>=MAX_GUESTS)return'blocked';if(g>0)return'partial';if(bl&&bl.slots&&Object.values(bl.slots).some(v=>v===false))return'partial';return'open';}
+function getDateStatus(y,m,d){if(window.__customerCalendarBlocksLoading)return'loading';const k=dateKey(y,m,d);const bl=calBlocks[k];if(bl&&bl.blocked)return'blocked';const g=getConfirmedGuestsForDate(k);if(g>=MAX_GUESTS)return'blocked';if(g>0)return'partial';if(bl&&bl.slots&&Object.values(bl.slots).some(v=>v===false))return'partial';return'open';}
 function isSlotBlocked(k,slot){const b=calBlocks[k];if(b&&b.blocked)return true;if(b&&b.slots&&b.slots[slot]===false)return true;return false;}
 function renderCustomerCalendar(){
   if(!document.getElementById('calGrid'))return;
+  if(window.__loadCustomerCalendarBlocks)window.__loadCustomerCalendarBlocks(calYear,calMonth);
   const title=new Date(calYear,calMonth).toLocaleDateString('en-PH',{month:'long',year:'numeric'});
   document.getElementById('calTitle').textContent=title;
   const today=new Date();today.setHours(0,0,0,0);
@@ -983,10 +1008,10 @@ function renderCustomerCalendar(){
     const date=new Date(calYear,calMonth,d);date.setHours(0,0,0,0);
     const isPast=date<today,isToday=date.getTime()===today.getTime();
     const status=getDateStatus(calYear,calMonth,d),k=dateKey(calYear,calMonth,d);
-    let cls='cal-day';if(isPast)cls+=' past';else if(status==='blocked')cls+=' blocked';else if(status==='partial')cls+=' partial';else cls+=' open';
+    let cls='cal-day';if(isPast)cls+=' past';else if(status==='loading')cls+=' loading';else if(status==='blocked')cls+=' blocked';else if(status==='partial')cls+=' partial';else cls+=' open';
     if(isToday)cls+=' today';if(selectedDate===k)cls+=' selected';
-    const clickable=!isPast&&status!=='blocked';
-    html+='<div class="'+cls+'" '+(clickable?'data-y="'+calYear+'" data-m="'+calMonth+'" data-d="'+d+'"':'')+'>'+d+'</div>';
+    const clickable=!isPast&&status!=='blocked'&&status!=='loading';
+    html+='<div class="'+cls+'" '+(clickable?'data-y="'+calYear+'" data-m="'+calMonth+'" data-d="'+d+'"':'aria-disabled="'+(clickable?'false':'true')+'"')+'>'+d+'</div>';
   }
   const grid=document.getElementById('calGrid');
   grid.innerHTML=html;
@@ -1079,6 +1104,34 @@ window.submitFeedback=async function(){
 
 function escHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 // ── PUBLIC REVIEWS (dynamic) ────────────────────────────────
+var _publicReviewsLoaded=false,_publicReviewsLoading=false;
+var DEFAULT_PUBLIC_REVIEWS={
+  'rev_001':{name:'Maria Theresa & Quinn Isabella Margaux',stars:5,date:'June 2, 2026',text:'Accaza Coffee House is a hidden gem right along the roadside near SM Dasmariñas — easy to find whether you\'re commuting or driving. Inside, it\'s surprisingly spacious with a calm, serene atmosphere that\'s rare among today\'s cramped cafés.\n\nThe coffee is outstanding, with well-crafted flavors from bold to smooth. But what truly sets Accaza apart is how perfectly it serves both students and professionals — it\'s a productive sanctuary where you can focus, study, or work in peace.\n\nHighly recommended for anyone looking for great coffee and a place to get things done. ☕✨'},
+  'rev_002':{name:'Molina Page',stars:5,date:'June 2026',text:'The coffee was absolutely delightful — perfectly brewed, rich in flavor, and made with genuine care. Every sip spoke to your passion and quality.\n\nBeyond the coffee, your staff made the visit truly special. From the warm greeting to the attentive service, everyone made me feel genuinely valued. It\'s rare to find a team so professional yet so kind and approachable.'},
+  'rev_003':{name:'Camilla Andrea',stars:5,date:'April 6, 2026 · via Facebook',text:'Nasa may highway ang coffee shop, ngunit nakakubli ang ganda nitong hindi mo mamamalas kung hindi sasadyain. Mukha siyang maliit sa labas, subalit malaki ang espasyo pagpasok, na tila napunta ka na sa ibang lugar.\n\nGusto ko mang ipagdamot ang lugar para patuloy akong makatambay nang matiwasay, subalit tingin ko\'y kasalanan ito sa mga mahilig sa kape (at sa may-ari rin) kung hindi ito maibabahagi sa iba.'},
+  'rev_004':{name:'Cess Borja',stars:5,date:'July 2025',text:'"10/10 would recommend!! we will surely come back 🤌"'}
+};
+window.__loadPublicReviews=async function(){
+  if(_publicReviewsLoaded||_publicReviewsLoading)return;
+  _publicReviewsLoading=true;
+  var el=document.getElementById('publicReviewsContainer');
+  if(el)el.innerHTML='<p style="text-align:center;color:var(--tl);padding:2rem;">Loading reviews...</p>';
+  try{
+    var snap=await get(query(reviewsRef,orderByKey(),limitToLast(20)));
+    if(snap.exists())reviewsMap=snap.val();
+    else{
+      reviewsMap=DEFAULT_PUBLIC_REVIEWS;
+      // Preserve the existing seed for a newly created database, but do not
+      // write from a read failure or on every public page visit.
+      set(reviewsRef,DEFAULT_PUBLIC_REVIEWS).catch(function(){});
+    }
+  }catch(e){
+    if(!Object.keys(reviewsMap).length)reviewsMap=DEFAULT_PUBLIC_REVIEWS;
+  }
+  _publicReviewsLoading=false;
+  _publicReviewsLoaded=true;
+  renderPublicReviews();
+};
 function renderPublicReviews(){
   var el=document.getElementById('publicReviewsContainer');if(!el)return;
   var entries=Object.entries(reviewsMap);
@@ -1142,8 +1195,28 @@ window.quickMsg=function(msg){document.getElementById('chatInput').value=msg;sen
 setTimeout(function(){if(!chatOpen)document.getElementById('chatNotif').style.display='block';},3000);
 
 // ── INIT ──
-renderCustomerCalendar();
 renderCustomerOrders();
+function setupCustomerDeferredReads(){
+  function defer(sectionId,load){
+    var section=document.getElementById(sectionId);if(!section)return;
+    var triggered=false;
+    var trigger=function(){if(triggered)return;triggered=true;load();};
+    if('IntersectionObserver' in window){
+      var observer=new IntersectionObserver(function(entries){
+        if(entries.some(function(entry){return entry.isIntersecting})){trigger();observer.disconnect();}
+      },{rootMargin:'500px 0px'});
+      observer.observe(section);
+    }else trigger();
+    window.addEventListener('hashchange',function(){if(location.hash==='#'+sectionId)trigger();});
+    document.addEventListener('click',function(event){
+      var link=event.target&&event.target.closest&&event.target.closest('a[href="#'+sectionId+'"]');
+      if(link)setTimeout(trigger,0);
+    });
+  }
+  defer('reserve',function(){renderCustomerCalendar();});
+  defer('reviews',function(){if(window.__loadPublicReviews)window.__loadPublicReviews();});
+}
+setupCustomerDeferredReads();
 document.addEventListener('click',function(event){
   var button=event.target&&event.target.closest&&event.target.closest('[data-payment-qr]');if(!button)return;
   var src=button.getAttribute('data-payment-qr'),alt=button.getAttribute('data-payment-qr-alt')||'Payment QR code',style=button.getAttribute('data-payment-qr-style')||'';

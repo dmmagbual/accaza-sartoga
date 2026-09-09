@@ -1,7 +1,27 @@
 
 // ── INIT ──
-renderCustomerCalendar();
 renderCustomerOrders();
+function setupCustomerDeferredReads(){
+  function defer(sectionId,load){
+    var section=document.getElementById(sectionId);if(!section)return;
+    var triggered=false;
+    var trigger=function(){if(triggered)return;triggered=true;load();};
+    if('IntersectionObserver' in window){
+      var observer=new IntersectionObserver(function(entries){
+        if(entries.some(function(entry){return entry.isIntersecting})){trigger();observer.disconnect();}
+      },{rootMargin:'500px 0px'});
+      observer.observe(section);
+    }else trigger();
+    window.addEventListener('hashchange',function(){if(location.hash==='#'+sectionId)trigger();});
+    document.addEventListener('click',function(event){
+      var link=event.target&&event.target.closest&&event.target.closest('a[href="#'+sectionId+'"]');
+      if(link)setTimeout(trigger,0);
+    });
+  }
+  defer('reserve',function(){renderCustomerCalendar();});
+  defer('reviews',function(){if(window.__loadPublicReviews)window.__loadPublicReviews();});
+}
+setupCustomerDeferredReads();
 document.addEventListener('click',function(event){
   var button=event.target&&event.target.closest&&event.target.closest('[data-payment-qr]');if(!button)return;
   var src=button.getAttribute('data-payment-qr'),alt=button.getAttribute('data-payment-qr-alt')||'Payment QR code',style=button.getAttribute('data-payment-qr-style')||'';

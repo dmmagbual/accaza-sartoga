@@ -60,7 +60,9 @@ test('customer live runtime initializes ordering, tracker, reservations, and rev
   await expect(page.locator('#activeOrdersList')).toContainText('ORDER-TEST');
   await expect(page.locator('#activeOrdersList')).toContainText('Ready');
   await expect(page.locator('#activeOrdersList .confirm-recv-btn')).toBeVisible();
+  await page.locator('#reserve').scrollIntoViewIfNeeded();
   await expect(page.locator('#calGrid .cal-day')).not.toHaveCount(0,{timeout:20000});
+  await page.locator('#reviews').scrollIntoViewIfNeeded();
   await expect(page.locator('.review-card').first()).toBeVisible({timeout:20000});
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href','/manifest.json');
   await expect(page.locator('script[src="assets/js/pwa-register.js"]')).toHaveCount(1);
