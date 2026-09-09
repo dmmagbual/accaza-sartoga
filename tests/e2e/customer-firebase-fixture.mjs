@@ -13,6 +13,7 @@ const modules={
       'categories':{coffee:{id:'coffee',label:'Coffee Based',icon:'☕',order:0}},
       'optionGroups':{},
       'menuItems':{latte:{cat:'coffee',name:'Cafe Latte',desc:'Smooth espresso and milk.',priceS:175,priceM:185,priceL:195,optionsSet:true}},
+      'publicCatalogVersion':{schemaVersion:1,version:1},
       'availability':{'Cafe Latte':true},
       'payment':{gcashNum:'09123456789',gcashName:'Accaza',gcashEnabled:true,bdoEnabled:true,ubEnabled:false},
       'calBlocks':{},

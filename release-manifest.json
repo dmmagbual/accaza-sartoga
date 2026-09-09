@@ -14,8 +14,8 @@
   "builds": {
     "admin": 487,
     "books": 108,
-    "customer": 69,
-    "serviceWorkerCache": 461
+    "customer": 70,
+    "serviceWorkerCache": 462
   },
   "authoritativeFiles": [
     "admin.html",
@@ -94,6 +94,7 @@
     "src/functions/21-operational-controls.js",
     "src/functions/22-close-controls.js",
     "src/functions/23-cash-balance-summary.js",
+    "src/functions/24-public-catalog-version.js",
     "src/functions/30-orders.js",
     "src/functions/40-sales-finance.js",
     "src/functions/41-expense-assets.js",
@@ -266,6 +267,9 @@
     "getUndepositedControlSnapshot",
     "getCurrentCashBalances",
     "updateCashBalanceSummary",
+    "updatePublicCatalogVersionOnCategories",
+    "updatePublicCatalogVersionOnMenuItems",
+    "updatePublicCatalogVersionOnOptionGroups",
     "notifyOnComplete",
     "notifyStaffOnOrder",
     "notifyStaffOnReservation",

@@ -1506,6 +1506,19 @@ exports.updateCashBalanceSummary = onValueWritten(
     if (ready.schemaVersion === 1 && ready.complete === true) await db.ref(`/cashBalanceSummaryPending/${movementId}`).transaction((row) => row && row.fingerprint === fingerprint ? null : row, undefined, false);
   },
 );
+// Keep public catalog freshness separate from the catalog payload. Customers
+// listen to this tiny marker and fetch menu data only when it changes.
+function bumpPublicCatalogVersion(source){
+  return async function(){
+    await getDatabase().ref('/publicCatalogVersion').transaction(function(current){
+      var previous=current&&typeof current==='object'?current:{};
+      return{schemaVersion:1,version:(Number(previous.version)||0)+1,changedAt:Date.now(),source:source};
+    },undefined,false);
+  };
+}
+exports.updatePublicCatalogVersionOnCategories = onValueWritten({ref:'/categories',region:ORDER_REGION,retry:true},bumpPublicCatalogVersion('categories'));
+exports.updatePublicCatalogVersionOnMenuItems = onValueWritten({ref:'/menuItems',region:ORDER_REGION,retry:true},bumpPublicCatalogVersion('menuItems'));
+exports.updatePublicCatalogVersionOnOptionGroups = onValueWritten({ref:'/optionGroups',region:ORDER_REGION,retry:true},bumpPublicCatalogVersion('optionGroups'));
 const ACTIVE_ONLINE_TTL_MS = 48 * 60 * 60 * 1000;
 const ACTIVE_SWEEP_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const READY_AUTO_COMPLETE_MS = 2 * 60 * 60 * 1000;

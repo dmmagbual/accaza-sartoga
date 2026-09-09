@@ -102,7 +102,7 @@ for(const privatePath of ['functions','database.rules.json','storage.rules','fir
 const deployWorkflow=fs.readFileSync(path.join(root,'.github','workflows','deploy-functions.yml'),'utf8');
 if(!deployWorkflow.includes('branches: [main]'))fail('production Firebase deployment is not restricted to main');
 const forcedDeployLines=deployWorkflow.split(/\r?\n/).filter(line=>line.includes('firebase deploy')&&line.includes('--force'));
-const retryPolicyFunctions=['preservePostedOrderOnDelete','replicateArchivedOrderToFirestore','refreshHistoricalOrderAfterJournal','refreshHistoricalOrderAfterInventoryPlan','updateCashBalanceSummary'];
+const retryPolicyFunctions=['preservePostedOrderOnDelete','replicateArchivedOrderToFirestore','refreshHistoricalOrderAfterJournal','refreshHistoricalOrderAfterInventoryPlan','updateCashBalanceSummary','updatePublicCatalogVersionOnCategories','updatePublicCatalogVersionOnMenuItems','updatePublicCatalogVersionOnOptionGroups'];
 const forcedTargets=forcedDeployLines.length===1?((forcedDeployLines[0].match(/--only\s+([^\s]+)/)||[])[1]||'').split(',').sort():[];
 const expectedForcedTargets=retryPolicyFunctions.map(name=>`functions:${name}`).sort();
 if(forcedDeployLines.length!==1||JSON.stringify(forcedTargets)!==JSON.stringify(expectedForcedTargets))fail('retry-policy acknowledgement must use one --force deploy scoped to the exact durable order functions');
