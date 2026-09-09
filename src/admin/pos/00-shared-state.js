@@ -50,6 +50,22 @@ function peso(n){n=Number(n)||0;return '₱'+n.toLocaleString('en-PH',{minimumFr
 function num(n){n=Number(n)||0;return (Math.round(n*1000)/1000).toLocaleString('en-PH');}
 function uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 function ings(){return Object.keys(inventoryMap).map(function(k){return Object.assign({id:k},inventoryMap[k]);}).sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});}
+/* Retired stock items. An archived master keeps its ledger history and stays in valuation,
+   exports and name lookups; it only disappears from the pickers that start NEW activity.
+   An archived item that is still referenced by a recipe stays selectable so an existing
+   recipe can never silently lose its ingredient. */
+function ingIsArchived(i){return !!(i&&i.archivedAt);}
+function referencedIngredientIds(){
+  var out={};
+  function walk(v){ if(!v||typeof v!=='object')return;
+    if(v.ing)out[v.ing]=true;
+    if(Array.isArray(v)){v.forEach(walk);return;}
+    Object.keys(v).forEach(function(k){walk(v[k]);}); }
+  walk(recipesMap); walk(optRecipesMap); walk(optCostStore());
+  walk((window.__posSettings&&window.__posSettings.sharedBaseIngredients)||{});
+  return out;
+}
+function ingsActive(){var refs=referencedIngredientIds();return ings().filter(function(i){return !ingIsArchived(i)||refs[i.id];});}
 function activeSkusFor(masterId){return Object.keys(inventorySkuMap).map(function(k){return Object.assign({id:k},inventorySkuMap[k]);}).filter(function(s){return s.masterId===masterId&&s.active!==false;}).sort(function(a,b){return (Number(a.priority)||0)-(Number(b.priority)||0)||(a.brand||'').localeCompare(b.brand||'');});}
 function treeUsesIngredient(value,id){if(!value||typeof value!=='object')return false;if(value.ing===id)return true;if(Array.isArray(value))return value.some(function(x){return treeUsesIngredient(x,id);});return Object.keys(value).some(function(k){return treeUsesIngredient(value[k],id);});}
 function recipeUsesInventory(id){var item=inventoryMap[id]||{};return item.recipeItem===true||ingType(item)==='consumable'||treeUsesIngredient(recipesMap,id)||treeUsesIngredient(optRecipesMap,id)||treeUsesIngredient(optCostStore(),id);}
@@ -65,7 +81,7 @@ function stdCostOf(item){ if(!item)return 0; if(stdCostMethod()==='manual'&&item
 function stdIngCost(id){return stdCostOf(inventoryMap[id]);}
 function recipeStdCost(key,size){ var rec=recipesMap[key]; if(!recipeHasIngredientRows(rec))return {cost:0,covered:false,has:false};var stdInv={};Object.keys(inventoryMap).forEach(function(id){stdInv[id]=Object.assign({},inventoryMap[id],{cost:stdIngCost(id)});});var result=Costing().costRecipe(Object.assign({},costingContext(),{itemKey:key,recipe:rec,inventory:stdInv,item:((A()&&A().menuItemsMap)||{})[key]||{},size:size}));return {cost:result.totalCost,covered:result.cogsCovered,has:true}; }
 function ingType(i){return (i&&i.type)||'base';}
-function ingsByType(t){return ings().filter(function(i){return ingType(i)===t;});}
+function ingsByType(t){return ingsActive().filter(function(i){return ingType(i)===t;});}
 function isSupplyType(type){return type==='operating_supply'||type==='office_supply';}
 function inventoryTypeLabel(type){return type==='consumable'?'🧻 Consumable':type==='option'?'➕ Optional ingredient':type==='both'?'🔀 Base and optional':type==='operating_supply'?'🧹 Operating / Cleaning Supply':type==='office_supply'?'🗂 Office / Administrative Supply':'🧪 Base ingredient';}
 function inventoryTypeOptions(selected){return [['base','Base ingredient'],['option','Optional ingredient'],['both','Base and optional'],['consumable','Consumable — automatic per-order use'],['operating_supply','Operating / Cleaning Supply'],['office_supply','Office / Administrative Supply']].map(function(p){return '<option value="'+p[0]+'"'+(selected===p[0]?' selected':'')+'>'+p[1]+'</option>';}).join('');}
@@ -85,6 +101,7 @@ function consumablesFor(cat,size){
   var t=catType(cat); if(t!=='drink'&&t!=='food')return [];
   return ings().filter(function(i){
     if(ingType(i)!=='consumable')return false;
+    if(ingIsArchived(i))return false;   /* retired consumables stop being deducted per order */
     var sv=i.serves||'both';
     if(t==='drink'&&sv==='food')return false;
     if(t==='food'&&sv==='drink')return false;

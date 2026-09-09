@@ -50,6 +50,22 @@ function peso(n){n=Number(n)||0;return '₱'+n.toLocaleString('en-PH',{minimumFr
 function num(n){n=Number(n)||0;return (Math.round(n*1000)/1000).toLocaleString('en-PH');}
 function uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 function ings(){return Object.keys(inventoryMap).map(function(k){return Object.assign({id:k},inventoryMap[k]);}).sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});}
+/* Retired stock items. An archived master keeps its ledger history and stays in valuation,
+   exports and name lookups; it only disappears from the pickers that start NEW activity.
+   An archived item that is still referenced by a recipe stays selectable so an existing
+   recipe can never silently lose its ingredient. */
+function ingIsArchived(i){return !!(i&&i.archivedAt);}
+function referencedIngredientIds(){
+  var out={};
+  function walk(v){ if(!v||typeof v!=='object')return;
+    if(v.ing)out[v.ing]=true;
+    if(Array.isArray(v)){v.forEach(walk);return;}
+    Object.keys(v).forEach(function(k){walk(v[k]);}); }
+  walk(recipesMap); walk(optRecipesMap); walk(optCostStore());
+  walk((window.__posSettings&&window.__posSettings.sharedBaseIngredients)||{});
+  return out;
+}
+function ingsActive(){var refs=referencedIngredientIds();return ings().filter(function(i){return !ingIsArchived(i)||refs[i.id];});}
 function activeSkusFor(masterId){return Object.keys(inventorySkuMap).map(function(k){return Object.assign({id:k},inventorySkuMap[k]);}).filter(function(s){return s.masterId===masterId&&s.active!==false;}).sort(function(a,b){return (Number(a.priority)||0)-(Number(b.priority)||0)||(a.brand||'').localeCompare(b.brand||'');});}
 function treeUsesIngredient(value,id){if(!value||typeof value!=='object')return false;if(value.ing===id)return true;if(Array.isArray(value))return value.some(function(x){return treeUsesIngredient(x,id);});return Object.keys(value).some(function(k){return treeUsesIngredient(value[k],id);});}
 function recipeUsesInventory(id){var item=inventoryMap[id]||{};return item.recipeItem===true||ingType(item)==='consumable'||treeUsesIngredient(recipesMap,id)||treeUsesIngredient(optRecipesMap,id)||treeUsesIngredient(optCostStore(),id);}
@@ -65,7 +81,7 @@ function stdCostOf(item){ if(!item)return 0; if(stdCostMethod()==='manual'&&item
 function stdIngCost(id){return stdCostOf(inventoryMap[id]);}
 function recipeStdCost(key,size){ var rec=recipesMap[key]; if(!recipeHasIngredientRows(rec))return {cost:0,covered:false,has:false};var stdInv={};Object.keys(inventoryMap).forEach(function(id){stdInv[id]=Object.assign({},inventoryMap[id],{cost:stdIngCost(id)});});var result=Costing().costRecipe(Object.assign({},costingContext(),{itemKey:key,recipe:rec,inventory:stdInv,item:((A()&&A().menuItemsMap)||{})[key]||{},size:size}));return {cost:result.totalCost,covered:result.cogsCovered,has:true}; }
 function ingType(i){return (i&&i.type)||'base';}
-function ingsByType(t){return ings().filter(function(i){return ingType(i)===t;});}
+function ingsByType(t){return ingsActive().filter(function(i){return ingType(i)===t;});}
 function isSupplyType(type){return type==='operating_supply'||type==='office_supply';}
 function inventoryTypeLabel(type){return type==='consumable'?'🧻 Consumable':type==='option'?'➕ Optional ingredient':type==='both'?'🔀 Base and optional':type==='operating_supply'?'🧹 Operating / Cleaning Supply':type==='office_supply'?'🗂 Office / Administrative Supply':'🧪 Base ingredient';}
 function inventoryTypeOptions(selected){return [['base','Base ingredient'],['option','Optional ingredient'],['both','Base and optional'],['consumable','Consumable — automatic per-order use'],['operating_supply','Operating / Cleaning Supply'],['office_supply','Office / Administrative Supply']].map(function(p){return '<option value="'+p[0]+'"'+(selected===p[0]?' selected':'')+'>'+p[1]+'</option>';}).join('');}
@@ -85,6 +101,7 @@ function consumablesFor(cat,size){
   var t=catType(cat); if(t!=='drink'&&t!=='food')return [];
   return ings().filter(function(i){
     if(ingType(i)!=='consumable')return false;
+    if(ingIsArchived(i))return false;   /* retired consumables stop being deducted per order */
     var sv=i.serves||'both';
     if(t==='drink'&&sv==='food')return false;
     if(t==='food'&&sv==='drink')return false;
@@ -231,9 +248,54 @@ function isTab(name){var el=document.getElementById('tab-'+name);return el&&el.s
 window.__accazaRegisterModule('pos',function(name){ if(name==='pos'){buildPOS();} if(name==='inventory')renderInventory(); if(name==='purchases')renderPurchases(); if(name==='recipes'){recipeEditing=false;renderRecipes();} if(name==='usage')renderUsage(); if(name==='dedupe')renderDedupe(); });
 
 /* ══════════ INVENTORY ══════════ */
+/* Every place a recipe/option references an inventory id — for referential integrity. */
+function ingredientRefs(id){
+  var refs=[];
+  menuList().forEach(function(it){ var rec=recipesMap[it.key]; if(!rec)return; var used=false;
+    (rec.base||[]).forEach(function(b){if(b.ing===id)used=true;});
+    if(rec.choiceAdd)Object.keys(rec.choiceAdd).forEach(function(g){Object.keys(rec.choiceAdd[g]||{}).forEach(function(lk){(((rec.choiceAdd[g]||{})[lk]||{}).ings||[]).forEach(function(r){if(r&&r.ing===id)used=true;});});});
+    if(used)refs.push('Recipe: '+it.name);
+  });
+  var store=optCostStore();
+  Object.keys(store).forEach(function(g){Object.keys(store[g]||{}).forEach(function(lk){var e=store[g][lk]||{};(e.ings||[]).forEach(function(r){if(r&&r.ing===id)refs.push('Shared option cost: '+(e.label||lk));});});});
+  Object.keys(optRecipesMap||{}).forEach(function(lb){if((optRecipesMap[lb]||{}).ing===id)refs.push('Option (legacy): '+lb);});
+  var sharedBase=(window.__posSettings&&window.__posSettings.sharedBaseIngredients)||{};
+  Object.keys(sharedBase).forEach(function(cat){(((sharedBase[cat]||{}).ings)||[]).forEach(function(r){if(r&&r.ing===id)refs.push('Shared base: '+cat);});});
+  return refs;
+}
+/* Retiring a stock item. Deletion stays blocked for ledger items because their movement
+   history must keep pointing at a real master. Archiving is the supported alternative: the
+   master, its balances and its valuation stay exactly where they are, and only the pickers
+   that start NEW activity stop offering it. Guarded on the two sides that matter - no
+   remaining stock value, and no recipe still depending on it. */
+function archiveIngredient(id){
+  var i=inventoryMap[id]; if(!i)return;
+  if(ingIsArchived(i)){alert('"'+i.name+'" is already archived.');return;}
+  var st=Number(i.stock)||0;
+  if(st!==0){alert('Cannot archive "'+i.name+'" while it still holds '+num(st)+' '+(i.unit||'')+'.\n\nTake the balance to zero through Adjust stock first, so the value leaves the inventory asset account as an audited movement with a finance offset. Archiving must never write off stock silently.');return;}
+  var refs=ingredientRefs(id);
+  if(refs.length){alert('Cannot archive "'+i.name+'" - it is still used by '+refs.length+' recipe/option'+(refs.length===1?'':'s')+':\n\n'+refs.slice(0,25).join('\n')+(refs.length>25?'\n...and '+(refs.length-25)+' more':'')+'\n\nRepoint or remove these first, so no recipe is left costing against a retired item.');return;}
+  var extra=ingType(i)==='consumable'?'\n\nThis is a consumable, so archiving also stops it being deducted automatically on every order.':'';
+  if(!confirm('Archive "'+i.name+'"?'+extra+'\n\nIt keeps its movement history and stays in valuation, exports and reports. It stops appearing in recipe, purchase, usage and standard-costing pickers. You can restore it at any time.'))return;
+  var a=A();
+  a.update(a.ref(a.db,'inventory/'+id),{archivedAt:Date.now(),archivedBy:((window.__posShift&&window.__posShift.staff)||'Admin')})
+    .then(function(){if(isTab('inventory'))renderInventory();})
+    .catch(function(e){alert('Could not archive: '+((e&&e.code)||(e&&e.message)||e)+'\n\nNothing was changed.');});
+}
+function restoreIngredient(id){
+  var i=inventoryMap[id]; if(!i)return;
+  if(!ingIsArchived(i))return;
+  if(!confirm('Restore "'+i.name+'" to the active list?\n\nIt becomes selectable again in recipes, purchases and usage.'))return;
+  var a=A();
+  a.update(a.ref(a.db,'inventory/'+id),{archivedAt:null,archivedBy:null})
+    .then(function(){if(isTab('inventory'))renderInventory();})
+    .catch(function(e){alert('Could not restore: '+((e&&e.code)||(e&&e.message)||e)+'\n\nNothing was changed.');});
+}
 function renderInventory(){
   var root=document.getElementById('inventoryRoot'); if(!root)return;
-  var list=ings();
+  var allItems=ings();
+  var archivedItems=allItems.filter(ingIsArchived);
+  var list=allItems.filter(function(i){return !ingIsArchived(i);});
   var low=list.filter(function(i){return Number(i.stock)<=Number(i.reorder||0)&&Number(i.stock)>=0;});
   var neg=list.filter(function(i){return Number(i.stock)<0;});
   var ozItems=list.filter(function(i){var u=uNorm(i.unit);return !i.ledgerVersion&&(u==='oz'||u==='ounce');});
@@ -241,7 +303,7 @@ function renderInventory(){
   var uncat=list.filter(function(i){return !(i.category&&invCatsMap()[i.category]);});
   var unmapped=list.filter(function(i){var m=invItemAccounts(i);return !m.inventoryAccount||!m.costAccount;});
   var missingBrand=list.filter(function(i){return recipeUsesInventory(i.id)&&!activeSkusFor(i.id).length;});
-  var shown=!catFilter?list:(catFilter==='__none__'?uncat:(catFilter==='__brand_missing__'?missingBrand:list.filter(function(i){return (i.category||'')===catFilter;})));
+  var shown=catFilter==='__archived__'?archivedItems:(!catFilter?list:(catFilter==='__none__'?uncat:(catFilter==='__brand_missing__'?missingBrand:list.filter(function(i){return (i.category||'')===catFilter;}))));
   var unledgered=list.filter(function(i){return !i.ledgerVersion;});
   var uncosted=list.filter(function(i){return Number(i.stock)>0&&!(Number(i.cost)>0);});
   var movements=Object.keys(inventoryMovementsMap||{}).map(function(k){return Object.assign({id:k},inventoryMovementsMap[k]);}).sort(function(x,y){return (Number(y.occurredAt)||0)-(Number(x.occurredAt)||0);}).slice(0,100);
@@ -253,7 +315,7 @@ function renderInventory(){
     var linkBadge=recipeLinked?(brandCount?'<span class="inv-sku-link linked">✓ Recipe · '+brandCount+' approved brand'+(brandCount===1?'':'s')+'</span>':'<span class="inv-sku-link pending" title="This stock item is the SKU. Add an approved purchasing brand before receiving it.">✓ Recipe · SKU ready</span>'):'<span class="inv-sku-link neutral">Not in a recipe</span>';
     var tyBadge=inventoryTypeLabel(ty)+(ty==='consumable'&&i.serves&&i.serves!=='both'?' · '+esc(i.serves):'')+(ty==='consumable'&&i.size?' · '+esc(i.size):'');
     return '<tr>'
-      +'<td>'+esc(i.name)+'</td>'
+      +'<td>'+esc(i.name)+(ingIsArchived(i)?' <span class="inv-sku-link neutral" title="Archived '+esc(new Date(Number(i.archivedAt)||0).toLocaleDateString('en-PH'))+(i.archivedBy?' by '+esc(i.archivedBy):'')+'">Archived</span>':'')+'</td>'
       +'<td style="font-size:0.78rem;color:var(--tl);">'+tyBadge+'</td>'
       +'<td style="font-size:0.78rem;">'+(i.category?esc(invCatName(i.category)):'<span style="color:var(--tl);">—</span>')+(function(){var m=invItemAccounts(i);return m.inventoryAccount&&m.costAccount?' <span style="color:#267354;font-size:0.66rem;">'+m.inventoryAccount+' / '+m.costAccount+'</span>':' <span style="color:#b44336;font-size:0.66rem;">unmapped</span>'})()+'</td>'
       +'<td class="'+((isNeg||isLow)?'pz-low':'')+'">'+num(st)+' '+esc(i.unit||'')+(isNeg?' 🔴 NEGATIVE':(isLow?' ⚠️':''))+'</td>'
@@ -264,6 +326,7 @@ function renderInventory(){
         +'<button class="pz-btn sec" style="'+(recipeLinked&&!brandCount?'border-color:#c98a2b;color:#8a5a00;':'border-color:#3a8a6a;color:#256b52;')+'" data-inv-skus="'+i.id+'">'+(recipeLinked&&!brandCount?'Add brand':'Brands ('+brandCount+')')+'</button>'
         +'<button class="pz-btn sec" data-inv-adjust="'+i.id+'">Adjust</button>'
         +'<button class="pz-btn sec" data-inv-edit="'+i.id+'">Edit</button>'
+        +(ingIsArchived(i)?'<button class="pz-btn sec" style="border-color:#3a8a6a;color:#256b52;" data-inv-restore="'+i.id+'" title="Return this item to the active list.">Restore</button>':'<button class="pz-btn sec" data-inv-archive="'+i.id+'" title="Retire this item. It keeps its movement history and stays in valuation and exports, but stops appearing in recipe, purchase, usage and costing pickers.">Archive</button>')
         +(i.ledgerVersion?'<span class="inventory-delete-slot inventory-lock" title="Ledger items cannot be deleted; preserve their audit trail.">🔒</span>':'<button class="pz-btn warn inventory-delete-slot" data-inv-del="'+i.id+'" aria-label="Delete '+esc(i.name)+'">✕</button>')
       +'</div></td></tr>';
   }).join('');
@@ -285,7 +348,7 @@ function renderInventory(){
       +'<button class="pz-btn sec" id="invExpiry" style="border-color:#c98a2b;color:#8a5a00;">📅 Expiry / batches</button>'
       +'<button class="pz-btn sec" id="invStdCost" style="border-color:#5a6fb0;color:#3a4a86;">📊 Standard costing</button>'
       +(unledgered.length?'<button class="pz-btn ok" id="invLedgerInit" style="border-color:#267354;">🧾 Initialize 3A ledger ('+unledgered.length+')</button>':'<span style="font-size:0.78rem;color:#267354;align-self:center;">✓ 3A ledger active</span>')
-      +'<select class="pz-in" id="invCatFilter" style="width:auto;"><option value="">All categories</option><option value="__brand_missing__"'+(catFilter==='__brand_missing__'?' selected':'')+'>Recipe items without approved brand ('+missingBrand.length+')</option><option value="__none__"'+(catFilter==='__none__'?' selected':'')+'>— Uncategorized ('+uncat.length+') —</option>'+catList.map(function(c){return '<option value="'+esc(c.id)+'"'+(catFilter===c.id?' selected':'')+'>'+esc(c.name)+(c.kind==='overhead'?' (overhead)':'')+'</option>';}).join('')+'</select>'
+      +'<select class="pz-in" id="invCatFilter" style="width:auto;"><option value="">All categories</option>'+(archivedItems.length?'<option value="__archived__"'+(catFilter==='__archived__'?' selected':'')+'>&mdash; Archived ('+archivedItems.length+') &mdash;</option>':'')+'<option value="__brand_missing__"'+(catFilter==='__brand_missing__'?' selected':'')+'>Recipe items without approved brand ('+missingBrand.length+')</option><option value="__none__"'+(catFilter==='__none__'?' selected':'')+'>— Uncategorized ('+uncat.length+') —</option>'+catList.map(function(c){return '<option value="'+esc(c.id)+'"'+(catFilter===c.id?' selected':'')+'>'+esc(c.name)+(c.kind==='overhead'?' (overhead)':'')+'</option>';}).join('')+'</select>'
     +'</div>'
     +'<details class="pz-card" style="margin-bottom:1rem;border:1px solid #d8bea0;background:#fffdf9;">'
       +'<summary class="pz-btn sec" style="display:inline-flex;cursor:pointer;list-style:none;">➕ Set up stock item / opening balance</summary>'
@@ -333,6 +396,8 @@ function renderInventory(){
   root.querySelectorAll('[data-inv-adjust]').forEach(function(b){b.onclick=function(){adjustStock(b.getAttribute('data-inv-adjust'));};});
   root.querySelectorAll('[data-inv-edit]').forEach(function(b){b.onclick=function(){editIngredient(b.getAttribute('data-inv-edit'));};});
   root.querySelectorAll('[data-inv-del]').forEach(function(b){b.onclick=function(){delIngredient(b.getAttribute('data-inv-del'));};});
+  root.querySelectorAll('[data-inv-archive]').forEach(function(b){b.onclick=function(){archiveIngredient(b.getAttribute('data-inv-archive'));};});
+  root.querySelectorAll('[data-inv-restore]').forEach(function(b){b.onclick=function(){restoreIngredient(b.getAttribute('data-inv-restore'));};});
 }
 /* ══════════ INVENTORY ARCHITECTURE v2 — Phase 0 migration (DRY-RUN first) ══════════
    Promotes each inventory item to an Ingredient Master (KEEPS its ID — recipes untouched),
@@ -350,7 +415,7 @@ function openSkuBatchSetup(){
     // brands + last supplier seen per inventory item, from receipt history
     var brandsByItem={};
     Object.keys(receipts).forEach(function(rid){ var r=receipts[rid]||{}; var ing=r.ing; if(!ing)return; var b=(r.brand||'').trim(); if(!b)return; brandsByItem[ing]=brandsByItem[ing]||{}; if(!brandsByItem[ing][b])brandsByItem[ing][b]={supplier:(r.supplier||'').trim()}; else if(r.supplier)brandsByItem[ing][b].supplier=(r.supplier||'').trim(); });
-    var list=ings();
+    var list=ings().filter(function(i){return !ingIsArchived(i);});
     var plan=[]; var nSku=0,nBatch=0,nItems=0,nNeg=0;
     list.forEach(function(it){
       var done=!!it.skuMigrated;
@@ -553,7 +618,7 @@ function openStdCosting(){
     }).join('');
     var avgFc=nFc?Math.round(sumFc/nFc*10)/10:0;
     // ingredient standard vs WAC drift (matters when method=manual or a standard was locked)
-    var drift=ings().filter(function(x){return x.stdCost!=null&&x.stdCost!==''&&Math.abs((Number(x.stdCost)||0)-(Number(x.cost)||0))>0.00001;})
+    var drift=ings().filter(function(x){return !ingIsArchived(x)&&x.stdCost!=null&&x.stdCost!==''&&Math.abs((Number(x.stdCost)||0)-(Number(x.cost)||0))>0.00001;})
       .map(function(x){var d=(Number(x.cost)||0)-(Number(x.stdCost)||0);return '<tr><td>'+esc(x.name)+'</td><td class="r">'+peso(Number(x.stdCost)||0)+'</td><td class="r">'+peso(Number(x.cost)||0)+'</td><td class="r" style="color:'+(d>0?'#c0392b':'#2a7')+';">'+(d>0?'+':'')+peso(d)+'/'+esc(x.unit||'')+'</td></tr>';}).join('');
     mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:960px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;">'
       +'<div style="display:flex;justify-content:space-between;align-items:center;"><div style="font-weight:700;color:var(--bd);">📊 Standard costing — pricing &amp; margin</div><button class="pz-btn sec" id="stClose" style="padding:0.2rem 0.6rem;">✕</button></div>'
@@ -571,7 +636,7 @@ function openStdCosting(){
     document.getElementById('stClose').onclick=close;
     mask.querySelectorAll('[data-stdsize]').forEach(function(b){b.onclick=function(){window.__stdSize=b.getAttribute('data-stdsize');draw();};});
     document.getElementById('stMethod').onchange=function(){var v=this.value;window.__posSettings=window.__posSettings||{};window.__posSettings.stdCostMethod=v;a.update(a.ref(a.db,'posSettings'),{stdCostMethod:v}).catch(function(e){alert('Could not save method: '+((e&&e.code)||e));});draw();};
-    document.getElementById('stSetWac').onclick=function(){ if(!confirm('Set every item’s standard cost to its current weighted-average? This snapshots today’s WAC as the standard (useful before switching to Manual).'))return; var upd={}; ings().forEach(function(x){upd['inventory/'+x.id+'/stdCost']=Number(x.cost)||0;}); a.update(a.ref(a.db),upd).then(function(){alert('Standards set to current WAC for '+Object.keys(upd).length+' item(s).');draw();}).catch(function(e){alert('Could not update: '+((e&&e.code)||e));}); };
+    document.getElementById('stSetWac').onclick=function(){ if(!confirm('Set every item’s standard cost to its current weighted-average? This snapshots today’s WAC as the standard (useful before switching to Manual).'))return; var upd={}; ings().forEach(function(x){if(ingIsArchived(x))return;upd['inventory/'+x.id+'/stdCost']=Number(x.cost)||0;}); a.update(a.ref(a.db),upd).then(function(){alert('Standards set to current WAC for '+Object.keys(upd).length+' item(s).');draw();}).catch(function(e){alert('Could not update: '+((e&&e.code)||e));}); };
     document.getElementById('stXls').onclick=function(){ if(!window.XLSX){alert('Excel library still loading — try again.');return;} var aoa=[['Menu item','Size','Price','Std cost','GP','GP%','Food%','Costed']]; (typeof menuList==='function'?menuList():[]).forEach(function(it){['S','M','L'].forEach(function(s){var price=Number(it['price'+s])||0;var r=recipeStdCost(it.key,s);if(!r.has)return;var gp=price-r.cost;aoa.push([it.name,s,price,r.cost,Math.round(gp*100)/100,price>0?Math.round(gp/price*1000)/10:'',price>0?Math.round(r.cost/price*1000)/10:'',r.covered?'yes':'MISSING']);});}); var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),'StdCosting');XLSX.writeFile(wb,'accaza-standard-costing-'+window.AccazaDate.key()+'.xlsx'); };
   }
   draw();
@@ -1056,7 +1121,7 @@ function bindPurchaseQuantityCorrection(root){
 }
   var accOpts='<option value="">\u2014 choose cash / bank / e-wallet \u2014</option>'+accs.map(function(x){return '<option value="'+esc(x.id)+'"'+(P.acct===x.id?' selected':'')+(x.disabled?' disabled':'')+'>'+esc(x.name)+' · '+peso(x.balance)+(x.disabled?' · unavailable for purchases':'')+'</option>';}).join('');
   var supplierOpts='<option value="">— select supplier —</option>'+purchaseSuppliers().map(function(x){return '<option value="'+esc(x.id)+'"'+(P.supplierId===x.id?' selected':'')+'>'+esc(x.name)+'</option>';}).join('');
-  var invList=ings().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
+  var invList=ingsActive().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
   function itemOpts(sel){return '<option value="">— pick item —</option>'+invList.map(function(i){var required=recipeUsesInventory(i.id),n=activeSkusFor(i.id).length;return '<option value="'+esc(i.id)+'"'+(i.id===sel?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+') · '+ingType(i)+(required?(n?' · '+n+' approved brand'+(n===1?'':'s'):' · BRAND REQUIRED'):'')+'</option>';}).join('');}
   function unitOpts(list,sel){return list.map(function(u){return '<option'+(uNorm(u)===uNorm(sel)?' selected':'')+'>'+esc(u)+'</option>';}).join('');}
   var invTotal=0;
@@ -1346,19 +1411,6 @@ function brandBreakdown(id){
     mask.addEventListener('click',function(e){if(e.target===mask)close();});
   }).catch(function(e){ alert('Could not load brand history: '+((e&&e.code)||e)+'. If PERMISSION_DENIED, log in with your admin email.'); });
 }
-/* Every place a recipe/option references an inventory id — for referential integrity. */
-function ingredientRefs(id){
-  var refs=[];
-  menuList().forEach(function(it){ var rec=recipesMap[it.key]; if(!rec)return; var used=false;
-    (rec.base||[]).forEach(function(b){if(b.ing===id)used=true;});
-    if(rec.choiceAdd)Object.keys(rec.choiceAdd).forEach(function(g){Object.keys(rec.choiceAdd[g]||{}).forEach(function(lk){(((rec.choiceAdd[g]||{})[lk]||{}).ings||[]).forEach(function(r){if(r&&r.ing===id)used=true;});});});
-    if(used)refs.push('Recipe: '+it.name);
-  });
-  var store=optCostStore();
-  Object.keys(store).forEach(function(g){Object.keys(store[g]||{}).forEach(function(lk){var e=store[g][lk]||{};(e.ings||[]).forEach(function(r){if(r&&r.ing===id)refs.push('Shared option cost: '+(e.label||lk));});});});
-  Object.keys(optRecipesMap||{}).forEach(function(lb){if((optRecipesMap[lb]||{}).ing===id)refs.push('Option (legacy): '+lb);});
-  return refs;
-}
 function delIngredient(id){
   var i=inventoryMap[id]; if(!i)return;
   if(i.ledgerVersion){alert('Cannot delete "'+i.name+'" after ledger initialization. Its movement history must remain linked to a real item. Create a replacement item and stop using this one instead.');return;}
@@ -1399,7 +1451,7 @@ function migrateOzToFloz(){
   alert('Converted '+items.length+' item(s) to fl oz. ✅ You can now enter ml/L in their recipes.');
 }
 function updateLowStockBadge(){
-  var n=ings().filter(function(i){return Number(i.stock)<=Number(i.reorder||0);}).length;
+  var n=ings().filter(function(i){return !ingIsArchived(i)&&Number(i.stock)<=Number(i.reorder||0);}).length;
   var b=document.getElementById('lowStockBadge'); if(!b)return;
   if(n>0){b.textContent=n;b.style.display='inline-block';}else{b.style.display='none';}
 }
@@ -1534,7 +1586,7 @@ function renderSharedIngredients(){
   if(view==='choice'){root.innerHTML='<div id="optMasterRoot"></div>';renderOptionsMaster();return;}
   var cats=(A().getCats?A().getCats():[]).filter(function(c){return menuList().some(function(it){return it.cat===c.id&&recipeItemIsDrink(it);});});
   if(!window.__sharedBaseCat&&cats.length)window.__sharedBaseCat=cats[0].id;
-  var cat=window.__sharedBaseCat||'',store=(window.__posSettings&&window.__posSettings.sharedBaseIngredients)||{},rows=ocClone((store[cat]||{}).ings||[]),inv=ings();
+  var cat=window.__sharedBaseCat||'',store=(window.__posSettings&&window.__posSettings.sharedBaseIngredients)||{},rows=ocClone((store[cat]||{}).ings||[]),inv=ingsActive();
   function sel(v){return '<select class="pz-in" data-sbf="ing"><option value="">— ingredient —</option>'+inv.map(function(i){return '<option value="'+esc(i.id)+'"'+(i.id===v?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+')</option>';}).join('')+'</select>';}
   var body=rows.map(function(r,i){var item=inventoryMap[r.ing]||{},u=r.unit||item.unit||'',units=compatUnits(item);function shown(sz){if(r['disp'+sz]!=null)return r['disp'+sz];var cv=Costing().convert(Number(r['qty'+sz])||0,item.unit||u,u);return cv.ok?cv.qty:r['qty'+sz];}return '<tr data-sbrow="'+i+'"><td>'+sel(r.ing)+'</td><td><select class="pz-in" data-sbf="unit" style="width:82px">'+units.map(function(x){return '<option'+(uNorm(x)===uNorm(u)?' selected':'')+'>'+esc(x)+'</option>';}).join('')+'</select><small style="display:block;color:var(--tl)">stock: '+esc(item.unit||'—')+'</small></td>'+['S','M','L'].map(function(sz){return '<td><input class="pz-in" data-sbf="disp'+sz+'" type="number" step="any" value="'+(shown(sz)!=null?shown(sz):'')+'" style="width:82px;text-align:right"></td>';}).join('')+'<td><button class="pz-btn warn" data-sbrem="'+i+'">✕</button></td></tr>';}).join('');
   root.innerHTML='<div class="pz-card"><label><span class="pz-lbl">Menu category</span><select id="sharedBaseCat" class="pz-in">'+cats.map(function(c){return '<option value="'+esc(c.id)+'"'+(c.id===cat?' selected':'')+'>'+esc(c.label||c.id)+'</option>';}).join('')+'</select></label><p class="pz-sub">Choose the recipe unit you actually measure. Quantities are converted to the Inventory stock unit for costing and stock deduction. Changes affect future sales only.</p><div style="overflow-x:auto"><table class="pz-tbl"><thead><tr><th>Ingredient</th><th>Recipe unit</th><th>S quantity</th><th>M quantity</th><th>L quantity</th><th></th></tr></thead><tbody>'+(body||'<tr><td colspan="6" style="color:var(--tl)">No shared base ingredients defined.</td></tr>')+'</tbody></table></div><div style="display:flex;gap:.5rem;margin-top:.6rem"><button class="pz-btn sec" id="sharedBaseAdd">+ ingredient</button><button class="pz-btn ok" id="sharedBaseSave">Save shared base</button><span id="sharedBaseMsg" class="pz-sub"></span></div></div>';
@@ -1607,7 +1659,7 @@ function drawRecipeEditor(item){
   var caAllow=caGroupsAll.map(function(g){return g.id;});
   if(d.choiceAdd){Object.keys(d.choiceAdd).forEach(function(_g){if(caAllow.indexOf(_g)<0)delete d.choiceAdd[_g];});}
   var caGroups=caGroupsAll.filter(function(g){return (g.choices||[]).some(function(c){return caSelected(g,c);});});
-  var caInv=ings().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
+  var caInv=ingsActive().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
   function caIngSel(val){return '<select class="pz-in" data-caf="ing" style="min-width:150px;"><option value="">— ingredient —</option>'+caInv.map(function(i){var blocked=isPackagingCostItem(i.id)&&i.id!==val;return '<option value="'+i.id+'"'+(i.id===val?' selected':'')+(blocked?' disabled':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+') · '+(blocked?'Packaging Costing only':ingType(i))+'</option>';}).join('')+'</select>';}
   function caDraftCost(rows,sz){var total=0;(rows||[]).forEach(function(r){var inv=inventoryMap[r.ing]||{},q=convertToStock((r['d'+sz]===''||r['d'+sz]==null)?0:Number(r['d'+sz]),r.unit||inv.unit,inv);if(Number.isFinite(q))total+=q*ingCost(r.ing);});return total;}
   var caCards=caGroups.map(function(g){
@@ -1792,7 +1844,7 @@ function ocDraw(){
   var root=document.getElementById('optMasterRoot'); if(!root)return;
   var d=window.__optCostDraft||{};
   var tempGroup=recipeTemperatureGroup(ocGroups());
-  var invList=ings().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
+  var invList=ingsActive().slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});
   function ingSel(val){return '<select class="pz-in" data-ocf="ing" style="min-width:150px;"><option value="">— ingredient —</option>'+invList.map(function(i){var blocked=isPackagingCostItem(i.id)&&i.id!==val;return '<option value="'+i.id+'"'+(i.id===val?' selected':'')+(blocked?' disabled':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+') · '+(blocked?'Packaging Costing only':ingType(i))+'</option>';}).join('')+'</select>';}
   var cards=ocGroups().map(function(g){
     var badge=(g.required?'required':'optional')+' · '+(g.type==='multi'?'multi-select':'single');
@@ -2729,7 +2781,7 @@ function usageMovements(usage,sign,type,sourceId,note,usageAccount,usageKind){re
 function usageEntries(){return Object.keys(usageMap).map(function(k){return Object.assign({id:k},usageMap[k]);}).sort(function(a,b){return (b.ts||0)-(a.ts||0);});}
 function usageThisMonth(){var now=new Date(),y=now.getFullYear(),m=now.getMonth();return usageEntries().filter(function(u){var d=new Date(u.ts);return d.getFullYear()===y&&d.getMonth()===m;});}
 function ingRowsHtml(tag){
-  var rows=usageRows[tag]||[]; var allIng=ings();
+  var rows=usageRows[tag]||[]; var allIng=ingsActive();
   var body=rows.map(function(r,ix){
     var sel='<select class="pz-in" data-rg="'+tag+'" data-rgi="'+ix+'" data-rgf="ing" style="min-width:150px;"><option value="">— ingredient —</option>'+allIng.map(function(i){return '<option value="'+i.id+'"'+(i.id===r.ing?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+')</option>';}).join('')+'</select>';
     return '<tr><td>'+sel+'</td><td><input class="pz-in" type="number" step="any" style="width:90px;" data-rg="'+tag+'" data-rgi="'+ix+'" data-rgf="qty" value="'+(r.qty!=null?r.qty:'')+'" placeholder="qty"/></td><td style="color:var(--tl);">'+esc(r.ing?ingUnit(r.ing):'')+'</td><td><button class="pz-btn warn" style="padding:0.2rem 0.45rem;" data-rgdel="'+tag+'" data-rgdeli="'+ix+'">✕</button></td></tr>';
