@@ -24,10 +24,40 @@ assert.equal(HistoricalArchive.unchanged(doc, HistoricalArchive.buildDocument("P
 
 const missing = HistoricalArchive.buildDocument("POS-2", {order: Object.assign({}, completed, {id: "POS-2"})}, 300);
 assert.equal(missing.evidence.verified, false);
-for (const issue of ["sale_movement_missing", "sale_journal_missing", "inventory_plan_missing"]) {
+for (const issue of ["sale_movement_missing", "sale_journal_missing", "inventory_evidence_missing"]) {
   assert(missing.evidence.issues.includes(issue), `missing evidence must report ${issue}`);
 }
 assert.equal(missing.evidence.eligibleForFutureRtdbRetirement, false);
+
+const legacyMovements = {
+  "sale_POS-LEGACY_beans": {type: "sale_usage", sourceType: "order", sourceId: "POS-LEGACY", sourceLine: "beans", itemId: "beans", qty: -0.02, unitCost: 800, occurredAt: 150, schemaVersion: 1},
+};
+const legacyOrder = Object.assign({}, completed, {id: "POS-LEGACY"});
+const legacy = HistoricalArchive.buildDocument("POS-LEGACY", Object.assign({}, evidence, {
+  order: legacyOrder, inventoryPlan: null, inventoryMovements: legacyMovements,
+}), 300);
+assert.equal(legacy.evidence.verified, true, "exact immutable sale movements must support legacy archival");
+assert.equal(legacy.evidence.inventoryEvidenceMode, "legacy_sale_usage_movements");
+assert.deepEqual(legacy.source.inventoryMovementIds, ["sale_POS-LEGACY_beans"]);
+assert.equal(legacy.legacyInventoryEvidence[0].qty, -0.02);
+assert.equal(HistoricalArchive.unchanged(legacy, HistoricalArchive.buildDocument("POS-LEGACY", Object.assign({}, evidence, {
+  order: legacyOrder, inventoryPlan: null, inventoryMovements: legacyMovements,
+}), 999)), true, "legacy movement checksums must be idempotent");
+
+const foreignMovement = HistoricalArchive.buildDocument("POS-LEGACY", Object.assign({}, evidence, {
+  order: legacyOrder, inventoryPlan: null,
+  inventoryMovements: {"sale_POS-LEGACY_beans": Object.assign({}, legacyMovements["sale_POS-LEGACY_beans"], {sourceId: "ANOTHER-ORDER"})},
+}), 300);
+assert.equal(foreignMovement.evidence.verified, false, "foreign inventory evidence must never qualify an archive");
+assert(foreignMovement.evidence.issues.includes("inventory_movement_evidence_invalid"));
+assert(foreignMovement.evidence.issues.includes("inventory_evidence_missing"));
+
+const invalidPlan = HistoricalArchive.buildDocument("POS-LEGACY", Object.assign({}, evidence, {
+  order: legacyOrder, inventoryPlan: {schemaVersion: 99, usage: {beans: 0.02}}, inventoryMovements: legacyMovements,
+}), 300);
+assert.equal(invalidPlan.evidence.verified, false, "an invalid plan must stay visible even when legacy movements exist");
+assert(invalidPlan.evidence.issues.includes("inventory_plan_invalid"));
+assert.equal(invalidPlan.source.inventoryPlanId, "");
 
 const rejected = HistoricalArchive.buildDocument("ONLINE-1", {order: {status: "Archived", prevStatus: "Rejected", archivedAt: 200}}, 300);
 assert.equal(rejected.evidence.verified, true, "rejected orders do not require a sale journal");
@@ -44,10 +74,12 @@ assert.equal(corrected.evidence.verified, true, "a refund is verified only with 
 
 const source = fs.readFileSync("src/functions/61-historical-archive.js", "utf8");
 for (const marker of [
-  "exports.replicateArchivedOrderToFirestore", "exports.refreshHistoricalOrderAfterJournal",
+  "exports.replicateArchivedOrderToFirestore", "exports.refreshHistoricalOrderAfterJournal", "exports.refreshHistoricalOrderAfterInventoryPlan",
   "exports.manageHistoricalOrderArchive", "HistoricalArchive.unchanged", "deletionEnabled: false",
   '["preview", "backfill", "verify"]', "orderByKey()", "HISTORICAL_ARCHIVE_BATCH_LIMIT = 100",
+  'startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\\uf8ff`)', "never recalculate history from current recipes",
 ]) assert(source.includes(marker), `historical archive safeguard missing: ${marker}`);
+assert(!/Costing\.|ref\([`'"]\/(?:recipes|menuItems|optionRecipes)/.test(source), "historical archive must not use mutable current costing inputs");
 assert(!/\.remove\(|\[[`'"]archivedOrders\//.test(source), "historical archive phase 1 must not delete RTDB data");
 
 const rules = fs.readFileSync("firestore.rules", "utf8");
