@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var orders={},archived={},movements={},page=1,pageSize=50,busy=false,bound=false,ordersLoaded=false,archivedLoaded=false,movementsLoaded=false,loadTimer=0,verified={orders:false,archivedOrders:false,financialMovements:false};
+var orders={},archived={},movements={},page=1,pageSize=20,busy=false,bound=false,ordersLoaded=false,archivedLoaded=false,movementsLoaded=false,loadTimer=0,verified={orders:false,archivedOrders:false,financialMovements:false};
 var filter={search:'',period:'month',channel:'all',payment:'all'};
 function A(){return window.__accaza;}
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
