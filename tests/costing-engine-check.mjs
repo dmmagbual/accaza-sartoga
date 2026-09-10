@@ -75,13 +75,25 @@ const flatPastry=Costing.costOrder({
   lineItems:[{itemKey:'muesli',size:'L',qty:2,optLabels:['Banana']}],
   recipes:{muesli:{base:[{ing:'beans',qtyS:10,qtyM:99,qtyL:999}],choiceAdd:{toppings:{Banana:{label:'Banana',ings:[{ing:'cream',qtyS:5,qtyM:55,qtyL:555}]}}}}},
   inventory,menuItems:{muesli:{name:'MUESLI',cat:'pastry',priceS:180,options:['toppings']}},optionGroups:{toppings:{type:'multi',choices:[{label:'Banana',price:20}]}},
-  packagingRules:{bowl:{rows:[{ing:'hotCup',qtyS:1,qtyM:9,qtyL:99}]},hot:{rows:[{ing:'icedCup',qtyS:7}]}},packagingAssignments:{pastry:{defaultStyle:'bowl',items:{muesli:'hot'}}},
+  packagingRules:{bowl:{rows:[{ing:'hotCup',qtyS:1,qtyM:9,qtyL:99}]},hot:{rows:[{ing:'icedCup',qtyS:7}]}},packagingAssignments:{pastry:{defaultStyle:'bowl'}},
 });
 near(flatPastry.usage.beans,20,'single-price pastry always uses its one base quantity');
 near(flatPastry.usage.cream,10,'single-price pastry option always uses its one topping quantity');
 near(flatPastry.usage.hotCup,2,'single-price pastry inherits the category packaging set');
-if(flatPastry.usage.icedCup)throw new Error('stale item packaging overrode the inherited pastry category set');
+if(flatPastry.usage.icedCup)throw new Error('a pastry with no per-item override picked up a style it was never assigned');
 if(!flatPastry.lines.every(line=>line.size==='S'))throw new Error('single-price pastry did not canonicalize stale size to one serving');
+/* A pastry explicitly Customized via packagingAssignments.<cat>.items[key] (the admin
+   Customize/Revert control - src/admin/pos/32-serve-style-packaging.js) must actually be
+   costed with its own private style, not the shared category default - otherwise Customize
+   and Revert are cosmetic and every sale silently keeps costing the old packaging. */
+const customizedPastry=Costing.costOrder({
+  lineItems:[{itemKey:'muesli',size:'L',qty:2,optLabels:[]}],
+  recipes:{muesli:{base:[{ing:'beans',qtyS:10,qtyM:99,qtyL:999}]}},
+  inventory,menuItems:{muesli:{name:'MUESLI',cat:'pastry',priceS:180}},
+  packagingRules:{bowl:{rows:[{ing:'hotCup',qtyS:1,qtyM:9,qtyL:99}]},hot:{rows:[{ing:'icedCup',qtyS:7}]}},packagingAssignments:{pastry:{defaultStyle:'bowl',items:{muesli:'hot'}}},
+});
+near(customizedPastry.usage.icedCup,14,'a pastry Customized to its own style is costed with that style, not the shared default');
+if(customizedPastry.usage.hotCup)throw new Error('a Customized pastry still fell back to the shared category default it was overridden away from');
 const packagedPastry=Costing.costOrder({
   lineItems:[{itemKey:'croissant',size:'S',qty:2,optLabels:[]}],recipes:{},inventory,
   menuItems:{croissant:{name:'Croissant',cat:'pastry',priceS:95,needsBuilding:false}},
