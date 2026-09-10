@@ -1,53 +1,8 @@
 
 /* ══════════ INVENTORY ══════════ */
-/* Every place a recipe/option references an inventory id — for referential integrity. */
-function ingredientRefs(id){
-  var refs=[];
-  menuList().forEach(function(it){ var rec=recipesMap[it.key]; if(!rec)return; var used=false;
-    (rec.base||[]).forEach(function(b){if(b.ing===id)used=true;});
-    if(rec.choiceAdd)Object.keys(rec.choiceAdd).forEach(function(g){Object.keys(rec.choiceAdd[g]||{}).forEach(function(lk){(((rec.choiceAdd[g]||{})[lk]||{}).ings||[]).forEach(function(r){if(r&&r.ing===id)used=true;});});});
-    if(used)refs.push('Recipe: '+it.name);
-  });
-  var store=optCostStore();
-  Object.keys(store).forEach(function(g){Object.keys(store[g]||{}).forEach(function(lk){var e=store[g][lk]||{};(e.ings||[]).forEach(function(r){if(r&&r.ing===id)refs.push('Shared option cost: '+(e.label||lk));});});});
-  Object.keys(optRecipesMap||{}).forEach(function(lb){if((optRecipesMap[lb]||{}).ing===id)refs.push('Option (legacy): '+lb);});
-  var sharedBase=(window.__posSettings&&window.__posSettings.sharedBaseIngredients)||{};
-  Object.keys(sharedBase).forEach(function(cat){(((sharedBase[cat]||{}).ings)||[]).forEach(function(r){if(r&&r.ing===id)refs.push('Shared base: '+cat);});});
-  return refs;
-}
-/* Retiring a stock item. Deletion stays blocked for ledger items because their movement
-   history must keep pointing at a real master. Archiving is the supported alternative: the
-   master, its balances and its valuation stay exactly where they are, and only the pickers
-   that start NEW activity stop offering it. Guarded on the two sides that matter - no
-   remaining stock value, and no recipe still depending on it. */
-function archiveIngredient(id){
-  var i=inventoryMap[id]; if(!i)return;
-  if(ingIsArchived(i)){alert('"'+i.name+'" is already archived.');return;}
-  var st=Number(i.stock)||0;
-  if(st!==0){alert('Cannot archive "'+i.name+'" while it still holds '+num(st)+' '+(i.unit||'')+'.\n\nTake the balance to zero through Adjust stock first, so the value leaves the inventory asset account as an audited movement with a finance offset. Archiving must never write off stock silently.');return;}
-  var refs=ingredientRefs(id);
-  if(refs.length){alert('Cannot archive "'+i.name+'" - it is still used by '+refs.length+' recipe/option'+(refs.length===1?'':'s')+':\n\n'+refs.slice(0,25).join('\n')+(refs.length>25?'\n...and '+(refs.length-25)+' more':'')+'\n\nRepoint or remove these first, so no recipe is left costing against a retired item.');return;}
-  var extra=ingType(i)==='consumable'?'\n\nThis is a consumable, so archiving also stops it being deducted automatically on every order.':'';
-  if(!confirm('Archive "'+i.name+'"?'+extra+'\n\nIt keeps its movement history and stays in valuation, exports and reports. It stops appearing in recipe, purchase, usage and standard-costing pickers. You can restore it at any time.'))return;
-  var a=A();
-  a.update(a.ref(a.db,'inventory/'+id),{archivedAt:Date.now(),archivedBy:((window.__posShift&&window.__posShift.staff)||'Admin')})
-    .then(function(){if(isTab('inventory'))renderInventory();})
-    .catch(function(e){alert('Could not archive: '+((e&&e.code)||(e&&e.message)||e)+'\n\nNothing was changed.');});
-}
-function restoreIngredient(id){
-  var i=inventoryMap[id]; if(!i)return;
-  if(!ingIsArchived(i))return;
-  if(!confirm('Restore "'+i.name+'" to the active list?\n\nIt becomes selectable again in recipes, purchases and usage.'))return;
-  var a=A();
-  a.update(a.ref(a.db,'inventory/'+id),{archivedAt:null,archivedBy:null})
-    .then(function(){if(isTab('inventory'))renderInventory();})
-    .catch(function(e){alert('Could not restore: '+((e&&e.code)||(e&&e.message)||e)+'\n\nNothing was changed.');});
-}
 function renderInventory(){
   var root=document.getElementById('inventoryRoot'); if(!root)return;
-  var allItems=ings();
-  var archivedItems=allItems.filter(ingIsArchived);
-  var list=allItems.filter(function(i){return !ingIsArchived(i);});
+  var list=ings();
   var low=list.filter(function(i){return Number(i.stock)<=Number(i.reorder||0)&&Number(i.stock)>=0;});
   var neg=list.filter(function(i){return Number(i.stock)<0;});
   var ozItems=list.filter(function(i){var u=uNorm(i.unit);return !i.ledgerVersion&&(u==='oz'||u==='ounce');});
@@ -55,36 +10,34 @@ function renderInventory(){
   var uncat=list.filter(function(i){return !(i.category&&invCatsMap()[i.category]);});
   var unmapped=list.filter(function(i){var m=invItemAccounts(i);return !m.inventoryAccount||!m.costAccount;});
   var missingBrand=list.filter(function(i){return recipeUsesInventory(i.id)&&!activeSkusFor(i.id).length;});
-  var shown=catFilter==='__archived__'?archivedItems:(!catFilter?list:(catFilter==='__none__'?uncat:(catFilter==='__brand_missing__'?missingBrand:list.filter(function(i){return (i.category||'')===catFilter;}))));
+  var shown=!catFilter?list:(catFilter==='__none__'?uncat:(catFilter==='__brand_missing__'?missingBrand:list.filter(function(i){return (i.category||'')===catFilter;})));
   var unledgered=list.filter(function(i){return !i.ledgerVersion;});
-  var uncosted=list.filter(function(i){return Number(i.stock)>0&&!(Number(i.cost)>0);});
   var movements=Object.keys(inventoryMovementsMap||{}).map(function(k){return Object.assign({id:k},inventoryMovementsMap[k]);}).sort(function(x,y){return (Number(y.occurredAt)||0)-(Number(x.occurredAt)||0);}).slice(0,100);
   var movementRows=movements.map(function(m){var q=Number(m.qty)||0;return '<tr><td>'+new Date(Number(m.occurredAt)||0).toLocaleString('en-PH')+'</td><td>'+esc(String(m.type||'').replace(/_/g,' '))+'</td><td>'+esc(m.itemName||m.itemId||'')+'</td><td class="r" style="color:'+(q<0?'#b44336':'#267354')+';">'+(q>0?'+':'')+num(q)+' '+esc(m.unit||'')+'</td><td class="r">'+num(m.balanceBefore)+' → <b>'+num(m.balanceAfter)+'</b></td><td class="r">'+peso(m.unitCost)+'</td><td>'+esc(m.sourceId||m.sourceType||'')+'</td><td>'+esc(m.actorName||'server')+'</td></tr>';}).join('');
   var rows=shown.map(function(i){
-    var st=Number(i.stock)||0; var isLow=st<=Number(i.reorder||0)&&st>=0; var isNeg=st<0; var isUncosted=st>0&&!(Number(i.cost)>0);
+    var st=Number(i.stock)||0; var isLow=st<=Number(i.reorder||0)&&st>=0; var isNeg=st<0;
     var ty=ingType(i);
     var recipeLinked=recipeUsesInventory(i.id), brandCount=activeSkusFor(i.id).length;
     var linkBadge=recipeLinked?(brandCount?'<span class="inv-sku-link linked">✓ Recipe · '+brandCount+' approved brand'+(brandCount===1?'':'s')+'</span>':'<span class="inv-sku-link pending" title="This stock item is the SKU. Add an approved purchasing brand before receiving it.">✓ Recipe · SKU ready</span>'):'<span class="inv-sku-link neutral">Not in a recipe</span>';
     var tyBadge=inventoryTypeLabel(ty)+(ty==='consumable'&&i.serves&&i.serves!=='both'?' · '+esc(i.serves):'')+(ty==='consumable'&&i.size?' · '+esc(i.size):'');
     return '<tr>'
-      +'<td>'+esc(i.name)+(ingIsArchived(i)?' <span class="inv-sku-link neutral" title="Archived '+esc(new Date(Number(i.archivedAt)||0).toLocaleDateString('en-PH'))+(i.archivedBy?' by '+esc(i.archivedBy):'')+'">Archived</span>':'')+'</td>'
+      +'<td>'+esc(i.name)+'</td>'
       +'<td style="font-size:0.78rem;color:var(--tl);">'+tyBadge+'</td>'
       +'<td style="font-size:0.78rem;">'+(i.category?esc(invCatName(i.category)):'<span style="color:var(--tl);">—</span>')+(function(){var m=invItemAccounts(i);return m.inventoryAccount&&m.costAccount?' <span style="color:#267354;font-size:0.66rem;">'+m.inventoryAccount+' / '+m.costAccount+'</span>':' <span style="color:#b44336;font-size:0.66rem;">unmapped</span>'})()+'</td>'
       +'<td class="'+((isNeg||isLow)?'pz-low':'')+'">'+num(st)+' '+esc(i.unit||'')+(isNeg?' 🔴 NEGATIVE':(isLow?' ⚠️':''))+'</td>'
       +'<td>'+num(i.reorder||0)+'</td>'
-      +'<td>'+(isUncosted?'<button class="pz-btn warn" data-inv-adjust="'+i.id+'" title="Positive stock has no weighted-average cost. Restate the invoice-backed unit cost.">Set unit cost</button>':(Number(i.cost)>0?peso(i.cost):'—'))+'</td>'
+      +'<td>'+(i.cost?peso(i.cost):'—')+'</td>'
       +'<td>'+linkBadge+'</td>'
       +'<td class="inventory-actions-cell"><div class="inventory-actions">'
         +'<button class="pz-btn sec" style="'+(recipeLinked&&!brandCount?'border-color:#c98a2b;color:#8a5a00;':'border-color:#3a8a6a;color:#256b52;')+'" data-inv-skus="'+i.id+'">'+(recipeLinked&&!brandCount?'Add brand':'Brands ('+brandCount+')')+'</button>'
         +'<button class="pz-btn sec" data-inv-adjust="'+i.id+'">Adjust</button>'
         +'<button class="pz-btn sec" data-inv-edit="'+i.id+'">Edit</button>'
-        +(ingIsArchived(i)?'<button class="pz-btn sec" style="border-color:#3a8a6a;color:#256b52;" data-inv-restore="'+i.id+'" title="Return this item to the active list.">Restore</button>':'<button class="pz-btn sec" data-inv-archive="'+i.id+'" title="Retire this item. It keeps its movement history and stays in valuation and exports, but stops appearing in recipe, purchase, usage and costing pickers.">Archive</button>')
         +(i.ledgerVersion?'<span class="inventory-delete-slot inventory-lock" title="Ledger items cannot be deleted; preserve their audit trail.">🔒</span>':'<button class="pz-btn warn inventory-delete-slot" data-inv-del="'+i.id+'" aria-label="Delete '+esc(i.name)+'">✕</button>')
       +'</div></td></tr>';
   }).join('');
   root.innerHTML=
     '<div class="pz-h">📦 Stock Items</div>'
-    +'<p class="pz-sub">Each inventory row is the common SKU used by recipes. Inventory Asset and Cost accounts belong to the individual item; Category is only an organizational label.'+(low.length?' <b class="pz-low">'+low.length+' low.</b>':'')+(neg.length?' <b class="pz-low">'+neg.length+' negative.</b>':'')+(uncosted.length?' <b style="color:#b44336;">'+uncosted.length+' positive-stock item'+(uncosted.length===1?'':'s')+' without a unit cost.</b>':'')+(uncat.length?' <b style="color:#8a5a00;">'+uncat.length+' uncategorized.</b>':'')+(unmapped.length?' <b style="color:#b44336;">'+unmapped.length+' without accounting mapping.</b>':'')+(missingBrand.length?' <b style="color:#8a5a00;">'+missingBrand.length+' recipe item'+(missingBrand.length===1?'':'s')+' without an approved purchasing brand.</b>':'')+'</p>'
+    +'<p class="pz-sub">Each inventory row is the common SKU used by recipes. Inventory Asset and Cost accounts belong to the individual item; Category is only an organizational label.'+(low.length?' <b class="pz-low">'+low.length+' low.</b>':'')+(neg.length?' <b class="pz-low">'+neg.length+' negative.</b>':'')+(uncat.length?' <b style="color:#8a5a00;">'+uncat.length+' uncategorized.</b>':'')+(unmapped.length?' <b style="color:#b44336;">'+unmapped.length+' without accounting mapping.</b>':'')+(missingBrand.length?' <b style="color:#8a5a00;">'+missingBrand.length+' recipe item'+(missingBrand.length===1?'':'s')+' without an approved purchasing brand.</b>':'')+'</p>'
     +'<div class="pz-card" style="margin-bottom:1rem;border:1px solid #b8dfc4;background:#f3faf5;display:flex;gap:0.9rem;align-items:center;flex-wrap:wrap;">'
       +'<div style="flex:1;min-width:240px;"><div style="font-weight:700;color:#1c6b47;font-size:0.92rem;">📥 Receiving a delivery?</div><p style="font-size:0.79rem;color:var(--tm);margin:0.25rem 0 0;line-height:1.35;">Book stock in through the <b>Goods-Received Note</b> — capture supplier, invoice&nbsp;#, quantities and unit costs in one card. It updates the weighted-average cost and raises the payable automatically. <b>Adjust</b> and <b>Edit</b> below are only for count corrections, not for receiving purchases.</p></div>'
       +'<button class="pz-btn ok" id="invReceiveStock" style="white-space:nowrap;">📥 Receive stock →</button>'
@@ -100,7 +53,7 @@ function renderInventory(){
       +'<button class="pz-btn sec" id="invExpiry" style="border-color:#c98a2b;color:#8a5a00;">📅 Expiry / batches</button>'
       +'<button class="pz-btn sec" id="invStdCost" style="border-color:#5a6fb0;color:#3a4a86;">📊 Standard costing</button>'
       +(unledgered.length?'<button class="pz-btn ok" id="invLedgerInit" style="border-color:#267354;">🧾 Initialize 3A ledger ('+unledgered.length+')</button>':'<span style="font-size:0.78rem;color:#267354;align-self:center;">✓ 3A ledger active</span>')
-      +'<select class="pz-in" id="invCatFilter" style="width:auto;"><option value="">All categories</option>'+(archivedItems.length?'<option value="__archived__"'+(catFilter==='__archived__'?' selected':'')+'>&mdash; Archived ('+archivedItems.length+') &mdash;</option>':'')+'<option value="__brand_missing__"'+(catFilter==='__brand_missing__'?' selected':'')+'>Recipe items without approved brand ('+missingBrand.length+')</option><option value="__none__"'+(catFilter==='__none__'?' selected':'')+'>— Uncategorized ('+uncat.length+') —</option>'+catList.map(function(c){return '<option value="'+esc(c.id)+'"'+(catFilter===c.id?' selected':'')+'>'+esc(c.name)+(c.kind==='overhead'?' (overhead)':'')+'</option>';}).join('')+'</select>'
+      +'<select class="pz-in" id="invCatFilter" style="width:auto;"><option value="">All categories</option><option value="__brand_missing__"'+(catFilter==='__brand_missing__'?' selected':'')+'>Recipe items without approved brand ('+missingBrand.length+')</option><option value="__none__"'+(catFilter==='__none__'?' selected':'')+'>— Uncategorized ('+uncat.length+') —</option>'+catList.map(function(c){return '<option value="'+esc(c.id)+'"'+(catFilter===c.id?' selected':'')+'>'+esc(c.name)+(c.kind==='overhead'?' (overhead)':'')+'</option>';}).join('')+'</select>'
     +'</div>'
     +'<details class="pz-card" style="margin-bottom:1rem;border:1px solid #d8bea0;background:#fffdf9;">'
       +'<summary class="pz-btn sec" style="display:inline-flex;cursor:pointer;list-style:none;">➕ Set up stock item / opening balance</summary>'
@@ -148,8 +101,6 @@ function renderInventory(){
   root.querySelectorAll('[data-inv-adjust]').forEach(function(b){b.onclick=function(){adjustStock(b.getAttribute('data-inv-adjust'));};});
   root.querySelectorAll('[data-inv-edit]').forEach(function(b){b.onclick=function(){editIngredient(b.getAttribute('data-inv-edit'));};});
   root.querySelectorAll('[data-inv-del]').forEach(function(b){b.onclick=function(){delIngredient(b.getAttribute('data-inv-del'));};});
-  root.querySelectorAll('[data-inv-archive]').forEach(function(b){b.onclick=function(){archiveIngredient(b.getAttribute('data-inv-archive'));};});
-  root.querySelectorAll('[data-inv-restore]').forEach(function(b){b.onclick=function(){restoreIngredient(b.getAttribute('data-inv-restore'));};});
 }
 /* ══════════ INVENTORY ARCHITECTURE v2 — Phase 0 migration (DRY-RUN first) ══════════
    Promotes each inventory item to an Ingredient Master (KEEPS its ID — recipes untouched),
@@ -167,7 +118,7 @@ function openSkuBatchSetup(){
     // brands + last supplier seen per inventory item, from receipt history
     var brandsByItem={};
     Object.keys(receipts).forEach(function(rid){ var r=receipts[rid]||{}; var ing=r.ing; if(!ing)return; var b=(r.brand||'').trim(); if(!b)return; brandsByItem[ing]=brandsByItem[ing]||{}; if(!brandsByItem[ing][b])brandsByItem[ing][b]={supplier:(r.supplier||'').trim()}; else if(r.supplier)brandsByItem[ing][b].supplier=(r.supplier||'').trim(); });
-    var list=ings().filter(function(i){return !ingIsArchived(i);});
+    var list=ings();
     var plan=[]; var nSku=0,nBatch=0,nItems=0,nNeg=0;
     list.forEach(function(it){
       var done=!!it.skuMigrated;

@@ -147,7 +147,6 @@ async function applyInventoryMovement(db, raw, actor) {
   const qty = qty6(raw.qty);
   const requestedCost = qty6(raw.unitCost);
   const setCost = raw.setCost === true || type === "purchase" || type === "purchase_reversal" || type === "purchase_quantity_correction" || type === "revaluation";
-  if (type === "purchase" && qty > 0 && !(requestedCost > 0)) throw new HttpsError("invalid-argument", "A received purchase must have a unit cost greater than zero.");
   if (type === "revaluation") {
     if (qty !== 0) throw new HttpsError("invalid-argument", "A revaluation changes the unit cost only. Use a stock adjustment to move quantity.");
     if (!(requestedCost >= 0)) throw new HttpsError("invalid-argument", "Enter the corrected unit cost.");
@@ -179,13 +178,11 @@ async function applyInventoryMovement(db, raw, actor) {
   if (Number(raw.occurredAt) && Number(raw.occurredAt) > now + 2 * 86400000) throw new HttpsError("invalid-argument", "An inventory movement can\u2019t be dated in the future.");
   let duplicate = false, insufficient = false, insufficientValue = false, nothingToRevalue = false;
   const accountingRef = db.ref(`/inventoryAccounting/${itemId}`);
-  const existingAccounting = (await accountingRef.get()).val();
-  if (!existingAccounting && qty6(item.stock) > 0 && !(qty6(item.cost) > 0) && type !== "purchase") throw new HttpsError("failed-precondition", `${String(item.name || itemId)} has positive opening stock without a unit cost. Restate its invoice-backed opening cost before posting inventory usage or adjustments.`);
   // RTDB transactions may invoke the updater once with an empty local cache
   // before the server value arrives.  A purchase reversal must not seed that
   // pass from the legacy inventory projection because its stock can be stale.
   // Preload the authoritative ledger so the first pass uses the real balance.
-  const accountingSeed = existingAccounting || seedInventoryAccounting(itemId, item, now);
+  const accountingSeed = (await accountingRef.get()).val() || seedInventoryAccounting(itemId, item, now);
   const result = await accountingRef.transaction((current) => {
     const base = current || accountingSeed;
     const state = Object.assign({}, base, {applied: Object.assign({}, base.applied || {})});
@@ -281,8 +278,6 @@ exports.ensureInventoryLedger = onCall(
       return {skipped: true, initializedAt: marker};
     }
     const inventory = (await db.ref("/inventory").get()).val() || {};
-    const uncosted = Object.keys(inventory).filter((itemId) => qty6(inventory[itemId] && inventory[itemId].stock) > 0 && !(qty6(inventory[itemId] && inventory[itemId].cost) > 0));
-    if (uncosted.length) throw new HttpsError("failed-precondition", `Inventory ledger initialization stopped: ${uncosted.slice(0, 8).map((itemId) => String(inventory[itemId].name || itemId)).join(", ")} ${uncosted.length > 8 ? `and ${uncosted.length - 8} more ` : ""}have positive stock without a unit cost. Enter invoice-backed opening costs first.`);
     let initialized = 0;
     for (const itemId of Object.keys(inventory)) {
       const ref = db.ref(`/inventoryAccounting/${itemId}`);
@@ -301,21 +296,6 @@ exports.ensureInventoryLedger = onCall(
   },
 );
 
-function buildOrderInventoryPlan(costing, inv, ps, capturedAt) {
-  const invCategories=ps.invCategories||{},categorySnapshot={food:0,beverage:0,packaging:0,directLabor:0,unallocated:0},accountSnapshot={};
-  costing.lines.forEach((line)=>{const item=inv[line.ingredientId]||{},category=invCategories[item.category]||{},label=String(category.name||item.category||"").toLowerCase();let bucket="unallocated";if(/packag|cup|lid|straw|napkin|container/.test(label))bucket="packaging";else if(/beverage|drink|coffee|tea|milk|syrup|powder/.test(label))bucket="beverage";else if(/food|ingredient|bakery|kitchen|pastry|meal/.test(label))bucket="food";categorySnapshot[bucket]+=Number(line.totalCost)||0;const mapping=BooksBridge.itemAccounts(item),key=mapping.inventory&&mapping.cost?`${mapping.inventory}|${mapping.cost}`:"1290|5090";accountSnapshot[key]=Financial.money((accountSnapshot[key]||0)+Number(line.totalCost||0));});
-  Object.keys(categorySnapshot).forEach((key)=>{categorySnapshot[key]=Math.round(categorySnapshot[key]*100)/100;});
-  return{schemaVersion:1,capturedAt,capturedBy:"server",engineVersion:costing.engineVersion,usage:costing.usage,totalCost:costing.totalCost,categorySnapshot,accountSnapshot,cogsCovered:costing.cogsCovered,lines:costing.lines,warnings:costing.warnings};
-}
-
-async function calculateOrderInventoryPlan(db,order,capturedAt=Date.now()) {
-  const [recSnap,optSnap,invSnap,miSnap,psSnap,ogSnap,pkSnap]=await Promise.all([db.ref("/recipes").get(),db.ref("/optionRecipes").get(),db.ref("/inventory").get(),db.ref("/menuItems").get(),db.ref("/posSettings").get(),db.ref("/optionGroups").get(),db.ref("/packagingRules").get()]),optionRaw=optSnap.val()||{},optionRecipes={};
-  Object.keys(optionRaw).forEach((key)=>{const row=optionRaw[key]||{};optionRecipes[row.label||key]=row;});
-  const ps=psSnap.val()||{},inv=invSnap.val()||{},costing=Costing.costOrder({lineItems:order.lineItems||[],recipes:recSnap.val()||{},inventory:inv,menuItems:miSnap.val()||{},sharedBaseIngredients:ps.sharedBaseIngredients||{},optionCosts:ps.optionCosts||{},optionRecipes,optionGroups:ogSnap.val()||{},packagingRules:pkSnap.val()||{},packagingAssignments:ps.packagingAssignments||{}});
-  if(!costing.ok)throw new Error("Authoritative costing rejected order: "+costing.errors.slice(0,5).map(row=>row.code+": "+row.message).join(" | "));
-  return buildOrderInventoryPlan(costing,inv,ps,capturedAt);
-}
-
 exports.onOrderFinalize = onValueWritten(
   // Watch the complete order. A later POS retry can replace the order after
   // finalization and accidentally drop the confirmation metadata. Re-running
@@ -330,7 +310,7 @@ exports.onOrderFinalize = onValueWritten(
     if (o.inventoryDeducted && o.inventoryLedgerVersion === 1) return;
 
     try {
-      const [recSnap, optSnap, invSnap, miSnap, psSnap, ogSnap, pkSnap, planSnap] = await Promise.all([
+      const [recSnap, optSnap, invSnap, miSnap, psSnap, ogSnap, pkSnap] = await Promise.all([
         db.ref("/recipes").get(),
         db.ref("/optionRecipes").get(),
         db.ref("/inventory").get(),
@@ -338,7 +318,6 @@ exports.onOrderFinalize = onValueWritten(
         db.ref("/posSettings").get(),
         db.ref("/optionGroups").get(),
         db.ref("/packagingRules").get(),
-        db.ref(`/orderInventoryPlans/${orderId}`).get(),
       ]);
       const recipes = recSnap.val() || {};
       const inv = invSnap.val() || {};
@@ -353,24 +332,40 @@ exports.onOrderFinalize = onValueWritten(
       const optionCosts = ps.optionCosts || {};
       const optionGroups = ogSnap.val() || {};
 
-      const costing = planSnap.exists()?null:Costing.costOrder({
+      const costing = Costing.costOrder({
         lineItems: o.lineItems, recipes, inventory: inv, menuItems: mi,
-        sharedBaseIngredients: ps.sharedBaseIngredients || {}, optionCosts, optionRecipes: optMap, optionGroups,
+        optionCosts, optionRecipes: optMap, optionGroups,
         // Packaging follows how a drink is served, from one shared table. The server reads it
         // here so the cost it posts is the cost the till showed.
         packagingRules: pkSnap.val() || {},
         packagingAssignments: ps.packagingAssignments || {},
       });
-      if (costing && !costing.ok) {
+      if (!costing.ok) {
         const summary = costing.errors.slice(0, 5).map((x) => x.code + ": " + x.message).join(" | ");
         throw new Error("Authoritative costing rejected order " + orderId + ": " + summary);
       }
-      const capturedAt=Date.now(),candidate=costing?buildOrderInventoryPlan(costing,inv,ps,capturedAt):null;
-      const planResult=await db.ref(`/orderInventoryPlans/${orderId}`).transaction((current)=>current||candidate,undefined,false),plan=planResult.snapshot.val();
-      if(!plan||plan.capturedBy!=="server"||Number(plan.schemaVersion)!==1||!plan.usage)throw new Error("Immutable server inventory plan is missing for order "+orderId);
-      const usage = plan.usage;
+      const usage = costing.usage;
       const ids = Object.keys(usage);
-      const cogs = Number(plan.totalCost)||0,cogsCategorySnapshot=plan.categorySnapshot||{},cogsAccountSnapshot=plan.accountSnapshot||{};
+      const cogs = costing.totalCost;
+      const invCategories = ps.invCategories || {};
+      const cogsCategorySnapshot = {food: 0, beverage: 0, packaging: 0, directLabor: 0, unallocated: 0};
+      costing.lines.forEach((costLine) => {
+        const item = inv[costLine.ingredientId] || {};
+        const category = invCategories[item.category] || {};
+        const label = String(category.name || item.category || "").toLowerCase();
+        let bucket = "unallocated";
+        if (/packag|cup|lid|straw|napkin|container/.test(label)) bucket = "packaging";
+        else if (/beverage|drink|coffee|tea|milk|syrup|powder/.test(label)) bucket = "beverage";
+        else if (/food|ingredient|bakery|kitchen|pastry|meal/.test(label)) bucket = "food";
+        cogsCategorySnapshot[bucket] += Number(costLine.totalCost) || 0;
+      });
+      Object.keys(cogsCategorySnapshot).forEach((key) => {cogsCategorySnapshot[key] = Math.round(cogsCategorySnapshot[key] * 100) / 100;});
+      const cogsAccountSnapshot = {};
+      costing.lines.forEach((costLine) => {
+        const item = inv[costLine.ingredientId] || {}, mapping = BooksBridge.itemAccounts(item);
+        const key = mapping.inventory && mapping.cost ? `${mapping.inventory}|${mapping.cost}` : "1290|5090";
+        cogsAccountSnapshot[key] = Financial.money((cogsAccountSnapshot[key] || 0) + Number(costLine.totalCost || 0));
+      });
 
       await Promise.all(ids.map((ing) => applyInventoryMovement(db, {
         movementId: `sale_${orderId}_${ing}`,
@@ -380,7 +375,7 @@ exports.onOrderFinalize = onValueWritten(
         occurredAt: Number(o.completedAt || o.receivedAt || Date.now()),
         actorName: o.onDuty || o.staff || "Order finalization",
       }, {uid: "server", role: "server"})));
-      const finalizationMetadata = {
+      await oref.update({
         inventoryDeducted: true,
         inventoryUsage: usage,
         inventoryDeductedAt: Date.now(),
@@ -389,19 +384,15 @@ exports.onOrderFinalize = onValueWritten(
         cogsCategorySnapshotVersion: 1,
         cogsAccountSnapshot,
         cogsAccountSnapshotVersion: 1,
-        cogsCovered: plan.cogsCovered,
+        cogsCovered: costing.cogsCovered,
         cogsDetail: {
-          engineVersion: plan.engineVersion, computedAt: plan.capturedAt,
-          totalCost: cogs, lines: plan.lines||[], warnings: plan.warnings||[],
+          engineVersion: costing.engineVersion, computedAt: Date.now(),
+          totalCost: cogs, lines: costing.lines, warnings: costing.warnings,
         },
-        costingEngineVersion: plan.engineVersion,
+        costingEngineVersion: costing.engineVersion,
         deductedBy: "server",
         inventoryLedgerVersion: 1,
-      };
-      // Archiving can win the race while costing is running. A transaction will
-      // never recreate a deleted live order; if it has already moved, attach the
-      // exact same confirmation metadata to the archived source record instead.
-      await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, orderId, finalizationMetadata);
+      });
       logger.info("Server deducted order", {orderId, items: ids.length, cogs});
     } catch (err) {
       logger.error("onOrderFinalize failed", {orderId, error: String(err)});
@@ -433,7 +424,7 @@ exports.onOrderInventoryReversal = onValueWritten(
       note: String(order.inventoryReversalReason || order.refundReason || order.voidReason || "Inventory returned").slice(0, 500),
       reversalOf: `sale_${orderId}_${itemId}`, actorName: order.onDuty || order.staff || "Order reversal",
     }, {uid: "server", role: "server"})));
-    await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, orderId, {
+    await orderRef.update({
       inventoryReversed: true, inventoryReversedAt: Date.now(), inventoryReversalRequested: null,
       inventoryReversalLedgerVersion: 1,
     });

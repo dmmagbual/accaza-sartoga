@@ -1,11 +1,11 @@
-import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
-import{createSubscriptionHub}from"./realtime-hub.mjs?v=486";
-import{readSalesPeriod,periodKey}from'./sales-period-data.mjs?v=486';
+import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,runTransaction,query,orderByChild,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
+import{createSubscriptionHub}from"./realtime-hub.mjs?v=447";
+import{readSalesPeriod,periodKey}from'./sales-period-data.mjs?v=447';
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome}from"./admin-orders.mjs";
-import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=491";
+import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=454";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -15,10 +15,9 @@ import{escHtml,safeImageSrc}from"./shared-ui.mjs";
 import{installWorkspaceShell}from"./workspace-shell.mjs";
 import{sortArchivedOrders,summarizeArchivedOrders}from"./archive-order-sort.mjs";
 
-const {getPaymentProof:getPaymentProofCall,getCurrentCashBalances:getCurrentCashBalancesCall,ensureActiveOrders:ensureActiveOrdersCall,updateOrderStatus:updateOrderStatusCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,reconcilePurchasePayable:reconcilePurchasePayableCall,managePurchaseCorrection:managePurchaseCorrectionCall,manageFixedAsset:manageFixedAssetCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,manageCashAccount:manageCashAccountCall,manageAccountingPeriod:manageAccountingPeriodCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,reopenDiscrepancy:reopenDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,setUndepositedOpeningBalance:setUndepositedOpeningBalanceCall,repairPettyVoucherFinancial:repairPettyVoucherFinancialCall,retireRevolvingFund:retireRevolvingFundCall,repairClosedShiftTurnover:repairClosedShiftTurnoverCall,repairReversedPayoutDeposit:repairReversedPayoutDepositCall,reconcileUndepositedCustody:reconcileUndepositedCustodyCall,runFinancialClose:runFinancialCloseCall,archiveActivityLog:archiveActivityLogCall}=callables;
+const {getPaymentProof:getPaymentProofCall,ensureActiveOrders:ensureActiveOrdersCall,updateOrderStatus:updateOrderStatusCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,reconcilePurchasePayable:reconcilePurchasePayableCall,managePurchaseCorrection:managePurchaseCorrectionCall,manageFixedAsset:manageFixedAssetCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,manageCashAccount:manageCashAccountCall,manageAccountingPeriod:manageAccountingPeriodCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,reopenDiscrepancy:reopenDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,setUndepositedOpeningBalance:setUndepositedOpeningBalanceCall,repairPettyVoucherFinancial:repairPettyVoucherFinancialCall,retireRevolvingFund:retireRevolvingFundCall,repairClosedShiftTurnover:repairClosedShiftTurnoverCall,repairReversedPayoutDeposit:repairReversedPayoutDepositCall,reconcileUndepositedCustody:reconcileUndepositedCustodyCall,runFinancialClose:runFinancialCloseCall,archiveActivityLog:archiveActivityLogCall}=callables;
 window.__accazaAuth=auth;
-const readHistoricalOrders=function(payload){return callables.readHistoricalOrders(payload).then(function(result){return result.data||{};});};
-const subscriptionHub=createSubscriptionHub(db,{ref,onValue,query,orderByChild,limitToLast,startAt,endAt,endBefore,get,readHistoricalOrders});
+const subscriptionHub=createSubscriptionHub(db,{ref,onValue,query,orderByChild,limitToLast,startAt,endAt,endBefore,get});
 window.__accazaLiveStats=function(){return subscriptionHub.stats();};
 const renderHistoryPager=createHistoryPager(subscriptionHub);
 window.__fbForgot=function(){var current=(document.getElementById('adminUser').value||'').trim();if(!window.AccazaFormDialog){alert('Form service unavailable. Refresh and try again.');return;}window.AccazaFormDialog.run({title:'Reset portal password',subtitle:'Firebase will send the reset link to this account.',submitLabel:'Send reset link',busyLabel:'Sendingâ€¦',fields:[{name:'email',label:'Firebase account email',type:'email',required:true,value:current,validate:function(v){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)?'':'Enter a valid email address.';}}]},function(v){return sendPasswordResetEmail(auth,v.email).then(function(){return v;});}).then(function(v){alert('Password reset link sent to '+v.email+'. Check inbox and spam.');}).catch(function(e){if(e&&e.code!=='cancelled')alert('Could not send reset: '+((e&&e.code)||e));});};
@@ -62,12 +61,11 @@ window.__setupPush=setupPush;
 
 const feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups');
 window.__accaza={
-  db, ref, set, get, update, remove, onValue, runTransaction, query, orderByChild, equalTo, hub:subscriptionHub, readHistoricalOrders,
+  db, ref, set, get, update, remove, onValue, runTransaction, hub:subscriptionHub,
   subscribe:function(path,callback,opts){return subscriptionHub.subscribe(path,callback,opts);},
   postInventoryMovements:function(movements){return postInventoryMovementsCall({movements:movements});},
   ensureInventoryLedger:function(){return ensureInventoryLedgerCall({});},
   validateRecipeDefinition:function(recipe){return validateRecipeDefinitionCall({recipe:recipe});},
-  saveSharedChoiceIngredients:function(optionCosts){return callables.saveSharedChoiceIngredients({optionCosts:optionCosts});},
   postFinancialCommand:function(command){return postFinancialCommandCall(command);},
   reconcilePurchasePayable:function(command){return reconcilePurchasePayableCall(command);},
   managePurchaseCorrection:function(command){return managePurchaseCorrectionCall(command);},
@@ -92,7 +90,6 @@ window.__accaza={
   repairPettyVoucherFinancial:function(command){return repairPettyVoucherFinancialCall(command);},
   retireRevolvingFund:function(command){return retireRevolvingFundCall(command);},
   getUndepositedControlSnapshot:function(){return callables.getUndepositedControlSnapshot({});},
-  getCurrentCashBalances:function(){return getCurrentCashBalancesCall({});},
   repairClosedShiftTurnover:function(command){return repairClosedShiftTurnoverCall(command);},
   repairReversedPayoutDeposit:function(command){return repairReversedPayoutDepositCall(command);},
   reconcileUndepositedCustody:function(command){return reconcileUndepositedCustodyCall(command);},
@@ -111,7 +108,6 @@ window.__accaza={
   recordClientTelemetry:function(command){return callables.recordClientTelemetry(command);},
   getOperationalExceptions:function(){return callables.getOperationalExceptions({});},
   repairOrderInventoryMarker:function(orderId){return callables.repairOrderInventoryMarker({orderId:orderId});},
-  runDatabaseBackupNow:function(){return callables.runDatabaseBackupNow({});},
   get menuItemsMap(){return menuItemsMap;},
   get optionGroupsMap(){return optionGroupsMap;},
   get categoriesMap(){return categoriesMap;},
@@ -172,7 +168,7 @@ let custItem=null,custSize=null,custSel={},custQty=1;
 let menuFilter='coffee',orderFilter=null;
 
 const overviewInsights=createOverviewInsights({esc:escHtml,historyStatus:function(path){return subscriptionHub.historyStatus(path);},loadOlder:function(path){return subscriptionHub.loadOlder(path);},readRanking:readOverviewSalesRange,readRollingSales:readOverviewSalesRange,refreshHistory:function(){return ensureOverviewFullHistory(true);}});
-async function readOverviewSalesRange(r){var p={startAt:r.start,endAt:r.end},maps=await Promise.all([readSalesPeriod(db,{ref,get,query,orderByChild,startAt,endAt},'orders',p),subscriptionHub.readHistoricalPeriod(p)]);return mergeOverviewOrders([],Object.entries(maps[0]).map(function(x){return Object.assign({_overviewKey:x[0]},x[1]);}),Object.entries(maps[1]).map(function(x){return Object.assign({_overviewKey:x[0]},x[1]);})).filter(function(o){return window.AccazaSales.qualifies(o);});}
+async function readOverviewSalesRange(r){var p={startAt:r.start,endAt:r.end},maps=await Promise.all(['orders','archivedOrders'].map(function(path){return readSalesPeriod(db,{ref,get,query,orderByChild,startAt,endAt},path,p);}));return mergeOverviewOrders([],Object.entries(maps[0]).map(function(x){return Object.assign({_overviewKey:x[0]},x[1]);}),Object.entries(maps[1]).map(function(x){return Object.assign({_overviewKey:x[0]},x[1]);})).filter(function(o){return window.AccazaSales.qualifies(o);});}
 
 const appCustomerSession=createAppCustomerSession({setupPush:setupPush,refreshNotifyPrompt:refreshNotifyPrompt});
 const customerOrderTracker=createCustomerOrderTracker({getOrders:function(){return adminOrdersMap;},escHtml:escHtml});
@@ -974,7 +970,7 @@ function renderPublicReviews(){
 
 const overviewHistoryLoader=createOverviewHistoryLoader({
   key:function(){return periodKey(window.AccazaAdminPeriods.get('sales'));},
-  read:async function(key){var parts=key.split(':'),p={startAt:Number(parts[0]),endAt:Number(parts[1])},res=await Promise.all([readSalesPeriod(db,{ref,get,query,orderByChild,startAt,endAt},'orders',p),subscriptionHub.readHistoricalPeriod(p)]);return{orders:res[0],archived:res[1]};},
+  read:async function(key){var parts=key.split(':'),p={startAt:Number(parts[0]),endAt:Number(parts[1])},res=await Promise.all(['orders','archivedOrders'].map(function(path){return readSalesPeriod(db,{ref,get,query,orderByChild,startAt,endAt},path,p);}));return{orders:res[0],archived:res[1]};},
   onData:function(){var dt=document.getElementById('tab-dashboard');if(adminLoggedIn&&dt&&dt.style.display!=='none')renderDashboard();},
   onError:function(e){console.error('Overview full history load failed; retry scheduled',e);}
 });

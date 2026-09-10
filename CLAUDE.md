@@ -15,6 +15,8 @@ After every completed and verified Accaza code or configuration change, automati
 
 For every investigation or correction, work top to bottom and resolve the whole issue in one pass. Trace the authoritative source data through operational records, inventory/cash custody, subledgers, Finance Books/General Ledger, reports, corrections, reversals, audit history, migration/backfill, permissions, and idempotency before presenting a solution. Do not spend tokens on piecemeal guesses, repeated partial patches, or status checks the user did not request.
 
+When Danilo asks for “code” for completed work that must reach GitHub, always provide one copy-ready PowerShell block covering applicable verification, task-only staging, commit, safe remote synchronization, push, and automatic pull-request creation when no open PR exists. Include refresh or deployment instructions when applicable. Do not require a separate request for the PR; do not merge or monitor it unless explicitly asked.
+
 ## Permanent decision safeguards
 
 - Act as a senior financial-systems architect and full-stack/database engineer for every Accaza task, applying the rigor expected from decades of building integrated accounting platforms such as Xero, MYOB, and QuickBooks. Treat this as a permanent quality standard, not a claim of personal biography.

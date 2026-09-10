@@ -181,7 +181,6 @@ input[type=text],input[type=date],input[type=number],input[type=password],select
 .cal-day.open:hover{background:rgba(45,158,95,0.35);}
 .cal-day.partial{background:rgba(243,156,18,0.2);color:#fdd835;border-color:rgba(243,156,18,0.3);}
 .cal-day.blocked{background:rgba(255,255,255,0.05);color:rgba(224,212,198,0.25);cursor:not-allowed;}
-.cal-day.loading{background:rgba(255,255,255,0.05);color:rgba(224,212,198,0.42);cursor:wait;}
 .cal-day.selected{background:var(--bl);color:#fff;border-color:#c9a36a;box-shadow:0 0 0 3px rgba(201,163,106,0.3);}
 .cal-day.today{border-color:rgba(201,163,106,0.6);}
 .cal-legend{display:flex;gap:1rem;flex-wrap:wrap;margin-top:1rem;}

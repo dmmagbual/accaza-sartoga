@@ -7,6 +7,12 @@
 **Firebase project / region:** `accaza-sartoga` / `asia-southeast1`
 **Release manifest:** 7M, candidate pending production evidence
 
+> **Superseded for current state.** Read `CLAUDE_HANDOFF_2026-09-03.md` first — it
+> carries the current branch, build and deployment state. The financial history and
+> accounting decisions below remain useful; the branch names, build numbers and
+> balance snapshots in this document are not current.
+> *(Reconstructed 3 Sep 2026 — the original 6-line notice was lost to a `git reset --hard`; reword freely.)*
+
 ## Start Here
 
 Read `AGENTS.md` first. It is mandatory: preserve unrelated work, use `apply_patch` for edits, run the three required checks, increment visible builds/cache, stage only task files, and push only when Danilo says **push**.

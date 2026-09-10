@@ -7,8 +7,6 @@ exclude:
   - package-lock.json
   - firebase.json
   - database.rules.json
-  - firestore.rules
-  - firestore.indexes.json
   - storage.rules
   - release-manifest.json
   - .env.example

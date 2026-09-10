@@ -4,13 +4,14 @@ export function periodKey(p){return String(p.startAt)+':'+String(p.endAt);}
 export function salesTargets(db,ops,path,p){
   if(!Number.isFinite(p.startAt)||!Number.isFinite(p.endAt)||p.startAt>p.endAt)throw new Error('Invalid sales period');
   const base=ops.ref(db,path),targets=[];
-  // Production orders use numeric event timestamps. Query the three possible
-  // sales-authority fields and merge them client-side; archivedAt is a storage
-  // lifecycle date, not a sale date. Do not restore string/null compatibility
-  // queries here: they re-download overlapping archived orders on every report.
-  for(const field of ['completedAt','receivedAt','timestamp']){
+  for(const field of ['completedAt','receivedAt','timestamp','archivedAt']){
     targets.push(ops.query(base,ops.orderByChild(field),ops.startAt(p.startAt),ops.endAt(p.endAt)));
+    if(field!=='timestamp')targets.push(ops.query(base,ops.orderByChild(field),ops.startAt(String(p.startAt)),ops.endAt(String(p.endAt))));
   }
+  // Older records can have a formatted date instead of an epoch timestamp.
+  // Keep these legacy-only buckets; silently dropping them would change totals.
+  targets.push(ops.query(base,ops.orderByChild('timestamp'),ops.endAt(0)));
+  targets.push(ops.query(base,ops.orderByChild('timestamp'),ops.startAt('')));
   return targets;
 }
 export function mergePeriodMaps(maps,p){

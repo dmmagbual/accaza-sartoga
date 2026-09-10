@@ -6,7 +6,7 @@ var inventoryBooksLoaded=false;
 var financialCloseState={},financialCloseLoading={};
 var svFrom=null,svTo=null,svExpand=null;
 var azRange='month', azFrom=null, azTo=null, pnlMonth=null, analyticsHistoryLoading=false;
-var poChannel='grabfood', poFrom=null, poTo=null, poAuditSearch='';
+var poChannel='grabfood', poFrom=null, poTo=null;
 var PO_CHANNELS=[{k:'grabfood',lbl:'GrabFood'},{k:'foodpanda',lbl:'FoodPanda'}];
 var DEFAULT_VAR_ACCOUNTS=[
   {id:'va_ads',name:'Platform ads / marketing',type:'expense',order:1},

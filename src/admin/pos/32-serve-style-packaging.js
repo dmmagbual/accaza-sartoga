@@ -10,7 +10,10 @@ var packStyleSnapshotTaken=false, packStylePlan=null, packStyleBusy=false, packS
    edits while an item's editor panel is open (presence of the key = panel open). */
 var packItemDrafts={};
 function isItemStyleId(id){return /^item_/.test(String(id||''));}
-function itemStyleId(key){return 'item_'+String(key||'');}
+/* Menu item keys are already "item_<id>" throughout this catalog, so prefixing again would
+   double it ("item_item_..."). Use the item's own key as its private style id when it already
+   carries that prefix; only synthesize one for the rare key that doesn't. */
+function itemStyleId(key){key=String(key||'');return isItemStyleId(key)?key:('item_'+key);}
 
 function packStyleEngine(){
   if(!window.AccazaServeStylePlan)throw new Error('The packaging planner did not load. Refresh the portal and try again.');
@@ -391,7 +394,12 @@ function packItemBindEditors(){
       var it=(A().menuItemsMap||{})[key]; if(!it){alert('Item not found. Nothing was saved.');return;}
       var probs=packStyleValidate({tmp:{name:it.name,rows:draft.rows}});
       if(probs.length){alert('Fix these first:\n\n• '+probs.join('\n• ')+'\n\nNothing was saved.');return;}
-      var custId=itemStyleId(key);
+      /* Re-editing an already-customized item writes back to the SAME private record it already
+         has, whatever id that record carries — never a freshly recomputed id, which would orphan
+         the existing one. Only a brand-new customization gets a freshly synthesized id. */
+      var paExisting=(window.__posSettings&&window.__posSettings.packagingAssignments)||{};
+      var existingStyle=paExisting[catId]&&paExisting[catId].items&&paExisting[catId].items[key];
+      var custId=(existingStyle&&isItemStyleId(existingStyle))?existingStyle:itemStyleId(key);
       var clean={name:it.name+' (custom)',description:'Packaging customized for '+it.name+' only — does not affect any shared serve style.',
         rows:draft.rows.map(function(r){var inv=inventoryMap[r.ing]||{};return {ing:r.ing,unit:String(inv.unit||''),stockUnit:String(inv.unit||''),
           qtyS:Number(r.qtyS)||0,qtyM:Number(r.qtyM)||0,qtyL:Number(r.qtyL)||0};})};
@@ -418,7 +426,11 @@ function packItemBindEditors(){
       var p=btn.getAttribute('data-packrevert').split('|'),catId=p[0],key=p[1];
       var it=(A().menuItemsMap||{})[key];
       if(!confirm('Remove the custom packaging for "'+((it&&it.name)||key)+'" and go back to the shared serve style?\n\nThis only affects future orders; nothing already sold changes.'))return;
-      var custId=itemStyleId(key),updates={};
+      /* Delete whichever private record the assignment actually points at right now - never a
+         freshly recomputed id, which could miss an older record and leave it orphaned. */
+      var paRevert=(window.__posSettings&&window.__posSettings.packagingAssignments)||{};
+      var assignedNow=paRevert[catId]&&paRevert[catId].items&&paRevert[catId].items[key];
+      var custId=(assignedNow&&isItemStyleId(assignedNow))?assignedNow:itemStyleId(key),updates={};
       updates['posSettings/packagingAssignments/'+catId+'/items/'+key]=null;
       updates['packagingRules/'+custId]=null;
       var a=A();
@@ -443,9 +455,13 @@ function packagingAssignmentHtml(){
     if(!groupIds.length)controls='<label style="min-width:240px;"><span class="pz-lbl">Default packaging</span><select class="pz-in" data-packdefault="'+esc(cat.id)+'">'+packStyleOptions(assignment.defaultStyle||'')+'</select></label>';
     else controls+='<label style="min-width:190px;flex:1 1 210px;"><span class="pz-lbl">Fallback for items without Temperature</span><select class="pz-in" data-packdefault="'+esc(cat.id)+'">'+packStyleOptions(assignment.defaultStyle||'')+'</select></label>';
     var itemControls=cat.id==='pastry'?'<div style="margin-top:0.55rem;">'+items.map(function(it){
-      var assignedItems=assignment.items||{},custId=itemStyleId(it.key),isCustom=assignedItems[it.key]===custId&&!!packagingRulesMap[custId];
-      var effectiveStyle=assignedItems[it.key]||assignment.defaultStyle||'';
-      var cost=packItemCost(packItemActiveRows(isCustom?custId:effectiveStyle));
+      /* isCustom is decided from what the assignment actually points at - not a freshly
+         recomputed id - so an item customized before an itemStyleId scheme change (or under any
+         future one) is still correctly recognized as customized instead of silently reading as
+         "uses the shared style" while a private record still exists for it. */
+      var assignedItems=assignment.items||{},assignedStyle=assignedItems[it.key]||'',isCustom=isItemStyleId(assignedStyle)&&!!packagingRulesMap[assignedStyle];
+      var effectiveStyle=assignedStyle||assignment.defaultStyle||'';
+      var cost=packItemCost(packItemActiveRows(effectiveStyle));
       var open=packItemDrafts.hasOwnProperty(it.key);
       return '<div style="border-top:1px solid var(--cd);padding:0.5rem 0;">'
         +'<div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">'
@@ -456,7 +472,7 @@ function packagingAssignmentHtml(){
         +'<button class="pz-btn sec" data-packcustomize="'+esc(cat.id)+'|'+esc(it.key)+'" style="padding:0.2rem 0.6rem;">'+(open?'▾ Close':(isCustom?'✎ Edit':'✎ Customize for this item'))+'</button>'
         +(isCustom?'<button class="pz-btn warn" data-packrevert="'+esc(cat.id)+'|'+esc(it.key)+'" style="padding:0.2rem 0.6rem;">Revert to shared style</button>':'')
         +'</div>'
-        +(open?packItemEditorHtml(it,cat.id,isCustom?custId:effectiveStyle):'')
+        +(open?packItemEditorHtml(it,cat.id,effectiveStyle):'')
         +'</div>';
     }).join('')+'</div>':'';
     return '<div style="border-top:1px solid var(--cd);padding:0.65rem 0;"><div style="font-weight:600;">'+esc((cat.icon||'')+' '+cat.label)+'</div><div style="font-size:0.72rem;color:var(--tl);margin:0.15rem 0 0.45rem;">'+(cat.id==='pastry'?'Shared by default across all '+items.length+' pastries — edit the packaging-set editor above to change everyone, or Customize a single item below.':'Applies to '+items.length+' item'+(items.length===1?'':'s')+(items.length?' — '+esc(items.map(function(i){return i.name;}).join(', ')) : ''))+'</div><div style="display:flex;gap:0.55rem;flex-wrap:wrap;">'+controls+'</div>'+itemControls+'</div>';

@@ -40,14 +40,6 @@ function accountForPayment(payment,accounts){
   if(selected&&accounts&&accounts[selected])return selected;
   return accountForMethod(payment.paymentMethod||payment.method,accounts);
 }
-
-function unmappedOrderPayments(order, accounts) {
-  order = order || {};
-  const status = order.status === "Archived" ? order.prevStatus : order.status;
-  const channel = safe(order.channel).toLowerCase();
-  if (order.voided || !["Completed", "Received"].includes(status) || order.paymentStatus === "pending" || ["grabfood", "foodpanda"].includes(channel)) return [];
-  return paymentRows(order).filter((payment) => payment.method.toLowerCase() !== "cash" && !accountForPayment(payment, accounts || {}));
-}
 function orderPosting(order, accounts) {
   order = order || {}; const id = safe(order.id); if (!id) throw new Error("Order ID is required.");
   const channel = safe(order.channel || "instore").toLowerCase();
@@ -196,4 +188,4 @@ function platformPayoutPosting(payout, definitions) {
   return movement("platform_payout_settlement", "platformPayout", safe(payout.id), lines, {occurredAt:Number(payout.accountingOccurredAt||payout.settledAt||Date.now()),approvalId:safe(payout.approvalId),approvedBy:safe(payout.approvedBy),reconstructedFromPayoutRecord:payout.reconstructedFromPayoutRecord===true});
 }
 
-module.exports = {BALANCE_EPSILON, money, safe, line, totals, assertBalanced, accountForMethod,accountForPayment,unmappedOrderPayments, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting};
+module.exports = {BALANCE_EPSILON, money, safe, line, totals, assertBalanced, accountForMethod,accountForPayment, orderPosting, reversalPosting, movement, reverseMovement, netMovementCorrection, postingDifference, orderNetSales, sourceNetSales, platformDiscountReclassification, platformPayoutPosting};

@@ -3,7 +3,7 @@ function usageMovements(usage,sign,type,sourceId,note,usageAccount,usageKind){re
 function usageEntries(){return Object.keys(usageMap).map(function(k){return Object.assign({id:k},usageMap[k]);}).sort(function(a,b){return (b.ts||0)-(a.ts||0);});}
 function usageThisMonth(){var now=new Date(),y=now.getFullYear(),m=now.getMonth();return usageEntries().filter(function(u){var d=new Date(u.ts);return d.getFullYear()===y&&d.getMonth()===m;});}
 function ingRowsHtml(tag){
-  var rows=usageRows[tag]||[]; var allIng=ingsActive();
+  var rows=usageRows[tag]||[]; var allIng=ings();
   var body=rows.map(function(r,ix){
     var sel='<select class="pz-in" data-rg="'+tag+'" data-rgi="'+ix+'" data-rgf="ing" style="min-width:150px;"><option value="">— ingredient —</option>'+allIng.map(function(i){return '<option value="'+i.id+'"'+(i.id===r.ing?' selected':'')+'>'+esc(i.name)+' ('+esc(i.unit||'')+')</option>';}).join('')+'</select>';
     return '<tr><td>'+sel+'</td><td><input class="pz-in" type="number" step="any" style="width:90px;" data-rg="'+tag+'" data-rgi="'+ix+'" data-rgf="qty" value="'+(r.qty!=null?r.qty:'')+'" placeholder="qty"/></td><td style="color:var(--tl);">'+esc(r.ing?ingUnit(r.ing):'')+'</td><td><button class="pz-btn warn" style="padding:0.2rem 0.45rem;" data-rgdel="'+tag+'" data-rgdeli="'+ix+'">✕</button></td></tr>';

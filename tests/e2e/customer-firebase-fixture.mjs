@@ -13,7 +13,6 @@ const modules={
       'categories':{coffee:{id:'coffee',label:'Coffee Based',icon:'☕',order:0}},
       'optionGroups':{},
       'menuItems':{latte:{cat:'coffee',name:'Cafe Latte',desc:'Smooth espresso and milk.',priceS:175,priceM:185,priceL:195,optionsSet:true}},
-      'publicCatalogVersion':{schemaVersion:1,version:1},
       'availability':{'Cafe Latte':true},
       'payment':{gcashNum:'09123456789',gcashName:'Accaza',gcashEnabled:true,bdoEnabled:true,ubEnabled:false},
       'calBlocks':{},
@@ -24,7 +23,7 @@ const modules={
     const snapshot=value=>({val:()=>value,exists:()=>value!==undefined&&value!==null,forEach:callback=>{Object.keys(value||{}).forEach(key=>callback(Object.assign({key},snapshot(value[key]))));}});
     export function getDatabase(){return {};}
     export function ref(_db,path=''){return {path};}
-    export function query(target){return target;} export function orderByChild(field){return {field};} export function orderByKey(){return {};} export function startAt(value){return {start:value};} export function endAt(value){return {end:value};} export function limitToLast(limit){return {limit};}
+    export function query(target){return target;} export function orderByChild(field){return {field};} export function limitToLast(limit){return {limit};}
     export async function get(target){return snapshot(values[target.path]);}
     export async function set(){} export function push(){return {key:'test-key'};} export async function update(){} export async function remove(){}
     export function onValue(target,success){queueMicrotask(()=>success(snapshot(values[target.path])));return ()=>{};}

@@ -8,7 +8,7 @@
 <script src="assets/js/shared/cogs-duplication-audit.js"></script>
 <script src="assets/js/shared/serve-style-plan.js"></script>
 <script src="assets/js/shared/option-library-plan.js"></script>
-<script type="module" src="assets/js/admin/core.mjs?v=491"></script>
+<script type="module" src="assets/js/admin/core.mjs?v=454"></script>
 <script type="module" src="assets/js/admin/overview-command.mjs"></script>
 <script type="module" src="assets/js/admin/staff-push.mjs"></script>
 <!-- Lightbox -->
@@ -62,18 +62,17 @@
 <!-- ═══════════════════ ACCAZA REGISTER OPS · shift / Z-report / void / refund (isolated) ═══════════════════ -->
 <!-- Release 2D: register module is loaded on demand. -->
 <script src="assets/js/shared/admin-report-periods.js"></script>
-<script src="assets/js/shared/report-pagination.js"></script>
 <script>
 /* Use plain text in the staff shell so every supported browser renders it
    consistently; operational controls do not depend on emoji fonts. */
 (function(){
   var labels={navAdminPanelLink:'Admin panel',tabBtnPos:'Open Point of Sale'};
   Object.keys(labels).forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=labels[id];});
-  var header=document.querySelector('.admin-header');if(header){var note=header.querySelector('p');if(note)note.textContent='Firebase cloud database';var books=header.querySelector('a[href="books.html"]');if(books)books.textContent='Finance Books';var logout=header.querySelector('.admin-logout');if(logout)logout.textContent='Log out';}
+  var header=document.querySelector('.admin-header');if(header){var note=header.querySelector('p');if(note)note.textContent='Firebase Realtime Database';var books=header.querySelector('a[href="books.html"]');if(books)books.textContent='Finance Books';var logout=header.querySelector('.admin-logout');if(logout)logout.textContent='Log out';}
   var pos=document.querySelector('.admin-group.pos-primary');if(pos)pos.textContent='POS';
 })();
 </script>
-<script src="assets/js/admin/module-loader.js?v=491"></script>
+<script src="assets/js/admin/module-loader.js?v=454"></script>
 <script src="assets/js/admin/portal-boot.js"></script>
 <script src="assets/js/pwa-register.js"></script>
 <!-- Release 2D: staff-access module is loaded on demand. -->

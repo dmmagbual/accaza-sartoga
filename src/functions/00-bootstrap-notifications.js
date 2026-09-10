@@ -11,7 +11,6 @@ const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {initializeApp} = require("firebase-admin/app");
 const {getAuth: getAdminAuth} = require("firebase-admin/auth");
 const {getDatabase} = require("firebase-admin/database");
-const {getFirestore, FieldPath} = require("firebase-admin/firestore");
 const {getMessaging} = require("firebase-admin/messaging");
 const {getStorage} = require("firebase-admin/storage");
 const logger = require("firebase-functions/logger");
@@ -36,9 +35,6 @@ const ReleaseCertification = require("./lib/release-certification");
 const ProductionValidation = require("./lib/production-validation");
 const AlertEscalation = require("./lib/alert-escalation");
 const AssuranceControls = require("./lib/assurance-controls");
-const OrderRecords = require("./lib/order-records");
-const SharedChoiceValidation = require("./lib/shared-choice-validation");
-const HistoricalArchive = require("./lib/historical-archive");
 
 initializeApp();
 
@@ -86,7 +82,7 @@ exports.notifyOnComplete = onValueUpdated(
         data: {title: title, body: body, orderId: String(orderId), link: "/"},
         webpush: {headers: {Urgency: "high"}, fcmOptions: {link: "/"}},
       });
-      await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, orderId, {pushNotified: true, pushNotifiedAt: Date.now()});
+      await db.ref("/orders/" + orderId).update({pushNotified: true, pushNotifiedAt: Date.now()});
       logger.info("Push sent", {orderId, customerKey});
     } catch (err) {
       const code = err && err.code;

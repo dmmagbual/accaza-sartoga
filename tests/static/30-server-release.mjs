@@ -33,8 +33,6 @@ if(!rulesRaw.includes('"publicOrderStatus": { ".read": true, ".write": false }')
 if(!functionsSource.includes('[`activeOrders/${orderId}`]: activeOrderProjection(order)'))fail('online orders do not enter the live projection atomically');
 if(!functionsSource.includes('Costing.costOrder({'))fail('Release 3B server-authoritative costing engine is not used at finalization');
 if(!functionsSource.includes('exports.validateRecipeDefinition = onCall'))fail('Release 3B server recipe validator missing');
-if(!functionsSource.includes('exports.saveSharedChoiceIngredients = onCall')||!adminSource.includes('saveSharedChoiceIngredients:function(optionCosts)'))fail('Shared choice ingredients are not routed through the authenticated server save');
-if(!functionsSource.includes('SharedChoiceValidation.validate(optionCosts,inventory,groups)'))fail('Shared choice serving-style scopes are not validated server-side');
 if(!functionsSource.includes('cogsDetail: {'))fail('Release 3B traceable COGS snapshot missing');
 if(!adminSource.includes("'validateRecipeDefinition'")||!adminSource.includes('validateRecipeDefinition:validateRecipeDefinitionCall'))fail('admin recipe save is not connected to the server validator');
 if(!adminSource.includes('Costing().normalizeRecipe(raw,inventoryMap)'))fail('admin recipe save does not run shared normalization');
@@ -88,8 +86,6 @@ if(!visibleAdminBuild||!adminHtml.includes(`assets/js/admin/core.mjs?v=${visible
 if(!adminCoreItem.source.includes('mergeOverviewOrders(active,historyOrders,archived)'))fail('Overview does not preserve authoritative order-history precedence over active projections');
 if(adminSource.includes("remove(ref(db,'archivedOrders/'")||adminSource.includes("a.update(a.ref(a.db,'discrepancies/'+id)"))fail('Release 3E retired browser authority remains');
 if(!rulesRaw.includes('"archivedOrders":')||!rulesRaw.includes('"operationalAudit":')||!rulesRaw.includes('"deletionAudit":'))fail('Release 3E controlled archive/audit rules missing');
-for(const marker of ['function archiveIngredient(id)','function restoreIngredient(id)','data-inv-archive','data-inv-restore','function ingsActive()','archivedAt:Date.now()','Take the balance to zero through Adjust stock first'])if(!adminSource.includes(marker))fail(`Stock-item archiving safeguard missing: ${marker}`);
-if(!rulesRaw.includes("newData.exists() || !data.hasChild('ledgerVersion')"))fail('Ledger inventory items can still be deleted outright: the rules delete guard is missing');
 
 const storageRules=fs.readFileSync(path.join(root,'storage.rules'),'utf8');
 if(!storageRules.includes('allow read, write: if false'))fail('Storage is not locked to server-only access');
@@ -104,17 +100,7 @@ for(const privatePath of ['functions','database.rules.json','storage.rules','fir
 const deployWorkflow=fs.readFileSync(path.join(root,'.github','workflows','deploy-functions.yml'),'utf8');
 if(!deployWorkflow.includes('branches: [main]'))fail('production Firebase deployment is not restricted to main');
 const forcedDeployLines=deployWorkflow.split(/\r?\n/).filter(line=>line.includes('firebase deploy')&&line.includes('--force'));
-const retryPolicyFunctions=['preservePostedOrderOnDelete','replicateArchivedOrderToFirestore','refreshHistoricalOrderAfterJournal','refreshHistoricalOrderAfterInventoryPlan','updateCashBalanceSummary','updatePublicCatalogVersionOnCategories','updatePublicCatalogVersionOnMenuItems','updatePublicCatalogVersionOnOptionGroups'];
-const forcedTargets=forcedDeployLines.length===1?((forcedDeployLines[0].match(/--only\s+([^\s]+)/)||[])[1]||'').split(',').sort():[];
-const expectedForcedTargets=retryPolicyFunctions.map(name=>`functions:${name}`).sort();
-if(forcedDeployLines.length!==1||JSON.stringify(forcedTargets)!==JSON.stringify(expectedForcedTargets))fail('retry-policy acknowledgement must use one --force deploy scoped to the exact durable order functions');
-const fullDeployLine=deployWorkflow.split(/\r?\n/).find(line=>line.includes('firebase deploy')&&line.includes('--only functions,database,firestore,storage'))||'';
-if(!fullDeployLine||fullDeployLine.includes('--force'))fail('full production Firebase deployment must never use --force');
-for(const name of retryPolicyFunctions)if(!functionsSource.includes(`exports.${name} = `))fail(`retry-policy deployment target is not exported: ${name}`);
-for(const marker of ['exports.backupDatabaseDaily = onSchedule(','exports.runDatabaseBackupNow = onCall(']){
-  const backupDeclaration=section(functionsSource,marker,');');
-  if(!backupDeclaration.includes('memory: "512MiB"'))fail(`database backup memory safeguard missing: ${marker}`);
-}
+if(forcedDeployLines.length!==1||!forcedDeployLines[0].includes('--only functions:preservePostedOrderOnDelete '))fail('production Firebase deployment may silently delete functions');
 if(!deployWorkflow.includes('concurrency:')||!deployWorkflow.includes('environment: production'))fail('production Firebase deployment safeguards are incomplete');
 if(/actions\/(?:checkout|setup-node|setup-java)@v4/.test(deployWorkflow))fail('Firebase deployment workflow still uses deprecated Node 20-based actions');
 const qualityWorkflow=fs.readFileSync(path.join(root,'.github','workflows','quality-gate.yml'),'utf8');

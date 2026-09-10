@@ -9,7 +9,6 @@ import vm from 'node:vm';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
 const Costing=require('../functions/lib/costing.js');
-const SharedChoiceValidation=require('../functions/lib/shared-choice-validation.js');
 let failures=0;
 const fail=m=>{failures++;console.error('FAIL: '+m);};
 const ok=m=>console.log('PASS: '+m);
@@ -31,8 +30,7 @@ const inventory={
   lid:{name:'Strawless lid',unit:'pc',cost:1.22,category:'cat_packaging'},
   thin:{name:'Thin Straw',unit:'pc',cost:0.88,category:'cat_packaging'},
   hotcup:{name:'16oz Double Wall Cup',unit:'pc',cost:5.6,category:'cat_packaging'},
-  flat:{name:'WHITE FLAT LID',unit:'pc',cost:3.31,category:'cat_packaging'},
-  ice:{name:'Ice',unit:'g',cost:0.01,category:'cat_other'}
+  flat:{name:'WHITE FLAT LID',unit:'pc',cost:3.31,category:'cat_packaging'}
 };
 const categories={cat_packaging:{name:'Packaging'},cat_milk:{name:'Milk'},cat_syrup:{name:'Syrup'}};
 const row=(ing,s,m,l)=>({ing,unit:inventory[ing].unit,stockUnit:inventory[ing].unit,qtyS:s,qtyM:m,qtyL:l});
@@ -60,15 +58,6 @@ function cost(recipeMap,menuMap,groups,rules,key,size,labels){
     optionCosts:{},optionRecipes:{},packagingRules:rules||{},
     lineItems:[{itemKey:key,size,qty:1,optLabels:labels||[]}]});
 }
-const scopedMilkGroups={og_temp:optionGroups.og_temp,og_milk:{name:'Choice of Milk',required:true,choices:[{label:'Whole Milk'}]}};
-const scopedMilkRecipe={base:[row('straw',1,1,1)],choiceAdd:{og_milk:{'Whole Milk':{label:'Whole Milk',ings:[
-  Object.assign(row('milk',200,250,300),{op:'choice_override',when:{og_temp:'Hot'}}),
-  Object.assign(row('milk',300,350,400),{op:'choice_override',when:{og_temp:'Iced'}})
-]}}}};
-const scopedMilkMenu={latte:{name:'Latte',cat:'coffee',options:['og_temp','og_milk']}};
-const hotMilk=cost({latte:scopedMilkRecipe},scopedMilkMenu,scopedMilkGroups,{},'latte','S',['Hot','Whole Milk']);
-const icedMilk=cost({latte:scopedMilkRecipe},scopedMilkMenu,scopedMilkGroups,{},'latte','S',['Iced','Whole Milk']);
-check(near(hotMilk.totalCost,20.12)&&near(icedMilk.totalCost,30.12),'duplicate shared-choice ingredients cost only the row assigned to Hot or Iced');
 ['latte','soda','blend'].forEach(key=>['S','M','L'].forEach(size=>{
   const bare=cost(recipes,menuItems,optionGroups,{},key,size,key==='latte'?['Iced']:[]);
   const withRules=cost(recipes,menuItems,optionGroups,{iced:{rows:[row('cup16',1,1,1)]}},key,size,key==='latte'?['Iced']:[]);
@@ -124,7 +113,7 @@ check(missing.cogsCovered===false,'an unmapped serve style marks the order as no
 const inv=fs.readFileSync('src/functions/50-inventory.js','utf8');
 check(/db\.ref\("\/packagingRules"\)\.get\(\)/.test(inv),'the authoritative server costing reads the packaging table');
 check(/packagingRules: pkSnap\.val\(\)/.test(inv),'the server passes packaging into the costing engine');
-check(/orderInventoryPlans/.test(fs.readFileSync('src/functions/20-portal-auth.js','utf8')),'the order repair path uses the immutable sale-time plan instead of current packaging');
+check(/packagingRules/.test(fs.readFileSync('src/functions/20-portal-auth.js','utf8')),'the order repair path reads it too');
 check(/packagingRules/.test(fs.readFileSync('functions/index.js','utf8')),'the built Functions bundle carries it');
 const state=fs.readFileSync('src/admin/pos/00-shared-state.js','utf8');
 check(/subscribe\('packagingRules'/.test(state),'the admin portal subscribes to the packaging table');
@@ -132,13 +121,8 @@ check(/packagingRules:packagingRulesMap/.test(state),'the till prices with the s
 check(/packagingRules:\['recipes'/.test(fs.readFileSync('assets/js/admin/realtime-hub.mjs','utf8')),'the realtime hub registers the packaging scope, so the subscription actually attaches');
 check(/"packagingRules"/.test(fs.readFileSync('database.rules.json','utf8')),'the database rules cover the packaging table');
 const ui=fs.readFileSync('src/admin/pos/32-serve-style-packaging.js','utf8');
-check(/accaza-packaging-restore-v2/.test(ui)&&/posSettings\/packagingAssignments/.test(ui),'restore point includes current menu packaging assignments');
-check(!/data-packitem="/.test(ui)&&/data-packcustomize=/.test(ui)&&/data-packrevert=/.test(ui)&&/Uses the shared /.test(ui),'a pastry inherits the shared packaging by default, with no old-style per-item select, and can be Customized/Reverted individually');
-check(/itemStyleId\(key\)/.test(ui)&&/updates\['packagingRules\/'\+custId\]=clean/.test(ui)&&/updates\['posSettings\/packagingAssignments\/'\+catId\+'\/items\/'\+key\]=custId/.test(ui),'a per-item Customize writes its own private packagingRules/item_<key> record, never the shared style');
 check(/packSnapshot/.test(ui)&&/packRestore/.test(ui),'the screen takes a restore point and can undo from it');
-check(/packStyleSnapshot\(\{silent:true,keepView:true\}\)/.test(ui)&&/Backing up/.test(ui),'category save automatically downloads its restore point instead of showing a prerequisite popup');
-check(/role="status" aria-live="polite"/.test(ui)&&/Restore point downloaded and assignments saved/.test(ui),'category save reports busy and successful completion inline');
-check(/data-pack-addrow/.test(ui)&&/data-pack-delrow/.test(ui)&&/quantities/.test(ui),'inherited packaging contents remain editable, removable and addable in the shared packaging set');
+check(/packStyleSnapshotTaken/.test(ui),'the change stays locked until a restore point has been taken');
 check(/packApply/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built admin bundle carries the packaging screen');
 check(/serve-style-plan\.js/.test(fs.readFileSync('admin.html','utf8')),'admin.html loads the planner');
 check(/serve-style-plan\.js/.test(fs.readFileSync('sw.js','utf8')),'the service worker caches the planner');
@@ -167,79 +151,7 @@ check(/packReseed/.test(ui2),'the user can start again from what the recipes alr
 check(/styles:draft/.test(ui2),'costs and assignments follow the edited styles, not the original proposal');
 check(/packAddStyle/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built admin bundle carries the editor');
 
-/* 9. the recipe calculator must show exactly what the sale-costing engine will post */
-const recipeUi=fs.readFileSync('src/admin/pos/29a-recipe-cost-coverage.js','utf8')+fs.readFileSync('src/admin/pos/30-recipes.js','utf8');
-const choiceScope=fs.readFileSync('src/admin/pos/29-recipe-choice-scope.js','utf8');
-const costingSource=fs.readFileSync('assets/js/shared/costing.js','utf8');
-check(/costingContext\(\)/.test(recipeUi)&&/packagingRules:packagingRulesMap/.test(fs.readFileSync('src/admin/pos/00-shared-state.js','utf8')),'the recipe calculator includes assigned packaging in its total');
-check(/Base recipe/.test(recipeUi)&&/Selected option ingredients/.test(recipeUi)&&/Packaging ·/.test(recipeUi),'the calculator separates base, selected options and packaging');
-check(/String\(line\.source\)\.indexOf\('base_'\)===0/.test(recipeUi)&&/line\.source==='packaging'/.test(recipeUi),'the displayed subtotals come from the same engine lines as the final total');
-const labeledOption=cost(recipes,menuItems,optionGroups,{},'latte','M',['Hot']).lines.filter(line=>/^option_/.test(line.source));
-check(labeledOption.length>0&&labeledOption.every(line=>line.optionGroupId==='og_temp'&&line.optionLabel==='Hot'),'costing-engine option lines retain their group and choice for itemized review');
-check(/selectedChoices\.map/.test(recipeUi)&&/groupName/.test(recipeUi)&&/optionAmounts/.test(recipeUi),'every selected menu option is shown on its own costing line');
-check(/<th>Recipe unit<\/th>/.test(recipeUi)&&/Amount/.test(recipeUi)&&/Quantity\/serving/.test(recipeUi),'per-choice recipe tables show units, current-size amounts, and one flat-serving quantity');
-check(/data-caf="unit"/.test(recipeUi)&&/dispS:r\.dS/.test(choiceScope),'per-choice units and display quantities are converted and saved through the costing engine');
-check(/table-layout:fixed/.test(recipeUi)&&/class="r">Amount/.test(recipeUi),'base and option recipe columns share a fixed grid with right-aligned amounts');
-check(/data-effective-replace/.test(recipeUi)&&/requiredSelections\.map/.test(recipeUi),'the effective recipe table provides choice-specific shared overrides');
-check(/data-rcradio/.test(recipeUi)&&/type="'\+\(isMulti\?'checkbox':'radio'\)/.test(recipeUi)&&/data-rcmulti-check/.test(recipeUi),'required choices use compact exclusive ticks and optional add-ons use checkboxes');
-check(/selectedDetail\(line\)/.test(recipeUi)&&/packagingDetail/.test(recipeUi),'selected option and packaging lines enumerate quantity, unit and cost');
-check(/line\.recipeQuantityPerServing\?\?line\.quantityPerServing/.test(recipeUi)&&/line\.recipeUnit\|\|line\.stockUnit/.test(recipeUi),'effective recipe rows use the chosen recipe measurement while retaining stock-unit fallback');
-check(/Ingredients for selected choices/.test(recipeUi)&&/caSelected\(g,c\)/.test(recipeUi),'only the currently selected choice is shown in the choice-specific editor');
-check(/var next=ocClone\(d\.choiceAdd\|\|\{\}\)/.test(recipeUi)&&/data-ca-choice/.test(recipeUi),'editing one choice preserves hidden choice-specific recipes');
-check(/Recipe-specific base ingredients/.test(recipeUi)&&/ingredient for '\+esc\(c\.label\)/.test(recipeUi),'the editor clearly separates base ingredients from exact-choice ingredients');
-check(/isPackagingCostItem/.test(recipeUi)&&/Packaging Costing only/.test(recipeUi),'packaging items cannot be newly selected as shared choice ingredients');
-check(/data-sbf="unit"/.test(recipeUi)&&/data-sbf="disp'\+sz\+'"/.test(recipeUi)&&/convertToStock\(display,u,item\)/.test(recipeUi),'shared base quantities use an editable recipe unit and normalize to the stock unit');
-check(/data-ocf="unit"/.test(recipeUi)&&/data-ocf="disp'\+sz\+'"/.test(recipeUi)&&/row\['qty'\+sz\]=convertToStock/.test(recipeUi),'shared choice quantities use an editable recipe unit and normalize to the stock unit');
-check(/effectiveSection/.test(recipeUi)&&/Additional ingredients/.test(recipeUi)&&/Included only when selected/.test(recipeUi),'selected optional ingredients remain distinctly labelled in the unified effective table');
-check(/sectionRows\('packaging'/.test(recipeUi)&&/sectionRows\('base'/.test(recipeUi)&&/sectionRows\('additional'/.test(recipeUi),'base, packaging and additional ingredients share one aligned table with separate reconciled sections');
-check(/data-effective-include/.test(recipeUi)&&/d\.sharedBase=.*filter/.test(recipeUi),'an inherited shared base ingredient can be excluded from one drink in the effective recipe');
-check(/colspan=.*requiredSelections\.length/.test(recipeUi)&&/Override/.test(recipeUi)&&/data-effective-replace/.test(recipeUi),'the grouped Override header follows the currently selected required choices');
-check(/x\.ing===ing&&x\.op==='replace'/.test(recipeUi),'excluding an inherited ingredient also clears its now-invalid choice replacements');
-check(/!\/\(sweet\|milk\)\//.test(recipeUi),'Sweetness and Choice of Milk start without a costing preview default');
-check(/data-effective-choice-override/.test(recipeUi)&&/setRecipeChoiceOverride/.test(recipeUi)&&/choice_override/.test(choiceScope),'a selected shared-choice ingredient supports a drink-and-choice-specific quantity override');
-check(/recipeTemperatureScope/.test(choiceScope)&&/data-ca-when/.test(recipeUi)&&/when:r\.when/.test(recipeUi),'shared-choice overrides retain an explicit Hot or Iced scope');
-check(/op==='choice_override'&&!Object\.keys\(when\)\.length/.test(recipeUi),'an existing unscoped shared-choice override adopts the selected temperature when resaved');
-check(/data-ca-temp-scope/.test(choiceScope)&&/Use for:/.test(choiceScope)&&/Not used for/.test(recipeUi),'shared-choice overrides expose explicit Hot and Iced include controls');
-check(/data-effective-choice-include/.test(recipeUi)&&/setRecipeChoiceOverrideTemperature/.test(choiceScope),'the main effective-recipe Include column controls a shared-choice override for the selected temperature');
-check(/bindChoiceIngredientSelectors/.test(recipeUi)&&/markInheritedChoiceOverride/.test(choiceScope)&&/row\.op='choice_override'/.test(choiceScope)&&/row\.when=recipeTemperatureScope/.test(choiceScope),'adding an inherited shared-choice ingredient creates a separate override for the selected temperature');
-check(/if\(!row\)own\.ings\.push\(values\)/.test(choiceScope),'creating one shared-choice override preserves every other inherited shared-choice ingredient');
-check(/data-bmove/.test(recipeUi)&&/moveRecipeBaseToChoice/.test(recipeUi)&&/Move to /.test(choiceScope),'an existing all-choice ingredient can be moved to the selected temperature');
-check(/id="recAddBase"/.test(recipeUi)&&/\+ ingredient for all choices/.test(recipeUi),'recipe-specific base ingredients can be added again');
-check(/recipeBaseTemperatureScope/.test(recipeUi)&&/data-base-temp/.test(choiceScope)&&/recipeBaseScopeFromRow/.test(recipeUi),'duplicate base ingredients expose Hot and Iced assignments and retain their scope');
-check(/DUPLICATE_BASE_SCOPE/.test(costingSource)&&/different serving style/.test(costingSource),'overlapping duplicate base ingredient assignments are blocked by canonical validation');
-check(/sharedSelected&&sharedSelected\[row\.ing\]\?'replace'/.test(choiceScope),'moving a shared-base ingredient creates a full-quantity replacement for only that choice');
-check(/sharedChoiceDuplicate/.test(choiceScope)&&/data-oc-temp/.test(choiceScope)&&/sharedChoiceScopeFromRow/.test(recipeUi),'duplicate ingredients in every shared choice expose Hot and Iced assignments');
-check(/recipeServingScopeLabels/.test(choiceScope)&&/Blended/.test(choiceScope)&&/useFor:picked/.test(choiceScope),'shared choices support explicit multi-select Hot, Iced and Blended scopes');
-check(/sharedChoiceScopeError/.test(choiceScope)&&/different serving style/.test(choiceScope),'overlapping duplicate serving-style assignments are blocked before saving');
-check(/useFor:scope\.useFor/.test(recipeUi)&&/at least one serving style/.test(recipeUi),'shared-choice multi-style selections persist and cannot be left empty');
-const sharedInventory={milk:{name:'Whole Milk'}};
-const sharedGroups={temp:{name:'Temperature',choices:[{label:'Hot'},{label:'Iced'}]},milk:{name:'Milk',choices:[{label:'Whole Milk'}]}};
-function sharedRow(useFor){return {ing:'milk',qtyS:100,qtyM:150,qtyL:200,...(useFor?{useFor}: {})};}
-const blendedLibrary={milk:{'Whole Milk':{label:'Whole Milk',ings:[sharedRow(['Hot','Iced']),sharedRow(['Blended'])]}}};
-check(SharedChoiceValidation.validate(blendedLibrary,sharedInventory,sharedGroups).rows===2,'server accepts separate Whole Milk rows for Hot/Iced and Blended');
-let overlap='';try{SharedChoiceValidation.validate({milk:{'Whole Milk':{label:'Whole Milk',ings:[sharedRow(['Hot']),sharedRow(['Hot','Blended'])]}}},sharedInventory,sharedGroups);}catch(error){overlap=error.message;}
-check(/to Hot more than once/.test(overlap),'server still rejects overlapping shared-choice serving styles');
-let malformed='';try{SharedChoiceValidation.validate({milk:{'Whole Milk':{label:'Whole Milk',ings:[sharedRow(['Frozen'])]}}},sharedInventory,sharedGroups);}catch(error){malformed=error.message;}
-check(/invalid serving-style assignment/.test(malformed),'server rejects unknown shared-choice serving styles');
-check(/recipeHasIngredientRows\(rec\)/.test(recipeUi),'choice-only Hot and Iced recipes are recognized by recipe completeness checks');
-const recipeSaveUi=fs.readFileSync('src/admin/pos/31-recipe-save.js','utf8');
-check(/recipeChoicePackagingRows/.test(recipeSaveUi)&&/groupName/.test(recipeSaveUi)&&/choiceLabel/.test(recipeSaveUi),'legacy packaging warnings identify the exact hidden group and choice');
-check(/packagingGap=recipePackagingGap\(item\)/.test(recipeSaveUi)&&/Shared Packaging is incomplete/.test(recipeSaveUi),'legacy packaging is never auto-removed while a serving path lacks shared packaging');
-check(/removeRecipeChoicePackaging\(raw\)/.test(recipeSaveUi)&&/prevents packaging cost and stock usage from being counted twice/.test(recipeSaveUi),'covered legacy packaging can be removed with explicit confirmation before save');
-const saveHelpers=recipeSaveUi.slice(0,recipeSaveUi.indexOf('function saveRecipe'));
-const saveContext={inventoryMap:{cup:{name:'Cold Cup'},lid:{name:'Lid'},milk:{name:'Milk'}},A(){return {optionGroupsMap:{temp:{name:'Temperature'}}};},isPackagingCostItem(id){return id==='cup'||id==='lid';}};
-vm.createContext(saveContext);vm.runInContext(saveHelpers,saveContext);
-const legacy={choiceAdd:{temp:{Iced:{label:'Iced',ings:[{ing:'cup'},{ing:'milk'}]},Hot:{label:'Hot',ings:[{ing:'lid'}]}}}};
-const foundLegacy=saveContext.recipeChoicePackagingRows(legacy);
-check(foundLegacy.length===2&&foundLegacy[0].groupName==='Temperature'&&foundLegacy[0].choiceLabel==='Iced','hidden packaging rows are reported with user-facing locations');
-saveContext.removeRecipeChoicePackaging(legacy);
-check(legacy.choiceAdd.temp.Iced.ings.length===1&&legacy.choiceAdd.temp.Iced.ings[0].ing==='milk'&&!legacy.choiceAdd.temp.Hot,'cleanup removes only packaging and preserves real choice ingredients');
-const iceScoped={latte:{base:[row('milk',200,250,300)],choiceAdd:{og_temp:{Iced:{label:'Iced',ings:[row('ice',120,160,200)]}}}}};
-const hotIce=cost(iceScoped,menuItems,optionGroups,{},'latte','M',['Hot']).lines.filter(line=>line.ingredientId==='ice');
-const icedIce=cost(iceScoped,menuItems,optionGroups,{},'latte','M',['Iced']).lines.filter(line=>line.ingredientId==='ice');
-check(hotIce.length===0&&icedIce.length===1&&icedIce[0].quantityPerServing===160,'Ice saved for Iced is absent from Hot and keeps its Iced quantity');
-
-/* 10. the shared option library can hold packaging too - leaving it there charges the cup twice */
+/* 9. the shared option library can hold packaging too - leaving it there charges the cup twice */
 const libraryCosts={og_temp:{Hot:{label:'Hot',ings:[row('hotcup',1,1,1),row('flat',1,1,1)]},
   Iced:{label:'Iced',ings:[row('cup16',1,1,1),row('milk',10,10,10)]}}};
 const libPlan=Plan.applyPlan(recipes,inventory,menuItems,categories,{optionCosts:libraryCosts});

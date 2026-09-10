@@ -11,8 +11,6 @@ const rules=fs.readFileSync('database.rules.json','utf8');
 
 for(const marker of ['applyInventoryMovement','inventoryAccounting','inventoryMovements','inventoryBalances','exports.postInventoryMovements','exports.ensureInventoryLedger','exports.onOrderInventoryReversal'])assert(functions.includes(marker),`missing 3A server marker: ${marker}`);
 assert(functions.includes('state.applied[movementId]'),'per-item idempotency claim is missing');
-assert(functions.includes('A received purchase must have a unit cost greater than zero.'),'server accepts a positive purchase with zero unit cost');
-assert(functions.includes('have positive stock without a unit cost. Enter invoice-backed opening costs first.'),'ledger initialization can still lock positive stock at zero cost');
 assert(functions.includes('retry: true'),'inventory triggers are not retry-enabled');
 assert(functions.includes('serverOnly = new Set'),'callers can forge server-only movement types');
 assert(functions.includes('inventory finalization is not complete; retry reversal'),'refund/void reversal can race ahead of sale finalization');

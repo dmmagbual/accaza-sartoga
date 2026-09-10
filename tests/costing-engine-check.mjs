@@ -36,7 +36,7 @@ const raw={
 const normalized=Costing.normalizeRecipe(raw,inventory);
 if(!normalized.ok)throw new Error('valid recipe normalization failed: '+JSON.stringify(normalized.errors));
 near(normalized.recipe.base[1].qtyM,200,'recipe display quantity normalized to stock unit');
-equal(normalized.recipe.schemaVersion,3,'normalized recipe schema stamp');
+equal(normalized.recipe.schemaVersion,2,'normalized recipe schema stamp');
 
 const result=Costing.costOrder({
   lineItems:[{itemKey:'latte',size:'M',qty:2,optLabels:['Vanilla','Hot']}],
@@ -54,12 +54,6 @@ near(result.usage.cream,20,'per-recipe choice usage');
 near(result.totalCost,12.8,'traceable total COGS');
 if(!result.lines.every(line=>line.costSource&&line.stockUnit&&Number.isFinite(line.totalCost)))throw new Error('cost trace is incomplete');
 if(!result.cogsCovered)throw new Error('fully costed order marked uncovered');
-const waterInventory={water:{name:'Water',unit:'fl oz',cost:0.03}},waterRecipe=Costing.normalizeRecipe({base:[{ing:'water',unit:'ml',dispS:100,dispM:100,dispL:100}]},waterInventory).recipe,waterResult=Costing.costRecipe({itemKey:'water',recipe:waterRecipe,inventory:waterInventory,item:{name:'Water test'},size:'M'}),waterLine=waterResult.lines[0];
-near(waterResult.usage.water,3.381406,'water usage remains normalized to inventory fluid ounces');
-near(waterLine.recipeQuantityPerServing,100,'cost trace retains the recipe display quantity');
-equal(waterLine.recipeUnit,'ml','cost trace retains the recipe display unit');
-near(waterLine.quantityPerServing,3.381406,'cost trace retains the normalized stock quantity');
-equal(waterLine.stockUnit,'fl oz','cost trace retains the inventory stock unit');
 
 const categoryPackaging=Costing.costOrder({
   lineItems:[{itemKey:'latte',size:'M',qty:1,optLabels:['Iced']}],recipes:{latte:normalized.recipe},inventory,
@@ -71,83 +65,10 @@ near(categoryPackaging.usage.icedCup,1,'category and current menu choice select 
 near(categoryPackaging.totalCost,9.9,'category packaging flows into total COGS');
 if(!categoryPackaging.lines.some(line=>line.source==='packaging'&&line.ingredientId==='icedCup'))throw new Error('packaging COGS trace is missing');
 
-const flatPastry=Costing.costOrder({
-  lineItems:[{itemKey:'muesli',size:'L',qty:2,optLabels:['Banana']}],
-  recipes:{muesli:{base:[{ing:'beans',qtyS:10,qtyM:99,qtyL:999}],choiceAdd:{toppings:{Banana:{label:'Banana',ings:[{ing:'cream',qtyS:5,qtyM:55,qtyL:555}]}}}}},
-  inventory,menuItems:{muesli:{name:'MUESLI',cat:'pastry',priceS:180,options:['toppings']}},optionGroups:{toppings:{type:'multi',choices:[{label:'Banana',price:20}]}},
-  packagingRules:{bowl:{rows:[{ing:'hotCup',qtyS:1,qtyM:9,qtyL:99}]},hot:{rows:[{ing:'icedCup',qtyS:7}]}},packagingAssignments:{pastry:{defaultStyle:'bowl',items:{muesli:'hot'}}},
-});
-near(flatPastry.usage.beans,20,'single-price pastry always uses its one base quantity');
-near(flatPastry.usage.cream,10,'single-price pastry option always uses its one topping quantity');
-near(flatPastry.usage.hotCup,2,'single-price pastry inherits the category packaging set');
-if(flatPastry.usage.icedCup)throw new Error('stale item packaging overrode the inherited pastry category set');
-if(!flatPastry.lines.every(line=>line.size==='S'))throw new Error('single-price pastry did not canonicalize stale size to one serving');
-const packagedPastry=Costing.costOrder({
-  lineItems:[{itemKey:'croissant',size:'S',qty:2,optLabels:[]}],recipes:{},inventory,
-  menuItems:{croissant:{name:'Croissant',cat:'pastry',priceS:95,needsBuilding:false}},
-  packagingRules:{bowl:{rows:[{ing:'hotCup',qtyS:1}]}},packagingAssignments:{pastry:{defaultStyle:'bowl'}},
-});
-near(packagedPastry.usage.hotCup,2,'ready-to-sell pastry consumes its packaging without a recipe');
-if(packagedPastry.warnings.some(x=>x.code==='MISSING_RECIPE')||!packagedPastry.cogsCovered)throw new Error('ready-to-sell pastry was incorrectly marked as missing a recipe');
-const ignoredRecipe=Costing.costOrder({
-  lineItems:[{itemKey:'croissant',size:'S',qty:1,optLabels:[]}],recipes:{croissant:{base:[{ing:'beans',qtyS:10}]}},inventory,
-  menuItems:{croissant:{name:'Croissant',cat:'pastry',priceS:95,needsBuilding:false}},
-  packagingRules:{bowl:{rows:[{ing:'hotCup',qtyS:1}]}},packagingAssignments:{pastry:{defaultStyle:'bowl'}},
-});
-if(ignoredRecipe.usage.beans||ignoredRecipe.usage.hotCup!==1)throw new Error('explicit packaging-only pastry still consumed a stale preparation recipe');
-const legacyResale=Costing.costOrder({lineItems:[{itemKey:'croissant',size:'S',qty:1,optLabels:[]}],recipes:{croissant:{base:[{ing:'beans',qtyS:10}]}},inventory,menuItems:{croissant:{name:'Croissant',cat:'pastry',priceS:95,noRecipe:true}},packagingRules:{bowl:{rows:[{ing:'hotCup',qtyS:1}]}},packagingAssignments:{pastry:{defaultStyle:'bowl'}}});
-if(legacyResale.usage.beans||legacyResale.usage.hotCup!==1)throw new Error('legacy no-recipe pastry still consumed a stale preparation recipe');
-const missingBuiltPastry=Costing.costOrder({lineItems:[{itemKey:'muesli',size:'S',qty:1,optLabels:[]}],recipes:{},inventory,menuItems:{muesli:{name:'MUESLI',cat:'pastry',needsBuilding:true}},packagingRules:{bowl:{rows:[{ing:'hotCup',qtyS:1}]}},packagingAssignments:{pastry:{defaultStyle:'bowl'}}});
-if(!missingBuiltPastry.warnings.some(x=>x.code==='MISSING_RECIPE')||missingBuiltPastry.cogsCovered)throw new Error('build-required pastry did not require an ingredient recipe');
-const unassignedPastry=Costing.costOrder({
-  lineItems:[{itemKey:'muesli',size:'S',qty:1}],recipes:{muesli:{base:[{ing:'beans',qtyS:1}]}},inventory,
-  menuItems:{muesli:{name:'MUESLI',cat:'pastry',priceS:180,serveStyle:'hot'}},packagingRules:{hot:{rows:[{ing:'hotCup',qtyS:1}]}},packagingAssignments:{},
-});
-if(unassignedPastry.usage.hotCup)throw new Error('removed pastry category packaging fell back to a legacy item style');
-
 const noCost=Costing.costRecipe({itemKey:'latte',recipe:normalized.recipe,inventory:{...inventory,milk:{...inventory.milk,cost:0}},item:{name:'Latte'},size:'M'});
 if(noCost.cogsCovered||!noCost.warnings.some(x=>x.code==='MISSING_COST'))throw new Error('missing inventory cost was not surfaced');
-const inherited=Costing.costRecipe({itemKey:'latte',recipe:{sharedBase:[{ing:'beans'},{ing:'milk'}],base:[{ing:'milk',qtyS:90,qtyM:120,qtyL:150}]},inventory,item:{key:'latte',name:'Latte',cat:'coffee'},size:'M',sharedBaseIngredients:{coffee:{ings:[{ing:'beans',qtyS:18,qtyM:19,qtyL:20},{ing:'milk',qtyS:120,qtyM:160,qtyL:200}]}}});
-if(!inherited.ok)throw new Error('shared base recipe should cost successfully');
-if(inherited.usage.beans!==19||inherited.usage.milk!==120)throw new Error('recipe-specific quantity must replace, not stack with, shared base');
-if(!inherited.lines.some(line=>line.source==='base_shared'&&line.ingredientId==='beans'))throw new Error('shared source trace missing');
-if(!inherited.lines.some(line=>line.source==='base_override'&&line.ingredientId==='milk'))throw new Error('override source trace missing');
-const selectedReplacement=Costing.costOrder({lineItems:[{itemKey:'americano',size:'M',qty:1,optLabels:['Less Sweet']}],recipes:{americano:{base:[{ing:'milk',qtyM:20}],choiceAdd:{sweet:{'Less Sweet':{label:'Less Sweet',ings:[{ing:'milk',qtyM:15,op:'replace'}]}}}}},inventory,menuItems:{americano:{name:'Americano',options:['sweet']}},optionGroups:{sweet:{required:true,choices:[{label:'Regular'},{label:'Less Sweet'}]}}});
-if(!selectedReplacement.ok||selectedReplacement.usage.milk!==15)throw new Error('required choice full quantity must replace the inherited quantity');
-const regularDefault=Costing.costOrder({lineItems:[{itemKey:'americano',size:'M',qty:1,optLabels:['Regular']}],recipes:{americano:{base:[{ing:'milk',qtyM:20}],choiceAdd:{sweet:{'Less Sweet':{label:'Less Sweet',ings:[{ing:'milk',qtyM:15,op:'replace'}]}}}}},inventory,menuItems:{americano:{name:'Americano',options:['sweet']}},optionGroups:{sweet:{required:true,choices:[{label:'Regular'},{label:'Less Sweet'}]}}});
-if(regularDefault.usage.milk!==20)throw new Error('unselected required-choice override changed the default quantity');
-const scopedMilk={latte:{base:[{ing:'beans',qtyM:18}],choiceAdd:{milk:{'Whole Milk':{label:'Whole Milk',ings:[{ing:'milk',qtyM:295,op:'choice_override',when:{temp:'Hot'}}]}}}}};
-const scopedCtx={recipes:scopedMilk,inventory,menuItems:{latte:{name:'Latte',options:['temp','milk']}},optionGroups:{temp:{required:true,choices:[{label:'Hot'},{label:'Iced'}]},milk:{required:true,choices:[{label:'Whole Milk'}]}},optionCosts:{milk:{'Whole Milk':{label:'Whole Milk',ings:[{ing:'milk',qtyM:250}]}}}};
-const scopedHot=Costing.costOrder({...scopedCtx,lineItems:[{itemKey:'latte',size:'M',qty:1,optLabels:['Hot','Whole Milk']}]});
-const scopedIced=Costing.costOrder({...scopedCtx,lineItems:[{itemKey:'latte',size:'M',qty:1,optLabels:['Iced','Whole Milk']}]});
-if(scopedHot.usage.milk!==295||scopedIced.usage.milk!==250)throw new Error('a Hot-only shared milk override leaked into Iced');
-const splitShared={...scopedCtx,recipes:{latte:{base:[{ing:'beans',qtyM:18}]}},optionCosts:{milk:{'Whole Milk':{label:'Whole Milk',ings:[{ing:'milk',qtyM:240,when:{temp:'Hot'}},{ing:'milk',qtyM:180,when:{temp:'Iced'}}]}}}};
-const splitHot=Costing.costOrder({...splitShared,lineItems:[{itemKey:'latte',size:'M',qty:1,optLabels:['Hot','Whole Milk']}]}),splitIced=Costing.costOrder({...splitShared,lineItems:[{itemKey:'latte',size:'M',qty:1,optLabels:['Iced','Whole Milk']} ]});
-if(splitHot.usage.milk!==240||splitIced.usage.milk!==180)throw new Error('duplicate shared-choice ingredients did not stay exclusive to Hot and Iced');
-const servingStyleShared={...scopedCtx,recipes:{latte:{base:[{ing:'beans',qtyM:18}]},frappe:{base:[{ing:'beans',qtyM:18}]},soda:{base:[{ing:'beans',qtyM:18}]}},menuItems:{latte:{name:'Latte',cat:'coffee',options:['temp','milk']},frappe:{name:'Blended Coffee',cat:'frappe',options:['milk']},soda:{name:'Soda',cat:'soda',options:['milk']}},optionCosts:{milk:{'Whole Milk':{label:'Whole Milk',ings:[{ing:'milk',qtyM:200,useFor:['Hot','Iced']},{ing:'milk',qtyM:150,useFor:['Blended']}]}}}};
-const sharedBothHot=Costing.costOrder({...servingStyleShared,lineItems:[{itemKey:'latte',size:'M',qty:1,optLabels:['Hot','Whole Milk']}]}),sharedBothIced=Costing.costOrder({...servingStyleShared,lineItems:[{itemKey:'latte',size:'M',qty:1,optLabels:['Iced','Whole Milk']}]}),sharedBlended=Costing.costOrder({...servingStyleShared,lineItems:[{itemKey:'frappe',size:'M',qty:1,optLabels:['Whole Milk']}]}),sharedOther=Costing.costOrder({...servingStyleShared,lineItems:[{itemKey:'soda',size:'M',qty:1,optLabels:['Whole Milk']}]});
-if(sharedBothHot.usage.milk!==200||sharedBothIced.usage.milk!==200)throw new Error('one shared quantity ticked for both Hot and Iced did not apply to both');
-if(sharedBlended.usage.milk!==150)throw new Error('Blended shared milk did not apply to the frappe category');
-if(sharedOther.usage.milk)throw new Error('Blended shared milk leaked into a non-blended category');
-const normalizedServingScope=Costing.normalizeRecipe({base:[{ing:'milk',qtyM:200,useFor:['Hot','Iced']}]},inventory);
-equal(normalizedServingScope.recipe.base[0].useFor,['Hot','Iced'],'multiple serving-style selections survive normalization');
-const splitBaseRecipe={base:[{ing:'beans',qtyM:18},{ing:'milk',qtyM:240,when:{temp:'Hot'}},{ing:'milk',qtyM:180,when:{temp:'Iced'}}]},splitBaseNorm=Costing.normalizeRecipe(splitBaseRecipe,inventory);
-const splitBaseCtx={recipes:{latte:splitBaseNorm.recipe},inventory,menuItems:{latte:{name:'Latte',options:['temp']}},optionGroups:{temp:{required:true,choices:[{label:'Hot'},{label:'Iced'}]}}},splitBaseHot=Costing.costOrder({...splitBaseCtx,lineItems:[{itemKey:'latte',size:'M',qty:1,optLabels:['Hot']}]}),splitBaseIced=Costing.costOrder({...splitBaseCtx,lineItems:[{itemKey:'latte',size:'M',qty:1,optLabels:['Iced']}]});
-if(!splitBaseNorm.ok||splitBaseHot.usage.milk!==240||splitBaseIced.usage.milk!==180)throw new Error('duplicate base ingredients did not stay exclusive to Hot and Iced');
-const overlappingBase=Costing.normalizeRecipe({base:[{ing:'milk',qtyM:240},{ing:'milk',qtyM:180,when:{temp:'Iced'}}]},inventory);
-if(overlappingBase.ok||!overlappingBase.errors.some(x=>x.code==='DUPLICATE_BASE_SCOPE'))throw new Error('overlapping duplicate base ingredient scopes were not blocked');
-const temperatureSpecific={americano:{base:[{ing:'beans',qtyM:18}],choiceAdd:{temp:{Hot:{label:'Hot',ings:[{ing:'milk',qtyM:30}]},Iced:{label:'Iced',ings:[{ing:'milk',qtyM:12}]}}}}};
-const hotSpecific=Costing.costOrder({lineItems:[{itemKey:'americano',size:'M',qty:1,optLabels:['Hot']}],recipes:temperatureSpecific,inventory,menuItems:{americano:{name:'Americano',options:['temp']}},optionGroups:{temp:{required:true,choices:[{label:'Hot'},{label:'Iced'}]}}});
-const icedSpecific=Costing.costOrder({lineItems:[{itemKey:'americano',size:'M',qty:1,optLabels:['Iced']}],recipes:temperatureSpecific,inventory,menuItems:{americano:{name:'Americano',options:['temp']}},optionGroups:{temp:{required:true,choices:[{label:'Hot'},{label:'Iced'}]}}});
-if(hotSpecific.usage.milk!==30||icedSpecific.usage.milk!==12)throw new Error('Hot and Iced choice-specific quantities were not isolated');
-const choiceOnly={americano:{choiceAdd:{temp:{Hot:{label:'Hot',ings:[{ing:'beans',qtyM:18}]},Iced:{label:'Iced',ings:[{ing:'beans',qtyM:20},{ing:'milk',qtyM:180}]}}}}};
-const choiceOnlyNormalized=Costing.normalizeRecipe(choiceOnly.americano,inventory),choiceOnlyIced=Costing.costOrder({lineItems:[{itemKey:'americano',size:'M',qty:1,optLabels:['Iced']}],recipes:choiceOnly,inventory,menuItems:{americano:{name:'Americano',options:['temp']}},optionGroups:{temp:{required:true,choices:[{label:'Hot'},{label:'Iced'}]}}});
-if(!choiceOnlyNormalized.ok||choiceOnlyIced.usage.beans!==20||choiceOnlyIced.usage.milk!==180||choiceOnlyIced.totalCost<=0)throw new Error('a recipe made entirely from selected Hot or Iced ingredients was incorrectly costed as zero');
 const broken=Costing.normalizeRecipe({base:[{ing:'deleted',unit:'g',dispM:1}]},inventory);
 if(broken.ok||!broken.errors.some(x=>x.code==='BROKEN_INVENTORY_REFERENCE'))throw new Error('broken inventory reference was not blocked');
-const zeroChoice=Costing.normalizeRecipe({base:[{ing:'bean',unit:'g',dispM:18}],choiceAdd:{og_shot:{'Add 1 Shot':{label:'Add 1 Shot',ings:[{ing:'bean',unit:'g',dispS:0,dispM:0,dispL:0}]}}}},{...inventory,bean:{name:'Coffee Beans',unit:'g',cost:0.05}});
-const zeroChoiceWarning=zeroChoice.warnings.find(x=>x.code==='ZERO_QUANTITY_ROW');
-if(!zeroChoiceWarning||zeroChoiceWarning.choiceLabel!=='Add 1 Shot'||zeroChoiceWarning.message!=='Coffee Beans has zero additional quantity for every size under “Add 1 Shot”.')throw new Error('zero choice quantity warning does not identify the affected menu choice');
 const corrupt=Costing.costRecipe({itemKey:'bad',recipe:{base:[{ing:'beans',qtyM:'not-a-number'}]},inventory,item:{name:'Bad'},size:'M'});
 if(corrupt.ok||!corrupt.errors.some(x=>x.code==='INVALID_QUANTITY'))throw new Error('corrupt stored quantity was not blocked');
 const reduced=Costing.costOrder({lineItems:[{itemKey:'hot',size:'M',qty:1,optLabels:['Hot']}],recipes:{hot:{base:[{ing:'milk',qtyM:250}],choiceAdd:{temp:{Hot:{label:'Hot',ings:[{ing:'milk',qtyM:-20}]}}}}},inventory,menuItems:{hot:{name:'Hot latte',options:['temp']}},optionGroups:{temp:{choices:[{label:'Hot'}]}}});

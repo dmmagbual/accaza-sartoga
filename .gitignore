@@ -35,6 +35,9 @@ index backup*.html
 index-pos.html
 Firebase rules - backup.txt
 
+# Stray duplicate folder from a broken copy command (emptied 2026-08-10)
+$repoPath/
+
 # OS/editor files
 .DS_Store
 Thumbs.db

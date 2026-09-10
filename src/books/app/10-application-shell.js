@@ -35,26 +35,22 @@ const App = {
     // period selector
     this.rebuildPeriodSel();
     const requested=new URLSearchParams(location.search).get("tab"); if(TABS.some(t=>t.id===requested))CURRENT=requested;
-    window.__booksCurrentTab=CURRENT;
     const selected=TABS.find(t=>t.id===CURRENT);if(selected&&selected.settingsSection)window.__booksSettingsSection=selected.settingsSection;
     this.renderTabs(); this.render();
   },
   setPeriod(v){ var p=window.AccazaReportPeriod&&window.AccazaReportPeriod.set?window.AccazaReportPeriod.set({mode:v}):{mode:'month'};PERIOD=p.mode||'month';this.rebuildPeriodSel();this.render(); },
   setPeriodCount(v){ var p=window.AccazaReportPeriod&&window.AccazaReportPeriod.set?window.AccazaReportPeriod.set({count:v}):{};PERIOD=p.mode||PERIOD;this.rebuildPeriodSel();this.render(); },
   setPeriodEnd(v){ var p=window.AccazaReportPeriod&&window.AccazaReportPeriod.set?window.AccazaReportPeriod.set({endMonth:v}):{};PERIOD=p.mode||PERIOD;this.rebuildPeriodSel();this.render(); },
-  applyDateRange(){var from=(document.getElementById('periodFrom')||{}).value,to=(document.getElementById('periodTo')||{}).value;try{var p=window.AccazaReportPeriod.set({mode:'custom',customFrom:from,customTo:to});PERIOD=p.mode||PERIOD;if(window.AccazaReportPagination)window.AccazaReportPagination.reset('books-'+CURRENT);this.render();}catch(e){alert(e.message||e);}},
-  applyReportMonth(){var month=(document.getElementById('periodMonth')||{}).value;try{window.AccazaReportPeriod.setMonth(month);if(window.AccazaReportPagination)window.AccazaReportPagination.reset('books-'+CURRENT);this.render();}catch(e){alert(e.message||e);}},
-  applyAsOf(){var date=(document.getElementById('periodAsOf')||{}).value;try{window.AccazaReportPeriod.validate(date.slice(0,7)+'-01',date);window.AccazaReportPeriod.set({mode:'custom',customFrom:date.slice(0,7)+'-01',customTo:date});if(window.AccazaReportPagination)window.AccazaReportPagination.reset('books-'+CURRENT);this.render();}catch(e){alert(e.message||e);}},
+  applyDateRange(){var from=(document.getElementById('periodFrom')||{}).value,to=(document.getElementById('periodTo')||{}).value;if(!from||!to)return alert('Choose both dates.');if(from>to)return alert('The start date must be on or before the end date.');var p=window.AccazaReportPeriod&&window.AccazaReportPeriod.set?window.AccazaReportPeriod.set({mode:'custom',customFrom:from,customTo:to}):{};PERIOD=p.mode||PERIOD;this.rebuildPeriodSel();this.render();},
   renderTabs(){
     const selected=TABS.find(t=>t.id===CURRENT)||TABS[0],activeGroup=selected.group;
     document.getElementById("bookGroups").innerHTML=TAB_GROUPS.map(g=>`<button class="book-group ${g.id===activeGroup?'active':''}" ${g.id===activeGroup?'aria-current="true"':''} onclick="App.openGroup('${g.id}')">${g.label}</button>`).join("");
     document.getElementById("tabs").innerHTML = TABS.filter(t=>t.group===activeGroup&&!t.hidden).map(t=>`<button class="tab ${t.id===CURRENT?'active':''}" ${t.id===CURRENT?'aria-current="page"':''} onclick="App.go('${t.id}')">${t.label}</button>`).join("");
   },
   openGroup(id){const first=TABS.find(t=>t.group===id);if(first)this.go(first.id);},
-  go(id){ const selected=TABS.find(t=>t.id===id);if(!selected)return;CURRENT=id;window.__booksCurrentTab=CURRENT;if(selected.settingsSection)window.__booksSettingsSection=selected.settingsSection;this.renderTabs();this.render();if(typeof window!=='undefined'&&window.dispatchEvent)window.dispatchEvent(new CustomEvent('accaza-books-tab',{detail:{id:CURRENT}}));window.scrollTo(0,0); },
+  go(id){ const selected=TABS.find(t=>t.id===id);if(!selected)return;CURRENT=id;if(selected.settingsSection)window.__booksSettingsSection=selected.settingsSection;this.renderTabs();this.render();window.scrollTo(0,0); },
   settingsSection(id){ const selected=TABS.find(t=>t.settingsSection===id);this.go(selected?selected.id:'settings'); },
-  reportFilter(){var selected=TABS.find(t=>t.id===CURRENT);if(!selected||selected.group==='controls')return'';var p=window.AccazaReportPeriod.get();if(CURRENT==='bs')return '<div class="report-filter as-of"><label>As of<input id="periodAsOf" type="date" value="'+esc(p.to)+'" max="'+todayStr()+'"/></label><button type="button" onclick="App.applyAsOf()">Apply</button></div>';return '<div class="report-filter"><label>From<input id="periodFrom" type="date" value="'+esc(p.from)+'" max="'+todayStr()+'"/></label><label>To<input id="periodTo" type="date" value="'+esc(p.to)+'" max="'+todayStr()+'"/></label><label>Month<input id="periodMonth" type="month" value="'+esc(p.endMonth||p.to.slice(0,7))+'" max="'+todayStr().slice(0,7)+'" onchange="App.applyReportMonth()"/></label><button type="button" onclick="App.applyDateRange()">Apply</button></div>';},
-  render(){ const page=document.getElementById("page"),selected=TABS.find(t=>t.id===CURRENT);if(window.__booksLiveLoading){page.innerHTML='<div class="page-head"><div><h2>Refreshing Finance Books…</h2><p>Restoring the shared journal and statement balances</p></div></div><div class="hint">Finance figures are reconnecting. Existing balances are being preserved and will appear automatically when the ledger is ready.</div>';return;}page.innerHTML = this.reportFilter()+(selected&&selected.settingsSection?PAGES.settings():PAGES[CURRENT]());if(window.AccazaReportPagination)window.AccazaReportPagination.apply(page,'books-'+CURRENT); },
+  render(){ const page=document.getElementById("page"),selected=TABS.find(t=>t.id===CURRENT);if(window.__booksLiveLoading){page.innerHTML='<div class="page-head"><div><h2>Refreshing Finance Books…</h2><p>Restoring the shared journal and statement balances</p></div></div><div class="hint">Finance figures are reconnecting. Existing balances are being preserved and will appear automatically when the ledger is ready.</div>';return;}page.innerHTML = selected&&selected.settingsSection?PAGES.settings():PAGES[CURRENT](); },
 
   /* ---- backup / restore ---- */
   exportJSON(){
@@ -173,16 +169,16 @@ const App = {
     // Running balance uses the reconciled normal-side rule: running += DEBIT_NORMAL[a.type]?(dr-crd):(crd-dr)
     const detail=accountLedgerDetail(code),a=detail.account,ents=detail.rows,opening=detail.opening;
     const rows = ents.map(e=>{
-      return `<tr class="${e.reversalOf?'reversed':''}"><td>${e.date}</td><td>${esc(e.reference)} ${e.reversalOf?'<span class=badge-rev>rev</span>':''}</td><td>${esc(e.memo)}</td>
+      return `<tr class="${e.reversalOf?'reversed':''}"><td>${e.date}</td><td>${esc(e.reference)} ${e.reversalOf?'<span class=badge-rev>rev</span>':''}<div class="tiny muted">${esc(e.memo)}</div></td>
         <td class="num">${e.debit?peso(e.debit):''}</td><td class="num">${e.credit?peso(e.credit):''}</td><td class="num">${peso(e.balance)}</td></tr>`;
     }).join("");
     const m=document.getElementById("modal");
     m.innerHTML=`<div class="modal-head"><h3>${a.code} · ${esc(a.name)} <span class="type-pill t-${a.type.toLowerCase()}">${a.type}</span></h3><button class="x" onclick="App.closeModal()">×</button></div>
-      <div class="modal-body ledger-modal-body"><div class="ledger-current-balance"><span>Latest balance</span><strong>${peso(detail.closing)}</strong></div><div class="tiny muted ledger-period-note">${periodLabel()} · ${detail.carry?'opening balance '+peso(opening):'period activity only; prior periods are not carried forward'} · ${ents.length} entr${ents.length===1?'y':'ies'} · newest first · running balance in ${detail.normalDirection} (normal) direction</div>
-      <div class="tbl-wrap"><table class="account-ledger-table"><thead><tr><th>Date</th><th>Reference</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead>
-      <tbody>${rows||'<tr><td colspan=6 class="empty">No entries in this period</td></tr>'}</tbody></table></div></div>
+      <div class="modal-body"><div class="tiny muted" style="margin-bottom:.5rem">${periodLabel()} · ${detail.carry?'opening balance '+peso(opening):'period activity only; prior periods are not carried forward'} · ${ents.length} entr${ents.length===1?'y':'ies'} · running balance in ${detail.normalDirection} (normal) direction</div>
+      <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Entry</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan=5 class="empty">No entries in this period</td></tr>'}</tbody></table></div></div>
       <div class="modal-foot"><button class="btn ghost" onclick="App.printLedger('${esc(code)}')">Print</button><button class="btn primary" onclick="App.exportAccountLedgerCsv('${esc(code)}')">↓ Download CSV</button><button class="btn ghost" onclick="App.closeModal()">Close</button></div>`;
-    document.getElementById("modalBg").classList.add("show");if(window.AccazaReportPagination)window.AccazaReportPagination.apply(m,'ledger-'+code,true);
+    document.getElementById("modalBg").classList.add("show");
   },
   exportAccountLedgerCsv(code){exportAccountLedgerCsv(code);},
   printLedger(code){printAccountLedger(code);},

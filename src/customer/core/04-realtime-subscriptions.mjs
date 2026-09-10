@@ -1,52 +1,13 @@
 
-// ── BOUNDED CUSTOMER CALENDAR READ ──
-// Calendar blocks are keyed by YYYY-MM-DD. Keep only the month currently shown
-// in memory and on the wire; the reservation UI requests this when it becomes
-// visible or when the customer changes month.
-var _customerCalendarBlocksUnsub=null;
-var _customerCalendarBlocksKey='';
-var _customerCalendarBlocksRequest=0;
-window.__customerCalendarBlocksLoading=false;
-window.__customerCalendarBlocksReady=false;
-window.__loadCustomerCalendarBlocks=function(year,month){
-  var key=String(year)+'-'+String(month+1).padStart(2,'0');
-  if(key===_customerCalendarBlocksKey&&window.__customerCalendarBlocksReady)return;
-  _customerCalendarBlocksKey=key;
-  _customerCalendarBlocksRequest++;
-  var requestId=_customerCalendarBlocksRequest;
-  if(_customerCalendarBlocksUnsub){_customerCalendarBlocksUnsub();_customerCalendarBlocksUnsub=null;}
-  calBlocks={};
-  window.__customerCalendarBlocksLoading=true;
-  window.__customerCalendarBlocksReady=false;
-  var lastDay=new Date(year,month+1,0).getDate();
-  var monthPrefix=key+'-';
-  var boundedQuery=query(calBlocksRef,orderByKey(),startAt(monthPrefix+'01'),endAt(monthPrefix+String(lastDay).padStart(2,'0')));
-  _customerCalendarBlocksUnsub=onValue(boundedQuery,function(snap){
-    if(requestId!==_customerCalendarBlocksRequest)return;
-    calBlocks=snap.val()||{};
-    window.__customerCalendarBlocksLoading=false;
-    window.__customerCalendarBlocksReady=true;
-    renderCustomerCalendar();
-  },function(){
-    if(requestId!==_customerCalendarBlocksRequest)return;
-    // Preserve the existing fail-open behavior if Firebase is temporarily
-    // unavailable, but never leave the calendar permanently in a loading state.
-    calBlocks={};
-    window.__customerCalendarBlocksLoading=false;
-    window.__customerCalendarBlocksReady=true;
-    renderCustomerCalendar();
-  });
-};
-
 // ── FIREBASE LISTENERS ──
-function applyCategoriesSnapshot(snap){
+onValue(categoriesRef,snap=>{
   const saved=snap.val();
   if(saved){categoriesMap=saved;}
   else{const seed={};DEFAULT_CATS.forEach(c=>{seed[c.id]=c;});set(categoriesRef,seed);categoriesMap=seed;}
   categoriesListCache=null;
   rebuildTabs();
   scheduleCatalogRender();
-}
+});
 
 function migrateItemOptions(){
   if(itemOptMigrated)return;
@@ -63,7 +24,7 @@ function migrateItemOptions(){
   itemOptMigrated=true;
   if(Object.keys(updates).length)update(ref(db),updates).catch(function(){});
 }
-function applyOptionGroupsSnapshot(snap){
+onValue(optionGroupsRef,snap=>{
   if(snap.exists()){optionGroupsMap=snap.val();}
   else if(!optSeedStarted){
     optSeedStarted=true;
@@ -71,9 +32,9 @@ function applyOptionGroupsSnapshot(snap){
     set(optionGroupsRef,DEFAULT_OPTION_GROUPS).catch(function(){});
   }
   migrateItemOptions();
-}
+});
 
-function applyMenuSnapshot(snap){
+onValue(menuRef,snap=>{
   const saved=snap.val();
   if(saved){menuItemsMap=saved;}
   else{
@@ -135,13 +96,8 @@ function applyMenuSnapshot(snap){
   menuItemsListCache=null;
   migrateItemOptions();
   scheduleCatalogRender();
-}
-var _publicCatalogVersionKey='bootstrap',_pReq=0,_publicCatalogLoading=null;
-var PUBLIC_CATALOG_CACHE_KEY='accaza_public_catalog_v1';
-function readPublicCatalogCache(){try{var c=JSON.parse(localStorage.getItem(PUBLIC_CATALOG_CACHE_KEY)||'null');return c&&c.categories&&c.optionGroups&&c.menuItems?c:null;}catch(e){return null;}}
-function applyCachedPublicCatalog(c){applyCategoriesSnapshot({val:()=>c.categories});applyOptionGroupsSnapshot({exists:()=>true,val:()=>c.optionGroups});applyMenuSnapshot({val:()=>c.menuItems});}
-async function loadVersionedPublicCatalog(k){if(_publicCatalogLoading===k)return;_publicCatalogLoading=k;var id=++_pReq,c=readPublicCatalogCache();if(c&&String(c.version||'')===k){applyCachedPublicCatalog(c);_publicCatalogLoading=null;return;}try{var s=await Promise.all([get(categoriesRef),get(optionGroupsRef),get(menuRef)]);if(id!==_pReq||k!==_publicCatalogVersionKey)return;applyCategoriesSnapshot(s[0]);applyOptionGroupsSnapshot(s[1]);applyMenuSnapshot(s[2]);try{localStorage.setItem(PUBLIC_CATALOG_CACHE_KEY,JSON.stringify({version:k,categories:categoriesMap,optionGroups:optionGroupsMap,menuItems:menuItemsMap}));}catch(e){}}catch(e){if(id===_pReq&&c)applyCachedPublicCatalog(c);}if(id===_pReq)_publicCatalogLoading=null;}
-onValue(publicCatalogVersionRef,s=>{var v=s&&s.val?s.val():null;v=v&&typeof v==='object'?v.version:v;_publicCatalogVersionKey=v==null||v===''?'bootstrap':String(v);loadVersionedPublicCatalog(_publicCatalogVersionKey);},()=>{_publicCatalogVersionKey='bootstrap';loadVersionedPublicCatalog('bootstrap');});
+});
+
 // ── NEW ORDER ALERTS (admin/staff) ──────────────────────────
 function playChime(){
   try{
@@ -235,6 +191,20 @@ function checkMyReadyOrders(){
   }catch(e){}
 }
 (function(){var un=function(){try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}document.removeEventListener('touchstart',un);document.removeEventListener('click',un);};document.addEventListener('touchstart',un,{passive:true});document.addEventListener('click',un);})();
+onValue(reviewsRef,snap=>{
+  const saved=snap.val();
+  if(saved){reviewsMap=saved;}
+  else{
+    const seed={
+      'rev_001':{name:'Maria Theresa & Quinn Isabella Margaux',stars:5,date:'June 2, 2026',text:'Accaza Coffee House is a hidden gem right along the roadside near SM Dasmariñas — easy to find whether you\'re commuting or driving. Inside, it\'s surprisingly spacious with a calm, serene atmosphere that\'s rare among today\'s cramped cafés.\n\nThe coffee is outstanding, with well-crafted flavors from bold to smooth. But what truly sets Accaza apart is how perfectly it serves both students and professionals — it\'s a productive sanctuary where you can focus, study, or work in peace.\n\nHighly recommended for anyone looking for great coffee and a place to get things done. ☕✨'},
+      'rev_002':{name:'Molina Page',stars:5,date:'June 2026',text:'The coffee was absolutely delightful — perfectly brewed, rich in flavor, and made with genuine care. Every sip spoke to your passion and quality.\n\nBeyond the coffee, your staff made the visit truly special. From the warm greeting to the attentive service, everyone made me feel genuinely valued. It\'s rare to find a team so professional yet so kind and approachable.'},
+      'rev_003':{name:'Camilla Andrea',stars:5,date:'April 6, 2026 · via Facebook',text:'Nasa may highway ang coffee shop, ngunit nakakubli ang ganda nitong hindi mo mamamalas kung hindi sasadyain. Mukha siyang maliit sa labas, subalit malaki ang espasyo pagpasok, na tila napunta ka na sa ibang lugar.\n\nGusto ko mang ipagdamot ang lugar para patuloy akong makatambay nang matiwasay, subalit tingin ko\'y kasalanan ito sa mga mahilig sa kape (at sa may-ari rin) kung hindi ito maibabahagi sa iba.'},
+      'rev_004':{name:'Cess Borja',stars:5,date:'July 2025',text:'"10/10 would recommend!! we will surely come back 🤌"'}
+    };
+    set(reviewsRef,seed);reviewsMap=seed;
+  }
+  renderPublicReviews();
+});
 onValue(availRef,snap=>{const s=snap.val();if(s)Object.keys(s).forEach(k=>availability[k]=s[k]);scheduleCatalogRender();});
 onValue(paymentRef,snap=>{
   const p=snap.val();if(!p)return;
@@ -321,3 +291,4 @@ onValue(paymentRef,snap=>{
     if(b4row)b4row.style.display=p.bank4Enabled!==false?'block':'none';
   }else{if(b4row)b4row.style.display='none';}
 });
+onValue(calBlocksRef,snap=>{calBlocks=snap.val()||{};renderCustomerCalendar();});

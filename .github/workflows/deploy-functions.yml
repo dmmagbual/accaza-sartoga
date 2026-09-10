@@ -8,8 +8,6 @@ on:
     paths:
       - "functions/**"
       - "database.rules.json"
-      - "firestore.rules"
-      - "firestore.indexes.json"
       - "storage.rules"
       - ".github/workflows/deploy-functions.yml"
   workflow_dispatch: {}   # lets you run it manually from the Actions tab too
@@ -57,22 +55,12 @@ jobs:
       - name: Run Accaza quality gate
         run: npm run test:ci
 
-      - name: Verify the default Firestore database exists
-        run: |
-          firebase firestore:databases:list --project accaza-sartoga --json > firestore-databases.json
-          node -e "const x=require('./firestore-databases.json');if(!(x.result||[]).some(d=>String(d.name||'').endsWith('/databases/(default)')))throw new Error('Create the default Firestore database in asia-southeast1 before deployment.');"
-        env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-
-      # Firebase requires an explicit acknowledgement when a function enables
-      # retry-on-failure. Keep --force scoped to these named functions so the
-      # full deployment cannot silently delete unrelated production functions.
-      - name: Acknowledge retry policy for durable order functions
-        run: firebase deploy --only functions:preservePostedOrderOnDelete,functions:replicateArchivedOrderToFirestore,functions:refreshHistoricalOrderAfterJournal,functions:refreshHistoricalOrderAfterInventoryPlan,functions:updateCashBalanceSummary,functions:updatePublicCatalogVersionOnCategories,functions:updatePublicCatalogVersionOnMenuItems,functions:updatePublicCatalogVersionOnOptionGroups --project accaza-sartoga --non-interactive --force
+      - name: Acknowledge retry policy for order preservation
+        run: firebase deploy --only functions:preservePostedOrderOnDelete --project accaza-sartoga --non-interactive --force
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
 
       - name: Deploy Functions and rules
-        run: firebase deploy --only functions,database,firestore,storage --project accaza-sartoga --non-interactive
+        run: firebase deploy --only functions,database,storage --project accaza-sartoga --non-interactive
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
