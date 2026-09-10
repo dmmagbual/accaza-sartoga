@@ -12,6 +12,11 @@ assert.equal(offset('adjustment',{offsetAccount:'5905',adjustmentNature:'count-v
 assert.equal(offset('waste',{offsetAccount:'5900',adjustmentNature:'wastage'}),'5900');
 assert.equal(offset('adjustment',{offsetAccount:'3000',adjustmentNature:'beginning-inventory'}),'3000');
 assert.equal(offset('manual_edit',{offsetAccount:'3000',adjustmentNature:'beginning-inventory',sourceType:'new-inventory-item'}),'3000');
+assert.throws(()=>offset('adjustment',{offsetAccount:'5905',adjustmentNature:'beginning-inventory'}),/must offset Owner's Capital/);
+assert.equal(offset('manual_edit',{offsetAccount:'3000',adjustmentNature:'beginning-inventory',sourceType:'inventory-xlsx',importPurpose:'opening',classificationConfirmed:true}),'3000');
+assert.equal(offset('manual_edit',{offsetAccount:'5905',adjustmentNature:'inventory-reconciliation',sourceType:'inventory-xlsx',importPurpose:'reconciliation',classificationConfirmed:true}),'5905');
+assert.throws(()=>offset('manual_edit',{offsetAccount:'5905',adjustmentNature:'inventory-reconciliation',sourceType:'inventory-xlsx'}),/choose and confirm/i);
+assert.throws(()=>offset('manual_edit',{offsetAccount:'5905',adjustmentNature:'inventory-reconciliation',sourceType:'inventory-xlsx',importPurpose:'opening',classificationConfirmed:true}),/beginning-inventory import/i);
 assert.throws(()=>offset('adjustment',{adjustmentNature:'count-variance'}),/Choose one approved Finance offset account/);
 assert.throws(()=>offset('adjustment',{offsetAccount:'3000',adjustmentNature:'count-variance'}),/beginning inventory correction/);
 assert.throws(()=>offset('manual_edit',{offsetAccount:'5905',adjustmentNature:'beginning-inventory',sourceType:'new-inventory-item'}),/must offset Owner's Capital/);
@@ -21,7 +26,13 @@ assert.throws(()=>offset('adjustment',{offsetAccount:'5000',adjustmentNature:'co
 assert.throws(()=>offset('waste',{offsetAccount:'5000',adjustmentNature:'costing-correction'}),/must be posted as a stock adjustment/,'wastage may not reach cost of sales');
 assert.throws(()=>offset('revaluation',{offsetAccount:'5000',adjustmentNature:'costing-correction'}),/must offset 5905/,'a revaluation may not reach cost of sales');
 assert.throws(()=>offset('adjustment',{offsetAccount:'5905',adjustmentNature:'costing-correction'}),/must offset the cost of sales account/,'a costing correction may not be parked in reconciliation');
-for(const marker of ['adjustmentOffset?`coa:${adjustmentOffset}`','adjustmentOffsetAccount:adjustmentOffset','offsetAccount:String(raw.offsetAccount','adjustmentNature:String(raw.adjustmentNature'])assert.ok(source.includes(marker),`missing posting/audit marker: ${marker}`);
+for(const marker of ['adjustmentOffset?`coa:${adjustmentOffset}`','adjustmentOffsetAccount:adjustmentOffset','offsetAccount:String(raw.offsetAccount','adjustmentNature:String(raw.adjustmentNature','importPurpose:String(raw.importPurpose','classificationConfirmed:raw.classificationConfirmed===true'])assert.ok(source.includes(marker),`missing posting/audit marker: ${marker}`);
 const ui=fs.readFileSync('src/admin/pos/11d-stock-adjustments.js','utf8');
 for(const marker of ['Finance offset account','5905 · Inventory Reconciliation',"3000 · Owner\\'s Capital",'offsetAccount:offsetAccount','adjustmentNature:reason'])assert.ok(ui.includes(marker),`missing Admin confirmation marker: ${marker}`);
+const importUi=fs.readFileSync('src/admin/pos/11f-inventory-spreadsheets.js','utf8'),inventoryUi=fs.readFileSync('src/admin/pos/10-inventory.js','utf8');
+for(const marker of ['importPurpose:purpose','classificationConfirmed:true',"opening?'3000':'5905'","opening?'beginning-inventory':'inventory-reconciliation'"])assert.ok(importUi.includes(marker),`inventory import classification safeguard missing: ${marker}`);
+for(const marker of ['invImportPurpose','Beginning→Capital','Count→Gain/Loss'])assert.ok(inventoryUi.includes(marker),`inventory import purpose choice missing: ${marker}`);
+const reconciliationUi=fs.readFileSync('src/admin/analytics/60-inventory-valuation.js','utf8'),reconciliationServer=fs.readFileSync('src/functions/42b-financial-command-transactions.js','utf8');
+for(const marker of ['inventoryOpeningBalanceBtn',"beginning stock belongs to Owner\\'s Capital","adjustmentPurpose:'current-reconciliation'",'classificationConfirmed:true'])assert.ok(reconciliationUi.includes(marker),`inventory reconciliation purpose safeguard missing: ${marker}`);
+for(const marker of ['data.adjustmentPurpose||""','data.classificationConfirmed!==true','Beginning inventory must use the opening-inventory workflow'])assert.ok(reconciliationServer.includes(marker),`server reconciliation purpose safeguard missing: ${marker}`);
 console.log('PASS: inventory adjustments require one confirmed, audited Finance offset and restrict Owner\'s Capital to beginning inventory.');

@@ -139,7 +139,9 @@ const PAGES = {
     // contra: Income accounts with debit-normal balance (4900) show as negative already via bal sign
     const salesRows = pl.sales.map(x=> line(x, x.bal<0)).join("");
     const otherIncomeRows = pl.otherIncome.map(x=> line(x, x.bal<0)).join("");
-    const cogsRows = pl.cogs.map(x=>line(x,true)).join("");
+    const cogsRows = pl.cogs.map(x=>x.bal<0
+      ?`<tr><td><span class="acc-code">${x.a.code}</span> <span class="linkish" onclick="App.drill('${x.a.code}')">Less: ${esc(x.a.name)} · gain reduces COGS</span></td><td class="num pos">${peso(Math.abs(x.bal))}</td></tr>`
+      :line(x,true)).join("");
     const expRows = pl.expense.map(x=>line(x,true)).join("");
     const grossPct = pl.netSales>0?(pl.gross/pl.netSales*100):0;
     const netPct = pl.netSales>0?(pl.net/pl.netSales*100):0;
@@ -153,7 +155,7 @@ const PAGES = {
           <tr class="total-row"><td>Net sales</td><td class="num">${peso(pl.netSales)}</td></tr>
           <tr class="sub-row"><td colspan="2">Cost of goods sold</td></tr>
           ${cogsRows||'<tr><td colspan=2 class="muted">—</td></tr>'}
-          <tr class="total-row"><td>Total COGS</td><td class="num neg">(${peso(pl.totalCogs)})</td></tr>
+          <tr class="total-row"><td>${pl.totalCogs<0?'Net inventory gain after COGS':'Total COGS'}</td><td class="num ${pl.totalCogs<0?'pos':'neg'}">${pl.totalCogs<0?peso(Math.abs(pl.totalCogs)):'('+peso(pl.totalCogs)+')'}</td></tr>
           <tr class="total-row"><td>Gross profit <span class="tiny muted">${grossPct.toFixed(1)}%</span></td><td class="num ${pl.gross>=0?'pos':'neg'}">${peso(pl.gross)}</td></tr>
           <tr class="sub-row"><td colspan="2">Other income</td></tr>
           ${otherIncomeRows||'<tr><td colspan=2 class="muted">—</td></tr>'}

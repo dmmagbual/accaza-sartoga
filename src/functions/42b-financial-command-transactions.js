@@ -1,5 +1,6 @@
       return {movementId: freshId, reversalMovementId: reversalId, stockValue: reconciliation.totalStock, booksValueBefore: reconciliation.totalBooks, adjustment: reconciliation.totalDifference, reposted: seq, duplicate: committed.duplicate};
     } else if (action === "inventory_reconciliation_adjustment") {
+      if(String(data.adjustmentPurpose||"")!=="current-reconciliation"||data.classificationConfirmed!==true)throw new HttpsError("failed-precondition","Confirm that this is a current-period physical-count or valuation variance. Beginning inventory must use the opening-inventory workflow and Owner's Capital.");
       const inventory=(await db.ref("/inventory").get()).val()||{},journal=(await db.ref("/books/journal").get()).val()||{},reconciliation=BooksBridge.inventoryReconciliationSnapshot(inventory,journal),date=financeDate(data.date),today=financeDateFromTimestamp(Date.now());
       if(date!==today)throw new HttpsError("failed-precondition","Inventory reconciliation adjustments must use today’s verified stock valuation. Select today as the To date.");
       if(reconciliation.unmapped.length)throw new HttpsError("failed-precondition",`${reconciliation.unmapped.length} stock item(s) with value are missing an inventory account. Map them before auto-adjusting.`);

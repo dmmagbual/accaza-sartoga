@@ -92,6 +92,7 @@ function renderInventory(){
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">'
       +'<button class="pz-btn sec" id="invExport">⬇ Export Excel</button>'
       +'<button class="pz-btn sec" id="invTemplate">⬇ Import template</button>'
+      +'<select id="invImportPurpose"><option value="">Purpose</option><option value="opening">Beginning→Capital</option><option value="reconciliation">Count→Gain/Loss</option></select>'
       +'<button class="pz-btn ok" id="invImportBtn">⬆ Import Excel</button>'
       +'<input type="file" id="invImportFile" accept=".xlsx,.xls,.csv" style="display:none;"/>'
       +(ozItems.length?'<button class="pz-btn sec" id="invFixOz" style="border-color:#e6a817;color:#8a5a00;">🔤 Convert '+ozItems.length+' oz → fl oz</button>':'')
@@ -142,7 +143,7 @@ function renderInventory(){
   var _fo=document.getElementById('invFixOz'); if(_fo)_fo.onclick=migrateOzToFloz;
   var _tp=document.getElementById('invTemplate'); if(_tp)_tp.onclick=downloadInventoryTemplate;
   var _ib=document.getElementById('invImportBtn'), _if=document.getElementById('invImportFile');
-  if(_ib&&_if){ _ib.onclick=function(){_if.value='';_if.click();}; _if.onchange=function(){ if(_if.files&&_if.files[0])importInventoryXlsx(_if.files[0]); }; }
+  if(_ib&&_if){_ib.onclick=function(){var p=document.getElementById('invImportPurpose').value;if(!p)return alert('Choose purpose.');_if.dataset.purpose=p;_if.value='';_if.click();};_if.onchange=function(){if(_if.files[0])importInventoryXlsx(_if.files[0],_if.dataset.purpose);};}
   var _it=document.getElementById('invType'); if(_it)_it.onchange=function(){document.getElementById('invConsumRow').style.display=(_it.value==='consumable')?'grid':'none';};
   root.querySelectorAll('[data-inv-skus]').forEach(function(b){b.onclick=function(){openSkuManager(b.getAttribute('data-inv-skus'));};});
   root.querySelectorAll('[data-inv-adjust]').forEach(function(b){b.onclick=function(){adjustStock(b.getAttribute('data-inv-adjust'));};});
