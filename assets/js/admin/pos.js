@@ -1545,7 +1545,7 @@ function renderRecipes(){
       +'<div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th>Category</th><th class="r">Ingredients</th><th class="r">Cost S</th><th class="r">Cost M</th><th class="r">Cost L</th><th></th></tr></thead><tbody>'+savedRows+'</tbody></table></div></div>';
   }
   else {
-    var recipeCats=(A().getCats?A().getCats():[]).filter(function(c){return ['coffee','noncaf','frappe','nonfrappe','soda','pastry'].indexOf(c.id)>=0;});
+    var recipeCats=(A().getCats?A().getCats():[]);
     if(!recCategory&&recipeCats.length)recCategory=recipeCats[0].id;
     var items=menuList().filter(function(it){return recipeItemNeedsCosting(it)&&(!recCategory||it.cat===recCategory);});
     var opts=items.map(function(it){var has=!!recipesMap[it.key];return '<option value="'+esc(it.key)+'"'+(it.key===curRecipeKey?' selected':'')+'>'+(has?'✓ ':'○ ')+esc(it.name)+'</option>';}).join('');
@@ -2653,7 +2653,7 @@ function packItemBindEditors(){
   });
 }
 function packagingAssignmentHtml(){
-  var allowed=['coffee','noncaf','frappe','nonfrappe','soda','pastry'],cats=(A().getCats?A().getCats():[]).filter(function(c){return allowed.indexOf(c.id)>=0;}),menu=menuList(),saved=(window.__posSettings&&window.__posSettings.packagingAssignments)||{};
+  var cats=(A().getCats?A().getCats():[]),menu=menuList(),saved=(window.__posSettings&&window.__posSettings.packagingAssignments)||{};
   return '<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Menu applicability</div><p class="pz-sub" style="margin-top:0;">Drinks can vary by Temperature. Pastries share one packaging set by default — but any pastry can be <b>Customized</b> to add or remove packaging just for itself, starting from what it currently inherits; saving it never changes the shared style or any other item. Saving automatically downloads a restore point before anything changes.</p>'+cats.map(function(cat){
     var items=menu.filter(function(it){return it.cat===cat.id;}),groups={},assignment=saved[cat.id]||{},mapped=assignment.choices||{};
     items.forEach(function(it){(A().getItemOptionGroups?A().getItemOptionGroups(it):[]).forEach(function(g){if(/temperature/i.test(String(g.name||'')))groups[g.id]=g;});});

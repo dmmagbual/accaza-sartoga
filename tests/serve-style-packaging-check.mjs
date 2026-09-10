@@ -132,6 +132,7 @@ check(/packagingRules:packagingRulesMap/.test(state),'the till prices with the s
 check(/packagingRules:\['recipes'/.test(fs.readFileSync('assets/js/admin/realtime-hub.mjs','utf8')),'the realtime hub registers the packaging scope, so the subscription actually attaches');
 check(/"packagingRules"/.test(fs.readFileSync('database.rules.json','utf8')),'the database rules cover the packaging table');
 const ui=fs.readFileSync('src/admin/pos/32-serve-style-packaging.js','utf8');
+check(/var cats=\(A\(\)\.getCats\?A\(\)\.getCats\(\):\[\]\),menu=menuList\(\)/.test(ui)&&!/var allowed=\['coffee'/.test(ui),'Menu applicability uses every live Menu Availability category instead of a hard-coded category allowlist');
 check(/accaza-packaging-restore-v2/.test(ui)&&/posSettings\/packagingAssignments/.test(ui),'restore point includes current menu packaging assignments');
 check(!/data-packitem="/.test(ui)&&/data-packcustomize=/.test(ui)&&/data-packrevert=/.test(ui)&&/Uses the shared /.test(ui),'a pastry inherits the shared packaging by default, with no old-style per-item select, and can be Customized/Reverted individually');
 check(/itemStyleId\(key\)/.test(ui)&&/updates\['packagingRules\/'\+custId\]=clean/.test(ui)&&/updates\['posSettings\/packagingAssignments\/'\+catId\+'\/items\/'\+key\]=custId/.test(ui),'a per-item Customize writes its own private packagingRules/item_<key> record, never the shared style');
