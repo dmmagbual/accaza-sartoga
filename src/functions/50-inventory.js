@@ -108,8 +108,15 @@ function inventoryAdjustmentOffset(type,movement){
   }
   if(nature==="costing-correction")throw new HttpsError("failed-precondition","A costing correction must offset the cost of sales account it was charged to.");
   if(!["3000","5900","5905"].includes(requested))throw new HttpsError("failed-precondition","Choose one approved Finance offset account: 3000 Owner's Capital, 5900 Wastage & Spoilage, or 5905 Inventory Reconciliation Gain / (Loss).");
+  if(nature==="beginning-inventory"&&requested!=="3000")throw new HttpsError("failed-precondition","Beginning inventory must offset Owner's Capital and cannot affect profit or COGS.");
   if(requested==="3000"&&nature!=="beginning-inventory")throw new HttpsError("failed-precondition","Owner's Capital may only offset a beginning inventory correction.");
   if(String(movement&&movement.sourceType||"")==="new-inventory-item"&&requested!=="3000")throw new HttpsError("failed-precondition","New-item opening inventory must offset Owner's Capital.");
+  if(String(movement&&movement.sourceType||"")==="inventory-xlsx"){
+    const purpose=String(movement&&movement.importPurpose||"").trim().toLowerCase(),confirmed=movement&&movement.classificationConfirmed===true;
+    if(!confirmed||!["opening","reconciliation"].includes(purpose))throw new HttpsError("failed-precondition","Choose and confirm the inventory import accounting purpose before posting.");
+    if(purpose==="opening"&&(nature!=="beginning-inventory"||requested!=="3000"))throw new HttpsError("failed-precondition","A beginning-inventory import must post against Owner's Capital.");
+    if(purpose==="reconciliation"&&(nature!=="inventory-reconciliation"||requested!=="5905"))throw new HttpsError("failed-precondition","A current inventory reconciliation import must post against account 5905.");
+  }
   return requested;
 }
 async function postInventoryMovementToBooks(db, movement, item, actor, context) {
@@ -227,7 +234,7 @@ async function applyInventoryMovement(db, raw, actor) {
       note: String(raw.note || "").slice(0, 500),
       actorUid: actor && actor.uid || "server", actorName: String(raw.actorName || actor && actor.role || "server").slice(0, 120),
       occurredAt: Number(raw.occurredAt || now), createdAt: now,
-      reversalOf: String(raw.reversalOf || "").slice(0, 160), usageKind:String(raw.usageKind||"").slice(0,80),usageAccount:String(raw.usageAccount||"").slice(0,4),offsetAccount:String(raw.offsetAccount||"").slice(0,4),adjustmentNature:String(raw.adjustmentNature||"").slice(0,80), version, schemaVersion: 3,
+      reversalOf: String(raw.reversalOf || "").slice(0, 160), usageKind:String(raw.usageKind||"").slice(0,80),usageAccount:String(raw.usageAccount||"").slice(0,4),offsetAccount:String(raw.offsetAccount||"").slice(0,4),adjustmentNature:String(raw.adjustmentNature||"").slice(0,80),importPurpose:String(raw.importPurpose||"").slice(0,20),classificationConfirmed:raw.classificationConfirmed===true, version, schemaVersion: 3,
     };
     state.balance = after; state.unitCost = costAfter; state.version = version;
     state.lastMovementId = movementId; state.lastMovementAt = now;
