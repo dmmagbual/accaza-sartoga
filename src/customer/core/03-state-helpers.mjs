@@ -48,6 +48,7 @@ adminCalYear=now.getFullYear();adminCalMonth=now.getMonth();
 
 // Helpers
 function getCats(){if(!categoriesListCache)categoriesListCache=Object.values(categoriesMap).sort((a,b)=>(a.order||0)-(b.order||0));return categoriesListCache;}
+function customerMenuCats(){return getCats().filter(c=>c.showInMenu!==false);}
 function getCatLabel(id){const c=categoriesMap[id];return c?c.icon+' '+c.label:id;}
 function getCatIcon(id){const c=categoriesMap[id];return c?c.icon:'☕';}
 function getMenuItems(){if(!menuItemsListCache)menuItemsListCache=Object.entries(menuItemsMap).map(([k,v])=>({...v,key:k}));return menuItemsListCache;}
@@ -61,10 +62,8 @@ function seedTabsFromDefaults(){
   const cats=DEFAULT_CATS;
   const mrow=document.getElementById('menuTabsRow');
   const orow=document.getElementById('orderTabsRow');
-  const sel=document.getElementById('newItemCat');
   if(mrow)mrow.innerHTML=cats.map(c=>'<button class="tab-btn'+(c.id==='coffee'?' active':'')+'" data-cat="'+c.id+'">'+c.icon+' '+c.label+'</button>').join('');
   if(orow)orow.innerHTML=cats.map(c=>'<button class="otab" data-cat="'+c.id+'">'+c.icon+' '+c.label+'</button>').join('');
-  if(sel)sel.innerHTML=cats.map(c=>'<option value="'+c.id+'">'+c.icon+' '+c.label+'</option>').join('');
   attachTabListeners();
 }
 seedTabsFromDefaults();
@@ -79,12 +78,12 @@ function attachTabListeners(){
 }
 
 function rebuildTabs(){
-  const cats=getCats();
+  const cats=customerMenuCats();
+  if(!cats.some(c=>c.id===menuFilter))menuFilter=cats.length?cats[0].id:null;
+  if(orderFilter&&!cats.some(c=>c.id===orderFilter))orderFilter=null;
   const mrow=document.getElementById('menuTabsRow');
   const orow=document.getElementById('orderTabsRow');
-  const sel=document.getElementById('newItemCat');
   if(mrow){mrow.innerHTML=cats.map(c=>'<button class="tab-btn'+(menuFilter===c.id?' active':'')+'" data-cat="'+c.id+'">'+c.icon+' '+c.label+'</button>').join('');}
   if(orow){orow.innerHTML=cats.map(c=>'<button class="otab'+(orderFilter===c.id?' active':'')+'" data-cat="'+c.id+'">'+c.icon+' '+c.label+'</button>').join('');}
-  if(sel){const prev=sel.value;sel.innerHTML=cats.map(c=>'<option value="'+c.id+'">'+c.icon+' '+c.label+'</option>').join('');if(prev&&cats.find(c=>c.id===prev))sel.value=prev;}
   attachTabListeners();
 }
