@@ -1547,7 +1547,7 @@ function renderRecipes(){
   else {
     var recipeCats=(A().getCats?A().getCats():[]);
     if(!recCategory&&recipeCats.length)recCategory=recipeCats[0].id;
-    var items=menuList().filter(function(it){return recipeItemNeedsCosting(it)&&(!recCategory||it.cat===recCategory);});
+    var items=menuList().filter(function(it){return !recCategory||it.cat===recCategory;});
     var opts=items.map(function(it){var has=!!recipesMap[it.key];return '<option value="'+esc(it.key)+'"'+(it.key===curRecipeKey?' selected':'')+'>'+(has?'✓ ':'○ ')+esc(it.name)+'</option>';}).join('');
     var covered=items.filter(function(it){return !!recipesMap[it.key];}).length;
     var catOpts=recipeCats.map(function(c){return '<option value="'+esc(c.id)+'"'+(c.id===recCategory?' selected':'')+'>'+esc(c.icon+' '+c.label)+'</option>';}).join('');

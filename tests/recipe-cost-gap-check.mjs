@@ -9,6 +9,7 @@ const coverageSource=fs.readFileSync('src/admin/pos/29a-recipe-cost-coverage.js'
 const source=coverageSource+'\n'+recipeSource;
 const choiceScopeSource=fs.readFileSync('src/admin/pos/29-recipe-choice-scope.js','utf8');
 if(!/var recipeCats=\(A\(\)\.getCats\?A\(\)\.getCats\(\):\[\]\);/.test(recipeSource)||/var recipeCats=.*\['coffee'/.test(recipeSource))throw new Error('Recipe Costing must use every live Menu Availability category instead of a hard-coded category allowlist');
+if(!/var items=menuList\(\)\.filter\(function\(it\)\{return !recCategory\|\|it\.cat===recCategory;\}\);/.test(recipeSource))throw new Error('Recipe Costing must list every menu item in the selected live category instead of hiding items behind costing-policy classification');
 const start=source.indexOf('function recipeItemIsSingleServing');
 const end=source.indexOf('function updateCostBadge');
 if(start<0||end<0)throw new Error('Recipes cost-gap functions were not found');
