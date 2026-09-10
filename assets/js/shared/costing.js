@@ -4,7 +4,7 @@
   else root.AccazaCosting=api;
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
-  var VERSION='3F-3';
+  var VERSION='3F-4';
   var SIZES=['S','M','L'];
   function isSingleServing(item){return !!(item&&item.priceS!=null)&&!(Number(item.priceM)>0)&&!(Number(item.priceL)>0)&&!item.labelS&&!item.labelL;}
   function effectiveSize(item,size){return isSingleServing(item)?'S':(SIZES.indexOf(size)>=0?size:'M');}
@@ -110,9 +110,15 @@
     /* Category + menu-choice assignments are the current source of truth. This lets Hot/Iced
        packaging differ by menu category without hiding metadata inside the customer option. */
     var assignment=((ctx.packagingAssignments||{})[String((item&&item.cat)||'')])||{};
-    /* Pastries intentionally have one inherited category set. Ignore legacy item/choice/menu
-       styles so removing or replacing that one assignment has one predictable result. */
-    if(String((item&&item.cat)||'')==='pastry')return String(assignment.defaultStyle||'');
+    /* Pastries intentionally have one inherited category set, and ignore legacy choice/menu
+       styles so removing or replacing that one assignment has one predictable result. A pastry
+       may still be explicitly Customized to its own private style via packagingAssignments.
+       <cat>.items[key] (see 32-serve-style-packaging.js) - that deliberate per-item override
+       must win over the shared default, or "Customize"/"Revert" silently do nothing to cost. */
+    if(String((item&&item.cat)||'')==='pastry'){
+      var pastryItemStyle=item&&item.key?(assignment.items||{})[item.key]:'';
+      return String(pastryItemStyle||assignment.defaultStyle||'');
+    }
     var mapped=assignment.choices||{};
     for(var a=0;a<labels.length;a++){
       var mappedGroup=groupIdForLabel(item,labels[a],groups),byGroup=mappedGroup&&mapped[mappedGroup];
