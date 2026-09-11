@@ -8,9 +8,16 @@ const HISTORY_BOUNDS={
   cfLedger:{field:'ts',limit:300,page:300},financialMovements:{field:'occurredAt',limit:300,page:300},platformPayouts:{field:'settledAt',limit:100,page:100},inventoryMovements:{field:'occurredAt',limit:300,page:300}
 };
 const HISTORY_TAB_PATHS={saleshistory:['orders','archivedOrders','financialMovements'],analytics:['orders','archivedOrders'],pnl:['orders','archivedOrders','internalUsage','inventoryAdjustments','platformPayouts'],payouts:['orders','archivedOrders','platformPayouts','financialMovements'],stockvalue:['orders','archivedOrders','stockReceipts','inventoryAdjustments','internalUsage','inventoryMovements','financialMovements'],dailyreport:['orders','archivedOrders'],cashflow:['orders','archivedOrders','cfLedger','financialMovements','platformPayouts'],receivables:['orders','archivedOrders','financialMovements'],purchases:['purchaseInvoices','stockReceipts','inventoryMovements'],usage:['internalUsage','inventoryMovements'],inventory:['inventoryMovements'],ops:['shifts','activityLog'],discrepancy:['discrepancies'],reservations:['archivedReservations']};
+// activeOrders and inventory are unbounded (every currently-open order / every SKU must be
+// present, so they cannot use HISTORY_BOUNDS' limitToLast the way reporting paths do) but are
+// held live for the whole session by every admin/POS/books connection. A plain onValue there
+// retransmits the ENTIRE node on every single write inside it (one sale, one status change).
+// These attach via per-child listeners instead: full cost once on attach, then only the
+// changed child on every write afterward. See 2026-09-11 RTDB downloads investigation.
+const INCREMENTAL_PATHS={activeOrders:1,inventory:1};
 
 function createSubscriptionHub(database,ops){
-  const {ref,onValue,query,orderByChild,limitToLast,startAt,endAt,endBefore,get}=ops;
+  const {ref,onValue,onChildAdded,onChildChanged,onChildRemoved,query,orderByChild,limitToLast,startAt,endAt,endBefore,get}=ops;
   function reportPeriod(){return typeof window!=='undefined'&&window.AccazaAdminPeriods&&window.AccazaAdminPeriods.get&&['dashboard','saleshistory','analytics'].indexOf(activeScope)>-1?window.AccazaAdminPeriods.get('sales'):null;}
   function salesPath(path){return path==='orders'||path==='archivedOrders';}
   function selectedPeriod(){var p=reportPeriod();if(p&&activeScope==='analytics')return Object.assign({},p,{startAt:p.startAt-(p.endAt-p.startAt+1)});return p;}
@@ -86,6 +93,21 @@ function createSubscriptionHub(database,ops){
       entry.refreshSources=publish;
       var stopBase=onValue(liveTarget(entry.path),function(snapshot){base=snapshot.val()||{};publish();},failed);
       entry.unsub=function(){stopped=true;entry.refreshSources=null;stopBase();Object.values(sources).forEach(function(v){v.stop();});};return;
+    }
+    if(INCREMENTAL_PATHS[entry.path]){
+      var target=ref(database,entry.path),childUnsubs=[],stopped=false;
+      function applyChild(key,value){
+        if(stopped||generation!==(entry.generation||0))return;
+        if(value===null)delete entry.live[key];else entry.live[key]=value;
+        entry.loading=false;entry.error=null;
+        dispatch(entry,facade(entry));
+        if(salesPath(entry.path)&&entries.financialMovements&&entries.financialMovements.refreshSources)entries.financialMovements.refreshSources();
+      }
+      childUnsubs.push(onChildAdded(target,function(s){applyChild(s.key,s.val());},failed));
+      childUnsubs.push(onChildChanged(target,function(s){applyChild(s.key,s.val());},failed));
+      childUnsubs.push(onChildRemoved(target,function(s){applyChild(s.key,null);},failed));
+      entry.unsub=function(){stopped=true;childUnsubs.forEach(function(u){try{u();}catch(e){}});};
+      return;
     }
     entry.unsub=onValue(liveTarget(entry.path),receive,failed);
   }
