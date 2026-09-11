@@ -23,9 +23,9 @@ function renderRecipes(){
       +'<div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th>Category</th><th class="r">Ingredients</th><th class="r">Cost S</th><th class="r">Cost M</th><th class="r">Cost L</th><th></th></tr></thead><tbody>'+savedRows+'</tbody></table></div></div>';
   }
   else {
-    var recipeCats=(A().getCats?A().getCats():[]).filter(function(c){return ['coffee','noncaf','frappe','nonfrappe','soda','pastry'].indexOf(c.id)>=0;});
+    var recipeCats=(A().getCats?A().getCats():[]);
     if(!recCategory&&recipeCats.length)recCategory=recipeCats[0].id;
-    var items=menuList().filter(function(it){return recipeItemNeedsCosting(it)&&(!recCategory||it.cat===recCategory);});
+    var items=menuList().filter(function(it){return !recCategory||it.cat===recCategory;});
     var opts=items.map(function(it){var has=!!recipesMap[it.key];return '<option value="'+esc(it.key)+'"'+(it.key===curRecipeKey?' selected':'')+'>'+(has?'✓ ':'○ ')+esc(it.name)+'</option>';}).join('');
     var covered=items.filter(function(it){return !!recipesMap[it.key];}).length;
     var catOpts=recipeCats.map(function(c){return '<option value="'+esc(c.id)+'"'+(c.id===recCategory?' selected':'')+'>'+esc(c.icon+' '+c.label)+'</option>';}).join('');

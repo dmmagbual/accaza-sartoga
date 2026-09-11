@@ -340,6 +340,7 @@ function renderInventory(){
     +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">'
       +'<button class="pz-btn sec" id="invExport">⬇ Export Excel</button>'
       +'<button class="pz-btn sec" id="invTemplate">⬇ Import template</button>'
+      +'<select id="invImportPurpose"><option value="">Purpose</option><option value="opening">Beginning→Capital</option><option value="reconciliation">Count→Gain/Loss</option></select>'
       +'<button class="pz-btn ok" id="invImportBtn">⬆ Import Excel</button>'
       +'<input type="file" id="invImportFile" accept=".xlsx,.xls,.csv" style="display:none;"/>'
       +(ozItems.length?'<button class="pz-btn sec" id="invFixOz" style="border-color:#e6a817;color:#8a5a00;">🔤 Convert '+ozItems.length+' oz → fl oz</button>':'')
@@ -390,7 +391,7 @@ function renderInventory(){
   var _fo=document.getElementById('invFixOz'); if(_fo)_fo.onclick=migrateOzToFloz;
   var _tp=document.getElementById('invTemplate'); if(_tp)_tp.onclick=downloadInventoryTemplate;
   var _ib=document.getElementById('invImportBtn'), _if=document.getElementById('invImportFile');
-  if(_ib&&_if){ _ib.onclick=function(){_if.value='';_if.click();}; _if.onchange=function(){ if(_if.files&&_if.files[0])importInventoryXlsx(_if.files[0]); }; }
+  if(_ib&&_if){_ib.onclick=function(){var p=document.getElementById('invImportPurpose').value;if(!p)return alert('Choose purpose.');_if.dataset.purpose=p;_if.value='';_if.click();};_if.onchange=function(){if(_if.files[0])importInventoryXlsx(_if.files[0],_if.dataset.purpose);};}
   var _it=document.getElementById('invType'); if(_it)_it.onchange=function(){document.getElementById('invConsumRow').style.display=(_it.value==='consumable')?'grid':'none';};
   root.querySelectorAll('[data-inv-skus]').forEach(function(b){b.onclick=function(){openSkuManager(b.getAttribute('data-inv-skus'));};});
   root.querySelectorAll('[data-inv-adjust]').forEach(function(b){b.onclick=function(){adjustStock(b.getAttribute('data-inv-adjust'));};});
@@ -885,8 +886,12 @@ function downloadInventoryTemplate(){
   XLSX.utils.book_append_sheet(wb,wsN,'Instructions');
   XLSX.writeFile(wb,'accaza-inventory-template.xlsx');
 }
-function importInventoryXlsx(file){
+function importInventoryXlsx(file,purpose){
   if(!window.XLSX){alert('Excel library is still loading — try again.');return;}
+  if(['opening','reconciliation'].indexOf(purpose)<0)return alert('Choose the import purpose.');
+  var opening=purpose==='opening',offsetAccount=opening?'3000':'5905',adjustmentNature=opening?'beginning-inventory':'inventory-reconciliation';
+  var purposeLabel=opening?'Opening → Capital':'Count → Gain/Loss';
+  if(!confirm(purposeLabel+(opening?' · no profit effect':' · affects profit')))return;
   var rd=new FileReader();
   rd.onload=function(e){
     try{
@@ -920,9 +925,9 @@ function importInventoryXlsx(file){
         if(match){ targetId=match.id; Object.keys(o).forEach(function(k){writes['inventory/'+targetId+'/'+k]=o[k];}); updated++; byId[targetId]=Object.assign({},match,o); byName[name.toLowerCase()]=byId[targetId]; }
         else { targetId=uid('ing_'); writes['inventory/'+targetId]=Object.assign({},o,{stock:0,cost:0}); created++; var no=Object.assign({id:targetId,stock:0,cost:0},o); byId[targetId]=no; byName[name.toLowerCase()]=no; }
         var oldStock=match?(Number(match.stock)||0):0, oldCost=match?(Number(match.cost)||0):0;
-        if(!match||desiredStock!==oldStock||desiredCost!==oldCost){moves.push({movementId:movementId('manual_edit',importId,targetId),itemId:targetId,type:'manual_edit',qty:desiredStock-oldStock,unitCost:desiredCost,setCost:true,offsetAccount:'5905',adjustmentNature:'inventory-import-reconciliation',sourceType:'inventory-xlsx',sourceId:importId,sourceLine:String(r.id||name),note:'Inventory Excel import',actorName:(window.__posShift&&window.__posShift.staff)||'Admin',occurredAt:Date.now()});}
+        if(!match||desiredStock!==oldStock||desiredCost!==oldCost){moves.push({movementId:movementId('manual_edit',importId,targetId),itemId:targetId,type:'manual_edit',qty:desiredStock-oldStock,unitCost:desiredCost,setCost:true,offsetAccount:offsetAccount,adjustmentNature:adjustmentNature,importPurpose:purpose,classificationConfirmed:true,sourceType:'inventory-xlsx',sourceId:importId,sourceLine:String(r.id||name),note:'Import · '+purposeLabel,actorName:(window.__posShift&&window.__posShift.staff)||'Admin',occurredAt:Date.now()});}
       });
-      a.update(a.ref(a.db),writes).then(function(){return moves.length?postMovements(moves):null;}).then(function(){alert('Import complete.\nCreated: '+created+'\nUpdated: '+updated+'\nLedger movements: '+moves.length+(skipped?'\nSkipped (no name): '+skipped:''));}).catch(function(err){alert('Import FAILED: '+((err&&err.message)||err)+'. The same file is safe to retry.');});
+      a.update(a.ref(a.db),writes).then(function(){return moves.length?postMovements(moves):null;}).then(function(){alert('Imported. Created '+created+' · Updated '+updated+' · Movements '+moves.length+(skipped?' · Skipped '+skipped:''));}).catch(function(err){alert('Import FAILED: '+((err&&err.message)||err)+'. Safe to retry.');});
     }catch(err){ alert('Could not read that file: '+err); }
   };
   rd.readAsArrayBuffer(file);
@@ -1540,9 +1545,9 @@ function renderRecipes(){
       +'<div class="pz-card"><div style="overflow-x:auto;"><table class="pz-tbl"><thead><tr><th>Item</th><th>Category</th><th class="r">Ingredients</th><th class="r">Cost S</th><th class="r">Cost M</th><th class="r">Cost L</th><th></th></tr></thead><tbody>'+savedRows+'</tbody></table></div></div>';
   }
   else {
-    var recipeCats=(A().getCats?A().getCats():[]).filter(function(c){return ['coffee','noncaf','frappe','nonfrappe','soda','pastry'].indexOf(c.id)>=0;});
+    var recipeCats=(A().getCats?A().getCats():[]);
     if(!recCategory&&recipeCats.length)recCategory=recipeCats[0].id;
-    var items=menuList().filter(function(it){return recipeItemNeedsCosting(it)&&(!recCategory||it.cat===recCategory);});
+    var items=menuList().filter(function(it){return !recCategory||it.cat===recCategory;});
     var opts=items.map(function(it){var has=!!recipesMap[it.key];return '<option value="'+esc(it.key)+'"'+(it.key===curRecipeKey?' selected':'')+'>'+(has?'✓ ':'○ ')+esc(it.name)+'</option>';}).join('');
     var covered=items.filter(function(it){return !!recipesMap[it.key];}).length;
     var catOpts=recipeCats.map(function(c){return '<option value="'+esc(c.id)+'"'+(c.id===recCategory?' selected':'')+'>'+esc(c.icon+' '+c.label)+'</option>';}).join('');
@@ -2648,7 +2653,7 @@ function packItemBindEditors(){
   });
 }
 function packagingAssignmentHtml(){
-  var allowed=['coffee','noncaf','frappe','nonfrappe','soda','pastry'],cats=(A().getCats?A().getCats():[]).filter(function(c){return allowed.indexOf(c.id)>=0;}),menu=menuList(),saved=(window.__posSettings&&window.__posSettings.packagingAssignments)||{};
+  var cats=(A().getCats?A().getCats():[]),menu=menuList(),saved=(window.__posSettings&&window.__posSettings.packagingAssignments)||{};
   return '<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Menu applicability</div><p class="pz-sub" style="margin-top:0;">Drinks can vary by Temperature. Pastries share one packaging set by default — but any pastry can be <b>Customized</b> to add or remove packaging just for itself, starting from what it currently inherits; saving it never changes the shared style or any other item. Saving automatically downloads a restore point before anything changes.</p>'+cats.map(function(cat){
     var items=menu.filter(function(it){return it.cat===cat.id;}),groups={},assignment=saved[cat.id]||{},mapped=assignment.choices||{};
     items.forEach(function(it){(A().getItemOptionGroups?A().getItemOptionGroups(it):[]).forEach(function(g){if(/temperature/i.test(String(g.name||'')))groups[g.id]=g;});});

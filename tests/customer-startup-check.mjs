@@ -9,6 +9,8 @@ const sw=fs.readFileSync(path.join(root,'sw.js'),'utf8');
 const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.json'),'utf8'));
 const release=JSON.parse(fs.readFileSync(path.join(root,'release-manifest.json'),'utf8'));
 const customerHtml=fs.readFileSync(path.join(root,'index.html'),'utf8');
+const customerHelpers=fs.readFileSync(path.join(root,'src','customer','core','03-state-helpers.mjs'),'utf8');
+const catalogAdmin=fs.readFileSync(path.join(root,'assets','js','admin','catalog-admin.mjs'),'utf8');
 const databaseImport=source.split(/\r?\n/).find(line=>line.includes('firebase-database.js'))||'';
 if(!/\bget\b/.test(databaseImport))throw new Error('Customer runtime uses Firebase get() without importing it');
 
@@ -18,6 +20,8 @@ const publicStatusObserver=source.indexOf('onValue(publicOrderStatusRef');
 if(availabilityState<0||authObserver<0||availabilityState>authObserver)throw new Error('Customer availability state must initialize before Firebase authentication can call its renderer');
 if(publicStatusObserver<0||availabilityState>publicStatusObserver)throw new Error('Customer availability state must initialize before its realtime subscription');
 if((source.match(/let publicOrdersOpen=/g)||[]).length!==1)throw new Error('Customer availability state must have exactly one owner');
+for(const marker of ['function customerMenuCats(){return getCats().filter(c=>c.showInMenu!==false);}','const cats=customerMenuCats();','if(!cats.some(c=>c.id===menuFilter))','if(orderFilter&&!cats.some(c=>c.id===orderFilter))'])if(!customerHelpers.includes(marker))throw new Error(`Customer category visibility safeguard missing: ${marker}`);
+for(const marker of ['showInMenu:true','catShowInMenu_','Show in customer Menu &amp; Online Ordering','{icon,label,showInMenu}','Saving…','✓ Saved'])if(!catalogAdmin.includes(marker))throw new Error(`Menu Availability category visibility control missing: ${marker}`);
 
 for(const marker of [
   "ref(db,'customerOrders/'+uid)",

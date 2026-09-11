@@ -13,7 +13,7 @@ function createCatalogAdmin(deps){
     if(!label){alert('Please enter a category name.');return;}
     const id='cat_'+Date.now();
     try{
-      await set(ref(db,'categories/'+id),{id,label,icon,order:Object.keys(deps.getCategoriesMap()).length});
+      await set(ref(db,'categories/'+id),{id,label,icon,order:Object.keys(deps.getCategoriesMap()).length,showInMenu:true});
       iconEl.value='';labelEl.value='';
       const c=document.getElementById('catAddConfirm');c.style.display='block';setTimeout(()=>c.style.display='none',2000);
     }catch(e){alert('Error: '+e.message);}
@@ -68,10 +68,11 @@ function createCatalogAdmin(deps){
     const cats=deps.getCats();
     if(!cats.length){el.innerHTML='<p style="color:var(--tl);font-size:0.85rem;">No categories yet.</p>';return;}
     el.innerHTML=cats.map(function(c){
-      return'<div style="display:flex;align-items:center;gap:0.6rem;background:var(--cr);border:1px solid var(--cd);border-radius:8px;padding:0.6rem 0.85rem;" draggable="true" data-catid="'+c.id+'">'
+      return'<div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;background:var(--cr);border:1px solid var(--cd);border-radius:8px;padding:0.6rem 0.85rem;" draggable="true" data-catid="'+c.id+'">'
         +'<span style="cursor:grab;color:var(--tl);font-size:1rem;user-select:none;">⠿</span>'
         +'<input type="text" id="catIcon_'+c.id+'" value="'+(c.icon||'☕')+'" style="width:50px;font-size:0.9rem;text-align:center;padding:0.3rem;border:1px solid var(--cd);border-radius:4px;background:#fff;font-family:\'Inter\',sans-serif;"/>'
         +'<input type="text" id="catLabel_'+c.id+'" value="'+(c.label||'')+'" style="flex:1;font-size:0.85rem;padding:0.3rem 0.5rem;border:1px solid var(--cd);border-radius:4px;background:#fff;font-family:\'Inter\',sans-serif;"/>'
+        +'<label style="display:flex;align-items:center;gap:0.35rem;font-size:0.72rem;color:var(--td);white-space:nowrap;"><input type="checkbox" id="catShowInMenu_'+c.id+'" '+(c.showInMenu!==false?'checked':'')+'/> Show in customer Menu &amp; Online Ordering</label>'
         +'<button data-savecatid="'+c.id+'" style="background:#d4edda;border:1px solid #a8d5b5;border-radius:4px;padding:0.25rem 0.6rem;font-size:0.72rem;color:#155724;cursor:pointer;font-family:\'Inter\',sans-serif;white-space:nowrap;">💾 Save</button>'
         +'<button data-delcatid="'+c.id+'" style="background:#fde8e8;border:1px solid #f5c6c6;border-radius:4px;padding:0.25rem 0.6rem;font-size:0.72rem;color:#721c24;cursor:pointer;font-family:\'Inter\',sans-serif;">🗑️</button>'
         +'</div>';
@@ -82,8 +83,11 @@ function createCatalogAdmin(deps){
         const id=this.dataset.savecatid;
         const icon=document.getElementById('catIcon_'+id).value.trim()||'☕';
         const label=document.getElementById('catLabel_'+id).value.trim();
+        const showInMenu=document.getElementById('catShowInMenu_'+id).checked;
         if(!label)return;
-        await update(ref(db,'categories/'+id),{icon,label});
+        const original=this.textContent;this.disabled=true;this.textContent='Saving…';
+        try{await update(ref(db,'categories/'+id),{icon,label,showInMenu});this.textContent='✓ Saved';setTimeout(()=>{this.disabled=false;this.textContent=original;},1200);}
+        catch(e){this.disabled=false;this.textContent=original;alert('Could not save category: '+e.message);}
       });
     });
     el.querySelectorAll('button[data-delcatid]').forEach(function(btn){
