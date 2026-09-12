@@ -18,7 +18,7 @@ if(auth){
     financialMovements:{tabs:['cashflow'],global:'__financialMovements',target:function(){const p=window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get():{endAt:Date.now()};return query(ref(db,"/financialMovements"),orderByChild("occurredAt"),endAt(Number(p.endAt)||Date.now()));},onChange:scheduleRender},
     platformPayouts:{tabs:['cashflow'],global:'__platformPayouts',target:function(){return ref(db,"/platformPayouts");},onChange:scheduleRender},
     cashCustody:{tabs:['cashflow'],global:'__cashCustody',target:function(){return ref(db,"/cashCustody");},onChange:scheduleRender},
-    suppliers:{tabs:['journal','transactions','purchases'],global:'__supplierMap',target:function(){return ref(db,"/suppliers");},onChange:scheduleRender},
+    suppliers:{tabs:['journal','transactions','purchases','payables'],global:'__supplierMap',target:function(){return ref(db,"/suppliers");},onChange:scheduleRender},
     purchaseInvoices:{tabs:['purchases'],global:'__piMap',target:function(){return ref(db,"/purchaseInvoices");},onChange:scheduleRender},
     fixedAssets:{tabs:['fixedassets'],global:'__faMap',target:function(){return ref(db,"/fixedAssets");},onChange:scheduleRender},
     personalFundings:{tabs:['transactions'],global:'__personalFundings',target:function(){return ref(db,"/personalFundings");},onChange:scheduleRender},

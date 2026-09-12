@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 501,
-    "books": 111,
+    "admin": 502,
+    "books": 112,
     "customer": 71,
-    "serviceWorkerCache": 476
+    "serviceWorkerCache": 477
   },
   "authoritativeFiles": [
     "admin.html",
