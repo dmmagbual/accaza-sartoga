@@ -3161,7 +3161,8 @@ function renderDedupe(){
 function buildPOS(){
   var _t=performance.now();
   var root=document.getElementById('posRoot'); if(!root)return;
-  var cats=A().getCats?A().getCats():[];
+  var cats=(A().getCats?A().getCats():[]).filter(function(c){return c.showInMenu!==false;});
+  if(posCat!=='ALL'&&!cats.some(function(c){return c.id===posCat;}))posCat='ALL';
   var chips='<button type="button" class="pz-chip '+(posCat==='ALL'?'on':'')+'" data-cat="ALL">All</button>'+cats.map(function(c){return '<button type="button" class="pz-chip '+(posCat===c.id?'on':'')+'" data-cat="'+esc(c.id)+'">'+esc(c.icon||'')+' '+esc(c.label)+'</button>';}).join('');
   var incoming=onlineOrderRows().filter(function(o){return !o.shiftId&&o.status!=='Rejected';}).length;
   var activeCount=shiftOrderRows().length;
@@ -3246,7 +3247,9 @@ window.__openPosOnlineOrders=function(){posView='online';var button=document.get
 function drawPosItems(){
   var wrap=document.getElementById('posItems'); if(!wrap)return;
   var q=String(posSearch||'').trim().toLowerCase();
-  var items=menuList().filter(function(it){return (posCat==='ALL'||it.cat===posCat)&&(!q||String(it.name||'').toLowerCase().indexOf(q)>-1);});
+  var visibleCats=(A().getCats?A().getCats():[]).filter(function(c){return c.showInMenu!==false;});
+  var visibleCatIds={};visibleCats.forEach(function(c){visibleCatIds[c.id]=1;});
+  var items=menuList().filter(function(it){return visibleCatIds[it.cat]&&(posCat==='ALL'||it.cat===posCat)&&(!q||String(it.name||'').toLowerCase().indexOf(q)>-1);});
   if(!items.length){wrap.innerHTML='<div class="pos-menu-empty"><b>No matching items</b><span>Try another name or choose All.</span></div>';return;}
   var plat=posIsPlatform();
   var tileBg=posChannel==='grabfood'?'#e8f5ec':posChannel==='foodpanda'?'#fde8e8':'';
