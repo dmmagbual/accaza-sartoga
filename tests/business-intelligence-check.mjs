@@ -25,9 +25,9 @@ for(const [name,pattern] of required)if(!pattern.test(source))throw new Error(`B
 if(!/id:"insights",label:"Key Metrics"/.test(shell))throw new Error('Key Metrics tab is not registered');
 if(!/PAGES\.insights=function/.test(registration))throw new Error('Key Metrics page is not registered');
 if(!/assets\/js\/shared\/sales-authority\.js/.test(books)||!/src\/books\/business-intelligence\.js/.test(books)||!/src\/books\/business-intelligence\.js/.test(sw))throw new Error('Key Metrics engine and shared sales authority are not loaded and cached');
-if(!/accaza-books-build" content="109"/.test(books)||!/build v109/.test(books))throw new Error('Books build 109 markers are not synchronized');
-if(manifest.builds.admin!==499||manifest.builds.books!==109||manifest.builds.serviceWorkerCache!==474)throw new Error('Release manifest build markers are not synchronized');
-if(!/const CACHE='accaza-v474'/.test(sw))throw new Error('Service worker cache 474 is not synchronized');
+if(!/accaza-books-build" content="111"/.test(books)||!/build v111/.test(books))throw new Error('Books build 111 markers are not synchronized');
+if(manifest.builds.admin!==501||manifest.builds.books!==111||manifest.builds.serviceWorkerCache!==476)throw new Error('Release manifest build markers are not synchronized');
+if(!/const CACHE='accaza-v476'/.test(sw))throw new Error('Service worker cache 476 is not synchronized');
 for(const marker of ['onChildAdded','onChildChanged','onChildRemoved','function watchMap','orderByChild("settlementStatus"),equalTo("unsettled")','orderByChild("settlementStatus"),equalTo(null)','bindOutstandingOrders()'])if(!livePos.includes(marker))throw new Error('Finance Books incremental download safeguard missing: '+marker);
 for(const broad of ['onValue(ref(db,"/orders")','onValue(ref(db,"/archivedOrders")','onValue(ref(db,"/platformPayouts")'])if(livePos.includes(broad))throw new Error('Finance Books restored a broad whole-snapshot listener: '+broad);
 if(!manifest.authoritativeFiles.includes('src/books/business-intelligence.js')||!manifest.authoritativeFiles.includes('src/books/app/35-business-intelligence.js'))throw new Error('Business intelligence sources are missing from authoritative files');

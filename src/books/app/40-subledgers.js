@@ -56,17 +56,17 @@ function subledgerPage(kind){
   var title = isAr?'Receivables':'Payables', sub = isAr?'Money owed to you':'Money you owe';
   if(!live) return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+'</p></div></div>'+
     '<div class="empty"><div class="big">'+(isAr?'📥':'📤')+'</div><b>Sign in for live '+title.toLowerCase()+'</b><br><span class="tiny">This subledger reads your live finance data. Click the status pill (top-right) to sign in with your Accaza admin account, or open this app from your Accaza domain.</span></div>';
-  var docs = openDocs(map).sort(function(a,b){return String(a.due||'9999-99-99').localeCompare(String(b.due||'9999-99-99'));});
-  if(!docs.length) return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+'</p></div></div><div class="empty"><div class="big">✓</div>No open '+title.toLowerCase()+'.</div>'+(isAr?'':settledSection(map));
+  var docs = openDocs(map).sort(function(a,b){return String(a.due||'9999-99-99').localeCompare(String(b.due||'9999-99-99'));}),openingButton=isAr?'':openingPayableHeaderButton();
+  if(!docs.length) return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+'</p></div><div class="btn-row">'+openingButton+'</div></div><div class="empty"><div class="big">✓</div>No open '+title.toLowerCase()+'.</div>'+(isAr?'':settledSection(map));
   var buckets={}; AGING_ORDER.forEach(function(b){buckets[b]=0;});
   var total=0; docs.forEach(function(d){var amt=Number(d.amount)||0; total+=amt; buckets[agingBucket(d.due)]+=amt;});
   var agingCards = AGING_ORDER.filter(function(b){return buckets[b]>0.005;}).map(function(b){
     return '<div class="kpi"><div class="lbl">'+b+'</div><div class="val" style="font-size:1.15rem">'+pesoNoDec(buckets[b])+'</div></div>';}).join('');
   var rows = docs.map(function(d){
     var bkt = agingBucket(d.due), overdue = (bkt!=='Current' && bkt!=='No due date');
-    return '<tr><td><b>'+esc(d.party||'—')+'</b>'+(d.ref?'<div class="tiny muted">'+esc(d.ref)+'</div>':'')+'</td><td class="tiny">'+esc(d.type||'')+'</td><td class="tiny">'+esc(d.date||'')+'</td><td class="tiny">'+esc(d.due||'—')+'</td><td><span class="type-pill '+(overdue?'t-expense':'t-income')+'">'+bkt+'</span></td><td class="num">'+peso(d.amount)+'</td>'+(isAr?'':'<td>'+(d.provisional===true?'<span class="tiny muted">Finalize invoice in Purchases first</span>':'<button class="btn sm ghost" onclick="App.correctPayable(\''+esc(d.id)+'\')">'+(d.type==='customer_change_refund'?'Close to capital':'Pay / correct')+'</button>')+'</td>')+'</tr>';}).join('');
+    return '<tr><td><b>'+esc(d.party||'—')+'</b>'+(d.ref?'<div class="tiny muted">'+esc(d.ref)+'</div>':'')+(d.openingBalance===true?openingPayableInfo(d):'')+'</td><td class="tiny">'+esc(d.type||'')+'</td><td class="tiny">'+esc(d.date||'')+'</td><td class="tiny">'+esc(d.due||'—')+'</td><td><span class="type-pill '+(overdue?'t-expense':'t-income')+'">'+bkt+'</span></td><td class="num">'+peso(d.amount)+'</td>'+(isAr?'':'<td>'+(d.provisional===true?'<span class="tiny muted">Finalize invoice in Purchases first</span>':'<button class="btn sm ghost" onclick="App.correctPayable(\''+esc(d.id)+'\')">'+(d.type==='customer_change_refund'?'Close to capital':'Pay / correct')+'</button>'+(d.openingBalance===true?openingPayableRowButton(d):''))+'</td>')+'</tr>';}).join('');
   var t = arApTotals();
-  return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+' · '+docs.length+' open · open receivables less open payables '+pesoNoDec(t.net)+'</p></div></div>'+
+  return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+' · '+docs.length+' open · open receivables less open payables '+pesoNoDec(t.net)+'</p></div><div class="btn-row">'+openingButton+'</div></div>'+
     '<div class="kpis"><div class="kpi '+(isAr?'good':'bad')+'"><div class="lbl">Total '+(isAr?'receivable':'payable')+'</div><div class="val">'+pesoNoDec(total)+'</div><div class="sub">'+docs.length+' open</div></div>'+agingCards+'</div>'+
     '<div class="card"><div class="tbl-wrap"><table><thead><tr><th>Party</th><th>Type</th><th>Date</th><th>Due</th><th>Aging</th><th class="num">Amount</th>'+(isAr?'':'<th></th>')+'</tr></thead><tbody>'+rows+
     '<tr class="total-row"><td colspan="5">Total open '+title.toLowerCase()+'</td><td class="num">'+peso(total)+'</td>'+(isAr?'':'<td></td>')+'</tr></tbody></table></div></div>'+
