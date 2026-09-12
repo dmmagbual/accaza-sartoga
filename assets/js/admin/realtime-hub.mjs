@@ -14,7 +14,14 @@ const HISTORY_TAB_PATHS={saleshistory:['orders','archivedOrders','financialMovem
 // retransmits the ENTIRE node on every single write inside it (one sale, one status change).
 // These attach via per-child listeners instead: full cost once on attach, then only the
 // changed child on every write afterward. See 2026-09-11 RTDB downloads investigation.
-const INCREMENTAL_PATHS={activeOrders:1,inventory:1};
+// posActiveShift is the same shape of problem on a single record: syncOfflinePosSale writes
+// it via .transaction() on every POS sale (online sales are queued through the same offline
+// -sync pipeline, not just literal offline ones) and every drawer-affecting refund, and it is
+// in the always-live `critical` set below. A plain onValue retransmits the whole shift record
+// -- including offlineSyncApplied, which only grows across the shift -- on every one of those
+// writes. Per-child listeners here fire per top-level field (drawer, offlineSyncApplied, ...)
+// instead, so an unrelated field on the record no longer rides along. See 2026-09-12 follow-up.
+const INCREMENTAL_PATHS={activeOrders:1,inventory:1,posActiveShift:1};
 
 function createSubscriptionHub(database,ops){
   const {ref,onValue,onChildAdded,onChildChanged,onChildRemoved,query,orderByChild,limitToLast,startAt,endAt,endBefore,get}=ops;
