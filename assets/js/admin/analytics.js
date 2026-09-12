@@ -66,10 +66,10 @@ window.__accazaRegisterModule('analytics',function(name){ if(name==='analytics')
 function isSale(o){return window.AccazaSales.qualifies(o);}
 function allOrders(){var out={};[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k];if(o)out[String(o.id||k)]=o;});});return Object.values(out);}
 function itemCost(li){var rec=recMap[li.itemKey];if(!rec)return null;var mult=(rec.sizeMult&&rec.sizeMult[li.size]!=null)?rec.sizeMult[li.size]:1,labels=li.optLabels||[],_it=((A()&&A().menuItemsMap)||{})[li.itemKey]||{key:li.itemKey},groups=(A()&&A().optionGroupsMap)||{},c=0;(rec.base||[]).forEach(function(b){var ing=invMap[b.ing];if(!ing||!window.AccazaCosting.rowMatchesSelections(_it,b,labels,groups))return;var per=b['qty'+(li.size||'M')],q=(per!=null&&per!=='')?(Number(per)||0):(Number(b.qty)||0)*mult;c+=q*(Number(ing.cost)||0);});var getChoiceIngs=window.__accazaChoiceIngs;labels.forEach(function(lb){(getChoiceIngs?getChoiceIngs(_it,rec,lb,li.size):[]).forEach(function(r){var ing=invMap[r.ing];if(ing)c+=(Number(r.qty)||0)*(Number(ing.cost)||0);});});return c*(Number(li.qty)||1);}
-function orderCOGS(o){var _x=Number(o.extraCost)||0;
-  if(o.cogsSnapshot!=null)return{cost:(Number(o.cogsSnapshot)||0)+_x,covered:o.cogsCovered!==false};
-  if(!o.lineItems)return{cost:_x,covered:false};var cost=0,any=false,all=true;o.lineItems.forEach(function(li){var c=itemCost(li);if(c==null)all=false;else{cost+=c;any=true;}});return{cost:cost+_x,covered:any&&all};}
-function saleFields(o){var v=window.AccazaSales.amounts(o);return{ts:window.AccazaSales.stamp(o),gross:v.gross,discount:v.discount,refund:v.refund,net:v.net,payment:o.payment||'—',type:o.type||'—',lineItems:o.lineItems||null,phone:(o.phone||'').replace(/[^0-9]/g,''),name:o.name||'Walk-in',o:o};}
+function orderCOGS(o){var corrected=o.correctedCogsSnapshot!=null,_x=Number(corrected?o.correctedExtraCost:o.extraCost)||0,lines=o.correctedLineItems||o.lineItems;
+  if(corrected||o.cogsSnapshot!=null)return{cost:(Number(corrected?o.correctedCogsSnapshot:o.cogsSnapshot)||0)+_x,covered:o.cogsCovered!==false};
+  if(!lines)return{cost:_x,covered:false};var cost=0,any=false,all=true;lines.forEach(function(li){var c=itemCost(li);if(c==null)all=false;else{cost+=c;any=true;}});return{cost:cost+_x,covered:any&&all};}
+function saleFields(o){var v=window.AccazaSales.amounts(o);return{ts:window.AccazaSales.stamp(o),gross:v.gross,discount:v.discount,refund:v.refund,net:v.net,payment:o.payment||'—',type:o.type||'—',lineItems:o.correctedLineItems||o.lineItems||null,phone:(o.phone||'').replace(/[^0-9]/g,''),name:o.name||'Walk-in',o:o};}
 function salesBetween(from,to){return allOrders().filter(isSale).map(saleFields).filter(function(s){return s.ts>=from&&s.ts<to;});}
 function dayStart(d){d=new Date(d);d.setHours(0,0,0,0);return d.getTime();}
 function addDays(ts,n){var d=new Date(ts);d.setDate(d.getDate()+n);return d.getTime();}
@@ -261,7 +261,7 @@ var PNL_OPEX_LINES=[
 function pnlExpenseGroups(byItem){var out={operating:{},other:{interest:0,bank:0,other:0},tax:0};PNL_OPEX_LINES.forEach(function(x){out.operating[x.id]=0;});out.operating.other=0;Object.keys(byItem||{}).forEach(function(id){var x=byItem[id]||{},n=String(x.name||'');var a=Number(x.amount)||0;if(/income.?tax|tax expense/i.test(n)){out.tax+=a;return;}if(/interest/i.test(n)){out.other.interest+=a;return;}if(/bank charge|bank fee/i.test(n)){out.other.bank+=a;return;}if(/loan|debt repayment|principal/i.test(n)){out.other.other+=a;return;}var hit=PNL_OPEX_LINES.filter(function(d){return d.re.test(n);})[0];if(hit)out.operating[hit.id]+=a;else out.operating.other+=a;});return out;}
 function emptyCogsCategories(){return{food:0,beverage:0,packaging:0,directLabor:0,unallocated:0};}
 function cogsBucketForIngredient(id){var item=invMap[id]||{},cat=((posSettingsMap.invCategories||{})[item.category])||{};var label=String(cat.name||item.category||'').toLowerCase();if(/packag|cup|lid|straw|napkin|container/.test(label))return'packaging';if(/beverage|drink|coffee|tea|milk|syrup|powder/.test(label))return'beverage';if(/food|ingredient|bakery|kitchen|pastry|meal/.test(label))return'food';return'unallocated';}
-function orderCogsCategories(o){var out=emptyCogsCategories(),snap=o&&o.cogsCategorySnapshot;if(snap){Object.keys(out).forEach(function(k){out[k]=Number(snap[k])||0;});return out;}var lines=o&&o.cogsDetail&&o.cogsDetail.lines;if(Array.isArray(lines)&&lines.length){lines.forEach(function(line){var b=cogsBucketForIngredient(line.ingredientId);out[b]+=Number(line.totalCost)||0;});return out;}out.unallocated=Number(o&&o.cogsSnapshot)||0;return out;}
+function orderCogsCategories(o){var out=emptyCogsCategories(),snap=o&&(o.correctedCogsCategorySnapshot||o.cogsCategorySnapshot);if(snap){Object.keys(out).forEach(function(k){out[k]=Number(snap[k])||0;});return out;}var lines=o&&o.cogsDetail&&o.cogsDetail.lines;if(Array.isArray(lines)&&lines.length){lines.forEach(function(line){var b=cogsBucketForIngredient(line.ingredientId);out[b]+=Number(line.totalCost)||0;});return out;}out.unallocated=Number(o&&(o.correctedCogsSnapshot!=null?o.correctedCogsSnapshot:o.cogsSnapshot))||0;return out;}
 
 /* ══════════ DAILY REPORT (all channels + register expenses) ══════════ */
 function drNum(n){return (Math.round((Number(n)||0)*1000)/1000).toLocaleString('en-PH');}
@@ -300,7 +300,7 @@ function renderDailyReport(){
       var pays=(o.payments&&o.payments.length)?o.payments:[{method:o.channel==='grabfood'?'GrabFood':o.channel==='foodpanda'?'FoodPanda':(o.payment||'—'),amount:Number(o.total)||0}];
       pays.forEach(function(p){byMethod[p.method]=(byMethod[p.method]||0)+(Number(p.amount)||0);});
       if(o.shiftId){var g2=byShift[o.shiftId]||(byShift[o.shiftId]={tx:0,net:0,cash:0});g2.tx++;g2.net+=nt;pays.forEach(function(p){if(p.method==='Cash')g2.cash+=Number(p.amount)||0;});}
-      (o.lineItems||[]).forEach(function(li){var k=li.itemKey||li.name||'?';if(!itemsM[k])itemsM[k]={name:li.name||k,qty:0,sales:0};itemsM[k].qty+=Number(li.qty)||0;itemsM[k].sales+=(Number(li.qty)||0)*(Number(li.unitTotal)||0);});
+      (o.correctedLineItems||o.lineItems||[]).forEach(function(li){var k=li.itemKey||li.name||'?';if(!itemsM[k])itemsM[k]={name:li.name||k,qty:0,sales:0};itemsM[k].qty+=Number(li.qty)||0;itemsM[k].sales+=(Number(li.qty)||0)*(Number(li.unitTotal)||0);});
       txns.push({time:o.time||new Date(s.ts).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),id:o.id,channel:chan[c].lbl,method:pays.map(function(p){return p.method;}).join('+'),amount:Number(o.total)||0,refund:s.refund});
     });
     var items=Object.keys(itemsM).map(function(k){return itemsM[k];}).sort(function(a,b){return b.sales-a.sales;});
@@ -425,6 +425,7 @@ function varianceDetailHtml(mk){
   var rows=list.map(function(x){var d=new Date(x.ts);var dl=d.toLocaleDateString('en-PH',{month:'short',day:'numeric'});return '<tr><td style="padding:0.25rem 0.5rem;">'+dl+'</td><td style="padding:0.25rem 0.5rem;">'+esc(x.name||'')+'</td><td style="padding:0.25rem 0.5rem;text-align:right;">'+((Number(x.delta)||0)>0?'+':'')+fq(x.delta)+' '+esc(x.unit||'')+'</td><td style="padding:0.25rem 0.5rem;">'+esc(x.reason||'')+'</td><td style="padding:0.25rem 0.5rem;text-align:right;font-weight:600;">'+peso(x.varianceValue)+'</td></tr>';}).join('');
   return '<div style="background:#faf7f2;padding:0.4rem 0.6rem;"><table style="width:100%;border-collapse:collapse;font-size:0.76rem;"><thead><tr style="color:var(--tl);text-align:left;"><th style="padding:0.25rem 0.5rem;">Date</th><th style="padding:0.25rem 0.5rem;">Item</th><th style="padding:0.25rem 0.5rem;text-align:right;">Qty Δ</th><th style="padding:0.25rem 0.5rem;">Reason</th><th style="padding:0.25rem 0.5rem;text-align:right;">COGS impact</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
+
 /* ══════════ PLATFORM PAYOUT RECONCILIATION ══════════ */
 function poGross(o){return Number(o.grossPlatform||o.subtotal||o.total)||0;}
 function poNet(o){return (o.netPlatform!=null)?(Number(o.netPlatform)||0):(poGross(o)-(Number(o.commission)||0)-(Number(o.platformDiscount)||0)-(Number(o.platformWht)||0)-(Number(o.platformVat)||0)-(Number(o.platformAdsMarketing)||0)-(Number(o.platformMarketingFee)||0));}
@@ -785,7 +786,7 @@ function tsToDate(ts){var d=new Date(ts||0);return d.getFullYear()+'-'+pad(d.get
 function inRng(d,rng){return (!rng.f||d>=rng.f)&&(!rng.t||d<=rng.t);}
 function itemPeriod(id,cost,rng){var pQ=0,pV=0,uQ=0;
   Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r||r.ing!==id)return;var d=r.date||tsToDate(r.ts);if(inRng(d,rng)){pQ+=Number(r.qty)||0;pV+=Number(r.total)||0;}});
-  [ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k];if(!isSale(o)||!o.inventoryUsage||!o.inventoryUsage[id])return;var d=tsToDate(o.timestamp||Date.parse(o.date)||0);if(inRng(d,rng))uQ+=Number(o.inventoryUsage[id])||0;});});
+  [ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k],usage=o.correctedInventoryUsage||o.inventoryUsage;if(!isSale(o)||!usage||!usage[id])return;var d=tsToDate(o.timestamp||Date.parse(o.date)||0);if(inRng(d,rng))uQ+=Number(usage[id])||0;});});
   Object.keys(usageMap).forEach(function(k){var u=usageMap[k];if(!u||u.reversed||!u.usage||!u.usage[id])return;var d=tsToDate(u.ts);if(inRng(d,rng))uQ+=Number(u.usage[id])||0;});
   return {pQ:pQ,pV:pV,uQ:uQ,uV:uQ*(Number(cost)||0)};
 }
@@ -794,7 +795,7 @@ function itemMovements(id){
   Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r||r.ing!==id)return;out.push({ts:r.ts||Date.parse(r.date)||0,date:r.date||tsToDate(r.ts),type:'Purchase'+(r.supplier?' · '+r.supplier:'')+(r.brand?' · '+r.brand:''),in:Number(r.qty)||0,out:0});});
   Object.keys(adjMap).forEach(function(k){var x=adjMap[k];if(!x||x.ing!==id)return;var dl=Number(x.delta)||0;out.push({ts:x.ts||0,date:tsToDate(x.ts),type:'Adjust · '+(x.reason||''),in:dl>0?dl:0,out:dl<0?-dl:0});});
   Object.keys(usageMap).forEach(function(k){var u=usageMap[k];if(!u||u.reversed||!u.usage||!u.usage[id])return;out.push({ts:u.ts||0,date:tsToDate(u.ts),type:'Usage · '+(u.kindName||u.kind||''),in:0,out:Number(u.usage[id])||0});});
-  var byDay={};[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k];if(!isSale(o)||!o.inventoryUsage||!o.inventoryUsage[id])return;var day=tsToDate(o.timestamp||Date.parse(o.date)||0);byDay[day]=(byDay[day]||0)+(Number(o.inventoryUsage[id])||0);});});
+  var byDay={};[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k],usage=o.correctedInventoryUsage||o.inventoryUsage;if(!isSale(o)||!usage||!usage[id])return;var day=tsToDate(o.timestamp||Date.parse(o.date)||0);byDay[day]=(byDay[day]||0)+(Number(usage[id])||0);});});
   Object.keys(byDay).forEach(function(day){out.push({ts:new Date(day+'T12:00:00').getTime(),date:day,type:'Sales usage',in:0,out:byDay[day]});});
   out.sort(function(a,b){return (a.ts||0)-(b.ts||0);});return out;
 }

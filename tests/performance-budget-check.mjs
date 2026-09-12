@@ -13,10 +13,11 @@ const budgets={
   // with the guards, pickers and filter that go with it.
   // Per-item pastry packaging overrides (Customize/Edit/Revert) add ~11.6 KB: private
   // packagingRules/item_<key> drafts, their editor, and Menu applicability wiring.
-  // Build 497 adds the server-confirmed in-store electronic-overpayment checkout,
-  // including cashier verification retention, drawer safeguards and audit capture.
-  // The reviewed increase is under 1.1%; retain a narrow ceiling for future growth.
-  'assets/js/admin/pos.js':508000,
+  // Build 498 adds completed-sale item correction before preparation: corrected-cart
+  // checkout, server repricing, cash-refund controls, immutable inventory replacement,
+  // linked receipt/audit evidence and explicit cashier feedback.
+  // Keep the ceiling narrowly above the reviewed generated bundle.
+  'assets/js/admin/pos.js':520000,
   // Build 497 adds the visible cash-refund tag and preserved refund detail to shift reports.
   'assets/js/admin/register.js':175500,
   'assets/js/admin/analytics.js':150000,
@@ -40,6 +41,6 @@ if(salesPeriod.includes("ops.startAt(String")||salesPeriod.includes("orderByChil
 for(const source of [moduleLoader,hub,telemetry,functions])for(const marker of source===moduleLoader?['module_load','performance.now']:source===hub?['live_ready','liveStartedAt']:['module_load','live_ready'])if(!source.includes(marker))fail(`Measured performance telemetry missing: ${marker}`);
 
 const manifest=JSON.parse(read('release-manifest.json'));
-if(manifest.builds.admin!==497||manifest.builds.customer!==71||manifest.builds.books!==109||manifest.builds.serviceWorkerCache!==472)fail('Current build/cache versions are not synchronized');
+if(manifest.builds.admin!==498||manifest.builds.customer!==71||manifest.builds.books!==109||manifest.builds.serviceWorkerCache!==473)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');

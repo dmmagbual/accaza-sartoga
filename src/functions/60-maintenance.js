@@ -27,6 +27,14 @@ exports.pruneEphemeralNodes = onSchedule(
       if (ts && now - ts > 45 * DAY) mark(`orderStatusCommands/${rid}`);
     });
 
+    // orderCorrectionCommands/{requestId} — correction idempotency claims;
+    // durable correction evidence remains in orderCorrections and audit records.
+    const correctionCmds = (await db.ref("/orderCorrectionCommands").get()).val() || {};
+    Object.keys(correctionCmds).forEach((rid) => {
+      const ts = Number((correctionCmds[rid] && (correctionCmds[rid].postedAt || correctionCmds[rid].claimedAt)) || 0);
+      if (ts && now - ts > 45 * DAY) mark(`orderCorrectionCommands/${rid}`);
+    });
+
     // clientTelemetryDaily/{YYYY-MM-DD} — keep ~4 months
     const cutoffDay = financeDateFromTimestamp(now - 120 * DAY);
     const tel = (await db.ref("/clientTelemetryDaily").get()).val() || {};
@@ -81,7 +89,7 @@ exports.autoCompleteReadyOnlineOrders = onSchedule(
 // (active-order projections, locks, rate windows, status-command claims, offline
 // sync scratch, daily telemetry) are excluded — a restore rebuilds those. This
 // is the safety net behind a corrupt write, a bad delete, or human error.
-const BACKUP_EXCLUDE = new Set(["activeOrders", "orderLocks", "rateLimits", "orderStatusCommands", "offlinePosSync", "clientTelemetryDaily"]);
+const BACKUP_EXCLUDE = new Set(["activeOrders", "orderLocks", "rateLimits", "orderStatusCommands", "orderCorrectionCommands", "offlinePosSync", "clientTelemetryDaily"]);
 async function createVerifiedDatabaseBackup(now = Date.now()) {
     const db = getDatabase(), bucket = getStorage().bucket(PROOF_BUCKET);
     const root = (await db.ref("/").get()).val() || {};

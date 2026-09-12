@@ -1,7 +1,7 @@
 function renderPosCart(options){
   var p=document.getElementById('posCartPanel'); if(!p)return;
   var _rt=performance.now();if(!(options&&options.fresh))capturePosDraft(p);
-  var shift=window.__posShift||null;
+  var shift=window.__posShift||null,correction=posCompletedCorrection;
   var keys=Object.keys(posCart);
   posScopedDisc=posScopedDisc.filter(function(d){return posCart[d.key];});
   (function(){var seen={};posScopedDisc=posScopedDisc.filter(function(d){seen[d.key]=(seen[d.key]||0)+1;return seen[d.key]<=(Number(posCart[d.key].qty)||0);});})();
@@ -19,21 +19,21 @@ function renderPosCart(options){
   var grabDiscountRows='<div style="margin-top:0.55rem;padding:0.55rem;background:#f7f3ec;border:1px solid var(--cd);border-radius:7px;"><div class="pz-lbl" style="margin-bottom:0.35rem;">GrabFood discounts</div>'
     +[['posPlatDiscType1','posPlatDiscPct1','Delivery / Pickup','Percentage discount 1','%'],['posPlatDiscType2','posPlatDiscPct2','','Percentage discount 2','%'],['posPlatDiscType3','posPlatDiscAmt1','','Amount discount 1','₱'],['posPlatDiscType4','posPlatDiscAmt2','','Amount discount 2','₱']].map(function(r){return '<div style="display:grid;grid-template-columns:minmax(0,1fr) 112px;gap:0.45rem;align-items:end;margin-top:0.35rem;"><label><span class="pz-lbl">Discount type</span><input class="pz-in" data-plat-discount id="'+r[0]+'" placeholder="'+r[3]+'" value="'+r[2]+'"/></label><label><span class="pz-lbl">Discount '+r[4]+'</span><input class="pz-in" data-plat-discount id="'+r[1]+'" type="number" min="0" step="any" placeholder="0" style="text-align:right;"/></label></div>';}).join('')
     +'<div style="font-size:0.7rem;color:var(--tl);margin-top:0.45rem;">Enter the deduction labels shown by Grab. Delivery-labelled rows and merchant-funded promos are mapped separately in Finance Books.</div></div>';
-  var chanSel='<div style="margin-bottom:0.6rem;"><span class="pz-lbl">Channel</span><select class="pz-in" id="posChannelSel">'+chanOpts.map(function(o){return '<option value="'+o.k+'"'+(posChannel===o.k?' selected':'')+'>'+o.lbl+'</option>';}).join('')+'</select>'+(isPlat?'<div style="font-size:0.72rem;color:#8a5a00;background:#fff6e5;border:1px solid #f0dcae;border-radius:5px;padding:0.3rem 0.45rem;margin-top:0.25rem;">'+esc(chLabel)+' — platform prices apply, sale is a <b>receivable</b> (not cash drawer), commission trued up at weekly payout.</div>':'')+'</div>';
+  var chanSel='<div style="margin-bottom:0.6rem;"><span class="pz-lbl">Channel</span><select class="pz-in" id="posChannelSel"'+(correction?' disabled':'')+'>'+chanOpts.map(function(o){return '<option value="'+o.k+'"'+(posChannel===o.k?' selected':'')+'>'+o.lbl+'</option>';}).join('')+'</select>'+(correction?'<div style="font-size:0.75rem;color:#8a5a00;background:#fff6e5;border:1px solid #f0dcae;border-radius:5px;padding:0.45rem 0.55rem;margin-top:0.3rem;"><b>Changing completed order #'+esc(correction.orderId)+'</b><br>Preparation has not started. '+esc(correction.paymentKind)+' '+peso(correction.originalTotal)+' remains confirmed. Rebuild the actual coffee order below.</div>':isPlat?'<div style="font-size:0.72rem;color:#8a5a00;background:#fff6e5;border:1px solid #f0dcae;border-radius:5px;padding:0.3rem 0.45rem;margin-top:0.25rem;">'+esc(chLabel)+' — platform prices apply, sale is a <b>receivable</b> (not cash drawer), commission trued up at weekly payout.</div>':'')+'</div>';
   p.innerHTML=
     chanSel
-    +'<div style="margin-bottom:0.6rem;"><span class="pz-lbl">Customer\'s name</span><input class="pz-in" id="posCust" placeholder="Walk-in"/></div>'
-    +(shift&&!isPlat?'<button class="pz-btn sec" id="posPkgBtn" style="width:100%;margin-bottom:0.6rem;">🎁 Add Package / Promo</button>':'')+'<div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">🛒 Current sale</div>'
+    +'<div style="margin-bottom:0.6rem;"><span class="pz-lbl">Customer\'s name</span><input class="pz-in" id="posCust" placeholder="Walk-in"'+(correction?' readonly':'')+'/></div>'
+    +(shift&&!isPlat&&!correction?'<button class="pz-btn sec" id="posPkgBtn" style="width:100%;margin-bottom:0.6rem;">🎁 Add Package / Promo</button>':'')+'<div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">🛒 '+(correction?'Corrected coffee order':'Current sale')+'</div>'
     +(keys.length?lines:'<p class="pz-sub" style="margin:0.5rem 0;">Tap items to add them.</p>')
     +'<div style="margin-top:0.6rem;">'
       +'<div style="display:flex;justify-content:space-between;font-size:0.82rem;margin-bottom:0.3rem;"><span>Subtotal</span><span>'+peso(sub)+'</span></div>'
-      +(isPlat?'':'<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.82rem;margin-bottom:0.3rem;"><span>Discount ₱</span><input class="pz-in" id="posDisc" type="number" step="any" style="width:100px;text-align:right;" value="0"/></div>'
+      +(isPlat?'':correction?'':'<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.82rem;margin-bottom:0.3rem;"><span>Discount ₱</span><input class="pz-in" id="posDisc" type="number" step="any" style="width:100px;text-align:right;" value="0"/></div>'
       +'<button class="pz-btn sec" id="posDiscBtn" style="width:100%;margin-bottom:0.4rem;font-size:0.8rem;">🧾 PWD / Senior / Athlete / Promo</button>'
       +(posScopedDisc.length?('<div style="font-size:0.76rem;margin-bottom:0.4rem;">'+posScopedDisc.map(function(d,ix){return '<div style="display:flex;justify-content:space-between;align-items:center;color:#155724;margin-bottom:0.15rem;"><span>'+esc((DISC_TYPES[d.type]||{}).label||d.type)+' · '+esc(d.name)+(d.idNumber?' ('+esc(d.idNumber)+')':'')+'</span><span style="white-space:nowrap;">−'+peso(d.value)+' <button class="pz-btn warn" data-sdrm="'+ix+'" style="padding:0 0.35rem;">✕</button></span></div>';}).join('')+'</div>'):'')
       +(posMeta.cashRounding?'<div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;"><span>Cash rounding</span><span id="posRound">₱0.00</span></div>':''))
       +'<div style="display:flex;justify-content:space-between;font-weight:700;color:var(--bd);font-size:1rem;border-top:1px solid var(--cd);padding-top:0.4rem;"><span>'+(isPlat?'Gross':'Total')+'</span><span id="posTotal">'+peso(sub)+'</span></div>'
     +'</div>'
-    +(isPlat
+    +(correction?'<div style="margin-top:0.7rem;padding:0.55rem;background:#e8f5ec;border:1px solid #b8dfc4;border-radius:6px;font-size:0.78rem;color:#155724;"><b>Original '+esc(correction.paymentKind)+' payment stays recorded.</b><br>POS will calculate any cash refund from '+peso(correction.originalTotal)+'.</div>':isPlat
       ? '<div style="margin-top:0.7rem;border-top:1px solid var(--cd);padding-top:0.6rem;"><span class="pz-lbl">'+(posChannel==='grabfood'?'GrabFood order # (GF- is added automatically)':'FoodPanda order code (FP- is added automatically)')+'</span>'+(posChannel==='grabfood'?'<div style="display:flex;align-items:center;gap:0.3rem;"><span style="font-weight:700;color:var(--bd);">GF-</span><input class="pz-in" id="posPlatRef" placeholder="e.g. 123456" style="flex:1;"/></div>'+grabDiscountRows:'<div style="display:flex;align-items:center;gap:0.3rem;"><span style="font-weight:700;color:var(--bd);">FP-</span><input class="pz-in" id="posPlatRef" placeholder="e.g. o7km-49a7" style="flex:1;"/></div><div style="margin-top:0.5rem;"><span class="pz-lbl">Discount off (Delivery / Pickup) %</span><input class="pz-in" data-plat-discount id="posPlatDisc" type="number" min="0" step="any" placeholder="0" style="width:110px;text-align:right;"/></div>')+'<div id="posPlatCalc" style="font-size:0.82rem;margin-top:0.5rem;"></div></div>'
       : '<div style="margin-top:0.7rem;display:flex;justify-content:space-between;align-items:center;"><span class="pz-lbl" style="margin:0;">Payment</span><label style="font-size:0.74rem;color:var(--tl);cursor:pointer;"><input type="checkbox" id="posSplitChk"/> Split</label></div>'
         +'<div id="posPaySingle"><select class="pz-in" id="posPay" style="margin-top:0.3rem;">'+posActiveMethods().map(function(m){return '<option value="'+m.name+'">'+m.name+'</option>';}).join('')+'</select>'
@@ -44,8 +44,8 @@ function renderPosCart(options){
     +'<div id="posVerifyState" style="display:none;margin-top:0.7rem;padding:0.45rem 0.6rem;border-radius:6px;font-size:0.76rem;"></div>'
     +'<button class="pz-btn ok" id="posCharge" style="width:100%;margin-top:0.8rem;padding:0.7rem;font-size:0.95rem;"'+((keys.length&&shift)?'':' disabled')+'>'+(isPlat?'Record '+esc(chLabel)+' sale':'Charge &amp; Complete')+'</button>'
     +'<div style="display:flex;gap:0.4rem;margin-top:0.4rem;">'
-      +(isPlat?'':'<button class="pz-btn sec" id="posHold" style="flex:1;"'+(keys.length?'':' disabled')+'>Hold</button>')
-      +'<button class="pz-btn sec" id="posClear" style="flex:1;"'+(keys.length?'':' disabled')+'>Clear</button>'
+      +(isPlat||correction?'':'<button class="pz-btn sec" id="posHold" style="flex:1;"'+(keys.length?'':' disabled')+'>Hold</button>')
+      +'<button class="pz-btn sec" id="posClear" style="flex:1;"'+(keys.length||correction?'':' disabled')+'>'+(correction?'Cancel correction':'Clear')+'</button>'
     +'</div>';
   restorePosDraft(p);telemetry().metric('cart_render',performance.now()-_rt,true);if(window.__refreshWorkspaceStatus)window.__refreshWorkspaceStatus();
   var _chsel=document.getElementById('posChannelSel'); if(_chsel)_chsel.onchange=function(){ var v=this.value; if(v===posChannel)return; if(Object.keys(posCart).length&&!confirm('Switching channel clears the current sale — prices differ between in-store and platform. Continue?')){ this.value=posChannel; return; } posChannel=v; posCart={}; window.__posPkgs=[]; posScopedDisc=[]; setTimeout(buildPOS,0); };
@@ -62,6 +62,7 @@ function renderPosCart(options){
   }
   function refreshChargeAction(){
     var button=document.getElementById('posCharge'),state=document.getElementById('posVerifyState');if(!button)return;
+    if(correction){var ct=grandTotal(),refund=Math.round((correction.originalTotal-ct)*100)/100;button.textContent=ct>correction.originalTotal+.009?'Corrected total exceeds original payment':refund>.009?'Complete Correction & Refund '+peso(refund)+' Cash':'Complete Order Correction';button.style.background=refund>.009?'#b36b00':'';button.disabled=posChargeBusy||!keys.length||!shift||ct>correction.originalTotal+.009;if(state){state.style.display='block';state.style.background='#fff6e5';state.style.border='1px solid #f0dcae';state.style.color='#704600';state.innerHTML='Original order '+peso(correction.originalTotal)+' · corrected order '+peso(ct)+(refund>.009?' · cash refund '+peso(refund):' · no refund');}return;}
     var direct=draftElectronicPayments(),policy=paymentVerificationPolicy(direct),signature=paymentVerificationSignature(direct,grandTotal()),receiptSig=JSON.stringify(direct.map(function(p){return[p.method,p.receivingAccountId,Math.round((+p.amount||0)*100)/100,p.ref];})),verified=policy==='cashier_manager'&&direct.length&&posPaymentVerification&&(posPaymentVerification.signature===signature||posPaymentVerification.receiptSignature===receiptSig&&direct.reduce(function(s,p){return s+(+p.amount||0);},0)>=grandTotal());
     if(isPlat){button.textContent='Record '+chLabel+' sale';button.style.background='';}
     else if(direct.length&&policy==='manager_only'){button.textContent='Record Sale · Manager Verification Required';button.style.background='#8a6d1b';}
@@ -97,7 +98,7 @@ function renderPosCart(options){
       +'<div style="font-size:0.72rem;color:var(--tl);margin-top:0.25rem;">'+((posChannel==='grabfood'&&dAmt)?'Commission is on gross less merchant-funded promo; delivery fee discount is separate; WHT/VAT are on gross. ':'All deducted from gross. ')+'Estimate — trued up at the weekly payout reconciliation.</div>';
   }
   if(isPlat){ var _plr=document.getElementById('posPlatRef'); if(_plr)_plr.oninput=refreshPlat; p.querySelectorAll('[data-plat-discount]').forEach(function(inp){inp.oninput=refreshPlat;}); refreshPlat(); }
-  else {
+  else if(!correction) {
   var curChange=0;
   function updateKeep(){ var w=document.getElementById('posKeepWrap'); if(!w)return; var isc=isCashMethod(pay?pay.value:'Cash'); var show=isc&&curChange>0.001; w.style.display=show?'block':'none'; var k=document.getElementById('posKeep'); var kw=document.getElementById('posKeepAmtWrap'); var amt=document.getElementById('posKeepAmt'); if(!show){ if(k)k.checked=false; if(kw)kw.style.display='none'; return; } if(amt){amt.max=curChange;amt.placeholder=String(curChange);} if(k&&k.checked){ if(kw)kw.style.display='block'; if(amt&&!amt.value)amt.value=curChange; } }
   function refreshSingle(){ var tot=grandTotal(); var tender=document.getElementById('posTender'); var t=Number(tender&&tender.value)||0; curChange=t?Math.max(0,Math.round((t-tot)*100)/100):0; var ch=document.getElementById('posChange'); if(ch)ch.textContent=t?('Change: '+peso(curChange)):''; updateKeep(); }
@@ -155,13 +156,14 @@ function renderPosCart(options){
   var _db=document.getElementById('posDiscBtn'); if(_db)_db.onclick=openDiscountModal;
   p.querySelectorAll('[data-sdrm]').forEach(function(b){b.onclick=function(){posScopedDisc.splice(+b.getAttribute('data-sdrm'),1);renderPosCart();};});
   var _pb=document.getElementById('posPkgBtn');if(_pb)_pb.onclick=function(){ if(window.__openPackagePicker)window.__openPackagePicker(); else alert('Packages module still loading \u2014 try again.'); };
-  document.getElementById('posClear').onclick=function(){if(Object.keys(posCart).length&&confirm('Clear this sale?')){posCart={};posDraft={};posPaymentVerification=null;window.__posPkgs=[];posScopedDisc=[];renderPosCart({fresh:true});}};
+  document.getElementById('posClear').onclick=function(){if(correction){if(confirm('Cancel this correction? The original completed order will remain unchanged.')){posCompletedCorrection=null;posCart={};posDraft={};posPaymentVerification=null;window.__posPkgs=[];posScopedDisc=[];renderPosCart({fresh:true});}return;}if(Object.keys(posCart).length&&confirm('Clear this sale?')){posCart={};posDraft={};posPaymentVerification=null;window.__posPkgs=[];posScopedDisc=[];renderPosCart({fresh:true});}};
   var _hold=document.getElementById('posHold'); if(_hold)_hold.onclick=function(){ if(!Object.keys(posCart).length)return; var a=A(); a.set(a.ref(a.db,'heldOrders/'+uid('hold_')),{cart:posCart,ts:Date.now(),staff:(window.__posShift&&window.__posShift.staff)||'—',note:(document.getElementById('posCust').value||'').trim()}); posCart={};posDraft={};posPaymentVerification=null;window.__posPkgs=[]; renderPosCart({fresh:true}); alert('Order held. Recall it from Register Ops.'); };
   document.getElementById('posCharge').onclick=async function(){
     var chargeButton=this;if(posChargeBusy)return;posChargeBusy=true;chargeButton.disabled=true;chargeButton.textContent='Processing…';
     try{return await (async function(){
     if(!window.__posShift){alert('Open a shift first (Register Ops tab).');return;}
     var tot=grandTotal();
+    if(correction){await completeCompletedOrderCorrection(tot);return;}
     if(isPlat){
       if(tot<=0){alert('Add items to the sale first.');return;}
       var pref=(document.getElementById('posPlatRef').value||'').trim();

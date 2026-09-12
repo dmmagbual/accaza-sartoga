@@ -20,6 +20,7 @@ const Costing = require("./lib/costing");
 const Financial = require("./lib/financial");
 const OfflineSync = require("./lib/offline-sync");
 const PaymentVerification = require("./lib/payment-verification");
+const OrderCorrection = require("./lib/order-correction");
 const OrderStatus = require("./lib/order-status");
 const SupplierMaster = require("./lib/supplier-master");
 const OperationalExceptions = require("./lib/operational-exceptions");
@@ -3153,11 +3154,38 @@ exports.setPlatformPayoutDate = onCall(
     }finally{try{await lockRef.transaction(current=>current&&current.token===token?null:current,undefined,false);}catch(error){logger.error("Payout date edit lock release failed",{payoutId,message:error.message});}}
   },
 );
+function correctionRequestKey(value) {
+  const key = String(value || "").trim();
+  if (!/^[A-Za-z0-9_-]{12,80}$/.test(key)) throw new HttpsError("invalid-argument", "Order correction request ID is invalid.");
+  return key;
+}
+function correctionItemText(lines) {
+  return (lines || []).map((line) => `${line.name}${line.size ? ` (${line.size})` : ""}${line.optLabels && line.optLabels.length ? ` [${line.optLabels.join(", ")}]` : ""} x${line.qty}`).join(", ");
+}
+function correctionPlanMetadata(plan, now) {
+  return {inventoryDeducted:true,inventoryUsage:plan.usage||{},inventoryDeductedAt:now,cogsSnapshot:Number(plan.totalCost)||0,cogsCategorySnapshot:plan.categorySnapshot||{},cogsCategorySnapshotVersion:1,cogsAccountSnapshot:plan.accountSnapshot||{},cogsAccountSnapshotVersion:1,cogsCovered:plan.cogsCovered,cogsDetail:{engineVersion:plan.engineVersion,computedAt:plan.capturedAt,totalCost:Number(plan.totalCost)||0,lines:plan.lines||[],warnings:plan.warnings||[]},costingEngineVersion:plan.engineVersion,deductedBy:"server-order-correction",inventoryLedgerVersion:1};
+}
+async function applyCompletedOrderCorrectionInventory(db, order, plan, token, now, actor) {
+  const original = order.inventoryUsage || {}, corrected = plan.usage || {};
+  for (const itemId of Object.keys(original).sort()) await applyInventoryMovement(db,{movementId:`crr_${token}_${itemId}`,itemId,type:"refund_reversal",qty:qty6(original[itemId]),sourceType:"order_correction",sourceId:order.id,sourceLine:itemId,note:`Reverse original usage for corrected order ${order.id}`,reversalOf:`sale_${order.id}_${itemId}`,occurredAt:now,actorName:actor.role},actor);
+  for (const itemId of Object.keys(corrected).sort()) await applyInventoryMovement(db,{movementId:`crs_${token}_${itemId}`,itemId,type:"sale_usage",qty:-qty6(corrected[itemId]),sourceType:"order_correction",sourceId:order.id,sourceLine:itemId,note:`Corrected ingredient usage for order ${order.id}`,occurredAt:now,actorName:actor.role},actor);
+}
 
 exports.processOrderAdjustment = onCall(
-  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 120, memory: "512MiB"},
   async (request) => {
     const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["registerOps"]); const data = request.data || {}, found = await findOrder(db, data.orderId), o = found.order;
+    if (data.action === "start_instore_preparation") {
+      if (found.node !== "orders" || o.source !== "pos" || String(o.channel || "instore").toLowerCase() !== "instore" || o.status !== "Completed") throw new HttpsError("failed-precondition", "Only a current in-store completed sale can start preparation.");
+      const active = (await db.ref("/posActiveShift").get()).val() || null;
+      if (!active || active.id !== o.shiftId || active.status === "closed") throw new HttpsError("failed-precondition", "This sale is not in the currently open shift.");
+      if (o.preparationStatus === "preparing") return {duplicate:true,preparationStatus:"preparing"};
+      if (o.preparationStatus !== "not_prepared" || o.correctionPending || o.completedOrderCorrectionId) throw new HttpsError("failed-precondition", "This sale is no longer eligible to start preparation from this screen.");
+      const now = Date.now(), ref = db.ref(`/orders/${o.id}`); let blocked = false;
+      const changed = await ref.transaction((current) => {if (!current || current.preparationStatus !== "not_prepared" || current.correctionPending || current.completedOrderCorrectionId) {blocked = true; return;}return Object.assign({},current,{preparationStatus:"preparing",preparationStartedAt:now,preparationStartedBy:actor.uid,preparationStartedRole:actor.role});},undefined,false);
+      if (!changed.committed) {if (blocked) throw new HttpsError("aborted", "The order changed. Refresh before starting preparation.");throw new HttpsError("internal", "Preparation status could not be saved.");}
+      const updated=Object.assign({id:o.id},changed.snapshot.val()||{});await db.ref().update({[`activeOrders/${o.id}`]:activeOrderProjection(updated),[`operationalAudit/${now}_start_preparation_${o.id}`]:{action:"start_instore_preparation",sourceType:"order",sourceId:o.id,shiftId:o.shiftId,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}});return{duplicate:false,preparationStatus:"preparing"};
+    }
     if (data.action === "cashier_verify_payment") {
       if (["grabfood", "foodpanda"].includes(String(o.channel || "").toLowerCase())) throw new HttpsError("failed-precondition", "Platform orders are settled through their platform payout.");
       if (["cashier_verified", "manager_validated", "confirmed"].includes(o.paymentStatus)) return {alreadyVerified: true, paymentStatus: o.paymentStatus};
@@ -3189,6 +3217,48 @@ exports.processOrderAdjustment = onCall(
       const writes = Object.assign({}, approval.usedWrites, {[`${found.node}/${o.id}`]: validated, [`activeOrders/${o.id}`]: shouldProjectOrder(validated, activeShift, now) ? activeOrderProjection(validated) : null, [`operationalAudit/${now}_manager_validate_${o.id}`]: {action: "manager_validate_payment", sourceType: "order", sourceId: o.id, actorUid: actor.uid, actorRole: actor.role, approvedBy: approval.record.approvedBy, approvedRole: approval.record.approvedRole, approvalId: approval.id, ts: now, schemaVersion: 1}});
       if (validated.ownerUid) writes[`customerOrders/${validated.ownerUid}/${o.id}/status`] = nextStatus;
       await db.ref().update(writes); const accounts = (await db.ref("/cfAccounts").get()).val() || {}, posted = await postOrderFinancial(db, validated, accounts, {uid: "server", role: "server"}); return {validated: true, paymentStatus: "manager_validated", approvedBy, financialPosted: !posted.skipped, duplicate: posted.duplicate === true};
+    }
+    if (data.action === "complete_order_item_correction") {
+      const requestId=correctionRequestKey(data.requestId),commandRef=db.ref(`/orderCorrectionCommands/${requestId}`),existingCommand=(await commandRef.get()).val();
+      if(existingCommand&&existingCommand.status==="posted"){if(existingCommand.orderId!==o.id)throw new HttpsError("already-exists","This correction request belongs to another order.");return{duplicate:true,correctionId:existingCommand.correctionId,refundAmount:Number(existingCommand.refundAmount)||0,correctedOrderTotal:Number(existingCommand.correctedOrderTotal)||0};}
+      if(found.node!=="orders"||o.source!=="pos"||String(o.channel||"instore").toLowerCase()!=="instore"||o.status!=="Completed")throw new HttpsError("failed-precondition","Only a current completed in-store POS sale can be corrected here.");
+      if(o.preparationStatus!=="not_prepared"||o.preparationStartedAt)throw new HttpsError("failed-precondition","This order has already entered preparation and can no longer be changed.");
+      if(o.completedOrderCorrectionId||(o.correctionPending&&o.correctionPending!==requestId)||Financial.money(o.refundAmount)>0)throw new HttpsError("failed-precondition","This order was already corrected or refunded.");
+      if(Financial.money(o.discount)>0||(Array.isArray(o.packages)&&o.packages.length))throw new HttpsError("failed-precondition","Discounted or packaged sales require the manager correction workflow.");
+      const paymentKind=OrderCorrection.paymentKind(o),payments=Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment,amount:o.total}],payment=payments[0]||{};
+      if(!paymentKind)throw new HttpsError("failed-precondition","Completed-order changes support one GCash or bank-transfer payment only.");
+      if(!["cashier_verified","manager_validated","confirmed"].includes(String(o.paymentStatus||""))||!financeText(payment.ref,120))throw new HttpsError("failed-precondition","The GCash or bank transfer must remain verified with its transaction reference.");
+      if(Math.abs(Financial.money(payment.amount)-Financial.money(o.total))>.009)throw new HttpsError("failed-precondition","The original payment must exactly match the posted sale before item correction.");
+      if(o.inventoryDeducted!==true||!Object.keys(o.inventoryUsage||{}).length)throw new HttpsError("failed-precondition","Wait for the original sale inventory posting to finish, then retry.");
+      const active=(await db.ref("/posActiveShift").get()).val()||null;if(!active||active.id!==o.shiftId||active.status==="closed")throw new HttpsError("failed-precondition","This order is not in the currently open shift.");
+      const reason=financeText(data.reason,300),acknowledgement=financeText(data.customerAcknowledgement,160);if(!reason||!acknowledgement)throw new HttpsError("invalid-argument","Reason and customer acknowledgement are required.");
+      const [menuSnap,groupsSnap,availabilitySnap,packagesSnap,oldPlanSnap,posSettingsSnap,accountsSnap]=await Promise.all([db.ref("/menuItems").get(),db.ref("/optionGroups").get(),db.ref("/availability").get(),db.ref("/packages").get(),db.ref(`/orderInventoryPlans/${o.id}`).get(),db.ref("/posSettings").get(),db.ref("/cfAccounts").get()]);
+      const oldPlan=oldPlanSnap.val();if(!oldPlan||!oldPlan.usage)throw new HttpsError("failed-precondition","The original immutable inventory plan is missing. Use manager review; no stock was changed.");
+      const priced=priceOrderLinesServer(data.lineItems,menuSnap.val()||{},groupsSnap.val()||{},availabilitySnap.val()||{},packagesSnap.val()||{}),correctedTotal=Financial.money(priced.total),expected=Financial.money(data.expectedTotal),originalTotal=Financial.money(o.total);
+      if(!(correctedTotal>0)||correctedTotal>originalTotal+.009)throw new HttpsError("invalid-argument","The corrected order must be greater than zero and cannot exceed the original paid total.");
+      if(Math.abs(expected-correctedTotal)>.009)throw new HttpsError("failed-precondition",`Current menu pricing makes the corrected order PHP ${correctedTotal.toFixed(2)}. Refresh and review it.`);
+      const itemSignature=(rows)=>JSON.stringify((rows||[]).map((line)=>[line.itemKey,line.size||"",line.optLabels||[],Number(line.qty)||0]));
+      if(itemSignature(priced.lines)===itemSignature(OrderCorrection.currentLines(o)))throw new HttpsError("invalid-argument","Change at least one coffee item before completing the correction.");
+      const refund=Financial.money(originalTotal-correctedTotal),now=Date.now(),token=crypto.createHash("sha256").update(`${o.id}|${requestId}`).digest("hex").slice(0,16),correctionId=`COR-${o.id}-${token.slice(0,8)}`;
+      const drawerDelta=OfflineSync.offlineDrawerDelta(data.drawerDelta),settings=posSettingsSnap.val()||{},shiftRow=(await db.ref(`/shifts/${o.shiftId}`).get()).val()||{};
+      if(Object.values(drawerDelta).some((qty)=>qty>0))throw new HttpsError("invalid-argument","A completed-order refund cannot add cash to the drawer.");
+      if(!settings.denomTracking&&Object.keys(drawerDelta).length)throw new HttpsError("invalid-argument","Drawer denominations are disabled for this shift.");
+      if(settings.denomTracking&&Math.abs(OfflineSync.drawerDeltaValue(drawerDelta)+refund)>.009)throw new HttpsError("invalid-argument","Cash refund denominations must equal the calculated refund.");
+      if(settings.denomTracking)for(const key of Object.keys(drawerDelta))if(-Number(drawerDelta[key]||0)>Number((shiftRow.drawer||{})[key]||0))throw new HttpsError("failed-precondition","The drawer no longer has the selected refund denominations.");
+      if(refund>0){const cash=await availableCashOnHandAboveFloat(db);if(refund>cash.available+.009)throw new HttpsError("failed-precondition",`Refund exceeds register cash available above the protected float by ${Financial.money(refund-cash.available).toFixed(2)}.`);}
+      const plan=await calculateOrderInventoryPlan(db,{lineItems:priced.lines},now);
+      const claim=await commandRef.transaction((current)=>{if(current)return current;return{status:"processing",orderId:o.id,correctionId,claimedAt:now,actorUid:actor.uid,schemaVersion:1};},undefined,false),claimValue=claim.snapshot.val()||{};
+      if(!claim.committed||claimValue.orderId!==o.id){if(claimValue.status==="posted")return{duplicate:true,correctionId:claimValue.correctionId,refundAmount:Number(claimValue.refundAmount)||0,correctedOrderTotal:Number(claimValue.correctedOrderTotal)||0};throw new HttpsError("aborted","This correction request is already being processed.");}
+      const locked=await db.ref(`/orders/${o.id}`).transaction((current)=>{if(!current||current.preparationStatus!=="not_prepared"||current.preparationStartedAt||current.completedOrderCorrectionId||(current.correctionPending&&current.correctionPending!==requestId))return;return Object.assign({},current,{correctionPending:requestId,correctionPendingAt:now});},undefined,false);
+      if(!locked.committed){await commandRef.transaction((current)=>current&&current.status==="processing"?null:current,undefined,false);throw new HttpsError("aborted","The order changed or preparation started. Refresh before trying again.");}
+      if(refund>0){const shifted=await db.ref(`/shifts/${o.shiftId}`).transaction((row)=>OfflineSync.applyDrawerDelta(row,requestId,drawerDelta,now,actor),undefined,false);if(!shifted.committed||!shifted.snapshot.exists())throw new HttpsError("failed-precondition","The drawer no longer has enough cash for this refund.");await db.ref("/posActiveShift").transaction((row)=>row&&row.id===o.shiftId?OfflineSync.applyDrawerDelta(row,requestId,drawerDelta,now,actor):row,undefined,false);}
+      await applyCompletedOrderCorrectionInventory(db,o,plan,token,now,actor);
+      const correctedMeta=correctionPlanMetadata(plan,now),updated=Object.assign({},o,{correctedOrderId:correctionId,completedOrderCorrectionId:correctionId,correctedOrderTotal:correctedTotal,correctedLineItems:priced.lines,correctedItems:correctionItemText(priced.lines),correctedPackages:priced.packages,correctedExtraCost:priced.extraCost,correctedAt:now,correctedBy:actor.uid,correctionReason:reason,correctionCustomerAcknowledgement:acknowledgement,correctionReviewStatus:"pending_shift_review",preparationStatus:"not_prepared",refundAmount:refund,refundPayments:refund>0?Object.assign({},o.refundPayments||{},{Cash:refund}):(o.refundPayments||{}),refunded:refund>0,refundedAt:refund>0?now:(o.refundedAt||null),refundedBy:refund>0?actor.uid:(o.refundedBy||""),refundReason:refund>0?reason:(o.refundReason||""),cashRefundReviewStatus:refund>0?"pending_shift_review":(o.cashRefundReviewStatus||""),cashRefundShiftId:refund>0?o.shiftId:(o.cashRefundShiftId||""),correctedInventoryUsage:correctedMeta.inventoryUsage,correctionInventoryToken:token,correctedCogsSnapshot:correctedMeta.cogsSnapshot,correctedCogsCategorySnapshot:correctedMeta.cogsCategorySnapshot,correctedCogsAccountSnapshot:correctedMeta.cogsAccountSnapshot,correctedCogsCovered:correctedMeta.cogsCovered,correctionPending:null});
+      if(refund>0)updated.refundHistory=Object.assign({},o.refundHistory||{},{[`refund_${o.id}_${Math.round(refund*100)}`]:{amount:refund,payments:[{method:"Cash",amount:refund}],reason,at:now,by:actor.uid,actorRole:actor.role,approvalMode:"cashier_preauthorized",reviewStatus:"pending_shift_review",shiftId:o.shiftId,correctedOrderTotal:correctedTotal,customerAcknowledgement:acknowledgement,orderStage:"completed_not_prepared",inventoryOutcome:"original_reversed_corrected_deducted"}});
+      const correctionRecord={id:correctionId,orderId:o.id,shiftId:o.shiftId,status:"completed",paymentKind,originalPaymentReference:financeText(payment.ref,120),originalTotal,correctedOrderTotal:correctedTotal,refundAmount:refund,originalLineItems:o.lineItems||[],correctedLineItems:priced.lines,originalInventoryPlanId:o.id,correctedInventoryPlan:plan,reason,customerAcknowledgement:acknowledgement,preparationStatus:"not_prepared",createdAt:now,createdBy:actor.uid,createdByRole:actor.role,reviewStatus:"pending_shift_review",schemaVersion:1};
+      const movementOrder=Object.assign({},o,{cogsAccountSnapshot:o.cogsAccountSnapshot||oldPlan.accountSnapshot||{}}),movement=OrderCorrection.movement(movementOrder,plan,refund,accountsSnap.val()||{}),movementId=refund>0?`refund_${o.id}_${Math.round(refund*100)}`:`correction_${o.id}_${token}`,writes={[`orders/${o.id}`]:updated,[`activeOrders/${o.id}`]:activeOrderProjection(updated),[`orderCorrections/${correctionId}`]:correctionRecord,[`orderCorrectionCommands/${requestId}`]:{status:"posted",orderId:o.id,correctionId,refundAmount:refund,correctedOrderTotal:correctedTotal,movementId:movement?movementId:"",claimedAt:now,postedAt:Date.now(),actorUid:actor.uid,schemaVersion:1},[`operationalAudit/${now}_completed_order_correction_${o.id}`]:{action:"complete_order_item_correction",sourceType:"order",sourceId:o.id,correctionId,movementId:movement?movementId:"",paymentKind,originalTotal,correctedOrderTotal:correctedTotal,refundAmount:refund,customerAcknowledgement:acknowledgement,inventoryOutcome:"original_reversed_corrected_deducted",shiftId:o.shiftId,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}};
+      if(movement){movement.occurredAt=now;movement.actorName=actor.role;movement.correctionId=correctionId;movement.controlReason="Completed in-store order changed before preparation; original electronic receipt retained, item usage replaced, and any difference returned from register cash.";addOrderCashWrites(writes,movement,movementId,o,actor);await commitFinancial(db,movementId,movement,actor,writes);}else await db.ref().update(writes);
+      return{duplicate:false,correctionId,refundAmount:refund,correctedOrderTotal:correctedTotal,movementId:movement?movementId:""};
     }
     const reason = financeText(data.reason, 300); if (!reason) throw new HttpsError("invalid-argument", "Reason is required."); const accounts = (await db.ref("/cfAccounts").get()).val() || {}; await postOrderFinancial(db, o, accounts, {uid: "server", role: "server"});
     const now = Date.now(), writes = {}; let movementId, movement;
@@ -3509,7 +3579,7 @@ function financialControlResolution(issue) {
   return Object.assign(issue, {title:titles[issue.kind] || String(issue.kind || "Control exception").replace(/_/g, " "), solution:resolution[0], actionTarget:resolution[1], actionLabel:resolution[2]});
 }
 
-const ARCHIVED_ORDER_METADATA_FIELDS = new Set(["inventoryDeducted","inventoryUsage","inventoryDeductedAt","cogsSnapshot","cogsCategorySnapshot","cogsCategorySnapshotVersion","cogsAccountSnapshot","cogsAccountSnapshotVersion","cogsCovered","cogsDetail","costingEngineVersion","deductedBy","inventoryLedgerVersion","inventoryMarkerRepairedAt","inventoryReversed","inventoryReversedAt","inventoryReversalRequested","inventoryReversalLedgerVersion","pushNotified","pushNotifiedAt","dupPlatformRef"]);
+const ARCHIVED_ORDER_METADATA_FIELDS = new Set(["inventoryDeducted","inventoryUsage","inventoryDeductedAt","cogsSnapshot","cogsCategorySnapshot","cogsCategorySnapshotVersion","cogsAccountSnapshot","cogsAccountSnapshotVersion","cogsCovered","cogsDetail","costingEngineVersion","deductedBy","inventoryLedgerVersion","inventoryMarkerRepairedAt","inventoryReversed","inventoryReversedAt","inventoryReversalRequested","inventoryReversalLedgerVersion","correctedInventoryUsage","correctionInventoryToken","correctedCogsSnapshot","correctedCogsCategorySnapshot","correctedCogsAccountSnapshot","correctedCogsCovered","pushNotified","pushNotifiedAt","dupPlatformRef"]);
 function isArchivedOrderMetadataGhost(live, archived) {
   if (!live || !archived || archived.status !== "Archived" || !archived.id) return false;
   if (live.id || live.status || live.lineItems || live.total != null || live.timestamp) return false;
@@ -4022,7 +4092,7 @@ exports.onOrderInventoryReversal = onValueWritten(
     const orderRef = db.ref(`/orders/${orderId}`);
     const order = (await orderRef.get()).val();
     if (!order || order.inventoryReversed) return;
-    const usage = order.inventoryUsage || {};
+    const corrected = !!(order.completedOrderCorrectionId && order.correctedInventoryUsage), usage = corrected ? order.correctedInventoryUsage : (order.inventoryUsage || {});
     if (order.inventoryDeducted !== true || !Object.keys(usage).length) {
       // A void/refund can be requested milliseconds after completion. Wait for
       // finalization so the reversal can link to—and exactly offset—the sale.
@@ -4034,7 +4104,7 @@ exports.onOrderInventoryReversal = onValueWritten(
       itemId, type, qty: qty6(usage[itemId]), sourceType: "order_reversal",
       sourceId: orderId, sourceLine: itemId,
       note: String(order.inventoryReversalReason || order.refundReason || order.voidReason || "Inventory returned").slice(0, 500),
-      reversalOf: `sale_${orderId}_${itemId}`, actorName: order.onDuty || order.staff || "Order reversal",
+      reversalOf: corrected ? `crs_${order.correctionInventoryToken}_${itemId}` : `sale_${orderId}_${itemId}`, actorName: order.onDuty || order.staff || "Order reversal",
     }, {uid: "server", role: "server"})));
     await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, orderId, {
       inventoryReversed: true, inventoryReversedAt: Date.now(), inventoryReversalRequested: null,
@@ -4077,6 +4147,14 @@ exports.pruneEphemeralNodes = onSchedule(
     Object.keys(cmds).forEach((rid) => {
       const ts = Number((cmds[rid] && (cmds[rid].appliedAt || cmds[rid].createdAt)) || 0);
       if (ts && now - ts > 45 * DAY) mark(`orderStatusCommands/${rid}`);
+    });
+
+    // orderCorrectionCommands/{requestId} — correction idempotency claims;
+    // durable correction evidence remains in orderCorrections and audit records.
+    const correctionCmds = (await db.ref("/orderCorrectionCommands").get()).val() || {};
+    Object.keys(correctionCmds).forEach((rid) => {
+      const ts = Number((correctionCmds[rid] && (correctionCmds[rid].postedAt || correctionCmds[rid].claimedAt)) || 0);
+      if (ts && now - ts > 45 * DAY) mark(`orderCorrectionCommands/${rid}`);
     });
 
     // clientTelemetryDaily/{YYYY-MM-DD} — keep ~4 months
@@ -4133,7 +4211,7 @@ exports.autoCompleteReadyOnlineOrders = onSchedule(
 // (active-order projections, locks, rate windows, status-command claims, offline
 // sync scratch, daily telemetry) are excluded — a restore rebuilds those. This
 // is the safety net behind a corrupt write, a bad delete, or human error.
-const BACKUP_EXCLUDE = new Set(["activeOrders", "orderLocks", "rateLimits", "orderStatusCommands", "offlinePosSync", "clientTelemetryDaily"]);
+const BACKUP_EXCLUDE = new Set(["activeOrders", "orderLocks", "rateLimits", "orderStatusCommands", "orderCorrectionCommands", "offlinePosSync", "clientTelemetryDaily"]);
 async function createVerifiedDatabaseBackup(now = Date.now()) {
     const db = getDatabase(), bucket = getStorage().bucket(PROOF_BUCKET);
     const root = (await db.ref("/").get()).val() || {};

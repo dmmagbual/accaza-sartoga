@@ -20,6 +20,7 @@ const Costing = require("./lib/costing");
 const Financial = require("./lib/financial");
 const OfflineSync = require("./lib/offline-sync");
 const PaymentVerification = require("./lib/payment-verification");
+const OrderCorrection = require("./lib/order-correction");
 const OrderStatus = require("./lib/order-status");
 const SupplierMaster = require("./lib/supplier-master");
 const OperationalExceptions = require("./lib/operational-exceptions");

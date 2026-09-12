@@ -426,7 +426,7 @@ exports.onOrderInventoryReversal = onValueWritten(
     const orderRef = db.ref(`/orders/${orderId}`);
     const order = (await orderRef.get()).val();
     if (!order || order.inventoryReversed) return;
-    const usage = order.inventoryUsage || {};
+    const corrected = !!(order.completedOrderCorrectionId && order.correctedInventoryUsage), usage = corrected ? order.correctedInventoryUsage : (order.inventoryUsage || {});
     if (order.inventoryDeducted !== true || !Object.keys(usage).length) {
       // A void/refund can be requested milliseconds after completion. Wait for
       // finalization so the reversal can link to—and exactly offset—the sale.
@@ -438,7 +438,7 @@ exports.onOrderInventoryReversal = onValueWritten(
       itemId, type, qty: qty6(usage[itemId]), sourceType: "order_reversal",
       sourceId: orderId, sourceLine: itemId,
       note: String(order.inventoryReversalReason || order.refundReason || order.voidReason || "Inventory returned").slice(0, 500),
-      reversalOf: `sale_${orderId}_${itemId}`, actorName: order.onDuty || order.staff || "Order reversal",
+      reversalOf: corrected ? `crs_${order.correctionInventoryToken}_${itemId}` : `sale_${orderId}_${itemId}`, actorName: order.onDuty || order.staff || "Order reversal",
     }, {uid: "server", role: "server"})));
     await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, orderId, {
       inventoryReversed: true, inventoryReversedAt: Date.now(), inventoryReversalRequested: null,

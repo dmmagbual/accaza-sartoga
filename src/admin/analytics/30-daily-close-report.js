@@ -36,7 +36,7 @@ function renderDailyReport(){
       var pays=(o.payments&&o.payments.length)?o.payments:[{method:o.channel==='grabfood'?'GrabFood':o.channel==='foodpanda'?'FoodPanda':(o.payment||'—'),amount:Number(o.total)||0}];
       pays.forEach(function(p){byMethod[p.method]=(byMethod[p.method]||0)+(Number(p.amount)||0);});
       if(o.shiftId){var g2=byShift[o.shiftId]||(byShift[o.shiftId]={tx:0,net:0,cash:0});g2.tx++;g2.net+=nt;pays.forEach(function(p){if(p.method==='Cash')g2.cash+=Number(p.amount)||0;});}
-      (o.lineItems||[]).forEach(function(li){var k=li.itemKey||li.name||'?';if(!itemsM[k])itemsM[k]={name:li.name||k,qty:0,sales:0};itemsM[k].qty+=Number(li.qty)||0;itemsM[k].sales+=(Number(li.qty)||0)*(Number(li.unitTotal)||0);});
+      (o.correctedLineItems||o.lineItems||[]).forEach(function(li){var k=li.itemKey||li.name||'?';if(!itemsM[k])itemsM[k]={name:li.name||k,qty:0,sales:0};itemsM[k].qty+=Number(li.qty)||0;itemsM[k].sales+=(Number(li.qty)||0)*(Number(li.unitTotal)||0);});
       txns.push({time:o.time||new Date(s.ts).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),id:o.id,channel:chan[c].lbl,method:pays.map(function(p){return p.method;}).join('+'),amount:Number(o.total)||0,refund:s.refund});
     });
     var items=Object.keys(itemsM).map(function(k){return itemsM[k];}).sort(function(a,b){return b.sales-a.sales;});
