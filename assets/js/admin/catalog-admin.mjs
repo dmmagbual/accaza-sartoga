@@ -72,7 +72,7 @@ function createCatalogAdmin(deps){
         +'<span style="cursor:grab;color:var(--tl);font-size:1rem;user-select:none;">⠿</span>'
         +'<input type="text" id="catIcon_'+c.id+'" value="'+(c.icon||'☕')+'" style="width:50px;font-size:0.9rem;text-align:center;padding:0.3rem;border:1px solid var(--cd);border-radius:4px;background:#fff;font-family:\'Inter\',sans-serif;"/>'
         +'<input type="text" id="catLabel_'+c.id+'" value="'+(c.label||'')+'" style="flex:1;font-size:0.85rem;padding:0.3rem 0.5rem;border:1px solid var(--cd);border-radius:4px;background:#fff;font-family:\'Inter\',sans-serif;"/>'
-        +'<label style="display:flex;align-items:center;gap:0.35rem;font-size:0.72rem;color:var(--td);white-space:nowrap;"><input type="checkbox" id="catShowInMenu_'+c.id+'" '+(c.showInMenu!==false?'checked':'')+'/> Show in customer Menu &amp; Online Ordering</label>'
+        +'<label style="display:flex;align-items:center;gap:0.35rem;font-size:0.72rem;color:var(--td);white-space:nowrap;"><input type="checkbox" id="catShowInMenu_'+c.id+'" '+(c.showInMenu!==false?'checked':'')+'/> Show in customer Menu, Online Ordering &amp; POS</label>'
         +'<button data-savecatid="'+c.id+'" style="background:#d4edda;border:1px solid #a8d5b5;border-radius:4px;padding:0.25rem 0.6rem;font-size:0.72rem;color:#155724;cursor:pointer;font-family:\'Inter\',sans-serif;white-space:nowrap;">💾 Save</button>'
         +'<button data-delcatid="'+c.id+'" style="background:#fde8e8;border:1px solid #f5c6c6;border-radius:4px;padding:0.25rem 0.6rem;font-size:0.72rem;color:#721c24;cursor:pointer;font-family:\'Inter\',sans-serif;">🗑️</button>'
         +'</div>';
