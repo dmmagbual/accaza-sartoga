@@ -48,6 +48,16 @@ assert(pandaResult.orderId==='FP-RECOVERY-1'&&state.orders['FP-RECOVERY-1'].clie
 const cancelledTxn='pos_cancelled_123456789';state.offlinePosSync[cancelledTxn]={state:'cancelled',reason:'test transaction'};
 let cancelled=false;try{await O.syncOfflinePosSaleCommand({...ctx,data:{transactionId:cancelledTxn,order:Object.assign({},order,{id:'GF-CANCELLED-1',clientTxnId:cancelledTxn}),drawerDelta:{}},now:6000});}catch(error){cancelled=error.code==='failed-precondition';}
 assert(cancelled&&!state.orders['GF-CANCELLED-1'],'management-cancelled transaction was uploaded');
+state.posSettings.denomTracking=true;state.shifts['SH-TEST'].drawer.b50=1;state.posActiveShift.drawer.b50=1;
+const prepaidTxn='pos_prepaid_123456789',prepaidOrder=Object.assign({},order,{id:'POS-PREPAID-RECOVERY-1',clientTxnId:prepaidTxn,total:850,subtotal:850,refundAmount:0,payment:'GCash',payments:[{method:'GCash',amount:1000,ref:'GC-OVER-1000'}],cashierVerificationIntent:true,refundPayments:{Cash:150},preCompletionCashRefund:{amount:150,paidAmount:1000,refundMethod:'Cash',reason:'Large iced latte changed to regular',customerAcknowledgement:'Customer confirmed at counter',shiftId:'SH-TEST'}});
+let prepaidMismatch=false;try{await O.syncOfflinePosSaleCommand({...ctx,data:{transactionId:prepaidTxn,order:prepaidOrder,drawerDelta:{b100:-1}},availableCash:async()=>({available:300}),now:6100});}catch(error){prepaidMismatch=error.code==='invalid-argument';}
+assert(prepaidMismatch&&!state.orders['POS-PREPAID-RECOVERY-1'],'mismatched cash-refund denominations were accepted');
+const prepaidResult=await O.syncOfflinePosSaleCommand({...ctx,data:{transactionId:prepaidTxn,order:prepaidOrder,drawerDelta:{b100:-1,b50:-1}},availableCash:async()=>({available:300}),now:6200});
+assert(prepaidResult.orderId==='POS-PREPAID-RECOVERY-1'&&state.orders['POS-PREPAID-RECOVERY-1'].paymentStatus==='cashier_verified','pre-completion GCash refund sale was not saved');
+assert(state.shifts['SH-TEST'].drawer.b100===2&&state.shifts['SH-TEST'].drawer.b50===0,'cash refund was not removed from the shift drawer exactly once');
+assert(Object.values(state.operationalAudit||{}).some(row=>row.action==='complete_instore_prepaid_cash_refund'&&row.amount===150),'pre-completion refund audit was not written');
+let reusedPrepaidTxn=false;try{await O.syncOfflinePosSaleCommand({...ctx,data:{transactionId:prepaidTxn,order:Object.assign({},prepaidOrder,{id:'POS-PREPAID-RECOVERY-2'}),drawerDelta:{b100:-1,b50:-1}},availableCash:async()=>({available:300}),now:6300});}catch(error){reusedPrepaidTxn=error.code==='already-exists';}
+assert(reusedPrepaidTxn&&!state.orders['POS-PREPAID-RECOVERY-2'],'one prepaid transaction ID was allowed to create a second order');
 let badDenom=false;try{O.offlineDrawerDelta({fake100:1});}catch(error){badDenom=error.code==='invalid-argument';}
 assert(badDenom,'unknown denomination was accepted');
-console.log('PASS: offline order retry repairs partial failure and duplicate replay is exactly-once.');
+console.log('PASS: POS sync repairs partial failure, protects electronic verification, and applies pre-completion cash refunds exactly once.');

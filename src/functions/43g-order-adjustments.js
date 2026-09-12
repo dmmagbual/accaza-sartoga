@@ -39,6 +39,7 @@ exports.processOrderAdjustment = onCall(
     const now = Date.now(), writes = {}; let movementId, movement;
     if (data.action === "cash_order_change_refund") {
       if (["grabfood", "foodpanda"].includes(String(o.channel || "").toLowerCase())) throw new HttpsError("failed-precondition", "Platform orders must be corrected through platform settlement.");
+      if (String(o.channel || "instore").toLowerCase() !== "instore") throw new HttpsError("failed-precondition", "This cashier cash-refund workflow is for in-store orders only.");
       if (o.voided) throw new HttpsError("failed-precondition", "A voided order cannot receive another refund.");
       if (!["cashier_verified", "manager_validated", "confirmed"].includes(String(o.paymentStatus || ""))) throw new HttpsError("failed-precondition", "Verify the electronic payment before returning cash.");
       const original = (Array.isArray(o.payments) && o.payments.length ? o.payments : [{method:o.payment || "", amount:o.total}]), direct = PaymentVerification.directPaymentRows(original);

@@ -24,6 +24,7 @@ function showReceipt(o){
     +(function(){var sc=(o.discountLines||[]).reduce(function(s,d){return s+(Number(d.value)||0);},0);var man=(Number(o.discount)||0)-sc;return man>0.005?'<tr><td>Discount</td><td style="text-align:right;">-'+peso(man)+'</td></tr>':'';})()
     +'<tr><td><b>TOTAL</b></td><td style="text-align:right;"><b>'+peso(o.total)+'</b></td></tr>'
     +'<tr><td>Payment</td><td style="text-align:right;">'+esc(o.payment)+'</td></tr>'
+    +(o.preCompletionCashRefund?'<tr><td>Electronic amount received</td><td style="text-align:right;">'+peso(o.preCompletionCashRefund.paidAmount)+'</td></tr><tr><td>Cash refund</td><td style="text-align:right;">-'+peso(o.preCompletionCashRefund.amount)+'</td></tr>':'')
     +(o.platformRef?'<tr><td>Net (after comm.)</td><td style="text-align:right;">'+peso(o.netPlatform||0)+'</td></tr>':'')
     +(o.tendered?'<tr><td>Cash</td><td style="text-align:right;">'+peso(o.tendered)+'</td></tr><tr><td>Change</td><td style="text-align:right;">'+peso(o.change)+'</td></tr>':'')
     +(o.tipRounding?'<tr><td>Tip / kept change</td><td style="text-align:right;">'+peso(o.tipRounding)+'</td></tr>':'')

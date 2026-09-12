@@ -327,6 +327,14 @@ function addOrderCashWrites(writes, movement, movementId, order, actor) {
   (movement.cashEntries || []).forEach((entry, index) => {entry.date = date; entry.party = order.name || "Walk-in"; entry.ref = order.id; entry.auto = true; const id = `cf_${movementId}_${index}`; writes[`cfLedger/${id}`] = cashLedgerRecord(entry, movementId, movement, actor);});
 }
 
+async function postPreCompletionCashRefund(db, order, actor) {
+  const refund=Financial.money(order&&order.preCompletionCashRefund&&order.preCompletionCashRefund.amount);if(!(refund>0))return{skipped:true};
+  const id=financeKey(order.id,"Order ID"),movementId=`precompletion_cash_refund_${id}`,liability=`liability:customer_change_refund:${id}`,now=Number(order.refundedAt||order.timestamp||Date.now());
+  const movement=Financial.movement("customer_change_refunded","order",id,[Financial.line(liability,refund,0,"Clear confirmed customer overpayment"),Financial.line("asset:register_cash",0,refund,"Cash returned before POS completion")],{occurredAt:now,actorName:order.staff||"POS",reference:id,shiftId:order.shiftId,controlReason:"Electronic payment was confirmed before the in-store order was corrected and completed."});
+  const detail=order.preCompletionCashRefund||{},writes={[`payables/${movementId}`]:{party:financeText(order.name||"Walk-in",120),type:"customer_change_refund",amount:refund,remainingAmount:0,paidAmount:refund,date:financeDateFromTimestamp(now),ref:id,status:"paid",movementId:`sale_${id}`,settlementMovementId:movementId,liabilityAccount:liability,sourceType:"order",sourceId:id,shiftId:order.shiftId,reason:financeText(detail.reason,300),customerAcknowledgement:financeText(detail.customerAcknowledgement,160),ts:now,createdBy:order.cashierVerifiedBy||actor.uid,schemaVersion:2}};
+  return commitFinancial(db,movementId,movement,actor,writes);
+}
+
 async function fullOrderVoidMovement(db, order, accounts, settlementPayments) {
   const movementSnap = await db.ref("/financialMovements").get();
   const movement = Financial.netMovementCorrection(Object.values(movementSnap.val() || {}), order.id, "order_void", "Fully reverse voided order");
@@ -347,6 +355,7 @@ exports.onOrderFinancialPosting = onValueWritten(
     const order = Object.assign({id: event.params.orderId}, afterRaw);
     const db = getDatabase(); const accounts = (await db.ref("/cfAccounts").get()).val() || {}; const actor = {uid: "server", role: "server"};
     await postOrderFinancial(db, order, accounts, actor);
+    await postPreCompletionCashRefund(db, order, actor);
     const beforeRefund = Financial.money(before.refundAmount), afterRefund = Financial.money(order.refundAmount);
     if (afterRefund > beforeRefund) {
       const delta = Financial.money(afterRefund - beforeRefund), movement = Financial.reversalPosting(order, delta, "refund", accounts);
