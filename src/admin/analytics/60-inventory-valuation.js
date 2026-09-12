@@ -7,7 +7,7 @@ function tsToDate(ts){var d=new Date(ts||0);return d.getFullYear()+'-'+pad(d.get
 function inRng(d,rng){return (!rng.f||d>=rng.f)&&(!rng.t||d<=rng.t);}
 function itemPeriod(id,cost,rng){var pQ=0,pV=0,uQ=0;
   Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r||r.ing!==id)return;var d=r.date||tsToDate(r.ts);if(inRng(d,rng)){pQ+=Number(r.qty)||0;pV+=Number(r.total)||0;}});
-  [ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k];if(!isSale(o)||!o.inventoryUsage||!o.inventoryUsage[id])return;var d=tsToDate(o.timestamp||Date.parse(o.date)||0);if(inRng(d,rng))uQ+=Number(o.inventoryUsage[id])||0;});});
+  [ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k],usage=o.correctedInventoryUsage||o.inventoryUsage;if(!isSale(o)||!usage||!usage[id])return;var d=tsToDate(o.timestamp||Date.parse(o.date)||0);if(inRng(d,rng))uQ+=Number(usage[id])||0;});});
   Object.keys(usageMap).forEach(function(k){var u=usageMap[k];if(!u||u.reversed||!u.usage||!u.usage[id])return;var d=tsToDate(u.ts);if(inRng(d,rng))uQ+=Number(u.usage[id])||0;});
   return {pQ:pQ,pV:pV,uQ:uQ,uV:uQ*(Number(cost)||0)};
 }
@@ -16,7 +16,7 @@ function itemMovements(id){
   Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r||r.ing!==id)return;out.push({ts:r.ts||Date.parse(r.date)||0,date:r.date||tsToDate(r.ts),type:'Purchase'+(r.supplier?' · '+r.supplier:'')+(r.brand?' · '+r.brand:''),in:Number(r.qty)||0,out:0});});
   Object.keys(adjMap).forEach(function(k){var x=adjMap[k];if(!x||x.ing!==id)return;var dl=Number(x.delta)||0;out.push({ts:x.ts||0,date:tsToDate(x.ts),type:'Adjust · '+(x.reason||''),in:dl>0?dl:0,out:dl<0?-dl:0});});
   Object.keys(usageMap).forEach(function(k){var u=usageMap[k];if(!u||u.reversed||!u.usage||!u.usage[id])return;out.push({ts:u.ts||0,date:tsToDate(u.ts),type:'Usage · '+(u.kindName||u.kind||''),in:0,out:Number(u.usage[id])||0});});
-  var byDay={};[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k];if(!isSale(o)||!o.inventoryUsage||!o.inventoryUsage[id])return;var day=tsToDate(o.timestamp||Date.parse(o.date)||0);byDay[day]=(byDay[day]||0)+(Number(o.inventoryUsage[id])||0);});});
+  var byDay={};[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k],usage=o.correctedInventoryUsage||o.inventoryUsage;if(!isSale(o)||!usage||!usage[id])return;var day=tsToDate(o.timestamp||Date.parse(o.date)||0);byDay[day]=(byDay[day]||0)+(Number(usage[id])||0);});});
   Object.keys(byDay).forEach(function(day){out.push({ts:new Date(day+'T12:00:00').getTime(),date:day,type:'Sales usage',in:0,out:byDay[day]});});
   out.sort(function(a,b){return (a.ts||0)-(b.ts||0);});return out;
 }

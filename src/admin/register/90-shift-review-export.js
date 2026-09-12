@@ -1,7 +1,7 @@
 
 /* ══════════ SHIFT REVIEW (live liquidation for the open shift) ══════════ */
 function shiftSales(shift){return Object.keys(ordersMap).map(function(k){return ordersMap[k];}).filter(function(o){return o&&o.shiftId===shift.id&&!o.voided&&(o.status==='Completed'||o.status==='Received');}).sort(function(a,b){return (a.timestamp||0)-(b.timestamp||0);});}
-function shiftItemsSummary(shift){var m={};shiftSales(shift).forEach(function(o){(o.lineItems||[]).forEach(function(li){var k=li.itemKey||li.name||'?';if(!m[k])m[k]={name:li.name||k,qty:0,sales:0};m[k].qty+=Number(li.qty)||0;m[k].sales+=(Number(li.qty)||0)*(Number(li.unitTotal)||0);});});return Object.keys(m).map(function(k){return m[k];}).sort(function(a,b){return b.sales-a.sales;});}
+function shiftItemsSummary(shift){var m={};shiftSales(shift).forEach(function(o){(o.correctedLineItems||o.lineItems||[]).forEach(function(li){var k=li.itemKey||li.name||'?';if(!m[k])m[k]={name:li.name||k,qty:0,sales:0};m[k].qty+=Number(li.qty)||0;m[k].sales+=(Number(li.qty)||0)*(Number(li.unitTotal)||0);});});return Object.keys(m).map(function(k){return m[k];}).sort(function(a,b){return b.sales-a.sales;});}
 function shiftTxnMethod(o){return paysOf(o).map(function(p){return p.method;}).join('+');}
 function openShiftReview(){
   if(!activeShift){alert('No open shift to review.');return;}

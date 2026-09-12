@@ -23,7 +23,8 @@ assert.equal(books.lines.find((line)=>line.code==='1000').credit,150,'Finance Bo
 assert(BooksBridge.linesBalanced(books.lines),'Finance Books refund journal must balance');
 
 for(const marker of ['cash_order_change_refund','availableCashOnHandAboveFloat(db)','orderCashRefundLocks','cashier_preauthorized','pending_shift_review','correctedOrderTotal','customerAcknowledgement'])assert(server.includes(marker),`server safeguard missing: ${marker}`);
-for(const marker of ['Paid order · cash refund','I will hand the calculated cash refund','inventoryOutcome','Refund posted to register cash and Finance Books'])assert(register.includes(marker),`register workflow missing: ${marker}`);
+for(const marker of ['__posBeginCompletedCorrection','Open POS → Shift Orders','Change completed order'])assert(register.includes(marker),`register workflow missing: ${marker}`);
+for(const marker of ['beginCompletedOrderCorrection','completeCompletedOrderCorrection','Do not hand over cash'])assert(persistence.includes(marker),`completed-order correction workflow missing: ${marker}`);
 assert(server.includes('in-store orders only'), 'processed cash-refund path must reject non-store channels');
 
 const prepaidOrder={id:'POS-PREPAID-1',channel:'instore',subtotal:850,total:850,payments:[{method:'GCash',amount:1000,receivingAccountId:'gcash'}],preCompletionCashRefund:{amount:150}};
@@ -41,4 +42,4 @@ for(const marker of ['preCompletionCashRefund','refundPayments={Cash:preCompleti
 for(const marker of ['postPreCompletionCashRefund','customer_change_refunded','asset:register_cash'])assert(salesFinance.includes(marker),`pre-completion Finance Books marker missing: ${marker}`);
 for(const marker of ['drawerDeltaValue','Confirmed payment, corrected sale, and cash refund do not reconcile','availableCash'])assert(offlineSync.includes(marker),`pre-completion server safeguard missing: ${marker}`);
 
-console.log('PASS: processed and pre-completion electronic order changes preserve the receipt, corrected sale, cash drawer, liability settlement, and Finance Books balance.');
+console.log('PASS: completed and pre-completion electronic order corrections preserve the receipt, corrected sale, cash drawer, liability settlement, and Finance Books balance.');
