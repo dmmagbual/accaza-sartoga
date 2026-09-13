@@ -11,6 +11,7 @@ if(portal.includes('db.ref("/books/journal").get()')&&!portal.includes('if (!boo
 for(const marker of ['/books/monthlyNet','/books/monthlyNetMeta'])if(!bridge.includes(marker))throw new Error(`Monthly journal summary missing: ${marker}`);
 for(const marker of ['startAt(monthStart)','openingCarry(month)','else stopOptionalFeed(name)'])if(!books.includes(marker))throw new Error(`Books bandwidth guard missing: ${marker}`);
 for(const marker of ['VERSIONED_MASTER_PATHS','publicCatalogVersion','MASTER_CACHE_KEY'])if(!hub.includes(marker))throw new Error(`Admin master-data cache guard missing: ${marker}`);
+for(const marker of ["MASTER_CACHE_KEY='accaza_admin_master_v2'","entry.path!=='optionGroups'||Object.keys(cache[entry.path]).length",'var fresh=readMasterCache()'])if(!hub.includes(marker))throw new Error(`Cashier catalog cache self-repair missing: ${marker}`);
 for(const marker of ["categories:['dashboard','pos','menu','availability'","menuItems:['dashboard','pos','menu','availability'","optionGroups:['pos','menu','availability'"])if(!hub.includes(marker))throw new Error(`Menu Availability lazy-data scope missing: ${marker}`);
 for(const heavy of ['orderInventoryPlan','inventoryUsage','cogsDetail','cogsCategorySnapshot','cogsAccountSnapshot'])if(!orders.includes(`"${heavy}"`))throw new Error(`Active-order projection does not strip ${heavy}.`);
 if(/var critical=\{[^}]*categories:1/.test(hub)||/var critical=\{[^}]*menuItems:1/.test(hub))throw new Error('Catalog master data is still globally critical.');
