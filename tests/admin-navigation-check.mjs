@@ -34,6 +34,7 @@ assert(core.includes("\"'availSection'\":'availability'")&&core.includes("\"'com
 assert(core.includes("if(id==='availSection')")&&core.includes("subscriptionHub.activate('availability')"),'Menu Availability must activate its lazy catalog and option-group data scope');
 assert(core.includes("subscriptionHub.activate('availability');buildAvail();renderOptionManager()"),'Opening Menu Availability must refresh its items and option groups after activating their data scope');
 assert(core.includes('ogLoaded=true')&&catalogAdmin.includes('optionsReady()')&&catalogAdmin.includes('Loading options…'),'Menu Availability must distinguish an option-group load in progress from a confirmed empty database node');
+assert(core.includes('var optionData=snap.val()||{}')&&core.includes('Object.keys(optionData).length'),'Cached option-group snapshots must not require Firebase-only snapshot methods');
 assert(core.includes("panel.classList.add('admin-tab-content','admin-integrated-panel')"),'Availability and Comments must remain real Admin workspace panels');
 assert(navigationCss.includes('#adminGroups{display:flex;flex-wrap:wrap')&&navigationCss.includes('grid-template-columns:repeat(2,minmax(0,1fr))'),'Every Admin work area must remain visible without horizontal scrolling');
 const lazyTabs=[...navigation.matchAll(/posSwitchTab\('([^']+)'/g)].map((match)=>match[1]);
