@@ -39,6 +39,17 @@ exports.syncOfflinePosSale = onCall(
   },
 );
 
+exports.getSupplierAdvanceDetails = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db=getDatabase();await requirePortalPermission(db,request,["registerOps","pos"]);const data=request.data||{},supplierId=textField(data.supplierId,"Supplier ID",120),supplierName=textField(data.supplierName,"Supplier name",160),wanted=supplierName.toLowerCase(),rows=[];
+    const add=(x,id,source,shiftId="")=>{const name=String(x.supplierName||x.recipient||"").trim();if(supplierId||wanted){if(!(supplierId&&x.supplierId===supplierId)&&!(wanted&&name.toLowerCase()===wanted))return;}const allocations=x.allocations||{},allocated=money(x.allocatedAmount!=null?x.allocatedAmount:Object.values(allocations).reduce((sum,row)=>sum+Number(row&&row.amount||0),0)),amount=money(x.amount),remaining=money(x.remainingAmount!=null?x.remainingAmount:Math.max(0,amount-allocated));rows.push({id,source,shiftId,supplierId:x.supplierId||"",supplierName:name,amount,allocatedAmount:allocated,remainingAmount:remaining,purpose:textField(x.purpose||x.reason||"","Purpose",300),reference:textField(x.reference||x.voucherNo||"","Reference",120),status:x.allocationStatus||x.status||"",fundingAccountId:x.fundingAccountId||(source==="register_shift"?"register":""),movementId:x.conversionMovementId||x.movementId||(source==="revolving_fund"?`petty_${id}`:""),allocations,createdAt:Number(x.createdAt||x.ts||0)});};
+    const vouchers=(await db.ref("/pettyCashVouchers").get()).val()||{};Object.keys(vouchers).forEach((id)=>{const x=vouchers[id]||{};if(x.transactionType==="purchase_advance"&&(x.status==="approved"||x.financialMovementId||x.conversionMovementId))add(x,id,"revolving_fund");});
+    const shifts=(await db.ref("/shifts").get()).val()||{};Object.keys(shifts).forEach((shiftId)=>{(Array.isArray(shifts[shiftId]&&shifts[shiftId].payOuts)?shifts[shiftId].payOuts:[]).forEach((x,index)=>{if(x&&x.type==="purchase_advance")add(x,x.id||`${shiftId}_${index}`,"register_shift",shiftId);});});
+    rows.sort((a,b)=>b.createdAt-a.createdAt);return {accountCode:"1115",supplierId,supplierName,rows:rows.slice(0,200),truncated:rows.length>200};
+  },
+);
+
 function archivedOrderRecord(order, now = Date.now(), reason = "closed-shift") {
   return Object.assign({}, order, {
     timestamp: Number(order.timestamp || order.completedAt || order.receivedAt || now),

@@ -17,7 +17,7 @@ for(const marker of [
   "financialMovements:{tabs:['cashflow']",
   "platformPayouts:{tabs:['cashflow']",
   "cashCustody:{tabs:['cashflow']",
-  "purchaseInvoices:{tabs:['purchases']",
+  "purchaseInvoices:{tabs:['purchases','payables']",
   "fixedAssets:{tabs:['fixedassets']",
   "menuItems:{tabs:['insights']",
   "menuCategories:{tabs:['insights']",

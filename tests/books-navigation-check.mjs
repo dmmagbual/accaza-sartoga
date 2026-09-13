@@ -31,6 +31,7 @@ if(!html.includes('id="bookGroups"')||!html.includes('id="tabs"'))throw new Erro
 if(!shell.includes("selected&&selected.settingsSection?PAGES.settings():PAGES[CURRENT]()"))throw new Error('Finance control screens are not routed through their existing pages');
 if(!css.includes('.tabs-in{flex-wrap:wrap')||!css.includes('.book-groups{display:grid'))throw new Error('Finance navigation is not protected against hidden mobile tabs');
 for(const marker of ['App.showSupplierPayableLedger','payableSupplierDocs','App.showPayableTrace','payableRelatedEntries','Original payable → purchase invoice → journal → payment / reversal.','Related Finance Books transactions'])if(!subledgers.includes(marker))throw new Error(`Supplier payable drill-down is missing: ${marker}`);
+for(const marker of ['App.showSupplierAdvanceLedger','Supplier Advances · account 1115','__getSupplierAdvanceDetails','Original payments and allocations'])if(!subledgers.includes(marker))throw new Error(`Supplier advance drill-down is missing: ${marker}`);
 if(!subledgers.includes("d.purchaseInvoiceId&&(window.__piMap||{})[d.purchaseInvoiceId]")||!subledgers.includes('e.linkedPayableId===d.id')||!subledgers.includes('wanted[e.reversalOf]'))throw new Error('Supplier payable drill-down does not retain source, journal, payment, and reversal links');
 
 console.log('Finance Books navigation check passed.');
