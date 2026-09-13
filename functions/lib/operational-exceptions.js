@@ -35,6 +35,11 @@ function clearingBalancesFromJournal(journal) {
   });
   return bal;
 }
+function clearingBalancesFromMonthlyNet(monthlyNet) {
+  const balances = {};
+  Object.values(monthlyNet || {}).forEach((month) => Object.keys(month || {}).forEach((code) => { if (CLEARING_CODES.has(code)) balances[code] = round2(Number(balances[code] || 0) + Number(month[code] || 0)); }));
+  return balances;
+}
 
 
 /* Payment routing: a walk-in sale stores the receiving account the cashier picked, but an online sale
@@ -105,7 +110,7 @@ function buildOperationalExceptions(input, now = Date.now()) {
   // identify a business workflow that staff can repair, so it must not enter
   // the operational work queue or imply that normal service is unsafe.
   const clearingThreshold = Number(input.clearingThreshold) > 0 ? Number(input.clearingThreshold) : CLEARING_RESIDUAL_THRESHOLD;
-  const clearingBalances = clearingBalancesFromJournal(input.booksJournal);
+  const clearingBalances = input.booksMonthlyNet ? clearingBalancesFromMonthlyNet(input.booksMonthlyNet) : clearingBalancesFromJournal(input.booksJournal);
   CLEARING_ACCOUNTS.forEach(({code, name}) => {
     const bal = round2(clearingBalances[code] || 0);
     if (Math.abs(bal) > clearingThreshold) exceptions.push(item("clearing_residual", "warning", `clearing_${code}`, `${name} (${code}) has not cleared to zero`, `Books General Ledger shows a ${bal > 0 ? "debit" : "credit"} residual of PHP ${Math.abs(bal).toFixed(2)} in ${code} ${name}. This clearing/suspense account must settle to zero \u2014 review and clear the pending posting in Finance Books.`, now, "cashflow"));
@@ -114,4 +119,4 @@ function buildOperationalExceptions(input, now = Date.now()) {
   const rank = {critical: 0, warning: 1};exceptions.sort((a, b) => (rank[a.severity] - rank[b.severity]) || (b.at - a.at));
   return {generatedAt: now, scanned: {activeOrders: active.length, recentOrders: orders.length, offlineSyncs: offline.length, custodyRecords: custody.length}, counts: {critical: exceptions.filter((x) => x.severity === "critical").length, warning: exceptions.filter((x) => x.severity === "warning").length, total: exceptions.length}, exceptions: exceptions.slice(0, 100)};
 }
-module.exports = {buildOperationalExceptions, CLEARING_ACCOUNTS, CLEARING_RESIDUAL_THRESHOLD, clearingBalancesFromJournal, paymentRoutingIssues};
+module.exports = {buildOperationalExceptions, CLEARING_ACCOUNTS, CLEARING_RESIDUAL_THRESHOLD, clearingBalancesFromJournal, clearingBalancesFromMonthlyNet, paymentRoutingIssues};

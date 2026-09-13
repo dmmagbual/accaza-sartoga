@@ -22,6 +22,8 @@ const HISTORY_TAB_PATHS={saleshistory:['orders','archivedOrders','financialMovem
 // writes. Per-child listeners here fire per top-level field (drawer, offlineSyncApplied, ...)
 // instead, so an unrelated field on the record no longer rides along. See 2026-09-12 follow-up.
 const INCREMENTAL_PATHS={activeOrders:1,inventory:1,posActiveShift:1};
+const VERSIONED_MASTER_PATHS={categories:1,optionGroups:1,menuItems:1};
+const MASTER_CACHE_KEY='accaza_admin_master_v1';
 
 function createSubscriptionHub(database,ops){
   const {ref,onValue,onChildAdded,onChildChanged,onChildRemoved,query,orderByChild,limitToLast,startAt,endAt,endBefore,get}=ops;
@@ -40,8 +42,9 @@ function createSubscriptionHub(database,ops){
     }
     return rows;
   }
-  var critical={categories:1,settings:1,posSettings:1,activeOrders:1,optionGroups:1,menuItems:1,availability:1,channelPrices:1,posStaff:1,posActiveShift:1,packages:1,'.info/connected':1};
+  var critical={settings:1,activeOrders:1,posActiveShift:1,'.info/connected':1};
   var scopes={
+    categories:['dashboard','pos','menu','recipes','analytics'],menuItems:['dashboard','pos','menu','recipes','analytics'],optionGroups:['pos','menu','recipes'],packages:['pos','menu','recipes','inventory'],availability:['dashboard','pos','menu'],channelPrices:['pos','menu'],posStaff:['pos','ops','possettings'],posSettings:['pos','ops','possettings'],
     orders:['dashboard','saleshistory','analytics','pnl','payouts','stockvalue','dailyreport','cashflow','receivables'],staffAccounts:['staffaccounts'],adminAccounts:['adminaccounts'],admins:['staffaccess'],adminPerms:['staffaccess'],
     archivedOrders:['dashboard','archive','appcustomers','saleshistory','analytics','pnl','payouts','stockvalue','cashflow','receivables','dailyreport'],archivedReservations:['reservations','calendar'],reservations:['dashboard','reservations','calendar'],
     feedbacks:['comments','analytics'],reviews:['dashboard','reviews','analytics'],payment:['payment'],calBlocks:['reservations','calendar'],appCustomers:['appcustomers','analytics'],inventory:['inventory','purchases','recipes','usage','stockvalue'],inventoryMovements:['inventory','purchases','usage','stockvalue'],
@@ -56,6 +59,8 @@ function createSubscriptionHub(database,ops){
   function facade(entry){var merged=Object.assign({},entry.older||{},entry.live||{});return {val:function(){return merged;},exists:function(){return Object.keys(merged).length>0;}};}
   function dispatch(entry,snapshot){entry.last=snapshot;Object.keys(entry.consumers).forEach(function(id){var c=entry.consumers[id];if(consumerActive(c)){try{c.callback(snapshot);}catch(e){console.error('ACCAZA RENDER ERROR ['+entry.path+']',e);}}});}
   function resetEntry(entry){if(entry.unsub)entry.unsub();entry.unsub=null;entry.generation=(entry.generation||0)+1;entry.live={};entry.older={};entry.archiveCursor=null;entry.last=null;entry.loading=true;entry.error=null;entry.hasOlder=true;}
+  function readMasterCache(){try{return JSON.parse(localStorage.getItem(MASTER_CACHE_KEY)||'null');}catch(_e){return null;}}
+  function writeMasterCache(value){try{localStorage.setItem(MASTER_CACHE_KEY,JSON.stringify(value));}catch(_e){}}
   function attach(entry){
     entry.loading=true;entry.error=null;var generation=entry.generation||0,p=selectedPeriod(),failure=null;
     entry.periodKey=p?periodKey(p):'';
@@ -100,6 +105,15 @@ function createSubscriptionHub(database,ops){
       entry.refreshSources=publish;
       var stopBase=onValue(liveTarget(entry.path),function(snapshot){base=snapshot.val()||{};publish();},failed);
       entry.unsub=function(){stopped=true;entry.refreshSources=null;stopBase();Object.values(sources).forEach(function(v){v.stop();});};return;
+    }
+    if(VERSIONED_MASTER_PATHS[entry.path]){
+      var masterStopped=false,masterRequest=0;
+      var stopVersion=onValue(ref(database,'publicCatalogVersion'),async function(versionSnapshot){
+        var marker=versionSnapshot.val(),version=String(marker&&typeof marker==='object'?marker.version:marker||'bootstrap'),request=++masterRequest,cache=readMasterCache();
+        if(cache&&String(cache.version)===version&&cache[entry.path]){receive({val:function(){return cache[entry.path];}});return;}
+        try{var snapshot=await get(ref(database,entry.path));if(masterStopped||request!==masterRequest)return;cache=cache&&String(cache.version)===version?cache:{version:version};cache[entry.path]=snapshot.val()||{};writeMasterCache(cache);receive(snapshot);}catch(error){if(cache&&cache[entry.path])receive({val:function(){return cache[entry.path];}});else failed(error);}
+      },failed);
+      entry.unsub=function(){masterStopped=true;stopVersion();};return;
     }
     if(INCREMENTAL_PATHS[entry.path]){
       var target=ref(database,entry.path),childUnsubs=[],stopped=false;

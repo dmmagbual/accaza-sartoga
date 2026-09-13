@@ -3,6 +3,42 @@ async function flagUnmappedBooks(db, mv, unmapped) {
   await db.ref(`/books/reviewQueue/${mv.id}`).set({movementId: String(mv.id || ""), type: String(mv.type || ""), sourceId: String(mv.sourceId || ""), accounts: unmapped, at: Date.now()});
 }
 
+function booksEntryNet(entry) {
+  const out = {};
+  if (!entry || typeof entry !== "object") return out;
+  if (entry.net && typeof entry.net === "object") {
+    Object.keys(entry.net).forEach((code) => { const value = Financial.money(entry.net[code]); if (value) out[String(code)] = value; });
+  } else if (Array.isArray(entry.lines)) {
+    entry.lines.forEach((line) => { const code = String((line && line.code) || ""); if (!code) return; out[code] = Financial.money((out[code] || 0) + Number(line.debit || 0) - Number(line.credit || 0)); });
+  }
+  return out;
+}
+function booksEntryMonth(entry) { const date = String((entry && entry.date) || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date.slice(0, 7) : ""; }
+async function applyBooksMonthlyDelta(db, before, after) {
+  const months = new Set([booksEntryMonth(before), booksEntryMonth(after)].filter(Boolean));
+  for (const month of months) {
+    const snap = await db.ref("/books/journal").orderByChild("date").startAt(`${month}-01`).endAt(`${month}-31`).get();
+    const total = {};
+    Object.values(snap.val() || {}).forEach((entry) => { const net = booksEntryNet(entry); Object.keys(net).forEach((code) => { total[code] = Financial.money(Number(total[code] || 0) + Number(net[code] || 0)); }); });
+    await db.ref(`/books/monthlyNet/${month}`).set(total);
+  }
+  await db.ref("/books/monthlyNetMeta").update({updatedAt: Date.now(), schemaVersion: 1});
+}
+async function rebuildBooksMonthlyNet(db, journal) {
+  const monthly = {};
+  Object.values(journal || {}).forEach((entry) => { const month = booksEntryMonth(entry); if (!month) return; const target = monthly[month] || (monthly[month] = {}); const net = booksEntryNet(entry); Object.keys(net).forEach((code) => { target[code] = Financial.money(Number(target[code] || 0) + Number(net[code] || 0)); }); });
+  await db.ref("/books/monthlyNet").set(monthly);
+  await db.ref("/books/monthlyNetMeta").set({rebuiltAt: Date.now(), updatedAt: Date.now(), months: Object.keys(monthly).length, schemaVersion: 1});
+  return monthly;
+}
+
+// Compact immutable-history index. Clients use prior-month account totals plus
+// only the selected month's journal rows instead of downloading the full ledger.
+exports.updateBooksMonthlyNet = onValueWritten(
+  {ref: "/books/journal/{entryId}", region: "asia-southeast1"},
+  async (event) => applyBooksMonthlyDelta(getDatabase(), event.data.before.val(), event.data.after.val()),
+);
+
 async function booksCashAccountMap(db) {
   const [configuredSnap, accountsSnap] = await Promise.all([
     db.ref("/books/config/cashAccountMap").get(), db.ref("/cfAccounts").get(),
@@ -130,6 +166,8 @@ exports.ensureBooksJournal = onCall(
     const paths = Object.keys(writes); for (let i = 0; i < paths.length; i += 300) { const batch = {}; paths.slice(i, i + 300).forEach((path) => { batch[path] = writes[path]; }); await db.ref().update(batch); }
     const openingCash = BooksBridge.r2(Object.values(cashAccountsSnap.val() || {}).reduce((sum, account) => sum + Number(account && account.opening || 0), 0));
     const netSales = BooksBridge.r2(Object.values(daily).reduce((sum, entry) => sum + BooksBridge.netSales(entry && entry.net), 0));
+    const rebuiltJournal = (await db.ref("/books/journal").get()).val() || {};
+    await rebuildBooksMonthlyNet(db, rebuiltJournal);
     const result = {at: Date.now(), by: actor.uid, movements: movementIds.length, dailyEntries: Object.keys(daily).length, singleEntries: Object.keys(singles).length, netSales, cogsPosted, missingCogs, reviewItems: Object.keys(review).length, openingCash, fixedFloat: registerFloat.amount, registerFloatSource: registerFloat.source};
     await db.ref("/systemMaintenance/booksJournalSynced").set(result); return result;
   },

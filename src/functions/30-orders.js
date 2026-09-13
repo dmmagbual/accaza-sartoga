@@ -8,9 +8,8 @@ function readyForAutoComplete(order, now = Date.now()) {
 
 function activeOrderProjection(order) {
   if (!order || typeof order !== "object") return null;
-  const projected = Object.assign({}, order, {projectionVersion: 1});
-  delete projected.proof;
-  delete projected.proofData;
+  const projected = Object.assign({}, order, {projectionVersion: 2});
+  ["proof", "proofData", "orderInventoryPlan", "inventoryUsage", "cogsDetail", "cogsCategorySnapshot", "cogsAccountSnapshot", "audit", "history"].forEach((field) => delete projected[field]);
   return projected;
 }
 

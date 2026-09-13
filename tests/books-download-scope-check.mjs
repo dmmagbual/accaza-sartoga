@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import './firebase-bandwidth-guard-check.mjs';
 
 const live=fs.readFileSync('assets/js/books/live-pos.mjs','utf8');
 const shell=fs.readFileSync('src/books/app/10-application-shell.js','utf8');
@@ -9,6 +10,10 @@ for(const marker of [
   "CustomEvent('accaza-books-tab'",
   "window.addEventListener('accaza-books-tab'",
   'function syncOptionalFeeds()',
+  'else stopOptionalFeed(name)',
+  'startAt(monthStart)',
+  'openingCarry(month)',
+  'ref(db,"/books/monthlyNet")',
   "financialMovements:{tabs:['cashflow']",
   "platformPayouts:{tabs:['cashflow']",
   "cashCustody:{tabs:['cashflow']",

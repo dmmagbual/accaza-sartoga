@@ -55,7 +55,11 @@ exports.manageBooksAccount = onCall(
     const data = request.data || {};
     const action = financeText(data.action, 20);
     const chart = await ensureBooksChart(db);
-    if (action === "initialize" || action === "list" || !action) return {chart: chart, managerEmail: actor.email};
+    if (action === "initialize" || action === "list" || !action) {
+      const meta = await db.ref("/books/monthlyNetMeta").get();
+      if (!meta.exists()) await rebuildBooksMonthlyNet(db, (await db.ref("/books/journal").get()).val() || {});
+      return {chart: chart, managerEmail: actor.email};
+    }
     const now = Date.now();
     function cleanAccount(input){const code=financeText(input&&input.code,4);if(!/^\d{4}$/.test(code))throw new HttpsError("invalid-argument","Account code must be exactly four digits.");const name=financeText(input&&input.name,100);const type=financeText(input&&input.type,12);if(!name)throw new HttpsError("invalid-argument","Account name is required.");if(!BOOKS_TYPES.includes(type))throw new HttpsError("invalid-argument","Account type must be one of: "+BOOKS_TYPES.join(", ")+".");return {code:code,name:name,type:type,note:financeText(input&&input.note,160)};}
     if (action === "upsert") {
