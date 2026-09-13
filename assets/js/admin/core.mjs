@@ -1,11 +1,11 @@
 import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
-import{createSubscriptionHub}from"./realtime-hub.mjs?v=486";
+import{createSubscriptionHub}from"./realtime-hub.mjs?v=511";
 import{readSalesPeriod,periodKey}from'./sales-period-data.mjs?v=486';
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
-import{createOrderAdmin,archiveOutcome}from"./admin-orders.mjs";
-import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=510";
+import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
+import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=511";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -401,7 +401,7 @@ subscriptionHub.subscribe('activeOrders',snap=>{
   adminOrdersMap=snap.val()||{};
   var ids=Object.keys(adminOrdersMap);
   if(prevIds&&(adminLoggedIn||staffLoggedIn)){
-    var fresh=ids.filter(function(id){return prevIds.indexOf(id)===-1;}).map(function(id){return adminOrdersMap[id];}).filter(function(o){return o&&o.source!=='pos';});
+    var fresh=ids.filter(function(id){return prevIds.indexOf(id)===-1;}).map(function(id){return adminOrdersMap[id];}).filter(shouldAlertOrder);
     if(fresh.length){notifyNewOrders(fresh);if(window.AccazaTelemetry)fresh.forEach(function(o){var age=Date.now()-Number(o.timestamp||Date.now());window.AccazaTelemetry.metric('realtime_order_arrival',Math.max(0,age),true);});}
   }
   knownOrderIds=ids;
