@@ -5,7 +5,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome}from"./admin-orders.mjs";
-import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=509";
+import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=510";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -262,7 +262,8 @@ function migrateItemOptions(){
 }
 subscriptionHub.subscribe('optionGroups',snap=>{
   ogLoaded=true;
-  if(snap.exists()){optionGroupsMap=snap.val();}
+  var optionData=snap.val()||{};
+  if(Object.keys(optionData).length){optionGroupsMap=optionData;}
   else if(!optSeedStarted){
     optSeedStarted=true;
     optionGroupsMap=DEFAULT_OPTION_GROUPS;
