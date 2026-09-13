@@ -3,6 +3,7 @@ import fs from 'node:fs';
 const shell=fs.readFileSync('src/books/app/10-application-shell.js','utf8');
 const html=fs.readFileSync('books.html','utf8');
 const css=fs.readFileSync('assets/css/books.css','utf8');
+const subledgers=fs.readFileSync('src/books/app/40-subledgers.js','utf8');
 
 const expected={
   overview:['dashboard','insights'],
@@ -29,5 +30,7 @@ if(!shell.includes('t=>t.group===activeGroup&&!t.hidden'))throw new Error('Finan
 if(!html.includes('id="bookGroups"')||!html.includes('id="tabs"'))throw new Error('Two-level Finance navigation containers are missing');
 if(!shell.includes("selected&&selected.settingsSection?PAGES.settings():PAGES[CURRENT]()"))throw new Error('Finance control screens are not routed through their existing pages');
 if(!css.includes('.tabs-in{flex-wrap:wrap')||!css.includes('.book-groups{display:grid'))throw new Error('Finance navigation is not protected against hidden mobile tabs');
+for(const marker of ['App.showSupplierPayableLedger','payableSupplierDocs','App.showPayableTrace','payableRelatedEntries','Original payable → purchase invoice → journal → payment / reversal.','Related Finance Books transactions'])if(!subledgers.includes(marker))throw new Error(`Supplier payable drill-down is missing: ${marker}`);
+if(!subledgers.includes("d.purchaseInvoiceId&&(window.__piMap||{})[d.purchaseInvoiceId]")||!subledgers.includes('e.linkedPayableId===d.id')||!subledgers.includes('wanted[e.reversalOf]'))throw new Error('Supplier payable drill-down does not retain source, journal, payment, and reversal links');
 
 console.log('Finance Books navigation check passed.');
