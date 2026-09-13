@@ -745,6 +745,9 @@ async function continuityReadyForClose(){
   var state=await window.AccazaOfflineQueue.summary(),outstanding=Number(state.pending||0)+Number(state.syncing||0)+Number(state.failed||0);
   if(outstanding)throw new Error('The shift cannot close: '+outstanding+' sale(s) still require synchronization. Open the sync queue and retry them first.');
   if(window.__online===false)throw new Error('The connection was lost during the close check. The shift remains open.');
+  if(window.__reportPosSyncHealth)await window.__reportPosSyncHealth(true);
+  var a=A(),shift=window.__posShift;if(!a||!a.callables||!a.callables.verifyShiftCloseReadiness||!shift||!shift.id)throw new Error('The server close-verification service is unavailable. Refresh the POS before closing the shift.');
+  await a.callables.verifyShiftCloseReadiness({shiftId:shift.id});
   return state;
 }
 async function closeShift(){
