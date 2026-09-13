@@ -44,7 +44,7 @@ function createSubscriptionHub(database,ops){
   }
   var critical={settings:1,activeOrders:1,posActiveShift:1,'.info/connected':1};
   var scopes={
-    categories:['dashboard','pos','menu','recipes','analytics'],menuItems:['dashboard','pos','menu','recipes','analytics'],optionGroups:['pos','menu','recipes'],packages:['pos','menu','recipes','inventory'],availability:['dashboard','pos','menu'],channelPrices:['pos','menu'],posStaff:['pos','ops','possettings'],posSettings:['pos','ops','possettings'],
+    categories:['dashboard','pos','menu','availability','recipes','analytics'],menuItems:['dashboard','pos','menu','availability','recipes','analytics'],optionGroups:['pos','menu','availability','recipes'],packages:['pos','menu','recipes','inventory'],availability:['dashboard','pos','menu','availability'],channelPrices:['pos','menu'],posStaff:['pos','ops','possettings'],posSettings:['pos','ops','possettings'],
     orders:['dashboard','saleshistory','analytics','pnl','payouts','stockvalue','dailyreport','cashflow','receivables'],staffAccounts:['staffaccounts'],adminAccounts:['adminaccounts'],admins:['staffaccess'],adminPerms:['staffaccess'],
     archivedOrders:['dashboard','archive','appcustomers','saleshistory','analytics','pnl','payouts','stockvalue','cashflow','receivables','dailyreport'],archivedReservations:['reservations','calendar'],reservations:['dashboard','reservations','calendar'],
     feedbacks:['comments','analytics'],reviews:['dashboard','reviews','analytics'],payment:['payment'],calBlocks:['reservations','calendar'],appCustomers:['appcustomers','analytics'],inventory:['inventory','purchases','recipes','usage','stockvalue'],inventoryMovements:['inventory','purchases','usage','stockvalue'],

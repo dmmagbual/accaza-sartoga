@@ -30,6 +30,7 @@ const allTabs=Object.values(expected).flat();
 assert(allTabs.length===35&&new Set(allTabs).size===35,'Every Admin destination must appear exactly once');
 for(const tab of allTabs.filter((name)=>!['availSection','commentsSection'].includes(name)))assert(html.includes(`id="tab-${tab}"`),`Admin panel is missing for ${tab}`);
 assert(core.includes("\"'availSection'\":'availability'")&&core.includes("\"'commentsSection'\":'comments'"),'Moved Availability and Comments must retain staff permission checks');
+assert(core.includes("if(id==='availSection')")&&core.includes("subscriptionHub.activate('availability')"),'Menu Availability must activate its lazy catalog and option-group data scope');
 assert(core.includes("panel.classList.add('admin-tab-content','admin-integrated-panel')"),'Availability and Comments must remain real Admin workspace panels');
 assert(navigationCss.includes('#adminGroups{display:flex;flex-wrap:wrap')&&navigationCss.includes('grid-template-columns:repeat(2,minmax(0,1fr))'),'Every Admin work area must remain visible without horizontal scrolling');
 const lazyTabs=[...navigation.matchAll(/posSwitchTab\('([^']+)'/g)].map((match)=>match[1]);

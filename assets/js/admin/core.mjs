@@ -5,7 +5,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome}from"./admin-orders.mjs";
-import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=506";
+import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=507";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -1159,7 +1159,7 @@ function mountLegacyAdminPanels(){
 mountLegacyAdminPanels();
 window.showAdminSection=function(id,btn){
   var av=document.getElementById('availSection'),cm=document.getElementById('commentsSection');
-  if(id==='availSection'){ document.querySelectorAll('.admin-tab').forEach(function(b){b.classList.remove('active');});document.querySelectorAll('.admin-tab-content').forEach(function(t){t.style.display='none';});if(btn)btn.classList.add('active');if(av)av.style.display='block';if(typeof buildAvail==='function')buildAvail();workspaceShell.update('availability');window.scrollTo({top:document.getElementById('adminDash').offsetTop,behavior:'smooth'}); }
+  if(id==='availSection'){document.querySelectorAll('.admin-tab').forEach(function(b){b.classList.remove('active');});document.querySelectorAll('.admin-tab-content').forEach(function(t){t.style.display='none';});if(btn)btn.classList.add('active');if(av)av.style.display='block';subscriptionHub.activate('availability');buildAvail();workspaceShell.update('availability');window.scrollTo({top:document.getElementById('adminDash').offsetTop,behavior:'smooth'});}
   else if(id==='commentsSection'){ document.querySelectorAll('.admin-tab').forEach(function(b){b.classList.remove('active');});document.querySelectorAll('.admin-tab-content').forEach(function(t){t.style.display='none';});if(btn)btn.classList.add('active');if(cm)cm.style.display='block';subscriptionHub.activate('comments');if(typeof renderComments==='function')renderComments();workspaceShell.update('comments');window.scrollTo({top:document.getElementById('adminDash').offsetTop,behavior:'smooth'}); }
   else { if(av)av.style.display='none'; if(cm)cm.style.display='none'; window.scrollTo({top:0,behavior:'smooth'}); }
 };
