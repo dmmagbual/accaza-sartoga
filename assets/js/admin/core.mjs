@@ -5,7 +5,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome}from"./admin-orders.mjs";
-import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=508";
+import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=509";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -163,7 +163,7 @@ function getItemOptionGroups(item){
 }
 
 let overviewCashAccounts={},categoriesMap={},menuItemsMap={},adminOrdersMap={},overviewOrdersMap={},archivedOrdersMap={},feedbacksMap={},reviewsMap={},availability={},cart={},overviewOrdersLoaded=false,archivedOrdersLoaded=false,overviewFinancialMovementsLoaded=false,overviewCatType={};
-let optionGroupsMap={},optSeedStarted=false,itemOptMigrated=false;
+let optionGroupsMap={},ogLoaded=false,optSeedStarted=false,itemOptMigrated=false;
 let knownOrderIds=null,unseenOrders=0,orderChimeTimer=null,audioCtx=null;
 let orderType='pickup',paymentType='gcash',contactMethod='whatsapp';
 let adminLoggedIn=false;
@@ -179,7 +179,7 @@ const customerOrderTracker=createCustomerOrderTracker({getOrders:function(){retu
 
 const reservationManager=createReservationManager({subscriptionHub:subscriptionHub,isPortalActive:function(){return adminLoggedIn||staffLoggedIn;},onReservationsChanged:updateStats,playChime:playChime,showDeletePopup:showDeletePopup});
 const renderReservations=reservationManager.renderReservations,renderCustomerCalendar=reservationManager.renderCustomerCalendar,renderAdminCalendar=reservationManager.renderAdminCalendar;
-const catalogAdmin=createCatalogAdmin({getCategoriesMap:function(){return categoriesMap;},getMenuItemsMap:function(){return menuItemsMap;},getOptionGroupsMap:function(){return optionGroupsMap;},getAvailability:function(){return availability;},getCats:getCats,getMenuItems:getMenuItems,getEffectiveOptionIds:getEffectiveOptionIds,isAvail:isAvail,isStaffLoggedIn:function(){return staffLoggedIn;},showDeletePopup:showDeletePopup,renderMenuSection:renderMenuSection,renderOrderSection:renderOrderSection});
+const catalogAdmin=createCatalogAdmin({getCategoriesMap:()=>categoriesMap,getMenuItemsMap:()=>menuItemsMap,getOptionGroupsMap:()=>optionGroupsMap,optionsReady:()=>ogLoaded,getAvailability:()=>availability,getCats,getMenuItems,getEffectiveOptionIds,isAvail,isStaffLoggedIn:()=>staffLoggedIn,showDeletePopup,renderMenuSection,renderOrderSection});
 const renderCategoryManager=catalogAdmin.renderCategoryManager,renderOptionManager=catalogAdmin.renderOptionManager,renderNewItemOptionChecklist=catalogAdmin.renderNewItemOptionChecklist,renderStaffMenu=catalogAdmin.renderStaffMenu,buildAvail=catalogAdmin.buildAvail;
 
 document.getElementById('fbSync').classList.add('online');
@@ -261,6 +261,7 @@ function migrateItemOptions(){
   if(Object.keys(updates).length)update(ref(db),updates).catch(function(){});
 }
 subscriptionHub.subscribe('optionGroups',snap=>{
+  ogLoaded=true;
   if(snap.exists()){optionGroupsMap=snap.val();}
   else if(!optSeedStarted){
     optSeedStarted=true;
@@ -1159,7 +1160,7 @@ function mountLegacyAdminPanels(){
 mountLegacyAdminPanels();
 window.showAdminSection=function(id,btn){
   var av=document.getElementById('availSection'),cm=document.getElementById('commentsSection');
-  if(id==='availSection'){document.querySelectorAll('.admin-tab').forEach(function(b){b.classList.remove('active');});document.querySelectorAll('.admin-tab-content').forEach(function(t){t.style.display='none';});if(btn)btn.classList.add('active');if(av)av.style.display='block';subscriptionHub.activate('availability');buildAvail();workspaceShell.update('availability');window.scrollTo({top:document.getElementById('adminDash').offsetTop,behavior:'smooth'});}
+  if(id==='availSection'){document.querySelectorAll('.admin-tab').forEach(function(b){b.classList.remove('active');});document.querySelectorAll('.admin-tab-content').forEach(function(t){t.style.display='none';});if(btn)btn.classList.add('active');if(av)av.style.display='block';subscriptionHub.activate('availability');buildAvail();renderOptionManager();workspaceShell.update('availability');window.scrollTo({top:document.getElementById('adminDash').offsetTop,behavior:'smooth'});}
   else if(id==='commentsSection'){ document.querySelectorAll('.admin-tab').forEach(function(b){b.classList.remove('active');});document.querySelectorAll('.admin-tab-content').forEach(function(t){t.style.display='none';});if(btn)btn.classList.add('active');if(cm)cm.style.display='block';subscriptionHub.activate('comments');if(typeof renderComments==='function')renderComments();workspaceShell.update('comments');window.scrollTo({top:document.getElementById('adminDash').offsetTop,behavior:'smooth'}); }
   else { if(av)av.style.display='none'; if(cm)cm.style.display='none'; window.scrollTo({top:0,behavior:'smooth'}); }
 };

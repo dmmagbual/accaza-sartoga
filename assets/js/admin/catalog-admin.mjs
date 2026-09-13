@@ -116,6 +116,7 @@ function createCatalogAdmin(deps){
   
   
   function buildOptionChecklistHtml(selectedIds){
+    if(!deps.optionsReady())return '<span style="font-size:0.78rem;color:var(--tl);">Loading options…</span>';
     var ids=Object.keys(deps.getOptionGroupsMap());
     if(!ids.length)return '<span style="font-size:0.78rem;color:var(--tl);">No option groups yet — create them in the 🧩 Item Options panel.</span>';
     return ids.sort(function(a,b){return(deps.getOptionGroupsMap()[a].order||0)-(deps.getOptionGroupsMap()[b].order||0);}).map(function(id){
@@ -143,6 +144,7 @@ function createCatalogAdmin(deps){
   }
   function renderOptionManager(){
     var el=document.getElementById('optGroupList');if(!el)return;
+    if(!deps.optionsReady()){el.innerHTML='<p style="font-size:0.85rem;color:var(--tl);">Loading options…</p>';return;}
     var ids=Object.keys(deps.getOptionGroupsMap()).sort(function(a,b){return(deps.getOptionGroupsMap()[a].order||0)-(deps.getOptionGroupsMap()[b].order||0);});
     if(!ids.length){el.innerHTML='<p style="font-size:0.85rem;color:var(--tl);">No option groups yet. Add your first one below.</p>';return;}
     var items=deps.getMenuItems();
