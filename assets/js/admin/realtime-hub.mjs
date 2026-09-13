@@ -23,7 +23,7 @@ const HISTORY_TAB_PATHS={saleshistory:['orders','archivedOrders','financialMovem
 // instead, so an unrelated field on the record no longer rides along. See 2026-09-12 follow-up.
 const INCREMENTAL_PATHS={activeOrders:1,inventory:1,posActiveShift:1};
 const VERSIONED_MASTER_PATHS={categories:1,optionGroups:1,menuItems:1};
-const MASTER_CACHE_KEY='accaza_admin_master_v1';
+const MASTER_CACHE_KEY='accaza_admin_master_v2';
 
 function createSubscriptionHub(database,ops){
   const {ref,onValue,onChildAdded,onChildChanged,onChildRemoved,query,orderByChild,limitToLast,startAt,endAt,endBefore,get}=ops;
@@ -110,8 +110,8 @@ function createSubscriptionHub(database,ops){
       var masterStopped=false,masterRequest=0;
       var stopVersion=onValue(ref(database,'publicCatalogVersion'),async function(versionSnapshot){
         var marker=versionSnapshot.val(),version=String(marker&&typeof marker==='object'?marker.version:marker||'bootstrap'),request=++masterRequest,cache=readMasterCache();
-        if(cache&&String(cache.version)===version&&cache[entry.path]){receive({val:function(){return cache[entry.path];}});return;}
-        try{var snapshot=await get(ref(database,entry.path));if(masterStopped||request!==masterRequest)return;cache=cache&&String(cache.version)===version?cache:{version:version};cache[entry.path]=snapshot.val()||{};writeMasterCache(cache);receive(snapshot);}catch(error){if(cache&&cache[entry.path])receive({val:function(){return cache[entry.path];}});else failed(error);}
+        if(cache&&String(cache.version)===version&&cache[entry.path]&&(entry.path!=='optionGroups'||Object.keys(cache[entry.path]).length)){receive({val:function(){return cache[entry.path];}});return;}
+        try{var snapshot=await get(ref(database,entry.path));if(masterStopped||request!==masterRequest)return;var fresh=readMasterCache();cache=fresh&&String(fresh.version)===version?fresh:{version:version};cache[entry.path]=snapshot.val()||{};writeMasterCache(cache);receive(snapshot);}catch(error){if(cache&&cache[entry.path])receive({val:function(){return cache[entry.path];}});else failed(error);}
       },failed);
       entry.unsub=function(){masterStopped=true;stopVersion();};return;
     }
