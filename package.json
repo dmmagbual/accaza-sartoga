@@ -32,7 +32,7 @@
     "test:cash-journal-edit": "node tests/cash-journal-edit-check.cjs && node tests/journal-reclassification-check.cjs",
     "test:inventory-adjustment-offset": "node tests/inventory-adjustment-offset-check.cjs",
     "test:working-capital": "node tests/working-capital-check.cjs",
-    "test:admin-navigation": "node tests/admin-navigation-check.mjs",
+    "test:admin-navigation": "node tests/admin-navigation-check.mjs && node tests/live-operations-readonly-check.mjs",
     "test:purchase-settlement": "node tests/purchase-settlement-binding-check.mjs",
     "test:purchase-quantity-correction": "node tests/purchase-quantity-correction-check.mjs",
     "test:books-payable-target": "node tests/books-payable-payment-target-check.mjs",
