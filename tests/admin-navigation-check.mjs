@@ -12,7 +12,7 @@ assert(groups.join('|')==='pos|overview|orders|reports|stock|finance|customers|s
 
 const expected={
   pos:['pos','ops','inbox'],
-  overview:['dashboard','operations'],
+  overview:['dashboard','liveoperations','operations'],
   orders:['orders','reservations','calendar','availSection'],
   reports:['saleshistory','analytics','dailyreport'],
   stock:['inventory','stockvalue','purchases','recipes','usage','packages'],
@@ -27,7 +27,7 @@ for(const [group,tabs] of Object.entries(expected)){
 }
 
 const allTabs=Object.values(expected).flat();
-assert(allTabs.length===34&&new Set(allTabs).size===34,'Every Admin destination must appear exactly once');
+assert(allTabs.length===35&&new Set(allTabs).size===35,'Every Admin destination must appear exactly once');
 for(const tab of allTabs.filter((name)=>!['availSection','commentsSection'].includes(name)))assert(html.includes(`id="tab-${tab}"`),`Admin panel is missing for ${tab}`);
 assert(core.includes("\"'availSection'\":'availability'")&&core.includes("\"'commentsSection'\":'comments'"),'Moved Availability and Comments must retain staff permission checks');
 assert(core.includes("panel.classList.add('admin-tab-content','admin-integrated-panel')"),'Availability and Comments must remain real Admin workspace panels');
@@ -35,4 +35,4 @@ assert(navigationCss.includes('#adminGroups{display:flex;flex-wrap:wrap')&&navig
 const lazyTabs=[...navigation.matchAll(/posSwitchTab\('([^']+)'/g)].map((match)=>match[1]);
 for(const tab of new Set(lazyTabs))assert(new RegExp(`(?:^|[,\\s])${tab}:\\[`).test(moduleLoader),`Lazy Admin destination ${tab} has no module route`);
 
-console.log('PASS: all 34 Admin destinations are present once, grouped correctly, and retain their panels and permissions.');
+console.log('PASS: all 35 Admin destinations are present once, grouped correctly, and retain their panels and permissions.');
