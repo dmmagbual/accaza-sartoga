@@ -747,7 +747,8 @@ async function continuityReadyForClose(){
   if(window.__online===false)throw new Error('The connection was lost during the close check. The shift remains open.');
   if(window.__reportPosSyncHealth)await window.__reportPosSyncHealth(true);
   var a=A(),shift=window.__posShift;if(!a||!a.callables||!a.callables.verifyShiftCloseReadiness||!shift||!shift.id)throw new Error('The server close-verification service is unavailable. Refresh the POS before closing the shift.');
-  await a.callables.verifyShiftCloseReadiness({shiftId:shift.id});
+  var health=window.AccazaPosSyncHealth;if(!health||!health.deviceId)throw new Error('This POS device has no synchronization identity. Refresh the POS before closing the shift.');
+  await a.callables.verifyShiftCloseReadiness({shiftId:shift.id,deviceId:health.deviceId()});
   return state;
 }
 async function closeShift(){
