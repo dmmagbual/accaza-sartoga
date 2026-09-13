@@ -36,7 +36,7 @@ self.addEventListener('notificationclick',function(e){
 /* Versioned customer + POS app shells. Installation downloads only the customer
    shell. Admin explicitly warms its larger offline shell after opening Admin;
    authenticated POS cash sales use the durable IndexedDB continuity queue. */
-const CACHE='accaza-v479';
+const CACHE='accaza-v480';
 const ASSETS=[
   '/index.html','/manifest.json',
   '/favicon.ico','/favicon_32x32.png','/favicon_180x180.png','/favicon_192x192.png',
@@ -44,6 +44,7 @@ const ASSETS=[
   '/assets/js/customer/core.mjs','/assets/js/customer/navigation.js','/assets/js/customer/ui.js','/assets/js/customer/order-tracker.js','/assets/js/customer/packages.js'
 ];
 const ADMIN_ASSETS=[
+  '/assets/js/admin/pos-sync-health.js',
   './assets/js/shared/admin-report-periods.js','./assets/js/shared/report-period.js','./assets/js/shared/report-pagination.js','./assets/js/admin/sales-period-data.mjs',
   '/admin.html','/books.html','/manifest-admin.json',
   '/assets/css/admin-backoffice.css','/assets/css/admin/app-shell.css','/assets/css/admin/portal.css','/assets/css/admin/site.css','/assets/css/admin/navigation.css','/assets/css/admin/touch-targets.css','/assets/css/admin/pos-workflow.css','/assets/css/admin/pos-inventory-recipes.css','/assets/css/admin/analytics.css','/assets/js/shared/text-encoding.js','/assets/js/shared/business-date.js','/assets/js/shared/sales-authority.js',

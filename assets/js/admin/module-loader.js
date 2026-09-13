@@ -1,7 +1,7 @@
 (function(){
   'use strict';
   var base='assets/js/admin/';
-  var files={offlinequeue:'offline-queue.js',costing:'../shared/costing.js',pos:'pos.js',channelpricing:'channel-pricing.js',analytics:'analytics.js',saleshistory:'sales-history.js',register:'register.js',staff:'staff-access.js',packages:'packages.js',finance:'finance.js',operations:'operations-dashboard.js',liveoperations:'live-operations.js',undeposited:'undeposited.js',inbox:'staff-inbox.js',accountingperiods:'accounting-periods.js'};
+  var files={offlinequeue:'offline-queue.js',possynlir:'pos-sync-health.js',costing:'../shared/costing.js',pos:'pos.js',channelpricing:'channel-pricing.js',analytics:'analytics.js',saleshistory:'sales-history.js',register:'register.js',staff:'staff-access.js',packages:'packages.js',finance:'finance.js',operations:'operations-dashboard.js',liveoperations:'live-operations.js',undeposited:'undeposited.js',inbox:'staff-inbox.js',accountingperiods:'accounting-periods.js'};
   var routes={
     pos:['inbox','pos'],inventory:['pos'],purchases:['finance','pos'],recipes:['pos'],usage:['pos'],channelpricing:['pos','channelpricing'],dedupe:['pos'],
     saleshistory:['saleshistory'],analytics:['pos','analytics'],payouts:['pos','analytics'],stockvalue:['pos','analytics'],dailyreport:['pos','analytics'],
@@ -17,6 +17,7 @@
   function load(name){
     if(promises[name])return promises[name];
     if(name==='pos'&&!window.AccazaOfflineQueue)return load('offlinequeue').then(function(){if(!window.AccazaOfflineQueue)throw new Error('Durable offline queue did not initialize.');return load('pos');});
+    if(name==='pos'&&!window.AccazaPosSyncHealth)return load('possynlir').then(function(){if(!window.AccazaPosSyncHealth)throw new Error('POS sync health did not initialize.');return load('pos');});
     if(name==='pos'&&!window.AccazaCosting)return load('costing').then(function(){if(!window.AccazaCosting)throw new Error('Shared costing engine did not initialize.');return load('pos');});
     promises[name]=new Promise(function(resolve,reject){
       var started=window.performance&&performance.now?performance.now():Date.now();
