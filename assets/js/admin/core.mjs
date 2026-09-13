@@ -5,7 +5,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome}from"./admin-orders.mjs";
-import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=502";
+import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=503";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -1187,11 +1187,10 @@ function landRoleHome(){
 }
 async function loginSuccess(role,username,uid,serverRole){
   roleLandingDone=false;
-  currentUser={role:role,serverRole:serverRole||role,username:username,uid:uid};
-  var effectiveRole=String(serverRole||role||'').toLowerCase();
-  window.__accazaAuthz={uid:uid,role:effectiveRole,isPrivileged:['owner','superadmin','admin','manager'].indexOf(effectiveRole)>-1};
-  subscriptionHub.authorize();
-  subscriptionHub.activate('dashboard');
+  currentUser={role,serverRole:serverRole||role,username,uid};
+  var effectiveRole=String(serverRole||role).toLowerCase();
+  window.__accazaAuthz={uid,role:effectiveRole,isPrivileged:['owner','superadmin','admin','manager'].indexOf(effectiveRole)>-1};
+  subscriptionHub.activate(effectiveRole==='cashier'?'pos':'dashboard');subscriptionHub.authorize();
   ensureActiveOrdersCall({}).catch(function(e){console.warn('Active-order projection sweep deferred',e&&e.code);});
   try{sessionStorage.setItem('accaza_admin_session',JSON.stringify({username:username,uid:uid||null}));}catch(e){}
   try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}

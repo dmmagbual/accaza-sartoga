@@ -39,7 +39,7 @@
     "test:supplier-opening-balance": "node tests/supplier-opening-balance-check.mjs",
     "test:supplier-master": "node tests/supplier-master-merge-check.cjs",
     "test:books-navigation": "node tests/books-navigation-check.mjs",
-  "test:books-download-scope": "node tests/books-download-scope-check.mjs",
+    "test:books-download-scope": "node tests/books-download-scope-check.mjs",
     "test:books-csv": "node tests/books-csv-export-check.mjs",
     "test:historical-archive": "node tests/historical-archive-check.cjs && node tests/historical-reader-check.mjs",
     "test:cash-flow-presentation": "node tests/cash-flow-presentation-check.mjs",

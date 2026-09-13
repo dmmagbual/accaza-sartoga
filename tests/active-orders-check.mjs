@@ -27,9 +27,10 @@ if(!readyForAutoComplete({status:'Ready',channel:'online',statusUpdatedAt:now-RE
 if(readyForAutoComplete({status:'Ready',channel:'instore',statusUpdatedAt:now-READY_AUTO_COMPLETE_MS},now))fail('In-store order entered online timeout flow');
 if(readyForAutoComplete({status:'Completed',channel:'online',statusUpdatedAt:now-READY_AUTO_COMPLETE_MS},now))fail('Completed order re-entered timeout flow');
 
-const projected=activeOrderProjection({id:'O1',proof:'data:image/png;base64,large',proofData:'large',proofPath:'payment-proofs/u/O1.png',total:100});
+const projected=activeOrderProjection({id:'O1',proof:'data:image/png;base64,large',proofData:'large',proofPath:'payment-proofs/u/O1.png',orderInventoryPlan:{large:true},cogsDetail:{large:true},total:100});
 if('proof' in projected||'proofData' in projected)fail('embedded proof leaked into active projection');
-if(projected.proofPath!=='payment-proofs/u/O1.png'||projected.total!==100||projected.projectionVersion!==1)fail('active projection lost required fields');
+if('orderInventoryPlan' in projected||'cogsDetail' in projected)fail('accounting-heavy evidence leaked into active projection');
+if(projected.proofPath!=='payment-proofs/u/O1.png'||projected.total!==100||projected.projectionVersion!==2)fail('active projection lost required fields');
 const archived=archivedOrderRecord({id:'O1',status:'Completed',total:100},now,'test');
 if(archived.timestamp!==now)fail('Archived orders must retain a numeric report-query timestamp');
 if(archived.status!=='Archived'||archived.prevStatus!=='Completed'||archived.archivedAt!==now||archived.archiveReason!=='test')fail('archive record is incomplete');

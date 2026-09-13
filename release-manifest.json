@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 502,
-    "books": 112,
+    "admin": 503,
+    "books": 113,
     "customer": 71,
-    "serviceWorkerCache": 477
+    "serviceWorkerCache": 478
   },
   "authoritativeFiles": [
     "admin.html",
@@ -299,6 +299,7 @@
     "processOrderAdjustment",
     "ensureFinancialLedger",
     "ensureBooksJournal",
+    "updateBooksMonthlyNet",
     "manageCashAccount",
     "createManagerApproval",
     "consumeManagerApproval",
