@@ -111,7 +111,7 @@ function createSubscriptionHub(database,ops){
       var stopVersion=onValue(ref(database,'publicCatalogVersion'),async function(versionSnapshot){
         var marker=versionSnapshot.val(),version=String(marker&&typeof marker==='object'?marker.version:marker||'bootstrap'),request=++masterRequest,cache=readMasterCache();
         if(cache&&String(cache.version)===version&&cache[entry.path]&&(entry.path!=='optionGroups'||Object.keys(cache[entry.path]).length)){receive({val:function(){return cache[entry.path];}});return;}
-        try{var snapshot=await get(ref(database,entry.path));if(masterStopped||request!==masterRequest)return;var fresh=readMasterCache();cache=fresh&&String(fresh.version)===version?fresh:{version:version};cache[entry.path]=snapshot.val()||{};writeMasterCache(cache);receive(snapshot);}catch(error){if(cache&&cache[entry.path])receive({val:function(){return cache[entry.path];}});else failed(error);}
+        try{var snapshot=await get(ref(database,entry.path));if(masterStopped||request!==masterRequest)return;var value=snapshot.val()||{};if(entry.path==='optionGroups'&&!Object.keys(value).length&&cache&&cache.optionGroups&&Object.keys(cache.optionGroups).length){reportError(entry.path,new Error('Live option groups are empty; using the last known safe catalog.'));receive({val:function(){return cache.optionGroups;}});return;}var fresh=readMasterCache();cache=fresh&&String(fresh.version)===version?fresh:{version:version};cache[entry.path]=value;writeMasterCache(cache);receive(snapshot);}catch(error){if(cache&&cache[entry.path])receive({val:function(){return cache[entry.path];}});else failed(error);}
       },failed);
       entry.unsub=function(){masterStopped=true;stopVersion();};return;
     }
