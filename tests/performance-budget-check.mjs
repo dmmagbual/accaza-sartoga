@@ -22,7 +22,8 @@ const budgets={
   'assets/js/admin/pos.js':522000,
   // Build 497 adds the visible cash-refund tag and preserved refund detail to shift reports.
   'assets/js/admin/register.js':175500,
-  'assets/js/admin/analytics.js':150000,
+  // Build 523 adds shift-first cash accountability and keeps the existing bounded reads.
+  'assets/js/admin/analytics.js':151000,
   'assets/js/admin/finance.js':75000,
   // Build 106 adds consistent interactive feedback to Finance Books buttons.
   // Build 110 adds only the AP-page hooks; its 6 KB form remains isolated below.
@@ -48,6 +49,6 @@ if(salesPeriod.includes("ops.startAt(String")||salesPeriod.includes("orderByChil
 for(const source of [moduleLoader,hub,telemetry,functions])for(const marker of source===moduleLoader?['module_load','performance.now']:source===hub?['live_ready','liveStartedAt']:['module_load','live_ready'])if(!source.includes(marker))fail(`Measured performance telemetry missing: ${marker}`);
 
 const manifest=JSON.parse(read('release-manifest.json'));
-if(manifest.builds.admin!==522||manifest.builds.customer!==71||manifest.builds.books!==115||manifest.builds.serviceWorkerCache!==499)fail('Current build/cache versions are not synchronized');
+if(manifest.builds.admin!==523||manifest.builds.customer!==71||manifest.builds.books!==115||manifest.builds.serviceWorkerCache!==500)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');

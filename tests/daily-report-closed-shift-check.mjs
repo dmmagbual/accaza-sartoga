@@ -26,14 +26,11 @@ for(const marker of ['After midnight · same trading shift','Trading-date transa
 const registerSource=fs.readFileSync('src/admin/register/80-shift-lifecycle-zreport.js','utf8');
 for(const marker of ['function saleStamp(o)','function saleDateTime(o)',"timeZone:'Asia/Manila'",'occurredAt:(window.AccazaSales'])if(!registerSource.includes(marker))throw new Error(`Shift Z-report date/time safeguard missing: ${marker}`);
 
-const empty=context.closeControlHtml('2026-09-14',[],false);
-if(!empty.includes('No closed shifts for this trading day')||!empty.includes('id="drRunShiftClose" disabled'))throw new Error('Empty Daily Report shift selector is not explained and disabled.');
-const failed=context.closeControlHtml('2026-09-14',[],true);
-if(!failed.includes('Could not load closed shifts')||!failed.includes('Check your connection or access'))throw new Error('Shift-load failure is still presented as an empty list.');
-const ready=context.closeControlHtml('2026-09-14',[{id:'SH-1',shiftReference:'SHIFT-REF',staff:'Cashier',open:false}],false);
-if(!ready.includes('SHIFT-REF · Cashier')||ready.includes('id="drRunShiftClose" disabled'))throw new Error('Eligible closed shift is not selectable by its human-readable reference.');
+const cash=context.drShiftCash({status:'closed',openingFloat:100,zReport:{openingFloat:100,cashSales:500,tips:20,payIns:50,cashRefunds:10,payOuts:30,expectedCash:630,countedCash:625,actualFloatRetained:100,cashToSettle:525}},{cash:500});
+if(cash.calculated!==630||cash.expected!==630||cash.counted!==625||cash.variance!==-5||cash.retained!==100||cash.settle!==525)throw new Error('Shift cash accountability equation does not reconcile expected, counted, variance, retained float and handover.');
+if(!source.includes('Shift Cash Accountability')||!source.includes('Expected drawer = opening float + cash sales + cash tips + cash in')||!source.includes('data-dr-shift-close')||!source.includes('Online / no-shift sales')||!source.includes('Shift data could not load'))throw new Error('Shift-first cash accountability surface is incomplete.');
 
 await context.loadDailyShifts('2026-09-14');
 const query=calls.at(-1);
 if(!query||query[0]!=='shifts'||query[1].orderByChild!=='openAt'||query[2].startAt!==Date.parse('2026-09-14T00:00:00+08:00')||query[3].endAt-query[2].startAt!==86399999)throw new Error('Daily Report shift read is not bounded to the selected Philippine trading day by indexed openAt.');
-console.log('Daily Report closed-shift selector checks passed.');
+console.log('Daily Report shift cash accountability checks passed.');
