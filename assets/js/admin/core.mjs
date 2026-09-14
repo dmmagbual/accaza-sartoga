@@ -1,11 +1,11 @@
 import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
-import{createSubscriptionHub}from"./realtime-hub.mjs?v=515";
+import{createSubscriptionHub}from"./realtime-hub.mjs?v=517";
 import{readSalesPeriod,periodKey}from'./sales-period-data.mjs?v=486';
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=516";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=517";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -162,7 +162,7 @@ function getItemOptionGroups(item){
   return getEffectiveOptionIds(item).map(function(id){var g=optionGroupsMap[id];return g?Object.assign({},g,{id:id}):null;}).filter(Boolean).sort(function(a,b){return(a.order||0)-(b.order||0);});
 }
 
-let overviewCashAccounts={},categoriesMap={},menuItemsMap={},adminOrdersMap={},overviewOrdersMap={},archivedOrdersMap={},feedbacksMap={},reviewsMap={},availability={},cart={},overviewOrdersLoaded=false,archivedOrdersLoaded=false,overviewFinancialMovementsLoaded=false,overviewCatType={};
+let overviewCashAccounts={},categoriesMap={},menuItemsMap={},adminOrdersMap={},overviewOrdersMap={},archivedOrdersMap={},feedbacksMap={},reviewsMap={},availability={},cart={},overviewOrdersLoaded=false,archivedOrdersLoaded=false,overviewCatType={};
 let optionGroupsMap={},ogLoaded=false,optSeedStarted=false,itemOptMigrated=false;
 let knownOrderIds=null,unseenOrders=0,orderChimeTimer=null,audioCtx=null;
 let orderType='pickup',paymentType='gcash',contactMethod='whatsapp';
@@ -171,7 +171,7 @@ let chatOpen=false,chatStarted=false;
 let custItem=null,custSize=null,custSel={},custQty=1;
 let menuFilter='coffee',orderFilter=null;
 
-const overviewInsights=createOverviewInsights({esc:escHtml,historyStatus:function(path){return subscriptionHub.historyStatus(path);},loadOlder:function(path){return subscriptionHub.loadOlder(path);},readRanking:readOverviewSalesRange,readRollingSales:readOverviewSalesRange,refreshHistory:function(){return ensureOverviewFullHistory(true);}});
+const overviewInsights=createOverviewInsights({esc:escHtml,historyStatus:function(path){return subscriptionHub.historyStatus(path);},loadOlder:function(path){return subscriptionHub.loadOlder(path);},readRanking:readOverviewSalesRange,watchRollingSales:function(r,data,error){return subscriptionHub.watchRollingSales({startAt:r.start,endAt:r.end},rows=>data(Object.entries(rows).map(([id,row])=>Object.assign({_overviewKey:id},row)).filter(o=>window.AccazaSales.qualifies(o))),error);}});
 async function readOverviewSalesRange(r){var p={startAt:r.start,endAt:r.end},maps=await Promise.all([readSalesPeriod(db,{ref,get,query,orderByChild,startAt,endAt},'orders',p),subscriptionHub.readHistoricalPeriod(p)]);return mergeOverviewOrders([],Object.entries(maps[0]).map(function(x){return Object.assign({_overviewKey:x[0]},x[1]);}),Object.entries(maps[1]).map(function(x){return Object.assign({_overviewKey:x[0]},x[1]);})).filter(function(o){return window.AccazaSales.qualifies(o);});}
 
 const appCustomerSession=createAppCustomerSession({setupPush:setupPush,refreshNotifyPrompt:refreshNotifyPrompt});
@@ -410,7 +410,6 @@ subscriptionHub.subscribe('activeOrders',snap=>{
 });
 subscriptionHub.subscribe('orders',snap=>{overviewOrdersMap=snap.val()||{};overviewOrdersLoaded=true;if(adminLoggedIn){var dt=document.getElementById('tab-dashboard');if(dt&&dt.style.display!=='none')renderDashboard();}});
 subscriptionHub.subscribe('archivedOrders',snap=>{archivedOrdersMap=snap.val()||{};archivedOrdersLoaded=true;if(adminLoggedIn)renderDashboard();if(adminLoggedIn||staffLoggedIn)renderAppCustomers();var _ap=document.getElementById('archivePanel');if(_ap&&_ap.style.display!=='none'){try{renderArchive();}catch(e){}}});
-subscriptionHub.subscribe('financialMovements',snap=>{overviewFinancialMovementsLoaded=true;if(adminLoggedIn){var dt=document.getElementById('tab-dashboard');if(dt&&dt.style.display!=='none')renderDashboard();}},{scopes:['dashboard']});
 subscriptionHub.subscribe('feedbacks',snap=>{feedbacksMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderComments();});
 subscriptionHub.subscribe('reviews',snap=>{
   const saved=snap.val();
@@ -974,22 +973,14 @@ function renderPublicReviews(){
 }
 
 
-const overviewHistoryLoader=createOverviewHistoryLoader({
-  key:function(){return periodKey(window.AccazaAdminPeriods.get('sales'));},
-  read:async function(key){var parts=key.split(':'),p={startAt:Number(parts[0]),endAt:Number(parts[1])},res=await Promise.all([readSalesPeriod(db,{ref,get,query,orderByChild,startAt,endAt},'orders',p),subscriptionHub.readHistoricalPeriod(p)]);return{orders:res[0],archived:res[1]};},
-  onData:function(){var dt=document.getElementById('tab-dashboard');if(adminLoggedIn&&dt&&dt.style.display!=='none')renderDashboard();},
-  onError:function(e){console.error('Overview full history load failed; retry scheduled',e);}
-});
-function ensureOverviewFullHistory(force){return overviewHistoryLoader.load(force);}
 if(window.AccazaAdminPeriods)window.AccazaAdminPeriods.setWaiter(function(){var scope=subscriptionHub.stats().activeScope,paths=scope==='saleshistory'?['orders','archivedOrders','financialMovements']:['orders','archivedOrders'];return subscriptionHub.whenReady(paths);});
 function renderDashboard(){
+  if(!adminLoggedIn||subscriptionHub.stats().activeScope!=='dashboard'){overviewInsights.stop();return;}
   function _rows(map){return Object.entries(map||{}).map(function(pair){var o=pair[1];return o&&o.id?o:Object.assign({_overviewKey:pair[0]},o||{});});}
   function _mergedMap(snapshot,live){return Object.assign({},snapshot||{},live||{});}
-  ensureOverviewFullHistory();
-  const fullHistory=overviewHistoryLoader.snapshot();
   const active=_rows(adminOrdersMap);
-  const historyOrders=_rows(subscriptionHub.historyStatus('orders').periodKey&&subscriptionHub.historyStatus('orders').ready?overviewOrdersMap:fullHistory.orders);
-  const archived=_rows(subscriptionHub.historyStatus('archivedOrders').periodKey&&subscriptionHub.historyStatus('archivedOrders').ready?archivedOrdersMap:fullHistory.archived);
+  const historyOrders=_rows(overviewOrdersMap);
+  const archived=_rows(archivedOrdersMap);
   function _isSale(o){return window.AccazaSales.qualifies(o);}
   function _tsOf(o){return window.AccazaSales.stamp(o);}
   const outcomes=mergeOverviewOrders(active,historyOrders,archived);
@@ -1003,7 +994,7 @@ function renderDashboard(){
   const t=sumOrders(sales.filter(o=>_tsOf(o)>=startToday)),w=sumOrders(sales.filter(o=>_tsOf(o)>=startWeek)),m=sumOrders(sales.filter(o=>_tsOf(o)>=startMonth)),a=sumOrders(sales);
   function setCard(id,rev,cnt){const el=document.getElementById(id);if(el)el.textContent='â‚±'+rev.toLocaleString();const cel=document.getElementById(id+'Count');if(cel)cel.textContent=cnt+' order'+(cnt!==1?'s':'');}
   setCard('dashToday',t.rev,t.cnt);setCard('dashWeek',w.rev,w.cnt);setCard('dashMonth',m.rev,m.cnt);setCard('dashAllTime',a.rev,a.cnt);
-  overviewInsights.render({active:active,orders:historyOrders,archived:archived,outcomes:outcomes,sales:sales,feedReady:{orders:overviewOrdersLoaded,archivedOrders:archivedOrdersLoaded,financialMovements:overviewFinancialMovementsLoaded},historyComplete:fullHistory.complete&&subscriptionHub.historyStatus('orders').ready&&subscriptionHub.historyStatus('archivedOrders').ready,menuItems:menuItemsMap||{},catType:overviewCatType,drinkCategories:DRINK_CATS,cashAccounts:overviewCashAccounts||{}});
+  overviewInsights.render({active:active,orders:historyOrders,archived:archived,outcomes:outcomes,sales:sales,historyComplete:subscriptionHub.historyStatus('orders').ready&&subscriptionHub.historyStatus('archivedOrders').ready,menuItems:menuItemsMap||{},catType:overviewCatType,drinkCategories:DRINK_CATS,cashAccounts:overviewCashAccounts||{}});
 }
 
 function drawPaymentPie(gcashR,bankR){
@@ -1261,7 +1252,7 @@ window.switchTab=function(tab,btn){
   if(tab==='orders')renderOrders();
   if(tab==='reviews')renderAdminReviews();
   if(tab==='calendar')renderAdminCalendar();
-  if(tab==='dashboard'){ensureOverviewFullHistory();renderDashboard();}
+  if(tab==='dashboard')renderDashboard();else overviewInsights.stop();
   if(tab==='appcustomers')renderAppCustomers();
   workspaceShell.update(tab);
   setTimeout(function(){renderHistoryPager(tab);},0);
