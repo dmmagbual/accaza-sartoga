@@ -22,11 +22,16 @@ assert(movement.lines.some(line=>line.account==='coa:5030'&&line.debit===20));
 assert(movement.lines.some(line=>line.account==='coa:1220'&&line.credit===20));
 
 assert.equal(Correction.currentLines({...base,correctedLineItems:[{itemKey:'americano'}]})[0].itemKey,'americano');
-const adjustments=fs.readFileSync('src/functions/43g-order-adjustments.js','utf8'),inventory=fs.readFileSync('src/functions/50-inventory.js','utf8'),rules=fs.readFileSync('database.rules.json','utf8');
+const adjustments=fs.readFileSync('src/functions/43g-order-adjustments.js','utf8'),inventory=fs.readFileSync('src/functions/50-inventory.js','utf8'),rules=fs.readFileSync('database.rules.json','utf8'),shiftOrders=fs.readFileSync('src/admin/pos/50a-register-shell.js','utf8');
 assert(adjustments.includes('correctedInventoryUsage:correctedMeta.inventoryUsage'));
 assert(adjustments.includes('correctionInventoryToken:token'));
 assert(inventory.includes('order.completedOrderCorrectionId && order.correctedInventoryUsage'));
 assert(inventory.includes('`crs_${order.correctionInventoryToken}_${itemId}`'));
 assert(rules.includes('"orderCorrectionCommands": { ".read": false, ".write": false }'));
 assert(rules.includes('"orderCorrections": { ".read": false, ".write": false }'));
+const completedCard=(shiftOrders.match(/function completedCard\(o\)\{([\s\S]*?)function exceptionCard/)||[])[1]||'';
+assert(completedCard,'completed-sale card renderer must remain covered');
+assert(!completedCard.includes('Start preparing'),'completed sales must not expose a start-preparing action');
+assert(!completedCard.includes('Not prepared'),'completed sales must not be relabelled as not prepared');
+assert(completedCard.includes('data-completed-correction'),'eligible completed-sale correction remains available');
 console.log('completed-order correction checks passed');
