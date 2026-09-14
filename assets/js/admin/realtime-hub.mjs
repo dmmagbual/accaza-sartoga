@@ -64,7 +64,7 @@ function createSubscriptionHub(database,ops){
   function attach(entry){
     entry.loading=true;entry.error=null;var generation=entry.generation||0,p=selectedPeriod(),failure=null;
     entry.periodKey=p?periodKey(p):'';
-    function failed(error){if(generation!==(entry.generation||0))return;failure=error;entry.error=error;entry.loading=false;reportError(entry.path,error);if(p&&(salesPath(entry.path)||entry.path==='financialMovements'))dispatch(entry,facade(entry));}
+    function failed(error){if(generation!==(entry.generation||0))return;failure=error;entry.error=error;entry.loading=false;reportError(entry.path,error);dispatch(entry,entry.last||facade(entry));}
     function receive(snapshot){
       if(failure||generation!==(entry.generation||0))return;
       if(!liveReadyRecorded&&entry.path==='activeOrders'){liveReadyRecorded=true;try{if(typeof window!=='undefined'&&window.AccazaTelemetry)window.AccazaTelemetry.metric('live_ready',Math.max(0,performance.now()-liveStartedAt),true);}catch(_e){}}

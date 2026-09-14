@@ -33,7 +33,7 @@
     "test:inventory-adjustment-offset": "node tests/inventory-adjustment-offset-check.cjs",
     "test:working-capital": "node tests/working-capital-check.cjs",
     "test:admin-navigation": "node tests/admin-navigation-check.mjs && node tests/live-operations-readonly-check.mjs && node tests/pos-assurance-check.mjs",
-    "test:purchase-settlement": "node tests/purchase-settlement-binding-check.mjs",
+    "test:purchase-settlement": "node tests/purchase-settlement-binding-check.mjs && node tests/purchase-advance-supplier-merge-check.mjs",
     "test:purchase-quantity-correction": "node tests/purchase-quantity-correction-check.mjs",
     "test:books-payable-target": "node tests/books-payable-payment-target-check.mjs",
     "test:supplier-opening-balance": "node tests/supplier-opening-balance-check.mjs",
