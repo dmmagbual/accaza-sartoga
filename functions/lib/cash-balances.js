@@ -7,6 +7,7 @@ const REGISTER_ACCOUNT = "asset:register_cash";
 const UNDEPOSITED_ACCOUNT = "asset:cash_awaiting_deposit";
 const REVOLVING_ACCOUNT = "asset:petty_cash";
 const CASH_ACCOUNT_PREFIX = "asset:cash_account:";
+const SCHEMA_VERSION = 2;
 
 function cents(value) {
   return Math.round((Number(value) || 0) * 100);
@@ -65,14 +66,14 @@ function snapshotFromMovements(movements, now = Date.now()) {
     addDelta(balances, delta);
     applied[id] = {fingerprint: fingerprint(movement), delta};
   });
-  return {schemaVersion: 1, complete: true, balances, applied, meta: {schemaVersion: 1, complete: true, movementCount: Object.keys(applied).length, builtAt: now, updatedAt: now}};
+  return {schemaVersion: SCHEMA_VERSION, complete: true, balances, applied, meta: {schemaVersion: SCHEMA_VERSION, complete: true, movementCount: Object.keys(applied).length, builtAt: now, updatedAt: now}};
 }
 
 // Returns undefined when the event was already applied, allowing an RTDB
 // transaction to abort without writing. The applied movement delta makes
 // retries and in-place audited edits idempotent.
 function applyEvent(snapshot, movementId, before, after, now = Date.now()) {
-  if (!snapshot || snapshot.schemaVersion !== 1 || snapshot.complete !== true) return undefined;
+  if (!snapshot || snapshot.schemaVersion !== SCHEMA_VERSION || snapshot.complete !== true) return undefined;
   const id = String(movementId || "");
   if (!id) return undefined;
   const next = snapshot;
@@ -85,7 +86,7 @@ function applyEvent(snapshot, movementId, before, after, now = Date.now()) {
   if (prior) addDelta(next.balances, prior.delta, -1);
   if (after == null) delete next.applied[id];
   else {const delta = movementDelta(after); addDelta(next.balances, delta); next.applied[id] = {fingerprint: nextFingerprint, delta};}
-  next.meta = Object.assign({}, next.meta || {}, {schemaVersion: 1, complete: true, movementCount: Object.keys(next.applied).length, updatedAt: now});
+  next.meta = Object.assign({}, next.meta || {}, {schemaVersion: SCHEMA_VERSION, complete: true, movementCount: Object.keys(next.applied).length, updatedAt: now});
   return next;
 }
 
@@ -129,8 +130,14 @@ function applyPending(snapshot, pending, now = Date.now()) {
       snapshot.applied[id] = {fingerprint: row.fingerprint, delta};
     } else if (snapshot.applied) delete snapshot.applied[id];
   });
-  snapshot.meta = Object.assign({}, snapshot.meta || {}, {schemaVersion: 1, complete: true, movementCount: Object.keys(snapshot.applied || {}).length, updatedAt: now});
+  snapshot.meta = Object.assign({}, snapshot.meta || {}, {schemaVersion: SCHEMA_VERSION, complete: true, movementCount: Object.keys(snapshot.applied || {}).length, updatedAt: now});
   return snapshot;
 }
 
-module.exports = {cents, pesos, emptyDelta, emptyBalances, addDelta, movementDelta, fingerprint, snapshotFromMovements, applyEvent, resolveFloat, clientBalances, pendingRecord, applyPending};
+function eventApplied(snapshot, movementId, after) {
+  const row = snapshot && snapshot.applied && snapshot.applied[String(movementId || "")];
+  if (after == null) return !row;
+  return Boolean(row && row.fingerprint === fingerprint(after));
+}
+
+module.exports = {SCHEMA_VERSION, cents, pesos, emptyDelta, emptyBalances, addDelta, movementDelta, fingerprint, snapshotFromMovements, applyEvent, resolveFloat, clientBalances, pendingRecord, applyPending, eventApplied};
