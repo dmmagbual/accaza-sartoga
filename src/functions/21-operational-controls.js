@@ -247,7 +247,7 @@ exports.managePettyVoucher = onCall(
     if (action === "approve") {
       if (voucher.status !== "pending") throw new HttpsError("failed-precondition", "Only pending vouchers can be approved.");
       if (voucher.transactionType === "purchase_advance") await requireActiveSupplier(db,voucher.supplierId,voucher.supplierName||voucher.recipient);
-      if (voucher.transactionType === "purchase_advance") {
+      {
         const fundingAccountId = financeText(voucher.fundingAccountId, 120) || "undeposited", fundingValue = Financial.money(voucher.amount);
         if (["register", "cash_float"].includes(fundingAccountId)) throw new HttpsError("failed-precondition", "Register Cash is retired and Cash Float is controlled. Select Undeposited Collection, Cash on Hand, or an active bank/cash account.");
         if (fundingAccountId === "cash_on_hand") {
@@ -278,7 +278,7 @@ exports.managePettyVoucher = onCall(
       const managerNames = [approval.record.approvedName, String(approval.record.approvedEmail || "").split("@")[0]].map((x) => financeText(x, 160).toLowerCase()).filter(Boolean);
       if (requesterName && managerNames.includes(requesterName)) {await db.ref().update(approval.usedWrites); throw new HttpsError("failed-precondition", "The requester cannot approve their own voucher.");}
     }
-    const approvalFunding = action === "approve" && voucher.transactionType === "purchase_advance" ? advanceFundingAccount(voucher) : {kind:"undeposited"};
+    const approvalFunding = action === "approve" ? advanceFundingAccount(voucher) : {kind:"undeposited"};
     let baseFunds = 0;
     if (action === "approve" && approvalFunding.kind === "undeposited") {
       const custodySnap = await db.ref("/cashCustody").get();
