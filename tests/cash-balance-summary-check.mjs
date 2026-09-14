@@ -7,6 +7,7 @@ const finance = fs.readFileSync('src/admin/finance/00-bootstrap-ledger.js', 'utf
 const firebaseClient = fs.readFileSync('assets/js/admin/firebase-client.mjs', 'utf8');
 const core = fs.readFileSync('assets/js/admin/core.mjs', 'utf8');
 const functions = fs.readFileSync('functions/index.js', 'utf8');
+const undepositedControl = fs.readFileSync('src/functions/21a-undeposited-pages.js', 'utf8');
 
 function fail(message) { throw new Error(message); }
 function expect(condition, message) { if (!condition) fail(message); }
@@ -54,6 +55,9 @@ expect(functions.includes('exports.getCurrentCashBalances'), 'server cash-balanc
 expect(functions.includes('exports.updateCashBalanceSummary'), 'cash-balance summary trigger is not bundled');
 expect(functions.includes('Cash balance summary did not apply movement'), 'the trigger must fail and retry when its exact movement is absent');
 expect(functions.includes('rebuildCashBalanceSummary'), 'a stale schema must force one authoritative full-journal rebuild');
+expect(functions.includes('ensureCashBalanceSummary'), 'all cash-control callables must share one summary validation and recovery path');
+expect(undepositedControl.includes('summaryMeta.schemaVersion!==CashBalances.SCHEMA_VERSION'), 'Undeposited Collection must reject a stale summary schema');
+expect(undepositedControl.includes('await ensureCashBalanceSummary(db)'), 'Undeposited Collection must invoke the authoritative summary recovery path');
 expect(firebaseClient.includes("'getCurrentCashBalances'"), 'Admin callable registry is missing getCurrentCashBalances');
 expect(core.includes('getCurrentCashBalances:function'), 'Admin runtime does not expose the cash-balance callable');
 expect(finance.includes('a.getCurrentCashBalances()'), 'Finance must request the compact cash-balance summary');
