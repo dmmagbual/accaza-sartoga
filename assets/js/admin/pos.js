@@ -3545,7 +3545,7 @@ function renderPosCart(options){
   }
   if(disc)disc.oninput=function(){ posPaymentVerification=null;if(splitChk.checked)renderSplit(); else refreshSingle();refreshChargeAction(); };
   splitChk.onchange=function(){ posPaymentVerification=null;document.getElementById('posPaySingle').style.display=this.checked?'none':'block'; document.getElementById('posPaySplit').style.display=this.checked?'block':'none'; if(this.checked){splitRows=[];renderSplit();} else refreshSingle();refreshChargeAction(); };
-  document.getElementById('posAddPay').onclick=function(){posPaymentVerification=null;splitRows.push({method:'GCash',amount:0});renderSplit();refreshChargeAction();};
+  document.getElementById('posAddPay').onclick=function(){posPaymentVerification=null;var methods=posActiveMethods(),defaultMethod=methods.length?methods[0].name:'Cash';splitRows.push({method:defaultMethod,amount:0});renderSplit();refreshChargeAction();};
   refreshSingle();
   var payRef=document.getElementById('posPayRef');if(payRef)payRef.oninput=invalidatePaymentVerification;var paidAmount=document.getElementById('posPaidAmount');if(paidAmount)paidAmount.oninput=invalidatePaymentVerification;
   }

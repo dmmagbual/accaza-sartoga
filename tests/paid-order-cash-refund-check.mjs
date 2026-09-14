@@ -45,6 +45,7 @@ assert(checkout.includes('function splitInfo()'),'split-payment amount edits nee
 assert(checkout.includes('posPaymentVerification=null;splitInfo();refreshChargeAction();'),'split-payment amount edits must preserve input focus while updating totals');
 assert(!/\[data-pa\][\s\S]{0,260}posPaymentVerification=null;renderSplit\(\);refreshChargeAction\(\)/.test(checkout),'split-payment amount edits must not rebuild the form and discard keyboard focus');
 assert(sharedState.includes("if(String(name||'').trim().toLowerCase()==='cash')return true"),'Cash must never require a receiving account in split payment');
+assert(checkout.includes("defaultMethod=methods.length?methods[0].name:'Cash'"),'new split rows must initialize with a real payment method, not the GCash receiving-account label');
 for(const marker of ['preCompletionCashRefund','refundPayments={Cash:preCompletionRefund.amount}','syncOfflinePosSale'])assert(persistence.includes(marker),`pre-completion persistence marker missing: ${marker}`);
 for(const marker of ['postPreCompletionCashRefund','customer_change_refunded','asset:register_cash'])assert(salesFinance.includes(marker),`pre-completion Finance Books marker missing: ${marker}`);
 for(const marker of ['drawerDeltaValue','Confirmed payment, corrected sale, and cash refund do not reconcile','availableCash'])assert(offlineSync.includes(marker),`pre-completion server safeguard missing: ${marker}`);

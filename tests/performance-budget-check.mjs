@@ -17,7 +17,7 @@ const budgets={
   // checkout, server repricing, cash-refund controls, immutable inventory replacement,
   // linked receipt/audit evidence and explicit cashier feedback.
   // Keep the ceiling narrowly above the reviewed generated bundle.
-  // Build 517 adds the Finance Books-driven one-time purchase expense selector
+  // Build 519 adds the split-payment row method initialization safeguard
   // and server-aligned account validation without adding another data listener.
   'assets/js/admin/pos.js':522000,
   // Build 497 adds the visible cash-refund tag and preserved refund detail to shift reports.
@@ -48,6 +48,6 @@ if(salesPeriod.includes("ops.startAt(String")||salesPeriod.includes("orderByChil
 for(const source of [moduleLoader,hub,telemetry,functions])for(const marker of source===moduleLoader?['module_load','performance.now']:source===hub?['live_ready','liveStartedAt']:['module_load','live_ready'])if(!source.includes(marker))fail(`Measured performance telemetry missing: ${marker}`);
 
 const manifest=JSON.parse(read('release-manifest.json'));
-if(manifest.builds.admin!==518||manifest.builds.customer!==71||manifest.builds.books!==115||manifest.builds.serviceWorkerCache!==495)fail('Current build/cache versions are not synchronized');
+if(manifest.builds.admin!==519||manifest.builds.customer!==71||manifest.builds.books!==115||manifest.builds.serviceWorkerCache!==496)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');
