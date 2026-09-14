@@ -8,6 +8,7 @@ const BooksBridge=require('../functions/lib/books-bridge.js');
 const server=fs.readFileSync(new URL('../src/functions/43g-order-adjustments.js',import.meta.url),'utf8');
 const register=fs.readFileSync(new URL('../src/admin/register/99-voids-refunds.js',import.meta.url),'utf8');
 const checkout=fs.readFileSync(new URL('../src/admin/pos/50e-cart-checkout.js',import.meta.url),'utf8');
+const sharedState=fs.readFileSync(new URL('../src/admin/pos/00-shared-state.js',import.meta.url),'utf8');
 const persistence=fs.readFileSync(new URL('../src/admin/pos/50f-sale-persistence.js',import.meta.url),'utf8');
 const salesFinance=fs.readFileSync(new URL('../src/functions/40-sales-finance.js',import.meta.url),'utf8');
 const offlineSync=fs.readFileSync(new URL('../functions/lib/offline-sync.js',import.meta.url),'utf8');
@@ -43,6 +44,7 @@ assert(!checkout.includes("paidTotal=Math.round(direct.reduce"),'checkout must n
 assert(checkout.includes('function splitInfo()'),'split-payment amount edits need an in-place balance refresh');
 assert(checkout.includes('posPaymentVerification=null;splitInfo();refreshChargeAction();'),'split-payment amount edits must preserve input focus while updating totals');
 assert(!/\[data-pa\][\s\S]{0,260}posPaymentVerification=null;renderSplit\(\);refreshChargeAction\(\)/.test(checkout),'split-payment amount edits must not rebuild the form and discard keyboard focus');
+assert(sharedState.includes("if(String(name||'').trim().toLowerCase()==='cash')return true"),'Cash must never require a receiving account in split payment');
 for(const marker of ['preCompletionCashRefund','refundPayments={Cash:preCompletionRefund.amount}','syncOfflinePosSale'])assert(persistence.includes(marker),`pre-completion persistence marker missing: ${marker}`);
 for(const marker of ['postPreCompletionCashRefund','customer_change_refunded','asset:register_cash'])assert(salesFinance.includes(marker),`pre-completion Finance Books marker missing: ${marker}`);
 for(const marker of ['drawerDeltaValue','Confirmed payment, corrected sale, and cash refund do not reconcile','availableCash'])assert(offlineSync.includes(marker),`pre-completion server safeguard missing: ${marker}`);
