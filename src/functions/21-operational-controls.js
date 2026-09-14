@@ -331,5 +331,3 @@ exports.retireRevolvingFund = onCall(
     return {balance: bal, retired: true, amount: bal, approvalId: approval.id};
   },
 );
-
-exports.getUndepositedControlSnapshot = onCall(

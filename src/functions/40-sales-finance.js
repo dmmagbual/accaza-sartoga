@@ -284,6 +284,21 @@ async function poolCustodyOutflow(db, value) {
   return {writes, fromCustody, shortfall: Financial.money(need), allocations};
 }
 
+async function poolCustodyDeposit(db, value, movementId) {
+  const requested=Financial.money(value);if(!(requested>0))return{writes:{},allocations:{},amount:0,shortfall:0};
+  await ensureUndepositedPageIndexes(db);
+  const open=(await db.ref("/cashCustodyOpenIndex").get()).val()||{},ordered=Object.entries(open).map(([id,row])=>({id,closedAt:Number(row&&row.closedAt||0)})).sort((a,b)=>a.closedAt-b.closedAt||a.id.localeCompare(b.id));
+  const writes={},allocations={};let need=requested;
+  async function useRows(candidates){for(const candidate of candidates){
+    if(need<=0)break;const row=(await db.ref(`/cashCustody/${candidate.id}`).get()).val();if(!row)continue;const available=Financial.money(row.remaining!=null?row.remaining:row.amount);if(!(available>0))continue;
+    const use=Financial.money(Math.min(need,available)),next=Financial.money(available-use);allocations[candidate.id]=use;need=Financial.money(need-use);
+    writes[`cashCustody/${candidate.id}/depositedAmount`]=Financial.money(Number(row.depositedAmount||0)+use);writes[`cashCustody/${candidate.id}/remaining`]=next;writes[`cashCustody/${candidate.id}/status`]=next>0?"partially_deposited":"deposited";writes[`cashCustody/${candidate.id}/lastDepositMovementId`]=movementId;writes[`cashCustody/${candidate.id}/lastDepositAt`]=Date.now();writes[`cashCustodyOpenIndex/${candidate.id}`]=next>0?cashCustodyProjection(candidate.id,Object.assign({},row,{depositedAmount:Financial.money(Number(row.depositedAmount||0)+use),remaining:next,status:"partially_deposited",lastDepositMovementId:movementId,lastDepositAt:Date.now()})):null;
+  }}
+  await useRows(ordered);
+  if(need>0.009){const all=(await db.ref("/cashCustody").get()).val()||{},fallback=Object.entries(all).filter(([id,row])=>!allocations[id]&&Financial.money(row&&row.remaining)>0).map(([id,row])=>({id,closedAt:Number(row.closedAt||0)})).sort((a,b)=>a.closedAt-b.closedAt||a.id.localeCompare(b.id));await useRows(fallback);}
+  return{writes,allocations,amount:Financial.money(requested-need),shortfall:Financial.money(need)};
+}
+
 async function availableCashOnHandAboveFloat(db) {
   const [movementsSnap, settingsSnap, activeShiftSnap] = await Promise.all([db.ref("/financialMovements").get(), db.ref("/posSettings").get(), db.ref("/posActiveShift").get()]);
   let gross = 0;
