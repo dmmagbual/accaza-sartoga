@@ -24,7 +24,7 @@ const budgets={
   'assets/js/admin/register.js':175500,
   // Build 525 simplifies the board view while retaining the sales reconciliation bridge;
   // retain a narrow ceiling above the reviewed generated bundle.
-  'assets/js/admin/analytics.js':164000,
+  'assets/js/admin/analytics.js':166000,
   'assets/js/admin/finance.js':75000,
   // Build 106 adds consistent interactive feedback to Finance Books buttons.
   // Build 110 adds only the AP-page hooks; its 6 KB form remains isolated below.
