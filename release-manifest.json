@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 512,
+    "admin": 513,
     "books": 115,
     "customer": 71,
-    "serviceWorkerCache": 489
+    "serviceWorkerCache": 490
   },
   "authoritativeFiles": [
     "admin.html",
@@ -268,6 +268,10 @@
   ],
   "requiredFunctionExports": [
     "getUndepositedControlSnapshot",
+    "getUndepositedPage",
+    "syncUndepositedLedgerPageIndex",
+    "syncPettyVoucherAttentionIndex",
+    "syncCashCustodyPageIndex",
     "getCurrentCashBalances",
     "updateCashBalanceSummary",
     "updatePublicCatalogVersionOnCategories",
@@ -355,6 +359,11 @@
     "incidents",
     "financialApprovals",
     "cashCustody",
+    "undepositedLedgerPageIndex",
+    "cashCustodyOpenIndex",
+    "pettyVoucherPostingIndex",
+    "pettyVoucherAttentionIndex",
+    "undepositedPageIndexMeta",
     "operationalAudit",
     "deletionAudit",
     "books",

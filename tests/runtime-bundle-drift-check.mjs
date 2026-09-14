@@ -45,6 +45,7 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('getProductionCer
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('syncOfflinePosSale'),0,'getCurrentCashBalances','updateCashBalanceSummary','updatePublicCatalogVersionOnCategories','updatePublicCatalogVersionOnMenuItems','updatePublicCatalogVersionOnOptionGroups');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('syncOfflinePosSale'),0,'reportPosDeviceHealth','verifyShiftCloseReadiness','onShiftCloseAssurance');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('syncOfflinePosSale')+1,0,'getSupplierAdvanceDetails');
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('getUndepositedControlSnapshot')+1,0,'syncUndepositedLedgerPageIndex','syncPettyVoucherAttentionIndex','syncCashCustodyPageIndex','getUndepositedPage');
 const functionsSource=fs.readFileSync(path.join(root,'functions/index.js'),'utf8');
 const actualFunctionExports=[...functionsSource.matchAll(/^exports\.([A-Za-z0-9_]+)\s*=/gm)].map(match=>match[1]);
 if(JSON.stringify(actualFunctionExports)!==JSON.stringify(expectedFunctionExports))throw new Error('The public Firebase Functions export contract changed. Review deployment, trigger, callable, and removal consequences explicitly.');
