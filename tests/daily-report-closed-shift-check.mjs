@@ -29,6 +29,14 @@ for(const marker of ['function saleStamp(o)','function saleDateTime(o)',"timeZon
 const cash=context.drShiftCash({status:'closed',openingFloat:100,zReport:{openingFloat:100,cashSales:500,tips:20,payIns:50,cashRefunds:10,payOuts:30,expectedCash:630,countedCash:625,actualFloatRetained:100,cashToSettle:525}},{cash:500});
 if(cash.calculated!==630||cash.expected!==630||cash.counted!==625||cash.variance!==-5||cash.retained!==100||cash.settle!==525)throw new Error('Shift cash accountability equation does not reconcile expected, counted, variance, retained float and handover.');
 if(!source.includes('Shift Cash Accountability')||!source.includes('Expected drawer = opening float + cash sales + cash tips + cash in')||!source.includes('data-dr-shift-close')||!source.includes('Online / no-shift sales')||!source.includes('Shift data could not load'))throw new Error('Shift-first cash accountability surface is incomplete.');
+for(const marker of ['function drReconciliation(rows)','Sales Reconciliation','Tender vs revenue variance','Itemized bridge variance','No item-level detail (unitemized sales)','Refunds</th>','Commission</th>','Payment tender by method (before refunds)','Itemized sales detail'])if(!source.includes(marker))throw new Error(`Daily Report reconciliation safeguard missing: ${marker}`);
+const rec=context.drReconciliation([
+  {id:'A',dateTime:'14 Sep 2026 · 10:00 AM',net:90,discount:10,refund:0,paymentAmount:100,lineSales:110,hasLines:true,paymentKnown:true},
+  {id:'B',dateTime:'14 Sep 2026 · 11:00 AM',net:50,discount:0,refund:5,paymentAmount:55,lineSales:0,hasLines:false,paymentKnown:true}
+]);
+if(rec.channelNet!==140||rec.tenderBeforeRefunds!==155||rec.refunds!==5||rec.netTender!==150||rec.tenderVariance!==10)throw new Error('Daily Report tender bridge does not quantify tender-versus-revenue variance.');
+if(rec.itemizedLineSales!==110||rec.itemizedDiscounts!==10||rec.itemizedRefunds!==0||rec.unitemizedNet!==50||rec.lineBasisDifference!==-10||rec.itemBridgeTotal!==140||rec.itemBridgeVariance!==0)throw new Error('Daily Report itemized bridge does not reconcile line detail to net sales.');
+if(!rec.issues.some(x=>x.reason==='No item-level detail (unitemized sales)'&&x.id==='B')||!rec.issues.some(x=>x.reason==='Payment tender differs from revenue basis'&&x.id==='A'))throw new Error('Daily Report reconciliation variance detail does not retain order-level explanations.');
 
 await context.loadDailyShifts('2026-09-14');
 const query=calls.at(-1);
