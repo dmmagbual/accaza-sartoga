@@ -23,7 +23,7 @@ const movements = {
   ]},
 };
 const snapshot = CashBalances.snapshotFromMovements(movements, 123);
-expect(snapshot.schemaVersion === 1 && snapshot.complete === true, 'cash summary must be versioned and complete');
+expect(snapshot.schemaVersion === CashBalances.SCHEMA_VERSION && snapshot.complete === true, 'cash summary must be versioned and complete');
 expect(snapshot.balances.registerCents === 10000, 'register balance must use cent precision');
 expect(snapshot.balances.cashAccountCents.gcash === 25001, 'cash-account cents were not accumulated');
 expect(snapshot.balances.undepositedCents === -25000, 'Undeposited Collection direction changed');
@@ -41,11 +41,19 @@ const edited = {lines: [
 const applied = CashBalances.applyEvent(snapshot, 'sale_1', movements.sale_1, edited, 456);
 expect(applied && applied.balances.registerCents === 12500, 'movement edits must replace, not stack, the prior delta');
 expect(CashBalances.applyEvent(applied, 'sale_1', edited, edited, 789) === undefined, 'replayed movement event must be idempotent');
+expect(CashBalances.eventApplied(applied, 'sale_1', edited), 'the trigger must verify the exact applied movement fingerprint');
 const deleted = CashBalances.applyEvent(applied, 'deposit_1', movements.deposit_1, null, 999);
 expect(deleted && !deleted.applied.deposit_1 && deleted.balances.cashAccountCents.gcash === undefined, 'movement deletion must remove its cached delta');
+expect(CashBalances.eventApplied(deleted, 'deposit_1', null), 'a deleted movement is applied only when its cached row is absent');
+
+const stale = CashBalances.snapshotFromMovements({sale_1: movements.sale_1}, 1000);
+delete stale.applied.sale_1;
+expect(!CashBalances.eventApplied(stale, 'sale_1', movements.sale_1), 'a complete flag must not conceal a missing movement');
 
 expect(functions.includes('exports.getCurrentCashBalances'), 'server cash-balance callable is not bundled');
 expect(functions.includes('exports.updateCashBalanceSummary'), 'cash-balance summary trigger is not bundled');
+expect(functions.includes('Cash balance summary did not apply movement'), 'the trigger must fail and retry when its exact movement is absent');
+expect(functions.includes('rebuildCashBalanceSummary'), 'a stale schema must force one authoritative full-journal rebuild');
 expect(firebaseClient.includes("'getCurrentCashBalances'"), 'Admin callable registry is missing getCurrentCashBalances');
 expect(core.includes('getCurrentCashBalances:function'), 'Admin runtime does not expose the cash-balance callable');
 expect(finance.includes('a.getCurrentCashBalances()'), 'Finance must request the compact cash-balance summary');
