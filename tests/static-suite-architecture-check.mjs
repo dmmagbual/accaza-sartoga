@@ -24,10 +24,10 @@ for(const file of expected){
   if(Buffer.byteLength(source,'utf8')>50000)throw new Error(`Static-check domain regrew beyond 50 KB: ${file}`);
   if(file!=='00-context.mjs'&&!runner.includes(`./static/${file}`))throw new Error(`Static-check runner omits domain: ${file}`);
 }
-if((combined.match(/\bfail\(/g)||[]).length!==546)throw new Error('Static-check failure-guard inventory changed from the reviewed baseline of 546');
-if((combined.match(/spawnSync\(/g)||[]).length!==32)throw new Error('Static-check executable-check inventory changed from the reviewed baseline of 32');
+if((combined.match(/\bfail\(/g)||[]).length!==547)throw new Error('Static-check failure-guard inventory changed from the reviewed baseline of 547');
+if((combined.match(/spawnSync\(/g)||[]).length!==33)throw new Error('Static-check executable-check inventory changed from the reviewed baseline of 33');
 const guardSource=combined.split(/\r?\n/).filter(line=>/\bfail\(|spawnSync\(/.test(line)).map(line=>line.trim()).join('\n');
 const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
-if(guardDigest!=='12ebb85f176b4cb8ff4ba2f2690a6083f2c2301d1463e31de334aa91bc0ec73d')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+if(guardDigest!=='fabfc1384944ef2c63a593d7b65cdcfd2b122b4368b5fb86459f4e635335fa64')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
-console.log('PASS: all 546 static guards and 32 executable checks remain byte-equivalent and routed through bounded domain modules.');
+console.log('PASS: all 547 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');

@@ -13,6 +13,8 @@ const approvalMatrixCheck=spawnSync(process.execPath,[path.join(root,'tests','ap
 if(approvalMatrixCheck.status!==0)fail(`Privileged approval matrix checks failed:\n${approvalMatrixCheck.stderr||approvalMatrixCheck.stdout}`);
 const financialCloseCheck=spawnSync(process.execPath,[path.join(root,'tests','financial-close-check.cjs')],{encoding:'utf8',cwd:root});
 if(financialCloseCheck.status!==0)fail(`Financial close checks failed:\n${financialCloseCheck.stderr||financialCloseCheck.stdout}`);
+const dailyReportClosedShiftCheck=spawnSync(process.execPath,[path.join(root,'tests','daily-report-closed-shift-check.mjs')],{encoding:'utf8',cwd:root});
+if(dailyReportClosedShiftCheck.status!==0)fail(`Daily Report closed-shift selector checks failed:\n${dailyReportClosedShiftCheck.stderr||dailyReportClosedShiftCheck.stdout}`);
 const financialCloseUi=booksSource;for(const marker of ["x.measurement==='status'","Matched open balance","GL '+peso(c.glBalance)","non-monetary controls are never displayed as pesos","<th class=\"num\">Result</th>"])if(!financialCloseUi.includes(marker))fail(`Typed Financial Close presentation safeguard missing: ${marker}`);
 
 const pricing=spawnSync(process.execPath,[path.join(root,'tests','order-pricing-check.mjs')],{encoding:'utf8',cwd:root});
