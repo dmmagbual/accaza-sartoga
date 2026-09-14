@@ -1,11 +1,11 @@
 import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
-import{createSubscriptionHub}from"./realtime-hub.mjs?v=513";
+import{createSubscriptionHub}from"./realtime-hub.mjs?v=514";
 import{readSalesPeriod,periodKey}from'./sales-period-data.mjs?v=486';
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=513";
+import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=514";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -262,15 +262,15 @@ function migrateItemOptions(){
 }
 subscriptionHub.subscribe('optionGroups',snap=>{
   ogLoaded=true;
-  var optionData=snap.val()||{};
-  if(Object.keys(optionData).length){optionGroupsMap=optionData;}
+  var d=snap.val()||{};
+  if(Object.keys(d).length){optionGroupsMap=d;}
   else if(!optSeedStarted){
     optSeedStarted=true;
     optionGroupsMap=DEFAULT_OPTION_GROUPS;
     set(optionGroupsRef,DEFAULT_OPTION_GROUPS).catch(function(){});
   }
   migrateItemOptions();
-  if(adminLoggedIn)renderOptionManager();
+  if(adminLoggedIn){renderOptionManager();buildAvail();}
   renderNewItemOptionChecklist();
 });
 
