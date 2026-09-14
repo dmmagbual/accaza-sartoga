@@ -308,11 +308,17 @@ exports.ensureInventoryLedger = onCall(
   },
 );
 
+function positiveOrderInventoryUsage(raw) {
+  const usage={};
+  Object.keys(raw||{}).forEach((itemId)=>{const quantity=qty6(raw[itemId]);if(quantity<0)throw new Error(`Order inventory usage cannot be negative for ${itemId}.`);if(quantity>0)usage[itemId]=quantity;});
+  return usage;
+}
+
 function buildOrderInventoryPlan(costing, inv, ps, capturedAt) {
   const invCategories=ps.invCategories||{},categorySnapshot={food:0,beverage:0,packaging:0,directLabor:0,unallocated:0},accountSnapshot={};
   costing.lines.forEach((line)=>{const item=inv[line.ingredientId]||{},category=invCategories[item.category]||{},label=String(category.name||item.category||"").toLowerCase();let bucket="unallocated";if(/packag|cup|lid|straw|napkin|container/.test(label))bucket="packaging";else if(/beverage|drink|coffee|tea|milk|syrup|powder/.test(label))bucket="beverage";else if(/food|ingredient|bakery|kitchen|pastry|meal/.test(label))bucket="food";categorySnapshot[bucket]+=Number(line.totalCost)||0;const mapping=BooksBridge.itemAccounts(item),key=mapping.inventory&&mapping.cost?`${mapping.inventory}|${mapping.cost}`:"1290|5090";accountSnapshot[key]=Financial.money((accountSnapshot[key]||0)+Number(line.totalCost||0));});
   Object.keys(categorySnapshot).forEach((key)=>{categorySnapshot[key]=Math.round(categorySnapshot[key]*100)/100;});
-  return{schemaVersion:1,capturedAt,capturedBy:"server",engineVersion:costing.engineVersion,usage:costing.usage,totalCost:costing.totalCost,categorySnapshot,accountSnapshot,cogsCovered:costing.cogsCovered,lines:costing.lines,warnings:costing.warnings};
+  return{schemaVersion:1,capturedAt,capturedBy:"server",engineVersion:costing.engineVersion,usage:positiveOrderInventoryUsage(costing.usage),totalCost:costing.totalCost,categorySnapshot,accountSnapshot,cogsCovered:costing.cogsCovered,lines:costing.lines,warnings:costing.warnings};
 }
 
 async function calculateOrderInventoryPlan(db,order,capturedAt=Date.now()) {
@@ -375,7 +381,7 @@ exports.onOrderFinalize = onValueWritten(
       const capturedAt=Date.now(),candidate=costing?buildOrderInventoryPlan(costing,inv,ps,capturedAt):null;
       const planResult=await db.ref(`/orderInventoryPlans/${orderId}`).transaction((current)=>current||candidate,undefined,false),plan=planResult.snapshot.val();
       if(!plan||plan.capturedBy!=="server"||Number(plan.schemaVersion)!==1||!plan.usage)throw new Error("Immutable server inventory plan is missing for order "+orderId);
-      const usage = plan.usage;
+      const usage = positiveOrderInventoryUsage(plan.usage);
       const ids = Object.keys(usage);
       const cogs = Number(plan.totalCost)||0,cogsCategorySnapshot=plan.categorySnapshot||{},cogsAccountSnapshot=plan.accountSnapshot||{};
 
@@ -426,7 +432,7 @@ exports.onOrderInventoryReversal = onValueWritten(
     const orderRef = db.ref(`/orders/${orderId}`);
     const order = (await orderRef.get()).val();
     if (!order || order.inventoryReversed) return;
-    const corrected = !!(order.completedOrderCorrectionId && order.correctedInventoryUsage), usage = corrected ? order.correctedInventoryUsage : (order.inventoryUsage || {});
+    const corrected = !!(order.completedOrderCorrectionId && order.correctedInventoryUsage), usage = positiveOrderInventoryUsage(corrected ? order.correctedInventoryUsage : (order.inventoryUsage || {}));
     if (order.inventoryDeducted !== true || !Object.keys(usage).length) {
       // A void/refund can be requested milliseconds after completion. Wait for
       // finalization so the reversal can link to—and exactly offset—the sale.

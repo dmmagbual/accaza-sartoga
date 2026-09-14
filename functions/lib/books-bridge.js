@@ -271,7 +271,7 @@ function cogsMovement(order, orderId, inventory, categories){
   return {
     id: "cogs_" + orderId, type: "order_cogs", sourceType: "order",
     channel: String((order && order.channel) || "instore").toLowerCase(),
-    occurredAt: Number(order && (order.completedAt || order.receivedAt || order.occurredAt)) || Date.now(),
+    occurredAt: Number(order && (order.completedAt || order.receivedAt || order.occurredAt || order.timestamp)) || Date.now(),
     lines: cogsLines(order, inventory, categories)
   };
 }

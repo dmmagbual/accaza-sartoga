@@ -26,6 +26,19 @@ assert(rules.includes('"inventoryAccounting": { ".read": false, ".write": false 
 assert(rules.includes('"inventoryMovements"')&&rules.includes('".write": false'),'movement projection is not server-write-only');
 assert(rules.includes("newData.child('stock').val() === data.child('stock').val()"),'legacy inventory projection is not locked after migration');
 
+// A base recipe and an option adjustment can legitimately cancel to zero
+// (for example Ice +200g and Hot -200g). Zero usage must never become a ledger
+// movement, block the confirmation marker, or later block a reversal/repair.
+const usageStart=functions.indexOf('function positiveOrderInventoryUsage');
+const usageEnd=functions.indexOf('\nfunction buildOrderInventoryPlan',usageStart);
+assert(usageStart>=0&&usageEnd>usageStart,'could not isolate positive order inventory usage normalization');
+const usageApi=vm.runInNewContext(`(function(){const qty6=value=>Math.round((Number(value)||0)*1000000)/1000000;${functions.slice(usageStart,usageEnd)};return positiveOrderInventoryUsage;})()`);
+const normalizedUsage=usageApi({ice:0,coffee:19,milk:250.0000001});
+assert(JSON.stringify(normalizedUsage)===JSON.stringify({coffee:19,milk:250}),'net-zero usage was not removed without changing positive quantities');
+let negativeUsageRejected=false;try{usageApi({ice:-1});}catch(error){negativeUsageRejected=/cannot be negative/.test(String(error&&error.message||error));}
+assert(negativeUsageRejected,'negative order usage was silently discarded');
+for(const marker of ['usage:positiveOrderInventoryUsage(costing.usage)','const usage = positiveOrderInventoryUsage(plan.usage)','usage=positiveOrderInventoryUsage(plan.usage)','usage = positiveOrderInventoryUsage(corrected ? order.correctedInventoryUsage','inventoryUsage:positiveOrderInventoryUsage(plan.usage)','const original = positiveOrderInventoryUsage(order.inventoryUsage), corrected = positiveOrderInventoryUsage(plan.usage)'])assert(functions.includes(marker),`zero-usage normalization is missing from ${marker}`);
+
 // Execute the production ledger functions against a tiny in-memory RTDB. Fail once
 // after the authoritative item transaction, then retry the same movement ID.
 const start=functions.indexOf('const INVENTORY_MOVEMENT_TYPES');
