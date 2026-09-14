@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const source=fs.readFileSync('src/admin/analytics/30-daily-close-report.js','utf8');
+const adminCore=fs.readFileSync('assets/js/admin/core.mjs','utf8');
+if(!adminCore.includes('query,orderByChild,equalTo,startAt,endAt,callables'))throw new Error('Admin API does not expose the range-query constraints used by Daily Report.');
 const prefix=source.slice(0,source.indexOf('function renderDailyReport'));
 const calls=[];
 const context={
