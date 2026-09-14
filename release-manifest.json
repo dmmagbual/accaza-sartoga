@@ -18,6 +18,7 @@
     "serviceWorkerCache": 494
   },
   "authoritativeFiles": [
+    "assets/js/admin/historical-period-store.mjs",
     "admin.html",
     "index.html",
     "src/html/admin/00-document-navigation.html",

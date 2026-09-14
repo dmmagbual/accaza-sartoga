@@ -44,6 +44,7 @@ const ASSETS=[
   '/assets/js/customer/core.mjs','/assets/js/customer/navigation.js','/assets/js/customer/ui.js','/assets/js/customer/order-tracker.js','/assets/js/customer/packages.js'
 ];
 const ADMIN_ASSETS=[
+  '/assets/js/admin/historical-period-store.mjs',
   '/assets/js/admin/pos-sync-health.js',
   './assets/js/shared/admin-report-periods.js','./assets/js/shared/report-period.js','./assets/js/shared/report-pagination.js','./assets/js/admin/sales-period-data.mjs',
   '/admin.html','/books.html','/manifest-admin.json',
