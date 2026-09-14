@@ -837,7 +837,7 @@ exports.repairOrderInventoryMarker = onCall(
     if(!actualIds.length)throw new HttpsError("failed-precondition","No order-linked inventory movements exist. No stock was changed.");
     actualIds.forEach(movementId=>{const movement=movements[movementId]||{},itemId=String(movement.itemId||"");if(!itemId||movementId!==`sale_${orderId}_${itemId}`||movement.sourceType!=="order"||movement.sourceId!==orderId||movement.type!=="sale_usage"||!(Number(movement.qty)<0))throw new HttpsError("failed-precondition",`Inventory evidence is invalid for ${itemId||movementId}. No stock was changed.`);});
     let plan=planSnap.val(),legacy=!plan;if(legacy){const usage={},lines=actualIds.map(id=>{const m=movements[id],quantity=qty6(-Number(m.qty)),cost=Math.abs(Number(m.totalCost)||quantity*Number(m.unitCost||0));usage[m.itemId]=quantity;return{itemKey:"legacy-order",itemName:String(m.itemName||m.itemId),size:"",orderQty:1,source:"historical-movement-evidence",ingredientId:m.itemId,ingredientName:String(m.itemName||m.itemId),quantityPerServing:quantity,totalQuantity:quantity,stockUnit:String(m.unit||"unit"),unitCost:qty6(m.unitCost),totalCost:qty6(cost),costSource:"recorded-inventory-movement",costEffectiveAt:Number(m.createdAt||m.occurredAt||0)};}),totalCost=Financial.money(lines.reduce((sum,line)=>sum+Number(line.totalCost||0),0));plan=buildOrderInventoryPlan({engineVersion:"movement-evidence-v1",usage,lines,totalCost,cogsCovered:lines.every(line=>line.unitCost>0),warnings:[{code:"LEGACY_PLAN_SEALED",message:"Original recipe snapshot was unavailable; immutable posted movements were retained without using the current recipe."}]},invSnap.val()||{},settingsSnap.val()||{},repairedAt);await db.ref(`/orderInventoryPlans/${orderId}`).transaction(current=>current||plan,undefined,false);}
-    const usage=plan.usage||{},expectedIds=Object.keys(usage).sort();if(!expectedIds.length)throw new HttpsError("failed-precondition","The immutable inventory plan is empty.");
+    const usage=positiveOrderInventoryUsage(plan.usage),expectedIds=Object.keys(usage).sort();if(!expectedIds.length)throw new HttpsError("failed-precondition","The immutable inventory plan is empty.");
     actualIds.forEach(movementId=>{const movement=movements[movementId],itemId=movement.itemId,expected=-qty6(usage[itemId]);if(!expectedIds.includes(itemId)||Math.abs(Number(movement.qty)-expected)>.000001)throw new HttpsError("failed-precondition",`Inventory evidence conflicts with the immutable sale-time plan for ${itemId}. No stock was changed.`);});
     const missingIds=legacy?[]:expectedIds.filter(itemId=>!movements[`sale_${orderId}_${itemId}`]);for(const itemId of missingIds)await applyInventoryMovement(db,{movementId:`sale_${orderId}_${itemId}`,itemId,type:"sale_usage",qty:-qty6(usage[itemId]),sourceType:"order",sourceId:orderId,sourceLine:itemId,note:`Complete interrupted ingredient usage for order ${orderId}`,occurredAt:Number(order.completedAt||order.receivedAt||order.timestamp||Date.now()),actorName:actor.role},{uid:actor.uid,role:actor.role});
     const verifiedSnap=await db.ref("/inventoryMovements").orderByKey().startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\uf8ff`).get(),verifiedMovements=verifiedSnap.val()||{},verifiedIds=Object.keys(verifiedMovements).sort();if(verifiedIds.length!==expectedIds.length)throw new HttpsError("internal","Inventory completion did not produce the immutable movement set.");const movementTimes=verifiedIds.map(id=>Number(verifiedMovements[id].createdAt||verifiedMovements[id].occurredAt||0)).filter(Boolean),metadata={inventoryDeducted:true,inventoryUsage:usage,inventoryDeductedAt:movementTimes.length?Math.max(...movementTimes):repairedAt,cogsSnapshot:plan.totalCost,cogsCategorySnapshot:plan.categorySnapshot||{},cogsCategorySnapshotVersion:1,cogsAccountSnapshot:plan.accountSnapshot||{},cogsAccountSnapshotVersion:1,cogsCovered:plan.cogsCovered,cogsDetail:{engineVersion:plan.engineVersion,computedAt:plan.capturedAt,totalCost:plan.totalCost,lines:plan.lines||[],warnings:plan.warnings||[]},costingEngineVersion:plan.engineVersion,deductedBy:legacy?"server-legacy-movement-seal":missingIds.length?"server-partial-finalization-repair":"server-marker-repair",inventoryLedgerVersion:1,inventoryMarkerRepairedAt:repairedAt};const target=await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db,orderId,metadata);await db.ref(`operationalAudit/${repairedAt}_inventory_marker_${orderId}`).set(operationalAuditRecord("repair_order_inventory_marker","order",orderId,actor,{items:expectedIds.length,cogs:plan.totalCost,movementIds:verifiedIds,completedMovementIds:missingIds.map(itemId=>`sale_${orderId}_${itemId}`),legacyMovementEvidenceSealed:legacy,targetNode:target.node,accounting:legacy?"Sealed the order's existing immutable stock movements and COGS evidence; the current editable recipe was not used and no stock changed.":missingIds.length?"Completed only movements missing from the immutable sale-time plan; COGS posts once through the order source link.":"Restored confirmation metadata from the immutable sale-time plan; no stock changed."}));return{orderId,duplicate:false,items:expectedIds.length,completed:missingIds.length,legacyEvidenceSealed:legacy,cogs:plan.totalCost,targetNode:target.node};
@@ -3459,10 +3459,10 @@ function correctionItemText(lines) {
   return (lines || []).map((line) => `${line.name}${line.size ? ` (${line.size})` : ""}${line.optLabels && line.optLabels.length ? ` [${line.optLabels.join(", ")}]` : ""} x${line.qty}`).join(", ");
 }
 function correctionPlanMetadata(plan, now) {
-  return {inventoryDeducted:true,inventoryUsage:plan.usage||{},inventoryDeductedAt:now,cogsSnapshot:Number(plan.totalCost)||0,cogsCategorySnapshot:plan.categorySnapshot||{},cogsCategorySnapshotVersion:1,cogsAccountSnapshot:plan.accountSnapshot||{},cogsAccountSnapshotVersion:1,cogsCovered:plan.cogsCovered,cogsDetail:{engineVersion:plan.engineVersion,computedAt:plan.capturedAt,totalCost:Number(plan.totalCost)||0,lines:plan.lines||[],warnings:plan.warnings||[]},costingEngineVersion:plan.engineVersion,deductedBy:"server-order-correction",inventoryLedgerVersion:1};
+  return {inventoryDeducted:true,inventoryUsage:positiveOrderInventoryUsage(plan.usage),inventoryDeductedAt:now,cogsSnapshot:Number(plan.totalCost)||0,cogsCategorySnapshot:plan.categorySnapshot||{},cogsCategorySnapshotVersion:1,cogsAccountSnapshot:plan.accountSnapshot||{},cogsAccountSnapshotVersion:1,cogsCovered:plan.cogsCovered,cogsDetail:{engineVersion:plan.engineVersion,computedAt:plan.capturedAt,totalCost:Number(plan.totalCost)||0,lines:plan.lines||[],warnings:plan.warnings||[]},costingEngineVersion:plan.engineVersion,deductedBy:"server-order-correction",inventoryLedgerVersion:1};
 }
 async function applyCompletedOrderCorrectionInventory(db, order, plan, token, now, actor) {
-  const original = order.inventoryUsage || {}, corrected = plan.usage || {};
+  const original = positiveOrderInventoryUsage(order.inventoryUsage), corrected = positiveOrderInventoryUsage(plan.usage);
   for (const itemId of Object.keys(original).sort()) await applyInventoryMovement(db,{movementId:`crr_${token}_${itemId}`,itemId,type:"refund_reversal",qty:qty6(original[itemId]),sourceType:"order_correction",sourceId:order.id,sourceLine:itemId,note:`Reverse original usage for corrected order ${order.id}`,reversalOf:`sale_${order.id}_${itemId}`,occurredAt:now,actorName:actor.role},actor);
   for (const itemId of Object.keys(corrected).sort()) await applyInventoryMovement(db,{movementId:`crs_${token}_${itemId}`,itemId,type:"sale_usage",qty:-qty6(corrected[itemId]),sourceType:"order_correction",sourceId:order.id,sourceLine:itemId,note:`Corrected ingredient usage for order ${order.id}`,occurredAt:now,actorName:actor.role},actor);
 }
@@ -4274,11 +4274,17 @@ exports.ensureInventoryLedger = onCall(
   },
 );
 
+function positiveOrderInventoryUsage(raw) {
+  const usage={};
+  Object.keys(raw||{}).forEach((itemId)=>{const quantity=qty6(raw[itemId]);if(quantity<0)throw new Error(`Order inventory usage cannot be negative for ${itemId}.`);if(quantity>0)usage[itemId]=quantity;});
+  return usage;
+}
+
 function buildOrderInventoryPlan(costing, inv, ps, capturedAt) {
   const invCategories=ps.invCategories||{},categorySnapshot={food:0,beverage:0,packaging:0,directLabor:0,unallocated:0},accountSnapshot={};
   costing.lines.forEach((line)=>{const item=inv[line.ingredientId]||{},category=invCategories[item.category]||{},label=String(category.name||item.category||"").toLowerCase();let bucket="unallocated";if(/packag|cup|lid|straw|napkin|container/.test(label))bucket="packaging";else if(/beverage|drink|coffee|tea|milk|syrup|powder/.test(label))bucket="beverage";else if(/food|ingredient|bakery|kitchen|pastry|meal/.test(label))bucket="food";categorySnapshot[bucket]+=Number(line.totalCost)||0;const mapping=BooksBridge.itemAccounts(item),key=mapping.inventory&&mapping.cost?`${mapping.inventory}|${mapping.cost}`:"1290|5090";accountSnapshot[key]=Financial.money((accountSnapshot[key]||0)+Number(line.totalCost||0));});
   Object.keys(categorySnapshot).forEach((key)=>{categorySnapshot[key]=Math.round(categorySnapshot[key]*100)/100;});
-  return{schemaVersion:1,capturedAt,capturedBy:"server",engineVersion:costing.engineVersion,usage:costing.usage,totalCost:costing.totalCost,categorySnapshot,accountSnapshot,cogsCovered:costing.cogsCovered,lines:costing.lines,warnings:costing.warnings};
+  return{schemaVersion:1,capturedAt,capturedBy:"server",engineVersion:costing.engineVersion,usage:positiveOrderInventoryUsage(costing.usage),totalCost:costing.totalCost,categorySnapshot,accountSnapshot,cogsCovered:costing.cogsCovered,lines:costing.lines,warnings:costing.warnings};
 }
 
 async function calculateOrderInventoryPlan(db,order,capturedAt=Date.now()) {
@@ -4341,7 +4347,7 @@ exports.onOrderFinalize = onValueWritten(
       const capturedAt=Date.now(),candidate=costing?buildOrderInventoryPlan(costing,inv,ps,capturedAt):null;
       const planResult=await db.ref(`/orderInventoryPlans/${orderId}`).transaction((current)=>current||candidate,undefined,false),plan=planResult.snapshot.val();
       if(!plan||plan.capturedBy!=="server"||Number(plan.schemaVersion)!==1||!plan.usage)throw new Error("Immutable server inventory plan is missing for order "+orderId);
-      const usage = plan.usage;
+      const usage = positiveOrderInventoryUsage(plan.usage);
       const ids = Object.keys(usage);
       const cogs = Number(plan.totalCost)||0,cogsCategorySnapshot=plan.categorySnapshot||{},cogsAccountSnapshot=plan.accountSnapshot||{};
 
@@ -4392,7 +4398,7 @@ exports.onOrderInventoryReversal = onValueWritten(
     const orderRef = db.ref(`/orders/${orderId}`);
     const order = (await orderRef.get()).val();
     if (!order || order.inventoryReversed) return;
-    const corrected = !!(order.completedOrderCorrectionId && order.correctedInventoryUsage), usage = corrected ? order.correctedInventoryUsage : (order.inventoryUsage || {});
+    const corrected = !!(order.completedOrderCorrectionId && order.correctedInventoryUsage), usage = positiveOrderInventoryUsage(corrected ? order.correctedInventoryUsage : (order.inventoryUsage || {}));
     if (order.inventoryDeducted !== true || !Object.keys(usage).length) {
       // A void/refund can be requested milliseconds after completion. Wait for
       // finalization so the reversal can link to—and exactly offset—the sale.

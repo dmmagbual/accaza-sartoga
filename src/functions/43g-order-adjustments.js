@@ -7,10 +7,10 @@ function correctionItemText(lines) {
   return (lines || []).map((line) => `${line.name}${line.size ? ` (${line.size})` : ""}${line.optLabels && line.optLabels.length ? ` [${line.optLabels.join(", ")}]` : ""} x${line.qty}`).join(", ");
 }
 function correctionPlanMetadata(plan, now) {
-  return {inventoryDeducted:true,inventoryUsage:plan.usage||{},inventoryDeductedAt:now,cogsSnapshot:Number(plan.totalCost)||0,cogsCategorySnapshot:plan.categorySnapshot||{},cogsCategorySnapshotVersion:1,cogsAccountSnapshot:plan.accountSnapshot||{},cogsAccountSnapshotVersion:1,cogsCovered:plan.cogsCovered,cogsDetail:{engineVersion:plan.engineVersion,computedAt:plan.capturedAt,totalCost:Number(plan.totalCost)||0,lines:plan.lines||[],warnings:plan.warnings||[]},costingEngineVersion:plan.engineVersion,deductedBy:"server-order-correction",inventoryLedgerVersion:1};
+  return {inventoryDeducted:true,inventoryUsage:positiveOrderInventoryUsage(plan.usage),inventoryDeductedAt:now,cogsSnapshot:Number(plan.totalCost)||0,cogsCategorySnapshot:plan.categorySnapshot||{},cogsCategorySnapshotVersion:1,cogsAccountSnapshot:plan.accountSnapshot||{},cogsAccountSnapshotVersion:1,cogsCovered:plan.cogsCovered,cogsDetail:{engineVersion:plan.engineVersion,computedAt:plan.capturedAt,totalCost:Number(plan.totalCost)||0,lines:plan.lines||[],warnings:plan.warnings||[]},costingEngineVersion:plan.engineVersion,deductedBy:"server-order-correction",inventoryLedgerVersion:1};
 }
 async function applyCompletedOrderCorrectionInventory(db, order, plan, token, now, actor) {
-  const original = order.inventoryUsage || {}, corrected = plan.usage || {};
+  const original = positiveOrderInventoryUsage(order.inventoryUsage), corrected = positiveOrderInventoryUsage(plan.usage);
   for (const itemId of Object.keys(original).sort()) await applyInventoryMovement(db,{movementId:`crr_${token}_${itemId}`,itemId,type:"refund_reversal",qty:qty6(original[itemId]),sourceType:"order_correction",sourceId:order.id,sourceLine:itemId,note:`Reverse original usage for corrected order ${order.id}`,reversalOf:`sale_${order.id}_${itemId}`,occurredAt:now,actorName:actor.role},actor);
   for (const itemId of Object.keys(corrected).sort()) await applyInventoryMovement(db,{movementId:`crs_${token}_${itemId}`,itemId,type:"sale_usage",qty:-qty6(corrected[itemId]),sourceType:"order_correction",sourceId:order.id,sourceLine:itemId,note:`Corrected ingredient usage for order ${order.id}`,occurredAt:now,actorName:actor.role},actor);
 }
