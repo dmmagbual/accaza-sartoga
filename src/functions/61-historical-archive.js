@@ -1,6 +1,19 @@
 const HISTORICAL_ARCHIVE_BATCH_LIMIT = 100;
 const HISTORICAL_READ_PAGE_LIMIT = 100;
 
+async function publishHistoricalChange(db, orderId, order, now = Date.now()) {
+  // Atomic, bounded journal: concurrent archivers cannot overwrite unseen IDs.
+  // Older clients continue using the top-level marker fields.
+  await db.ref("/historicalArchiveSync").transaction((current) => {
+    const sequence = (Number(current && current.sequence) || 0) + 1;
+    const change = {sequence, orderId, deleted: !order};
+    const changes = Object.assign({}, current && current.changes || {}, {[sequence]: change});
+    Object.keys(changes).forEach((key) => { if (!changes[key] || Number(key) <= sequence - 32) delete changes[key]; });
+    return {version: now, orderId, deleted: !order, salesAt: order ? HistoricalArchive.salesAt(order) : 0,
+      orderTimestamp: Number(order && order.timestamp) || 0, schemaVersion: 2, sequence, changes};
+  });
+}
+
 function historicalReadCursor(raw) {
   if (!raw || typeof raw !== "object") return null;
   const value = Number(raw.value), id = financeText(raw.id, 160);
@@ -111,6 +124,8 @@ async function replicateHistoricalOrder(db, firestore, orderId, order, now = Dat
     transaction.set(ref, next);
     return {duplicate: false};
   });
+  // Publish even for a duplicate: a retry must repair a failed marker write.
+  await publishHistoricalChange(db, orderId, order, now);
   return {orderId, duplicate: result.duplicate, verified: next.evidence.verified, issues: next.evidence.issues};
 }
 
@@ -122,17 +137,13 @@ exports.replicateArchivedOrderToFirestore = onValueWritten(
     const db = getDatabase(), firestore = getFirestore(), orderId = event.params.orderId, order = event.data.after.val(), now = Date.now();
     if (!order) {
       await firestore.collection(HistoricalArchive.COLLECTION).doc(orderId).delete();
-      await db.ref("/historicalArchiveSync").set({version: now, orderId, deleted: true, schemaVersion: 1});
+      await publishHistoricalChange(db, orderId, null, now);
       return;
     }
     const result = await replicateHistoricalOrder(db, firestore, orderId, order, now);
     // Always publish after the Firestore transaction. If the marker write is
     // the only failed step, a retry must still wake readers after the document
     // has become an unchanged duplicate.
-    await db.ref("/historicalArchiveSync").set({
-      version: now, orderId, deleted: false, orderTimestamp: Number(order.timestamp) || 0,
-      salesAt: HistoricalArchive.salesAt(order), schemaVersion: 1,
-    });
     logger.info("Historical order replica refreshed", result);
   },
 );
@@ -146,9 +157,24 @@ exports.readHistoricalOrders = onCall(
     const db = getDatabase();
     await requirePortalPermission(db, request, ["orders"]);
     const data = request.data || {}, mode = financeText(data.mode, 20).toLowerCase();
-    if (!["latest", "before", "period"].includes(mode)) throw new HttpsError("invalid-argument", "Historical read mode is invalid.");
+    if (!["latest", "before", "period", "ids"].includes(mode)) throw new HttpsError("invalid-argument", "Historical read mode is invalid.");
     const limit = Math.max(1, Math.min(HISTORICAL_READ_PAGE_LIMIT, Math.floor(Number(data.limit) || HISTORICAL_READ_PAGE_LIMIT)));
     const firestore = getFirestore();
+    if (mode === "ids") {
+      if (!Array.isArray(data.ids) || !data.ids.length || data.ids.length > 32 ||
+        data.ids.some((id) => typeof id !== "string" || !id || id.length > 160 || /[.#$\[\]\/\u0000-\u001f\u007f]/.test(id))) {
+        throw new HttpsError("invalid-argument", "Choose between 1 and 32 valid order IDs.");
+      }
+      const ids = [...new Set(data.ids)];
+      const documents = await firestore.getAll(...ids.map((id) => firestore.collection(HistoricalArchive.COLLECTION).doc(id)));
+      const hydrated = await historicalOrdersFromDocuments(db, documents.filter((document) => document.exists));
+      // A missing replica can be a replication race, not a deleted operational sale.
+      for (const document of documents.filter((document) => !document.exists)) {
+        const order = (await db.ref(`/archivedOrders/${document.id}`).get()).val();
+        if (order) hydrated.rows[document.id] = HistoricalArchive.clean(Object.assign({id:document.id},order));
+      }
+      return {orders:hydrated.rows, hasMore:false, deletionEnabled:false};
+    }
     const page = mode === "period" ? await historicalPeriodPage(firestore, data, limit) : await historicalLatestPage(firestore, data, limit);
     const hydrated = await historicalOrdersFromDocuments(db, page.documents);
     return {
