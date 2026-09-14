@@ -36,7 +36,8 @@ assert(core.includes("\"'availSection'\":'availability'")&&core.includes("\"'com
 assert(core.includes("if(id==='availSection')")&&core.includes("subscriptionHub.activate('availability')"),'Menu Availability must activate its lazy catalog and option-group data scope');
 assert(core.includes("subscriptionHub.activate('availability');buildAvail();renderOptionManager()"),'Opening Menu Availability must refresh its items and option groups after activating their data scope');
 assert(core.includes('ogLoaded=true')&&catalogAdmin.includes('optionsReady()')&&catalogAdmin.includes('Loading options…'),'Menu Availability must distinguish an option-group load in progress from a confirmed empty database node');
-assert(core.includes('var optionData=snap.val()||{}')&&core.includes('Object.keys(optionData).length'),'Cached option-group snapshots must not require Firebase-only snapshot methods');
+assert(core.includes('var d=snap.val()||{}')&&core.includes('Object.keys(d).length'),'Cached option-group snapshots must not require Firebase-only snapshot methods');
+assert(core.includes('if(adminLoggedIn){renderOptionManager();buildAvail();}'),'Loaded option groups must rebuild Menu Availability item checklists on every manager device');
 const alertSource=(adminOrders.match(/function shouldAlertOrder\(o\)\{[^}]+\}/)||[])[0];
 assert(alertSource&&core.includes('.filter(shouldAlertOrder)'),'New-order ringing must use one tested actionable-order policy');
 const shouldAlertOrder=Function(alertSource+';return shouldAlertOrder')();
