@@ -17,5 +17,5 @@ assert.equal(overviewChannelKey(rows[1]),'instore');assert.equal(overviewChannel
 const channels=buildChannelBreakdown(rows);assert.deepEqual(channels.channels.map(x=>[x.key,x.orders,x.net]),[['online',1,100],['instore',1,200],['grabfood',1,300],['foodpanda',1,400]]);assert.deepEqual(channels.unclassified,{orders:1,net:50});
 const months=buildRollingYear(rows,range);assert.equal(months.length,12);assert.deepEqual(months[0],{key:'2025-10',net:100,orders:1});assert.deepEqual(months[10],{key:'2026-08',net:200,orders:1});assert.deepEqual(months[11],{key:'2026-09',net:750,orders:3});
 const html=fs.readFileSync('src/html/admin/50-admin-workspace.html','utf8'),core=fs.readFileSync('assets/js/admin/core.mjs','utf8');
-assert(html.includes('id="overviewYearChart"')&&html.includes('id="channelBreakdown"'));assert(!html.includes('Order Activity &amp; Outcomes'));assert(core.includes('readRollingSales:readOverviewSalesRange'));
+assert(html.includes('id="overviewYearChart"')&&html.includes('id="channelBreakdown"'));assert(!html.includes('Order Activity &amp; Outcomes'));assert(core.includes('watchRollingSales:function'));
 console.log('PASS: Overview has a bounded rolling 12-month trend and mutually exclusive sales-channel totals.');

@@ -17,7 +17,9 @@ const budgets={
   // checkout, server repricing, cash-refund controls, immutable inventory replacement,
   // linked receipt/audit evidence and explicit cashier feedback.
   // Keep the ceiling narrowly above the reviewed generated bundle.
-  'assets/js/admin/pos.js':520000,
+  // Build 517 adds the Finance Books-driven one-time purchase expense selector
+  // and server-aligned account validation without adding another data listener.
+  'assets/js/admin/pos.js':522000,
   // Build 497 adds the visible cash-refund tag and preserved refund detail to shift reports.
   'assets/js/admin/register.js':175500,
   'assets/js/admin/analytics.js':150000,
