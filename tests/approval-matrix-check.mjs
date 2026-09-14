@@ -18,7 +18,7 @@ const expected=[
   'delete_archived_order','review_discrepancy','approve_petty_voucher','correct_petty_voucher',
   'reject_petty_voucher','void_petty_voucher','return_supplier_payment','manual_discount','cash_in','purchase_cash_advance','fixed_float_exception','reverse_purchase',
   'rekey_platform_order','reverse_platform_payout','correct_platform_presettlement','set_undeposited_opening_balance','retire_revolving_fund','repair_closed_shift_turnover','repair_reversed_payout_deposit','reconcile_undeposited_custody','certify_financial_close',
-  'convert_suspense_supplier_advance',
+  'convert_suspense_supplier_advance','correct_completed_order','completed_order_cash_refund',
 ];
 const fail=(message)=>{throw new Error(message);};
 const setStart=functionsSource.indexOf('const MANAGER_APPROVAL_ACTIONS = new Set([');
@@ -35,6 +35,8 @@ const extras=declared.filter(action=>!expected.includes(action));
 if(extras.length)fail(`Unreviewed server approval actions: ${extras.join(', ')}`);
 if(!functionsSource.includes('["owner", "superadmin", "admin", "manager"].includes(managerRole)'))fail('Server privileged-role list does not explicitly include Admin');
 if(!managerSource.includes('authz&&authz.isPrivileged&&current')||!managerSource.includes('current.getIdToken(true)'))fail('Signed-in Admin cannot approve directly with the current Firebase session');
+if(!managerSource.includes('options&&options.requireIndependent'))fail('High-risk corrections cannot force a separate manager sign-in');
+if(!functionsSource.includes('decoded.uid === requester.uid'))fail('Server does not reject self-approved completed-order corrections');
 if(!functionsSource.includes('requirePortalPermission(db, request, ["registerOps", "pos"])'))fail('POS and Register Ops cannot consume privileged approvals');
 if((functionsSource.match(/transactionCurrent\(/g)||[]).length<4)fail('Approval workflows do not consistently recover from Firebase initial-null transaction callbacks');
 if(/Manager PIN|__posIsManagerPin|managerByPin/.test(registerSource+'\n'+posSource))fail('A privileged action still relies on the legacy shared Manager PIN');
