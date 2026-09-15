@@ -1,11 +1,11 @@
 import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
-import{createSubscriptionHub}from"./realtime-hub.mjs?v=528";
+import{createSubscriptionHub}from"./realtime-hub.mjs?v=529";
 import{readSalesPeriod,periodKey}from'./sales-period-data.mjs?v=486';
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=528";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=529";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -179,7 +179,7 @@ const customerOrderTracker=createCustomerOrderTracker({getOrders:function(){retu
 
 const reservationManager=createReservationManager({subscriptionHub:subscriptionHub,isPortalActive:function(){return adminLoggedIn||staffLoggedIn;},onReservationsChanged:updateStats,playChime:playChime,showDeletePopup:showDeletePopup});
 const renderReservations=reservationManager.renderReservations,renderCustomerCalendar=reservationManager.renderCustomerCalendar,renderAdminCalendar=reservationManager.renderAdminCalendar;
-const catalogAdmin=createCatalogAdmin({getCategoriesMap:()=>categoriesMap,getMenuItemsMap:()=>menuItemsMap,getOptionGroupsMap:()=>optionGroupsMap,optionsReady:()=>ogLoaded,getAvailability:()=>availability,getCats,getMenuItems,getEffectiveOptionIds,isAvail,isStaffLoggedIn:()=>staffLoggedIn,showDeletePopup,renderMenuSection,renderOrderSection});
+const catalogAdmin=createCatalogAdmin({getCategoriesMap:()=>categoriesMap,getMenuItemsMap:()=>menuItemsMap,getOptionGroupsMap:()=>optionGroupsMap,optionsReady:()=>ogLoaded,getAvailability:()=>availability,getCats,getMenuItems,getEffectiveOptionIds,isAvail,isStaffLoggedIn:()=>staffLoggedIn,showDeletePopup,renderMenuSection,renderOrderSection,invalidateCatalogCache:()=>subscriptionHub.invalidateMasterCache()});
 const renderCategoryManager=catalogAdmin.renderCategoryManager,renderOptionManager=catalogAdmin.renderOptionManager,renderNewItemOptionChecklist=catalogAdmin.renderNewItemOptionChecklist,renderStaffMenu=catalogAdmin.renderStaffMenu,buildAvail=catalogAdmin.buildAvail;
 
 document.getElementById('fbSync').classList.add('online');

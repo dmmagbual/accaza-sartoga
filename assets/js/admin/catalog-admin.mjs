@@ -86,7 +86,7 @@ function createCatalogAdmin(deps){
         const showInMenu=document.getElementById('catShowInMenu_'+id).checked;
         if(!label)return;
         const original=this.textContent;this.disabled=true;this.textContent='Saving…';
-        try{await update(ref(db,'categories/'+id),{icon,label,showInMenu});this.textContent='✓ Saved';setTimeout(()=>{this.disabled=false;this.textContent=original;},1200);}
+        try{await update(ref(db,'categories/'+id),{icon,label,showInMenu});deps.invalidateCatalogCache();this.textContent='✓ Saved';setTimeout(()=>{this.disabled=false;this.textContent=original;},1200);}
         catch(e){this.disabled=false;this.textContent=original;alert('Could not save category: '+e.message);}
       });
     });
