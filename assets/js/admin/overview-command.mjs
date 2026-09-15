@@ -1,5 +1,9 @@
 const ALLOWED_TABS=new Set(['orders','ops','reservations','inventory','recipes','payouts','cashflow','receivables','payables','discrepancy','operations']);
-let exceptionData=null,exceptionAt=0,exceptionLoading=false,refreshTimer=null;
+const SYSTEM_HEALTH_AUTO_RUN_KEY='accaza-system-health-auto-run-v1',SYSTEM_HEALTH_INTERVAL_MS=24*60*60*1000;
+let exceptionData=null,exceptionAt=0,exceptionLoading=false,exceptionPromise=null,refreshTimer=null;
+
+function autoRunRecordedRecently(){try{const last=Number(window.localStorage&&window.localStorage.getItem(SYSTEM_HEALTH_AUTO_RUN_KEY));return Number.isFinite(last)&&last>0&&Date.now()-last<SYSTEM_HEALTH_INTERVAL_MS;}catch(_error){return false;}}
+function recordAutoRun(){try{if(window.localStorage)window.localStorage.setItem(SYSTEM_HEALTH_AUTO_RUN_KEY,String(Date.now()));}catch(_error){}}
 
 function esc(value){return String(value==null?'':value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));}
 function num(id){const el=document.getElementById(id);return Number(String(el&&el.textContent||'0').replace(/[^0-9.-]/g,''))||0;}
@@ -40,19 +44,35 @@ async function render(){
 }
 
 async function loadExceptions(force=false){
-  if(exceptionLoading||(!force&&exceptionData&&Date.now()-exceptionAt<60000))return;
-  const api=window.__accaza;if(!api||!api.getOperationalExceptions)return;
+  if(exceptionPromise)return exceptionPromise;
+  if(!force&&exceptionData)return exceptionData;
+  if(!force&&autoRunRecordedRecently())return exceptionData;
+  const api=window.__accaza;if(!api||!api.getOperationalExceptions)return exceptionData;
   exceptionLoading=true;
-  try{const response=await api.getOperationalExceptions();exceptionData=response&&response.data||response;exceptionAt=Date.now();}catch(_error){exceptionData=null;exceptionAt=Date.now();}finally{exceptionLoading=false;render();}
+  exceptionPromise=(async()=>{
+    try{
+      const response=await api.getOperationalExceptions();
+      exceptionData=response&&response.data||response;exceptionAt=Date.now();recordAutoRun();
+      return exceptionData;
+    }catch(_error){exceptionData=null;return null;}
+    finally{exceptionLoading=false;exceptionPromise=null;render();}
+  })();
+  return exceptionPromise;
 }
 
 function refresh(){render();loadExceptions();}
 window.__refreshOverviewCommand=refresh;
+window.__accazaSystemHealth={
+  get:function(){return exceptionData;},
+  getCheckedAt:function(){return exceptionAt;},
+  ensureDaily:function(){return loadExceptions(false);},
+  run:function(){return loadExceptions(true);}
+};
 
 const watched=['statOrders','statPending','statReservations','dashToday','dashTodayCount'];
 const observer=new MutationObserver(schedule);
 watched.forEach(id=>{const node=document.getElementById(id);if(node)observer.observe(node,{childList:true,subtree:true,characterData:true});});
 window.addEventListener('online',schedule);window.addEventListener('offline',schedule);
-setTimeout(refresh,500);setInterval(()=>loadExceptions(true),60000);
+setTimeout(refresh,500);
 
 export{refresh};
