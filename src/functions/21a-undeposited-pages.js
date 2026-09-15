@@ -95,8 +95,11 @@ exports.getUndepositedControlSnapshot = onCall(
       db.ref("/cashBalanceSummary/meta").get(),db.ref("/cashBalanceSummary/balances").get(),db.ref("/cashBalanceSummaryPending").limitToFirst(1).get(),db.ref("/cashCustodyOpenIndex").get(),
       db.ref("/pettyVoucherAttentionIndex/pending").limitToLast(100).get(),db.ref("/pettyVoucherAttentionIndex/missing").limitToLast(100).get(),db.ref("/financialMovements/revolving_fund_retirement").get(),db.ref("/financialMovements/undeposited_opening_balance").get(),
     ]);
-    let undeposited=0,revolving=0;const summaryMeta=summaryMetaSnap.val()||{},summaryBalances=summaryBalanceSnap.val()||{};
-    if(summaryMeta.schemaVersion===1&&summaryMeta.complete===true&&!pendingSummarySnap.exists()){
+    let undeposited=0,revolving=0,summaryMeta=summaryMetaSnap.val()||{},summaryBalances=summaryBalanceSnap.val()||{};
+    if(summaryMeta.schemaVersion!==CashBalances.SCHEMA_VERSION||summaryMeta.complete!==true||pendingSummarySnap.exists()){
+      const repairedSummary=await ensureCashBalanceSummary(db);summaryMeta=repairedSummary.meta||{};summaryBalances=repairedSummary.balances||{};
+    }
+    if(summaryMeta.schemaVersion===CashBalances.SCHEMA_VERSION&&summaryMeta.complete===true){
       undeposited=Financial.money(Number(summaryBalances.undepositedCents||0)/100);revolving=Financial.money(Number(summaryBalances.revolvingCents||0)/100);
     }else{
       const movementMap=(await db.ref("/financialMovements").get()).val()||{};
