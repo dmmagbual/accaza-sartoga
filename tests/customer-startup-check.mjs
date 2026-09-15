@@ -22,7 +22,7 @@ if(availabilityState<0||authObserver<0||availabilityState>authObserver)throw new
 if(publicStatusObserver<0||availabilityState>publicStatusObserver)throw new Error('Customer availability state must initialize before its realtime subscription');
 if((source.match(/let publicOrdersOpen=/g)||[]).length!==1)throw new Error('Customer availability state must have exactly one owner');
 for(const marker of ['function customerMenuCats(){return getCats().filter(c=>c.showInMenu!==false);}','const cats=customerMenuCats();','if(!cats.some(c=>c.id===menuFilter))','if(orderFilter&&!cats.some(c=>c.id===orderFilter))'])if(!customerHelpers.includes(marker))throw new Error(`Customer category visibility safeguard missing: ${marker}`);
-for(const marker of ['showInMenu:true','catShowInMenu_','Show in customer Menu, Online Ordering &amp; POS','{icon,label,showInMenu}','Saving…','✓ Saved'])if(!catalogAdmin.includes(marker))throw new Error(`Menu Availability category visibility control missing: ${marker}`);
+for(const marker of ['showInMenu:true','catShowInMenu_','Show in customer Menu, Online Ordering &amp; POS','{icon,label,showInMenu}','invalidateCatalogCache()','Saving…','✓ Saved'])if(!catalogAdmin.includes(marker))throw new Error(`Menu Availability category visibility control missing: ${marker}`);
 for(const marker of [".filter(function(c){return c.showInMenu!==false;})","if(posCat!=='ALL'&&!cats.some(function(c){return c.id===posCat;}))posCat='ALL';",'visibleCatIds[it.cat]'])if(!posRegister.includes(marker))throw new Error(`POS category visibility safeguard missing: ${marker}`);
 
 for(const marker of [
