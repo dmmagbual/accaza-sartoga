@@ -2,8 +2,11 @@ const attached=[];
 const ops={
   ref(_db,path){return{path};},
   onValue(target,callback){attached.push(target.path);callback({val(){return{};}});return function(){};},
+  onChildAdded(){return function(){};},onChildChanged(){return function(){};},onChildRemoved(){return function(){};},
   query(target){return target;},orderByChild(){return{};},limitToLast(){return{};},endBefore(){return{};},
-  async get(){return{forEach(){}};}
+  // Bootstrapped incremental paths (orders included) attach via a one-shot get() followed
+  // by child listeners, so a get() on a live target counts as attaching the feed.
+  async get(target){if(target&&target.path)attached.push(target.path);return{val(){return{};},forEach(){}};}
 };
 const {createSubscriptionHub}=await import('../assets/js/admin/realtime-hub.mjs');
 const hub=createSubscriptionHub({},ops);
