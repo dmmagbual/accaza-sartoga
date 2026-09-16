@@ -3,11 +3,26 @@ const CashBalances = require("./lib/cash-balances");
 const CASH_SUMMARY_BATCH_SIZE = 100;
 const CASH_SUMMARY_LOCK_MS = 120000;
 
+// One database write may trigger at most 1,000 function runs, and every applied record fires the
+// backup marker trigger. The rebuild therefore writes applied records in bounded chunks and the
+// summary last: an interrupted rebuild leaves the old summary version, so it simply runs again.
+// (On 16 Sep 2026 a single 1,269-record write failed with TOO_MANY_TRIGGERS.)
+const CASH_REBUILD_WRITE_CHUNK = 400;
 async function rebuildCashBalanceSummary(db) {
   const movements = (await db.ref("/financialMovements").get()).val() || {};
   const rebuilt = CashBalances.splitSnapshotFromMovements(movements);
-  // The Books cash-flow day/month index is rebuilt in the same update as the summary.
-  await db.ref().update({cashBalanceSummary: rebuilt.summary, cashBalanceSummaryApplied: rebuilt.applied, cashFlowDaily: rebuilt.flow.daily, cashFlowMonthly: rebuilt.flow.monthly, cashFlowOpenings: rebuilt.flow.openings, cashFlowIndexMeta: rebuilt.flow.meta});
+  const existing = await shallowDatabaseKeys(db, "cashBalanceSummaryApplied");
+  const applied = {};
+  existing.forEach((key) => { if (!rebuilt.applied[key]) applied[key] = null; });
+  Object.keys(rebuilt.applied).forEach((key) => { applied[key] = rebuilt.applied[key]; });
+  const keys = Object.keys(applied);
+  for (let i = 0; i < keys.length; i += CASH_REBUILD_WRITE_CHUNK) {
+    const batch = {};
+    keys.slice(i, i + CASH_REBUILD_WRITE_CHUNK).forEach((key) => { batch[`cashBalanceSummaryApplied/${key}`] = applied[key]; });
+    await db.ref().update(batch);
+  }
+  // The Books cash-flow day/month index is written with the summary.
+  await db.ref().update({cashFlowDaily: rebuilt.flow.daily, cashFlowMonthly: rebuilt.flow.monthly, cashFlowOpenings: rebuilt.flow.openings, cashFlowIndexMeta: rebuilt.flow.meta, cashBalanceSummary: rebuilt.summary});
   return rebuilt.summary;
 }
 
