@@ -29,8 +29,23 @@ if(auth){
   };
   function stopOptionalFeed(name){var stop=optionalStops[name],spec=OPTIONAL_FEEDS[name];if(stop){try{stop();}catch(_e){}delete optionalStops[name];}if(spec)window[spec.global]={};}
   function attachOptionalFeed(name){var spec=OPTIONAL_FEEDS[name];if(!spec||optionalStops[name]||spec.tabs.indexOf(currentTab)<0||!auth.currentUser)return;if(!window[spec.global])window[spec.global]={};optionalStops[name]=watchMap(spec.target(),window[spec.global],spec.onChange,()=>{});}
-  function syncOptionalFeeds(){Object.keys(OPTIONAL_FEEDS).forEach(function(name){var spec=OPTIONAL_FEEDS[name];if(spec.tabs.indexOf(currentTab)>=0)attachOptionalFeed(name);else stopOptionalFeed(name);});}
-  function stopBooksFeeds(){booksStops.splice(0).forEach(function(stop){try{stop();}catch(_e){}});Object.keys(optionalStops).forEach(stopOptionalFeed);optionalStops={};}
+  // Insights needs every sale in its three comparison ranges. It reads them from the
+  // Firestore history replica (bounded period pages) only while Insights is open, instead
+  // of every Books sign-in downloading the whole archivedOrders node.
+  let insightsKey='',insightsRequest=0;
+  function manilaStart(day){return Date.parse(String(day)+'T00:00:00+08:00');}
+  function manilaEnd(day){return Date.parse(String(day)+'T23:59:59.999+08:00');}
+  function insightsRanges(){if(typeof window.biRanges!=='function')return [];var r=window.biRanges()||{},out=[];['current','previous','year'].forEach(function(k){var x=r[k];if(!x||!x.start||!x.end)return;var start=manilaStart(x.start),end=manilaEnd(x.end);if(!isFinite(start)||!isFinite(end)||start>end)return;start=Math.max(start,end-731*86400000);out.push({startAt:start,endAt:end});});return out;}
+  async function readHistoryRange(read,range){var rows={},cursor=null,pages=0,more=true;while(more){var res=(await read({mode:'period',startAt:range.startAt,endAt:range.endAt,cursor:cursor,limit:100})).data||{};Object.assign(rows,res.orders||{});cursor=res.cursor||null;more=res.hasMore===true;if(++pages>50)break;}return rows;}
+  function syncInsightsOrders(){
+    if(currentTab!=='insights'||!auth||!auth.currentUser)return;
+    var ranges=insightsRanges(),key=JSON.stringify(ranges);if(!ranges.length||key===insightsKey)return;
+    insightsKey=key;var request=++insightsRequest,read=httpsCallable(fns,"readHistoricalOrders");window.__booksInsightsLoading=true;
+    Promise.all(ranges.map(function(range){return readHistoryRange(read,range);})).then(function(parts){if(request!==insightsRequest)return;window.__booksInsightsOrders=Object.assign({},...parts);window.__booksInsightsLoading=false;scheduleRender();}).catch(function(error){if(request!==insightsRequest)return;insightsKey='';window.__booksInsightsLoading=false;console.error('Insights history load failed',error);scheduleRender();});
+  }
+  function resetInsightsOrders(){insightsKey='';insightsRequest++;window.__booksInsightsOrders={};window.__booksInsightsLoading=false;}
+  function syncOptionalFeeds(){Object.keys(OPTIONAL_FEEDS).forEach(function(name){var spec=OPTIONAL_FEEDS[name];if(spec.tabs.indexOf(currentTab)>=0)attachOptionalFeed(name);else stopOptionalFeed(name);});syncInsightsOrders();}
+  function stopBooksFeeds(){resetInsightsOrders();booksStops.splice(0).forEach(function(stop){try{stop();}catch(_e){}});Object.keys(optionalStops).forEach(stopOptionalFeed);optionalStops={};}
   function watchValue(target,onChange,onError){var stop=onValue(target,onChange,onError);booksStops.push(stop);return stop;}
   function scheduleRender(){if(scheduleRender.pending)return;scheduleRender.pending=true;requestAnimationFrame(function(){scheduleRender.pending=false;if(window.App&&App.render)App.render();});}
   function watchMap(target,map,onChange,onError){
@@ -69,11 +84,17 @@ if(auth){
     orderStops.splice(0).forEach(function(stop){stop();});
     window.__booksActiveOrders={};window.__booksArchivedOrders={};
     // Account 1100 must include old unsettled platform sales, not only the selected
+    // period. Every platform sale carries settlementStatus (POS, catch-up and the offline
+    // sync server default), so archived history is read only through the indexed
+    // "unsettled" subset. The former equalTo(null) archive query matched every in-store
+    // sale and, unindexed, downloaded the whole archivedOrders node on each Books sign-in.
+    // Insights loads its own bounded periods from the Firestore replica on demand.
+    //
     // report period. Read the indexed outstanding subset instead of all order history.
     orderStops.push(watchMap(query(ref(db,"/orders"),orderByChild("settlementStatus"),equalTo("unsettled")),window.__booksActiveOrders,scheduleRender,()=>{}));
     orderStops.push(watchMap(query(ref(db,"/orders"),orderByChild("settlementStatus"),equalTo(null)),window.__booksActiveOrders,scheduleRender,()=>{}));
     orderStops.push(watchMap(query(ref(db,"/archivedOrders"),orderByChild("settlementStatus"),equalTo("unsettled")),window.__booksArchivedOrders,scheduleRender,()=>{}));
-    orderStops.push(watchMap(query(ref(db,"/archivedOrders"),orderByChild("settlementStatus"),equalTo(null)),window.__booksArchivedOrders,scheduleRender,()=>{}));
+    
   }
   window.__booksRebindPeriod=function(){bindPeriodJournal();bindPeriodFinancial();};
   onAuthStateChanged(auth, user=>{

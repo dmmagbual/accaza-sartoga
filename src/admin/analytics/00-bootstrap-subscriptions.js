@@ -1,8 +1,8 @@
-import{reconcileInventoryBooks}from'./inventory-books-reconciliation.mjs';
+import{reconcileInventoryBooks,journalBasisThrough}from'./inventory-books-reconciliation.mjs';
 (function(){
 'use strict';
 var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={},receiptsMap={},posSettingsMap={},inventoryBooksJournal={},payoutCashAccounts={};
-var inventoryBooksLoaded=false;
+var inventoryBooksLoaded=false,inventoryBooksJournalLoaded=false,inventoryBooksMonthlyLoaded=false,inventoryBooksMonthly={},inventoryBooksPastMonth={key:'',rows:null};
 var financialCloseState={},financialCloseLoading={};
 var svFrom=null,svTo=null,svExpand=null;
 var azRange='month', azFrom=null, azTo=null, pnlMonth=null, analyticsHistoryLoading=false;
@@ -51,7 +51,9 @@ function init(){
   a.subscribe('internalUsage',function(s){usageMap=s.val()||{};if(isTab('pnl'))renderPnl();if(isTab('stockvalue'))renderStockValue();});
   a.subscribe('stockReceipts',function(s){receiptsMap=s.val()||{};if(isTab('stockvalue'))renderStockValue();});
   a.subscribe('inventory',function(s){invMap=s.val()||{};if(isTab('stockvalue'))renderStockValue();});
-  a.subscribe('books/journal',function(s){inventoryBooksJournal=s.val()||{};inventoryBooksLoaded=true;if(isTab('stockvalue'))renderStockValue();});
+  // Stock Value: prior months from books/monthlyNet, current month live (hub-bounded).
+  a.subscribe('books/journal',function(s){inventoryBooksJournal=s.val()||{};inventoryBooksJournalLoaded=true;inventoryBooksLoaded=inventoryBooksJournalLoaded&&inventoryBooksMonthlyLoaded;if(isTab('stockvalue'))renderStockValue();});
+  a.subscribe('books/monthlyNet',function(s){inventoryBooksMonthly=s.val()||{};inventoryBooksMonthlyLoaded=true;inventoryBooksLoaded=inventoryBooksJournalLoaded&&inventoryBooksMonthlyLoaded;if(isTab('stockvalue'))renderStockValue();});
   a.subscribe('posSettings',function(s){posSettingsMap=s.val()||{};if(isTab('pnl'))renderPnl();});
   a.subscribe('platformPayouts',function(s){payoutsMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();if(isTab('analytics'))renderAnalytics();});
   a.subscribe('cfAccounts',function(s){payoutCashAccounts=s.val()||{};if(isTab('payouts'))renderPayouts();});

@@ -24,14 +24,21 @@ const HISTORY_TAB_PATHS={saleshistory:['orders','archivedOrders','financialMovem
 // instead, so an unrelated field on the record no longer rides along. See 2026-09-12 follow-up.
 const INCREMENTAL_PATHS={activeOrders:1,inventory:1,posActiveShift:1};
 const VERSIONED_MASTER_PATHS={categories:1,optionGroups:1,menuItems:1};
+// Journal history is summarised server-side in books/monthlyNet; the live listener only
+// carries the current Manila month (Stock Value reads earlier months from the totals).
+const CURRENT_MONTH_PATHS={'books/journal':'date'};
+function manilaMonthStart(){var day=typeof window!=='undefined'&&window.AccazaDate&&window.AccazaDate.key?window.AccazaDate.key():new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());return String(day).slice(0,7)+'-01';}
 const MASTER_CACHE_KEY='accaza_admin_master_v2';
 
 function createSubscriptionHub(database,ops){
   const {ref,onValue,onChildAdded,onChildChanged,onChildRemoved,query,orderByChild,limitToLast,startAt,endAt,endBefore,get}=ops;
-  function reportPeriod(){return typeof window!=='undefined'&&window.AccazaAdminPeriods&&window.AccazaAdminPeriods.get&&['dashboard','saleshistory','analytics'].indexOf(activeScope)>-1?window.AccazaAdminPeriods.get('sales'):null;}
+  function reportPeriod(scope){scope=scope||activeScope;return typeof window!=='undefined'&&window.AccazaAdminPeriods&&window.AccazaAdminPeriods.get&&['dashboard','saleshistory','analytics'].indexOf(scope)>-1?window.AccazaAdminPeriods.get('sales'):null;}
   function salesPath(path){return path==='orders'||path==='archivedOrders';}
-  function selectedPeriod(){var p=reportPeriod();if(p&&activeScope==='analytics')return Object.assign({},p,{startAt:p.startAt-(p.endAt-p.startAt+1)});return p;}
-  function liveTarget(path){var base=ref(database,path),spec=HISTORY_BOUNDS[path],period=reportPeriod();if(!spec)return base;if(period&&path==='financialMovements'&&Number(period.startAt)&&Number(period.endAt))return query(base,orderByChild(spec.field),startAt(Number(period.startAt)),endAt(Number(period.endAt)));return query(base,orderByChild(spec.field),limitToLast(spec.limit));}
+  function selectedPeriod(scope){scope=scope||activeScope;var p=reportPeriod(scope);if(p&&scope==='analytics')return Object.assign({},p,{startAt:p.startAt-(p.endAt-p.startAt+1)});return p;}
+  // The query a bounded path uses for a scope. Switching between tabs that need the same
+  // query keeps the live listener instead of detaching and re-downloading the whole page.
+  function targetKey(path,scope){if(!HISTORY_BOUNDS[path])return 'static';var p=selectedPeriod(scope),rp=reportPeriod(scope);if(path==='archivedOrders'||salesPath(path))return p?'period:'+periodKey(p):'latest';if(path==='financialMovements'){if(p&&scope==='saleshistory')return 'saleshistory:'+periodKey(rp);return rp&&Number(rp.startAt)&&Number(rp.endAt)?'period:'+periodKey(rp):'latest';}return 'latest';}
+  function liveTarget(path){var base=ref(database,path),spec=HISTORY_BOUNDS[path],period=reportPeriod();if(CURRENT_MONTH_PATHS[path])return query(base,orderByChild(CURRENT_MONTH_PATHS[path]),startAt(manilaMonthStart()));if(!spec)return base;if(period&&path==='financialMovements'&&Number(period.startAt)&&Number(period.endAt))return query(base,orderByChild(spec.field),startAt(Number(period.startAt)),endAt(Number(period.endAt)));return query(base,orderByChild(spec.field),limitToLast(spec.limit));}
   var entries={},authorized=false,activeScope='dashboard',nextId=1,liveStartedAt=0,liveReadyRecorded=false;
   var rollingStops=new Set();
   const historicalPeriods=createHistoricalPeriodStore({read:payload=>ops.readHistoricalOrders(payload),watch:(data,error)=>onValue(ref(database,'historicalArchiveSync'),snapshot=>data(snapshot.val()||{}),error)});
@@ -48,7 +55,7 @@ function createSubscriptionHub(database,ops){
     recipes:['recipes','usage','analytics','pnl'],packagingRules:['recipes','usage','analytics','pnl','inventory'],optionRecipes:['recipes','usage'],internalUsage:['usage','pnl','stockvalue'],usageTypes:['usage'],expenseItems:['pnl'],monthlyExpenses:['pnl'],inventoryAdjustments:['pnl','stockvalue'],stockReceipts:['purchases','stockvalue'],purchaseInvoices:['purchases'],
     suppliers:['purchases','petty'],inventorySku:['inventory','purchases'],booksChart:['discrepancy','purchases'],posDeviceHealth:['liveoperations'],shiftCloseReceipts:['liveoperations'],ownerDailySummaries:['liveoperations'],
     platformPayouts:['payouts','pnl','analytics','cashflow','receivables'],platformVarAccounts:['payouts','pnl'],shifts:['ops'],activityLog:['ops'],heldOrders:['pos','ops'],discrepancies:['discrepancy'],
-    pettyCashVouchers:['petty','purchases'],pettyCashReplenishments:['petty'],pettyCashSettings:['petty'],cfAccounts:['dashboard','pos','purchases','petty','cashflow','receivables','payables','payouts','undeposited','possettings'],cfLedger:['cashflow'],'books/journal':['stockvalue'],financialMovements:['purchases','cashflow','receivables','payables','payouts','saleshistory','discrepancy'],chartOfAccounts:['cashflow'],cashCustody:['cashflow'],receivables:['receivables'],payables:['payables'],accountingPeriods:['accountingperiods']
+    pettyCashVouchers:['petty','purchases'],pettyCashReplenishments:['petty'],pettyCashSettings:['petty'],cfAccounts:['dashboard','pos','purchases','petty','cashflow','receivables','payables','payouts','undeposited','possettings'],cfLedger:['cashflow'],'books/journal':['stockvalue'],'books/monthlyNet':['stockvalue'],financialMovements:['purchases','cashflow','receivables','payables','payouts','saleshistory','discrepancy'],chartOfAccounts:['cashflow'],cashCustody:['cashflow'],receivables:['receivables'],payables:['payables'],accountingPeriods:['accountingperiods']
   };
   function policy(path,opts){opts=opts||{};return {critical:opts.critical===true||critical[path]===1,scopes:opts.scopes||scopes[path]||[]};}
   function consumerActive(c){return authorized&&(c.critical||c.scopes.indexOf(activeScope)>-1);}
@@ -61,7 +68,7 @@ function createSubscriptionHub(database,ops){
   function invalidateMasterCache(){try{localStorage.removeItem(MASTER_CACHE_KEY);}catch(_e){}}
   function attach(entry){
     entry.loading=true;entry.error=null;var generation=entry.generation||0,p=selectedPeriod(),failure=null;
-    entry.periodKey=p?periodKey(p):'';
+    entry.periodKey=p?periodKey(p):'';entry.targetKey=targetKey(entry.path,activeScope);
     function failed(error){if(generation!==(entry.generation||0))return;failure=error;entry.error=error;entry.loading=false;reportError(entry.path,error);dispatch(entry,entry.last||facade(entry));}
     function receive(snapshot){
       if(generation!==(entry.generation||0))return;
@@ -73,20 +80,27 @@ function createSubscriptionHub(database,ops){
     }
     if(entry.path==='archivedOrders'&&ops.readHistoricalOrders){
       if(p){entry.unsub=historicalPeriods.watch(p,rows=>receive({val:()=>rows}),failed);return;}
-      var stopped=false,refreshing=false,queued=false;
-      async function refreshArchive(){
-        if(stopped||generation!==(entry.generation||0))return;if(refreshing){queued=true;return;}refreshing=true;entry.loading=true;
+      var stopped=false,refreshing=false,queued=false,loadedOnce=false,sequence=null,pendingMarker=null;
+      // First load reads the latest page once. Later archive changes arrive through the
+      // bounded change journal and are patched by exact order ID, so one archived sale no
+      // longer re-reads the whole latest page in every open tab.
+      function changedIds(marker,previous){var next=Number(marker&&marker.sequence);if(!loadedOnce||previous===null||!Number.isSafeInteger(next)||next<=previous)return null;var changes=Object.values(marker&&marker.changes||{}).filter(function(c){return c&&c.sequence>previous&&c.sequence<=next;}).sort(function(a,b){return a.sequence-b.sequence;});if(changes.length!==next-previous||!changes.every(function(c,i){return c.sequence===previous+i+1&&typeof c.orderId==='string'&&c.orderId;}))return null;return Array.from(new Set(changes.map(function(c){return c.orderId;})));}
+      async function refreshArchive(marker){
+        if(stopped||generation!==(entry.generation||0))return;if(refreshing){queued=true;pendingMarker=marker;return;}refreshing=true;
+        var previous=sequence,next=Number(marker&&marker.sequence);sequence=Number.isSafeInteger(next)&&next>0?next:null;
         try{
-          if(p){entry.live=await readHistoricalPeriod(p);entry.archiveCursor=null;entry.hasOlder=false;}
-          else{var result=await ops.readHistoricalOrders({mode:'latest',limit:HISTORY_BOUNDS.archivedOrders.limit});entry.live=result.orders||{};entry.archiveCursor=result.cursor||null;entry.hasOlder=result.hasMore===true;}
-          if(stopped||generation!==(entry.generation||0))return;entry.loading=false;entry.error=null;dispatch(entry,facade(entry));
+          if(loadedOnce&&previous!==null&&sequence===previous)return;
+          var ids=changedIds(marker,previous);
+          if(ids&&ids.length){var patch=await ops.readHistoricalOrders({mode:'ids',ids:ids});if(stopped||generation!==(entry.generation||0))return;var rows=patch.orders||{};ids.forEach(function(id){if(rows[id]){if(entry.older[id]&&!entry.live[id])entry.older[id]=rows[id];else entry.live[id]=rows[id];}else{delete entry.live[id];delete entry.older[id];}});}
+          else{entry.loading=true;var result=await ops.readHistoricalOrders({mode:'latest',limit:HISTORY_BOUNDS.archivedOrders.limit});if(stopped||generation!==(entry.generation||0))return;entry.live=result.orders||{};entry.archiveCursor=result.cursor||null;entry.hasOlder=result.hasMore===true;loadedOnce=true;}
+          entry.loading=false;entry.error=null;dispatch(entry,facade(entry));
           if(entries.financialMovements&&entries.financialMovements.refreshSources)entries.financialMovements.refreshSources();
-        }catch(error){failed(error);}finally{refreshing=false;if(queued&&!stopped){queued=false;refreshArchive();}}
+        }catch(error){sequence=null;failed(error);}finally{refreshing=false;if(queued&&!stopped){queued=false;var m=pendingMarker;pendingMarker=null;refreshArchive(m);}}
       }
       var stopMarker=onValue(ref(database,'historicalArchiveSync'),function(snapshot){
         var marker=snapshot.val()||{};
         if(marker.deleted&&marker.orderId){delete entry.live[marker.orderId];delete entry.older[marker.orderId];}
-        refreshArchive();
+        refreshArchive(marker);
       },failed);
       entry.unsub=function(){stopped=true;stopMarker();};return;
     }
@@ -137,7 +151,7 @@ function createSubscriptionHub(database,ops){
   return {
     invalidateMasterCache:invalidateMasterCache,
     subscribe:function(path,callback,opts){var p=policy(path,opts),entry=entries[path]||(entries[path]={path:path,consumers:{},unsub:null,last:null,live:{},older:{},hasOlder:true}),id=String(nextId++);entry.consumers[id]={callback:callback,critical:p.critical,scopes:p.scopes,wasActive:false};reconcileEntry(entry);return function(){delete entry.consumers[id];reconcileEntry(entry);};},
-    authorize:function(){authorized=true;liveStartedAt=typeof performance!=='undefined'&&performance.now?performance.now():Date.now();liveReadyRecorded=false;try{performance.mark('accaza-live-start');}catch(_e){}reconcile();},deauthorize:function(){authorized=false;rollingStops.forEach(stop=>stop());reconcile();historicalPeriods.clear();},activate:function(scope){var nextScope=scope||'dashboard',changed=nextScope!==activeScope;activeScope=nextScope;if(changed){rollingStops.forEach(stop=>stop());Object.keys(entries).forEach(function(path){var entry=entries[path];if(!HISTORY_BOUNDS[path]||!entry.unsub)return;resetEntry(entry);});historicalPeriods.clear();}reconcile();},
+    authorize:function(){authorized=true;liveStartedAt=typeof performance!=='undefined'&&performance.now?performance.now():Date.now();liveReadyRecorded=false;try{performance.mark('accaza-live-start');}catch(_e){}reconcile();},deauthorize:function(){authorized=false;rollingStops.forEach(stop=>stop());reconcile();historicalPeriods.clear();},activate:function(scope){var nextScope=scope||'dashboard',changed=nextScope!==activeScope;activeScope=nextScope;if(changed){rollingStops.forEach(stop=>stop());var kept={};Object.keys(entries).forEach(function(path){var entry=entries[path];if(!HISTORY_BOUNDS[path]||!entry.unsub)return;var stillNeeded=Object.keys(entry.consumers).some(function(id){return consumerActive(entry.consumers[id]);});if(stillNeeded&&entry.targetKey===targetKey(path,nextScope)&&!entry.error){kept[path]=true;return;}resetEntry(entry);});if(!(kept.archivedOrders&&String(entries.archivedOrders.targetKey).indexOf('period:')===0))historicalPeriods.clear();}reconcile();},
     loadOlder:async function(path){var spec=HISTORY_BOUNDS[path],entry=entries[path];if(reportPeriod()&&(salesPath(path)||path==='financialMovements'))return {loaded:0,hasOlder:entry?entry.loading:false};if(!spec||!entry)throw new Error('No paginated subscription for '+path);var merged=Object.assign({},entry.older||{},entry.live||{}),keys=Object.keys(merged),oldest=null;keys.forEach(function(k){var v=merged[k]||{},sv=Number(v[spec.field])||0;if(!oldest||sv<oldest.value||(sv===oldest.value&&k<oldest.key))oldest={value:sv,key:k};});if(!oldest){entry.hasOlder=false;return {loaded:0,hasOlder:false};}if(path==='archivedOrders'&&ops.readHistoricalOrders){var page=await ops.readHistoricalOrders({mode:'before',cursor:entry.archiveCursor||{value:oldest.value,id:oldest.key},limit:spec.page}),archiveRows=page.orders||{};Object.assign(entry.older,archiveRows);entry.archiveCursor=page.cursor||entry.archiveCursor;entry.hasOlder=page.hasMore===true;dispatch(entry,facade(entry));return {loaded:Object.keys(archiveRows).length,hasOlder:entry.hasOlder};}var snap=await get(query(ref(database,path),orderByChild(spec.field),endBefore(oldest.value,oldest.key),limitToLast(spec.page+1))),rows=[];snap.forEach(function(ch){rows.push({key:ch.key,value:ch.val()||{}});});var hasOlder=rows.length>spec.page;if(hasOlder)rows.shift();rows.forEach(function(r){entry.older[r.key]=r.value;});entry.hasOlder=hasOlder;dispatch(entry,facade(entry));return {loaded:rows.length,hasOlder:hasOlder};},
     readHistoricalPeriod:readHistoricalPeriod,
     watchRollingSales:function(period,data,error){
