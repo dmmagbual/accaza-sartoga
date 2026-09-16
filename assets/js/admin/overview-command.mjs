@@ -39,17 +39,26 @@ async function render(){
   root.querySelectorAll('[data-occ-route]').forEach(button=>button.onclick=()=>openTab(button.getAttribute('data-occ-route')));
 }
 
+// System Health is management-only on the server. Non-management sessions (the
+// POS till) must never call it, and a failed call must not be retried on every
+// live-counter change: that loop produced ~2,000 rejected calls a day.
+const SYSTEM_HEALTH_FAILURE_BACKOFF_MS=10*60*1000;
+let exceptionFailedAt=0;
+function systemHealthAllowed(){const authz=window.__accazaAuthz;return !!(authz&&authz.isPrivileged);}
+
 async function loadExceptions(force=false){
   if(exceptionPromise)return exceptionPromise;
+  if(!systemHealthAllowed())return exceptionData;
   if(!force&&exceptionData)return exceptionData;
+  if(!force&&exceptionFailedAt&&Date.now()-exceptionFailedAt<SYSTEM_HEALTH_FAILURE_BACKOFF_MS)return exceptionData;
   const api=window.__accaza;if(!api||!api.getOperationalExceptions)return exceptionData;
   exceptionLoading=true;
   exceptionPromise=(async()=>{
     try{
       const response=await api.getOperationalExceptions(force);
-      exceptionData=response&&response.data||response;exceptionAt=Number(exceptionData&&exceptionData.generatedAt)||0;
+      exceptionData=response&&response.data||response;exceptionAt=Number(exceptionData&&exceptionData.generatedAt)||0;exceptionFailedAt=0;
       return exceptionData;
-    }catch(_error){exceptionData=null;return null;}
+    }catch(_error){exceptionData=null;exceptionFailedAt=Date.now();return null;}
     finally{exceptionLoading=false;exceptionPromise=null;render();}
   })();
   return exceptionPromise;

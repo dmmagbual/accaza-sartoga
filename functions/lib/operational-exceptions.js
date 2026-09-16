@@ -17,6 +17,8 @@ const CLEARING_ACCOUNTS = [
 const CLEARING_CODES = new Set(CLEARING_ACCOUNTS.map((a) => a.code));
 // A standing General Ledger residual above this many pesos is flagged for review.
 const CLEARING_RESIDUAL_THRESHOLD = 50;
+// Dead-lettered background events stay on the live exception list for this long.
+const DEAD_LETTER_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 function round2(n) {return Math.round((Number(n) || 0) * 100) / 100;}
 // Authoritative per-code balances from the Books General Ledger (/books/journal),
 // where the POS semantic->chart-code mapping is already applied. Handles daily
@@ -116,7 +118,19 @@ function buildOperationalExceptions(input, now = Date.now()) {
     if (Math.abs(bal) > clearingThreshold) exceptions.push(item("clearing_residual", "warning", `clearing_${code}`, `${name} (${code}) has not cleared to zero`, `Books General Ledger shows a ${bal > 0 ? "debit" : "credit"} residual of PHP ${Math.abs(bal).toFixed(2)} in ${code} ${name}. This clearing/suspense account must settle to zero \u2014 review and clear the pending posting in Finance Books.`, now, "cashflow"));
   });
   paymentRoutingIssues(input.payMethods, input.cfAccounts, now).forEach((x) => exceptions.push(x));
+  // Background triggers that exhausted their bounded retry window. The event was
+  // acknowledged to stop repeated redelivery (and repeated database downloads),
+  // so the unfinished work must be visible until it ages out of the window; the
+  // posting-specific gap checks above keep flagging any record left incomplete.
+  rows(input.deadLetters).forEach((row) => {
+    const at = Number(row.abandonedAt || 0);
+    if (row.status !== "open" || !at || now - at > DEAD_LETTER_WINDOW_MS) return;
+    const params = Object.keys(row.params || {}).map((key) => `${key} ${row.params[key]}`).join(", ");
+    exceptions.push(item("background_failure", "critical", row.id, `Background task ${String(row.function || "unknown").slice(0, 80)} stopped retrying`,
+      `${params ? params + ": " : ""}${String(row.error || "Unknown error").slice(0, 200)}. The system stopped retrying after the retry window to protect the database; confirm the linked record and complete it through its controlled repair workflow.`,
+      at, "operations"));
+  });
   const rank = {critical: 0, warning: 1};exceptions.sort((a, b) => (rank[a.severity] - rank[b.severity]) || (b.at - a.at));
   return {generatedAt: now, scanned: {activeOrders: active.length, recentOrders: orders.length, offlineSyncs: offline.length, custodyRecords: custody.length}, counts: {critical: exceptions.filter((x) => x.severity === "critical").length, warning: exceptions.filter((x) => x.severity === "warning").length, total: exceptions.length}, exceptions: exceptions.slice(0, 100)};
 }
-module.exports = {buildOperationalExceptions, CLEARING_ACCOUNTS, CLEARING_RESIDUAL_THRESHOLD, clearingBalancesFromJournal, clearingBalancesFromMonthlyNet, paymentRoutingIssues};
+module.exports = {buildOperationalExceptions, DEAD_LETTER_WINDOW_MS, CLEARING_ACCOUNTS, CLEARING_RESIDUAL_THRESHOLD, clearingBalancesFromJournal, clearingBalancesFromMonthlyNet, paymentRoutingIssues};

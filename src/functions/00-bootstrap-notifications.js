@@ -5,7 +5,7 @@
  * Trigger: when an order's status changes to "Completed", send a Web Push
  * notification to the customer's installed app (pick-up or delivery message).
  */
-const {onValueUpdated, onValueWritten, onValueCreated, onValueDeleted} = require("firebase-functions/v2/database");
+const DatabaseTriggers = require("firebase-functions/v2/database");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {initializeApp} = require("firebase-admin/app");
@@ -38,6 +38,21 @@ const ProductionValidation = require("./lib/production-validation");
 const AlertEscalation = require("./lib/alert-escalation");
 const AssuranceControls = require("./lib/assurance-controls");
 const OrderRecords = require("./lib/order-records");
+const RetryGuard = require("./lib/retry-guard");
+// Every `retry: true` database trigger is bounded: transient failures still
+// retry, but an event that keeps failing past the retry window is recorded in
+// /functionDeadLetters and acknowledged instead of being redelivered (and its
+// reads re-downloaded) for days. See functions/lib/retry-guard.js.
+const retryGuardDeps = {
+  now: () => Date.now(),
+  functionName: () => process.env.FUNCTION_TARGET || process.env.K_SERVICE || "unknown",
+  recordDeadLetter: (key, record) => getDatabase().ref(`/${RetryGuard.DEAD_LETTER_ROOT}/${key}`).set(record),
+  logError: (message, context) => logger.error(message, context),
+};
+const onValueUpdated = RetryGuard.wrapTriggerFactory(DatabaseTriggers.onValueUpdated, retryGuardDeps);
+const onValueWritten = RetryGuard.wrapTriggerFactory(DatabaseTriggers.onValueWritten, retryGuardDeps);
+const onValueCreated = RetryGuard.wrapTriggerFactory(DatabaseTriggers.onValueCreated, retryGuardDeps);
+const onValueDeleted = RetryGuard.wrapTriggerFactory(DatabaseTriggers.onValueDeleted, retryGuardDeps);
 const SharedChoiceValidation = require("./lib/shared-choice-validation");
 const HistoricalArchive = require("./lib/historical-archive");
 

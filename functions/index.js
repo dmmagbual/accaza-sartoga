@@ -5,7 +5,7 @@
  * Trigger: when an order's status changes to "Completed", send a Web Push
  * notification to the customer's installed app (pick-up or delivery message).
  */
-const {onValueUpdated, onValueWritten, onValueCreated, onValueDeleted} = require("firebase-functions/v2/database");
+const DatabaseTriggers = require("firebase-functions/v2/database");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {initializeApp} = require("firebase-admin/app");
@@ -38,6 +38,21 @@ const ProductionValidation = require("./lib/production-validation");
 const AlertEscalation = require("./lib/alert-escalation");
 const AssuranceControls = require("./lib/assurance-controls");
 const OrderRecords = require("./lib/order-records");
+const RetryGuard = require("./lib/retry-guard");
+// Every `retry: true` database trigger is bounded: transient failures still
+// retry, but an event that keeps failing past the retry window is recorded in
+// /functionDeadLetters and acknowledged instead of being redelivered (and its
+// reads re-downloaded) for days. See functions/lib/retry-guard.js.
+const retryGuardDeps = {
+  now: () => Date.now(),
+  functionName: () => process.env.FUNCTION_TARGET || process.env.K_SERVICE || "unknown",
+  recordDeadLetter: (key, record) => getDatabase().ref(`/${RetryGuard.DEAD_LETTER_ROOT}/${key}`).set(record),
+  logError: (message, context) => logger.error(message, context),
+};
+const onValueUpdated = RetryGuard.wrapTriggerFactory(DatabaseTriggers.onValueUpdated, retryGuardDeps);
+const onValueWritten = RetryGuard.wrapTriggerFactory(DatabaseTriggers.onValueWritten, retryGuardDeps);
+const onValueCreated = RetryGuard.wrapTriggerFactory(DatabaseTriggers.onValueCreated, retryGuardDeps);
+const onValueDeleted = RetryGuard.wrapTriggerFactory(DatabaseTriggers.onValueDeleted, retryGuardDeps);
 const SharedChoiceValidation = require("./lib/shared-choice-validation");
 const HistoricalArchive = require("./lib/historical-archive");
 
@@ -824,12 +839,12 @@ exports.getOperationalExceptions = onCall(
 
 async function scanOperationalExceptions(db, now) {
     const days = [];for (let offset = 0; offset < 7; offset++) days.push(financeDateFromTimestamp(now - offset * 86400000));
-    const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, booksMonthlyNetSnap, booksMonthlyNetMetaSnap, posSettingsSnap, cfAccountsSnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),db.ref("/books/monthlyNet").get(),db.ref("/books/monthlyNetMeta").get(),db.ref("/posSettings").get(),db.ref("/cfAccounts").get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
+    const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, booksMonthlyNetSnap, booksMonthlyNetMetaSnap, posSettingsSnap, cfAccountsSnap, deadLetterSnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),db.ref("/books/monthlyNet").get(),db.ref("/books/monthlyNetMeta").get(),db.ref("/posSettings").get(),db.ref("/cfAccounts").get(),db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}`).orderByChild("abandonedAt").startAt(now - OperationalExceptions.DEAD_LETTER_WINDOW_MS).limitToLast(50).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
     let booksMonthlyNet = booksMonthlyNetSnap.val() || {};
     if (!booksMonthlyNetMetaSnap.exists()) booksMonthlyNet = await rebuildBooksMonthlyNet(db, (await db.ref("/books/journal").get()).val() || {});
     const orders = ordersSnap.val() || {},orderIds=Object.keys(orders).slice(0,100),financialPairs=await Promise.all(orderIds.map(async(id)=>{const snap=await db.ref(`/financialMovements/sale_${id}`).get();return[id,snap.exists()?snap.val():null];}));
     const financialMovements = {},inventoryMovementEvidence={};financialPairs.forEach(([id, value]) => {if (value) financialMovements[`sale_${id}`] = value;});Object.values(inventoryMovementSnap.val()||{}).forEach(m=>{if(m&&m.sourceType==="order"&&m.sourceId)inventoryMovementEvidence[m.sourceId]=true;});const telemetry = {};days.forEach((day, i) => {telemetry[day] = telemetrySnaps[i].val() || {};});
-    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: (posSettingsSnap.val() || {}).payMethods || [], cfAccounts: cfAccountsSnap.val() || {}}, now);
+    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: (posSettingsSnap.val() || {}).payMethods || [], cfAccounts: cfAccountsSnap.val() || {}, deadLetters: deadLetterSnap.val() || {}}, now);
 }
 
 // Phase 16: bounded, read-only production certification snapshot. It does not
@@ -4376,7 +4391,12 @@ exports.onOrderFinalize = onValueWritten(
     if (o.inventoryDeducted && o.inventoryLedgerVersion === 1) return;
 
     try {
-      const [recSnap, optSnap, invSnap, miSnap, psSnap, ogSnap, pkSnap, planSnap] = await Promise.all([
+      // The immutable sale-time plan is read first. When it already exists (a
+      // retry, or a re-write of an order that was finalized before archiving),
+      // the catalog is not needed and is not downloaded again.
+      const planSnap = await db.ref(`/orderInventoryPlans/${orderId}`).get();
+      const hasPlan = planSnap.exists();
+      const [recSnap, optSnap, invSnap, miSnap, psSnap, ogSnap, pkSnap] = hasPlan ? [] : await Promise.all([
         db.ref("/recipes").get(),
         db.ref("/optionRecipes").get(),
         db.ref("/inventory").get(),
@@ -4384,22 +4404,22 @@ exports.onOrderFinalize = onValueWritten(
         db.ref("/posSettings").get(),
         db.ref("/optionGroups").get(),
         db.ref("/packagingRules").get(),
-        db.ref(`/orderInventoryPlans/${orderId}`).get(),
       ]);
-      const recipes = recSnap.val() || {};
-      const inv = invSnap.val() || {};
-      const mi = miSnap.val() || {};
-      const ps = psSnap.val() || {};
-      const optRaw = optSnap.val() || {};
+      const val = (snap) => (snap && snap.val()) || {};
+      const recipes = val(recSnap);
+      const inv = val(invSnap);
+      const mi = val(miSnap);
+      const ps = val(psSnap);
+      const optRaw = val(optSnap);
       const optMap = {};
       Object.keys(optRaw).forEach((k) => {
         const v = optRaw[k] || {};
         optMap[v.label || k] = v;
       });
       const optionCosts = ps.optionCosts || {};
-      const optionGroups = ogSnap.val() || {};
+      const optionGroups = val(ogSnap);
 
-      const costing = planSnap.exists()?null:Costing.costOrder({
+      const costing = hasPlan?null:Costing.costOrder({
         lineItems: o.lineItems, recipes, inventory: inv, menuItems: mi,
         sharedBaseIngredients: ps.sharedBaseIngredients || {}, optionCosts, optionRecipes: optMap, optionGroups,
         // Packaging follows how a drink is served, from one shared table. The server reads it
