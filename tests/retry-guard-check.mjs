@@ -15,10 +15,11 @@ const fail = (message) => { throw new Error(message); };
 const HOUR = 3600000, now = Date.UTC(2026, 8, 16, 2);
 function harness() {
   const letters = [], logs = [];
-  const counts = {};
+  const counts = {}, budgets = {};
   const deps = {now: () => now, functionName: () => 'onOrderFinalize', recordDeadLetter: async (key, row) => { letters.push({key, row}); }, logError: (m, c) => logs.push({m, c}),
-    countFailure: async (key) => (counts[key] = (counts[key] || 0) + 1), clearFailures: async (key) => { delete counts[key]; }};
-  return {letters, logs, deps, counts};
+    countFailure: async (key) => (counts[key] = (counts[key] || 0) + 1), clearFailures: async (key) => { delete counts[key]; },
+    recordFunctionFailure: async ({function: fn, day, newEvent}) => { const b = budgets[`${fn}/${day}`] = budgets[`${fn}/${day}`] || {events: 0, failures: 0}; b.events += newEvent ? 1 : 0; b.failures++; return Object.assign({}, b); }};
+  return {letters, logs, deps, counts, budgets};
 }
 const boom = async () => { throw new Error('Inventory movement quantity cannot be zero.'); };
 const event = (ageMs) => ({id: 'evt-1', time: new Date(now - ageMs).toISOString(), params: {orderId: 'POS-ZRYDBO'}});
@@ -37,6 +38,28 @@ const event = (ageMs) => ({id: 'evt-1', time: new Date(now - ageMs).toISOString(
   for (let attempt = 1; attempt <= 11; attempt++) { try { if (await handler(event(60000)) === null && attempt !== 11) fail(`Attempt ${attempt} must still be retried.`); } catch (_e) { thrown++; } }
   if (thrown !== 10 || h.letters.length !== 1 || h.letters[0].row.attempts !== 11) fail('Ten retries are allowed; the eleventh failure is dead-lettered with its attempt count.');
   if (Object.keys(h.counts).length) fail('The failure counter is cleared once the event is dead-lettered.');
+}
+// A systematic fault: after 20 distinct failed events in a Manila day, the function stops retrying.
+{
+  if (RetryGuard.MAX_FAILED_EVENTS_PER_DAY !== 20) fail('The daily failure budget must be 20 events per function.');
+  const h = harness(), handler = RetryGuard.guardRetryHandler('/financialMovements/{movementId}', boom, h.deps);
+  const ev = (i) => ({id: `evt-${i}`, time: new Date(now - 1000).toISOString(), params: {movementId: `m${i}`}});
+  let thrown = 0;
+  for (let i = 1; i <= 20; i++) { try { await handler(ev(i)); } catch (_e) { thrown++; } }
+  if (thrown !== 20 || h.letters.length) fail('The first 20 failing events keep their retries.');
+  if (await handler(ev(21)) !== null || h.letters.length !== 1 || h.letters[0].row.functionStopped !== true || h.letters[0].row.failedEventsToday !== 21) fail('The 21st failing event is dead-lettered at once and flagged as a stopped function.');
+  if (await handler(ev(3)) !== null || h.letters.length !== 2) fail('Once stopped, retries of earlier events are not attempted again that day.');
+  const exceptions = buildOperationalExceptions({deadLetters: {a: h.letters[0].row}}, now);
+  const stopped = (exceptions.exceptions || exceptions).find ? (exceptions.exceptions || exceptions).find((x) => x.category === 'background_failure') : null;
+  if (!stopped || stopped.severity !== 'critical' || !/stopped for today/.test(stopped.title) || !/More than 20 events/.test(stopped.detail)) fail('A stopped function is raised as one critical System Health item.');
+  if (RetryGuard.budgetDay(Date.UTC(2026, 8, 16, 17)) !== '2026-09-17') fail('The budget day follows the Manila calendar.');
+}
+// If the budget cannot be read, the per-event limit still applies.
+{
+  const h = harness(); h.deps.recordFunctionFailure = async () => { throw new Error('rtdb unavailable'); };
+  const handler = RetryGuard.guardRetryHandler('/x', boom, h.deps);
+  let thrown = 0; for (let i = 0; i < 11; i++) { try { await handler(event(60000)); } catch (_e) { thrown++; } }
+  if (thrown !== 10 || h.letters.length !== 1) fail('Without the daily budget each event still stops after 10 retries.');
 }
 // If the counter cannot be written, a young event keeps retrying and the age backstop still applies.
 {
