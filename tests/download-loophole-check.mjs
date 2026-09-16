@@ -379,7 +379,7 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
     return {ref};
   }
   const src = read('src/functions/23-cash-balance-summary.js');
-  const sandbox = {require: (m) => m === './lib/cash-balances' ? CashBalances : null, exports: {}, onCall: () => null, onValueWritten: () => null, ORDER_REGION: 'x', ENFORCE_APP_CHECK: false, Date, Math, JSON, Object, Number, String, Promise, Boolean, Array, Error};
+  const sandbox = {shallowDatabaseKeys: async () => [], require: (m) => m === './lib/cash-balances' ? CashBalances : null, exports: {}, onCall: () => null, onValueWritten: () => null, ORDER_REGION: 'x', ENFORCE_APP_CHECK: false, Date, Math, JSON, Object, Number, String, Promise, Boolean, Array, Error};
   vm.createContext(sandbox);
   vm.runInContext(`${src};globalThis.current = currentCashBalances;`, sandbox);
   const now = Date.UTC(2026, 8, 16, 7);
@@ -419,8 +419,29 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   const stuckReads = [];
   const fallback = await sandbox.current(fakeDb(stuck, stuckReads), now);
   assert.equal(fallback.source, 'ledger'); assert.equal(fallback.balances.registerCents, full.registerCents);
+  // A rebuild never writes more than 400 applied records at once (each fires a backup-marker
+  // trigger; one write may trigger at most 1,000 functions) and writes the summary last.
+  {
+    const many = {};
+    for (let i = 0; i < 1269; i += 1) many[`m${i}`] = mv(`m${i}`, 'asset:register_cash', 1);
+    const rstate = {financialMovements: many, cashBalanceSummary: {schemaVersion: 3, complete: true, balances: {}}, cashBalanceSummaryApplied: {stale_one: {fingerprint: 'x', delta: {}}}, cashBalanceSummaryPending: {}};
+    const updates = [];
+    const rdb = fakeDb(rstate, []);
+    const origRef = rdb.ref;
+    rdb.ref = (path = '/') => { const r = origRef(path); if (path === '/' || path === undefined) r.update = async (w) => { updates.push(Object.keys(w)); for (const [k, v] of Object.entries(w)) await origRef(`/${k}`).set(v === null ? null : v); }; return r; };
+    const origSet = null;
+    sandbox.shallowDatabaseKeys = async (_db, path) => Object.keys(rstate[path] || {});
+    const rebuilt = await sandbox.current(rdb, now);
+    const appliedWrites = updates.map((keys) => keys.filter((k) => k.startsWith('cashBalanceSummaryApplied/')).length);
+    assert.ok(Math.max(...appliedWrites) <= 400, `applied records are written in chunks (${Math.max(...appliedWrites)})`);
+    assert.ok(updates.at(-1).includes('cashBalanceSummary') && updates.at(-1).includes('cashFlowIndexMeta'), 'the summary and cash-flow index are written last');
+    assert.equal(Object.keys(rstate.cashBalanceSummaryApplied).length, 1269, 'stale applied records are removed');
+    assert.equal(rstate.cashBalanceSummary.schemaVersion, CashBalances.SCHEMA_VERSION);
+    assert.equal(rebuilt.balances.registerCents, 126900);
+  }
   // Callers of the cash control no longer read the ledger themselves.
   const bundle = read('functions/index.js');
+  assert.ok(bundle.includes('for (let i = 0; i < paths.length; i += 150)'), 'Books journal sync writes at most 150 entries per update');
   const available = bundle.slice(bundle.indexOf('async function availableCashOnHandAboveFloat'), bundle.indexOf('function poolCustodyInflowRecord'));
   assert.ok(available.includes('currentCashBalances(db)') && !available.includes('db.ref("/financialMovements")'), 'availableCashOnHandAboveFloat must use the cash summary');
   const review = bundle.slice(bundle.indexOf('exports.reviewDiscrepancy'), bundle.indexOf('\nexports.', bundle.indexOf('exports.reviewDiscrepancy') + 10));
