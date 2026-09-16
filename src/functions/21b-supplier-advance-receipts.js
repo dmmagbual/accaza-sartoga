@@ -36,13 +36,22 @@ async function supplierAdvanceShiftPayOuts(db) {
 // copied to /pettyCashReceipts/{id}, read back and compared, and only then removed from the
 // voucher, which is marked hasReceipt. Evidence is never dropped: on any mismatch the inline
 // copy stays. `vouchers` is the voucher list the caller already holds.
-const LEGACY_RECEIPT_PATTERN = /^data:image\/(jpeg|png|webp);base64,/;
+//
+// Sep 2026 follow-up: the previous 1.5 MB size ceiling left every larger image inline for
+// good -- a browser that compresses to the 5 MB proof ceiling the portal accepts produces a
+// base64 string of about 6.7 M characters, and /pettyCashVouchers is still read in full by
+// every nightly backup, so one stranded image cost its own size again every night, for ever.
+// The ceiling now sits above anything the upload path can store, and "jpg" is accepted
+// because that is what the portal's own proof decoder accepts. An inline copy that cannot be
+// verified is still kept (see below), but nothing is skipped merely for being large.
+const LEGACY_RECEIPT_PATTERN = /^data:image\/(jpeg|jpg|png|webp);base64,/;
+const MAX_LEGACY_RECEIPT_CHARS = 8_000_000;
 async function moveLegacyVoucherReceipts(db, vouchers, now = Date.now()) {
   const moved = [], kept = [];
   for (const [id, voucher] of Object.entries(vouchers || {})) {
     const image = voucher && voucher.receiptImg;
     if (typeof image !== "string" || !image) continue;
-    if (!LEGACY_RECEIPT_PATTERN.test(image) || image.length >= 1500000) { kept.push(id); continue; }
+    if (!LEGACY_RECEIPT_PATTERN.test(image) || image.length > MAX_LEGACY_RECEIPT_CHARS) { kept.push(id); continue; }
     const receiptRef = db.ref(`/pettyCashReceipts/${id}`), existing = (await receiptRef.child("meta").get()).val();
     if (existing && Number(existing.bytes) !== image.length) { kept.push(id); continue; }
     if (!existing) await receiptRef.set({meta: {createdAt: Number(voucher.createdAt) || now, bytes: image.length, movedAt: now, source: "legacy_inline"}, image});

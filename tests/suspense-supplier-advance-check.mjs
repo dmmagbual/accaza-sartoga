@@ -16,10 +16,15 @@ for(const marker of ['convert_suspense_to_supplier_advance','rows.length!==2','"
 for(const marker of ['remainingAmount:value','allocatedAmount:0','allocations:{}','fundingAccountId','operationalAuditRecord("convert_suspense_supplier_advance"'])must(server,marker,'Supplier subledger or audit treatment missing');
 for(const marker of ['!after.conversionMovementId','row.conversionMovementId','id === "revolving_fund"','account:"asset:petty_cash"'])must(vouchers,marker,'Converted advances can duplicate cash or return to the wrong account');
 must(auth,'"convert_suspense_supplier_advance"','Manager approval action is not registered');
-for(const marker of ['Convert to supplier advance','suspenseAdvanceEligible','__suspenseAdvanceConversions'])must(journal,marker,'Journal conversion action missing');
+for(const marker of ['Convert to supplier advance','suspenseAdvanceEligible','!e.supplierAdvanceConversionId'])must(journal,marker,'Journal conversion action missing');
 for(const marker of ['App.convertSuspenseAdvance','This does not pay cash again','supplierId','reference','purpose','reason'])must(ui,marker,'Conversion form safeguard missing');
-for(const marker of ['createManagerApproval','postFinancialCommand','suspense_advance_reclass_','/suspenseAdvanceConversions'])must(bridge,marker,'Authenticated conversion bridge missing');
-must(html,'assets/js/books/suspense-advance.mjs?v=105','Conversion bridge is not loaded by Books');
+for(const marker of ['createManagerApproval','postFinancialCommand','suspense_advance_reclass_'])must(bridge,marker,'Authenticated conversion bridge missing');
+// Download audit (Sep 2026): the conversion flag is now read from the journal entry the server
+// already stamps, so Books never downloads the whole /suspenseAdvanceConversions node.
+if(/\bonValue\s*\(/.test(bridge))throw new Error('The conversion bridge must not attach a listener to the whole conversions node');
+const livePos=fs.readFileSync('assets/js/books/live-pos.mjs','utf8');
+if(!livePos.includes('supplierAdvanceConversionId:n.supplierAdvanceConversionId||""'))throw new Error('Journal entries no longer carry the conversion flag the conversion action reads');
+must(html,'assets/js/books/suspense-advance.mjs?v=106','Conversion bridge is not loaded by Books');
 must(sw,"'/assets/js/books/suspense-advance.mjs'",'Conversion bridge is not cached');
 if(!manifest.authoritativeFiles.includes('assets/js/books/suspense-advance.mjs'))throw new Error('Conversion bridge is not release-authoritative');
 must(rules,'"suspenseAdvanceConversions"','Conversion status is not readable to signed-in Admin Books users');

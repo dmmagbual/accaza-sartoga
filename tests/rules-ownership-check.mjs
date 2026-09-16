@@ -43,6 +43,9 @@ try{
       incidents:{incident_one:{severity:'SEV2',status:'investigating',createdAt:1}},
       deletionAudit:{orders:{old_deleted:{orderId:'old_deleted',deletedAt:1}}},
       clientTelemetryDaily:{'2026-08-09':{metrics:{pos_boot:{count:1,totalMs:500,maxMs:500,failed:0}}}},
+      staffMessages:{msg_one:{title:'Shift',body:'Close the till',audience:'all',createdAt:1,expiresAt:2}},
+      staffMessageReceipts:{msg_one:{owner:{userUid:'owner',readAt:2}}},
+      staffReceiptIndex:{owner:{msg_one:{messageId:'msg_one',readAt:2}}},
     });
   });
 
@@ -121,6 +124,18 @@ try{
   await assertSucceeds(get(ref(manager,'clientTelemetryDaily/2026-08-09')));
   await assertFails(get(ref(staff,'clientTelemetryDaily/2026-08-09')));
   await assertFails(set(ref(owner,'clientTelemetryDaily/2026-08-10'),{metrics:{forged:{count:1}}}));
+  // Staff Inbox (Sep 2026 download audit): each reader reads and seeds only their own index,
+  // and nobody can write the shared message or receipt records from a browser.
+  await assertSucceeds(get(ref(owner,'staffMessages/msg_one')));
+  await assertFails(get(ref(guest,'staffMessages/msg_one')));
+  await assertFails(set(ref(owner,'staffMessages/forged'),{title:'x',body:'y',createdAt:3}));
+  await assertSucceeds(get(ref(owner,'staffReceiptIndex/owner')));
+  await assertFails(get(ref(owner,'staffReceiptIndex/manager')));
+  await assertFails(get(ref(staff,'staffReceiptIndex/owner')));
+  await assertFails(get(ref(guest,'staffReceiptIndex/owner')));
+  await assertSucceeds(set(ref(owner,'staffReceiptIndex/owner/msg_one'),{messageId:'msg_one',readAt:2}));
+  await assertFails(set(ref(owner,'staffReceiptIndex/manager/msg_one'),{messageId:'msg_one',readAt:2}));
+  await assertFails(set(ref(owner,'staffMessageReceipts/forged/owner'),{userUid:'owner',readAt:3}));
 
   await assertFails(set(ref(a,'orders/forged'),{id:'forged',ownerUid:'customer-a',source:'online',status:'Pending',total:1}));
   await assertFails(update(ref(a,'orders/own'),{status:'Received',receivedByCustomer:true}));
