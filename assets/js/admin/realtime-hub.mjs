@@ -6,7 +6,7 @@ const HISTORY_BOUNDS={
   orders:{field:'timestamp',limit:250,page:250},archivedOrders:{field:'timestamp',limit:100,page:100},archivedReservations:{field:'archivedAt',limit:100,page:100},
   shifts:{field:'openAt',limit:100,page:100},activityLog:{field:'ts',limit:200,page:200},discrepancies:{field:'ts',limit:200,page:200},
   stockReceipts:{field:'ts',limit:250,page:250},purchaseInvoices:{field:'ts',limit:250,page:250},inventoryAdjustments:{field:'ts',limit:250,page:250},internalUsage:{field:'ts',limit:250,page:250},
-  cfLedger:{field:'ts',limit:300,page:300},financialMovements:{field:'occurredAt',limit:300,page:300},platformPayouts:{field:'settledAt',limit:100,page:100},inventoryMovements:{field:'occurredAt',limit:300,page:300}
+  cfLedger:{field:'ts',limit:200,page:200},financialMovements:{field:'occurredAt',limit:200,page:200},platformPayouts:{field:'settledAt',limit:100,page:100},inventoryMovements:{field:'occurredAt',limit:200,page:200}
 };
 const HISTORY_TAB_PATHS={saleshistory:['orders','archivedOrders','financialMovements'],analytics:['orders','archivedOrders'],pnl:['orders','archivedOrders','internalUsage','inventoryAdjustments','platformPayouts'],payouts:['orders','archivedOrders','platformPayouts','financialMovements'],stockvalue:['orders','archivedOrders','stockReceipts','inventoryAdjustments','internalUsage','inventoryMovements','financialMovements'],dailyreport:['orders','archivedOrders'],cashflow:['orders','archivedOrders','cfLedger','financialMovements','platformPayouts'],receivables:['orders','archivedOrders','financialMovements'],purchases:['purchaseInvoices','stockReceipts','inventoryMovements'],usage:['internalUsage','inventoryMovements'],inventory:['inventoryMovements'],ops:['shifts','activityLog'],discrepancy:['discrepancies'],reservations:['archivedReservations']};
 // activeOrders and inventory are unbounded (every currently-open order / every SKU must be
@@ -31,7 +31,7 @@ const INCREMENTAL_PATHS={activeOrders:1,inventory:1,posActiveShift:1};
 // on the same liveTarget query for live updates. Period-scoped variants (sales history,
 // financialMovements in saleshistory scope) keep their existing onValue handlers because
 // they use startAt/endAt range queries that need the full result on period change.
-const BOOTSTRAPPED_INCREMENTAL_BOUNDS={financialMovements:1,cfLedger:1,inventoryMovements:1,platformPayouts:1,'books/journal':1};
+const BOOTSTRAPPED_INCREMENTAL_BOUNDS={financialMovements:1,cfLedger:1,inventoryMovements:1,platformPayouts:1,'books/journal':1,orders:1,internalUsage:1,inventoryAdjustments:1,stockReceipts:1,purchaseInvoices:1,shifts:1,activityLog:1,discrepancies:1,archivedReservations:1};
 const VERSIONED_MASTER_PATHS={categories:1,optionGroups:1,menuItems:1};
 // Only rows that are still open are needed: custody that still holds cash (Sep 2026 audit).
 const OPEN_ROW_PATHS={cashCustody:{field:'remaining',start:0.005}};
