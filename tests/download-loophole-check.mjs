@@ -199,13 +199,19 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
 // once per build, never over a POS sale, an edited field, or while offline.
 {
   const manifest = JSON.parse(read('release-manifest.json'));
+  const published = JSON.parse(read('build-version.json'));
   const metas = {admin: read('admin.html'), books: read('books.html'), customer: read('index.html')};
   for (const [app, html] of Object.entries(metas)) {
     const build = Number((html.match(new RegExp(`<meta name="accaza-${app}-build" content="(\\d+)"`)) || [])[1]);
-    assert.equal(build, manifest.builds[app], `${app} page build must equal the release manifest, or every open tab would reload once for nothing`);
-    assert.equal((html.match(/<script src="assets\/js\/shared\/build-freshness\.js"><\/script>/g) || []).length, 1, `${app} must load the stale-tab guard once`);
+    assert.equal(build, manifest.builds[app], `${app} page build must equal the release manifest`);
+    assert.equal(build, published.builds[app], `${app} page build must equal build-version.json, or every open tab would reload once for nothing`);
+    assert.equal((html.match(/<script src="assets\/js\/shared\/build-freshness\.js(\?v=\d+)?"><\/script>/g) || []).length, 1, `${app} must load the stale-tab guard once`);
   }
-  assert.ok(read('sw.js').includes("'/assets/js/shared/build-freshness.js'"), 'the guard is part of the offline shell');
+  // release-manifest.json is excluded from GitHub Pages (it 404s in production), so the guard
+  // must read the small public build-version.json instead.
+  const jekyllExcludes = read('_config.yml');
+  assert.ok(/-\s*release-manifest\.json/.test(jekyllExcludes) && !/build-version/.test(jekyllExcludes), 'build-version.json must be published while the release manifest stays private');
+  assert.ok(read('sw.js').includes("'/assets/js/shared/build-freshness.js'") && read('sw.js').includes("'/build-version.json'"), 'the guard is part of the offline shell');
   const source = read('assets/js/shared/build-freshness.js');
   function run({app = 'admin', running = 533, published = 534, cart = false, syncing = 0, edited = false, online = true, storage = true, reloadedFor = ''} = {}) {
     let now = Date.UTC(2026, 8, 16, 4), interval = null, reloads = 0, fetches = 0;
@@ -218,7 +224,7 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
     class FakeDate extends Date { static now() { return now; } }
     const sessionStorage = {getItem: (k) => { if (!storage) throw new Error('blocked'); return store.has(k) ? store.get(k) : null; }, setItem: (k, v) => { if (!storage) throw new Error('blocked'); store.set(k, String(v)); }, removeItem: (k) => store.delete(k)};
     const win = {document, sessionStorage, navigator: {onLine: online}, location: {reload: () => { reloads += 1; }}, addEventListener() {}, setInterval: (fn, ms) => { interval = {fn, ms}; },
-      fetch: async (url, opts) => { fetches += 1; assert.equal(url, '/release-manifest.json'); assert.equal(opts.cache, 'no-store'); return {ok: true, json: async () => ({builds: {[app]: published}})}; },
+      fetch: async (url, opts) => { fetches += 1; assert.equal(url, '/build-version.json'); assert.equal(opts.cache, 'no-store'); return {ok: true, json: async () => ({builds: {[app]: published}})}; },
       __pos: {hasItems: () => cart}, __posOfflineState: () => ({syncing})};
     const context = vm.createContext({window: win, Date: FakeDate, String, Number, Boolean});
     vm.runInContext(source, context);
