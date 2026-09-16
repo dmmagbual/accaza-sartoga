@@ -24,7 +24,9 @@ const budgets={
   'assets/js/admin/register.js':175500,
   // Build 527 secures completed-sale corrections while retaining the sales reconciliation bridge;
   // retain a narrow ceiling above the reviewed generated bundle.
-  'assets/js/admin/analytics.js':166000,
+  // Build 533 replaces Stock Value's whole-journal listener with monthly totals plus the
+  // current month (about 0.4 KB of loader code in exchange for ~0.5 MB per tab open).
+  'assets/js/admin/analytics.js':167000,
   'assets/js/admin/finance.js':75000,
   // Build 106 adds consistent interactive feedback to Finance Books buttons.
   // Build 110 adds only the AP-page hooks; its 6 KB form remains isolated below.
@@ -50,6 +52,6 @@ if(salesPeriod.includes("ops.startAt(String")||salesPeriod.includes("orderByChil
 for(const source of [moduleLoader,hub,telemetry,functions])for(const marker of source===moduleLoader?['module_load','performance.now']:source===hub?['live_ready','liveStartedAt']:['module_load','live_ready'])if(!source.includes(marker))fail(`Measured performance telemetry missing: ${marker}`);
 
 const manifest=JSON.parse(read('release-manifest.json'));
-if(manifest.builds.admin!==532||manifest.builds.customer!==71||manifest.builds.books!==115||manifest.builds.serviceWorkerCache!==509)fail('Current build/cache versions are not synchronized');
+if(manifest.builds.admin!==534||manifest.builds.customer!==72||manifest.builds.books!==116||manifest.builds.serviceWorkerCache!==511)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');

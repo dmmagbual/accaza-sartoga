@@ -351,7 +351,9 @@ async function postPreCompletionCashRefund(db, order, actor) {
 }
 
 async function fullOrderVoidMovement(db, order, accounts, settlementPayments) {
-  const movementSnap = await db.ref("/financialMovements").get();
+  // netMovementCorrection only nets movements whose sourceId is this order, so
+  // read exactly those through the sourceId index instead of the whole ledger.
+  const movementSnap = await db.ref("/financialMovements").orderByChild("sourceId").equalTo(String(order.id || "")).get();
   const movement = Financial.netMovementCorrection(Object.values(movementSnap.val() || {}), order.id, "order_void", "Fully reverse voided order");
   if (!movement) return null;
   const remaining = Financial.money(Math.max(0, Financial.money(order.total) - Financial.money(order.refundAmount)));

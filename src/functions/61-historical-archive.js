@@ -24,16 +24,25 @@ async function historicalOrdersFromDocuments(db, documents) {
   const unique = new Map();
   documents.forEach((snapshot) => unique.set(snapshot.id, snapshot));
   const rows = {}, fallbackIds = [];
+  let unverified = 0;
   for (const [orderId, snapshot] of unique) {
     const document = snapshot.data() || {}, order = document.order;
-    if (!order || document.schemaVersion !== HistoricalArchive.SCHEMA_VERSION || !document.evidence || document.evidence.verified !== true) fallbackIds.push(orderId);
-    else rows[orderId] = HistoricalArchive.clean(Object.assign({id: orderId}, order));
+    // The replica's order copy is rewritten from RTDB on every archivedOrders
+    // write before readers are notified, so it is current whether or not its
+    // accounting evidence is complete. Evidence completeness is reported by the
+    // archive and exception controls; it is not a reason to re-download the
+    // source order on every report page (34% of replicas are legacy/unsettled).
+    if (!order || document.schemaVersion !== HistoricalArchive.SCHEMA_VERSION) fallbackIds.push(orderId);
+    else {
+      if (!document.evidence || document.evidence.verified !== true) unverified++;
+      rows[orderId] = HistoricalArchive.clean(Object.assign({id: orderId}, order));
+    }
   }
   await Promise.all(fallbackIds.map(async (orderId) => {
     const source = (await db.ref(`/archivedOrders/${orderId}`).get()).val();
     if (source) rows[orderId] = HistoricalArchive.clean(Object.assign({id: orderId}, source));
   }));
-  return {rows, firestore: unique.size - fallbackIds.length, rtdbFallback: fallbackIds.length};
+  return {rows, firestore: unique.size - fallbackIds.length, rtdbFallback: fallbackIds.length, unverified};
 }
 
 async function historicalPeriodPage(firestore, data, limit) {
@@ -148,9 +157,9 @@ exports.replicateArchivedOrderToFirestore = onValueWritten(
   },
 );
 
-// Admin history is served from the Firestore replica. Records whose financial
-// or inventory evidence is incomplete are read from their exact RTDB source;
-// the browser never receives a broad archivedOrders snapshot from this route.
+// Admin history is served from the Firestore replica. Only records whose
+// replica is missing or on an older schema are read from their exact RTDB
+// source; the browser never receives a broad archivedOrders snapshot here.
 exports.readHistoricalOrders = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
@@ -179,7 +188,7 @@ exports.readHistoricalOrders = onCall(
     const hydrated = await historicalOrdersFromDocuments(db, page.documents);
     return {
       orders: hydrated.rows, cursor: page.cursor || null, hasMore: page.hasMore,
-      source: {firestore: hydrated.firestore, rtdbFallback: hydrated.rtdbFallback},
+      source: {firestore: hydrated.firestore, rtdbFallback: hydrated.rtdbFallback, unverified: hydrated.unverified},
       deletionEnabled: false,
     };
   },

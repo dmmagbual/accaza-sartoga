@@ -14,28 +14,82 @@ function booksEntryNet(entry) {
   return out;
 }
 function booksEntryMonth(entry) { const date = String((entry && entry.date) || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date.slice(0, 7) : ""; }
+function booksEntryDay(entry) { const date = String((entry && entry.date) || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : ""; }
+function addBooksNet(target, net) { Object.keys(net || {}).forEach((code) => { target[code] = Financial.money(Number(target[code] || 0) + Number(net[code] || 0)); }); return target; }
+const BOOKS_NET_SCHEMA = 2;
+// Monthly totals are rebuilt from per-day totals. A journal write re-reads only its own
+// day (a handful of rows) and the month's day totals, instead of every row of the month
+// (which grew to ~0.3 MB and was re-read about three times per sale).
+async function booksDayTotal(db, day) {
+  const snap = await db.ref("/books/journal").orderByChild("date").startAt(day).endAt(`${day}\uf8ff`).get();
+  const total = {};
+  Object.values(snap.val() || {}).forEach((entry) => { if (booksEntryDay(entry) === day) addBooksNet(total, booksEntryNet(entry)); });
+  return total;
+}
+async function booksMonthFromDays(db, month) {
+  const snap = await db.ref("/books/dailyNet").orderByKey().startAt(`${month}-01`).endAt(`${month}-31`).get();
+  const total = {};
+  Object.values(snap.val() || {}).forEach((day) => addBooksNet(total, day));
+  return total;
+}
 async function applyBooksMonthlyDelta(db, before, after) {
-  const months = new Set([booksEntryMonth(before), booksEntryMonth(after)].filter(Boolean));
-  for (const month of months) {
-    const snap = await db.ref("/books/journal").orderByChild("date").startAt(`${month}-01`).endAt(`${month}-31`).get();
-    const total = {};
-    Object.values(snap.val() || {}).forEach((entry) => { const net = booksEntryNet(entry); Object.keys(net).forEach((code) => { total[code] = Financial.money(Number(total[code] || 0) + Number(net[code] || 0)); }); });
-    await db.ref(`/books/monthlyNet/${month}`).set(total);
+  const meta = (await db.ref("/books/monthlyNetMeta").get()).val() || {};
+  if (Number(meta.schemaVersion) !== BOOKS_NET_SCHEMA) { await rebuildBooksMonthlyNet(db, (await db.ref("/books/journal").get()).val() || {}); return; }
+  const days = new Set([booksEntryDay(before), booksEntryDay(after)].filter(Boolean)), months = new Set();
+  for (const day of days) {
+    const total = await booksDayTotal(db, day);
+    await db.ref(`/books/dailyNet/${day}`).set(Object.keys(total).length ? total : null);
+    months.add(day.slice(0, 7));
   }
-  await db.ref("/books/monthlyNetMeta").update({updatedAt: Date.now(), schemaVersion: 1});
+  for (const month of months) await db.ref(`/books/monthlyNet/${month}`).set(await booksMonthFromDays(db, month));
+  await db.ref("/books/monthlyNetMeta").update({updatedAt: Date.now(), schemaVersion: BOOKS_NET_SCHEMA});
 }
 async function rebuildBooksMonthlyNet(db, journal) {
-  const monthly = {};
-  Object.values(journal || {}).forEach((entry) => { const month = booksEntryMonth(entry); if (!month) return; const target = monthly[month] || (monthly[month] = {}); const net = booksEntryNet(entry); Object.keys(net).forEach((code) => { target[code] = Financial.money(Number(target[code] || 0) + Number(net[code] || 0)); }); });
+  const monthly = {}, daily = {};
+  Object.values(journal || {}).forEach((entry) => {
+    const day = booksEntryDay(entry); if (!day) return;
+    const net = booksEntryNet(entry);
+    addBooksNet(daily[day] || (daily[day] = {}), net);
+    addBooksNet(monthly[day.slice(0, 7)] || (monthly[day.slice(0, 7)] = {}), net);
+  });
+  await db.ref("/books/dailyNet").set(daily);
   await db.ref("/books/monthlyNet").set(monthly);
-  await db.ref("/books/monthlyNetMeta").set({rebuiltAt: Date.now(), updatedAt: Date.now(), months: Object.keys(monthly).length, schemaVersion: 1});
+  await db.ref("/books/monthlyNetMeta").set({rebuiltAt: Date.now(), updatedAt: Date.now(), months: Object.keys(monthly).length, days: Object.keys(daily).length, schemaVersion: BOOKS_NET_SCHEMA});
   return monthly;
+}
+// Nightly self-heal for the two months that can still change: recompute their day and
+// month totals from the journal rows, so a lost or out-of-order trigger cannot leave a
+// lasting difference between the summaries and the journal.
+async function healRecentBooksNet(db, now = Date.now()) {
+  const meta = (await db.ref("/books/monthlyNetMeta").get()).val() || {};
+  if (Number(meta.schemaVersion) !== BOOKS_NET_SCHEMA) return {skipped: true};
+  const month = financeDateFromTimestamp(now).slice(0, 7), first = new Date(`${month}-15T00:00:00Z`);
+  first.setUTCMonth(first.getUTCMonth() - 1);
+  const previous = first.toISOString().slice(0, 7);
+  const [journalSnap, daysSnap] = await Promise.all([
+    db.ref("/books/journal").orderByChild("date").startAt(`${previous}-01`).endAt(`${month}-31\uf8ff`).get(),
+    db.ref("/books/dailyNet").orderByKey().startAt(`${previous}-01`).endAt(`${month}-31`).get(),
+  ]);
+  const daily = {}, monthly = {[previous]: {}, [month]: {}}, writes = {};
+  Object.values(journalSnap.val() || {}).forEach((entry) => {
+    const day = booksEntryDay(entry); if (!day || !monthly[day.slice(0, 7)]) return;
+    const net = booksEntryNet(entry);
+    addBooksNet(daily[day] || (daily[day] = {}), net);
+    addBooksNet(monthly[day.slice(0, 7)], net);
+  });
+  Object.keys(daysSnap.val() || {}).forEach((day) => { if (!daily[day]) writes[`books/dailyNet/${day}`] = null; });
+  Object.keys(daily).forEach((day) => { writes[`books/dailyNet/${day}`] = daily[day]; });
+  writes[`books/monthlyNet/${previous}`] = monthly[previous];
+  writes[`books/monthlyNet/${month}`] = monthly[month];
+  writes["books/monthlyNetMeta/healedAt"] = now;
+  await db.ref().update(writes);
+  return {months: [previous, month], days: Object.keys(daily).length};
 }
 
 // Compact immutable-history index. Clients use prior-month account totals plus
 // only the selected month's journal rows instead of downloading the full ledger.
 exports.updateBooksMonthlyNet = onValueWritten(
-  {ref: "/books/journal/{entryId}", region: "asia-southeast1"},
+  {ref: "/books/journal/{entryId}", region: "asia-southeast1", retry: true},
   async (event) => applyBooksMonthlyDelta(getDatabase(), event.data.before.val(), event.data.after.val()),
 );
 
@@ -278,17 +332,52 @@ exports.manageCashAccount = onCall(
 function platformRefKey(ref) {
   return String(ref || "").trim().toUpperCase().replace(/[.#$/\[\]\x00-\x1f\x7f]/g, "_");
 }
-async function existingPlatformOrder(db, channel, ref, excludeOrderId) {
-  const [ordersSnap, archiveSnap] = await Promise.all([db.ref("/orders").get(), db.ref("/archivedOrders").get()]);
-  const wantedChannel = String(channel || "").toLowerCase(), wantedKey = platformRefKey(ref), exclude = String(excludeOrderId || "");
-  for (const [node, rows] of [["orders", ordersSnap.val() || {}], ["archivedOrders", archiveSnap.val() || {}]]) {
-    for (const id of Object.keys(rows)) {
-      const order = rows[id] || {};
-      if (id === exclude || String(order.channel || "").toLowerCase() !== wantedChannel) continue;
-      if (platformRefKey(order.platformRef || order.id || id) === wantedKey) return {id, node, order};
+const PLATFORM_CHANNELS = ["grabfood", "foodpanda"];
+function platformOrderMatches(order, id, channel, key) {
+  return !!order && String(order.channel || "").toLowerCase() === channel && platformRefKey(order.platformRef || order.id || id) === key;
+}
+async function readOrderRecord(db, orderId) {
+  const id = String(orderId || "");
+  if (!id || /[.#$/\[\]]/.test(id)) return null;
+  const live = await db.ref(`/orders/${id}`).get();
+  if (live.exists()) return {id, node: "orders", order: live.val() || {}};
+  const archived = await db.ref(`/archivedOrders/${id}`).get();
+  return archived.exists() ? {id, node: "archivedOrders", order: archived.val() || {}} : null;
+}
+// Platform-order lookups read the reference index and one order record. Only a
+// missing or stale index entry (orders created before the index existed) falls
+// back to that channel's orders through the `channel` index, never the whole
+// order history, and the found order is then indexed so the next lookup is
+// cheap. Before 16 Sep 2026 every lookup downloaded /orders + /archivedOrders
+// (3.2 MB); a payout reconciliation session made 25 of them in 20 minutes.
+async function findPlatformOrder(db, channels, ref, excludeOrderId) {
+  const key = platformRefKey(ref), exclude = String(excludeOrderId || "");
+  const wanted = (Array.isArray(channels) ? channels : [channels]).map((c) => String(c || "").toLowerCase()).filter((c) => PLATFORM_CHANNELS.includes(c));
+  if (!key || !wanted.length) return null;
+  for (const channel of wanted) {
+    const entry = (await db.ref(`/platformRefIndex/${channel}/${key}`).get()).val();
+    if (!entry || !entry.orderId || String(entry.orderId) === exclude) continue;
+    const record = await readOrderRecord(db, entry.orderId);
+    if (record && platformOrderMatches(record.order, record.id, channel, key)) return record;
+  }
+  for (const channel of wanted) {
+    const [live, archived] = await Promise.all([
+      db.ref("/orders").orderByChild("channel").equalTo(channel).get(),
+      db.ref("/archivedOrders").orderByChild("channel").equalTo(channel).get(),
+    ]);
+    for (const [node, rows] of [["orders", live.val() || {}], ["archivedOrders", archived.val() || {}]]) {
+      for (const id of Object.keys(rows)) {
+        if (id === exclude || !platformOrderMatches(rows[id], id, channel, key)) continue;
+        const order = rows[id];
+        await db.ref(`/platformRefIndex/${channel}/${key}`).transaction((current) => current == null ? {orderId: id, ref: String(order.platformRef || id), at: Number(order.timestamp) || Date.now(), backfilledAt: Date.now()} : undefined, undefined, false);
+        return {id, node, order};
+      }
     }
   }
   return null;
+}
+async function existingPlatformOrder(db, channel, ref, excludeOrderId) {
+  return findPlatformOrder(db, [channel], ref, excludeOrderId);
 }
 
 exports.indexPlatformOrderRef = onValueCreated(

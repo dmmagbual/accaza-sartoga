@@ -238,28 +238,82 @@ function booksEntryNet(entry) {
   return out;
 }
 function booksEntryMonth(entry) { const date = String((entry && entry.date) || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date.slice(0, 7) : ""; }
+function booksEntryDay(entry) { const date = String((entry && entry.date) || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : ""; }
+function addBooksNet(target, net) { Object.keys(net || {}).forEach((code) => { target[code] = Financial.money(Number(target[code] || 0) + Number(net[code] || 0)); }); return target; }
+const BOOKS_NET_SCHEMA = 2;
+// Monthly totals are rebuilt from per-day totals. A journal write re-reads only its own
+// day (a handful of rows) and the month's day totals, instead of every row of the month
+// (which grew to ~0.3 MB and was re-read about three times per sale).
+async function booksDayTotal(db, day) {
+  const snap = await db.ref("/books/journal").orderByChild("date").startAt(day).endAt(`${day}\uf8ff`).get();
+  const total = {};
+  Object.values(snap.val() || {}).forEach((entry) => { if (booksEntryDay(entry) === day) addBooksNet(total, booksEntryNet(entry)); });
+  return total;
+}
+async function booksMonthFromDays(db, month) {
+  const snap = await db.ref("/books/dailyNet").orderByKey().startAt(`${month}-01`).endAt(`${month}-31`).get();
+  const total = {};
+  Object.values(snap.val() || {}).forEach((day) => addBooksNet(total, day));
+  return total;
+}
 async function applyBooksMonthlyDelta(db, before, after) {
-  const months = new Set([booksEntryMonth(before), booksEntryMonth(after)].filter(Boolean));
-  for (const month of months) {
-    const snap = await db.ref("/books/journal").orderByChild("date").startAt(`${month}-01`).endAt(`${month}-31`).get();
-    const total = {};
-    Object.values(snap.val() || {}).forEach((entry) => { const net = booksEntryNet(entry); Object.keys(net).forEach((code) => { total[code] = Financial.money(Number(total[code] || 0) + Number(net[code] || 0)); }); });
-    await db.ref(`/books/monthlyNet/${month}`).set(total);
+  const meta = (await db.ref("/books/monthlyNetMeta").get()).val() || {};
+  if (Number(meta.schemaVersion) !== BOOKS_NET_SCHEMA) { await rebuildBooksMonthlyNet(db, (await db.ref("/books/journal").get()).val() || {}); return; }
+  const days = new Set([booksEntryDay(before), booksEntryDay(after)].filter(Boolean)), months = new Set();
+  for (const day of days) {
+    const total = await booksDayTotal(db, day);
+    await db.ref(`/books/dailyNet/${day}`).set(Object.keys(total).length ? total : null);
+    months.add(day.slice(0, 7));
   }
-  await db.ref("/books/monthlyNetMeta").update({updatedAt: Date.now(), schemaVersion: 1});
+  for (const month of months) await db.ref(`/books/monthlyNet/${month}`).set(await booksMonthFromDays(db, month));
+  await db.ref("/books/monthlyNetMeta").update({updatedAt: Date.now(), schemaVersion: BOOKS_NET_SCHEMA});
 }
 async function rebuildBooksMonthlyNet(db, journal) {
-  const monthly = {};
-  Object.values(journal || {}).forEach((entry) => { const month = booksEntryMonth(entry); if (!month) return; const target = monthly[month] || (monthly[month] = {}); const net = booksEntryNet(entry); Object.keys(net).forEach((code) => { target[code] = Financial.money(Number(target[code] || 0) + Number(net[code] || 0)); }); });
+  const monthly = {}, daily = {};
+  Object.values(journal || {}).forEach((entry) => {
+    const day = booksEntryDay(entry); if (!day) return;
+    const net = booksEntryNet(entry);
+    addBooksNet(daily[day] || (daily[day] = {}), net);
+    addBooksNet(monthly[day.slice(0, 7)] || (monthly[day.slice(0, 7)] = {}), net);
+  });
+  await db.ref("/books/dailyNet").set(daily);
   await db.ref("/books/monthlyNet").set(monthly);
-  await db.ref("/books/monthlyNetMeta").set({rebuiltAt: Date.now(), updatedAt: Date.now(), months: Object.keys(monthly).length, schemaVersion: 1});
+  await db.ref("/books/monthlyNetMeta").set({rebuiltAt: Date.now(), updatedAt: Date.now(), months: Object.keys(monthly).length, days: Object.keys(daily).length, schemaVersion: BOOKS_NET_SCHEMA});
   return monthly;
+}
+// Nightly self-heal for the two months that can still change: recompute their day and
+// month totals from the journal rows, so a lost or out-of-order trigger cannot leave a
+// lasting difference between the summaries and the journal.
+async function healRecentBooksNet(db, now = Date.now()) {
+  const meta = (await db.ref("/books/monthlyNetMeta").get()).val() || {};
+  if (Number(meta.schemaVersion) !== BOOKS_NET_SCHEMA) return {skipped: true};
+  const month = financeDateFromTimestamp(now).slice(0, 7), first = new Date(`${month}-15T00:00:00Z`);
+  first.setUTCMonth(first.getUTCMonth() - 1);
+  const previous = first.toISOString().slice(0, 7);
+  const [journalSnap, daysSnap] = await Promise.all([
+    db.ref("/books/journal").orderByChild("date").startAt(`${previous}-01`).endAt(`${month}-31\uf8ff`).get(),
+    db.ref("/books/dailyNet").orderByKey().startAt(`${previous}-01`).endAt(`${month}-31`).get(),
+  ]);
+  const daily = {}, monthly = {[previous]: {}, [month]: {}}, writes = {};
+  Object.values(journalSnap.val() || {}).forEach((entry) => {
+    const day = booksEntryDay(entry); if (!day || !monthly[day.slice(0, 7)]) return;
+    const net = booksEntryNet(entry);
+    addBooksNet(daily[day] || (daily[day] = {}), net);
+    addBooksNet(monthly[day.slice(0, 7)], net);
+  });
+  Object.keys(daysSnap.val() || {}).forEach((day) => { if (!daily[day]) writes[`books/dailyNet/${day}`] = null; });
+  Object.keys(daily).forEach((day) => { writes[`books/dailyNet/${day}`] = daily[day]; });
+  writes[`books/monthlyNet/${previous}`] = monthly[previous];
+  writes[`books/monthlyNet/${month}`] = monthly[month];
+  writes["books/monthlyNetMeta/healedAt"] = now;
+  await db.ref().update(writes);
+  return {months: [previous, month], days: Object.keys(daily).length};
 }
 
 // Compact immutable-history index. Clients use prior-month account totals plus
 // only the selected month's journal rows instead of downloading the full ledger.
 exports.updateBooksMonthlyNet = onValueWritten(
-  {ref: "/books/journal/{entryId}", region: "asia-southeast1"},
+  {ref: "/books/journal/{entryId}", region: "asia-southeast1", retry: true},
   async (event) => applyBooksMonthlyDelta(getDatabase(), event.data.before.val(), event.data.after.val()),
 );
 
@@ -502,17 +556,52 @@ exports.manageCashAccount = onCall(
 function platformRefKey(ref) {
   return String(ref || "").trim().toUpperCase().replace(/[.#$/\[\]\x00-\x1f\x7f]/g, "_");
 }
-async function existingPlatformOrder(db, channel, ref, excludeOrderId) {
-  const [ordersSnap, archiveSnap] = await Promise.all([db.ref("/orders").get(), db.ref("/archivedOrders").get()]);
-  const wantedChannel = String(channel || "").toLowerCase(), wantedKey = platformRefKey(ref), exclude = String(excludeOrderId || "");
-  for (const [node, rows] of [["orders", ordersSnap.val() || {}], ["archivedOrders", archiveSnap.val() || {}]]) {
-    for (const id of Object.keys(rows)) {
-      const order = rows[id] || {};
-      if (id === exclude || String(order.channel || "").toLowerCase() !== wantedChannel) continue;
-      if (platformRefKey(order.platformRef || order.id || id) === wantedKey) return {id, node, order};
+const PLATFORM_CHANNELS = ["grabfood", "foodpanda"];
+function platformOrderMatches(order, id, channel, key) {
+  return !!order && String(order.channel || "").toLowerCase() === channel && platformRefKey(order.platformRef || order.id || id) === key;
+}
+async function readOrderRecord(db, orderId) {
+  const id = String(orderId || "");
+  if (!id || /[.#$/\[\]]/.test(id)) return null;
+  const live = await db.ref(`/orders/${id}`).get();
+  if (live.exists()) return {id, node: "orders", order: live.val() || {}};
+  const archived = await db.ref(`/archivedOrders/${id}`).get();
+  return archived.exists() ? {id, node: "archivedOrders", order: archived.val() || {}} : null;
+}
+// Platform-order lookups read the reference index and one order record. Only a
+// missing or stale index entry (orders created before the index existed) falls
+// back to that channel's orders through the `channel` index, never the whole
+// order history, and the found order is then indexed so the next lookup is
+// cheap. Before 16 Sep 2026 every lookup downloaded /orders + /archivedOrders
+// (3.2 MB); a payout reconciliation session made 25 of them in 20 minutes.
+async function findPlatformOrder(db, channels, ref, excludeOrderId) {
+  const key = platformRefKey(ref), exclude = String(excludeOrderId || "");
+  const wanted = (Array.isArray(channels) ? channels : [channels]).map((c) => String(c || "").toLowerCase()).filter((c) => PLATFORM_CHANNELS.includes(c));
+  if (!key || !wanted.length) return null;
+  for (const channel of wanted) {
+    const entry = (await db.ref(`/platformRefIndex/${channel}/${key}`).get()).val();
+    if (!entry || !entry.orderId || String(entry.orderId) === exclude) continue;
+    const record = await readOrderRecord(db, entry.orderId);
+    if (record && platformOrderMatches(record.order, record.id, channel, key)) return record;
+  }
+  for (const channel of wanted) {
+    const [live, archived] = await Promise.all([
+      db.ref("/orders").orderByChild("channel").equalTo(channel).get(),
+      db.ref("/archivedOrders").orderByChild("channel").equalTo(channel).get(),
+    ]);
+    for (const [node, rows] of [["orders", live.val() || {}], ["archivedOrders", archived.val() || {}]]) {
+      for (const id of Object.keys(rows)) {
+        if (id === exclude || !platformOrderMatches(rows[id], id, channel, key)) continue;
+        const order = rows[id];
+        await db.ref(`/platformRefIndex/${channel}/${key}`).transaction((current) => current == null ? {orderId: id, ref: String(order.platformRef || id), at: Number(order.timestamp) || Date.now(), backfilledAt: Date.now()} : undefined, undefined, false);
+        return {id, node, order};
+      }
     }
   }
   return null;
+}
+async function existingPlatformOrder(db, channel, ref, excludeOrderId) {
+  return findPlatformOrder(db, [channel], ref, excludeOrderId);
 }
 
 exports.indexPlatformOrderRef = onValueCreated(
@@ -626,6 +715,11 @@ exports.manageSupplier = onCall(
     if(["merge","delete"].includes(action)&&!["owner","superadmin"].includes(actor.role))throw new HttpsError("permission-denied","Only an owner or superadmin can merge or delete a supplier master record.");
     if(action==="validate"){const supplier=await requireActiveSupplier(db,data.supplierId,data.name);return{supplierId:supplier.id,name:supplier.name,active:true};}
     if(action==="initialize_legacy"){
+      // Finance Books calls this on every sign-in. The legacy link sweep reads six whole
+      // nodes (including petty vouchers with receipt images), so it runs at most once a day.
+      const sweepRef=db.ref("/supplierMigrations/legacySweepCheckedAt"),lastSweep=Number((await sweepRef.get()).val()||0);
+      if(data.force!==true&&now-lastSweep<86400000)return{initialized:true,skipped:true,linkedWrites:0};
+      await sweepRef.set(now);
       const [suppliersSnap,purchasesSnap,vouchersSnap,payablesSnap,receiptsSnap,batchesSnap]=await Promise.all([db.ref("/suppliers").get(),db.ref("/purchaseInvoices").get(),db.ref("/pettyCashVouchers").get(),db.ref("/payables").get(),db.ref("/stockReceipts").get(),db.ref("/inventoryBatch").get()]),suppliers=suppliersSnap.val()||{},purchases=purchasesSnap.val()||{},vouchers=vouchersSnap.val()||{},payables=payablesSnap.val()||{},receipts=receiptsSnap.val()||{},batches=batchesSnap.val()||{},byKey={},writes={};
       Object.keys(suppliers).forEach(id=>{const row=suppliers[id]||{},key=supplierNameKey(row.name);if(key)byKey[key]={id,name:financeText(row.name,120)};});
       const ensure=(value)=>{const name=financeText(value,120).trim().replace(/\s+/g," "),key=supplierNameKey(name);if(!key)return null;if(byKey[key])return byKey[key];const hash=crypto.createHash("sha256").update(key).digest("hex").slice(0,32),id=`sup_${hash}`,row={id,name};byKey[key]=row;writes[`suppliers/${id}`]={name,normalizedName:key,active:true,createdAt:now,createdBy:actor.uid,createdByRole:actor.role,updatedAt:now,legacyInitialized:true,schemaVersion:1};writes[`supplierNameIndex/${hash}`]={supplierId:id,normalizedName:key,claimedAt:now};return row;};
@@ -1890,12 +1984,13 @@ function archivedOrderRecord(order, now = Date.now(), reason = "closed-shift") {
 async function rebuildActiveOrders(db, force = false) {
   const now = Date.now();
   const markerRef = db.ref("/systemMaintenance/activeOrdersLastSweep");
-  const [markerSnap, activeShiftSnap, activeSnap] = await Promise.all([
-    markerRef.get(), db.ref("/posActiveShift").get(), db.ref("/activeOrders").get(),
-  ]);
-  if (!force && now - Number(markerSnap.val() || 0) < ACTIVE_SWEEP_INTERVAL_MS && activeSnap.exists()) {
-    return {skipped: true, active: activeSnap.numChildren()};
+  // Every Admin/POS sign-in calls this. Inside the sweep interval only the marker and a
+  // one-row existence probe are read; the projection itself is downloaded only to rebuild.
+  const markerSnap = await markerRef.get();
+  if (!force && now - Number(markerSnap.val() || 0) < ACTIVE_SWEEP_INTERVAL_MS && (await db.ref("/activeOrders").limitToFirst(1).get()).exists()) {
+    return {skipped: true};
   }
+  const [activeShiftSnap, activeSnap] = await Promise.all([db.ref("/posActiveShift").get(), db.ref("/activeOrders").get()]);
   const ordersSnap = await db.ref("/orders").get();
   const orders = ordersSnap.val() || {};
   const existing = activeSnap.val() || {};
@@ -2633,7 +2728,9 @@ async function postPreCompletionCashRefund(db, order, actor) {
 }
 
 async function fullOrderVoidMovement(db, order, accounts, settlementPayments) {
-  const movementSnap = await db.ref("/financialMovements").get();
+  // netMovementCorrection only nets movements whose sourceId is this order, so
+  // read exactly those through the sourceId index instead of the whole ledger.
+  const movementSnap = await db.ref("/financialMovements").orderByChild("sourceId").equalTo(String(order.id || "")).get();
   const movement = Financial.netMovementCorrection(Object.values(movementSnap.val() || {}), order.id, "order_void", "Fully reverse voided order");
   if (!movement) return null;
   const remaining = Financial.money(Math.max(0, Financial.money(order.total) - Financial.money(order.refundAmount)));
@@ -3380,16 +3477,9 @@ exports.correctPlatformPresettlement = onCall(
     const db = getDatabase(), actor = await requirePortalPermission(db, request, ["payouts", "receivables"]), data = request.data || {};
     const requested = financeText(data.platformRef, 60), channelHint = financeText(data.channel, 20).toLowerCase();
     if (!requested) throw new HttpsError("invalid-argument", "Platform order reference is required.");
-    const [ordersSnap, archiveSnap] = await Promise.all([db.ref("/orders").get(), db.ref("/archivedOrders").get()]);
-    const wanted = platformRefKey(requested); let found = null;
-    for (const [node, rows] of [["orders", ordersSnap.val() || {}], ["archivedOrders", archiveSnap.val() || {}]]) {
-      for (const id of Object.keys(rows)) {
-        const order = Object.assign({id}, rows[id] || {}), channel = financeText(order.channel, 20).toLowerCase();
-        if (!["grabfood", "foodpanda"].includes(channel) || (channelHint && channel !== channelHint)) continue;
-        if (platformRefKey(order.platformRef || order.id || id) === wanted) {found = {id, node, order}; break;}
-      }
-      if (found) break;
-    }
+    if (channelHint && !PLATFORM_CHANNELS.includes(channelHint)) throw new HttpsError("invalid-argument", "Platform is invalid.");
+    const match = await findPlatformOrder(db, channelHint ? [channelHint] : PLATFORM_CHANNELS, requested);
+    const found = match ? {id: match.id, node: match.node, order: Object.assign({id: match.id}, match.order || {})} : null;
     if (!found) throw new HttpsError("not-found", "No matching GrabFood or FoodPanda order was found.");
     const o = found.order, channel = financeText(o.channel, 20).toLowerCase(), oldGross = Financial.money(o.grossPlatform != null ? o.grossPlatform : (o.subtotal != null ? o.subtotal : o.total)), oldCommission = Financial.money(o.commission), oldMerchantPromo=Financial.money(o.platformMerchantPromo), oldDeliveryFeeDiscount=Financial.money(o.platformDeliveryFeeDiscount), oldAdsMarketing=Financial.money(o.platformAdsMarketing), oldMarketingFee=Financial.money(o.platformMarketingFee), oldWht=Financial.money(o.platformWht), oldVat=Financial.money(o.platformVat), oldNet=Financial.money(o.netPlatform != null ? o.netPlatform : oldGross-oldCommission-Financial.money(o.platformDiscount)-oldWht-oldVat-oldAdsMarketing-oldMarketingFee);
     if (data.action === "lookup") return {orderId: found.id, platformRef: o.platformRef || found.id, channel, gross: oldGross, commission: oldCommission, merchantPromo:oldMerchantPromo, deliveryFeeDiscount:oldDeliveryFeeDiscount, adsMarketing:oldAdsMarketing, marketingFee:oldMarketingFee, wht:oldWht, vat:oldVat, net:oldNet, settlementStatus: o.settlementStatus || "unsettled", hasStructuredItems: Array.isArray(o.lineItems) && o.lineItems.length > 0};
@@ -4088,6 +4178,50 @@ function seedInventoryAccounting(itemId, item, now) {
     applied: {[opening.id]: opening},
   };
 }
+// /inventoryAccounting/{itemId}.applied is the in-transaction idempotency set. It used to
+// keep a full copy of every movement ever applied, so each sale re-downloaded the item's
+// whole history (217 KB for a busy packaging item by Sep 2026) inside its transaction.
+// A full copy is now kept only until its /inventoryMovements projection is written; then
+// it becomes a small marker that is pruned after the retention window. Movements already
+// projected are recognized before the transaction by their projection record.
+const INVENTORY_APPLIED_RETENTION_MS = 7 * 86400000;
+const INVENTORY_LEGACY_SETTLE_MS = 3600000;
+function inventoryAppliedMarker(entry) { return !!(entry && typeof entry === "object" && Number(entry.projectedAt) > 0 && !entry.itemId); }
+function compactInventoryApplied(applied, now) {
+  const out = {};
+  Object.keys(applied || {}).forEach((id) => {
+    const entry = applied[id];
+    if (inventoryAppliedMarker(entry) && Number(entry.projectedAt) < now - INVENTORY_APPLIED_RETENTION_MS) return;
+    out[id] = entry;
+  });
+  return out;
+}
+// One-time, idempotent migration of legacy full copies: confirm (or restore) each old
+// movement's projection, then replace the copy with a marker dated at the movement.
+async function settleLegacyInventoryApplied(db, itemId, accounting, now) {
+  const applied = accounting && accounting.applied || {};
+  const legacy = Object.keys(applied).filter((id) => { const entry = applied[id]; return entry && !inventoryAppliedMarker(entry) && Number(entry.createdAt || 0) > 0 && Number(entry.createdAt) < now - INVENTORY_LEGACY_SETTLE_MS; });
+  if (!legacy.length) return 0;
+  const writes = {};
+  for (let i = 0; i < legacy.length; i += 50) {
+    const batch = legacy.slice(i, i + 50);
+    const snaps = await Promise.all(batch.map((id) => db.ref(`/inventoryMovements/${id}`).get()));
+    batch.forEach((id, index) => {
+      if (!snaps[index].exists()) writes[`inventoryMovements/${id}`] = applied[id];
+      writes[`inventoryAccounting/${itemId}/applied/${id}`] = {projectedAt: Number(applied[id].createdAt), version: Number(applied[id].version || 0), legacy: true};
+    });
+  }
+  const restore = {}, mark = {};
+  Object.keys(writes).forEach((path) => { (path.indexOf("inventoryMovements/") === 0 ? restore : mark)[path] = writes[path]; });
+  if (Object.keys(restore).length) await db.ref().update(restore);
+  await db.ref().update(mark);
+  return legacy.length;
+}
+async function markInventoryProjected(db, itemId, ids, version, now) {
+  const writes = {};
+  ids.filter(Boolean).forEach((id) => { writes[`inventoryAccounting/${itemId}/applied/${id}`] = {projectedAt: now, version: Number(version || 0)}; });
+  if (Object.keys(writes).length) await db.ref().update(writes);
+}
 async function repairInventoryProjections(db, itemId, accounting, item) {
   const version = Number(accounting.version || 0);
   const projection = {
@@ -4234,7 +4368,16 @@ async function applyInventoryMovement(db, raw, actor) {
   if (Number(raw.occurredAt) && Number(raw.occurredAt) > now + 2 * 86400000) throw new HttpsError("invalid-argument", "An inventory movement can\u2019t be dated in the future.");
   let duplicate = false, insufficient = false, insufficientValue = false, nothingToRevalue = false;
   const accountingRef = db.ref(`/inventoryAccounting/${itemId}`);
-  const existingAccounting = (await accountingRef.get()).val();
+  const projectedSnap = await db.ref(`/inventoryMovements/${movementId}`).get();
+  let existingAccounting = (await accountingRef.get()).val();
+  if (existingAccounting && await settleLegacyInventoryApplied(db, itemId, existingAccounting, now)) existingAccounting = (await accountingRef.get()).val();
+  if (projectedSnap.exists() && existingAccounting) {
+    // Already applied and projected: never touch the balance again.
+    const projected = projectedSnap.val();
+    await postInventoryMovementToBooks(db, projected, item, actor, postingContext);
+    await repairInventoryProjections(db, itemId, existingAccounting, item);
+    return {movement: projected, duplicate: true};
+  }
   if (!existingAccounting && qty6(item.stock) > 0 && !(qty6(item.cost) > 0) && type !== "purchase") throw new HttpsError("failed-precondition", `${String(item.name || itemId)} has positive opening stock without a unit cost. Restate its invoice-backed opening cost before posting inventory usage or adjustments.`);
   // RTDB transactions may invoke the updater once with an empty local cache
   // before the server value arrives.  A purchase reversal must not seed that
@@ -4243,7 +4386,7 @@ async function applyInventoryMovement(db, raw, actor) {
   const accountingSeed = existingAccounting || seedInventoryAccounting(itemId, item, now);
   const result = await accountingRef.transaction((current) => {
     const base = current || accountingSeed;
-    const state = Object.assign({}, base, {applied: Object.assign({}, base.applied || {})});
+    const state = Object.assign({}, base, {applied: compactInventoryApplied(base.applied, now)});
     if (state.applied[movementId]) { duplicate = true; return state; }
     const before = qty6(state.balance);
     const costBefore = qty6(state.unitCost || item.cost);
@@ -4291,12 +4434,17 @@ async function applyInventoryMovement(db, raw, actor) {
   });
   if (!result.committed) {if (nothingToRevalue) throw new HttpsError("failed-precondition", `${item.name || itemId} has no stock on hand, so there is no value to restate. Receive stock first.`);if (insufficient) throw new HttpsError("failed-precondition", `Not enough remaining stock to reverse ${item.name || itemId}.`);if (insufficientValue) throw new HttpsError("failed-precondition", `The remaining stock value for ${item.name || itemId} cannot support this reversal.`);throw new Error(`Inventory transaction was not committed for ${itemId}`);}
   const accounting = result.snapshot.val();
-  const movement = accounting.applied[movementId];
-  const opening = accounting.applied[`opening_${itemId}`];
+  const appliedEntry = (accounting.applied || {})[movementId];
+  let movement = inventoryAppliedMarker(appliedEntry) ? null : appliedEntry;
+  const openingEntry = (accounting.applied || {})[`opening_${itemId}`];
+  const opening = inventoryAppliedMarker(openingEntry) ? null : openingEntry;
   const writes = {};
   if (opening) writes[`inventoryMovements/${opening.id}`] = opening;
   if (movement) writes[`inventoryMovements/${movementId}`] = movement;
   if (Object.keys(writes).length) await db.ref().update(writes);
+  // A concurrent attempt may already have projected and marked this movement.
+  if (!movement && inventoryAppliedMarker(appliedEntry)) movement = (await db.ref(`/inventoryMovements/${movementId}`).get()).val();
+  if (Object.keys(writes).length) await markInventoryProjected(db, itemId, [opening && opening.id, (accounting.applied || {})[movementId] === movement ? movementId : ""], accounting.version, Date.now());
   if (movement) await postInventoryMovementToBooks(db, movement, item, actor, postingContext);
   await repairInventoryProjections(db, itemId, accounting, item);
   return {movement, duplicate};
@@ -4346,7 +4494,7 @@ exports.ensureInventoryLedger = onCall(
       const result = await ref.transaction((current) => {if (current) {existed = true; return current;} return seedInventoryAccounting(itemId, inventory[itemId], now);});
       const accounting = result.snapshot.val();
       const opening = accounting && accounting.applied && accounting.applied[`opening_${itemId}`];
-      if (opening) await db.ref(`/inventoryMovements/${opening.id}`).set(opening);
+      if (opening && !inventoryAppliedMarker(opening) && opening.id) await db.ref(`/inventoryMovements/${opening.id}`).set(opening);
       await repairInventoryProjections(db, itemId, accounting, inventory[itemId]);
       if (!existed) initialized++;
     }
@@ -4517,6 +4665,7 @@ exports.pruneEphemeralNodes = onSchedule(
   {schedule: "every day 03:30", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "256MiB"},
   async () => {
     const db = getDatabase(), now = Date.now(), DAY = 86400000;
+    try { logger.info("Books net summaries healed", await healRecentBooksNet(db, now)); } catch (error) { logger.error("Books net summary heal failed", {error: String(error)}); }
     const deletions = {};
     const mark = (path) => { deletions[path] = null; };
 
@@ -4692,16 +4841,25 @@ async function historicalOrdersFromDocuments(db, documents) {
   const unique = new Map();
   documents.forEach((snapshot) => unique.set(snapshot.id, snapshot));
   const rows = {}, fallbackIds = [];
+  let unverified = 0;
   for (const [orderId, snapshot] of unique) {
     const document = snapshot.data() || {}, order = document.order;
-    if (!order || document.schemaVersion !== HistoricalArchive.SCHEMA_VERSION || !document.evidence || document.evidence.verified !== true) fallbackIds.push(orderId);
-    else rows[orderId] = HistoricalArchive.clean(Object.assign({id: orderId}, order));
+    // The replica's order copy is rewritten from RTDB on every archivedOrders
+    // write before readers are notified, so it is current whether or not its
+    // accounting evidence is complete. Evidence completeness is reported by the
+    // archive and exception controls; it is not a reason to re-download the
+    // source order on every report page (34% of replicas are legacy/unsettled).
+    if (!order || document.schemaVersion !== HistoricalArchive.SCHEMA_VERSION) fallbackIds.push(orderId);
+    else {
+      if (!document.evidence || document.evidence.verified !== true) unverified++;
+      rows[orderId] = HistoricalArchive.clean(Object.assign({id: orderId}, order));
+    }
   }
   await Promise.all(fallbackIds.map(async (orderId) => {
     const source = (await db.ref(`/archivedOrders/${orderId}`).get()).val();
     if (source) rows[orderId] = HistoricalArchive.clean(Object.assign({id: orderId}, source));
   }));
-  return {rows, firestore: unique.size - fallbackIds.length, rtdbFallback: fallbackIds.length};
+  return {rows, firestore: unique.size - fallbackIds.length, rtdbFallback: fallbackIds.length, unverified};
 }
 
 async function historicalPeriodPage(firestore, data, limit) {
@@ -4816,9 +4974,9 @@ exports.replicateArchivedOrderToFirestore = onValueWritten(
   },
 );
 
-// Admin history is served from the Firestore replica. Records whose financial
-// or inventory evidence is incomplete are read from their exact RTDB source;
-// the browser never receives a broad archivedOrders snapshot from this route.
+// Admin history is served from the Firestore replica. Only records whose
+// replica is missing or on an older schema are read from their exact RTDB
+// source; the browser never receives a broad archivedOrders snapshot here.
 exports.readHistoricalOrders = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
@@ -4847,7 +5005,7 @@ exports.readHistoricalOrders = onCall(
     const hydrated = await historicalOrdersFromDocuments(db, page.documents);
     return {
       orders: hydrated.rows, cursor: page.cursor || null, hasMore: page.hasMore,
-      source: {firestore: hydrated.firestore, rtdbFallback: hydrated.rtdbFallback},
+      source: {firestore: hydrated.firestore, rtdbFallback: hydrated.rtdbFallback, unverified: hydrated.unverified},
       deletionEnabled: false,
     };
   },

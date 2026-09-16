@@ -1,8 +1,8 @@
-import{reconcileInventoryBooks}from'./inventory-books-reconciliation.mjs';
+import{reconcileInventoryBooks,journalBasisThrough}from'./inventory-books-reconciliation.mjs?v=534';
 (function(){
 'use strict';
 var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={},receiptsMap={},posSettingsMap={},inventoryBooksJournal={},payoutCashAccounts={};
-var inventoryBooksLoaded=false;
+var inventoryBooksLoaded=false,inventoryBooksJournalLoaded=false,inventoryBooksMonthlyLoaded=false,inventoryBooksMonthly={},inventoryBooksPastMonth={key:'',rows:null};
 var financialCloseState={},financialCloseLoading={};
 var svFrom=null,svTo=null,svExpand=null;
 var azRange='month', azFrom=null, azTo=null, pnlMonth=null, analyticsHistoryLoading=false;
@@ -51,7 +51,9 @@ function init(){
   a.subscribe('internalUsage',function(s){usageMap=s.val()||{};if(isTab('pnl'))renderPnl();if(isTab('stockvalue'))renderStockValue();});
   a.subscribe('stockReceipts',function(s){receiptsMap=s.val()||{};if(isTab('stockvalue'))renderStockValue();});
   a.subscribe('inventory',function(s){invMap=s.val()||{};if(isTab('stockvalue'))renderStockValue();});
-  a.subscribe('books/journal',function(s){inventoryBooksJournal=s.val()||{};inventoryBooksLoaded=true;if(isTab('stockvalue'))renderStockValue();});
+  // Stock Value: prior months from books/monthlyNet, current month live (hub-bounded).
+  a.subscribe('books/journal',function(s){inventoryBooksJournal=s.val()||{};inventoryBooksJournalLoaded=true;inventoryBooksLoaded=inventoryBooksJournalLoaded&&inventoryBooksMonthlyLoaded;if(isTab('stockvalue'))renderStockValue();});
+  a.subscribe('books/monthlyNet',function(s){inventoryBooksMonthly=s.val()||{};inventoryBooksMonthlyLoaded=true;inventoryBooksLoaded=inventoryBooksJournalLoaded&&inventoryBooksMonthlyLoaded;if(isTab('stockvalue'))renderStockValue();});
   a.subscribe('posSettings',function(s){posSettingsMap=s.val()||{};if(isTab('pnl'))renderPnl();});
   a.subscribe('platformPayouts',function(s){payoutsMap=s.val()||{};if(isTab('payouts'))renderPayouts();if(isTab('pnl'))renderPnl();if(isTab('analytics'))renderAnalytics();});
   a.subscribe('cfAccounts',function(s){payoutCashAccounts=s.val()||{};if(isTab('payouts'))renderPayouts();});
@@ -882,8 +884,18 @@ function itemReconciliation(id,rng){
 function signedQty(n){n=roundQty(n);return n?(n>0?'+':'')+fq(n):'—';}
 function inventoryBooksReconciliation(summaries,rng){
   var itemRows=summaries.map(function(x){return{id:x.item.id,name:x.item.name,inventoryAccount:x.item.inventoryAccount,quantity:x.flow.ending,unitCost:Number(x.item.cost)||0};});
-  var journal=Object.keys(inventoryBooksJournal).map(function(k){return Object.assign({id:k},inventoryBooksJournal[k]||{});});
+  var journal=inventoryBooksEntriesThrough(rng.t);if(!journal)return null;
   return reconcileInventoryBooks(itemRows,journal,rng.t||'9999-12-31');
+}
+function inventoryBooksMonthKey(){var d=window.AccazaDate&&window.AccazaDate.key?window.AccazaDate.key():new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());return String(d).slice(0,7);}
+// Monthly totals before the cutoff month plus that month's rows (live for this month; read once for a past month). Null while loading.
+function inventoryBooksEntriesThrough(cutoff){
+  var today=inventoryBooksMonthKey(),cut=/^\d{4}-\d{2}-\d{2}$/.test(String(cutoff||''))?String(cutoff):'',month=cut?cut.slice(0,7):today,live=today;
+  Object.keys(inventoryBooksJournal).forEach(function(k){var m=String((inventoryBooksJournal[k]||{}).date||'').slice(0,7);if(/^\d{4}-\d{2}$/.test(m)&&m<live)live=m;});
+  if(month>=live)return journalBasisThrough(inventoryBooksMonthly,inventoryBooksJournal,cut||month+'-31');
+  var key=cut+'|'+JSON.stringify(inventoryBooksMonthly[month]||{}),A=window.__accaza;
+  if(inventoryBooksPastMonth.key!==key&&A&&A.readBooksJournalRange){inventoryBooksPastMonth={key:key,rows:null};A.readBooksJournalRange(month+'-01',cut).then(function(rows){if(inventoryBooksPastMonth.key!==key)return;inventoryBooksPastMonth.rows=rows||{};if(isTab('stockvalue'))renderStockValue();}).catch(function(e){console.error('Stock value journal month load failed',e);if(inventoryBooksPastMonth.key===key)inventoryBooksPastMonth={key:'',rows:null};});}
+  return inventoryBooksPastMonth.key===key&&inventoryBooksPastMonth.rows?journalBasisThrough(inventoryBooksMonthly,inventoryBooksPastMonth.rows,cut):null;
 }
 function inventoryReconciliationHtml(recon,ready,history){
   if(!ready)return '<div class="pz-card" style="margin-bottom:0.8rem;border-left:4px solid #b08d57;"><b>Inventory-to-Books reconciliation</b><div class="az-note" style="margin-top:0.35rem;">Preparing the authoritative Finance Books journal… No partial balance is presented as final.</div></div>';
@@ -925,8 +937,8 @@ function renderStockValue(){
   var rng=svRange();var items=invItems();
   var summaries=items.map(function(i){return {item:i,flow:itemReconciliation(i.id,rng)};});
   var history={loaded:Object.keys(inventoryBooksJournal).length,hasOlder:false};
-  var reconReady=inventoryBooksLoaded;
-  var recon=reconReady?inventoryBooksReconciliation(summaries,rng):null;
+  var recon=inventoryBooksLoaded?inventoryBooksReconciliation(summaries,rng):null;
+  var reconReady=!!recon;
   var totalValue=summaries.reduce(function(s,x){return s+x.flow.ending*(Number(x.item.cost)||0);},0);
   var periodPurch=0;Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r)return;var d=r.date||tsToDate(r.ts);if(inRng(d,rng))periodPurch+=Number(r.total)||0;});
   var periodUse=0;[ordersMap,archMap].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k];if(!isSale(o))return;var d=tsToDate(o.timestamp||Date.parse(o.date)||0);if(inRng(d,rng))periodUse+=Number(o.cogsSnapshot)||0;});});

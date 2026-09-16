@@ -40,6 +40,50 @@ function seedInventoryAccounting(itemId, item, now) {
     applied: {[opening.id]: opening},
   };
 }
+// /inventoryAccounting/{itemId}.applied is the in-transaction idempotency set. It used to
+// keep a full copy of every movement ever applied, so each sale re-downloaded the item's
+// whole history (217 KB for a busy packaging item by Sep 2026) inside its transaction.
+// A full copy is now kept only until its /inventoryMovements projection is written; then
+// it becomes a small marker that is pruned after the retention window. Movements already
+// projected are recognized before the transaction by their projection record.
+const INVENTORY_APPLIED_RETENTION_MS = 7 * 86400000;
+const INVENTORY_LEGACY_SETTLE_MS = 3600000;
+function inventoryAppliedMarker(entry) { return !!(entry && typeof entry === "object" && Number(entry.projectedAt) > 0 && !entry.itemId); }
+function compactInventoryApplied(applied, now) {
+  const out = {};
+  Object.keys(applied || {}).forEach((id) => {
+    const entry = applied[id];
+    if (inventoryAppliedMarker(entry) && Number(entry.projectedAt) < now - INVENTORY_APPLIED_RETENTION_MS) return;
+    out[id] = entry;
+  });
+  return out;
+}
+// One-time, idempotent migration of legacy full copies: confirm (or restore) each old
+// movement's projection, then replace the copy with a marker dated at the movement.
+async function settleLegacyInventoryApplied(db, itemId, accounting, now) {
+  const applied = accounting && accounting.applied || {};
+  const legacy = Object.keys(applied).filter((id) => { const entry = applied[id]; return entry && !inventoryAppliedMarker(entry) && Number(entry.createdAt || 0) > 0 && Number(entry.createdAt) < now - INVENTORY_LEGACY_SETTLE_MS; });
+  if (!legacy.length) return 0;
+  const writes = {};
+  for (let i = 0; i < legacy.length; i += 50) {
+    const batch = legacy.slice(i, i + 50);
+    const snaps = await Promise.all(batch.map((id) => db.ref(`/inventoryMovements/${id}`).get()));
+    batch.forEach((id, index) => {
+      if (!snaps[index].exists()) writes[`inventoryMovements/${id}`] = applied[id];
+      writes[`inventoryAccounting/${itemId}/applied/${id}`] = {projectedAt: Number(applied[id].createdAt), version: Number(applied[id].version || 0), legacy: true};
+    });
+  }
+  const restore = {}, mark = {};
+  Object.keys(writes).forEach((path) => { (path.indexOf("inventoryMovements/") === 0 ? restore : mark)[path] = writes[path]; });
+  if (Object.keys(restore).length) await db.ref().update(restore);
+  await db.ref().update(mark);
+  return legacy.length;
+}
+async function markInventoryProjected(db, itemId, ids, version, now) {
+  const writes = {};
+  ids.filter(Boolean).forEach((id) => { writes[`inventoryAccounting/${itemId}/applied/${id}`] = {projectedAt: now, version: Number(version || 0)}; });
+  if (Object.keys(writes).length) await db.ref().update(writes);
+}
 async function repairInventoryProjections(db, itemId, accounting, item) {
   const version = Number(accounting.version || 0);
   const projection = {
@@ -186,7 +230,16 @@ async function applyInventoryMovement(db, raw, actor) {
   if (Number(raw.occurredAt) && Number(raw.occurredAt) > now + 2 * 86400000) throw new HttpsError("invalid-argument", "An inventory movement can\u2019t be dated in the future.");
   let duplicate = false, insufficient = false, insufficientValue = false, nothingToRevalue = false;
   const accountingRef = db.ref(`/inventoryAccounting/${itemId}`);
-  const existingAccounting = (await accountingRef.get()).val();
+  const projectedSnap = await db.ref(`/inventoryMovements/${movementId}`).get();
+  let existingAccounting = (await accountingRef.get()).val();
+  if (existingAccounting && await settleLegacyInventoryApplied(db, itemId, existingAccounting, now)) existingAccounting = (await accountingRef.get()).val();
+  if (projectedSnap.exists() && existingAccounting) {
+    // Already applied and projected: never touch the balance again.
+    const projected = projectedSnap.val();
+    await postInventoryMovementToBooks(db, projected, item, actor, postingContext);
+    await repairInventoryProjections(db, itemId, existingAccounting, item);
+    return {movement: projected, duplicate: true};
+  }
   if (!existingAccounting && qty6(item.stock) > 0 && !(qty6(item.cost) > 0) && type !== "purchase") throw new HttpsError("failed-precondition", `${String(item.name || itemId)} has positive opening stock without a unit cost. Restate its invoice-backed opening cost before posting inventory usage or adjustments.`);
   // RTDB transactions may invoke the updater once with an empty local cache
   // before the server value arrives.  A purchase reversal must not seed that
@@ -195,7 +248,7 @@ async function applyInventoryMovement(db, raw, actor) {
   const accountingSeed = existingAccounting || seedInventoryAccounting(itemId, item, now);
   const result = await accountingRef.transaction((current) => {
     const base = current || accountingSeed;
-    const state = Object.assign({}, base, {applied: Object.assign({}, base.applied || {})});
+    const state = Object.assign({}, base, {applied: compactInventoryApplied(base.applied, now)});
     if (state.applied[movementId]) { duplicate = true; return state; }
     const before = qty6(state.balance);
     const costBefore = qty6(state.unitCost || item.cost);
@@ -243,12 +296,17 @@ async function applyInventoryMovement(db, raw, actor) {
   });
   if (!result.committed) {if (nothingToRevalue) throw new HttpsError("failed-precondition", `${item.name || itemId} has no stock on hand, so there is no value to restate. Receive stock first.`);if (insufficient) throw new HttpsError("failed-precondition", `Not enough remaining stock to reverse ${item.name || itemId}.`);if (insufficientValue) throw new HttpsError("failed-precondition", `The remaining stock value for ${item.name || itemId} cannot support this reversal.`);throw new Error(`Inventory transaction was not committed for ${itemId}`);}
   const accounting = result.snapshot.val();
-  const movement = accounting.applied[movementId];
-  const opening = accounting.applied[`opening_${itemId}`];
+  const appliedEntry = (accounting.applied || {})[movementId];
+  let movement = inventoryAppliedMarker(appliedEntry) ? null : appliedEntry;
+  const openingEntry = (accounting.applied || {})[`opening_${itemId}`];
+  const opening = inventoryAppliedMarker(openingEntry) ? null : openingEntry;
   const writes = {};
   if (opening) writes[`inventoryMovements/${opening.id}`] = opening;
   if (movement) writes[`inventoryMovements/${movementId}`] = movement;
   if (Object.keys(writes).length) await db.ref().update(writes);
+  // A concurrent attempt may already have projected and marked this movement.
+  if (!movement && inventoryAppliedMarker(appliedEntry)) movement = (await db.ref(`/inventoryMovements/${movementId}`).get()).val();
+  if (Object.keys(writes).length) await markInventoryProjected(db, itemId, [opening && opening.id, (accounting.applied || {})[movementId] === movement ? movementId : ""], accounting.version, Date.now());
   if (movement) await postInventoryMovementToBooks(db, movement, item, actor, postingContext);
   await repairInventoryProjections(db, itemId, accounting, item);
   return {movement, duplicate};
@@ -298,7 +356,7 @@ exports.ensureInventoryLedger = onCall(
       const result = await ref.transaction((current) => {if (current) {existed = true; return current;} return seedInventoryAccounting(itemId, inventory[itemId], now);});
       const accounting = result.snapshot.val();
       const opening = accounting && accounting.applied && accounting.applied[`opening_${itemId}`];
-      if (opening) await db.ref(`/inventoryMovements/${opening.id}`).set(opening);
+      if (opening && !inventoryAppliedMarker(opening) && opening.id) await db.ref(`/inventoryMovements/${opening.id}`).set(opening);
       await repairInventoryProjections(db, itemId, accounting, inventory[itemId]);
       if (!existed) initialized++;
     }

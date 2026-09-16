@@ -62,12 +62,13 @@ function archivedOrderRecord(order, now = Date.now(), reason = "closed-shift") {
 async function rebuildActiveOrders(db, force = false) {
   const now = Date.now();
   const markerRef = db.ref("/systemMaintenance/activeOrdersLastSweep");
-  const [markerSnap, activeShiftSnap, activeSnap] = await Promise.all([
-    markerRef.get(), db.ref("/posActiveShift").get(), db.ref("/activeOrders").get(),
-  ]);
-  if (!force && now - Number(markerSnap.val() || 0) < ACTIVE_SWEEP_INTERVAL_MS && activeSnap.exists()) {
-    return {skipped: true, active: activeSnap.numChildren()};
+  // Every Admin/POS sign-in calls this. Inside the sweep interval only the marker and a
+  // one-row existence probe are read; the projection itself is downloaded only to rebuild.
+  const markerSnap = await markerRef.get();
+  if (!force && now - Number(markerSnap.val() || 0) < ACTIVE_SWEEP_INTERVAL_MS && (await db.ref("/activeOrders").limitToFirst(1).get()).exists()) {
+    return {skipped: true};
   }
+  const [activeShiftSnap, activeSnap] = await Promise.all([db.ref("/posActiveShift").get(), db.ref("/activeOrders").get()]);
   const ordersSnap = await db.ref("/orders").get();
   const orders = ordersSnap.val() || {};
   const existing = activeSnap.val() || {};

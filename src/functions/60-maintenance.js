@@ -2,6 +2,7 @@ exports.pruneEphemeralNodes = onSchedule(
   {schedule: "every day 03:30", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "256MiB"},
   async () => {
     const db = getDatabase(), now = Date.now(), DAY = 86400000;
+    try { logger.info("Books net summaries healed", await healRecentBooksNet(db, now)); } catch (error) { logger.error("Books net summary heal failed", {error: String(error)}); }
     const deletions = {};
     const mark = (path) => { deletions[path] = null; };
 
