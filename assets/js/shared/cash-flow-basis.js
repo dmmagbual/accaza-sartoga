@@ -52,7 +52,8 @@
     // any member dated before the period, so take it back out of opening cash.
     Object.keys(reversed).forEach(function(id){var m=reversed[id];if(isOpening(m))return;if(manilaDay(m.occurredAt)<from)bump(begin,movementCents(m),-1);});
     var rows=Object.keys(input.movements||{}).map(function(id){return Object.assign({id:id},input.movements[id]);}).filter(function(m){return !isOpening(m);}).concat(openingRows(input.openings));
-    rows.sort(function(a,b){return Number(a.occurredAt||0)-Number(b.occurredAt||0);});
+    // Same order as the full-history statement: by time, then by key (database key order).
+    rows.sort(function(a,b){return Number(a.occurredAt||0)-Number(b.occurredAt||0)||(String(a.id)<String(b.id)?-1:String(a.id)>String(b.id)?1:0);});
     rows.forEach(function(m){
       if(reversed[m.id])return;
       var ledger=manilaDay(m.occurredAt),d=effectiveDay(m,accounts,ledger),c=centsOf(m),net=sum(c);
