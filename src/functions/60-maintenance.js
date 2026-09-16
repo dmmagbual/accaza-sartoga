@@ -154,7 +154,7 @@ async function createVerifiedDatabaseBackup(now = Date.now(), options = {}) {
     const dirty = (await db.ref(`/${BackupDelta.DIRTY_ROOT}`).get()).val() || {};
     let base = null;
     try { base = await latestBackupEnvelope(bucket); } catch (error) { logger.warn("Previous backup could not be loaded; running a full backup", {error: String(error)}); }
-    const fullReason = BackupDelta.needsFullBackup({base, now, force: options.full === true});
+    const fullReason = BackupDelta.needsFullBackup({base, now, force: options.full === true, lastMode: latest.mode});
     let snapshot = {}, mode = "full", drift = null, records = 0, verified = null;
     if (fullReason) {
       const root = (await db.ref("/").get()).val() || {};

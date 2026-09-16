@@ -90,9 +90,12 @@ function partialRoots(tracked) {
 }
 
 // Decide whether today's backup must be a full read.
-function needsFullBackup({base, now, force}) {
+// `lastMode` is the mode recorded by the previous run; it is missing until a backup has run with
+// dirty markers active, so the first run after this release is always a full read.
+function needsFullBackup({base, now, force, lastMode}) {
   if (force) return "forced";
   if (!base) return "no_base";
+  if (!lastMode) return "markers_new";
   if (!(Number(base.takenAt) > 0) || now - Number(base.takenAt) > MAX_BASE_AGE_MS) return "stale_base";
   return "";
 }

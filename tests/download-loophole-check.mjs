@@ -604,8 +604,10 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   });
   vm.runInContext(`${bundle.slice(start, end)};globalThis.backup = createVerifiedDatabaseBackup; globalThis.trigger = backupDirtyTrigger;`, ctx);
   const fullData = () => { const out = clone(state); delete out.activeOrders; delete out.backupDirty; return out; };
-  // Day 1: no previous backup, so a full read.
+  // A backup file written before this release exists, but markers only start now: full read.
+  files['db-backups/accaza-2026-09-16-19-00-00.json'] = {body: JSON.stringify(RecoveryValidation.createEnvelope({menuItems: {}}, clock - 86400000, [])), at: clock - 86400000};
   let result = await ctx.backup(clock);
+  assert.equal(state.systemHealth.backups.latest.fullReason, 'markers_new');
   assert.equal(result.version, 'backup-v2');
   assert.equal(state.systemHealth.backups.latest.mode, 'full');
   // Writes between backups, each marked by its trigger (the trigger is the real factory).
@@ -662,8 +664,9 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   // Plan rules.
   const plan = BackupDelta.planIncremental({base: {data: {archivedOrders: {}, books: {journal: {}}}}, topLevel: ['archivedOrders', 'books', 'activeOrders', 'shifts', 'menuItems'], children: {books: ['journal', 'config']}, excluded: ['activeOrders'], dirty: {archivedOrders: {x: 1}, shifts: {y: 1}, 'books~journal': {z: 1}}});
   assert.deepEqual(plan, {fullNodes: ['books/config', 'menuItems'], copyPaths: ['archivedOrders', 'books/journal'], records: [{path: 'archivedOrders', key: 'x'}, {path: 'books/journal', key: 'z'}], fullTracked: ['shifts'], verifySlice: null});
-  assert.equal(BackupDelta.needsFullBackup({base: {takenAt: 1}, now: 2}), '');
-  assert.equal(BackupDelta.needsFullBackup({base: {takenAt: 1}, now: 8 * 86400000 + 2}), 'stale_base');
+  assert.equal(BackupDelta.needsFullBackup({base: {takenAt: 1}, now: 2, lastMode: 'full'}), '');
+  assert.equal(BackupDelta.needsFullBackup({base: {takenAt: 1}, now: 8 * 86400000 + 2, lastMode: 'incremental'}), 'stale_base');
+  assert.equal(BackupDelta.needsFullBackup({base: {takenAt: 1}, now: 2}), 'markers_new', 'the first run after this release (markers just started) reads everything');
   // Slices partition each tracked node by key within the byte budget, cover keys added later, and
   // no single day verifies more than about one budget of history.
   const big = {}; for (let i = 0; i < 40; i += 1) big[`k${String(i).padStart(2, '0')}`] = {pad: 'x'.repeat(1000)};
