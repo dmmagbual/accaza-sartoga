@@ -3,15 +3,16 @@
    loops that a later release fixed: on 16 Sep a Mac tab opened before the
    System Health fixes kept calling the scan every minute for hours after they
    were deployed. Every 15 minutes, and whenever the tab becomes visible or
-   comes back online, this compares the running build with the published
-   release manifest (served by GitHub Pages, not Firebase). When a newer build
+   comes back online, this compares the running build with the public
+   /build-version.json (served by GitHub Pages, not Firebase; the release
+   manifest itself is excluded from the site). When a newer build
    is live it shows a reload bar. Admin and Books reload by themselves only
    when nothing can be lost: online, untouched for 15 minutes, no edited form
    field still on screen, no POS sale in progress and no offline sale syncing.
    Customer pages only show the bar. */
 (function(global){
   'use strict';
-  var CHECK_MS=15*60*1000,IDLE_MS=15*60*1000,MANIFEST='/release-manifest.json';
+  var CHECK_MS=15*60*1000,IDLE_MS=15*60*1000,MANIFEST='/build-version.json';
   var APPS=[['admin','accaza-admin-build'],['books','accaza-books-build'],['customer','accaza-customer-build']];
   var AUTO_RELOAD_APPS={admin:true,books:true};
   var SKIP_TYPES={hidden:1,button:1,submit:1,reset:1,image:1,file:1,search:1,password:1};

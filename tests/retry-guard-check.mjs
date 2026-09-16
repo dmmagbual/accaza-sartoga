@@ -64,6 +64,23 @@ if (/DatabaseTriggers\.onValue\w+\(/.test(functionsIndex)) fail('A trigger bypas
 const retryTriggers = (functionsIndex.match(/retry:\s*true/g) || []).length;
 if (retryTriggers < 20) fail(`Expected the reviewed retry:true trigger set, found ${retryTriggers}.`);
 
+// Turning retry on for an already-deployed function makes `firebase deploy` stop unless that
+// function is in the workflow's scoped --force step (PR #499's deploy failed this way on 16 Sep).
+// Changing this set is a deliberate release step: update the list below AND, for a function that
+// newly retries, add it to the --force line in .github/workflows/deploy-functions.yml.
+{
+  const marks = [...functionsIndex.matchAll(/exports\.([A-Za-z0-9_]+)\s*=/g)].map((m) => [m[1], m.index]);
+  const retrying = marks.filter(([, at], i) => {
+    const body = functionsIndex.slice(at, i + 1 < marks.length ? marks[i + 1][1] : functionsIndex.length);
+    const arrow = body.indexOf('=>');
+    return /retry:\s*true/.test(body.slice(0, arrow > 0 ? arrow : 400));
+  }).map(([name]) => name).sort();
+  const reviewed = ['onOrderFinalize', 'onOrderFinancialPosting', 'onOrderInventoryReversal', 'onPettyReplenishmentFinancial', 'onPettyVoucherFinancial', 'onShiftCloseAssurance', 'onShiftCloseFinancial', 'onShiftOpenFinancial', 'onShiftPayInsFinancial', 'onShiftPayOutsFinancial', 'preservePostedOrderOnDelete', 'refreshHistoricalOrderAfterInventoryPlan', 'refreshHistoricalOrderAfterJournal', 'replicateArchivedOrderToFirestore', 'syncCashCustodyPageIndex', 'syncPettyVoucherAttentionIndex', 'syncUndepositedLedgerPageIndex', 'updateBooksMonthlyNet', 'updateCashBalanceSummary', 'updatePublicCatalogVersionOnCategories', 'updatePublicCatalogVersionOnMenuItems', 'updatePublicCatalogVersionOnOptionGroups'];
+  if (JSON.stringify(retrying) !== JSON.stringify(reviewed)) fail(`The set of retry:true functions changed (now ${retrying.join(', ')}). A function that newly retries must be added to the scoped --force deploy step in .github/workflows/deploy-functions.yml, or the production deploy fails.`);
+  const workflow = read('.github/workflows/deploy-functions.yml');
+  if (!workflow.includes('functions:updateBooksMonthlyNet')) fail('updateBooksMonthlyNet newly retries and must stay in the scoped --force deploy step.');
+}
+
 // Dead letters are critical, time-boxed, and read with a bounded indexed query.
 const exceptions = buildOperationalExceptions({deadLetters: {
   a: {status: 'open', function: 'updateCashBalanceSummary', abandonedAt: now - HOUR, params: {movementId: 'sale_1'}, error: 'Error: boom'},
