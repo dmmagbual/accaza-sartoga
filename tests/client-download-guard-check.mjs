@@ -167,9 +167,12 @@ assert.ok(read('src/admin/pos/20-purchasing.js').includes("a.orderByChild('ing')
 {
   const attached = [], childPaths = [], bootstrapped = [];
   const ops = {ref: (_db, p) => ({path: p}), query: (t, ...parts) => Object.assign({}, t, ...parts), orderByChild: (field) => ({field, ordered: true}), limitToLast: (limit) => ({limit}), startAt: (start) => ({start}), endAt: (end) => ({end}), endBefore: () => ({}),
-    onValue: (target) => { attached.push(target); return () => {}; },
+    onValue: (target, _cb, _err, opts) => { attached.push(Object.assign({}, target, {onlyOnce: !!(opts && opts.onlyOnce)})); return () => {}; },
     onChildAdded: (target) => { childPaths.push(target); return () => {}; }, onChildChanged: (target) => { childPaths.push(target); return () => {}; }, onChildRemoved: (target) => { childPaths.push(target); return () => {}; },
     get: async (target) => { bootstrapped.push(target); return {val: () => ({})}; }, readHistoricalOrders: async () => ({orders: {}, hasMore: false})};
+  // A persistent whole-node value listener is what must not exist. A one-time value event on
+  // the same target shares the child listeners' single listen and costs nothing extra.
+  const persistent = (t) => !t.onlyOnce;
   globalThis.window = globalThis.window || {AccazaDate: {key: () => '2026-09-16'}, addEventListener() {}};
   const hub = createSubscriptionHub({}, ops);
   // A customer review on the shop dashboard, a staff message, one device health ping and one
@@ -178,7 +181,7 @@ assert.ok(read('src/admin/pos/20-purchasing.js').includes("a.orderByChild('ing')
   hub.authorize(); hub.activate('dashboard'); hub.activate('liveoperations');
   await new Promise((r) => setTimeout(r, 0));
   for (const path of ['reviews', 'posDeviceHealth/SH1', 'staffReceiptIndex/u1']) {
-    assert.ok(!attached.some((t) => t.path === path), `/${path} must not attach a whole-node onValue listener`);
+    assert.ok(!attached.some((t) => t.path === path && persistent(t)), `/${path} must not attach a whole-node onValue listener`);
     assert.ok(childPaths.some((t) => t.path === path), `/${path} must attach per-child listeners`);
   }
   // /reservations must stay whole-node. Its page decides that a booking is new by diffing the
@@ -187,12 +190,15 @@ assert.ok(read('src/admin/pos/20-purchasing.js').includes("a.orderByChild('ing')
   assert.ok(attached.some((t) => t.path === 'reservations'), '/reservations keeps its aggregate snapshot so new-booking detection stays correct');
   assert.ok(!childPaths.some((t) => t.path === 'reservations'), '/reservations must not attach per-child listeners');
   assert.ok(!GROWING_PATHS.reservations, '/reservations is not a growth problem: archived bookings move to archivedReservations');
-  // staffMessages boots through a windowed get, then applies changes per child -- so one new
-  // message no longer re-downloads every message the shop has ever sent.
-  const messages = bootstrapped.find((t) => t.path === 'staffMessages');
-  assert.ok(messages && messages.field === 'createdAt' && messages.start > 0, 'the Staff Inbox reads only the active message window');
-  assert.ok(childPaths.some((t) => t.path === 'staffMessages'), 'the Staff Inbox applies message changes per child');
-  assert.ok(!attached.some((t) => t.path === 'staffMessages'), 'the Staff Inbox must not hold a whole-node message listener');
+  // staffMessages takes its first snapshot from a one-time value event on the windowed query,
+  // then applies changes per child -- so one new message no longer re-downloads every message.
+  const messages = attached.find((t) => t.path === 'staffMessages');
+  assert.ok(messages && messages.onlyOnce && messages.field === 'createdAt' && messages.start > 0, 'the Staff Inbox reads only the active message window');
+  assert.ok(childPaths.some((t) => t.path === 'staffMessages' && t.field === 'createdAt'), 'the Staff Inbox applies message changes per child on the same window');
+  assert.ok(!attached.some((t) => t.path === 'staffMessages' && persistent(t)), 'the Staff Inbox must not hold a whole-node message listener');
+  // 17 Sep 2026: a get() before the child listeners downloaded every per-child path twice,
+  // because the SDK drops a completed get() from its cache before the listen starts.
+  assert.equal(bootstrapped.length, 0, 'per-child paths must not bootstrap with a separate get()');
 }
 // The Staff Inbox reads its own index instead of every staff member's receipts, and reads the
 // legacy receipt one active message at a time while it bridges them.

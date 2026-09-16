@@ -46,7 +46,12 @@ function seedInventoryAccounting(itemId, item, now) {
 // A full copy is now kept only until its /inventoryMovements projection is written; then
 // it becomes a small marker that is pruned after the retention window. Movements already
 // projected are recognized before the transaction by their projection record.
-const INVENTORY_APPLIED_RETENTION_MS = 7 * 86400000;
+// Markers only need to outlive the gap between the balance transaction and the projection
+// write (seconds) plus event redelivery (retry-guard stops redelivery after two hours); after
+// that the /inventoryMovements projection is the duplicate check, and projections are never
+// deleted. 24 hours keeps a wide margin while holding a seventh of the markers that 7 days did
+// -- every movement downloads this record twice (read + transaction).
+const INVENTORY_APPLIED_RETENTION_MS = 24 * 3600000;
 const INVENTORY_LEGACY_SETTLE_MS = 3600000;
 function inventoryAppliedMarker(entry) { return !!(entry && typeof entry === "object" && Number(entry.projectedAt) > 0 && !entry.itemId); }
 function compactInventoryApplied(applied, now) {

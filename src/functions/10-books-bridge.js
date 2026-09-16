@@ -32,7 +32,16 @@ async function booksMonthFromDays(db, month) {
   Object.values(snap.val() || {}).forEach((day) => addBooksNet(total, day));
   return total;
 }
+function sameBooksNet(a, b) {
+  const keys = new Set(Object.keys(a).concat(Object.keys(b)));
+  for (const code of keys) if (Financial.money(a[code] || 0) !== Financial.money(b[code] || 0)) return false;
+  return true;
+}
 async function applyBooksMonthlyDelta(db, before, after) {
+  // Day and month totals depend only on each entry's date and net. A write that changes
+  // neither (an updatedAt stamp, a memo, a rebuild that reproduces the same entry) cannot move
+  // them, so it reads nothing. The nightly heal still recomputes the two open months.
+  if (booksEntryDay(before) === booksEntryDay(after) && sameBooksNet(booksEntryNet(before), booksEntryNet(after))) return;
   const meta = (await db.ref("/books/monthlyNetMeta").get()).val() || {};
   if (Number(meta.schemaVersion) !== BOOKS_NET_SCHEMA) { await rebuildBooksMonthlyNet(db, (/* download-ok: migration monthly totals schema changed */await db.ref("/books/journal").get()).val() || {}); return; }
   const days = new Set([booksEntryDay(before), booksEntryDay(after)].filter(Boolean)), months = new Set();
@@ -126,11 +135,12 @@ exports.mirrorPosMovementToBooks = onValueCreated(
     let unmapped;
     if (bucket.mode === "daily") {
       const ref = db.ref(`/books/journal/${bucket.key}`);
+      // Already applied -> abort, so nothing is written and no journal trigger fires again.
+      // updatedAt is part of the same write (it used to be a second write with its own triggers).
       await ref.transaction((cur) => {
         const next = BooksBridge.applyDaily(cur, mv, cashMap);
-        return next === undefined ? cur : next; // abort (already applied) leaves node unchanged
-      });
-      await ref.child("updatedAt").set(Date.now());
+        return next === undefined ? undefined : Object.assign(next, {updatedAt: Date.now()});
+      }, undefined, false);
       unmapped = BooksBridge.mappedLines(mv, cashMap, {}).unmapped;
     } else {
       const single = await booksSingleEntry(db, mv, cashMap), built = single.built;
@@ -162,11 +172,12 @@ exports.mirrorPosCogsToBooks = onValueWritten(
     if (!mv.lines.length) return;
     const bucket = BooksBridge.bucketFor(mv);
     const ref = db.ref(`/books/journal/${bucket.key}`);
+    // updatedAt is stamped inside the same write. A second write used to fire the three
+    // journal triggers again for every COGS posting, including already-applied redeliveries.
     await ref.transaction((cur) => {
       const next = BooksBridge.applyDaily(cur, mv, {});
-      return next === undefined ? cur : next;
-    });
-    await ref.child("updatedAt").set(Date.now());
+      return next === undefined ? undefined : Object.assign(next, {updatedAt: Date.now()});
+    }, undefined, false);
   },
 );
 
@@ -207,18 +218,30 @@ exports.ensureBooksJournal = onCall(
       const bucket = BooksBridge.bucketFor(cogs); daily[bucket.key] = BooksBridge.applyDaily(daily[bucket.key] || null, cogs, cashMap); cogsPosted++;
     });
     const existing = journalSnap.val() || {}, writes = {};
+    let journalWrites = 0, journalUnchanged = 0;
     Object.keys(existing).forEach((key) => {
       const entry=existing[key]||{};
       if (entry.net && entry.source === "pos-bridge" && !daily[key]) writes[`books/journal/${key}`] = null;
       if (!daily[key]&&!singles[key]&&Array.isArray(entry.lines)&&entry.lines.some((line)=>String(line&&line.code||"")==="4995")) writes[`books/journal/${key}`]=Object.assign({},entry,{lines:entry.lines.map((line)=>String(line&&line.code||"")==="4995"?Object.assign({},line,{code:"5905"}):line),legacyAccountMigratedFrom:"4995",legacyAccountMigratedTo:"5905",legacyAccountMigratedAt:Date.now()});
     });
-    Object.keys(daily).forEach((key) => { daily[key].updatedAt = Date.now(); writes[`books/journal/${key}`] = daily[key]; });
+    // Write only entries the rebuild actually changes. Every journal write fires three
+    // triggers and reaches every open Books/Admin journal listener; re-stamping ~800 identical
+    // entries made one Sync cost about 40 MB of downloads (16 Sep 2026, 14:15 and 15:25 UTC).
+    Object.keys(daily).forEach((key) => {
+      if (sameJournalEntry(existing[key], daily[key], ["updatedAt"])) { journalUnchanged++; return; }
+      daily[key].updatedAt = Date.now(); writes[`books/journal/${key}`] = daily[key];
+    });
     // A rebuild may have read a movement before an in-place edit completed.
     // Never overwrite a newer audited revision with that older snapshot.
-    for(const key of Object.keys(singles))await db.ref(`/books/journal/${key}`).transaction((current)=>Number(current&&current.revision||0)>Number(singles[key].revision||0)?current:singles[key],undefined,false);
+    for(const key of Object.keys(singles)){
+      if(sameJournalEntry(existing[key],singles[key],["createdAt","rebuiltAt","updatedAt"])){journalUnchanged++;continue;}
+      const tx=await db.ref(`/books/journal/${key}`).transaction((current)=>Number(current&&current.revision||0)>Number(singles[key].revision||0)?undefined:singles[key],undefined,false);
+      if(tx.committed)journalWrites++;
+    }
     const registerFloat = resolveRegisterFloat(posSettingsSnap.val(), activeShiftSnap.val());
-    writes["books/journal/register_float_control"] = registerFloat.amount > 0 ? registerFloatControlEntry(registerFloat.amount, Date.now(), registerFloat) : null;
-    writes["books/journal/historical_suspense_capital_20260826"] = historicalSuspenseCapitalEntry();
+    const floatEntry = registerFloat.amount > 0 ? registerFloatControlEntry(registerFloat.amount, Date.now(), registerFloat) : null;
+    if (!sameJournalEntry(existing.register_float_control, floatEntry, ["createdAt", "rebuiltAt"])) writes["books/journal/register_float_control"] = floatEntry;
+    if (!sameJournalEntry(existing.historical_suspense_capital_20260826, historicalSuspenseCapitalEntry(), [])) writes["books/journal/historical_suspense_capital_20260826"] = historicalSuspenseCapitalEntry();
     // Reconciliation metadata is non-financial. It changes only how the audit
     // distinguishes verified legacy history from genuinely new exceptions.
     // It must never create or amend a journal or today's account balances.
@@ -228,20 +251,43 @@ exports.ensureBooksJournal = onCall(
     // Each journal entry fires three triggers (monthly totals, archive refresh, backup marker); keep
     // every write well under the 1,000-trigger limit.
     const paths = Object.keys(writes); for (let i = 0; i < paths.length; i += 150) { const batch = {}; paths.slice(i, i + 150).forEach((path) => { batch[path] = writes[path]; }); await db.ref().update(batch); }
+    journalWrites += paths.filter((path) => path.indexOf("books/journal/") === 0).length;
     const openingCash = BooksBridge.r2(Object.values(cashAccountsSnap.val() || {}).reduce((sum, account) => sum + Number(account && account.opening || 0), 0));
     const netSales = BooksBridge.r2(Object.values(daily).reduce((sum, entry) => sum + BooksBridge.netSales(entry && entry.net), 0));
-    const rebuiltJournal = (/* download-ok: manual Books journal rebuild */await db.ref("/books/journal").get()).val() || {};
+    // Totals are rebuilt from the journal as it now stands. When the rebuild changed nothing,
+    // the journal read at the start is that journal, so it is not downloaded a second time.
+    const rebuiltJournal = journalWrites ? (/* download-ok: manual Books journal rebuild */await db.ref("/books/journal").get()).val() || {} : existing;
     await rebuildBooksMonthlyNet(db, rebuiltJournal);
-    const result = {at: Date.now(), by: actor.uid, movements: movementIds.length, dailyEntries: Object.keys(daily).length, singleEntries: Object.keys(singles).length, netSales, cogsPosted, missingCogs, reviewItems: Object.keys(review).length, openingCash, fixedFloat: registerFloat.amount, registerFloatSource: registerFloat.source};
+    const result = {at: Date.now(), by: actor.uid, movements: movementIds.length, dailyEntries: Object.keys(daily).length, singleEntries: Object.keys(singles).length, journalWrites, journalUnchanged, netSales, cogsPosted, missingCogs, reviewItems: Object.keys(review).length, openingCash, fixedFloat: registerFloat.amount, registerFloatSource: registerFloat.source};
     await db.ref("/systemMaintenance/booksJournalSynced").set(result); return result;
   },
 );
 
+// Structural equality of two journal entries as the database stores them (null, empty
+// objects and array holes dropped; key order ignored), leaving out bookkeeping stamps.
+function journalComparable(value) {
+  if (value === null || value === undefined || (typeof value === "number" && !Number.isFinite(value))) return undefined;
+  if (typeof value !== "object") return value;
+  const out = {};
+  (Array.isArray(value) ? value.map((_, index) => String(index)) : Object.keys(value).sort()).forEach((key) => { const next = journalComparable(value[key]); if (next !== undefined) out[key] = next; });
+  return Object.keys(out).length ? out : undefined;
+}
+function sameJournalEntry(current, next, ignored) {
+  const stable = (value) => { const out = journalComparable(value); if (out && typeof out === "object") (ignored || []).forEach((key) => { delete out[key]; }); return JSON.stringify(out === undefined ? null : out); };
+  return stable(current) === stable(next);
+}
+
+// Only usage reversals can need this repair, so they are read through the type index with
+// their two linked records, instead of downloading both whole ledgers (~3.3 MB) on every Sync.
+const RTDB_KEY_PATTERN=/^[^.#$\[\]\/]+$/;
 async function ensureHistoricalInternalUsageFinance(db,actor){
-  const [inventorySnap,financeSnap]=/* download-ok: manual only ensureBooksJournal runs this historical repair */await Promise.all([db.ref("/inventoryMovements").get(),db.ref("/financialMovements").get()]),inventory=inventorySnap.val()||{},finance=financeSnap.val()||{};
-  for(const id of Object.keys(inventory)){
-    const reversal=Object.assign({id},inventory[id]||{});if(reversal.type!=="usage_reversal"||finance[`invmove_${id}`])continue;
-    const originalId=String(reversal.reversalOf||""),originalInventory=inventory[originalId]||{},original=finance[`invmove_${originalId}`];if(originalInventory.sourceType!=="internal-usage"||!original||!Array.isArray(original.lines)||!["inventory_staff_use","inventory_rnd_testing","inventory_waste"].includes(String(original.type||"")))continue;
+  const reversals=(await db.ref("/inventoryMovements").orderByChild("type").equalTo("usage_reversal").get()).val()||{};
+  for(const id of Object.keys(reversals)){
+    const reversal=Object.assign({id},reversals[id]||{});if(reversal.type!=="usage_reversal")continue;
+    if((await db.ref(`/financialMovements/invmove_${id}`).get()).exists())continue;
+    const originalId=String(reversal.reversalOf||"");if(!RTDB_KEY_PATTERN.test(originalId))continue;
+    const [originalInventorySnap,originalSnap]=await Promise.all([db.ref(`/inventoryMovements/${originalId}`).get(),db.ref(`/financialMovements/invmove_${originalId}`).get()]);
+    const originalInventory=originalInventorySnap.val()||{},original=originalSnap.val();if(originalInventory.sourceType!=="internal-usage"||!original||!Array.isArray(original.lines)||!["inventory_staff_use","inventory_rnd_testing","inventory_waste"].includes(String(original.type||"")))continue;
     const usageAccount=String(original.usageAccount||(original.type==="inventory_rnd_testing"?"6078":original.type==="inventory_waste"?"5900":"6077")),lines=original.lines.map((line)=>Financial.line(line.account,Number(line.credit)||0,Number(line.debit)||0,`Historical internal-usage reversal · ${reversal.itemName||reversal.itemId||id}`)),movement=Financial.movement("inventory_usage_reversal","inventoryMovement",id,lines,{occurredAt:Number(reversal.occurredAt||reversal.createdAt||Date.now()),actorName:actor.role,itemId:String(reversal.itemId||""),usageAccount,reversalOf:originalId,automaticRepair:true});
     await commitFinancial(db,`invmove_${id}`,movement,actor);
   }

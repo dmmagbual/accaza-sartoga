@@ -16,6 +16,7 @@ const {getMessaging} = require("firebase-admin/messaging");
 const {getStorage} = require("firebase-admin/storage");
 const logger = require("firebase-functions/logger");
 const crypto = require("node:crypto");
+const {AsyncLocalStorage} = require("node:async_hooks");
 const Costing = require("./lib/costing");
 const Financial = require("./lib/financial");
 const OfflineSync = require("./lib/offline-sync");
@@ -294,7 +295,16 @@ async function booksMonthFromDays(db, month) {
   Object.values(snap.val() || {}).forEach((day) => addBooksNet(total, day));
   return total;
 }
+function sameBooksNet(a, b) {
+  const keys = new Set(Object.keys(a).concat(Object.keys(b)));
+  for (const code of keys) if (Financial.money(a[code] || 0) !== Financial.money(b[code] || 0)) return false;
+  return true;
+}
 async function applyBooksMonthlyDelta(db, before, after) {
+  // Day and month totals depend only on each entry's date and net. A write that changes
+  // neither (an updatedAt stamp, a memo, a rebuild that reproduces the same entry) cannot move
+  // them, so it reads nothing. The nightly heal still recomputes the two open months.
+  if (booksEntryDay(before) === booksEntryDay(after) && sameBooksNet(booksEntryNet(before), booksEntryNet(after))) return;
   const meta = (await db.ref("/books/monthlyNetMeta").get()).val() || {};
   if (Number(meta.schemaVersion) !== BOOKS_NET_SCHEMA) { await rebuildBooksMonthlyNet(db, (/* download-ok: migration monthly totals schema changed */await db.ref("/books/journal").get()).val() || {}); return; }
   const days = new Set([booksEntryDay(before), booksEntryDay(after)].filter(Boolean)), months = new Set();
@@ -388,11 +398,12 @@ exports.mirrorPosMovementToBooks = onValueCreated(
     let unmapped;
     if (bucket.mode === "daily") {
       const ref = db.ref(`/books/journal/${bucket.key}`);
+      // Already applied -> abort, so nothing is written and no journal trigger fires again.
+      // updatedAt is part of the same write (it used to be a second write with its own triggers).
       await ref.transaction((cur) => {
         const next = BooksBridge.applyDaily(cur, mv, cashMap);
-        return next === undefined ? cur : next; // abort (already applied) leaves node unchanged
-      });
-      await ref.child("updatedAt").set(Date.now());
+        return next === undefined ? undefined : Object.assign(next, {updatedAt: Date.now()});
+      }, undefined, false);
       unmapped = BooksBridge.mappedLines(mv, cashMap, {}).unmapped;
     } else {
       const single = await booksSingleEntry(db, mv, cashMap), built = single.built;
@@ -424,11 +435,12 @@ exports.mirrorPosCogsToBooks = onValueWritten(
     if (!mv.lines.length) return;
     const bucket = BooksBridge.bucketFor(mv);
     const ref = db.ref(`/books/journal/${bucket.key}`);
+    // updatedAt is stamped inside the same write. A second write used to fire the three
+    // journal triggers again for every COGS posting, including already-applied redeliveries.
     await ref.transaction((cur) => {
       const next = BooksBridge.applyDaily(cur, mv, {});
-      return next === undefined ? cur : next;
-    });
-    await ref.child("updatedAt").set(Date.now());
+      return next === undefined ? undefined : Object.assign(next, {updatedAt: Date.now()});
+    }, undefined, false);
   },
 );
 
@@ -469,18 +481,30 @@ exports.ensureBooksJournal = onCall(
       const bucket = BooksBridge.bucketFor(cogs); daily[bucket.key] = BooksBridge.applyDaily(daily[bucket.key] || null, cogs, cashMap); cogsPosted++;
     });
     const existing = journalSnap.val() || {}, writes = {};
+    let journalWrites = 0, journalUnchanged = 0;
     Object.keys(existing).forEach((key) => {
       const entry=existing[key]||{};
       if (entry.net && entry.source === "pos-bridge" && !daily[key]) writes[`books/journal/${key}`] = null;
       if (!daily[key]&&!singles[key]&&Array.isArray(entry.lines)&&entry.lines.some((line)=>String(line&&line.code||"")==="4995")) writes[`books/journal/${key}`]=Object.assign({},entry,{lines:entry.lines.map((line)=>String(line&&line.code||"")==="4995"?Object.assign({},line,{code:"5905"}):line),legacyAccountMigratedFrom:"4995",legacyAccountMigratedTo:"5905",legacyAccountMigratedAt:Date.now()});
     });
-    Object.keys(daily).forEach((key) => { daily[key].updatedAt = Date.now(); writes[`books/journal/${key}`] = daily[key]; });
+    // Write only entries the rebuild actually changes. Every journal write fires three
+    // triggers and reaches every open Books/Admin journal listener; re-stamping ~800 identical
+    // entries made one Sync cost about 40 MB of downloads (16 Sep 2026, 14:15 and 15:25 UTC).
+    Object.keys(daily).forEach((key) => {
+      if (sameJournalEntry(existing[key], daily[key], ["updatedAt"])) { journalUnchanged++; return; }
+      daily[key].updatedAt = Date.now(); writes[`books/journal/${key}`] = daily[key];
+    });
     // A rebuild may have read a movement before an in-place edit completed.
     // Never overwrite a newer audited revision with that older snapshot.
-    for(const key of Object.keys(singles))await db.ref(`/books/journal/${key}`).transaction((current)=>Number(current&&current.revision||0)>Number(singles[key].revision||0)?current:singles[key],undefined,false);
+    for(const key of Object.keys(singles)){
+      if(sameJournalEntry(existing[key],singles[key],["createdAt","rebuiltAt","updatedAt"])){journalUnchanged++;continue;}
+      const tx=await db.ref(`/books/journal/${key}`).transaction((current)=>Number(current&&current.revision||0)>Number(singles[key].revision||0)?undefined:singles[key],undefined,false);
+      if(tx.committed)journalWrites++;
+    }
     const registerFloat = resolveRegisterFloat(posSettingsSnap.val(), activeShiftSnap.val());
-    writes["books/journal/register_float_control"] = registerFloat.amount > 0 ? registerFloatControlEntry(registerFloat.amount, Date.now(), registerFloat) : null;
-    writes["books/journal/historical_suspense_capital_20260826"] = historicalSuspenseCapitalEntry();
+    const floatEntry = registerFloat.amount > 0 ? registerFloatControlEntry(registerFloat.amount, Date.now(), registerFloat) : null;
+    if (!sameJournalEntry(existing.register_float_control, floatEntry, ["createdAt", "rebuiltAt"])) writes["books/journal/register_float_control"] = floatEntry;
+    if (!sameJournalEntry(existing.historical_suspense_capital_20260826, historicalSuspenseCapitalEntry(), [])) writes["books/journal/historical_suspense_capital_20260826"] = historicalSuspenseCapitalEntry();
     // Reconciliation metadata is non-financial. It changes only how the audit
     // distinguishes verified legacy history from genuinely new exceptions.
     // It must never create or amend a journal or today's account balances.
@@ -490,20 +514,43 @@ exports.ensureBooksJournal = onCall(
     // Each journal entry fires three triggers (monthly totals, archive refresh, backup marker); keep
     // every write well under the 1,000-trigger limit.
     const paths = Object.keys(writes); for (let i = 0; i < paths.length; i += 150) { const batch = {}; paths.slice(i, i + 150).forEach((path) => { batch[path] = writes[path]; }); await db.ref().update(batch); }
+    journalWrites += paths.filter((path) => path.indexOf("books/journal/") === 0).length;
     const openingCash = BooksBridge.r2(Object.values(cashAccountsSnap.val() || {}).reduce((sum, account) => sum + Number(account && account.opening || 0), 0));
     const netSales = BooksBridge.r2(Object.values(daily).reduce((sum, entry) => sum + BooksBridge.netSales(entry && entry.net), 0));
-    const rebuiltJournal = (/* download-ok: manual Books journal rebuild */await db.ref("/books/journal").get()).val() || {};
+    // Totals are rebuilt from the journal as it now stands. When the rebuild changed nothing,
+    // the journal read at the start is that journal, so it is not downloaded a second time.
+    const rebuiltJournal = journalWrites ? (/* download-ok: manual Books journal rebuild */await db.ref("/books/journal").get()).val() || {} : existing;
     await rebuildBooksMonthlyNet(db, rebuiltJournal);
-    const result = {at: Date.now(), by: actor.uid, movements: movementIds.length, dailyEntries: Object.keys(daily).length, singleEntries: Object.keys(singles).length, netSales, cogsPosted, missingCogs, reviewItems: Object.keys(review).length, openingCash, fixedFloat: registerFloat.amount, registerFloatSource: registerFloat.source};
+    const result = {at: Date.now(), by: actor.uid, movements: movementIds.length, dailyEntries: Object.keys(daily).length, singleEntries: Object.keys(singles).length, journalWrites, journalUnchanged, netSales, cogsPosted, missingCogs, reviewItems: Object.keys(review).length, openingCash, fixedFloat: registerFloat.amount, registerFloatSource: registerFloat.source};
     await db.ref("/systemMaintenance/booksJournalSynced").set(result); return result;
   },
 );
 
+// Structural equality of two journal entries as the database stores them (null, empty
+// objects and array holes dropped; key order ignored), leaving out bookkeeping stamps.
+function journalComparable(value) {
+  if (value === null || value === undefined || (typeof value === "number" && !Number.isFinite(value))) return undefined;
+  if (typeof value !== "object") return value;
+  const out = {};
+  (Array.isArray(value) ? value.map((_, index) => String(index)) : Object.keys(value).sort()).forEach((key) => { const next = journalComparable(value[key]); if (next !== undefined) out[key] = next; });
+  return Object.keys(out).length ? out : undefined;
+}
+function sameJournalEntry(current, next, ignored) {
+  const stable = (value) => { const out = journalComparable(value); if (out && typeof out === "object") (ignored || []).forEach((key) => { delete out[key]; }); return JSON.stringify(out === undefined ? null : out); };
+  return stable(current) === stable(next);
+}
+
+// Only usage reversals can need this repair, so they are read through the type index with
+// their two linked records, instead of downloading both whole ledgers (~3.3 MB) on every Sync.
+const RTDB_KEY_PATTERN=/^[^.#$\[\]\/]+$/;
 async function ensureHistoricalInternalUsageFinance(db,actor){
-  const [inventorySnap,financeSnap]=/* download-ok: manual only ensureBooksJournal runs this historical repair */await Promise.all([db.ref("/inventoryMovements").get(),db.ref("/financialMovements").get()]),inventory=inventorySnap.val()||{},finance=financeSnap.val()||{};
-  for(const id of Object.keys(inventory)){
-    const reversal=Object.assign({id},inventory[id]||{});if(reversal.type!=="usage_reversal"||finance[`invmove_${id}`])continue;
-    const originalId=String(reversal.reversalOf||""),originalInventory=inventory[originalId]||{},original=finance[`invmove_${originalId}`];if(originalInventory.sourceType!=="internal-usage"||!original||!Array.isArray(original.lines)||!["inventory_staff_use","inventory_rnd_testing","inventory_waste"].includes(String(original.type||"")))continue;
+  const reversals=(await db.ref("/inventoryMovements").orderByChild("type").equalTo("usage_reversal").get()).val()||{};
+  for(const id of Object.keys(reversals)){
+    const reversal=Object.assign({id},reversals[id]||{});if(reversal.type!=="usage_reversal")continue;
+    if((await db.ref(`/financialMovements/invmove_${id}`).get()).exists())continue;
+    const originalId=String(reversal.reversalOf||"");if(!RTDB_KEY_PATTERN.test(originalId))continue;
+    const [originalInventorySnap,originalSnap]=await Promise.all([db.ref(`/inventoryMovements/${originalId}`).get(),db.ref(`/financialMovements/invmove_${originalId}`).get()]);
+    const originalInventory=originalInventorySnap.val()||{},original=originalSnap.val();if(originalInventory.sourceType!=="internal-usage"||!original||!Array.isArray(original.lines)||!["inventory_staff_use","inventory_rnd_testing","inventory_waste"].includes(String(original.type||"")))continue;
     const usageAccount=String(original.usageAccount||(original.type==="inventory_rnd_testing"?"6078":original.type==="inventory_waste"?"5900":"6077")),lines=original.lines.map((line)=>Financial.line(line.account,Number(line.credit)||0,Number(line.debit)||0,`Historical internal-usage reversal · ${reversal.itemName||reversal.itemId||id}`)),movement=Financial.movement("inventory_usage_reversal","inventoryMovement",id,lines,{occurredAt:Number(reversal.occurredAt||reversal.createdAt||Date.now()),actorName:actor.role,itemId:String(reversal.itemId||""),usageAccount,reversalOf:originalId,automaticRepair:true});
     await commitFinancial(db,`invmove_${id}`,movement,actor);
   }
@@ -1000,7 +1047,13 @@ exports.getOperationalExceptions = onCall(
   async (request) => {
     const db = getDatabase(), actor = await requirePortalUser(db, request);
     if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Operational exceptions are restricted to management accounts.");
-    return getCachedOperationalExceptions(db, Date.now(), request.data && request.data.force === true);
+    const data = request.data || {};
+    // Admin tabs opened before build 495 still poll this every minute, all day, and never
+    // reload. Current clients send cached:true; a request with neither flag gets the empty
+    // manual-only answer without downloading the saved scan, so a saved scan cannot turn
+    // those stale tabs into a steady download again.
+    if (data.force !== true && data.cached !== true) return Object.assign(emptyOperationalResult(), {staleClient: true});
+    return getCachedOperationalExceptions(db, Date.now(), data.force === true);
   },
 );
 
@@ -2213,7 +2266,7 @@ async function shiftOrdersForAssurance(db,shiftId){const [live,archived]=await P
 function recognizedAssuranceSale(order){const status=order&&order.status==='Archived'?order.prevStatus:order&&order.status;return !!order&&!order.voided&&['Completed','Received'].includes(status);}
 async function assurancePostingState(db,orders){const sales=Object.entries(orders).filter(([,order])=>recognizedAssuranceSale(order)),checks=await Promise.all(sales.map(async([id,order])=>{const finance=await db.ref(`/financialMovements/sale_${id}`).get();return{id,inventory:order.inventoryDeducted===true,finance:finance.exists()};}));return{saleCount:sales.length,inventoryOutstanding:checks.filter(row=>!row.inventory).map(row=>row.id),financeOutstanding:checks.filter(row=>!row.finance).map(row=>row.id)};}
 
-exports.reportPosDeviceHealth=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:30,memory:'256MiB'},async request=>{const db=getDatabase(),actor=await requirePortalPermission(db,request,['pos']),data=request.data||{},shiftId=posAssuranceKey(data.shiftId,'Shift ID'),deviceId=posAssuranceKey(data.deviceId,'Device ID'),shift=(await db.ref('/posActiveShift').get()).val()||{};if(shift.id!==shiftId)throw new HttpsError('failed-precondition','This device is not reporting against the open shift.');const bounded=value=>Math.max(0,Math.min(10000,Math.floor(Number(value)||0))),record={shiftId,deviceId,staff:financeText(shift.staff,100),staffId:financeText(shift.staffId,100),online:true,pending:bounded(data.pending),syncing:bounded(data.syncing),failed:bounded(data.failed),outstanding:bounded(data.pending)+bounded(data.syncing)+bounded(data.failed),oldestUnsyncedAt:Math.max(0,Number(data.oldestUnsyncedAt)||0),lastContactAt:Date.now(),reportedBy:actor.uid,schemaVersion:2};await db.ref(`/posDeviceHealth/${shiftId}/${deviceId}`).set(record);return{accepted:true,lastContactAt:record.lastContactAt};});
+exports.reportPosDeviceHealth=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:30,memory:'256MiB'},async request=>{const db=getDatabase(),actor=await requirePortalPermission(db,request,['pos']),data=request.data||{},shiftId=posAssuranceKey(data.shiftId,'Shift ID'),deviceId=posAssuranceKey(data.deviceId,'Device ID'),shift=(await db.ref('/posActiveShift').get()).val()||{};if(shift.id!==shiftId)throw new HttpsError('failed-precondition','This device is not reporting against the open shift.');const bounded=value=>Math.max(0,Math.min(10000,Math.floor(Number(value)||0))),record={shiftId,deviceId,staff:financeText(shift.staff,100),staffId:financeText(shift.staffId,100),online:true,pending:bounded(data.pending),syncing:bounded(data.syncing),failed:bounded(data.failed),outstanding:bounded(data.pending)+bounded(data.syncing)+bounded(data.failed),oldestUnsyncedAt:Math.max(0,Number(data.oldestUnsyncedAt)||0),lastContactAt:Date.now(),idle:data.idle===true,reportedBy:actor.uid,schemaVersion:2};await db.ref(`/posDeviceHealth/${shiftId}/${deviceId}`).set(record);return{accepted:true,lastContactAt:record.lastContactAt};});
 
 exports.verifyShiftCloseReadiness=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:'256MiB'},async request=>{const db=getDatabase(),actor=await requirePortalPermission(db,request,['pos','registerOps']),data=request.data||{},shiftId=posAssuranceKey(data.shiftId,'Shift ID'),deviceId=posAssuranceKey(data.deviceId,'Device ID'),shift=(await db.ref('/posActiveShift').get()).val()||{};if(shift.id!==shiftId||shift.status==='closed')throw new HttpsError('failed-precondition','The selected shift is not open.');const devices=(await db.ref(`/posDeviceHealth/${shiftId}`).get()).val()||{},health=devices[deviceId]||{};if(health.shiftId!==shiftId||health.deviceId!==deviceId||health.reportedBy!==actor.uid||Date.now()-Number(health.lastContactAt||0)>POS_HEALTH_MAX_AGE_MS)throw new HttpsError('failed-precondition','This cashier device has no recent synchronization confirmation.');const outstandingDevices=Object.values(devices).filter(row=>row&&row.shiftId===shiftId&&Number(row.outstanding||0)>0);if(outstandingDevices.length){const outstanding=outstandingDevices.reduce((sum,row)=>sum+Number(row.outstanding||0),0);throw new HttpsError('failed-precondition',`${outstanding} local sale(s) on ${outstandingDevices.length} POS device(s) still require synchronization.`);}const state=await assurancePostingState(db,await shiftOrdersForAssurance(db,shiftId));if(state.inventoryOutstanding.length||state.financeOutstanding.length)throw new HttpsError('failed-precondition',`Wait for server posting to finish. Inventory: ${state.inventoryOutstanding.length}; Finance Books: ${state.financeOutstanding.length}.`);const verifiedAt=Date.now(),verification={shiftId,deviceId,verifiedAt,verifiedBy:actor.uid,reportedDeviceCount:Object.keys(devices).length,outstandingDeviceCount:0,saleCount:state.saleCount,inventoryOutstanding:0,financeOutstanding:0,schemaVersion:2};await db.ref(`/shiftCloseVerifications/${shiftId}`).set(verification);return verification;});
 
@@ -2909,9 +2962,16 @@ async function nextDocumentNumber(db, prefix, year) {
   if (!seq) return "";
   return `${prefix}-${year}-${String(seq).padStart(4, "0")}`;
 }
+// Movements known to exist for the duration of one maintenance run (ensureFinancialLedger).
+// Financial movements are never deleted, so a movement present when the run started is
+// still present: the backfill skips one existence download per already-posted record
+// instead of re-reading each of them. Scoped per request, so concurrent calls never share it.
+const knownFinancialMovements = new AsyncLocalStorage();
 async function commitFinancial(db, movementId, movement, actor, extraWrites = {}) {
   movementId = financeKey(movementId, "Movement ID");
   const ref = db.ref(`/financialMovements/${movementId}`);
+  const run = knownFinancialMovements.getStore(), known = run && run.movements;
+  if (known && Object.prototype.hasOwnProperty.call(known, movementId) && known[movementId]) return {duplicate: true, movement: known[movementId]};
   const existing = await ref.get();
   if (existing.exists()) return {duplicate: true, movement: existing.val()};
   await assertAccountingPeriodOpen(db, Number(movement && movement.occurredAt || Date.now()), "creating this financial posting");
@@ -2944,6 +3004,7 @@ async function commitFinancial(db, movementId, movement, actor, extraWrites = {}
     if(record.reversalOf){const source=(await db.ref(`/financialMovements/${financeKey(record.reversalOf,'Reversal source')}`).get()).val();if(source&&Number(source.revision)>0&&CashJournalEdit.eligible(source))throw new HttpsError('failed-precondition','This cash journal has an audited revision. Refresh and use Edit / correct; journal-only reversal would break its custody link.');}
     const writes = Object.assign({}, extraWrites, {[`financialMovements/${movementId}`]: record,[`financialCommandClaims/${movementId}`]:{status:"posted",token:claimToken,claimedAt,postedAt:Date.now(),actorUid:actor.uid,movementId,operationType:financeText(movement && movement.type,80),schemaVersion:2}});
     await safeFinancialUpdate(db, writes, "financial");
+    if (run) run.written += 1;
     return {duplicate: false, movement: record};
   } catch (error) {
     await claimRef.transaction((current) => current && current.token === claimToken && current.status === "processing" ? null : current);
@@ -3099,8 +3160,8 @@ exports.preservePostedOrderOnDelete = onValueDeleted(
   },
 );
 
-async function postShiftCashEntries(db, shiftId, entries, kind) {
-  const actor = {uid: "server", role: "server"}, shift=(await db.ref(`/shifts/${shiftId}`).get()).val()||{}, shiftReference=durableShiftReference(shift,shiftId);
+async function postShiftCashEntries(db, shiftId, entries, kind, knownShift) {
+  const actor = {uid: "server", role: "server"}, shift=knownShift||(await db.ref(`/shifts/${shiftId}`).get()).val()||{}, shiftReference=durableShiftReference(shift,shiftId);
   for (let index = 0; index < (entries || []).length; index++) { const entry = entries[index] || {}, value = Financial.money(entry.amount); if (!(value > 0)) continue; const token = `${Number(entry.ts || 0)}_${index}`, movementId = `${kind}_${shiftId}_${token}`, isIn = kind === "shift_payin"; if (!isIn && (entry.type === "revolving_fund_replenishment" || /^petty cash replenish/i.test(String(entry.reason || "")))) continue; const isPurchaseAdvance = !isIn && entry.type === "purchase_advance" && entry.id; const lines = isIn ? [Financial.line("asset:register_cash", value, 0, entry.reason || "Cash in"), Financial.line(`offset:cash_in:${financeText(entry.reason || "other", 60)}`, 0, value, entry.reason || "Cash in")] : isPurchaseAdvance ? [Financial.line(`asset:purchase_cash_advance:${financeKey(entry.id, "Purchase advance ID")}`, value, 0, entry.reason || "Purchase cash advance"), Financial.line("asset:register_cash", 0, value, entry.reason || "Purchase cash advance")] : [Financial.line(`expense:cash_out:${financeText(entry.reason || "other", 60)}`, value, 0, entry.reason || "Cash out"), Financial.line("asset:register_cash", 0, value, entry.reason || "Cash out")]; const movement = Financial.movement(isPurchaseAdvance ? "purchase_cash_advance" : kind, "shift", shiftId, lines, {occurredAt: Number(entry.ts || Date.now()), actorName: entry.by || "Register", shiftReference, reference:financeText(entry.reference,120)||shiftReference, advanceId: entry.id || "", recipient: financeText(entry.recipient || "", 120)}); await commitFinancial(db, movementId, movement, actor); }
 }
 exports.onShiftPayInsFinancial = onValueWritten({ref: "/shifts/{shiftId}/payIns", region: ORDER_REGION, retry: true}, async (event) => {if (!event.data.after.exists()) return; await postShiftCashEntries(getDatabase(), event.params.shiftId, event.data.after.val() || [], "shift_payin");});
@@ -4172,6 +4233,8 @@ exports.ensureFinancialLedger = onCall(
     const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["cashflow", "receivables"]);
     const [ordersSnap, archiveSnap, accountsSnap, ledgerSnap, shiftsSnap, vouchersSnap, replenishmentsSnap, pettySettingsSnap, receivablesSnap, payablesSnap, movementsSnap, payoutsSnap, varianceDefsSnap] = /* download-ok: manual ledger backfill tool */await Promise.all([db.ref("/orders").get(), db.ref("/archivedOrders").get(), db.ref("/cfAccounts").get(), db.ref("/cfLedger").get(), db.ref("/shifts").get(), db.ref("/pettyCashVouchers").get(), db.ref("/pettyCashReplenishments").get(), db.ref("/pettyCashSettings").get(), db.ref("/receivables").get(), db.ref("/payables").get(), db.ref("/financialMovements").get(), db.ref("/platformPayouts").get(), db.ref("/platformVarAccounts").get()]);
     const accounts = accountsSnap.val() || {}, legacyLedger = ledgerSnap.val() || {}, all = Object.assign({}, archiveSnap.val() || {}, ordersSnap.val() || {}), originalMovements = movementsSnap.val() || {}; let posted = 0, duplicates = 0, skipped = 0, salesDiscountsReclassified = 0; const serverActor = {uid: "server", role: "server"};
+    const ledgerRun = {movements: originalMovements, written: 0};
+    return knownFinancialMovements.run(ledgerRun, async () => {
     for (const id of Object.keys(all)) { try {const order = Object.assign({id}, all[id]), result = await postOrderFinancial(db, order, accounts, serverActor); if (result.skipped) skipped++; else if (result.duplicate) duplicates++; else posted++;const prepaid=await postPreCompletionCashRefund(db,order,serverActor);if(!prepaid.skipped){if(prepaid.duplicate)duplicates++;else posted++;} const orderStatus=order.status==="Archived"?order.prevStatus:order.status,discountReclass=!order.voided&&["Completed","Received"].includes(orderStatus)&&order.paymentStatus!=="pending"?Financial.platformDiscountReclassification(order,originalMovements[`sale_${id}`]):null;if(discountReclass){const movementId=`sales_discount_reclass_${id}`,now=Date.now(),rr=await commitFinancial(db,movementId,discountReclass,serverActor,{[`operationalAudit/${now}_sales_discount_reclass_${id}`]:{action:"platform_sales_discount_reclassified",sourceType:"order",sourceId:id,movementId,originalMovementId:`sale_${id}`,amount:Financial.money(discountReclass.amount),actorUid:actor.uid,ts:now,schemaVersion:1,accounting:"Reclassify platform-funded discounts from selling expense to contra-revenue; no cash, receivable, inventory, or profit change."}});if(rr.duplicate)duplicates++;else{posted++;salesDiscountsReclassified++;}}const refund = Financial.money(order.refundAmount); if (refund > 0) {const movementId = `refund_${id}_${Math.round(refund * 100)}`, movement = Financial.reversalPosting(order, refund, "refund", accounts), writes = {}; movement.occurredAt = Number(order.refundedAt || order.timestamp || Date.now()); if (!legacyLedger[`cfrefund_${id}`]) addOrderCashWrites(writes, movement, movementId, order, serverActor); const rr = await commitFinancial(db, movementId, movement, serverActor, writes); rr.duplicate ? duplicates++ : posted++;} if (order.voided) {const remaining = Financial.money(Math.max(0, Financial.money(order.total) - refund)); if (remaining > 0) {const movementId = `void_${id}`, movement = Financial.reversalPosting(order, remaining, "void", accounts), writes = {}; movement.occurredAt = Number(order.voidedAt || order.timestamp || Date.now()); addOrderCashWrites(writes, movement, movementId, order, serverActor); const vr = await commitFinancial(db, movementId, movement, serverActor, writes); vr.duplicate ? duplicates++ : posted++;}}} catch (error) {logger.error("3C backfill order failed", {id, error: String(error)}); throw new HttpsError("internal", `Backfill stopped at order ${id}. It is safe to retry.`);} }
       let orphanReversed = 0;
       for (const movementId of Object.keys(originalMovements)) {
@@ -4184,7 +4247,7 @@ exports.ensureFinancialLedger = onCall(
       const result = await commitFinancial(db, reversalId, reversal, serverActor, {[`operationalAudit/${Date.now()}_orphan_sale_${sourceId}`]: {action: "orphan_sale_reversed", sourceType: "order", sourceId, movementId, reversalId, amount: Financial.money(original.amount), actorUid: actor.uid, ts: Date.now(), schemaVersion: 1}});
       if (result.duplicate) duplicates++; else {posted++; orphanReversed++;}
     }
-    const shifts = shiftsSnap.val() || {}; for (const id of Object.keys(shifts)) {await postShiftCashEntries(db, id, shifts[id].payIns || [], "shift_payin"); await postShiftCashEntries(db, id, shifts[id].payOuts || [], "shift_payout"); await backfillShiftVariance(db, id, shifts[id]);}
+    const shifts = shiftsSnap.val() || {}; for (const id of Object.keys(shifts)) {await postShiftCashEntries(db, id, shifts[id].payIns || [], "shift_payin", shifts[id]); await postShiftCashEntries(db, id, shifts[id].payOuts || [], "shift_payout", shifts[id]); await backfillShiftVariance(db, id, shifts[id]);}
     const vouchers = vouchersSnap.val() || {}; for (const id of Object.keys(vouchers)) await backfillPettyVoucher(db, id, vouchers[id]);
     const replenishments = replenishmentsSnap.val() || {}; for (const id of Object.keys(replenishments)) await backfillPettyReplenishment(db, id, replenishments[id]);
     for (const id of Object.keys(accounts)) {const account = accounts[id] || {}, occurredAt = Date.parse(`${account.openingDate || ""}T00:00:00+08:00`) || account.ts || Date.now(); await backfillOpeningBalance(db, `opening_cash_${id}`, "cashAccount", id, `asset:cash_account:${id}`, account.opening, occurredAt, `Opening balance — ${financeText(account.name || id, 80)}`);}
@@ -4199,18 +4262,24 @@ exports.ensureFinancialLedger = onCall(
       if (!payout.reversed) for (const orderId of (Array.isArray(payout.orderIds) ? payout.orderIds : [])) {try {const entry=await findOrder(db,orderId);if ((entry.order.settlementStatus||"unsettled")!=="settled"||entry.order.payoutId!==id){linkWrites[`${entry.node}/${entry.id}/settlementStatus`]="settled";linkWrites[`${entry.node}/${entry.id}/payoutId`]=id;settledOrdersLinked++;}} catch (_) {payoutIssues.push({kind:"payout_order_missing",payoutId:id,orderId});}}
       try {const rebuilt=Financial.platformPayoutPosting(Object.assign({},payout,{reconstructedFromPayoutRecord:true}),varianceDefs), now=Date.now(), auditKey=`operationalAudit/${now}_payout_rebuild_${id}`, result=await commitFinancial(db,movementId,rebuilt,serverActor,Object.assign({},linkWrites,{[auditKey]:{action:"platform_payout_movement_rebuilt",sourceType:"platformPayout",sourceId:id,movementId,channel:payout.channel,expectedNet:Financial.money(payout.expectedNet),actualPayout:Financial.money(payout.actualPayout),orderCount:(payout.orderIds||[]).length,actorUid:actor.uid,ts:now,schemaVersion:1}}));if(result.duplicate){payoutDuplicates++;if(Object.keys(linkWrites).length)await db.ref().update(linkWrites);}else{posted++;payoutsPosted++;}} catch(error){payoutIssues.push({kind:"payout_rebuild_failed",payoutId:id,detail:String(error)});}
     }
-    const beforeVoidCorrections=/* download-ok: manual ledger backfill tool */(await db.ref("/financialMovements").get()).val()||{}; let voidBalancesCorrected=0;
+    let voidBalancesCorrected=0;
     for (const id of Object.keys(all).sort()) {
       const order=all[id]||{}; if(!order.voided||!["grabfood","foodpanda"].includes(String(order.channel||"").toLowerCase()))continue;
-      const correction=Financial.netMovementCorrection(Object.values(beforeVoidCorrections),id,"void_balance_correction","Bring voided platform order posting chain to zero");if(!correction)continue;
+      // netMovementCorrection nets only this order's movements: read exactly those, fresh, through
+      // the sourceId index (was a second download of the whole ledger).
+      const orderMovements=(await db.ref("/financialMovements").orderByChild("sourceId").equalTo(String(id)).get()).val()||{};
+      const correction=Financial.netMovementCorrection(Object.values(orderMovements),id,"void_balance_correction","Bring voided platform order posting chain to zero");if(!correction)continue;
       correction.occurredAt=Number(order.voidedAt||order.timestamp||Date.now());correction.actorName="Automated platform AR reconciliation";correction.controlReason="Admin Sales marks this order void; correct only the remaining source-specific posting balance";
       const movementId=`void_balance_correction_${id}`,now=Date.now(),result=await commitFinancial(db,movementId,correction,serverActor,{[`operationalAudit/${now}_void_balance_${id}`]:{action:"voided_platform_order_balance_corrected",sourceType:"order",sourceId:id,movementId,channel:order.channel,actorUid:actor.uid,ts:now,schemaVersion:1}});if(result.duplicate)duplicates++;else{posted++;voidBalancesCorrected++;}
     }
-    const repairedMovements=/* download-ok: manual ledger backfill tool */(await db.ref("/financialMovements").get()).val()||{}, adminByChannel={grabfood:0,foodpanda:0}, ledgerByChannel={grabfood:0,foodpanda:0};
+    // The platform AR check needs the ledger as it now stands. If this run wrote no movement,
+    // the ledger read at the start is that ledger (as of the start of the run).
+    const repairedMovements=ledgerRun.written?(/* download-ok: manual ledger backfill tool */(await db.ref("/financialMovements").get()).val()||{}):originalMovements, adminByChannel={grabfood:0,foodpanda:0}, ledgerByChannel={grabfood:0,foodpanda:0};
     Object.values(all).forEach((o)=>{const channel=String(o&&o.channel||"").toLowerCase();if(!["grabfood","foodpanda"].includes(channel)||o.voided||(o.settlementStatus||"unsettled")==="settled")return;adminByChannel[channel]=Financial.money(adminByChannel[channel]+Financial.money(o.netPlatform!=null?o.netPlatform:Financial.money(o.grossPlatform||o.total)-Financial.money(o.commission)));});
     Object.values(repairedMovements).forEach((m)=>(m&&m.lines||[]).forEach((line)=>{for(const channel of ["grabfood","foodpanda"])if(line.account===`asset:platform_receivable:${channel}`)ledgerByChannel[channel]=Financial.money(ledgerByChannel[channel]+Financial.money(line.debit)-Financial.money(line.credit));}));
     const adminTotal=Financial.money(adminByChannel.grabfood+adminByChannel.foodpanda),ledgerTotal=Financial.money(ledgerByChannel.grabfood+ledgerByChannel.foodpanda),platformAr={adminByChannel,ledgerByChannel,adminTotal,ledgerTotal,difference:Financial.money(ledgerTotal-adminTotal),reconciled:Math.abs(ledgerTotal-adminTotal)<0.01,payoutsChecked:Object.keys(payouts).length,payoutsPosted,payoutDuplicates,settledOrdersLinked,voidBalancesCorrected,issues:payoutIssues.slice(0,200)};
     const scanned = Object.keys(all).length + Object.keys(shifts).length + Object.keys(vouchers).length + Object.keys(replenishments).length + Object.keys(accounts).length + Object.keys(receivables).length + Object.keys(payables).length + Object.keys(payouts).length + 1; await db.ref("/systemMaintenance/financialLedgerInitialized").set({at: Date.now(), by: actor.uid, scanned, posted, duplicates, skipped, orphanReversed, salesDiscountsReclassified, platformAr}); return {scanned, posted, duplicates, skipped, orphanReversed, salesDiscountsReclassified, platformAr};
+    });
   },
 );
 
@@ -4520,7 +4589,12 @@ function seedInventoryAccounting(itemId, item, now) {
 // A full copy is now kept only until its /inventoryMovements projection is written; then
 // it becomes a small marker that is pruned after the retention window. Movements already
 // projected are recognized before the transaction by their projection record.
-const INVENTORY_APPLIED_RETENTION_MS = 7 * 86400000;
+// Markers only need to outlive the gap between the balance transaction and the projection
+// write (seconds) plus event redelivery (retry-guard stops redelivery after two hours); after
+// that the /inventoryMovements projection is the duplicate check, and projections are never
+// deleted. 24 hours keeps a wide margin while holding a seventh of the markers that 7 days did
+// -- every movement downloads this record twice (read + transaction).
+const INVENTORY_APPLIED_RETENTION_MS = 24 * 3600000;
 const INVENTORY_LEGACY_SETTLE_MS = 3600000;
 function inventoryAppliedMarker(entry) { return !!(entry && typeof entry === "object" && Number(entry.projectedAt) > 0 && !entry.itemId); }
 function compactInventoryApplied(applied, now) {

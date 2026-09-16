@@ -1,5 +1,5 @@
-import{watchSalesPeriod,periodKey}from'./sales-period-data.mjs?v=538';
-import{createHistoricalPeriodStore}from'./historical-period-store.mjs?v=538';
+import{watchSalesPeriod,periodKey}from'./sales-period-data.mjs?v=539';
+import{createHistoricalPeriodStore}from'./historical-period-store.mjs?v=539';
 // One managed subscription per path. Sales reports combine indexed date queries;
 // POS-critical paths stay live and back-office paths attach only when needed.
 const HISTORY_BOUNDS={
@@ -32,10 +32,11 @@ const INCREMENTAL_PATHS={activeOrders:1,inventory:1,posActiveShift:1};
 // cost of a write changes depends on whether the SDK was already sending only the changed
 // subtree; treat the client-work saving as certain and the byte saving as unconfirmed, and
 // check the console Usage tab. See DOWNLOAD_AUDIT_2026-09-16.md.
-// These paths attach via: get(liveTarget) to bootstrap, then onChildAdded/Changed/Removed
-// on the same liveTarget query for live updates. Period-scoped variants (sales history,
-// financialMovements in saleshistory scope) keep their existing onValue handlers because
-// they use startAt/endAt range queries that need the full result on period change.
+// These paths attach onChildAdded/Changed/Removed plus a one-time value event, all on the
+// same liveTarget query, so the result is downloaded once (17 Sep 2026: the earlier get()
+// bootstrap downloaded it twice). Period-scoped variants (sales history, financialMovements
+// in saleshistory scope) keep their existing onValue handlers because they use startAt/endAt
+// range queries that need the full result on period change.
 const BOOTSTRAPPED_INCREMENTAL_BOUNDS={financialMovements:1,cfLedger:1,inventoryMovements:1,platformPayouts:1,'books/journal':1,orders:1,internalUsage:1,inventoryAdjustments:1,stockReceipts:1,purchaseInvoices:1,shifts:1,activityLog:1,discrepancies:1,archivedReservations:1,staffMessages:1};
 const VERSIONED_MASTER_PATHS={categories:1,optionGroups:1,menuItems:1};
 // Nodes that grow with trading volume and are read in full (no natural "recent only" window:
@@ -73,9 +74,14 @@ const WINDOWED_PATHS={staffMessages:{field:'createdAt',windowMs:30*86400000}};
 const CURRENT_MONTH_PATHS={'books/journal':'date'};
 function manilaMonthStart(){var day=typeof window!=='undefined'&&window.AccazaDate&&window.AccazaDate.key?window.AccazaDate.key():new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());return String(day).slice(0,7)+'-01';}
 const MASTER_CACHE_KEY='accaza_admin_master_v2';
+const DEFAULT_LINGER_MS=5*60000;
 
 function createSubscriptionHub(database,ops){
   const {ref,onValue,onChildAdded,onChildChanged,onChildRemoved,query,orderByChild,limitToLast,startAt,endAt,endBefore,get}=ops;
+  const LINGER_MS=ops.lingerMs!=null?Number(ops.lingerMs):DEFAULT_LINGER_MS;
+  // archivedOrders is served by the Firestore replica and its period cache; sales period
+  // queries change with the selected dates. Neither is worth keeping when unused.
+  function LINGER_OK(path){return path!=='archivedOrders'&&!(salesPath(path)&&reportPeriod());}
   function reportPeriod(scope){scope=scope||activeScope;return typeof window!=='undefined'&&window.AccazaAdminPeriods&&window.AccazaAdminPeriods.get&&['dashboard','saleshistory','analytics'].indexOf(scope)>-1?window.AccazaAdminPeriods.get('sales'):null;}
   function salesPath(path){return path==='orders'||path==='archivedOrders';}
   function selectedPeriod(scope){scope=scope||activeScope;var p=reportPeriod(scope);if(p&&scope==='analytics')return Object.assign({},p,{startAt:p.startAt-(p.endAt-p.startAt+1)});return p;}
@@ -104,9 +110,12 @@ function createSubscriptionHub(database,ops){
   function policy(path,opts){opts=opts||{};return {critical:opts.critical===true||critical[path]===1,scopes:opts.scopes||scopes[path]||[]};}
   function consumerActive(c){return authorized&&(c.critical||c.scopes.indexOf(activeScope)>-1);}
   function reportError(path,error){console.error('ACCAZA LIVE DATA ERROR ['+path+']',error);try{(window.accazaToast||function(){})('Live data failed for '+path+'. Check connection or access.','err');}catch(_e){}}
-  function facade(entry){var merged=Object.assign({},entry.older||{},entry.live||{});return {val:function(){return merged;},exists:function(){return Object.keys(merged).length>0;}};}
+  // Bounded report paths always handed consumers an object. Whole nodes attached per child
+  // (activeOrders, inventory, posActiveShift, growing nodes) behave like a real snapshot: an
+  // empty node reads as null, so "no open shift" is null, never an empty-but-truthy object.
+  function facade(entry){var merged=Object.assign({},entry.older||{},entry.live||{}),empty=!Object.keys(merged).length,asNull=empty&&!HISTORY_BOUNDS[entry.path];return {val:function(){return asNull?null:merged;},exists:function(){return !empty;}};}
   function dispatch(entry,snapshot){entry.last=snapshot;Object.keys(entry.consumers).forEach(function(id){var c=entry.consumers[id];if(consumerActive(c)){try{c.callback(snapshot);}catch(e){console.error('ACCAZA RENDER ERROR ['+entry.path+']',e);}}});}
-  function resetEntry(entry){if(entry.unsub)entry.unsub();entry.unsub=null;entry.generation=(entry.generation||0)+1;entry.live={};entry.older={};entry.archiveCursor=null;entry.last=null;entry.loading=true;entry.error=null;entry.hasOlder=true;}
+  function resetEntry(entry){clearLinger(entry);if(entry.unsub)entry.unsub();entry.unsub=null;entry.generation=(entry.generation||0)+1;entry.live={};entry.older={};entry.archiveCursor=null;entry.last=null;entry.loading=true;entry.error=null;entry.hasOlder=true;}
   function readMasterCache(){try{return JSON.parse(localStorage.getItem(MASTER_CACHE_KEY)||'null');}catch(_e){return null;}}
   function writeMasterCache(value){try{localStorage.setItem(MASTER_CACHE_KEY,JSON.stringify(value));}catch(_e){}}
   function invalidateMasterCache(){try{localStorage.removeItem(MASTER_CACHE_KEY);}catch(_e){}}
@@ -172,58 +181,52 @@ function createSubscriptionHub(database,ops){
       },failed);
       entry.unsub=function(){masterStopped=true;stopVersion();};return;
     }
-    if(INCREMENTAL_PATHS[entry.path]||isGrowing(entry.path)){
-      var target=ref(database,entry.path),childUnsubs=[],stopped=false;
-      function applyChild(key,value){
-        if(stopped||generation!==(entry.generation||0))return;
-        if(value===null)delete entry.live[key];else entry.live[key]=value;
+    // Per-child attach (whole growing nodes, unbounded live nodes, and bounded report queries).
+    // The first complete snapshot comes from a one-time value event on the SAME query, so it
+    // shares the child listeners' single server listen and the data is downloaded once. The
+    // Sep 16 version bootstrapped with get() and attached the child listeners afterwards: the
+    // SDK keeps no cache once a get() completes, so the listen downloaded the whole result a
+    // second time on every attach (see repoGetValue in @firebase/database). The one-time value
+    // event also fires for an empty node, so an empty node no longer stays "loading".
+    // After the first snapshot each change is applied one child at a time.
+    if(INCREMENTAL_PATHS[entry.path]||isGrowing(entry.path)||BOOTSTRAPPED_INCREMENTAL_BOUNDS[entry.path]){
+      var cSpec=HISTORY_BOUNDS[entry.path],cTarget=BOOTSTRAPPED_INCREMENTAL_BOUNDS[entry.path]?liveTarget(entry.path):ref(database,entry.path),cStopped=false,cReady=false,cUnsubs=[];
+      function cCurrent(){return !cStopped&&generation===(entry.generation||0);}
+      function cPublish(){
         entry.loading=false;entry.error=null;
+        if(cSpec)entry.hasOlder=Object.keys(entry.live).length>=cSpec.limit;
         dispatch(entry,facade(entry));
         if(salesPath(entry.path)&&entries.financialMovements&&entries.financialMovements.refreshSources)entries.financialMovements.refreshSources();
       }
-      childUnsubs.push(onChildAdded(target,function(s){applyChild(s.key,s.val());},failed));
-      childUnsubs.push(onChildChanged(target,function(s){applyChild(s.key,s.val());},failed));
-      childUnsubs.push(onChildRemoved(target,function(s){applyChild(s.key,null);},failed));
-      entry.unsub=function(){stopped=true;childUnsubs.forEach(function(u){try{u();}catch(e){}});};
-      return;
-    }
-    // Bootstrapped incremental: bounded paths that would otherwise re-download their entire
-    // limitToLast result on every write. Bootstrap with get(), then switch to per-child
-    // listeners on the bounded query. Each new/changed child costs ~3 KB instead of ~900 KB.
-    if(BOOTSTRAPPED_INCREMENTAL_BOUNDS[entry.path]){
-      var bTarget=liveTarget(entry.path),bStopped=false,bChildUnsubs=[],bBootstrapped=false;
-      function bApplyChild(key,value){
-        if(bStopped||generation!==(entry.generation||0))return;
-        if(value===null)delete entry.live[key];else entry.live[key]=value;
-        entry.loading=false;entry.error=null;
-        if(!bBootstrapped)return;
-        dispatch(entry,facade(entry));
-        if(salesPath(entry.path)&&entries.financialMovements&&entries.financialMovements.refreshSources)entries.financialMovements.refreshSources();
-      }
-      get(bTarget).then(function(snapshot){
-        if(bStopped||generation!==(entry.generation||0))return;
-        entry.live=snapshot.val()||{};
-        var spec=HISTORY_BOUNDS[entry.path];
-        entry.hasOlder=!!spec&&Object.keys(entry.live).length>=spec.limit;
-        entry.loading=false;entry.error=null;bBootstrapped=true;
-        dispatch(entry,facade(entry));
-        if(salesPath(entry.path)&&entries.financialMovements&&entries.financialMovements.refreshSources)entries.financialMovements.refreshSources();
-        bChildUnsubs.push(onChildAdded(bTarget,function(s){bApplyChild(s.key,s.val());},failed));
-        bChildUnsubs.push(onChildChanged(bTarget,function(s){bApplyChild(s.key,s.val());},failed));
-        bChildUnsubs.push(onChildRemoved(bTarget,function(s){bApplyChild(s.key,null);},failed));
-      },failed);
-      entry.unsub=function(){bStopped=true;bChildUnsubs.forEach(function(u){try{u();}catch(e){}});};
+      function cApply(key,value){if(!cCurrent())return;if(value===null)delete entry.live[key];else entry.live[key]=value;if(cReady)cPublish();}
+      cUnsubs.push(onChildAdded(cTarget,function(s){cApply(s.key,s.val());},failed));
+      cUnsubs.push(onChildChanged(cTarget,function(s){cApply(s.key,s.val());},failed));
+      cUnsubs.push(onChildRemoved(cTarget,function(s){cApply(s.key,null);},failed));
+      cUnsubs.push(onValue(cTarget,function(s){if(!cCurrent()||cReady)return;cReady=true;entry.live=s.val()||{};cPublish();},failed,{onlyOnce:true}));
+      entry.unsub=function(){cStopped=true;cUnsubs.forEach(function(u){try{u();}catch(e){}});};
       return;
     }
     entry.unsub=onValue(liveTarget(entry.path),receive,failed);
   }
-  function reconcileEntry(entry){var ids=Object.keys(entry.consumers),needed=ids.some(function(id){return consumerActive(entry.consumers[id]);}),wasAttached=!!entry.unsub;if(needed&&!entry.unsub)attach(entry);if(!needed&&entry.unsub){resetEntry(entry);}ids.forEach(function(id){var c=entry.consumers[id],now=consumerActive(c),becameActive=now&&!c.wasActive;c.wasActive=now;if(becameActive&&wasAttached&&entry.last){try{c.callback(entry.last);}catch(e){console.error('ACCAZA RENDER ERROR ['+entry.path+']',e);}}});}
+  // A listener that no open tab needs is kept for LINGER_MS before it is detached. Moving
+  // between tabs (POS -> Cash Flow -> POS) then costs only the changes made meanwhile instead
+  // of downloading the whole query again on every switch; an attached listener receives
+  // deltas only. Sign-out and a changed query still detach at once.
+  function clearLinger(entry){if(entry.lingerTimer){clearTimeout(entry.lingerTimer);entry.lingerTimer=null;}}
+  function entryNeeded(entry){return Object.keys(entry.consumers).some(function(id){return consumerActive(entry.consumers[id]);});}
+  function release(entry){
+    if(!entry.unsub||entry.lingerTimer)return;
+    if(!authorized||!(LINGER_MS>0)||!LINGER_OK(entry.path)){resetEntry(entry);return;}
+    entry.lingerTimer=setTimeout(function(){entry.lingerTimer=null;if(!entryNeeded(entry))resetEntry(entry);},LINGER_MS);
+    if(entry.lingerTimer&&entry.lingerTimer.unref)entry.lingerTimer.unref();
+  }
+  function reconcileEntry(entry){var ids=Object.keys(entry.consumers),needed=entryNeeded(entry);if(needed){clearLinger(entry);if(entry.unsub&&HISTORY_BOUNDS[entry.path]&&(entry.error||entry.targetKey!==targetKey(entry.path,activeScope)))resetEntry(entry);}var wasAttached=!!entry.unsub;if(needed&&!entry.unsub)attach(entry);if(!needed&&entry.unsub)release(entry);ids.forEach(function(id){var c=entry.consumers[id],now=consumerActive(c),becameActive=now&&!c.wasActive;c.wasActive=now;if(becameActive&&wasAttached&&entry.last){try{c.callback(entry.last);}catch(e){console.error('ACCAZA RENDER ERROR ['+entry.path+']',e);}}});}
   function reconcile(){Object.keys(entries).forEach(function(path){reconcileEntry(entries[path]);});}
-  if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('accaza-admin-period',function(event){if(!event.detail||event.detail.scope!=='sales'||['dashboard','saleshistory','analytics'].indexOf(activeScope)<0)return;var affected=Object.keys(entries).filter(function(path){return HISTORY_BOUNDS[path]&&entries[path].unsub;}).map(function(path){return entries[path];});affected.forEach(resetEntry);affected.forEach(attach);});
+  if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('accaza-admin-period',function(event){if(!event.detail||event.detail.scope!=='sales'||['dashboard','saleshistory','analytics'].indexOf(activeScope)<0)return;var affected=Object.keys(entries).filter(function(path){return HISTORY_BOUNDS[path]&&entries[path].unsub;}).map(function(path){return entries[path];});affected.forEach(resetEntry);affected.filter(entryNeeded).forEach(attach);});
   return {
     invalidateMasterCache:invalidateMasterCache,
     subscribe:function(path,callback,opts){var p=policy(path,opts),entry=entries[path]||(entries[path]={path:path,consumers:{},unsub:null,last:null,live:{},older:{},hasOlder:true}),id=String(nextId++);entry.consumers[id]={callback:callback,critical:p.critical,scopes:p.scopes,wasActive:false};reconcileEntry(entry);return function(){delete entry.consumers[id];reconcileEntry(entry);};},
-    authorize:function(){authorized=true;liveStartedAt=typeof performance!=='undefined'&&performance.now?performance.now():Date.now();liveReadyRecorded=false;try{performance.mark('accaza-live-start');}catch(_e){}reconcile();},deauthorize:function(){authorized=false;rollingStops.forEach(stop=>stop());reconcile();historicalPeriods.clear();},activate:function(scope){var nextScope=scope||'dashboard',changed=nextScope!==activeScope;activeScope=nextScope;if(changed){rollingStops.forEach(stop=>stop());var kept={};Object.keys(entries).forEach(function(path){var entry=entries[path];if(!HISTORY_BOUNDS[path]||!entry.unsub)return;var stillNeeded=Object.keys(entry.consumers).some(function(id){return consumerActive(entry.consumers[id]);});if(stillNeeded&&entry.targetKey===targetKey(path,nextScope)&&!entry.error){kept[path]=true;return;}resetEntry(entry);});if(!(kept.archivedOrders&&String(entries.archivedOrders.targetKey).indexOf('period:')===0))historicalPeriods.clear();}reconcile();},
+    authorize:function(){authorized=true;liveStartedAt=typeof performance!=='undefined'&&performance.now?performance.now():Date.now();liveReadyRecorded=false;try{performance.mark('accaza-live-start');}catch(_e){}reconcile();},deauthorize:function(){authorized=false;rollingStops.forEach(stop=>stop());Object.keys(entries).forEach(function(path){if(entries[path].unsub)resetEntry(entries[path]);});reconcile();historicalPeriods.clear();},activate:function(scope){var nextScope=scope||'dashboard',changed=nextScope!==activeScope;activeScope=nextScope;if(changed){rollingStops.forEach(stop=>stop());var kept={};Object.keys(entries).forEach(function(path){var entry=entries[path];if(!HISTORY_BOUNDS[path]||!entry.unsub)return;var stillNeeded=Object.keys(entry.consumers).some(function(id){return consumerActive(entry.consumers[id]);});if(stillNeeded&&entry.targetKey===targetKey(path,nextScope)&&!entry.error){kept[path]=true;return;}if(!stillNeeded&&LINGER_OK(path)&&LINGER_MS>0&&!entry.error)return;resetEntry(entry);});if(!(kept.archivedOrders&&String(entries.archivedOrders.targetKey).indexOf('period:')===0))historicalPeriods.clear();}reconcile();},
     loadOlder:async function(path){var spec=HISTORY_BOUNDS[path],entry=entries[path];if(reportPeriod()&&(salesPath(path)||path==='financialMovements'))return {loaded:0,hasOlder:entry?entry.loading:false};if(!spec||!entry)throw new Error('No paginated subscription for '+path);var merged=Object.assign({},entry.older||{},entry.live||{}),keys=Object.keys(merged),oldest=null;keys.forEach(function(k){var v=merged[k]||{},sv=Number(v[spec.field])||0;if(!oldest||sv<oldest.value||(sv===oldest.value&&k<oldest.key))oldest={value:sv,key:k};});if(!oldest){entry.hasOlder=false;return {loaded:0,hasOlder:false};}if(path==='archivedOrders'&&ops.readHistoricalOrders){var page=await ops.readHistoricalOrders({mode:'before',cursor:entry.archiveCursor||{value:oldest.value,id:oldest.key},limit:spec.page}),archiveRows=page.orders||{};Object.assign(entry.older,archiveRows);entry.archiveCursor=page.cursor||entry.archiveCursor;entry.hasOlder=page.hasMore===true;dispatch(entry,facade(entry));return {loaded:Object.keys(archiveRows).length,hasOlder:entry.hasOlder};}var snap=await get(query(ref(database,path),orderByChild(spec.field),endBefore(oldest.value,oldest.key),limitToLast(spec.page+1))),rows=[];snap.forEach(function(ch){rows.push({key:ch.key,value:ch.val()||{}});});var hasOlder=rows.length>spec.page;if(hasOlder)rows.shift();rows.forEach(function(r){entry.older[r.key]=r.value;});entry.hasOlder=hasOlder;dispatch(entry,facade(entry));return {loaded:rows.length,hasOlder:hasOlder};},
     readHistoricalPeriod:readHistoricalPeriod,
     watchRollingSales:function(period,data,error){
@@ -240,4 +243,4 @@ function createSubscriptionHub(database,ops){
   };
 }
 
-export{HISTORY_BOUNDS,HISTORY_TAB_PATHS,BOOTSTRAPPED_INCREMENTAL_BOUNDS,GROWING_PATHS,WINDOWED_PATHS,isGrowing,createSubscriptionHub};
+export{DEFAULT_LINGER_MS,HISTORY_BOUNDS,HISTORY_TAB_PATHS,BOOTSTRAPPED_INCREMENTAL_BOUNDS,GROWING_PATHS,WINDOWED_PATHS,isGrowing,createSubscriptionHub};

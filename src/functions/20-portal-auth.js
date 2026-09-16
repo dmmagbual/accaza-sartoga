@@ -312,7 +312,13 @@ exports.getOperationalExceptions = onCall(
   async (request) => {
     const db = getDatabase(), actor = await requirePortalUser(db, request);
     if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Operational exceptions are restricted to management accounts.");
-    return getCachedOperationalExceptions(db, Date.now(), request.data && request.data.force === true);
+    const data = request.data || {};
+    // Admin tabs opened before build 495 still poll this every minute, all day, and never
+    // reload. Current clients send cached:true; a request with neither flag gets the empty
+    // manual-only answer without downloading the saved scan, so a saved scan cannot turn
+    // those stale tabs into a steady download again.
+    if (data.force !== true && data.cached !== true) return Object.assign(emptyOperationalResult(), {staleClient: true});
+    return getCachedOperationalExceptions(db, Date.now(), data.force === true);
   },
 );
 

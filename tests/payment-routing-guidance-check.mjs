@@ -56,6 +56,7 @@ const hub=createSubscriptionHub({}, {
   onValue:(p,callback)=>{if(p==='cfAccounts'){attached++;callback({val:()=>({bdo:{name:'BDO'},gcash:{name:'GCash'}})});}return stop;},
   onChildAdded:noop,onChildChanged:noop,onChildRemoved:noop,query:x=>x,orderByChild:x=>x,limitToLast:x=>x,startAt:x=>x,endAt:x=>x,endBefore:x=>x,
   get:async()=>({val:()=>({}),exists:()=>false}),
+  lingerMs:0, // immediate detach; the linger window is checked in download-loophole-check
 });
 hub.subscribe('cfAccounts',snapshot=>{received=snapshot.val();});
 hub.activate('petty');
