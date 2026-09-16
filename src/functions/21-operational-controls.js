@@ -92,7 +92,7 @@ exports.reviewDiscrepancy = onCall(
       raw.forEach((x,index)=>{const allocationId=financeKey(x&&x.id||`a${index+1}`,"Allocation ID"),treatment=financeText(x&&x.treatment,50),value=Financial.money(x&&x.amount);if(seen.has(allocationId)||prior[allocationId])throw new HttpsError("already-exists",`Allocation ${allocationId} has already been used.`);if(!allowed.has(treatment))throw new HttpsError("invalid-argument",`Allocation ${index+1} has an invalid treatment.`);if(!(value>0))throw new HttpsError("invalid-argument",`Allocation ${index+1} must be greater than zero.`);seen.add(allocationId);batchTotal=Financial.money(batchTotal+value);allocations.push({id:allocationId,treatment,amount:value,details:x.details||{}});});
       if(batchTotal>remaining+.009)throw new HttpsError("failed-precondition",`Allocations exceed the remaining difference of ${remaining.toFixed(2)}.`);
       const note=financeText(data.note,500);if(!note)throw new HttpsError("invalid-argument","A case explanation is required.");approval=await claimManagerApproval(db,data,"review_discrepancy",id,null,`review_discrepancy_${id}_${revision}`);reviewedBy=approval.record.approvedName||approval.record.approvedEmail||approval.record.approvedRole;
-      const accounts=(await db.ref("/cfAccounts").get()).val()||{},booksChart=await ensureBooksChart(db),movements=(await db.ref("/financialMovements").get()).val()||{},shiftRow=(await db.ref(`/shifts/${shiftId}`).get()).val()||{},purchasePayouts=Array.isArray(shiftRow.payOuts)?shiftRow.payOuts.slice():[],pending=short?"asset:cash_shortage_pending":"liability:cash_overage_pending",legacyMovement=movements[`shift_variance_${shiftId}`]||{},source=legacyMovement.type==="shift_cash_variance"?(short?"expense:cash_shortage":"revenue:cash_overage"):pending,newLines=[],writes=Object.assign({},approval.usedWrites),allocationRecords={},offsetCases={};
+      const accounts=(await db.ref("/cfAccounts").get()).val()||{},booksChart=await ensureBooksChart(db),shiftRow=(await db.ref(`/shifts/${shiftId}`).get()).val()||{},movements=await discrepancyCandidateMovements(db,shiftId,shiftRow,row,raw),purchasePayouts=Array.isArray(shiftRow.payOuts)?shiftRow.payOuts.slice():[],pending=short?"asset:cash_shortage_pending":"liability:cash_overage_pending",legacyMovement=movements[`shift_variance_${shiftId}`]||{},source=legacyMovement.type==="shift_cash_variance"?(short?"expense:cash_shortage":"revenue:cash_overage"):pending,newLines=[],writes=Object.assign({},approval.usedWrites),allocationRecords={},offsetCases={};
       function text(v,n){return financeText(v,n||160);}function cashAccount(destination){if(destination==="undeposited")return"asset:cash_awaiting_deposit";if(destination==="register")return"asset:register_cash";const key=financeKey(destination,"Cash destination");if(!accounts[key]||accounts[key].active===false)throw new HttpsError("failed-precondition","The selected receiving cash account is inactive or missing.");return`asset:cash_account:${key}`;}
       for(const allocation of allocations){const d=allocation.details||{},v=allocation.amount,label=`${short?"Shortage":"Overage"} · ${allocation.treatment}`,record={id:allocation.id,treatment:allocation.treatment,amount:v,details:{},approvedAt:now,approvedBy:reviewedBy,approvalId:approval.id};
         if(allocation.treatment==="cash_recovered"){
@@ -216,6 +216,25 @@ async function voucherHasReceipt(db, id, voucher) {
   if (voucher && voucher.receiptImg) return true;
   if (!voucher || voucher.hasReceipt !== true) return false;
   return (await db.ref(`/pettyCashReceipts/${id}/meta`).get()).exists();
+}
+
+// A cash-difference review needs the shift's legacy variance posting, any movement the manager
+// selected, and candidate recovery journals. Recoveries are posted after the shift, so candidates
+// come from an indexed window starting a week before the shift instead of the whole ledger.
+const DISCREPANCY_RECOVERY_LOOKBACK_MS = 7 * 86400000;
+async function discrepancyCandidateMovements(db, shiftId, shiftRow, row, allocations) {
+  const anchors = [shiftRow && shiftRow.openAt, shiftRow && shiftRow.closeAt, row && row.ts].map(Number).filter((n) => n > 0);
+  const since = anchors.length ? Math.min(...anchors) - DISCREPANCY_RECOVERY_LOOKBACK_MS : 0;
+  const requested = [...new Set((Array.isArray(allocations) ? allocations : []).map((x) => String(x && x.details && x.details.correctionMovementId || "")).filter((id) => /^[A-Za-z0-9_-]{1,160}$/.test(id)))].slice(0, 20);
+  const [windowSnap, legacySnap, ...requestedSnaps] = await Promise.all([
+    db.ref("/financialMovements").orderByChild("occurredAt").startAt(since).get(),
+    db.ref(`/financialMovements/shift_variance_${shiftId}`).get(),
+    ...requested.map((id) => db.ref(`/financialMovements/${id}`).get()),
+  ]);
+  const out = Object.assign({}, windowSnap.val() || {});
+  if (legacySnap.exists()) out[`shift_variance_${shiftId}`] = legacySnap.val();
+  requestedSnaps.forEach((snap, index) => { if (snap.exists()) out[requested[index]] = snap.val(); });
+  return out;
 }
 
 exports.managePettyVoucher = onCall(

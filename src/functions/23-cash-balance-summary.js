@@ -70,6 +70,38 @@ async function ensureCashBalanceSummary(db) {
   return summary;
 }
 
+// Cash balances for controls (e.g. "is there enough register cash for this refund?") without
+// downloading the whole ledger: the maintained summary with its queue drained, corrected for
+// movements posted or edited in the last ten minutes that the summary has not applied yet (their
+// trigger may still be in flight). The processor writes the summary and its applied records in
+// one update, so an unchanged summary timestamp proves the applied reads are consistent with it.
+// If the queue holds an entry older than the window, fall back to the full ledger.
+const CASH_RECENT_WINDOW_MS = 10 * 60 * 1000;
+async function currentCashBalances(db, now = Date.now()) {
+  const since = now - CASH_RECENT_WINDOW_MS;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const summary = await ensureCashBalanceSummary(db);
+    const oldest = (await db.ref("/cashBalanceSummaryPending").orderByChild("queuedAt").limitToFirst(1).get()).val() || {};
+    if (Object.values(oldest).some((row) => Number(row && row.queuedAt || 0) < since)) break;
+    const [posted, edited] = await Promise.all([
+      db.ref("/financialMovements").orderByChild("postedAt").startAt(since).get(),
+      db.ref("/financialMovements").orderByChild("updatedAt").startAt(since).get(),
+    ]);
+    const recent = Object.assign({}, posted.val() || {}, edited.val() || {}), balances = JSON.parse(JSON.stringify(summary.balances || CashBalances.emptyBalances()));
+    balances.cashAccountCents = balances.cashAccountCents || {};
+    const applied = await Promise.all(Object.keys(recent).map(async (id) => [id, (await db.ref(`/cashBalanceSummaryApplied/${id}`).get()).val()]));
+    applied.forEach(([id, row]) => {
+      if (CashBalances.contributionMatches(row, recent[id])) return;
+      if (row) CashBalances.addDelta(balances, row.delta, -1);
+      CashBalances.addDelta(balances, CashBalances.movementDelta(recent[id]));
+    });
+    const after = (await db.ref("/cashBalanceSummary/meta/updatedAt").get()).val();
+    if (Number(after) === Number(summary.meta && summary.meta.updatedAt)) return {balances, source: "summary", recentCorrections: applied.length};
+  }
+  const movements = (await db.ref("/financialMovements").get()).val() || {};
+  return {balances: CashBalances.splitSnapshotFromMovements(movements, now).summary.balances, source: "ledger", recentCorrections: 0};
+}
+
 exports.getCurrentCashBalances = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {

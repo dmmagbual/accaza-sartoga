@@ -300,11 +300,8 @@ async function poolCustodyDeposit(db, value, movementId) {
 }
 
 async function availableCashOnHandAboveFloat(db) {
-  const [movementsSnap, settingsSnap, activeShiftSnap] = await Promise.all([db.ref("/financialMovements").get(), db.ref("/posSettings").get(), db.ref("/posActiveShift").get()]);
-  let gross = 0;
-  Object.values(movementsSnap.val() || {}).forEach((movement) => ((movement && movement.lines) || []).forEach((line) => {
-    if (line && line.account === "asset:register_cash") gross = Financial.money(gross + Financial.money(line.debit) - Financial.money(line.credit));
-  }));
+  const [current, settingsSnap, activeShiftSnap] = await Promise.all([currentCashBalances(db), db.ref("/posSettings").get(), db.ref("/posActiveShift").get()]);
+  const gross = CashBalances.pesos(current.balances.registerCents);
   const float = resolveRegisterFloat(settingsSnap.val(), activeShiftSnap.val()).amount;
   return {gross: Financial.money(gross), float, available: Financial.money(Math.max(0, gross - float))};
 }

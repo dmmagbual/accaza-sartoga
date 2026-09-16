@@ -345,4 +345,97 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   assert.deepEqual(reads, ['/pettyCashReceipts/pv_new/meta', '/pettyCashReceipts/pv_fake/meta'], 'evidence checks read only the small meta child');
 }
 
-console.log('PASS: replica-first history reads, tab-stable report listeners, ID-patched archive changes, month-bounded Stock Value journal (equivalent to full history), Books without full archive downloads, and indexed/bounded server reads, bounded per-item inventory idempotency state, day-bucketed Books monthly totals, stale tabs that pick up fixed builds, a backup download budget warning, index-first platform order lookups, and voucher receipts outside the voucher list.');
+// 13. Cash controls read the maintained cash summary (plus in-flight recent movements) instead of
+// the whole ledger, and still agree with a full-ledger computation.
+{
+  const CashBalances = require('../functions/lib/cash-balances.js');
+  const clone = (v) => v === undefined ? undefined : JSON.parse(JSON.stringify(v));
+  function fakeDb(data, reads, hooks = {}) {
+    const parts = (path) => path.split('/').filter(Boolean);
+    const at = (path) => parts(path).reduce((n, k) => n == null ? undefined : n[k], data);
+    const put = (path, value) => { const p = parts(path); let n = data; p.slice(0, -1).forEach((k) => { n = n[k] = n[k] && typeof n[k] === 'object' ? n[k] : {}; }); if (value === null) delete n[p.at(-1)]; else n[p.at(-1)] = clone(value); };
+    const snap = (v) => ({exists: () => v !== undefined && v !== null, val: () => v === undefined ? null : clone(v)});
+    function ref(path = '/') {
+      const q = {};
+      const api = {
+        orderByChild(c) { q.child = c; return api; }, startAt(v) { q.start = v; return api; }, limitToFirst(n) { q.first = n; return api; },
+        async get() {
+          reads.push(q.child ? `${path}?${q.child}>=${q.start ?? ''}` : path);
+          if (hooks.onGet) hooks.onGet(path, q);
+          let v = at(path);
+          if (q.child && v && typeof v === 'object') {
+            let rows = Object.entries(v).filter(([, r]) => q.start === undefined || Number(r && r[q.child]) >= q.start);
+            rows.sort((a, b) => Number(a[1][q.child]) - Number(b[1][q.child]));
+            if (q.first) rows = rows.slice(0, q.first);
+            v = Object.fromEntries(rows);
+          } else if (q.first && v && typeof v === 'object') v = Object.fromEntries(Object.entries(v).slice(0, q.first));
+          return snap(v);
+        },
+        async set(v) { put(path, v); }, async update(w) { for (const [k, v] of Object.entries(w)) put(`${path}/${k}`, v); },
+        async transaction(fn) { const next = fn(clone(at(path)) ?? null); if (next !== undefined) put(path, next); return {committed: next !== undefined, snapshot: snap(at(path))}; },
+      };
+      return api;
+    }
+    return {ref};
+  }
+  const src = read('src/functions/23-cash-balance-summary.js');
+  const sandbox = {require: (m) => m === './lib/cash-balances' ? CashBalances : null, exports: {}, onCall: () => null, onValueWritten: () => null, ORDER_REGION: 'x', ENFORCE_APP_CHECK: false, Date, Math, JSON, Object, Number, String, Promise, Boolean, Array, Error};
+  vm.createContext(sandbox);
+  vm.runInContext(`${src};globalThis.current = currentCashBalances;`, sandbox);
+  const now = Date.UTC(2026, 8, 16, 7);
+  const mv = (id, account, debit, credit, extra = {}) => ({id, occurredAt: now - 86400000, postedAt: now - 86400000, lines: [{account, debit, credit}, {account: 'revenue:sales', debit: credit, credit: debit}], ...extra});
+  const ledger = {
+    old1: mv('old1', 'asset:register_cash', 500, 0),
+    old2: mv('old2', 'asset:cash_account:bdo', 1200.25, 0),
+    edited: mv('edited', 'asset:register_cash', 50, 0),
+  };
+  const built = CashBalances.splitSnapshotFromMovements(ledger, now - 3600000);
+  // After the summary was built: one new sale (trigger not processed yet) and one edit.
+  ledger.fresh = mv('fresh', 'asset:register_cash', 75.5, 0, {postedAt: now - 30000});
+  ledger.edited = mv('edited', 'asset:register_cash', 80, 0, {updatedAt: now - 20000});
+  const state = {financialMovements: clone(ledger), cashBalanceSummary: built.summary, cashBalanceSummaryApplied: built.applied, cashBalanceSummaryPending: {}};
+  const reads = [];
+  const result = await sandbox.current(fakeDb(state, reads), now);
+  const full = CashBalances.splitSnapshotFromMovements(ledger, now).summary.balances;
+  assert.equal(result.source, 'summary');
+  assert.equal(result.balances.registerCents, full.registerCents, 'register cash equals the full-ledger figure');
+  assert.equal(result.balances.registerCents, 65550);
+  assert.deepEqual(result.balances.cashAccountCents, full.cashAccountCents);
+  assert.ok(!reads.includes('/financialMovements'), 'no whole-ledger read on the normal path');
+  // A summary that changes mid-read is re-read, never double counted.
+  const racing = {financialMovements: clone(ledger), cashBalanceSummary: clone(built.summary), cashBalanceSummaryApplied: clone(built.applied), cashBalanceSummaryPending: {}};
+  let raced = false;
+  const racingDb = fakeDb(racing, [], {onGet: (path) => {
+    if (!raced && path.startsWith('/cashBalanceSummaryApplied/')) {
+      raced = true;
+      const applied = CashBalances.applyContribution(racing.cashBalanceSummary, null, racing.financialMovements.fresh, now - 1000);
+      racing.cashBalanceSummary = applied.summary; racing.cashBalanceSummaryApplied.fresh = applied.applied;
+    }
+  }});
+  const retried = await sandbox.current(racingDb, now);
+  assert.equal(retried.balances.registerCents, full.registerCents, 'a concurrent summary update is not double counted');
+  // A stuck queue entry older than the window falls back to the full ledger.
+  const stuck = {financialMovements: clone(ledger), cashBalanceSummary: clone(built.summary), cashBalanceSummaryApplied: clone(built.applied), cashBalanceSummaryPending: {k: {movementId: 'fresh', queuedAt: now - 3600000}}, cashBalanceSummaryProcessorLock: {owner: 'someone', expiresAt: now + 60000}};
+  const stuckReads = [];
+  const fallback = await sandbox.current(fakeDb(stuck, stuckReads), now);
+  assert.equal(fallback.source, 'ledger'); assert.equal(fallback.balances.registerCents, full.registerCents);
+  // Callers of the cash control no longer read the ledger themselves.
+  const bundle = read('functions/index.js');
+  const available = bundle.slice(bundle.indexOf('async function availableCashOnHandAboveFloat'), bundle.indexOf('function poolCustodyInflowRecord'));
+  assert.ok(available.includes('currentCashBalances(db)') && !available.includes('db.ref("/financialMovements")'), 'availableCashOnHandAboveFloat must use the cash summary');
+  const review = bundle.slice(bundle.indexOf('exports.reviewDiscrepancy'), bundle.indexOf('\nexports.', bundle.indexOf('exports.reviewDiscrepancy') + 10));
+  assert.ok(!review.includes('db.ref("/financialMovements").get()') && review.includes('discrepancyCandidateMovements(db,shiftId,shiftRow,row,raw)'), 'cash-difference reviews read a bounded window');
+  for (const index of ['postedAt', 'updatedAt']) assert.ok(ruleIndexes('financialMovements').includes(index), `financialMovements.${index} must be indexed`);
+  assert.ok(read('database.rules.json').includes('"cashBalanceSummaryPending": { ".indexOn": "queuedAt", ".read": false, ".write": false }'));
+  // Discrepancy candidates: window + legacy variance + the manager's explicit selection only.
+  const hs = bundle.indexOf('const DISCREPANCY_RECOVERY_LOOKBACK_MS'), he = bundle.indexOf('exports.managePettyVoucher');
+  const dctx = vm.createContext({Math, Number, String, Object, Array, Set, Promise});
+  vm.runInContext(`${bundle.slice(hs, he)};globalThis.pick = discrepancyCandidateMovements;`, dctx);
+  const dstate = {financialMovements: {early: {occurredAt: 10}, recovery: {occurredAt: 9 * 86400000}, shift_variance_s1: {occurredAt: 5}, picked: {occurredAt: 1}}};
+  const dreads = [];
+  const picked = await dctx.pick(fakeDb(dstate, dreads), 's1', {openAt: 10 * 86400000}, {ts: 10 * 86400000 + 5}, [{details: {correctionMovementId: 'picked'}}, {details: {correctionMovementId: 'bad/id'}}]);
+  assert.deepEqual(Object.keys(picked).sort(), ['picked', 'recovery', 'shift_variance_s1']);
+  assert.ok(!dreads.includes('/financialMovements'));
+}
+
+console.log('PASS: replica-first history reads, tab-stable report listeners, ID-patched archive changes, month-bounded Stock Value journal (equivalent to full history), Books without full archive downloads, and indexed/bounded server reads, bounded per-item inventory idempotency state, day-bucketed Books monthly totals, stale tabs that pick up fixed builds, a backup download budget warning, index-first platform order lookups, voucher receipts outside the voucher list, and summary-based cash controls.');
