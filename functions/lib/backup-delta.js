@@ -10,10 +10,11 @@ const {canonicalJson} = require("./recovery-validation");
 // records that were written: a trigger marks /backupDirty/<path>/<key>, and the
 // daily run copies everything else about those nodes from the previous verified
 // backup file in Cloud Storage. All other nodes are still read in full. Each day
-// one tracked node (in rotation) is also read in full and compared with its
-// incremental copy, so a missed marker is corrected within nine days and
-// reported. A full read of everything runs only when the previous file is
-// missing, invalid or older than eight days (or when forced).
+// one ~2 MB key-range slice of the tracked history (in rotation) is also read
+// and compared with its incremental copy, so a missed marker is corrected and
+// reported without any day re-reading a whole growing node. A full read of
+// everything runs only when the previous file is missing, invalid or older than
+// eight days (or when forced).
 //
 // The output is the same backup-v2 envelope as before, so restores and the
 // isolated restore gate are unchanged.
@@ -28,10 +29,44 @@ const TRACKED_PATHS = Object.freeze([
   "shifts",
   "operationalAudit",
   "financialCommandClaims",
+  "inventoryAccounting",
+  "financialApprovals",
+  "activityLog",
+  "cfLedger",
 ]);
 const DIRTY_ROOT = "backupDirty";
 const MAX_BASE_AGE_MS = 8 * 86400000;
 const DAY_MS = 86400000;
+const VERIFY_SLICE_BYTES = 2 * 1024 * 1024;
+
+// Realtime Database key order: 32-bit integer keys numerically first, then strings.
+const INT_KEY = /^-?(0|[1-9]\d*)$/;
+function keyCompare(a, b) {
+  const ia = INT_KEY.test(a) && Math.abs(Number(a)) <= 2147483647, ib = INT_KEY.test(b) && Math.abs(Number(b)) <= 2147483647;
+  if (ia && ib) return Number(a) - Number(b) || a.length - b.length;
+  if (ia) return -1;
+  if (ib) return 1;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function inSlice(key, slice) {
+  return (slice.start == null || keyCompare(key, slice.start) >= 0) && (slice.before == null || keyCompare(key, slice.before) < 0);
+}
+// Partition every tracked path of the base into contiguous key ranges of about `budget` bytes.
+function verificationSlices(base, tracked, budget) {
+  const limit = Number(budget) > 0 ? Number(budget) : VERIFY_SLICE_BYTES, slices = [];
+  (tracked || TRACKED_PATHS).forEach((path) => {
+    const node = getAt(base && base.data, path);
+    if (!node || typeof node !== "object") return;
+    let start = null, size = 0;
+    Object.keys(node).sort(keyCompare).forEach((key) => {
+      const bytes = Buffer.byteLength(JSON.stringify(node[key]) || "");
+      if (size > 0 && size + bytes > limit) { slices.push({path, start, before: key}); start = key; size = 0; }
+      size += bytes;
+    });
+    slices.push({path, start, before: null});
+  });
+  return slices;
+}
 
 function dirtyKey(path) { return String(path).replace(/\//g, "~"); }
 function pathOfDirtyKey(key) { return String(key).replace(/~/g, "/"); }
@@ -62,10 +97,9 @@ function needsFullBackup({base, now, force}) {
   return "";
 }
 
-// The tracked path that is re-read in full and verified today.
-function rotationPath(now, tracked) {
-  tracked = tracked || TRACKED_PATHS;
-  return tracked[Math.floor(Number(now) / DAY_MS) % tracked.length];
+// The slice that is re-read and verified today.
+function rotationSlice(now, slices) {
+  return slices && slices.length ? slices[Math.floor(Number(now) / DAY_MS) % slices.length] : null;
 }
 
 // Plan an incremental backup.
@@ -75,7 +109,7 @@ function planIncremental({base, topLevel, children, excluded, dirty, tracked, ve
   tracked = tracked || TRACKED_PATHS;
   const skip = excluded instanceof Set ? excluded : new Set(excluded || []);
   const partial = partialRoots(tracked), trackedTop = new Set(tracked.filter((p) => splitPath(p).length === 1));
-  const plan = {fullNodes: [], copyPaths: [], records: [], fullTracked: [], verifyPaths: [], verifyRecords: []};
+  const plan = {fullNodes: [], copyPaths: [], records: [], fullTracked: [], verifySlice: null};
   (topLevel || []).forEach((name) => {
     if (skip.has(name)) return;
     if (trackedTop.has(name)) {
@@ -93,18 +127,11 @@ function planIncremental({base, topLevel, children, excluded, dirty, tracked, ve
     }
     plan.fullNodes.push(name);
   });
-  if (verify && plan.copyPaths.includes(verify)) {
-    plan.copyPaths = plan.copyPaths.filter((path) => path !== verify);
-    plan.verifyPaths.push(verify);
-    plan.fullTracked.push(verify);
-  }
-  const copied = new Set(plan.copyPaths), verified = new Set(plan.verifyPaths);
+  if (verify && plan.copyPaths.includes(verify.path)) plan.verifySlice = verify;
+  const copied = new Set(plan.copyPaths);
   Object.keys(dirty || {}).forEach((key) => {
     const path = pathOfDirtyKey(key);
-    Object.keys(dirty[key] || {}).forEach((recordKey) => {
-      if (copied.has(path)) plan.records.push({path, key: recordKey});
-      else if (verified.has(path)) plan.verifyRecords.push({path, key: recordKey});
-    });
+    if (copied.has(path)) Object.keys(dirty[key] || {}).forEach((recordKey) => plan.records.push({path, key: recordKey}));
   });
   return plan;
 }
@@ -124,9 +151,19 @@ function mergeIncremental(base, plan, values) {
   return data;
 }
 
-// Incremental copy of the verified paths (base plus their dirty records), for drift checks.
-function verifiedCopies(base, plan, values) {
-  return mergeIncremental(base, {copyPaths: plan.verifyPaths, records: plan.verifyRecords, fullNodes: [], fullTracked: []}, values);
+// Replace the verified key range with what was read today and report the records that differ.
+function applyVerifiedSlice(data, slice, sliceValue) {
+  if (!slice) return [];
+  const node = getAt(data, slice.path) || {}, fresh = sliceValue || {}, drift = [];
+  Object.keys(node).filter((key) => inSlice(key, slice)).forEach((key) => {
+    if (!(key in fresh)) { drift.push(`${slice.path}/${key}`); delete node[key]; }
+  });
+  Object.keys(fresh).filter((key) => inSlice(key, slice)).forEach((key) => {
+    if (canonicalJson(node[key] === undefined ? null : node[key]) !== canonicalJson(fresh[key])) drift.push(`${slice.path}/${key}`);
+    node[key] = fresh[key];
+  });
+  setAt(data, slice.path, Object.keys(node).length ? node : null);
+  return drift;
 }
 
 // Records whose incremental copy differs from a full read.
@@ -141,4 +178,4 @@ function driftPaths(incremental, full, tracked) {
   return out;
 }
 
-module.exports = {TRACKED_PATHS, DIRTY_ROOT, MAX_BASE_AGE_MS, dirtyKey, rotationPath, verifiedCopies, pathOfDirtyKey, getAt, setAt, partialRoots, needsFullBackup, planIncremental, mergeIncremental, driftPaths};
+module.exports = {TRACKED_PATHS, DIRTY_ROOT, MAX_BASE_AGE_MS, VERIFY_SLICE_BYTES, keyCompare, inSlice, verificationSlices, rotationSlice, applyVerifiedSlice, dirtyKey, pathOfDirtyKey, getAt, setAt, partialRoots, needsFullBackup, planIncremental, mergeIncremental, driftPaths};

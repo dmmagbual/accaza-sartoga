@@ -4849,20 +4849,27 @@ async function latestBackupEnvelope(bucket) {
 }
 
 // Incremental snapshot: tracked history nodes come from the previous verified backup plus the
-// records marked dirty since; every other node, and one tracked node in rotation (verified
-// against its incremental copy), is read in full (see functions/lib/backup-delta.js).
-async function incrementalSnapshot(db, base, dirty, verify) {
+// records marked dirty since; every other node is read in full, and one ~2 MB key range of the
+// tracked history is re-read and verified in rotation (see functions/lib/backup-delta.js).
+async function incrementalSnapshot(db, base, dirty, now) {
   const topLevel = await shallowDatabaseKeys(db, ""), children = {};
   for (const root of Object.keys(BackupDelta.partialRoots())) if (topLevel.includes(root)) children[root] = await shallowDatabaseKeys(db, root);
-  const plan = BackupDelta.planIncremental({base, topLevel, children, excluded: BACKUP_EXCLUDE, dirty, verify});
+  const slice = BackupDelta.rotationSlice(now, BackupDelta.verificationSlices(base));
+  const plan = BackupDelta.planIncremental({base, topLevel, children, excluded: BACKUP_EXCLUDE, dirty, verify: slice});
   const values = {};
   for (const path of plan.fullNodes.concat(plan.fullTracked)) values[path] = (await db.ref(`/${path}`).get()).val();
-  const records = plan.records.concat(plan.verifyRecords);
-  for (let i = 0; i < records.length; i += 50) {
-    await Promise.all(records.slice(i, i + 50).map(async ({path, key}) => { values[`${path}/${key}`] = (await db.ref(`/${path}/${key}`).get()).val(); }));
+  for (let i = 0; i < plan.records.length; i += 50) {
+    await Promise.all(plan.records.slice(i, i + 50).map(async ({path, key}) => { values[`${path}/${key}`] = (await db.ref(`/${path}/${key}`).get()).val(); }));
+  }
+  let sliceValue = null;
+  if (plan.verifySlice) {
+    let query = db.ref(`/${plan.verifySlice.path}`).orderByKey();
+    if (plan.verifySlice.start != null) query = query.startAt(plan.verifySlice.start);
+    if (plan.verifySlice.before != null) query = query.endBefore(plan.verifySlice.before);
+    sliceValue = (await query.get()).val();
   }
   const data = BackupDelta.mergeIncremental(base, plan, values);
-  const drift = plan.verifyPaths.length ? BackupDelta.driftPaths(BackupDelta.verifiedCopies(base, plan, values), data, plan.verifyPaths) : [];
+  const drift = BackupDelta.applyVerifiedSlice(data, plan.verifySlice, sliceValue);
   return {data, plan, drift};
 }
 
@@ -4889,10 +4896,10 @@ async function createVerifiedDatabaseBackup(now = Date.now(), options = {}) {
       const root = (await db.ref("/").get()).val() || {};
       Object.keys(root).forEach((node) => { if (!BACKUP_EXCLUDE.has(node)) snapshot[node] = root[node]; });
     } else {
-      verified = BackupDelta.rotationPath(now);
-      const built = await incrementalSnapshot(db, base, dirty, verified);
+      const built = await incrementalSnapshot(db, base, dirty, now);
+      verified = built.plan.verifySlice;
       snapshot = built.data; mode = "incremental"; records = built.plan.records.length; drift = built.drift;
-      if (drift.length) logger.warn("Incremental backup drift corrected by today's verification read", {path: verified, count: drift.length, sample: drift.slice(0, 20)});
+      if (drift.length) logger.warn("Incremental backup drift corrected by today's verification read", {slice: verified, count: drift.length, sample: drift.slice(0, 20)});
     }
     const stamp = new Date(now).toISOString().slice(0, 19).replace(/[:T]/g, "-");
     const objectName = `db-backups/accaza-${stamp}.json`;
@@ -4908,7 +4915,7 @@ async function createVerifiedDatabaseBackup(now = Date.now(), options = {}) {
       metadata: {cacheControl: "private, max-age=0, no-store", metadata: {takenAt: String(now), dataSha256: validation.actualSha256, backupVersion: "backup-v2"}},
     });
     const lastFullAt = mode === "full" ? now : Number(latest.lastFullAt) || null;
-    await db.ref("/systemHealth/backups/latest").set({takenAt: now, objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, version: "backup-v2", dataSha256: validation.actualSha256, validation: "passed", mode, fullReason: fullReason || null, lastFullAt, baseObject: mode === "incremental" ? base.objectName : null, recordsReread: records, verifiedPath: verified, driftRecords: drift ? drift.length : null});
+    await db.ref("/systemHealth/backups/latest").set({takenAt: now, objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, version: "backup-v2", dataSha256: validation.actualSha256, validation: "passed", mode, fullReason: fullReason || null, lastFullAt, baseObject: mode === "incremental" ? base.objectName : null, recordsReread: records, verifiedSlice: verified, driftRecords: drift ? drift.length : null});
     const cleared = await clearBackupDirty(db, dirty);
     // Retention: delete snapshots older than 30 days.
     let removed = 0;
@@ -4939,6 +4946,10 @@ exports.markBackupDirtyBooksJournal = backupDirtyTrigger("books/journal");
 exports.markBackupDirtyShifts = backupDirtyTrigger("shifts");
 exports.markBackupDirtyOperationalAudit = backupDirtyTrigger("operationalAudit");
 exports.markBackupDirtyFinancialCommandClaims = backupDirtyTrigger("financialCommandClaims");
+exports.markBackupDirtyInventoryAccounting = backupDirtyTrigger("inventoryAccounting");
+exports.markBackupDirtyFinancialApprovals = backupDirtyTrigger("financialApprovals");
+exports.markBackupDirtyActivityLog = backupDirtyTrigger("activityLog");
+exports.markBackupDirtyCfLedger = backupDirtyTrigger("cfLedger");
 
 exports.backupDatabaseDaily = onSchedule(
   {schedule: "every day 03:00", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "512MiB"},

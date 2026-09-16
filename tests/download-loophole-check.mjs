@@ -554,6 +554,10 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
     cashBalanceSummaryApplied: {f1: {fingerprint: 'x'}},
     operationalAudit: {'1_x': {action: 'x'}},
     financialCommandClaims: {f1: {status: 'posted'}},
+    inventoryAccounting: {milk: {balance: 1}},
+    financialApprovals: {ap1: {status: 'used'}},
+    activityLog: {l1: {action: 'x'}},
+    cfLedger: {c1: {amount: 1}},
     menuItems: {latte: {price: 100}},
     activeOrders: {a3: {status: 'Pending'}},
     systemHealth: {backups: {latest: {}}},
@@ -568,6 +572,16 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
     async get() { reads.push(path); return snap(path === '/' ? state : at(path)); },
     async set(v) { put(path, v); },
     async transaction(fn) { const next = fn(clone(at(path)) ?? null); if (next !== undefined) put(path, next); return {committed: true}; },
+    orderByKey() {
+      const range = {};
+      const q = {startAt(k) { range.start = k; return q; }, endBefore(k) { range.before = k; return q; }, async get() {
+        reads.push(`${path}?slice`);
+        const node = at(path) || {};
+        const rows = Object.entries(node).filter(([k]) => BackupDelta.inSlice(k, {start: range.start ?? null, before: range.before ?? null}));
+        return snap(rows.length ? Object.fromEntries(rows) : null);
+      }};
+      return q;
+    },
   })};
   const bucket = {
     async getFiles({prefix}) { return [Object.keys(files).filter((n) => n.startsWith(prefix)).map((name) => ({name, metadata: {timeCreated: new Date(files[name].at).toISOString()}, download: async () => [Buffer.from(files[name].body)], delete: async () => { delete files[name]; }}))]; },
@@ -607,16 +621,15 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   assert.deepEqual(Object.keys(state.backupDirty).sort(), ['archivedOrders', 'books~journal', 'financialMovements', 'inventoryMovements']);
   // Day 2: incremental.
   reads.length = 0;
-  const day2Rotated = BackupDelta.dirtyKey(BackupDelta.rotationPath(clock)), day2Verified = Object.keys(state.backupDirty[day2Rotated] || {}).length;
   result = await ctx.backup(clock);
   const latest = state.systemHealth.backups.latest;
   assert.equal(latest.mode, 'incremental', 'the second day is incremental');
-  assert.equal(latest.recordsReread, 6 - day2Verified, 'dirty records are re-read (the rotated node is read in full instead)');
+  assert.equal(latest.recordsReread, 6, 'only the marked records are re-read');
   const newest = Object.keys(files).sort().at(-1), envelope = JSON.parse(files[newest].body);
   assert.ok(RecoveryValidation.validateEnvelope(envelope).ok, 'the incremental envelope validates, including debit/credit balance');
   const expected = fullData(); expected.systemHealth = envelope.data.systemHealth;
   assert.equal(RecoveryValidation.canonicalJson(envelope.data), RecoveryValidation.canonicalJson(expected), 'incremental backup data equals a full read');
-  for (const tracked of ['/', '/archivedOrders', '/inventoryMovements', '/orderInventoryPlans', '/financialMovements', '/books/journal', '/shifts']) if (tracked !== `/${BackupDelta.rotationPath(clock)}`) assert.ok(!reads.includes(tracked), `incremental backup must not read ${tracked} in full`);
+  for (const tracked of ['/', ...BackupDelta.TRACKED_PATHS.map((p) => `/${p}`)]) assert.ok(!reads.includes(tracked), `incremental backup must not read ${tracked} in full`);
   assert.ok(reads.includes('/menuItems') && reads.includes('/newNode') && reads.includes('/books/monthlyNet'), 'untracked nodes are still read in full');
   assert.equal(Object.keys(state.backupDirty || {}).length, 0, 'processed dirty markers are cleared');
   // A marker written after capture survives (the change is picked up next time).
@@ -627,19 +640,20 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   await ctx.clear(db, captured);
   assert.equal(state.backupDirty.archivedOrders.a9, 2, 'a newer marker is not cleared');
   delete state.backupDirty;
-  // A change whose trigger never ran is corrected (and reported) when its node's turn comes.
+  // A change whose trigger never ran is corrected (and reported) when its key range is verified.
   clock += 86400000;
-  const rotated = BackupDelta.rotationPath(clock);
-  assert.ok(BackupDelta.TRACKED_PATHS.includes(rotated));
-  const unmarked = rotated === 'books/journal' ? 'books/journal/j1/memo' : `${rotated}/zz_unmarked`;
-  put(unmarked, {note: 'written without a marker'});
+  const baseNow = JSON.parse(files[Object.keys(files).sort().at(-1)].body);
+  const slice = BackupDelta.rotationSlice(clock, BackupDelta.verificationSlices(baseNow));
+  assert.ok(slice && BackupDelta.TRACKED_PATHS.includes(slice.path));
+  const existing = Object.keys(at(slice.path) || {}).find((k) => BackupDelta.inSlice(k, slice));
+  put(`${slice.path}/${existing}/unmarkedNote`, 'written without a marker');
   reads.length = 0;
   await ctx.backup(clock);
   const day3 = state.systemHealth.backups.latest, envelope3 = JSON.parse(files[Object.keys(files).sort().at(-1)].body);
-  assert.equal(day3.mode, 'incremental'); assert.equal(day3.verifiedPath, rotated); assert.equal(day3.driftRecords, 1, 'the unmarked change is reported');
+  assert.equal(day3.mode, 'incremental'); assert.equal(day3.verifiedSlice.path, slice.path); assert.equal(day3.driftRecords, 1, 'the unmarked change is reported');
   const expected3 = fullData(); expected3.systemHealth = envelope3.data.systemHealth;
   assert.equal(RecoveryValidation.canonicalJson(envelope3.data), RecoveryValidation.canonicalJson(expected3), 'the verification read corrects the unmarked change');
-  assert.ok(reads.includes(`/${rotated}`) && !reads.includes('/'), 'only the rotated node is re-read in full');
+  assert.ok(reads.includes(`/${slice.path}?slice`) && !reads.includes('/') && !reads.includes(`/${slice.path}`), 'only a key range is re-read for verification');
   // A backup file older than eight days forces a full read.
   clock += 9 * 86400000;
   await ctx.backup(clock);
@@ -647,10 +661,21 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   assert.equal(state.systemHealth.backups.latest.fullReason, 'stale_base');
   // Plan rules.
   const plan = BackupDelta.planIncremental({base: {data: {archivedOrders: {}, books: {journal: {}}}}, topLevel: ['archivedOrders', 'books', 'activeOrders', 'shifts', 'menuItems'], children: {books: ['journal', 'config']}, excluded: ['activeOrders'], dirty: {archivedOrders: {x: 1}, shifts: {y: 1}, 'books~journal': {z: 1}}});
-  assert.deepEqual(plan, {fullNodes: ['books/config', 'menuItems'], copyPaths: ['archivedOrders', 'books/journal'], records: [{path: 'archivedOrders', key: 'x'}, {path: 'books/journal', key: 'z'}], fullTracked: ['shifts'], verifyPaths: [], verifyRecords: []});
+  assert.deepEqual(plan, {fullNodes: ['books/config', 'menuItems'], copyPaths: ['archivedOrders', 'books/journal'], records: [{path: 'archivedOrders', key: 'x'}, {path: 'books/journal', key: 'z'}], fullTracked: ['shifts'], verifySlice: null});
   assert.equal(BackupDelta.needsFullBackup({base: {takenAt: 1}, now: 2}), '');
   assert.equal(BackupDelta.needsFullBackup({base: {takenAt: 1}, now: 8 * 86400000 + 2}), 'stale_base');
-  assert.equal(new Set(Array.from({length: 9}, (_, i) => BackupDelta.rotationPath(i * 86400000))).size, BackupDelta.TRACKED_PATHS.length, 'every tracked node is verified within nine days');
+  // Slices partition each tracked node by key within the byte budget, cover keys added later, and
+  // no single day verifies more than about one budget of history.
+  const big = {}; for (let i = 0; i < 40; i += 1) big[`k${String(i).padStart(2, '0')}`] = {pad: 'x'.repeat(1000)};
+  const slices = BackupDelta.verificationSlices({data: {archivedOrders: big}}, ['archivedOrders'], 5000);
+  assert.ok(slices.length >= 8 && slices[0].start === null && slices.at(-1).before === null);
+  for (const key of [...Object.keys(big), 'a_first', 'k05x', 'zz_last']) assert.equal(slices.filter((sl) => BackupDelta.inSlice(key, sl)).length, 1, `key ${key} is in exactly one slice`);
+  assert.ok(slices.every((sl) => Object.keys(big).filter((k) => BackupDelta.inSlice(k, sl)).length <= 5));
+  assert.equal(new Set(Array.from({length: slices.length}, (_, i) => BackupDelta.rotationSlice(i * 86400000, slices))).size, slices.length, 'every slice is verified once per cycle');
+  const sliced = {p: {a: 1, b: 2, c: 3}};
+  assert.deepEqual(BackupDelta.applyVerifiedSlice(sliced, {path: 'p', start: 'b', before: null}, {c: 4, d: 5}).sort(), ['p/b', 'p/c', 'p/d'], 'unmarked deletes, edits and additions in the range are reported');
+  assert.deepEqual(sliced, {p: {a: 1, c: 4, d: 5}}, 'the verified range replaces the incremental copy; keys outside it are untouched');
+  assert.ok(BackupDelta.keyCompare('2', '10') < 0 && BackupDelta.keyCompare('10', 'a') < 0 && BackupDelta.keyCompare('B', 'a') < 0, 'database key order');
   assert.ok(read('src/functions/60-maintenance.js').includes('BackupDelta.DIRTY_ROOT]);'), 'dirty markers are never backed up');
 }
 
