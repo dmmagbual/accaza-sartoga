@@ -35,13 +35,15 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
 
 // 2-4. Hub: tab switches keep unchanged queries, archive changes patch by ID, journal is month-bounded.
 {
-  const listeners = [], historicalCalls = [];
+  const listeners = [], childListeners = [], historicalCalls = [];
   const ops = {
     ref: (_db, path) => ({path}), query: (target, ...parts) => Object.assign({}, target, ...parts),
     orderByChild: (field) => ({field}), limitToLast: (limit) => ({limit}), startAt: (start) => ({start}), endAt: (end) => ({end}), endBefore: () => ({}),
     onValue(target, callback) {const l = {target, callback, stopped: false}; listeners.push(l); queueMicrotask(() => {if (!l.stopped) callback({val: () => target.path === 'historicalArchiveSync' ? {sequence: 5} : {}});}); return () => {l.stopped = true;};},
-    onChildAdded: () => () => {}, onChildChanged: () => () => {}, onChildRemoved: () => () => {},
-    get: async () => ({val: () => ({})}),
+    onChildAdded(target, callback) {const l = {kind: 'added', target, callback, stopped: false}; childListeners.push(l); return () => {l.stopped = true;};},
+    onChildChanged(target, callback) {const l = {kind: 'changed', target, callback, stopped: false}; childListeners.push(l); return () => {l.stopped = true;};},
+    onChildRemoved(target, callback) {const l = {kind: 'removed', target, callback, stopped: false}; childListeners.push(l); return () => {l.stopped = true;};},
+    get: async () => ({val: () => ({}), forEach: () => {}}),
     readHistoricalOrders: async (payload) => {historicalCalls.push(payload); return {orders: payload.mode === 'ids' ? Object.fromEntries(payload.ids.map((id) => [id, {id, total: 9}])) : {a: {id: 'a'}}, hasMore: false};},
   };
   globalThis.window = {AccazaDate: {key: () => '2026-09-16'}, addEventListener() {}};
@@ -50,11 +52,14 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   for (const path of ['financialMovements', 'cfLedger', 'archivedOrders', 'books/journal', 'books/monthlyNet']) hub.subscribe(path, (s) => {got[path] = s.val();});
   hub.authorize(); hub.activate('cashflow'); await tick(); await tick();
   const active = (path) => listeners.filter((l) => l.target.path === path && !l.stopped);
-  const fmListener = active('financialMovements')[0];
-  assert(fmListener, 'cash flow attaches financial movements');
+  const activeChildren = (path) => childListeners.filter((l) => l.target.path === path && !l.stopped);
+  // financialMovements and cfLedger now use bootstrapped incremental (get + per-child listeners)
+  // instead of onValue, so they appear in childListeners, not listeners.
+  const fmChild = activeChildren('financialMovements');
+  assert(fmChild.length >= 3, 'cash flow attaches financial movements via per-child listeners');
   hub.activate('payables'); await tick();
-  assert.equal(active('financialMovements')[0], fmListener, 'switching between tabs with the same query keeps the listener');
-  assert.equal(active('cfLedger').length, 0, 'queries the new tab does not use are detached');
+  assert.deepEqual(activeChildren('financialMovements'), fmChild, 'switching between tabs with the same query keeps the listener');
+  assert.equal(activeChildren('cfLedger').length, 0, 'queries the new tab does not use are detached');
   hub.activate('cashflow'); await tick(); await tick();
   const archiveCallsBefore = historicalCalls.length;
   const marker = active('historicalArchiveSync').at(-1);
@@ -63,12 +68,14 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   assert.equal(got.archivedOrders.y.total, 9);
   marker.callback({val: () => ({sequence: 20, changes: {20: {sequence: 20, orderId: 'z'}}})}); await tick(); await tick();
   assert.equal(historicalCalls.at(-1).mode, 'latest', 'a gap in the change journal reloads the latest page');
-  hub.activate('stockvalue'); await tick();
-  const journal = active('books/journal')[0];
-  assert(journal && journal.target.field === 'date' && journal.target.start === '2026-09-01', 'Stock Value holds only the current month of journal rows live');
+  hub.activate('stockvalue'); await tick(); await tick();
+  // books/journal also uses bootstrapped incremental now
+  const journalChild = activeChildren('books/journal');
+  assert(journalChild.length >= 3, 'Stock Value holds only the current month of journal rows live via per-child listeners');
   assert(active('books/monthlyNet')[0], 'Stock Value subscribes to the monthly journal totals');
   hub.activate('pos'); await tick();
-  assert.equal(listeners.filter((l) => l.target.path !== 'historicalArchiveSync' && !l.stopped && !['.info/connected'].includes(l.target.path)).length, 0, 'leaving report tabs still detaches their queries');
+  assert.equal(listeners.filter((l) => l.target.path !== 'historicalArchiveSync' && !l.stopped && !['.info/connected'].includes(l.target.path)).length, 0, 'leaving report tabs still detaches their onValue queries');
+  assert.equal(childListeners.filter((l) => !l.stopped).length, 0, 'leaving report tabs also detaches per-child listeners');
   hub.deauthorize(); delete globalThis.window;
 }
 

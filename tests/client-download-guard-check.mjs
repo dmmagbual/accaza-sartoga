@@ -67,7 +67,7 @@ for (const file of FILES) {
 // Admin subscription hub: every path attached without a bound must be small or accepted.
 const hub = read('assets/js/admin/realtime-hub.mjs');
 const constKeys = (name) => { const m = new RegExp(`const ${name}=\\{(.*)\\};`).exec(hub); assert.ok(m, `${name} not found`); return new Set([...m[1].matchAll(/['"]?([\w/]+)['"]?\s*:/g)].map((x) => x[1])); };
-const bounded = new Set([...Object.keys(HISTORY_BOUNDS), ...constKeys('INCREMENTAL_PATHS'), ...constKeys('VERSIONED_MASTER_PATHS'), ...constKeys('CURRENT_MONTH_PATHS'), ...constKeys('OPEN_ROW_PATHS')]);
+const bounded = new Set([...Object.keys(HISTORY_BOUNDS), ...constKeys('INCREMENTAL_PATHS'), ...constKeys('VERSIONED_MASTER_PATHS'), ...constKeys('CURRENT_MONTH_PATHS'), ...constKeys('OPEN_ROW_PATHS'), ...constKeys('BOOTSTRAPPED_INCREMENTAL_BOUNDS')]);
 const scopesMatch = /var scopes=\{([\s\S]*?)\n  \};/.exec(hub);
 assert.ok(scopesMatch, 'hub scopes not found');
 const scoped = [...scopesMatch[1].matchAll(/(?:^|,|\n)\s*['"]?([\w/]+)['"]?\s*:\s*\[/g)].map((x) => x[1]);
