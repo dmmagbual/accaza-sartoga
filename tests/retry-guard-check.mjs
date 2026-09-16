@@ -1,0 +1,89 @@
+// Guards the Firebase download-storm controls found in the 16 Sep 2026 billing investigation:
+// 1. every `retry: true` database trigger is bounded (dead letter instead of endless redelivery),
+// 2. dead letters are surfaced as critical operational exceptions and stay server-only,
+// 3. onOrderFinalize does not re-download the catalog when the sale-time plan already exists,
+// 4. non-management sessions never call System Health and failures back off.
+import fs from 'node:fs';
+import {createRequire} from 'node:module';
+
+const require = createRequire(import.meta.url);
+const RetryGuard = require('../functions/lib/retry-guard.js');
+const {buildOperationalExceptions, DEAD_LETTER_WINDOW_MS} = require('../functions/lib/operational-exceptions.js');
+const read = (file) => fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+const fail = (message) => { throw new Error(message); };
+
+const HOUR = 3600000, now = Date.UTC(2026, 8, 16, 2);
+function harness() {
+  const letters = [], logs = [];
+  const deps = {now: () => now, functionName: () => 'onOrderFinalize', recordDeadLetter: async (key, row) => { letters.push({key, row}); }, logError: (m, c) => logs.push({m, c})};
+  return {letters, logs, deps};
+}
+const boom = async () => { throw new Error('Inventory movement quantity cannot be zero.'); };
+const event = (ageMs) => ({id: 'evt-1', time: new Date(now - ageMs).toISOString(), params: {orderId: 'POS-ZRYDBO'}});
+
+// Inside the retry window: rethrow so the platform retries transient failures.
+{
+  const h = harness(), handler = RetryGuard.guardRetryHandler('/orders/{orderId}', boom, h.deps);
+  let threw = false; try { await handler(event(5 * 60000)); } catch (_e) { threw = true; }
+  if (!threw || h.letters.length) fail('A fresh failing event must be rethrown for platform retry and must not be dead-lettered.');
+}
+// Past the retry window: record once, acknowledge, never throw.
+{
+  const h = harness(), handler = RetryGuard.guardRetryHandler('/orders/{orderId}', boom, h.deps);
+  const result = await handler(event(RetryGuard.DEFAULT_MAX_RETRY_AGE_MS + HOUR));
+  if (result !== null || h.letters.length !== 1) fail('An expired failing event must be acknowledged and dead-lettered exactly once.');
+  const {key, row} = h.letters[0];
+  if (!/^[a-f0-9]{40}$/.test(key) || key !== RetryGuard.deadLetterKey('onOrderFinalize', event(RetryGuard.DEFAULT_MAX_RETRY_AGE_MS + HOUR))) fail('Dead-letter keys must be deterministic per function and event.');
+  if (row.status !== 'open' || row.function !== 'onOrderFinalize' || row.params.orderId !== 'POS-ZRYDBO' || row.ref !== '/orders/{orderId}' || !/cannot be zero/.test(row.error) || row.abandonedAt !== now) fail('Dead-letter record lost its audit fields.');
+  if (!h.logs.length) fail('Abandoning an event must be logged as an error.');
+}
+// If the audit record cannot be written, keep retrying rather than lose the trail.
+{
+  const h = harness(); h.deps.recordDeadLetter = async () => { throw new Error('rtdb unavailable'); };
+  const handler = RetryGuard.guardRetryHandler('/x', boom, h.deps);
+  let threw = false; try { await handler(event(RetryGuard.DEFAULT_MAX_RETRY_AGE_MS + HOUR)); } catch (_e) { threw = true; }
+  if (!threw) fail('A dead letter that cannot be written must not acknowledge the event.');
+}
+// Success passes through untouched; only retry:true registrations are wrapped.
+{
+  const h = harness(), ok = RetryGuard.guardRetryHandler('/x', async () => 'done', h.deps);
+  if (await ok(event(10 * HOUR)) !== 'done' || h.letters.length) fail('Successful handlers must pass through.');
+  const seen = [];
+  const factory = RetryGuard.wrapTriggerFactory((opts, fn) => { seen.push({opts, fn}); return fn; }, h.deps);
+  factory({ref: '/a', retry: true}, boom); factory({ref: '/b'}, boom); factory('/c', boom);
+  if (seen[0].fn === boom || seen[1].fn !== boom || seen[2].fn !== boom) fail('Only retry:true triggers may be wrapped.');
+}
+
+// The deployed bundle must route every database trigger through the guard.
+const functionsIndex = read('functions/index.js');
+if ((functionsIndex.match(/require\("firebase-functions\/v2\/database"\)/g) || []).length !== 1 || !functionsIndex.includes('const DatabaseTriggers = require("firebase-functions/v2/database");')) fail('Database trigger factories must be imported once, through the retry guard.');
+for (const name of ['onValueUpdated', 'onValueWritten', 'onValueCreated', 'onValueDeleted']) {
+  if (!functionsIndex.includes(`const ${name} = RetryGuard.wrapTriggerFactory(DatabaseTriggers.${name}, retryGuardDeps);`)) fail(`${name} is not bounded by the retry guard.`);
+}
+if (/DatabaseTriggers\.onValue\w+\(/.test(functionsIndex)) fail('A trigger bypasses the retry guard by calling the raw factory.');
+const retryTriggers = (functionsIndex.match(/retry:\s*true/g) || []).length;
+if (retryTriggers < 20) fail(`Expected the reviewed retry:true trigger set, found ${retryTriggers}.`);
+
+// Dead letters are critical, time-boxed, and read with a bounded indexed query.
+const exceptions = buildOperationalExceptions({deadLetters: {
+  a: {status: 'open', function: 'updateCashBalanceSummary', abandonedAt: now - HOUR, params: {movementId: 'sale_1'}, error: 'Error: boom'},
+  b: {status: 'open', function: 'old', abandonedAt: now - DEAD_LETTER_WINDOW_MS - HOUR},
+  c: {status: 'resolved', function: 'done', abandonedAt: now - HOUR},
+}}, now).exceptions.filter((x) => x.category === 'background_failure');
+if (exceptions.length !== 1 || exceptions[0].id !== 'a' || exceptions[0].severity !== 'critical' || !exceptions[0].detail.includes('movementId sale_1')) fail('Open dead letters inside the window must surface as one critical background_failure.');
+if (!functionsIndex.includes('db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}`).orderByChild("abandonedAt").startAt(now - OperationalExceptions.DEAD_LETTER_WINDOW_MS).limitToLast(50).get()')) fail('The health scan must read dead letters with a bounded, indexed query.');
+const rules = read('database.rules.json');
+if (!rules.includes('"functionDeadLetters": { ".indexOn": "abandonedAt", ".read": false, ".write": false }')) fail('functionDeadLetters must be server-only and indexed on abandonedAt.');
+if (!read('assets/js/admin/operations-dashboard.js').includes('background_failure:{owner:')) fail('System Health has no guidance for background_failure.');
+
+// onOrderFinalize reads the immutable plan first and skips the catalog when it exists.
+const finalize = functionsIndex.slice(functionsIndex.indexOf('exports.onOrderFinalize'), functionsIndex.indexOf('exports.onOrderInventoryReversal'));
+const planAt = finalize.indexOf('const planSnap = await db.ref(`/orderInventoryPlans/${orderId}`).get();'), catalogAt = finalize.indexOf('db.ref("/recipes").get()');
+if (planAt < 0 || catalogAt < 0 || planAt > catalogAt || !finalize.includes('= hasPlan ? [] : await Promise.all([') || !finalize.includes('const costing = hasPlan?null:Costing.costOrder({')) fail('onOrderFinalize must not download the catalog when the sale-time plan already exists.');
+
+// System Health: management-only on the client too, with failure backoff.
+const overview = read('assets/js/admin/overview-command.mjs');
+for (const marker of ['function systemHealthAllowed(){const authz=window.__accazaAuthz;return !!(authz&&authz.isPrivileged);}', 'if(!systemHealthAllowed())return exceptionData;', 'SYSTEM_HEALTH_FAILURE_BACKOFF_MS', 'exceptionFailedAt=Date.now()']) {
+  if (!overview.includes(marker)) fail(`System Health client guard is missing: ${marker}`);
+}
+console.log(`PASS: ${retryTriggers} retry:true triggers are bounded with audited dead letters; dead letters surface as critical, server-only exceptions; finalization skips catalog re-downloads; System Health is management-only with failure backoff.`);

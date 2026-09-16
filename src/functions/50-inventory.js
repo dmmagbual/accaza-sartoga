@@ -343,7 +343,12 @@ exports.onOrderFinalize = onValueWritten(
     if (o.inventoryDeducted && o.inventoryLedgerVersion === 1) return;
 
     try {
-      const [recSnap, optSnap, invSnap, miSnap, psSnap, ogSnap, pkSnap, planSnap] = await Promise.all([
+      // The immutable sale-time plan is read first. When it already exists (a
+      // retry, or a re-write of an order that was finalized before archiving),
+      // the catalog is not needed and is not downloaded again.
+      const planSnap = await db.ref(`/orderInventoryPlans/${orderId}`).get();
+      const hasPlan = planSnap.exists();
+      const [recSnap, optSnap, invSnap, miSnap, psSnap, ogSnap, pkSnap] = hasPlan ? [] : await Promise.all([
         db.ref("/recipes").get(),
         db.ref("/optionRecipes").get(),
         db.ref("/inventory").get(),
@@ -351,22 +356,22 @@ exports.onOrderFinalize = onValueWritten(
         db.ref("/posSettings").get(),
         db.ref("/optionGroups").get(),
         db.ref("/packagingRules").get(),
-        db.ref(`/orderInventoryPlans/${orderId}`).get(),
       ]);
-      const recipes = recSnap.val() || {};
-      const inv = invSnap.val() || {};
-      const mi = miSnap.val() || {};
-      const ps = psSnap.val() || {};
-      const optRaw = optSnap.val() || {};
+      const val = (snap) => (snap && snap.val()) || {};
+      const recipes = val(recSnap);
+      const inv = val(invSnap);
+      const mi = val(miSnap);
+      const ps = val(psSnap);
+      const optRaw = val(optSnap);
       const optMap = {};
       Object.keys(optRaw).forEach((k) => {
         const v = optRaw[k] || {};
         optMap[v.label || k] = v;
       });
       const optionCosts = ps.optionCosts || {};
-      const optionGroups = ogSnap.val() || {};
+      const optionGroups = val(ogSnap);
 
-      const costing = planSnap.exists()?null:Costing.costOrder({
+      const costing = hasPlan?null:Costing.costOrder({
         lineItems: o.lineItems, recipes, inventory: inv, menuItems: mi,
         sharedBaseIngredients: ps.sharedBaseIngredients || {}, optionCosts, optionRecipes: optMap, optionGroups,
         // Packaging follows how a drink is served, from one shared table. The server reads it

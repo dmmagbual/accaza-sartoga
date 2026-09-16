@@ -27,7 +27,8 @@
     payment_proof:{owner:'Order manager',action:'Open Orders and verify payment-proof access. Escalate Storage or connection failures to the system administrator.'},
     client_error:{owner:'System administrator',action:'Review Technical diagnostics below and confirm whether the latest application build introduced the errors.'},
     clearing_residual:{owner:'Finance manager',action:'Open Cash Flow and trace the source transaction. Clear the temporary account through a linked correction or settlement—never by editing the balance.'},
-    payment_routing:{owner:'Finance manager + system administrator',action:'Open POS Settings and align the payment method with exactly one correct receiving account before taking more payments.'}
+    payment_routing:{owner:'Finance manager + system administrator',action:'Open POS Settings and align the payment method with exactly one correct receiving account before taking more payments.'},
+    background_failure:{owner:'System administrator + finance manager',action:'A server task kept failing and was stopped to protect the database. Open the named order, shift, or voucher, confirm what is missing, and complete it with the controlled repair (for example Complete inventory posting or the Finance ledger audit). Do not re-enter the transaction.'}
   };return map[x.category]||{owner:'Operations manager',action:x.detail||'Review the source record and resolve it in the linked controlled workflow.'};}
   function sharedExceptionData(){var shared=global.__accazaSystemHealth;return shared&&typeof shared.get==='function'?shared.get():null;}
   function getOperationalExceptions(force){
