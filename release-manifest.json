@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 542,
+    "admin": 543,
     "books": 123,
     "customer": 73,
-    "serviceWorkerCache": 520
+    "serviceWorkerCache": 521
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
@@ -271,6 +271,7 @@
   ],
   "requiredFunctionExports": [
     "getUndepositedControlSnapshot",
+    "signOutAllPortalSessions",
     "getUndepositedPage",
     "syncUndepositedLedgerPageIndex",
     "syncPettyVoucherAttentionIndex",

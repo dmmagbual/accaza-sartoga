@@ -32,8 +32,25 @@ function portalRoleValue(raw) {
   return String(role || "").toLowerCase();
 }
 
+// Emergency sign-out (17 Sep 2026): /sessionControl/cutoff/at is the moment an owner signed
+// every portal session out. A session that signed in before it is refused by every portal
+// service, so a forgotten tab stops calling the server even before its ID token expires.
+// Cached for a minute per instance so the check adds no read to most calls.
+const SESSION_CUTOFF_CACHE_MS = 60 * 1000;
+let sessionCutoffCache = {at: 0, loadedAt: 0};
+async function portalSessionCutoff(db) {
+  if (Date.now() - sessionCutoffCache.loadedAt < SESSION_CUTOFF_CACHE_MS) return sessionCutoffCache.at;
+  try {
+    const at = Number((await db.ref("/sessionControl/cutoff/at").get()).val()) || 0;
+    sessionCutoffCache = {at, loadedAt: Date.now()};
+  } catch (_error) { /* keep the last known cutoff; never block sign-in on a read failure */ }
+  return sessionCutoffCache.at;
+}
+function sessionSignedInAt(request) { return (Number(request && request.auth && request.auth.token && request.auth.token.auth_time) || 0) * 1000; }
 async function requirePortalUser(db, request) {
   if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "Staff login is required.");
+  const signedInAt = sessionSignedInAt(request), cutoff = signedInAt ? await portalSessionCutoff(db) : 0;
+  if (cutoff && signedInAt < cutoff) throw new HttpsError("unauthenticated", "The owner signed every device out. Sign in again.");
   const snap = await db.ref(`/admins/${request.auth.uid}`).get();
   const raw=snap.val(),role = portalRoleValue(raw);
   if (!["owner", "superadmin", "admin", "manager", "staff", "cashier", "kitchen", "finance"].includes(role)) {

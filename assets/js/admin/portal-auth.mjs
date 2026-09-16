@@ -12,6 +12,20 @@ function installPortalAuth(options){
   var subscriptionHub=options.subscriptionHub,onAuthorized=options.onAuthorized,onSignedOut=options.onSignedOut,openLogin=options.openLogin;
   var authGateResolved=false,portalAuthPromise=null,portalAuthUid=null;
   window.__accazaAuthGateReady=function(){return authGateResolved;};
+  // Owner emergency sign-out: a session that signed in before /sessionControl/cutoff/at ends
+  // here at once (the server refuses it as well). The node is a single small record.
+  var stopCutoffWatch=null,cutoffSignOut=false;
+  function watchSessionCutoff(user){
+    if(stopCutoffWatch)stopCutoffWatch();
+    stopCutoffWatch=subscriptionHub.subscribe('sessionControl',async function(snap){
+      var cutoff=snap.val()&&snap.val().cutoff,at=Number(cutoff&&cutoff.at)||0;if(!at||cutoffSignOut||!auth.currentUser||auth.currentUser.uid!==user.uid)return;
+      var signedInAt=0;try{signedInAt=Date.parse((await user.getIdTokenResult()).authTime)||0;}catch(_e){return;}
+      if(!signedInAt||signedInAt>=at)return;
+      cutoffSignOut=true;try{sessionStorage.removeItem('accaza_admin_session');}catch(_s){}
+      try{await signOut(auth);}catch(_o){}
+      cutoffSignOut=false;var le=document.getElementById('loginErr');if(le){le.textContent='The owner signed every device out'+(cutoff.reason?(': '+cutoff.reason):'')+'. Sign in again.';le.style.display='block';le.style.whiteSpace='normal';}openLogin();
+    },{critical:true});
+  }
   async function authorizePortalUser(user){
     if(portalAuthUid===user.uid&&window.__accazaAuthz)return;
     if(portalAuthPromise)return portalAuthPromise;
@@ -20,7 +34,7 @@ function installPortalAuth(options){
       var roleSnap=results[0],nameSnap=results[1],mapped=roleSnap.exists()?portalRole(roleSnap.val()):null;
       if(!mapped)throw new Error('This Firebase account is not authorized for the Accaza portal.');
       var display=(user.displayName||user.email||user.uid);if(nameSnap&&nameSnap.exists()&&nameSnap.val())display=nameSnap.val();
-      await onAuthorized(mapped.ui,display,user.uid,mapped.server);portalAuthUid=user.uid;authGateResolved=true;
+      await onAuthorized(mapped.ui,display,user.uid,mapped.server);portalAuthUid=user.uid;authGateResolved=true;watchSessionCutoff(user);
       if(location.hash)setTimeout(function(){var t=document.getElementById(location.hash.slice(1));if(t)t.scrollIntoView();},450);
     })();
     try{return await portalAuthPromise;}finally{portalAuthPromise=null;}
