@@ -145,7 +145,9 @@ async function integration(){
   class Clock extends Date{static now(){return input.now;}}
   class HttpsError extends Error{constructor(code,message){super(message);this.code=code;}}
   const ctx={exports:{},Date:Clock,crypto:require('node:crypto'),logger:{error(){}},ORDER_REGION:'test',ENFORCE_APP_CHECK:false,HttpsError,Financial,BooksBridge:B,CashJournalEdit:E,
-    getDatabase:()=>db,onCall:(_,fn)=>fn,observeFinancialOperation:(_,__,fn)=>fn(),
+    getDatabase:()=>db,onCall:(_,fn)=>fn,CashBalances:require('../functions/lib/cash-balances'),
+    // The live cash-balance summary equals the full ledger; the void check reads it instead of every movement.
+    currentCashBalances:async()=>({balances:require('../functions/lib/cash-balances').splitSnapshotFromMovements(state.financialMovements).summary.balances,source:'summary'}),observeFinancialOperation:(_,__,fn)=>fn(),
     requirePortalPermission:async()=>({uid:'manager1',role}),financeText:(s,n)=>String(s||'').trim().slice(0,n),
     financeKey:s=>{assert.match(s,/^[A-Za-z0-9_-]+$/);return s;},financeDate:s=>s,
     ensureChartAccounts:async()=>({}),ensureBooksChart:async()=>({}),SENSITIVE_BOOKS_CODES:new Set(['1011','1030']),

@@ -28,7 +28,7 @@ function revolvingFundPosting(row) {
 exports.repairPettyExpenseClassifications = onCall({region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "512MiB"}, async (request) => {
   const db=getDatabase(),actor=await requirePortalPermission(db,request,["cashflow","registerOps"]),data=request.data||{},reason=financeText(data.reason,500);
   if(!["owner","superadmin","admin","manager"].includes(actor.role))throw new HttpsError("permission-denied","Only a manager may repair cash-payment classifications.");
-  const [voucherSnap,movementSnap]=await Promise.all([db.ref("/pettyCashVouchers").get(),db.ref("/financialMovements").get()]),vouchers=voucherSnap.val()||{},movements=movementSnap.val()||{},repairs=[],blocked=[];
+  const [voucherSnap,movementSnap]=/* download-ok: manual classification repair tool */await Promise.all([db.ref("/pettyCashVouchers").get(),db.ref("/financialMovements").get()]),vouchers=voucherSnap.val()||{},movements=movementSnap.val()||{},repairs=[],blocked=[];
   for(const [id,row] of Object.entries(vouchers)){
     if(!row||row.status!=="approved"||row.voided===true||row.transactionType==="purchase_advance"||row.transactionType==="owner_withdrawal")continue;
     const amount=Financial.money(row.amount),target=revolvingFundPosting(row),repairMovementId=`petty_category_reclass_v1_${id}`;if(!(amount>0)||!/^expense:/.test(target.account)||movements[repairMovementId])continue;
@@ -116,7 +116,7 @@ exports.manageFixedAsset = onCall(
     }
     if (action === "depreciate") {
       const period = financeText(data.period, 7); if (!/^\d{4}-\d{2}$/.test(period)) throw new HttpsError("invalid-argument", "Period must be YYYY-MM.");
-      const assets = (await db.ref("/fixedAssets").get()).val() || {}; const posted = []; const occurredAt = Date.parse(`${period}-28T00:00:00+08:00`) || now;
+      const assets = /* download-ok: bounded fixed-asset register, monthly depreciation run */(await db.ref("/fixedAssets").get()).val() || {}; const posted = []; const occurredAt = Date.parse(`${period}-28T00:00:00+08:00`) || now;
       for (const id of Object.keys(assets)) {
         const a = assets[id]; if (!a || a.status !== "active") continue;if(period<String(a.inServiceDate||a.acquiredDate||"").slice(0,7))continue;
         if (a.depreciation && a.depreciation[period] != null) continue;

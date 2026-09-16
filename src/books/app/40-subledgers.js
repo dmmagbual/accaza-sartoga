@@ -79,6 +79,7 @@ App.showSupplierAdvanceLedger=function(){
   window.__getSupplierAdvanceDetails({supplierId:'',supplierName:''}).then(function(data){
     if(!document.body.contains(root))return;
     var rows=data.rows||[],balance=r2(rows.reduce(function(s,x){return s+(Number(x.remainingAmount)||0);},0));
+    if(window.__booksEnsurePurchaseInvoices)window.__booksEnsurePurchaseInvoices([].concat.apply([],rows.map(function(x){return Object.keys(x.allocations||{});})));
     var html=rows.map(function(x){
       var allocations=Object.keys(x.allocations||{}).map(function(id){var a=x.allocations[id]||{},p=(window.__piMap||{})[id]||{};return '<div class="tiny"><button class="btn sm ghost" onclick="App.piDetail(\''+esc(id)+'\')">'+esc(a.ref||p.ref||id)+'</button> · '+peso(a.amount||p.total||0)+'</div>';}).join('')||'<span class="tiny muted">No purchase allocated yet</span>';
       return '<tr><td><b>'+esc(x.supplierName||'Supplier not identified')+'</b><div class="tiny muted">'+esc(x.reference||x.id)+'</div></td><td><div>'+esc(x.source==='register_shift'?'Register shift '+x.shiftId:'Revolving fund')+'</div><div class="tiny muted">'+esc(x.purpose||'')+(x.movementId?' · '+esc(x.movementId):'')+'</div></td><td class="num">'+peso(x.amount)+'</td><td>'+allocations+'</td><td class="num">'+peso(x.allocatedAmount)+'</td><td class="num"><b>'+peso(x.remainingAmount)+'</b></td></tr>';
@@ -88,6 +89,7 @@ App.showSupplierAdvanceLedger=function(){
 };
 function subledgerPage(kind){
   var isAr = kind==='ar', map = isAr?window.__arMap:window.__apMap, live = !!window.__booksUser;
+  if(!isAr&&window.__booksEnsurePurchaseInvoices)window.__booksEnsurePurchaseInvoices(Object.keys(map||{}).map(function(k){return (map[k]||{}).purchaseInvoiceId;}));
   var title = isAr?'Receivables':'Payables', sub = isAr?'Money owed to you':'Money you owe';
   if(!live) return '<div class="page-head"><div><h2>'+title+'</h2><p>'+sub+'</p></div></div>'+
     '<div class="empty"><div class="big">'+(isAr?'📥':'📤')+'</div><b>Sign in for live '+title.toLowerCase()+'</b><br><span class="tiny">This subledger reads your live finance data. Click the status pill (top-right) to sign in with your Accaza admin account, or open this app from your Accaza domain.</span></div>';

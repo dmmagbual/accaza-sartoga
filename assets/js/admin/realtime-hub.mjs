@@ -1,5 +1,5 @@
-import{watchSalesPeriod,periodKey}from'./sales-period-data.mjs?v=536';
-import{createHistoricalPeriodStore}from'./historical-period-store.mjs?v=536';
+import{watchSalesPeriod,periodKey}from'./sales-period-data.mjs?v=537';
+import{createHistoricalPeriodStore}from'./historical-period-store.mjs?v=537';
 // One managed subscription per path. Sales reports combine indexed date queries;
 // POS-critical paths stay live and back-office paths attach only when needed.
 const HISTORY_BOUNDS={
@@ -24,6 +24,8 @@ const HISTORY_TAB_PATHS={saleshistory:['orders','archivedOrders','financialMovem
 // instead, so an unrelated field on the record no longer rides along. See 2026-09-12 follow-up.
 const INCREMENTAL_PATHS={activeOrders:1,inventory:1,posActiveShift:1};
 const VERSIONED_MASTER_PATHS={categories:1,optionGroups:1,menuItems:1};
+// Only rows that are still open are needed: custody that still holds cash (Sep 2026 audit).
+const OPEN_ROW_PATHS={cashCustody:{field:'remaining',start:0.005}};
 // Journal history is summarised server-side in books/monthlyNet; the live listener only
 // carries the current Manila month (Stock Value reads earlier months from the totals).
 const CURRENT_MONTH_PATHS={'books/journal':'date'};
@@ -38,7 +40,7 @@ function createSubscriptionHub(database,ops){
   // The query a bounded path uses for a scope. Switching between tabs that need the same
   // query keeps the live listener instead of detaching and re-downloading the whole page.
   function targetKey(path,scope){if(!HISTORY_BOUNDS[path])return 'static';var p=selectedPeriod(scope),rp=reportPeriod(scope);if(path==='archivedOrders'||salesPath(path))return p?'period:'+periodKey(p):'latest';if(path==='financialMovements'){if(p&&scope==='saleshistory')return 'saleshistory:'+periodKey(rp);return rp&&Number(rp.startAt)&&Number(rp.endAt)?'period:'+periodKey(rp):'latest';}return 'latest';}
-  function liveTarget(path){var base=ref(database,path),spec=HISTORY_BOUNDS[path],period=reportPeriod();if(CURRENT_MONTH_PATHS[path])return query(base,orderByChild(CURRENT_MONTH_PATHS[path]),startAt(manilaMonthStart()));if(!spec)return base;if(period&&path==='financialMovements'&&Number(period.startAt)&&Number(period.endAt))return query(base,orderByChild(spec.field),startAt(Number(period.startAt)),endAt(Number(period.endAt)));return query(base,orderByChild(spec.field),limitToLast(spec.limit));}
+  function liveTarget(path){var base=ref(database,path),spec=HISTORY_BOUNDS[path],period=reportPeriod();if(CURRENT_MONTH_PATHS[path])return query(base,orderByChild(CURRENT_MONTH_PATHS[path]),startAt(manilaMonthStart()));if(OPEN_ROW_PATHS[path])return query(base,orderByChild(OPEN_ROW_PATHS[path].field),startAt(OPEN_ROW_PATHS[path].start));if(!spec)return base;if(period&&path==='financialMovements'&&Number(period.startAt)&&Number(period.endAt))return query(base,orderByChild(spec.field),startAt(Number(period.startAt)),endAt(Number(period.endAt)));return query(base,orderByChild(spec.field),limitToLast(spec.limit));}
   var entries={},authorized=false,activeScope='dashboard',nextId=1,liveStartedAt=0,liveReadyRecorded=false;
   var rollingStops=new Set();
   const historicalPeriods=createHistoricalPeriodStore({read:payload=>ops.readHistoricalOrders(payload),watch:(data,error)=>onValue(ref(database,'historicalArchiveSync'),snapshot=>data(snapshot.val()||{}),error)});

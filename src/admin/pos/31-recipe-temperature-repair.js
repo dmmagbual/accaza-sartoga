@@ -178,7 +178,7 @@ function cogsFixLoadOrders(){
   var a=A();
   return Promise.all([
     cogsFixLoadArchived(null,{}),
-    a.get(a.ref(a.db,'orders')).then(function(s){return s.val()||{};}).catch(function(){return {};})
+    /* download-ok: bounded live orders only (archived at shift close) */a.get(a.ref(a.db,'orders')).then(function(s){return s.val()||{};}).catch(function(){return {};})
   ]).then(function(parts){
     var all={};
     parts.forEach(function(set){Object.keys(set).forEach(function(id){all[id]=set[id];});});

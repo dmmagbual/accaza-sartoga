@@ -163,7 +163,7 @@ function openSkuBatchSetup(){
   mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:900px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;"><div style="font-weight:700;color:var(--bd);">🔀 Brand &amp; Batch setup</div><p class="pz-sub">Reading your inventory and purchase receipts…</p></div>';
   document.body.appendChild(mask);
   function close(){ if(mask.parentNode)document.body.removeChild(mask); }
-  Promise.all([a.get(a.ref(a.db,'stockReceipts')),a.get(a.ref(a.db,'inventorySku')),a.get(a.ref(a.db,'inventoryBatch'))]).then(function(res){
+  Promise.all([/* download-ok: manual setup */a.get(a.ref(a.db,'stockReceipts')),a.get(a.ref(a.db,'inventorySku')),a.get(a.ref(a.db,'inventoryBatch'))]).then(function(res){
     var receipts=res[0].val()||{}, existingSku=res[1].val()||{}, existingBatch=res[2].val()||{};
     // brands + last supplier seen per inventory item, from receipt history
     var brandsByItem={};

@@ -34,7 +34,7 @@ async function booksMonthFromDays(db, month) {
 }
 async function applyBooksMonthlyDelta(db, before, after) {
   const meta = (await db.ref("/books/monthlyNetMeta").get()).val() || {};
-  if (Number(meta.schemaVersion) !== BOOKS_NET_SCHEMA) { await rebuildBooksMonthlyNet(db, (await db.ref("/books/journal").get()).val() || {}); return; }
+  if (Number(meta.schemaVersion) !== BOOKS_NET_SCHEMA) { await rebuildBooksMonthlyNet(db, (/* download-ok: migration monthly totals schema changed */await db.ref("/books/journal").get()).val() || {}); return; }
   const days = new Set([booksEntryDay(before), booksEntryDay(after)].filter(Boolean)), months = new Set();
   for (const day of days) {
     const total = await booksDayTotal(db, day);
@@ -105,8 +105,13 @@ async function booksCashAccountMap(db) {
 async function booksMovementContext(db,mv){
   const sourceId=String(mv&&mv.sourceId||"");let purchaseInvoice=null;
   if(sourceId){purchaseInvoice=(await db.ref(`/purchaseInvoices/${sourceId}`).get()).val()||null;if(!purchaseInvoice){const payable=(await db.ref(`/payables/${sourceId}`).get()).val()||{},derivedId=sourceId.indexOf("ap_")===0?sourceId.slice(3):sourceId,invoiceId=String(payable.purchaseInvoiceId||derivedId);purchaseInvoice=(await db.ref(`/purchaseInvoices/${invoiceId}`).get()).val()||null;}}
-  if(!purchaseInvoice)return {};
-  return {purchaseInvoice,inventory:(await db.ref("/inventory").get()).val()||{}};
+  return purchaseInvoice?{purchaseInvoice}:{};
+}
+// Books posting for one movement. Inventory items are read only for the purchase lines that
+// need their account mapping (readCatalogKeyed), not the whole stock list.
+async function booksSingleEntry(db,mv,cashMap){
+  const source=await booksMovementContext(db,mv);
+  return readCatalogKeyed(db,["inventory"],(maps)=>{const context=source.purchaseInvoice?{purchaseInvoice:source.purchaseInvoice,inventory:maps.inventory}:{};return{built:BooksBridge.buildSingle(mv,cashMap,context),unmapped:BooksBridge.mappedLines(mv,cashMap,context).unmapped};});
 }
 
 exports.mirrorPosMovementToBooks = onValueCreated(
@@ -118,7 +123,7 @@ exports.mirrorPosMovementToBooks = onValueCreated(
     const db = getDatabase();
     const cashMap = await booksCashAccountMap(db);
     const bucket = BooksBridge.bucketFor(mv);
-    let context={};
+    let unmapped;
     if (bucket.mode === "daily") {
       const ref = db.ref(`/books/journal/${bucket.key}`);
       await ref.transaction((cur) => {
@@ -126,13 +131,14 @@ exports.mirrorPosMovementToBooks = onValueCreated(
         return next === undefined ? cur : next; // abort (already applied) leaves node unchanged
       });
       await ref.child("updatedAt").set(Date.now());
+      unmapped = BooksBridge.mappedLines(mv, cashMap, {}).unmapped;
     } else {
-      context=await booksMovementContext(db,mv);const built = BooksBridge.buildSingle(mv, cashMap, context);
+      const single = await booksSingleEntry(db, mv, cashMap), built = single.built;
+      unmapped = single.unmapped;
       const ref = db.ref(`/books/journal/${built.entry.id}`);
       built.entry.createdAt = Date.now();
       await ref.transaction((current)=>current||built.entry,undefined,false);
     }
-    const unmapped = BooksBridge.mappedLines(mv, cashMap, context).unmapped;
     await flagUnmappedBooks(db, mv, unmapped);
   },
 );
@@ -149,8 +155,10 @@ exports.mirrorPosCogsToBooks = onValueWritten(
     let order = (await db.ref(`/orders/${orderId}`).get()).val();
     if (!order) order = (await db.ref(`/archivedOrders/${orderId}`).get()).val();
     if (!order) return;
-    const [inventorySnap, categoriesSnap] = await Promise.all([db.ref("/inventory").get(), db.ref("/posSettings/invCategories").get()]);
-    const mv = BooksBridge.cogsMovement(order, orderId, inventorySnap.val() || {}, categoriesSnap.val() || {});
+    // Inventory items are needed only for legacy orders without an account snapshot, and then
+    // only the ingredients on the order.
+    const categories = (await db.ref("/posSettings/invCategories").get()).val() || {};
+    const mv = await readCatalogKeyed(db, ["inventory"], (maps) => BooksBridge.cogsMovement(order, orderId, maps.inventory, categories));
     if (!mv.lines.length) return;
     const bucket = BooksBridge.bucketFor(mv);
     const ref = db.ref(`/books/journal/${bucket.key}`);
@@ -172,7 +180,7 @@ exports.ensureBooksJournal = onCall(
     await ensureBooksChart(db);
     await ensureHistoricalInternalUsageFinance(db,actor);
     await ensureHistoricalSecurityBankDrawings(db, actor);
-    const [movementSnap, ordersSnap, archiveSnap, journalSnap, cashAccountsSnap, inventorySnap, categoriesSnap, purchasesSnap, payablesSnap, posSettingsSnap, activeShiftSnap] = await Promise.all([
+    const [movementSnap, ordersSnap, archiveSnap, journalSnap, cashAccountsSnap, inventorySnap, categoriesSnap, purchasesSnap, payablesSnap, posSettingsSnap, activeShiftSnap] = /* download-ok: manual Books journal rebuild from all history */ await Promise.all([
       db.ref("/financialMovements").get(), db.ref("/orders").get(), db.ref("/archivedOrders").get(), db.ref("/books/journal").get(), db.ref("/cfAccounts").get(), db.ref("/inventory").get(), db.ref("/posSettings/invCategories").get(), db.ref("/purchaseInvoices").get(), db.ref("/payables").get(), db.ref("/posSettings").get(), db.ref("/posActiveShift").get(),
     ]);
     const movements = movementSnap.val() || {}, allOrders = Object.assign({}, archiveSnap.val() || {}, ordersSnap.val() || {}), purchases=purchasesSnap.val()||{}, payables=payablesSnap.val()||{}, inventory=inventorySnap.val()||{};
@@ -222,7 +230,7 @@ exports.ensureBooksJournal = onCall(
     const paths = Object.keys(writes); for (let i = 0; i < paths.length; i += 150) { const batch = {}; paths.slice(i, i + 150).forEach((path) => { batch[path] = writes[path]; }); await db.ref().update(batch); }
     const openingCash = BooksBridge.r2(Object.values(cashAccountsSnap.val() || {}).reduce((sum, account) => sum + Number(account && account.opening || 0), 0));
     const netSales = BooksBridge.r2(Object.values(daily).reduce((sum, entry) => sum + BooksBridge.netSales(entry && entry.net), 0));
-    const rebuiltJournal = (await db.ref("/books/journal").get()).val() || {};
+    const rebuiltJournal = (/* download-ok: manual Books journal rebuild */await db.ref("/books/journal").get()).val() || {};
     await rebuildBooksMonthlyNet(db, rebuiltJournal);
     const result = {at: Date.now(), by: actor.uid, movements: movementIds.length, dailyEntries: Object.keys(daily).length, singleEntries: Object.keys(singles).length, netSales, cogsPosted, missingCogs, reviewItems: Object.keys(review).length, openingCash, fixedFloat: registerFloat.amount, registerFloatSource: registerFloat.source};
     await db.ref("/systemMaintenance/booksJournalSynced").set(result); return result;
@@ -230,7 +238,7 @@ exports.ensureBooksJournal = onCall(
 );
 
 async function ensureHistoricalInternalUsageFinance(db,actor){
-  const [inventorySnap,financeSnap]=await Promise.all([db.ref("/inventoryMovements").get(),db.ref("/financialMovements").get()]),inventory=inventorySnap.val()||{},finance=financeSnap.val()||{};
+  const [inventorySnap,financeSnap]=/* download-ok: manual only ensureBooksJournal runs this historical repair */await Promise.all([db.ref("/inventoryMovements").get(),db.ref("/financialMovements").get()]),inventory=inventorySnap.val()||{},finance=financeSnap.val()||{};
   for(const id of Object.keys(inventory)){
     const reversal=Object.assign({id},inventory[id]||{});if(reversal.type!=="usage_reversal"||finance[`invmove_${id}`])continue;
     const originalId=String(reversal.reversalOf||""),originalInventory=inventory[originalId]||{},original=finance[`invmove_${originalId}`];if(originalInventory.sourceType!=="internal-usage"||!original||!Array.isArray(original.lines)||!["inventory_staff_use","inventory_rnd_testing","inventory_waste"].includes(String(original.type||"")))continue;
@@ -293,7 +301,7 @@ exports.syncActiveRegisterCashFloat = onValueWritten(
   {ref: "/posActiveShift", region: "asia-southeast1"},
   async (event) => {
     const db = getDatabase(), at = Date.now();
-    const settings = (await db.ref("/posSettings").get()).val() || {};
+    const settings = await readPosSettings(db, ["fixedFloat"]);
     const before = resolveRegisterFloat(settings, event.data.before.val()), after = resolveRegisterFloat(settings, event.data.after.val());
     if (Math.abs(before.amount - after.amount) < 0.005 && before.source === after.source) return;
     const writes = {};

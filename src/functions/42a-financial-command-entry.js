@@ -19,7 +19,7 @@ exports.postFinancialCommand = onCall(
     function addCash(id, entry) { writes[`cfLedger/${id}`] = cashLedgerRecord(entry, movementIdOverride || commandId, movement, actor); }
     function manualCashWrites(target,movementId,mv,date,cashLines,category,party,reference){(cashLines||[]).forEach(({mapped,dr,cr,index})=>{if(mapped.cashKey==="float")return;const value=Financial.money(dr-cr);if(!value)return;const accountId=mapped.cashKey==="register"?"register":mapped.cashKey==="undeposited"?"undeposited":mapped.cashKey==="petty"?"petty":mapped.cashKey;target[`cfLedger/fm_${movementId}_${index}`]=cashLedgerRecord({date,accountId,dir:value>0?"in":"out",category,amount:Math.abs(value),party,ref:reference,auto:category!=="Manual journal"},movementId,mv,actor);});}
     if (action === "inventory_opening_balance") {
-      const inventory = (await db.ref("/inventory").get()).val() || {}, journal = (await db.ref("/books/journal").get()).val() || {}, reconciliation = BooksBridge.inventoryReconciliationSnapshot(inventory, journal);
+      const inventory = /* download-ok: action owner-run opening inventory posting compares every stock item with every journal entry */(await db.ref("/inventory").get()).val() || {}, journal = (await db.ref("/books/journal").get()).val() || {}, reconciliation = BooksBridge.inventoryReconciliationSnapshot(inventory, journal);
       if (reconciliation.unmapped.length) throw new HttpsError("failed-precondition", `${reconciliation.unmapped.length} stock item(s) with value are missing an inventory account. Map them before posting.`);
       if (Math.abs(reconciliation.clearingBalance) >= 0.005) throw new HttpsError("failed-precondition", `Inventory Receiving Clearing 1290 must be zero before posting. Current balance: ${reconciliation.clearingBalance}.`);
       const existing = (await db.ref("/inventoryReconciliations/openingBalance").get()).val();
@@ -37,7 +37,7 @@ exports.postFinancialCommand = onCall(
       result={stockValue:reconciliation.totalStock,booksValueBefore:reconciliation.totalBooks,adjustment:reconciliation.totalDifference,rows:reconciliation.rows};
       const committed = await commitFinancial(db,movementId,movement,actor,writes);return Object.assign(result,{movementId,duplicate:committed.duplicate});
     } else if (action === "inventory_opening_balance_repost") {
-      const inventory = (await db.ref("/inventory").get()).val() || {}, journal = (await db.ref("/books/journal").get()).val() || {}, reconciliation = BooksBridge.inventoryReconciliationSnapshot(inventory, journal);
+      const inventory = /* download-ok: action owner-run opening inventory repost compares every stock item with every journal entry */(await db.ref("/inventory").get()).val() || {}, journal = (await db.ref("/books/journal").get()).val() || {}, reconciliation = BooksBridge.inventoryReconciliationSnapshot(inventory, journal);
       const existing = (await db.ref("/inventoryReconciliations/openingBalance").get()).val();
       if (data.preview === true) return Object.assign({canRepost: !!(existing && existing.movementId)}, reconciliation);
       if (!existing || !existing.movementId) throw new HttpsError("failed-precondition", "There is no posted opening inventory balance to re-post.");

@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 536,
-    "books": 119,
+    "admin": 537,
+    "books": 120,
     "customer": 73,
-    "serviceWorkerCache": 514
+    "serviceWorkerCache": 515
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
@@ -353,6 +353,8 @@
     "financialMovements",
     "payablePayments",
     "payableSettlementClaims",
+    "supplierAdvanceShifts",
+    "supplierAdvanceShiftIndexMeta",
     "financialCloses",
     "financialCloseIndex",
     "financialCloseClaims",

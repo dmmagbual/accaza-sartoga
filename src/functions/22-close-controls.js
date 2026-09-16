@@ -36,7 +36,7 @@ exports.reconcileUndepositedCustody = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => {
     const db=getDatabase(),actor=await requirePortalPermission(db,request,["cashflow","registerOps"]),data=request.data||{},movementId=financeKey(data.movementId,"Finance movement ID"),now=Date.now();
-    const [movementSnap,movementsSnap,custodySnap,linkSnap]=await Promise.all([db.ref(`/financialMovements/${movementId}`).get(),db.ref("/financialMovements").get(),db.ref("/cashCustody").get(),db.ref(`/financialControlLinks/custodyRepairs/${movementId}`).get()]);
+    const [movementSnap,movementsSnap,custodySnap,linkSnap]=/* download-ok: manual custody repair tool */await Promise.all([db.ref(`/financialMovements/${movementId}`).get(),db.ref("/financialMovements").get(),db.ref("/cashCustody").get(),db.ref(`/financialControlLinks/custodyRepairs/${movementId}`).get()]);
     if(linkSnap.exists())return{movementId,amount:Financial.money(linkSnap.val().amount),duplicate:true,preview:data.preview===true};
     const movement=movementSnap.val(),allMovements=movementsSnap.val()||{},custodyRows=custodySnap.val()||{};
     if(!movement||!Array.isArray(movement.lines)||movement.reversalOf||movement.reversedByMovementId)throw new HttpsError("failed-precondition","Select an active balanced Finance journal.");
@@ -60,7 +60,7 @@ exports.legacyOwnerCapitalReset = onCall({region: ORDER_REGION, enforceAppCheck:
   const db=getDatabase(),actor=await requirePortalPermission(db,request,["cashflow","discrepancy"]),data=request.data||{},cutoffDate=financeDate(data.cutoffDate||data.date||financeDateFromTimestamp(Date.now())),date=financeDate(data.date||cutoffDate),reason=financeText(data.reason,500),id=`legacy_owner_capital_reset_v5_${cutoffDate}`;
   if(!["owner","superadmin","admin","manager"].includes(actor.role))throw new HttpsError("permission-denied","Only a manager may run the legacy financial reset.");
   if(cutoffDate>"2026-08-29"||date>"2026-08-29")throw new HttpsError("failed-precondition","The legacy close is limited to August 29, 2026 or earlier so August 30 and later activity remains operationally visible.");
-  const [journalSnap,discrepancySnap,existingSnap]=await Promise.all([db.ref("/books/journal").get(),db.ref("/discrepancies").get(),db.ref(`/financialMovements/${id}`).get()]);
+  const [journalSnap,discrepancySnap,existingSnap]=/* download-ok: manual legacy owner-capital reset */await Promise.all([db.ref("/books/journal").get(),db.ref("/discrepancies").get(),db.ref(`/financialMovements/${id}`).get()]);
   const normal={"4990":"credit","6110":"debit","1190":"debit","2100":"credit"},balances={"4990":0,"6110":0,"1190":0,"2100":0};
   const journal=journalSnap.val()||{},journalById=new Map(Object.entries(journal).map(([key,value])=>[key,Object.assign({id:key},value||{})]));
   Object.values(journal).forEach((entry)=>{if(!entry)return;const entryDate=String(entry.date||financeDateFromTimestamp(entry.occurredAt||entry.postedAt||0)).slice(0,10);if(!/^\d{4}-\d{2}-\d{2}$/.test(entryDate)||entryDate>cutoffDate)return;(entry.lines||[]).forEach((line)=>{const code=String(line.code||"");if(!Object.prototype.hasOwnProperty.call(balances,code))return;balances[code]=Financial.money(balances[code]+(normal[code]==="debit"?(Number(line.debit)||0)-(Number(line.credit)||0):(Number(line.credit)||0)-(Number(line.debit)||0)));});});
@@ -78,6 +78,62 @@ exports.legacyOwnerCapitalReset = onCall({region: ORDER_REGION, enforceAppCheck:
   const movement=Financial.movement("legacy_owner_capital_reset","legacyCutover",id,lines,{occurredAt:accountingTimestamp(date,now),actorName:actor.role,reference:`LEGACY-CUTOVER-${cutoffDate}`,memo:reason});const committed=await commitFinancial(db,id,movement,actor,writes);return{movementId:id,cutoffDate,balances,affectedDiscrepancies:affected.length,duplicate:committed.duplicate};
 });
 
+// Financial Close input (Sep 2026 download audit). The close used to download twelve whole
+// history nodes (about 7.5 MB on 16 Sep 2026, growing daily) for every run. It now reads the
+// ledger and cash custody in full (the control balances are all-time) and everything else
+// through indexes: the orders and shifts of the business day, the records those orders point
+// to, and only open subledger items. FinancialClose.buildClose receives every record that can
+// change its result, so the reconciliation is identical; see tests/financial-close-input-check.mjs.
+function manilaDayRange(day){const start=Date.parse(`${day}T00:00:00.000+08:00`);return{start,end:start+86399999};}
+async function financialCloseInput(db,closeType,businessDate,shiftId){
+  const range=manilaDayRange(businessDate),val=(snap)=>snap.val()||{};
+  const [movementSnap,custodySnap,dayShiftSnap,receivableSnap,payableSnap,advanceSnap,payoutNullSnap,payoutEmptySnap,invoiceSnap,advanceShifts]=await Promise.all([
+    /* download-ok: manual Financial Close reconciles all-time control balances from the ledger */db.ref("/financialMovements").get(),
+    /* download-ok: manual custody at cutoff needs every custody row and its later recoveries */db.ref("/cashCustody").get(),
+    db.ref("/shifts").orderByChild("openAt").startAt(range.start).endAt(range.end).get(),
+    db.ref("/receivables").orderByChild("status").equalTo("open").get(),db.ref("/payables").orderByChild("status").equalTo("open").get(),
+    db.ref("/pettyCashVouchers").orderByChild("transactionType").equalTo("purchase_advance").get(),
+    db.ref("/platformPayouts").orderByChild("depositMovementId").equalTo(null).get(),db.ref("/platformPayouts").orderByChild("depositMovementId").equalTo("").get(),
+    db.ref("/purchaseInvoices").orderByChild("date").equalTo(businessDate).get(),supplierAdvanceShiftPayOuts(db),
+  ]);
+  const shifts=val(dayShiftSnap);
+  if(shiftId&&!shifts[shiftId]){const row=(await db.ref(`/shifts/${shiftId}`).get()).val();if(row)shifts[shiftId]=row;}
+  await Promise.all(Object.keys(advanceShifts).filter((id)=>!shifts[id]).map(async(id)=>{const row=(await db.ref(`/shifts/${id}`).get()).val();if(row)shifts[id]=row;}));
+  // Candidate orders: every order of a business-day shift, and every order stamped on the day.
+  const orderQueries=(path)=>[
+    ...Object.keys(shifts).map((id)=>db.ref(`/${path}`).orderByChild("shiftId").equalTo(id).get()),
+    ...["completedAt","receivedAt","timestamp"].map((field)=>db.ref(`/${path}`).orderByChild(field).startAt(range.start).endAt(range.end).get()),
+  ];
+  const [liveSnaps,archivedSnaps]=await Promise.all([Promise.all(orderQueries("orders")),Promise.all(orderQueries("archivedOrders"))]);
+  const live={},archived={};liveSnaps.forEach((snap)=>Object.assign(live,val(snap)));archivedSnaps.forEach((snap)=>Object.assign(archived,val(snap)));
+  const movements=val(movementSnap);
+  // Orders named by the day's sale movements decide the cutoff timing check.
+  const dayIds=new Set();Object.values(movements).forEach((movement)=>{if(!movement||!["order_sale","order_refund","order_void"].includes(String(movement.type||"")))return;const at=Number(movement.completedAt||movement.receivedAt||movement.timestamp||movement.occurredAt||movement.postedAt||movement.ts||movement.closeAt||movement.openAt||0);if(BooksBridge.businessDate(at)===businessDate&&movement.sourceId)dayIds.add(String(movement.sourceId));});
+  // A live order always wins over its archived copy, so both locations are checked for each id.
+  const ids=new Set([...Object.keys(live),...Object.keys(archived),...dayIds]);
+  await Promise.all([...ids].map(async(id)=>{
+    if(!TrackedRead.trackable(id))return;
+    const [liveRow,archivedRow]=await Promise.all([live[id]?null:db.ref(`/orders/${id}`).get(),archived[id]?null:db.ref(`/archivedOrders/${id}`).get()]);
+    if(liveRow&&liveRow.exists())live[id]=liveRow.val();if(archivedRow&&archivedRow.exists())archived[id]=archivedRow.val();
+  }));
+  const orders=Object.assign({},archived,live);
+  // The business day of an order follows its shift; the opening time of every referenced shift is read.
+  await Promise.all([...new Set(Object.values(orders).map((order)=>String(order&&order.shiftId||"")).filter((id)=>TrackedRead.trackable(id)&&!shifts[id]))].map(async(id)=>{const openAt=(await db.ref(`/shifts/${id}/openAt`).get()).val();if(openAt!==null&&openAt!==undefined)shifts[id]={openAt};}));
+  // Item movements and Books COGS sources of those orders.
+  const inventoryMovements={};
+  await Promise.all(Object.keys(orders).map(async(id)=>Object.assign(inventoryMovements,val(await db.ref("/inventoryMovements").orderByChild("sourceId").equalTo(id).get()))));
+  const cogsDay=(order)=>BooksBridge.businessDate(Number(order&&(order.completedAt||order.receivedAt||order.occurredAt||order.timestamp))||Date.now());
+  let booksJournal={};
+  const days=[...new Set(Object.values(orders).map(cogsDay))];
+  (await Promise.all(days.map((day)=>db.ref("/books/journal").orderByChild("date").equalTo(day).get()))).forEach((snap)=>Object.assign(booksJournal,val(snap)));
+  const cogsFound=(id)=>Object.keys(booksJournal).some((key)=>booksJournal[key]&&booksJournal[key].sources&&booksJournal[key].sources[`cogs_${id}`]);
+  if(Object.keys(orders).some((id)=>Number(orders[id]&&orders[id].cogsSnapshot||0)>0&&!cogsFound(id)))booksJournal=(/* download-ok: fallback an expected COGS source is not in its daily bucket; search every journal entry before reporting it missing */await db.ref("/books/journal").get()).val()||{};
+  const platformPayouts=Object.assign({},val(payoutNullSnap),val(payoutEmptySnap));
+  // buildClose lists exceptions in record order, so every map is handed over in database key order.
+  const keyed=(map)=>{const out={};Object.keys(map||{}).sort(BackupDelta.keyCompare).forEach((key)=>{out[key]=map[key];});return out;};
+  return{closeType,businessDate,shiftId,orders:keyed(live),archivedOrders:keyed(archived),shifts:keyed(shifts),financialMovements:movements,inventoryMovements:keyed(inventoryMovements),purchaseInvoices:keyed(val(invoiceSnap)),booksJournal:keyed(booksJournal),cashCustody:val(custodySnap),receivables:keyed(val(receivableSnap)),payables:keyed(val(payableSnap)),pettyCashVouchers:keyed(val(advanceSnap)),platformPayouts:keyed(platformPayouts)};
+}
+
 exports.runFinancialClose = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "512MiB"},
   async (request) => {
@@ -90,7 +146,7 @@ exports.runFinancialClose = onCall(
       const reason=financeText(data.reason,500);if(!reason)throw new HttpsError("invalid-argument","A certification note is required.");const approval=await claimManagerApproval(db,data,"certify_financial_close",closeId,null,`certify_financial_close_${closeId}_${current.revision}`),now=Date.now(),approvedBy=approval.record.approvedName||approval.record.approvedEmail||approval.record.approvedRole,certification={approvalId:approval.id,approvedAt:now,approvedBy,approvedByUid:approval.record.approvedBy,note:reason,snapshotHash:current.snapshotHash};
       await db.ref().update(Object.assign({},approval.usedWrites,{[`financialCloses/${closeId}/current/status`]:"CERTIFIED",[`financialCloses/${closeId}/current/certification`]:certification,[`financialCloses/${closeId}/revisions/${current.revision}/status`]:"CERTIFIED",[`financialCloses/${closeId}/revisions/${current.revision}/certification`]:certification,[`operationalAudit/${now}_${closeId}_certify`]:operationalAuditRecord("certify_financial_close","financialClose",closeId,actor,{revision:current.revision,snapshotHash:current.snapshotHash,approvalId:approval.id,approvedBy,reason})}));return{closeId,revision:current.revision,status:"CERTIFIED",certification,duplicate:false};
     }
-    const nodes=["orders","archivedOrders","shifts","financialMovements","inventoryMovements","purchaseInvoices","books/journal","cashCustody","receivables","payables","pettyCashVouchers","platformPayouts"],snapshots=await Promise.all(nodes.map((path)=>db.ref(`/${path}`).get())),input={closeType,businessDate,shiftId};nodes.forEach((path,index)=>{input[path==="books/journal"?"booksJournal":path]=snapshots[index].val()||{};});
+    const input=await financialCloseInput(db,closeType,businessDate,shiftId);
     const selectedShift=shiftId&&input.shifts[shiftId],cutoff=closeType==="SHIFT_CLOSE"?Number(selectedShift&&selectedShift.closeAt||Date.now()):(Date.parse(`${businessDate}T23:59:59.999+08:00`)||Date.now());if(closeType==="SHIFT_CLOSE"&&(!selectedShift||selectedShift.status!=="closed"))throw new HttpsError("failed-precondition","Only a closed shift can be reconciled and certified.");input.cutoff=cutoff;
     const result=FinancialClose.buildClose(input),current=existing.current;if(current&&current.snapshotHash===result.snapshotHash&&current.status!=="REOPENED")return Object.assign({closeId,revision:current.revision,duplicate:true},current);
     if(data.preview===true)return Object.assign({closeId,revision:Number(existing.latestRevision||0)+1,preview:true,duplicate:false},result);

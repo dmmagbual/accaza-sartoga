@@ -80,7 +80,18 @@ exports.manageSupplier = onCall(
       const sweepRef=db.ref("/supplierMigrations/legacySweepCheckedAt"),lastSweep=Number((await sweepRef.get()).val()||0);
       if(data.force!==true&&now-lastSweep<86400000)return{initialized:true,skipped:true,linkedWrites:0};
       await sweepRef.set(now);
-      const [suppliersSnap,purchasesSnap,vouchersSnap,payablesSnap,receiptsSnap,batchesSnap]=await Promise.all([db.ref("/suppliers").get(),db.ref("/purchaseInvoices").get(),db.ref("/pettyCashVouchers").get(),db.ref("/payables").get(),db.ref("/stockReceipts").get(),db.ref("/inventoryBatch").get()]),suppliers=suppliersSnap.val()||{},purchases=purchasesSnap.val()||{},vouchers=vouchersSnap.val()||{},payables=payablesSnap.val()||{},receipts=receiptsSnap.val()||{},batches=batchesSnap.val()||{},byKey={},writes={};
+      // Only records that still have no supplier id are read (indexed supplierId equal to null
+      // or ""); the supplier list is read only when one of them needs a link.
+      const unlinkedSnaps=await Promise.all([
+        db.ref("/purchaseInvoices").orderByChild("supplierId").equalTo(null).get(),db.ref("/purchaseInvoices").orderByChild("supplierId").equalTo("").get(),
+        db.ref("/pettyCashVouchers").orderByChild("supplierId").equalTo(null).get(),db.ref("/pettyCashVouchers").orderByChild("supplierId").equalTo("").get(),
+        db.ref("/payables").orderByChild("supplierId").equalTo(null).get(),db.ref("/payables").orderByChild("supplierId").equalTo("").get(),
+        db.ref("/stockReceipts").orderByChild("supplierId").equalTo(null).get(),db.ref("/stockReceipts").orderByChild("supplierId").equalTo("").get(),
+        db.ref("/inventoryBatch").orderByChild("supplierId").equalTo(null).get(),db.ref("/inventoryBatch").orderByChild("supplierId").equalTo("").get(),
+      ]),pair=(i)=>Object.assign({},unlinkedSnaps[i].val()||{},unlinkedSnaps[i+1].val()||{});
+      const purchases=pair(0),vouchers=pair(2),payables=pair(4),receipts=pair(6),batches=pair(8),byKey={},writes={};
+      const needsLink=[purchases,vouchers,payables,receipts,batches].some((rows)=>Object.keys(rows).length);
+      const suppliers=needsLink?((/* download-ok: bounded supplier master list, read only when a legacy record still needs a link */await db.ref("/suppliers").get()).val()||{}):{};
       Object.keys(suppliers).forEach(id=>{const row=suppliers[id]||{},key=supplierNameKey(row.name);if(key)byKey[key]={id,name:financeText(row.name,120)};});
       const ensure=(value)=>{const name=financeText(value,120).trim().replace(/\s+/g," "),key=supplierNameKey(name);if(!key)return null;if(byKey[key])return byKey[key];const hash=crypto.createHash("sha256").update(key).digest("hex").slice(0,32),id=`sup_${hash}`,row={id,name};byKey[key]=row;writes[`suppliers/${id}`]={name,normalizedName:key,active:true,createdAt:now,createdBy:actor.uid,createdByRole:actor.role,updatedAt:now,legacyInitialized:true,schemaVersion:1};writes[`supplierNameIndex/${hash}`]={supplierId:id,normalizedName:key,claimedAt:now};return row;};
       Object.keys(purchases).forEach(id=>{const x=purchases[id]||{},s=ensure(x.supplier);if(s&&!x.supplierId){writes[`purchaseInvoices/${id}/supplierId`]=s.id;writes[`purchaseInvoices/${id}/supplier`]=s.name;}});
@@ -109,9 +120,17 @@ exports.manageSupplier = onCall(
        behaviour, and the write plan that repoints them. See functions/lib/supplier-master.js
        for why posted Finance movements are deliberately excluded. */
     const supplierReferences=async(id)=>{
-      const names=SupplierMaster.REFERENCE_COLLECTIONS.concat(["shifts"]);
-      const snaps=await Promise.all(names.map((name)=>db.ref(`/${name}`).get()));
-      const collections={};names.forEach((name,ix)=>{collections[name]=snaps[ix].val()||{};});
+      // Indexed on supplierId: only the records that point at this supplier are read. Register
+      // advances come from the shifts that hold one (supplierAdvanceShiftPayOuts).
+      const snaps=await Promise.all([
+        db.ref("/purchaseInvoices").orderByChild("supplierId").equalTo(id).get(),db.ref("/payables").orderByChild("supplierId").equalTo(id).get(),
+        db.ref("/pettyCashVouchers").orderByChild("supplierId").equalTo(id).get(),db.ref("/stockReceipts").orderByChild("supplierId").equalTo(id).get(),
+        db.ref("/inventoryBatch").orderByChild("supplierId").equalTo(id).get(),db.ref("/inventorySku").orderByChild("supplierId").equalTo(id).get(),
+      ]);
+      const names=["purchaseInvoices","payables","pettyCashVouchers","stockReceipts","inventoryBatch","inventorySku"];
+      if(names.join()!==SupplierMaster.REFERENCE_COLLECTIONS.join())throw new HttpsError("internal","Supplier reference collections changed; update the indexed lookup.");
+      const collections={shifts:{}};names.forEach((name,ix)=>{collections[name]=snaps[ix].val()||{};});
+      const shiftPayOuts=await supplierAdvanceShiftPayOuts(db);Object.keys(shiftPayOuts).forEach((shiftId)=>{collections.shifts[shiftId]={payOuts:shiftPayOuts[shiftId]};});
       return SupplierMaster.collectReferences(collections,id);
     };
     if(action==="references"){const hits=await supplierReferences(supplierId);return{supplierId,name:financeText(supplier.name,120),references:hits,total:hits.total};}
@@ -293,12 +312,12 @@ exports.getOperationalExceptions = onCall(
 
 async function scanOperationalExceptions(db, now) {
     const days = [];for (let offset = 0; offset < 7; offset++) days.push(financeDateFromTimestamp(now - offset * 86400000));
-    const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, booksMonthlyNetSnap, booksMonthlyNetMetaSnap, posSettingsSnap, cfAccountsSnap, deadLetterSnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),db.ref("/books/monthlyNet").get(),db.ref("/books/monthlyNetMeta").get(),db.ref("/posSettings").get(),db.ref("/cfAccounts").get(),db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}`).orderByChild("abandonedAt").startAt(now - OperationalExceptions.DEAD_LETTER_WINDOW_MS).limitToLast(50).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
+    const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, booksMonthlyNetSnap, booksMonthlyNetMetaSnap, posSettingsSnap, cfAccountsSnap, deadLetterSnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),db.ref("/books/monthlyNet").get(),db.ref("/books/monthlyNetMeta").get(),db.ref("/posSettings/payMethods").get(),db.ref("/cfAccounts").get(),db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}`).orderByChild("abandonedAt").startAt(now - OperationalExceptions.DEAD_LETTER_WINDOW_MS).limitToLast(50).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
     let booksMonthlyNet = booksMonthlyNetSnap.val() || {};
-    if (!booksMonthlyNetMetaSnap.exists()) booksMonthlyNet = await rebuildBooksMonthlyNet(db, (await db.ref("/books/journal").get()).val() || {});
+    if (!booksMonthlyNetMetaSnap.exists()) booksMonthlyNet = await rebuildBooksMonthlyNet(db, (/* download-ok: fallback monthly totals have never been built */await db.ref("/books/journal").get()).val() || {});
     const orders = ordersSnap.val() || {},orderIds=Object.keys(orders).slice(0,100),financialPairs=await Promise.all(orderIds.map(async(id)=>{const snap=await db.ref(`/financialMovements/sale_${id}`).get();return[id,snap.exists()?snap.val():null];}));
     const financialMovements = {},inventoryMovementEvidence={};financialPairs.forEach(([id, value]) => {if (value) financialMovements[`sale_${id}`] = value;});Object.values(inventoryMovementSnap.val()||{}).forEach(m=>{if(m&&m.sourceType==="order"&&m.sourceId)inventoryMovementEvidence[m.sourceId]=true;});const telemetry = {};days.forEach((day, i) => {telemetry[day] = telemetrySnaps[i].val() || {};});
-    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: (posSettingsSnap.val() || {}).payMethods || [], cfAccounts: cfAccountsSnap.val() || {}, deadLetters: deadLetterSnap.val() || {}}, now);
+    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, deadLetters: deadLetterSnap.val() || {}}, now);
 }
 
 // Phase 16: bounded, read-only production certification snapshot. It does not
@@ -321,12 +340,12 @@ exports.getProductionValidation = onCall(
     const db=getDatabase(),actor=await requirePortalUser(db,request);if(!["owner","superadmin","admin","manager"].includes(actor.role))throw new HttpsError("permission-denied","Production validation is restricted to management accounts.");
     const now=Date.now(),today=financeDateFromTimestamp(now),yesterday=financeDateFromTimestamp(now-86400000);
     const [menu,categories,publicStatus,calendar,reviews,payment,orders,backup,todayTelemetry,yesterdayTelemetry,incidents,admins,permissions,todayClose,yesterdayClose,movements,audits,approvals,operational]=await Promise.all([
-      db.ref("/menuItems").get(),db.ref("/categories").get(),db.ref("/publicOrderStatus").get(),db.ref("/calBlocks").get(),db.ref("/reviews").get(),db.ref("/payment").get(),
+      /* download-ok: bounded validation of the published menu catalog and live order status, opened on demand from System Health */db.ref("/menuItems").get(),db.ref("/categories").get(),db.ref("/publicOrderStatus").get(),db.ref("/calBlocks").get(),shallowDatabaseKeys(db,"reviews"),db.ref("/payment").get(),
       db.ref("/orders").limitToLast(25).get(),db.ref("/systemHealth/backups/latest").get(),db.ref(`/clientTelemetryDaily/${today}`).get(),db.ref(`/clientTelemetryDaily/${yesterday}`).get(),
       db.ref("/incidents").orderByChild("createdAt").limitToLast(100).get(),db.ref("/admins").get(),db.ref("/adminPerms").get(),db.ref(`/financialCloseIndex/${today}`).get(),db.ref(`/financialCloseIndex/${yesterday}`).get(),db.ref("/financialMovements").limitToLast(100).get(),db.ref("/operationalAudit").limitToLast(100).get(),db.ref("/financialApprovals").limitToLast(100).get(),getCachedOperationalExceptions(db,now)
     ]);
     const backupValue=backup.val()||{},health=ProductionHealth.evaluate({backup:backupValue,telemetry:[todayTelemetry.val()||{},yesterdayTelemetry.val()||{}],operational},now),certification=ReleaseCertification.evaluate({backup:backupValue,health,incidents:incidents.val()||{},admins:admins.val()||{},permissions:permissions.val()||{},closeIndexes:[todayClose.val()||{},yesterdayClose.val()||{}],operational},now);
-    const validation=ProductionValidation.evaluate({menuItems:menu.val()||{},categories:categories.val()||{},publicOrderStatus:publicStatus.val()||{},calendarReadable:true,calendarBlockCount:calendar.numChildren(),reviewsReadable:true,reviewCount:reviews.numChildren(),payment:payment.val()||{},orders:orders.val()||{},certification},now);validation.assurance=AssuranceControls.evaluate({movements:movements.val()||{},audits:audits.val()||{},approvals:approvals.val()||{},admins:admins.val()||{},permissions:permissions.val()||{}});return validation;
+    const validation=ProductionValidation.evaluate({menuItems:menu.val()||{},categories:categories.val()||{},publicOrderStatus:publicStatus.val()||{},calendarReadable:true,calendarBlockCount:calendar.numChildren(),reviewsReadable:true,reviewCount:reviews.length,payment:payment.val()||{},orders:orders.val()||{},certification},now);validation.assurance=AssuranceControls.evaluate({movements:movements.val()||{},audits:audits.val()||{},approvals:approvals.val()||{},admins:admins.val()||{},permissions:permissions.val()||{}});return validation;
   },
 );
 
@@ -339,7 +358,7 @@ exports.repairOrderInventoryMarker = onCall(
     const db=getDatabase(),actor=await requirePortalPermission(db,request,["inventory"]),orderId=financeKey((request.data||{}).orderId,"Order ID"),order=(await db.ref(`/orders/${orderId}`).get()).val();
     if(!order||!["Completed","Received"].includes(order.status)||order.voided===true)throw new HttpsError("failed-precondition","Only a completed, non-voided order can restore inventory confirmation.");
     if(order.inventoryDeducted===true&&order.inventoryLedgerVersion===1)return{orderId,duplicate:true,items:Object.keys(order.inventoryUsage||{}).length};
-    const [planSnap,movementSnap,invSnap,settingsSnap]=await Promise.all([db.ref(`/orderInventoryPlans/${orderId}`).get(),db.ref("/inventoryMovements").orderByKey().startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\uf8ff`).get(),db.ref("/inventory").get(),db.ref("/posSettings").get()]),movements=movementSnap.val()||{},actualIds=Object.keys(movements).sort(),repairedAt=Date.now();
+    const [planSnap,movementSnap,invSnap,settingsSnap]=/* download-ok: manual inventory marker repair for one order */await Promise.all([db.ref(`/orderInventoryPlans/${orderId}`).get(),db.ref("/inventoryMovements").orderByKey().startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\uf8ff`).get(),db.ref("/inventory").get(),db.ref("/posSettings").get()]),movements=movementSnap.val()||{},actualIds=Object.keys(movements).sort(),repairedAt=Date.now();
     if(!actualIds.length)throw new HttpsError("failed-precondition","No order-linked inventory movements exist. No stock was changed.");
     actualIds.forEach(movementId=>{const movement=movements[movementId]||{},itemId=String(movement.itemId||"");if(!itemId||movementId!==`sale_${orderId}_${itemId}`||movement.sourceType!=="order"||movement.sourceId!==orderId||movement.type!=="sale_usage"||!(Number(movement.qty)<0))throw new HttpsError("failed-precondition",`Inventory evidence is invalid for ${itemId||movementId}. No stock was changed.`);});
     let plan=planSnap.val(),legacy=!plan;if(legacy){const usage={},lines=actualIds.map(id=>{const m=movements[id],quantity=qty6(-Number(m.qty)),cost=Math.abs(Number(m.totalCost)||quantity*Number(m.unitCost||0));usage[m.itemId]=quantity;return{itemKey:"legacy-order",itemName:String(m.itemName||m.itemId),size:"",orderQty:1,source:"historical-movement-evidence",ingredientId:m.itemId,ingredientName:String(m.itemName||m.itemId),quantityPerServing:quantity,totalQuantity:quantity,stockUnit:String(m.unit||"unit"),unitCost:qty6(m.unitCost),totalCost:qty6(cost),costSource:"recorded-inventory-movement",costEffectiveAt:Number(m.createdAt||m.occurredAt||0)};}),totalCost=Financial.money(lines.reduce((sum,line)=>sum+Number(line.totalCost||0),0));plan=buildOrderInventoryPlan({engineVersion:"movement-evidence-v1",usage,lines,totalCost,cogsCovered:lines.every(line=>line.unitCost>0),warnings:[{code:"LEGACY_PLAN_SEALED",message:"Original recipe snapshot was unavailable; immutable posted movements were retained without using the current recipe."}]},invSnap.val()||{},settingsSnap.val()||{},repairedAt);await db.ref(`/orderInventoryPlans/${orderId}`).transaction(current=>current||plan,undefined,false);}

@@ -7,8 +7,8 @@ exports.validateRecipeDefinition = onCall(
   async (request) => {
     const db = getDatabase();
     const actor = await requirePortalPermission(db, request, ["recipes"]);
-    const inventory = (await db.ref("/inventory").get()).val() || {};
-    const result = Costing.normalizeRecipe(request.data && request.data.recipe, inventory);
+    // Only the inventory items the recipe names are read (readCatalogKeyed).
+    const result = await readCatalogKeyed(db, ["inventory"], (maps) => Costing.normalizeRecipe(request.data && request.data.recipe, maps.inventory));
     if (!result.ok) throw new HttpsError("invalid-argument", "Recipe is invalid: " + result.errors.slice(0, 5).map((x) => x.message).join(" | "), {errors: result.errors});
     logger.info("Recipe definition validated", {uid: actor.uid, engineVersion: Costing.VERSION, warnings: result.warnings.length});
     return {recipe: result.recipe, engineVersion: Costing.VERSION, warnings: result.warnings};
@@ -21,8 +21,9 @@ exports.saveSharedChoiceIngredients = onCall(
     const db=getDatabase(),actor=await requirePortalPermission(db,request,["recipes"]),optionCosts=request.data&&request.data.optionCosts;
     if (!optionCosts || typeof optionCosts!=="object" || Array.isArray(optionCosts)) throw new HttpsError("invalid-argument","Shared choice ingredients are invalid.");
     if (Buffer.byteLength(JSON.stringify(optionCosts),"utf8")>250000) throw new HttpsError("invalid-argument","Shared choice ingredients are too large to save safely.");
-    const [inventorySnap,groupsSnap]=await Promise.all([db.ref("/inventory").get(),db.ref("/optionGroups").get()]),inventory=inventorySnap.val()||{},groups=groupsSnap.val()||{};let rows;
-    try { rows=SharedChoiceValidation.validate(optionCosts,inventory,groups).rows; } catch(error) { throw new HttpsError(error.code||"invalid-argument",error.message); }
+    let rows;
+    // Option groups are listed to find the temperature group (read in full, 2 KB); inventory items are read by key.
+    try { rows=(await readCatalogKeyed(db,["inventory","optionGroups"],(maps)=>{const inventory=maps.inventory,groups=maps.optionGroups;return SharedChoiceValidation.validate(optionCosts,inventory,groups);})).rows; } catch(error) { throw new HttpsError(error.code||"invalid-argument",error.message); }
     const now=Date.now();await db.ref().update({"posSettings/optionCosts":optionCosts,[`operationalAudit/${now}_shared_choice_ingredients`]:operationalAuditRecord("save_shared_choice_ingredients","posSettings","optionCosts",actor,{groups:Object.keys(optionCosts).length,rows,accounting:"Updates future recipe costing and inventory usage definitions only; no posted sale, inventory movement, or Finance entry was changed."})});
     logger.info("Shared choice ingredients saved",{uid:actor.uid,groups:Object.keys(optionCosts).length,rows});return{saved:true,groups:Object.keys(optionCosts).length,rows,savedAt:now};
   },
@@ -88,7 +89,7 @@ const BOOKS_CHART_SEED_ROWS = [
 function booksChartSeed(){const out={};BOOKS_CHART_SEED_ROWS.forEach(function(r){out[r[0]]={code:r[0],name:r[1],type:r[2],note:r[3]||"",active:true,system:true,sensitive:SENSITIVE_BOOKS_CODES.has(r[0])};});return out;}
 async function ensureBooksChart(db) {
   const seed = booksChartSeed();
-  const snap = await db.ref("/booksChart").get();
+  const snap = /* download-ok: bounded chart of accounts (about 90 accounts), configuration not history */ await db.ref("/booksChart").get();
   const current = snap.val() || {}, writes = {}, resolved = Object.assign({}, current), now = Date.now();
   // A Firebase multi-location update cannot contain both /booksChart/CODE and
   // /booksChart/CODE/field. Missing or malformed accounts therefore use one
@@ -114,7 +115,7 @@ async function ensureBooksChart(db) {
     // Move the existing chart record and its journal presentation lines. The
     // durable financial account is asset:cash_awaiting_deposit, so movements,
     // cash custody, deposits, and audit links are intentionally untouched.
-    const journal=(await db.ref("/books/journal").get()).val()||{},legacy=current["1030"],canonical=Object.assign({},seed["1001"],current["1001"]||{}, {code:"1001",name:"Cash on Hand - Undeposited Collection",type:"Asset",note:"Cash awaiting bank deposit; controlled by cash custody",active:true,system:true,sensitive:true,migratedFrom:"1030",migratedAt:now}),changed=[];
+    const journal=(/* download-ok: migration one-time move of chart code 1030 */await db.ref("/books/journal").get()).val()||{},legacy=current["1030"],canonical=Object.assign({},seed["1001"],current["1001"]||{}, {code:"1001",name:"Cash on Hand - Undeposited Collection",type:"Asset",note:"Cash awaiting bank deposit; controlled by cash custody",active:true,system:true,sensitive:true,migratedFrom:"1030",migratedAt:now}),changed=[];
     Object.keys(journal).forEach(function(id){const entry=journal[id]||{},lines=Array.isArray(entry.lines)?entry.lines:[],next=lines.map(function(line){return line&&line.code==="1030"?Object.assign({},line,{code:"1001"}):line;});if(next.some(function(line,index){return line!==lines[index];})){writes[`books/journal/${id}/lines`]=next;changed.push(id);}});
     writes["booksChart/1001"]=canonical;writes["booksChart/1030"]=null;writes["books/chartCodeMigrations/1030_to_1001"]={from:"1030",to:"1001",migratedAt:now,journalEntriesMoved:changed.length,legacyChartCreatedAt:legacy.createdAt||null,schemaVersion:1};writes[`operationalAudit/${now}_books_chart_1030_to_1001`]={action:"move_books_chart_code",sourceType:"booksChart",sourceId:"1030",replacementCode:"1001",journalEntriesMoved:changed.length,ts:now};
     delete resolved["1030"];resolved["1001"]=canonical;
@@ -264,7 +265,7 @@ async function commitFinancial(db, movementId, movement, actor, extraWrites = {}
     // While this claim is processing, guarded cash-journal edits cannot run.
     // Detect edits completed after a custody calculation but before this claim.
     if(Object.keys(extraWrites).some(path=>path.startsWith('cashCustody/'))){
-      try{CashJournalEdit.assertCustodyDelta((await db.ref('/cashCustody').get()).val()||{},extraWrites,record.lines);}catch(error){throw new HttpsError('failed-precondition',error.message);}
+      try{CashJournalEdit.assertCustodyDelta(await touchedCustodyRows(db,extraWrites),extraWrites,record.lines);}catch(error){throw new HttpsError('failed-precondition',error.message);}
     }
     if(record.reversalOf){const source=(await db.ref(`/financialMovements/${financeKey(record.reversalOf,'Reversal source')}`).get()).val();if(source&&Number(source.revision)>0&&CashJournalEdit.eligible(source))throw new HttpsError('failed-precondition','This cash journal has an audited revision. Refresh and use Edit / correct; journal-only reversal would break its custody link.');}
     const writes = Object.assign({}, extraWrites, {[`financialMovements/${movementId}`]: record,[`financialCommandClaims/${movementId}`]:{status:"posted",token:claimToken,claimedAt,postedAt:Date.now(),actorUid:actor.uid,movementId,operationType:financeText(movement && movement.type,80),schemaVersion:2}});
@@ -275,9 +276,33 @@ async function commitFinancial(db, movementId, movement, actor, extraWrites = {}
     throw error;
   }
 }
+// Cash custody lookups (Sep 2026 download audit): the whole custody list is never needed by a
+// single posting. Rows are returned in database key order, as a full read would return them.
+function custodyInKeyOrder(rows) {
+  const out = {};
+  Object.keys(rows).sort(BackupDelta.keyCompare).forEach((id) => { out[id] = rows[id]; });
+  return out;
+}
+// Rows that still hold cash (remaining above zero), from the server-side remaining index.
+async function openCustodyRows(db) {
+  return custodyInKeyOrder((await db.ref("/cashCustody").orderByChild("remaining").startAt(0.005).get()).val() || {});
+}
+// The custody rows a multi-path write changes, as they are now (null when absent).
+async function touchedCustodyRows(db, writes) {
+  const ids = [...new Set(Object.keys(writes).filter((path) => path.startsWith("cashCustody/")).map((path) => path.split("/")[1]).filter(Boolean))], rows = {};
+  await Promise.all(ids.map(async (id) => { const row = (await db.ref(`/cashCustody/${id}`).get()).val(); if (row !== null && row !== undefined) rows[id] = row; }));
+  return custodyInKeyOrder(rows);
+}
+// Custody rows that can belong to a shift: keyed by the shift, or naming it.
+async function custodyRowsForShift(db, shiftId) {
+  const [own, byShift, byMovement] = await Promise.all([db.ref(`/cashCustody/${shiftId}`).get(), db.ref("/cashCustody").orderByChild("shiftId").equalTo(shiftId).get(), db.ref("/cashCustody").orderByChild("movementId").equalTo(`shift_custody_${shiftId}`).get()]);
+  const rows = Object.assign({}, byShift.val() || {}, byMovement.val() || {});
+  if (own.exists()) rows[shiftId] = own.val();
+  return custodyInKeyOrder(rows);
+}
 async function poolCustodyOutflow(db, value) {
   const need0 = Financial.money(value); if (!(need0 > 0)) return {writes: {}, fromCustody: 0, shortfall: 0, allocations: {}};
-  const custody = (await db.ref("/cashCustody").get()).val() || {};
+  const custody = await openCustodyRows(db);
   const rows = Object.keys(custody).map((cid) => Object.assign({id: cid}, custody[cid])).filter((x) => Financial.money(x.remaining) > 0).sort((a, b) => Number(a.closedAt || 0) - Number(b.closedAt || 0));
   const writes = {}, allocations = {}; let need = need0, fromCustody = 0;
   for (const row of rows) { if (need <= 0) break; const available = Financial.money(row.remaining), use = Financial.money(Math.min(need, available)); if (!(use > 0)) continue; allocations[row.id] = use; fromCustody = Financial.money(fromCustody + use); need = Financial.money(need - use); const next = Financial.money(available - use); writes[`cashCustody/${row.id}/remaining`] = next; writes[`cashCustody/${row.id}/status`] = next > 0 ? "partially_paid_out" : "paid_out"; writes[`cashCustody/${row.id}/paidOutAmount`] = Financial.money(Number(row.paidOutAmount || 0) + use); writes[`cashCustody/${row.id}/lastPaymentAt`] = Date.now(); }
@@ -295,14 +320,14 @@ async function poolCustodyDeposit(db, value, movementId) {
     writes[`cashCustody/${candidate.id}/depositedAmount`]=Financial.money(Number(row.depositedAmount||0)+use);writes[`cashCustody/${candidate.id}/remaining`]=next;writes[`cashCustody/${candidate.id}/status`]=next>0?"partially_deposited":"deposited";writes[`cashCustody/${candidate.id}/lastDepositMovementId`]=movementId;writes[`cashCustody/${candidate.id}/lastDepositAt`]=Date.now();writes[`cashCustodyOpenIndex/${candidate.id}`]=next>0?cashCustodyProjection(candidate.id,Object.assign({},row,{depositedAmount:Financial.money(Number(row.depositedAmount||0)+use),remaining:next,status:"partially_deposited",lastDepositMovementId:movementId,lastDepositAt:Date.now()})):null;
   }}
   await useRows(ordered);
-  if(need>0.009){const all=(await db.ref("/cashCustody").get()).val()||{},fallback=Object.entries(all).filter(([id,row])=>!allocations[id]&&Financial.money(row&&row.remaining)>0).map(([id,row])=>({id,closedAt:Number(row.closedAt||0)})).sort((a,b)=>a.closedAt-b.closedAt||a.id.localeCompare(b.id));await useRows(fallback);}
+  if(need>0.009){const all=(/* download-ok: fallback the open-custody index missed a row; read every row before reporting a shortfall */await db.ref("/cashCustody").get()).val()||{},fallback=Object.entries(all).filter(([id,row])=>!allocations[id]&&Financial.money(row&&row.remaining)>0).map(([id,row])=>({id,closedAt:Number(row.closedAt||0)})).sort((a,b)=>a.closedAt-b.closedAt||a.id.localeCompare(b.id));await useRows(fallback);}
   return{writes,allocations,amount:Financial.money(requested-need),shortfall:Financial.money(need)};
 }
 
 async function availableCashOnHandAboveFloat(db) {
-  const [current, settingsSnap, activeShiftSnap] = await Promise.all([currentCashBalances(db), db.ref("/posSettings").get(), db.ref("/posActiveShift").get()]);
+  const [current, settings, activeShiftSnap] = await Promise.all([currentCashBalances(db), readPosSettings(db, ["fixedFloat"]), db.ref("/posActiveShift").get()]);
   const gross = CashBalances.pesos(current.balances.registerCents);
-  const float = resolveRegisterFloat(settingsSnap.val(), activeShiftSnap.val()).amount;
+  const float = resolveRegisterFloat(settings, activeShiftSnap.val()).amount;
   return {gross: Financial.money(gross), float, available: Financial.money(Math.max(0, gross - float))};
 }
 function poolCustodyInflowRecord(cid, value, label, occurredAt, movementId) {
@@ -405,7 +430,12 @@ async function postShiftCashEntries(db, shiftId, entries, kind) {
   for (let index = 0; index < (entries || []).length; index++) { const entry = entries[index] || {}, value = Financial.money(entry.amount); if (!(value > 0)) continue; const token = `${Number(entry.ts || 0)}_${index}`, movementId = `${kind}_${shiftId}_${token}`, isIn = kind === "shift_payin"; if (!isIn && (entry.type === "revolving_fund_replenishment" || /^petty cash replenish/i.test(String(entry.reason || "")))) continue; const isPurchaseAdvance = !isIn && entry.type === "purchase_advance" && entry.id; const lines = isIn ? [Financial.line("asset:register_cash", value, 0, entry.reason || "Cash in"), Financial.line(`offset:cash_in:${financeText(entry.reason || "other", 60)}`, 0, value, entry.reason || "Cash in")] : isPurchaseAdvance ? [Financial.line(`asset:purchase_cash_advance:${financeKey(entry.id, "Purchase advance ID")}`, value, 0, entry.reason || "Purchase cash advance"), Financial.line("asset:register_cash", 0, value, entry.reason || "Purchase cash advance")] : [Financial.line(`expense:cash_out:${financeText(entry.reason || "other", 60)}`, value, 0, entry.reason || "Cash out"), Financial.line("asset:register_cash", 0, value, entry.reason || "Cash out")]; const movement = Financial.movement(isPurchaseAdvance ? "purchase_cash_advance" : kind, "shift", shiftId, lines, {occurredAt: Number(entry.ts || Date.now()), actorName: entry.by || "Register", shiftReference, reference:financeText(entry.reference,120)||shiftReference, advanceId: entry.id || "", recipient: financeText(entry.recipient || "", 120)}); await commitFinancial(db, movementId, movement, actor); }
 }
 exports.onShiftPayInsFinancial = onValueWritten({ref: "/shifts/{shiftId}/payIns", region: ORDER_REGION, retry: true}, async (event) => {if (!event.data.after.exists()) return; await postShiftCashEntries(getDatabase(), event.params.shiftId, event.data.after.val() || [], "shift_payin");});
-exports.onShiftPayOutsFinancial = onValueWritten({ref: "/shifts/{shiftId}/payOuts", region: ORDER_REGION, retry: true}, async (event) => { /* Undeposited Collection pool model: the register drawer never funds payments — cash out is drawn from Undeposited Collection via approved vouchers. Historical drawer pay-outs already posted (idempotent) and are unaffected. */ return; });
+exports.onShiftPayOutsFinancial = onValueWritten({ref: "/shifts/{shiftId}/payOuts", region: ORDER_REGION, retry: true}, async (event) => {
+  /* Undeposited Collection pool model: the register drawer never funds payments — cash out is drawn from Undeposited Collection via approved vouchers. Historical drawer pay-outs already posted (idempotent) and are unaffected.
+     The only work left is the supplier-advance shift index (see supplierAdvanceShiftPayOuts). */
+  const has = hasPurchaseAdvancePayOut(event.data.after.exists() ? event.data.after.val() : null);
+  await getDatabase().ref(`/supplierAdvanceShifts/${event.params.shiftId}`).set(has ? true : null);
+});
 exports.onShiftOpenFinancial = onValueWritten({ref: "/shifts/{shiftId}", region: ORDER_REGION, retry: true}, async (event) => { /* Undeposited Collection pool model: the opening float stays in the drawer between shifts — no financial entry, no custody draw. */ return; });
 function durableShiftReference(shift,id) { const existing=financeText(shift&&shift.shiftReference,80); if(existing)return existing; const day=financeDateFromTimestamp(Number(shift&&shift.openAt)||Date.now()).replace(/-/g,""); return `SHIFT-${day}-LEGACY-${financeKey(id,"Shift ID").slice(-8).toUpperCase()}`; }
 async function ensureShiftReferenceRecord(db,id,shift) { const shiftReference=durableShiftReference(shift,id),refKey=financeKey(shiftReference,"Shift reference"),indexRef=db.ref(`/shiftReferenceIndex/${refKey}`),claim=await indexRef.transaction((current)=>{if(current&&current.shiftId!==id)return;return current||{shiftId:id,shiftReference,openedAt:Number(shift.openAt||0),closedAt:Number(shift.closeAt||0)||null};},undefined,false);if(!claim.committed)throw new HttpsError("already-exists",`Shift reference ${shiftReference} is already linked to another shift.`);const custody=(await db.ref(`/cashCustody/${id}`).get()).val()||null,writes={[`shifts/${id}/shiftReference`]:shiftReference,[`shifts/${id}/zReport/shiftReference`]:shiftReference};if(custody)Object.assign(writes,{[`cashCustody/${id}/shiftReference`]:shiftReference,[`cashCustody/${id}/reference`]:shiftReference});await db.ref().update(writes);return shiftReference; }
