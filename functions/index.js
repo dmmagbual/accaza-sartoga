@@ -1839,7 +1839,8 @@ const CASH_SUMMARY_LOCK_MS = 120000;
 async function rebuildCashBalanceSummary(db) {
   const movements = (await db.ref("/financialMovements").get()).val() || {};
   const rebuilt = CashBalances.splitSnapshotFromMovements(movements);
-  await db.ref().update({cashBalanceSummary: rebuilt.summary, cashBalanceSummaryApplied: rebuilt.applied});
+  // The Books cash-flow day/month index is rebuilt in the same update as the summary.
+  await db.ref().update({cashBalanceSummary: rebuilt.summary, cashBalanceSummaryApplied: rebuilt.applied, cashFlowDaily: rebuilt.flow.daily, cashFlowMonthly: rebuilt.flow.monthly, cashFlowOpenings: rebuilt.flow.openings, cashFlowIndexMeta: rebuilt.flow.meta});
   return rebuilt.summary;
 }
 
@@ -1874,13 +1875,27 @@ async function processCashBalancePending(db, owner) {
         ]);
         return {movementId, movement: movementSnap.exists() ? movementSnap.val() : null, applied: appliedSnap.exists() ? appliedSnap.val() : null};
       }));
-      const writes = {};
-      rows.forEach((row) => {
-        if (CashBalances.contributionMatches(row.applied, row.movement)) return;
+      const writes = {}, changed = rows.filter((row) => !CashBalances.contributionMatches(row.applied, row.movement));
+      // Current cash-flow index buckets touched by this batch (small day/month records).
+      const days = new Set(), flow = {daily: {}, monthly: {}, openings: {}};
+      changed.forEach((row) => {
+        if (row.applied && row.applied.day && !row.applied.opening) days.add(row.applied.day);
+        if (row.movement && !CashBalances.isCashAccountOpening(row.movement)) days.add(CashBalances.movementDay(row.movement));
+      });
+      const months = new Set([...days].map((day) => day.slice(0, 7)));
+      await Promise.all([
+        ...[...days].map(async (day) => { flow.daily[day] = (await db.ref(`/cashFlowDaily/${day}`).get()).val() || null; }),
+        ...[...months].map(async (month) => { flow.monthly[month] = (await db.ref(`/cashFlowMonthly/${month}`).get()).val() || null; }),
+      ]);
+      changed.forEach((row) => {
         const result = CashBalances.applyContribution(summary, row.applied, row.movement);
         summary = result.summary;
         writes[`cashBalanceSummaryApplied/${row.movementId}`] = result.applied;
+        CashBalances.applyFlowContribution(flow, row.movementId, row.applied, result.applied, row.movement);
       });
+      Object.keys(flow.daily).forEach((day) => { writes[`cashFlowDaily/${day}`] = CashBalances.flowValue(flow.daily[day]); });
+      Object.keys(flow.monthly).forEach((month) => { writes[`cashFlowMonthly/${month}`] = CashBalances.flowValue(flow.monthly[month]); });
+      Object.keys(flow.openings).forEach((id) => { writes[`cashFlowOpenings/${id}`] = flow.openings[id]; });
       writes.cashBalanceSummary = summary;
       pendingKeys.forEach((key) => { writes[`cashBalanceSummaryPending/${key}`] = null; });
       await db.ref().update(writes);

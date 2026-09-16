@@ -415,7 +415,7 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   const retried = await sandbox.current(racingDb, now);
   assert.equal(retried.balances.registerCents, full.registerCents, 'a concurrent summary update is not double counted');
   // A stuck queue entry older than the window falls back to the full ledger.
-  const stuck = {financialMovements: clone(ledger), cashBalanceSummary: clone(built.summary), cashBalanceSummaryApplied: clone(built.applied), cashBalanceSummaryPending: {k: {movementId: 'fresh', queuedAt: now - 3600000}}, cashBalanceSummaryProcessorLock: {owner: 'someone', expiresAt: now + 60000}};
+  const stuck = {financialMovements: clone(ledger), cashBalanceSummary: clone(built.summary), cashBalanceSummaryApplied: clone(built.applied), cashBalanceSummaryPending: {k: {movementId: 'fresh', queuedAt: now - 3600000}}, cashBalanceSummaryProcessorLock: {owner: 'someone', expiresAt: Date.now() + 86400000}};
   const stuckReads = [];
   const fallback = await sandbox.current(fakeDb(stuck, stuckReads), now);
   assert.equal(fallback.source, 'ledger'); assert.equal(fallback.balances.registerCents, full.registerCents);
@@ -438,4 +438,102 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   assert.ok(!dreads.includes('/financialMovements'));
 }
 
-console.log('PASS: replica-first history reads, tab-stable report listeners, ID-patched archive changes, month-bounded Stock Value journal (equivalent to full history), Books without full archive downloads, and indexed/bounded server reads, bounded per-item inventory idempotency state, day-bucketed Books monthly totals, stale tabs that pick up fixed builds, a backup download budget warning, index-first platform order lookups, voucher receipts outside the voucher list, and summary-based cash controls.');
+// 14. Books Cash Flow: period movements + server day/month cash indexes reproduce the
+// full-history statement exactly, and the Cash Flow tab no longer runs the control audit.
+{
+  const CashBalances = require('../functions/lib/cash-balances.js');
+  const D = (day, hour = 12) => Date.parse(`${day}T${String(hour).padStart(2, '0')}:00:00+08:00`);
+  const L = (account, debit, credit = 0) => ({account, debit, credit});
+  const reg = 'asset:register_cash', und = 'asset:cash_awaiting_deposit', pet = 'asset:petty_cash', bdo = 'asset:cash_account:bdo', gc = 'asset:cash_account:gcash';
+  const ledger = {
+    open_bdo: {type: 'opening_balance', sourceType: 'cashAccount', sourceId: 'bdo', occurredAt: D('2026-09-10'), lines: [L(bdo, 5000), L('equity:opening', 0, 5000)]},
+    open_gc: {type: 'opening_balance', sourceType: 'cashAccount', sourceId: 'gcash', occurredAt: D('2026-07-01'), lines: [L(gc, 300), L('equity:opening', 0, 300)]},
+    open_gc_extra: {type: 'opening_balance_adjustment', sourceType: 'cashAccount', sourceId: 'gcash', occurredAt: D('2026-08-02'), lines: [L(gc, 50), L('equity:opening', 0, 50)]},
+    sale_jul: {type: 'order_sale', sourceType: 'order', sourceId: 'o1', occurredAt: D('2026-07-15'), lines: [L(reg, 120.5), L('revenue:sales', 0, 120.5)]},
+    sale_aug: {type: 'order_sale', sourceType: 'order', sourceId: 'o2', occurredAt: D('2026-08-20'), lines: [L(reg, 99.99), L('revenue:sales', 0, 99.99)]},
+    deposit_aug: {type: 'cash_deposit', sourceType: 'custody', sourceId: 'c1', occurredAt: D('2026-08-25'), lines: [L(bdo, 80), L(und, 0, 80)]},
+    move_aug: {type: 'register_to_undeposited', sourceType: 'shift', sourceId: 's1', occurredAt: D('2026-08-25', 23), lines: [L(und, 80), L(reg, 0, 80)]},
+    // Fully reversed pair straddling the period start.
+    sale_straddle: {type: 'order_sale', sourceType: 'order', sourceId: 'o3', occurredAt: D('2026-08-31', 23), lines: [L(reg, 45), L('revenue:sales', 0, 45)]},
+    sale_straddle_void: {type: 'order_sale_void', sourceType: 'order', sourceId: 'o3', occurredAt: D('2026-09-02'), lines: [L('revenue:sales', 45), L(reg, 0, 45)]},
+    // Fully reversed pair inside the period.
+    sale_in: {type: 'order_sale', sourceType: 'order', sourceId: 'o4', occurredAt: D('2026-09-05'), lines: [L(reg, 70), L('revenue:sales', 0, 70)]},
+    sale_in_void: {type: 'order_sale_void', sourceType: 'order', sourceId: 'o4', occurredAt: D('2026-09-06'), lines: [L('revenue:sales', 70), L(reg, 0, 70)]},
+    // Fully reversed pair before the period.
+    sale_old: {type: 'order_sale', sourceType: 'order', sourceId: 'o5', occurredAt: D('2026-07-20'), lines: [L(reg, 33), L('revenue:sales', 0, 33)]},
+    sale_old_void: {type: 'order_sale_void', sourceType: 'order', sourceId: 'o5', occurredAt: D('2026-07-21'), lines: [L('revenue:sales', 33), L(reg, 0, 33)]},
+    // A reversal whose source has two originals is not a clean pair.
+    pv_a: {type: 'petty_cash_expense', sourceType: 'pettyVoucher', sourceId: 'pv1', occurredAt: D('2026-08-10'), lines: [L('expense:x', 20), L(pet, 0, 20)]},
+    pv_b: {type: 'petty_cash_expense', sourceType: 'pettyVoucher', sourceId: 'pv1', occurredAt: D('2026-08-11'), lines: [L('expense:x', 5), L(pet, 0, 5)]},
+    pv_void: {type: 'petty_cash_void', sourceType: 'pettyVoucher', sourceId: 'pv1', occurredAt: D('2026-09-03'), lines: [L(pet, 20), L('expense:x', 0, 20)]},
+    // Reversal after the period end: not paired for a September report.
+    sale_late: {type: 'order_sale', sourceType: 'order', sourceId: 'o6', occurredAt: D('2026-09-08'), lines: [L(reg, 15), L('revenue:sales', 0, 15)]},
+    sale_late_void: {type: 'order_sale_void', sourceType: 'order', sourceId: 'o6', occurredAt: D('2026-10-02'), lines: [L('revenue:sales', 15), L(reg, 0, 15)]},
+    fund: {type: 'petty_cash_replenishment', sourceType: 'fund', sourceId: 'f1', occurredAt: D('2026-06-30'), lines: [L(pet, 500), L(und, 0, 500)]},
+    manual: {type: 'manual_books_journal', sourceType: 'booksManualJournal', sourceId: 'j1', occurredAt: D('2026-09-07'), lines: [L(gc, 12.34), L('equity:x', 0, 12.34)]},
+    edge_midnight: {type: 'order_sale', sourceType: 'order', sourceId: 'o7', occurredAt: D('2026-09-01', 0), lines: [L(reg, 1), L('revenue:sales', 0, 1)]},
+    payout: {type: 'platform_payout_deposit', sourceType: 'platformPayout', sourceId: 'p1', occurredAt: D('2026-09-09'), lines: [L(bdo, 900), L('asset:platform_clearing:grabfood', 0, 900)]},
+  };
+  const accounts = {bdo: {name: 'BDO', openingDate: '2026-09-01', opening: 5000, order: 1}, gcash: {name: 'GCash', opening: 300, order: 2}, bank2: {name: 'Other', opening: 750, openingDate: '2026-08-15', order: 3}};
+  const periodOf = (from, to) => ({from, to, startAt: D(from, 0), endAt: Date.parse(`${to}T23:59:59.999+08:00`)});
+  const flow = CashBalances.splitSnapshotFromMovements(ledger, D('2026-09-16')).flow;
+  function runStatement(file, win, from, to) {
+    const code = read(file);
+    const ctx = vm.createContext({window: win, Intl, Date, Math, Number, String, Object, Array, Set, Map, JSON, RegExp, App: {}, document: {}, r2: (n) => Math.round((Number(n) || 0) * 100) / 100, todayStr: () => to, periodBounds: () => ({start: from, end: to}), ENTRIES: () => [], globalThis: null});
+    ctx.globalThis = ctx;
+    vm.runInContext(`${file.includes('fixtures') ? code : code.slice(0, code.indexOf('App.cashAccountEdit'))};globalThis.run = () => cfStatement(); globalThis.balance = (id) => cfAccountLedgerBalance(id);`, ctx);
+    return ctx;
+  }
+  const basisSrc = read('assets/js/shared/cash-flow-basis.js');
+  for (const [from, to] of [['2026-09-01', '2026-09-16'], ['2026-09-03', '2026-09-30'], ['2026-08-01', '2026-08-31'], ['2026-07-15', '2026-09-10'], ['2026-09-02', '2026-09-02'], ['2026-10-01', '2026-10-05']]) {
+    const oldCtx = runStatement('tests/fixtures/cash-flow-full-history-reference.js', {__financialMovements: ledger, __cfAccounts: accounts}, from, to);
+    const p = periodOf(from, to);
+    const period = Object.fromEntries(Object.entries(ledger).filter(([, m]) => m.occurredAt >= p.startAt && m.occurredAt <= p.endAt));
+    const win = {__financialMovements: period, __cashFlowPeriodReady: true, __cfAccounts: accounts, __cashFlowMonthly: flow.monthly, __cashFlowMonthlyReady: true, __cashFlowOpenings: flow.openings, __cashFlowOpeningsReady: true, __cashFlowIndexMeta: flow.meta, __cashFlowDailyMonth: from.slice(0, 7), __cashFlowDaily: Object.fromEntries(Object.entries(flow.daily).filter(([day]) => day.startsWith(from.slice(0, 7)))), __cashFlowGroups: {}};
+    vm.runInContext(basisSrc, vm.createContext(win));
+    win.AccazaCashFlowBasis = win.AccazaCashFlowBasis || (() => { const c = vm.createContext({}); vm.runInContext(basisSrc, c); return c.AccazaCashFlowBasis; })();
+    const need = win.AccazaCashFlowBasis.reversalSources(period);
+    const newCtx = runStatement('src/books/app/20-cash-flow.js', win, from, to);
+    if (Object.keys(need).length) assert.equal(newCtx.run().loading, true, `${from}..${to}: a reversal source that has not loaded yet keeps the statement in its loading state`);
+    for (const key of Object.keys(need)) win.__cashFlowGroups[key] = Object.fromEntries(Object.entries(ledger).filter(([, m]) => String(m.sourceId) === need[key].sourceId));
+    const before = oldCtx.run(), after = newCtx.run();
+    assert.equal(after.loading, false);
+    for (const field of ['begin', 'ending', 'add', 'ded', 'detail', 'corrections', 'correctionDetail', 'totBegin', 'totEnd', 'totAdd', 'totDed']) {
+      const norm = (v) => JSON.stringify(v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).filter(([, x]) => Math.abs(Number(x)) >= 0.005).sort()) : v);
+      assert.equal(norm(after[field]), norm(before[field]), `${from}..${to}: ${field} differs from the full-history statement`);
+    }
+    for (const id of ['bdo', 'gcash', 'bank2']) assert.equal(newCtx.balance(id), oldCtx.balance(id), `ledger balance for ${id}`);
+  }
+  // Wiring: the Books feed reads only the period, the indexes, and reversal sources.
+  const live = read('assets/js/books/live-pos.mjs');
+  assert.ok(live.includes('query(ref(db,"/financialMovements"),orderByChild("occurredAt"),startAt(p.startAt),endAt(p.endAt))'), 'Cash Flow must read only the selected period');
+  assert.ok(!/ref\(db,"\/financialMovements"\)\)/.test(live) && !live.includes('endAt(Number(p.endAt)||Date.now())'), 'no all-history Finance movement listener');
+  assert.ok(live.includes("orderByChild('sourceId'),equalTo(need[key].sourceId)"), 'reversal sources are read through the sourceId index');
+  assert.ok(!read('assets/js/books/app.js').includes('window.__auditControls().then(function(r){window.__controlAudit=r||{};})'), 'opening Cash Flow must not run the whole-archive control audit');
+  assert.equal((read('books.html').match(/assets\/js\/shared\/cash-flow-basis\.js/g) || []).length, 1);
+  const bundle = read('functions/index.js');
+  assert.ok(bundle.includes('cashFlowDaily: rebuilt.flow.daily, cashFlowMonthly: rebuilt.flow.monthly, cashFlowOpenings: rebuilt.flow.openings, cashFlowIndexMeta: rebuilt.flow.meta'), 'the cash summary rebuild writes the cash-flow indexes');
+  // Incremental maintenance equals a rebuild, including edits, day moves and deletions.
+  let state = CashBalances.splitSnapshotFromMovements({}, 1);
+  let summary = state.summary, applied = {}, index = {daily: {}, monthly: {}, openings: {}};
+  const step = (id, movement) => {
+    const prior = applied[id] || null;
+    const result = CashBalances.applyContribution(summary, prior, movement, 2);
+    summary = result.summary;
+    if (result.applied) applied[id] = result.applied; else delete applied[id];
+    CashBalances.applyFlowContribution(index, id, prior, result.applied, movement);
+  };
+  Object.entries(ledger).forEach(([id, m]) => step(id, m));
+  step('sale_aug', {...ledger.sale_aug, occurredAt: D('2026-09-04')});
+  step('open_gc_extra', null);
+  step('manual', {...ledger.manual, lines: [L(gc, 10), L('equity:x', 0, 10)]});
+  const expected = {...ledger, sale_aug: {...ledger.sale_aug, occurredAt: D('2026-09-04')}, manual: {...ledger.manual, lines: [L(gc, 10), L('equity:x', 0, 10)]}};
+  delete expected.open_gc_extra;
+  const rebuilt = CashBalances.splitSnapshotFromMovements(expected, 3);
+  const clean = (map) => Object.fromEntries(Object.entries(map).map(([k, v]) => [k, CashBalances.flowValue(v)]).filter(([, v]) => v).map(([k, v]) => [k, JSON.parse(JSON.stringify(v, (key, val) => (key === 'cashAccountCents' && val && !Object.keys(val).some((x) => val[x])) ? undefined : val))]));
+  assert.deepEqual(clean(index.daily), clean(rebuilt.flow.daily), 'incremental daily index equals a rebuild');
+  assert.deepEqual(clean(index.monthly), clean(rebuilt.flow.monthly), 'incremental monthly index equals a rebuild');
+  assert.deepEqual(Object.fromEntries(Object.entries(index.openings).filter(([, v]) => v)), rebuilt.flow.openings, 'incremental openings equal a rebuild');
+}
+
+console.log('PASS: replica-first history reads, tab-stable report listeners, ID-patched archive changes, month-bounded Stock Value journal (equivalent to full history), Books without full archive downloads, and indexed/bounded server reads, bounded per-item inventory idempotency state, day-bucketed Books monthly totals, stale tabs that pick up fixed builds, a backup download budget warning, index-first platform order lookups, voucher receipts outside the voucher list, summary-based cash controls, and a period-bounded Books Cash Flow.');
