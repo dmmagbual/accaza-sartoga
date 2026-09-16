@@ -74,6 +74,6 @@ const hub=createSubscriptionHub({}, {
 });
 hub.authorize();let yearUpdates=0;
 const stopYear=hub.watchRollingSales({startAt:0,endAt:30},()=>yearUpdates++,error=>{throw error;});
-await tick();assert.equal(yearUpdates,1);assert.equal(attached.filter(item=>item.target.path==='orders').length,3);
+await tick();assert.equal(yearUpdates,1);assert.equal(attached.filter(item=>item.target.path==='orders').length,1,'the rolling year chart uses one live-order listener');
 hub.activate('pos');assert.equal(stopYear.active,false);assert(attached.every(item=>item.stopped));hub.deauthorize();
 console.log('PASS: shared history reads, refund/void/delete updates, missed changes, legacy rollout, session isolation and bounded archive journal.');

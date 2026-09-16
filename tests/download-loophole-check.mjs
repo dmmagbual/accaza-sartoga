@@ -156,4 +156,41 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(raced.duplicate, true); assert.equal(state.inventoryAccounting.cup.balance, 698, 'a marker found inside the transaction is a duplicate');
 }
 
-console.log('PASS: replica-first history reads, tab-stable report listeners, ID-patched archive changes, month-bounded Stock Value journal (equivalent to full history), Books without full archive downloads, and indexed/bounded server reads, and bounded per-item inventory idempotency state.');
+// 8. Books monthly totals are rebuilt from day totals: a journal write reads only its day
+// and the month's day totals, and the result always equals a full journal recompute.
+{
+  const functions = read('functions/index.js');
+  const start = functions.indexOf('function booksEntryNet'), end = functions.indexOf('// Compact immutable-history index.');
+  const api = vm.runInNewContext(`(function(){${functions.slice(start, end)};return {applyBooksMonthlyDelta, rebuildBooksMonthlyNet, healRecentBooksNet, booksEntryNet};})()`,
+    {Financial: require('../functions/lib/financial.js'), financeDateFromTimestamp: () => '2026-09-16', console});
+  const state = {books: {journal: {}}};
+  const parts = (path) => String(path || '').split('/').filter(Boolean);
+  const get = (path) => parts(path).reduce((cur, key) => cur == null ? undefined : cur[key], state);
+  const put = (path, value) => {const keys = parts(path); let cur = state; for (let i = 0; i < keys.length - 1; i++) cur = cur[keys[i]] || (cur[keys[i]] = {}); if (value === null || (value && typeof value === 'object' && !Object.keys(value).length)) delete cur[keys.at(-1)]; else cur[keys.at(-1)] = structuredClone(value);};
+  let bytesRead = 0;
+  const node = (path, q = {}) => ({
+    orderByChild: (field) => node(path, {...q, field}), orderByKey: () => node(path, {...q, key: true}),
+    startAt: (v) => node(path, {...q, start: v}), endAt: (v) => node(path, {...q, end: v}),
+    async get() {let v = structuredClone(get(path)); if (v && (q.field || q.key)) v = Object.fromEntries(Object.entries(v).filter(([k, row]) => {const x = q.key ? k : row && row[q.field]; return (q.start === undefined || x >= q.start) && (q.end === undefined || x <= q.end);})); bytesRead += JSON.stringify(v || {}).length; return {val: () => v, exists: () => v != null};},
+    async set(v) {put(path, v);}, async update(u) {for (const [k, v] of Object.entries(u)) put([...parts(path), ...parts(k)].join('/'), v);},
+  });
+  const db = {ref: (path = '') => node(path)};
+  let seq = 0;
+  const entry = (date, amount) => ({date, lines: [{code: '1000', debit: amount, credit: 0}, {code: '4000', debit: 0, credit: amount}]});
+  const write = async (id, value) => {const before = structuredClone(state.books.journal[id] || null); put(`books/journal/${id}`, value); await api.applyBooksMonthlyDelta(db, before, value);};
+  const full = () => {const m = {}; for (const e of Object.values(state.books.journal)) {const month = e.date.slice(0, 7); m[month] = m[month] || {}; for (const [c, v] of Object.entries(api.booksEntryNet(e))) m[month][c] = Math.round(((m[month][c] || 0) + v) * 100) / 100;} return m;};
+  for (let d = 1; d <= 28; d++) for (let i = 0; i < 12; i++) state.books.journal[`aug_${d}_${i}`] = entry(`2026-08-${String(d).padStart(2, '0')}`, 10 + i + d / 100);
+  await write('seed', entry('2026-09-01', 5)); // schema 1 -> full rebuild
+  assert.deepEqual(state.books.monthlyNet, full());
+  bytesRead = 0; await write('sep_a', entry('2026-09-16', 12.34));
+  assert(bytesRead < 3000, `a journal write must not re-read its whole month (${bytesRead} bytes)`);
+  await write('sep_a', entry('2026-08-31', 12.34)); // moved to a previous month
+  await write('aug_3_4', null); await write('aug_5_1', entry('2026-08-05', 99.99));
+  assert.deepEqual(state.books.monthlyNet, full(), 'incremental day totals equal a full journal recompute');
+  state.books.monthlyNet['2026-08']['1000'] = 1; state.books.dailyNet['2026-08-07'] = {'1000': 5};
+  const healed = await api.healRecentBooksNet(db, Date.now());
+  assert.equal(JSON.stringify(healed.months), '["2026-08","2026-09"]');
+  assert.deepEqual(state.books.monthlyNet, full(), 'the nightly heal repairs drifted day and month totals');
+}
+
+console.log('PASS: replica-first history reads, tab-stable report listeners, ID-patched archive changes, month-bounded Stock Value journal (equivalent to full history), Books without full archive downloads, and indexed/bounded server reads, bounded per-item inventory idempotency state, and day-bucketed Books monthly totals.');

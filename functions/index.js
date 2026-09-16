@@ -238,28 +238,82 @@ function booksEntryNet(entry) {
   return out;
 }
 function booksEntryMonth(entry) { const date = String((entry && entry.date) || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date.slice(0, 7) : ""; }
+function booksEntryDay(entry) { const date = String((entry && entry.date) || "").slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : ""; }
+function addBooksNet(target, net) { Object.keys(net || {}).forEach((code) => { target[code] = Financial.money(Number(target[code] || 0) + Number(net[code] || 0)); }); return target; }
+const BOOKS_NET_SCHEMA = 2;
+// Monthly totals are rebuilt from per-day totals. A journal write re-reads only its own
+// day (a handful of rows) and the month's day totals, instead of every row of the month
+// (which grew to ~0.3 MB and was re-read about three times per sale).
+async function booksDayTotal(db, day) {
+  const snap = await db.ref("/books/journal").orderByChild("date").startAt(day).endAt(`${day}\uf8ff`).get();
+  const total = {};
+  Object.values(snap.val() || {}).forEach((entry) => { if (booksEntryDay(entry) === day) addBooksNet(total, booksEntryNet(entry)); });
+  return total;
+}
+async function booksMonthFromDays(db, month) {
+  const snap = await db.ref("/books/dailyNet").orderByKey().startAt(`${month}-01`).endAt(`${month}-31`).get();
+  const total = {};
+  Object.values(snap.val() || {}).forEach((day) => addBooksNet(total, day));
+  return total;
+}
 async function applyBooksMonthlyDelta(db, before, after) {
-  const months = new Set([booksEntryMonth(before), booksEntryMonth(after)].filter(Boolean));
-  for (const month of months) {
-    const snap = await db.ref("/books/journal").orderByChild("date").startAt(`${month}-01`).endAt(`${month}-31`).get();
-    const total = {};
-    Object.values(snap.val() || {}).forEach((entry) => { const net = booksEntryNet(entry); Object.keys(net).forEach((code) => { total[code] = Financial.money(Number(total[code] || 0) + Number(net[code] || 0)); }); });
-    await db.ref(`/books/monthlyNet/${month}`).set(total);
+  const meta = (await db.ref("/books/monthlyNetMeta").get()).val() || {};
+  if (Number(meta.schemaVersion) !== BOOKS_NET_SCHEMA) { await rebuildBooksMonthlyNet(db, (await db.ref("/books/journal").get()).val() || {}); return; }
+  const days = new Set([booksEntryDay(before), booksEntryDay(after)].filter(Boolean)), months = new Set();
+  for (const day of days) {
+    const total = await booksDayTotal(db, day);
+    await db.ref(`/books/dailyNet/${day}`).set(Object.keys(total).length ? total : null);
+    months.add(day.slice(0, 7));
   }
-  await db.ref("/books/monthlyNetMeta").update({updatedAt: Date.now(), schemaVersion: 1});
+  for (const month of months) await db.ref(`/books/monthlyNet/${month}`).set(await booksMonthFromDays(db, month));
+  await db.ref("/books/monthlyNetMeta").update({updatedAt: Date.now(), schemaVersion: BOOKS_NET_SCHEMA});
 }
 async function rebuildBooksMonthlyNet(db, journal) {
-  const monthly = {};
-  Object.values(journal || {}).forEach((entry) => { const month = booksEntryMonth(entry); if (!month) return; const target = monthly[month] || (monthly[month] = {}); const net = booksEntryNet(entry); Object.keys(net).forEach((code) => { target[code] = Financial.money(Number(target[code] || 0) + Number(net[code] || 0)); }); });
+  const monthly = {}, daily = {};
+  Object.values(journal || {}).forEach((entry) => {
+    const day = booksEntryDay(entry); if (!day) return;
+    const net = booksEntryNet(entry);
+    addBooksNet(daily[day] || (daily[day] = {}), net);
+    addBooksNet(monthly[day.slice(0, 7)] || (monthly[day.slice(0, 7)] = {}), net);
+  });
+  await db.ref("/books/dailyNet").set(daily);
   await db.ref("/books/monthlyNet").set(monthly);
-  await db.ref("/books/monthlyNetMeta").set({rebuiltAt: Date.now(), updatedAt: Date.now(), months: Object.keys(monthly).length, schemaVersion: 1});
+  await db.ref("/books/monthlyNetMeta").set({rebuiltAt: Date.now(), updatedAt: Date.now(), months: Object.keys(monthly).length, days: Object.keys(daily).length, schemaVersion: BOOKS_NET_SCHEMA});
   return monthly;
+}
+// Nightly self-heal for the two months that can still change: recompute their day and
+// month totals from the journal rows, so a lost or out-of-order trigger cannot leave a
+// lasting difference between the summaries and the journal.
+async function healRecentBooksNet(db, now = Date.now()) {
+  const meta = (await db.ref("/books/monthlyNetMeta").get()).val() || {};
+  if (Number(meta.schemaVersion) !== BOOKS_NET_SCHEMA) return {skipped: true};
+  const month = financeDateFromTimestamp(now).slice(0, 7), first = new Date(`${month}-15T00:00:00Z`);
+  first.setUTCMonth(first.getUTCMonth() - 1);
+  const previous = first.toISOString().slice(0, 7);
+  const [journalSnap, daysSnap] = await Promise.all([
+    db.ref("/books/journal").orderByChild("date").startAt(`${previous}-01`).endAt(`${month}-31\uf8ff`).get(),
+    db.ref("/books/dailyNet").orderByKey().startAt(`${previous}-01`).endAt(`${month}-31`).get(),
+  ]);
+  const daily = {}, monthly = {[previous]: {}, [month]: {}}, writes = {};
+  Object.values(journalSnap.val() || {}).forEach((entry) => {
+    const day = booksEntryDay(entry); if (!day || !monthly[day.slice(0, 7)]) return;
+    const net = booksEntryNet(entry);
+    addBooksNet(daily[day] || (daily[day] = {}), net);
+    addBooksNet(monthly[day.slice(0, 7)], net);
+  });
+  Object.keys(daysSnap.val() || {}).forEach((day) => { if (!daily[day]) writes[`books/dailyNet/${day}`] = null; });
+  Object.keys(daily).forEach((day) => { writes[`books/dailyNet/${day}`] = daily[day]; });
+  writes[`books/monthlyNet/${previous}`] = monthly[previous];
+  writes[`books/monthlyNet/${month}`] = monthly[month];
+  writes["books/monthlyNetMeta/healedAt"] = now;
+  await db.ref().update(writes);
+  return {months: [previous, month], days: Object.keys(daily).length};
 }
 
 // Compact immutable-history index. Clients use prior-month account totals plus
 // only the selected month's journal rows instead of downloading the full ledger.
 exports.updateBooksMonthlyNet = onValueWritten(
-  {ref: "/books/journal/{entryId}", region: "asia-southeast1"},
+  {ref: "/books/journal/{entryId}", region: "asia-southeast1", retry: true},
   async (event) => applyBooksMonthlyDelta(getDatabase(), event.data.before.val(), event.data.after.val()),
 );
 
@@ -626,6 +680,11 @@ exports.manageSupplier = onCall(
     if(["merge","delete"].includes(action)&&!["owner","superadmin"].includes(actor.role))throw new HttpsError("permission-denied","Only an owner or superadmin can merge or delete a supplier master record.");
     if(action==="validate"){const supplier=await requireActiveSupplier(db,data.supplierId,data.name);return{supplierId:supplier.id,name:supplier.name,active:true};}
     if(action==="initialize_legacy"){
+      // Finance Books calls this on every sign-in. The legacy link sweep reads six whole
+      // nodes (including petty vouchers with receipt images), so it runs at most once a day.
+      const sweepRef=db.ref("/supplierMigrations/legacySweepCheckedAt"),lastSweep=Number((await sweepRef.get()).val()||0);
+      if(data.force!==true&&now-lastSweep<86400000)return{initialized:true,skipped:true,linkedWrites:0};
+      await sweepRef.set(now);
       const [suppliersSnap,purchasesSnap,vouchersSnap,payablesSnap,receiptsSnap,batchesSnap]=await Promise.all([db.ref("/suppliers").get(),db.ref("/purchaseInvoices").get(),db.ref("/pettyCashVouchers").get(),db.ref("/payables").get(),db.ref("/stockReceipts").get(),db.ref("/inventoryBatch").get()]),suppliers=suppliersSnap.val()||{},purchases=purchasesSnap.val()||{},vouchers=vouchersSnap.val()||{},payables=payablesSnap.val()||{},receipts=receiptsSnap.val()||{},batches=batchesSnap.val()||{},byKey={},writes={};
       Object.keys(suppliers).forEach(id=>{const row=suppliers[id]||{},key=supplierNameKey(row.name);if(key)byKey[key]={id,name:financeText(row.name,120)};});
       const ensure=(value)=>{const name=financeText(value,120).trim().replace(/\s+/g," "),key=supplierNameKey(name);if(!key)return null;if(byKey[key])return byKey[key];const hash=crypto.createHash("sha256").update(key).digest("hex").slice(0,32),id=`sup_${hash}`,row={id,name};byKey[key]=row;writes[`suppliers/${id}`]={name,normalizedName:key,active:true,createdAt:now,createdBy:actor.uid,createdByRole:actor.role,updatedAt:now,legacyInitialized:true,schemaVersion:1};writes[`supplierNameIndex/${hash}`]={supplierId:id,normalizedName:key,claimedAt:now};return row;};
@@ -1890,12 +1949,13 @@ function archivedOrderRecord(order, now = Date.now(), reason = "closed-shift") {
 async function rebuildActiveOrders(db, force = false) {
   const now = Date.now();
   const markerRef = db.ref("/systemMaintenance/activeOrdersLastSweep");
-  const [markerSnap, activeShiftSnap, activeSnap] = await Promise.all([
-    markerRef.get(), db.ref("/posActiveShift").get(), db.ref("/activeOrders").get(),
-  ]);
-  if (!force && now - Number(markerSnap.val() || 0) < ACTIVE_SWEEP_INTERVAL_MS && activeSnap.exists()) {
-    return {skipped: true, active: activeSnap.numChildren()};
+  // Every Admin/POS sign-in calls this. Inside the sweep interval only the marker and a
+  // one-row existence probe are read; the projection itself is downloaded only to rebuild.
+  const markerSnap = await markerRef.get();
+  if (!force && now - Number(markerSnap.val() || 0) < ACTIVE_SWEEP_INTERVAL_MS && (await db.ref("/activeOrders").limitToFirst(1).get()).exists()) {
+    return {skipped: true};
   }
+  const [activeShiftSnap, activeSnap] = await Promise.all([db.ref("/posActiveShift").get(), db.ref("/activeOrders").get()]);
   const ordersSnap = await db.ref("/orders").get();
   const orders = ordersSnap.val() || {};
   const existing = activeSnap.val() || {};
@@ -4577,6 +4637,7 @@ exports.pruneEphemeralNodes = onSchedule(
   {schedule: "every day 03:30", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "256MiB"},
   async () => {
     const db = getDatabase(), now = Date.now(), DAY = 86400000;
+    try { logger.info("Books net summaries healed", await healRecentBooksNet(db, now)); } catch (error) { logger.error("Books net summary heal failed", {error: String(error)}); }
     const deletions = {};
     const mark = (path) => { deletions[path] = null; };
 

@@ -75,6 +75,11 @@ exports.manageSupplier = onCall(
     if(["merge","delete"].includes(action)&&!["owner","superadmin"].includes(actor.role))throw new HttpsError("permission-denied","Only an owner or superadmin can merge or delete a supplier master record.");
     if(action==="validate"){const supplier=await requireActiveSupplier(db,data.supplierId,data.name);return{supplierId:supplier.id,name:supplier.name,active:true};}
     if(action==="initialize_legacy"){
+      // Finance Books calls this on every sign-in. The legacy link sweep reads six whole
+      // nodes (including petty vouchers with receipt images), so it runs at most once a day.
+      const sweepRef=db.ref("/supplierMigrations/legacySweepCheckedAt"),lastSweep=Number((await sweepRef.get()).val()||0);
+      if(data.force!==true&&now-lastSweep<86400000)return{initialized:true,skipped:true,linkedWrites:0};
+      await sweepRef.set(now);
       const [suppliersSnap,purchasesSnap,vouchersSnap,payablesSnap,receiptsSnap,batchesSnap]=await Promise.all([db.ref("/suppliers").get(),db.ref("/purchaseInvoices").get(),db.ref("/pettyCashVouchers").get(),db.ref("/payables").get(),db.ref("/stockReceipts").get(),db.ref("/inventoryBatch").get()]),suppliers=suppliersSnap.val()||{},purchases=purchasesSnap.val()||{},vouchers=vouchersSnap.val()||{},payables=payablesSnap.val()||{},receipts=receiptsSnap.val()||{},batches=batchesSnap.val()||{},byKey={},writes={};
       Object.keys(suppliers).forEach(id=>{const row=suppliers[id]||{},key=supplierNameKey(row.name);if(key)byKey[key]={id,name:financeText(row.name,120)};});
       const ensure=(value)=>{const name=financeText(value,120).trim().replace(/\s+/g," "),key=supplierNameKey(name);if(!key)return null;if(byKey[key])return byKey[key];const hash=crypto.createHash("sha256").update(key).digest("hex").slice(0,32),id=`sup_${hash}`,row={id,name};byKey[key]=row;writes[`suppliers/${id}`]={name,normalizedName:key,active:true,createdAt:now,createdBy:actor.uid,createdByRole:actor.role,updatedAt:now,legacyInitialized:true,schemaVersion:1};writes[`supplierNameIndex/${hash}`]={supplierId:id,normalizedName:key,claimedAt:now};return row;};
