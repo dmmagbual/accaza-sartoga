@@ -23,6 +23,15 @@ const HISTORY_TAB_PATHS={saleshistory:['orders','archivedOrders','financialMovem
 // writes. Per-child listeners here fire per top-level field (drawer, offlineSyncApplied, ...)
 // instead, so an unrelated field on the record no longer rides along. See 2026-09-12 follow-up.
 const INCREMENTAL_PATHS={activeOrders:1,inventory:1,posActiveShift:1};
+// Bounded paths that re-download their entire limitToLast result set on every single write
+// via onValue. Converting these to per-child listeners on the bounded query gives the same
+// initial download cost but only the changed child (~3 KB) on every subsequent write instead
+// of the full N records (~900 KB for financialMovements). See 2026-09-16 download spike fix.
+// These paths attach via: get(liveTarget) to bootstrap, then onChildAdded/Changed/Removed
+// on the same liveTarget query for live updates. Period-scoped variants (sales history,
+// financialMovements in saleshistory scope) keep their existing onValue handlers because
+// they use startAt/endAt range queries that need the full result on period change.
+const BOOTSTRAPPED_INCREMENTAL_BOUNDS={financialMovements:1,cfLedger:1,inventoryMovements:1,platformPayouts:1,'books/journal':1};
 const VERSIONED_MASTER_PATHS={categories:1,optionGroups:1,menuItems:1};
 // Only rows that are still open are needed: custody that still holds cash (Sep 2026 audit).
 const OPEN_ROW_PATHS={cashCustody:{field:'remaining',start:0.005}};
@@ -145,6 +154,34 @@ function createSubscriptionHub(database,ops){
       entry.unsub=function(){stopped=true;childUnsubs.forEach(function(u){try{u();}catch(e){}});};
       return;
     }
+    // Bootstrapped incremental: bounded paths that would otherwise re-download their entire
+    // limitToLast result on every write. Bootstrap with get(), then switch to per-child
+    // listeners on the bounded query. Each new/changed child costs ~3 KB instead of ~900 KB.
+    if(BOOTSTRAPPED_INCREMENTAL_BOUNDS[entry.path]){
+      var bTarget=liveTarget(entry.path),bStopped=false,bChildUnsubs=[],bBootstrapped=false;
+      function bApplyChild(key,value){
+        if(bStopped||generation!==(entry.generation||0))return;
+        if(value===null)delete entry.live[key];else entry.live[key]=value;
+        entry.loading=false;entry.error=null;
+        if(!bBootstrapped)return;
+        dispatch(entry,facade(entry));
+        if(salesPath(entry.path)&&entries.financialMovements&&entries.financialMovements.refreshSources)entries.financialMovements.refreshSources();
+      }
+      get(bTarget).then(function(snapshot){
+        if(bStopped||generation!==(entry.generation||0))return;
+        entry.live=snapshot.val()||{};
+        var spec=HISTORY_BOUNDS[entry.path];
+        entry.hasOlder=!!spec&&Object.keys(entry.live).length>=spec.limit;
+        entry.loading=false;entry.error=null;bBootstrapped=true;
+        dispatch(entry,facade(entry));
+        if(salesPath(entry.path)&&entries.financialMovements&&entries.financialMovements.refreshSources)entries.financialMovements.refreshSources();
+        bChildUnsubs.push(onChildAdded(bTarget,function(s){bApplyChild(s.key,s.val());},failed));
+        bChildUnsubs.push(onChildChanged(bTarget,function(s){bApplyChild(s.key,s.val());},failed));
+        bChildUnsubs.push(onChildRemoved(bTarget,function(s){bApplyChild(s.key,null);},failed));
+      },failed);
+      entry.unsub=function(){bStopped=true;bChildUnsubs.forEach(function(u){try{u();}catch(e){}});};
+      return;
+    }
     entry.unsub=onValue(liveTarget(entry.path),receive,failed);
   }
   function reconcileEntry(entry){var ids=Object.keys(entry.consumers),needed=ids.some(function(id){return consumerActive(entry.consumers[id]);}),wasAttached=!!entry.unsub;if(needed&&!entry.unsub)attach(entry);if(!needed&&entry.unsub){resetEntry(entry);}ids.forEach(function(id){var c=entry.consumers[id],now=consumerActive(c),becameActive=now&&!c.wasActive;c.wasActive=now;if(becameActive&&wasAttached&&entry.last){try{c.callback(entry.last);}catch(e){console.error('ACCAZA RENDER ERROR ['+entry.path+']',e);}}});}
@@ -170,4 +207,4 @@ function createSubscriptionHub(database,ops){
   };
 }
 
-export{HISTORY_BOUNDS,HISTORY_TAB_PATHS,createSubscriptionHub};
+export{HISTORY_BOUNDS,HISTORY_TAB_PATHS,BOOTSTRAPPED_INCREMENTAL_BOUNDS,createSubscriptionHub};
