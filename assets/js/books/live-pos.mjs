@@ -137,11 +137,12 @@ if(auth){
       window.__apMap={};booksStops.push(watchMap(ref(db,"/payables"),window.__apMap,scheduleRender,()=>{}));
       window.__supplierMap={};window.__cashDiscrepancies={};
       watchValue(ref(db,"/cfAccounts"), s=>{ window.__cfAccounts=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
+      /* download-ok: bounded one short code per bank account */watchValue(ref(db,"/books/config/cashAccountMap"), s=>{ window.__cashAccountMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       watchValue(ref(db,"/booksChart"), s=>{ window.__booksChart=s.val()||null; if(window.App&&App.applyServerChart)App.applyServerChart(); }, ()=>{});
       bindPeriodFinancial();
       bindOutstandingOrders();
       window.__platformPayouts={};window.__booksMenuItems={};window.__booksMenuCategories={};window.__cashCustody={};window.__faMap={};window.__piMap={};window.__personalFundings={};
       syncOptionalFeeds();
-    } else { window.__booksLiveLoading=false;setPill("● Sign in for live POS","off");window.__booksChartManager=false; window.__posEntries=[]; window.__arMap={}; window.__apMap={};window.__supplierMap={}; window.__cashDiscrepancies={}; window.__booksReviewQueue={}; window.__cfAccounts={}; window.__financialMovements={}; window.__platformPayouts={}; window.__booksActiveOrders={};window.__booksArchivedOrders={};window.__booksMenuItems={};window.__booksMenuCategories={};window.__cashCustody={};window.__faMap={}; window.__piMap={};window.__personalFundings={}; if(window.App&&App.render)App.render(); }
+    } else { window.__booksLiveLoading=false;setPill("● Sign in for live POS","off");window.__booksChartManager=false; window.__posEntries=[]; window.__arMap={}; window.__apMap={};window.__supplierMap={}; window.__cashDiscrepancies={}; window.__booksReviewQueue={}; window.__cfAccounts={}; window.__cashAccountMap={}; window.__financialMovements={}; window.__platformPayouts={}; window.__booksActiveOrders={};window.__booksArchivedOrders={};window.__booksMenuItems={};window.__booksMenuCategories={};window.__cashCustody={};window.__faMap={}; window.__piMap={};window.__personalFundings={}; if(window.App&&App.render)App.render(); }
   });
 }

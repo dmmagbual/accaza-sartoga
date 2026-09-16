@@ -5,7 +5,7 @@
   var routes={
     pos:['inbox','pos'],inventory:['pos'],purchases:['finance','pos'],recipes:['pos'],usage:['pos'],channelpricing:['pos','channelpricing'],dedupe:['pos'],
     saleshistory:['saleshistory'],analytics:['pos','analytics'],payouts:['pos','analytics'],stockvalue:['pos','analytics'],dailyreport:['pos','analytics'],
-    ops:['pos','register'],possettings:['pos','register'],discrepancy:['pos','register'],petty:['pos','register'],packages:['pos','packages'],staffaccess:['staff'],
+    ops:['pos','register'],possettings:['pos','register'],discrepancy:['pos','register'],petty:['finance','pos','register'],packages:['pos','packages'],staffaccess:['staff'],
     operations:['operations'],liveoperations:['liveoperations'],undeposited:['undeposited'],inbox:['inbox'],accountingperiods:['accountingperiods']
   };
   var roots={pos:'posRoot',inventory:'inventoryRoot',purchases:'purchasesRoot',recipes:'recipesRoot',usage:'usageRoot',channelpricing:'channelPricingRoot',dedupe:'dedupeRoot',saleshistory:'salesHistoryRoot',analytics:'analyticsRoot',payouts:'payoutsRoot',stockvalue:'stockValueRoot',dailyreport:'dailyReportRoot',ops:'opsRoot',possettings:'posSettingsRoot',discrepancy:'discrepancyRoot',petty:'pettyRoot',packages:'packagesRoot',staffaccess:'staffAccessRoot',operations:'operationsRoot',liveoperations:'liveOperationsRoot',undeposited:'undepositedRoot',inbox:'staffInboxRoot',accountingperiods:'accountingPeriodsRoot'};

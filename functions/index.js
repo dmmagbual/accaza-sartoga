@@ -26,6 +26,7 @@ const OrderStatus = require("./lib/order-status");
 const SupplierMaster = require("./lib/supplier-master");
 const OperationalExceptions = require("./lib/operational-exceptions");
 const BooksBridge = require("./lib/books-bridge");
+const BankLedgerLink = require("./lib/bank-ledger-link");
 const FinancialClose = require("./lib/financial-close");
 const AccountingPeriods = require("./lib/accounting-periods");
 const CashJournalEdit = require("./lib/cash-journal-edit");
@@ -631,16 +632,37 @@ exports.manageCashAccount = onCall(
     if (!name || !["bank", "ewallet"].includes(type)) throw new HttpsError("invalid-argument", "Account name and a valid type are required.");
     const ref = db.ref(`/cfAccounts/${id}`), old = (await ref.get()).val() || {}, accounts=(await db.ref("/cfAccounts").get()).val()||{}, duplicateId=Object.keys(accounts).find((key)=>key!==id&&financeText(accounts[key]&&accounts[key].name,100).trim().toLowerCase()===name.trim().toLowerCase());if(duplicateId)throw new HttpsError("already-exists","A Finance cash account with this name already exists. Select the existing account instead of creating a duplicate.");const opening = Financial.money(data.opening), oldOpening = Financial.money(old.opening), date = financeDate(data.openingDate), occurredAt = Date.parse(`${date}T00:00:00+08:00`) || Date.now(), reference=financeText(data.reference,120), reason=financeText(data.reason,300);
     const feedMethods = Array.isArray(data.feedMethods) ? data.feedMethods.map((x) => financeText(x, 60)).filter(Boolean).slice(0, 20) : [];
-    const row = {name, type, opening, openingDate: date, feedMethods, order: Number.isFinite(Number(old.order)) ? Number(old.order) : Object.keys(accounts).length, ts: old.ts || Date.now(), updatedAt: Date.now(), updatedBy: actor.uid};
-    const writes = {[`cfAccounts/${id}`]: row}, delta = Financial.money(opening - oldOpening);
+    // Every bank / e-wallet has its own Finance Books ledger account (Xero-style). A new account
+    // gets the requested or next free code; an existing Asset code is linked only when it has
+    // no balance of its own, so nothing is counted twice.
+    if (Math.abs(Financial.money(opening - oldOpening)) >= 0.005 && (!reference || !reason)) throw new HttpsError("invalid-argument", "Opening-balance corrections require a supporting reference and reason.");
+    const existing = Object.keys(old).length ? old : null, [chart, cashAccountMap, monthlyNet, monthlyMeta] = await Promise.all([
+      ensureBooksChart(db), db.ref("/books/config/cashAccountMap").get().then((x) => x.val() || {}),
+      /* download-ok: bounded monthly ledger totals (one row per month), read only when a bank account is created or linked */existing ? Promise.resolve({}) : db.ref("/books/monthlyNet").get().then((x) => x.val() || {}),
+      existing ? Promise.resolve(true) : db.ref("/books/monthlyNetMeta").get().then((x) => x.exists()),
+    ]);
+    let link;
+    try { link = BankLedgerLink.planCashAccountLink({accountId: id, existing, name, kind: type, requestedCode: financeText(data.booksCode, 4), accounts, configured: cashAccountMap, chart, monthlyNet, monthlyReady: monthlyMeta}); }
+    catch (error) { if (error instanceof BankLedgerLink.LinkError) throw new HttpsError(error.status, error.message); throw error; }
+    const now = Date.now();
+    if (!existing) {
+      const claim = await db.ref(`/books/config/cashAccountCodeClaims/${link.code}`).transaction((current) => !current || current.accountId === id || (!accounts[current.accountId] && now - Number(current.claimedAt || 0) > 120000) ? {accountId: id, claimedAt: current && current.accountId === id ? current.claimedAt : now} : undefined, undefined, false);
+      if (!claim.committed) throw new HttpsError("already-exists", `Finance Books ${link.code} was just linked to another bank account. Refresh and try again.`);
+    }
+    const row = {name, type, opening, openingDate: date, feedMethods, booksCode: link.code, order: Number.isFinite(Number(old.order)) ? Number(old.order) : Object.keys(accounts).length, ts: old.ts || now, updatedAt: now, updatedBy: actor.uid};
+    if (old.active === false) row.active = false;
+    const writes = {[`cfAccounts/${id}`]: row, [`books/config/cashAccountMap/${id}`]: link.code}, delta = Financial.money(opening - oldOpening);
+    if (link.createChartRow) writes[`booksChart/${link.code}`] = {code: link.code, name, type: "Asset", note: type === "ewallet" ? "E-wallet account" : "Bank account", active: true, system: false, sensitive: true, bankAccountId: id, createdAt: now, createdBy: actor.uid, updatedAt: now, updatedBy: actor.uid, schemaVersion: 1};
+    else if (!existing) { writes[`booksChart/${link.code}/bankAccountId`] = id; writes[`booksChart/${link.code}/sensitive`] = true; writes[`booksChart/${link.code}/updatedAt`] = now; }
+    if (link.renameChartRow) { writes[`booksChart/${link.code}/name`] = name; writes[`booksChart/${link.code}/updatedAt`] = now; }
     if (Math.abs(delta) >= 0.005) {
       if(!reference||!reason)throw new HttpsError("invalid-argument","Opening-balance corrections require a supporting reference and reason.");
       const value = Math.abs(delta), asset = `asset:cash_account:${id}`, lines = delta > 0 ? [Financial.line(asset, value, 0, "Opening cash adjustment"), Financial.line("equity:opening_balance", 0, value, "Opening cash adjustment")] : [Financial.line("equity:opening_balance", value, 0, "Opening cash adjustment"), Financial.line(asset, 0, value, "Opening cash adjustment")];
       const movementId = financeKey(`opening_adjust_${id}_${commandId}`, "Movement ID"), movement = Financial.movement("opening_balance_adjustment", "cashAccount", id, lines, {occurredAt, actorName: name,reference,reason,oldOpening,opening});
       writes[`financialMovements/${movementId}`] = financeRecord(movementId, movement, actor);
     }
-    writes[`operationalAudit/${Date.now()}_cash_account_${id}`] = {action: "cash_account_upsert", sourceType: "cashAccount", sourceId: id, oldOpening, opening, adjustment:delta, openingDate: date, reference, reason, actorUid: actor.uid, actorRole: actor.role, ts: Date.now(), schemaVersion: 1};
-    await db.ref().update(writes); return {accountId: id, opening, adjustment: delta};
+    writes[`operationalAudit/${now}_cash_account_${id}`] = {action: existing ? "cash_account_upsert" : "bank_account_create", sourceType: "cashAccount", sourceId: id, booksCode: link.code, booksChartCreated: link.createChartRow, oldOpening, opening, adjustment:delta, openingDate: date, reference, reason, actorUid: actor.uid, actorRole: actor.role, ts: Date.now(), schemaVersion: 1};
+    await db.ref().update(writes); return {accountId: id, booksCode: link.code, opening, adjustment: delta};
   },
 );
 
@@ -2861,7 +2883,7 @@ const DEFAULT_BOOKS_CHART_MANAGERS=["danilomagbual@gmail.com","contact.mariadani
 function booksManagerKey(email){return String(email||"").toLowerCase().replace(/[^a-z0-9]+/g,"_");}
 async function ensureBooksChartManagers(db){const ref=db.ref("/config/booksChartManagers");const snap=await ref.get();let current=snap.val();if(!current||typeof current!=="object"||!Object.keys(current).length){const seed={};DEFAULT_BOOKS_CHART_MANAGERS.forEach(function(email){seed[booksManagerKey(email)]={email:String(email).toLowerCase(),active:true,seededAt:Date.now()};});await ref.set(seed);current=seed;}const allow=new Set();Object.keys(current).forEach(function(k){const row=current[k];if(row&&row.active!==false&&row.email)allow.add(String(row.email).toLowerCase());});return allow;}
 async function requireBooksChartManager(db,request){const portal=await requirePortalUser(db,request);const email=String(request.auth&&request.auth.token&&request.auth.token.email||"").toLowerCase();const allow=await ensureBooksChartManagers(db);if(!email||!allow.has(email))throw new HttpsError("permission-denied","Only the finance owners can manage the chart of accounts.");return Object.assign({},portal,{email:email});}
-function booksCodeAccount(code, accounts, booksChart) {
+function booksCodeAccount(code, accounts, booksChart, cashAccountMap) {
   code = financeText(code, 4);
   if (!/^\d{4}$/.test(code)) throw new HttpsError("invalid-argument", "Every journal line requires a valid four-digit account code.");
   if (code === "1030") code = "1001";
@@ -2877,10 +2899,10 @@ function booksCodeAccount(code, accounts, booksChart) {
   if (code === "1005") return {account:"asset:register_float", cashKey:"float"};
   if (code === "1001") return {account:"asset:cash_awaiting_deposit", cashKey:"undeposited"};
   if (code === "1040") return {account:"asset:petty_cash", cashKey:"petty"};
-  const matches = Object.keys(accounts || {}).filter((id) => BooksBridge.cashCodeForAccount(accounts[id]) === code);
+  const matches = BankLedgerLink.accountsForCode(code, accounts, cashAccountMap);
   if (matches.length > 1) throw new HttpsError("failed-precondition", `Cash account code ${code} is assigned to more than one cash account.`);
   if (matches.length === 1) return {account:`asset:cash_account:${matches[0]}`, cashKey:matches[0]};
-  if (/^(1010|1011|1012|1013|1014|1020|1021)$/.test(code)) throw new HttpsError("failed-precondition", `Cash account code ${code} is not linked to a live cash account.`);
+  if (/^(1010|1011|1012|1013|1014|1020|1021)$/.test(code) || Object.values(cashAccountMap || {}).includes(code)) throw new HttpsError("failed-precondition", `Cash account code ${code} is not linked to a live cash account.`);
   return {account:`coa:${code}`, cashKey:""};
 }
 async function prepareManualBooksJournal(db, data, accounts, actor, allowedLinkedPayable) {
@@ -2888,8 +2910,8 @@ async function prepareManualBooksJournal(db, data, accounts, actor, allowedLinke
   await assertAccountingPeriodOpen(db, date, "posting or correcting a manual journal");
   if(!memo)throw new HttpsError("invalid-argument","Memo / description is required.");
   if(rawLines.length<2||rawLines.length>20)throw new HttpsError("invalid-argument","A journal requires between two and twenty lines.");
-  const lines=[],cashLines=[];let debit=0,credit=0;const booksChart=await ensureBooksChart(db);
-  rawLines.forEach((row,index)=>{const dr=Financial.money(row&&row.debit),cr=Financial.money(row&&row.credit);if((dr>0&&cr>0)||(!(dr>0)&&!(cr>0)))throw new HttpsError("invalid-argument",`Journal line ${index+1} must contain either a debit or a credit.`);const mapped=booksCodeAccount(row.code,accounts,booksChart);debit=Financial.money(debit+dr);credit=Financial.money(credit+cr);lines.push(Financial.line(mapped.account,dr,cr,memo));if(mapped.cashKey)cashLines.push({mapped,dr,cr,index});});
+  const lines=[],cashLines=[];let debit=0,credit=0;const booksChart=await ensureBooksChart(db),cashAccountMap=(await db.ref('/books/config/cashAccountMap').get()).val()||{};
+  rawLines.forEach((row,index)=>{const dr=Financial.money(row&&row.debit),cr=Financial.money(row&&row.credit);if((dr>0&&cr>0)||(!(dr>0)&&!(cr>0)))throw new HttpsError("invalid-argument",`Journal line ${index+1} must contain either a debit or a credit.`);const mapped=booksCodeAccount(row.code,accounts,booksChart,cashAccountMap);debit=Financial.money(debit+dr);credit=Financial.money(credit+cr);lines.push(Financial.line(mapped.account,dr,cr,memo));if(mapped.cashKey)cashLines.push({mapped,dr,cr,index});});
   if(Math.abs(debit-credit)>0.009||!(debit>0))throw new HttpsError("invalid-argument","Journal debits and credits must balance.");
   const payableLines=rawLines.filter((row)=>String(row&&row.code||"")==="2000"),linkedPayableId=payableLines.length?financeKey(data.linkedPayableId,"Linked payable ID"):"";let linkedPayable=null;
   if(payableLines.length>1)throw new HttpsError("invalid-argument","A manual journal may contain only one Accounts Payable control line.");
@@ -4291,7 +4313,12 @@ exports.manageBooksAccount = onCall(
     const data = request.data || {};
     const action = financeText(data.action, 20);
     const chart = await ensureBooksChart(db);
+    const [cashAccounts, cashAccountMap] = await Promise.all([db.ref("/cfAccounts").get().then((x) => x.val() || {}), db.ref("/books/config/cashAccountMap").get().then((x) => x.val() || {})]);
+    const linkedAccountIds = (code) => BankLedgerLink.accountsForCode(code, cashAccounts, cashAccountMap);
     if (action === "initialize" || action === "list" || !action) {
+      const resolvedLinks = BankLedgerLink.resolveCashAccountCodes(cashAccounts, cashAccountMap), missingLinks = {};
+      Object.keys(resolvedLinks).forEach((id) => { if (cashAccountMap[id] !== resolvedLinks[id]) missingLinks[`books/config/cashAccountMap/${id}`] = resolvedLinks[id]; });
+      if (Object.keys(missingLinks).length) await db.ref().update(missingLinks);
       const meta = await db.ref("/books/monthlyNetMeta").get();
       if (!meta.exists()) await rebuildBooksMonthlyNet(db, (/* download-ok: fallback monthly totals have never been built */await db.ref("/books/journal").get()).val() || {});
       return {chart: chart, managerEmail: actor.email};
@@ -4302,10 +4329,22 @@ exports.manageBooksAccount = onCall(
       const clean = cleanAccount(data);
       const ref = db.ref(`/booksChart/${clean.code}`);
       const old = (await ref.get()).val();
+      const linked = linkedAccountIds(clean.code);
+      let guard;
+      try { guard = BankLedgerLink.chartChangeGuard({action, code: clean.code, existing: old, linkedAccountIds: linked}); }
+      catch (error) { if (error instanceof BankLedgerLink.LinkError) throw new HttpsError(error.status, error.message); throw error; }
       const isSystem = !!(old && old.system === true);
-      const type = isSystem ? old.type : clean.type;
-      const record = {code: clean.code, name: clean.name, type: type, note: clean.note, active: data.active === false ? false : (old ? old.active !== false : true), system: isSystem, sensitive: !!(old && old.sensitive === true), createdAt: (old && old.createdAt) || now, createdBy: (old && old.createdBy) || actor.uid, updatedAt: now, updatedBy: actor.uid, updatedByEmail: actor.email, schemaVersion: 1};
-      await ref.set(record);
+      const type = isSystem ? old.type : (guard.forceType || clean.type);
+      const record = {code: clean.code, name: clean.name, type: type, note: clean.note, active: data.active === false ? false : (old ? old.active !== false : true), system: isSystem, sensitive: !!(old && old.sensitive === true) || linked.length > 0, createdAt: (old && old.createdAt) || now, createdBy: (old && old.createdBy) || actor.uid, updatedAt: now, updatedBy: actor.uid, updatedByEmail: actor.email, schemaVersion: 1};
+      if (old && old.bankAccountId) record.bankAccountId = old.bankAccountId;
+      const chartWrites = {[`booksChart/${clean.code}`]: record};
+      // A linked bank keeps one name in both places.
+      if (guard.syncName && !isSystem && cashAccounts[linked[0]] && cashAccounts[linked[0]].name !== clean.name) {
+        const duplicate = Object.keys(cashAccounts).some((key) => key !== linked[0] && String(cashAccounts[key] && cashAccounts[key].name || "").trim().toLowerCase() === clean.name.trim().toLowerCase());
+        if (duplicate) throw new HttpsError("already-exists", "Another bank or cash account already uses this name.");
+        chartWrites[`cfAccounts/${linked[0]}/name`] = clean.name; chartWrites[`cfAccounts/${linked[0]}/updatedAt`] = now;
+      }
+      await db.ref().update(chartWrites);
       await db.ref(`/operationalAudit/${now}_booksacct_${old ? "edit" : "add"}_${clean.code}`).set(operationalAuditRecord(old ? "edit_books_account" : "add_books_account", "booksChart", clean.code, actor, {name: record.name, type: record.type, email: actor.email}));
       return {account: record, created: !old};
     }
@@ -4316,8 +4355,17 @@ exports.manageBooksAccount = onCall(
       const old = (await ref.get()).val();
       if (!old) throw new HttpsError("not-found", `Books account ${code} was not found.`);
       if (action === "deactivate" && old.system === true) throw new HttpsError("failed-precondition", "System accounts are required by the ledger and can\u2019t be deactivated. Rename it instead if needed.");
-      const active = action === "reactivate";
-      await ref.update({active: active, updatedAt: now, updatedBy: actor.uid, updatedByEmail: actor.email});
+      const active = action === "reactivate", linked = linkedAccountIds(code), statusWrites = {[`booksChart/${code}/active`]: active, [`booksChart/${code}/updatedAt`]: now, [`booksChart/${code}/updatedBy`]: actor.uid, [`booksChart/${code}/updatedByEmail`]: actor.email};
+      if (linked.length) {
+        // A bank account is closed only when its money is gone, so no balance is hidden from payment screens.
+        if (!active) {
+          const current = await currentCashBalances(db), cents = (current.balances && current.balances.cashAccountCents) || {};
+          const open = linked.filter((id) => Math.abs(Number(cents[id] || 0)) >= 1);
+          if (open.length) throw new HttpsError("failed-precondition", `Transfer the remaining balance out of ${open.map((id) => cashAccounts[id] && cashAccounts[id].name || id).join(", ")} before deactivating Finance Books ${code}.`);
+        }
+        linked.forEach((id) => { statusWrites[`cfAccounts/${id}/active`] = active; statusWrites[`cfAccounts/${id}/updatedAt`] = now; });
+      }
+      await db.ref().update(statusWrites);
       await db.ref(`/operationalAudit/${now}_booksacct_${action}_${code}`).set(operationalAuditRecord(action + "_books_account", "booksChart", code, actor, {email: actor.email}));
       return {account: Object.assign({}, old, {active: active})};
     }
@@ -4327,6 +4375,7 @@ exports.manageBooksAccount = onCall(
       for (const row of rows) {
         let clean;
         try { clean = cleanAccount(row); } catch (e) { results.skipped.push({code: row && row.code, reason: e.message}); continue; }
+        if (BankLedgerLink.isBankLedgerCode(clean.code) && !chart[clean.code]) { results.skipped.push({code: clean.code, reason: "Bank and e-wallet codes are added with + Add bank account."}); continue; }
         const existing = (await db.ref(`/booksChart/${clean.code}`).get()).val();
         if (existing) {
           if (existing.name !== clean.name || existing.type !== clean.type) results.conflicts.push({code: clean.code, server: {name: existing.name, type: existing.type}, local: {name: clean.name, type: clean.type}});
@@ -4494,7 +4543,7 @@ exports.auditFinancialControls = onCall(
     let unsettledValue=0,unsettledCount=0;Object.keys(orders).forEach((id)=>{const o=orders[id]||{},status=o.status==="Archived"?o.prevStatus:o.status,platform=["grabfood","foodpanda"].includes(String(o.channel||"").toLowerCase());if(!o.voided&&["Completed","Received"].includes(status)&&o.paymentStatus!=="pending"&&!movements[`sale_${id}`])issues.push({severity:"critical",kind:"sale_not_posted",source:id,amount:Financial.money(o.total)});if(platform&&!o.voided&&(o.settlementStatus||"unsettled")!=="settled"){unsettledCount++;unsettledValue=Financial.money(unsettledValue+Financial.money(o.netPlatform));}Financial.unmappedOrderPayments(o,accounts).forEach((p)=>issues.push({severity:"warning",kind:"unmapped_payment_method",source:id,detail:financeText(p.method,60),amount:Financial.money(p.amount)}));});
     Object.keys(payouts).forEach((id)=>{const p=payouts[id]||{},movementId=p.movementId||`payout_${id}`,channel=financeText(p.channel,40)||"Platform",payoutDate=financeText(p.payoutDate,10)||financeDateFromTimestamp(Number(p.settledAt)||Date.now()),account=accounts[p.accountId]||{},accountName=financeText(account.name,80)||"the selected receiving account",sourceLabel=`${channel} payout · ${payoutDate} · ${Financial.money(p.actualPayout).toFixed(2)}`;if(!movements[movementId])issues.push({severity:"critical",kind:"payout_movement_missing",source:id,sourceLabel,amount:Financial.money(p.expectedNet)});if(p.reversed&&p.depositMovementId&&!p.depositReversalMovementId)issues.push({severity:"critical",kind:"reversed_payout_cash_not_reversed",source:id,sourceLabel,amount:Financial.money(p.actualPayout)});if(p.depositMovementId&&!p.depositReference)issues.push({severity:"warning",kind:"payout_deposit_missing_reference",source:id,sourceLabel,detail:`Missing bank or platform reference for the ${channel} payout dated ${payoutDate} to ${accountName}.`,amount:Financial.money(p.actualPayout)});if(!p.reversed)(p.orderIds||[]).forEach((orderId)=>{const o=orders[orderId];if(!o||o.payoutId!==id||(o.settlementStatus||"unsettled")!=="settled")issues.push({severity:"critical",kind:"payout_order_link_mismatch",source:id,sourceLabel,detail:String(orderId)});});});
     const ledgerPlatform={grabfood:0,foodpanda:0};Object.values(movements).forEach((m)=>(m&&m.lines||[]).forEach((line)=>{for(const channel of ["grabfood","foodpanda"])if(line.account===`asset:platform_receivable:${channel}`)ledgerPlatform[channel]=Financial.money(ledgerPlatform[channel]+Financial.money(line.debit)-Financial.money(line.credit));}));const ledgerPlatformTotal=Financial.money(ledgerPlatform.grabfood+ledgerPlatform.foodpanda),platformDifference=Financial.money(ledgerPlatformTotal-unsettledValue);if(Math.abs(platformDifference)>0.009)issues.push({severity:"critical",kind:"platform_ar_control_mismatch",source:"platform_receivables",amount:platformDifference,expected:unsettledValue,actual:ledgerPlatformTotal});
-    const codes={};Object.keys(accounts).forEach((id)=>{const code=BooksBridge.cashCodeForAccount(accounts[id]);(codes[code]||(codes[code]=[])).push(id);});Object.keys(codes).forEach((code)=>{if(codes[code].length>1)issues.push({severity:"critical",kind:"duplicate_cash_account_code",source:code,detail:codes[code].join(", ")});});
+    const codes={},resolvedCashCodes=BankLedgerLink.resolveCashAccountCodes(accounts,(await db.ref('/books/config/cashAccountMap').get()).val()||{});Object.keys(accounts).forEach((id)=>{const code=resolvedCashCodes[id];(codes[code]||(codes[code]=[])).push(id);});Object.keys(codes).forEach((code)=>{if(codes[code].length>1)issues.push({severity:"critical",kind:"duplicate_cash_account_code",source:code,detail:codes[code].join(", ")});});
     const floatControl=resolveRegisterFloat(snaps[9].val()||{},snaps[10].val()||{});if(Math.abs(floatControl.amount-4000)>.009)issues.push({severity:"warning",kind:"register_float_differs_from_control",source:floatControl.source,amount:floatControl.amount,expected:4000});
     let custodyValue=0,custodyCount=0;Object.keys(custody).forEach((id)=>{const rem=Financial.money(custody[id].remaining);if(rem>0){custodyCount++;custodyValue=Financial.money(custodyValue+rem);}});let undepositedLedgerValue=0;Object.values(movements).forEach((m)=>(m&&m.lines||[]).forEach((line)=>{if(line.account==="asset:cash_awaiting_deposit")undepositedLedgerValue=Financial.money(undepositedLedgerValue+(Number(line.debit)||0)-(Number(line.credit)||0));}));const undepositedDifference=Financial.money(undepositedLedgerValue-custodyValue);if(Math.abs(undepositedDifference)>0.009)issues.push({severity:"critical",kind:"undeposited_subledger_mismatch",source:"cashCustody",detail:`Finance Books ${undepositedLedgerValue.toFixed(2)}; custody subledger ${custodyValue.toFixed(2)}`,amount:undepositedDifference,expected:custodyValue,actual:undepositedLedgerValue});const openAr=Object.values(ars).filter((x)=>x&&x.status==="open"),openAp=Object.values(aps).filter((x)=>x&&x.status==="open"),undepositedPayouts=Object.values(payouts).filter((x)=>x&&!x.reversed&&!x.depositMovementId&&Financial.money(x.actualPayout)>0);
     // --- Additive control checks (read-only; each guarded so a failure degrades, never breaks the audit) ---

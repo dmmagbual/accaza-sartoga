@@ -134,7 +134,7 @@ const DEFAULT_BOOKS_CHART_MANAGERS=["danilomagbual@gmail.com","contact.mariadani
 function booksManagerKey(email){return String(email||"").toLowerCase().replace(/[^a-z0-9]+/g,"_");}
 async function ensureBooksChartManagers(db){const ref=db.ref("/config/booksChartManagers");const snap=await ref.get();let current=snap.val();if(!current||typeof current!=="object"||!Object.keys(current).length){const seed={};DEFAULT_BOOKS_CHART_MANAGERS.forEach(function(email){seed[booksManagerKey(email)]={email:String(email).toLowerCase(),active:true,seededAt:Date.now()};});await ref.set(seed);current=seed;}const allow=new Set();Object.keys(current).forEach(function(k){const row=current[k];if(row&&row.active!==false&&row.email)allow.add(String(row.email).toLowerCase());});return allow;}
 async function requireBooksChartManager(db,request){const portal=await requirePortalUser(db,request);const email=String(request.auth&&request.auth.token&&request.auth.token.email||"").toLowerCase();const allow=await ensureBooksChartManagers(db);if(!email||!allow.has(email))throw new HttpsError("permission-denied","Only the finance owners can manage the chart of accounts.");return Object.assign({},portal,{email:email});}
-function booksCodeAccount(code, accounts, booksChart) {
+function booksCodeAccount(code, accounts, booksChart, cashAccountMap) {
   code = financeText(code, 4);
   if (!/^\d{4}$/.test(code)) throw new HttpsError("invalid-argument", "Every journal line requires a valid four-digit account code.");
   if (code === "1030") code = "1001";
@@ -150,10 +150,10 @@ function booksCodeAccount(code, accounts, booksChart) {
   if (code === "1005") return {account:"asset:register_float", cashKey:"float"};
   if (code === "1001") return {account:"asset:cash_awaiting_deposit", cashKey:"undeposited"};
   if (code === "1040") return {account:"asset:petty_cash", cashKey:"petty"};
-  const matches = Object.keys(accounts || {}).filter((id) => BooksBridge.cashCodeForAccount(accounts[id]) === code);
+  const matches = BankLedgerLink.accountsForCode(code, accounts, cashAccountMap);
   if (matches.length > 1) throw new HttpsError("failed-precondition", `Cash account code ${code} is assigned to more than one cash account.`);
   if (matches.length === 1) return {account:`asset:cash_account:${matches[0]}`, cashKey:matches[0]};
-  if (/^(1010|1011|1012|1013|1014|1020|1021)$/.test(code)) throw new HttpsError("failed-precondition", `Cash account code ${code} is not linked to a live cash account.`);
+  if (/^(1010|1011|1012|1013|1014|1020|1021)$/.test(code) || Object.values(cashAccountMap || {}).includes(code)) throw new HttpsError("failed-precondition", `Cash account code ${code} is not linked to a live cash account.`);
   return {account:`coa:${code}`, cashKey:""};
 }
 async function prepareManualBooksJournal(db, data, accounts, actor, allowedLinkedPayable) {
@@ -161,8 +161,8 @@ async function prepareManualBooksJournal(db, data, accounts, actor, allowedLinke
   await assertAccountingPeriodOpen(db, date, "posting or correcting a manual journal");
   if(!memo)throw new HttpsError("invalid-argument","Memo / description is required.");
   if(rawLines.length<2||rawLines.length>20)throw new HttpsError("invalid-argument","A journal requires between two and twenty lines.");
-  const lines=[],cashLines=[];let debit=0,credit=0;const booksChart=await ensureBooksChart(db);
-  rawLines.forEach((row,index)=>{const dr=Financial.money(row&&row.debit),cr=Financial.money(row&&row.credit);if((dr>0&&cr>0)||(!(dr>0)&&!(cr>0)))throw new HttpsError("invalid-argument",`Journal line ${index+1} must contain either a debit or a credit.`);const mapped=booksCodeAccount(row.code,accounts,booksChart);debit=Financial.money(debit+dr);credit=Financial.money(credit+cr);lines.push(Financial.line(mapped.account,dr,cr,memo));if(mapped.cashKey)cashLines.push({mapped,dr,cr,index});});
+  const lines=[],cashLines=[];let debit=0,credit=0;const booksChart=await ensureBooksChart(db),cashAccountMap=(await db.ref('/books/config/cashAccountMap').get()).val()||{};
+  rawLines.forEach((row,index)=>{const dr=Financial.money(row&&row.debit),cr=Financial.money(row&&row.credit);if((dr>0&&cr>0)||(!(dr>0)&&!(cr>0)))throw new HttpsError("invalid-argument",`Journal line ${index+1} must contain either a debit or a credit.`);const mapped=booksCodeAccount(row.code,accounts,booksChart,cashAccountMap);debit=Financial.money(debit+dr);credit=Financial.money(credit+cr);lines.push(Financial.line(mapped.account,dr,cr,memo));if(mapped.cashKey)cashLines.push({mapped,dr,cr,index});});
   if(Math.abs(debit-credit)>0.009||!(debit>0))throw new HttpsError("invalid-argument","Journal debits and credits must balance.");
   const payableLines=rawLines.filter((row)=>String(row&&row.code||"")==="2000"),linkedPayableId=payableLines.length?financeKey(data.linkedPayableId,"Linked payable ID"):"";let linkedPayable=null;
   if(payableLines.length>1)throw new HttpsError("invalid-argument","A manual journal may contain only one Accounts Payable control line.");
