@@ -7,23 +7,12 @@ const REGISTER_ACCOUNT = "asset:register_cash";
 const UNDEPOSITED_ACCOUNT = "asset:cash_awaiting_deposit";
 const REVOLVING_ACCOUNT = "asset:petty_cash";
 const CASH_ACCOUNT_PREFIX = "asset:cash_account:";
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
-function cents(value) {
-  return Math.round((Number(value) || 0) * 100);
-}
-
-function pesos(value) {
-  return Financial.money((Number(value) || 0) / 100);
-}
-
-function emptyDelta() {
-  return {registerCents: 0, undepositedCents: 0, revolvingCents: 0, cashAccountCents: {}};
-}
-
-function emptyBalances() {
-  return {registerCents: 0, undepositedCents: 0, revolvingCents: 0, cashAccountCents: {}};
-}
+function cents(value) { return Math.round((Number(value) || 0) * 100); }
+function pesos(value) { return Financial.money((Number(value) || 0) / 100); }
+function emptyDelta() { return {registerCents: 0, undepositedCents: 0, revolvingCents: 0, cashAccountCents: {}}; }
+function emptyBalances() { return {registerCents: 0, undepositedCents: 0, revolvingCents: 0, cashAccountCents: {}}; }
 
 function addDelta(target, delta, sign = 1) {
   if (!target || !delta) return target;
@@ -54,11 +43,9 @@ function movementDelta(movement) {
   return delta;
 }
 
-function fingerprint(movement) {
-  return crypto.createHash("sha256").update(JSON.stringify(movement == null ? null : movement)).digest("hex");
-}
+function fingerprint(value) { return crypto.createHash("sha256").update(JSON.stringify(value == null ? null : value)).digest("hex"); }
 
-function snapshotFromMovements(movements, now = Date.now()) {
+function splitSnapshotFromMovements(movements, now = Date.now()) {
   const balances = emptyBalances(), applied = {};
   Object.keys(movements || {}).forEach((id) => {
     const movement = movements[id] || {};
@@ -66,33 +53,36 @@ function snapshotFromMovements(movements, now = Date.now()) {
     addDelta(balances, delta);
     applied[id] = {fingerprint: fingerprint(movement), delta};
   });
-  return {schemaVersion: SCHEMA_VERSION, complete: true, balances, applied, meta: {schemaVersion: SCHEMA_VERSION, complete: true, movementCount: Object.keys(applied).length, builtAt: now, updatedAt: now}};
+  const count = Object.keys(applied).length;
+  return {
+    summary: {schemaVersion: SCHEMA_VERSION, complete: true, balances, meta: {schemaVersion: SCHEMA_VERSION, complete: true, movementCount: count, builtAt: now, updatedAt: now}},
+    applied,
+  };
 }
 
-// Returns undefined when the event was already applied, allowing an RTDB
-// transaction to abort without writing. The applied movement delta makes
-// retries and in-place audited edits idempotent.
-function applyEvent(snapshot, movementId, before, after, now = Date.now()) {
-  if (!snapshot || snapshot.schemaVersion !== SCHEMA_VERSION || snapshot.complete !== true) return undefined;
-  const id = String(movementId || "");
-  if (!id) return undefined;
-  const next = snapshot;
+function snapshotFromMovements(movements, now = Date.now()) { return splitSnapshotFromMovements(movements, now).summary; }
+
+function applyContribution(summary, prior, after, now = Date.now()) {
+  if (!summary || summary.schemaVersion !== SCHEMA_VERSION || summary.complete !== true) return null;
+  const next = JSON.parse(JSON.stringify(summary));
   next.balances = next.balances || emptyBalances();
   next.balances.cashAccountCents = next.balances.cashAccountCents || {};
-  next.applied = next.applied || {};
-  const nextFingerprint = after == null ? fingerprint(null) : fingerprint(after);
-  const prior = next.applied[id];
-  if (prior && prior.fingerprint === nextFingerprint) return undefined;
   if (prior) addDelta(next.balances, prior.delta, -1);
-  if (after == null) delete next.applied[id];
-  else {const delta = movementDelta(after); addDelta(next.balances, delta); next.applied[id] = {fingerprint: nextFingerprint, delta};}
-  next.meta = Object.assign({}, next.meta || {}, {schemaVersion: SCHEMA_VERSION, complete: true, movementCount: Object.keys(next.applied).length, updatedAt: now});
-  return next;
+  const applied = after == null ? null : {fingerprint: fingerprint(after), delta: movementDelta(after)};
+  if (applied) addDelta(next.balances, applied.delta);
+  const priorCount = Number(next.meta && next.meta.movementCount) || 0;
+  const movementCount = Math.max(0, priorCount + (prior ? -1 : 0) + (applied ? 1 : 0));
+  next.meta = Object.assign({}, next.meta || {}, {schemaVersion: SCHEMA_VERSION, complete: true, movementCount, updatedAt: now});
+  return {summary: next, applied};
+}
+
+function contributionMatches(applied, movement) {
+  if (movement == null) return !applied;
+  return Boolean(applied && applied.fingerprint === fingerprint(movement));
 }
 
 function resolveFloat(settings, activeShift) {
-  settings = settings || {};
-  activeShift = activeShift || {};
+  settings = settings || {}; activeShift = activeShift || {};
   if (settings.fixedFloat != null && Financial.money(settings.fixedFloat) > 0) return Financial.money(settings.fixedFloat);
   const retained = activeShift.retainedFloat != null ? activeShift.retainedFloat : activeShift.openingFloat;
   if (Financial.money(retained) > 0) return Financial.money(retained);
@@ -103,41 +93,12 @@ function clientBalances(snapshot, settings, activeShift) {
   const balances = snapshot && snapshot.balances || emptyBalances();
   const registerGross = pesos(balances.registerCents);
   const registerFloatAmount = resolveFloat(settings, activeShift);
-  const out = {
-    cash_on_hand: Financial.money(Math.max(0, registerGross - registerFloatAmount)),
-    undeposited: pesos(balances.undepositedCents),
-    revolving: pesos(balances.revolvingCents),
-    cash_float: registerFloatAmount,
-  };
+  const out = {cash_on_hand: Financial.money(Math.max(0, registerGross - registerFloatAmount)), undeposited: pesos(balances.undepositedCents), revolving: pesos(balances.revolvingCents), cash_float: registerFloatAmount};
   Object.keys(balances.cashAccountCents || {}).forEach((id) => {out[id] = pesos(balances.cashAccountCents[id]);});
   return {balances: out, registerFloatAmount, registerGross, source: "cashBalanceSummary", summary: Object.assign({}, snapshot && snapshot.meta || {})};
 }
 
-function pendingRecord(before, after, now = Date.now()) {
-  return {fingerprint: fingerprint(after == null ? null : after), beforeDelta: movementDelta(before), afterDelta: movementDelta(after), afterExists: after != null, updatedAt: now};
-}
+function pendingRecord(movementId, now = Date.now()) { return {movementId: String(movementId || ""), queuedAt: now}; }
+function pendingKey(eventId, movementId) { return fingerprint(`${String(eventId || "event")}:${String(movementId || "")}`).slice(0, 40); }
 
-function applyPending(snapshot, pending, now = Date.now()) {
-  Object.keys(pending || {}).sort().forEach((id) => {
-    const row = pending[id] || {};
-    const prior = snapshot.applied && snapshot.applied[id];
-    if (prior && prior.fingerprint === row.fingerprint) return;
-    if (prior) addDelta(snapshot.balances, prior.delta, -1);
-    if (row.afterExists) {
-      const delta = row.afterDelta || emptyDelta();
-      addDelta(snapshot.balances, delta);
-      snapshot.applied = snapshot.applied || {};
-      snapshot.applied[id] = {fingerprint: row.fingerprint, delta};
-    } else if (snapshot.applied) delete snapshot.applied[id];
-  });
-  snapshot.meta = Object.assign({}, snapshot.meta || {}, {schemaVersion: SCHEMA_VERSION, complete: true, movementCount: Object.keys(snapshot.applied || {}).length, updatedAt: now});
-  return snapshot;
-}
-
-function eventApplied(snapshot, movementId, after) {
-  const row = snapshot && snapshot.applied && snapshot.applied[String(movementId || "")];
-  if (after == null) return !row;
-  return Boolean(row && row.fingerprint === fingerprint(after));
-}
-
-module.exports = {SCHEMA_VERSION, cents, pesos, emptyDelta, emptyBalances, addDelta, movementDelta, fingerprint, snapshotFromMovements, applyEvent, resolveFloat, clientBalances, pendingRecord, applyPending, eventApplied};
+module.exports = {SCHEMA_VERSION, cents, pesos, emptyDelta, emptyBalances, addDelta, movementDelta, fingerprint, splitSnapshotFromMovements, snapshotFromMovements, applyContribution, contributionMatches, resolveFloat, clientBalances, pendingRecord, pendingKey};

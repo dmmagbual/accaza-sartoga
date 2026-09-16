@@ -39,21 +39,21 @@ const edited = {lines: [
   {account: 'asset:register_cash', debit: 125, credit: 0},
   {account: 'revenue:sales', debit: 0, credit: 125},
 ]};
-const applied = CashBalances.applyEvent(snapshot, 'sale_1', movements.sale_1, edited, 456);
-expect(applied && applied.balances.registerCents === 12500, 'movement edits must replace, not stack, the prior delta');
-expect(CashBalances.applyEvent(applied, 'sale_1', edited, edited, 789) === undefined, 'replayed movement event must be idempotent');
-expect(CashBalances.eventApplied(applied, 'sale_1', edited), 'the trigger must verify the exact applied movement fingerprint');
-const deleted = CashBalances.applyEvent(applied, 'deposit_1', movements.deposit_1, null, 999);
-expect(deleted && !deleted.applied.deposit_1 && deleted.balances.cashAccountCents.gcash === undefined, 'movement deletion must remove its cached delta');
-expect(CashBalances.eventApplied(deleted, 'deposit_1', null), 'a deleted movement is applied only when its cached row is absent');
-
-const stale = CashBalances.snapshotFromMovements({sale_1: movements.sale_1}, 1000);
-delete stale.applied.sale_1;
-expect(!CashBalances.eventApplied(stale, 'sale_1', movements.sale_1), 'a complete flag must not conceal a missing movement');
+const split = CashBalances.splitSnapshotFromMovements(movements, 123);
+expect(!Object.hasOwn(snapshot, 'applied'), 'the hot cash summary must not contain the growing applied-movement history');
+const editedResult = CashBalances.applyContribution(snapshot, split.applied.sale_1, edited, 456);
+expect(editedResult.summary.balances.registerCents === 12500, 'movement edits must replace, not stack, the prior delta');
+expect(CashBalances.contributionMatches(editedResult.applied, edited), 'the exact edited movement fingerprint must be retained separately');
+const deletedResult = CashBalances.applyContribution(editedResult.summary, split.applied.deposit_1, null, 999);
+expect(deletedResult.applied === null && deletedResult.summary.balances.cashAccountCents.gcash === undefined, 'movement deletion must remove its cached delta');
+expect(CashBalances.contributionMatches(null, null), 'a deleted movement is applied only when its separate contribution is absent');
 
 expect(functions.includes('exports.getCurrentCashBalances'), 'server cash-balance callable is not bundled');
 expect(functions.includes('exports.updateCashBalanceSummary'), 'cash-balance summary trigger is not bundled');
-expect(functions.includes('Cash balance summary did not apply movement'), 'the trigger must fail and retry when its exact movement is absent');
+expect(functions.includes('cashBalanceSummaryApplied'), 'movement idempotency rows must be stored outside the hot summary');
+expect(functions.includes('cashBalanceSummaryProcessorLock'), 'cash summary updates must be serialized by a bounded lease');
+expect(functions.includes('limitToFirst(CASH_SUMMARY_BATCH_SIZE)'), 'pending recovery must use bounded queue reads');
+expect(!functions.includes('db.ref("/cashBalanceSummary").transaction'), 'the growing cash summary must not be downloaded inside RTDB transactions');
 expect(functions.includes('rebuildCashBalanceSummary'), 'a stale schema must force one authoritative full-journal rebuild');
 expect(functions.includes('ensureCashBalanceSummary'), 'all cash-control callables must share one summary validation and recovery path');
 expect(undepositedControl.includes('summaryMeta.schemaVersion!==CashBalances.SCHEMA_VERSION'), 'Undeposited Collection must reject a stale summary schema');

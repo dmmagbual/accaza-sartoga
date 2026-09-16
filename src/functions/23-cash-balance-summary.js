@@ -1,34 +1,73 @@
 const CashBalances = require("./lib/cash-balances");
 
+const CASH_SUMMARY_BATCH_SIZE = 100;
+const CASH_SUMMARY_LOCK_MS = 120000;
+
 async function rebuildCashBalanceSummary(db) {
   const movements = (await db.ref("/financialMovements").get()).val() || {};
-  const rebuilt = CashBalances.snapshotFromMovements(movements);
-  await db.ref("/cashBalanceSummary").transaction((current) => current && current.schemaVersion === CashBalances.SCHEMA_VERSION && current.complete === true ? current : rebuilt, undefined, false);
-  return (await db.ref("/cashBalanceSummary").get()).val() || rebuilt;
+  const rebuilt = CashBalances.splitSnapshotFromMovements(movements);
+  await db.ref().update({cashBalanceSummary: rebuilt.summary, cashBalanceSummaryApplied: rebuilt.applied});
+  return rebuilt.summary;
+}
+
+async function acquireCashSummaryLock(db, owner) {
+  const now = Date.now();
+  const result = await db.ref("/cashBalanceSummaryProcessorLock").transaction((current) => {
+    if (current && current.owner !== owner && Number(current.expiresAt) > now) return;
+    return {owner, acquiredAt: now, expiresAt: now + CASH_SUMMARY_LOCK_MS};
+  }, undefined, false);
+  return Boolean(result.committed && result.snapshot.val() && result.snapshot.val().owner === owner);
+}
+
+async function releaseCashSummaryLock(db, owner) {
+  await db.ref("/cashBalanceSummaryProcessorLock").transaction((current) => current && current.owner === owner ? null : current, undefined, false);
+}
+
+async function processCashBalancePending(db, owner) {
+  if (!await acquireCashSummaryLock(db, owner)) return false;
+  try {
+    let summary = (await db.ref("/cashBalanceSummary").get()).val() || {};
+    if (summary.schemaVersion !== CashBalances.SCHEMA_VERSION || summary.complete !== true || summary.applied) summary = await rebuildCashBalanceSummary(db);
+    for (let batch = 0; batch < 20; batch += 1) {
+      const pendingSnap = await db.ref("/cashBalanceSummaryPending").limitToFirst(CASH_SUMMARY_BATCH_SIZE).get();
+      const pending = pendingSnap.val() || {};
+      const pendingKeys = Object.keys(pending);
+      if (!pendingKeys.length) return true;
+      const movementIds = [...new Set(pendingKeys.map((key) => String(pending[key] && pending[key].movementId || key)).filter(Boolean))];
+      const rows = await Promise.all(movementIds.map(async (movementId) => {
+        const [movementSnap, appliedSnap] = await Promise.all([
+          db.ref(`/financialMovements/${movementId}`).get(),
+          db.ref(`/cashBalanceSummaryApplied/${movementId}`).get(),
+        ]);
+        return {movementId, movement: movementSnap.exists() ? movementSnap.val() : null, applied: appliedSnap.exists() ? appliedSnap.val() : null};
+      }));
+      const writes = {};
+      rows.forEach((row) => {
+        if (CashBalances.contributionMatches(row.applied, row.movement)) return;
+        const result = CashBalances.applyContribution(summary, row.applied, row.movement);
+        summary = result.summary;
+        writes[`cashBalanceSummaryApplied/${row.movementId}`] = result.applied;
+      });
+      writes.cashBalanceSummary = summary;
+      pendingKeys.forEach((key) => { writes[`cashBalanceSummaryPending/${key}`] = null; });
+      await db.ref().update(writes);
+      await db.ref("/cashBalanceSummaryProcessorLock").update({expiresAt: Date.now() + CASH_SUMMARY_LOCK_MS});
+    }
+    throw new Error("Cash balance pending queue exceeded the bounded drain limit.");
+  } finally {
+    await releaseCashSummaryLock(db, owner);
+  }
 }
 
 async function ensureCashBalanceSummary(db) {
   let summary = (await db.ref("/cashBalanceSummary").get()).val() || {};
-  if (summary.schemaVersion !== CashBalances.SCHEMA_VERSION || summary.complete !== true) summary = await rebuildCashBalanceSummary(db);
-  await applyPendingCashBalanceEvents(db);
-  return (await db.ref("/cashBalanceSummary").get()).val() || summary;
-}
-
-async function applyPendingCashBalanceEvents(db) {
-  const pendingRef = db.ref("/cashBalanceSummaryPending"), pendingSnap = await pendingRef.get();
-  const pending = pendingSnap.val() || {};
-  if (!Object.keys(pending).length) return;
-  await db.ref("/cashBalanceSummary").transaction((current) => {
-    if (!current || current.schemaVersion !== CashBalances.SCHEMA_VERSION || current.complete !== true) return current;
-    return CashBalances.applyPending(current, pending);
-  }, undefined, false);
-  const applied = (await db.ref("/cashBalanceSummary").get()).val() || {};
-  const appliedRows = applied.applied || {};
-  const writes = {};
-  Object.keys(pending).forEach((id) => {
-    if (appliedRows[id] && appliedRows[id].fingerprint === pending[id].fingerprint) writes[`cashBalanceSummaryPending/${id}`] = null;
-  });
-  if (Object.keys(writes).length) await db.ref().update(writes);
+  const pending = await db.ref("/cashBalanceSummaryPending").limitToFirst(1).get();
+  if (summary.schemaVersion !== CashBalances.SCHEMA_VERSION || summary.complete !== true || summary.applied || pending.exists()) {
+    await processCashBalancePending(db, `read_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+    summary = (await db.ref("/cashBalanceSummary").get()).val() || {};
+  }
+  if (summary.schemaVersion !== CashBalances.SCHEMA_VERSION || summary.complete !== true) throw new Error("Cash balance summary is not ready.");
+  return summary;
 }
 
 exports.getCurrentCashBalances = onCall(
@@ -36,38 +75,19 @@ exports.getCurrentCashBalances = onCall(
   async (request) => {
     const db = getDatabase();
     await requirePortalPermission(db, request, ["purchases", "cashflow", "payables"]);
-    const [summaryMetaSnap, balancesSnap, settingsSnap, activeShiftSnap, pendingProbeSnap] = await Promise.all([
-      db.ref("/cashBalanceSummary/meta").get(), db.ref("/cashBalanceSummary/balances").get(), db.ref("/posSettings").get(), db.ref("/posActiveShift").get(), db.ref("/cashBalanceSummaryPending").limitToFirst(1).get(),
-    ]);
-    const settings = settingsSnap.val() || {}, activeShift = activeShiftSnap.val() || {};
-    const meta = summaryMetaSnap.val() || {};
-    if (meta.schemaVersion !== CashBalances.SCHEMA_VERSION || meta.complete !== true || pendingProbeSnap.exists()) {
-      const summary = await ensureCashBalanceSummary(db);
-      return CashBalances.clientBalances(summary, settings, activeShift);
-    }
-    return CashBalances.clientBalances({balances: balancesSnap.val() || {}, meta}, settings, activeShift);
+    const [settingsSnap, activeShiftSnap] = await Promise.all([db.ref("/posSettings").get(), db.ref("/posActiveShift").get()]);
+    const summary = await ensureCashBalanceSummary(db);
+    return CashBalances.clientBalances(summary, settingsSnap.val() || {}, activeShiftSnap.val() || {});
   },
 );
 
 exports.updateCashBalanceSummary = onValueWritten(
-  {ref: "/financialMovements/{movementId}", region: ORDER_REGION, retry: true},
+  {ref: "/financialMovements/{movementId}", region: ORDER_REGION, retry: true, timeoutSeconds: 120, memory: "256MiB"},
   async (event) => {
     const db = getDatabase(), movementId = event.params.movementId;
-    const before = event.data.before.exists() ? event.data.before.val() : null;
-    const after = event.data.after.exists() ? event.data.after.val() : null;
-    if (before == null && after == null) return;
-    const fingerprint = CashBalances.fingerprint(after);
-    const pendingRef = db.ref(`/cashBalanceSummaryPending/${movementId}`);
-    await pendingRef.transaction((row) => row && row.fingerprint === fingerprint ? row : CashBalances.pendingRecord(before, after), undefined, false);
-    const apply = async () => db.ref("/cashBalanceSummary").transaction((current) => CashBalances.applyEvent(current, movementId, before, after), undefined, false);
-    await apply();
-    let current = (await db.ref("/cashBalanceSummary").get()).val() || {};
-    if (current.schemaVersion !== CashBalances.SCHEMA_VERSION || current.complete !== true) current = await rebuildCashBalanceSummary(db);
-    if (!CashBalances.eventApplied(current, movementId, after)) {
-      await apply();
-      current = (await db.ref("/cashBalanceSummary").get()).val() || {};
-    }
-    if (!CashBalances.eventApplied(current, movementId, after)) throw new Error(`Cash balance summary did not apply movement ${movementId}; retry retained.`);
-    await pendingRef.transaction((row) => row && row.fingerprint === fingerprint ? null : row, undefined, false);
+    if (!event.data.before.exists() && !event.data.after.exists()) return;
+    const queueKey = CashBalances.pendingKey(event.id, movementId);
+    await db.ref(`/cashBalanceSummaryPending/${queueKey}`).set(CashBalances.pendingRecord(movementId));
+    await processCashBalancePending(db, `event_${queueKey}`);
   },
 );
