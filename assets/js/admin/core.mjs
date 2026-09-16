@@ -1,11 +1,11 @@
 import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
-import{createSubscriptionHub}from"./realtime-hub.mjs?v=538";
-import{readSalesPeriod,periodKey}from'./sales-period-data.mjs?v=538';
+import{createSubscriptionHub}from"./realtime-hub.mjs?v=539";
+import{readSalesPeriod,periodKey}from'./sales-period-data.mjs?v=539';
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=538";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=539";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -109,7 +109,7 @@ window.__accaza={
   getProductionCertification:function(){return callables.getProductionCertification({});},
   getProductionValidation:function(){return callables.getProductionValidation({});},
   recordClientTelemetry:function(command){return callables.recordClientTelemetry(command);},
-  getOperationalExceptions:function(force){return callables.getOperationalExceptions({force:force===true});},
+  getOperationalExceptions:function(force){return callables.getOperationalExceptions({force:force===true,cached:true});},
   repairOrderInventoryMarker:function(orderId){return callables.repairOrderInventoryMarker({orderId:orderId});},
   runDatabaseBackupNow:function(){return callables.runDatabaseBackupNow({});},
   readBooksJournalRange:function(from,to){return get(query(ref(db,'books/journal'),orderByChild('date'),startAt(String(from)),endAt(String(to)))).then(function(s){return s.val()||{};});},

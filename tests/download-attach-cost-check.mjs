@@ -124,6 +124,9 @@ const report = [];
   assert.ok(meter.rows.length >= 1 && meter.rows.every((r) => r.path === 'staffMessages'), 'only the message node is touched');
   assert.ok(meter.rows.every((r) => r.bytes > 0 && r.bytes < size('staffMessages')), 'no read returns the full message history');
   assert.ok(meter.bytes() < size('staffMessages'), 'the windowed read is smaller than the full history');
+  // Exactly one download of the window: a get() bootstrap before the listen paid it twice.
+  assert.equal(meter.rows.length, 1, 'the message window is downloaded once per attach');
+  assert.equal(meter.bytes(), JSON.stringify(Object.fromEntries(inWindow)).length, 'the attach costs exactly the windowed messages');
   report.push(['Staff Inbox messages', size('staffMessages'), meter.bytes(), `${inWindow.length} of ${Object.keys(MESSAGES).length} messages are inside the 30-day window`]);
 }
 // 2. Staff receipts: a session used to read every staff member's receipt for every message.
@@ -150,7 +153,23 @@ const report = [];
   assert.ok(scoped <= size('posDeviceHealth'), 'a scoped shift read can never exceed the whole node');
   report.push(['Device health (one shift)', size('posDeviceHealth/SH1'), scoped, 'scoped to the open shift']);
 }
-// 5. A whole-node listener is what the growing list exists to prevent.
+// 5. Bounded report feeds (financialMovements, the latest 200) are downloaded once per attach.
+{
+  const MOVES = {};
+  for (let i = 0; i < 260; i += 1) MOVES[`mv_${String(i).padStart(4, '0')}`] = {occurredAt: NOW - i * 60000, type: 'order_sale', sourceId: `POS-${i}`, amount: 150, lines: [{account: 'asset:register_cash', debit: 150, credit: 0}, {account: 'revenue:sales', debit: 0, credit: 150}]};
+  WORLD.financialMovements = MOVES;
+  const hubMeter = createMeter(WORLD);
+  const hub = createSubscriptionHub({}, {...hubMeter.ops, lingerMs: 0});
+  hub.subscribe('financialMovements', () => {}, {scopes: ['cashflow']}); hub.authorize(); hub.activate('cashflow');
+  await new Promise((r) => setTimeout(r, 0));
+  const latest = Object.keys(MOVES).sort((a, b) => MOVES[a].occurredAt - MOVES[b].occurredAt).slice(-200);
+  const once = JSON.stringify(Object.fromEntries(latest.sort().map((k) => [k, MOVES[k]]))).length;
+  assert.equal(hubMeter.rows.length, 1, 'one listen, no separate get()');
+  assert.equal(hubMeter.bytes(), once, 'the attach costs exactly the latest 200 movements');
+  report.push(['Finance ledger feed (latest 200)', once * 2, hubMeter.bytes(), 'downloaded once per attach (was get() + listen)']);
+  delete WORLD.financialMovements;
+}
+// 6. A whole-node listener is what the growing list exists to prevent.
 {
   assert.ok(GROWING_PATHS.reviews && GROWING_PATHS.posDeviceHealth && GROWING_PATHS.staffReceiptIndex, 'the growing-node list still covers the audited nodes');
   for (const node of Object.keys(GROWING_PATHS)) assert.ok(!WINDOWED_PATHS[node] || true);

@@ -1,4 +1,4 @@
-import {salesStamp, periodKey} from './sales-period-data.mjs?v=538';
+import {salesStamp, periodKey} from './sales-period-data.mjs?v=539';
 
 // Session-only archive cache. A bounded server change journal lets every open
 // report share exact-record refreshes. Missing journal history forces reconciliation.

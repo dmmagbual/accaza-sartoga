@@ -219,6 +219,10 @@ function buildSingle(mv, cashMap, context) {
       correctsMovementId: String(mv.correctsMovementId || ""), correctionReplacementId: String(mv.correctionReplacementId || ""),
       linkedPayableId: String(mv.linkedPayableId || ""), voided: mv.voided === true, reason: String(mv.reason || mv.correctionReason || ""),
       revision: Number(mv.revision||0),
+      // Server stamp written on the movement and its journal entry when suspense is converted
+      // to a supplier advance. Carried here so a Books rebuild cannot erase it and re-offer the
+      // conversion.
+      ...(mv.supplierAdvanceConversionId ? {supplierAdvanceConversionId: String(mv.supplierAdvanceConversionId)} : {}),
     },
     unmapped,
   };

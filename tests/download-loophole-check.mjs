@@ -45,6 +45,7 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
     onChildRemoved(target, callback) {const l = {kind: 'removed', target, callback, stopped: false}; childListeners.push(l); return () => {l.stopped = true;};},
     get: async () => ({val: () => ({}), forEach: () => {}}),
     readHistoricalOrders: async (payload) => {historicalCalls.push(payload); return {orders: payload.mode === 'ids' ? Object.fromEntries(payload.ids.map((id) => [id, {id, total: 9}])) : {a: {id: 'a'}}, hasMore: false};},
+    lingerMs: 0, // detach immediately here; the linger window has its own check below
   };
   globalThis.window = {AccazaDate: {key: () => '2026-09-16'}, addEventListener() {}};
   const hub = createSubscriptionHub({}, ops);
@@ -77,6 +78,40 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   assert.equal(listeners.filter((l) => l.target.path !== 'historicalArchiveSync' && !l.stopped && !['.info/connected'].includes(l.target.path)).length, 0, 'leaving report tabs still detaches their onValue queries');
   assert.equal(childListeners.filter((l) => !l.stopped).length, 0, 'leaving report tabs also detaches per-child listeners');
   hub.deauthorize(); delete globalThis.window;
+}
+
+// 4b. Unused listeners linger before they detach, so bouncing between tabs does not
+// re-download the same query; sign-out and the linger timeout still detach them, and a
+// per-child path downloads its first snapshot once (one listen, no get()).
+{
+  const listens = [], gets = [];
+  let open = 0;
+  const track = (kind) => (target, cb, err, opts) => {const l = {kind, target, opts, stopped: false}; listens.push(l); open++; if (kind === 'value') queueMicrotask(() => {if (!l.stopped) cb({val: () => ({m1: {occurredAt: 1}})});}); return () => {if (!l.stopped) {l.stopped = true; open--;}};};
+  const ops = {ref: (_db, path) => ({path}), query: (target, ...parts) => Object.assign({}, target, ...parts),
+    orderByChild: (field) => ({field}), limitToLast: (limit) => ({limit}), startAt: (start) => ({start}), endAt: (end) => ({end}), endBefore: () => ({}),
+    onValue: track('value'), onChildAdded: track('added'), onChildChanged: track('changed'), onChildRemoved: track('removed'),
+    get: async (target) => {gets.push(target); return {val: () => ({})};}, readHistoricalOrders: async () => ({orders: {}, hasMore: false}), lingerMs: 40};
+  globalThis.window = {AccazaDate: {key: () => '2026-09-16'}, addEventListener() {}};
+  const hub = createSubscriptionHub({}, ops);
+  const seen = [];
+  hub.subscribe('financialMovements', (snap) => seen.push(Object.keys(snap.val())));
+  hub.authorize(); hub.activate('cashflow'); await tick(); await tick();
+  const firstListens = listens.length;
+  assert.equal(gets.length, 0, 'a per-child path takes its first snapshot from its own listen, not a separate get()');
+  assert.ok(listens.some((l) => l.kind === 'value' && l.opts && l.opts.onlyOnce), 'the first snapshot is a one-time value event on the same query');
+  assert.deepEqual(seen.at(-1), ['m1'], 'consumers receive the complete first snapshot');
+  hub.activate('pos'); await tick();
+  assert.equal(listens.filter((l) => l.target.path === 'financialMovements' && !l.stopped && l.kind !== 'value').length, 3, 'an unused listener lingers instead of detaching at once');
+  const renders = seen.length;
+  hub.activate('cashflow'); await tick();
+  assert.equal(listens.length, firstListens, 'returning within the linger window re-downloads nothing');
+  assert.equal(seen.length, renders + 1, 'the returning tab is rendered from the retained data');
+  hub.activate('pos'); await new Promise((r) => setTimeout(r, 80));
+  assert.equal(listens.filter((l) => l.target.path === 'financialMovements' && !l.stopped).length, 0, 'after the linger window the listener is detached');
+  hub.activate('cashflow'); await tick(); await tick();
+  hub.deauthorize();
+  assert.equal(listens.filter((l) => !l.stopped).length, 0, 'signing out detaches every listener immediately, lingering or not');
+  delete globalThis.window;
 }
 
 // 5. Stock Value journal basis equals the full journal for current- and past-month cutoffs.
@@ -129,7 +164,8 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   const legacyCopy = (id, qty, ageDays) => ({id, itemId: 'cup', qty, unitCost: 2, createdAt: now - ageDays * day, occurredAt: now - ageDays * day, type: 'sale_usage'});
   const applied = {};
   for (let i = 0; i < 300; i++) applied[`sale_old${i}_cup`] = legacyCopy(`sale_old${i}_cup`, -1, 30);
-  applied.sale_recent_cup = {projectedAt: now - day, version: 301};
+  applied.sale_recent_cup = {projectedAt: now - 3 * 3600000, version: 301}; // inside the 24 h window
+  applied.sale_two_day_marker_cup = {projectedAt: now - 2 * day, version: 300}; // outside it since 17 Sep 2026
   applied.sale_stale_marker_cup = {projectedAt: now - 30 * day, version: 5};
   const state = {inventory: {cup: {name: 'Cup', unit: 'pc', stock: 700, cost: 2, inventoryAccount: '1230', costAccount: '5030'}}, inventoryAccounting: {cup: {balance: 700, unitCost: 2, version: 302, applied}}, inventoryMovements: {}};
   for (let i = 0; i < 300; i++) if (i % 3) state.inventoryMovements[`sale_old${i}_cup`] = legacyCopy(`sale_old${i}_cup`, -1, 30);
@@ -149,6 +185,7 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   const keys = Object.keys(state.inventoryAccounting.cup.applied);
   assert(!keys.some((k) => k.startsWith('sale_old')), 'legacy copies older than the retention window are pruned after their projections are confirmed');
   assert(!keys.includes('sale_stale_marker_cup') && keys.includes('sale_recent_cup'), 'only markers older than the retention window are pruned');
+  assert(!keys.includes('sale_two_day_marker_cup') && api.INVENTORY_APPLIED_RETENTION_MS === 24 * 3600000, 'projected markers are kept for 24 hours, not 7 days');
   assert.deepEqual(state.inventoryAccounting.cup.applied.sale_new1_cup && Object.keys(state.inventoryAccounting.cup.applied.sale_new1_cup).sort(), ['projectedAt', 'version'], 'a projected movement keeps only a marker');
   for (let i = 0; i < 300; i++) assert(state.inventoryMovements[`sale_old${i}_cup`], 'missing legacy projections are restored before their copies are removed');
   assert(JSON.stringify(state.inventoryAccounting.cup).length < 1000, 'item accounting state is bounded');

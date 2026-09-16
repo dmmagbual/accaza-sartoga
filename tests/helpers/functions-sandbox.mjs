@@ -9,7 +9,7 @@ import {createRequire} from 'node:module';
 const root = new URL('../../', import.meta.url).pathname;
 const nodeRequire = createRequire(path.join(root, 'functions/index.js'));
 
-export function loadFunctions(db, {expose = [], now} = {}) {
+export function loadFunctions(db, {expose = [], now, libOverrides = {}} = {}) {
   class HttpsError extends Error { constructor(code, message, details) { super(message); this.code = code; this.details = details; } }
   const handler = (opts, fn) => (typeof opts === 'function' ? opts : fn);
   const stubs = {
@@ -26,6 +26,7 @@ export function loadFunctions(db, {expose = [], now} = {}) {
   };
   const req = (name) => {
     if (stubs[name]) return stubs[name];
+    if (libOverrides[name]) return libOverrides[name];
     if (name.startsWith('./lib/')) return nodeRequire(`./lib/${name.slice(6)}`);
     return nodeRequire(name);
   };
