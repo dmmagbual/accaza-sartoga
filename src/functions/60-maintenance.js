@@ -36,6 +36,10 @@ exports.pruneEphemeralNodes = onSchedule(
       if (ts && now - ts > 45 * DAY) mark(`orderCorrectionCommands/${rid}`);
     });
 
+    // functionRetryAttempts/{key} — failure counters of events that later succeeded
+    const staleAttempts = (await db.ref("/functionRetryAttempts").orderByChild("lastFailedAt").endAt(now - 2 * DAY).get()).val() || {};
+    Object.keys(staleAttempts).forEach((key) => mark(`${RetryGuard.ATTEMPTS_ROOT}/${key}`));
+
     // clientTelemetryDaily/{YYYY-MM-DD} — keep ~4 months
     const cutoffDay = financeDateFromTimestamp(now - 120 * DAY);
     const tel = /* download-ok: bounded pruned by this daily job */(await db.ref("/clientTelemetryDaily").get()).val() || {};

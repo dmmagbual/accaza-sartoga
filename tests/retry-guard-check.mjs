@@ -15,8 +15,10 @@ const fail = (message) => { throw new Error(message); };
 const HOUR = 3600000, now = Date.UTC(2026, 8, 16, 2);
 function harness() {
   const letters = [], logs = [];
-  const deps = {now: () => now, functionName: () => 'onOrderFinalize', recordDeadLetter: async (key, row) => { letters.push({key, row}); }, logError: (m, c) => logs.push({m, c})};
-  return {letters, logs, deps};
+  const counts = {};
+  const deps = {now: () => now, functionName: () => 'onOrderFinalize', recordDeadLetter: async (key, row) => { letters.push({key, row}); }, logError: (m, c) => logs.push({m, c}),
+    countFailure: async (key) => (counts[key] = (counts[key] || 0) + 1), clearFailures: async (key) => { delete counts[key]; }};
+  return {letters, logs, deps, counts};
 }
 const boom = async () => { throw new Error('Inventory movement quantity cannot be zero.'); };
 const event = (ageMs) => ({id: 'evt-1', time: new Date(now - ageMs).toISOString(), params: {orderId: 'POS-ZRYDBO'}});
@@ -26,6 +28,23 @@ const event = (ageMs) => ({id: 'evt-1', time: new Date(now - ageMs).toISOString(
   const h = harness(), handler = RetryGuard.guardRetryHandler('/orders/{orderId}', boom, h.deps);
   let threw = false; try { await handler(event(5 * 60000)); } catch (_e) { threw = true; }
   if (!threw || h.letters.length) fail('A fresh failing event must be rethrown for platform retry and must not be dead-lettered.');
+}
+// A failing event gets the first delivery plus 10 retries, then it is acknowledged, even when young.
+{
+  if (RetryGuard.MAX_RETRIES !== 10 || RetryGuard.MAX_ATTEMPTS !== 11) fail('Retried events must stop after 10 retries.');
+  const h = harness(), handler = RetryGuard.guardRetryHandler('/orders/{orderId}', boom, h.deps);
+  let thrown = 0;
+  for (let attempt = 1; attempt <= 11; attempt++) { try { if (await handler(event(60000)) === null && attempt !== 11) fail(`Attempt ${attempt} must still be retried.`); } catch (_e) { thrown++; } }
+  if (thrown !== 10 || h.letters.length !== 1 || h.letters[0].row.attempts !== 11) fail('Ten retries are allowed; the eleventh failure is dead-lettered with its attempt count.');
+  if (Object.keys(h.counts).length) fail('The failure counter is cleared once the event is dead-lettered.');
+}
+// If the counter cannot be written, a young event keeps retrying and the age backstop still applies.
+{
+  const h = harness(); h.deps.countFailure = async () => { throw new Error('rtdb unavailable'); };
+  const handler = RetryGuard.guardRetryHandler('/x', boom, h.deps);
+  let threw = false; try { await handler(event(60000)); } catch (_e) { threw = true; }
+  if (!threw || h.letters.length) fail('Without a counter a young event must be retried.');
+  if (await handler(event(RetryGuard.DEFAULT_MAX_RETRY_AGE_MS + HOUR)) !== null || h.letters.length !== 1) fail('Without a counter an expired event is still dead-lettered.');
 }
 // Past the retry window: record once, acknowledge, never throw.
 {

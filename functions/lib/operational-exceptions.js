@@ -127,7 +127,7 @@ function buildOperationalExceptions(input, now = Date.now()) {
     if (row.status !== "open" || !at || now - at > DEAD_LETTER_WINDOW_MS) return;
     const params = Object.keys(row.params || {}).map((key) => `${key} ${row.params[key]}`).join(", ");
     exceptions.push(item("background_failure", "critical", row.id, `Background task ${String(row.function || "unknown").slice(0, 80)} stopped retrying`,
-      `${params ? params + ": " : ""}${String(row.error || "Unknown error").slice(0, 200)}. The system stopped retrying after the retry window to protect the database; confirm the linked record and complete it through its controlled repair workflow.`,
+      `${params ? params + ": " : ""}${String(row.error || "Unknown error").slice(0, 200)}. The system stopped retrying after ${Number(row.attempts) > 1 ? `${Number(row.attempts) - 1} retries` : "its retry limit"} to protect the database; confirm the linked record and complete it through its controlled repair workflow.`,
       at, "operations"));
   });
   const rank = {critical: 0, warning: 1};exceptions.sort((a, b) => (rank[a.severity] - rank[b.severity]) || (b.at - a.at));

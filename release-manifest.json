@@ -354,6 +354,7 @@
     "payablePayments",
     "payableSettlementClaims",
     "supplierAdvanceShifts",
+    "functionRetryAttempts",
     "supplierAdvanceShiftIndexMeta",
     "financialCloses",
     "financialCloseIndex",
