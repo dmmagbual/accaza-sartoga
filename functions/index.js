@@ -8,7 +8,7 @@
 const DatabaseTriggers = require("firebase-functions/v2/database");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
-const {initializeApp} = require("firebase-admin/app");
+const {initializeApp, getApp} = require("firebase-admin/app");
 const {getAuth: getAdminAuth} = require("firebase-admin/auth");
 const {getDatabase} = require("firebase-admin/database");
 const {getFirestore, FieldPath} = require("firebase-admin/firestore");
@@ -31,6 +31,7 @@ const CashJournalEdit = require("./lib/cash-journal-edit");
 const JournalReclassification = require("./lib/journal-reclassification");
 const ReconciliationControls = require("./lib/reconciliation-controls");
 const RecoveryValidation = require("./lib/recovery-validation");
+const BackupDelta = require("./lib/backup-delta");
 const ProductionHealth = require("./lib/production-health");
 const IncidentControls = require("./lib/incident-controls");
 const ReleaseCertification = require("./lib/release-certification");
@@ -4825,12 +4826,74 @@ exports.autoCompleteReadyOnlineOrders = onSchedule(
 // (active-order projections, locks, rate windows, status-command claims, offline
 // sync scratch, daily telemetry) are excluded — a restore rebuilds those. This
 // is the safety net behind a corrupt write, a bad delete, or human error.
-const BACKUP_EXCLUDE = new Set(["activeOrders", "orderLocks", "rateLimits", "orderStatusCommands", "orderCorrectionCommands", "offlinePosSync", "clientTelemetryDaily"]);
-async function createVerifiedDatabaseBackup(now = Date.now()) {
+const BACKUP_EXCLUDE = new Set(["activeOrders", "orderLocks", "rateLimits", "orderStatusCommands", "orderCorrectionCommands", "offlinePosSync", "clientTelemetryDaily", BackupDelta.DIRTY_ROOT]);
+// Keys of a node without downloading its values (REST shallow read with the
+// function's own credential).
+async function shallowDatabaseKeys(db, path) {
+  const token = await getApp().options.credential.getAccessToken();
+  const base = db.ref().toString().replace(/\/$/, "");
+  const response = await fetch(`${base}/${path ? `${path}/` : ""}.json?shallow=true`, {headers: {Authorization: `Bearer ${token.access_token}`}});
+  if (!response.ok) throw new Error(`Shallow read of /${path} failed with HTTP ${response.status}`);
+  const value = await response.json();
+  return value && typeof value === "object" ? Object.keys(value) : [];
+}
+
+async function latestBackupEnvelope(bucket) {
+  const [files] = await bucket.getFiles({prefix: "db-backups/accaza-"});
+  const newest = files.filter((file) => /\.json$/.test(file.name)).sort((a, b) => String(b.name).localeCompare(String(a.name)))[0];
+  if (!newest) return null;
+  const [buffer] = await newest.download();
+  const envelope = JSON.parse(buffer.toString("utf8"));
+  const check = RecoveryValidation.validateEnvelope(envelope, {reconcile: false});
+  return check.ok ? Object.assign(envelope, {objectName: newest.name}) : null;
+}
+
+// Incremental snapshot: tracked history nodes come from the previous verified backup plus the
+// records marked dirty since; every other node, and one tracked node in rotation (verified
+// against its incremental copy), is read in full (see functions/lib/backup-delta.js).
+async function incrementalSnapshot(db, base, dirty, verify) {
+  const topLevel = await shallowDatabaseKeys(db, ""), children = {};
+  for (const root of Object.keys(BackupDelta.partialRoots())) if (topLevel.includes(root)) children[root] = await shallowDatabaseKeys(db, root);
+  const plan = BackupDelta.planIncremental({base, topLevel, children, excluded: BACKUP_EXCLUDE, dirty, verify});
+  const values = {};
+  for (const path of plan.fullNodes.concat(plan.fullTracked)) values[path] = (await db.ref(`/${path}`).get()).val();
+  const records = plan.records.concat(plan.verifyRecords);
+  for (let i = 0; i < records.length; i += 50) {
+    await Promise.all(records.slice(i, i + 50).map(async ({path, key}) => { values[`${path}/${key}`] = (await db.ref(`/${path}/${key}`).get()).val(); }));
+  }
+  const data = BackupDelta.mergeIncremental(base, plan, values);
+  const drift = plan.verifyPaths.length ? BackupDelta.driftPaths(BackupDelta.verifiedCopies(base, plan, values), data, plan.verifyPaths) : [];
+  return {data, plan, drift};
+}
+
+async function clearBackupDirty(db, dirty) {
+  const jobs = [];
+  Object.keys(dirty || {}).forEach((node) => Object.keys(dirty[node] || {}).forEach((key) => {
+    const seen = dirty[node][key];
+    jobs.push(() => db.ref(`/${BackupDelta.DIRTY_ROOT}/${node}/${key}`).transaction((current) => (current === seen ? null : current), undefined, false));
+  }));
+  for (let i = 0; i < jobs.length; i += 50) await Promise.all(jobs.slice(i, i + 50).map((job) => job()));
+  return jobs.length;
+}
+
+async function createVerifiedDatabaseBackup(now = Date.now(), options = {}) {
     const db = getDatabase(), bucket = getStorage().bucket(PROOF_BUCKET);
-    const root = (await db.ref("/").get()).val() || {};
-    const snapshot = {};
-    Object.keys(root).forEach((node) => { if (!BACKUP_EXCLUDE.has(node)) snapshot[node] = root[node]; });
+    const latest = (await db.ref("/systemHealth/backups/latest").get()).val() || {};
+    // Markers are captured before any record is read, so a change during the backup keeps its marker.
+    const dirty = (await db.ref(`/${BackupDelta.DIRTY_ROOT}`).get()).val() || {};
+    let base = null;
+    try { base = await latestBackupEnvelope(bucket); } catch (error) { logger.warn("Previous backup could not be loaded; running a full backup", {error: String(error)}); }
+    const fullReason = BackupDelta.needsFullBackup({base, now, force: options.full === true});
+    let snapshot = {}, mode = "full", drift = null, records = 0, verified = null;
+    if (fullReason) {
+      const root = (await db.ref("/").get()).val() || {};
+      Object.keys(root).forEach((node) => { if (!BACKUP_EXCLUDE.has(node)) snapshot[node] = root[node]; });
+    } else {
+      verified = BackupDelta.rotationPath(now);
+      const built = await incrementalSnapshot(db, base, dirty, verified);
+      snapshot = built.data; mode = "incremental"; records = built.plan.records.length; drift = built.drift;
+      if (drift.length) logger.warn("Incremental backup drift corrected by today's verification read", {path: verified, count: drift.length, sample: drift.slice(0, 20)});
+    }
     const stamp = new Date(now).toISOString().slice(0, 19).replace(/[:T]/g, "-");
     const objectName = `db-backups/accaza-${stamp}.json`;
     const envelope = RecoveryValidation.createEnvelope(snapshot, now, BACKUP_EXCLUDE);
@@ -4844,7 +4907,9 @@ async function createVerifiedDatabaseBackup(now = Date.now()) {
       resumable: false, contentType: "application/json",
       metadata: {cacheControl: "private, max-age=0, no-store", metadata: {takenAt: String(now), dataSha256: validation.actualSha256, backupVersion: "backup-v2"}},
     });
-    await db.ref("/systemHealth/backups/latest").set({takenAt: now, objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, version: "backup-v2", dataSha256: validation.actualSha256, validation: "passed"});
+    const lastFullAt = mode === "full" ? now : Number(latest.lastFullAt) || null;
+    await db.ref("/systemHealth/backups/latest").set({takenAt: now, objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, version: "backup-v2", dataSha256: validation.actualSha256, validation: "passed", mode, fullReason: fullReason || null, lastFullAt, baseObject: mode === "incremental" ? base.objectName : null, recordsReread: records, verifiedPath: verified, driftRecords: drift ? drift.length : null});
+    const cleared = await clearBackupDirty(db, dirty);
     // Retention: delete snapshots older than 30 days.
     let removed = 0;
     try {
@@ -4855,10 +4920,26 @@ async function createVerifiedDatabaseBackup(now = Date.now()) {
         if (created && created < cutoff) { await file.delete({ignoreNotFound: true}); removed++; }
       }));
     } catch (error) { logger.warn("Backup retention sweep failed", {error: String(error)}); }
-    logger.info("backupDatabaseDaily complete", {objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, dataSha256: validation.actualSha256, removed, rev: 3});
+    logger.info("backupDatabaseDaily complete", {objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, dataSha256: validation.actualSha256, removed, mode, fullReason: fullReason || null, recordsReread: records, dirtyCleared: cleared, driftRecords: drift ? drift.length : null, rev: 4});
     await evaluateProductionHealthNow(db,Date.now());
     return {takenAt:now,objectName,bytes:payload.length,nodes:Object.keys(snapshot).length,dataSha256:validation.actualSha256,validation:"passed",version:"backup-v2"};
 }
+// Mark written history records for the next incremental backup (tiny writes, idempotent).
+function backupDirtyTrigger(path) {
+  return onValueWritten({ref: `/${path}/{key}`, region: ORDER_REGION, retry: true, timeoutSeconds: 30, memory: "256MiB"}, async (event) => {
+    await getDatabase().ref(`/${BackupDelta.DIRTY_ROOT}/${BackupDelta.dirtyKey(path)}/${event.params.key}`).set(Date.now());
+  });
+}
+exports.markBackupDirtyArchivedOrders = backupDirtyTrigger("archivedOrders");
+exports.markBackupDirtyInventoryMovements = backupDirtyTrigger("inventoryMovements");
+exports.markBackupDirtyOrderInventoryPlans = backupDirtyTrigger("orderInventoryPlans");
+exports.markBackupDirtyFinancialMovements = backupDirtyTrigger("financialMovements");
+exports.markBackupDirtyCashBalanceApplied = backupDirtyTrigger("cashBalanceSummaryApplied");
+exports.markBackupDirtyBooksJournal = backupDirtyTrigger("books/journal");
+exports.markBackupDirtyShifts = backupDirtyTrigger("shifts");
+exports.markBackupDirtyOperationalAudit = backupDirtyTrigger("operationalAudit");
+exports.markBackupDirtyFinancialCommandClaims = backupDirtyTrigger("financialCommandClaims");
+
 exports.backupDatabaseDaily = onSchedule(
   {schedule: "every day 03:00", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "512MiB"},
   async () => {await createVerifiedDatabaseBackup();return null;},

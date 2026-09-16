@@ -1,9 +1,9 @@
 "use strict";
 
 const crypto=require("node:crypto");
-// The daily backup downloads the whole Realtime Database, so its cost grows with
-// history (13 MB/day on 16 Sep 2026, growing ~0.3 MB/day). Warn long before it
-// threatens the 360 MB/day free download allowance, while archiving can be planned.
+// Daily backups are incremental, but a full backup (used when the previous backup file
+// is unavailable) downloads the whole Realtime Database (13 MB on 16 Sep 2026, growing
+// ~0.3 MB/day). Warn long before that single day could threaten the 360 MB/day allowance.
 const BACKUP_DOWNLOAD_WARN_BYTES=60*1024*1024,DAILY_FREE_DOWNLOAD_BYTES=360*1024*1024;
 const TARGETS={pos_boot:3000,pos_build:1500,cart_render:100,charge_to_durable:1500,offline_flush:5000,realtime_order_arrival:1500,live_ready:5000};
 function alert(id,severity,title,detail){return{id,severity,title,detail};}
@@ -13,7 +13,7 @@ function evaluate(input,now=Date.now()){
   if(!backup.takenAt)alerts.push(alert("backup_missing","critical","No verified database backup","System Health has no completed backup record."));
   else if(backupAge>36*3600000)alerts.push(alert("backup_stale","critical","Database backup is stale",`Latest backup is ${Math.floor(backupAge/3600000)} hours old.`));
   else if(backup.version!=="backup-v2"||backup.validation!=="passed"||!/^[a-f0-9]{64}$/.test(hash))alerts.push(alert("backup_unverified","warning","Backup integrity evidence is incomplete","Confirm backup-v2 validation and its SHA-256 fingerprint."));
-  if(Number(backup.bytes)>=BACKUP_DOWNLOAD_WARN_BYTES)alerts.push(alert("backup_download_budget","warning","Daily backup download is growing",`The daily backup now downloads ${Math.round(Number(backup.bytes)/1048576)} MB of the ${Math.round(DAILY_FREE_DOWNLOAD_BYTES/1048576)} MB free daily Realtime Database allowance. Plan archiving of old history before it reaches the limit.`));
+  if(Number(backup.bytes)>=BACKUP_DOWNLOAD_WARN_BYTES)alerts.push(alert("backup_download_budget","warning","Backup size is growing",`The backup is now ${Math.round(Number(backup.bytes)/1048576)} MB; a full backup would use that much of the ${Math.round(DAILY_FREE_DOWNLOAD_BYTES/1048576)} MB free daily Realtime Database allowance. Plan archiving of old history before it reaches the limit.`));
   const combined={metrics:{},errors:0,samples:0,latest:0};rows.forEach(row=>{row=row||{};combined.latest=Math.max(combined.latest,Number(row.updatedAt)||0);Object.values(row.errors||{}).forEach(n=>combined.errors+=Number(n)||0);Object.keys(row.metrics||{}).forEach(key=>{const src=row.metrics[key]||{},dst=combined.metrics[key]||(combined.metrics[key]={count:0,totalMs:0,maxMs:0,failed:0});dst.count+=Number(src.count)||0;dst.totalMs+=Number(src.totalMs)||0;dst.maxMs=Math.max(dst.maxMs,Number(src.maxMs)||0);dst.failed+=Number(src.failed)||0;combined.samples+=Number(src.count)||0;});});
   Object.keys(TARGETS).forEach(key=>{const row=combined.metrics[key]||{},count=Number(row.count)||0;if(!count)return;const average=Number(row.totalMs||0)/count,target=TARGETS[key];if(Number(row.failed)>0||average>target||Number(row.maxMs)>target*2)alerts.push(alert(`performance_${key}`,"warning",`${key.replace(/_/g," ")} needs attention`,`${count} samples; average ${Math.round(average)}ms, worst ${Math.round(Number(row.maxMs)||0)}ms, failed ${Number(row.failed)||0}.`));});
   if(combined.errors>0)alerts.push(alert("client_errors","warning","Client errors detected",`${combined.errors} privacy-safe client error signal(s) were recorded.`));
