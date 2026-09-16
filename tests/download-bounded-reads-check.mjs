@@ -178,14 +178,21 @@ const {internal: I} = loadFunctions(db, {now: NOW, expose: ['calculateOrderInven
 // 6. Legacy receipt images move out of vouchers only after an exact copy exists.
 {
   const img = 'data:image/jpeg;base64,' + 'A'.repeat(64);
+  // Above the old 1.5 M-character ceiling. The portal's own proof decoder accepts a 5 MB
+  // image, whose base64 form is about 6.7 M characters, so a ceiling that low stranded the
+  // largest receipts in /pettyCashVouchers for ever -- and every nightly backup still reads
+  // that node in full. The move must not skip a receipt merely for being large.
+  const huge = 'data:image/jpeg;base64,' + 'A'.repeat(1_600_000);
   await db.ref('/pettyCashVouchers/pvImg').set({transactionType: 'expense', status: 'approved', amount: 5, receiptImg: img, createdAt: 11});
+  await db.ref('/pettyCashVouchers/pvHuge').set({transactionType: 'expense', status: 'approved', amount: 5, receiptImg: huge, createdAt: 12});
   await db.ref('/pettyCashVouchers/pvBad').set({transactionType: 'expense', status: 'approved', amount: 5, receiptImg: 'http://not-inline'});
   await db.ref('/pettyCashReceipts/pvClash').set({meta: {createdAt: 1, bytes: 3}, image: 'data:image/png;base64,QQ=='});
   await db.ref('/pettyCashVouchers/pvClash').set({transactionType: 'expense', amount: 5, receiptImg: img});
   const vouchers = (await db.ref('/pettyCashVouchers').get()).val();
   const result = await I.moveLegacyVoucherReceipts(db, vouchers, 99);
-  assert.deepEqual([...result.moved], ['pvImg']);
+  assert.deepEqual([...result.moved].sort(), ['pvHuge', 'pvImg']);
   assert.deepEqual([...result.kept].sort(), ['pvBad', 'pvClash']);
+  assert.equal((await db.ref('/pettyCashReceipts/pvHuge/image').get()).val(), huge, 'a large receipt moves out too');
   assert.equal((await db.ref('/pettyCashReceipts/pvImg/image').get()).val(), img, 'the evidence is intact');
   const moved = (await db.ref('/pettyCashVouchers/pvImg').get()).val();
   assert.equal(moved.receiptImg, undefined); assert.equal(moved.hasReceipt, true);

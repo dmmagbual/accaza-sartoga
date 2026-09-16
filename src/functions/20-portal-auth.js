@@ -213,7 +213,13 @@ exports.manageStaffMessage = onCall(
     }
     if(!["read","acknowledge"].includes(action))throw new HttpsError("invalid-argument","Staff message action is invalid.");
     const message=(await db.ref(`/staffMessages/${messageId}`).get()).val();if(!message)throw new HttpsError("not-found","Staff message not found.");
-    const receiptRef=db.ref(`/staffMessageReceipts/${messageId}/${actor.uid}`);await receiptRef.transaction((current)=>{current=current||{userUid:actor.uid,userName:financeText(actor.name||actor.email||actor.role,120),role:actor.role};if(!current.readAt)current.readAt=now;if(action==="acknowledge"&&!current.acknowledgedAt)current.acknowledgedAt=now;current.updatedAt=now;return current;});
+    const receiptRef=db.ref(`/staffMessageReceipts/${messageId}/${actor.uid}`);const receipt=(await receiptRef.transaction((current)=>{current=current||{userUid:actor.uid,userName:financeText(actor.name||actor.email||actor.role,120),role:actor.role};if(!current.readAt)current.readAt=now;if(action==="acknowledge"&&!current.acknowledgedAt)current.acknowledgedAt=now;current.updatedAt=now;return current;})).snapshot.val()||{};
+    // staffReceiptIndex/<uid>/<messageId> is the reader's own bounded read/acknowledge index.
+    // The inbox reads this one small node per user instead of downloading every staff member's
+    // receipt for every message ever sent, and re-downloading all of it whenever anybody read
+    // anything (2026-09-16 download audit). The per-message receipt above remains the audit
+    // record and the source this index is derived from.
+    await db.ref(`/staffReceiptIndex/${actor.uid}/${messageId}`).set({messageId,readAt:Number(receipt.readAt)||now,acknowledgedAt:Number(receipt.acknowledgedAt)||0,updatedAt:Number(receipt.updatedAt)||now,schemaVersion:1});
     return{messageId,action};
   },
 );

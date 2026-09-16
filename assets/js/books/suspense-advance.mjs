@@ -1,6 +1,6 @@
 import {getApp,getApps} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {getAuth} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import {getDatabase,onValue,ref} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import {getDatabase} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 
 function bind(){
@@ -13,6 +13,12 @@ function bind(){
       .then(approval=>httpsCallable(fns,"postFinancialCommand")(Object.assign({},payload,{action:"convert_suspense_to_supplier_advance",commandId:"suspense_advance_reclass_"+payload.originalMovementId,approvalId:approval.data.approvalId})))
       .then(result=>result.data);
   };
-  onValue(ref(db,"/suspenseAdvanceConversions"),snapshot=>{window.__suspenseAdvanceConversions=snapshot.val()||{};if(window.App&&App.render)App.render();},()=>{});
+  // No whole-node /suspenseAdvanceConversions listener. The conversion is already stamped on
+  // the journal entry the server rewrites (books/journal/<originalId>/supplierAdvanceConversionId)
+  // and on the movement (financialMovements/<originalId>/supplierAdvanceConversionId), and the
+  // journal is read month-bounded, so the conversion action reads the flag from the entry it is
+  // already holding. The node itself is unindexed and grows one record per conversion, so every
+  // conversion used to re-download all of it to every signed-in Books user. See the 2026-09-16
+  // download audit and tests/download-loophole-check.mjs.
 }
 bind();

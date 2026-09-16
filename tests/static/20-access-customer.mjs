@@ -37,7 +37,7 @@ for(const name of ['pos','analytics','register','staff','packages','finance']){
   if(!adminSource.includes(`window.__accazaRegisterModule('${name}'`))fail(`lazy admin module registration missing: ${name}`);
 }
 const inboxSource=fs.readFileSync(path.join(root,'assets','js','admin','staff-inbox.js'),'utf8');
-for(const marker of ["window.__accazaRegisterModule('inbox'","a.subscribe('staffMessages'","a.subscribe('staffMessageReceipts'","action:'send'","action:'read'","action:'acknowledge'","Require acknowledgment","staffInboxBadge"])if(!inboxSource.includes(marker)&&!adminHtml.includes(marker))fail(`POS Staff Inbox marker missing: ${marker}`);
+for(const marker of ["window.__accazaRegisterModule('inbox'","a.subscribe('staffMessages'","a.subscribe('staffReceiptIndex/'","staffMessageReceipts/'+id+'/'","a.update(a.ref(a.db,'staffReceiptIndex/'","action:'send'","action:'read'","action:'acknowledge'","Require acknowledgment","staffInboxBadge"])if(!inboxSource.includes(marker)&&!adminHtml.includes(marker))fail(`POS Staff Inbox marker missing: ${marker}`);
 for(const marker of ['"staffMessages"','"staffMessageReceipts"','".write": false'])if(!rulesRaw.includes(marker))fail(`Staff Inbox database protection missing: ${marker}`);
 if((adminSource.match(/window\.posSwitchTab=function/g)||[]).length!==1)fail('lazy module loader must be the sole POS tab router');
 if(!rulesRaw.includes("root.child('adminPerms').child(auth.uid).child('inventory').val() === true"))fail('inventory permission enforcement missing');

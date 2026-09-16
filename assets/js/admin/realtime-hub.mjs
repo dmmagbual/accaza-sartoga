@@ -1,5 +1,5 @@
-import{watchSalesPeriod,periodKey}from'./sales-period-data.mjs?v=537';
-import{createHistoricalPeriodStore}from'./historical-period-store.mjs?v=537';
+import{watchSalesPeriod,periodKey}from'./sales-period-data.mjs?v=538';
+import{createHistoricalPeriodStore}from'./historical-period-store.mjs?v=538';
 // One managed subscription per path. Sales reports combine indexed date queries;
 // POS-critical paths stay live and back-office paths attach only when needed.
 const HISTORY_BOUNDS={
@@ -13,28 +13,61 @@ const HISTORY_TAB_PATHS={saleshistory:['orders','archivedOrders','financialMovem
 // present, so they cannot use HISTORY_BOUNDS' limitToLast the way reporting paths do) but are
 // held live for the whole session by every admin/POS/books connection. A plain onValue there
 // retransmits the ENTIRE node on every single write inside it (one sale, one status change).
-// These attach via per-child listeners instead: full cost once on attach, then only the
-// changed child on every write afterward. See 2026-09-11 RTDB downloads investigation.
+// These attach via per-child listeners instead, so one write no longer forces every consumer
+// to rebuild the whole node and each record is counted once as it arrives. The initial
+// download is unchanged, and the SDK may already send only the changed subtree over the wire;
+// see the note on GROWING_PATHS below and DOWNLOAD_AUDIT_2026-09-16.md before claiming a
+// wire-byte saving here.
 // posActiveShift is the same shape of problem on a single record: syncOfflinePosSale writes
 // it via .transaction() on every POS sale (online sales are queued through the same offline
 // -sync pipeline, not just literal offline ones) and every drawer-affecting refund, and it is
-// in the always-live `critical` set below. A plain onValue retransmits the whole shift record
-// -- including offlineSyncApplied, which only grows across the shift -- on every one of those
-// writes. Per-child listeners here fire per top-level field (drawer, offlineSyncApplied, ...)
-// instead, so an unrelated field on the record no longer rides along. See 2026-09-12 follow-up.
+// in the always-live `critical` set below -- including offlineSyncApplied, which only grows
+// across the shift. Per-child listeners here fire per top-level field (drawer,
+// offlineSyncApplied, ...) instead, so an unrelated field on the record no longer rides along.
 const INCREMENTAL_PATHS={activeOrders:1,inventory:1,posActiveShift:1};
-// Bounded paths that re-download their entire limitToLast result set on every single write
-// via onValue. Converting these to per-child listeners on the bounded query gives the same
-// initial download cost but only the changed child (~3 KB) on every subsequent write instead
-// of the full N records (~900 KB for financialMovements). See 2026-09-16 download spike fix.
+// Bounded paths that were attached with onValue on their limitToLast query. Converting them
+// to per-child listeners on the same bounded query keeps the initial download identical and
+// makes each subsequent change a single record, instead of the client rebuilding up to N
+// records (200 for financialMovements) for every consumer on every write. Whether the wire
+// cost of a write changes depends on whether the SDK was already sending only the changed
+// subtree; treat the client-work saving as certain and the byte saving as unconfirmed, and
+// check the console Usage tab. See DOWNLOAD_AUDIT_2026-09-16.md.
 // These paths attach via: get(liveTarget) to bootstrap, then onChildAdded/Changed/Removed
 // on the same liveTarget query for live updates. Period-scoped variants (sales history,
 // financialMovements in saleshistory scope) keep their existing onValue handlers because
 // they use startAt/endAt range queries that need the full result on period change.
-const BOOTSTRAPPED_INCREMENTAL_BOUNDS={financialMovements:1,cfLedger:1,inventoryMovements:1,platformPayouts:1,'books/journal':1,orders:1,internalUsage:1,inventoryAdjustments:1,stockReceipts:1,purchaseInvoices:1,shifts:1,activityLog:1,discrepancies:1,archivedReservations:1};
+const BOOTSTRAPPED_INCREMENTAL_BOUNDS={financialMovements:1,cfLedger:1,inventoryMovements:1,platformPayouts:1,'books/journal':1,orders:1,internalUsage:1,inventoryAdjustments:1,stockReceipts:1,purchaseInvoices:1,shifts:1,activityLog:1,discrepancies:1,archivedReservations:1,staffMessages:1};
 const VERSIONED_MASTER_PATHS={categories:1,optionGroups:1,menuItems:1};
+// Nodes that grow with trading volume and are read in full (no natural "recent only" window:
+// reviews, feedback, installed-app customers, voucher ledgers, supplier/SKU masters, the
+// per-shift assurance feeds). A whole-node onValue on one of these makes the client hold the
+// entire node and rebuild it (snapshot.val()) for every consumer on every single write
+// anywhere inside it -- a review from a customer on the shop dashboard, a voucher approved on
+// the register, a device health ping every 60 seconds, one shift close. Attaching per child
+// gives the same value for the same initial cost and then touches one record per write.
+//
+// Be precise about what this does and does not buy: the initial download is the same, and the
+// SDK may already send only the changed subtree over the wire, so this is not claimed as a
+// wire-byte saving until the console Usage tab confirms it (see DOWNLOAD_AUDIT_2026-09-16.md).
+// What it does buy is bounded per-write client work: it is the difference between re-reading
+// and re-allocating a whole node on a POS tablet and touching one key, and it is what lets the
+// windowed and own-index paths below exist at all.
+// A dynamic child under one of these (posDeviceHealth/<shiftId>, ownerDailySummaries/<day>,
+// shiftCloseReceipts/<shiftId>, staffReceiptIndex/<uid>) is matched by its first path segment,
+// so the scoped per-shift reads the Live Operations page already makes are incremental too.
+// /reservations is deliberately NOT here. It holds only still-open bookings (archived ones
+// move to archivedReservations), so it is not a growth problem, and its page decides that a
+// booking is new by diffing the previous key list against the new one. Per-child delivery
+// hands it one key at a time, so the second and every later key of the first batch would look
+// new and the register would chime for bookings that were already open. It stays whole-node.
+const GROWING_PATHS={reviews:1,feedbacks:1,appCustomers:1,pettyCashVouchers:1,pettyCashReplenishments:1,suppliers:1,inventorySku:1,posDeviceHealth:1,shiftCloseReceipts:1,ownerDailySummaries:1,staffReceiptIndex:1};
+function isGrowing(path){if(GROWING_PATHS[path])return true;const head=String(path).split('/')[0];return !!GROWING_PATHS[head];}
 // Only rows that are still open are needed: custody that still holds cash (Sep 2026 audit).
 const OPEN_ROW_PATHS={cashCustody:{field:'remaining',start:0.005}};
+// Time-windowed rows: the node keeps history, but only the recent window is ever shown. The
+// Staff Inbox hides messages after their 30-day expiry, so only that window is read (the
+// server stamps every message with expiresAt = createdAt + 30 days).
+const WINDOWED_PATHS={staffMessages:{field:'createdAt',windowMs:30*86400000}};
 // Journal history is summarised server-side in books/monthlyNet; the live listener only
 // carries the current Manila month (Stock Value reads earlier months from the totals).
 const CURRENT_MONTH_PATHS={'books/journal':'date'};
@@ -49,7 +82,7 @@ function createSubscriptionHub(database,ops){
   // The query a bounded path uses for a scope. Switching between tabs that need the same
   // query keeps the live listener instead of detaching and re-downloading the whole page.
   function targetKey(path,scope){if(!HISTORY_BOUNDS[path])return 'static';var p=selectedPeriod(scope),rp=reportPeriod(scope);if(path==='archivedOrders'||salesPath(path))return p?'period:'+periodKey(p):'latest';if(path==='financialMovements'){if(p&&scope==='saleshistory')return 'saleshistory:'+periodKey(rp);return rp&&Number(rp.startAt)&&Number(rp.endAt)?'period:'+periodKey(rp):'latest';}return 'latest';}
-  function liveTarget(path){var base=ref(database,path),spec=HISTORY_BOUNDS[path],period=reportPeriod();if(CURRENT_MONTH_PATHS[path])return query(base,orderByChild(CURRENT_MONTH_PATHS[path]),startAt(manilaMonthStart()));if(OPEN_ROW_PATHS[path])return query(base,orderByChild(OPEN_ROW_PATHS[path].field),startAt(OPEN_ROW_PATHS[path].start));if(!spec)return base;if(period&&path==='financialMovements'&&Number(period.startAt)&&Number(period.endAt))return query(base,orderByChild(spec.field),startAt(Number(period.startAt)),endAt(Number(period.endAt)));return query(base,orderByChild(spec.field),limitToLast(spec.limit));}
+  function liveTarget(path){var base=ref(database,path),spec=HISTORY_BOUNDS[path],period=reportPeriod();if(WINDOWED_PATHS[path]){var win=WINDOWED_PATHS[path];return query(base,orderByChild(win.field),startAt(Date.now()-win.windowMs));}if(CURRENT_MONTH_PATHS[path])return query(base,orderByChild(CURRENT_MONTH_PATHS[path]),startAt(manilaMonthStart()));if(OPEN_ROW_PATHS[path])return query(base,orderByChild(OPEN_ROW_PATHS[path].field),startAt(OPEN_ROW_PATHS[path].start));if(!spec)return base;if(period&&path==='financialMovements'&&Number(period.startAt)&&Number(period.endAt))return query(base,orderByChild(spec.field),startAt(Number(period.startAt)),endAt(Number(period.endAt)));return query(base,orderByChild(spec.field),limitToLast(spec.limit));}
   var entries={},authorized=false,activeScope='dashboard',nextId=1,liveStartedAt=0,liveReadyRecorded=false;
   var rollingStops=new Set();
   const historicalPeriods=createHistoricalPeriodStore({read:payload=>ops.readHistoricalOrders(payload),watch:(data,error)=>onValue(ref(database,'historicalArchiveSync'),snapshot=>data(snapshot.val()||{}),error)});
@@ -139,7 +172,7 @@ function createSubscriptionHub(database,ops){
       },failed);
       entry.unsub=function(){masterStopped=true;stopVersion();};return;
     }
-    if(INCREMENTAL_PATHS[entry.path]){
+    if(INCREMENTAL_PATHS[entry.path]||isGrowing(entry.path)){
       var target=ref(database,entry.path),childUnsubs=[],stopped=false;
       function applyChild(key,value){
         if(stopped||generation!==(entry.generation||0))return;
@@ -207,4 +240,4 @@ function createSubscriptionHub(database,ops){
   };
 }
 
-export{HISTORY_BOUNDS,HISTORY_TAB_PATHS,BOOTSTRAPPED_INCREMENTAL_BOUNDS,createSubscriptionHub};
+export{HISTORY_BOUNDS,HISTORY_TAB_PATHS,BOOTSTRAPPED_INCREMENTAL_BOUNDS,GROWING_PATHS,WINDOWED_PATHS,isGrowing,createSubscriptionHub};
