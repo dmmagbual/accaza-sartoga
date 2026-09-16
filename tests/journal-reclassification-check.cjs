@@ -40,7 +40,7 @@ async function run(){
     const value=fn(read(path));if(value===undefined)return{committed:false,snapshot:snap(read(path))};
     write(path,value);return{committed:true,snapshot:snap(value)};
   }})};
-  const ctx=vm.createContext({JournalReclassification:R,BooksBridge:B,crypto:require('node:crypto'),HttpsError:class extends Error{constructor(code,msg){super(msg);}},financeText:s=>String(s||''),assertAccountingPeriodOpen:async()=>{if(closed)throw Error('closed');},safeFinancialUpdate:async(_,writes)=>{assert.ok(Object.keys(writes).every(k=>!/^inventory\/|^cashCustody\/|^cfLedger\/|^payables\//.test(k)));for(const [p,v]of Object.entries(writes))write(p,v);}});
+  const ctx=vm.createContext({JournalReclassification:R,BooksBridge:B,BankLedgerLink:require("../functions/lib/bank-ledger-link.js"),crypto:require('node:crypto'),HttpsError:class extends Error{constructor(code,msg){super(msg);}},financeText:s=>String(s||''),assertAccountingPeriodOpen:async()=>{if(closed)throw Error('closed');},safeFinancialUpdate:async(_,writes)=>{assert.ok(Object.keys(writes).every(k=>!/^inventory\/|^cashCustody\/|^cfLedger\/|^payables\//.test(k)));for(const [p,v]of Object.entries(writes))write(p,v);}});
   vm.runInContext(body,ctx);
   const data={expectedRevision:0,reason:'Opening reclassification',date:prepared.date,lines:prepared.lines},actor={uid:'owner',role:'owner'};
   const result=await ctx.reviseJournalClassification(db,'one',data,prepared,actor,'edit1',123456);

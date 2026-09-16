@@ -151,6 +151,9 @@ const pesoNoDec = n => "₱"+ Math.round(Number(n)||0).toLocaleString();
 const r2 = n => Math.round((Number(n)||0)*100)/100;
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const acc = code => DB.accounts.find(a=>a.code===code);
+// Bank / e-wallet ledger accounts (1010-1039, 1030 retired) are created with the cash account they belong to.
+const isBankLedgerCode = code => /^\d{4}$/.test(String(code||"")) && String(code)!=="1030" && Number(code)>=1010 && Number(code)<=1039;
+const bankAccountsForCode = code => { const map=window.__cashAccountMap||{}, accounts=window.__cfAccounts||{}; return Object.keys(map).filter(id=>String(map[id])===String(code)&&accounts[id]).map(id=>Object.assign({id},accounts[id])); };
 const accName = code => { const a=acc(code); return a?a.name:("? "+code); };
 const isMainAccount = code => ACCOUNT_GROUPS.some(g=>g.code===code);
 const accountMatchesGroup = (account,group) => group.type===account.type&&!isMainAccount(account.code)&&(group.matches?group.matches(account):String(account.code).startsWith(group.prefix));

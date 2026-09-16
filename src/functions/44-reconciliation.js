@@ -63,7 +63,12 @@ exports.manageBooksAccount = onCall(
     const data = request.data || {};
     const action = financeText(data.action, 20);
     const chart = await ensureBooksChart(db);
+    const [cashAccounts, cashAccountMap] = await Promise.all([db.ref("/cfAccounts").get().then((x) => x.val() || {}), db.ref("/books/config/cashAccountMap").get().then((x) => x.val() || {})]);
+    const linkedAccountIds = (code) => BankLedgerLink.accountsForCode(code, cashAccounts, cashAccountMap);
     if (action === "initialize" || action === "list" || !action) {
+      const resolvedLinks = BankLedgerLink.resolveCashAccountCodes(cashAccounts, cashAccountMap), missingLinks = {};
+      Object.keys(resolvedLinks).forEach((id) => { if (cashAccountMap[id] !== resolvedLinks[id]) missingLinks[`books/config/cashAccountMap/${id}`] = resolvedLinks[id]; });
+      if (Object.keys(missingLinks).length) await db.ref().update(missingLinks);
       const meta = await db.ref("/books/monthlyNetMeta").get();
       if (!meta.exists()) await rebuildBooksMonthlyNet(db, (/* download-ok: fallback monthly totals have never been built */await db.ref("/books/journal").get()).val() || {});
       return {chart: chart, managerEmail: actor.email};
@@ -74,10 +79,22 @@ exports.manageBooksAccount = onCall(
       const clean = cleanAccount(data);
       const ref = db.ref(`/booksChart/${clean.code}`);
       const old = (await ref.get()).val();
+      const linked = linkedAccountIds(clean.code);
+      let guard;
+      try { guard = BankLedgerLink.chartChangeGuard({action, code: clean.code, existing: old, linkedAccountIds: linked}); }
+      catch (error) { if (error instanceof BankLedgerLink.LinkError) throw new HttpsError(error.status, error.message); throw error; }
       const isSystem = !!(old && old.system === true);
-      const type = isSystem ? old.type : clean.type;
-      const record = {code: clean.code, name: clean.name, type: type, note: clean.note, active: data.active === false ? false : (old ? old.active !== false : true), system: isSystem, sensitive: !!(old && old.sensitive === true), createdAt: (old && old.createdAt) || now, createdBy: (old && old.createdBy) || actor.uid, updatedAt: now, updatedBy: actor.uid, updatedByEmail: actor.email, schemaVersion: 1};
-      await ref.set(record);
+      const type = isSystem ? old.type : (guard.forceType || clean.type);
+      const record = {code: clean.code, name: clean.name, type: type, note: clean.note, active: data.active === false ? false : (old ? old.active !== false : true), system: isSystem, sensitive: !!(old && old.sensitive === true) || linked.length > 0, createdAt: (old && old.createdAt) || now, createdBy: (old && old.createdBy) || actor.uid, updatedAt: now, updatedBy: actor.uid, updatedByEmail: actor.email, schemaVersion: 1};
+      if (old && old.bankAccountId) record.bankAccountId = old.bankAccountId;
+      const chartWrites = {[`booksChart/${clean.code}`]: record};
+      // A linked bank keeps one name in both places.
+      if (guard.syncName && !isSystem && cashAccounts[linked[0]] && cashAccounts[linked[0]].name !== clean.name) {
+        const duplicate = Object.keys(cashAccounts).some((key) => key !== linked[0] && String(cashAccounts[key] && cashAccounts[key].name || "").trim().toLowerCase() === clean.name.trim().toLowerCase());
+        if (duplicate) throw new HttpsError("already-exists", "Another bank or cash account already uses this name.");
+        chartWrites[`cfAccounts/${linked[0]}/name`] = clean.name; chartWrites[`cfAccounts/${linked[0]}/updatedAt`] = now;
+      }
+      await db.ref().update(chartWrites);
       await db.ref(`/operationalAudit/${now}_booksacct_${old ? "edit" : "add"}_${clean.code}`).set(operationalAuditRecord(old ? "edit_books_account" : "add_books_account", "booksChart", clean.code, actor, {name: record.name, type: record.type, email: actor.email}));
       return {account: record, created: !old};
     }
@@ -88,8 +105,17 @@ exports.manageBooksAccount = onCall(
       const old = (await ref.get()).val();
       if (!old) throw new HttpsError("not-found", `Books account ${code} was not found.`);
       if (action === "deactivate" && old.system === true) throw new HttpsError("failed-precondition", "System accounts are required by the ledger and can\u2019t be deactivated. Rename it instead if needed.");
-      const active = action === "reactivate";
-      await ref.update({active: active, updatedAt: now, updatedBy: actor.uid, updatedByEmail: actor.email});
+      const active = action === "reactivate", linked = linkedAccountIds(code), statusWrites = {[`booksChart/${code}/active`]: active, [`booksChart/${code}/updatedAt`]: now, [`booksChart/${code}/updatedBy`]: actor.uid, [`booksChart/${code}/updatedByEmail`]: actor.email};
+      if (linked.length) {
+        // A bank account is closed only when its money is gone, so no balance is hidden from payment screens.
+        if (!active) {
+          const current = await currentCashBalances(db), cents = (current.balances && current.balances.cashAccountCents) || {};
+          const open = linked.filter((id) => Math.abs(Number(cents[id] || 0)) >= 1);
+          if (open.length) throw new HttpsError("failed-precondition", `Transfer the remaining balance out of ${open.map((id) => cashAccounts[id] && cashAccounts[id].name || id).join(", ")} before deactivating Finance Books ${code}.`);
+        }
+        linked.forEach((id) => { statusWrites[`cfAccounts/${id}/active`] = active; statusWrites[`cfAccounts/${id}/updatedAt`] = now; });
+      }
+      await db.ref().update(statusWrites);
       await db.ref(`/operationalAudit/${now}_booksacct_${action}_${code}`).set(operationalAuditRecord(action + "_books_account", "booksChart", code, actor, {email: actor.email}));
       return {account: Object.assign({}, old, {active: active})};
     }
@@ -99,6 +125,7 @@ exports.manageBooksAccount = onCall(
       for (const row of rows) {
         let clean;
         try { clean = cleanAccount(row); } catch (e) { results.skipped.push({code: row && row.code, reason: e.message}); continue; }
+        if (BankLedgerLink.isBankLedgerCode(clean.code) && !chart[clean.code]) { results.skipped.push({code: clean.code, reason: "Bank and e-wallet codes are added with + Add bank account."}); continue; }
         const existing = (await db.ref(`/booksChart/${clean.code}`).get()).val();
         if (existing) {
           if (existing.name !== clean.name || existing.type !== clean.type) results.conflicts.push({code: clean.code, server: {name: existing.name, type: existing.type}, local: {name: clean.name, type: clean.type}});
@@ -266,7 +293,7 @@ exports.auditFinancialControls = onCall(
     let unsettledValue=0,unsettledCount=0;Object.keys(orders).forEach((id)=>{const o=orders[id]||{},status=o.status==="Archived"?o.prevStatus:o.status,platform=["grabfood","foodpanda"].includes(String(o.channel||"").toLowerCase());if(!o.voided&&["Completed","Received"].includes(status)&&o.paymentStatus!=="pending"&&!movements[`sale_${id}`])issues.push({severity:"critical",kind:"sale_not_posted",source:id,amount:Financial.money(o.total)});if(platform&&!o.voided&&(o.settlementStatus||"unsettled")!=="settled"){unsettledCount++;unsettledValue=Financial.money(unsettledValue+Financial.money(o.netPlatform));}Financial.unmappedOrderPayments(o,accounts).forEach((p)=>issues.push({severity:"warning",kind:"unmapped_payment_method",source:id,detail:financeText(p.method,60),amount:Financial.money(p.amount)}));});
     Object.keys(payouts).forEach((id)=>{const p=payouts[id]||{},movementId=p.movementId||`payout_${id}`,channel=financeText(p.channel,40)||"Platform",payoutDate=financeText(p.payoutDate,10)||financeDateFromTimestamp(Number(p.settledAt)||Date.now()),account=accounts[p.accountId]||{},accountName=financeText(account.name,80)||"the selected receiving account",sourceLabel=`${channel} payout · ${payoutDate} · ${Financial.money(p.actualPayout).toFixed(2)}`;if(!movements[movementId])issues.push({severity:"critical",kind:"payout_movement_missing",source:id,sourceLabel,amount:Financial.money(p.expectedNet)});if(p.reversed&&p.depositMovementId&&!p.depositReversalMovementId)issues.push({severity:"critical",kind:"reversed_payout_cash_not_reversed",source:id,sourceLabel,amount:Financial.money(p.actualPayout)});if(p.depositMovementId&&!p.depositReference)issues.push({severity:"warning",kind:"payout_deposit_missing_reference",source:id,sourceLabel,detail:`Missing bank or platform reference for the ${channel} payout dated ${payoutDate} to ${accountName}.`,amount:Financial.money(p.actualPayout)});if(!p.reversed)(p.orderIds||[]).forEach((orderId)=>{const o=orders[orderId];if(!o||o.payoutId!==id||(o.settlementStatus||"unsettled")!=="settled")issues.push({severity:"critical",kind:"payout_order_link_mismatch",source:id,sourceLabel,detail:String(orderId)});});});
     const ledgerPlatform={grabfood:0,foodpanda:0};Object.values(movements).forEach((m)=>(m&&m.lines||[]).forEach((line)=>{for(const channel of ["grabfood","foodpanda"])if(line.account===`asset:platform_receivable:${channel}`)ledgerPlatform[channel]=Financial.money(ledgerPlatform[channel]+Financial.money(line.debit)-Financial.money(line.credit));}));const ledgerPlatformTotal=Financial.money(ledgerPlatform.grabfood+ledgerPlatform.foodpanda),platformDifference=Financial.money(ledgerPlatformTotal-unsettledValue);if(Math.abs(platformDifference)>0.009)issues.push({severity:"critical",kind:"platform_ar_control_mismatch",source:"platform_receivables",amount:platformDifference,expected:unsettledValue,actual:ledgerPlatformTotal});
-    const codes={};Object.keys(accounts).forEach((id)=>{const code=BooksBridge.cashCodeForAccount(accounts[id]);(codes[code]||(codes[code]=[])).push(id);});Object.keys(codes).forEach((code)=>{if(codes[code].length>1)issues.push({severity:"critical",kind:"duplicate_cash_account_code",source:code,detail:codes[code].join(", ")});});
+    const codes={},resolvedCashCodes=BankLedgerLink.resolveCashAccountCodes(accounts,(await db.ref('/books/config/cashAccountMap').get()).val()||{});Object.keys(accounts).forEach((id)=>{const code=resolvedCashCodes[id];(codes[code]||(codes[code]=[])).push(id);});Object.keys(codes).forEach((code)=>{if(codes[code].length>1)issues.push({severity:"critical",kind:"duplicate_cash_account_code",source:code,detail:codes[code].join(", ")});});
     const floatControl=resolveRegisterFloat(snaps[9].val()||{},snaps[10].val()||{});if(Math.abs(floatControl.amount-4000)>.009)issues.push({severity:"warning",kind:"register_float_differs_from_control",source:floatControl.source,amount:floatControl.amount,expected:4000});
     let custodyValue=0,custodyCount=0;Object.keys(custody).forEach((id)=>{const rem=Financial.money(custody[id].remaining);if(rem>0){custodyCount++;custodyValue=Financial.money(custodyValue+rem);}});let undepositedLedgerValue=0;Object.values(movements).forEach((m)=>(m&&m.lines||[]).forEach((line)=>{if(line.account==="asset:cash_awaiting_deposit")undepositedLedgerValue=Financial.money(undepositedLedgerValue+(Number(line.debit)||0)-(Number(line.credit)||0));}));const undepositedDifference=Financial.money(undepositedLedgerValue-custodyValue);if(Math.abs(undepositedDifference)>0.009)issues.push({severity:"critical",kind:"undeposited_subledger_mismatch",source:"cashCustody",detail:`Finance Books ${undepositedLedgerValue.toFixed(2)}; custody subledger ${custodyValue.toFixed(2)}`,amount:undepositedDifference,expected:custodyValue,actual:undepositedLedgerValue});const openAr=Object.values(ars).filter((x)=>x&&x.status==="open"),openAp=Object.values(aps).filter((x)=>x&&x.status==="open"),undepositedPayouts=Object.values(payouts).filter((x)=>x&&!x.reversed&&!x.depositMovementId&&Financial.money(x.actualPayout)>0);
     // --- Additive control checks (read-only; each guarded so a failure degrades, never breaks the audit) ---

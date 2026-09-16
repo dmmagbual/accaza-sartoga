@@ -368,16 +368,37 @@ exports.manageCashAccount = onCall(
     if (!name || !["bank", "ewallet"].includes(type)) throw new HttpsError("invalid-argument", "Account name and a valid type are required.");
     const ref = db.ref(`/cfAccounts/${id}`), old = (await ref.get()).val() || {}, accounts=(await db.ref("/cfAccounts").get()).val()||{}, duplicateId=Object.keys(accounts).find((key)=>key!==id&&financeText(accounts[key]&&accounts[key].name,100).trim().toLowerCase()===name.trim().toLowerCase());if(duplicateId)throw new HttpsError("already-exists","A Finance cash account with this name already exists. Select the existing account instead of creating a duplicate.");const opening = Financial.money(data.opening), oldOpening = Financial.money(old.opening), date = financeDate(data.openingDate), occurredAt = Date.parse(`${date}T00:00:00+08:00`) || Date.now(), reference=financeText(data.reference,120), reason=financeText(data.reason,300);
     const feedMethods = Array.isArray(data.feedMethods) ? data.feedMethods.map((x) => financeText(x, 60)).filter(Boolean).slice(0, 20) : [];
-    const row = {name, type, opening, openingDate: date, feedMethods, order: Number.isFinite(Number(old.order)) ? Number(old.order) : Object.keys(accounts).length, ts: old.ts || Date.now(), updatedAt: Date.now(), updatedBy: actor.uid};
-    const writes = {[`cfAccounts/${id}`]: row}, delta = Financial.money(opening - oldOpening);
+    // Every bank / e-wallet has its own Finance Books ledger account (Xero-style). A new account
+    // gets the requested or next free code; an existing Asset code is linked only when it has
+    // no balance of its own, so nothing is counted twice.
+    if (Math.abs(Financial.money(opening - oldOpening)) >= 0.005 && (!reference || !reason)) throw new HttpsError("invalid-argument", "Opening-balance corrections require a supporting reference and reason.");
+    const existing = Object.keys(old).length ? old : null, [chart, cashAccountMap, monthlyNet, monthlyMeta] = await Promise.all([
+      ensureBooksChart(db), db.ref("/books/config/cashAccountMap").get().then((x) => x.val() || {}),
+      /* download-ok: bounded monthly ledger totals (one row per month), read only when a bank account is created or linked */existing ? Promise.resolve({}) : db.ref("/books/monthlyNet").get().then((x) => x.val() || {}),
+      existing ? Promise.resolve(true) : db.ref("/books/monthlyNetMeta").get().then((x) => x.exists()),
+    ]);
+    let link;
+    try { link = BankLedgerLink.planCashAccountLink({accountId: id, existing, name, kind: type, requestedCode: financeText(data.booksCode, 4), accounts, configured: cashAccountMap, chart, monthlyNet, monthlyReady: monthlyMeta}); }
+    catch (error) { if (error instanceof BankLedgerLink.LinkError) throw new HttpsError(error.status, error.message); throw error; }
+    const now = Date.now();
+    if (!existing) {
+      const claim = await db.ref(`/books/config/cashAccountCodeClaims/${link.code}`).transaction((current) => !current || current.accountId === id || (!accounts[current.accountId] && now - Number(current.claimedAt || 0) > 120000) ? {accountId: id, claimedAt: current && current.accountId === id ? current.claimedAt : now} : undefined, undefined, false);
+      if (!claim.committed) throw new HttpsError("already-exists", `Finance Books ${link.code} was just linked to another bank account. Refresh and try again.`);
+    }
+    const row = {name, type, opening, openingDate: date, feedMethods, booksCode: link.code, order: Number.isFinite(Number(old.order)) ? Number(old.order) : Object.keys(accounts).length, ts: old.ts || now, updatedAt: now, updatedBy: actor.uid};
+    if (old.active === false) row.active = false;
+    const writes = {[`cfAccounts/${id}`]: row, [`books/config/cashAccountMap/${id}`]: link.code}, delta = Financial.money(opening - oldOpening);
+    if (link.createChartRow) writes[`booksChart/${link.code}`] = {code: link.code, name, type: "Asset", note: type === "ewallet" ? "E-wallet account" : "Bank account", active: true, system: false, sensitive: true, bankAccountId: id, createdAt: now, createdBy: actor.uid, updatedAt: now, updatedBy: actor.uid, schemaVersion: 1};
+    else if (!existing) { writes[`booksChart/${link.code}/bankAccountId`] = id; writes[`booksChart/${link.code}/sensitive`] = true; writes[`booksChart/${link.code}/updatedAt`] = now; }
+    if (link.renameChartRow) { writes[`booksChart/${link.code}/name`] = name; writes[`booksChart/${link.code}/updatedAt`] = now; }
     if (Math.abs(delta) >= 0.005) {
       if(!reference||!reason)throw new HttpsError("invalid-argument","Opening-balance corrections require a supporting reference and reason.");
       const value = Math.abs(delta), asset = `asset:cash_account:${id}`, lines = delta > 0 ? [Financial.line(asset, value, 0, "Opening cash adjustment"), Financial.line("equity:opening_balance", 0, value, "Opening cash adjustment")] : [Financial.line("equity:opening_balance", value, 0, "Opening cash adjustment"), Financial.line(asset, 0, value, "Opening cash adjustment")];
       const movementId = financeKey(`opening_adjust_${id}_${commandId}`, "Movement ID"), movement = Financial.movement("opening_balance_adjustment", "cashAccount", id, lines, {occurredAt, actorName: name,reference,reason,oldOpening,opening});
       writes[`financialMovements/${movementId}`] = financeRecord(movementId, movement, actor);
     }
-    writes[`operationalAudit/${Date.now()}_cash_account_${id}`] = {action: "cash_account_upsert", sourceType: "cashAccount", sourceId: id, oldOpening, opening, adjustment:delta, openingDate: date, reference, reason, actorUid: actor.uid, actorRole: actor.role, ts: Date.now(), schemaVersion: 1};
-    await db.ref().update(writes); return {accountId: id, opening, adjustment: delta};
+    writes[`operationalAudit/${now}_cash_account_${id}`] = {action: existing ? "cash_account_upsert" : "bank_account_create", sourceType: "cashAccount", sourceId: id, booksCode: link.code, booksChartCreated: link.createChartRow, oldOpening, opening, adjustment:delta, openingDate: date, reference, reason, actorUid: actor.uid, actorRole: actor.role, ts: Date.now(), schemaVersion: 1};
+    await db.ref().update(writes); return {accountId: id, booksCode: link.code, opening, adjustment: delta};
   },
 );
 

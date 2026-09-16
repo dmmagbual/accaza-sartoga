@@ -18,9 +18,13 @@ function pettyCategoryLabel(v){if(v.transactionType==='owner_withdrawal')return 
 function fv(id){var el=document.getElementById(id);return el?el.value:'';}
 function cashPaymentSuppliers(){return Object.keys(supplierMap).map(function(id){return Object.assign({id:id},supplierMap[id]);}).filter(function(x){return x.active!==false&&!x.mergedInto;}).sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''),undefined,{sensitivity:'base'});});}
 function cashPaymentSupplierOptions(selected){return '<option value="">— select supplier —</option>'+cashPaymentSuppliers().map(function(x){return '<option value="'+esc(x.id)+'"'+(selected===x.id?' selected':'')+'>'+esc(x.name)+'</option>';}).join('');}
-function cashPaymentFundingAccounts(){var cf=window.__cf;return ((cf&&cf.accounts&&cf.accounts())||[]).filter(function(x){return !x.disabled;});}
-function cashPaymentFundingOptions(selected){var accs=cashPaymentFundingAccounts();if(!accs.length)accs=[{id:'undeposited',name:'Undeposited Collection'}];var sel=selected||'undeposited';return accs.map(function(x){return '<option value="'+esc(x.id)+'"'+(sel===x.id?' selected':'')+'>'+esc(x.name)+'</option>';}).join('');}
-function cashPaymentFundingLabel(id){var found=cashPaymentFundingAccounts().find(function(x){return x.id===(id||'undeposited');});return found?found.name:'Undeposited Collection';}
+// Paid from = the finance module's account list (window.__cf), same as Purchases. Never show a partial list (Sep 2026).
+function cashPaymentFundingReady(){var cf=window.__cf;return !!(cf&&typeof cf.accounts==='function');}
+function cashPaymentFundingAccounts(){return cashPaymentFundingReady()?(window.__cf.accounts()||[]).filter(function(x){return x&&x.id&&!x.disabled;}):[];}
+function cashPaymentFundingOptions(selected){var accs=cashPaymentFundingAccounts();if(!accs.length)return '<option value="">Loading cash, bank and e-wallet accounts…</option>';var sel=accs.some(function(x){return x.id===selected;})?selected:(accs.some(function(x){return x.id==='undeposited';})?'undeposited':accs[0].id);return accs.map(function(x){return '<option value="'+esc(x.id)+'"'+(sel===x.id?' selected':'')+'>'+esc(x.name)+'</option>';}).join('');}
+function refreshCashPaymentFundingSelect(){var el=document.getElementById('pvFundAcct');if(!el)return;var keep=el.value;el.innerHTML=cashPaymentFundingOptions(keep);el.disabled=!cashPaymentFundingAccounts().length;}
+function cashPaymentFundingLabel(id){id=id||'undeposited';var found=cashPaymentFundingAccounts().find(function(x){return x.id===id;});if(found)return found.name;if(id==='undeposited')return 'Undeposited Collection';if(id==='cash_on_hand')return 'Cash on Hand';var row=cashAccountsMap[id];return row&&row.name?row.name:id;}
+if(!window.__cashPaymentFundingListener){window.__cashPaymentFundingListener=true;window.addEventListener('accaza:cash-balances-updated',function(){if(isTab('petty'))refreshCashPaymentFundingSelect();});}
 function createCashPaymentSupplier(){return F().run({title:'Create supplier',subtitle:'The new supplier will be shared immediately with Cash Payments, Purchases, Payables, inventory allocations and Finance Books.',submitLabel:'Create & select',busyLabel:'Creating…',fields:[{name:'name',label:'Official supplier name',required:true,maxLength:120}]},function(v){return A().manageSupplier({action:'create',name:v.name});}).then(function(r){return(r&&r.data)||r||{};});}
 function pettyBalance(){
   var open=Number((pettySettings&&pettySettings.openingBalance)||0);
@@ -58,6 +62,7 @@ function renderPetty(){
   }
   var repl=Object.keys(pettyRepl).map(function(k){return pettyRepl[k];}).sort(function(a,b){return (b.ts||0)-(a.ts||0);});
   var custodian=(pettySettings&&pettySettings.custodian)||'';
+  var fundingSel=(document.getElementById('pvFundAcct')||{}).value||'undeposited';
   root.innerHTML='<div class="pz-h">💵 Cash Payments</div>'
     +'<p class="pz-sub">Approved cash payments are charged to the selected cash, bank, or e-wallet account — operating expenses, owner withdrawals, and supplier advances. A receipt or clear manager-reviewed explanation is required, and only an approved voucher is posted to cash and Finance Books. Supplier and inventory payments still require a receipt, must be itemized in <b>Purchases</b>, and allocated to stock.</p>'
     +'<div class="pz-card" style="margin-bottom:1rem;background:#f8f6f1;"><div style="display:flex;gap:.6rem;align-items:end;flex-wrap:wrap;"><div style="flex:1;min-width:220px;"><span class="pz-lbl">Current cash custodian</span><input class="pz-in" id="rfCustodian" value="'+esc(custodian)+'" placeholder="Manager responsible for the physical cash"/></div><button class="pz-btn sec" id="rfCustodianSave">Save custodian</button><button class="pz-btn ok" id="rfOpenPurchases">Open detailed Purchases</button></div><div class="az-note">Undeposited Collection has one accountable custodian. A handover should include a physical cash count.</div></div>'
@@ -71,7 +76,7 @@ function renderPetty(){
           +'<div><span class="pz-lbl">Transaction type</span><select class="pz-in" id="pvType"><option value="expense">Operating expense</option><option value="owner_withdrawal">Owner withdrawal — not an expense</option><option value="purchase_advance">Payment to supplier — allocate to inventories</option></select></div>'
           +'<div><span class="pz-lbl">Date</span><input class="pz-in" id="pvDate" type="date" value="'+today+'"/></div>'
           +'<div><span class="pz-lbl">Amount ₱</span><input class="pz-in" id="pvAmount" type="number" step="any"/></div>'
-          +'<div><span class="pz-lbl">Paid from</span><select class="pz-in" id="pvFundAcct">'+cashPaymentFundingOptions('undeposited')+'</select><div class="az-note">Choose the actual cash, bank, or e-wallet account used. Protected Register Cash is unavailable.</div></div>'
+          +'<div><span class="pz-lbl">Paid from</span><select class="pz-in" id="pvFundAcct"'+(cashPaymentFundingAccounts().length?'':' disabled')+'>'+cashPaymentFundingOptions(fundingSel)+'</select><div class="az-note">Choose the actual cash, bank, or e-wallet account used. Protected Register Cash is unavailable.</div></div>'
           +'<div><span class="pz-lbl">Category</span><select class="pz-in" id="pvCat">'+catOpts+'</select></div>'
           +'<div id="pvRequesterWrap"><span class="pz-lbl">Requester / payee</span><input class="pz-in" id="pvRequester"/></div>'
           +'<div id="pvSupplierWrap" style="display:none;"><span class="pz-lbl">Supplier</span><div style="display:flex;gap:.35rem;"><select class="pz-in" id="pvSupplier">'+cashPaymentSupplierOptions('')+'</select><button type="button" class="pz-btn sec" id="pvNewSupplier">＋ New supplier</button></div><div class="az-note">Select the shared supplier record used later in Purchases.</div></div>'
@@ -113,7 +118,7 @@ function createVoucher(){
   var amount=Number(fv('pvAmount'))||0; if(!amount){alert('Enter an amount.');return;}
   var date=fv('pvDate')||window.AccazaDate.key(); var category=fv('pvCat'); var approver=(fv('pvApprover')||'').trim(),transactionType=fv('pvType')||'expense',purpose=(fv('pvPurpose')||'').trim();
   var supplierId=transactionType==='purchase_advance'?fv('pvSupplier'):'',supplier=supplierId&&supplierMap[supplierId],requester=transactionType==='purchase_advance'?(supplier&&supplier.name||''):(fv('pvRequester')||'').trim();if(transactionType==='purchase_advance'&&(!supplierId||!supplier||supplier.active===false)){alert('Select an active supplier or create one here before recording the inventory payment.');return;}if(!requester){alert('Enter the requester or payee name.');return;}
-  var fundingAccountId=fv('pvFundAcct')||'undeposited';
+  var fundingAccountId=fv('pvFundAcct');if(!fundingAccountId||!cashPaymentFundingAccounts().some(function(x){return x.id===fundingAccountId;})){alert('Select the cash, bank or e-wallet account this payment was paid from. If the list is still loading, wait a moment and try again.');return;}
   if(transactionType==='owner_withdrawal')category='owner_draw';
   if(transactionType==='purchase_advance'&&!purpose){alert('Enter what inventory will be purchased or allocated.');return;}
   var fileEl=document.getElementById('pvReceipt'); var file=fileEl&&fileEl.files&&fileEl.files[0];

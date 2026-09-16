@@ -14,7 +14,7 @@ var cfFrom=null,cfTo=null,cfAcctFilter='all';
 var CF_CATS=['Sales deposit','Platform payout','Purchases','Supplier payment','Rent','Utilities','Salaries','Owner draw','Capital in','Bank charges','AR collection','AP payment','Transfer','Other'];
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
 function init(){var a=A();
-  a.subscribe('cfAccounts',function(s){accountsMap=s.val()||{};if(isTab('cashflow'))renderCashflow();if(isTab('receivables'))renderReceivables();if(isTab('payables'))renderPayables();});
+  a.subscribe('cfAccounts',function(s){accountsMap=s.val()||{};if(isTab('cashflow'))renderCashflow();if(isTab('receivables'))renderReceivables();if(isTab('payables'))renderPayables();if(isTab('purchases')||isTab('petty'))window.dispatchEvent(new CustomEvent('accaza:cash-balances-updated'));});
   a.subscribe('cfLedger',function(s){ledgerMap=s.val()||{};if(isTab('cashflow'))renderCashflow();});
   a.subscribe('financialMovements',function(s){financialMovementsMap=Object.assign({},financialMovementsMap,s.val()||{});if(isTab('cashflow'))renderCashflow();if(isTab('purchases'))window.dispatchEvent(new CustomEvent('accaza:cash-balances-updated'));});
   a.subscribe('chartOfAccounts',function(s){chartMap=s.val()||{};if(isTab('cashflow'))renderCashflow();});

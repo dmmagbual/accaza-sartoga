@@ -2,7 +2,7 @@
 /* ---- Transactions: finance-originated postings via postFinancialCommand ---- */
 function uid(){ try{return crypto.randomUUID();}catch(_e){return 'id_'+Date.now()+'_'+Math.floor(Math.random()*1e6);} }
 function fval(id){ var el=document.getElementById(id); return el?String(el.value).trim():''; }
-function cashAccountOptions(sel){ var m=window.__cfAccounts||{}, ks=Object.keys(m); if(!ks.length) return '<option value="">(no cash accounts found)</option>'; return ks.map(function(k){return '<option value="'+esc(k)+'"'+(k===sel?' selected':'')+'>'+esc(m[k].name||k)+'</option>';}).join(''); }
+function cashAccountOptions(sel){ var m=window.__cfAccounts||{}, ks=Object.keys(m).filter(function(k){return k===sel||(m[k]&&m[k].active!==false);}); if(!ks.length) return '<option value="">(no cash accounts found)</option>'; return ks.map(function(k){return '<option value="'+esc(k)+'"'+(k===sel?' selected':'')+'>'+esc(m[k].name||k)+'</option>';}).join(''); }
 function billPaymentSourceOptions(){var m=window.__cfAccounts||{},ks=Object.keys(m).filter(function(k){return m[k]&&m[k].active!==false&&m[k].disabled!==true;}).sort(function(a,b){return Number(m[a].order||0)-Number(m[b].order||0)||String(m[a].name||a).localeCompare(String(m[b].name||b));});return '<optgroup label="Business cash"><option value="cash_on_hand">Cash on Hand</option><option value="cash_float" disabled>Register Cash Float · protected imprest</option><option value="undeposited">Undeposited Collection</option><option value="revolving_fund">Revolving Fund</option></optgroup><optgroup label="Banks and e-wallets">'+ks.map(function(k){return '<option value="'+esc(k)+'">'+esc(m[k].name||k)+'</option>';}).join('')+'</optgroup><optgroup label="Paid personally"><option value="owner_capital">Owner\'s Capital · owner paid from own pocket</option></optgroup>';}
 function openDocOptions(map,selectedId,skipProvisional){ var d=openDocs(map); if(skipProvisional)d=d.filter(function(x){return x.provisional!==true;}); if(!d.length) return ''; return d.map(function(x){return '<option value="'+esc(x.id)+'"'+(selectedId&&x.id===selectedId?' selected':'')+'>'+esc(x.party||'—')+' · '+peso(x.remainingAmount!=null?x.remainingAmount:x.amount)+' outstanding'+(x.due?' · due '+esc(x.due):'')+(x.ref?' · '+esc(x.ref):'')+'</option>';}).join(''); }
 function booksSuppliers(){var map=window.__supplierMap||{};return Object.keys(map).map(function(id){return Object.assign({id:id},map[id]);}).filter(function(x){return x.active!==false&&!x.mergedInto;}).sort(function(a,b){return String(a.name||'').localeCompare(String(b.name||''),undefined,{sensitivity:'base'});});}
@@ -146,6 +146,7 @@ App.saveAccount=function(orig){
   if(isMainAccount(code)) return alert("That code belongs to a protected main account.");
   if(!/^\d{4}$/.test(code)) return alert("Account code must be exactly four digits (e.g. 2310).");
   if(!orig && acc(code)) return alert("That code already exists.");
+  if(!orig && isBankLedgerCode(code)){ this.closeModal(); return this.bankAccountForm('',code); }
   if(window.__booksUser){
     if(!window.__booksChartManager) return alert("Only the finance owners (Danilo / Maria) can add or edit chart accounts.");
     if(!window.__manageBooksAccount) return alert("Live sync isn't ready yet - try again in a moment.");
