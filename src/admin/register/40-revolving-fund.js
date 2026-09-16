@@ -52,7 +52,7 @@ function renderPetty(){
     var remaining=Number(v.remainingAmount!=null?v.remainingAmount:v.amount)||0;
     var edit=(['pending','approved'].indexOf(v.status)>=0&&!v.voided&&!v.returnedAt)?'<button class="pz-btn sec" data-pved="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Edit</button> ':'';
     var act=v.status==='pending'?(edit+'<button class="pz-btn ok" data-pvap="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Approve</button> <button class="pz-btn warn" data-pvrj="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Reject</button>'):(edit+'<button class="pz-btn sec" data-pvpr="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Print</button>'+((v.status==='approved'&&!v.voided&&v.transactionType==='purchase_advance'&&remaining>0)?' <button class="pz-btn sec" data-pvrt="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Return balance</button>':'')+((v.status==='approved'&&!v.voided&&!(v.transactionType==='purchase_advance'&&(Object.keys(v.allocations||{}).length||v.returnedAt)))?' <button class="pz-btn warn" data-pvvd="'+esc(v.id)+'" style="padding:0.2rem 0.5rem;">Void</button>':''));
-    var rc=v.receiptImg?'<a href="'+v.receiptImg+'" target="_blank" style="color:var(--bd);">Receipt</a>':(v.purpose?'<span title="'+esc(v.purpose)+'" style="color:#155724;">Manager explanation</span>':'<span style="color:#c0392b;">Missing</span>');
+    var rc=(v.receiptImg||v.hasReceipt)?'<a href="#" data-pvimg="'+esc(v.id)+'" style="color:var(--bd);">Receipt</a>':(v.purpose?'<span title="'+esc(v.purpose)+'" style="color:#155724;">Manager explanation</span>':'<span style="color:#c0392b;">Missing</span>');
     var kind=v.transactionType==='purchase_advance'?'Supplier payment — pending inventory allocation':pettyCategoryLabel(v),alloc=v.transactionType==='purchase_advance'?('<div style="font-size:.7rem;color:var(--tl);">'+peso(v.remainingAmount!=null?v.remainingAmount:v.amount)+' awaiting allocation'+' · paid from '+esc(cashPaymentFundingLabel(v.fundingAccountId))+'</div>'):'';
     return '<tr'+(v.voided?' style="opacity:0.55;"':'')+'><td>'+esc(v.voucherNo||'')+'</td><td>'+esc(v.date||'')+'</td><td style="text-align:right;">'+peso(v.amount)+'</td><td>'+esc(kind)+alloc+'</td><td>'+esc(v.recipient||v.requesterName||'')+'</td><td>'+esc(v.approvedBy||v.approverName||'')+'</td><td>'+rc+'</td><td>'+st+'</td><td style="white-space:nowrap;">'+act+'</td></tr>';
   }
@@ -99,6 +99,7 @@ function renderPetty(){
   root.querySelectorAll('[data-pvvd]').forEach(function(b){b.onclick=function(){voidVoucher(b.getAttribute('data-pvvd'));};});
   root.querySelectorAll('[data-pvrt]').forEach(function(b){b.onclick=function(){returnSupplierPayment(b.getAttribute('data-pvrt'));};});
   root.querySelectorAll('[data-pvpr]').forEach(function(b){b.onclick=function(){printVoucher(b.getAttribute('data-pvpr'));};});
+  root.querySelectorAll('[data-pvimg]').forEach(function(b){b.onclick=function(e){e.preventDefault();showVoucherReceipt(b.getAttribute('data-pvimg'));};});
 }
 function editVoucher(id){
   var v=pettyVouchers[id];if(!v||['pending','approved'].indexOf(v.status)<0||v.voided||v.returnedAt)return;var approved=v.status==='approved',isExpense=(v.transactionType||'expense')==='expense',allocated=Object.keys(v.allocations||{}).reduce(function(sum,k){return sum+(Number(v.allocations[k]&&v.allocations[k].amount)||0);},0),fields=[];
@@ -121,13 +122,15 @@ function createVoucher(){
   compressImage(file,function(img){
     nextVoucherNo(function(no){
       var a=A();var id=uid('pv_');
-      a.set(a.ref(a.db,'pettyCashVouchers/'+id),{voucherNo:no,date:date,amount:amount,transactionType:transactionType,category:transactionType==='purchase_advance'?'Supplier payment pending inventory allocation':category,supplierId:transactionType==='purchase_advance'?supplierId:'',supplierName:transactionType==='purchase_advance'?requester:'',requesterName:requester,recipient:requester,purpose:purpose,remainingAmount:transactionType==='purchase_advance'?amount:null,fundingAccountId:fundingAccountId,approverName:approver,receiptImg:img||'',status:'pending',createdBy:(activeShift&&activeShift.staff)||'Admin',createdAt:Date.now(),schemaVersion:2}).then(function(){window.__posLog('petty-create',no,peso(amount));renderPetty();}).catch(function(e){alert('Could not save voucher: '+e);if(btn)btn.disabled=false;});
+      // Receipt images are stored beside the voucher so the voucher list stays small (Sep 2026).
+      var createdAt=Date.now(),writes={};writes['pettyCashVouchers/'+id]={voucherNo:no,date:date,amount:amount,transactionType:transactionType,category:transactionType==='purchase_advance'?'Supplier payment pending inventory allocation':category,supplierId:transactionType==='purchase_advance'?supplierId:'',supplierName:transactionType==='purchase_advance'?requester:'',requesterName:requester,recipient:requester,purpose:purpose,remainingAmount:transactionType==='purchase_advance'?amount:null,fundingAccountId:fundingAccountId,approverName:approver,hasReceipt:!!img,status:'pending',createdBy:(activeShift&&activeShift.staff)||'Admin',createdAt:createdAt,schemaVersion:2};if(img)writes['pettyCashReceipts/'+id]={meta:{createdAt:createdAt,bytes:img.length},image:img};
+      a.update(a.ref(a.db),writes).then(function(){window.__posLog('petty-create',no,peso(amount));renderPetty();}).catch(function(e){alert('Could not save voucher: '+e);if(btn)btn.disabled=false;});
     });
   });
 }
 function approveVoucher(id){
   var v=pettyVouchers[id]; if(!v||v.status!=='pending')return;
-  if(!v.receiptImg&&!(v.purpose||'').trim()){alert('Add a clear explanation or attach a receipt before approval.');return;}
+  if(!v.receiptImg&&!v.hasReceipt&&!(v.purpose||'').trim()){alert('Add a clear explanation or attach a receipt before approval.');return;}
   var a=A();if(!a.managePettyVoucher||!a.managerApproval){alert('Cash-payment approval service is not available. Refresh the portal.');return;}
   a.managerApproval('approve_petty_voucher',id,Number(v.amount)||0,'Approve '+v.voucherNo).then(function(ap){return a.managePettyVoucher({action:'approve',voucherId:id,approvalId:ap.approvalId});}).then(function(){window.__posLog('petty-approve',v.voucherNo,peso(v.amount));alert(v.transactionType==='purchase_advance'?'Supplier payment approved. Finance Books will post the selected cash account and the advance will be available in Purchases for allocation.':'Voucher approved.');}).catch(function(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Approval failed: '+((e&&e.message)||e));});
 }
@@ -156,9 +159,18 @@ function addReplenishment(){
   }
   window.__posLog('petty-replenish',source,peso(amt));
 }
+function voucherReceipt(id,v){if(v&&v.receiptImg)return Promise.resolve(v.receiptImg);if(!v||!v.hasReceipt)return Promise.resolve('');var a=A();return a.get(a.ref(a.db,'pettyCashReceipts/'+id+'/image')).then(function(s){return String(s.val()||'');}).catch(function(){return '';});}
+function safeReceiptSrc(s){s=String(s||'');return /^data:image\/(?:jpeg|png|webp);base64,/i.test(s)?s:'';}
+function showVoucherReceipt(id){
+  var v=pettyVouchers[id];if(!v)return;
+  var w=window.open('','_blank','width=520,height=720');if(!w){alert('Allow pop-ups to view the receipt.');return;}
+  w.document.write('<title>Receipt '+esc(v.voucherNo||'')+'</title><p style="font-family:Arial,sans-serif">Loading receipt…</p>');
+  voucherReceipt(id,v).then(function(src){src=safeReceiptSrc(src);w.document.body.innerHTML=src?'<img style="max-width:100%" alt="Receipt" src="'+src+'">':'<p style="font-family:Arial,sans-serif">Receipt image is unavailable.</p>';});
+}
 function printVoucher(id){
   var v=pettyVouchers[id]; if(!v)return;
   var w=window.open('','_blank','width=420,height=640'); if(!w){alert('Allow pop-ups to print the voucher.');return;}
+  voucherReceipt(id,v).then(function(img){img=safeReceiptSrc(img);
   w.document.write('<html><head><title>'+esc(v.voucherNo)+'</title><style>*{font-family:Arial,sans-serif;color:#000;}body{padding:18px;}h2{text-align:center;margin:2px 0;}table{width:100%;border-collapse:collapse;margin-top:8px;}td{padding:4px 2px;vertical-align:top;}hr{border:none;border-top:1px dashed #000;}img{max-width:100%;margin-top:8px;border:1px solid #ccc;}.sig{margin-top:34px;display:flex;justify-content:space-between;}.sig div{width:45%;border-top:1px solid #000;text-align:center;font-size:11px;padding-top:3px;}@media print{button{display:none;}}</style></head><body>'
     +'<h2>Accaza Coffee House</h2><div style="text-align:center;font-weight:bold;">REVOLVING FUND VOUCHER</div><hr>'
     +'<table><tr><td>Voucher No.</td><td style="text-align:right;font-weight:bold;">'+esc(v.voucherNo)+'</td></tr>'
@@ -168,10 +180,11 @@ function printVoucher(id){
     +'<tr><td>Requested by</td><td style="text-align:right;">'+esc(v.requesterName||'')+'</td></tr>'
     +'<tr><td>Approved by</td><td style="text-align:right;">'+esc(v.approvedBy||v.approverName||'')+'</td></tr>'
     +'<tr><td>Status</td><td style="text-align:right;">'+(v.voided?'VOID':esc(v.status||''))+'</td></tr></table>'
-    +(v.receiptImg?'<div style="font-size:11px;margin-top:8px;">Receipt:</div><img src="'+v.receiptImg+'"/>':'')
+    +(img?'<div style="font-size:11px;margin-top:8px;">Receipt:</div><img src="'+img+'"/>':'')
     +'<div class="sig"><div>Received by</div><div>Approved by</div></div>'
     +'<div style="text-align:center;margin-top:16px;"><button onclick="window.print()">Print</button></div>'
     +'</body></html>'); w.document.close();
+  });
 }
 function exportPetty(){
   if(!window.XLSX){alert('Excel library still loading — try again.');return;}

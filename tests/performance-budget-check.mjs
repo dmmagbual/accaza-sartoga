@@ -21,7 +21,9 @@ const budgets={
   // and server-aligned account validation without adding another data listener.
   'assets/js/admin/pos.js':522000,
   // Build 497 adds the visible cash-refund tag and preserved refund detail to shift reports.
-  'assets/js/admin/register.js':175500,
+  // +1.4 KB (Sep 2026): receipt images load on demand from pettyCashReceipts instead of riding
+  // on every voucher in the Petty/Purchases listeners.
+  'assets/js/admin/register.js':177500,
   // Build 527 secures completed-sale corrections while retaining the sales reconciliation bridge;
   // retain a narrow ceiling above the reviewed generated bundle.
   // Build 533 replaces Stock Value's whole-journal listener with monthly totals plus the

@@ -323,4 +323,26 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   assert.ok(!reads.some((r) => r === '/orders' || r === '/archivedOrders'), 'no lookup downloads a whole order node');
 }
 
-console.log('PASS: replica-first history reads, tab-stable report listeners, ID-patched archive changes, month-bounded Stock Value journal (equivalent to full history), Books without full archive downloads, and indexed/bounded server reads, bounded per-item inventory idempotency state, day-bucketed Books monthly totals, stale tabs that pick up fixed builds, a backup download budget warning, and index-first platform order lookups.');
+// 12. Petty voucher receipts live beside the voucher, so the voucher listeners stay small, and
+// approvals transact on one voucher instead of downloading and re-uploading the whole node.
+{
+  const bundle = read('functions/index.js');
+  const pettyAt = bundle.indexOf('exports.managePettyVoucher'), petty = bundle.slice(pettyAt, bundle.indexOf('\nexports.', pettyAt + 10));
+  assert.ok(!petty.includes('db.ref("/pettyCashVouchers").get()') && !petty.includes('db.ref("/pettyCashVouchers")'), 'managePettyVoucher must not read or transact the whole voucher node');
+  assert.ok(petty.includes('const result = await ref.transaction((row) => {'), 'voucher review transacts on the single voucher');
+  const register = read('assets/js/admin/register.js');
+  assert.ok(!/receiptImg:img/.test(register), 'new vouchers must not embed the receipt image');
+  assert.ok(register.includes("a.update(a.ref(a.db),writes)") && register.includes("writes['pettyCashReceipts/'+id]"), 'voucher and receipt are written atomically');
+  const start = bundle.indexOf('async function voucherHasReceipt'), end = bundle.indexOf('exports.managePettyVoucher');
+  const reads = [];
+  const db = {ref: (path) => ({get: async () => { reads.push(path); return {exists: () => path === '/pettyCashReceipts/pv_new/meta'}; }})};
+  const context = vm.createContext({db});
+  vm.runInContext(`${bundle.slice(start, end)};globalThis.has = voucherHasReceipt;`, context);
+  assert.equal(await context.has(db, 'pv_old', {receiptImg: 'data:image/jpeg;base64,AA'}), true);
+  assert.equal(await context.has(db, 'pv_new', {hasReceipt: true}), true);
+  assert.equal(await context.has(db, 'pv_fake', {hasReceipt: true}), false, 'a hasReceipt flag without a stored receipt is not evidence');
+  assert.equal(await context.has(db, 'pv_none', {purpose: 'x'}), false);
+  assert.deepEqual(reads, ['/pettyCashReceipts/pv_new/meta', '/pettyCashReceipts/pv_fake/meta'], 'evidence checks read only the small meta child');
+}
+
+console.log('PASS: replica-first history reads, tab-stable report listeners, ID-patched archive changes, month-bounded Stock Value journal (equivalent to full history), Books without full archive downloads, and indexed/bounded server reads, bounded per-item inventory idempotency state, day-bucketed Books monthly totals, stale tabs that pick up fixed builds, a backup download budget warning, index-first platform order lookups, and voucher receipts outside the voucher list.');

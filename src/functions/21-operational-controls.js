@@ -210,13 +210,21 @@ exports.reopenDiscrepancy = onCall(
   },
 );
 
+// Receipt images live in /pettyCashReceipts/{id} (Sep 2026) so the voucher list stays small;
+// evidence is proven by the tiny meta child. Older vouchers keep the image inline.
+async function voucherHasReceipt(db, id, voucher) {
+  if (voucher && voucher.receiptImg) return true;
+  if (!voucher || voucher.hasReceipt !== true) return false;
+  return (await db.ref(`/pettyCashReceipts/${id}/meta`).get()).exists();
+}
+
 exports.managePettyVoucher = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => {
     const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["petty"]);
     const data = request.data || {}, action = financeText(data.action, 20), id = financeKey(data.voucherId, "Voucher ID"), reason = financeText(data.reason, 500);
     const ref = db.ref(`/pettyCashVouchers/${id}`), snap = await ref.get(); if (!snap.exists()) throw new HttpsError("not-found", "Revolving Fund voucher not found.");
-    const voucher = snap.val() || {}, value = Financial.money(voucher.amount), now = Date.now(); let approvalAction;
+    const voucher = snap.val() || {}, value = Financial.money(voucher.amount), now = Date.now(), hasReceipt = await voucherHasReceipt(db, id, voucher); let approvalAction;
     // Editing a voucher changes the Admin subledger as well as its linked
     // Finance correction, so the voucher's own accounting month must be open.
     if (["correct", "approve"].includes(action)) await assertAccountingPeriodOpen(db, action === "correct" && voucher.status === "pending" ? financeDate(data.date) : (financeText(voucher.date, 10) || financeDateFromTimestamp(now)), "editing or approving this Admin cash payment");
@@ -226,7 +234,7 @@ exports.managePettyVoucher = onCall(
       const nextAmount = Financial.money(data.amount), nextPurpose = financeText(data.purpose, 300), nextApprover = financeText(data.approverName, 160), reason = financeText(data.reason, 500), type = financeText(voucher.transactionType, 40) || "expense", selectedSupplier=type==="purchase_advance"?await requireActiveSupplier(db,data.supplierId,data.payee):null,nextPayee=selectedSupplier?selectedSupplier.name:financeText(data.payee,160),nextSupplierId=selectedSupplier?selectedSupplier.id:"";
       if (!(nextAmount > 0)) throw new HttpsError("invalid-argument", "Amount must be greater than zero.");
       if (!nextPayee) throw new HttpsError("invalid-argument", "Requester or supplier payee is required.");
-      if (!voucher.receiptImg && !nextPurpose) throw new HttpsError("invalid-argument", "A receipt or clear explanation is required.");
+      if (!hasReceipt && !nextPurpose) throw new HttpsError("invalid-argument", "A receipt or clear explanation is required.");
       if (!reason) throw new HttpsError("invalid-argument", "A correction reason is required.");
       const expenseCategories = new Set(["operating_supplies","office_supplies","utilities","internet_phone","marketing","repairs","bank_fees","rent","salaries","transport","staff_meals","miscellaneous","other_expense"]), nextCategory = type === "purchase_advance" ? "Supplier payment pending inventory allocation" : type === "owner_withdrawal" ? "owner_draw" : financeText(data.category, 80);
       if (type === "expense" && !expenseCategories.has(nextCategory)) throw new HttpsError("invalid-argument", "Expense category is invalid.");
@@ -261,7 +269,7 @@ exports.managePettyVoucher = onCall(
           accountIdFor(fundingAccounts, fundingAccountId);
         }
       }
-      if (!voucher.receiptImg && !financeText(voucher.purpose, 300)) throw new HttpsError("failed-precondition", "A receipt or clear explanation is required before approval.");
+      if (!hasReceipt && !financeText(voucher.purpose, 300)) throw new HttpsError("failed-precondition", "A receipt or clear explanation is required before approval.");
       approvalAction = "approve_petty_voucher";
     } else if (action === "reject") {
       if (voucher.status !== "pending") throw new HttpsError("failed-precondition", "Only pending vouchers can be rejected.");
@@ -284,29 +292,31 @@ exports.managePettyVoucher = onCall(
       const custodySnap = await db.ref("/cashCustody").get();
       baseFunds = Financial.money(Object.values(custodySnap.val() || {}).reduce((sum, row) => sum + Financial.money(row && row.remaining), 0));
     }
-    let failure = "", duplicate = false; const vouchersRef = db.ref("/pettyCashVouchers"), vouchersInitial = (await vouchersRef.get()).val() || {}, transactionState = {seen: false};
-    const result = await vouchersRef.transaction((all) => {
-      all = transactionCurrent(all, vouchersInitial, transactionState); if (!all) return; all = Object.assign({}, all); const current = all[id]; failure = ""; duplicate = false;
+    // Transact on this voucher only: the whole node (with legacy receipt images) was downloaded
+    // and re-uploaded on every approval before Sep 2026.
+    let failure = "", duplicate = false; const transactionState = {seen: false};
+    const result = await ref.transaction((row) => {
+      const current = transactionCurrent(row, voucher, transactionState), all = {}; failure = ""; duplicate = false;
       if (!current) {failure = "Revolving Fund voucher not found."; return;}
       if (action === "approve") {
-        if (current.status === "approved" && current.approvalId === approval.id) {duplicate = true; return all;}
+        if (current.status === "approved" && current.approvalId === approval.id) {duplicate = true; return current;}
         if (current.status !== "pending") {failure = "Only pending vouchers can be approved."; return;}
-        if (!current.receiptImg && !financeText(current.purpose, 300)) {failure = "A receipt or clear explanation is required before approval."; return;}
+        if (!(current.receiptImg || (current.hasReceipt === true && hasReceipt)) && !financeText(current.purpose, 300)) {failure = "A receipt or clear explanation is required before approval."; return;}
         if (approvalFunding.kind === "undeposited") {const available = Financial.money(baseFunds);if (value > available + 0.009) {failure = `Voucher exceeds available Undeposited Collection (₱${available.toFixed(2)}).`; return;}}
         all[id] = Object.assign({}, current, {status: "approved", approvedBy, approvedByUid: approval.record.approvedBy, approvedAt: now, approvalId: approval.id});
       } else if (action === "reject") {
-        if (current.status === "rejected" && current.rejectionApprovalId === approval.id) {duplicate = true; return all;}
+        if (current.status === "rejected" && current.rejectionApprovalId === approval.id) {duplicate = true; return current;}
         if (current.status !== "pending") {failure = "Only pending vouchers can be rejected."; return;}
         all[id] = Object.assign({}, current, {status: "rejected", rejectReason: reason, rejectedBy: approvedBy, rejectedByUid: approval.record.approvedBy, rejectedAt: now, rejectionApprovalId: approval.id});
       } else {
-        if (current.voided === true && current.voidApprovalId === approval.id) {duplicate = true; return all;}
+        if (current.voided === true && current.voidApprovalId === approval.id) {duplicate = true; return current;}
         if (current.status !== "approved" || current.voided === true) {failure = "Only an active approved voucher can be voided."; return;}
         all[id] = Object.assign({}, current, {voided: true, voidReason: reason, voidedBy: approvedBy, voidedByUid: approval.record.approvedBy, voidedAt: now, voidApprovalId: approval.id});
       }
-      return all;
+      return all[id];
     }, undefined, false);
     if (!result.committed) throw new HttpsError("failed-precondition", failure || "Voucher changed while it was being reviewed. Refresh and try again.");
-    await db.ref().update(Object.assign({}, approval.usedWrites, {[`operationalAudit/${now}_${id}`]: operationalAuditRecord(`${action}_petty_voucher`, "pettyVoucher", id, actor, {approvalId: approval.id, amount: value, evidenceType: voucher.receiptImg ? "receipt" : "manager_reviewed_explanation", explanation: financeText(voucher.purpose, 300)})}));
+    await db.ref().update(Object.assign({}, approval.usedWrites, {[`operationalAudit/${now}_${id}`]: operationalAuditRecord(`${action}_petty_voucher`, "pettyVoucher", id, actor, {approvalId: approval.id, amount: value, evidenceType: hasReceipt ? "receipt" : "manager_reviewed_explanation", explanation: financeText(voucher.purpose, 300)})}));
     return {voucherId: id, action, at: now, duplicate};
   },
 );

@@ -101,6 +101,13 @@ try{
   await assertSucceeds(set(ref(staff,'discrepancies/disc_new'),{kind:'cash',status:'open',ts:2}));
   await assertFails(update(ref(owner,'pettyCashVouchers/pv_one'),{status:'approved'}));
   await assertSucceeds(set(ref(staff,'pettyCashVouchers/pv_new'),{voucherNo:'PV-2',amount:5,status:'pending',createdAt:2}));
+  // Receipt images are stored beside a new pending voucher, atomically, and never replaced.
+  await assertSucceeds(update(ref(staff),{'pettyCashVouchers/pv_img':{voucherNo:'PV-3',amount:5,status:'pending',createdAt:3,hasReceipt:true},'pettyCashReceipts/pv_img':{meta:{createdAt:3,bytes:27},image:'data:image/jpeg;base64,AAAA'}}));
+  await assertSucceeds(get(ref(staff,'pettyCashReceipts/pv_img/meta')));
+  await assertFails(set(ref(owner,'pettyCashReceipts/pv_img'),{meta:{createdAt:4,bytes:27},image:'data:image/jpeg;base64,AAAA'}));
+  await assertFails(set(ref(staff,'pettyCashReceipts/pv_one'),{meta:{createdAt:4,bytes:27},image:'data:image/jpeg;base64,AAAA'}));
+  await assertFails(update(ref(staff),{'pettyCashVouchers/pv_bad':{voucherNo:'PV-4',amount:5,status:'pending',createdAt:4,hasReceipt:true},'pettyCashReceipts/pv_bad':{meta:{createdAt:4,bytes:9},image:'javascript:alert(1)'}}));
+  await assertFails(get(ref(cashier,'pettyCashReceipts/pv_img')));
   await assertFails(update(ref(owner,'activityLogArchive/log_old'),{action:'forged'}));
   await assertSucceeds(get(ref(owner,'operationalAudit/audit_one')));
   await assertFails(set(ref(owner,'operationalAudit/forged'),{action:'forged',ts:2}));
