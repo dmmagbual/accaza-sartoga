@@ -332,17 +332,52 @@ exports.manageCashAccount = onCall(
 function platformRefKey(ref) {
   return String(ref || "").trim().toUpperCase().replace(/[.#$/\[\]\x00-\x1f\x7f]/g, "_");
 }
-async function existingPlatformOrder(db, channel, ref, excludeOrderId) {
-  const [ordersSnap, archiveSnap] = await Promise.all([db.ref("/orders").get(), db.ref("/archivedOrders").get()]);
-  const wantedChannel = String(channel || "").toLowerCase(), wantedKey = platformRefKey(ref), exclude = String(excludeOrderId || "");
-  for (const [node, rows] of [["orders", ordersSnap.val() || {}], ["archivedOrders", archiveSnap.val() || {}]]) {
-    for (const id of Object.keys(rows)) {
-      const order = rows[id] || {};
-      if (id === exclude || String(order.channel || "").toLowerCase() !== wantedChannel) continue;
-      if (platformRefKey(order.platformRef || order.id || id) === wantedKey) return {id, node, order};
+const PLATFORM_CHANNELS = ["grabfood", "foodpanda"];
+function platformOrderMatches(order, id, channel, key) {
+  return !!order && String(order.channel || "").toLowerCase() === channel && platformRefKey(order.platformRef || order.id || id) === key;
+}
+async function readOrderRecord(db, orderId) {
+  const id = String(orderId || "");
+  if (!id || /[.#$/\[\]]/.test(id)) return null;
+  const live = await db.ref(`/orders/${id}`).get();
+  if (live.exists()) return {id, node: "orders", order: live.val() || {}};
+  const archived = await db.ref(`/archivedOrders/${id}`).get();
+  return archived.exists() ? {id, node: "archivedOrders", order: archived.val() || {}} : null;
+}
+// Platform-order lookups read the reference index and one order record. Only a
+// missing or stale index entry (orders created before the index existed) falls
+// back to that channel's orders through the `channel` index, never the whole
+// order history, and the found order is then indexed so the next lookup is
+// cheap. Before 16 Sep 2026 every lookup downloaded /orders + /archivedOrders
+// (3.2 MB); a payout reconciliation session made 25 of them in 20 minutes.
+async function findPlatformOrder(db, channels, ref, excludeOrderId) {
+  const key = platformRefKey(ref), exclude = String(excludeOrderId || "");
+  const wanted = (Array.isArray(channels) ? channels : [channels]).map((c) => String(c || "").toLowerCase()).filter((c) => PLATFORM_CHANNELS.includes(c));
+  if (!key || !wanted.length) return null;
+  for (const channel of wanted) {
+    const entry = (await db.ref(`/platformRefIndex/${channel}/${key}`).get()).val();
+    if (!entry || !entry.orderId || String(entry.orderId) === exclude) continue;
+    const record = await readOrderRecord(db, entry.orderId);
+    if (record && platformOrderMatches(record.order, record.id, channel, key)) return record;
+  }
+  for (const channel of wanted) {
+    const [live, archived] = await Promise.all([
+      db.ref("/orders").orderByChild("channel").equalTo(channel).get(),
+      db.ref("/archivedOrders").orderByChild("channel").equalTo(channel).get(),
+    ]);
+    for (const [node, rows] of [["orders", live.val() || {}], ["archivedOrders", archived.val() || {}]]) {
+      for (const id of Object.keys(rows)) {
+        if (id === exclude || !platformOrderMatches(rows[id], id, channel, key)) continue;
+        const order = rows[id];
+        await db.ref(`/platformRefIndex/${channel}/${key}`).transaction((current) => current == null ? {orderId: id, ref: String(order.platformRef || id), at: Number(order.timestamp) || Date.now(), backfilledAt: Date.now()} : undefined, undefined, false);
+        return {id, node, order};
+      }
     }
   }
   return null;
+}
+async function existingPlatformOrder(db, channel, ref, excludeOrderId) {
+  return findPlatformOrder(db, [channel], ref, excludeOrderId);
 }
 
 exports.indexPlatformOrderRef = onValueCreated(

@@ -9,6 +9,8 @@ import {reconcileInventoryBooks, journalBasisThrough} from '../assets/js/admin/i
 const require = createRequire(import.meta.url);
 const read = (file) => fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+// database.rules.json carries comments, so read a node's indexes directly.
+const ruleIndexes = (node) => { const m = read('database.rules.json').match(new RegExp(`\\n    "${node}":\\s*\\{\\s*"\\.indexOn":\\s*\\[([^\\]]*)\\]`)); assert.ok(m, `${node} has no .indexOn`); return JSON.parse(`[${m[1]}]`); };
 
 // 1. readHistoricalOrders serves every current-schema replica from Firestore, verified or not.
 {
@@ -103,7 +105,7 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
   assert(books.includes('query(ref(db,"/archivedOrders"),orderByChild("settlementStatus"),equalTo("unsettled"))'));
   for (const marker of ['function syncInsightsOrders()', "httpsCallable(fns,\"readHistoricalOrders\")", "mode:'period'", 'resetInsightsOrders();']) assert(books.includes(marker), `Books insights loader missing: ${marker}`);
   assert(read('src/books/business-intelligence.js').includes('window.__booksInsightsOrders'), 'Insights uses the on-demand history');
-  assert(read('database.rules.json').includes('"archivedOrders":       { ".indexOn": ["archivedAt", "timestamp", "completedAt", "receivedAt", "shiftId", "settlementStatus"]'), 'archivedOrders.settlementStatus must be indexed');
+  assert(ruleIndexes('archivedOrders').includes('settlementStatus'), 'archivedOrders.settlementStatus must be indexed');
   const functions = read('functions/index.js');
   assert(functions.includes('await db.ref("/financialMovements").orderByChild("sourceId").equalTo(String(order.id || "")).get()'), 'full-void netting reads only the order movements');
   assert(!/async function fullOrderVoidMovement[\s\S]{0,200}db\.ref\("\/financialMovements"\)\.get\(\)/.test(functions));
@@ -262,4 +264,57 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
   assert.ok(read('src/functions/60-maintenance.js').includes('bytes: payload.length'), 'the backup records its size for the budget check');
 }
 
-console.log('PASS: replica-first history reads, tab-stable report listeners, ID-patched archive changes, month-bounded Stock Value journal (equivalent to full history), Books without full archive downloads, and indexed/bounded server reads, bounded per-item inventory idempotency state, day-bucketed Books monthly totals, stale tabs that pick up fixed builds, and a backup download budget warning.');
+// 11. Platform-order lookups (payout corrections, late entries) read the reference index and one
+// record; a missing index entry falls back to that channel only, and is then backfilled.
+{
+  for (const node of ['orders', 'archivedOrders']) assert.ok(ruleIndexes(node).includes('channel'), `${node}.channel must be indexed for platform lookups`);
+  const bundle = read('functions/index.js');
+  const start = bundle.indexOf('function platformRefKey(ref)'), end = bundle.indexOf('exports.indexPlatformOrderRef');
+  const presettle = bundle.slice(bundle.indexOf('exports.correctPlatformPresettlement'), bundle.indexOf('if (!found) throw new HttpsError("not-found", "No matching GrabFood'));
+  assert.ok(!/db\.ref\("\/(orders|archivedOrders)"\)\.get\(\)/.test(presettle) && presettle.includes('findPlatformOrder(db,'), 'correctPlatformPresettlement must not download whole order nodes');
+  assert.ok(!/db\.ref\("\/(orders|archivedOrders)"\)\.get\(\)/.test(bundle.slice(start, end)), 'platform lookups must not download whole order nodes');
+  const data = {
+    orders: {'GF-LIVE': {channel: 'grabfood', platformRef: 'gf-100', total: 10}, 'POS-1': {channel: 'instore', total: 5}},
+    archivedOrders: {'GF-OLD': {channel: 'grabfood', platformRef: 'GF-200'}, 'FP-OLD': {channel: 'foodpanda', platformRef: 'FP-9'}, 'GF-MOVED': {channel: 'grabfood', platformRef: 'GF-301'}},
+    platformRefIndex: {grabfood: {'GF-100': {orderId: 'GF-LIVE'}, 'GF-300': {orderId: 'GF-MOVED'}}},
+  };
+  const reads = [];
+  const at = (path) => path.split('/').filter(Boolean).reduce((node, part) => node == null ? undefined : node[part], data);
+  const setAt = (path, value) => { const parts = path.split('/').filter(Boolean); let node = data; parts.slice(0, -1).forEach((p) => { node = node[p] = node[p] || {}; }); node[parts.at(-1)] = value; };
+  const snap = (value) => ({exists: () => value !== undefined && value !== null, val: () => value === undefined ? null : JSON.parse(JSON.stringify(value))});
+  const ref = (path) => {
+    const q = {child: null, equal: undefined};
+    const api = {
+      orderByChild(child) { q.child = child; return api; }, equalTo(value) { q.equal = value; return api; },
+      async get() {
+        const value = at(path);
+        if (!q.child) { reads.push(path); return snap(value); }
+        reads.push(`${path}?${q.child}=${q.equal}`);
+        return snap(Object.fromEntries(Object.entries(value || {}).filter(([, row]) => row && row[q.child] === q.equal)));
+      },
+      async transaction(fn) { const next = fn(at(path) ?? null); if (next !== undefined) setAt(path, next); return {committed: next !== undefined}; },
+    };
+    return api;
+  };
+  const db = {ref};
+  const context = vm.createContext({module: {exports: {}}, exports: {}, db, Date, String, Number, Object, Array, JSON, Promise});
+  vm.runInContext(`${bundle.slice(start, end)};globalThis.find = findPlatformOrder; globalThis.existing = existingPlatformOrder;`, context);
+  const {find, existing} = context;
+  const hit = await find(db, ['grabfood', 'foodpanda'], 'GF-100');
+  assert.equal(hit.id, 'GF-LIVE'); assert.equal(hit.node, 'orders');
+  assert.deepEqual(reads.splice(0), ['/platformRefIndex/grabfood/GF-100', '/orders/GF-LIVE'], 'an indexed lookup reads one index entry and one order');
+  const old = await find(db, ['grabfood'], 'gf-200');
+  assert.equal(old.id, 'GF-OLD'); assert.equal(old.node, 'archivedOrders');
+  assert.deepEqual(reads.splice(0), ['/platformRefIndex/grabfood/GF-200', '/orders?channel=grabfood', '/archivedOrders?channel=grabfood'], 'an unindexed order falls back to its channel only');
+  assert.equal(data.platformRefIndex.grabfood['GF-200'].orderId, 'GF-OLD', 'the fallback backfills the index');
+  await find(db, ['grabfood'], 'GF-200'); assert.equal(reads.splice(0).length, 3, 'the next lookup of that order is index-only');
+  assert.equal((await find(db, ['grabfood'], 'GF-300')), null, 'a stale index entry whose order changed reference is not trusted');
+  reads.splice(0);
+  assert.equal((await existing(db, 'grabfood', 'GF-100', 'GF-LIVE')), null, 'the order being corrected is not its own duplicate');
+  data.archivedOrders['GF-DUP'] = {channel: 'grabfood', platformRef: 'GF-100'};
+  assert.equal((await existing(db, 'grabfood', 'GF-100', 'GF-LIVE')).id, 'GF-DUP', 'a second order with the same reference is still found');
+  assert.equal((await existing(db, 'foodpanda', 'GF-100')), null, 'references are matched within their channel');
+  assert.ok(!reads.some((r) => r === '/orders' || r === '/archivedOrders'), 'no lookup downloads a whole order node');
+}
+
+console.log('PASS: replica-first history reads, tab-stable report listeners, ID-patched archive changes, month-bounded Stock Value journal (equivalent to full history), Books without full archive downloads, and indexed/bounded server reads, bounded per-item inventory idempotency state, day-bucketed Books monthly totals, stale tabs that pick up fixed builds, a backup download budget warning, and index-first platform order lookups.');
