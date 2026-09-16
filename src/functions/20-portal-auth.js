@@ -240,12 +240,49 @@ exports.recordClientTelemetry = onCall(
 );
 
 // Release 7B: bounded, sanitized, management-only operational exception scan.
+const OPERATIONAL_EXCEPTION_LOCK_MS = 60 * 1000;
+const OPERATIONAL_EXCEPTION_CACHE_PATH = "/systemHealth/operationalExceptions/current";
+const OPERATIONAL_EXCEPTION_LOCK_PATH = "/systemHealth/operationalExceptions/lock";
+
+function cachedOperationalResult(row) {return row && row.result && typeof row.result === "object" ? row.result : null;}
+function emptyOperationalResult() {return {generatedAt: 0, scanned: {activeOrders: 0, recentOrders: 0, offlineSyncs: 0, custodyRecords: 0}, counts: {critical: 0, warning: 0, total: 0}, exceptions: [], manualOnly: true};}
+async function pauseOperationalCache(ms) {await new Promise((resolve) => setTimeout(resolve, ms));}
+
+async function getCachedOperationalExceptions(db, now = Date.now(), force = false) {
+  const cacheRef = db.ref(OPERATIONAL_EXCEPTION_CACHE_PATH), lockRef = db.ref(OPERATIONAL_EXCEPTION_LOCK_PATH), requestStartedAt = Date.now();
+  let cached = (await cacheRef.get()).val() || {};
+  if (!force) return cachedOperationalResult(cached) || emptyOperationalResult();
+  const owner = `scan_${requestStartedAt}_${Math.random().toString(36).slice(2)}`;
+  const claim = await lockRef.transaction((current) => {
+    if (current && Number(current.expiresAt) > Date.now()) return;
+    return {owner, acquiredAt: Date.now(), expiresAt: Date.now() + OPERATIONAL_EXCEPTION_LOCK_MS};
+  }, undefined, false);
+  if (!claim.committed || !claim.snapshot.val() || claim.snapshot.val().owner !== owner) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await pauseOperationalCache(100);
+      cached = (await cacheRef.get()).val() || {};
+      if (Number(cached.scannedAt) >= requestStartedAt) return cached.result;
+    }
+    if (cachedOperationalResult(cached)) return cached.result;
+    throw new HttpsError("unavailable", "The shared operational health scan is still running. Try again shortly.");
+  }
+  try {
+    cached = (await cacheRef.get()).val() || {};
+    if (Number(cached.scannedAt) >= requestStartedAt) return cached.result;
+    const result = await scanOperationalExceptions(db, now);
+    await cacheRef.set({scannedAt: Date.now(), result, schemaVersion: 1});
+    return result;
+  } finally {
+    await lockRef.transaction((current) => current && current.owner === owner ? null : current, undefined, false);
+  }
+}
+
 exports.getOperationalExceptions = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => {
     const db = getDatabase(), actor = await requirePortalUser(db, request);
     if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Operational exceptions are restricted to management accounts.");
-    return scanOperationalExceptions(db, Date.now());
+    return getCachedOperationalExceptions(db, Date.now(), request.data && request.data.force === true);
   },
 );
 
@@ -265,7 +302,7 @@ exports.getProductionCertification = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
     const db=getDatabase(),actor=await requirePortalUser(db,request);if(!["owner","superadmin","admin","manager"].includes(actor.role))throw new HttpsError("permission-denied","Production certification is restricted to management accounts.");
-    const now=Date.now(),today=financeDateFromTimestamp(now),yesterday=financeDateFromTimestamp(now-86400000),[backup,todayTelemetry,yesterdayTelemetry,incidents,admins,permissions,todayClose,yesterdayClose,operational]=await Promise.all([db.ref("/systemHealth/backups/latest").get(),db.ref(`/clientTelemetryDaily/${today}`).get(),db.ref(`/clientTelemetryDaily/${yesterday}`).get(),db.ref("/incidents").orderByChild("createdAt").limitToLast(100).get(),db.ref("/admins").get(),db.ref("/adminPerms").get(),db.ref(`/financialCloseIndex/${today}`).get(),db.ref(`/financialCloseIndex/${yesterday}`).get(),scanOperationalExceptions(db,now)]),backupValue=backup.val()||{},health=ProductionHealth.evaluate({backup:backupValue,telemetry:[todayTelemetry.val()||{},yesterdayTelemetry.val()||{}],operational},now);
+    const now=Date.now(),today=financeDateFromTimestamp(now),yesterday=financeDateFromTimestamp(now-86400000),[backup,todayTelemetry,yesterdayTelemetry,incidents,admins,permissions,todayClose,yesterdayClose,operational]=await Promise.all([db.ref("/systemHealth/backups/latest").get(),db.ref(`/clientTelemetryDaily/${today}`).get(),db.ref(`/clientTelemetryDaily/${yesterday}`).get(),db.ref("/incidents").orderByChild("createdAt").limitToLast(100).get(),db.ref("/admins").get(),db.ref("/adminPerms").get(),db.ref(`/financialCloseIndex/${today}`).get(),db.ref(`/financialCloseIndex/${yesterday}`).get(),getCachedOperationalExceptions(db,now)]),backupValue=backup.val()||{},health=ProductionHealth.evaluate({backup:backupValue,telemetry:[todayTelemetry.val()||{},yesterdayTelemetry.val()||{}],operational},now);
     return ReleaseCertification.evaluate({backup:backupValue,health,incidents:incidents.val()||{},admins:admins.val()||{},permissions:permissions.val()||{},closeIndexes:[todayClose.val()||{},yesterdayClose.val()||{}],operational},now);
   },
 );
@@ -281,7 +318,7 @@ exports.getProductionValidation = onCall(
     const [menu,categories,publicStatus,calendar,reviews,payment,orders,backup,todayTelemetry,yesterdayTelemetry,incidents,admins,permissions,todayClose,yesterdayClose,movements,audits,approvals,operational]=await Promise.all([
       db.ref("/menuItems").get(),db.ref("/categories").get(),db.ref("/publicOrderStatus").get(),db.ref("/calBlocks").get(),db.ref("/reviews").get(),db.ref("/payment").get(),
       db.ref("/orders").limitToLast(25).get(),db.ref("/systemHealth/backups/latest").get(),db.ref(`/clientTelemetryDaily/${today}`).get(),db.ref(`/clientTelemetryDaily/${yesterday}`).get(),
-      db.ref("/incidents").orderByChild("createdAt").limitToLast(100).get(),db.ref("/admins").get(),db.ref("/adminPerms").get(),db.ref(`/financialCloseIndex/${today}`).get(),db.ref(`/financialCloseIndex/${yesterday}`).get(),db.ref("/financialMovements").limitToLast(100).get(),db.ref("/operationalAudit").limitToLast(100).get(),db.ref("/financialApprovals").limitToLast(100).get(),scanOperationalExceptions(db,now)
+      db.ref("/incidents").orderByChild("createdAt").limitToLast(100).get(),db.ref("/admins").get(),db.ref("/adminPerms").get(),db.ref(`/financialCloseIndex/${today}`).get(),db.ref(`/financialCloseIndex/${yesterday}`).get(),db.ref("/financialMovements").limitToLast(100).get(),db.ref("/operationalAudit").limitToLast(100).get(),db.ref("/financialApprovals").limitToLast(100).get(),getCachedOperationalExceptions(db,now)
     ]);
     const backupValue=backup.val()||{},health=ProductionHealth.evaluate({backup:backupValue,telemetry:[todayTelemetry.val()||{},yesterdayTelemetry.val()||{}],operational},now),certification=ReleaseCertification.evaluate({backup:backupValue,health,incidents:incidents.val()||{},admins:admins.val()||{},permissions:permissions.val()||{},closeIndexes:[todayClose.val()||{},yesterdayClose.val()||{}],operational},now);
     const validation=ProductionValidation.evaluate({menuItems:menu.val()||{},categories:categories.val()||{},publicOrderStatus:publicStatus.val()||{},calendarReadable:true,calendarBlockCount:calendar.numChildren(),reviewsReadable:true,reviewCount:reviews.numChildren(),payment:payment.val()||{},orders:orders.val()||{},certification},now);validation.assurance=AssuranceControls.evaluate({movements:movements.val()||{},audits:audits.val()||{},approvals:approvals.val()||{},admins:admins.val()||{},permissions:permissions.val()||{}});return validation;
