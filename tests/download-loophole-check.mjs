@@ -248,4 +248,18 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(t.fetches, 1, 'checks are throttled to one a minute');
 }
 
-console.log('PASS: replica-first history reads, tab-stable report listeners, ID-patched archive changes, month-bounded Stock Value journal (equivalent to full history), Books without full archive downloads, and indexed/bounded server reads, bounded per-item inventory idempotency state, day-bucketed Books monthly totals, and stale tabs that pick up fixed builds.');
+// 10. The daily backup downloads the whole database; its growth is flagged long before the free allowance.
+{
+  const Health = require('../functions/lib/production-health.js');
+  const now = Date.UTC(2026, 8, 16, 4);
+  const backup = (bytes) => ({takenAt: now - 3600000, version: 'backup-v2', validation: 'passed', dataSha256: 'a'.repeat(64), bytes});
+  const ids = (bytes) => Health.evaluate({backup: backup(bytes), telemetry: [], operational: {counts: {}}}, now).alerts.map((x) => x.id);
+  assert.ok(!ids(13 * 1048576).includes('backup_download_budget'), 'today\'s 13 MB backup is inside budget');
+  const warn = Health.evaluate({backup: backup(61 * 1048576), telemetry: [], operational: {counts: {}}}, now);
+  assert.equal(warn.status, 'warning');
+  assert.ok(warn.alerts.some((x) => x.id === 'backup_download_budget' && x.severity === 'warning' && x.detail.includes('61 MB of the 360 MB')));
+  assert.ok(Health.BACKUP_DOWNLOAD_WARN_BYTES * 6 <= Health.DAILY_FREE_DOWNLOAD_BYTES, 'the warning fires at no more than a sixth of the daily allowance');
+  assert.ok(read('src/functions/60-maintenance.js').includes('bytes: payload.length'), 'the backup records its size for the budget check');
+}
+
+console.log('PASS: replica-first history reads, tab-stable report listeners, ID-patched archive changes, month-bounded Stock Value journal (equivalent to full history), Books without full archive downloads, and indexed/bounded server reads, bounded per-item inventory idempotency state, day-bucketed Books monthly totals, stale tabs that pick up fixed builds, and a backup download budget warning.');
