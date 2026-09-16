@@ -33,6 +33,7 @@ const TRACKED_PATHS = Object.freeze([
   "financialApprovals",
   "activityLog",
   "cfLedger",
+  "pettyCashReceipts",
 ]);
 const DIRTY_ROOT = "backupDirty";
 const MAX_BASE_AGE_MS = 8 * 86400000;
@@ -92,10 +93,17 @@ function partialRoots(tracked) {
 // Decide whether today's backup must be a full read.
 // `lastMode` is the mode recorded by the previous run; it is missing until a backup has run with
 // dirty markers active, so the first run after this release is always a full read.
-function needsFullBackup({base, now, force, lastMode}) {
+// `lastTracked` is the tracked-path list of the previous run. A path added to TRACKED_PATHS had no
+// markers before its trigger was deployed, so the first run after the list changes is full too.
+function sameTracked(lastTracked, tracked) {
+  const a = Array.isArray(lastTracked) ? lastTracked.slice().sort() : null, b = (tracked || TRACKED_PATHS).slice().sort();
+  return !!a && a.length === b.length && a.every((path, i) => path === b[i]);
+}
+function needsFullBackup({base, now, force, lastMode, lastTracked, tracked}) {
   if (force) return "forced";
   if (!base) return "no_base";
   if (!lastMode) return "markers_new";
+  if (!sameTracked(lastTracked, tracked)) return "tracked_changed";
   if (!(Number(base.takenAt) > 0) || now - Number(base.takenAt) > MAX_BASE_AGE_MS) return "stale_base";
   return "";
 }
@@ -181,4 +189,4 @@ function driftPaths(incremental, full, tracked) {
   return out;
 }
 
-module.exports = {TRACKED_PATHS, DIRTY_ROOT, MAX_BASE_AGE_MS, VERIFY_SLICE_BYTES, keyCompare, inSlice, verificationSlices, rotationSlice, applyVerifiedSlice, dirtyKey, pathOfDirtyKey, getAt, setAt, partialRoots, needsFullBackup, planIncremental, mergeIncremental, driftPaths};
+module.exports = {TRACKED_PATHS, sameTracked, DIRTY_ROOT, MAX_BASE_AGE_MS, VERIFY_SLICE_BYTES, keyCompare, inSlice, verificationSlices, rotationSlice, applyVerifiedSlice, dirtyKey, pathOfDirtyKey, getAt, setAt, partialRoots, needsFullBackup, planIncremental, mergeIncremental, driftPaths};

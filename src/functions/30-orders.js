@@ -9,7 +9,7 @@ function readyForAutoComplete(order, now = Date.now()) {
 function activeOrderProjection(order) {
   if (!order || typeof order !== "object") return null;
   const projected = Object.assign({}, order, {projectionVersion: 2});
-  ["proof", "proofData", "orderInventoryPlan", "inventoryUsage", "cogsDetail", "cogsCategorySnapshot", "cogsAccountSnapshot", "audit", "history"].forEach((field) => delete projected[field]);
+  ["proof", "proofData", "orderInventoryPlan", "inventoryUsage", "cogsDetail", "cogsDetailSource", "cogsCategorySnapshot", "cogsAccountSnapshot", "audit", "history"].forEach((field) => delete projected[field]);
   return projected;
 }
 
@@ -42,10 +42,10 @@ exports.syncOfflinePosSale = onCall(
 exports.getSupplierAdvanceDetails = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => {
-    const db=getDatabase();await requirePortalPermission(db,request,["registerOps","pos"]);const data=request.data||{},supplierId=textField(data.supplierId,"Supplier ID",120),supplierName=textField(data.supplierName,"Supplier name",160),wanted=supplierName.toLowerCase(),rows=[];
+    const db=getDatabase();await requirePortalPermission(db,request,["registerOps","pos"]);await ensureLegacyVoucherReceiptsMoved(db);const data=request.data||{},supplierId=textField(data.supplierId,"Supplier ID",120),supplierName=textField(data.supplierName,"Supplier name",160),wanted=supplierName.toLowerCase(),rows=[];
     const add=(x,id,source,shiftId="")=>{const name=String(x.supplierName||x.recipient||"").trim();if(supplierId||wanted){if(!(supplierId&&x.supplierId===supplierId)&&!(wanted&&name.toLowerCase()===wanted))return;}const allocations=x.allocations||{},allocated=money(x.allocatedAmount!=null?x.allocatedAmount:Object.values(allocations).reduce((sum,row)=>sum+Number(row&&row.amount||0),0)),amount=money(x.amount),remaining=money(x.remainingAmount!=null?x.remainingAmount:Math.max(0,amount-allocated));rows.push({id,source,shiftId,supplierId:x.supplierId||"",supplierName:name,amount,allocatedAmount:allocated,remainingAmount:remaining,purpose:textField(x.purpose||x.reason||"","Purpose",300),reference:textField(x.reference||x.voucherNo||"","Reference",120),status:x.allocationStatus||x.status||"",fundingAccountId:x.fundingAccountId||(source==="register_shift"?"register":""),movementId:x.conversionMovementId||x.movementId||(source==="revolving_fund"?`petty_${id}`:""),allocations,createdAt:Number(x.createdAt||x.ts||0)});};
-    const vouchers=(await db.ref("/pettyCashVouchers").get()).val()||{};Object.keys(vouchers).forEach((id)=>{const x=vouchers[id]||{};if(x.transactionType==="purchase_advance"&&(x.status==="approved"||x.financialMovementId||x.conversionMovementId))add(x,id,"revolving_fund");});
-    const shifts=(await db.ref("/shifts").get()).val()||{};Object.keys(shifts).forEach((shiftId)=>{(Array.isArray(shifts[shiftId]&&shifts[shiftId].payOuts)?shifts[shiftId].payOuts:[]).forEach((x,index)=>{if(x&&x.type==="purchase_advance")add(x,x.id||`${shiftId}_${index}`,"register_shift",shiftId);});});
+    const vouchers=(await db.ref("/pettyCashVouchers").orderByChild("transactionType").equalTo("purchase_advance").get()).val()||{};Object.keys(vouchers).forEach((id)=>{const x=vouchers[id]||{};if(x.transactionType==="purchase_advance"&&(x.status==="approved"||x.financialMovementId||x.conversionMovementId))add(x,id,"revolving_fund");});
+    const shiftPayOuts=await supplierAdvanceShiftPayOuts(db);Object.keys(shiftPayOuts).forEach((shiftId)=>{shiftPayOuts[shiftId].forEach((x,index)=>{if(x&&x.type==="purchase_advance")add(x,x.id||`${shiftId}_${index}`,"register_shift",shiftId);});});
     rows.sort((a,b)=>b.createdAt-a.createdAt);return {accountCode:"1115",supplierId,supplierName,rows:rows.slice(0,200),truncated:rows.length>200};
   },
 );
@@ -68,8 +68,8 @@ async function rebuildActiveOrders(db, force = false) {
   if (!force && now - Number(markerSnap.val() || 0) < ACTIVE_SWEEP_INTERVAL_MS && (await db.ref("/activeOrders").limitToFirst(1).get()).exists()) {
     return {skipped: true};
   }
-  const [activeShiftSnap, activeSnap] = await Promise.all([db.ref("/posActiveShift").get(), db.ref("/activeOrders").get()]);
-  const ordersSnap = await db.ref("/orders").get();
+  const [activeShiftSnap, activeSnap] = /* download-ok: bounded live orders only (archived at shift close), swept at most every six hours */await Promise.all([db.ref("/posActiveShift").get(), db.ref("/activeOrders").get()]);
+  const ordersSnap = /* download-ok: bounded live orders only (archived at shift close), swept at most every six hours */await db.ref("/orders").get();
   const orders = ordersSnap.val() || {};
   const existing = activeSnap.val() || {};
   const activeShift = activeShiftSnap.val() || null;
@@ -276,10 +276,9 @@ exports.createOnlineOrder = onCall(
     const contact = textField(input.contact, "Contact", 120, true);
     const notes = textField(input.notes, "Notes", 500);
     const proof = decodePaymentProof(input.proof);
-    const [menuSnap, groupsSnap, availSnap, packagesSnap] = await Promise.all([
-      db.ref("/menuItems").get(), db.ref("/optionGroups").get(), db.ref("/availability").get(), db.ref("/packages").get(),
-    ]);
-    const priced = priceOrderLinesServer(input.lineItems, menuSnap.val() || {}, groupsSnap.val() || {}, availSnap.val() || {}, packagesSnap.val() || {});
+    // Only the menu items, option groups and packages on this order are read (readCatalogKeyed).
+    const availSnap = await db.ref("/availability").get();
+    const priced = await readCatalogKeyed(db, ["menuItems", "optionGroups", "packages"], (maps) => priceOrderLinesServer(input.lineItems, maps.menuItems, maps.optionGroups, availSnap.val() || {}, maps.packages));
     if (priced.total <= 0 || priced.total > 200000) throw new HttpsError("invalid-argument", "Calculated order total is outside the allowed range.");
     const expectedTotal = Number(input.expectedTotal);
     if (!Number.isFinite(expectedTotal) || Math.abs(money(expectedTotal) - priced.total) > 0.01) {

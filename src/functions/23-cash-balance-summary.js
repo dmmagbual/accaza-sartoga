@@ -9,7 +9,7 @@ const CASH_SUMMARY_LOCK_MS = 120000;
 // (On 16 Sep 2026 a single 1,269-record write failed with TOO_MANY_TRIGGERS.)
 const CASH_REBUILD_WRITE_CHUNK = 400;
 async function rebuildCashBalanceSummary(db) {
-  const movements = (await db.ref("/financialMovements").get()).val() || {};
+  const movements = /* download-ok: fallback rebuild only when the cash-balance summary schema changes or is missing */(await db.ref("/financialMovements").get()).val() || {};
   const rebuilt = CashBalances.splitSnapshotFromMovements(movements);
   const existing = await shallowDatabaseKeys(db, "cashBalanceSummaryApplied");
   const applied = {};
@@ -128,7 +128,7 @@ async function currentCashBalances(db, now = Date.now()) {
     const after = (await db.ref("/cashBalanceSummary/meta/updatedAt").get()).val();
     if (Number(after) === Number(summary.meta && summary.meta.updatedAt)) return {balances, source: "summary", recentCorrections: applied.length};
   }
-  const movements = (await db.ref("/financialMovements").get()).val() || {};
+  const movements = /* download-ok: fallback summary lags and cannot be reconciled from the recent window */(await db.ref("/financialMovements").get()).val() || {};
   return {balances: CashBalances.splitSnapshotFromMovements(movements, now).summary.balances, source: "ledger", recentCorrections: 0};
 }
 
@@ -137,9 +137,9 @@ exports.getCurrentCashBalances = onCall(
   async (request) => {
     const db = getDatabase();
     await requirePortalPermission(db, request, ["purchases", "cashflow", "payables"]);
-    const [settingsSnap, activeShiftSnap] = await Promise.all([db.ref("/posSettings").get(), db.ref("/posActiveShift").get()]);
+    const [settings, activeShiftSnap] = await Promise.all([readPosSettings(db, ["fixedFloat"]), db.ref("/posActiveShift").get()]);
     const summary = await ensureCashBalanceSummary(db);
-    return CashBalances.clientBalances(summary, settingsSnap.val() || {}, activeShiftSnap.val() || {});
+    return CashBalances.clientBalances(summary, settings, activeShiftSnap.val() || {});
   },
 );
 

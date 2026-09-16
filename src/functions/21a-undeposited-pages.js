@@ -70,7 +70,7 @@ async function writeUndepositedIndexBatches(db, writes) {
 async function ensureUndepositedPageIndexes(db) {
   const metaRef = db.ref("/undepositedPageIndexMeta"), meta = (await metaRef.get()).val() || {};
   if (meta.schemaVersion === UNDEPOSITED_INDEX_VERSION && meta.complete === true) return;
-  const [movementSnap, custodySnap, voucherSnap] = await Promise.all([db.ref("/financialMovements").get(), db.ref("/cashCustody").get(), db.ref("/pettyCashVouchers").get()]);
+  const [movementSnap, custodySnap, voucherSnap] = /* download-ok: migration builds the undeposited page indexes once, guarded by undepositedPageIndexMeta */await Promise.all([db.ref("/financialMovements").get(), db.ref("/cashCustody").get(), db.ref("/pettyCashVouchers").get()]);
   const writes = {}, postedVouchers = {};
   Object.entries(movementSnap.val() || {}).forEach(([id, movement]) => {
     const record = undepositedMovementProjection(id, movement);
@@ -102,7 +102,7 @@ exports.getUndepositedControlSnapshot = onCall(
     if(summaryMeta.schemaVersion===CashBalances.SCHEMA_VERSION&&summaryMeta.complete===true){
       undeposited=Financial.money(Number(summaryBalances.undepositedCents||0)/100);revolving=Financial.money(Number(summaryBalances.revolvingCents||0)/100);
     }else{
-      const movementMap=(await db.ref("/financialMovements").get()).val()||{};
+      const movementMap=/* download-ok: fallback cash-balance summary is incomplete */(await db.ref("/financialMovements").get()).val()||{};
       Object.values(movementMap).forEach((movement)=>{((movement&&movement.lines)||[]).forEach((line)=>{const net=Financial.money((Number(line.debit)||0)-(Number(line.credit)||0));if(line.account===UNDEPOSITED_POOL_ACCOUNT)undeposited=Financial.money(undeposited+net);if(line.account==="asset:petty_cash")revolving=Financial.money(revolving+net);});});
     }
     const custodyRemaining=Financial.money(Object.values(openCustodySnap.val()||{}).reduce((sum,row)=>sum+Number(row&&row.remaining||0),0));

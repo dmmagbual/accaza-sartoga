@@ -273,7 +273,7 @@ function editIngredient(id){
    weighted-average cost recipes actually use. On-hand is pooled (one figure). */
 function brandBreakdown(id){
   var i=inventoryMap[id]; if(!i)return; var a=A();
-  a.get(a.ref(a.db,'stockReceipts')).then(function(s){
+  a.get(a.query(a.ref(a.db,'stockReceipts'),a.orderByChild('ing'),a.equalTo(id))).then(function(s){
     var all=s.val()||{}; var byBrand={}; var totQ=0,totV=0;
     Object.keys(all).forEach(function(k){var r=all[k]; if(!r||r.ing!==id)return; var b=(r.brand||'').trim()||'(no brand noted)'; if(!byBrand[b])byBrand[b]={qty:0,value:0,n:0,last:''}; byBrand[b].qty+=Number(r.qty)||0; byBrand[b].value+=Number(r.total)||0; byBrand[b].n++; totQ+=Number(r.qty)||0; totV+=Number(r.total)||0; var d=r.date||''; if(d>byBrand[b].last)byBrand[b].last=d;});
     var brands=Object.keys(byBrand).sort();

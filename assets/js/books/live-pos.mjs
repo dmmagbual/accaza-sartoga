@@ -1,5 +1,5 @@
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import {getDatabase, ref, get, onValue, onChildAdded, onChildChanged, onChildRemoved, query, orderByChild, orderByKey, equalTo, startAt, endAt} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import {getDatabase, ref, get, onValue, onChildAdded, onChildChanged, onChildRemoved, query, orderByChild, orderByKey, equalTo, startAt, endAt, endBefore, startAfter} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import {getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {getFunctions, httpsCallable} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 const cfg={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
@@ -15,7 +15,6 @@ if(auth){
   window.__booksSignOut=()=>signOut(auth);
   let journalCache={}, monthlyNetCache={}, reviewCache={}, booksStops=[], optionalStops={}, currentTab=(window.__booksCurrentTab||'dashboard');
   const OPTIONAL_FEEDS={
-    reviewQueue:{tabs:['journal'],global:'__booksReviewQueue',target:function(){return ref(db,"/books/reviewQueue");},onChange:scheduleJournalRefresh},
     // Cash Flow downloads only the selected period's movements. Opening cash comes from
     // small server-maintained indexes (see assets/js/shared/cash-flow-basis.js).
     financialMovements:{tabs:['cashflow'],global:'__financialMovements',value:true,ready:'__cashFlowPeriodReady',target:function(){const p=cashFlowPeriod();return query(ref(db,"/financialMovements"),orderByChild("occurredAt"),startAt(p.startAt),endAt(p.endAt));},onChange:function(){loadCashFlowGroups();scheduleRender();}},
@@ -23,18 +22,28 @@ if(auth){
     cashFlowDaily:{tabs:['cashflow'],global:'__cashFlowDaily',value:true,ready:'__cashFlowDailyMonth',readyValue:function(){return cashFlowPeriod().from.slice(0,7);},target:function(){const m=cashFlowPeriod().from.slice(0,7);return query(ref(db,"/cashFlowDaily"),orderByKey(),startAt(m+"-01"),endAt(m+"-31"));},onChange:scheduleRender},
     cashFlowOpenings:{tabs:['cashflow'],global:'__cashFlowOpenings',value:true,ready:'__cashFlowOpeningsReady',target:function(){return ref(db,"/cashFlowOpenings");},onChange:scheduleRender},
     cashFlowIndexMeta:{tabs:['cashflow'],global:'__cashFlowIndexMeta',value:true,nullable:true,target:function(){return ref(db,"/cashFlowIndexMeta");},onChange:function(){ensureCashFlowIndex();scheduleRender();}},
-    platformPayouts:{tabs:['cashflow'],global:'__platformPayouts',target:function(){return ref(db,"/platformPayouts");},onChange:scheduleRender},
-    cashCustody:{tabs:['cashflow'],global:'__cashCustody',target:function(){return ref(db,"/cashCustody");},onChange:scheduleRender},
+    // Cash Flow deposits need only payouts not yet deposited (and reversed ones whose deposit
+    // still needs reversing) and custody that still holds cash, not the whole history.
+    platformPayouts:{tabs:['cashflow'],global:'__platformPayouts',targets:function(){var base=ref(db,"/platformPayouts");return[query(base,orderByChild("depositMovementId"),equalTo(null)),query(base,orderByChild("depositMovementId"),equalTo("")),query(base,orderByChild("reversed"),equalTo(true))];},onChange:scheduleRender},
+    cashCustody:{tabs:['cashflow'],global:'__cashCustody',target:function(){return query(ref(db,"/cashCustody"),orderByChild("remaining"),startAt(0.005));},onChange:scheduleRender},
     suppliers:{tabs:['journal','transactions','purchases','payables'],global:'__supplierMap',target:function(){return ref(db,"/suppliers");},onChange:scheduleRender},
-    purchaseInvoices:{tabs:['purchases','payables'],global:'__piMap',target:function(){return ref(db,"/purchaseInvoices");},onChange:scheduleRender},
+    // The Purchases register lists the selected period; Payables loads only the invoices its bills
+    // name (window.__booksEnsurePurchaseInvoices), so the register starts from an empty map.
+    purchaseInvoices:{tabs:['purchases'],global:'__piMap',fresh:true,target:function(){var p=cashFlowPeriod();return query(ref(db,"/purchaseInvoices"),orderByChild("date"),startAt(String(p.from||todayStr())),endAt(String(p.to||todayStr())));},onChange:scheduleRender},
     fixedAssets:{tabs:['fixedassets'],global:'__faMap',target:function(){return ref(db,"/fixedAssets");},onChange:scheduleRender},
     personalFundings:{tabs:['transactions'],global:'__personalFundings',target:function(){return ref(db,"/personalFundings");},onChange:scheduleRender},
     menuItems:{tabs:['insights'],global:'__booksMenuItems',target:function(){return ref(db,"/menuItems");},onChange:scheduleRender},
     menuCategories:{tabs:['insights'],global:'__booksMenuCategories',target:function(){return ref(db,"/categories");},onChange:scheduleRender},
-    discrepancies:{tabs:['journal','transactions'],global:'__cashDiscrepancies',target:function(){return ref(db,"/discrepancies");},onChange:scheduleRender}
+    // Manual journals link only open cash variances (any status except reviewed).
+    discrepancies:{tabs:['journal','transactions'],global:'__cashDiscrepancies',targets:function(){var base=ref(db,"/discrepancies");return[query(base,orderByChild("status"),endBefore("reviewed")),query(base,orderByChild("status"),startAfter("reviewed"))];},onChange:scheduleRender}
   };
   function stopOptionalFeed(name){var stop=optionalStops[name],spec=OPTIONAL_FEEDS[name];if(stop){try{stop();}catch(_e){}delete optionalStops[name];}if(spec){window[spec.global]=spec.nullable?null:{};if(spec.ready)window[spec.ready]=spec.readyValue?'':false;}if(name==='financialMovements')resetCashFlowGroups();}
-  function attachOptionalFeed(name){var spec=OPTIONAL_FEEDS[name];if(!spec||optionalStops[name]||spec.tabs.indexOf(currentTab)<0||!auth.currentUser)return;if(!window[spec.global])window[spec.global]={};optionalStops[name]=spec.value?watchValueFeed(spec):watchMap(spec.target(),window[spec.global],spec.onChange,()=>{});}
+  function attachOptionalFeed(name){var spec=OPTIONAL_FEEDS[name];if(!spec||optionalStops[name]||spec.tabs.indexOf(currentTab)<0||!auth.currentUser)return;if(spec.fresh)window[spec.global]={};if(!window[spec.global])window[spec.global]={};if(spec.value){optionalStops[name]=watchValueFeed(spec);return;}var targets=spec.targets?spec.targets():[spec.target()].filter(Boolean),map=window[spec.global],stops=targets.map(function(target){return watchMap(target,map,spec.onChange,()=>{});});optionalStops[name]=function(){stops.forEach(function(stop){stop();});};}
+  // Records named by what is on screen (for example the invoices behind open bills), read one by one.
+  // Requests are remembered per map object, so a map that was replaced (sign-in, tab change) is filled again.
+  var keyedRequested=new WeakMap();
+  function ensureKeyed(path,global,ids){var map=window[global]||(window[global]={});if(!keyedRequested.has(map))keyedRequested.set(map,{});var seen=keyedRequested.get(map);Array.from(new Set((ids||[]).map(function(id){return String(id||'');}))).filter(function(id){return /^[^.#$\[\]\/]{1,768}$/.test(id)&&!map[id]&&!seen[id];}).forEach(function(id){seen[id]=true;get(ref(db,'/'+path+'/'+id)).then(function(snap){if(snap.exists()&&window[global]===map){map[id]=snap.val();scheduleRender();}}).catch(function(){delete seen[id];});});}
+  window.__booksEnsurePurchaseInvoices=function(ids){if(auth&&auth.currentUser)ensureKeyed('purchaseInvoices','__piMap',ids);};
   function watchValueFeed(spec){var stopped=false,readyValue=spec.readyValue?spec.readyValue():true,stop=onValue(spec.target(),function(s){if(stopped)return;window[spec.global]=spec.nullable?s.val():(s.val()||{});if(spec.ready)window[spec.ready]=readyValue;spec.onChange();},function(){});return function(){stopped=true;stop();};}
   function cashFlowPeriod(){return window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get():{from:todayStr(),startAt:Date.now()-86400000,endAt:Date.now()};}
   // A reversal inside the period needs every movement of its source (sourceId index) so
@@ -92,7 +101,7 @@ if(auth){
   }
   function bindPeriodFinancial(){
     if(!auth||!auth.currentUser)return;
-    stopOptionalFeed('financialMovements');stopOptionalFeed('cashFlowDaily');
+    stopOptionalFeed('financialMovements');stopOptionalFeed('cashFlowDaily');stopOptionalFeed('purchaseInvoices');
     syncOptionalFeeds();
   }
   let orderStops=[];

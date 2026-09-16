@@ -55,8 +55,34 @@ const onValueCreated = RetryGuard.wrapTriggerFactory(DatabaseTriggers.onValueCre
 const onValueDeleted = RetryGuard.wrapTriggerFactory(DatabaseTriggers.onValueDeleted, retryGuardDeps);
 const SharedChoiceValidation = require("./lib/shared-choice-validation");
 const HistoricalArchive = require("./lib/historical-archive");
+const TrackedRead = require("./lib/tracked-read");
 
 initializeApp();
+
+// Keyed catalog reads (Sep 2026 download audit): a computation over recipes, menu items or
+// inventory downloads only the records it looks up. See functions/lib/tracked-read.js.
+function catalogSpec(db, paths) {
+  const spec = {};
+  paths.forEach((path) => {
+    spec[path] = {
+      readKey: async (key) => (await db.ref(`/${path}/${key}`).get()).val(),
+      // Used only if the computation lists every key of the map; the equivalence tests prove
+      // that costing, pricing and COGS mirroring never do.
+      readAll: async () => (/* download-ok: fallback computation enumerated the catalog */ await db.ref(`/${path}`).get()).val() || {},
+    };
+  });
+  return spec;
+}
+function readCatalogKeyed(db, paths, compute) {
+  return TrackedRead.trackedRead(catalogSpec(db, paths), compute);
+}
+// Named POS settings only; the whole settings node is not needed by any single operation.
+async function readPosSettings(db, names) {
+  const values = await Promise.all(names.map((name) => db.ref(`/posSettings/${name}`).get()));
+  const out = {};
+  names.forEach((name, index) => { const value = values[index].val(); if (value !== null && value !== undefined) out[name] = value; });
+  return out;
+}
 
 const SHOP_NAME = "Accaza Coffee House";
 const PICKUP_ADDR = "Saratoga Ave, La Mediterranea Subd., Governor's Drive, Dasmarinas";

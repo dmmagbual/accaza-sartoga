@@ -152,7 +152,7 @@ exports.reviewDiscrepancy = onCall(
         approval=await claimManagerApproval(db,data,"review_discrepancy",id,null,`review_discrepancy_${id}`);reviewedBy=approval.record.approvedName||approval.record.approvedEmail||approval.record.approvedRole;
         const correctionLinkRef=db.ref(`/financialControlLinks/correctionMovements/${correctionKey}`),correctionLinkResult=await correctionLinkRef.transaction((current)=>{if(current&&current.discrepancyId!==id)return;return current||{discrepancyId:id,shiftId,amount:value,approvalId:approval.id,linkedAt:now,linkedBy:reviewedBy};},undefined,false);
         if(!correctionLinkResult.committed)throw new HttpsError("already-exists","That Finance movement is already linked to another discrepancy.");
-        const custodyRows=(await db.ref("/cashCustody").get()).val()||{},existingCustodyKey=Object.prototype.hasOwnProperty.call(custodyRows,shiftId)?shiftId:Object.keys(custodyRows).find((key)=>custodyRows[key]&&(custodyRows[key].shiftId===shiftId||custodyRows[key].movementId===`shift_custody_${shiftId}`)),custodyKey=existingCustodyKey||`shortage_recovery_${id}`,custodyRef=db.ref(`/cashCustody/${custodyKey}`);let custodyDuplicate=false,custodyCreated=false;
+        const custodyRows=await custodyRowsForShift(db,shiftId),existingCustodyKey=Object.prototype.hasOwnProperty.call(custodyRows,shiftId)?shiftId:Object.keys(custodyRows).find((key)=>custodyRows[key]&&(custodyRows[key].shiftId===shiftId||custodyRows[key].movementId===`shift_custody_${shiftId}`)),custodyKey=existingCustodyKey||`shortage_recovery_${id}`,custodyRef=db.ref(`/cashCustody/${custodyKey}`);let custodyDuplicate=false,custodyCreated=false;
         const custodyResult=await custodyRef.transaction((current)=>{
           if(!current){custodyCreated=true;current={shiftId,staff:`Recovered cash · ${financeText(row.staff,80)||"Manager"}`,amount:0,depositedAmount:0,remaining:0,retainedFloat:0,status:"awaiting_deposit",closedAt:now,movementId:correctionKey,source:"cash_shortage_recovery",discrepancyId:id,schemaVersion:3};}
           const recoveries=current.recoveries||{};
@@ -211,7 +211,8 @@ exports.reopenDiscrepancy = onCall(
 );
 
 // Receipt images live in /pettyCashReceipts/{id} (Sep 2026) so the voucher list stays small;
-// evidence is proven by the tiny meta child. Older vouchers keep the image inline.
+// evidence is proven by the tiny meta child. Older vouchers keep the image inline until
+// moveLegacyVoucherReceipts moves it.
 async function voucherHasReceipt(db, id, voucher) {
   if (voucher && voucher.receiptImg) return true;
   if (!voucher || voucher.hasReceipt !== true) return false;
@@ -308,8 +309,9 @@ exports.managePettyVoucher = onCall(
     const approvalFunding = action === "approve" ? advanceFundingAccount(voucher) : {kind:"undeposited"};
     let baseFunds = 0;
     if (action === "approve" && approvalFunding.kind === "undeposited") {
-      const custodySnap = await db.ref("/cashCustody").get();
-      baseFunds = Financial.money(Object.values(custodySnap.val() || {}).reduce((sum, row) => sum + Financial.money(row && row.remaining), 0));
+      // Custody rows that still hold cash, read through the remaining index (fresh, server-side).
+      const custodySnap = await openCustodyRows(db);
+      baseFunds = Financial.money(Object.values(custodySnap).reduce((sum, row) => sum + Financial.money(row && row.remaining), 0));
     }
     // Transact on this voucher only: the whole node (with legacy receipt images) was downloaded
     // and re-uploaded on every approval before Sep 2026.
@@ -345,7 +347,7 @@ exports.retireRevolvingFund = onCall(
   async (request) => {
     const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["petty", "cashflow"]);
     const data = request.data || {}, now = Date.now();
-    const movementsSnap = await db.ref("/financialMovements").get(); let bal = 0;
+    const movementsSnap = /* download-ok: manual one-time revolving fund retirement */await db.ref("/financialMovements").get(); let bal = 0;
     Object.values(movementsSnap.val() || {}).forEach((m) => ((m && m.lines) || []).forEach((l) => { if (l && l.account === "asset:petty_cash") bal = Financial.money(bal + Financial.money(l.debit) - Financial.money(l.credit)); }));
     bal = Financial.money(bal);
     if (data.preview === true) return {balance: bal, retired: false, preview: true};

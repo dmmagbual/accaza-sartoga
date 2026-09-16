@@ -345,7 +345,7 @@ exports.ensureInventoryLedger = onCall(
     if (marker && !(request.data && request.data.force === true && ["owner", "superadmin", "admin", "manager"].includes(actor.role))) {
       return {skipped: true, initializedAt: marker};
     }
-    const inventory = (await db.ref("/inventory").get()).val() || {};
+    const inventory = /* download-ok: manual inventory ledger initialisation */(await db.ref("/inventory").get()).val() || {};
     const uncosted = Object.keys(inventory).filter((itemId) => qty6(inventory[itemId] && inventory[itemId].stock) > 0 && !(qty6(inventory[itemId] && inventory[itemId].cost) > 0));
     if (uncosted.length) throw new HttpsError("failed-precondition", `Inventory ledger initialization stopped: ${uncosted.slice(0, 8).map((itemId) => String(inventory[itemId].name || itemId)).join(", ")} ${uncosted.length > 8 ? `and ${uncosted.length - 8} more ` : ""}have positive stock without a unit cost. Enter invoice-backed opening costs first.`);
     let initialized = 0;
@@ -379,12 +379,17 @@ function buildOrderInventoryPlan(costing, inv, ps, capturedAt) {
   return{schemaVersion:1,capturedAt,capturedBy:"server",engineVersion:costing.engineVersion,usage:positiveOrderInventoryUsage(costing.usage),totalCost:costing.totalCost,categorySnapshot,accountSnapshot,cogsCovered:costing.cogsCovered,lines:costing.lines,warnings:costing.warnings};
 }
 
-async function calculateOrderInventoryPlan(db,order,capturedAt=Date.now()) {
-  const [recSnap,optSnap,invSnap,miSnap,psSnap,ogSnap,pkSnap]=await Promise.all([db.ref("/recipes").get(),db.ref("/optionRecipes").get(),db.ref("/inventory").get(),db.ref("/menuItems").get(),db.ref("/posSettings").get(),db.ref("/optionGroups").get(),db.ref("/packagingRules").get()]),optionRaw=optSnap.val()||{},optionRecipes={};
+// Sale-time costing. Recipes, menu items, inventory and packaging rules are read record by
+// record for the lines of this order (readCatalogKeyed), so a sale downloads a few KB instead
+// of the whole catalog; the plan is identical to one built from the full catalog.
+async function calculateOrderInventoryPlan(db,order,capturedAt=Date.now(),orderId="") {
+  const [optSnap,ps]=await Promise.all([/* download-ok: catalog option recipes are menu configuration, not history (empty on 16 Sep 2026) */db.ref("/optionRecipes").get(),readPosSettings(db,["sharedBaseIngredients","optionCosts","packagingAssignments","invCategories"])]),optionRaw=optSnap.val()||{},optionRecipes={};
   Object.keys(optionRaw).forEach((key)=>{const row=optionRaw[key]||{};optionRecipes[row.label||key]=row;});
-  const ps=psSnap.val()||{},inv=invSnap.val()||{},costing=Costing.costOrder({lineItems:order.lineItems||[],recipes:recSnap.val()||{},inventory:inv,menuItems:miSnap.val()||{},sharedBaseIngredients:ps.sharedBaseIngredients||{},optionCosts:ps.optionCosts||{},optionRecipes,optionGroups:ogSnap.val()||{},packagingRules:pkSnap.val()||{},packagingAssignments:ps.packagingAssignments||{}});
-  if(!costing.ok)throw new Error("Authoritative costing rejected order: "+costing.errors.slice(0,5).map(row=>row.code+": "+row.message).join(" | "));
-  return buildOrderInventoryPlan(costing,inv,ps,capturedAt);
+  return readCatalogKeyed(db,["recipes","inventory","menuItems","optionGroups","packagingRules"],(maps)=>{
+    const costing=Costing.costOrder({lineItems:order.lineItems||[],recipes:maps.recipes,inventory:maps.inventory,menuItems:maps.menuItems,sharedBaseIngredients:ps.sharedBaseIngredients||{},optionCosts:ps.optionCosts||{},optionRecipes,optionGroups:maps.optionGroups,packagingRules:maps.packagingRules,packagingAssignments:ps.packagingAssignments||{}});
+    if(!costing.ok)throw new Error("Authoritative costing rejected order"+(orderId?" "+orderId:"")+": "+costing.errors.slice(0,5).map(row=>row.code+": "+row.message).join(" | "));
+    return buildOrderInventoryPlan(costing,maps.inventory,ps,capturedAt);
+  });
 }
 
 exports.onOrderFinalize = onValueWritten(
@@ -406,42 +411,8 @@ exports.onOrderFinalize = onValueWritten(
       // the catalog is not needed and is not downloaded again.
       const planSnap = await db.ref(`/orderInventoryPlans/${orderId}`).get();
       const hasPlan = planSnap.exists();
-      const [recSnap, optSnap, invSnap, miSnap, psSnap, ogSnap, pkSnap] = hasPlan ? [] : await Promise.all([
-        db.ref("/recipes").get(),
-        db.ref("/optionRecipes").get(),
-        db.ref("/inventory").get(),
-        db.ref("/menuItems").get(),
-        db.ref("/posSettings").get(),
-        db.ref("/optionGroups").get(),
-        db.ref("/packagingRules").get(),
-      ]);
-      const val = (snap) => (snap && snap.val()) || {};
-      const recipes = val(recSnap);
-      const inv = val(invSnap);
-      const mi = val(miSnap);
-      const ps = val(psSnap);
-      const optRaw = val(optSnap);
-      const optMap = {};
-      Object.keys(optRaw).forEach((k) => {
-        const v = optRaw[k] || {};
-        optMap[v.label || k] = v;
-      });
-      const optionCosts = ps.optionCosts || {};
-      const optionGroups = val(ogSnap);
-
-      const costing = hasPlan?null:Costing.costOrder({
-        lineItems: o.lineItems, recipes, inventory: inv, menuItems: mi,
-        sharedBaseIngredients: ps.sharedBaseIngredients || {}, optionCosts, optionRecipes: optMap, optionGroups,
-        // Packaging follows how a drink is served, from one shared table. The server reads it
-        // here so the cost it posts is the cost the till showed.
-        packagingRules: pkSnap.val() || {},
-        packagingAssignments: ps.packagingAssignments || {},
-      });
-      if (costing && !costing.ok) {
-        const summary = costing.errors.slice(0, 5).map((x) => x.code + ": " + x.message).join(" | ");
-        throw new Error("Authoritative costing rejected order " + orderId + ": " + summary);
-      }
-      const capturedAt=Date.now(),candidate=costing?buildOrderInventoryPlan(costing,inv,ps,capturedAt):null;
+      // Otherwise the plan is costed now from the records this order uses.
+      const capturedAt=Date.now(),candidate=hasPlan?null:await calculateOrderInventoryPlan(db,o,capturedAt,orderId);
       const planResult=await db.ref(`/orderInventoryPlans/${orderId}`).transaction((current)=>current||candidate,undefined,false),plan=planResult.snapshot.val();
       if(!plan||plan.capturedBy!=="server"||Number(plan.schemaVersion)!==1||!plan.usage)throw new Error("Immutable server inventory plan is missing for order "+orderId);
       const usage = positiveOrderInventoryUsage(plan.usage);
@@ -466,9 +437,11 @@ exports.onOrderFinalize = onValueWritten(
         cogsAccountSnapshot,
         cogsAccountSnapshotVersion: 1,
         cogsCovered: plan.cogsCovered,
-        cogsDetail: {
-          engineVersion: plan.engineVersion, computedAt: plan.capturedAt,
-          totalCost: cogs, lines: plan.lines||[], warnings: plan.warnings||[],
+        // The line-by-line COGS trace stays in the immutable plan. Copying it onto the order
+        // (about two thirds of every order record) made every order list download it again.
+        cogsDetailSource: {
+          path: `orderInventoryPlans/${orderId}`, engineVersion: plan.engineVersion, computedAt: plan.capturedAt,
+          totalCost: cogs, lineCount: (plan.lines||[]).length, warningCount: (plan.warnings||[]).length,
         },
         costingEngineVersion: plan.engineVersion,
         deductedBy: "server",

@@ -685,8 +685,12 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   // Plan rules.
   const plan = BackupDelta.planIncremental({base: {data: {archivedOrders: {}, books: {journal: {}}}}, topLevel: ['archivedOrders', 'books', 'activeOrders', 'shifts', 'menuItems'], children: {books: ['journal', 'config']}, excluded: ['activeOrders'], dirty: {archivedOrders: {x: 1}, shifts: {y: 1}, 'books~journal': {z: 1}}});
   assert.deepEqual(plan, {fullNodes: ['books/config', 'menuItems'], copyPaths: ['archivedOrders', 'books/journal'], records: [{path: 'archivedOrders', key: 'x'}, {path: 'books/journal', key: 'z'}], fullTracked: ['shifts'], verifySlice: null});
-  assert.equal(BackupDelta.needsFullBackup({base: {takenAt: 1}, now: 2, lastMode: 'full'}), '');
-  assert.equal(BackupDelta.needsFullBackup({base: {takenAt: 1}, now: 8 * 86400000 + 2, lastMode: 'incremental'}), 'stale_base');
+  const tracked = BackupDelta.TRACKED_PATHS.slice().reverse();
+  assert.equal(BackupDelta.needsFullBackup({base: {takenAt: 1}, now: 2, lastMode: 'full', lastTracked: tracked}), '');
+  assert.equal(BackupDelta.needsFullBackup({base: {takenAt: 1}, now: 8 * 86400000 + 2, lastMode: 'incremental', lastTracked: tracked}), 'stale_base');
+  assert.equal(BackupDelta.needsFullBackup({base: {takenAt: 1}, now: 2, lastMode: 'incremental', lastTracked: tracked.slice(1)}), 'tracked_changed', 'a newly tracked node had no markers before, so the next run is full');
+  assert.equal(BackupDelta.needsFullBackup({base: {takenAt: 1}, now: 2, lastMode: 'incremental'}), 'tracked_changed');
+  assert.ok(BackupDelta.TRACKED_PATHS.includes('pettyCashReceipts'), 'receipt images are backed up incrementally');
   assert.equal(BackupDelta.needsFullBackup({base: {takenAt: 1}, now: 2}), 'markers_new', 'the first run after this release (markers just started) reads everything');
   // Slices partition each tracked node by key within the byte budget, cover keys added later, and
   // no single day verifies more than about one budget of history.

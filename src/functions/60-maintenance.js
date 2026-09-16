@@ -7,7 +7,7 @@ exports.pruneEphemeralNodes = onSchedule(
     const mark = (path) => { deletions[path] = null; };
 
     // orderLocks/{uid}/{signature} = {t} — duplicate-submit guard (minute-scale)
-    const locks = (await db.ref("/orderLocks").get()).val() || {};
+    const locks = /* download-ok: bounded pruned by this daily job */(await db.ref("/orderLocks").get()).val() || {};
     Object.keys(locks).forEach((uid) => {
       const sigs = locks[uid] || {};
       Object.keys(sigs).forEach((sig) => {
@@ -22,7 +22,7 @@ exports.pruneEphemeralNodes = onSchedule(
     });
 
     // orderStatusCommands/{requestId} = {createdAt,appliedAt} — status idempotency
-    const cmds = (await db.ref("/orderStatusCommands").get()).val() || {};
+    const cmds = /* download-ok: bounded pruned by this daily job */(await db.ref("/orderStatusCommands").get()).val() || {};
     Object.keys(cmds).forEach((rid) => {
       const ts = Number((cmds[rid] && (cmds[rid].appliedAt || cmds[rid].createdAt)) || 0);
       if (ts && now - ts > 45 * DAY) mark(`orderStatusCommands/${rid}`);
@@ -30,7 +30,7 @@ exports.pruneEphemeralNodes = onSchedule(
 
     // orderCorrectionCommands/{requestId} — correction idempotency claims;
     // durable correction evidence remains in orderCorrections and audit records.
-    const correctionCmds = (await db.ref("/orderCorrectionCommands").get()).val() || {};
+    const correctionCmds = /* download-ok: bounded pruned by this daily job */(await db.ref("/orderCorrectionCommands").get()).val() || {};
     Object.keys(correctionCmds).forEach((rid) => {
       const ts = Number((correctionCmds[rid] && (correctionCmds[rid].postedAt || correctionCmds[rid].claimedAt)) || 0);
       if (ts && now - ts > 45 * DAY) mark(`orderCorrectionCommands/${rid}`);
@@ -38,7 +38,7 @@ exports.pruneEphemeralNodes = onSchedule(
 
     // clientTelemetryDaily/{YYYY-MM-DD} — keep ~4 months
     const cutoffDay = financeDateFromTimestamp(now - 120 * DAY);
-    const tel = (await db.ref("/clientTelemetryDaily").get()).val() || {};
+    const tel = /* download-ok: bounded pruned by this daily job */(await db.ref("/clientTelemetryDaily").get()).val() || {};
     Object.keys(tel).forEach((day) => { if (day < cutoffDay) mark(`clientTelemetryDaily/${day}`); });
 
     // Production-monitor history is change-only and sanitized; retain the same
@@ -121,7 +121,7 @@ async function incrementalSnapshot(db, base, dirty, now) {
   const slice = BackupDelta.rotationSlice(now, BackupDelta.verificationSlices(base));
   const plan = BackupDelta.planIncremental({base, topLevel, children, excluded: BACKUP_EXCLUDE, dirty, verify: slice});
   const values = {};
-  for (const path of plan.fullNodes.concat(plan.fullTracked)) values[path] = (await db.ref(`/${path}`).get()).val();
+  for (const path of plan.fullNodes.concat(plan.fullTracked)) values[path] = /* download-ok: backup nodes outside the incremental set are read in full */(await db.ref(`/${path}`).get()).val();
   for (let i = 0; i < plan.records.length; i += 50) {
     await Promise.all(plan.records.slice(i, i + 50).map(async ({path, key}) => { values[`${path}/${key}`] = (await db.ref(`/${path}/${key}`).get()).val(); }));
   }
@@ -151,10 +151,10 @@ async function createVerifiedDatabaseBackup(now = Date.now(), options = {}) {
     const db = getDatabase(), bucket = getStorage().bucket(PROOF_BUCKET);
     const latest = (await db.ref("/systemHealth/backups/latest").get()).val() || {};
     // Markers are captured before any record is read, so a change during the backup keeps its marker.
-    const dirty = (await db.ref(`/${BackupDelta.DIRTY_ROOT}`).get()).val() || {};
+    const dirty = /* download-ok: backup dirty markers, cleared by every backup */(await db.ref(`/${BackupDelta.DIRTY_ROOT}`).get()).val() || {};
     let base = null;
     try { base = await latestBackupEnvelope(bucket); } catch (error) { logger.warn("Previous backup could not be loaded; running a full backup", {error: String(error)}); }
-    const fullReason = BackupDelta.needsFullBackup({base, now, force: options.full === true, lastMode: latest.mode});
+    const fullReason = BackupDelta.needsFullBackup({base, now, force: options.full === true, lastMode: latest.mode, lastTracked: latest.trackedPaths});
     let snapshot = {}, mode = "full", drift = null, records = 0, verified = null;
     if (fullReason) {
       const root = (await db.ref("/").get()).val() || {};
@@ -179,8 +179,11 @@ async function createVerifiedDatabaseBackup(now = Date.now(), options = {}) {
       metadata: {cacheControl: "private, max-age=0, no-store", metadata: {takenAt: String(now), dataSha256: validation.actualSha256, backupVersion: "backup-v2"}},
     });
     const lastFullAt = mode === "full" ? now : Number(latest.lastFullAt) || null;
-    await db.ref("/systemHealth/backups/latest").set({takenAt: now, objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, version: "backup-v2", dataSha256: validation.actualSha256, validation: "passed", mode, fullReason: fullReason || null, lastFullAt, baseObject: mode === "incremental" ? base.objectName : null, recordsReread: records, verifiedSlice: verified, driftRecords: drift ? drift.length : null});
+    await db.ref("/systemHealth/backups/latest").set({takenAt: now, objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, version: "backup-v2", dataSha256: validation.actualSha256, validation: "passed", mode, fullReason: fullReason || null, lastFullAt, baseObject: mode === "incremental" ? base.objectName : null, recordsReread: records, verifiedSlice: verified, driftRecords: drift ? drift.length : null, trackedPaths: BackupDelta.TRACKED_PATHS.slice()});
     const cleared = await clearBackupDirty(db, dirty);
+    // Legacy inline receipt images leave the voucher list after they are safely in this backup.
+    // The voucher node is read in full by every backup, so this costs no extra download.
+    try { await moveLegacyVoucherReceipts(db, snapshot.pettyCashVouchers || {}, now); } catch (error) { logger.warn("Legacy voucher receipt move skipped", {error: String(error)}); }
     // Retention: delete snapshots older than 30 days.
     let removed = 0;
     try {
@@ -214,6 +217,7 @@ exports.markBackupDirtyInventoryAccounting = backupDirtyTrigger("inventoryAccoun
 exports.markBackupDirtyFinancialApprovals = backupDirtyTrigger("financialApprovals");
 exports.markBackupDirtyActivityLog = backupDirtyTrigger("activityLog");
 exports.markBackupDirtyCfLedger = backupDirtyTrigger("cfLedger");
+exports.markBackupDirtyPettyCashReceipts = backupDirtyTrigger("pettyCashReceipts");
 
 exports.backupDatabaseDaily = onSchedule(
   {schedule: "every day 03:00", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "512MiB"},

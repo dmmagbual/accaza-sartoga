@@ -34,7 +34,7 @@ exports.processOrderAdjustment = onCall(
       if (["grabfood", "foodpanda"].includes(String(o.channel || "").toLowerCase())) throw new HttpsError("failed-precondition", "Platform orders are settled through their platform payout.");
       if (["cashier_verified", "manager_validated", "confirmed"].includes(o.paymentStatus)) return {alreadyVerified: true, paymentStatus: o.paymentStatus};
       const payments = (Array.isArray(o.payments) && o.payments.length ? o.payments : [{method: o.payment, amount: o.total}]).map((row) => Object.assign({}, row));
-      const direct = PaymentVerification.directPaymentRows(payments), posSettings = (await db.ref("/posSettings").get()).val() || {}, verificationPolicy = PaymentVerification.paymentPolicy(payments, posSettings.payMethods);
+      const direct = PaymentVerification.directPaymentRows(payments), posSettings = await readPosSettings(db, ["payMethods"]), verificationPolicy = PaymentVerification.paymentPolicy(payments, posSettings.payMethods);
       if (!direct.length) throw new HttpsError("failed-precondition", "This order has no direct GCash, Maya, or bank payment to verify.");
       if (verificationPolicy === PaymentVerification.MANAGER_ONLY) throw new HttpsError("permission-denied", "This payment method requires manager-only verification.");
       const suppliedRef = financeText(data.reference, 120); if (direct.length === 1 && !financeText(direct[0].ref, 120) && suppliedRef) direct[0].ref = suppliedRef;
@@ -49,7 +49,7 @@ exports.processOrderAdjustment = onCall(
     }
     if (data.action === "manager_validate_payment") {
       if (o.paymentStatus === "manager_validated" || o.paymentStatus === "confirmed") return {alreadyValidated: true};
-      const payments = (Array.isArray(o.payments) && o.payments.length ? o.payments : [{method: o.payment, amount: o.total}]).map((row) => Object.assign({}, row)), direct = PaymentVerification.directPaymentRows(payments), posSettings = (await db.ref("/posSettings").get()).val() || {}, verificationPolicy = PaymentVerification.paymentPolicy(payments, posSettings.payMethods);
+      const payments = (Array.isArray(o.payments) && o.payments.length ? o.payments : [{method: o.payment, amount: o.total}]).map((row) => Object.assign({}, row)), direct = PaymentVerification.directPaymentRows(payments), posSettings = await readPosSettings(db, ["payMethods"]), verificationPolicy = PaymentVerification.paymentPolicy(payments, posSettings.payMethods);
       if (!direct.length) throw new HttpsError("failed-precondition", "This order has no direct electronic payment to validate.");
       if (verificationPolicy === PaymentVerification.CASHIER_MANAGER && o.paymentStatus !== "cashier_verified") throw new HttpsError("failed-precondition", "Cashier verification is required before manager validation.");
       if (verificationPolicy === PaymentVerification.MANAGER_ONLY && !["pending", "cashier_verified"].includes(o.paymentStatus)) throw new HttpsError("failed-precondition", "This payment is not awaiting manager verification.");
@@ -75,16 +75,16 @@ exports.processOrderAdjustment = onCall(
       if(o.inventoryDeducted!==true||!Object.keys(o.inventoryUsage||{}).length)throw new HttpsError("failed-precondition","Wait for the original sale inventory posting to finish, then retry.");
       const active=(await db.ref("/posActiveShift").get()).val()||null;if(!active||active.id!==o.shiftId||active.status==="closed")throw new HttpsError("failed-precondition","This order is not in the currently open shift.");
       const reason=financeText(data.reason,300),acknowledgement=financeText(data.customerAcknowledgement,160);if(!reason||!acknowledgement)throw new HttpsError("invalid-argument","Reason and customer acknowledgement are required.");
-      const [menuSnap,groupsSnap,availabilitySnap,packagesSnap,oldPlanSnap,posSettingsSnap,accountsSnap]=await Promise.all([db.ref("/menuItems").get(),db.ref("/optionGroups").get(),db.ref("/availability").get(),db.ref("/packages").get(),db.ref(`/orderInventoryPlans/${o.id}`).get(),db.ref("/posSettings").get(),db.ref("/cfAccounts").get()]);
+      const [availabilitySnap,oldPlanSnap,posSettings,accountsSnap]=await Promise.all([db.ref("/availability").get(),db.ref(`/orderInventoryPlans/${o.id}`).get(),readPosSettings(db,["denomTracking"]),db.ref("/cfAccounts").get()]);
       const paymentKind=OrderCorrection.paymentKind(o,accountsSnap.val()||{});if(!paymentKind)throw new HttpsError("failed-precondition","Completed-order changes require one verified bank or configured e-wallet payment.");
       const oldPlan=oldPlanSnap.val();if(!oldPlan||!oldPlan.usage)throw new HttpsError("failed-precondition","The original immutable inventory plan is missing. Use manager review; no stock was changed.");
-      const priced=priceOrderLinesServer(data.lineItems,menuSnap.val()||{},groupsSnap.val()||{},availabilitySnap.val()||{},packagesSnap.val()||{}),correctedTotal=Financial.money(priced.total),expected=Financial.money(data.expectedTotal),originalTotal=Financial.money(o.total);
+      const priced=await readCatalogKeyed(db,["menuItems","optionGroups","packages"],(maps)=>priceOrderLinesServer(data.lineItems,maps.menuItems,maps.optionGroups,availabilitySnap.val()||{},maps.packages)),correctedTotal=Financial.money(priced.total),expected=Financial.money(data.expectedTotal),originalTotal=Financial.money(o.total);
       if(!(correctedTotal>0)||correctedTotal>originalTotal+.009)throw new HttpsError("invalid-argument","The corrected order must be greater than zero and cannot exceed the original paid total.");
       if(Math.abs(expected-correctedTotal)>.009)throw new HttpsError("failed-precondition",`Current menu pricing makes the corrected order PHP ${correctedTotal.toFixed(2)}. Refresh and review it.`);
       const itemSignature=(rows)=>JSON.stringify((rows||[]).map((line)=>[line.itemKey,line.size||"",line.optLabels||[],Number(line.qty)||0]));
       if(itemSignature(priced.lines)===itemSignature(OrderCorrection.currentLines(o)))throw new HttpsError("invalid-argument","Change at least one coffee item before completing the correction.");
       const refund=Financial.money(originalTotal-correctedTotal),now=Date.now(),token=crypto.createHash("sha256").update(`${o.id}|${requestId}`).digest("hex").slice(0,16),correctionId=`COR-${o.id}-${token.slice(0,8)}`;
-      const drawerDelta=OfflineSync.offlineDrawerDelta(data.drawerDelta),settings=posSettingsSnap.val()||{},shiftRow=(await db.ref(`/shifts/${o.shiftId}`).get()).val()||{};
+      const drawerDelta=OfflineSync.offlineDrawerDelta(data.drawerDelta),settings=posSettings,shiftRow=(await db.ref(`/shifts/${o.shiftId}`).get()).val()||{};
       if(Object.values(drawerDelta).some((qty)=>qty>0))throw new HttpsError("invalid-argument","A completed-order refund cannot add cash to the drawer.");
       if(!settings.denomTracking&&Object.keys(drawerDelta).length)throw new HttpsError("invalid-argument","Drawer denominations are disabled for this shift.");
       if(settings.denomTracking&&Math.abs(OfflineSync.drawerDeltaValue(drawerDelta)+refund)>.009)throw new HttpsError("invalid-argument","Cash refund denominations must equal the calculated refund.");

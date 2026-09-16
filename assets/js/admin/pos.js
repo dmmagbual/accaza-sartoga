@@ -414,7 +414,7 @@ function openSkuBatchSetup(){
   mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:900px;width:100%;max-height:90vh;overflow:auto;padding:1.2rem;"><div style="font-weight:700;color:var(--bd);">🔀 Brand &amp; Batch setup</div><p class="pz-sub">Reading your inventory and purchase receipts…</p></div>';
   document.body.appendChild(mask);
   function close(){ if(mask.parentNode)document.body.removeChild(mask); }
-  Promise.all([a.get(a.ref(a.db,'stockReceipts')),a.get(a.ref(a.db,'inventorySku')),a.get(a.ref(a.db,'inventoryBatch'))]).then(function(res){
+  Promise.all([/* download-ok: manual setup */a.get(a.ref(a.db,'stockReceipts')),a.get(a.ref(a.db,'inventorySku')),a.get(a.ref(a.db,'inventoryBatch'))]).then(function(res){
     var receipts=res[0].val()||{}, existingSku=res[1].val()||{}, existingBatch=res[2].val()||{};
     // brands + last supplier seen per inventory item, from receipt history
     var brandsByItem={};
@@ -559,7 +559,7 @@ function openExpiryView(){
   mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:960px;width:100%;padding:1.2rem;"><div style="font-weight:700;color:var(--bd);">📅 Expiry / batches</div><p class="pz-sub">Loading batches…</p></div>';
   document.body.appendChild(mask);
   function close(){ if(mask.parentNode)document.body.removeChild(mask); }
-  function load(){ a.get(a.ref(a.db,'inventoryBatch')).then(function(s){ draw(s.val()||{}); }).catch(function(e){ mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:520px;width:100%;padding:1.2rem;"><div style="font-weight:700;color:var(--bd);">Could not load</div><p class="pz-sub">'+esc((e&&e.code)||String(e))+'</p><button class="pz-btn sec" id="xpErrX">Close</button></div>'; var b=document.getElementById('xpErrX'); if(b)b.onclick=close; }); }
+  function load(){ a.get(a.query(a.ref(a.db,'inventoryBatch'),a.orderByChild('closed'),a.endAt(false))).then(function(s){ draw(s.val()||{}); }).catch(function(e){ mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:520px;width:100%;padding:1.2rem;"><div style="font-weight:700;color:var(--bd);">Could not load</div><p class="pz-sub">'+esc((e&&e.code)||String(e))+'</p><button class="pz-btn sec" id="xpErrX">Close</button></div>'; var b=document.getElementById('xpErrX'); if(b)b.onclick=close; }); }
   function draw(allB){
     var byItem={}; Object.keys(allB).forEach(function(k){ var b=Object.assign({id:k},allB[k]); if(b.closed)return; (byItem[b.masterId]=byItem[b.masterId]||[]).push(b); });
     var flat=[]; var untrackedNotes=[];
@@ -1406,7 +1406,7 @@ function editIngredient(id){
    weighted-average cost recipes actually use. On-hand is pooled (one figure). */
 function brandBreakdown(id){
   var i=inventoryMap[id]; if(!i)return; var a=A();
-  a.get(a.ref(a.db,'stockReceipts')).then(function(s){
+  a.get(a.query(a.ref(a.db,'stockReceipts'),a.orderByChild('ing'),a.equalTo(id))).then(function(s){
     var all=s.val()||{}; var byBrand={}; var totQ=0,totV=0;
     Object.keys(all).forEach(function(k){var r=all[k]; if(!r||r.ing!==id)return; var b=(r.brand||'').trim()||'(no brand noted)'; if(!byBrand[b])byBrand[b]={qty:0,value:0,n:0,last:''}; byBrand[b].qty+=Number(r.qty)||0; byBrand[b].value+=Number(r.total)||0; byBrand[b].n++; totQ+=Number(r.qty)||0; totV+=Number(r.total)||0; var d=r.date||''; if(d>byBrand[b].last)byBrand[b].last=d;});
     var brands=Object.keys(byBrand).sort();
@@ -2129,7 +2129,7 @@ function cogsFixLoadOrders(){
   var a=A();
   return Promise.all([
     cogsFixLoadArchived(null,{}),
-    a.get(a.ref(a.db,'orders')).then(function(s){return s.val()||{};}).catch(function(){return {};})
+    /* download-ok: bounded live orders only (archived at shift close) */a.get(a.ref(a.db,'orders')).then(function(s){return s.val()||{};}).catch(function(){return {};})
   ]).then(function(parts){
     var all={};
     parts.forEach(function(set){Object.keys(set).forEach(function(id){all[id]=set[id];});});
