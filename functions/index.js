@@ -47,6 +47,18 @@ const retryGuardDeps = {
   now: () => Date.now(),
   functionName: () => process.env.FUNCTION_TARGET || process.env.K_SERVICE || "unknown",
   recordDeadLetter: (key, record) => getDatabase().ref(`/${RetryGuard.DEAD_LETTER_ROOT}/${key}`).set(record),
+  // One small record per failing event; a successful retry leaves it for the daily prune.
+  countFailure: async (key, info) => {
+    const result = await getDatabase().ref(`/${RetryGuard.ATTEMPTS_ROOT}/${key}`).transaction((current) => ({function: info.function, eventId: info.eventId, count: (Number(current && current.count) || 0) + 1, firstFailedAt: Number(current && current.firstFailedAt) || info.at, lastFailedAt: info.at}), undefined, false);
+    return Number(result.snapshot.val() && result.snapshot.val().count) || 0;
+  },
+  clearFailures: (key) => getDatabase().ref(`/${RetryGuard.ATTEMPTS_ROOT}/${key}`).remove(),
+  // Distinct failed events per function per Manila day (one tiny record per function and day).
+  recordFunctionFailure: async ({function: name, day, newEvent}) => {
+    const safe = String(name || "unknown").replace(/[.#$\[\]\/]/g, "_").slice(0, 100);
+    const result = await getDatabase().ref(`/${RetryGuard.BUDGET_ROOT}/${safe}/${day}`).transaction((current) => ({events: (Number(current && current.events) || 0) + (newEvent ? 1 : 0), failures: (Number(current && current.failures) || 0) + 1, updatedAt: Date.now()}), undefined, false);
+    return result.snapshot.val() || {};
+  },
   logError: (message, context) => logger.error(message, context),
 };
 const onValueUpdated = RetryGuard.wrapTriggerFactory(DatabaseTriggers.onValueUpdated, retryGuardDeps);
@@ -4980,6 +4992,15 @@ exports.pruneEphemeralNodes = onSchedule(
       const ts = Number((correctionCmds[rid] && (correctionCmds[rid].postedAt || correctionCmds[rid].claimedAt)) || 0);
       if (ts && now - ts > 45 * DAY) mark(`orderCorrectionCommands/${rid}`);
     });
+
+    // functionRetryAttempts/{key} — failure counters of events that later succeeded
+    const staleAttempts = (await db.ref("/functionRetryAttempts").orderByChild("lastFailedAt").endAt(now - 2 * DAY).get()).val() || {};
+    Object.keys(staleAttempts).forEach((key) => mark(`${RetryGuard.ATTEMPTS_ROOT}/${key}`));
+
+    // functionFailureBudget/{function}/{day} — daily retry budgets, keep a week
+    const budgets = /* download-ok: bounded one small record per failing function per day, pruned here */(await db.ref("/functionFailureBudget").get()).val() || {};
+    const budgetCutoff = financeDateFromTimestamp(now - 7 * DAY);
+    Object.keys(budgets).forEach((fn) => Object.keys(budgets[fn] || {}).forEach((day) => { if (day < budgetCutoff) mark(`functionFailureBudget/${fn}/${day}`); }));
 
     // clientTelemetryDaily/{YYYY-MM-DD} — keep ~4 months
     const cutoffDay = financeDateFromTimestamp(now - 120 * DAY);
