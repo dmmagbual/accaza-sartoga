@@ -138,12 +138,11 @@ exports.runDatabaseBackupNow = onCall(
 
 async function evaluateProductionHealthNow(db=getDatabase(),now=Date.now()) {
     const today=financeDateFromTimestamp(now),yesterday=financeDateFromTimestamp(now-86400000);
-    const [backupSnap,todaySnap,yesterdaySnap,previousSnap,notificationSnap,operational]=await Promise.all([db.ref("/systemHealth/backups/latest").get(),db.ref(`/clientTelemetryDaily/${today}`).get(),db.ref(`/clientTelemetryDaily/${yesterday}`).get(),db.ref("/systemHealth/productionMonitor/current").get(),db.ref("/systemHealth/productionMonitor/notificationState").get(),getCachedOperationalExceptions(db,now)]);
-    const health=ProductionHealth.evaluate({backup:backupSnap.val()||{},telemetry:[todaySnap.val()||{},yesterdaySnap.val()||{}],operational},now),previous=previousSnap.val()||{},decision=AlertEscalation.decide(previous,health,notificationSnap.val()||{},now),writes={"systemHealth/productionMonitor/current":health};
+    const [backupSnap,todaySnap,yesterdaySnap,previousSnap,operational]=await Promise.all([db.ref("/systemHealth/backups/latest").get(),db.ref(`/clientTelemetryDaily/${today}`).get(),db.ref(`/clientTelemetryDaily/${yesterday}`).get(),db.ref("/systemHealth/productionMonitor/current").get(),getCachedOperationalExceptions(db,now)]);
+    const health=ProductionHealth.evaluate({backup:backupSnap.val()||{},telemetry:[todaySnap.val()||{},yesterdaySnap.val()||{}],operational},now),previous=previousSnap.val()||{},writes={"systemHealth/productionMonitor/current":health};
     if(previous.signature!==health.signature||previous.status!==health.status)writes[`systemHealth/productionMonitor/history/${today}/${now}`]={evaluatedAt:now,status:health.status,signature:health.signature,counts:health.counts,alerts:health.alerts};
     await db.ref().update(writes);
-    if(decision.notify){await notifyStaff(db,decision.title,decision.body,decision.link,decision.audience);await db.ref("/systemHealth/productionMonitor/notificationState").set(decision.nextState);}
-    logger.info("Production health evaluated",{status:health.status,critical:health.counts.critical,warning:health.counts.warning,changed:previous.signature!==health.signature,notification:decision.reason});return health;
+    logger.info("Production health evaluated",{status:health.status,critical:health.counts.critical,warning:health.counts.warning,changed:previous.signature!==health.signature,notification:"disabled"});return health;
 }
 
 // Phase 13: hourly, read-only early-warning evaluation. It records sanitized
