@@ -265,7 +265,7 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   assert.ok(!ids(13 * 1048576).includes('backup_download_budget'), 'today\'s 13 MB backup is inside budget');
   const warn = Health.evaluate({backup: backup(61 * 1048576), telemetry: [], operational: {counts: {}}}, now);
   assert.equal(warn.status, 'warning');
-  assert.ok(warn.alerts.some((x) => x.id === 'backup_download_budget' && x.severity === 'warning' && x.detail.includes('61 MB of the 360 MB')));
+  assert.ok(warn.alerts.some((x) => x.id === 'backup_download_budget' && x.severity === 'warning' && x.detail.includes('61 MB') && x.detail.includes('360 MB')));
   assert.ok(Health.BACKUP_DOWNLOAD_WARN_BYTES * 6 <= Health.DAILY_FREE_DOWNLOAD_BYTES, 'the warning fires at no more than a sixth of the daily allowance');
   assert.ok(read('src/functions/60-maintenance.js').includes('bytes: payload.length'), 'the backup records its size for the budget check');
 }
@@ -323,4 +323,363 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   assert.ok(!reads.some((r) => r === '/orders' || r === '/archivedOrders'), 'no lookup downloads a whole order node');
 }
 
-console.log('PASS: replica-first history reads, tab-stable report listeners, ID-patched archive changes, month-bounded Stock Value journal (equivalent to full history), Books without full archive downloads, and indexed/bounded server reads, bounded per-item inventory idempotency state, day-bucketed Books monthly totals, stale tabs that pick up fixed builds, a backup download budget warning, and index-first platform order lookups.');
+// 12. Petty voucher receipts live beside the voucher, so the voucher listeners stay small, and
+// approvals transact on one voucher instead of downloading and re-uploading the whole node.
+{
+  const bundle = read('functions/index.js');
+  const pettyAt = bundle.indexOf('exports.managePettyVoucher'), petty = bundle.slice(pettyAt, bundle.indexOf('\nexports.', pettyAt + 10));
+  assert.ok(!petty.includes('db.ref("/pettyCashVouchers").get()') && !petty.includes('db.ref("/pettyCashVouchers")'), 'managePettyVoucher must not read or transact the whole voucher node');
+  assert.ok(petty.includes('const result = await ref.transaction((row) => {'), 'voucher review transacts on the single voucher');
+  const register = read('assets/js/admin/register.js');
+  assert.ok(!/receiptImg:img/.test(register), 'new vouchers must not embed the receipt image');
+  assert.ok(register.includes("a.update(a.ref(a.db),writes)") && register.includes("writes['pettyCashReceipts/'+id]"), 'voucher and receipt are written atomically');
+  const start = bundle.indexOf('async function voucherHasReceipt'), end = bundle.indexOf('exports.managePettyVoucher');
+  const reads = [];
+  const db = {ref: (path) => ({get: async () => { reads.push(path); return {exists: () => path === '/pettyCashReceipts/pv_new/meta'}; }})};
+  const context = vm.createContext({db});
+  vm.runInContext(`${bundle.slice(start, end)};globalThis.has = voucherHasReceipt;`, context);
+  assert.equal(await context.has(db, 'pv_old', {receiptImg: 'data:image/jpeg;base64,AA'}), true);
+  assert.equal(await context.has(db, 'pv_new', {hasReceipt: true}), true);
+  assert.equal(await context.has(db, 'pv_fake', {hasReceipt: true}), false, 'a hasReceipt flag without a stored receipt is not evidence');
+  assert.equal(await context.has(db, 'pv_none', {purpose: 'x'}), false);
+  assert.deepEqual(reads, ['/pettyCashReceipts/pv_new/meta', '/pettyCashReceipts/pv_fake/meta'], 'evidence checks read only the small meta child');
+}
+
+// 13. Cash controls read the maintained cash summary (plus in-flight recent movements) instead of
+// the whole ledger, and still agree with a full-ledger computation.
+{
+  const CashBalances = require('../functions/lib/cash-balances.js');
+  const clone = (v) => v === undefined ? undefined : JSON.parse(JSON.stringify(v));
+  function fakeDb(data, reads, hooks = {}) {
+    const parts = (path) => path.split('/').filter(Boolean);
+    const at = (path) => parts(path).reduce((n, k) => n == null ? undefined : n[k], data);
+    const put = (path, value) => { const p = parts(path); let n = data; p.slice(0, -1).forEach((k) => { n = n[k] = n[k] && typeof n[k] === 'object' ? n[k] : {}; }); if (value === null) delete n[p.at(-1)]; else n[p.at(-1)] = clone(value); };
+    const snap = (v) => ({exists: () => v !== undefined && v !== null, val: () => v === undefined ? null : clone(v)});
+    function ref(path = '/') {
+      const q = {};
+      const api = {
+        orderByChild(c) { q.child = c; return api; }, startAt(v) { q.start = v; return api; }, limitToFirst(n) { q.first = n; return api; },
+        async get() {
+          reads.push(q.child ? `${path}?${q.child}>=${q.start ?? ''}` : path);
+          if (hooks.onGet) hooks.onGet(path, q);
+          let v = at(path);
+          if (q.child && v && typeof v === 'object') {
+            let rows = Object.entries(v).filter(([, r]) => q.start === undefined || Number(r && r[q.child]) >= q.start);
+            rows.sort((a, b) => Number(a[1][q.child]) - Number(b[1][q.child]));
+            if (q.first) rows = rows.slice(0, q.first);
+            v = Object.fromEntries(rows);
+          } else if (q.first && v && typeof v === 'object') v = Object.fromEntries(Object.entries(v).slice(0, q.first));
+          return snap(v);
+        },
+        async set(v) { put(path, v); }, async update(w) { for (const [k, v] of Object.entries(w)) put(`${path}/${k}`, v); },
+        async transaction(fn) { const next = fn(clone(at(path)) ?? null); if (next !== undefined) put(path, next); return {committed: next !== undefined, snapshot: snap(at(path))}; },
+      };
+      return api;
+    }
+    return {ref};
+  }
+  const src = read('src/functions/23-cash-balance-summary.js');
+  const sandbox = {require: (m) => m === './lib/cash-balances' ? CashBalances : null, exports: {}, onCall: () => null, onValueWritten: () => null, ORDER_REGION: 'x', ENFORCE_APP_CHECK: false, Date, Math, JSON, Object, Number, String, Promise, Boolean, Array, Error};
+  vm.createContext(sandbox);
+  vm.runInContext(`${src};globalThis.current = currentCashBalances;`, sandbox);
+  const now = Date.UTC(2026, 8, 16, 7);
+  const mv = (id, account, debit, credit, extra = {}) => ({id, occurredAt: now - 86400000, postedAt: now - 86400000, lines: [{account, debit, credit}, {account: 'revenue:sales', debit: credit, credit: debit}], ...extra});
+  const ledger = {
+    old1: mv('old1', 'asset:register_cash', 500, 0),
+    old2: mv('old2', 'asset:cash_account:bdo', 1200.25, 0),
+    edited: mv('edited', 'asset:register_cash', 50, 0),
+  };
+  const built = CashBalances.splitSnapshotFromMovements(ledger, now - 3600000);
+  // After the summary was built: one new sale (trigger not processed yet) and one edit.
+  ledger.fresh = mv('fresh', 'asset:register_cash', 75.5, 0, {postedAt: now - 30000});
+  ledger.edited = mv('edited', 'asset:register_cash', 80, 0, {updatedAt: now - 20000});
+  const state = {financialMovements: clone(ledger), cashBalanceSummary: built.summary, cashBalanceSummaryApplied: built.applied, cashBalanceSummaryPending: {}};
+  const reads = [];
+  const result = await sandbox.current(fakeDb(state, reads), now);
+  const full = CashBalances.splitSnapshotFromMovements(ledger, now).summary.balances;
+  assert.equal(result.source, 'summary');
+  assert.equal(result.balances.registerCents, full.registerCents, 'register cash equals the full-ledger figure');
+  assert.equal(result.balances.registerCents, 65550);
+  assert.deepEqual(result.balances.cashAccountCents, full.cashAccountCents);
+  assert.ok(!reads.includes('/financialMovements'), 'no whole-ledger read on the normal path');
+  // A summary that changes mid-read is re-read, never double counted.
+  const racing = {financialMovements: clone(ledger), cashBalanceSummary: clone(built.summary), cashBalanceSummaryApplied: clone(built.applied), cashBalanceSummaryPending: {}};
+  let raced = false;
+  const racingDb = fakeDb(racing, [], {onGet: (path) => {
+    if (!raced && path.startsWith('/cashBalanceSummaryApplied/')) {
+      raced = true;
+      const applied = CashBalances.applyContribution(racing.cashBalanceSummary, null, racing.financialMovements.fresh, now - 1000);
+      racing.cashBalanceSummary = applied.summary; racing.cashBalanceSummaryApplied.fresh = applied.applied;
+    }
+  }});
+  const retried = await sandbox.current(racingDb, now);
+  assert.equal(retried.balances.registerCents, full.registerCents, 'a concurrent summary update is not double counted');
+  // A stuck queue entry older than the window falls back to the full ledger.
+  const stuck = {financialMovements: clone(ledger), cashBalanceSummary: clone(built.summary), cashBalanceSummaryApplied: clone(built.applied), cashBalanceSummaryPending: {k: {movementId: 'fresh', queuedAt: now - 3600000}}, cashBalanceSummaryProcessorLock: {owner: 'someone', expiresAt: Date.now() + 86400000}};
+  const stuckReads = [];
+  const fallback = await sandbox.current(fakeDb(stuck, stuckReads), now);
+  assert.equal(fallback.source, 'ledger'); assert.equal(fallback.balances.registerCents, full.registerCents);
+  // Callers of the cash control no longer read the ledger themselves.
+  const bundle = read('functions/index.js');
+  const available = bundle.slice(bundle.indexOf('async function availableCashOnHandAboveFloat'), bundle.indexOf('function poolCustodyInflowRecord'));
+  assert.ok(available.includes('currentCashBalances(db)') && !available.includes('db.ref("/financialMovements")'), 'availableCashOnHandAboveFloat must use the cash summary');
+  const review = bundle.slice(bundle.indexOf('exports.reviewDiscrepancy'), bundle.indexOf('\nexports.', bundle.indexOf('exports.reviewDiscrepancy') + 10));
+  assert.ok(!review.includes('db.ref("/financialMovements").get()') && review.includes('discrepancyCandidateMovements(db,shiftId,shiftRow,row,raw)'), 'cash-difference reviews read a bounded window');
+  for (const index of ['postedAt', 'updatedAt']) assert.ok(ruleIndexes('financialMovements').includes(index), `financialMovements.${index} must be indexed`);
+  assert.ok(read('database.rules.json').includes('"cashBalanceSummaryPending": { ".indexOn": "queuedAt", ".read": false, ".write": false }'));
+  // Discrepancy candidates: window + legacy variance + the manager's explicit selection only.
+  const hs = bundle.indexOf('const DISCREPANCY_RECOVERY_LOOKBACK_MS'), he = bundle.indexOf('exports.managePettyVoucher');
+  const dctx = vm.createContext({Math, Number, String, Object, Array, Set, Promise});
+  vm.runInContext(`${bundle.slice(hs, he)};globalThis.pick = discrepancyCandidateMovements;`, dctx);
+  const dstate = {financialMovements: {early: {occurredAt: 10}, recovery: {occurredAt: 9 * 86400000}, shift_variance_s1: {occurredAt: 5}, picked: {occurredAt: 1}}};
+  const dreads = [];
+  const picked = await dctx.pick(fakeDb(dstate, dreads), 's1', {openAt: 10 * 86400000}, {ts: 10 * 86400000 + 5}, [{details: {correctionMovementId: 'picked'}}, {details: {correctionMovementId: 'bad/id'}}]);
+  assert.deepEqual(Object.keys(picked).sort(), ['picked', 'recovery', 'shift_variance_s1']);
+  assert.ok(!dreads.includes('/financialMovements'));
+}
+
+// 14. Books Cash Flow: period movements + server day/month cash indexes reproduce the
+// full-history statement exactly, and the Cash Flow tab no longer runs the control audit.
+{
+  const CashBalances = require('../functions/lib/cash-balances.js');
+  const D = (day, hour = 12) => Date.parse(`${day}T${String(hour).padStart(2, '0')}:00:00+08:00`);
+  const L = (account, debit, credit = 0) => ({account, debit, credit});
+  const reg = 'asset:register_cash', und = 'asset:cash_awaiting_deposit', pet = 'asset:petty_cash', bdo = 'asset:cash_account:bdo', gc = 'asset:cash_account:gcash';
+  const ledger = {
+    open_bdo: {type: 'opening_balance', sourceType: 'cashAccount', sourceId: 'bdo', occurredAt: D('2026-09-10'), lines: [L(bdo, 5000), L('equity:opening', 0, 5000)]},
+    open_gc: {type: 'opening_balance', sourceType: 'cashAccount', sourceId: 'gcash', occurredAt: D('2026-07-01'), lines: [L(gc, 300), L('equity:opening', 0, 300)]},
+    open_gc_extra: {type: 'opening_balance_adjustment', sourceType: 'cashAccount', sourceId: 'gcash', occurredAt: D('2026-08-02'), lines: [L(gc, 50), L('equity:opening', 0, 50)]},
+    sale_jul: {type: 'order_sale', sourceType: 'order', sourceId: 'o1', occurredAt: D('2026-07-15'), lines: [L(reg, 120.5), L('revenue:sales', 0, 120.5)]},
+    sale_aug: {type: 'order_sale', sourceType: 'order', sourceId: 'o2', occurredAt: D('2026-08-20'), lines: [L(reg, 99.99), L('revenue:sales', 0, 99.99)]},
+    deposit_aug: {type: 'cash_deposit', sourceType: 'custody', sourceId: 'c1', occurredAt: D('2026-08-25'), lines: [L(bdo, 80), L(und, 0, 80)]},
+    move_aug: {type: 'register_to_undeposited', sourceType: 'shift', sourceId: 's1', occurredAt: D('2026-08-25', 23), lines: [L(und, 80), L(reg, 0, 80)]},
+    // Fully reversed pair straddling the period start.
+    sale_straddle: {type: 'order_sale', sourceType: 'order', sourceId: 'o3', occurredAt: D('2026-08-31', 23), lines: [L(reg, 45), L('revenue:sales', 0, 45)]},
+    sale_straddle_void: {type: 'order_sale_void', sourceType: 'order', sourceId: 'o3', occurredAt: D('2026-09-02'), lines: [L('revenue:sales', 45), L(reg, 0, 45)]},
+    // Fully reversed pair inside the period.
+    sale_in: {type: 'order_sale', sourceType: 'order', sourceId: 'o4', occurredAt: D('2026-09-05'), lines: [L(reg, 70), L('revenue:sales', 0, 70)]},
+    sale_in_void: {type: 'order_sale_void', sourceType: 'order', sourceId: 'o4', occurredAt: D('2026-09-06'), lines: [L('revenue:sales', 70), L(reg, 0, 70)]},
+    // Fully reversed pair before the period.
+    sale_old: {type: 'order_sale', sourceType: 'order', sourceId: 'o5', occurredAt: D('2026-07-20'), lines: [L(reg, 33), L('revenue:sales', 0, 33)]},
+    sale_old_void: {type: 'order_sale_void', sourceType: 'order', sourceId: 'o5', occurredAt: D('2026-07-21'), lines: [L('revenue:sales', 33), L(reg, 0, 33)]},
+    // A reversal whose source has two originals is not a clean pair.
+    pv_a: {type: 'petty_cash_expense', sourceType: 'pettyVoucher', sourceId: 'pv1', occurredAt: D('2026-08-10'), lines: [L('expense:x', 20), L(pet, 0, 20)]},
+    pv_b: {type: 'petty_cash_expense', sourceType: 'pettyVoucher', sourceId: 'pv1', occurredAt: D('2026-08-11'), lines: [L('expense:x', 5), L(pet, 0, 5)]},
+    pv_void: {type: 'petty_cash_void', sourceType: 'pettyVoucher', sourceId: 'pv1', occurredAt: D('2026-09-03'), lines: [L(pet, 20), L('expense:x', 0, 20)]},
+    // Reversal after the period end: not paired for a September report.
+    sale_late: {type: 'order_sale', sourceType: 'order', sourceId: 'o6', occurredAt: D('2026-09-08'), lines: [L(reg, 15), L('revenue:sales', 0, 15)]},
+    sale_late_void: {type: 'order_sale_void', sourceType: 'order', sourceId: 'o6', occurredAt: D('2026-10-02'), lines: [L('revenue:sales', 15), L(reg, 0, 15)]},
+    fund: {type: 'petty_cash_replenishment', sourceType: 'fund', sourceId: 'f1', occurredAt: D('2026-06-30'), lines: [L(pet, 500), L(und, 0, 500)]},
+    manual: {type: 'manual_books_journal', sourceType: 'booksManualJournal', sourceId: 'j1', occurredAt: D('2026-09-07'), lines: [L(gc, 12.34), L('equity:x', 0, 12.34)]},
+    edge_midnight: {type: 'order_sale', sourceType: 'order', sourceId: 'o7', occurredAt: D('2026-09-01', 0), lines: [L(reg, 1), L('revenue:sales', 0, 1)]},
+    payout: {type: 'platform_payout_deposit', sourceType: 'platformPayout', sourceId: 'p1', occurredAt: D('2026-09-09'), lines: [L(bdo, 900), L('asset:platform_clearing:grabfood', 0, 900)]},
+  };
+  const accounts = {bdo: {name: 'BDO', openingDate: '2026-09-01', opening: 5000, order: 1}, gcash: {name: 'GCash', opening: 300, order: 2}, bank2: {name: 'Other', opening: 750, openingDate: '2026-08-15', order: 3}};
+  const periodOf = (from, to) => ({from, to, startAt: D(from, 0), endAt: Date.parse(`${to}T23:59:59.999+08:00`)});
+  const flow = CashBalances.splitSnapshotFromMovements(ledger, D('2026-09-16')).flow;
+  function runStatement(file, win, from, to) {
+    const code = read(file);
+    const ctx = vm.createContext({window: win, Intl, Date, Math, Number, String, Object, Array, Set, Map, JSON, RegExp, App: {}, document: {}, r2: (n) => Math.round((Number(n) || 0) * 100) / 100, todayStr: () => to, periodBounds: () => ({start: from, end: to}), ENTRIES: () => [], globalThis: null});
+    ctx.globalThis = ctx;
+    vm.runInContext(`${file.includes('fixtures') ? code : code.slice(0, code.indexOf('App.cashAccountEdit'))};globalThis.run = () => cfStatement(); globalThis.balance = (id) => cfAccountLedgerBalance(id);`, ctx);
+    return ctx;
+  }
+  const basisSrc = read('assets/js/shared/cash-flow-basis.js');
+  for (const [from, to] of [['2026-09-01', '2026-09-16'], ['2026-09-03', '2026-09-30'], ['2026-08-01', '2026-08-31'], ['2026-07-15', '2026-09-10'], ['2026-09-02', '2026-09-02'], ['2026-10-01', '2026-10-05']]) {
+    const oldCtx = runStatement('tests/fixtures/cash-flow-full-history-reference.js', {__financialMovements: ledger, __cfAccounts: accounts}, from, to);
+    const p = periodOf(from, to);
+    const period = Object.fromEntries(Object.entries(ledger).filter(([, m]) => m.occurredAt >= p.startAt && m.occurredAt <= p.endAt));
+    const win = {__financialMovements: period, __cashFlowPeriodReady: true, __cfAccounts: accounts, __cashFlowMonthly: flow.monthly, __cashFlowMonthlyReady: true, __cashFlowOpenings: flow.openings, __cashFlowOpeningsReady: true, __cashFlowIndexMeta: flow.meta, __cashFlowDailyMonth: from.slice(0, 7), __cashFlowDaily: Object.fromEntries(Object.entries(flow.daily).filter(([day]) => day.startsWith(from.slice(0, 7)))), __cashFlowGroups: {}};
+    vm.runInContext(basisSrc, vm.createContext(win));
+    win.AccazaCashFlowBasis = win.AccazaCashFlowBasis || (() => { const c = vm.createContext({}); vm.runInContext(basisSrc, c); return c.AccazaCashFlowBasis; })();
+    const need = win.AccazaCashFlowBasis.reversalSources(period);
+    const newCtx = runStatement('src/books/app/20-cash-flow.js', win, from, to);
+    if (Object.keys(need).length) assert.equal(newCtx.run().loading, true, `${from}..${to}: a reversal source that has not loaded yet keeps the statement in its loading state`);
+    for (const key of Object.keys(need)) win.__cashFlowGroups[key] = Object.fromEntries(Object.entries(ledger).filter(([, m]) => String(m.sourceId) === need[key].sourceId));
+    const before = oldCtx.run(), after = newCtx.run();
+    assert.equal(after.loading, false);
+    for (const field of ['begin', 'ending', 'add', 'ded', 'detail', 'corrections', 'correctionDetail', 'totBegin', 'totEnd', 'totAdd', 'totDed']) {
+      const norm = (v) => JSON.stringify(v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).filter(([, x]) => Math.abs(Number(x)) >= 0.005).sort()) : v);
+      assert.equal(norm(after[field]), norm(before[field]), `${from}..${to}: ${field} differs from the full-history statement`);
+    }
+    for (const id of ['bdo', 'gcash', 'bank2']) assert.equal(newCtx.balance(id), oldCtx.balance(id), `ledger balance for ${id}`);
+  }
+  // Wiring: the Books feed reads only the period, the indexes, and reversal sources.
+  const live = read('assets/js/books/live-pos.mjs');
+  assert.ok(live.includes('query(ref(db,"/financialMovements"),orderByChild("occurredAt"),startAt(p.startAt),endAt(p.endAt))'), 'Cash Flow must read only the selected period');
+  assert.ok(!/ref\(db,"\/financialMovements"\)\)/.test(live) && !live.includes('endAt(Number(p.endAt)||Date.now())'), 'no all-history Finance movement listener');
+  assert.ok(live.includes("orderByChild('sourceId'),equalTo(need[key].sourceId)"), 'reversal sources are read through the sourceId index');
+  assert.ok(!read('assets/js/books/app.js').includes('window.__auditControls().then(function(r){window.__controlAudit=r||{};})'), 'opening Cash Flow must not run the whole-archive control audit');
+  assert.equal((read('books.html').match(/assets\/js\/shared\/cash-flow-basis\.js/g) || []).length, 1);
+  const bundle = read('functions/index.js');
+  assert.ok(bundle.includes('cashFlowDaily: rebuilt.flow.daily, cashFlowMonthly: rebuilt.flow.monthly, cashFlowOpenings: rebuilt.flow.openings, cashFlowIndexMeta: rebuilt.flow.meta'), 'the cash summary rebuild writes the cash-flow indexes');
+  // Incremental maintenance equals a rebuild, including edits, day moves and deletions.
+  let state = CashBalances.splitSnapshotFromMovements({}, 1);
+  let summary = state.summary, applied = {}, index = {daily: {}, monthly: {}, openings: {}};
+  const step = (id, movement) => {
+    const prior = applied[id] || null;
+    const result = CashBalances.applyContribution(summary, prior, movement, 2);
+    summary = result.summary;
+    if (result.applied) applied[id] = result.applied; else delete applied[id];
+    CashBalances.applyFlowContribution(index, id, prior, result.applied, movement);
+  };
+  Object.entries(ledger).forEach(([id, m]) => step(id, m));
+  step('sale_aug', {...ledger.sale_aug, occurredAt: D('2026-09-04')});
+  step('open_gc_extra', null);
+  step('manual', {...ledger.manual, lines: [L(gc, 10), L('equity:x', 0, 10)]});
+  const expected = {...ledger, sale_aug: {...ledger.sale_aug, occurredAt: D('2026-09-04')}, manual: {...ledger.manual, lines: [L(gc, 10), L('equity:x', 0, 10)]}};
+  delete expected.open_gc_extra;
+  const rebuilt = CashBalances.splitSnapshotFromMovements(expected, 3);
+  const clean = (map) => Object.fromEntries(Object.entries(map).map(([k, v]) => [k, CashBalances.flowValue(v)]).filter(([, v]) => v).map(([k, v]) => [k, JSON.parse(JSON.stringify(v, (key, val) => (key === 'cashAccountCents' && val && !Object.keys(val).some((x) => val[x])) ? undefined : val))]));
+  assert.deepEqual(clean(index.daily), clean(rebuilt.flow.daily), 'incremental daily index equals a rebuild');
+  assert.deepEqual(clean(index.monthly), clean(rebuilt.flow.monthly), 'incremental monthly index equals a rebuild');
+  assert.deepEqual(Object.fromEntries(Object.entries(index.openings).filter(([, v]) => v)), rebuilt.flow.openings, 'incremental openings equal a rebuild');
+}
+
+// 15. Incremental daily backups: tracked history nodes are rebuilt from the previous verified
+// backup plus dirty records, produce the same envelope data as a full read, and read no
+// tracked node in full on incremental days.
+{
+  const BackupDelta = require('../functions/lib/backup-delta.js');
+  const RecoveryValidation = require('../functions/lib/recovery-validation.js');
+  const clone = (v) => v === undefined ? undefined : JSON.parse(JSON.stringify(v));
+  const bal = (id, amount) => ({id, lines: [{account: 'asset:register_cash', debit: amount, credit: 0}, {account: 'revenue:sales', debit: 0, credit: amount}]});
+  let state = {
+    archivedOrders: {a1: {total: 10}, a2: {total: 20}},
+    inventoryMovements: {m1: {qty: 1}, m2: {qty: 2}},
+    orderInventoryPlans: {a1: {lines: [1, 2]}},
+    financialMovements: {f1: bal('f1', 10)},
+    books: {journal: {j1: bal('j1', 10)}, monthlyNet: {'2026-09': {'1000': 10}}, config: {x: 1}},
+    shifts: {s1: {openAt: 1}},
+    cashBalanceSummaryApplied: {f1: {fingerprint: 'x'}},
+    operationalAudit: {'1_x': {action: 'x'}},
+    financialCommandClaims: {f1: {status: 'posted'}},
+    inventoryAccounting: {milk: {balance: 1}},
+    financialApprovals: {ap1: {status: 'used'}},
+    activityLog: {l1: {action: 'x'}},
+    cfLedger: {c1: {amount: 1}},
+    menuItems: {latte: {price: 100}},
+    activeOrders: {a3: {status: 'Pending'}},
+    systemHealth: {backups: {latest: {}}},
+  };
+  const reads = [], files = {}, logs = [];
+  const at = (path) => path.split('/').filter(Boolean).reduce((n, k) => n == null ? undefined : n[k], state);
+  // Like the database, removing the last child removes the parent.
+  const put = (path, value) => { const parts = path.split('/').filter(Boolean), chain = [state]; let n = state; parts.slice(0, -1).forEach((k) => { n = n[k] = n[k] || {}; chain.push(n); }); if (value === null) delete n[parts.at(-1)]; else n[parts.at(-1)] = clone(value); for (let i = chain.length - 1; i > 0; i -= 1) if (!Object.keys(chain[i]).length) delete chain[i - 1][parts[i - 1]]; };
+  const snap = (v) => ({exists: () => v != null, val: () => v === undefined ? null : clone(v)});
+  const db = {ref: (path = '/') => ({
+    toString: () => 'https://example.firebasedatabase.app/',
+    async get() { reads.push(path); return snap(path === '/' ? state : at(path)); },
+    async set(v) { put(path, v); },
+    async transaction(fn) { const next = fn(clone(at(path)) ?? null); if (next !== undefined) put(path, next); return {committed: true}; },
+    orderByKey() {
+      const range = {};
+      const q = {startAt(k) { range.start = k; return q; }, endBefore(k) { range.before = k; return q; }, async get() {
+        reads.push(`${path}?slice`);
+        const node = at(path) || {};
+        const rows = Object.entries(node).filter(([k]) => BackupDelta.inSlice(k, {start: range.start ?? null, before: range.before ?? null}));
+        return snap(rows.length ? Object.fromEntries(rows) : null);
+      }};
+      return q;
+    },
+  })};
+  const bucket = {
+    async getFiles({prefix}) { return [Object.keys(files).filter((n) => n.startsWith(prefix)).map((name) => ({name, metadata: {timeCreated: new Date(files[name].at).toISOString()}, download: async () => [Buffer.from(files[name].body)], delete: async () => { delete files[name]; }}))]; },
+    file: (name) => ({save: async (body) => { files[name] = {body, at: clock}; }}),
+  };
+  let clock = Date.UTC(2026, 8, 17, 19);
+  const shallow = async (url) => {
+    const path = url.replace('https://example.firebasedatabase.app/', '').replace(/\/?\.json\?shallow=true$/, '');
+    reads.push(`shallow:${path}`);
+    const v = path ? at(path) : state;
+    return {ok: true, json: async () => Object.fromEntries(Object.keys(v || {}).map((k) => [k, true]))};
+  };
+  const bundle = read('functions/index.js');
+  const start = bundle.indexOf('const BACKUP_EXCLUDE = new Set('), end = bundle.indexOf('exports.backupDatabaseDaily = onSchedule(');
+  const ctx = vm.createContext({
+    BackupDelta, RecoveryValidation, getDatabase: () => db, getStorage: () => ({bucket: () => bucket}), PROOF_BUCKET: 'b',
+    getApp: () => ({options: {credential: {getAccessToken: async () => ({access_token: 't'})}}}), fetch: shallow,
+    logger: {info: (m, c) => logs.push([m, c]), warn: (m, c) => logs.push([m, c])}, evaluateProductionHealthNow: async () => null,
+    exports: {}, onValueWritten: (opts, fn) => ({opts, fn}), ORDER_REGION: 'asia-southeast1', Date: class extends Date { static now() { return clock; } }, JSON, Object, Promise, String, Number, Buffer, Math, Set, Array, Error,
+  });
+  vm.runInContext(`${bundle.slice(start, end)};globalThis.backup = createVerifiedDatabaseBackup; globalThis.trigger = backupDirtyTrigger;`, ctx);
+  const fullData = () => { const out = clone(state); delete out.activeOrders; delete out.backupDirty; return out; };
+  // A backup file written before this release exists, but markers only start now: full read.
+  files['db-backups/accaza-2026-09-16-19-00-00.json'] = {body: JSON.stringify(RecoveryValidation.createEnvelope({menuItems: {}}, clock - 86400000, [])), at: clock - 86400000};
+  let result = await ctx.backup(clock);
+  assert.equal(state.systemHealth.backups.latest.fullReason, 'markers_new');
+  assert.equal(result.version, 'backup-v2');
+  assert.equal(state.systemHealth.backups.latest.mode, 'full');
+  // Writes between backups, each marked by its trigger (the trigger is the real factory).
+  const write = async (path, key, value) => { put(`${path}/${key}`, value); const t = ctx.trigger(path); await t.fn({params: {key}}); };
+  clock += 86400000;
+  await write('archivedOrders', 'a2', {total: 25, settlementStatus: 'settled'});
+  await write('archivedOrders', 'a4', {total: 40});
+  await write('archivedOrders', 'a1', null);
+  await write('financialMovements', 'f2', bal('f2', 5));
+  await write('inventoryMovements', 'm1', null);
+  await write('books/journal', 'j2', bal('j2', 5));
+  put('menuItems/latte/price', 110); put('books/monthlyNet/2026-09/1000', 15); put('newNode', {x: 1});
+  assert.deepEqual(Object.keys(state.backupDirty).sort(), ['archivedOrders', 'books~journal', 'financialMovements', 'inventoryMovements']);
+  // Day 2: incremental.
+  reads.length = 0;
+  result = await ctx.backup(clock);
+  const latest = state.systemHealth.backups.latest;
+  assert.equal(latest.mode, 'incremental', 'the second day is incremental');
+  assert.equal(latest.recordsReread, 6, 'only the marked records are re-read');
+  const newest = Object.keys(files).sort().at(-1), envelope = JSON.parse(files[newest].body);
+  assert.ok(RecoveryValidation.validateEnvelope(envelope).ok, 'the incremental envelope validates, including debit/credit balance');
+  const expected = fullData(); expected.systemHealth = envelope.data.systemHealth;
+  assert.equal(RecoveryValidation.canonicalJson(envelope.data), RecoveryValidation.canonicalJson(expected), 'incremental backup data equals a full read');
+  for (const tracked of ['/', ...BackupDelta.TRACKED_PATHS.map((p) => `/${p}`)]) assert.ok(!reads.includes(tracked), `incremental backup must not read ${tracked} in full`);
+  assert.ok(reads.includes('/menuItems') && reads.includes('/newNode') && reads.includes('/books/monthlyNet'), 'untracked nodes are still read in full');
+  assert.equal(Object.keys(state.backupDirty || {}).length, 0, 'processed dirty markers are cleared');
+  // A marker written after capture survives (the change is picked up next time).
+  const captured = {archivedOrders: {a9: 1}};
+  put('backupDirty/archivedOrders/a9', 2);
+  const clearStart = bundle.indexOf('async function clearBackupDirty'), clearEnd = bundle.indexOf('async function createVerifiedDatabaseBackup');
+  vm.runInContext(`${bundle.slice(clearStart, clearEnd)};globalThis.clear = clearBackupDirty;`, ctx);
+  await ctx.clear(db, captured);
+  assert.equal(state.backupDirty.archivedOrders.a9, 2, 'a newer marker is not cleared');
+  delete state.backupDirty;
+  // A change whose trigger never ran is corrected (and reported) when its key range is verified.
+  clock += 86400000;
+  const baseNow = JSON.parse(files[Object.keys(files).sort().at(-1)].body);
+  const slice = BackupDelta.rotationSlice(clock, BackupDelta.verificationSlices(baseNow));
+  assert.ok(slice && BackupDelta.TRACKED_PATHS.includes(slice.path));
+  const existing = Object.keys(at(slice.path) || {}).find((k) => BackupDelta.inSlice(k, slice));
+  put(`${slice.path}/${existing}/unmarkedNote`, 'written without a marker');
+  reads.length = 0;
+  await ctx.backup(clock);
+  const day3 = state.systemHealth.backups.latest, envelope3 = JSON.parse(files[Object.keys(files).sort().at(-1)].body);
+  assert.equal(day3.mode, 'incremental'); assert.equal(day3.verifiedSlice.path, slice.path); assert.equal(day3.driftRecords, 1, 'the unmarked change is reported');
+  const expected3 = fullData(); expected3.systemHealth = envelope3.data.systemHealth;
+  assert.equal(RecoveryValidation.canonicalJson(envelope3.data), RecoveryValidation.canonicalJson(expected3), 'the verification read corrects the unmarked change');
+  assert.ok(reads.includes(`/${slice.path}?slice`) && !reads.includes('/') && !reads.includes(`/${slice.path}`), 'only a key range is re-read for verification');
+  // A backup file older than eight days forces a full read.
+  clock += 9 * 86400000;
+  await ctx.backup(clock);
+  assert.equal(state.systemHealth.backups.latest.mode, 'full');
+  assert.equal(state.systemHealth.backups.latest.fullReason, 'stale_base');
+  // Plan rules.
+  const plan = BackupDelta.planIncremental({base: {data: {archivedOrders: {}, books: {journal: {}}}}, topLevel: ['archivedOrders', 'books', 'activeOrders', 'shifts', 'menuItems'], children: {books: ['journal', 'config']}, excluded: ['activeOrders'], dirty: {archivedOrders: {x: 1}, shifts: {y: 1}, 'books~journal': {z: 1}}});
+  assert.deepEqual(plan, {fullNodes: ['books/config', 'menuItems'], copyPaths: ['archivedOrders', 'books/journal'], records: [{path: 'archivedOrders', key: 'x'}, {path: 'books/journal', key: 'z'}], fullTracked: ['shifts'], verifySlice: null});
+  assert.equal(BackupDelta.needsFullBackup({base: {takenAt: 1}, now: 2, lastMode: 'full'}), '');
+  assert.equal(BackupDelta.needsFullBackup({base: {takenAt: 1}, now: 8 * 86400000 + 2, lastMode: 'incremental'}), 'stale_base');
+  assert.equal(BackupDelta.needsFullBackup({base: {takenAt: 1}, now: 2}), 'markers_new', 'the first run after this release (markers just started) reads everything');
+  // Slices partition each tracked node by key within the byte budget, cover keys added later, and
+  // no single day verifies more than about one budget of history.
+  const big = {}; for (let i = 0; i < 40; i += 1) big[`k${String(i).padStart(2, '0')}`] = {pad: 'x'.repeat(1000)};
+  const slices = BackupDelta.verificationSlices({data: {archivedOrders: big}}, ['archivedOrders'], 5000);
+  assert.ok(slices.length >= 8 && slices[0].start === null && slices.at(-1).before === null);
+  for (const key of [...Object.keys(big), 'a_first', 'k05x', 'zz_last']) assert.equal(slices.filter((sl) => BackupDelta.inSlice(key, sl)).length, 1, `key ${key} is in exactly one slice`);
+  assert.ok(slices.every((sl) => Object.keys(big).filter((k) => BackupDelta.inSlice(k, sl)).length <= 5));
+  assert.equal(new Set(Array.from({length: slices.length}, (_, i) => BackupDelta.rotationSlice(i * 86400000, slices))).size, slices.length, 'every slice is verified once per cycle');
+  const sliced = {p: {a: 1, b: 2, c: 3}};
+  assert.deepEqual(BackupDelta.applyVerifiedSlice(sliced, {path: 'p', start: 'b', before: null}, {c: 4, d: 5}).sort(), ['p/b', 'p/c', 'p/d'], 'unmarked deletes, edits and additions in the range are reported');
+  assert.deepEqual(sliced, {p: {a: 1, c: 4, d: 5}}, 'the verified range replaces the incremental copy; keys outside it are untouched');
+  assert.ok(BackupDelta.keyCompare('2', '10') < 0 && BackupDelta.keyCompare('10', 'a') < 0 && BackupDelta.keyCompare('B', 'a') < 0, 'database key order');
+  assert.ok(read('src/functions/60-maintenance.js').includes('BackupDelta.DIRTY_ROOT]);'), 'dirty markers are never backed up');
+}
+
+console.log('PASS: replica-first history reads, tab-stable report listeners, ID-patched archive changes, month-bounded Stock Value journal (equivalent to full history), Books without full archive downloads, and indexed/bounded server reads, bounded per-item inventory idempotency state, day-bucketed Books monthly totals, stale tabs that pick up fixed builds, a backup download budget warning, index-first platform order lookups, voucher receipts outside the voucher list, summary-based cash controls, a period-bounded Books Cash Flow, and incremental daily backups.');

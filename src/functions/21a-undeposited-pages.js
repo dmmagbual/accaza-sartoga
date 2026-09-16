@@ -175,7 +175,7 @@ exports.getUndepositedPage = onCall(
     if (kind === "voucher") {
       const id = financeKey(data.id, "Voucher ID"), row = (await db.ref(`/pettyCashVouchers/${id}`).get()).val();
       if (!row) throw new HttpsError("not-found", "Cash-payment voucher was not found.");
-      return {id,voucherNo:financeText(row.voucherNo,60),category:financeText(row.category,80),recipient:financeText(row.recipient||row.requesterName,160),purpose:financeText(row.purpose,300),approvedBy:financeText(row.approvedBy||row.approverName,160),status:row.voided?"voided":financeText(row.status,40),receiptImg:financeText(row.receiptImg,1500000)};
+      return {id,voucherNo:financeText(row.voucherNo,60),category:financeText(row.category,80),recipient:financeText(row.recipient||row.requesterName,160),purpose:financeText(row.purpose,300),approvedBy:financeText(row.approvedBy||row.approverName,160),status:row.voided?"voided":financeText(row.status,40),receiptImg:financeText(row.receiptImg||(row.hasReceipt===true?(await db.ref(`/pettyCashReceipts/${id}/image`).get()).val():""),1500000)};
     }
     if (kind !== "ledger" && kind !== "custody") throw new HttpsError("invalid-argument", "Choose the ledger or custody page.");
     await ensureUndepositedPageIndexes(db);

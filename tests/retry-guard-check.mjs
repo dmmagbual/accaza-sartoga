@@ -73,12 +73,15 @@ if (retryTriggers < 20) fail(`Expected the reviewed retry:true trigger set, foun
   const retrying = marks.filter(([, at], i) => {
     const body = functionsIndex.slice(at, i + 1 < marks.length ? marks[i + 1][1] : functionsIndex.length);
     const arrow = body.indexOf('=>');
-    return /retry:\s*true/.test(body.slice(0, arrow > 0 ? arrow : 400));
+    // backupDirtyTrigger(path) registers a retrying trigger (asserted below).
+    return /retry:\s*true/.test(body.slice(0, arrow > 0 ? arrow : 400)) || /^exports\.\w+\s*=\s*backupDirtyTrigger\(/.test(body);
   }).map(([name]) => name).sort();
-  const reviewed = ['onOrderFinalize', 'onOrderFinancialPosting', 'onOrderInventoryReversal', 'onPettyReplenishmentFinancial', 'onPettyVoucherFinancial', 'onShiftCloseAssurance', 'onShiftCloseFinancial', 'onShiftOpenFinancial', 'onShiftPayInsFinancial', 'onShiftPayOutsFinancial', 'preservePostedOrderOnDelete', 'refreshHistoricalOrderAfterInventoryPlan', 'refreshHistoricalOrderAfterJournal', 'replicateArchivedOrderToFirestore', 'syncCashCustodyPageIndex', 'syncPettyVoucherAttentionIndex', 'syncUndepositedLedgerPageIndex', 'updateBooksMonthlyNet', 'updateCashBalanceSummary', 'updatePublicCatalogVersionOnCategories', 'updatePublicCatalogVersionOnMenuItems', 'updatePublicCatalogVersionOnOptionGroups'];
+  const reviewed = ['markBackupDirtyActivityLog', 'markBackupDirtyArchivedOrders', 'markBackupDirtyBooksJournal', 'markBackupDirtyCashBalanceApplied', 'markBackupDirtyCfLedger', 'markBackupDirtyFinancialApprovals', 'markBackupDirtyFinancialCommandClaims', 'markBackupDirtyFinancialMovements', 'markBackupDirtyInventoryAccounting', 'markBackupDirtyInventoryMovements', 'markBackupDirtyOperationalAudit', 'markBackupDirtyOrderInventoryPlans', 'markBackupDirtyShifts', 'onOrderFinalize', 'onOrderFinancialPosting', 'onOrderInventoryReversal', 'onPettyReplenishmentFinancial', 'onPettyVoucherFinancial', 'onShiftCloseAssurance', 'onShiftCloseFinancial', 'onShiftOpenFinancial', 'onShiftPayInsFinancial', 'onShiftPayOutsFinancial', 'preservePostedOrderOnDelete', 'refreshHistoricalOrderAfterInventoryPlan', 'refreshHistoricalOrderAfterJournal', 'replicateArchivedOrderToFirestore', 'syncCashCustodyPageIndex', 'syncPettyVoucherAttentionIndex', 'syncUndepositedLedgerPageIndex', 'updateBooksMonthlyNet', 'updateCashBalanceSummary', 'updatePublicCatalogVersionOnCategories', 'updatePublicCatalogVersionOnMenuItems', 'updatePublicCatalogVersionOnOptionGroups'];
   if (JSON.stringify(retrying) !== JSON.stringify(reviewed)) fail(`The set of retry:true functions changed (now ${retrying.join(', ')}). A function that newly retries must be added to the scoped --force deploy step in .github/workflows/deploy-functions.yml, or the production deploy fails.`);
+  const factory = functionsIndex.slice(functionsIndex.indexOf('function backupDirtyTrigger(path)'), functionsIndex.indexOf('exports.markBackupDirtyArchivedOrders'));
+  if (!/retry: true/.test(factory)) fail('backupDirtyTrigger must register retrying triggers.');
   const workflow = read('.github/workflows/deploy-functions.yml');
-  if (!workflow.includes('functions:updateBooksMonthlyNet')) fail('updateBooksMonthlyNet newly retries and must stay in the scoped --force deploy step.');
+  for (const name of ['updateBooksMonthlyNet', ...reviewed.filter((n) => n.startsWith('markBackupDirty'))]) if (!workflow.includes(`functions:${name}`)) fail(`${name} newly retries and must be in the scoped --force deploy step.`);
 }
 
 // Dead letters are critical, time-boxed, and read with a bounded indexed query.

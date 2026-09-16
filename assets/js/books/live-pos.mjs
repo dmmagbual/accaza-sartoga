@@ -1,5 +1,5 @@
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import {getDatabase, ref, onValue, onChildAdded, onChildChanged, onChildRemoved, query, orderByChild, equalTo, startAt, endAt} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import {getDatabase, ref, get, onValue, onChildAdded, onChildChanged, onChildRemoved, query, orderByChild, orderByKey, equalTo, startAt, endAt} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import {getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {getFunctions, httpsCallable} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 const cfg={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
@@ -16,7 +16,13 @@ if(auth){
   let journalCache={}, monthlyNetCache={}, reviewCache={}, booksStops=[], optionalStops={}, currentTab=(window.__booksCurrentTab||'dashboard');
   const OPTIONAL_FEEDS={
     reviewQueue:{tabs:['journal'],global:'__booksReviewQueue',target:function(){return ref(db,"/books/reviewQueue");},onChange:scheduleJournalRefresh},
-    financialMovements:{tabs:['cashflow'],global:'__financialMovements',target:function(){const p=window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get():{endAt:Date.now()};return query(ref(db,"/financialMovements"),orderByChild("occurredAt"),endAt(Number(p.endAt)||Date.now()));},onChange:scheduleRender},
+    // Cash Flow downloads only the selected period's movements. Opening cash comes from
+    // small server-maintained indexes (see assets/js/shared/cash-flow-basis.js).
+    financialMovements:{tabs:['cashflow'],global:'__financialMovements',value:true,ready:'__cashFlowPeriodReady',target:function(){const p=cashFlowPeriod();return query(ref(db,"/financialMovements"),orderByChild("occurredAt"),startAt(p.startAt),endAt(p.endAt));},onChange:function(){loadCashFlowGroups();scheduleRender();}},
+    cashFlowMonthly:{tabs:['cashflow'],global:'__cashFlowMonthly',value:true,ready:'__cashFlowMonthlyReady',target:function(){return ref(db,"/cashFlowMonthly");},onChange:scheduleRender},
+    cashFlowDaily:{tabs:['cashflow'],global:'__cashFlowDaily',value:true,ready:'__cashFlowDailyMonth',readyValue:function(){return cashFlowPeriod().from.slice(0,7);},target:function(){const m=cashFlowPeriod().from.slice(0,7);return query(ref(db,"/cashFlowDaily"),orderByKey(),startAt(m+"-01"),endAt(m+"-31"));},onChange:scheduleRender},
+    cashFlowOpenings:{tabs:['cashflow'],global:'__cashFlowOpenings',value:true,ready:'__cashFlowOpeningsReady',target:function(){return ref(db,"/cashFlowOpenings");},onChange:scheduleRender},
+    cashFlowIndexMeta:{tabs:['cashflow'],global:'__cashFlowIndexMeta',value:true,nullable:true,target:function(){return ref(db,"/cashFlowIndexMeta");},onChange:function(){ensureCashFlowIndex();scheduleRender();}},
     platformPayouts:{tabs:['cashflow'],global:'__platformPayouts',target:function(){return ref(db,"/platformPayouts");},onChange:scheduleRender},
     cashCustody:{tabs:['cashflow'],global:'__cashCustody',target:function(){return ref(db,"/cashCustody");},onChange:scheduleRender},
     suppliers:{tabs:['journal','transactions','purchases','payables'],global:'__supplierMap',target:function(){return ref(db,"/suppliers");},onChange:scheduleRender},
@@ -27,8 +33,18 @@ if(auth){
     menuCategories:{tabs:['insights'],global:'__booksMenuCategories',target:function(){return ref(db,"/categories");},onChange:scheduleRender},
     discrepancies:{tabs:['journal','transactions'],global:'__cashDiscrepancies',target:function(){return ref(db,"/discrepancies");},onChange:scheduleRender}
   };
-  function stopOptionalFeed(name){var stop=optionalStops[name],spec=OPTIONAL_FEEDS[name];if(stop){try{stop();}catch(_e){}delete optionalStops[name];}if(spec)window[spec.global]={};}
-  function attachOptionalFeed(name){var spec=OPTIONAL_FEEDS[name];if(!spec||optionalStops[name]||spec.tabs.indexOf(currentTab)<0||!auth.currentUser)return;if(!window[spec.global])window[spec.global]={};optionalStops[name]=watchMap(spec.target(),window[spec.global],spec.onChange,()=>{});}
+  function stopOptionalFeed(name){var stop=optionalStops[name],spec=OPTIONAL_FEEDS[name];if(stop){try{stop();}catch(_e){}delete optionalStops[name];}if(spec){window[spec.global]=spec.nullable?null:{};if(spec.ready)window[spec.ready]=spec.readyValue?'':false;}if(name==='financialMovements')resetCashFlowGroups();}
+  function attachOptionalFeed(name){var spec=OPTIONAL_FEEDS[name];if(!spec||optionalStops[name]||spec.tabs.indexOf(currentTab)<0||!auth.currentUser)return;if(!window[spec.global])window[spec.global]={};optionalStops[name]=spec.value?watchValueFeed(spec):watchMap(spec.target(),window[spec.global],spec.onChange,()=>{});}
+  function watchValueFeed(spec){var stopped=false,readyValue=spec.readyValue?spec.readyValue():true,stop=onValue(spec.target(),function(s){if(stopped)return;window[spec.global]=spec.nullable?s.val():(s.val()||{});if(spec.ready)window[spec.ready]=readyValue;spec.onChange();},function(){});return function(){stopped=true;stop();};}
+  function cashFlowPeriod(){return window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get():{from:todayStr(),startAt:Date.now()-86400000,endAt:Date.now()};}
+  // A reversal inside the period needs every movement of its source (sourceId index) so
+  // fully reversed pairs are excluded exactly as the full-history statement did.
+  let cashFlowGroupRequest=0;
+  function resetCashFlowGroups(){cashFlowGroupRequest++;window.__cashFlowGroups={};}
+  function loadCashFlowGroups(){if(!window.AccazaCashFlowBasis)return;var need=window.AccazaCashFlowBasis.reversalSources(window.__financialMovements||{}),have=window.__cashFlowGroups||(window.__cashFlowGroups={}),request=cashFlowGroupRequest;Object.keys(need).forEach(function(key){if(have[key]||have['loading:'+key])return;have['loading:'+key]=true;get(query(ref(db,'/financialMovements'),orderByChild('sourceId'),equalTo(need[key].sourceId))).then(function(snap){if(request!==cashFlowGroupRequest)return;have[key]=snap.val()||{};delete have['loading:'+key];scheduleRender();}).catch(function(){delete have['loading:'+key];});});}
+  // The index is created by the server the first time the cash summary is read after this release.
+  let cashFlowIndexRequested=false;
+  function ensureCashFlowIndex(){var meta=window.__cashFlowIndexMeta;if(meta&&meta.complete===true&&Number(meta.summarySchemaVersion)>=4)return;if(cashFlowIndexRequested||typeof fns==='undefined')return;cashFlowIndexRequested=true;httpsCallable(fns,'getCurrentCashBalances')({}).catch(function(){cashFlowIndexRequested=false;});}
   // Insights needs every sale in its three comparison ranges. It reads them from the
   // Firestore history replica (bounded period pages) only while Insights is open, instead
   // of every Books sign-in downloading the whole archivedOrders node.
@@ -76,7 +92,7 @@ if(auth){
   }
   function bindPeriodFinancial(){
     if(!auth||!auth.currentUser)return;
-    stopOptionalFeed('financialMovements');
+    stopOptionalFeed('financialMovements');stopOptionalFeed('cashFlowDaily');
     syncOptionalFeeds();
   }
   let orderStops=[];

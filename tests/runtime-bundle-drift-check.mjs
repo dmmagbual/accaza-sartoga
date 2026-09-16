@@ -46,6 +46,8 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('syncOfflinePosSa
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('syncOfflinePosSale'),0,'reportPosDeviceHealth','verifyShiftCloseReadiness','onShiftCloseAssurance');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('syncOfflinePosSale')+1,0,'getSupplierAdvanceDetails');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('getUndepositedControlSnapshot')+1,0,'syncUndepositedLedgerPageIndex','syncPettyVoucherAttentionIndex','syncCashCustodyPageIndex','getUndepositedPage');
+// Sep 2026: incremental-backup dirty markers for the large history nodes.
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('backupDatabaseDaily'),0,'markBackupDirtyArchivedOrders','markBackupDirtyInventoryMovements','markBackupDirtyOrderInventoryPlans','markBackupDirtyFinancialMovements','markBackupDirtyCashBalanceApplied','markBackupDirtyBooksJournal','markBackupDirtyShifts','markBackupDirtyOperationalAudit','markBackupDirtyFinancialCommandClaims','markBackupDirtyInventoryAccounting','markBackupDirtyFinancialApprovals','markBackupDirtyActivityLog','markBackupDirtyCfLedger');
 const functionsSource=fs.readFileSync(path.join(root,'functions/index.js'),'utf8');
 const actualFunctionExports=[...functionsSource.matchAll(/^exports\.([A-Za-z0-9_]+)\s*=/gm)].map(match=>match[1]);
 if(JSON.stringify(actualFunctionExports)!==JSON.stringify(expectedFunctionExports))throw new Error('The public Firebase Functions export contract changed. Review deployment, trigger, callable, and removal consequences explicitly.');

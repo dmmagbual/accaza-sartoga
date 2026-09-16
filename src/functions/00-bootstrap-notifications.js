@@ -8,7 +8,7 @@
 const DatabaseTriggers = require("firebase-functions/v2/database");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
-const {initializeApp} = require("firebase-admin/app");
+const {initializeApp, getApp} = require("firebase-admin/app");
 const {getAuth: getAdminAuth} = require("firebase-admin/auth");
 const {getDatabase} = require("firebase-admin/database");
 const {getFirestore, FieldPath} = require("firebase-admin/firestore");
@@ -31,6 +31,7 @@ const CashJournalEdit = require("./lib/cash-journal-edit");
 const JournalReclassification = require("./lib/journal-reclassification");
 const ReconciliationControls = require("./lib/reconciliation-controls");
 const RecoveryValidation = require("./lib/recovery-validation");
+const BackupDelta = require("./lib/backup-delta");
 const ProductionHealth = require("./lib/production-health");
 const IncidentControls = require("./lib/incident-controls");
 const ReleaseCertification = require("./lib/release-certification");

@@ -8,7 +8,7 @@
 const DatabaseTriggers = require("firebase-functions/v2/database");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
-const {initializeApp} = require("firebase-admin/app");
+const {initializeApp, getApp} = require("firebase-admin/app");
 const {getAuth: getAdminAuth} = require("firebase-admin/auth");
 const {getDatabase} = require("firebase-admin/database");
 const {getFirestore, FieldPath} = require("firebase-admin/firestore");
@@ -31,6 +31,7 @@ const CashJournalEdit = require("./lib/cash-journal-edit");
 const JournalReclassification = require("./lib/journal-reclassification");
 const ReconciliationControls = require("./lib/reconciliation-controls");
 const RecoveryValidation = require("./lib/recovery-validation");
+const BackupDelta = require("./lib/backup-delta");
 const ProductionHealth = require("./lib/production-health");
 const IncidentControls = require("./lib/incident-controls");
 const ReleaseCertification = require("./lib/release-certification");
@@ -1180,7 +1181,7 @@ exports.reviewDiscrepancy = onCall(
       raw.forEach((x,index)=>{const allocationId=financeKey(x&&x.id||`a${index+1}`,"Allocation ID"),treatment=financeText(x&&x.treatment,50),value=Financial.money(x&&x.amount);if(seen.has(allocationId)||prior[allocationId])throw new HttpsError("already-exists",`Allocation ${allocationId} has already been used.`);if(!allowed.has(treatment))throw new HttpsError("invalid-argument",`Allocation ${index+1} has an invalid treatment.`);if(!(value>0))throw new HttpsError("invalid-argument",`Allocation ${index+1} must be greater than zero.`);seen.add(allocationId);batchTotal=Financial.money(batchTotal+value);allocations.push({id:allocationId,treatment,amount:value,details:x.details||{}});});
       if(batchTotal>remaining+.009)throw new HttpsError("failed-precondition",`Allocations exceed the remaining difference of ${remaining.toFixed(2)}.`);
       const note=financeText(data.note,500);if(!note)throw new HttpsError("invalid-argument","A case explanation is required.");approval=await claimManagerApproval(db,data,"review_discrepancy",id,null,`review_discrepancy_${id}_${revision}`);reviewedBy=approval.record.approvedName||approval.record.approvedEmail||approval.record.approvedRole;
-      const accounts=(await db.ref("/cfAccounts").get()).val()||{},booksChart=await ensureBooksChart(db),movements=(await db.ref("/financialMovements").get()).val()||{},shiftRow=(await db.ref(`/shifts/${shiftId}`).get()).val()||{},purchasePayouts=Array.isArray(shiftRow.payOuts)?shiftRow.payOuts.slice():[],pending=short?"asset:cash_shortage_pending":"liability:cash_overage_pending",legacyMovement=movements[`shift_variance_${shiftId}`]||{},source=legacyMovement.type==="shift_cash_variance"?(short?"expense:cash_shortage":"revenue:cash_overage"):pending,newLines=[],writes=Object.assign({},approval.usedWrites),allocationRecords={},offsetCases={};
+      const accounts=(await db.ref("/cfAccounts").get()).val()||{},booksChart=await ensureBooksChart(db),shiftRow=(await db.ref(`/shifts/${shiftId}`).get()).val()||{},movements=await discrepancyCandidateMovements(db,shiftId,shiftRow,row,raw),purchasePayouts=Array.isArray(shiftRow.payOuts)?shiftRow.payOuts.slice():[],pending=short?"asset:cash_shortage_pending":"liability:cash_overage_pending",legacyMovement=movements[`shift_variance_${shiftId}`]||{},source=legacyMovement.type==="shift_cash_variance"?(short?"expense:cash_shortage":"revenue:cash_overage"):pending,newLines=[],writes=Object.assign({},approval.usedWrites),allocationRecords={},offsetCases={};
       function text(v,n){return financeText(v,n||160);}function cashAccount(destination){if(destination==="undeposited")return"asset:cash_awaiting_deposit";if(destination==="register")return"asset:register_cash";const key=financeKey(destination,"Cash destination");if(!accounts[key]||accounts[key].active===false)throw new HttpsError("failed-precondition","The selected receiving cash account is inactive or missing.");return`asset:cash_account:${key}`;}
       for(const allocation of allocations){const d=allocation.details||{},v=allocation.amount,label=`${short?"Shortage":"Overage"} · ${allocation.treatment}`,record={id:allocation.id,treatment:allocation.treatment,amount:v,details:{},approvedAt:now,approvedBy:reviewedBy,approvalId:approval.id};
         if(allocation.treatment==="cash_recovered"){
@@ -1298,13 +1299,40 @@ exports.reopenDiscrepancy = onCall(
   },
 );
 
+// Receipt images live in /pettyCashReceipts/{id} (Sep 2026) so the voucher list stays small;
+// evidence is proven by the tiny meta child. Older vouchers keep the image inline.
+async function voucherHasReceipt(db, id, voucher) {
+  if (voucher && voucher.receiptImg) return true;
+  if (!voucher || voucher.hasReceipt !== true) return false;
+  return (await db.ref(`/pettyCashReceipts/${id}/meta`).get()).exists();
+}
+
+// A cash-difference review needs the shift's legacy variance posting, any movement the manager
+// selected, and candidate recovery journals. Recoveries are posted after the shift, so candidates
+// come from an indexed window starting a week before the shift instead of the whole ledger.
+const DISCREPANCY_RECOVERY_LOOKBACK_MS = 7 * 86400000;
+async function discrepancyCandidateMovements(db, shiftId, shiftRow, row, allocations) {
+  const anchors = [shiftRow && shiftRow.openAt, shiftRow && shiftRow.closeAt, row && row.ts].map(Number).filter((n) => n > 0);
+  const since = anchors.length ? Math.min(...anchors) - DISCREPANCY_RECOVERY_LOOKBACK_MS : 0;
+  const requested = [...new Set((Array.isArray(allocations) ? allocations : []).map((x) => String(x && x.details && x.details.correctionMovementId || "")).filter((id) => /^[A-Za-z0-9_-]{1,160}$/.test(id)))].slice(0, 20);
+  const [windowSnap, legacySnap, ...requestedSnaps] = await Promise.all([
+    db.ref("/financialMovements").orderByChild("occurredAt").startAt(since).get(),
+    db.ref(`/financialMovements/shift_variance_${shiftId}`).get(),
+    ...requested.map((id) => db.ref(`/financialMovements/${id}`).get()),
+  ]);
+  const out = Object.assign({}, windowSnap.val() || {});
+  if (legacySnap.exists()) out[`shift_variance_${shiftId}`] = legacySnap.val();
+  requestedSnaps.forEach((snap, index) => { if (snap.exists()) out[requested[index]] = snap.val(); });
+  return out;
+}
+
 exports.managePettyVoucher = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => {
     const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["petty"]);
     const data = request.data || {}, action = financeText(data.action, 20), id = financeKey(data.voucherId, "Voucher ID"), reason = financeText(data.reason, 500);
     const ref = db.ref(`/pettyCashVouchers/${id}`), snap = await ref.get(); if (!snap.exists()) throw new HttpsError("not-found", "Revolving Fund voucher not found.");
-    const voucher = snap.val() || {}, value = Financial.money(voucher.amount), now = Date.now(); let approvalAction;
+    const voucher = snap.val() || {}, value = Financial.money(voucher.amount), now = Date.now(), hasReceipt = await voucherHasReceipt(db, id, voucher); let approvalAction;
     // Editing a voucher changes the Admin subledger as well as its linked
     // Finance correction, so the voucher's own accounting month must be open.
     if (["correct", "approve"].includes(action)) await assertAccountingPeriodOpen(db, action === "correct" && voucher.status === "pending" ? financeDate(data.date) : (financeText(voucher.date, 10) || financeDateFromTimestamp(now)), "editing or approving this Admin cash payment");
@@ -1314,7 +1342,7 @@ exports.managePettyVoucher = onCall(
       const nextAmount = Financial.money(data.amount), nextPurpose = financeText(data.purpose, 300), nextApprover = financeText(data.approverName, 160), reason = financeText(data.reason, 500), type = financeText(voucher.transactionType, 40) || "expense", selectedSupplier=type==="purchase_advance"?await requireActiveSupplier(db,data.supplierId,data.payee):null,nextPayee=selectedSupplier?selectedSupplier.name:financeText(data.payee,160),nextSupplierId=selectedSupplier?selectedSupplier.id:"";
       if (!(nextAmount > 0)) throw new HttpsError("invalid-argument", "Amount must be greater than zero.");
       if (!nextPayee) throw new HttpsError("invalid-argument", "Requester or supplier payee is required.");
-      if (!voucher.receiptImg && !nextPurpose) throw new HttpsError("invalid-argument", "A receipt or clear explanation is required.");
+      if (!hasReceipt && !nextPurpose) throw new HttpsError("invalid-argument", "A receipt or clear explanation is required.");
       if (!reason) throw new HttpsError("invalid-argument", "A correction reason is required.");
       const expenseCategories = new Set(["operating_supplies","office_supplies","utilities","internet_phone","marketing","repairs","bank_fees","rent","salaries","transport","staff_meals","miscellaneous","other_expense"]), nextCategory = type === "purchase_advance" ? "Supplier payment pending inventory allocation" : type === "owner_withdrawal" ? "owner_draw" : financeText(data.category, 80);
       if (type === "expense" && !expenseCategories.has(nextCategory)) throw new HttpsError("invalid-argument", "Expense category is invalid.");
@@ -1349,7 +1377,7 @@ exports.managePettyVoucher = onCall(
           accountIdFor(fundingAccounts, fundingAccountId);
         }
       }
-      if (!voucher.receiptImg && !financeText(voucher.purpose, 300)) throw new HttpsError("failed-precondition", "A receipt or clear explanation is required before approval.");
+      if (!hasReceipt && !financeText(voucher.purpose, 300)) throw new HttpsError("failed-precondition", "A receipt or clear explanation is required before approval.");
       approvalAction = "approve_petty_voucher";
     } else if (action === "reject") {
       if (voucher.status !== "pending") throw new HttpsError("failed-precondition", "Only pending vouchers can be rejected.");
@@ -1372,29 +1400,31 @@ exports.managePettyVoucher = onCall(
       const custodySnap = await db.ref("/cashCustody").get();
       baseFunds = Financial.money(Object.values(custodySnap.val() || {}).reduce((sum, row) => sum + Financial.money(row && row.remaining), 0));
     }
-    let failure = "", duplicate = false; const vouchersRef = db.ref("/pettyCashVouchers"), vouchersInitial = (await vouchersRef.get()).val() || {}, transactionState = {seen: false};
-    const result = await vouchersRef.transaction((all) => {
-      all = transactionCurrent(all, vouchersInitial, transactionState); if (!all) return; all = Object.assign({}, all); const current = all[id]; failure = ""; duplicate = false;
+    // Transact on this voucher only: the whole node (with legacy receipt images) was downloaded
+    // and re-uploaded on every approval before Sep 2026.
+    let failure = "", duplicate = false; const transactionState = {seen: false};
+    const result = await ref.transaction((row) => {
+      const current = transactionCurrent(row, voucher, transactionState), all = {}; failure = ""; duplicate = false;
       if (!current) {failure = "Revolving Fund voucher not found."; return;}
       if (action === "approve") {
-        if (current.status === "approved" && current.approvalId === approval.id) {duplicate = true; return all;}
+        if (current.status === "approved" && current.approvalId === approval.id) {duplicate = true; return current;}
         if (current.status !== "pending") {failure = "Only pending vouchers can be approved."; return;}
-        if (!current.receiptImg && !financeText(current.purpose, 300)) {failure = "A receipt or clear explanation is required before approval."; return;}
+        if (!(current.receiptImg || (current.hasReceipt === true && hasReceipt)) && !financeText(current.purpose, 300)) {failure = "A receipt or clear explanation is required before approval."; return;}
         if (approvalFunding.kind === "undeposited") {const available = Financial.money(baseFunds);if (value > available + 0.009) {failure = `Voucher exceeds available Undeposited Collection (₱${available.toFixed(2)}).`; return;}}
         all[id] = Object.assign({}, current, {status: "approved", approvedBy, approvedByUid: approval.record.approvedBy, approvedAt: now, approvalId: approval.id});
       } else if (action === "reject") {
-        if (current.status === "rejected" && current.rejectionApprovalId === approval.id) {duplicate = true; return all;}
+        if (current.status === "rejected" && current.rejectionApprovalId === approval.id) {duplicate = true; return current;}
         if (current.status !== "pending") {failure = "Only pending vouchers can be rejected."; return;}
         all[id] = Object.assign({}, current, {status: "rejected", rejectReason: reason, rejectedBy: approvedBy, rejectedByUid: approval.record.approvedBy, rejectedAt: now, rejectionApprovalId: approval.id});
       } else {
-        if (current.voided === true && current.voidApprovalId === approval.id) {duplicate = true; return all;}
+        if (current.voided === true && current.voidApprovalId === approval.id) {duplicate = true; return current;}
         if (current.status !== "approved" || current.voided === true) {failure = "Only an active approved voucher can be voided."; return;}
         all[id] = Object.assign({}, current, {voided: true, voidReason: reason, voidedBy: approvedBy, voidedByUid: approval.record.approvedBy, voidedAt: now, voidApprovalId: approval.id});
       }
-      return all;
+      return all[id];
     }, undefined, false);
     if (!result.committed) throw new HttpsError("failed-precondition", failure || "Voucher changed while it was being reviewed. Refresh and try again.");
-    await db.ref().update(Object.assign({}, approval.usedWrites, {[`operationalAudit/${now}_${id}`]: operationalAuditRecord(`${action}_petty_voucher`, "pettyVoucher", id, actor, {approvalId: approval.id, amount: value, evidenceType: voucher.receiptImg ? "receipt" : "manager_reviewed_explanation", explanation: financeText(voucher.purpose, 300)})}));
+    await db.ref().update(Object.assign({}, approval.usedWrites, {[`operationalAudit/${now}_${id}`]: operationalAuditRecord(`${action}_petty_voucher`, "pettyVoucher", id, actor, {approvalId: approval.id, amount: value, evidenceType: hasReceipt ? "receipt" : "manager_reviewed_explanation", explanation: financeText(voucher.purpose, 300)})}));
     return {voucherId: id, action, at: now, duplicate};
   },
 );
@@ -1596,7 +1626,7 @@ exports.getUndepositedPage = onCall(
     if (kind === "voucher") {
       const id = financeKey(data.id, "Voucher ID"), row = (await db.ref(`/pettyCashVouchers/${id}`).get()).val();
       if (!row) throw new HttpsError("not-found", "Cash-payment voucher was not found.");
-      return {id,voucherNo:financeText(row.voucherNo,60),category:financeText(row.category,80),recipient:financeText(row.recipient||row.requesterName,160),purpose:financeText(row.purpose,300),approvedBy:financeText(row.approvedBy||row.approverName,160),status:row.voided?"voided":financeText(row.status,40),receiptImg:financeText(row.receiptImg,1500000)};
+      return {id,voucherNo:financeText(row.voucherNo,60),category:financeText(row.category,80),recipient:financeText(row.recipient||row.requesterName,160),purpose:financeText(row.purpose,300),approvedBy:financeText(row.approvedBy||row.approverName,160),status:row.voided?"voided":financeText(row.status,40),receiptImg:financeText(row.receiptImg||(row.hasReceipt===true?(await db.ref(`/pettyCashReceipts/${id}/image`).get()).val():""),1500000)};
     }
     if (kind !== "ledger" && kind !== "custody") throw new HttpsError("invalid-argument", "Choose the ledger or custody page.");
     await ensureUndepositedPageIndexes(db);
@@ -1810,7 +1840,8 @@ const CASH_SUMMARY_LOCK_MS = 120000;
 async function rebuildCashBalanceSummary(db) {
   const movements = (await db.ref("/financialMovements").get()).val() || {};
   const rebuilt = CashBalances.splitSnapshotFromMovements(movements);
-  await db.ref().update({cashBalanceSummary: rebuilt.summary, cashBalanceSummaryApplied: rebuilt.applied});
+  // The Books cash-flow day/month index is rebuilt in the same update as the summary.
+  await db.ref().update({cashBalanceSummary: rebuilt.summary, cashBalanceSummaryApplied: rebuilt.applied, cashFlowDaily: rebuilt.flow.daily, cashFlowMonthly: rebuilt.flow.monthly, cashFlowOpenings: rebuilt.flow.openings, cashFlowIndexMeta: rebuilt.flow.meta});
   return rebuilt.summary;
 }
 
@@ -1845,13 +1876,27 @@ async function processCashBalancePending(db, owner) {
         ]);
         return {movementId, movement: movementSnap.exists() ? movementSnap.val() : null, applied: appliedSnap.exists() ? appliedSnap.val() : null};
       }));
-      const writes = {};
-      rows.forEach((row) => {
-        if (CashBalances.contributionMatches(row.applied, row.movement)) return;
+      const writes = {}, changed = rows.filter((row) => !CashBalances.contributionMatches(row.applied, row.movement));
+      // Current cash-flow index buckets touched by this batch (small day/month records).
+      const days = new Set(), flow = {daily: {}, monthly: {}, openings: {}};
+      changed.forEach((row) => {
+        if (row.applied && row.applied.day && !row.applied.opening) days.add(row.applied.day);
+        if (row.movement && !CashBalances.isCashAccountOpening(row.movement)) days.add(CashBalances.movementDay(row.movement));
+      });
+      const months = new Set([...days].map((day) => day.slice(0, 7)));
+      await Promise.all([
+        ...[...days].map(async (day) => { flow.daily[day] = (await db.ref(`/cashFlowDaily/${day}`).get()).val() || null; }),
+        ...[...months].map(async (month) => { flow.monthly[month] = (await db.ref(`/cashFlowMonthly/${month}`).get()).val() || null; }),
+      ]);
+      changed.forEach((row) => {
         const result = CashBalances.applyContribution(summary, row.applied, row.movement);
         summary = result.summary;
         writes[`cashBalanceSummaryApplied/${row.movementId}`] = result.applied;
+        CashBalances.applyFlowContribution(flow, row.movementId, row.applied, result.applied, row.movement);
       });
+      Object.keys(flow.daily).forEach((day) => { writes[`cashFlowDaily/${day}`] = CashBalances.flowValue(flow.daily[day]); });
+      Object.keys(flow.monthly).forEach((month) => { writes[`cashFlowMonthly/${month}`] = CashBalances.flowValue(flow.monthly[month]); });
+      Object.keys(flow.openings).forEach((id) => { writes[`cashFlowOpenings/${id}`] = flow.openings[id]; });
       writes.cashBalanceSummary = summary;
       pendingKeys.forEach((key) => { writes[`cashBalanceSummaryPending/${key}`] = null; });
       await db.ref().update(writes);
@@ -1872,6 +1917,38 @@ async function ensureCashBalanceSummary(db) {
   }
   if (summary.schemaVersion !== CashBalances.SCHEMA_VERSION || summary.complete !== true) throw new Error("Cash balance summary is not ready.");
   return summary;
+}
+
+// Cash balances for controls (e.g. "is there enough register cash for this refund?") without
+// downloading the whole ledger: the maintained summary with its queue drained, corrected for
+// movements posted or edited in the last ten minutes that the summary has not applied yet (their
+// trigger may still be in flight). The processor writes the summary and its applied records in
+// one update, so an unchanged summary timestamp proves the applied reads are consistent with it.
+// If the queue holds an entry older than the window, fall back to the full ledger.
+const CASH_RECENT_WINDOW_MS = 10 * 60 * 1000;
+async function currentCashBalances(db, now = Date.now()) {
+  const since = now - CASH_RECENT_WINDOW_MS;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const summary = await ensureCashBalanceSummary(db);
+    const oldest = (await db.ref("/cashBalanceSummaryPending").orderByChild("queuedAt").limitToFirst(1).get()).val() || {};
+    if (Object.values(oldest).some((row) => Number(row && row.queuedAt || 0) < since)) break;
+    const [posted, edited] = await Promise.all([
+      db.ref("/financialMovements").orderByChild("postedAt").startAt(since).get(),
+      db.ref("/financialMovements").orderByChild("updatedAt").startAt(since).get(),
+    ]);
+    const recent = Object.assign({}, posted.val() || {}, edited.val() || {}), balances = JSON.parse(JSON.stringify(summary.balances || CashBalances.emptyBalances()));
+    balances.cashAccountCents = balances.cashAccountCents || {};
+    const applied = await Promise.all(Object.keys(recent).map(async (id) => [id, (await db.ref(`/cashBalanceSummaryApplied/${id}`).get()).val()]));
+    applied.forEach(([id, row]) => {
+      if (CashBalances.contributionMatches(row, recent[id])) return;
+      if (row) CashBalances.addDelta(balances, row.delta, -1);
+      CashBalances.addDelta(balances, CashBalances.movementDelta(recent[id]));
+    });
+    const after = (await db.ref("/cashBalanceSummary/meta/updatedAt").get()).val();
+    if (Number(after) === Number(summary.meta && summary.meta.updatedAt)) return {balances, source: "summary", recentCorrections: applied.length};
+  }
+  const movements = (await db.ref("/financialMovements").get()).val() || {};
+  return {balances: CashBalances.splitSnapshotFromMovements(movements, now).summary.balances, source: "ledger", recentCorrections: 0};
 }
 
 exports.getCurrentCashBalances = onCall(
@@ -2676,11 +2753,8 @@ async function poolCustodyDeposit(db, value, movementId) {
 }
 
 async function availableCashOnHandAboveFloat(db) {
-  const [movementsSnap, settingsSnap, activeShiftSnap] = await Promise.all([db.ref("/financialMovements").get(), db.ref("/posSettings").get(), db.ref("/posActiveShift").get()]);
-  let gross = 0;
-  Object.values(movementsSnap.val() || {}).forEach((movement) => ((movement && movement.lines) || []).forEach((line) => {
-    if (line && line.account === "asset:register_cash") gross = Financial.money(gross + Financial.money(line.debit) - Financial.money(line.credit));
-  }));
+  const [current, settingsSnap, activeShiftSnap] = await Promise.all([currentCashBalances(db), db.ref("/posSettings").get(), db.ref("/posActiveShift").get()]);
+  const gross = CashBalances.pesos(current.balances.registerCents);
   const float = resolveRegisterFloat(settingsSnap.val(), activeShiftSnap.val()).amount;
   return {gross: Financial.money(gross), float, available: Financial.money(Math.max(0, gross - float))};
 }
@@ -4752,12 +4826,81 @@ exports.autoCompleteReadyOnlineOrders = onSchedule(
 // (active-order projections, locks, rate windows, status-command claims, offline
 // sync scratch, daily telemetry) are excluded — a restore rebuilds those. This
 // is the safety net behind a corrupt write, a bad delete, or human error.
-const BACKUP_EXCLUDE = new Set(["activeOrders", "orderLocks", "rateLimits", "orderStatusCommands", "orderCorrectionCommands", "offlinePosSync", "clientTelemetryDaily"]);
-async function createVerifiedDatabaseBackup(now = Date.now()) {
+const BACKUP_EXCLUDE = new Set(["activeOrders", "orderLocks", "rateLimits", "orderStatusCommands", "orderCorrectionCommands", "offlinePosSync", "clientTelemetryDaily", BackupDelta.DIRTY_ROOT]);
+// Keys of a node without downloading its values (REST shallow read with the
+// function's own credential).
+async function shallowDatabaseKeys(db, path) {
+  const token = await getApp().options.credential.getAccessToken();
+  const base = db.ref().toString().replace(/\/$/, "");
+  const response = await fetch(`${base}/${path ? `${path}/` : ""}.json?shallow=true`, {headers: {Authorization: `Bearer ${token.access_token}`}});
+  if (!response.ok) throw new Error(`Shallow read of /${path} failed with HTTP ${response.status}`);
+  const value = await response.json();
+  return value && typeof value === "object" ? Object.keys(value) : [];
+}
+
+async function latestBackupEnvelope(bucket) {
+  const [files] = await bucket.getFiles({prefix: "db-backups/accaza-"});
+  const newest = files.filter((file) => /\.json$/.test(file.name)).sort((a, b) => String(b.name).localeCompare(String(a.name)))[0];
+  if (!newest) return null;
+  const [buffer] = await newest.download();
+  const envelope = JSON.parse(buffer.toString("utf8"));
+  const check = RecoveryValidation.validateEnvelope(envelope, {reconcile: false});
+  return check.ok ? Object.assign(envelope, {objectName: newest.name}) : null;
+}
+
+// Incremental snapshot: tracked history nodes come from the previous verified backup plus the
+// records marked dirty since; every other node is read in full, and one ~2 MB key range of the
+// tracked history is re-read and verified in rotation (see functions/lib/backup-delta.js).
+async function incrementalSnapshot(db, base, dirty, now) {
+  const topLevel = await shallowDatabaseKeys(db, ""), children = {};
+  for (const root of Object.keys(BackupDelta.partialRoots())) if (topLevel.includes(root)) children[root] = await shallowDatabaseKeys(db, root);
+  const slice = BackupDelta.rotationSlice(now, BackupDelta.verificationSlices(base));
+  const plan = BackupDelta.planIncremental({base, topLevel, children, excluded: BACKUP_EXCLUDE, dirty, verify: slice});
+  const values = {};
+  for (const path of plan.fullNodes.concat(plan.fullTracked)) values[path] = (await db.ref(`/${path}`).get()).val();
+  for (let i = 0; i < plan.records.length; i += 50) {
+    await Promise.all(plan.records.slice(i, i + 50).map(async ({path, key}) => { values[`${path}/${key}`] = (await db.ref(`/${path}/${key}`).get()).val(); }));
+  }
+  let sliceValue = null;
+  if (plan.verifySlice) {
+    let query = db.ref(`/${plan.verifySlice.path}`).orderByKey();
+    if (plan.verifySlice.start != null) query = query.startAt(plan.verifySlice.start);
+    if (plan.verifySlice.before != null) query = query.endBefore(plan.verifySlice.before);
+    sliceValue = (await query.get()).val();
+  }
+  const data = BackupDelta.mergeIncremental(base, plan, values);
+  const drift = BackupDelta.applyVerifiedSlice(data, plan.verifySlice, sliceValue);
+  return {data, plan, drift};
+}
+
+async function clearBackupDirty(db, dirty) {
+  const jobs = [];
+  Object.keys(dirty || {}).forEach((node) => Object.keys(dirty[node] || {}).forEach((key) => {
+    const seen = dirty[node][key];
+    jobs.push(() => db.ref(`/${BackupDelta.DIRTY_ROOT}/${node}/${key}`).transaction((current) => (current === seen ? null : current), undefined, false));
+  }));
+  for (let i = 0; i < jobs.length; i += 50) await Promise.all(jobs.slice(i, i + 50).map((job) => job()));
+  return jobs.length;
+}
+
+async function createVerifiedDatabaseBackup(now = Date.now(), options = {}) {
     const db = getDatabase(), bucket = getStorage().bucket(PROOF_BUCKET);
-    const root = (await db.ref("/").get()).val() || {};
-    const snapshot = {};
-    Object.keys(root).forEach((node) => { if (!BACKUP_EXCLUDE.has(node)) snapshot[node] = root[node]; });
+    const latest = (await db.ref("/systemHealth/backups/latest").get()).val() || {};
+    // Markers are captured before any record is read, so a change during the backup keeps its marker.
+    const dirty = (await db.ref(`/${BackupDelta.DIRTY_ROOT}`).get()).val() || {};
+    let base = null;
+    try { base = await latestBackupEnvelope(bucket); } catch (error) { logger.warn("Previous backup could not be loaded; running a full backup", {error: String(error)}); }
+    const fullReason = BackupDelta.needsFullBackup({base, now, force: options.full === true, lastMode: latest.mode});
+    let snapshot = {}, mode = "full", drift = null, records = 0, verified = null;
+    if (fullReason) {
+      const root = (await db.ref("/").get()).val() || {};
+      Object.keys(root).forEach((node) => { if (!BACKUP_EXCLUDE.has(node)) snapshot[node] = root[node]; });
+    } else {
+      const built = await incrementalSnapshot(db, base, dirty, now);
+      verified = built.plan.verifySlice;
+      snapshot = built.data; mode = "incremental"; records = built.plan.records.length; drift = built.drift;
+      if (drift.length) logger.warn("Incremental backup drift corrected by today's verification read", {slice: verified, count: drift.length, sample: drift.slice(0, 20)});
+    }
     const stamp = new Date(now).toISOString().slice(0, 19).replace(/[:T]/g, "-");
     const objectName = `db-backups/accaza-${stamp}.json`;
     const envelope = RecoveryValidation.createEnvelope(snapshot, now, BACKUP_EXCLUDE);
@@ -4771,7 +4914,9 @@ async function createVerifiedDatabaseBackup(now = Date.now()) {
       resumable: false, contentType: "application/json",
       metadata: {cacheControl: "private, max-age=0, no-store", metadata: {takenAt: String(now), dataSha256: validation.actualSha256, backupVersion: "backup-v2"}},
     });
-    await db.ref("/systemHealth/backups/latest").set({takenAt: now, objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, version: "backup-v2", dataSha256: validation.actualSha256, validation: "passed"});
+    const lastFullAt = mode === "full" ? now : Number(latest.lastFullAt) || null;
+    await db.ref("/systemHealth/backups/latest").set({takenAt: now, objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, version: "backup-v2", dataSha256: validation.actualSha256, validation: "passed", mode, fullReason: fullReason || null, lastFullAt, baseObject: mode === "incremental" ? base.objectName : null, recordsReread: records, verifiedSlice: verified, driftRecords: drift ? drift.length : null});
+    const cleared = await clearBackupDirty(db, dirty);
     // Retention: delete snapshots older than 30 days.
     let removed = 0;
     try {
@@ -4782,10 +4927,30 @@ async function createVerifiedDatabaseBackup(now = Date.now()) {
         if (created && created < cutoff) { await file.delete({ignoreNotFound: true}); removed++; }
       }));
     } catch (error) { logger.warn("Backup retention sweep failed", {error: String(error)}); }
-    logger.info("backupDatabaseDaily complete", {objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, dataSha256: validation.actualSha256, removed, rev: 3});
+    logger.info("backupDatabaseDaily complete", {objectName, bytes: payload.length, nodes: Object.keys(snapshot).length, dataSha256: validation.actualSha256, removed, mode, fullReason: fullReason || null, recordsReread: records, dirtyCleared: cleared, driftRecords: drift ? drift.length : null, rev: 4});
     await evaluateProductionHealthNow(db,Date.now());
     return {takenAt:now,objectName,bytes:payload.length,nodes:Object.keys(snapshot).length,dataSha256:validation.actualSha256,validation:"passed",version:"backup-v2"};
 }
+// Mark written history records for the next incremental backup (tiny writes, idempotent).
+function backupDirtyTrigger(path) {
+  return onValueWritten({ref: `/${path}/{key}`, region: ORDER_REGION, retry: true, timeoutSeconds: 30, memory: "256MiB"}, async (event) => {
+    await getDatabase().ref(`/${BackupDelta.DIRTY_ROOT}/${BackupDelta.dirtyKey(path)}/${event.params.key}`).set(Date.now());
+  });
+}
+exports.markBackupDirtyArchivedOrders = backupDirtyTrigger("archivedOrders");
+exports.markBackupDirtyInventoryMovements = backupDirtyTrigger("inventoryMovements");
+exports.markBackupDirtyOrderInventoryPlans = backupDirtyTrigger("orderInventoryPlans");
+exports.markBackupDirtyFinancialMovements = backupDirtyTrigger("financialMovements");
+exports.markBackupDirtyCashBalanceApplied = backupDirtyTrigger("cashBalanceSummaryApplied");
+exports.markBackupDirtyBooksJournal = backupDirtyTrigger("books/journal");
+exports.markBackupDirtyShifts = backupDirtyTrigger("shifts");
+exports.markBackupDirtyOperationalAudit = backupDirtyTrigger("operationalAudit");
+exports.markBackupDirtyFinancialCommandClaims = backupDirtyTrigger("financialCommandClaims");
+exports.markBackupDirtyInventoryAccounting = backupDirtyTrigger("inventoryAccounting");
+exports.markBackupDirtyFinancialApprovals = backupDirtyTrigger("financialApprovals");
+exports.markBackupDirtyActivityLog = backupDirtyTrigger("activityLog");
+exports.markBackupDirtyCfLedger = backupDirtyTrigger("cfLedger");
+
 exports.backupDatabaseDaily = onSchedule(
   {schedule: "every day 03:00", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "512MiB"},
   async () => {await createVerifiedDatabaseBackup();return null;},

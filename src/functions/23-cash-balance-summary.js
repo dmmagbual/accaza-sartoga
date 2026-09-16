@@ -6,7 +6,8 @@ const CASH_SUMMARY_LOCK_MS = 120000;
 async function rebuildCashBalanceSummary(db) {
   const movements = (await db.ref("/financialMovements").get()).val() || {};
   const rebuilt = CashBalances.splitSnapshotFromMovements(movements);
-  await db.ref().update({cashBalanceSummary: rebuilt.summary, cashBalanceSummaryApplied: rebuilt.applied});
+  // The Books cash-flow day/month index is rebuilt in the same update as the summary.
+  await db.ref().update({cashBalanceSummary: rebuilt.summary, cashBalanceSummaryApplied: rebuilt.applied, cashFlowDaily: rebuilt.flow.daily, cashFlowMonthly: rebuilt.flow.monthly, cashFlowOpenings: rebuilt.flow.openings, cashFlowIndexMeta: rebuilt.flow.meta});
   return rebuilt.summary;
 }
 
@@ -41,13 +42,27 @@ async function processCashBalancePending(db, owner) {
         ]);
         return {movementId, movement: movementSnap.exists() ? movementSnap.val() : null, applied: appliedSnap.exists() ? appliedSnap.val() : null};
       }));
-      const writes = {};
-      rows.forEach((row) => {
-        if (CashBalances.contributionMatches(row.applied, row.movement)) return;
+      const writes = {}, changed = rows.filter((row) => !CashBalances.contributionMatches(row.applied, row.movement));
+      // Current cash-flow index buckets touched by this batch (small day/month records).
+      const days = new Set(), flow = {daily: {}, monthly: {}, openings: {}};
+      changed.forEach((row) => {
+        if (row.applied && row.applied.day && !row.applied.opening) days.add(row.applied.day);
+        if (row.movement && !CashBalances.isCashAccountOpening(row.movement)) days.add(CashBalances.movementDay(row.movement));
+      });
+      const months = new Set([...days].map((day) => day.slice(0, 7)));
+      await Promise.all([
+        ...[...days].map(async (day) => { flow.daily[day] = (await db.ref(`/cashFlowDaily/${day}`).get()).val() || null; }),
+        ...[...months].map(async (month) => { flow.monthly[month] = (await db.ref(`/cashFlowMonthly/${month}`).get()).val() || null; }),
+      ]);
+      changed.forEach((row) => {
         const result = CashBalances.applyContribution(summary, row.applied, row.movement);
         summary = result.summary;
         writes[`cashBalanceSummaryApplied/${row.movementId}`] = result.applied;
+        CashBalances.applyFlowContribution(flow, row.movementId, row.applied, result.applied, row.movement);
       });
+      Object.keys(flow.daily).forEach((day) => { writes[`cashFlowDaily/${day}`] = CashBalances.flowValue(flow.daily[day]); });
+      Object.keys(flow.monthly).forEach((month) => { writes[`cashFlowMonthly/${month}`] = CashBalances.flowValue(flow.monthly[month]); });
+      Object.keys(flow.openings).forEach((id) => { writes[`cashFlowOpenings/${id}`] = flow.openings[id]; });
       writes.cashBalanceSummary = summary;
       pendingKeys.forEach((key) => { writes[`cashBalanceSummaryPending/${key}`] = null; });
       await db.ref().update(writes);
@@ -68,6 +83,38 @@ async function ensureCashBalanceSummary(db) {
   }
   if (summary.schemaVersion !== CashBalances.SCHEMA_VERSION || summary.complete !== true) throw new Error("Cash balance summary is not ready.");
   return summary;
+}
+
+// Cash balances for controls (e.g. "is there enough register cash for this refund?") without
+// downloading the whole ledger: the maintained summary with its queue drained, corrected for
+// movements posted or edited in the last ten minutes that the summary has not applied yet (their
+// trigger may still be in flight). The processor writes the summary and its applied records in
+// one update, so an unchanged summary timestamp proves the applied reads are consistent with it.
+// If the queue holds an entry older than the window, fall back to the full ledger.
+const CASH_RECENT_WINDOW_MS = 10 * 60 * 1000;
+async function currentCashBalances(db, now = Date.now()) {
+  const since = now - CASH_RECENT_WINDOW_MS;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const summary = await ensureCashBalanceSummary(db);
+    const oldest = (await db.ref("/cashBalanceSummaryPending").orderByChild("queuedAt").limitToFirst(1).get()).val() || {};
+    if (Object.values(oldest).some((row) => Number(row && row.queuedAt || 0) < since)) break;
+    const [posted, edited] = await Promise.all([
+      db.ref("/financialMovements").orderByChild("postedAt").startAt(since).get(),
+      db.ref("/financialMovements").orderByChild("updatedAt").startAt(since).get(),
+    ]);
+    const recent = Object.assign({}, posted.val() || {}, edited.val() || {}), balances = JSON.parse(JSON.stringify(summary.balances || CashBalances.emptyBalances()));
+    balances.cashAccountCents = balances.cashAccountCents || {};
+    const applied = await Promise.all(Object.keys(recent).map(async (id) => [id, (await db.ref(`/cashBalanceSummaryApplied/${id}`).get()).val()]));
+    applied.forEach(([id, row]) => {
+      if (CashBalances.contributionMatches(row, recent[id])) return;
+      if (row) CashBalances.addDelta(balances, row.delta, -1);
+      CashBalances.addDelta(balances, CashBalances.movementDelta(recent[id]));
+    });
+    const after = (await db.ref("/cashBalanceSummary/meta/updatedAt").get()).val();
+    if (Number(after) === Number(summary.meta && summary.meta.updatedAt)) return {balances, source: "summary", recentCorrections: applied.length};
+  }
+  const movements = (await db.ref("/financialMovements").get()).val() || {};
+  return {balances: CashBalances.splitSnapshotFromMovements(movements, now).summary.balances, source: "ledger", recentCorrections: 0};
 }
 
 exports.getCurrentCashBalances = onCall(
