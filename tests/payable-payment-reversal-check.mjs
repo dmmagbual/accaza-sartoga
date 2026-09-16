@@ -51,18 +51,16 @@ for (const file of ['functions/index.js', 'src/functions/42d-financial-command-c
   must(s, 'if ((await db.ref(`/financialMovements/${reverseId}`).get()).exists()) return {movementId: reverseId, documentId: docId, duplicate: true};', `${file}: a replayed reversal must return the original posting, not a second one.`);
   must(s, '!["owner", "superadmin"].includes(actor.role)', `${file}: only the owner may reverse a recorded supplier payment.`);
   must(s, 'if (!reason) throw new HttpsError("invalid-argument", "A reversal reason is required.");', `${file}: a reversal reason must be mandatory.`);
-  must(s, 'This bill is already outstanding. There is no recorded payment to reverse.', `${file}: an already-open bill must be refused.`);
   must(s, 'This bill was reversed at its source transaction.', `${file}: a source-reversed bill must be redirected, not double-corrected.`);
-  must(s, 'if (doc.paymentReversalMovementId) throw new HttpsError', `${file}: a bill whose payment was already reversed must be refused.`);
+  must(s, 'settlements/${paymentId}/status', `${file}: the selected settlement must carry its own reversal status.`);
   must(s, 'if (original.reversedByMovementId) throw new HttpsError', `${file}: an already-reversed movement must be refused.`);
   must(s, '"payable_paid", "payable_paid_owner_capital"', `${file}: only a genuine supplier bill payment may be reversed here.`);
   must(s, 'customer_change_refund', `${file}: a customer change/refund payable must be sent to its own path.`);
   must(s, 'paid from Undeposited Collection', `${file}: a custody-funded payment must be blocked rather than half-undone.`);
   must(s, 'await assertAccountingPeriodOpen(db, date, "reversing this supplier payment");', `${file}: the reversal must respect a closed accounting month.`);
   must(s, 'writes[`payables/${docId}/status`] = "open";', `${file}: the bill must return to outstanding.`);
-  must(s, 'writes[`payables/${docId}/remainingAmount`] = Financial.money(doc.amount);', `${file}: the full amount must return to the subledger.`);
-  must(s, 'writes[`payables/${docId}/paidAmount`] = 0;', `${file}: the paid amount must be cleared.`);
-  must(s, 'writes[`payables/${docId}/settlementMovementId`] = null;', `${file}: the stale settlement link must be cleared.`);
+  must(s, 'currentRemaining+value', `${file}: only the selected payment amount must return to the subledger.`);
+  must(s, 'Number(doc.paidAmount||0)-value', `${file}: only the selected payment amount must be removed from paid total.`);
   must(s, 'writes[`financialMovements/${paymentId}/reversedByMovementId`] = reverseId;', `${file}: the original payment must point at its reversal for the audit trail.`);
   must(s, 'operationalAuditRecord("payable_payment_reversed"', `${file}: the reversal must leave an operational audit record.`);
   must(s, 'if (financeText(original.sourceId, 160) !== docId) throw new HttpsError', `${file}: the settlement movement must be proven to belong to THIS bill before it is reversed.`);
@@ -92,9 +90,9 @@ for (const file of ['assets/js/books/app.js', 'src/books/app/40-subledgers.js'])
 }
 for (const file of ['assets/js/books/app.js', 'src/books/app/50-controlled-transactions.js']) {
   const s = read(file);
-  must(s, 'App.reversePayablePayment=function(id)', `${file}: the reversal action must exist in the Books client.`);
-  must(s, "if(d.paymentReversalMovementId) return alert('This payment has already been reversed.');", `${file}: the client must refuse a second reversal.`);
-  must(s, "if(!d.settlementMovementId) return alert(", `${file}: the client must refuse a bill with no settlement record.`);
+  must(s, 'App.reversePayablePayment=function(id,paymentId)', `${file}: the reversal action must identify one payment.`);
+  must(s, "payment.status==='reversed'||payment.reversalMovementId", `${file}: the client must refuse a second reversal of the selected payment.`);
+  must(s, "if(!paymentId) return alert(", `${file}: the client must refuse a bill with no settlement record.`);
   must(s, "action:'reverse_payable_payment'", `${file}: the client must call the server action.`);
   must(s, "if(!reason) return alert('Enter the reason for reversing this payment.');", `${file}: the client must require a reason.`);
   must(s, 'window.__isAccountingPeriodClosed(date)', `${file}: the client must warn on a closed accounting month.`);
