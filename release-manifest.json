@@ -13,9 +13,9 @@
   },
   "builds": {
     "admin": 536,
-    "books": 118,
+    "books": 119,
     "customer": 73,
-    "serviceWorkerCache": 513
+    "serviceWorkerCache": 514
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
@@ -351,6 +351,8 @@
     "inventoryBalances",
     "inventoryMovements",
     "financialMovements",
+    "payablePayments",
+    "payableSettlementClaims",
     "financialCloses",
     "financialCloseIndex",
     "financialCloseClaims",

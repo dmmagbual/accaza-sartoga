@@ -56,6 +56,7 @@
     "test:release": "node tests/release-readiness-check.mjs",
     "test:ci": "npm test && npm run test:release && npm run test:safety && npm run test:rules && npm run test:e2e",
     "test:payable-payment-reversal": "node tests/payable-payment-reversal-check.mjs",
+    "test:supplier-payable-partial": "node tests/supplier-payable-partial-payment-check.mjs",
     "test:payment-routing": "node tests/payment-routing-guidance-check.mjs",
     "test:payment-method-grouping": "node tests/payment-method-grouping-check.mjs",
     "test:payment-routing-consistency": "node tests/payment-routing-consistency-check.mjs",
