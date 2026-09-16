@@ -1,9 +1,5 @@
 const ALLOWED_TABS=new Set(['orders','ops','reservations','inventory','recipes','payouts','cashflow','receivables','payables','discrepancy','operations']);
-const SYSTEM_HEALTH_AUTO_RUN_KEY='accaza-system-health-auto-run-v1',SYSTEM_HEALTH_INTERVAL_MS=24*60*60*1000;
 let exceptionData=null,exceptionAt=0,exceptionLoading=false,exceptionPromise=null,refreshTimer=null;
-
-function autoRunRecordedRecently(){try{const last=Number(window.localStorage&&window.localStorage.getItem(SYSTEM_HEALTH_AUTO_RUN_KEY));return Number.isFinite(last)&&last>0&&Date.now()-last<SYSTEM_HEALTH_INTERVAL_MS;}catch(_error){return false;}}
-function recordAutoRun(){try{if(window.localStorage)window.localStorage.setItem(SYSTEM_HEALTH_AUTO_RUN_KEY,String(Date.now()));}catch(_error){}}
 
 function esc(value){return String(value==null?'':value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));}
 function num(id){const el=document.getElementById(id);return Number(String(el&&el.textContent||'0').replace(/[^0-9.-]/g,''))||0;}
@@ -46,13 +42,12 @@ async function render(){
 async function loadExceptions(force=false){
   if(exceptionPromise)return exceptionPromise;
   if(!force&&exceptionData)return exceptionData;
-  if(!force&&autoRunRecordedRecently())return exceptionData;
   const api=window.__accaza;if(!api||!api.getOperationalExceptions)return exceptionData;
   exceptionLoading=true;
   exceptionPromise=(async()=>{
     try{
-      const response=await api.getOperationalExceptions();
-      exceptionData=response&&response.data||response;exceptionAt=Date.now();recordAutoRun();
+      const response=await api.getOperationalExceptions(force);
+      exceptionData=response&&response.data||response;exceptionAt=Number(exceptionData&&exceptionData.generatedAt)||0;
       return exceptionData;
     }catch(_error){exceptionData=null;return null;}
     finally{exceptionLoading=false;exceptionPromise=null;render();}
@@ -65,7 +60,7 @@ window.__refreshOverviewCommand=refresh;
 window.__accazaSystemHealth={
   get:function(){return exceptionData;},
   getCheckedAt:function(){return exceptionAt;},
-  ensureDaily:function(){return loadExceptions(false);},
+  getCached:function(){return loadExceptions(false);},
   run:function(){return loadExceptions(true);}
 };
 
