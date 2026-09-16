@@ -193,4 +193,59 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
   assert.deepEqual(state.books.monthlyNet, full(), 'the nightly heal repairs drifted day and month totals');
 }
 
-console.log('PASS: replica-first history reads, tab-stable report listeners, ID-patched archive changes, month-bounded Stock Value journal (equivalent to full history), Books without full archive downloads, and indexed/bounded server reads, bounded per-item inventory idempotency state, and day-bucketed Books monthly totals.');
+// 9. Stale tabs: every app checks the published build and reloads an idle Admin/Books tab
+// once per build, never over a POS sale, an edited field, or while offline.
+{
+  const manifest = JSON.parse(read('release-manifest.json'));
+  const metas = {admin: read('admin.html'), books: read('books.html'), customer: read('index.html')};
+  for (const [app, html] of Object.entries(metas)) {
+    const build = Number((html.match(new RegExp(`<meta name="accaza-${app}-build" content="(\\d+)"`)) || [])[1]);
+    assert.equal(build, manifest.builds[app], `${app} page build must equal the release manifest, or every open tab would reload once for nothing`);
+    assert.equal((html.match(/<script src="assets\/js\/shared\/build-freshness\.js"><\/script>/g) || []).length, 1, `${app} must load the stale-tab guard once`);
+  }
+  assert.ok(read('sw.js').includes("'/assets/js/shared/build-freshness.js'"), 'the guard is part of the offline shell');
+  const source = read('assets/js/shared/build-freshness.js');
+  function run({app = 'admin', running = 533, published = 534, cart = false, syncing = 0, edited = false, online = true, storage = true, reloadedFor = ''} = {}) {
+    let now = Date.UTC(2026, 8, 16, 4), interval = null, reloads = 0, fetches = 0;
+    const store = new Map(reloadedFor ? [['accazaFreshnessReloadedFor', String(reloadedFor)]] : []);
+    const listeners = {}, body = {children: [], appendChild(n) { this.children.push(n); }};
+    const field = {isConnected: true, type: 'text', value: edited ? 'draft' : '', defaultValue: '', getClientRects: () => [1], closest: () => null};
+    const el = () => ({style: {}, setAttribute() {}, appendChild() {}, textContent: ''});
+    const document = {body, visibilityState: 'hidden', querySelector: (sel) => sel === `meta[name="accaza-${app}-build"]` ? {getAttribute: () => String(running)} : null,
+      getElementById: (id) => body.children.find((c) => c.id === id) || null, createElement: el, addEventListener: (type, fn) => { (listeners[type] = listeners[type] || []).push(fn); }};
+    class FakeDate extends Date { static now() { return now; } }
+    const sessionStorage = {getItem: (k) => { if (!storage) throw new Error('blocked'); return store.has(k) ? store.get(k) : null; }, setItem: (k, v) => { if (!storage) throw new Error('blocked'); store.set(k, String(v)); }, removeItem: (k) => store.delete(k)};
+    const win = {document, sessionStorage, navigator: {onLine: online}, location: {reload: () => { reloads += 1; }}, addEventListener() {}, setInterval: (fn, ms) => { interval = {fn, ms}; },
+      fetch: async (url, opts) => { fetches += 1; assert.equal(url, '/release-manifest.json'); assert.equal(opts.cache, 'no-store'); return {ok: true, json: async () => ({builds: {[app]: published}})}; },
+      __pos: {hasItems: () => cart}, __posOfflineState: () => ({syncing})};
+    const context = vm.createContext({window: win, Date: FakeDate, String, Number, Boolean});
+    vm.runInContext(source, context);
+    if (edited) listeners.input.forEach((fn) => fn({target: field}));
+    return {
+      interval, get reloads() { return reloads; }, get fetches() { return fetches; }, store, bar: () => body.children.find((c) => c.id === 'accazaUpdateReady'),
+      async tick(ms) { now += ms; interval.fn(); for (let i = 0; i < 5; i += 1) await tick(); },
+      touch() { listeners.pointerdown.forEach((fn) => fn({})); },
+    };
+  }
+  let t = run();
+  assert.equal(t.interval.ms, 15 * 60 * 1000, 'the manifest is checked every 15 minutes, not continuously');
+  await t.tick(5 * 60 * 1000);
+  assert.equal(t.reloads, 0, 'a recently used tab is never reloaded');
+  assert.ok(t.bar(), 'a stale tab shows the reload bar');
+  await t.tick(15 * 60 * 1000);
+  assert.equal(t.reloads, 1, 'an idle stale Admin tab reloads');
+  assert.equal(t.store.get('accazaFreshnessReloadedFor'), '534');
+  t = run({reloadedFor: 534}); await t.tick(20 * 60 * 1000);
+  assert.equal(t.reloads, 0, 'a tab reloads at most once per published build (no reload loop if the page lags the manifest)');
+  for (const [label, opts] of [['POS sale in progress', {cart: true}], ['offline sale syncing', {syncing: 1}], ['edited field on screen', {edited: true}], ['offline', {online: false}], ['storage unavailable', {storage: false}], ['customer page', {app: 'customer', running: 71, published: 72}]]) {
+    t = run(opts); await t.tick(20 * 60 * 1000);
+    assert.equal(t.reloads, 0, `no automatic reload: ${label}`);
+    assert.ok(t.bar(), `the reload bar still shows: ${label}`);
+  }
+  t = run({running: 534, published: 534}); await t.tick(20 * 60 * 1000);
+  assert.equal(t.reloads + (t.bar() ? 1 : 0), 0, 'a current tab does nothing');
+  t = run(); t.touch(); await t.tick(60 * 1000); await t.tick(30 * 1000);
+  assert.equal(t.fetches, 1, 'checks are throttled to one a minute');
+}
+
+console.log('PASS: replica-first history reads, tab-stable report listeners, ID-patched archive changes, month-bounded Stock Value journal (equivalent to full history), Books without full archive downloads, and indexed/bounded server reads, bounded per-item inventory idempotency state, day-bucketed Books monthly totals, and stale tabs that pick up fixed builds.');
