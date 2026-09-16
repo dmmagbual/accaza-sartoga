@@ -217,7 +217,9 @@ exports.ensureBooksJournal = onCall(
     writes["books/reconciliationConfig"] = ReconciliationControls.DEFAULT_ACCOUNT_RULES;
     writes["books/reviewQueue"] = review;
     writes["books/config/cashAccountMap"] = cashMap;
-    const paths = Object.keys(writes); for (let i = 0; i < paths.length; i += 300) { const batch = {}; paths.slice(i, i + 300).forEach((path) => { batch[path] = writes[path]; }); await db.ref().update(batch); }
+    // Each journal entry fires three triggers (monthly totals, archive refresh, backup marker); keep
+    // every write well under the 1,000-trigger limit.
+    const paths = Object.keys(writes); for (let i = 0; i < paths.length; i += 150) { const batch = {}; paths.slice(i, i + 150).forEach((path) => { batch[path] = writes[path]; }); await db.ref().update(batch); }
     const openingCash = BooksBridge.r2(Object.values(cashAccountsSnap.val() || {}).reduce((sum, account) => sum + Number(account && account.opening || 0), 0));
     const netSales = BooksBridge.r2(Object.values(daily).reduce((sum, entry) => sum + BooksBridge.netSales(entry && entry.net), 0));
     const rebuiltJournal = (await db.ref("/books/journal").get()).val() || {};
