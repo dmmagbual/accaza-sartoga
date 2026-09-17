@@ -22,7 +22,9 @@ const FILES = [...new Set([...walk('src/admin'), ...walk('src/books'), ...walk('
 const SMALL = new Set(['.info/connected', 'settings', 'config', 'payment', 'calBlocks', 'availability', 'channelPrices', 'posStaff', 'posActiveShift', 'cfAccounts', 'chartOfAccounts',
   'accountingPeriods', 'publicCatalogVersion', 'historicalArchiveSync', 'books/monthlyNet', 'booksChart', 'cashFlowIndexMeta', 'cashFlowOpenings', 'cashFlowMonthly',
   'staffAccounts', 'adminAccounts', 'admins', 'adminPerms', 'usageTypes', 'expenseItems', 'platformVarAccounts', 'pettyCashSettings', 'heldOrders', 'receivables',
-  'systemHealth', 'staffReceiptIndex']);
+  'systemHealth', 'staffReceiptIndex',
+  // One record (the owner's emergency sign-out cutoff), overwritten in place, never grows.
+  'sessionControl']);
 // Whole-node reads that are accepted, with the reason. Anything new must be added here on purpose.
 const ACCEPTED = {
   'payables': 'Finance Books supplier ledger and reversal flows need every bill; about 12 KB (follow-up: open bills only)',

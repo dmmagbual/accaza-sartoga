@@ -789,8 +789,25 @@ function portalRoleValue(raw) {
   return String(role || "").toLowerCase();
 }
 
+// Emergency sign-out (17 Sep 2026): /sessionControl/cutoff/at is the moment an owner signed
+// every portal session out. A session that signed in before it is refused by every portal
+// service, so a forgotten tab stops calling the server even before its ID token expires.
+// Cached for a minute per instance so the check adds no read to most calls.
+const SESSION_CUTOFF_CACHE_MS = 60 * 1000;
+let sessionCutoffCache = {at: 0, loadedAt: 0};
+async function portalSessionCutoff(db) {
+  if (Date.now() - sessionCutoffCache.loadedAt < SESSION_CUTOFF_CACHE_MS) return sessionCutoffCache.at;
+  try {
+    const at = Number((await db.ref("/sessionControl/cutoff/at").get()).val()) || 0;
+    sessionCutoffCache = {at, loadedAt: Date.now()};
+  } catch (_error) { /* keep the last known cutoff; never block sign-in on a read failure */ }
+  return sessionCutoffCache.at;
+}
+function sessionSignedInAt(request) { return (Number(request && request.auth && request.auth.token && request.auth.token.auth_time) || 0) * 1000; }
 async function requirePortalUser(db, request) {
   if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "Staff login is required.");
+  const signedInAt = sessionSignedInAt(request), cutoff = signedInAt ? await portalSessionCutoff(db) : 0;
+  if (cutoff && signedInAt < cutoff) throw new HttpsError("unauthenticated", "The owner signed every device out. Sign in again.");
   const snap = await db.ref(`/admins/${request.auth.uid}`).get();
   const raw=snap.val(),role = portalRoleValue(raw);
   if (!["owner", "superadmin", "admin", "manager", "staff", "cashier", "kitchen", "finance"].includes(role)) {
@@ -2307,6 +2324,28 @@ async function assurancePostingState(db,orders){const sales=Object.entries(order
 exports.reportPosDeviceHealth=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:30,memory:'256MiB'},async request=>{const db=getDatabase(),actor=await requirePortalPermission(db,request,['pos']),data=request.data||{},shiftId=posAssuranceKey(data.shiftId,'Shift ID'),deviceId=posAssuranceKey(data.deviceId,'Device ID'),shift=(await db.ref('/posActiveShift').get()).val()||{};if(shift.id!==shiftId)throw new HttpsError('failed-precondition','This device is not reporting against the open shift.');const bounded=value=>Math.max(0,Math.min(10000,Math.floor(Number(value)||0))),record={shiftId,deviceId,staff:financeText(shift.staff,100),staffId:financeText(shift.staffId,100),online:true,pending:bounded(data.pending),syncing:bounded(data.syncing),failed:bounded(data.failed),outstanding:bounded(data.pending)+bounded(data.syncing)+bounded(data.failed),oldestUnsyncedAt:Math.max(0,Number(data.oldestUnsyncedAt)||0),lastContactAt:Date.now(),idle:data.idle===true,reportedBy:actor.uid,schemaVersion:2};await db.ref(`/posDeviceHealth/${shiftId}/${deviceId}`).set(record);return{accepted:true,lastContactAt:record.lastContactAt};});
 
 exports.verifyShiftCloseReadiness=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:'256MiB'},async request=>{const db=getDatabase(),actor=await requirePortalPermission(db,request,['pos','registerOps']),data=request.data||{},shiftId=posAssuranceKey(data.shiftId,'Shift ID'),deviceId=posAssuranceKey(data.deviceId,'Device ID'),shift=(await db.ref('/posActiveShift').get()).val()||{};if(shift.id!==shiftId||shift.status==='closed')throw new HttpsError('failed-precondition','The selected shift is not open.');const devices=(await db.ref(`/posDeviceHealth/${shiftId}`).get()).val()||{},health=devices[deviceId]||{};if(health.shiftId!==shiftId||health.deviceId!==deviceId||health.reportedBy!==actor.uid||Date.now()-Number(health.lastContactAt||0)>POS_HEALTH_MAX_AGE_MS)throw new HttpsError('failed-precondition','This cashier device has no recent synchronization confirmation.');const outstandingDevices=Object.values(devices).filter(row=>row&&row.shiftId===shiftId&&Number(row.outstanding||0)>0);if(outstandingDevices.length){const outstanding=outstandingDevices.reduce((sum,row)=>sum+Number(row.outstanding||0),0);throw new HttpsError('failed-precondition',`${outstanding} local sale(s) on ${outstandingDevices.length} POS device(s) still require synchronization.`);}const state=await assurancePostingState(db,await shiftOrdersForAssurance(db,shiftId));if(state.inventoryOutstanding.length||state.financeOutstanding.length)throw new HttpsError('failed-precondition',`Wait for server posting to finish. Inventory: ${state.inventoryOutstanding.length}; Finance Books: ${state.financeOutstanding.length}.`);const verifiedAt=Date.now(),verification={shiftId,deviceId,verifiedAt,verifiedBy:actor.uid,reportedDeviceCount:Object.keys(devices).length,outstandingDeviceCount:0,saleCount:state.saleCount,inventoryOutstanding:0,financeOutstanding:0,schemaVersion:2};await db.ref(`/shiftCloseVerifications/${shiftId}`).set(verification);return verification;});
+
+// Owner-only emergency action: sign every portal session out (Admin, POS, Finance Books).
+// Revokes each portal account's refresh tokens, so no tab can renew its sign-in, and records
+// the cutoff that current builds and every portal service enforce at once. Customer app
+// accounts are not portal accounts and are untouched. Audited; at most once per 5 minutes.
+const SESSION_SIGNOUT_MIN_GAP_MS=5*60*1000;
+exports.signOutAllPortalSessions=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:'256MiB'},async request=>{
+  const db=getDatabase(),actor=await requirePortalUser(db,request);
+  if(!['owner','superadmin'].includes(actor.role))throw new HttpsError('permission-denied','Only the owner can sign every device out.');
+  const reason=financeText(request.data&&request.data.reason,200);
+  if(reason.length<5)throw new HttpsError('invalid-argument','Enter the reason for signing every device out.');
+  const now=Math.floor(Date.now()/1000)*1000,previous=(await db.ref('/sessionControl/cutoff').get()).val()||{};
+  if(now-Number(previous.at||0)<SESSION_SIGNOUT_MIN_GAP_MS)throw new HttpsError('resource-exhausted','Every device was signed out less than 5 minutes ago.');
+  const admins=/* download-ok: bounded portal account list (a handful of staff), read only by this owner action */(await db.ref('/admins').get()).val()||{};
+  const uids=Object.keys(admins).filter(uid=>/^[A-Za-z0-9_-]{6,128}$/.test(uid));
+  let revoked=0;const failed=[];
+  for(const uid of uids){try{await getAdminAuth().revokeRefreshTokens(uid);revoked++;}catch(error){if(String(error&&error.code||'')!=='auth/user-not-found')failed.push(uid);}}
+  const record={at:now,by:actor.uid,byName:actor.name,reason,accounts:uids.length,revoked,failed:failed.length,schemaVersion:1};
+  await db.ref().update({'sessionControl/cutoff':record,[`operationalAudit/${now}_sign_out_all_sessions`]:operationalAuditRecord('sign_out_all_sessions','sessionControl','cutoff',actor,{reason,accounts:uids.length,revoked,failed:failed.length})});
+  sessionCutoffCache={at:now,loadedAt:Date.now()};
+  return record;
+});
 
 exports.onShiftCloseAssurance=onValueWritten({ref:'/shifts/{shiftId}/status',region:ORDER_REGION,retry:true},async event=>{if(event.data.after.val()!=='closed'||event.data.before.val()==='closed')return;const db=getDatabase(),shiftId=event.params.shiftId,receiptRef=db.ref(`/shiftCloseReceipts/${shiftId}`);if((await receiptRef.get()).exists())return;const shift=(await db.ref(`/shifts/${shiftId}`).get()).val()||{},verification=(await db.ref(`/shiftCloseVerifications/${shiftId}`).get()).val()||{},state=await assurancePostingState(db,await shiftOrdersForAssurance(db,shiftId)),z=shift.zReport||{},businessDate=financeDateFromTimestamp(Number(shift.closeAt)||Date.now()),control={saleCount:state.saleCount,net:Financial.money(z.net!=null?z.net:shift.net),gross:Financial.money(z.gross!=null?z.gross:shift.gross),refunds:Financial.money(z.refunds!=null?z.refunds:shift.refunds),countedCash:Financial.money(z.countedCash!=null?z.countedCash:shift.countedCash),expectedCash:Financial.money(z.expectedCash!=null?z.expectedCash:shift.expectedCash),variance:Financial.money(z.variance!=null?z.variance:shift.variance),cashToSettle:Financial.money(z.cashToSettle!=null?z.cashToSettle:shift.cashToSettle),byMethod:z.byMethod||shift.byMethod||{},byChannel:z.byChannel||shift.byChannel||{}},verified=verification.shiftId===shiftId&&!state.inventoryOutstanding.length&&!state.financeOutstanding.length,closedAt=Number(shift.closeAt)||Date.now(),receipt={shiftId,shiftReference:financeText(shift.shiftReference||shiftId,120),businessDate,staff:financeText(shift.staff,100),openedAt:Number(shift.openAt)||0,closedAt,serverRecordedAt:Date.now(),status:verified?'verified':'posting_follow_up',verification:verification.shiftId===shiftId?verification:null,inventoryOutstanding:state.inventoryOutstanding,financeOutstanding:state.financeOutstanding,controlTotals:control,schemaVersion:1};receipt.receiptHash=crypto.createHash('sha256').update(JSON.stringify({shiftId,businessDate,closedAt,control})).digest('hex');const writes={[`shiftCloseReceipts/${shiftId}`]:receipt,[`ownerDailySummaries/${businessDate}/${shiftId}`]:{shiftId,shiftReference:receipt.shiftReference,staff:receipt.staff,closedAt,status:receipt.status,receiptHash:receipt.receiptHash,controlTotals:control,schemaVersion:1},[`shifts/${shiftId}/closeReceiptId`]:shiftId,[`shifts/${shiftId}/closeReceiptHash`]:receipt.receiptHash,[`operationalAudit/${receipt.serverRecordedAt}_${shiftId}_close_receipt`]:operationalAuditRecord('record_shift_close_receipt','shift',shiftId,{uid:'server',role:'server'},{status:receipt.status,receiptHash:receipt.receiptHash,inventoryOutstanding:state.inventoryOutstanding.length,financeOutstanding:state.financeOutstanding.length,controlTotals:control})};await db.ref().update(writes);});
 const ACTIVE_ONLINE_TTL_MS = 48 * 60 * 60 * 1000;

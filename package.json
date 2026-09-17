@@ -47,7 +47,7 @@
     "test:cash-balance-summary": "node tests/cash-balance-summary-check.mjs",
     "test:retry-guard": "node tests/retry-guard-check.mjs",
     "test:download-loopholes": "node tests/download-loophole-check.mjs",
-    "test:download-guards": "node tests/download-read-guard-check.mjs && node tests/client-download-guard-check.mjs && node tests/download-bounded-reads-check.mjs && node tests/download-attach-cost-check.mjs && node tests/books-live-feeds-check.mjs && node tests/books-sync-download-check.mjs && node tests/pos-heartbeat-cadence-check.mjs && node tests/stale-client-download-check.mjs",
+    "test:download-guards": "node tests/download-read-guard-check.mjs && node tests/client-download-guard-check.mjs && node tests/download-bounded-reads-check.mjs && node tests/download-attach-cost-check.mjs && node tests/books-live-feeds-check.mjs && node tests/books-sync-download-check.mjs && node tests/pos-heartbeat-cadence-check.mjs && node tests/stale-client-download-check.mjs && node tests/session-signout-check.mjs",
     "test:undeposited-pagination": "node tests/undeposited-pagination-check.mjs",
     "test:cash-payment-evidence": "node tests/cash-payment-evidence-form-check.mjs && node tests/cash-payment-funding-accounts-check.mjs && node tests/suspense-supplier-advance-check.mjs && node tests/archived-order-ghost-check.mjs && node tests/unmapped-payment-audit-check.cjs",
     "test:cash-payment-expansion": "node tests/cash-payment-expansion-check.mjs",

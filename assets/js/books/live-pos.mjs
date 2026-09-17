@@ -130,6 +130,8 @@ if(auth){
     if(journalUnsub){journalUnsub();journalUnsub=null;}
     if(user){ setPill("● Live · "+(user.email||"synced"),"ok");if(window.__manageSupplier)window.__manageSupplier({action:"initialize_legacy"}).catch(function(){});
       bindPeriodJournal();
+      // Owner emergency sign-out: end this session if it signed in before the cutoff.
+      watchValue(ref(db,"/sessionControl/cutoff"), async s=>{ const c=s.val()||{},at=Number(c.at)||0; if(!at||!auth.currentUser||auth.currentUser.uid!==user.uid)return; let signedInAt=0; try{signedInAt=Date.parse((await user.getIdTokenResult()).authTime)||0;}catch(_e){return;} if(signedInAt&&signedInAt<at){ try{await signOut(auth);}catch(_o){} alert("The owner signed every device out"+(c.reason?(": "+c.reason):"")+". Sign in again."); } }, ()=>{});
       watchValue(ref(db,"/books/monthlyNet"), s=>{ monthlyNetCache=s.val()||{}; scheduleJournalRefresh(); }, ()=>{});
       watchValue(ref(db,"/accountingPeriods"), s=>{ window.__accountingPeriods=s.val()||{}; window.__isAccountingPeriodClosed=function(date){var record=(window.__accountingPeriods||{})[String(date||'').slice(0,7)]||{};return record.status==='closed';}; if(window.App&&App.render)App.render(); }, ()=>{});
       reviewCache={};window.__booksReviewQueue={};
