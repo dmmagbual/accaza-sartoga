@@ -38,8 +38,9 @@ const budgets={
   // retain a narrow ceiling so future Finance Books growth requires review.
   // Build 119 adds supplier-level AP balances, invoice payment history and bounded
   // partial-payment controls without adding another Firebase listener.
-  // Books 123 adds a bounded multi-bill supplier settlement modal and reversal path.
-  'assets/js/books/app.js':223000,
+  // Books 124 adds the read-only original-journal viewer to every subsidiary
+  // ledger row, exposing both entry legs without any additional Firebase read.
+  'assets/js/books/app.js':224200,
   // Build 110 isolates the owner-only supplier AP cutover form from the core Books bundle.
   'src/books/opening-payables.js':7500
 };
@@ -58,6 +59,6 @@ if(salesPeriod.includes("ops.startAt(String")||salesPeriod.includes("orderByChil
 for(const source of [moduleLoader,hub,telemetry,functions])for(const marker of source===moduleLoader?['module_load','performance.now']:source===hub?['live_ready','liveStartedAt']:['module_load','live_ready'])if(!source.includes(marker))fail(`Measured performance telemetry missing: ${marker}`);
 
 const manifest=JSON.parse(read('release-manifest.json'));
-if(manifest.builds.admin!==546||manifest.builds.customer!==73||manifest.builds.books!==123||manifest.builds.serviceWorkerCache!==524)fail('Current build/cache versions are not synchronized');
+if(manifest.builds.admin!==546||manifest.builds.customer!==73||manifest.builds.books!==124||manifest.builds.serviceWorkerCache!==525)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');
