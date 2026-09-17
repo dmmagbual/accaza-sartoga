@@ -27,7 +27,10 @@ function init(){
   a.subscribe('heldOrders',function(s){heldMap=s.val()||{};if(isTab('ops'))renderOps();});
   a.subscribe('activeOrders',function(s){ordersMap=s.val()||{};if(isTab('ops'))renderOps();});
   a.subscribe('discrepancies',function(s){discMap=s.val()||{};updateDiscBadge();if(isTab('discrepancy'))renderDiscrepancies();});
-  a.subscribe('booksChart',function(s){booksChartMap=s.val()||{};});
+  // Loan principal and interest selectors are derived from the Finance Books
+  // chart. Re-render an open Cash Payments form when that asynchronous chart
+  // snapshot arrives; otherwise its initially empty selector stays empty.
+  a.subscribe('booksChart',function(s){booksChartMap=s.val()||{};if(isTab('petty'))renderPetty();});
   a.subscribe('cfAccounts',function(s){cashAccountsMap=s.val()||{};if(isTab('possettings'))renderPosSettings();});
   a.subscribe('financialMovements',function(s){financialMovementsMap=s.val()||{};});
   a.subscribe('pettyCashVouchers',function(s){pettyVouchers=s.val()||{};if(isTab('petty'))renderPetty();});
