@@ -48,7 +48,7 @@ App.reversePayablePayment=function(id,paymentId){
     if(!reference)return alert('Enter the correction reference.');
     if(!reason) return alert('Enter the reason for reversing this payment.');
     if(window.__isAccountingPeriodClosed&&window.__isAccountingPeriodClosed(date))return alert('This accounting month is closed. Reopen it in Finance Settings first.');
-    App._txnRun(btn,{action:'reverse_payable_payment',commandId:uid(),documentId:id,paymentId:paymentId,date:date,ref:reference,reason:reason},function(){CURRENT='payables';App.renderTabs();App.rebuildPeriodSel();App.render();});
+    var payload={action:'reverse_payable_payment',commandId:uid(),documentId:id,paymentId:paymentId,date:date,ref:reference,reason:reason};if(payment.batchId)payload.action='reverse_payable_batch_payment';App._txnRun(btn,payload,function(){CURRENT='payables';App.renderTabs();App.rebuildPeriodSel();App.render();});
   });
 };
 App._payableAmount=function(){var id=fval('tp_doc'),d=(window.__apMap||{})[id],el=document.getElementById('tp_amount');if(el&&d){var remaining=r2(Number(d.remainingAmount!=null?d.remainingAmount:d.amount)||0);el.max=remaining.toFixed(2);el.value=remaining.toFixed(2);}};

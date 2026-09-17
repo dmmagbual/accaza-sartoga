@@ -275,6 +275,21 @@ exports.managePettyVoucher = onCall(
     if (action === "approve") {
       if (voucher.status !== "pending") throw new HttpsError("failed-precondition", "Only pending vouchers can be approved.");
       if (voucher.transactionType === "purchase_advance") await requireActiveSupplier(db,voucher.supplierId,voucher.supplierName||voucher.recipient);
+      if (voucher.transactionType === "loan_repayment") {
+        const code=financeText(voucher.debitAccountCode,4),booksChart=await ensureBooksChart(db),loan=booksChart[code],interest=Financial.money(voucher.interestAmount||0),interestCode=financeText(voucher.interestAccountCode,4),interestRow=interestCode&&booksChart[interestCode];
+        if(!/^23\d{2}$/.test(code)||!loan||loan.active===false||loan.type!=="Liability")throw new HttpsError("failed-precondition","Select an active loan-liability account (2300-2399).");
+        if(interest<0||interest>value)throw new HttpsError("invalid-argument","Loan interest cannot be negative or exceed the payment amount.");
+        if(interest>0&&(!interestRow||interestRow.active===false||interestRow.type!=="Expense"))throw new HttpsError("failed-precondition","Select an active expense account for the interest portion.");
+      }
+      if (voucher.transactionType === "staff_advance") {
+        const staffId=financeKey(voucher.staffId,"Staff member ID"),staffSnap=await db.ref(`/posStaff/${staffId}`).get(),staff=staffSnap.val();
+        if(!staffSnap.exists()||!staff||staff.active===false)throw new HttpsError("failed-precondition","The selected staff member is missing or inactive.");
+      }
+      if (voucher.transactionType === "customer_refund") {
+        const payableId=financeKey(voucher.payableId,"Customer refund payable ID"),payable=(await db.ref(`/payables/${payableId}`).get()).val(),remaining=Financial.money(payable&&payable.remainingAmount!=null?payable.remainingAmount:payable&&payable.amount);
+        if(!payable||payable.type!=="customer_change_refund"||payable.status!=="open")throw new HttpsError("failed-precondition","Select an open customer refund payable.");
+        if(value>remaining+0.009)throw new HttpsError("failed-precondition","The refund payment exceeds the payable's remaining balance.");
+      }
       {
         const fundingAccountId = financeText(voucher.fundingAccountId, 120) || "undeposited", fundingValue = Financial.money(voucher.amount);
         if (["register", "cash_float"].includes(fundingAccountId)) throw new HttpsError("failed-precondition", "Register Cash is retired and Cash Float is controlled. Select Undeposited Collection, Cash on Hand, or an active bank/cash account.");
@@ -324,7 +339,7 @@ exports.managePettyVoucher = onCall(
         if (current.status !== "pending") {failure = "Only pending vouchers can be approved."; return;}
         if (!(current.receiptImg || (current.hasReceipt === true && hasReceipt)) && !financeText(current.purpose, 300)) {failure = "A receipt or clear explanation is required before approval."; return;}
         if (approvalFunding.kind === "undeposited") {const available = Financial.money(baseFunds);if (value > available + 0.009) {failure = `Voucher exceeds available Undeposited Collection (₱${available.toFixed(2)}).`; return;}}
-        all[id] = Object.assign({}, current, {status: "approved", approvedBy, approvedByUid: approval.record.approvedBy, approvedAt: now, approvalId: approval.id});
+        all[id] = Object.assign({}, current, {status: "approved", approvedBy, approvedByUid: approval.record.approvedBy, approvedAt: now, approvalId: approval.id, conversionMovementId: ["loan_repayment","staff_advance","customer_refund"].includes(current.transactionType) ? (current.conversionMovementId || "controlled_pending") : current.conversionMovementId});
       } else if (action === "reject") {
         if (current.status === "rejected" && current.rejectionApprovalId === approval.id) {duplicate = true; return current;}
         if (current.status !== "pending") {failure = "Only pending vouchers can be rejected."; return;}
@@ -332,11 +347,12 @@ exports.managePettyVoucher = onCall(
       } else {
         if (current.voided === true && current.voidApprovalId === approval.id) {duplicate = true; return current;}
         if (current.status !== "approved" || current.voided === true) {failure = "Only an active approved voucher can be voided."; return;}
-        all[id] = Object.assign({}, current, {voided: true, voidReason: reason, voidedBy: approvedBy, voidedByUid: approval.record.approvedBy, voidedAt: now, voidApprovalId: approval.id});
+        all[id] = Object.assign({}, current, {voided: true, status: ["loan_repayment","staff_advance","customer_refund"].includes(current.transactionType) ? "reversed" : "approved", voidReason: reason, voidedBy: approvedBy, voidedByUid: approval.record.approvedBy, voidedAt: now, voidApprovalId: approval.id});
       }
       return all[id];
     }, undefined, false);
     if (!result.committed) throw new HttpsError("failed-precondition", failure || "Voucher changed while it was being reviewed. Refresh and try again.");
+    const controlledType=["loan_repayment","staff_advance","customer_refund"].includes(voucher.transactionType);if(controlledType&&(action==="approve"||action==="void")){const controlledAfter=Object.assign({},result.snapshot.val()||voucher,{status:action==="void"?"reversed":"approved",approvedBy:action==="approve"?approvedBy:voucher.approvedBy,approvedAt:action==="approve"?now:voucher.approvedAt});await postControlledPettyVoucher(db,id,voucher,controlledAfter,{uid:actor.uid,role:actor.role});}
     await db.ref().update(Object.assign({}, approval.usedWrites, {[`operationalAudit/${now}_${id}`]: operationalAuditRecord(`${action}_petty_voucher`, "pettyVoucher", id, actor, {approvalId: approval.id, amount: value, evidenceType: hasReceipt ? "receipt" : "manager_reviewed_explanation", explanation: financeText(voucher.purpose, 300)})}));
     return {voucherId: id, action, at: now, duplicate};
   },
