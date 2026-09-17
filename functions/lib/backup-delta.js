@@ -34,6 +34,14 @@ const TRACKED_PATHS = Object.freeze([
   "activityLog",
   "cfLedger",
   "pettyCashReceipts",
+  // 17 Sep 2026 download audit (F-4): money-adjacent nodes that had a full daily read but
+  // no backup coverage. The tracked-set change forces one FULL backup on the first post-
+  // deploy run ("tracked_changed"), so historical rows are captured from day one.
+  "stockReceipts",
+  "purchaseInvoices",
+  "platformPayouts",
+  "internalUsage",
+  "inventoryAdjustments",
 ]);
 const DIRTY_ROOT = "backupDirty";
 const MAX_BASE_AGE_MS = 8 * 86400000;

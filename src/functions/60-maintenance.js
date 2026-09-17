@@ -227,6 +227,11 @@ exports.markBackupDirtyFinancialApprovals = backupDirtyTrigger("financialApprova
 exports.markBackupDirtyActivityLog = backupDirtyTrigger("activityLog");
 exports.markBackupDirtyCfLedger = backupDirtyTrigger("cfLedger");
 exports.markBackupDirtyPettyCashReceipts = backupDirtyTrigger("pettyCashReceipts");
+exports.markBackupDirtyStockReceipts = backupDirtyTrigger("stockReceipts");
+exports.markBackupDirtyPurchaseInvoices = backupDirtyTrigger("purchaseInvoices");
+exports.markBackupDirtyPlatformPayouts = backupDirtyTrigger("platformPayouts");
+exports.markBackupDirtyInternalUsage = backupDirtyTrigger("internalUsage");
+exports.markBackupDirtyInventoryAdjustments = backupDirtyTrigger("inventoryAdjustments");
 
 exports.backupDatabaseDaily = onSchedule(
   {schedule: "every day 03:00", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "512MiB"},
