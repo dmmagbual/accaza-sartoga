@@ -15,6 +15,30 @@ function offlineDrawerDelta(value) {
   return out;
 }
 function drawerDeltaValue(delta) {return Math.round(Object.keys(delta || {}).reduce((sum,key)=>sum+Number(delta[key]||0)*Number(POS_DENOM_VALUES[key]||0),0)*100)/100;}
+function validatePaymentReconciliation(raw, money) {
+  const channel = String(raw && raw.channel || "instore").toLowerCase(), platform = channel === "grabfood" || channel === "foodpanda";
+  const payments = Array.isArray(raw && raw.payments) ? raw.payments : [], total = money(raw && raw.total || 0), refund = money(raw && raw.preCompletionCashRefund && raw.preCompletionCashRefund.amount || 0);
+  if (!payments.length) {
+    if (total === 0) return {payments: [], paid: 0, refund: 0};
+    throw new HttpsError("invalid-argument", "At least one payment is required before completing the sale.");
+  }
+  let paid = 0;
+  payments.forEach((row) => {
+    const method = String(row && row.method || "").trim(), amount = money(row && row.amount || 0);
+    if (!method || !(amount > 0)) throw new HttpsError("invalid-argument", "Every payment must have a method and a positive amount.");
+    paid = money(paid + amount);
+    if (!platform && PaymentVerification.isCashMethod(method)) {
+      const tendered = money(row && row.tendered || 0), change = money(row && row.change || 0), tip = money(row && row.tipRounding || 0);
+      if (!(tendered > 0) || change < 0 || tip < 0 || Math.abs(tendered - change - tip - amount) > .009) throw new HttpsError("failed-precondition", "Cash received, change, and retained rounding do not reconcile to the cash payment.");
+    }
+  });
+  if (refund > 0) {
+    if (Math.abs(paid - refund - total) > .009) throw new HttpsError("invalid-argument", "Confirmed payment, corrected sale, and cash refund do not reconcile.");
+  } else if (Math.abs(paid - total) > .009) {
+    throw new HttpsError("failed-precondition", paid < total ? "Payment is short of the order total." : "Payment exceeds the order total without a recorded customer refund.");
+  }
+  return {payments, paid, refund};
+}
 function applyDrawerDelta(row, transactionId, delta, now, actor) {
   if (!row || typeof row !== "object") return row;
   const applied = Object.assign({}, row.offlineSyncApplied || {});if (applied[transactionId]) return row;
@@ -36,7 +60,7 @@ async function syncOfflinePosSaleCommand(ctx) {
   const lines = listFromFirebase(raw.lineItems);if (!lines.length || lines.length > 200) throw new HttpsError("invalid-argument", "Offline sale items are invalid.");
   const delta = offlineDrawerDelta(data.drawerDelta), orderRef = db.ref(`/orders/${orderId}`), existingSnap = await orderRef.get(), existing = existingSnap.val();
   if (existing && existing.clientTxnId !== transactionId) throw new HttpsError("already-exists", "This order ID already belongs to another transaction.");
-  const channel = String(raw.channel || "instore").toLowerCase(), platform = channel === "grabfood" || channel === "foodpanda", payments = Array.isArray(raw.payments) ? raw.payments : [], direct = PaymentVerification.directPaymentRows(payments), posSettings = (await db.ref("/posSettings").get()).val() || {}, verificationPolicy = platform ? null : PaymentVerification.paymentPolicy(payments, posSettings.payMethods), prepaid = raw.preCompletionCashRefund && typeof raw.preCompletionCashRefund === "object" ? raw.preCompletionCashRefund : null;
+  const channel = String(raw.channel || "instore").toLowerCase(), platform = channel === "grabfood" || channel === "foodpanda", reconciliation = validatePaymentReconciliation(raw, money), payments = reconciliation.payments, direct = PaymentVerification.directPaymentRows(payments), posSettings = (await db.ref("/posSettings").get()).val() || {}, verificationPolicy = platform ? null : PaymentVerification.paymentPolicy(payments, posSettings.payMethods), prepaid = raw.preCompletionCashRefund && typeof raw.preCompletionCashRefund === "object" ? raw.preCompletionCashRefund : null;
   if (!platform && direct.length && verificationPolicy === PaymentVerification.CASHIER_MANAGER && raw.cashierVerificationIntent !== true) throw new HttpsError("failed-precondition", "Cashier verification is required before completing this direct electronic payment sale.");
   if (!platform && direct.some((row) => !String(row && row.ref || "").trim())) throw new HttpsError("invalid-argument", "Every direct electronic payment requires a transaction reference.");
   let prepaidShiftApplied=false;
@@ -65,4 +89,4 @@ async function syncOfflinePosSaleCommand(ctx) {
   await db.ref(`/offlinePosSync/${transactionId}`).update({state: "synced", syncedAt: now, updatedAt: now});
   return {transactionId, orderId, syncedAt: now, duplicate: !!existing};
 }
-module.exports={POS_DENOM_KEYS,offlineTxnKey,offlineDrawerDelta,drawerDeltaValue,applyDrawerDelta,syncOfflinePosSaleCommand};
+module.exports={POS_DENOM_KEYS,offlineTxnKey,offlineDrawerDelta,drawerDeltaValue,validatePaymentReconciliation,applyDrawerDelta,syncOfflinePosSaleCommand};

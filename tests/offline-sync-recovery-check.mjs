@@ -14,8 +14,19 @@ const db={ref(path=''){return{
   async update(updates){updateAt(path,updates);},
   async transaction(fn){if(path==='/shifts/SH-TEST'&&failShiftOnce){failShiftOnce=false;throw new Error('injected shift transaction failure');}const current=structuredClone(read(path)),next=fn(current);if(next===undefined)return{committed:false,snapshot:{val:()=>current,exists:()=>current!=null}};write(path,next);return{committed:true,snapshot:{val:()=>structuredClone(next),exists:()=>next!=null}};},
 };}};
-const txn='pos_txn_123456789',order={id:'POS-RECOVERY-1',shiftId:'SH-TEST',clientTxnId:txn,source:'pos',status:'Completed',total:100,lineItems:[{itemKey:'coffee',qty:1,unitTotal:100}],timestamp:10};
+const txn='pos_txn_123456789',order={id:'POS-RECOVERY-1',shiftId:'SH-TEST',clientTxnId:txn,source:'pos',status:'Completed',channel:'instore',payment:'Cash',payments:[{method:'Cash',amount:100,tendered:100,change:0}],total:100,lineItems:[{itemKey:'coffee',qty:1,unitTotal:100}],timestamp:10};
 const ctx={db,actor:{uid:'cashier-1'},data:{transactionId:txn,order,drawerDelta:{b100:1}},textField:v=>String(v),money:v=>Number(v),listFromFirebase:v=>v,activeOrderProjection:v=>Object.assign({},v,{projectionVersion:1}),now:1000};
+O.validatePaymentReconciliation(order,Number);
+O.validatePaymentReconciliation(Object.assign({},order,{payments:[{method:'Cash',amount:100,tendered:120,change:15,tipRounding:5}]}),Number);
+O.validatePaymentReconciliation(Object.assign({},order,{payments:[{method:'Cash',amount:40,tendered:40,change:0},{method:'GCash',amount:60,ref:'GC-SPLIT'}]}),Number);
+O.validatePaymentReconciliation(Object.assign({},order,{total:80,payments:[{method:'GCash',amount:100,ref:'GC-OVER'}],preCompletionCashRefund:{amount:20}}),Number);
+for(const [candidate,message] of [
+  [Object.assign({},order,{payments:[{method:'Cash',amount:100,tendered:0,change:0}]}),'blank cash tender was accepted'],
+  [Object.assign({},order,{payments:[{method:'Cash',amount:100,tendered:120,change:0}]}),'unreconciled cash excess was accepted'],
+  [Object.assign({},order,{payments:[{method:'GCash',amount:90,ref:'GC-SHORT'}]}),'short electronic payment was accepted'],
+  [Object.assign({},order,{payments:[{method:'Cash',amount:40,tendered:40,change:0},{method:'GCash',amount:50,ref:'GC-SPLIT-SHORT'}]}),'short split payment was accepted'],
+  [Object.assign({},order,{payments:[{method:'Bank Transfer',amount:120,ref:'BANK-OVER'}]}),'unrefunded electronic overpayment was accepted'],
+]){let blocked=false;try{O.validatePaymentReconciliation(candidate,Number);}catch(error){blocked=error.code==='failed-precondition';}assert(blocked,message);}
 let injected=false;try{await O.syncOfflinePosSaleCommand(ctx);}catch(error){injected=error.message==='injected shift transaction failure';}
 assert(injected,'partial failure was not injected after authoritative order write');
 assert(state.orders['POS-RECOVERY-1'].clientTxnId===txn,'order was not retained before the partial failure');
@@ -39,10 +50,10 @@ assert(state.orders['POS-MANAGER-RECOVERY-1'].paymentStatus==='pending'&&state.o
 const customTxn='pos_custom_123456789',customOrder=Object.assign({},order,{id:'POS-CUSTOM-RECOVERY-1',clientTxnId:customTxn,payment:'QR Wallet',payments:[{method:'QR Wallet',amount:100,ref:'QR-7788'}]});
 await O.syncOfflinePosSaleCommand({...ctx,data:{transactionId:customTxn,order:customOrder,drawerDelta:{}},now:3800});
 assert(state.orders['POS-CUSTOM-RECOVERY-1'].paymentStatus==='pending','custom online payment did not follow its manager-only policy');
-const platformTxn='pos_platform_123456789',platformOrder=Object.assign({},order,{id:'GF-RECOVERY-1',clientTxnId:platformTxn,total:550});
+const platformTxn='pos_platform_123456789',platformOrder=Object.assign({},order,{id:'GF-RECOVERY-1',clientTxnId:platformTxn,channel:'grabfood',payment:'GrabFood',payments:[{method:'GrabFood',amount:550,tendered:0,change:0}],total:550});
 const platformResult=await O.syncOfflinePosSaleCommand({...ctx,data:{transactionId:platformTxn,order:platformOrder,drawerDelta:{}},now:4000});
 assert(platformResult.orderId==='GF-RECOVERY-1'&&state.orders['GF-RECOVERY-1'].clientTxnId===platformTxn,'GrabFood recovery order was rejected');
-const pandaTxn='pos_platform_987654321',pandaOrder=Object.assign({},order,{id:'FP-RECOVERY-1',clientTxnId:pandaTxn,total:890});
+const pandaTxn='pos_platform_987654321',pandaOrder=Object.assign({},order,{id:'FP-RECOVERY-1',clientTxnId:pandaTxn,channel:'foodpanda',payment:'FoodPanda',payments:[{method:'FoodPanda',amount:890,tendered:0,change:0}],total:890});
 const pandaResult=await O.syncOfflinePosSaleCommand({...ctx,data:{transactionId:pandaTxn,order:pandaOrder,drawerDelta:{}},now:5000});
 assert(pandaResult.orderId==='FP-RECOVERY-1'&&state.orders['FP-RECOVERY-1'].clientTxnId===pandaTxn,'FoodPanda recovery order was rejected');
 const cancelledTxn='pos_cancelled_123456789';state.offlinePosSync[cancelledTxn]={state:'cancelled',reason:'test transaction'};
@@ -60,4 +71,4 @@ let reusedPrepaidTxn=false;try{await O.syncOfflinePosSaleCommand({...ctx,data:{t
 assert(reusedPrepaidTxn&&!state.orders['POS-PREPAID-RECOVERY-2'],'one prepaid transaction ID was allowed to create a second order');
 let badDenom=false;try{O.offlineDrawerDelta({fake100:1});}catch(error){badDenom=error.code==='invalid-argument';}
 assert(badDenom,'unknown denomination was accepted');
-console.log('PASS: POS sync repairs partial failure, protects electronic verification, and applies pre-completion cash refunds exactly once.');
+console.log('PASS: POS sync rejects unreconciled tenders, repairs partial failure, protects electronic verification, and applies pre-completion cash refunds exactly once.');

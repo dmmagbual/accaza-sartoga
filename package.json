@@ -62,6 +62,7 @@
     "test:payment-routing": "node tests/payment-routing-guidance-check.mjs",
     "test:payment-method-grouping": "node tests/payment-method-grouping-check.mjs",
     "test:payment-routing-consistency": "node tests/payment-routing-consistency-check.mjs",
+    "test:split-payment-preservation": "node tests/split-payment-preservation-check.mjs",
     "test:inventory-revaluation": "node tests/inventory-revaluation-check.mjs",
     "test:document-number": "node tests/document-number-check.mjs",
     "test:paid-order-cash-refund": "node tests/paid-order-cash-refund-check.mjs",
