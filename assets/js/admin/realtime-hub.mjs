@@ -1,5 +1,5 @@
-import{watchSalesPeriod,periodKey}from'./sales-period-data.mjs?v=540';
-import{createHistoricalPeriodStore}from'./historical-period-store.mjs?v=540';
+import{watchSalesPeriod,periodKey}from'./sales-period-data.mjs?v=541';
+import{createHistoricalPeriodStore}from'./historical-period-store.mjs?v=541';
 // One managed subscription per path. Sales reports combine indexed date queries;
 // POS-critical paths stay live and back-office paths attach only when needed.
 const HISTORY_BOUNDS={

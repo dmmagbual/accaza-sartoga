@@ -3588,12 +3588,12 @@ function renderPosCart(options){
     }
     var d=Number(disc&&disc.value)||0,discountApproval=null;
     var payments;
-    if(splitChk.checked){ var assigned=splitRows.reduce(function(s,r){return s+(Number(r.amount)||0);},0); if(Math.abs(assigned-tot)>0.01){alert('Split payments must add up to the total.');return;} if(splitRows.some(function(r){return !isCashMethod(r.method)&&!String(r.ref||'').trim();})){alert('Enter a reference number for every non-cash payment before charging.');return;}if(splitRows.some(function(r){return !isCashMethod(r.method)&&!resolvedPayment(r.method,r.receivingAccountId,r.amount,r.ref);})){alert('Assign a valid receiving account to every non-cash payment in POS Settings.');return;}
+    if(splitChk.checked){ var assigned=splitRows.reduce(function(s,r){return s+(Number(r.amount)||0);},0); if(Math.abs(assigned-tot)>0.01){alert('Split payments must add up to the total.');return;}if(splitRows.some(function(r){return !(Number(r.amount)>0);})){alert('Each split payment must be greater than zero.');return;} if(splitRows.some(function(r){return !isCashMethod(r.method)&&!String(r.ref||'').trim();})){alert('Enter a reference number for every non-cash payment before charging.');return;}if(splitRows.some(function(r){return !isCashMethod(r.method)&&!resolvedPayment(r.method,r.receivingAccountId,r.amount,r.ref);})){alert('Assign a valid receiving account to every non-cash payment in POS Settings.');return;}
       var _splitBad=false;
       payments=splitRows.map(function(r,i){
         if(isCashMethod(r.method)){ var amt=Number(r.amount)||0;
           if(denomTrackingOn()){ var rc={},rt=0; document.querySelectorAll('[data-sdrow="'+i+'"]').forEach(function(inp){var q=Number(inp.value)||0;if(q>0){rc[inp.getAttribute('data-sdk')]=(rc[inp.getAttribute('data-sdk')]||0)+q;rt+=q*(Number(inp.getAttribute('data-sdv'))||0);}}); rt=Math.round(rt*100)/100; if(rt<amt-0.001)_splitBad=true; var chg=Math.round((rt-amt)*100)/100; var mc=makeChange(chg, mergeDenoms(shiftDrawer(),rc)); return {method:r.method,amount:amt,tendered:rt,change:chg,ref:'',cashReceived:rc,cashChange:mc.denoms,changeShort:mc.ok?0:mc.short}; }
-          return {method:r.method,amount:amt,tendered:0,change:0,ref:''};
+          return {method:r.method,amount:amt,tendered:amt,change:0,ref:'',tipRounding:0};
         }
         return resolvedPayment(r.method,r.receivingAccountId,r.amount,r.ref);
       });
