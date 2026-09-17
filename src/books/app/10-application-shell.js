@@ -159,6 +159,19 @@ const App = {
     window.__financeCmd({action:voidIt?"void_manual_journal":"reverse_manual_journal",commandId:(voidIt?"books_void_":"books_reverse_")+id,originalMovementId:id,date:todayStr(),reason:reason.trim()}).then(()=>this.render()).catch(err=>alert("Could not "+(voidIt?"void":"reverse")+" journal: "+((err&&err.message)||err)));
   },
   closeModal(){ document.getElementById("modalBg").classList.remove("show"); document.getElementById("modal").innerHTML=""; },
+  viewEntry(id){
+    const e=ENTRIES().find(x=>x.id===id);if(!e)return alert('This journal entry is no longer available. Refresh Finance Books and try again.');
+    const lines=(e.lines||[]),dr=r2(lines.reduce((sum,line)=>sum+(Number(line.debit)||0),0)),cr=r2(lines.reduce((sum,line)=>sum+(Number(line.credit)||0),0)),status=csvEntryStatus(e),lineRows=lines.map(line=>`<tr><td><span class="acc-code">${esc(line.code||'')}</span> ${esc(accName(line.code)||'Unknown account')}</td><td class="num">${Number(line.debit)?peso(line.debit):''}</td><td class="num">${Number(line.credit)?peso(line.credit):''}</td></tr>`).join('');
+    const m=document.getElementById('modal');
+    m.innerHTML=`<div class="modal-head"><h3>Journal entry</h3><button class="x" onclick="App.closeModal()">×</button></div>
+      <div class="modal-body ledger-modal-body"><div class="ledger-current-balance"><span>Reference</span><strong>${esc(e.ref||e.reference||e.id)}</strong></div>
+      <div class="tiny muted ledger-period-note">${esc(e.date||'')} · Entry ID ${esc(e.id||'')} · ${esc(status)}${e.sourceType||e.source?` · ${esc(e.sourceType||e.source)}`:''}</div>
+      <div class="card card-pad" style="margin:.8rem 0"><b>${esc(e.memo||e.description||'No description')}</b>${e.reversalOf?`<div class="tiny muted">Reversal of ${esc(e.reversalOf)}</div>`:''}</div>
+      <div class="tbl-wrap"><table class="account-ledger-table"><thead><tr><th>Account</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>${lineRows||'<tr><td colspan="3" class="empty">No journal lines are available.</td></tr>'}</tbody><tfoot><tr><th>Total</th><th class="num">${peso(dr)}</th><th class="num">${peso(cr)}</th></tr></tfoot></table></div>
+      <div class="tiny muted ledger-period-note">${dr===cr?'Balanced double-entry journal.':'Journal totals require review before relying on this entry.'}</div></div>
+      <div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Close</button></div>`;
+    document.getElementById('modalBg').classList.add('show');
+  },
   cashJournalHistory(id){
     if(!window.__financeCmd)return alert('Sign in before viewing revision history.');
     window.__financeCmd({action:'cash_journal_history',commandId:'history_'+Date.now(),originalMovementId:id}).then(result=>{
@@ -174,7 +187,8 @@ const App = {
     // Running balance uses the reconciled normal-side rule: running += DEBIT_NORMAL[a.type]?(dr-crd):(crd-dr)
     const detail=accountLedgerDetail(code),a=detail.account,ents=detail.rows,opening=detail.opening;
     const rows = ents.map(e=>{
-      return `<tr class="${e.reversalOf?'reversed':''}"><td>${e.date}</td><td>${esc(e.reference)} ${e.reversalOf?'<span class=badge-rev>rev</span>':''}</td><td>${esc(e.memo)}</td>
+      const entryLink=`<button type="button" class="linkish ledger-entry-link" onclick="App.viewEntry('${esc(e.id)}')" title="View the complete journal entry">`;
+      return `<tr class="${e.reversalOf?'reversed':''}"><td>${entryLink}${esc(e.date)}</button></td><td>${entryLink}${esc(e.reference)}</button> ${e.reversalOf?'<span class=badge-rev>rev</span>':''}</td><td>${esc(e.memo)}</td>
         <td class="num">${e.debit?peso(e.debit):''}</td><td class="num">${e.credit?peso(e.credit):''}</td><td class="num">${peso(e.balance)}</td></tr>`;
     }).join("");
     const m=document.getElementById("modal");
