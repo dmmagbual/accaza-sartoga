@@ -25,8 +25,8 @@ export function loadFunctions(db, {expose = [], now, libOverrides = {}} = {}) {
     'firebase-admin/storage': {getStorage: () => ({bucket: () => ({})})},
   };
   const req = (name) => {
-    if (stubs[name]) return stubs[name];
     if (libOverrides[name]) return libOverrides[name];
+    if (stubs[name]) return stubs[name];
     if (name.startsWith('./lib/')) return nodeRequire(`./lib/${name.slice(6)}`);
     return nodeRequire(name);
   };
