@@ -40,6 +40,13 @@ export function journalBasisThrough(monthlyNet,monthRows,cutoff){
   return rows;
 }
 
+export function canPostOpeningBalance(recon){
+  return !!recon && recon.balanced!==true && Number(recon.unmappedCount)===0;
+}
+export function canPostReconciliationAdjustment(recon){
+  return !!recon && recon.balanced!==true && Number(recon.unmappedCount)===0 && Math.abs(Number(recon.clearingBalance)||0)<0.005;
+}
+
 export function reconcileInventoryBooks(itemRows,movements,cutoffExclusive){
   const names=Object.fromEntries(INVENTORY_ACCOUNTS),rowsByCode={};
   INVENTORY_ACCOUNTS.forEach(function(row){rowsByCode[row[0]]={code:row[0],name:row[1],stockValue:0,booksValue:0,itemCount:0};});
