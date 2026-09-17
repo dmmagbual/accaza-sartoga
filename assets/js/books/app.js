@@ -14,15 +14,11 @@
 const TYPES = ["Asset","Liability","Equity","Income","COGS","Expense"];
 const DEBIT_NORMAL = {Asset:true, COGS:true, Expense:true, Liability:false, Equity:false, Income:false};
 const TYPE_ORDER = {Asset:1, Liability:2, Equity:3, Income:4, COGS:5, Expense:6};
-const SYSTEM_ACCOUNT_CONTROLS = {
-  "1000":"Use Admin > Register", "1001":"Use Finance > Undeposited Collection", "1005":"Use Admin > POS Settings",
-  "1010":"Use Finance > Cash Flow", "1011":"Use Finance > Cash Flow", "1012":"Use Finance > Cash Flow", "1013":"Use Finance > Cash Flow", "1014":"Use Finance > Cash Flow", "1020":"Use Finance > Cash Flow", "1021":"Use Finance > Cash Flow",
-  "1050":"Use Finance > Platform Payouts", "1100":"Use Admin Sales or Finance > Receivables", "1110":"Use Finance > Receivables", "1115":"Use Admin > Cash Payments, then Admin > Purchases", "1120":"Reserved for the controlled Staff Advances workflow (not yet available)",
-  "1190":"Use Admin > cash variance review", "1200":"Use Admin > Purchases or Inventory", "1210":"Use Admin > Purchases or Inventory", "1220":"Use Admin > Purchases or Inventory", "1230":"Use Admin > Purchases or Inventory", "1240":"Use Admin > Purchases or Inventory", "1270":"Use Admin > Purchases or Inventory", "1280":"Use Admin > Purchases or Inventory", "1290":"Use Admin > Purchases repair",
-  "1900":"Review the source in Finance; do not clear without evidence", "2000":"Use Finance > Payables or Admin > Purchases", "2020":"Use Finance > Platform Payouts", "2030":"Use Finance > Payables", "2050":"Use Finance > Payables", "2090":"Use Admin > Purchases repair", "2100":"Use Admin > cash variance review",
-  "3000":"Use Finance > owner funding", "3050":"Use Admin > POS Settings", "3100":"Use Finance > owner withdrawal", "3900":"System closing account"
-};
-const systemAccountWorkflow = code => SYSTEM_ACCOUNT_CONTROLS[String(code)]||"";
+// Server-authoritative: the same postingRule/correctionMessage fields the
+// server enforces in postFinancialCommand live on each /booksChart record
+// and are synced verbatim into window.__booksChart (see live-pos.mjs). No
+// separate client-side list to keep in sync by hand.
+const systemAccountWorkflow = code => { const chart=window.__booksChart||{}, row=chart[String(code)]; return (row&&row.correctionMessage)||""; };
 
 /* Display-only control accounts. They never enter the journal or stored ledger. */
 const ACCOUNT_GROUPS = [
