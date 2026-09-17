@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 
 const read = (p) => fs.readFileSync(p, 'utf8');
 const register = read('src/admin/register/40-revolving-fund.js');
+const registerBootstrap = read('src/admin/register/00-bootstrap-payment-controls.js');
 const functions = read('src/functions/41-expense-assets.js') + read('src/functions/21-operational-controls.js');
 const entry = read('src/functions/42a-financial-command-entry.js');
 const books = read('src/books/app/55-payable-batch.js') + read('src/books/app/50-controlled-transactions.js');
 const split = read('src/admin/pos/50e-cart-checkout.js') + read('src/admin/pos/50f-sale-persistence.js');
 
 for (const type of ['loan_repayment', 'staff_advance', 'customer_refund']) assert.match(register, new RegExp(type), `cash-payment form must expose ${type}`);
+assert.match(registerBootstrap, /a\.subscribe\('booksChart',function\(s\)\{booksChartMap=s\.val\(\)\|\|\{\};if\(isTab\('petty'\)\)renderPetty\(\);\}\);/, 'Cash Payments must refresh its controlled loan and interest selectors when the Finance Books chart arrives');
 assert.match(register, /conversionMovementId:controlledPosting\?'controlled_pending'/, 'controlled vouchers must bypass the legacy generic expense trigger');
 assert.match(functions, /postControlledPettyVoucher/, 'controlled voucher approval must have a dedicated posting path');
 assert.match(functions, /conversionMovementId: \["loan_repayment","staff_advance","customer_refund"\]/, 'server approval must enforce the controlled posting marker');
