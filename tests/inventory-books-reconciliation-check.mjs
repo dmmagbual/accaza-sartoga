@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {inventoryBookCode,reconcileInventoryBooks} from '../assets/js/admin/inventory-books-reconciliation.mjs';
+import {inventoryBookCode,reconcileInventoryBooks,canPostOpeningBalance,canPostReconciliationAdjustment} from '../assets/js/admin/inventory-books-reconciliation.mjs';
 
 assert.equal(inventoryBookCode('coa:1210'),'1210');
 assert.equal(inventoryBookCode('inventory:control'),'1200');
@@ -38,5 +38,32 @@ assert.equal(pennyResult.rows.find(function(r){return r.code==='1220';}).withinT
 assert.equal(pennyResult.balanced,true);
 const twoCentResult=reconcileInventoryBooks([{inventoryAccount:'1220',quantity:1,unitCost:99.98}],[{lines:[{code:'1220',debit:100,credit:0}]}]);
 assert.equal(twoCentResult.balanced,false);
+
+
+// --- Button-visibility gating (regression: the opening-balance repost was twice
+// silently re-hidden behind a 1290-clearing check the server-side repost doesn't
+// require -- PR #171 fixed it once, PR d73fdf9c/e8222664 quietly reintroduced it).
+// Opening-balance re-post has no clearing-balance requirement server-side (it trues
+// 1290 itself), so it must stay available whenever unmapped===0, regardless of 1290.
+// Gain/(Loss) must never be offered while 1290 is dirty -- it deliberately excludes
+// 1290 from its own rows, and the server hard-blocks it, since posting a variance
+// there would launder a receiving/COGS-mapping defect into a P&L line.
+const reconciled={balanced:true,unmappedCount:0,clearingBalance:0};
+assert.equal(canPostOpeningBalance(reconciled),false,'fully reconciled: nothing to post');
+assert.equal(canPostReconciliationAdjustment(reconciled),false,'fully reconciled: nothing to post');
+
+const unmapped={balanced:false,unmappedCount:2,clearingBalance:0};
+assert.equal(canPostOpeningBalance(unmapped),false,'unmapped items must block opening balance (server hard-blocks this)');
+assert.equal(canPostReconciliationAdjustment(unmapped),false,'unmapped items must block gain/loss (server hard-blocks this)');
+
+const dirtyClearing={balanced:false,unmappedCount:0,clearingBalance:-2861.47};
+assert.equal(canPostOpeningBalance(dirtyClearing),true,'opening-balance re-post must stay available with a dirty 1290 -- it is the action that zeroes 1290');
+assert.equal(canPostReconciliationAdjustment(dirtyClearing),false,'gain/loss must stay blocked while 1290 is dirty -- server hard-blocks this to avoid laundering a receiving defect into P&L');
+
+const roundingOnly={balanced:false,unmappedCount:0,clearingBalance:0};
+assert.equal(canPostOpeningBalance(roundingOnly),true,'cents-level rounding drift: opening-balance re-post available');
+assert.equal(canPostReconciliationAdjustment(roundingOnly),true,'cents-level rounding drift: gain/loss also available once clearing is clean');
+
+console.log('PASS: opening-balance and gain/loss button visibility gate independently on the server\'s actual preconditions.');
 
 console.log('PASS: inventory valuation reconciles by account against complete Finance Books movements.');

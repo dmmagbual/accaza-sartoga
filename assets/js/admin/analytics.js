@@ -1,4 +1,4 @@
-import{reconcileInventoryBooks,journalBasisThrough}from'./inventory-books-reconciliation.mjs?v=541';
+import{reconcileInventoryBooks,journalBasisThrough,canPostOpeningBalance,canPostReconciliationAdjustment}from'./inventory-books-reconciliation.mjs?v=547';
 (function(){
 'use strict';
 var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={},receiptsMap={},posSettingsMap={},inventoryBooksJournal={},payoutCashAccounts={};
@@ -897,11 +897,21 @@ function inventoryBooksEntriesThrough(cutoff){
   if(inventoryBooksPastMonth.key!==key&&A&&A.readBooksJournalRange){inventoryBooksPastMonth={key:key,rows:null};A.readBooksJournalRange(month+'-01',cut).then(function(rows){if(inventoryBooksPastMonth.key!==key)return;inventoryBooksPastMonth.rows=rows||{};if(isTab('stockvalue'))renderStockValue();}).catch(function(e){console.error('Stock value journal month load failed',e);if(inventoryBooksPastMonth.key===key)inventoryBooksPastMonth={key:'',rows:null};});}
   return inventoryBooksPastMonth.key===key&&inventoryBooksPastMonth.rows?journalBasisThrough(inventoryBooksMonthly,inventoryBooksPastMonth.rows,cut):null;
 }
+function inventoryReconciliationActionHtml(recon){
+  if(recon.balanced)return '';
+  var uNote=recon.unmappedCount+' stock item(s) unmapped. Map them first.';
+  var blk=function(t,r){return '<div class="az-note az-warn"><b>'+t+':</b> blocked — '+r+'</div>';};
+  var openLbl='Post / re-post beginning inventory',glLbl='Post current count variance';
+  var openHtml=canPostOpeningBalance(recon)?'<button class="pz-btn ok" id="inventoryOpeningBalanceBtn">'+openLbl+' → Owner\'s Capital</button>':blk(openLbl,uNote);
+  var glReason=recon.unmappedCount>0?uNote:('1290 Clearing carries '+peso(recon.clearingBalance)+' — post/re-post opening balance, or fix receiving.');
+  var glHtml=canPostReconciliationAdjustment(recon)?'<button class="pz-btn" id="inventoryAutoAdjustBtn">'+glLbl+' → Gain / (Loss)</button>':blk(glLbl,glReason);
+  return '<div style="margin-top:.75rem;display:flex;gap:.5rem;flex-wrap:wrap;">'+openHtml+glHtml+'<div class="az-note" style="width:100%;margin-top:.1rem;"><b>Choose by source:</b> beginning stock belongs to Owner\'s Capital and never affects profit. Use Gain / (Loss) only for a verified physical-count or valuation difference after operations began. Both actions preserve quantities and create dated audit references.</div></div>';
+}
 function inventoryReconciliationHtml(recon,ready,history){
   if(!ready)return '<div class="pz-card" style="margin-bottom:0.8rem;border-left:4px solid #b08d57;"><b>Inventory-to-Books reconciliation</b><div class="az-note" style="margin-top:0.35rem;">Preparing the authoritative Finance Books journal… No partial balance is presented as final.</div></div>';
   var roundingOnly=recon.balanced&&Math.abs(recon.totals.difference)>=0.005,status=recon.balanced?'<span style="color:#267354;">✓ Reconciled'+(roundingOnly?' · within ₱0.01 rounding tolerance':'')+'</span>':'<span style="color:#b44336;">⚠ Not reconciled</span>';
   var rows=recon.rows.map(function(r){var diff=r.difference,within=r.withinTolerance===true,meaning=Math.abs(diff)<0.005?'Balanced':(within?'Within rounding tolerance':(diff>0?'Stock valuation is higher':'Books balance is higher'));return '<tr><td><b>'+esc(r.code)+'</b> · '+esc(r.name)+'</td><td class="r">'+r.itemCount+'</td><td class="r">'+peso(r.stockValue)+'</td><td class="r">'+peso(r.booksValue)+'</td><td class="r" style="font-weight:700;color:'+(within?'#267354':'#b44336')+';">'+peso(diff)+'</td><td>'+meaning+'</td></tr>';}).join('');
-  var action=!recon.balanced&&recon.unmappedCount===0&&Math.abs(recon.clearingBalance)<.005?'<div style="margin-top:.75rem;display:flex;gap:.5rem;flex-wrap:wrap;"><button class="pz-btn ok" id="inventoryOpeningBalanceBtn">Post / re-post beginning inventory → Owner\'s Capital</button><button class="pz-btn" id="inventoryAutoAdjustBtn">Post current count variance → Gain / (Loss)</button><div class="az-note" style="width:100%;margin-top:.1rem;"><b>Choose by source:</b> beginning stock belongs to Owner\'s Capital and never affects profit. Use Gain / (Loss) only for a verified physical-count or valuation difference after operations began. Both actions preserve quantities and create dated audit references.</div></div>':'';
+  var action=inventoryReconciliationActionHtml(recon);
   return '<div class="pz-card" style="margin-bottom:0.8rem;"><div style="display:flex;justify-content:space-between;gap:0.6rem;flex-wrap:wrap;"><div><b>Inventory-to-Books reconciliation</b><div class="az-note">As of the selected To date · Difference = stock-item valuation − Finance Books balance.</div></div><div style="font-weight:700;">'+status+'</div></div><div style="overflow-x:auto;margin-top:0.7rem;"><table class="pz-tbl"><thead><tr><th>Inventory account</th><th class="r">Items</th><th class="r">Stock valuation</th><th class="r">Books balance</th><th class="r">Difference</th><th>Meaning</th></tr></thead><tbody>'+rows+'<tr style="font-weight:700;"><td>TOTAL</td><td></td><td class="r">'+peso(recon.totals.stockValue)+'</td><td class="r">'+peso(recon.totals.booksValue)+'</td><td class="r">'+peso(recon.totals.difference)+'</td><td>'+(recon.balanced?'Balanced':'Requires reconciliation')+'</td></tr></tbody></table></div><div class="az-note" style="margin-top:0.65rem;">Positive difference means stock valuation exceeds Books and needs an inventory debit or source repair. Negative difference means Books exceeds physical stock. Unmapped items: '+recon.unmappedCount+' · Receiving clearing 1290: '+peso(recon.clearingBalance)+'.</div>'+action+'</div>';
 }
 function postInventoryOpeningBalance(rng,btn){
