@@ -5,7 +5,7 @@ const read = (p) => fs.readFileSync(p, 'utf8');
 const register = read('src/admin/register/40-revolving-fund.js');
 const registerBootstrap = read('src/admin/register/00-bootstrap-payment-controls.js');
 const subscriptionHub = read('assets/js/admin/realtime-hub.mjs');
-const functions = read('src/functions/41-expense-assets.js') + read('src/functions/21-operational-controls.js');
+const functions = read('src/functions/41-expense-assets.js') + read('src/functions/21-operational-controls.js') + read('src/functions/21-staff-advance-liquidation.js');
 const entry = read('src/functions/42a-financial-command-entry.js');
 const books = read('src/books/app/55-payable-batch.js') + read('src/books/app/50-controlled-transactions.js');
 const split = read('src/admin/pos/50e-cart-checkout.js') + read('src/admin/pos/50f-sale-persistence.js');

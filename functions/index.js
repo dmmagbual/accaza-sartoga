@@ -1213,7 +1213,7 @@ const MANAGER_APPROVAL_ACTIONS = new Set([
   "reject_petty_voucher", "void_petty_voucher", "return_supplier_payment", "manual_discount", "cash_in", "purchase_cash_advance", "fixed_float_exception", "reverse_purchase",
   "rekey_platform_order", "reverse_platform_payout", "correct_platform_presettlement", "set_undeposited_opening_balance", "retire_revolving_fund",
   "repair_closed_shift_turnover", "repair_reversed_payout_deposit", "reconcile_undeposited_custody", "certify_financial_close",
-  "convert_suspense_supplier_advance", "correct_completed_order", "completed_order_cash_refund",
+  "convert_suspense_supplier_advance", "correct_completed_order", "completed_order_cash_refund", "liquidate_staff_advance", "reverse_staff_advance_settlement",
 ]);
 function transactionCurrent(current, initial, state) {
   const value = current == null && !state.seen ? initial : current;
@@ -1526,6 +1526,80 @@ exports.managePettyVoucher = onCall(
       const committed = await commitFinancial(db,correctionId,movement,actor,writes);return {voucherId:id,action,revision,movementId:correctionId,duplicate:committed.duplicate};
     }
     if (action === "return") {if(voucher.transactionType!=="purchase_advance"||voucher.status!=="approved"||voucher.voided===true)throw new HttpsError("failed-precondition","Only an active supplier payment can be returned.");const remaining=Financial.money(voucher.remainingAmount!=null?voucher.remainingAmount:value);if(!(remaining>0))throw new HttpsError("failed-precondition","This supplier payment has no unallocated balance to return.");if(!reason)throw new HttpsError("invalid-argument","A return reason is required.");const funding=advanceFundingAccount(voucher),approval=await claimManagerApproval(db,data,"return_supplier_payment",id,remaining,`return_supplier_payment_${id}`),movementId=`petty_return_${id}`,movement=Financial.movement("revolving_fund_supplier_payment_return","pettyVoucher",id,[Financial.line(funding.account,remaining,0,funding.kind==="undeposited"?"Returned to Undeposited Collection":"Returned to selected cash account"),Financial.line(`asset:purchase_cash_advance:${id}`,0,remaining,"Clear unallocated supplier payment")],{occurredAt:now,actorName:approval.record.approvedName||approval.record.approvedEmail||approval.record.approvedRole,approvalId:approval.id}),writes=Object.assign({},approval.usedWrites,funding.kind==="undeposited"?poolCustodyInflowRecord(`petty_return_${id}`,remaining,"Supplier payment returned",now,`petty_return_${id}`):{},{[`pettyCashVouchers/${id}/remainingAmount`]:0,[`pettyCashVouchers/${id}/allocationStatus`]:(Number(voucher.allocatedAmount)||0)>0?"partially_allocated_returned":"returned_unallocated",[`pettyCashVouchers/${id}/returnedAmount`]:remaining,[`pettyCashVouchers/${id}/returnedAt`]:now,[`pettyCashVouchers/${id}/returnReason`]:reason,[`pettyCashVouchers/${id}/returnApprovalId`]:approval.id,[`operationalAudit/${now}_${id}_return`]:operationalAuditRecord("return_supplier_payment","pettyVoucher",id,actor,{approvalId:approval.id,amount:remaining,reason})});const committed=await commitFinancial(db,movementId,movement,actor,writes);return {voucherId:id,action,amount:remaining,duplicate:committed.duplicate};}
+    if (action === "liquidate") {
+      if (voucher.transactionType !== "staff_advance" || voucher.status !== "approved" || voucher.voided === true) throw new HttpsError("failed-precondition", "Only an active staff advance can be liquidated.");
+      const remaining = Financial.money(voucher.remainingAmount != null ? voucher.remainingAmount : value);
+      if (!(remaining > 0)) throw new HttpsError("failed-precondition", "This staff advance has no outstanding balance.");
+      const settlementType = financeText(data.settlementType, 30);
+      if (!["cash", "payroll_deduction", "write_off"].includes(settlementType)) throw new HttpsError("invalid-argument", "Settlement type must be cash, payroll deduction, or write-off.");
+      const settlementAmount = Financial.money(data.amount);
+      if (!(settlementAmount > 0)) throw new HttpsError("invalid-argument", "Settlement amount must be greater than zero.");
+      if (settlementAmount > remaining + 0.009) throw new HttpsError("failed-precondition", `Settlement exceeds the outstanding balance of ${remaining.toFixed(2)}.`);
+      if (!reason) throw new HttpsError("invalid-argument", "A settlement reference or explanation is required.");
+      if (settlementType === "write_off" && !["owner", "superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner or superadmin can write off a staff advance.");
+      const settlementId = financeKey(data.commandId, "Command ID"), date = financeDate(data.date);
+      if ((await db.ref(`/financialMovements/${settlementId}`).get()).exists()) return {voucherId: id, action, settlementId, duplicate: true};
+      await assertAccountingPeriodOpen(db, date, "liquidating this staff advance");
+      let debitAccount = "", debitLabel = "", custodyWrites = {}, settlementAccountId = "";
+      if (settlementType === "cash") {
+        settlementAccountId = financeText(data.accountId, 120) || "undeposited";
+        if (["register", "cash_float"].includes(settlementAccountId)) throw new HttpsError("failed-precondition", "Register Cash is retired and Cash Float is controlled. Select Undeposited Collection, Cash on Hand, or an active bank/cash account.");
+        const destination = advanceFundingAccount({fundingAccountId: settlementAccountId});
+        debitAccount = destination.account;
+        if (destination.kind === "undeposited") custodyWrites = poolCustodyInflowRecord(settlementId, settlementAmount, "Staff advance repaid", now, settlementId);
+        debitLabel = "Staff advance cash repayment";
+      } else if (settlementType === "payroll_deduction") {
+        debitAccount = "coa:6000"; debitLabel = "Staff advance recovered through payroll";
+      } else {
+        debitAccount = "coa:6079"; debitLabel = "Staff advance written off";
+      }
+      const approval = await claimManagerApproval(db, data, "liquidate_staff_advance", id, settlementAmount, `liquidate_staff_advance_${settlementId}`);
+      const approvedBy = approval.record.approvedName || approval.record.approvedEmail || approval.record.approvedRole;
+      const movement = Financial.movement(`staff_advance_${settlementType}`, "pettyVoucher", id, [Financial.line(debitAccount, settlementAmount, 0, debitLabel), Financial.line("coa:1120", 0, settlementAmount, "Staff advance liquidated")], {occurredAt: cashPaymentOccurredAt({date}), actorName: approvedBy, approvalId: approval.id, voucherNo: financeText(voucher.voucherNo, 60), payee: financeText(voucher.recipient || voucher.staffName, 160), settlementType, reference: reason});
+      const nextRemaining = Financial.money(remaining - settlementAmount), nextLiquidated = Financial.money(Financial.money(voucher.liquidatedAmount || 0) + settlementAmount);
+      const writes = Object.assign({}, approval.usedWrites, custodyWrites, {
+        [`pettyCashVouchers/${id}/remainingAmount`]: nextRemaining,
+        [`pettyCashVouchers/${id}/liquidatedAmount`]: nextLiquidated,
+        [`pettyCashVouchers/${id}/liquidationStatus`]: nextRemaining > 0.009 ? "partially_liquidated" : "liquidated",
+        [`pettyCashVouchers/${id}/settlements/${settlementId}`]: {type: settlementType, amount: settlementAmount, date, reference: reason, accountId: settlementAccountId, movementId: settlementId, ts: now, createdBy: actor.uid, createdByRole: actor.role, approvalId: approval.id},
+        [`operationalAudit/${now}_${settlementId}`]: operationalAuditRecord("liquidate_staff_advance", "pettyVoucher", id, actor, {settlementId, settlementType, amount: settlementAmount, remainingAmount: nextRemaining, approvalId: approval.id, reason, accounting: settlementType === "cash" ? "Debit the selected cash account; credit Staff Advances." : settlementType === "payroll_deduction" ? "Debit Salaries & Wages; credit Staff Advances." : "Debit Staff Advance Write-offs; credit Staff Advances."}),
+      });
+      const committed = await commitFinancial(db, settlementId, movement, actor, writes);
+      return {voucherId: id, action, settlementId, amount: settlementAmount, remainingAmount: nextRemaining, duplicate: committed.duplicate};
+    }
+    if (action === "reverse_settlement") {
+      if (!["owner", "superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner or superadmin can reverse a staff advance settlement.");
+      const settlementId = financeKey(data.settlementId, "Settlement ID"), settlement = (voucher.settlements || {})[settlementId];
+      if (!settlement) throw new HttpsError("not-found", "Settlement not found on this staff advance.");
+      if (settlement.reversedAt) throw new HttpsError("failed-precondition", "This settlement has already been reversed.");
+      if (!reason) throw new HttpsError("invalid-argument", "A reversal reason is required.");
+      const original = (await db.ref(`/financialMovements/${settlementId}`).get()).val();
+      if (!original || !Array.isArray(original.lines) || !original.lines.length) throw new HttpsError("failed-precondition", "The original settlement movement is missing. Repair the ledger before reversing it.");
+      if (original.reversedByMovementId) throw new HttpsError("failed-precondition", "This settlement movement has already been reversed.");
+      const reverseId = `staff_advance_settle_reverse_${settlementId}`;
+      if ((await db.ref(`/financialMovements/${reverseId}`).get()).exists()) return {voucherId: id, action, settlementId, duplicate: true};
+      const date = financeDate(data.date);
+      await assertAccountingPeriodOpen(db, date, "reversing this staff advance settlement");
+      const settlementValue = Financial.money(settlement.amount);
+      const approval = await claimManagerApproval(db, data, "reverse_staff_advance_settlement", id, settlementValue, `reverse_staff_advance_settlement_${settlementId}`);
+      const reversal = Financial.reverseMovement(Object.assign({}, original, {id: settlementId}), `staff_advance_${settlement.type}_reversed`, reason);
+      if (!BooksBridge.linesBalanced(reversal.lines)) throw new HttpsError("failed-precondition", "The calculated settlement reversal is unbalanced. Review the original movement before correcting.");
+      const movement = Object.assign(reversal, {occurredAt: cashPaymentOccurredAt({date}), actorName: approval.record.approvedName || approval.record.approvedEmail || approval.record.approvedRole, reason, reversalOf: settlementId});
+      const nextRemaining = Financial.money(Financial.money(voucher.remainingAmount || 0) + settlementValue), nextLiquidated = Financial.money(Math.max(0, Financial.money(voucher.liquidatedAmount || 0) - settlementValue));
+      let custodyWrites = {}; if (settlement.type === "cash" && (settlement.accountId === "undeposited" || !settlement.accountId)) { const custodyOut = await poolCustodyOutflow(db, settlementValue); if (custodyOut.shortfall > 0.009) throw new HttpsError("failed-precondition", `Reversing this repayment exceeds available Undeposited Collection by ${custodyOut.shortfall.toFixed(2)}.`); custodyWrites = custodyOut.writes; }
+      const writes = Object.assign({}, approval.usedWrites, custodyWrites, {
+        [`pettyCashVouchers/${id}/remainingAmount`]: nextRemaining,
+        [`pettyCashVouchers/${id}/liquidatedAmount`]: nextLiquidated,
+        [`pettyCashVouchers/${id}/liquidationStatus`]: nextLiquidated > 0.009 ? "partially_liquidated" : "unliquidated",
+        [`pettyCashVouchers/${id}/settlements/${settlementId}/reversedAt`]: now,
+        [`pettyCashVouchers/${id}/settlements/${settlementId}/reversalMovementId`]: reverseId,
+        [`pettyCashVouchers/${id}/settlements/${settlementId}/reversalReason`]: reason,
+        [`financialMovements/${settlementId}/reversedByMovementId`]: reverseId,
+        [`operationalAudit/${now}_${reverseId}`]: operationalAuditRecord("reverse_staff_advance_settlement", "pettyVoucher", id, actor, {settlementId, reverseId, amount: settlementValue, remainingAmount: nextRemaining, reason, approvalId: approval.id}),
+      });
+      const committed = await commitFinancial(db, reverseId, movement, actor, writes);
+      return {voucherId: id, action, settlementId, reverseId, amount: settlementValue, remainingAmount: nextRemaining, duplicate: committed.duplicate};
+    }
     if (action === "approve") {
       if (voucher.status !== "pending") throw new HttpsError("failed-precondition", "Only pending vouchers can be approved.");
       if (voucher.transactionType === "purchase_advance") await requireActiveSupplier(db,voucher.supplierId,voucher.supplierName||voucher.recipient);
@@ -1566,6 +1640,7 @@ exports.managePettyVoucher = onCall(
     } else if (action === "void") {
       if (voucher.status !== "approved" || voucher.voided === true) throw new HttpsError("failed-precondition", "Only an active approved voucher can be voided.");
       if (voucher.transactionType === "purchase_advance" && (Object.keys(voucher.allocations || {}).length || voucher.returnedAt)) throw new HttpsError("failed-precondition", "An allocated or returned supplier payment cannot be voided. Reverse its linked activity first.");
+      if (voucher.transactionType === "staff_advance" && Object.values(voucher.settlements || {}).some((row) => row && !row.reversedAt)) throw new HttpsError("failed-precondition", "A liquidated staff advance cannot be voided. Reverse its settlements first.");
       if (!reason) throw new HttpsError("invalid-argument", "A void reason is required."); approvalAction = "void_petty_voucher";
     } else throw new HttpsError("invalid-argument", "Petty voucher action is invalid.");
     const approval = await claimManagerApproval(db, data, approvalAction, id, value, `${approvalAction}_${id}`);
@@ -2909,7 +2984,7 @@ const CONTROL_ACCOUNT_RULES = {
   "1100":{postingRule:"blocked",correctionMessage:"Receivable control accounts must be corrected from Receivables or the related sale so the customer or platform subledger remains linked."},
   "1110":{postingRule:"blocked",correctionMessage:"Receivable control accounts must be corrected from Receivables or the related sale so the customer or platform subledger remains linked."},
   "1115":{postingRule:"blocked",correctionMessage:"Supplier Advances is system-controlled. Record or correct the payment in Admin > Cash Payments, then allocate it in Admin > Purchases so the supplier balance, inventory, and Finance Books remain linked."},
-  "1120":{postingRule:"blocked",correctionMessage:"Staff Advances is reserved for its staff-advance subledger. That controlled workflow is not yet available, so do not post this account through a manual journal."},
+  "1120":{postingRule:"blocked",correctionMessage:"Staff Advances is reserved for its staff-advance subledger. Issue and liquidate advances from Admin > Cash Payments so the staff balance and Finance Books remain linked."},
   "1190":{postingRule:"requires_linked_discrepancy",correctionMessage:"Use Admin > cash variance review to link this journal to the exact shortage before posting."},
   "1200":{postingRule:"blocked",correctionMessage:"Inventory control accounts must be corrected from Purchases so quantities, valuation, and Finance Books remain linked."},
   "1210":{postingRule:"blocked",correctionMessage:"Inventory control accounts must be corrected from Purchases so quantities, valuation, and Finance Books remain linked."},
@@ -2930,6 +3005,7 @@ const CONTROL_ACCOUNT_RULES = {
   "3050":{postingRule:"open",correctionMessage:"Use Admin > POS Settings"},
   "3100":{postingRule:"open",correctionMessage:"Use Finance > owner withdrawal"},
   "3900":{postingRule:"open",correctionMessage:"System closing account"},
+  "6079":{postingRule:"blocked",correctionMessage:"Staff Advance Write-offs is reserved for the staff-advance liquidation workflow. Write off an advance from its record in Admin > Cash Payments so the subledger and audit trail remain linked."},
   "6110":{postingRule:"requires_linked_discrepancy",correctionMessage:"Use Admin > cash variance review to link this journal to the exact variance before posting."}
 };
 const CONTROL_ACCOUNT_CODES = Object.keys(CONTROL_ACCOUNT_RULES);
@@ -2939,7 +3015,7 @@ const BOOKS_CHART_SEED_ROWS = [
   ["3000","Owner's Capital","Equity"],["3050","Cash Float Clearing","Equity","POS shift float source"],["3100","Owner's Drawings","Equity","Contra-equity (debit balance)"],["3900","Retained Earnings","Equity"],
   ["4000","Sales - In-store","Income"],["4010","Sales - Online (own)","Income"],["4020","Sales - GrabFood","Income"],["4030","Sales - FoodPanda","Income"],["4900","Discounts & Comps","Income","Contra-income (debit balance)"],["4910","Sales Returns & Refunds","Income","Existing void and refund adjustments"],["4990","Other Income","Income"],
   ["5000","COGS - Coffee & Beans","COGS"],["5010","COGS - Milk & Dairy","COGS"],["5020","COGS - Syrups & Flavors","COGS"],["5030","COGS - Food & Pastries","COGS"],["5040","COGS - Cups & Packaging","COGS"],["5090","Unposted COGS Clearing","COGS","Costs awaiting complete item-level posting"],["5900","Wastage & Spoilage","COGS","Physical spoilage, expiry, spillage, or discard only"],["5905","Inventory Reconciliation Gain / (Loss)","COGS","Count or valuation variance only: debit is loss, credit is gain"],
-  ["6000","Salaries & Wages","Expense"],["6010","Rent","Expense"],["6020","Utilities","Expense","Electricity, water"],["6030","Internet & Phone","Expense"],["6040","Platform Commissions","Expense","Grab/Panda fees"],["6045","Platform Discounts","Expense","Grab/Panda-funded or shared discounts"],["6046","Platform Service VAT","Expense"],["6050","Marketing & Promotions","Expense"],["6060","Repairs & Maintenance","Expense"],["6070","Cleaning & Operating Supplies","Expense"],["6075","Office & Administrative Supplies","Expense"],["6076","Transportation & Delivery","Expense"],["6077","Staff Consumption & Welfare","Expense","Inventory consumed by staff; never sales COGS or inventory variance"],["6078","Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"],["6080","Bank & Payment Fees","Expense"],["6085","Platform Penalties & Adjustments","Expense"],["6090","Depreciation","Expense"],["6100","Miscellaneous","Expense"],["6110","Cash Short / Over","Expense","Register variance"]
+  ["6000","Salaries & Wages","Expense"],["6010","Rent","Expense"],["6020","Utilities","Expense","Electricity, water"],["6030","Internet & Phone","Expense"],["6040","Platform Commissions","Expense","Grab/Panda fees"],["6045","Platform Discounts","Expense","Grab/Panda-funded or shared discounts"],["6046","Platform Service VAT","Expense"],["6050","Marketing & Promotions","Expense"],["6060","Repairs & Maintenance","Expense"],["6070","Cleaning & Operating Supplies","Expense"],["6075","Office & Administrative Supplies","Expense"],["6076","Transportation & Delivery","Expense"],["6077","Staff Consumption & Welfare","Expense","Inventory consumed by staff; never sales COGS or inventory variance"],["6078","Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"],["6079","Staff Advance Write-offs","Expense","Uncollectible staff advances written off through the liquidation workflow"],["6080","Bank & Payment Fees","Expense"],["6085","Platform Penalties & Adjustments","Expense"],["6090","Depreciation","Expense"],["6100","Miscellaneous","Expense"],["6110","Cash Short / Over","Expense","Register variance"]
 ].map(function(row){if(row[0]==="1000")return ["1000","Cash on Hand - Cash in Register","Asset"];if(row[0]==="1030")return ["1001","Cash on Hand - Undeposited Collection","Asset","Cash awaiting bank deposit; controlled by cash custody"];return row;});
 function booksChartSeed(){const out={};BOOKS_CHART_SEED_ROWS.forEach(function(r){const control=CONTROL_ACCOUNT_RULES[r[0]]||{};out[r[0]]=Object.assign({code:r[0],name:r[1],type:r[2],note:r[3]||"",active:true,system:true,sensitive:SENSITIVE_BOOKS_CODES.has(r[0]),postingRule:"open",correctionMessage:""},control);});return out;}
 async function ensureBooksChart(db) {

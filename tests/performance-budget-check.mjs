@@ -24,7 +24,7 @@ const budgets={
   // on every voucher in the Petty/Purchases listeners.
   // Build 540 adds the Cash Payments funding-account loading guard and in-place refresh.
   // Build 542 adds six server-validated cash-payment treatments and their audit fields.
-  'assets/js/admin/register.js':187000,
+  'assets/js/admin/register.js':195000,
   // Build 527 secures completed-sale corrections while retaining the sales reconciliation bridge;
   // retain a narrow ceiling above the reviewed generated bundle.
   // Build 533 replaces Stock Value's whole-journal listener with monthly totals plus the

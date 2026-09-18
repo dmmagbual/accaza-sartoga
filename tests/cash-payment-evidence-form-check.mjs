@@ -24,7 +24,7 @@ function assertEvidenceFieldsOutsideSupplierWrapper(file){
 assertEvidenceFieldsOutsideSupplierWrapper('src/admin/register/40-revolving-fund.js');
 assertEvidenceFieldsOutsideSupplierWrapper('assets/js/admin/register.js');
 
-const controls=fs.readFileSync('src/functions/21-operational-controls.js','utf8');
+const controls=fs.readFileSync('src/functions/21-operational-controls.js','utf8')+fs.readFileSync('src/functions/21-staff-advance-liquidation.js','utf8');
 if(!controls.includes('evidenceType: hasReceipt ? "receipt" : "manager_reviewed_explanation"'))fail('Approval audit does not identify the evidence used');
 const financePosting=fs.readFileSync('src/functions/41-expense-assets.js','utf8');
 if(!financePosting.includes('Financial.movement(isAdvance?"revolving_fund_purchase_advance":posting.movementType, "pettyVoucher", id'))fail('Approved cash payments are not linked to their Finance Books source');
