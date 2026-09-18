@@ -12,6 +12,7 @@ try{
       admins:{owner:true,manager:'manager',staff:'staff',cashier:'staff',kitchen:'kitchen'},
       adminPerms:{staff:{orders:true,pos:true,possettings:true,discrepancy:true,petty:true,availability:true},cashier:{pos:true},kitchen:{orders:true}},
       menuItems:{latte:{name:'Latte',cat:'coffee',priceS:100}},
+      channelPrices:{grabfood:{latte:{S:130}}},
       availability:{Latte:true},
       orders:{
         own:{id:'own',ownerUid:'customer-a',status:'Pending',total:100,source:'online'},
@@ -86,6 +87,17 @@ try{
   await assertFails(set(ref(owner,'cfLedger/forged'),{amount:999,ts:2}));
   await assertSucceeds(get(ref(staff,'cfAccounts/bank')));
   await assertSucceeds(get(ref(cashier,'cfAccounts/bank')));
+  // Channel prices: POS users must READ them to ring GrabFood/FoodPanda sales, but only managers or
+  // staff granted Channel Pricing may CHANGE them. Read and write are deliberately separate authorities.
+  await assertSucceeds(get(ref(cashier,'channelPrices/grabfood/latte')));
+  await assertSucceeds(get(ref(manager,'channelPrices/grabfood/latte')));
+  await assertFails(get(ref(kitchen,'channelPrices/grabfood/latte')));
+  await assertFails(get(ref(guest,'channelPrices/grabfood/latte')));
+  await assertFails(get(ref(a,'channelPrices/grabfood/latte')));
+  await assertFails(set(ref(cashier,'channelPrices/grabfood/latte/S'),1));
+  await assertFails(set(ref(staff,'channelPrices/grabfood/latte/S'),1));
+  await assertFails(set(ref(kitchen,'channelPrices/grabfood/latte/S'),1));
+  await assertSucceeds(set(ref(manager,'channelPrices/grabfood/latte/S'),135));
   await assertFails(update(ref(cashier,'cfAccounts/bank'),{name:'Cashier edit'}));
   await assertFails(get(ref(kitchen,'cfAccounts/bank')));
   await assertFails(update(ref(staff,'cfAccounts/bank'),{name:'Forged bank'}));
