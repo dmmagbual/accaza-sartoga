@@ -1,6 +1,7 @@
 // Accaza AI is deliberately read-only. Gemini receives a compact, server-built
 // fact pack; it never gets Firebase credentials or permission to change records.
 const ACCAZA_AI_MODEL = "gemini-3.5-flash-lite";
+const ACCAZA_AI_RELEASE_VERSION = "1.0";
 const ACCAZA_AI_HOURLY_LIMIT = 10;
 const ACCAZA_AI_DAILY_LIMIT = 50;
 const ACCAZA_AI_QUERY_ROLES = ["owner","superadmin","admin","manager","cashier"];
@@ -44,6 +45,32 @@ function accazaAiMoney(value){return Math.round((Number(value)||0)*100)/100;}
 function accazaAiRows(rows,mapper,limit=25){return Object.entries(rows||{}).map(([id,row])=>mapper(id,row||{})).filter(Boolean).slice(0,limit);}
 const ACCAZA_AI_MONTHS={january:1,february:2,march:3,april:4,may:5,june:6,july:7,august:8,september:9,october:10,november:11,december:12};
 function accazaAiComparisonMonths(question,now){const found=[...accazaAiSearchText(question).matchAll(/\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/g)].map(match=>ACCAZA_AI_MONTHS[match[1]]);if(found.length<2)return[];const year=Number(accazaAiDay(now).slice(0,4));return found.slice(0,2).map(month=>`${year}-${String(month).padStart(2,"0")}`);}
+function accazaAiPreviousCompletedMonths(now,count=6){
+  const day=accazaAiDay(now),date=new Date(`${day}T00:00:00Z`),months=[];
+  date.setUTCDate(1);date.setUTCMonth(date.getUTCMonth()-1);
+  for(let index=0;index<count;index+=1){months.unshift(`${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,"0")}`);date.setUTCMonth(date.getUTCMonth()-1);}
+  return months;
+}
+function accazaAiAccountAmount(row,net){
+  const type=String(row&&row.type||"");
+  if(type==="Income")return accazaAiMoney(-Number(net||0));
+  return accazaAiMoney(Number(net||0));
+}
+function accazaAiTopAccounts(chart,monthlyNet,types,limit=5){
+  return Object.entries(monthlyNet||{}).map(([code,net])=>{
+    const account=chart&&chart[code];if(!account||!types.includes(String(account.type||"")))return null;
+    const amount=accazaAiAccountAmount(account,net);return amount>0?{code,name:accazaAiText(account.name||code,100),amount}:null;
+  }).filter(Boolean).sort((left,right)=>right.amount-left.amount).slice(0,limit);
+}
+function accazaAiBusinessAnalysisRequested(question){return /\b(strategy|strategies|recommend|recommendation|marketing|campaign|promotion|historical|trend|trends|growth|performance|profit|margin|expense|expenses|cost reduction|sales analysis|business analysis)\b/.test(accazaAiSearchText(question));}
+async function accazaAiBusinessAnalysisFacts(db,now){
+  const months=accazaAiPreviousCompletedMonths(now),snaps=await Promise.all([/* download-ok: bounded chart configuration plus six named derived monthly ledger summaries; no journal history */db.ref("/booksChart").get(),...months.map(month=>db.ref(`/books/monthlyNet/${month}`).get())]),chart=snaps[0].val()||{},periods=snaps.slice(1).map((snap,index)=>{
+    const monthlyNet=snap.val()||{},income=accazaAiTopAccounts(chart,monthlyNet,["Income"],8),cogs=accazaAiTopAccounts(chart,monthlyNet,["COGS"],8),operatingExpenses=accazaAiTopAccounts(chart,monthlyNet,["Expense"],8),revenue=accazaAiMoney(income.reduce((total,row)=>total+row.amount,0)),costOfSales=accazaAiMoney(cogs.reduce((total,row)=>total+row.amount,0)),operatingExpense=accazaAiMoney(operatingExpenses.reduce((total,row)=>total+row.amount,0));
+    return {month:months[index],revenue,costOfSales,operatingExpense,grossProfit:accazaAiMoney(revenue-costOfSales),operatingResult:accazaAiMoney(revenue-costOfSales-operatingExpense),revenueStreams:income,largestCogs:cogs,largestOperatingExpenses:operatingExpenses};
+  });
+  const total=key=>accazaAiMoney(periods.reduce((sum,period)=>sum+Number(period[key]||0),0)),first=periods[0]||{},last=periods[periods.length-1]||{},change=key=>({amount:accazaAiMoney(Number(last[key]||0)-Number(first[key]||0)),percent:Number(first[key]||0)?accazaAiMoney(((Number(last[key]||0)-Number(first[key]||0))/Math.abs(Number(first[key])))*100):null});
+  return {period:"six completed calendar months",months,periods,totals:{revenue:total("revenue"),costOfSales:total("costOfSales"),operatingExpense:total("operatingExpense"),grossProfit:total("grossProfit"),operatingResult:total("operatingResult")},firstToLastMonth:{revenue:change("revenue"),costOfSales:change("costOfSales"),operatingExpense:change("operatingExpense"),grossProfit:change("grossProfit"),operatingResult:change("operatingResult")},limitations:"Derived Finance Books monthly balances. Revenue, COGS and operating expenses are accrual/accounting amounts, not cash flow. No product, customer, footfall, campaign-attribution or competitor data was supplied."};
+}
 async function accazaAiMonthSales(db,month){
   const days=new Date(Number(month.slice(0,4)),Number(month.slice(5,7)),0).getDate(),dates=Array.from({length:days},(_,index)=>`${month}-${String(index+1).padStart(2,"0")}`),snaps=await Promise.all(dates.map(date=>db.ref(`/financialCloses/daily_${date.replace(/-/g,"_")}/current`).get())),total={month,daysWithClose:0,netSales:0,cashSales:0,nonCashSales:0,platformSales:0,expectedCogs:0};
   snaps.forEach(snap=>{const admin=snap.val()&&snap.val().admin;if(!admin)return;total.daysWithClose+=1;["netSales","cashSales","nonCashSales","platformSales","expectedCogs"].forEach(key=>{total[key]=accazaAiMoney(total[key]+Number(admin[key]||0));});});
@@ -79,21 +106,35 @@ async function accazaAiFactPack(db,question,now){
     const issueSnap=await db.ref("/accazaAiIssues").orderByChild("createdAt").limitToLast(50).get(),issues=Object.entries(issueSnap.val()||{}).map(([id,row])=>({id,area:accazaAiText(row.area,40),summary:accazaAiText(row.summary,240),impact:accazaAiText(row.impact,240),status:accazaAiText(row.status,30),createdAt:Number(row.createdAt||0),updatedAt:Number(row.updatedAt||0)})).sort((a,b)=>b.createdAt-a.createdAt);
     facts.issueRegister={shown:issues.length,issues};facts.sources.push("accazaAiIssues (latest 50 management-confirmed issues)");
   }
+  if(accazaAiBusinessAnalysisRequested(question)){facts.businessAnalysis=await accazaAiBusinessAnalysisFacts(db,now);facts.sources.push(`booksChart and books/monthlyNet/${facts.businessAnalysis.months.join(", ")}`);}
   return facts;
 }
-async function askGeminiAccazaAi(question,facts){
+function accazaAiHistory(raw){return(Array.isArray(raw)?raw:[]).slice(-8).map(row=>({role:row&&row.role==="model"?"model":"user",text:accazaAiText(row&&row.text,800)})).filter(row=>row.text.length>=1);}
+function accazaAiWebQuestionBlocked(question){return /\b(accaza|finance books|supplier balance|our (sales|revenue|expense|expenses|profit|margin|cash|inventory|staff)|cashier|pos)\b/i.test(question);}
+function accazaAiGroundingSources(body){const seen=new Set();return(body&&body.candidates&&body.candidates[0]&&body.candidates[0].groundingMetadata&&body.candidates[0].groundingMetadata.groundingChunks||[]).map(chunk=>chunk&&chunk.web).filter(web=>web&&/^https:\/\//i.test(web.uri||"")).map(web=>({title:accazaAiText(web.title||web.uri,160),url:web.uri})).filter(source=>{if(seen.has(source.url))return false;seen.add(source.url);return true;}).slice(0,8);}
+async function askGeminiAccazaAi(question,facts,history){
   const key=GEMINI_API_KEY.value();if(!key)throw new HttpsError("failed-precondition","Accaza AI is not configured. Set the GEMINI_API_KEY Firebase secret first.");
-  const instruction="You are Accaza AI for Accaza Coffee House. Answer only about Accaza operations, POS, inventory, recipes and Finance Books. Use only the FACT PACK. Do not invent figures. Clearly distinguish selling price, recipe cost, gross profit and margin. For finance, distinguish cash, receivables, payables, retained float and profit. State when the fact pack does not contain the answer. You are read-only: never say that you posted, changed or approved a transaction. Keep the answer concise and cite the supplied source paths.";
-  const response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${ACCAZA_AI_MODEL}:generateContent`,{method:"POST",headers:{"content-type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:instruction}]},contents:[{role:"user",parts:[{text:`QUESTION: ${question}\n\nFACT PACK:\n${JSON.stringify(facts)}`}]}],generationConfig:{temperature:0.15,maxOutputTokens:700}})});
+  const instruction="You are Accaza AI for Accaza Coffee House. Answer only about Accaza operations, POS, inventory, recipes and Finance Books. Use only the FACT PACK. Do not invent figures. For business analysis, interpret the supplied historical Finance Books facts and give prioritized, practical recommendations. Clearly separate observed facts, inferences and recommendations. Never present accounting amounts as cash flow. Clearly distinguish selling price, recipe cost, gross profit and margin. For finance, distinguish cash, receivables, payables, retained float and profit. State when the fact pack does not contain the answer. You are read-only: never say that you posted, changed or approved a transaction. Keep the answer concise and cite the supplied source paths.";
+  const contents=[...accazaAiHistory(history).map(row=>({role:row.role,parts:[{text:row.text}]})),{role:"user",parts:[{text:`QUESTION: ${question}\n\nFACT PACK:\n${JSON.stringify(facts)}`}]}];
+  const response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${ACCAZA_AI_MODEL}:generateContent`,{method:"POST",headers:{"content-type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:instruction}]},contents,generationConfig:{temperature:0.15,maxOutputTokens:900}})});
   const body=await response.json().catch(()=>({}));if(!response.ok)throw new HttpsError("unavailable",body&&body.error&&body.error.message||"Gemini could not answer right now.");
   const answer=accazaAiText(body&&body.candidates&&body.candidates[0]&&body.candidates[0].content&&body.candidates[0].content.parts&&body.candidates[0].content.parts.map(p=>p.text||"").join("\n"),5000);if(!answer)throw new HttpsError("unavailable","Gemini returned no answer. Please try again.");return answer;
 }
+async function askGeminiWebChat(question,history){
+  const key=GEMINI_API_KEY.value();if(!key)throw new HttpsError("failed-precondition","Accaza AI is not configured. Set the GEMINI_API_KEY Firebase secret first.");
+  const instruction="You are Accaza AI in public web chat mode. Answer general questions helpfully. Use Google Search grounding for current or factual claims and cite the returned web sources. You have no access to Accaza Coffee House records in this mode. Do not ask for or process Accaza business, financial, supplier, customer, staff, inventory or POS data; tell the user to use Accaza analysis mode for that private, read-only work.";
+  const contents=[...accazaAiHistory(history).map(row=>({role:row.role,parts:[{text:row.text}]})),{role:"user",parts:[{text:question}]}],response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${ACCAZA_AI_MODEL}:generateContent`,{method:"POST",headers:{"content-type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:instruction}]},contents,tools:[{google_search:{}}],generationConfig:{temperature:0.35,maxOutputTokens:900}})}),body=await response.json().catch(()=>({}));
+  if(!response.ok)throw new HttpsError("unavailable",body&&body.error&&body.error.message||"Gemini web chat could not answer right now.");
+  const answer=accazaAiText(body&&body.candidates&&body.candidates[0]&&body.candidates[0].content&&body.candidates[0].content.parts&&body.candidates[0].content.parts.map(part=>part.text||"").join("\n"),5000);if(!answer)throw new HttpsError("unavailable","Gemini returned no answer. Please try again.");return{answer,sources:accazaAiGroundingSources(body)};
+}
 exports.askAccazaAI=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:"256MiB",secrets:[GEMINI_API_KEY]},async request=>{
   const db=getDatabase(),actor=await requirePortalUser(db,request);if(!ACCAZA_AI_QUERY_ROLES.includes(actor.role))throw new HttpsError("permission-denied","Accaza AI is available to authorized portal accounts only.");
-  const question=accazaAiText(request.data&&request.data.question,800);if(question.length<3)throw new HttpsError("invalid-argument","Enter a question for Accaza AI.");
-  const now=Date.now(),allowance=await claimAccazaAiAllowance(db,actor.uid,now),facts=await accazaAiFactPack(db,question,now),answer=await askGeminiAccazaAi(question,facts),auditId=`${now}_${crypto.randomUUID()}`;
-  await db.ref(`/operationalAudit/${auditId}`).set(operationalAuditRecord("ask_accaza_ai","accazaAI",auditId,actor,{questionHash:crypto.createHash("sha256").update(question).digest("hex"),sources:facts.sources||[],hourRemaining:allowance.hourRemaining,dayRemaining:allowance.dayRemaining,accounting:"Read-only AI analysis only; no order, inventory movement, subledger, Finance movement, or Books journal changed."}));
-  return {answer,sources:facts.sources||[],allowance};
+  const question=accazaAiText(request.data&&request.data.question,800),mode=request.data&&request.data.mode==="web"?"web":"accaza",history=accazaAiHistory(request.data&&request.data.history);if(question.length<3)throw new HttpsError("invalid-argument","Enter a question for Accaza AI.");
+  if(mode==="web"&&accazaAiWebQuestionBlocked(question))throw new HttpsError("failed-precondition","Use Accaza analysis for Accaza business or app questions. Web chat never receives Accaza data.");
+  const now=Date.now(),allowance=await claimAccazaAiAllowance(db,actor.uid,now);let answer,sources=[];
+  if(mode==="web"){const result=await askGeminiWebChat(question,history);answer=result.answer;sources=result.sources;}else{const facts=await accazaAiFactPack(db,question,now);answer=await askGeminiAccazaAi(question,facts,history);sources=facts.sources||[];}
+  const auditId=`${now}_${crypto.randomUUID()}`;await db.ref(`/operationalAudit/${auditId}`).set(operationalAuditRecord("ask_accaza_ai","accazaAI",auditId,actor,{mode,questionHash:crypto.createHash("sha256").update(question).digest("hex"),sources:mode==="web"?sources.map(source=>source.url):sources,hourRemaining:allowance.hourRemaining,dayRemaining:allowance.dayRemaining,accounting:"Read-only AI analysis only; no order, inventory movement, subledger, Finance movement, or Books journal changed."}));
+  return {answer,sources,mode,releaseVersion:ACCAZA_AI_RELEASE_VERSION,allowance};
 });
 exports.manageAccazaAiKnowledge=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:"256MiB"},async request=>{
   const db=getDatabase(),actor=await requirePortalUser(db,request);
