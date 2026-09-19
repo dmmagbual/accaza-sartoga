@@ -1,11 +1,11 @@
 import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
-import{createSubscriptionHub}from"./realtime-hub.mjs?v=552";
-import{readSalesPeriod,periodKey}from'./sales-period-data.mjs?v=552';
+import{createSubscriptionHub}from"./realtime-hub.mjs?v=553";
+import{readSalesPeriod,periodKey}from'./sales-period-data.mjs?v=553';
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=552";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=553";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -113,7 +113,7 @@ window.__accaza={
   getProductionValidation:function(){return callables.getProductionValidation({});},
   recordClientTelemetry:function(command){return callables.recordClientTelemetry(command);},
   getOperationalExceptions:function(force){return callables.getOperationalExceptions({force:force===true,cached:true});},
-  askAccazaAI:function(question){return callables.askAccazaAI({question:question});},
+  askAccazaAI:function(command){return callables.askAccazaAI(typeof command==='string'?{question:command}:command);},
   manageAccazaAiKnowledge:function(command){return callables.manageAccazaAiKnowledge(command);},
   manageAccazaAiIssue:function(command){return callables.manageAccazaAiIssue(command);},
   repairOrderInventoryMarker:function(orderId){return callables.repairOrderInventoryMarker({orderId:orderId});},
