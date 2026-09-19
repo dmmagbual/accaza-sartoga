@@ -274,6 +274,7 @@
   "requiredFunctionExports": [
     "askAccazaAI",
     "manageAccazaAiKnowledge",
+    "manageAccazaAiIssue",
     "getUndepositedControlSnapshot",
     "signOutAllPortalSessions",
     "getUndepositedPage",
@@ -357,6 +358,7 @@
     "clientTelemetryDaily",
     "accazaAiUsage",
     "accazaAiKnowledge",
+    "accazaAiIssues",
     "systemHealth",
     "inventoryBalances",
     "inventoryMovements",
