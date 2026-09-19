@@ -18,7 +18,7 @@ const expected=[
   'delete_archived_order','review_discrepancy','approve_petty_voucher','correct_petty_voucher',
   'reject_petty_voucher','void_petty_voucher','return_supplier_payment','manual_discount','cash_in','purchase_cash_advance','fixed_float_exception','reverse_purchase',
   'rekey_platform_order','reverse_platform_payout','correct_platform_presettlement','set_undeposited_opening_balance','retire_revolving_fund','repair_closed_shift_turnover','repair_reversed_payout_deposit','reconcile_undeposited_custody','certify_financial_close',
-  'convert_suspense_supplier_advance','correct_completed_order','completed_order_cash_refund',
+  'convert_suspense_supplier_advance','adopt_journal_staff_advance','correct_completed_order','completed_order_cash_refund',
   'liquidate_staff_advance','reverse_staff_advance_settlement',
 ];
 const fail=(message)=>{throw new Error(message);};
