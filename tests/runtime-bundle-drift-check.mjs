@@ -56,6 +56,7 @@ expectedFunctionExports.push('manageAccazaAiKnowledge');
 expectedFunctionExports.push('manageAccazaAiIssue');
 const functionsSource=fs.readFileSync(path.join(root,'functions/index.js'),'utf8');
 if(!functionsSource.includes('"x-goog-api-key":key')||functionsSource.includes('generateContent?key='))throw new Error('Accaza AI must authenticate Gemini requests with the current x-goog-api-key header, not a URL query key.');
+if(!functionsSource.includes('const ACCAZA_AI_QUERY_ROLES = ["owner","superadmin","admin","manager","cashier"]')||!functionsSource.includes('ACCAZA_AI_QUERY_ROLES.includes(actor.role)'))throw new Error('Accaza AI must authorize cashiers through the server-side query-role allowlist.');
 const actualFunctionExports=[...functionsSource.matchAll(/^exports\.([A-Za-z0-9_]+)\s*=/gm)].map(match=>match[1]);
 if(JSON.stringify(actualFunctionExports)!==JSON.stringify(expectedFunctionExports))throw new Error('The public Firebase Functions export contract changed. Review deployment, trigger, callable, and removal consequences explicitly.');
 if(new Set(actualFunctionExports).size!==actualFunctionExports.length)throw new Error('A Firebase Function export is registered more than once.');
