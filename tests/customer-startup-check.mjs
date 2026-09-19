@@ -11,6 +11,7 @@ const release=JSON.parse(fs.readFileSync(path.join(root,'release-manifest.json')
 const customerHtml=fs.readFileSync(path.join(root,'index.html'),'utf8');
 const customerHelpers=fs.readFileSync(path.join(root,'src','customer','core','03-state-helpers.mjs'),'utf8');
 const catalogAdmin=fs.readFileSync(path.join(root,'assets','js','admin','catalog-admin.mjs'),'utf8');
+const posState=fs.readFileSync(path.join(root,'src','admin','pos','00-shared-state.js'),'utf8');
 const posRegister=fs.readFileSync(path.join(root,'src','admin','pos','50a-register-shell.js'),'utf8');
 const databaseImport=source.split(/\r?\n/).find(line=>line.includes('firebase-database.js'))||'';
 if(!/\bget\b/.test(databaseImport))throw new Error('Customer runtime uses Firebase get() without importing it');
@@ -24,6 +25,7 @@ if((source.match(/let publicOrdersOpen=/g)||[]).length!==1)throw new Error('Cust
 for(const marker of ['function customerMenuCats(){return getCats().filter(c=>c.showInMenu!==false);}','const cats=customerMenuCats();','if(!cats.some(c=>c.id===menuFilter))','if(orderFilter&&!cats.some(c=>c.id===orderFilter))'])if(!customerHelpers.includes(marker))throw new Error(`Customer category visibility safeguard missing: ${marker}`);
 for(const marker of ['showInMenu:true','catShowInMenu_','Show in customer Menu, Online Ordering &amp; POS','{icon,label,showInMenu}','invalidateCatalogCache()','Saving…','✓ Saved'])if(!catalogAdmin.includes(marker))throw new Error(`Menu Availability category visibility control missing: ${marker}`);
 for(const marker of [".filter(function(c){return c.showInMenu!==false;})","if(posCat!=='ALL'&&!cats.some(function(c){return c.id===posCat;}))posCat='ALL';",'visibleCatIds[it.cat]'])if(!posRegister.includes(marker))throw new Error(`POS category visibility safeguard missing: ${marker}`);
+if(!posState.includes("posCat='coffee'"))throw new Error('POS must open on the Coffee Based category by default');
 
 for(const marker of [
   "ref(db,'customerOrders/'+uid)",
