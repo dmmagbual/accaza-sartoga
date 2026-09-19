@@ -50,6 +50,12 @@ exports.pruneEphemeralNodes = onSchedule(
     const tel = /* download-ok: bounded pruned by this daily job */(await db.ref("/clientTelemetryDaily").get()).val() || {};
     Object.keys(tel).forEach((day) => { if (day < cutoffDay) mark(`clientTelemetryDaily/${day}`); });
 
+    // Historical-report rebuild throttles are transient daily counters. Keep
+    // two weeks for incident review without allowing the maintenance node to grow.
+    const maintenanceCutoff = financeDateFromTimestamp(now - 14 * DAY);
+    const historicalBudgets = (await db.ref("/systemMaintenance/historicalArchiveDaily").get()).val() || {};
+    Object.keys(historicalBudgets).forEach((day) => { if (day < maintenanceCutoff) mark(`systemMaintenance/historicalArchiveDaily/${day}`); });
+
     // Production-monitor history is change-only and sanitized; retain the same
     // bounded four-month window as client telemetry.
     const monitorHistory = (await db.ref("/systemHealth/productionMonitor/history").get()).val() || {};

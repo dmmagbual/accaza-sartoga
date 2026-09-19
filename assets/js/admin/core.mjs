@@ -1,11 +1,11 @@
 import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
-import{createSubscriptionHub}from"./realtime-hub.mjs?v=550";
-import{readSalesPeriod,periodKey}from'./sales-period-data.mjs?v=550';
+import{createSubscriptionHub}from"./realtime-hub.mjs?v=551";
+import{readSalesPeriod,periodKey}from'./sales-period-data.mjs?v=551';
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=550";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=551";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -18,6 +18,7 @@ import{sortArchivedOrders,summarizeArchivedOrders}from"./archive-order-sort.mjs"
 const {getPaymentProof:getPaymentProofCall,getCurrentCashBalances:getCurrentCashBalancesCall,ensureActiveOrders:ensureActiveOrdersCall,updateOrderStatus:updateOrderStatusCall,postInventoryMovements:postInventoryMovementsCall,ensureInventoryLedger:ensureInventoryLedgerCall,validateRecipeDefinition:validateRecipeDefinitionCall,postFinancialCommand:postFinancialCommandCall,reconcilePurchasePayable:reconcilePurchasePayableCall,managePurchaseCorrection:managePurchaseCorrectionCall,manageFixedAsset:manageFixedAssetCall,settlePlatformPayout:settlePlatformPayoutCall,processOrderAdjustment:processOrderAdjustmentCall,ensureFinancialLedger:ensureFinancialLedgerCall,manageCashAccount:manageCashAccountCall,manageAccountingPeriod:manageAccountingPeriodCall,consumeManagerApproval:consumeManagerApprovalCall,manageChartAccount:manageChartAccountCall,auditFinancialControls:auditFinancialControlsCall,manageOrderArchive:manageOrderArchiveCall,reviewDiscrepancy:reviewDiscrepancyCall,reopenDiscrepancy:reopenDiscrepancyCall,managePettyVoucher:managePettyVoucherCall,setUndepositedOpeningBalance:setUndepositedOpeningBalanceCall,repairPettyVoucherFinancial:repairPettyVoucherFinancialCall,retireRevolvingFund:retireRevolvingFundCall,repairClosedShiftTurnover:repairClosedShiftTurnoverCall,repairReversedPayoutDeposit:repairReversedPayoutDepositCall,reconcileUndepositedCustody:reconcileUndepositedCustodyCall,runFinancialClose:runFinancialCloseCall,archiveActivityLog:archiveActivityLogCall}=callables;
 window.__accazaAuth=auth;
 const readHistoricalOrders=function(payload){return callables.readHistoricalOrders(payload).then(function(result){return result.data||{};});};
+const readHistoricalSalesRollup=function(payload){return callables.readHistoricalSalesRollup(payload).then(function(result){return result.data||{};});};
 const subscriptionHub=createSubscriptionHub(db,{ref,onValue,onChildAdded,onChildChanged,onChildRemoved,query,orderByChild,limitToLast,startAt,endAt,endBefore,get,readHistoricalOrders});
 window.__accazaLiveStats=function(){return subscriptionHub.stats();};
 const renderHistoryPager=createHistoryPager(subscriptionHub);
@@ -117,6 +118,7 @@ window.__accaza={
   manageAccazaAiIssue:function(command){return callables.manageAccazaAiIssue(command);},
   repairOrderInventoryMarker:function(orderId){return callables.repairOrderInventoryMarker({orderId:orderId});},
   runDatabaseBackupNow:function(){return callables.runDatabaseBackupNow({});},
+  manageHistoricalOrderArchive:function(command){return callables.manageHistoricalOrderArchive(command);},
   readBooksJournalRange:function(from,to){return get(query(ref(db,'books/journal'),orderByChild('date'),startAt(String(from)),endAt(String(to)))).then(function(s){return s.val()||{};});},
   get menuItemsMap(){return menuItemsMap;},
   get optionGroupsMap(){return optionGroupsMap;},
@@ -177,7 +179,7 @@ let chatOpen=false,chatStarted=false;
 let custItem=null,custSize=null,custSel={},custQty=1;
 let menuFilter='coffee',orderFilter=null;
 
-const overviewInsights=createOverviewInsights({esc:escHtml,historyStatus:function(path){return subscriptionHub.historyStatus(path);},loadOlder:function(path){return subscriptionHub.loadOlder(path);},readRanking:readOverviewSalesRange,watchRollingSales:function(r,data,error){return subscriptionHub.watchRollingSales({startAt:r.start,endAt:r.end},rows=>data(Object.entries(rows).map(([id,row])=>Object.assign({_overviewKey:id},row)).filter(o=>window.AccazaSales.qualifies(o))),error);}});
+const overviewInsights=createOverviewInsights({esc:escHtml,historyStatus:function(path){return subscriptionHub.historyStatus(path);},loadOlder:function(path){return subscriptionHub.loadOlder(path);},readRanking:readOverviewSalesRange,readMonthlyRollup:function(r){return readHistoricalSalesRollup({from:r.from.slice(0,7),to:r.to.slice(0,7)});}});
 async function readOverviewSalesRange(r){var p={startAt:r.start,endAt:r.end},maps=await Promise.all([readSalesPeriod(db,{ref,get,query,orderByChild,startAt,endAt},'orders',p),subscriptionHub.readHistoricalPeriod(p)]);return mergeOverviewOrders([],Object.entries(maps[0]).map(function(x){return Object.assign({_overviewKey:x[0]},x[1]);}),Object.entries(maps[1]).map(function(x){return Object.assign({_overviewKey:x[0]},x[1]);})).filter(function(o){return window.AccazaSales.qualifies(o);});}
 
 const appCustomerSession=createAppCustomerSession({setupPush:setupPush,refreshNotifyPrompt:refreshNotifyPrompt});
