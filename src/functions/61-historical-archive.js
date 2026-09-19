@@ -1,6 +1,19 @@
 const HISTORICAL_ARCHIVE_BATCH_LIMIT = 100;
 const HISTORICAL_READ_PAGE_LIMIT = 100;
 
+async function publishHistoricalChange(db, orderId, order, now = Date.now()) {
+  // Atomic, bounded journal: concurrent archivers cannot overwrite unseen IDs.
+  // Older clients continue using the top-level marker fields.
+  await db.ref("/historicalArchiveSync").transaction((current) => {
+    const sequence = (Number(current && current.sequence) || 0) + 1;
+    const change = {sequence, orderId, deleted: !order};
+    const changes = Object.assign({}, current && current.changes || {}, {[sequence]: change});
+    Object.keys(changes).forEach((key) => { if (!changes[key] || Number(key) <= sequence - 32) delete changes[key]; });
+    return {version: now, orderId, deleted: !order, salesAt: order ? HistoricalArchive.salesAt(order) : 0,
+      orderTimestamp: Number(order && order.timestamp) || 0, schemaVersion: 2, sequence, changes};
+  });
+}
+
 function historicalReadCursor(raw) {
   if (!raw || typeof raw !== "object") return null;
   const value = Number(raw.value), id = financeText(raw.id, 160);
@@ -11,16 +24,25 @@ async function historicalOrdersFromDocuments(db, documents) {
   const unique = new Map();
   documents.forEach((snapshot) => unique.set(snapshot.id, snapshot));
   const rows = {}, fallbackIds = [];
+  let unverified = 0;
   for (const [orderId, snapshot] of unique) {
     const document = snapshot.data() || {}, order = document.order;
-    if (!order || document.schemaVersion !== HistoricalArchive.SCHEMA_VERSION || !document.evidence || document.evidence.verified !== true) fallbackIds.push(orderId);
-    else rows[orderId] = HistoricalArchive.clean(Object.assign({id: orderId}, order));
+    // The replica's order copy is rewritten from RTDB on every archivedOrders
+    // write before readers are notified, so it is current whether or not its
+    // accounting evidence is complete. Evidence completeness is reported by the
+    // archive and exception controls; it is not a reason to re-download the
+    // source order on every report page (34% of replicas are legacy/unsettled).
+    if (!order || document.schemaVersion !== HistoricalArchive.SCHEMA_VERSION) fallbackIds.push(orderId);
+    else {
+      if (!document.evidence || document.evidence.verified !== true) unverified++;
+      rows[orderId] = HistoricalArchive.clean(Object.assign({id: orderId}, order));
+    }
   }
   await Promise.all(fallbackIds.map(async (orderId) => {
     const source = (await db.ref(`/archivedOrders/${orderId}`).get()).val();
     if (source) rows[orderId] = HistoricalArchive.clean(Object.assign({id: orderId}, source));
   }));
-  return {rows, firestore: unique.size - fallbackIds.length, rtdbFallback: fallbackIds.length};
+  return {rows, firestore: unique.size - fallbackIds.length, rtdbFallback: fallbackIds.length, unverified};
 }
 
 async function historicalPeriodPage(firestore, data, limit) {
@@ -111,6 +133,8 @@ async function replicateHistoricalOrder(db, firestore, orderId, order, now = Dat
     transaction.set(ref, next);
     return {duplicate: false};
   });
+  // Publish even for a duplicate: a retry must repair a failed marker write.
+  await publishHistoricalChange(db, orderId, order, now);
   return {orderId, duplicate: result.duplicate, verified: next.evidence.verified, issues: next.evidence.issues};
 }
 
@@ -122,38 +146,49 @@ exports.replicateArchivedOrderToFirestore = onValueWritten(
     const db = getDatabase(), firestore = getFirestore(), orderId = event.params.orderId, order = event.data.after.val(), now = Date.now();
     if (!order) {
       await firestore.collection(HistoricalArchive.COLLECTION).doc(orderId).delete();
-      await db.ref("/historicalArchiveSync").set({version: now, orderId, deleted: true, schemaVersion: 1});
+      await publishHistoricalChange(db, orderId, null, now);
       return;
     }
     const result = await replicateHistoricalOrder(db, firestore, orderId, order, now);
     // Always publish after the Firestore transaction. If the marker write is
     // the only failed step, a retry must still wake readers after the document
     // has become an unchanged duplicate.
-    await db.ref("/historicalArchiveSync").set({
-      version: now, orderId, deleted: false, orderTimestamp: Number(order.timestamp) || 0,
-      salesAt: HistoricalArchive.salesAt(order), schemaVersion: 1,
-    });
     logger.info("Historical order replica refreshed", result);
   },
 );
 
-// Admin history is served from the Firestore replica. Records whose financial
-// or inventory evidence is incomplete are read from their exact RTDB source;
-// the browser never receives a broad archivedOrders snapshot from this route.
+// Admin history is served from the Firestore replica. Only records whose
+// replica is missing or on an older schema are read from their exact RTDB
+// source; the browser never receives a broad archivedOrders snapshot here.
 exports.readHistoricalOrders = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
     const db = getDatabase();
     await requirePortalPermission(db, request, ["orders"]);
     const data = request.data || {}, mode = financeText(data.mode, 20).toLowerCase();
-    if (!["latest", "before", "period"].includes(mode)) throw new HttpsError("invalid-argument", "Historical read mode is invalid.");
+    if (!["latest", "before", "period", "ids"].includes(mode)) throw new HttpsError("invalid-argument", "Historical read mode is invalid.");
     const limit = Math.max(1, Math.min(HISTORICAL_READ_PAGE_LIMIT, Math.floor(Number(data.limit) || HISTORICAL_READ_PAGE_LIMIT)));
     const firestore = getFirestore();
+    if (mode === "ids") {
+      if (!Array.isArray(data.ids) || !data.ids.length || data.ids.length > 32 ||
+        data.ids.some((id) => typeof id !== "string" || !id || id.length > 160 || /[.#$\[\]\/\u0000-\u001f\u007f]/.test(id))) {
+        throw new HttpsError("invalid-argument", "Choose between 1 and 32 valid order IDs.");
+      }
+      const ids = [...new Set(data.ids)];
+      const documents = await firestore.getAll(...ids.map((id) => firestore.collection(HistoricalArchive.COLLECTION).doc(id)));
+      const hydrated = await historicalOrdersFromDocuments(db, documents.filter((document) => document.exists));
+      // A missing replica can be a replication race, not a deleted operational sale.
+      for (const document of documents.filter((document) => !document.exists)) {
+        const order = (await db.ref(`/archivedOrders/${document.id}`).get()).val();
+        if (order) hydrated.rows[document.id] = HistoricalArchive.clean(Object.assign({id:document.id},order));
+      }
+      return {orders:hydrated.rows, hasMore:false, deletionEnabled:false};
+    }
     const page = mode === "period" ? await historicalPeriodPage(firestore, data, limit) : await historicalLatestPage(firestore, data, limit);
     const hydrated = await historicalOrdersFromDocuments(db, page.documents);
     return {
       orders: hydrated.rows, cursor: page.cursor || null, hasMore: page.hasMore,
-      source: {firestore: hydrated.firestore, rtdbFallback: hydrated.rtdbFallback},
+      source: {firestore: hydrated.firestore, rtdbFallback: hydrated.rtdbFallback, unverified: hydrated.unverified},
       deletionEnabled: false,
     };
   },
@@ -200,18 +235,46 @@ exports.manageHistoricalOrderArchive = onCall(
       throw new HttpsError("permission-denied", "Historical archive management is restricted to owners.");
     }
     const data = request.data || {}, action = financeText(data.action, 20);
-    if (!["preview", "backfill", "verify"].includes(action)) {
-      throw new HttpsError("invalid-argument", "Use preview, backfill, or verify. RTDB deletion is not available.");
+    if (!["preview", "backfill", "verify", "sales-at-audit", "sales-at-backfill", "sales-at-verify"].includes(action)) {
+      throw new HttpsError("invalid-argument", "Use preview, backfill, verify, sales-at-audit, sales-at-backfill, or sales-at-verify. RTDB deletion is not available.");
     }
     const requested = Math.floor(Number(data.limit) || 25), limit = Math.max(1, Math.min(HISTORICAL_ARCHIVE_BATCH_LIMIT, requested));
     const cursor = financeText(data.cursor, 160);
+    const firestore = getFirestore();
+    // This maintenance path deliberately reads only the Firestore replica.
+    // Replaying historicalArchiveInputs here would re-read RTDB financial and
+    // inventory evidence for every historical order, defeating this cost fix.
+    if (["sales-at-audit", "sales-at-backfill", "sales-at-verify"].includes(action)) {
+      let query = firestore.collection(HistoricalArchive.COLLECTION).orderBy(FieldPath.documentId());
+      if (cursor) query = query.startAfter(cursor);
+      const snap = await query.limit(limit).get(), docs = snap.docs;
+      const summary = {scanned: docs.length, written: 0, alreadyPresent: 0, legacyOnly: 0, zeroSalesAt: 0};
+      const batch = firestore.batch();
+      docs.forEach((document) => {
+        const row = document.data() || {}, order = row.order || {};
+        const existing = Number(row.salesAt), stamp = HistoricalArchive.salesAt(order);
+        const legacyOnly = ![order.completedAt, order.receivedAt, order.timestamp].some((value) => Number.isFinite(Number(value)) && Number(value) > 0);
+        if (legacyOnly) summary.legacyOnly++;
+        if (!stamp) summary.zeroSalesAt++;
+        if (Number.isFinite(existing)) { summary.alreadyPresent++; return; }
+        if (action === "sales-at-backfill") { batch.update(document.ref, {salesAt: stamp}); summary.written++; }
+      });
+      if (action === "sales-at-backfill" && summary.written) await batch.commit();
+      const nextCursor = docs.length === limit ? docs[docs.length - 1].id : "";
+      await db.ref(`/operationalAudit/${Date.now()}_historical_archive_${action}`).set({
+        action: `historical_archive_${action}`, sourceType: "historicalOrderArchive", sourceId: nextCursor || "complete",
+        actorUid: actor.uid, actorRole: actor.role, ts: Date.now(), cursor, nextCursor, summary, schemaVersion: 1,
+        accounting: "Firestore replica maintenance only; no RTDB order, inventory, financial movement, subledger, or Books journal was read or changed.",
+      });
+      return {action, cursor: nextCursor, complete: !nextCursor, summary};
+    }
     let query = db.ref("/archivedOrders").orderByKey();
     if (cursor) query = query.startAt(cursor);
     const snap = await query.limitToFirst(limit + (cursor ? 1 : 0)).get(), rows = snap.val() || {};
     let ids = Object.keys(rows).sort();
     if (cursor && ids[0] === cursor) ids = ids.slice(1);
     ids = ids.slice(0, limit);
-    const firestore = getFirestore(), summary = {scanned: ids.length, written: 0, unchanged: 0, verified: 0, needsReview: 0};
+    const summary = {scanned: ids.length, written: 0, unchanged: 0, verified: 0, needsReview: 0};
     for (const orderId of ids) {
       const input = await historicalArchiveInputs(db, orderId, rows[orderId]);
       const next = HistoricalArchive.buildDocument(orderId, input);

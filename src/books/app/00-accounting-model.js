@@ -14,15 +14,11 @@
 const TYPES = ["Asset","Liability","Equity","Income","COGS","Expense"];
 const DEBIT_NORMAL = {Asset:true, COGS:true, Expense:true, Liability:false, Equity:false, Income:false};
 const TYPE_ORDER = {Asset:1, Liability:2, Equity:3, Income:4, COGS:5, Expense:6};
-const SYSTEM_ACCOUNT_CONTROLS = {
-  "1000":"Use Admin > Register", "1001":"Use Finance > Undeposited Collection", "1005":"Use Admin > POS Settings",
-  "1010":"Use Finance > Cash Flow", "1011":"Use Finance > Cash Flow", "1012":"Use Finance > Cash Flow", "1013":"Use Finance > Cash Flow", "1014":"Use Finance > Cash Flow", "1020":"Use Finance > Cash Flow", "1021":"Use Finance > Cash Flow",
-  "1050":"Use Finance > Platform Payouts", "1100":"Use Admin Sales or Finance > Receivables", "1110":"Use Finance > Receivables", "1115":"Use Admin > Cash Payments, then Admin > Purchases", "1120":"Reserved for the controlled Staff Advances workflow (not yet available)",
-  "1190":"Use Admin > cash variance review", "1200":"Use Admin > Purchases or Inventory", "1210":"Use Admin > Purchases or Inventory", "1220":"Use Admin > Purchases or Inventory", "1230":"Use Admin > Purchases or Inventory", "1240":"Use Admin > Purchases or Inventory", "1270":"Use Admin > Purchases or Inventory", "1280":"Use Admin > Purchases or Inventory", "1290":"Use Admin > Purchases repair",
-  "1900":"Review the source in Finance; do not clear without evidence", "2000":"Use Finance > Payables or Admin > Purchases", "2020":"Use Finance > Platform Payouts", "2030":"Use Finance > Payables", "2050":"Use Finance > Payables", "2090":"Use Admin > Purchases repair", "2100":"Use Admin > cash variance review",
-  "3000":"Use Finance > owner funding", "3050":"Use Admin > POS Settings", "3100":"Use Finance > owner withdrawal", "3900":"System closing account"
-};
-const systemAccountWorkflow = code => SYSTEM_ACCOUNT_CONTROLS[String(code)]||"";
+// Server-authoritative: the same postingRule/correctionMessage fields the
+// server enforces in postFinancialCommand live on each /booksChart record
+// and are synced verbatim into window.__booksChart (see live-pos.mjs). No
+// separate client-side list to keep in sync by hand.
+const systemAccountWorkflow = code => { const chart=window.__booksChart||{}, row=chart[String(code)]; return (row&&row.correctionMessage)||""; };
 
 /* Display-only control accounts. They never enter the journal or stored ledger. */
 const ACCOUNT_GROUPS = [
@@ -151,6 +147,9 @@ const pesoNoDec = n => "₱"+ Math.round(Number(n)||0).toLocaleString();
 const r2 = n => Math.round((Number(n)||0)*100)/100;
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const acc = code => DB.accounts.find(a=>a.code===code);
+// Bank / e-wallet ledger accounts (1010-1039, 1030 retired) are created with the cash account they belong to.
+const isBankLedgerCode = code => /^\d{4}$/.test(String(code||"")) && String(code)!=="1030" && Number(code)>=1010 && Number(code)<=1039;
+const bankAccountsForCode = code => { const map=window.__cashAccountMap||{}, accounts=window.__cfAccounts||{}; return Object.keys(map).filter(id=>String(map[id])===String(code)&&accounts[id]).map(id=>Object.assign({id},accounts[id])); };
 const accName = code => { const a=acc(code); return a?a.name:("? "+code); };
 const isMainAccount = code => ACCOUNT_GROUPS.some(g=>g.code===code);
 const accountMatchesGroup = (account,group) => group.type===account.type&&!isMainAccount(account.code)&&(group.matches?group.matches(account):String(account.code).startsWith(group.prefix));

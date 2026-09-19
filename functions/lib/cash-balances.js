@@ -7,22 +7,15 @@ const REGISTER_ACCOUNT = "asset:register_cash";
 const UNDEPOSITED_ACCOUNT = "asset:cash_awaiting_deposit";
 const REVOLVING_ACCOUNT = "asset:petty_cash";
 const CASH_ACCOUNT_PREFIX = "asset:cash_account:";
+// v4 (Sep 2026): applied records carry the movement's Manila day so the cash-flow day/month
+// index can be maintained incrementally; bumping the version rebuilds everything once.
+const SCHEMA_VERSION = 4;
+const FLOW_INDEX_VERSION = 1;
 
-function cents(value) {
-  return Math.round((Number(value) || 0) * 100);
-}
-
-function pesos(value) {
-  return Financial.money((Number(value) || 0) / 100);
-}
-
-function emptyDelta() {
-  return {registerCents: 0, undepositedCents: 0, revolvingCents: 0, cashAccountCents: {}};
-}
-
-function emptyBalances() {
-  return {registerCents: 0, undepositedCents: 0, revolvingCents: 0, cashAccountCents: {}};
-}
+function cents(value) { return Math.round((Number(value) || 0) * 100); }
+function pesos(value) { return Financial.money((Number(value) || 0) / 100); }
+function emptyDelta() { return {registerCents: 0, undepositedCents: 0, revolvingCents: 0, cashAccountCents: {}}; }
+function emptyBalances() { return {registerCents: 0, undepositedCents: 0, revolvingCents: 0, cashAccountCents: {}}; }
 
 function addDelta(target, delta, sign = 1) {
   if (!target || !delta) return target;
@@ -53,45 +46,85 @@ function movementDelta(movement) {
   return delta;
 }
 
-function fingerprint(movement) {
-  return crypto.createHash("sha256").update(JSON.stringify(movement == null ? null : movement)).digest("hex");
+function manilaDay(ts) {
+  const n = Number(ts);
+  return new Date((Number.isFinite(n) && n > 0 ? n : 0) + 8 * 3600000).toISOString().slice(0, 10);
 }
+// Opening balances of cash accounts are presented on the account's opening date, which can
+// change, so the Books cash flow reads them from their own small index instead of by ledger day.
+function isCashAccountOpening(movement) {
+  return /^opening_balance/.test(String(movement && movement.type || "")) && String(movement && movement.sourceType || "") === "cashAccount";
+}
+function movementDay(movement) { return manilaDay(movement && (movement.occurredAt || movement.postedAt)); }
+function isZeroDelta(delta) {
+  return !delta || (!delta.registerCents && !delta.undepositedCents && !delta.revolvingCents && !Object.keys(delta.cashAccountCents || {}).some((id) => delta.cashAccountCents[id]));
+}
+function appliedRecord(movement) {
+  return {fingerprint: fingerprint(movement), delta: movementDelta(movement), day: movementDay(movement), opening: isCashAccountOpening(movement)};
+}
+function openingRecord(movementId, movement, applied) {
+  return {movementId: String(movementId), accountId: String(movement && movement.sourceId || ""), type: String(movement && movement.type || ""), sourceType: "cashAccount", occurredAt: Number(movement && movement.occurredAt) || 0, day: applied.day, delta: applied.delta};
+}
+// Apply one contribution change to the cash-flow index maps (mutates the given maps).
+// daily/monthly: {key: delta}; openings: {movementId: record|null}.
+function applyFlowContribution(flow, movementId, prior, applied, movement) {
+  const bump = (map, key, delta, sign) => { map[key] = addDelta(Object.assign(emptyDelta(), JSON.parse(JSON.stringify(map[key] || emptyDelta()))), delta, sign); };
+  if (prior && prior.day) {
+    if (prior.opening) flow.openings[movementId] = null;
+    else { bump(flow.daily, prior.day, prior.delta, -1); bump(flow.monthly, prior.day.slice(0, 7), prior.delta, -1); }
+  }
+  if (applied) {
+    if (applied.opening) flow.openings[movementId] = openingRecord(movementId, movement, applied);
+    else { bump(flow.daily, applied.day, applied.delta, 1); bump(flow.monthly, applied.day.slice(0, 7), applied.delta, 1); }
+  }
+  return flow;
+}
+function flowValue(delta) { return isZeroDelta(delta) ? null : delta; }
 
-function snapshotFromMovements(movements, now = Date.now()) {
-  const balances = emptyBalances(), applied = {};
+function fingerprint(value) { return crypto.createHash("sha256").update(JSON.stringify(value == null ? null : value)).digest("hex"); }
+
+function splitSnapshotFromMovements(movements, now = Date.now()) {
+  const balances = emptyBalances(), applied = {}, flow = {daily: {}, monthly: {}, openings: {}};
   Object.keys(movements || {}).forEach((id) => {
     const movement = movements[id] || {};
-    const delta = movementDelta(movement);
-    addDelta(balances, delta);
-    applied[id] = {fingerprint: fingerprint(movement), delta};
+    const record = appliedRecord(movement);
+    addDelta(balances, record.delta);
+    applied[id] = record;
+    applyFlowContribution(flow, id, null, record, movement);
   });
-  return {schemaVersion: 1, complete: true, balances, applied, meta: {schemaVersion: 1, complete: true, movementCount: Object.keys(applied).length, builtAt: now, updatedAt: now}};
+  ["daily", "monthly"].forEach((kind) => Object.keys(flow[kind]).forEach((key) => { if (!flowValue(flow[kind][key])) delete flow[kind][key]; }));
+  Object.keys(flow.openings).forEach((key) => { if (!flow.openings[key]) delete flow.openings[key]; });
+  const count = Object.keys(applied).length;
+  return {
+    summary: {schemaVersion: SCHEMA_VERSION, complete: true, balances, meta: {schemaVersion: SCHEMA_VERSION, complete: true, movementCount: count, builtAt: now, updatedAt: now}},
+    applied,
+    flow: Object.assign(flow, {meta: {schemaVersion: FLOW_INDEX_VERSION, summarySchemaVersion: SCHEMA_VERSION, complete: true, builtAt: now}}),
+  };
 }
 
-// Returns undefined when the event was already applied, allowing an RTDB
-// transaction to abort without writing. The applied movement delta makes
-// retries and in-place audited edits idempotent.
-function applyEvent(snapshot, movementId, before, after, now = Date.now()) {
-  if (!snapshot || snapshot.schemaVersion !== 1 || snapshot.complete !== true) return undefined;
-  const id = String(movementId || "");
-  if (!id) return undefined;
-  const next = snapshot;
+function snapshotFromMovements(movements, now = Date.now()) { return splitSnapshotFromMovements(movements, now).summary; }
+
+function applyContribution(summary, prior, after, now = Date.now()) {
+  if (!summary || summary.schemaVersion !== SCHEMA_VERSION || summary.complete !== true) return null;
+  const next = JSON.parse(JSON.stringify(summary));
   next.balances = next.balances || emptyBalances();
   next.balances.cashAccountCents = next.balances.cashAccountCents || {};
-  next.applied = next.applied || {};
-  const nextFingerprint = after == null ? fingerprint(null) : fingerprint(after);
-  const prior = next.applied[id];
-  if (prior && prior.fingerprint === nextFingerprint) return undefined;
   if (prior) addDelta(next.balances, prior.delta, -1);
-  if (after == null) delete next.applied[id];
-  else {const delta = movementDelta(after); addDelta(next.balances, delta); next.applied[id] = {fingerprint: nextFingerprint, delta};}
-  next.meta = Object.assign({}, next.meta || {}, {schemaVersion: 1, complete: true, movementCount: Object.keys(next.applied).length, updatedAt: now});
-  return next;
+  const applied = after == null ? null : appliedRecord(after);
+  if (applied) addDelta(next.balances, applied.delta);
+  const priorCount = Number(next.meta && next.meta.movementCount) || 0;
+  const movementCount = Math.max(0, priorCount + (prior ? -1 : 0) + (applied ? 1 : 0));
+  next.meta = Object.assign({}, next.meta || {}, {schemaVersion: SCHEMA_VERSION, complete: true, movementCount, updatedAt: now});
+  return {summary: next, applied};
+}
+
+function contributionMatches(applied, movement) {
+  if (movement == null) return !applied;
+  return Boolean(applied && applied.fingerprint === fingerprint(movement));
 }
 
 function resolveFloat(settings, activeShift) {
-  settings = settings || {};
-  activeShift = activeShift || {};
+  settings = settings || {}; activeShift = activeShift || {};
   if (settings.fixedFloat != null && Financial.money(settings.fixedFloat) > 0) return Financial.money(settings.fixedFloat);
   const retained = activeShift.retainedFloat != null ? activeShift.retainedFloat : activeShift.openingFloat;
   if (Financial.money(retained) > 0) return Financial.money(retained);
@@ -102,35 +135,12 @@ function clientBalances(snapshot, settings, activeShift) {
   const balances = snapshot && snapshot.balances || emptyBalances();
   const registerGross = pesos(balances.registerCents);
   const registerFloatAmount = resolveFloat(settings, activeShift);
-  const out = {
-    cash_on_hand: Financial.money(Math.max(0, registerGross - registerFloatAmount)),
-    undeposited: pesos(balances.undepositedCents),
-    revolving: pesos(balances.revolvingCents),
-    cash_float: registerFloatAmount,
-  };
+  const out = {cash_on_hand: Financial.money(Math.max(0, registerGross - registerFloatAmount)), undeposited: pesos(balances.undepositedCents), revolving: pesos(balances.revolvingCents), cash_float: registerFloatAmount};
   Object.keys(balances.cashAccountCents || {}).forEach((id) => {out[id] = pesos(balances.cashAccountCents[id]);});
   return {balances: out, registerFloatAmount, registerGross, source: "cashBalanceSummary", summary: Object.assign({}, snapshot && snapshot.meta || {})};
 }
 
-function pendingRecord(before, after, now = Date.now()) {
-  return {fingerprint: fingerprint(after == null ? null : after), beforeDelta: movementDelta(before), afterDelta: movementDelta(after), afterExists: after != null, updatedAt: now};
-}
+function pendingRecord(movementId, now = Date.now()) { return {movementId: String(movementId || ""), queuedAt: now}; }
+function pendingKey(eventId, movementId) { return fingerprint(`${String(eventId || "event")}:${String(movementId || "")}`).slice(0, 40); }
 
-function applyPending(snapshot, pending, now = Date.now()) {
-  Object.keys(pending || {}).sort().forEach((id) => {
-    const row = pending[id] || {};
-    const prior = snapshot.applied && snapshot.applied[id];
-    if (prior && prior.fingerprint === row.fingerprint) return;
-    if (prior) addDelta(snapshot.balances, prior.delta, -1);
-    if (row.afterExists) {
-      const delta = row.afterDelta || emptyDelta();
-      addDelta(snapshot.balances, delta);
-      snapshot.applied = snapshot.applied || {};
-      snapshot.applied[id] = {fingerprint: row.fingerprint, delta};
-    } else if (snapshot.applied) delete snapshot.applied[id];
-  });
-  snapshot.meta = Object.assign({}, snapshot.meta || {}, {schemaVersion: 1, complete: true, movementCount: Object.keys(snapshot.applied || {}).length, updatedAt: now});
-  return snapshot;
-}
-
-module.exports = {cents, pesos, emptyDelta, emptyBalances, addDelta, movementDelta, fingerprint, snapshotFromMovements, applyEvent, resolveFloat, clientBalances, pendingRecord, applyPending};
+module.exports = {SCHEMA_VERSION, FLOW_INDEX_VERSION, manilaDay, isCashAccountOpening, movementDay, isZeroDelta, appliedRecord, applyFlowContribution, flowValue, cents, pesos, emptyDelta, emptyBalances, addDelta, movementDelta, fingerprint, splitSnapshotFromMovements, snapshotFromMovements, applyContribution, contributionMatches, resolveFloat, clientBalances, pendingRecord, pendingKey};

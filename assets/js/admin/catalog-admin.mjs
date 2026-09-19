@@ -86,7 +86,7 @@ function createCatalogAdmin(deps){
         const showInMenu=document.getElementById('catShowInMenu_'+id).checked;
         if(!label)return;
         const original=this.textContent;this.disabled=true;this.textContent='Saving…';
-        try{await update(ref(db,'categories/'+id),{icon,label,showInMenu});this.textContent='✓ Saved';setTimeout(()=>{this.disabled=false;this.textContent=original;},1200);}
+        try{await update(ref(db,'categories/'+id),{icon,label,showInMenu});deps.invalidateCatalogCache();this.textContent='✓ Saved';setTimeout(()=>{this.disabled=false;this.textContent=original;},1200);}
         catch(e){this.disabled=false;this.textContent=original;alert('Could not save category: '+e.message);}
       });
     });
@@ -116,6 +116,7 @@ function createCatalogAdmin(deps){
   
   
   function buildOptionChecklistHtml(selectedIds){
+    if(!deps.optionsReady())return '<span style="font-size:0.78rem;color:var(--tl);">Loading options…</span>';
     var ids=Object.keys(deps.getOptionGroupsMap());
     if(!ids.length)return '<span style="font-size:0.78rem;color:var(--tl);">No option groups yet — create them in the 🧩 Item Options panel.</span>';
     return ids.sort(function(a,b){return(deps.getOptionGroupsMap()[a].order||0)-(deps.getOptionGroupsMap()[b].order||0);}).map(function(id){
@@ -143,6 +144,7 @@ function createCatalogAdmin(deps){
   }
   function renderOptionManager(){
     var el=document.getElementById('optGroupList');if(!el)return;
+    if(!deps.optionsReady()){el.innerHTML='<p style="font-size:0.85rem;color:var(--tl);">Loading options…</p>';return;}
     var ids=Object.keys(deps.getOptionGroupsMap()).sort(function(a,b){return(deps.getOptionGroupsMap()[a].order||0)-(deps.getOptionGroupsMap()[b].order||0);});
     if(!ids.length){el.innerHTML='<p style="font-size:0.85rem;color:var(--tl);">No option groups yet. Add your first one below.</p>';return;}
     var items=deps.getMenuItems();

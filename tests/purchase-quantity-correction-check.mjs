@@ -20,7 +20,9 @@ must(inventory,'"purchase_reversal", "purchase_quantity_correction"','The direct
 must(correction,'action === "correct_quantity"','Purchase corrections must expose the controlled quantity action.');
 must(correction,'expectedQty!==oldQty','A stale correction form must be rejected.');
 must(correction,'newQty+0.000001<consumed','A correction must not remove quantities already consumed.');
-must(correction,'if(delta<0){const movements=','A downward correction must inspect later stock-out activity.');
+must(correction,'if(delta<0){const receiptTime=','A downward correction must inspect later stock-out activity.');
+must(correction,'orderByChild("occurredAt").startAt(receiptTime)','Later stock-out activity is read from the receipt time onward, not the whole movement history.');
+must(correction,'movements=Object.assign({},undatedSnap.val()||{},laterSnap.val()||{}),laterUsage=','Undated movements are still inspected.');
 must(correction,'A downward source-quantity correction could remove replacement stock','Unsafe downward corrections after consumption must be refused.');
 must(correction,'financialImpact:0,financeBooksPosting:false','The audit and response must explicitly record zero Finance impact.');
 must(correction,'[`purchaseInvoices/${invoiceId}/lines`]:correctedLines','The source purchase line must be corrected.');

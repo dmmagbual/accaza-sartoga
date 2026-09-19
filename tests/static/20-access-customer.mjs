@@ -26,7 +26,7 @@ if(!adminSource.includes("subscriptionHub.subscribe('activeOrders'"))fail('Relea
 if(!adminSource.includes("a.subscribe('orders',function(s){ordersMap=s.val()"))fail('analytics does not use bounded authoritative order history');
 if(!adminSource.includes('const HISTORY_BOUNDS='))fail('bounded history query configuration missing');
 if(!adminSource.includes("purchaseInvoices:{field:'ts',limit:250,page:250}")||!adminSource.includes("purchases:['purchaseInvoices','stockReceipts','inventoryMovements']")||!adminSource.includes("purchaseInvoices:['purchases']"))fail('Purchase invoices are not attached and paginated in the Purchases workspace');
-if(!fs.readFileSync(path.join(root,'database.rules.json'),'utf8').includes('"purchaseInvoices":     { ".indexOn": "ts"'))fail('Purchase invoice history query index is missing');
+if(!/"purchaseInvoices":\s+\{ "\.indexOn": \["ts"/.test(fs.readFileSync(path.join(root,'database.rules.json'),'utf8')))fail('Purchase invoice history query index is missing');
 if(!adminSource.includes('loadOlder:async function(path)'))fail('history pagination loader missing');
 if(adminSource.includes('function tryDeduct('))fail('retired browser inventory deduction still exists');
 if(adminHtml.includes('xlsx.full.min.js'))fail('Release 2D still downloads SheetJS during admin startup');
@@ -37,7 +37,7 @@ for(const name of ['pos','analytics','register','staff','packages','finance']){
   if(!adminSource.includes(`window.__accazaRegisterModule('${name}'`))fail(`lazy admin module registration missing: ${name}`);
 }
 const inboxSource=fs.readFileSync(path.join(root,'assets','js','admin','staff-inbox.js'),'utf8');
-for(const marker of ["window.__accazaRegisterModule('inbox'","a.subscribe('staffMessages'","a.subscribe('staffMessageReceipts'","action:'send'","action:'read'","action:'acknowledge'","Require acknowledgment","staffInboxBadge"])if(!inboxSource.includes(marker)&&!adminHtml.includes(marker))fail(`POS Staff Inbox marker missing: ${marker}`);
+for(const marker of ["window.__accazaRegisterModule('inbox'","a.subscribe('staffMessages'","a.subscribe('staffReceiptIndex/'","staffMessageReceipts/'+id+'/'","a.update(a.ref(a.db,'staffReceiptIndex/'","action:'send'","action:'read'","action:'acknowledge'","Require acknowledgment","staffInboxBadge"])if(!inboxSource.includes(marker)&&!adminHtml.includes(marker))fail(`POS Staff Inbox marker missing: ${marker}`);
 for(const marker of ['"staffMessages"','"staffMessageReceipts"','".write": false'])if(!rulesRaw.includes(marker))fail(`Staff Inbox database protection missing: ${marker}`);
 if((adminSource.match(/window\.posSwitchTab=function/g)||[]).length!==1)fail('lazy module loader must be the sole POS tab router');
 if(!rulesRaw.includes("root.child('adminPerms').child(auth.uid).child('inventory').val() === true"))fail('inventory permission enforcement missing');

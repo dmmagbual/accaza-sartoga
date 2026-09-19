@@ -12,6 +12,7 @@ try{
       admins:{owner:true,manager:'manager',staff:'staff',cashier:'staff',kitchen:'kitchen'},
       adminPerms:{staff:{orders:true,pos:true,possettings:true,discrepancy:true,petty:true,availability:true},cashier:{pos:true},kitchen:{orders:true}},
       menuItems:{latte:{name:'Latte',cat:'coffee',priceS:100}},
+      channelPrices:{grabfood:{latte:{S:130}}},
       availability:{Latte:true},
       orders:{
         own:{id:'own',ownerUid:'customer-a',status:'Pending',total:100,source:'online'},
@@ -43,6 +44,9 @@ try{
       incidents:{incident_one:{severity:'SEV2',status:'investigating',createdAt:1}},
       deletionAudit:{orders:{old_deleted:{orderId:'old_deleted',deletedAt:1}}},
       clientTelemetryDaily:{'2026-08-09':{metrics:{pos_boot:{count:1,totalMs:500,maxMs:500,failed:0}}}},
+      staffMessages:{msg_one:{title:'Shift',body:'Close the till',audience:'all',createdAt:1,expiresAt:2}},
+      staffMessageReceipts:{msg_one:{owner:{userUid:'owner',readAt:2}}},
+      staffReceiptIndex:{owner:{msg_one:{messageId:'msg_one',readAt:2}}},
     });
   });
 
@@ -83,6 +87,17 @@ try{
   await assertFails(set(ref(owner,'cfLedger/forged'),{amount:999,ts:2}));
   await assertSucceeds(get(ref(staff,'cfAccounts/bank')));
   await assertSucceeds(get(ref(cashier,'cfAccounts/bank')));
+  // Channel prices: POS users must READ them to ring GrabFood/FoodPanda sales, but only managers or
+  // staff granted Channel Pricing may CHANGE them. Read and write are deliberately separate authorities.
+  await assertSucceeds(get(ref(cashier,'channelPrices/grabfood/latte')));
+  await assertSucceeds(get(ref(manager,'channelPrices/grabfood/latte')));
+  await assertFails(get(ref(kitchen,'channelPrices/grabfood/latte')));
+  await assertFails(get(ref(guest,'channelPrices/grabfood/latte')));
+  await assertFails(get(ref(a,'channelPrices/grabfood/latte')));
+  await assertFails(set(ref(cashier,'channelPrices/grabfood/latte/S'),1));
+  await assertFails(set(ref(staff,'channelPrices/grabfood/latte/S'),1));
+  await assertFails(set(ref(kitchen,'channelPrices/grabfood/latte/S'),1));
+  await assertSucceeds(set(ref(manager,'channelPrices/grabfood/latte/S'),135));
   await assertFails(update(ref(cashier,'cfAccounts/bank'),{name:'Cashier edit'}));
   await assertFails(get(ref(kitchen,'cfAccounts/bank')));
   await assertFails(update(ref(staff,'cfAccounts/bank'),{name:'Forged bank'}));
@@ -101,6 +116,13 @@ try{
   await assertSucceeds(set(ref(staff,'discrepancies/disc_new'),{kind:'cash',status:'open',ts:2}));
   await assertFails(update(ref(owner,'pettyCashVouchers/pv_one'),{status:'approved'}));
   await assertSucceeds(set(ref(staff,'pettyCashVouchers/pv_new'),{voucherNo:'PV-2',amount:5,status:'pending',createdAt:2}));
+  // Receipt images are stored beside a new pending voucher, atomically, and never replaced.
+  await assertSucceeds(update(ref(staff),{'pettyCashVouchers/pv_img':{voucherNo:'PV-3',amount:5,status:'pending',createdAt:3,hasReceipt:true},'pettyCashReceipts/pv_img':{meta:{createdAt:3,bytes:27},image:'data:image/jpeg;base64,AAAA'}}));
+  await assertSucceeds(get(ref(staff,'pettyCashReceipts/pv_img/meta')));
+  await assertFails(set(ref(owner,'pettyCashReceipts/pv_img'),{meta:{createdAt:4,bytes:27},image:'data:image/jpeg;base64,AAAA'}));
+  await assertFails(set(ref(staff,'pettyCashReceipts/pv_one'),{meta:{createdAt:4,bytes:27},image:'data:image/jpeg;base64,AAAA'}));
+  await assertFails(update(ref(staff),{'pettyCashVouchers/pv_bad':{voucherNo:'PV-4',amount:5,status:'pending',createdAt:4,hasReceipt:true},'pettyCashReceipts/pv_bad':{meta:{createdAt:4,bytes:9},image:'javascript:alert(1)'}}));
+  await assertFails(get(ref(cashier,'pettyCashReceipts/pv_img')));
   await assertFails(update(ref(owner,'activityLogArchive/log_old'),{action:'forged'}));
   await assertSucceeds(get(ref(owner,'operationalAudit/audit_one')));
   await assertFails(set(ref(owner,'operationalAudit/forged'),{action:'forged',ts:2}));
@@ -114,6 +136,18 @@ try{
   await assertSucceeds(get(ref(manager,'clientTelemetryDaily/2026-08-09')));
   await assertFails(get(ref(staff,'clientTelemetryDaily/2026-08-09')));
   await assertFails(set(ref(owner,'clientTelemetryDaily/2026-08-10'),{metrics:{forged:{count:1}}}));
+  // Staff Inbox (Sep 2026 download audit): each reader reads and seeds only their own index,
+  // and nobody can write the shared message or receipt records from a browser.
+  await assertSucceeds(get(ref(owner,'staffMessages/msg_one')));
+  await assertFails(get(ref(guest,'staffMessages/msg_one')));
+  await assertFails(set(ref(owner,'staffMessages/forged'),{title:'x',body:'y',createdAt:3}));
+  await assertSucceeds(get(ref(owner,'staffReceiptIndex/owner')));
+  await assertFails(get(ref(owner,'staffReceiptIndex/manager')));
+  await assertFails(get(ref(staff,'staffReceiptIndex/owner')));
+  await assertFails(get(ref(guest,'staffReceiptIndex/owner')));
+  await assertSucceeds(set(ref(owner,'staffReceiptIndex/owner/msg_one'),{messageId:'msg_one',readAt:2}));
+  await assertFails(set(ref(owner,'staffReceiptIndex/manager/msg_one'),{messageId:'msg_one',readAt:2}));
+  await assertFails(set(ref(owner,'staffMessageReceipts/forged/owner'),{userUid:'owner',readAt:3}));
 
   await assertFails(set(ref(a,'orders/forged'),{id:'forged',ownerUid:'customer-a',source:'online',status:'Pending',total:1}));
   await assertFails(update(ref(a,'orders/own'),{status:'Received',receivedByCustomer:true}));

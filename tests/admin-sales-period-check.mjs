@@ -53,14 +53,16 @@ function compare(a,b){return rank(a)-rank(b)||(a==null?0:a<b?-1:a>b?1:0);}
 function snapshot(target){let entries=Object.entries(data[target.path]||{}),f=target.field;if(f)entries=entries.filter(([,row])=>(!('start' in target)||compare(row[f],target.start)>=0)&&(!('end' in target)||compare(row[f],target.end)<=0));if(target.limit)entries=entries.slice(-target.limit);const map=Object.fromEntries(entries);return{val:()=>map,forEach:fn=>entries.forEach(([key,value])=>fn({key,val:()=>value}))};}
 const ops={ref:(_db,path)=>({path}),orderByChild:field=>({field}),startAt:start=>({start}),endAt:end=>({end}),endBefore:end=>({end}),limitToLast:limit=>({limit}),query:(base,...constraints)=>Object.assign({},base,...constraints),get:async target=>{calls.push(target);return snapshot(target);},onValue:(target,callback,onError)=>{const entry={target,callback,onError,stopped:false};listeners.push(entry);queueMicrotask(()=>{if(!entry.stopped)callback(snapshot(target));});return()=>{entry.stopped=true;};},onChildAdded:(target,callback,onError)=>{const entry={target,callback,onError,stopped:false};listeners.push(entry);queueMicrotask(()=>{if(!entry.stopped)snapshot(target).forEach(child=>callback(child));});return()=>{entry.stopped=true;};},onChildChanged:(target,callback,onError)=>{const entry={target,callback,onError,stopped:false};listeners.push(entry);return()=>{entry.stopped=true;};},onChildRemoved:(target,callback,onError)=>{const entry={target,callback,onError,stopped:false};listeners.push(entry);return()=>{entry.stopped=true;};}};
 const targets=salesTargets({},ops,'orders',p);
-assert.equal(targets.length,3,'Sales reports must issue only the three numeric sales-authority queries');
-assert.deepEqual(targets.map(q=>q.field),['completedAt','receivedAt','timestamp']);
-assert(targets.every(q=>typeof q.start==='number'&&typeof q.end==='number'),'Sales query bounds must remain numeric');
+assert.equal(targets.length,1,'Live orders must be read with one bounded listener, not three overlapping ones');
+assert.equal(targets[0].field,'timestamp');assert(typeof targets[0].start==='number'&&targets[0].start<p.startAt&&!('end' in targets[0]),'The live-order listener must be a numeric look-back superset');
+const archiveTargets=salesTargets({},ops,'archivedOrders',p);
+assert.deepEqual(archiveTargets.map(q=>q.field),['completedAt','receivedAt','timestamp'],'Archived history keeps the three numeric sales-authority queries');
+assert(archiveTargets.every(q=>typeof q.start==='number'&&typeof q.end==='number'),'Sales query bounds must remain numeric');
 const queryFields=['completedAt','receivedAt','timestamp'];
 const expected=Object.keys(data.orders).filter(k=>queryFields.some(field=>typeof data.orders[k][field]==='number'&&data.orders[k][field]>=p.startAt&&data.orders[k][field]<=p.endAt)).filter(k=>salesStamp(data.orders[k])>=p.startAt&&salesStamp(data.orders[k])<=p.endAt).sort();
 const actual=await readSalesPeriod({},ops,'orders',p);
 assert.deepEqual(Object.keys(actual).sort(),expected);assert(!calls.some(q=>q.limit));
-assert(calls.some(q=>q.field==='completedAt'));assert(calls.some(q=>q.field==='receivedAt'));assert(calls.some(q=>q.field==='timestamp'));assert(!calls.some(q=>q.field==='archivedAt'));
+assert.equal(calls.length,1);assert(calls.every(q=>q.field==='timestamp'));assert(!calls.some(q=>q.field==='archivedAt'));
 let snapshots=0;const stop=watchSalesPeriod({},ops,'orders',p,()=>snapshots++,error=>{throw error;});await new Promise(r=>setTimeout(r,0));assert.equal(snapshots,1);stop();
 
 globalThis.window=win;

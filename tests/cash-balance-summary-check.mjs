@@ -7,6 +7,7 @@ const finance = fs.readFileSync('src/admin/finance/00-bootstrap-ledger.js', 'utf
 const firebaseClient = fs.readFileSync('assets/js/admin/firebase-client.mjs', 'utf8');
 const core = fs.readFileSync('assets/js/admin/core.mjs', 'utf8');
 const functions = fs.readFileSync('functions/index.js', 'utf8');
+const undepositedControl = fs.readFileSync('src/functions/21a-undeposited-pages.js', 'utf8');
 
 function fail(message) { throw new Error(message); }
 function expect(condition, message) { if (!condition) fail(message); }
@@ -23,7 +24,7 @@ const movements = {
   ]},
 };
 const snapshot = CashBalances.snapshotFromMovements(movements, 123);
-expect(snapshot.schemaVersion === 1 && snapshot.complete === true, 'cash summary must be versioned and complete');
+expect(snapshot.schemaVersion === CashBalances.SCHEMA_VERSION && snapshot.complete === true, 'cash summary must be versioned and complete');
 expect(snapshot.balances.registerCents === 10000, 'register balance must use cent precision');
 expect(snapshot.balances.cashAccountCents.gcash === 25001, 'cash-account cents were not accumulated');
 expect(snapshot.balances.undepositedCents === -25000, 'Undeposited Collection direction changed');
@@ -38,14 +39,25 @@ const edited = {lines: [
   {account: 'asset:register_cash', debit: 125, credit: 0},
   {account: 'revenue:sales', debit: 0, credit: 125},
 ]};
-const applied = CashBalances.applyEvent(snapshot, 'sale_1', movements.sale_1, edited, 456);
-expect(applied && applied.balances.registerCents === 12500, 'movement edits must replace, not stack, the prior delta');
-expect(CashBalances.applyEvent(applied, 'sale_1', edited, edited, 789) === undefined, 'replayed movement event must be idempotent');
-const deleted = CashBalances.applyEvent(applied, 'deposit_1', movements.deposit_1, null, 999);
-expect(deleted && !deleted.applied.deposit_1 && deleted.balances.cashAccountCents.gcash === undefined, 'movement deletion must remove its cached delta');
+const split = CashBalances.splitSnapshotFromMovements(movements, 123);
+expect(!Object.hasOwn(snapshot, 'applied'), 'the hot cash summary must not contain the growing applied-movement history');
+const editedResult = CashBalances.applyContribution(snapshot, split.applied.sale_1, edited, 456);
+expect(editedResult.summary.balances.registerCents === 12500, 'movement edits must replace, not stack, the prior delta');
+expect(CashBalances.contributionMatches(editedResult.applied, edited), 'the exact edited movement fingerprint must be retained separately');
+const deletedResult = CashBalances.applyContribution(editedResult.summary, split.applied.deposit_1, null, 999);
+expect(deletedResult.applied === null && deletedResult.summary.balances.cashAccountCents.gcash === undefined, 'movement deletion must remove its cached delta');
+expect(CashBalances.contributionMatches(null, null), 'a deleted movement is applied only when its separate contribution is absent');
 
 expect(functions.includes('exports.getCurrentCashBalances'), 'server cash-balance callable is not bundled');
 expect(functions.includes('exports.updateCashBalanceSummary'), 'cash-balance summary trigger is not bundled');
+expect(functions.includes('cashBalanceSummaryApplied'), 'movement idempotency rows must be stored outside the hot summary');
+expect(functions.includes('cashBalanceSummaryProcessorLock'), 'cash summary updates must be serialized by a bounded lease');
+expect(functions.includes('limitToFirst(CASH_SUMMARY_BATCH_SIZE)'), 'pending recovery must use bounded queue reads');
+expect(!functions.includes('db.ref("/cashBalanceSummary").transaction'), 'the growing cash summary must not be downloaded inside RTDB transactions');
+expect(functions.includes('rebuildCashBalanceSummary'), 'a stale schema must force one authoritative full-journal rebuild');
+expect(functions.includes('ensureCashBalanceSummary'), 'all cash-control callables must share one summary validation and recovery path');
+expect(undepositedControl.includes('summaryMeta.schemaVersion!==CashBalances.SCHEMA_VERSION'), 'Undeposited Collection must reject a stale summary schema');
+expect(undepositedControl.includes('await ensureCashBalanceSummary(db)'), 'Undeposited Collection must invoke the authoritative summary recovery path');
 expect(firebaseClient.includes("'getCurrentCashBalances'"), 'Admin callable registry is missing getCurrentCashBalances');
 expect(core.includes('getCurrentCashBalances:function'), 'Admin runtime does not expose the cash-balance callable');
 expect(finance.includes('a.getCurrentCashBalances()'), 'Finance must request the compact cash-balance summary');

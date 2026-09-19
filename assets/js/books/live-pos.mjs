@@ -1,5 +1,5 @@
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import {getDatabase, ref, onValue, onChildAdded, onChildChanged, onChildRemoved, query, orderByChild, equalTo, endAt} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import {getDatabase, ref, get, onValue, onChildAdded, onChildChanged, onChildRemoved, query, orderByChild, orderByKey, equalTo, startAt, endAt, endBefore, startAfter} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import {getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {getFunctions, httpsCallable} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 const cfg={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
@@ -7,32 +7,70 @@ function setPill(text,cls){ const el=document.getElementById("liveStatus"); if(e
 let app,db,auth;
 try{ app=initializeApp(cfg); db=getDatabase(app); auth=getAuth(app); var fns=getFunctions(app,"asia-southeast1"); window.__financeCmd=function(payload){ return httpsCallable(fns,"postFinancialCommand")(payload).then(function(r){return r.data;}); };window.__booksFinancialClose=function(payload){return httpsCallable(fns,"runFinancialClose")(payload).then(function(r){return r.data;});};window.__booksCertifyClose=function(payload){if(!auth.currentUser)return Promise.reject(new Error("Sign in first."));return auth.currentUser.getIdToken(true).then(function(token){return httpsCallable(fns,"createManagerApproval")({action:"certify_financial_close",sourceId:payload.closeId,reason:payload.reason,managerIdToken:token});}).then(function(ap){return httpsCallable(fns,"runFinancialClose")({action:"certify",closeType:"DAILY_CLOSE",businessDate:payload.businessDate,reason:payload.reason,approvalId:ap.data.approvalId});}).then(function(r){return r.data;});}; window.__fixedAsset=function(payload){ return httpsCallable(fns,"manageFixedAsset")(payload).then(function(r){return r.data;}); }; window.__booksSync=function(){var ensureLedger=httpsCallable(fns,"ensureFinancialLedger"),ensureJournal=httpsCallable(fns,"ensureBooksJournal");return ensureLedger({}).then(function(ledger){return ensureJournal({}).then(function(books){return Object.assign({},books.data,{ordersScanned:ledger.data.scanned,financePosted:ledger.data.posted,financeDuplicates:ledger.data.duplicates,orphanReversed:ledger.data.orphanReversed});});});}; window.__cashAccountSave=function(payload){return httpsCallable(fns,"manageCashAccount")(payload).then(function(r){return r.data;});}; window.__manageBooksAccount=function(payload){return httpsCallable(fns,"manageBooksAccount")(payload).then(function(r){return r.data;});}; window.__booksRepairPayout=function(payload){if(!auth.currentUser)return Promise.reject(new Error('Sign in to Accaza Books first.'));return auth.currentUser.getIdToken(true).then(function(token){return httpsCallable(fns,"createManagerApproval")({action:'repair_reversed_payout_deposit',sourceId:payload.payoutId,amount:payload.amount,reason:payload.reason,managerIdToken:token});}).then(function(approval){return httpsCallable(fns,"repairReversedPayoutDeposit")({payoutId:payload.payoutId,reason:payload.reason,approvalId:approval.data.approvalId});}).then(function(r){return r.data;});}; window.__auditControls=function(){return httpsCallable(fns,"auditFinancialControls")({}).then(function(r){return r.data;});}; window.__repairFinanceDates=function(payload){return httpsCallable(fns,"repairFinanceDates")(payload).then(function(r){return r.data;});}; window.__booksAuthReady=true; }
 catch(e){ setPill("● Offline (local only)","off");window.__booksLiveLoading=false;if(window.App&&App.render)App.render(); }
+if(typeof fns!=="undefined")window.__getSupplierAdvanceDetails=function(payload){return httpsCallable(fns,"getSupplierAdvanceDetails")(payload).then(function(r){return r.data;});};
 if(typeof fns!=="undefined")window.__manageSupplier=function(payload){return httpsCallable(fns,"manageSupplier")(payload).then(function(r){return r.data;});};
 if(auth){
   setPersistence(auth, browserLocalPersistence).catch(()=>{});
   window.__booksSignIn=(email,pw)=>{ signInWithEmailAndPassword(auth,email,pw).then(()=>window.App&&App.closeModal()).catch(e=>alert("Sign-in failed: "+e.message)); };
   window.__booksSignOut=()=>signOut(auth);
-  let journalCache={}, reviewCache={}, booksStops=[], optionalStops={}, currentTab=(window.__booksCurrentTab||'dashboard');
+  let journalCache={}, monthlyNetCache={}, reviewCache={}, booksStops=[], optionalStops={}, currentTab=(window.__booksCurrentTab||'dashboard');
   const OPTIONAL_FEEDS={
-    reviewQueue:{tabs:['journal'],global:'__booksReviewQueue',target:function(){return ref(db,"/books/reviewQueue");},onChange:scheduleJournalRefresh},
-    financialMovements:{tabs:['cashflow'],global:'__financialMovements',target:function(){const p=window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get():{endAt:Date.now()};return query(ref(db,"/financialMovements"),orderByChild("occurredAt"),endAt(Number(p.endAt)||Date.now()));},onChange:scheduleRender},
-    platformPayouts:{tabs:['cashflow'],global:'__platformPayouts',target:function(){return ref(db,"/platformPayouts");},onChange:scheduleRender},
-    cashCustody:{tabs:['cashflow'],global:'__cashCustody',target:function(){return ref(db,"/cashCustody");},onChange:scheduleRender},
+    // Cash Flow downloads only the selected period's movements. Opening cash comes from
+    // small server-maintained indexes (see assets/js/shared/cash-flow-basis.js).
+    financialMovements:{tabs:['cashflow'],global:'__financialMovements',value:true,ready:'__cashFlowPeriodReady',target:function(){const p=cashFlowPeriod();return query(ref(db,"/financialMovements"),orderByChild("occurredAt"),startAt(p.startAt),endAt(p.endAt));},onChange:function(){loadCashFlowGroups();scheduleRender();}},
+    cashFlowMonthly:{tabs:['cashflow'],global:'__cashFlowMonthly',value:true,ready:'__cashFlowMonthlyReady',target:function(){return ref(db,"/cashFlowMonthly");},onChange:scheduleRender},
+    cashFlowDaily:{tabs:['cashflow'],global:'__cashFlowDaily',value:true,ready:'__cashFlowDailyMonth',readyValue:function(){return cashFlowPeriod().from.slice(0,7);},target:function(){const m=cashFlowPeriod().from.slice(0,7);return query(ref(db,"/cashFlowDaily"),orderByKey(),startAt(m+"-01"),endAt(m+"-31"));},onChange:scheduleRender},
+    cashFlowOpenings:{tabs:['cashflow'],global:'__cashFlowOpenings',value:true,ready:'__cashFlowOpeningsReady',target:function(){return ref(db,"/cashFlowOpenings");},onChange:scheduleRender},
+    cashFlowIndexMeta:{tabs:['cashflow'],global:'__cashFlowIndexMeta',value:true,nullable:true,target:function(){return ref(db,"/cashFlowIndexMeta");},onChange:function(){ensureCashFlowIndex();scheduleRender();}},
+    // Cash Flow deposits need only payouts not yet deposited (and reversed ones whose deposit
+    // still needs reversing) and custody that still holds cash, not the whole history.
+    platformPayouts:{tabs:['cashflow'],global:'__platformPayouts',targets:function(){var base=ref(db,"/platformPayouts");return[query(base,orderByChild("depositMovementId"),equalTo(null)),query(base,orderByChild("depositMovementId"),equalTo("")),query(base,orderByChild("reversed"),equalTo(true))];},onChange:scheduleRender},
+    cashCustody:{tabs:['cashflow'],global:'__cashCustody',target:function(){return query(ref(db,"/cashCustody"),orderByChild("remaining"),startAt(0.005));},onChange:scheduleRender},
     suppliers:{tabs:['journal','transactions','purchases','payables'],global:'__supplierMap',target:function(){return ref(db,"/suppliers");},onChange:scheduleRender},
-    purchaseInvoices:{tabs:['purchases'],global:'__piMap',target:function(){return ref(db,"/purchaseInvoices");},onChange:scheduleRender},
+    // The Purchases register lists the selected period; Payables loads only the invoices its bills
+    // name (window.__booksEnsurePurchaseInvoices), so the register starts from an empty map.
+    purchaseInvoices:{tabs:['purchases'],global:'__piMap',fresh:true,target:function(){var p=cashFlowPeriod();return query(ref(db,"/purchaseInvoices"),orderByChild("date"),startAt(String(p.from||todayStr())),endAt(String(p.to||todayStr())));},onChange:scheduleRender},
     fixedAssets:{tabs:['fixedassets'],global:'__faMap',target:function(){return ref(db,"/fixedAssets");},onChange:scheduleRender},
     personalFundings:{tabs:['transactions'],global:'__personalFundings',target:function(){return ref(db,"/personalFundings");},onChange:scheduleRender},
     menuItems:{tabs:['insights'],global:'__booksMenuItems',target:function(){return ref(db,"/menuItems");},onChange:scheduleRender},
     menuCategories:{tabs:['insights'],global:'__booksMenuCategories',target:function(){return ref(db,"/categories");},onChange:scheduleRender},
-    discrepancies:{tabs:['journal','transactions'],global:'__cashDiscrepancies',target:function(){return ref(db,"/discrepancies");},onChange:scheduleRender}
+    // Manual journals link only open cash variances (any status except reviewed).
+    discrepancies:{tabs:['journal','transactions'],global:'__cashDiscrepancies',targets:function(){var base=ref(db,"/discrepancies");return[query(base,orderByChild("status"),endBefore("reviewed")),query(base,orderByChild("status"),startAfter("reviewed"))];},onChange:scheduleRender}
   };
-  function stopOptionalFeed(name){var stop=optionalStops[name],spec=OPTIONAL_FEEDS[name];if(stop){try{stop();}catch(_e){}delete optionalStops[name];}if(spec)window[spec.global]={};}
-  function attachOptionalFeed(name){var spec=OPTIONAL_FEEDS[name];if(!spec||optionalStops[name]||spec.tabs.indexOf(currentTab)<0||!auth.currentUser)return;if(!window[spec.global])window[spec.global]={};optionalStops[name]=watchMap(spec.target(),window[spec.global],spec.onChange,()=>{});}
-  // Attach a feed the first time its screen is opened, then keep it live for
-  // the rest of the signed-in session so switching tabs never shows stale or
-  // temporarily empty accounting data.
-  function syncOptionalFeeds(){Object.keys(OPTIONAL_FEEDS).forEach(function(name){var spec=OPTIONAL_FEEDS[name];if(spec.tabs.indexOf(currentTab)>=0)attachOptionalFeed(name);});}
-  function stopBooksFeeds(){booksStops.splice(0).forEach(function(stop){try{stop();}catch(_e){}});Object.keys(optionalStops).forEach(stopOptionalFeed);optionalStops={};}
+  function stopOptionalFeed(name){var stop=optionalStops[name],spec=OPTIONAL_FEEDS[name];if(stop){try{stop();}catch(_e){}delete optionalStops[name];}if(spec){window[spec.global]=spec.nullable?null:{};if(spec.ready)window[spec.ready]=spec.readyValue?'':false;}if(name==='financialMovements')resetCashFlowGroups();}
+  function attachOptionalFeed(name){var spec=OPTIONAL_FEEDS[name];if(!spec||optionalStops[name]||spec.tabs.indexOf(currentTab)<0||!auth.currentUser)return;if(spec.fresh)window[spec.global]={};if(!window[spec.global])window[spec.global]={};if(spec.value){optionalStops[name]=watchValueFeed(spec);return;}var targets=spec.targets?spec.targets():[spec.target()].filter(Boolean),map=window[spec.global],stops=targets.map(function(target){return watchMap(target,map,spec.onChange,()=>{});});optionalStops[name]=function(){stops.forEach(function(stop){stop();});};}
+  // Records named by what is on screen (for example the invoices behind open bills), read one by one.
+  // Requests are remembered per map object, so a map that was replaced (sign-in, tab change) is filled again.
+  var keyedRequested=new WeakMap();
+  function ensureKeyed(path,global,ids){var map=window[global]||(window[global]={});if(!keyedRequested.has(map))keyedRequested.set(map,{});var seen=keyedRequested.get(map);Array.from(new Set((ids||[]).map(function(id){return String(id||'');}))).filter(function(id){return /^[^.#$\[\]\/]{1,768}$/.test(id)&&!map[id]&&!seen[id];}).forEach(function(id){seen[id]=true;get(ref(db,'/'+path+'/'+id)).then(function(snap){if(snap.exists()&&window[global]===map){map[id]=snap.val();scheduleRender();}}).catch(function(){delete seen[id];});});}
+  window.__booksEnsurePurchaseInvoices=function(ids){if(auth&&auth.currentUser)ensureKeyed('purchaseInvoices','__piMap',ids);};
+  function watchValueFeed(spec){var stopped=false,readyValue=spec.readyValue?spec.readyValue():true,stop=onValue(spec.target(),function(s){if(stopped)return;window[spec.global]=spec.nullable?s.val():(s.val()||{});if(spec.ready)window[spec.ready]=readyValue;spec.onChange();},function(){});return function(){stopped=true;stop();};}
+  function cashFlowPeriod(){return window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get():{from:todayStr(),startAt:Date.now()-86400000,endAt:Date.now()};}
+  // A reversal inside the period needs every movement of its source (sourceId index) so
+  // fully reversed pairs are excluded exactly as the full-history statement did.
+  let cashFlowGroupRequest=0;
+  function resetCashFlowGroups(){cashFlowGroupRequest++;window.__cashFlowGroups={};}
+  function loadCashFlowGroups(){if(!window.AccazaCashFlowBasis)return;var need=window.AccazaCashFlowBasis.reversalSources(window.__financialMovements||{}),have=window.__cashFlowGroups||(window.__cashFlowGroups={}),request=cashFlowGroupRequest;Object.keys(need).forEach(function(key){if(have[key]||have['loading:'+key])return;have['loading:'+key]=true;get(query(ref(db,'/financialMovements'),orderByChild('sourceId'),equalTo(need[key].sourceId))).then(function(snap){if(request!==cashFlowGroupRequest)return;have[key]=snap.val()||{};delete have['loading:'+key];scheduleRender();}).catch(function(){delete have['loading:'+key];});});}
+  // The index is created by the server the first time the cash summary is read after this release.
+  let cashFlowIndexRequested=false;
+  function ensureCashFlowIndex(){var meta=window.__cashFlowIndexMeta;if(meta&&meta.complete===true&&Number(meta.summarySchemaVersion)>=4)return;if(cashFlowIndexRequested||typeof fns==='undefined')return;cashFlowIndexRequested=true;httpsCallable(fns,'getCurrentCashBalances')({}).catch(function(){cashFlowIndexRequested=false;});}
+  // Insights needs every sale in its three comparison ranges. It reads them from the
+  // Firestore history replica (bounded period pages) only while Insights is open, instead
+  // of every Books sign-in downloading the whole archivedOrders node.
+  let insightsKey='',insightsRequest=0;
+  function manilaStart(day){return Date.parse(String(day)+'T00:00:00+08:00');}
+  function manilaEnd(day){return Date.parse(String(day)+'T23:59:59.999+08:00');}
+  function insightsRanges(){if(typeof window.biRanges!=='function')return [];var r=window.biRanges()||{},out=[];['current','previous','year'].forEach(function(k){var x=r[k];if(!x||!x.start||!x.end)return;var start=manilaStart(x.start),end=manilaEnd(x.end);if(!isFinite(start)||!isFinite(end)||start>end)return;start=Math.max(start,end-731*86400000);out.push({startAt:start,endAt:end});});return out;}
+  async function readHistoryRange(read,range){var rows={},cursor=null,pages=0,more=true;while(more){var res=(await read({mode:'period',startAt:range.startAt,endAt:range.endAt,cursor:cursor,limit:100})).data||{};Object.assign(rows,res.orders||{});cursor=res.cursor||null;more=res.hasMore===true;if(++pages>50)break;}return rows;}
+  function syncInsightsOrders(){
+    if(currentTab!=='insights'||!auth||!auth.currentUser)return;
+    var ranges=insightsRanges(),key=JSON.stringify(ranges);if(!ranges.length||key===insightsKey)return;
+    insightsKey=key;var request=++insightsRequest,read=httpsCallable(fns,"readHistoricalOrders");window.__booksInsightsLoading=true;
+    Promise.all(ranges.map(function(range){return readHistoryRange(read,range);})).then(function(parts){if(request!==insightsRequest)return;window.__booksInsightsOrders=Object.assign({},...parts);window.__booksInsightsLoading=false;scheduleRender();}).catch(function(error){if(request!==insightsRequest)return;insightsKey='';window.__booksInsightsLoading=false;console.error('Insights history load failed',error);scheduleRender();});
+  }
+  function resetInsightsOrders(){insightsKey='';insightsRequest++;window.__booksInsightsOrders={};window.__booksInsightsLoading=false;}
+  function syncOptionalFeeds(){Object.keys(OPTIONAL_FEEDS).forEach(function(name){var spec=OPTIONAL_FEEDS[name];if(spec.tabs.indexOf(currentTab)>=0)attachOptionalFeed(name);else stopOptionalFeed(name);});syncInsightsOrders();}
+  function stopBooksFeeds(){resetInsightsOrders();booksStops.splice(0).forEach(function(stop){try{stop();}catch(_e){}});Object.keys(optionalStops).forEach(stopOptionalFeed);optionalStops={};}
   function watchValue(target,onChange,onError){var stop=onValue(target,onChange,onError);booksStops.push(stop);return stop;}
   function scheduleRender(){if(scheduleRender.pending)return;scheduleRender.pending=true;requestAnimationFrame(function(){scheduleRender.pending=false;if(window.App&&App.render)App.render();});}
   function watchMap(target,map,onChange,onError){
@@ -45,24 +83,25 @@ if(auth){
   function toEntries(j){ const out=[]; Object.keys(j||{}).forEach(k=>{ const n=j[k]||{}; let lines=[];
       if(n.net) lines=Object.keys(n.net).filter(c=>Math.abs(n.net[c])>=0.005).sort().map(c=>({code:c==='4995'?'5905':c,debit:n.net[c]>0?n.net[c]:0,credit:n.net[c]<0?-n.net[c]:0}));
       else if(Array.isArray(n.lines)) lines=n.lines.map(l=>({code:String(l.code)==='4995'?'5905':l.code,debit:Number(l.debit)||0,credit:Number(l.credit)||0}));
-      if(lines.length) out.push({id:k,date:n.date||String(k).slice(0,10),ref:n.ref||k,memo:n.memo||"POS entry",lines,source:"pos",channel:n.channel||"",type:n.type||"",sourceType:n.sourceType||"",sourceId:n.sourceId||"",reversalOf:n.reversalOf||"",reversedByMovementId:n.reversedByMovementId||"",correctsMovementId:n.correctsMovementId||"",correctionReplacementId:n.correctionReplacementId||"",correctionReversalMovementId:n.correctionReversalMovementId||"",linkedPayableId:n.linkedPayableId||"",linkedDiscrepancyId:n.linkedDiscrepancyId||"",revision:Number(n.revision||0),voided:n.voided===true,reason:n.reason||n.correctionReason||""}); });
+      if(lines.length) out.push({id:k,date:n.date||String(k).slice(0,10),ref:n.ref||k,memo:n.memo||"POS entry",lines,source:"pos",channel:n.channel||"",type:n.type||"",sourceType:n.sourceType||"",sourceId:n.sourceId||"",reversalOf:n.reversalOf||"",reversedByMovementId:n.reversedByMovementId||"",correctsMovementId:n.correctsMovementId||"",correctionReplacementId:n.correctionReplacementId||"",correctionReversalMovementId:n.correctionReversalMovementId||"",linkedPayableId:n.linkedPayableId||"",linkedDiscrepancyId:n.linkedDiscrepancyId||"",revision:Number(n.revision||0),voided:n.voided===true,reason:n.reason||n.correctionReason||"",supplierAdvanceConversionId:n.supplierAdvanceConversionId||""}); });
     return out; }
-  function refresh(){ window.__posEntries=toEntries(journalCache);
+  function openingCarry(beforeMonth){var net={};Object.keys(monthlyNetCache||{}).filter(function(month){return month<beforeMonth;}).forEach(function(month){Object.keys(monthlyNetCache[month]||{}).forEach(function(code){net[code]=Math.round((Number(net[code]||0)+Number(monthlyNetCache[month][code]||0))*100)/100;});});var lines=Object.keys(net).filter(function(code){return Math.abs(net[code])>=0.005;}).sort().map(function(code){return {code:code==='4995'?'5905':code,debit:net[code]>0?net[code]:0,credit:net[code]<0?-net[code]:0};});return lines.length?[{id:'__opening_before_'+beforeMonth,date:'0000-00-00',ref:'OPENING-CARRY',memo:'Prior-period balance carried from immutable monthly journal totals',lines:lines,source:'books-monthly-carry',synthetic:true}]:[];}
+  function refresh(){const p=window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get():{from:todayStr()};const month=String(p.from||todayStr()).slice(0,7); window.__posEntries=openingCarry(month).concat(toEntries(journalCache));
     if(window.App&&App.render){ App.rebuildPeriodSel&&App.rebuildPeriodSel(); App.render(); } }
   let journalUnsub=null;
   function bindPeriodJournal(){
     if(!auth||!auth.currentUser)return;
     if(journalUnsub)journalUnsub();
     const p=window.AccazaReportPeriod&&window.AccazaReportPeriod.get?window.AccazaReportPeriod.get():{from:todayStr(),to:todayStr()};
-    // Load every posted entry through the report end date. Balance-sheet, General Ledger,
-    // control-account, and opening-balance views need prior-period activity; period reports
-    // continue to use entriesInPeriod() so income, COGS, and expenses do not carry forward.
+    const monthStart=String(p.from||todayStr()).slice(0,7)+'-01';
+    // Prior months come from compact immutable totals; only the selected month onward
+    // is downloaded so balance-sheet carry-forward remains complete without full history.
     journalCache={};window.__booksLiveLoading=true;
-    journalUnsub=watchMap(query(ref(db,"/books/journal"),orderByChild("date"),endAt(p.to)),journalCache,scheduleJournalRefresh,()=>{window.__booksLiveLoading=false;setPill("● Read blocked — not an admin","bad");if(window.App&&App.render)App.render();});
+    journalUnsub=watchMap(query(ref(db,"/books/journal"),orderByChild("date"),startAt(monthStart),endAt(p.to)),journalCache,scheduleJournalRefresh,()=>{window.__booksLiveLoading=false;setPill("● Read blocked — not an admin","bad");if(window.App&&App.render)App.render();});
   }
   function bindPeriodFinancial(){
     if(!auth||!auth.currentUser)return;
-    stopOptionalFeed('financialMovements');
+    stopOptionalFeed('financialMovements');stopOptionalFeed('cashFlowDaily');stopOptionalFeed('purchaseInvoices');
     syncOptionalFeeds();
   }
   let orderStops=[];
@@ -70,11 +109,17 @@ if(auth){
     orderStops.splice(0).forEach(function(stop){stop();});
     window.__booksActiveOrders={};window.__booksArchivedOrders={};
     // Account 1100 must include old unsettled platform sales, not only the selected
+    // period. Every platform sale carries settlementStatus (POS, catch-up and the offline
+    // sync server default), so archived history is read only through the indexed
+    // "unsettled" subset. The former equalTo(null) archive query matched every in-store
+    // sale and, unindexed, downloaded the whole archivedOrders node on each Books sign-in.
+    // Insights loads its own bounded periods from the Firestore replica on demand.
+    //
     // report period. Read the indexed outstanding subset instead of all order history.
     orderStops.push(watchMap(query(ref(db,"/orders"),orderByChild("settlementStatus"),equalTo("unsettled")),window.__booksActiveOrders,scheduleRender,()=>{}));
     orderStops.push(watchMap(query(ref(db,"/orders"),orderByChild("settlementStatus"),equalTo(null)),window.__booksActiveOrders,scheduleRender,()=>{}));
     orderStops.push(watchMap(query(ref(db,"/archivedOrders"),orderByChild("settlementStatus"),equalTo("unsettled")),window.__booksArchivedOrders,scheduleRender,()=>{}));
-    orderStops.push(watchMap(query(ref(db,"/archivedOrders"),orderByChild("settlementStatus"),equalTo(null)),window.__booksArchivedOrders,scheduleRender,()=>{}));
+    
   }
   window.__booksRebindPeriod=function(){bindPeriodJournal();bindPeriodFinancial();};
   onAuthStateChanged(auth, user=>{
@@ -85,17 +130,21 @@ if(auth){
     if(journalUnsub){journalUnsub();journalUnsub=null;}
     if(user){ setPill("● Live · "+(user.email||"synced"),"ok");if(window.__manageSupplier)window.__manageSupplier({action:"initialize_legacy"}).catch(function(){});
       bindPeriodJournal();
+      // Owner emergency sign-out: end this session if it signed in before the cutoff.
+      watchValue(ref(db,"/sessionControl/cutoff"), async s=>{ const c=s.val()||{},at=Number(c.at)||0; if(!at||!auth.currentUser||auth.currentUser.uid!==user.uid)return; let signedInAt=0; try{signedInAt=Date.parse((await user.getIdTokenResult()).authTime)||0;}catch(_e){return;} if(signedInAt&&signedInAt<at){ try{await signOut(auth);}catch(_o){} alert("The owner signed every device out"+(c.reason?(": "+c.reason):"")+". Sign in again."); } }, ()=>{});
+      watchValue(ref(db,"/books/monthlyNet"), s=>{ monthlyNetCache=s.val()||{}; scheduleJournalRefresh(); }, ()=>{});
       watchValue(ref(db,"/accountingPeriods"), s=>{ window.__accountingPeriods=s.val()||{}; window.__isAccountingPeriodClosed=function(date){var record=(window.__accountingPeriods||{})[String(date||'').slice(0,7)]||{};return record.status==='closed';}; if(window.App&&App.render)App.render(); }, ()=>{});
       reviewCache={};window.__booksReviewQueue={};
       window.__arMap={};booksStops.push(watchMap(ref(db,"/receivables"),window.__arMap,scheduleRender,()=>{}));
       window.__apMap={};booksStops.push(watchMap(ref(db,"/payables"),window.__apMap,scheduleRender,()=>{}));
       window.__supplierMap={};window.__cashDiscrepancies={};
       watchValue(ref(db,"/cfAccounts"), s=>{ window.__cfAccounts=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
+      /* download-ok: bounded one short code per bank account */watchValue(ref(db,"/books/config/cashAccountMap"), s=>{ window.__cashAccountMap=s.val()||{}; if(window.App&&App.render)App.render(); }, ()=>{});
       watchValue(ref(db,"/booksChart"), s=>{ window.__booksChart=s.val()||null; if(window.App&&App.applyServerChart)App.applyServerChart(); }, ()=>{});
       bindPeriodFinancial();
       bindOutstandingOrders();
       window.__platformPayouts={};window.__booksMenuItems={};window.__booksMenuCategories={};window.__cashCustody={};window.__faMap={};window.__piMap={};window.__personalFundings={};
       syncOptionalFeeds();
-    } else { window.__booksLiveLoading=false;setPill("● Sign in for live POS","off");window.__booksChartManager=false; window.__posEntries=[]; window.__arMap={}; window.__apMap={};window.__supplierMap={}; window.__cashDiscrepancies={}; window.__booksReviewQueue={}; window.__cfAccounts={}; window.__financialMovements={}; window.__platformPayouts={}; window.__booksActiveOrders={};window.__booksArchivedOrders={};window.__booksMenuItems={};window.__booksMenuCategories={};window.__cashCustody={};window.__faMap={}; window.__piMap={};window.__personalFundings={}; if(window.App&&App.render)App.render(); }
+    } else { window.__booksLiveLoading=false;setPill("● Sign in for live POS","off");window.__booksChartManager=false; window.__posEntries=[]; window.__arMap={}; window.__apMap={};window.__supplierMap={}; window.__cashDiscrepancies={}; window.__booksReviewQueue={}; window.__cfAccounts={}; window.__cashAccountMap={}; window.__financialMovements={}; window.__platformPayouts={}; window.__booksActiveOrders={};window.__booksArchivedOrders={};window.__booksMenuItems={};window.__booksMenuCategories={};window.__cashCustody={};window.__faMap={}; window.__piMap={};window.__personalFundings={}; if(window.App&&App.render)App.render(); }
   });
 }

@@ -1,5 +1,5 @@
 const ALLOWED_TABS=new Set(['orders','ops','reservations','inventory','recipes','payouts','cashflow','receivables','payables','discrepancy','operations']);
-let exceptionData=null,exceptionAt=0,exceptionLoading=false,refreshTimer=null;
+let exceptionData=null,exceptionAt=0,exceptionLoading=false,exceptionPromise=null,refreshTimer=null;
 
 function esc(value){return String(value==null?'':value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));}
 function num(id){const el=document.getElementById(id);return Number(String(el&&el.textContent||'0').replace(/[^0-9.-]/g,''))||0;}
@@ -39,20 +39,44 @@ async function render(){
   root.querySelectorAll('[data-occ-route]').forEach(button=>button.onclick=()=>openTab(button.getAttribute('data-occ-route')));
 }
 
+// System Health is management-only on the server. Non-management sessions (the
+// POS till) must never call it, and a failed call must not be retried on every
+// live-counter change: that loop produced ~2,000 rejected calls a day.
+const SYSTEM_HEALTH_FAILURE_BACKOFF_MS=10*60*1000;
+let exceptionFailedAt=0;
+function systemHealthAllowed(){const authz=window.__accazaAuthz;return !!(authz&&authz.isPrivileged);}
+
 async function loadExceptions(force=false){
-  if(exceptionLoading||(!force&&exceptionData&&Date.now()-exceptionAt<60000))return;
-  const api=window.__accaza;if(!api||!api.getOperationalExceptions)return;
+  if(exceptionPromise)return exceptionPromise;
+  if(!systemHealthAllowed())return exceptionData;
+  if(!force&&exceptionData)return exceptionData;
+  if(!force&&exceptionFailedAt&&Date.now()-exceptionFailedAt<SYSTEM_HEALTH_FAILURE_BACKOFF_MS)return exceptionData;
+  const api=window.__accaza;if(!api||!api.getOperationalExceptions)return exceptionData;
   exceptionLoading=true;
-  try{const response=await api.getOperationalExceptions();exceptionData=response&&response.data||response;exceptionAt=Date.now();}catch(_error){exceptionData=null;exceptionAt=Date.now();}finally{exceptionLoading=false;render();}
+  exceptionPromise=(async()=>{
+    try{
+      const response=await api.getOperationalExceptions(force);
+      exceptionData=response&&response.data||response;exceptionAt=Number(exceptionData&&exceptionData.generatedAt)||0;exceptionFailedAt=0;
+      return exceptionData;
+    }catch(_error){exceptionData=null;exceptionFailedAt=Date.now();return null;}
+    finally{exceptionLoading=false;exceptionPromise=null;render();}
+  })();
+  return exceptionPromise;
 }
 
 function refresh(){render();loadExceptions();}
 window.__refreshOverviewCommand=refresh;
+window.__accazaSystemHealth={
+  get:function(){return exceptionData;},
+  getCheckedAt:function(){return exceptionAt;},
+  getCached:function(){return loadExceptions(false);},
+  run:function(){return loadExceptions(true);}
+};
 
 const watched=['statOrders','statPending','statReservations','dashToday','dashTodayCount'];
 const observer=new MutationObserver(schedule);
 watched.forEach(id=>{const node=document.getElementById(id);if(node)observer.observe(node,{childList:true,subtree:true,characterData:true});});
 window.addEventListener('online',schedule);window.addEventListener('offline',schedule);
-setTimeout(refresh,500);setInterval(()=>loadExceptions(true),60000);
+setTimeout(refresh,500);
 
 export{refresh};

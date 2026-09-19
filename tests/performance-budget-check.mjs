@@ -17,15 +17,34 @@ const budgets={
   // checkout, server repricing, cash-refund controls, immutable inventory replacement,
   // linked receipt/audit evidence and explicit cashier feedback.
   // Keep the ceiling narrowly above the reviewed generated bundle.
-  'assets/js/admin/pos.js':520000,
+  // Build 542 adds controlled cash-payment account selection while preserving split-payment routing.
+  'assets/js/admin/pos.js':522100,
   // Build 497 adds the visible cash-refund tag and preserved refund detail to shift reports.
-  'assets/js/admin/register.js':175500,
-  'assets/js/admin/analytics.js':150000,
+  // +1.4 KB (Sep 2026): receipt images load on demand from pettyCashReceipts instead of riding
+  // on every voucher in the Petty/Purchases listeners.
+  // Build 540 adds the Cash Payments funding-account loading guard and in-place refresh.
+  // Build 542 adds six server-validated cash-payment treatments and their audit fields.
+  'assets/js/admin/register.js':195000,
+  // Build 527 secures completed-sale corrections while retaining the sales reconciliation bridge;
+  // retain a narrow ceiling above the reviewed generated bundle.
+  // Build 533 replaces Stock Value's whole-journal listener with monthly totals plus the
+  // current month (about 0.4 KB of loader code in exchange for ~0.5 MB per tab open).
+  // Build 547 decouples the opening-balance and gain/loss reconciliation buttons so each
+  // gates on its own server precondition instead of a shared check that silently re-hid
+  // the opening-balance repost whenever 1290 carried a balance (regression of PR #171).
+  // +649 bytes after two compaction passes; raised deliberately, not silently.
+  'assets/js/admin/analytics.js':167200,
   'assets/js/admin/finance.js':75000,
   // Build 106 adds consistent interactive feedback to Finance Books buttons.
   // Build 110 adds only the AP-page hooks; its 6 KB form remains isolated below.
-  // Retain a narrow ceiling so future Finance Books growth requires review.
-  'assets/js/books/app.js':191200,
+  // Build 115 adds supplier-advance details for account 1115.
+  // Build 115 generated bundle is 205,505 bytes after the account-1115 drilldown;
+  // retain a narrow ceiling so future Finance Books growth requires review.
+  // Build 119 adds supplier-level AP balances, invoice payment history and bounded
+  // partial-payment controls without adding another Firebase listener.
+  // Books 124 adds the read-only original-journal viewer to every subsidiary
+  // ledger row, exposing both entry legs without any additional Firebase read.
+  'assets/js/books/app.js':224200,
   // Build 110 isolates the owner-only supplier AP cutover form from the core Books bundle.
   'src/books/opening-payables.js':7500
 };
@@ -44,6 +63,6 @@ if(salesPeriod.includes("ops.startAt(String")||salesPeriod.includes("orderByChil
 for(const source of [moduleLoader,hub,telemetry,functions])for(const marker of source===moduleLoader?['module_load','performance.now']:source===hub?['live_ready','liveStartedAt']:['module_load','live_ready'])if(!source.includes(marker))fail(`Measured performance telemetry missing: ${marker}`);
 
 const manifest=JSON.parse(read('release-manifest.json'));
-if(manifest.builds.admin!==503||manifest.builds.customer!==71||manifest.builds.books!==112||manifest.builds.serviceWorkerCache!==478)fail('Current build/cache versions are not synchronized');
+if(manifest.builds.admin!==548||manifest.builds.customer!==73||manifest.builds.books!==125||manifest.builds.serviceWorkerCache!==528)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');

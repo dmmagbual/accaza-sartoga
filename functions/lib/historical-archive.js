@@ -138,6 +138,10 @@ function buildDocument(orderId, input, replicatedAt = Date.now()) {
     evidence,
     omittedSourceFields: ["proof", "proofData"],
     legacyInventoryEvidence: legacyInventory.movements,
+    // This is a denormalized, derived reporting key.  Keep the order copy as
+    // the source of truth so it never changes the archive checksums or the
+    // accounting evidence represented by this replica.
+    salesAt: salesAt(order),
     order,
   };
 }

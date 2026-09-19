@@ -122,8 +122,8 @@ check(missing.cogsCovered===false,'an unmapped serve style marks the order as no
 
 /* 6. the till and the server must read the same table */
 const inv=fs.readFileSync('src/functions/50-inventory.js','utf8');
-check(/db\.ref\("\/packagingRules"\)\.get\(\)/.test(inv),'the authoritative server costing reads the packaging table');
-check(/packagingRules: pkSnap\.val\(\)/.test(inv),'the server passes packaging into the costing engine');
+check(/readCatalogKeyed\(db,\["recipes","inventory","menuItems","optionGroups","packagingRules"\]/.test(inv),'the authoritative server costing reads the packaging table (the rules the order uses)');
+check(/packagingRules:maps\.packagingRules/.test(inv),'the server passes packaging into the costing engine');
 check(/orderInventoryPlans/.test(fs.readFileSync('src/functions/20-portal-auth.js','utf8')),'the order repair path uses the immutable sale-time plan instead of current packaging');
 check(/packagingRules/.test(fs.readFileSync('functions/index.js','utf8')),'the built Functions bundle carries it');
 const state=fs.readFileSync('src/admin/pos/00-shared-state.js','utf8');
