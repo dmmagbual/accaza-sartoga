@@ -401,7 +401,7 @@ const App = {
       <div class="modal-body ledger-modal-body"><div class="ledger-current-balance"><span>Reference</span><strong>${esc(e.ref||e.reference||e.id)}</strong></div>
       <div class="tiny muted ledger-period-note">${esc(e.date||'')} · Entry ID ${esc(e.id||'')} · ${esc(status)}${e.sourceType||e.source?` · ${esc(e.sourceType||e.source)}`:''}</div>
       <div class="card card-pad" style="margin:.8rem 0"><b>${esc(e.memo||e.description||'No description')}</b>${e.reversalOf?`<div class="tiny muted">Reversal of ${esc(e.reversalOf)}</div>`:''}</div>
-      <div class="tbl-wrap"><table class="account-ledger-table"><thead><tr><th>Account</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>${lineRows||'<tr><td colspan="3" class="empty">No journal lines are available.</td></tr>'}</tbody><tfoot><tr><th>Total</th><th class="num">${peso(dr)}</th><th class="num">${peso(cr)}</th></tr></tfoot></table></div>
+      <div class="tbl-wrap"><table class="account-ledger-table journal-entry-lines"><thead><tr><th>Account</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>${lineRows||'<tr><td colspan="3" class="empty">No journal lines are available.</td></tr>'}</tbody><tfoot><tr><th>Total</th><th class="num">${peso(dr)}</th><th class="num">${peso(cr)}</th></tr></tfoot></table></div>
       <div class="tiny muted ledger-period-note">${dr===cr?'Balanced double-entry journal.':'Journal totals require review before relying on this entry.'}</div></div>
       <div class="modal-foot"><button class="btn ghost" onclick="App.closeModal()">Close</button></div>`;
     document.getElementById('modalBg').classList.add('show');
@@ -422,7 +422,7 @@ const App = {
     const detail=accountLedgerDetail(code),a=detail.account,ents=detail.rows,opening=detail.opening;
     const rows = ents.map(e=>{
       const entryLink=`<button type="button" class="linkish ledger-entry-link" onclick="App.viewEntry('${esc(e.id)}')" title="View the complete journal entry">`;
-      return `<tr class="${e.reversalOf?'reversed':''}"><td>${entryLink}${esc(e.date)}</button></td><td>${entryLink}${esc(e.reference)}</button> ${e.reversalOf?'<span class=badge-rev>rev</span>':''}</td><td>${esc(e.memo)}</td>
+      return `<tr class="${e.reversalOf?'reversed':''}"><td>${entryLink}${esc(e.date)}</button></td><td>${esc(e.reference)} ${e.reversalOf?'<span class=badge-rev>rev</span>':''}</td><td>${esc(e.memo)}</td>
         <td class="num">${e.debit?peso(e.debit):''}</td><td class="num">${e.credit?peso(e.credit):''}</td><td class="num">${peso(e.balance)}</td></tr>`;
     }).join("");
     const m=document.getElementById("modal");
