@@ -25,14 +25,14 @@ for(const [name,pattern] of required)if(!pattern.test(source))throw new Error(`B
 if(!/id:"insights",label:"Key Metrics"/.test(shell))throw new Error('Key Metrics tab is not registered');
 if(!/PAGES\.insights=function/.test(registration))throw new Error('Key Metrics page is not registered');
 if(!/assets\/js\/shared\/sales-authority\.js/.test(books)||!/src\/books\/business-intelligence\.js/.test(books)||!/src\/books\/business-intelligence\.js/.test(sw))throw new Error('Key Metrics engine and shared sales authority are not loaded and cached');
-if(!/accaza-books-build" content="127"/.test(books)||!/build v127/.test(books))throw new Error('Books build markers are not synchronized');
-if(manifest.builds.admin!==551||manifest.builds.books!==127||manifest.builds.serviceWorkerCache!==532)throw new Error('Release manifest build markers are not synchronized');
-if(!/const CACHE='accaza-v532'/.test(sw))throw new Error('Service worker cache is not synchronized');
+if(!/accaza-books-build" content="128"/.test(books)||!/build v128/.test(books))throw new Error('Books build markers are not synchronized');
+if(manifest.builds.admin!==552||manifest.builds.books!==128||manifest.builds.serviceWorkerCache!==533)throw new Error('Release manifest build markers are not synchronized');
+if(!/const CACHE='accaza-v533'/.test(sw))throw new Error('Service worker cache is not synchronized');
 for(const marker of ['onChildAdded','onChildChanged','onChildRemoved','function watchMap','orderByChild("settlementStatus"),equalTo("unsettled")','orderByChild("settlementStatus"),equalTo(null)','bindOutstandingOrders()'])if(!livePos.includes(marker))throw new Error('Finance Books incremental download safeguard missing: '+marker);
 for(const broad of ['onValue(ref(db,"/orders")','onValue(ref(db,"/archivedOrders")','onValue(ref(db,"/platformPayouts")'])if(livePos.includes(broad))throw new Error('Finance Books restored a broad whole-snapshot listener: '+broad);
 if(!manifest.authoritativeFiles.includes('src/books/business-intelligence.js')||!manifest.authoritativeFiles.includes('src/books/app/35-business-intelligence.js'))throw new Error('Business intelligence sources are missing from authoritative files');
 if(!/\.bi-confidence\.verified/.test(css)||!/\.bi-hero/.test(css))throw new Error('Key Metrics visual states are missing');
-if(!/__booksMenuItems/.test(livePos)||!/__booksMenuCategories/.test(livePos))throw new Error('Books must load the menu catalog needed to classify legacy order lines');
+if(/menuItems:\{tabs:\['insights'\]/.test(livePos)||/menuCategories:\{tabs:\['insights'\]/.test(livePos))throw new Error('Quota-safe Books Insights must not attach menu catalog feeds for disabled historical item ranking');
 if(!/categoryId:categoryId,categoryName:category\.label/.test(salePersistence))throw new Error('New POS order lines must preserve their menu-category snapshot');
 
 const context={window:{},console,r2:value=>Math.round((Number(value)||0)*100)/100};
@@ -62,4 +62,10 @@ const discounted=helpers.categories([{subtotal:200,total:180,discount:20,refundA
 if(discounted[0].sales!==160||discounted[0].top.sales!==160)throw new Error('Category allocations must preserve net sales after discounts and refunds');
 const unmapped=helpers.categories([{subtotal:100,total:100,lineItems:[{itemKey:'deleted',name:'Historical item',qty:1,unitTotal:100}]}]);
 if(unmapped[0].name!=='Uncategorized'||!unmapped[0].unavailable)throw new Error('Unmatched legacy items must remain explicitly unclassified');
+context.window.__booksActiveOrders={};
+const exactToday=context.window.AccazaDate.key(),exactMonth=exactToday.slice(0,7);
+context.window.__booksInsightsRollup={ready:true,months:{[exactMonth]:{orders:10,netCents:50000,channels:{instore:{orders:7,netCents:35000},online:{orders:3,netCents:15000}}}}};
+const compact=helpers.orderSummary({start:exactMonth+'-01',end:exactToday});
+if(!compact.available||compact.count!==10||compact.total!==500||compact.aov!==50||compact.channels['In-store POS']!==350)throw new Error('Books Insights must derive exact month-to-date order metrics from compact rollups');
+if(helpers.orderSummary({start:exactMonth+'-02',end:exactToday}).available)throw new Error('Partial-month order metrics must fail closed instead of presenting monthly rollups as exact');
 console.log('Business intelligence checks passed.');
