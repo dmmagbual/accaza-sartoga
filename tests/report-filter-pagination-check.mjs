@@ -14,6 +14,7 @@ assert(!/id="periodSel"|>All time</i.test(books),'Finance Books must not expose 
 assert(shell.includes("selected.group==='controls'"),'Controls must suppress report filters');
 assert(shell.includes("CURRENT==='bs'"),'Balance Sheet must use an as-of control');
 assert(shell.includes('periodFrom')&&shell.includes('periodTo')&&shell.includes('periodMonth'),'Dated Books views must provide From, To and Month controls');
+assert(shell.includes("p.mode==='custom'?'':(p.endMonth||p.to.slice(0,7))"),'A custom date range must leave the Month filter empty');
 assert(cashFlow.includes("typeof periodBounds==='function'?periodBounds()"),'Cash Flow must use the shared report period');
 assert(!statements.includes("App.cfRange('from'")&&!statements.includes("App.cfRange('to'"),'Cash Flow must not retain a second date selector');
 assert(!controls.includes('id="bc_date"')&&controls.includes('var date=todayStr()'),'Daily close must always use today');
