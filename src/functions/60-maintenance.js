@@ -232,6 +232,16 @@ exports.markBackupDirtyPurchaseInvoices = backupDirtyTrigger("purchaseInvoices")
 exports.markBackupDirtyPlatformPayouts = backupDirtyTrigger("platformPayouts");
 exports.markBackupDirtyInternalUsage = backupDirtyTrigger("internalUsage");
 exports.markBackupDirtyInventoryAdjustments = backupDirtyTrigger("inventoryAdjustments");
+exports.markBackupDirtyPettyCashVouchers = backupDirtyTrigger("pettyCashVouchers");
+exports.markBackupDirtyPettyCashReplenishments = backupDirtyTrigger("pettyCashReplenishments");
+exports.markBackupDirtyReceivables = backupDirtyTrigger("receivables");
+exports.markBackupDirtyPayables = backupDirtyTrigger("payables");
+exports.markBackupDirtySuppliers = backupDirtyTrigger("suppliers");
+exports.markBackupDirtyInventorySku = backupDirtyTrigger("inventorySku");
+exports.markBackupDirtyAppCustomers = backupDirtyTrigger("appCustomers");
+exports.markBackupDirtyReviews = backupDirtyTrigger("reviews");
+exports.markBackupDirtyFeedbacks = backupDirtyTrigger("feedbacks");
+exports.markBackupDirtyPackages = backupDirtyTrigger("packages");
 
 exports.backupDatabaseDaily = onSchedule(
   {schedule: "every day 03:00", timeZone: "Asia/Manila", region: ORDER_REGION, timeoutSeconds: 300, memory: "512MiB"},

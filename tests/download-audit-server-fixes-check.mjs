@@ -18,17 +18,18 @@ const require = createRequire(import.meta.url);
 const BackupDelta = require('../functions/lib/backup-delta.js');
 
 // ── F-4: backup coverage grows, and the first run after the change is a full backup ──
-for (const node of ['stockReceipts', 'purchaseInvoices', 'platformPayouts', 'internalUsage', 'inventoryAdjustments']) {
+const newlyTracked = ['stockReceipts', 'purchaseInvoices', 'platformPayouts', 'internalUsage', 'inventoryAdjustments', 'pettyCashVouchers', 'pettyCashReplenishments', 'receivables', 'payables', 'suppliers', 'inventorySku', 'appCustomers', 'reviews', 'feedbacks', 'packages'];
+for (const node of newlyTracked) {
   assert.ok(BackupDelta.TRACKED_PATHS.includes(node), `backup must now track ${node}`);
 }
 assert.ok(BackupDelta.TRACKED_PATHS.includes('pettyCashReceipts'), 'previously tracked nodes stay tracked');
 const now = Date.now();
 const recentBase = {takenAt: now - 3600000};
-const previousList = BackupDelta.TRACKED_PATHS.filter((p) => !['stockReceipts', 'purchaseInvoices', 'platformPayouts', 'internalUsage', 'inventoryAdjustments'].includes(p));
+const previousList = BackupDelta.TRACKED_PATHS.filter((p) => !newlyTracked.includes(p));
 assert.equal(BackupDelta.needsFullBackup({base: recentBase, now, lastMode: 'incremental', lastTracked: previousList}), 'tracked_changed', 'a tracked-set change forces a full backup');
 assert.equal(BackupDelta.needsFullBackup({base: recentBase, now, lastMode: 'incremental', lastTracked: BackupDelta.TRACKED_PATHS}), '', 'no forced full backup once the new list is recorded');
 const bundle = fs.readFileSync(new URL('../functions/index.js', import.meta.url), 'utf8');
-for (const name of ['markBackupDirtyStockReceipts', 'markBackupDirtyPurchaseInvoices', 'markBackupDirtyPlatformPayouts', 'markBackupDirtyInternalUsage', 'markBackupDirtyInventoryAdjustments']) {
+for (const name of ['markBackupDirtyStockReceipts', 'markBackupDirtyPurchaseInvoices', 'markBackupDirtyPlatformPayouts', 'markBackupDirtyInternalUsage', 'markBackupDirtyInventoryAdjustments', 'markBackupDirtyPettyCashVouchers', 'markBackupDirtyPettyCashReplenishments', 'markBackupDirtyReceivables', 'markBackupDirtyPayables', 'markBackupDirtySuppliers', 'markBackupDirtyInventorySku', 'markBackupDirtyAppCustomers', 'markBackupDirtyReviews', 'markBackupDirtyFeedbacks', 'markBackupDirtyPackages']) {
   assert.ok(bundle.includes(`exports.${name} = backupDirtyTrigger(`), `bundle exports the dirty trigger ${name}`);
 }
 

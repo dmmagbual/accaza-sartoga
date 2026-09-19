@@ -10,7 +10,7 @@ function hasSizes(it){return it.priceM&&it.priceL;}
 function itemPrice(it,size){if(size==='L'&&it.priceL)return Number(it.priceL)||0;if(size==='M'&&it.priceM)return Number(it.priceM)||0;if(size==='S')return Number(it.priceS)||0;return Number(it.priceM||it.priceS)||0;}
 function pkgEligible(pk){var out={};menuItems().forEach(function(it){if(pk.eligibleCat&&it.cat===pk.eligibleCat)out[it.key]=it;if((pk.eligibleItems||[]).indexOf(it.key)>-1)out[it.key]=it;});return Object.keys(out).map(function(k){return out[k];});}
 var tries=0,iv=setInterval(function(){if(window.__accazaC){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
-function init(){var a=A();a.onValue(a.ref(a.db,'packages'),function(s){pkgMap=s.val()||{};renderCards();});ensureModal();}
+function init(){var a=A();pkgMap=Object.assign({},a.packagesMap||{});renderCards();window.addEventListener('accaza-public-packages',function(e){pkgMap=Object.assign({},e.detail&&e.detail.packages||{});renderCards();});ensureModal();}
 function dealText(pk){return pk.type==='promo'?('Buy '+pk.qty+' + '+(pk.freeQty||0)+' free'):(pk.qty+' items'+(pk.discType==='fixed'?' · ₱'+pk.discValue+' off':pk.discType==='percent'?' · '+pk.discValue+'% off':''));}
 function renderCards(){
   var wrap=document.getElementById('custPkgWrap');if(!wrap)return;

@@ -16,12 +16,7 @@ window.__loadPublicReviews=async function(){
   try{
     var snap=await get(query(reviewsRef,orderByKey(),limitToLast(20)));
     if(snap.exists())reviewsMap=snap.val();
-    else{
-      reviewsMap=DEFAULT_PUBLIC_REVIEWS;
-      // Preserve the existing seed for a newly created database, but do not
-      // write from a read failure or on every public page visit.
-      set(reviewsRef,DEFAULT_PUBLIC_REVIEWS).catch(function(){});
-    }
+    else reviewsMap=DEFAULT_PUBLIC_REVIEWS;
   }catch(e){
     if(!Object.keys(reviewsMap).length)reviewsMap=DEFAULT_PUBLIC_REVIEWS;
   }

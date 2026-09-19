@@ -11,3 +11,4 @@ function bumpPublicCatalogVersion(source){
 exports.updatePublicCatalogVersionOnCategories = onValueWritten({ref:'/categories',region:ORDER_REGION,retry:true},bumpPublicCatalogVersion('categories'));
 exports.updatePublicCatalogVersionOnMenuItems = onValueWritten({ref:'/menuItems',region:ORDER_REGION,retry:true},bumpPublicCatalogVersion('menuItems'));
 exports.updatePublicCatalogVersionOnOptionGroups = onValueWritten({ref:'/optionGroups',region:ORDER_REGION,retry:true},bumpPublicCatalogVersion('optionGroups'));
+exports.updatePublicCatalogVersionOnPackages = onValueWritten({ref:'/packages',region:ORDER_REGION,retry:true},bumpPublicCatalogVersion('packages'));

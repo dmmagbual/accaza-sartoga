@@ -1,5 +1,5 @@
-import{watchSalesPeriod,periodKey}from'./sales-period-data.mjs?v=548';
-import{createHistoricalPeriodStore}from'./historical-period-store.mjs?v=548';
+import{watchSalesPeriod,periodKey}from'./sales-period-data.mjs?v=549';
+import{createHistoricalPeriodStore}from'./historical-period-store.mjs?v=549';
 // One managed subscription per path. Sales reports combine indexed date queries;
 // POS-critical paths stay live and back-office paths attach only when needed.
 const HISTORY_BOUNDS={
@@ -159,49 +159,13 @@ function createSubscriptionHub(database,ops){
     }
     if(p&&salesPath(entry.path)){entry.unsub=watchSalesPeriod(database,ops,entry.path,p,function(rows){receive({val:function(){return rows;}});},failed);return;}
     if(p&&entry.path==='financialMovements'&&activeScope==='saleshistory'){
-      // 17 Sep 2026 download audit (F-1): this scope used to hold ONE LIVE LISTENER per order
-      // of the selected period (orderByChild('sourceId') value events). A busy month kept
-      // thousands of separately synced queries alive for the whole session, and every later
-      // write for one of those sources was re-downloaded on its own listener even when the
-      // base period feed already carried the change. The merge is now:
-      //   base (one live occurredAt range listener, unchanged)
-      // + one-time indexed get() per source id of the period, fetched in small batches.
-      // A movement that lands inside the period after the fetch still arrives live through
-      // the base feed; financialMovements is append-only (corrections are reversal entries),
-      // so the fetched per-id sets cannot silently miss edits -- the next period re-attach
-      // refetches them anyway. Precedence flips versus the fan-out version (base LAST; the
-      // always-live feed now wins over a fetched copy of the same movement).
+      // Archived orders carry a compact, source-linked Finance summary from their
+      // Firestore replica. Only movements whose own posting date is inside the selected
+      // period stay live here. During the controlled replica backfill, only legacy rows
+      // still missing that summary use the old exact-source fallback.
       var base=null,sources={},stopped=false;
-      function fetchSource(id){
-        return get(query(ref(database,'financialMovements'),orderByChild('sourceId'),startAt(id),endAt(id)))
-          .then(function(snap){if(!stopped&&sources[id])sources[id].rows=snap.val()||{};});
-      }
-      function fetchMissing(ids){
-        var missing=ids.filter(function(id){return !(id in sources);});
-        missing.forEach(function(id){sources[id]={rows:null};});
-        if(!missing.length)return;
-        var index=0,CHUNK=8;
-        (function nextChunk(){
-          if(stopped)return;
-          var chunk=missing.slice(index,index+CHUNK);index+=CHUNK;
-          if(!chunk.length){publish();return;}
-          Promise.all(chunk.map(function(id){
-            // One retry, then surface the error instead of hanging the page on "loading".
-            return fetchSource(id).catch(function(){return fetchSource(id);}).catch(function(error){if(!stopped){if(sources[id])sources[id].rows={};failed(error);}});
-          })).then(nextChunk);
-        })();
-      }
-      function publish(){if(stopped||!base)return;var o=entries.orders,a=entries.archivedOrders;if(!o||!a||o.loading||a.loading||o.error||a.error)return;
-        var ids={};[o.live,a.live].forEach(function(map){Object.keys(map||{}).forEach(function(k){ids[String(map[k].id||k)]=true;});});
-        Object.values(base).forEach(function(m){if(m&&m.sourceId&&(m.sourceType==='order'||['order_void','order_refund'].indexOf(m.type)>-1))ids[String(m.sourceId)]=true;});
-        Object.keys(sources).forEach(function(id){if(!ids[id])delete sources[id];});
-        fetchMissing(Object.keys(ids));
-        if(stopped)return;
-        if(Object.values(sources).some(function(v){return v.rows===null;})){entry.loading=true;return;}
-        receive({val:function(){return Object.assign.apply(Object,[{}].concat(Object.values(sources).map(function(v){return v.rows;})).concat([base]));}});
-      }
-      entry.refreshSources=publish;
-      var stopBase=onValue(liveTarget(entry.path),function(snapshot){base=snapshot.val()||{};publish();},failed);
+      function publish(){if(stopped||!base)return;var a=entries.archivedOrders;if(!a||a.loading||a.error)return;var missing={};[a.live,a.older].forEach(function(map){Object.keys(map||{}).forEach(function(k){var row=map[k]||{};if(!row._historicalLedger)missing[String(row.id||k)]=true;});});Object.keys(sources).forEach(function(id){if(!missing[id])delete sources[id];});var ids=Object.keys(missing).filter(function(id){return !(id in sources);});ids.forEach(function(id){sources[id]={rows:null};get(query(ref(database,'financialMovements'),orderByChild('sourceId'),startAt(id),endAt(id))).then(function(s){if(!stopped&&sources[id]){sources[id].rows=s.val()||{};publish();}},failed);});if(Object.values(sources).some(function(v){return v.rows===null;})){entry.loading=true;return;}receive({val:function(){return Object.assign.apply(Object,[{}].concat(Object.values(sources).map(function(v){return v.rows;})).concat([base]));}});}
+      entry.refreshSources=publish;var stopBase=onValue(liveTarget(entry.path),function(snapshot){base=snapshot.val()||{};publish();},failed);
       entry.unsub=function(){stopped=true;entry.refreshSources=null;sources={};stopBase();};return;
     }
     if(VERSIONED_MASTER_PATHS[entry.path]){
