@@ -52,6 +52,7 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('getUndepositedCo
 // Sep 2026: incremental-backup dirty markers for the large history nodes.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('backupDatabaseDaily'),0,'markBackupDirtyArchivedOrders','markBackupDirtyInventoryMovements','markBackupDirtyOrderInventoryPlans','markBackupDirtyFinancialMovements','markBackupDirtyCashBalanceApplied','markBackupDirtyBooksJournal','markBackupDirtyShifts','markBackupDirtyOperationalAudit','markBackupDirtyFinancialCommandClaims','markBackupDirtyInventoryAccounting','markBackupDirtyFinancialApprovals','markBackupDirtyActivityLog','markBackupDirtyCfLedger','markBackupDirtyPettyCashReceipts','markBackupDirtyStockReceipts','markBackupDirtyPurchaseInvoices','markBackupDirtyPlatformPayouts','markBackupDirtyInternalUsage','markBackupDirtyInventoryAdjustments');
 expectedFunctionExports.push('askAccazaAI');
+expectedFunctionExports.push('manageAccazaAiKnowledge');
 const functionsSource=fs.readFileSync(path.join(root,'functions/index.js'),'utf8');
 if(!functionsSource.includes('"x-goog-api-key":key')||functionsSource.includes('generateContent?key='))throw new Error('Accaza AI must authenticate Gemini requests with the current x-goog-api-key header, not a URL query key.');
 const actualFunctionExports=[...functionsSource.matchAll(/^exports\.([A-Za-z0-9_]+)\s*=/gm)].map(match=>match[1]);
