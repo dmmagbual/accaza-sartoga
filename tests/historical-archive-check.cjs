@@ -17,7 +17,11 @@ const evidence = {
 };
 const doc = HistoricalArchive.buildDocument("POS-1", evidence, 300);
 assert.equal(HistoricalArchive.salesAt(completed), 100);
+assert.equal(doc.salesAt, HistoricalArchive.salesAt(completed), "the replica must persist the exact reporting date");
 assert.equal(HistoricalArchive.salesAt({completedAt: 300, receivedAt: 200, timestamp: 100}), 300, "completed date must remain the sales authority");
+assert.equal(HistoricalArchive.buildDocument("DATE-ONLY", {order: {date: "2026-09-19"}}, 300).salesAt, Date.parse("2026-09-19"), "legacy date-only orders need a persisted reporting date");
+assert.equal(HistoricalArchive.buildDocument("ARCHIVED-ONLY", {order: {archivedAt: 200}}, 300).salesAt, 200, "legacy archived-only orders need a persisted reporting date");
+assert.equal(HistoricalArchive.buildDocument("NO-DATE", {order: {}}, 300).salesAt, 0, "undated orders must remain identifiable for review");
 assert.equal(doc.evidence.verified, true);
 assert.equal(doc.evidence.eligibleForFutureRtdbRetirement, true);
 assert.equal(doc.source.saleJournalId, "2026-09-09_instore");
@@ -78,11 +82,14 @@ const source = fs.readFileSync("src/functions/61-historical-archive.js", "utf8")
 for (const marker of [
   "exports.replicateArchivedOrderToFirestore", "exports.refreshHistoricalOrderAfterJournal", "exports.refreshHistoricalOrderAfterInventoryPlan",
   "exports.manageHistoricalOrderArchive", "exports.readHistoricalOrders", "historicalOrdersFromDocuments", "HistoricalArchive.unchanged", "deletionEnabled: false",
-  '["preview", "backfill", "verify"]', "orderByKey()", "HISTORICAL_ARCHIVE_BATCH_LIMIT = 100",
+  '"sales-at-backfill"', '"sales-at-audit"', "Firestore replica maintenance only", "orderByKey()", "HISTORICAL_ARCHIVE_BATCH_LIMIT = 100",
   'startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\\uf8ff`)', "never recalculate history from current recipes", 'db.ref(`/archivedOrders/${orderId}`).get()',
   'db.ref("/historicalArchiveSync").transaction', 'firestore.collection(HistoricalArchive.COLLECTION).doc(orderId).delete()',
 ]) assert(source.includes(marker), `historical archive safeguard missing: ${marker}`);
 assert(!/Costing\.|ref\([`'"]\/(?:recipes|menuItems|optionRecipes)/.test(source), "historical archive must not use mutable current costing inputs");
+const salesAtMaintenance = source.slice(source.indexOf('if (["sales-at-audit"'), source.indexOf('let query = db.ref("/archivedOrders")'));
+assert(!salesAtMaintenance.includes('historicalArchiveInputs'), "salesAt maintenance must not re-read RTDB accounting evidence");
+assert(salesAtMaintenance.includes('batch.update(document.ref, {salesAt: stamp})'), "salesAt maintenance must update only the reporting key");
 assert(!/\.remove\(|\[[`'"]archivedOrders\//.test(source), "historical archive phase 1 must not delete RTDB data");
 
 const rules = fs.readFileSync("firestore.rules", "utf8");

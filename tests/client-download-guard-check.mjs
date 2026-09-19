@@ -4,11 +4,12 @@
 // acceptable, or annotated in place with /* download-ok: <kind> <why> */.
 import fs from 'node:fs';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 import {HISTORY_BOUNDS, BOOTSTRAPPED_INCREMENTAL_BOUNDS, GROWING_PATHS, WINDOWED_PATHS, createSubscriptionHub} from '../assets/js/admin/realtime-hub.mjs';
 import {rulesIndex} from '../tools/download-read-graph.mjs';
 
-const root = new URL('..', import.meta.url).pathname;
+const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const walk = (dir) => fs.readdirSync(path.join(root, dir), {withFileTypes: true}).flatMap((e) => e.isDirectory() ? walk(`${dir}/${e.name}`) : /\.m?js$/.test(e.name) ? [`${dir}/${e.name}`] : []);
 // Every browser file, not a hand-picked subset. The built bundles are excluded only because
