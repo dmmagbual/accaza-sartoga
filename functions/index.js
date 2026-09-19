@@ -6141,7 +6141,7 @@ exports.manageHistoricalOrderArchive = onCall(
 // Accaza AI is deliberately read-only. Gemini receives a compact, server-built
 // fact pack; it never gets Firebase credentials or permission to change records.
 const ACCAZA_AI_MODEL = "gemini-3.5-flash-lite";
-const ACCAZA_AI_RELEASE_VERSION = "1.0";
+const ACCAZA_AI_RELEASE_VERSION = "1.1";
 const ACCAZA_AI_HOURLY_LIMIT = 10;
 const ACCAZA_AI_DAILY_LIMIT = 50;
 const ACCAZA_AI_QUERY_ROLES = ["owner","superadmin","admin","manager","cashier"];
@@ -6262,8 +6262,8 @@ async function askGeminiAccazaAi(question,facts,history){
 }
 async function askGeminiWebChat(question,history){
   const key=GEMINI_API_KEY.value();if(!key)throw new HttpsError("failed-precondition","Accaza AI is not configured. Set the GEMINI_API_KEY Firebase secret first.");
-  const instruction="You are Accaza AI in public web chat mode. Answer general questions helpfully. Use Google Search grounding for current or factual claims and cite the returned web sources. You have no access to Accaza Coffee House records in this mode. Do not ask for or process Accaza business, financial, supplier, customer, staff, inventory or POS data; tell the user to use Accaza analysis mode for that private, read-only work.";
-  const contents=[...accazaAiHistory(history).map(row=>({role:row.role,parts:[{text:row.text}]})),{role:"user",parts:[{text:question}]}],response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${ACCAZA_AI_MODEL}:generateContent`,{method:"POST",headers:{"content-type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:instruction}]},contents,tools:[{google_search:{}}],generationConfig:{temperature:0.35,maxOutputTokens:900}})}),body=await response.json().catch(()=>({}));
+  const instruction="You are Accaza AI in general chat mode. Answer general questions helpfully using your built-in knowledge and be clear when current or externally verified information is needed. You have no access to Accaza Coffee House records in this mode. Do not ask for or process Accaza business, financial, supplier, customer, staff, inventory or POS data; tell the user to use Accaza analysis mode for that private, read-only work.";
+  const contents=[...accazaAiHistory(history).map(row=>({role:row.role,parts:[{text:row.text}]})),{role:"user",parts:[{text:question}]}],response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${ACCAZA_AI_MODEL}:generateContent`,{method:"POST",headers:{"content-type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:instruction}]},contents,generationConfig:{temperature:0.35,maxOutputTokens:900}})}),body=await response.json().catch(()=>({}));
   if(!response.ok)throw new HttpsError("unavailable",body&&body.error&&body.error.message||"Gemini web chat could not answer right now.");
   const answer=accazaAiText(body&&body.candidates&&body.candidates[0]&&body.candidates[0].content&&body.candidates[0].content.parts&&body.candidates[0].content.parts.map(part=>part.text||"").join("\n"),5000);if(!answer)throw new HttpsError("unavailable","Gemini returned no answer. Please try again.");return{answer,sources:accazaAiGroundingSources(body)};
 }
