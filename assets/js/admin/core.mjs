@@ -110,6 +110,7 @@ window.__accaza={
   getProductionValidation:function(){return callables.getProductionValidation({});},
   recordClientTelemetry:function(command){return callables.recordClientTelemetry(command);},
   getOperationalExceptions:function(force){return callables.getOperationalExceptions({force:force===true,cached:true});},
+  askAccazaAI:function(question){return callables.askAccazaAI({question:question});},
   repairOrderInventoryMarker:function(orderId){return callables.repairOrderInventoryMarker({orderId:orderId});},
   runDatabaseBackupNow:function(){return callables.runDatabaseBackupNow({});},
   readBooksJournalRange:function(from,to){return get(query(ref(db,'books/journal'),orderByChild('date'),startAt(String(from)),endAt(String(to)))).then(function(s){return s.val()||{};});},
