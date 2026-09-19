@@ -1,10 +1,10 @@
 (function(global){
   'use strict';
-  var PREFIX='accaza-admin-period-',MAX_DAYS=366,states={},waiter=null;
+  var PREFIX='accaza-admin-period-',MAX_DAYS=93,states={},waiter=null;
   function today(){return global.AccazaDate&&global.AccazaDate.key?global.AccazaDate.key():new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}
   function valid(key){if(!/^\d{4}-\d{2}-\d{2}$/.test(String(key||'')))return false;var n=Date.parse(key+'T12:00:00Z');return isFinite(n)&&new Date(n).toISOString().slice(0,10)===key;}
   function defaults(){var end=today();return{from:end.slice(0,7)+'-01',to:end,month:end.slice(0,7),mode:'current',anchorMonth:end.slice(0,7)};}
-  function validate(from,to){if(!valid(from)||!valid(to))throw new Error('Choose valid From and To dates.');if(from>to)throw new Error('The start date must be on or before the end date.');if(to>today())throw new Error('Future reporting dates are not allowed.');var anniversary=new Date(from+'T12:00:00Z');anniversary.setUTCFullYear(anniversary.getUTCFullYear()+1);if(Date.parse(to+'T12:00:00Z')>=anniversary.getTime())throw new Error('Choose a reporting period of 12 months or less.');}
+  function validate(from,to){if(!valid(from)||!valid(to))throw new Error('Choose valid From and To dates.');if(from>to)throw new Error('The start date must be on or before the end date.');if(to>today())throw new Error('Future reporting dates are not allowed.');if(Date.parse(to+'T12:00:00Z')-Date.parse(from+'T12:00:00Z')>MAX_DAYS*86400000)throw new Error('Choose a reporting period of 93 days or less.');}
   function normalize(raw){var base=defaults();if(!raw||raw.anchorMonth!==base.anchorMonth||raw.mode==='current')return base;try{validate(raw.from,raw.to);}catch(_e){return base;}return{from:raw.from,to:raw.to,month:raw.mode==='month'?raw.from.slice(0,7):'',mode:raw.mode||'custom',anchorMonth:base.anchorMonth};}
   function persist(scope){try{global.localStorage.setItem(PREFIX+scope,JSON.stringify(states[scope]));}catch(_e){}}
   function load(scope){if(!states[scope]){try{states[scope]=normalize(JSON.parse(global.localStorage.getItem(PREFIX+scope)||'{}'));}catch(_e){states[scope]=defaults();}}return states[scope];}

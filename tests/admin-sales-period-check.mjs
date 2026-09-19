@@ -18,6 +18,7 @@ assert.equal(periods.get('sales').startAt,Date.parse('2026-08-01T00:00:00+08:00'
 assert.throws(()=>periods.set('sales',{from:'2026-02-30',to:today}));
 assert.throws(()=>periods.set('sales',{from:'',to:today}));
 assert.throws(()=>periods.set('sales',{from:'2025-09-01',to:'2026-09-01'}));
+assert.throws(()=>periods.set('sales',{from:'2026-05-01',to:'2026-08-03'}));
 assert.throws(()=>periods.setMonth('sales','2026-13'));
 assert.throws(()=>periods.setMonth('sales','2026-10'));
 today='2026-10-01';periods.refresh();assert.equal(periods.get('sales').from,today);assert.equal(periods.get('sales').to,today);

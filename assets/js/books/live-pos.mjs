@@ -32,8 +32,6 @@ if(auth){
     purchaseInvoices:{tabs:['purchases'],global:'__piMap',fresh:true,target:function(){var p=cashFlowPeriod();return query(ref(db,"/purchaseInvoices"),orderByChild("date"),startAt(String(p.from||todayStr())),endAt(String(p.to||todayStr())));},onChange:scheduleRender},
     fixedAssets:{tabs:['fixedassets'],global:'__faMap',target:function(){return ref(db,"/fixedAssets");},onChange:scheduleRender},
     personalFundings:{tabs:['transactions'],global:'__personalFundings',target:function(){return ref(db,"/personalFundings");},onChange:scheduleRender},
-    menuItems:{tabs:['insights'],global:'__booksMenuItems',target:function(){return ref(db,"/menuItems");},onChange:scheduleRender},
-    menuCategories:{tabs:['insights'],global:'__booksMenuCategories',target:function(){return ref(db,"/categories");},onChange:scheduleRender},
     // Manual journals link only open cash variances (any status except reviewed).
     discrepancies:{tabs:['journal','transactions'],global:'__cashDiscrepancies',targets:function(){var base=ref(db,"/discrepancies");return[query(base,orderByChild("status"),endBefore("reviewed")),query(base,orderByChild("status"),startAfter("reviewed"))];},onChange:scheduleRender}
   };
@@ -54,21 +52,16 @@ if(auth){
   // The index is created by the server the first time the cash summary is read after this release.
   let cashFlowIndexRequested=false;
   function ensureCashFlowIndex(){var meta=window.__cashFlowIndexMeta;if(meta&&meta.complete===true&&Number(meta.summarySchemaVersion)>=4)return;if(cashFlowIndexRequested||typeof fns==='undefined')return;cashFlowIndexRequested=true;httpsCallable(fns,'getCurrentCashBalances')({}).catch(function(){cashFlowIndexRequested=false;});}
-  // Insights needs every sale in its three comparison ranges. It reads them from the
-  // Firestore history replica (bounded period pages) only while Insights is open, instead
-  // of every Books sign-in downloading the whole archivedOrders node.
+  // Insights reads compact monthly summaries. It never pages raw Firestore orders.
   let insightsKey='',insightsRequest=0;
-  function manilaStart(day){return Date.parse(String(day)+'T00:00:00+08:00');}
-  function manilaEnd(day){return Date.parse(String(day)+'T23:59:59.999+08:00');}
-  function insightsRanges(){if(typeof window.biRanges!=='function')return [];var r=window.biRanges()||{},out=[];['current','previous','year'].forEach(function(k){var x=r[k];if(!x||!x.start||!x.end)return;var start=manilaStart(x.start),end=manilaEnd(x.end);if(!isFinite(start)||!isFinite(end)||start>end)return;start=Math.max(start,end-400*86400000);out.push({startAt:start,endAt:end});});out.sort(function(a,b){return a.startAt-b.startAt;});return out.reduce(function(merged,next){var last=merged[merged.length-1];if(last&&next.startAt<=last.endAt+1)last.endAt=Math.max(last.endAt,next.endAt);else merged.push({startAt:next.startAt,endAt:next.endAt});return merged;},[]);}
-  async function readHistoryRange(read,range){var rows={},cursor=null,pages=0,more=true;while(more){var res=(await read({mode:'period',startAt:range.startAt,endAt:range.endAt,cursor:cursor,limit:100})).data||{};Object.assign(rows,res.orders||{});cursor=res.cursor||null;more=res.hasMore===true;pages++;if(pages>=40&&more)throw new Error('Insights history exceeded the safe 4,000-order limit. Narrow the reporting period.');}return rows;}
+  function insightsRanges(){if(typeof window.biRanges!=='function')return [];var r=window.biRanges()||{},seen={},out=[];['current','previous','year'].forEach(function(k){var x=r[k],from=String(x&&x.start||'').slice(0,7),to=String(x&&x.end||'').slice(0,7),key=from+':'+to;if(!/^\d{4}-\d{2}:\d{4}-\d{2}$/.test(key)||from>to||seen[key])return;seen[key]=true;out.push({from:from,to:to});});return out;}
   function syncInsightsOrders(){
     if(currentTab!=='insights'||!auth||!auth.currentUser)return;
     var ranges=insightsRanges(),key=JSON.stringify(ranges);if(!ranges.length||key===insightsKey)return;
-    insightsKey=key;var request=++insightsRequest,read=httpsCallable(fns,"readHistoricalOrders");window.__booksInsightsLoading=true;
-    Promise.all(ranges.map(function(range){return readHistoryRange(read,range);})).then(function(parts){if(request!==insightsRequest)return;window.__booksInsightsOrders=Object.assign({},...parts);window.__booksInsightsLoading=false;scheduleRender();}).catch(function(error){if(request!==insightsRequest)return;insightsKey='';window.__booksInsightsLoading=false;console.error('Insights history load failed',error);scheduleRender();});
+    insightsKey=key;var request=++insightsRequest,read=httpsCallable(fns,"readHistoricalSalesRollup");window.__booksInsightsLoading=true;window.__booksInsightsRollup={ready:false,months:{},error:''};
+    Promise.all(ranges.map(function(range){return read(range).then(function(result){return result.data||{};});})).then(function(parts){if(request!==insightsRequest)return;var ready=parts.every(function(part){return part.ready===true;}),months={};parts.forEach(function(part){Object.assign(months,part.months||{});});window.__booksInsightsRollup={ready:ready,months:months,error:ready?'':'The monthly sales summary is being prepared.'};window.__booksInsightsLoading=false;scheduleRender();}).catch(function(error){if(request!==insightsRequest)return;insightsKey='';window.__booksInsightsRollup={ready:false,months:{},error:'The monthly sales summary could not load.'};window.__booksInsightsLoading=false;console.error('Insights summary load failed',error);scheduleRender();});
   }
-  function resetInsightsOrders(){insightsKey='';insightsRequest++;window.__booksInsightsOrders={};window.__booksInsightsLoading=false;}
+  function resetInsightsOrders(){insightsKey='';insightsRequest++;window.__booksInsightsOrders={};window.__booksInsightsRollup={ready:false,months:{},error:''};window.__booksInsightsLoading=false;}
   function syncOptionalFeeds(){Object.keys(OPTIONAL_FEEDS).forEach(function(name){var spec=OPTIONAL_FEEDS[name];if(spec.tabs.indexOf(currentTab)>=0)attachOptionalFeed(name);else stopOptionalFeed(name);});syncInsightsOrders();}
   function stopBooksFeeds(){resetInsightsOrders();booksStops.splice(0).forEach(function(stop){try{stop();}catch(_e){}});Object.keys(optionalStops).forEach(stopOptionalFeed);optionalStops={};}
   function watchValue(target,onChange,onError){var stop=onValue(target,onChange,onError);booksStops.push(stop);return stop;}

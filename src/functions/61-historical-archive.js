@@ -1,6 +1,21 @@
 const HISTORICAL_ARCHIVE_BATCH_LIMIT = 100;
 const HISTORICAL_READ_PAGE_LIMIT = 100;
 const HISTORICAL_MAINTENANCE_DAILY_DOCUMENT_LIMIT = 4000;
+const HISTORICAL_USER_DAILY_READ_LIMIT = 2000;
+const HISTORICAL_PERIOD_MAX_MS = 93 * 86400000;
+
+async function reserveHistoricalReadBudget(db, uid, reads) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {timeZone:"America/Los_Angeles",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()).map((part) => [part.type, part.value]));
+  const day = `${parts.year}-${parts.month}-${parts.day}`;
+  const safeUid = String(uid || "unknown").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 128), requested = Math.max(1, Math.floor(Number(reads) || 1));
+  const ref = db.ref(`/rateLimits/historicalFirestoreReads/${safeUid}`);
+  const result = await ref.transaction((current) => {
+    const used = current && current.day === day ? Number(current.reads) || 0 : 0;
+    if (used + requested > HISTORICAL_USER_DAILY_READ_LIMIT) return;
+    return {day, reads:used + requested, updatedAt:Date.now(), schemaVersion:1};
+  });
+  if (!result.committed) throw new HttpsError("resource-exhausted", "The safe daily historical-report limit has been reached. Use a narrower period or resume after the Firestore quota resets.");
+}
 
 async function reserveHistoricalMaintenanceBudget(db, documents) {
   const day = new Intl.DateTimeFormat("en-CA", {timeZone:"Asia/Manila",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
@@ -222,8 +237,8 @@ exports.readHistoricalOrders = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
     const db = getDatabase();
-    await requirePortalPermission(db, request, ["orders"]);
-    const data = request.data || {}, mode = financeText(data.mode, 20).toLowerCase();
+    const actor = await requirePortalPermission(db, request, ["orders"]);
+    const data = request.data || {}, mode = financeText(data.mode, 20).toLowerCase(), purpose = financeText(data.purpose, 40).toLowerCase() || "legacy_client";
     if (!["latest", "before", "period", "ids"].includes(mode)) throw new HttpsError("invalid-argument", "Historical read mode is invalid.");
     const limit = Math.max(1, Math.min(HISTORICAL_READ_PAGE_LIMIT, Math.floor(Number(data.limit) || HISTORICAL_READ_PAGE_LIMIT)));
     const firestore = getFirestore();
@@ -240,10 +255,19 @@ exports.readHistoricalOrders = onCall(
         const order = (await db.ref(`/archivedOrders/${document.id}`).get()).val();
         if (order) hydrated.rows[document.id] = HistoricalArchive.clean(Object.assign({id:document.id},order));
       }
+      if (typeof logger !== "undefined") logger.info("Historical Firestore read", {mode, purpose, requested:ids.length, returned:Object.keys(hydrated.rows).length, hasMore:false});
       return {orders:hydrated.rows, hasMore:false, deletionEnabled:false};
     }
+    if (mode === "period") {
+      const start = Number(data.startAt), end = Number(data.endAt);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || end - start > HISTORICAL_PERIOD_MAX_MS) {
+        throw new HttpsError("invalid-argument", "Detailed historical reports are limited to 93 days. Use compact monthly summaries for longer comparisons.");
+      }
+    }
+    await reserveHistoricalReadBudget(db, actor.uid, mode === "period" ? limit * 3 : limit);
     const page = mode === "period" ? await historicalPeriodPage(db, firestore, data, limit) : await historicalLatestPage(db, firestore, data, limit);
     const hydrated = await historicalOrdersFromDocuments(db, page.documents);
+    if (typeof logger !== "undefined") logger.info("Historical Firestore read", {mode, purpose, requested:limit, returned:Object.keys(hydrated.rows).length, hasMore:page.hasMore, firestore:hydrated.firestore, rtdbFallback:hydrated.rtdbFallback});
     return {
       orders: hydrated.rows, cursor: page.cursor || null, hasMore: page.hasMore,
       source: {firestore: hydrated.firestore, rtdbFallback: hydrated.rtdbFallback, unverified: hydrated.unverified},

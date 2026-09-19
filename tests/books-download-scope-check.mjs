@@ -20,12 +20,13 @@ for(const marker of [
   "purchaseInvoices:{tabs:['purchases']",
   "window.__booksEnsurePurchaseInvoices=",
   "fixedAssets:{tabs:['fixedassets']",
-  "menuItems:{tabs:['insights']",
-  "menuCategories:{tabs:['insights']",
+  'httpsCallable(fns,"readHistoricalSalesRollup")',
+  '__booksInsightsRollup',
   "personalFundings:{tabs:['transactions']"
 ]){
   if(!live.includes(marker)&&!shell.includes(marker))throw new Error(`Books lazy-feed safeguard missing: ${marker}`);
 }
+if(live.includes('httpsCallable(fns,"readHistoricalOrders")')||live.includes("mode:'period'"))throw new Error('Finance Books Insights restored raw historical Firestore paging');
 
 for(const broad of [
   'booksStops.push(watchMap(ref(db,"/financialMovements")',

@@ -65,7 +65,7 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   const archiveCallsBefore = historicalCalls.length;
   const marker = active('historicalArchiveSync').at(-1);
   marker.callback({val: () => ({sequence: 7, changes: {6: {sequence: 6, orderId: 'x'}, 7: {sequence: 7, orderId: 'y'}}})}); await tick(); await tick();
-  assert.deepEqual(historicalCalls.slice(archiveCallsBefore), [{mode: 'ids', ids: ['x', 'y']}], 'an archive change reads only the changed orders');
+  assert.deepEqual(historicalCalls.slice(archiveCallsBefore), [{mode: 'ids', purpose:'admin_archive_patch', ids: ['x', 'y']}], 'an archive change reads only the changed orders');
   assert.equal(got.archivedOrders.y.total, 9);
   marker.callback({val: () => ({sequence: 20, changes: {20: {sequence: 20, orderId: 'z'}}})}); await tick(); await tick();
   assert.equal(historicalCalls.at(-1).mode, 'latest', 'a gap in the change journal reloads the latest page');
@@ -145,10 +145,12 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   const books = read('assets/js/books/live-pos.mjs');
   assert(!books.includes('query(ref(db,"/archivedOrders"),orderByChild("settlementStatus"),equalTo(null))'), 'Books must not download every in-store archived order');
   assert(books.includes('query(ref(db,"/archivedOrders"),orderByChild("settlementStatus"),equalTo("unsettled"))'));
-  for (const marker of ['function syncInsightsOrders()', "httpsCallable(fns,\"readHistoricalOrders\")", "mode:'period'", 'resetInsightsOrders();']) assert(books.includes(marker), `Books insights loader missing: ${marker}`);
-  assert(read('src/books/business-intelligence.js').includes('window.__booksInsightsOrders'), 'Insights uses the on-demand history');
+  for (const marker of ['function syncInsightsOrders()', "httpsCallable(fns,\"readHistoricalSalesRollup\")", '__booksInsightsRollup', 'resetInsightsOrders();']) assert(books.includes(marker), `Books compact insights loader missing: ${marker}`);
+  assert(!books.includes('httpsCallable(fns,"readHistoricalOrders")')&&!books.includes("mode:'period'"), 'Books Insights must never page raw Firestore orders');
+  assert(read('src/books/business-intelligence.js').includes('window.__booksInsightsRollup'), 'Insights uses compact monthly summaries');
   assert(ruleIndexes('archivedOrders').includes('settlementStatus'), 'archivedOrders.settlementStatus must be indexed');
   const functions = read('functions/index.js');
+  assert(functions.includes('HISTORICAL_USER_DAILY_READ_LIMIT = 2000')&&functions.includes('HISTORICAL_PERIOD_MAX_MS = 93 * 86400000'), 'stale historical readers must have server-enforced daily and range ceilings');
   assert(functions.includes('await db.ref("/financialMovements").orderByChild("sourceId").equalTo(String(order.id || "")).get()'), 'full-void netting reads only the order movements');
   assert(!/async function fullOrderVoidMovement[\s\S]{0,200}db\.ref\("\/financialMovements"\)\.get\(\)/.test(functions));
   assert(read('functions/lib/offline-sync.js').includes('platform && !raw.settlementStatus ? {settlementStatus: "unsettled"} : {}'), 'platform sales must carry an explicit settlement state');
