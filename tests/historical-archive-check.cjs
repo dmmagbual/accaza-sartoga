@@ -30,6 +30,15 @@ assert.equal(doc.source.saleJournalId, "2026-09-09_instore");
 assert.equal(Object.prototype.hasOwnProperty.call(doc.order, "proof"), false, "binary proof must not be duplicated into Firestore");
 assert.equal(HistoricalArchive.unchanged(doc, HistoricalArchive.buildDocument("POS-1", evidence, 999)), true, "replication must avoid unchanged Firestore writes");
 
+const reportOrder = Object.assign({}, completed, {timestamp:Date.parse("2026-09-19T12:00:00+08:00"),subtotal:125.55,discount:5.25,refundAmount:20,channel:"instore"});
+const contribution = HistoricalArchive.reportingContribution(reportOrder);
+assert.deepEqual(contribution, {month:"2026-09",orders:1,grossCents:12555,discountCents:525,refundCents:2000,netCents:10030,channel:"instore",schemaVersion:1,checksum:contribution.checksum});
+let monthly = HistoricalArchive.applyReportingContribution({}, contribution, 1);
+assert.deepEqual({orders:monthly.orders,netCents:monthly.netCents,channel:monthly.channels.instore},{orders:1,netCents:10030,channel:{orders:1,netCents:10030}});
+monthly = HistoricalArchive.applyReportingContribution(monthly, contribution, -1);
+assert.equal(monthly.orders,0);assert.equal(monthly.netCents,0);assert.deepEqual(monthly.channels,{},"retries and corrections must reverse a prior contribution without drift");
+assert.equal(HistoricalArchive.reportingContribution(Object.assign({},reportOrder,{voided:true})),null,"voided sales must not contribute to the monthly rollup");
+
 const missing = HistoricalArchive.buildDocument("POS-2", {order: Object.assign({}, completed, {id: "POS-2"})}, 300);
 assert.equal(missing.evidence.verified, false);
 for (const issue of ["sale_movement_missing", "sale_journal_missing", "inventory_evidence_missing"]) {
@@ -83,10 +92,10 @@ assert.equal(corrected.evidence.verified, true, "a refund is verified only with 
 const source = fs.readFileSync("src/functions/61-historical-archive.js", "utf8");
 for (const marker of [
   "exports.replicateArchivedOrderToFirestore", "exports.refreshHistoricalOrderAfterJournal", "exports.refreshHistoricalOrderAfterInventoryPlan",
-  "exports.manageHistoricalOrderArchive", "exports.readHistoricalOrders", "historicalOrdersFromDocuments", "HistoricalArchive.unchanged", "deletionEnabled: false",
-  '"sales-at-backfill"', '"sales-at-audit"', '"sales-ledger-backfill"', "Firestore replica maintenance only", "orderByKey()", "HISTORICAL_ARCHIVE_BATCH_LIMIT = 100",
+  "exports.manageHistoricalOrderArchive", "exports.readHistoricalOrders", "exports.readHistoricalSalesRollup", "historicalOrdersFromDocuments", "HistoricalArchive.unchanged", "deletionEnabled: false",
+  '"sales-at-backfill"', '"sales-at-audit"', '"sales-ledger-backfill"', '"sales-rollup-backfill"', "Firestore replica maintenance only", "orderByKey()", "HISTORICAL_ARCHIVE_BATCH_LIMIT = 100",
   'startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\\uf8ff`)', "never recalculate history from current recipes", 'db.ref(`/archivedOrders/${orderId}`).get()',
-  'db.ref("/historicalArchiveSync").transaction', 'firestore.collection(HistoricalArchive.COLLECTION).doc(orderId).delete()',
+  'db.ref("/historicalArchiveSync").transaction', "reconcileHistoricalSalesRollup", "salesRollupReady", "HISTORICAL_MAINTENANCE_DAILY_DOCUMENT_LIMIT = 4000",
 ]) assert(source.includes(marker), `historical archive safeguard missing: ${marker}`);
 assert(!/Costing\.|ref\([`'"]\/(?:recipes|menuItems|optionRecipes)/.test(source), "historical archive must not use mutable current costing inputs");
 const salesAtMaintenance = source.slice(source.indexOf('if (["sales-at-audit"'), source.indexOf('if (action === "sales-ledger-backfill")'));

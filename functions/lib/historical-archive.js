@@ -4,6 +4,8 @@ const crypto = require("node:crypto");
 
 const SCHEMA_VERSION = 2;
 const COLLECTION = "historicalOrders";
+const MONTH_COLLECTION = "historicalSalesMonths";
+const CONTRIBUTION_COLLECTION = "historicalSalesContributions";
 const OMITTED_BINARY_FIELDS = new Set(["proof", "proofData"]);
 
 function clean(value) {
@@ -33,6 +35,57 @@ function salesAt(order) {
   return Number(order && order.completedAt) || Number(order && order.receivedAt) ||
     Number(order && order.timestamp) || Date.parse(order && order.date || "") ||
     Number(order && order.archivedAt) || 0;
+}
+
+function reportingMonth(stamp) {
+  const value = Number(stamp) || 0;
+  if (!value) return "";
+  const date = new Date(value + 8 * 60 * 60 * 1000);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function reportingChannel(order) {
+  const channel = String(order && order.channel || "").trim().toLowerCase();
+  const source = String(order && order.source || "").trim().toLowerCase();
+  if (["grabfood", "foodpanda"].includes(channel)) return channel;
+  if (channel === "online" || source === "online") return "online";
+  if (channel === "instore") return "instore";
+  return "unclassified";
+}
+
+function reportingContribution(order) {
+  const status = effectiveStatus(order), stamp = salesAt(order);
+  if (!order || order.voided === true || order.paymentStatus === "pending" ||
+    !["Completed", "Received"].includes(status) || !stamp) return null;
+  const channel = String(order.channel || "").toLowerCase(), platform = ["grabfood", "foodpanda"].includes(channel);
+  const gross = Number(platform && order.grossPlatform != null ? order.grossPlatform :
+    (order.subtotal != null ? order.subtotal : order.total)) || 0;
+  const platformDiscount = order.netSalesPlatform != null ? Math.max(0, gross - (Number(order.netSalesPlatform) || 0)) :
+    (Number(order.platformDiscount) || 0);
+  const discount = platform ? platformDiscount : (Number(order.discount) || 0), refund = Number(order.refundAmount) || 0;
+  const grossCents = Math.round(gross * 100), discountCents = Math.round(discount * 100), refundCents = Math.round(refund * 100);
+  const contribution = {
+    month: reportingMonth(stamp), orders: 1, grossCents,
+    discountCents, refundCents, netCents: Math.max(0, grossCents - discountCents - refundCents),
+    channel: reportingChannel(order), schemaVersion: 1,
+  };
+  contribution.checksum = checksum(contribution);
+  return contribution;
+}
+
+function applyReportingContribution(month, contribution, direction) {
+  const result = Object.assign({orders:0,grossCents:0,discountCents:0,refundCents:0,netCents:0,channels:{}}, clean(month || {}));
+  result.channels = Object.assign({}, result.channels || {});
+  const sign = direction < 0 ? -1 : 1, channel = String(contribution && contribution.channel || "unclassified");
+  for (const field of ["orders", "grossCents", "discountCents", "refundCents", "netCents"]) {
+    result[field] = Math.max(0, Math.round((Number(result[field]) || 0) + sign * (Number(contribution && contribution[field]) || 0)));
+  }
+  const channelRow = Object.assign({orders:0,netCents:0}, result.channels[channel] || {});
+  channelRow.orders = Math.max(0, Math.round((Number(channelRow.orders) || 0) + sign * (Number(contribution && contribution.orders) || 0)));
+  channelRow.netCents = Math.max(0, Math.round((Number(channelRow.netCents) || 0) + sign * (Number(contribution && contribution.netCents) || 0)));
+  if (!channelRow.orders && !channelRow.netCents) delete result.channels[channel]; else result.channels[channel] = channelRow;
+  result.schemaVersion = 1;
+  return result;
 }
 
 function salesLedgerSummary(input) {
@@ -186,4 +239,4 @@ function unchanged(existing, next) {
     existing.salesLedgerChecksum === next.salesLedgerChecksum;
 }
 
-module.exports = {SCHEMA_VERSION, COLLECTION, clean, checksum, effectiveStatus, salesAt, salesLedgerSummary, validInventoryPlan, legacyInventoryEvidence, assessEvidence, buildDocument, unchanged};
+module.exports = {SCHEMA_VERSION, COLLECTION, MONTH_COLLECTION, CONTRIBUTION_COLLECTION, clean, checksum, effectiveStatus, salesAt, reportingMonth, reportingChannel, reportingContribution, applyReportingContribution, salesLedgerSummary, validInventoryPlan, legacyInventoryEvidence, assessEvidence, buildDocument, unchanged};
