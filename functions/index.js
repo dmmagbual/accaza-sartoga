@@ -5835,18 +5835,46 @@ exports.manageHistoricalOrderArchive = onCall(
       throw new HttpsError("permission-denied", "Historical archive management is restricted to owners.");
     }
     const data = request.data || {}, action = financeText(data.action, 20);
-    if (!["preview", "backfill", "verify"].includes(action)) {
-      throw new HttpsError("invalid-argument", "Use preview, backfill, or verify. RTDB deletion is not available.");
+    if (!["preview", "backfill", "verify", "sales-at-audit", "sales-at-backfill", "sales-at-verify"].includes(action)) {
+      throw new HttpsError("invalid-argument", "Use preview, backfill, verify, sales-at-audit, sales-at-backfill, or sales-at-verify. RTDB deletion is not available.");
     }
     const requested = Math.floor(Number(data.limit) || 25), limit = Math.max(1, Math.min(HISTORICAL_ARCHIVE_BATCH_LIMIT, requested));
     const cursor = financeText(data.cursor, 160);
+    const firestore = getFirestore();
+    // This maintenance path deliberately reads only the Firestore replica.
+    // Replaying historicalArchiveInputs here would re-read RTDB financial and
+    // inventory evidence for every historical order, defeating this cost fix.
+    if (["sales-at-audit", "sales-at-backfill", "sales-at-verify"].includes(action)) {
+      let query = firestore.collection(HistoricalArchive.COLLECTION).orderBy(FieldPath.documentId());
+      if (cursor) query = query.startAfter(cursor);
+      const snap = await query.limit(limit).get(), docs = snap.docs;
+      const summary = {scanned: docs.length, written: 0, alreadyPresent: 0, legacyOnly: 0, zeroSalesAt: 0};
+      const batch = firestore.batch();
+      docs.forEach((document) => {
+        const row = document.data() || {}, order = row.order || {};
+        const existing = Number(row.salesAt), stamp = HistoricalArchive.salesAt(order);
+        const legacyOnly = ![order.completedAt, order.receivedAt, order.timestamp].some((value) => Number.isFinite(Number(value)) && Number(value) > 0);
+        if (legacyOnly) summary.legacyOnly++;
+        if (!stamp) summary.zeroSalesAt++;
+        if (Number.isFinite(existing)) { summary.alreadyPresent++; return; }
+        if (action === "sales-at-backfill") { batch.update(document.ref, {salesAt: stamp}); summary.written++; }
+      });
+      if (action === "sales-at-backfill" && summary.written) await batch.commit();
+      const nextCursor = docs.length === limit ? docs[docs.length - 1].id : "";
+      await db.ref(`/operationalAudit/${Date.now()}_historical_archive_${action}`).set({
+        action: `historical_archive_${action}`, sourceType: "historicalOrderArchive", sourceId: nextCursor || "complete",
+        actorUid: actor.uid, actorRole: actor.role, ts: Date.now(), cursor, nextCursor, summary, schemaVersion: 1,
+        accounting: "Firestore replica maintenance only; no RTDB order, inventory, financial movement, subledger, or Books journal was read or changed.",
+      });
+      return {action, cursor: nextCursor, complete: !nextCursor, summary};
+    }
     let query = db.ref("/archivedOrders").orderByKey();
     if (cursor) query = query.startAt(cursor);
     const snap = await query.limitToFirst(limit + (cursor ? 1 : 0)).get(), rows = snap.val() || {};
     let ids = Object.keys(rows).sort();
     if (cursor && ids[0] === cursor) ids = ids.slice(1);
     ids = ids.slice(0, limit);
-    const firestore = getFirestore(), summary = {scanned: ids.length, written: 0, unchanged: 0, verified: 0, needsReview: 0};
+    const summary = {scanned: ids.length, written: 0, unchanged: 0, verified: 0, needsReview: 0};
     for (const orderId of ids) {
       const input = await historicalArchiveInputs(db, orderId, rows[orderId]);
       const next = HistoricalArchive.buildDocument(orderId, input);

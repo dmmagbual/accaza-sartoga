@@ -5,8 +5,9 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import path from 'node:path';
 import {createRequire} from 'node:module';
+import {fileURLToPath} from 'node:url';
 
-const root = new URL('../../', import.meta.url).pathname;
+const root = fileURLToPath(new URL('../../', import.meta.url));
 const nodeRequire = createRequire(path.join(root, 'functions/index.js'));
 
 export function loadFunctions(db, {expose = [], now, libOverrides = {}} = {}) {
