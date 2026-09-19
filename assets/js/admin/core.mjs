@@ -113,6 +113,8 @@ window.__accaza={
   recordClientTelemetry:function(command){return callables.recordClientTelemetry(command);},
   getOperationalExceptions:function(force){return callables.getOperationalExceptions({force:force===true,cached:true});},
   askAccazaAI:function(question){return callables.askAccazaAI({question:question});},
+  manageAccazaAiKnowledge:function(command){return callables.manageAccazaAiKnowledge(command);},
+  manageAccazaAiIssue:function(command){return callables.manageAccazaAiIssue(command);},
   repairOrderInventoryMarker:function(orderId){return callables.repairOrderInventoryMarker({orderId:orderId});},
   runDatabaseBackupNow:function(){return callables.runDatabaseBackupNow({});},
   readBooksJournalRange:function(from,to){return get(query(ref(db,'books/journal'),orderByChild('date'),startAt(String(from)),endAt(String(to)))).then(function(s){return s.val()||{};});},

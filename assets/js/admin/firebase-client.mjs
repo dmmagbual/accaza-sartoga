@@ -15,6 +15,8 @@ callableNames.unshift('reportPosDeviceHealth','verifyShiftCloseReadiness');
 callableNames.unshift('getUndepositedPage');
 callableNames.unshift('signOutAllPortalSessions');
 callableNames.unshift('askAccazaAI');
+callableNames.unshift('manageAccazaAiKnowledge');
+callableNames.unshift('manageAccazaAiIssue');
 const callables=Object.fromEntries(callableNames.map(function(name){return [name,httpsCallable(functions,name)];}));
 
 export{firebaseConfig,app,db,auth,callables,initializeApp,deleteApp,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider,setPersistence,browserLocalPersistence,inMemoryPersistence};
