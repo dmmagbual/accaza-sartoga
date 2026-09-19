@@ -356,7 +356,7 @@ function renderPetty(){
   root.innerHTML='<div class="pz-h">💵 Cash Payments</div>'
     +'<p class="pz-sub">Approved cash payments are charged to the selected cash, bank, or e-wallet account. Choose the controlled debit treatment: operating expense, owner withdrawal, supplier advance, loan repayment, staff advance, or settlement of an existing customer refund payable. A receipt or clear manager-reviewed explanation is required; only an approved voucher is posted to cash and Finance Books.</p>'
     +'<div class="pz-card" style="margin-bottom:1rem;background:#f8f6f1;"><div style="display:flex;gap:.6rem;align-items:end;flex-wrap:wrap;"><div style="flex:1;min-width:220px;"><span class="pz-lbl">Current cash custodian</span><input class="pz-in" id="rfCustodian" value="'+esc(custodian)+'" placeholder="Manager responsible for the physical cash"/></div><button class="pz-btn sec" id="rfCustodianSave">Save custodian</button><button class="pz-btn ok" id="rfOpenPurchases">Open detailed Purchases</button></div><div class="az-note">Undeposited Collection has one accountable custodian. A handover should include a physical cash count.</div></div>'
-    +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">'
+      +'<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;"><button class="pz-btn sec" id="pvAdoptJournal">Adopt journal-created staff advance</button>'
       +'<div class="pz-card" style="flex:2;min-width:220px;background:#f5faf6;"><div style="font-size:0.75rem;color:var(--tl);">Funding source</div><div style="font-weight:700;color:var(--bd);">Selected at payment entry</div><div style="font-size:.72rem;color:var(--tl);margin-top:2px;">Use Undeposited Collection for physical cash custody; select Cash on Hand, a bank, or e-wallet when that account actually paid.</div></div>'
       +'<div class="pz-card" style="flex:1;min-width:180px;"><div style="font-size:0.75rem;color:var(--tl);">Payments awaiting inventory allocation</div><div style="font-weight:700;color:#8a5a00;">'+peso(bal.advances)+'</div></div>'
       +'<div class="pz-card" style="flex:1;min-width:180px;"><div style="font-size:0.75rem;color:var(--tl);">Staff advances outstanding</div><div style="font-weight:700;color:#8a5a00;">'+peso(bal.staffAdvances)+'</div></div>'
@@ -393,6 +393,7 @@ function renderPetty(){
   var ra=document.getElementById('prAdd'); if(ra)ra.onclick=addReplenishment;
   var os=document.getElementById('pvOpenSave'); if(os)os.onclick=function(){var a=A();a.update(a.ref(a.db,'pettyCashSettings'),{openingBalance:Number(fv('pvOpening'))||0}).then(function(){alert('Opening balance saved.');});};
   var ex=document.getElementById('pettyExport'); if(ex)ex.onclick=exportPetty;
+  var adopt=document.getElementById('pvAdoptJournal');if(adopt)adopt.onclick=adoptJournalStaffAdvance;
   root.querySelectorAll('[data-pvap]').forEach(function(b){b.onclick=function(){approveVoucher(b.getAttribute('data-pvap'));};});
   root.querySelectorAll('[data-pved]').forEach(function(b){b.onclick=function(){editVoucher(b.getAttribute('data-pved'));};});
   root.querySelectorAll('[data-pvrj]').forEach(function(b){b.onclick=function(){rejectVoucher(b.getAttribute('data-pvrj'));};});
@@ -501,6 +502,19 @@ function archiveOldActivity(){
   if(!confirm('Move activity-log entries older than 60 days to the server-owned archive? Up to 500 entries are processed per click.'))return;
   var a=A();if(!a.archiveActivityLog){alert('3E retention service is not available. Refresh the portal.');return;}
   a.archiveActivityLog().then(function(res){var d=(res&&res.data)||res||{};alert(d.archived?('Archived '+d.archived+' entries.'+(d.hasMore?' Click again to archive the next batch.':'')):'No activity-log entries older than 60 days.');}).catch(function(e){alert('Could not archive activity log: '+((e&&e.message)||e));});
+}
+function adoptJournalStaffAdvance(){
+  var a=A();if(!a.postFinancialCommand||!a.managerApproval){alert('Finance approval service is not available. Refresh the portal.');return;}
+  var staffOptions=Object.keys(staffList||{}).filter(function(id){return staffList[id]&&staffList[id].active!==false;}).map(function(id){return {value:id,label:staffList[id].name||id};});
+  if(!staffOptions.length){alert('No active staff members are available. Add or reactivate the staff member first.');return;}
+  F().run({title:'Adopt journal-created staff advance',subtitle:'Links one existing original Finance Books journal to Cash Payments. It does not pay cash or change the original journal again.',submitLabel:'Request approval & adopt',busyLabel:'Adopting…',fields:[
+    {name:'originalMovementId',label:'Original Finance Books journal ID',required:true,maxLength:160,help:'Use the journal ID shown in Finance Books. It must contain only Debit Staff Advances (1120) and Credit one cash, bank, Undeposited Collection, or Revolving Fund account.'},
+    {name:'staffId',label:'Staff member',type:'select',required:true,options:staffOptions},
+    {name:'amount',label:'Original advance amount ₱',type:'number',required:true,min:0.01,step:0.01,help:'Must exactly equal the Staff Advances debit in the original journal.'},
+    {name:'reference',label:'Original payment / receipt reference',required:true,maxLength:120},
+    {name:'purpose',label:'Advance purpose',required:true,maxLength:300},
+    {name:'reason',label:'Adoption reason',type:'textarea',required:true,maxLength:300,value:'Link existing journal-created staff advance to Cash Payments for controlled liquidation'}
+  ]},function(x){var amount=Math.round((Number(x.amount)||0)*100)/100;if(!(amount>0))throw new Error('Enter the original advance amount.');return a.managerApproval('adopt_journal_staff_advance',x.originalMovementId,amount,x.reason).then(function(ap){return a.postFinancialCommand({action:'adopt_journal_staff_advance',commandId:uid('stladv_adopt_'),originalMovementId:x.originalMovementId,staffId:x.staffId,amount:amount,reference:x.reference,purpose:x.purpose,reason:x.reason,approvalId:ap.approvalId});});}).then(function(r){var d=(r&&r.data)||r||{};window.__posLog('staff-advance-adopt-journal',d.voucherId||'',peso(d.amount||0));alert(d.duplicate?'This journal is already linked to its staff advance.':'Journal linked. You can now liquidate it from Cash Payments.');}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0&&String((e&&e.message)||e).indexOf('cancelled')<0)alert('Could not adopt staff advance journal: '+((e&&e.message)||e));});
 }
 function liquidateStaffAdvance(id){
   var v=pettyVouchers[id];if(!v||v.transactionType!=='staff_advance'||v.status!=='approved'||v.voided)return;
