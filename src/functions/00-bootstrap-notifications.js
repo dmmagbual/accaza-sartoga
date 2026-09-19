@@ -7,6 +7,7 @@
  */
 const DatabaseTriggers = require("firebase-functions/v2/database");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {defineSecret} = require("firebase-functions/params");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {initializeApp, getApp} = require("firebase-admin/app");
 const {getAuth: getAdminAuth} = require("firebase-admin/auth");
@@ -41,6 +42,7 @@ const ProductionValidation = require("./lib/production-validation");
 const AssuranceControls = require("./lib/assurance-controls");
 const OrderRecords = require("./lib/order-records");
 const RetryGuard = require("./lib/retry-guard");
+const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 // Every `retry: true` database trigger is bounded: transient failures still
 // retry, but an event that keeps failing past the retry window is recorded in
 // /functionDeadLetters and acknowledged instead of being redelivered (and its

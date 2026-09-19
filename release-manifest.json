@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 547,
+    "admin": 548,
     "books": 125,
     "customer": 73,
-    "serviceWorkerCache": 527
+    "serviceWorkerCache": 528
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
@@ -120,6 +120,7 @@
     "src/functions/50-inventory.js",
     "src/functions/60-maintenance.js",
     "src/functions/61-historical-archive.js",
+    "src/functions/62-accaza-ai.js",
     "functions/lib/costing.js",
     "functions/lib/financial.js",
     "functions/lib/cash-balances.js",
@@ -147,6 +148,7 @@
     "assets/js/shared/sales-authority.js",
     "assets/css/admin-backoffice.css",
     "assets/js/admin/core.mjs",
+    "assets/js/admin/accaza-ai.js",
     "assets/js/admin/manager-approval.mjs",
     "assets/js/admin/form-dialog.js",
     "assets/js/admin/identity-autofill.js",
@@ -270,6 +272,7 @@
     "RELEASE_7H_SKU_LINK_INTEGRITY_2026-08-10.md"
   ],
   "requiredFunctionExports": [
+    "askAccazaAI",
     "getUndepositedControlSnapshot",
     "signOutAllPortalSessions",
     "getUndepositedPage",
@@ -350,6 +353,7 @@
     "orderCorrectionCommands",
     "orderCorrections",
     "clientTelemetryDaily",
+    "accazaAiUsage",
     "systemHealth",
     "inventoryBalances",
     "inventoryMovements",
