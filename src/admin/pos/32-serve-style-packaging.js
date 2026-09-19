@@ -31,18 +31,16 @@ function packStyleBuild(){
   packStylePlan.proposal=seed.proposal;
   return packStylePlan;
 }
+function packSnapshotData(){
+  var a=A(),payload={recipes:packDraftClone(recipesMap||{}),menuItems:packDraftClone((a&&a.menuItemsMap)||{}),optionGroups:packDraftClone((a&&a.optionGroupsMap)||{}),packagingRules:packDraftClone(packagingRulesMap||{}),packagingAssignments:packDraftClone((window.__posSettings&&window.__posSettings.packagingAssignments)||{})};
+  if(!Object.keys(payload.recipes).length||!Object.keys(payload.menuItems).length)throw new Error('Recipe data is still loading.');
+  return payload;
+}
 function packStyleSnapshot(options){
   options=options||{};
   var btn=document.getElementById('packSnapshot'); if(btn){btn.disabled=true;btn.textContent='Preparing…';}
-  var a=A();
-  return Promise.all([
-    a.get(a.ref(a.db,'recipes')).then(function(s){return s.val()||{};}),
-    a.get(a.ref(a.db,'menuItems')).then(function(s){return s.val()||{};}),
-    a.get(a.ref(a.db,'optionGroups')).then(function(s){return s.val()||{};}),
-    a.get(a.ref(a.db,'packagingRules')).then(function(s){return s.val()||{};}).catch(function(){return {};}),
-    a.get(a.ref(a.db,'posSettings/packagingAssignments')).then(function(s){return s.val()||{};}).catch(function(){return {};})
-  ]).then(function(parts){
-    var payload={recipes:parts[0],menuItems:parts[1],optionGroups:parts[2],packagingRules:parts[3],packagingAssignments:parts[4]};
+  return Promise.resolve().then(function(){
+    var payload=packSnapshotData();
     return recTempSeal(payload).then(function(hash){
       var takenAt=Date.now();
       var envelope={version:'accaza-packaging-restore-v2',kind:'accaza-packaging-restore-point',takenAt:takenAt,
@@ -487,10 +485,11 @@ function savePackagingAssignments(){
   root.querySelectorAll('[data-packassign]').forEach(function(el){var p=el.getAttribute('data-packassign').split('|'),value=String(el.value||'');next[p[0]]=next[p[0]]||{};next[p[0]].choices=next[p[0]].choices||{};next[p[0]].choices[p[1]]=next[p[0]].choices[p[1]]||{};if(value)next[p[0]].choices[p[1]][p[2]]=value;else delete next[p[0]].choices[p[1]][p[2]];});
   Object.keys(next).forEach(function(cat){if(!next[cat].defaultStyle&&!(next[cat].choices&&Object.keys(next[cat].choices).length)&&!(next[cat].items&&Object.keys(next[cat].items).length))delete next[cat];});
   var btn=document.getElementById('packSaveAssignments'),m=document.getElementById('packAssignmentMsg');
+  if(!Object.keys(next).length){if(m)m.textContent='✗ Choose at least one packaging assignment.';return;}
   if(btn){btn.disabled=true;btn.textContent='Backing up…';}if(m)m.textContent='Downloading a restore point before saving…';
   packStyleSnapshot({silent:true,keepView:true}).then(function(){
     if(btn)btn.textContent='Saving…';if(m)m.textContent='Restore point downloaded. Saving assignments…';
-    return A().update(A().ref(A().db,'posSettings'),{packagingAssignments:next});
+    return A().set(A().ref(A().db,'posSettings/packagingAssignments'),next);
   }).then(function(){
     window.__posSettings=window.__posSettings||{};window.__posSettings.packagingAssignments=next;
     if(btn){btn.disabled=false;btn.textContent='Save category assignments';}if(m)m.textContent='✓ Restore point downloaded and assignments saved '+new Date().toLocaleTimeString();updateCostBadge();

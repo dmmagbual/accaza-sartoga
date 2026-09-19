@@ -138,6 +138,9 @@ check(!/data-packitem="/.test(ui)&&/data-packcustomize=/.test(ui)&&/data-packrev
 check(/itemStyleId\(key\)/.test(ui)&&/updates\['packagingRules\/'\+custId\]=clean/.test(ui)&&/updates\['posSettings\/packagingAssignments\/'\+catId\+'\/items\/'\+key\]=custId/.test(ui),'a per-item Customize writes its own private packagingRules/item_<key> record, never the shared style');
 check(/packSnapshot/.test(ui)&&/packRestore/.test(ui),'the screen takes a restore point and can undo from it');
 check(/packStyleSnapshot\(\{silent:true,keepView:true\}\)/.test(ui)&&/Backing up/.test(ui),'category save automatically downloads its restore point instead of showing a prerequisite popup');
+check(/packSnapshotData/.test(ui)&&/recipes:packDraftClone\(recipesMap\|\|\{\}\)/.test(ui)&&!/a\.get\(a\.ref\(a\.db,'recipes'\)\)/.test(ui),'the restore point reuses the fully loaded live costing data instead of issuing failure-prone duplicate Firebase reads');
+check(/Choose at least one packaging assignment/.test(ui),'an all-blank category assignment cannot erase valid packaging coverage');
+check(/A\(\)\.set\(A\(\)\.ref\(A\(\)\.db,'posSettings\/packagingAssignments'\),next\)/.test(ui),'category assignments save only their own Firebase node');
 check(/role="status" aria-live="polite"/.test(ui)&&/Restore point downloaded and assignments saved/.test(ui),'category save reports busy and successful completion inline');
 check(/data-pack-addrow/.test(ui)&&/data-pack-delrow/.test(ui)&&/quantities/.test(ui),'inherited packaging contents remain editable, removable and addable in the shared packaging set');
 check(/packApply/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built admin bundle carries the packaging screen');
