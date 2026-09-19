@@ -884,15 +884,15 @@
 <div class="login-overlay" id="loginOverlay">
   <div class="login-box">
     <div style="text-align:center;font-family:'Playfair Display',serif;font-size:1.5rem;color:var(--bd);margin-bottom:0.25rem;">Accaza Coffee</div>
-    <p style="text-align:center;font-size:0.8rem;color:var(--tl);margin-bottom:1.25rem;">🔐 Staff &amp; Admin Portal</p>
+    <p style="text-align:center;font-size:0.8rem;color:var(--tl);margin-bottom:1.25rem;">🔐 Sign in with your Accaza Firebase account</p>
     <!-- Role choice is presentation only; Firebase UID + database role remain authoritative. -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:1.25rem;">
+    <div style="display:none;">
       <button id="roleAdminBtn" onclick="selectLoginRole('admin')" style="padding:0.6rem;border:2px solid var(--cd);border-radius:8px;background:#fff;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);font-weight:500;transition:all 0.2s;">👑 Admin</button>
       <button id="roleStaffBtn" onclick="selectLoginRole('staff')" style="padding:0.6rem;border:2px solid var(--cd);border-radius:8px;background:#fff;cursor:pointer;font-family:'Inter',sans-serif;font-size:0.85rem;color:var(--td);font-weight:500;transition:all 0.2s;">👤 Staff</button>
     </div>
     <!-- Login form -->
-    <div id="loginForm" style="display:none;">
-      <label class="field-label">Username or Email</label>
+    <div id="loginForm">
+      <label class="field-label">Email address</label>
       <input type="text" id="adminUser" placeholder="Enter Firebase account email" autocomplete="username" style="margin-bottom:0.75rem;" onkeydown="if(event.key==='Enter')document.getElementById('adminPass').focus()"/>
       <label class="field-label">Password</label>
       <input type="password" id="adminPass" placeholder="Enter password" autocomplete="current-password" style="margin-bottom:1rem;" onkeydown="if(event.key==='Enter')checkLogin()"/>

@@ -59,6 +59,9 @@ async function syncOfflinePosSaleCommand(ctx) {
   const total = money(raw.total);if (!(total >= 0 && total <= 1000000)) throw new HttpsError("invalid-argument", "Offline sale total is invalid.");
   const lines = listFromFirebase(raw.lineItems);if (!lines.length || lines.length > 200) throw new HttpsError("invalid-argument", "Offline sale items are invalid.");
   const delta = offlineDrawerDelta(data.drawerDelta), orderRef = db.ref(`/orders/${orderId}`), existingSnap = await orderRef.get(), existing = existingSnap.val();
+  const ownedShift = (await db.ref(`/shifts/${shiftId}`).get()).val();
+  if (!ownedShift || ownedShift.status === "closed") throw new HttpsError("failed-precondition", "The POS shift is no longer open.");
+  if (ownedShift.accountUid && ownedShift.accountUid !== actor.uid) throw new HttpsError("permission-denied", "This sale belongs to a different staff member’s shift.");
   if (existing && existing.clientTxnId !== transactionId) throw new HttpsError("already-exists", "This order ID already belongs to another transaction.");
   const channel = String(raw.channel || "instore").toLowerCase(), platform = channel === "grabfood" || channel === "foodpanda", reconciliation = validatePaymentReconciliation(raw, money), payments = reconciliation.payments, direct = PaymentVerification.directPaymentRows(payments), posSettings = (await db.ref("/posSettings").get()).val() || {}, verificationPolicy = platform ? null : PaymentVerification.paymentPolicy(payments, posSettings.payMethods), prepaid = raw.preCompletionCashRefund && typeof raw.preCompletionCashRefund === "object" ? raw.preCompletionCashRefund : null;
   if (!platform && direct.length && verificationPolicy === PaymentVerification.CASHIER_MANAGER && raw.cashierVerificationIntent !== true) throw new HttpsError("failed-precondition", "Cashier verification is required before completing this direct electronic payment sale.");

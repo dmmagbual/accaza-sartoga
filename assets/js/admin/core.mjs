@@ -99,6 +99,8 @@ window.__accaza={
   runFinancialClose:function(command){return runFinancialCloseCall(command);},
   archiveActivityLog:function(){return archiveActivityLogCall({});},
   syncOfflinePosSale:function(command){return callables.syncOfflinePosSale(command);},
+  managePosStaffIdentity:function(command){return callables.managePosStaffIdentity(command);},
+  openLinkedPosShift:function(command){return callables.openLinkedPosShift(command);},
   recordPlatformCatchup:function(command){return callables.recordPlatformCatchup(command);},
   correctPlatformPresettlement:function(command){return callables.correctPlatformPresettlement(command);},
   reversePlatformPayout:function(command){return callables.reversePlatformPayout(command);},
@@ -1126,7 +1128,7 @@ function showDeletePopup(label,onConfirm){
   document.getElementById('deletePopup').classList.add('show');
 }
 
-window.openAdmin=function(){document.getElementById('loginOverlay').classList.add('show');setTimeout(function(){document.getElementById('adminPass').focus();},150);};
+window.openAdmin=function(){document.getElementById('loginOverlay').classList.add('show');setTimeout(function(){document.getElementById('adminUser').focus();},150);};
 window.closeAdmin=function(){document.getElementById('loginOverlay').classList.remove('show');document.getElementById('loginErr').style.display='none';document.getElementById('adminPass').value='';};
 
 window.selectLoginRole=function(role){
