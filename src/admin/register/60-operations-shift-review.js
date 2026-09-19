@@ -11,9 +11,8 @@ function renderOps(){
     html+='<div style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap;align-items:center;"><button class="pz-btn ok" id="opsReview">📋 Shift review</button><button class="pz-btn sec" id="opsCashIn">➕ Cash in</button>'+(denomTrackingOnR()?'<button class="pz-btn sec" id="opsSwap">🔁 Break a bill</button>':'')+'<span style="font-size:0.72rem;color:var(--tl);">The register drawer is for sales intake. Expenses and supplier payments use Financials → Cash Payments.</span></div>';
     html+='<div class="az-kpis" style="margin-top:0.8rem;">'+kpi('Sales',z.tx)+kpi('Net',peso(z.net))+kpi('Cash in',peso(z.cashSales))+kpi('Tips',peso(z.tips))+kpi('Expected drawer',peso(z.expectedCash))+kpi('Cash to settle',peso(z.cashToSettle))+kpi('Voids',z.voidCount)+kpi('Refunds',peso(z.refunds))+kpi('⏳ Cashier check',peso(z.pending)+(z.pendingCount?' ('+z.pendingCount+')':''))+kpi('🔎 Manager review',peso(z.managerPending)+(z.managerPendingCount?' ('+z.managerPendingCount+')':''))+'</div>';
   } else {
-    var opts=staffArr().map(function(s){return '<option value="'+s.id+'">'+esc(s.name)+' ('+esc(s.role||'cashier')+')</option>';}).join('');
     html+='<div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">Open a shift</div>'
-      +(staffArr().length?('<div style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap;margin-bottom:0.6rem;"><div><span class="pz-lbl">Cashier</span><select class="pz-in" id="opsStaff" style="min-width:160px;">'+opts+'</select></div><button class="pz-btn ok" id="opsOpen">Open shift</button></div>'
+      +(staffArr().length?('<div style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap;margin-bottom:0.6rem;"><div style="font-size:.82rem;color:var(--tl);">Your signed-in staff profile will be used. A manager must link it first in POS Settings.</div><button class="pz-btn ok" id="opsOpen">Open my shift</button></div>'
           +'<span class="pz-lbl">Opening cash float — count denominations</span>'+denomGridHtml('opsOpenDenom'))
         :'<p class="az-note">Add at least one staff member with a PIN below first.</p>');
   }
