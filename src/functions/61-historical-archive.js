@@ -35,7 +35,7 @@ async function historicalOrdersFromDocuments(db, documents) {
     if (!order || document.schemaVersion !== HistoricalArchive.SCHEMA_VERSION) fallbackIds.push(orderId);
     else {
       if (!document.evidence || document.evidence.verified !== true) unverified++;
-      rows[orderId] = HistoricalArchive.clean(Object.assign({id: orderId}, order));
+      rows[orderId] = HistoricalArchive.clean(Object.assign({id: orderId}, order, document.salesLedger ? {_historicalLedger: document.salesLedger} : {}));
     }
   }
   await Promise.all(fallbackIds.map(async (orderId) => {
@@ -45,10 +45,28 @@ async function historicalOrdersFromDocuments(db, documents) {
   return {rows, firestore: unique.size - fallbackIds.length, rtdbFallback: fallbackIds.length, unverified};
 }
 
-async function historicalPeriodPage(firestore, data, limit) {
+let historicalSalesAtReadyCache = {value:false, at:0};
+async function historicalSalesAtReady(db) {
+  const now = Date.now(), ttl = historicalSalesAtReadyCache.value ? 5 * 60000 : 30000;
+  if (now - historicalSalesAtReadyCache.at < ttl) return historicalSalesAtReadyCache.value;
+  const value = (await db.ref("/systemHealth/historicalArchive/salesAtReady").get()).val() === true;
+  historicalSalesAtReadyCache = {value, at:now};
+  return value;
+}
+
+async function historicalPeriodPage(db, firestore, data, limit) {
   const start = Number(data.startAt), end = Number(data.endAt);
-  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || end - start > 732 * 86400000) {
-    throw new HttpsError("invalid-argument", "Choose a valid historical period of 732 days or less.");
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || end - start > 400 * 86400000) {
+    throw new HttpsError("invalid-argument", "Choose a valid historical period of 400 days or less.");
+  }
+  if (await historicalSalesAtReady(db)) {
+    const cursor = historicalReadCursor(data.cursor);
+    let query = firestore.collection(HistoricalArchive.COLLECTION)
+      .where("salesAt", ">=", start).where("salesAt", "<=", end)
+      .orderBy("salesAt", "asc").orderBy(FieldPath.documentId(), "asc");
+    if (cursor) query = query.startAfter(cursor.value, cursor.id);
+    const snapshot = await query.limit(limit + 1).get(), documents = snapshot.docs.slice(0, limit), last = documents[documents.length - 1];
+    return {documents, cursor:last ? {value:Number(last.get("salesAt")) || 0, id:last.id} : cursor, hasMore:snapshot.size > limit};
   }
   const incoming = data.cursor && typeof data.cursor === "object" ? data.cursor : {}, nextCursor = {};
   const pages = await Promise.all(["completedAt", "receivedAt", "timestamp"].map(async (field) => {
@@ -69,13 +87,14 @@ async function historicalPeriodPage(firestore, data, limit) {
   return {documents, cursor: nextCursor, hasMore: pages.some((page) => page.hasMore)};
 }
 
-async function historicalLatestPage(firestore, data, limit) {
+async function historicalLatestPage(db, firestore, data, limit) {
   const cursor = historicalReadCursor(data.cursor);
+  const field = await historicalSalesAtReady(db) ? "salesAt" : "order.timestamp";
   let query = firestore.collection(HistoricalArchive.COLLECTION)
-    .orderBy("order.timestamp", "desc").orderBy(FieldPath.documentId(), "desc");
+    .orderBy(field, "desc").orderBy(FieldPath.documentId(), "desc");
   if (cursor) query = query.startAfter(cursor.value, cursor.id);
   const snapshot = await query.limit(limit + 1).get(), documents = snapshot.docs.slice(0, limit), last = documents[documents.length - 1];
-  return {documents, cursor: last ? {value: Number(last.get("order.timestamp")) || 0, id: last.id} : cursor, hasMore: snapshot.size > limit};
+  return {documents, cursor: last ? {value: Number(last.get(field)) || 0, id: last.id} : cursor, hasMore: snapshot.size > limit};
 }
 
 async function historicalArchiveInputs(db, orderId, order) {
@@ -83,15 +102,14 @@ async function historicalArchiveInputs(db, orderId, order) {
   const refundMovementId = refundCents > 0 ? `refund_${orderId}_${refundCents}` : "";
   const remainingCents = Math.max(0, Math.round((Number(order && order.total) || 0) * 100) - refundCents);
   const voidMovementId = order && order.voided === true && remainingCents > 0 ? `void_${orderId}` : "";
-  const [saleMovementSnap, refundMovementSnap, voidMovementSnap, inventoryPlanSnap] = await Promise.all([
-    db.ref(`/financialMovements/sale_${orderId}`).get(),
-    refundMovementId ? db.ref(`/financialMovements/${refundMovementId}`).get() : Promise.resolve(null),
-    voidMovementId ? db.ref(`/financialMovements/${voidMovementId}`).get() : Promise.resolve(null),
+  const [movementSnap, inventoryPlanSnap] = await Promise.all([
+    db.ref("/financialMovements").orderByChild("sourceId").equalTo(orderId).get(),
     db.ref(`/orderInventoryPlans/${orderId}`).get(),
   ]);
-  const saleMovement = saleMovementSnap.val() || null;
-  const refundMovement = refundMovementSnap && refundMovementSnap.val() || null;
-  const voidMovement = voidMovementSnap && voidMovementSnap.val() || null;
+  const salesMovements = movementSnap.val() || {};
+  const saleMovement = salesMovements[`sale_${orderId}`] || null;
+  const refundMovement = refundMovementId ? salesMovements[refundMovementId] || null : null;
+  const voidMovement = voidMovementId ? salesMovements[voidMovementId] || null : null;
   const inventoryPlan = inventoryPlanSnap.val() || null;
   // Legacy orders predate sale-time plans. Read only their deterministic
   // order-linked movement prefix; never recalculate history from current recipes.
@@ -111,7 +129,7 @@ async function historicalArchiveInputs(db, orderId, order) {
   });
   return {
     order,
-    saleMovement,
+    saleMovement, saleMovementId: `sale_${orderId}`, salesMovements,
     // Daily Books journals contain many orders. Archive only exact membership
     // evidence so an unrelated posting cannot change this order's checksum.
     saleJournal: linked.sale.journal, saleJournalId: linked.sale.journalId,
@@ -184,7 +202,7 @@ exports.readHistoricalOrders = onCall(
       }
       return {orders:hydrated.rows, hasMore:false, deletionEnabled:false};
     }
-    const page = mode === "period" ? await historicalPeriodPage(firestore, data, limit) : await historicalLatestPage(firestore, data, limit);
+    const page = mode === "period" ? await historicalPeriodPage(db, firestore, data, limit) : await historicalLatestPage(db, firestore, data, limit);
     const hydrated = await historicalOrdersFromDocuments(db, page.documents);
     return {
       orders: hydrated.rows, cursor: page.cursor || null, hasMore: page.hasMore,
@@ -235,8 +253,8 @@ exports.manageHistoricalOrderArchive = onCall(
       throw new HttpsError("permission-denied", "Historical archive management is restricted to owners.");
     }
     const data = request.data || {}, action = financeText(data.action, 20);
-    if (!["preview", "backfill", "verify", "sales-at-audit", "sales-at-backfill", "sales-at-verify"].includes(action)) {
-      throw new HttpsError("invalid-argument", "Use preview, backfill, verify, sales-at-audit, sales-at-backfill, or sales-at-verify. RTDB deletion is not available.");
+    if (!["preview", "backfill", "verify", "sales-at-audit", "sales-at-backfill", "sales-at-verify", "sales-ledger-backfill"].includes(action)) {
+      throw new HttpsError("invalid-argument", "Choose a supported historical replica maintenance action. RTDB deletion is not available.");
     }
     const requested = Math.floor(Number(data.limit) || 25), limit = Math.max(1, Math.min(HISTORICAL_ARCHIVE_BATCH_LIMIT, requested));
     const cursor = financeText(data.cursor, 160);
@@ -244,29 +262,57 @@ exports.manageHistoricalOrderArchive = onCall(
     // This maintenance path deliberately reads only the Firestore replica.
     // Replaying historicalArchiveInputs here would re-read RTDB financial and
     // inventory evidence for every historical order, defeating this cost fix.
-    if (["sales-at-audit", "sales-at-backfill", "sales-at-verify"].includes(action)) {
+    if (["sales-at-audit", "sales-at-backfill", "sales-at-verify", "sales-ledger-backfill"].includes(action)) {
+      let runId = financeText(data.runId, 100), stateRef = null;
+      if (action === "sales-at-backfill") {
+        stateRef = db.ref("/systemHealth/historicalArchive/salesAtBackfill");
+        const state = (await stateRef.get()).val() || {};
+        if (!cursor) runId = `${Date.now()}_${String(actor.uid).slice(0, 24)}`;
+        else if (!runId || state.runId !== runId || state.expectedCursor !== cursor || state.complete === true) {
+          throw new HttpsError("failed-precondition", "Continue the active salesAt backfill with its returned run ID and cursor, or restart from the beginning.");
+        }
+      }
       let query = firestore.collection(HistoricalArchive.COLLECTION).orderBy(FieldPath.documentId());
       if (cursor) query = query.startAfter(cursor);
       const snap = await query.limit(limit).get(), docs = snap.docs;
       const summary = {scanned: docs.length, written: 0, alreadyPresent: 0, legacyOnly: 0, zeroSalesAt: 0};
       const batch = firestore.batch();
-      docs.forEach((document) => {
+      for (const document of docs) {
         const row = document.data() || {}, order = row.order || {};
         const existing = Number(row.salesAt), stamp = HistoricalArchive.salesAt(order);
         const legacyOnly = ![order.completedAt, order.receivedAt, order.timestamp].some((value) => Number.isFinite(Number(value)) && Number(value) > 0);
         if (legacyOnly) summary.legacyOnly++;
         if (!stamp) summary.zeroSalesAt++;
-        if (Number.isFinite(existing)) { summary.alreadyPresent++; return; }
+        if (action === "sales-ledger-backfill") {
+          if (row.salesLedger && Number(row.salesLedger.schemaVersion) === 1 && row.salesLedgerChecksum === HistoricalArchive.checksum(row.salesLedger)) { summary.alreadyPresent++; continue; }
+          const refundCents = Math.round((Number(order.refundAmount) || 0) * 100), remainingCents = Math.max(0, Math.round((Number(order.total) || 0) * 100) - refundCents);
+          const saleMovementId = `sale_${document.id}`, refundMovementId = refundCents > 0 ? `refund_${document.id}_${refundCents}` : "", voidMovementId = order.voided === true && remainingCents > 0 ? `void_${document.id}` : "";
+          const salesMovements = (await db.ref("/financialMovements").orderByChild("sourceId").equalTo(document.id).get()).val() || {}, salesLedger = HistoricalArchive.salesLedgerSummary({salesMovements, saleMovementId, refundMovementId, voidMovementId});
+          batch.update(document.ref, {salesLedger, salesLedgerChecksum:HistoricalArchive.checksum(salesLedger)});
+          summary.written++;
+          continue;
+        }
+        if (Number.isFinite(existing)) { summary.alreadyPresent++; continue; }
         if (action === "sales-at-backfill") { batch.update(document.ref, {salesAt: stamp}); summary.written++; }
-      });
-      if (action === "sales-at-backfill" && summary.written) await batch.commit();
+      }
+      if (["sales-at-backfill", "sales-ledger-backfill"].includes(action) && summary.written) await batch.commit();
       const nextCursor = docs.length === limit ? docs[docs.length - 1].id : "";
+      if (action === "sales-at-backfill") {
+        const progress = {runId, expectedCursor:nextCursor, complete:!nextCursor, updatedAt:Date.now(), updatedBy:actor.uid, lastSummary:summary, schemaVersion:1};
+        await stateRef.set(progress);
+        if (!nextCursor) {
+          await db.ref("/systemHealth/historicalArchive/salesAtReady").set(true);
+          historicalSalesAtReadyCache = {value:true, at:Date.now()};
+        }
+      }
       await db.ref(`/operationalAudit/${Date.now()}_historical_archive_${action}`).set({
         action: `historical_archive_${action}`, sourceType: "historicalOrderArchive", sourceId: nextCursor || "complete",
         actorUid: actor.uid, actorRole: actor.role, ts: Date.now(), cursor, nextCursor, summary, schemaVersion: 1,
-        accounting: "Firestore replica maintenance only; no RTDB order, inventory, financial movement, subledger, or Books journal was read or changed.",
+        accounting: action === "sales-ledger-backfill"
+          ? "Read exact indexed financial movements by source order solely to build a compact Firestore reporting summary; no RTDB order, inventory, subledger, journal, or financial record was changed."
+          : "Firestore replica maintenance only; no RTDB order, inventory, financial movement, subledger, or Books journal was read or changed.",
       });
-      return {action, cursor: nextCursor, complete: !nextCursor, summary};
+      return {action, cursor: nextCursor, complete: !nextCursor, summary, runId:runId || null};
     }
     let query = db.ref("/archivedOrders").orderByKey();
     if (cursor) query = query.startAt(cursor);

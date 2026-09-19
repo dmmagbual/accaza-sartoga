@@ -35,6 +35,37 @@ function salesAt(order) {
     Number(order && order.archivedAt) || 0;
 }
 
+function salesLedgerSummary(input) {
+  const linked = input.salesMovements && typeof input.salesMovements === "object" ? Object.entries(input.salesMovements) : [];
+  const rows = (linked.length ? linked : [
+    [input.saleMovementId || "", input.saleMovement],
+    [input.refundMovementId || "", input.refundMovement],
+    [input.voidMovementId || "", input.voidMovement],
+  ]).filter((row) => row[0] && row[1] && (row[1].sourceType === "order" || ["order_sale", "order_void", "order_refund"].includes(String(row[1].type || ""))));
+  let grossCents = 0, discountCents = 0, reversalCents = 0, occurredAt = 0, channel = "";
+  rows.forEach(([id, movement]) => {
+    const stamp = Number(movement.occurredAt || movement.postedAt || 0);
+    if (movement.type === "order_sale" || !occurredAt || stamp < occurredAt) occurredAt = stamp;
+    channel = channel || String(movement.channel || "");
+    (movement.lines || []).forEach((line) => {
+      const account = String(line.account || ""), debit = Math.round((Number(line.debit) || 0) * 100), credit = Math.round((Number(line.credit) || 0) * 100);
+      if (account === "revenue:sales") grossCents += credit - debit;
+      else if (["expense:platform_discount", "expense:customer_discount", "revenue:platform_discount"].includes(account)) discountCents += debit - credit;
+      else if (account === "revenue:sales_reversal") reversalCents += debit - credit;
+    });
+  });
+  return clean({
+    gross: grossCents / 100,
+    discount: discountCents / 100,
+    reversal: reversalCents / 100,
+    net: (grossCents - discountCents - reversalCents) / 100,
+    occurredAt,
+    channel,
+    movementIds: rows.map((row) => row[0]),
+    schemaVersion: 1,
+  });
+}
+
 function validInventoryPlan(plan) {
   return !!(plan && Number(plan.schemaVersion) === 1 && plan.usage && typeof plan.usage === "object" &&
     !Array.isArray(plan.usage));
@@ -102,7 +133,7 @@ function assessEvidence(input) {
 
 function buildDocument(orderId, input, replicatedAt = Date.now()) {
   const order = clean(Object.assign({id: orderId}, input.order || {}));
-  const legacyInventory = legacyInventoryEvidence(orderId, input.inventoryMovements), evidence = assessEvidence(Object.assign({}, input, {order}));
+  const legacyInventory = legacyInventoryEvidence(orderId, input.inventoryMovements), evidence = assessEvidence(Object.assign({}, input, {order})), salesLedger = salesLedgerSummary(input);
   const source = {
     rtdbPath: `/archivedOrders/${orderId}`,
     orderId,
@@ -142,13 +173,17 @@ function buildDocument(orderId, input, replicatedAt = Date.now()) {
     // the source of truth so it never changes the archive checksums or the
     // accounting evidence represented by this replica.
     salesAt: salesAt(order),
+    salesLedger,
+    salesLedgerChecksum: checksum(salesLedger),
     order,
   };
 }
 
 function unchanged(existing, next) {
   return !!existing && existing.schemaVersion === next.schemaVersion &&
-    existing.sourceChecksum === next.sourceChecksum && existing.evidenceChecksum === next.evidenceChecksum;
+    existing.sourceChecksum === next.sourceChecksum && existing.evidenceChecksum === next.evidenceChecksum &&
+    Number.isFinite(Number(existing.salesAt)) && existing.salesLedger && Number(existing.salesLedger.schemaVersion) === 1 &&
+    existing.salesLedgerChecksum === next.salesLedgerChecksum;
 }
 
-module.exports = {SCHEMA_VERSION, COLLECTION, clean, checksum, effectiveStatus, salesAt, validInventoryPlan, legacyInventoryEvidence, assessEvidence, buildDocument, unchanged};
+module.exports = {SCHEMA_VERSION, COLLECTION, clean, checksum, effectiveStatus, salesAt, salesLedgerSummary, validInventoryPlan, legacyInventoryEvidence, assessEvidence, buildDocument, unchanged};

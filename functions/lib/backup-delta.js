@@ -42,6 +42,16 @@ const TRACKED_PATHS = Object.freeze([
   "platformPayouts",
   "internalUsage",
   "inventoryAdjustments",
+  "pettyCashVouchers",
+  "pettyCashReplenishments",
+  "receivables",
+  "payables",
+  "suppliers",
+  "inventorySku",
+  "appCustomers",
+  "reviews",
+  "feedbacks",
+  "packages",
 ]);
 const DIRTY_ROOT = "backupDirty";
 const MAX_BASE_AGE_MS = 8 * 86400000;

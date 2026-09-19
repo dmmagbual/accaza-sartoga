@@ -1,8 +1,8 @@
 // POS device heartbeat cadence (17 Sep 2026 download audit).
 // Every heartbeat is a Cloud Function call that reads access records and the open shift and
 // pushes a device row to Live Operations viewers. A POS left open in the background or
-// unattended sent one a minute all day. It now reports every minute only while the screen is
-// in use or a sale waits to sync, and every five minutes (flagged idle) otherwise.
+// unattended sent one a minute all day. It now reports every two minutes while the screen is
+// in use or a sale waits to sync, and every ten minutes (flagged idle) otherwise.
 import fs from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
@@ -21,29 +21,29 @@ const win = {
 const ctx = {window: win, Date: class extends Date { static now() { return now; } }, setInterval: (fn, ms) => { timers.push({fn, ms}); return timers.length; }, Promise, Object, Number, String, Math};
 vm.createContext(ctx);
 vm.runInContext(source, ctx);
-const beat = timers.find((t) => t.ms === 60000);
-assert.ok(beat, 'the heartbeat checks every minute');
-const minutes = (n) => { for (let i = 0; i < n; i++) { now += 60000; beat.fn(); } };
+const beat = timers.find((t) => t.ms === 120000);
+assert.ok(beat, 'the heartbeat checks every two minutes');
+const minutes = (n) => { for (let i = 0; i < n / 2; i++) { now += 120000; beat.fn(); } };
 
-// In use: one report a minute.
+// In use: one report every two minutes.
 listeners.pointerdown.forEach((fn) => fn());
 calls.length = 0;
 minutes(10);
-assert.equal(calls.length, 10, 'an attended POS reports every minute');
+assert.equal(calls.length, 5, 'an attended POS reports every two minutes');
 assert.ok(calls.every((c) => c.idle === false));
 
-// Backgrounded with nothing to sync: every five minutes, flagged idle.
+// Backgrounded with nothing to sync: about every ten minutes, flagged idle.
 doc.visibilityState = 'hidden';
 calls.length = 0;
 minutes(60);
-assert.ok(calls.length >= 11 && calls.length <= 13, `a background POS reports about every five minutes (got ${calls.length} in an hour)`);
+assert.ok(calls.length >= 5 && calls.length <= 7, `a background POS reports about every ten minutes (got ${calls.length} in an hour)`);
 assert.ok(calls.every((c) => c.idle === true), 'background reports are flagged idle');
 
-// A sale waiting to sync keeps the one-minute cadence even in the background.
+// A sale waiting to sync keeps the two-minute cadence even in the background.
 state.pending = 2;
 calls.length = 0;
 minutes(10);
-assert.equal(calls.length, 10, 'unsynced sales keep the one-minute cadence');
+assert.equal(calls.length, 5, 'unsynced sales keep the two-minute cadence');
 assert.ok(calls.every((c) => c.idle === false && c.pending === 2));
 state.pending = 0;
 
@@ -60,4 +60,4 @@ assert.ok(calls.length < 90 * 0.5, `an unattended visible POS slows down (got ${
 calls.length = 0;
 listeners.pointerdown.forEach((fn) => fn());
 assert.equal(calls.length, 1, 'the first tap after an idle spell reports at once');
-console.log('PASS: POS heartbeat reports every minute while in use or with unsynced sales, every five minutes (flagged idle) otherwise, and at once on return.');
+console.log('PASS: POS heartbeat reports every two minutes while in use or with unsynced sales, every ten minutes (flagged idle) otherwise, and at once on return.');

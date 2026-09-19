@@ -70,7 +70,7 @@ const hub=createSubscriptionHub({},ops),feeds={};
 for(const path of ['orders','archivedOrders','financialMovements','activeOrders'])hub.subscribe(path,s=>{feeds[path]=s.val();});
 hub.activate('saleshistory');hub.authorize();await hub.whenReady(['orders','archivedOrders','financialMovements']);
 assert.deepEqual(Object.keys(feeds.orders).sort(),expected);assert(feeds.activeOrders.ancient);
-assert(feeds.financialMovements.refund_cross,'Later refund must be fetched by source reference');assert(!feeds.financialMovements.unrelated);
+assert(feeds.financialMovements.sale_cross,'The selected-period financial movement must be loaded');assert(!feeds.financialMovements.refund_cross,'Movements outside the selected period must not trigger a source fan-out');assert(!feeds.financialMovements.unrelated);
 assert.equal(hub.historyStatus('orders').hasOlder,false);
 const failing=listeners.find(l=>!l.stopped&&l.target.path==='orders');const log=console.error;console.error=()=>{};failing.onError(new Error('TEST_PERMISSION_DENIED'));console.error=log;
 assert.equal(hub.historyStatus('orders').ready,false);await assert.rejects(hub.whenReady(['orders']),/TEST_PERMISSION_DENIED/);
@@ -99,4 +99,4 @@ const ids=rows=>Array.from(rows,o=>o.id).sort();assert.deepEqual(ids(history.map
 const net=overview.reduce((n,o)=>n+authority.amounts(o).net,0);assert.equal(analytics.reduce((n,o)=>n+o.net,0),net);assert.equal(history.reduce((n,x)=>n+authority.amounts(x.o).net,0),net);
 assert(!overview.some(o=>o.id==='voidCopy'||o.id==='outside'||o.id==='pending'));assert(overview.some(o=>o.id==='refunded'));
 assert(!fs.readFileSync('src/admin/analytics/00-bootstrap-subscriptions.js','utf8').includes('completedAt:Date.now()'),'Opening Analytics must never alter completion dates');
-console.log('PASS: current-month rollover, validation, Apply feedback, bounded numeric sales-date queries, scoped live feeds, cross-period refunds, race protection, and identical three-view sales totals.');
+console.log('PASS: current-month rollover, validation, Apply feedback, bounded numeric sales-date queries, scoped period movements, race protection, and identical three-view sales totals.');

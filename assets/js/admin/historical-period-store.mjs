@@ -1,4 +1,4 @@
-import {salesStamp, periodKey} from './sales-period-data.mjs?v=548';
+import {salesStamp, periodKey} from './sales-period-data.mjs?v=549';
 
 // Session-only archive cache. A bounded server change journal lets every open
 // report share exact-record refreshes. Missing journal history forces reconciliation.
@@ -22,7 +22,8 @@ export function createHistoricalPeriodStore(ops) {
       while (more) {
         const result = await ops.read({mode:'period', ...entry.period, cursor, limit:100});
         Object.assign(rows, result.orders || {}); cursor = result.cursor; more = result.hasMore === true;
-        if (++pages > 200) throw new Error('Historical period exceeded the safe page limit. Narrow the selected dates.');
+        pages++;
+        if (pages >= 50 && more) throw new Error('Historical period exceeded the safe 5,000-order limit. Narrow the selected dates.');
       }
       if (epoch !== generation) return rows;
       entry.rows = rows; emit(entry); return rows;

@@ -1,14 +1,10 @@
 // Sales History movement-feed consolidation (17 Sep 2026 download audit, F-1).
 //
-// The Sales History scope used to hold ONE LIVE orderByChild('sourceId') listener per order
-// of the selected period on top of the occurredAt period feed. A busy month kept thousands of
-// separately synced server queries alive for the whole session, and every later write for one
-// of those sources was re-downloaded on its own listener even when the base feed carried the
-// change. The hub now keeps one live period feed and reads the per-source rows ONCE with
-// indexed get() calls. This check pins the new shape against a recorded wire:
+// Archived replica rows now carry compact Finance summaries. The hub keeps one live period
+// feed and uses an exact-source fallback only for a legacy replica that has not been backfilled.
+// This check pins the transitional shape against a recorded wire:
 //   * exactly one live listener on financialMovements (the occurredAt range);
-//   * zero live sourceId listeners, one one-time fetch per order of the period;
-//   * the merged page still contains the out-of-period movement for a period order;
+//   * zero live sourceId listeners, one one-time fetch only for the legacy archived row;
 //   * the live base feed wins over a stale fetched copy of the same movement;
 //   * tearing the scope down detaches the base listener.
 import assert from 'node:assert/strict';
@@ -109,20 +105,19 @@ assert.equal(Number(fmListeners[0].target.start), T0, 'the range starts at the p
 assert.equal(Number(fmListeners[0].target.end), T1, 'the range ends at the period end');
 assert.equal(fake.listeners.filter((l) => l.target.field === 'sourceId').length, 0, 'no live sourceId fan-out remains');
 
-// 2. One one-time indexed fetch per order of the period (live + archived), none outside it.
+// 2. Only the legacy archived row without a compact replica summary uses a source query.
 const sourceGets = fake.gets.filter((g) => g.path === 'financialMovements' && g.field === 'sourceId');
 const fetchedIds = sourceGets.map((g) => g.start).sort();
-assert.deepEqual(fetchedIds, ['POS-1001', 'POS-1002', 'POS-1003'], 'exactly the period orders are fetched once');
+assert.deepEqual(fetchedIds, ['POS-1003'], 'only a legacy archived row is fetched by source ID');
 assert.ok(sourceGets.every((g) => g.start === g.end), 'each fetch is the exact-id indexed range');
 
-// 3. The merged page: live period rows keep arriving, the out-of-period source row is present,
-//    unrelated rows are not, and the live base feed beats the stale fetched copy.
+// 3. The merged page keeps the live period rows and excludes unrelated/out-of-period rows.
 const merged = fmSnapshots[fmSnapshots.length - 1];
 assert.ok(fmSnapshots.length > 0, 'the page received at least one merged snapshot');
 assert.equal(merged.m1.amount, 200, 'in-period order movement arrives from the base feed');
 assert.equal(merged.m2.amount, 40, 'in-period untagged movement arrives from the base feed');
-assert.equal(merged.mv_old.amount, 150, 'out-of-period movement for a period order arrives from the one-time fetch');
 assert.equal(merged.mv_dup.amount, 999, 'the live base feed wins over a stale fetched copy');
+assert.ok(!('mv_old' in merged), 'active rows do not cause an out-of-period source query');
 assert.ok(!('mv_unrelated' in merged), 'movements of other orders are not fetched');
 
 // 4. Tearing the scope down detaches the base listener and stops deliveries.

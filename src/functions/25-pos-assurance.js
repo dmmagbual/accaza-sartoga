@@ -7,7 +7,7 @@ const POS_HEALTH_MAX_AGE_MS=120000;
 // REPORTED shift still matches, so a newly opened or closed shift always forces a fresh
 // read on the next ping. verifyShiftCloseReadiness and onShiftCloseAssurance keep their
 // uncached reads -- they gate money movement and must see the latest state.
-const POS_HEALTH_ROLE_TTL_MS=5*60*1000,POS_HEALTH_SHIFT_TTL_MS=60*1000;
+const POS_HEALTH_ROLE_TTL_MS=10*60*1000,POS_HEALTH_SHIFT_TTL_MS=2*60*1000;
 const posHealthRoleMemo=new Map();let posHealthShiftMemo={at:0,shift:null};
 async function healthPortalActor(db,request){const uid=request.auth&&request.auth.uid||'',hit=uid&&posHealthRoleMemo.get(uid);if(hit&&Date.now()-hit.at<POS_HEALTH_ROLE_TTL_MS)return hit.actor;const actor=await requirePortalPermission(db,request,['pos']);if(uid)posHealthRoleMemo.set(uid,{at:Date.now(),actor});return actor;}
 async function healthOpenShift(db,shiftId){const hit=posHealthShiftMemo;if(hit.shift&&hit.shift.id===shiftId&&Date.now()-hit.at<POS_HEALTH_SHIFT_TTL_MS)return hit.shift;const shift=(await db.ref('/posActiveShift').get()).val()||{};posHealthShiftMemo={at:Date.now(),shift};return shift;}

@@ -113,9 +113,9 @@ window.enableNotifications=async function(){
 window.__setupPush=setupPush;
 
 // DB refs
-const reservationsRef=ref(db,'reservations'),feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),calBlocksRef=ref(db,'calBlocks'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups'),publicCatalogVersionRef=ref(db,'publicCatalogVersion'),publicOrderStatusRef=ref(db,'publicOrderStatus');
+const reservationsRef=ref(db,'reservations'),feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),calBlocksRef=ref(db,'calBlocks'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups'),packagesRef=ref(db,'packages'),publicCatalogVersionRef=ref(db,'publicCatalogVersion'),publicOrderStatusRef=ref(db,'publicOrderStatus');
 window.__custPkgs=[];
-window.__accazaC={db:db,ref:ref,set:set,get:get,onValue:onValue,get menuItemsMap(){return menuItemsMap;},get optionGroupsMap(){return optionGroupsMap;},getMenuItems:getMenuItems,getCats:getCats,getCatLabel:getCatLabel,getItemOptionGroups:getItemOptionGroups};
+window.__accazaC={db:db,ref:ref,set:set,get:get,onValue:onValue,get menuItemsMap(){return menuItemsMap;},get optionGroupsMap(){return optionGroupsMap;},get packagesMap(){return packagesMap;},getMenuItems:getMenuItems,getCats:getCats,getCatLabel:getCatLabel,getItemOptionGroups:getItemOptionGroups};
 window.__custAddPackage=function(components,meta){(components||[]).forEach(function(c){var key=Date.now()+'_'+Math.random().toString(36).substr(2,5)+Math.floor(Math.random()*99);cart[key]={name:c.name,details:c.details||('pkg: '+meta.name),qty:c.qty,unitTotal:c.unitTotal,cat:c.cat||'',itemKey:c.itemKey,size:c.size||null,optLabels:c.optLabels||[],stream:(meta.type==='promo'?'promo':'events'),pkgId:meta.id,packageRole:c.packageRole||null};});window.__custPkgs.push(meta);updateCartDisplay();renderOrderSection();};
 
 const CAFE_PHONE='639276924831',CAFE_EMAIL='admin@accazacoffee.com',MAX_GUESTS=30;
@@ -163,7 +163,7 @@ function getItemOptionGroups(item){
 }
 
 // State
-let categoriesMap={},menuItemsMap={},adminResMap={},reviewsMap={},availability={},cart={},categoriesListCache=null,menuItemsListCache=null,catalogRenderPending=false;
+let categoriesMap={},menuItemsMap={},packagesMap={},adminResMap={},reviewsMap={},availability={},cart={},categoriesListCache=null,menuItemsListCache=null,catalogRenderPending=false;
 function onlineOrderingAvailable(){return publicOrdersOpen&&customerLiveConnected&&!!auth.currentUser&&!customerAuthProblem;}
 function syncPlaceOrderButton(){
   var button=document.querySelector('.btn-place-order');if(!button||window._placingOrder)return;
@@ -391,10 +391,10 @@ function applyMenuSnapshot(snap){
 var _publicCatalogVersionKey='bootstrap',_pReq=0,_publicCatalogLoading=null;
 var PUBLIC_CATALOG_CACHE_KEY='accaza_public_catalog_v1';
 function readPublicCatalogCache(){try{var c=JSON.parse(localStorage.getItem(PUBLIC_CATALOG_CACHE_KEY)||'null');return c&&c.categories&&c.optionGroups&&c.menuItems?c:null;}catch(e){return null;}}
-function applyCachedPublicCatalog(c){applyCategoriesSnapshot({val:()=>c.categories});applyOptionGroupsSnapshot({exists:()=>true,val:()=>c.optionGroups});applyMenuSnapshot({val:()=>c.menuItems});}
-async function loadVersionedPublicCatalog(k){if(_publicCatalogLoading===k)return;_publicCatalogLoading=k;var id=++_pReq,c=readPublicCatalogCache();if(c&&String(c.version||'')===k){applyCachedPublicCatalog(c);_publicCatalogLoading=null;return;}try{var s=await Promise.all([get(categoriesRef),get(optionGroupsRef),get(menuRef)]);if(id!==_pReq||k!==_publicCatalogVersionKey)return;applyCategoriesSnapshot(s[0]);applyOptionGroupsSnapshot(s[1]);applyMenuSnapshot(s[2]);try{localStorage.setItem(PUBLIC_CATALOG_CACHE_KEY,JSON.stringify({version:k,categories:categoriesMap,optionGroups:optionGroupsMap,menuItems:menuItemsMap}));}catch(e){}}catch(e){if(id===_pReq&&c)applyCachedPublicCatalog(c);}if(id===_pReq)_publicCatalogLoading=null;}
+function applyPackagesSnapshot(snapshot){packagesMap=snapshot&&snapshot.val?snapshot.val()||{}:{};if(window.dispatchEvent)window.dispatchEvent(new CustomEvent('accaza-public-packages',{detail:{packages:packagesMap}}));}
+function applyCachedPublicCatalog(c){applyCategoriesSnapshot({val:()=>c.categories});applyOptionGroupsSnapshot({exists:()=>true,val:()=>c.optionGroups});applyMenuSnapshot({val:()=>c.menuItems});applyPackagesSnapshot({val:()=>c.packages||{}});}
+async function loadVersionedPublicCatalog(k){if(_publicCatalogLoading===k)return;_publicCatalogLoading=k;var id=++_pReq,c=readPublicCatalogCache();if(c&&String(c.version||'')===k&&c.packages){applyCachedPublicCatalog(c);_publicCatalogLoading=null;return;}try{var s=await Promise.all([get(categoriesRef),get(optionGroupsRef),get(menuRef),get(packagesRef)]);if(id!==_pReq||k!==_publicCatalogVersionKey)return;applyCategoriesSnapshot(s[0]);applyOptionGroupsSnapshot(s[1]);applyMenuSnapshot(s[2]);applyPackagesSnapshot(s[3]);try{localStorage.setItem(PUBLIC_CATALOG_CACHE_KEY,JSON.stringify({version:k,categories:categoriesMap,optionGroups:optionGroupsMap,menuItems:menuItemsMap,packages:packagesMap}));}catch(e){}}catch(e){if(id===_pReq&&c)applyCachedPublicCatalog(c);}if(id===_pReq)_publicCatalogLoading=null;}
 onValue(publicCatalogVersionRef,s=>{var v=s&&s.val?s.val():null;v=v&&typeof v==='object'?v.version:v;_publicCatalogVersionKey=v==null||v===''?'bootstrap':String(v);loadVersionedPublicCatalog(_publicCatalogVersionKey);},()=>{_publicCatalogVersionKey='bootstrap';loadVersionedPublicCatalog('bootstrap');});
-// ── NEW ORDER ALERTS (admin/staff) ──────────────────────────
 function playChime(){
   try{
     if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();
@@ -1123,12 +1123,7 @@ window.__loadPublicReviews=async function(){
   try{
     var snap=await get(query(reviewsRef,orderByKey(),limitToLast(20)));
     if(snap.exists())reviewsMap=snap.val();
-    else{
-      reviewsMap=DEFAULT_PUBLIC_REVIEWS;
-      // Preserve the existing seed for a newly created database, but do not
-      // write from a read failure or on every public page visit.
-      set(reviewsRef,DEFAULT_PUBLIC_REVIEWS).catch(function(){});
-    }
+    else reviewsMap=DEFAULT_PUBLIC_REVIEWS;
   }catch(e){
     if(!Object.keys(reviewsMap).length)reviewsMap=DEFAULT_PUBLIC_REVIEWS;
   }
