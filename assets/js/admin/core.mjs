@@ -5,7 +5,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome}from"./admin-orders.mjs";
-import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=502";
+import{createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=503";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -68,25 +68,25 @@ window.__accaza={
   ensureInventoryLedger:function(){return ensureInventoryLedgerCall({});},
   validateRecipeDefinition:function(recipe){return validateRecipeDefinitionCall({recipe:recipe});},
   saveSharedChoiceIngredients:function(optionCosts){return callables.saveSharedChoiceIngredients({optionCosts:optionCosts});},
-  postFinancialCommand:function(command){return postFinancialCommandCall(command);},
-  reconcilePurchasePayable:function(command){return reconcilePurchasePayableCall(command);},
-  managePurchaseCorrection:function(command){return managePurchaseCorrectionCall(command);},
-  manageFixedAsset:function(command){return manageFixedAssetCall(command);},
-  settlePlatformPayout:function(command){return settlePlatformPayoutCall(command);},
-  processOrderAdjustment:function(command){return processOrderAdjustmentCall(command);},
+  postFinancialCommand:c=>postFinancialCommandCall(c),
+  reconcilePurchasePayable:c=>reconcilePurchasePayableCall(c),
+  managePurchaseCorrection:c=>managePurchaseCorrectionCall(c),
+  manageFixedAsset:c=>manageFixedAssetCall(c),
+  settlePlatformPayout:c=>settlePlatformPayoutCall(c),
+  processOrderAdjustment:c=>processOrderAdjustmentCall(c),
   ensureFinancialLedger:function(){return ensureFinancialLedgerCall({});},
-  manageCashAccount:function(command){return manageCashAccountCall(command);},
-  manageAccountingPeriod:function(command){return manageAccountingPeriodCall(command);},
+  manageCashAccount:c=>manageCashAccountCall(c),
+  manageAccountingPeriod:c=>manageAccountingPeriodCall(c),
   managerApproval:requestManagerApproval,
-  consumeManagerApproval:function(command){return consumeManagerApprovalCall(command);},
-  manageChartAccount:function(command){return manageChartAccountCall(command);},
+  consumeManagerApproval:c=>consumeManagerApprovalCall(c),
+  manageChartAccount:c=>manageChartAccountCall(c),
   auditFinancialControls:function(){return auditFinancialControlsCall({});},
-  manageOrderArchive:function(command){return manageOrderArchiveCall(command);},
+  manageOrderArchive:c=>manageOrderArchiveCall(c),
   updateOrderStatus:function(command){return updateOrderStatusCall(command);},
   acceptOnlineOrder:c=>callables.acceptOnlineOrder(c),
-  reviewDiscrepancy:function(command){return reviewDiscrepancyCall(command);},
-  reopenDiscrepancy:function(command){return reopenDiscrepancyCall(command);},
-  managePettyVoucher:function(command){return managePettyVoucherCall(command);},
+  reviewDiscrepancy:c=>reviewDiscrepancyCall(c),
+  reopenDiscrepancy:c=>reopenDiscrepancyCall(c),
+  managePettyVoucher:c=>managePettyVoucherCall(c),
   manageSupplier:function(command){return callables.manageSupplier(command);},
   setUndepositedOpeningBalance:function(command){return setUndepositedOpeningBalanceCall(command);},
   repairPettyVoucherFinancial:function(command){return repairPettyVoucherFinancialCall(command);},
@@ -99,6 +99,8 @@ window.__accaza={
   runFinancialClose:function(command){return runFinancialCloseCall(command);},
   archiveActivityLog:function(){return archiveActivityLogCall({});},
   syncOfflinePosSale:function(command){return callables.syncOfflinePosSale(command);},
+  managePosStaffIdentity:function(command){return callables.managePosStaffIdentity(command);},
+  openLinkedPosShift:function(command){return callables.openLinkedPosShift(command);},
   recordPlatformCatchup:function(command){return callables.recordPlatformCatchup(command);},
   correctPlatformPresettlement:function(command){return callables.correctPlatformPresettlement(command);},
   reversePlatformPayout:function(command){return callables.reversePlatformPayout(command);},
@@ -1131,23 +1133,9 @@ function showDeletePopup(label,onConfirm){
   document.getElementById('deletePopup').classList.add('show');
 }
 
-window.openAdmin=function(){document.getElementById('loginOverlay').classList.add('show');setTimeout(function(){document.getElementById('adminPass').focus();},150);};
+window.openAdmin=function(){document.getElementById('loginOverlay').classList.add('show');setTimeout(function(){document.getElementById('adminUser').focus();},150);};
 window.closeAdmin=function(){document.getElementById('loginOverlay').classList.remove('show');document.getElementById('loginErr').style.display='none';document.getElementById('adminPass').value='';};
 
-window.selectLoginRole=function(role){
-  currentLoginRole=role;
-  document.getElementById('loginForm').style.display='block';
-  var aBtn=document.getElementById('roleAdminBtn'),sBtn=document.getElementById('roleStaffBtn');
-  aBtn.style.background=role==='admin'?'var(--bd)':'#fff';
-  aBtn.style.color=role==='admin'?'#fff':'var(--td)';
-  aBtn.style.borderColor=role==='admin'?'var(--bd)':'var(--cd)';
-  sBtn.style.background=role==='staff'?'var(--bl)':'#fff';
-  sBtn.style.color=role==='staff'?'#fff':'var(--td)';
-  sBtn.style.borderColor=role==='staff'?'var(--bl)':'var(--cd)';
-  var fBtn=document.getElementById('forgotPwBtn');if(fBtn)fBtn.style.display='inline';
-  document.getElementById('loginErr').style.display='none';
-  setTimeout(function(){document.getElementById('adminUser').focus();},100);
-};
 
 var DEFAULT_STAFF_PERMS={orders:true,reservations:true,pos:true,inventory:true,purchases:false,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,dailyreport:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false,cashflow:false,receivables:false,payables:false,stockvalue:false},roleLandingDone=false;
 var _permTabMap={"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'availSection'":'availability',"'commentsSection'":'comments',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'purchases'":'purchases',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'dedupe'":'dedupe',"'cashflow'":'cashflow',"'receivables'":'receivables',"'payables'":'payables',"'stockvalue'":'stockvalue',"'dailyreport'":'dailyreport',"'analytics'":'analytics',"'pnl'":'pnl',"'ops'":'registerOps',"'possettings'":'possettings'};
