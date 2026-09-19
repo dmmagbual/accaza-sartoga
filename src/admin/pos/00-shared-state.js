@@ -30,7 +30,7 @@ function usageTypeName(id){return (usageTypesMap[id]&&usageTypesMap[id].name)||(
 function usageTypeReasons(id){var t=usageTypesMap[id]||DEFAULT_USAGE_TYPES.filter(function(d){return d.id===id;})[0];return (t&&t.reasons)||[];}
 function usageTypeAccount(id){var t=usageTypesMap[id]||DEFAULT_USAGE_TYPES.filter(function(d){return d.id===id;})[0]||{};return String(t.expenseAccount||(id==='rnd'?'6078':id==='waste'?'5900':'6077'));}
 function usageAccountOptions(selected){return USAGE_ACCOUNT_OPTIONS.map(function(a){return '<option value="'+a.code+'"'+(a.code===String(selected)?' selected':'')+'>'+a.code+' · '+esc(a.name)+'</option>';}).join('');}
-var posCart={}, posCat='ALL', posSearch='', posBuilt=false, recipeEditing=false, curRecipeKey=null, recipeDraft=null, recSub='base', recCategory='', recSize='M', posScopedDisc=[], posChannel='instore', posView='counter', onlineOrdersMap={};
+var posCart={},posCat='coffee',posSearch='', posBuilt=false, recipeEditing=false, curRecipeKey=null, recipeDraft=null, recSub='base', recCategory='', recSize='M', posScopedDisc=[], posChannel='instore', posView='counter', onlineOrdersMap={};
 var posDraft={},posChargeBusy=false,posPaymentVerification=null,posCompletedCorrection=null;
 function telemetry(){return window.AccazaTelemetry||{start:function(){},end:function(){},metric:function(){},error:function(){}};}
 function capturePosDraft(root){if(!root)return;var active=document.activeElement,focusId=active&&root.contains(active)?active.id:'';root.querySelectorAll('input[id],textarea[id],select[id]').forEach(function(el){posDraft[el.id]={value:el.value,checked:!!el.checked,type:el.type};});posDraft.__focus=focusId;}
