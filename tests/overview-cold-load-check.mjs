@@ -31,3 +31,18 @@ if(!core.includes('readHistoricalSalesRollup')||core.includes('subscriptionHub.r
 if(!core.includes('const historyOrders=_rows(overviewOrdersMap)')||!core.includes('const archived=_rows(archivedOrdersMap)'))throw new Error('Overview must prefer complete live maps over stale snapshots, including removals.');
 if(!core.includes('orders:historyOrders')||!core.includes('mergeOverviewOrders([],historyOrders,archived)')||!core.includes('const sales=reconciledSales.filter(_isSale)'))throw new Error('Admin Overview is not calculating sales from the same orders plus archived-orders universe as Sales History.');
 console.log('PASS: Overview attaches, retains, and calculates from live order history before another Finance tab is opened.');
+
+// A failed summary redraw must not initiate a new request (including synchronous errors).
+const vm=await import('node:vm');
+const insights=await fs.readFile(new URL('../assets/js/admin/overview-insights.mjs',import.meta.url),'utf8');
+const loader=insights.slice(insights.indexOf('  function loadPeriodSummary('),insights.indexOf('  function renderCompactSummary('));
+for(const mode of ['unready','invalid-schema','rejected','sync-error']){
+  let requests=0;const state={summaryRequest:0},range={start:1,end:2};
+  const ctx={state,Promise,String,Number,Error,deps:{readPeriodSummary(){requests++;if(requests>3)throw new Error('Repeated read');if(mode==='sync-error')throw new Error('offline');if(mode==='rejected')return Promise.reject(new Error('offline'));return Promise.resolve(mode==='unready'?{ready:false}:{ready:true,schemaVersion:1});}},paint(){if(requests<3)ctx.loadPeriodSummary(range);}};
+  vm.createContext(ctx);vm.runInContext(loader,ctx);ctx.loadPeriodSummary(range);
+  await new Promise(resolve=>setTimeout(resolve,0));
+  if(requests!==1||!state.summaryError||state.summaryLoading)throw new Error('Summary failure retried itself: '+mode);
+  ctx.paint=function(){};ctx.loadPeriodSummary({start:3,end:4});await new Promise(resolve=>setTimeout(resolve,0));
+  if(requests!==2)throw new Error('Changing period must allow one new request.');
+}
+console.log('PASS: unavailable, malformed, rejected and synchronous summary failures do not cause a redraw/read loop.');
