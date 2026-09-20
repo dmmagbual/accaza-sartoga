@@ -94,6 +94,15 @@ const customizedPastry=Costing.costOrder({
 });
 near(customizedPastry.usage.icedCup,14,'a pastry Customized to its own style is costed with that style, not the shared default');
 if(customizedPastry.usage.hotCup)throw new Error('a Customized pastry still fell back to the shared category default it was overridden away from');
+const recipeCostingCustomPackaging=Costing.costRecipe({
+  itemKey:'muesli',recipe:{base:[{ing:'beans',qtyS:10}]},inventory,
+  // Recipe Costing receives the stored item object, which has no RTDB key.
+  item:{name:'MUESLI',cat:'pastry',priceS:180},size:'S',
+  packagingRules:{bowl:{rows:[{ing:'hotCup',qtyS:1}]},private_muesli:{rows:[{ing:'icedCup',qtyS:1}]}},
+  packagingAssignments:{pastry:{defaultStyle:'bowl',items:{muesli:'private_muesli'}}},
+});
+near(recipeCostingCustomPackaging.usage.icedCup,1,'Recipe Costing resolves the item-specific packaging assignment');
+if(recipeCostingCustomPackaging.usage.hotCup)throw new Error('Recipe Costing ignored the item-specific packaging assignment');
 const packagedPastry=Costing.costOrder({
   lineItems:[{itemKey:'croissant',size:'S',qty:2,optLabels:[]}],recipes:{},inventory,
   menuItems:{croissant:{name:'Croissant',cat:'pastry',priceS:95,needsBuilding:false}},

@@ -5690,6 +5690,10 @@ const HISTORICAL_READ_PAGE_LIMIT = 100;
 const HISTORICAL_MAINTENANCE_DAILY_DOCUMENT_LIMIT = 4000;
 const HISTORICAL_USER_DAILY_READ_LIMIT = 2000;
 const HISTORICAL_PERIOD_MAX_MS = 93 * 86400000;
+// Version 2 records that the completed salesAt pass also established the
+// reader-ready marker. Earlier completed runs predate that contract and must
+// be replayed once, in the same bounded Firestore-only batches.
+const HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 2;
 
 async function reserveHistoricalReadBudget(db, uid, reads) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {timeZone:"America/Los_Angeles",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()).map((part) => [part.type, part.value]));
@@ -6033,13 +6037,14 @@ exports.manageHistoricalOrderArchive = onCall(
     const cursor = financeText(data.cursor, 160);
     const firestore = getFirestore();
     if (action === "status") {
-      const [salesAt, salesLedger, salesRollup, ready] = await Promise.all([
+      const [salesAt, salesLedger, salesRollup, ready, salesAtReady] = await Promise.all([
         db.ref("/systemHealth/historicalArchive/salesAtBackfill").get(),
         db.ref("/systemHealth/historicalArchive/salesLedgerBackfill").get(),
         db.ref("/systemHealth/historicalArchive/salesRollupBackfill").get(),
         db.ref("/systemHealth/historicalArchive/salesRollupReady").get(),
+        db.ref("/systemHealth/historicalArchive/salesAtReady").get(),
       ]);
-      return {salesAt:salesAt.val()||null,salesLedger:salesLedger.val()||null,salesRollup:salesRollup.val()||null,salesRollupReady:ready.val()===true};
+      return {salesAt:salesAt.val()||null,salesLedger:salesLedger.val()||null,salesRollup:salesRollup.val()||null,salesRollupReady:ready.val()===true,salesAtReady:salesAtReady.val()===true};
     }
     // This maintenance path deliberately reads only the Firestore replica.
     // Replaying historicalArchiveInputs here would re-read RTDB financial and
@@ -6087,7 +6092,7 @@ exports.manageHistoricalOrderArchive = onCall(
       if (["sales-at-backfill", "sales-ledger-backfill"].includes(action) && summary.written) await batch.commit();
       const nextCursor = docs.length === limit ? docs[docs.length - 1].id : "";
       if (["sales-at-backfill", "sales-ledger-backfill", "sales-rollup-backfill"].includes(action)) {
-        const progress = {runId, expectedCursor:nextCursor, complete:!nextCursor, updatedAt:Date.now(), updatedBy:actor.uid, lastSummary:summary, schemaVersion:1};
+        const progress = {runId, expectedCursor:nextCursor, complete:!nextCursor, updatedAt:Date.now(), updatedBy:actor.uid, lastSummary:summary, schemaVersion:action === "sales-at-backfill" ? HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION : 1};
         await stateRef.set(progress);
         if (!nextCursor && action === "sales-at-backfill") {
           await db.ref("/systemHealth/historicalArchive/salesAtReady").set(true);
