@@ -42,7 +42,7 @@
     "test:books-navigation": "node tests/books-navigation-check.mjs",
     "test:books-download-scope": "node tests/books-download-scope-check.mjs",
     "test:books-csv": "node tests/books-csv-export-check.mjs",
-    "test:historical-archive": "node tests/historical-archive-check.cjs && node tests/historical-reader-check.mjs && node tests/dashboard-download-check.mjs",
+    "test:historical-archive": "node tests/historical-archive-check.cjs && node tests/historical-reader-check.mjs && node tests/dashboard-download-check.mjs && node tests/report-restoration-check.mjs",
     "test:cash-flow-presentation": "node tests/cash-flow-presentation-check.mjs",
     "test:cash-balance-summary": "node tests/cash-balance-summary-check.mjs",
     "test:retry-guard": "node tests/retry-guard-check.mjs",
