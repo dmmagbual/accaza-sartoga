@@ -4558,3 +4558,40 @@ exports.manageHistoricalOrderArchive = onCall(
     return {action, cursor: nextCursor, complete: !nextCursor, summary, deletionEnabled: false};
   },
 );
+// --- FIX: Added missing managePosStaffIdentity function ---
+exports.managePosStaffIdentity = onCall(
+  { region: "asia-southeast1", enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30 },
+  async (request) => {
+    // 1. Ensure user is logged in
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "You must be logged in to manage staff.");
+    }
+
+    // 2. Validate the data sent from the frontend
+    const { staffId, accountUid, pin } = request.data || {};
+    if (!staffId || !accountUid || !pin) {
+      throw new HttpsError("invalid-argument", "Missing required fields: staffId, accountUid, or pin.");
+    }
+    if (!/^\d{4,6}$/.test(pin)) {
+      throw new HttpsError("invalid-argument", "PIN must be 4-6 digits.");
+    }
+
+    const db = getDatabase();
+
+    // 3. Check if the staff member actually exists
+    const staffRef = db.ref(`posStaff/${staffId}`);
+    const staffSnap = await staffRef.get();
+    if (!staffSnap.exists()) {
+      throw new HttpsError("not-found", "Staff member not found in the database.");
+    }
+
+    // 4. Update the staff record with the Firebase UID and new PIN
+    await staffRef.update({
+      accountUid: accountUid,
+      pin: pin,
+      updatedAt: Date.now()
+    });
+
+    return { success: true, message: "Staff identity linked successfully." };
+  }
+);
