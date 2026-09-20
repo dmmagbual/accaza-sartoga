@@ -25,7 +25,7 @@ exports.reversePlatformPayout = onCall(
     const writes = Object.assign({}, approval.usedWrites);
     const found = await Promise.all(ids.map((id) => findOrder(db, id).catch(() => null)));
     found.forEach((entry) => { if (!entry) return; if ((entry.order.payoutId || "") === payoutId) { writes[`${entry.node}/${entry.id}/settlementStatus`] = "unsettled"; writes[`${entry.node}/${entry.id}/payoutId`] = ""; } });
-    if (owingApplied > 0.009 && Array.isArray(payout.owingRecoveredSources)) { const allPo = (await db.ref("/platformPayouts").get()).val() || {}; payout.owingRecoveredSources.forEach((sid) => { const src = allPo[sid] || {}; writes[`platformPayouts/${sid}/owingOutstanding`] = Financial.money(src.owing); writes[`platformPayouts/${sid}/owingRecoveredBy`] = null; writes[`platformPayouts/${sid}/owingRecoveredAt`] = null; }); }
+    if (owingApplied > 0.009 && Array.isArray(payout.owingRecoveredSources)) { const allPo = {}; await Promise.all(payout.owingRecoveredSources.map(async (sid) => { const key = String(sid || ""); if (TrackedRead.trackable(key)) allPo[key] = (await db.ref(`/platformPayouts/${key}`).get()).val() || {}; })); payout.owingRecoveredSources.forEach((sid) => { const src = allPo[sid] || {}; writes[`platformPayouts/${sid}/owingOutstanding`] = Financial.money(src.owing); writes[`platformPayouts/${sid}/owingRecoveredBy`] = null; writes[`platformPayouts/${sid}/owingRecoveredAt`] = null; }); }
     writes[`platformPayouts/${payoutId}/reversed`] = true;
     writes[`platformPayouts/${payoutId}/reversedAt`] = now;
     writes[`platformPayouts/${payoutId}/reversedBy`] = actor.uid;

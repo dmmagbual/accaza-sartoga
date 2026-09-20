@@ -17,7 +17,43 @@ function render(){updateBadge();var root=document.getElementById('staffInboxRoot
   root.querySelectorAll('[data-read]').forEach(function(b){b.onclick=function(){command({action:'read',messageId:b.getAttribute('data-read')}).catch(function(e){alert('Could not mark read: '+((e&&e.message)||e));});};});
   root.querySelectorAll('[data-ack]').forEach(function(b){b.onclick=function(){command({action:'acknowledge',messageId:b.getAttribute('data-ack')}).catch(function(e){alert('Could not acknowledge: '+((e&&e.message)||e));});};});
 }
-function init(){if(ready)return;ready=true;var a=A();a.subscribe('staffMessages',function(s){messages=s.val()||{};render();},{critical:true});a.subscribe('staffMessageReceipts',function(s){receipts=s.val()||{};render();},{critical:true});}
+// Receipts are read from this user's own maintained index (staffReceiptIndex/<uid>), which
+// manageStaffMessage writes on every read/acknowledge. The former listener downloaded the
+// whole staffMessageReceipts node -- every staff member's receipt for every message ever
+// sent -- and re-downloaded all of it whenever anybody read anything, on every POS terminal
+// and admin session. See the 2026-09-16 download audit.
+function myUid(){return (window.__accazaAuthz&&window.__accazaAuthz.uid)||'';}
+function applyUserIndex(rows){var u=myUid();if(!u)return;Object.keys(rows||{}).forEach(function(id){var row=rows[id];if(!row||typeof row!=='object')return;var slot=receipts[id]||(receipts[id]={});slot[u]=row;});}
+// One-time bridge for receipts that predate the index: read the single legacy record for
+// each still-active message (never the whole node), show it immediately and publish the
+// user's own index so later sessions read one small node.
+var seeding=false,seeded=false;
+function seedLegacyReceipts(){
+  if(seeded||seeding)return;var a=A(),u=myUid();if(!a||!u)return;
+  var ids=Object.keys(messages);if(!ids.length)return;
+  var missing=ids.filter(function(id){return !(receipts[id]&&receipts[id][u]);});
+  if(!missing.length){seeded=true;return;}
+  seeding=true;
+  var found={};
+  Promise.all(missing.slice(0,200).map(function(id){
+    return a.get(a.ref(a.db,'staffMessageReceipts/'+id+'/'+u)).then(function(s){var row=s.val();if(row&&typeof row==='object')found[id]=row;}).catch(function(){});
+  })).then(function(){
+    seeding=false;seeded=true;
+    if(!Object.keys(found).length)return;
+    applyUserIndex(found);
+    render();
+    try{a.update(a.ref(a.db,'staffReceiptIndex/'+u),found).catch(function(){});}catch(e){}
+  });
+}
+function init(){
+  if(ready)return;
+  var a=A();if(!a)return;
+  var u=myUid();
+  if(!u){if((init.tries=(init.tries||0)+1)<200)setTimeout(init,100);return;}
+  ready=true;
+  a.subscribe('staffMessages',function(s){messages=s.val()||{};seedLegacyReceipts();render();},{critical:true});
+  a.subscribe('staffReceiptIndex/'+u,function(s){applyUserIndex(s.val()||{});render();},{critical:true});
+}
 window.__accazaRegisterModule('inbox',function(){init();render();});
 var tries=0,t=setInterval(function(){if(A()&&window.__accazaRegisterModule){clearInterval(t);init();}else if(++tries>150)clearInterval(t);},100);
 })();

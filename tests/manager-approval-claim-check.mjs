@@ -10,7 +10,7 @@ if(start<0||end<0)throw new Error('Privileged approval claim function not found'
 const actions=[
   'validate_payment','refund','void','settle_platform_payout','reopen_cash_count','reopen_discrepancy',
   'delete_archived_order','review_discrepancy','approve_petty_voucher','correct_petty_voucher','correct_platform_presettlement','set_undeposited_opening_balance','retire_revolving_fund','repair_closed_shift_turnover','repair_reversed_payout_deposit','reconcile_undeposited_custody','certify_financial_close',
-  'reject_petty_voucher','void_petty_voucher','return_supplier_payment','manual_discount','cash_in','fixed_float_exception',
+  'reject_petty_voucher','void_petty_voucher','return_supplier_payment','manual_discount','cash_in','fixed_float_exception','correct_completed_order','completed_order_cash_refund',
 ];
 class HttpsError extends Error{constructor(code,message){super(message);this.code=code;}}
 const sandbox={HttpsError,Financial:{money(value){return Math.round((Number(value)||0)*100)/100;}},financeKey(value){const key=String(value||'').trim();if(!/^[A-Za-z0-9_-]{1,160}$/.test(key))throw new HttpsError('invalid-argument','Invalid approval');return key;},result:null};
@@ -45,5 +45,8 @@ await expectRejected(()=>sandbox.result(competing.db,{approvalId:'approval_compe
 
 const expired=harness({action:'manual_discount',sourceId:'discount_test',amount:10,approvedBy:'admin_uid',approvedRole:'admin',expiresAt:Date.now()-1});
 await expectRejected(()=>sandbox.result(expired.db,{approvalId:'approval_expired'},'manual_discount','discount_test',10,'discount_operation'),'Expired approval was accepted');
+
+const selfApproved=harness({action:'correct_completed_order',sourceId:'order_test',amount:100,approvedBy:'cashier_uid',approvedRole:'manager',expiresAt:Date.now()+60000});
+await expectRejected(()=>sandbox.result(selfApproved.db,{approvalId:'approval_self'},'correct_completed_order','order_test',100,'correct_order_test','cashier_uid'),'Self-approved completed-order correction was accepted');
 
 console.log(`PASS: all ${actions.length} privileged approval actions are cold-cache safe, matched, atomic, and one-time use.`);

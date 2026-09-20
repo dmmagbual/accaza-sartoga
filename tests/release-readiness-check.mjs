@@ -15,6 +15,7 @@ for(const file of manifest.authoritativeFiles){
 
 const admin=read('admin.html'),books=read('books.html'),customer=read('index.html'),sw=read('sw.js');
 if(!admin.includes(`build&nbsp;v${manifest.builds.admin}`))fail('Admin build marker differs from release manifest');
+if(!admin.includes('font-size:1.11rem'))fail('Admin build badge must remain 1.5 times the former 0.74rem size');
 if(!admin.includes(`name="accaza-admin-build" content="${manifest.builds.admin}"`))fail('Admin telemetry build marker differs from release manifest');
 if(!books.includes(`Coffee-shop accounting · build v${manifest.builds.books}`))fail('Books visible build marker differs from release manifest');
 if(!books.includes(`name="accaza-books-build" content="${manifest.builds.books}"`))fail('Books telemetry build marker differs from release manifest');

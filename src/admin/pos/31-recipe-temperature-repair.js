@@ -170,15 +170,15 @@ function cogsFixEngine(){
   return window.AccazaCogsDuplicationAudit;
 }
 function cogsFixLoadArchived(cursor,rows){
-  var a=A(),payload={mode:cursor?'before':'latest',limit:100};if(cursor)payload.cursor=cursor;
-  return a.readHistoricalOrders(payload).then(function(page){Object.assign(rows,page.orders||{});return page.hasMore?cogsFixLoadArchived(page.cursor,rows):rows;});
+  var a=A(),p={mode:cursor?'before':'latest',purpose:'cogs_audit',limit:100};if(cursor)p.cursor=cursor;
+  return a.readHistoricalOrders(p).then(function(page){Object.assign(rows,page.orders||{});return page.hasMore?cogsFixLoadArchived(page.cursor,rows):rows;});
 }
 function cogsFixLoadOrders(){
   if(cogsFixOrders)return Promise.resolve(cogsFixOrders);
   var a=A();
   return Promise.all([
     cogsFixLoadArchived(null,{}),
-    a.get(a.ref(a.db,'orders')).then(function(s){return s.val()||{};}).catch(function(){return {};})
+    /* download-ok: bounded live orders only (archived at shift close) */a.get(a.ref(a.db,'orders')).then(function(s){return s.val()||{};}).catch(function(){return {};})
   ]).then(function(parts){
     var all={};
     parts.forEach(function(set){Object.keys(set).forEach(function(id){all[id]=set[id];});});

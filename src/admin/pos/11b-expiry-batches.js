@@ -16,7 +16,7 @@ function openExpiryView(){
   mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:960px;width:100%;padding:1.2rem;"><div style="font-weight:700;color:var(--bd);">📅 Expiry / batches</div><p class="pz-sub">Loading batches…</p></div>';
   document.body.appendChild(mask);
   function close(){ if(mask.parentNode)document.body.removeChild(mask); }
-  function load(){ a.get(a.ref(a.db,'inventoryBatch')).then(function(s){ draw(s.val()||{}); }).catch(function(e){ mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:520px;width:100%;padding:1.2rem;"><div style="font-weight:700;color:var(--bd);">Could not load</div><p class="pz-sub">'+esc((e&&e.code)||String(e))+'</p><button class="pz-btn sec" id="xpErrX">Close</button></div>'; var b=document.getElementById('xpErrX'); if(b)b.onclick=close; }); }
+  function load(){ a.get(a.query(a.ref(a.db,'inventoryBatch'),a.orderByChild('closed'),a.endAt(false))).then(function(s){ draw(s.val()||{}); }).catch(function(e){ mask.innerHTML='<div style="background:#fff;border-radius:10px;max-width:520px;width:100%;padding:1.2rem;"><div style="font-weight:700;color:var(--bd);">Could not load</div><p class="pz-sub">'+esc((e&&e.code)||String(e))+'</p><button class="pz-btn sec" id="xpErrX">Close</button></div>'; var b=document.getElementById('xpErrX'); if(b)b.onclick=close; }); }
   function draw(allB){
     var byItem={}; Object.keys(allB).forEach(function(k){ var b=Object.assign({id:k},allB[k]); if(b.closed)return; (byItem[b.masterId]=byItem[b.masterId]||[]).push(b); });
     var flat=[]; var untrackedNotes=[];

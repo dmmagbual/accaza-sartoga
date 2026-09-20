@@ -2,12 +2,15 @@
 
 const Financial = require("./financial");
 
-function paymentKind(order) {
+function paymentKind(order, accounts) {
   const payments = Array.isArray(order && order.payments) && order.payments.length ? order.payments : [{method: order && order.payment, amount: order && order.total}];
   if (payments.length !== 1) return "";
-  const row = payments[0] || {}, base = String(row.paymentMethod || row.method || "").split(" · ")[0].trim().toLowerCase();
+  const row = payments[0] || {}, base = String(row.paymentMethod || row.method || "").split(" · ")[0].trim().toLowerCase(), account = accounts && row.receivingAccountId ? accounts[row.receivingAccountId] || {} : {}, accountType = String(account.type || "").trim().toLowerCase();
   if (base === "gcash") return "gcash";
+  if (base === "paymaya" || base === "maya") return "maya";
   if (base === "bank transfer") return "bank_transfer";
+  if (accountType === "ewallet") return "ewallet";
+  if (accountType === "bank") return "bank_transfer";
   return "";
 }
 

@@ -11,6 +11,7 @@
 .az-bar-val{width:96px;flex-shrink:0;text-align:right;color:var(--bd);font-weight:600;white-space:nowrap;}
 .az-sec{margin:1.4rem 0 0.5rem;font-weight:600;color:var(--bd);font-size:0.95rem;}
 .az-note{font-size:0.72rem;color:var(--tl);font-style:italic;}
+.az-warn{color:#b44336;flex:1 1 260px;}
 .pnl-tbl{width:100%;border-collapse:collapse;font-size:0.86rem;}
 .pnl-tbl td,.pnl-tbl th{padding:0.5rem 0.7rem;border-bottom:1px solid var(--cd);}
 .pnl-tbl th{font-size:0.68rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--tl);text-align:right;}

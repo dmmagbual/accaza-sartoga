@@ -16,7 +16,7 @@ if(subscriptions.includes('onValue(categoriesRef')||subscriptions.includes('onVa
 for(const marker of [
   'var _publicCatalogVersionKey=\'bootstrap\'',
   'var PUBLIC_CATALOG_CACHE_KEY=\'accaza_public_catalog_v1\'',
-  'get(categoriesRef),get(optionGroupsRef),get(menuRef)',
+  'get(categoriesRef),get(optionGroupsRef),get(menuRef),get(packagesRef)',
   'onValue(publicCatalogVersionRef',
   'localStorage.setItem(PUBLIC_CATALOG_CACHE_KEY'
 ])if(!subscriptions.includes(marker))throw new Error(`Version-gated public catalog safeguard missing: ${marker}`);
@@ -34,9 +34,9 @@ for(const marker of [
 for(const marker of [
   'window.__loadPublicReviews=async function()',
   'get(query(reviewsRef,orderByKey(),limitToLast(20)))',
-  '_publicReviewsLoaded||_publicReviewsLoading',
-  'set(reviewsRef,DEFAULT_PUBLIC_REVIEWS).catch(function(){})'
+  '_publicReviewsLoaded||_publicReviewsLoading'
 ])if(!reviews.includes(marker))throw new Error(`Bounded public review read safeguard missing: ${marker}`);
+if(reviews.includes('set(reviewsRef,DEFAULT_PUBLIC_REVIEWS)'))throw new Error('Anonymous public review fallback must remain display-only');
 for(const marker of [
   "defer('reserve',function(){renderCustomerCalendar();})",
   "defer('reviews',function(){if(window.__loadPublicReviews)window.__loadPublicReviews();})",
@@ -52,6 +52,6 @@ for(const marker of [
 const rules=read('database.rules.json');
 if(!rules.includes('"publicCatalogVersion": { ".read": true, ".write": false }'))throw new Error('Public catalog version must be readable but immutable to clients');
 const functions=read('functions/index.js');
-for(const marker of ['exports.updatePublicCatalogVersionOnCategories = onValueWritten','exports.updatePublicCatalogVersionOnMenuItems = onValueWritten','exports.updatePublicCatalogVersionOnOptionGroups = onValueWritten','/publicCatalogVersion'])if(!functions.includes(marker))throw new Error(`Catalog version trigger safeguard missing: ${marker}`);
+for(const marker of ['exports.updatePublicCatalogVersionOnCategories = onValueWritten','exports.updatePublicCatalogVersionOnMenuItems = onValueWritten','exports.updatePublicCatalogVersionOnOptionGroups = onValueWritten','exports.updatePublicCatalogVersionOnPackages = onValueWritten','/publicCatalogVersion'])if(!functions.includes(marker))throw new Error(`Catalog version trigger safeguard missing: ${marker}`);
 
 console.log('PASS: customer calendar/reviews reads are deferred and bounded, and catalog payloads are version-gated and locally cached.');

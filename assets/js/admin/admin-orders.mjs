@@ -1,5 +1,7 @@
 import{callables}from"./firebase-client.mjs";
 
+export function shouldAlertOrder(o){return !!o&&o.source!=='pos'&&['Pending','Confirmed','Preparing','Ready'].includes(String(o.status||'Pending'));}
+
 export function archiveOutcome(o){
   var total=Number(o&&o.total)||0,refunded=Number(o&&o.refundAmount)||0,status=String((o&&o.prevStatus)||(o&&o.status)||'Archived');
   if(o&&o.voided)return{label:'Voided',icon:'⛔',style:'background:#f8d7da;color:#721c24;'};

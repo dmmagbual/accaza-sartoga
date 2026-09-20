@@ -11,18 +11,33 @@ const completed = {
 };
 const evidence = {
   order: completed,
-  saleMovement: {id: "sale_POS-1", lines: [{debit: 100, credit: 0}]},
+  saleMovementId: "sale_POS-1", saleMovement: {id: "sale_POS-1", type: "order_sale", sourceType: "order", sourceId: "POS-1", occurredAt: 100, lines: [{account: "revenue:sales", debit: 0, credit: 100}]},
   saleJournal: {sources: {"sale_POS-1": true}}, saleJournalId: "2026-09-09_instore",
   inventoryPlan: {schemaVersion: 1, usage: {beans: 0.02}},
 };
 const doc = HistoricalArchive.buildDocument("POS-1", evidence, 300);
 assert.equal(HistoricalArchive.salesAt(completed), 100);
+assert.equal(doc.salesAt, HistoricalArchive.salesAt(completed), "the replica must persist the exact reporting date");
+assert.deepEqual(doc.salesLedger, {channel:"",discount:0,gross:100,movementIds:["sale_POS-1"],net:100,occurredAt:100,reversal:0,schemaVersion:1}, "the replica must carry a compact source-linked Finance summary");
+assert.equal(doc.salesLedgerChecksum, HistoricalArchive.checksum(doc.salesLedger));
 assert.equal(HistoricalArchive.salesAt({completedAt: 300, receivedAt: 200, timestamp: 100}), 300, "completed date must remain the sales authority");
+assert.equal(HistoricalArchive.buildDocument("DATE-ONLY", {order: {date: "2026-09-19"}}, 300).salesAt, Date.parse("2026-09-19"), "legacy date-only orders need a persisted reporting date");
+assert.equal(HistoricalArchive.buildDocument("ARCHIVED-ONLY", {order: {archivedAt: 200}}, 300).salesAt, 200, "legacy archived-only orders need a persisted reporting date");
+assert.equal(HistoricalArchive.buildDocument("NO-DATE", {order: {}}, 300).salesAt, 0, "undated orders must remain identifiable for review");
 assert.equal(doc.evidence.verified, true);
 assert.equal(doc.evidence.eligibleForFutureRtdbRetirement, true);
 assert.equal(doc.source.saleJournalId, "2026-09-09_instore");
 assert.equal(Object.prototype.hasOwnProperty.call(doc.order, "proof"), false, "binary proof must not be duplicated into Firestore");
 assert.equal(HistoricalArchive.unchanged(doc, HistoricalArchive.buildDocument("POS-1", evidence, 999)), true, "replication must avoid unchanged Firestore writes");
+
+const reportOrder = Object.assign({}, completed, {timestamp:Date.parse("2026-09-19T12:00:00+08:00"),subtotal:125.55,discount:5.25,refundAmount:20,channel:"instore"});
+const contribution = HistoricalArchive.reportingContribution(reportOrder);
+assert.deepEqual(contribution, {month:"2026-09",orders:1,grossCents:12555,discountCents:525,refundCents:2000,netCents:10030,channel:"instore",schemaVersion:1,checksum:contribution.checksum});
+let monthly = HistoricalArchive.applyReportingContribution({}, contribution, 1);
+assert.deepEqual({orders:monthly.orders,netCents:monthly.netCents,channel:monthly.channels.instore},{orders:1,netCents:10030,channel:{orders:1,netCents:10030}});
+monthly = HistoricalArchive.applyReportingContribution(monthly, contribution, -1);
+assert.equal(monthly.orders,0);assert.equal(monthly.netCents,0);assert.deepEqual(monthly.channels,{},"retries and corrections must reverse a prior contribution without drift");
+assert.equal(HistoricalArchive.reportingContribution(Object.assign({},reportOrder,{voided:true})),null,"voided sales must not contribute to the monthly rollup");
 
 const missing = HistoricalArchive.buildDocument("POS-2", {order: Object.assign({}, completed, {id: "POS-2"})}, 300);
 assert.equal(missing.evidence.verified, false);
@@ -77,13 +92,21 @@ assert.equal(corrected.evidence.verified, true, "a refund is verified only with 
 const source = fs.readFileSync("src/functions/61-historical-archive.js", "utf8");
 for (const marker of [
   "exports.replicateArchivedOrderToFirestore", "exports.refreshHistoricalOrderAfterJournal", "exports.refreshHistoricalOrderAfterInventoryPlan",
-  "exports.manageHistoricalOrderArchive", "exports.readHistoricalOrders", "historicalOrdersFromDocuments", "HistoricalArchive.unchanged", "deletionEnabled: false",
-  '["preview", "backfill", "verify"]', "orderByKey()", "HISTORICAL_ARCHIVE_BATCH_LIMIT = 100",
+  "exports.manageHistoricalOrderArchive", "exports.readHistoricalOrders", "exports.readHistoricalSalesRollup", "historicalOrdersFromDocuments", "HistoricalArchive.unchanged", "deletionEnabled: false",
+  '"sales-at-backfill"', '"sales-at-audit"', '"sales-ledger-backfill"', '"sales-rollup-backfill"', "Firestore replica maintenance only", "orderByKey()", "HISTORICAL_ARCHIVE_BATCH_LIMIT = 100",
   'startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\\uf8ff`)', "never recalculate history from current recipes", 'db.ref(`/archivedOrders/${orderId}`).get()',
-  'db.ref("/historicalArchiveSync").set', 'firestore.collection(HistoricalArchive.COLLECTION).doc(orderId).delete()',
+  'db.ref("/historicalArchiveSync").transaction', "reconcileHistoricalSalesRollup", "salesRollupReady", "salesAtReady", "HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 3", "HISTORICAL_MAINTENANCE_DAILY_DOCUMENT_LIMIT = 4000", "HISTORICAL_REPLICA_BATCH_LIMIT = 10", "HISTORICAL_REPLICA_DAILY_SOURCE_LIMIT = 1000", '"sales-replica-backfill"', "reserveHistoricalReplicaBudget", "salesReplicaBackfill", "sourceReplicaRunId",
 ]) assert(source.includes(marker), `historical archive safeguard missing: ${marker}`);
 assert(!/Costing\.|ref\([`'"]\/(?:recipes|menuItems|optionRecipes)/.test(source), "historical archive must not use mutable current costing inputs");
+const salesAtMaintenance = source.slice(source.indexOf('if (["sales-at-audit"'), source.indexOf('if (action === "sales-ledger-backfill")'));
+assert(!salesAtMaintenance.includes('historicalArchiveInputs'), "salesAt maintenance must not replay RTDB archive evidence");
+assert(source.includes('batch.update(document.ref, {salesAt: stamp})'), "salesAt maintenance must update only the reporting key");
 assert(!/\.remove\(|\[[`'"]archivedOrders\//.test(source), "historical archive phase 1 must not delete RTDB data");
+
+const maintenanceUi = fs.readFileSync("assets/js/admin/operations-dashboard.js", "utf8");
+assert(maintenanceUi.includes("salesAtStageState") && maintenanceUi.includes("dependentStageState(status,'salesAt',3)") && maintenanceUi.includes("sourceReplicaRunId"), "the owner repair must replay pre-reader-ready completed date-index states once");
+assert(maintenanceUi.includes("sales-replica-backfill") && maintenanceUi.includes("reportingReady"), "the owner repair must populate and validate the detailed-report reader before reporting success");
+assert(maintenanceUi.includes("Detailed-report reader ready"), "the owner must be able to distinguish rollup-ready from detailed-reader-ready reporting");
 
 const rules = fs.readFileSync("firestore.rules", "utf8");
 assert(rules.includes("allow read, write: if false"), "Firestore historical replica must be server-only");

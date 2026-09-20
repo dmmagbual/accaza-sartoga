@@ -8,16 +8,9 @@ exports.correctPlatformPresettlement = onCall(
     const db = getDatabase(), actor = await requirePortalPermission(db, request, ["payouts", "receivables"]), data = request.data || {};
     const requested = financeText(data.platformRef, 60), channelHint = financeText(data.channel, 20).toLowerCase();
     if (!requested) throw new HttpsError("invalid-argument", "Platform order reference is required.");
-    const [ordersSnap, archiveSnap] = await Promise.all([db.ref("/orders").get(), db.ref("/archivedOrders").get()]);
-    const wanted = platformRefKey(requested); let found = null;
-    for (const [node, rows] of [["orders", ordersSnap.val() || {}], ["archivedOrders", archiveSnap.val() || {}]]) {
-      for (const id of Object.keys(rows)) {
-        const order = Object.assign({id}, rows[id] || {}), channel = financeText(order.channel, 20).toLowerCase();
-        if (!["grabfood", "foodpanda"].includes(channel) || (channelHint && channel !== channelHint)) continue;
-        if (platformRefKey(order.platformRef || order.id || id) === wanted) {found = {id, node, order}; break;}
-      }
-      if (found) break;
-    }
+    if (channelHint && !PLATFORM_CHANNELS.includes(channelHint)) throw new HttpsError("invalid-argument", "Platform is invalid.");
+    const match = await findPlatformOrder(db, channelHint ? [channelHint] : PLATFORM_CHANNELS, requested);
+    const found = match ? {id: match.id, node: match.node, order: Object.assign({id: match.id}, match.order || {})} : null;
     if (!found) throw new HttpsError("not-found", "No matching GrabFood or FoodPanda order was found.");
     const o = found.order, channel = financeText(o.channel, 20).toLowerCase(), oldGross = Financial.money(o.grossPlatform != null ? o.grossPlatform : (o.subtotal != null ? o.subtotal : o.total)), oldCommission = Financial.money(o.commission), oldMerchantPromo=Financial.money(o.platformMerchantPromo), oldDeliveryFeeDiscount=Financial.money(o.platformDeliveryFeeDiscount), oldAdsMarketing=Financial.money(o.platformAdsMarketing), oldMarketingFee=Financial.money(o.platformMarketingFee), oldWht=Financial.money(o.platformWht), oldVat=Financial.money(o.platformVat), oldNet=Financial.money(o.netPlatform != null ? o.netPlatform : oldGross-oldCommission-Financial.money(o.platformDiscount)-oldWht-oldVat-oldAdsMarketing-oldMarketingFee);
     if (data.action === "lookup") return {orderId: found.id, platformRef: o.platformRef || found.id, channel, gross: oldGross, commission: oldCommission, merchantPromo:oldMerchantPromo, deliveryFeeDiscount:oldDeliveryFeeDiscount, adsMarketing:oldAdsMarketing, marketingFee:oldMarketingFee, wht:oldWht, vat:oldVat, net:oldNet, settlementStatus: o.settlementStatus || "unsettled", hasStructuredItems: Array.isArray(o.lineItems) && o.lineItems.length > 0};

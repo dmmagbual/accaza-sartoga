@@ -5,10 +5,11 @@
  * Trigger: when an order's status changes to "Completed", send a Web Push
  * notification to the customer's installed app (pick-up or delivery message).
  */
-const {onValueUpdated, onValueWritten, onValueCreated, onValueDeleted} = require("firebase-functions/v2/database");
+const DatabaseTriggers = require("firebase-functions/v2/database");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {defineSecret} = require("firebase-functions/params");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
-const {initializeApp} = require("firebase-admin/app");
+const {initializeApp, getApp} = require("firebase-admin/app");
 const {getAuth: getAdminAuth} = require("firebase-admin/auth");
 const {getDatabase} = require("firebase-admin/database");
 const {getFirestore, FieldPath} = require("firebase-admin/firestore");
@@ -16,6 +17,7 @@ const {getMessaging} = require("firebase-admin/messaging");
 const {getStorage} = require("firebase-admin/storage");
 const logger = require("firebase-functions/logger");
 const crypto = require("node:crypto");
+const {AsyncLocalStorage} = require("node:async_hooks");
 const Costing = require("./lib/costing");
 const Financial = require("./lib/financial");
 const OfflineSync = require("./lib/offline-sync");
@@ -25,23 +27,79 @@ const OrderStatus = require("./lib/order-status");
 const SupplierMaster = require("./lib/supplier-master");
 const OperationalExceptions = require("./lib/operational-exceptions");
 const BooksBridge = require("./lib/books-bridge");
+const BankLedgerLink = require("./lib/bank-ledger-link");
 const FinancialClose = require("./lib/financial-close");
 const AccountingPeriods = require("./lib/accounting-periods");
 const CashJournalEdit = require("./lib/cash-journal-edit");
 const JournalReclassification = require("./lib/journal-reclassification");
 const ReconciliationControls = require("./lib/reconciliation-controls");
 const RecoveryValidation = require("./lib/recovery-validation");
+const BackupDelta = require("./lib/backup-delta");
 const ProductionHealth = require("./lib/production-health");
 const IncidentControls = require("./lib/incident-controls");
 const ReleaseCertification = require("./lib/release-certification");
 const ProductionValidation = require("./lib/production-validation");
-const AlertEscalation = require("./lib/alert-escalation");
 const AssuranceControls = require("./lib/assurance-controls");
 const OrderRecords = require("./lib/order-records");
+const RetryGuard = require("./lib/retry-guard");
+const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
+const DEEPSEEK_API_KEY = defineSecret("DEEPSEEK_API_KEY");
+// Every `retry: true` database trigger is bounded: transient failures still
+// retry, but an event that keeps failing past the retry window is recorded in
+// /functionDeadLetters and acknowledged instead of being redelivered (and its
+// reads re-downloaded) for days. See functions/lib/retry-guard.js.
+const retryGuardDeps = {
+  now: () => Date.now(),
+  functionName: () => process.env.FUNCTION_TARGET || process.env.K_SERVICE || "unknown",
+  recordDeadLetter: (key, record) => getDatabase().ref(`/${RetryGuard.DEAD_LETTER_ROOT}/${key}`).set(record),
+  // One small record per failing event; a successful retry leaves it for the daily prune.
+  countFailure: async (key, info) => {
+    const result = await getDatabase().ref(`/${RetryGuard.ATTEMPTS_ROOT}/${key}`).transaction((current) => ({function: info.function, eventId: info.eventId, count: (Number(current && current.count) || 0) + 1, firstFailedAt: Number(current && current.firstFailedAt) || info.at, lastFailedAt: info.at}), undefined, false);
+    return Number(result.snapshot.val() && result.snapshot.val().count) || 0;
+  },
+  clearFailures: (key) => getDatabase().ref(`/${RetryGuard.ATTEMPTS_ROOT}/${key}`).remove(),
+  // Distinct failed events per function per Manila day (one tiny record per function and day).
+  recordFunctionFailure: async ({function: name, day, newEvent}) => {
+    const safe = String(name || "unknown").replace(/[.#$\[\]\/]/g, "_").slice(0, 100);
+    const result = await getDatabase().ref(`/${RetryGuard.BUDGET_ROOT}/${safe}/${day}`).transaction((current) => ({events: (Number(current && current.events) || 0) + (newEvent ? 1 : 0), failures: (Number(current && current.failures) || 0) + 1, updatedAt: Date.now()}), undefined, false);
+    return result.snapshot.val() || {};
+  },
+  logError: (message, context) => logger.error(message, context),
+};
+const onValueUpdated = RetryGuard.wrapTriggerFactory(DatabaseTriggers.onValueUpdated, retryGuardDeps);
+const onValueWritten = RetryGuard.wrapTriggerFactory(DatabaseTriggers.onValueWritten, retryGuardDeps);
+const onValueCreated = RetryGuard.wrapTriggerFactory(DatabaseTriggers.onValueCreated, retryGuardDeps);
+const onValueDeleted = RetryGuard.wrapTriggerFactory(DatabaseTriggers.onValueDeleted, retryGuardDeps);
 const SharedChoiceValidation = require("./lib/shared-choice-validation");
 const HistoricalArchive = require("./lib/historical-archive");
+const TrackedRead = require("./lib/tracked-read");
 
 initializeApp();
+
+// Keyed catalog reads (Sep 2026 download audit): a computation over recipes, menu items or
+// inventory downloads only the records it looks up. See functions/lib/tracked-read.js.
+function catalogSpec(db, paths) {
+  const spec = {};
+  paths.forEach((path) => {
+    spec[path] = {
+      readKey: async (key) => (await db.ref(`/${path}/${key}`).get()).val(),
+      // Used only if the computation lists every key of the map; the equivalence tests prove
+      // that costing, pricing and COGS mirroring never do.
+      readAll: async () => (/* download-ok: fallback computation enumerated the catalog */ await db.ref(`/${path}`).get()).val() || {},
+    };
+  });
+  return spec;
+}
+function readCatalogKeyed(db, paths, compute) {
+  return TrackedRead.trackedRead(catalogSpec(db, paths), compute);
+}
+// Named POS settings only; the whole settings node is not needed by any single operation.
+async function readPosSettings(db, names) {
+  const values = await Promise.all(names.map((name) => db.ref(`/posSettings/${name}`).get()));
+  const out = {};
+  names.forEach((name, index) => { const value = values[index].val(); if (value !== null && value !== undefined) out[name] = value; });
+  return out;
+}
 
 const SHOP_NAME = "Accaza Coffee House";
 const PICKUP_ADDR = "Saratoga Ave, La Mediterranea Subd., Governor's Drive, Dasmarinas";

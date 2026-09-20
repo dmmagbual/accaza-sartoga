@@ -4,7 +4,9 @@ exports.reconcilePurchasePayable = onCall(
   async (request) => {
     const db = getDatabase(), actor = await requirePortalPermission(db, request, ["purchases", "payables"]), data = request.data || {};
     const requestedId = financeText(data.invoiceId, 160), requestedRef = financeText(data.invoiceRef, 120);
-    const invoices = (await db.ref("/purchaseInvoices").get()).val() || {};
+    // By ID only the invoice is read; a lookup by reference has to compare every invoice.
+    const requestedRow = requestedId && TrackedRead.trackable(requestedId) ? (await db.ref(`/purchaseInvoices/${requestedId}`).get()).val() : null;
+    const invoices = requestedRow ? {[requestedId]: requestedRow} : requestedRef ? ((/* download-ok: fallback purchase looked up by invoice reference instead of ID */await db.ref("/purchaseInvoices").get()).val() || {}) : {};
     let invoiceId = requestedId && invoices[requestedId] ? requestedId : "";
     if (!invoiceId && requestedRef) {
       const matches = Object.keys(invoices).filter((id) => financeText(invoices[id] && invoices[id].ref, 120).toLowerCase() === requestedRef.toLowerCase());
@@ -20,7 +22,10 @@ exports.reconcilePurchasePayable = onCall(
     const party = financeText(invoice.supplier, 120); if (!party) throw new HttpsError("failed-precondition", "A supplier is required before recording the obligation.");
     const ref = financeText(data.invoiceRef || invoice.ref || `PENDING-${invoiceId}`, 120), date = financeDate(invoice.date), due = data.due ? financeDate(data.due, true) : (invoice.due ? financeDate(invoice.due, true) : ""), finalizing = provisional && data.finalize === true;
     if (finalizing && (!financeText(data.invoiceRef,120) || !due)) throw new HttpsError("invalid-argument", "Final invoice reference and due date are required.");
-    const payables = (await db.ref("/payables").get()).val() || {}, baseCanonicalId=financeKey(`ap_${invoiceId}`,"Payable ID"), repairingReversed=payables[baseCanonicalId]&&payables[baseCanonicalId].status==="reversed", canonicalId=repairingReversed?financeKey(`ap_repair_${invoiceId}`,"Payable ID"):baseCanonicalId, movementId=financeKey(`${repairingReversed?"purchase_ap_repair":"purchase_ap"}_${invoiceId}`,"Movement ID");
+    // Every match below requires an open payable; only the canonical record is needed in any status.
+    const baseCanonicalId=financeKey(`ap_${invoiceId}`,"Payable ID"), [openPayablesSnap, canonicalSnap] = await Promise.all([db.ref("/payables").orderByChild("status").equalTo("open").get(), db.ref(`/payables/${baseCanonicalId}`).get()]), payables = Object.assign({}, openPayablesSnap.val() || {}), canonicalRow = canonicalSnap.val();
+    if (canonicalRow) payables[baseCanonicalId] = canonicalRow;
+    const repairingReversed=payables[baseCanonicalId]&&payables[baseCanonicalId].status==="reversed", canonicalId=repairingReversed?financeKey(`ap_repair_${invoiceId}`,"Payable ID"):baseCanonicalId, movementId=financeKey(`${repairingReversed?"purchase_ap_repair":"purchase_ap"}_${invoiceId}`,"Movement ID");
     const candidates = Object.keys(payables).filter((id) => {const row=payables[id]||{},claimedBy=financeText(row.purchaseInvoiceId,160);return row.status==="open"&&Financial.money(row.amount)===amount&&financeText(row.party,120).toLowerCase()===party.toLowerCase()&&(!claimedBy||claimedBy===invoiceId);}).map((id)=>({id,party:financeText(payables[id].party,120),ref:financeText(payables[id].ref,120),due:payables[id].due||"",amount:Financial.money(payables[id].amount)}));
     if (data.preview === true) return {invoiceId,amount,party,candidates};
     const requestedPayableId=financeText(data.linkPayableId,160);

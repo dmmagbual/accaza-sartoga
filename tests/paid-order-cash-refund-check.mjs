@@ -8,6 +8,7 @@ const BooksBridge=require('../functions/lib/books-bridge.js');
 const server=fs.readFileSync(new URL('../src/functions/43g-order-adjustments.js',import.meta.url),'utf8');
 const register=fs.readFileSync(new URL('../src/admin/register/99-voids-refunds.js',import.meta.url),'utf8');
 const checkout=fs.readFileSync(new URL('../src/admin/pos/50e-cart-checkout.js',import.meta.url),'utf8');
+const sharedState=fs.readFileSync(new URL('../src/admin/pos/00-shared-state.js',import.meta.url),'utf8');
 const persistence=fs.readFileSync(new URL('../src/admin/pos/50f-sale-persistence.js',import.meta.url),'utf8');
 const salesFinance=fs.readFileSync(new URL('../src/functions/40-sales-finance.js',import.meta.url),'utf8');
 const offlineSync=fs.readFileSync(new URL('../functions/lib/offline-sync.js',import.meta.url),'utf8');
@@ -38,8 +39,22 @@ assert.equal(prepaidBooks.lines.find((line)=>line.code==='4000').credit,850,'Fin
 assert.equal(prepaidBooks.lines.find((line)=>line.code==='2030').credit,150,'Finance Books must route the excess through Customer Change / Refund Payable');
 assert(BooksBridge.linesBalanced(prepaidBooks.lines),'pre-completion Finance Books sale journal must balance');
 for(const marker of ['Confirmed amount received ₱','Complete Sale & Refund','Complete corrected sale · cash refund','cash is handed over only after POS confirms'])assert(checkout.includes(marker),`pre-completion checkout marker missing: ${marker}`);
+for(const marker of ['ePaid=Math.round(direct.reduce','aPaid=Math.round(payments.reduce','excess=Math.round((aPaid-tot)'])assert(checkout.includes(marker),`split-payment completion guard missing: ${marker}`);
+assert(!checkout.includes("paidTotal=Math.round(direct.reduce"),'checkout must not compare only electronic tenders with the full split-payment total');
+assert(checkout.includes('function splitInfo()'),'split-payment amount edits need an in-place balance refresh');
+assert(checkout.includes('posPaymentVerification=null;splitInfo();refreshChargeAction();'),'split-payment amount edits must preserve input focus while updating totals');
+assert(!/\[data-pa\][\s\S]{0,260}posPaymentVerification=null;renderSplit\(\);refreshChargeAction\(\)/.test(checkout),'split-payment amount edits must not rebuild the form and discard keyboard focus');
+assert(sharedState.includes("if(String(name||'').trim().toLowerCase()==='cash')return true"),'Cash must never require a receiving account in split payment');
+assert(checkout.includes("defaultMethod=methods.length?methods[0].name:'Cash'"),'new split rows must initialize with a real payment method, not the GCash receiving-account label');
 for(const marker of ['preCompletionCashRefund','refundPayments={Cash:preCompletionRefund.amount}','syncOfflinePosSale'])assert(persistence.includes(marker),`pre-completion persistence marker missing: ${marker}`);
 for(const marker of ['postPreCompletionCashRefund','customer_change_refunded','asset:register_cash'])assert(salesFinance.includes(marker),`pre-completion Finance Books marker missing: ${marker}`);
 for(const marker of ['drawerDeltaValue','Confirmed payment, corrected sale, and cash refund do not reconcile','availableCash'])assert(offlineSync.includes(marker),`pre-completion server safeguard missing: ${marker}`);
+
+const splitOrder={id:'POS-SPLIT-1',channel:'instore',subtotal:505,total:505,payments:[{method:'GCash · G-Cash',paymentMethod:'GCash',receivingAccountId:'gcash',amount:500,ref:'GC-500'},{method:'Cash',amount:5,tendered:5}]};
+const splitSale=Financial.orderPosting(splitOrder,{gcash:{name:'G-Cash'}});
+assert.equal(splitSale.lines.find((line)=>line.account==='asset:cash_account:gcash').debit,500,'split sale must post the confirmed GCash portion to its receiving account');
+assert.equal(splitSale.lines.find((line)=>line.account==='asset:register_cash').debit,5,'split sale must post the cash portion to register cash');
+assert.equal(splitSale.lines.find((line)=>line.account==='revenue:sales').credit,505,'split sale must recognize the complete order total');
+Financial.assertBalanced(splitSale.lines);
 
 console.log('PASS: completed and pre-completion electronic order corrections preserve the receipt, corrected sale, cash drawer, liability settlement, and Finance Books balance.');

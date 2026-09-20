@@ -31,6 +31,22 @@ function sourceIsAfterCutoff(source,cutoff){
   return Number.isFinite(cutoff)&&occurredAt>=cutoff;
 }
 
+// Journal basis through a cutoff date without the full ledger: server monthly totals for
+// every month before the cutoff month, plus the individual rows of the cutoff month (rows
+// from later months are excluded by reconcileInventoryBooks' own cutoff test).
+export function journalBasisThrough(monthlyNet,monthRows,cutoff){
+  const cutMonth=String(cutoff||'').slice(0,7),rows=Object.keys(monthlyNet||{}).filter(function(month){return month<cutMonth;}).sort().map(function(month){return {id:'__month_'+month,date:month+'-01',net:monthlyNet[month]||{}};});
+  Object.keys(monthRows||{}).forEach(function(key){const row=monthRows[key]||{},date=String(row.date||'');if(date.slice(0,7)>=cutMonth||!/^\d{4}-\d{2}/.test(date))rows.push(Object.assign({id:key},row));});
+  return rows;
+}
+
+export function canPostOpeningBalance(recon){
+  return !!recon && recon.balanced!==true && Number(recon.unmappedCount)===0;
+}
+export function canPostReconciliationAdjustment(recon){
+  return !!recon && recon.balanced!==true && Number(recon.unmappedCount)===0 && Math.abs(Number(recon.clearingBalance)||0)<0.005;
+}
+
 export function reconcileInventoryBooks(itemRows,movements,cutoffExclusive){
   const names=Object.fromEntries(INVENTORY_ACCOUNTS),rowsByCode={};
   INVENTORY_ACCOUNTS.forEach(function(row){rowsByCode[row[0]]={code:row[0],name:row[1],stockValue:0,booksValue:0,itemCount:0};});

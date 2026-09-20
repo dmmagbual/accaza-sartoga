@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var inventoryMap={}, inventorySkuMap={}, purchaseInvoicesMap={}, purchaseShiftMap={}, purchaseFundAdvanceMap={}, supplierMap={}, recipesMap={}, posMeta={vat:false,vatRate:12}, optRecipesMap={}, usageMap={}, channelPricesMap={}, posAvailMap={}, inventoryMovementsMap={},paymentAccountsMap={},packagingRulesMap={};
+var inventoryMap={}, inventorySkuMap={}, purchaseInvoicesMap={}, purchaseShiftMap={}, purchaseFundAdvanceMap={}, supplierMap={}, recipesMap={}, posMeta={vat:false,vatRate:12}, optRecipesMap={}, usageMap={}, channelPricesMap={}, posAvailMap={}, inventoryMovementsMap={},paymentAccountsMap={},packagingRulesMap={},booksChartMap={};
 // Order reference: PREFIX-XXXXXX (6 base36 chars from a monotonic timestamp).
 // Prefix namespaces the channel so IDs never collide across channels; the
 // monotonic counter guarantees uniqueness for rapid same-device sales offline.
@@ -30,7 +30,7 @@ function usageTypeName(id){return (usageTypesMap[id]&&usageTypesMap[id].name)||(
 function usageTypeReasons(id){var t=usageTypesMap[id]||DEFAULT_USAGE_TYPES.filter(function(d){return d.id===id;})[0];return (t&&t.reasons)||[];}
 function usageTypeAccount(id){var t=usageTypesMap[id]||DEFAULT_USAGE_TYPES.filter(function(d){return d.id===id;})[0]||{};return String(t.expenseAccount||(id==='rnd'?'6078':id==='waste'?'5900':'6077'));}
 function usageAccountOptions(selected){return USAGE_ACCOUNT_OPTIONS.map(function(a){return '<option value="'+a.code+'"'+(a.code===String(selected)?' selected':'')+'>'+a.code+' · '+esc(a.name)+'</option>';}).join('');}
-var posCart={}, posCat='ALL', posSearch='', posBuilt=false, recipeEditing=false, curRecipeKey=null, recipeDraft=null, recSub='base', recCategory='', recSize='M', posScopedDisc=[], posChannel='instore', posView='counter', onlineOrdersMap={};
+var posCart={},posCat='coffee',posSearch='', posBuilt=false, recipeEditing=false, curRecipeKey=null, recipeDraft=null, recSub='base', recCategory='', recSize='M', posScopedDisc=[], posChannel='instore', posView='counter', onlineOrdersMap={};
 var posDraft={},posChargeBusy=false,posPaymentVerification=null,posCompletedCorrection=null;
 function telemetry(){return window.AccazaTelemetry||{start:function(){},end:function(){},metric:function(){},error:function(){}};}
 function capturePosDraft(root){if(!root)return;var active=document.activeElement,focusId=active&&root.contains(active)?active.id:'';root.querySelectorAll('input[id],textarea[id],select[id]').forEach(function(el){posDraft[el.id]={value:el.value,checked:!!el.checked,type:el.type};});posDraft.__focus=focusId;}
@@ -173,7 +173,7 @@ function persistPosSale(o){
     return a.syncOfflinePosSale({transactionId:o.clientTxnId,order:o,drawerDelta:q.drawerDelta(o)}).then(function(response){return{mode:'server',response:response,recoveredFrom:'QuotaExceededError'};}).catch(function(serverError){var combined=new Error('Browser storage is full and the server fallback also failed: '+String(serverError&&serverError.message||serverError));combined.storageError=storageError;combined.serverError=serverError;throw combined;});
   });
 }
-function refreshOfflineState(){return offlineQueue().summary().then(function(s){_offState=s;renderOfflineUI();return s;}).catch(function(e){_offState.error=String(e&&e.message||e);renderOfflineUI();return _offState;});}
+function refreshOfflineState(){return offlineQueue().summary().then(function(s){_offState=s;renderOfflineUI();if(window.AccazaPosSyncHealth)window.AccazaPosSyncHealth.report(s,false);return s;}).catch(function(e){_offState.error=String(e&&e.message||e);renderOfflineUI();return _offState;});}
 function flushOfflineQueue(){if(window.__online===false){updateOfflineUI();return Promise.resolve({offline:true});}var t=performance.now();return offlineQueue().flush(function(command){return A().syncOfflinePosSale(command);},refreshOfflineState).then(function(r){telemetry().metric('offline_flush',performance.now()-t,true);refreshOfflineState();if(r&&r.synced&&window.__posLog)window.__posLog('offline-sync','batch',r.synced+' sale(s) synced');return r;}).catch(function(e){telemetry().metric('offline_flush',performance.now()-t,false);throw e;});}
 function renderOfflineUI(){var el=document.getElementById('posOfflineBar');if(!el)return;var pend=(_offState.pending||0)+(_offState.syncing||0),failed=_offState.failed||0,click=' onclick="window.__showOfflineQueue()" title="View transaction sync queue"';if(_offState.error){el.innerHTML='<button'+click+' style="background:#fdecea;border:1px solid #f5c6c6;color:#c0392b;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;cursor:pointer;">⛔ Offline storage error</button>';}else if(window.__online===false){el.innerHTML='<button'+click+' style="background:#fdecea;border:1px solid #f5c6c6;color:#c0392b;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;cursor:pointer;">🔴 Offline · '+pend+' Pending Sync'+(failed?' · '+failed+' Failed':'')+'</button>';}else if(failed){el.innerHTML='<button'+click+' style="background:#fdecea;border:1px solid #f5c6c6;color:#c0392b;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;cursor:pointer;">🔴 '+failed+' Failed · Retry</button>';}else if(pend){el.innerHTML='<button'+click+' style="background:#fff8e1;border:1px solid #ffe0a3;color:#8a6d1b;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;cursor:pointer;">🟡 Syncing '+pend+' sale(s)…</button>';}else if(_offState.storageWarning){el.innerHTML='<button'+click+' style="background:#fff4e5;border:1px solid #f2c078;color:#8a5a00;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;cursor:pointer;">🟠 '+esc(_offState.storageWarning)+'</button>';}else{el.innerHTML='<button'+click+' style="background:#e8f5ec;border:1px solid #b8dfc4;color:#155724;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;font-weight:600;cursor:pointer;">🟢 Online · Synced</button>';}if(window.__refreshWorkspaceStatus)window.__refreshWorkspaceStatus();}
 function updateOfflineUI(){renderOfflineUI();refreshOfflineState();}
@@ -197,13 +197,15 @@ window.__showOfflineQueue=function(note){offlineQueue().all().then(function(rows
   m.querySelectorAll('[data-sync-retry]').forEach(function(b){b.onclick=function(){offlineQueue().retry(this.getAttribute('data-sync-retry')).then(flushOfflineQueue).then(function(){m.remove();window.__showOfflineQueue('Retried sale.');});};});
 });};
 window.__flushOfflineQueue=flushOfflineQueue;
+window.__reportPosSyncHealth=function(force){return window.AccazaPosSyncHealth?window.AccazaPosSyncHealth.report(_offState,force===true):Promise.resolve(null);};
+window.__posOfflineState=function(){return _offState;};
 function posMethods(){
   var pm=(window.__posSettings&&window.__posSettings.payMethods);
   if(!pm||!pm.length)pm=[{name:'Cash',active:true,cash:true},{name:'Bank Transfer',active:true,cash:false,verificationPolicy:'cashier_manager'},{name:'GCash',active:true,cash:false,verificationPolicy:'cashier_manager'},{name:'PayMaya',active:true,cash:false,verificationPolicy:'cashier_manager'}];
   return pm;
 }
 function posMethod(name){return posMethods().find(function(m){return String(m&&m.name||'').toLowerCase()===String(name||'').toLowerCase();})||{};}
-function defaultPaymentAccountIds(method){var key=String(method&&method.name||'').toLowerCase(),ids=[];Object.keys(paymentAccountsMap).forEach(function(id){var a=paymentAccountsMap[id]||{},name=String(a.name||'').toLowerCase(),feeds=Array.isArray(a.feedMethods)?a.feedMethods:[];if(feeds.some(function(x){return String(x).toLowerCase()===key;}))ids.push(id);else if(key==='bank transfer'&&(name==='bdo'||name==='union bank'))ids.push(id);else if(key==='gcash'&&(name==='g-cash'||name==='gcash'))ids.push(id);else if(key==='paymaya'&&/paymaya|maya/.test(name))ids.push(id);});return ids;}
+function defaultPaymentAccountIds(method){var keys=[String(method&&method.name||'').toLowerCase()].concat(Array.isArray(method&&method.aliases)?method.aliases.map(function(x){return String(x||'').toLowerCase();}):[]),ids=[];Object.keys(paymentAccountsMap).forEach(function(id){var a=paymentAccountsMap[id]||{},name=String(a.name||'').toLowerCase(),feeds=Array.isArray(a.feedMethods)?a.feedMethods:[];if(feeds.some(function(x){return keys.indexOf(String(x).toLowerCase())>-1;}))ids.push(id);else if(keys.some(function(key){return key==='bank transfer'&&(name==='bdo'||name==='union bank')||key==='gcash'&&(name==='g-cash'||name==='gcash')||key==='paymaya'&&/paymaya|maya/.test(name);} ))ids.push(id);});return ids;}
 function paymentAccountIds(method){var m=posMethod(method),ids=Array.isArray(m.accountIds)?m.accountIds.filter(function(id){return paymentAccountsMap[id]&&paymentAccountsMap[id].active!==false;}):defaultPaymentAccountIds(m);return ids.filter(function(id,i){return ids.indexOf(id)===i;});}
 function paymentAccountOptions(method){return paymentAccountIds(method).map(function(id){return{id:id,name:(paymentAccountsMap[id]&&paymentAccountsMap[id].name)||id};});}
 function resolvedPayment(method,accountId,amount,ref){var opts=paymentAccountOptions(method),chosen=opts.find(function(a){return a.id===accountId;})||(opts.length===1?opts[0]:null);if(!chosen)return null;return{method:method+' · '+chosen.name,paymentMethod:method,receivingAccountId:chosen.id,receivingAccountName:chosen.name,amount:Number(amount)||0,tendered:0,change:0,ref:String(ref||'').trim()};}
@@ -211,13 +213,14 @@ function directPaymentRows(payments){return(payments||[]).filter(function(p){var
 function defaultPaymentVerificationPolicy(method){return /gcash|maya/i.test(String(method||''))?'cashier_manager':'manager_only';}
 function paymentVerificationPolicy(payments){var direct=directPaymentRows(payments),methods=posMethods();if(!direct.length)return null;return direct.some(function(p){var base=p.paymentMethod||p.method,row=methods.find(function(m){return String(m&&m.name||'').trim().toLowerCase()===String(base||'').trim().toLowerCase();}),policy=row&&row.verificationPolicy;return (policy==='cashier_manager'||policy==='manager_only'?policy:defaultPaymentVerificationPolicy(base))==='manager_only';})?'manager_only':'cashier_manager';}
 function posActiveMethods(){return posMethods().filter(function(m){return m.active!==false;});}
-function isCashMethod(name){var m=posMethods().filter(function(x){return x.name===name;})[0];return m?!!m.cash:(name==='Cash');}
+function isCashMethod(name){if(String(name||'').trim().toLowerCase()==='cash')return true;var m=posMethods().filter(function(x){return x.name===name;})[0];return m?!!m.cash:false;}
 window.__isCashMethod=isCashMethod;
 function init(){
   var a=A();
   window.__online=(typeof navigator!=='undefined')?navigator.onLine:true;
   a.subscribe('posSettings', function(s){ window.__posSettings=s.val()||{}; if(document.getElementById('posPay'))renderPosCart(); if(isTab('inventory'))renderInventory(); if(isTab('purchases'))renderPurchases(); if(isTab('recipes')&&!recipeEditing)renderRecipes(); updateCostBadge(); });
   a.subscribe('cfAccounts',function(s){paymentAccountsMap=s.val()||{};if(document.getElementById('posPay'))renderPosCart();});
+  a.subscribe('booksChart',function(s){booksChartMap=s.val()||{};if(isTab('purchases'))renderPurchases();});
   a.subscribe('.info/connected', function(sn){ window.__online=(sn.val()===true); updateOfflineUI(); if(window.__online) flushOfflineQueue(); });
   try{ window.addEventListener('online', function(){ window.__online=true; updateOfflineUI(); flushOfflineQueue(); }); window.addEventListener('offline', function(){ window.__online=false; updateOfflineUI(); }); }catch(e){}
   checkPosStorageHealth();

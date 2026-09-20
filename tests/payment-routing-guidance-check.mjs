@@ -10,6 +10,7 @@
    They are guidance, so nothing breaks if they vanish — which is exactly why they need a guard. */
 import fs from 'node:fs';
 import path from 'node:path';
+import {createSubscriptionHub} from '../assets/js/admin/realtime-hub.mjs';
 const root = path.join(import.meta.dirname, '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 const failures = [];
@@ -45,5 +46,24 @@ must(read('functions/index.js'),
   'Register Cash Float is protected and cannot be used to pay bills.',
   'functions/index.js: the protected imprest float must keep refusing bill payments.');
 
+/* Cold-loading Cash Payments must attach the account master itself. This prevents the
+   selector from depending on Dashboard, Finance, or any previously visited tab. */
+let attached=0,detached=0,received=null;
+const stop=()=>{detached++;};
+const noop=()=>()=>{};
+const hub=createSubscriptionHub({}, {
+  ref:(_database,p)=>p,
+  onValue:(p,callback)=>{if(p==='cfAccounts'){attached++;callback({val:()=>({bdo:{name:'BDO'},gcash:{name:'GCash'}})});}return stop;},
+  onChildAdded:noop,onChildChanged:noop,onChildRemoved:noop,query:x=>x,orderByChild:x=>x,limitToLast:x=>x,startAt:x=>x,endAt:x=>x,endBefore:x=>x,
+  get:async()=>({val:()=>({}),exists:()=>false}),
+  lingerMs:0, // immediate detach; the linger window is checked in download-loophole-check
+});
+hub.subscribe('cfAccounts',snapshot=>{received=snapshot.val();});
+hub.activate('petty');
+hub.authorize();
+if(attached!==1||!received?.bdo||!received?.gcash)failures.push('A cold Cash Payments load must attach cfAccounts and receive every active payment channel.');
+hub.activate('reviews');
+if(detached!==1)failures.push('The Cash Payments account subscription must detach after leaving the page.');
+
 if (failures.length) { console.error('Payment routing guidance check failed:\n- ' + failures.join('\n- ')); process.exit(1); }
-console.log('PASS: Purchases and Cash Payments each name what belongs there and where the other cases go, and the server still enforces the rule.');
+console.log('PASS: Cash Payments cold-loads all funding accounts, detaches them on exit, and retains the routing and server safeguards.');

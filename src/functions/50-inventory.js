@@ -40,6 +40,55 @@ function seedInventoryAccounting(itemId, item, now) {
     applied: {[opening.id]: opening},
   };
 }
+// /inventoryAccounting/{itemId}.applied is the in-transaction idempotency set. It used to
+// keep a full copy of every movement ever applied, so each sale re-downloaded the item's
+// whole history (217 KB for a busy packaging item by Sep 2026) inside its transaction.
+// A full copy is now kept only until its /inventoryMovements projection is written; then
+// it becomes a small marker that is pruned after the retention window. Movements already
+// projected are recognized before the transaction by their projection record.
+// Markers only need to outlive the gap between the balance transaction and the projection
+// write (seconds) plus event redelivery (retry-guard stops redelivery after two hours); after
+// that the /inventoryMovements projection is the duplicate check, and projections are never
+// deleted. 24 hours keeps a wide margin while holding a seventh of the markers that 7 days did
+// -- every movement downloads this record twice (read + transaction).
+const INVENTORY_APPLIED_RETENTION_MS = 24 * 3600000;
+const INVENTORY_LEGACY_SETTLE_MS = 3600000;
+function inventoryAppliedMarker(entry) { return !!(entry && typeof entry === "object" && Number(entry.projectedAt) > 0 && !entry.itemId); }
+function compactInventoryApplied(applied, now) {
+  const out = {};
+  Object.keys(applied || {}).forEach((id) => {
+    const entry = applied[id];
+    if (inventoryAppliedMarker(entry) && Number(entry.projectedAt) < now - INVENTORY_APPLIED_RETENTION_MS) return;
+    out[id] = entry;
+  });
+  return out;
+}
+// One-time, idempotent migration of legacy full copies: confirm (or restore) each old
+// movement's projection, then replace the copy with a marker dated at the movement.
+async function settleLegacyInventoryApplied(db, itemId, accounting, now) {
+  const applied = accounting && accounting.applied || {};
+  const legacy = Object.keys(applied).filter((id) => { const entry = applied[id]; return entry && !inventoryAppliedMarker(entry) && Number(entry.createdAt || 0) > 0 && Number(entry.createdAt) < now - INVENTORY_LEGACY_SETTLE_MS; });
+  if (!legacy.length) return 0;
+  const writes = {};
+  for (let i = 0; i < legacy.length; i += 50) {
+    const batch = legacy.slice(i, i + 50);
+    const snaps = await Promise.all(batch.map((id) => db.ref(`/inventoryMovements/${id}`).get()));
+    batch.forEach((id, index) => {
+      if (!snaps[index].exists()) writes[`inventoryMovements/${id}`] = applied[id];
+      writes[`inventoryAccounting/${itemId}/applied/${id}`] = {projectedAt: Number(applied[id].createdAt), version: Number(applied[id].version || 0), legacy: true};
+    });
+  }
+  const restore = {}, mark = {};
+  Object.keys(writes).forEach((path) => { (path.indexOf("inventoryMovements/") === 0 ? restore : mark)[path] = writes[path]; });
+  if (Object.keys(restore).length) await db.ref().update(restore);
+  await db.ref().update(mark);
+  return legacy.length;
+}
+async function markInventoryProjected(db, itemId, ids, version, now) {
+  const writes = {};
+  ids.filter(Boolean).forEach((id) => { writes[`inventoryAccounting/${itemId}/applied/${id}`] = {projectedAt: now, version: Number(version || 0)}; });
+  if (Object.keys(writes).length) await db.ref().update(writes);
+}
 async function repairInventoryProjections(db, itemId, accounting, item) {
   const version = Number(accounting.version || 0);
   const projection = {
@@ -186,7 +235,16 @@ async function applyInventoryMovement(db, raw, actor) {
   if (Number(raw.occurredAt) && Number(raw.occurredAt) > now + 2 * 86400000) throw new HttpsError("invalid-argument", "An inventory movement can\u2019t be dated in the future.");
   let duplicate = false, insufficient = false, insufficientValue = false, nothingToRevalue = false;
   const accountingRef = db.ref(`/inventoryAccounting/${itemId}`);
-  const existingAccounting = (await accountingRef.get()).val();
+  const projectedSnap = await db.ref(`/inventoryMovements/${movementId}`).get();
+  let existingAccounting = (await accountingRef.get()).val();
+  if (existingAccounting && await settleLegacyInventoryApplied(db, itemId, existingAccounting, now)) existingAccounting = (await accountingRef.get()).val();
+  if (projectedSnap.exists() && existingAccounting) {
+    // Already applied and projected: never touch the balance again.
+    const projected = projectedSnap.val();
+    await postInventoryMovementToBooks(db, projected, item, actor, postingContext);
+    await repairInventoryProjections(db, itemId, existingAccounting, item);
+    return {movement: projected, duplicate: true};
+  }
   if (!existingAccounting && qty6(item.stock) > 0 && !(qty6(item.cost) > 0) && type !== "purchase") throw new HttpsError("failed-precondition", `${String(item.name || itemId)} has positive opening stock without a unit cost. Restate its invoice-backed opening cost before posting inventory usage or adjustments.`);
   // RTDB transactions may invoke the updater once with an empty local cache
   // before the server value arrives.  A purchase reversal must not seed that
@@ -195,7 +253,7 @@ async function applyInventoryMovement(db, raw, actor) {
   const accountingSeed = existingAccounting || seedInventoryAccounting(itemId, item, now);
   const result = await accountingRef.transaction((current) => {
     const base = current || accountingSeed;
-    const state = Object.assign({}, base, {applied: Object.assign({}, base.applied || {})});
+    const state = Object.assign({}, base, {applied: compactInventoryApplied(base.applied, now)});
     if (state.applied[movementId]) { duplicate = true; return state; }
     const before = qty6(state.balance);
     const costBefore = qty6(state.unitCost || item.cost);
@@ -243,12 +301,17 @@ async function applyInventoryMovement(db, raw, actor) {
   });
   if (!result.committed) {if (nothingToRevalue) throw new HttpsError("failed-precondition", `${item.name || itemId} has no stock on hand, so there is no value to restate. Receive stock first.`);if (insufficient) throw new HttpsError("failed-precondition", `Not enough remaining stock to reverse ${item.name || itemId}.`);if (insufficientValue) throw new HttpsError("failed-precondition", `The remaining stock value for ${item.name || itemId} cannot support this reversal.`);throw new Error(`Inventory transaction was not committed for ${itemId}`);}
   const accounting = result.snapshot.val();
-  const movement = accounting.applied[movementId];
-  const opening = accounting.applied[`opening_${itemId}`];
+  const appliedEntry = (accounting.applied || {})[movementId];
+  let movement = inventoryAppliedMarker(appliedEntry) ? null : appliedEntry;
+  const openingEntry = (accounting.applied || {})[`opening_${itemId}`];
+  const opening = inventoryAppliedMarker(openingEntry) ? null : openingEntry;
   const writes = {};
   if (opening) writes[`inventoryMovements/${opening.id}`] = opening;
   if (movement) writes[`inventoryMovements/${movementId}`] = movement;
   if (Object.keys(writes).length) await db.ref().update(writes);
+  // A concurrent attempt may already have projected and marked this movement.
+  if (!movement && inventoryAppliedMarker(appliedEntry)) movement = (await db.ref(`/inventoryMovements/${movementId}`).get()).val();
+  if (Object.keys(writes).length) await markInventoryProjected(db, itemId, [opening && opening.id, (accounting.applied || {})[movementId] === movement ? movementId : ""], accounting.version, Date.now());
   if (movement) await postInventoryMovementToBooks(db, movement, item, actor, postingContext);
   await repairInventoryProjections(db, itemId, accounting, item);
   return {movement, duplicate};
@@ -287,7 +350,7 @@ exports.ensureInventoryLedger = onCall(
     if (marker && !(request.data && request.data.force === true && ["owner", "superadmin", "admin", "manager"].includes(actor.role))) {
       return {skipped: true, initializedAt: marker};
     }
-    const inventory = (await db.ref("/inventory").get()).val() || {};
+    const inventory = /* download-ok: manual inventory ledger initialisation */(await db.ref("/inventory").get()).val() || {};
     const uncosted = Object.keys(inventory).filter((itemId) => qty6(inventory[itemId] && inventory[itemId].stock) > 0 && !(qty6(inventory[itemId] && inventory[itemId].cost) > 0));
     if (uncosted.length) throw new HttpsError("failed-precondition", `Inventory ledger initialization stopped: ${uncosted.slice(0, 8).map((itemId) => String(inventory[itemId].name || itemId)).join(", ")} ${uncosted.length > 8 ? `and ${uncosted.length - 8} more ` : ""}have positive stock without a unit cost. Enter invoice-backed opening costs first.`);
     let initialized = 0;
@@ -298,7 +361,7 @@ exports.ensureInventoryLedger = onCall(
       const result = await ref.transaction((current) => {if (current) {existed = true; return current;} return seedInventoryAccounting(itemId, inventory[itemId], now);});
       const accounting = result.snapshot.val();
       const opening = accounting && accounting.applied && accounting.applied[`opening_${itemId}`];
-      if (opening) await db.ref(`/inventoryMovements/${opening.id}`).set(opening);
+      if (opening && !inventoryAppliedMarker(opening) && opening.id) await db.ref(`/inventoryMovements/${opening.id}`).set(opening);
       await repairInventoryProjections(db, itemId, accounting, inventory[itemId]);
       if (!existed) initialized++;
     }
@@ -308,19 +371,30 @@ exports.ensureInventoryLedger = onCall(
   },
 );
 
+function positiveOrderInventoryUsage(raw) {
+  const usage={};
+  Object.keys(raw||{}).forEach((itemId)=>{const quantity=qty6(raw[itemId]);if(quantity<0)throw new Error(`Order inventory usage cannot be negative for ${itemId}.`);if(quantity>0)usage[itemId]=quantity;});
+  return usage;
+}
+
 function buildOrderInventoryPlan(costing, inv, ps, capturedAt) {
   const invCategories=ps.invCategories||{},categorySnapshot={food:0,beverage:0,packaging:0,directLabor:0,unallocated:0},accountSnapshot={};
   costing.lines.forEach((line)=>{const item=inv[line.ingredientId]||{},category=invCategories[item.category]||{},label=String(category.name||item.category||"").toLowerCase();let bucket="unallocated";if(/packag|cup|lid|straw|napkin|container/.test(label))bucket="packaging";else if(/beverage|drink|coffee|tea|milk|syrup|powder/.test(label))bucket="beverage";else if(/food|ingredient|bakery|kitchen|pastry|meal/.test(label))bucket="food";categorySnapshot[bucket]+=Number(line.totalCost)||0;const mapping=BooksBridge.itemAccounts(item),key=mapping.inventory&&mapping.cost?`${mapping.inventory}|${mapping.cost}`:"1290|5090";accountSnapshot[key]=Financial.money((accountSnapshot[key]||0)+Number(line.totalCost||0));});
   Object.keys(categorySnapshot).forEach((key)=>{categorySnapshot[key]=Math.round(categorySnapshot[key]*100)/100;});
-  return{schemaVersion:1,capturedAt,capturedBy:"server",engineVersion:costing.engineVersion,usage:costing.usage,totalCost:costing.totalCost,categorySnapshot,accountSnapshot,cogsCovered:costing.cogsCovered,lines:costing.lines,warnings:costing.warnings};
+  return{schemaVersion:1,capturedAt,capturedBy:"server",engineVersion:costing.engineVersion,usage:positiveOrderInventoryUsage(costing.usage),totalCost:costing.totalCost,categorySnapshot,accountSnapshot,cogsCovered:costing.cogsCovered,lines:costing.lines,warnings:costing.warnings};
 }
 
-async function calculateOrderInventoryPlan(db,order,capturedAt=Date.now()) {
-  const [recSnap,optSnap,invSnap,miSnap,psSnap,ogSnap,pkSnap]=await Promise.all([db.ref("/recipes").get(),db.ref("/optionRecipes").get(),db.ref("/inventory").get(),db.ref("/menuItems").get(),db.ref("/posSettings").get(),db.ref("/optionGroups").get(),db.ref("/packagingRules").get()]),optionRaw=optSnap.val()||{},optionRecipes={};
+// Sale-time costing. Recipes, menu items, inventory and packaging rules are read record by
+// record for the lines of this order (readCatalogKeyed), so a sale downloads a few KB instead
+// of the whole catalog; the plan is identical to one built from the full catalog.
+async function calculateOrderInventoryPlan(db,order,capturedAt=Date.now(),orderId="") {
+  const [optSnap,ps]=await Promise.all([/* download-ok: catalog option recipes are menu configuration, not history (empty on 16 Sep 2026) */db.ref("/optionRecipes").get(),readPosSettings(db,["sharedBaseIngredients","optionCosts","packagingAssignments","invCategories"])]),optionRaw=optSnap.val()||{},optionRecipes={};
   Object.keys(optionRaw).forEach((key)=>{const row=optionRaw[key]||{};optionRecipes[row.label||key]=row;});
-  const ps=psSnap.val()||{},inv=invSnap.val()||{},costing=Costing.costOrder({lineItems:order.lineItems||[],recipes:recSnap.val()||{},inventory:inv,menuItems:miSnap.val()||{},sharedBaseIngredients:ps.sharedBaseIngredients||{},optionCosts:ps.optionCosts||{},optionRecipes,optionGroups:ogSnap.val()||{},packagingRules:pkSnap.val()||{},packagingAssignments:ps.packagingAssignments||{}});
-  if(!costing.ok)throw new Error("Authoritative costing rejected order: "+costing.errors.slice(0,5).map(row=>row.code+": "+row.message).join(" | "));
-  return buildOrderInventoryPlan(costing,inv,ps,capturedAt);
+  return readCatalogKeyed(db,["recipes","inventory","menuItems","optionGroups","packagingRules"],(maps)=>{
+    const costing=Costing.costOrder({lineItems:order.lineItems||[],recipes:maps.recipes,inventory:maps.inventory,menuItems:maps.menuItems,sharedBaseIngredients:ps.sharedBaseIngredients||{},optionCosts:ps.optionCosts||{},optionRecipes,optionGroups:maps.optionGroups,packagingRules:maps.packagingRules,packagingAssignments:ps.packagingAssignments||{}});
+    if(!costing.ok)throw new Error("Authoritative costing rejected order"+(orderId?" "+orderId:"")+": "+costing.errors.slice(0,5).map(row=>row.code+": "+row.message).join(" | "));
+    return buildOrderInventoryPlan(costing,maps.inventory,ps,capturedAt);
+  });
 }
 
 exports.onOrderFinalize = onValueWritten(
@@ -337,45 +411,16 @@ exports.onOrderFinalize = onValueWritten(
     if (o.inventoryDeducted && o.inventoryLedgerVersion === 1) return;
 
     try {
-      const [recSnap, optSnap, invSnap, miSnap, psSnap, ogSnap, pkSnap, planSnap] = await Promise.all([
-        db.ref("/recipes").get(),
-        db.ref("/optionRecipes").get(),
-        db.ref("/inventory").get(),
-        db.ref("/menuItems").get(),
-        db.ref("/posSettings").get(),
-        db.ref("/optionGroups").get(),
-        db.ref("/packagingRules").get(),
-        db.ref(`/orderInventoryPlans/${orderId}`).get(),
-      ]);
-      const recipes = recSnap.val() || {};
-      const inv = invSnap.val() || {};
-      const mi = miSnap.val() || {};
-      const ps = psSnap.val() || {};
-      const optRaw = optSnap.val() || {};
-      const optMap = {};
-      Object.keys(optRaw).forEach((k) => {
-        const v = optRaw[k] || {};
-        optMap[v.label || k] = v;
-      });
-      const optionCosts = ps.optionCosts || {};
-      const optionGroups = ogSnap.val() || {};
-
-      const costing = planSnap.exists()?null:Costing.costOrder({
-        lineItems: o.lineItems, recipes, inventory: inv, menuItems: mi,
-        sharedBaseIngredients: ps.sharedBaseIngredients || {}, optionCosts, optionRecipes: optMap, optionGroups,
-        // Packaging follows how a drink is served, from one shared table. The server reads it
-        // here so the cost it posts is the cost the till showed.
-        packagingRules: pkSnap.val() || {},
-        packagingAssignments: ps.packagingAssignments || {},
-      });
-      if (costing && !costing.ok) {
-        const summary = costing.errors.slice(0, 5).map((x) => x.code + ": " + x.message).join(" | ");
-        throw new Error("Authoritative costing rejected order " + orderId + ": " + summary);
-      }
-      const capturedAt=Date.now(),candidate=costing?buildOrderInventoryPlan(costing,inv,ps,capturedAt):null;
+      // The immutable sale-time plan is read first. When it already exists (a
+      // retry, or a re-write of an order that was finalized before archiving),
+      // the catalog is not needed and is not downloaded again.
+      const planSnap = await db.ref(`/orderInventoryPlans/${orderId}`).get();
+      const hasPlan = planSnap.exists();
+      // Otherwise the plan is costed now from the records this order uses.
+      const capturedAt=Date.now(),candidate=hasPlan?null:await calculateOrderInventoryPlan(db,o,capturedAt,orderId);
       const planResult=await db.ref(`/orderInventoryPlans/${orderId}`).transaction((current)=>current||candidate,undefined,false),plan=planResult.snapshot.val();
       if(!plan||plan.capturedBy!=="server"||Number(plan.schemaVersion)!==1||!plan.usage)throw new Error("Immutable server inventory plan is missing for order "+orderId);
-      const usage = plan.usage;
+      const usage = positiveOrderInventoryUsage(plan.usage);
       const ids = Object.keys(usage);
       const cogs = Number(plan.totalCost)||0,cogsCategorySnapshot=plan.categorySnapshot||{},cogsAccountSnapshot=plan.accountSnapshot||{};
 
@@ -397,9 +442,11 @@ exports.onOrderFinalize = onValueWritten(
         cogsAccountSnapshot,
         cogsAccountSnapshotVersion: 1,
         cogsCovered: plan.cogsCovered,
-        cogsDetail: {
-          engineVersion: plan.engineVersion, computedAt: plan.capturedAt,
-          totalCost: cogs, lines: plan.lines||[], warnings: plan.warnings||[],
+        // The line-by-line COGS trace stays in the immutable plan. Copying it onto the order
+        // (about two thirds of every order record) made every order list download it again.
+        cogsDetailSource: {
+          path: `orderInventoryPlans/${orderId}`, engineVersion: plan.engineVersion, computedAt: plan.capturedAt,
+          totalCost: cogs, lineCount: (plan.lines||[]).length, warningCount: (plan.warnings||[]).length,
         },
         costingEngineVersion: plan.engineVersion,
         deductedBy: "server",
@@ -426,7 +473,7 @@ exports.onOrderInventoryReversal = onValueWritten(
     const orderRef = db.ref(`/orders/${orderId}`);
     const order = (await orderRef.get()).val();
     if (!order || order.inventoryReversed) return;
-    const corrected = !!(order.completedOrderCorrectionId && order.correctedInventoryUsage), usage = corrected ? order.correctedInventoryUsage : (order.inventoryUsage || {});
+    const corrected = !!(order.completedOrderCorrectionId && order.correctedInventoryUsage), usage = positiveOrderInventoryUsage(corrected ? order.correctedInventoryUsage : (order.inventoryUsage || {}));
     if (order.inventoryDeducted !== true || !Object.keys(usage).length) {
       // A void/refund can be requested milliseconds after completion. Wait for
       // finalization so the reversal can link to—and exactly offset—the sale.

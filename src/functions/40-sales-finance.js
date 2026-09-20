@@ -7,8 +7,8 @@ exports.validateRecipeDefinition = onCall(
   async (request) => {
     const db = getDatabase();
     const actor = await requirePortalPermission(db, request, ["recipes"]);
-    const inventory = (await db.ref("/inventory").get()).val() || {};
-    const result = Costing.normalizeRecipe(request.data && request.data.recipe, inventory);
+    // Only the inventory items the recipe names are read (readCatalogKeyed).
+    const result = await readCatalogKeyed(db, ["inventory"], (maps) => Costing.normalizeRecipe(request.data && request.data.recipe, maps.inventory));
     if (!result.ok) throw new HttpsError("invalid-argument", "Recipe is invalid: " + result.errors.slice(0, 5).map((x) => x.message).join(" | "), {errors: result.errors});
     logger.info("Recipe definition validated", {uid: actor.uid, engineVersion: Costing.VERSION, warnings: result.warnings.length});
     return {recipe: result.recipe, engineVersion: Costing.VERSION, warnings: result.warnings};
@@ -21,8 +21,9 @@ exports.saveSharedChoiceIngredients = onCall(
     const db=getDatabase(),actor=await requirePortalPermission(db,request,["recipes"]),optionCosts=request.data&&request.data.optionCosts;
     if (!optionCosts || typeof optionCosts!=="object" || Array.isArray(optionCosts)) throw new HttpsError("invalid-argument","Shared choice ingredients are invalid.");
     if (Buffer.byteLength(JSON.stringify(optionCosts),"utf8")>250000) throw new HttpsError("invalid-argument","Shared choice ingredients are too large to save safely.");
-    const [inventorySnap,groupsSnap]=await Promise.all([db.ref("/inventory").get(),db.ref("/optionGroups").get()]),inventory=inventorySnap.val()||{},groups=groupsSnap.val()||{};let rows;
-    try { rows=SharedChoiceValidation.validate(optionCosts,inventory,groups).rows; } catch(error) { throw new HttpsError(error.code||"invalid-argument",error.message); }
+    let rows;
+    // Option groups are listed to find the temperature group (read in full, 2 KB); inventory items are read by key.
+    try { rows=(await readCatalogKeyed(db,["inventory","optionGroups"],(maps)=>{const inventory=maps.inventory,groups=maps.optionGroups;return SharedChoiceValidation.validate(optionCosts,inventory,groups);})).rows; } catch(error) { throw new HttpsError(error.code||"invalid-argument",error.message); }
     const now=Date.now();await db.ref().update({"posSettings/optionCosts":optionCosts,[`operationalAudit/${now}_shared_choice_ingredients`]:operationalAuditRecord("save_shared_choice_ingredients","posSettings","optionCosts",actor,{groups:Object.keys(optionCosts).length,rows,accounting:"Updates future recipe costing and inventory usage definitions only; no posted sale, inventory movement, or Finance entry was changed."})});
     logger.info("Shared choice ingredients saved",{uid:actor.uid,groups:Object.keys(optionCosts).length,rows});return{saved:true,groups:Object.keys(optionCosts).length,rows,savedAt:now};
   },
@@ -77,18 +78,58 @@ function accountingTimestamp(date, fallback) {
 const BOOKS_TYPES = ["Asset","Liability","Equity","Income","COGS","Expense"];
 const SENSITIVE_BOOKS_CODES = new Set("1000 1005 1010 1011 1012 1013 1014 1020 1021 1030 1040 1100 1110 1115 1120 1200 1210 1220 1230 1240 1260 1270 1280 1290 1900 2000 2020 2050 2090 3000 3100 3900 4000 4010 4020 4030 4900 4910".split(" "));
 SENSITIVE_BOOKS_CODES.add("1001");
+const CONTROL_ACCOUNT_RULES = {
+  "1000":{postingRule:"open",correctionMessage:"Use Admin > Register"},
+  "1001":{postingRule:"open",correctionMessage:"Use Finance > Undeposited Collection"},
+  "1005":{postingRule:"open",correctionMessage:"Use Admin > POS Settings"},
+  "1010":{postingRule:"open",correctionMessage:"Use Finance > Cash Flow"},
+  "1011":{postingRule:"open",correctionMessage:"Use Finance > Cash Flow"},
+  "1012":{postingRule:"open",correctionMessage:"Use Finance > Cash Flow"},
+  "1013":{postingRule:"open",correctionMessage:"Use Finance > Cash Flow"},
+  "1014":{postingRule:"open",correctionMessage:"Use Finance > Cash Flow"},
+  "1020":{postingRule:"open",correctionMessage:"Use Finance > Cash Flow"},
+  "1021":{postingRule:"open",correctionMessage:"Use Finance > Cash Flow"},
+  "1050":{postingRule:"open",correctionMessage:"Use Finance > Platform Payouts"},
+  "1100":{postingRule:"blocked",correctionMessage:"Receivable control accounts must be corrected from Receivables or the related sale so the customer or platform subledger remains linked."},
+  "1110":{postingRule:"blocked",correctionMessage:"Receivable control accounts must be corrected from Receivables or the related sale so the customer or platform subledger remains linked."},
+  "1115":{postingRule:"blocked",correctionMessage:"Supplier Advances is system-controlled. Record or correct the payment in Admin > Cash Payments, then allocate it in Admin > Purchases so the supplier balance, inventory, and Finance Books remain linked."},
+  "1120":{postingRule:"blocked",correctionMessage:"Staff Advances is reserved for its staff-advance subledger. Issue and liquidate advances from Admin > Cash Payments so the staff balance and Finance Books remain linked."},
+  "1190":{postingRule:"requires_linked_discrepancy",correctionMessage:"Use Admin > cash variance review to link this journal to the exact shortage before posting."},
+  "1200":{postingRule:"blocked",correctionMessage:"Inventory control accounts must be corrected from Purchases so quantities, valuation, and Finance Books remain linked."},
+  "1210":{postingRule:"blocked",correctionMessage:"Inventory control accounts must be corrected from Purchases so quantities, valuation, and Finance Books remain linked."},
+  "1220":{postingRule:"blocked",correctionMessage:"Inventory control accounts must be corrected from Purchases so quantities, valuation, and Finance Books remain linked."},
+  "1230":{postingRule:"blocked",correctionMessage:"Inventory control accounts must be corrected from Purchases so quantities, valuation, and Finance Books remain linked."},
+  "1240":{postingRule:"blocked",correctionMessage:"Inventory control accounts must be corrected from Purchases so quantities, valuation, and Finance Books remain linked."},
+  "1270":{postingRule:"blocked",correctionMessage:"Inventory control accounts must be corrected from Purchases so quantities, valuation, and Finance Books remain linked."},
+  "1280":{postingRule:"blocked",correctionMessage:"Inventory control accounts must be corrected from Purchases so quantities, valuation, and Finance Books remain linked."},
+  "1290":{postingRule:"blocked",correctionMessage:"Inventory control accounts must be corrected from Purchases so quantities, valuation, and Finance Books remain linked."},
+  "1900":{postingRule:"open",correctionMessage:"Review the source in Finance; do not clear without evidence"},
+  "2000":{postingRule:"open",correctionMessage:"Use Finance > Payables or Admin > Purchases"},
+  "2020":{postingRule:"open",correctionMessage:"Use Finance > Platform Payouts"},
+  "2030":{postingRule:"open",correctionMessage:"Use Finance > Payables"},
+  "2050":{postingRule:"open",correctionMessage:"Use Finance > Payables"},
+  "2090":{postingRule:"open",correctionMessage:"Use Admin > Purchases repair"},
+  "2100":{postingRule:"requires_linked_discrepancy",correctionMessage:"Use Admin > cash variance review to link this journal to the exact overage before posting."},
+  "3000":{postingRule:"open",correctionMessage:"Use Finance > owner funding"},
+  "3050":{postingRule:"open",correctionMessage:"Use Admin > POS Settings"},
+  "3100":{postingRule:"open",correctionMessage:"Use Finance > owner withdrawal"},
+  "3900":{postingRule:"open",correctionMessage:"System closing account"},
+  "6079":{postingRule:"blocked",correctionMessage:"Staff Advance Write-offs is reserved for the staff-advance liquidation workflow. Write off an advance from its record in Admin > Cash Payments so the subledger and audit trail remain linked."},
+  "6110":{postingRule:"requires_linked_discrepancy",correctionMessage:"Use Admin > cash variance review to link this journal to the exact variance before posting."}
+};
+const CONTROL_ACCOUNT_CODES = Object.keys(CONTROL_ACCOUNT_RULES);
 const BOOKS_CHART_SEED_ROWS = [
   ["1000","Cash on Hand","Asset"],["1005","Register Cash Float","Asset","Fixed imprest tied to POS Settings"],["1010","Other Bank Accounts","Asset"],["1011","Union Bank","Asset"],["1012","BDO","Asset"],["1013","Security Bank - 4538","Asset"],["1014","Security Bank - 4389","Asset"],["1020","GCash / Maya Wallet","Asset"],["1021","FoodPanda GCash Wallet","Asset","Dedicated FoodPanda payout destination"],["1030","Undeposited Collection","Asset","Cash awaiting bank deposit"],["1040","Revolving Fund","Asset"],["1050","Platform Payouts in Transit","Asset","Settled platform payouts awaiting bank deposit"],["1100","Accounts Receivable - Platforms","Asset","Grab/Panda settlements owed to us"],["1110","Other Receivables","Asset"],["1115","Supplier Advances","Asset","Unallocated supplier payments; controlled by Cash Payments and Purchases"],["1120","Staff Advances","Asset","Amounts advanced to staff pending liquidation or return"],["1190","Cash Shortage Under Review","Asset","Pending manager reconciliation"],["1200","Inventory - Coffee & Beans","Asset"],["1210","Inventory - Milk & Dairy","Asset"],["1220","Inventory - Syrups & Flavors","Asset"],["1230","Inventory - Cups & Packaging","Asset"],["1240","Inventory - Food & Pastries","Asset"],["1250","Input VAT (creditable)","Asset","Used when VAT-registered"],["1260","Creditable Withholding Tax","Asset","CWT withheld by platforms/customers"],["1270","Inventory - Operating & Cleaning Supplies","Asset"],["1280","Inventory - Office Supplies","Asset"],["1290","Inventory Receiving Clearing","Asset","Received inventory awaiting complete posting"],["1500","Equipment","Asset","Espresso machine, grinders"],["1510","Furniture & Fixtures","Asset"],["1590","Accumulated Depreciation","Asset","Contra-asset (credit balance)"],["1900","Suspense","Asset","Unmapped POS accounts land here for review"],
   ["2000","Accounts Payable - Suppliers","Liability"],["2020","Due to Platforms","Liability","Negative Grab/FoodPanda settlements owed to the platform"],["2030","Customer Change / Refund Payable","Liability","Customer-related cash overages awaiting refund"],["2050","Due to Owner / Partners","Liability","Personally funded business costs awaiting reimbursement"],["2090","Unrecorded Payables Clearing","Liability","Supplier obligations awaiting complete posting"],["2100","Cash Overage Under Review","Liability","Pending manager reconciliation"],["2120","Accrued Salaries","Liability"],["2200","Taxes Payable","Liability"],["2210","Output VAT Payable","Liability","Used when VAT-registered"],["2220","Percentage Tax Payable","Liability","Non-VAT percentage tax on gross receipts"],["2230","Withholding Tax Payable","Liability","EWT withheld from payments"],["2300","Loans Payable","Liability"],["2310","Loan 2","Liability"],["2320","Loan 3","Liability"],
   ["3000","Owner's Capital","Equity"],["3050","Cash Float Clearing","Equity","POS shift float source"],["3100","Owner's Drawings","Equity","Contra-equity (debit balance)"],["3900","Retained Earnings","Equity"],
   ["4000","Sales - In-store","Income"],["4010","Sales - Online (own)","Income"],["4020","Sales - GrabFood","Income"],["4030","Sales - FoodPanda","Income"],["4900","Discounts & Comps","Income","Contra-income (debit balance)"],["4910","Sales Returns & Refunds","Income","Existing void and refund adjustments"],["4990","Other Income","Income"],
   ["5000","COGS - Coffee & Beans","COGS"],["5010","COGS - Milk & Dairy","COGS"],["5020","COGS - Syrups & Flavors","COGS"],["5030","COGS - Food & Pastries","COGS"],["5040","COGS - Cups & Packaging","COGS"],["5090","Unposted COGS Clearing","COGS","Costs awaiting complete item-level posting"],["5900","Wastage & Spoilage","COGS","Physical spoilage, expiry, spillage, or discard only"],["5905","Inventory Reconciliation Gain / (Loss)","COGS","Count or valuation variance only: debit is loss, credit is gain"],
-  ["6000","Salaries & Wages","Expense"],["6010","Rent","Expense"],["6020","Utilities","Expense","Electricity, water"],["6030","Internet & Phone","Expense"],["6040","Platform Commissions","Expense","Grab/Panda fees"],["6045","Platform Discounts","Expense","Grab/Panda-funded or shared discounts"],["6046","Platform Service VAT","Expense"],["6050","Marketing & Promotions","Expense"],["6060","Repairs & Maintenance","Expense"],["6070","Cleaning & Operating Supplies","Expense"],["6075","Office & Administrative Supplies","Expense"],["6076","Transportation & Delivery","Expense"],["6077","Staff Consumption & Welfare","Expense","Inventory consumed by staff; never sales COGS or inventory variance"],["6078","Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"],["6080","Bank & Payment Fees","Expense"],["6085","Platform Penalties & Adjustments","Expense"],["6090","Depreciation","Expense"],["6100","Miscellaneous","Expense"],["6110","Cash Short / Over","Expense","Register variance"]
+  ["6000","Salaries & Wages","Expense"],["6010","Rent","Expense"],["6020","Utilities","Expense","Electricity, water"],["6030","Internet & Phone","Expense"],["6040","Platform Commissions","Expense","Grab/Panda fees"],["6045","Platform Discounts","Expense","Grab/Panda-funded or shared discounts"],["6046","Platform Service VAT","Expense"],["6050","Marketing & Promotions","Expense"],["6060","Repairs & Maintenance","Expense"],["6070","Cleaning & Operating Supplies","Expense"],["6075","Office & Administrative Supplies","Expense"],["6076","Transportation & Delivery","Expense"],["6077","Staff Consumption & Welfare","Expense","Inventory consumed by staff; never sales COGS or inventory variance"],["6078","Product R&D & Testing","Expense","Inventory consumed for product development, testing, training, or sampling"],["6079","Staff Advance Write-offs","Expense","Uncollectible staff advances written off through the liquidation workflow"],["6080","Bank & Payment Fees","Expense"],["6085","Platform Penalties & Adjustments","Expense"],["6090","Depreciation","Expense"],["6100","Miscellaneous","Expense"],["6110","Cash Short / Over","Expense","Register variance"]
 ].map(function(row){if(row[0]==="1000")return ["1000","Cash on Hand - Cash in Register","Asset"];if(row[0]==="1030")return ["1001","Cash on Hand - Undeposited Collection","Asset","Cash awaiting bank deposit; controlled by cash custody"];return row;});
-function booksChartSeed(){const out={};BOOKS_CHART_SEED_ROWS.forEach(function(r){out[r[0]]={code:r[0],name:r[1],type:r[2],note:r[3]||"",active:true,system:true,sensitive:SENSITIVE_BOOKS_CODES.has(r[0])};});return out;}
+function booksChartSeed(){const out={};BOOKS_CHART_SEED_ROWS.forEach(function(r){const control=CONTROL_ACCOUNT_RULES[r[0]]||{};out[r[0]]=Object.assign({code:r[0],name:r[1],type:r[2],note:r[3]||"",active:true,system:true,sensitive:SENSITIVE_BOOKS_CODES.has(r[0]),postingRule:"open",correctionMessage:""},control);});return out;}
 async function ensureBooksChart(db) {
   const seed = booksChartSeed();
-  const snap = await db.ref("/booksChart").get();
+  const snap = /* download-ok: bounded chart of accounts (about 90 accounts), configuration not history */ await db.ref("/booksChart").get();
   const current = snap.val() || {}, writes = {}, resolved = Object.assign({}, current), now = Date.now();
   // A Firebase multi-location update cannot contain both /booksChart/CODE and
   // /booksChart/CODE/field. Missing or malformed accounts therefore use one
@@ -102,7 +143,7 @@ async function ensureBooksChart(db) {
       resolved[code] = existing;
     }
   });
-  ["1000", "1115", "1120", "2100", "5900", "5905", "6077", "6078"].forEach(function(code) {
+  ["1000", "1115", "1120", "2100", "5900", "5905", "6077", "6078"].concat(CONTROL_ACCOUNT_CODES).filter(function(code,index,arr){return arr.indexOf(code)===index;}).forEach(function(code) {
     const canonical = seed[code], existing = current[code];
     if (!canonical || !existing || typeof existing !== "object" || Array.isArray(existing)) return;
     resolved[code] = Object.assign({}, existing, canonical);
@@ -114,7 +155,7 @@ async function ensureBooksChart(db) {
     // Move the existing chart record and its journal presentation lines. The
     // durable financial account is asset:cash_awaiting_deposit, so movements,
     // cash custody, deposits, and audit links are intentionally untouched.
-    const journal=(await db.ref("/books/journal").get()).val()||{},legacy=current["1030"],canonical=Object.assign({},seed["1001"],current["1001"]||{}, {code:"1001",name:"Cash on Hand - Undeposited Collection",type:"Asset",note:"Cash awaiting bank deposit; controlled by cash custody",active:true,system:true,sensitive:true,migratedFrom:"1030",migratedAt:now}),changed=[];
+    const journal=(/* download-ok: migration one-time move of chart code 1030 */await db.ref("/books/journal").get()).val()||{},legacy=current["1030"],canonical=Object.assign({},seed["1001"],current["1001"]||{}, {code:"1001",name:"Cash on Hand - Undeposited Collection",type:"Asset",note:"Cash awaiting bank deposit; controlled by cash custody",active:true,system:true,sensitive:true,migratedFrom:"1030",migratedAt:now}),changed=[];
     Object.keys(journal).forEach(function(id){const entry=journal[id]||{},lines=Array.isArray(entry.lines)?entry.lines:[],next=lines.map(function(line){return line&&line.code==="1030"?Object.assign({},line,{code:"1001"}):line;});if(next.some(function(line,index){return line!==lines[index];})){writes[`books/journal/${id}/lines`]=next;changed.push(id);}});
     writes["booksChart/1001"]=canonical;writes["booksChart/1030"]=null;writes["books/chartCodeMigrations/1030_to_1001"]={from:"1030",to:"1001",migratedAt:now,journalEntriesMoved:changed.length,legacyChartCreatedAt:legacy.createdAt||null,schemaVersion:1};writes[`operationalAudit/${now}_books_chart_1030_to_1001`]={action:"move_books_chart_code",sourceType:"booksChart",sourceId:"1030",replacementCode:"1001",journalEntriesMoved:changed.length,ts:now};
     delete resolved["1030"];resolved["1001"]=canonical;
@@ -133,7 +174,7 @@ const DEFAULT_BOOKS_CHART_MANAGERS=["danilomagbual@gmail.com","contact.mariadani
 function booksManagerKey(email){return String(email||"").toLowerCase().replace(/[^a-z0-9]+/g,"_");}
 async function ensureBooksChartManagers(db){const ref=db.ref("/config/booksChartManagers");const snap=await ref.get();let current=snap.val();if(!current||typeof current!=="object"||!Object.keys(current).length){const seed={};DEFAULT_BOOKS_CHART_MANAGERS.forEach(function(email){seed[booksManagerKey(email)]={email:String(email).toLowerCase(),active:true,seededAt:Date.now()};});await ref.set(seed);current=seed;}const allow=new Set();Object.keys(current).forEach(function(k){const row=current[k];if(row&&row.active!==false&&row.email)allow.add(String(row.email).toLowerCase());});return allow;}
 async function requireBooksChartManager(db,request){const portal=await requirePortalUser(db,request);const email=String(request.auth&&request.auth.token&&request.auth.token.email||"").toLowerCase();const allow=await ensureBooksChartManagers(db);if(!email||!allow.has(email))throw new HttpsError("permission-denied","Only the finance owners can manage the chart of accounts.");return Object.assign({},portal,{email:email});}
-function booksCodeAccount(code, accounts, booksChart) {
+function booksCodeAccount(code, accounts, booksChart, cashAccountMap) {
   code = financeText(code, 4);
   if (!/^\d{4}$/.test(code)) throw new HttpsError("invalid-argument", "Every journal line requires a valid four-digit account code.");
   if (code === "1030") code = "1001";
@@ -149,10 +190,10 @@ function booksCodeAccount(code, accounts, booksChart) {
   if (code === "1005") return {account:"asset:register_float", cashKey:"float"};
   if (code === "1001") return {account:"asset:cash_awaiting_deposit", cashKey:"undeposited"};
   if (code === "1040") return {account:"asset:petty_cash", cashKey:"petty"};
-  const matches = Object.keys(accounts || {}).filter((id) => BooksBridge.cashCodeForAccount(accounts[id]) === code);
+  const matches = BankLedgerLink.accountsForCode(code, accounts, cashAccountMap);
   if (matches.length > 1) throw new HttpsError("failed-precondition", `Cash account code ${code} is assigned to more than one cash account.`);
   if (matches.length === 1) return {account:`asset:cash_account:${matches[0]}`, cashKey:matches[0]};
-  if (/^(1010|1011|1012|1013|1014|1020|1021)$/.test(code)) throw new HttpsError("failed-precondition", `Cash account code ${code} is not linked to a live cash account.`);
+  if (/^(1010|1011|1012|1013|1014|1020|1021)$/.test(code) || Object.values(cashAccountMap || {}).includes(code)) throw new HttpsError("failed-precondition", `Cash account code ${code} is not linked to a live cash account.`);
   return {account:`coa:${code}`, cashKey:""};
 }
 async function prepareManualBooksJournal(db, data, accounts, actor, allowedLinkedPayable) {
@@ -160,8 +201,8 @@ async function prepareManualBooksJournal(db, data, accounts, actor, allowedLinke
   await assertAccountingPeriodOpen(db, date, "posting or correcting a manual journal");
   if(!memo)throw new HttpsError("invalid-argument","Memo / description is required.");
   if(rawLines.length<2||rawLines.length>20)throw new HttpsError("invalid-argument","A journal requires between two and twenty lines.");
-  const lines=[],cashLines=[];let debit=0,credit=0;const booksChart=await ensureBooksChart(db);
-  rawLines.forEach((row,index)=>{const dr=Financial.money(row&&row.debit),cr=Financial.money(row&&row.credit);if((dr>0&&cr>0)||(!(dr>0)&&!(cr>0)))throw new HttpsError("invalid-argument",`Journal line ${index+1} must contain either a debit or a credit.`);const mapped=booksCodeAccount(row.code,accounts,booksChart);debit=Financial.money(debit+dr);credit=Financial.money(credit+cr);lines.push(Financial.line(mapped.account,dr,cr,memo));if(mapped.cashKey)cashLines.push({mapped,dr,cr,index});});
+  const lines=[],cashLines=[];let debit=0,credit=0;const booksChart=await ensureBooksChart(db),cashAccountMap=(await db.ref('/books/config/cashAccountMap').get()).val()||{};
+  rawLines.forEach((row,index)=>{const dr=Financial.money(row&&row.debit),cr=Financial.money(row&&row.credit);if((dr>0&&cr>0)||(!(dr>0)&&!(cr>0)))throw new HttpsError("invalid-argument",`Journal line ${index+1} must contain either a debit or a credit.`);const mapped=booksCodeAccount(row.code,accounts,booksChart,cashAccountMap);debit=Financial.money(debit+dr);credit=Financial.money(credit+cr);lines.push(Financial.line(mapped.account,dr,cr,memo));if(mapped.cashKey)cashLines.push({mapped,dr,cr,index});});
   if(Math.abs(debit-credit)>0.009||!(debit>0))throw new HttpsError("invalid-argument","Journal debits and credits must balance.");
   const payableLines=rawLines.filter((row)=>String(row&&row.code||"")==="2000"),linkedPayableId=payableLines.length?financeKey(data.linkedPayableId,"Linked payable ID"):"";let linkedPayable=null;
   if(payableLines.length>1)throw new HttpsError("invalid-argument","A manual journal may contain only one Accounts Payable control line.");
@@ -234,9 +275,16 @@ async function nextDocumentNumber(db, prefix, year) {
   if (!seq) return "";
   return `${prefix}-${year}-${String(seq).padStart(4, "0")}`;
 }
+// Movements known to exist for the duration of one maintenance run (ensureFinancialLedger).
+// Financial movements are never deleted, so a movement present when the run started is
+// still present: the backfill skips one existence download per already-posted record
+// instead of re-reading each of them. Scoped per request, so concurrent calls never share it.
+const knownFinancialMovements = new AsyncLocalStorage();
 async function commitFinancial(db, movementId, movement, actor, extraWrites = {}) {
   movementId = financeKey(movementId, "Movement ID");
   const ref = db.ref(`/financialMovements/${movementId}`);
+  const run = knownFinancialMovements.getStore(), known = run && run.movements;
+  if (known && Object.prototype.hasOwnProperty.call(known, movementId) && known[movementId]) return {duplicate: true, movement: known[movementId]};
   const existing = await ref.get();
   if (existing.exists()) return {duplicate: true, movement: existing.val()};
   await assertAccountingPeriodOpen(db, Number(movement && movement.occurredAt || Date.now()), "creating this financial posting");
@@ -264,33 +312,70 @@ async function commitFinancial(db, movementId, movement, actor, extraWrites = {}
     // While this claim is processing, guarded cash-journal edits cannot run.
     // Detect edits completed after a custody calculation but before this claim.
     if(Object.keys(extraWrites).some(path=>path.startsWith('cashCustody/'))){
-      try{CashJournalEdit.assertCustodyDelta((await db.ref('/cashCustody').get()).val()||{},extraWrites,record.lines);}catch(error){throw new HttpsError('failed-precondition',error.message);}
+      try{CashJournalEdit.assertCustodyDelta(await touchedCustodyRows(db,extraWrites),extraWrites,record.lines);}catch(error){throw new HttpsError('failed-precondition',error.message);}
     }
     if(record.reversalOf){const source=(await db.ref(`/financialMovements/${financeKey(record.reversalOf,'Reversal source')}`).get()).val();if(source&&Number(source.revision)>0&&CashJournalEdit.eligible(source))throw new HttpsError('failed-precondition','This cash journal has an audited revision. Refresh and use Edit / correct; journal-only reversal would break its custody link.');}
     const writes = Object.assign({}, extraWrites, {[`financialMovements/${movementId}`]: record,[`financialCommandClaims/${movementId}`]:{status:"posted",token:claimToken,claimedAt,postedAt:Date.now(),actorUid:actor.uid,movementId,operationType:financeText(movement && movement.type,80),schemaVersion:2}});
     await safeFinancialUpdate(db, writes, "financial");
+    if (run) run.written += 1;
     return {duplicate: false, movement: record};
   } catch (error) {
     await claimRef.transaction((current) => current && current.token === claimToken && current.status === "processing" ? null : current);
     throw error;
   }
 }
+// Cash custody lookups (Sep 2026 download audit): the whole custody list is never needed by a
+// single posting. Rows are returned in database key order, as a full read would return them.
+function custodyInKeyOrder(rows) {
+  const out = {};
+  Object.keys(rows).sort(BackupDelta.keyCompare).forEach((id) => { out[id] = rows[id]; });
+  return out;
+}
+// Rows that still hold cash (remaining above zero), from the server-side remaining index.
+async function openCustodyRows(db) {
+  return custodyInKeyOrder((await db.ref("/cashCustody").orderByChild("remaining").startAt(0.005).get()).val() || {});
+}
+// The custody rows a multi-path write changes, as they are now (null when absent).
+async function touchedCustodyRows(db, writes) {
+  const ids = [...new Set(Object.keys(writes).filter((path) => path.startsWith("cashCustody/")).map((path) => path.split("/")[1]).filter(Boolean))], rows = {};
+  await Promise.all(ids.map(async (id) => { const row = (await db.ref(`/cashCustody/${id}`).get()).val(); if (row !== null && row !== undefined) rows[id] = row; }));
+  return custodyInKeyOrder(rows);
+}
+// Custody rows that can belong to a shift: keyed by the shift, or naming it.
+async function custodyRowsForShift(db, shiftId) {
+  const [own, byShift, byMovement] = await Promise.all([db.ref(`/cashCustody/${shiftId}`).get(), db.ref("/cashCustody").orderByChild("shiftId").equalTo(shiftId).get(), db.ref("/cashCustody").orderByChild("movementId").equalTo(`shift_custody_${shiftId}`).get()]);
+  const rows = Object.assign({}, byShift.val() || {}, byMovement.val() || {});
+  if (own.exists()) rows[shiftId] = own.val();
+  return custodyInKeyOrder(rows);
+}
 async function poolCustodyOutflow(db, value) {
   const need0 = Financial.money(value); if (!(need0 > 0)) return {writes: {}, fromCustody: 0, shortfall: 0, allocations: {}};
-  const custody = (await db.ref("/cashCustody").get()).val() || {};
+  const custody = await openCustodyRows(db);
   const rows = Object.keys(custody).map((cid) => Object.assign({id: cid}, custody[cid])).filter((x) => Financial.money(x.remaining) > 0).sort((a, b) => Number(a.closedAt || 0) - Number(b.closedAt || 0));
   const writes = {}, allocations = {}; let need = need0, fromCustody = 0;
   for (const row of rows) { if (need <= 0) break; const available = Financial.money(row.remaining), use = Financial.money(Math.min(need, available)); if (!(use > 0)) continue; allocations[row.id] = use; fromCustody = Financial.money(fromCustody + use); need = Financial.money(need - use); const next = Financial.money(available - use); writes[`cashCustody/${row.id}/remaining`] = next; writes[`cashCustody/${row.id}/status`] = next > 0 ? "partially_paid_out" : "paid_out"; writes[`cashCustody/${row.id}/paidOutAmount`] = Financial.money(Number(row.paidOutAmount || 0) + use); writes[`cashCustody/${row.id}/lastPaymentAt`] = Date.now(); }
   return {writes, fromCustody, shortfall: Financial.money(need), allocations};
 }
 
+async function poolCustodyDeposit(db, value, movementId) {
+  const requested=Financial.money(value);if(!(requested>0))return{writes:{},allocations:{},amount:0,shortfall:0};
+  await ensureUndepositedPageIndexes(db);
+  const open=(await db.ref("/cashCustodyOpenIndex").get()).val()||{},ordered=Object.entries(open).map(([id,row])=>({id,closedAt:Number(row&&row.closedAt||0)})).sort((a,b)=>a.closedAt-b.closedAt||a.id.localeCompare(b.id));
+  const writes={},allocations={};let need=requested;
+  async function useRows(candidates){for(const candidate of candidates){
+    if(need<=0)break;const row=(await db.ref(`/cashCustody/${candidate.id}`).get()).val();if(!row)continue;const available=Financial.money(row.remaining!=null?row.remaining:row.amount);if(!(available>0))continue;
+    const use=Financial.money(Math.min(need,available)),next=Financial.money(available-use);allocations[candidate.id]=use;need=Financial.money(need-use);
+    writes[`cashCustody/${candidate.id}/depositedAmount`]=Financial.money(Number(row.depositedAmount||0)+use);writes[`cashCustody/${candidate.id}/remaining`]=next;writes[`cashCustody/${candidate.id}/status`]=next>0?"partially_deposited":"deposited";writes[`cashCustody/${candidate.id}/lastDepositMovementId`]=movementId;writes[`cashCustody/${candidate.id}/lastDepositAt`]=Date.now();writes[`cashCustodyOpenIndex/${candidate.id}`]=next>0?cashCustodyProjection(candidate.id,Object.assign({},row,{depositedAmount:Financial.money(Number(row.depositedAmount||0)+use),remaining:next,status:"partially_deposited",lastDepositMovementId:movementId,lastDepositAt:Date.now()})):null;
+  }}
+  await useRows(ordered);
+  if(need>0.009){const all=(/* download-ok: fallback the open-custody index missed a row; read every row before reporting a shortfall */await db.ref("/cashCustody").get()).val()||{},fallback=Object.entries(all).filter(([id,row])=>!allocations[id]&&Financial.money(row&&row.remaining)>0).map(([id,row])=>({id,closedAt:Number(row.closedAt||0)})).sort((a,b)=>a.closedAt-b.closedAt||a.id.localeCompare(b.id));await useRows(fallback);}
+  return{writes,allocations,amount:Financial.money(requested-need),shortfall:Financial.money(need)};
+}
+
 async function availableCashOnHandAboveFloat(db) {
-  const [movementsSnap, settingsSnap, activeShiftSnap] = await Promise.all([db.ref("/financialMovements").get(), db.ref("/posSettings").get(), db.ref("/posActiveShift").get()]);
-  let gross = 0;
-  Object.values(movementsSnap.val() || {}).forEach((movement) => ((movement && movement.lines) || []).forEach((line) => {
-    if (line && line.account === "asset:register_cash") gross = Financial.money(gross + Financial.money(line.debit) - Financial.money(line.credit));
-  }));
-  const float = resolveRegisterFloat(settingsSnap.val(), activeShiftSnap.val()).amount;
+  const [current, settings, activeShiftSnap] = await Promise.all([currentCashBalances(db), readPosSettings(db, ["fixedFloat"]), db.ref("/posActiveShift").get()]);
+  const gross = CashBalances.pesos(current.balances.registerCents);
+  const float = resolveRegisterFloat(settings, activeShiftSnap.val()).amount;
   return {gross: Financial.money(gross), float, available: Financial.money(Math.max(0, gross - float))};
 }
 function poolCustodyInflowRecord(cid, value, label, occurredAt, movementId) {
@@ -336,7 +421,9 @@ async function postPreCompletionCashRefund(db, order, actor) {
 }
 
 async function fullOrderVoidMovement(db, order, accounts, settlementPayments) {
-  const movementSnap = await db.ref("/financialMovements").get();
+  // netMovementCorrection only nets movements whose sourceId is this order, so
+  // read exactly those through the sourceId index instead of the whole ledger.
+  const movementSnap = await db.ref("/financialMovements").orderByChild("sourceId").equalTo(String(order.id || "")).get();
   const movement = Financial.netMovementCorrection(Object.values(movementSnap.val() || {}), order.id, "order_void", "Fully reverse voided order");
   if (!movement) return null;
   const remaining = Financial.money(Math.max(0, Financial.money(order.total) - Financial.money(order.refundAmount)));
@@ -386,12 +473,17 @@ exports.preservePostedOrderOnDelete = onValueDeleted(
   },
 );
 
-async function postShiftCashEntries(db, shiftId, entries, kind) {
-  const actor = {uid: "server", role: "server"}, shift=(await db.ref(`/shifts/${shiftId}`).get()).val()||{}, shiftReference=durableShiftReference(shift,shiftId);
+async function postShiftCashEntries(db, shiftId, entries, kind, knownShift) {
+  const actor = {uid: "server", role: "server"}, shift=knownShift||(await db.ref(`/shifts/${shiftId}`).get()).val()||{}, shiftReference=durableShiftReference(shift,shiftId);
   for (let index = 0; index < (entries || []).length; index++) { const entry = entries[index] || {}, value = Financial.money(entry.amount); if (!(value > 0)) continue; const token = `${Number(entry.ts || 0)}_${index}`, movementId = `${kind}_${shiftId}_${token}`, isIn = kind === "shift_payin"; if (!isIn && (entry.type === "revolving_fund_replenishment" || /^petty cash replenish/i.test(String(entry.reason || "")))) continue; const isPurchaseAdvance = !isIn && entry.type === "purchase_advance" && entry.id; const lines = isIn ? [Financial.line("asset:register_cash", value, 0, entry.reason || "Cash in"), Financial.line(`offset:cash_in:${financeText(entry.reason || "other", 60)}`, 0, value, entry.reason || "Cash in")] : isPurchaseAdvance ? [Financial.line(`asset:purchase_cash_advance:${financeKey(entry.id, "Purchase advance ID")}`, value, 0, entry.reason || "Purchase cash advance"), Financial.line("asset:register_cash", 0, value, entry.reason || "Purchase cash advance")] : [Financial.line(`expense:cash_out:${financeText(entry.reason || "other", 60)}`, value, 0, entry.reason || "Cash out"), Financial.line("asset:register_cash", 0, value, entry.reason || "Cash out")]; const movement = Financial.movement(isPurchaseAdvance ? "purchase_cash_advance" : kind, "shift", shiftId, lines, {occurredAt: Number(entry.ts || Date.now()), actorName: entry.by || "Register", shiftReference, reference:financeText(entry.reference,120)||shiftReference, advanceId: entry.id || "", recipient: financeText(entry.recipient || "", 120)}); await commitFinancial(db, movementId, movement, actor); }
 }
 exports.onShiftPayInsFinancial = onValueWritten({ref: "/shifts/{shiftId}/payIns", region: ORDER_REGION, retry: true}, async (event) => {if (!event.data.after.exists()) return; await postShiftCashEntries(getDatabase(), event.params.shiftId, event.data.after.val() || [], "shift_payin");});
-exports.onShiftPayOutsFinancial = onValueWritten({ref: "/shifts/{shiftId}/payOuts", region: ORDER_REGION, retry: true}, async (event) => { /* Undeposited Collection pool model: the register drawer never funds payments — cash out is drawn from Undeposited Collection via approved vouchers. Historical drawer pay-outs already posted (idempotent) and are unaffected. */ return; });
+exports.onShiftPayOutsFinancial = onValueWritten({ref: "/shifts/{shiftId}/payOuts", region: ORDER_REGION, retry: true}, async (event) => {
+  /* Undeposited Collection pool model: the register drawer never funds payments — cash out is drawn from Undeposited Collection via approved vouchers. Historical drawer pay-outs already posted (idempotent) and are unaffected.
+     The only work left is the supplier-advance shift index (see supplierAdvanceShiftPayOuts). */
+  const has = hasPurchaseAdvancePayOut(event.data.after.exists() ? event.data.after.val() : null);
+  await getDatabase().ref(`/supplierAdvanceShifts/${event.params.shiftId}`).set(has ? true : null);
+});
 exports.onShiftOpenFinancial = onValueWritten({ref: "/shifts/{shiftId}", region: ORDER_REGION, retry: true}, async (event) => { /* Undeposited Collection pool model: the opening float stays in the drawer between shifts — no financial entry, no custody draw. */ return; });
 function durableShiftReference(shift,id) { const existing=financeText(shift&&shift.shiftReference,80); if(existing)return existing; const day=financeDateFromTimestamp(Number(shift&&shift.openAt)||Date.now()).replace(/-/g,""); return `SHIFT-${day}-LEGACY-${financeKey(id,"Shift ID").slice(-8).toUpperCase()}`; }
 async function ensureShiftReferenceRecord(db,id,shift) { const shiftReference=durableShiftReference(shift,id),refKey=financeKey(shiftReference,"Shift reference"),indexRef=db.ref(`/shiftReferenceIndex/${refKey}`),claim=await indexRef.transaction((current)=>{if(current&&current.shiftId!==id)return;return current||{shiftId:id,shiftReference,openedAt:Number(shift.openAt||0),closedAt:Number(shift.closeAt||0)||null};},undefined,false);if(!claim.committed)throw new HttpsError("already-exists",`Shift reference ${shiftReference} is already linked to another shift.`);const custody=(await db.ref(`/cashCustody/${id}`).get()).val()||null,writes={[`shifts/${id}/shiftReference`]:shiftReference,[`shifts/${id}/zReport/shiftReference`]:shiftReference};if(custody)Object.assign(writes,{[`cashCustody/${id}/shiftReference`]:shiftReference,[`cashCustody/${id}/reference`]:shiftReference});await db.ref().update(writes);return shiftReference; }

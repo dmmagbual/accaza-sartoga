@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "builds": {
+    "admin": 560,
+    "books": 128,
+    "customer": 74
+  }
+}

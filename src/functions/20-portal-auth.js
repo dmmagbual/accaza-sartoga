@@ -32,8 +32,25 @@ function portalRoleValue(raw) {
   return String(role || "").toLowerCase();
 }
 
+// Emergency sign-out (17 Sep 2026): /sessionControl/cutoff/at is the moment an owner signed
+// every portal session out. A session that signed in before it is refused by every portal
+// service, so a forgotten tab stops calling the server even before its ID token expires.
+// Cached for a minute per instance so the check adds no read to most calls.
+const SESSION_CUTOFF_CACHE_MS = 60 * 1000;
+let sessionCutoffCache = {at: 0, loadedAt: 0};
+async function portalSessionCutoff(db) {
+  if (Date.now() - sessionCutoffCache.loadedAt < SESSION_CUTOFF_CACHE_MS) return sessionCutoffCache.at;
+  try {
+    const at = Number((await db.ref("/sessionControl/cutoff/at").get()).val()) || 0;
+    sessionCutoffCache = {at, loadedAt: Date.now()};
+  } catch (_error) { /* keep the last known cutoff; never block sign-in on a read failure */ }
+  return sessionCutoffCache.at;
+}
+function sessionSignedInAt(request) { return (Number(request && request.auth && request.auth.token && request.auth.token.auth_time) || 0) * 1000; }
 async function requirePortalUser(db, request) {
   if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "Staff login is required.");
+  const signedInAt = sessionSignedInAt(request), cutoff = signedInAt ? await portalSessionCutoff(db) : 0;
+  if (cutoff && signedInAt < cutoff) throw new HttpsError("unauthenticated", "The owner signed every device out. Sign in again.");
   const snap = await db.ref(`/admins/${request.auth.uid}`).get();
   const raw=snap.val(),role = portalRoleValue(raw);
   if (!["owner", "superadmin", "admin", "manager", "staff", "cashier", "kitchen", "finance"].includes(role)) {
@@ -75,7 +92,23 @@ exports.manageSupplier = onCall(
     if(["merge","delete"].includes(action)&&!["owner","superadmin"].includes(actor.role))throw new HttpsError("permission-denied","Only an owner or superadmin can merge or delete a supplier master record.");
     if(action==="validate"){const supplier=await requireActiveSupplier(db,data.supplierId,data.name);return{supplierId:supplier.id,name:supplier.name,active:true};}
     if(action==="initialize_legacy"){
-      const [suppliersSnap,purchasesSnap,vouchersSnap,payablesSnap,receiptsSnap,batchesSnap]=await Promise.all([db.ref("/suppliers").get(),db.ref("/purchaseInvoices").get(),db.ref("/pettyCashVouchers").get(),db.ref("/payables").get(),db.ref("/stockReceipts").get(),db.ref("/inventoryBatch").get()]),suppliers=suppliersSnap.val()||{},purchases=purchasesSnap.val()||{},vouchers=vouchersSnap.val()||{},payables=payablesSnap.val()||{},receipts=receiptsSnap.val()||{},batches=batchesSnap.val()||{},byKey={},writes={};
+      // Finance Books calls this on every sign-in. The legacy link sweep reads six whole
+      // nodes (including petty vouchers with receipt images), so it runs at most once a day.
+      const sweepRef=db.ref("/supplierMigrations/legacySweepCheckedAt"),lastSweep=Number((await sweepRef.get()).val()||0);
+      if(data.force!==true&&now-lastSweep<86400000)return{initialized:true,skipped:true,linkedWrites:0};
+      await sweepRef.set(now);
+      // Only records that still have no supplier id are read (indexed supplierId equal to null
+      // or ""); the supplier list is read only when one of them needs a link.
+      const unlinkedSnaps=await Promise.all([
+        db.ref("/purchaseInvoices").orderByChild("supplierId").equalTo(null).get(),db.ref("/purchaseInvoices").orderByChild("supplierId").equalTo("").get(),
+        db.ref("/pettyCashVouchers").orderByChild("supplierId").equalTo(null).get(),db.ref("/pettyCashVouchers").orderByChild("supplierId").equalTo("").get(),
+        db.ref("/payables").orderByChild("supplierId").equalTo(null).get(),db.ref("/payables").orderByChild("supplierId").equalTo("").get(),
+        db.ref("/stockReceipts").orderByChild("supplierId").equalTo(null).get(),db.ref("/stockReceipts").orderByChild("supplierId").equalTo("").get(),
+        db.ref("/inventoryBatch").orderByChild("supplierId").equalTo(null).get(),db.ref("/inventoryBatch").orderByChild("supplierId").equalTo("").get(),
+      ]),pair=(i)=>Object.assign({},unlinkedSnaps[i].val()||{},unlinkedSnaps[i+1].val()||{});
+      const purchases=pair(0),vouchers=pair(2),payables=pair(4),receipts=pair(6),batches=pair(8),byKey={},writes={};
+      const needsLink=[purchases,vouchers,payables,receipts,batches].some((rows)=>Object.keys(rows).length);
+      const suppliers=needsLink?((/* download-ok: bounded supplier master list, read only when a legacy record still needs a link */await db.ref("/suppliers").get()).val()||{}):{};
       Object.keys(suppliers).forEach(id=>{const row=suppliers[id]||{},key=supplierNameKey(row.name);if(key)byKey[key]={id,name:financeText(row.name,120)};});
       const ensure=(value)=>{const name=financeText(value,120).trim().replace(/\s+/g," "),key=supplierNameKey(name);if(!key)return null;if(byKey[key])return byKey[key];const hash=crypto.createHash("sha256").update(key).digest("hex").slice(0,32),id=`sup_${hash}`,row={id,name};byKey[key]=row;writes[`suppliers/${id}`]={name,normalizedName:key,active:true,createdAt:now,createdBy:actor.uid,createdByRole:actor.role,updatedAt:now,legacyInitialized:true,schemaVersion:1};writes[`supplierNameIndex/${hash}`]={supplierId:id,normalizedName:key,claimedAt:now};return row;};
       Object.keys(purchases).forEach(id=>{const x=purchases[id]||{},s=ensure(x.supplier);if(s&&!x.supplierId){writes[`purchaseInvoices/${id}/supplierId`]=s.id;writes[`purchaseInvoices/${id}/supplier`]=s.name;}});
@@ -104,9 +137,17 @@ exports.manageSupplier = onCall(
        behaviour, and the write plan that repoints them. See functions/lib/supplier-master.js
        for why posted Finance movements are deliberately excluded. */
     const supplierReferences=async(id)=>{
-      const names=SupplierMaster.REFERENCE_COLLECTIONS.concat(["shifts"]);
-      const snaps=await Promise.all(names.map((name)=>db.ref(`/${name}`).get()));
-      const collections={};names.forEach((name,ix)=>{collections[name]=snaps[ix].val()||{};});
+      // Indexed on supplierId: only the records that point at this supplier are read. Register
+      // advances come from the shifts that hold one (supplierAdvanceShiftPayOuts).
+      const snaps=await Promise.all([
+        db.ref("/purchaseInvoices").orderByChild("supplierId").equalTo(id).get(),db.ref("/payables").orderByChild("supplierId").equalTo(id).get(),
+        db.ref("/pettyCashVouchers").orderByChild("supplierId").equalTo(id).get(),db.ref("/stockReceipts").orderByChild("supplierId").equalTo(id).get(),
+        db.ref("/inventoryBatch").orderByChild("supplierId").equalTo(id).get(),db.ref("/inventorySku").orderByChild("supplierId").equalTo(id).get(),
+      ]);
+      const names=["purchaseInvoices","payables","pettyCashVouchers","stockReceipts","inventoryBatch","inventorySku"];
+      if(names.join()!==SupplierMaster.REFERENCE_COLLECTIONS.join())throw new HttpsError("internal","Supplier reference collections changed; update the indexed lookup.");
+      const collections={shifts:{}};names.forEach((name,ix)=>{collections[name]=snaps[ix].val()||{};});
+      const shiftPayOuts=await supplierAdvanceShiftPayOuts(db);Object.keys(shiftPayOuts).forEach((shiftId)=>{collections.shifts[shiftId]={payOuts:shiftPayOuts[shiftId]};});
       return SupplierMaster.collectReferences(collections,id);
     };
     if(action==="references"){const hits=await supplierReferences(supplierId);return{supplierId,name:financeText(supplier.name,120),references:hits,total:hits.total};}
@@ -189,7 +230,13 @@ exports.manageStaffMessage = onCall(
     }
     if(!["read","acknowledge"].includes(action))throw new HttpsError("invalid-argument","Staff message action is invalid.");
     const message=(await db.ref(`/staffMessages/${messageId}`).get()).val();if(!message)throw new HttpsError("not-found","Staff message not found.");
-    const receiptRef=db.ref(`/staffMessageReceipts/${messageId}/${actor.uid}`);await receiptRef.transaction((current)=>{current=current||{userUid:actor.uid,userName:financeText(actor.name||actor.email||actor.role,120),role:actor.role};if(!current.readAt)current.readAt=now;if(action==="acknowledge"&&!current.acknowledgedAt)current.acknowledgedAt=now;current.updatedAt=now;return current;});
+    const receiptRef=db.ref(`/staffMessageReceipts/${messageId}/${actor.uid}`);const receipt=(await receiptRef.transaction((current)=>{current=current||{userUid:actor.uid,userName:financeText(actor.name||actor.email||actor.role,120),role:actor.role};if(!current.readAt)current.readAt=now;if(action==="acknowledge"&&!current.acknowledgedAt)current.acknowledgedAt=now;current.updatedAt=now;return current;})).snapshot.val()||{};
+    // staffReceiptIndex/<uid>/<messageId> is the reader's own bounded read/acknowledge index.
+    // The inbox reads this one small node per user instead of downloading every staff member's
+    // receipt for every message ever sent, and re-downloading all of it whenever anybody read
+    // anything (2026-09-16 download audit). The per-message receipt above remains the audit
+    // record and the source this index is derived from.
+    await db.ref(`/staffReceiptIndex/${actor.uid}/${messageId}`).set({messageId,readAt:Number(receipt.readAt)||now,acknowledgedAt:Number(receipt.acknowledgedAt)||0,updatedAt:Number(receipt.updatedAt)||now,schemaVersion:1});
     return{messageId,action};
   },
 );
@@ -240,21 +287,66 @@ exports.recordClientTelemetry = onCall(
 );
 
 // Release 7B: bounded, sanitized, management-only operational exception scan.
+const OPERATIONAL_EXCEPTION_LOCK_MS = 60 * 1000;
+const OPERATIONAL_EXCEPTION_CACHE_PATH = "/systemHealth/operationalExceptions/current";
+const OPERATIONAL_EXCEPTION_LOCK_PATH = "/systemHealth/operationalExceptions/lock";
+
+function cachedOperationalResult(row) {return row && row.result && typeof row.result === "object" ? row.result : null;}
+function emptyOperationalResult() {return {generatedAt: 0, scanned: {activeOrders: 0, recentOrders: 0, offlineSyncs: 0, custodyRecords: 0}, counts: {critical: 0, warning: 0, total: 0}, exceptions: [], manualOnly: true};}
+async function pauseOperationalCache(ms) {await new Promise((resolve) => setTimeout(resolve, ms));}
+
+async function getCachedOperationalExceptions(db, now = Date.now(), force = false) {
+  const cacheRef = db.ref(OPERATIONAL_EXCEPTION_CACHE_PATH), lockRef = db.ref(OPERATIONAL_EXCEPTION_LOCK_PATH), requestStartedAt = Date.now();
+  let cached = (await cacheRef.get()).val() || {};
+  if (!force) return cachedOperationalResult(cached) || emptyOperationalResult();
+  const owner = `scan_${requestStartedAt}_${Math.random().toString(36).slice(2)}`;
+  const claim = await lockRef.transaction((current) => {
+    if (current && Number(current.expiresAt) > Date.now()) return;
+    return {owner, acquiredAt: Date.now(), expiresAt: Date.now() + OPERATIONAL_EXCEPTION_LOCK_MS};
+  }, undefined, false);
+  if (!claim.committed || !claim.snapshot.val() || claim.snapshot.val().owner !== owner) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await pauseOperationalCache(100);
+      cached = (await cacheRef.get()).val() || {};
+      if (Number(cached.scannedAt) >= requestStartedAt) return cached.result;
+    }
+    if (cachedOperationalResult(cached)) return cached.result;
+    throw new HttpsError("unavailable", "The shared operational health scan is still running. Try again shortly.");
+  }
+  try {
+    cached = (await cacheRef.get()).val() || {};
+    if (Number(cached.scannedAt) >= requestStartedAt) return cached.result;
+    const result = await scanOperationalExceptions(db, now);
+    await cacheRef.set({scannedAt: Date.now(), result, schemaVersion: 1});
+    return result;
+  } finally {
+    await lockRef.transaction((current) => current && current.owner === owner ? null : current, undefined, false);
+  }
+}
+
 exports.getOperationalExceptions = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => {
     const db = getDatabase(), actor = await requirePortalUser(db, request);
     if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Operational exceptions are restricted to management accounts.");
-    return scanOperationalExceptions(db, Date.now());
+    const data = request.data || {};
+    // Admin tabs opened before build 495 still poll this every minute, all day, and never
+    // reload. Current clients send cached:true; a request with neither flag gets the empty
+    // manual-only answer without downloading the saved scan, so a saved scan cannot turn
+    // those stale tabs into a steady download again.
+    if (data.force !== true && data.cached !== true) return Object.assign(emptyOperationalResult(), {staleClient: true});
+    return getCachedOperationalExceptions(db, Date.now(), data.force === true);
   },
 );
 
 async function scanOperationalExceptions(db, now) {
     const days = [];for (let offset = 0; offset < 7; offset++) days.push(financeDateFromTimestamp(now - offset * 86400000));
-    const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, booksJournalSnap, posSettingsSnap, cfAccountsSnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),db.ref("/books/journal").get(),db.ref("/posSettings").get(),db.ref("/cfAccounts").get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
+    const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, booksMonthlyNetSnap, booksMonthlyNetMetaSnap, posSettingsSnap, cfAccountsSnap, deadLetterSnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),db.ref("/books/monthlyNet").get(),db.ref("/books/monthlyNetMeta").get(),db.ref("/posSettings/payMethods").get(),db.ref("/cfAccounts").get(),db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}`).orderByChild("abandonedAt").startAt(now - OperationalExceptions.DEAD_LETTER_WINDOW_MS).limitToLast(50).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
+    let booksMonthlyNet = booksMonthlyNetSnap.val() || {};
+    if (!booksMonthlyNetMetaSnap.exists()) booksMonthlyNet = await rebuildBooksMonthlyNet(db, (/* download-ok: fallback monthly totals have never been built */await db.ref("/books/journal").get()).val() || {});
     const orders = ordersSnap.val() || {},orderIds=Object.keys(orders).slice(0,100),financialPairs=await Promise.all(orderIds.map(async(id)=>{const snap=await db.ref(`/financialMovements/sale_${id}`).get();return[id,snap.exists()?snap.val():null];}));
     const financialMovements = {},inventoryMovementEvidence={};financialPairs.forEach(([id, value]) => {if (value) financialMovements[`sale_${id}`] = value;});Object.values(inventoryMovementSnap.val()||{}).forEach(m=>{if(m&&m.sourceType==="order"&&m.sourceId)inventoryMovementEvidence[m.sourceId]=true;});const telemetry = {};days.forEach((day, i) => {telemetry[day] = telemetrySnaps[i].val() || {};});
-    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksJournal: booksJournalSnap.val() || {}, payMethods: (posSettingsSnap.val() || {}).payMethods || [], cfAccounts: cfAccountsSnap.val() || {}}, now);
+    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, deadLetters: deadLetterSnap.val() || {}}, now);
 }
 
 // Phase 16: bounded, read-only production certification snapshot. It does not
@@ -263,7 +355,7 @@ exports.getProductionCertification = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
     const db=getDatabase(),actor=await requirePortalUser(db,request);if(!["owner","superadmin","admin","manager"].includes(actor.role))throw new HttpsError("permission-denied","Production certification is restricted to management accounts.");
-    const now=Date.now(),today=financeDateFromTimestamp(now),yesterday=financeDateFromTimestamp(now-86400000),[backup,todayTelemetry,yesterdayTelemetry,incidents,admins,permissions,todayClose,yesterdayClose,operational]=await Promise.all([db.ref("/systemHealth/backups/latest").get(),db.ref(`/clientTelemetryDaily/${today}`).get(),db.ref(`/clientTelemetryDaily/${yesterday}`).get(),db.ref("/incidents").orderByChild("createdAt").limitToLast(100).get(),db.ref("/admins").get(),db.ref("/adminPerms").get(),db.ref(`/financialCloseIndex/${today}`).get(),db.ref(`/financialCloseIndex/${yesterday}`).get(),scanOperationalExceptions(db,now)]),backupValue=backup.val()||{},health=ProductionHealth.evaluate({backup:backupValue,telemetry:[todayTelemetry.val()||{},yesterdayTelemetry.val()||{}],operational},now);
+    const now=Date.now(),today=financeDateFromTimestamp(now),yesterday=financeDateFromTimestamp(now-86400000),[backup,todayTelemetry,yesterdayTelemetry,incidents,admins,permissions,todayClose,yesterdayClose,operational]=await Promise.all([db.ref("/systemHealth/backups/latest").get(),db.ref(`/clientTelemetryDaily/${today}`).get(),db.ref(`/clientTelemetryDaily/${yesterday}`).get(),db.ref("/incidents").orderByChild("createdAt").limitToLast(100).get(),db.ref("/admins").get(),db.ref("/adminPerms").get(),db.ref(`/financialCloseIndex/${today}`).get(),db.ref(`/financialCloseIndex/${yesterday}`).get(),getCachedOperationalExceptions(db,now)]),backupValue=backup.val()||{},health=ProductionHealth.evaluate({backup:backupValue,telemetry:[todayTelemetry.val()||{},yesterdayTelemetry.val()||{}],operational},now);
     return ReleaseCertification.evaluate({backup:backupValue,health,incidents:incidents.val()||{},admins:admins.val()||{},permissions:permissions.val()||{},closeIndexes:[todayClose.val()||{},yesterdayClose.val()||{}],operational},now);
   },
 );
@@ -277,12 +369,12 @@ exports.getProductionValidation = onCall(
     const db=getDatabase(),actor=await requirePortalUser(db,request);if(!["owner","superadmin","admin","manager"].includes(actor.role))throw new HttpsError("permission-denied","Production validation is restricted to management accounts.");
     const now=Date.now(),today=financeDateFromTimestamp(now),yesterday=financeDateFromTimestamp(now-86400000);
     const [menu,categories,publicStatus,calendar,reviews,payment,orders,backup,todayTelemetry,yesterdayTelemetry,incidents,admins,permissions,todayClose,yesterdayClose,movements,audits,approvals,operational]=await Promise.all([
-      db.ref("/menuItems").get(),db.ref("/categories").get(),db.ref("/publicOrderStatus").get(),db.ref("/calBlocks").get(),db.ref("/reviews").get(),db.ref("/payment").get(),
+      /* download-ok: bounded validation of the published menu catalog and live order status, opened on demand from System Health */db.ref("/menuItems").get(),db.ref("/categories").get(),db.ref("/publicOrderStatus").get(),db.ref("/calBlocks").get(),shallowDatabaseKeys(db,"reviews"),db.ref("/payment").get(),
       db.ref("/orders").limitToLast(25).get(),db.ref("/systemHealth/backups/latest").get(),db.ref(`/clientTelemetryDaily/${today}`).get(),db.ref(`/clientTelemetryDaily/${yesterday}`).get(),
-      db.ref("/incidents").orderByChild("createdAt").limitToLast(100).get(),db.ref("/admins").get(),db.ref("/adminPerms").get(),db.ref(`/financialCloseIndex/${today}`).get(),db.ref(`/financialCloseIndex/${yesterday}`).get(),db.ref("/financialMovements").limitToLast(100).get(),db.ref("/operationalAudit").limitToLast(100).get(),db.ref("/financialApprovals").limitToLast(100).get(),scanOperationalExceptions(db,now)
+      db.ref("/incidents").orderByChild("createdAt").limitToLast(100).get(),db.ref("/admins").get(),db.ref("/adminPerms").get(),db.ref(`/financialCloseIndex/${today}`).get(),db.ref(`/financialCloseIndex/${yesterday}`).get(),db.ref("/financialMovements").limitToLast(100).get(),db.ref("/operationalAudit").limitToLast(100).get(),db.ref("/financialApprovals").limitToLast(100).get(),getCachedOperationalExceptions(db,now)
     ]);
     const backupValue=backup.val()||{},health=ProductionHealth.evaluate({backup:backupValue,telemetry:[todayTelemetry.val()||{},yesterdayTelemetry.val()||{}],operational},now),certification=ReleaseCertification.evaluate({backup:backupValue,health,incidents:incidents.val()||{},admins:admins.val()||{},permissions:permissions.val()||{},closeIndexes:[todayClose.val()||{},yesterdayClose.val()||{}],operational},now);
-    const validation=ProductionValidation.evaluate({menuItems:menu.val()||{},categories:categories.val()||{},publicOrderStatus:publicStatus.val()||{},calendarReadable:true,calendarBlockCount:calendar.numChildren(),reviewsReadable:true,reviewCount:reviews.numChildren(),payment:payment.val()||{},orders:orders.val()||{},certification},now);validation.assurance=AssuranceControls.evaluate({movements:movements.val()||{},audits:audits.val()||{},approvals:approvals.val()||{},admins:admins.val()||{},permissions:permissions.val()||{}});return validation;
+    const validation=ProductionValidation.evaluate({menuItems:menu.val()||{},categories:categories.val()||{},publicOrderStatus:publicStatus.val()||{},calendarReadable:true,calendarBlockCount:calendar.numChildren(),reviewsReadable:true,reviewCount:reviews.length,payment:payment.val()||{},orders:orders.val()||{},certification},now);validation.assurance=AssuranceControls.evaluate({movements:movements.val()||{},audits:audits.val()||{},approvals:approvals.val()||{},admins:admins.val()||{},permissions:permissions.val()||{}});return validation;
   },
 );
 
@@ -295,11 +387,11 @@ exports.repairOrderInventoryMarker = onCall(
     const db=getDatabase(),actor=await requirePortalPermission(db,request,["inventory"]),orderId=financeKey((request.data||{}).orderId,"Order ID"),order=(await db.ref(`/orders/${orderId}`).get()).val();
     if(!order||!["Completed","Received"].includes(order.status)||order.voided===true)throw new HttpsError("failed-precondition","Only a completed, non-voided order can restore inventory confirmation.");
     if(order.inventoryDeducted===true&&order.inventoryLedgerVersion===1)return{orderId,duplicate:true,items:Object.keys(order.inventoryUsage||{}).length};
-    const [planSnap,movementSnap,invSnap,settingsSnap]=await Promise.all([db.ref(`/orderInventoryPlans/${orderId}`).get(),db.ref("/inventoryMovements").orderByKey().startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\uf8ff`).get(),db.ref("/inventory").get(),db.ref("/posSettings").get()]),movements=movementSnap.val()||{},actualIds=Object.keys(movements).sort(),repairedAt=Date.now();
+    const [planSnap,movementSnap,invSnap,settingsSnap]=/* download-ok: manual inventory marker repair for one order */await Promise.all([db.ref(`/orderInventoryPlans/${orderId}`).get(),db.ref("/inventoryMovements").orderByKey().startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\uf8ff`).get(),db.ref("/inventory").get(),db.ref("/posSettings").get()]),movements=movementSnap.val()||{},actualIds=Object.keys(movements).sort(),repairedAt=Date.now();
     if(!actualIds.length)throw new HttpsError("failed-precondition","No order-linked inventory movements exist. No stock was changed.");
     actualIds.forEach(movementId=>{const movement=movements[movementId]||{},itemId=String(movement.itemId||"");if(!itemId||movementId!==`sale_${orderId}_${itemId}`||movement.sourceType!=="order"||movement.sourceId!==orderId||movement.type!=="sale_usage"||!(Number(movement.qty)<0))throw new HttpsError("failed-precondition",`Inventory evidence is invalid for ${itemId||movementId}. No stock was changed.`);});
     let plan=planSnap.val(),legacy=!plan;if(legacy){const usage={},lines=actualIds.map(id=>{const m=movements[id],quantity=qty6(-Number(m.qty)),cost=Math.abs(Number(m.totalCost)||quantity*Number(m.unitCost||0));usage[m.itemId]=quantity;return{itemKey:"legacy-order",itemName:String(m.itemName||m.itemId),size:"",orderQty:1,source:"historical-movement-evidence",ingredientId:m.itemId,ingredientName:String(m.itemName||m.itemId),quantityPerServing:quantity,totalQuantity:quantity,stockUnit:String(m.unit||"unit"),unitCost:qty6(m.unitCost),totalCost:qty6(cost),costSource:"recorded-inventory-movement",costEffectiveAt:Number(m.createdAt||m.occurredAt||0)};}),totalCost=Financial.money(lines.reduce((sum,line)=>sum+Number(line.totalCost||0),0));plan=buildOrderInventoryPlan({engineVersion:"movement-evidence-v1",usage,lines,totalCost,cogsCovered:lines.every(line=>line.unitCost>0),warnings:[{code:"LEGACY_PLAN_SEALED",message:"Original recipe snapshot was unavailable; immutable posted movements were retained without using the current recipe."}]},invSnap.val()||{},settingsSnap.val()||{},repairedAt);await db.ref(`/orderInventoryPlans/${orderId}`).transaction(current=>current||plan,undefined,false);}
-    const usage=plan.usage||{},expectedIds=Object.keys(usage).sort();if(!expectedIds.length)throw new HttpsError("failed-precondition","The immutable inventory plan is empty.");
+    const usage=positiveOrderInventoryUsage(plan.usage),expectedIds=Object.keys(usage).sort();if(!expectedIds.length)throw new HttpsError("failed-precondition","The immutable inventory plan is empty.");
     actualIds.forEach(movementId=>{const movement=movements[movementId],itemId=movement.itemId,expected=-qty6(usage[itemId]);if(!expectedIds.includes(itemId)||Math.abs(Number(movement.qty)-expected)>.000001)throw new HttpsError("failed-precondition",`Inventory evidence conflicts with the immutable sale-time plan for ${itemId}. No stock was changed.`);});
     const missingIds=legacy?[]:expectedIds.filter(itemId=>!movements[`sale_${orderId}_${itemId}`]);for(const itemId of missingIds)await applyInventoryMovement(db,{movementId:`sale_${orderId}_${itemId}`,itemId,type:"sale_usage",qty:-qty6(usage[itemId]),sourceType:"order",sourceId:orderId,sourceLine:itemId,note:`Complete interrupted ingredient usage for order ${orderId}`,occurredAt:Number(order.completedAt||order.receivedAt||order.timestamp||Date.now()),actorName:actor.role},{uid:actor.uid,role:actor.role});
     const verifiedSnap=await db.ref("/inventoryMovements").orderByKey().startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\uf8ff`).get(),verifiedMovements=verifiedSnap.val()||{},verifiedIds=Object.keys(verifiedMovements).sort();if(verifiedIds.length!==expectedIds.length)throw new HttpsError("internal","Inventory completion did not produce the immutable movement set.");const movementTimes=verifiedIds.map(id=>Number(verifiedMovements[id].createdAt||verifiedMovements[id].occurredAt||0)).filter(Boolean),metadata={inventoryDeducted:true,inventoryUsage:usage,inventoryDeductedAt:movementTimes.length?Math.max(...movementTimes):repairedAt,cogsSnapshot:plan.totalCost,cogsCategorySnapshot:plan.categorySnapshot||{},cogsCategorySnapshotVersion:1,cogsAccountSnapshot:plan.accountSnapshot||{},cogsAccountSnapshotVersion:1,cogsCovered:plan.cogsCovered,cogsDetail:{engineVersion:plan.engineVersion,computedAt:plan.capturedAt,totalCost:plan.totalCost,lines:plan.lines||[],warnings:plan.warnings||[]},costingEngineVersion:plan.engineVersion,deductedBy:legacy?"server-legacy-movement-seal":missingIds.length?"server-partial-finalization-repair":"server-marker-repair",inventoryLedgerVersion:1,inventoryMarkerRepairedAt:repairedAt};const target=await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db,orderId,metadata);await db.ref(`operationalAudit/${repairedAt}_inventory_marker_${orderId}`).set(operationalAuditRecord("repair_order_inventory_marker","order",orderId,actor,{items:expectedIds.length,cogs:plan.totalCost,movementIds:verifiedIds,completedMovementIds:missingIds.map(itemId=>`sale_${orderId}_${itemId}`),legacyMovementEvidenceSealed:legacy,targetNode:target.node,accounting:legacy?"Sealed the order's existing immutable stock movements and COGS evidence; the current editable recipe was not used and no stock changed.":missingIds.length?"Completed only movements missing from the immutable sale-time plan; COGS posts once through the order source link.":"Restored confirmation metadata from the immutable sale-time plan; no stock changed."}));return{orderId,duplicate:false,items:expectedIds.length,completed:missingIds.length,legacyEvidenceSealed:legacy,cogs:plan.totalCost,targetNode:target.node};
@@ -364,16 +456,16 @@ const MANAGER_APPROVAL_ACTIONS = new Set([
   "reject_petty_voucher", "void_petty_voucher", "return_supplier_payment", "manual_discount", "cash_in", "purchase_cash_advance", "fixed_float_exception", "reverse_purchase",
   "rekey_platform_order", "reverse_platform_payout", "correct_platform_presettlement", "set_undeposited_opening_balance", "retire_revolving_fund",
   "repair_closed_shift_turnover", "repair_reversed_payout_deposit", "reconcile_undeposited_custody", "certify_financial_close",
-  "convert_suspense_supplier_advance",
+  "convert_suspense_supplier_advance", "adopt_journal_staff_advance", "correct_completed_order", "completed_order_cash_refund", "liquidate_staff_advance", "reverse_staff_advance_settlement",
 ]);
 function transactionCurrent(current, initial, state) {
   const value = current == null && !state.seen ? initial : current;
   state.seen = true;
   return value;
 }
-async function claimManagerApproval(db, data, action, sourceId, amount, operationKey) {
+async function claimManagerApproval(db, data, action, sourceId, amount, operationKey, disallowApprovedByUid) {
   const approvalId = financeKey(data && data.approvalId, "Privileged approval"); const ref = db.ref(`/financialApprovals/${approvalId}`), now = Date.now();
-  const matches = (row) => !!row && row.action === action && row.sourceId === String(sourceId) && Number(row.expiresAt || 0) >= now && !row.usedAt && !(amount != null && Math.abs(Financial.money(row.amount) - Financial.money(amount)) > 0.009) && !(row.claimKey && row.claimKey !== operationKey);
+  const matches = (row) => !!row && row.action === action && row.sourceId === String(sourceId) && Number(row.expiresAt || 0) >= now && !row.usedAt && !(disallowApprovedByUid && row.approvedBy === disallowApprovedByUid) && !(amount != null && Math.abs(Financial.money(row.amount) - Financial.money(amount)) > 0.009) && !(row.claimKey && row.claimKey !== operationKey);
   const initial = (await ref.get()).val();
   if (!matches(initial)) throw new HttpsError("failed-precondition", "Privileged approval is missing, expired, already used, or does not match this action.");
   const transactionState = {seen: false};
@@ -388,6 +480,7 @@ exports.createManagerApproval = onCall(
     const db = getDatabase(); const requester = await requirePortalUser(db, request); const data = request.data || {}, action = financeText(data.action, 40); if (!MANAGER_APPROVAL_ACTIONS.has(action)) throw new HttpsError("invalid-argument", "Approval action is invalid.");
     let decoded; try {decoded = await getAdminAuth().verifyIdToken(String(data.managerIdToken || ""), true);} catch (_error) {throw new HttpsError("permission-denied", "Privileged sign-in could not be verified.");}
     const managerSnap = await db.ref(`/admins/${decoded.uid}`).get(), managerRole = portalRoleValue(managerSnap.val()); if (!["owner", "superadmin", "admin", "manager"].includes(managerRole)) throw new HttpsError("permission-denied", "That Firebase account is not an Owner, Superadmin, Admin, or Manager account.");
+    if (["correct_completed_order", "completed_order_cash_refund"].includes(action) && decoded.uid === requester.uid) throw new HttpsError("permission-denied", "Completed-order changes require approval from a different authorized manager account.");
     const sourceId = financeText(data.sourceId, 160); if (!sourceId) throw new HttpsError("invalid-argument", "Approval source is required."); const amount = data.amount == null ? null : Financial.money(data.amount), now = Date.now(), id = `approval_${crypto.randomBytes(12).toString("hex")}`;
     await db.ref(`/financialApprovals/${id}`).set({action, sourceId, amount, reason: financeText(data.reason, 300), requestedBy: requester.uid, approvedBy: decoded.uid, approvedEmail: financeText(decoded.email, 160), approvedName: financeText(decoded.name, 160), approvedRole: managerRole, approvedAt: now, expiresAt: now + 5 * 60 * 1000, schemaVersion: 1});
     return {approvalId: id, approvedBy: decoded.email || managerRole, expiresAt: now + 5 * 60 * 1000};
