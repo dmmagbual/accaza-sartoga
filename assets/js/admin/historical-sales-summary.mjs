@@ -8,12 +8,13 @@ function mergeDay(target,key,row){var day=addDay(target,key,row);target.orders+=
 // has no raw-order fallback: a missing summary must be prepared by controlled
 // maintenance, never by downloading an entire month into an Admin browser.
 export function summarizeHistoricalSales(months, period){
-  var start=dateKey(period.startAt),end=dateKey(period.endAt),result=zero();
+  var start=dateKey(period.startAt!=null?period.startAt:period.start),end=dateKey(period.endAt!=null?period.endAt:period.end),result=zero();
   Object.values(months||{}).forEach(function(month){if(Number(month&&month.schemaVersion)<2)return;Object.keys(month.days||{}).sort().forEach(function(key){if(key>=start&&key<=end)mergeDay(result,key,month.days[key]||{});});});
   return result;
 }
 
 export function addLiveSales(summary,orders,period,sales){
+  period={startAt:period.startAt!=null?period.startAt:period.start,endAt:period.endAt!=null?period.endAt:period.end};
   var result=summary||zero();(orders||[]).forEach(function(order){if(!sales.qualifies(order))return;var stamp=sales.stamp(order);if(stamp<period.startAt||stamp>period.endAt)return;var amount=sales.amounts(order),key=dateKey(stamp),day=result.days[key]||(result.days[key]={orders:0,gross:0,discount:0,refund:0,net:0,cogs:0,channels:{},payments:{},items:{}}),reported=String(order.channel||"").toLowerCase(),channel=reported==='grabfood'||reported==='foodpanda'||reported==='instore'||reported==='online'?reported:(order.source&&order.source!=='pos'?'online':'instore'),payment=sales.paymentKey({method:order.payment||"Unspecified"}),lines=Array.isArray(order.correctedLineItems||order.lineItems)?(order.correctedLineItems||order.lineItems):[];
     [result,day].forEach(function(target){target.orders++;target.gross+=amount.gross;target.discount+=amount.discount;target.refund+=amount.refund;target.net+=amount.net;var c=target.channels[channel]||(target.channels[channel]={orders:0,net:0});c.orders++;c.net+=amount.net;var p=target.payments[payment]||(target.payments[payment]={orders:0,net:0});p.orders++;p.net+=amount.net;});
     var factor=amount.gross>0?Math.max(0,amount.net/amount.gross):0;lines.forEach(function(line,index){var itemKey=String(line&&(line.itemKey||line.key||line.name)||('line_'+index)),name=String(line&&(line.name||line.itemName||line.itemKey)||itemKey),units=Math.max(0,Number(line&&line.qty)||0),net=units*(Number(line&&line.unitTotal)||0)*factor;[result,day].forEach(function(target){var item=target.items[itemKey]||(target.items[itemKey]={name:name,units:0,net:0});item.name=name;item.units+=units;item.net+=net;});});

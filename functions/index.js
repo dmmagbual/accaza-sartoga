@@ -5726,6 +5726,19 @@ async function reserveHistoricalReadBudget(db, uid, reads, options = {}) {
   if (!result.committed) throw new HttpsError("resource-exhausted", options.summary ? "Historical summary reads are temporarily paused to protect the read allowance. Close duplicate report tabs and try again later." : "Detailed Sales History is temporarily paused to protect reporting downloads. Wait one minute before loading another page, or use the compact Dashboard and Analytics summaries.");
 }
 
+async function reserveHistoricalRollupReadBudget(db, documents) {
+  // One page read, one contribution and at most two months per order.
+  // The repair transaction has one attempt; failures keep this reservation.
+  const day = new Intl.DateTimeFormat("en-CA", {timeZone:"America/Los_Angeles",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+  const reads = Math.max(1, Number(documents) || 1) * 4;
+  const result = await db.ref("/systemMaintenance/historicalRollupReadBudget").transaction((state) => {
+    const used = state && state.day === day ? Number(state.reads) || 0 : 0;
+    if (used + reads > 1000) return;
+    return {day, reads:used + reads, updatedAt:Date.now()};
+  });
+  if (!result.committed) throw new HttpsError("resource-exhausted", "Summary repair paused at its daily read budget. Resume after the Firestore daily allowance resets.");
+}
+
 async function reserveHistoricalMaintenanceBudget(db, documents) {
   const day = new Intl.DateTimeFormat("en-CA", {timeZone:"Asia/Manila",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
   const ref = db.ref(`/systemMaintenance/historicalArchiveDaily/${day}`), requested = Math.max(1, Math.floor(Number(documents) || 1));
@@ -5915,7 +5928,7 @@ async function reconcileHistoricalSalesRollup(firestore, orderId, order, transac
 }
 
 async function reconcileHistoricalSalesOrder(firestore, orderId, order) {
-  return firestore.runTransaction(async (transaction) => reconcileHistoricalSalesRollup(firestore, orderId, order, transaction));
+  return firestore.runTransaction(async (transaction) => reconcileHistoricalSalesRollup(firestore, orderId, order, transaction), {maxAttempts:1});
 }
 
 async function replicateHistoricalOrder(db, firestore, orderId, order, now = Date.now()) {
@@ -6136,6 +6149,7 @@ exports.manageHistoricalOrderArchive = onCall(
     // Replaying historicalArchiveInputs here would re-read RTDB financial and
     // inventory evidence for every historical order, defeating this cost fix.
     if (["sales-at-audit", "sales-at-backfill", "sales-at-verify", "sales-ledger-backfill", "sales-rollup-backfill"].includes(action)) {
+      if (action === "sales-rollup-backfill") await reserveHistoricalRollupReadBudget(db, limit);
       let runId = financeText(data.runId, 100), stateRef = null;
       if (["sales-at-backfill", "sales-ledger-backfill", "sales-rollup-backfill"].includes(action)) {
         const stateName = action === "sales-at-backfill" ? "salesAtBackfill" : action === "sales-ledger-backfill" ? "salesLedgerBackfill" : "salesRollupBackfill";
