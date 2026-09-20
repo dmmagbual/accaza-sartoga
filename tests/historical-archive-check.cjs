@@ -95,13 +95,17 @@ for (const marker of [
   "exports.manageHistoricalOrderArchive", "exports.readHistoricalOrders", "exports.readHistoricalSalesRollup", "historicalOrdersFromDocuments", "HistoricalArchive.unchanged", "deletionEnabled: false",
   '"sales-at-backfill"', '"sales-at-audit"', '"sales-ledger-backfill"', '"sales-rollup-backfill"', "Firestore replica maintenance only", "orderByKey()", "HISTORICAL_ARCHIVE_BATCH_LIMIT = 100",
   'startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\\uf8ff`)', "never recalculate history from current recipes", 'db.ref(`/archivedOrders/${orderId}`).get()',
-  'db.ref("/historicalArchiveSync").transaction', "reconcileHistoricalSalesRollup", "salesRollupReady", "HISTORICAL_MAINTENANCE_DAILY_DOCUMENT_LIMIT = 4000",
+  'db.ref("/historicalArchiveSync").transaction', "reconcileHistoricalSalesRollup", "salesRollupReady", "salesAtReady", "HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 2", "HISTORICAL_MAINTENANCE_DAILY_DOCUMENT_LIMIT = 4000",
 ]) assert(source.includes(marker), `historical archive safeguard missing: ${marker}`);
 assert(!/Costing\.|ref\([`'"]\/(?:recipes|menuItems|optionRecipes)/.test(source), "historical archive must not use mutable current costing inputs");
 const salesAtMaintenance = source.slice(source.indexOf('if (["sales-at-audit"'), source.indexOf('if (action === "sales-ledger-backfill")'));
 assert(!salesAtMaintenance.includes('historicalArchiveInputs'), "salesAt maintenance must not replay RTDB archive evidence");
 assert(source.includes('batch.update(document.ref, {salesAt: stamp})'), "salesAt maintenance must update only the reporting key");
 assert(!/\.remove\(|\[[`'"]archivedOrders\//.test(source), "historical archive phase 1 must not delete RTDB data");
+
+const maintenanceUi = fs.readFileSync("assets/js/admin/operations-dashboard.js", "utf8");
+assert(maintenanceUi.includes("salesAtStageState") && maintenanceUi.includes("Number(state.schemaVersion)>=2"), "the owner repair must replay pre-reader-ready completed date-index states once");
+assert(maintenanceUi.includes("Detailed-report reader ready"), "the owner must be able to distinguish rollup-ready from detailed-reader-ready reporting");
 
 const rules = fs.readFileSync("firestore.rules", "utf8");
 assert(rules.includes("allow read, write: if false"), "Firestore historical replica must be server-only");
