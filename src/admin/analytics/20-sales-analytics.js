@@ -4,6 +4,10 @@ function renderAnalytics(){
   var root=document.getElementById('analyticsRoot'); if(!root)return;
   if(window.AccazaAdminPeriods)window.AccazaAdminPeriods.bind({scope:'sales',fromId:'analyticsPeriodFrom',toId:'analyticsPeriodTo',monthId:'analyticsPeriodMonth',applyId:'analyticsPeriodApply',labelId:'analyticsPeriodLabel'});
   sharedPeriod();
+  var compactBounds=rangeBounds(),compactFrom=compactBounds[0],compactTo=compactBounds[1];loadCompactAnalytics(compactFrom,compactTo);
+  if(compactAnalytics.loading){root.innerHTML='<div class="az-note">Loading compact historical sales summary…</div>';return;}
+  if(compactAnalytics.current){renderCompactAnalytics(compactAnalytics.current,compactAnalytics.previous||{orders:0,net:0,cogs:0,days:{},payments:{},channels:{},items:{}});return;}
+  if(compactAnalytics.error){root.innerHTML='<div class="az-note">Analytics summary unavailable: '+esc(compactAnalytics.error)+'</div>';return;}
   try{ ensureAnalyticsHistory();if(analyticsHistoryLoading){root.innerHTML='<div class="az-note">Loading the selected sales period and comparison period… If loading fails, press Apply to retry.</div>';return;}renderAnalyticsBody(); }
   catch(err){ console.error('renderAnalytics error',err);
     root.innerHTML='<div class="pz-h">📊 Analytics</div><div style="background:#fde8e8;border:1px solid #f5b5b5;border-radius:8px;padding:1rem;color:#a11;font-size:0.85rem;">Analytics couldn’t finish building the shared-period report: <b>'+esc(String((err&&err.message)||err))+'</b>.</div>'; }

@@ -6,6 +6,7 @@ var inventoryBooksLoaded=false,inventoryBooksJournalLoaded=false,inventoryBooksM
 var financialCloseState={},financialCloseLoading={};
 var svFrom=null,svTo=null,svExpand=null;
 var azRange='month', azFrom=null, azTo=null, pnlMonth=null, analyticsHistoryLoading=false;
+var compactAnalytics={key:'',loading:false,error:'',current:null,previous:null,request:0};
 var poChannel='grabfood', poFrom=null, poTo=null, poAuditSearch='';
 var PO_CHANNELS=[{k:'grabfood',lbl:'GrabFood'},{k:'foodpanda',lbl:'FoodPanda'}];
 var DEFAULT_VAR_ACCOUNTS=[

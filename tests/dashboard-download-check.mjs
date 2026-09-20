@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import {createRequire} from 'node:module';
 import {createSubscriptionHub} from '../assets/js/admin/realtime-hub.mjs';
 import {createHistoricalPeriodStore} from '../assets/js/admin/historical-period-store.mjs';
+import {summarizeHistoricalSales} from '../assets/js/admin/historical-sales-summary.mjs';
 const tick = () => new Promise(resolve => setTimeout(resolve,0));
 let marker, stopped=0, calls=[], source={a:{id:'a',completedAt:15,total:100},b:{id:'b',completedAt:25,total:200}};
 const store=createHistoricalPeriodStore({watch(cb){marker=cb;queueMicrotask(()=>cb({sequence:1,changes:{1:{sequence:1,orderId:'a'}}}));return()=>stopped++;},async read(payload){calls.push(payload);return{orders:Object.fromEntries(Object.entries(source).filter(([id,row])=>payload.mode==='ids'?payload.ids.includes(id):row.completedAt>=payload.startAt&&row.completedAt<=payload.endAt)),hasMore:false};}});
@@ -27,6 +28,12 @@ assert.equal(month.b.total,90,'legacy markers safely reconcile during backend ro
 let newPeriod;store.watch({startAt:16,endAt:18},rows=>newPeriod=rows,error=>{throw error;});await tick();assert(newPeriod.b,'new periods also load with a legacy marker');
 store.clear();assert.equal(stopped,1);
 
+// A summary range reads only its compact day records, and detailed history does
+// not silently page beyond the first 100 records.
+const compact=summarizeHistoricalSales({'2026-09':{schemaVersion:2,days:{'2026-09-01':{orders:2,grossCents:2000,discountCents:100,refundCents:0,netCents:1900,cogsCents:700,channels:{instore:{orders:2,netCents:1900}},payments:{cash:{netCents:1900}},items:{latte:{name:'Latte',units:2,netCents:1900}}},'2026-09-02':{orders:1,grossCents:1000,discountCents:0,refundCents:0,netCents:1000,cogsCents:300,channels:{online:{orders:1,netCents:1000}},payments:{gcash:{netCents:1000}},items:{tea:{name:'Tea',units:1,netCents:1000}}}}}},{startAt:Date.parse('2026-09-01T00:00:00+08:00'),endAt:Date.parse('2026-09-01T23:59:59.999+08:00')});
+assert.equal(compact.orders,2);assert.equal(compact.net,19);assert.equal(compact.payments.cash.net,19);assert.equal(compact.items.latte.units,2);assert.equal(compact.items.tea,undefined,'partial date ranges must not include the rest of the month');
+let pageCalls=0;const paged=createHistoricalPeriodStore({watch(cb){queueMicrotask(()=>cb({sequence:1}));return()=>{};},async read(payload){pageCalls++;return{orders:{['p'+pageCalls]:{id:'p'+pageCalls,completedAt:15}},cursor:{value:pageCalls,id:'p'+pageCalls},hasMore:pageCalls<2};}});let pageMeta; paged.watch({startAt:10,endAt:20},(_rows,meta)=>pageMeta=meta,()=>{});await tick();assert.equal(pageCalls,1);assert.equal(pageMeta.hasMore,true,'opening a period must fetch one bounded page only');await paged.loadOlder({startAt:10,endAt:20});assert.equal(pageCalls,2);assert.equal(pageMeta.hasMore,false);
+
 // A response completing after sign-out cannot deliver records into another session.
 let resolveRead, deliveries=0;
 const delayed=createHistoricalPeriodStore({watch(cb){queueMicrotask(()=>cb({sequence:1}));return()=>{};},read(){return new Promise(resolve=>resolveRead=resolve);}});
@@ -44,6 +51,7 @@ const core=fs.readFileSync('assets/js/admin/core.mjs','utf8');
 assert(!core.includes('ensureOverviewFullHistory'),'redrawing must not start a second selected-period loader');
 assert(!core.includes("subscriptionHub.subscribe('financialMovements'"),'dashboard must not read unused financial movements');
 assert(core.includes("activeScope!=='dashboard'"),'hidden dashboard callbacks must not reopen report listeners');
+const hubSource=fs.readFileSync('assets/js/admin/realtime-hub.mjs','utf8');assert(hubSource.includes("archivedOrders:['archive','appcustomers','saleshistory'"),'Dashboard and Analytics must not subscribe to raw archived orders');
 
 // Execute the exact-ID callable: permission check first, bounded validation,
 // verified replica reads, and source fallback for absent/unverified replicas.

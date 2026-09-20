@@ -1,0 +1,21 @@
+function dateKey(timestamp){return new Date(Number(timestamp)+8*3600000).toISOString().slice(0,10);}
+function zero(){return{orders:0,gross:0,discount:0,refund:0,net:0,cogs:0,channels:{},payments:{},items:{},days:{}};}
+function addMap(target,source,items){Object.keys(source||{}).forEach(function(key){var row=source[key]||{},out=target[key]||(items?{name:String(row.name||key),units:0,net:0}:{orders:0,net:0});if(items){out.name=String(row.name||out.name||key);out.units+=Number(row.units)||0;out.net+=(Number(row.netCents)||0)/100;}else{out.orders+=Number(row.orders)||0;out.net+=(Number(row.netCents)||0)/100;}target[key]=out;});}
+function addDay(target,key,row){var day=target.days[key]||(target.days[key]={orders:0,gross:0,discount:0,refund:0,net:0,cogs:0,channels:{},payments:{},items:{}});day.orders+=Number(row.orders)||0;day.gross+=(Number(row.grossCents)||0)/100;day.discount+=(Number(row.discountCents)||0)/100;day.refund+=(Number(row.refundCents)||0)/100;day.net+=(Number(row.netCents)||0)/100;day.cogs+=(Number(row.cogsCents)||0)/100;addMap(day.channels,row.channels,false);addMap(day.payments,row.payments,false);addMap(day.items,row.items,true);return day;}
+function mergeDay(target,key,row){var day=addDay(target,key,row);target.orders+=Number(row.orders)||0;target.gross+=(Number(row.grossCents)||0)/100;target.discount+=(Number(row.discountCents)||0)/100;target.refund+=(Number(row.refundCents)||0)/100;target.net+=(Number(row.netCents)||0)/100;target.cogs+=(Number(row.cogsCents)||0)/100;addMap(target.channels,row.channels,false);addMap(target.payments,row.payments,false);addMap(target.items,row.items,true);return day;}
+
+// Only compact, precomputed day records are accepted here. This intentionally
+// has no raw-order fallback: a missing summary must be prepared by controlled
+// maintenance, never by downloading an entire month into an Admin browser.
+export function summarizeHistoricalSales(months, period){
+  var start=dateKey(period.startAt),end=dateKey(period.endAt),result=zero();
+  Object.values(months||{}).forEach(function(month){if(Number(month&&month.schemaVersion)<2)return;Object.keys(month.days||{}).sort().forEach(function(key){if(key>=start&&key<=end)mergeDay(result,key,month.days[key]||{});});});
+  return result;
+}
+
+export function addLiveSales(summary,orders,period,sales){
+  var result=summary||zero();(orders||[]).forEach(function(order){if(!sales.qualifies(order))return;var stamp=sales.stamp(order);if(stamp<period.startAt||stamp>period.endAt)return;var amount=sales.amounts(order),key=dateKey(stamp),day=result.days[key]||(result.days[key]={orders:0,gross:0,discount:0,refund:0,net:0,cogs:0,channels:{},payments:{},items:{}}),reported=String(order.channel||"").toLowerCase(),channel=reported==='grabfood'||reported==='foodpanda'||reported==='instore'||reported==='online'?reported:(order.source&&order.source!=='pos'?'online':'instore'),payment=sales.paymentKey({method:order.payment||"Unspecified"}),lines=Array.isArray(order.correctedLineItems||order.lineItems)?(order.correctedLineItems||order.lineItems):[];
+    [result,day].forEach(function(target){target.orders++;target.gross+=amount.gross;target.discount+=amount.discount;target.refund+=amount.refund;target.net+=amount.net;var c=target.channels[channel]||(target.channels[channel]={orders:0,net:0});c.orders++;c.net+=amount.net;var p=target.payments[payment]||(target.payments[payment]={orders:0,net:0});p.orders++;p.net+=amount.net;});
+    var factor=amount.gross>0?Math.max(0,amount.net/amount.gross):0;lines.forEach(function(line,index){var itemKey=String(line&&(line.itemKey||line.key||line.name)||('line_'+index)),name=String(line&&(line.name||line.itemName||line.itemKey)||itemKey),units=Math.max(0,Number(line&&line.qty)||0),net=units*(Number(line&&line.unitTotal)||0)*factor;[result,day].forEach(function(target){var item=target.items[itemKey]||(target.items[itemKey]={name:name,units:0,net:0});item.name=name;item.units+=units;item.net+=net;});});
+  });return result;
+}
