@@ -77,9 +77,9 @@ const failing=listeners.find(l=>!l.stopped&&l.target.path==='orders');const log=
 assert.equal(hub.historyStatus('orders').ready,false);await assert.rejects(hub.whenReady(['orders']),/TEST_PERMISSION_DENIED/);
 periods.setMonth('sales','2026-09');await hub.whenReady(['orders','archivedOrders','financialMovements']);assert.equal(hub.historyStatus('orders').ready,true);
 
-hub.activate('analytics');await hub.whenReady(['orders','archivedOrders']);assert(feeds.orders.prior,'Analytics previous-period comparisons must be loaded');
-hub.activate('dashboard');await hub.whenReady(['orders','archivedOrders']);assert(!feeds.orders.prior);
-periods.setMonth('sales','2026-08');assert.equal(hub.historyStatus('orders').loading,true);await hub.whenReady(['orders','archivedOrders']);assert(feeds.orders.prior);assert(!feeds.orders.cross);
+hub.activate('analytics');await hub.whenReady(['orders']);assert(feeds.orders.prior,'Analytics keeps only the bounded live-order comparison feed; archived comparisons use compact summaries.');
+hub.activate('dashboard');await hub.whenReady(['orders']);assert(!feeds.orders.prior);
+periods.setMonth('sales','2026-08');assert.equal(hub.historyStatus('orders').loading,true);await hub.whenReady(['orders']);assert(feeds.orders.prior);assert(!feeds.orders.cross);
 hub.activate('purchases');const activeBefore=listeners.filter(l=>!l.stopped).length;periods.setMonth('sales','2026-09');assert.equal(listeners.filter(l=>!l.stopped).length,activeBefore,'Sales dates must not rebind operational tabs');hub.deauthorize();
 
 let key='august';const pending={},deliveries=[];const loader=createOverviewHistoryLoader({key:()=>key,read:k=>new Promise(resolve=>{pending[k]=resolve;}),onData:value=>deliveries.push(value)});

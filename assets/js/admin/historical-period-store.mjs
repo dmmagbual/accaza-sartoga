@@ -1,4 +1,4 @@
-import {salesStamp, periodKey} from './sales-period-data.mjs?v=561';
+import {salesStamp, periodKey} from './sales-period-data.mjs?v=562';
 
 // Session-only archive cache. A bounded server change journal lets every open
 // report share exact-record refreshes. Missing journal history forces reconciliation.
@@ -6,24 +6,28 @@ export function createHistoricalPeriodStore(ops) {
   const ranges = new Map();
   let stopMarker = null, sequence = null, generation = 0, chain = Promise.resolve(), seenMarker = false;
   function inside(row, period) { const stamp = salesStamp(row); return stamp >= period.startAt && stamp <= period.endAt; }
-  function emit(entry) { for (const listener of entry.listeners) listener.data({...entry.rows}); }
+  function emit(entry) { for (const listener of entry.listeners) listener.data({...entry.rows},{hasMore:entry.hasMore===true}); }
   function fail(error) { for (const entry of ranges.values()) for (const listener of entry.listeners) listener.error(error); }
   async function load(entry, refresh = false) {
     if (entry.pending) return entry.pending;
     const epoch = generation;
     entry.pending = (async () => {
-      let cursor = null, rows = {}, pages = 0, more = true;
-      const covering = [...ranges.values()].find(other => other !== entry && other.period.startAt <= entry.period.startAt && other.period.endAt >= entry.period.endAt && (other.period.startAt < entry.period.startAt || other.period.endAt > entry.period.endAt));
+      let cursor = refresh ? null : entry.cursor || null, rows = refresh ? {} : Object.assign({},entry.rows||{});
+      const covering = [...ranges.values()].find(other => other !== entry && other.hasMore !== true && other.period.startAt <= entry.period.startAt && other.period.endAt >= entry.period.endAt && (other.period.startAt < entry.period.startAt || other.period.endAt > entry.period.endAt));
       if (covering) {
         const coveredRows = !refresh && covering.rows ? covering.rows : await load(covering,refresh);
-        rows = Object.fromEntries(Object.entries(coveredRows).filter(([,row]) => inside(row,entry.period)));
-        more = false;
-      }
-      while (more) {
+        // A partially paged covering range cannot stand in for this range:
+        // obtain this range's own first page instead of mislabelling it complete.
+        if (covering.hasMore === true) {
+          const result = await ops.read({mode:'period', purpose:'admin_period_report', ...entry.period, cursor, limit:100});
+          Object.assign(rows, result.orders || {}); entry.cursor = result.cursor || cursor; entry.hasMore = result.hasMore === true;
+        } else {
+          rows = Object.fromEntries(Object.entries(coveredRows).filter(([,row]) => inside(row,entry.period)));
+          entry.hasMore = false; entry.cursor = null;
+        }
+      } else {
         const result = await ops.read({mode:'period', purpose:'admin_period_report', ...entry.period, cursor, limit:100});
-        Object.assign(rows, result.orders || {}); cursor = result.cursor; more = result.hasMore === true;
-        pages++;
-        if (pages >= 50 && more) throw new Error('Historical period exceeded the safe 5,000-order limit. Narrow the selected dates.');
+        Object.assign(rows, result.orders || {}); entry.cursor = result.cursor || cursor; entry.hasMore = result.hasMore === true;
       }
       if (epoch !== generation) return rows;
       entry.rows = rows; emit(entry); return rows;
@@ -78,7 +82,7 @@ export function createHistoricalPeriodStore(ops) {
     if (!ranges.has(key) && ranges.size >= 6) for (const [oldKey,cached] of ranges) {
       if (!cached.listeners.size && !cached.pending) { ranges.delete(oldKey); break; }
     }
-    if (!ranges.has(key)) ranges.set(key, {period:{startAt:Number(period.startAt),endAt:Number(period.endAt)},rows:null,listeners:new Set(),pending:null});
+    if (!ranges.has(key)) ranges.set(key, {period:{startAt:Number(period.startAt),endAt:Number(period.endAt)},rows:null,cursor:null,hasMore:false,listeners:new Set(),pending:null});
     return ranges.get(key);
   }
   return {
@@ -95,7 +99,7 @@ export function createHistoricalPeriodStore(ops) {
       const epoch = generation;
       await chain;
       if (epoch !== generation) throw new Error('The reporting session changed. Reopen the report.');
-      const covering = [...ranges.values()].find(entry => entry.rows && entry.period.startAt <= period.startAt && entry.period.endAt >= period.endAt);
+      const covering = [...ranges.values()].find(entry => entry.rows && entry.hasMore !== true && entry.period.startAt <= period.startAt && entry.period.endAt >= period.endAt);
       if (covering) return Object.fromEntries(Object.entries(covering.rows).filter(([,row]) => inside(row,period)));
       const entry = entryFor(period);
       const rows = {...await load(entry)};
@@ -107,6 +111,9 @@ export function createHistoricalPeriodStore(ops) {
         if (!cached.listeners.size && !cached.pending) ranges.delete(key);
       }
       return rows;
+    },
+    async loadOlder(period) {
+      const entry = entryFor(period); if (!entry.rows) return load(entry); if (!entry.hasMore) return {...entry.rows}; return load(entry);
     },
     clear() {
       generation++; if (stopMarker) stopMarker(); stopMarker = null; sequence = null; seenMarker = false; ranges.clear(); chain = Promise.resolve();

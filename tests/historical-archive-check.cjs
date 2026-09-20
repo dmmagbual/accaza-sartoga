@@ -32,9 +32,11 @@ assert.equal(HistoricalArchive.unchanged(doc, HistoricalArchive.buildDocument("P
 
 const reportOrder = Object.assign({}, completed, {timestamp:Date.parse("2026-09-19T12:00:00+08:00"),subtotal:125.55,discount:5.25,refundAmount:20,channel:"instore"});
 const contribution = HistoricalArchive.reportingContribution(reportOrder);
-assert.deepEqual(contribution, {month:"2026-09",orders:1,grossCents:12555,discountCents:525,refundCents:2000,netCents:10030,channel:"instore",schemaVersion:1,checksum:contribution.checksum});
+assert.equal(contribution.month,"2026-09");assert.equal(contribution.day,"2026-09-19");assert.equal(contribution.orders,1);assert.equal(contribution.grossCents,12555);assert.equal(contribution.discountCents,525);assert.equal(contribution.refundCents,2000);assert.equal(contribution.netCents,10030);assert.equal(contribution.channel,"instore");assert.equal(contribution.schemaVersion,2);
+assert.deepEqual(contribution.payments,[{key:"unspecified",netCents:10030}]);assert.deepEqual(contribution.items,[{key:"Latte",name:"Latte",units:1,netCents:0}]);
 let monthly = HistoricalArchive.applyReportingContribution({}, contribution, 1);
 assert.deepEqual({orders:monthly.orders,netCents:monthly.netCents,channel:monthly.channels.instore},{orders:1,netCents:10030,channel:{orders:1,netCents:10030}});
+assert.deepEqual(monthly.days["2026-09-19"].payments,{unspecified:{netCents:10030}});assert.equal(monthly.schemaVersion,2);
 monthly = HistoricalArchive.applyReportingContribution(monthly, contribution, -1);
 assert.equal(monthly.orders,0);assert.equal(monthly.netCents,0);assert.deepEqual(monthly.channels,{},"retries and corrections must reverse a prior contribution without drift");
 assert.equal(HistoricalArchive.reportingContribution(Object.assign({},reportOrder,{voided:true})),null,"voided sales must not contribute to the monthly rollup");

@@ -6012,7 +6012,10 @@ exports.readHistoricalSalesRollup = onCall(
       .orderBy(FieldPath.documentId()).startAt(from).endAt(to).limit(12).get();
     const months = {};
     snapshot.docs.forEach((document) => { months[document.id] = document.data() || {}; });
-    return {ready:true, months, schemaVersion:1};
+    // Summary consumers require the day/payment/item schema. Returning an old
+    // revenue-only rollup would silently understate a partial-month report.
+    if (Object.values(months).some((month) => Number(month && month.schemaVersion) < 2)) return {ready:false, needsMaintenance:true, months:{}};
+    return {ready:true, months, schemaVersion:2};
   },
 );
 
@@ -6117,7 +6120,10 @@ exports.manageHistoricalOrderArchive = onCall(
         const stateName = action === "sales-at-backfill" ? "salesAtBackfill" : action === "sales-ledger-backfill" ? "salesLedgerBackfill" : "salesRollupBackfill";
         stateRef = db.ref(`/systemHealth/historicalArchive/${stateName}`);
         const state = (await stateRef.get()).val() || {};
-        if (!cursor) runId = `${Date.now()}_${String(actor.uid).slice(0, 24)}`;
+        if (!cursor) {
+          runId = `${Date.now()}_${String(actor.uid).slice(0, 24)}`;
+          if (action === "sales-rollup-backfill") await db.ref("/systemHealth/historicalArchive/salesRollupReady").set(false);
+        }
         else if (!runId || state.runId !== runId || state.expectedCursor !== cursor || state.complete === true) {
           throw new HttpsError("failed-precondition", "Continue the active salesAt backfill with its returned run ID and cursor, or restart from the beginning.");
         }
@@ -6156,7 +6162,7 @@ exports.manageHistoricalOrderArchive = onCall(
       if (["sales-at-backfill", "sales-ledger-backfill"].includes(action) && summary.written) await batch.commit();
       const nextCursor = docs.length === limit ? docs[docs.length - 1].id : "";
       if (["sales-at-backfill", "sales-ledger-backfill", "sales-rollup-backfill"].includes(action)) {
-        const progress = {runId, expectedCursor:nextCursor, complete:!nextCursor, updatedAt:Date.now(), updatedBy:actor.uid, lastSummary:summary, sourceReplicaRunId:replicaState.runId, schemaVersion:action === "sales-at-backfill" ? HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION : 2};
+        const progress = {runId, expectedCursor:nextCursor, complete:!nextCursor, updatedAt:Date.now(), updatedBy:actor.uid, lastSummary:summary, sourceReplicaRunId:replicaState.runId, schemaVersion:action === "sales-at-backfill" ? HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION : action === "sales-rollup-backfill" ? 3 : 2};
         await stateRef.set(progress);
         if (!nextCursor && action === "sales-at-backfill") {
           await db.ref("/systemHealth/historicalArchive/salesAtReady").set(true);

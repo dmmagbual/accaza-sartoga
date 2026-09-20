@@ -53,6 +53,42 @@ function reportingChannel(order) {
   return "unclassified";
 }
 
+function reportingDay(stamp) {
+  return new Date(Number(stamp) + 8 * 3600000).toISOString().slice(0, 10);
+}
+
+function reportingPaymentKey(value) {
+  const raw = String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (raw === "cash") return "cash";
+  if (raw === "gcash") return "gcash";
+  if (raw === "paymaya" || raw === "maya") return "paymaya";
+  if (raw === "banktransfer" || raw === "bank") return "bank_transfer";
+  return raw || "unspecified";
+}
+
+function reportingPaymentEntries(order, netCents, grossCents) {
+  const rows = Array.isArray(order && order.payments) && order.payments.length ? order.payments : [{method: order && order.payment, amount: grossCents / 100}];
+  const weights = rows.map((row) => Math.max(0, Math.round((Number(row && row.amount) || 0) * 100)));
+  const total = weights.reduce((sum, value) => sum + value, 0) || grossCents || 1;
+  let assigned = 0;
+  return rows.map((row, index) => {
+    const net = index === rows.length - 1 ? netCents - assigned : Math.round(netCents * weights[index] / total);
+    assigned += net;
+    return {key: reportingPaymentKey(row && row.method), netCents: Math.max(0, net)};
+  });
+}
+
+function reportingItems(order, netCents, grossCents) {
+  const lines = Array.isArray(order && (order.correctedLineItems || order.lineItems)) ? (order.correctedLineItems || order.lineItems) : [];
+  return lines.map((line, index) => {
+    const qty = Math.max(0, Number(line && line.qty) || 0), unit = Math.max(0, Number(line && line.unitTotal) || 0);
+    const key = String(line && (line.itemKey || line.key || line.name) || `line_${index}`).slice(0, 160);
+    const name = String(line && (line.name || line.itemName || line.itemKey) || key).slice(0, 160);
+    const gross = Math.round(qty * unit * 100);
+    return {key, name, units: qty, netCents: grossCents > 0 ? Math.max(0, Math.round(gross * netCents / grossCents)) : 0};
+  }).filter((line) => line.key && line.units > 0);
+}
+
 function reportingContribution(order) {
   const status = effectiveStatus(order), stamp = salesAt(order);
   if (!order || order.voided === true || order.paymentStatus === "pending" ||
@@ -64,27 +100,53 @@ function reportingContribution(order) {
     (Number(order.platformDiscount) || 0);
   const discount = platform ? platformDiscount : (Number(order.discount) || 0), refund = Number(order.refundAmount) || 0;
   const grossCents = Math.round(gross * 100), discountCents = Math.round(discount * 100), refundCents = Math.round(refund * 100);
+  const netCents = Math.max(0, grossCents - discountCents - refundCents);
   const contribution = {
     month: reportingMonth(stamp), orders: 1, grossCents,
-    discountCents, refundCents, netCents: Math.max(0, grossCents - discountCents - refundCents),
-    channel: reportingChannel(order), schemaVersion: 1,
+    discountCents, refundCents, netCents,
+    channel: reportingChannel(order), day: reportingDay(stamp),
+    cogsCents: Math.max(0, Math.round((Number(order.correctedCogsSnapshot != null ? order.correctedCogsSnapshot : order.cogsSnapshot) || 0) * 100)),
+    payments: reportingPaymentEntries(order, netCents, grossCents), items: reportingItems(order, netCents, grossCents), schemaVersion: 2,
   };
   contribution.checksum = checksum(contribution);
   return contribution;
 }
 
 function applyReportingContribution(month, contribution, direction) {
-  const result = Object.assign({orders:0,grossCents:0,discountCents:0,refundCents:0,netCents:0,channels:{}}, clean(month || {}));
-  result.channels = Object.assign({}, result.channels || {});
+  const result = Object.assign({orders:0,grossCents:0,discountCents:0,refundCents:0,netCents:0,cogsCents:0,channels:{},payments:{},items:{},days:{},schemaVersion:2}, clean(month || {}));
+  result.channels = Object.assign({}, result.channels || {}); result.payments = Object.assign({}, result.payments || {});
+  result.items = Object.assign({}, result.items || {}); result.days = Object.assign({}, result.days || {});
   const sign = direction < 0 ? -1 : 1, channel = String(contribution && contribution.channel || "unclassified");
-  for (const field of ["orders", "grossCents", "discountCents", "refundCents", "netCents"]) {
+  for (const field of ["orders", "grossCents", "discountCents", "refundCents", "netCents", "cogsCents"]) {
     result[field] = Math.max(0, Math.round((Number(result[field]) || 0) + sign * (Number(contribution && contribution[field]) || 0)));
   }
   const channelRow = Object.assign({orders:0,netCents:0}, result.channels[channel] || {});
   channelRow.orders = Math.max(0, Math.round((Number(channelRow.orders) || 0) + sign * (Number(contribution && contribution.orders) || 0)));
   channelRow.netCents = Math.max(0, Math.round((Number(channelRow.netCents) || 0) + sign * (Number(contribution && contribution.netCents) || 0)));
   if (!channelRow.orders && !channelRow.netCents) delete result.channels[channel]; else result.channels[channel] = channelRow;
-  result.schemaVersion = 1;
+  function addRows(target, rows, withItems) {
+    (rows || []).forEach((entry) => {
+      const key = String(entry && entry.key || "unspecified"), current = Object.assign(withItems ? {name:String(entry && entry.name || key),units:0,netCents:0} : {netCents:0}, target[key] || {});
+      if (withItems) { current.name = String(entry && entry.name || current.name || key); current.units = Math.max(0, (Number(current.units) || 0) + sign * (Number(entry && entry.units) || 0)); }
+      current.netCents = Math.max(0, Math.round((Number(current.netCents) || 0) + sign * (Number(entry && entry.netCents) || 0)));
+      if ((withItems && current.units) || current.netCents) target[key] = current; else delete target[key];
+    });
+  }
+  addRows(result.payments, contribution && contribution.payments, false);
+  addRows(result.items, contribution && contribution.items, true);
+  const day = String(contribution && contribution.day || "");
+  if (day) {
+    const dayRow = Object.assign({orders:0,grossCents:0,discountCents:0,refundCents:0,netCents:0,cogsCents:0,channels:{},payments:{},items:{}}, result.days[day] || {});
+    dayRow.channels = Object.assign({}, dayRow.channels || {}); dayRow.payments = Object.assign({}, dayRow.payments || {}); dayRow.items = Object.assign({}, dayRow.items || {});
+    for (const field of ["orders", "grossCents", "discountCents", "refundCents", "netCents", "cogsCents"]) dayRow[field] = Math.max(0, Math.round((Number(dayRow[field]) || 0) + sign * (Number(contribution && contribution[field]) || 0)));
+    const dayChannel = Object.assign({orders:0,netCents:0}, dayRow.channels[channel] || {});
+    dayChannel.orders = Math.max(0, Math.round((Number(dayChannel.orders) || 0) + sign * (Number(contribution && contribution.orders) || 0)));
+    dayChannel.netCents = Math.max(0, Math.round((Number(dayChannel.netCents) || 0) + sign * (Number(contribution && contribution.netCents) || 0)));
+    if (!dayChannel.orders && !dayChannel.netCents) delete dayRow.channels[channel]; else dayRow.channels[channel] = dayChannel;
+    addRows(dayRow.payments, contribution && contribution.payments, false); addRows(dayRow.items, contribution && contribution.items, true);
+    if (!dayRow.orders && !dayRow.grossCents && !dayRow.netCents) delete result.days[day]; else result.days[day] = dayRow;
+  }
+  result.schemaVersion = 2;
   return result;
 }
 

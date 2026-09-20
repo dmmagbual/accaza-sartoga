@@ -1,11 +1,12 @@
 import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
-import{createSubscriptionHub}from"./realtime-hub.mjs?v=561";
-import{readSalesPeriod,periodKey}from'./sales-period-data.mjs?v=561';
+import{createSubscriptionHub}from"./realtime-hub.mjs?v=562";
+import{readSalesPeriod,periodKey}from'./sales-period-data.mjs?v=562';
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=561";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=562";
+import{summarizeHistoricalSales,addLiveSales}from"./historical-sales-summary.mjs?v=562";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -63,7 +64,7 @@ window.__setupPush=setupPush;
 
 const feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups');
 window.__accaza={
-  db,ref,set,get,update,remove,onValue,runTransaction,query,orderByChild,equalTo,startAt,endAt,callables,hub:subscriptionHub,readHistoricalOrders,
+  db,ref,set,get,update,remove,onValue,runTransaction,query,orderByChild,equalTo,startAt,endAt,callables,hub:subscriptionHub,readHistoricalOrders,readHistoricalSalesRollup,summarizeHistoricalSales,addLiveSales,
   subscribe:function(path,callback,opts){return subscriptionHub.subscribe(path,callback,opts);},
   postInventoryMovements:function(movements){return postInventoryMovementsCall({movements:movements});},
   ensureInventoryLedger:function(){return ensureInventoryLedgerCall({});},
@@ -179,7 +180,8 @@ let chatOpen=false,chatStarted=false;
 let custItem=null,custSize=null,custSel={},custQty=1;
 let menuFilter='coffee',orderFilter=null;
 
-const overviewInsights=createOverviewInsights({esc:escHtml,historyStatus:function(path){return subscriptionHub.historyStatus(path);},loadOlder:function(path){return subscriptionHub.loadOlder(path);},readRanking:readOverviewSalesRange,readMonthlyRollup:function(r){return readHistoricalSalesRollup({from:r.from.slice(0,7),to:r.to.slice(0,7)});}});
+const overviewInsights=createOverviewInsights({esc:escHtml,historyStatus:function(path){return subscriptionHub.historyStatus(path);},loadOlder:function(path){return subscriptionHub.loadOlder(path);},readRanking:readOverviewSalesRange,readMonthlyRollup:function(r){return readHistoricalSalesRollup({from:r.from.slice(0,7),to:r.to.slice(0,7)});},readPeriodSummary:function(r){return readHistoricalSalesRollup({from:overviewMonth(r.start),to:overviewMonth(r.end)});}});
+function overviewMonth(stamp){var d=new Date(Number(stamp)+8*3600000);return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0');}
 async function readOverviewSalesRange(r){var p={startAt:r.start,endAt:r.end},maps=await Promise.all([readSalesPeriod(db,{ref,get,query,orderByChild,startAt,endAt},'orders',p),subscriptionHub.readHistoricalPeriod(p)]);return mergeOverviewOrders([],Object.entries(maps[0]).map(function(x){return Object.assign({_overviewKey:x[0]},x[1]);}),Object.entries(maps[1]).map(function(x){return Object.assign({_overviewKey:x[0]},x[1]);})).filter(function(o){return window.AccazaSales.qualifies(o);});}
 
 const appCustomerSession=createAppCustomerSession({setupPush:setupPush,refreshNotifyPrompt:refreshNotifyPrompt});
@@ -981,7 +983,7 @@ function renderPublicReviews(){
 }
 
 
-if(window.AccazaAdminPeriods)window.AccazaAdminPeriods.setWaiter(function(){var scope=subscriptionHub.stats().activeScope,paths=scope==='saleshistory'?['orders','archivedOrders','financialMovements']:['orders','archivedOrders'];return subscriptionHub.whenReady(paths);});
+if(window.AccazaAdminPeriods)window.AccazaAdminPeriods.setWaiter(function(){var scope=subscriptionHub.stats().activeScope,paths=scope==='saleshistory'?['orders','archivedOrders','financialMovements']:['orders'];return subscriptionHub.whenReady(paths);});
 function renderDashboard(){
   if(!adminLoggedIn||subscriptionHub.stats().activeScope!=='dashboard'){overviewInsights.stop();return;}
   function _rows(map){return Object.entries(map||{}).map(function(pair){var o=pair[1];return o&&o.id?o:Object.assign({_overviewKey:pair[0]},o||{});});}
