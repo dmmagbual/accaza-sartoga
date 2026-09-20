@@ -1274,8 +1274,10 @@ exports.managePosStaffIdentity = onCall(
   async (request) => {
     const db = getDatabase(), actor = await requirePortalUser(db, request), data = request.data || {};
     if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Only a manager can link a POS staff profile.");
-    const staffId = posStaffText(data.staffId, "Staff profile", 160), accountUid = posStaffText(data.accountUid, "Firebase account UID", 160), pin = String(data.pin || "").trim();
+    const staffId = posStaffText(data.staffId, "Staff profile", 160), email = posStaffText(data.email, "Firebase account email", 320).toLowerCase(), pin = String(data.pin || "").trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpsError("invalid-argument", "Enter the registered Firebase account email.");
     if (!/^[0-9]{4,6}$/.test(pin)) throw new HttpsError("invalid-argument", "PIN must be 4 to 6 digits.");
+    let accountUid; try { accountUid = (await getAdminAuth().getUserByEmail(email)).uid; } catch (_error) { throw new HttpsError("not-found", "No Firebase account exists for that email."); }
     const [staffSnap, accountSnap, allStaffSnap] = await Promise.all([db.ref(`/posStaff/${staffId}`).get(), db.ref(`/admins/${accountUid}`).get(), db.ref("/posStaff").get()]);
     if (!staffSnap.exists()) throw new HttpsError("not-found", "POS staff profile was not found.");
     if (!accountSnap.exists() || !["staff", "cashier", "manager", "admin", "owner", "superadmin"].includes(portalRoleValue(accountSnap.val()))) throw new HttpsError("failed-precondition", "That Firebase account is not an authorised staff login.");
@@ -6198,45 +6200,6 @@ exports.manageHistoricalOrderArchive = onCall(
     return {action, cursor: nextCursor, complete: !nextCursor, summary, deletionEnabled: false};
   },
 );
-<<<<<<< HEAD
-// --- FIX: Added missing managePosStaffIdentity function ---
-exports.managePosStaffIdentity = onCall(
-  { region: "asia-southeast1", enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30 },
-  async (request) => {
-    // 1. Ensure user is logged in
-    if (!request.auth) {
-      throw new HttpsError("unauthenticated", "You must be logged in to manage staff.");
-    }
-
-    // 2. Validate the data sent from the frontend
-    const { staffId, accountUid, pin } = request.data || {};
-    if (!staffId || !accountUid || !pin) {
-      throw new HttpsError("invalid-argument", "Missing required fields: staffId, accountUid, or pin.");
-    }
-    if (!/^\d{4,6}$/.test(pin)) {
-      throw new HttpsError("invalid-argument", "PIN must be 4-6 digits.");
-    }
-
-    const db = getDatabase();
-
-    // 3. Check if the staff member actually exists
-    const staffRef = db.ref(`posStaff/${staffId}`);
-    const staffSnap = await staffRef.get();
-    if (!staffSnap.exists()) {
-      throw new HttpsError("not-found", "Staff member not found in the database.");
-    }
-
-    // 4. Update the staff record with the Firebase UID and new PIN
-    await staffRef.update({
-      accountUid: accountUid,
-      pin: pin,
-      updatedAt: Date.now()
-    });
-
-    return { success: true, message: "Staff identity linked successfully." };
-  }
-);
-=======
 // Accaza AI is deliberately read-only. Gemini receives a compact, server-built
 // fact pack; it never gets Firebase credentials or permission to change records.
 const ACCAZA_AI_MODEL = "gemini-3.5-flash-lite";
@@ -6438,4 +6401,3 @@ exports.manageAccazaAiIssue=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_
   }
   throw new HttpsError("invalid-argument","Use create, list or status.");
 });
->>>>>>> origin/main
