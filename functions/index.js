@@ -44,6 +44,8 @@ const OrderRecords = require("./lib/order-records");
 const RetryGuard = require("./lib/retry-guard");
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 const DEEPSEEK_API_KEY = defineSecret("DEEPSEEK_API_KEY");
+const OLLAMA_ACCESS_CLIENT_ID = defineSecret("OLLAMA_ACCESS_CLIENT_ID");
+const OLLAMA_ACCESS_CLIENT_SECRET = defineSecret("OLLAMA_ACCESS_CLIENT_SECRET");
 // Every `retry: true` database trigger is bounded: transient failures still
 // retry, but an event that keeps failing past the retry window is recorded in
 // /functionDeadLetters and acknowledged instead of being redelivered (and its
@@ -6210,7 +6212,7 @@ exports.manageHistoricalOrderArchive = onCall(
 // Accaza AI is deliberately read-only. Gemini receives a compact, server-built
 // fact pack; it never gets Firebase credentials or permission to change records.
 const ACCAZA_AI_MODEL = "gemini-3.5-flash-lite";
-const ACCAZA_AI_RELEASE_VERSION = "1.2";
+const ACCAZA_AI_RELEASE_VERSION = "1.3";
 const ACCAZA_AI_HOURLY_LIMIT = 10;
 const ACCAZA_AI_DAILY_LIMIT = 50;
 const ACCAZA_AI_QUERY_ROLES = ["owner","superadmin","admin","manager","cashier"];
@@ -6342,21 +6344,37 @@ async function askDeepSeekAccazaAi(question,facts,history){
   const key=DEEPSEEK_API_KEY.value();if(!key)throw new HttpsError("failed-precondition","Gemini is unavailable and DeepSeek fallback is not configured. Set the DEEPSEEK_API_KEY Firebase secret.");
   const instruction="You are Accaza AI for Accaza Coffee House. Answer only about Accaza operations, POS, inventory, recipes and Finance Books. Use only the FACT PACK. Do not invent figures. For business analysis, interpret the supplied historical Finance Books facts and give prioritized, practical recommendations. Clearly separate observed facts, inferences and recommendations. Never present accounting amounts as cash flow. You are read-only: never say that you posted, changed or approved a transaction. Keep the answer concise and cite the supplied source paths.";
   const messages=[{role:"system",content:instruction},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:`QUESTION: ${question}\n\nFACT PACK:\n${JSON.stringify(facts)}`}],response=await fetch("https://api.deepseek.com/chat/completions",{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${key}`},body:JSON.stringify({model:"deepseek-flash",messages,temperature:0.15,max_tokens:900})}),body=await response.json().catch(()=>({}));
-  if(!response.ok)throw new HttpsError("unavailable",body&&body.error&&body.error.message||"DeepSeek fallback could not answer right now.");return accazaAiAnswer(body&&body.choices&&body.choices[0]&&body.choices[0].message&&body.choices[0].message.content);
+  if(!response.ok)throw accazaAiProviderFailure(body&&body.error&&body.error.message||"DeepSeek fallback could not answer right now.");return accazaAiAnswer(body&&body.choices&&body.choices[0]&&body.choices[0].message&&body.choices[0].message.content);
 }
 async function askDeepSeekGeneralChat(question,history){
   const key=DEEPSEEK_API_KEY.value();if(!key)throw new HttpsError("failed-precondition","Gemini is unavailable and DeepSeek fallback is not configured. Set the DEEPSEEK_API_KEY Firebase secret.");
   const instruction="You are Accaza AI in general chat mode. Answer general questions helpfully using your built-in knowledge and be clear when current or externally verified information is needed. You have no access to Accaza Coffee House records in this mode. Do not ask for or process Accaza business, financial, supplier, customer, staff, inventory or POS data; tell the user to use Accaza analysis mode for that private, read-only work.";
   const messages=[{role:"system",content:instruction},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:question}],response=await fetch("https://api.deepseek.com/chat/completions",{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${key}`},body:JSON.stringify({model:"deepseek-flash",messages,temperature:0.35,max_tokens:900})}),body=await response.json().catch(()=>({}));
-  if(!response.ok)throw new HttpsError("unavailable",body&&body.error&&body.error.message||"DeepSeek fallback could not answer right now.");return{answer:accazaAiAnswer(body&&body.choices&&body.choices[0]&&body.choices[0].message&&body.choices[0].message.content),sources:[]};
+  if(!response.ok)throw accazaAiProviderFailure(body&&body.error&&body.error.message||"DeepSeek fallback could not answer right now.");return{answer:accazaAiAnswer(body&&body.choices&&body.choices[0]&&body.choices[0].message&&body.choices[0].message.content),sources:[]};
 }
-async function accazaAiWithFallback(primary,fallback){try{return{provider:"gemini",result:await primary()};}catch(error){if(!(error&&error.details&&error.details.providerFailure)||!DEEPSEEK_API_KEY.value())throw error;return{provider:"deepseek",result:await fallback()};}}
-exports.askAccazaAI=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:"256MiB",secrets:[GEMINI_API_KEY,DEEPSEEK_API_KEY]},async request=>{
+function accazaAiOllamaHeaderValue(value){return String(value||"").replace(/[^\x21-\x7E]/g,"");}
+function accazaAiOllamaClientId(){return accazaAiOllamaHeaderValue(OLLAMA_ACCESS_CLIENT_ID.value());}
+function accazaAiOllamaClientSecret(){return accazaAiOllamaHeaderValue(OLLAMA_ACCESS_CLIENT_SECRET.value());}
+function accazaAiOllamaConfigured(){return Boolean(accazaAiOllamaClientId()&&accazaAiOllamaClientSecret());}
+async function askOllama(messages,temperature){
+  const response=await fetch("https://ollama.accazacoffee.com/api/chat",{method:"POST",headers:{"content-type":"application/json","CF-Access-Client-Id":accazaAiOllamaClientId(),"CF-Access-Client-Secret":accazaAiOllamaClientSecret()},body:JSON.stringify({model:"qwen3:8b",messages,stream:false,think:false,options:{temperature,num_predict:900}})}),body=await response.json().catch(()=>({}));
+  if(!response.ok)throw accazaAiProviderFailure(body&&body.error||"Ollama fallback could not answer right now.");return accazaAiAnswer(body&&body.message&&body.message.content);
+}
+async function askOllamaAccazaAi(question,facts,history){
+  const instruction="You are Accaza AI for Accaza Coffee House. Answer only about Accaza operations, POS, inventory, recipes and Finance Books. Use only the FACT PACK. Do not invent figures. For business analysis, interpret the supplied historical Finance Books facts and give prioritized, practical recommendations. Clearly separate observed facts, inferences and recommendations. Never present accounting amounts as cash flow. You are read-only: never say that you posted, changed or approved a transaction. Keep the answer concise and cite the supplied source paths.";
+  return askOllama([{role:"system",content:instruction},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:`QUESTION: ${question}\n\nFACT PACK:\n${JSON.stringify(facts)}`}],0.15);
+}
+async function askOllamaGeneralChat(question,history){
+  const instruction="You are Accaza AI in general chat mode. Answer general questions helpfully using your built-in knowledge and be clear when current or externally verified information is needed. You have no access to Accaza Coffee House records in this mode. Do not ask for or process Accaza business, financial, supplier, customer, staff, inventory or POS data; tell the user to use Accaza analysis mode for that private, read-only work.";
+  return{answer:await askOllama([{role:"system",content:instruction},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:question}],0.35),sources:[]};
+}
+async function accazaAiWithFallback(providers){let lastProviderFailure;for(const provider of providers){if(!provider.enabled())continue;try{return{provider:provider.name,result:await provider.ask()};}catch(error){if(!(error&&error.details&&error.details.providerFailure))throw error;lastProviderFailure=error;}}if(lastProviderFailure)throw lastProviderFailure;throw new HttpsError("failed-precondition","Accaza AI has no configured provider. Set Gemini, DeepSeek, or Ollama credentials.");}
+exports.askAccazaAI=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:"256MiB",secrets:[GEMINI_API_KEY,DEEPSEEK_API_KEY,OLLAMA_ACCESS_CLIENT_ID,OLLAMA_ACCESS_CLIENT_SECRET]},async request=>{
   const db=getDatabase(),actor=await requirePortalUser(db,request);if(!ACCAZA_AI_QUERY_ROLES.includes(actor.role))throw new HttpsError("permission-denied","Accaza AI is available to authorized portal accounts only.");
   const question=accazaAiText(request.data&&request.data.question,800),mode=request.data&&request.data.mode==="web"?"web":"accaza",history=accazaAiHistory(request.data&&request.data.history);if(question.length<3)throw new HttpsError("invalid-argument","Enter a question for Accaza AI.");
   if(mode==="web"&&accazaAiWebQuestionBlocked(question))throw new HttpsError("failed-precondition","Use Accaza analysis for Accaza business or app questions. Web chat never receives Accaza data.");
   const now=Date.now(),allowance=await claimAccazaAiAllowance(db,actor.uid,now);let answer,sources=[],provider="gemini";
-  if(mode==="web"){const response=await accazaAiWithFallback(()=>askGeminiWebChat(question,history),()=>askDeepSeekGeneralChat(question,history));provider=response.provider;answer=response.result.answer;sources=response.result.sources;}else{const facts=await accazaAiFactPack(db,question,now),response=await accazaAiWithFallback(()=>askGeminiAccazaAi(question,facts,history),()=>askDeepSeekAccazaAi(question,facts,history));provider=response.provider;answer=response.result;sources=facts.sources||[];}
+  if(mode==="web"){const response=await accazaAiWithFallback([{name:"gemini",enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:()=>askGeminiWebChat(question,history)},{name:"deepseek",enabled:()=>Boolean(DEEPSEEK_API_KEY.value()),ask:()=>askDeepSeekGeneralChat(question,history)},{name:"ollama",enabled:accazaAiOllamaConfigured,ask:()=>askOllamaGeneralChat(question,history)}]);provider=response.provider;answer=response.result.answer;sources=response.result.sources;}else{const facts=await accazaAiFactPack(db,question,now),response=await accazaAiWithFallback([{name:"gemini",enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:()=>askGeminiAccazaAi(question,facts,history)},{name:"deepseek",enabled:()=>Boolean(DEEPSEEK_API_KEY.value()),ask:()=>askDeepSeekAccazaAi(question,facts,history)},{name:"ollama",enabled:accazaAiOllamaConfigured,ask:()=>askOllamaAccazaAi(question,facts,history)}]);provider=response.provider;answer=response.result;sources=facts.sources||[];}
   const auditId=`${now}_${crypto.randomUUID()}`;await db.ref(`/operationalAudit/${auditId}`).set(operationalAuditRecord("ask_accaza_ai","accazaAI",auditId,actor,{mode,provider,questionHash:crypto.createHash("sha256").update(question).digest("hex"),sources:mode==="web"?sources.map(source=>source.url):sources,hourRemaining:allowance.hourRemaining,dayRemaining:allowance.dayRemaining,accounting:"Read-only AI analysis only; no order, inventory movement, subledger, Finance movement, or Books journal changed."}));
   return {answer,sources,mode,provider,releaseVersion:ACCAZA_AI_RELEASE_VERSION,allowance};
 });
