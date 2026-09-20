@@ -14,11 +14,15 @@ async function reserveHistoricalReadBudget(db, uid, reads) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {timeZone:"America/Los_Angeles",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()).map((part) => [part.type, part.value]));
   const day = `${parts.year}-${parts.month}-${parts.day}`;
   const safeUid = String(uid || "unknown").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 128), requested = Math.max(1, Math.floor(Number(reads) || 1));
-  const ref = db.ref(`/rateLimits/historicalFirestoreReads/${safeUid}`);
+  // V2 corrects the original three-query reservation after the persisted
+  // salesAt index reduced the normal reader to one Firestore query. Keep this
+  // separate from the old overstated counter so a user is not locked out by
+  // charges that the current reader no longer makes.
+  const ref = db.ref(`/rateLimits/historicalFirestoreReadsV2/${safeUid}`);
   const result = await ref.transaction((current) => {
     const used = current && current.day === day ? Number(current.reads) || 0 : 0;
     if (used + requested > HISTORICAL_USER_DAILY_READ_LIMIT) return;
-    return {day, reads:used + requested, updatedAt:Date.now(), schemaVersion:1};
+    return {day, reads:used + requested, updatedAt:Date.now(), schemaVersion:2};
   });
   if (!result.committed) throw new HttpsError("resource-exhausted", "The safe daily historical-report limit has been reached. Use a narrower period or resume after the Firestore quota resets.");
 }
@@ -101,12 +105,12 @@ async function historicalSalesAtReady(db) {
   return value;
 }
 
-async function historicalPeriodPage(db, firestore, data, limit) {
+async function historicalPeriodPage(db, firestore, data, limit, salesAtReady) {
   const start = Number(data.startAt), end = Number(data.endAt);
   if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || end - start > 400 * 86400000) {
     throw new HttpsError("invalid-argument", "Choose a valid historical period of 400 days or less.");
   }
-  if (await historicalSalesAtReady(db)) {
+  if (salesAtReady) {
     const cursor = historicalReadCursor(data.cursor);
     let query = firestore.collection(HistoricalArchive.COLLECTION)
       .where("salesAt", ">=", start).where("salesAt", "<=", end)
@@ -284,8 +288,11 @@ exports.readHistoricalOrders = onCall(
         throw new HttpsError("invalid-argument", "Detailed historical reports are limited to 93 days. Use compact monthly summaries for longer comparisons.");
       }
     }
-    await reserveHistoricalReadBudget(db, actor.uid, mode === "period" ? limit * 3 : limit);
-    const page = mode === "period" ? await historicalPeriodPage(db, firestore, data, limit) : await historicalLatestPage(db, firestore, data, limit);
+    const salesAtReady = mode === "period" ? await historicalSalesAtReady(db) : false;
+    // The current reader performs one indexed query once salesAt is ready.
+    // The three-query allowance remains only for an unfinished legacy index.
+    await reserveHistoricalReadBudget(db, actor.uid, mode === "period" ? limit * (salesAtReady ? 1 : 3) : limit);
+    const page = mode === "period" ? await historicalPeriodPage(db, firestore, data, limit, salesAtReady) : await historicalLatestPage(db, firestore, data, limit);
     const hydrated = await historicalOrdersFromDocuments(db, page.documents);
     if (typeof logger !== "undefined") logger.info("Historical Firestore read", {mode, purpose, requested:limit, returned:Object.keys(hydrated.rows).length, hasMore:page.hasMore, firestore:hydrated.firestore, rtdbFallback:hydrated.rtdbFallback});
     return {
