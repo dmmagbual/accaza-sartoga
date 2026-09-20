@@ -5686,14 +5686,16 @@ exports.evaluateProductionHealth = onSchedule(
   async () => {await evaluateProductionHealthNow();return null;},
 );
 const HISTORICAL_ARCHIVE_BATCH_LIMIT = 100;
+const HISTORICAL_REPLICA_BATCH_LIMIT = 10;
 const HISTORICAL_READ_PAGE_LIMIT = 100;
 const HISTORICAL_MAINTENANCE_DAILY_DOCUMENT_LIMIT = 4000;
+const HISTORICAL_REPLICA_DAILY_SOURCE_LIMIT = 1000;
 const HISTORICAL_USER_DAILY_READ_LIMIT = 2000;
 const HISTORICAL_PERIOD_MAX_MS = 93 * 86400000;
-// Version 2 records that the completed salesAt pass also established the
-// reader-ready marker. Earlier completed runs predate that contract and must
-// be replayed once, in the same bounded Firestore-only batches.
-const HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 2;
+// Version 3 binds the completed reporting indexes to the completed source
+// replica run. A previous index-only run must never claim detailed reports are
+// ready when the underlying historical order replicas were never populated.
+const HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 3;
 
 async function reserveHistoricalReadBudget(db, uid, reads) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {timeZone:"America/Los_Angeles",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()).map((part) => [part.type, part.value]));
@@ -5717,6 +5719,20 @@ async function reserveHistoricalMaintenanceBudget(db, documents) {
     return {documents:used + requested, updatedAt:Date.now(), schemaVersion:1};
   });
   if (!result.committed) throw new HttpsError("resource-exhausted", "The safe daily historical-maintenance limit has been reached. Resume after midnight Manila time.");
+}
+
+// Source replication is deliberately slower and separately capped: each order
+// can require a few exact, source-linked evidence reads. This protects RTDB
+// download volume while allowing the repair to resume safely on the next day.
+async function reserveHistoricalReplicaBudget(db, documents) {
+  const day = new Intl.DateTimeFormat("en-CA", {timeZone:"Asia/Manila",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+  const ref = db.ref(`/systemMaintenance/historicalArchiveReplicaDaily/${day}`), requested = Math.max(1, Math.floor(Number(documents) || 1));
+  const result = await ref.transaction((current) => {
+    const used = Number(current && current.documents) || 0;
+    if (used + requested > HISTORICAL_REPLICA_DAILY_SOURCE_LIMIT) return;
+    return {documents:used + requested, updatedAt:Date.now(), schemaVersion:1};
+  });
+  if (!result.committed) throw new HttpsError("resource-exhausted", "The safe daily historical source-replica limit has been reached. Resume after midnight Manila time.");
 }
 
 async function publishHistoricalChange(db, orderId, order, now = Date.now()) {
@@ -6030,21 +6046,56 @@ exports.manageHistoricalOrderArchive = onCall(
       throw new HttpsError("permission-denied", "Historical archive management is restricted to owners.");
     }
     const data = request.data || {}, action = financeText(data.action, 32);
-    if (!["status", "preview", "backfill", "verify", "sales-at-audit", "sales-at-backfill", "sales-at-verify", "sales-ledger-backfill", "sales-rollup-backfill"].includes(action)) {
+    if (!["status", "preview", "backfill", "verify", "sales-replica-backfill", "sales-at-audit", "sales-at-backfill", "sales-at-verify", "sales-ledger-backfill", "sales-rollup-backfill"].includes(action)) {
       throw new HttpsError("invalid-argument", "Choose a supported historical replica maintenance action. RTDB deletion is not available.");
     }
-    const requested = Math.floor(Number(data.limit) || 25), limit = Math.max(1, Math.min(HISTORICAL_ARCHIVE_BATCH_LIMIT, requested));
+    const requested = Math.floor(Number(data.limit) || 25), sourceAction = ["backfill", "sales-replica-backfill"].includes(action), limit = Math.max(1, Math.min(sourceAction ? HISTORICAL_REPLICA_BATCH_LIMIT : HISTORICAL_ARCHIVE_BATCH_LIMIT, requested));
     const cursor = financeText(data.cursor, 160);
     const firestore = getFirestore();
     if (action === "status") {
-      const [salesAt, salesLedger, salesRollup, ready, salesAtReady] = await Promise.all([
+      const [salesReplica, salesAt, salesLedger, salesRollup, ready, salesAtReady] = await Promise.all([
+        db.ref("/systemHealth/historicalArchive/salesReplicaBackfill").get(),
         db.ref("/systemHealth/historicalArchive/salesAtBackfill").get(),
         db.ref("/systemHealth/historicalArchive/salesLedgerBackfill").get(),
         db.ref("/systemHealth/historicalArchive/salesRollupBackfill").get(),
         db.ref("/systemHealth/historicalArchive/salesRollupReady").get(),
         db.ref("/systemHealth/historicalArchive/salesAtReady").get(),
       ]);
-      return {salesAt:salesAt.val()||null,salesLedger:salesLedger.val()||null,salesRollup:salesRollup.val()||null,salesRollupReady:ready.val()===true,salesAtReady:salesAtReady.val()===true};
+      return {salesReplica:salesReplica.val()||null,salesAt:salesAt.val()||null,salesLedger:salesLedger.val()||null,salesRollup:salesRollup.val()||null,salesRollupReady:ready.val()===true,salesAtReady:salesAtReady.val()===true};
+    }
+    if (action === "sales-replica-backfill") {
+      const stateRef = db.ref("/systemHealth/historicalArchive/salesReplicaBackfill"), state = (await stateRef.get()).val() || {};
+      let runId = financeText(data.runId, 100);
+      if (!cursor) {
+        runId = `${Date.now()}_${String(actor.uid).slice(0, 24)}`;
+        // Do not serve a partially rebuilt replica as ready. The following
+        // indexed stages re-establish readiness only after this source pass.
+        await db.ref("/systemHealth/historicalArchive").update({salesAtReady:false,salesRollupReady:false});
+        historicalSalesAtReadyCache = {value:false, at:Date.now()};
+      } else if (!runId || state.runId !== runId || state.expectedCursor !== cursor || state.complete === true) {
+        throw new HttpsError("failed-precondition", "Continue the active historical sales replica with its returned run ID and cursor, or restart from the beginning.");
+      }
+      await reserveHistoricalReplicaBudget(db, limit);
+      let query = db.ref("/archivedOrders").orderByKey();
+      if (cursor) query = query.startAt(cursor);
+      const snap = await query.limitToFirst(limit + (cursor ? 1 : 0)).get(), rows = snap.val() || {};
+      let ids = Object.keys(rows).sort();
+      if (cursor && ids[0] === cursor) ids = ids.slice(1);
+      ids = ids.slice(0, limit);
+      const summary = {scanned:ids.length,written:0,unchanged:0,verified:0,needsReview:0};
+      for (const orderId of ids) {
+        const result = await replicateHistoricalOrder(db, firestore, orderId, rows[orderId]);
+        if (result.duplicate) summary.unchanged++; else summary.written++;
+        if (result.verified) summary.verified++; else summary.needsReview++;
+      }
+      const nextCursor = ids.length === limit ? ids[ids.length - 1] : "";
+      const progress = {runId, expectedCursor:nextCursor, complete:!nextCursor, updatedAt:Date.now(), updatedBy:actor.uid, lastSummary:summary, schemaVersion:1};
+      await stateRef.set(progress);
+      await db.ref(`/operationalAudit/${Date.now()}_historical_archive_${action}`).set({
+        action:"historical_archive_sales_replica_backfill",sourceType:"historicalOrderArchive",sourceId:nextCursor||"complete",actorUid:actor.uid,actorRole:actor.role,ts:Date.now(),cursor,nextCursor,summary,schemaVersion:1,
+        accounting:"Copied bounded, source-linked historical order replicas for reporting only. No RTDB order, inventory, settlement, subledger, journal, or Finance Books record was changed.",
+      });
+      return {action,cursor:nextCursor,complete:!nextCursor,summary,runId};
     }
     // This maintenance path deliberately reads only the Firestore replica.
     // Replaying historicalArchiveInputs here would re-read RTDB financial and
@@ -6061,6 +6112,8 @@ exports.manageHistoricalOrderArchive = onCall(
         }
         await reserveHistoricalMaintenanceBudget(db, limit);
       }
+      const replicaState = (await db.ref("/systemHealth/historicalArchive/salesReplicaBackfill").get()).val() || {};
+      if (!replicaState.complete || !replicaState.runId) throw new HttpsError("failed-precondition", "Complete the bounded historical sales replica before rebuilding reporting indexes.");
       let query = firestore.collection(HistoricalArchive.COLLECTION).orderBy(FieldPath.documentId());
       if (cursor) query = query.startAfter(cursor);
       const snap = await query.limit(limit).get(), docs = snap.docs;
@@ -6092,7 +6145,7 @@ exports.manageHistoricalOrderArchive = onCall(
       if (["sales-at-backfill", "sales-ledger-backfill"].includes(action) && summary.written) await batch.commit();
       const nextCursor = docs.length === limit ? docs[docs.length - 1].id : "";
       if (["sales-at-backfill", "sales-ledger-backfill", "sales-rollup-backfill"].includes(action)) {
-        const progress = {runId, expectedCursor:nextCursor, complete:!nextCursor, updatedAt:Date.now(), updatedBy:actor.uid, lastSummary:summary, schemaVersion:action === "sales-at-backfill" ? HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION : 1};
+        const progress = {runId, expectedCursor:nextCursor, complete:!nextCursor, updatedAt:Date.now(), updatedBy:actor.uid, lastSummary:summary, sourceReplicaRunId:replicaState.runId, schemaVersion:action === "sales-at-backfill" ? HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION : 2};
         await stateRef.set(progress);
         if (!nextCursor && action === "sales-at-backfill") {
           await db.ref("/systemHealth/historicalArchive/salesAtReady").set(true);
@@ -6111,6 +6164,7 @@ exports.manageHistoricalOrderArchive = onCall(
       });
       return {action, cursor: nextCursor, complete: !nextCursor, summary, runId:runId || null};
     }
+    if (action === "backfill") await reserveHistoricalReplicaBudget(db, limit);
     let query = db.ref("/archivedOrders").orderByKey();
     if (cursor) query = query.startAt(cursor);
     const snap = await query.limitToFirst(limit + (cursor ? 1 : 0)).get(), rows = snap.val() || {};
