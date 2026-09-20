@@ -1274,8 +1274,10 @@ exports.managePosStaffIdentity = onCall(
   async (request) => {
     const db = getDatabase(), actor = await requirePortalUser(db, request), data = request.data || {};
     if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Only a manager can link a POS staff profile.");
-    const staffId = posStaffText(data.staffId, "Staff profile", 160), accountUid = posStaffText(data.accountUid, "Firebase account UID", 160), pin = String(data.pin || "").trim();
+    const staffId = posStaffText(data.staffId, "Staff profile", 160), email = posStaffText(data.email, "Firebase account email", 320).toLowerCase(), pin = String(data.pin || "").trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpsError("invalid-argument", "Enter the registered Firebase account email.");
     if (!/^[0-9]{4,6}$/.test(pin)) throw new HttpsError("invalid-argument", "PIN must be 4 to 6 digits.");
+    let accountUid; try { accountUid = (await getAdminAuth().getUserByEmail(email)).uid; } catch (_error) { throw new HttpsError("not-found", "No Firebase account exists for that email."); }
     const [staffSnap, accountSnap, allStaffSnap] = await Promise.all([db.ref(`/posStaff/${staffId}`).get(), db.ref(`/admins/${accountUid}`).get(), db.ref("/posStaff").get()]);
     if (!staffSnap.exists()) throw new HttpsError("not-found", "POS staff profile was not found.");
     if (!accountSnap.exists() || !["staff", "cashier", "manager", "admin", "owner", "superadmin"].includes(portalRoleValue(accountSnap.val()))) throw new HttpsError("failed-precondition", "That Firebase account is not an authorised staff login.");
