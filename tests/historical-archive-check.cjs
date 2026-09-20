@@ -39,6 +39,14 @@ assert.deepEqual({orders:monthly.orders,netCents:monthly.netCents,channel:monthl
 assert.deepEqual(monthly.days["2026-09-19"].payments,{unspecified:{netCents:10030}});assert.equal(monthly.schemaVersion,2);
 monthly = HistoricalArchive.applyReportingContribution(monthly, contribution, -1);
 assert.equal(monthly.orders,0);assert.equal(monthly.netCents,0);assert.deepEqual(monthly.channels,{},"retries and corrections must reverse a prior contribution without drift");
+const legacyContribution = Object.assign({}, contribution, {schemaVersion:1});
+delete legacyContribution.day;delete legacyContribution.cogsCents;delete legacyContribution.payments;delete legacyContribution.items;
+let migrated = HistoricalArchive.applyReportingContribution({}, legacyContribution, 1);
+migrated = HistoricalArchive.applyReportingContribution(migrated, legacyContribution, -1);
+migrated = HistoricalArchive.applyReportingContribution(migrated, contribution, 1);
+assert.deepEqual({orders:migrated.orders,netCents:migrated.netCents,channel:migrated.channels.instore},{orders:1,netCents:10030,channel:{orders:1,netCents:10030}},"migrating a V1 contribution must preserve reported totals");
+assert.deepEqual(migrated.days["2026-09-19"].payments,{unspecified:{netCents:10030}},"migrating a V1 contribution must add the dashboard payment and day breakdowns");
+assert.deepEqual(migrated.items.Latte,{name:"Latte",units:1,netCents:0},"migrating a V1 contribution must add best-seller data");
 assert.equal(HistoricalArchive.reportingContribution(Object.assign({},reportOrder,{voided:true})),null,"voided sales must not contribute to the monthly rollup");
 
 const missing = HistoricalArchive.buildDocument("POS-2", {order: Object.assign({}, completed, {id: "POS-2"})}, 300);
@@ -97,8 +105,10 @@ for (const marker of [
   "exports.manageHistoricalOrderArchive", "exports.readHistoricalOrders", "exports.readHistoricalSalesRollup", "historicalOrdersFromDocuments", "HistoricalArchive.unchanged", "deletionEnabled: false",
   '"sales-at-backfill"', '"sales-at-audit"', '"sales-ledger-backfill"', '"sales-rollup-backfill"', "Firestore replica maintenance only", "orderByKey()", "HISTORICAL_ARCHIVE_BATCH_LIMIT = 100",
   'startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\\uf8ff`)', "never recalculate history from current recipes", 'db.ref(`/archivedOrders/${orderId}`).get()',
-  'db.ref("/historicalArchiveSync").transaction', "reconcileHistoricalSalesRollup", "salesRollupReady", "salesAtReady", "HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 3", "HISTORICAL_MAINTENANCE_DAILY_DOCUMENT_LIMIT = 4000", "HISTORICAL_REPLICA_BATCH_LIMIT = 10", "HISTORICAL_REPLICA_DAILY_SOURCE_LIMIT = 1000", '"sales-replica-backfill"', "reserveHistoricalReplicaBudget", "salesReplicaBackfill", "sourceReplicaRunId", "historicalFirestoreReadsV2", "limit * (salesAtReady ? 1 : 3)",
+  'db.ref("/historicalArchiveSync").transaction', "reconcileHistoricalSalesRollup", "salesRollupReady", "salesAtReady", "HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 3", "HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION = 4", "HISTORICAL_MAINTENANCE_DAILY_DOCUMENT_LIMIT = 4000", "HISTORICAL_REPLICA_BATCH_LIMIT = 10", "HISTORICAL_REPLICA_DAILY_SOURCE_LIMIT = 1000", '"sales-replica-backfill"', "reserveHistoricalReplicaBudget", "salesReplicaBackfill", "sourceReplicaRunId", "historicalFirestoreReadsV3", "HISTORICAL_USER_BURST_READ_LIMIT = 200", "limit * (salesAtReady ? 1 : 3)",
 ]) assert(source.includes(marker), `historical archive safeguard missing: ${marker}`);
+assert(source.includes("const legacyContribution = previous && Number(previous.schemaVersion || 0) < 2"), "legacy rollup contributions must be migrated instead of treated as complete");
+assert(source.includes("const legacyMonth = months.some"), "legacy month summaries must be migrated instead of treated as complete");
 assert(!/Costing\.|ref\([`'"]\/(?:recipes|menuItems|optionRecipes)/.test(source), "historical archive must not use mutable current costing inputs");
 const salesAtMaintenance = source.slice(source.indexOf('if (["sales-at-audit"'), source.indexOf('if (action === "sales-ledger-backfill")'));
 assert(!salesAtMaintenance.includes('historicalArchiveInputs'), "salesAt maintenance must not replay RTDB archive evidence");
@@ -106,7 +116,7 @@ assert(source.includes('batch.update(document.ref, {salesAt: stamp})'), "salesAt
 assert(!/\.remove\(|\[[`'"]archivedOrders\//.test(source), "historical archive phase 1 must not delete RTDB data");
 
 const maintenanceUi = fs.readFileSync("assets/js/admin/operations-dashboard.js", "utf8");
-assert(maintenanceUi.includes("salesAtStageState") && maintenanceUi.includes("dependentStageState(status,'salesAt',3)") && maintenanceUi.includes("sourceReplicaRunId"), "the owner repair must replay pre-reader-ready completed date-index states once");
+assert(maintenanceUi.includes("salesAtStageState") && maintenanceUi.includes("dependentStageState(status,'salesAt',3)") && maintenanceUi.includes("dependentStageState(status,'salesRollup',4)") && maintenanceUi.includes("sourceReplicaRunId"), "the owner repair must rerun incomplete summary-schema states once");
 assert(maintenanceUi.includes("sales-replica-backfill") && maintenanceUi.includes("reportingReady"), "the owner repair must populate and validate the detailed-report reader before reporting success");
 assert(maintenanceUi.includes("Detailed-report reader ready"), "the owner must be able to distinguish rollup-ready from detailed-reader-ready reporting");
 

@@ -27,7 +27,8 @@ assert.equal(older.loaded,1);assert.equal(older.hasOlder,false);assert.equal(cur
 assert.equal(calls[1].mode,'before');
 
 const core=fs.readFileSync('assets/js/admin/core.mjs','utf8');
-assert(core.includes('subscriptionHub.readHistoricalPeriod(p)'), 'Overview history must use the Firestore historical reader');
+assert(core.includes('readHistoricalSalesRollup'), 'Overview must use the compact historical sales summary');
+assert(!core.includes('subscriptionHub.readHistoricalPeriod('), 'Overview must never reopen a paged historical reader');
 assert(!core.includes("readSalesPeriod(db,{ref,get,query,orderByChild,startAt,endAt},'archivedOrders'"), 'Overview must not directly query archivedOrders in RTDB');
 const repair=fs.readFileSync('src/admin/pos/31-recipe-temperature-repair.js','utf8');
 assert(repair.includes('cogsFixLoadArchived(null,{})'));
