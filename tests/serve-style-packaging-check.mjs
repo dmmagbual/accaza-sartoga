@@ -137,11 +137,7 @@ check(/accaza-packaging-restore-v2/.test(ui)&&/posSettings\/packagingAssignments
 check(!/data-packitem="/.test(ui)&&/data-packcustomize=/.test(ui)&&/data-packrevert=/.test(ui)&&/Uses the shared /.test(ui),'a pastry inherits the shared packaging by default, with no old-style per-item select, and can be Customized/Reverted individually');
 check(/itemStyleId\(key\)/.test(ui)&&/updates\['packagingRules\/'\+custId\]=clean/.test(ui)&&/updates\['posSettings\/packagingAssignments\/'\+catId\+'\/items\/'\+key\]=custId/.test(ui),'a per-item Customize writes its own private packagingRules/item_<key> record, never the shared style');
 check(/packSnapshot/.test(ui)&&/packRestore/.test(ui),'the screen takes a restore point and can undo from it');
-check(/packStyleSnapshot\(\{silent:true,keepView:true\}\)/.test(ui)&&/Backing up/.test(ui),'category save automatically downloads its restore point instead of showing a prerequisite popup');
 check(/packSnapshotData/.test(ui)&&/recipes:packDraftClone\(recipesMap\|\|\{\}\)/.test(ui)&&!/a\.get\(a\.ref\(a\.db,'recipes'\)\)/.test(ui),'the restore point reuses the fully loaded live costing data instead of issuing failure-prone duplicate Firebase reads');
-check(/Choose at least one packaging assignment/.test(ui),'an all-blank category assignment cannot erase valid packaging coverage');
-check(/A\(\)\.set\(A\(\)\.ref\(A\(\)\.db,'posSettings\/packagingAssignments'\),next\)/.test(ui),'category assignments save only their own Firebase node');
-check(/role="status" aria-live="polite"/.test(ui)&&/Restore point downloaded and assignments saved/.test(ui),'category save reports busy and successful completion inline');
 check(/data-pack-addrow/.test(ui)&&/data-pack-delrow/.test(ui)&&/quantities/.test(ui),'inherited packaging contents remain editable, removable and addable in the shared packaging set');
 check(/packApply/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built admin bundle carries the packaging screen');
 check(/serve-style-plan\.js/.test(fs.readFileSync('admin.html','utf8')),'admin.html loads the planner');
@@ -252,6 +248,38 @@ const icedEntry=libPlan.updates['posSettings/optionCosts/og_temp/Iced'];
 check(icedEntry&&icedEntry.ings.length===1&&icedEntry.ings[0].ing==='milk','a library entry keeps its real ingredients and loses only the packaging');
 check((libPlan.libraryStripped||[]).length===2,'both library entries carrying packaging are reported');
 check(Plan.applyPlan(recipes,inventory,menuItems,categories).libraryStripped.length===0,'a library with no packaging in it is left alone');
+
+
+// A fresh Packaging Costing page must attach the persisted settings without visiting POS.
+const hubSource=fs.readFileSync('assets/js/admin/realtime-hub.mjs','utf8');
+check(/posSettings:\[[^\]]*'recipes'/.test(hubSource),'recipe scope loads persisted category assignments after restart');
+const {createSubscriptionHub}=await import('../assets/js/admin/realtime-hub.mjs');
+let loadedSettings=null,attachments=0,detached=0;
+const settingsHub=createSubscriptionHub({}, {lingerMs:0,ref(db,path){return path;},onValue(path,callback){attachments++;callback({val(){return {packagingAssignments:{pastry:{defaultStyle:'bag'}}};}});return ()=>{detached++;};}});
+settingsHub.subscribe('posSettings',snapshot=>{loadedSettings=snapshot.val();});
+settingsHub.authorize();
+check(attachments===0,'packaging settings are not loaded on unrelated dashboard');
+settingsHub.activate('recipes');
+check(loadedSettings?.packagingAssignments.pastry.defaultStyle==='bag'&&attachments===1,'fresh recipe page receives saved assignments directly from the shared settings feed');
+settingsHub.activate('dashboard');settingsHub.deauthorize();
+check(detached===1,'packaging settings listener detaches when unused');
+const saveSource=ui.slice(ui.indexOf('var packAssignmentSaving='),ui.indexOf('function renderServeStylePackaging'));
+let persisted={pastry:{defaultStyle:'bag',items:{cake:'item_cake'}},coffee:{defaultStyle:'hot'}},writes=0,failSave=false;
+const control={value:'iced',disabled:false,attrs:{'data-packdefault':'coffee','data-pack-saved':'hot'},getAttribute(k){return this.attrs[k]??null;},setAttribute(k,v){this.attrs[k]=v;}};
+const button={},message={},root={querySelectorAll(){return [control];}};
+const context={Promise,Date,window:{},document:{getElementById(id){return id==='packagingRoot'?root:id==='packSaveAssignments'?button:message;}},updateCostBadge(){},A(){return {db:{},ref(db,path){return path;},async update(path,patch){if(failSave)throw new Error('permission-denied');writes++;if(path!=='posSettings/packagingAssignments')throw new Error('Wrong path');for(const [key,value] of Object.entries(patch)){const [cat,field]=key.split('/');if(value===null)delete persisted[cat][field];else persisted[cat][field]=value;}}};}};
+vm.createContext(context);vm.runInContext(saveSource,context);
+await context.savePackagingAssignments();
+check(persisted.coffee.defaultStyle==='iced'&&persisted.pastry.items.cake==='item_cake','save persists changed category and preserves unrelated private packaging');
+check(/Assignments saved/.test(message.textContent)&&!button.disabled,'save confirms database completion without invoking a download');
+await context.savePackagingAssignments();check(writes===1,'unchanged save does not write');
+control.value='';await context.savePackagingAssignments();check(!persisted.coffee.defaultStyle,'manual removal persists even for the last assignment in a category');
+control.value='hot';failSave=true;await context.savePackagingAssignments();
+check(!persisted.coffee.defaultStyle&&/Save failed/.test(message.textContent)&&!button.disabled,'rejected save reports failure and does not claim persistence');
+// Reload the editor from the database, not from an optimistic in-memory assignment.
+control.value=persisted.pastry.defaultStyle;control.attrs['data-packdefault']='pastry';control.attrs['data-pack-saved']='bag';failSave=false;
+vm.runInContext(saveSource,context);await context.savePackagingAssignments();
+check(control.value==='bag'&&writes===2,'restart keeps the saved selection without an additional write');
 
 console.log(failures?`\n${failures} check(s) failed.`:'\nAll serve-style packaging checks passed.');
 process.exit(failures?1:0);

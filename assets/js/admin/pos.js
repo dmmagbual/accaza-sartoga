@@ -2662,7 +2662,7 @@ function packItemBindEditors(){
 }
 function packagingAssignmentHtml(){
   var cats=(A().getCats?A().getCats():[]),menu=menuList(),saved=(window.__posSettings&&window.__posSettings.packagingAssignments)||{};
-  return '<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Menu applicability</div><p class="pz-sub" style="margin-top:0;">Drinks can vary by Temperature. Pastries share one packaging set by default — but any pastry can be <b>Customized</b> to add or remove packaging just for itself, starting from what it currently inherits; saving it never changes the shared style or any other item. Saving automatically downloads a restore point before anything changes.</p>'+cats.map(function(cat){
+  return '<div class="pz-card" style="margin-bottom:1rem;"><div style="font-weight:700;color:var(--bd);margin-bottom:0.2rem;">Menu applicability</div><p class="pz-sub" style="margin-top:0;">Drinks can vary by Temperature. Pastries share one packaging set by default — but any pastry can be <b>Customized</b> to add or remove packaging just for itself, starting from what it currently inherits; saving it never changes the shared style or any other item. Saved assignments remain after restart. Backups are optional under recovery tools.</p>'+cats.map(function(cat){
     var items=menu.filter(function(it){return it.cat===cat.id;}),groups={},assignment=saved[cat.id]||{},mapped=assignment.choices||{};
     items.forEach(function(it){(A().getItemOptionGroups?A().getItemOptionGroups(it):[]).forEach(function(g){if(/temperature/i.test(String(g.name||'')))groups[g.id]=g;});});
     var groupIds=Object.keys(groups),controls='';
@@ -2693,25 +2693,37 @@ function packagingAssignmentHtml(){
     return '<div style="border-top:1px solid var(--cd);padding:0.65rem 0;"><div style="font-weight:600;">'+esc((cat.icon||'')+' '+cat.label)+'</div><div style="font-size:0.72rem;color:var(--tl);margin:0.15rem 0 0.45rem;">'+(cat.id==='pastry'?'Shared by default across all '+items.length+' pastries — edit the packaging-set editor above to change everyone, or Customize a single item below.':'Applies to '+items.length+' item'+(items.length===1?'':'s')+(items.length?' — '+esc(items.map(function(i){return i.name;}).join(', ')) : ''))+'</div><div style="display:flex;gap:0.55rem;flex-wrap:wrap;">'+controls+'</div>'+itemControls+'</div>';
   }).join('')+'<button class="pz-btn ok" id="packSaveAssignments">Save category assignments</button><span id="packAssignmentMsg" role="status" aria-live="polite" style="font-size:0.78rem;color:var(--tl);margin-left:0.5rem;"></span></div>';
 }
+var packAssignmentSaving=false;
 function savePackagingAssignments(){
-  var root=document.getElementById('packagingRoot');
-  /* Seed from what is already saved, not a blank object, so a per-item Customize/Revert made
-     through its own dedicated save path is never wiped out by this unrelated category-level save. */
-  var prior=(window.__posSettings&&window.__posSettings.packagingAssignments)||{},next=packDraftClone(prior);
-  root.querySelectorAll('[data-packdefault]').forEach(function(el){var cat=el.getAttribute('data-packdefault'),value=String(el.value||'');next[cat]=next[cat]||{};if(value)next[cat].defaultStyle=value;else delete next[cat].defaultStyle;});
-  root.querySelectorAll('[data-packassign]').forEach(function(el){var p=el.getAttribute('data-packassign').split('|'),value=String(el.value||'');next[p[0]]=next[p[0]]||{};next[p[0]].choices=next[p[0]].choices||{};next[p[0]].choices[p[1]]=next[p[0]].choices[p[1]]||{};if(value)next[p[0]].choices[p[1]][p[2]]=value;else delete next[p[0]].choices[p[1]][p[2]];});
-  Object.keys(next).forEach(function(cat){if(!next[cat].defaultStyle&&!(next[cat].choices&&Object.keys(next[cat].choices).length)&&!(next[cat].items&&Object.keys(next[cat].items).length))delete next[cat];});
+  if(packAssignmentSaving)return Promise.resolve();
+  var root=document.getElementById('packagingRoot'),updates={};
+  root.querySelectorAll('[data-packdefault], [data-packassign]').forEach(function(el){
+    var value=String(el.value||'');
+    if(value===el.getAttribute('data-pack-saved'))return;
+    var cat=el.getAttribute('data-packdefault'),parts=String(el.getAttribute('data-packassign')||'').split('|');
+    var path=cat?cat+'/defaultStyle':parts[0]+'/choices/'+parts[1]+'/'+parts[2];
+    updates[path]=value||null;
+  });
   var btn=document.getElementById('packSaveAssignments'),m=document.getElementById('packAssignmentMsg');
-  if(!Object.keys(next).length){if(m)m.textContent='✗ Choose at least one packaging assignment.';return;}
-  if(btn){btn.disabled=true;btn.textContent='Backing up…';}if(m)m.textContent='Downloading a restore point before saving…';
-  packStyleSnapshot({silent:true,keepView:true}).then(function(){
-    if(btn)btn.textContent='Saving…';if(m)m.textContent='Restore point downloaded. Saving assignments…';
-    return A().set(A().ref(A().db,'posSettings/packagingAssignments'),next);
+  if(!Object.keys(updates).length){if(m)m.textContent='No assignment changes to save.';return Promise.resolve();}
+  packAssignmentSaving=true;
+  root.querySelectorAll('[data-packdefault], [data-packassign]').forEach(function(el){el.disabled=true;});
+  if(btn){btn.disabled=true;btn.textContent='Saving...';}if(m)m.textContent='Saving assignments to the database...';
+  return Promise.resolve().then(function(){
+    return A().update(A().ref(A().db,'posSettings/packagingAssignments'),updates);
   }).then(function(){
-    window.__posSettings=window.__posSettings||{};window.__posSettings.packagingAssignments=next;
-    if(btn){btn.disabled=false;btn.textContent='Save category assignments';}if(m)m.textContent='✓ Restore point downloaded and assignments saved '+new Date().toLocaleTimeString();updateCostBadge();
+    root.querySelectorAll('[data-packdefault], [data-packassign]').forEach(function(el){el.setAttribute('data-pack-saved',String(el.value||''));});
+    var status=document.getElementById('packAssignmentMsg');
+    if(status)status.textContent='Assignments saved '+new Date().toLocaleTimeString();
+    updateCostBadge();
   }).catch(function(e){
-    if(btn){btn.disabled=false;btn.textContent='Save category assignments';}if(m)m.textContent='✗ Nothing was changed: '+((e&&e.code)||(e&&e.message)||e);
+    var status=document.getElementById('packAssignmentMsg');
+    if(status)status.textContent='Save failed. Assignments were not saved: '+((e&&e.code)||(e&&e.message)||e);
+  }).finally(function(){
+    packAssignmentSaving=false;
+    root.querySelectorAll('[data-packdefault], [data-packassign]').forEach(function(el){el.disabled=false;});
+    var button=document.getElementById('packSaveAssignments');
+    if(button){button.disabled=false;button.textContent='Save category assignments';}
   });
 }
 function renderServeStylePackaging(){
@@ -2721,7 +2733,8 @@ function renderServeStylePackaging(){
     +'<details class="pz-card"><summary style="cursor:pointer;font-weight:700;color:var(--bd);">Maintenance and recovery tools</summary><p class="pz-sub">The former migration and restore workflow is retained here for controlled recovery, not normal costing.</p><button class="pz-btn" id="packSnapshot">⬇ Save restore point</button> <input type="file" accept="application/json,.json" id="packRestore" class="pz-in" style="max-width:320px;display:inline-block;"/></details>';
   packStyleBindEditor(plan);
   packItemBindEditors();
-  var save=document.getElementById('packSaveAssignments');if(save)save.onclick=savePackagingAssignments;
+  host.querySelectorAll('[data-packdefault], [data-packassign]').forEach(function(el){el.setAttribute('data-pack-saved',String(el.value||''));el.disabled=packAssignmentSaving;});
+  var save=document.getElementById('packSaveAssignments');if(save){save.onclick=savePackagingAssignments;save.disabled=packAssignmentSaving;}
   var snap=document.getElementById('packSnapshot');if(snap)snap.onclick=packStyleSnapshot;
   var restore=document.getElementById('packRestore');if(restore)restore.onchange=function(){packStyleRestore(restore.files&&restore.files[0]);};
 }
