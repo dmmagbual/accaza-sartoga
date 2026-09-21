@@ -31,6 +31,14 @@ check(key('Cash') === 'Cash' && key({method:'Cash'}) === 'Cash',
   'Cash must stay Cash — the Z-report reads byMethod.Cash for shift reconciliation.');
 check(key(null) === 'Other' && key({}) === 'Other',
   'A missing payment must fall back to Other rather than an empty bucket.');
+check(key('grabfood') === 'GrabFood' && key('GrabFood') === 'GrabFood',
+  'Legacy GrabFood casing must resolve to one channel.');
+check(key('foodpanda') === 'FoodPanda' && key('FoodPanda') === 'FoodPanda',
+  'Legacy FoodPanda casing must resolve to one channel.');
+check(key('ewalletgcash') === 'GCash' && key('gcashgcash') === 'GCash',
+  'Legacy wallet/account concatenations must resolve to GCash.');
+check(key('banktransferbdo') === 'Bank Transfer',
+  'A legacy bank-transfer/account concatenation must resolve to Bank Transfer.');
 
 /* The reported symptom, end to end: two labels, one row. */
 const payments = [
@@ -105,6 +113,8 @@ must(read('assets/js/admin/core.mjs'), 'cashAccounts:overviewCashAccounts',
 /* ---------- every surface that totals payments must use it ---------- */
 must(read('assets/js/shared/sales-authority.js'), 'paymentKey:paymentKey',
   'sales-authority.js: paymentKey must be exported on AccazaSales.');
+must(read('assets/js/admin/overview-insights.mjs'), 'groupSummaryPayments(summary.payments||{},window.AccazaSales)',
+  'Overview compact Payment Split must combine historical summary aliases before rendering.');
 
 for (const file of ['assets/js/admin/overview-insights.mjs']) {
   const s = read(file);

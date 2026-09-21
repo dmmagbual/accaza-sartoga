@@ -45,8 +45,8 @@
   /* A method absorbed by a reclassification (GCash and PayMaya folded into E-Wallet) keeps its old
      name on every posted order. Rather than rewrite posted records, each configured method may list
      the legacy names it absorbs, and history reports under the current classification. */
-  function methodAliases(){
-    var out={},methods=(global.__posSettings&&global.__posSettings.payMethods)||[];
+  function methodAliases(configuredMethods){
+    var out={},methods=Array.isArray(configuredMethods)?configuredMethods:((global.__posSettings&&global.__posSettings.payMethods)||[]);
     methods.forEach(function(m){
       var name=text(m&&m.name);if(!name)return;
       var list=Array.isArray(m.aliases)?m.aliases:text(m&&m.aliases).split(',');
@@ -54,11 +54,23 @@
     });
     return out;
   }
-  function paymentKey(payment){
+  function canonicalPaymentName(value){
+    var name=text(value),key=name.toLowerCase().replace(/[^a-z0-9]+/g,'');
+    if(key==='cash')return'Cash';
+    if(key.indexOf('grabfood')>-1)return'GrabFood';
+    if(key.indexOf('foodpanda')>-1)return'FoodPanda';
+    if(key.indexOf('gcash')>-1)return'GCash';
+    if(key.indexOf('paymaya')>-1||key==='maya')return'PayMaya';
+    if(key.indexOf('banktransfer')>-1||key==='bank')return'Bank Transfer';
+    if(key==='ewallet')return'E-Wallet';
+    return name||'Other';
+  }
+  function paymentKey(payment,configuredMethods){
     if(!payment)return'Other';
     var raw=typeof payment==='string'?splitMethod(payment,''):(text(payment.paymentMethod)||splitMethod(payment.method,payment.receivingAccountName));
     if(!raw)return'Other';
-    return methodAliases()[raw.toLowerCase()]||raw;
+    var aliases=methodAliases(configuredMethods),canonical=canonicalPaymentName(raw);
+    return aliases[raw.toLowerCase()]||aliases[canonical.toLowerCase()]||canonical;
   }
   /* The receiving account is the detail under a classification: which wallet, which bank.
      Online orders are created server-side without one, so the report resolves it exactly the way

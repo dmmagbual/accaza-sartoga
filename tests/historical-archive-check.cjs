@@ -34,6 +34,9 @@ const reportOrder = Object.assign({}, completed, {timestamp:Date.parse("2026-09-
 const contribution = HistoricalArchive.reportingContribution(reportOrder);
 assert.equal(contribution.month,"2026-09");assert.equal(contribution.day,"2026-09-19");assert.equal(contribution.hour,12);assert.equal(contribution.orders,1);assert.equal(contribution.grossCents,12555);assert.equal(contribution.discountCents,525);assert.equal(contribution.refundCents,2000);assert.equal(contribution.netCents,10030);assert.equal(contribution.channel,"instore");assert.equal(contribution.schemaVersion,3);
 assert.deepEqual(contribution.payments,[{key:"unspecified",netCents:10030}]);assert.deepEqual(contribution.items,[{key:"Latte",name:"Latte",categoryId:"",units:1,netCents:0}]);
+assert.equal(HistoricalArchive.reportingContribution(Object.assign({},reportOrder,{payment:'banktransferbdo'})).payments[0].key,'bank_transfer');
+assert.equal(HistoricalArchive.reportingContribution(Object.assign({},reportOrder,{payment:'ewalletgcash'})).payments[0].key,'gcash');
+assert.equal(HistoricalArchive.reportingContribution(Object.assign({},reportOrder,{payment:'grabfood'})).payments[0].key,'grabfood');
 let monthly = HistoricalArchive.applyReportingContribution({}, contribution, 1);
 assert.deepEqual({orders:monthly.orders,netCents:monthly.netCents,channel:monthly.channels.instore},{orders:1,netCents:10030,channel:{orders:1,netCents:10030}});
 assert.deepEqual(monthly.days["2026-09-19"].payments,{unspecified:{netCents:10030}});assert.deepEqual(monthly.hours,{12:{orders:1,netCents:10030}});assert.equal(monthly.schemaVersion,3);
