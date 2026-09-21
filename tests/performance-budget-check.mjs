@@ -32,7 +32,7 @@ const budgets={
   // Build 547 decouples the opening-balance and gain/loss reconciliation buttons so each
   // gates on its own server precondition instead of a shared check that silently re-hid
   // the opening-balance repost whenever 1290 carried a balance (regression of PR #171).
-  // Build 565 requires compact, validated monthly summaries before reporting.
+  // Build 566 keeps compact, validated monthly summaries before reporting.
   // summaries and a bounded live-order merge. The extra renderer code prevents an
   // unbounded historical download and stays under this reviewed narrow ceiling.
   'assets/js/admin/analytics.js':172300,
@@ -65,6 +65,6 @@ if(salesPeriod.includes("ops.startAt(String")||salesPeriod.includes("orderByChil
 for(const source of [moduleLoader,hub,telemetry,functions])for(const marker of source===moduleLoader?['module_load','performance.now']:source===hub?['live_ready','liveStartedAt']:['module_load','live_ready'])if(!source.includes(marker))fail(`Measured performance telemetry missing: ${marker}`);
 
 const manifest=JSON.parse(read('release-manifest.json'));
-if(manifest.builds.admin!==565||manifest.builds.customer!==74||manifest.builds.books!==129||manifest.builds.serviceWorkerCache!==546)fail('Current build/cache versions are not synchronized');
+if(manifest.builds.admin!==566||manifest.builds.customer!==74||manifest.builds.books!==129||manifest.builds.serviceWorkerCache!==547)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');

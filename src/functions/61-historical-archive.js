@@ -9,6 +9,7 @@ const HISTORICAL_REPLICA_DAILY_SOURCE_LIMIT = 1000;
 const HISTORICAL_USER_DAILY_READ_LIMIT = 500;
 const HISTORICAL_USER_BURST_READ_LIMIT = 200;
 const HISTORICAL_USER_BURST_WINDOW_MS = 60000;
+const HISTORICAL_ROLLUP_COMPLETION_READ_LIMIT = 1200;
 const HISTORICAL_PERIOD_MAX_MS = 93 * 86400000;
 // Version 3 binds the completed reporting indexes to the completed source
 // replica run. A previous index-only run must never claim detailed reports are
@@ -46,6 +47,24 @@ async function reserveHistoricalRollupReadBudget(db, documents) {
     return {day, reads:used + reads, updatedAt:Date.now()};
   });
   if (!result.committed) throw new HttpsError("resource-exhausted", "Summary repair paused at its daily read budget. Resume after the Firestore daily allowance resets.");
+}
+
+async function reserveHistoricalRollupCompletionBudget(db, runId, actorUid, documents) {
+  // A single owner-approved completion may finish one already-started V4
+  // migration. It has its own hard ceiling, is bound to the saved run and
+  // owner, and cannot be reused after completion or for another repair.
+  const safeRunId = String(runId || "").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 128);
+  const safeActorUid = String(actorUid || "").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 128);
+  if (!safeRunId || !safeActorUid) throw new HttpsError("failed-precondition", "An active owner-approved reporting repair is required.");
+  const reads = Math.max(1, Number(documents) || 1) * 4;
+  const ref = db.ref(`/systemMaintenance/historicalRollupCompletion/${safeRunId}`);
+  const result = await ref.transaction((current) => {
+    if (current && (current.runId !== safeRunId || current.actorUid !== safeActorUid || current.complete === true)) return;
+    const used = Number(current && current.reads) || 0;
+    if (used + reads > HISTORICAL_ROLLUP_COMPLETION_READ_LIMIT) return;
+    return {runId:safeRunId, actorUid:safeActorUid, reads:used + reads, updatedAt:Date.now(), schemaVersion:1};
+  });
+  if (!result.committed) throw new HttpsError("resource-exhausted", "The one-time summary completion allowance has been used. Reporting remains paused safely.");
 }
 
 async function reserveHistoricalMaintenanceBudget(db, documents) {
@@ -401,13 +420,14 @@ exports.manageHistoricalOrderArchive = onCall(
     if (!["owner", "superadmin"].includes(actor.role)) {
       throw new HttpsError("permission-denied", "Historical archive management is restricted to owners.");
     }
-    const data = request.data || {}, action = financeText(data.action, 32);
+    const data = request.data || {}, action = financeText(data.action, 32), completionOverride = data.completionOverride === true;
     if (!["status", "preview", "backfill", "verify", "sales-replica-backfill", "sales-at-audit", "sales-at-backfill", "sales-at-verify", "sales-ledger-backfill", "sales-rollup-backfill"].includes(action)) {
       throw new HttpsError("invalid-argument", "Choose a supported historical replica maintenance action. RTDB deletion is not available.");
     }
     const requested = Math.floor(Number(data.limit) || 25), sourceAction = ["backfill", "sales-replica-backfill"].includes(action), limit = Math.max(1, Math.min(sourceAction ? HISTORICAL_REPLICA_BATCH_LIMIT : HISTORICAL_ARCHIVE_BATCH_LIMIT, requested));
     const cursor = financeText(data.cursor, 160);
     const firestore = getFirestore();
+    if (completionOverride && action !== "sales-rollup-backfill") throw new HttpsError("invalid-argument", "The one-time completion override is only available for an active monthly summary repair.");
     if (action === "status") {
       const [salesReplica, salesAt, salesLedger, salesRollup, ready, salesAtReady] = await Promise.all([
         db.ref("/systemHealth/historicalArchive/salesReplicaBackfill").get(),
@@ -458,18 +478,27 @@ exports.manageHistoricalOrderArchive = onCall(
     // Replaying historicalArchiveInputs here would re-read RTDB financial and
     // inventory evidence for every historical order, defeating this cost fix.
     if (["sales-at-audit", "sales-at-backfill", "sales-at-verify", "sales-ledger-backfill", "sales-rollup-backfill"].includes(action)) {
-      if (action === "sales-rollup-backfill") await reserveHistoricalRollupReadBudget(db, limit);
       let runId = financeText(data.runId, 100), stateRef = null;
       if (["sales-at-backfill", "sales-ledger-backfill", "sales-rollup-backfill"].includes(action)) {
         const stateName = action === "sales-at-backfill" ? "salesAtBackfill" : action === "sales-ledger-backfill" ? "salesLedgerBackfill" : "salesRollupBackfill";
         stateRef = db.ref(`/systemHealth/historicalArchive/${stateName}`);
         const state = (await stateRef.get()).val() || {};
+        if (completionOverride && (!cursor || !runId)) {
+          throw new HttpsError("failed-precondition", "The one-time completion override must continue the saved V4 monthly summary repair.");
+        }
         if (!cursor) {
           runId = `${Date.now()}_${String(actor.uid).slice(0, 24)}`;
           if (action === "sales-rollup-backfill") await db.ref("/systemHealth/historicalArchive/salesRollupReady").set(false);
         }
         else if (!runId || state.runId !== runId || state.expectedCursor !== cursor || state.complete === true) {
           throw new HttpsError("failed-precondition", "Continue the active salesAt backfill with its returned run ID and cursor, or restart from the beginning.");
+        }
+        if (completionOverride && (action !== "sales-rollup-backfill" || Number(state.schemaVersion) < HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION || state.complete === true)) {
+          throw new HttpsError("failed-precondition", "The one-time completion override requires the active V4 monthly summary repair.");
+        }
+        if (action === "sales-rollup-backfill") {
+          if (completionOverride) await reserveHistoricalRollupCompletionBudget(db, runId, actor.uid, limit);
+          else await reserveHistoricalRollupReadBudget(db, limit);
         }
         await reserveHistoricalMaintenanceBudget(db, limit);
       }
@@ -512,15 +541,18 @@ exports.manageHistoricalOrderArchive = onCall(
           await db.ref("/systemHealth/historicalArchive/salesAtReady").set(true);
           historicalSalesAtReadyCache = {value:true, at:Date.now()};
         }
-        if (!nextCursor && action === "sales-rollup-backfill") await db.ref("/systemHealth/historicalArchive/salesRollupReady").set(true);
+        if (!nextCursor && action === "sales-rollup-backfill") {
+          await db.ref("/systemHealth/historicalArchive/salesRollupReady").set(true);
+          if (completionOverride) await db.ref(`/systemMaintenance/historicalRollupCompletion/${runId}`).update({complete:true, completedAt:Date.now()});
+        }
       }
       await db.ref(`/operationalAudit/${Date.now()}_historical_archive_${action}`).set({
         action: `historical_archive_${action}`, sourceType: "historicalOrderArchive", sourceId: nextCursor || "complete",
-        actorUid: actor.uid, actorRole: actor.role, ts: Date.now(), cursor, nextCursor, summary, schemaVersion: 1,
+        actorUid: actor.uid, actorRole: actor.role, ts: Date.now(), cursor, nextCursor, summary, completionOverride: completionOverride === true, schemaVersion: 1,
         accounting: action === "sales-ledger-backfill"
           ? "Read exact indexed financial movements by source order solely to build a compact Firestore reporting summary; no RTDB order, inventory, subledger, journal, or financial record was changed."
           : action === "sales-rollup-backfill"
-            ? "Rebuilt idempotent monthly sales reporting totals from Firestore order replicas; no RTDB order, inventory, subledger, journal, or financial record was changed."
+            ? (completionOverride ? "Completed the owner-approved, bounded V4 monthly summary repair from Firestore order replicas; no RTDB order, inventory, subledger, journal, or financial record was changed." : "Rebuilt idempotent monthly sales reporting totals from Firestore order replicas; no RTDB order, inventory, subledger, journal, or financial record was changed.")
             : "Firestore replica maintenance only; no RTDB order, inventory, financial movement, subledger, or Books journal was read or changed.",
       });
       return {action, cursor: nextCursor, complete: !nextCursor, summary, runId:runId || null};
