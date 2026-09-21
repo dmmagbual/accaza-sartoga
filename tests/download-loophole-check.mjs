@@ -150,7 +150,7 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   assert(read('src/books/business-intelligence.js').includes('window.__booksInsightsRollup'), 'Insights uses compact monthly summaries');
   assert(ruleIndexes('archivedOrders').includes('settlementStatus'), 'archivedOrders.settlementStatus must be indexed');
   const functions = read('functions/index.js');
-  assert(functions.includes('HISTORICAL_USER_DAILY_READ_LIMIT = 500')&&functions.includes('HISTORICAL_USER_BURST_READ_LIMIT = 200')&&functions.includes('HISTORICAL_PERIOD_MAX_MS = 93 * 86400000'), 'stale historical readers must have server-enforced daily, burst, and range ceilings');
+  assert(functions.includes('HISTORICAL_USER_DAILY_READ_LIMIT = 2000')&&functions.includes('HISTORICAL_USER_BURST_READ_LIMIT = 200')&&functions.includes('HISTORICAL_PERIOD_MAX_MS = 93 * 86400000'), 'stale historical readers must have server-enforced daily, burst, and range ceilings');
   const overview = read('assets/js/admin/core.mjs');
   assert(!overview.includes('readOverviewSalesRange')&&!overview.includes('readRanking:'), 'Overview must never reopen the legacy raw historical ranking reader');
   assert(functions.includes('await db.ref("/financialMovements").orderByChild("sourceId").equalTo(String(order.id || "")).get()'), 'full-void netting reads only the order movements');
