@@ -9,7 +9,7 @@ const HISTORICAL_REPLICA_DAILY_SOURCE_LIMIT = 1000;
 const HISTORICAL_USER_DAILY_READ_LIMIT = 2000;
 const HISTORICAL_USER_BURST_READ_LIMIT = 200;
 const HISTORICAL_USER_BURST_WINDOW_MS = 60000;
-const HISTORICAL_ROLLUP_COMPLETION_READ_LIMIT = 1200;
+const HISTORICAL_ROLLUP_COMPLETION_READ_LIMIT = 50000;
 const HISTORICAL_PERIOD_MAX_MS = 93 * 86400000;
 // Version 3 binds the completed reporting indexes to the completed source
 // replica run. A previous index-only run must never claim detailed reports are
@@ -50,9 +50,9 @@ async function reserveHistoricalRollupReadBudget(db, documents) {
 }
 
 async function reserveHistoricalRollupCompletionBudget(db, runId, actorUid, documents) {
-  // A single owner-approved completion may finish one already-started V5
-  // migration. It has its own hard ceiling, is bound to the saved run and
-  // owner, and cannot be reused after completion or for another repair.
+  // A single owner-approved completion may start or finish the V5 migration.
+  // It has its own hard ceiling, is bound to one run and owner, and cannot be
+  // reused after completion or for another repair.
   const safeRunId = String(runId || "").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 128);
   const safeActorUid = String(actorUid || "").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 128);
   if (!safeRunId || !safeActorUid) throw new HttpsError("failed-precondition", "An active owner-approved reporting repair is required.");
@@ -365,18 +365,26 @@ exports.readHistoricalSalesRollup = onCall(
       db.ref("/systemHealth/historicalArchive/salesRollupReady").get(),
       db.ref("/systemHealth/historicalArchive/salesRollupBackfill").get(),
     ]);
-    const rollupState = rollupStateSnap.val() || {}, ready = readySnap.val() === true && rollupState.complete === true && Number(rollupState.schemaVersion) >= HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION;
-    if (!ready) return {ready:false, months:{}};
+    const rollupState = rollupStateSnap.val() || {}, rollupVersion = Number(rollupState.schemaVersion) || 0;
+    const ready = readySnap.val() === true && rollupState.complete === true && rollupVersion >= HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION;
+    // V4 already proved that the compact day/payment/item totals were complete.
+    // A V5 hour/category upgrade must never blank those valid totals while it
+    // is pending or running. Rich V5-only charts remain explicitly unavailable
+    // until every month reaches schema 3.
+    const compatible = (rollupState.complete === true && rollupVersion >= 4) || rollupState.compatibleBaseReady === true;
+    if (!ready && !compatible) return {ready:false, months:{}};
     // Old open clients must share the bounded daily/burst historical-read budget.
     await reserveHistoricalReadBudget(db, actor.uid, span + 1, {page:true, summary:true});
     const snapshot = await getFirestore().collection(HistoricalArchive.MONTH_COLLECTION)
       .orderBy(FieldPath.documentId()).startAt(from).endAt(to).limit(12).get();
     const months = {};
     snapshot.docs.forEach((document) => { months[document.id] = document.data() || {}; });
-    // Summary consumers require day/payment/item/hour/category detail. Returning
-    // an older rollup would silently omit weekly, peak-hour, or drink reports.
-    if (Object.values(months).some((month) => Number(month && month.schemaVersion) < 3)) return {ready:false, needsMaintenance:true, months:{}};
-    return {ready:true, months, schemaVersion:3};
+    // Schema 2 remains a complete financial total. Schema 3 adds hour/category
+    // detail. Callers can render compatible totals during the upgrade without
+    // presenting a partial peak-hour chart as complete.
+    if (Object.values(months).some((month) => Number(month && month.schemaVersion) < 2)) return {ready:false, needsMaintenance:true, months:{}};
+    const rich = ready && Object.values(months).every((month) => Number(month && month.schemaVersion) >= 3);
+    return {ready:true, months, schemaVersion:rich ? 3 : 2, needsMaintenance:!rich};
   },
 );
 
@@ -478,29 +486,33 @@ exports.manageHistoricalOrderArchive = onCall(
     // Replaying historicalArchiveInputs here would re-read RTDB financial and
     // inventory evidence for every historical order, defeating this cost fix.
     if (["sales-at-audit", "sales-at-backfill", "sales-at-verify", "sales-ledger-backfill", "sales-rollup-backfill"].includes(action)) {
-      let runId = financeText(data.runId, 100), stateRef = null;
+      let runId = financeText(data.runId, 100), stateRef = null, rollupCompatibleBase = false;
       if (["sales-at-backfill", "sales-ledger-backfill", "sales-rollup-backfill"].includes(action)) {
         const stateName = action === "sales-at-backfill" ? "salesAtBackfill" : action === "sales-ledger-backfill" ? "salesLedgerBackfill" : "salesRollupBackfill";
         stateRef = db.ref(`/systemHealth/historicalArchive/${stateName}`);
         const state = (await stateRef.get()).val() || {};
-        if (completionOverride && (!cursor || !runId)) {
+        if (action === "sales-rollup-backfill") rollupCompatibleBase = state.compatibleBaseReady === true || (state.complete === true && Number(state.schemaVersion) >= 4);
+        const startingRollupUpgrade = completionOverride && action === "sales-rollup-backfill" && !cursor && !runId;
+        if (completionOverride && !startingRollupUpgrade && (!cursor || !runId)) {
           throw new HttpsError("failed-precondition", "The one-time completion override must continue the saved V5 monthly summary repair.");
         }
         if (!cursor) {
           runId = `${Date.now()}_${String(actor.uid).slice(0, 24)}`;
-          if (action === "sales-rollup-backfill") await db.ref("/systemHealth/historicalArchive/salesRollupReady").set(false);
+          // Preserve compatible V4 totals while V5 enriches them. A first-ever
+          // rollup still fails closed until its complete totals are proven.
+          if (action === "sales-rollup-backfill" && !(state.complete === true && Number(state.schemaVersion) >= 4)) await db.ref("/systemHealth/historicalArchive/salesRollupReady").set(false);
         }
         else if (!runId || state.runId !== runId || state.expectedCursor !== cursor || state.complete === true) {
           throw new HttpsError("failed-precondition", "Continue the active salesAt backfill with its returned run ID and cursor, or restart from the beginning.");
         }
-        if (completionOverride && (action !== "sales-rollup-backfill" || Number(state.schemaVersion) < HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION || state.complete === true)) {
+        if (completionOverride && !startingRollupUpgrade && (action !== "sales-rollup-backfill" || Number(state.schemaVersion) < HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION || state.complete === true)) {
           throw new HttpsError("failed-precondition", "The one-time completion override requires the active V5 monthly summary repair.");
         }
         if (action === "sales-rollup-backfill") {
           if (completionOverride) await reserveHistoricalRollupCompletionBudget(db, runId, actor.uid, limit);
           else await reserveHistoricalRollupReadBudget(db, limit);
         }
-        await reserveHistoricalMaintenanceBudget(db, limit);
+        if (!completionOverride) await reserveHistoricalMaintenanceBudget(db, limit);
       }
       const replicaState = (await db.ref("/systemHealth/historicalArchive/salesReplicaBackfill").get()).val() || {};
       if (!replicaState.complete || !replicaState.runId) throw new HttpsError("failed-precondition", "Complete the bounded historical sales replica before rebuilding reporting indexes.");
@@ -536,6 +548,7 @@ exports.manageHistoricalOrderArchive = onCall(
       const nextCursor = docs.length === limit ? docs[docs.length - 1].id : "";
       if (["sales-at-backfill", "sales-ledger-backfill", "sales-rollup-backfill"].includes(action)) {
         const progress = {runId, expectedCursor:nextCursor, complete:!nextCursor, updatedAt:Date.now(), updatedBy:actor.uid, lastSummary:summary, sourceReplicaRunId:replicaState.runId, schemaVersion:action === "sales-at-backfill" ? HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION : action === "sales-rollup-backfill" ? HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION : 2};
+        if (action === "sales-rollup-backfill") progress.compatibleBaseReady = rollupCompatibleBase;
         await stateRef.set(progress);
         if (!nextCursor && action === "sales-at-backfill") {
           await db.ref("/systemHealth/historicalArchive/salesAtReady").set(true);

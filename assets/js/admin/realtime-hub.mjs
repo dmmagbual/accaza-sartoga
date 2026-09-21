@@ -150,6 +150,7 @@ function createSubscriptionHub(database,ops){
           else{entry.loading=true;var result=await ops.readHistoricalOrders({mode:'latest',purpose:'admin_archive_latest',limit:HISTORY_BOUNDS.archivedOrders.limit});if(stopped||generation!==(entry.generation||0))return;entry.live=result.orders||{};entry.archiveCursor=result.cursor||null;entry.hasOlder=result.hasMore===true;loadedOnce=true;}
           entry.loading=false;entry.error=null;dispatch(entry,facade(entry));
           if(entries.financialMovements&&entries.financialMovements.refreshSources)entries.financialMovements.refreshSources();
+          if(previous!==null&&sequence!==previous&&typeof window!=='undefined'&&window.dispatchEvent)window.dispatchEvent(new CustomEvent('accaza-historical-sales-change',{detail:{sequence:sequence}}));
         }catch(error){sequence=null;failed(error);}finally{refreshing=false;if(queued&&!stopped){queued=false;var m=pendingMarker;pendingMarker=null;refreshArchive(m);}}
       }
       var stopMarker=onValue(ref(database,'historicalArchiveSync'),function(snapshot){

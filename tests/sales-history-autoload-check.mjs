@@ -13,7 +13,7 @@ const hub={
 };
 const accaza={
   hub,
-  async readHistoricalSalesRollup(){summaryCalls++;return{ready:true,schemaVersion:3,months:{}};},
+  async readHistoricalSalesRollup(){summaryCalls++;return{ready:true,schemaVersion:2,months:{}};},
   summarizeHistoricalSales(){return{orders:0,gross:0,discount:0,refund:0,net:0};},
   addLiveSales(summary){return summary;},
   subscribe(pathName,callback){callbacks[pathName]=callback;return function(){};}
@@ -26,7 +26,7 @@ const document={
 };
 const window={
   __accaza:accaza,
-  sessionStorage:{getItem:key=>sessionValues.get(key)||null,setItem:(key,value)=>sessionValues.set(key,value)},
+  sessionStorage:{getItem:key=>sessionValues.get(key)||null,setItem:(key,value)=>sessionValues.set(key,value),removeItem:key=>sessionValues.delete(key)},
   __accazaRegisterModule(name,handler){if(name==='saleshistory')moduleHandler=handler;},
   addEventListener(){},
   AccazaSales:{stamp(){return 0;},qualifies(){return false;},amounts(){return{gross:0,discount:0,refund:0,net:0};}},

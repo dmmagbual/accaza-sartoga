@@ -6,7 +6,7 @@ import {summarizeHistoricalSales,addLiveSales} from '../assets/js/admin/historic
 const require=createRequire(import.meta.url), H=require('../functions/lib/historical-archive.js');
 const source=fs.readFileSync('src/functions/61-historical-archive.js','utf8');
 const analyticsSource=fs.readFileSync('src/admin/analytics/10-sales-model-history.js','utf8');
-for(const marker of ['renderCompactAnalyticsV5','Weekly sales','Peak hours','Top 10 drinks by net revenue','compactDrinkItems','Number(result.schemaVersion)<3'])assert(analyticsSource.includes(marker),'compact Sales Analytics must retain '+marker);
+for(const marker of ['renderCompactAnalyticsV5','Weekly sales','Peak hours','Top 10 drinks by net revenue','compactDrinkItems','Number(result.schemaVersion)<2','refreshCompactAnalytics'])assert(analyticsSource.includes(marker),'compact Sales Analytics must retain '+marker);
 const repair=source.slice(source.indexOf('async function reconcileHistoricalSalesRollup'),source.indexOf('async function replicateHistoricalOrder'));
 const ctx={HistoricalArchive:H,Date,Number,Set,Object};vm.createContext(ctx);vm.runInContext(repair,ctx);
 const order={id:'sale1',status:'Completed',paymentStatus:'confirmed',timestamp:Date.parse('2026-09-10T12:00:00+08:00'),total:100,subtotal:100,payment:'Cash',channel:'instore',lineItems:[{itemKey:'latte',name:'Latte',categoryId:'coffee',qty:2,unitTotal:50}]};
@@ -36,13 +36,13 @@ let automaticCalls=0;const automaticContext={Promise,Error,String,Number,setTime
 vm.createContext(automaticContext);vm.runInContext(stage,automaticContext);
 await automaticContext.runHistoricalStage('sales-rollup-backfill',{expectedCursor:'saved-cursor',runId:'run'},'Summary',{}, {completionOverride:true,autoContinue:true});assert.equal(automaticCalls,2,'the one-time completion must continue saved batches automatically');
 let budget;
-const budgetContext={Intl,Date,Math,Number,HISTORICAL_ROLLUP_COMPLETION_READ_LIMIT:1200,HttpsError:class extends Error{constructor(code,msg){super(msg);this.code=code;}}};vm.createContext(budgetContext);
+const budgetContext={Intl,Date,Math,Number,HISTORICAL_ROLLUP_COMPLETION_READ_LIMIT:50000,HttpsError:class extends Error{constructor(code,msg){super(msg);this.code=code;}}};vm.createContext(budgetContext);
 vm.runInContext(source.slice(source.indexOf('async function reserveHistoricalRollupReadBudget'),source.indexOf('async function reserveHistoricalMaintenanceBudget')),budgetContext);
 const db={ref:()=>({transaction:async update=>{const next=update(budget);if(next===undefined)return {committed:false};budget=next;return {committed:true};}})};
 for(let i=0;i<10;i++)await budgetContext.reserveHistoricalRollupReadBudget(db,25);
 await assert.rejects(()=>budgetContext.reserveHistoricalRollupReadBudget(db,25),e=>e.code==='resource-exhausted');assert.equal(budget.reads,1000);
 let completionBudget;
 const completionDb={ref:()=>({transaction:async update=>{const next=update(completionBudget);if(next===undefined)return {committed:false};completionBudget=next;return {committed:true};}})};
-for(let i=0;i<12;i++)await budgetContext.reserveHistoricalRollupCompletionBudget(completionDb,'active-run','owner-1',25);
-await assert.rejects(()=>budgetContext.reserveHistoricalRollupCompletionBudget(completionDb,'active-run','owner-1',25),e=>e.code==='resource-exhausted');assert.equal(completionBudget.reads,1200);assert.equal(completionBudget.actorUid,'owner-1');
+for(let i=0;i<125;i++)await budgetContext.reserveHistoricalRollupCompletionBudget(completionDb,'active-run','owner-1',100);
+await assert.rejects(()=>budgetContext.reserveHistoricalRollupCompletionBudget(completionDb,'active-run','owner-1',100),e=>e.code==='resource-exhausted');assert.equal(completionBudget.reads,50000);assert.equal(completionBudget.actorUid,'owner-1');
 console.log('PASS: legacy summaries migrate once; Dashboard and Analytics reconcile revenue, orders, payments, items and channels; normal migration pauses and the owner-approved completion remains bounded.');

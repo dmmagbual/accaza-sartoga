@@ -1,4 +1,4 @@
-import{summarizeHistoricalSales,addLiveSales}from'./historical-sales-summary.mjs?v=570';
+import{summarizeHistoricalSales,addLiveSales}from'./historical-sales-summary.mjs?v=571';
 
 function mergeOverviewOrders(active,orders,archived){
   var combined={};
@@ -72,7 +72,7 @@ function createOverviewInsights(deps){
     if(state.bound)return;state.bound=true;
     var open=document.getElementById('openDrinkRankingBtn'),modal=document.getElementById('drinkRankingModal'),close=document.getElementById('closeDrinkRankingBtn'),rankingFrom=document.getElementById('drinkRankingFrom'),rankingTo=document.getElementById('drinkRankingTo'),rankingMonth=document.getElementById('drinkRankingMonth'),rankingApply=document.getElementById('drinkRankingApply'),today=document.getElementById('drinkRankingToday'),print=document.getElementById('printDrinkRankingBtn');
     if(window.AccazaAdminPeriods)window.AccazaAdminPeriods.bind({scope:'sales',fromId:'overviewPeriodFrom',toId:'overviewPeriodTo',monthId:'overviewPeriodMonth',applyId:'overviewPeriodApply',labelId:'overviewRangeLabel',onApply:function(){return deps.refreshHistory?deps.refreshHistory():null;}});
-    if(window.addEventListener)window.addEventListener('accaza-admin-period',function(e){if(e.detail&&e.detail.scope==='sales'){if(state.latest)state.latest.historyComplete=false;paint();if(deps.refreshHistory)deps.refreshHistory();}});
+    if(window.addEventListener)window.addEventListener('accaza-admin-period',function(e){if(e.detail&&e.detail.scope==='sales'){if(state.latest)state.latest.historyComplete=false;invalidateSummaries();paint();if(deps.refreshHistory)deps.refreshHistory();}});
     document.querySelectorAll('[data-overview-metric]').forEach(function(btn){btn.addEventListener('click',function(){state.metric=this.dataset.overviewMetric;select();paint();});});
     function closeRanking(){if(!modal||modal.hidden)return;modal.hidden=true;state.rankingOpen=false;document.body.classList.remove('overview-ranking-open');if(state.lastFocus&&state.lastFocus.focus)state.lastFocus.focus();}
     function syncRankingControls(){var todayKey=overviewDateKey();if(rankingFrom){rankingFrom.value=state.rankingFrom;rankingFrom.max=todayKey;}if(rankingTo){rankingTo.value=state.rankingTo;rankingTo.max=todayKey;}if(rankingMonth){rankingMonth.max=todayKey.slice(0,7);var ym=state.rankingFrom.slice(0,7),parts=ym.split('-'),last=new Date(Date.UTC(Number(parts[0]),Number(parts[1]),0)).getUTCDate(),end=ym+'-'+String(last).padStart(2,'0');rankingMonth.value=state.rankingFrom===ym+'-01'&&state.rankingTo===(end>todayKey?todayKey:end)?ym:'';}}
@@ -180,7 +180,8 @@ function createOverviewInsights(deps){
     renderPayments(periodSales,data.cashAccounts||{});renderTop(periodSales,data);renderChannels(periodSales);chart(periodSales,r);renderFullRanking();
     var note=document.getElementById('overviewDataNote');if(note)note.textContent='Every completed paid order in the selected dates is loaded, including archived orders.';
   }
-  return{render:function(data){state.latest=data;paint();},ensureHistory:ensureHistory,stop:stopYear};
+  function invalidateSummaries(){state.summaryKey='';state.summaryMonths=null;state.summaryError='';state.summaryLoading=false;state.summaryRequest++;state.rankingKey='';state.rankingMonths=null;state.rankingError='';state.rankingRequest++;stopYear();}
+  return{render:function(data){state.latest=data;paint();},ensureHistory:ensureHistory,stop:stopYear,invalidateSummaries:invalidateSummaries};
 }
 
 export{buildChannelBreakdown,buildDrinkRanking,buildRollingYear,buildRollingYearFromMonths,createOverviewHistoryLoader,createOverviewInsights,mergeOverviewOrders,overviewChannelKey,overviewDayRange,overviewRankingRange,overviewRollingYearRange};

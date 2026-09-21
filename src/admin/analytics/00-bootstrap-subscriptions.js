@@ -62,5 +62,6 @@ function init(){
 }
 // extend the POS tab switcher to also render our tabs
 window.__accazaRegisterModule('analytics',function(name){ if(name==='analytics')renderAnalytics(); if(name==='payouts')renderPayouts(); if(name==='stockvalue')renderStockValue(); if(name==='dailyreport')renderDailyReport(); });
+window.addEventListener('accaza-historical-sales-change',function(){compactAnalytics={key:'',loading:false,error:'',current:null,previous:null,request:compactAnalytics.request+1};if(isTab('analytics'))renderAnalytics();});
 
 // Reporting is read-only: missing historical dates use the shared sales authority fallback.
