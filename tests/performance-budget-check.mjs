@@ -35,7 +35,9 @@ const budgets={
   // Build 566 keeps compact, validated monthly summaries before reporting.
   // summaries and a bounded live-order merge. The extra renderer code prevents an
   // unbounded historical download and stays under this reviewed narrow ceiling.
-  'assets/js/admin/analytics.js':172300,
+  // Build 569 adds weekly, peak-hour, and menu-level drink views from the same
+  // compact summaries, replacing the obsolete renderer without raw-order reads.
+  'assets/js/admin/analytics.js':172700,
   'assets/js/admin/finance.js':75000,
   // Build 106 adds consistent interactive feedback to Finance Books buttons.
   // Build 110 adds only the AP-page hooks; its 6 KB form remains isolated below.
@@ -65,6 +67,6 @@ if(salesPeriod.includes("ops.startAt(String")||salesPeriod.includes("orderByChil
 for(const source of [moduleLoader,hub,telemetry,functions])for(const marker of source===moduleLoader?['module_load','performance.now']:source===hub?['live_ready','liveStartedAt']:['module_load','live_ready'])if(!source.includes(marker))fail(`Measured performance telemetry missing: ${marker}`);
 
 const manifest=JSON.parse(read('release-manifest.json'));
-if(manifest.builds.admin!==568||manifest.builds.customer!==74||manifest.builds.books!==129||manifest.builds.serviceWorkerCache!==549)fail('Current build/cache versions are not synchronized');
+if(manifest.builds.admin!==569||manifest.builds.customer!==74||manifest.builds.books!==129||manifest.builds.serviceWorkerCache!==550)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');
