@@ -1,4 +1,4 @@
-import{summarizeHistoricalSales,addLiveSales}from'./historical-sales-summary.mjs?v=565';
+import{summarizeHistoricalSales,addLiveSales}from'./historical-sales-summary.mjs?v=566';
 
 function mergeOverviewOrders(active,orders,archived){
   var combined={};
