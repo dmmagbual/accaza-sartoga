@@ -37,9 +37,10 @@ const budgets={
   // unbounded historical download and stays under this reviewed narrow ceiling.
   // Build 569 adds weekly, peak-hour, and menu-level drink views from the same
   // compact summaries, replacing the obsolete renderer without raw-order reads.
-  // Build 571 adds summary compatibility, live invalidation and retry state so
-  // report recovery cannot blank or leave stale charts during a V5 upgrade.
-  'assets/js/admin/analytics.js':173500,
+  // Build 574 adds MTD/YTD cashier, weekday and peak-hour rendering on the
+  // bounded monthly summary. The module remains lazy-loaded under Analytics.
+  // Reviewed generated size: 176,661 bytes.
+  'assets/js/admin/analytics.js':176800,
   'assets/js/admin/finance.js':75000,
   // Build 106 adds consistent interactive feedback to Finance Books buttons.
   // Build 110 adds only the AP-page hooks; its 6 KB form remains isolated below.
@@ -69,6 +70,6 @@ if(salesPeriod.includes("ops.startAt(String")||salesPeriod.includes("orderByChil
 for(const source of [moduleLoader,hub,telemetry,functions])for(const marker of source===moduleLoader?['module_load','performance.now']:source===hub?['live_ready','liveStartedAt']:['module_load','live_ready'])if(!source.includes(marker))fail(`Measured performance telemetry missing: ${marker}`);
 
 const manifest=JSON.parse(read('release-manifest.json'));
-if(manifest.builds.admin!==573||manifest.builds.customer!==74||manifest.builds.books!==129||manifest.builds.serviceWorkerCache!==554)fail('Current build/cache versions are not synchronized');
+if(manifest.builds.admin!==574||manifest.builds.customer!==74||manifest.builds.books!==129||manifest.builds.serviceWorkerCache!==555)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');

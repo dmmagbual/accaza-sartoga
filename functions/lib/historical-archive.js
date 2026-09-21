@@ -61,6 +61,16 @@ function reportingHour(stamp) {
   return new Date(Number(stamp) + 8 * 3600000).getUTCHours();
 }
 
+function reportingWeekday(stamp) {
+  return new Date(Number(stamp) + 8 * 3600000).getUTCDay();
+}
+
+function reportingCashier(order) {
+  const name = String(order && (order.staff || order.cashier || order.completedByName) || "")
+    .replace(/\s+/g, " ").trim().slice(0, 120) || "Unassigned";
+  return {key:name.toLowerCase(), name};
+}
+
 function reportingPaymentKey(value) {
   const raw = String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
   if (raw === "cash") return "cash";
@@ -109,10 +119,12 @@ function reportingContribution(order) {
   const discount = platform ? platformDiscount : (Number(order.discount) || 0), refund = Number(order.refundAmount) || 0;
   const grossCents = Math.round(gross * 100), discountCents = Math.round(discount * 100), refundCents = Math.round(refund * 100);
   const netCents = Math.max(0, grossCents - discountCents - refundCents);
+  const cashier = reportingCashier(order);
   const contribution = {
     month: reportingMonth(stamp), orders: 1, grossCents,
     discountCents, refundCents, netCents,
-    channel: reportingChannel(order), day: reportingDay(stamp), hour: reportingHour(stamp),
+    channel: reportingChannel(order), day: reportingDay(stamp), hour: reportingHour(stamp), weekday: reportingWeekday(stamp),
+    cashierKey: cashier.key, cashierName: cashier.name,
     cogsCents: Math.max(0, Math.round((Number(order.correctedCogsSnapshot != null ? order.correctedCogsSnapshot : order.cogsSnapshot) || 0) * 100)),
     payments: reportingPaymentEntries(order, netCents, grossCents), items: reportingItems(order, netCents, grossCents), schemaVersion: 3,
   };
@@ -121,9 +133,9 @@ function reportingContribution(order) {
 }
 
 function applyReportingContribution(month, contribution, direction) {
-  const result = Object.assign({orders:0,grossCents:0,discountCents:0,refundCents:0,netCents:0,cogsCents:0,channels:{},payments:{},items:{},hours:{},days:{},schemaVersion:3}, clean(month || {}));
+  const result = Object.assign({orders:0,grossCents:0,discountCents:0,refundCents:0,netCents:0,cogsCents:0,channels:{},payments:{},items:{},hours:{},weekdays:{},cashiers:{},days:{},schemaVersion:3}, clean(month || {}));
   result.channels = Object.assign({}, result.channels || {}); result.payments = Object.assign({}, result.payments || {});
-  result.items = Object.assign({}, result.items || {}); result.hours = Object.assign({}, result.hours || {}); result.days = Object.assign({}, result.days || {});
+  result.items = Object.assign({}, result.items || {}); result.hours = Object.assign({}, result.hours || {}); result.weekdays = Object.assign({}, result.weekdays || {}); result.cashiers = Object.assign({}, result.cashiers || {}); result.days = Object.assign({}, result.days || {});
   const sign = direction < 0 ? -1 : 1, channel = String(contribution && contribution.channel || "unclassified");
   for (const field of ["orders", "grossCents", "discountCents", "refundCents", "netCents", "cogsCents"]) {
     result[field] = Math.max(0, Math.round((Number(result[field]) || 0) + sign * (Number(contribution && contribution[field]) || 0)));
@@ -144,6 +156,10 @@ function applyReportingContribution(month, contribution, direction) {
   addRows(result.payments, contribution && contribution.payments, false);
   addRows(result.items, contribution && contribution.items, true);
   addRows(result.hours, [{key:String(Number(contribution && contribution.hour) || 0),orders:contribution && contribution.orders,netCents:contribution && contribution.netCents}], false);
+  addRows(result.weekdays, [{key:String(Number(contribution && contribution.weekday) || 0),orders:contribution && contribution.orders,netCents:contribution && contribution.netCents}], false);
+  const cashierKey = String(contribution && contribution.cashierKey || "unassigned"), cashierName = String(contribution && contribution.cashierName || "Unassigned");
+  addRows(result.cashiers, [{key:cashierKey,orders:contribution && contribution.orders,netCents:contribution && contribution.netCents}], false);
+  if (result.cashiers[cashierKey]) result.cashiers[cashierKey].name = cashierName;
   const day = String(contribution && contribution.day || "");
   if (day) {
     const dayRow = Object.assign({orders:0,grossCents:0,discountCents:0,refundCents:0,netCents:0,cogsCents:0,channels:{},payments:{},items:{},hours:{}}, result.days[day] || {});
@@ -157,6 +173,7 @@ function applyReportingContribution(month, contribution, direction) {
     if (!dayRow.orders && !dayRow.grossCents && !dayRow.netCents) delete result.days[day]; else result.days[day] = dayRow;
   }
   result.schemaVersion = 3;
+  result.analyticsSchemaVersion = 1;
   return result;
 }
 
