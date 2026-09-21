@@ -1,11 +1,11 @@
 import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
-import{createSubscriptionHub}from"./realtime-hub.mjs?v=570";
+import{createSubscriptionHub}from"./realtime-hub.mjs?v=571";
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=570";
-import{summarizeHistoricalSales,addLiveSales}from"./historical-sales-summary.mjs?v=570";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=571";
+import{summarizeHistoricalSales,addLiveSales}from"./historical-sales-summary.mjs?v=571";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -180,6 +180,7 @@ let custItem=null,custSize=null,custSel={},custQty=1;
 let menuFilter='coffee',orderFilter=null;
 
 const overviewInsights=createOverviewInsights({esc:escHtml,historyStatus:function(path){return subscriptionHub.historyStatus(path);},loadOlder:function(path){return subscriptionHub.loadOlder(path);},readMonthlyRollup:function(r){return readHistoricalSalesRollup({from:r.from.slice(0,7),to:r.to.slice(0,7)});},readPeriodSummary:function(r){return readHistoricalSalesRollup({from:overviewMonth(r.start),to:overviewMonth(r.end)});},readRankingSummary:function(r){return readHistoricalSalesRollup({from:overviewMonth(r.start),to:overviewMonth(r.end)});}});
+window.addEventListener('accaza-historical-sales-change',function(){overviewInsights.invalidateSummaries();if(subscriptionHub.stats().activeScope==='dashboard')renderDashboard();});
 function overviewMonth(stamp){var d=new Date(Number(stamp)+8*3600000);return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0');}
 
 const appCustomerSession=createAppCustomerSession({setupPush:setupPush,refreshNotifyPrompt:refreshNotifyPrompt});

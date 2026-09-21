@@ -9,7 +9,7 @@ function mergeDay(target,key,row){var day=addDay(target,key,row);target.orders+=
 // maintenance, never by downloading an entire month into an Admin browser.
 export function summarizeHistoricalSales(months, period){
   var start=dateKey(period.startAt!=null?period.startAt:period.start),end=dateKey(period.endAt!=null?period.endAt:period.end),result=zero();
-  Object.values(months||{}).forEach(function(month){if(Number(month&&month.schemaVersion)<3)return;Object.keys(month.days||{}).sort().forEach(function(key){if(key>=start&&key<=end)mergeDay(result,key,month.days[key]||{});});});
+  Object.values(months||{}).forEach(function(month){if(Number(month&&month.schemaVersion)<2)return;Object.keys(month.days||{}).sort().forEach(function(key){if(key>=start&&key<=end)mergeDay(result,key,month.days[key]||{});});});
   return result;
 }
 
