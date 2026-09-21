@@ -4,6 +4,7 @@ import vm from 'node:vm';
 
 const source=fs.readFileSync(path.join(process.cwd(),'assets','js','admin','sales-history.js'),'utf8');
 const callbacks={},loadCalls=[];
+let summaryCalls=0;
 let moduleHandler=null,styleAdded=false;
 const root={innerHTML:''};
 const hub={
@@ -12,8 +13,12 @@ const hub={
 };
 const accaza={
   hub,
+  async readHistoricalSalesRollup(){summaryCalls++;return{ready:true,schemaVersion:3,months:{}};},
+  summarizeHistoricalSales(){return{orders:0,gross:0,discount:0,refund:0,net:0};},
+  addLiveSales(summary){return summary;},
   subscribe(pathName,callback){callbacks[pathName]=callback;return function(){};}
 };
+const sessionValues=new Map();
 const document={
   head:{appendChild(){styleAdded=true;}},
   createElement(){return{id:'',textContent:'',style:{}};},
@@ -21,6 +26,7 @@ const document={
 };
 const window={
   __accaza:accaza,
+  sessionStorage:{getItem:key=>sessionValues.get(key)||null,setItem:(key,value)=>sessionValues.set(key,value)},
   __accazaRegisterModule(name,handler){if(name==='saleshistory')moduleHandler=handler;},
   addEventListener(){},
   AccazaSales:{stamp(){return 0;},qualifies(){return false;},amounts(){return{gross:0,discount:0,refund:0,net:0};}},
@@ -36,6 +42,10 @@ for(const pathName of ['orders','archivedOrders','financialMovements']){
 }
 await new Promise(resolve=>setTimeout(resolve,350));
 if(loadCalls.length)throw new Error('Sales History downloaded older pages automatically instead of preserving the selected reporting boundary.');
+if(summaryCalls!==1)throw new Error('Sales History must read one compact selected-period summary, not detail pages.');
+moduleHandler('saleshistory');await new Promise(resolve=>setTimeout(resolve,0));
+if(summaryCalls!==1)throw new Error('Revisiting Sales History must reuse its selected-period compact summary.');
 if(!root.innerHTML.includes('Authoritative sales register'))throw new Error('Sales History did not render the selected reporting period after its bounded feeds loaded.');
 if(!root.innerHTML.includes('Load 100 older sales'))throw new Error('Sales History must expose manual bounded paging when more records exist.');
-console.log('PASS: Sales History renders bounded feeds without automatic historical downloads.');
+if(!root.innerHTML.includes('Selected-period totals are compact and saved for this tab'))throw new Error('Sales History must disclose cached compact totals separately from paged rows.');
+console.log('PASS: Sales History reuses one compact selected-period total and renders bounded detail feeds without automatic historical downloads.');
