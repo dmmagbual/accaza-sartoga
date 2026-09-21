@@ -33,7 +33,9 @@ const budgets={
   // gates on its own server precondition instead of a shared check that silently re-hid
   // the opening-balance repost whenever 1290 carried a balance (regression of PR #171).
   // +649 bytes after two compaction passes; raised deliberately, not silently.
-  'assets/js/admin/analytics.js':167200,
+  // Build 561 adds lazy-loaded MTD/YTD cashier, weekday and peak-hour analytics plus
+  // a compact historical-summary readiness guard. Reviewed generated size: 172,939 bytes.
+  'assets/js/admin/analytics.js':173200,
   'assets/js/admin/finance.js':75000,
   // Build 106 adds consistent interactive feedback to Finance Books buttons.
   // Build 110 adds only the AP-page hooks; its 6 KB form remains isolated below.
@@ -63,6 +65,6 @@ if(salesPeriod.includes("ops.startAt(String")||salesPeriod.includes("orderByChil
 for(const source of [moduleLoader,hub,telemetry,functions])for(const marker of source===moduleLoader?['module_load','performance.now']:source===hub?['live_ready','liveStartedAt']:['module_load','live_ready'])if(!source.includes(marker))fail(`Measured performance telemetry missing: ${marker}`);
 
 const manifest=JSON.parse(read('release-manifest.json'));
-if(manifest.builds.admin!==560||manifest.builds.customer!==74||manifest.builds.books!==128||manifest.builds.serviceWorkerCache!==541)fail('Current build/cache versions are not synchronized');
+if(manifest.builds.admin!==561||manifest.builds.customer!==74||manifest.builds.books!==128||manifest.builds.serviceWorkerCache!==542)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');

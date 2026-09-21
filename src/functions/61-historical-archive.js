@@ -314,7 +314,8 @@ exports.readHistoricalSalesRollup = onCall(
       .orderBy(FieldPath.documentId()).startAt(from).endAt(to).limit(12).get();
     const months = {};
     snapshot.docs.forEach((document) => { months[document.id] = document.data() || {}; });
-    return {ready:true, months, schemaVersion:1};
+    const analyticsReady = snapshot.docs.every((document) => Number((document.data() || {}).analyticsSchemaVersion) >= 1);
+    return {ready:true, analyticsReady, months, schemaVersion:3};
   },
 );
 

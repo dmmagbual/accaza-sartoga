@@ -53,6 +53,17 @@ function reportingChannel(order) {
   return "unclassified";
 }
 
+function reportingCashier(order) {
+  const raw = String(order && (order.staff || order.cashier || order.completedByName) || "").replace(/\s+/g, " ").trim().slice(0, 120);
+  const name = raw || "Unassigned";
+  return {key: name.toLocaleLowerCase("en-US"), name};
+}
+
+function reportingTimeBucket(stamp) {
+  const date = new Date((Number(stamp) || 0) + 8 * 60 * 60 * 1000);
+  return {weekday:date.getUTCDay(), hour:date.getUTCHours()};
+}
+
 function reportingContribution(order) {
   const status = effectiveStatus(order), stamp = salesAt(order);
   if (!order || order.voided === true || order.paymentStatus === "pending" ||
@@ -64,18 +75,23 @@ function reportingContribution(order) {
     (Number(order.platformDiscount) || 0);
   const discount = platform ? platformDiscount : (Number(order.discount) || 0), refund = Number(order.refundAmount) || 0;
   const grossCents = Math.round(gross * 100), discountCents = Math.round(discount * 100), refundCents = Math.round(refund * 100);
+  const cashier = reportingCashier(order), time = reportingTimeBucket(stamp);
   const contribution = {
     month: reportingMonth(stamp), orders: 1, grossCents,
     discountCents, refundCents, netCents: Math.max(0, grossCents - discountCents - refundCents),
-    channel: reportingChannel(order), schemaVersion: 1,
+    channel: reportingChannel(order), cashierKey: cashier.key, cashierName: cashier.name,
+    weekday:time.weekday, hour:time.hour, schemaVersion: 3,
   };
   contribution.checksum = checksum(contribution);
   return contribution;
 }
 
 function applyReportingContribution(month, contribution, direction) {
-  const result = Object.assign({orders:0,grossCents:0,discountCents:0,refundCents:0,netCents:0,channels:{}}, clean(month || {}));
+  const result = Object.assign({orders:0,grossCents:0,discountCents:0,refundCents:0,netCents:0,channels:{},cashiers:{},weekdays:{},hours:{}}, clean(month || {}));
   result.channels = Object.assign({}, result.channels || {});
+  result.cashiers = Object.assign({}, result.cashiers || {});
+  result.weekdays = Object.assign({}, result.weekdays || {});
+  result.hours = Object.assign({}, result.hours || {});
   const sign = direction < 0 ? -1 : 1, channel = String(contribution && contribution.channel || "unclassified");
   for (const field of ["orders", "grossCents", "discountCents", "refundCents", "netCents"]) {
     result[field] = Math.max(0, Math.round((Number(result[field]) || 0) + sign * (Number(contribution && contribution[field]) || 0)));
@@ -84,7 +100,24 @@ function applyReportingContribution(month, contribution, direction) {
   channelRow.orders = Math.max(0, Math.round((Number(channelRow.orders) || 0) + sign * (Number(contribution && contribution.orders) || 0)));
   channelRow.netCents = Math.max(0, Math.round((Number(channelRow.netCents) || 0) + sign * (Number(contribution && contribution.netCents) || 0)));
   if (!channelRow.orders && !channelRow.netCents) delete result.channels[channel]; else result.channels[channel] = channelRow;
-  result.schemaVersion = 1;
+  const cashierKey = String(contribution && contribution.cashierKey || "unassigned"), cashierName = String(contribution && contribution.cashierName || "Unassigned");
+  const cashierRow = Object.assign({name:cashierName,orders:0,netCents:0}, result.cashiers[cashierKey] || {});
+  cashierRow.name = cashierName;
+  cashierRow.orders = Math.max(0, Math.round((Number(cashierRow.orders) || 0) + sign * (Number(contribution && contribution.orders) || 0)));
+  cashierRow.netCents = Math.max(0, Math.round((Number(cashierRow.netCents) || 0) + sign * (Number(contribution && contribution.netCents) || 0)));
+  if (!cashierRow.orders && !cashierRow.netCents) delete result.cashiers[cashierKey]; else result.cashiers[cashierKey] = cashierRow;
+  [
+    [result.weekdays, String(Math.max(0, Math.min(6, Number(contribution && contribution.weekday) || 0)))],
+    [result.hours, String(Math.max(0, Math.min(23, Number(contribution && contribution.hour) || 0)))],
+  ].forEach(([buckets, key]) => {
+    const row = Object.assign({orders:0,netCents:0}, buckets[key] || {});
+    row.orders = Math.max(0, Math.round((Number(row.orders) || 0) + sign * (Number(contribution && contribution.orders) || 0)));
+    row.netCents = Math.max(0, Math.round((Number(row.netCents) || 0) + sign * (Number(contribution && contribution.netCents) || 0)));
+    if (!row.orders && !row.netCents) delete buckets[key]; else buckets[key] = row;
+  });
+  result.schemaVersion = 3;
+  result.cashierSchemaVersion = 1;
+  result.analyticsSchemaVersion = 1;
   return result;
 }
 
@@ -239,4 +272,4 @@ function unchanged(existing, next) {
     existing.salesLedgerChecksum === next.salesLedgerChecksum;
 }
 
-module.exports = {SCHEMA_VERSION, COLLECTION, MONTH_COLLECTION, CONTRIBUTION_COLLECTION, clean, checksum, effectiveStatus, salesAt, reportingMonth, reportingChannel, reportingContribution, applyReportingContribution, salesLedgerSummary, validInventoryPlan, legacyInventoryEvidence, assessEvidence, buildDocument, unchanged};
+module.exports = {SCHEMA_VERSION, COLLECTION, MONTH_COLLECTION, CONTRIBUTION_COLLECTION, clean, checksum, effectiveStatus, salesAt, reportingMonth, reportingChannel, reportingCashier, reportingTimeBucket, reportingContribution, applyReportingContribution, salesLedgerSummary, validInventoryPlan, legacyInventoryEvidence, assessEvidence, buildDocument, unchanged};

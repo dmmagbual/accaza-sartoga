@@ -30,13 +30,16 @@ assert.equal(doc.source.saleJournalId, "2026-09-09_instore");
 assert.equal(Object.prototype.hasOwnProperty.call(doc.order, "proof"), false, "binary proof must not be duplicated into Firestore");
 assert.equal(HistoricalArchive.unchanged(doc, HistoricalArchive.buildDocument("POS-1", evidence, 999)), true, "replication must avoid unchanged Firestore writes");
 
-const reportOrder = Object.assign({}, completed, {timestamp:Date.parse("2026-09-19T12:00:00+08:00"),subtotal:125.55,discount:5.25,refundAmount:20,channel:"instore"});
+const reportOrder = Object.assign({}, completed, {timestamp:Date.parse("2026-09-19T12:00:00+08:00"),subtotal:125.55,discount:5.25,refundAmount:20,channel:"instore",staff:"Rya"});
 const contribution = HistoricalArchive.reportingContribution(reportOrder);
-assert.deepEqual(contribution, {month:"2026-09",orders:1,grossCents:12555,discountCents:525,refundCents:2000,netCents:10030,channel:"instore",schemaVersion:1,checksum:contribution.checksum});
+assert.deepEqual(contribution, {month:"2026-09",orders:1,grossCents:12555,discountCents:525,refundCents:2000,netCents:10030,channel:"instore",cashierKey:"rya",cashierName:"Rya",weekday:6,hour:12,schemaVersion:3,checksum:contribution.checksum});
 let monthly = HistoricalArchive.applyReportingContribution({}, contribution, 1);
 assert.deepEqual({orders:monthly.orders,netCents:monthly.netCents,channel:monthly.channels.instore},{orders:1,netCents:10030,channel:{orders:1,netCents:10030}});
+assert.deepEqual(monthly.cashiers.rya,{name:"Rya",orders:1,netCents:10030});
+assert.deepEqual(monthly.weekdays["6"],{orders:1,netCents:10030});
+assert.deepEqual(monthly.hours["12"],{orders:1,netCents:10030});
 monthly = HistoricalArchive.applyReportingContribution(monthly, contribution, -1);
-assert.equal(monthly.orders,0);assert.equal(monthly.netCents,0);assert.deepEqual(monthly.channels,{},"retries and corrections must reverse a prior contribution without drift");
+assert.equal(monthly.orders,0);assert.equal(monthly.netCents,0);assert.deepEqual(monthly.channels,{},"retries and corrections must reverse a prior contribution without drift");assert.deepEqual(monthly.cashiers,{});assert.deepEqual(monthly.weekdays,{});assert.deepEqual(monthly.hours,{});
 assert.equal(HistoricalArchive.reportingContribution(Object.assign({},reportOrder,{voided:true})),null,"voided sales must not contribute to the monthly rollup");
 
 const missing = HistoricalArchive.buildDocument("POS-2", {order: Object.assign({}, completed, {id: "POS-2"})}, 300);
@@ -95,7 +98,7 @@ for (const marker of [
   "exports.manageHistoricalOrderArchive", "exports.readHistoricalOrders", "exports.readHistoricalSalesRollup", "historicalOrdersFromDocuments", "HistoricalArchive.unchanged", "deletionEnabled: false",
   '"sales-at-backfill"', '"sales-at-audit"', '"sales-ledger-backfill"', '"sales-rollup-backfill"', "Firestore replica maintenance only", "orderByKey()", "HISTORICAL_ARCHIVE_BATCH_LIMIT = 100",
   'startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\\uf8ff`)', "never recalculate history from current recipes", 'db.ref(`/archivedOrders/${orderId}`).get()',
-  'db.ref("/historicalArchiveSync").transaction', "reconcileHistoricalSalesRollup", "salesRollupReady", "salesAtReady", "HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 3", "HISTORICAL_MAINTENANCE_DAILY_DOCUMENT_LIMIT = 4000", "HISTORICAL_REPLICA_BATCH_LIMIT = 10", "HISTORICAL_REPLICA_DAILY_SOURCE_LIMIT = 1000", '"sales-replica-backfill"', "reserveHistoricalReplicaBudget", "salesReplicaBackfill", "sourceReplicaRunId",
+  'db.ref("/historicalArchiveSync").transaction', "reconcileHistoricalSalesRollup", "salesRollupReady", "salesAtReady", "analyticsReady", "HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 3", "HISTORICAL_MAINTENANCE_DAILY_DOCUMENT_LIMIT = 4000", "HISTORICAL_REPLICA_BATCH_LIMIT = 10", "HISTORICAL_REPLICA_DAILY_SOURCE_LIMIT = 1000", '"sales-replica-backfill"', "reserveHistoricalReplicaBudget", "salesReplicaBackfill", "sourceReplicaRunId",
 ]) assert(source.includes(marker), `historical archive safeguard missing: ${marker}`);
 assert(!/Costing\.|ref\([`'"]\/(?:recipes|menuItems|optionRecipes)/.test(source), "historical archive must not use mutable current costing inputs");
 const salesAtMaintenance = source.slice(source.indexOf('if (["sales-at-audit"'), source.indexOf('if (action === "sales-ledger-backfill")'));
@@ -107,6 +110,14 @@ const maintenanceUi = fs.readFileSync("assets/js/admin/operations-dashboard.js",
 assert(maintenanceUi.includes("salesAtStageState") && maintenanceUi.includes("dependentStageState(status,'salesAt',3)") && maintenanceUi.includes("sourceReplicaRunId"), "the owner repair must replay pre-reader-ready completed date-index states once");
 assert(maintenanceUi.includes("sales-replica-backfill") && maintenanceUi.includes("reportingReady"), "the owner repair must populate and validate the detailed-report reader before reporting success");
 assert(maintenanceUi.includes("Detailed-report reader ready"), "the owner must be able to distinguish rollup-ready from detailed-reader-ready reporting");
+
+const analyticsUi = fs.readFileSync("src/admin/analytics/20-sales-analytics.js", "utf8");
+const analyticsModel = fs.readFileSync("src/admin/analytics/10-sales-model-history.js", "utf8");
+const adminCore = fs.readFileSync("assets/js/admin/core.mjs", "utf8");
+for (const marker of ["Sales by cashier", "Sales by day of week", "Weekly sales", "Peak hours", "analyticsRollup.ready", "cashierComparison(cashierChart,ytdReady)", "rollupMetric('weekdays')", "rollupMetric('hours')"]) assert(analyticsUi.includes(marker), `cashier/day/hour analytics presentation is missing: ${marker}`);
+assert(!analyticsUi.includes("Top drinks by net revenue"), "Analytics must not duplicate the Home Overview Top Drinks report");
+for (const marker of ["ensureAnalyticsRollup", "rollupCashiers", "weeklyBars", "cashierComparison"]) assert(analyticsModel.includes(marker), `bounded YTD analytics model is missing: ${marker}`);
+assert(adminCore.includes("readHistoricalSalesRollup,"), "Analytics must use the compact historical rollup callable, not a broad browser order read");
 
 const rules = fs.readFileSync("firestore.rules", "utf8");
 assert(rules.includes("allow read, write: if false"), "Firestore historical replica must be server-only");

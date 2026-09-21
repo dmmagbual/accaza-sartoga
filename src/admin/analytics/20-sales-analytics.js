@@ -4,7 +4,7 @@ function renderAnalytics(){
   var root=document.getElementById('analyticsRoot'); if(!root)return;
   if(window.AccazaAdminPeriods)window.AccazaAdminPeriods.bind({scope:'sales',fromId:'analyticsPeriodFrom',toId:'analyticsPeriodTo',monthId:'analyticsPeriodMonth',applyId:'analyticsPeriodApply',labelId:'analyticsPeriodLabel'});
   sharedPeriod();
-  try{ ensureAnalyticsHistory();if(analyticsHistoryLoading){root.innerHTML='<div class="az-note">Loading the selected sales period and comparison period… If loading fails, press Apply to retry.</div>';return;}renderAnalyticsBody(); }
+  try{ ensureAnalyticsHistory();ensureAnalyticsRollup();if(analyticsHistoryLoading){root.innerHTML='<div class="az-note">Loading the selected sales period and comparison period… If loading fails, press Apply to retry.</div>';return;}renderAnalyticsBody(); }
   catch(err){ console.error('renderAnalytics error',err);
     root.innerHTML='<div class="pz-h">📊 Analytics</div><div style="background:#fde8e8;border:1px solid #f5b5b5;border-radius:8px;padding:1rem;color:#a11;font-size:0.85rem;">Analytics couldn’t finish building the shared-period report: <b>'+esc(String((err&&err.message)||err))+'</b>.</div>'; }
 }
@@ -33,6 +33,10 @@ function renderAnalyticsBody(){
   // dow
   var dowN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],byDow={};cur.forEach(function(x){var d=new Date(x.ts+8*3600000).getUTCDay();byDow[d]=(byDow[d]||0)+x.net;});
   var maxDow=Math.max.apply(null,Object.keys(byDow).map(function(d){return byDow[d];}).concat([1]));
+  var currentMonthToDate=isCurrentMonthToDate(from,to),ytdReady=currentMonthToDate&&analyticsRollup.ready;
+  var cashierRows=currentMonthToDate?cashierTotals(cur):{},previousCashiers=ytdReady?rollupCashiers():{},cashierChart=currentMonthToDate?joinCashierTotals(cashierRows,previousCashiers):[];
+  var ytdDow=ytdReady?rollupMetric('weekdays'):{},ytdHour=ytdReady?rollupMetric('hours'):{};
+  if(ytdReady){Object.keys(byDow).forEach(function(k){ytdDow[k]=(ytdDow[k]||0)+(byDow[k]||0);});Object.keys(byHour).forEach(function(k){ytdHour[k]=(ytdHour[k]||0)+(byHour[k]||0);});}
   // category / payment / type / items
   var byCat={},byPay={},byType={},items={};var totItems=0;
   cur.forEach(function(x){
@@ -47,12 +51,8 @@ function renderAnalyticsBody(){
       items[key].units+=li.qty;items[key].rev+=li.qty*li.unitTotal*itemFactor;var c=itemCost(li);if(c!=null)items[key].cost+=c;
     });
   });
-  // prev-period item units for trend
-  var pItems={};prev.forEach(function(x){(x.lineItems||[]).forEach(function(li){var ct=(window.__posSettings&&window.__posSettings.catType)||{};if(!window.AccazaSales.isDrinkLine(li,{menuItems:A().menuItemsMap,catType:ct}))return;var pk=window.AccazaSales.drinkKey(li);if(!pk)return;pItems[pk]=(pItems[pk]||0)+li.qty;});});
   var itemArr=Object.values(items);
-  var topByRev=itemArr.slice().sort(function(a,b){return b.rev-a.rev;});
   var topByProfit=itemArr.slice().filter(function(i){return i.cost>0;}).map(function(i){return Object.assign({profit:i.rev-i.cost,margin:i.rev>0?(i.rev-i.cost)/i.rev*100:0},i);}).sort(function(a,b){return b.profit-a.profit;});
-  var maxRev=Math.max.apply(null,topByRev.map(function(i){return i.rev;}).concat([1]));
   // customers
   var custIn={};cur.forEach(function(x){if(x.phone)custIn[x.phone]=(custIn[x.phone]||0)+x.net;});
   var pCustIn={};prev.forEach(function(x){if(x.phone)pCustIn[x.phone]=1;});
@@ -89,11 +89,18 @@ function renderAnalyticsBody(){
   html+='<div class="az-note">Highest day: '+(hi!==null?fmtD(hi)+' ('+peso0(byDay[hi]||0)+')':'—')+' · Lowest: '+(lo!==null?fmtD(lo)+' ('+peso0(byDay[lo]||0)+')':'—')+'</div>';
   // daily trend
   html+='<div class="az-sec">Daily net sales</div><div class="pz-card">'+dayKeys.map(function(k){return bar(fmtD(k),byDay[k]||0,maxDay,peso0(byDay[k]||0));}).join('')+'</div>';
-  // two-col: hours + dow
+  if(!currentMonthToDate)html+='<div class="az-sec">Cashier and YTD comparisons</div><p class="az-note">Select the current month through today to show MTD and YTD cashier, weekday, and peak-hour totals.</p>';
+  else{
+    html+='<div class="az-sec">Sales by cashier <span class="az-note">(completed net sales)</span></div><div class="pz-card"><div class="az-chart-key"><span class="az-key-mtd">This month</span><span class="az-key-ytd">Year to date</span></div>'+cashierComparison(cashierChart,ytdReady)+'</div>';
+    if(analyticsRollup.loading)html+='<p class="az-note">Loading compact YTD cashier, weekday, and peak-hour totals…</p>';
+    else if(!ytdReady)html+='<p class="az-note az-warn">'+esc(analyticsRollup.error||'Historical YTD summary is not ready yet.')+'</p>';
+  }
+  // two-col: hours + progressive weekday totals
   html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;" class="pz-posgrid">';
-  html+='<div><div class="az-sec">Peak hours</div><div class="pz-card">'+Object.keys(byHour).sort(function(a,b){return a-b;}).map(function(h){return bar((h%12||12)+(h<12?'am':'pm'),byHour[h],maxHour,peso0(byHour[h]));}).join('')+'</div></div>';
-  html+='<div><div class="az-sec">By day of week</div><div class="pz-card">'+[0,1,2,3,4,5,6].map(function(d){return bar(dowN[d],byDow[d]||0,maxDow,peso0(byDow[d]||0));}).join('')+'</div></div>';
+  html+='<div><div class="az-sec">Peak hours</div><div class="pz-card">'+Object.keys(byHour).sort(function(a,b){return a-b;}).map(function(h){var label=(h%12||12)+(h<12?'am':'pm'),value=peso0(byHour[h])+' MTD'+(ytdReady?' · '+peso0(ytdHour[h]||0)+' YTD':'');return bar(label,byHour[h],maxHour,value,'az-hour');}).join('')+'</div></div>';
+  html+='<div><div class="az-sec">Sales by day of week</div><div class="pz-card">'+[0,1,2,3,4,5,6].map(function(d){var value=peso0(byDow[d]||0)+' MTD'+(ytdReady?' · '+peso0(ytdDow[d]||0)+' YTD':'');return bar(dowN[d],byDow[d]||0,maxDow,value,'az-day-'+d);}).join('')+'</div></div>';
   html+='</div>';
+  html+='<div class="az-sec">Weekly sales</div><div class="pz-card">'+weeklyBars(cur)+'</div>';
   // category / payment / type
   html+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;" class="pz-posgrid">';
   html+='<div><div class="az-sec">By category</div><div class="pz-card">'+chartObj(byCat)+'</div></div>';
@@ -104,10 +111,6 @@ function renderAnalyticsBody(){
   cur.forEach(function(x){var lis=x.lineItems||[];if(!lis.length){if((x.o&&x.o.source==='pos')||x.type==='Walk-in')walkInRev+=x.net;else onlineRev+=x.net;return;}lis.forEach(function(li){var rev=(Number(li.qty)||0)*(Number(li.unitTotal)||0);if(li.stream==='events')eventRev+=rev;else if(li.stream==='promo')promoRev+=rev;else if((x.o&&x.o.source==='pos')||x.type==='Walk-in')walkInRev+=rev;else onlineRev+=rev;});});
   var chTot=walkInRev+onlineRev+eventRev+promoRev||1;
   html+='<div class="az-sec">Sales channel</div><div class="pz-card"><div class="az-kpis" style="margin:0;">'+kpi('Walk-in (counter)',peso0(walkInRev)+' · '+Math.round(walkInRev/chTot*100)+'%')+kpi('Online',peso0(onlineRev)+' · '+Math.round(onlineRev/chTot*100)+'%')+kpi('Events',peso0(eventRev)+' · '+Math.round(eventRev/chTot*100)+'%')+kpi('Promos',peso0(promoRev)+' · '+Math.round(promoRev/chTot*100)+'%')+'</div><div class="az-note">Revenue share by channel — walk-in, online, event packages, promos.</div></div>';
-  // items
-  html+='<div class="az-sec">Top drinks by net revenue</div><div class="pz-card"><table class="pz-tbl"><thead><tr><th>Drink</th><th>Units</th><th>Net revenue</th><th>Unit trend</th></tr></thead><tbody>'
-    +topByRev.slice(0,10).map(function(i){var pv=pItems[i.key]||0;var tr=pv>0?(i.units-pv)/pv*100:(i.units>0?100:0);return '<tr><td>'+esc(i.name)+'</td><td>'+i.units+'</td><td>'+peso0(i.rev)+'</td><td class="'+(tr>0?'az-up':tr<0?'az-down':'az-flat')+'">'+(pv>0||i.units>0?pct(tr):'—')+'</td></tr>';}).join('')
-    +'</tbody></table></div>';
   html+='<div class="az-sec">Most profitable items <span class="az-note">(revenue − recipe cost)</span></div><div class="pz-card">'
     +(topByProfit.length?'<table class="pz-tbl"><thead><tr><th>Item</th><th>Units</th><th>Profit</th><th>Margin</th></tr></thead><tbody>'
       +topByProfit.slice(0,10).map(function(i){return '<tr><td>'+esc(i.name)+'</td><td>'+i.units+'</td><td>'+peso0(i.profit)+'</td><td>'+(Math.round(i.margin)||0)+'%</td></tr>';}).join('')+'</tbody></table>'
