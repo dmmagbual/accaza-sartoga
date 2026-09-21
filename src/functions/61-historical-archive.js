@@ -15,9 +15,9 @@ const HISTORICAL_PERIOD_MAX_MS = 93 * 86400000;
 // replica run. A previous index-only run must never claim detailed reports are
 // ready when the underlying historical order replicas were never populated.
 const HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 3;
-// V4 proves that the summary was migrated from the revenue-only V1 rows to
-// the day, payment, item, and channel schema consumed by every dashboard.
-const HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION = 4;
+// V5 adds hour-of-sale totals and item category snapshots so Analytics can
+// restore weekly, peak-hour and drinks-only reports without raw order scans.
+const HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION = 5;
 
 async function reserveHistoricalReadBudget(db, uid, reads, options = {}) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {timeZone:"America/Los_Angeles",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()).map((part) => [part.type, part.value]));
@@ -50,7 +50,7 @@ async function reserveHistoricalRollupReadBudget(db, documents) {
 }
 
 async function reserveHistoricalRollupCompletionBudget(db, runId, actorUid, documents) {
-  // A single owner-approved completion may finish one already-started V4
+  // A single owner-approved completion may finish one already-started V5
   // migration. It has its own hard ceiling, is bound to the saved run and
   // owner, and cannot be reused after completion or for another repair.
   const safeRunId = String(runId || "").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 128);
@@ -238,8 +238,8 @@ async function reconcileHistoricalSalesRollup(firestore, orderId, order, transac
   const months = [...new Set([previous && previous.month, next && next.month].filter(Boolean))], snapshots = {};
   for (const month of months) snapshots[month] = await transaction.get(firestore.collection(HistoricalArchive.MONTH_COLLECTION).doc(month));
   const unchanged = (previous && previous.checksum || "") === (next && next.checksum || "");
-  const legacyContribution = previous && Number(previous.schemaVersion || 0) < 2;
-  const legacyMonth = months.some((month) => !snapshots[month].exists || Number((snapshots[month].data() || {}).schemaVersion || 0) < 2);
+  const legacyContribution = previous && Number(previous.schemaVersion || 0) < 3;
+  const legacyMonth = months.some((month) => !snapshots[month].exists || Number((snapshots[month].data() || {}).schemaVersion || 0) < 3);
   // A matching checksum is only a no-op after both the contribution state and
   // every touched month are on the complete reporting schema. This lets a
   // resumable backfill repair old V1 data without changing source evidence.
@@ -250,7 +250,7 @@ async function reconcileHistoricalSalesRollup(firestore, orderId, order, transac
     if (next && next.month === month) value = HistoricalArchive.applyReportingContribution(value, next, 1);
     transaction.set(firestore.collection(HistoricalArchive.MONTH_COLLECTION).doc(month), Object.assign(value, {month, updatedAt:Date.now()}));
   }
-  if (next) transaction.set(stateRef, {orderId, contribution:next, updatedAt:Date.now(), schemaVersion:2});
+  if (next) transaction.set(stateRef, {orderId, contribution:next, updatedAt:Date.now(), schemaVersion:3});
   else transaction.delete(stateRef);
   return true;
 }
@@ -373,10 +373,10 @@ exports.readHistoricalSalesRollup = onCall(
       .orderBy(FieldPath.documentId()).startAt(from).endAt(to).limit(12).get();
     const months = {};
     snapshot.docs.forEach((document) => { months[document.id] = document.data() || {}; });
-    // Summary consumers require the day/payment/item schema. Returning an old
-    // revenue-only rollup would silently understate a partial-month report.
-    if (Object.values(months).some((month) => Number(month && month.schemaVersion) < 2)) return {ready:false, needsMaintenance:true, months:{}};
-    return {ready:true, months, schemaVersion:2};
+    // Summary consumers require day/payment/item/hour/category detail. Returning
+    // an older rollup would silently omit weekly, peak-hour, or drink reports.
+    if (Object.values(months).some((month) => Number(month && month.schemaVersion) < 3)) return {ready:false, needsMaintenance:true, months:{}};
+    return {ready:true, months, schemaVersion:3};
   },
 );
 
@@ -484,7 +484,7 @@ exports.manageHistoricalOrderArchive = onCall(
         stateRef = db.ref(`/systemHealth/historicalArchive/${stateName}`);
         const state = (await stateRef.get()).val() || {};
         if (completionOverride && (!cursor || !runId)) {
-          throw new HttpsError("failed-precondition", "The one-time completion override must continue the saved V4 monthly summary repair.");
+          throw new HttpsError("failed-precondition", "The one-time completion override must continue the saved V5 monthly summary repair.");
         }
         if (!cursor) {
           runId = `${Date.now()}_${String(actor.uid).slice(0, 24)}`;
@@ -494,7 +494,7 @@ exports.manageHistoricalOrderArchive = onCall(
           throw new HttpsError("failed-precondition", "Continue the active salesAt backfill with its returned run ID and cursor, or restart from the beginning.");
         }
         if (completionOverride && (action !== "sales-rollup-backfill" || Number(state.schemaVersion) < HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION || state.complete === true)) {
-          throw new HttpsError("failed-precondition", "The one-time completion override requires the active V4 monthly summary repair.");
+          throw new HttpsError("failed-precondition", "The one-time completion override requires the active V5 monthly summary repair.");
         }
         if (action === "sales-rollup-backfill") {
           if (completionOverride) await reserveHistoricalRollupCompletionBudget(db, runId, actor.uid, limit);
@@ -552,7 +552,7 @@ exports.manageHistoricalOrderArchive = onCall(
         accounting: action === "sales-ledger-backfill"
           ? "Read exact indexed financial movements by source order solely to build a compact Firestore reporting summary; no RTDB order, inventory, subledger, journal, or financial record was changed."
           : action === "sales-rollup-backfill"
-            ? (completionOverride ? "Completed the owner-approved, bounded V4 monthly summary repair from Firestore order replicas; no RTDB order, inventory, subledger, journal, or financial record was changed." : "Rebuilt idempotent monthly sales reporting totals from Firestore order replicas; no RTDB order, inventory, subledger, journal, or financial record was changed.")
+            ? (completionOverride ? "Completed the owner-approved, bounded V5 monthly summary repair from Firestore order replicas; no RTDB order, inventory, subledger, journal, or financial record was changed." : "Rebuilt idempotent monthly sales reporting totals from Firestore order replicas; no RTDB order, inventory, subledger, journal, or financial record was changed.")
             : "Firestore replica maintenance only; no RTDB order, inventory, financial movement, subledger, or Books journal was read or changed.",
       });
       return {action, cursor: nextCursor, complete: !nextCursor, summary, runId:runId || null};
