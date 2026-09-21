@@ -197,7 +197,13 @@ window.__showOfflineQueue=function(note){offlineQueue().all().then(function(rows
   m.querySelectorAll('[data-sync-retry]').forEach(function(b){b.onclick=function(){offlineQueue().retry(this.getAttribute('data-sync-retry')).then(flushOfflineQueue).then(function(){m.remove();window.__showOfflineQueue('Retried sale.');});};});
 });};
 window.__flushOfflineQueue=flushOfflineQueue;
-window.__reportPosSyncHealth=function(force){return window.AccazaPosSyncHealth?window.AccazaPosSyncHealth.report(_offState,force===true):Promise.resolve(null);};
+window.__reportPosSyncHealth=function(force){
+  if(!window.AccazaPosSyncHealth)return Promise.resolve(null);
+  // Shift close is a money-control boundary. Never let an asynchronous queue refresh
+  // report the previous in-memory count after the durable queue has already emptied.
+  if(force===true)return offlineQueue().summary().then(function(s){_offState=s;renderOfflineUI();return window.AccazaPosSyncHealth.report(s,true);});
+  return window.AccazaPosSyncHealth.report(_offState,false);
+};
 window.__posOfflineState=function(){return _offState;};
 function posMethods(){
   var pm=(window.__posSettings&&window.__posSettings.payMethods);
