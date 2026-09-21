@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 globalThis.window={AccazaDate:{key:()=> '2026-09-07'},AccazaSales:{stamp:o=>o.completedAt,amounts:o=>({net:o.net}),qualifies:o=>o.status==='Completed'&&o.paymentStatus!=='pending'&&!o.voided}};
-const {buildChannelBreakdown,buildRollingYear,buildRollingYearFromMonths,overviewChannelKey,overviewRollingYearRange}=await import('../assets/js/admin/overview-insights.mjs');
+const paymentWindow={};new Function('window',fs.readFileSync('assets/js/shared/sales-authority.js','utf8'))(paymentWindow);
+const {buildChannelBreakdown,buildRollingYear,buildRollingYearFromMonths,groupSummaryPayments,overviewChannelKey,overviewRollingYearRange}=await import('../assets/js/admin/overview-insights.mjs');
 const ts=date=>Date.parse(date+'T12:00:00+08:00');
 const range=overviewRollingYearRange('2026-09-07');
 assert.equal(range.from,'2025-10-01');assert.equal(range.to,'2026-09-07');
@@ -17,6 +18,8 @@ assert.equal(overviewChannelKey(rows[1]),'instore');assert.equal(overviewChannel
 const channels=buildChannelBreakdown(rows);assert.deepEqual(channels.channels.map(x=>[x.key,x.orders,x.net]),[['online',1,100],['instore',1,200],['grabfood',1,300],['foodpanda',1,400]]);assert.deepEqual(channels.unclassified,{orders:1,net:50});
 const months=buildRollingYear(rows,range);assert.equal(months.length,12);assert.deepEqual(months[0],{key:'2025-10',net:100,orders:1});assert.deepEqual(months[10],{key:'2026-08',net:200,orders:1});assert.deepEqual(months[11],{key:'2026-09',net:750,orders:3});
 const compact=buildRollingYearFromMonths({'2025-10':{netCents:10000,orders:1},'2026-09':{netCents:75000,orders:3}},range,[{status:'Completed',paymentStatus:'confirmed',completedAt:ts('2026-09-06'),net:25}]);assert.deepEqual(compact[0],{key:'2025-10',net:100,orders:1});assert.deepEqual(compact[11],{key:'2026-09',net:775,orders:4});
+const paymentRows=groupSummaryPayments({grabfood:{net:20},GrabFood:{net:10},ewalletgcash:{net:18},GCash:{net:7},gcashgcash:{net:5},banktransferbdo:{net:16},'Bank Transfer':{net:4},foodpanda:{net:5},FoodPanda:{net:2}},paymentWindow.AccazaSales);
+assert.deepEqual(paymentRows.map(row=>[row.label,row.net]),[['GrabFood',30],['GCash',30],['Bank Transfer',20],['FoodPanda',7]]);
 const html=fs.readFileSync('src/html/admin/50-admin-workspace.html','utf8'),core=fs.readFileSync('assets/js/admin/core.mjs','utf8');
 assert(html.includes('id="overviewYearChart"')&&html.includes('id="channelBreakdown"'));assert(!html.includes('Order Activity &amp; Outcomes'));assert(core.includes('readMonthlyRollup:function'));assert(!core.includes('watchRollingSales:function'));
 console.log('PASS: Overview uses a 12-document monthly trend and mutually exclusive sales-channel totals.');

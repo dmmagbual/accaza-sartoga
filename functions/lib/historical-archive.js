@@ -64,9 +64,12 @@ function reportingHour(stamp) {
 function reportingPaymentKey(value) {
   const raw = String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
   if (raw === "cash") return "cash";
-  if (raw === "gcash") return "gcash";
-  if (raw === "paymaya" || raw === "maya") return "paymaya";
-  if (raw === "banktransfer" || raw === "bank") return "bank_transfer";
+  if (raw.includes("grabfood")) return "grabfood";
+  if (raw.includes("foodpanda")) return "foodpanda";
+  if (raw.includes("gcash")) return "gcash";
+  if (raw.includes("paymaya") || raw === "maya") return "paymaya";
+  if (raw.includes("banktransfer") || raw === "bank") return "bank_transfer";
+  if (raw === "ewallet") return "e_wallet";
   return raw || "unspecified";
 }
 
