@@ -3,10 +3,10 @@ const HISTORICAL_REPLICA_BATCH_LIMIT = 10;
 const HISTORICAL_READ_PAGE_LIMIT = 100;
 const HISTORICAL_MAINTENANCE_DAILY_DOCUMENT_LIMIT = 4000;
 const HISTORICAL_REPLICA_DAILY_SOURCE_LIMIT = 1000;
-// Detailed history is an exception view. Keep its quota well below the former
-// legacy reader allowance, and independently cap short bursts so an old client
-// cannot turn a refresh or pagination loop into a Firestore download spike.
-const HISTORICAL_USER_DAILY_READ_LIMIT = 500;
+// Detailed history is a user-paged exception view. Its daily cap leaves room
+// for several genuine report pages, while the independent burst cap prevents
+// an old client or refresh loop from creating a Firestore download spike.
+const HISTORICAL_USER_DAILY_READ_LIMIT = 2000;
 const HISTORICAL_USER_BURST_READ_LIMIT = 200;
 const HISTORICAL_USER_BURST_WINDOW_MS = 60000;
 const HISTORICAL_ROLLUP_COMPLETION_READ_LIMIT = 1200;

@@ -7,7 +7,7 @@ const callbacks={},loadCalls=[];
 let moduleHandler=null,styleAdded=false;
 const root={innerHTML:''};
 const hub={
-  historyStatus(){return{hasOlder:false};},
+  historyStatus(pathName){return{hasOlder:pathName==='archivedOrders',loading:false,error:null};},
   async loadOlder(pathName){loadCalls.push(pathName);return{loaded:0,hasOlder:false};}
 };
 const accaza={
@@ -37,4 +37,5 @@ for(const pathName of ['orders','archivedOrders','financialMovements']){
 await new Promise(resolve=>setTimeout(resolve,350));
 if(loadCalls.length)throw new Error('Sales History downloaded older pages automatically instead of preserving the selected reporting boundary.');
 if(!root.innerHTML.includes('Authoritative sales register'))throw new Error('Sales History did not render the selected reporting period after its bounded feeds loaded.');
+if(!root.innerHTML.includes('Load 100 older sales'))throw new Error('Sales History must expose manual bounded paging when more records exist.');
 console.log('PASS: Sales History renders bounded feeds without automatic historical downloads.');
