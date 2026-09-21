@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 globalThis.window={AccazaDate:{key(){return'2026-09-02';}}};
 new Function('window',readFileSync(new URL('../assets/js/shared/sales-authority.js',import.meta.url),'utf8'))(globalThis.window);
 
-const {buildDrinkRanking,overviewDayRange,overviewRankingRange}=await import('../assets/js/admin/overview-insights.mjs');
+const {buildDrinkRanking,overviewDayRange,overviewRankingDefaultRange,overviewRankingRange}=await import('../assets/js/admin/overview-insights.mjs');
 const day=overviewDayRange('2026-09-02'),inside=Date.parse('2026-09-02T12:00:00+08:00'),outside=Date.parse('2026-09-03T00:00:00+08:00');
 const data={
   menuItems:{espresso:{name:'Espresso',cat:'coffee'},croissant:{name:'Croissant',cat:'pastry'},latte:{name:'Latte',cat:'coffee'},mocha:{name:'Mocha',cat:'coffee'},spanish:{name:'Spanish Latte',cat:'coffee'}},
@@ -42,6 +42,8 @@ if(!window.AccazaSales.isDrinkLine({itemKey:'espresso'},data)||window.AccazaSale
 
 const period=overviewRankingRange('2026-08-01','2026-08-31');
 if(period.from!=='2026-08-01'||period.to!=='2026-08-31'||period.start!==Date.parse('2026-08-01T00:00:00+08:00')||period.end!==Date.parse('2026-08-31T23:59:59.999+08:00'))throw new Error('Full ranking custom date range does not use Philippine calendar boundaries.');
+const selected=overviewRankingDefaultRange({from:'2026-09-01',to:'2026-09-21'});
+if(selected.from!=='2026-09-01'||selected.to!=='2026-09-21')throw new Error('Full ranking must open with the shared Home sales period instead of today only.');
 const fs=await import('node:fs/promises');
 const [html,source,styles]=await Promise.all([fs.readFile(new URL('../src/html/admin/60-overlays.html',import.meta.url),'utf8'),fs.readFile(new URL('../assets/js/admin/overview-insights.mjs',import.meta.url),'utf8'),fs.readFile(new URL('../assets/css/admin-backoffice.css',import.meta.url),'utf8')]);
 if(!html.includes('id="printDrinkRankingBtn"')||!source.includes("document.title='Accaza Drink Ranking - '")||!source.includes('window.print()')||!styles.includes('body.overview-ranking-print #drinkRankingModal'))throw new Error('Full ranking PDF print action or complete-list print layout is missing.');
