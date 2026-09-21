@@ -30,9 +30,9 @@ assert.equal(doc.source.saleJournalId, "2026-09-09_instore");
 assert.equal(Object.prototype.hasOwnProperty.call(doc.order, "proof"), false, "binary proof must not be duplicated into Firestore");
 assert.equal(HistoricalArchive.unchanged(doc, HistoricalArchive.buildDocument("POS-1", evidence, 999)), true, "replication must avoid unchanged Firestore writes");
 
-const reportOrder = Object.assign({}, completed, {timestamp:Date.parse("2026-09-19T12:00:00+08:00"),subtotal:125.55,discount:5.25,refundAmount:20,channel:"instore"});
+const reportOrder = Object.assign({}, completed, {timestamp:Date.parse("2026-09-19T12:00:00+08:00"),subtotal:125.55,discount:5.25,refundAmount:20,channel:"instore",staff:"Rya"});
 const contribution = HistoricalArchive.reportingContribution(reportOrder);
-assert.equal(contribution.month,"2026-09");assert.equal(contribution.day,"2026-09-19");assert.equal(contribution.hour,12);assert.equal(contribution.orders,1);assert.equal(contribution.grossCents,12555);assert.equal(contribution.discountCents,525);assert.equal(contribution.refundCents,2000);assert.equal(contribution.netCents,10030);assert.equal(contribution.channel,"instore");assert.equal(contribution.schemaVersion,3);
+assert.equal(contribution.month,"2026-09");assert.equal(contribution.day,"2026-09-19");assert.equal(contribution.hour,12);assert.equal(contribution.weekday,6);assert.equal(contribution.cashierKey,"rya");assert.equal(contribution.cashierName,"Rya");assert.equal(contribution.orders,1);assert.equal(contribution.grossCents,12555);assert.equal(contribution.discountCents,525);assert.equal(contribution.refundCents,2000);assert.equal(contribution.netCents,10030);assert.equal(contribution.channel,"instore");assert.equal(contribution.schemaVersion,3);
 assert.deepEqual(contribution.payments,[{key:"unspecified",netCents:10030}]);assert.deepEqual(contribution.items,[{key:"Latte",name:"Latte",categoryId:"",units:1,netCents:0}]);
 assert.equal(HistoricalArchive.reportingContribution(Object.assign({},reportOrder,{payment:'banktransferbdo'})).payments[0].key,'bank_transfer');
 assert.equal(HistoricalArchive.reportingContribution(Object.assign({},reportOrder,{payment:'ewalletgcash'})).payments[0].key,'gcash');
@@ -50,6 +50,8 @@ migrated = HistoricalArchive.applyReportingContribution(migrated, contribution, 
 assert.deepEqual({orders:migrated.orders,netCents:migrated.netCents,channel:migrated.channels.instore},{orders:1,netCents:10030,channel:{orders:1,netCents:10030}},"migrating a V1 contribution must preserve reported totals");
 assert.deepEqual(migrated.days["2026-09-19"].payments,{unspecified:{netCents:10030}},"migrating a V1 contribution must add the dashboard payment and day breakdowns");
 assert.deepEqual(migrated.items.Latte,{name:"Latte",categoryId:"",units:1,netCents:0},"migrating a V1 contribution must add best-seller data");
+assert.deepEqual(migrated.cashiers.rya,{name:"Rya",orders:1,netCents:10030},"cashier rollups must reverse without altering settled order history");
+assert.deepEqual(migrated.weekdays["6"],{orders:1,netCents:10030},"weekday rollups must use the sale timestamp in Manila time");
 assert.equal(HistoricalArchive.reportingContribution(Object.assign({},reportOrder,{voided:true})),null,"voided sales must not contribute to the monthly rollup");
 
 const missing = HistoricalArchive.buildDocument("POS-2", {order: Object.assign({}, completed, {id: "POS-2"})}, 300);
@@ -108,7 +110,7 @@ for (const marker of [
   "exports.manageHistoricalOrderArchive", "exports.readHistoricalOrders", "exports.readHistoricalSalesRollup", "historicalOrdersFromDocuments", "HistoricalArchive.unchanged", "deletionEnabled: false",
   '"sales-at-backfill"', '"sales-at-audit"', '"sales-ledger-backfill"', '"sales-rollup-backfill"', "Firestore replica maintenance only", "orderByKey()", "HISTORICAL_ARCHIVE_BATCH_LIMIT = 100",
   'startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\\uf8ff`)', "never recalculate history from current recipes", 'db.ref(`/archivedOrders/${orderId}`).get()',
-  'db.ref("/historicalArchiveSync").transaction', "reconcileHistoricalSalesRollup", "salesRollupReady", "salesAtReady", "HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 3", "HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION = 5", "HISTORICAL_ROLLUP_COMPLETION_READ_LIMIT = 50000", "compatibleBaseReady", "HISTORICAL_MAINTENANCE_DAILY_DOCUMENT_LIMIT = 4000", "HISTORICAL_REPLICA_BATCH_LIMIT = 10", "HISTORICAL_REPLICA_DAILY_SOURCE_LIMIT = 1000", '"sales-replica-backfill"', "reserveHistoricalReplicaBudget", "salesReplicaBackfill", "sourceReplicaRunId", "historicalFirestoreReadsV3", "HISTORICAL_USER_BURST_READ_LIMIT = 200", "limit * (salesAtReady ? 1 : 3)",
+  'db.ref("/historicalArchiveSync").transaction', "reconcileHistoricalSalesRollup", "salesRollupReady", "salesAtReady", "HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 3", "HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION = 6", "HISTORICAL_ROLLUP_COMPLETION_READ_LIMIT = 50000", "compatibleBaseReady", "HISTORICAL_MAINTENANCE_DAILY_DOCUMENT_LIMIT = 4000", "HISTORICAL_REPLICA_BATCH_LIMIT = 10", "HISTORICAL_REPLICA_DAILY_SOURCE_LIMIT = 1000", '"sales-replica-backfill"', "reserveHistoricalReplicaBudget", "salesReplicaBackfill", "sourceReplicaRunId", "historicalFirestoreReadsV3", "HISTORICAL_USER_BURST_READ_LIMIT = 200", "limit * (salesAtReady ? 1 : 3)",
 ]) assert(source.includes(marker), `historical archive safeguard missing: ${marker}`);
 assert(source.includes("const legacyContribution = previous && Number(previous.schemaVersion || 0) < 3"), "legacy rollup contributions must be migrated instead of treated as complete");
 assert(source.includes("const legacyMonth = months.some"), "legacy month summaries must be migrated instead of treated as complete");

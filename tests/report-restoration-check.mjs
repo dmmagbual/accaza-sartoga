@@ -6,7 +6,8 @@ import {summarizeHistoricalSales,addLiveSales} from '../assets/js/admin/historic
 const require=createRequire(import.meta.url), H=require('../functions/lib/historical-archive.js');
 const source=fs.readFileSync('src/functions/61-historical-archive.js','utf8');
 const analyticsSource=fs.readFileSync('src/admin/analytics/10-sales-model-history.js','utf8');
-for(const marker of ['renderCompactAnalyticsV5','Weekly sales','Peak hours','Top 10 drinks by net revenue','compactDrinkItems','Number(result.schemaVersion)<2','refreshCompactAnalytics'])assert(analyticsSource.includes(marker),'compact Sales Analytics must retain '+marker);
+for(const marker of ['renderCompactAnalyticsV5','Weekly sales','Peak hours','Sales by cashier','Sales by day of week','Number(result.schemaVersion)<2','refreshCompactAnalytics'])assert(analyticsSource.includes(marker),'compact Sales Analytics must retain '+marker);
+assert(!analyticsSource.includes('Top 10 drinks by net revenue'),'Analytics must not duplicate the Admin Home top-drinks panel');
 const repair=source.slice(source.indexOf('async function reconcileHistoricalSalesRollup'),source.indexOf('async function replicateHistoricalOrder'));
 const ctx={HistoricalArchive:H,Date,Number,Set,Object};vm.createContext(ctx);vm.runInContext(repair,ctx);
 const order={id:'sale1',status:'Completed',paymentStatus:'confirmed',timestamp:Date.parse('2026-09-10T12:00:00+08:00'),total:100,subtotal:100,payment:'Cash',channel:'instore',lineItems:[{itemKey:'latte',name:'Latte',categoryId:'coffee',qty:2,unitTotal:50}]};
