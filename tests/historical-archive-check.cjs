@@ -124,6 +124,7 @@ const maintenanceUi = fs.readFileSync("assets/js/admin/operations-dashboard.js",
 assert(maintenanceUi.includes("salesAtStageState") && maintenanceUi.includes("dependentStageState(status,'salesAt',3)") && maintenanceUi.includes("dependentStageState(status,'salesRollup',4)") && maintenanceUi.includes("sourceReplicaRunId"), "the owner repair must rerun incomplete summary-schema states once");
 assert(maintenanceUi.includes("sales-replica-backfill") && maintenanceUi.includes("reportingReady"), "the owner repair must populate and validate the detailed-report reader before reporting success");
 assert(maintenanceUi.includes("Detailed-report reader ready"), "the owner must be able to distinguish rollup-ready from detailed-reader-ready reporting");
+assert(maintenanceUi.includes("v6RollupState") && maintenanceUi.includes("v6RollupState(latest)") && maintenanceUi.includes("v6ReportingReady"), "a completed V5 rollup must start, rather than bypass, the required V6 analytics rebuild");
 
 const rules = fs.readFileSync("firestore.rules", "utf8");
 assert(rules.includes("allow read, write: if false"), "Firestore historical replica must be server-only");
