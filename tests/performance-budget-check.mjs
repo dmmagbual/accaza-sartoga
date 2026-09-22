@@ -18,7 +18,7 @@ const budgets={
   // linked receipt/audit evidence and explicit cashier feedback.
   // Keep the ceiling narrowly above the reviewed generated bundle.
   // Build 542 adds controlled cash-payment account selection while preserving split-payment routing.
-  // Build 579 refreshes IndexedDB immediately before a forced shift-close health report,
+  // Build 580 refreshes IndexedDB immediately before a forced shift-close health report,
   // preventing a stale browser count from blocking a cashier after all sales have synced.
   'assets/js/admin/pos.js':522500,
   // Build 497 adds the visible cash-refund tag and preserved refund detail to shift reports.
@@ -26,7 +26,7 @@ const budgets={
   // on every voucher in the Petty/Purchases listeners.
   // Build 540 adds the Cash Payments funding-account loading guard and in-place refresh.
   // Build 542 adds six server-validated cash-payment treatments and their audit fields.
-  // Build 579 adds cashier handover and the bounded management recovery dialog.
+  // Build 580 adds cashier handover and the bounded management recovery dialog.
   'assets/js/admin/register.js':202000,
   // Build 527 secures completed-sale corrections while retaining the sales reconciliation bridge;
   // retain a narrow ceiling above the reviewed generated bundle.
@@ -42,8 +42,10 @@ const budgets={
   // compact summaries, replacing the obsolete renderer without raw-order reads.
   // Build 574 adds MTD/YTD cashier, weekday and peak-hour rendering on the
   // bounded monthly summary. The module remains lazy-loaded under Analytics.
-  // Reviewed generated size: 176,661 bytes.
-  'assets/js/admin/analytics.js':176800,
+  // Build 580 adds source-coverage gating plus the compact Top drinks panel and
+  // in-cell comparison bars; it does not add any historical-order download.
+  // Reviewed generated size: 178,177 bytes.
+  'assets/js/admin/analytics.js':178500,
   'assets/js/admin/finance.js':75000,
   // Build 106 adds consistent interactive feedback to Finance Books buttons.
   // Build 110 adds only the AP-page hooks; its 6 KB form remains isolated below.
@@ -73,6 +75,6 @@ if(salesPeriod.includes("ops.startAt(String")||salesPeriod.includes("orderByChil
 for(const source of [moduleLoader,hub,telemetry,functions])for(const marker of source===moduleLoader?['module_load','performance.now']:source===hub?['live_ready','liveStartedAt']:['module_load','live_ready'])if(!source.includes(marker))fail(`Measured performance telemetry missing: ${marker}`);
 
 const manifest=JSON.parse(read('release-manifest.json'));
-if(manifest.builds.admin!==579||manifest.builds.customer!==75||manifest.builds.books!==129||manifest.builds.serviceWorkerCache!==560)fail('Current build/cache versions are not synchronized');
+if(manifest.builds.admin!==580||manifest.builds.customer!==75||manifest.builds.books!==129||manifest.builds.serviceWorkerCache!==561)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');

@@ -22,9 +22,15 @@ assert.equal(ytd.cashiers.rya.net,120,"YTD must retain prior selected days");
 assert.equal(mtd.cashiers.incorrectWholeMonth,undefined,"whole-month aggregates must never leak into MTD");
 assert.equal(mtd.weekdays["2"].net,20,"MTD weekday total must use only the sale date");
 assert.equal(ytd.weekdays["4"].net,100,"YTD weekday total must include January without reusing its monthly aggregate");
+assert.equal(Object.values(mtd.cashiers).reduce((sum,row)=>sum+row.net,0),mtd.net,"cashier MTD must reconcile to the selected-period sales total");
+assert.equal(Object.values(mtd.weekdays).reduce((sum,row)=>sum+row.net,0),mtd.net,"weekday MTD must reconcile to the selected-period sales total");
+assert.equal(Object.values(mtd.hours).reduce((sum,row)=>sum+row.net,0),mtd.net,"peak-hour MTD must reconcile to the selected-period sales total");
 
 const analyticsSource = readFileSync("src/admin/analytics/10-sales-model-history.js","utf8");
 assert(analyticsSource.includes("function comparisonTable"),"cashier, peak-hour, and weekday comparisons must use a shared column renderer");
 assert(analyticsSource.includes("<th class=\"r\">MTD</th><th class=\"r\">YTD</th>"),"comparisons must label the two value columns once");
 assert(!analyticsSource.includes("MTD ·"),"comparisons must not repeat MTD and YTD labels in every row");
+assert(analyticsSource.includes("Top drinks")&&analyticsSource.includes("coverageComplete"),"the vacant-space panel must remain summary-backed and comparisons must require complete coverage");
+const analyticsCss=readFileSync("assets/css/admin/analytics.css","utf8");
+assert(analyticsCss.includes(".az-meter")&&analyticsCss.includes(".az-analytics-split"),"the compact analytics layout must retain its visual hierarchy and in-cell comparison bars");
 console.log("analytics MTD/YTD checks passed");
