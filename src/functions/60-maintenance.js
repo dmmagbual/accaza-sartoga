@@ -84,10 +84,11 @@ exports.autoCompleteReadyOnlineOrders = onSchedule(
     for (const orderId of Object.keys(active)) {
       if (!readyForAutoComplete(active[orderId], now)) continue;
       const result = await db.ref(`/orders/${orderId}`).transaction((order) => {
+        if (order == null) return null; // cold Admin SDK cache: let the server supply the order
         if (!readyForAutoComplete(order, now)) return;
         return Object.assign({}, order, {status: "Completed", completedAt: now, statusUpdatedAt: now, statusUpdatedBy: "system", completionReason: "ready_timeout"});
       });
-      if (!result.committed) continue;
+      if (!result.committed || !result.snapshot.exists()) continue;
       const order = result.snapshot.val() || {}, writes = {
         [`operationalAudit/${now}_auto_complete_${orderId}`]: {action: "auto_complete_ready_order", sourceType: "order", sourceId: orderId, ts: now, actorUid: "system", actorRole: "system", schemaVersion: 1},
       };

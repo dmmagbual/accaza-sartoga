@@ -6,10 +6,12 @@ const require=createRequire(import.meta.url),H=require('../functions/lib/shift-h
 const copy=x=>x==null?null:structuredClone(x),state={};
 const keys=p=>p.split('/').filter(Boolean);
 const read=p=>keys(p).reduce((v,k)=>v?.[k],state);
-function write(p,v){const a=keys(p),last=a.pop();let row=state;for(const k of a)row=row[k]??={};if(v==null)delete row[last];else row[last]=copy(v);}
+// Mirror Realtime Database key rules: an invalid key rejects the whole write.
+function assertKeys(v,where){if(v&&typeof v==='object')for(const [k,x] of Object.entries(v)){if(!k||/[.#$/\[\]]/.test(k))throw new Error(`Invalid Realtime Database key "${k}" at ${where}`);assertKeys(x,where+'/'+k);}}
+function write(p,v){for(const k of keys(p))assertKeys({[k]:1},p);assertKeys(v,p);const a=keys(p),last=a.pop();let row=state;for(const k of a)row=row[k]??={};if(v==null)delete row[last];else row[last]=copy(v);}
 const snap=v=>({val:()=>copy(v),exists:()=>v!=null});
-let preOrderShiftTransactions=0;
-const db={ref(p=''){return {get:async()=>snap(read(p)),child:k=>db.ref(p+'/'+k),update:async updates=>{for(const [k,v]of Object.entries(updates))write(p+'/'+k,v);},transaction:async fn=>{if(p==='/shifts/SH-TEST'&&!read('/orders/POS-TEST'))preOrderShiftTransactions++;const v=fn(copy(read(p)));if(v===undefined)return {committed:false,snapshot:snap(read(p))};write(p,v);return {committed:true,snapshot:snap(v)};},orderByChild(){return this;},equalTo(){return this;},limitToFirst(){return this;}};}};
+let preOrderShiftTransactions=0,coldTransactions=0;
+const db={ref(p=''){return {get:async()=>snap(read(p)),child:k=>db.ref(p+'/'+k),update:async updates=>{for(const [k,v]of Object.entries(updates))write(p+'/'+k,v);},transaction:async fn=>{if(p==='/shifts/SH-TEST'&&!read('/orders/POS-TEST'))preOrderShiftTransactions++;coldTransactions++;/* Admin SDK: the first callback sees the cold local cache (null); undefined aborts without asking the server. */let v=fn(null);if(v===undefined)return {committed:false,snapshot:snap(null)};const actual=read(p);if(actual!=null){v=fn(copy(actual));if(v===undefined)return {committed:false,snapshot:snap(actual)};}write(p,v);return {committed:true,snapshot:snap(v)};},orderByChild(){return this;},equalTo(){return this;},limitToFirst(){return this;}};}};
 class HttpsError extends Error{constructor(code,message){super(message);this.code=code;}}
 let locked=false;
 const ctx={exports:{},require:()=>H,onCall:(_o,fn)=>fn,ORDER_REGION:'test',ENFORCE_APP_CHECK:false,getDatabase:()=>db,requirePortalPermission:async(_db,r)=>r.actor,HttpsError,posAssuranceKey:x=>x,financeText:(x,n)=>String(x||'').slice(0,n),financeDateFromTimestamp:()=> '2026-09-22',OfflineSync,textField:x=>String(x),money:Financial.money,listFromFirebase:x=>x,activeOrderProjection:x=>x,availableCashOnHandAboveFloat:async()=>({available:99999}),calculateOrderInventoryPlan:async()=>({}),shiftOrdersForAssurance:async(_db,id)=>Object.fromEntries(Object.entries(state.orders||{}).filter(([,o])=>o.shiftId===id)),assurancePostingState:async()=>({saleCount:Object.keys(state.orders||{}).length,inventoryOutstanding:[],financeOutstanding:[]}),assertAccountingPeriodOpen:async()=>{if(locked)throw new Error('Period locked');},Date,Buffer};
@@ -65,4 +67,8 @@ await financeCtx.exports.onShiftCloseFinancial(event('handover_pending'));
 assert.ok(movements.shift_custody_SH_TEST===undefined);assert.ok(movements['shift_custody_SH-TEST']);assert.equal(movements['shift_variance_SH-TEST'],undefined);
 write('/shifts/SH-TEST/status','closed');await financeCtx.exports.onShiftCloseFinancial(event('closed'));
 assert.ok(movements['shift_variance_SH-TEST']);assert.equal(Object.keys(movements).length,2);
+// Every payment shape must produce a Z report that the Realtime Database accepts.
+const mixed=H.report({id:'SH-MIX',openingFloat:100},{a:{shiftId:'SH-MIX',status:'Completed',channel:'instore',total:50,subtotal:50,payments:[{method:'Cash',amount:50}]},b:{shiftId:'SH-MIX',status:'Completed',channel:'instore',total:80,subtotal:80,payments:[{method:'Bank Transfer · B.D.O',paymentMethod:'Bank Transfer',receivingAccountName:'B.D.O [Main]',amount:80}]},c:{shiftId:'SH-MIX',status:'Completed',channel:'grabfood',total:120,grossPlatform:120,netSalesPlatform:120,payments:[{method:'GrabFood',amount:120}]}},{cash:{countedCash:150}});
+assert.doesNotThrow(()=>assertKeys(mixed,'/shifts/SH-MIX/zReport'),'Z report keys must be valid Realtime Database keys');
+assert.equal(mixed.byMethod.Cash,50);assert.equal(mixed.byMethodAccount['Bank Transfer']['B_D_O _Main_'],80);assert.deepEqual(mixed.byMethodAccount.Cash,{});assert.equal(mixed.cashSales,50);assert.equal(mixed.variance,0);
 console.log('PASS: pending-sale handover releases the till, preserves immutable count and sale commands, recovers once into the original shift, protects the next drawer, enforces roles/period locks, and separates custody from final variance.');
