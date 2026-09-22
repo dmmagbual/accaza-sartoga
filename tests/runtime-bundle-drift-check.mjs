@@ -54,6 +54,9 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('backupDatabaseDa
 expectedFunctionExports.push('askAccazaAI');
 expectedFunctionExports.push('manageAccazaAiKnowledge');
 expectedFunctionExports.push('manageAccazaAiIssue');
+// Sep 2026: separate installable Accaza AI app (general chat only, no cap) — independent
+// callable, admin's askAccazaAI/manageAccazaAiKnowledge/manageAccazaAiIssue untouched.
+expectedFunctionExports.push('askAccazaAIStandalone');
 const functionsSource=fs.readFileSync(path.join(root,'functions/index.js'),'utf8');
 if(!functionsSource.includes('"x-goog-api-key":key')||functionsSource.includes('generateContent?key='))throw new Error('Accaza AI must authenticate Gemini requests with the current x-goog-api-key header, not a URL query key.');
 if(!functionsSource.includes('const ACCAZA_AI_QUERY_ROLES = ["owner","superadmin","admin","manager","cashier"]')||!functionsSource.includes('ACCAZA_AI_QUERY_ROLES.includes(actor.role)'))throw new Error('Accaza AI must authorize cashiers through the server-side query-role allowlist.');

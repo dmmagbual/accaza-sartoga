@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta name="accaza-ai-standalone-build" content="1"/>
+<meta name="description" content="Accaza AI — a general-chat AI assistant. Independent installable app, separate from the Accaza POS/Admin app; no Accaza business data."/>
+<meta name="theme-color" content="#19241b"/>
+<title>Accaza AI</title>
+<link rel="manifest" href="/manifest-ai.json"/>
+<link rel="icon" type="image/x-icon" href="/favicon.ico"/>
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon_32x32.png"/>
+<link rel="apple-touch-icon" sizes="180x180" href="/favicon_180x180.png"/>
+<link rel="icon" type="image/png" sizes="192x192" href="/favicon_192x192.png"/>
+<link rel="icon" type="image/png" sizes="512x512" href="/favicon_512x512.png"/>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+  :root{--bg:#e0d4c6;--ink:#2d261e;--muted:#6e6256;--panel:#fffdf9;--line:#eadfce;--accent:#2f5c43;--accent-ink:#284c39;--bubble-user:#2f5c43;--bubble-ai:#f3eee5;--danger:#a33120;}
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{margin:0;font-family:Inter,Arial,sans-serif;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;}
+  .topbar{background:#19241b;color:#f5f0e8;padding:.85rem 1.1rem;display:flex;align-items:center;justify-content:space-between;gap:.7rem;}
+  .brand{display:flex;align-items:center;gap:.6rem;}
+  .brand b{font-family:'Playfair Display',serif;font-size:1.15rem;}
+  .brand small{display:block;font-size:.7rem;color:rgba(245,240,232,.72);margin-top:.1rem;}
+  #signOutBtn,#newChatBtn{background:transparent;border:1px solid rgba(245,240,232,.4);color:#f5f0e8;border-radius:6px;padding:.4rem .65rem;font-size:.75rem;cursor:pointer;font-weight:600;}
+  #signOutBtn:hover,#newChatBtn:hover{background:rgba(245,240,232,.12);}
+  main{flex:1;min-height:0;display:flex;flex-direction:column;max-width:720px;width:100%;margin:0 auto;}
+
+  /* Login */
+  #loginWrap{flex:1;display:flex;align-items:center;justify-content:center;padding:1.2rem;}
+  #loginCard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:1.6rem;width:100%;max-width:380px;box-shadow:0 10px 32px rgba(0,0,0,.12);}
+  #loginCard h1{font-family:'Playfair Display',serif;font-size:1.35rem;margin:0 0 .25rem;color:var(--accent-ink);}
+  #loginCard p{margin:0 0 1.1rem;font-size:.82rem;color:var(--muted);line-height:1.5;}
+  #loginCard label{display:block;font-size:.75rem;font-weight:600;color:var(--muted);margin:.7rem 0 .3rem;}
+  #loginCard input{width:100%;border:1px solid #bba98e;border-radius:7px;padding:.6rem .65rem;font:inherit;font-size:.88rem;}
+  #loginCard button{margin-top:1.1rem;width:100%;background:var(--accent);color:#fff;border:0;border-radius:8px;padding:.7rem;font-weight:700;font-size:.9rem;cursor:pointer;}
+  #loginCard button:disabled{opacity:.6;cursor:default;}
+  #loginErr{display:none;margin-top:.7rem;font-size:.78rem;color:var(--danger);white-space:pre-wrap;}
+
+  /* Chat */
+  #chatWrap{display:none;flex:1;min-height:0;flex-direction:column;}
+  #messages{flex:1;overflow:auto;padding:1rem;display:flex;flex-direction:column;gap:.7rem;}
+  .msg{max-width:88%;border-radius:10px;padding:.7rem .8rem;font-size:.87rem;line-height:1.5;white-space:pre-wrap;}
+  .msg.user{align-self:flex-end;background:var(--bubble-user);color:#fff;}
+  .msg.ai{align-self:flex-start;background:var(--bubble-ai);color:var(--ink);}
+  .msg.sources{align-self:flex-start;font-size:.72rem;color:var(--muted);background:transparent;padding:0 .2rem;}
+  .msg.sources a{color:#285d91;}
+  #askForm{border-top:1px solid var(--line);padding:.8rem;display:flex;gap:.5rem;background:var(--panel);}
+  #question{flex:1;resize:none;border:1px solid #bba98e;border-radius:7px;padding:.6rem;font:inherit;font-size:.88rem;}
+  #askForm button{align-self:end;background:var(--accent);color:#fff;border:0;border-radius:7px;padding:.62rem .85rem;font-weight:700;cursor:pointer;}
+  #askForm button:disabled{opacity:.6;cursor:default;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div><b>✦ Accaza AI</b><small>General chat · independent app</small></div>
+  </div>
+  <div id="topbarActions" style="display:none;gap:.5rem;">
+    <button id="newChatBtn" type="button">New chat</button>
+    <button id="signOutBtn" type="button">Sign out</button>
+  </div>
+</div>
+
+<main>
+  <div id="loginWrap">
+    <div id="loginCard">
+      <h1>Sign in to Accaza AI</h1>
+      <p>General-purpose AI chat for authorized Accaza staff. This app is independent of the POS/Admin panel and has no access to Accaza business data.</p>
+      <form id="loginForm">
+        <label for="loginEmail">Email</label>
+        <input id="loginEmail" type="email" autocomplete="username" required/>
+        <label for="loginPass">Password</label>
+        <input id="loginPass" type="password" autocomplete="current-password" required/>
+        <button id="loginBtn" type="submit">Log In</button>
+        <div id="loginErr"></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="chatWrap">
+    <div id="messages"></div>
+    <form id="askForm">
+      <textarea id="question" maxlength="800" rows="2" placeholder="Ask anything… (Enter to send, Shift+Enter for a new line)" required></textarea>
+      <button id="askBtn" type="submit">Ask</button>
+    </form>
+  </div>
+</main>
+
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import{getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut,setPersistence,browserLocalPersistence}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import{getFunctions,httpsCallable}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
+import{initializeAppCheck,ReCaptchaEnterpriseProvider}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js";
+
+const firebaseConfig={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
+const app=initializeApp(firebaseConfig);
+const APP_CHECK_SITE_KEY='6LdQ6HstAAAAAGvaa0exDw5aAHxNsrPKCtdlCeis';
+try{initializeAppCheck(app,{provider:new ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY),isTokenAutoRefreshEnabled:true});}catch(e){console.warn('Accaza AI App Check init failed',e);}
+const auth=getAuth(app),functions=getFunctions(app,'asia-southeast1'),askAccazaAIStandalone=httpsCallable(functions,'askAccazaAIStandalone');
+
+const HISTORY_KEY='accaza_ai_standalone_history_v1';
+function by(id){return document.getElementById(id);}
+function history(){try{const raw=JSON.parse(sessionStorage.getItem(HISTORY_KEY)||'[]');return Array.isArray(raw)?raw.slice(-8):[];}catch(e){return [];}}
+function remember(role,text){const items=history();items.push({role:role==='assistant'?'model':'user',text:String(text||'').slice(0,800)});sessionStorage.setItem(HISTORY_KEY,JSON.stringify(items.slice(-8)));}
+function clearHistory(){sessionStorage.removeItem(HISTORY_KEY);}
+
+function addMessage(role,text){
+  const el=document.createElement('div');
+  el.className='msg '+(role==='user'?'user':'ai');
+  el.textContent=text;
+  by('messages').appendChild(el);
+  el.scrollIntoView({block:'end'});
+  return el;
+}
+function addSources(sources){
+  if(!Array.isArray(sources)||!sources.length)return;
+  const wrap=document.createElement('div');
+  wrap.className='msg sources';
+  const label=document.createElement('b');label.textContent='Sources: ';wrap.appendChild(label);
+  sources.slice(0,8).forEach((source,index)=>{
+    if(index)wrap.appendChild(document.createTextNode(' · '));
+    if(source&&source.url){const link=document.createElement('a');link.href=source.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=source.title||source.url;wrap.appendChild(link);}
+    else wrap.appendChild(document.createTextNode(String(source)));
+  });
+  by('messages').appendChild(wrap);
+}
+function welcome(){
+  by('messages').replaceChildren();
+  addMessage('assistant','Hi! Ask me anything.');
+}
+
+async function ask(ev){
+  ev.preventDefault();
+  const input=by('question'),question=(input.value||'').trim();
+  if(!question)return;
+  input.value='';
+  by('askBtn').disabled=true;
+  addMessage('user',question);
+  const pending=addMessage('assistant','Thinking…');
+  try{
+    const result=(await askAccazaAIStandalone({question,history:history()})).data||{};
+    pending.textContent=result.answer||'Accaza AI returned no answer.';
+    remember('user',question);
+    remember('assistant',result.answer||'');
+    addSources(result.sources);
+    if(result.provider==='deepseek'||result.provider==='ollama')pending.textContent+='\n\n(Answered by fallback provider.)';
+  }catch(err){
+    pending.textContent=(err&&err.message)||'Accaza AI could not answer right now.';
+  }finally{
+    by('askBtn').disabled=false;
+  }
+}
+by('askForm').addEventListener('submit',ask);
+by('question').addEventListener('keydown',function(ev){if(ev.key==='Enter'&&!ev.shiftKey&&!ev.isComposing){ev.preventDefault();if(!by('askBtn').disabled)by('askForm').requestSubmit();}});
+by('newChatBtn').addEventListener('click',()=>{clearHistory();welcome();});
+by('signOutBtn').addEventListener('click',()=>{signOut(auth).catch(()=>{});});
+
+by('loginForm').addEventListener('submit',async function(ev){
+  ev.preventDefault();
+  const email=(by('loginEmail').value||'').trim(),pass=by('loginPass').value,err=by('loginErr'),btn=by('loginBtn');
+  err.style.display='none';btn.disabled=true;btn.textContent='Signing in…';
+  try{
+    try{await setPersistence(auth,browserLocalPersistence);}catch(_p){}
+    await signInWithEmailAndPassword(auth,email,pass);
+  }catch(e){
+    err.textContent=(e&&e.message)||'Login failed. Check the email and password.';
+    err.style.display='block';
+    by('loginPass').value='';
+  }finally{
+    btn.disabled=false;btn.textContent='Log In';
+  }
+});
+
+onAuthStateChanged(auth,function(user){
+  if(!user||user.isAnonymous){
+    by('loginWrap').style.display='flex';
+    by('chatWrap').style.display='none';
+    by('topbarActions').style.display='none';
+    return;
+  }
+  by('loginWrap').style.display='none';
+  by('chatWrap').style.display='flex';
+  by('topbarActions').style.display='flex';
+  welcome();
+});
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('/sw-ai.js',{scope:'/'}).then(r=>r.update()).catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
