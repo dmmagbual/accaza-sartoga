@@ -37,6 +37,10 @@
   #loginCard input{width:100%;border:1px solid #bba98e;border-radius:7px;padding:.6rem .65rem;font:inherit;font-size:.88rem;}
   #loginCard button{margin-top:1.1rem;width:100%;background:var(--accent);color:#fff;border:0;border-radius:8px;padding:.7rem;font-weight:700;font-size:.9rem;cursor:pointer;}
   #loginCard button:disabled{opacity:.6;cursor:default;}
+  #loginCard #guestBtn{background:#fff;color:var(--accent-ink);border:1px solid #8aa28e;margin-top:.6rem;}
+  .or{display:flex;align-items:center;gap:.6rem;margin:1.1rem 0 0;font-size:.72rem;color:var(--muted);}
+  .or::before,.or::after{content:'';flex:1;border-top:1px solid var(--line);}
+  #guestNote{margin:.45rem 0 0;font-size:.72rem;color:var(--muted);text-align:center;}
   #loginErr{display:none;margin-top:.7rem;font-size:.78rem;color:var(--danger);white-space:pre-wrap;}
 
   /* Chat */
@@ -57,7 +61,7 @@
 
 <div class="topbar">
   <div class="brand">
-    <div><b>✦ Accaza AI</b><small>General chat · independent app</small></div>
+    <div><b>✦ Accaza AI</b><small id="brandSub">General chat · independent app</small></div>
   </div>
   <div id="topbarActions" style="display:none;gap:.5rem;">
     <button id="newChatBtn" type="button">New chat</button>
@@ -69,7 +73,7 @@
   <div id="loginWrap">
     <div id="loginCard">
       <h1>Sign in to Accaza AI</h1>
-      <p>General-purpose AI chat for authorized Accaza staff. This app is independent of the POS/Admin panel and has no access to Accaza business data.</p>
+      <p>Staff sign in with their Accaza account. Anyone can try it as a guest.</p>
       <form id="loginForm">
         <label for="loginEmail">Email</label>
         <input id="loginEmail" type="email" autocomplete="username" required/>
@@ -78,6 +82,9 @@
         <button id="loginBtn" type="submit">Log In</button>
         <div id="loginErr"></div>
       </form>
+      <div class="or">or</div>
+      <button id="guestBtn" type="button">Continue as guest</button>
+      <div id="guestNote">Guests get 10 messages per day.</div>
     </div>
   </div>
 
@@ -92,7 +99,7 @@
 
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import{getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut,setPersistence,browserLocalPersistence}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import{getAuth,onAuthStateChanged,signInWithEmailAndPassword,signInAnonymously,signOut,setPersistence,browserLocalPersistence}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import{getFunctions,httpsCallable}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 import{initializeAppCheck,ReCaptchaEnterpriseProvider}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js";
 
@@ -148,8 +155,10 @@ async function ask(ev){
     remember('assistant',result.answer||'');
     addSources(result.sources);
     if(result.provider==='deepseek'||result.provider==='ollama')pending.textContent+='\n\n(Answered by fallback provider.)';
+    if(result.guest&&result.allowance)guestLabel(result.allowance.remaining);
   }catch(err){
     pending.textContent=(err&&err.message)||'Accaza AI could not answer right now.';
+    if(currentMode==='guest'&&err&&err.code==='functions/resource-exhausted'&&/Guest limit/.test(err.message||''))guestLabel(0);
   }finally{
     by('askBtn').disabled=false;
   }
@@ -157,7 +166,34 @@ async function ask(ev){
 by('askForm').addEventListener('submit',ask);
 by('question').addEventListener('keydown',function(ev){if(ev.key==='Enter'&&!ev.shiftKey&&!ev.isComposing){ev.preventDefault();if(!by('askBtn').disabled)by('askForm').requestSubmit();}});
 by('newChatBtn').addEventListener('click',()=>{clearHistory();welcome();});
-by('signOutBtn').addEventListener('click',()=>{signOut(auth).catch(()=>{});});
+// Guest mode is an explicit choice. The customer site on this same origin keeps its own
+// anonymous session, so an anonymous user alone must never open the chat, and leaving
+// guest mode must not sign that shared session out.
+const GUEST_KEY='accaza_ai_guest_mode';
+function guestChosen(){try{return localStorage.getItem(GUEST_KEY)==='1';}catch(e){return false;}}
+function setGuestChosen(on){try{if(on)localStorage.setItem(GUEST_KEY,'1');else localStorage.removeItem(GUEST_KEY);}catch(e){}}
+function guestLabel(remaining){by('brandSub').textContent=remaining==null?'Guest · 10 messages per day':'Guest · '+remaining+' of 10 messages left today';}
+by('signOutBtn').addEventListener('click',()=>{
+  const user=auth.currentUser;
+  clearHistory();
+  if(user&&user.isAnonymous){setGuestChosen(false);render(user);return;}
+  signOut(auth).catch(()=>{});
+});
+by('guestBtn').addEventListener('click',async function(){
+  const err=by('loginErr'),btn=by('guestBtn');
+  err.style.display='none';btn.disabled=true;btn.textContent='Starting…';
+  try{
+    setGuestChosen(true);
+    if(auth.currentUser&&auth.currentUser.isAnonymous)render(auth.currentUser);
+    else{try{await setPersistence(auth,browserLocalPersistence);}catch(_p){}await signInAnonymously(auth);}
+  }catch(e){
+    setGuestChosen(false);
+    err.textContent='Guest access is unavailable right now. Please try again later.';
+    err.style.display='block';
+  }finally{
+    btn.disabled=false;btn.textContent='Continue as guest';
+  }
+});
 
 by('loginForm').addEventListener('submit',async function(ev){
   ev.preventDefault();
@@ -175,18 +211,26 @@ by('loginForm').addEventListener('submit',async function(ev){
   }
 });
 
-onAuthStateChanged(auth,function(user){
-  if(!user||user.isAnonymous){
+let currentMode='';
+function render(user){
+  const mode=!user?'':(user.isAnonymous?(guestChosen()?'guest':''):'staff');
+  if(mode!==currentMode)clearHistory();
+  currentMode=mode;
+  if(!mode){
+    by('brandSub').textContent='General chat · independent app';
     by('loginWrap').style.display='flex';
     by('chatWrap').style.display='none';
     by('topbarActions').style.display='none';
     return;
   }
+  if(mode==='staff'){setGuestChosen(false);by('brandSub').textContent='Staff · unlimited';by('signOutBtn').textContent='Sign out';}
+  else{guestLabel(null);by('signOutBtn').textContent='Exit guest';}
   by('loginWrap').style.display='none';
   by('chatWrap').style.display='flex';
   by('topbarActions').style.display='flex';
   welcome();
-});
+}
+onAuthStateChanged(auth,render);
 
 if('serviceWorker' in navigator){
   window.addEventListener('load',function(){
