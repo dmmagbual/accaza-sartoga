@@ -5791,6 +5791,19 @@ const HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 3;
 // answer an MTD question without accidentally returning the full YTD total.
 const HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION = 7;
 
+function expectedReportingMonths(from, to) {
+  const start = String(from || "").match(/^(\d{4})-(\d{2})$/), end = String(to || "").match(/^(\d{4})-(\d{2})$/);
+  if (!start || !end) return [];
+  let year = Number(start[1]), month = Number(start[2]), endYear = Number(end[1]), endMonth = Number(end[2]);
+  const months = [];
+  while (year < endYear || (year === endYear && month <= endMonth)) {
+    months.push(`${year}-${String(month).padStart(2, "0")}`);
+    month += 1;
+    if (month === 13) { year += 1; month = 1; }
+  }
+  return months;
+}
+
 async function reserveHistoricalReadBudget(db, uid, reads, options = {}) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {timeZone:"America/Los_Angeles",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()).map((part) => [part.type, part.value]));
   const day = `${parts.year}-${parts.month}-${parts.day}`;
@@ -6150,15 +6163,20 @@ exports.readHistoricalSalesRollup = onCall(
     await reserveHistoricalReadBudget(db, actor.uid, span + 1, {page:true, summary:true});
     const snapshot = await getFirestore().collection(HistoricalArchive.MONTH_COLLECTION)
       .orderBy(FieldPath.documentId()).startAt(from).endAt(to).limit(12).get();
-    const months = {};
+    const months = {}, expectedMonths = expectedReportingMonths(from, to);
     snapshot.docs.forEach((document) => { months[document.id] = document.data() || {}; });
     // Schema 2 remains a complete financial total. Schema 3 adds hour/category
     // detail. Callers can render compatible totals during the upgrade without
     // presenting a partial peak-hour chart as complete.
     if (Object.values(months).some((month) => Number(month && month.schemaVersion) < 2)) return {ready:false, needsMaintenance:true, months:{}};
+    // Do not treat a partial Firestore response as a calendar YTD. A missing
+    // month can mean an incomplete rebuild, not a genuine zero-sales month.
+    // The V7 completed source-replica pass is the authority for this coverage.
+    const missingMonths = expectedMonths.filter((month) => !Object.prototype.hasOwnProperty.call(months, month));
+    const coverageComplete = missingMonths.length === 0;
     const rich = ready && Object.values(months).every((month) => Number(month && month.schemaVersion) >= 3);
-    const analyticsReady = rich && Object.values(months).every((month) => Number(month && month.analyticsSchemaVersion) >= 2);
-    return {ready:true, months, schemaVersion:rich ? 3 : 2, analyticsReady, needsMaintenance:!rich || !analyticsReady};
+    const analyticsReady = rich && coverageComplete && Object.values(months).every((month) => Number(month && month.analyticsSchemaVersion) >= 2);
+    return {ready:true, months, schemaVersion:rich ? 3 : 2, analyticsReady, coverageComplete, missingMonths, needsMaintenance:!rich || !analyticsReady};
   },
 );
 

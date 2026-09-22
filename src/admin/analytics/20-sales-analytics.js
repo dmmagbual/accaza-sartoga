@@ -13,7 +13,7 @@ function renderAnalytics(){
   catch(err){ console.error('renderAnalytics error',err);
     root.innerHTML='<div class="pz-h">📊 Analytics</div><div style="background:#fde8e8;border:1px solid #f5b5b5;border-radius:8px;padding:1rem;color:#a11;font-size:0.85rem;">Analytics couldn’t finish building the shared-period report: <b>'+esc(String((err&&err.message)||err))+'</b>.</div>'; }
 }
-window.addEventListener('accaza-admin-period',function(e){if(!e.detail||e.detail.scope!=='sales')return;compactAnalytics={key:'',loading:false,error:'',current:null,previous:null,ytd:null,analyticsReady:false,request:compactAnalytics.request};var root=document.getElementById('analyticsRoot');if(root&&root.offsetParent!==null)renderAnalytics();});
+window.addEventListener('accaza-admin-period',function(e){if(!e.detail||e.detail.scope!=='sales')return;compactAnalytics={key:'',loading:false,error:'',current:null,previous:null,ytd:null,analyticsReady:false,coverageComplete:false,missingMonths:[],request:compactAnalytics.request};var root=document.getElementById('analyticsRoot');if(root&&root.offsetParent!==null)renderAnalytics();});
 function renderAnalyticsBody(){
   var root=document.getElementById('analyticsRoot');if(!root)return;
   var b=rangeBounds(),from=b[0],to=b[1];var span=to-from;
