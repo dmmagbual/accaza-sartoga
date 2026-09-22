@@ -18,6 +18,19 @@ function countCash(counts) {
 }
 function canonical(value){if(Array.isArray(value))return value.map(canonical);if(value&&typeof value==='object')return Object.fromEntries(Object.keys(value).sort().map(k=>[k,canonical(value[k])]));return value;}
 function digest(command){return crypto.createHash('sha256').update(JSON.stringify(canonical(command))).digest('hex');}
+// Realtime Database does not store null, undefined, empty objects or empty arrays. A command
+// retained at handover and read back therefore differs byte-for-byte from what the device
+// sends (for example paymentVerificationPolicy:null, discountLines:[], drawerDelta:{}).
+// Commands are compared in that stored form, so a manager replay of the retained copy and a
+// later device flush of the original both match the same sale.
+function storedForm(value){
+  if(value===null||value===undefined||(typeof value==='number'&&!Number.isFinite(value)))return undefined;
+  if(Array.isArray(value)){const items=value.map(storedForm).filter(x=>x!==undefined);return items.length?items:undefined;}
+  if(typeof value==='object'){const out={};for(const key of Object.keys(value)){const item=storedForm(value[key]);if(item!==undefined)out[key]=item;}return Object.keys(out).length?out:undefined;}
+  return value;
+}
+function commandDigest(command){return digest(storedForm(command)||{});}
+function sameCommand(a,b){return !!a&&!!b&&commandDigest(a)===commandDigest(b);}
 function commandOf(row){return {transactionId:row.id,order:row.order,drawerDelta:row.drawerDelta||{}};}
 function sealCommands(rows,shift,cutoff){
   if(!Array.isArray(rows)||rows.length>500)throw new Error('Invalid handover sale list.');
@@ -27,7 +40,7 @@ function sealCommands(rows,shift,cutoff){
     if(!row||!row.order){const key='quarantine_'+digest(row);commands[key]={quarantined:true,raw:row||null,orderId:key,lastError:'Unreadable local sale: management must recover the original evidence.'};continue;}
     const command=commandOf(row),o=command.order;
     if(!/^[A-Za-z0-9_-]{12,120}$/.test(row.id)||o.clientTxnId!==row.id||!/^((POS)|(GF)|(FP))-[A-Za-z0-9_-]+$/.test(o.id)||o.source!=='pos'||o.status!=='Completed'||!Number.isFinite(Number(o.timestamp))||Number(o.timestamp)<Number(shift.openAt)||Number(o.timestamp)>cutoff){const key='quarantine_'+digest(row);commands[key]={quarantined:true,raw:row,orderId:String(o.id||key),lastError:'Invalid sale identity or date. Evidence retained for management recovery.'};continue;}
-    commands[row.id]={command,hash:digest(command),orderId:o.id,lastError:String(row.lastError||'').slice(0,500)};
+    commands[row.id]={command,hash:commandDigest(command),orderId:o.id,lastError:String(row.lastError||'').slice(0,500)};
   }
   if(Buffer.byteLength(JSON.stringify(commands),'utf8')>4000000)throw new Error('Export this large queue for recovery before handover.');
   return commands;
@@ -70,4 +83,4 @@ function report(shift,orders,handover){
   for(const map of Object.values(z.byMethodAccount))for(const k of Object.keys(map))map[k]/=100;
   return {...z,...handover.cash,capturedAt:handover.at,openingFloat:shift.openingFloat||0,openCount:shift.openCount||{},expectedDrawer:shift.drawer||{},payInEntries:shift.payIns||[],payOutEntries:shift.payOuts||[],varianceStatus:z.variance?'pending_manager_reconciliation':'reconciled',schemaVersion:5};
 }
-module.exports={cents,countCash,digest,commandOf,sealCommands,cashSnapshot,report,reportKey};
+module.exports={cents,countCash,digest,storedForm,commandDigest,sameCommand,commandOf,sealCommands,cashSnapshot,report,reportKey};
