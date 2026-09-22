@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 581,
+    "admin": 582,
     "books": 129,
     "customer": 75,
-    "serviceWorkerCache": 562
+    "serviceWorkerCache": 563
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
@@ -348,13 +348,17 @@
     "reconcileUndepositedCustody",
     "runFinancialClose",
     "reopenFinancialCloseOnMovement",
-    "reopenFinancialCloseOnOrderChange"
+    "reopenFinancialCloseOnOrderChange",
+    "managePosShiftCrew",
+    "managePosSaleRecovery"
   ],
   "requiredProtectedNodes": [
     "activeOrders",
     "orderLocks",
     "offlinePosSync",
     "shiftSyncGates",
+    "shiftCrews",
+    "posSyncAlerts",
     "orderStatusCommands",
     "orderCorrectionCommands",
     "orderCorrections",

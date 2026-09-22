@@ -120,6 +120,11 @@ function buildOperationalExceptions(input, now = Date.now()) {
     if (Math.abs(bal) > clearingThreshold) exceptions.push(item("clearing_residual", "warning", `clearing_${code}`, `${name} (${code}) has not cleared to zero`, `Books General Ledger shows a ${bal > 0 ? "debit" : "credit"} residual of PHP ${Math.abs(bal).toFixed(2)} in ${code} ${name}. This clearing/suspense account must settle to zero \u2014 review and clear the pending posting in Finance Books.`, now, "cashflow"));
   });
   paymentRoutingIssues(input.payMethods, input.cfAccounts, now).forEach((x) => exceptions.push(x));
+  // Shift crew safeguards: a POS sale the server refused is money in the drawer with no
+  // sale behind it until management recovers or dismisses it; a handed-over shift has no
+  // final Z report until management reconciles it.
+  rows(input.posSyncAlerts).forEach((alert) => {if (alert.state !== "open") return;exceptions.push(item("pos_sale_rejected", "critical", alert.id, `POS sale ${alert.orderId || alert.id} was not saved`, `${String(alert.message || "The server refused this sale.").slice(0, 200)} Recover or dismiss it in Register Ops → Sales needing recovery.`, Number(alert.lastAt || alert.firstAt || 0), "ops"));});
+  rows(input.pendingShiftHandovers).forEach((handover) => {exceptions.push(item("shift_handover_pending", now - Number(handover.at || 0) > 86400000 ? "critical" : "warning", handover.id, `Shift of ${handover.staff || "a cashier"} awaits reconciliation`, "Recover any retained sales, then finalize the handover in Register Ops to produce its Z report.", Number(handover.at || 0), "ops"));});
   // Background triggers that exhausted their bounded retry window. The event was
   // acknowledged to stop repeated redelivery (and repeated database downloads),
   // so the unfinished work must be visible until it ages out of the window; the

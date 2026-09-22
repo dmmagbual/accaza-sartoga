@@ -2,6 +2,7 @@
 const {HttpsError} = require("firebase-functions/v2/https");
 const PaymentVerification = require("./payment-verification");
 const Handover = require("./shift-handover");
+const ShiftCrew = require("./shift-crew");
 
 const POS_DENOM_KEYS = new Set(["b1000", "b500", "b200", "b100", "b50", "p20", "c10", "c5", "c1", "c25", "c10s", "c5s"]);
 const POS_DENOM_VALUES = {b1000:1000,b500:500,b200:200,b100:100,b50:50,p20:20,c10:10,c5:5,c1:1,c25:.25,c10s:.1,c5s:.05};
@@ -63,6 +64,70 @@ async function claimShiftSync(db,shiftId,transactionId,now){
 async function releaseShiftSync(db,shiftId,transactionId,token){
   await db.ref(`/shiftSyncGates/${shiftId}/pending/${transactionId}`).transaction(value=>value&&value.token===token?null:value,undefined,false);
 }
+// Management recovery replays a rejected sale as the shift owner. The person who actually
+// rang it stays on the order: as crew when their membership covered the sale, otherwise
+// as a recovered sale that the manager accepted into the owner's drawer.
+function recoveredSeller(ctx, shift, seller, ts) {
+  const recovery = ctx && ctx.recovery;
+  if (!recovery || !seller || seller.role !== "owner" || !recovery.sellerUid || !shift || recovery.sellerUid === shift.accountUid) return seller;
+  const crew = recovery.sellerCrew || null, asCrew = ShiftCrew.saleSeller(shift, crew, recovery.sellerUid, ts);
+  if (asCrew) return asCrew;
+  return {role: "recovered", uid: recovery.sellerUid, staffId: String(recovery.sellerStaffId || ""), staff: String(recovery.sellerStaff || "")};
+}
+// Loads who originally rang a sale that management is recovering: their crew record for
+// the shift (if any) and their linked staff profile, so the order keeps the real seller.
+async function recoveryContext(db, shiftId, sellerUid, managerUid) {
+  const uid = String(sellerUid || "");
+  if (!/^[A-Za-z0-9_-]{6,128}$/.test(uid)) return {managerUid};
+  const [crewSnap, staffSnap] = await Promise.all([db.ref(`/shiftCrews/${shiftId}/${uid}`).get(), /* download-ok: bounded POS staff list (a handful of profiles) */ db.ref("/posStaff").get()]);
+  const staff = Object.entries(staffSnap.val() || {}).find(([, row]) => row && row.accountUid === uid) || [];
+  return {managerUid, sellerUid: uid, sellerCrew: crewSnap.val() || null, sellerStaffId: staff[0] || "", sellerStaff: (staff[1] && staff[1].name) || ""};
+}
+// Ends every open crew session when the shift is handed over or closed. Sales rung before
+// that moment stay recoverable into the shift; nothing after it is accepted from the crew.
+async function endShiftCrew(db, shiftId, at, endedBy, reason) {
+  const ended = [];
+  await db.ref(`/shiftCrews/${shiftId}`).transaction((value) => {
+    ended.length = 0;
+    if (value == null) return null;
+    const next = {};
+    for (const [uid, row] of Object.entries(value)) {
+      const closed = ShiftCrew.leaveRecord(row, at, endedBy, reason);
+      if (closed !== row) ended.push(uid);
+      next[uid] = closed;
+    }
+    return next;
+  }, undefined, false);
+  if (ended.length) await db.ref().update(Object.fromEntries(ended.map((uid) => [`shifts/${shiftId}/crew/${uid}/leftAt`, at])));
+  return ended;
+}
+// Every rejected POS sale is captured the moment the server refuses it: who rang it, why,
+// and the exact command, so management is alerted and can recover it without the device
+// or anyone's password. A later successful sync of the same transaction resolves it.
+const PERMANENT_SYNC_CODES = new Set(["permission-denied", "failed-precondition", "already-exists", "invalid-argument", "not-found"]);
+function syncAlertCode(error) { return String((error && error.code) || "internal").replace(/^functions\//, ""); }
+async function recordSyncAlert(db, actor, data, error, now, notify) {
+  let transactionId; try { transactionId = offlineTxnKey(data && data.transactionId); } catch (_e) { return null; }
+  const raw = data && data.order && typeof data.order === "object" && !Array.isArray(data.order) ? data.order : null;
+  const command = raw && Buffer.byteLength(JSON.stringify(raw), "utf8") <= 250000 ? {transactionId, order: raw, drawerDelta: data.drawerDelta && typeof data.drawerDelta === "object" ? data.drawerDelta : {}} : null;
+  const code = syncAlertCode(error), message = String((error && error.message) || error || "Sync failed").slice(0, 500);
+  const ref = db.ref(`/posSyncAlerts/${transactionId}`);
+  const result = await ref.transaction((value) => {
+    const current = value || {};
+    if (current.state && current.state !== "open") return current;
+    return Object.assign({}, current, {transactionId, orderId: String((raw && raw.id) || current.orderId || "").slice(0, 120), shiftId: String((raw && raw.shiftId) || current.shiftId || "").slice(0, 120), actorUid: current.actorUid || actor.uid, lastActorUid: actor.uid, total: Number(raw && raw.total) || Number(current.total) || 0, orderTimestamp: Number(raw && raw.timestamp) || Number(current.orderTimestamp) || 0, code, message, state: "open", firstAt: Number(current.firstAt) || now, lastAt: now, count: (Number(current.count) || 0) + 1, command: current.command || command, schemaVersion: 1});
+  }, undefined, false);
+  const row = result.committed && result.snapshot.val();
+  if (!row || row.state !== "open" || row.notifiedAt) return row;
+  if (!(PERMANENT_SYNC_CODES.has(code) || Number(row.count) >= 3 || now - Number(row.firstAt) >= 5 * 60 * 1000)) return row;
+  const claim = await ref.child("notifiedAt").transaction((value) => (value ? undefined : now), undefined, false);
+  if (claim.committed && typeof notify === "function") await notify("🚨 POS sale not saved", `${row.orderId || transactionId} · PHP ${Number(row.total || 0).toFixed(2)} · ${message}`.slice(0, 180));
+  return row;
+}
+async function resolveSyncAlert(db, transactionId, now) {
+  let key; try { key = offlineTxnKey(transactionId); } catch (_e) { return; }
+  await db.ref(`/posSyncAlerts/${key}`).transaction((value) => (value == null ? null : value.state === "open" ? Object.assign({}, value, {state: "resolved", resolvedAt: now}) : value), undefined, false);
+}
 async function syncOfflinePosSaleCommand(ctx) {
   const {db, actor, data, textField, money, listFromFirebase, activeOrderProjection} = ctx, now = Number(ctx.now) || Date.now();
   const transactionId = offlineTxnKey(data.transactionId), raw = data.order;
@@ -78,26 +143,30 @@ async function syncOfflinePosSaleCommand(ctx) {
   const lines = listFromFirebase(raw.lineItems);if (!lines.length || lines.length > 200) throw new HttpsError("invalid-argument", "Offline sale items are invalid.");
   const delta = offlineDrawerDelta(data.drawerDelta), orderRef = db.ref(`/orders/${orderId}`), existingSnap = await orderRef.get(), existing = existingSnap.val();
   const ownedShift = (await db.ref(`/shifts/${shiftId}`).get()).val();
-  if(ownedShift&&ownedShift.accountUid&&ownedShift.accountUid!==actor.uid)throw new HttpsError('permission-denied','This sale belongs to another cashier.');
+  // The shift owner, or a crew member who was on the shift when the sale was rung.
+  const crewRow = ownedShift && ownedShift.accountUid && ownedShift.accountUid !== actor.uid ? (await db.ref(`/shiftCrews/${shiftId}/${actor.uid}`).get()).val() : null;
+  const seller = recoveredSeller(ctx, ownedShift, ShiftCrew.saleSeller(ownedShift, crewRow, actor.uid, raw.timestamp), raw.timestamp) || null;
   if(ownedShift&&syncAudit&&syncAudit.state==='synced'&&syncAudit.orderId===orderId){
     const accepted=existing||((await db.ref(`/archivedOrders/${orderId}`).get()).val());
-    if(accepted&&accepted.clientTxnId===transactionId&&(ownedShift.status==='closed'||!existing))return {transactionId,orderId,syncedAt:syncAudit.syncedAt,duplicate:true};
+    // A sale already accepted (for example by management recovery) is acknowledged to any
+    // device still holding it, so its queue clears without applying anything twice.
+    if(accepted&&accepted.clientTxnId===transactionId&&(ownedShift.status==='closed'||!existing||(!seller&&money(accepted.total)===money(raw.total))))return {transactionId,orderId,syncedAt:syncAudit.syncedAt,duplicate:true};
   }
   if (!ownedShift || ownedShift.status === "closed") throw new HttpsError("failed-precondition", "The POS shift is no longer open.");
-  if(ownedShift.accountUid&&ownedShift.accountUid!==actor.uid)throw new HttpsError('permission-denied','This sale belongs to another cashier.');
+  if(!seller)throw new HttpsError('permission-denied',`This sale belongs to ${ownedShift.staff||'another cashier'}'s shift. Join the shift before ringing sales.`);
   const syncToken=await claimShiftSync(db,shiftId,transactionId,now);
   try {
   let handover = (await db.ref(`/shiftHandovers/${shiftId}`).get()).val();
   if (handover) {
     if(handover.state!=='pending')throw new HttpsError('failed-precondition','The original shift has already been reconciled. Keep the sale queued and contact a manager.');
     const command = {transactionId,order:raw,drawerDelta:data.drawerDelta||{}},hash=Handover.digest(command);
-    if(actor.uid!==handover.ownerUid||!(Number(raw.timestamp)>=Number(ownedShift.openAt)&&Number(raw.timestamp)<=handover.at))throw new HttpsError('permission-denied','Only the original cashier sale can be recovered.');
+    if(!(Number(raw.timestamp)>=Number(ownedShift.openAt)&&Number(raw.timestamp)<=handover.at))throw new HttpsError('permission-denied','Only a sale rung during the original shift can be recovered.');
     const claim=await db.ref(`/shiftHandovers/${shiftId}/commands/${transactionId}`).transaction(sealed=>{
       if(sealed)return sealed.hash===hash?sealed:undefined;
       return {command,hash,orderId,lastError:''};
     },undefined,false);
     if(!claim.committed)throw new HttpsError('already-exists','The retained sale payload differs from the original transaction.');
-  } else if (ownedShift.accountUid && ownedShift.accountUid !== actor.uid) throw new HttpsError("permission-denied", "This sale belongs to a different staff member’s shift.");
+  }
   if (existing && existing.clientTxnId !== transactionId) throw new HttpsError("already-exists", "This order ID already belongs to another transaction.");
   const channel = String(raw.channel || "instore").toLowerCase(), platform = channel === "grabfood" || channel === "foodpanda", reconciliation = validatePaymentReconciliation(raw, money), payments = reconciliation.payments, direct = PaymentVerification.directPaymentRows(payments), posSettings = (await db.ref("/posSettings").get()).val() || {}, verificationPolicy = platform ? null : PaymentVerification.paymentPolicy(payments, posSettings.payMethods), prepaid = raw.preCompletionCashRefund && typeof raw.preCompletionCashRefund === "object" ? raw.preCompletionCashRefund : null;
   if (!platform && direct.length && verificationPolicy === PaymentVerification.CASHIER_MANAGER && raw.cashierVerificationIntent !== true) throw new HttpsError("failed-precondition", "Cashier verification is required before completing this direct electronic payment sale.");
@@ -118,7 +187,7 @@ async function syncOfflinePosSaleCommand(ctx) {
   // Platform sales always carry an explicit settlement state so receivable readers can
   // use the indexed "unsettled" subset instead of downloading every archived order.
   const settlementDefault = platform && !raw.settlementStatus ? {settlementStatus: "unsettled"} : {};
-  const order = Object.assign({}, raw, settlementDefault, paymentControl, {id: orderId, shiftId, total, lineItems: lines, clientTxnId: transactionId, syncState: "synced", syncedAt: existing && existing.syncedAt ? existing.syncedAt : now, syncedByUid: actor.uid, schemaVersion: Math.max(2, Number(raw.schemaVersion) || 0)}); delete order.cashierVerificationIntent;
+  const order = Object.assign({}, raw, settlementDefault, paymentControl, {id: orderId, shiftId, total, lineItems: lines, clientTxnId: transactionId, syncState: "synced", syncedAt: existing && existing.syncedAt ? existing.syncedAt : now, syncedByUid: actor.uid, soldByUid: seller.uid, soldByStaffId: seller.staffId, soldBy: seller.staff, soldByRole: seller.role, recoveredBy: ctx.recovery ? ctx.recovery.managerUid : null, schemaVersion: Math.max(2, Number(raw.schemaVersion) || 0)}); delete order.cashierVerificationIntent;
   const prepared=!existing&&ctx.prepareOrder?await ctx.prepareOrder(order,now):{order},durableOrder=prepared&&prepared.order||order;
   let shiftResult;if(prepaid&&!existing){const reservation=await db.ref(`/offlinePosSync/${transactionId}`).transaction((row)=>{if(row&&row.orderId&&row.orderId!==orderId)return;return row||{orderId,shiftId,state:"refund-reserved",createdAt:Number(raw.timestamp)||now,updatedAt:now,actorUid:actor.uid};},undefined,false);if(!reservation.committed)throw new HttpsError("already-exists","This POS transaction is already linked to another order.");shiftResult=await db.ref(`/shifts/${shiftId}`).transaction((row)=>applyDrawerDelta(row,transactionId,delta,now,actor),undefined,false);if(!shiftResult.committed||!shiftResult.snapshot.exists())throw new HttpsError("failed-precondition","The drawer no longer has enough cash for this refund. Recheck the denominations.");}
   if (!existing){const writes={[`orders/${orderId}`]:durableOrder,[`activeOrders/${orderId}`]:activeOrderProjection(durableOrder),[`offlinePosSync/${transactionId}`]:{orderId,shiftId,state:"order-written",createdAt:Number(raw.timestamp)||now,updatedAt:now,actorUid:actor.uid}};if(prepaid)writes[`operationalAudit/${now}_precompletion_cash_refund_${orderId}`]={action:"complete_instore_prepaid_cash_refund",sourceType:"order",sourceId:orderId,amount:prepaid.amount,confirmedElectronicAmount:prepaid.paidAmount,correctedOrderTotal:total,reason:prepaid.reason,customerAcknowledgement:prepaid.customerAcknowledgement,shiftId,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1};if(prepared&&prepared.inventoryPlan)writes[`orderInventoryPlans/${orderId}`]=prepared.inventoryPlan;await db.ref().update(writes);}
@@ -130,4 +199,4 @@ async function syncOfflinePosSaleCommand(ctx) {
   return {transactionId, orderId, syncedAt: now, duplicate: !!existing};
   } finally {await releaseShiftSync(db,shiftId,transactionId,syncToken);}
 }
-module.exports={POS_DENOM_KEYS,offlineTxnKey,offlineDrawerDelta,drawerDeltaValue,validatePaymentReconciliation,applyDrawerDelta,syncOfflinePosSaleCommand};
+module.exports={POS_DENOM_KEYS,offlineTxnKey,offlineDrawerDelta,drawerDeltaValue,validatePaymentReconciliation,applyDrawerDelta,recoveryContext,endShiftCrew,recordSyncAlert,resolveSyncAlert,syncOfflinePosSaleCommand};

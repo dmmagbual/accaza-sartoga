@@ -9,9 +9,12 @@ function renderPosCart(options){
   var lines=keys.map(function(k){var c=posCart[k];return '<div style="display:flex;justify-content:space-between;gap:0.5rem;padding:0.4rem 0;border-bottom:1px solid var(--cd);font-size:0.82rem;">'
       +'<div style="flex:1;"><b>'+esc(c.name)+'</b> ×'+c.qty+(c.details?'<div style="font-size:0.7rem;color:var(--tl);">'+esc(c.details)+'</div>':'')+'</div>'
       +'<div style="text-align:right;white-space:nowrap;">'+peso(c.qty*c.unitTotal)+'<br><button class="pz-btn warn" style="padding:0.1rem 0.4rem;font-size:0.7rem;" data-rm="'+k+'">remove</button></div></div>';}).join('');
-  var shiftBar=shift
-    ? '<div style="background:#e8f5ec;border:1px solid #b8dfc4;border-radius:6px;padding:0.4rem 0.6rem;font-size:0.76rem;color:#155724;">🟢 Shift open · Cashier <b>'+esc(shift.staff)+'</b></div>'
-    : '<div style="background:#fde8e8;border:1px solid #f5c6c6;border-radius:6px;padding:0.4rem 0.6rem;font-size:0.76rem;color:#721c24;">🔴 No open shift — open one in <b>Register Ops</b> to start selling.</div>';
+  var seller=posSellerState(),crewNames=shift&&shift.crew?Object.keys(shift.crew).map(function(k){return shift.crew[k]&&!shift.crew[k].leftAt?shift.crew[k].staff:'';}).filter(Boolean):[];
+  var shiftBar=!shift
+    ? '<div style="background:#fde8e8;border:1px solid #f5c6c6;border-radius:6px;padding:0.4rem 0.6rem;font-size:0.76rem;color:#721c24;">🔴 No open shift — open one in <b>Register Ops</b> to start selling.</div>'
+    : seller.ok
+      ? '<div style="background:#e8f5ec;border:1px solid #b8dfc4;border-radius:6px;padding:0.4rem 0.6rem;font-size:0.76rem;color:#155724;">🟢 Shift open · Cashier <b>'+esc(shift.staff)+'</b>'+(seller.role==='crew'?' · You are ringing as <b>'+esc(seller.staff)+'</b> (crew)':'')+(crewNames.length?'<div style="font-size:0.7rem;margin-top:0.15rem;">Crew: '+esc(crewNames.join(', '))+'</div>':'')+'</div>'
+      : '<div style="background:#fff4e5;border:1px solid #f2c078;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;color:#8a5a00;">🟠 This shift belongs to <b>'+esc(seller.owner)+'</b>. Join the shift to take payments under your own name. <button class="pz-btn ok" id="posJoinShift" style="margin-top:0.35rem;padding:0.25rem 0.6rem;font-size:0.74rem;">Join shift</button></div>';
   var isPlat=posIsPlatform();
   var _ccfg=channelsCfg();
   var chanOpts=[{k:'instore',lbl:'🏪 In-store'}].concat(POS_CHANNELS.filter(function(d){return _ccfg[d.k].active!==false;}).map(function(d){return {k:d.k,lbl:(d.k==='grabfood'?'🟢 ':'🩷 ')+_ccfg[d.k].label};}));
@@ -69,7 +72,7 @@ function renderPosCart(options){
     else if(direct.length&&!verified){button.textContent='Cashier Verify Payment';button.style.background='#2f80ed';}
     else{var paid=direct.reduce(function(s,p){return s+(+p.amount||0);},0),excess=Math.round((paid-grandTotal())*100)/100;button.textContent=excess>.009?'Complete Sale & Refund '+peso(excess)+' Cash':'Charge & Complete';button.style.background=excess>.009?'#b36b00':'';}
     if(state){if(verified){var refs=direct.map(function(r){return r.ref;}).filter(Boolean).join(', ');state.style.display='block';state.style.background='#e8f5ec';state.style.border='1px solid #b8dfc4';state.style.color='#155724';state.innerHTML='✓ Cashier verified'+(refs?' · Ref: '+esc(refs):'')+' · Complete the sale below.';}else{state.style.display='none';state.innerHTML='';}}
-    button.disabled=posChargeBusy||!keys.length||!shift;
+    button.disabled=posChargeBusy||!keys.length||!shift||!posSellerState().ok;
   }
   function invalidatePaymentVerification(){posPaymentVerification=null;refreshChargeAction();}
   function platformDiscountData(gross){
@@ -157,11 +160,13 @@ function renderPosCart(options){
   p.querySelectorAll('[data-sdrm]').forEach(function(b){b.onclick=function(){posScopedDisc.splice(+b.getAttribute('data-sdrm'),1);renderPosCart();};});
   var _pb=document.getElementById('posPkgBtn');if(_pb)_pb.onclick=function(){ if(window.__openPackagePicker)window.__openPackagePicker(); else alert('Packages module still loading \u2014 try again.'); };
   document.getElementById('posClear').onclick=function(){if(correction){if(confirm('Cancel this correction? The original completed order will remain unchanged.')){posCompletedCorrection=null;posCart={};posDraft={};posPaymentVerification=null;window.__posPkgs=[];posScopedDisc=[];renderPosCart({fresh:true});}return;}if(Object.keys(posCart).length&&confirm('Clear this sale?')){posCart={};posDraft={};posPaymentVerification=null;window.__posPkgs=[];posScopedDisc=[];renderPosCart({fresh:true});}};
+  var _join=document.getElementById('posJoinShift'); if(_join)_join.onclick=function(){joinPosShift();};
   var _hold=document.getElementById('posHold'); if(_hold)_hold.onclick=function(){ if(!Object.keys(posCart).length)return; var a=A(); a.set(a.ref(a.db,'heldOrders/'+uid('hold_')),{cart:posCart,ts:Date.now(),staff:(window.__posShift&&window.__posShift.staff)||'—',note:(document.getElementById('posCust').value||'').trim()}); posCart={};posDraft={};posPaymentVerification=null;window.__posPkgs=[]; renderPosCart({fresh:true}); alert('Order held. Recall it from Register Ops.'); };
   document.getElementById('posCharge').onclick=async function(){
     var chargeButton=this;if(posChargeBusy)return;posChargeBusy=true;chargeButton.disabled=true;chargeButton.textContent='Processing…';
     try{return await (async function(){
     if(!window.__posShift){alert('Open a shift first (Register Ops tab).');return;}
+    var _seller=posSellerState();if(!_seller.ok){alert('This shift belongs to '+_seller.owner+'. Join the shift before taking payment.');return;}
     var tot=grandTotal();
     if(correction){await completeCompletedOrderCorrection(tot);return;}
     if(isPlat){

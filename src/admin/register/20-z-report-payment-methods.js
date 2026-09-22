@@ -1,7 +1,7 @@
 
 /* ---------- Z-report computation ---------- */
 function computeZ(shift,sourceOrders){
-  var sales=[],voids=[],z={tx:0,gross:0,discounts:0,refunds:0,cashRefunds:0,net:0,byMethod:{},byMethodAccount:{},byChannel:{instore:0,online:0,grabfood:0,foodpanda:0},cashSales:0,voidCount:0,voidAmt:0,pending:0,pendingCount:0,managerPending:0,managerPendingCount:0,tips:0};
+  var sales=[],voids=[],z={tx:0,gross:0,discounts:0,refunds:0,cashRefunds:0,net:0,byMethod:{},byMethodAccount:{},byChannel:{instore:0,online:0,grabfood:0,foodpanda:0},bySeller:{},cashSales:0,voidCount:0,voidAmt:0,pending:0,pendingCount:0,managerPending:0,managerPendingCount:0,tips:0};
   var source=sourceOrders||Object.keys(ordersMap).map(function(id){return Object.assign({id:id},ordersMap[id]);});
   source.forEach(function(o){if(!o||o.shiftId!==shift.id)return;
     if(o.voided){z.voidCount++;z.voidAmt+=Number(o.total)||0;return;}
@@ -10,6 +10,8 @@ function computeZ(shift,sourceOrders){
     z.tx++;z.gross+=gross;z.discounts+=disc;z.refunds+=ref;z.cashRefunds+=Number((o.refundPayments||{}).Cash)||(ref&&(!o.refundPayments)&&(o.payment==='Cash'||paysOf(o).some(function(p){return p.method==='Cash';}))?ref:0);z.net+=gross-disc-ref;
     z.tips+=Number(o.tipRounding)||0;
     var _ch=(o.channel&&z.byChannel[o.channel]!=null)?o.channel:'instore';z.byChannel[_ch]+=gross-disc-ref;
+    /* Shift crew: who rang each sale (informational; the drawer stays the shift owner's). */
+    var _sk=String(o.soldByStaffId||o.soldByUid||shift.staffId||'owner').replace(/[.#$\/\[\]]/g,'_')||'owner';z.bySeller[_sk]=z.bySeller[_sk]||{name:String(o.soldBy||shift.staff||''),role:String(o.soldByRole||'owner'),tx:0,net:0};z.bySeller[_sk].tx++;z.bySeller[_sk].net+=gross-disc-ref;
     if(o.paymentStatus==='pending'){z.pending+=(Number(o.total)||0);z.pendingCount++;}
     if(o.paymentStatus==='cashier_verified'){z.managerPending+=(Number(o.total)||0);z.managerPendingCount++;}
     paysOf(o).forEach(function(p){var m=window.AccazaSales.paymentKey(p),acct=window.AccazaSales.paymentAccount(p,cashAccountsMap),amt=Number(p.amount)||0;z.byMethod[m]=(z.byMethod[m]||0)+amt;z.byMethodAccount[m]=z.byMethodAccount[m]||{};z.byMethodAccount[m][acct||'']=(z.byMethodAccount[m][acct||'']||0)+amt;});

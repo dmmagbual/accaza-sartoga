@@ -1,6 +1,6 @@
 import assert from'node:assert/strict';import fs from'node:fs';import vm from'node:vm';
 const queueSource=fs.readFileSync(new URL('../assets/js/admin/offline-queue.js',import.meta.url),'utf8'),register=fs.readFileSync(new URL('../src/admin/register/80-shift-lifecycle-zreport.js',import.meta.url),'utf8'),posState=fs.readFileSync(new URL('../src/admin/pos/00-shared-state.js',import.meta.url),'utf8'),sw=fs.readFileSync(new URL('../sw.js',import.meta.url),'utf8');
-for(const marker of ['async function continuityReadyForClose()','await window.__flushOfflineQueue()','state.pending','state.syncing','state.failed','openHandoverCount(shift,error'])assert.ok(register.includes(marker),`shift continuity guard missing: ${marker}`);
+for(const marker of ['async function continuityReadyForClose()','await window.__flushOfflineQueue()',"row.status!=='synced'","row.order.shiftId!==current.id",'openHandoverCount(shift,error'])assert.ok(register.includes(marker),`shift continuity guard missing: ${marker}`);
 assert.equal((register.match(/await continuityReadyForClose\(\)/g)||[]).length,2,'shift close must check before counting and immediately before persistence');
 assert.ok(queueSource.includes('function closeReadiness()')&&queueSource.includes('outstanding===0'),'offline queue close-readiness summary is missing');
 assert.ok(posState.includes('if(force===true)return offlineQueue().summary()')&&posState.includes('AccazaPosSyncHealth.report(s,true)'),'Shift close must report a fresh durable-queue count, not a stale browser snapshot');

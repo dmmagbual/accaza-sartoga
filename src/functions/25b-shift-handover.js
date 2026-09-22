@@ -31,6 +31,7 @@ exports.manageShiftHandover=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_
     await sref.transaction(row=>row&&row.status!=='closed'?{...row,status:'handover_pending',handoverAt:handover.at,closeAt:handover.at,...handover.cash,reconciliationStatus:'pending',handoverId:id}:row,undefined,false);
     await db.ref().update({[`pendingShiftHandovers/${id}`]:{staff:handover.staff,at:handover.at,cash:handover.cash},[`operationalAudit/handover_${id}`]:{action:'cashier_shift_handover',sourceType:'shift',sourceId:id,actorUid:handover.by,ts:handover.at,countedCash:handover.cash.countedCash,cashToSettle:handover.cash.cashToSettle},[`ownerDailySummaries/${financeDateFromTimestamp(handover.at)}/${id}`]:{shiftId:id,staff:handover.staff,closedAt:handover.at,status:'handover_pending',controlTotals:handover.cash}});
     await db.ref('/posActiveShift').transaction(row=>row&&row.id===id?null:row,undefined,false);
+    await OfflineSync.endShiftCrew(db,id,handover.at,handover.by,'shift_handover');
     return {shiftId:id,handedOver:true,cash:handover.cash,pendingSales:Object.keys(handover.commands||{}).length};
   }
   if(!handover)throw new HttpsError('not-found','No handover exists for this shift.');
@@ -41,7 +42,8 @@ exports.manageShiftHandover=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_
     for(const [key,row] of Object.entries(handover.commands||{}).filter(([,row])=>!row.syncedAt).slice(0,25)){
       if(row.quarantined){results.push({id:key,synced:false,error:row.lastError});continue;}
       try{
-        await OfflineSync.syncOfflinePosSaleCommand({db,actor:{...actor,uid:handover.ownerUid},data:row.command,textField,money,listFromFirebase,activeOrderProjection,availableCash:availableCashOnHandAboveFloat,prepareOrder:async(order,now)=>({order,inventoryPlan:await calculateOrderInventoryPlan(db,order,now)})});
+        const recovery=await OfflineSync.recoveryContext(db,id,row.command&&row.command.order&&row.command.order.soldByUid,actor.uid);
+        await OfflineSync.syncOfflinePosSaleCommand({db,actor:{...actor,uid:handover.ownerUid},recovery,data:row.command,textField,money,listFromFirebase,activeOrderProjection,availableCash:availableCashOnHandAboveFloat,prepareOrder:async(order,now)=>({order,inventoryPlan:await calculateOrderInventoryPlan(db,order,now)})});
         await href.child(`commands/${key}`).update({syncedAt:Date.now(),lastError:'',recoveredBy:actor.uid});results.push({id:key,synced:true});
       }catch(e){const message=String(e.message||e).slice(0,500);await href.child(`commands/${key}`).update({lastError:message});results.push({id:key,synced:false,error:message});}
     }

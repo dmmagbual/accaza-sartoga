@@ -22,7 +22,7 @@
     "test:dependency-certification": "node tests/dependency-certification-check.mjs",
     "test:production-health": "node tests/production-health-check.mjs",
     "test:incident-controls": "node tests/incident-controls-check.mjs",
-    "test:business-continuity": "node tests/business-continuity-check.mjs && node tests/shift-handover-check.mjs && node tests/transaction-cold-cache-check.mjs",
+    "test:business-continuity": "node tests/business-continuity-check.mjs && node tests/shift-handover-check.mjs && node tests/shift-crew-check.mjs && node tests/transaction-cold-cache-check.mjs",
     "test:release-certification": "node tests/release-certification-check.mjs",
     "test:production-validation": "node tests/production-validation-check.mjs",
     "test:alert-escalation": "node tests/alert-escalation-check.mjs",
