@@ -47,6 +47,22 @@ function applyDrawerDelta(row, transactionId, delta, now, actor) {
   const drawer = Object.assign({}, row.drawer || {});for(const key of Object.keys(delta)){const next=Number(drawer[key]||0)+delta[key];if(next<0)return;drawer[key]=next;}
   applied[transactionId] = {at: now, by: actor.uid};return Object.assign({}, row, {drawer, offlineSyncApplied: applied});
 }
+// A dedicated gate avoids transacting the entire (frequently updated) shift.
+// Its empty value is a valid starting state, including on an uncached RTDB read.
+async function claimShiftSync(db,shiftId,transactionId,now){
+  const token=`${now}_${Math.random().toString(36).slice(2)}`;
+  const ref=db.ref(`/shiftSyncGates/${shiftId}`);
+  const result=await ref.transaction(value=>{
+    const gate=value||{};
+    if(Number(gate.finalizingAt||0)>Date.now()-180000)return;
+    return {...gate,pending:{...gate.pending,[transactionId]:{at:now,token}}};
+  },undefined,false);
+  if(!result.committed)throw new HttpsError('aborted','Shift reconciliation is running. Keep this sale queued and retry shortly.');
+  return token;
+}
+async function releaseShiftSync(db,shiftId,transactionId,token){
+  await db.ref(`/shiftSyncGates/${shiftId}/pending/${transactionId}`).transaction(value=>value&&value.token===token?null:value,undefined,false);
+}
 async function syncOfflinePosSaleCommand(ctx) {
   const {db, actor, data, textField, money, listFromFirebase, activeOrderProjection} = ctx, now = Number(ctx.now) || Date.now();
   const transactionId = offlineTxnKey(data.transactionId), raw = data.order;
@@ -69,27 +85,18 @@ async function syncOfflinePosSaleCommand(ctx) {
   }
   if (!ownedShift || ownedShift.status === "closed") throw new HttpsError("failed-precondition", "The POS shift is no longer open.");
   if(ownedShift.accountUid&&ownedShift.accountUid!==actor.uid)throw new HttpsError('permission-denied','This sale belongs to another cashier.');
-  // Reserve before looking up handover state: a call that started during trading
-  // must also be visible to a handover/reconciliation that starts concurrently.
-  const recoveryClaim=await db.ref(`/shifts/${shiftId}`).transaction(row=>{
-    if(!row||row.status==='closed'||Number(row.handoverFinalizingAt||0)>Date.now()-180000)return;
-    return {...row,pendingOfflineCommands:{...row.pendingOfflineCommands,[transactionId]:now}};
-  },undefined,false);
-  if(!recoveryClaim.committed)throw new HttpsError('aborted','Shift reconciliation is running. Keep this sale queued and retry shortly.');
+  const syncToken=await claimShiftSync(db,shiftId,transactionId,now);
+  try {
   let handover = (await db.ref(`/shiftHandovers/${shiftId}`).get()).val();
   if (handover) {
+    if(handover.state!=='pending')throw new HttpsError('failed-precondition','The original shift has already been reconciled. Keep the sale queued and contact a manager.');
     const command = {transactionId,order:raw,drawerDelta:data.drawerDelta||{}},hash=Handover.digest(command);
-    // Register recovery and check the finalization lock in the same transaction.
-    // Reconciliation cannot miss a command arriving from a second POS device.
-    const claim = await db.ref(`/shiftHandovers/${shiftId}`).transaction(h=>{
-      if(!h||h.state!=="pending"||Number(h.reconcileLease||0)>Date.now()-180000)return;
-      const sealed=(h.commands||{})[transactionId];
-      if(sealed)return sealed.hash===hash?h:undefined;
-      if(actor.uid!==h.ownerUid||!(Number(raw.timestamp)>=Number(ownedShift.openAt)&&Number(raw.timestamp)<=h.at))return;
-      return {...h,commands:{...h.commands,[transactionId]:{command,hash,orderId,lastError:""}}};
+    if(actor.uid!==handover.ownerUid||!(Number(raw.timestamp)>=Number(ownedShift.openAt)&&Number(raw.timestamp)<=handover.at))throw new HttpsError('permission-denied','Only the original cashier sale can be recovered.');
+    const claim=await db.ref(`/shiftHandovers/${shiftId}/commands/${transactionId}`).transaction(sealed=>{
+      if(sealed)return sealed.hash===hash?sealed:undefined;
+      return {command,hash,orderId,lastError:''};
     },undefined,false);
-    if(!claim.committed)throw new HttpsError("permission-denied","Only the original retained sale can be recovered, and not while reconciliation is running. Retry shortly.");
-    handover=claim.snapshot.val();
+    if(!claim.committed)throw new HttpsError('already-exists','The retained sale payload differs from the original transaction.');
   } else if (ownedShift.accountUid && ownedShift.accountUid !== actor.uid) throw new HttpsError("permission-denied", "This sale belongs to a different staff member’s shift.");
   if (existing && existing.clientTxnId !== transactionId) throw new HttpsError("already-exists", "This order ID already belongs to another transaction.");
   const channel = String(raw.channel || "instore").toLowerCase(), platform = channel === "grabfood" || channel === "foodpanda", reconciliation = validatePaymentReconciliation(raw, money), payments = reconciliation.payments, direct = PaymentVerification.directPaymentRows(payments), posSettings = (await db.ref("/posSettings").get()).val() || {}, verificationPolicy = platform ? null : PaymentVerification.paymentPolicy(payments, posSettings.payMethods), prepaid = raw.preCompletionCashRefund && typeof raw.preCompletionCashRefund === "object" ? raw.preCompletionCashRefund : null;
@@ -120,7 +127,7 @@ async function syncOfflinePosSaleCommand(ctx) {
   await db.ref("/posActiveShift").transaction((row) => row && row.id === shiftId ? applyDrawerDelta(row, transactionId, delta, now, actor) : row, undefined, false);
   await db.ref(`/offlinePosSync/${transactionId}`).update({state: "synced", syncedAt: now, updatedAt: now});
   if(handover)await db.ref(`/shiftHandovers/${shiftId}/commands/${transactionId}`).update({syncedAt:now,lastError:""});
-  await db.ref(`/shifts/${shiftId}`).update({[`pendingOfflineCommands/${transactionId}`]:null});
   return {transactionId, orderId, syncedAt: now, duplicate: !!existing};
+  } finally {await releaseShiftSync(db,shiftId,transactionId,syncToken);}
 }
 module.exports={POS_DENOM_KEYS,offlineTxnKey,offlineDrawerDelta,drawerDeltaValue,validatePaymentReconciliation,applyDrawerDelta,syncOfflinePosSaleCommand};
