@@ -84,7 +84,7 @@
   <div id="chatWrap">
     <div id="messages"></div>
     <form id="askForm">
-      <textarea id="question" maxlength="800" rows="2" placeholder="Ask anything…" required></textarea>
+      <textarea id="question" maxlength="800" rows="2" placeholder="Ask anything… (Enter to send, Shift+Enter for a new line)" required></textarea>
       <button id="askBtn" type="submit">Ask</button>
     </form>
   </div>
@@ -155,6 +155,7 @@ async function ask(ev){
   }
 }
 by('askForm').addEventListener('submit',ask);
+by('question').addEventListener('keydown',function(ev){if(ev.key==='Enter'&&!ev.shiftKey&&!ev.isComposing){ev.preventDefault();if(!by('askBtn').disabled)by('askForm').requestSubmit();}});
 by('newChatBtn').addEventListener('click',()=>{clearHistory();welcome();});
 by('signOutBtn').addEventListener('click',()=>{signOut(auth).catch(()=>{});});
 
