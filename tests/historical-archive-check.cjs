@@ -39,7 +39,7 @@ assert.equal(HistoricalArchive.reportingContribution(Object.assign({},reportOrde
 assert.equal(HistoricalArchive.reportingContribution(Object.assign({},reportOrder,{payment:'grabfood'})).payments[0].key,'grabfood');
 let monthly = HistoricalArchive.applyReportingContribution({}, contribution, 1);
 assert.deepEqual({orders:monthly.orders,netCents:monthly.netCents,channel:monthly.channels.instore},{orders:1,netCents:10030,channel:{orders:1,netCents:10030}});
-assert.deepEqual(monthly.days["2026-09-19"].payments,{unspecified:{netCents:10030}});assert.deepEqual(monthly.hours,{12:{orders:1,netCents:10030}});assert.equal(monthly.schemaVersion,3);
+assert.deepEqual(monthly.days["2026-09-19"].payments,{unspecified:{netCents:10030}});assert.deepEqual(monthly.days["2026-09-19"].cashiers.rya,{name:"Rya",orders:1,netCents:10030});assert.deepEqual(monthly.hours,{12:{orders:1,netCents:10030}});assert.equal(monthly.schemaVersion,3);assert.equal(monthly.analyticsSchemaVersion,2);
 monthly = HistoricalArchive.applyReportingContribution(monthly, contribution, -1);
 assert.equal(monthly.orders,0);assert.equal(monthly.netCents,0);assert.deepEqual(monthly.channels,{},"retries and corrections must reverse a prior contribution without drift");
 const legacyContribution = Object.assign({}, contribution, {schemaVersion:1});
@@ -110,7 +110,7 @@ for (const marker of [
   "exports.manageHistoricalOrderArchive", "exports.readHistoricalOrders", "exports.readHistoricalSalesRollup", "historicalOrdersFromDocuments", "HistoricalArchive.unchanged", "deletionEnabled: false",
   '"sales-at-backfill"', '"sales-at-audit"', '"sales-ledger-backfill"', '"sales-rollup-backfill"', "Firestore replica maintenance only", "orderByKey()", "HISTORICAL_ARCHIVE_BATCH_LIMIT = 100",
   'startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\\uf8ff`)', "never recalculate history from current recipes", 'db.ref(`/archivedOrders/${orderId}`).get()',
-  'db.ref("/historicalArchiveSync").transaction', "reconcileHistoricalSalesRollup", "salesRollupReady", "salesAtReady", "HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 3", "HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION = 6", "HISTORICAL_ROLLUP_COMPLETION_READ_LIMIT = 50000", "compatibleBaseReady", "HISTORICAL_MAINTENANCE_DAILY_DOCUMENT_LIMIT = 4000", "HISTORICAL_REPLICA_BATCH_LIMIT = 10", "HISTORICAL_REPLICA_DAILY_SOURCE_LIMIT = 1000", '"sales-replica-backfill"', "reserveHistoricalReplicaBudget", "salesReplicaBackfill", "sourceReplicaRunId", "historicalFirestoreReadsV3", "HISTORICAL_USER_BURST_READ_LIMIT = 200", "limit * (salesAtReady ? 1 : 3)",
+  'db.ref("/historicalArchiveSync").transaction', "reconcileHistoricalSalesRollup", "salesRollupReady", "salesAtReady", "HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 3", "HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION = 7", "HISTORICAL_ROLLUP_COMPLETION_READ_LIMIT = 50000", "compatibleBaseReady", "HISTORICAL_MAINTENANCE_DAILY_DOCUMENT_LIMIT = 4000", "HISTORICAL_REPLICA_BATCH_LIMIT = 10", "HISTORICAL_REPLICA_DAILY_SOURCE_LIMIT = 1000", '"sales-replica-backfill"', "reserveHistoricalReplicaBudget", "salesReplicaBackfill", "sourceReplicaRunId", "historicalFirestoreReadsV3", "HISTORICAL_USER_BURST_READ_LIMIT = 200", "limit * (salesAtReady ? 1 : 3)",
 ]) assert(source.includes(marker), `historical archive safeguard missing: ${marker}`);
 assert(source.includes("const legacyContribution = previous && Number(previous.schemaVersion || 0) < 3"), "legacy rollup contributions must be migrated instead of treated as complete");
 assert(source.includes("const legacyMonth = months.some"), "legacy month summaries must be migrated instead of treated as complete");
@@ -124,7 +124,7 @@ const maintenanceUi = fs.readFileSync("assets/js/admin/operations-dashboard.js",
 assert(maintenanceUi.includes("salesAtStageState") && maintenanceUi.includes("dependentStageState(status,'salesAt',3)") && maintenanceUi.includes("dependentStageState(status,'salesRollup',4)") && maintenanceUi.includes("sourceReplicaRunId"), "the owner repair must rerun incomplete summary-schema states once");
 assert(maintenanceUi.includes("sales-replica-backfill") && maintenanceUi.includes("reportingReady"), "the owner repair must populate and validate the detailed-report reader before reporting success");
 assert(maintenanceUi.includes("Detailed-report reader ready"), "the owner must be able to distinguish rollup-ready from detailed-reader-ready reporting");
-assert(maintenanceUi.includes("v6RollupState") && maintenanceUi.includes("v6RollupState(latest)") && maintenanceUi.includes("v6ReportingReady"), "a completed V5 rollup must start, rather than bypass, the required V6 analytics rebuild");
+assert(maintenanceUi.includes("v7RollupState") && maintenanceUi.includes("v7RollupState(latest)") && maintenanceUi.includes("v7ReportingReady"), "a completed V6 rollup must start, rather than bypass, the required V7 analytics rebuild");
 
 const rules = fs.readFileSync("firestore.rules", "utf8");
 assert(rules.includes("allow read, write: if false"), "Firestore historical replica must be server-only");

@@ -5787,9 +5787,9 @@ const HISTORICAL_PERIOD_MAX_MS = 93 * 86400000;
 // replica run. A previous index-only run must never claim detailed reports are
 // ready when the underlying historical order replicas were never populated.
 const HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 3;
-// V6 adds cashier and weekday totals while retaining the V5 hourly/category data.
-// restore weekly, peak-hour and drinks-only reports without raw order scans.
-const HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION = 6;
+// V7 adds cashier attribution to each day. Aggregate month cashiers cannot
+// answer an MTD question without accidentally returning the full YTD total.
+const HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION = 7;
 
 async function reserveHistoricalReadBudget(db, uid, reads, options = {}) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {timeZone:"America/Los_Angeles",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date()).map((part) => [part.type, part.value]));
@@ -5822,7 +5822,7 @@ async function reserveHistoricalRollupReadBudget(db, documents) {
 }
 
 async function reserveHistoricalRollupCompletionBudget(db, runId, actorUid, documents) {
-  // A single owner-approved completion may start or finish the V6 migration.
+  // A single owner-approved completion may start or finish the V7 migration.
   // It has its own hard ceiling, is bound to one run and owner, and cannot be
   // reused after completion or for another repair.
   const safeRunId = String(runId || "").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 128);
@@ -6012,10 +6012,11 @@ async function reconcileHistoricalSalesRollup(firestore, orderId, order, transac
   const unchanged = (previous && previous.checksum || "") === (next && next.checksum || "");
   const legacyContribution = previous && Number(previous.schemaVersion || 0) < 3;
   const legacyMonth = months.some((month) => !snapshots[month].exists || Number((snapshots[month].data() || {}).schemaVersion || 0) < 3);
+  const legacyAnalytics = months.some((month) => Number((snapshots[month].data() || {}).analyticsSchemaVersion || 0) < 2);
   // A matching checksum is only a no-op after both the contribution state and
   // every touched month are on the complete reporting schema. This lets a
   // resumable backfill repair old V1 data without changing source evidence.
-  if (unchanged && !legacyContribution && !legacyMonth) return false;
+  if (unchanged && !legacyContribution && !legacyMonth && !legacyAnalytics) return false;
   for (const month of months) {
     let value = snapshots[month].exists ? snapshots[month].data() || {} : {};
     if (previous && previous.month === month) value = HistoricalArchive.applyReportingContribution(value, previous, -1);
@@ -6140,9 +6141,9 @@ exports.readHistoricalSalesRollup = onCall(
     const rollupState = rollupStateSnap.val() || {}, rollupVersion = Number(rollupState.schemaVersion) || 0;
     const ready = readySnap.val() === true && rollupState.complete === true && rollupVersion >= HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION;
     // V4 already proved that the compact day/payment/item totals were complete.
-    // A V6 cashier/weekday upgrade must never blank those valid totals while it
-    // is pending or running. Rich V6-only charts remain explicitly unavailable
-    // until every month reaches schema 3.
+    // A V7 date-level cashier upgrade must never blank those valid totals while it
+    // is pending or running. MTD/YTD comparisons remain explicitly unavailable
+    // until every month contains the date-level attribution.
     const compatible = (rollupState.complete === true && rollupVersion >= 4) || rollupState.compatibleBaseReady === true;
     if (!ready && !compatible) return {ready:false, months:{}};
     // Old open clients must share the bounded daily/burst historical-read budget.
@@ -6156,8 +6157,8 @@ exports.readHistoricalSalesRollup = onCall(
     // presenting a partial peak-hour chart as complete.
     if (Object.values(months).some((month) => Number(month && month.schemaVersion) < 2)) return {ready:false, needsMaintenance:true, months:{}};
     const rich = ready && Object.values(months).every((month) => Number(month && month.schemaVersion) >= 3);
-    const analyticsReady = rich && Object.values(months).every((month) => Number(month && month.analyticsSchemaVersion) >= 1);
-    return {ready:true, months, schemaVersion:rich ? 3 : 2, analyticsReady, needsMaintenance:!rich};
+    const analyticsReady = rich && Object.values(months).every((month) => Number(month && month.analyticsSchemaVersion) >= 2);
+    return {ready:true, months, schemaVersion:rich ? 3 : 2, analyticsReady, needsMaintenance:!rich || !analyticsReady};
   },
 );
 
@@ -6267,11 +6268,11 @@ exports.manageHistoricalOrderArchive = onCall(
         if (action === "sales-rollup-backfill") rollupCompatibleBase = state.compatibleBaseReady === true || (state.complete === true && Number(state.schemaVersion) >= 4);
         const startingRollupUpgrade = completionOverride && action === "sales-rollup-backfill" && !cursor && !runId;
         if (completionOverride && !startingRollupUpgrade && (!cursor || !runId)) {
-          throw new HttpsError("failed-precondition", "The one-time completion override must continue the saved V6 monthly summary repair.");
+          throw new HttpsError("failed-precondition", "The one-time completion override must continue the saved V7 monthly summary repair.");
         }
         if (!cursor) {
           runId = `${Date.now()}_${String(actor.uid).slice(0, 24)}`;
-          // Preserve compatible V4 totals while V6 enriches them. A first-ever
+          // Preserve compatible V4 totals while V7 enriches them. A first-ever
           // rollup still fails closed until its complete totals are proven.
           if (action === "sales-rollup-backfill" && !(state.complete === true && Number(state.schemaVersion) >= 4)) await db.ref("/systemHealth/historicalArchive/salesRollupReady").set(false);
         }
@@ -6279,7 +6280,7 @@ exports.manageHistoricalOrderArchive = onCall(
           throw new HttpsError("failed-precondition", "Continue the active salesAt backfill with its returned run ID and cursor, or restart from the beginning.");
         }
         if (completionOverride && !startingRollupUpgrade && (action !== "sales-rollup-backfill" || Number(state.schemaVersion) < HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION || state.complete === true)) {
-          throw new HttpsError("failed-precondition", "The one-time completion override requires the active V6 monthly summary repair.");
+          throw new HttpsError("failed-precondition", "The one-time completion override requires the active V7 monthly summary repair.");
         }
         if (action === "sales-rollup-backfill") {
           if (completionOverride) await reserveHistoricalRollupCompletionBudget(db, runId, actor.uid, limit);
@@ -6338,7 +6339,7 @@ exports.manageHistoricalOrderArchive = onCall(
         accounting: action === "sales-ledger-backfill"
           ? "Read exact indexed financial movements by source order solely to build a compact Firestore reporting summary; no RTDB order, inventory, subledger, journal, or financial record was changed."
           : action === "sales-rollup-backfill"
-            ? (completionOverride ? "Completed the owner-approved, bounded V6 monthly summary repair from Firestore order replicas; no RTDB order, inventory, subledger, journal, or financial record was changed." : "Rebuilt idempotent monthly sales reporting totals from Firestore order replicas; no RTDB order, inventory, subledger, journal, or financial record was changed.")
+            ? (completionOverride ? "Completed the owner-approved, bounded V7 monthly summary repair from Firestore order replicas; no RTDB order, inventory, subledger, journal, or financial record was changed." : "Rebuilt idempotent monthly sales reporting totals from Firestore order replicas; no RTDB order, inventory, subledger, journal, or financial record was changed.")
             : "Firestore replica maintenance only; no RTDB order, inventory, financial movement, subledger, or Books journal was read or changed.",
       });
       return {action, cursor: nextCursor, complete: !nextCursor, summary, runId:runId || null};
