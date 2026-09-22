@@ -1,6 +1,7 @@
 "use strict";
 const {HttpsError} = require("firebase-functions/v2/https");
 const PaymentVerification = require("./payment-verification");
+const Handover = require("./shift-handover");
 
 const POS_DENOM_KEYS = new Set(["b1000", "b500", "b200", "b100", "b50", "p20", "c10", "c5", "c1", "c25", "c10s", "c5s"]);
 const POS_DENOM_VALUES = {b1000:1000,b500:500,b200:200,b100:100,b50:50,p20:20,c10:10,c5:5,c1:1,c25:.25,c10s:.1,c5s:.05};
@@ -41,6 +42,7 @@ function validatePaymentReconciliation(raw, money) {
 }
 function applyDrawerDelta(row, transactionId, delta, now, actor) {
   if (!row || typeof row !== "object") return row;
+  if(row.status==='closed')return;
   const applied = Object.assign({}, row.offlineSyncApplied || {});if (applied[transactionId]) return row;
   const drawer = Object.assign({}, row.drawer || {});for(const key of Object.keys(delta)){const next=Number(drawer[key]||0)+delta[key];if(next<0)return;drawer[key]=next;}
   applied[transactionId] = {at: now, by: actor.uid};return Object.assign({}, row, {drawer, offlineSyncApplied: applied});
@@ -60,8 +62,35 @@ async function syncOfflinePosSaleCommand(ctx) {
   const lines = listFromFirebase(raw.lineItems);if (!lines.length || lines.length > 200) throw new HttpsError("invalid-argument", "Offline sale items are invalid.");
   const delta = offlineDrawerDelta(data.drawerDelta), orderRef = db.ref(`/orders/${orderId}`), existingSnap = await orderRef.get(), existing = existingSnap.val();
   const ownedShift = (await db.ref(`/shifts/${shiftId}`).get()).val();
+  if(ownedShift&&ownedShift.accountUid&&ownedShift.accountUid!==actor.uid)throw new HttpsError('permission-denied','This sale belongs to another cashier.');
+  if(ownedShift&&syncAudit&&syncAudit.state==='synced'&&syncAudit.orderId===orderId){
+    const accepted=existing||((await db.ref(`/archivedOrders/${orderId}`).get()).val());
+    if(accepted&&accepted.clientTxnId===transactionId&&(ownedShift.status==='closed'||!existing))return {transactionId,orderId,syncedAt:syncAudit.syncedAt,duplicate:true};
+  }
   if (!ownedShift || ownedShift.status === "closed") throw new HttpsError("failed-precondition", "The POS shift is no longer open.");
-  if (ownedShift.accountUid && ownedShift.accountUid !== actor.uid) throw new HttpsError("permission-denied", "This sale belongs to a different staff member’s shift.");
+  if(ownedShift.accountUid&&ownedShift.accountUid!==actor.uid)throw new HttpsError('permission-denied','This sale belongs to another cashier.');
+  // Reserve before looking up handover state: a call that started during trading
+  // must also be visible to a handover/reconciliation that starts concurrently.
+  const recoveryClaim=await db.ref(`/shifts/${shiftId}`).transaction(row=>{
+    if(!row||row.status==='closed'||Number(row.handoverFinalizingAt||0)>Date.now()-180000)return;
+    return {...row,pendingOfflineCommands:{...row.pendingOfflineCommands,[transactionId]:now}};
+  },undefined,false);
+  if(!recoveryClaim.committed)throw new HttpsError('aborted','Shift reconciliation is running. Keep this sale queued and retry shortly.');
+  let handover = (await db.ref(`/shiftHandovers/${shiftId}`).get()).val();
+  if (handover) {
+    const command = {transactionId,order:raw,drawerDelta:data.drawerDelta||{}},hash=Handover.digest(command);
+    // Register recovery and check the finalization lock in the same transaction.
+    // Reconciliation cannot miss a command arriving from a second POS device.
+    const claim = await db.ref(`/shiftHandovers/${shiftId}`).transaction(h=>{
+      if(!h||h.state!=="pending"||Number(h.reconcileLease||0)>Date.now()-180000)return;
+      const sealed=(h.commands||{})[transactionId];
+      if(sealed)return sealed.hash===hash?h:undefined;
+      if(actor.uid!==h.ownerUid||!(Number(raw.timestamp)>=Number(ownedShift.openAt)&&Number(raw.timestamp)<=h.at))return;
+      return {...h,commands:{...h.commands,[transactionId]:{command,hash,orderId,lastError:""}}};
+    },undefined,false);
+    if(!claim.committed)throw new HttpsError("permission-denied","Only the original retained sale can be recovered, and not while reconciliation is running. Retry shortly.");
+    handover=claim.snapshot.val();
+  } else if (ownedShift.accountUid && ownedShift.accountUid !== actor.uid) throw new HttpsError("permission-denied", "This sale belongs to a different staff member’s shift.");
   if (existing && existing.clientTxnId !== transactionId) throw new HttpsError("already-exists", "This order ID already belongs to another transaction.");
   const channel = String(raw.channel || "instore").toLowerCase(), platform = channel === "grabfood" || channel === "foodpanda", reconciliation = validatePaymentReconciliation(raw, money), payments = reconciliation.payments, direct = PaymentVerification.directPaymentRows(payments), posSettings = (await db.ref("/posSettings").get()).val() || {}, verificationPolicy = platform ? null : PaymentVerification.paymentPolicy(payments, posSettings.payMethods), prepaid = raw.preCompletionCashRefund && typeof raw.preCompletionCashRefund === "object" ? raw.preCompletionCashRefund : null;
   if (!platform && direct.length && verificationPolicy === PaymentVerification.CASHIER_MANAGER && raw.cashierVerificationIntent !== true) throw new HttpsError("failed-precondition", "Cashier verification is required before completing this direct electronic payment sale.");
@@ -72,10 +101,10 @@ async function syncOfflinePosSaleCommand(ctx) {
     if(platform||channel!=="instore"||direct.length!==1||payments.length!==1)throw new HttpsError("failed-precondition","A pre-completion cash refund requires one verified in-store GCash, Maya, or bank payment.");
     if(!(refund>0)||Math.abs(paid-total-refund)>.009||Math.abs(cashRefund-refund)>.009||money(raw.refundAmount)!==0)throw new HttpsError("invalid-argument","Confirmed payment, corrected sale, and cash refund do not reconcile.");
     if(verificationPolicy!==PaymentVerification.CASHIER_MANAGER||raw.cashierVerificationIntent!==true||prepaid.refundMethod!=="Cash"||prepaid.shiftId!==shiftId)throw new HttpsError("failed-precondition","Verify the electronic receipt and current shift before completing this refund.");
-    const active=(await db.ref("/posActiveShift").get()).val()||null,shiftRow=(await db.ref(`/shifts/${shiftId}`).get()).val()||null;if(!active||!shiftRow||active.id!==shiftId||active.status==="closed"||shiftRow.status==="closed")throw new HttpsError("failed-precondition","The POS shift changed. Recheck the order before returning cash.");prepaidShiftApplied=!!(shiftRow.offlineSyncApplied&&shiftRow.offlineSyncApplied[transactionId]);
+    const active=(await db.ref("/posActiveShift").get()).val()||null,shiftRow=(await db.ref(`/shifts/${shiftId}`).get()).val()||null;if(!handover&&(!active||!shiftRow||active.id!==shiftId||active.status==="closed"||shiftRow.status==="closed"))throw new HttpsError("failed-precondition","The POS shift changed. Recheck the order before returning cash.");prepaidShiftApplied=!!(shiftRow.offlineSyncApplied&&shiftRow.offlineSyncApplied[transactionId]);
     if(posSettings.denomTracking){if(Math.abs(drawerDeltaValue(delta)+refund)>.009)throw new HttpsError("invalid-argument","Cash refund denominations must equal the refund amount.");if(!prepaidShiftApplied)for(const key of Object.keys(delta))if(-Number(delta[key]||0)>Number((shiftRow.drawer||{})[key]||0))throw new HttpsError("failed-precondition","The drawer no longer has the selected refund denominations.");}
     if(Object.values(delta).some((qty)=>qty>0))throw new HttpsError("invalid-argument","A GCash overpayment refund cannot add cash to the drawer.");
-    if(!existing&&!prepaidShiftApplied&&ctx.availableCash){const cash=await ctx.availableCash(db);if(refund>money(cash.available)+.009)throw new HttpsError("failed-precondition",`Refund exceeds register cash available above the protected float by ${money(refund-cash.available).toFixed(2)}.`);}
+    if(!handover&&!existing&&!prepaidShiftApplied&&ctx.availableCash){const cash=await ctx.availableCash(db);if(refund>money(cash.available)+.009)throw new HttpsError("failed-precondition",`Refund exceeds register cash available above the protected float by ${money(refund-cash.available).toFixed(2)}.`);}
     prepaid.reason=reason;prepaid.customerAcknowledgement=ack;prepaid.amount=refund;prepaid.paidAmount=paid;
   }
   const paymentControl = platform || !direct.length ? {paymentStatus: "confirmed"} : verificationPolicy === PaymentVerification.MANAGER_ONLY ? {paymentStatus: "pending", paymentVerificationPolicy: verificationPolicy} : {paymentStatus: "cashier_verified", paymentVerificationPolicy: verificationPolicy, cashierVerifiedAt: now, cashierVerifiedBy: actor.uid, cashierVerifiedRole: actor.role, cashierVerifiedAmount: money(direct.reduce((sum, row) => sum + money(row.amount), 0))};
@@ -90,6 +119,8 @@ async function syncOfflinePosSaleCommand(ctx) {
   if (!shiftResult.committed || !shiftResult.snapshot.exists()) throw new HttpsError("failed-precondition", "The sale shift no longer exists. Keep this transaction pending and contact a manager.");
   await db.ref("/posActiveShift").transaction((row) => row && row.id === shiftId ? applyDrawerDelta(row, transactionId, delta, now, actor) : row, undefined, false);
   await db.ref(`/offlinePosSync/${transactionId}`).update({state: "synced", syncedAt: now, updatedAt: now});
+  if(handover)await db.ref(`/shiftHandovers/${shiftId}/commands/${transactionId}`).update({syncedAt:now,lastError:""});
+  await db.ref(`/shifts/${shiftId}`).update({[`pendingOfflineCommands/${transactionId}`]:null});
   return {transactionId, orderId, syncedAt: now, duplicate: !!existing};
 }
 module.exports={POS_DENOM_KEYS,offlineTxnKey,offlineDrawerDelta,drawerDeltaValue,validatePaymentReconciliation,applyDrawerDelta,syncOfflinePosSaleCommand};

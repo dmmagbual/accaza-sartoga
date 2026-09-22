@@ -44,7 +44,7 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageOrderArchi
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('getOperationalExceptions')+1,0,'getProductionCertification');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('getProductionCertification')+1,0,'getProductionValidation');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('syncOfflinePosSale'),0,'getCurrentCashBalances','updateCashBalanceSummary','updatePublicCatalogVersionOnCategories','updatePublicCatalogVersionOnMenuItems','updatePublicCatalogVersionOnOptionGroups','updatePublicCatalogVersionOnPackages');
-expectedFunctionExports.splice(expectedFunctionExports.indexOf('syncOfflinePosSale'),0,'reportPosDeviceHealth','verifyShiftCloseReadiness','onShiftCloseAssurance');
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('syncOfflinePosSale'),0,'reportPosDeviceHealth','verifyShiftCloseReadiness','onShiftCloseAssurance','manageShiftHandover');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('syncOfflinePosSale')+1,0,'getSupplierAdvanceDetails');
 // Sep 2026: owner emergency sign-out of every portal session.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('onShiftCloseAssurance'),0,'signOutAllPortalSessions');

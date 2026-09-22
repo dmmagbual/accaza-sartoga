@@ -2495,6 +2495,87 @@ exports.signOutAllPortalSessions=onCall({region:ORDER_REGION,enforceAppCheck:ENF
 });
 
 exports.onShiftCloseAssurance=onValueWritten({ref:'/shifts/{shiftId}/status',region:ORDER_REGION,retry:true},async event=>{if(event.data.after.val()!=='closed'||event.data.before.val()==='closed')return;const db=getDatabase(),shiftId=event.params.shiftId,receiptRef=db.ref(`/shiftCloseReceipts/${shiftId}`);if((await receiptRef.get()).exists())return;const shift=(await db.ref(`/shifts/${shiftId}`).get()).val()||{},verification=(await db.ref(`/shiftCloseVerifications/${shiftId}`).get()).val()||{},state=await assurancePostingState(db,await shiftOrdersForAssurance(db,shiftId)),z=shift.zReport||{},businessDate=financeDateFromTimestamp(Number(shift.closeAt)||Date.now()),control={saleCount:state.saleCount,net:Financial.money(z.net!=null?z.net:shift.net),gross:Financial.money(z.gross!=null?z.gross:shift.gross),refunds:Financial.money(z.refunds!=null?z.refunds:shift.refunds),countedCash:Financial.money(z.countedCash!=null?z.countedCash:shift.countedCash),expectedCash:Financial.money(z.expectedCash!=null?z.expectedCash:shift.expectedCash),variance:Financial.money(z.variance!=null?z.variance:shift.variance),cashToSettle:Financial.money(z.cashToSettle!=null?z.cashToSettle:shift.cashToSettle),byMethod:z.byMethod||shift.byMethod||{},byChannel:z.byChannel||shift.byChannel||{}},verified=verification.shiftId===shiftId&&!state.inventoryOutstanding.length&&!state.financeOutstanding.length,closedAt=Number(shift.closeAt)||Date.now(),receipt={shiftId,shiftReference:financeText(shift.shiftReference||shiftId,120),businessDate,staff:financeText(shift.staff,100),openedAt:Number(shift.openAt)||0,closedAt,serverRecordedAt:Date.now(),status:verified?'verified':'posting_follow_up',verification:verification.shiftId===shiftId?verification:null,inventoryOutstanding:state.inventoryOutstanding,financeOutstanding:state.financeOutstanding,controlTotals:control,schemaVersion:1};receipt.receiptHash=crypto.createHash('sha256').update(JSON.stringify({shiftId,businessDate,closedAt,control})).digest('hex');const writes={[`shiftCloseReceipts/${shiftId}`]:receipt,[`ownerDailySummaries/${businessDate}/${shiftId}`]:{shiftId,shiftReference:receipt.shiftReference,staff:receipt.staff,closedAt,status:receipt.status,receiptHash:receipt.receiptHash,controlTotals:control,schemaVersion:1},[`shifts/${shiftId}/closeReceiptId`]:shiftId,[`shifts/${shiftId}/closeReceiptHash`]:receipt.receiptHash,[`operationalAudit/${receipt.serverRecordedAt}_${shiftId}_close_receipt`]:operationalAuditRecord('record_shift_close_receipt','shift',shiftId,{uid:'server',role:'server'},{status:receipt.status,receiptHash:receipt.receiptHash,inventoryOutstanding:state.inventoryOutstanding.length,financeOutstanding:state.financeOutstanding.length,controlTotals:control})};await db.ref().update(writes);});
+
+const ShiftHandover = require('./lib/shift-handover');
+exports.manageShiftHandover=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:120,memory:'512MiB'},async request=>{
+  const db=getDatabase(),actor=await requirePortalPermission(db,request,['pos','registerOps']),data=request.data||{},action=data.action||'submit';
+  const manager=['owner','superadmin','admin','manager'].includes(actor.role);
+  if(action==='list'){
+    if(!manager)throw new HttpsError('permission-denied','Only management can review other cashier handovers.');
+    const snap=await db.ref('/pendingShiftHandovers').orderByChild('at').limitToFirst(50).get();
+    return {rows:Object.entries(snap.val()||{}).map(([shiftId,h])=>({shiftId,...h}))};
+  }
+  const id=posAssuranceKey(data.shiftId,'Shift ID'),href=db.ref(`/shiftHandovers/${id}`),sref=db.ref(`/shifts/${id}`);
+  let handover=(await href.get()).val(),shift=(await sref.get()).val();
+  if(!shift)throw new HttpsError('not-found','Shift was not found.');
+  if(!manager&&shift.accountUid!==actor.uid)throw new HttpsError('permission-denied','This shift belongs to another cashier.');
+  if(action==='submit'){
+    if(!handover){
+      const active=(await db.ref('/posActiveShift').get()).val();
+      if(!active||active.id!==id||shift.status!=='open')throw new HttpsError('failed-precondition','This shift is no longer active.');
+      const at=Date.now(),deviceId=posAssuranceKey(data.deviceId,'Device ID');
+      let cash,commands;try{cash=ShiftHandover.cashSnapshot(shift,data.closeCount,(await db.ref('/posSettings/fixedFloat').get()).val());commands=ShiftHandover.sealCommands(data.rows||[],shift,at);}catch(e){throw new HttpsError('invalid-argument',e.message);}
+      const devices=(await db.ref(`/posDeviceHealth/${id}`).get()).val()||{};
+      // The submitting device's fresh queue is captured with the handover. Old reports
+      // from other devices remain explicit recovery tasks, never silently discarded.
+      devices[deviceId]={deviceId,reportedBy:actor.uid,outstanding:Object.keys(commands).length,lastContactAt:at};
+      const record={state:'pending',shiftId:id,staff:shift.staff||'',ownerUid:shift.accountUid||actor.uid,at,by:actor.uid,deviceId,cash,commands,devices,schemaVersion:1};
+      const claim=await href.transaction(current=>current||record,undefined,false);handover=claim.snapshot.val();
+    }
+    if(handover.state==='resolved')return {shiftId:id,alreadyResolved:true,cash:handover.cash};
+    // A retry after a lost response must preserve the first cash count and must never
+    // clear an incoming cashier's shift. Saving evidence precedes releasing the till.
+    await sref.transaction(row=>row&&row.status!=='closed'?{...row,status:'handover_pending',handoverAt:handover.at,closeAt:handover.at,...handover.cash,reconciliationStatus:'pending',handoverId:id}:row,undefined,false);
+    await db.ref().update({[`pendingShiftHandovers/${id}`]:{staff:handover.staff,at:handover.at,cash:handover.cash},[`operationalAudit/handover_${id}`]:{action:'cashier_shift_handover',sourceType:'shift',sourceId:id,actorUid:handover.by,ts:handover.at,countedCash:handover.cash.countedCash,cashToSettle:handover.cash.cashToSettle},[`ownerDailySummaries/${financeDateFromTimestamp(handover.at)}/${id}`]:{shiftId:id,staff:handover.staff,closedAt:handover.at,status:'handover_pending',controlTotals:handover.cash}});
+    await db.ref('/posActiveShift').transaction(row=>row&&row.id===id?null:row,undefined,false);
+    return {shiftId:id,handedOver:true,cash:handover.cash,pendingSales:Object.keys(handover.commands||{}).length};
+  }
+  if(!handover)throw new HttpsError('not-found','No handover exists for this shift.');
+  if(action==='retry'){
+    // Management can replay only the exact command retained at handover. Normal
+    // sale validation, inventory posting, period locks and idempotency still apply.
+    const results=[];
+    for(const [key,row] of Object.entries(handover.commands||{}).filter(([key,row])=>!row.syncedAt||(shift.pendingOfflineCommands||{})[key]).slice(0,25)){
+      if(row.quarantined){results.push({id:key,synced:false,error:row.lastError});continue;}
+      try{
+        await OfflineSync.syncOfflinePosSaleCommand({db,actor:{...actor,uid:handover.ownerUid},data:row.command,textField,money,listFromFirebase,activeOrderProjection,availableCash:availableCashOnHandAboveFloat,prepareOrder:async(order,now)=>({order,inventoryPlan:await calculateOrderInventoryPlan(db,order,now)})});
+        await href.child(`commands/${key}`).update({syncedAt:Date.now(),lastError:'',recoveredBy:actor.uid});results.push({id:key,synced:true});
+      }catch(e){const message=String(e.message||e).slice(0,500);await href.child(`commands/${key}`).update({lastError:message});results.push({id:key,synced:false,error:message});}
+    }
+    return {results};
+  }
+  if(action==='inspect')return {shiftId:id,state:handover.state,cash:handover.cash,devices:handover.devices||{},commands:Object.entries(handover.commands||{}).map(([key,r])=>({id:key,orderId:r.orderId,lastError:r.lastError||'',syncedAt:r.syncedAt||0}))};
+  if(action!=='reconcile'||!manager)throw new HttpsError('permission-denied','A manager must finalize the reconciliation.');
+  if(handover.state==='resolved')return {shiftId:id,resolved:true,duplicate:true};
+  const reason=financeText(data.reason,500);if(reason.length<5)throw new HttpsError('invalid-argument','Record how every device queue and the cash handover were checked.');
+  const lease=Date.now();
+  const locked=await href.transaction(h=>{if(!h||h.state!=='pending'||Number(h.reconcileLease||0)>lease-180000)return;return {...h,reconcileLease:lease};},undefined,false);
+  if(!locked.committed)throw new HttpsError('aborted','Another reconciliation is running. Retry shortly.');
+  handover=locked.snapshot.val();
+  try{
+  const frozen=await sref.transaction(row=>{
+    if(!row||row.status!=='handover_pending'||Object.keys(row.pendingOfflineCommands||{}).length)return;
+    return {...row,handoverFinalizingAt:lease};
+  },undefined,false);
+  if(!frozen.committed)throw new HttpsError('failed-precondition','A sale still needs recovery or is syncing. The next shift can continue trading.');
+  shift=frozen.snapshot.val();
+  for(const row of Object.values(handover.commands||{})){
+    if(row.quarantined)throw new HttpsError('failed-precondition',`Sale evidence ${row.orderId} needs management recovery. The next shift can continue trading.`);
+    const audit=(await db.ref(`/offlinePosSync/${row.command.transactionId}`).get()).val();
+    if(!audit||audit.state!=='synced'||audit.orderId!==row.orderId)throw new HttpsError('failed-precondition',`Sale ${row.orderId} still needs recovery. The next shift can continue trading.`);
+  }
+  if(data.devicesChecked!==true)throw new HttpsError('failed-precondition','Confirm that every device used for this shift has been checked for unsynchronized sales.');
+  const orders=await shiftOrdersForAssurance(db,id),state=await assurancePostingState(db,orders);
+  if(state.inventoryOutstanding.length||state.financeOutstanding.length)throw new HttpsError('failed-precondition',`Server postings remain: inventory ${state.inventoryOutstanding.length}, Finance ${state.financeOutstanding.length}. The next shift can continue trading.`);
+  const z=ShiftHandover.report(shift,orders,handover),now=Date.now();
+  await assertAccountingPeriodOpen(db,handover.at,'finalizing the original shift reconciliation');
+  const writes={[`pendingShiftHandovers/${id}`]:null,[`shifts/${id}/status`]:'closed',[`shifts/${id}/reconciliationStatus`]:'resolved',[`shifts/${id}/zReport`]:z,[`shiftHandovers/${id}/state`]:'resolved',[`shiftHandovers/${id}/resolvedAt`]:now,[`shiftHandovers/${id}/resolvedBy`]:actor.uid,[`shiftHandovers/${id}/resolutionReason`]:reason,[`shiftCloseVerifications/${id}`]:{shiftId:id,verifiedAt:now,verifiedBy:actor.uid,saleCount:state.saleCount,inventoryOutstanding:0,financeOutstanding:0,handover:true},[`operationalAudit/handover_reconciled_${id}`]:{action:'reconcile_shift_handover',sourceType:'shift',sourceId:id,actorUid:actor.uid,ts:now,reason,variance:z.variance}};
+  for(const key of ['tx','gross','discounts','refunds','cashRefunds','net','cashSales','tips','voidCount','voidAmt','pending','pendingCount','byMethod','byChannel','payIns','payOuts','expectedCash','variance','varianceStatus'])writes[`shifts/${id}/${key}`]=z[key];
+  if(z.variance)writes[`discrepancies/handover_${id}`]={kind:'cash',expected:z.expectedCash,actual:z.countedCash,variance:z.variance,value:z.variance,type:z.variance<0?'shortage':'overage',shiftId:id,staff:shift.staff||'',status:'open',financialStatus:'pending_manager_reconciliation',pendingMovementId:`shift_variance_${id}`,ts:handover.at};
+  await db.ref().update(writes);
+  return {shiftId:id,resolved:true,variance:z.variance};
+  }finally{await sref.transaction(s=>s&&s.handoverFinalizingAt===lease?{...s,handoverFinalizingAt:0}:s,undefined,false);await href.transaction(h=>h&&h.reconcileLease===lease?{...h,reconcileLease:0}:h,undefined,false);}
+});
 const ACTIVE_ONLINE_TTL_MS = 48 * 60 * 60 * 1000;
 const ACTIVE_SWEEP_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const READY_AUTO_COMPLETE_MS = 2 * 60 * 60 * 1000;
@@ -3439,7 +3520,7 @@ exports.onShiftOpenFinancial = onValueWritten({ref: "/shifts/{shiftId}", region:
 function durableShiftReference(shift,id) { const existing=financeText(shift&&shift.shiftReference,80); if(existing)return existing; const day=financeDateFromTimestamp(Number(shift&&shift.openAt)||Date.now()).replace(/-/g,""); return `SHIFT-${day}-LEGACY-${financeKey(id,"Shift ID").slice(-8).toUpperCase()}`; }
 async function ensureShiftReferenceRecord(db,id,shift) { const shiftReference=durableShiftReference(shift,id),refKey=financeKey(shiftReference,"Shift reference"),indexRef=db.ref(`/shiftReferenceIndex/${refKey}`),claim=await indexRef.transaction((current)=>{if(current&&current.shiftId!==id)return;return current||{shiftId:id,shiftReference,openedAt:Number(shift.openAt||0),closedAt:Number(shift.closeAt||0)||null};},undefined,false);if(!claim.committed)throw new HttpsError("already-exists",`Shift reference ${shiftReference} is already linked to another shift.`);const custody=(await db.ref(`/cashCustody/${id}`).get()).val()||null,writes={[`shifts/${id}/shiftReference`]:shiftReference,[`shifts/${id}/zReport/shiftReference`]:shiftReference};if(custody)Object.assign(writes,{[`cashCustody/${id}/shiftReference`]:shiftReference,[`cashCustody/${id}/reference`]:shiftReference});await db.ref().update(writes);return shiftReference; }
 exports.ensureShiftReference = onCall({region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"}, async (request) => {const db=getDatabase(),actor=await requirePortalPermission(db,request,["registerOps"]),id=financeKey((request.data||{}).shiftId,"Shift ID"),shift=(await db.ref(`/shifts/${id}`).get()).val();if(!shift)throw new HttpsError("not-found","Shift not found.");const shiftReference=await ensureShiftReferenceRecord(db,id,shift);return{shiftId:id,shiftReference,updatedBy:actor.uid};});
-exports.onShiftCloseFinancial = onValueWritten({ref: "/shifts/{shiftId}/status", region: ORDER_REGION, retry: true}, async (event) => {if (event.data.after.val() !== "closed" || event.data.before.val() === "closed") return; const db = getDatabase(), id=event.params.shiftId, shift = (await db.ref(`/shifts/${id}`).get()).val() || {}, actor={uid:"server",role:"server"}, occurredAt=Number(shift.closeAt||Date.now()), shiftReference=await ensureShiftReferenceRecord(db,id,shift); const remittable=Financial.money(Math.max(0,Number(shift.cashToSettle)||0)); if (remittable>0) {const label=`${shiftReference} · closed shift cash to settle`,custody=Financial.movement("shift_cash_to_custody","shift",id,[Financial.line("asset:cash_awaiting_deposit",remittable,0,label),Financial.line("asset:register_cash",0,remittable,label)],{occurredAt,actorName:shift.staff||"Register",shiftReference,retainedFloat:Financial.money(shift.actualFloatRetained!=null?shift.actualFloatRetained:shift.retainedFloat)}); await commitFinancial(db,`shift_custody_${id}`,custody,actor,{[`cashCustody/${id}`]:{shiftId:id,shiftReference,staff:financeText(shift.staff,100),amount:remittable,depositedAmount:0,remaining:remittable,retainedFloat:Financial.money(shift.actualFloatRetained!=null?shift.actualFloatRetained:shift.retainedFloat),floatShortfall:Financial.money(shift.floatShortfall),status:"awaiting_deposit",closedAt:occurredAt,movementId:`shift_custody_${id}`,reference:shiftReference,schemaVersion:4}});} const value = Financial.money(Math.abs(Number(shift.variance) || 0)); if (!(value > 0)) return; const short = Number(shift.variance) < 0, label=`${shiftReference} · ${short?"Cash shortage pending manager reconciliation":"Cash overage pending manager reconciliation"}`, lines = short ? [Financial.line("asset:cash_shortage_pending", value, 0, label), Financial.line("asset:register_cash", 0, value, label)] : [Financial.line("asset:register_cash", value, 0, label), Financial.line("liability:cash_overage_pending", 0, value, label)]; const movement = Financial.movement("shift_cash_variance_pending", "shift", id, lines, {occurredAt,actorName:shift.staff||"Register",shiftReference,status:"pending_manager_reconciliation"}); await commitFinancial(db,`shift_variance_${id}`,movement,actor);});
+exports.onShiftCloseFinancial = onValueWritten({ref: "/shifts/{shiftId}/status", region: ORDER_REGION, retry: true}, async (event) => {if (!["closed","handover_pending"].includes(event.data.after.val()) || event.data.before.val() === "closed") return; const db = getDatabase(), id=event.params.shiftId, shift = (await db.ref(`/shifts/${id}`).get()).val() || {}, actor={uid:"server",role:"server"}, occurredAt=Number(shift.closeAt||Date.now()), shiftReference=await ensureShiftReferenceRecord(db,id,shift); const remittable=Financial.money(Math.max(0,Number(shift.cashToSettle)||0)); if (remittable>0) {const label=`${shiftReference} · closed shift cash to settle`,custody=Financial.movement("shift_cash_to_custody","shift",id,[Financial.line("asset:cash_awaiting_deposit",remittable,0,label),Financial.line("asset:register_cash",0,remittable,label)],{occurredAt,actorName:shift.staff||"Register",shiftReference,retainedFloat:Financial.money(shift.actualFloatRetained!=null?shift.actualFloatRetained:shift.retainedFloat)}); await commitFinancial(db,`shift_custody_${id}`,custody,actor,{[`cashCustody/${id}`]:{shiftId:id,shiftReference,staff:financeText(shift.staff,100),amount:remittable,depositedAmount:0,remaining:remittable,retainedFloat:Financial.money(shift.actualFloatRetained!=null?shift.actualFloatRetained:shift.retainedFloat),floatShortfall:Financial.money(shift.floatShortfall),status:"awaiting_deposit",closedAt:occurredAt,movementId:`shift_custody_${id}`,reference:shiftReference,schemaVersion:4}});} if(shift.status==="handover_pending")return; const value = Financial.money(Math.abs(Number(shift.variance) || 0)); if (!(value > 0)) return; const short = Number(shift.variance) < 0, label=`${shiftReference} · ${short?"Cash shortage pending manager reconciliation":"Cash overage pending manager reconciliation"}`, lines = short ? [Financial.line("asset:cash_shortage_pending", value, 0, label), Financial.line("asset:register_cash", 0, value, label)] : [Financial.line("asset:register_cash", value, 0, label), Financial.line("liability:cash_overage_pending", 0, value, label)]; const movement = Financial.movement("shift_cash_variance_pending", "shift", id, lines, {occurredAt,actorName:shift.staff||"Register",shiftReference,status:"pending_manager_reconciliation"}); await commitFinancial(db,`shift_variance_${id}`,movement,actor);});
 
 function advanceFundingAccount(row) {
   const id = financeText(row && row.fundingAccountId, 120) || "undeposited";

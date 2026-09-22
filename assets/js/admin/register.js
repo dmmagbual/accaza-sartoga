@@ -585,6 +585,7 @@ function renderOps(){
   var root=document.getElementById('opsRoot');if(!root)return;
   var html='<div class="pz-h">🧾 Register Ops</div><p class="pz-sub">Shift control, cash reconciliation, voids &amp; refunds — all logged. Owner, Superadmin, Admin, or Manager accounts approve controlled actions.</p>';
   html+=pendingPanel();
+  if(['owner','superadmin','admin','manager'].indexOf(String((window.__accazaAuthz||{}).role))>=0)html+='<button class="pz-btn sec" id="opsHandovers">Review pending shift handovers</button>';
   // SHIFT
   html+='<div class="pz-card" style="margin-bottom:1rem;">';
   if(activeShift){
@@ -618,6 +619,7 @@ function renderOps(){
     +'</tbody></table></div>';
   root.innerHTML=html;
   // wire
+  var handovers=document.getElementById('opsHandovers');if(handovers)handovers.onclick=reviewShiftHandovers;
   root.querySelectorAll('[data-verify]').forEach(function(b){b.onclick=function(){window.__posVerify(b.getAttribute('data-verify'));};});
   root.querySelectorAll('[data-validate]').forEach(function(b){b.onclick=function(){validatePayment(b.getAttribute('data-validate'));};});
   var _al=document.getElementById('opsArchiveLog'); if(_al)_al.onclick=archiveOldActivity;
@@ -803,11 +805,50 @@ function changeStaffPin(id){
   };
 }
 
+function handoverCall(data){var a=A();if(!a||!a.callables||!a.callables.manageShiftHandover)return Promise.reject(new Error('Refresh the POS to load the handover service.'));return a.callables.manageShiftHandover(data).then(function(r){return r.data||r;});}
+function openHandoverCount(shift,error,savedCounts){
+  var m=document.createElement('div');m.className='pz-mask show';
+  m.innerHTML='<div class="pz-modal" style="max-width:560px;"><h3>Finish shift and hand over</h3><p>A sale or server check needs follow-up. You can hand over now so the next cashier can trade. Management will reconcile this shift later.</p><p style="font-size:.8rem;">'+esc(error&&error.message||error||'')+'</p>'+denomGridHtml('handoverCount')+'<p>Count all cash in the drawer. Retain the required float and hand over the remaining cash for settlement.</p><div data-handover-status role="status"></div><button class="pz-btn ok" data-submit>Submit count and finish shift</button> <button class="pz-btn sec" data-cancel>Cancel</button></div>';
+  document.body.appendChild(m);
+  if(savedCounts)m.querySelectorAll('[data-dp="handoverCount"]').forEach(function(input){input.value=savedCounts[input.getAttribute('data-dk')]||'';input.disabled=true;});
+  wireDenom('handoverCount');
+  // Keep this form and count visible on any failed server acknowledgement.
+  var button=m.querySelector('[data-submit]'),status=m.querySelector('[data-handover-status]');
+  m.querySelector('[data-cancel]').onclick=function(){m.remove();};
+  if(savedCounts)status.textContent='Your previous submitted count was '+peso(DENOMS.reduce(function(s,d){return s+(Number(savedCounts[d.k])||0)*d.v;},0))+'. Confirm it below to use that count.';
+  button.onclick=async function(){
+    button.disabled=true;status.textContent='Saving handover…';
+    try{
+      var count=savedCounts?{counts:savedCounts}:denomRead('handoverCount');
+      if(!window.AccazaOfflineQueue||!window.AccazaOfflineQueue.all)throw new Error('The local sale queue cannot be read. Do not clear browser data; reload this same browser to recover it.');
+      var rows=(await window.AccazaOfflineQueue.all()).filter(function(row){return !(row&&row.status==='synced')&&!(row&&row.order&&row.order.shiftId&&row.order.shiftId!==shift.id);});
+      var device=window.AccazaPosSyncHealth&&window.AccazaPosSyncHealth.deviceId();
+      if(!device)throw new Error('This browser has no device identity. Keep the queue and refresh the POS.');
+      var result=await handoverCall({action:'submit',shiftId:shift.id,deviceId:device,closeCount:count.counts,rows:rows});
+      m.querySelector('.pz-modal').innerHTML='<h3>Shift handed over</h3><p>The next cashier can open their shift.</p><p>Cash counted: <b>'+peso(result.cash.countedCash)+'</b><br>Retain as float: <b>'+peso(result.cash.actualFloatRetained)+'</b><br>Cash to settle: <b>'+peso(result.cash.cashToSettle)+'</b></p><p>Shift '+esc(shift.id)+' remains pending reconciliation. Queued sales are retained for recovery.</p><button class="pz-btn ok" data-done>Done</button>';
+      m.querySelector('[data-done]').onclick=function(){m.remove();};
+    }catch(e){status.textContent='Handover not confirmed: '+String(e.message||e)+'. Your queue and cash count remain here.';button.disabled=false;}
+  };
+}
+async function reviewShiftHandovers(){
+  var m=document.createElement('div');m.className='pz-mask show';m.innerHTML='<div class="pz-modal" style="max-width:700px;"><h3>Shift handovers pending reconciliation</h3><div data-content>Loading…</div><button class="pz-btn sec" data-close>Close</button></div>';document.body.appendChild(m);m.querySelector('[data-close]').onclick=function(){m.remove();};var content=m.querySelector('[data-content]');
+  async function list(){var result=await handoverCall({action:'list'});content.innerHTML=(result.rows||[]).map(function(r){return '<p><button class="pz-btn sec" data-shift="'+esc(r.shiftId)+'">'+esc(r.staff)+' · '+esc(r.shiftId)+'</button><br>Cash counted '+peso(r.cash.countedCash)+' · cash to settle '+peso(r.cash.cashToSettle)+'</p>';}).join('')||'No pending handovers.';content.querySelectorAll('[data-shift]').forEach(function(b){b.onclick=function(){detail(b.getAttribute('data-shift')).catch(fail);};});}
+  function fail(e){content.textContent=String(e.message||e);}
+  async function detail(id){var r=await handoverCall({action:'inspect',shiftId:id});content.innerHTML='<p>'+esc(id)+' · '+esc(r.state)+'</p>'+(r.commands||[]).map(function(c){return '<p><b>'+esc(c.orderId)+'</b>: '+(c.syncedAt?'Synced':esc(c.lastError||'Waiting for recovery'))+'</p>';}).join('')+'<h4>Devices to check</h4>'+Object.entries(r.devices||{}).map(function(entry){return '<p>'+esc(entry[0])+' · last reported outstanding: '+esc(entry[1].outstanding||0)+'</p>';}).join('')+'<p>Check every device used for this shift, including unavailable or old browser sessions. Recover every missing sale before finalizing.</p><label><input type="checkbox" data-checked> Every device queue is checked and all sales are accounted for</label><textarea class="pz-in" data-reason placeholder="Explain the device checks and cash handover reconciliation"></textarea><p data-message role="status"></p><button class="pz-btn sec" data-retry>Retry retained sales</button> <button class="pz-btn ok" data-finish>Finalize reconciliation</button>';
+    async function run(action){var message=content.querySelector('[data-message]'),buttons=content.querySelectorAll('button');buttons.forEach(function(b){b.disabled=true;});try{var out=await handoverCall({action:action,shiftId:id,reason:content.querySelector('[data-reason]').value,devicesChecked:content.querySelector('[data-checked]').checked});if(out.resolved)await list();else await detail(id);}catch(e){message.textContent=String(e.message||e);buttons.forEach(function(b){b.disabled=false;});}}
+    content.querySelector('[data-retry]').onclick=function(){run('retry');};content.querySelector('[data-finish]').onclick=function(){run('reconcile');};
+  }
+  try{await list();}catch(e){fail(e);}
+}
+
 function openShift(){
   var od=denomRead('opsOpenDenom'); var float=od.total;
   var fixedMode=fixedFloatCfg!=null,mismatch=fixedMode&&Math.abs(float-fixedFloatCfg)>.009;F().run({title:'Open my shift',subtitle:'Your signed-in Firebase staff profile will be recorded with this shift.',submitLabel:mismatch?'Request exception & open':'Open my shift',busyLabel:'Opening…',fields:[{name:'pin',label:'Your POS PIN',type:'password',required:true,maxLength:6,placeholder:'4–6 digits',validate:function(v){return /^[0-9]{4,6}$/.test(v)?'':'Enter a 4–6 digit PIN.';}}].concat(mismatch?[{name:'reason',label:'Reason opening float differs from fixed amount',type:'textarea',required:true,maxLength:300}]:[])},function(v){var p={pin:v.pin,openingFloat:float,openCount:od.counts,floatMode:fixedMode?'fixed':'opening-count'};if(!mismatch)return A().openLinkedPosShift(p);return A().managerApproval('fixed_float_exception','pending',Math.abs(float-fixedFloatCfg),v.reason).then(function(ap){p.reason=v.reason;p.approvalId=ap.approvalId;return A().openLinkedPosShift(p);});}).then(function(r){var shift=(r&&r.data&&r.data.shift)||(r&&r.shift);if(window.__posLog&&shift)window.__posLog('shift-open',shift.id,'float '+peso(float)+(mismatch?' · fixed_float_exception':''));}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0)alert('Could not open your shift: '+((e&&e.message)||e));});
 }
 async function continuityReadyForClose(){
+  var timer;try{return await Promise.race([inspectShiftCloseQueue(),new Promise(function(_resolve,reject){timer=setTimeout(function(){reject(new Error('The sync check is taking too long. Continue with a recorded handover.'));},8000);})]);}finally{clearTimeout(timer);}
+}
+async function inspectShiftCloseQueue(){
   if(window.__online===false)throw new Error('The shift cannot close while offline. Keep the shift open until the connection returns and every sale is synchronized.');
   if(!window.AccazaOfflineQueue||!window.AccazaOfflineQueue.summary)throw new Error('The durable transaction queue is unavailable. Refresh the POS before closing the shift.');
   if(window.__flushOfflineQueue)await window.__flushOfflineQueue();
@@ -822,7 +863,7 @@ async function continuityReadyForClose(){
 }
 async function closeShift(){
   if(!activeShift)return;var shift=activeShift;
-  try{await continuityReadyForClose();}catch(error){alert(String(error&&error.message||error));if(window.__showOfflineQueue)window.__showOfflineQueue('Shift close is blocked until all sales are safely synchronized.');return;}
+  try{await continuityReadyForClose();}catch(error){openHandoverCount(shift,error);return;}
   var recon=denomTrackingOnR()&&shift.drawer;
   var mask=document.createElement('div'); mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
   document.body.appendChild(mask);
@@ -869,7 +910,7 @@ async function closeShift(){
   renderBlind();
 }
 async function finalizeClose(shift,counted,counts){
-  try{await continuityReadyForClose();}catch(error){alert(String(error&&error.message||error)+' Your cash count was not submitted; the shift remains open.');return;}
+  try{await continuityReadyForClose();}catch(error){openHandoverCount(shift,error,counts);return;} // Your cash count was not submitted; the shift remains open until handover is acknowledged.
   var saleList;try{saleList=await loadShiftTransactions(shift.id);}catch(_e){saleList=shiftSales(shift);}
   var z=computeZ(shift,saleList),closedAt=Date.now();z.countedCash=counted;z.variance=Math.round((counted-z.expectedCash)*100)/100;z.closeCount=counts;z.expectedDrawer=shift.drawer||null;z.cashToSettle=Math.max(0,Math.round((counted-z.retainedFloat)*100)/100);
   z.actualFloatRetained=Math.max(0,Math.min(counted,z.retainedFloat));z.floatShortfall=Math.max(0,Math.round((z.retainedFloat-z.actualFloatRetained)*100)/100);

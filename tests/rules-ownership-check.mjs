@@ -58,6 +58,15 @@ try{
   const cashier=env.authenticatedContext('cashier').database();
   const kitchen=env.authenticatedContext('kitchen').database();
   const guest=env.unauthenticatedContext().database();
+  await assertSucceeds(set(ref(cashier,'shifts/rule-open'),{id:'rule-open',status:'open'}));
+  await env.withSecurityRulesDisabled(async c=>{
+    await set(ref(c.database(),'shiftHandovers/rule-open'),{state:'pending'});
+  });
+  await assertFails(set(ref(cashier,'shifts/rule-open'),null));
+  await assertFails(update(ref(owner,'shifts/rule-open'),{status:'closed'}));
+  await assertFails(set(ref(owner,'shifts'),null));
+  await assertFails(set(ref(cashier,'shiftHandovers/rule-open'),null));
+  await assertFails(set(ref(owner,'pendingShiftHandovers/rule-open'),{at:1}));
 
   await assertSucceeds(get(ref(a,'orders/own')));
   await assertFails(get(ref(b,'orders/own')));

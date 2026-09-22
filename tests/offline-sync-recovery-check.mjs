@@ -12,7 +12,7 @@ function updateAt(base,updates){for(const [key,value] of Object.entries(updates)
 const db={ref(path=''){return{
   async get(){const value=read(path);return{val:()=>structuredClone(value),exists:()=>value!=null};},
   async update(updates){updateAt(path,updates);},
-  async transaction(fn){if(path==='/shifts/SH-TEST'&&failShiftOnce){failShiftOnce=false;throw new Error('injected shift transaction failure');}const current=structuredClone(read(path)),next=fn(current);if(next===undefined)return{committed:false,snapshot:{val:()=>current,exists:()=>current!=null}};write(path,next);return{committed:true,snapshot:{val:()=>structuredClone(next),exists:()=>next!=null}};},
+  async transaction(fn){if(path==='/shifts/SH-TEST'&&state.orders?.['POS-RECOVERY-1']&&failShiftOnce){failShiftOnce=false;throw new Error('injected shift transaction failure');}const current=structuredClone(read(path)),next=fn(current);if(next===undefined)return{committed:false,snapshot:{val:()=>current,exists:()=>current!=null}};write(path,next);return{committed:true,snapshot:{val:()=>structuredClone(next),exists:()=>next!=null}};},
 };}};
 const txn='pos_txn_123456789',order={id:'POS-RECOVERY-1',shiftId:'SH-TEST',clientTxnId:txn,source:'pos',status:'Completed',channel:'instore',payment:'Cash',payments:[{method:'Cash',amount:100,tendered:100,change:0}],total:100,lineItems:[{itemKey:'coffee',qty:1,unitTotal:100}],timestamp:10};
 const ctx={db,actor:{uid:'cashier-1'},data:{transactionId:txn,order,drawerDelta:{b100:1}},textField:v=>String(v),money:v=>Number(v),listFromFirebase:v=>v,activeOrderProjection:v=>Object.assign({},v,{projectionVersion:1}),now:1000};

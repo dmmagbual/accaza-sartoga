@@ -1,5 +1,9 @@
 # Phase 15 — Business continuity and offline resilience
 
+**Superseded shift-out behavior:** Admin 578 separates cashier handover from final
+accounting close. See [POS shift handover](POS_SHIFT_HANDOVER.md). The historical
+blocking behavior below is retained as the original Phase 15 description.
+
 Phase 15 protects the boundary between device-only POS sales and the authoritative Admin, inventory, and Finance records. Rollback pointer: `backup/phase15-pre-offline-resilience-20260831`.
 
 ## Continuity behavior
