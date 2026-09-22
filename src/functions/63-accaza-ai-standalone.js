@@ -13,7 +13,7 @@
 //   browser (new anonymous uid) cannot run up the AI provider bill without bound.
 const ACCAZA_AI_STANDALONE_RELEASE_VERSION = "1.1";
 const ACCAZA_AI_GUEST_DAILY_LIMIT = 10;
-const ACCAZA_AI_GUEST_GLOBAL_DAILY_LIMIT = 300;
+const ACCAZA_AI_GUEST_GLOBAL_DAILY_LIMIT = 100;
 function accazaAiStandaloneIsGuest(request){return Boolean(request.auth&&request.auth.uid&&request.auth.token&&request.auth.token.firebase&&request.auth.token.firebase.sign_in_provider==="anonymous");}
 // One transaction on the day node enforces both limits atomically, so concurrent sends
 // from one guest (or many guests at the ceiling) cannot overshoot either limit.
