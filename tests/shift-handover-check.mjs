@@ -8,7 +8,8 @@ const keys=p=>p.split('/').filter(Boolean);
 const read=p=>keys(p).reduce((v,k)=>v?.[k],state);
 // Mirror Realtime Database key rules: an invalid key rejects the whole write.
 function assertKeys(v,where){if(v&&typeof v==='object')for(const [k,x] of Object.entries(v)){if(!k||/[.#$/\[\]]/.test(k))throw new Error(`Invalid Realtime Database key "${k}" at ${where}`);assertKeys(x,where+'/'+k);}}
-function write(p,v){for(const k of keys(p))assertKeys({[k]:1},p);assertKeys(v,p);const a=keys(p),last=a.pop();let row=state;for(const k of a)row=row[k]??={};if(v==null)delete row[last];else row[last]=copy(v);}
+// Realtime Database also drops null, empty objects and empty arrays on write.
+function write(p,v){for(const k of keys(p))assertKeys({[k]:1},p);assertKeys(v,p);v=H.storedForm(v);const a=keys(p),last=a.pop();let row=state;for(const k of a)row=row[k]??={};if(v==null)delete row[last];else row[last]=copy(v);}
 const snap=v=>({val:()=>copy(v),exists:()=>v!=null});
 let preOrderShiftTransactions=0,coldTransactions=0;
 const db={ref(p=''){return {get:async()=>snap(read(p)),child:k=>db.ref(p+'/'+k),update:async updates=>{for(const [k,v]of Object.entries(updates))write(p+'/'+k,v);},transaction:async fn=>{if(p==='/shifts/SH-TEST'&&!read('/orders/POS-TEST'))preOrderShiftTransactions++;coldTransactions++;/* Admin SDK: the first callback sees the cold local cache (null); undefined aborts without asking the server. */let v=fn(null);if(v===undefined)return {committed:false,snapshot:snap(null)};const actual=read(p);if(actual!=null){v=fn(copy(actual));if(v===undefined)return {committed:false,snapshot:snap(actual)};}write(p,v);return {committed:true,snapshot:snap(v)};},orderByChild(){return this;},equalTo(){return this;},limitToFirst(){return this;}};}};
@@ -19,7 +20,8 @@ vm.createContext(ctx);vm.runInContext(fs.readFileSync(new URL('../src/functions/
 const call=(data,actor={uid:'cashier',role:'staff'})=>ctx.exports.manageShiftHandover({data,actor});
 const shift={id:'SH-TEST',status:'open',staff:'Cashier',accountUid:'cashier',openAt:1000,openingFloat:100,drawer:{b100:1}};
 write('/shifts/SH-TEST',shift);write('/posActiveShift',shift);write('/posSettings',{fixedFloat:100});
-const order={id:'POS-TEST',clientTxnId:'pos_test_transaction',shiftId:shift.id,source:'pos',status:'Completed',timestamp:2000,total:50,subtotal:50,payment:'Cash',payments:[{method:'Cash',amount:50,tendered:50,change:0}],lineItems:[{itemKey:'coffee',qty:1,unitTotal:50}]};
+// Real POS payloads carry nulls and empty lists that the database does not store (22 Sep 2026).
+const order={id:'POS-TEST',clientTxnId:'pos_test_transaction',shiftId:shift.id,source:'pos',status:'Completed',timestamp:2000,total:50,subtotal:50,payment:'Cash',payments:[{method:'Cash',amount:50,tendered:50,change:0}],lineItems:[{itemKey:'coffee',qty:1,unitTotal:50,stream:null,pkg:null}],discountLines:[],packages:[],paymentVerificationPolicy:null,notes:''};
 const rows=[{id:order.clientTxnId,status:'failed',order,drawerDelta:{b50:1},lastError:'Connection failed'}];
 assert.equal(H.countCash({c25:3,c10s:1,c5s:1}),90);
 assert.throws(()=>H.countCash({b100:-1}));assert.throws(()=>H.countCash({b100:1.5}));assert.throws(()=>H.countCash({fake:2}));

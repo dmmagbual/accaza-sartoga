@@ -159,10 +159,12 @@ async function syncOfflinePosSaleCommand(ctx) {
   let handover = (await db.ref(`/shiftHandovers/${shiftId}`).get()).val();
   if (handover) {
     if(handover.state!=='pending')throw new HttpsError('failed-precondition','The original shift has already been reconciled. Keep the sale queued and contact a manager.');
-    const command = {transactionId,order:raw,drawerDelta:data.drawerDelta||{}},hash=Handover.digest(command);
+    const command = {transactionId,order:raw,drawerDelta:data.drawerDelta||{}},hash=Handover.commandDigest(command);
     if(!(Number(raw.timestamp)>=Number(ownedShift.openAt)&&Number(raw.timestamp)<=handover.at))throw new HttpsError('permission-denied','Only a sale rung during the original shift can be recovered.');
     const claim=await db.ref(`/shiftHandovers/${shiftId}/commands/${transactionId}`).transaction(sealed=>{
-      if(sealed)return sealed.hash===hash?sealed:undefined;
+      // Compare the sale itself in its stored form; hashes saved before Sep 2026 were taken
+      // over the device payload and never match a copy read back from the database.
+      if(sealed)return Handover.sameCommand(sealed.command,command)?sealed:undefined;
       return {command,hash,orderId,lastError:''};
     },undefined,false);
     if(!claim.committed)throw new HttpsError('already-exists','The retained sale payload differs from the original transaction.');
