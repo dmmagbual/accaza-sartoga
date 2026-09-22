@@ -275,6 +275,7 @@
     "askAccazaAI",
     "manageAccazaAiKnowledge",
     "manageAccazaAiIssue",
+    "askAccazaAIStandalone",
     "getUndepositedControlSnapshot",
     "signOutAllPortalSessions",
     "getUndepositedPage",
