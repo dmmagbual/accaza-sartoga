@@ -37,6 +37,10 @@ function cashSnapshot(shift,counts,fixedFloat){
   if(target<0)throw new Error('Invalid configured float.');
   return {countedCash:counted/100,closeCount:counts,retainedFloat:target/100,actualFloatRetained:Math.min(counted,target)/100,floatShortfall:Math.max(0,target-counted)/100,cashToSettle:Math.max(0,counted-target)/100};
 }
+// Report labels become Realtime Database keys, which cannot be empty or contain
+// . # $ / [ ]. Cash and platform rows have no receiving account, so an empty key
+// would reject the whole reconciliation write; unassigned accounts are not split.
+function reportKey(value){return String(value==null?'':value).replace(/[.#$/\[\]\u0000-\u001f\u007f]/g,'_').trim().slice(0,120);}
 // Only recognized server orders enter the final report. The original handover count
 // and time remain immutable; delayed sales change the final reconciliation only.
 function report(shift,orders,handover){
@@ -49,7 +53,7 @@ function report(shift,orders,handover){
     const gross=cents(platform&&o.grossPlatform!=null?o.grossPlatform:o.subtotal==null?o.total:o.subtotal),discount=platform?(o.netSalesPlatform!=null?Math.max(0,gross-cents(o.netSalesPlatform)):cents(o.platformDiscount||0)):cents(o.discount||0),refund=cents(o.refundAmount||0),rows=Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment,amount:o.total}];
     z.tx++;z.gross+=gross;z.discounts+=discount;z.refunds+=refund;z.net+=gross-discount-refund;z.tips+=cents(o.tipRounding||0);
     z.byChannel[Object.hasOwn(z.byChannel,o.channel)?o.channel:'instore']+=gross-discount-refund;
-    for(const p of rows){let method=platform?(o.channel==='grabfood'?'GrabFood':'FoodPanda'):String(p.paymentMethod||p.method||'Unknown').split(' · ')[0];if(method.toLowerCase()==='cash')method='Cash';const value=cents(p.amount||0),account=p.receivingAccountName||p.receivingAccountId||'';z.byMethod[method]=(z.byMethod[method]||0)+value;z.byMethodAccount[method]||={};z.byMethodAccount[method][account]=(z.byMethodAccount[method][account]||0)+value;if(!platform&&method==='Cash')z.cashSales+=value;}
+    for(const p of rows){let method=reportKey(platform?(o.channel==='grabfood'?'GrabFood':'FoodPanda'):String(p.paymentMethod||p.method||'Unknown').split(' · ')[0])||'Unknown';if(method.toLowerCase()==='cash')method='Cash';const value=cents(p.amount||0),account=reportKey(p.receivingAccountName||p.receivingAccountId||'');z.byMethod[method]=(z.byMethod[method]||0)+value;z.byMethodAccount[method]||={};if(account)z.byMethodAccount[method][account]=(z.byMethodAccount[method][account]||0)+value;if(!platform&&method==='Cash')z.cashSales+=value;}
     z.cashRefunds+=cents(o.refundPayments?(o.refundPayments.Cash||o.refundPayments.cash||0):rows.some(p=>String(p.method).toLowerCase()==='cash')?o.refundAmount||0:0);
     if(o.paymentStatus==='pending'){z.pending+=cents(o.total||0);z.pendingCount++;}
     if(o.paymentStatus==='cashier_verified'){z.managerPending+=cents(o.total||0);z.managerPendingCount++;}
@@ -63,4 +67,4 @@ function report(shift,orders,handover){
   for(const map of Object.values(z.byMethodAccount))for(const k of Object.keys(map))map[k]/=100;
   return {...z,...handover.cash,capturedAt:handover.at,openingFloat:shift.openingFloat||0,openCount:shift.openCount||{},expectedDrawer:shift.drawer||{},payInEntries:shift.payIns||[],payOutEntries:shift.payOuts||[],varianceStatus:z.variance?'pending_manager_reconciliation':'reconciled',schemaVersion:5};
 }
-module.exports={cents,countCash,digest,commandOf,sealCommands,cashSnapshot,report};
+module.exports={cents,countCash,digest,commandOf,sealCommands,cashSnapshot,report,reportKey};
