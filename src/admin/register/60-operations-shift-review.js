@@ -3,6 +3,7 @@ function renderOps(){
   var root=document.getElementById('opsRoot');if(!root)return;
   var html='<div class="pz-h">🧾 Register Ops</div><p class="pz-sub">Shift control, cash reconciliation, voids &amp; refunds — all logged. Owner, Superadmin, Admin, or Manager accounts approve controlled actions.</p>';
   html+=pendingPanel();
+  if(['owner','superadmin','admin','manager'].indexOf(String((window.__accazaAuthz||{}).role))>=0)html+='<button class="pz-btn sec" id="opsHandovers">Review pending shift handovers</button>';
   // SHIFT
   html+='<div class="pz-card" style="margin-bottom:1rem;">';
   if(activeShift){
@@ -36,6 +37,7 @@ function renderOps(){
     +'</tbody></table></div>';
   root.innerHTML=html;
   // wire
+  var handovers=document.getElementById('opsHandovers');if(handovers)handovers.onclick=reviewShiftHandovers;
   root.querySelectorAll('[data-verify]').forEach(function(b){b.onclick=function(){window.__posVerify(b.getAttribute('data-verify'));};});
   root.querySelectorAll('[data-validate]').forEach(function(b){b.onclick=function(){validatePayment(b.getAttribute('data-validate'));};});
   var _al=document.getElementById('opsArchiveLog'); if(_al)_al.onclick=archiveOldActivity;

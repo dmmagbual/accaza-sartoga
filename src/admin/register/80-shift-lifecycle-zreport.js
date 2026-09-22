@@ -4,6 +4,9 @@ function openShift(){
   var fixedMode=fixedFloatCfg!=null,mismatch=fixedMode&&Math.abs(float-fixedFloatCfg)>.009;F().run({title:'Open my shift',subtitle:'Your signed-in Firebase staff profile will be recorded with this shift.',submitLabel:mismatch?'Request exception & open':'Open my shift',busyLabel:'Opening…',fields:[{name:'pin',label:'Your POS PIN',type:'password',required:true,maxLength:6,placeholder:'4–6 digits',validate:function(v){return /^[0-9]{4,6}$/.test(v)?'':'Enter a 4–6 digit PIN.';}}].concat(mismatch?[{name:'reason',label:'Reason opening float differs from fixed amount',type:'textarea',required:true,maxLength:300}]:[])},function(v){var p={pin:v.pin,openingFloat:float,openCount:od.counts,floatMode:fixedMode?'fixed':'opening-count'};if(!mismatch)return A().openLinkedPosShift(p);return A().managerApproval('fixed_float_exception','pending',Math.abs(float-fixedFloatCfg),v.reason).then(function(ap){p.reason=v.reason;p.approvalId=ap.approvalId;return A().openLinkedPosShift(p);});}).then(function(r){var shift=(r&&r.data&&r.data.shift)||(r&&r.shift);if(window.__posLog&&shift)window.__posLog('shift-open',shift.id,'float '+peso(float)+(mismatch?' · fixed_float_exception':''));}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0)alert('Could not open your shift: '+((e&&e.message)||e));});
 }
 async function continuityReadyForClose(){
+  var timer;try{return await Promise.race([inspectShiftCloseQueue(),new Promise(function(_resolve,reject){timer=setTimeout(function(){reject(new Error('The sync check is taking too long. Continue with a recorded handover.'));},8000);})]);}finally{clearTimeout(timer);}
+}
+async function inspectShiftCloseQueue(){
   if(window.__online===false)throw new Error('The shift cannot close while offline. Keep the shift open until the connection returns and every sale is synchronized.');
   if(!window.AccazaOfflineQueue||!window.AccazaOfflineQueue.summary)throw new Error('The durable transaction queue is unavailable. Refresh the POS before closing the shift.');
   if(window.__flushOfflineQueue)await window.__flushOfflineQueue();
@@ -18,7 +21,7 @@ async function continuityReadyForClose(){
 }
 async function closeShift(){
   if(!activeShift)return;var shift=activeShift;
-  try{await continuityReadyForClose();}catch(error){alert(String(error&&error.message||error));if(window.__showOfflineQueue)window.__showOfflineQueue('Shift close is blocked until all sales are safely synchronized.');return;}
+  try{await continuityReadyForClose();}catch(error){openHandoverCount(shift,error);return;}
   var recon=denomTrackingOnR()&&shift.drawer;
   var mask=document.createElement('div'); mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
   document.body.appendChild(mask);
@@ -65,7 +68,7 @@ async function closeShift(){
   renderBlind();
 }
 async function finalizeClose(shift,counted,counts){
-  try{await continuityReadyForClose();}catch(error){alert(String(error&&error.message||error)+' Your cash count was not submitted; the shift remains open.');return;}
+  try{await continuityReadyForClose();}catch(error){openHandoverCount(shift,error,counts);return;} // Your cash count was not submitted; the shift remains open until handover is acknowledged.
   var saleList;try{saleList=await loadShiftTransactions(shift.id);}catch(_e){saleList=shiftSales(shift);}
   var z=computeZ(shift,saleList),closedAt=Date.now();z.countedCash=counted;z.variance=Math.round((counted-z.expectedCash)*100)/100;z.closeCount=counts;z.expectedDrawer=shift.drawer||null;z.cashToSettle=Math.max(0,Math.round((counted-z.retainedFloat)*100)/100);
   z.actualFloatRetained=Math.max(0,Math.min(counted,z.retainedFloat));z.floatShortfall=Math.max(0,Math.round((z.retainedFloat-z.actualFloatRetained)*100)/100);
