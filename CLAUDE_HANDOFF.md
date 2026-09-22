@@ -84,6 +84,8 @@ Key nodes and authority boundaries:
 | `financialApprovals`, `cashCustody`, `chartOfAccounts` | Manager approvals, register custody, controlled accounts | Sensitive server workflows |
 | `shifts`, `posActiveShift` | Register opening, tender, close and reconciliation | Authorized POS/register workflow plus server triggers |
 | `offlinePosSync` | Exactly-once offline replay claims/evidence | Server only/private |
+| `shiftCrews` | Shift crew membership sessions (who may ring sales into an open shift besides its owner) | Server only/private; `posActiveShift/crew` and `shifts/{id}/crew` are display copies |
+| `posSyncAlerts` | Every POS sale the server refused, with the exact command, for alerting and management recovery | Server only/private |
 | `archivedOrders`, `operationalAudit`, `deletionAudit` | Retention and immutable control evidence | Server only |
 | `clientTelemetryDaily` | Privacy-safe daily aggregate timing/errors | Function writes; owner/admin/manager read |
 

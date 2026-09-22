@@ -1103,12 +1103,12 @@ exports.getOperationalExceptions = onCall(
 
 async function scanOperationalExceptions(db, now) {
     const days = [];for (let offset = 0; offset < 7; offset++) days.push(financeDateFromTimestamp(now - offset * 86400000));
-    const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, booksMonthlyNetSnap, booksMonthlyNetMetaSnap, posSettingsSnap, cfAccountsSnap, deadLetterSnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),db.ref("/books/monthlyNet").get(),db.ref("/books/monthlyNetMeta").get(),db.ref("/posSettings/payMethods").get(),db.ref("/cfAccounts").get(),db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}`).orderByChild("abandonedAt").startAt(now - OperationalExceptions.DEAD_LETTER_WINDOW_MS).limitToLast(50).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
+    const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, booksMonthlyNetSnap, booksMonthlyNetMetaSnap, posSettingsSnap, cfAccountsSnap, deadLetterSnap, posSyncAlertSnap, pendingHandoverSnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),db.ref("/books/monthlyNet").get(),db.ref("/books/monthlyNetMeta").get(),db.ref("/posSettings/payMethods").get(),db.ref("/cfAccounts").get(),db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}`).orderByChild("abandonedAt").startAt(now - OperationalExceptions.DEAD_LETTER_WINDOW_MS).limitToLast(50).get(),db.ref("/posSyncAlerts").orderByChild("state").equalTo("open").limitToLast(100).get(),db.ref("/pendingShiftHandovers").orderByChild("at").limitToFirst(50).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
     let booksMonthlyNet = booksMonthlyNetSnap.val() || {};
     if (!booksMonthlyNetMetaSnap.exists()) booksMonthlyNet = await rebuildBooksMonthlyNet(db, (/* download-ok: fallback monthly totals have never been built */await db.ref("/books/journal").get()).val() || {});
     const orders = ordersSnap.val() || {},orderIds=Object.keys(orders).slice(0,100),financialPairs=await Promise.all(orderIds.map(async(id)=>{const snap=await db.ref(`/financialMovements/sale_${id}`).get();return[id,snap.exists()?snap.val():null];}));
     const financialMovements = {},inventoryMovementEvidence={};financialPairs.forEach(([id, value]) => {if (value) financialMovements[`sale_${id}`] = value;});Object.values(inventoryMovementSnap.val()||{}).forEach(m=>{if(m&&m.sourceType==="order"&&m.sourceId)inventoryMovementEvidence[m.sourceId]=true;});const telemetry = {};days.forEach((day, i) => {telemetry[day] = telemetrySnaps[i].val() || {};});
-    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, deadLetters: deadLetterSnap.val() || {}}, now);
+    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, deadLetters: deadLetterSnap.val() || {}, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}}, now);
 }
 
 // Phase 16: bounded, read-only production certification snapshot. It does not
@@ -2494,7 +2494,7 @@ exports.signOutAllPortalSessions=onCall({region:ORDER_REGION,enforceAppCheck:ENF
   return record;
 });
 
-exports.onShiftCloseAssurance=onValueWritten({ref:'/shifts/{shiftId}/status',region:ORDER_REGION,retry:true},async event=>{if(event.data.after.val()!=='closed'||event.data.before.val()==='closed')return;const db=getDatabase(),shiftId=event.params.shiftId,receiptRef=db.ref(`/shiftCloseReceipts/${shiftId}`);if((await receiptRef.get()).exists())return;const shift=(await db.ref(`/shifts/${shiftId}`).get()).val()||{},verification=(await db.ref(`/shiftCloseVerifications/${shiftId}`).get()).val()||{},state=await assurancePostingState(db,await shiftOrdersForAssurance(db,shiftId)),z=shift.zReport||{},businessDate=financeDateFromTimestamp(Number(shift.closeAt)||Date.now()),control={saleCount:state.saleCount,net:Financial.money(z.net!=null?z.net:shift.net),gross:Financial.money(z.gross!=null?z.gross:shift.gross),refunds:Financial.money(z.refunds!=null?z.refunds:shift.refunds),countedCash:Financial.money(z.countedCash!=null?z.countedCash:shift.countedCash),expectedCash:Financial.money(z.expectedCash!=null?z.expectedCash:shift.expectedCash),variance:Financial.money(z.variance!=null?z.variance:shift.variance),cashToSettle:Financial.money(z.cashToSettle!=null?z.cashToSettle:shift.cashToSettle),byMethod:z.byMethod||shift.byMethod||{},byChannel:z.byChannel||shift.byChannel||{}},verified=verification.shiftId===shiftId&&!state.inventoryOutstanding.length&&!state.financeOutstanding.length,closedAt=Number(shift.closeAt)||Date.now(),receipt={shiftId,shiftReference:financeText(shift.shiftReference||shiftId,120),businessDate,staff:financeText(shift.staff,100),openedAt:Number(shift.openAt)||0,closedAt,serverRecordedAt:Date.now(),status:verified?'verified':'posting_follow_up',verification:verification.shiftId===shiftId?verification:null,inventoryOutstanding:state.inventoryOutstanding,financeOutstanding:state.financeOutstanding,controlTotals:control,schemaVersion:1};receipt.receiptHash=crypto.createHash('sha256').update(JSON.stringify({shiftId,businessDate,closedAt,control})).digest('hex');const writes={[`shiftCloseReceipts/${shiftId}`]:receipt,[`ownerDailySummaries/${businessDate}/${shiftId}`]:{shiftId,shiftReference:receipt.shiftReference,staff:receipt.staff,closedAt,status:receipt.status,receiptHash:receipt.receiptHash,controlTotals:control,schemaVersion:1},[`shifts/${shiftId}/closeReceiptId`]:shiftId,[`shifts/${shiftId}/closeReceiptHash`]:receipt.receiptHash,[`operationalAudit/${receipt.serverRecordedAt}_${shiftId}_close_receipt`]:operationalAuditRecord('record_shift_close_receipt','shift',shiftId,{uid:'server',role:'server'},{status:receipt.status,receiptHash:receipt.receiptHash,inventoryOutstanding:state.inventoryOutstanding.length,financeOutstanding:state.financeOutstanding.length,controlTotals:control})};await db.ref().update(writes);});
+exports.onShiftCloseAssurance=onValueWritten({ref:'/shifts/{shiftId}/status',region:ORDER_REGION,retry:true},async event=>{if(event.data.after.val()!=='closed'||event.data.before.val()==='closed')return;const db=getDatabase(),shiftId=event.params.shiftId,receiptRef=db.ref(`/shiftCloseReceipts/${shiftId}`);await OfflineSync.endShiftCrew(db,shiftId,Date.now(),'server','shift_closed');if((await receiptRef.get()).exists())return;const shift=(await db.ref(`/shifts/${shiftId}`).get()).val()||{},verification=(await db.ref(`/shiftCloseVerifications/${shiftId}`).get()).val()||{},state=await assurancePostingState(db,await shiftOrdersForAssurance(db,shiftId)),z=shift.zReport||{},businessDate=financeDateFromTimestamp(Number(shift.closeAt)||Date.now()),control={saleCount:state.saleCount,net:Financial.money(z.net!=null?z.net:shift.net),gross:Financial.money(z.gross!=null?z.gross:shift.gross),refunds:Financial.money(z.refunds!=null?z.refunds:shift.refunds),countedCash:Financial.money(z.countedCash!=null?z.countedCash:shift.countedCash),expectedCash:Financial.money(z.expectedCash!=null?z.expectedCash:shift.expectedCash),variance:Financial.money(z.variance!=null?z.variance:shift.variance),cashToSettle:Financial.money(z.cashToSettle!=null?z.cashToSettle:shift.cashToSettle),byMethod:z.byMethod||shift.byMethod||{},byChannel:z.byChannel||shift.byChannel||{}},verified=verification.shiftId===shiftId&&!state.inventoryOutstanding.length&&!state.financeOutstanding.length,closedAt=Number(shift.closeAt)||Date.now(),receipt={shiftId,shiftReference:financeText(shift.shiftReference||shiftId,120),businessDate,staff:financeText(shift.staff,100),openedAt:Number(shift.openAt)||0,closedAt,serverRecordedAt:Date.now(),status:verified?'verified':'posting_follow_up',verification:verification.shiftId===shiftId?verification:null,inventoryOutstanding:state.inventoryOutstanding,financeOutstanding:state.financeOutstanding,controlTotals:control,schemaVersion:1};receipt.receiptHash=crypto.createHash('sha256').update(JSON.stringify({shiftId,businessDate,closedAt,control})).digest('hex');const writes={[`shiftCloseReceipts/${shiftId}`]:receipt,[`ownerDailySummaries/${businessDate}/${shiftId}`]:{shiftId,shiftReference:receipt.shiftReference,staff:receipt.staff,closedAt,status:receipt.status,receiptHash:receipt.receiptHash,controlTotals:control,schemaVersion:1},[`shifts/${shiftId}/closeReceiptId`]:shiftId,[`shifts/${shiftId}/closeReceiptHash`]:receipt.receiptHash,[`operationalAudit/${receipt.serverRecordedAt}_${shiftId}_close_receipt`]:operationalAuditRecord('record_shift_close_receipt','shift',shiftId,{uid:'server',role:'server'},{status:receipt.status,receiptHash:receipt.receiptHash,inventoryOutstanding:state.inventoryOutstanding.length,financeOutstanding:state.financeOutstanding.length,controlTotals:control})};await db.ref().update(writes);});
 
 const ShiftHandover = require('./lib/shift-handover');
 exports.manageShiftHandover=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:120,memory:'512MiB'},async request=>{
@@ -2528,6 +2528,7 @@ exports.manageShiftHandover=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_
     await sref.transaction(row=>row&&row.status!=='closed'?{...row,status:'handover_pending',handoverAt:handover.at,closeAt:handover.at,...handover.cash,reconciliationStatus:'pending',handoverId:id}:row,undefined,false);
     await db.ref().update({[`pendingShiftHandovers/${id}`]:{staff:handover.staff,at:handover.at,cash:handover.cash},[`operationalAudit/handover_${id}`]:{action:'cashier_shift_handover',sourceType:'shift',sourceId:id,actorUid:handover.by,ts:handover.at,countedCash:handover.cash.countedCash,cashToSettle:handover.cash.cashToSettle},[`ownerDailySummaries/${financeDateFromTimestamp(handover.at)}/${id}`]:{shiftId:id,staff:handover.staff,closedAt:handover.at,status:'handover_pending',controlTotals:handover.cash}});
     await db.ref('/posActiveShift').transaction(row=>row&&row.id===id?null:row,undefined,false);
+    await OfflineSync.endShiftCrew(db,id,handover.at,handover.by,'shift_handover');
     return {shiftId:id,handedOver:true,cash:handover.cash,pendingSales:Object.keys(handover.commands||{}).length};
   }
   if(!handover)throw new HttpsError('not-found','No handover exists for this shift.');
@@ -2538,7 +2539,8 @@ exports.manageShiftHandover=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_
     for(const [key,row] of Object.entries(handover.commands||{}).filter(([,row])=>!row.syncedAt).slice(0,25)){
       if(row.quarantined){results.push({id:key,synced:false,error:row.lastError});continue;}
       try{
-        await OfflineSync.syncOfflinePosSaleCommand({db,actor:{...actor,uid:handover.ownerUid},data:row.command,textField,money,listFromFirebase,activeOrderProjection,availableCash:availableCashOnHandAboveFloat,prepareOrder:async(order,now)=>({order,inventoryPlan:await calculateOrderInventoryPlan(db,order,now)})});
+        const recovery=await OfflineSync.recoveryContext(db,id,row.command&&row.command.order&&row.command.order.soldByUid,actor.uid);
+        await OfflineSync.syncOfflinePosSaleCommand({db,actor:{...actor,uid:handover.ownerUid},recovery,data:row.command,textField,money,listFromFirebase,activeOrderProjection,availableCash:availableCashOnHandAboveFloat,prepareOrder:async(order,now)=>({order,inventoryPlan:await calculateOrderInventoryPlan(db,order,now)})});
         await href.child(`commands/${key}`).update({syncedAt:Date.now(),lastError:'',recoveredBy:actor.uid});results.push({id:key,synced:true});
       }catch(e){const message=String(e.message||e).slice(0,500);await href.child(`commands/${key}`).update({lastError:message});results.push({id:key,synced:false,error:message});}
     }
@@ -2579,6 +2581,96 @@ exports.manageShiftHandover=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_
   return {shiftId:id,resolved:true,variance:z.variance};
   }finally{await db.ref(`/shiftSyncGates/${id}/finalizingAt`).transaction(value=>value===lease?0:value,undefined,false);await href.child('reconcileLease').transaction(value=>value===lease?0:value,undefined,false);}
 });
+const ShiftCrew = require('./lib/shift-crew');
+// Shift crew (Sep 2026): the cashier who opens the shift keeps the one cash drawer; other
+// linked staff join the open shift with their own login and PIN and ring sales under their
+// own name. /shiftCrews is the only authority; the posActiveShift/shifts copies are for display.
+const POS_MANAGEMENT_ROLES=['owner','superadmin','admin','manager'];
+async function linkedPosStaff(db,uid){
+  const rows=(/* download-ok: bounded POS staff list (a handful of profiles) */await db.ref('/posStaff').get()).val()||{},matches=Object.entries(rows).filter(([,row])=>row&&row.accountUid===uid);
+  if(matches.length!==1)throw new HttpsError('failed-precondition','Your login is not linked to one POS staff profile. Ask a manager to link it in POS Settings.');
+  return {staffId:matches[0][0],row:matches[0][1]};
+}
+async function mirrorCrewMember(db,shiftId,uid,mirror){
+  // Display copies only. posActiveShift is updated only while it is still this shift.
+  await db.ref('/posActiveShift').transaction(row=>{
+    if(row==null)return null;
+    if(row.id!==shiftId)return row;
+    const crew=Object.assign({},row.crew||{});if(mirror)crew[uid]=mirror;else delete crew[uid];
+    return Object.assign({},row,{crew});
+  },undefined,false);
+  await db.ref(`/shifts/${shiftId}/crew/${uid}`).update(mirror?Object.assign({},mirror,{leftAt:null}):{leftAt:Date.now()});
+}
+exports.managePosShiftCrew=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:30,memory:'256MiB'},async request=>{
+  const db=getDatabase(),actor=await requirePortalPermission(db,request,['pos','registerOps']),data=request.data||{},action=String(data.action||'');
+  const shiftId=posAssuranceKey(data.shiftId,'Shift ID'),manager=POS_MANAGEMENT_ROLES.includes(actor.role);
+  const [activeSnap,shiftSnap]=await Promise.all([db.ref('/posActiveShift').get(),db.ref(`/shifts/${shiftId}`).get()]),active=activeSnap.val()||{},shift=shiftSnap.val();
+  if(!shift)throw new HttpsError('not-found','Shift was not found.');
+  const crewRef=db.ref(`/shiftCrews/${shiftId}`),now=Date.now();
+  if(action==='join'){
+    if(active.id!==shiftId||active.status==='closed'||shift.status!=='open')throw new HttpsError('failed-precondition','Only the open shift can be joined.');
+    if(!shift.accountUid||shift.accountUid===actor.uid)return {shiftId,owner:true};
+    const {staffId,row}=await linkedPosStaff(db,actor.uid);
+    if(!posPinValid(data.pin,row))throw new HttpsError('permission-denied','Your POS PIN is incorrect.');
+    const member={uid:actor.uid,staffId,staff:posStaffText(row.name,'Staff name',120),joinedBy:actor.uid};
+    let created=false;
+    const result=await crewRef.child(actor.uid).transaction(current=>{const next=ShiftCrew.joinRecord(current,member,now);created=next!==current;return next;},undefined,false);
+    const saved=result.snapshot.val(),mirror=ShiftCrew.mirrorOf(saved);
+    if(!result.committed||!mirror)throw new HttpsError('aborted','Could not join the shift. Try again.');
+    const duplicate=!created;
+    await mirrorCrewMember(db,shiftId,actor.uid,mirror);
+    if(!duplicate)await db.ref(`/operationalAudit/${now}_pos_crew_join_${shiftId}_${actor.uid}`).set(operationalAuditRecord('join_pos_shift_crew','shift',shiftId,actor,{staffId,staff:member.staff,shiftOwner:shift.staff||''}));
+    return {shiftId,joined:true,duplicate,crew:mirror};
+  }
+  if(action==='leave'||action==='remove'){
+    const target=action==='leave'?actor.uid:posAssuranceKey(data.uid,'Staff login');
+    if(action==='remove'&&!manager&&shift.accountUid!==actor.uid)throw new HttpsError('permission-denied','Only the shift owner or a manager can remove crew.');
+    const reason=action==='leave'?'left':'removed';
+    const result=await crewRef.child(target).transaction(current=>current==null?null:ShiftCrew.leaveRecord(current,now,actor.uid,reason),undefined,false);
+    const saved=result.snapshot.val();
+    if(!saved)throw new HttpsError('not-found','That person is not on this shift crew.');
+    await mirrorCrewMember(db,shiftId,target,null);
+    await db.ref(`/operationalAudit/${now}_pos_crew_${reason}_${shiftId}_${target}`).set(operationalAuditRecord(`${reason==='left'?'leave':'remove'}_pos_shift_crew`,'shift',shiftId,actor,{uid:target,staff:saved.staff||''}));
+    return {shiftId,uid:target,left:true};
+  }
+  throw new HttpsError('invalid-argument','Unknown shift crew action.');
+});
+
+// Management recovery of sales the server refused (captured in /posSyncAlerts). The exact
+// command the device sent is replayed through normal sale validation into the original
+// shift as its owner; the person who rang it stays on the order. Nothing is edited by hand.
+exports.managePosSaleRecovery=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:120,memory:'512MiB'},async request=>{
+  const db=getDatabase(),actor=await requirePortalPermission(db,request,['registerOps']),data=request.data||{},action=String(data.action||'list');
+  if(!POS_MANAGEMENT_ROLES.includes(actor.role))throw new HttpsError('permission-denied','Only management can recover POS sales.');
+  if(action==='list'){
+    const rows=(await db.ref('/posSyncAlerts').orderByChild('state').equalTo('open').limitToLast(100).get()).val()||{};
+    const shiftIds=[...new Set(Object.values(rows).map(r=>r&&r.shiftId).filter(id=>/^[A-Za-z0-9_-]{3,100}$/.test(String(id||''))))];
+    const shifts=Object.fromEntries(await Promise.all(shiftIds.map(async id=>[id,(await db.ref(`/shifts/${id}`).get()).val()||{}])));
+    const staff=(/* download-ok: bounded POS staff list */await db.ref('/posStaff').get()).val()||{},nameOf=uid=>{const hit=Object.values(staff).find(r=>r&&r.accountUid===uid);return hit?String(hit.name||''):'';};
+    return {rows:Object.entries(rows).map(([id,r])=>{const s=shifts[r.shiftId]||{};return {transactionId:id,orderId:r.orderId||'',shiftId:r.shiftId||'',shiftStaff:s.staff||'',shiftStatus:s.status||'missing',rungBy:nameOf((r.command&&r.command.order&&r.command.order.soldByUid)||r.actorUid)||r.actorUid||'',sentBy:nameOf(r.lastActorUid||r.actorUid)||'',total:Number(r.total)||0,orderTimestamp:Number(r.orderTimestamp)||0,code:r.code||'',message:r.message||'',count:Number(r.count)||0,firstAt:Number(r.firstAt)||0,lastAt:Number(r.lastAt)||0,recoverable:!!r.command&&['open','handover_pending'].includes(s.status),items:String(r.command&&r.command.order&&r.command.order.items||'').slice(0,200)};}).sort((a,b)=>a.orderTimestamp-b.orderTimestamp)};
+  }
+  const transactionId=OfflineSync.offlineTxnKey(data.transactionId),reason=financeText(data.reason,300);
+  if(reason.length<5)throw new HttpsError('invalid-argument','Record why this sale is being recovered or dismissed.');
+  const ref=db.ref(`/posSyncAlerts/${transactionId}`),alert=(await ref.get()).val();
+  if(!alert)throw new HttpsError('not-found','That rejected sale was not found.');
+  if(alert.state!=='open')return {transactionId,state:alert.state,duplicate:true};
+  const now=Date.now();
+  if(action==='dismiss'){
+    await db.ref().update({[`posSyncAlerts/${transactionId}/state`]:'dismissed',[`posSyncAlerts/${transactionId}/dismissedAt`]:now,[`posSyncAlerts/${transactionId}/dismissedBy`]:actor.uid,[`posSyncAlerts/${transactionId}/resolutionReason`]:reason,[`operationalAudit/${now}_pos_sale_dismiss_${transactionId}`]:operationalAuditRecord('dismiss_rejected_pos_sale','posSyncAlert',transactionId,actor,{orderId:alert.orderId||'',total:Number(alert.total)||0,reason})});
+    return {transactionId,state:'dismissed'};
+  }
+  if(action!=='recover')throw new HttpsError('invalid-argument','Unknown recovery action.');
+  if(!alert.command||alert.command.transactionId!==transactionId)throw new HttpsError('failed-precondition','No sale evidence was captured for this transaction.');
+  const shift=(await db.ref(`/shifts/${alert.shiftId}`).get()).val();
+  if(!shift||!['open','handover_pending'].includes(shift.status))throw new HttpsError('failed-precondition','The original shift is already closed. Record this sale as a manager correction instead.');
+  // The till stamps who rang the sale; a different login may have sent it later.
+  const recovery=await OfflineSync.recoveryContext(db,alert.shiftId,(alert.command.order&&alert.command.order.soldByUid)||alert.actorUid,actor.uid);
+  let result;
+  try{result=await OfflineSync.syncOfflinePosSaleCommand({db,actor:{...actor,uid:shift.accountUid||actor.uid},recovery,data:alert.command,textField,money,listFromFirebase,activeOrderProjection,availableCash:availableCashOnHandAboveFloat,prepareOrder:async(order,at)=>({order,inventoryPlan:await calculateOrderInventoryPlan(db,order,at)})});}
+  catch(error){await ref.update({lastRecoveryError:String(error&&error.message||error).slice(0,500),lastRecoveryAt:now,lastRecoveryBy:actor.uid});throw error;}
+  await db.ref().update({[`posSyncAlerts/${transactionId}/state`]:'recovered',[`posSyncAlerts/${transactionId}/recoveredAt`]:now,[`posSyncAlerts/${transactionId}/recoveredBy`]:actor.uid,[`posSyncAlerts/${transactionId}/resolutionReason`]:reason,[`operationalAudit/${now}_pos_sale_recover_${transactionId}`]:operationalAuditRecord('recover_rejected_pos_sale','order',result.orderId,actor,{transactionId,shiftId:alert.shiftId,rungBy:alert.actorUid||'',total:Number(alert.total)||0,reason,duplicate:!!result.duplicate})});
+  return {transactionId,orderId:result.orderId,state:'recovered',duplicate:!!result.duplicate};
+});
 const ACTIVE_ONLINE_TTL_MS = 48 * 60 * 60 * 1000;
 const ACTIVE_SWEEP_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const READY_AUTO_COMPLETE_MS = 2 * 60 * 60 * 1000;
@@ -2616,7 +2708,16 @@ exports.syncOfflinePosSale = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
     const db = getDatabase(), actor = await requirePortalPermission(db, request, ["pos"]), data = request.data || {};
-    return OfflineSync.syncOfflinePosSaleCommand({db, actor, data, textField, money, listFromFirebase, activeOrderProjection,availableCash:availableCashOnHandAboveFloat,prepareOrder:async(order,now)=>({order,inventoryPlan:await calculateOrderInventoryPlan(db,order,now)})});
+    let result;
+    try {
+      result = await OfflineSync.syncOfflinePosSaleCommand({db, actor, data, textField, money, listFromFirebase, activeOrderProjection,availableCash:availableCashOnHandAboveFloat,prepareOrder:async(order,now)=>({order,inventoryPlan:await calculateOrderInventoryPlan(db,order,now)})});
+    } catch (error) {
+      // Capture the rejected sale and alert management; the device keeps it queued too.
+      try { await OfflineSync.recordSyncAlert(db, actor, data, error, Date.now(), (title, body) => notifyStaff(db, title, body, "/admin.html#tab-ops", "management")); } catch (alertError) { logger.error("POS sync alert could not be recorded", {error: String(alertError && alertError.message || alertError)}); }
+      throw error;
+    }
+    try { await OfflineSync.resolveSyncAlert(db, result.transactionId, Date.now()); } catch (_resolveError) { /* the sale is saved; a stale alert clears on the next scan */ }
+    return result;
   },
 );
 

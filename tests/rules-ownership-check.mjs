@@ -67,6 +67,20 @@ try{
   await assertFails(set(ref(owner,'shifts'),null));
   await assertFails(set(ref(cashier,'shiftHandovers/rule-open'),null));
   await assertFails(set(ref(owner,'pendingShiftHandovers/rule-open'),{at:1}));
+  // Shift crew (Sep 2026): the shift owner is fixed once set, and crew membership plus
+  // refused-sale evidence are server-only, so a browser cannot grant itself till access.
+  await assertSucceeds(set(ref(cashier,'shifts/rule-crew'),{id:'rule-crew',status:'open',accountUid:'cashier',staff:'Cashier'}));
+  await assertSucceeds(update(ref(cashier,'shifts/rule-crew'),{drawer:{b100:1}}));
+  await assertSucceeds(set(ref(cashier,'shifts/rule-crew'),{id:'rule-crew',status:'open',accountUid:'cashier',staff:'Cashier',drawer:{b100:2}}));
+  await assertFails(update(ref(cashier,'shifts/rule-crew'),{accountUid:'staff'}));
+  await assertFails(update(ref(owner,'shifts/rule-crew'),{accountUid:null}));
+  await assertFails(set(ref(staff,'shifts/rule-crew'),{id:'rule-crew',status:'open',staff:'Cashier'}));
+  for(const db of [owner,manager,staff,cashier]){
+    await assertFails(set(ref(db,'shiftCrews/rule-crew/staff'),{uid:'staff',sessions:{1:{joinedAt:1}}}));
+    await assertFails(get(ref(db,'shiftCrews/rule-crew')));
+    await assertFails(set(ref(db,'posSyncAlerts/pos_rule_alert'),{state:'dismissed'}));
+    await assertFails(get(ref(db,'posSyncAlerts')));
+  }
 
   await assertSucceeds(get(ref(a,'orders/own')));
   await assertFails(get(ref(b,'orders/own')));

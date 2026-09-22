@@ -35,7 +35,16 @@ exports.syncOfflinePosSale = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
     const db = getDatabase(), actor = await requirePortalPermission(db, request, ["pos"]), data = request.data || {};
-    return OfflineSync.syncOfflinePosSaleCommand({db, actor, data, textField, money, listFromFirebase, activeOrderProjection,availableCash:availableCashOnHandAboveFloat,prepareOrder:async(order,now)=>({order,inventoryPlan:await calculateOrderInventoryPlan(db,order,now)})});
+    let result;
+    try {
+      result = await OfflineSync.syncOfflinePosSaleCommand({db, actor, data, textField, money, listFromFirebase, activeOrderProjection,availableCash:availableCashOnHandAboveFloat,prepareOrder:async(order,now)=>({order,inventoryPlan:await calculateOrderInventoryPlan(db,order,now)})});
+    } catch (error) {
+      // Capture the rejected sale and alert management; the device keeps it queued too.
+      try { await OfflineSync.recordSyncAlert(db, actor, data, error, Date.now(), (title, body) => notifyStaff(db, title, body, "/admin.html#tab-ops", "management")); } catch (alertError) { logger.error("POS sync alert could not be recorded", {error: String(alertError && alertError.message || alertError)}); }
+      throw error;
+    }
+    try { await OfflineSync.resolveSyncAlert(db, result.transactionId, Date.now()); } catch (_resolveError) { /* the sale is saved; a stale alert clears on the next scan */ }
+    return result;
   },
 );
 

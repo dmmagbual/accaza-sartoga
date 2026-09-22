@@ -44,7 +44,7 @@ assert.equal(preOrderShiftTransactions,shiftTransactionsBeforeRecovery,'sale rec
 assert.equal(read('/orders/POS-TEST/shiftId'),shift.id);assert.equal(read('/orders/POS-TEST/timestamp'),2000);assert.equal(read('/posActiveShift/drawer/b50'),undefined,'late sale must not touch the new drawer');
 await call({action:'retry',shiftId:shift.id},manager);assert.equal(read('/shifts/SH-TEST/drawer/b50'),1,'retry applies the old drawer once');
 const fake=copy(order);fake.total=999;
-await assert.rejects(OfflineSync.syncOfflinePosSaleCommand({db,actor:{uid:'other'},data:{transactionId:order.clientTxnId,order:fake,drawerDelta:{b50:1}},textField:x=>x,money:Financial.money,listFromFirebase:x=>x}),/another cashier/);
+await assert.rejects(OfflineSync.syncOfflinePosSaleCommand({db,actor:{uid:'other'},data:{transactionId:order.clientTxnId,order:fake,drawerDelta:{b50:1}},textField:x=>x,money:Financial.money,listFromFirebase:x=>x}),/belongs to .*shift/);
 locked=true;await assert.rejects(call({action:'reconcile',shiftId:shift.id,reason:'All devices checked',devicesChecked:true},manager),/Period locked/);locked=false;
 assert.equal(read('/shifts/SH-TEST/status'),'handover_pending');
 const final=await call({action:'reconcile',shiftId:shift.id,reason:'All devices and the physical cash handover checked',devicesChecked:true},manager);
@@ -52,7 +52,7 @@ assert.equal(final.variance,0);assert.equal(read('/shifts/SH-TEST/status'),'clos
 assert.equal((await call({action:'reconcile',shiftId:shift.id},manager)).duplicate,true);
 const duplicateContext={db,actor:{uid:'cashier'},data:{transactionId:order.clientTxnId,order,drawerDelta:{b50:1}},textField:x=>x,money:Financial.money,listFromFirebase:x=>x};
 assert.equal((await OfflineSync.syncOfflinePosSaleCommand(duplicateContext)).duplicate,true,'origin browser can acknowledge a sale recovered before final close');
-await assert.rejects(OfflineSync.syncOfflinePosSaleCommand({...duplicateContext,actor:{uid:'other'}}),/another cashier/);
+assert.equal((await OfflineSync.syncOfflinePosSaleCommand({...duplicateContext,actor:{uid:'other'}})).duplicate,true,'any device still holding an already-recovered sale clears it without applying it twice');
 write('/archivedOrders/POS-TEST',read('/orders/POS-TEST'));write('/orders/POS-TEST',null);
 assert.equal((await OfflineSync.syncOfflinePosSaleCommand(duplicateContext)).duplicate,true,'archived recovery is acknowledged without recreating the order');
 assert.equal(read('/orders/POS-TEST'),undefined);

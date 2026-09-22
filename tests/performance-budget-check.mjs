@@ -20,14 +20,16 @@ const budgets={
   // Build 542 adds controlled cash-payment account selection while preserving split-payment routing.
   // Build 580 refreshes IndexedDB immediately before a forced shift-close health report,
   // preventing a stale browser count from blocking a cashier after all sales have synced.
-  'assets/js/admin/pos.js':522500,
+  // Build 582 adds the shift crew till lock (join prompt, seller stamp on each sale).
+  'assets/js/admin/pos.js':526500,
   // Build 497 adds the visible cash-refund tag and preserved refund detail to shift reports.
   // +1.4 KB (Sep 2026): receipt images load on demand from pettyCashReceipts instead of riding
   // on every voucher in the Petty/Purchases listeners.
   // Build 540 adds the Cash Payments funding-account loading guard and in-place refresh.
   // Build 542 adds six server-validated cash-payment treatments and their audit fields.
   // Build 580 adds cashier handover and the bounded management recovery dialog.
-  'assets/js/admin/register.js':202000,
+  // Build 582 adds the shift crew panel, refused-sale recovery screen and per-seller Z lines.
+  'assets/js/admin/register.js':210000,
   // Build 527 secures completed-sale corrections while retaining the sales reconciliation bridge;
   // retain a narrow ceiling above the reviewed generated bundle.
   // Build 533 replaces Stock Value's whole-journal listener with monthly totals plus the
@@ -75,6 +77,6 @@ if(salesPeriod.includes("ops.startAt(String")||salesPeriod.includes("orderByChil
 for(const source of [moduleLoader,hub,telemetry,functions])for(const marker of source===moduleLoader?['module_load','performance.now']:source===hub?['live_ready','liveStartedAt']:['module_load','live_ready'])if(!source.includes(marker))fail(`Measured performance telemetry missing: ${marker}`);
 
 const manifest=JSON.parse(read('release-manifest.json'));
-if(manifest.builds.admin!==581||manifest.builds.customer!==75||manifest.builds.books!==129||manifest.builds.serviceWorkerCache!==562)fail('Current build/cache versions are not synchronized');
+if(manifest.builds.admin!==582||manifest.builds.customer!==75||manifest.builds.books!==129||manifest.builds.serviceWorkerCache!==563)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');

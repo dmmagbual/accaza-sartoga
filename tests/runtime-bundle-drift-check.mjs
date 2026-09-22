@@ -45,6 +45,8 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('getOperationalEx
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('getProductionCertification')+1,0,'getProductionValidation');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('syncOfflinePosSale'),0,'getCurrentCashBalances','updateCashBalanceSummary','updatePublicCatalogVersionOnCategories','updatePublicCatalogVersionOnMenuItems','updatePublicCatalogVersionOnOptionGroups','updatePublicCatalogVersionOnPackages');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('syncOfflinePosSale'),0,'reportPosDeviceHealth','verifyShiftCloseReadiness','onShiftCloseAssurance','manageShiftHandover');
+// Sep 2026 shift crew: crew membership and management recovery of refused POS sales.
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageShiftHandover')+1,0,'managePosShiftCrew','managePosSaleRecovery');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('syncOfflinePosSale')+1,0,'getSupplierAdvanceDetails');
 // Sep 2026: owner emergency sign-out of every portal session.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('onShiftCloseAssurance'),0,'signOutAllPortalSessions');

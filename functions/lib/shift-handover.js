@@ -44,7 +44,7 @@ function reportKey(value){return String(value==null?'':value).replace(/[.#$/\[\]
 // Only recognized server orders enter the final report. The original handover count
 // and time remain immutable; delayed sales change the final reconciliation only.
 function report(shift,orders,handover){
-  const z={tx:0,gross:0,discounts:0,refunds:0,cashRefunds:0,net:0,cashSales:0,tips:0,voidCount:0,voidAmt:0,pending:0,pendingCount:0,managerPending:0,managerPendingCount:0,byMethod:{},byMethodAccount:{},byChannel:{instore:0,online:0,grabfood:0,foodpanda:0},sales:[]};
+  const z={tx:0,gross:0,discounts:0,refunds:0,cashRefunds:0,net:0,cashSales:0,tips:0,voidCount:0,voidAmt:0,pending:0,pendingCount:0,managerPending:0,managerPendingCount:0,byMethod:{},byMethodAccount:{},byChannel:{instore:0,online:0,grabfood:0,foodpanda:0},bySeller:{},sales:[]};
   for(const [id,o] of Object.entries(orders)){
     if(!o||o.shiftId!==shift.id)continue;
     if(o.voided){z.voidCount++;z.voidAmt+=cents(o.total||0);continue;}
@@ -53,6 +53,8 @@ function report(shift,orders,handover){
     const gross=cents(platform&&o.grossPlatform!=null?o.grossPlatform:o.subtotal==null?o.total:o.subtotal),discount=platform?(o.netSalesPlatform!=null?Math.max(0,gross-cents(o.netSalesPlatform)):cents(o.platformDiscount||0)):cents(o.discount||0),refund=cents(o.refundAmount||0),rows=Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment,amount:o.total}];
     z.tx++;z.gross+=gross;z.discounts+=discount;z.refunds+=refund;z.net+=gross-discount-refund;z.tips+=cents(o.tipRounding||0);
     z.byChannel[Object.hasOwn(z.byChannel,o.channel)?o.channel:'instore']+=gross-discount-refund;
+    // Shift crew: who rang each sale (informational; the drawer stays the owner's).
+    const seller=reportKey(o.soldByStaffId||o.soldByUid||shift.staffId||'owner')||'owner';z.bySeller[seller]||={name:String(o.soldBy||shift.staff||'').slice(0,120),role:String(o.soldByRole||'owner'),tx:0,net:0};z.bySeller[seller].tx++;z.bySeller[seller].net+=gross-discount-refund;
     for(const p of rows){let method=reportKey(platform?(o.channel==='grabfood'?'GrabFood':'FoodPanda'):String(p.paymentMethod||p.method||'Unknown').split(' · ')[0])||'Unknown';if(method.toLowerCase()==='cash')method='Cash';const value=cents(p.amount||0),account=reportKey(p.receivingAccountName||p.receivingAccountId||'');z.byMethod[method]=(z.byMethod[method]||0)+value;z.byMethodAccount[method]||={};if(account)z.byMethodAccount[method][account]=(z.byMethodAccount[method][account]||0)+value;if(!platform&&method==='Cash')z.cashSales+=value;}
     z.cashRefunds+=cents(o.refundPayments?(o.refundPayments.Cash||o.refundPayments.cash||0):rows.some(p=>String(p.method).toLowerCase()==='cash')?o.refundAmount||0:0);
     if(o.paymentStatus==='pending'){z.pending+=cents(o.total||0);z.pendingCount++;}
@@ -64,6 +66,7 @@ function report(shift,orders,handover){
   z.variance=cents(handover.cash.countedCash)-z.expectedCash;
   for(const k of ['gross','discounts','refunds','cashRefunds','net','cashSales','tips','voidAmt','pending','managerPending','payIns','payOuts','expectedCash','variance'])z[k]/=100;
   for(const map of [z.byMethod,z.byChannel])for(const k of Object.keys(map))map[k]/=100;
+  for(const row of Object.values(z.bySeller))row.net/=100;
   for(const map of Object.values(z.byMethodAccount))for(const k of Object.keys(map))map[k]/=100;
   return {...z,...handover.cash,capturedAt:handover.at,openingFloat:shift.openingFloat||0,openCount:shift.openCount||{},expectedDrawer:shift.drawer||{},payInEntries:shift.payIns||[],payOutEntries:shift.payOuts||[],varianceStatus:z.variance?'pending_manager_reconciliation':'reconciled',schemaVersion:5};
 }
