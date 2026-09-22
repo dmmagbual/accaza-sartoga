@@ -8,7 +8,8 @@ const keys=p=>p.split('/').filter(Boolean);
 const read=p=>keys(p).reduce((v,k)=>v?.[k],state);
 function write(p,v){const a=keys(p),last=a.pop();let row=state;for(const k of a)row=row[k]??={};if(v==null)delete row[last];else row[last]=copy(v);}
 const snap=v=>({val:()=>copy(v),exists:()=>v!=null});
-const db={ref(p=''){return {get:async()=>snap(read(p)),child:k=>db.ref(p+'/'+k),update:async updates=>{for(const [k,v]of Object.entries(updates))write(p+'/'+k,v);},transaction:async fn=>{const v=fn(copy(read(p)));if(v===undefined)return {committed:false,snapshot:snap(read(p))};write(p,v);return {committed:true,snapshot:snap(v)};},orderByChild(){return this;},equalTo(){return this;},limitToFirst(){return this;}};}};
+let preOrderShiftTransactions=0;
+const db={ref(p=''){return {get:async()=>snap(read(p)),child:k=>db.ref(p+'/'+k),update:async updates=>{for(const [k,v]of Object.entries(updates))write(p+'/'+k,v);},transaction:async fn=>{if(p==='/shifts/SH-TEST'&&!read('/orders/POS-TEST'))preOrderShiftTransactions++;const v=fn(copy(read(p)));if(v===undefined)return {committed:false,snapshot:snap(read(p))};write(p,v);return {committed:true,snapshot:snap(v)};},orderByChild(){return this;},equalTo(){return this;},limitToFirst(){return this;}};}};
 class HttpsError extends Error{constructor(code,message){super(message);this.code=code;}}
 let locked=false;
 const ctx={exports:{},require:()=>H,onCall:(_o,fn)=>fn,ORDER_REGION:'test',ENFORCE_APP_CHECK:false,getDatabase:()=>db,requirePortalPermission:async(_db,r)=>r.actor,HttpsError,posAssuranceKey:x=>x,financeText:(x,n)=>String(x||'').slice(0,n),financeDateFromTimestamp:()=> '2026-09-22',OfflineSync,textField:x=>String(x),money:Financial.money,listFromFirebase:x=>x,activeOrderProjection:x=>x,availableCashOnHandAboveFloat:async()=>({available:99999}),calculateOrderInventoryPlan:async()=>({}),shiftOrdersForAssurance:async(_db,id)=>Object.fromEntries(Object.entries(state.orders||{}).filter(([,o])=>o.shiftId===id)),assurancePostingState:async()=>({saleCount:Object.keys(state.orders||{}).length,inventoryOutstanding:[],financeOutstanding:[]}),assertAccountingPeriodOpen:async()=>{if(locked)throw new Error('Period locked');},Date,Buffer};
@@ -29,13 +30,15 @@ assert.equal(read('/shiftHandovers/SH-TEST/commands/pos_test_transaction/command
 write('/posActiveShift',{id:'SH-NEXT',status:'open',drawer:{b100:1}});
 await call({shiftId:shift.id,deviceId:'device',closeCount:{b100:999},rows:[]});
 assert.equal(read('/posActiveShift/id'),'SH-NEXT');assert.equal(read('/shiftHandovers/SH-TEST/cash/countedCash'),150,'retry keeps the original count');
+const shiftTransactionsBeforeRecovery=preOrderShiftTransactions;
 const manager={uid:'manager',role:'manager'};
-write('/shiftHandovers/SH-TEST/reconcileLease',Date.now());
+write('/shiftSyncGates/SH-TEST/finalizingAt',Date.now());
 await assert.rejects(OfflineSync.syncOfflinePosSaleCommand({db,actor:{uid:'cashier'},data:{transactionId:order.clientTxnId,order,drawerDelta:{b50:1}},textField:x=>x,money:Financial.money,listFromFirebase:x=>x}),/reconciliation is running/);
-write('/shiftHandovers/SH-TEST/reconcileLease',0);
+write('/shiftSyncGates/SH-TEST/finalizingAt',0);
 await assert.rejects(call({action:'reconcile',shiftId:shift.id,reason:'All devices checked',devicesChecked:true},manager),/needs recovery/);
 let retried=await call({action:'retry',shiftId:shift.id},manager);
 assert.equal(retried.results[0].synced,true,JSON.stringify(retried.results));
+assert.equal(preOrderShiftTransactions,shiftTransactionsBeforeRecovery,'sale recovery must not reserve by transacting the heavily updated shift');
 assert.equal(read('/orders/POS-TEST/shiftId'),shift.id);assert.equal(read('/orders/POS-TEST/timestamp'),2000);assert.equal(read('/posActiveShift/drawer/b50'),undefined,'late sale must not touch the new drawer');
 await call({action:'retry',shiftId:shift.id},manager);assert.equal(read('/shifts/SH-TEST/drawer/b50'),1,'retry applies the old drawer once');
 const fake=copy(order);fake.total=999;

@@ -2535,7 +2535,7 @@ exports.manageShiftHandover=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_
     // Management can replay only the exact command retained at handover. Normal
     // sale validation, inventory posting, period locks and idempotency still apply.
     const results=[];
-    for(const [key,row] of Object.entries(handover.commands||{}).filter(([key,row])=>!row.syncedAt||(shift.pendingOfflineCommands||{})[key]).slice(0,25)){
+    for(const [key,row] of Object.entries(handover.commands||{}).filter(([,row])=>!row.syncedAt).slice(0,25)){
       if(row.quarantined){results.push({id:key,synced:false,error:row.lastError});continue;}
       try{
         await OfflineSync.syncOfflinePosSaleCommand({db,actor:{...actor,uid:handover.ownerUid},data:row.command,textField,money,listFromFirebase,activeOrderProjection,availableCash:availableCashOnHandAboveFloat,prepareOrder:async(order,now)=>({order,inventoryPlan:await calculateOrderInventoryPlan(db,order,now)})});
@@ -2549,16 +2549,19 @@ exports.manageShiftHandover=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_
   if(handover.state==='resolved')return {shiftId:id,resolved:true,duplicate:true};
   const reason=financeText(data.reason,500);if(reason.length<5)throw new HttpsError('invalid-argument','Record how every device queue and the cash handover were checked.');
   const lease=Date.now();
-  const locked=await href.transaction(h=>{if(!h||h.state!=='pending'||Number(h.reconcileLease||0)>lease-180000)return;return {...h,reconcileLease:lease};},undefined,false);
+  const locked=await href.child('reconcileLease').transaction(value=>Number(value||0)>lease-180000?undefined:lease,undefined,false);
   if(!locked.committed)throw new HttpsError('aborted','Another reconciliation is running. Retry shortly.');
-  handover=locked.snapshot.val();
   try{
-  const frozen=await sref.transaction(row=>{
-    if(!row||row.status!=='handover_pending'||Object.keys(row.pendingOfflineCommands||{}).length)return;
-    return {...row,handoverFinalizingAt:lease};
+  const frozen=await db.ref(`/shiftSyncGates/${id}`).transaction(value=>{
+    const gate=value||{};
+    if(Number(gate.finalizingAt||0)>lease-180000||Object.values(gate.pending||{}).some(entry=>Number(entry&&entry.at||entry)>lease-180000))return;
+    return {...gate,finalizingAt:lease};
   },undefined,false);
   if(!frozen.committed)throw new HttpsError('failed-precondition','A sale still needs recovery or is syncing. The next shift can continue trading.');
-  shift=frozen.snapshot.val();
+  shift=(await sref.get()).val();
+  if(!shift||shift.status!=='handover_pending')throw new HttpsError('failed-precondition','The shift is no longer pending reconciliation.');
+  handover=(await href.get()).val();
+  if(!handover||handover.state!=='pending')throw new HttpsError('failed-precondition','The handover is no longer pending reconciliation.');
   for(const row of Object.values(handover.commands||{})){
     if(row.quarantined)throw new HttpsError('failed-precondition',`Sale evidence ${row.orderId} needs management recovery. The next shift can continue trading.`);
     const audit=(await db.ref(`/offlinePosSync/${row.command.transactionId}`).get()).val();
@@ -2574,7 +2577,7 @@ exports.manageShiftHandover=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_
   if(z.variance)writes[`discrepancies/handover_${id}`]={kind:'cash',expected:z.expectedCash,actual:z.countedCash,variance:z.variance,value:z.variance,type:z.variance<0?'shortage':'overage',shiftId:id,staff:shift.staff||'',status:'open',financialStatus:'pending_manager_reconciliation',pendingMovementId:`shift_variance_${id}`,ts:handover.at};
   await db.ref().update(writes);
   return {shiftId:id,resolved:true,variance:z.variance};
-  }finally{await sref.transaction(s=>s&&s.handoverFinalizingAt===lease?{...s,handoverFinalizingAt:0}:s,undefined,false);await href.transaction(h=>h&&h.reconcileLease===lease?{...h,reconcileLease:0}:h,undefined,false);}
+  }finally{await db.ref(`/shiftSyncGates/${id}/finalizingAt`).transaction(value=>value===lease?0:value,undefined,false);await href.child('reconcileLease').transaction(value=>value===lease?0:value,undefined,false);}
 });
 const ACTIVE_ONLINE_TTL_MS = 48 * 60 * 60 * 1000;
 const ACTIVE_SWEEP_INTERVAL_MS = 6 * 60 * 60 * 1000;

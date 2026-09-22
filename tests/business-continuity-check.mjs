@@ -4,6 +4,7 @@ for(const marker of ['async function continuityReadyForClose()','await window.__
 assert.equal((register.match(/await continuityReadyForClose\(\)/g)||[]).length,2,'shift close must check before counting and immediately before persistence');
 assert.ok(queueSource.includes('function closeReadiness()')&&queueSource.includes('outstanding===0'),'offline queue close-readiness summary is missing');
 assert.ok(posState.includes('if(force===true)return offlineQueue().summary()')&&posState.includes('AccazaPosSyncHealth.report(s,true)'),'Shift close must report a fresh durable-queue count, not a stale browser snapshot');
+assert.ok(posState.includes("metric('offline_flush',performance.now()-t,!(r&&r.failed))"),'A completed flush with failed sales must count as a failed telemetry sample');
 assert.ok(sw.includes('authenticated POS cash sales use the durable IndexedDB continuity queue'),'PWA continuity contract is misleading');
 const context={window:{},navigator:{},indexedDB:{open(){throw new Error('not invoked');}},localStorage:{getItem(){return null;}}};context.window=context;vm.createContext(context);vm.runInContext(queueSource,context);assert.equal(typeof context.AccazaOfflineQueue.closeReadiness,'function');
 console.log('PASS: Incomplete accounting close routes to recorded handover without discarding the durable sale queue.');

@@ -50,6 +50,7 @@
     "systemMaintenance": { ".read": false, ".write": false },
     "orderInventoryPlans": { ".read": false, ".write": false },
     "offlinePosSync": { ".indexOn": "updatedAt", ".read": false, ".write": false },
+    "shiftSyncGates": { ".read": false, ".write": false },
     "functionDeadLetters": { ".indexOn": "abandonedAt", ".read": false, ".write": false },
     "functionRetryAttempts": { ".indexOn": "lastFailedAt", ".read": false, ".write": false },
     "functionFailureBudget": { ".read": false, ".write": false },
