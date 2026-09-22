@@ -133,7 +133,7 @@ function reportingContribution(order) {
 }
 
 function applyReportingContribution(month, contribution, direction) {
-  const result = Object.assign({orders:0,grossCents:0,discountCents:0,refundCents:0,netCents:0,cogsCents:0,channels:{},payments:{},items:{},hours:{},weekdays:{},cashiers:{},days:{},schemaVersion:3}, clean(month || {}));
+  const result = Object.assign({orders:0,grossCents:0,discountCents:0,refundCents:0,netCents:0,cogsCents:0,channels:{},payments:{},items:{},hours:{},weekdays:{},cashiers:{},days:{},schemaVersion:3,analyticsSchemaVersion:2}, clean(month || {}));
   result.channels = Object.assign({}, result.channels || {}); result.payments = Object.assign({}, result.payments || {});
   result.items = Object.assign({}, result.items || {}); result.hours = Object.assign({}, result.hours || {}); result.weekdays = Object.assign({}, result.weekdays || {}); result.cashiers = Object.assign({}, result.cashiers || {}); result.days = Object.assign({}, result.days || {});
   const sign = direction < 0 ? -1 : 1, channel = String(contribution && contribution.channel || "unclassified");
@@ -162,18 +162,20 @@ function applyReportingContribution(month, contribution, direction) {
   if (result.cashiers[cashierKey]) result.cashiers[cashierKey].name = cashierName;
   const day = String(contribution && contribution.day || "");
   if (day) {
-    const dayRow = Object.assign({orders:0,grossCents:0,discountCents:0,refundCents:0,netCents:0,cogsCents:0,channels:{},payments:{},items:{},hours:{}}, result.days[day] || {});
-    dayRow.channels = Object.assign({}, dayRow.channels || {}); dayRow.payments = Object.assign({}, dayRow.payments || {}); dayRow.items = Object.assign({}, dayRow.items || {}); dayRow.hours = Object.assign({}, dayRow.hours || {});
+    const dayRow = Object.assign({orders:0,grossCents:0,discountCents:0,refundCents:0,netCents:0,cogsCents:0,channels:{},payments:{},items:{},hours:{},cashiers:{}}, result.days[day] || {});
+    dayRow.channels = Object.assign({}, dayRow.channels || {}); dayRow.payments = Object.assign({}, dayRow.payments || {}); dayRow.items = Object.assign({}, dayRow.items || {}); dayRow.hours = Object.assign({}, dayRow.hours || {}); dayRow.cashiers = Object.assign({}, dayRow.cashiers || {});
     for (const field of ["orders", "grossCents", "discountCents", "refundCents", "netCents", "cogsCents"]) dayRow[field] = Math.max(0, Math.round((Number(dayRow[field]) || 0) + sign * (Number(contribution && contribution[field]) || 0)));
     const dayChannel = Object.assign({orders:0,netCents:0}, dayRow.channels[channel] || {});
     dayChannel.orders = Math.max(0, Math.round((Number(dayChannel.orders) || 0) + sign * (Number(contribution && contribution.orders) || 0)));
     dayChannel.netCents = Math.max(0, Math.round((Number(dayChannel.netCents) || 0) + sign * (Number(contribution && contribution.netCents) || 0)));
     if (!dayChannel.orders && !dayChannel.netCents) delete dayRow.channels[channel]; else dayRow.channels[channel] = dayChannel;
-    addRows(dayRow.payments, contribution && contribution.payments, false); addRows(dayRow.items, contribution && contribution.items, true); addRows(dayRow.hours, [{key:String(Number(contribution && contribution.hour) || 0),orders:contribution && contribution.orders,netCents:contribution && contribution.netCents}], false);
+    addRows(dayRow.payments, contribution && contribution.payments, false); addRows(dayRow.items, contribution && contribution.items, true); addRows(dayRow.hours, [{key:String(Number(contribution && contribution.hour) || 0),orders:contribution && contribution.orders,netCents:contribution && contribution.netCents}], false); addRows(dayRow.cashiers, [{key:cashierKey,orders:contribution && contribution.orders,netCents:contribution && contribution.netCents}], false); if (dayRow.cashiers[cashierKey]) dayRow.cashiers[cashierKey].name = cashierName;
     if (!dayRow.orders && !dayRow.grossCents && !dayRow.netCents) delete result.days[day]; else result.days[day] = dayRow;
   }
   result.schemaVersion = 3;
-  result.analyticsSchemaVersion = 1;
+  // Analytics v2 stores cashier attribution in each day. Period summaries can
+  // therefore calculate MTD and YTD from the same exact date boundaries.
+  result.analyticsSchemaVersion = 2;
   return result;
 }
 
