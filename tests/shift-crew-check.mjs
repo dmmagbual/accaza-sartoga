@@ -10,7 +10,7 @@ const H=require('../functions/lib/shift-handover.js'),OfflineSync=require('../fu
 const copy=x=>x==null?null:structuredClone(x),state={};
 const keys=p=>p.split('/').filter(Boolean),read=p=>keys(p).reduce((v,k)=>v?.[k],state);
 function assertKeys(v,where){if(v&&typeof v==='object')for(const [k,x] of Object.entries(v)){if(!k||/[.#$/\[\]]/.test(k))throw new Error(`Invalid Realtime Database key "${k}" at ${where}`);assertKeys(x,where+'/'+k);}}
-function write(p,v){assertKeys(v,p);const a=keys(p),last=a.pop();let row=state;for(const k of a)row=row[k]??={};if(v==null)delete row[last];else row[last]=copy(v);}
+function write(p,v){assertKeys(v,p);v=H.storedForm(v);const a=keys(p),last=a.pop();let row=state;for(const k of a)row=row[k]??={};if(v==null)delete row[last];else row[last]=copy(v);}
 const snap=v=>({val:()=>copy(v),exists:()=>v!=null});
 function ref(p='',query={}){return {
   get:async()=>{let v=read(p);if(query.child&&v&&typeof v==='object')v=Object.fromEntries(Object.entries(v).filter(([,row])=>row&&row[query.child]===query.equal));return snap(v);},
