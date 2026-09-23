@@ -46,8 +46,10 @@ const budgets={
   // bounded monthly summary. The module remains lazy-loaded under Analytics.
   // Build 580 adds source-coverage gating plus the compact Top drinks panel and
   // in-cell comparison bars; it does not add any historical-order download.
-  // Reviewed generated size: 178,177 bytes.
-  'assets/js/admin/analytics.js':178500,
+  // Build 585 adds the reviewed MTD/YTD cashier pies, Top 12 grid, dual thin
+  // peak-hour bars and weekday trend lines without adding another data read.
+  // Reviewed generated size: 180,306 bytes; the module remains Analytics-only.
+  'assets/js/admin/analytics.js':181000,
   'assets/js/admin/finance.js':75000,
   // Build 106 adds consistent interactive feedback to Finance Books buttons.
   // Build 110 adds only the AP-page hooks; its 6 KB form remains isolated below.
@@ -77,6 +79,6 @@ if(salesPeriod.includes("ops.startAt(String")||salesPeriod.includes("orderByChil
 for(const source of [moduleLoader,hub,telemetry,functions])for(const marker of source===moduleLoader?['module_load','performance.now']:source===hub?['live_ready','liveStartedAt']:['module_load','live_ready'])if(!source.includes(marker))fail(`Measured performance telemetry missing: ${marker}`);
 
 const manifest=JSON.parse(read('release-manifest.json'));
-if(manifest.builds.admin!==584||manifest.builds.customer!==75||manifest.builds.books!==129||manifest.builds.serviceWorkerCache!==565)fail('Current build/cache versions are not synchronized');
+if(manifest.builds.admin!==585||manifest.builds.customer!==75||manifest.builds.books!==129||manifest.builds.serviceWorkerCache!==566)fail('Current build/cache versions are not synchronized');
 
 console.log('PASS: Phase 11 enforces bounded customer listeners, coalesced catalog rendering, measured admin readiness, and bundle budgets.');

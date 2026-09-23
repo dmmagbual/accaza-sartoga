@@ -5894,9 +5894,9 @@ const HISTORICAL_PERIOD_MAX_MS = 93 * 86400000;
 // replica run. A previous index-only run must never claim detailed reports are
 // ready when the underlying historical order replicas were never populated.
 const HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 3;
-// V7 adds cashier attribution to each day. Aggregate month cashiers cannot
-// answer an MTD question without accidentally returning the full YTD total.
-const HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION = 7;
+// V8 rebuilds cashier attribution from the sale-time seller. Older summaries
+// used the shift owner, which could assign crew sales to Maria/OWNER.
+const HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION = 8;
 
 function expectedReportingMonths(from, to) {
   const start = String(from || "").match(/^(\d{4})-(\d{2})$/), end = String(to || "").match(/^(\d{4})-(\d{2})$/);
@@ -5942,7 +5942,7 @@ async function reserveHistoricalRollupReadBudget(db, documents) {
 }
 
 async function reserveHistoricalRollupCompletionBudget(db, runId, actorUid, documents) {
-  // A single owner-approved completion may start or finish the V7 migration.
+  // A single owner-approved completion may start or finish the V8 migration.
   // It has its own hard ceiling, is bound to one run and owner, and cannot be
   // reused after completion or for another repair.
   const safeRunId = String(runId || "").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 128);
@@ -6261,7 +6261,7 @@ exports.readHistoricalSalesRollup = onCall(
     const rollupState = rollupStateSnap.val() || {}, rollupVersion = Number(rollupState.schemaVersion) || 0;
     const ready = readySnap.val() === true && rollupState.complete === true && rollupVersion >= HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION;
     // V4 already proved that the compact day/payment/item totals were complete.
-    // A V7 date-level cashier upgrade must never blank those valid totals while it
+    // A V8 sale-time cashier upgrade must never blank those valid totals while it
     // is pending or running. MTD/YTD comparisons remain explicitly unavailable
     // until every month contains the date-level attribution.
     const compatible = (rollupState.complete === true && rollupVersion >= 4) || rollupState.compatibleBaseReady === true;
@@ -6277,7 +6277,7 @@ exports.readHistoricalSalesRollup = onCall(
     // presenting a partial peak-hour chart as complete.
     if (Object.values(months).some((month) => Number(month && month.schemaVersion) < 2)) return {ready:false, needsMaintenance:true, months:{}};
     // During an unfinished compatible upgrade, an absent month is still
-    // ambiguous and comparisons must remain withheld. Once the exact V7 pass
+    // ambiguous and comparisons must remain withheld. Once the exact V8 pass
     // is complete, however, it has scanned the full source replica: an absent
     // month is an authoritative zero-sales month (for example, before the shop
     // began operating), not missing history.
@@ -6396,11 +6396,11 @@ exports.manageHistoricalOrderArchive = onCall(
         if (action === "sales-rollup-backfill") rollupCompatibleBase = state.compatibleBaseReady === true || (state.complete === true && Number(state.schemaVersion) >= 4);
         const startingRollupUpgrade = completionOverride && action === "sales-rollup-backfill" && !cursor && !runId;
         if (completionOverride && !startingRollupUpgrade && (!cursor || !runId)) {
-          throw new HttpsError("failed-precondition", "The one-time completion override must continue the saved V7 monthly summary repair.");
+          throw new HttpsError("failed-precondition", "The one-time completion override must continue the saved V8 monthly summary repair.");
         }
         if (!cursor) {
           runId = `${Date.now()}_${String(actor.uid).slice(0, 24)}`;
-          // Preserve compatible V4 totals while V7 enriches them. A first-ever
+          // Preserve compatible V4 totals while V8 enriches them. A first-ever
           // rollup still fails closed until its complete totals are proven.
           if (action === "sales-rollup-backfill" && !(state.complete === true && Number(state.schemaVersion) >= 4)) await db.ref("/systemHealth/historicalArchive/salesRollupReady").set(false);
         }
@@ -6408,7 +6408,7 @@ exports.manageHistoricalOrderArchive = onCall(
           throw new HttpsError("failed-precondition", "Continue the active salesAt backfill with its returned run ID and cursor, or restart from the beginning.");
         }
         if (completionOverride && !startingRollupUpgrade && (action !== "sales-rollup-backfill" || Number(state.schemaVersion) < HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION || state.complete === true)) {
-          throw new HttpsError("failed-precondition", "The one-time completion override requires the active V7 monthly summary repair.");
+          throw new HttpsError("failed-precondition", "The one-time completion override requires the active V8 monthly summary repair.");
         }
         if (action === "sales-rollup-backfill") {
           if (completionOverride) await reserveHistoricalRollupCompletionBudget(db, runId, actor.uid, limit);
@@ -6467,7 +6467,7 @@ exports.manageHistoricalOrderArchive = onCall(
         accounting: action === "sales-ledger-backfill"
           ? "Read exact indexed financial movements by source order solely to build a compact Firestore reporting summary; no RTDB order, inventory, subledger, journal, or financial record was changed."
           : action === "sales-rollup-backfill"
-            ? (completionOverride ? "Completed the owner-approved, bounded V7 monthly summary repair from Firestore order replicas; no RTDB order, inventory, subledger, journal, or financial record was changed." : "Rebuilt idempotent monthly sales reporting totals from Firestore order replicas; no RTDB order, inventory, subledger, journal, or financial record was changed.")
+            ? (completionOverride ? "Completed the owner-approved, bounded V8 monthly summary repair from Firestore order replicas; no RTDB order, inventory, subledger, journal, or financial record was changed." : "Rebuilt idempotent monthly sales reporting totals from Firestore order replicas; no RTDB order, inventory, subledger, journal, or financial record was changed.")
             : "Firestore replica maintenance only; no RTDB order, inventory, financial movement, subledger, or Books journal was read or changed.",
       });
       return {action, cursor: nextCursor, complete: !nextCursor, summary, runId:runId || null};
