@@ -28,6 +28,17 @@ assert.equal(month.b.total,90,'legacy markers safely reconcile during backend ro
 let newPeriod;store.watch({startAt:16,endAt:18},rows=>newPeriod=rows,error=>{throw error;});await tick();assert(newPeriod.b,'new periods also load with a legacy marker');
 store.clear();assert.equal(stopped,1);
 
+// A successfully loaded period survives tab switches and refreshes only the
+// exact orders named by the bounded change journal. Sign-out clears the copy.
+const priorSessionStorage=globalThis.sessionStorage,sessionValues=new Map();
+globalThis.sessionStorage={getItem:key=>sessionValues.get(key)||null,setItem:(key,value)=>sessionValues.set(key,value),removeItem:key=>sessionValues.delete(key)};
+let cacheMarker,cacheReads=0,cacheSource={saved:{id:'saved',completedAt:15,total:50}},cacheRows,cacheMeta;
+function cachedStore(){return createHistoricalPeriodStore({watch(cb){cacheMarker=cb;queueMicrotask(()=>cb({sequence:5,changes:{}}));return()=>{};},async read(payload){cacheReads++;return{orders:Object.fromEntries(Object.entries(cacheSource).filter(([id,row])=>payload.mode==='ids'?payload.ids.includes(id):row.completedAt>=payload.startAt&&row.completedAt<=payload.endAt)),hasMore:false};}});}
+const firstCache=cachedStore();firstCache.watch({startAt:10,endAt:20},(rows,meta)=>{cacheRows=rows;cacheMeta=meta;},error=>{throw error;});await tick();await tick();assert.equal(cacheReads,1);assert.equal(cacheRows.saved.total,50);firstCache.clear();
+const reopenedCache=cachedStore();reopenedCache.watch({startAt:10,endAt:20},(rows,meta)=>{cacheRows=rows;cacheMeta=meta;},error=>{throw error;});assert.equal(cacheRows.saved.total,50,'saved Sales History must render before another Firestore page read');await tick();await tick();assert.equal(cacheReads,1,'an unchanged journal must reuse the saved period without another Firestore page');assert.equal(cacheMeta.stale,false,'the marker confirms that saved rows are current');
+cacheSource.saved={...cacheSource.saved,total:75};cacheMarker({sequence:6,changes:{6:{sequence:6,orderId:'saved'}}});await tick();await tick();assert.equal(cacheReads,2);assert.equal(cacheRows.saved.total,75,'a changed sale must patch the saved period by exact order ID');assert.equal(cacheMeta.cached,false);reopenedCache.clear(true);assert.equal([...sessionValues.keys()].filter(key=>key.startsWith('accaza_historical_period_v1:')).length,0,'sign-out must clear saved detailed sales');
+if(priorSessionStorage===undefined)delete globalThis.sessionStorage;else globalThis.sessionStorage=priorSessionStorage;
+
 // A summary range reads only its compact day records, and detailed history does
 // not silently page beyond the first 100 records.
 const compact=summarizeHistoricalSales({'2026-09':{schemaVersion:2,days:{'2026-09-01':{orders:2,grossCents:2000,discountCents:100,refundCents:0,netCents:1900,cogsCents:700,channels:{instore:{orders:2,netCents:1900}},payments:{cash:{netCents:1900}},items:{latte:{name:'Latte',categoryId:'coffee',units:2,netCents:1900}},hours:{9:{orders:2,netCents:1900}}},'2026-09-02':{orders:1,grossCents:1000,discountCents:0,refundCents:0,netCents:1000,cogsCents:300,channels:{online:{orders:1,netCents:1000}},payments:{gcash:{netCents:1000}},items:{tea:{name:'Tea',categoryId:'tea',units:1,netCents:1000}},hours:{10:{orders:1,netCents:1000}}}}}},{startAt:Date.parse('2026-09-01T00:00:00+08:00'),endAt:Date.parse('2026-09-01T23:59:59.999+08:00')});

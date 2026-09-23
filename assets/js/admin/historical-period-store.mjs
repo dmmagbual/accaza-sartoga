@@ -1,12 +1,51 @@
 import {salesStamp, periodKey} from './sales-period-data.mjs?v=562';
 
+const CACHE_PREFIX = 'accaza_historical_period_v1:';
+const CACHE_INDEX = `${CACHE_PREFIX}index`;
+const CACHE_MAX_RANGES = 6;
+
+function storage() {
+  try { return typeof sessionStorage !== 'undefined' ? sessionStorage : null; }
+  catch (_) { return null; }
+}
+function cacheKey(period) { return CACHE_PREFIX + periodKey(period); }
+function readCache(period) {
+  try {
+    const raw = storage()?.getItem(cacheKey(period)), value = raw ? JSON.parse(raw) : null;
+    if (!value || value.version !== 1 || !value.rows || typeof value.rows !== 'object') return null;
+    return value;
+  } catch (_) { return null; }
+}
+function writeCache(entry, sequence) {
+  const target = storage(); if (!target || !entry.rows) return;
+  const key = cacheKey(entry.period), updatedAt = Number(entry.updatedAt) || Date.now();
+  try {
+    target.setItem(key, JSON.stringify({version:1,period:entry.period,rows:entry.rows,cursor:entry.cursor||null,hasMore:entry.hasMore===true,sequence:Number.isSafeInteger(sequence)?sequence:null,updatedAt}));
+    const prior = JSON.parse(target.getItem(CACHE_INDEX) || '[]').filter(item => item && item.key !== key);
+    prior.unshift({key,updatedAt});
+    prior.slice(CACHE_MAX_RANGES).forEach(item => target.removeItem(item.key));
+    target.setItem(CACHE_INDEX, JSON.stringify(prior.slice(0,CACHE_MAX_RANGES)));
+  } catch (_) {}
+}
+function clearCache() {
+  const target = storage(); if (!target) return;
+  try {
+    const index = JSON.parse(target.getItem(CACHE_INDEX) || '[]');
+    const keys = index.map(item => item&&item.key).filter(Boolean);
+    if (typeof target.length === 'number' && typeof target.key === 'function') for (let i=0;i<target.length;i++) {
+      const key=target.key(i); if (key&&key.startsWith(CACHE_PREFIX)) keys.push(key);
+    }
+    [...new Set(keys.concat(CACHE_INDEX))].forEach(key => target.removeItem(key));
+  } catch (_) {}
+}
+
 // Session-only archive cache. A bounded server change journal lets every open
 // report share exact-record refreshes. Missing journal history forces reconciliation.
 export function createHistoricalPeriodStore(ops) {
   const ranges = new Map();
   let stopMarker = null, sequence = null, generation = 0, chain = Promise.resolve(), seenMarker = false;
   function inside(row, period) { const stamp = salesStamp(row); return stamp >= period.startAt && stamp <= period.endAt; }
-  function emit(entry) { for (const listener of entry.listeners) listener.data({...entry.rows},{hasMore:entry.hasMore===true}); }
+  function emit(entry) { for (const listener of entry.listeners) listener.data({...entry.rows},{hasMore:entry.hasMore===true,cached:entry.cached===true,stale:entry.stale===true,updatedAt:Number(entry.updatedAt)||0}); }
   function fail(error) { for (const entry of ranges.values()) for (const listener of entry.listeners) listener.error(error); }
   async function load(entry, refresh = false) {
     if (entry.pending) return entry.pending;
@@ -30,7 +69,7 @@ export function createHistoricalPeriodStore(ops) {
         Object.assign(rows, result.orders || {}); entry.cursor = result.cursor || cursor; entry.hasMore = result.hasMore === true;
       }
       if (epoch !== generation) return rows;
-      entry.rows = rows; emit(entry); return rows;
+      entry.rows = rows; entry.cached = false; entry.stale = false; entry.updatedAt = Date.now(); writeCache(entry,sequence); emit(entry); return rows;
     })().finally(() => { entry.pending = null; });
     return entry.pending;
   }
@@ -43,7 +82,10 @@ export function createHistoricalPeriodStore(ops) {
         seenMarker = true;
         const next = Number(marker && marker.sequence), previous = sequence;
         sequence = Number.isSafeInteger(next) && next > 0 ? next : null;
-        if (previous === sequence && sequence !== null) return;
+        if (previous === sequence && sequence !== null) {
+          for (const entry of ranges.values()) if (entry.rows && entry.stale) { entry.stale=false; writeCache(entry,sequence); emit(entry); }
+          return;
+        }
         // Initial loads and in-flight pages must finish before exact patches.
         await Promise.all([...ranges.values()].map(entry => entry.pending));
         if (epoch !== generation) return;
@@ -72,6 +114,7 @@ export function createHistoricalPeriodStore(ops) {
             if (row && inside(row, entry.period)) entry.rows[id] = row;
             else delete entry.rows[id];
           }
+          entry.cached=false; entry.stale=false; entry.updatedAt=Date.now(); writeCache(entry,sequence);
           emit(entry);
         }
       }).catch(error => { if(epoch !== generation)return;sequence = null; fail(error); });
@@ -82,7 +125,11 @@ export function createHistoricalPeriodStore(ops) {
     if (!ranges.has(key) && ranges.size >= 6) for (const [oldKey,cached] of ranges) {
       if (!cached.listeners.size && !cached.pending) { ranges.delete(oldKey); break; }
     }
-    if (!ranges.has(key)) ranges.set(key, {period:{startAt:Number(period.startAt),endAt:Number(period.endAt)},rows:null,cursor:null,hasMore:false,listeners:new Set(),pending:null});
+    if (!ranges.has(key)) {
+      const normalized={startAt:Number(period.startAt),endAt:Number(period.endAt)}, cached=readCache(normalized), cachedSequence=Number(cached&&cached.sequence);
+      if (cached && Number.isSafeInteger(cachedSequence) && cachedSequence>0 && sequence===null) sequence=cachedSequence;
+      ranges.set(key, {period:normalized,rows:cached&&cached.rows||null,cursor:cached&&cached.cursor||null,hasMore:!!(cached&&cached.hasMore),listeners:new Set(),pending:null,cached:!!cached,stale:!!cached,updatedAt:Number(cached&&cached.updatedAt)||0});
+    }
     return ranges.get(key);
   }
   return {
@@ -115,8 +162,9 @@ export function createHistoricalPeriodStore(ops) {
     async loadOlder(period) {
       const entry = entryFor(period); if (!entry.rows) return load(entry); if (!entry.hasMore) return {...entry.rows}; return load(entry);
     },
-    clear() {
+    clear(removeSaved = false) {
       generation++; if (stopMarker) stopMarker(); stopMarker = null; sequence = null; seenMarker = false; ranges.clear(); chain = Promise.resolve();
+      if (removeSaved) clearCache();
     }
   };
 }

@@ -48,4 +48,5 @@ if(summaryCalls!==1)throw new Error('Revisiting Sales History must reuse its sel
 if(!root.innerHTML.includes('Authoritative sales register'))throw new Error('Sales History did not render the selected reporting period after its bounded feeds loaded.');
 if(!root.innerHTML.includes('Load 100 older sales'))throw new Error('Sales History must expose manual bounded paging when more records exist.');
 if(!root.innerHTML.includes('Selected-period totals are compact and saved for this tab'))throw new Error('Sales History must disclose cached compact totals separately from paged rows.');
+for(const marker of ['Updates paused — showing saved Sales History','The saved rows stay visible','New, corrected, refunded, or deleted sales are applied by exact order ID'])if(!source.includes(marker))throw new Error('Sales History saved-data behavior missing: '+marker);
 console.log('PASS: Sales History reuses one compact selected-period total and renders bounded detail feeds without automatic historical downloads.');
