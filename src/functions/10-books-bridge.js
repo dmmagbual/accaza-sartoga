@@ -214,6 +214,9 @@ exports.ensureBooksJournal = onCall(
       const order = allOrders[id] || {};
       if (!BooksBridge.recognizedOrderForCogs(order)) return;
       const cogs = BooksBridge.cogsMovement(order, id, inventorySnap.val() || {}, categoriesSnap.val() || {});
+      // Lines sold without a recipe are tracked in /uncostedSales and costed by their own linked
+      // correction entry, so they are not unposted historical COGS.
+      if (!cogs.lines.length && (Number(order.costPendingLines) > 0 || order.costCorrections)) return;
       if (!cogs.lines.length) { missingCogs++; review[`cogs_missing_${id}`] = {movementId: `cogs_missing_${id}`, type: "unposted_cogs", sourceId: id, accounts: [{account: "cogs:missing_snapshot", code: "5090"}], detail: "Historical order has no reliable COGS snapshot; review in Unposted COGS Clearing without guessing a cost.", at: Date.now()}; return; }
       const bucket = BooksBridge.bucketFor(cogs); daily[bucket.key] = BooksBridge.applyDaily(daily[bucket.key] || null, cogs, cashMap); cogsPosted++;
     });

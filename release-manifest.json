@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 587,
+    "admin": 588,
     "books": 129,
     "customer": 75,
-    "serviceWorkerCache": 568
+    "serviceWorkerCache": 569
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
@@ -85,6 +85,7 @@
     "assets/js/admin/staff-push.mjs",
     "assets/js/admin/pos-sync-health.js",
     "assets/js/admin/live-operations.js",
+    "assets/js/admin/uncosted-sales.js",
     "database.rules.json",
     "firestore.rules",
     "firestore.indexes.json",
@@ -272,6 +273,7 @@
     "RELEASE_7H_SKU_LINK_INTEGRITY_2026-08-10.md"
   ],
   "requiredFunctionExports": [
+    "manageUncostedSales",
     "askAccazaAI",
     "manageAccazaAiKnowledge",
     "manageAccazaAiIssue",

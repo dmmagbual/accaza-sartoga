@@ -31,7 +31,9 @@ if(!customerSource.includes("publicOrdersOpen=null,customerLiveConnected=null")|
 if(!functionsSource.includes('if (!shift || shift.status === "closed") throw new HttpsError("failed-precondition", "Online orders are closed right now.'))fail('server does not reject online orders without an open shift');
 if(!rulesRaw.includes('"publicOrderStatus": { ".read": true, ".write": false }'))fail('public order status rules missing');
 if(!functionsSource.includes('[`activeOrders/${orderId}`]: activeOrderProjection(order)'))fail('online orders do not enter the live projection atomically');
-if(!functionsSource.includes('Costing.costOrder({'))fail('Release 3B server-authoritative costing engine is not used at finalization');
+// 24 Sep 2026: sale-time costing goes through the tolerant wrapper, which runs the same shared
+// engine per order (and per line only when a recipe is missing or broken).
+{const uncostedLib=fs.readFileSync(path.join(root,'functions','lib','uncosted-sales.js'),'utf8');if(!functionsSource.includes('UncostedSales.costOrderTolerant(')||!uncostedLib.includes('Costing.costOrder(ctx)')||!uncostedLib.includes('require("./costing")'))fail('Release 3B server-authoritative costing engine is not used at finalization');}
 if(!functionsSource.includes('exports.validateRecipeDefinition = onCall'))fail('Release 3B server recipe validator missing');
 if(!functionsSource.includes('exports.saveSharedChoiceIngredients = onCall')||!adminSource.includes('saveSharedChoiceIngredients:function(optionCosts)'))fail('Shared choice ingredients are not routed through the authenticated server save');
 if(!functionsSource.includes('SharedChoiceValidation.validate(optionCosts,inventory,groups)'))fail('Shared choice serving-style scopes are not validated server-side');

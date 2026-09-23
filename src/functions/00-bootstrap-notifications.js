@@ -74,6 +74,7 @@ const onValueCreated = RetryGuard.wrapTriggerFactory(DatabaseTriggers.onValueCre
 const onValueDeleted = RetryGuard.wrapTriggerFactory(DatabaseTriggers.onValueDeleted, retryGuardDeps);
 const SharedChoiceValidation = require("./lib/shared-choice-validation");
 const HistoricalArchive = require("./lib/historical-archive");
+const UncostedSales = require("./lib/uncosted-sales");
 const TrackedRead = require("./lib/tracked-read");
 
 initializeApp();

@@ -86,6 +86,7 @@ Key nodes and authority boundaries:
 | `offlinePosSync` | Exactly-once offline replay claims/evidence | Server only/private |
 | `shiftCrews` | Shift crew membership sessions (who may ring sales into an open shift besides its owner) | Server only/private; `posActiveShift/crew` and `shifts/{id}/crew` are display copies |
 | `posSyncAlerts` | Every POS sale the server refused, with the exact command, for alerting and management recovery | Server only/private |
+| `uncostedSales` | Sale lines sold without a usable recipe (no stock, no cost at sale), open until a manager applies the recipe cost or confirms no cost; see `docs/UNCOSTED_SALES.md` | Server only/private; read through `manageUncostedSales` |
 | `archivedOrders`, `operationalAudit`, `deletionAudit` | Retention and immutable control evidence | Server only |
 | `clientTelemetryDaily` | Privacy-safe daily aggregate timing/errors | Function writes; owner/admin/manager read |
 

@@ -53,6 +53,8 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('onShiftCloseAssu
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('getUndepositedControlSnapshot')+1,0,'syncUndepositedLedgerPageIndex','syncPettyVoucherAttentionIndex','syncCashCustodyPageIndex','getUndepositedPage');
 // Sep 2026: incremental-backup dirty markers for the large history nodes.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('backupDatabaseDaily'),0,'markBackupDirtyArchivedOrders','markBackupDirtyInventoryMovements','markBackupDirtyOrderInventoryPlans','markBackupDirtyFinancialMovements','markBackupDirtyCashBalanceApplied','markBackupDirtyBooksJournal','markBackupDirtyShifts','markBackupDirtyOperationalAudit','markBackupDirtyFinancialCommandClaims','markBackupDirtyInventoryAccounting','markBackupDirtyFinancialApprovals','markBackupDirtyActivityLog','markBackupDirtyCfLedger','markBackupDirtyPettyCashReceipts','markBackupDirtyStockReceipts','markBackupDirtyPurchaseInvoices','markBackupDirtyPlatformPayouts','markBackupDirtyInternalUsage','markBackupDirtyInventoryAdjustments','markBackupDirtyPettyCashVouchers','markBackupDirtyPettyCashReplenishments','markBackupDirtyReceivables','markBackupDirtyPayables','markBackupDirtySuppliers','markBackupDirtyInventorySku','markBackupDirtyAppCustomers','markBackupDirtyReviews','markBackupDirtyFeedbacks','markBackupDirtyPackages');
+// 24 Sep 2026: sales without a usable recipe are flagged and costed later by a manager.
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('recordPlatformCatchup')+1,0,'manageUncostedSales');
 expectedFunctionExports.push('askAccazaAI');
 expectedFunctionExports.push('manageAccazaAiKnowledge');
 expectedFunctionExports.push('manageAccazaAiIssue');

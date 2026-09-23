@@ -36,6 +36,8 @@
         "voidPayments": { ".validate": "data.exists() && newData.val() === data.val()" },
         "voidApprovalId": { ".validate": "data.exists() && newData.val() === data.val()" },
         "paymentApprovalId": { ".validate": "data.exists() && newData.val() === data.val()" },
+        "costCorrections": { ".validate": "data.exists() && newData.val() === data.val()" },
+        "costCorrectionTotal": { ".validate": "data.exists() && newData.val() === data.val()" },
         "status": { ".validate": "!data.exists() || newData.val() === data.val()" }
       }
     },
@@ -53,6 +55,9 @@
     "shiftSyncGates": { ".read": false, ".write": false },
     "shiftCrews": { ".read": false, ".write": false },
     "posSyncAlerts": { ".indexOn": "state", ".read": false, ".write": false },
+    // Sale lines sold without a usable recipe, awaiting a manager's cost correction. Server only;
+    // read through manageUncostedSales.
+    "uncostedSales": { ".indexOn": ["status", "orderId"], ".read": false, ".write": false },
     "functionDeadLetters": { ".indexOn": "abandonedAt", ".read": false, ".write": false },
     "functionRetryAttempts": { ".indexOn": "lastFailedAt", ".read": false, ".write": false },
     "functionFailureBudget": { ".read": false, ".write": false },

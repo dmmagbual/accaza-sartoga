@@ -80,7 +80,12 @@ try{
     await assertFails(get(ref(db,'shiftCrews/rule-crew')));
     await assertFails(set(ref(db,'posSyncAlerts/pos_rule_alert'),{state:'dismissed'}));
     await assertFails(get(ref(db,'posSyncAlerts')));
+    // Sales without a recipe (24 Sep 2026): the flags and cost corrections are server-only.
+    await assertFails(get(ref(db,'uncostedSales')));
+    await assertFails(set(ref(db,'uncostedSales/POS-X__sale_0'),{status:'resolved'}));
   }
+  await assertFails(update(ref(owner,'orders/own'),{costCorrections:{forged:{amount:1}}}));
+  await assertFails(update(ref(owner,'orders/own'),{costCorrectionTotal:1}));
 
   await assertSucceeds(get(ref(a,'orders/own')));
   await assertFails(get(ref(b,'orders/own')));
