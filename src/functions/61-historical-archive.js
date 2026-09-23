@@ -397,11 +397,14 @@ exports.readHistoricalSalesRollup = onCall(
     // detail. Callers can render compatible totals during the upgrade without
     // presenting a partial peak-hour chart as complete.
     if (Object.values(months).some((month) => Number(month && month.schemaVersion) < 2)) return {ready:false, needsMaintenance:true, months:{}};
-    // Do not treat a partial Firestore response as a calendar YTD. A missing
-    // month can mean an incomplete rebuild, not a genuine zero-sales month.
-    // The V7 completed source-replica pass is the authority for this coverage.
-    const missingMonths = expectedMonths.filter((month) => !Object.prototype.hasOwnProperty.call(months, month));
-    const coverageComplete = missingMonths.length === 0;
+    // During an unfinished compatible upgrade, an absent month is still
+    // ambiguous and comparisons must remain withheld. Once the exact V7 pass
+    // is complete, however, it has scanned the full source replica: an absent
+    // month is an authoritative zero-sales month (for example, before the shop
+    // began operating), not missing history.
+    const absentMonths = expectedMonths.filter((month) => !Object.prototype.hasOwnProperty.call(months, month));
+    const coverageComplete = ready || absentMonths.length === 0;
+    const missingMonths = coverageComplete ? [] : absentMonths;
     const rich = ready && Object.values(months).every((month) => Number(month && month.schemaVersion) >= 3);
     const analyticsReady = rich && coverageComplete && Object.values(months).every((month) => Number(month && month.analyticsSchemaVersion) >= 2);
     return {ready:true, months, schemaVersion:rich ? 3 : 2, analyticsReady, coverageComplete, missingMonths, needsMaintenance:!rich || !analyticsReady};
