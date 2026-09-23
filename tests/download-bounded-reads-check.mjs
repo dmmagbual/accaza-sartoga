@@ -10,6 +10,7 @@ import {loadFunctions} from './helpers/functions-sandbox.mjs';
 
 const require = createRequire(import.meta.url);
 const Costing = require('../functions/lib/costing.js');
+const UncostedSales = require('../functions/lib/uncosted-sales.js');
 const BooksBridge = require('../functions/lib/books-bridge.js');
 const FinancialClose = require('../functions/lib/financial-close.js');
 const {trackedRead} = require('../functions/lib/tracked-read.js');
@@ -118,7 +119,8 @@ const {internal: I} = loadFunctions(db, {now: NOW, expose: ['calculateOrderInven
   for (const [id, order] of Object.entries(Object.assign({}, view.archivedOrders, view.orders))) {
     let before, after;
     try {
-      const costing = Costing.costOrder({lineItems: order.lineItems, recipes: view.recipes, inventory: view.inventory, menuItems: view.menuItems, sharedBaseIngredients: {}, optionCosts: {}, optionRecipes: {}, optionGroups: view.optionGroups, packagingRules: view.packagingRules, packagingAssignments: {}});
+      // 24 Sep 2026: sale-time costing never refuses a sale; unusable recipe lines are flagged.
+      const costing = UncostedSales.costOrderTolerant({lineItems: order.lineItems, recipes: view.recipes, inventory: view.inventory, menuItems: view.menuItems, sharedBaseIngredients: {}, optionCosts: {}, optionRecipes: {}, optionGroups: view.optionGroups, packagingRules: view.packagingRules, packagingAssignments: {}});
       if (!costing.ok) throw new Error('Authoritative costing rejected order ' + id + ': ' + costing.errors.slice(0, 5).map((r) => r.code + ': ' + r.message).join(' | '));
       before = stable(I.buildOrderInventoryPlan(costing, view.inventory, ps, 7));
     } catch (e) { before = e.message; }
@@ -132,7 +134,17 @@ const {internal: I} = loadFunctions(db, {now: NOW, expose: ['calculateOrderInven
     try { p2 = stable(await I.readCatalogKeyed(db, ['menuItems', 'optionGroups', 'packages'], (m) => I.priceOrderLinesServer(order.lineItems, m.menuItems, m.optionGroups, view.availability, m.packages))); } catch (e) { p2 = e.message; }
     assert.equal(p2, p1, `pricing of ${id} is unchanged`);
   }
-  assert.match(stable(await I.calculateOrderInventoryPlan(db, view.orders.O4, 7, 'O4').catch((e) => e.message)), /BROKEN_INVENTORY_REFERENCE/, 'a recipe pointing at a missing item is still rejected');
+  {
+    // A recipe pointing at a missing item no longer refuses the sale: the line is excluded from
+    // stock and cost and recorded for a manager to resolve (24 Sep 2026).
+    const plan = await I.calculateOrderInventoryPlan(db, view.orders.O4, 7, 'O4');
+    assert.equal(plan.uncostedLines.length, 1, 'the broken-recipe line is flagged');
+    assert.equal(plan.uncostedLines[0].reason, 'broken_recipe');
+    assert.ok(plan.uncostedLines[0].codes.includes('BROKEN_INVENTORY_REFERENCE'));
+    assert.equal(plan.emptyUsage, true, 'no stock is taken for the excluded line');
+    assert.equal(plan.totalCost, 0);
+    assert.equal(Costing.costOrder({lineItems: view.orders.O4.lineItems, recipes: view.recipes, inventory: view.inventory, menuItems: view.menuItems}).ok, false, 'the costing engine itself still reports the broken recipe');
+  }
   db.resetReads();
   const invoiceLines = stable(await I.purchaseInventoryLines(db, view.purchaseInvoices.PI1, false));
   assert.match(invoiceLines, /coa:1210/);

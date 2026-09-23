@@ -381,20 +381,32 @@ function buildOrderInventoryPlan(costing, inv, ps, capturedAt) {
   const invCategories=ps.invCategories||{},categorySnapshot={food:0,beverage:0,packaging:0,directLabor:0,unallocated:0},accountSnapshot={};
   costing.lines.forEach((line)=>{const item=inv[line.ingredientId]||{},category=invCategories[item.category]||{},label=String(category.name||item.category||"").toLowerCase();let bucket="unallocated";if(/packag|cup|lid|straw|napkin|container/.test(label))bucket="packaging";else if(/beverage|drink|coffee|tea|milk|syrup|powder/.test(label))bucket="beverage";else if(/food|ingredient|bakery|kitchen|pastry|meal/.test(label))bucket="food";categorySnapshot[bucket]+=Number(line.totalCost)||0;const mapping=BooksBridge.itemAccounts(item),key=mapping.inventory&&mapping.cost?`${mapping.inventory}|${mapping.cost}`:"1290|5090";accountSnapshot[key]=Financial.money((accountSnapshot[key]||0)+Number(line.totalCost||0));});
   Object.keys(categorySnapshot).forEach((key)=>{categorySnapshot[key]=Math.round(categorySnapshot[key]*100)/100;});
-  return{schemaVersion:1,capturedAt,capturedBy:"server",engineVersion:costing.engineVersion,usage:positiveOrderInventoryUsage(costing.usage),totalCost:costing.totalCost,categorySnapshot,accountSnapshot,cogsCovered:costing.cogsCovered,lines:costing.lines,warnings:costing.warnings};
+  const uncosted=Array.isArray(costing.uncosted)?costing.uncosted:[];
+  const plan={schemaVersion:1,capturedAt,capturedBy:"server",engineVersion:costing.engineVersion,usage:positiveOrderInventoryUsage(costing.usage),totalCost:costing.totalCost,categorySnapshot,accountSnapshot,cogsCovered:costing.cogsCovered,lines:costing.lines,warnings:costing.warnings};
+  // Lines sold without a usable recipe carry no stock and no cost; they are recorded for
+  // management to cost later. The database drops an empty usage map, so say so explicitly.
+  plan.uncostedVersion=1;if(uncosted.length)plan.uncostedLines=uncosted;
+  if(!Object.keys(plan.usage).length)plan.emptyUsage=true;
+  return plan;
 }
 
 // Sale-time costing. Recipes, menu items, inventory and packaging rules are read record by
 // record for the lines of this order (readCatalogKeyed), so a sale downloads a few KB instead
 // of the whole catalog; the plan is identical to one built from the full catalog.
+// A missing or broken recipe never refuses the sale (24 Sep 2026): that line is excluded from
+// stock and cost and flagged in /uncostedSales for a manager to resolve.
 async function calculateOrderInventoryPlan(db,order,capturedAt=Date.now(),orderId="") {
-  const [optSnap,ps]=await Promise.all([/* download-ok: catalog option recipes are menu configuration, not history (empty on 16 Sep 2026) */db.ref("/optionRecipes").get(),readPosSettings(db,["sharedBaseIngredients","optionCosts","packagingAssignments","invCategories"])]),optionRaw=optSnap.val()||{},optionRecipes={};
-  Object.keys(optionRaw).forEach((key)=>{const row=optionRaw[key]||{};optionRecipes[row.label||key]=row;});
-  return readCatalogKeyed(db,["recipes","inventory","menuItems","optionGroups","packagingRules"],(maps)=>{
-    const costing=Costing.costOrder({lineItems:order.lineItems||[],recipes:maps.recipes,inventory:maps.inventory,menuItems:maps.menuItems,sharedBaseIngredients:ps.sharedBaseIngredients||{},optionCosts:ps.optionCosts||{},optionRecipes,optionGroups:maps.optionGroups,packagingRules:maps.packagingRules,packagingAssignments:ps.packagingAssignments||{}});
-    if(!costing.ok)throw new Error("Authoritative costing rejected order"+(orderId?" "+orderId:"")+": "+costing.errors.slice(0,5).map(row=>row.code+": "+row.message).join(" | "));
+  return withCostingCatalog(db,(catalog,maps,ps)=>{
+    const costing=UncostedSales.costOrderTolerant(Object.assign({},catalog,{lineItems:order.lineItems||[]}));
+    if(costing.uncosted.length)logger.warn("Sale lines without a usable recipe",{orderId,lines:costing.uncosted.map(row=>`${row.itemKey}:${row.reason}`)});
     return buildOrderInventoryPlan(costing,maps.inventory,ps,capturedAt);
   });
+}
+// The costing context for sale-time costing and for later cost corrections of uncosted lines.
+async function withCostingCatalog(db,compute){
+  const [optSnap,ps]=await Promise.all([/* download-ok: catalog option recipes are menu configuration, not history (empty on 16 Sep 2026) */db.ref("/optionRecipes").get(),readPosSettings(db,["sharedBaseIngredients","optionCosts","packagingAssignments","invCategories"])]),optionRaw=optSnap.val()||{},optionRecipes={};
+  Object.keys(optionRaw).forEach((key)=>{const row=optionRaw[key]||{};optionRecipes[row.label||key]=row;});
+  return readCatalogKeyed(db,["recipes","inventory","menuItems","optionGroups","packagingRules"],(maps)=>compute({recipes:maps.recipes,inventory:maps.inventory,menuItems:maps.menuItems,sharedBaseIngredients:ps.sharedBaseIngredients||{},optionCosts:ps.optionCosts||{},optionRecipes,optionGroups:maps.optionGroups,packagingRules:maps.packagingRules,packagingAssignments:ps.packagingAssignments||{}},maps,ps));
 }
 
 exports.onOrderFinalize = onValueWritten(
@@ -405,12 +417,21 @@ exports.onOrderFinalize = onValueWritten(
   async (event) => {
     const orderId = event.params.orderId;
     const db = getDatabase();
-    const oref = db.ref("/orders/" + orderId);
     const o = event.data.after.val();
     if (!o || (o.status !== "Completed" && o.status !== "Received") || !o.lineItems) return;
     if (o.inventoryDeducted && o.inventoryLedgerVersion === 1) return;
-
     try {
+      await finalizeOrderInventory(db, orderId, o);
+    } catch (err) {
+      logger.error("onOrderFinalize failed", {orderId, error: String(err)});
+      throw err;
+    }
+  },
+);
+
+// Shared by the trigger and by management recovery of sales that were stuck before
+// 24 Sep 2026. Idempotent: the plan is immutable and every stock movement has a fixed ID.
+async function finalizeOrderInventory(db, orderId, o) {
       // The immutable sale-time plan is read first. When it already exists (a
       // retry, or a re-write of an order that was finalized before archiving),
       // the catalog is not needed and is not downloaded again.
@@ -419,7 +440,8 @@ exports.onOrderFinalize = onValueWritten(
       // Otherwise the plan is costed now from the records this order uses.
       const capturedAt=Date.now(),candidate=hasPlan?null:await calculateOrderInventoryPlan(db,o,capturedAt,orderId);
       const planResult=await db.ref(`/orderInventoryPlans/${orderId}`).transaction((current)=>current||candidate,undefined,false),plan=planResult.snapshot.val();
-      if(!plan||plan.capturedBy!=="server"||Number(plan.schemaVersion)!==1||!plan.usage)throw new Error("Immutable server inventory plan is missing for order "+orderId);
+      // A plan with no stock usage (every line uncosted) is stored without `usage`; it is valid.
+      if(!UncostedSales.validPlan(plan))throw new Error("Immutable server inventory plan is missing for order "+orderId);
       const usage = positiveOrderInventoryUsage(plan.usage);
       const ids = Object.keys(usage);
       const cogs = Number(plan.totalCost)||0,cogsCategorySnapshot=plan.categorySnapshot||{},cogsAccountSnapshot=plan.accountSnapshot||{};
@@ -432,6 +454,7 @@ exports.onOrderFinalize = onValueWritten(
         occurredAt: Number(o.completedAt || o.receivedAt || Date.now()),
         actorName: o.onDuty || o.staff || "Order finalization",
       }, {uid: "server", role: "server"})));
+      const uncostedLines = await uncostedLinesForPlan(db, plan, o.lineItems);
       const finalizationMetadata = {
         inventoryDeducted: true,
         inventoryUsage: usage,
@@ -452,17 +475,15 @@ exports.onOrderFinalize = onValueWritten(
         deductedBy: "server",
         inventoryLedgerVersion: 1,
       };
+      if (uncostedLines.length && o.voided !== true) finalizationMetadata.costPendingLines = uncostedLines.length;
       // Archiving can win the race while costing is running. A transaction will
       // never recreate a deleted live order; if it has already moved, attach the
       // exact same confirmation metadata to the archived source record instead.
       await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, orderId, finalizationMetadata);
-      logger.info("Server deducted order", {orderId, items: ids.length, cogs});
-    } catch (err) {
-      logger.error("onOrderFinalize failed", {orderId, error: String(err)});
-      throw err;
-    }
-  },
-);
+      if (uncostedLines.length && o.voided !== true) await registerUncostedSale(db, orderId, o, uncostedLines, "sale");
+      logger.info("Server deducted order", {orderId, items: ids.length, cogs, uncosted: uncostedLines.length});
+      return {orderId, items: ids.length, uncosted: uncostedLines.length};
+}
 
 exports.onOrderInventoryReversal = onValueWritten(
   {ref: "/orders/{orderId}/inventoryReversalRequested", region: ORDER_REGION, retry: true},
@@ -474,11 +495,13 @@ exports.onOrderInventoryReversal = onValueWritten(
     const order = (await orderRef.get()).val();
     if (!order || order.inventoryReversed) return;
     const corrected = !!(order.completedOrderCorrectionId && order.correctedInventoryUsage), usage = positiveOrderInventoryUsage(corrected ? order.correctedInventoryUsage : (order.inventoryUsage || {}));
-    if (order.inventoryDeducted !== true || !Object.keys(usage).length) {
+    if (order.inventoryDeducted !== true) {
       // A void/refund can be requested milliseconds after completion. Wait for
       // finalization so the reversal can link to—and exactly offset—the sale.
       throw new Error(`Order ${orderId} inventory finalization is not complete; retry reversal.`);
     }
+    // A sale whose every line was uncosted took no stock: there is nothing to return, and the
+    // reversal must complete rather than retry forever (24 Sep 2026).
     const type = order.voided ? "void_reversal" : "refund_reversal";
     await Promise.all(Object.keys(usage).map((itemId) => applyInventoryMovement(db, {
       movementId: `${type}_${orderId}_${itemId}`,
@@ -487,6 +510,8 @@ exports.onOrderInventoryReversal = onValueWritten(
       note: String(order.inventoryReversalReason || order.refundReason || order.voidReason || "Inventory returned").slice(0, 500),
       reversalOf: corrected ? `crs_${order.correctionInventoryToken}_${itemId}` : `sale_${orderId}_${itemId}`, actorName: order.onDuty || order.staff || "Order reversal",
     }, {uid: "server", role: "server"})));
+    // Cost corrections applied later to uncosted lines were real stock usage too.
+    await reverseUncostedCostCorrections(db, orderId, order, type);
     await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, orderId, {
       inventoryReversed: true, inventoryReversedAt: Date.now(), inventoryReversalRequested: null,
       inventoryReversalLedgerVersion: 1,

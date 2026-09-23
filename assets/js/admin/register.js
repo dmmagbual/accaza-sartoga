@@ -122,7 +122,7 @@ function computeZ(shift,sourceOrders){
     z.tips+=Number(o.tipRounding)||0;
     var _ch=(o.channel&&z.byChannel[o.channel]!=null)?o.channel:'instore';z.byChannel[_ch]+=gross-disc-ref;
     /* Shift crew: who rang each sale (informational; the drawer stays the shift owner's). */
-    var _sk=String(o.soldByStaffId||o.soldByUid||shift.staffId||'owner').replace(/[.#$\/\[\]]/g,'_')||'owner';z.bySeller[_sk]=z.bySeller[_sk]||{name:String(o.soldBy||shift.staff||''),role:String(o.soldByRole||'owner'),tx:0,net:0};z.bySeller[_sk].tx++;z.bySeller[_sk].net+=gross-disc-ref;
+    var _sk=String(o.soldByStaffId||o.soldByUid||shift.staffId||'owner').replace(/[.#$\/\[\]]/g,'_')||'owner';z.bySeller[_sk]=z.bySeller[_sk]||{name:String(o.soldBy||shift.staff||''),role:String(o.soldByRole||'owner'),tx:0,net:0};z.bySeller[_sk].tx++;z.bySeller[_sk].net+=gross-disc-ref;z.uncostedCount=(z.uncostedCount||0)+(Number(o.costPendingLines)||0);
     if(o.paymentStatus==='pending'){z.pending+=(Number(o.total)||0);z.pendingCount++;}
     if(o.paymentStatus==='cashier_verified'){z.managerPending+=(Number(o.total)||0);z.managerPendingCount++;}
     paysOf(o).forEach(function(p){var m=window.AccazaSales.paymentKey(p),acct=window.AccazaSales.paymentAccount(p,cashAccountsMap),amt=Number(p.amount)||0;z.byMethod[m]=(z.byMethod[m]||0)+amt;z.byMethodAccount[m]=z.byMethodAccount[m]||{};z.byMethodAccount[m][acct||'']=(z.byMethodAccount[m][acct||'']||0)+amt;});
@@ -981,6 +981,7 @@ function showZ(shift,z,existingWindow){
     +'<div><b>By payment method</b></div><table>'+methods+'<tr style="border-top:1px solid #000;"><td><b>Total by payment method</b></td><td style="text-align:right;"><b>'+peso(methodTotal)+'</b></td></tr></table><hr>'
     +'<div><b>Sales this shift ('+saleList.length+')</b></div><table>'+(saleRows||'<tr><td colspan="2">None</td></tr>')+'<tr style="border-top:1px solid #000;"><td><b>Total sales this shift</b></td><td style="text-align:right;"><b>'+peso(salesTotal)+'</b></td></tr></table><hr>'
     +(z.pendingCount?'<div style="color:#8a6d1b;"><b>⏳ Awaiting cashier verification: '+peso(z.pending)+' ('+z.pendingCount+')</b></div><div style="font-size:9px;">Not yet confirmed in the actual receiving account.</div><hr>':'')
+    +(z.uncostedCount?'<div><b>Sold without recipe: '+z.uncostedCount+' line(s)</b></div><div style="font-size:9px;">Cost of sales pending manager review in Recipes.</div><hr>':'')
     +(z.managerPendingCount?'<div style="color:#0c5460;"><b>🔎 Awaiting manager revalidation: '+peso(z.managerPending)+' ('+z.managerPendingCount+')</b></div><div style="font-size:9px;">Cashier verified; independent manager review remains open.</div><hr>':'')
     +(cashMoveRows?'<div><b>Cash movements</b></div><table>'+cashMoveRows+'<tr style="border-top:1px solid #000;"><td><b>Net cash movements</b></td><td style="text-align:right;"><b>'+peso((Number(z.payIns)||0)-(Number(z.payOuts)||0))+'</b></td></tr></table><hr>':'')
     +'<table><tr><td>Voids</td><td style="text-align:right;">'+z.voidCount+' ('+peso(z.voidAmt)+')</td></tr>'

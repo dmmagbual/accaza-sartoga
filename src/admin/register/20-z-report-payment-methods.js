@@ -11,7 +11,7 @@ function computeZ(shift,sourceOrders){
     z.tips+=Number(o.tipRounding)||0;
     var _ch=(o.channel&&z.byChannel[o.channel]!=null)?o.channel:'instore';z.byChannel[_ch]+=gross-disc-ref;
     /* Shift crew: who rang each sale (informational; the drawer stays the shift owner's). */
-    var _sk=String(o.soldByStaffId||o.soldByUid||shift.staffId||'owner').replace(/[.#$\/\[\]]/g,'_')||'owner';z.bySeller[_sk]=z.bySeller[_sk]||{name:String(o.soldBy||shift.staff||''),role:String(o.soldByRole||'owner'),tx:0,net:0};z.bySeller[_sk].tx++;z.bySeller[_sk].net+=gross-disc-ref;
+    var _sk=String(o.soldByStaffId||o.soldByUid||shift.staffId||'owner').replace(/[.#$\/\[\]]/g,'_')||'owner';z.bySeller[_sk]=z.bySeller[_sk]||{name:String(o.soldBy||shift.staff||''),role:String(o.soldByRole||'owner'),tx:0,net:0};z.bySeller[_sk].tx++;z.bySeller[_sk].net+=gross-disc-ref;z.uncostedCount=(z.uncostedCount||0)+(Number(o.costPendingLines)||0);
     if(o.paymentStatus==='pending'){z.pending+=(Number(o.total)||0);z.pendingCount++;}
     if(o.paymentStatus==='cashier_verified'){z.managerPending+=(Number(o.total)||0);z.managerPendingCount++;}
     paysOf(o).forEach(function(p){var m=window.AccazaSales.paymentKey(p),acct=window.AccazaSales.paymentAccount(p,cashAccountsMap),amt=Number(p.amount)||0;z.byMethod[m]=(z.byMethod[m]||0)+amt;z.byMethodAccount[m]=z.byMethodAccount[m]||{};z.byMethodAccount[m][acct||'']=(z.byMethodAccount[m][acct||'']||0)+amt;});

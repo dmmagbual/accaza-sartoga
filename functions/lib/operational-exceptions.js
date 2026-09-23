@@ -125,6 +125,10 @@ function buildOperationalExceptions(input, now = Date.now()) {
   // final Z report until management reconciles it.
   rows(input.posSyncAlerts).forEach((alert) => {if (alert.state !== "open") return;exceptions.push(item("pos_sale_rejected", "critical", alert.id, `POS sale ${alert.orderId || alert.id} was not saved`, `${String(alert.message || "The server refused this sale.").slice(0, 200)} Recover or dismiss it in Register Ops → Sales needing recovery.`, Number(alert.lastAt || alert.firstAt || 0), "ops"));});
   rows(input.pendingShiftHandovers).forEach((handover) => {exceptions.push(item("shift_handover_pending", now - Number(handover.at || 0) > 86400000 ? "critical" : "warning", handover.id, `Shift of ${handover.staff || "a cashier"} awaits reconciliation`, "Recover any retained sales, then finalize the handover in Register Ops to produce its Z report.", Number(handover.at || 0), "ops"));});
+  // Sales rung with a missing or broken recipe carry no cost until a manager resolves them.
+  const uncostedByItem = {};
+  rows(input.uncostedSales).forEach((row) => {if (row.status !== "open") return;const key = String(row.itemKey || "unknown");const group = uncostedByItem[key] || (uncostedByItem[key] = {name: String(row.itemName || key).slice(0, 120), count: 0, firstAt: 0});group.count++;const at = Number(row.occurredAt || 0);if (at && (!group.firstAt || at < group.firstAt)) group.firstAt = at;});
+  Object.keys(uncostedByItem).forEach((key) => {const group = uncostedByItem[key];exceptions.push(item("uncosted_sale", "warning", `uncosted_${key}`, `${group.name}: ${group.count} sale${group.count === 1 ? "" : "s"} without recipe cost`, "The sales went through without stock or Cost of Sales for this item. Build or repair its recipe, then resolve them in Recipes \u2192 Sales awaiting cost.", group.firstAt || now, "recipes"));});
   // Background triggers that exhausted their bounded retry window. The event was
   // acknowledged to stop repeated redelivery (and repeated database downloads),
   // so the unfinished work must be visible until it ages out of the window; the

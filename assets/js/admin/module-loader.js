@@ -1,9 +1,9 @@
 (function(){
   'use strict';
   var base='assets/js/admin/';
-  var files={offlinequeue:'offline-queue.js',possynlir:'pos-sync-health.js',costing:'../shared/costing.js',pos:'pos.js',channelpricing:'channel-pricing.js',analytics:'analytics.js',saleshistory:'sales-history.js',register:'register.js',staff:'staff-access.js',packages:'packages.js',finance:'finance.js',operations:'operations-dashboard.js',liveoperations:'live-operations.js',undeposited:'undeposited.js',inbox:'staff-inbox.js',accountingperiods:'accounting-periods.js'};
+  var files={offlinequeue:'offline-queue.js',possynlir:'pos-sync-health.js',costing:'../shared/costing.js',pos:'pos.js',channelpricing:'channel-pricing.js',analytics:'analytics.js',saleshistory:'sales-history.js',register:'register.js',staff:'staff-access.js',packages:'packages.js',finance:'finance.js',operations:'operations-dashboard.js',liveoperations:'live-operations.js',undeposited:'undeposited.js',inbox:'staff-inbox.js',accountingperiods:'accounting-periods.js',uncostedsales:'uncosted-sales.js'};
   var routes={
-    pos:['inbox','pos'],inventory:['pos'],purchases:['finance','pos'],recipes:['pos'],usage:['pos'],channelpricing:['pos','channelpricing'],dedupe:['pos'],
+    pos:['inbox','pos'],inventory:['pos'],purchases:['finance','pos'],recipes:['pos','uncostedsales'],usage:['pos'],channelpricing:['pos','channelpricing'],dedupe:['pos'],
     saleshistory:['saleshistory'],analytics:['pos','analytics'],payouts:['pos','analytics'],stockvalue:['pos','analytics'],dailyreport:['pos','analytics'],
     ops:['pos','register'],possettings:['pos','register'],discrepancy:['pos','register'],petty:['finance','pos','register'],packages:['pos','packages'],staffaccess:['staff'],
     operations:['operations'],liveoperations:['liveoperations'],undeposited:['undeposited'],inbox:['inbox'],accountingperiods:['accountingperiods']

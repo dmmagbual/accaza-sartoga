@@ -127,7 +127,8 @@ function reportingContribution(order) {
     discountCents, refundCents, netCents,
     channel: reportingChannel(order), day: reportingDay(stamp), hour: reportingHour(stamp), weekday: reportingWeekday(stamp),
     cashierKey: cashier.key, cashierName: cashier.name,
-    cogsCents: Math.max(0, Math.round((Number(order.correctedCogsSnapshot != null ? order.correctedCogsSnapshot : order.cogsSnapshot) || 0) * 100)),
+    // A manager's later cost correction for lines sold without a recipe is part of the sale's cost.
+    cogsCents: Math.max(0, Math.round(((Number(order.correctedCogsSnapshot != null ? order.correctedCogsSnapshot : order.cogsSnapshot) || 0) + (Number(order.costCorrectionTotal) || 0)) * 100)),
     payments: reportingPaymentEntries(order, netCents, grossCents), items: reportingItems(order, netCents, grossCents), schemaVersion: 3,
   };
   contribution.checksum = checksum(contribution);
@@ -213,8 +214,11 @@ function salesLedgerSummary(input) {
 }
 
 function validInventoryPlan(plan) {
-  return !!(plan && Number(plan.schemaVersion) === 1 && plan.usage && typeof plan.usage === "object" &&
-    !Array.isArray(plan.usage));
+  if (!plan || Number(plan.schemaVersion) !== 1) return false;
+  if (plan.usage && typeof plan.usage === "object" && !Array.isArray(plan.usage)) return true;
+  // A sale whose every line was sold without a recipe used no stock. The database drops the
+  // empty usage map, so such a plan is recognized by carrying no usage and no cost.
+  return plan.usage == null && !(Number(plan.totalCost) > 0) && (plan.emptyUsage === true || plan.capturedBy === "server");
 }
 
 function legacyInventoryEvidence(orderId, rawMovements) {

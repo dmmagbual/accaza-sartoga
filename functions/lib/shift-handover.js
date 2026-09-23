@@ -72,6 +72,7 @@ function report(shift,orders,handover){
     z.cashRefunds+=cents(o.refundPayments?(o.refundPayments.Cash||o.refundPayments.cash||0):rows.some(p=>String(p.method).toLowerCase()==='cash')?o.refundAmount||0:0);
     if(o.paymentStatus==='pending'){z.pending+=cents(o.total||0);z.pendingCount++;}
     if(o.paymentStatus==='cashier_verified'){z.managerPending+=cents(o.total||0);z.managerPendingCount++;}
+    z.uncostedCount=(z.uncostedCount||0)+Math.max(0,Number(o.costPendingLines)||0);
     z.sales.push({id,total:o.total||0,payments:o.payments||null,payment:o.payment||'',refundAmount:o.refundAmount||0,refundPayments:o.refundPayments||null,channel:o.channel||'instore',timestamp:o.timestamp||0,occurredAt:o.completedAt||o.receivedAt||o.timestamp||0});
   }
   z.payIns=(shift.payIns||[]).reduce((s,r)=>s+cents(r.amount||0),0);z.payOuts=(shift.payOuts||[]).reduce((s,r)=>s+cents(r.amount||0),0);

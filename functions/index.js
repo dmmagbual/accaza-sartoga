@@ -74,6 +74,7 @@ const onValueCreated = RetryGuard.wrapTriggerFactory(DatabaseTriggers.onValueCre
 const onValueDeleted = RetryGuard.wrapTriggerFactory(DatabaseTriggers.onValueDeleted, retryGuardDeps);
 const SharedChoiceValidation = require("./lib/shared-choice-validation");
 const HistoricalArchive = require("./lib/historical-archive");
+const UncostedSales = require("./lib/uncosted-sales");
 const TrackedRead = require("./lib/tracked-read");
 
 initializeApp();
@@ -483,6 +484,9 @@ exports.ensureBooksJournal = onCall(
       const order = allOrders[id] || {};
       if (!BooksBridge.recognizedOrderForCogs(order)) return;
       const cogs = BooksBridge.cogsMovement(order, id, inventorySnap.val() || {}, categoriesSnap.val() || {});
+      // Lines sold without a recipe are tracked in /uncostedSales and costed by their own linked
+      // correction entry, so they are not unposted historical COGS.
+      if (!cogs.lines.length && (Number(order.costPendingLines) > 0 || order.costCorrections)) return;
       if (!cogs.lines.length) { missingCogs++; review[`cogs_missing_${id}`] = {movementId: `cogs_missing_${id}`, type: "unposted_cogs", sourceId: id, accounts: [{account: "cogs:missing_snapshot", code: "5090"}], detail: "Historical order has no reliable COGS snapshot; review in Unposted COGS Clearing without guessing a cost.", at: Date.now()}; return; }
       const bucket = BooksBridge.bucketFor(cogs); daily[bucket.key] = BooksBridge.applyDaily(daily[bucket.key] || null, cogs, cashMap); cogsPosted++;
     });
@@ -1103,12 +1107,12 @@ exports.getOperationalExceptions = onCall(
 
 async function scanOperationalExceptions(db, now) {
     const days = [];for (let offset = 0; offset < 7; offset++) days.push(financeDateFromTimestamp(now - offset * 86400000));
-    const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, booksMonthlyNetSnap, booksMonthlyNetMetaSnap, posSettingsSnap, cfAccountsSnap, deadLetterSnap, posSyncAlertSnap, pendingHandoverSnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),db.ref("/books/monthlyNet").get(),db.ref("/books/monthlyNetMeta").get(),db.ref("/posSettings/payMethods").get(),db.ref("/cfAccounts").get(),db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}`).orderByChild("abandonedAt").startAt(now - OperationalExceptions.DEAD_LETTER_WINDOW_MS).limitToLast(50).get(),db.ref("/posSyncAlerts").orderByChild("state").equalTo("open").limitToLast(100).get(),db.ref("/pendingShiftHandovers").orderByChild("at").limitToFirst(50).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
+    const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, booksMonthlyNetSnap, booksMonthlyNetMetaSnap, posSettingsSnap, cfAccountsSnap, deadLetterSnap, posSyncAlertSnap, pendingHandoverSnap, uncostedSnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),db.ref("/books/monthlyNet").get(),db.ref("/books/monthlyNetMeta").get(),db.ref("/posSettings/payMethods").get(),db.ref("/cfAccounts").get(),db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}`).orderByChild("abandonedAt").startAt(now - OperationalExceptions.DEAD_LETTER_WINDOW_MS).limitToLast(50).get(),db.ref("/posSyncAlerts").orderByChild("state").equalTo("open").limitToLast(100).get(),db.ref("/pendingShiftHandovers").orderByChild("at").limitToFirst(50).get(),db.ref("/uncostedSales").orderByChild("status").equalTo("open").limitToFirst(200).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
     let booksMonthlyNet = booksMonthlyNetSnap.val() || {};
     if (!booksMonthlyNetMetaSnap.exists()) booksMonthlyNet = await rebuildBooksMonthlyNet(db, (/* download-ok: fallback monthly totals have never been built */await db.ref("/books/journal").get()).val() || {});
     const orders = ordersSnap.val() || {},orderIds=Object.keys(orders).slice(0,100),financialPairs=await Promise.all(orderIds.map(async(id)=>{const snap=await db.ref(`/financialMovements/sale_${id}`).get();return[id,snap.exists()?snap.val():null];}));
     const financialMovements = {},inventoryMovementEvidence={};financialPairs.forEach(([id, value]) => {if (value) financialMovements[`sale_${id}`] = value;});Object.values(inventoryMovementSnap.val()||{}).forEach(m=>{if(m&&m.sourceType==="order"&&m.sourceId)inventoryMovementEvidence[m.sourceId]=true;});const telemetry = {};days.forEach((day, i) => {telemetry[day] = telemetrySnaps[i].val() || {};});
-    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, deadLetters: deadLetterSnap.val() || {}, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}}, now);
+    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, deadLetters: deadLetterSnap.val() || {}, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}, uncostedSales: uncostedSnap.val() || {}}, now);
 }
 
 // Phase 16: bounded, read-only production certification snapshot. It does not
@@ -1150,6 +1154,9 @@ exports.repairOrderInventoryMarker = onCall(
     if(!order||!["Completed","Received"].includes(order.status)||order.voided===true)throw new HttpsError("failed-precondition","Only a completed, non-voided order can restore inventory confirmation.");
     if(order.inventoryDeducted===true&&order.inventoryLedgerVersion===1)return{orderId,duplicate:true,items:Object.keys(order.inventoryUsage||{}).length};
     const [planSnap,movementSnap,invSnap,settingsSnap]=/* download-ok: manual inventory marker repair for one order */await Promise.all([db.ref(`/orderInventoryPlans/${orderId}`).get(),db.ref("/inventoryMovements").orderByKey().startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\uf8ff`).get(),db.ref("/inventory").get(),db.ref("/posSettings").get()]),movements=movementSnap.val()||{},actualIds=Object.keys(movements).sort(),repairedAt=Date.now();
+    // A sale whose every line was sold without a recipe has a valid empty plan and no movements:
+    // finishing it confirms the sale and flags its lines instead of refusing (24 Sep 2026).
+    if(!actualIds.length&&planSnap.exists()&&UncostedSales.validPlan(planSnap.val())&&!Object.keys(UncostedSales.planUsage(planSnap.val())).length){const done=await finalizeOrderInventory(db,orderId,order);return{orderId,items:0,uncosted:done.uncosted,emptyPlan:true};}
     if(!actualIds.length)throw new HttpsError("failed-precondition","No order-linked inventory movements exist. No stock was changed.");
     actualIds.forEach(movementId=>{const movement=movements[movementId]||{},itemId=String(movement.itemId||"");if(!itemId||movementId!==`sale_${orderId}_${itemId}`||movement.sourceType!=="order"||movement.sourceId!==orderId||movement.type!=="sale_usage"||!(Number(movement.qty)<0))throw new HttpsError("failed-precondition",`Inventory evidence is invalid for ${itemId||movementId}. No stock was changed.`);});
     let plan=planSnap.val(),legacy=!plan;if(legacy){const usage={},lines=actualIds.map(id=>{const m=movements[id],quantity=qty6(-Number(m.qty)),cost=Math.abs(Number(m.totalCost)||quantity*Number(m.unitCost||0));usage[m.itemId]=quantity;return{itemKey:"legacy-order",itemName:String(m.itemName||m.itemId),size:"",orderQty:1,source:"historical-movement-evidence",ingredientId:m.itemId,ingredientName:String(m.itemName||m.itemId),quantityPerServing:quantity,totalQuantity:quantity,stockUnit:String(m.unit||"unit"),unitCost:qty6(m.unitCost),totalCost:qty6(cost),costSource:"recorded-inventory-movement",costEffectiveAt:Number(m.createdAt||m.occurredAt||0)};}),totalCost=Financial.money(lines.reduce((sum,line)=>sum+Number(line.totalCost||0),0));plan=buildOrderInventoryPlan({engineVersion:"movement-evidence-v1",usage,lines,totalCost,cogsCovered:lines.every(line=>line.unitCost>0),warnings:[{code:"LEGACY_PLAN_SEALED",message:"Original recipe snapshot was unavailable; immutable posted movements were retained without using the current recipe."}]},invSnap.val()||{},settingsSnap.val()||{},repairedAt);await db.ref(`/orderInventoryPlans/${orderId}`).transaction(current=>current||plan,undefined,false);}
@@ -2470,7 +2477,7 @@ async function assurancePostingState(db,orders){const sales=Object.entries(order
 
 exports.reportPosDeviceHealth=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:30,memory:'256MiB'},async request=>{const db=getDatabase(),actor=await healthPortalActor(db,request),data=request.data||{},shiftId=posAssuranceKey(data.shiftId,'Shift ID'),deviceId=posAssuranceKey(data.deviceId,'Device ID'),shift=await healthOpenShift(db,shiftId);if(shift.id!==shiftId)throw new HttpsError('failed-precondition','This device is not reporting against the open shift.');const bounded=value=>Math.max(0,Math.min(10000,Math.floor(Number(value)||0))),record={shiftId,deviceId,staff:financeText(shift.staff,100),staffId:financeText(shift.staffId,100),online:true,pending:bounded(data.pending),syncing:bounded(data.syncing),failed:bounded(data.failed),outstanding:bounded(data.pending)+bounded(data.syncing)+bounded(data.failed),oldestUnsyncedAt:Math.max(0,Number(data.oldestUnsyncedAt)||0),lastContactAt:Date.now(),idle:data.idle===true,reportedBy:actor.uid,schemaVersion:2};await db.ref(`/posDeviceHealth/${shiftId}/${deviceId}`).set(record);return{accepted:true,lastContactAt:record.lastContactAt};});
 
-exports.verifyShiftCloseReadiness=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:'256MiB'},async request=>{const db=getDatabase(),actor=await requirePortalPermission(db,request,['pos','registerOps']),data=request.data||{},shiftId=posAssuranceKey(data.shiftId,'Shift ID'),deviceId=posAssuranceKey(data.deviceId,'Device ID'),shift=(await db.ref('/posActiveShift').get()).val()||{};if(shift.id!==shiftId||shift.status==='closed')throw new HttpsError('failed-precondition','The selected shift is not open.');const devices=(await db.ref(`/posDeviceHealth/${shiftId}`).get()).val()||{},health=devices[deviceId]||{};if(health.shiftId!==shiftId||health.deviceId!==deviceId||health.reportedBy!==actor.uid||Date.now()-Number(health.lastContactAt||0)>POS_HEALTH_MAX_AGE_MS)throw new HttpsError('failed-precondition','This cashier device has no recent synchronization confirmation.');const outstandingDevices=Object.values(devices).filter(row=>row&&row.shiftId===shiftId&&Number(row.outstanding||0)>0);if(outstandingDevices.length){const outstanding=outstandingDevices.reduce((sum,row)=>sum+Number(row.outstanding||0),0);throw new HttpsError('failed-precondition',`${outstanding} local sale(s) on ${outstandingDevices.length} POS device(s) still require synchronization.`);}const state=await assurancePostingState(db,await shiftOrdersForAssurance(db,shiftId));if(state.inventoryOutstanding.length||state.financeOutstanding.length)throw new HttpsError('failed-precondition',`Wait for server posting to finish. Inventory: ${state.inventoryOutstanding.length}; Finance Books: ${state.financeOutstanding.length}.`);const verifiedAt=Date.now(),verification={shiftId,deviceId,verifiedAt,verifiedBy:actor.uid,reportedDeviceCount:Object.keys(devices).length,outstandingDeviceCount:0,saleCount:state.saleCount,inventoryOutstanding:0,financeOutstanding:0,schemaVersion:2};await db.ref(`/shiftCloseVerifications/${shiftId}`).set(verification);return verification;});
+exports.verifyShiftCloseReadiness=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:'256MiB'},async request=>{const db=getDatabase(),actor=await requirePortalPermission(db,request,['pos','registerOps']),data=request.data||{},shiftId=posAssuranceKey(data.shiftId,'Shift ID'),deviceId=posAssuranceKey(data.deviceId,'Device ID'),shift=(await db.ref('/posActiveShift').get()).val()||{};if(shift.id!==shiftId||shift.status==='closed')throw new HttpsError('failed-precondition','The selected shift is not open.');const devices=(await db.ref(`/posDeviceHealth/${shiftId}`).get()).val()||{},health=devices[deviceId]||{};if(health.shiftId!==shiftId||health.deviceId!==deviceId||health.reportedBy!==actor.uid||Date.now()-Number(health.lastContactAt||0)>POS_HEALTH_MAX_AGE_MS)throw new HttpsError('failed-precondition','This cashier device has no recent synchronization confirmation.');const outstandingDevices=Object.values(devices).filter(row=>row&&row.shiftId===shiftId&&Number(row.outstanding||0)>0);if(outstandingDevices.length){const outstanding=outstandingDevices.reduce((sum,row)=>sum+Number(row.outstanding||0),0);throw new HttpsError('failed-precondition',`${outstanding} local sale(s) on ${outstandingDevices.length} POS device(s) still require synchronization.`);}const state=await assurancePostingState(db,await shiftOrdersForAssurance(db,shiftId));if(state.inventoryOutstanding.length||state.financeOutstanding.length)throw new HttpsError('failed-precondition',`Wait for server posting to finish. Inventory: ${state.inventoryOutstanding.length}${state.inventoryOutstanding.length?` (${state.inventoryOutstanding.slice(0,3).join(', ')})`:''}; Finance Books: ${state.financeOutstanding.length}${state.financeOutstanding.length?` (${state.financeOutstanding.slice(0,3).join(', ')})`:''}. If this does not clear within a minute, hand over the shift and tell a manager these order numbers.`);const verifiedAt=Date.now(),verification={shiftId,deviceId,verifiedAt,verifiedBy:actor.uid,reportedDeviceCount:Object.keys(devices).length,outstandingDeviceCount:0,saleCount:state.saleCount,inventoryOutstanding:0,financeOutstanding:0,schemaVersion:2};await db.ref(`/shiftCloseVerifications/${shiftId}`).set(verification);return verification;});
 
 // Owner-only emergency action: sign every portal session out (Admin, POS, Finance Books).
 // Revokes each portal account's refresh tokens, so no tab can renew its sign-in, and records
@@ -4619,12 +4626,13 @@ exports.processOrderAdjustment = onCall(
       const payments=Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment,amount:o.total}],payment=payments[0]||{};
       if(!["cashier_verified","manager_validated","confirmed"].includes(String(o.paymentStatus||""))||!financeText(payment.ref,120))throw new HttpsError("failed-precondition","The electronic payment must remain verified with its transaction reference.");
       if(Math.abs(Financial.money(payment.amount)-Financial.money(o.total))>.009)throw new HttpsError("failed-precondition","The original payment must exactly match the posted sale before item correction.");
-      if(o.inventoryDeducted!==true||!Object.keys(o.inventoryUsage||{}).length)throw new HttpsError("failed-precondition","Wait for the original sale inventory posting to finish, then retry.");
+      if(o.inventoryDeducted!==true)throw new HttpsError("failed-precondition","Wait for the original sale inventory posting to finish, then retry.");
+      if(Object.keys(o.costCorrections||{}).length)throw new HttpsError("failed-precondition","A manager already posted the missing recipe cost for this sale. Use manager review; no stock was changed.");
       const active=(await db.ref("/posActiveShift").get()).val()||null;if(!active||active.id!==o.shiftId||active.status==="closed")throw new HttpsError("failed-precondition","This order is not in the currently open shift.");
       const reason=financeText(data.reason,300),acknowledgement=financeText(data.customerAcknowledgement,160);if(!reason||!acknowledgement)throw new HttpsError("invalid-argument","Reason and customer acknowledgement are required.");
       const [availabilitySnap,oldPlanSnap,posSettings,accountsSnap]=await Promise.all([db.ref("/availability").get(),db.ref(`/orderInventoryPlans/${o.id}`).get(),readPosSettings(db,["denomTracking"]),db.ref("/cfAccounts").get()]);
       const paymentKind=OrderCorrection.paymentKind(o,accountsSnap.val()||{});if(!paymentKind)throw new HttpsError("failed-precondition","Completed-order changes require one verified bank or configured e-wallet payment.");
-      const oldPlan=oldPlanSnap.val();if(!oldPlan||!oldPlan.usage)throw new HttpsError("failed-precondition","The original immutable inventory plan is missing. Use manager review; no stock was changed.");
+      const oldPlan=oldPlanSnap.val();if(!UncostedSales.validPlan(oldPlan))throw new HttpsError("failed-precondition","The original immutable inventory plan is missing. Use manager review; no stock was changed.");
       const priced=await readCatalogKeyed(db,["menuItems","optionGroups","packages"],(maps)=>priceOrderLinesServer(data.lineItems,maps.menuItems,maps.optionGroups,availabilitySnap.val()||{},maps.packages)),correctedTotal=Financial.money(priced.total),expected=Financial.money(data.expectedTotal),originalTotal=Financial.money(o.total);
       if(!(correctedTotal>0)||correctedTotal>originalTotal+.009)throw new HttpsError("invalid-argument","The corrected order must be greater than zero and cannot exceed the original paid total.");
       if(Math.abs(expected-correctedTotal)>.009)throw new HttpsError("failed-precondition",`Current menu pricing makes the corrected order PHP ${correctedTotal.toFixed(2)}. Refresh and review it.`);
@@ -4646,10 +4654,13 @@ exports.processOrderAdjustment = onCall(
       if(refund>0){const shifted=await db.ref(`/shifts/${o.shiftId}`).transaction((row)=>OfflineSync.applyDrawerDelta(row,requestId,drawerDelta,now,actor),undefined,false);if(!shifted.committed||!shifted.snapshot.exists())throw new HttpsError("failed-precondition","The drawer no longer has enough cash for this refund.");await db.ref("/posActiveShift").transaction((row)=>row&&row.id===o.shiftId?OfflineSync.applyDrawerDelta(row,requestId,drawerDelta,now,actor):row,undefined,false);}
       await applyCompletedOrderCorrectionInventory(db,o,plan,token,now,actor);
       const initiatedByStaff=financeText(active.staff,100),correctedMeta=correctionPlanMetadata(plan,now),updated=Object.assign({},o,{correctedOrderId:correctionId,completedOrderCorrectionId:correctionId,correctedOrderTotal:correctedTotal,correctedLineItems:priced.lines,correctedItems:correctionItemText(priced.lines),correctedPackages:priced.packages,correctedExtraCost:priced.extraCost,correctedAt:now,correctedBy:actor.uid,correctionInitiatedByStaff:initiatedByStaff,correctionReason:reason,correctionCustomerAcknowledgement:acknowledgement,correctionApprovalId:correctionApproval.id,correctionApprovedBy:approvedBy,correctionApprovedByUid:correctionApproval.record.approvedBy,correctionApprovedRole:correctionApproval.record.approvedRole,correctionReviewStatus:"manager_approved",preparationStatus:"not_prepared",refundAmount:refund,refundPayments:refund>0?Object.assign({},o.refundPayments||{},{Cash:refund}):(o.refundPayments||{}),refunded:refund>0,refundedAt:refund>0?now:(o.refundedAt||null),refundedBy:refund>0?actor.uid:(o.refundedBy||""),refundReason:refund>0?reason:(o.refundReason||""),cashRefundApprovalId:refundApproval?refundApproval.id:(o.cashRefundApprovalId||""),cashRefundApprovedBy:refundApproval?(refundApproval.record.approvedName||refundApproval.record.approvedEmail||refundApproval.record.approvedRole):(o.cashRefundApprovedBy||""),cashRefundApprovedByUid:refundApproval?refundApproval.record.approvedBy:(o.cashRefundApprovedByUid||""),cashRefundReviewStatus:refund>0?"manager_approved":(o.cashRefundReviewStatus||""),cashRefundShiftId:refund>0?o.shiftId:(o.cashRefundShiftId||""),correctedInventoryUsage:correctedMeta.inventoryUsage,correctionInventoryToken:token,correctedCogsSnapshot:correctedMeta.cogsSnapshot,correctedCogsCategorySnapshot:correctedMeta.cogsCategorySnapshot,correctedCogsAccountSnapshot:correctedMeta.cogsAccountSnapshot,correctedCogsCovered:correctedMeta.cogsCovered,correctionPending:null});
+      const correctedUncosted=Array.isArray(plan.uncostedLines)?plan.uncostedLines:[],uncostedVariant=`cor_${token.slice(0,8)}`;updated.costPendingLines=correctedUncosted.length||null;
       if(refund>0)updated.refundHistory=Object.assign({},o.refundHistory||{},{[`refund_${o.id}_${Math.round(refund*100)}`]:{amount:refund,payments:[{method:"Cash",amount:refund}],reason,at:now,by:actor.uid,actorRole:actor.role,approvalMode:"independent_manager",approvalId:refundApproval.id,approvedBy:refundApproval.record.approvedBy,reviewStatus:"manager_approved",shiftId:o.shiftId,correctedOrderTotal:correctedTotal,customerAcknowledgement:acknowledgement,orderStage:"completed_not_prepared",inventoryOutcome:"original_reversed_corrected_deducted"}});
       const correctionRecord={id:correctionId,orderId:o.id,shiftId:o.shiftId,status:"completed",paymentKind,originalPaymentReference:financeText(payment.ref,120),originalTotal,correctedOrderTotal:correctedTotal,refundAmount:refund,originalLineItems:o.lineItems||[],correctedLineItems:priced.lines,originalInventoryPlanId:o.id,correctedInventoryPlan:plan,reason,customerAcknowledgement:acknowledgement,preparationStatus:"not_prepared",approvalId:correctionApproval.id,approvedBy,approvedByUid:correctionApproval.record.approvedBy,approvedRole:correctionApproval.record.approvedRole,cashRefundApprovalId:refundApproval?refundApproval.id:"",createdAt:now,createdBy:actor.uid,createdByRole:actor.role,initiatedByStaff,reviewStatus:"manager_approved",schemaVersion:1};
       const movementOrder=Object.assign({},o,{cogsAccountSnapshot:o.cogsAccountSnapshot||oldPlan.accountSnapshot||{}}),movement=OrderCorrection.movement(movementOrder,plan,refund,accountsSnap.val()||{}),movementId=refund>0?`refund_${o.id}_${Math.round(refund*100)}`:`correction_${o.id}_${token}`,writes=Object.assign({},correctionApproval.usedWrites,refundApproval?refundApproval.usedWrites:{},{[`orders/${o.id}`]:updated,[`activeOrders/${o.id}`]:activeOrderProjection(updated),[`orderCorrections/${correctionId}`]:correctionRecord,[`orderCorrectionCommands/${requestId}`]:{status:"posted",orderId:o.id,correctionId,refundAmount:refund,correctedOrderTotal:correctedTotal,movementId:movement?movementId:"",approvalId:correctionApproval.id,cashRefundApprovalId:refundApproval?refundApproval.id:"",claimedAt:now,postedAt:Date.now(),actorUid:actor.uid,schemaVersion:1},[`operationalAudit/${now}_completed_order_correction_${o.id}`]:{action:"complete_order_item_correction",sourceType:"order",sourceId:o.id,correctionId,movementId:movement?movementId:"",paymentKind,originalTotal,correctedOrderTotal:correctedTotal,refundAmount:refund,customerAcknowledgement:acknowledgement,inventoryOutcome:"original_reversed_corrected_deducted",approvalId:correctionApproval.id,approvedByUid:correctionApproval.record.approvedBy,approvedRole:correctionApproval.record.approvedRole,cashRefundApprovalId:refundApproval?refundApproval.id:"",shiftId:o.shiftId,initiatedByStaff,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}});
       if(movement){movement.occurredAt=now;movement.actorName=actor.role;movement.correctionId=correctionId;movement.approvalId=correctionApproval.id;movement.approvedBy=approvedBy;if(refundApproval)movement.cashRefundApprovalId=refundApproval.id;movement.controlReason="Completed in-store order changed with independent manager approval; original electronic receipt retained, item usage replaced, and any approved difference returned from register cash.";addOrderCashWrites(writes,movement,movementId,o,actor);await commitFinancial(db,movementId,movement,actor,writes);}else await db.ref().update(writes);
+      // Flags follow the corrected lines: the old lines' flags close, the new ones open.
+      await supersedeUncostedSale(db,o.id,uncostedVariant);if(correctedUncosted.length)await registerUncostedSale(db,o.id,Object.assign({},o,{completedAt:now}),correctedUncosted,uncostedVariant);
       return{duplicate:false,correctionId,refundAmount:refund,correctedOrderTotal:correctedTotal,movementId:movement?movementId:""};
     }
     const reason = financeText(data.reason, 300); if (!reason) throw new HttpsError("invalid-argument", "Reason is required."); const accounts = (await db.ref("/cfAccounts").get()).val() || {}; await postOrderFinancial(db, o, accounts, {uid: "server", role: "server"});
@@ -4751,6 +4762,283 @@ exports.recordPlatformCatchup = onCall(
     await db.ref().update(writes);
     const posted = await postOrderFinancial(db, order, accounts, {uid: actor.uid, role: actor.role});
     return {orderId: oid, platformRef: ref, net, financialPosted: !posted.skipped, duplicate: posted.duplicate === true};
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Sales without a usable recipe (24 Sep 2026)
+//
+// Every paid sale proceeds. A line whose recipe is missing or broken takes no stock and
+// carries no cost at the time of sale; it is recorded in /uncostedSales/{orderId}__{variant}_{line}
+// and stays open until a manager resolves it:
+//   - apply_recipe: once the recipe is built, the line is costed now. Stock is deducted with
+//     order-linked movements ucs_<row>_<item>, and Dr Cost of Sales / Cr Inventory is posted
+//     as its own Finance movement ucogs_<row>, dated on the original sale date when that
+//     period is open, otherwise today. Posted sales are never rewritten.
+//   - confirm_no_cost: the line genuinely has no cost (for example an add-on already costed
+//     inside the drink); closed at zero with a reason, optionally marking the item
+//     "no recipe needed" so it is not flagged again.
+// Every step is idempotent (fixed IDs, a leased claim that stores the plan it will post) and
+// is reversed with the sale when stock is returned on a void or refund.
+// ---------------------------------------------------------------------------
+const UNCOSTED_MANAGER_ROLES = ["owner", "superadmin", "admin", "manager"];
+const UNCOSTED_APPLY_LEASE_MS = 5 * 60 * 1000;
+const UNCOSTED_BATCH_LIMIT = 40;
+const UNCOSTED_LIST_LIMIT = 500;
+const UNCOSTED_SCAN_LIMIT = 150;
+const UNCOSTED_SCAN_FIRST_DATE = "2026-09-01";
+
+async function uncostedLinesForPlan(db, plan, lineItems) {
+  if (plan && (plan.uncostedLines || Number(plan.uncostedVersion) >= 1)) return plan.uncostedLines ? UncostedSales.planUncostedLines(plan, lineItems, {}) : [];
+  const keys = [...new Set(((plan && plan.warnings) || []).filter((row) => row && row.code === "MISSING_RECIPE" && row.itemKey).map((row) => String(row.itemKey)))].filter((key) => /^[A-Za-z0-9_-]{1,160}$/.test(key));
+  if (!keys.length) return [];
+  const menu = {};
+  await Promise.all(keys.map(async (key) => { menu[key] = (await db.ref(`/menuItems/${key}`).get()).val() || {}; }));
+  return UncostedSales.legacyUncostedLines(plan, lineItems, menu);
+}
+
+async function registerUncostedSale(db, orderId, order, lines, variant) {
+  const now = Date.now(), occurredAt = Number(order.completedAt || order.receivedAt || order.timestamp) || now;
+  const rows = UncostedSales.registerRows({order, orderId, lines, variant, now, businessDate: financeDateFromTimestamp(occurredAt)});
+  // Registration never overwrites a row that already exists (it may be resolved).
+  await Promise.all(Object.keys(rows).map((id) => db.ref(`/uncostedSales/${id}`).transaction((current) => current || rows[id], undefined, false)));
+  return rows;
+}
+
+async function uncostedRowsForOrder(db, orderId) {
+  return (await db.ref("/uncostedSales").orderByChild("orderId").equalTo(orderId).get()).val() || {};
+}
+async function refreshCostPendingLines(db, orderId) {
+  const rows = await uncostedRowsForOrder(db, orderId);
+  const pending = Object.values(rows).filter((row) => row && (row.status === "open" || row.status === "applying")).length;
+  await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, orderId, {costPendingLines: pending || null});
+  return pending;
+}
+// A completed-order item correction replaces the sale lines; flags for the old lines no longer apply.
+async function supersedeUncostedSale(db, orderId, keepVariant) {
+  const rows = await uncostedRowsForOrder(db, orderId), at = Date.now();
+  await Promise.all(Object.keys(rows).filter((id) => rows[id] && rows[id].status === "open" && rows[id].variant !== keepVariant).map((id) =>
+    db.ref(`/uncostedSales/${id}`).transaction((current) => current === null ? null : current.status === "open" ? Object.assign({}, current, {status: "superseded", closedAt: at}) : current, undefined, false)));
+}
+async function closeUncostedRowsForReversedSale(db, orderId, status) {
+  const rows = await uncostedRowsForOrder(db, orderId), at = Date.now();
+  await Promise.all(Object.keys(rows).filter((id) => rows[id] && rows[id].status === "open").map((id) =>
+    db.ref(`/uncostedSales/${id}`).transaction((current) => current === null ? null : current.status === "open" ? Object.assign({}, current, {status, closedAt: at}) : current, undefined, false)));
+}
+
+async function uncostedPeriodOpen(db, at) {
+  try { await assertAccountingPeriodOpen(db, at, "posting a cost correction"); return true; } catch (error) { if (error && error.code === "failed-precondition") return false; throw error; }
+}
+
+async function findOrderRecord(db, orderId) {
+  const live = (await db.ref(`/orders/${orderId}`).get()).val();
+  if (live && (live.id || live.status || live.lineItems)) return live;
+  return (await db.ref(`/archivedOrders/${orderId}`).get()).val() || null;
+}
+
+// Stock returned on a void or refund includes what the cost corrections deducted later.
+async function reverseUncostedCostCorrections(db, orderId, order, type) {
+  const corrections = order.costCorrections || {}, reversed = {};
+  for (const key of Object.keys(corrections).sort()) {
+    const correction = corrections[key] || {};
+    if (correction.reversedAt) continue;
+    const usage = positiveOrderInventoryUsage(correction.usage || {});
+    for (const itemId of Object.keys(usage).sort()) await applyInventoryMovement(db, {
+      movementId: `${type}_ucs_${key}_${itemId}`, itemId, type, qty: qty6(usage[itemId]), sourceType: "order_cost_correction_reversal",
+      sourceId: orderId, sourceLine: itemId, reversalOf: `ucs_${key}_${itemId}`, note: `Return stock deducted by the cost correction of ${orderId}`, actorName: "Order reversal",
+    }, {uid: "server", role: "server"});
+    if (correction.financialMovementId) {
+      const original = (await db.ref(`/financialMovements/${correction.financialMovementId}`).get()).val();
+      if (original) {
+        const reversal = Financial.reverseMovement(Object.assign({id: correction.financialMovementId}, original), "order_cost_correction_reversal", "Stock returned");
+        reversal.occurredAt = Date.now(); reversal.actorName = "Order reversal"; reversal.uncostedSaleId = key;
+        await commitFinancial(db, `ucogs_rev_${key}`, reversal, {uid: "server", role: "server"});
+      }
+    }
+    reversed[key] = Object.assign({}, correction, {reversedAt: Date.now(), reversalType: type});
+  }
+  const metadata = {costPendingLines: null};
+  if (Object.keys(reversed).length) {
+    const next = Object.assign({}, corrections, reversed);
+    metadata.costCorrections = next;
+    metadata.costCorrectionTotal = Financial.money(Object.values(next).filter((row) => row && !row.reversedAt).reduce((sum, row) => sum + Number(row.amount || 0), 0));
+  }
+  await closeUncostedRowsForReversedSale(db, orderId, "void");
+  await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, orderId, metadata);
+}
+
+async function readOpenUncostedRows(db) {
+  const [open, applying] = await Promise.all(["open", "applying"].map((status) => db.ref("/uncostedSales").orderByChild("status").equalTo(status).limitToFirst(UNCOSTED_LIST_LIMIT).get()));
+  return Object.assign({}, open.val() || {}, applying.val() || {});
+}
+
+// Cost each open row of one item against the current recipe.
+async function previewUncostedItem(db, itemKey, limit) {
+  const rows = Object.values(await readOpenUncostedRows(db)).filter((row) => row && row.itemKey === itemKey && (row.status === "open" || row.status === "applying"))
+    .sort((a, b) => Number(a.occurredAt || 0) - Number(b.occurredAt || 0)).slice(0, limit || UNCOSTED_BATCH_LIMIT);
+  const costed = await withCostingCatalog(db, (catalog) => rows.map((row) => ({row, result: UncostedSales.costRow(row, catalog)})));
+  const today = Date.now(), periodCache = {};
+  const out = [];
+  for (const {row, result} of costed) {
+    const period = AccountingPeriods.periodForDate(Number(row.occurredAt) || today);
+    if (!(period in periodCache)) periodCache[period] = await uncostedPeriodOpen(db, Number(row.occurredAt) || today);
+    const postedToOriginalDate = periodCache[period] === true;
+    out.push({id: row.id, orderId: row.orderId, occurredAt: Number(row.occurredAt) || 0, businessDate: row.businessDate || "", qty: Number(row.qty) || 0, size: row.size || "", optLabels: row.optLabels || [],
+      ok: result.ok, cost: result.ok ? Financial.money(result.totalCost) : 0, message: result.ok ? "" : result.message, usage: result.ok ? result.usage : {},
+      ingredients: result.ok ? result.lines.map((line) => ({name: line.ingredientName, qty: line.totalQuantity, unit: line.stockUnit, cost: Financial.money(line.totalCost)})) : [],
+      postDate: postedToOriginalDate ? (row.businessDate || financeDateFromTimestamp(row.occurredAt)) : financeDateFromTimestamp(today), postedToOriginalDate, status: row.status});
+  }
+  const ready = out.filter((row) => row.ok);
+  return {itemKey, rows: out, readyCount: ready.length, blockedCount: out.length - ready.length, total: Financial.money(ready.reduce((sum, row) => sum + row.cost, 0))};
+}
+
+async function applyUncostedRow(db, preview, actor, reason) {
+  const id = preview.id, ref = db.ref(`/uncostedSales/${id}`), now = Date.now(), token = crypto.randomBytes(8).toString("hex");
+  const effectiveAt = preview.postedToOriginalDate ? Number(preview.occurredAt) || now : now;
+  const fresh = {token, at: now, by: actor.uid, usage: positiveOrderInventoryUsage(preview.usage || {}), planCost: Financial.money(preview.cost), effectiveAt, postedToOriginalDate: !!preview.postedToOriginalDate};
+  const claimed = await ref.transaction((current) => {
+    if (current === null) return null;
+    if (current.status === "applying" && Number(current.claim && current.claim.at || 0) > now - UNCOSTED_APPLY_LEASE_MS) return;
+    if (current.status !== "open" && current.status !== "applying") return;
+    // A claim that was interrupted keeps the plan and date it started with, so a retry posts
+    // exactly the same stock movements and journal.
+    const prior = current.status === "applying" && current.claim && current.claim.usage ? current.claim : null;
+    return Object.assign({}, current, {status: "applying", claim: prior ? Object.assign({}, prior, {token, at: now, by: actor.uid}) : fresh});
+  }, undefined, false);
+  const row = claimed.snapshot.val();
+  if (!claimed.committed || !row || !row.claim || row.claim.token !== token) return {id, applied: false, skipped: "in_progress"};
+  const claim = row.claim;
+  try {
+    const order = await findOrderRecord(db, row.orderId);
+    if (!order) throw new HttpsError("not-found", `Order ${row.orderId} no longer exists.`);
+    if (order.voided === true || order.inventoryReversed === true) {
+      await ref.update({status: "void", closedAt: Date.now(), claim: null});
+      await refreshCostPendingLines(db, row.orderId);
+      return {id, applied: false, skipped: "voided"};
+    }
+    const usage = positiveOrderInventoryUsage(claim.usage || {}), movements = [];
+    for (const itemId of Object.keys(usage).sort()) {
+      const result = await applyInventoryMovement(db, {
+        movementId: `ucs_${id}_${itemId}`, itemId, type: "sale_usage", qty: -qty6(usage[itemId]), sourceType: "order_cost_correction",
+        sourceId: row.orderId, sourceLine: itemId, note: `Cost correction: ${row.itemName} sold without a recipe on order ${row.orderId}`,
+        occurredAt: Number(claim.effectiveAt) || now, actorName: actor.role,
+      }, actor);
+      movements.push(result.movement);
+    }
+    const inventory = {};
+    await Promise.all(movements.map(async (movement) => { inventory[movement.itemId] = (await db.ref(`/inventory/${movement.itemId}`).get()).val() || {}; }));
+    const label = `Cost of ${row.itemName} sold on ${row.businessDate || row.orderId} without a recipe`;
+    const lines = UncostedSales.financeLines(movements, inventory, label).map((line) => Financial.line(line.account, line.debit, line.credit, line.label));
+    const amount = Financial.money(movements.reduce((sum, movement) => sum + Math.abs(Number(movement.totalCost) || 0), 0));
+    let financialMovementId = "";
+    if (lines.length) {
+      financialMovementId = `ucogs_${id}`;
+      const movement = Financial.movement("order_cost_correction", "orderCostCorrection", row.orderId, lines, {
+        occurredAt: Number(claim.effectiveAt) || now, actorName: actor.role, channel: row.channel || "instore", uncostedSaleId: id, itemKey: row.itemKey,
+        originalOccurredAt: Number(row.occurredAt) || 0, postedToOriginalDate: claim.postedToOriginalDate === true, controlReason: financeText(reason, 300),
+      });
+      await commitFinancial(db, financialMovementId, movement, actor);
+    }
+    const resolution = {type: "recipe_cost", amount, usage, effectiveAt: Number(claim.effectiveAt) || now, postedToOriginalDate: claim.postedToOriginalDate === true,
+      financialMovementId, inventoryMovementIds: movements.map((movement) => movement.id), by: actor.uid, byRole: actor.role, at: Date.now(), reason: financeText(reason, 300)};
+    const latest = await findOrderRecord(db, row.orderId), corrections = Object.assign({}, latest && latest.costCorrections || {});
+    corrections[id] = {amount, usage, financialMovementId, effectiveAt: resolution.effectiveAt, postedToOriginalDate: resolution.postedToOriginalDate, appliedAt: resolution.at, appliedBy: actor.uid, itemKey: row.itemKey};
+    await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, row.orderId, {costCorrections: corrections, costCorrectionTotal: Financial.money(Object.values(corrections).filter((c) => c && !c.reversedAt).reduce((sum, c) => sum + Number(c.amount || 0), 0))});
+    await ref.update({status: "resolved", resolution, claim: null, closedAt: resolution.at});
+    await db.ref(`/operationalAudit/${resolution.at}_uncosted_cost_${id}`).set({action: "apply_recipe_cost_to_uncosted_sale", sourceType: "order", sourceId: row.orderId, uncostedSaleId: id, itemKey: row.itemKey, amount, financialMovementId, effectiveAt: resolution.effectiveAt, postedToOriginalDate: resolution.postedToOriginalDate, reason: resolution.reason, actorUid: actor.uid, actorRole: actor.role, ts: resolution.at, schemaVersion: 1});
+    await refreshCostPendingLines(db, row.orderId);
+    return {id, applied: true, amount, financialMovementId, postDate: financeDateFromTimestamp(resolution.effectiveAt)};
+  } catch (error) {
+    // Leave the claim in place: its lease expires and a retry posts the same plan.
+    await ref.child("lastError").set(String(error && error.message || error).slice(0, 300));
+    return {id, applied: false, error: String(error && error.message || error).slice(0, 300)};
+  }
+}
+
+async function scanUncostedSales(db, data) {
+  const since = /^\d{4}-\d{2}-\d{2}$/.test(String(data.since || "")) ? String(data.since) : UNCOSTED_SCAN_FIRST_DATE;
+  const sinceAt = Date.parse(`${since}T00:00:00+08:00`), cursor = data.cursor && typeof data.cursor === "object" ? data.cursor : {};
+  const summary = {since, scanned: 0, finalized: 0, flagged: 0, errors: [], cursor: {}, done: true};
+  for (const node of ["orders", "archivedOrders"]) {
+    const at = cursor[node] && Number(cursor[node].at) >= sinceAt ? cursor[node] : null;
+    if (cursor[node] && cursor[node].done) { summary.cursor[node] = cursor[node]; continue; }
+    let query = db.ref(`/${node}`).orderByChild("timestamp");
+    query = at ? query.startAt(Number(at.at), String(at.key)) : query.startAt(sinceAt);
+    // download-ok: owner/manager recovery scan, bounded by date and batch size
+    const rows = (await query.limitToFirst(UNCOSTED_SCAN_LIMIT + (at ? 1 : 0)).get()).val() || {};
+    const entries = Object.entries(rows).filter(([key]) => !(at && key === at.key)).sort((a, b) => Number(a[1] && a[1].timestamp || 0) - Number(b[1] && b[1].timestamp || 0) || a[0].localeCompare(b[0]));
+    for (const [orderId, order] of entries) {
+      summary.scanned++;
+      const status = order && order.status === "Archived" ? order.prevStatus : order && order.status;
+      if (!order || order.voided === true || !["Completed", "Received"].includes(status) || !Array.isArray(order.lineItems)) continue;
+      try {
+        if (order.inventoryDeducted !== true) {
+          const result = await finalizeOrderInventory(db, orderId, order);
+          summary.finalized++; summary.flagged += result.uncosted;
+          continue;
+        }
+        if (order.cogsCovered !== false && !(Number(order.costPendingLines) > 0)) continue;
+        const plan = (await db.ref(`/orderInventoryPlans/${orderId}`).get()).val();
+        const lines = await uncostedLinesForPlan(db, plan, order.lineItems);
+        if (!lines.length) continue;
+        const existing = await uncostedRowsForOrder(db, orderId), known = new Set(Object.keys(existing));
+        const rows = await registerUncostedSale(db, orderId, order, lines, "sale");
+        summary.flagged += Object.keys(rows).filter((id) => !known.has(id)).length;
+        await refreshCostPendingLines(db, orderId);
+      } catch (error) { summary.errors.push({orderId, error: String(error && error.message || error).slice(0, 200)}); }
+    }
+    const last = entries[entries.length - 1];
+    const nodeDone = entries.length < UNCOSTED_SCAN_LIMIT;
+    summary.cursor[node] = last ? {at: Number(last[1] && last[1].timestamp || 0), key: last[0], done: nodeDone} : {done: true};
+    if (!nodeDone) summary.done = false;
+  }
+  return summary;
+}
+
+exports.manageUncostedSales = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 300, memory: "512MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["recipes", "inventory"]), data = request.data || {};
+    const action = financeText(data.action, 40) || "list", manager = UNCOSTED_MANAGER_ROLES.includes(actor.role);
+    if (action === "list") {
+      const rows = await readOpenUncostedRows(db), groups = UncostedSales.summarize(rows);
+      return {groups, openCount: groups.reduce((sum, group) => sum + group.count, 0), canResolve: manager, scanFrom: UNCOSTED_SCAN_FIRST_DATE};
+    }
+    const itemKey = financeText(data.itemKey, 160);
+    if (action === "preview") {
+      if (!/^[A-Za-z0-9_-]{1,160}$/.test(itemKey)) throw new HttpsError("invalid-argument", "Choose an item.");
+      return previewUncostedItem(db, itemKey);
+    }
+    if (!manager) throw new HttpsError("permission-denied", "Only a manager can resolve sales without a recipe.");
+    if (action === "apply_recipe") {
+      if (!/^[A-Za-z0-9_-]{1,160}$/.test(itemKey)) throw new HttpsError("invalid-argument", "Choose an item.");
+      const preview = await previewUncostedItem(db, itemKey), ready = preview.rows.filter((row) => row.ok);
+      if (!ready.length) throw new HttpsError("failed-precondition", preview.rows.length ? `The recipe is not complete yet: ${preview.rows[0].message}` : "No open sales remain for this item.");
+      // The manager approved a specific total. If recipes or ingredient costs changed since the
+      // preview, stop and show the new figures rather than post a different amount.
+      if (data.expectedTotal == null || Math.abs(Financial.money(data.expectedTotal) - preview.total) > 0.009) throw new HttpsError("failed-precondition", `The cost is now PHP ${preview.total.toFixed(2)}. Review the new preview before applying.`);
+      const reason = financeText(data.reason, 300);
+      const results = [];
+      for (const row of ready) results.push(await applyUncostedRow(db, row, actor, reason));
+      const applied = results.filter((row) => row.applied);
+      return {itemKey, applied: applied.length, amount: Financial.money(applied.reduce((sum, row) => sum + row.amount, 0)), skipped: results.filter((row) => !row.applied), blocked: preview.blockedCount};
+    }
+    if (action === "confirm_no_cost") {
+      const reason = financeText(data.reason, 300);
+      if (reason.length < 5) throw new HttpsError("invalid-argument", "Explain why this item has no cost.");
+      if (!/^[A-Za-z0-9_-]{1,160}$/.test(itemKey)) throw new HttpsError("invalid-argument", "Choose an item.");
+      const rows = Object.values(await readOpenUncostedRows(db)).filter((row) => row && row.itemKey === itemKey && row.status === "open"), at = Date.now(), orderIds = new Set();
+      for (const row of rows) {
+        const result = await db.ref(`/uncostedSales/${row.id}`).transaction((current) => current === null ? null : current.status === "open" ? Object.assign({}, current, {status: "resolved", closedAt: at, resolution: {type: "no_cost", amount: 0, reason, by: actor.uid, byRole: actor.role, at}}) : current, undefined, false);
+        if (result.snapshot.val() && result.snapshot.val().status === "resolved") orderIds.add(row.orderId);
+      }
+      for (const orderId of orderIds) await refreshCostPendingLines(db, orderId);
+      if (data.markNoRecipe === true) await db.ref(`/menuItems/${itemKey}/noRecipe`).set(true);
+      await db.ref(`/operationalAudit/${at}_uncosted_no_cost_${itemKey}`).set({action: "confirm_uncosted_sale_no_cost", sourceType: "menuItem", sourceId: itemKey, lines: rows.length, orders: [...orderIds], markNoRecipe: data.markNoRecipe === true, reason, actorUid: actor.uid, actorRole: actor.role, ts: at, schemaVersion: 1});
+      return {itemKey, resolved: rows.length, markNoRecipe: data.markNoRecipe === true};
+    }
+    if (action === "scan") return scanUncostedSales(db, data);
+    throw new HttpsError("invalid-argument", "Choose a supported action.");
   },
 );
 
@@ -5010,7 +5298,7 @@ function financialControlResolution(issue) {
   return Object.assign(issue, {title:titles[issue.kind] || String(issue.kind || "Control exception").replace(/_/g, " "), solution:resolution[0], actionTarget:resolution[1], actionLabel:resolution[2]});
 }
 
-const ARCHIVED_ORDER_METADATA_FIELDS = new Set(["inventoryDeducted","inventoryUsage","inventoryDeductedAt","cogsSnapshot","cogsCategorySnapshot","cogsCategorySnapshotVersion","cogsAccountSnapshot","cogsAccountSnapshotVersion","cogsCovered","cogsDetail","cogsDetailSource","costingEngineVersion","deductedBy","inventoryLedgerVersion","inventoryMarkerRepairedAt","inventoryReversed","inventoryReversedAt","inventoryReversalRequested","inventoryReversalLedgerVersion","correctedInventoryUsage","correctionInventoryToken","correctedCogsSnapshot","correctedCogsCategorySnapshot","correctedCogsAccountSnapshot","correctedCogsCovered","pushNotified","pushNotifiedAt","dupPlatformRef"]);
+const ARCHIVED_ORDER_METADATA_FIELDS = new Set(["inventoryDeducted","inventoryUsage","inventoryDeductedAt","cogsSnapshot","cogsCategorySnapshot","cogsCategorySnapshotVersion","cogsAccountSnapshot","cogsAccountSnapshotVersion","cogsCovered","cogsDetail","cogsDetailSource","costingEngineVersion","deductedBy","inventoryLedgerVersion","inventoryMarkerRepairedAt","inventoryReversed","inventoryReversedAt","inventoryReversalRequested","inventoryReversalLedgerVersion","correctedInventoryUsage","correctionInventoryToken","correctedCogsSnapshot","correctedCogsCategorySnapshot","correctedCogsAccountSnapshot","correctedCogsCovered","costPendingLines","costCorrections","costCorrectionTotal","pushNotified","pushNotifiedAt","dupPlatformRef"]);
 function isArchivedOrderMetadataGhost(live, archived) {
   if (!live || !archived || archived.status !== "Archived" || !archived.id) return false;
   if (live.id || live.status || live.lineItems || live.total != null || live.timestamp) return false;
@@ -5478,20 +5766,32 @@ function buildOrderInventoryPlan(costing, inv, ps, capturedAt) {
   const invCategories=ps.invCategories||{},categorySnapshot={food:0,beverage:0,packaging:0,directLabor:0,unallocated:0},accountSnapshot={};
   costing.lines.forEach((line)=>{const item=inv[line.ingredientId]||{},category=invCategories[item.category]||{},label=String(category.name||item.category||"").toLowerCase();let bucket="unallocated";if(/packag|cup|lid|straw|napkin|container/.test(label))bucket="packaging";else if(/beverage|drink|coffee|tea|milk|syrup|powder/.test(label))bucket="beverage";else if(/food|ingredient|bakery|kitchen|pastry|meal/.test(label))bucket="food";categorySnapshot[bucket]+=Number(line.totalCost)||0;const mapping=BooksBridge.itemAccounts(item),key=mapping.inventory&&mapping.cost?`${mapping.inventory}|${mapping.cost}`:"1290|5090";accountSnapshot[key]=Financial.money((accountSnapshot[key]||0)+Number(line.totalCost||0));});
   Object.keys(categorySnapshot).forEach((key)=>{categorySnapshot[key]=Math.round(categorySnapshot[key]*100)/100;});
-  return{schemaVersion:1,capturedAt,capturedBy:"server",engineVersion:costing.engineVersion,usage:positiveOrderInventoryUsage(costing.usage),totalCost:costing.totalCost,categorySnapshot,accountSnapshot,cogsCovered:costing.cogsCovered,lines:costing.lines,warnings:costing.warnings};
+  const uncosted=Array.isArray(costing.uncosted)?costing.uncosted:[];
+  const plan={schemaVersion:1,capturedAt,capturedBy:"server",engineVersion:costing.engineVersion,usage:positiveOrderInventoryUsage(costing.usage),totalCost:costing.totalCost,categorySnapshot,accountSnapshot,cogsCovered:costing.cogsCovered,lines:costing.lines,warnings:costing.warnings};
+  // Lines sold without a usable recipe carry no stock and no cost; they are recorded for
+  // management to cost later. The database drops an empty usage map, so say so explicitly.
+  plan.uncostedVersion=1;if(uncosted.length)plan.uncostedLines=uncosted;
+  if(!Object.keys(plan.usage).length)plan.emptyUsage=true;
+  return plan;
 }
 
 // Sale-time costing. Recipes, menu items, inventory and packaging rules are read record by
 // record for the lines of this order (readCatalogKeyed), so a sale downloads a few KB instead
 // of the whole catalog; the plan is identical to one built from the full catalog.
+// A missing or broken recipe never refuses the sale (24 Sep 2026): that line is excluded from
+// stock and cost and flagged in /uncostedSales for a manager to resolve.
 async function calculateOrderInventoryPlan(db,order,capturedAt=Date.now(),orderId="") {
-  const [optSnap,ps]=await Promise.all([/* download-ok: catalog option recipes are menu configuration, not history (empty on 16 Sep 2026) */db.ref("/optionRecipes").get(),readPosSettings(db,["sharedBaseIngredients","optionCosts","packagingAssignments","invCategories"])]),optionRaw=optSnap.val()||{},optionRecipes={};
-  Object.keys(optionRaw).forEach((key)=>{const row=optionRaw[key]||{};optionRecipes[row.label||key]=row;});
-  return readCatalogKeyed(db,["recipes","inventory","menuItems","optionGroups","packagingRules"],(maps)=>{
-    const costing=Costing.costOrder({lineItems:order.lineItems||[],recipes:maps.recipes,inventory:maps.inventory,menuItems:maps.menuItems,sharedBaseIngredients:ps.sharedBaseIngredients||{},optionCosts:ps.optionCosts||{},optionRecipes,optionGroups:maps.optionGroups,packagingRules:maps.packagingRules,packagingAssignments:ps.packagingAssignments||{}});
-    if(!costing.ok)throw new Error("Authoritative costing rejected order"+(orderId?" "+orderId:"")+": "+costing.errors.slice(0,5).map(row=>row.code+": "+row.message).join(" | "));
+  return withCostingCatalog(db,(catalog,maps,ps)=>{
+    const costing=UncostedSales.costOrderTolerant(Object.assign({},catalog,{lineItems:order.lineItems||[]}));
+    if(costing.uncosted.length)logger.warn("Sale lines without a usable recipe",{orderId,lines:costing.uncosted.map(row=>`${row.itemKey}:${row.reason}`)});
     return buildOrderInventoryPlan(costing,maps.inventory,ps,capturedAt);
   });
+}
+// The costing context for sale-time costing and for later cost corrections of uncosted lines.
+async function withCostingCatalog(db,compute){
+  const [optSnap,ps]=await Promise.all([/* download-ok: catalog option recipes are menu configuration, not history (empty on 16 Sep 2026) */db.ref("/optionRecipes").get(),readPosSettings(db,["sharedBaseIngredients","optionCosts","packagingAssignments","invCategories"])]),optionRaw=optSnap.val()||{},optionRecipes={};
+  Object.keys(optionRaw).forEach((key)=>{const row=optionRaw[key]||{};optionRecipes[row.label||key]=row;});
+  return readCatalogKeyed(db,["recipes","inventory","menuItems","optionGroups","packagingRules"],(maps)=>compute({recipes:maps.recipes,inventory:maps.inventory,menuItems:maps.menuItems,sharedBaseIngredients:ps.sharedBaseIngredients||{},optionCosts:ps.optionCosts||{},optionRecipes,optionGroups:maps.optionGroups,packagingRules:maps.packagingRules,packagingAssignments:ps.packagingAssignments||{}},maps,ps));
 }
 
 exports.onOrderFinalize = onValueWritten(
@@ -5502,12 +5802,21 @@ exports.onOrderFinalize = onValueWritten(
   async (event) => {
     const orderId = event.params.orderId;
     const db = getDatabase();
-    const oref = db.ref("/orders/" + orderId);
     const o = event.data.after.val();
     if (!o || (o.status !== "Completed" && o.status !== "Received") || !o.lineItems) return;
     if (o.inventoryDeducted && o.inventoryLedgerVersion === 1) return;
-
     try {
+      await finalizeOrderInventory(db, orderId, o);
+    } catch (err) {
+      logger.error("onOrderFinalize failed", {orderId, error: String(err)});
+      throw err;
+    }
+  },
+);
+
+// Shared by the trigger and by management recovery of sales that were stuck before
+// 24 Sep 2026. Idempotent: the plan is immutable and every stock movement has a fixed ID.
+async function finalizeOrderInventory(db, orderId, o) {
       // The immutable sale-time plan is read first. When it already exists (a
       // retry, or a re-write of an order that was finalized before archiving),
       // the catalog is not needed and is not downloaded again.
@@ -5516,7 +5825,8 @@ exports.onOrderFinalize = onValueWritten(
       // Otherwise the plan is costed now from the records this order uses.
       const capturedAt=Date.now(),candidate=hasPlan?null:await calculateOrderInventoryPlan(db,o,capturedAt,orderId);
       const planResult=await db.ref(`/orderInventoryPlans/${orderId}`).transaction((current)=>current||candidate,undefined,false),plan=planResult.snapshot.val();
-      if(!plan||plan.capturedBy!=="server"||Number(plan.schemaVersion)!==1||!plan.usage)throw new Error("Immutable server inventory plan is missing for order "+orderId);
+      // A plan with no stock usage (every line uncosted) is stored without `usage`; it is valid.
+      if(!UncostedSales.validPlan(plan))throw new Error("Immutable server inventory plan is missing for order "+orderId);
       const usage = positiveOrderInventoryUsage(plan.usage);
       const ids = Object.keys(usage);
       const cogs = Number(plan.totalCost)||0,cogsCategorySnapshot=plan.categorySnapshot||{},cogsAccountSnapshot=plan.accountSnapshot||{};
@@ -5529,6 +5839,7 @@ exports.onOrderFinalize = onValueWritten(
         occurredAt: Number(o.completedAt || o.receivedAt || Date.now()),
         actorName: o.onDuty || o.staff || "Order finalization",
       }, {uid: "server", role: "server"})));
+      const uncostedLines = await uncostedLinesForPlan(db, plan, o.lineItems);
       const finalizationMetadata = {
         inventoryDeducted: true,
         inventoryUsage: usage,
@@ -5549,17 +5860,15 @@ exports.onOrderFinalize = onValueWritten(
         deductedBy: "server",
         inventoryLedgerVersion: 1,
       };
+      if (uncostedLines.length && o.voided !== true) finalizationMetadata.costPendingLines = uncostedLines.length;
       // Archiving can win the race while costing is running. A transaction will
       // never recreate a deleted live order; if it has already moved, attach the
       // exact same confirmation metadata to the archived source record instead.
       await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, orderId, finalizationMetadata);
-      logger.info("Server deducted order", {orderId, items: ids.length, cogs});
-    } catch (err) {
-      logger.error("onOrderFinalize failed", {orderId, error: String(err)});
-      throw err;
-    }
-  },
-);
+      if (uncostedLines.length && o.voided !== true) await registerUncostedSale(db, orderId, o, uncostedLines, "sale");
+      logger.info("Server deducted order", {orderId, items: ids.length, cogs, uncosted: uncostedLines.length});
+      return {orderId, items: ids.length, uncosted: uncostedLines.length};
+}
 
 exports.onOrderInventoryReversal = onValueWritten(
   {ref: "/orders/{orderId}/inventoryReversalRequested", region: ORDER_REGION, retry: true},
@@ -5571,11 +5880,13 @@ exports.onOrderInventoryReversal = onValueWritten(
     const order = (await orderRef.get()).val();
     if (!order || order.inventoryReversed) return;
     const corrected = !!(order.completedOrderCorrectionId && order.correctedInventoryUsage), usage = positiveOrderInventoryUsage(corrected ? order.correctedInventoryUsage : (order.inventoryUsage || {}));
-    if (order.inventoryDeducted !== true || !Object.keys(usage).length) {
+    if (order.inventoryDeducted !== true) {
       // A void/refund can be requested milliseconds after completion. Wait for
       // finalization so the reversal can link to—and exactly offset—the sale.
       throw new Error(`Order ${orderId} inventory finalization is not complete; retry reversal.`);
     }
+    // A sale whose every line was uncosted took no stock: there is nothing to return, and the
+    // reversal must complete rather than retry forever (24 Sep 2026).
     const type = order.voided ? "void_reversal" : "refund_reversal";
     await Promise.all(Object.keys(usage).map((itemId) => applyInventoryMovement(db, {
       movementId: `${type}_${orderId}_${itemId}`,
@@ -5584,6 +5895,8 @@ exports.onOrderInventoryReversal = onValueWritten(
       note: String(order.inventoryReversalReason || order.refundReason || order.voidReason || "Inventory returned").slice(0, 500),
       reversalOf: corrected ? `crs_${order.correctionInventoryToken}_${itemId}` : `sale_${orderId}_${itemId}`, actorName: order.onDuty || order.staff || "Order reversal",
     }, {uid: "server", role: "server"})));
+    // Cost corrections applied later to uncosted lines were real stock usage too.
+    await reverseUncostedCostCorrections(db, orderId, order, type);
     await OrderRecords.mergeMetadataIntoAuthoritativeOrder(db, orderId, {
       inventoryReversed: true, inventoryReversedAt: Date.now(), inventoryReversalRequested: null,
       inventoryReversalLedgerVersion: 1,
