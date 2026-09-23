@@ -66,8 +66,10 @@ function reportingWeekday(stamp) {
 }
 
 function reportingCashier(order) {
-  const name = String(order && (order.staff || order.cashier || order.completedByName) || "")
-    .replace(/\s+/g, " ").trim().slice(0, 120) || "Unassigned";
+  const raw = String(order && (order.soldBy || order.soldByName || order.staff || order.cashier || order.completedByName) || "")
+    .replace(/\s+/g, " ").trim().slice(0, 120);
+  const token = raw.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const name = token.includes("rya") ? "Rya" : token.includes("alex") ? "Alex" : token.includes("louize") ? "Louize" : "Maria";
   return {key:name.toLowerCase(), name};
 }
 

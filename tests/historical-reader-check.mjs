@@ -52,18 +52,18 @@ for(let i=0;i<15;i++)await budgetContext.exports.readHistoricalSalesRollup({data
 await assert.rejects(()=>budgetContext.exports.readHistoricalSalesRollup({data:{from:'2026-01',to:'2026-12'}}),error=>error.code==='resource-exhausted');
 assert.equal(queries,16,'burst rejection happens before any additional Firestore query');
 assert(Object.keys(counters).every(key=>key.includes('historicalSummaryReadsV1')),'summaries must not exhaust detailed-history allowance');
-counters={};rollupState={complete:false,schemaVersion:7,runId:'v7-running',compatibleBaseReady:true};rollupDocs=[{id:'2026-09',data:()=>({schemaVersion:3,analyticsSchemaVersion:2})}];
+counters={};rollupState={complete:false,schemaVersion:8,runId:'v8-running',compatibleBaseReady:true};rollupDocs=[{id:'2026-09',data:()=>({schemaVersion:3,analyticsSchemaVersion:2})}];
 const incompleteCoverage=await budgetContext.exports.readHistoricalSalesRollup({data:{from:'2026-01',to:'2026-09'}});
 assert.equal(incompleteCoverage.coverageComplete,false,'an unfinished rebuild cannot prove that absent calendar months are zero');
-assert.equal(incompleteCoverage.analyticsReady,false,'comparison tables must stay hidden while exact V7 coverage is unfinished');
+assert.equal(incompleteCoverage.analyticsReady,false,'comparison charts must stay hidden while exact V8 coverage is unfinished');
 assert.deepEqual([...incompleteCoverage.missingMonths],['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07','2026-08']);
-counters={};rollupState={complete:true,schemaVersion:7,runId:'v7-complete'};rollupDocs=[
+counters={};rollupState={complete:true,schemaVersion:8,runId:'v8-complete'};rollupDocs=[
   {id:'2026-07',data:()=>({schemaVersion:3,analyticsSchemaVersion:2})},
   {id:'2026-08',data:()=>({schemaVersion:3,analyticsSchemaVersion:2})},
   {id:'2026-09',data:()=>({schemaVersion:3,analyticsSchemaVersion:2})},
 ];
 const operationStartCoverage=await budgetContext.exports.readHistoricalSalesRollup({data:{from:'2026-01',to:'2026-09'}});
-assert.equal(operationStartCoverage.coverageComplete,true,'completed V7 proves pre-operation months with no documents are zero-sales months');
+assert.equal(operationStartCoverage.coverageComplete,true,'completed V8 proves pre-operation months with no documents are zero-sales months');
 assert.equal(operationStartCoverage.analyticsReady,true,'YTD analytics must render when the completed source pass contains July-to-date operations');
 assert.deepEqual([...operationStartCoverage.missingMonths],[],'January-to-June must not be requested for a shop that began in July');
 console.log('PASS: old summary clients are limited before Firestore reads, with an independent atomic budget.');

@@ -30,9 +30,13 @@ assert.equal(doc.source.saleJournalId, "2026-09-09_instore");
 assert.equal(Object.prototype.hasOwnProperty.call(doc.order, "proof"), false, "binary proof must not be duplicated into Firestore");
 assert.equal(HistoricalArchive.unchanged(doc, HistoricalArchive.buildDocument("POS-1", evidence, 999)), true, "replication must avoid unchanged Firestore writes");
 
-const reportOrder = Object.assign({}, completed, {timestamp:Date.parse("2026-09-19T12:00:00+08:00"),subtotal:125.55,discount:5.25,refundAmount:20,channel:"instore",staff:"Rya"});
+const reportOrder = Object.assign({}, completed, {timestamp:Date.parse("2026-09-19T12:00:00+08:00"),subtotal:125.55,discount:5.25,refundAmount:20,channel:"instore",staff:"Maria",soldBy:"Rya"});
 const contribution = HistoricalArchive.reportingContribution(reportOrder);
 assert.equal(contribution.month,"2026-09");assert.equal(contribution.day,"2026-09-19");assert.equal(contribution.hour,12);assert.equal(contribution.weekday,6);assert.equal(contribution.cashierKey,"rya");assert.equal(contribution.cashierName,"Rya");assert.equal(contribution.orders,1);assert.equal(contribution.grossCents,12555);assert.equal(contribution.discountCents,525);assert.equal(contribution.refundCents,2000);assert.equal(contribution.netCents,10030);assert.equal(contribution.channel,"instore");assert.equal(contribution.schemaVersion,3);
+assert.equal(HistoricalArchive.reportingContribution(Object.assign({},reportOrder,{soldBy:"OWNER"})).cashierName,"Maria","OWNER sales must be assigned to Maria");
+assert.equal(HistoricalArchive.reportingContribution(Object.assign({},reportOrder,{soldBy:"",staff:""})).cashierName,"Maria","sales without a cashier must be assigned to Maria");
+assert.equal(HistoricalArchive.reportingContribution(Object.assign({},reportOrder,{soldBy:"ALEX"})).cashierName,"Alex");
+assert.equal(HistoricalArchive.reportingContribution(Object.assign({},reportOrder,{soldBy:"LOUIZE"})).cashierName,"Louize");
 assert.deepEqual(contribution.payments,[{key:"unspecified",netCents:10030}]);assert.deepEqual(contribution.items,[{key:"Latte",name:"Latte",categoryId:"",units:1,netCents:0}]);
 assert.equal(HistoricalArchive.reportingContribution(Object.assign({},reportOrder,{payment:'banktransferbdo'})).payments[0].key,'bank_transfer');
 assert.equal(HistoricalArchive.reportingContribution(Object.assign({},reportOrder,{payment:'ewalletgcash'})).payments[0].key,'gcash');
@@ -110,7 +114,7 @@ for (const marker of [
   "exports.manageHistoricalOrderArchive", "exports.readHistoricalOrders", "exports.readHistoricalSalesRollup", "historicalOrdersFromDocuments", "HistoricalArchive.unchanged", "deletionEnabled: false",
   '"sales-at-backfill"', '"sales-at-audit"', '"sales-ledger-backfill"', '"sales-rollup-backfill"', "Firestore replica maintenance only", "orderByKey()", "HISTORICAL_ARCHIVE_BATCH_LIMIT = 100",
   'startAt(`sale_${orderId}_`).endAt(`sale_${orderId}_\\uf8ff`)', "never recalculate history from current recipes", 'db.ref(`/archivedOrders/${orderId}`).get()',
-  'db.ref("/historicalArchiveSync").transaction', "reconcileHistoricalSalesRollup", "salesRollupReady", "salesAtReady", "HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 3", "HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION = 7", "HISTORICAL_ROLLUP_COMPLETION_READ_LIMIT = 50000", "compatibleBaseReady", "HISTORICAL_MAINTENANCE_DAILY_DOCUMENT_LIMIT = 4000", "HISTORICAL_REPLICA_BATCH_LIMIT = 10", "HISTORICAL_REPLICA_DAILY_SOURCE_LIMIT = 1000", '"sales-replica-backfill"', "reserveHistoricalReplicaBudget", "salesReplicaBackfill", "sourceReplicaRunId", "historicalFirestoreReadsV3", "HISTORICAL_USER_BURST_READ_LIMIT = 200", "limit * (salesAtReady ? 1 : 3)",
+  'db.ref("/historicalArchiveSync").transaction', "reconcileHistoricalSalesRollup", "salesRollupReady", "salesAtReady", "HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION = 3", "HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION = 8", "HISTORICAL_ROLLUP_COMPLETION_READ_LIMIT = 50000", "compatibleBaseReady", "HISTORICAL_MAINTENANCE_DAILY_DOCUMENT_LIMIT = 4000", "HISTORICAL_REPLICA_BATCH_LIMIT = 10", "HISTORICAL_REPLICA_DAILY_SOURCE_LIMIT = 1000", '"sales-replica-backfill"', "reserveHistoricalReplicaBudget", "salesReplicaBackfill", "sourceReplicaRunId", "historicalFirestoreReadsV3", "HISTORICAL_USER_BURST_READ_LIMIT = 200", "limit * (salesAtReady ? 1 : 3)",
 ]) assert(source.includes(marker), `historical archive safeguard missing: ${marker}`);
 assert(source.includes("const legacyContribution = previous && Number(previous.schemaVersion || 0) < 3"), "legacy rollup contributions must be migrated instead of treated as complete");
 assert(source.includes("const legacyMonth = months.some"), "legacy month summaries must be migrated instead of treated as complete");
@@ -124,7 +128,7 @@ const maintenanceUi = fs.readFileSync("assets/js/admin/operations-dashboard.js",
 assert(maintenanceUi.includes("salesAtStageState") && maintenanceUi.includes("dependentStageState(status,'salesAt',3)") && maintenanceUi.includes("dependentStageState(status,'salesRollup',4)") && maintenanceUi.includes("sourceReplicaRunId"), "the owner repair must rerun incomplete summary-schema states once");
 assert(maintenanceUi.includes("sales-replica-backfill") && maintenanceUi.includes("reportingReady"), "the owner repair must populate and validate the detailed-report reader before reporting success");
 assert(maintenanceUi.includes("Detailed-report reader ready"), "the owner must be able to distinguish rollup-ready from detailed-reader-ready reporting");
-assert(maintenanceUi.includes("v7RollupState") && maintenanceUi.includes("v7RollupState(latest)") && maintenanceUi.includes("v7ReportingReady"), "a completed V6 rollup must start, rather than bypass, the required V7 analytics rebuild");
+assert(maintenanceUi.includes("v8RollupState") && maintenanceUi.includes("v8RollupState(latest)") && maintenanceUi.includes("v8ReportingReady"), "a completed V7 rollup must start, rather than bypass, the required V8 cashier rebuild");
 
 const rules = fs.readFileSync("firestore.rules", "utf8");
 assert(rules.includes("allow read, write: if false"), "Firestore historical replica must be server-only");
