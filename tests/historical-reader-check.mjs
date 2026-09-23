@@ -38,6 +38,11 @@ console.log('historical Firestore reader checks passed');
 
 const vm=await import('node:vm');
 const server=fs.readFileSync('src/functions/61-historical-archive.js','utf8');
+const queryLimitSource=server.slice(server.indexOf('function historicalPeriodQueryLimit'),server.indexOf('async function historicalPeriodPage'));
+const queryLimitContext={Math};vm.createContext(queryLimitContext);vm.runInContext(queryLimitSource,queryLimitContext);
+assert.equal(queryLimitContext.historicalPeriodQueryLimit(100,false),33,'legacy three-field history must fit beneath the existing 200-read burst guard');
+assert.equal(queryLimitContext.historicalPeriodQueryLimit(100,true),100,'the canonical salesAt index keeps the normal page size');
+assert(server.includes('const reservedReads = mode === "period" && !salesAtReady ? (periodQueryLimit + 1) * 3 : limit'),'legacy history must reserve its three query sentinels without weakening the read cap');
 const budgetSource=server.slice(0,server.indexOf('async function reserveHistoricalMaintenanceBudget'));
 const rollupSource=server.slice(server.indexOf('exports.readHistoricalSalesRollup'),server.indexOf('// Books may be posted'));
 let counters={},queries=0,rollupDocs=[],rollupState={complete:false,schemaVersion:5,runId:'first-incomplete'};

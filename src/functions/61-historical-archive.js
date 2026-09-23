@@ -158,6 +158,13 @@ async function historicalSalesAtReady(db) {
   return value;
 }
 
+function historicalPeriodQueryLimit(limit, salesAtReady) {
+  // Before the canonical salesAt index is ready the reader must query three
+  // legacy date fields. Split one requested page across those queries so the
+  // first page can never reserve 300 reads against the 200-read burst guard.
+  return salesAtReady ? limit : Math.max(1, Math.floor(limit / 3));
+}
+
 async function historicalPeriodPage(db, firestore, data, limit, salesAtReady) {
   const start = Number(data.startAt), end = Number(data.endAt);
   if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || end - start > 400 * 86400000) {
@@ -349,10 +356,12 @@ exports.readHistoricalOrders = onCall(
       }
     }
     const salesAtReady = mode === "period" ? await historicalSalesAtReady(db) : false;
+    const periodQueryLimit = mode === "period" ? historicalPeriodQueryLimit(limit, salesAtReady) : limit;
     // The current reader performs one indexed query once salesAt is ready.
     // The three-query allowance remains only for an unfinished legacy index.
-    await reserveHistoricalReadBudget(db, actor.uid, mode === "period" ? limit * (salesAtReady ? 1 : 3) : limit, {page:mode === "period" && purpose === "admin_period_report"});
-    const page = mode === "period" ? await historicalPeriodPage(db, firestore, data, limit, salesAtReady) : await historicalLatestPage(db, firestore, data, limit);
+    const reservedReads = mode === "period" && !salesAtReady ? (periodQueryLimit + 1) * 3 : limit;
+    await reserveHistoricalReadBudget(db, actor.uid, reservedReads, {page:mode === "period" && purpose === "admin_period_report"});
+    const page = mode === "period" ? await historicalPeriodPage(db, firestore, data, periodQueryLimit, salesAtReady) : await historicalLatestPage(db, firestore, data, limit);
     const hydrated = await historicalOrdersFromDocuments(db, page.documents);
     if (typeof logger !== "undefined") logger.info("Historical Firestore read", {mode, purpose, requested:limit, returned:Object.keys(hydrated.rows).length, hasMore:page.hasMore, firestore:hydrated.firestore, rtdbFallback:hydrated.rtdbFallback});
     return {
