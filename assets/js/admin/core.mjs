@@ -1,11 +1,11 @@
 import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
-import{createSubscriptionHub}from"./realtime-hub.mjs?v=586";
+import{createSubscriptionHub}from"./realtime-hub.mjs?v=587";
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=586";
-import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=586";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=587";
+import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=587";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -19,7 +19,7 @@ const {getPaymentProof:getPaymentProofCall,getCurrentCashBalances:getCurrentCash
 window.__accazaAuth=auth;
 const readHistoricalOrders=function(payload){return callables.readHistoricalOrders(payload).then(function(result){return result.data||{};});};
 const readHistoricalSalesRollup=function(payload){return callables.readHistoricalSalesRollup(payload).then(function(result){return result.data||{};});};
-const subscriptionHub=createSubscriptionHub(db,{ref,onValue,onChildAdded,onChildChanged,onChildRemoved,query,orderByChild,limitToLast,startAt,endAt,endBefore,get,readHistoricalOrders});
+const subscriptionHub=createSubscriptionHub(db,{ref,onValue,onChildAdded,onChildChanged,onChildRemoved,query,orderByChild,limitToLast,startAt,endAt,endBefore,get,readHistoricalOrders,cacheScope:function(){return auth&&auth.currentUser&&auth.currentUser.uid||'';}});
 window.__accazaLiveStats=function(){return subscriptionHub.stats();};
 const renderHistoryPager=createHistoryPager(subscriptionHub);
 window.__fbForgot=function(){var current=(document.getElementById('adminUser').value||'').trim();if(!window.AccazaFormDialog){alert('Form service unavailable. Refresh and try again.');return;}window.AccazaFormDialog.run({title:'Reset portal password',subtitle:'Firebase will send the reset link to this account.',submitLabel:'Send reset link',busyLabel:'Sendingâ€¦',fields:[{name:'email',label:'Firebase account email',type:'email',required:true,value:current,validate:function(v){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)?'':'Enter a valid email address.';}}]},function(v){return sendPasswordResetEmail(auth,v.email).then(function(){return v;});}).then(function(v){alert('Password reset link sent to '+v.email+'. Check inbox and spam.');}).catch(function(e){if(e&&e.code!=='cancelled')alert('Could not send reset: '+((e&&e.code)||e));});};

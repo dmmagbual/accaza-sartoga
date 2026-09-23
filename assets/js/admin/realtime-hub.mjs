@@ -1,5 +1,5 @@
 import{watchSalesPeriod,periodKey}from'./sales-period-data.mjs?v=562';
-import{createHistoricalPeriodStore}from'./historical-period-store.mjs?v=586';
+import{createHistoricalPeriodStore}from'./historical-period-store.mjs?v=587';
 // One managed subscription per path. Sales reports combine indexed date queries;
 // POS-critical paths stay live and back-office paths attach only when needed.
 const HISTORY_BOUNDS={
@@ -91,7 +91,9 @@ function createSubscriptionHub(database,ops){
   function liveTarget(path){var base=ref(database,path),spec=HISTORY_BOUNDS[path],period=reportPeriod();if(WINDOWED_PATHS[path]){var win=WINDOWED_PATHS[path];return query(base,orderByChild(win.field),startAt(Date.now()-win.windowMs));}if(CURRENT_MONTH_PATHS[path])return query(base,orderByChild(CURRENT_MONTH_PATHS[path]),startAt(manilaMonthStart()));if(OPEN_ROW_PATHS[path])return query(base,orderByChild(OPEN_ROW_PATHS[path].field),startAt(OPEN_ROW_PATHS[path].start));if(!spec)return base;if(period&&path==='financialMovements'&&Number(period.startAt)&&Number(period.endAt))return query(base,orderByChild(spec.field),startAt(Number(period.startAt)),endAt(Number(period.endAt)));return query(base,orderByChild(spec.field),limitToLast(spec.limit));}
   var entries={},authorized=false,activeScope='dashboard',nextId=1,liveStartedAt=0,liveReadyRecorded=false;
   var rollingStops=new Set();
-  const historicalPeriods=createHistoricalPeriodStore({read:payload=>ops.readHistoricalOrders(payload),watch:(data,error)=>onValue(ref(database,'historicalArchiveSync'),snapshot=>data(snapshot.val()||{}),error)});
+  // Saved Sales History catches up from the durable change log by exact order ID:
+  // a small RTDB read of order IDs replaces re-downloading 100-record pages.
+  const historicalPeriods=createHistoricalPeriodStore({read:payload=>ops.readHistoricalOrders(payload),watch:(data,error)=>onValue(ref(database,'historicalArchiveSync'),snapshot=>data(snapshot.val()||{}),error),changes:(after,to)=>get(query(ref(database,'historicalArchiveChanges'),orderByChild('sequence'),startAt(after+1),endAt(to))).then(snapshot=>Object.values(snapshot.val()||{})),scope:()=>typeof ops.cacheScope==='function'?ops.cacheScope():''});
   async function readHistoricalPeriod(period){
     if(!ops.readHistoricalOrders)throw new Error('Historical Firestore reader is unavailable. Refresh the portal.');
     return historicalPeriods.read(period);

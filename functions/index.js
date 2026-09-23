@@ -5888,6 +5888,14 @@ const HISTORICAL_REPLICA_DAILY_SOURCE_LIMIT = 1000;
 const HISTORICAL_USER_DAILY_READ_LIMIT = 2000;
 const HISTORICAL_USER_BURST_READ_LIMIT = 200;
 const HISTORICAL_USER_BURST_WINDOW_MS = 60000;
+// Durable, ordered change log that lets a browser with saved Sales History
+// catch up by exact order ID after sleeping, reloading, or reopening days
+// later. Each row is ~80 bytes (order ID, sequence, salesAt); the newest
+// HISTORICAL_CHANGE_LOG_RETAIN rows are kept. A client older than the retained
+// window falls back to one bounded period reload instead of guessing.
+const HISTORICAL_CHANGE_LOG_PATH = "/historicalArchiveChanges";
+const HISTORICAL_CHANGE_LOG_RETAIN = 5000;
+const HISTORICAL_CHANGE_LOG_PRUNE_EVERY = 100;
 const HISTORICAL_ROLLUP_COMPLETION_READ_LIMIT = 50000;
 const HISTORICAL_PERIOD_MAX_MS = 93 * 86400000;
 // Version 3 binds the completed reporting indexes to the completed source
@@ -5925,7 +5933,30 @@ async function reserveHistoricalReadBudget(db, uid, reads, options = {}) {
     if (used + requested > HISTORICAL_USER_DAILY_READ_LIMIT || (isPage && windowReads + requested > HISTORICAL_USER_BURST_READ_LIMIT)) return;
     return {day, reads:used + requested, windowStartedAt, windowReads:isPage ? windowReads + requested : windowReads, updatedAt:now, schemaVersion:3};
   });
-  if (!result.committed) throw new HttpsError("resource-exhausted", options.summary ? "Historical summary reads are temporarily paused to protect the read allowance. Close duplicate report tabs and try again later." : "Detailed Sales History is temporarily paused to protect reporting downloads. Wait one minute before loading another page, or use the compact Dashboard and Analytics summaries.");
+  if (!result.committed) {
+    // Say which limit refused the read and when it clears. The previous single
+    // "wait one minute" message was wrong whenever the daily allowance was the
+    // cause: that allowance only resets at midnight US Pacific time.
+    const snapshot = result.snapshot && typeof result.snapshot.val === "function" ? result.snapshot.val() : null;
+    const used = snapshot && snapshot.day === day ? Number(snapshot.reads) || 0 : 0;
+    const daily = used + requested > HISTORICAL_USER_DAILY_READ_LIMIT;
+    const retryAfterMs = daily ? historicalDailyResetInMs(now) : Math.max(1000, HISTORICAL_USER_BURST_WINDOW_MS - (now - Number(snapshot && snapshot.windowStartedAt || now)));
+    const resetAt = now + retryAfterMs;
+    const resetText = new Intl.DateTimeFormat("en-PH", {timeZone:"Asia/Manila", hour:"numeric", minute:"2-digit"}).format(new Date(resetAt));
+    const label = options.summary ? "Historical summary reads" : "Detailed Sales History";
+    const message = daily
+      ? `${label} has used today's read allowance for this account (${HISTORICAL_USER_DAILY_READ_LIMIT.toLocaleString("en-US")} records). It resets at ${resetText} Manila time. Sales already saved on this device stay visible, and the Dashboard and Analytics summaries are unaffected.`
+      : `${label} is loading faster than ${HISTORICAL_USER_BURST_READ_LIMIT} records a minute. Wait ${Math.ceil(retryAfterMs / 1000)} seconds, then try again.`;
+    throw new HttpsError("resource-exhausted", message, {reason:daily ? "daily" : "burst", retryAfterMs, resetAt});
+  }
+}
+
+// Milliseconds until the next midnight in US Pacific time, the boundary the
+// per-user historical read allowance (and Firestore's daily quota) uses.
+function historicalDailyResetInMs(now = Date.now()) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {timeZone:"America/Los_Angeles", hour12:false, hour:"2-digit", minute:"2-digit", second:"2-digit"}).formatToParts(new Date(now)).map((part) => [part.type, part.value]));
+  const elapsed = ((Number(parts.hour) % 24) * 3600 + Number(parts.minute) * 60 + Number(parts.second)) * 1000 + (now % 1000);
+  return Math.max(1000, 86400000 - elapsed);
 }
 
 async function reserveHistoricalRollupReadBudget(db, documents) {
@@ -5987,14 +6018,50 @@ async function reserveHistoricalReplicaBudget(db, documents) {
 async function publishHistoricalChange(db, orderId, order, now = Date.now()) {
   // Atomic, bounded journal: concurrent archivers cannot overwrite unseen IDs.
   // Older clients continue using the top-level marker fields.
-  await db.ref("/historicalArchiveSync").transaction((current) => {
+  const salesAt = order ? HistoricalArchive.salesAt(order) : 0;
+  const result = await db.ref("/historicalArchiveSync").transaction((current) => {
     const sequence = (Number(current && current.sequence) || 0) + 1;
     const change = {sequence, orderId, deleted: !order};
     const changes = Object.assign({}, current && current.changes || {}, {[sequence]: change});
     Object.keys(changes).forEach((key) => { if (!changes[key] || Number(key) <= sequence - 32) delete changes[key]; });
-    return {version: now, orderId, deleted: !order, salesAt: order ? HistoricalArchive.salesAt(order) : 0,
-      orderTimestamp: Number(order && order.timestamp) || 0, schemaVersion: 2, sequence, changes};
+    return {version: now, orderId, deleted: !order, salesAt,
+      orderTimestamp: Number(order && order.timestamp) || 0, schemaVersion: 2, sequence, changes,
+      cacheEpoch: Number(current && current.cacheEpoch) || 0};
   });
+  const committed = result && result.snapshot && typeof result.snapshot.val === "function" ? result.snapshot.val() : null;
+  const sequence = Number(committed && committed.sequence);
+  if (!Number.isSafeInteger(sequence) || sequence <= 0) return;
+  // The durable log is written after the marker commits. A missing row is
+  // detected by readers as a gap and reconciled with one bounded reload.
+  await db.ref(`${HISTORICAL_CHANGE_LOG_PATH}/${historicalChangeKey(sequence)}`).set({sequence, orderId, deleted: !order, salesAt, at: now});
+  if (sequence % HISTORICAL_CHANGE_LOG_PRUNE_EVERY === 0 && sequence > HISTORICAL_CHANGE_LOG_RETAIN) {
+    const stale = await db.ref(HISTORICAL_CHANGE_LOG_PATH).orderByKey().endAt(historicalChangeKey(sequence - HISTORICAL_CHANGE_LOG_RETAIN)).limitToFirst(500).get();
+    const removals = {};
+    stale.forEach((child) => { removals[child.key] = null; });
+    if (Object.keys(removals).length) await db.ref(HISTORICAL_CHANGE_LOG_PATH).update(removals);
+  }
+}
+
+function historicalChangeKey(sequence) {
+  return String(Math.floor(Number(sequence) || 0)).padStart(12, "0");
+}
+
+// A marker write can fail after the Firestore replica committed. Trigger retries
+// then see an unchanged replica, so the publish itself is retried here.
+async function publishHistoricalChangeReliably(db, orderId, order, now = Date.now()) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { await publishHistoricalChange(db, orderId, order, now); return; }
+    catch (error) { lastError = error; }
+  }
+  throw lastError;
+}
+
+// Bulk maintenance rewrites replica fields that saved browsers display (for
+// example the linked Finance summary). Changing the epoch makes every saved
+// copy reload once instead of silently showing pre-maintenance rows.
+async function bumpHistoricalCacheEpoch(db, now = Date.now()) {
+  await db.ref("/historicalArchiveSync").transaction((current) => Object.assign({}, current || {}, {cacheEpoch: now}));
 }
 
 function historicalReadCursor(raw) {
@@ -6159,7 +6226,7 @@ async function reconcileHistoricalSalesOrder(firestore, orderId, order) {
   return firestore.runTransaction(async (transaction) => reconcileHistoricalSalesRollup(firestore, orderId, order, transaction), {maxAttempts:1});
 }
 
-async function replicateHistoricalOrder(db, firestore, orderId, order, now = Date.now()) {
+async function replicateHistoricalOrder(db, firestore, orderId, order, now = Date.now(), options = {}) {
   if (!order || typeof order !== "object") return {orderId, skipped: true, reason: "source_missing"};
   const input = await historicalArchiveInputs(db, orderId, order);
   const next = HistoricalArchive.buildDocument(orderId, input, now);
@@ -6171,8 +6238,12 @@ async function replicateHistoricalOrder(db, firestore, orderId, order, now = Dat
     transaction.set(ref, next);
     return {duplicate: false, rollupChanged};
   });
-  // Publish even for a duplicate: a retry must repair a failed marker write.
-  await publishHistoricalChange(db, orderId, order, now);
+  // Only a changed replica is announced. Journal/inventory refreshes and bulk
+  // backfills re-run this for unchanged orders all day; announcing those woke
+  // every open report and overflowed the 32-entry marker, forcing full reloads.
+  // The primary archive trigger still publishes duplicates so a retried
+  // delivery repairs a marker write that failed after the replica committed.
+  if (!result.duplicate || options.publishUnchanged === true) await publishHistoricalChangeReliably(db, orderId, order, now);
   return {orderId, duplicate: result.duplicate, rollupChanged:result.rollupChanged, verified: next.evidence.verified, issues: next.evidence.issues};
 }
 
@@ -6189,10 +6260,10 @@ exports.replicateArchivedOrderToFirestore = onValueWritten(
         await reconcileHistoricalSalesRollup(firestore, orderId, null, transaction);
         transaction.delete(orderRef);
       });
-      await publishHistoricalChange(db, orderId, null, now);
+      await publishHistoricalChangeReliably(db, orderId, null, now);
       return;
     }
-    const result = await replicateHistoricalOrder(db, firestore, orderId, order, now);
+    const result = await replicateHistoricalOrder(db, firestore, orderId, order, now, {publishUnchanged: true});
     // Always publish after the Firestore transaction. If the marker write is
     // the only failed step, a retry must still wake readers after the document
     // has become an unchanged duplicate.
@@ -6387,6 +6458,7 @@ exports.manageHistoricalOrderArchive = onCall(
       const nextCursor = ids.length === limit ? ids[ids.length - 1] : "";
       const progress = {runId, expectedCursor:nextCursor, complete:!nextCursor, updatedAt:Date.now(), updatedBy:actor.uid, lastSummary:summary, schemaVersion:1};
       await stateRef.set(progress);
+      if (!nextCursor) await bumpHistoricalCacheEpoch(db);
       await db.ref(`/operationalAudit/${Date.now()}_historical_archive_${action}`).set({
         action:"historical_archive_sales_replica_backfill",sourceType:"historicalOrderArchive",sourceId:nextCursor||"complete",actorUid:actor.uid,actorRole:actor.role,ts:Date.now(),cursor,nextCursor,summary,schemaVersion:1,
         accounting:"Copied bounded, source-linked historical order replicas for reporting only. No RTDB order, inventory, settlement, subledger, journal, or Finance Books record was changed.",
@@ -6456,6 +6528,7 @@ exports.manageHistoricalOrderArchive = onCall(
         if (action === "sales-at-backfill") { batch.update(document.ref, {salesAt: stamp}); summary.written++; }
       }
       if (["sales-at-backfill", "sales-ledger-backfill"].includes(action) && summary.written) await batch.commit();
+      if (action === "sales-ledger-backfill" && !(docs.length === limit)) await bumpHistoricalCacheEpoch(db);
       const nextCursor = docs.length === limit ? docs[docs.length - 1].id : "";
       if (["sales-at-backfill", "sales-ledger-backfill", "sales-rollup-backfill"].includes(action)) {
         const progress = {runId, expectedCursor:nextCursor, complete:!nextCursor, updatedAt:Date.now(), updatedBy:actor.uid, lastSummary:summary, sourceReplicaRunId:replicaState.runId, schemaVersion:action === "sales-at-backfill" ? HISTORICAL_SALES_AT_BACKFILL_SCHEMA_VERSION : action === "sales-rollup-backfill" ? HISTORICAL_SALES_ROLLUP_BACKFILL_SCHEMA_VERSION : 2};
@@ -6504,7 +6577,7 @@ exports.manageHistoricalOrderArchive = onCall(
         continue;
       }
       if (HistoricalArchive.unchanged(current, next)) summary.unchanged++;
-      else { await ref.set(next); summary.written++; }
+      else { await ref.set(next); summary.written++; await publishHistoricalChangeReliably(db, orderId, rows[orderId]); }
       if (next.evidence.verified) summary.verified++; else summary.needsReview++;
     }
     const nextCursor = ids.length === limit ? ids[ids.length - 1] : "";
