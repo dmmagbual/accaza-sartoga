@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 589,
+    "admin": 590,
     "books": 129,
     "customer": 75,
-    "serviceWorkerCache": 570
+    "serviceWorkerCache": 571
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
@@ -273,6 +273,8 @@
     "RELEASE_7H_SKU_LINK_INTEGRITY_2026-08-10.md"
   ],
   "requiredFunctionExports": [
+    "resolvePendingShiftHandovers",
+    "onShiftEndResolveEarlierHandovers",
     "manageUncostedSales",
     "askAccazaAI",
     "manageAccazaAiKnowledge",

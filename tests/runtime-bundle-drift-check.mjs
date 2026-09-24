@@ -47,6 +47,8 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('syncOfflinePosSa
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('syncOfflinePosSale'),0,'reportPosDeviceHealth','verifyShiftCloseReadiness','onShiftCloseAssurance','manageShiftHandover');
 // Sep 2026 shift crew: crew membership and management recovery of refused POS sales.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageShiftHandover')+1,0,'managePosShiftCrew','managePosSaleRecovery');
+// 24 Sep 2026: every close ends with a Z report; pending handovers are resolved by the server.
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('managePosShiftCrew'),0,'resolvePendingShiftHandovers','onShiftEndResolveEarlierHandovers');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('syncOfflinePosSale')+1,0,'getSupplierAdvanceDetails');
 // Sep 2026: owner emergency sign-out of every portal session.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('onShiftCloseAssurance'),0,'signOutAllPortalSessions');

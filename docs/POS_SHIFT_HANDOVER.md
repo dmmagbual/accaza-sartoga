@@ -18,27 +18,38 @@ shift; this does not implement multi-device shift allocation during a total outa
 An unreadable queue or an over-limit upload must be recovered first rather than
 silently represented as empty.
 
-## Automatic close at handover (Admin 589 / cache 570)
+## Every close ends with a Z report (Admin 590 / cache 571)
 
-On 24 Sep 2026 (SH-945869) the server confirmed the shift ready, then the second
-check failed on the tablet without reaching the server. Nothing was outstanding, but
-the Z report waited for a manager. Now, when a handover retains no sale, the server
-closes the shift itself and returns the Z report, which the till shows immediately
-(in the page if a pop-up is blocked). It uses the evidence a normal close needs:
+Decision (Danilo, 24 Sep 2026): no issue may prevent a Z report. Checks still protect
+the books, but they no longer decide whether a Z report exists.
 
-- no sale retained from the submitting device;
-- every other device's last report shows an empty queue (as `verifyShiftCloseReadiness`);
-- no sale syncing into the shift (sync gate), every sale posted to inventory and
-  Finance Books (it waits up to about 9 seconds for postings first);
-- an open accounting period.
+| Situation | What the cashier gets | What happens next |
+|---|---|---|
+| Everything confirmed | Final Z (till) | — |
+| Check fails, nothing actually open | Final Z (server, `automatic_handover`) | — |
+| Sale retained, other till outstanding, crew till silent, posting running | **Provisional Z**: server orders plus retained sales (their cash is in the counted drawer), open items listed | Server replays retained sales at handover and every 5 minutes (`resolvePendingShiftHandovers`) and issues the final Z as soon as it is clean |
+| Still open when the next shift ends (closed or handed over) | — | `onShiftEndResolveEarlierHandovers` issues the **final Z with open items** (`grace_handover`); unrecovered sales move to Sales needing recovery; a follow-up opens |
+| Server unreachable at handover | **Provisional Z built on the till** (includes queued sales) | Cashier submits again when back online |
+| Final save of a normal close fails | Goes to the handover path above | — |
+| Pop-up blocked | Z opens inside the page | — |
 
-It uses the same `finalizeShiftHandover` path, locks, Z calculation and discrepancy
-record as a manager finalization. It records `reconciliationMode: automatic`,
-`resolvedBy: server`, the audit action `auto_finalize_shift_handover`, and the
-till's failure reason (`closeCheckError`, for example `[timeout] …` or
-`[server check] …`). If anything blocks it, the handover stays pending and the
-reason (`autoFinalize.blocker`) is shown to the cashier and in the manager's review.
-The manager's finalization still requires the device attestation and reason.
+**Late sales after a final Z.** A sale rung during the shift can be recovered into it even
+after it closed (Sales needing recovery → Recover; `lateRecovery`). The closed drawer is not
+changed; the Z report is re-issued as an amendment (previous copy in `shiftZHistory`). The
+cash variance posted at close is **not rewritten**: the amended Z shows the posted and the
+recalculated figure, and a `late_sale_variance` follow-up asks management to settle the
+difference in Discrepancies. Sales rung outside the shift's hours are never taken into it.
+
+**Follow-ups.** `shiftCloseFollowUps/{shiftId}` (Exception Center `shift_close_follow_up`,
+Register Ops → Review pending shift handovers) records a final Z with open items, a
+late-sale variance change, or a failed amendment. A manager marks each reviewed with a reason.
+
+**Unchanged controls.** All finalization modes (`manager`, `automatic`, `grace`) share
+`finalizeShiftHandover`: reconcile lease, sync-gate freeze, Z from server orders and the
+immutable count, open accounting period, discrepancy for any variance, custody posted at
+handover, variance posted on close, close receipt. The manager path still requires the
+device attestation. Automatic closes need the normal-close evidence plus a crew empty-queue
+report within 5 minutes. Every handover records the till's failure reason (`closeCheckError`).
 
 ## Management recovery
 

@@ -64,7 +64,7 @@ exports.managePosSaleRecovery=onCall({region:ORDER_REGION,enforceAppCheck:ENFORC
     const shiftIds=[...new Set(Object.values(rows).map(r=>r&&r.shiftId).filter(id=>/^[A-Za-z0-9_-]{3,100}$/.test(String(id||''))))];
     const shifts=Object.fromEntries(await Promise.all(shiftIds.map(async id=>[id,(await db.ref(`/shifts/${id}`).get()).val()||{}])));
     const staff=(/* download-ok: bounded POS staff list */await db.ref('/posStaff').get()).val()||{},nameOf=uid=>{const hit=Object.values(staff).find(r=>r&&r.accountUid===uid);return hit?String(hit.name||''):'';};
-    return {rows:Object.entries(rows).map(([id,r])=>{const s=shifts[r.shiftId]||{};return {transactionId:id,orderId:r.orderId||'',shiftId:r.shiftId||'',shiftStaff:s.staff||'',shiftStatus:s.status||'missing',rungBy:nameOf((r.command&&r.command.order&&r.command.order.soldByUid)||r.actorUid)||r.actorUid||'',sentBy:nameOf(r.lastActorUid||r.actorUid)||'',total:Number(r.total)||0,orderTimestamp:Number(r.orderTimestamp)||0,code:r.code||'',message:r.message||'',count:Number(r.count)||0,firstAt:Number(r.firstAt)||0,lastAt:Number(r.lastAt)||0,recoverable:!!r.command&&['open','handover_pending'].includes(s.status),items:String(r.command&&r.command.order&&r.command.order.items||'').slice(0,200)};}).sort((a,b)=>a.orderTimestamp-b.orderTimestamp)};
+    return {rows:Object.entries(rows).map(([id,r])=>{const s=shifts[r.shiftId]||{};return {transactionId:id,orderId:r.orderId||'',shiftId:r.shiftId||'',shiftStaff:s.staff||'',shiftStatus:s.status||'missing',rungBy:nameOf((r.command&&r.command.order&&r.command.order.soldByUid)||r.actorUid)||r.actorUid||'',sentBy:nameOf(r.lastActorUid||r.actorUid)||'',total:Number(r.total)||0,orderTimestamp:Number(r.orderTimestamp)||0,code:r.code||'',message:r.message||'',count:Number(r.count)||0,firstAt:Number(r.firstAt)||0,lastAt:Number(r.lastAt)||0,recoverable:!!r.command&&(['open','handover_pending'].includes(s.status)||(s.status==='closed'&&Number(r.orderTimestamp)>=Number(s.openAt)&&Number(r.orderTimestamp)<=Number(s.closeAt||0))),lateRecovery:s.status==='closed',items:String(r.command&&r.command.order&&r.command.order.items||'').slice(0,200)};}).sort((a,b)=>a.orderTimestamp-b.orderTimestamp)};
   }
   const transactionId=OfflineSync.offlineTxnKey(data.transactionId),reason=financeText(data.reason,300);
   if(reason.length<5)throw new HttpsError('invalid-argument','Record why this sale is being recovered or dismissed.');
@@ -79,12 +79,18 @@ exports.managePosSaleRecovery=onCall({region:ORDER_REGION,enforceAppCheck:ENFORC
   if(action!=='recover')throw new HttpsError('invalid-argument','Unknown recovery action.');
   if(!alert.command||alert.command.transactionId!==transactionId)throw new HttpsError('failed-precondition','No sale evidence was captured for this transaction.');
   const shift=(await db.ref(`/shifts/${alert.shiftId}`).get()).val();
-  if(!shift||!['open','handover_pending'].includes(shift.status))throw new HttpsError('failed-precondition','The original shift is already closed. Record this sale as a manager correction instead.');
+  if(!shift)throw new HttpsError('failed-precondition','The original shift was not found. Dismiss this sale with a reason and record it as a correction.');
+  // A shift that has closed still takes a sale rung during its hours; its Z is re-issued.
+  const lateRecovery=shift.status==='closed';
+  if(lateRecovery&&!(Number(alert.command.order&&alert.command.order.timestamp)>=Number(shift.openAt)&&Number(alert.command.order&&alert.command.order.timestamp)<=Number(shift.closeAt||0)))throw new HttpsError('failed-precondition','This sale was rung outside the original shift. Dismiss it with a reason and record it as a correction.');
+  if(!lateRecovery&&!['open','handover_pending'].includes(shift.status))throw new HttpsError('failed-precondition','The original shift is not open for recovery.');
   // The till stamps who rang the sale; a different login may have sent it later.
   const recovery=await OfflineSync.recoveryContext(db,alert.shiftId,(alert.command.order&&alert.command.order.soldByUid)||alert.actorUid,actor.uid);
   let result;
-  try{result=await OfflineSync.syncOfflinePosSaleCommand({db,actor:{...actor,uid:shift.accountUid||actor.uid},recovery,data:alert.command,textField,money,listFromFirebase,activeOrderProjection,availableCash:availableCashOnHandAboveFloat,prepareOrder:async(order,at)=>({order,inventoryPlan:await calculateOrderInventoryPlan(db,order,at)})});}
+  try{result=await OfflineSync.syncOfflinePosSaleCommand({db,actor:{...actor,uid:shift.accountUid||actor.uid},recovery,lateRecovery,data:alert.command,textField,money,listFromFirebase,activeOrderProjection,availableCash:availableCashOnHandAboveFloat,prepareOrder:async(order,at)=>({order,inventoryPlan:await calculateOrderInventoryPlan(db,order,at)})});}
   catch(error){await ref.update({lastRecoveryError:String(error&&error.message||error).slice(0,500),lastRecoveryAt:now,lastRecoveryBy:actor.uid});throw error;}
   await db.ref().update({[`posSyncAlerts/${transactionId}/state`]:'recovered',[`posSyncAlerts/${transactionId}/recoveredAt`]:now,[`posSyncAlerts/${transactionId}/recoveredBy`]:actor.uid,[`posSyncAlerts/${transactionId}/resolutionReason`]:reason,[`operationalAudit/${now}_pos_sale_recover_${transactionId}`]:operationalAuditRecord('recover_rejected_pos_sale','order',result.orderId,actor,{transactionId,shiftId:alert.shiftId,rungBy:alert.actorUid||'',total:Number(alert.total)||0,reason,duplicate:!!result.duplicate})});
-  return {transactionId,orderId:result.orderId,state:'recovered',duplicate:!!result.duplicate};
+  let zReport=null;
+  if(lateRecovery){try{zReport=await amendClosedShiftZ(db,alert.shiftId,actor,{reason,orderId:result.orderId});}catch(error){await db.ref().update({[`shiftCloseFollowUps/${alert.shiftId}`]:{shiftId:alert.shiftId,staff:shift.staff||'',kind:'z_amendment_failed',at:now,orderId:result.orderId,error:String(error&&error.message||error).slice(0,300),state:'open',schemaVersion:1}});}}
+  return {transactionId,orderId:result.orderId,state:'recovered',duplicate:!!result.duplicate,amendedZ:!!zReport};
 });
