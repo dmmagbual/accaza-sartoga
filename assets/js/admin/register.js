@@ -663,7 +663,7 @@ function shiftSummaryObj(shift,isOpen){
 function loadShiftTransactions(id){var a=A(),active=a.query(a.ref(a.db,'orders'),a.orderByChild('shiftId'),a.equalTo(id)),archived=a.query(a.ref(a.db,'archivedOrders'),a.orderByChild('shiftId'),a.equalTo(id));return Promise.all([a.get(active),a.get(archived)]).then(function(snaps){var merged=Object.assign({},snaps[1].val()||{},snaps[0].val()||{});return Object.keys(merged).map(function(k){return Object.assign({id:k},merged[k]);}).filter(function(o){return isShiftTransaction(o,id);}).sort(function(x,y){return (x.timestamp||0)-(y.timestamp||0);});});}
 function reviewShiftCash(shift,isOpen){
   if(isOpen){openShiftReview();return;}
-  var reportWindow=window.open('','_blank','width=380,height=680');if(!reportWindow){alert('Allow pop-ups to view the Z-report.');return;}reportWindow.document.write('<html><body style="font-family:monospace;padding:12px;">Loading complete shift report…</body></html>');reportWindow.document.close();
+  var reportWindow=window.open('','_blank','width=380,height=680')||zReportInPageWindow();reportWindow.document.write('<html><body style="font-family:monospace;padding:12px;">Loading complete shift report…</body></html>');reportWindow.document.close();
   var r=shift.zReport||null,z=r?Object.assign({},r,{saleList:r.sales||[],reportClosedAt:r.capturedAt,closeCount:r.closeCount||{},expectedDrawer:r.expectedDrawer||{},reconcileTotalOnly:!!r.reconcileTotalOnly}):{tx:Number(shift.tx)||0,gross:Number(shift.gross)||0,discounts:Number(shift.discounts)||0,refunds:Number(shift.refunds)||0,cashRefunds:Number(shift.cashRefunds)||0,net:Number(shift.net)||0,byMethod:shift.byMethod||{},byChannel:shift.byChannel||{},cashSales:Number((shift.byMethod||{}).Cash)||0,tips:Number(shift.tips)||0,payIns:Number(shift.payIns)||0,payOuts:Number(shift.payOuts)||0,expectedCash:Number(shift.expectedCash)||0,countedCash:Number(shift.countedCash)||0,variance:Number(shift.variance)||0,retainedFloat:Number(shift.retainedFloat)||0,cashToSettle:Number(shift.cashToSettle)||0,voidCount:Number(shift.voidCount)||0,voidAmt:Number(shift.voidAmt)||0,pending:Number(shift.pending)||0,pendingCount:Number(shift.pendingCount)||0,closeCount:shift.closeCount||{},expectedDrawer:shift.drawerExpected||{},reportClosedAt:shift.closeAt,legacyReport:true};
   loadShiftTransactions(shift.id).then(function(sales){z.saleList=sales;showZ(shift,z,reportWindow);}).catch(function(){showZ(shift,z,reportWindow);});
 }
@@ -840,9 +840,11 @@ async function reviewRefusedSales(){
 }
 
 function handoverCall(data){var a=A();if(!a||!a.callables||!a.callables.manageShiftHandover)return Promise.reject(new Error('Refresh the POS to load the handover service.'));return a.callables.manageShiftHandover(data).then(function(r){return r.data||r;});}
+// The till close check tags its errors with the failed step; the handover records it.
+function closeCheckReason(error){return ((error&&error.closeStep)?'['+error.closeStep+'] ':'')+String((error&&error.message)||error||'');}
 function openHandoverCount(shift,error,savedCounts){
   var m=document.createElement('div');m.className='pz-mask show';
-  m.innerHTML='<div class="pz-modal" style="max-width:560px;"><h3>Finish shift and hand over</h3><p>A sale or server check needs follow-up. You can hand over now so the next cashier can trade. Management will reconcile this shift later.</p><p style="font-size:.8rem;">'+esc(error&&error.message||error||'')+'</p>'+denomGridHtml('handoverCount')+'<p>Count all cash in the drawer. Retain the required float and hand over the remaining cash for settlement.</p><div data-handover-status role="status"></div><button class="pz-btn ok" data-submit>Submit count and finish shift</button> <button class="pz-btn sec" data-cancel>Cancel</button></div>';
+  m.innerHTML='<div class="pz-modal" style="max-width:560px;"><h3>Finish shift</h3><p>The close check could not finish. Submit your count: if every sale is already synchronized and posted, the server closes the shift and shows the Z report now. Otherwise the next cashier can still trade and management reconciles this shift.</p><p style="font-size:.8rem;">'+esc(error&&error.message||error||'')+'</p>'+denomGridHtml('handoverCount')+'<p>Count all cash in the drawer. Retain the required float and hand over the remaining cash for settlement.</p><div data-handover-status role="status"></div><button class="pz-btn ok" data-submit>Submit count and finish shift</button> <button class="pz-btn sec" data-cancel>Cancel</button></div>';
   document.body.appendChild(m);
   if(savedCounts)m.querySelectorAll('[data-dp="handoverCount"]').forEach(function(input){input.value=savedCounts[input.getAttribute('data-dk')]||'';input.disabled=true;});
   wireDenom('handoverCount');
@@ -858,8 +860,9 @@ function openHandoverCount(shift,error,savedCounts){
       var rows=(await window.AccazaOfflineQueue.all()).filter(function(row){return !(row&&row.status==='synced')&&!(row&&row.order&&row.order.shiftId&&row.order.shiftId!==shift.id);});
       var device=window.AccazaPosSyncHealth&&window.AccazaPosSyncHealth.deviceId();
       if(!device)throw new Error('This browser has no device identity. Keep the queue and refresh the POS.');
-      var result=await handoverCall({action:'submit',shiftId:shift.id,deviceId:device,closeCount:count.counts,rows:rows});
-      m.querySelector('.pz-modal').innerHTML='<h3>Shift handed over</h3><p>The next cashier can open their shift.</p><p>Cash counted: <b>'+peso(result.cash.countedCash)+'</b><br>Retain as float: <b>'+peso(result.cash.actualFloatRetained)+'</b><br>Cash to settle: <b>'+peso(result.cash.cashToSettle)+'</b></p><p>Shift '+esc(shift.id)+' remains pending reconciliation. Queued sales are retained for recovery.</p><button class="pz-btn ok" data-done>Done</button>';
+      var result=await handoverCall({action:'submit',shiftId:shift.id,deviceId:device,closeCount:count.counts,rows:rows,closeCheckError:closeCheckReason(error).slice(0,300)});
+      if(result.resolved&&result.zReport){var closedShift=Object.assign({},shift,result.shift||{});if(window.__posLog)window.__posLog('shift-close',shift.id,'closed by server after handover · counted '+peso(result.cash.countedCash)+' · variance '+peso(result.variance!=null?result.variance:result.zReport.variance));m.querySelector('.pz-modal').innerHTML='<h3>Shift closed</h3><p>Every sale was confirmed, so the server closed the shift.</p><p>Cash counted: <b>'+peso(result.cash.countedCash)+'</b><br>Retain as float: <b>'+peso(result.cash.actualFloatRetained)+'</b><br>Cash to settle: <b>'+peso(result.cash.cashToSettle)+'</b></p><button class="pz-btn ok" data-z>Show Z report</button> <button class="pz-btn sec" data-done>Done</button>';m.querySelector('[data-z]').onclick=function(){showZ(closedShift,zReportView(result.zReport));};m.querySelector('[data-done]').onclick=function(){m.remove();};showZ(closedShift,zReportView(result.zReport));return;}
+      m.querySelector('.pz-modal').innerHTML='<h3>Shift handed over</h3><p>The next cashier can open their shift.</p><p>Cash counted: <b>'+peso(result.cash.countedCash)+'</b><br>Retain as float: <b>'+peso(result.cash.actualFloatRetained)+'</b><br>Cash to settle: <b>'+peso(result.cash.cashToSettle)+'</b></p><p>Shift '+esc(shift.id)+' remains pending reconciliation. Queued sales are retained for recovery.</p>'+(result.autoFinalizeBlocker?'<p style="font-size:.8rem;">Why it is still open: '+esc(result.autoFinalizeBlocker)+'</p>':'')+'<button class="pz-btn ok" data-done>Done</button>';
       m.querySelector('[data-done]').onclick=function(){m.remove();};
     }catch(e){status.textContent='Handover not confirmed: '+String(e.message||e)+'. Your queue and cash count remain here.';button.disabled=false;}
   };
@@ -868,7 +871,7 @@ async function reviewShiftHandovers(){
   var m=document.createElement('div');m.className='pz-mask show';m.innerHTML='<div class="pz-modal" style="max-width:700px;"><h3>Shift handovers pending reconciliation</h3><div data-content>Loading…</div><button class="pz-btn sec" data-close>Close</button></div>';document.body.appendChild(m);m.querySelector('[data-close]').onclick=function(){m.remove();};var content=m.querySelector('[data-content]');
   async function list(){var result=await handoverCall({action:'list'});content.innerHTML=(result.rows||[]).map(function(r){return '<p><button class="pz-btn sec" data-shift="'+esc(r.shiftId)+'">'+esc(r.staff)+' · '+esc(r.shiftId)+'</button><br>Cash counted '+peso(r.cash.countedCash)+' · cash to settle '+peso(r.cash.cashToSettle)+'</p>';}).join('')||'No pending handovers.';content.querySelectorAll('[data-shift]').forEach(function(b){b.onclick=function(){detail(b.getAttribute('data-shift')).catch(fail);};});}
   function fail(e){content.textContent=String(e.message||e);}
-  async function detail(id){var r=await handoverCall({action:'inspect',shiftId:id});content.innerHTML='<p>'+esc(id)+' · '+esc(r.state)+'</p>'+(r.commands||[]).map(function(c){return '<p><b>'+esc(c.orderId)+'</b>: '+(c.syncedAt?'Synced':esc(c.lastError||'Waiting for recovery'))+'</p>';}).join('')+'<h4>Devices to check</h4>'+Object.entries(r.devices||{}).map(function(entry){return '<p>'+esc(entry[0])+' · last reported outstanding: '+esc(entry[1].outstanding||0)+'</p>';}).join('')+'<p>Check every device used for this shift, including unavailable or old browser sessions. Recover every missing sale before finalizing.</p><label><input type="checkbox" data-checked> Every device queue is checked and all sales are accounted for</label><textarea class="pz-in" data-reason placeholder="Explain the device checks and cash handover reconciliation"></textarea><p data-message role="status"></p><button class="pz-btn sec" data-retry>Retry retained sales</button> <button class="pz-btn ok" data-finish>Finalize reconciliation</button>';
+  async function detail(id){var r=await handoverCall({action:'inspect',shiftId:id});content.innerHTML='<p>'+esc(id)+' · '+esc(r.state)+'</p>'+(r.closeCheckError?'<p style="font-size:.8rem;">Till close check: '+esc(r.closeCheckError)+'</p>':'')+(r.autoFinalizeBlocker?'<p style="font-size:.8rem;">Not closed automatically: '+esc(r.autoFinalizeBlocker)+'</p>':'')+(r.commands||[]).map(function(c){return '<p><b>'+esc(c.orderId)+'</b>: '+(c.syncedAt?'Synced':esc(c.lastError||'Waiting for recovery'))+'</p>';}).join('')+'<h4>Devices to check</h4>'+Object.entries(r.devices||{}).map(function(entry){return '<p>'+esc(entry[0])+' · last reported outstanding: '+esc(entry[1].outstanding||0)+'</p>';}).join('')+'<p>Check every device used for this shift, including unavailable or old browser sessions. Recover every missing sale before finalizing.</p><label><input type="checkbox" data-checked> Every device queue is checked and all sales are accounted for</label><textarea class="pz-in" data-reason placeholder="Explain the device checks and cash handover reconciliation"></textarea><p data-message role="status"></p><button class="pz-btn sec" data-retry>Retry retained sales</button> <button class="pz-btn ok" data-finish>Finalize reconciliation</button>';
     async function run(action){var message=content.querySelector('[data-message]'),buttons=content.querySelectorAll('button');buttons.forEach(function(b){b.disabled=true;});try{var out=await handoverCall({action:action,shiftId:id,reason:content.querySelector('[data-reason]').value,devicesChecked:content.querySelector('[data-checked]').checked});if(out.resolved)await list();else await detail(id);}catch(e){message.textContent=String(e.message||e);buttons.forEach(function(b){b.disabled=false;});}}
     content.querySelector('[data-retry]').onclick=function(){run('retry');};content.querySelector('[data-finish]').onclick=function(){run('reconcile');};
   }
@@ -879,22 +882,41 @@ function openShift(){
   var od=denomRead('opsOpenDenom'); var float=od.total;
   var fixedMode=fixedFloatCfg!=null,mismatch=fixedMode&&Math.abs(float-fixedFloatCfg)>.009;F().run({title:'Open my shift',subtitle:'Your signed-in Firebase staff profile will be recorded with this shift.',submitLabel:mismatch?'Request exception & open':'Open my shift',busyLabel:'Opening…',fields:[{name:'pin',label:'Your POS PIN',type:'password',required:true,maxLength:6,placeholder:'4–6 digits',validate:function(v){return /^[0-9]{4,6}$/.test(v)?'':'Enter a 4–6 digit PIN.';}}].concat(mismatch?[{name:'reason',label:'Reason opening float differs from fixed amount',type:'textarea',required:true,maxLength:300}]:[])},function(v){var p={pin:v.pin,openingFloat:float,openCount:od.counts,floatMode:fixedMode?'fixed':'opening-count'};if(!mismatch)return A().openLinkedPosShift(p);return A().managerApproval('fixed_float_exception','pending',Math.abs(float-fixedFloatCfg),v.reason).then(function(ap){p.reason=v.reason;p.approvalId=ap.approvalId;return A().openLinkedPosShift(p);});}).then(function(r){var shift=(r&&r.data&&r.data.shift)||(r&&r.shift);if(window.__posLog&&shift)window.__posLog('shift-open',shift.id,'float '+peso(float)+(mismatch?' · fixed_float_exception':''));}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0)alert('Could not open your shift: '+((e&&e.message)||e));});
 }
+// 24 Sep 2026 (SH-945869): a tablet-side check failure sent a clean shift to handover. Wait out
+// drops, allow 30 s, retry a transient server error once, and tag the failed step for the handover.
+var CLOSE_CHECK_TIMEOUT_MS=30000,CLOSE_CHECK_RECONNECT_MS=15000;
+function closeStepError(step,e){var err=(e&&typeof e==='object'&&typeof e.message==='string')?e:new Error(String((e&&e.message)||e||'Close check failed'));if(!err.closeStep)err.closeStep=step;return err;}
+function closeCheckStep(step,work){return Promise.resolve(work).catch(function(e){throw closeStepError(step,e);});}
+function waitForConnection(ms){if(window.__online!==false)return Promise.resolve();return new Promise(function(resolve,reject){var started=Date.now(),timer=setInterval(function(){if(window.__online!==false){clearInterval(timer);resolve();}else if(Date.now()-started>=ms){clearInterval(timer);reject(closeStepError('connection',new Error('The shift cannot close while offline. Keep the shift open until the connection returns and every sale is synchronized.')));}},250);});}
+function transientCloseError(e){var code=String((e&&e.code)||'').replace(/^functions\//,'');return ['unavailable','deadline-exceeded','internal','unknown','aborted','resource-exhausted'].indexOf(code)>-1||/network|fetch|timeout|timed out/i.test(String((e&&e.message)||''));}
+function closeCheckProgress(text){var el=document.getElementById('posCloseCheckStatus');if(!text){if(el)el.remove();return;}if(!el){el=document.createElement('div');el.id='posCloseCheckStatus';el.setAttribute('role','status');el.style.cssText='position:fixed;left:50%;top:1rem;transform:translateX(-50%);z-index:10000;background:#fff;border:1px solid #ccc;border-radius:8px;padding:.6rem 1rem;box-shadow:0 4px 16px rgba(0,0,0,.2);font-size:.85rem;';document.body.appendChild(el);}el.textContent=text;}
 async function continuityReadyForClose(){
-  var timer;try{return await Promise.race([inspectShiftCloseQueue(),new Promise(function(_resolve,reject){timer=setTimeout(function(){reject(new Error('The sync check is taking too long. Continue with a recorded handover.'));},8000);})]);}finally{clearTimeout(timer);}
+  var timer;closeCheckProgress('Checking that every sale is synchronized…');
+  try{return await Promise.race([inspectShiftCloseQueue(),new Promise(function(_resolve,reject){timer=setTimeout(function(){reject(closeStepError('timeout',new Error('The sync check did not finish within '+Math.round(CLOSE_CHECK_TIMEOUT_MS/1000)+' seconds.')));},CLOSE_CHECK_TIMEOUT_MS);})]);}
+  finally{clearTimeout(timer);closeCheckProgress('');}
 }
 async function inspectShiftCloseQueue(){
-  if(window.__online===false)throw new Error('The shift cannot close while offline. Keep the shift open until the connection returns and every sale is synchronized.');
-  if(!window.AccazaOfflineQueue||!window.AccazaOfflineQueue.summary)throw new Error('The durable transaction queue is unavailable. Refresh the POS before closing the shift.');
-  if(window.__flushOfflineQueue)await window.__flushOfflineQueue();
+  await waitForConnection(CLOSE_CHECK_RECONNECT_MS);
+  if(!window.AccazaOfflineQueue||!window.AccazaOfflineQueue.summary)throw closeStepError('queue',new Error('The durable transaction queue is unavailable. Refresh the POS before closing the shift.'));
+  if(window.__flushOfflineQueue)await closeCheckStep('sync',window.__flushOfflineQueue());
   // Only this shift's sales block its close. Sales left on this device from an earlier
   // shift were captured by the server when refused and are recovered by management.
-  var state=await window.AccazaOfflineQueue.summary(),current=window.__posShift||{},outstanding=(state.rows||[]).filter(function(row){return row&&row.status!=='synced'&&!(row.order&&row.order.shiftId&&current.id&&row.order.shiftId!==current.id);}).length;
-  if(outstanding)throw new Error('The shift cannot close: '+outstanding+' sale(s) still require synchronization. Open the sync queue and retry them first.');
-  if(window.__online===false)throw new Error('The connection was lost during the close check. The shift remains open.');
-  if(window.__reportPosSyncHealth)await window.__reportPosSyncHealth(true);
-  var a=A(),shift=window.__posShift;if(!a||!a.callables||!a.callables.verifyShiftCloseReadiness||!shift||!shift.id)throw new Error('The server close-verification service is unavailable. Refresh the POS before closing the shift.');
-  var health=window.AccazaPosSyncHealth;if(!health||!health.deviceId)throw new Error('This POS device has no synchronization identity. Refresh the POS before closing the shift.');
-  await a.callables.verifyShiftCloseReadiness({shiftId:shift.id,deviceId:health.deviceId()});
+  var state=await closeCheckStep('queue',window.AccazaOfflineQueue.summary()),current=window.__posShift||{},outstanding=(state.rows||[]).filter(function(row){return row&&row.status!=='synced'&&!(row.order&&row.order.shiftId&&current.id&&row.order.shiftId!==current.id);}).length;
+  if(outstanding)throw closeStepError('queue',new Error('The shift cannot close: '+outstanding+' sale(s) still require synchronization. Open the sync queue and retry them first.'));
+  await waitForConnection(CLOSE_CHECK_RECONNECT_MS);
+  if(window.__reportPosSyncHealth)await closeCheckStep('device report',window.__reportPosSyncHealth(true));
+  var a=A(),shift=window.__posShift;if(!a||!a.callables||!a.callables.verifyShiftCloseReadiness||!shift||!shift.id)throw closeStepError('setup',new Error('The server close-verification service is unavailable. Refresh the POS before closing the shift.'));
+  var health=window.AccazaPosSyncHealth;if(!health||!health.deviceId)throw closeStepError('setup',new Error('This POS device has no synchronization identity. Refresh the POS before closing the shift.'));
+  var payload={shiftId:shift.id,deviceId:health.deviceId()};
+  try{await a.callables.verifyShiftCloseReadiness(payload);}
+  catch(e){
+    // A business refusal is final; a dropped or slow request is retried once.
+    if(!transientCloseError(e))throw closeStepError('server check',e);
+    await new Promise(function(resolve){setTimeout(resolve,1500);});
+    await waitForConnection(CLOSE_CHECK_RECONNECT_MS);
+    if(window.__reportPosSyncHealth)await closeCheckStep('device report',window.__reportPosSyncHealth(true));
+    await closeCheckStep('server check',a.callables.verifyShiftCloseReadiness(payload));
+  }
   return state;
 }
 async function closeShift(){
@@ -956,8 +978,18 @@ async function finalizeClose(shift,counted,counts){
   if(Math.abs(z.variance)>=.005){var did=uid('disc_');writes['discrepancies/'+did]={kind:'cash',expected:z.expectedCash,actual:counted,variance:z.variance,value:z.variance,type:z.variance<0?'shortage':'overage',overTolerance:Math.abs(z.variance)>snapshot.tolerance,shiftId:shift.id,shiftReference:shiftRef,staff:shift.staff||'',status:'open',financialStatus:'pending_manager_reconciliation',pendingMovementId:'shift_variance_'+shift.id,ts:closedAt};}
   a.update(a.ref(a.db),writes).then(function(){window.__posLog('shift-close',shift.id,'counted '+peso(counted)+' · variance '+peso(z.variance));showZ(Object.assign({},shift,closed),Object.assign({},z,{saleList:snapshot.sales,reportClosedAt:closedAt,reconcileTotalOnly:snapshot.reconcileTotalOnly}));}).catch(function(e){alert('Shift was not closed because the final report could not be saved. Please try again. '+((e&&e.message)||e));});
 }
+function zReportInPageWindow(){
+  var host=document.createElement('div');host.setAttribute('data-z-report-overlay','');host.style.cssText='position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:1rem;';
+  host.innerHTML='<div style="background:#fff;border-radius:10px;width:min(420px,100%);height:min(720px,92vh);display:flex;flex-direction:column;overflow:hidden;"><div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;padding:.5rem .75rem;border-bottom:1px solid #ddd;"><b>Shift Z report</b><span><button class="pz-btn sec" data-z-print>Print</button> <button class="pz-btn sec" data-z-close>Close</button></span></div><iframe title="Shift Z report" style="flex:1;border:0;width:100%;"></iframe></div>';
+  document.body.appendChild(host);var frame=host.querySelector('iframe');
+  host.querySelector('[data-z-close]').onclick=function(){host.remove();};
+  host.querySelector('[data-z-print]').onclick=function(){try{frame.contentWindow.focus();frame.contentWindow.print();}catch(_e){}};
+  return frame.contentWindow;
+}
+function zReportView(zReport){var r=zReport||{};return Object.assign({},r,{saleList:r.sales||[],reportClosedAt:r.capturedAt,closeCount:r.closeCount||{},expectedDrawer:r.expectedDrawer||{},reconcileTotalOnly:!!r.reconcileTotalOnly});}
 function showZ(shift,z,existingWindow){
-  var w=existingWindow||window.open('','_blank','width=380,height=680');if(!w){alert('Shift closed. Allow pop-ups to print the Z-report.');return;}
+  // A blocked pop-up opens the Z report inside the page instead.
+  var w=existingWindow||window.open('','_blank','width=380,height=680')||zReportInPageWindow();
   var methods=zMethodRows(z,'style="text-align:right;"');
   var methodTotal=Object.keys(z.byMethod||{}).reduce(function(s,m){return s+(Number(z.byMethod[m])||0);},0),channelTotal=Object.keys(z.byChannel||{}).reduce(function(s,c){return s+(Number(z.byChannel[c])||0);},0);
   var cashMoves=(z.payInEntries||[]).map(function(x){return{kind:'Cash in',sign:'+',amount:x.amount,reason:x.reason,by:x.by,ts:x.ts};}).concat((z.payOutEntries||[]).map(function(x){return{kind:'Cash out',sign:'−',amount:x.amount,reason:x.reason,by:x.by,ts:x.ts};})).sort(function(a,b){return(Number(a.ts)||0)-(Number(b.ts)||0);});
@@ -970,6 +1002,7 @@ function showZ(shift,z,existingWindow){
   w.document.write('<html><head><title>Z-Report '+esc(shiftReference(shift.shiftReference,shift.id))+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2,h3{text-align:center;margin:2px 0;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
     +'<h2>Accaza Coffee House</h2><h3>SHIFT Z-REPORT</h3><hr>'
     +'<div>Shift reference: '+esc(shiftReference(shift.shiftReference,shift.id))+'</div><div>Cashier: '+esc(shift.staff)+'</div><div>Open: '+new Date(shift.openAt).toLocaleString('en-PH')+'</div><div>Close: '+new Date(z.reportClosedAt||shift.closeAt||Date.now()).toLocaleString('en-PH')+'</div><div>Float policy: '+esc(shift.floatMode==='fixed'?'Fixed':'Opening count')+(shift.configuredFloat!=null?' '+peso(shift.configuredFloat):'')+'</div><hr>'
+    +(z.closeMode==='automatic_handover'?'<div style="border:1px solid #555;padding:5px;margin:5px 0;">Closed by the server after the till close check could not finish. Every sale was confirmed synchronized and posted before closing.</div><hr>':'')
     +(z.legacyReport?'<div style="border:1px solid #8a6d1b;padding:5px;margin:5px 0;"><b>Historical summary:</b> some supporting details were not captured by the system version used at closure.</div><hr>':'')
     +'<table><tr><td>Transactions</td><td style="text-align:right;">'+z.tx+'</td></tr>'
     +'<tr><td>Gross sales</td><td style="text-align:right;">'+peso(z.gross)+'</td></tr>'

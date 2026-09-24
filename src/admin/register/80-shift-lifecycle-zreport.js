@@ -3,22 +3,41 @@ function openShift(){
   var od=denomRead('opsOpenDenom'); var float=od.total;
   var fixedMode=fixedFloatCfg!=null,mismatch=fixedMode&&Math.abs(float-fixedFloatCfg)>.009;F().run({title:'Open my shift',subtitle:'Your signed-in Firebase staff profile will be recorded with this shift.',submitLabel:mismatch?'Request exception & open':'Open my shift',busyLabel:'Opening…',fields:[{name:'pin',label:'Your POS PIN',type:'password',required:true,maxLength:6,placeholder:'4–6 digits',validate:function(v){return /^[0-9]{4,6}$/.test(v)?'':'Enter a 4–6 digit PIN.';}}].concat(mismatch?[{name:'reason',label:'Reason opening float differs from fixed amount',type:'textarea',required:true,maxLength:300}]:[])},function(v){var p={pin:v.pin,openingFloat:float,openCount:od.counts,floatMode:fixedMode?'fixed':'opening-count'};if(!mismatch)return A().openLinkedPosShift(p);return A().managerApproval('fixed_float_exception','pending',Math.abs(float-fixedFloatCfg),v.reason).then(function(ap){p.reason=v.reason;p.approvalId=ap.approvalId;return A().openLinkedPosShift(p);});}).then(function(r){var shift=(r&&r.data&&r.data.shift)||(r&&r.shift);if(window.__posLog&&shift)window.__posLog('shift-open',shift.id,'float '+peso(float)+(mismatch?' · fixed_float_exception':''));}).catch(function(e){if(String((e&&e.code)||e).indexOf('cancelled')<0)alert('Could not open your shift: '+((e&&e.message)||e));});
 }
+// 24 Sep 2026 (SH-945869): a tablet-side check failure sent a clean shift to handover. Wait out
+// drops, allow 30 s, retry a transient server error once, and tag the failed step for the handover.
+var CLOSE_CHECK_TIMEOUT_MS=30000,CLOSE_CHECK_RECONNECT_MS=15000;
+function closeStepError(step,e){var err=(e&&typeof e==='object'&&typeof e.message==='string')?e:new Error(String((e&&e.message)||e||'Close check failed'));if(!err.closeStep)err.closeStep=step;return err;}
+function closeCheckStep(step,work){return Promise.resolve(work).catch(function(e){throw closeStepError(step,e);});}
+function waitForConnection(ms){if(window.__online!==false)return Promise.resolve();return new Promise(function(resolve,reject){var started=Date.now(),timer=setInterval(function(){if(window.__online!==false){clearInterval(timer);resolve();}else if(Date.now()-started>=ms){clearInterval(timer);reject(closeStepError('connection',new Error('The shift cannot close while offline. Keep the shift open until the connection returns and every sale is synchronized.')));}},250);});}
+function transientCloseError(e){var code=String((e&&e.code)||'').replace(/^functions\//,'');return ['unavailable','deadline-exceeded','internal','unknown','aborted','resource-exhausted'].indexOf(code)>-1||/network|fetch|timeout|timed out/i.test(String((e&&e.message)||''));}
+function closeCheckProgress(text){var el=document.getElementById('posCloseCheckStatus');if(!text){if(el)el.remove();return;}if(!el){el=document.createElement('div');el.id='posCloseCheckStatus';el.setAttribute('role','status');el.style.cssText='position:fixed;left:50%;top:1rem;transform:translateX(-50%);z-index:10000;background:#fff;border:1px solid #ccc;border-radius:8px;padding:.6rem 1rem;box-shadow:0 4px 16px rgba(0,0,0,.2);font-size:.85rem;';document.body.appendChild(el);}el.textContent=text;}
 async function continuityReadyForClose(){
-  var timer;try{return await Promise.race([inspectShiftCloseQueue(),new Promise(function(_resolve,reject){timer=setTimeout(function(){reject(new Error('The sync check is taking too long. Continue with a recorded handover.'));},8000);})]);}finally{clearTimeout(timer);}
+  var timer;closeCheckProgress('Checking that every sale is synchronized…');
+  try{return await Promise.race([inspectShiftCloseQueue(),new Promise(function(_resolve,reject){timer=setTimeout(function(){reject(closeStepError('timeout',new Error('The sync check did not finish within '+Math.round(CLOSE_CHECK_TIMEOUT_MS/1000)+' seconds.')));},CLOSE_CHECK_TIMEOUT_MS);})]);}
+  finally{clearTimeout(timer);closeCheckProgress('');}
 }
 async function inspectShiftCloseQueue(){
-  if(window.__online===false)throw new Error('The shift cannot close while offline. Keep the shift open until the connection returns and every sale is synchronized.');
-  if(!window.AccazaOfflineQueue||!window.AccazaOfflineQueue.summary)throw new Error('The durable transaction queue is unavailable. Refresh the POS before closing the shift.');
-  if(window.__flushOfflineQueue)await window.__flushOfflineQueue();
+  await waitForConnection(CLOSE_CHECK_RECONNECT_MS);
+  if(!window.AccazaOfflineQueue||!window.AccazaOfflineQueue.summary)throw closeStepError('queue',new Error('The durable transaction queue is unavailable. Refresh the POS before closing the shift.'));
+  if(window.__flushOfflineQueue)await closeCheckStep('sync',window.__flushOfflineQueue());
   // Only this shift's sales block its close. Sales left on this device from an earlier
   // shift were captured by the server when refused and are recovered by management.
-  var state=await window.AccazaOfflineQueue.summary(),current=window.__posShift||{},outstanding=(state.rows||[]).filter(function(row){return row&&row.status!=='synced'&&!(row.order&&row.order.shiftId&&current.id&&row.order.shiftId!==current.id);}).length;
-  if(outstanding)throw new Error('The shift cannot close: '+outstanding+' sale(s) still require synchronization. Open the sync queue and retry them first.');
-  if(window.__online===false)throw new Error('The connection was lost during the close check. The shift remains open.');
-  if(window.__reportPosSyncHealth)await window.__reportPosSyncHealth(true);
-  var a=A(),shift=window.__posShift;if(!a||!a.callables||!a.callables.verifyShiftCloseReadiness||!shift||!shift.id)throw new Error('The server close-verification service is unavailable. Refresh the POS before closing the shift.');
-  var health=window.AccazaPosSyncHealth;if(!health||!health.deviceId)throw new Error('This POS device has no synchronization identity. Refresh the POS before closing the shift.');
-  await a.callables.verifyShiftCloseReadiness({shiftId:shift.id,deviceId:health.deviceId()});
+  var state=await closeCheckStep('queue',window.AccazaOfflineQueue.summary()),current=window.__posShift||{},outstanding=(state.rows||[]).filter(function(row){return row&&row.status!=='synced'&&!(row.order&&row.order.shiftId&&current.id&&row.order.shiftId!==current.id);}).length;
+  if(outstanding)throw closeStepError('queue',new Error('The shift cannot close: '+outstanding+' sale(s) still require synchronization. Open the sync queue and retry them first.'));
+  await waitForConnection(CLOSE_CHECK_RECONNECT_MS);
+  if(window.__reportPosSyncHealth)await closeCheckStep('device report',window.__reportPosSyncHealth(true));
+  var a=A(),shift=window.__posShift;if(!a||!a.callables||!a.callables.verifyShiftCloseReadiness||!shift||!shift.id)throw closeStepError('setup',new Error('The server close-verification service is unavailable. Refresh the POS before closing the shift.'));
+  var health=window.AccazaPosSyncHealth;if(!health||!health.deviceId)throw closeStepError('setup',new Error('This POS device has no synchronization identity. Refresh the POS before closing the shift.'));
+  var payload={shiftId:shift.id,deviceId:health.deviceId()};
+  try{await a.callables.verifyShiftCloseReadiness(payload);}
+  catch(e){
+    // A business refusal is final; a dropped or slow request is retried once.
+    if(!transientCloseError(e))throw closeStepError('server check',e);
+    await new Promise(function(resolve){setTimeout(resolve,1500);});
+    await waitForConnection(CLOSE_CHECK_RECONNECT_MS);
+    if(window.__reportPosSyncHealth)await closeCheckStep('device report',window.__reportPosSyncHealth(true));
+    await closeCheckStep('server check',a.callables.verifyShiftCloseReadiness(payload));
+  }
   return state;
 }
 async function closeShift(){
@@ -80,8 +99,18 @@ async function finalizeClose(shift,counted,counts){
   if(Math.abs(z.variance)>=.005){var did=uid('disc_');writes['discrepancies/'+did]={kind:'cash',expected:z.expectedCash,actual:counted,variance:z.variance,value:z.variance,type:z.variance<0?'shortage':'overage',overTolerance:Math.abs(z.variance)>snapshot.tolerance,shiftId:shift.id,shiftReference:shiftRef,staff:shift.staff||'',status:'open',financialStatus:'pending_manager_reconciliation',pendingMovementId:'shift_variance_'+shift.id,ts:closedAt};}
   a.update(a.ref(a.db),writes).then(function(){window.__posLog('shift-close',shift.id,'counted '+peso(counted)+' · variance '+peso(z.variance));showZ(Object.assign({},shift,closed),Object.assign({},z,{saleList:snapshot.sales,reportClosedAt:closedAt,reconcileTotalOnly:snapshot.reconcileTotalOnly}));}).catch(function(e){alert('Shift was not closed because the final report could not be saved. Please try again. '+((e&&e.message)||e));});
 }
+function zReportInPageWindow(){
+  var host=document.createElement('div');host.setAttribute('data-z-report-overlay','');host.style.cssText='position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:1rem;';
+  host.innerHTML='<div style="background:#fff;border-radius:10px;width:min(420px,100%);height:min(720px,92vh);display:flex;flex-direction:column;overflow:hidden;"><div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;padding:.5rem .75rem;border-bottom:1px solid #ddd;"><b>Shift Z report</b><span><button class="pz-btn sec" data-z-print>Print</button> <button class="pz-btn sec" data-z-close>Close</button></span></div><iframe title="Shift Z report" style="flex:1;border:0;width:100%;"></iframe></div>';
+  document.body.appendChild(host);var frame=host.querySelector('iframe');
+  host.querySelector('[data-z-close]').onclick=function(){host.remove();};
+  host.querySelector('[data-z-print]').onclick=function(){try{frame.contentWindow.focus();frame.contentWindow.print();}catch(_e){}};
+  return frame.contentWindow;
+}
+function zReportView(zReport){var r=zReport||{};return Object.assign({},r,{saleList:r.sales||[],reportClosedAt:r.capturedAt,closeCount:r.closeCount||{},expectedDrawer:r.expectedDrawer||{},reconcileTotalOnly:!!r.reconcileTotalOnly});}
 function showZ(shift,z,existingWindow){
-  var w=existingWindow||window.open('','_blank','width=380,height=680');if(!w){alert('Shift closed. Allow pop-ups to print the Z-report.');return;}
+  // A blocked pop-up opens the Z report inside the page instead.
+  var w=existingWindow||window.open('','_blank','width=380,height=680')||zReportInPageWindow();
   var methods=zMethodRows(z,'style="text-align:right;"');
   var methodTotal=Object.keys(z.byMethod||{}).reduce(function(s,m){return s+(Number(z.byMethod[m])||0);},0),channelTotal=Object.keys(z.byChannel||{}).reduce(function(s,c){return s+(Number(z.byChannel[c])||0);},0);
   var cashMoves=(z.payInEntries||[]).map(function(x){return{kind:'Cash in',sign:'+',amount:x.amount,reason:x.reason,by:x.by,ts:x.ts};}).concat((z.payOutEntries||[]).map(function(x){return{kind:'Cash out',sign:'−',amount:x.amount,reason:x.reason,by:x.by,ts:x.ts};})).sort(function(a,b){return(Number(a.ts)||0)-(Number(b.ts)||0);});
@@ -94,6 +123,7 @@ function showZ(shift,z,existingWindow){
   w.document.write('<html><head><title>Z-Report '+esc(shiftReference(shift.shiftReference,shift.id))+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2,h3{text-align:center;margin:2px 0;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
     +'<h2>Accaza Coffee House</h2><h3>SHIFT Z-REPORT</h3><hr>'
     +'<div>Shift reference: '+esc(shiftReference(shift.shiftReference,shift.id))+'</div><div>Cashier: '+esc(shift.staff)+'</div><div>Open: '+new Date(shift.openAt).toLocaleString('en-PH')+'</div><div>Close: '+new Date(z.reportClosedAt||shift.closeAt||Date.now()).toLocaleString('en-PH')+'</div><div>Float policy: '+esc(shift.floatMode==='fixed'?'Fixed':'Opening count')+(shift.configuredFloat!=null?' '+peso(shift.configuredFloat):'')+'</div><hr>'
+    +(z.closeMode==='automatic_handover'?'<div style="border:1px solid #555;padding:5px;margin:5px 0;">Closed by the server after the till close check could not finish. Every sale was confirmed synchronized and posted before closing.</div><hr>':'')
     +(z.legacyReport?'<div style="border:1px solid #8a6d1b;padding:5px;margin:5px 0;"><b>Historical summary:</b> some supporting details were not captured by the system version used at closure.</div><hr>':'')
     +'<table><tr><td>Transactions</td><td style="text-align:right;">'+z.tx+'</td></tr>'
     +'<tr><td>Gross sales</td><td style="text-align:right;">'+peso(z.gross)+'</td></tr>'

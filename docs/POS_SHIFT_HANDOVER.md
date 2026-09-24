@@ -2,9 +2,11 @@
 
 ## Cashier workflow
 
-Close shift attempts ordinary synchronization and posting verification. A failed
-check or an eight-second timeout opens **Finish shift and hand over**. Count the cash
-and submit. No manager approval is required for the owning cashier. Only after the
+Close shift attempts ordinary synchronization and posting verification, once before
+the count and again before the report is saved. The check waits up to 15 seconds for
+a dropped connection, allows 30 seconds in total, and retries a dropped or slow server
+request once. A business refusal (a sale not synchronized, a posting not finished) or
+a check that still cannot finish opens **Finish shift**. Count the cash and submit. No manager approval is required for the owning cashier. Only after the
 server saves the original count, retained sale commands and device reports does it
 release this till for the incoming cashier. A lost acknowledgement is safe to retry:
 the original count wins and a subsequent shift is never cleared.
@@ -15,6 +17,28 @@ Internet access is still required to acknowledge the handover and open the incom
 shift; this does not implement multi-device shift allocation during a total outage.
 An unreadable queue or an over-limit upload must be recovered first rather than
 silently represented as empty.
+
+## Automatic close at handover (Admin 589 / cache 570)
+
+On 24 Sep 2026 (SH-945869) the server confirmed the shift ready, then the second
+check failed on the tablet without reaching the server. Nothing was outstanding, but
+the Z report waited for a manager. Now, when a handover retains no sale, the server
+closes the shift itself and returns the Z report, which the till shows immediately
+(in the page if a pop-up is blocked). It uses the evidence a normal close needs:
+
+- no sale retained from the submitting device;
+- every other device's last report shows an empty queue (as `verifyShiftCloseReadiness`);
+- no sale syncing into the shift (sync gate), every sale posted to inventory and
+  Finance Books (it waits up to about 9 seconds for postings first);
+- an open accounting period.
+
+It uses the same `finalizeShiftHandover` path, locks, Z calculation and discrepancy
+record as a manager finalization. It records `reconciliationMode: automatic`,
+`resolvedBy: server`, the audit action `auto_finalize_shift_handover`, and the
+till's failure reason (`closeCheckError`, for example `[timeout] …` or
+`[server check] …`). If anything blocks it, the handover stays pending and the
+reason (`autoFinalize.blocker`) is shown to the cashier and in the manager's review.
+The manager's finalization still requires the device attestation and reason.
 
 ## Management recovery
 
@@ -66,5 +90,5 @@ desktop/mobile handover failure/retry screens.
 
 Frontend, Functions and database rules must all deploy after merge. A pushed PR
 alone does not change the live POS. After deployment, refresh with Ctrl+Shift+R
-and verify Admin 578. Validate a controlled handover and recovery on the deployed
+and verify Admin 589 (automatic close) or later. Validate a controlled handover and recovery on the deployed
 backend before describing the operational flow as live-verified.
