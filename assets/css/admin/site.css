@@ -51,6 +51,8 @@ nav{position:fixed;top:0;width:100%;z-index:200;background:rgba(25,36,27,0.96);b
 .value-card p{font-size:0.82rem;color:var(--tl);margin:0;}
 .hero-amenities{display:flex;align-items:center;justify-content:center;gap:.55rem;font-size:.8rem;letter-spacing:.04em;color:rgba(245,240,232,.92);text-shadow:0 1px 3px rgba(0,0,0,.65);white-space:nowrap;}
 .hero-amenities-sep{color:#c9a36a;}
+.hero-amenities>span:not(.hero-amenities-sep){display:inline-flex;align-items:center;gap:.4rem;}
+.hero-amenity-icon{flex:0 0 auto;width:16px;height:16px;}
 @media(max-width:400px){.hero-amenities{font-size:.7rem;gap:.35rem;letter-spacing:0;}}
 .about-visual{display:flex;flex-direction:column;gap:1.2rem;}
 .visual-main{background:var(--bd);border-radius:8px;height:460px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;}
