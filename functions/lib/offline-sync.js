@@ -152,13 +152,17 @@ async function syncOfflinePosSaleCommand(ctx) {
     // device still holding it, so its queue clears without applying anything twice.
     if(accepted&&accepted.clientTxnId===transactionId&&(ownedShift.status==='closed'||!existing||(!seller&&money(accepted.total)===money(raw.total))))return {transactionId,orderId,syncedAt:syncAudit.syncedAt,duplicate:true};
   }
-  if (!ownedShift || ownedShift.status === "closed") throw new HttpsError("failed-precondition", "The POS shift is no longer open.");
+  // Management recovery of a sale rung during a shift that has since closed (24 Sep 2026): the
+  // sale joins its original shift and that shift's Z report is re-issued as an amendment.
+  // The closed drawer is history and is not changed; the cash is settled in Discrepancies.
+  const lateClosed = !!(ctx.lateRecovery && ownedShift && ownedShift.status === "closed" && Number(raw.timestamp) >= Number(ownedShift.openAt) && Number(raw.timestamp) <= Number(ownedShift.closeAt || 0));
+  if (!ownedShift || (ownedShift.status === "closed" && !lateClosed)) throw new HttpsError("failed-precondition", "The POS shift is no longer open.");
   if(!seller)throw new HttpsError('permission-denied',`This sale belongs to ${ownedShift.staff||'another cashier'}'s shift. Join the shift before ringing sales.`);
   const syncToken=await claimShiftSync(db,shiftId,transactionId,now);
   try {
   let handover = (await db.ref(`/shiftHandovers/${shiftId}`).get()).val();
   if (handover) {
-    if(handover.state!=='pending')throw new HttpsError('failed-precondition','The original shift has already been reconciled. Keep the sale queued and contact a manager.');
+    if(handover.state!=='pending'&&!lateClosed)throw new HttpsError('failed-precondition','The original shift has already been reconciled. Keep the sale queued and contact a manager.');
     const command = {transactionId,order:raw,drawerDelta:data.drawerDelta||{}},hash=Handover.commandDigest(command);
     if(!(Number(raw.timestamp)>=Number(ownedShift.openAt)&&Number(raw.timestamp)<=handover.at))throw new HttpsError('permission-denied','Only a sale rung during the original shift can be recovered.');
     const claim=await db.ref(`/shiftHandovers/${shiftId}/commands/${transactionId}`).transaction(sealed=>{
@@ -193,6 +197,7 @@ async function syncOfflinePosSaleCommand(ctx) {
   const prepared=!existing&&ctx.prepareOrder?await ctx.prepareOrder(order,now):{order},durableOrder=prepared&&prepared.order||order;
   let shiftResult;if(prepaid&&!existing){const reservation=await db.ref(`/offlinePosSync/${transactionId}`).transaction((row)=>{if(row&&row.orderId&&row.orderId!==orderId)return;return row||{orderId,shiftId,state:"refund-reserved",createdAt:Number(raw.timestamp)||now,updatedAt:now,actorUid:actor.uid};},undefined,false);if(!reservation.committed)throw new HttpsError("already-exists","This POS transaction is already linked to another order.");shiftResult=await db.ref(`/shifts/${shiftId}`).transaction((row)=>applyDrawerDelta(row,transactionId,delta,now,actor),undefined,false);if(!shiftResult.committed||!shiftResult.snapshot.exists())throw new HttpsError("failed-precondition","The drawer no longer has enough cash for this refund. Recheck the denominations.");}
   if (!existing){const writes={[`orders/${orderId}`]:durableOrder,[`activeOrders/${orderId}`]:activeOrderProjection(durableOrder),[`offlinePosSync/${transactionId}`]:{orderId,shiftId,state:"order-written",createdAt:Number(raw.timestamp)||now,updatedAt:now,actorUid:actor.uid}};if(prepaid)writes[`operationalAudit/${now}_precompletion_cash_refund_${orderId}`]={action:"complete_instore_prepaid_cash_refund",sourceType:"order",sourceId:orderId,amount:prepaid.amount,confirmedElectronicAmount:prepaid.paidAmount,correctedOrderTotal:total,reason:prepaid.reason,customerAcknowledgement:prepaid.customerAcknowledgement,shiftId,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1};if(prepared&&prepared.inventoryPlan)writes[`orderInventoryPlans/${orderId}`]=prepared.inventoryPlan;await db.ref().update(writes);}
+  if(!shiftResult&&lateClosed){await db.ref(`/shifts/${shiftId}/lateRecoveredSales/${transactionId}`).update({orderId,at:now,by:(ctx.recovery&&ctx.recovery.managerUid)||actor.uid});shiftResult={committed:true,snapshot:{exists:()=>true}};}
   if(!shiftResult)shiftResult = await db.ref(`/shifts/${shiftId}`).transaction((row) => applyDrawerDelta(row, transactionId, delta, now, actor), undefined, false);
   if (!shiftResult.committed || !shiftResult.snapshot.exists()) throw new HttpsError("failed-precondition", "The sale shift no longer exists. Keep this transaction pending and contact a manager.");
   await db.ref("/posActiveShift").transaction((row) => row && row.id === shiftId ? applyDrawerDelta(row, transactionId, delta, now, actor) : row, undefined, false);

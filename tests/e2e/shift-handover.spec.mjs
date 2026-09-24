@@ -83,3 +83,34 @@ test('a handover the server cannot close yet says why',async({page})=>{
   await expect(page.getByRole('heading',{name:'Shift handed over'})).toBeVisible();
   await expect(page.getByText('Why it is still open: 2 sale(s) on 1 other POS device(s)')).toBeVisible();
 });
+
+test('a handover the server cannot close yet still prints a provisional Z report',async({page})=>{
+  await page.evaluate(()=>{
+    window.zShown=[];window.showZ=(s,z)=>window.zShown.push({shift:s.id,status:z.status,sales:z.saleList.length});window.zReportView=r=>Object.assign({},r,{saleList:r.sales||[]});
+    window.AccazaOfflineQueue={all:async()=>[]};
+    window.A=()=>({callables:{manageShiftHandover:async data=>{window.calls.push(data);return {data:{handedOver:true,cash:{countedCash:150,actualFloatRetained:100,cashToSettle:50},pendingSales:1,autoFinalizeBlocker:'Sale POS-9 still needs recovery.',provisionalZReport:{status:'provisional',net:50,sales:[{id:'POS-9',unsynced:true}],openItems:{retainedSales:[{orderId:'POS-9',total:50}]}},shift:{id:'SH-TEST'}}};}}});
+    openHandoverCount({id:'SH-TEST'},new Error('offline'),{b100:1,b50:1});
+  });
+  await page.getByRole('button',{name:'Submit count and finish shift'}).click();
+  await expect(page.getByRole('heading',{name:'Shift handed over'})).toBeVisible();
+  expect(await page.evaluate(()=>window.zShown)).toEqual([{shift:'SH-TEST',status:'provisional',sales:1}]);
+  await page.getByRole('button',{name:'Show provisional Z report'}).click();
+  expect(await page.evaluate(()=>window.zShown.length)).toBe(2);
+});
+
+test('with no server at all the till still shows its own provisional Z report',async({page})=>{
+  await page.evaluate(()=>{
+    window.zShown=[];window.showZ=(s,z)=>window.zShown.push({shift:s.id,status:z.status});
+    window.localProvisionalZ=async(shift,counts,reason)=>({status:'provisional',countedCash:150,reason});
+    window.failHandover=true;
+    openHandoverCount({id:'SH-TEST'},new Error('offline'),{b100:1,b50:1});
+  });
+  await page.getByRole('button',{name:'Submit count and finish shift'}).click();
+  await expect(page.getByRole('status')).toContainText('Handover not confirmed');
+  expect(await page.evaluate(()=>window.zShown)).toEqual([{shift:'SH-TEST',status:'provisional'}]);
+  await page.getByRole('button',{name:'Submit count and finish shift'}).click();
+  await expect(page.getByRole('status')).toContainText('Handover not confirmed');
+  expect(await page.evaluate(()=>window.zShown.length)).toBe(1);
+  await page.getByRole('button',{name:'Show provisional Z report (this till)'}).click();
+  expect(await page.evaluate(()=>window.zShown.length)).toBe(2);
+});

@@ -44,5 +44,14 @@ assert.ok(source.includes("window.open('','_blank','width=380,height=680')||zRep
 assert.ok(!/Allow pop-ups to (print|view) the Z-report/.test(source+shiftReview),'no alert-only Z report path may remain');
 // The handover records why the till check failed and shows the server's Z report.
 assert.ok(handover.includes('closeCheckError:closeCheckReason(error)')&&handover.includes('result.resolved&&result.zReport')&&handover.includes('showZ(closedShift,zReportView(result.zReport))'),'handover must carry the failure reason and show the automatic Z report');
+// A failed final save goes to the server handover path (which always returns a Z report),
+// never to an alert that leaves the shift without one.
+assert.ok(source.includes("openHandoverCount(shift,closeStepError('save',e),counts)")&&!source.includes('Shift was not closed because the final report could not be saved'),'a failed save must still end with a Z report');
+// Open items print on the provisional and exception Z reports.
+{const {ctx}=harness();ctx.esc=s=>String(s);ctx.peso=n=>'PHP '+Number(n).toFixed(2);
+ const html=ctx.zOpenItemsHtml({retainedSales:[{orderId:'POS-1',total:120}],otherDevices:[{outstanding:2}],crewUnreported:[{staff:'Louize'}],postingInventory:['a'],closeCheckError:'[timeout] slow'});
+ for(const text of ['Sale POS-1 PHP 120.00 not yet confirmed','2 sale(s) waiting on another till',"Louize's till has not reported",'Posting in progress: inventory 1, Finance Books 0','Close check: [timeout] slow'])assert.ok(html.includes(text),text);
+ assert.equal(ctx.zOpenItemsHtml({}),'');}
+assert.ok(source.includes("z.status==='provisional'")&&source.includes('FINAL Z WITH OPEN ITEMS')&&source.includes('AMENDED Z REPORT'),'Z report must label provisional, exception and amended reports');
 await sleep(0);
-console.log('PASS: till close check waits out connection drops, retries transient server errors once, bounds a hung step at 30 s, names the failed step, and the Z report falls back in-page.');
+console.log('PASS: till close check waits out connection drops, retries transient server errors once, bounds a hung step at 30 s, names the failed step, and the Z report falls back in-page; a failed save still ends with a Z report and open items print on it.');

@@ -12,10 +12,10 @@ function assertKeys(v,where){if(v&&typeof v==='object')for(const [k,x] of Object
 function write(p,v){for(const k of keys(p))assertKeys({[k]:1},p);assertKeys(v,p);v=H.storedForm(v);const a=keys(p),last=a.pop();let row=state;for(const k of a)row=row[k]??={};if(v==null)delete row[last];else row[last]=copy(v);}
 const snap=v=>({val:()=>copy(v),exists:()=>v!=null});
 let preOrderShiftTransactions=0,coldTransactions=0;
-const db={ref(p=''){return {get:async()=>snap(read(p)),child:k=>db.ref(p+'/'+k),update:async updates=>{for(const [k,v]of Object.entries(updates))write(p+'/'+k,v);},transaction:async fn=>{if(p==='/shifts/SH-TEST'&&!read('/orders/POS-TEST'))preOrderShiftTransactions++;coldTransactions++;/* Admin SDK: the first callback sees the cold local cache (null); undefined aborts without asking the server. */let v=fn(null);if(v===undefined)return {committed:false,snapshot:snap(null)};const actual=read(p);if(actual!=null){v=fn(copy(actual));if(v===undefined)return {committed:false,snapshot:snap(actual)};}write(p,v);return {committed:true,snapshot:snap(v)};},orderByChild(){return this;},equalTo(){return this;},limitToFirst(){return this;}};}};
+const db={ref(p=''){return {get:async()=>snap(read(p)),child:k=>db.ref(p+'/'+k),update:async updates=>{for(const [k,v]of Object.entries(updates))write(p+'/'+k,v);},transaction:async fn=>{if(p==='/shifts/SH-TEST'&&!read('/orders/POS-TEST'))preOrderShiftTransactions++;coldTransactions++;/* Admin SDK: the first callback sees the cold local cache (null); undefined aborts without asking the server. */let v=fn(null);if(v===undefined)return {committed:false,snapshot:snap(null)};const actual=read(p);if(actual!=null){v=fn(copy(actual));if(v===undefined)return {committed:false,snapshot:snap(actual)};}write(p,v);return {committed:true,snapshot:snap(v)};},orderByChild(){return this;},equalTo(){return this;},limitToFirst(){return this;},endAt(){return this;},limitToLast(){return this;}};}};
 class HttpsError extends Error{constructor(code,message){super(message);this.code=code;}}
 let locked=false,postingOutstanding=[];
-const ctx={exports:{},require:()=>H,onCall:(_o,fn)=>fn,ORDER_REGION:'test',ENFORCE_APP_CHECK:false,getDatabase:()=>db,requirePortalPermission:async(_db,r)=>r.actor,HttpsError,posAssuranceKey:x=>x,financeText:(x,n)=>String(x||'').slice(0,n),financeDateFromTimestamp:()=> '2026-09-22',OfflineSync,textField:x=>String(x),money:Financial.money,listFromFirebase:x=>x,activeOrderProjection:x=>x,availableCashOnHandAboveFloat:async()=>({available:99999}),calculateOrderInventoryPlan:async()=>({}),shiftOrdersForAssurance:async(_db,id)=>Object.fromEntries(Object.entries(state.orders||{}).filter(([,o])=>o.shiftId===id)),assurancePostingState:async()=>({saleCount:Object.keys(state.orders||{}).length,inventoryOutstanding:postingOutstanding.slice(),financeOutstanding:[]}),setTimeout,HANDOVER_AUTO_FINALIZE_DELAYS_MS:[1,1],assertAccountingPeriodOpen:async()=>{if(locked)throw new Error('Period locked');},Date,Buffer};
+const ctx={exports:{},require:()=>H,onCall:(_o,fn)=>fn,ORDER_REGION:'test',ENFORCE_APP_CHECK:false,getDatabase:()=>db,requirePortalPermission:async(_db,r)=>r.actor,HttpsError,posAssuranceKey:x=>x,financeText:(x,n)=>String(x||'').slice(0,n),financeDateFromTimestamp:()=> '2026-09-22',OfflineSync,textField:x=>String(x),money:Financial.money,listFromFirebase:x=>x,activeOrderProjection:x=>x,availableCashOnHandAboveFloat:async()=>({available:99999}),calculateOrderInventoryPlan:async()=>({}),shiftOrdersForAssurance:async(_db,id)=>Object.fromEntries(Object.entries(state.orders||{}).filter(([,o])=>o.shiftId===id)),assurancePostingState:async()=>({saleCount:Object.keys(state.orders||{}).length,inventoryOutstanding:postingOutstanding.slice(),financeOutstanding:[]}),setTimeout,HANDOVER_AUTO_FINALIZE_DELAYS_MS:[1,1],onSchedule:(_o,fn)=>fn,onValueWritten:(_o,fn)=>fn,logger:{info(){},warn(){}},assertAccountingPeriodOpen:async()=>{if(locked)throw new Error('Period locked');},Date,Buffer};
 vm.createContext(ctx);vm.runInContext(fs.readFileSync(new URL('../src/functions/25b-shift-handover.js',import.meta.url),'utf8'),ctx);
 const call=(data,actor={uid:'cashier',role:'staff'})=>ctx.exports.manageShiftHandover({data,actor});
 const shift={id:'SH-TEST',status:'open',staff:'Cashier',accountUid:'cashier',openAt:1000,openingFloat:100,drawer:{b100:1}};
@@ -28,7 +28,14 @@ assert.throws(()=>H.countCash({b100:-1}));assert.throws(()=>H.countCash({b100:1.
 assert.equal(Object.values(H.sealCommands([{status:'failed',order:{shiftId:shift.id,id:'bad'}}],shift,3000))[0].quarantined,true,'malformed sales remain recoverable without blocking handover');
 assert.deepEqual(H.cashSnapshot(shift,{b50:1},100),{countedCash:50,closeCount:{b50:1},retainedFloat:100,actualFloatRetained:50,floatShortfall:50,cashToSettle:0});
 await assert.rejects(call({shiftId:shift.id,deviceId:'device',closeCount:{b100:1,b50:1},rows},{uid:'other',role:'staff'}),/another cashier/);
+// Keep the server's own replay of the retained sale blocked here so the manager flow below
+// can be exercised; the automatic replay is covered further down.
+write('/shiftSyncGates/SH-TEST/finalizingAt',Date.now());
 const receipt=await call({shiftId:shift.id,deviceId:'device',closeCount:{b100:1,b50:1},rows});
+// The cashier still leaves with a provisional Z report that counts the retained sale.
+assert.equal(receipt.provisionalZReport.status,'provisional');assert.equal(receipt.provisionalZReport.net,50);assert.equal(receipt.provisionalZReport.variance,0,'retained cash sale reconciles the counted drawer');
+assert.equal(receipt.provisionalZReport.sales[0].unsynced,true);assert.equal(receipt.provisionalZReport.openItems.retainedSales[0].orderId,'POS-TEST');
+assert.equal(read('/shifts/SH-TEST/provisionalZReport/status'),'provisional');assert.ok(receipt.autoFinalizeBlocker);
 assert.equal(receipt.handedOver,true);assert.equal(read('/posActiveShift'),undefined);assert.equal(read('/shifts/SH-TEST/status'),'handover_pending');assert.equal(receipt.cash.cashToSettle,50);
 assert.equal(read('/shiftHandovers/SH-TEST/commands/pos_test_transaction/command/order/total'),50);
 write('/posActiveShift',{id:'SH-NEXT',status:'open',drawer:{b100:1}});
@@ -118,4 +125,49 @@ assert.match(post.autoFinalizeBlocker,/inventory 1/);assert.equal(read('/shifts/
 openShift('SH-LOCK');locked=true;
 const lock=await call({shiftId:'SH-LOCK',deviceId:'tablet',closeCount:{b100:1},rows:[]},alex);locked=false;
 assert.match(lock.autoFinalizeBlocker,/Period locked/);assert.equal(read('/shifts/SH-LOCK/status'),'handover_pending');assert.equal(read('/shifts/SH-LOCK/zReport'),undefined);assert.equal(read('/shiftSyncGates/SH-LOCK/finalizingAt'),0);
+// The server replays a retained sale itself at handover and issues the final Z.
+openShift('SH-REPLAY');
+const replayOrder={...order,id:'POS-REPLAY',clientTxnId:'pos_replay_transaction',shiftId:'SH-REPLAY',timestamp:6000};
+const replay=await call({shiftId:'SH-REPLAY',deviceId:'tablet',closeCount:{b100:1,b50:1},rows:[{id:replayOrder.clientTxnId,status:'failed',order:replayOrder,drawerDelta:{b50:1},lastError:'Connection failed'}]},alex);
+assert.equal(replay.resolved,true,JSON.stringify(replay));assert.equal(replay.zReport.net,50);assert.equal(read('/orders/POS-REPLAY/shiftId'),'SH-REPLAY');assert.equal(read('/shifts/SH-REPLAY/status'),'closed');assert.equal(read('/shiftHandovers/SH-REPLAY/commands/pos_replay_transaction/recoveredBy'),'server');
+// Grace: when the next shift ends, a handover still open gets a final Z listing its exceptions,
+// and its unrecovered sale moves to Sales needing recovery.
+openShift('SH-STUCK');
+const stuckOrder={...order,id:'POS-STUCK',clientTxnId:'pos_stuck_transaction',shiftId:'SH-STUCK',timestamp:6000};
+write('/shiftSyncGates/SH-STUCK/finalizingAt',Date.now());
+const stuck=await call({shiftId:'SH-STUCK',deviceId:'tablet',closeCount:{b100:1,b50:1},rows:[{id:stuckOrder.clientTxnId,status:'failed',order:stuckOrder,drawerDelta:{b50:1}}]},alex);
+assert.equal(stuck.resolved,undefined);assert.equal(stuck.provisionalZReport.net,50);write('/shiftSyncGates/SH-STUCK/finalizingAt',0);
+write('/shiftHandovers/SH-STUCK/commands/pos_stuck_transaction/quarantined',false);
+// Make replay fail permanently (a sale the server refuses) so only the grace close can end it.
+write('/offlinePosSync/pos_stuck_transaction',{state:'cancelled'});
+const stuckPending=await ctx.exports.resolvePendingShiftHandovers();assert.equal(read('/shifts/SH-STUCK/status'),'handover_pending','the 5-minute pass never force-closes');
+const nextShift={id:'SH-AFTER',openAt:Date.now(),status:'closed',staff:'Louize'};write('/shifts/SH-AFTER',nextShift);
+// A sale syncing at the moment the next shift ends: the grace close waits, is remembered,
+// and the next 5-minute pass completes it.
+write('/shiftSyncGates/SH-STUCK/pending/other_txn',{at:Date.now(),token:'t'});
+await ctx.exports.onShiftEndResolveEarlierHandovers({params:{shiftId:'SH-AFTER'},data:{before:{val:()=> 'open'},after:{val:()=> 'closed'}}});
+assert.equal(read('/shifts/SH-STUCK/status'),'handover_pending');assert.ok(read('/shiftHandovers/SH-STUCK/graceDueAt'));assert.match(read('/shiftHandovers/SH-STUCK/autoFinalize/blocker'),/Could not issue the final Z/);
+write('/shiftSyncGates/SH-STUCK/pending/other_txn',null);
+await ctx.exports.resolvePendingShiftHandovers();
+assert.equal(read('/shifts/SH-STUCK/status'),'closed');assert.equal(read('/shifts/SH-STUCK/reconciliationMode'),'grace');
+const graceZ=read('/shifts/SH-STUCK/zReport');assert.equal(graceZ.closeMode,'grace_handover');assert.equal(graceZ.exceptions.retainedSales[0].orderId,'POS-STUCK');assert.equal(graceZ.net,0);assert.equal(graceZ.variance,50,'the unrecovered cash sale shows as an overage until it is recovered');
+assert.equal(read('/shiftCloseFollowUps/SH-STUCK/kind'),'closed_with_exceptions');assert.equal(read('/posSyncAlerts/pos_stuck_transaction/state'),'open');assert.equal(read('/posSyncAlerts/pos_stuck_transaction/command/order/id'),'POS-STUCK');
+assert.equal(read('/discrepancies/handover_SH-STUCK/variance'),50);assert.equal(read('/shifts/SH-STUCK/provisionalZReport'),undefined);
+// The sale left over after the grace close is recovered into its original shift and the Z is
+// re-issued as an amendment; an ordinary device sync still never reopens a closed shift.
+write('/offlinePosSync/pos_stuck_transaction',null);
+const lateCtx={db,actor:{uid:'alex'},data:{transactionId:stuckOrder.clientTxnId,order:stuckOrder,drawerDelta:{b50:1}},textField:x=>x,money:Financial.money,listFromFirebase:x=>x,activeOrderProjection:x=>x};
+await assert.rejects(OfflineSync.syncOfflinePosSaleCommand(lateCtx),/no longer open/);
+const drawerBefore=JSON.stringify(read('/shifts/SH-STUCK/drawer'));
+await OfflineSync.syncOfflinePosSaleCommand({...lateCtx,lateRecovery:true,recovery:{managerUid:'manager'}});
+assert.equal(read('/orders/POS-STUCK/shiftId'),'SH-STUCK');assert.equal(JSON.stringify(read('/shifts/SH-STUCK/drawer')),drawerBefore,'the closed drawer is not changed');assert.equal(read('/shifts/SH-STUCK/lateRecoveredSales/pos_stuck_transaction/orderId'),'POS-STUCK');
+await assert.rejects(OfflineSync.syncOfflinePosSaleCommand({...lateCtx,lateRecovery:true,data:{...lateCtx.data,transactionId:'pos_outside_window',order:{...stuckOrder,id:'POS-OUTSIDE',clientTxnId:'pos_outside_window',timestamp:Date.now()+86400000}}}),/no longer open/,'a sale rung after the shift closed is not taken into it');
+const amended=await ctx.amendClosedShiftZ(db,'SH-STUCK',manager,{reason:'Recovered retained sale',orderId:'POS-STUCK'});
+assert.equal(amended.net,50);assert.equal(amended.variance,0);assert.equal(amended.postedVariance,50);assert.equal(amended.amendmentCount,1);assert.equal(amended.closeMode,'grace_handover');assert.equal(amended.exceptions,undefined,'the recovered sale leaves the exception list');
+assert.equal(read('/shifts/SH-STUCK/net'),50);assert.equal(read('/shifts/SH-STUCK/variance'),50,'the posted cash variance is not rewritten');assert.equal(read('/shiftZHistory/SH-STUCK/1/closeMode'),'grace_handover');
+assert.equal(read('/shiftCloseFollowUps/SH-STUCK/kind'),'late_sale_variance');assert.equal(read('/shiftCloseFollowUps/SH-STUCK/recalculatedVariance'),0);
+assert.equal((await ctx.amendClosedShiftZ(db,'SH-STUCK',manager,{reason:'again',orderId:'POS-STUCK'})).amendmentCount,2,'each amendment keeps the previous report');
+const listed=await call({action:'list'},manager);assert.ok(listed.followUps.some(f=>f.shiftId==='SH-STUCK'));
+await call({action:'review_followup',shiftId:'SH-STUCK',reason:'Sale recovered, overage reviewed'},manager);assert.equal(read('/shiftCloseFollowUps/SH-STUCK/state'),'reviewed');
+await assert.rejects(call({action:'review_followup',shiftId:'SH-STUCK',reason:'x'},alex),/Only management/);
 console.log('PASS: pending-sale handover releases the till, preserves immutable count and sale commands, recovers once into the original shift, protects the next drawer, enforces roles/period locks, and separates custody from final variance; a clean handover closes itself with a Z report, and any blocker stays pending with its reason.');

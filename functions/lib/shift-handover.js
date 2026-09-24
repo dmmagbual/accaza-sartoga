@@ -73,7 +73,7 @@ function report(shift,orders,handover){
     if(o.paymentStatus==='pending'){z.pending+=cents(o.total||0);z.pendingCount++;}
     if(o.paymentStatus==='cashier_verified'){z.managerPending+=cents(o.total||0);z.managerPendingCount++;}
     z.uncostedCount=(z.uncostedCount||0)+Math.max(0,Number(o.costPendingLines)||0);
-    z.sales.push({id,total:o.total||0,payments:o.payments||null,payment:o.payment||'',refundAmount:o.refundAmount||0,refundPayments:o.refundPayments||null,channel:o.channel||'instore',timestamp:o.timestamp||0,occurredAt:o.completedAt||o.receivedAt||o.timestamp||0});
+    z.sales.push({id,total:o.total||0,payments:o.payments||null,payment:o.payment||'',refundAmount:o.refundAmount||0,refundPayments:o.refundPayments||null,channel:o.channel||'instore',timestamp:o.timestamp||0,occurredAt:o.completedAt||o.receivedAt||o.timestamp||0,...(o.unsynced?{unsynced:true}:{})});
   }
   z.payIns=(shift.payIns||[]).reduce((s,r)=>s+cents(r.amount||0),0);z.payOuts=(shift.payOuts||[]).reduce((s,r)=>s+cents(r.amount||0),0);
   z.expectedCash=cents(shift.openingFloat||0)+z.cashSales+z.tips-z.cashRefunds+z.payIns-z.payOuts;
@@ -84,4 +84,15 @@ function report(shift,orders,handover){
   for(const map of Object.values(z.byMethodAccount))for(const k of Object.keys(map))map[k]/=100;
   return {...z,...handover.cash,capturedAt:handover.at,openingFloat:shift.openingFloat||0,openCount:shift.openCount||{},expectedDrawer:shift.drawer||{},payInEntries:shift.payIns||[],payOutEntries:shift.payOuts||[],varianceStatus:z.variance?'pending_manager_reconciliation':'reconciled',schemaVersion:5};
 }
-module.exports={cents,countCash,digest,storedForm,commandDigest,sameCommand,commandOf,sealCommands,cashSnapshot,report,reportKey};
+// Provisional Z report at handover (24 Sep 2026): the server's orders plus every retained,
+// not-yet-recovered sale, because that sale's cash is already in the counted drawer. Each
+// retained sale is marked unsynced and every open item is listed; the final Z replaces it.
+function provisionalReport(shift,orders,handover,openItems){
+  const merged={...orders};
+  for(const row of Object.values(handover.commands||{})){
+    const o=row&&!row.quarantined&&!row.syncedAt&&row.command&&row.command.order;
+    if(o&&row.orderId&&!merged[row.orderId])merged[row.orderId]={...o,shiftId:shift.id,unsynced:true};
+  }
+  return {...report(shift,merged,handover),status:'provisional',closeMode:'provisional_handover',openItems:openItems||{}};
+}
+module.exports={cents,countCash,digest,storedForm,commandDigest,sameCommand,commandOf,sealCommands,cashSnapshot,report,provisionalReport,reportKey};
