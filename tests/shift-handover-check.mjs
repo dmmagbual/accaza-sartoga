@@ -14,8 +14,8 @@ const snap=v=>({val:()=>copy(v),exists:()=>v!=null});
 let preOrderShiftTransactions=0,coldTransactions=0;
 const db={ref(p=''){return {get:async()=>snap(read(p)),child:k=>db.ref(p+'/'+k),update:async updates=>{for(const [k,v]of Object.entries(updates))write(p+'/'+k,v);},transaction:async fn=>{if(p==='/shifts/SH-TEST'&&!read('/orders/POS-TEST'))preOrderShiftTransactions++;coldTransactions++;/* Admin SDK: the first callback sees the cold local cache (null); undefined aborts without asking the server. */let v=fn(null);if(v===undefined)return {committed:false,snapshot:snap(null)};const actual=read(p);if(actual!=null){v=fn(copy(actual));if(v===undefined)return {committed:false,snapshot:snap(actual)};}write(p,v);return {committed:true,snapshot:snap(v)};},orderByChild(){return this;},equalTo(){return this;},limitToFirst(){return this;}};}};
 class HttpsError extends Error{constructor(code,message){super(message);this.code=code;}}
-let locked=false;
-const ctx={exports:{},require:()=>H,onCall:(_o,fn)=>fn,ORDER_REGION:'test',ENFORCE_APP_CHECK:false,getDatabase:()=>db,requirePortalPermission:async(_db,r)=>r.actor,HttpsError,posAssuranceKey:x=>x,financeText:(x,n)=>String(x||'').slice(0,n),financeDateFromTimestamp:()=> '2026-09-22',OfflineSync,textField:x=>String(x),money:Financial.money,listFromFirebase:x=>x,activeOrderProjection:x=>x,availableCashOnHandAboveFloat:async()=>({available:99999}),calculateOrderInventoryPlan:async()=>({}),shiftOrdersForAssurance:async(_db,id)=>Object.fromEntries(Object.entries(state.orders||{}).filter(([,o])=>o.shiftId===id)),assurancePostingState:async()=>({saleCount:Object.keys(state.orders||{}).length,inventoryOutstanding:[],financeOutstanding:[]}),assertAccountingPeriodOpen:async()=>{if(locked)throw new Error('Period locked');},Date,Buffer};
+let locked=false,postingOutstanding=[];
+const ctx={exports:{},require:()=>H,onCall:(_o,fn)=>fn,ORDER_REGION:'test',ENFORCE_APP_CHECK:false,getDatabase:()=>db,requirePortalPermission:async(_db,r)=>r.actor,HttpsError,posAssuranceKey:x=>x,financeText:(x,n)=>String(x||'').slice(0,n),financeDateFromTimestamp:()=> '2026-09-22',OfflineSync,textField:x=>String(x),money:Financial.money,listFromFirebase:x=>x,activeOrderProjection:x=>x,availableCashOnHandAboveFloat:async()=>({available:99999}),calculateOrderInventoryPlan:async()=>({}),shiftOrdersForAssurance:async(_db,id)=>Object.fromEntries(Object.entries(state.orders||{}).filter(([,o])=>o.shiftId===id)),assurancePostingState:async()=>({saleCount:Object.keys(state.orders||{}).length,inventoryOutstanding:postingOutstanding.slice(),financeOutstanding:[]}),setTimeout,HANDOVER_AUTO_FINALIZE_DELAYS_MS:[1,1],assertAccountingPeriodOpen:async()=>{if(locked)throw new Error('Period locked');},Date,Buffer};
 vm.createContext(ctx);vm.runInContext(fs.readFileSync(new URL('../src/functions/25b-shift-handover.js',import.meta.url),'utf8'),ctx);
 const call=(data,actor={uid:'cashier',role:'staff'})=>ctx.exports.manageShiftHandover({data,actor});
 const shift={id:'SH-TEST',status:'open',staff:'Cashier',accountUid:'cashier',openAt:1000,openingFloat:100,drawer:{b100:1}};
@@ -73,4 +73,49 @@ assert.ok(movements['shift_variance_SH-TEST']);assert.equal(Object.keys(movement
 const mixed=H.report({id:'SH-MIX',openingFloat:100},{a:{shiftId:'SH-MIX',status:'Completed',channel:'instore',total:50,subtotal:50,payments:[{method:'Cash',amount:50}]},b:{shiftId:'SH-MIX',status:'Completed',channel:'instore',total:80,subtotal:80,payments:[{method:'Bank Transfer · B.D.O',paymentMethod:'Bank Transfer',receivingAccountName:'B.D.O [Main]',amount:80}]},c:{shiftId:'SH-MIX',status:'Completed',channel:'grabfood',total:120,grossPlatform:120,netSalesPlatform:120,payments:[{method:'GrabFood',amount:120}]}},{cash:{countedCash:150}});
 assert.doesNotThrow(()=>assertKeys(mixed,'/shifts/SH-MIX/zReport'),'Z report keys must be valid Realtime Database keys');
 assert.equal(mixed.byMethod.Cash,50);assert.equal(mixed.byMethodAccount['Bank Transfer']['B_D_O _Main_'],80);assert.deepEqual(mixed.byMethodAccount.Cash,{});assert.equal(mixed.cashSales,50);assert.equal(mixed.variance,0);
-console.log('PASS: pending-sale handover releases the till, preserves immutable count and sale commands, recovers once into the original shift, protects the next drawer, enforces roles/period locks, and separates custody from final variance.');
+// 24 Sep 2026 (Alex, SH-945869): the till's second close check failed on the device although
+// nothing was outstanding. A handover with no retained sale now closes with a Z report when the
+// server holds the same evidence a normal close needs, and records why the till check failed.
+const alex={uid:'alex',role:'staff'},openShift=(id)=>{const row={id,status:'open',staff:'Alex',accountUid:'alex',openAt:5000,openingFloat:100,drawer:{b100:1}};write(`/shifts/${id}`,row);write('/posActiveShift',row);return row;};
+openShift('SH-CLEAN');
+write('/orders/POS-CLEAN',{shiftId:'SH-CLEAN',status:'Completed',channel:'instore',total:25,subtotal:25,payments:[{method:'Cash',amount:25}],timestamp:6000,inventoryDeducted:true});
+// The submitting tablet's own stale report is superseded by its sealed (empty) queue.
+write('/posDeviceHealth/SH-CLEAN',{tablet:{deviceId:'tablet',shiftId:'SH-CLEAN',outstanding:3},other:{deviceId:'other',shiftId:'SH-CLEAN',outstanding:0}});
+const auto=await call({shiftId:'SH-CLEAN',deviceId:'tablet',closeCount:{b100:1,p20:1,c5:1},rows:[],closeCheckError:'[timeout] The sync check did not finish within 30 seconds.'},alex);
+assert.equal(auto.resolved,true);assert.equal(auto.automatic,true);assert.equal(auto.zReport.closeMode,'automatic_handover');assert.equal(auto.zReport.net,25);assert.equal(auto.zReport.cashSales,25);assert.equal(auto.zReport.variance,0);assert.equal(auto.zReport.sales.length,1);
+assert.equal(auto.shift.closeAt,read('/shiftHandovers/SH-CLEAN/at'));
+assert.equal(read('/shifts/SH-CLEAN/status'),'closed');assert.equal(read('/shifts/SH-CLEAN/reconciliationMode'),'automatic');assert.equal(read('/shifts/SH-CLEAN/zReport/closeCheckError'),'[timeout] The sync check did not finish within 30 seconds.');
+assert.equal(read('/pendingShiftHandovers/SH-CLEAN'),undefined);assert.equal(read('/shiftHandovers/SH-CLEAN/resolvedBy'),'server');assert.equal(read('/shiftHandovers/SH-CLEAN/resolutionMode'),'automatic');
+assert.equal(read('/shiftCloseVerifications/SH-CLEAN/mode'),'automatic');assert.equal(read('/operationalAudit/handover_reconciled_SH-CLEAN/action'),'auto_finalize_shift_handover');
+assert.equal(read('/discrepancies/handover_SH-CLEAN'),undefined,'no variance, no discrepancy');
+assert.equal(read('/shiftSyncGates/SH-CLEAN/finalizingAt'),0,'sync gate released');assert.equal(read('/shiftHandovers/SH-CLEAN/reconcileLease'),0,'lease released');
+const again=await call({shiftId:'SH-CLEAN',deviceId:'tablet',closeCount:{b100:9},rows:[]},alex);
+assert.equal(again.alreadyResolved,true);assert.equal(again.zReport.net,25,'a lost response is retried into the same Z report');assert.equal(read('/shifts/SH-CLEAN/countedCash'),125);
+assert.equal((await call({action:'reconcile',shiftId:'SH-CLEAN',reason:'Checked',devicesChecked:true},manager)).duplicate,true);
+// Another device still holding sales: stays pending for a manager, with the reason shown.
+openShift('SH-BUSY');write('/posDeviceHealth/SH-BUSY',{other:{deviceId:'other',shiftId:'SH-BUSY',outstanding:2}});
+const busy=await call({shiftId:'SH-BUSY',deviceId:'tablet',closeCount:{b100:1},rows:[],closeCheckError:'[connection] offline'},alex);
+assert.equal(busy.resolved,undefined);assert.match(busy.autoFinalizeBlocker,/2 sale\(s\) on 1 other POS device/);assert.equal(read('/shifts/SH-BUSY/status'),'handover_pending');assert.ok(read('/pendingShiftHandovers/SH-BUSY'));
+const seen=await call({action:'inspect',shiftId:'SH-BUSY'},manager);assert.match(seen.autoFinalizeBlocker,/other POS device/);assert.equal(seen.closeCheckError,'[connection] offline');
+await assert.rejects(call({action:'reconcile',shiftId:'SH-BUSY',reason:'All devices checked'},manager),/Confirm that every device/,'the manager path still requires the device attestation');
+write('/posDeviceHealth/SH-BUSY/other/outstanding',0);
+const managed=await call({action:'reconcile',shiftId:'SH-BUSY',reason:'Other tablet synced, cash checked',devicesChecked:true},manager);
+assert.equal(managed.resolved,true);assert.equal(managed.automatic,false);assert.equal(read('/shifts/SH-BUSY/reconciliationMode'),'manager');assert.equal(read('/shiftHandovers/SH-BUSY/autoFinalize'),undefined);
+// A crew member still on the shift must have confirmed an empty queue within 5 minutes.
+openShift('SH-CREWAUTO');write('/shiftCrews/SH-CREWAUTO/louize',{staff:'Louize',sessions:{s1:{joinedAt:5500}}});
+write('/posDeviceHealth/SH-CREWAUTO',{lz:{deviceId:'lz',reportedBy:'louize',shiftId:'SH-CREWAUTO',outstanding:0,lastContactAt:1}});
+const crewHeld=await call({shiftId:'SH-CREWAUTO',deviceId:'tablet',closeCount:{b100:1},rows:[]},alex);
+assert.match(crewHeld.autoFinalizeBlocker,/Louize's device has not confirmed/);assert.equal(read('/shifts/SH-CREWAUTO/status'),'handover_pending');
+openShift('SH-CREWOK');write('/shiftCrews/SH-CREWOK/louize',{staff:'Louize',sessions:{s1:{joinedAt:5500}},});write('/shiftCrews/SH-CREWOK/left',{staff:'Rya',sessions:{s1:{joinedAt:5500,leftAt:5600}}});
+write('/posDeviceHealth/SH-CREWOK',{lz:{deviceId:'lz',reportedBy:'louize',shiftId:'SH-CREWOK',outstanding:0,lastContactAt:Date.now()-60000}});
+const crewOk=await call({shiftId:'SH-CREWOK',deviceId:'tablet',closeCount:{b100:1},rows:[]},alex);
+assert.equal(crewOk.resolved,true,'a crew device that reported an empty queue a minute ago does not block; a member who left earlier is ignored');
+// Postings still running after the short wait: stays pending.
+openShift('SH-POST');postingOutstanding=['POS-LATE'];
+const post=await call({shiftId:'SH-POST',deviceId:'tablet',closeCount:{b100:1},rows:[]},alex);
+assert.match(post.autoFinalizeBlocker,/inventory 1/);assert.equal(read('/shifts/SH-POST/status'),'handover_pending');postingOutstanding=[];
+// Locked accounting period: stays pending, nothing half-written.
+openShift('SH-LOCK');locked=true;
+const lock=await call({shiftId:'SH-LOCK',deviceId:'tablet',closeCount:{b100:1},rows:[]},alex);locked=false;
+assert.match(lock.autoFinalizeBlocker,/Period locked/);assert.equal(read('/shifts/SH-LOCK/status'),'handover_pending');assert.equal(read('/shifts/SH-LOCK/zReport'),undefined);assert.equal(read('/shiftSyncGates/SH-LOCK/finalizingAt'),0);
+console.log('PASS: pending-sale handover releases the till, preserves immutable count and sale commands, recovers once into the original shift, protects the next drawer, enforces roles/period locks, and separates custody from final variance; a clean handover closes itself with a Z report, and any blocker stays pending with its reason.');

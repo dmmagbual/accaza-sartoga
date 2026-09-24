@@ -95,7 +95,7 @@ assert.equal(read('/shifts/SH-CREW/drawer/b100'),6,'recovered cash applied exact
 // 6. Handover ends the crew; crew sales rung before it still recover into the shift.
 const late=sale(Date.now(),100);
 const handed=await handCall({shiftId:'SH-CREW',deviceId:'device',closeCount:{b100:7,b50:1},rows:[]},MARIA);
-assert.equal(handed.handedOver,true);
+assert.equal(handed.handedOver,true);assert.equal(handed.resolved,undefined,'a crew member without a recent empty-queue report keeps the shift open for late crew sales');assert.match(String(handed.autoFinalizeBlocker),/device has not confirmed an empty sale queue/,String(handed.autoFinalizeBlocker));
 assert.ok(Object.values(read('/shiftCrews/SH-CREW/louize_uid/sessions')).every(s=>s.leftAt),'handover closes every crew session');
 const lateResult=await deviceSync(LOUIZE,late);
 assert.equal(lateResult.duplicate,false);assert.ok(read(`/shiftHandovers/SH-CREW/commands/${late.transactionId}`),'late crew sale is claimed into the handover evidence');

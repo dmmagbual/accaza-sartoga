@@ -52,3 +52,34 @@ test('an unreadable queue is never reported as empty or successfully handed over
   await expect(page.getByRole('status')).toContainText('Do not clear browser data');
   expect(await page.evaluate(()=>window.calls)).toHaveLength(0);
 });
+
+// 24 Sep 2026 (Alex, SH-945869): the till's close check failed on the device although nothing
+// was outstanding. The server now closes such a shift at handover and the Z report shows.
+test('a clean handover closed by the server shows the Z report and records why the till check failed',async({page})=>{
+  await page.evaluate(()=>{
+    window.zShown=[];window.showZ=(s,z)=>window.zShown.push({shift:s.id,net:z.net,sales:z.saleList.length});
+    window.zReportView=r=>Object.assign({},r,{saleList:r.sales||[]});
+    window.AccazaOfflineQueue={all:async()=>[]};
+    window.A=()=>({callables:{manageShiftHandover:async data=>{window.calls.push(data);return {data:{handedOver:true,resolved:true,automatic:true,cash:{countedCash:150,actualFloatRetained:100,cashToSettle:50},variance:0,zReport:{net:50,variance:0,sales:[{id:'POS-1'}],capturedAt:1},shift:{id:'SH-TEST',closeAt:1}}};}}});
+    openHandoverCount({id:'SH-TEST'},Object.assign(new Error('The sync check did not finish within 30 seconds.'),{closeStep:'timeout'}),{b100:1,b50:1});
+  });
+  await page.getByRole('button',{name:'Submit count and finish shift'}).click();
+  await expect(page.getByRole('heading',{name:'Shift closed'})).toBeVisible();
+  expect(await page.evaluate(()=>window.zShown)).toEqual([{shift:'SH-TEST',net:50,sales:1}]);
+  const calls=await page.evaluate(()=>window.calls);
+  expect(calls[0].closeCheckError).toBe('[timeout] The sync check did not finish within 30 seconds.');
+  expect(calls[0].rows).toHaveLength(0);
+  await page.getByRole('button',{name:'Show Z report'}).click();
+  expect(await page.evaluate(()=>window.zShown.length)).toBe(2);
+});
+
+test('a handover the server cannot close yet says why',async({page})=>{
+  await page.evaluate(()=>{
+    window.AccazaOfflineQueue={all:async()=>[]};
+    window.A=()=>({callables:{manageShiftHandover:async data=>{window.calls.push(data);return {data:{handedOver:true,cash:{countedCash:150,actualFloatRetained:100,cashToSettle:50},pendingSales:0,autoFinalizeBlocker:'2 sale(s) on 1 other POS device(s) still require synchronization.'}};}}});
+    openHandoverCount({id:'SH-TEST'},new Error('offline'),{b100:1,b50:1});
+  });
+  await page.getByRole('button',{name:'Submit count and finish shift'}).click();
+  await expect(page.getByRole('heading',{name:'Shift handed over'})).toBeVisible();
+  await expect(page.getByText('Why it is still open: 2 sale(s) on 1 other POS device(s)')).toBeVisible();
+});
