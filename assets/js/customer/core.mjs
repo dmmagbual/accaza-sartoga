@@ -119,7 +119,7 @@ window.__accazaC={db:db,ref:ref,set:set,get:get,onValue:onValue,get menuItemsMap
 window.__custAddPackage=function(components,meta){(components||[]).forEach(function(c){var key=Date.now()+'_'+Math.random().toString(36).substr(2,5)+Math.floor(Math.random()*99);cart[key]={name:c.name,details:c.details||('pkg: '+meta.name),qty:c.qty,unitTotal:c.unitTotal,cat:c.cat||'',itemKey:c.itemKey,size:c.size||null,optLabels:c.optLabels||[],stream:(meta.type==='promo'?'promo':'events'),pkgId:meta.id,packageRole:c.packageRole||null};});window.__custPkgs.push(meta);updateCartDisplay();renderOrderSection();};
 
 const CAFE_PHONE='639276924831',CAFE_EMAIL='admin@accazacoffee.com',MAX_GUESTS=30;
-const TIME_SLOTS=['3:00 PM','4:00 PM','5:00 PM','6:00 PM','7:00 PM','8:00 PM','9:00 PM','10:00 PM','11:00 PM','12:00 Midnight'];
+const TIME_SLOTS=Array.from({length:19},(_,i)=>{const h=i+6;return h>23?'12:00 Midnight':(h%12||12)+':00 '+(h<12?'AM':'PM');});
 
 const DEFAULT_CATS=[
   {id:'coffee',label:'Coffee Based',icon:'☕',order:0},
@@ -1160,7 +1160,7 @@ function renderPublicReviews(){
 
 // ── CHATBOT ──
 const botReplies=[
-  {keys:['hour','open','close','time','schedule'],reply:'🕐 We are open every day — <strong>Monday to Sunday, 3:00 PM to 12:00 Midnight</strong>. ☕'},
+  {keys:['hour','open','close','time','schedule'],reply:'🕐 We are open every day — <strong>Monday to Sunday, 6:00 AM to 12:00 Midnight</strong>. ☕'},
   {keys:['location','address','where','find'],reply:"📍 <strong>Saratoga Avenue, La Mediterranea Subdivision, Governor's Drive, Dasmariñas, Cavite</strong>. Near SM Dasmariñas! 😊"},
   {keys:['gcash','pay','payment','bank','bdo'],reply:'💳 We accept <strong>GCash, BDO, and UnionBank</strong>. GCash: <strong>0927 692 4831</strong> (ACCAZA).'},
   {keys:['delivery','deliver'],reply:'🛵 We deliver within <strong>Dasmariñas, Cavite</strong> only. Outside? Try <strong>🟠 foodpanda</strong> or <strong>🟢 GrabFood</strong>.'},
@@ -1168,7 +1168,8 @@ const botReplies=[
   {keys:['reserve','reservation','book','table'],reply:'📅 Use our <strong>Reservations section</strong> — pick a date, time slot, and fill in your details. Our staff will confirm! 😊'},
   {keys:['wifi','internet'],reply:'📶 Yes, we have free WiFi! Ask our staff for the password. 😊'},
   {keys:['price','cost','how much'],reply:'💰 Prices start from <strong>₱95 for pastries</strong> and <strong>₱155 for coffee</strong>. Check our menu! ☕'},
-  {keys:['parking','park'],reply:'🚗 Yes, we have parking available! 😊'},
+  {keys:['parking','park'],reply:'🚗 Yes, we have free parking! 😊'},
+  {keys:['fresco','outdoor'],reply:'🌿 Yes, we have al fresco seating! 😊'},
   {keys:['hello','hi','hey','kumusta'],reply:'Hello! 👋 Welcome to <strong>Accaza Coffee House</strong>! How can I help you today? ☕'},
   {keys:['thank','thanks','salamat'],reply:"You're very welcome! 😊 See you at Accaza! ☕🐻"},
   {keys:['sms','text'],reply:'📩 You can reach us via SMS at <strong>0927 692 4831</strong>. 😊'},

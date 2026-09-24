@@ -1276,7 +1276,7 @@ window.showTabGroup=function(g,btn){
 };
 
 const botReplies=[
-  {keys:['hour','open','close','time','schedule'],reply:'ðŸ• We are open every day â€” <strong>Monday to Sunday, 3:00 PM to 12:00 Midnight</strong>. â˜•'},
+  {keys:['hour','open','close','time','schedule'],reply:'ðŸ• We are open every day â€” <strong>Monday to Sunday, 6:00 AM to 12:00 Midnight</strong>. â˜•'},
   {keys:['location','address','where','find'],reply:"ðŸ“ <strong>Saratoga Avenue, La Mediterranea Subdivision, Governor's Drive, DasmariÃ±as, Cavite</strong>. Near SM DasmariÃ±as! ðŸ˜Š"},
   {keys:['gcash','pay','payment','bank','bdo'],reply:'ðŸ’³ We accept <strong>GCash, BDO, and UnionBank</strong>. GCash: <strong>0927 692 4831</strong> (ACCAZA).'},
   {keys:['delivery','deliver'],reply:'ðŸ›µ We deliver within <strong>DasmariÃ±as, Cavite</strong> only. Outside? Try <strong>ðŸŸ  foodpanda</strong> or <strong>ðŸŸ¢ GrabFood</strong>.'},
@@ -1284,7 +1284,8 @@ const botReplies=[
   {keys:['reserve','reservation','book','table'],reply:'ðŸ“… Use our <strong>Reservations section</strong> â€” pick a date, time slot, and fill in your details. Our staff will confirm! ðŸ˜Š'},
   {keys:['wifi','internet'],reply:'ðŸ“¶ Yes, we have free WiFi! Ask our staff for the password. ðŸ˜Š'},
   {keys:['price','cost','how much'],reply:'ðŸ’° Prices start from <strong>â‚±95 for pastries</strong> and <strong>â‚±155 for coffee</strong>. Check our menu! â˜•'},
-  {keys:['parking','park'],reply:'ðŸš— Yes, we have parking available! ðŸ˜Š'},
+  {keys:['parking','park'],reply:'ðŸš— Yes, we have free parking! ðŸ˜Š'},
+  {keys:['fresco','outdoor'],reply:'🌿 Yes, we have al fresco seating! 😊'},
   {keys:['hello','hi','hey','kumusta'],reply:'Hello! ðŸ‘‹ Welcome to <strong>Accaza Coffee House</strong>! How can I help you today? â˜•'},
   {keys:['thank','thanks','salamat'],reply:"You're very welcome! ðŸ˜Š See you at Accaza! â˜•ðŸ»"},
   {keys:['sms','text'],reply:'ðŸ“© You can reach us via SMS at <strong>0927 692 4831</strong>. ðŸ˜Š'},

@@ -2,7 +2,7 @@ import{db,ref,set,get,update,remove}from"./firebase-client.mjs";
 import{escHtml}from"./shared-ui.mjs";
 
 const MAX_GUESTS=30;
-const TIME_SLOTS=['3:00 PM','4:00 PM','5:00 PM','6:00 PM','7:00 PM','8:00 PM','9:00 PM','10:00 PM','11:00 PM','12:00 Midnight'];
+const TIME_SLOTS=Array.from({length:19},(_,i)=>{const h=i+6;return h>23?'12:00 Midnight':(h%12||12)+':00 '+(h<12?'AM':'PM');});
 
 function createReservationManager(deps){
   let reservations={},archived={},calBlocks={},resContactMethod='whatsapp',selectedDate=null,selectedTime=null,adminSelectedDate=null,resArchiveOpen=false,knownResIds=null,resChimeTimer=null,resChimeCount=0;
