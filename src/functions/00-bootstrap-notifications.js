@@ -49,6 +49,7 @@ const OLLAMA_ACCESS_CLIENT_ID = defineSecret("OLLAMA_ACCESS_CLIENT_ID");
 const OLLAMA_ACCESS_CLIENT_SECRET = defineSecret("OLLAMA_ACCESS_CLIENT_SECRET");
 const ASHNA_API_KEY = defineSecret("ASHNA_API_KEY");
 const CEREBRAS_API_KEY = defineSecret("CEREBRAS_API_KEY");
+const GROQ_API_KEY = defineSecret("GROQ_API_KEY");
 // Every `retry: true` database trigger is bounded: transient failures still
 // retry, but an event that keeps failing past the retry window is recorded in
 // /functionDeadLetters and acknowledged instead of being redelivered (and its
