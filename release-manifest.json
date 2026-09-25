@@ -12,7 +12,7 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 592,
+    "admin": 593,
     "books": 129,
     "customer": 75,
     "serviceWorkerCache": 571
@@ -122,6 +122,7 @@
     "src/functions/60-maintenance.js",
     "src/functions/61-historical-archive.js",
     "src/functions/62-accaza-ai.js",
+    "src/functions/62a-accaza-ai-records.js",
     "functions/lib/costing.js",
     "functions/lib/financial.js",
     "functions/lib/cash-balances.js",
