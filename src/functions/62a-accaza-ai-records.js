@@ -12,7 +12,8 @@ const ACCAZA_AI_TOOL_MAX_DAYS = 7;
 const ACCAZA_AI_TOOL_SALES_MAX_DAYS = 3;
 const ACCAZA_AI_MANILA_OFFSET_MS = 8 * 3600000;
 // Fields that never leave the server: credentials, contact details, images, raw sale payloads.
-const ACCAZA_AI_TOOL_SKIP_KEY = /(token|secret|password|passcode|^pin$|pinhash|email|phone|mobile|photo|image|proof|signature|^command$|payload|lineitems|^items$|fcm|^ip$|useragent)/i;
+// Also dropped: hashes and coin/bill denomination counts (the counted totals are kept).
+const ACCAZA_AI_TOOL_SKIP_KEY = /(token|secret|password|passcode|^pin$|pinhash|email|phone|mobile|photo|image|proof|signature|^command$|payload|lineitems|^items$|fcm|^ip$|useragent|hash$|^(opencount|closecount|drawer)$)/i;
 function accazaAiManilaTime(ms){const date=new Date(Number(ms)+ACCAZA_AI_MANILA_OFFSET_MS);return `${date.toISOString().slice(0,10)} ${date.toISOString().slice(11,16)}`;}
 function accazaAiLooksLikeTime(key,value){return typeof value==="number"&&value>1.5e12&&value<2.5e12&&/(at|ts|time|timestamp|date|since|until|seen)$/i.test(key);}
 // Scalars and one level of nesting only; timestamps become Manila "YYYY-MM-DD HH:MM".
@@ -23,7 +24,7 @@ function accazaAiCompact(value,depth=0,key=""){
   if(typeof value==="boolean")return value;
   if(typeof value==="string")return value.length>160?`${value.slice(0,160)}…`:value;
   if(Array.isArray(value))return depth>=1?`[${value.length} item${value.length===1?"":"s"}]`:value.slice(0,8).map(item=>accazaAiCompact(item,depth+1));
-  if(typeof value==="object"){if(depth>=2)return "[details]";const out={};for(const [field,item] of Object.entries(value).slice(0,40)){if(ACCAZA_AI_TOOL_SKIP_KEY.test(field))continue;const compact=accazaAiCompact(item,depth+1,field);if(compact!==undefined)out[field]=compact;}return out;}
+  if(typeof value==="object"){if(depth>=2)return "[details]";const size=Object.keys(value).length;if(depth>=1&&size>12)return `[${size} entries]`;const out={};for(const [field,item] of Object.entries(value).slice(0,40)){if(ACCAZA_AI_TOOL_SKIP_KEY.test(field))continue;const compact=accazaAiCompact(item,depth+1,field);if(compact!==undefined)out[field]=compact;}return out;}
   return undefined;
 }
 function accazaAiCentavos(value){return Math.round((Number(value)||0)*100);}
@@ -154,7 +155,7 @@ async function accazaAiRunRecordTool(ctx,name,args){
   ctx.cache[key]=result;return result;
 }
 function accazaAiToolSources(ctx){return ctx.calls.map(call=>`${call.tool} ${call.args.month||[call.args.date_from,call.args.date_to].filter(Boolean).filter((value,index,list)=>list.indexOf(value)===index).join(" to ")}${call.failed?" (failed)":` (${call.records} records)`}`);}
-const ACCAZA_AI_AGENT_GUIDE = "You can read Accaza's live records with the provided tools. Work like an analyst: first decide which records would answer the question, call the tools (several at once if useful, and again to dig deeper), compare what they show, and only then write the reply. Every factual statement must come from the FACT PACK or a tool result: quote the exact times, shift IDs, staff names, counts and PHP amounts the records show. If the records do not show something, say so plainly instead of guessing, and label any inference as an inference. All dates and times are Manila time. For a question about what happened, give a short direct answer, then the timeline in order (time and what the records show), then the cause as far as the records support it, then anything still open. This overrides the instruction to use only the FACT PACK.";
+const ACCAZA_AI_AGENT_GUIDE = "You can read Accaza's live records with the provided tools. Work like an analyst: first decide which records would answer the question, call the tools (several at once if useful, and again to dig deeper), compare what they show, and only then write the reply. Every factual statement must come from the FACT PACK or a tool result: quote the exact times, shift IDs, staff names, counts and PHP amounts the records show. If the records do not show something, say so plainly instead of guessing, and label any inference as an inference. All dates and times are Manila time. For a question about what happened (an incident, a problem, a shift or a day), first check that day's shifts, sales, sync issues and audit log, then reply in this order: a one- or two-sentence direct answer; a \"Timeline\" label followed by a list of times and what the records show; a \"Cause\" paragraph that separates what the records prove from what is inferred; and a \"Still open\" list if anything remains unresolved. Do not add generic recommendations to an incident answer unless the user asks what to do. This overrides the instruction to use only the FACT PACK.";
 function accazaAiAgentQuestion(question,facts,now){return`QUESTION: ${question}\n\nTODAY (Manila): ${financeDateFromTimestamp(now)}\n\nFACT PACK:\n${JSON.stringify(facts)}`;}
 async function askGeminiAccazaAgent(question,facts,history,timeoutMs,ctx,now){
   const key=GEMINI_API_KEY.value();if(!key)throw new HttpsError("failed-precondition","Accaza AI is not configured. Set the GEMINI_API_KEY Firebase secret first.");
