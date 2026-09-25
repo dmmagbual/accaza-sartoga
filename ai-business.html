@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta name="robots" content="noindex"/>
+<meta name="accaza-ai-business-build" content="1"/>
+<meta name="description" content="Accaza AI business profile and campaign log. Management only; separate from the Accaza POS/Admin app."/>
+<meta name="theme-color" content="#19241b"/>
+<title>Accaza AI · Business &amp; Campaigns</title>
+<link rel="icon" type="image/x-icon" href="/favicon.ico"/>
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon_32x32.png"/>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+  :root{--bg:#e0d4c6;--ink:#2d261e;--muted:#6e6256;--panel:#fffdf9;--line:#eadfce;--accent:#2f5c43;--accent-ink:#284c39;--danger:#a33120;--warn:#8a5a14;}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:Inter,Arial,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;}
+  .topbar{background:#19241b;color:#f5f0e8;padding:.85rem 1.1rem;display:flex;align-items:center;justify-content:space-between;gap:.7rem;}
+  .topbar b{font-family:'Playfair Display',serif;font-size:1.15rem;}
+  .topbar small{display:block;font-size:.7rem;color:rgba(245,240,232,.72);margin-top:.1rem;}
+  .ghost{background:transparent;border:1px solid rgba(245,240,232,.4);color:#f5f0e8;border-radius:6px;padding:.4rem .65rem;font-size:.75rem;cursor:pointer;font-weight:600;}
+  main{max-width:880px;margin:0 auto;padding:1rem;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:1.1rem;margin-bottom:1rem;box-shadow:0 6px 20px rgba(0,0,0,.06);}
+  h1,h2{font-family:'Playfair Display',serif;color:var(--accent-ink);margin:0 0 .3rem;}
+  h1{font-size:1.3rem;} h2{font-size:1.1rem;}
+  p.hint{margin:.1rem 0 .9rem;font-size:.8rem;color:var(--muted);line-height:1.5;}
+  label{display:block;font-size:.74rem;font-weight:600;color:var(--muted);margin:.7rem 0 .28rem;}
+  input,textarea,select{width:100%;border:1px solid #bba98e;border-radius:7px;padding:.55rem .6rem;font:inherit;font-size:.86rem;background:#fff;}
+  textarea{resize:vertical;min-height:62px;}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;}
+  @media(max-width:620px){.row{grid-template-columns:1fr;}}
+  .btn{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:.6rem .9rem;font-weight:700;font-size:.84rem;cursor:pointer;}
+  .btn.secondary{background:#fff;color:var(--accent-ink);border:1px solid #8aa28e;}
+  .btn.warn{background:#fff;color:var(--warn);border:1px solid #d4bd98;}
+  .btn:disabled{opacity:.6;cursor:default;}
+  .actions{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1rem;align-items:center;}
+  .status{font-size:.78rem;min-height:1.1rem;color:#4d6655;}
+  .status.err{color:var(--danger);}
+  .tabs{display:flex;gap:.4rem;margin-bottom:1rem;}
+  .tab{flex:1;background:#fff;border:1px solid #8aa28e;color:var(--accent-ink);border-radius:8px;padding:.55rem;font-weight:700;cursor:pointer;font-size:.84rem;}
+  .tab.on{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .campaign{border:1px solid var(--line);border-radius:10px;padding:.8rem;margin:.6rem 0;background:#fff;}
+  .campaign .top{display:flex;justify-content:space-between;gap:.6rem;align-items:start;}
+  .campaign b{font-size:.92rem;}
+  .meta{font-size:.76rem;color:var(--muted);margin-top:.25rem;line-height:1.5;}
+  .badge{font-size:.68rem;font-weight:700;border-radius:999px;padding:.15rem .55rem;white-space:nowrap;}
+  .badge.active{background:#dff0e4;color:#1f5c35;} .badge.planned{background:#e7eefb;color:#1c3f8a;} .badge.ended{background:#efe9df;color:#6e6256;} .badge.archived{background:#f4e1dc;color:#a33120;}
+  .items{max-height:190px;overflow:auto;border:1px solid #bba98e;border-radius:7px;padding:.35rem .5rem;background:#fff;}
+  .items label{display:flex;align-items:center;gap:.45rem;font-weight:400;color:var(--ink);margin:.2rem 0;font-size:.82rem;}
+  .items input{width:auto;}
+  #loginCard{max-width:380px;margin:3rem auto;}
+  #loginCard button{width:100%;margin-top:1rem;}
+  .filters{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;}
+  .filters label{display:flex;align-items:center;gap:.35rem;margin:0;font-weight:500;}
+  .filters input{width:auto;}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div><b>✦ Accaza AI</b><small id="sub">Business profile &amp; campaign log · management</small></div>
+  <button id="signOutBtn" class="ghost" type="button" style="display:none">Sign out</button>
+</div>
+<main>
+  <div id="loginCard" class="card">
+    <h1>Sign in</h1>
+    <p class="hint">For owners, admins and managers. What you save here is what Accaza AI uses when it plans and measures marketing.</p>
+    <form id="loginForm">
+      <label for="loginEmail">Email</label><input id="loginEmail" type="email" autocomplete="username" required/>
+      <label for="loginPass">Password</label><input id="loginPass" type="password" autocomplete="current-password" required/>
+      <button id="loginBtn" class="btn" type="submit">Log In</button>
+      <div id="loginErr" class="status err"></div>
+    </form>
+  </div>
+
+  <div id="app" style="display:none">
+    <div class="tabs"><button class="tab on" data-tab="campaigns" type="button">Campaign log</button><button class="tab" data-tab="profile" type="button">Business profile</button></div>
+
+    <section id="tab-campaigns">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap">
+          <div><h2>Campaign log</h2><p class="hint" style="margin:0">Log every promotion (discounts, bundles, posts, events) with its dates and cost. Accaza AI compares sales before, during and after it.</p></div>
+          <button id="newCampaignBtn" class="btn" type="button">New campaign</button>
+        </div>
+        <div class="filters" style="margin-top:.7rem"><label><input id="showArchived" type="checkbox"/> Show archived</label></div>
+        <div id="campaignList"></div>
+        <div id="listStatus" class="status"></div>
+      </div>
+
+      <div id="campaignFormCard" class="card" style="display:none">
+        <h2 id="formTitle">New campaign</h2>
+        <form id="campaignForm">
+          <input id="cId" type="hidden"/>
+          <label for="cName">Campaign name</label><input id="cName" maxlength="80" required placeholder="e.g. Merienda bundle"/>
+          <div class="row">
+            <div><label for="cType">Type</label><select id="cType"></select></div>
+            <div><label for="cChannel">Channel</label><select id="cChannel"></select></div>
+          </div>
+          <div class="row">
+            <div><label for="cStart">Start date</label><input id="cStart" type="date" required/></div>
+            <div><label for="cEnd">End date</label><input id="cEnd" type="date" required/></div>
+          </div>
+          <label for="cOffer">Offer</label><input id="cOffer" maxlength="300" placeholder="e.g. Spanish Latte + Croffle for PHP 299, 2–5 pm"/>
+          <div class="row">
+            <div><label for="cCost">Cost (PHP)</label><input id="cCost" type="number" min="0" step="0.01" placeholder="Ads, printing, freebies, platform promo fee"/></div>
+            <div><label for="cCode">Promo code (optional)</label><input id="cCode" maxlength="40"/></div>
+          </div>
+          <label for="cGoal">Goal</label><input id="cGoal" maxlength="300" placeholder="e.g. Lift weekday afternoon sales by 20%"/>
+          <label>Items in the promotion (optional, up to 20)</label>
+          <input id="itemSearch" placeholder="Search items…" style="margin-bottom:.35rem"/>
+          <div id="itemList" class="items"></div>
+          <label for="cNotes">Notes</label><textarea id="cNotes" maxlength="1000"></textarea>
+          <div class="actions">
+            <button id="saveCampaignBtn" class="btn" type="submit">Save campaign</button>
+            <button id="cancelCampaignBtn" class="btn secondary" type="button">Cancel</button>
+            <button id="archiveCampaignBtn" class="btn warn" type="button" style="display:none">Archive</button>
+            <span id="formStatus" class="status"></span>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section id="tab-profile" style="display:none">
+      <div class="card">
+        <h2>Business profile</h2>
+        <p class="hint">Plain words are fine. Accaza AI reads this before it suggests strategy or marketing.</p>
+        <form id="profileForm">
+          <label for="pGoals">Goals for the next 3–6 months</label><textarea id="pGoals" maxlength="1200" placeholder="e.g. Grow weekday sales, reach PHP 200k a month, launch pastries"></textarea>
+          <label for="pBudget">Monthly marketing budget (PHP)</label><input id="pBudget" type="number" min="0" step="0.01"/>
+          <label for="pTarget">Target customers</label><textarea id="pTarget" maxlength="800" placeholder="e.g. Students, nearby office workers, weekend families"></textarea>
+          <label for="pPosition">Positioning and price level</label><textarea id="pPosition" maxlength="800" placeholder="e.g. Specialty coffee at mid-range prices, cosy study space"></textarea>
+          <label for="pCompetitors">Competitors nearby</label><textarea id="pCompetitors" maxlength="800"></textarea>
+          <label for="pSeason">Seasonality and local events</label><textarea id="pSeason" maxlength="800" placeholder="e.g. School terms, paydays 15th and 30th, fiesta in May"></textarea>
+          <label for="pConstraints">Constraints</label><textarea id="pConstraints" maxlength="800" placeholder="e.g. Two baristas per shift, no delivery staff, small seating"></textarea>
+          <label for="pNotes">Other notes</label><textarea id="pNotes" maxlength="1500"></textarea>
+          <div class="actions"><button id="saveProfileBtn" class="btn" type="submit">Save profile</button><span id="profileStatus" class="status"></span></div>
+        </form>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import{getAuth,onAuthStateChanged,signInWithEmailAndPassword,signOut,setPersistence,browserLocalPersistence}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import{getFunctions,httpsCallable}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
+import{initializeAppCheck,ReCaptchaEnterpriseProvider}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js";
+
+const firebaseConfig={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
+const app=initializeApp(firebaseConfig);
+const APP_CHECK_SITE_KEY='6LdQ6HstAAAAAGvaa0exDw5aAHxNsrPKCtdlCeis';
+try{initializeAppCheck(app,{provider:new ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY),isTokenAutoRefreshEnabled:true});}catch(e){console.warn('App Check init failed',e);}
+const auth=getAuth(app),functions=getFunctions(app,'asia-southeast1'),manage=httpsCallable(functions,'manageAccazaAiBusiness');
+
+const TYPE_LABELS={discount:'Discount',bundle:'Bundle',new_item:'New item',social_post:'Social media post',event:'Event',loyalty:'Loyalty',sampling:'Sampling',other:'Other'};
+const CHANNEL_LABELS={all:'All channels',instore:'In-store',grabfood:'GrabFood',foodpanda:'FoodPanda',online:'Online orders',social:'Social media (awareness)'};
+let state={campaigns:[],menu:[],profile:{},types:[],channels:[]},selected=new Set();
+function by(id){return document.getElementById(id);}
+function status(id,text,error){const el=by(id);el.textContent=text||'';el.className='status'+(error?' err':'');}
+function peso(value){return 'PHP '+Number(value||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function option(select,value,label){const o=document.createElement('option');o.value=value;o.textContent=label;select.appendChild(o);}
+function errText(e){return (e&&e.message||'Something went wrong.').replace(/^FirebaseError:\s*/,'');}
+
+document.querySelectorAll('.tab').forEach(tab=>tab.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t===tab));by('tab-campaigns').style.display=tab.dataset.tab==='campaigns'?'':'none';by('tab-profile').style.display=tab.dataset.tab==='profile'?'':'none';}));
+
+function renderCampaigns(){
+  const list=by('campaignList'),show=by('showArchived').checked,rows=state.campaigns.filter(c=>show||c.status!=='archived');
+  list.replaceChildren();
+  if(!rows.length){const p=document.createElement('p');p.className='hint';p.textContent='No campaigns logged yet. Add the promotions you have run or are planning.';list.appendChild(p);return;}
+  rows.forEach(c=>{
+    const card=document.createElement('div');card.className='campaign';
+    const top=document.createElement('div');top.className='top';
+    const left=document.createElement('div'),name=document.createElement('b');name.textContent=c.name;left.appendChild(name);
+    const meta=document.createElement('div');meta.className='meta';
+    meta.textContent=`${c.startDate} to ${c.endDate} · ${TYPE_LABELS[c.type]||c.type} · ${CHANNEL_LABELS[c.channel]||c.channel} · cost ${peso(c.cost)}${c.offer?' · '+c.offer:''}${c.itemNames&&c.itemNames.length?' · items: '+c.itemNames.join(', '):''}`;
+    left.appendChild(meta);
+    const badge=document.createElement('span');badge.className='badge '+c.status;badge.textContent=c.status;
+    top.append(left,badge);card.appendChild(top);
+    const actions=document.createElement('div');actions.className='actions';actions.style.marginTop='.5rem';
+    const edit=document.createElement('button');edit.type='button';edit.className='btn secondary';edit.textContent=c.status==='archived'?'Restore':'Edit';
+    edit.addEventListener('click',()=>c.status==='archived'?archive(c.id,false):openForm(c));
+    actions.appendChild(edit);card.appendChild(actions);list.appendChild(card);
+  });
+}
+function renderItems(){
+  const box=by('itemList'),q=(by('itemSearch').value||'').toLowerCase();box.replaceChildren();
+  state.menu.filter(m=>!q||m.name.toLowerCase().includes(q)||selected.has(m.id)).forEach(m=>{
+    const label=document.createElement('label'),box2=document.createElement('input');box2.type='checkbox';box2.checked=selected.has(m.id);
+    box2.addEventListener('change',()=>{if(box2.checked){if(selected.size>=20){box2.checked=false;return;}selected.add(m.id);}else selected.delete(m.id);});
+    label.append(box2,document.createTextNode(m.name));box.appendChild(label);
+  });
+}
+by('itemSearch').addEventListener('input',renderItems);
+function openForm(c){
+  const edit=!!c;by('formTitle').textContent=edit?'Edit campaign':'New campaign';
+  by('cId').value=edit?c.id:'';by('cName').value=edit?c.name:'';by('cType').value=edit?c.type:'discount';by('cChannel').value=edit?c.channel:'all';
+  by('cStart').value=edit?c.startDate:state.today||'';by('cEnd').value=edit?c.endDate:state.today||'';by('cOffer').value=edit?c.offer:'';by('cCost').value=edit&&c.cost?c.cost:'';
+  by('cCode').value=edit?c.promoCode:'';by('cGoal').value=edit?c.goal:'';by('cNotes').value=edit?c.notes:'';
+  selected=new Set(edit?c.items:[]);by('itemSearch').value='';renderItems();
+  by('archiveCampaignBtn').style.display=edit?'':'none';status('formStatus','');
+  by('campaignFormCard').style.display='';by('campaignFormCard').scrollIntoView({behavior:'smooth'});
+}
+by('newCampaignBtn').addEventListener('click',()=>openForm(null));
+by('cancelCampaignBtn').addEventListener('click',()=>{by('campaignFormCard').style.display='none';});
+by('showArchived').addEventListener('change',renderCampaigns);
+by('campaignForm').addEventListener('submit',async ev=>{
+  ev.preventDefault();const btn=by('saveCampaignBtn');btn.disabled=true;status('formStatus','Saving…');
+  const items=[...selected],names=items.map(id=>(state.menu.find(m=>m.id===id)||{}).name||id);
+  try{
+    const result=(await manage({action:'save_campaign',campaign:{id:by('cId').value||undefined,name:by('cName').value,type:by('cType').value,channel:by('cChannel').value,startDate:by('cStart').value,endDate:by('cEnd').value,offer:by('cOffer').value,cost:by('cCost').value,promoCode:by('cCode').value,goal:by('cGoal').value,notes:by('cNotes').value,items,itemNames:names}})).data.campaign;
+    state.campaigns=[result,...state.campaigns.filter(c=>c.id!==result.id)].sort((a,b)=>b.startDate.localeCompare(a.startDate));
+    renderCampaigns();by('campaignFormCard').style.display='none';status('listStatus','Saved “'+result.name+'”.');
+  }catch(e){status('formStatus',errText(e),true);}finally{btn.disabled=false;}
+});
+async function archive(id,on){
+  if(on&&!confirm('Archive this campaign? It stays on record and can be restored.'))return;
+  status('listStatus',on?'Archiving…':'Restoring…');
+  try{const result=(await manage({action:on?'archive_campaign':'restore_campaign',id})).data.campaign;state.campaigns=state.campaigns.map(c=>c.id===id?result:c);renderCampaigns();by('campaignFormCard').style.display='none';status('listStatus',on?'Archived.':'Restored.');}
+  catch(e){status('listStatus',errText(e),true);}
+}
+by('archiveCampaignBtn').addEventListener('click',()=>archive(by('cId').value,true));
+
+function fillProfile(p){by('pGoals').value=p.goals||'';by('pBudget').value=p.monthlyMarketingBudget||'';by('pTarget').value=p.targetCustomers||'';by('pPosition').value=p.positioning||'';by('pCompetitors').value=p.competitors||'';by('pSeason').value=p.seasonality||'';by('pConstraints').value=p.constraints||'';by('pNotes').value=p.notes||'';if(p.updatedAt)status('profileStatus','Last saved '+new Date(p.updatedAt).toLocaleString()+(p.updatedByName?' by '+p.updatedByName:''));}
+by('profileForm').addEventListener('submit',async ev=>{
+  ev.preventDefault();const btn=by('saveProfileBtn');btn.disabled=true;status('profileStatus','Saving…');
+  try{const p=(await manage({action:'save_profile',profile:{goals:by('pGoals').value,monthlyMarketingBudget:by('pBudget').value,targetCustomers:by('pTarget').value,positioning:by('pPosition').value,competitors:by('pCompetitors').value,seasonality:by('pSeason').value,constraints:by('pConstraints').value,notes:by('pNotes').value}})).data.profile;fillProfile(p);status('profileStatus','Saved.');}
+  catch(e){status('profileStatus',errText(e),true);}finally{btn.disabled=false;}
+});
+
+async function load(){
+  status('listStatus','Loading…');
+  try{
+    const d=(await manage({action:'load'})).data;state=Object.assign(state,d);
+    by('cType').replaceChildren();by('cChannel').replaceChildren();
+    d.types.forEach(t=>option(by('cType'),t,TYPE_LABELS[t]||t));d.channels.forEach(c=>option(by('cChannel'),c,CHANNEL_LABELS[c]||c));
+    fillProfile(d.profile||{});renderCampaigns();status('listStatus','');
+  }catch(e){status('listStatus',errText(e),true);}
+}
+by('loginForm').addEventListener('submit',async ev=>{
+  ev.preventDefault();const btn=by('loginBtn');btn.disabled=true;status('loginErr','');
+  try{try{await setPersistence(auth,browserLocalPersistence);}catch(_p){}await signInWithEmailAndPassword(auth,(by('loginEmail').value||'').trim(),by('loginPass').value);}
+  catch(e){status('loginErr',errText(e)||'Login failed.',true);by('loginPass').value='';}finally{btn.disabled=false;}
+});
+by('signOutBtn').addEventListener('click',()=>signOut(auth).catch(()=>{}));
+onAuthStateChanged(auth,user=>{
+  const signedIn=!!(user&&!user.isAnonymous);
+  by('loginCard').style.display=signedIn?'none':'';by('app').style.display=signedIn?'':'none';by('signOutBtn').style.display=signedIn?'':'none';
+  if(signedIn)load();
+});
+</script>
+</body>
+</html>

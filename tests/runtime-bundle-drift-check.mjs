@@ -62,12 +62,14 @@ expectedFunctionExports.push('manageAccazaAiKnowledge');
 expectedFunctionExports.push('manageAccazaAiIssue');
 // Sep 2026: separate installable Accaza AI app (general chat only, no cap) — independent
 // callable, admin's askAccazaAI/manageAccazaAiKnowledge/manageAccazaAiIssue untouched.
+// Sep 2026: management business profile + campaign log (own Firestore collections only).
+expectedFunctionExports.push('manageAccazaAiBusiness');
 expectedFunctionExports.push('askAccazaAIStandalone');
 const functionsSource=fs.readFileSync(path.join(root,'functions/index.js'),'utf8');
 if(!functionsSource.includes('"x-goog-api-key":key')||functionsSource.includes('generateContent?key='))throw new Error('Accaza AI must authenticate Gemini requests with the current x-goog-api-key header, not a URL query key.');
 if(!functionsSource.includes('const ACCAZA_AI_QUERY_ROLES = ["owner","superadmin","admin","manager","cashier"]')||!functionsSource.includes('ACCAZA_AI_QUERY_ROLES.includes(actor.role)'))throw new Error('Accaza AI must authorize cashiers through the server-side query-role allowlist.');
 if(functionsSource.includes('tools:[{google_search:{}}]')||!functionsSource.includes('const ACCAZA_AI_GENERAL_CHAT_INSTRUCTION=')||/ACCAZA_AI_GENERAL_CHAT_INSTRUCTION="[^"]*Accaza/.test(functionsSource)||!functionsSource.includes('accazaAiProseAnswer(')||!functionsSource.includes('Web chat never receives Accaza data')||!functionsSource.includes('accazaAiWebQuestionBlocked(question)'))throw new Error('Accaza AI general chat must avoid billable search grounding and keep Accaza business questions out of public requests.');
-if(!functionsSource.includes('const ACCAZA_AI_RELEASE_VERSION = "1.7"')||!functionsSource.includes('releaseVersion:ACCAZA_AI_RELEASE_VERSION')||!functionsSource.includes('DEEPSEEK_API_KEY')||!functionsSource.includes('OLLAMA_ACCESS_CLIENT_SECRET')||!functionsSource.includes('CF-Access-Client-Secret')||!functionsSource.includes('https://ollama.accazacoffee.com/api/chat')||!functionsSource.includes('accazaAiWithFallback'))throw new Error('Accaza AI must expose its release and keep server-side DeepSeek and secured Ollama fallback providers.');
+if(!functionsSource.includes('const ACCAZA_AI_RELEASE_VERSION = "1.8"')||!functionsSource.includes('releaseVersion:ACCAZA_AI_RELEASE_VERSION')||!functionsSource.includes('DEEPSEEK_API_KEY')||!functionsSource.includes('OLLAMA_ACCESS_CLIENT_SECRET')||!functionsSource.includes('CF-Access-Client-Secret')||!functionsSource.includes('https://ollama.accazacoffee.com/api/chat')||!functionsSource.includes('accazaAiWithFallback'))throw new Error('Accaza AI must expose its release and keep server-side DeepSeek and secured Ollama fallback providers.');
 // Sep 2026: staff Accaza AI has no message cap; general chat replies never name Accaza and
 // the admin General chat view carries no Accaza helper text; Enter sends like Ask.
 if(/claimAccazaAiAllowance|ACCAZA_AI_HOURLY_LIMIT|ACCAZA_AI_DAILY_LIMIT/.test(functionsSource))throw new Error('Accaza AI must not cap authorized staff messages.');
@@ -94,6 +96,12 @@ if(!tools.includes('ACCAZA_AI_TOOL_RECORD_BUDGET')||!tools.includes('ACCAZA_AI_T
 if(/\.ref\([^)]*\)\.(set|update|push|remove|transaction)\(/.test(analytics)||/\.(update|delete|add|batch|bulkWriter|create)\(/.test(analytics))throw new Error('Accaza AI analytics must not write to the database or delete anything.');
 const firestoreWrites=analytics.match(/transaction\.set\(/g)||[];if(firestoreWrites.length!==1||!analytics.includes('collection("aiAnalyticsUsage")'))throw new Error('The only write in Accaza AI analytics is the aiAnalyticsUsage read-allowance counter.');
 if(!analytics.includes('ACCAZA_AI_FIRESTORE_DAILY_READ_CAP')||!analytics.includes('.limit(ACCAZA_AI_PAIRS_MAX_ORDERS)'))throw new Error('Accaza AI analytics needs its daily Firestore read cap and bounded order query.');}
+// Business profile / campaign log: writes only its own Firestore collections, never deletes,
+// never writes the Realtime Database, and is management-only.
+{const business=fs.readFileSync(path.join(root,'src/functions/62c-accaza-ai-business.js'),'utf8');
+if(/\.ref\([^)]*\)\.(set|update|push|remove|transaction)\(/.test(business)||/\.(delete|update|add|batch|bulkWriter|create)\(/.test(business))throw new Error('The Accaza AI campaign log must not write the Realtime Database or delete anything.');
+const writes=[...business.matchAll(/(firestore\.collection\("([a-zA-Z]+)"\)\.doc\([^)]*\)\.set\(|transaction\.set\(ref)/g)];if(!writes.length||writes.some(m=>m[2]&&m[2]!=='aiBusiness'))throw new Error('The Accaza AI campaign log may only write aiBusiness/aiCampaigns.');
+if(!/firestore\.collection\("aiCampaigns"\)\.doc\(/.test(business)||!business.includes('if(!ACCAZA_AI_TOOL_ROLES.includes(actor.role))throw new HttpsError("permission-denied"'))throw new Error('The campaign log must stay management-only and use the aiCampaigns collection.');}
 const actualFunctionExports=[...functionsSource.matchAll(/^exports\.([A-Za-z0-9_]+)\s*=/gm)].map(match=>match[1]);
 if(JSON.stringify(actualFunctionExports)!==JSON.stringify(expectedFunctionExports))throw new Error('The public Firebase Functions export contract changed. Review deployment, trigger, callable, and removal consequences explicitly.');
 if(new Set(actualFunctionExports).size!==actualFunctionExports.length)throw new Error('A Firebase Function export is registered more than once.');

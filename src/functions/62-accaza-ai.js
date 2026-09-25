@@ -1,7 +1,7 @@
 // Accaza AI is deliberately read-only. Gemini receives a compact, server-built
 // fact pack; it never gets Firebase credentials or permission to change records.
 const ACCAZA_AI_MODEL = "gemini-3.5-flash-lite";
-const ACCAZA_AI_RELEASE_VERSION = "1.7";
+const ACCAZA_AI_RELEASE_VERSION = "1.8";
 // Sep 2026 (Danilo): no message cap for authorized staff accounts. Every question is
 // still role-checked and written to operationalAudit; the old accazaAiUsage counters
 // are no longer written (existing rows are inert history, rules keep them server-only).

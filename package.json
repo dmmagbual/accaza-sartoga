@@ -76,7 +76,7 @@
     "test:recipe-costing-verifier": "node tests/recipe-costing-verifier-check.mjs",
     "test:option-reduce": "node tests/option-reduce-check.mjs",
     "test:option-library": "node tests/option-library-check.mjs",
-    "test:ai-fallback": "node tests/accaza-ai-fallback-check.mjs"
+    "test:ai-fallback": "node tests/accaza-ai-fallback-check.mjs && node tests/accaza-ai-campaign-check.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.1",
