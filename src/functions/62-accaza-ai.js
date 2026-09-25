@@ -1,7 +1,7 @@
 // Accaza AI is deliberately read-only. Gemini receives a compact, server-built
 // fact pack; it never gets Firebase credentials or permission to change records.
 const ACCAZA_AI_MODEL = "gemini-3.5-flash-lite";
-const ACCAZA_AI_RELEASE_VERSION = "1.5";
+const ACCAZA_AI_RELEASE_VERSION = "1.6";
 // Sep 2026 (Danilo): no message cap for authorized staff accounts. Every question is
 // still role-checked and written to operationalAudit; the old accazaAiUsage counters
 // are no longer written (existing rows are inert history, rules keep them server-only).
@@ -258,9 +258,9 @@ exports.askAccazaAI=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHEC
   const db=getDatabase(),actor=await requirePortalUser(db,request);if(!ACCAZA_AI_QUERY_ROLES.includes(actor.role))throw new HttpsError("permission-denied","Accaza AI is available to authorized portal accounts only.");
   const question=accazaAiText(request.data&&request.data.question,800),mode=request.data&&request.data.mode==="web"?"web":"accaza",history=accazaAiHistory(request.data&&request.data.history);if(question.length<3)throw new HttpsError("invalid-argument","Enter a question for Accaza AI.");
   if(mode==="web"&&accazaAiWebQuestionBlocked(question))throw new HttpsError("failed-precondition","Use Accaza analysis for Accaza business or app questions. Web chat never receives Accaza data.");
-  const now=Date.now();let answer,sources=[],provider="gemini";
-  if(mode==="web"){const response=await accazaAiWithFallback(accazaAiGeneralChatProviders(question,history),{db,surface:"admin_general",general:true});provider=response.provider;answer=response.result.answer;sources=response.result.sources;}else{const facts=await accazaAiFactPack(db,question,now),response=await accazaAiWithFallback(accazaAiAnalysisProviders(question,facts,history),{db,surface:"admin_analysis",general:false});provider=response.provider;answer=response.result;sources=facts.sources||[];}
-  const auditId=`${now}_${crypto.randomUUID()}`;await db.ref(`/operationalAudit/${auditId}`).set(operationalAuditRecord("ask_accaza_ai","accazaAI",auditId,actor,{mode,provider,questionHash:crypto.createHash("sha256").update(question).digest("hex"),sources:mode==="web"?sources.map(source=>source.url):sources,accounting:"Read-only AI analysis only; no order, inventory movement, subledger, Finance movement, or Books journal changed."}));
+  const now=Date.now();let answer,sources=[],provider="gemini",toolCtx=null;
+  if(mode==="web"){const response=await accazaAiWithFallback(accazaAiGeneralChatProviders(question,history),{db,surface:"admin_general",general:true});provider=response.provider;answer=response.result.answer;sources=response.result.sources;}else{const facts=await accazaAiFactPack(db,question,now);toolCtx=ACCAZA_AI_TOOL_ROLES.includes(actor.role)?accazaAiToolContext(db):null;const response=await accazaAiWithFallback(toolCtx?accazaAiAgentProviders(question,facts,history,toolCtx,now):accazaAiAnalysisProviders(question,facts,history),{db,surface:toolCtx?"admin_analysis_records":"admin_analysis",general:false});provider=response.provider;answer=response.result;sources=(facts.sources||[]).concat(toolCtx?accazaAiToolSources(toolCtx):[]);}
+  const auditId=`${now}_${crypto.randomUUID()}`;await db.ref(`/operationalAudit/${auditId}`).set(operationalAuditRecord("ask_accaza_ai","accazaAI",auditId,actor,{mode,provider,questionHash:crypto.createHash("sha256").update(question).digest("hex"),sources:mode==="web"?sources.map(source=>source.url):sources,recordToolCalls:toolCtx?toolCtx.calls.slice(0,24).map(call=>({tool:call.tool,args:JSON.stringify(call.args).slice(0,200),records:call.records,failed:call.failed===true})):null,recordsRead:toolCtx?toolCtx.recordsRead:0,accounting:"Read-only AI analysis only; no order, inventory movement, subledger, Finance movement, or Books journal changed."}));
   return {answer,sources,mode,provider,releaseVersion:ACCAZA_AI_RELEASE_VERSION};
 });
 exports.manageAccazaAiKnowledge=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:"256MiB"},async request=>{
