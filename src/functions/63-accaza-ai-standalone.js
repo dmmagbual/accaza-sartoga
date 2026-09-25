@@ -11,7 +11,7 @@
 // - Guests (Firebase anonymous sign-in): 10 messages per Manila business day per guest,
 //   plus a shared daily ceiling across ALL guests so a guest who keeps resetting their
 //   browser (new anonymous uid) cannot run up the AI provider bill without bound.
-const ACCAZA_AI_STANDALONE_RELEASE_VERSION = "1.3";
+const ACCAZA_AI_STANDALONE_RELEASE_VERSION = "1.4";
 const ACCAZA_AI_GUEST_DAILY_LIMIT = 10;
 const ACCAZA_AI_GUEST_GLOBAL_DAILY_LIMIT = 100;
 function accazaAiStandaloneIsGuest(request){return Boolean(request.auth&&request.auth.uid&&request.auth.token&&request.auth.token.firebase&&request.auth.token.firebase.sign_in_provider==="anonymous");}
@@ -37,7 +37,7 @@ async function releaseAccazaAiGuestMessage(db,uid,day){
     return Object.assign({},current,{total:Math.max(0,Number(current.total||0)-1),users:Object.assign({},users,{[uid]:Object.assign({},users[uid],{count:mine-1})})});
   },undefined,false);}catch(_error){/* best effort: a failed refund only costs the guest one message */}
 }
-exports.askAccazaAIStandalone=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:120,memory:"256MiB",secrets:[GEMINI_API_KEY,DEEPSEEK_API_KEY,OLLAMA_ACCESS_CLIENT_ID,OLLAMA_ACCESS_CLIENT_SECRET,ASHNA_API_KEY,CEREBRAS_API_KEY]},async request=>{
+exports.askAccazaAIStandalone=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:120,memory:"256MiB",secrets:[GEMINI_API_KEY,DEEPSEEK_API_KEY,OLLAMA_ACCESS_CLIENT_ID,OLLAMA_ACCESS_CLIENT_SECRET,ASHNA_API_KEY,CEREBRAS_API_KEY,GROQ_API_KEY]},async request=>{
   const db=getDatabase(),guest=accazaAiStandaloneIsGuest(request);
   let actor;
   if(guest)actor={uid:request.auth.uid,role:"guest"};
