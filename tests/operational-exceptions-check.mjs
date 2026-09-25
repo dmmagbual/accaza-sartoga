@@ -35,3 +35,10 @@ if(clearing.exceptions.some(x=>x.id==='clearing_1290'))throw new Error('a residu
 if(clearing.exceptions.find(x=>x.id==='clearing_1900').tab!=='cashflow')throw new Error('clearing residual must route to Finance Books (cashflow)');
 if(buildOperationalExceptions({},now).exceptions.some(x=>x.category==='clearing_residual'))throw new Error('no booksJournal must yield no clearing residuals');
 console.log('PASS: clearing/suspense residual alarm flags must-be-zero accounts above threshold and ignores non-clearing codes.');
+// Accaza AI provider health: a question nothing answered is critical; a backup answer is a warning.
+{const ai=buildOperationalExceptions({aiProviderHealth:{'2026-09-25':{failedQuestions:2,backupAnswers:{ollama:3,deepseek:1},providerFailures:{gemini:6},lastEvent:{at:now,answeredBy:'none',failures:[{provider:'gemini',reason:'quota exceeded'}]}},'2026-09-24':null}},now).exceptions.filter(x=>x.category==='ai_provider');
+const failed=ai.find(x=>x.id==='ai_failed_2026-09-25'),backup=ai.find(x=>x.id==='ai_backup_2026-09-25');
+if(ai.length!==2||!failed||failed.severity!=='critical'||!/2 questions/.test(failed.title)||!/quota exceeded/.test(failed.detail))throw new Error('all-provider AI failures must raise one critical exception with the last reason');
+if(!backup||backup.severity!=='warning'||!/4 times/.test(backup.title)||!/ollama 3/.test(backup.detail))throw new Error('backup AI answers must raise one warning with per-provider counts');
+if(buildOperationalExceptions({aiProviderHealth:{'2026-09-25':{failedQuestions:0,backupAnswers:{}}}},now).exceptions.some(x=>x.category==='ai_provider'))throw new Error('a clean AI day must raise nothing');
+console.log('PASS: Accaza AI provider failures and backup answers surface in the Exception Center.');}

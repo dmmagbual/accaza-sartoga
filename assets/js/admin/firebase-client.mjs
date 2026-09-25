@@ -20,6 +20,9 @@ callableNames.unshift('manageAccazaAiIssue');
 callableNames.unshift('managePosStaffIdentity','openLinkedPosShift');
 callableNames.unshift('managePosShiftCrew','managePosSaleRecovery');
 callableNames.unshift('manageUncostedSales');
-const callables=Object.fromEntries(callableNames.map(function(name){return [name,httpsCallable(functions,name)];}));
+// Accaza AI may try up to four providers inside its 120 s server limit; the SDK default
+// (70 s) would abandon an answer a backup provider is still producing.
+const CALLABLE_TIMEOUTS={askAccazaAI:130000};
+const callables=Object.fromEntries(callableNames.map(function(name){return [name,CALLABLE_TIMEOUTS[name]?httpsCallable(functions,name,{timeout:CALLABLE_TIMEOUTS[name]}):httpsCallable(functions,name)];}));
 
 export{firebaseConfig,app,db,auth,callables,initializeApp,deleteApp,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider,setPersistence,browserLocalPersistence,inMemoryPersistence};

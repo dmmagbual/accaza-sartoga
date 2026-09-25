@@ -29,6 +29,7 @@
     clearing_residual:{owner:'Finance manager',action:'Open Cash Flow and trace the source transaction. Clear the temporary account through a linked correction or settlement—never by editing the balance.'},
     uncosted_sale:{owner:'Store manager',action:'Build or repair the item recipe, then open Recipes → Sales awaiting cost to post the missing cost, or confirm the item has no cost.'},
     payment_routing:{owner:'Finance manager + system administrator',action:'Open POS Settings and align the payment method with exactly one correct receiving account before taking more payments.'},
+    ai_provider:{owner:'System administrator',action:'Accaza AI only affects advice, never records. Check the Gemini and DeepSeek keys and quota, and that SUPERDAD is awake with Ollama and the accaza-ollama tunnel running. Staff can keep working while it is down.'},
     background_failure:{owner:'System administrator + finance manager',action:'A server task kept failing and was stopped to protect the database. Open the named order, shift, or voucher, confirm what is missing, and complete it with the controlled repair (for example Complete inventory posting or the Finance ledger audit). Do not re-enter the transaction.'}
   };return map[x.category]||{owner:'Operations manager',action:x.detail||'Review the source record and resolve it in the linked controlled workflow.'};}
   function sharedExceptionData(){var shared=global.__accazaSystemHealth;return shared&&typeof shared.get==='function'?shared.get():null;}
