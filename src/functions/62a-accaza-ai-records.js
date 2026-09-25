@@ -140,7 +140,9 @@ async function accazaAiStaffNames(ctx){
   if(!ctx.names)ctx.names=ctx.db.ref("/posStaff").get()/* download-ok: bounded staff roster; names and account links only */.then(snap=>{const names={};Object.values(snap.val()||{}).forEach(row=>{if(row&&row.accountUid)names[row.accountUid]=String(row.name||row.displayName||"").slice(0,60);});return names;}).catch(()=>({}));
   return ctx.names;
 }
-function accazaAiNameAccounts(text,names){return text.replace(/"([A-Za-z0-9]{28})"/g,(match,uid)=>JSON.stringify(names[uid]||`account …${uid.slice(-4)}`));}
+// Only string VALUES shaped like a Firebase UID (28 chars, mixed case plus a digit) are
+// replaced; JSON keys such as averageDistinctItemsPerOrder are never touched.
+function accazaAiNameAccounts(text,names){return text.replace(/"([A-Za-z0-9]{28})"(?!\s*:)/g,(match,uid)=>names[uid]?JSON.stringify(names[uid]):/[0-9]/.test(uid)&&/[a-z]/.test(uid)&&/[A-Z]/.test(uid)?JSON.stringify(`account …${uid.slice(-4)}`):match);}
 async function accazaAiRunRecordTool(ctx,name,args){
   const tool=ACCAZA_AI_RECORD_TOOLS[name],safeArgs=args&&typeof args==="object"?args:{},key=`${name}:${JSON.stringify(safeArgs)}`;
   if(!tool)return{error:`Unknown tool ${String(name).slice(0,40)}.`};
@@ -148,7 +150,7 @@ async function accazaAiRunRecordTool(ctx,name,args){
   if(ctx.recordsRead>=ACCAZA_AI_TOOL_RECORD_BUDGET)return{error:"The record budget for this question is used up. Answer from what you already have and say what could not be checked."};
   let range=null;if(!tool.params){range=accazaAiDateRange(safeArgs,tool.days);if(range.error)return{error:range.error};}
   let output;
-  try{output=await tool.run(ctx.db,range,safeArgs);}catch(error){ctx.calls.push({tool:name,args:safeArgs,records:0,failed:true});return{error:`Could not read these records right now (${accazaAiText(error&&error.message,120)}).`};}
+  try{output=await tool.run(ctx.db,range,safeArgs,ctx);}catch(error){ctx.calls.push({tool:name,args:safeArgs,records:0,failed:true});return{error:`Could not read these records right now (${accazaAiText(error&&error.message,120)}).`};}
   ctx.recordsRead+=Number(output.records||0);ctx.calls.push({tool:name,args:safeArgs,records:Number(output.records||0)});
   const text=accazaAiNameAccounts(JSON.stringify(output.result),await accazaAiStaffNames(ctx));
   const result=text.length>ACCAZA_AI_TOOL_RESULT_CHARS?{truncated:true,note:"Result shortened; ask a narrower range or filter for detail.",partial:text.slice(0,ACCAZA_AI_TOOL_RESULT_CHARS)}:JSON.parse(text);
@@ -162,7 +164,7 @@ async function askGeminiAccazaAgent(question,facts,history,timeoutMs,ctx,now){
   const deadline=Date.now()+timeoutMs,contents=[...accazaAiHistory(history).map(row=>({role:row.role,parts:[{text:row.text}]})),{role:"user",parts:[{text:accazaAiAgentQuestion(question,facts,now)}]}];
   for(let round=0;round<=ACCAZA_AI_AGENT_MAX_ROUNDS;round+=1){
     const final=round===ACCAZA_AI_AGENT_MAX_ROUNDS,remaining=deadline-Date.now();if(remaining<3000)throw accazaAiProviderFailure("Gemini ran out of time while checking records.");
-    const {response,body}=await accazaAiFetchJson("Gemini",`https://generativelanguage.googleapis.com/v1beta/models/${ACCAZA_AI_MODEL}:generateContent`,{method:"POST",headers:{"content-type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:`${ACCAZA_AI_ANALYSIS_INSTRUCTION} ${ACCAZA_AI_AGENT_GUIDE}`}]},contents,tools:accazaAiGeminiTools(),toolConfig:{functionCallingConfig:{mode:final?"NONE":"AUTO"}},generationConfig:{temperature:0.15,maxOutputTokens:1400}})},remaining);
+    const {response,body}=await accazaAiFetchJson("Gemini",`https://generativelanguage.googleapis.com/v1beta/models/${ACCAZA_AI_MODEL}:generateContent`,{method:"POST",headers:{"content-type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:`${ACCAZA_AI_ANALYSIS_INSTRUCTION} ${ACCAZA_AI_AGENT_GUIDE} ${ACCAZA_AI_STRATEGY_GUIDE}`}]},contents,tools:accazaAiGeminiTools(),toolConfig:{functionCallingConfig:{mode:final?"NONE":"AUTO"}},generationConfig:{temperature:0.15,maxOutputTokens:1400}})},remaining);
     if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,"Gemini could not answer right now."));
     const content=body&&body.candidates&&body.candidates[0]&&body.candidates[0].content,parts=content&&Array.isArray(content.parts)?content.parts:[],calls=parts.filter(part=>part&&part.functionCall);
     if(!calls.length||final)return accazaAiProseAnswer(parts.map(part=>part&&part.text||"").join("\n"));
@@ -174,7 +176,7 @@ async function askGeminiAccazaAgent(question,facts,history,timeoutMs,ctx,now){
   throw accazaAiProviderFailure("Gemini did not finish its record check.");
 }
 async function askOpenAiCompatibleAccazaAgent(label,url,key,model,question,facts,history,timeoutMs,ctx,now){
-  const deadline=Date.now()+timeoutMs,messages=[{role:"system",content:`${ACCAZA_AI_ANALYSIS_INSTRUCTION} ${ACCAZA_AI_AGENT_GUIDE}`},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:accazaAiAgentQuestion(question,facts,now)}];
+  const deadline=Date.now()+timeoutMs,messages=[{role:"system",content:`${ACCAZA_AI_ANALYSIS_INSTRUCTION} ${ACCAZA_AI_AGENT_GUIDE} ${ACCAZA_AI_STRATEGY_GUIDE}`},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:accazaAiAgentQuestion(question,facts,now)}];
   for(let round=0;round<=ACCAZA_AI_AGENT_MAX_ROUNDS;round+=1){
     const final=round===ACCAZA_AI_AGENT_MAX_ROUNDS,remaining=deadline-Date.now();if(remaining<3000)throw accazaAiProviderFailure(`${label} ran out of time while checking records.`);
     const {response,body}=await accazaAiFetchJson(label,url,{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${key}`},body:JSON.stringify({model,messages,temperature:0.15,max_tokens:1400,stream:false,tools:accazaAiOpenAiTools(),tool_choice:final?"none":"auto"})},remaining);
