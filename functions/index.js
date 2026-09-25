@@ -7173,8 +7173,9 @@ const ACCAZA_AI_MIN_ATTEMPT_MS = 8000;
 // qwen3:8b on SUPERDAD runs CPU-only at roughly 5-6 tokens/s, so its reply length is sized
 // to the time it actually has; a longer cap would only produce timeouts.
 const ACCAZA_AI_OLLAMA_MAX_TOKENS = 350;
-// AshnaAI: OpenAI-compatible aggregator, last resort for GENERAL chat only (Danilo, Sep 2026).
-// It never receives the Accaza analysis fact pack.
+// AshnaAI: OpenAI-compatible aggregator (OPRITS Research Pvt Ltd, India), last resort for both
+// General chat and Accaza analysis (Danilo, 25 Sep 2026). In analysis mode it receives the same
+// read-only fact pack DeepSeek does; it never gets credentials or any write path.
 const ACCAZA_AI_ASHNA_MODEL = "glm-5.3-flash";
 async function accazaAiFetchJson(providerLabel,url,init,timeoutMs){
   const controller=new AbortController(),limit=Math.max(1000,Number(timeoutMs)||ACCAZA_AI_CLOUD_TIMEOUT_MS),timer=setTimeout(()=>controller.abort(),limit);
@@ -7241,13 +7242,21 @@ async function askAshnaGeneralChat(question,history,timeoutMs){
   if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,"Ashna backup could not answer right now."));
   return{answer:accazaAiProseAnswer(body&&body.choices&&body.choices[0]&&body.choices[0].message&&body.choices[0].message.content),sources:[]};
 }
-// Provider order. Analysis (business fact pack): Gemini -> DeepSeek -> Qwen (own PC).
-// General chat: Gemini -> DeepSeek -> Qwen -> Ashna. Ashna keeps a reserved slice of the
-// budget so a slow Qwen reply cannot use up the last provider's turn.
+async function askAshnaAccazaAi(question,facts,history,timeoutMs){
+  const key=accazaAiOllamaHeaderValue(ASHNA_API_KEY.value());if(!key)throw new HttpsError("failed-precondition","The Ashna backup is not configured. Set the ASHNA_API_KEY Firebase secret.");
+  const instruction="You are Accaza AI for Accaza Coffee House. Answer only about Accaza operations, POS, inventory, recipes and Finance Books. Use only the FACT PACK. Do not invent figures. For business analysis, interpret the supplied historical Finance Books facts and give prioritized, practical recommendations. Clearly separate observed facts, inferences and recommendations. Never present accounting amounts as cash flow. You are read-only: never say that you posted, changed or approved a transaction. Keep the answer concise and cite the supplied source paths.";
+  const messages=[{role:"system",content:instruction},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:`QUESTION: ${question}\n\nFACT PACK:\n${JSON.stringify(facts)}`}];
+  const {response,body}=await accazaAiFetchJson("Ashna","https://api.ashna.ai/v1/api/chat/completions",{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${key}`},body:JSON.stringify({model:ACCAZA_AI_ASHNA_MODEL,messages,temperature:0.15,max_tokens:900,stream:false})},timeoutMs);
+  if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,"Ashna backup could not answer right now."));
+  return accazaAiAnswer(body&&body.choices&&body.choices[0]&&body.choices[0].message&&body.choices[0].message.content);
+}
+// Provider order, both modes: Gemini -> DeepSeek -> Qwen (own PC) -> Ashna. Ashna keeps a
+// reserved slice of the budget so a slow Qwen reply cannot use up the last provider's turn.
 function accazaAiAnalysisProviders(question,facts,history){return[
   {name:"gemini",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:timeoutMs=>askGeminiAccazaAi(question,facts,history,timeoutMs)},
   {name:"deepseek",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(DEEPSEEK_API_KEY.value()),ask:timeoutMs=>askDeepSeekAccazaAi(question,facts,history,timeoutMs)},
   {name:"ollama",maxMs:ACCAZA_AI_OLLAMA_TIMEOUT_MS,enabled:accazaAiOllamaConfigured,ask:timeoutMs=>askOllamaAccazaAi(question,facts,history,timeoutMs)},
+  {name:"ashna",maxMs:ACCAZA_AI_ASHNA_TIMEOUT_MS,reserveMs:ACCAZA_AI_ASHNA_TIMEOUT_MS,enabled:()=>Boolean(ASHNA_API_KEY.value()),ask:timeoutMs=>askAshnaAccazaAi(question,facts,history,timeoutMs)},
 ];}
 function accazaAiGeneralChatProviders(question,history){return[
   {name:"gemini",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:timeoutMs=>askGeminiWebChat(question,history,timeoutMs)},

@@ -73,13 +73,14 @@ if(!functionsSource.includes('const ACCAZA_AI_RELEASE_VERSION = "1.5"')||!functi
 if(/claimAccazaAiAllowance|ACCAZA_AI_HOURLY_LIMIT|ACCAZA_AI_DAILY_LIMIT/.test(functionsSource))throw new Error('Accaza AI must not cap authorized staff messages.');
 {const aiClient=fs.readFileSync(path.join(root,'assets/js/admin/accaza-ai.js'),'utf8');if(aiClient.includes('General Gemini chat')||aiClient.includes('General chat is ready')||!aiClient.includes("hint.style.display=isWeb?'none':''")||!aiClient.includes('accazaAiMessagesWeb')||!/ev\.key==='Enter'&&!ev\.shiftKey/.test(aiClient)||aiClient.includes('hourRemaining'))throw new Error('Admin Accaza AI General chat must stay free of Accaza helper text, keep its own conversation, send on Enter, and show no message allowance.');}
 // Sep 2026 fallback reliability: every provider call is individually timed and any timeout,
-// network error or empty answer moves on to the next provider; Ashna is general-chat only.
+// network error or empty answer moves on to the next provider; Ashna is the last resort in both modes.
 {const aiFallback=functionsSource.slice(functionsSource.indexOf('async function accazaAiFetchJson('));
 if(!functionsSource.includes('controller.abort()')||(functionsSource.match(/await accazaAiFetchJson\(/g)||[]).length<6||/await fetch\("https:\/\/(api\.deepseek|ollama\.accazacoffee|api\.ashna)/.test(functionsSource)||/await fetch\(`https:\/\/generativelanguage/.test(functionsSource))throw new Error('Every Accaza AI provider call must go through the timed accazaAiFetchJson wrapper.');
 if(!functionsSource.includes('throw accazaAiProviderFailure("The provider returned an empty answer.")'))throw new Error('An empty AI answer must fall through to the next provider.');
 if(!/exports\.askAccazaAI=onCall\(\{[^}]*timeoutSeconds:120[^}]*ASHNA_API_KEY\]\}/.test(functionsSource)||!/exports\.askAccazaAIStandalone=onCall\(\{[^}]*timeoutSeconds:120[^}]*ASHNA_API_KEY\]\}/.test(functionsSource))throw new Error('Both Accaza AI callables need the 120 s limit and the Ashna secret.');
 const analysis=functionsSource.slice(functionsSource.indexOf('function accazaAiAnalysisProviders('),functionsSource.indexOf('function accazaAiGeneralChatProviders('));
-if(!analysis||/ashna/i.test(analysis))throw new Error('Ashna must never receive the Accaza analysis fact pack.');
+const general=functionsSource.slice(functionsSource.indexOf('function accazaAiGeneralChatProviders('),functionsSource.indexOf('async function accazaAiRecordProviderHealth('));
+for(const [label,list] of [['analysis',analysis],['general chat',general]]){const order=[...list.matchAll(/\{name:"([a-z]+)"/g)].map(m=>m[1]).join('>');if(order!=='gemini>deepseek>ollama>ashna')throw new Error(`Accaza AI ${label} provider order must be Gemini > DeepSeek > Qwen > Ashna (got ${order}).`);}
 if(!aiFallback.includes('accazaAiProviderHealth'))throw new Error('Backup answers and total failures must be recorded for the Exception Center.');}
 const actualFunctionExports=[...functionsSource.matchAll(/^exports\.([A-Za-z0-9_]+)\s*=/gm)].map(match=>match[1]);
 if(JSON.stringify(actualFunctionExports)!==JSON.stringify(expectedFunctionExports))throw new Error('The public Firebase Functions export contract changed. Review deployment, trigger, callable, and removal consequences explicitly.');
