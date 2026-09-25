@@ -123,6 +123,7 @@
     "src/functions/61-historical-archive.js",
     "src/functions/62-accaza-ai.js",
     "src/functions/62a-accaza-ai-records.js",
+    "src/functions/62b-accaza-ai-analytics.js",
     "functions/lib/costing.js",
     "functions/lib/financial.js",
     "functions/lib/cash-balances.js",

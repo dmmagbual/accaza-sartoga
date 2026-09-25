@@ -66,5 +66,10 @@ assert.ok(clean.includes('(Note: accounting amounts are not cash flow.)'),'singl
 assert.ok(clean.includes('2*3*4'),'arithmetic asterisks are untouched');
 assert.ok(/cash flow\.\)\n\nObserved Facts\n\n• Revenue/.test(clean)&&/PHP 26,687\.71\n\nRecommendations/.test(clean),'lists are separated from surrounding text by a blank line');
 assert.throws(()=>format('  **  '),e=>e.details&&e.details.providerFailure===true);}
+// 12. Record tools show staff names instead of account IDs, and never rewrite JSON keys.
+{const records=fs.readFileSync(path.join(root,'src/functions/62a-accaza-ai-records.js'),'utf8');const line=records.match(/function accazaAiNameAccounts[^\n]*/)[0];
+const nameAccounts=new Function(`${line};return accazaAiNameAccounts;`)();
+const out=JSON.parse(nameAccounts(JSON.stringify({averageDistinctItemsPerOrder:1.8,by:'HstyE8bcYwaVjBASmfi94YwHW7J2',who:'Zz9abcdefghijklmnopqrstuvwxy',note:'abcdefghijabcdefghijabcdefgh'}),{Zz9abcdefghijklmnopqrstuvwxy:'Maria'}));
+assert.equal(out.averageDistinctItemsPerOrder,1.8,'28-character keys stay intact');assert.equal(out.who,'Maria');assert.equal(out.by,'account …W7J2');assert.equal(out.note,'abcdefghijabcdefghijabcdefgh','plain words are not treated as account IDs');}
 console.warn=warn;
 console.log('PASS: Accaza AI fallback times out hung providers, treats network errors and empty answers as provider failures, rethrows real errors, reserves Ashna time, and records backup answers and total failures; replies are normalized to clean paragraphs and lists.');
