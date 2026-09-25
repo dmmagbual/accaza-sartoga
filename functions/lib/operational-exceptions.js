@@ -143,6 +143,21 @@ function buildOperationalExceptions(input, now = Date.now()) {
       `${params ? params + ": " : ""}${String(row.error || "Unknown error").slice(0, 200)}. ${row.functionStopped ? `More than ${MAX_FAILED_EVENTS_PER_DAY} events of this task failed today (${Number(row.failedEventsToday) || "many"}), so further failures are not retried until tomorrow. Fix the cause first;` : `The system stopped retrying after ${Number(row.attempts) > 1 ? `${Number(row.attempts) - 1} retries` : "its retry limit"} to protect the database;`} confirm the linked record and complete it through its controlled repair workflow.`,
       at, "operations"));
   });
+  // Accaza AI provider health (Sep 2026): a question nothing could answer is critical; an
+  // answer that only came from a backup provider (DeepSeek, Qwen on SUPERDAD, Ashna) is a
+  // warning, because it means the primary provider failed for that question.
+  Object.keys(input.aiProviderHealth || {}).sort().reverse().forEach((day) => {
+    const health = input.aiProviderHealth[day];
+    if (!health || typeof health !== "object") return;
+    const last = health.lastEvent && typeof health.lastEvent === "object" ? health.lastEvent : {}, at = Number(last.at || health.updatedAt || 0);
+    const reasons = (Array.isArray(last.failures) ? last.failures : []).map((row) => `${String(row && row.provider || "?").slice(0, 20)}: ${String(row && row.reason || "failed").slice(0, 120)}`).join("; ");
+    const failed = Number(health.failedQuestions || 0), backup = health.backupAnswers && typeof health.backupAnswers === "object" ? health.backupAnswers : {};
+    const backupCount = Object.keys(backup).reduce((total, key) => total + Number(backup[key] || 0), 0);
+    if (failed > 0) exceptions.push(item("ai_provider", "critical", `ai_failed_${day}`, `Accaza AI could not answer ${failed} question${failed === 1 ? "" : "s"} on ${day}`,
+      `Every provider failed for ${failed === 1 ? "that question" : "those questions"}.${reasons ? ` Last failure: ${reasons}.` : ""} Check the Gemini and DeepSeek keys, and that SUPERDAD is awake with Ollama and the accaza-ollama tunnel running.`, at, "operations"));
+    if (backupCount > 0) exceptions.push(item("ai_provider", "warning", `ai_backup_${day}`, `Accaza AI needed a backup provider ${backupCount} time${backupCount === 1 ? "" : "s"} on ${day}`,
+      `Answered by ${Object.keys(backup).map((key) => `${key} ${Number(backup[key] || 0)}`).join(", ")} after the primary provider failed.${reasons ? ` Last failure: ${reasons}.` : ""} Repeated warnings mean Gemini is down or its key or quota needs attention.`, at, "operations"));
+  });
   const rank = {critical: 0, warning: 1};exceptions.sort((a, b) => (rank[a.severity] - rank[b.severity]) || (b.at - a.at));
   return {generatedAt: now, scanned: {activeOrders: active.length, recentOrders: orders.length, offlineSyncs: offline.length, custodyRecords: custody.length}, counts: {critical: exceptions.filter((x) => x.severity === "critical").length, warning: exceptions.filter((x) => x.severity === "warning").length, total: exceptions.length}, exceptions: exceptions.slice(0, 100)};
 }

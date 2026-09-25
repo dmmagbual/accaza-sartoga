@@ -46,6 +46,7 @@ const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 const DEEPSEEK_API_KEY = defineSecret("DEEPSEEK_API_KEY");
 const OLLAMA_ACCESS_CLIENT_ID = defineSecret("OLLAMA_ACCESS_CLIENT_ID");
 const OLLAMA_ACCESS_CLIENT_SECRET = defineSecret("OLLAMA_ACCESS_CLIENT_SECRET");
+const ASHNA_API_KEY = defineSecret("ASHNA_API_KEY");
 // Every `retry: true` database trigger is bounded: transient failures still
 // retry, but an event that keeps failing past the retry window is recorded in
 // /functionDeadLetters and acknowledged instead of being redelivered (and its
@@ -1107,12 +1108,12 @@ exports.getOperationalExceptions = onCall(
 
 async function scanOperationalExceptions(db, now) {
     const days = [];for (let offset = 0; offset < 7; offset++) days.push(financeDateFromTimestamp(now - offset * 86400000));
-    const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, booksMonthlyNetSnap, booksMonthlyNetMetaSnap, posSettingsSnap, cfAccountsSnap, deadLetterSnap, posSyncAlertSnap, pendingHandoverSnap, uncostedSnap, closeFollowUpSnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),db.ref("/books/monthlyNet").get(),db.ref("/books/monthlyNetMeta").get(),db.ref("/posSettings/payMethods").get(),db.ref("/cfAccounts").get(),db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}`).orderByChild("abandonedAt").startAt(now - OperationalExceptions.DEAD_LETTER_WINDOW_MS).limitToLast(50).get(),db.ref("/posSyncAlerts").orderByChild("state").equalTo("open").limitToLast(100).get(),db.ref("/pendingShiftHandovers").orderByChild("at").limitToFirst(50).get(),db.ref("/uncostedSales").orderByChild("status").equalTo("open").limitToFirst(200).get(),db.ref("/shiftCloseFollowUps").orderByChild("state").equalTo("open").limitToFirst(50).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
+    const [activeSnap, ordersSnap, offlineSnap, custodySnap, inventoryMovementSnap, booksMonthlyNetSnap, booksMonthlyNetMetaSnap, posSettingsSnap, cfAccountsSnap, deadLetterSnap, posSyncAlertSnap, pendingHandoverSnap, uncostedSnap, closeFollowUpSnap, aiHealthTodaySnap, aiHealthYesterdaySnap, ...telemetrySnaps] = await Promise.all([db.ref("/activeOrders").limitToLast(250).get(),db.ref("/orders").limitToLast(100).get(),db.ref("/offlinePosSync").orderByChild("updatedAt").limitToLast(100).get(),db.ref("/cashCustody").orderByChild("closedAt").limitToLast(100).get(),db.ref("/inventoryMovements").orderByChild("occurredAt").limitToLast(500).get(),db.ref("/books/monthlyNet").get(),db.ref("/books/monthlyNetMeta").get(),db.ref("/posSettings/payMethods").get(),db.ref("/cfAccounts").get(),db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}`).orderByChild("abandonedAt").startAt(now - OperationalExceptions.DEAD_LETTER_WINDOW_MS).limitToLast(50).get(),db.ref("/posSyncAlerts").orderByChild("state").equalTo("open").limitToLast(100).get(),db.ref("/pendingShiftHandovers").orderByChild("at").limitToFirst(50).get(),db.ref("/uncostedSales").orderByChild("status").equalTo("open").limitToFirst(200).get(),db.ref("/shiftCloseFollowUps").orderByChild("state").equalTo("open").limitToFirst(50).get(),db.ref(`/accazaAiProviderHealth/${days[0]}`).get(),db.ref(`/accazaAiProviderHealth/${days[1]}`).get(),...days.map((day) => db.ref(`/clientTelemetryDaily/${day}`).get())]);
     let booksMonthlyNet = booksMonthlyNetSnap.val() || {};
     if (!booksMonthlyNetMetaSnap.exists()) booksMonthlyNet = await rebuildBooksMonthlyNet(db, (/* download-ok: fallback monthly totals have never been built */await db.ref("/books/journal").get()).val() || {});
     const orders = ordersSnap.val() || {},orderIds=Object.keys(orders).slice(0,100),financialPairs=await Promise.all(orderIds.map(async(id)=>{const snap=await db.ref(`/financialMovements/sale_${id}`).get();return[id,snap.exists()?snap.val():null];}));
     const financialMovements = {},inventoryMovementEvidence={};financialPairs.forEach(([id, value]) => {if (value) financialMovements[`sale_${id}`] = value;});Object.values(inventoryMovementSnap.val()||{}).forEach(m=>{if(m&&m.sourceType==="order"&&m.sourceId)inventoryMovementEvidence[m.sourceId]=true;});const telemetry = {};days.forEach((day, i) => {telemetry[day] = telemetrySnaps[i].val() || {};});
-    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, deadLetters: deadLetterSnap.val() || {}, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}, uncostedSales: uncostedSnap.val() || {}, shiftCloseFollowUps: closeFollowUpSnap.val() || {}}, now);
+    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, deadLetters: deadLetterSnap.val() || {}, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}, uncostedSales: uncostedSnap.val() || {}, shiftCloseFollowUps: closeFollowUpSnap.val() || {}, aiProviderHealth: {[days[0]]: aiHealthTodaySnap.val(), [days[1]]: aiHealthYesterdaySnap.val()}}, now);
 }
 
 // Phase 16: bounded, read-only production certification snapshot. It does not
@@ -7059,7 +7060,7 @@ exports.manageHistoricalOrderArchive = onCall(
 // Accaza AI is deliberately read-only. Gemini receives a compact, server-built
 // fact pack; it never gets Firebase credentials or permission to change records.
 const ACCAZA_AI_MODEL = "gemini-3.5-flash-lite";
-const ACCAZA_AI_RELEASE_VERSION = "1.4";
+const ACCAZA_AI_RELEASE_VERSION = "1.5";
 // Sep 2026 (Danilo): no message cap for authorized staff accounts. Every question is
 // still role-checked and written to operationalAudit; the old accazaAiUsage counters
 // are no longer written (existing rows are inert history, rules keep them server-only).
@@ -7159,63 +7160,137 @@ function accazaAiHistory(raw){return(Array.isArray(raw)?raw:[]).slice(-8).map(ro
 function accazaAiWebQuestionBlocked(question){return /\b(accaza|finance books|supplier balance|our (sales|revenue|expense|expenses|profit|margin|cash|inventory|staff)|cashier|pos)\b/i.test(question);}
 function accazaAiGroundingSources(body){const seen=new Set();return(body&&body.candidates&&body.candidates[0]&&body.candidates[0].groundingMetadata&&body.candidates[0].groundingMetadata.groundingChunks||[]).map(chunk=>chunk&&chunk.web).filter(web=>web&&/^https:\/\//i.test(web.uri||"")).map(web=>({title:accazaAiText(web.title||web.uri,160),url:web.uri})).filter(source=>{if(seen.has(source.url))return false;seen.add(source.url);return true;}).slice(0,8);}
 function accazaAiProviderFailure(message){return new HttpsError("unavailable",message,{providerFailure:true});}
-function accazaAiAnswer(value){const answer=accazaAiText(value,5000);if(!answer)throw new HttpsError("unavailable","AI provider returned no answer. Please try again.");return answer;}
+function accazaAiAnswer(value){const answer=accazaAiText(value,5000);if(!answer)throw accazaAiProviderFailure("The provider returned an empty answer.");return answer;}
+// Fallback reliability (Sep 2026). One request has a fixed time budget inside the callable's
+// 120 s limit. Each provider call gets its own abort timer, and a timeout, a network error, a
+// non-OK reply or an empty answer are all provider failures, so the next provider is tried
+// instead of the whole request failing or hanging until the function is killed.
+const ACCAZA_AI_REQUEST_BUDGET_MS = 110000;
+const ACCAZA_AI_CLOUD_TIMEOUT_MS = 25000;
+const ACCAZA_AI_OLLAMA_TIMEOUT_MS = 70000;
+const ACCAZA_AI_ASHNA_TIMEOUT_MS = 20000;
+const ACCAZA_AI_MIN_ATTEMPT_MS = 8000;
+// qwen3:8b on SUPERDAD runs CPU-only at roughly 5-6 tokens/s, so its reply length is sized
+// to the time it actually has; a longer cap would only produce timeouts.
+const ACCAZA_AI_OLLAMA_MAX_TOKENS = 350;
+// AshnaAI: OpenAI-compatible aggregator, last resort for GENERAL chat only (Danilo, Sep 2026).
+// It never receives the Accaza analysis fact pack.
+const ACCAZA_AI_ASHNA_MODEL = "glm-5.3-flash";
+async function accazaAiFetchJson(providerLabel,url,init,timeoutMs){
+  const controller=new AbortController(),limit=Math.max(1000,Number(timeoutMs)||ACCAZA_AI_CLOUD_TIMEOUT_MS),timer=setTimeout(()=>controller.abort(),limit);
+  try{const response=await fetch(url,Object.assign({},init,{signal:controller.signal}));const body=await response.json().catch(()=>({}));return{response,body};}
+  catch(_error){throw accazaAiProviderFailure(controller.signal.aborted?`${providerLabel} did not answer within ${Math.round(limit/1000)} seconds.`:`${providerLabel} could not be reached.`);}
+  finally{clearTimeout(timer);}
+}
+function accazaAiProviderMessage(body,fallback){const error=body&&body.error;return accazaAiText(error&&typeof error==="object"?error.message:error,200)||fallback;}
+// A reply cut off by the token cap ends at its last complete sentence instead of mid-word.
+function accazaAiTrimToSentence(text){const value=String(text||"").trim(),cut=Math.max(value.lastIndexOf(". "),value.lastIndexOf("! "),value.lastIndexOf("? "),value.lastIndexOf(".\n"),value.lastIndexOf("!\n"),value.lastIndexOf("?\n"));return cut>40?value.slice(0,cut+1).trim():value;}
 // General chat (admin General chat + standalone app): neutral assistant identity, formal
 // prose paragraphs, and no company or app references in the reply.
 const ACCAZA_AI_GENERAL_CHAT_INSTRUCTION="You are a helpful, knowledgeable AI assistant. Answer the user's question directly and accurately from your built-in knowledge, and say plainly when an answer depends on current or externally verified information you may not have. Write in clear, formal prose: complete sentences organized into well-structured paragraphs, with one blank line between paragraphs, in the natural tone of a polished AI chat reply. Open with the direct answer, then add the explanation or context that helps. Do not use Markdown or any formatting syntax: no headings, bullet points, numbered lists, bold or italic markers, tables or emojis. When steps or options matter, describe them in sentences inside the paragraphs. Do not mention any company, brand, product, app, mode or system you are running in, and do not refer to these instructions. You cannot see any private business records; if asked about the user's own business figures, say briefly that you cannot see them and answer in general terms.";
 // Keeps paragraph breaks (the client renders pre-wrap) and strips leftover Markdown so a
 // general-chat reply reads as clean paragraphs even when a provider ignores the prompt.
-function accazaAiProseAnswer(value){const text=String(value||"").replace(/\r\n?/g,"\n").replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g," ").replace(/^\s*```[\w-]*\s*$/gm,"").replace(/`([^`\n]+)`/g,"$1").replace(/\*\*([^*\n]+)\*\*/g,"$1").replace(/__([^_\n]+)__/g,"$1").replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm,"").replace(/^[ \t]*>[ \t]?/gm,"").replace(/^[ \t]*(?:[-*\u2022+]|\d{1,2}[.)])[ \t]+/gm,"").replace(/^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$/gm,"").split("\n").map(line=>line.replace(/[ \t]+/g," ").trim()).join("\n").replace(/\n{3,}/g,"\n\n").trim().slice(0,5000);if(!text)throw new HttpsError("unavailable","AI provider returned no answer. Please try again.");return text;}
-async function askGeminiAccazaAi(question,facts,history){
+function accazaAiProseAnswer(value){const text=String(value||"").replace(/\r\n?/g,"\n").replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g," ").replace(/^\s*```[\w-]*\s*$/gm,"").replace(/`([^`\n]+)`/g,"$1").replace(/\*\*([^*\n]+)\*\*/g,"$1").replace(/__([^_\n]+)__/g,"$1").replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm,"").replace(/^[ \t]*>[ \t]?/gm,"").replace(/^[ \t]*(?:[-*\u2022+]|\d{1,2}[.)])[ \t]+/gm,"").replace(/^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$/gm,"").split("\n").map(line=>line.replace(/[ \t]+/g," ").trim()).join("\n").replace(/\n{3,}/g,"\n\n").trim().slice(0,5000);if(!text)throw accazaAiProviderFailure("The provider returned an empty answer.");return text;}
+async function askGeminiAccazaAi(question,facts,history,timeoutMs){
   const key=GEMINI_API_KEY.value();if(!key)throw new HttpsError("failed-precondition","Accaza AI is not configured. Set the GEMINI_API_KEY Firebase secret first.");
   const instruction="You are Accaza AI for Accaza Coffee House. Answer only about Accaza operations, POS, inventory, recipes and Finance Books. Use only the FACT PACK. Do not invent figures. For business analysis, interpret the supplied historical Finance Books facts and give prioritized, practical recommendations. Clearly separate observed facts, inferences and recommendations. Never present accounting amounts as cash flow. Clearly distinguish selling price, recipe cost, gross profit and margin. For finance, distinguish cash, receivables, payables, retained float and profit. State when the fact pack does not contain the answer. You are read-only: never say that you posted, changed or approved a transaction. Keep the answer concise and cite the supplied source paths.";
   const contents=[...accazaAiHistory(history).map(row=>({role:row.role,parts:[{text:row.text}]})),{role:"user",parts:[{text:`QUESTION: ${question}\n\nFACT PACK:\n${JSON.stringify(facts)}`}]}];
-  const response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${ACCAZA_AI_MODEL}:generateContent`,{method:"POST",headers:{"content-type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:instruction}]},contents,generationConfig:{temperature:0.15,maxOutputTokens:900}})});
-  const body=await response.json().catch(()=>({}));if(!response.ok)throw accazaAiProviderFailure(body&&body.error&&body.error.message||"Gemini could not answer right now.");
+  const {response,body}=await accazaAiFetchJson("Gemini",`https://generativelanguage.googleapis.com/v1beta/models/${ACCAZA_AI_MODEL}:generateContent`,{method:"POST",headers:{"content-type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:instruction}]},contents,generationConfig:{temperature:0.15,maxOutputTokens:900}})},timeoutMs);if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,"Gemini could not answer right now."));
   return accazaAiAnswer(body&&body.candidates&&body.candidates[0]&&body.candidates[0].content&&body.candidates[0].content.parts&&body.candidates[0].content.parts.map(p=>p.text||"").join("\n"));
 }
-async function askGeminiWebChat(question,history){
+async function askGeminiWebChat(question,history,timeoutMs){
   const key=GEMINI_API_KEY.value();if(!key)throw new HttpsError("failed-precondition","Accaza AI is not configured. Set the GEMINI_API_KEY Firebase secret first.");
   const instruction=ACCAZA_AI_GENERAL_CHAT_INSTRUCTION;
-  const contents=[...accazaAiHistory(history).map(row=>({role:row.role,parts:[{text:row.text}]})),{role:"user",parts:[{text:question}]}],response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${ACCAZA_AI_MODEL}:generateContent`,{method:"POST",headers:{"content-type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:instruction}]},contents,generationConfig:{temperature:0.35,maxOutputTokens:900}})}),body=await response.json().catch(()=>({}));
-  if(!response.ok)throw accazaAiProviderFailure(body&&body.error&&body.error.message||"Gemini general chat could not answer right now.");
+  const contents=[...accazaAiHistory(history).map(row=>({role:row.role,parts:[{text:row.text}]})),{role:"user",parts:[{text:question}]}],{response,body}=await accazaAiFetchJson("Gemini",`https://generativelanguage.googleapis.com/v1beta/models/${ACCAZA_AI_MODEL}:generateContent`,{method:"POST",headers:{"content-type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:instruction}]},contents,generationConfig:{temperature:0.35,maxOutputTokens:900}})},timeoutMs);
+  if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,"Gemini general chat could not answer right now."));
   return{answer:accazaAiProseAnswer(body&&body.candidates&&body.candidates[0]&&body.candidates[0].content&&body.candidates[0].content.parts&&body.candidates[0].content.parts.map(part=>part.text||"").join("\n")),sources:[]};
 }
-async function askDeepSeekAccazaAi(question,facts,history){
+async function askDeepSeekAccazaAi(question,facts,history,timeoutMs){
   const key=DEEPSEEK_API_KEY.value();if(!key)throw new HttpsError("failed-precondition","Gemini is unavailable and DeepSeek fallback is not configured. Set the DEEPSEEK_API_KEY Firebase secret.");
   const instruction="You are Accaza AI for Accaza Coffee House. Answer only about Accaza operations, POS, inventory, recipes and Finance Books. Use only the FACT PACK. Do not invent figures. For business analysis, interpret the supplied historical Finance Books facts and give prioritized, practical recommendations. Clearly separate observed facts, inferences and recommendations. Never present accounting amounts as cash flow. You are read-only: never say that you posted, changed or approved a transaction. Keep the answer concise and cite the supplied source paths.";
-  const messages=[{role:"system",content:instruction},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:`QUESTION: ${question}\n\nFACT PACK:\n${JSON.stringify(facts)}`}],response=await fetch("https://api.deepseek.com/chat/completions",{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${key}`},body:JSON.stringify({model:"deepseek-flash",messages,temperature:0.15,max_tokens:900})}),body=await response.json().catch(()=>({}));
-  if(!response.ok)throw accazaAiProviderFailure(body&&body.error&&body.error.message||"DeepSeek fallback could not answer right now.");return accazaAiAnswer(body&&body.choices&&body.choices[0]&&body.choices[0].message&&body.choices[0].message.content);
+  const messages=[{role:"system",content:instruction},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:`QUESTION: ${question}\n\nFACT PACK:\n${JSON.stringify(facts)}`}],{response,body}=await accazaAiFetchJson("DeepSeek","https://api.deepseek.com/chat/completions",{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${key}`},body:JSON.stringify({model:"deepseek-flash",messages,temperature:0.15,max_tokens:900})},timeoutMs);
+  if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,"DeepSeek fallback could not answer right now."));return accazaAiAnswer(body&&body.choices&&body.choices[0]&&body.choices[0].message&&body.choices[0].message.content);
 }
-async function askDeepSeekGeneralChat(question,history){
+async function askDeepSeekGeneralChat(question,history,timeoutMs){
   const key=DEEPSEEK_API_KEY.value();if(!key)throw new HttpsError("failed-precondition","Gemini is unavailable and DeepSeek fallback is not configured. Set the DEEPSEEK_API_KEY Firebase secret.");
   const instruction=ACCAZA_AI_GENERAL_CHAT_INSTRUCTION;
-  const messages=[{role:"system",content:instruction},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:question}],response=await fetch("https://api.deepseek.com/chat/completions",{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${key}`},body:JSON.stringify({model:"deepseek-flash",messages,temperature:0.35,max_tokens:900})}),body=await response.json().catch(()=>({}));
-  if(!response.ok)throw accazaAiProviderFailure(body&&body.error&&body.error.message||"DeepSeek fallback could not answer right now.");return{answer:accazaAiProseAnswer(body&&body.choices&&body.choices[0]&&body.choices[0].message&&body.choices[0].message.content),sources:[]};
+  const messages=[{role:"system",content:instruction},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:question}],{response,body}=await accazaAiFetchJson("DeepSeek","https://api.deepseek.com/chat/completions",{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${key}`},body:JSON.stringify({model:"deepseek-flash",messages,temperature:0.35,max_tokens:900})},timeoutMs);
+  if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,"DeepSeek fallback could not answer right now."));return{answer:accazaAiProseAnswer(body&&body.choices&&body.choices[0]&&body.choices[0].message&&body.choices[0].message.content),sources:[]};
 }
 function accazaAiOllamaHeaderValue(value){return String(value||"").replace(/[^\x21-\x7E]/g,"");}
 function accazaAiOllamaClientId(){return accazaAiOllamaHeaderValue(OLLAMA_ACCESS_CLIENT_ID.value());}
 function accazaAiOllamaClientSecret(){return accazaAiOllamaHeaderValue(OLLAMA_ACCESS_CLIENT_SECRET.value());}
 function accazaAiOllamaConfigured(){return Boolean(accazaAiOllamaClientId()&&accazaAiOllamaClientSecret());}
-async function askOllama(messages,temperature,format){
-  const response=await fetch("https://ollama.accazacoffee.com/api/chat",{method:"POST",headers:{"content-type":"application/json","CF-Access-Client-Id":accazaAiOllamaClientId(),"CF-Access-Client-Secret":accazaAiOllamaClientSecret()},body:JSON.stringify({model:"qwen3:8b",messages,stream:false,think:false,options:{temperature,num_predict:900}})}),body=await response.json().catch(()=>({}));
-  if(!response.ok)throw accazaAiProviderFailure(body&&body.error||"Ollama fallback could not answer right now.");return(format||accazaAiAnswer)(body&&body.message&&body.message.content);
+async function askOllama(messages,temperature,format,timeoutMs){
+  const tokens=Math.max(80,Math.min(ACCAZA_AI_OLLAMA_MAX_TOKENS,Math.floor((Number(timeoutMs||0)/1000-12)*5)));
+  const {response,body}=await accazaAiFetchJson("Qwen","https://ollama.accazacoffee.com/api/chat",{method:"POST",headers:{"content-type":"application/json","CF-Access-Client-Id":accazaAiOllamaClientId(),"CF-Access-Client-Secret":accazaAiOllamaClientSecret()},body:JSON.stringify({model:"qwen3:8b",messages,stream:false,think:false,options:{temperature,num_predict:tokens}})},timeoutMs);
+  if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,"Qwen fallback could not answer right now."));const content=body&&body.message&&body.message.content;return(format||accazaAiAnswer)(body&&body.done_reason==="length"?accazaAiTrimToSentence(content):content);
 }
-async function askOllamaAccazaAi(question,facts,history){
+async function askOllamaAccazaAi(question,facts,history,timeoutMs){
   const instruction="You are Accaza AI for Accaza Coffee House. Answer only about Accaza operations, POS, inventory, recipes and Finance Books. Use only the FACT PACK. Do not invent figures. For business analysis, interpret the supplied historical Finance Books facts and give prioritized, practical recommendations. Clearly separate observed facts, inferences and recommendations. Never present accounting amounts as cash flow. You are read-only: never say that you posted, changed or approved a transaction. Keep the answer concise and cite the supplied source paths.";
-  return askOllama([{role:"system",content:instruction},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:`QUESTION: ${question}\n\nFACT PACK:\n${JSON.stringify(facts)}`}],0.15);
+  return askOllama([{role:"system",content:instruction},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:`QUESTION: ${question}\n\nFACT PACK:\n${JSON.stringify(facts)}`}],0.15,null,timeoutMs);
 }
-async function askOllamaGeneralChat(question,history){
+async function askOllamaGeneralChat(question,history,timeoutMs){
   const instruction=ACCAZA_AI_GENERAL_CHAT_INSTRUCTION;
-  return{answer:await askOllama([{role:"system",content:instruction},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:question}],0.35,accazaAiProseAnswer),sources:[]};
+  return{answer:await askOllama([{role:"system",content:instruction},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:question}],0.35,accazaAiProseAnswer,timeoutMs),sources:[]};
 }
-async function accazaAiWithFallback(providers){let lastProviderFailure;for(const provider of providers){if(!provider.enabled())continue;try{return{provider:provider.name,result:await provider.ask()};}catch(error){if(!(error&&error.details&&error.details.providerFailure))throw error;lastProviderFailure=error;}}if(lastProviderFailure)throw lastProviderFailure;throw new HttpsError("failed-precondition","Accaza AI has no configured provider. Set Gemini, DeepSeek, or Ollama credentials.");}
-exports.askAccazaAI=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:"256MiB",secrets:[GEMINI_API_KEY,DEEPSEEK_API_KEY,OLLAMA_ACCESS_CLIENT_ID,OLLAMA_ACCESS_CLIENT_SECRET]},async request=>{
+async function askAshnaGeneralChat(question,history,timeoutMs){
+  const key=accazaAiOllamaHeaderValue(ASHNA_API_KEY.value());if(!key)throw new HttpsError("failed-precondition","The Ashna backup is not configured. Set the ASHNA_API_KEY Firebase secret.");
+  const messages=[{role:"system",content:ACCAZA_AI_GENERAL_CHAT_INSTRUCTION},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:question}];
+  const {response,body}=await accazaAiFetchJson("Ashna","https://api.ashna.ai/v1/api/chat/completions",{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${key}`},body:JSON.stringify({model:ACCAZA_AI_ASHNA_MODEL,messages,temperature:0.35,max_tokens:900,stream:false})},timeoutMs);
+  if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,"Ashna backup could not answer right now."));
+  return{answer:accazaAiProseAnswer(body&&body.choices&&body.choices[0]&&body.choices[0].message&&body.choices[0].message.content),sources:[]};
+}
+// Provider order. Analysis (business fact pack): Gemini -> DeepSeek -> Qwen (own PC).
+// General chat: Gemini -> DeepSeek -> Qwen -> Ashna. Ashna keeps a reserved slice of the
+// budget so a slow Qwen reply cannot use up the last provider's turn.
+function accazaAiAnalysisProviders(question,facts,history){return[
+  {name:"gemini",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:timeoutMs=>askGeminiAccazaAi(question,facts,history,timeoutMs)},
+  {name:"deepseek",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(DEEPSEEK_API_KEY.value()),ask:timeoutMs=>askDeepSeekAccazaAi(question,facts,history,timeoutMs)},
+  {name:"ollama",maxMs:ACCAZA_AI_OLLAMA_TIMEOUT_MS,enabled:accazaAiOllamaConfigured,ask:timeoutMs=>askOllamaAccazaAi(question,facts,history,timeoutMs)},
+];}
+function accazaAiGeneralChatProviders(question,history){return[
+  {name:"gemini",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:timeoutMs=>askGeminiWebChat(question,history,timeoutMs)},
+  {name:"deepseek",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(DEEPSEEK_API_KEY.value()),ask:timeoutMs=>askDeepSeekGeneralChat(question,history,timeoutMs)},
+  {name:"ollama",maxMs:ACCAZA_AI_OLLAMA_TIMEOUT_MS,enabled:accazaAiOllamaConfigured,ask:timeoutMs=>askOllamaGeneralChat(question,history,timeoutMs)},
+  {name:"ashna",maxMs:ACCAZA_AI_ASHNA_TIMEOUT_MS,reserveMs:ACCAZA_AI_ASHNA_TIMEOUT_MS,enabled:()=>Boolean(ASHNA_API_KEY.value()),ask:timeoutMs=>askAshnaGeneralChat(question,history,timeoutMs)},
+];}
+// Only unusual outcomes are written (a backup answered, or nothing answered), so a normal
+// Gemini answer costs no extra write. The Exception Center reads today and yesterday.
+async function accazaAiRecordProviderHealth(context,answeredBy,failures){
+  if(!context||!context.db)return;
+  const now=Date.now(),day=accazaAiDay(now),event={at:now,answeredBy:answeredBy||"none",surface:accazaAiText(context.surface,40),failures:failures.slice(0,5).map(row=>({provider:row.provider,reason:accazaAiText(row.reason,160)}))};
+  console.warn(JSON.stringify({event:answeredBy?"accaza_ai_backup_answered":"accaza_ai_all_providers_failed",severity:answeredBy?"WARNING":"ERROR",...event}));
+  try{await context.db.ref(`/accazaAiProviderHealth/${day}`).transaction(current=>{
+    const health=current&&typeof current==="object"?current:{},backup=Object.assign({},health.backupAnswers),failed=Object.assign({},health.providerFailures);
+    failures.forEach(row=>{failed[row.provider]=Number(failed[row.provider]||0)+1;});
+    if(answeredBy)backup[answeredBy]=Number(backup[answeredBy]||0)+1;
+    return Object.assign({},health,{backupAnswers:backup,providerFailures:failed,failedQuestions:Number(health.failedQuestions||0)+(answeredBy?0:1),lastEvent:event,updatedAt:now});
+  },undefined,false);}catch(_error){/* monitoring must never block or fail an answer */}
+}
+async function accazaAiWithFallback(providers,context){
+  const started=Date.now(),failures=[];let configured=0;
+  for(let index=0;index<providers.length;index+=1){
+    const provider=providers[index];if(!provider.enabled())continue;configured+=1;
+    const reserve=providers.slice(index+1).reduce((total,next)=>total+(next.reserveMs&&next.enabled()?next.reserveMs:0),0);
+    const remaining=ACCAZA_AI_REQUEST_BUDGET_MS-(Date.now()-started),limit=Math.min(provider.maxMs||ACCAZA_AI_CLOUD_TIMEOUT_MS,remaining-reserve);
+    if(limit<ACCAZA_AI_MIN_ATTEMPT_MS){failures.push({provider:provider.name,reason:"Skipped: not enough time left."});continue;}
+    try{
+      const result=await provider.ask(limit);
+      if(failures.length)await accazaAiRecordProviderHealth(context,provider.name,failures);
+      return{provider:provider.name,result,failures};
+    }catch(error){if(!(error&&error.details&&error.details.providerFailure))throw error;failures.push({provider:provider.name,reason:error.message});}
+  }
+  if(!configured)throw new HttpsError("failed-precondition","Accaza AI has no configured provider. Set Gemini, DeepSeek, or Ollama credentials.");
+  await accazaAiRecordProviderHealth(context,null,failures);
+  throw new HttpsError("unavailable",context&&context.general?"The AI service is temporarily unavailable. Please try again in a few minutes.":"Accaza AI is temporarily unavailable. Please try again in a few minutes.");
+}
+exports.askAccazaAI=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:120,memory:"256MiB",secrets:[GEMINI_API_KEY,DEEPSEEK_API_KEY,OLLAMA_ACCESS_CLIENT_ID,OLLAMA_ACCESS_CLIENT_SECRET,ASHNA_API_KEY]},async request=>{
   const db=getDatabase(),actor=await requirePortalUser(db,request);if(!ACCAZA_AI_QUERY_ROLES.includes(actor.role))throw new HttpsError("permission-denied","Accaza AI is available to authorized portal accounts only.");
   const question=accazaAiText(request.data&&request.data.question,800),mode=request.data&&request.data.mode==="web"?"web":"accaza",history=accazaAiHistory(request.data&&request.data.history);if(question.length<3)throw new HttpsError("invalid-argument","Enter a question for Accaza AI.");
   if(mode==="web"&&accazaAiWebQuestionBlocked(question))throw new HttpsError("failed-precondition","Use Accaza analysis for Accaza business or app questions. Web chat never receives Accaza data.");
   const now=Date.now();let answer,sources=[],provider="gemini";
-  if(mode==="web"){const response=await accazaAiWithFallback([{name:"gemini",enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:()=>askGeminiWebChat(question,history)},{name:"deepseek",enabled:()=>Boolean(DEEPSEEK_API_KEY.value()),ask:()=>askDeepSeekGeneralChat(question,history)},{name:"ollama",enabled:accazaAiOllamaConfigured,ask:()=>askOllamaGeneralChat(question,history)}]);provider=response.provider;answer=response.result.answer;sources=response.result.sources;}else{const facts=await accazaAiFactPack(db,question,now),response=await accazaAiWithFallback([{name:"gemini",enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:()=>askGeminiAccazaAi(question,facts,history)},{name:"deepseek",enabled:()=>Boolean(DEEPSEEK_API_KEY.value()),ask:()=>askDeepSeekAccazaAi(question,facts,history)},{name:"ollama",enabled:accazaAiOllamaConfigured,ask:()=>askOllamaAccazaAi(question,facts,history)}]);provider=response.provider;answer=response.result;sources=facts.sources||[];}
+  if(mode==="web"){const response=await accazaAiWithFallback(accazaAiGeneralChatProviders(question,history),{db,surface:"admin_general",general:true});provider=response.provider;answer=response.result.answer;sources=response.result.sources;}else{const facts=await accazaAiFactPack(db,question,now),response=await accazaAiWithFallback(accazaAiAnalysisProviders(question,facts,history),{db,surface:"admin_analysis",general:false});provider=response.provider;answer=response.result;sources=facts.sources||[];}
   const auditId=`${now}_${crypto.randomUUID()}`;await db.ref(`/operationalAudit/${auditId}`).set(operationalAuditRecord("ask_accaza_ai","accazaAI",auditId,actor,{mode,provider,questionHash:crypto.createHash("sha256").update(question).digest("hex"),sources:mode==="web"?sources.map(source=>source.url):sources,accounting:"Read-only AI analysis only; no order, inventory movement, subledger, Finance movement, or Books journal changed."}));
   return {answer,sources,mode,provider,releaseVersion:ACCAZA_AI_RELEASE_VERSION};
 });
@@ -7280,7 +7355,7 @@ exports.manageAccazaAiIssue=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_
 // - Guests (Firebase anonymous sign-in): 10 messages per Manila business day per guest,
 //   plus a shared daily ceiling across ALL guests so a guest who keeps resetting their
 //   browser (new anonymous uid) cannot run up the AI provider bill without bound.
-const ACCAZA_AI_STANDALONE_RELEASE_VERSION = "1.1";
+const ACCAZA_AI_STANDALONE_RELEASE_VERSION = "1.2";
 const ACCAZA_AI_GUEST_DAILY_LIMIT = 10;
 const ACCAZA_AI_GUEST_GLOBAL_DAILY_LIMIT = 100;
 function accazaAiStandaloneIsGuest(request){return Boolean(request.auth&&request.auth.uid&&request.auth.token&&request.auth.token.firebase&&request.auth.token.firebase.sign_in_provider==="anonymous");}
@@ -7306,7 +7381,7 @@ async function releaseAccazaAiGuestMessage(db,uid,day){
     return Object.assign({},current,{total:Math.max(0,Number(current.total||0)-1),users:Object.assign({},users,{[uid]:Object.assign({},users[uid],{count:mine-1})})});
   },undefined,false);}catch(_error){/* best effort: a failed refund only costs the guest one message */}
 }
-exports.askAccazaAIStandalone=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:"256MiB",secrets:[GEMINI_API_KEY,DEEPSEEK_API_KEY,OLLAMA_ACCESS_CLIENT_ID,OLLAMA_ACCESS_CLIENT_SECRET]},async request=>{
+exports.askAccazaAIStandalone=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:120,memory:"256MiB",secrets:[GEMINI_API_KEY,DEEPSEEK_API_KEY,OLLAMA_ACCESS_CLIENT_ID,OLLAMA_ACCESS_CLIENT_SECRET,ASHNA_API_KEY]},async request=>{
   const db=getDatabase(),guest=accazaAiStandaloneIsGuest(request);
   let actor;
   if(guest)actor={uid:request.auth.uid,role:"guest"};
@@ -7316,7 +7391,7 @@ exports.askAccazaAIStandalone=onCall({region:ORDER_REGION,enforceAppCheck:ENFORC
   if(accazaAiWebQuestionBlocked(question))throw new HttpsError("failed-precondition","Accaza AI is general chat only here and has no access to Accaza business data.");
   const now=Date.now(),day=accazaAiDay(now),allowance=guest?await claimAccazaAiGuestMessage(db,actor.uid,day,now):null;
   let response;
-  try{response=await accazaAiWithFallback([{name:"gemini",enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:()=>askGeminiWebChat(question,history)},{name:"deepseek",enabled:()=>Boolean(DEEPSEEK_API_KEY.value()),ask:()=>askDeepSeekGeneralChat(question,history)},{name:"ollama",enabled:accazaAiOllamaConfigured,ask:()=>askOllamaGeneralChat(question,history)}]);}
+  try{response=await accazaAiWithFallback(accazaAiGeneralChatProviders(question,history),{db,surface:guest?"standalone_guest":"standalone_staff",general:true});}
   catch(error){if(guest)await releaseAccazaAiGuestMessage(db,actor.uid,day);throw error;}
   const provider=response.provider,answer=response.result.answer,sources=response.result.sources||[];
   const auditId=`${now}_${crypto.randomUUID()}`;

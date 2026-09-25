@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; form-action 'self'"/>
-<meta name="accaza-ai-standalone-build" content="1"/>
+<meta name="accaza-ai-standalone-build" content="2"/>
 <meta name="description" content="Accaza AI — a general-chat AI assistant. Independent installable app, separate from the Accaza POS/Admin app; no Accaza business data."/>
 <meta name="theme-color" content="#19241b"/>
 <title>Accaza AI</title>
@@ -107,7 +107,7 @@ const firebaseConfig={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomai
 const app=initializeApp(firebaseConfig);
 const APP_CHECK_SITE_KEY='6LdQ6HstAAAAAGvaa0exDw5aAHxNsrPKCtdlCeis';
 try{initializeAppCheck(app,{provider:new ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY),isTokenAutoRefreshEnabled:true});}catch(e){console.warn('Accaza AI App Check init failed',e);}
-const auth=getAuth(app),functions=getFunctions(app,'asia-southeast1'),askAccazaAIStandalone=httpsCallable(functions,'askAccazaAIStandalone');
+const auth=getAuth(app),functions=getFunctions(app,'asia-southeast1'),askAccazaAIStandalone=httpsCallable(functions,'askAccazaAIStandalone',{timeout:130000});
 
 const HISTORY_KEY='accaza_ai_standalone_history_v1';
 function by(id){return document.getElementById(id);}
@@ -147,19 +147,19 @@ async function ask(ev){
   input.value='';
   by('askBtn').disabled=true;
   addMessage('user',question);
-  const pending=addMessage('assistant','Thinking…');
+  const pending=addMessage('assistant','Thinking…'),slow=setTimeout(()=>{pending.textContent='Still thinking… a backup AI is answering. This can take up to two minutes.';},25000);
   try{
     const result=(await askAccazaAIStandalone({question,history:history()})).data||{};
     pending.textContent=result.answer||'Accaza AI returned no answer.';
     remember('user',question);
     remember('assistant',result.answer||'');
     addSources(result.sources);
-    if(result.provider==='deepseek'||result.provider==='ollama')pending.textContent+='\n\n(Answered by fallback provider.)';
     if(result.guest&&result.allowance)guestLabel(result.allowance.remaining);
   }catch(err){
     pending.textContent=(err&&err.message)||'Accaza AI could not answer right now.';
     if(currentMode==='guest'&&err&&err.code==='functions/resource-exhausted'&&/Guest limit/.test(err.message||''))guestLabel(0);
   }finally{
+    clearTimeout(slow);
     by('askBtn').disabled=false;
   }
 }
