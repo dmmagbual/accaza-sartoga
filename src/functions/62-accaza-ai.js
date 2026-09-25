@@ -1,7 +1,7 @@
 // Accaza AI is deliberately read-only. Gemini receives a compact, server-built
 // fact pack; it never gets Firebase credentials or permission to change records.
 const ACCAZA_AI_MODEL = "gemini-3.5-flash-lite";
-const ACCAZA_AI_RELEASE_VERSION = "1.8";
+const ACCAZA_AI_RELEASE_VERSION = "1.9";
 // Sep 2026 (Danilo): no message cap for authorized staff accounts. Every question is
 // still role-checked and written to operationalAudit; the old accazaAiUsage counters
 // are no longer written (existing rows are inert history, rules keep them server-only).
@@ -118,6 +118,14 @@ const ACCAZA_AI_OLLAMA_MAX_TOKENS = 350;
 // General chat and Accaza analysis (Danilo, 25 Sep 2026). In analysis mode it receives the same
 // read-only fact pack DeepSeek does; it never gets credentials or any write path.
 const ACCAZA_AI_ASHNA_MODEL = "glm-5.3-flash";
+// Cerebras (paid, prepaid USD 5, Danilo 25 Sep 2026): first backup after Gemini. gpt-oss-120b is a
+// reasoning model, so its token cap covers reasoning plus the reply and reasoning is kept low.
+const ACCAZA_AI_CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
+const ACCAZA_AI_CEREBRAS_MODEL = "gpt-oss-120b";
+// forceFirstTool: in record-reading mode gpt-oss otherwise tends to answer from the fact pack
+// without checking records (seen in the 25 Sep live test), so its first step must call a tool.
+const ACCAZA_AI_CEREBRAS_OPTIONS = {maxTokens:2500,forceFirstTool:true,body:{reasoning_effort:"low"}};
+function accazaAiCerebrasKey(){return accazaAiOllamaHeaderValue(CEREBRAS_API_KEY.value());}
 async function accazaAiFetchJson(providerLabel,url,init,timeoutMs){
   const controller=new AbortController(),limit=Math.max(1000,Number(timeoutMs)||ACCAZA_AI_CLOUD_TIMEOUT_MS),timer=setTimeout(()=>controller.abort(),limit);
   try{const response=await fetch(url,Object.assign({},init,{signal:controller.signal}));const body=await response.json().catch(()=>({}));return{response,body};}
@@ -195,6 +203,21 @@ async function askOllamaGeneralChat(question,history,timeoutMs){
   const instruction=ACCAZA_AI_GENERAL_CHAT_INSTRUCTION;
   return{answer:await askOllama([{role:"system",content:instruction},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:question}],0.35,accazaAiProseAnswer,timeoutMs),sources:[]};
 }
+// Generic OpenAI-compatible provider (Cerebras) for General chat and fact-pack analysis.
+async function askOpenAiCompatibleChat(label,url,key,model,messages,temperature,timeoutMs,options){
+  if(!key)throw new HttpsError("failed-precondition",`The ${label} backup is not configured.`);
+  const opts=options||{},{response,body}=await accazaAiFetchJson(label,url,{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${key}`},body:JSON.stringify(Object.assign({model,messages,temperature,max_tokens:opts.maxTokens||900,stream:false},opts.body||{}))},timeoutMs);
+  if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,`${label} could not answer right now.`));
+  return accazaAiProseAnswer(body&&body.choices&&body.choices[0]&&body.choices[0].message&&body.choices[0].message.content);
+}
+async function askCerebrasGeneralChat(question,history,timeoutMs){
+  const messages=[{role:"system",content:ACCAZA_AI_GENERAL_CHAT_INSTRUCTION},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:question}];
+  return{answer:await askOpenAiCompatibleChat("Cerebras",ACCAZA_AI_CEREBRAS_URL,accazaAiCerebrasKey(),ACCAZA_AI_CEREBRAS_MODEL,messages,0.35,timeoutMs,ACCAZA_AI_CEREBRAS_OPTIONS),sources:[]};
+}
+async function askCerebrasAccazaAi(question,facts,history,timeoutMs){
+  const messages=[{role:"system",content:ACCAZA_AI_ANALYSIS_INSTRUCTION},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:`QUESTION: ${question}\n\nFACT PACK:\n${JSON.stringify(facts)}`}];
+  return askOpenAiCompatibleChat("Cerebras",ACCAZA_AI_CEREBRAS_URL,accazaAiCerebrasKey(),ACCAZA_AI_CEREBRAS_MODEL,messages,0.15,timeoutMs,ACCAZA_AI_CEREBRAS_OPTIONS);
+}
 async function askAshnaGeneralChat(question,history,timeoutMs){
   const key=accazaAiOllamaHeaderValue(ASHNA_API_KEY.value());if(!key)throw new HttpsError("failed-precondition","The Ashna backup is not configured. Set the ASHNA_API_KEY Firebase secret.");
   const messages=[{role:"system",content:ACCAZA_AI_GENERAL_CHAT_INSTRUCTION},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:question}];
@@ -210,16 +233,18 @@ async function askAshnaAccazaAi(question,facts,history,timeoutMs){
   if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,"Ashna backup could not answer right now."));
   return accazaAiProseAnswer(body&&body.choices&&body.choices[0]&&body.choices[0].message&&body.choices[0].message.content);
 }
-// Provider order, both modes: Gemini -> DeepSeek -> Qwen (own PC) -> Ashna. Ashna keeps a
+// Provider order, both modes (Danilo, 25 Sep 2026): Gemini -> Cerebras -> DeepSeek -> Qwen (own PC) -> Ashna. Ashna keeps a
 // reserved slice of the budget so a slow Qwen reply cannot use up the last provider's turn.
 function accazaAiAnalysisProviders(question,facts,history){return[
   {name:"gemini",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:timeoutMs=>askGeminiAccazaAi(question,facts,history,timeoutMs)},
+  {name:"cerebras",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(accazaAiCerebrasKey()),ask:timeoutMs=>askCerebrasAccazaAi(question,facts,history,timeoutMs)},
   {name:"deepseek",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(DEEPSEEK_API_KEY.value()),ask:timeoutMs=>askDeepSeekAccazaAi(question,facts,history,timeoutMs)},
   {name:"ollama",maxMs:ACCAZA_AI_OLLAMA_TIMEOUT_MS,enabled:accazaAiOllamaConfigured,ask:timeoutMs=>askOllamaAccazaAi(question,facts,history,timeoutMs)},
   {name:"ashna",maxMs:ACCAZA_AI_ASHNA_TIMEOUT_MS,reserveMs:ACCAZA_AI_ASHNA_TIMEOUT_MS,enabled:()=>Boolean(ASHNA_API_KEY.value()),ask:timeoutMs=>askAshnaAccazaAi(question,facts,history,timeoutMs)},
 ];}
 function accazaAiGeneralChatProviders(question,history){return[
   {name:"gemini",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:timeoutMs=>askGeminiWebChat(question,history,timeoutMs)},
+  {name:"cerebras",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(accazaAiCerebrasKey()),ask:timeoutMs=>askCerebrasGeneralChat(question,history,timeoutMs)},
   {name:"deepseek",maxMs:ACCAZA_AI_CLOUD_TIMEOUT_MS,enabled:()=>Boolean(DEEPSEEK_API_KEY.value()),ask:timeoutMs=>askDeepSeekGeneralChat(question,history,timeoutMs)},
   {name:"ollama",maxMs:ACCAZA_AI_OLLAMA_TIMEOUT_MS,enabled:accazaAiOllamaConfigured,ask:timeoutMs=>askOllamaGeneralChat(question,history,timeoutMs)},
   {name:"ashna",maxMs:ACCAZA_AI_ASHNA_TIMEOUT_MS,reserveMs:ACCAZA_AI_ASHNA_TIMEOUT_MS,enabled:()=>Boolean(ASHNA_API_KEY.value()),ask:timeoutMs=>askAshnaGeneralChat(question,history,timeoutMs)},
@@ -254,7 +279,7 @@ async function accazaAiWithFallback(providers,context){
   await accazaAiRecordProviderHealth(context,null,failures);
   throw new HttpsError("unavailable",context&&context.general?"The AI service is temporarily unavailable. Please try again in a few minutes.":"Accaza AI is temporarily unavailable. Please try again in a few minutes.");
 }
-exports.askAccazaAI=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:120,memory:"256MiB",secrets:[GEMINI_API_KEY,DEEPSEEK_API_KEY,OLLAMA_ACCESS_CLIENT_ID,OLLAMA_ACCESS_CLIENT_SECRET,ASHNA_API_KEY]},async request=>{
+exports.askAccazaAI=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:120,memory:"256MiB",secrets:[GEMINI_API_KEY,DEEPSEEK_API_KEY,OLLAMA_ACCESS_CLIENT_ID,OLLAMA_ACCESS_CLIENT_SECRET,ASHNA_API_KEY,CEREBRAS_API_KEY]},async request=>{
   const db=getDatabase(),actor=await requirePortalUser(db,request);if(!ACCAZA_AI_QUERY_ROLES.includes(actor.role))throw new HttpsError("permission-denied","Accaza AI is available to authorized portal accounts only.");
   const question=accazaAiText(request.data&&request.data.question,800),mode=request.data&&request.data.mode==="web"?"web":"accaza",history=accazaAiHistory(request.data&&request.data.history);if(question.length<3)throw new HttpsError("invalid-argument","Enter a question for Accaza AI.");
   if(mode==="web"&&accazaAiWebQuestionBlocked(question))throw new HttpsError("failed-precondition","Use Accaza analysis for Accaza business or app questions. Web chat never receives Accaza data.");

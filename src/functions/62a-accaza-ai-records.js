@@ -175,11 +175,12 @@ async function askGeminiAccazaAgent(question,facts,history,timeoutMs,ctx,now){
   }
   throw accazaAiProviderFailure("Gemini did not finish its record check.");
 }
-async function askOpenAiCompatibleAccazaAgent(label,url,key,model,question,facts,history,timeoutMs,ctx,now){
+async function askOpenAiCompatibleAccazaAgent(label,url,key,model,question,facts,history,timeoutMs,ctx,now,options){
+  const opts=options||{};
   const deadline=Date.now()+timeoutMs,messages=[{role:"system",content:`${ACCAZA_AI_ANALYSIS_INSTRUCTION} ${ACCAZA_AI_AGENT_GUIDE} ${ACCAZA_AI_STRATEGY_GUIDE}`},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:accazaAiAgentQuestion(question,facts,now)}];
   for(let round=0;round<=ACCAZA_AI_AGENT_MAX_ROUNDS;round+=1){
     const final=round===ACCAZA_AI_AGENT_MAX_ROUNDS,remaining=deadline-Date.now();if(remaining<3000)throw accazaAiProviderFailure(`${label} ran out of time while checking records.`);
-    const {response,body}=await accazaAiFetchJson(label,url,{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${key}`},body:JSON.stringify({model,messages,temperature:0.15,max_tokens:1400,stream:false,tools:accazaAiOpenAiTools(),tool_choice:final?"none":"auto"})},remaining);
+    const {response,body}=await accazaAiFetchJson(label,url,{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${key}`},body:JSON.stringify(Object.assign({model,messages,temperature:0.15,max_tokens:opts.maxTokens||1400,stream:false,tools:accazaAiOpenAiTools(),tool_choice:final?"none":round===0&&opts.forceFirstTool?"required":"auto"},opts.body||{}))},remaining);
     if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,`${label} could not answer right now.`));
     const message=body&&body.choices&&body.choices[0]&&body.choices[0].message||{},calls=Array.isArray(message.tool_calls)?message.tool_calls:[];
     if(!calls.length||final)return accazaAiProseAnswer(message.content);
@@ -189,12 +190,14 @@ async function askOpenAiCompatibleAccazaAgent(label,url,key,model,question,facts
   }
   throw accazaAiProviderFailure(`${label} did not finish its record check.`);
 }
-// Management analysis: every provider can read records (Danilo, 25 Sep 2026, "all backups"),
+// Management analysis: every provider can read records (Danilo, 25 Sep 2026, "all backups").
+// Order: Gemini -> Cerebras -> DeepSeek -> Qwen -> Ashna;
 // except Qwen, which is too slow on SUPERDAD for multi-step tool use and answers from the
 // FACT PACK. Order and reserve match the no-tool list.
 function accazaAiAgentProviders(question,facts,history,ctx,now){return[
-  {name:"gemini",maxMs:55000,enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:timeoutMs=>askGeminiAccazaAgent(question,facts,history,timeoutMs,ctx,now)},
-  {name:"deepseek",maxMs:35000,enabled:()=>Boolean(DEEPSEEK_API_KEY.value()),ask:timeoutMs=>askOpenAiCompatibleAccazaAgent("DeepSeek","https://api.deepseek.com/chat/completions",DEEPSEEK_API_KEY.value(),"deepseek-flash",question,facts,history,timeoutMs,ctx,now)},
+  {name:"gemini",maxMs:45000,enabled:()=>Boolean(GEMINI_API_KEY.value()),ask:timeoutMs=>askGeminiAccazaAgent(question,facts,history,timeoutMs,ctx,now)},
+  {name:"cerebras",maxMs:30000,enabled:()=>Boolean(accazaAiCerebrasKey()),ask:timeoutMs=>askOpenAiCompatibleAccazaAgent("Cerebras",ACCAZA_AI_CEREBRAS_URL,accazaAiCerebrasKey(),ACCAZA_AI_CEREBRAS_MODEL,question,facts,history,timeoutMs,ctx,now,ACCAZA_AI_CEREBRAS_OPTIONS)},
+  {name:"deepseek",maxMs:30000,enabled:()=>Boolean(DEEPSEEK_API_KEY.value()),ask:timeoutMs=>askOpenAiCompatibleAccazaAgent("DeepSeek","https://api.deepseek.com/chat/completions",DEEPSEEK_API_KEY.value(),"deepseek-flash",question,facts,history,timeoutMs,ctx,now)},
   {name:"ollama",maxMs:ACCAZA_AI_OLLAMA_TIMEOUT_MS,enabled:accazaAiOllamaConfigured,ask:timeoutMs=>askOllamaAccazaAi(question,facts,history,timeoutMs)},
-  {name:"ashna",maxMs:25000,reserveMs:25000,enabled:()=>Boolean(ASHNA_API_KEY.value()),ask:timeoutMs=>askOpenAiCompatibleAccazaAgent("Ashna","https://api.ashna.ai/v1/api/chat/completions",accazaAiOllamaHeaderValue(ASHNA_API_KEY.value()),ACCAZA_AI_ASHNA_MODEL,question,facts,history,timeoutMs,ctx,now)},
+  {name:"ashna",maxMs:20000,reserveMs:20000,enabled:()=>Boolean(ASHNA_API_KEY.value()),ask:timeoutMs=>askOpenAiCompatibleAccazaAgent("Ashna","https://api.ashna.ai/v1/api/chat/completions",accazaAiOllamaHeaderValue(ASHNA_API_KEY.value()),ACCAZA_AI_ASHNA_MODEL,question,facts,history,timeoutMs,ctx,now)},
 ];}
