@@ -54,5 +54,17 @@ assert.ok(qwenLimit<=900&&qwenLimit>=600,'Qwen gets the budget minus Ashna reser
 await assert.rejects(lib.accazaAiWithFallback([provider('gemini',ok('x'),{enabled:()=>false})],{db:fakeDb()}),e=>e.code==='failed-precondition');
 // 10. A reply cut by the token cap ends at a full sentence.
 assert.equal(lib.accazaAiTrimToSentence('A flat white is a small espresso drink with microfoam. It originated in Austral'),'A flat white is a small espresso drink with microfoam.');
+// 11. Reply formatter: Markdown from any provider becomes clean chat text with tidy lists.
+{const fmtCode=pick('function accazaAiProseAnswer(','\nasync function askGeminiAccazaAi(');
+const format=new Function('accazaAiProviderFailure',`${fmtCode};return accazaAiProseAnswer;`)(message=>new HttpsError('unavailable',message,{providerFailure:true}));
+const messy='Based on the records, profit is healthy. *(Note: accounting amounts are not cash flow.)*\n### 1. Observed Facts\n* **Revenue:** PHP 152,370.88\n* **COGS:** PHP 26,687.71\n### 2. Recommendations\n1. **Audit utilities:** they are the largest expense.\n2) Renegotiate platform fees.\nKeep 2*3*4 intact.';
+const clean=format(messy);
+assert.ok(!/[#]|\*\*/.test(clean),'no Markdown markers survive: '+clean);
+assert.ok(clean.includes('• Revenue: PHP 152,370.88\n• COGS: PHP 26,687.71'),'bullets become • items, one per line');
+assert.ok(clean.includes('1. Audit utilities: they are the largest expense.\n2. Renegotiate platform fees.'),'numbered items stay numbered');
+assert.ok(clean.includes('(Note: accounting amounts are not cash flow.)'),'single-asterisk emphasis is removed');
+assert.ok(clean.includes('2*3*4'),'arithmetic asterisks are untouched');
+assert.ok(/cash flow\.\)\n\nObserved Facts\n\n• Revenue/.test(clean)&&/PHP 26,687\.71\n\nRecommendations/.test(clean),'lists are separated from surrounding text by a blank line');
+assert.throws(()=>format('  **  '),e=>e.details&&e.details.providerFailure===true);}
 console.warn=warn;
-console.log('PASS: Accaza AI fallback times out hung providers, treats network errors and empty answers as provider failures, rethrows real errors, reserves Ashna time, and records backup answers and total failures.');
+console.log('PASS: Accaza AI fallback times out hung providers, treats network errors and empty answers as provider failures, rethrows real errors, reserves Ashna time, and records backup answers and total failures; replies are normalized to clean paragraphs and lists.');

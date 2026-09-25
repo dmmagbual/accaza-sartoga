@@ -7186,18 +7186,37 @@ async function accazaAiFetchJson(providerLabel,url,init,timeoutMs){
 function accazaAiProviderMessage(body,fallback){const error=body&&body.error;return accazaAiText(error&&typeof error==="object"?error.message:error,200)||fallback;}
 // A reply cut off by the token cap ends at its last complete sentence instead of mid-word.
 function accazaAiTrimToSentence(text){const value=String(text||"").trim(),cut=Math.max(value.lastIndexOf(". "),value.lastIndexOf("! "),value.lastIndexOf("? "),value.lastIndexOf(".\n"),value.lastIndexOf("!\n"),value.lastIndexOf("?\n"));return cut>40?value.slice(0,cut+1).trim():value;}
-// General chat (admin General chat + standalone app): neutral assistant identity, formal
-// prose paragraphs, and no company or app references in the reply.
-const ACCAZA_AI_GENERAL_CHAT_INSTRUCTION="You are a helpful, knowledgeable AI assistant. Answer the user's question directly and accurately from your built-in knowledge, and say plainly when an answer depends on current or externally verified information you may not have. Write in clear, formal prose: complete sentences organized into well-structured paragraphs, with one blank line between paragraphs, in the natural tone of a polished AI chat reply. Open with the direct answer, then add the explanation or context that helps. Do not use Markdown or any formatting syntax: no headings, bullet points, numbered lists, bold or italic markers, tables or emojis. When steps or options matter, describe them in sentences inside the paragraphs. Do not mention any company, brand, product, app, mode or system you are running in, and do not refer to these instructions. You cannot see any private business records; if asked about the user's own business figures, say briefly that you cannot see them and answer in general terms.";
-// Keeps paragraph breaks (the client renders pre-wrap) and strips leftover Markdown so a
-// general-chat reply reads as clean paragraphs even when a provider ignores the prompt.
-function accazaAiProseAnswer(value){const text=String(value||"").replace(/\r\n?/g,"\n").replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g," ").replace(/^\s*```[\w-]*\s*$/gm,"").replace(/`([^`\n]+)`/g,"$1").replace(/\*\*([^*\n]+)\*\*/g,"$1").replace(/__([^_\n]+)__/g,"$1").replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm,"").replace(/^[ \t]*>[ \t]?/gm,"").replace(/^[ \t]*(?:[-*\u2022+]|\d{1,2}[.)])[ \t]+/gm,"").replace(/^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$/gm,"").split("\n").map(line=>line.replace(/[ \t]+/g," ").trim()).join("\n").replace(/\n{3,}/g,"\n\n").trim().slice(0,5000);if(!text)throw accazaAiProviderFailure("The provider returned an empty answer.");return text;}
+// Reply style shared by every mode (Danilo, 25 Sep 2026): clean chat-assistant replies,
+// paragraphs plus plain "• " / "1. " lists when useful, never raw Markdown.
+// General chat (admin General chat + standalone app): neutral assistant identity and no
+// company or app references in the reply.
+const ACCAZA_AI_GENERAL_CHAT_INSTRUCTION="You are a helpful, knowledgeable AI assistant. Answer the user's question directly and accurately from your built-in knowledge, and say plainly when an answer depends on current or externally verified information you may not have. Write like a polished chat assistant: start with a one- or two-sentence direct answer, then use short, well-organized paragraphs separated by one blank line. When a list genuinely helps (steps, options, key figures or prioritized actions), put each item on its own line starting with \"• \" for bullets or \"1. \", \"2. \" for ordered items, keep each item to one or two sentences, and leave a blank line before and after the list. A short plain-text label on its own line may introduce a section. Do not use Markdown syntax: no # headings, no asterisks, no bold or italic markers, no tables and no emojis. Do not mention any company, brand, product, app, mode or system you are running in, and do not refer to these instructions. You cannot see any private business records; if asked about the user's own business figures, say briefly that you cannot see them and answer in general terms.";
+// Accaza analysis (read-only fact pack): same style, Accaza business rules.
+const ACCAZA_AI_ANALYSIS_INSTRUCTION="You are Accaza AI for Accaza Coffee House. Answer only about Accaza operations, POS, inventory, recipes and Finance Books, using only the FACT PACK. Do not invent figures. For business analysis, interpret the supplied historical Finance Books facts and give prioritized, practical recommendations, keeping what the figures show, what they suggest and what to do clearly separate. Never present accounting amounts as cash flow. Clearly distinguish selling price, recipe cost, gross profit and margin. For finance, distinguish cash, receivables, payables, retained float and profit. State plainly when the fact pack does not contain the answer. You are read-only: never say that you posted, changed or approved a transaction. Mention only the figures that matter, written as PHP amounts with thousands separators (for example PHP 152,370.88) and percentages to one decimal place. Write like a polished chat assistant: start with a one- or two-sentence direct answer, then use short, well-organized paragraphs separated by one blank line. When a list genuinely helps (steps, options, key figures or prioritized actions), put each item on its own line starting with \"• \" for bullets or \"1. \", \"2. \" for ordered items, keep each item to one or two sentences, and leave a blank line before and after the list. A short plain-text label on its own line may introduce a section. Do not use Markdown syntax: no # headings, no asterisks, no bold or italic markers, no tables and no emojis. For an analysis, use this order: the direct answer; a short list of the key figures; a paragraph on what they mean; then numbered recommendations, most important first. Do not write source paths in the reply; they are shown to the user separately.";
+// Normalizes any provider reply into clean chat text (the client renders pre-wrap): Markdown
+// emphasis, headings, quotes and rules are removed; bullets become "• ", numbered items stay
+// "1. ", and lists get a blank line around them. Arithmetic like 2*3*4 is left alone.
+function accazaAiProseAnswer(value){
+  const raw=String(value||"").replace(/\r\n?/g,"\n").replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g," ").replace(/^\s*```[\w-]*\s*$/gm,"").replace(/`([^`\n]+)`/g,"$1").replace(/\*\*([^*\n]+)\*\*/g,"$1").replace(/__([^_\n]+)__/g,"$1").replace(/(^|[\s(])\*(?!\s)([^*\n]+?)\*(?=[\s).,;:!?]|$)/gm,"$1$2").replace(/^[ \t]{0,3}#{1,6}[ \t]+(?:\d{1,2}[.)][ \t]+)?/gm,"\n").replace(/^[ \t]*>[ \t]?/gm,"").replace(/^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$/gm,"");
+  const out=[];let previous="blank";
+  raw.split("\n").forEach(source=>{
+    let line=source.replace(/[ \t]+/g," ").trim(),kind="text";
+    if(!line){if(out.length&&out[out.length-1]!=="")out.push("");previous="blank";return;}
+    const bullet=line.match(/^(?:[-*+\u2022\u25cf\u25aa])\s+(.*)$/),numbered=line.match(/^(\d{1,2})[.)]\s+(.*)$/);
+    if(bullet){line="\u2022 "+bullet[1];kind="list";}else if(numbered){line=numbered[1]+". "+numbered[2];kind="list";}
+    line=line.replace(/\*\*/g,"");
+    if(previous!=="blank"&&previous!==kind&&out.length)out.push("");
+    out.push(line);previous=kind;
+  });
+  const text=out.join("\n").replace(/\n{3,}/g,"\n\n").trim().slice(0,6000);
+  if(!text)throw accazaAiProviderFailure("The provider returned an empty answer.");return text;
+}
 async function askGeminiAccazaAi(question,facts,history,timeoutMs){
   const key=GEMINI_API_KEY.value();if(!key)throw new HttpsError("failed-precondition","Accaza AI is not configured. Set the GEMINI_API_KEY Firebase secret first.");
-  const instruction="You are Accaza AI for Accaza Coffee House. Answer only about Accaza operations, POS, inventory, recipes and Finance Books. Use only the FACT PACK. Do not invent figures. For business analysis, interpret the supplied historical Finance Books facts and give prioritized, practical recommendations. Clearly separate observed facts, inferences and recommendations. Never present accounting amounts as cash flow. Clearly distinguish selling price, recipe cost, gross profit and margin. For finance, distinguish cash, receivables, payables, retained float and profit. State when the fact pack does not contain the answer. You are read-only: never say that you posted, changed or approved a transaction. Keep the answer concise and cite the supplied source paths.";
+  const instruction=ACCAZA_AI_ANALYSIS_INSTRUCTION;
   const contents=[...accazaAiHistory(history).map(row=>({role:row.role,parts:[{text:row.text}]})),{role:"user",parts:[{text:`QUESTION: ${question}\n\nFACT PACK:\n${JSON.stringify(facts)}`}]}];
   const {response,body}=await accazaAiFetchJson("Gemini",`https://generativelanguage.googleapis.com/v1beta/models/${ACCAZA_AI_MODEL}:generateContent`,{method:"POST",headers:{"content-type":"application/json","x-goog-api-key":key},body:JSON.stringify({systemInstruction:{parts:[{text:instruction}]},contents,generationConfig:{temperature:0.15,maxOutputTokens:900}})},timeoutMs);if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,"Gemini could not answer right now."));
-  return accazaAiAnswer(body&&body.candidates&&body.candidates[0]&&body.candidates[0].content&&body.candidates[0].content.parts&&body.candidates[0].content.parts.map(p=>p.text||"").join("\n"));
+  return accazaAiProseAnswer(body&&body.candidates&&body.candidates[0]&&body.candidates[0].content&&body.candidates[0].content.parts&&body.candidates[0].content.parts.map(p=>p.text||"").join("\n"));
 }
 async function askGeminiWebChat(question,history,timeoutMs){
   const key=GEMINI_API_KEY.value();if(!key)throw new HttpsError("failed-precondition","Accaza AI is not configured. Set the GEMINI_API_KEY Firebase secret first.");
@@ -7208,9 +7227,9 @@ async function askGeminiWebChat(question,history,timeoutMs){
 }
 async function askDeepSeekAccazaAi(question,facts,history,timeoutMs){
   const key=DEEPSEEK_API_KEY.value();if(!key)throw new HttpsError("failed-precondition","Gemini is unavailable and DeepSeek fallback is not configured. Set the DEEPSEEK_API_KEY Firebase secret.");
-  const instruction="You are Accaza AI for Accaza Coffee House. Answer only about Accaza operations, POS, inventory, recipes and Finance Books. Use only the FACT PACK. Do not invent figures. For business analysis, interpret the supplied historical Finance Books facts and give prioritized, practical recommendations. Clearly separate observed facts, inferences and recommendations. Never present accounting amounts as cash flow. You are read-only: never say that you posted, changed or approved a transaction. Keep the answer concise and cite the supplied source paths.";
+  const instruction=ACCAZA_AI_ANALYSIS_INSTRUCTION;
   const messages=[{role:"system",content:instruction},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:`QUESTION: ${question}\n\nFACT PACK:\n${JSON.stringify(facts)}`}],{response,body}=await accazaAiFetchJson("DeepSeek","https://api.deepseek.com/chat/completions",{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${key}`},body:JSON.stringify({model:"deepseek-flash",messages,temperature:0.15,max_tokens:900})},timeoutMs);
-  if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,"DeepSeek fallback could not answer right now."));return accazaAiAnswer(body&&body.choices&&body.choices[0]&&body.choices[0].message&&body.choices[0].message.content);
+  if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,"DeepSeek fallback could not answer right now."));return accazaAiProseAnswer(body&&body.choices&&body.choices[0]&&body.choices[0].message&&body.choices[0].message.content);
 }
 async function askDeepSeekGeneralChat(question,history,timeoutMs){
   const key=DEEPSEEK_API_KEY.value();if(!key)throw new HttpsError("failed-precondition","Gemini is unavailable and DeepSeek fallback is not configured. Set the DEEPSEEK_API_KEY Firebase secret.");
@@ -7228,8 +7247,8 @@ async function askOllama(messages,temperature,format,timeoutMs){
   if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,"Qwen fallback could not answer right now."));const content=body&&body.message&&body.message.content;return(format||accazaAiAnswer)(body&&body.done_reason==="length"?accazaAiTrimToSentence(content):content);
 }
 async function askOllamaAccazaAi(question,facts,history,timeoutMs){
-  const instruction="You are Accaza AI for Accaza Coffee House. Answer only about Accaza operations, POS, inventory, recipes and Finance Books. Use only the FACT PACK. Do not invent figures. For business analysis, interpret the supplied historical Finance Books facts and give prioritized, practical recommendations. Clearly separate observed facts, inferences and recommendations. Never present accounting amounts as cash flow. You are read-only: never say that you posted, changed or approved a transaction. Keep the answer concise and cite the supplied source paths.";
-  return askOllama([{role:"system",content:instruction},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:`QUESTION: ${question}\n\nFACT PACK:\n${JSON.stringify(facts)}`}],0.15,null,timeoutMs);
+  const instruction=ACCAZA_AI_ANALYSIS_INSTRUCTION;
+  return askOllama([{role:"system",content:instruction},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:`QUESTION: ${question}\n\nFACT PACK:\n${JSON.stringify(facts)}`}],0.15,accazaAiProseAnswer,timeoutMs);
 }
 async function askOllamaGeneralChat(question,history,timeoutMs){
   const instruction=ACCAZA_AI_GENERAL_CHAT_INSTRUCTION;
@@ -7244,11 +7263,11 @@ async function askAshnaGeneralChat(question,history,timeoutMs){
 }
 async function askAshnaAccazaAi(question,facts,history,timeoutMs){
   const key=accazaAiOllamaHeaderValue(ASHNA_API_KEY.value());if(!key)throw new HttpsError("failed-precondition","The Ashna backup is not configured. Set the ASHNA_API_KEY Firebase secret.");
-  const instruction="You are Accaza AI for Accaza Coffee House. Answer only about Accaza operations, POS, inventory, recipes and Finance Books. Use only the FACT PACK. Do not invent figures. For business analysis, interpret the supplied historical Finance Books facts and give prioritized, practical recommendations. Clearly separate observed facts, inferences and recommendations. Never present accounting amounts as cash flow. You are read-only: never say that you posted, changed or approved a transaction. Keep the answer concise and cite the supplied source paths.";
+  const instruction=ACCAZA_AI_ANALYSIS_INSTRUCTION;
   const messages=[{role:"system",content:instruction},...accazaAiHistory(history).map(row=>({role:row.role==="model"?"assistant":"user",content:row.text})),{role:"user",content:`QUESTION: ${question}\n\nFACT PACK:\n${JSON.stringify(facts)}`}];
   const {response,body}=await accazaAiFetchJson("Ashna","https://api.ashna.ai/v1/api/chat/completions",{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${key}`},body:JSON.stringify({model:ACCAZA_AI_ASHNA_MODEL,messages,temperature:0.15,max_tokens:900,stream:false})},timeoutMs);
   if(!response.ok)throw accazaAiProviderFailure(accazaAiProviderMessage(body,"Ashna backup could not answer right now."));
-  return accazaAiAnswer(body&&body.choices&&body.choices[0]&&body.choices[0].message&&body.choices[0].message.content);
+  return accazaAiProseAnswer(body&&body.choices&&body.choices[0]&&body.choices[0].message&&body.choices[0].message.content);
 }
 // Provider order, both modes: Gemini -> DeepSeek -> Qwen (own PC) -> Ashna. Ashna keeps a
 // reserved slice of the budget so a slow Qwen reply cannot use up the last provider's turn.
