@@ -42,6 +42,7 @@ const ProductionValidation = require("./lib/production-validation");
 const AssuranceControls = require("./lib/assurance-controls");
 const OrderRecords = require("./lib/order-records");
 const RetryGuard = require("./lib/retry-guard");
+const DeadLetterResolution = require("./lib/dead-letter-resolution");
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 const DEEPSEEK_API_KEY = defineSecret("DEEPSEEK_API_KEY");
 const OLLAMA_ACCESS_CLIENT_ID = defineSecret("OLLAMA_ACCESS_CLIENT_ID");

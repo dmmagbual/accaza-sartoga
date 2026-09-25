@@ -346,8 +346,86 @@ async function scanOperationalExceptions(db, now) {
     if (!booksMonthlyNetMetaSnap.exists()) booksMonthlyNet = await rebuildBooksMonthlyNet(db, (/* download-ok: fallback monthly totals have never been built */await db.ref("/books/journal").get()).val() || {});
     const orders = ordersSnap.val() || {},orderIds=Object.keys(orders).slice(0,100),financialPairs=await Promise.all(orderIds.map(async(id)=>{const snap=await db.ref(`/financialMovements/sale_${id}`).get();return[id,snap.exists()?snap.val():null];}));
     const financialMovements = {},inventoryMovementEvidence={};financialPairs.forEach(([id, value]) => {if (value) financialMovements[`sale_${id}`] = value;});Object.values(inventoryMovementSnap.val()||{}).forEach(m=>{if(m&&m.sourceType==="order"&&m.sourceId)inventoryMovementEvidence[m.sourceId]=true;});const telemetry = {};days.forEach((day, i) => {telemetry[day] = telemetrySnaps[i].val() || {};});
-    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, deadLetters: deadLetterSnap.val() || {}, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}, uncostedSales: uncostedSnap.val() || {}, shiftCloseFollowUps: closeFollowUpSnap.val() || {}, aiProviderHealth: {[days[0]]: aiHealthTodaySnap.val(), [days[1]]: aiHealthYesterdaySnap.val()}}, now);
+    const deadLetters = deadLetterSnap.val() || {};
+    await verifyOpenDeadLetters(db, deadLetters, now);
+    return OperationalExceptions.buildOperationalExceptions({activeOrders: activeSnap.val() || {}, orders, offlinePosSync: offlineSnap.val() || {}, cashCustody: custodySnap.val() || {}, financialMovements,inventoryMovementEvidence, telemetry, booksMonthlyNet, payMethods: posSettingsSnap.val() || [], cfAccounts: cfAccountsSnap.val() || {}, deadLetters, posSyncAlerts: posSyncAlertSnap.val() || {}, pendingShiftHandovers: pendingHandoverSnap.val() || {}, uncostedSales: uncostedSnap.val() || {}, shiftCloseFollowUps: closeFollowUpSnap.val() || {}, aiProviderHealth: {[days[0]]: aiHealthTodaySnap.val(), [days[1]]: aiHealthYesterdaySnap.val()}}, now);
 }
+
+
+// Background-task dead letters close only on evidence (25 Sep 2026). The health scan
+// closes one when its linked record proves the work is now complete; a manager can
+// close one with a written note, but never while its linked record is still incomplete.
+// See functions/lib/dead-letter-resolution.js.
+async function readDeadLetterProbe(db, row) {
+  const target = DeadLetterResolution.probeFor(row);
+  if (!target) return null;
+  const read = async (root) => {
+    const values = await Promise.all(target.probe.fields.map((field) => db.ref(`/${root}/${target.id}/${field}`).get().then((snap) => snap.val())));
+    const out = {};target.probe.fields.forEach((field, i) => {out[field] = values[i];});
+    return out;
+  };
+  const live = await read("orders");
+  return {live, archived: Object.keys(live).some((key) => live[key] !== null) ? null : await read("archivedOrders")};
+}
+
+async function closeDeadLetter(db, id, fields, actor, details) {
+  // Cold cache: the first pass sees null; returning null makes the server hand back the real record.
+  const result = await db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}/${id}`).transaction((current) => current === null ? null : DeadLetterResolution.closeIfOpen(current, fields), undefined, false);
+  const after = result.snapshot && result.snapshot.val();
+  if (!result.committed || !after || after.status !== "resolved" || Number(after.resolvedAt) !== Number(fields.resolvedAt) || after.resolvedBy !== fields.resolvedBy) return false;
+  const at = Number(fields.resolvedAt) || Date.now();
+  await db.ref(`/operationalAudit/${at}_dead_letter_${id}`).set(operationalAuditRecord(fields.resolution === "manual" ? "resolve_background_failure" : "verify_background_failure", "functionDeadLetter", id, actor, details));
+  return true;
+}
+
+async function verifyOpenDeadLetters(db, deadLetters, now) {
+  const windowMs = OperationalExceptions.DEAD_LETTER_WINDOW_MS;
+  const candidates = Object.keys(deadLetters || {}).filter((id) => {
+    const row = deadLetters[id] || {}, at = Number(row.abandonedAt || 0);
+    return row.status === "open" && at && now - at <= windowMs && DeadLetterResolution.probeFor(row);
+  }).slice(0, DeadLetterResolution.MAX_VERIFY_PER_SCAN);
+  await Promise.all(candidates.map(async (id) => {
+    const row = deadLetters[id];
+    try {
+      const check = DeadLetterResolution.evaluate(row, await readDeadLetterProbe(db, row));
+      if (check.state !== "complete") return;
+      const fields = DeadLetterResolution.resolutionFields({method: "verified", note: check.text, evidence: {recordId: check.recordId, state: check.state, checkedAt: now}, now});
+      if (await closeDeadLetter(db, id, fields, {uid: "server", role: "server"}, {function: row.function, recordId: check.recordId, note: check.text})) deadLetters[id] = Object.assign({}, row, fields);
+    } catch (error) {
+      // A failed check leaves the card open; it never breaks the health scan.
+      logger.warn("Dead letter verification skipped", {deadLetter: id, error: String(error && error.message || error)});
+    }
+  }));
+}
+
+async function dropFromCachedOperationalScan(db, id) {
+  await db.ref(OPERATIONAL_EXCEPTION_CACHE_PATH).transaction((current) => {
+    if (!current || !current.result) return current;
+    const result = DeadLetterResolution.withoutException(current.result, id);
+    return result === current.result ? undefined : Object.assign({}, current, {result});
+  }, undefined, false);
+}
+
+exports.resolveBackgroundFailure = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalUser(db, request);
+    if (!["owner", "superadmin", "admin", "manager"].includes(actor.role)) throw new HttpsError("permission-denied", "Only management accounts can close a background failure.");
+    const data = request.data || {}, id = String(data.deadLetterId || "");
+    if (!/^[a-f0-9]{40}$/.test(id)) throw new HttpsError("invalid-argument", "Background failure ID is invalid.");
+    const note = DeadLetterResolution.cleanNote(data.note);
+    if (!note.ok) throw new HttpsError("invalid-argument", note.message);
+    const row = (await db.ref(`/${RetryGuard.DEAD_LETTER_ROOT}/${id}`).get()).val();
+    if (!row) throw new HttpsError("not-found", "This background failure no longer exists.");
+    if (row.status !== "open") {await dropFromCachedOperationalScan(db, id);return {deadLetterId: id, duplicate: true, resolution: row.resolution || null};}
+    const check = DeadLetterResolution.evaluate(row, await readDeadLetterProbe(db, row));
+    if (check.state === "incomplete") throw new HttpsError("failed-precondition", check.text);
+    const now = Date.now(), fields = DeadLetterResolution.resolutionFields({method: "manual", note: note.text, actor, evidence: {recordId: check.recordId || null, state: check.state, checkedAt: now}, now});
+    const closed = await closeDeadLetter(db, id, fields, actor, {function: row.function, recordId: check.recordId || null, check: check.state, note: note.text});
+    await dropFromCachedOperationalScan(db, id);
+    return {deadLetterId: id, duplicate: !closed, check: check.state};
+  },
+);
 
 // Phase 16: bounded, read-only production certification snapshot. It does not
 // certify the release or mutate operational, inventory, or accounting data.
