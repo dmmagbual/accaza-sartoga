@@ -222,3 +222,7 @@ body[data-admin-workspace="dailyreport"] .dr-summary{margin:0 0 1rem;padding:1re
 .pz-tbl tr.register-total td{font-weight:800!important;color:#2f2823!important;border-top:2px solid #8b735d!important;background:#eee6da!important}
 @media(max-width:900px){.dr-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:520px){.dr-summary-head{align-items:flex-start;flex-direction:column}.dr-summary-grid{grid-template-columns:1fr}.dr-summary-item.primary{grid-column:auto}}
+/* Active Orders channel identity — same palette as POS Shift Orders (pos-workflow.css) */
+.order-admin-card{--order-channel:#7a604d}.order-admin-card.order-channel-online{--order-channel:#2f6690}.order-admin-card.order-channel-grabfood{--order-channel:#1e8e4d}.order-admin-card.order-channel-foodpanda{--order-channel:#d7195e}
+.order-channel-tag{display:inline-block;margin-right:.35rem;padding:.2rem .42rem;border-radius:4px;background:var(--order-channel,#7a604d);color:#fff;font-family:inherit;font-size:.6rem;font-weight:800;letter-spacing:.04em;line-height:1.2;text-transform:uppercase;vertical-align:middle}
+body[data-admin-workspace="orders"] .order-admin-card[data-order-channel]{border-left-color:var(--order-channel)!important}
