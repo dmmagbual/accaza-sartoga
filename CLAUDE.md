@@ -13,6 +13,14 @@ Danilo prefers concise, high-signal communication, explicit assumptions, exact d
 
 After every completed and verified Accaza code or configuration change, automatically commit only the current task's files, push the working branch, and create a pull request if no open PR exists. If the branch already has an open PR, verify that the new commit appears there. Every final handoff must also include one copy-ready PowerShell block beginning with the exact project-folder command and containing the exact task-specific verification, staging, commit, push, PR, deployment, or refresh commands that apply; do not use placeholders when the real values are known. Never stage unrelated workspace changes, never merge into `main` without an explicit request, and report the exact local, branch, PR, merge, and deployment state.
 
+## Local project folder first
+
+The authoritative working copy is Danilo's local project folder: `C:\AKALIKO\DMM\PERSONAL\CLAUDE\Projects\Accaza Coffee Shop`. Make every edit there first, then push to GitHub, so that folder always holds the latest code.
+
+- Before editing, run `git switch main` and `git pull origin main` in that folder, then create or switch to the task branch.
+- A session that cannot reach that folder (for example, a cloud container) must say so before editing. It should recommend continuing in a session on Danilo's computer (the Claude Desktop app, or `claude remote-control` in that folder). It must not quietly edit a separate copy.
+- The folder also holds private backups, pricing and costing files, pictures and video. Stage only the current task's files; never use `git add -A` or `git add .`.
+
 For every investigation or correction, work top to bottom and resolve the whole issue in one pass. Trace the authoritative source data through operational records, inventory/cash custody, subledgers, Finance Books/General Ledger, reports, corrections, reversals, audit history, migration/backfill, permissions, and idempotency before presenting a solution. Do not spend tokens on piecemeal guesses, repeated partial patches, or status checks the user did not request.
 
 ## Permanent decision safeguards
