@@ -45,6 +45,7 @@
       </ul>
     </li>
     <li><a href="index.html#contact">Contact</a></li>
+    <li><a class="nav-cta order-availability-checking" data-order-availability href="index.html#order">Order Now</a></li>
   </ul>
   <button class="hamburger" id="hamburgerBtn" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
 </nav>
@@ -59,29 +60,50 @@
       <p style="color:var(--tm);line-height:1.9;font-size:1rem;margin-bottom:1.25rem;">Nestled in the heart of Dasmariñas City, Accaza Coffee House sources the finest beans, roasts with care, and brews with passion. From the roadside near SM Dasmariñas you might not expect it — but step inside and you'll find a surprisingly spacious, serene space that feels worlds away from the bustle outside.</p>
       <p style="color:var(--tm);line-height:1.9;font-size:1rem;">We built Accaza to be a productive sanctuary — a place where students, professionals and friends can focus, study, work, or simply slow down over a well-crafted cup. Every drink, from our signature Sea Salt Caramel series to a classic Spanish Latte, is made with genuine care.</p>
     </div>
+    <section class="purpose-section reveal" aria-labelledby="purposeTitle">
+      <div class="purpose-intro">
+        <p class="section-label">Our Purpose</p>
+        <h2 id="purposeTitle">What guides every cup and every welcome</h2>
+      </div>
+      <div class="purpose-pair">
+        <article class="purpose-panel purpose-panel-mission">
+          <span class="purpose-mark" aria-hidden="true">M</span>
+          <div>
+            <h3>Our Mission</h3>
+            <p>To serve thoughtfully crafted coffee, drinks, and pastries in a warm and spacious environment where every guest feels welcome to connect, focus, and slow down—supported by genuine service, consistent quality, and care in every cup.</p>
+          </div>
+        </article>
+        <article class="purpose-panel purpose-panel-vision">
+          <span class="purpose-mark" aria-hidden="true">V</span>
+          <div>
+            <h3>Our Vision</h3>
+            <p>To become Dasmariñas’ most trusted neighborhood coffee house—known for memorable flavors, welcoming spaces, and a community that chooses Accaza as its everyday place to meet, work, and recharge.</p>
+          </div>
+        </article>
+      </div>
+    </section>
     <div class="about-values reveal" style="max-width:760px;margin:2.5rem auto 0;">
       <div class="value-card"><h4>Finest Beans</h4><p>Carefully sourced and brewed for bold-to-smooth flavor in every cup.</p></div>
       <div class="value-card"><h4>Warm Service</h4><p>A team that makes every guest feel genuinely valued and welcome.</p></div>
       <div class="value-card"><h4>Calm, Spacious Space</h4><p>A serene atmosphere that's rare among today's cramped cafes.</p></div>
       <div class="value-card"><h4>Crafted With Passion</h4><p>Drinks and pastries made fresh daily with real attention to detail.</p></div>
     </div>
-    <div class="visual-stats reveal" style="max-width:620px;margin:2.5rem auto 0;">
-      <div class="stat-box"><span class="num">48+</span><span class="lbl">Drinks &amp; Pastries</span></div>
-      <div class="stat-box"><span class="num">7</span><span class="lbl">Menu Categories</span></div>
-      <div class="stat-box"><span class="num">3–12</span><span class="lbl">Open PM Daily</span></div>
+    <div class="about-hours reveal" aria-label="Business hours">
+      <span>Open daily</span>
+      <strong>6:00 AM – 12:00 Midnight</strong>
     </div>
   </div>
 </main>
 <section class="order-cta-band">
   <h3>Come for the coffee, stay for the calm</h3>
   <p>Explore our full menu or reserve a table for your next study or work session.</p>
-  <a class="btn-light" href="menu.html">View Menu →</a>
+  <a class="btn-light" href="index.html#menu">View Live Menu →</a>
 </section>
 <footer class="footer">
   <div class="footer-inner">
     <div class="footer-logo">Accaza Coffee House</div>
     <p>Saratoga Ave, La Mediterranea, Dasmariñas, Cavite · Open daily 6AM–12MN</p>
-    <div class="footer-links"><a href="index.html">Home</a><a href="menu.html">Menu</a><a href="reservations.html">Reservations</a><a href="about.html">About</a><a href="contact.html">Contact</a><a href="index.html#order">Order</a></div>
+    <div class="footer-links"><a href="index.html">Home</a><a href="index.html#menu">Menu</a><a href="reservations.html">Reservations</a><a href="about.html">About</a><a href="contact.html">Contact</a><a href="index.html#order">Order</a></div>
     <p class="footer-copy">&copy; <span id="yr">2026</span> Accaza Coffee House. All rights reserved.</p>
   </div>
 </footer>
@@ -97,5 +119,6 @@
   var yr=document.getElementById('yr');if(yr)yr.textContent=new Date().getFullYear();
 })();
 </script>
+<script type="module" src="assets/js/customer/order-availability.mjs"></script>
 </body>
 </html>

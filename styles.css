@@ -520,6 +520,15 @@ nav .nav-links a[aria-current="page"]{color:#fff;border-bottom:2px solid #c9a36a
 .nav-logo{cursor:pointer;text-decoration:none;}
 .nav-cta{background:var(--bl);color:#fff !important;padding:0.4rem 1rem;border-radius:999px;}
 .nav-cta:hover{background:#b8784a;color:#fff !important;}
+.nav-cta.order-availability-checking{background:#8b7654;animation:orderAvailabilityChecking 1.2s ease-in-out infinite;}
+.nav-cta.order-availability-open{background:#148542;animation:orderAvailabilityOpen 1.15s ease-in-out infinite;}
+.nav-cta.order-availability-closed{background:#b8322b;animation:orderAvailabilityClosed 1.15s ease-in-out infinite;}
+.nav-cta.order-availability-open:hover{background:#0f6d35;}
+.nav-cta.order-availability-closed:hover{background:#962720;}
+@keyframes orderAvailabilityChecking{0%,100%{box-shadow:0 0 0 0 rgba(201,163,106,.15);}50%{box-shadow:0 0 0 6px rgba(201,163,106,.28);}}
+@keyframes orderAvailabilityOpen{0%,100%{box-shadow:0 0 0 0 rgba(32,240,120,.08);}50%{box-shadow:0 0 0 7px rgba(32,240,120,.38);}}
+@keyframes orderAvailabilityClosed{0%,100%{box-shadow:0 0 0 0 rgba(255,48,48,.08);}50%{box-shadow:0 0 0 7px rgba(255,48,48,.35);}}
+@media(prefers-reduced-motion:reduce){.nav-cta.order-availability-checking,.nav-cta.order-availability-open,.nav-cta.order-availability-closed{animation:none;}}
 .nav-links a.active{color:#fff;}
 .page-hero{background:linear-gradient(rgba(15,7,3,0.6),rgba(15,7,3,0.72)),var(--bd);padding:8rem 2rem 4rem;text-align:center;color:#fff;}
 .page-hero .section-label{color:#c9a36a;}
@@ -545,6 +554,28 @@ nav .nav-links a[aria-current="page"]{color:#fff;border-bottom:2px solid #c9a36a
 .info-card h3{font-family:'Playfair Display',serif;color:var(--bd);font-size:1.1rem;margin:0.5rem 0 0.4rem;}
 .info-card p{color:var(--tm);font-size:0.9rem;line-height:1.6;}
 .info-card a{color:var(--bl);}
+
+/* About purpose: an open-book split grounded in Accaza's cream, green and brass palette. */
+.purpose-section{max-width:940px;margin:4rem auto 0;}
+.purpose-intro{text-align:center;max-width:620px;margin:0 auto 1.75rem;}
+.purpose-intro h2{font-family:'Playfair Display',serif;font-size:clamp(1.8rem,4vw,2.55rem);line-height:1.2;color:var(--bd);}
+.purpose-pair{display:grid;grid-template-columns:1fr 1fr;box-shadow:0 22px 55px rgba(25,36,27,.16);}
+.purpose-panel{position:relative;min-height:340px;padding:3rem 2.7rem 2.7rem;display:flex;align-items:flex-end;overflow:hidden;}
+.purpose-panel-mission{background:#f3ede3;color:var(--bd);border-top:5px solid var(--bl);}
+.purpose-panel-vision{background:var(--bd);color:var(--cr);border-top:5px solid #c9a36a;}
+.purpose-panel::after{content:'';position:absolute;inset:1.4rem;pointer-events:none;border:1px solid currentColor;opacity:.13;}
+.purpose-mark{position:absolute;top:-2.5rem;right:1.25rem;font-family:'Playfair Display',serif;font-size:12rem;line-height:1;color:currentColor;opacity:.055;}
+.purpose-panel h3{position:relative;font-family:'Playfair Display',serif;font-size:1.65rem;margin-bottom:.85rem;}
+.purpose-panel p{position:relative;font-size:.94rem;line-height:1.85;margin:0;max-width:36rem;}
+.purpose-panel-vision p{color:rgba(224,212,198,.78);}
+.about-hours{max-width:760px;margin:2.5rem auto 0;padding:1.25rem 1.5rem;border-top:1px solid var(--bl);border-bottom:1px solid var(--bl);display:flex;align-items:baseline;justify-content:center;gap:1rem;text-align:center;color:var(--bd);}
+.about-hours span{font-size:.76rem;letter-spacing:.15em;text-transform:uppercase;color:var(--tm);}
+.about-hours strong{font-family:'Playfair Display',serif;font-size:clamp(1.15rem,3vw,1.45rem);font-weight:600;}
+@media(max-width:720px){
+  .purpose-pair{grid-template-columns:1fr;}
+  .purpose-panel{min-height:300px;padding:2.5rem 2rem 2.2rem;}
+  .about-hours{align-items:center;flex-direction:column;gap:.4rem;}
+}
 
 
 /* Menu tab filtering */

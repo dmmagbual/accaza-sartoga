@@ -14,8 +14,8 @@
   "builds": {
     "admin": 596,
     "books": 129,
-    "customer": 76,
-    "serviceWorkerCache": 575
+    "customer": 77,
+    "serviceWorkerCache": 576
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
@@ -65,6 +65,7 @@
     "assets/js/books/suspense-advance.mjs",
     "assets/js/books/accounting-periods.mjs",
     "assets/js/customer/core.mjs",
+    "assets/js/customer/order-availability.mjs",
     "src/customer/core/00-firebase-auth.mjs",
     "src/customer/core/01-push-notifications.mjs",
     "src/customer/core/02-catalog-model.mjs",
