@@ -13,6 +13,7 @@ const customerHtml=fs.readFileSync(path.join(root,'index.html'),'utf8');
 const aboutHtml=fs.readFileSync(path.join(root,'about.html'),'utf8');
 const legacyMenuHtml=fs.readFileSync(path.join(root,'menu.html'),'utf8');
 const staticStyles=fs.readFileSync(path.join(root,'styles.css'),'utf8');
+const customerStyles=fs.readFileSync(path.join(root,'assets','css','customer','site.css'),'utf8');
 const orderAvailability=fs.readFileSync(path.join(root,'assets','js','customer','order-availability.mjs'),'utf8');
 const customerHelpers=fs.readFileSync(path.join(root,'src','customer','core','03-state-helpers.mjs'),'utf8');
 const catalogAdmin=fs.readFileSync(path.join(root,'assets','js','admin','catalog-admin.mjs'),'utf8');
@@ -62,6 +63,8 @@ for(const icon of manifest.icons||[])if(!fs.existsSync(path.join(root,icon.src.r
 for(const marker of ["serviceWorker.register('/sw.js',{scope:'/'})",'beforeinstallprompt','appinstalled','accaza:update-ready'])if(!pwa.includes(marker))throw new Error(`Customer PWA lifecycle marker missing: ${marker}`);
 for(const asset of ['/index.html','/manifest.json','/assets/js/customer/core.mjs','/assets/js/customer/order-tracker.js','/assets/js/customer/navigation.js','/assets/js/customer/ui.js','/assets/js/customer/packages.js'])if(!sw.includes(`'${asset}'`))throw new Error(`Customer offline shell asset missing: ${asset}`);
 if(!sw.includes(`const CACHE='accaza-v${release.builds.serviceWorkerCache}'`))throw new Error('Customer PWA cache version differs from the release manifest');
+if(!/\.fb-sync\{[^}]*left:18px;[^}]*bottom:84px;/.test(customerStyles)||/\.fb-sync\{[^}]*(?:top:|right:)/.test(customerStyles))throw new Error('Customer Firebase status must stay at the bottom-left');
+if(!customerHtml.includes('<div class="chat-avatar"><img src="/favicon_192x192.png" alt="Accaza Coffee logo"/></div>'))throw new Error('Customer chat header must use the Accaza logo');
 if((customerHtml.match(/>Click for QR code<\/button>/g)||[]).length!==4)throw new Error('GCash and BDO QR controls must require an explicit click in both payment views');
 if(/<img[^>]+src="assets\/img\/payment\/(?:gcash|bdo)-qr\.jpg"/i.test(customerHtml))throw new Error('Payment QR images must not have an eager browser src');
 for(const marker of ["closest('[data-payment-qr]')","button.textContent='Loading QR code…'","image.src=src","button.replaceWith(image)","button.textContent='Click for QR code'"])if(!source.includes(marker))throw new Error(`On-demand payment QR behavior missing: ${marker}`);
