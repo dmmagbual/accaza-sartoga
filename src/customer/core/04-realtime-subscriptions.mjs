@@ -186,7 +186,7 @@ window.ackNewOrders=function(){
   var ob=document.getElementById('tabBtnOrders');if(ob)ob.click();
   var ad=document.getElementById('adminDash');if(ad)ad.scrollIntoView({behavior:'smooth'});
 };
-// ===== CUSTOMER 'ORDER READY' IN-APP ALERT (free; works while the app is open) =====
+// CUSTOMER 'ORDER READY' IN-APP ALERT (free; works while the app is open)
 var _readyAlerted;try{_readyAlerted=new Set(JSON.parse(localStorage.getItem('accaza_ready_alerted')||'[]'));}catch(e){_readyAlerted=new Set();}
 var _ordersSeeded=false,_readyTimer=null,_readyStop=null;
 function _saveReadyAlerted(){try{localStorage.setItem('accaza_ready_alerted',JSON.stringify(Array.from(_readyAlerted)));}catch(e){}}

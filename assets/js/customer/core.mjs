@@ -73,7 +73,7 @@ onAuthStateChanged(auth,function(u){
   if(typeof renderPublicOrderStatus==='function')renderPublicOrderStatus();
 });
 
-// ===================== WEB PUSH (FCM) =====================
+// WEB PUSH (FCM)
 // Paste your Web Push certificate key here (Firebase Console > Project settings > Cloud Messaging > Web Push certificates).
 const VAPID_KEY="BIIVf-1RYIQger0yqeYlyV6-tQpH8YfytIgQK6-7IJg87HVITcNkYv4RYcKjyCmJBJKR1EXjJqRuiHzkFJjSvlE";
 function _pushToastWire(messaging){onMessage(messaging,function(payload){var d=(payload&&(payload.data||payload.notification))||{};try{if(navigator.vibrate)navigator.vibrate([400,150,400,150,400,150,400]);}catch(e){}try{playReadyChime();}catch(e){}try{navigator.serviceWorker.ready.then(function(reg){reg.showNotification(d.title||'Accaza Coffee House',{body:d.body||'',icon:'/favicon_192x192.png',badge:'/favicon_192x192.png',vibrate:[400,150,400,150,400,150,400],requireInteraction:true,renotify:true,tag:'accaza-order',data:{link:(d.link||'/')}});});}catch(e){}try{(window.accazaToast||function(){})((d.title?d.title+': ':'')+(d.body||'New notification'),'ok');}catch(e){}});}
@@ -139,7 +139,7 @@ const SHOT_CATS=['coffee','frappe'];
 const SYRUP_CATS=['coffee','noncaf','frappe','nonfrappe'];
 const TOPPING_CATS=['coffee','noncaf','frappe','nonfrappe','soda'];
 
-// ── OPTION GROUPS (data-driven item variations) ─────────────
+// ── OPTION GROUPS (data-driven item variations)
 const DEFAULT_OPTION_GROUPS={
   og_temp:{name:'Temperature',type:'single',required:true,order:0,choices:[{label:'Hot',price:0},{label:'Iced',price:0}]},
   og_sweet:{name:'Sweetness',type:'single',required:true,order:1,choices:[{label:'Not Sweet',price:0},{label:'Less Sweet',price:0},{label:'Regular',price:0}]},
@@ -171,6 +171,8 @@ function syncPlaceOrderButton(){
   button.disabled=!open;button.style.opacity='';button.setAttribute('aria-disabled',open?'false':'true');
   button.textContent=open?'Place Order':(customerAuthProblem?'Connection unavailable':(publicOrdersOpen===null||customerLiveConnected!==true||!auth.currentUser?'Checking order availability…':'Online Orders Closed'));
 }
+// Nav "Order Now" mirrors the status light: CLOSED when orders are closed or offline.
+function syncOrderNowButtons(st,lbl){document.querySelectorAll('[data-order-availability]').forEach(function(b){b.classList.remove('order-availability-open','order-availability-closed','order-availability-checking');b.classList.add('order-availability-'+st);b.textContent=st=='open'?'Order Now':st=='closed'?'CLOSED':'Checking';b.title=lbl;b.setAttribute('aria-label',lbl);});}
 function renderPublicOrderStatus(){
   var root=document.getElementById('orderServiceStatus'),headline=document.getElementById('orderServiceHeadline'),note=document.getElementById('orderServiceNote');
   if(!root||!headline||!note)return;
@@ -182,6 +184,7 @@ function renderPublicOrderStatus(){
   note.textContent=offline?'Offline':(open?'Order now — we’re ready!':(customerAuthProblem?'We could not connect securely. Check your internet, then retry.':(checking?'Connecting to the shop…':'We’re not accepting orders right now.')));
   if(retry)retry.style.display=customerAuthProblem?'block':'none';
   root.setAttribute('aria-label',headline.textContent+'. '+note.textContent);
+  syncOrderNowButtons(open?'open':checking?'checking':'closed',root.getAttribute('aria-label'));
   syncPlaceOrderButton();
 }
 onValue(publicOrderStatusRef,function(snap){publicOrdersOpen=!!(snap.val()&&snap.val().acceptingOrders===true);renderPublicOrderStatus();},function(){publicOrdersOpen=false;renderPublicOrderStatus();});
@@ -437,7 +440,7 @@ window.ackNewOrders=function(){
   var ob=document.getElementById('tabBtnOrders');if(ob)ob.click();
   var ad=document.getElementById('adminDash');if(ad)ad.scrollIntoView({behavior:'smooth'});
 };
-// ===== CUSTOMER 'ORDER READY' IN-APP ALERT (free; works while the app is open) =====
+// CUSTOMER 'ORDER READY' IN-APP ALERT (free; works while the app is open)
 var _readyAlerted;try{_readyAlerted=new Set(JSON.parse(localStorage.getItem('accaza_ready_alerted')||'[]'));}catch(e){_readyAlerted=new Set();}
 var _ordersSeeded=false,_readyTimer=null,_readyStop=null;
 function _saveReadyAlerted(){try{localStorage.setItem('accaza_ready_alerted',JSON.stringify(Array.from(_readyAlerted)));}catch(e){}}
@@ -877,7 +880,7 @@ window.previewProof=async function(input){
 };
 window.removeProof=function(e){if(e&&e.stopPropagation)e.stopPropagation();paymentProofData='';paymentProofBusy=false;document.getElementById('paymentProof').value='';document.getElementById('proofImg').src='';document.getElementById('uploadPlaceholder').style.display='block';document.getElementById('uploadPreview').style.display='none';document.getElementById('uploadBox').style.borderColor='var(--cd)';};
 
-// ===================== APP CUSTOMER LOGIN + TRACKING =====================
+// APP CUSTOMER LOGIN + TRACKING
 let appCustomersMap={};
 function isAppMode(){return document.documentElement.classList.contains('app-mode')||window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;}
 function getAppUser(){try{return JSON.parse(localStorage.getItem('accaza_app_user')||'null');}catch(e){return null;}}
@@ -1106,7 +1109,7 @@ window.submitFeedback=async function(){
 };
 
 function escHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-// ── PUBLIC REVIEWS (dynamic) ────────────────────────────────
+// ── PUBLIC REVIEWS (dynamic)
 var _publicReviewsLoaded=false,_publicReviewsLoading=false;
 var DEFAULT_PUBLIC_REVIEWS={
   'rev_001':{name:'Maria Theresa & Quinn Isabella Margaux',stars:5,date:'June 2, 2026',text:'Accaza Coffee House is a hidden gem right along the roadside near SM Dasmariñas — easy to find whether you\'re commuting or driving. Inside, it\'s surprisingly spacious with a calm, serene atmosphere that\'s rare among today\'s cramped cafés.\n\nThe coffee is outstanding, with well-crafted flavors from bold to smooth. But what truly sets Accaza apart is how perfectly it serves both students and professionals — it\'s a productive sanctuary where you can focus, study, or work in peace.\n\nHighly recommended for anyone looking for great coffee and a place to get things done. ☕✨'},
@@ -1232,7 +1235,7 @@ if(archFrom)archFrom.value=new Date(nm.getFullYear(),nm.getMonth(),1).toISOStrin
 if(archTo)archTo.value=nm.toISOString().slice(0,10);
 // Trigger initial menu render after short delay for Firebase
 setTimeout(function(){if(Object.keys(menuItemsMap).length)renderMenuSection();},1000);
-// ── Gallery Lightbox ────────────────────────────────────────────────────────
+// ── Gallery Lightbox
 (function(){
   var GALLERY = ["https://i.postimg.cc/g0qrJsnX/6.jpg", "https://i.postimg.cc/TwtsR8Gd/image.png", "https://i.postimg.cc/5yPsM8BH/image.png", "https://i.postimg.cc/wMbQrgz3/image.png", "https://i.postimg.cc/BvGckmr5/image.png", "https://i.postimg.cc/sXJJz5YV/image.png", "https://i.postimg.cc/B6mT84jW/image.png", "https://i.postimg.cc/yxJZk9qq/image.png", "https://i.postimg.cc/CxpqxzcB/image.png", "https://i.postimg.cc/Pq2pyKTr/image.png", "https://i.postimg.cc/sxZMVrSZ/image.png"];
   var current = 0;
@@ -1261,7 +1264,7 @@ setTimeout(function(){if(Object.keys(menuItemsMap).length)renderMenuSection();},
     if (e.key === 'ArrowRight') shiftLightbox(1);
   });
 })();
-// ── Hamburger menu ──────────────────────────────────────────────────────────
+// ── Hamburger menu
 window.toggleNav = function() {
   var nl = document.querySelector('.nav-links');
   var hb = document.getElementById('hamburgerBtn');

@@ -25,7 +25,7 @@ const SHOT_CATS=['coffee','frappe'];
 const SYRUP_CATS=['coffee','noncaf','frappe','nonfrappe'];
 const TOPPING_CATS=['coffee','noncaf','frappe','nonfrappe','soda'];
 
-// ── OPTION GROUPS (data-driven item variations) ─────────────
+// ── OPTION GROUPS (data-driven item variations)
 const DEFAULT_OPTION_GROUPS={
   og_temp:{name:'Temperature',type:'single',required:true,order:0,choices:[{label:'Hot',price:0},{label:'Iced',price:0}]},
   og_sweet:{name:'Sweetness',type:'single',required:true,order:1,choices:[{label:'Not Sweet',price:0},{label:'Less Sweet',price:0},{label:'Regular',price:0}]},

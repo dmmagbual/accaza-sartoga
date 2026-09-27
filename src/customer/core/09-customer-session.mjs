@@ -1,5 +1,5 @@
 
-// ===================== APP CUSTOMER LOGIN + TRACKING =====================
+// APP CUSTOMER LOGIN + TRACKING
 let appCustomersMap={};
 function isAppMode(){return document.documentElement.classList.contains('app-mode')||window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;}
 function getAppUser(){try{return JSON.parse(localStorage.getItem('accaza_app_user')||'null');}catch(e){return null;}}

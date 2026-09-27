@@ -38,7 +38,7 @@ if(archFrom)archFrom.value=new Date(nm.getFullYear(),nm.getMonth(),1).toISOStrin
 if(archTo)archTo.value=nm.toISOString().slice(0,10);
 // Trigger initial menu render after short delay for Firebase
 setTimeout(function(){if(Object.keys(menuItemsMap).length)renderMenuSection();},1000);
-// ── Gallery Lightbox ────────────────────────────────────────────────────────
+// ── Gallery Lightbox
 (function(){
   var GALLERY = ["https://i.postimg.cc/g0qrJsnX/6.jpg", "https://i.postimg.cc/TwtsR8Gd/image.png", "https://i.postimg.cc/5yPsM8BH/image.png", "https://i.postimg.cc/wMbQrgz3/image.png", "https://i.postimg.cc/BvGckmr5/image.png", "https://i.postimg.cc/sXJJz5YV/image.png", "https://i.postimg.cc/B6mT84jW/image.png", "https://i.postimg.cc/yxJZk9qq/image.png", "https://i.postimg.cc/CxpqxzcB/image.png", "https://i.postimg.cc/Pq2pyKTr/image.png", "https://i.postimg.cc/sxZMVrSZ/image.png"];
   var current = 0;
@@ -67,7 +67,7 @@ setTimeout(function(){if(Object.keys(menuItemsMap).length)renderMenuSection();},
     if (e.key === 'ArrowRight') shiftLightbox(1);
   });
 })();
-// ── Hamburger menu ──────────────────────────────────────────────────────────
+// ── Hamburger menu
 window.toggleNav = function() {
   var nl = document.querySelector('.nav-links');
   var hb = document.getElementById('hamburgerBtn');
