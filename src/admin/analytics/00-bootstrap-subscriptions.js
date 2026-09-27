@@ -1,4 +1,5 @@
 import{reconcileInventoryBooks,journalBasisThrough,canPostOpeningBalance,canPostReconciliationAdjustment}from'./inventory-books-reconciliation.mjs?v=547';
+import{createOperatingYearWeekly}from'./weekly-sales.mjs?v=600';
 (function(){
 'use strict';
 var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={},receiptsMap={},posSettingsMap={},inventoryBooksJournal={},payoutCashAccounts={};
@@ -27,6 +28,7 @@ function peso0(n){n=Number(n)||0;return '₱'+Math.round(n).toLocaleString('en-P
 function pct(n){return (n>=0?'+':'')+(Math.round(n*10)/10)+'%';}
 function uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 function isTab(n){var el=document.getElementById('tab-'+n);return el&&el.style.display!=='none';}
+var operatingYearWeekly=createOperatingYearWeekly({businessDate:function(ts){return businessDate(ts);},read:function(payload){return A().readHistoricalSalesRollup(payload);},summarize:function(months,period){return A().summarizeHistoricalSales(months,period);},addLive:function(summary,orders,period,sales){return A().addLiveSales(summary,orders,period,sales);},liveOrders:function(){return Object.values(ordersMap);},salesAuthority:function(){return window.AccazaSales;},esc:esc,fmt:fmtD,peso:peso0,changed:function(){if(isTab('analytics'))renderAnalytics();}});
 
 var tries=0,iv=setInterval(function(){if(window.__accaza){clearInterval(iv);init();}else if(++tries>150)clearInterval(iv);},100);
 /* Orders + archivedOrders feed every finance tab below — re-render whichever is
@@ -62,6 +64,6 @@ function init(){
 }
 // extend the POS tab switcher to also render our tabs
 window.__accazaRegisterModule('analytics',function(name){ if(name==='analytics')renderAnalytics(); if(name==='payouts')renderPayouts(); if(name==='stockvalue')renderStockValue(); if(name==='dailyreport')renderDailyReport(); });
-window.addEventListener('accaza-historical-sales-change',function(){compactAnalytics={key:'',loading:false,error:'',current:null,previous:null,request:compactAnalytics.request+1};if(isTab('analytics'))renderAnalytics();});
+window.addEventListener('accaza-historical-sales-change',function(){compactAnalytics={key:'',loading:false,error:'',current:null,previous:null,request:compactAnalytics.request+1};operatingYearWeekly.reset();if(isTab('analytics'))renderAnalytics();});
 
 // Reporting is read-only: missing historical dates use the shared sales authority fallback.

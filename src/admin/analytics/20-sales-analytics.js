@@ -5,7 +5,9 @@ function renderAnalytics(){
   if(window.AccazaAdminPeriods)window.AccazaAdminPeriods.bind({scope:'sales',fromId:'analyticsPeriodFrom',toId:'analyticsPeriodTo',monthId:'analyticsPeriodMonth',applyId:'analyticsPeriodApply',labelId:'analyticsPeriodLabel'});
   sharedPeriod();
   if(compactAnalytics.months)refreshCompactAnalytics();
-  var compactBounds=rangeBounds(),compactFrom=compactBounds[0],compactTo=compactBounds[1];loadCompactAnalytics(compactFrom,compactTo);
+  operatingYearWeekly.refresh();
+  var compactBounds=rangeBounds(),compactFrom=compactBounds[0],compactTo=compactBounds[1],compactPeriod={startAt:compactFrom,endAt:compactTo-1};loadCompactAnalytics(compactFrom,compactTo);
+  if(!isCurrentMonthToDate(compactPeriod)||!compactAnalytics.loading)operatingYearWeekly.ensure();
   if(compactAnalytics.loading){root.innerHTML='<div class="az-note">Loading compact historical sales summary…</div>';return;}
   if(compactAnalytics.current){renderCompactAnalyticsV5(compactAnalytics.current,compactAnalytics.previous||{orders:0,net:0,cogs:0,days:{},payments:{},channels:{},items:{}});return;}
   if(compactAnalytics.error){root.innerHTML='<div class="az-note">Analytics summary unavailable: '+esc(compactAnalytics.error)+'</div>';return;}
