@@ -16,6 +16,16 @@ nav{position:fixed;top:0;width:100%;z-index:200;background:rgba(25,36,27,0.96);b
 .nav-links{display:flex;gap:1.5rem;list-style:none;flex-wrap:wrap;}
 .nav-links a{color:var(--cd);text-decoration:none;font-size:0.82rem;letter-spacing:0.08em;text-transform:uppercase;transition:color 0.2s;}
 .nav-links a:hover{color:#fff;}
+.nav-cta{background:var(--bl);color:#fff!important;padding:.4rem 1rem;border-radius:999px;}
+.nav-cta.order-availability-checking{background:#8b7654;animation:orderAvailabilityChecking 1.2s ease-in-out infinite;}
+.nav-cta.order-availability-open{background:#148542;animation:orderAvailabilityOpen 1.15s ease-in-out infinite;}
+.nav-cta.order-availability-closed{background:#b8322b;animation:orderAvailabilityClosed 1.15s ease-in-out infinite;}
+.order-service-status.is-open~.nav-links .nav-cta{background:#148542;animation:orderAvailabilityOpen 1.15s ease-in-out infinite;}
+.order-service-status.is-closed~.nav-links .nav-cta{background:#b8322b;animation:orderAvailabilityClosed 1.15s ease-in-out infinite;}
+@keyframes orderAvailabilityChecking{0%,100%{box-shadow:0 0 0 0 rgba(201,163,106,.15);}50%{box-shadow:0 0 0 6px rgba(201,163,106,.28);}}
+@keyframes orderAvailabilityOpen{0%,100%{box-shadow:0 0 0 0 rgba(32,240,120,.08);}50%{box-shadow:0 0 0 7px rgba(32,240,120,.38);}}
+@keyframes orderAvailabilityClosed{0%,100%{box-shadow:0 0 0 0 rgba(255,48,48,.08);}50%{box-shadow:0 0 0 7px rgba(255,48,48,.35);}}
+@media(prefers-reduced-motion:reduce){.nav-cta.order-availability-checking,.nav-cta.order-availability-open,.nav-cta.order-availability-closed,.order-service-status.is-open~.nav-links .nav-cta,.order-service-status.is-closed~.nav-links .nav-cta{animation:none;}}
 .hamburger{display:none;flex-direction:column;gap:5px;background:none;border:none;cursor:pointer;padding:4px;z-index:201;}
 .hamburger span{display:block;width:24px;height:2px;background:var(--cr);border-radius:2px;transition:all 0.3s;}
 .hamburger.open span:nth-child(1){transform:translateY(7px) rotate(45deg);}
