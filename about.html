@@ -32,13 +32,21 @@
 <nav>
   <a class="nav-logo" href="index.html">Accaza Coffee House</a>
   <ul class="nav-links">
-    <li><a href="index.html">Home</a></li><li><a href="menu.html">Menu</a></li><li><a href="reservations.html">Reservations</a></li><li><a href="about.html" class="active">About</a></li><li><a href="contact.html">Contact</a></li>
-    <li><a class="nav-cta" href="index.html#order">Order Now</a></li>
-    <li id="navAvail" style="display:none;"><a href="index.html#availSection" style="color:#c9a36a;font-weight:500;">🔄 Availability</a></li>
-    <li id="navComments" style="display:none;"><a href="index.html#commentsSection" style="color:#c9a36a;font-weight:500;">📩 Comments</a></li>
-    <li id="navAdminPanel" style="display:none;"><a href="index.html#adminDash" id="navAdminPanelLink" style="color:#c9a36a;font-weight:600;">🔐 Admin Panel</a></li>
+    <li><a href="index.html#home">Home</a></li><li><a href="index.html#menu">Menu</a></li>
+    <li><a href="index.html#order">Order</a></li><li><a href="index.html#orderTracker">📋 Track Order</a></li>
+    <li><a href="index.html#reserve">Reserve</a></li>
+    <li class="nav-has-sub"><a href="about.html" class="active">About ▾</a>
+      <ul class="nav-sub">
+        <li><a href="about.html" aria-current="page">About Us</a></li>
+        <li><a href="index.html#reel">Reel</a></li>
+        <li><a href="index.html#reviews">Reviews</a></li>
+        <li><a href="index.html#feedback">Feedback</a></li>
+        <li><a href="index.html#gallery">Gallery</a></li>
+      </ul>
+    </li>
+    <li><a href="index.html#contact">Contact</a></li>
   </ul>
-  <button class="hamburger" id="hamburgerBtn" aria-label="Open menu"><span></span><span></span><span></span></button>
+  <button class="hamburger" id="hamburgerBtn" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
 </nav>
 <header class="page-hero"><div class="ph-inner">
   <p class="section-label">Our Story</p>
@@ -80,7 +88,7 @@
 <script>
 (function(){
   var ham=document.getElementById('hamburgerBtn'),links=document.querySelector('.nav-links');
-  if(ham&&links){ham.addEventListener('click',function(){links.classList.toggle('nav-open');ham.classList.toggle('open');});links.querySelectorAll('a').forEach(function(a){a.addEventListener('click',function(){links.classList.remove('nav-open');ham.classList.remove('open');});});}
+  if(ham&&links){ham.addEventListener('click',function(){links.classList.toggle('nav-open');ham.classList.toggle('open');ham.setAttribute('aria-expanded',links.classList.contains('nav-open'));});links.querySelectorAll('a').forEach(function(a){a.addEventListener('click',function(){links.classList.remove('nav-open');ham.classList.remove('open');ham.setAttribute('aria-expanded','false');});});}
   var nav=document.querySelector('nav');
   var tt=document.createElement('button');tt.id='toTop';tt.setAttribute('aria-label','Back to top');tt.innerHTML='&#8593;';tt.onclick=function(){window.scrollTo({top:0,behavior:'smooth'});};document.body.appendChild(tt);
   function onScroll(){var y=window.pageYOffset||document.documentElement.scrollTop||0;if(nav){if(y>40)nav.classList.add('nav-shrink');else nav.classList.remove('nav-shrink');}if(y>500)tt.classList.add('show');else tt.classList.remove('show');}
@@ -88,12 +96,6 @@
   if('IntersectionObserver' in window){var io=new IntersectionObserver(function(en){en.forEach(function(x){if(x.isIntersecting){x.target.classList.add('in');io.unobserve(x.target);}});},{threshold:0.08,rootMargin:'0px 0px -40px 0px'});document.querySelectorAll('.reveal').forEach(function(e){io.observe(e);});}
   var yr=document.getElementById('yr');if(yr)yr.textContent=new Date().getFullYear();
 })();
-</script>
-<script>
-(function(){try{var ss=JSON.parse(localStorage.getItem("accaza_admin_session")||"null");if(!ss||!ss.role)return;
-["navAvail","navComments","navAdminPanel"].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display="";});
-if(ss.role==="staff"){var a=document.getElementById("navAvail");if(a)a.style.display="none";var l=document.getElementById("navAdminPanelLink");if(l)l.textContent="🔐 Staff Panel";}
-}catch(e){}})();
 </script>
 </body>
 </html>

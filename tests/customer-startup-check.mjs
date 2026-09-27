@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -9,6 +10,8 @@ const sw=fs.readFileSync(path.join(root,'sw.js'),'utf8');
 const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.json'),'utf8'));
 const release=JSON.parse(fs.readFileSync(path.join(root,'release-manifest.json'),'utf8'));
 const customerHtml=fs.readFileSync(path.join(root,'index.html'),'utf8');
+const aboutHtml=fs.readFileSync(path.join(root,'about.html'),'utf8');
+const staticStyles=fs.readFileSync(path.join(root,'styles.css'),'utf8');
 const customerHelpers=fs.readFileSync(path.join(root,'src','customer','core','03-state-helpers.mjs'),'utf8');
 const catalogAdmin=fs.readFileSync(path.join(root,'assets','js','admin','catalog-admin.mjs'),'utf8');
 const posState=fs.readFileSync(path.join(root,'src','admin','pos','00-shared-state.js'),'utf8');
@@ -26,6 +29,14 @@ for(const marker of ['function customerMenuCats(){return getCats().filter(c=>c.s
 for(const marker of ['showInMenu:true','catShowInMenu_','Show in customer Menu, Online Ordering &amp; POS','{icon,label,showInMenu}','invalidateCatalogCache()','Saving…','✓ Saved'])if(!catalogAdmin.includes(marker))throw new Error(`Menu Availability category visibility control missing: ${marker}`);
 for(const marker of [".filter(function(c){return c.showInMenu!==false;})","if(posCat!=='ALL'&&!cats.some(function(c){return c.id===posCat;}))posCat='ALL';",'visibleCatIds[it.cat]'])if(!posRegister.includes(marker))throw new Error(`POS category visibility safeguard missing: ${marker}`);
 if(!posState.includes("posCat='coffee'"))throw new Error('POS must open on the Coffee Based category by default');
+
+function navigationHrefs(html,page){
+  const nav=html.match(/<ul class="nav-links">([\s\S]*?)<\/ul>\s*<button class="hamburger"/);
+  if(!nav)throw new Error(`${page} customer navigation is missing`);
+  return [...nav[1].matchAll(/href="([^"]+)"/g)].map(match=>match[1].startsWith('#')?`index.html${match[1]}`:match[1]);
+}
+assert.deepEqual(navigationHrefs(aboutHtml,'About page'),navigationHrefs(customerHtml,'Home page'),'About navigation must stay synchronized with Home navigation');
+for(const marker of ['.nav-has-sub{position:relative;}','.nav-has-sub:focus-within .nav-sub','.nav-links.nav-open .nav-sub'])if(!staticStyles.includes(marker))throw new Error(`About navigation submenu style missing: ${marker}`);
 
 for(const marker of [
   "ref(db,'customerOrders/'+uid)",
