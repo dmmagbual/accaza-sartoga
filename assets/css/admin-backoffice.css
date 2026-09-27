@@ -113,6 +113,7 @@ body[data-admin-workspace="orders"] .order-card-actions .archive{border-color:#c
 @media(max-width:760px){.payment-methods-toolbar,.payment-method-footer{align-items:stretch;flex-direction:column}.payment-method-add{width:100%;min-width:0}.payment-method-add-status{text-align:left}.payment-method-summary{grid-template-columns:1fr auto;gap:.7rem}.payment-method-switch{grid-column:1}.payment-method-identity{grid-column:1}.payment-method-configure{grid-column:2;grid-row:1/3}.payment-method-fields{grid-template-columns:1fr}.payment-account-picker{align-items:stretch;flex-direction:column}.payment-method-actions{justify-content:flex-start}}
 @media(max-width:440px){.payment-method-add{flex-direction:column}.payment-method-summary{grid-template-columns:1fr}.payment-method-configure{width:100%;grid-column:1;grid-row:auto}.payment-method-settings{padding:.8rem}.payment-method-switch{justify-content:space-between}.payment-method-switch-track{order:2}}
 body[data-admin-area="settings"] .pz-card{max-width:1050px}
+.payment-methods-shell{width:100%;max-width:none!important}
 body[data-admin-area="settings"] code{padding:.12rem .28rem;border-radius:4px;background:#eee9e1;color:#59483d;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.72rem}
 
 /* Compatibility for the original admin views that predate the shared primitives. */

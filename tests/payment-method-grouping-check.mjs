@@ -137,6 +137,7 @@ for (const file of ['assets/js/admin/register.js', 'src/admin/register/20-z-repo
 }
 const paymentCss=read('assets/css/admin-backoffice.css');
 for(const marker of ['.payment-method-card','.payment-method-switch input:checked+.payment-method-switch-track','.payment-method-settings[hidden]','.payment-method-status.attention','@media(max-width:440px)'])must(paymentCss,marker,`Payment-method responsive styling missing ${marker}.`);
+must(paymentCss,'.payment-methods-shell{width:100%;max-width:none!important}','Payment-method settings card must align with the other POS Settings cards.');
 for (const file of ['assets/js/admin/register.js', 'src/admin/register/60-operations-shift-review.js', 'src/admin/register/80-shift-lifecycle-zreport.js', 'src/admin/register/90-shift-review-export.js']) {
   must(read(file), "zMethodRows(", `${file}: this Z-report view must use the shared row-builder, not its own method loop.`);
 }
