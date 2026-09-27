@@ -52,7 +52,7 @@ for (const part of ["purchaseInvoices (2)", "payables (1)", "shiftAdvances (2)"]
 // 5. The callable's own guards.
 const source = fs.readFileSync(path.join(__dirname, "..", "src", "functions", "20-portal-auth.js"), "utf8");
 const guards = [
-  ['["merge","delete"].includes(action)&&!["owner","superadmin"].includes(actor.role)', "merge and delete must be owner-level"],
+  ['["merge","delete"].includes(action)&&actor.role!=="superadmin"', "merge and delete must be Super-Admin-level"],
   ['if(!reason)throw new HttpsError("invalid-argument","A merge reason is required.")', "a merge must record why"],
   ['if(supplier.mergedInto)throw new HttpsError("failed-precondition",`This supplier was already merged', "merging twice must be refused"],
   ['if(target.mergedInto)throw new HttpsError("failed-precondition","The surviving supplier has itself been merged.', "the survivor may not itself be merged away"],

@@ -1,5 +1,5 @@
 import{watchSalesPeriod,periodKey}from'./sales-period-data.mjs?v=562';
-import{createHistoricalPeriodStore}from'./historical-period-store.mjs?v=598';
+import{createHistoricalPeriodStore}from'./historical-period-store.mjs?v=599';
 // One managed subscription per path. Sales reports combine indexed date queries;
 // POS-critical paths stay live and back-office paths attach only when needed.
 const HISTORY_BOUNDS={
@@ -101,7 +101,7 @@ function createSubscriptionHub(database,ops){
   var critical={settings:1,activeOrders:1,posActiveShift:1,'.info/connected':1};
   var scopes={
     categories:['dashboard','pos','menu','availability','recipes','analytics'],menuItems:['dashboard','pos','menu','availability','recipes','analytics'],optionGroups:['pos','menu','availability','recipes'],packages:['pos','menu','recipes','inventory'],availability:['dashboard','pos','menu','availability'],channelPrices:['pos','menu'],posStaff:['pos','ops','possettings'],posSettings:['pos','ops','possettings','recipes'],
-    orders:['dashboard','saleshistory','analytics','pnl','payouts','stockvalue','dailyreport','cashflow','receivables'],staffAccounts:['staffaccounts'],adminAccounts:['adminaccounts'],admins:['staffaccess'],adminPerms:['staffaccess'],
+    orders:['dashboard','saleshistory','analytics','pnl','payouts','stockvalue','dailyreport','cashflow','receivables'],
     // Dashboard and Analytics use compact Firestore report summaries. They must
     // never attach the raw archived-order period just to draw aggregate cards.
     archivedOrders:['archive','appcustomers','saleshistory','pnl','payouts','stockvalue','cashflow','receivables','dailyreport'],archivedReservations:['reservations','calendar'],reservations:['dashboard','reservations','calendar'],

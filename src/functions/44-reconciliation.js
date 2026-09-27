@@ -208,7 +208,7 @@ exports.repairFinanceDates = onCall(
     const mismatches = Object.keys(byMovement).map((k) => byMovement[k]);
     if (action === "preview" || !action) return {mismatches: mismatches.slice(0, 500), count: mismatches.length, ambiguous: mismatches.filter((m) => m.ambiguous).length};
     if (action !== "apply") throw new HttpsError("invalid-argument", "Unknown action.");
-    if (!["owner", "superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner can apply date corrections.");
+    if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can apply date corrections.");
     const reason = financeText(data.reason, 300); if (!reason) throw new HttpsError("invalid-argument", "A correction reason is required.");
     const approved = Array.isArray(data.movementIds) ? new Set(data.movementIds.map(String)) : null;
     const now = Date.now(); let repaired = 0, skipped = 0; const done = [];

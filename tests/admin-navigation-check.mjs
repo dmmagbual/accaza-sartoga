@@ -21,7 +21,7 @@ const expected={
   stock:['inventory','stockvalue','purchases','recipes','usage','packages'],
   finance:['petty','undeposited','payouts','discrepancy'],
   customers:['appcustomers','reviews','commentsSection'],
-  settings:['possettings','accountingperiods','channelpricing','dedupe','payment','staffaccounts','staffaccess','adminaccounts','changepw']
+  settings:['possettings','accountingperiods','channelpricing','dedupe','payment','staffaccounts','changepw']
 };
 for(const [group,tabs] of Object.entries(expected)){
   const row=(navigation.match(new RegExp(`<div class="tabgrp" data-grp="${group}"[\\s\\S]*?</div>`))||[])[0]||'';
@@ -30,7 +30,7 @@ for(const [group,tabs] of Object.entries(expected)){
 }
 
 const allTabs=Object.values(expected).flat();
-assert(allTabs.length===35&&new Set(allTabs).size===35,'Every Admin destination must appear exactly once');
+assert(allTabs.length===33&&new Set(allTabs).size===33,'Every Admin destination must appear exactly once');
 for(const tab of allTabs.filter((name)=>!['availSection','commentsSection'].includes(name)))assert(html.includes(`id="tab-${tab}"`),`Admin panel is missing for ${tab}`);
 assert(core.includes("\"'availSection'\":'availability'")&&core.includes("\"'commentsSection'\":'comments'"),'Moved Availability and Comments must retain staff permission checks');
 assert(core.includes("if(id==='availSection')")&&core.includes("subscriptionHub.activate('availability')"),'Menu Availability must activate its lazy catalog and option-group data scope');
@@ -58,4 +58,4 @@ assert(navigationCss.includes('#adminGroups{display:flex;flex-wrap:wrap')&&navig
 const lazyTabs=[...navigation.matchAll(/posSwitchTab\('([^']+)'/g)].map((match)=>match[1]);
 for(const tab of new Set(lazyTabs))assert(new RegExp(`(?:^|[,\\s])${tab}:\\[`).test(moduleLoader),`Lazy Admin destination ${tab} has no module route`);
 
-console.log('PASS: all 35 Admin destinations are present once, grouped correctly, and retain their panels and permissions.');
+console.log('PASS: all 33 Admin destinations are present once, grouped correctly, and retain their panels and permissions.');

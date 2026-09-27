@@ -29,10 +29,11 @@ function decodePaymentProof(dataUrl) {
 
 function portalRoleValue(raw) {
   const role = raw === true ? "owner" : typeof raw === "string" ? raw : raw && raw.role;
-  return String(role || "").toLowerCase();
+  const normalized = String(role || "").toLowerCase();
+  return normalized === "owner" ? "superadmin" : normalized;
 }
 
-// Emergency sign-out (17 Sep 2026): /sessionControl/cutoff/at is the moment an owner signed
+// Emergency sign-out (17 Sep 2026): /sessionControl/cutoff/at is the moment a Super Admin signed
 // every portal session out. A session that signed in before it is refused by every portal
 // service, so a forgotten tab stops calling the server even before its ID token expires.
 // Cached for a minute per instance so the check adds no read to most calls.
@@ -50,10 +51,11 @@ function sessionSignedInAt(request) { return (Number(request && request.auth && 
 async function requirePortalUser(db, request) {
   if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "Staff login is required.");
   const signedInAt = sessionSignedInAt(request), cutoff = signedInAt ? await portalSessionCutoff(db) : 0;
-  if (cutoff && signedInAt < cutoff) throw new HttpsError("unauthenticated", "The owner signed every device out. Sign in again.");
+  if (cutoff && signedInAt < cutoff) throw new HttpsError("unauthenticated", "A Super Admin signed every device out. Sign in again.");
   const snap = await db.ref(`/admins/${request.auth.uid}`).get();
   const raw=snap.val(),role = portalRoleValue(raw);
-  if (!["owner", "superadmin", "admin", "manager", "staff", "cashier", "kitchen", "finance"].includes(role)) {
+  if (raw && typeof raw === "object" && (raw.disabled === true || raw.active === false)) throw new HttpsError("permission-denied", "This Accaza account is disabled.");
+  if (!["superadmin", "admin", "manager", "staff", "cashier", "kitchen", "finance"].includes(role)) {
     throw new HttpsError("permission-denied", "This account is not authorized for the Accaza portal.");
   }
   return {uid: request.auth.uid, role, name:financeText(raw&&typeof raw==="object"&&(raw.name||raw.displayName||raw.email)||request.auth.token&&request.auth.token.email||role,120)};
@@ -88,8 +90,8 @@ exports.manageSupplier = onCall(
     const db=getDatabase(),actor=await requirePortalPermission(db,request,["purchases","petty","payables"]),data=request.data||{},action=financeText(data.action,20).toLowerCase(),now=Date.now();
     if(!["create","update","deactivate","reactivate","initialize_legacy","validate","merge","delete","references"].includes(action))throw new HttpsError("invalid-argument","Supplier action is invalid.");
     /* Merging and deleting a master record rewrite or remove links that purchases, payables,
-       advances, stock receipts and brands depend on, so they are owner-level operations. */
-    if(["merge","delete"].includes(action)&&!["owner","superadmin"].includes(actor.role))throw new HttpsError("permission-denied","Only an owner or superadmin can merge or delete a supplier master record.");
+       advances, stock receipts and brands depend on, so they are Super Admin operations. */
+    if(["merge","delete"].includes(action)&&actor.role!=="superadmin")throw new HttpsError("permission-denied","Only a Super Admin can merge or delete a supplier master record.");
     if(action==="validate"){const supplier=await requireActiveSupplier(db,data.supplierId,data.name);return{supplierId:supplier.id,name:supplier.name,active:true};}
     if(action==="initialize_legacy"){
       // Finance Books calls this on every sign-in. The legacy link sweep reads six whole
@@ -560,7 +562,7 @@ exports.createManagerApproval = onCall(
   async (request) => {
     const db = getDatabase(); const requester = await requirePortalUser(db, request); const data = request.data || {}, action = financeText(data.action, 40); if (!MANAGER_APPROVAL_ACTIONS.has(action)) throw new HttpsError("invalid-argument", "Approval action is invalid.");
     let decoded; try {decoded = await getAdminAuth().verifyIdToken(String(data.managerIdToken || ""), true);} catch (_error) {throw new HttpsError("permission-denied", "Privileged sign-in could not be verified.");}
-    const managerSnap = await db.ref(`/admins/${decoded.uid}`).get(), managerRole = portalRoleValue(managerSnap.val()); if (!["owner", "superadmin", "admin", "manager"].includes(managerRole)) throw new HttpsError("permission-denied", "That Firebase account is not an Owner, Superadmin, Admin, or Manager account.");
+    const managerSnap = await db.ref(`/admins/${decoded.uid}`).get(), managerRole = portalRoleValue(managerSnap.val()); if (!["superadmin", "admin", "manager"].includes(managerRole)) throw new HttpsError("permission-denied", "That Firebase account is not a Super Admin, Admin, or Manager account.");
     if (["correct_completed_order", "completed_order_cash_refund"].includes(action) && decoded.uid === requester.uid) throw new HttpsError("permission-denied", "Completed-order changes require approval from a different authorized manager account.");
     const sourceId = financeText(data.sourceId, 160); if (!sourceId) throw new HttpsError("invalid-argument", "Approval source is required."); const amount = data.amount == null ? null : Financial.money(data.amount), now = Date.now(), id = `approval_${crypto.randomBytes(12).toString("hex")}`;
     await db.ref(`/financialApprovals/${id}`).set({action, sourceId, amount, reason: financeText(data.reason, 300), requestedBy: requester.uid, approvedBy: decoded.uid, approvedEmail: financeText(decoded.email, 160), approvedName: financeText(decoded.name, 160), approvedRole: managerRole, approvedAt: now, expiresAt: now + 5 * 60 * 1000, schemaVersion: 1});

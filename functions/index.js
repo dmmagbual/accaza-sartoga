@@ -800,10 +800,11 @@ function decodePaymentProof(dataUrl) {
 
 function portalRoleValue(raw) {
   const role = raw === true ? "owner" : typeof raw === "string" ? raw : raw && raw.role;
-  return String(role || "").toLowerCase();
+  const normalized = String(role || "").toLowerCase();
+  return normalized === "owner" ? "superadmin" : normalized;
 }
 
-// Emergency sign-out (17 Sep 2026): /sessionControl/cutoff/at is the moment an owner signed
+// Emergency sign-out (17 Sep 2026): /sessionControl/cutoff/at is the moment a Super Admin signed
 // every portal session out. A session that signed in before it is refused by every portal
 // service, so a forgotten tab stops calling the server even before its ID token expires.
 // Cached for a minute per instance so the check adds no read to most calls.
@@ -821,10 +822,11 @@ function sessionSignedInAt(request) { return (Number(request && request.auth && 
 async function requirePortalUser(db, request) {
   if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "Staff login is required.");
   const signedInAt = sessionSignedInAt(request), cutoff = signedInAt ? await portalSessionCutoff(db) : 0;
-  if (cutoff && signedInAt < cutoff) throw new HttpsError("unauthenticated", "The owner signed every device out. Sign in again.");
+  if (cutoff && signedInAt < cutoff) throw new HttpsError("unauthenticated", "A Super Admin signed every device out. Sign in again.");
   const snap = await db.ref(`/admins/${request.auth.uid}`).get();
   const raw=snap.val(),role = portalRoleValue(raw);
-  if (!["owner", "superadmin", "admin", "manager", "staff", "cashier", "kitchen", "finance"].includes(role)) {
+  if (raw && typeof raw === "object" && (raw.disabled === true || raw.active === false)) throw new HttpsError("permission-denied", "This Accaza account is disabled.");
+  if (!["superadmin", "admin", "manager", "staff", "cashier", "kitchen", "finance"].includes(role)) {
     throw new HttpsError("permission-denied", "This account is not authorized for the Accaza portal.");
   }
   return {uid: request.auth.uid, role, name:financeText(raw&&typeof raw==="object"&&(raw.name||raw.displayName||raw.email)||request.auth.token&&request.auth.token.email||role,120)};
@@ -859,8 +861,8 @@ exports.manageSupplier = onCall(
     const db=getDatabase(),actor=await requirePortalPermission(db,request,["purchases","petty","payables"]),data=request.data||{},action=financeText(data.action,20).toLowerCase(),now=Date.now();
     if(!["create","update","deactivate","reactivate","initialize_legacy","validate","merge","delete","references"].includes(action))throw new HttpsError("invalid-argument","Supplier action is invalid.");
     /* Merging and deleting a master record rewrite or remove links that purchases, payables,
-       advances, stock receipts and brands depend on, so they are owner-level operations. */
-    if(["merge","delete"].includes(action)&&!["owner","superadmin"].includes(actor.role))throw new HttpsError("permission-denied","Only an owner or superadmin can merge or delete a supplier master record.");
+       advances, stock receipts and brands depend on, so they are Super Admin operations. */
+    if(["merge","delete"].includes(action)&&actor.role!=="superadmin")throw new HttpsError("permission-denied","Only a Super Admin can merge or delete a supplier master record.");
     if(action==="validate"){const supplier=await requireActiveSupplier(db,data.supplierId,data.name);return{supplierId:supplier.id,name:supplier.name,active:true};}
     if(action==="initialize_legacy"){
       // Finance Books calls this on every sign-in. The legacy link sweep reads six whole
@@ -1331,7 +1333,7 @@ exports.createManagerApproval = onCall(
   async (request) => {
     const db = getDatabase(); const requester = await requirePortalUser(db, request); const data = request.data || {}, action = financeText(data.action, 40); if (!MANAGER_APPROVAL_ACTIONS.has(action)) throw new HttpsError("invalid-argument", "Approval action is invalid.");
     let decoded; try {decoded = await getAdminAuth().verifyIdToken(String(data.managerIdToken || ""), true);} catch (_error) {throw new HttpsError("permission-denied", "Privileged sign-in could not be verified.");}
-    const managerSnap = await db.ref(`/admins/${decoded.uid}`).get(), managerRole = portalRoleValue(managerSnap.val()); if (!["owner", "superadmin", "admin", "manager"].includes(managerRole)) throw new HttpsError("permission-denied", "That Firebase account is not an Owner, Superadmin, Admin, or Manager account.");
+    const managerSnap = await db.ref(`/admins/${decoded.uid}`).get(), managerRole = portalRoleValue(managerSnap.val()); if (!["superadmin", "admin", "manager"].includes(managerRole)) throw new HttpsError("permission-denied", "That Firebase account is not a Super Admin, Admin, or Manager account.");
     if (["correct_completed_order", "completed_order_cash_refund"].includes(action) && decoded.uid === requester.uid) throw new HttpsError("permission-denied", "Completed-order changes require approval from a different authorized manager account.");
     const sourceId = financeText(data.sourceId, 160); if (!sourceId) throw new HttpsError("invalid-argument", "Approval source is required."); const amount = data.amount == null ? null : Financial.money(data.amount), now = Date.now(), id = `approval_${crypto.randomBytes(12).toString("hex")}`;
     await db.ref(`/financialApprovals/${id}`).set({action, sourceId, amount, reason: financeText(data.reason, 300), requestedBy: requester.uid, approvedBy: decoded.uid, approvedEmail: financeText(decoded.email, 160), approvedName: financeText(decoded.name, 160), approvedRole: managerRole, approvedAt: now, expiresAt: now + 5 * 60 * 1000, schemaVersion: 1});
@@ -1400,6 +1402,196 @@ exports.openLinkedPosShift = onCall(
     const writes={[`shifts/${id}`]:rec,[`operationalAudit/${now}_pos_shift_open_${id}`]:{action:"open_linked_pos_shift",sourceType:"shift",sourceId:id,staffId,accountUid:actor.uid,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1}};if(approval)Object.assign(writes,approval.usedWrites);await db.ref().update(writes);
     return {shift:rec};
   }
+);
+const PORTAL_ACCOUNT_ROLES = new Set(["superadmin", "admin", "manager", "staff", "cashier", "kitchen", "finance"]);
+const PORTAL_PERMISSION_KEYS = ["orders", "reservations", "pos", "inventory", "purchases", "recipes", "usage", "registerOps", "reviews", "appcustomers", "availability", "comments", "analytics", "dailyreport", "discrepancy", "petty", "channelpricing", "dedupe", "cashflow", "stockvalue"];
+
+function canonicalPortalAccountRole(raw) {
+  const role = portalRoleValue(raw);
+  return role === "owner" ? "superadmin" : role;
+}
+
+function portalAccountText(value, limit, label) {
+  const text = financeText(value, limit).trim();
+  if (!text) throw new HttpsError("invalid-argument", `${label} is required.`);
+  return text;
+}
+
+function portalAccountPermissions(value) {
+  const source = value && typeof value === "object" ? value : {};
+  return PORTAL_PERMISSION_KEYS.reduce((result, key) => {
+    result[key] = source[key] === true;
+    return result;
+  }, {});
+}
+
+async function requireSuperAdmin(db, request) {
+  const actor = await requirePortalUser(db, request);
+  if (canonicalPortalAccountRole(actor.role) !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can manage portal accounts.");
+  return actor;
+}
+
+async function claimPortalAccountMutation(db, actor, action) {
+  const lockRef = db.ref("/portalAccountMutationLock"), now = Date.now(), token = crypto.randomBytes(16).toString("hex");
+  const claim = await lockRef.transaction((current) => {
+    if (current && Number(current.expiresAt) > now) return;
+    return {token, action, actorUid: actor.uid, claimedAt: now, expiresAt: now + 60 * 1000};
+  }, undefined, false);
+  if (!claim.committed) throw new HttpsError("aborted", "Another account change is in progress. Refresh and try again.");
+  return async () => {
+    try { await lockRef.transaction((current) => current && current.token === token ? null : current, undefined, false); }
+    catch (error) { logger.warn("Portal account mutation lock cleanup failed", {token, error: String(error)}); }
+  };
+}
+
+function portalAccountRecord(raw, fallback) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const role = canonicalPortalAccountRole(raw);
+  return {
+    role,
+    name: financeText(source.name || source.displayName || fallback && fallback.displayName, 120),
+    title: financeText(source.title || (role === "superadmin" ? "Systems Administrator" : ""), 120),
+    email: financeText(source.email || fallback && fallback.email, 320).toLowerCase(),
+    active: role !== "disabled" && source.disabled !== true,
+    previousRole: financeText(source.previousRole, 30).toLowerCase(),
+    createdAt: Number(source.createdAt) || 0,
+    createdBy: financeText(source.createdBy, 128),
+    updatedAt: Number(source.updatedAt) || 0,
+    updatedBy: financeText(source.updatedBy, 128),
+    disabledAt: Number(source.disabledAt) || 0,
+    disabledBy: financeText(source.disabledBy, 128),
+  };
+}
+
+async function activeSuperAdminCount(db, excludingUid) {
+  const rows = (await db.ref("/admins").get()).val() || {};
+  return Object.entries(rows).filter(([uid, raw]) => uid !== excludingUid && canonicalPortalAccountRole(raw) === "superadmin" && !(raw && typeof raw === "object" && raw.disabled === true)).length;
+}
+
+async function assertAccountNotOnOpenShift(db, uid) {
+  const shift = (await db.ref("/posActiveShift").get()).val();
+  if (!shift || shift.status === "closed") return;
+  const crew = shift.crew && shift.crew[uid];
+  if (shift.accountUid === uid || (crew && !crew.leftAt)) throw new HttpsError("failed-precondition", "This account belongs to the open POS shift. Close the shift or remove the person from its crew before disabling access.");
+}
+
+async function portalAccountList(db) {
+  const [adminsSnap, permsSnap, staffSnap, shiftSnap] = await Promise.all([
+    /* download-ok: bounded portal account list, loaded only in Super Admin account management */ db.ref("/admins").get(),
+    /* download-ok: bounded portal permission list paired with the account list */ db.ref("/adminPerms").get(),
+    /* download-ok: bounded POS staff master needed to show login linkage */ db.ref("/posStaff").get(),
+    db.ref("/posActiveShift").get(),
+  ]);
+  const admins = adminsSnap.val() || {}, permissions = permsSnap.val() || {}, staff = staffSnap.val() || {}, shift = shiftSnap.val() || null;
+  const auth = getAdminAuth();
+  const accounts = await Promise.all(Object.entries(admins).map(async ([uid, raw]) => {
+    let user = null;
+    try { user = await auth.getUser(uid); } catch (error) { if (String(error && error.code || "") !== "auth/user-not-found") throw error; }
+    const record = portalAccountRecord(raw, user || {}), linked = Object.entries(staff).find(([, row]) => row && row.accountUid === uid), crew = shift && shift.crew && shift.crew[uid];
+    return {
+      uid,
+      name: record.name || (permissions[uid] && financeText(permissions[uid].name, 120)) || record.email || uid,
+      title: record.title,
+      email: record.email,
+      role: record.role,
+      active: record.active && !(user && user.disabled),
+      authExists: !!user,
+      emailVerified: !!(user && user.emailVerified),
+      lastSignInAt: user && user.metadata && user.metadata.lastSignInTime || "",
+      permissions: portalAccountPermissions(permissions[uid]),
+      linkedStaffId: linked ? linked[0] : "",
+      linkedStaffName: linked ? financeText(linked[1].name, 120) : "",
+      onOpenShift: !!(shift && shift.status !== "closed" && (shift.accountUid === uid || (crew && !crew.leftAt))),
+      legacyRole: raw === true || String(raw || "").toLowerCase() === "owner" || (raw && typeof raw === "object" && String(raw.role || "").toLowerCase() === "owner"),
+    };
+  }));
+  accounts.sort((a, b) => (a.active === b.active ? a.name.localeCompare(b.name) : a.active ? -1 : 1));
+  return {accounts, openShift: shift && shift.status !== "closed" ? {id: financeText(shift.id, 120), staff: financeText(shift.staff, 120)} : null};
+}
+
+exports.managePortalAccount = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requireSuperAdmin(db, request), data = request.data || {}, action = financeText(data.action, 30).toLowerCase(), now = Date.now();
+    if (action === "list") return portalAccountList(db);
+    const releaseMutation = await claimPortalAccountMutation(db, actor, action);
+    try {
+    if (action === "create") {
+      const email = portalAccountText(data.email, 320, "Email").toLowerCase(), name = portalAccountText(data.name, 120, "Name"), role = financeText(data.role, 30).toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpsError("invalid-argument", "Enter a valid email address.");
+      if (!PORTAL_ACCOUNT_ROLES.has(role)) throw new HttpsError("invalid-argument", "Select a valid access level.");
+      const title = financeText(data.title || (role === "superadmin" ? "Systems Administrator" : ""), 120), auth = getAdminAuth();
+      let user, created = false;
+      try { user = await auth.getUserByEmail(email); } catch (error) {
+        if (String(error && error.code || "") !== "auth/user-not-found") throw error;
+        user = await auth.createUser({email, displayName: name, disabled: false}); created = true;
+      }
+      const record = {role, name, title, email, active: true, createdAt: now, createdBy: actor.uid, updatedAt: now, updatedBy: actor.uid, schemaVersion: 2};
+      const accountRef = db.ref(`/admins/${user.uid}`), accessClaim = await accountRef.transaction((current) => current ? undefined : record, undefined, false);
+      if (!accessClaim.committed) { if (created) { try { await auth.deleteUser(user.uid); } catch (_rollbackError) {} } throw new HttpsError("already-exists", "That Firebase account already has Accaza access."); }
+      try {
+        if (!created) await auth.updateUser(user.uid, {displayName: name, disabled: false});
+        await db.ref().update({[`adminPerms/${user.uid}`]: Object.assign({name}, portalAccountPermissions(data.permissions)), [`operationalAudit/${now}_portal_account_create_${user.uid}`]: operationalAuditRecord("portal_account_created", "portalAccount", user.uid, actor, {email, name, title, role})});
+      } catch (error) { await accountRef.remove(); if (created) { try { await auth.deleteUser(user.uid); } catch (_rollbackError) {} } else { try { await auth.updateUser(user.uid, {displayName: user.displayName || null, disabled: user.disabled === true}); } catch (_rollbackError) {} } throw error; }
+      return {uid: user.uid, email, created, sendPasswordSetup: true};
+    }
+    if (action === "update") {
+      const uid = financeKey(data.uid, "Account"), currentRaw = (await db.ref(`/admins/${uid}`).get()).val();
+      if (!currentRaw) throw new HttpsError("not-found", "Portal account not found.");
+      const current = portalAccountRecord(currentRaw), role = financeText(data.role, 30).toLowerCase(), name = portalAccountText(data.name, 120, "Name");
+      if (!PORTAL_ACCOUNT_ROLES.has(role)) throw new HttpsError("invalid-argument", "Select a valid access level.");
+      if (current.role === "superadmin" && role !== "superadmin" && await activeSuperAdminCount(db, uid) < 1) throw new HttpsError("failed-precondition", "Accaza must keep at least one active Super Admin.");
+      if (uid === actor.uid && role !== "superadmin") throw new HttpsError("failed-precondition", "You cannot remove your own Super Admin access. Another Super Admin must change it.");
+      const title = financeText(data.title || (role === "superadmin" ? "Systems Administrator" : ""), 120), email = current.email;
+      await getAdminAuth().updateUser(uid, {displayName: name});
+      await db.ref().update({
+        [`admins/${uid}`]: Object.assign({}, currentRaw && typeof currentRaw === "object" ? currentRaw : {}, {role, name, title, email, active: true, disabled: null, previousRole: null, updatedAt: now, updatedBy: actor.uid, schemaVersion: 2}),
+        [`adminPerms/${uid}`]: Object.assign({name}, portalAccountPermissions(data.permissions)),
+        [`operationalAudit/${now}_portal_account_update_${uid}`]: operationalAuditRecord("portal_account_updated", "portalAccount", uid, actor, {name, title, previousRole: current.role, role}),
+      });
+      return {uid, updated: true};
+    }
+    if (action === "disable") {
+      const uid = financeKey(data.uid, "Account");
+      if (uid === actor.uid) throw new HttpsError("failed-precondition", "You cannot disable the account you are currently using.");
+      const ref = db.ref(`/admins/${uid}`), raw = (await ref.get()).val(), current = portalAccountRecord(raw);
+      if (!raw) throw new HttpsError("not-found", "Portal account not found.");
+      if (current.role === "superadmin" && await activeSuperAdminCount(db, uid) < 1) throw new HttpsError("failed-precondition", "Accaza must keep at least one active Super Admin.");
+      await assertAccountNotOnOpenShift(db, uid);
+      const disabled = Object.assign({}, raw && typeof raw === "object" ? raw : {}, {role: "disabled", previousRole: current.role, active: false, disabled: true, disabledAt: now, disabledBy: actor.uid, updatedAt: now, updatedBy: actor.uid, schemaVersion: 2});
+      const auditPath = `operationalAudit/${now}_portal_account_disable_${uid}`;
+      await db.ref().update({[`admins/${uid}`]: disabled, [auditPath]: operationalAuditRecord("portal_account_disabled", "portalAccount", uid, actor, {previousRole: current.role, reason: financeText(data.reason, 300)})});
+      try { await getAdminAuth().updateUser(uid, {disabled: true}); } catch (error) { await db.ref().update({[`admins/${uid}`]: raw, [auditPath]: null}); throw new HttpsError("internal", "Firebase Authentication could not disable the account. The Accaza access record was restored."); }
+      try { await getAdminAuth().revokeRefreshTokens(uid); } catch (error) { logger.warn("Portal account disabled but token revocation should be retried", {uid, error: String(error)}); }
+      return {uid, disabled: true};
+    }
+    if (action === "reactivate") {
+      const uid = financeKey(data.uid, "Account"), ref = db.ref(`/admins/${uid}`), raw = (await ref.get()).val(), current = portalAccountRecord(raw);
+      if (!raw || current.role !== "disabled") throw new HttpsError("failed-precondition", "This account is not disabled.");
+      const role = PORTAL_ACCOUNT_ROLES.has(current.previousRole) ? current.previousRole : "staff";
+      await getAdminAuth().updateUser(uid, {disabled: false});
+      try { await db.ref().update({[`admins/${uid}`]: Object.assign({}, raw, {role, previousRole: null, active: true, disabled: null, disabledAt: null, disabledBy: null, updatedAt: now, updatedBy: actor.uid}), [`operationalAudit/${now}_portal_account_reactivate_${uid}`]: operationalAuditRecord("portal_account_reactivated", "portalAccount", uid, actor, {role})}); } catch (error) { try { await getAdminAuth().updateUser(uid, {disabled: true}); } catch (_rollbackError) {} throw error; }
+      return {uid, role, reactivated: true};
+    }
+    if (action === "normalize_legacy") {
+      const shift = (await db.ref("/posActiveShift").get()).val();
+      if (shift && shift.status !== "closed") throw new HttpsError("failed-precondition", "Close the active POS shift before normalizing legacy account roles.");
+      const admins = (await db.ref("/admins").get()).val() || {}, writes = {}; let changed = 0;
+      for (const [uid, raw] of Object.entries(admins)) {
+        const legacy = raw === true || String(raw || "").toLowerCase() === "owner" || (raw && typeof raw === "object" && String(raw.role || "").toLowerCase() === "owner");
+        if (!legacy) continue;
+        let user = null; try { user = await getAdminAuth().getUser(uid); } catch (_error) {}
+        const old = raw && typeof raw === "object" ? raw : {};
+        writes[`admins/${uid}`] = Object.assign({}, old, {role: "superadmin", name: financeText(old.name || user && user.displayName || user && user.email, 120), title: financeText(old.title || "Systems Administrator", 120), email: financeText(old.email || user && user.email, 320).toLowerCase(), active: true, updatedAt: now, updatedBy: actor.uid, schemaVersion: 2}); changed++;
+      }
+      if (changed) { writes[`operationalAudit/${now}_portal_account_normalize`] = operationalAuditRecord("portal_account_roles_normalized", "portalAccount", "legacy_owner", actor, {changed, replacementRole: "superadmin"}); await db.ref().update(writes); }
+      return {changed};
+    }
+      throw new HttpsError("invalid-argument", "Account action is invalid.");
+    } finally {
+      await releaseMutation();
+    }
+  },
 );
 const REJECTED_ORDER_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -1685,7 +1877,7 @@ exports.managePettyVoucher = onCall(
       if (!(settlementAmount > 0)) throw new HttpsError("invalid-argument", "Settlement amount must be greater than zero.");
       if (settlementAmount > remaining + 0.009) throw new HttpsError("failed-precondition", `Settlement exceeds the outstanding balance of ${remaining.toFixed(2)}.`);
       if (!reason) throw new HttpsError("invalid-argument", "A settlement reference or explanation is required.");
-      if (settlementType === "write_off" && !["owner", "superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner or superadmin can write off a staff advance.");
+      if (settlementType === "write_off" && actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can write off a staff advance.");
       const settlementId = financeKey(data.commandId, "Command ID"), date = financeDate(data.date);
       if ((await db.ref(`/financialMovements/${settlementId}`).get()).exists()) return {voucherId: id, action, settlementId, duplicate: true};
       await assertAccountingPeriodOpen(db, date, "liquidating this staff advance");
@@ -1717,7 +1909,7 @@ exports.managePettyVoucher = onCall(
       return {voucherId: id, action, settlementId, amount: settlementAmount, remainingAmount: nextRemaining, duplicate: committed.duplicate};
     }
     if (action === "reverse_settlement") {
-      if (!["owner", "superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner or superadmin can reverse a staff advance settlement.");
+      if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can reverse a staff advance settlement.");
       const settlementId = financeKey(data.settlementId, "Settlement ID"), settlement = (voucher.settlements || {})[settlementId];
       if (!settlement) throw new HttpsError("not-found", "Settlement not found on this staff advance.");
       if (settlement.reversedAt) throw new HttpsError("failed-precondition", "This settlement has already been reversed.");
@@ -2562,14 +2754,14 @@ exports.reportPosDeviceHealth=onCall({region:ORDER_REGION,enforceAppCheck:ENFORC
 
 exports.verifyShiftCloseReadiness=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:'256MiB'},async request=>{const db=getDatabase(),actor=await requirePortalPermission(db,request,['pos','registerOps']),data=request.data||{},shiftId=posAssuranceKey(data.shiftId,'Shift ID'),deviceId=posAssuranceKey(data.deviceId,'Device ID'),shift=(await db.ref('/posActiveShift').get()).val()||{};if(shift.id!==shiftId||shift.status==='closed')throw new HttpsError('failed-precondition','The selected shift is not open.');const devices=(await db.ref(`/posDeviceHealth/${shiftId}`).get()).val()||{},health=devices[deviceId]||{};if(health.shiftId!==shiftId||health.deviceId!==deviceId||health.reportedBy!==actor.uid||Date.now()-Number(health.lastContactAt||0)>POS_HEALTH_MAX_AGE_MS)throw new HttpsError('failed-precondition','This cashier device has no recent synchronization confirmation.');const outstandingDevices=Object.values(devices).filter(row=>row&&row.shiftId===shiftId&&Number(row.outstanding||0)>0);if(outstandingDevices.length){const outstanding=outstandingDevices.reduce((sum,row)=>sum+Number(row.outstanding||0),0);throw new HttpsError('failed-precondition',`${outstanding} local sale(s) on ${outstandingDevices.length} POS device(s) still require synchronization.`);}const state=await assurancePostingState(db,await shiftOrdersForAssurance(db,shiftId));if(state.inventoryOutstanding.length||state.financeOutstanding.length)throw new HttpsError('failed-precondition',`Wait for server posting to finish. Inventory: ${state.inventoryOutstanding.length}${state.inventoryOutstanding.length?` (${state.inventoryOutstanding.slice(0,3).join(', ')})`:''}; Finance Books: ${state.financeOutstanding.length}${state.financeOutstanding.length?` (${state.financeOutstanding.slice(0,3).join(', ')})`:''}. If this does not clear within a minute, hand over the shift and tell a manager these order numbers.`);const verifiedAt=Date.now(),verification={shiftId,deviceId,verifiedAt,verifiedBy:actor.uid,reportedDeviceCount:Object.keys(devices).length,outstandingDeviceCount:0,saleCount:state.saleCount,inventoryOutstanding:0,financeOutstanding:0,schemaVersion:2};await db.ref(`/shiftCloseVerifications/${shiftId}`).set(verification);return verification;});
 
-// Owner-only emergency action: sign every portal session out (Admin, POS, Finance Books).
+// Super-Admin-only emergency action: sign every portal session out (Admin, POS, Finance Books).
 // Revokes each portal account's refresh tokens, so no tab can renew its sign-in, and records
 // the cutoff that current builds and every portal service enforce at once. Customer app
 // accounts are not portal accounts and are untouched. Audited; at most once per 5 minutes.
 const SESSION_SIGNOUT_MIN_GAP_MS=5*60*1000;
 exports.signOutAllPortalSessions=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:'256MiB'},async request=>{
   const db=getDatabase(),actor=await requirePortalUser(db,request);
-  if(!['owner','superadmin'].includes(actor.role))throw new HttpsError('permission-denied','Only the owner can sign every device out.');
+  if(actor.role!=='superadmin')throw new HttpsError('permission-denied','Only a Super Admin can sign every device out.');
   const reason=financeText(request.data&&request.data.reason,200);
   if(reason.length<5)throw new HttpsError('invalid-argument','Enter the reason for signing every device out.');
   const now=Math.floor(Date.now()/1000)*1000,previous=(await db.ref('/sessionControl/cutoff').get()).val()||{};
@@ -4079,7 +4271,7 @@ exports.postFinancialCommand = onCall(
       const raw=Array.isArray(data.allocations)?data.allocations:[],unique=[];raw.slice(0,20).forEach((row)=>{const id=financeKey(row&&row.documentId,'Payable ID'),value=Financial.money(row&&row.amount);if(value>0&&!unique.some((x)=>x.documentId===id))unique.push({documentId:id,amount:value});});if(unique.length<2||unique.length!==raw.length)throw new HttpsError('invalid-argument','Select at least two distinct supplier bills with positive allocations.');const supplierId=financeText(data.supplierId,160);if(!supplierId)throw new HttpsError('invalid-argument','Supplier ID is required.');const docs=await Promise.all(unique.map((row)=>db.ref(`/payables/${row.documentId}`).get().then((snap)=>({row,snap})))),now=Date.now(),reference=financeText(data.ref,120),date=financeDate(data.date);if(!reference)throw new HttpsError('invalid-argument','Payment reference is required.');let total=0;docs.forEach(({row,snap})=>{if(!snap.exists())throw new HttpsError('not-found','One selected supplier bill was not found.');const doc=snap.val()||{},remaining=Financial.money(doc.remainingAmount!=null?doc.remainingAmount:doc.amount);if(doc.type==='customer_change_refund'||doc.provisional===true||doc.status!=='open')throw new HttpsError('failed-precondition','Only open finalized supplier bills can be settled here.');if(financeText(doc.supplierId||doc.party,160)!==supplierId)throw new HttpsError('failed-precondition','Every selected bill must belong to the selected supplier.');if(row.amount>remaining+0.009)throw new HttpsError('failed-precondition',`Allocation for ${financeText(doc.ref||row.documentId,120)} exceeds its remaining balance.`);total=Financial.money(total+row.amount);});if(!(total>0))throw new HttpsError('invalid-argument','Payment total must be greater than zero.');await assertAccountingPeriodOpen(db,date,'posting a supplier bill payment');const source=financeText(data.paymentSource||data.accountId,120);let accountId='',asset='',ownerName='',custodyAllocations={},batchWrites={};if(source==='cash_float'||source==='register')throw new HttpsError('failed-precondition','Register Cash Float is protected and cannot pay supplier bills.');if(source==='owner_capital'){ownerName=financeText(data.ownerName,120);if(!ownerName)throw new HttpsError('invalid-argument','Owner or partner name is required for a personally paid bill.');accountId='owner_capital';asset='equity:capital_in';}else if(source==='cash_on_hand'){accountId=source;asset='asset:register_cash';}else if(source==='undeposited'){accountId=source;asset='asset:cash_awaiting_deposit';const custodyOut=await poolCustodyOutflow(db,total);if(custodyOut.shortfall>0.009)throw new HttpsError('failed-precondition',`Payment exceeds available Undeposited Collection by ${custodyOut.shortfall.toFixed(2)}.`);Object.assign(batchWrites,custodyOut.writes);custodyAllocations=custodyOut.allocations;}else if(source==='revolving_fund'){accountId=source;asset='asset:petty_cash';}else{accountId=accountIdFor(accounts,source);asset=`asset:cash_account:${accountId}`;}const claimTokens=[];try{for(const {row} of docs){const lockRef=db.ref(`/payableSettlementClaims/${row.documentId}`),token=crypto.randomBytes(12).toString('hex'),claim=await lockRef.transaction((current)=>!current||Number(current.claimedAt||0)<now-120000?{token,commandId,claimedAt:now,actorUid:actor.uid}:current);if(!claim.committed||!claim.snapshot.exists()||claim.snapshot.val().token!==token)throw new HttpsError('aborted','Another payment is being posted to one of these bills. Refresh and try again.');claimTokens.push({ref:lockRef,token,documentId:row.documentId});batchWrites[`payableSettlementClaims/${row.documentId}`]=null;}}catch(error){for(const claim of claimTokens)await claim.ref.transaction((current)=>current&&current.token===claim.token?null:current);throw error;}const lines=[];docs.forEach(({row,snap})=>{const doc=snap.val()||{};lines.push(Financial.line(doc.liabilityAccount||`liability:payable:${row.documentId}`,row.amount,0,`Supplier bill payment · ${financeText(doc.ref||row.documentId,120)}`));});lines.push(Financial.line(asset,0,total,ownerName?`Supplier bills paid personally by ${ownerName}`:'Supplier bills paid'));if(!BooksBridge.linesBalanced(lines))throw new HttpsError('failed-precondition','The calculated multi-bill payment is unbalanced.');movement=Financial.movement('payable_paid_batch','payableBatch',commandId,lines,{occurredAt:accountingTimestamp(date,now),actorName:actor.role,reference,supplierId,supplierName:financeText(docs[0].snap.val().party,120),paymentSource:accountId,ownerName,custodyAllocations});if(ownerName==='')addCash(`fm_${commandId}`,{date,accountId,dir:'out',category:'AP payment',amount:total,party:financeText(docs[0].snap.val().party,120),ref:reference});docs.forEach(({row,snap})=>{const doc=snap.val()||{},remaining=Financial.money(doc.remainingAmount!=null?doc.remainingAmount:doc.amount),nextRemaining=Financial.money(remaining-row.amount),nextPaid=Financial.money(Number(doc.paidAmount||0)+row.amount),paymentId=`${commandId}_${row.documentId}`;batchWrites[`payables/${row.documentId}/status`]=nextRemaining>0?'open':'paid';batchWrites[`payables/${row.documentId}/remainingAmount`]=nextRemaining;batchWrites[`payables/${row.documentId}/paidAmount`]=nextPaid;batchWrites[`payables/${row.documentId}/settlementReference`]=reference;batchWrites[`payables/${row.documentId}/settlementMovementId`]=commandId;batchWrites[`payables/${row.documentId}/settlements/${paymentId}`]={amount:row.amount,date,reference,accountId,movementId:commandId,status:'posted',batchId:commandId,ts:now,createdBy:actor.uid};batchWrites[`payablePayments/${paymentId}`]={payableId:row.documentId,supplierId,supplierName:financeText(doc.party,120),invoiceReference:financeText(doc.ref,120),amount:row.amount,date,reference,accountId,movementId:commandId,status:'posted',batchId:commandId,ts:now,createdBy:actor.uid};if(doc.purchaseInvoiceId){batchWrites[`purchaseInvoices/${doc.purchaseInvoiceId}/paymentStatus`]=nextRemaining>0?'partially_paid':'paid';batchWrites[`purchaseInvoices/${doc.purchaseInvoiceId}/paidAmount`]=nextPaid;batchWrites[`purchaseInvoices/${doc.purchaseInvoiceId}/remainingAmount`]=nextRemaining;batchWrites[`purchaseInvoices/${doc.purchaseInvoiceId}/lastPaymentMovementId`]=commandId;}});batchWrites[`operationalAudit/${now}_payable_batch_${commandId}`]=operationalAuditRecord('payable_paid_batch','payableBatch',commandId,actor,{supplierId,amount:total,allocations:unique,date,reference,paymentSource:accountId,accounting:'One atomic cash movement allocated across selected supplier bills; each bill remains open until fully settled.'});const committed=await commitFinancial(db,commandId,movement,actor,batchWrites);return{movementId:commandId,amount:total,allocations:unique,duplicate:committed.duplicate};
     }
     if(action==='reverse_payable_batch_payment'){
-      if(!['owner','superadmin'].includes(actor.role))throw new HttpsError('permission-denied','Only the owner can reverse a recorded supplier payment.');
+      if(actor.role!=='superadmin')throw new HttpsError('permission-denied','Only a Super Admin can reverse a recorded supplier payment.');
       const docId=financeKey(data.documentId,'Payable ID'),paymentId=financeKey(data.paymentId,'Payment ID'),reason=financeText(data.reason,300),snap=await db.ref(`/payables/${docId}`).get();
       if(!reason)throw new HttpsError('invalid-argument','A reversal reason is required.');
       if(!snap.exists())throw new HttpsError('not-found','Payable was not found.');
@@ -4363,7 +4555,7 @@ exports.postFinancialCommand = onCall(
       if(doc.discrepancyId){writes[`discrepancies/${doc.discrepancyId}/financialStatus`]="closed_to_capital";writes[`discrepancies/${doc.discrepancyId}/customerRefundPayableId`]=docId;writes[`discrepancies/${doc.discrepancyId}/capitalCloseMovementId`]=commandId;writes[`discrepancies/${doc.discrepancyId}/capitalCloseReason`]=reason;}if(doc.shiftId)writes[`shifts/${doc.shiftId}/varianceStatus`]="closed_to_capital";
       writes[`operationalAudit/${now}_customer_payable_capital_${docId}`]=operationalAuditRecord("close_customer_payable_to_capital","payables",docId,actor,{amount:value,ownerName,reference,reason,originalMovementId:doc.movementId||"",correctionMovementId:commandId});result={documentId:docId,amount:value,status:"capital_closed"};
     } else if (action === "create_supplier_opening_balance") {
-      if (!["owner", "superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner can set up supplier opening balances.");
+      if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can set up supplier opening balances.");
       const supplier = await requireActiveSupplier(db, data.supplierId, data.party), invoiceReference = financeText(data.invoiceReference || data.ref, 120).trim();
       if (!invoiceReference) throw new HttpsError("invalid-argument", "The supplier invoice reference is required.");
       const invoiceDate = financeDate(data.invoiceDate), openingDate = financeDate(data.openingDate), due = data.due ? financeDate(data.due, true) : "";
@@ -4387,7 +4579,7 @@ exports.postFinancialCommand = onCall(
       writes[`operationalAudit/${now}_supplier_opening_balance_${docId}`] = operationalAuditRecord("create_supplier_opening_balance", "payable", docId, actor, {movementId: postingId, supplierId: supplier.id, supplierName: supplier.name, invoiceReference, invoiceDate, openingDate, due, originalAmount, paidBeforeOpening, amount: value, accounting: "Debit Owner's Capital and credit Supplier Accounts Payable. No cash, inventory, purchase, or current-period expense changed."});
       result = {documentId: docId, amount: value, supplierName: supplier.name};
     } else if (action === "reverse_supplier_opening_balance") {
-      if (!["owner", "superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner can reverse a supplier opening balance.");
+      if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can reverse a supplier opening balance.");
       const docId = financeKey(data.documentId, "Payable ID"), doc = (await db.ref(`/payables/${docId}`).get()).val();
       if (!doc) throw new HttpsError("not-found", "The supplier opening balance was not found.");
       if (doc.openingBalance !== true) throw new HttpsError("failed-precondition", "Only a supplier opening balance can use this reversal.");
@@ -4438,7 +4630,7 @@ exports.postFinancialCommand = onCall(
     } else if (action === "reverse_payable_payment") {
       /* Undo a supplier bill payment that was recorded but never actually made. The bill returns to outstanding and the
          cash account is restored, in one atomic commit, so the AP control account and the supplier subledger never diverge. */
-      if (!["owner", "superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner can reverse a recorded supplier payment.");
+      if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can reverse a recorded supplier payment.");
       const docId = financeKey(data.documentId, "Payable ID"), reason = financeText(data.reason, 300);
       if (!reason) throw new HttpsError("invalid-argument", "A reversal reason is required.");
       const snap = await db.ref(`/payables/${docId}`).get();
@@ -4609,7 +4801,7 @@ exports.managePurchaseCorrection = onCall(
     if (action !== "reverse") throw new HttpsError("invalid-argument", "Purchase correction action is invalid.");
     const linkedAssetIds=Array.isArray(invoice.fixedAssetIds)?invoice.fixedAssetIds:[],linkedAssets={};for(const assetId of linkedAssetIds){const key=financeKey(assetId,"Asset ID"),asset=(await db.ref(`/fixedAssets/${key}`).get()).val();if(!asset)throw new HttpsError("failed-precondition","A linked fixed-asset card is missing. Repair the asset register before reversing this purchase.");if(asset.status==="disposed"||Financial.money(asset.accumulatedDepreciation||0)>0)throw new HttpsError("failed-precondition","Dispose or reverse posted depreciation before reversing this equipment purchase.");linkedAssets[key]=asset;}
     let approval;
-    if (data.ownerAmend === true) { if (!["owner","superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner can amend a purchase in one step; other roles need a manager approval to reverse."); approval = {id:`owner_amend_${invoiceId}`, usedWrites:{}}; }
+    if (data.ownerAmend === true) { if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can amend a purchase in one step; other roles need a manager approval to reverse."); approval = {id:`owner_amend_${invoiceId}`, usedWrites:{}}; }
     else { approval = await claimManagerApproval(db, data, "reverse_purchase", invoiceId, safeInvoice.total, `reverse_purchase_${invoiceId}`); }
     const movementIds = Array.isArray(invoice.movementIds)?invoice.movementIds:[], originals=[];
     const payable = invoice.payableId ? (await db.ref(`/payables/${financeKey(invoice.payableId,"Payable ID")}`).get()).val() : null,keepInvoiceId=financeText(data.keepInvoiceId,160),keepInvoice=keepInvoiceId&&invoices[keepInvoiceId],duplicateCleanup=data.duplicate===true&&keepInvoice&&keepInvoiceId!==invoiceId&&keepInvoice.reversed!==true&&financeText(keepInvoice.ref,120).toLowerCase()===financeText(invoice.ref,120).toLowerCase()&&financeText(keepInvoice.supplier,120).toLowerCase()===financeText(invoice.supplier,120).toLowerCase()&&Financial.money(keepInvoice.total)===safeInvoice.total;if (data.duplicate===true&&!duplicateCleanup) throw new HttpsError("failed-precondition","A single matching purchase must be selected as the record to keep.");if (payable && payable.status === "paid") throw new HttpsError("failed-precondition", "This payable has already been paid. Reverse the supplier payment before reversing the purchase.");const orphanAccount=invoice.payMode==="account"&&!payable;if (!duplicateCleanup&&orphanAccount&&(await db.ref(`/financialMovements/purchase_ap_${invoiceId}`).get()).exists()) throw new HttpsError("failed-precondition","This purchase has a payable movement but its payable record is missing. Repair the payable before reversal.");if (!duplicateCleanup&&invoice.payMode === "pending"&&(!payable||payable.status!=="open")) throw new HttpsError("failed-precondition", "The linked provisional obligation is missing or is no longer open.");if (!duplicateCleanup&&invoice.payMode==="account"&&payable&&payable.status!=="open") throw new HttpsError("failed-precondition","The linked supplier payable is no longer open.");
@@ -5489,7 +5681,7 @@ exports.repairFinanceDates = onCall(
     const mismatches = Object.keys(byMovement).map((k) => byMovement[k]);
     if (action === "preview" || !action) return {mismatches: mismatches.slice(0, 500), count: mismatches.length, ambiguous: mismatches.filter((m) => m.ambiguous).length};
     if (action !== "apply") throw new HttpsError("invalid-argument", "Unknown action.");
-    if (!["owner", "superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner can apply date corrections.");
+    if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can apply date corrections.");
     const reason = financeText(data.reason, 300); if (!reason) throw new HttpsError("invalid-argument", "A correction reason is required.");
     const approved = Array.isArray(data.movementIds) ? new Set(data.movementIds.map(String)) : null;
     const now = Date.now(); let repaired = 0, skipped = 0; const done = [];
@@ -6958,8 +7150,8 @@ exports.manageHistoricalOrderArchive = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 300, memory: "512MiB"},
   async (request) => {
     const db = getDatabase(), actor = await requirePortalUser(db, request);
-    if (!["owner", "superadmin"].includes(actor.role)) {
-      throw new HttpsError("permission-denied", "Historical archive management is restricted to owners.");
+    if (actor.role !== "superadmin") {
+      throw new HttpsError("permission-denied", "Historical archive management is restricted to Super Admins.");
     }
     const data = request.data || {}, action = financeText(data.action, 32), completionOverride = data.completionOverride === true;
     if (!["status", "preview", "backfill", "verify", "sales-replica-backfill", "sales-at-audit", "sales-at-backfill", "sales-at-verify", "sales-ledger-backfill", "sales-rollup-backfill"].includes(action)) {

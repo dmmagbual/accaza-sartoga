@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 598,
+    "admin": 599,
     "books": 129,
     "customer": 81,
-    "serviceWorkerCache": 581
+    "serviceWorkerCache": 582
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
@@ -97,6 +97,7 @@
     "src/functions/05-production-assurance.js",
     "src/functions/10-books-bridge.js",
     "src/functions/20-portal-auth.js",
+    "src/functions/20b-portal-accounts.js",
     "src/functions/21-operational-controls.js",
     "src/functions/22-close-controls.js",
     "src/functions/23-cash-balance-summary.js",
@@ -153,6 +154,7 @@
     "assets/js/shared/sales-authority.js",
     "assets/css/admin-backoffice.css",
     "assets/js/admin/core.mjs",
+    "assets/js/admin/staff-access.js",
     "assets/js/admin/accaza-ai.js",
     "assets/js/admin/manager-approval.mjs",
     "assets/js/admin/form-dialog.js",
@@ -359,6 +361,7 @@
     "reopenFinancialCloseOnMovement",
     "reopenFinancialCloseOnOrderChange",
     "managePosShiftCrew",
+    "managePortalAccount",
     "managePosSaleRecovery",
     "resolveBackgroundFailure"
   ],
@@ -395,6 +398,7 @@
     "incidentCommandClaims",
     "incidents",
     "financialApprovals",
+    "portalAccountMutationLock",
     "cashCustody",
     "undepositedLedgerPageIndex",
     "cashCustodyOpenIndex",

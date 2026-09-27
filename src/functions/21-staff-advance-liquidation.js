@@ -42,7 +42,7 @@ exports.managePettyVoucher = onCall(
       if (!(settlementAmount > 0)) throw new HttpsError("invalid-argument", "Settlement amount must be greater than zero.");
       if (settlementAmount > remaining + 0.009) throw new HttpsError("failed-precondition", `Settlement exceeds the outstanding balance of ${remaining.toFixed(2)}.`);
       if (!reason) throw new HttpsError("invalid-argument", "A settlement reference or explanation is required.");
-      if (settlementType === "write_off" && !["owner", "superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner or superadmin can write off a staff advance.");
+      if (settlementType === "write_off" && actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can write off a staff advance.");
       const settlementId = financeKey(data.commandId, "Command ID"), date = financeDate(data.date);
       if ((await db.ref(`/financialMovements/${settlementId}`).get()).exists()) return {voucherId: id, action, settlementId, duplicate: true};
       await assertAccountingPeriodOpen(db, date, "liquidating this staff advance");
@@ -74,7 +74,7 @@ exports.managePettyVoucher = onCall(
       return {voucherId: id, action, settlementId, amount: settlementAmount, remainingAmount: nextRemaining, duplicate: committed.duplicate};
     }
     if (action === "reverse_settlement") {
-      if (!["owner", "superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner or superadmin can reverse a staff advance settlement.");
+      if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can reverse a staff advance settlement.");
       const settlementId = financeKey(data.settlementId, "Settlement ID"), settlement = (voucher.settlements || {})[settlementId];
       if (!settlement) throw new HttpsError("not-found", "Settlement not found on this staff advance.");
       if (settlement.reversedAt) throw new HttpsError("failed-precondition", "This settlement has already been reversed.");

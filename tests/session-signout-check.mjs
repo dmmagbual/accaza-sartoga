@@ -17,7 +17,7 @@ const {exports: fx} = loadFunctions(db, {libOverrides: {'firebase-admin/auth': a
 const nowSec = Math.floor(Date.now() / 1000);
 const req = (uid, authTime, data = {}) => ({auth: {uid, token: {email: `${uid}@example.test`, auth_time: authTime}}, data});
 
-// Only the owner may do it, and only with a reason.
+// Only a Super Admin may do it, and only with a reason.
 await assert.rejects(fx.signOutAllPortalSessions(req('manager_uid', nowSec, {reason: 'lost tablet'})), (e) => e.code === 'permission-denied');
 await assert.rejects(fx.signOutAllPortalSessions(req('owner_uid1', nowSec, {reason: 'x'})), (e) => e.code === 'invalid-argument');
 
@@ -54,6 +54,6 @@ assert.ok(/CUTOFF_CART_GRACE_MS=90000/.test(portalAuth), 'the cart grace window 
 assert.ok(!/authz\.role|shift.*status|posActiveShift/i.test(portalAuth.slice(portalAuth.indexOf('watchSessionCutoff'))), 'the grace window is not gated on role or shift status');
 assert.ok(read('assets/js/books/live-pos.mjs').includes('ref(db,"/sessionControl/cutoff")'), 'Finance Books signs out a session older than the cutoff');
 const ops = read('assets/js/admin/operations-dashboard.js');
-assert.ok(ops.includes("['owner','superadmin'].indexOf(authz.role)>-1") && ops.includes('signOutAllPortalSessions({reason:reason})'), 'only the owner sees the emergency button');
+assert.ok(ops.includes("authz.role==='superadmin'") && ops.includes('signOutAllPortalSessions({reason:reason})'), 'only a Super Admin sees the emergency button');
 assert.ok(read('assets/js/admin/firebase-client.mjs').includes("callableNames.unshift('signOutAllPortalSessions')"));
-console.log('PASS: owner-only emergency sign-out revokes every portal account, records an audited cutoff, and every portal service and current tab enforces it.');
+console.log('PASS: Super-Admin-only emergency sign-out revokes every portal account, records an audited cutoff, and every portal service and current tab enforces it.');

@@ -29,10 +29,8 @@ const META={
   channelpricing:['Settings','Channel pricing','Maintain channel-specific prices and fees.',''],
   dedupe:['Settings','Menu maintenance','Resolve duplicate catalog records safely.',''],
   payment:['Settings','Payment details','Manage the payment instructions shown to customers.',''],
-  staffaccounts:['Settings','Account setup','Create and maintain staff portal accounts.',''],
-  staffaccess:['Settings','Staff access','Assign the minimum permissions each role needs.',''],
+  staffaccounts:['Settings','User accounts & access','Manage Firebase usernames, staff roles, and security access.',''],
   operations:['Home','Operations Center','Review system health and actionable operational exceptions.','dashboard:Back to home'],
-  adminaccounts:['Settings','Admin accounts','Manage privileged portal access.',''],
   changepw:['Settings','Change password','Update the current portal credential.','']
   ,accountingperiods:['Settings','Accounting periods','Close a month after review, or reopen it for controlled corrections.','']
 };

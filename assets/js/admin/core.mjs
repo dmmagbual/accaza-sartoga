@@ -1,11 +1,11 @@
 import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
-import{createSubscriptionHub}from"./realtime-hub.mjs?v=598";
+import{createSubscriptionHub}from"./realtime-hub.mjs?v=599";
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=598";
-import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=598";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=599";
+import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=599";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -63,7 +63,7 @@ window.__setupPush=setupPush;
 
 const feedbacksRef=ref(db,'feedbacks'),reviewsRef=ref(db,'reviews'),availRef=ref(db,'availability'),paymentRef=ref(db,'payment'),menuRef=ref(db,'menuItems'),categoriesRef=ref(db,'categories'),optionGroupsRef=ref(db,'optionGroups');
 window.__accaza={
-  db,ref,set,get,update,remove,onValue,runTransaction,query,orderByChild,equalTo,startAt,endAt,callables,hub:subscriptionHub,readHistoricalOrders,readHistoricalSalesRollup,summarizeHistoricalSales,addLiveSales,reconcileCashierSales,
+  db,ref,set,get,update,remove,onValue,runTransaction,query,orderByChild,equalTo,startAt,endAt,callables,sendPasswordResetEmail:function(email){return sendPasswordResetEmail(auth,email);},hub:subscriptionHub,readHistoricalOrders,readHistoricalSalesRollup,summarizeHistoricalSales,addLiveSales,reconcileCashierSales,
   subscribe:function(path,callback,opts){return subscriptionHub.subscribe(path,callback,opts);},
   postInventoryMovements:function(movements){return postInventoryMovementsCall({movements:movements});},
   ensureInventoryLedger:function(){return ensureInventoryLedgerCall({});},
@@ -129,8 +129,8 @@ window.__accaza={
   getMenuItems, getCats, getCatLabel, getCatIcon, getItemOptionGroups, formatPrice
 };
 
-let staffAccountsMap={},adminAccountsMap={},staffLoggedIn=false,superAdminLoggedIn=false,currentUser=null,currentLoginRole=null;
-const SUPER_ADMIN_USERNAME='superadmin',CAFE_PHONE='639276924831',CAFE_EMAIL='admin@accazacoffee.com';
+let staffLoggedIn=false,superAdminLoggedIn=false,currentUser=null,currentLoginRole=null;
+const CAFE_PHONE='639276924831',CAFE_EMAIL='admin@accazacoffee.com';
 
 const DEFAULT_CATS=[
   {id:'coffee',label:'Coffee Based',icon:'â˜•',order:0},
@@ -243,16 +243,6 @@ subscriptionHub.subscribe('categories',snap=>{
   renderMenuSection();
   renderOrderSection();
   if(adminLoggedIn){buildAvail();renderCategoryManager();}
-});
-
-subscriptionHub.subscribe('staffAccounts',snap=>{
-  staffAccountsMap=snap.val()||{};
-  if(adminLoggedIn||superAdminLoggedIn) renderStaffAccounts();
-});
-
-subscriptionHub.subscribe('adminAccounts',snap=>{
-  adminAccountsMap=snap.val()||{};
-  if(superAdminLoggedIn) renderAdminAccounts();
 });
 
 function migrateItemOptions(){
@@ -847,114 +837,6 @@ window.changeAdminPassword=async function(){
 };
 
 
-function renderStaffAccounts(){
-  var el=document.getElementById('staffList');if(!el)return;
-  var keys=Object.keys(staffAccountsMap);
-  if(!keys.length){el.innerHTML='<p style="font-size:0.85rem;color:var(--tl);">No staff accounts yet.</p>';return;}
-  el.innerHTML=keys.map(function(uid){
-    var acc=staffAccountsMap[uid];
-    return'<div style="display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid var(--cd);border-radius:8px;padding:0.7rem 1rem;margin-bottom:0.5rem;">'
-      +'<div><span style="font-size:0.9rem;font-weight:500;color:var(--bd);">ðŸ‘¤ '+escHtml(acc.username)+'</span>'
-      +'<span style="font-size:0.72rem;color:var(--tl);display:block;margin-top:0.1rem;">Staff Â· Password protected</span></div>'
-      +'<button data-delstaff="'+uid+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">ðŸ—‘ï¸ Remove</button>'
-      +'</div>';
-  }).join('');
-  el.querySelectorAll('[data-delstaff]').forEach(function(btn){
-    btn.addEventListener('click',function(){
-      var uid=this.dataset.delstaff;
-      var name=staffAccountsMap[uid]?staffAccountsMap[uid].username:'this account';
-      showDeletePopup('staff account for '+name,async function(){
-        await remove(ref(db,'staffAccounts/'+uid));
-      });
-    });
-  });
-}
-window.addStaffAccount=async function(){
-  var username=(document.getElementById('staffUsername').value||'').trim().toLowerCase();
-  var password=document.getElementById('staffPassword').value;
-  var msg=document.getElementById('staffAddMsg');
-  function showMsg(text,ok){
-    msg.textContent=text;msg.style.display='block';
-    msg.style.background=ok?'rgba(45,158,95,0.12)':'rgba(192,57,57,0.1)';
-    msg.style.color=ok?'#1a7a45':'#c0392b';
-    msg.style.border='1px solid '+(ok?'rgba(45,158,95,0.3)':'rgba(192,57,57,0.3)');
-  }
-  if(!username){showMsg('Username is required.',false);return;}
-  if(!password||password.length<4){showMsg('Password must be at least 4 characters.',false);return;}
-  var taken=Object.values(staffAccountsMap).some(function(a){return a.username===username;});
-  if(taken){showMsg('Username "'+username+'" is already taken.',false);return;}
-  var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(password));
-  var hashHex=Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
-  var uid='staff_'+Date.now();
-  try{
-    await set(ref(db,'staffAccounts/'+uid),{username,passwordHash:hashHex});
-    document.getElementById('staffUsername').value='';
-    document.getElementById('staffPassword').value='';
-    showMsg('âœ… Staff account "'+username+'" created.',true);
-  }catch(e){showMsg('Error: '+e.message,false);}
-};
-
-
-function renderAdminAccounts(){
-  var el=document.getElementById('adminAccList');if(!el)return;
-  var keys=Object.keys(adminAccountsMap);
-  if(!keys.length){el.innerHTML='<p style="font-size:0.85rem;color:var(--tl);">No admin accounts yet.</p>';return;}
-  el.innerHTML=keys.map(function(uid){
-    var acc=adminAccountsMap[uid];
-    var noPay=acc.access==='nopay';
-    return'<div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;flex-wrap:wrap;background:#fff;border:1px solid var(--cd);border-radius:8px;padding:0.7rem 1rem;margin-bottom:0.5rem;">'
-      +'<div><span style="font-size:0.9rem;font-weight:500;color:var(--bd);">ðŸ”‘ '+escHtml(acc.username)+'</span>'
-      +'<span style="font-size:0.72rem;color:'+(noPay?'#b07a2a':'var(--tl)')+';display:block;margin-top:0.1rem;">'+(noPay?'Admin Â· All except Payment Details':'Admin Â· Full access')+'</span></div>'
-      +'<div style="display:flex;align-items:center;gap:0.5rem;">'
-      +'<select data-accessuid="'+uid+'" title="Access level" style="background:var(--cr);border:1px solid var(--cd);border-radius:6px;padding:0.3rem 0.5rem;font-size:0.75rem;font-family:\'Inter\',sans-serif;color:var(--td);cursor:pointer;">'
-      +'<option value="full"'+(noPay?'':' selected')+'>âœ… Full access</option>'
-      +'<option value="nopay"'+(noPay?' selected':'')+'>ðŸ”’ No Payment Details</option>'
-      +'</select>'
-      +'<button data-deladmin="'+uid+'" style="background:#fff0f0;border:1px solid #e0b0b0;border-radius:6px;padding:0.3rem 0.7rem;font-size:0.75rem;color:#c0392b;cursor:pointer;">ðŸ—‘ï¸ Remove</button>'
-      +'</div></div>';
-  }).join('');
-  el.querySelectorAll('[data-deladmin]').forEach(function(btn){
-    btn.addEventListener('click',function(){
-      var uid=this.dataset.deladmin;
-      var name=adminAccountsMap[uid]?adminAccountsMap[uid].username:'this account';
-      showDeletePopup('admin account for '+name,async function(){
-        await remove(ref(db,'adminAccounts/'+uid));
-      });
-    });
-  });
-  el.querySelectorAll('[data-accessuid]').forEach(function(sel){
-    sel.addEventListener('change',async function(){
-      await update(ref(db,'adminAccounts/'+this.dataset.accessuid),{access:this.value});
-    });
-  });
-}
-window.addAdminAccount=async function(){
-  var username=(document.getElementById('adminAccUsername').value||'').trim().toLowerCase();
-  var password=document.getElementById('adminAccPassword').value;
-  var msg=document.getElementById('adminAccMsg');
-  function showMsg(text,ok){
-    msg.textContent=text;msg.style.display='block';
-    msg.style.background=ok?'rgba(45,158,95,0.12)':'rgba(192,57,57,0.1)';
-    msg.style.color=ok?'#1a7a45':'#c0392b';
-    msg.style.border='1px solid '+(ok?'rgba(45,158,95,0.3)':'rgba(192,57,57,0.3)');
-  }
-  if(!username){showMsg('Username is required.',false);return;}
-  if(username===SUPER_ADMIN_USERNAME){showMsg('"'+username+'" is reserved.',false);return;}
-  if(!password||password.length<4){showMsg('Password must be at least 4 characters.',false);return;}
-  var taken=Object.values(adminAccountsMap).some(function(a){return a.username===username;});
-  if(taken){showMsg('Username "'+username+'" already taken.',false);return;}
-  var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(password));
-  var hashHex=Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
-  try{
-    var access=(document.getElementById('adminAccAccess')||{}).value||'full';
-    await set(ref(db,'adminAccounts/'+('admin_'+Date.now())),{username,passwordHash:hashHex,access});
-    document.getElementById('adminAccUsername').value='';
-    document.getElementById('adminAccPassword').value='';
-    var accSel=document.getElementById('adminAccAccess');if(accSel)accSel.value='full';
-    showMsg('âœ… Admin account "'+username+'" created.',true);
-  }catch(e){showMsg('Error: '+e.message,false);}
-};
-
 function renderPublicReviews(){
   var el=document.getElementById('publicReviewsContainer');if(!el)return;
   var entries=Object.entries(reviewsMap);
@@ -1122,7 +1004,7 @@ function _paintArchive(){
   var cards=orders.length?orders.map(function(o){var oid=escHtml(o.id),age=Date.now()-Number(o.archivedAt||0),canDelete=o.prevStatus==='Rejected'&&age>=90*24*60*60*1000,outcome=archiveOutcome(o);return'<div class="archive-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.4rem;"><div><div style="font-weight:500;font-size:0.88rem;color:var(--bd);">'+escHtml(o.name)+' <span style="font-size:0.72rem;color:var(--tl);">#'+oid+'</span></div><div style="font-size:0.75rem;color:var(--tl);">'+escHtml(o.date)+' Â· '+escHtml(o.time)+'</div></div><span class="badge" style="'+outcome.style+'">'+outcome.icon+' '+escHtml(outcome.label)+'</span></div><div style="font-size:0.8rem;color:var(--tm);margin:0.3rem 0;">ðŸ›’ '+escHtml(o.items)+'</div><div style="font-size:0.78rem;color:var(--tl);">â‚±'+(Number(o.total)||0).toLocaleString()+' Â· '+escHtml(o.payment)+' Â· '+escHtml(o.type)+'</div><div style="font-size:0.72rem;color:var(--tl);margin-top:0.3rem;">Archived: '+escHtml(o.archivedDate||'â€”')+'</div>'+(adminLoggedIn?'<div style="margin-top:0.5rem;text-align:right;">'+(canDelete?'<button data-delarch="'+oid+'" style="background:#fdecea;border:1px solid #f5c6c6;color:#c0392b;border-radius:4px;padding:0.3rem 0.7rem;font-size:0.74rem;cursor:pointer;font-weight:600;">ðŸ—‘ Delete rejected order</button>':'<span style="font-size:0.7rem;color:var(--tl);">ðŸ”’ Retained audit record</span>')+'</div>':'')+'</div>';}).join(''):'<p style="color:var(--tl);text-align:center;padding:1.5rem;font-size:0.88rem;">No archived orders in the loaded pages for this range.</p>';
   el.innerHTML=cards+'<div style="text-align:center;padding:0.8rem;"><button id="archiveLoadOlder" class="pz-btn sec"'+(hs.hasOlder?'':' disabled')+'>'+(hs.hasOlder?'Load 100 older orders':'All loaded orders reached')+'</button></div>';
   var more=document.getElementById('archiveLoadOlder');if(more&&hs.hasOlder)more.onclick=async function(){more.disabled=true;more.textContent='Loading older ordersâ€¦';try{await subscriptionHub.loadOlder('archivedOrders');}catch(e){more.textContent='Could not load older orders';more.disabled=false;}};
-  el.querySelectorAll('button[data-delarch]').forEach(function(btn){btn.addEventListener('click',function(){var oid=this.getAttribute('data-delarch'),o=archivedOrdersMap[oid];showDeletePopup('PERMANENTLY delete eligible rejected order #'+oid+(o&&o.name?' ('+o.name+')':'')+'. Owner, Superadmin, Admin, or Manager approval is required.',async function(){try{var ap=await requestManagerApproval('delete_archived_order',oid,Number(o&&o.total)||0,'Delete rejected order after retention period');await manageOrderArchiveCall({action:'delete',orderId:oid,approvalId:ap.approvalId});delete archivedOrdersMap[oid];renderArchive();}catch(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Could not delete order: '+((e&&e.message)||e));}});});});
+  el.querySelectorAll('button[data-delarch]').forEach(function(btn){btn.addEventListener('click',function(){var oid=this.getAttribute('data-delarch'),o=archivedOrdersMap[oid];showDeletePopup('PERMANENTLY delete eligible rejected order #'+oid+(o&&o.name?' ('+o.name+')':'')+'. Super Admin, Admin, or Manager approval is required.',async function(){try{var ap=await requestManagerApproval('delete_archived_order',oid,Number(o&&o.total)||0,'Delete rejected order after retention period');await manageOrderArchiveCall({action:'delete',orderId:oid,approvalId:ap.approvalId});delete archivedOrdersMap[oid];renderArchive();}catch(e){if(String((e&&e.message)||e).indexOf('cancelled')<0)alert('Could not delete order: '+((e&&e.message)||e));}});});});
 }
 
 function showDeletePopup(label,onConfirm){
@@ -1154,7 +1036,7 @@ window.selectLoginRole=function(role){
 
 var DEFAULT_STAFF_PERMS={orders:true,reservations:true,pos:true,inventory:true,purchases:false,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,dailyreport:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false,cashflow:false,receivables:false,payables:false,stockvalue:false},roleLandingDone=false;
 var _permTabMap={"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'availSection'":'availability',"'commentsSection'":'comments',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'purchases'":'purchases',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'dedupe'":'dedupe',"'cashflow'":'cashflow',"'receivables'":'receivables',"'payables'":'payables',"'stockvalue'":'stockvalue',"'dailyreport'":'dailyreport',"'analytics'":'analytics',"'pnl'":'pnl',"'ops'":'registerOps',"'possettings'":'possettings'};
-var _permAlwaysHide=["'payment'","'staffaccounts'","'adminaccounts'","'staffaccess'","'packages'","'operations'","'liveoperations'"];
+var _permAlwaysHide=["'payment'","'staffaccounts'","'packages'","'operations'","'liveoperations'"];
 function mountLegacyAdminPanels(){
   var wrap=document.querySelector('#adminDash .admin-wrap');if(!wrap)return;
   ['availSection','commentsSection'].forEach(function(id){var panel=document.getElementById(id);if(!panel)return;panel.classList.add('admin-tab-content','admin-integrated-panel');wrap.appendChild(panel);});
@@ -1188,9 +1070,9 @@ function landRoleHome(){
   var first=null;row.querySelectorAll('.admin-tab').forEach(function(button){if(!first&&button.style.display!=='none')first=button;});
   if(!first)return;roleLandingDone=true;window.showTabGroup(target,group);
 }
-async function loginSuccess(role,username,uid,serverRole){
+async function loginSuccess(role,username,uid,serverRole,profile){
   roleLandingDone=false;
-  currentUser={role,serverRole:serverRole||role,username,uid};
+  currentUser={role,serverRole:serverRole||role,username,uid,title:profile&&profile.title||''};
   var effectiveRole=String(serverRole||role).toLowerCase();
   window.__accazaAuthz={uid,role:effectiveRole,isPrivileged:['owner','superadmin','admin','manager'].indexOf(effectiveRole)>-1};
   subscriptionHub.activate(effectiveRole==='cashier'?'pos':'dashboard');subscriptionHub.authorize();
@@ -1202,31 +1084,22 @@ async function loginSuccess(role,username,uid,serverRole){
   closeAdmin();
   document.body.classList.remove('staff-mode');
   document.querySelectorAll('.admin-tab').forEach(function(t){t.style.removeProperty('display');});
-  var aaccTab=document.getElementById('tabBtnAdminAccounts');
-  if(aaccTab)aaccTab.style.display='none';
+  var accountAccessTab=document.getElementById('tabBtnAccountAccess');
+  if(accountAccessTab)accountAccessTab.style.display='none';
 
-  if(role==='superadmin'||role==='admin'){
-    adminLoggedIn=true;superAdminLoggedIn=(role==='superadmin');staffLoggedIn=false;
+  if(role==='admin'){
+    adminLoggedIn=true;superAdminLoggedIn=(effectiveRole==='superadmin');staffLoggedIn=false;
     document.getElementById('adminDash').style.display='block';
     document.getElementById('navAdminPanel').style.display='block';
     document.getElementById('navAvail').style.display='none';
     document.getElementById('navComments').style.display='none';
     document.getElementById('navAdminPanelLink').textContent='Admin panel';
-    if(superAdminLoggedIn&&aaccTab)aaccTab.style.removeProperty('display');
+    if(superAdminLoggedIn&&accountAccessTab)accountAccessTab.style.removeProperty('display');
     var hdr=document.querySelector('#adminDash .admin-header p');
-    if(hdr)hdr.textContent=(superAdminLoggedIn?'Super admin':'Admin')+': '+username;
-    if(role==='admin'&&uid&&adminAccountsMap[uid]&&adminAccountsMap[uid].access==='nopay'){
-      document.querySelectorAll('.admin-tab').forEach(function(btn){
-        var oc=btn.getAttribute('onclick')||'';
-        if(oc.indexOf("'payment'")!==-1)btn.style.display='none';
-      });
-      var tpay=document.getElementById('tab-payment');if(tpay)tpay.style.display='none';
-      if(hdr)hdr.textContent='Admin: '+username+' · Limited access';
-    }
+    if(hdr)hdr.textContent=superAdminLoggedIn?((currentUser.title||'Systems Administrator')+': '+username+' · Super Admin'):(effectiveRole.charAt(0).toUpperCase()+effectiveRole.slice(1)+': '+username);
     setTimeout(function(){
       buildAvail();renderCategoryManager();renderOptionManager();renderNewItemOptionChecklist();renderComments();renderOrders();renderReservations();
-      renderAdminReviews();renderAdminCalendar();renderDashboard();renderStaffAccounts();
-      if(superAdminLoggedIn)renderAdminAccounts();
+      renderAdminReviews();renderAdminCalendar();renderDashboard();
     },300);
   }else{
     staffLoggedIn=true;adminLoggedIn=false;superAdminLoggedIn=false;
@@ -1250,7 +1123,7 @@ async function loginSuccess(role,username,uid,serverRole){
 installPortalAuth({subscriptionHub:subscriptionHub,onAuthorized:loginSuccess,openLogin:window.openAdmin,onSignedOut:function(){adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;currentUser=null;currentLoginRole=null;window.__posShift=null;if(window.__refreshWorkspaceStatus)window.__refreshWorkspaceStatus();}});
 const workspaceShell=installWorkspaceShell({currentUser:function(){return currentUser;},subscriptionHub:subscriptionHub});
 window.switchTab=function(tab,btn){
-  if(tab==='payment'&&currentUser&&currentUser.role==='admin'&&currentUser.uid&&adminAccountsMap[currentUser.uid]&&adminAccountsMap[currentUser.uid].access==='nopay'){alert('â›” You do not have access to Payment Details.');return;}
+  if(tab==='staffaccounts'&&!superAdminLoggedIn){alert('Super Admin access is required.');return;}
   subscriptionHub.activate(tab);
   var legacyAvailability=document.getElementById('availSection'),legacyComments=document.getElementById('commentsSection');
   if(legacyAvailability)legacyAvailability.style.display='none';if(legacyComments)legacyComments.style.display='none';

@@ -254,7 +254,7 @@ function reverseStaffAdvanceSettlement(id){
   var rows=Object.keys(v.settlements||{}).map(function(k){return Object.assign({id:k},v.settlements[k]);}).filter(function(s){return !s.reversedAt;});
   if(!rows.length){alert('No active settlements to reverse.');return;}
   var a=A();if(!a.managePettyVoucher||!a.managerApproval){alert('Cash-payment approval service is not available. Refresh the portal.');return;}
-  F().run({title:'Reverse staff advance settlement',subtitle:(v.recipient||v.staffName||'Staff')+' · owner or superadmin only',submitLabel:'Request approval & reverse',busyLabel:'Reversing…',fields:[
+  F().run({title:'Reverse staff advance settlement',subtitle:(v.recipient||v.staffName||'Staff')+' · Super Admin only',submitLabel:'Request approval & reverse',busyLabel:'Reversing…',fields:[
     {name:'settlementId',label:'Settlement to reverse',type:'select',required:true,options:rows.map(function(s){return {value:s.id,label:(s.type==='cash'?'Cash repayment':s.type==='payroll_deduction'?'Payroll deduction':'Write-off')+' · '+peso(s.amount)+' · '+(s.date||'')};})},
     {name:'date',label:'Reversal date',type:'date',required:true,value:window.AccazaDate.key()},
     {name:'reason',label:'Reversal reason',type:'textarea',required:true,maxLength:300,placeholder:'Required: explain why this settlement is being reversed'}

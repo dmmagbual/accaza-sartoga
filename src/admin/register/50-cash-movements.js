@@ -8,7 +8,7 @@ function cashMove(dir){
     +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.5rem;">Cash in — add to drawer</div>'
     +(denom?('<span class="pz-lbl">Notes/coins added</span>'+denomGridHtml('cmDenom')):'<div><span class="pz-lbl">Amount ₱</span><input class="pz-in" id="cmAmt" type="number" step="any"/></div>')
     +'<div style="margin-top:0.5rem;"><span class="pz-lbl">Reason</span><select class="pz-in" id="cmReason"><option>Owner top-up</option><option>Change float</option><option>Return</option><option>Other</option></select></div>'
-    +'<div style="margin-top:0.5rem;padding:0.45rem 0.55rem;background:#f4efe7;border-radius:6px;font-size:0.76rem;color:var(--tl);">Owner, Superadmin, Admin, or Manager approval is recorded when you submit.</div>'
+    +'<div style="margin-top:0.5rem;padding:0.45rem 0.55rem;background:#f4efe7;border-radius:6px;font-size:0.76rem;color:var(--tl);">Super Admin, Admin, or Manager approval is recorded when you submit.</div>'
     +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="cmSubmit">Add to drawer</button><button class="pz-btn sec" id="cmCancel">Cancel</button></div></div>';
   document.body.appendChild(mask);
   if(denom)wireDenom('cmDenom');

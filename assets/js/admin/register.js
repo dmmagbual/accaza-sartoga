@@ -536,7 +536,7 @@ function reverseStaffAdvanceSettlement(id){
   var rows=Object.keys(v.settlements||{}).map(function(k){return Object.assign({id:k},v.settlements[k]);}).filter(function(s){return !s.reversedAt;});
   if(!rows.length){alert('No active settlements to reverse.');return;}
   var a=A();if(!a.managePettyVoucher||!a.managerApproval){alert('Cash-payment approval service is not available. Refresh the portal.');return;}
-  F().run({title:'Reverse staff advance settlement',subtitle:(v.recipient||v.staffName||'Staff')+' · owner or superadmin only',submitLabel:'Request approval & reverse',busyLabel:'Reversing…',fields:[
+  F().run({title:'Reverse staff advance settlement',subtitle:(v.recipient||v.staffName||'Staff')+' · Super Admin only',submitLabel:'Request approval & reverse',busyLabel:'Reversing…',fields:[
     {name:'settlementId',label:'Settlement to reverse',type:'select',required:true,options:rows.map(function(s){return {value:s.id,label:(s.type==='cash'?'Cash repayment':s.type==='payroll_deduction'?'Payroll deduction':'Write-off')+' · '+peso(s.amount)+' · '+(s.date||'')};})},
     {name:'date',label:'Reversal date',type:'date',required:true,value:window.AccazaDate.key()},
     {name:'reason',label:'Reversal reason',type:'textarea',required:true,maxLength:300,placeholder:'Required: explain why this settlement is being reversed'}
@@ -556,7 +556,7 @@ function cashMove(dir){
     +'<div style="font-weight:700;color:var(--bd);margin-bottom:0.5rem;">Cash in — add to drawer</div>'
     +(denom?('<span class="pz-lbl">Notes/coins added</span>'+denomGridHtml('cmDenom')):'<div><span class="pz-lbl">Amount ₱</span><input class="pz-in" id="cmAmt" type="number" step="any"/></div>')
     +'<div style="margin-top:0.5rem;"><span class="pz-lbl">Reason</span><select class="pz-in" id="cmReason"><option>Owner top-up</option><option>Change float</option><option>Return</option><option>Other</option></select></div>'
-    +'<div style="margin-top:0.5rem;padding:0.45rem 0.55rem;background:#f4efe7;border-radius:6px;font-size:0.76rem;color:var(--tl);">Owner, Superadmin, Admin, or Manager approval is recorded when you submit.</div>'
+    +'<div style="margin-top:0.5rem;padding:0.45rem 0.55rem;background:#f4efe7;border-radius:6px;font-size:0.76rem;color:var(--tl);">Super Admin, Admin, or Manager approval is recorded when you submit.</div>'
     +'<div style="display:flex;gap:0.5rem;margin-top:1rem;"><button class="pz-btn ok" id="cmSubmit">Add to drawer</button><button class="pz-btn sec" id="cmCancel">Cancel</button></div></div>';
   document.body.appendChild(mask);
   if(denom)wireDenom('cmDenom');
@@ -584,9 +584,10 @@ function pendingPanel(){
   h+='</div>';
   return h;
 }
+
 function renderOps(){
   var root=document.getElementById('opsRoot');if(!root)return;
-  var html='<div class="pz-h">🧾 Register Ops</div><p class="pz-sub">Shift control, cash reconciliation, voids &amp; refunds — all logged. Owner, Superadmin, Admin, or Manager accounts approve controlled actions.</p>';
+  var html='<div class="pz-h">🧾 Register Ops</div><p class="pz-sub">Shift control, cash reconciliation, voids &amp; refunds — all logged. Super Admin, Admin, or Manager accounts approve controlled actions.</p>';
   html+=pendingPanel();
   if(['owner','superadmin','admin','manager'].indexOf(String((window.__accazaAuthz||{}).role))>=0)html+='<button class="pz-btn sec" id="opsHandovers">Review pending shift handovers</button> <button class="pz-btn sec" id="opsSaleRecovery">Sales needing recovery</button>';
   // SHIFT
