@@ -528,8 +528,8 @@ exports.manageHistoricalOrderArchive = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 300, memory: "512MiB"},
   async (request) => {
     const db = getDatabase(), actor = await requirePortalUser(db, request);
-    if (!["owner", "superadmin"].includes(actor.role)) {
-      throw new HttpsError("permission-denied", "Historical archive management is restricted to owners.");
+    if (actor.role !== "superadmin") {
+      throw new HttpsError("permission-denied", "Historical archive management is restricted to Super Admins.");
     }
     const data = request.data || {}, action = financeText(data.action, 32), completionOverride = data.completionOverride === true;
     if (!["status", "preview", "backfill", "verify", "sales-replica-backfill", "sales-at-audit", "sales-at-backfill", "sales-at-verify", "sales-ledger-backfill", "sales-rollup-backfill"].includes(action)) {

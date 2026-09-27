@@ -1,9 +1,11 @@
 import{auth,db,ref,get,signInWithEmailAndPassword,signOut,onAuthStateChanged,setPersistence,browserLocalPersistence}from"./firebase-client.mjs";
 
 function portalRole(raw){
+  if(raw&&typeof raw==='object'&&(raw.disabled===true||raw.active===false))return null;
   var r=raw===true?'owner':(typeof raw==='string'?raw:((raw&&raw.role)||''));
   r=String(r||'').toLowerCase();
-  if(['owner','superadmin','admin','manager'].indexOf(r)>-1)return {ui:'admin',server:r};
+  if(r==='owner')r='superadmin';
+  if(['superadmin','admin','manager'].indexOf(r)>-1)return {ui:'admin',server:r};
   if(['staff','cashier','kitchen','finance'].indexOf(r)>-1)return {ui:'staff',server:r};
   return null;
 }
@@ -12,7 +14,7 @@ function installPortalAuth(options){
   var subscriptionHub=options.subscriptionHub,onAuthorized=options.onAuthorized,onSignedOut=options.onSignedOut,openLogin=options.openLogin;
   var authGateResolved=false,portalAuthPromise=null,portalAuthUid=null;
   window.__accazaAuthGateReady=function(){return authGateResolved;};
-  // Owner emergency sign-out: a session that signed in before /sessionControl/cutoff/at ends
+  // Super Admin emergency sign-out: a session that signed in before /sessionControl/cutoff/at ends
   // here at once (the server refuses it as well). The node is a single small record.
   // Exception: a POS cart being rung up right now (assets/js/admin/pos.js) lives only in memory
   // — a submitted sale is safe either way (it queues in IndexedDB and syncs after sign-in, see
@@ -32,7 +34,7 @@ function installPortalAuth(options){
   async function finishCutoffSignOut(user,cutoff){
     cutoffSignOut=true;cutoffBanner(null);try{sessionStorage.removeItem('accaza_admin_session');}catch(_s){}
     try{await signOut(auth);}catch(_o){}
-    cutoffSignOut=false;var le=document.getElementById('loginErr');if(le){le.textContent='The owner signed every device out'+(cutoff.reason?(': '+cutoff.reason):'')+'. Sign in again.';le.style.display='block';le.style.whiteSpace='normal';}openLogin();
+    cutoffSignOut=false;var le=document.getElementById('loginErr');if(le){le.textContent='A Super Admin signed every device out'+(cutoff.reason?(': '+cutoff.reason):'')+'. Sign in again.';le.style.display='block';le.style.whiteSpace='normal';}openLogin();
   }
   function watchSessionCutoff(user){
     if(stopCutoffWatch)stopCutoffWatch();
@@ -43,7 +45,7 @@ function installPortalAuth(options){
       cutoffPending=true;
       var deadline=Date.now()+CUTOFF_CART_GRACE_MS;
       while(Date.now()<deadline&&cartInProgress()){
-        cutoffBanner('The owner signed everyone out. Finish or clear this sale — this device signs out in a moment.');
+        cutoffBanner('A Super Admin signed everyone out. Finish or clear this sale — this device signs out in a moment.');
         await new Promise(function(r){setTimeout(r,CUTOFF_CART_POLL_MS);});
         if(!auth.currentUser||auth.currentUser.uid!==user.uid){cutoffPending=false;cutoffBanner(null);return;}
       }
@@ -59,7 +61,8 @@ function installPortalAuth(options){
       var roleSnap=results[0],nameSnap=results[1],mapped=roleSnap.exists()?portalRole(roleSnap.val()):null;
       if(!mapped)throw new Error('This Firebase account is not authorized for the Accaza portal.');
       var display=(user.displayName||user.email||user.uid);if(nameSnap&&nameSnap.exists()&&nameSnap.val())display=nameSnap.val();
-      await onAuthorized(mapped.ui,display,user.uid,mapped.server);portalAuthUid=user.uid;authGateResolved=true;watchSessionCutoff(user);
+      var raw=roleSnap.val(),profile={name:(raw&&typeof raw==='object'&&raw.name)||display,title:(raw&&typeof raw==='object'&&raw.title)||(mapped.server==='superadmin'?'Systems Administrator':''),email:user.email||''};
+      await onAuthorized(mapped.ui,display,user.uid,mapped.server,profile);portalAuthUid=user.uid;authGateResolved=true;watchSessionCutoff(user);
       if(location.hash)setTimeout(function(){var t=document.getElementById(location.hash.slice(1));if(t)t.scrollIntoView();},450);
     })();
     try{return await portalAuthPromise;}finally{portalAuthPromise=null;}

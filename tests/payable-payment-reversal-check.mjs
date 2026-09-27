@@ -49,7 +49,7 @@ for (const file of ['functions/index.js', 'src/functions/42d-financial-command-c
   must(s, 'action === "reverse_payable_payment"', `${file}: the reverse_payable_payment action must exist.`);
   must(s, 'const reverseId = `payable_payment_reverse_${paymentId}`', `${file}: the reversal must use a deterministic movement id so a double submit cannot post twice.`);
   must(s, 'if ((await db.ref(`/financialMovements/${reverseId}`).get()).exists()) return {movementId: reverseId, documentId: docId, duplicate: true};', `${file}: a replayed reversal must return the original posting, not a second one.`);
-  must(s, '!["owner", "superadmin"].includes(actor.role)', `${file}: only the owner may reverse a recorded supplier payment.`);
+  must(s, 'actor.role !== "superadmin"', `${file}: only a Super Admin may reverse a recorded supplier payment.`);
   must(s, 'if (!reason) throw new HttpsError("invalid-argument", "A reversal reason is required.");', `${file}: a reversal reason must be mandatory.`);
   must(s, 'This bill was reversed at its source transaction.', `${file}: a source-reversed bill must be redirected, not double-corrected.`);
   must(s, 'settlements/${paymentId}/status', `${file}: the selected settlement must carry its own reversal status.`);

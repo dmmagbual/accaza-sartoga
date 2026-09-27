@@ -34,7 +34,7 @@ for(const action of expected){
 const declared=[...actionBlock.matchAll(/"([a-z_]+)"/g)].map(match=>match[1]);
 const extras=declared.filter(action=>!expected.includes(action));
 if(extras.length)fail(`Unreviewed server approval actions: ${extras.join(', ')}`);
-if(!functionsSource.includes('["owner", "superadmin", "admin", "manager"].includes(managerRole)'))fail('Server privileged-role list does not explicitly include Admin');
+if(!functionsSource.includes('["superadmin", "admin", "manager"].includes(managerRole)'))fail('Server privileged-role list does not explicitly include Admin');
 if(!managerSource.includes('authz&&authz.isPrivileged&&current')||!managerSource.includes('current.getIdToken(true)'))fail('Signed-in Admin cannot approve directly with the current Firebase session');
 if(!managerSource.includes('options&&options.requireIndependent'))fail('High-risk corrections cannot force a separate manager sign-in');
 if(!functionsSource.includes('decoded.uid === requester.uid'))fail('Server does not reject self-approved completed-order corrections');

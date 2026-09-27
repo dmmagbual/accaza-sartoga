@@ -1,7 +1,7 @@
 
 function renderOps(){
   var root=document.getElementById('opsRoot');if(!root)return;
-  var html='<div class="pz-h">🧾 Register Ops</div><p class="pz-sub">Shift control, cash reconciliation, voids &amp; refunds — all logged. Owner, Superadmin, Admin, or Manager accounts approve controlled actions.</p>';
+  var html='<div class="pz-h">🧾 Register Ops</div><p class="pz-sub">Shift control, cash reconciliation, voids &amp; refunds — all logged. Super Admin, Admin, or Manager accounts approve controlled actions.</p>';
   html+=pendingPanel();
   if(['owner','superadmin','admin','manager'].indexOf(String((window.__accazaAuthz||{}).role))>=0)html+='<button class="pz-btn sec" id="opsHandovers">Review pending shift handovers</button> <button class="pz-btn sec" id="opsSaleRecovery">Sales needing recovery</button>';
   // SHIFT

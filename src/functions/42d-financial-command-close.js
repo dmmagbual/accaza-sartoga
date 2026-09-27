@@ -38,7 +38,7 @@
       if(doc.discrepancyId){writes[`discrepancies/${doc.discrepancyId}/financialStatus`]="closed_to_capital";writes[`discrepancies/${doc.discrepancyId}/customerRefundPayableId`]=docId;writes[`discrepancies/${doc.discrepancyId}/capitalCloseMovementId`]=commandId;writes[`discrepancies/${doc.discrepancyId}/capitalCloseReason`]=reason;}if(doc.shiftId)writes[`shifts/${doc.shiftId}/varianceStatus`]="closed_to_capital";
       writes[`operationalAudit/${now}_customer_payable_capital_${docId}`]=operationalAuditRecord("close_customer_payable_to_capital","payables",docId,actor,{amount:value,ownerName,reference,reason,originalMovementId:doc.movementId||"",correctionMovementId:commandId});result={documentId:docId,amount:value,status:"capital_closed"};
     } else if (action === "create_supplier_opening_balance") {
-      if (!["owner", "superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner can set up supplier opening balances.");
+      if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can set up supplier opening balances.");
       const supplier = await requireActiveSupplier(db, data.supplierId, data.party), invoiceReference = financeText(data.invoiceReference || data.ref, 120).trim();
       if (!invoiceReference) throw new HttpsError("invalid-argument", "The supplier invoice reference is required.");
       const invoiceDate = financeDate(data.invoiceDate), openingDate = financeDate(data.openingDate), due = data.due ? financeDate(data.due, true) : "";
@@ -62,7 +62,7 @@
       writes[`operationalAudit/${now}_supplier_opening_balance_${docId}`] = operationalAuditRecord("create_supplier_opening_balance", "payable", docId, actor, {movementId: postingId, supplierId: supplier.id, supplierName: supplier.name, invoiceReference, invoiceDate, openingDate, due, originalAmount, paidBeforeOpening, amount: value, accounting: "Debit Owner's Capital and credit Supplier Accounts Payable. No cash, inventory, purchase, or current-period expense changed."});
       result = {documentId: docId, amount: value, supplierName: supplier.name};
     } else if (action === "reverse_supplier_opening_balance") {
-      if (!["owner", "superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner can reverse a supplier opening balance.");
+      if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can reverse a supplier opening balance.");
       const docId = financeKey(data.documentId, "Payable ID"), doc = (await db.ref(`/payables/${docId}`).get()).val();
       if (!doc) throw new HttpsError("not-found", "The supplier opening balance was not found.");
       if (doc.openingBalance !== true) throw new HttpsError("failed-precondition", "Only a supplier opening balance can use this reversal.");
@@ -113,7 +113,7 @@
     } else if (action === "reverse_payable_payment") {
       /* Undo a supplier bill payment that was recorded but never actually made. The bill returns to outstanding and the
          cash account is restored, in one atomic commit, so the AP control account and the supplier subledger never diverge. */
-      if (!["owner", "superadmin"].includes(actor.role)) throw new HttpsError("permission-denied", "Only the owner can reverse a recorded supplier payment.");
+      if (actor.role !== "superadmin") throw new HttpsError("permission-denied", "Only a Super Admin can reverse a recorded supplier payment.");
       const docId = financeKey(data.documentId, "Payable ID"), reason = financeText(data.reason, 300);
       if (!reason) throw new HttpsError("invalid-argument", "A reversal reason is required.");
       const snap = await db.ref(`/payables/${docId}`).get();

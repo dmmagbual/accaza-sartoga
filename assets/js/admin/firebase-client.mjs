@@ -20,6 +20,7 @@ callableNames.unshift('manageAccazaAiIssue');
 callableNames.unshift('managePosStaffIdentity','openLinkedPosShift');
 callableNames.unshift('managePosShiftCrew','managePosSaleRecovery');
 callableNames.unshift('manageUncostedSales');
+callableNames.unshift('managePortalAccount');
 // Accaza AI may try up to four providers inside its 120 s server limit; the SDK default
 // (70 s) would abandon an answer a backup provider is still producing.
 const CALLABLE_TIMEOUTS={askAccazaAI:130000};
