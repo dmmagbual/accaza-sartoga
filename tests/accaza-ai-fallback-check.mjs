@@ -8,6 +8,9 @@ import assert from 'node:assert/strict';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const source=fs.readFileSync(path.join(root,'src/functions/62-accaza-ai.js'),'utf8');
+assert.ok(source.includes('const ACCAZA_AI_JEV_TIMEOUT_MS = 15000'),'Jev Router needs a short independent timeout');
+assert.ok(source.includes('provider:{zdr:true,data_collection:"deny"}'),'Jev Router must enforce zero retention and deny data collection');
+assert.ok(source.includes('routedModel:accazaAiText(body&&body.model,120)'),'Jev Router must retain the selected downstream model for audit');
 const pick=(start,end)=>{const a=source.indexOf(start),b=source.indexOf(end,a);assert.ok(a>=0&&b>a,`missing ${start}`);return source.slice(a,b);};
 const lineOf=start=>{const a=source.indexOf(start);assert.ok(a>=0,`missing ${start}`);return source.slice(a,source.indexOf('\n',a)+1);};
 let code=lineOf('function accazaAiText(')+lineOf('function accazaAiProviderFailure(')+lineOf('function accazaAiAnswer(')
@@ -66,10 +69,15 @@ assert.ok(clean.includes('(Note: accounting amounts are not cash flow.)'),'singl
 assert.ok(clean.includes('2*3*4'),'arithmetic asterisks are untouched');
 assert.ok(/cash flow\.\)\n\nObserved Facts\n\n• Revenue/.test(clean)&&/PHP 26,687\.71\n\nRecommendations/.test(clean),'lists are separated from surrounding text by a blank line');
 assert.throws(()=>format('  **  '),e=>e.details&&e.details.providerFailure===true);}
-// 12. Record tools show staff names instead of account IDs, and never rewrite JSON keys.
+// 12. Jev Router sends the privacy policy in the request and returns its selected model.
+{const jevCode=pick('async function askJevRouter(','async function askJevGeneralChat(');let outbound;
+const askJev=new Function('accazaAiJevKey','HttpsError','accazaAiFetchJson','accazaAiProviderFailure','accazaAiProviderMessage','accazaAiProseAnswer','accazaAiText','ACCAZA_AI_JEV_URL','ACCAZA_AI_JEV_MODEL',`${jevCode};return askJevRouter;`)(()=> 'sk-test',HttpsError,async(_label,_url,init)=>{outbound=JSON.parse(init.body);return{response:{ok:true},body:{model:'openai/gpt-test',choices:[{message:{content:'Safe answer.'}}]}};},message=>new HttpsError('unavailable',message,{providerFailure:true}),(body,fallback)=>body&&body.error&&body.error.message||fallback,value=>String(value).trim(),(value,max)=>String(value||'').slice(0,max),'https://openrouter.test/chat','typesafe/jev-router');
+const jev=await askJev([{role:'user',content:'hello'}],0.35,15000);
+assert.deepEqual(outbound.provider,{zdr:true,data_collection:'deny'});assert.equal(outbound.model,'typesafe/jev-router');assert.equal(jev.answer,'Safe answer.');assert.equal(jev.routedModel,'openai/gpt-test');}
+// 13. Record tools show staff names instead of account IDs, and never rewrite JSON keys.
 {const records=fs.readFileSync(path.join(root,'src/functions/62a-accaza-ai-records.js'),'utf8');const line=records.match(/function accazaAiNameAccounts[^\n]*/)[0];
 const nameAccounts=new Function(`${line};return accazaAiNameAccounts;`)();
 const out=JSON.parse(nameAccounts(JSON.stringify({averageDistinctItemsPerOrder:1.8,by:'HstyE8bcYwaVjBASmfi94YwHW7J2',who:'Zz9abcdefghijklmnopqrstuvwxy',note:'abcdefghijabcdefghijabcdefgh'}),{Zz9abcdefghijklmnopqrstuvwxy:'Maria'}));
 assert.equal(out.averageDistinctItemsPerOrder,1.8,'28-character keys stay intact');assert.equal(out.who,'Maria');assert.equal(out.by,'account …W7J2');assert.equal(out.note,'abcdefghijabcdefghijabcdefgh','plain words are not treated as account IDs');}
 console.warn=warn;
-console.log('PASS: Accaza AI fallback times out hung providers, treats network errors and empty answers as provider failures, rethrows real errors, reserves Ashna time, and records backup answers and total failures; replies are normalized to clean paragraphs and lists.');
+console.log('PASS: Accaza AI fallback times out hung providers, enforces Jev Router privacy, records the routed model, treats network errors and empty answers as provider failures, rethrows real errors, reserves Ashna time, and records backup answers and total failures.');
