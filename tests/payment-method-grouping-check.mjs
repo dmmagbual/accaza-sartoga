@@ -133,7 +133,10 @@ for (const file of ['assets/js/admin/register.js', 'src/admin/register/20-z-repo
   must(s, "if(pm[i].cash===true||old.toLowerCase()==='cash')", `${file}: the cash method must refuse a rename — Finance identifies cash by the literal name, so renaming it diverts cash to a suspense account.`);
   must(s, 'if(lower.indexOf(old.toLowerCase())<0)aliases.push(old);', `${file}: a rename must record the old name as an alias so posted sales keep reporting under the method.`);
   must(s, "feedMethods:list.concat([nm])", `${file}: a rename must teach the linked receiving accounts the new name, or bare-method payments stop mapping to an account.`);
+  for(const marker of ['payment-method-card','data-pmconfigure','aria-expanded','payment-method-status','Who confirms payment?','Advanced: reporting history','data-pmact','data-pmpolicy','data-pmacct-add','data-pmacct-remove','data-pmalias','data-pmrename','data-pmdel'])must(s, marker, `${file}: simplified payment-method card lost ${marker}.`);
 }
+const paymentCss=read('assets/css/admin-backoffice.css');
+for(const marker of ['.payment-method-card','.payment-method-switch input:checked+.payment-method-switch-track','.payment-method-settings[hidden]','.payment-method-status.attention','@media(max-width:440px)'])must(paymentCss,marker,`Payment-method responsive styling missing ${marker}.`);
 for (const file of ['assets/js/admin/register.js', 'src/admin/register/60-operations-shift-review.js', 'src/admin/register/80-shift-lifecycle-zreport.js', 'src/admin/register/90-shift-review-export.js']) {
   must(read(file), "zMethodRows(", `${file}: this Z-report view must use the shared row-builder, not its own method loop.`);
 }
