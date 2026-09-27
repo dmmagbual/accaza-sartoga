@@ -1404,7 +1404,13 @@ exports.openLinkedPosShift = onCall(
   }
 );
 const PORTAL_ACCOUNT_ROLES = new Set(["superadmin", "admin", "manager", "staff", "cashier", "kitchen", "finance"]);
-const PORTAL_PERMISSION_KEYS = ["orders", "reservations", "pos", "inventory", "purchases", "recipes", "usage", "registerOps", "reviews", "appcustomers", "availability", "comments", "analytics", "dailyreport", "discrepancy", "petty", "channelpricing", "dedupe", "cashflow", "stockvalue"];
+// Staff-level module access, one key per Admin nav tab a staff account can be granted.
+// Settings is locked for staff-level roles except Channel Pricing (grantable) and Change
+// Password (always available), so the other Settings keys (dedupe, possettings) are not grantable.
+const PORTAL_PERMISSION_KEYS = ["dashboard", "liveoperations", "orders", "reservations", "pos", "inventory", "purchases", "recipes", "usage", "registerOps", "reviews", "appcustomers", "availability", "comments", "analytics", "saleshistory", "dailyreport", "discrepancy", "petty", "undeposited", "channelpricing", "cashflow", "stockvalue"];
+// Tabs that were visible to every staff account before they had their own key. A stored
+// record without the key keeps its old behaviour until a Super Admin saves the account.
+const PORTAL_PERMISSION_LEGACY = {dashboard: true, saleshistory: ["orders"], undeposited: ["petty", "cashflow"]};
 
 function canonicalPortalAccountRole(raw) {
   const role = portalRoleValue(raw);
@@ -1417,10 +1423,11 @@ function portalAccountText(value, limit, label) {
   return text;
 }
 
-function portalAccountPermissions(value) {
+function portalAccountPermissions(value, legacy) {
   const source = value && typeof value === "object" ? value : {};
   return PORTAL_PERMISSION_KEYS.reduce((result, key) => {
-    result[key] = source[key] === true;
+    const inherited = legacy && source[key] === undefined && PORTAL_PERMISSION_LEGACY[key];
+    result[key] = inherited ? (inherited === true || inherited.some((from) => source[from] === true)) : source[key] === true;
     return result;
   }, {});
 }
@@ -1498,7 +1505,7 @@ async function portalAccountList(db) {
       authExists: !!user,
       emailVerified: !!(user && user.emailVerified),
       lastSignInAt: user && user.metadata && user.metadata.lastSignInTime || "",
-      permissions: portalAccountPermissions(permissions[uid]),
+      permissions: portalAccountPermissions(permissions[uid], true),
       linkedStaffId: linked ? linked[0] : "",
       linkedStaffName: linked ? financeText(linked[1].name, 120) : "",
       onOpenShift: !!(shift && shift.status !== "closed" && (shift.accountUid === uid || (crew && !crew.leftAt))),
@@ -2140,7 +2147,7 @@ async function ensureUndepositedPageIndexes(db) {
 exports.getUndepositedControlSnapshot = onCall(
   {region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:"256MiB"},
   async (request) => {
-    const db=getDatabase();await requirePortalPermission(db,request,["petty","cashflow"]);await ensureUndepositedPageIndexes(db);
+    const db=getDatabase();await requirePortalPermission(db,request,["petty","cashflow","undeposited"]);await ensureUndepositedPageIndexes(db);
     const [summaryMetaSnap,summaryBalanceSnap,pendingSummarySnap,openCustodySnap,pendingVoucherSnap,missingVoucherSnap,retirementSnap,openingSnap]=await Promise.all([
       db.ref("/cashBalanceSummary/meta").get(),db.ref("/cashBalanceSummary/balances").get(),db.ref("/cashBalanceSummaryPending").limitToFirst(1).get(),db.ref("/cashCustodyOpenIndex").get(),
       db.ref("/pettyVoucherAttentionIndex/pending").limitToLast(100).get(),db.ref("/pettyVoucherAttentionIndex/missing").limitToLast(100).get(),db.ref("/financialMovements/revolving_fund_retirement").get(),db.ref("/financialMovements/undeposited_opening_balance").get(),
@@ -2220,7 +2227,7 @@ exports.getUndepositedPage = onCall(
   {region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:"256MiB"},
   async (request) => {
     const db = getDatabase();
-    await requirePortalPermission(db, request, ["petty", "cashflow"]);
+    await requirePortalPermission(db, request, ["petty", "cashflow", "undeposited"]);
     const data = request.data || {}, kind = financeText(data.kind, 30);
     if (kind === "voucher") {
       const id = financeKey(data.id, "Voucher ID"), row = (await db.ref(`/pettyCashVouchers/${id}`).get()).val();
@@ -7021,7 +7028,7 @@ exports.readHistoricalOrders = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
     const db = getDatabase();
-    const actor = await requirePortalPermission(db, request, ["orders"]);
+    const actor = await requirePortalPermission(db, request, ["orders", "saleshistory"]);
     const data = request.data || {}, mode = financeText(data.mode, 20).toLowerCase(), purpose = financeText(data.purpose, 40).toLowerCase() || "legacy_client";
     if (!["latest", "before", "period", "ids"].includes(mode)) throw new HttpsError("invalid-argument", "Historical read mode is invalid.");
     const limit = Math.max(1, Math.min(HISTORICAL_READ_PAGE_LIMIT, Math.floor(Number(data.limit) || HISTORICAL_READ_PAGE_LIMIT)));
@@ -7071,7 +7078,7 @@ exports.readHistoricalSalesRollup = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => {
     const db = getDatabase();
-    const actor = await requirePortalPermission(db, request, ["orders"]);
+    const actor = await requirePortalPermission(db, request, ["orders", "saleshistory"]);
     const data = request.data || {}, from = financeText(data.from, 7), to = financeText(data.to, 7);
     if (!/^\d{4}-\d{2}$/.test(from) || !/^\d{4}-\d{2}$/.test(to) || from > to) throw new HttpsError("invalid-argument", "Choose a valid monthly reporting range.");
     const start = new Date(`${from}-01T00:00:00Z`), end = new Date(`${to}-01T00:00:00Z`);

@@ -90,7 +90,7 @@ async function ensureUndepositedPageIndexes(db) {
 exports.getUndepositedControlSnapshot = onCall(
   {region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:"256MiB"},
   async (request) => {
-    const db=getDatabase();await requirePortalPermission(db,request,["petty","cashflow"]);await ensureUndepositedPageIndexes(db);
+    const db=getDatabase();await requirePortalPermission(db,request,["petty","cashflow","undeposited"]);await ensureUndepositedPageIndexes(db);
     const [summaryMetaSnap,summaryBalanceSnap,pendingSummarySnap,openCustodySnap,pendingVoucherSnap,missingVoucherSnap,retirementSnap,openingSnap]=await Promise.all([
       db.ref("/cashBalanceSummary/meta").get(),db.ref("/cashBalanceSummary/balances").get(),db.ref("/cashBalanceSummaryPending").limitToFirst(1).get(),db.ref("/cashCustodyOpenIndex").get(),
       db.ref("/pettyVoucherAttentionIndex/pending").limitToLast(100).get(),db.ref("/pettyVoucherAttentionIndex/missing").limitToLast(100).get(),db.ref("/financialMovements/revolving_fund_retirement").get(),db.ref("/financialMovements/undeposited_opening_balance").get(),
@@ -170,7 +170,7 @@ exports.getUndepositedPage = onCall(
   {region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:60,memory:"256MiB"},
   async (request) => {
     const db = getDatabase();
-    await requirePortalPermission(db, request, ["petty", "cashflow"]);
+    await requirePortalPermission(db, request, ["petty", "cashflow", "undeposited"]);
     const data = request.data || {}, kind = financeText(data.kind, 30);
     if (kind === "voucher") {
       const id = financeKey(data.id, "Voucher ID"), row = (await db.ref(`/pettyCashVouchers/${id}`).get()).val();
