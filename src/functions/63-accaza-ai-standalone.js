@@ -11,7 +11,7 @@
 // - Guests (Firebase anonymous sign-in): 10 messages per Manila business day per guest,
 //   plus a shared daily ceiling across ALL guests so a guest who keeps resetting their
 //   browser (new anonymous uid) cannot run up the AI provider bill without bound.
-const ACCAZA_AI_STANDALONE_RELEASE_VERSION = "1.4";
+const ACCAZA_AI_STANDALONE_RELEASE_VERSION = "1.5";
 const ACCAZA_AI_GUEST_DAILY_LIMIT = 10;
 const ACCAZA_AI_GUEST_GLOBAL_DAILY_LIMIT = 100;
 function accazaAiStandaloneIsGuest(request){return Boolean(request.auth&&request.auth.uid&&request.auth.token&&request.auth.token.firebase&&request.auth.token.firebase.sign_in_provider==="anonymous");}
@@ -37,7 +37,7 @@ async function releaseAccazaAiGuestMessage(db,uid,day){
     return Object.assign({},current,{total:Math.max(0,Number(current.total||0)-1),users:Object.assign({},users,{[uid]:Object.assign({},users[uid],{count:mine-1})})});
   },undefined,false);}catch(_error){/* best effort: a failed refund only costs the guest one message */}
 }
-exports.askAccazaAIStandalone=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:120,memory:"256MiB",secrets:[GEMINI_API_KEY,DEEPSEEK_API_KEY,OLLAMA_ACCESS_CLIENT_ID,OLLAMA_ACCESS_CLIENT_SECRET,ASHNA_API_KEY,CEREBRAS_API_KEY,GROQ_API_KEY]},async request=>{
+exports.askAccazaAIStandalone=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:120,memory:"256MiB",secrets:[GEMINI_API_KEY,DEEPSEEK_API_KEY,OLLAMA_ACCESS_CLIENT_ID,OLLAMA_ACCESS_CLIENT_SECRET,ASHNA_API_KEY,CEREBRAS_API_KEY,GROQ_API_KEY,OPENROUTER_API_KEY]},async request=>{
   const db=getDatabase(),guest=accazaAiStandaloneIsGuest(request);
   let actor;
   if(guest)actor={uid:request.auth.uid,role:"guest"};
@@ -49,8 +49,8 @@ exports.askAccazaAIStandalone=onCall({region:ORDER_REGION,enforceAppCheck:ENFORC
   let response;
   try{response=await accazaAiWithFallback(accazaAiGeneralChatProviders(question,history),{db,surface:guest?"standalone_guest":"standalone_staff",general:true});}
   catch(error){if(guest)await releaseAccazaAiGuestMessage(db,actor.uid,day);throw error;}
-  const provider=response.provider,answer=response.result.answer,sources=response.result.sources||[];
+  const provider=response.provider,answer=response.result.answer,sources=response.result.sources||[],routedModel=accazaAiText(response.result.routedModel,120);
   const auditId=`${now}_${crypto.randomUUID()}`;
-  await db.ref(`/operationalAudit/${auditId}`).set(operationalAuditRecord("ask_accaza_ai_standalone","accazaAIStandalone",auditId,actor,{provider,guest,questionHash:crypto.createHash("sha256").update(question).digest("hex"),sources:sources.map(source=>source.url),guestUsed:allowance?allowance.used:null,accounting:"Read-only general AI chat only (standalone Accaza AI app); zero access to Accaza business data; no order, inventory movement, subledger, Finance movement, or Books journal touched."}));
-  return {answer,sources,provider,guest,allowance,releaseVersion:ACCAZA_AI_STANDALONE_RELEASE_VERSION};
+  await db.ref(`/operationalAudit/${auditId}`).set(operationalAuditRecord("ask_accaza_ai_standalone","accazaAIStandalone",auditId,actor,{provider,routedModel:routedModel||null,guest,questionHash:crypto.createHash("sha256").update(question).digest("hex"),sources:sources.map(source=>source.url),guestUsed:allowance?allowance.used:null,accounting:"Read-only general AI chat only (standalone Accaza AI app); zero access to Accaza business data; no order, inventory movement, subledger, Finance movement, or Books journal touched."}));
+  return {answer,sources,provider,routedModel:routedModel||null,guest,allowance,releaseVersion:ACCAZA_AI_STANDALONE_RELEASE_VERSION};
 });
