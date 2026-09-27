@@ -28,6 +28,13 @@ const publicStatusObserver=source.indexOf('onValue(publicOrderStatusRef');
 if(availabilityState<0||authObserver<0||availabilityState>authObserver)throw new Error('Customer availability state must initialize before Firebase authentication can call its renderer');
 if(publicStatusObserver<0||availabilityState>publicStatusObserver)throw new Error('Customer availability state must initialize before its realtime subscription');
 if((source.match(/let publicOrdersOpen=/g)||[]).length!==1)throw new Error('Customer availability state must have exactly one owner');
+for(const marker of [
+  "navigator.onLine&&publicOrdersOpen",
+  "var offline=!navigator.onLine",
+  "headline.textContent=offline?'CLOSED'",
+  'window.onoffline=',
+  'customerLiveConnected=false'
+])if(!source.includes(marker))throw new Error(`Customer offline order-status safeguard missing: ${marker}`);
 for(const marker of ['function customerMenuCats(){return getCats().filter(c=>c.showInMenu!==false);}','const cats=customerMenuCats();','if(!cats.some(c=>c.id===menuFilter))','if(orderFilter&&!cats.some(c=>c.id===orderFilter))'])if(!customerHelpers.includes(marker))throw new Error(`Customer category visibility safeguard missing: ${marker}`);
 for(const marker of ['.order-service-status.is-open~.nav-links .nav-cta','.order-service-status.is-closed~.nav-links .nav-cta'])if(!fs.readFileSync(path.join(root,'assets','css','customer','site.css'),'utf8').includes(marker))throw new Error(`Home Order Now availability binding missing: ${marker}`);
 for(const marker of ['showInMenu:true','catShowInMenu_','Show in customer Menu, Online Ordering &amp; POS','{icon,label,showInMenu}','invalidateCatalogCache()','Saving…','✓ Saved'])if(!catalogAdmin.includes(marker))throw new Error(`Menu Availability category visibility control missing: ${marker}`);
@@ -44,7 +51,7 @@ for(const marker of ['.nav-has-sub{position:relative;}','.nav-has-sub:focus-with
 for(const marker of ['Our Mission','Our Vision','6:00 AM – 12:00 Midnight','href="index.html#menu">View Live Menu'])if(!aboutHtml.includes(marker))throw new Error(`About purpose, hours, or live-menu link missing: ${marker}`);
 if(aboutHtml.includes('3–12')||aboutHtml.includes('href="menu.html"'))throw new Error('About page must not advertise stale hours or link to the retired static menu');
 if(!legacyMenuHtml.includes('location.replace(\'index.html#menu\')'))throw new Error('Legacy menu URL must redirect to the live Firebase-backed menu');
-for(const marker of ["ref(getDatabase(app),'publicOrderStatus')","showState(snapshot.val()&&snapshot.val().acceptingOrders===true?'open':'closed')"])if(!orderAvailability.includes(marker))throw new Error(`Static-page Order Now availability binding missing: ${marker}`);
+for(const marker of ["ref(getDatabase(app),'publicOrderStatus')","button.textContent=state==='open'?'Order Now':state==='closed'?'CLOSED':'Checking'","showState(!navigator.onLine?'closed'","window.addEventListener('offline',renderState)"])if(!orderAvailability.includes(marker))throw new Error(`Static-page Order Now availability binding missing: ${marker}`);
 for(const marker of ['order-availability-open','order-availability-closed','orderAvailabilityOpen','orderAvailabilityClosed'])if(!staticStyles.includes(marker))throw new Error(`Order Now availability presentation missing: ${marker}`);
 for(const page of [aboutHtml,fs.readFileSync(path.join(root,'contact.html'),'utf8'),fs.readFileSync(path.join(root,'reservations.html'),'utf8')])if(!page.includes('data-order-availability')||!page.includes('assets/js/customer/order-availability.mjs'))throw new Error('Customer landing page is missing the cashier-linked Order Now status');
 
