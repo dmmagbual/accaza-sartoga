@@ -1123,11 +1123,19 @@ async function loginSuccess(role,username,uid,serverRole,profile){
 installPortalAuth({subscriptionHub:subscriptionHub,onAuthorized:loginSuccess,openLogin:window.openAdmin,onSignedOut:function(){adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;currentUser=null;currentLoginRole=null;window.__posShift=null;if(window.__refreshWorkspaceStatus)window.__refreshWorkspaceStatus();}});
 const workspaceShell=installWorkspaceShell({currentUser:function(){return currentUser;},subscriptionHub:subscriptionHub});
 // Admin screens that moved to Finance Books. Opening one here would hide every Admin tab and
-// leave a blank page, so they open the matching Books page in a new browser tab instead.
+// leave a blank page, so they open the matching Books page instead.
 window.AccazaFinanceBooksPages=Object.freeze({cashflow:'cashflow',receivables:'receivables',payables:'payables',pnl:'pl'});
+// Every open Books tab keeps its own live listeners, so repeated clicks reuse one named tab and
+// switch its page in place (App.go) instead of opening or reloading Books again.
+function openFinanceBooks(page){
+  var url='books.html?tab='+page,books=window.open('','accazaFinanceBooks');
+  if(!books){alert('Allow pop-ups for this site to open Finance Books.');return;}
+  try{if(/books\.html$/.test(books.location.pathname)&&books.App&&typeof books.App.go==='function'){books.App.go(page);books.focus();return;}}catch(e){}
+  books.location.href=url;books.focus();
+}
 window.switchTab=function(tab,btn){
   var booksPage=window.AccazaFinanceBooksPages[tab];
-  if(booksPage){window.open('books.html?tab='+booksPage,'_blank','noopener');return;}
+  if(booksPage){openFinanceBooks(booksPage);return;}
   if(!document.getElementById('tab-'+tab)){console.warn('Admin has no screen for tab',tab);return;}
   if(tab==='staffaccounts'&&!superAdminLoggedIn){alert('Super Admin access is required.');return;}
   subscriptionHub.activate(tab);
