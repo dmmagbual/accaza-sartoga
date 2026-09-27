@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 600,
+    "admin": 601,
     "books": 129,
     "customer": 82,
-    "serviceWorkerCache": 584
+    "serviceWorkerCache": 585
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
@@ -147,7 +147,6 @@
     "functions/lib/incident-controls.js",
     "functions/lib/release-certification.js",
     "functions/lib/production-validation.js",
-    "functions/lib/alert-escalation.js",
     "functions/lib/assurance-controls.js",
     "functions/lib/historical-archive.js",
     "assets/js/shared/costing.js",
@@ -210,6 +209,7 @@
     "tests/release-certification-check.mjs",
     "tests/production-validation-check.mjs",
     "tests/alert-escalation-check.mjs",
+    "tests/operations-health-cards-check.mjs",
     "tests/security-accounting-assurance-check.mjs",
     "tests/final-stabilization-check.mjs",
     "tests/static/00-context.mjs",
