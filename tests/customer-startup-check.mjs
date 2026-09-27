@@ -66,7 +66,12 @@ if(!sw.includes(`const CACHE='accaza-v${release.builds.serviceWorkerCache}'`))th
 for(const marker of ['To create a place where every person feels genuinely welcomed, valued, and at home.','one of the Philippines’ most trusted homegrown coffee-house brands','Genuine Hospitality','Craft with Purpose','Consistency Builds Trust','Community and Belonging','Integrity and Accountability','Growing People Together'])if(!aboutHtml.includes(marker))throw new Error(`About purpose content missing: ${marker}`);
 if(aboutHtml.includes('Responsible Stewardship')||(aboutHtml.match(/class="core-value-item"/g)||[]).length!==6)throw new Error('About page must show exactly the six approved core values');
 for(const marker of ['.purpose-pair{','.values-section{','.values-list{','.core-value-item{','@media(min-width:721px) and (max-width:980px)'])if(!staticStyles.includes(marker))throw new Error(`About responsive design missing: ${marker}`);
-if(!/\.fb-sync\{[^}]*left:18px;[^}]*bottom:84px;/.test(customerStyles)||/\.fb-sync\{[^}]*(?:top:|right:)/.test(customerStyles))throw new Error('Customer Firebase status must stay at the bottom-left');
+if(!/\.fb-sync\{[^}]*left:18px;[^}]*bottom:18px;/.test(customerStyles)||/\.fb-sync\{[^}]*(?:top:|right:)/.test(customerStyles))throw new Error('Customer Firebase status must stay at the bottom-left');
+const socialRow=customerHtml.match(/<div class="hero-social-icons">([\s\S]*?)<div class="hero-amenities">/)?.[1]||'';
+for(const marker of ['class="hero-install-divider"','id="heroInstallWrap" class="hero-install-wrap"','class="hero-install-btn"','Install App'])if(!socialRow.includes(marker))throw new Error(`Hero install action must stay inline with the social icons: ${marker}`);
+if(customerHtml.includes('Install app on your phone'))throw new Error('Hero must use the compact Install App label');
+const amenitiesRule=customerStyles.match(/\.hero-amenities\{([^}]*)\}/)?.[1]||'';
+if(!amenitiesRule||/(?:^|;)\s*(?:padding|background|border|border-radius|box-shadow):/.test(amenitiesRule))throw new Error('Hero amenities must remain an unwrapped text row');
 if(!customerHtml.includes('<div class="chat-avatar"><img src="/favicon_192x192.png" alt="Accaza Coffee logo"/></div>'))throw new Error('Customer chat header must use the Accaza logo');
 if((customerHtml.match(/>Click for QR code<\/button>/g)||[]).length!==4)throw new Error('GCash and BDO QR controls must require an explicit click in both payment views');
 if(/<img[^>]+src="assets\/img\/payment\/(?:gcash|bdo)-qr\.jpg"/i.test(customerHtml))throw new Error('Payment QR images must not have an eager browser src');
