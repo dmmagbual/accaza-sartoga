@@ -6,6 +6,7 @@ These instructions apply to every task in this folder and its subfolders.
 
 ### User handoff requirements
 
+- Edit in the local project folder first, then push to GitHub, so the folder always holds the latest code. Pull `main` into the folder before starting a task. If a session cannot reach the folder, say so before editing and recommend a session on Danilo's computer; never quietly edit a separate copy.
 - After every code or configuration change, always provide a copy-ready PowerShell block.
 - Start the block with the exact project-folder command:
 
