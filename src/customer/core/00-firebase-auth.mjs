@@ -64,6 +64,7 @@ window.retryCustomerConnection=function(){
   return attemptCustomerAuth().catch(function(){(window.accazaToast||window.alert)('We still cannot connect. Please check your internet and try again.');});
 };
 window.addEventListener('online',function(){attemptCustomerAuth().catch(function(){});});
+window.onoffline=function(){customerLiveConnected=false;renderPublicOrderStatus();};
 onAuthStateChanged(auth,function(u){
   if(!u){customerUid=null;attemptCustomerAuth().catch(function(){});return;}
   customerAuthProblem=null;customerAuthFailures=0;

@@ -25,7 +25,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 function _hashSig(s){var h=0,i;for(i=0;i<s.length;i++){h=((h<<5)-h+s.charCodeAt(i))|0;}return (h>>>0).toString(36);}
 window.placeOrder=async function(){
   if(window._placingOrder)return;
-  if(!onlineOrderingAvailable()){syncPlaceOrderButton();alert('Online orders are closed right now. Please wait until the green OPEN FOR ONLINE ORDERS light appears.');return;}
+  if(!canOrder()){syncPlaceOrderButton();alert('Online orders are closed right now. Please wait until the green OPEN FOR ONLINE ORDERS light appears.');return;}
   const name=document.getElementById('custName').value.trim(),phone=document.getElementById('custPhone').value.trim();
   if(!Object.keys(cart).length){alert('Please add at least one item.');return;}
   if(!name||!phone){alert('Please enter your name and phone number.');return;}

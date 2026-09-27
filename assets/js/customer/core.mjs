@@ -64,6 +64,7 @@ window.retryCustomerConnection=function(){
   return attemptCustomerAuth().catch(function(){(window.accazaToast||window.alert)('We still cannot connect. Please check your internet and try again.');});
 };
 window.addEventListener('online',function(){attemptCustomerAuth().catch(function(){});});
+window.onoffline=function(){customerLiveConnected=false;renderPublicOrderStatus();};
 onAuthStateChanged(auth,function(u){
   if(!u){customerUid=null;attemptCustomerAuth().catch(function(){});return;}
   customerAuthProblem=null;customerAuthFailures=0;
@@ -162,25 +163,23 @@ function getItemOptionGroups(item){
   return getEffectiveOptionIds(item).map(function(id){var g=optionGroupsMap[id];return g?Object.assign({},g,{id:id}):null;}).filter(Boolean).sort(function(a,b){return(a.order||0)-(b.order||0);});
 }
 
-// State
 let categoriesMap={},menuItemsMap={},packagesMap={},adminResMap={},reviewsMap={},availability={},cart={},categoriesListCache=null,menuItemsListCache=null,catalogRenderPending=false;
-function onlineOrderingAvailable(){return publicOrdersOpen&&customerLiveConnected&&!!auth.currentUser&&!customerAuthProblem;}
+function canOrder(){return navigator.onLine&&publicOrdersOpen&&customerLiveConnected&&!!auth.currentUser&&!customerAuthProblem;}
 function syncPlaceOrderButton(){
   var button=document.querySelector('.btn-place-order');if(!button||window._placingOrder)return;
-  var open=onlineOrderingAvailable();
+  var open=canOrder();
   button.disabled=!open;button.style.opacity='';button.setAttribute('aria-disabled',open?'false':'true');
   button.textContent=open?'Place Order':(customerAuthProblem?'Connection unavailable':(publicOrdersOpen===null||customerLiveConnected!==true||!auth.currentUser?'Checking order availability…':'Online Orders Closed'));
 }
 function renderPublicOrderStatus(){
   var root=document.getElementById('orderServiceStatus'),headline=document.getElementById('orderServiceHeadline'),note=document.getElementById('orderServiceNote');
   if(!root||!headline||!note)return;
-  var open=onlineOrderingAvailable();
-  var checking=!customerAuthProblem&&(publicOrdersOpen===null||customerLiveConnected!==true||!auth.currentUser);
+  var offline=!navigator.onLine,open=canOrder(),checking=!offline&&!customerAuthProblem&&(publicOrdersOpen===null||customerLiveConnected!==true||!auth.currentUser);
   var retry=document.getElementById('orderConnectionRetry');
   root.classList.toggle('is-open',open);
   root.classList.toggle('is-closed',!open&&!checking);
-  headline.textContent=open?'OPEN FOR ONLINE ORDERS':(customerAuthProblem?'CONNECTION NEEDS ATTENTION':(checking?'CHECKING ORDER AVAILABILITY':'ONLINE ORDERS CLOSED'));
-  note.textContent=open?'Order now — we’re ready!':(customerAuthProblem?'We could not connect securely. Check your internet, then retry.':(checking?(navigator.onLine?'Connecting to the shop…':'Your phone is offline. Reconnect to check availability.'):'We’re not accepting orders right now.'));
+  headline.textContent=offline?'CLOSED':(open?'OPEN FOR ONLINE ORDERS':(customerAuthProblem?'CONNECTION NEEDS ATTENTION':(checking?'CHECKING ORDER AVAILABILITY':'ONLINE ORDERS CLOSED')));
+  note.textContent=offline?'Offline':(open?'Order now — we’re ready!':(customerAuthProblem?'We could not connect securely. Check your internet, then retry.':(checking?'Connecting to the shop…':'We’re not accepting orders right now.')));
   if(retry)retry.style.display=customerAuthProblem?'block':'none';
   root.setAttribute('aria-label',headline.textContent+'. '+note.textContent);
   syncPlaceOrderButton();
@@ -904,7 +903,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 function _hashSig(s){var h=0,i;for(i=0;i<s.length;i++){h=((h<<5)-h+s.charCodeAt(i))|0;}return (h>>>0).toString(36);}
 window.placeOrder=async function(){
   if(window._placingOrder)return;
-  if(!onlineOrderingAvailable()){syncPlaceOrderButton();alert('Online orders are closed right now. Please wait until the green OPEN FOR ONLINE ORDERS light appears.');return;}
+  if(!canOrder()){syncPlaceOrderButton();alert('Online orders are closed right now. Please wait until the green OPEN FOR ONLINE ORDERS light appears.');return;}
   const name=document.getElementById('custName').value.trim(),phone=document.getElementById('custPhone').value.trim();
   if(!Object.keys(cart).length){alert('Please add at least one item.');return;}
   if(!name||!phone){alert('Please enter your name and phone number.');return;}
