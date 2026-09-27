@@ -1,11 +1,11 @@
 import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
-import{createSubscriptionHub}from"./realtime-hub.mjs?v=601";
+import{createSubscriptionHub}from"./realtime-hub.mjs?v=602";
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=601";
-import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=601";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=602";
+import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=602";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -1034,9 +1034,14 @@ window.selectLoginRole=function(role){
   setTimeout(function(){document.getElementById('adminUser').focus();},100);
 };
 
-var DEFAULT_STAFF_PERMS={orders:true,reservations:true,pos:true,inventory:true,purchases:false,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,pnl:false,dailyreport:false,discrepancy:false,petty:true,channelpricing:false,dedupe:false,cashflow:false,receivables:false,payables:false,stockvalue:false},roleLandingDone=false;
-var _permTabMap={"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'availSection'":'availability',"'commentsSection'":'comments',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'purchases'":'purchases',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'dedupe'":'dedupe',"'cashflow'":'cashflow',"'receivables'":'receivables',"'payables'":'payables',"'stockvalue'":'stockvalue',"'dailyreport'":'dailyreport',"'analytics'":'analytics',"'pnl'":'pnl',"'ops'":'registerOps',"'possettings'":'possettings'};
-var _permAlwaysHide=["'payment'","'staffaccounts'","'packages'","'operations'","'liveoperations'"];
+// Staff-level module access. Keys must match PORTAL_PERMISSION_KEYS in src/functions/20b-portal-accounts.js.
+var DEFAULT_STAFF_PERMS={dashboard:true,liveoperations:false,orders:true,reservations:true,pos:true,inventory:true,purchases:false,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,saleshistory:true,dailyreport:false,discrepancy:false,petty:true,undeposited:false,channelpricing:false,cashflow:false,stockvalue:false},roleLandingDone=false;
+// Tabs every staff account could see before they had their own key; an unsaved record keeps that.
+var LEGACY_STAFF_PERMS={dashboard:true,saleshistory:['orders'],undeposited:['petty','cashflow']};
+function staffPermsFrom(stored){var perms=Object.assign({},DEFAULT_STAFF_PERMS,stored||{});if(stored)Object.keys(LEGACY_STAFF_PERMS).forEach(function(key){if(stored[key]===undefined)perms[key]=LEGACY_STAFF_PERMS[key]===true||LEGACY_STAFF_PERMS[key].some(function(from){return stored[from]===true;});});return perms;}
+var _permTabMap={"'dashboard'":'dashboard',"'liveoperations'":'liveoperations',"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'availSection'":'availability',"'commentsSection'":'comments',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'purchases'":'purchases',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'stockvalue'":'stockvalue',"'dailyreport'":'dailyreport',"'analytics'":'analytics',"'saleshistory'":'saleshistory',"'undeposited'":'undeposited',"'ops'":'registerOps'};
+// Settings is locked for staff-level roles except Channel Pricing (ticked per account) and Change Password.
+var _permAlwaysHide=["'payment'","'staffaccounts'","'packages'","'operations'","'possettings'","'accountingperiods'","'dedupe'","'payouts'"];
 function mountLegacyAdminPanels(){
   var wrap=document.querySelector('#adminDash .admin-wrap');if(!wrap)return;
   ['availSection','commentsSection'].forEach(function(id){var panel=document.getElementById(id);if(!panel)return;panel.classList.add('admin-tab-content','admin-integrated-panel');wrap.appendChild(panel);});
@@ -1108,7 +1113,7 @@ async function loginSuccess(role,username,uid,serverRole,profile){
     document.getElementById('navAdminPanel').style.display='block';
     document.getElementById('navComments').style.display='none';
     document.getElementById('navAdminPanelLink').textContent='Staff panel';
-    (function(){ applyStaffPerms(Object.assign({},DEFAULT_STAFF_PERMS)); get(ref(db,'adminPerms/'+uid)).then(function(sn){ var v=sn.val(); if(v)applyStaffPerms(Object.assign({},DEFAULT_STAFF_PERMS,v)); }).catch(function(){}); })();
+    (function(){ applyStaffPerms(staffPermsFrom(null)); get(ref(db,'adminPerms/'+uid)).then(function(sn){ var v=sn.val(); if(v)applyStaffPerms(staffPermsFrom(v)); }).catch(function(){}); })();
     var hdr=document.querySelector('#adminDash .admin-header p');
     if(hdr)hdr.textContent='Staff: '+username;
     setTimeout(function(){

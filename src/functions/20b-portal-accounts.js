@@ -1,5 +1,11 @@
 const PORTAL_ACCOUNT_ROLES = new Set(["superadmin", "admin", "manager", "staff", "cashier", "kitchen", "finance"]);
-const PORTAL_PERMISSION_KEYS = ["orders", "reservations", "pos", "inventory", "purchases", "recipes", "usage", "registerOps", "reviews", "appcustomers", "availability", "comments", "analytics", "dailyreport", "discrepancy", "petty", "channelpricing", "dedupe", "cashflow", "stockvalue"];
+// Staff-level module access, one key per Admin nav tab a staff account can be granted.
+// Settings is locked for staff-level roles except Channel Pricing (grantable) and Change
+// Password (always available), so the other Settings keys (dedupe, possettings) are not grantable.
+const PORTAL_PERMISSION_KEYS = ["dashboard", "liveoperations", "orders", "reservations", "pos", "inventory", "purchases", "recipes", "usage", "registerOps", "reviews", "appcustomers", "availability", "comments", "analytics", "saleshistory", "dailyreport", "discrepancy", "petty", "undeposited", "channelpricing", "cashflow", "stockvalue"];
+// Tabs that were visible to every staff account before they had their own key. A stored
+// record without the key keeps its old behaviour until a Super Admin saves the account.
+const PORTAL_PERMISSION_LEGACY = {dashboard: true, saleshistory: ["orders"], undeposited: ["petty", "cashflow"]};
 
 function canonicalPortalAccountRole(raw) {
   const role = portalRoleValue(raw);
@@ -12,10 +18,11 @@ function portalAccountText(value, limit, label) {
   return text;
 }
 
-function portalAccountPermissions(value) {
+function portalAccountPermissions(value, legacy) {
   const source = value && typeof value === "object" ? value : {};
   return PORTAL_PERMISSION_KEYS.reduce((result, key) => {
-    result[key] = source[key] === true;
+    const inherited = legacy && source[key] === undefined && PORTAL_PERMISSION_LEGACY[key];
+    result[key] = inherited ? (inherited === true || inherited.some((from) => source[from] === true)) : source[key] === true;
     return result;
   }, {});
 }
@@ -93,7 +100,7 @@ async function portalAccountList(db) {
       authExists: !!user,
       emailVerified: !!(user && user.emailVerified),
       lastSignInAt: user && user.metadata && user.metadata.lastSignInTime || "",
-      permissions: portalAccountPermissions(permissions[uid]),
+      permissions: portalAccountPermissions(permissions[uid], true),
       linkedStaffId: linked ? linked[0] : "",
       linkedStaffName: linked ? financeText(linked[1].name, 120) : "",
       onOpenShift: !!(shift && shift.status !== "closed" && (shift.accountUid === uid || (crew && !crew.leftAt))),

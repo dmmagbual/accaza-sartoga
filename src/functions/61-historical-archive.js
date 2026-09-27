@@ -399,7 +399,7 @@ exports.readHistoricalOrders = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
     const db = getDatabase();
-    const actor = await requirePortalPermission(db, request, ["orders"]);
+    const actor = await requirePortalPermission(db, request, ["orders", "saleshistory"]);
     const data = request.data || {}, mode = financeText(data.mode, 20).toLowerCase(), purpose = financeText(data.purpose, 40).toLowerCase() || "legacy_client";
     if (!["latest", "before", "period", "ids"].includes(mode)) throw new HttpsError("invalid-argument", "Historical read mode is invalid.");
     const limit = Math.max(1, Math.min(HISTORICAL_READ_PAGE_LIMIT, Math.floor(Number(data.limit) || HISTORICAL_READ_PAGE_LIMIT)));
@@ -449,7 +449,7 @@ exports.readHistoricalSalesRollup = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => {
     const db = getDatabase();
-    const actor = await requirePortalPermission(db, request, ["orders"]);
+    const actor = await requirePortalPermission(db, request, ["orders", "saleshistory"]);
     const data = request.data || {}, from = financeText(data.from, 7), to = financeText(data.to, 7);
     if (!/^\d{4}-\d{2}$/.test(from) || !/^\d{4}-\d{2}$/.test(to) || from > to) throw new HttpsError("invalid-argument", "Choose a valid monthly reporting range.");
     const start = new Date(`${from}-01T00:00:00Z`), end = new Date(`${to}-01T00:00:00Z`);
