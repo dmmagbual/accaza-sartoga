@@ -33,7 +33,10 @@ for(const marker of [
   "var offline=!navigator.onLine",
   "headline.textContent=offline?'CLOSED'",
   'window.onoffline=',
-  'customerLiveConnected=false'
+  'customerLiveConnected=false',
+  "syncOrderNowButtons(open?'open':checking?'checking':'closed'",
+  "b.textContent=st=='open'?'Order Now':st=='closed'?'CLOSED':'Checking'",
+  "document.querySelectorAll('[data-order-availability]')"
 ])if(!source.includes(marker))throw new Error(`Customer offline order-status safeguard missing: ${marker}`);
 for(const marker of ['function customerMenuCats(){return getCats().filter(c=>c.showInMenu!==false);}','const cats=customerMenuCats();','if(!cats.some(c=>c.id===menuFilter))','if(orderFilter&&!cats.some(c=>c.id===orderFilter))'])if(!customerHelpers.includes(marker))throw new Error(`Customer category visibility safeguard missing: ${marker}`);
 for(const marker of ['.order-service-status.is-open~.nav-links .nav-cta','.order-service-status.is-closed~.nav-links .nav-cta'])if(!fs.readFileSync(path.join(root,'assets','css','customer','site.css'),'utf8').includes(marker))throw new Error(`Home Order Now availability binding missing: ${marker}`);

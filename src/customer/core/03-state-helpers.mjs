@@ -7,6 +7,8 @@ function syncPlaceOrderButton(){
   button.disabled=!open;button.style.opacity='';button.setAttribute('aria-disabled',open?'false':'true');
   button.textContent=open?'Place Order':(customerAuthProblem?'Connection unavailable':(publicOrdersOpen===null||customerLiveConnected!==true||!auth.currentUser?'Checking order availability…':'Online Orders Closed'));
 }
+// Nav "Order Now" mirrors the status light: CLOSED when orders are closed or offline.
+function syncOrderNowButtons(st,lbl){document.querySelectorAll('[data-order-availability]').forEach(function(b){b.classList.remove('order-availability-open','order-availability-closed','order-availability-checking');b.classList.add('order-availability-'+st);b.textContent=st=='open'?'Order Now':st=='closed'?'CLOSED':'Checking';b.title=lbl;b.setAttribute('aria-label',lbl);});}
 function renderPublicOrderStatus(){
   var root=document.getElementById('orderServiceStatus'),headline=document.getElementById('orderServiceHeadline'),note=document.getElementById('orderServiceNote');
   if(!root||!headline||!note)return;
@@ -18,6 +20,7 @@ function renderPublicOrderStatus(){
   note.textContent=offline?'Offline':(open?'Order now — we’re ready!':(customerAuthProblem?'We could not connect securely. Check your internet, then retry.':(checking?'Connecting to the shop…':'We’re not accepting orders right now.')));
   if(retry)retry.style.display=customerAuthProblem?'block':'none';
   root.setAttribute('aria-label',headline.textContent+'. '+note.textContent);
+  syncOrderNowButtons(open?'open':checking?'checking':'closed',root.getAttribute('aria-label'));
   syncPlaceOrderButton();
 }
 onValue(publicOrderStatusRef,function(snap){publicOrdersOpen=!!(snap.val()&&snap.val().acceptingOrders===true);renderPublicOrderStatus();},function(){publicOrdersOpen=false;renderPublicOrderStatus();});
