@@ -88,7 +88,7 @@
     "test:register-drawer": "node tests/register-drawer-check.mjs",
     "test:voucher-bank-ledger": "node tests/voucher-bank-ledger-check.mjs",
     "test:platform-catchup-items": "node tests/platform-catchup-items-check.mjs",
-    "test:serving-queue": "node tests/serving-queue-check.mjs"
+    "test:serving-queue": "node tests/serving-queue-check.mjs && node tests/serving-queue-runtime-check.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.1",
