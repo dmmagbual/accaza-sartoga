@@ -1503,6 +1503,15 @@ async function portalAccountList(db) {
     db.ref("/posActiveShift").get(),
   ]);
   const admins = adminsSnap.val() || {}, permissions = permsSnap.val() || {}, staff = staffSnap.val() || {}, shift = shiftSnap.val() || null;
+  // Facts shown beside each account: the open shift, what each till last reported, and when each
+  // account was last connected (portalLastSeen, written by Firebase when a page disconnects).
+  const shiftOpen = !!(shift && shift.status !== "closed" && shift.id);
+  const [healthSnap, lastSeenSnap] = await Promise.all([
+    shiftOpen ? /* download-ok: bounded device reports for the one open shift */ db.ref(`/posDeviceHealth/${financeKey(shift.id, "Shift")}`).get() : Promise.resolve(null),
+    /* download-ok: bounded one record per portal account */ db.ref("/portalLastSeen").get(),
+  ]);
+  const health = healthSnap ? healthSnap.val() || {} : {}, lastSeen = lastSeenSnap.val() || {};
+  const tillFor = (uid) => Object.values(health).filter((row) => row && row.reportedBy === uid).reduce((best, row) => (Number(row.lastContactAt) > Number(best && best.lastContactAt || 0) ? row : best), null);
   const auth = getAdminAuth();
   const accounts = await Promise.all(Object.entries(admins).map(async ([uid, raw]) => {
     let user = null;
@@ -1522,6 +1531,9 @@ async function portalAccountList(db) {
       linkedStaffId: linked ? linked[0] : "",
       linkedStaffName: linked ? financeText(linked[1].name, 120) : "",
       onOpenShift: !!(shift && shift.status !== "closed" && (shift.accountUid === uid || (crew && !crew.leftAt))),
+      shift: shiftOpen && (shift.accountUid === uid || (crew && !crew.leftAt)) ? {how: shift.accountUid === uid ? "opened" : "crew", cashier: financeText(shift.staff, 120), openAt: Number(shift.openAt) || 0, crewStaff: crew ? financeText(crew.staff, 120) : "", joinedAt: crew ? Number(crew.joinedAt || crew.at) || 0 : 0} : null,
+      till: (() => { const row = shiftOpen ? tillFor(uid) : null; return row ? {lastContactAt: Number(row.lastContactAt) || 0, idle: row.idle === true} : null; })(),
+      lastSeen: lastSeen[uid] && typeof lastSeen[uid] === "object" ? {at: Number(lastSeen[uid].at) || 0, app: financeText(lastSeen[uid].app, 20), build: Number(lastSeen[uid].build) || 0, device: financeText(lastSeen[uid].device, 80)} : null,
       legacyRole: raw === true || String(raw || "").toLowerCase() === "owner" || (raw && typeof raw === "object" && String(raw.role || "").toLowerCase() === "owner"),
     };
   }));

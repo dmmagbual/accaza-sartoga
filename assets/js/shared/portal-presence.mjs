@@ -3,6 +3,7 @@
    /portalPresence/<uid>/<connection> while it is connected. Firebase removes it on its own when
    the page closes or the connection drops (onDisconnect), so nothing piles up. Pages never read
    presence; only the Super Admin's User Accounts screen does, and only while it is open.
+   portalLastSeen/<uid> keeps the moment the account's last page disconnected (server clock).
    The Firebase functions are passed in so Admin and Books share this code with their own SDK. */
 
 function describeDevice(nav) {
@@ -15,19 +16,24 @@ function describeDevice(nav) {
 function startPortalPresence(fb, {uid, app, build}) {
   const {db, ref, onValue, onDisconnect, set, push, remove, serverTimestamp} = fb;
   if (!uid || !db) return () => {};
-  const node = push(ref(db, `portalPresence/${uid}`));
-  const record = {app, build: Number(build) || 0, device: describeDevice(typeof navigator !== 'undefined' ? navigator : null), connectedAt: serverTimestamp()};
+  const node = push(ref(db, `portalPresence/${uid}`)), lastSeen = ref(db, `portalLastSeen/${uid}`);
+  const device = describeDevice(typeof navigator !== 'undefined' ? navigator : null);
+  const record = {app, build: Number(build) || 0, device, connectedAt: serverTimestamp()};
+  const seen = () => ({app, build: Number(build) || 0, device, at: serverTimestamp()});
   let stopped = false;
-  // Re-arm on every reconnect: Firebase clears onDisconnect handlers once they fire.
+  // Re-arm on every reconnect: Firebase clears onDisconnect handlers once they fire. On disconnect
+  // the server removes the presence record and stamps portalLastSeen with its own clock.
   const stopWatch = onValue(ref(db, '.info/connected'), (snap) => {
     if (stopped || snap.val() !== true) return;
-    onDisconnect(node).remove().then(() => (stopped ? null : set(node, record))).catch(() => {});
+    Promise.all([onDisconnect(node).remove(), onDisconnect(lastSeen).set(seen())]).then(() => (stopped ? null : set(node, record))).catch(() => {});
   });
   return function stopPortalPresence() {
     if (stopped) return;
     stopped = true;
     stopWatch();
     onDisconnect(node).cancel().catch(() => {});
+    onDisconnect(lastSeen).cancel().catch(() => {});
+    set(lastSeen, seen()).catch(() => {});
     remove(node).catch(() => {});
   };
 }
