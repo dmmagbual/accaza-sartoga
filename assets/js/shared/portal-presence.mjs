@@ -25,7 +25,9 @@ function startPortalPresence(fb, {uid, app, build}) {
   // the server removes the presence record and stamps portalLastSeen with its own clock.
   const stopWatch = onValue(ref(db, '.info/connected'), (snap) => {
     if (stopped || snap.val() !== true) return;
-    Promise.all([onDisconnect(node).remove(), onDisconnect(lastSeen).set(seen())]).then(() => (stopped ? null : set(node, record))).catch(() => {});
+    // Independent: a refused last-seen write (e.g. rules not yet deployed) must never stop presence.
+    onDisconnect(node).remove().then(() => (stopped ? null : set(node, record))).catch(() => {});
+    onDisconnect(lastSeen).set(seen()).catch(() => {});
   });
   return function stopPortalPresence() {
     if (stopped) return;

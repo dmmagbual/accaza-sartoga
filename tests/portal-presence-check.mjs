@@ -37,6 +37,12 @@ assert.deepEqual(log, [...armed, ...armed], 'presence and last-seen are armed be
 stop(); stop();
 assert.deepEqual(log.slice(6), ['unwatch', 'cancel portalPresence/u1/conn1', 'cancel portalLastSeen/u1', 'set portalLastSeen/u1 admin 606 SERVER_TIME', 'remove portalPresence/u1/conn1'], 'stop is idempotent, stamps last seen and cleans up');
 assert.equal(typeof startPortalPresence(fb, {uid: '', app: 'admin', build: 1}), 'function', 'no uid writes nothing');
+// A refused last-seen write must not stop presence (portalLastSeen rules may deploy after the page).
+const log2 = []; let connected2 = null;
+const fb2 = Object.assign({}, fb, {onValue: (_r, cb) => { connected2 = cb; return () => {}; }, onDisconnect: r => ({remove: () => Promise.resolve(), set: () => Promise.reject(new Error('PERMISSION_DENIED')), cancel: () => Promise.resolve()}), set: (r) => { log2.push(r.path); return Promise.resolve(); }});
+startPortalPresence(fb2, {uid: 'u2', app: 'admin', build: 608});
+connected2({val: () => true}); await tick(); await tick();
+assert.deepEqual(log2, ['portalPresence/u2/conn1'], 'presence is written even when last-seen is refused');
 
 // 3. Admin/POS and Finance Books start presence after sign-in and end it before every sign-out.
 const auth = read('assets/js/admin/portal-auth.mjs');
