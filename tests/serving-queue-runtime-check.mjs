@@ -19,14 +19,15 @@ ctx.AccazaPosSyncHealth={report(){return Promise.resolve();}};
 vm.createContext(ctx);vm.runInContext(src,ctx);
 intervals.splice(0).forEach(f=>f()); // the POS init poll
 assert.equal(typeof subs.activeOrders,'function','POS subscribes to the live order feed');
+ctx.__posShift={id:'S1',status:'open',staff:'Maria'};
 ctx.__posHandler('pos');
 assert.match(els.posServeQueue.innerHTML,/Serving queue/,'queue column renders on the POS tab');
 const now=Date.now();
 subs.activeOrders({val:()=>({
-  'POS-A1':{source:'pos',channel:'instore',status:'Completed',name:'Ana',total:150,timestamp:now-700000,lineItems:[{name:'Latte (L)',qty:2,optLabels:['Oat']}],service:{state:'queued',queuedAt:now-700000}},
-  'GF-9':{source:'pos',channel:'grabfood',status:'Completed',platformRef:'GF-123',total:200,timestamp:now,service:{state:'queued',queuedAt:now}},
+  'POS-A1':{source:'pos',channel:'instore',shiftId:'S1',status:'Completed',name:'Ana',total:150,timestamp:now-700000,lineItems:[{name:'Latte (L)',qty:2,optLabels:['Oat']}],service:{state:'queued',queuedAt:now-700000}},
+  'GF-9':{source:'pos',channel:'grabfood',shiftId:'S1',status:'Completed',platformRef:'GF-123',total:200,timestamp:now,service:{state:'queued',queuedAt:now}},
   'OD-1':{source:'online',channel:'online',status:'Confirmed',posCaptured:true,shiftId:'S1',name:'Web',total:90,timestamp:now,lineItems:[{name:'Americano',size:'M',qty:1}]},
-  'POS-B2':{source:'pos',channel:'instore',status:'Completed',service:{state:'served'}}})});
+  'POS-B2':{source:'pos',channel:'instore',shiftId:'S1',status:'Completed',service:{state:'served'}}})});
 ctx.__posHandler('pos');
 const html=els.posServeQueue.innerHTML;
 assert.equal((html.match(/class="sq-card /g)||[]).length,3,'queued walk-in, Grab and accepted website order are listed; served order is not');
@@ -35,6 +36,6 @@ assert.match(html,/age-late/,'an order waiting over 10 minutes is red');
 assert.equal((html.match(/>PREPARE<\/button>/g)||[]).length,3,'every queued order has one PREPARE button');
 assert.doesNotMatch(html,/data-sq-serve|Served now|Picked up now/,'the queue does not offer service completion before PREPARE');
 assert.match(html,/Americano \(M\)/,'website order sizes are shown');
-assert.equal(String(els.posActiveCount.textContent),'3','Shift Orders badge counts orders waiting to be served');
+assert.equal(String(els.posActiveCount.textContent),'4','Shift Orders badge counts every current-shift order, including an order already served');
 assert.equal(typeof ctx.__serveQueueCloseReview,'function','close review is exposed to the register module');
 console.log('PASS: the built POS bundle loads, opens the POS tab and renders the serving queue from live orders.');

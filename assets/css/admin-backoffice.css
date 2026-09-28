@@ -20,7 +20,7 @@ body[data-admin-workspace] .awh-action:hover{background:var(--bo-ink)}
 body[data-admin-workspace] #adminServiceStrip{margin-top:.5rem;color:#62564d}
 body[data-admin-workspace] #adminServiceConnection.ok strong{color:#07913b}
 body[data-admin-workspace] #adminServiceConnection.ok .admin-status-dot{background:#28d36f;box-shadow:0 0 0 2px rgba(40,211,111,.18)}
-body.admin-pos-workspace #adminServiceStrip{color:#ddcfbb}body.admin-pos-workspace #adminServiceShift.ok strong,body.admin-pos-workspace #adminServiceConnection.ok strong{color:#54e58a}
+body.admin-pos-workspace #adminServiceStrip{color:#62564d;font-size:.78rem}body.admin-pos-workspace #adminServiceShift.ok strong,body.admin-pos-workspace #adminServiceConnection.ok strong,body.admin-pos-workspace #adminServiceQueue.ok strong{color:#07913b}
 
 /* Records become the surface instead of sitting inside another white container. */
 body.admin-workspace-focused:not(.admin-pos-workspace) .admin-tab-content{padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
