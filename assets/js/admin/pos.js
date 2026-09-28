@@ -3775,7 +3775,6 @@ function showReceipt(o){
     +'</body></html>');
   w.document.close();
 }
-})();
 /* ══════════ SERVING QUEUE (29 Sep 2026) ══════════
    A paid order is not a served order. Every sale the server accepts is queued for serving
    (functions/lib/order-service.js) and waits in the left-hand column until staff tap Served.
@@ -3919,3 +3918,7 @@ function sqCloseReview(shift){
   });
 }
 window.__serveQueueCloseReview=sqCloseReview;
+/* Closes the POS module closure opened in 00-shared-state.js. Keep this the last section:
+   tools/build-runtime-bundles.mjs concatenates sections in file-name order, and any section
+   sorted after the closing line runs outside the POS scope (tests/bundle-closure-check.mjs). */
+})();
