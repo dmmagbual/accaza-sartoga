@@ -2629,11 +2629,32 @@ exports.setUndepositedOpeningBalance = onCall(
   },
 );
 
+// A cash payment funded from a bank or e-wallet also writes that account's cash register row
+// (cfLedger/fm_petty_<id>). Payments approved before 17 Sep 2026 posted the Finance movement
+// without it, so the account register read higher than Finance Books. Rebuild the missing row
+// from the posted movement itself (amount, account and business date), once. The row carries the
+// movement's own Manila date so the cash-ledger date check never re-dates the posting.
+async function backfillVoucherCashLedger(db, voucherId, movement, actor) {
+  const movementId = `petty_${voucherId}`, key = `fm_${movementId}`;
+  const voucher = (await db.ref(`/pettyCashVouchers/${voucherId}`).get()).val();
+  if (!voucher || voucher.status !== "approved" || voucher.voided === true) return false;
+  const cashLines = (movement && Array.isArray(movement.lines) ? movement.lines : []).filter((line) => String(line && line.account || "").indexOf("asset:cash_account:") === 0);
+  if (cashLines.length !== 1) return false;
+  const [own, linked] = await Promise.all([db.ref(`/cfLedger/${key}`).get(), db.ref("/cfLedger").orderByChild("movementId").equalTo(movementId).get()]);
+  if (own.exists() || Object.keys(linked.val() || {}).length) return false;
+  const line = cashLines[0], accountId = String(line.account).slice("asset:cash_account:".length), amount = Financial.money(Number(line.credit || 0) - Number(line.debit || 0));
+  if (!accountId || !(Math.abs(amount) > 0)) return false;
+  const posting = revolvingFundPosting(voucher), now = Date.now();
+  const row = cashLedgerRecord({date: BooksBridge.businessDate(Number(movement.occurredAt || movement.postedAt) || now), accountId, dir: amount > 0 ? "out" : "in", category: voucher.transactionType === "customer_refund" ? "Customer refund payable" : posting.label, amount: Math.abs(amount), party: financeText(voucher.recipient || voucher.requesterName, 160), ref: financeText(voucher.voucherNo, 60)}, movementId, movement, actor);
+  await db.ref().update({[`cfLedger/${key}`]: row, [`operationalAudit/${now}_${voucherId}_cash_ledger_backfill`]: operationalAuditRecord("backfill_voucher_cash_ledger", "pettyVoucher", voucherId, actor, {movementId, accountId, amount: Math.abs(amount), accounting: "No Finance posting changed; the cash account register row now matches the posted movement."})});
+  return true;
+}
+
 exports.repairPettyVoucherFinancial = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => {
     const db = getDatabase(), actor = await requirePortalPermission(db, request, ["petty", "cashflow"]), data = request.data || {}, id = financeKey(data.voucherId, "Voucher ID"), movementId = `petty_${id}`, existing = await db.ref(`/financialMovements/${movementId}`).get();
-    if (existing.exists()) return {voucherId:id,movementId,duplicate:true};
+    if (existing.exists()) return {voucherId:id,movementId,duplicate:true,cashLedgerRepaired:await backfillVoucherCashLedger(db,id,existing.val(),actor)};
     const voucher = (await db.ref(`/pettyCashVouchers/${id}`).get()).val();
     if (!voucher || voucher.status !== "approved" || voucher.voided === true) throw new HttpsError("failed-precondition", "Only an active approved cash payment with a missing posting can be repaired.");
     const value = Financial.money(voucher.amount); if (!(value > 0)) throw new HttpsError("failed-precondition", "The approved cash payment amount is invalid.");
@@ -5835,6 +5856,7 @@ function financialControlResolution(issue) {
     duplicate_cash_account_code:["Open Cash Accounts and give each bank or wallet a unique Finance Books account mapping before recording more deposits.","books_cashflow","Open Cash Accounts"],
     register_float_differs_from_control:["Open POS Settings and verify the approved register float. Use the controlled float adjustment; do not record it as a receipt or expense.","admin_finance","Open POS Settings"],
     undeposited_subledger_mismatch:["Open Undeposited Collection, reconcile the custody rows to the Finance balance, and use the controlled custody correction shown there.","admin_finance","Open Undeposited Collection"],
+    cash_payment_missing_bank_ledger:["Open Undeposited Collection and use Repair missing cash payments, or run repairPettyVoucherFinancial for this voucher. It rebuilds the register row from the posted movement without changing Finance Books.","admin_petty","Open Cash Payments"],
     cash_payment_missing_custody:["Open the exact approved cash payment. Record or restore enough physical cash custody first, then use the controlled repair so the payment and its custody allocation post together. Do not deposit the original shift amount.","admin_petty","Open Cash Payments"],
     holding_account_balance:["Open the original operational workflow named in the account description and finish its allocation, settlement, or variance resolution. Do not clear control accounts with a free-form journal.","books_transactions","Open Finance Books"],
     balance_off_chart:["Open Chart of Accounts, restore the account definition, and then review the linked posting before changing its account mapping.","books_transactions","Open Chart of Accounts"],
@@ -5903,6 +5925,11 @@ exports.auditFinancialControls = onCall(
     try {
       const petty=/* download-ok: manual control audit */(await db.ref("/pettyCashVouchers").get()).val()||{};Object.keys(petty).forEach((id)=>{const voucher=petty[id]||{};if(voucher.status==="approved"&&!voucher.voided&&!movements[`petty_${id}`])issues.push({severity:"critical",kind:"cash_payment_missing_custody",source:id,detail:`Approved cash payment ${financeText(voucher.voucherNo||id,80)} has not reduced Undeposited Collection.`,amount:Financial.money(voucher.amount)});});
     } catch(e){logger.warn("auditFinancialControls: cash-payment custody check skipped",{error:String(e)});}
+    try {
+      const ledgerByMovement=new Set(Object.values(cash).map((row)=>String(row&&row.movementId||"")).filter(Boolean)),petty=/* download-ok: manual control audit */(await db.ref("/pettyCashVouchers").get()).val()||{};
+      Object.keys(petty).forEach((id)=>{const voucher=petty[id]||{},mv=movements[`petty_${id}`];if(voucher.status!=="approved"||voucher.voided||!mv)return;const bank=(mv.lines||[]).find((line)=>String(line&&line.account||"").indexOf("asset:cash_account:")===0);if(bank&&!ledgerByMovement.has(`petty_${id}`))issues.push({severity:"warning",kind:"cash_payment_missing_bank_ledger",source:id,sourceLabel:`Cash payment ${financeText(voucher.voucherNo||id,80)} · ${financeText(voucher.date,10)} · ${Financial.money(voucher.amount).toFixed(2)}`,detail:"Posted to Finance Books from a bank or e-wallet account, but the account's cash register has no matching row.",amount:Financial.money(Number(bank.credit||0)-Number(bank.debit||0))});});
+    } catch(e){logger.warn("auditFinancialControls: cash-payment bank register check skipped",{error:String(e)});}
+
     try {
       // Register Cash (Books 1000) must equal the float plus the open shift's takings; every closed
       // shift's register postings must net to zero because its cash left with the handover.

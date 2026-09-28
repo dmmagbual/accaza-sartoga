@@ -245,11 +245,32 @@ exports.setUndepositedOpeningBalance = onCall(
   },
 );
 
+// A cash payment funded from a bank or e-wallet also writes that account's cash register row
+// (cfLedger/fm_petty_<id>). Payments approved before 17 Sep 2026 posted the Finance movement
+// without it, so the account register read higher than Finance Books. Rebuild the missing row
+// from the posted movement itself (amount, account and business date), once. The row carries the
+// movement's own Manila date so the cash-ledger date check never re-dates the posting.
+async function backfillVoucherCashLedger(db, voucherId, movement, actor) {
+  const movementId = `petty_${voucherId}`, key = `fm_${movementId}`;
+  const voucher = (await db.ref(`/pettyCashVouchers/${voucherId}`).get()).val();
+  if (!voucher || voucher.status !== "approved" || voucher.voided === true) return false;
+  const cashLines = (movement && Array.isArray(movement.lines) ? movement.lines : []).filter((line) => String(line && line.account || "").indexOf("asset:cash_account:") === 0);
+  if (cashLines.length !== 1) return false;
+  const [own, linked] = await Promise.all([db.ref(`/cfLedger/${key}`).get(), db.ref("/cfLedger").orderByChild("movementId").equalTo(movementId).get()]);
+  if (own.exists() || Object.keys(linked.val() || {}).length) return false;
+  const line = cashLines[0], accountId = String(line.account).slice("asset:cash_account:".length), amount = Financial.money(Number(line.credit || 0) - Number(line.debit || 0));
+  if (!accountId || !(Math.abs(amount) > 0)) return false;
+  const posting = revolvingFundPosting(voucher), now = Date.now();
+  const row = cashLedgerRecord({date: BooksBridge.businessDate(Number(movement.occurredAt || movement.postedAt) || now), accountId, dir: amount > 0 ? "out" : "in", category: voucher.transactionType === "customer_refund" ? "Customer refund payable" : posting.label, amount: Math.abs(amount), party: financeText(voucher.recipient || voucher.requesterName, 160), ref: financeText(voucher.voucherNo, 60)}, movementId, movement, actor);
+  await db.ref().update({[`cfLedger/${key}`]: row, [`operationalAudit/${now}_${voucherId}_cash_ledger_backfill`]: operationalAuditRecord("backfill_voucher_cash_ledger", "pettyVoucher", voucherId, actor, {movementId, accountId, amount: Math.abs(amount), accounting: "No Finance posting changed; the cash account register row now matches the posted movement."})});
+  return true;
+}
+
 exports.repairPettyVoucherFinancial = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => {
     const db = getDatabase(), actor = await requirePortalPermission(db, request, ["petty", "cashflow"]), data = request.data || {}, id = financeKey(data.voucherId, "Voucher ID"), movementId = `petty_${id}`, existing = await db.ref(`/financialMovements/${movementId}`).get();
-    if (existing.exists()) return {voucherId:id,movementId,duplicate:true};
+    if (existing.exists()) return {voucherId:id,movementId,duplicate:true,cashLedgerRepaired:await backfillVoucherCashLedger(db,id,existing.val(),actor)};
     const voucher = (await db.ref(`/pettyCashVouchers/${id}`).get()).val();
     if (!voucher || voucher.status !== "approved" || voucher.voided === true) throw new HttpsError("failed-precondition", "Only an active approved cash payment with a missing posting can be repaired.");
     const value = Financial.money(voucher.amount); if (!(value > 0)) throw new HttpsError("failed-precondition", "The approved cash payment amount is invalid.");
