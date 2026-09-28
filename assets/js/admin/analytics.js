@@ -1,5 +1,5 @@
 import{reconcileInventoryBooks,journalBasisThrough,canPostOpeningBalance,canPostReconciliationAdjustment}from'./inventory-books-reconciliation.mjs?v=547';
-import{createOperatingYearWeekly}from'./weekly-sales.mjs?v=611';
+import{createOperatingYearWeekly}from'./weekly-sales.mjs?v=612';
 (function(){
 'use strict';
 var ordersMap={},archMap={},reviewsMap={},feedbacksMap={},custMap={},invMap={},recMap={},expMap={},expCatMap={},expItems={},monthlyExp={},adjMap={},usageMap={},payoutsMap={},varAcctMap={},receiptsMap={},posSettingsMap={},inventoryBooksJournal={},payoutCashAccounts={};
@@ -77,12 +77,15 @@ function orderCOGS(o){var corrected=o.correctedCogsSnapshot!=null,_x=Number(corr
   if(!lines)return{cost:_x,covered:false};var cost=0,any=false,all=true;lines.forEach(function(li){var c=itemCost(li);if(c==null)all=false;else{cost+=c;any=true;}});return{cost:cost+_x,covered:any&&all};}
 function saleFields(o){var v=window.AccazaSales.amounts(o);return{ts:window.AccazaSales.stamp(o),gross:v.gross,discount:v.discount,refund:v.refund,net:v.net,payment:o.payment||'—',type:o.type||'—',lineItems:o.correctedLineItems||o.lineItems||null,phone:(o.phone||'').replace(/[^0-9]/g,''),name:o.name||'Walk-in',o:o};}
 function salesBetween(from,to){return allOrders().filter(isSale).map(saleFields).filter(function(s){return s.ts>=from&&s.ts<to;});}
-function dayStart(d){d=new Date(d);d.setHours(0,0,0,0);return d.getTime();}
-function addDays(ts,n){var d=new Date(ts);d.setDate(d.getDate()+n);return d.getTime();}
-function localDateValue(v){var p=String(v||'').split('-');if(p.length!==3)return NaN;return new Date(Number(p[0]),Number(p[1])-1,Number(p[2])).getTime();}
+// Day and month boundaries are Manila midnights (Asia/Manila, UTC+8, no daylight saving), whatever
+// time zone the viewing device uses (Sep 2026: the owner reviews reports from Port Moresby, UTC+10).
+function dayStart(d){var key=/^\d{4}-\d{2}-\d{2}$/.test(String(d))?String(d):businessDate(d instanceof Date?d.getTime():d);return Date.parse(key+'T00:00:00+08:00');}
+function addDays(ts,n){return Number(ts)+Number(n)*86400000;}
+function localDateValue(v){return /^\d{4}-\d{2}-\d{2}$/.test(String(v||''))?Date.parse(String(v)+'T00:00:00+08:00'):NaN;}
+function monthStartAt(ts){return Date.parse(businessDate(ts).slice(0,7)+'-01T00:00:00+08:00');}
 function rangeBounds(){
   if(azFrom!=null&&azTo!=null)return[azFrom,azTo+1];
-  var now=Date.now(),today=dayStart(now),end=addDays(today,1);if(azRange==='today')return[today,end];if(azRange==='7d')return[addDays(today,-6),end];if(azRange==='30d')return[addDays(today,-29),end];if(azRange==='month'){var d=new Date();return[new Date(d.getFullYear(),d.getMonth(),1).getTime(),end];}return[new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime(),end];
+  var now=Date.now(),today=dayStart(now),end=addDays(today,1);if(azRange==='today')return[today,end];if(azRange==='7d')return[addDays(today,-6),end];if(azRange==='30d')return[addDays(today,-29),end];if(azRange==='month')return[monthStartAt(now),end];return[monthStartAt(now),end];
 }
 function businessDate(ts){return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(Number(ts)||0));}
 function dateKeys(from,to){var out=[],d=new Date(Date.parse(businessDate(from)+'T00:00:00Z')),last=businessDate(to-1);while(d.toISOString().slice(0,10)<=last){out.push(d.toISOString().slice(0,10));d.setUTCDate(d.getUTCDate()+1);}return out;}
@@ -271,7 +274,7 @@ function chartObj(obj){var keys=Object.keys(obj).sort(function(a,b){return obj[b
 function pad(n){return(n<10?'0':'')+n;}
 
 /* ══════════ P&L ══════════ */
-function monthKey(ts){var d=new Date(ts);return d.getFullYear()+'-'+pad(d.getMonth()+1);}
+function monthKey(ts){return businessDate(ts).slice(0,7);}
 function monthLabel(mk){var p=mk.split('-');return new Date(p[0],p[1]-1,1).toLocaleDateString('en-PH',{month:'long',year:'numeric'});}
 function prevMonthKey(mk){var p=mk.split('-');var d=new Date(p[0],p[1]-1,1);d.setMonth(d.getMonth()-1);return d.getFullYear()+'-'+pad(d.getMonth()+1);}
 function usageNameFor(id){ if(id==='staff')return 'Staff consumption'; if(id==='rnd')return 'R&D / Testing'; var nm=null; Object.keys(usageMap).some(function(k){var u=usageMap[k];if(u&&u.kind===id&&u.kindName){nm=u.kindName;return true;}return false;}); return nm||id; }
@@ -871,10 +874,10 @@ function exportPnl(cur,prev,pmk,ids){
   var blob=new Blob([csv],{type:'text/csv'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='accaza-pnl-'+pnlMonth+'.csv';a.click();URL.revokeObjectURL(url);
 }
 /* ══════════ STOCK VALUE / STOCK CARD ══════════ */
-function svRange(){var f=svFrom,t=svTo;if(!f&&!t){var d=new Date();f=new Date(d.getFullYear(),d.getMonth(),1);f=f.getFullYear()+'-'+pad(f.getMonth()+1)+'-'+pad(f.getDate());t=new Date();t=t.getFullYear()+'-'+pad(t.getMonth()+1)+'-'+pad(t.getDate());}return {f:f||'',t:t||''};}
+function svRange(){var f=svFrom,t=svTo;if(!f&&!t){t=businessDate(Date.now());f=t.slice(0,7)+'-01';}return {f:f||'',t:t||''};}
 function fq(n){n=Number(n)||0;return (Math.round(n*1000)/1000).toLocaleString('en-PH');}
 function invItems(){return Object.keys(invMap).map(function(k){return Object.assign({id:k},invMap[k]);}).sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});}
-function tsToDate(ts){var d=new Date(ts||0);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+function tsToDate(ts){return businessDate(ts||0);}
 function inRng(d,rng){return (!rng.f||d>=rng.f)&&(!rng.t||d<=rng.t);}
 function itemPeriod(id,cost,rng){var pQ=0,pV=0,uQ=0;
   Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r||r.ing!==id)return;var d=r.date||tsToDate(r.ts);if(inRng(d,rng)){pQ+=Number(r.qty)||0;pV+=Number(r.total)||0;}});

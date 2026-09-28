@@ -10,7 +10,8 @@
   ];
   var days=7,loading=false,exceptionData=null,backupData=null,productionHealth=null,certificationData=null,validationData=null,serviceRetry=0,retryTimer=null;
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-  function dateKey(offset){var d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()-offset);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+  // Telemetry days are Manila days on the server; read the same keys whatever the device's time zone.
+  function dateKey(offset){var d=new Date(Date.now()+28800000);d.setUTCDate(d.getUTCDate()-offset);return d.toISOString().slice(0,10);}
   function ms(v){v=Math.round(Number(v)||0);return v>=1000?(v/1000).toFixed(v>=10000?1:2)+'s':v+'ms';}
   function age(v){var n=Date.now()-Number(v||0);if(!v)return'Unknown age';if(n<3600000)return Math.max(1,Math.round(n/60000))+'m ago';if(n<86400000)return Math.round(n/3600000)+'h ago';return Math.round(n/86400000)+'d ago';}
   function status(avg,max,target,count,failed){if(!count)return{word:'NO DATA',color:'#6c757d',bg:'#f1f3f5'};if(failed>0||avg>target||max>target*2)return{word:'ACTION',color:'#8b1e1e',bg:'#fde8e8'};if(avg>target*.8||max>target)return{word:'WATCH',color:'#7a5200',bg:'#fff3cd'};return{word:'GOOD',color:'#155724',bg:'#d4edda'};}

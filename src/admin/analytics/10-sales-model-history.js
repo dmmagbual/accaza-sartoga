@@ -8,12 +8,15 @@ function orderCOGS(o){var corrected=o.correctedCogsSnapshot!=null,_x=Number(corr
   if(!lines)return{cost:_x,covered:false};var cost=0,any=false,all=true;lines.forEach(function(li){var c=itemCost(li);if(c==null)all=false;else{cost+=c;any=true;}});return{cost:cost+_x,covered:any&&all};}
 function saleFields(o){var v=window.AccazaSales.amounts(o);return{ts:window.AccazaSales.stamp(o),gross:v.gross,discount:v.discount,refund:v.refund,net:v.net,payment:o.payment||'—',type:o.type||'—',lineItems:o.correctedLineItems||o.lineItems||null,phone:(o.phone||'').replace(/[^0-9]/g,''),name:o.name||'Walk-in',o:o};}
 function salesBetween(from,to){return allOrders().filter(isSale).map(saleFields).filter(function(s){return s.ts>=from&&s.ts<to;});}
-function dayStart(d){d=new Date(d);d.setHours(0,0,0,0);return d.getTime();}
-function addDays(ts,n){var d=new Date(ts);d.setDate(d.getDate()+n);return d.getTime();}
-function localDateValue(v){var p=String(v||'').split('-');if(p.length!==3)return NaN;return new Date(Number(p[0]),Number(p[1])-1,Number(p[2])).getTime();}
+// Day and month boundaries are Manila midnights (Asia/Manila, UTC+8, no daylight saving), whatever
+// time zone the viewing device uses (Sep 2026: the owner reviews reports from Port Moresby, UTC+10).
+function dayStart(d){var key=/^\d{4}-\d{2}-\d{2}$/.test(String(d))?String(d):businessDate(d instanceof Date?d.getTime():d);return Date.parse(key+'T00:00:00+08:00');}
+function addDays(ts,n){return Number(ts)+Number(n)*86400000;}
+function localDateValue(v){return /^\d{4}-\d{2}-\d{2}$/.test(String(v||''))?Date.parse(String(v)+'T00:00:00+08:00'):NaN;}
+function monthStartAt(ts){return Date.parse(businessDate(ts).slice(0,7)+'-01T00:00:00+08:00');}
 function rangeBounds(){
   if(azFrom!=null&&azTo!=null)return[azFrom,azTo+1];
-  var now=Date.now(),today=dayStart(now),end=addDays(today,1);if(azRange==='today')return[today,end];if(azRange==='7d')return[addDays(today,-6),end];if(azRange==='30d')return[addDays(today,-29),end];if(azRange==='month'){var d=new Date();return[new Date(d.getFullYear(),d.getMonth(),1).getTime(),end];}return[new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime(),end];
+  var now=Date.now(),today=dayStart(now),end=addDays(today,1);if(azRange==='today')return[today,end];if(azRange==='7d')return[addDays(today,-6),end];if(azRange==='30d')return[addDays(today,-29),end];if(azRange==='month')return[monthStartAt(now),end];return[monthStartAt(now),end];
 }
 function businessDate(ts){return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(Number(ts)||0));}
 function dateKeys(from,to){var out=[],d=new Date(Date.parse(businessDate(from)+'T00:00:00Z')),last=businessDate(to-1);while(d.toISOString().slice(0,10)<=last){out.push(d.toISOString().slice(0,10));d.setUTCDate(d.getUTCDate()+1);}return out;}

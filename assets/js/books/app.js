@@ -1190,20 +1190,20 @@ App.runImport=function(btn){
 
 /* ---- quick-post templates (pre-filled balanced entries) ---- */
 const QUICK = [
-  {label:"☕ Record day's sales + cash", build:()=>({date:todayStr(),ref:"DAY-"+new Date().getDate(),memo:"Sales for the day",
+  {label:"☕ Record day's sales + cash", build:()=>({date:todayStr(),ref:"DAY-"+Number(todayStr().slice(8)),memo:"Sales for the day",
     lines:[{code:"1000",debit:0,credit:""},{code:"1020",debit:0,credit:""},{code:"4000",debit:"",credit:0},{code:"4010",debit:"",credit:0}]
       .map(l=>({code:l.code,debit:l.debit,credit:l.credit}))})},
-  {label:"🛵 Grab/Panda sales", build:()=>({date:todayStr(),ref:"PLT-"+new Date().getDate(),memo:"Platform sales net of commission",
+  {label:"🛵 Grab/Panda sales", build:()=>({date:todayStr(),ref:"PLT-"+Number(todayStr().slice(8)),memo:"Platform sales net of commission",
     lines:[{code:"1100",debit:"",credit:0},{code:"6040",debit:"",credit:0},{code:"4020",debit:0,credit:""},{code:"4030",debit:0,credit:""}]})},
-  {label:"📦 Record COGS (recipe use)", build:()=>({date:todayStr(),ref:"COGS-"+new Date().getDate(),memo:"Cost of goods sold — inventory consumed",
+  {label:"📦 Record COGS (recipe use)", build:()=>({date:todayStr(),ref:"COGS-"+Number(todayStr().slice(8)),memo:"Cost of goods sold — inventory consumed",
     lines:[{code:"5000",debit:"",credit:0},{code:"5010",debit:"",credit:0},{code:"1200",debit:0,credit:""},{code:"1210",debit:0,credit:""}]})},
   {label:"🧾 Pay / receive supplier stock", build:()=>({date:todayStr(),ref:"PO-",memo:"Stock received from supplier (on account)",
     lines:[{code:"1200",debit:"",credit:0},{code:"2000",debit:0,credit:""}]})},
-  {label:"🗑️ Wastage / spoilage", build:()=>({date:todayStr(),ref:"WASTE-"+new Date().getDate(),memo:"Spoilage / waste written off",
+  {label:"🗑️ Wastage / spoilage", build:()=>({date:todayStr(),ref:"WASTE-"+Number(todayStr().slice(8)),memo:"Spoilage / waste written off",
     lines:[{code:"5900",debit:"",credit:0},{code:"1210",debit:0,credit:""}]})},
-  {label:"👥 Pay salaries", build:()=>({date:todayStr(),ref:"PAY-"+new Date().getDate(),memo:"Barista salaries",
+  {label:"👥 Pay salaries", build:()=>({date:todayStr(),ref:"PAY-"+Number(todayStr().slice(8)),memo:"Barista salaries",
     lines:[{code:"6000",debit:"",credit:0},{code:"1010",debit:0,credit:""}]})},
-  {label:"💸 Owner drawing", build:()=>({date:todayStr(),ref:"DRAW-"+new Date().getDate(),memo:"Owner personal drawing",
+  {label:"💸 Owner drawing", build:()=>({date:todayStr(),ref:"DRAW-"+Number(todayStr().slice(8)),memo:"Owner personal drawing",
     lines:[{code:"3100",debit:"",credit:0},{code:"1000",debit:0,credit:""}]})}
 ];
 

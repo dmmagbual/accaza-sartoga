@@ -22,14 +22,15 @@
       if(m){var ix=MONTHS.indexOf(m[1]);if(ix>=0)return m[2]+'-'+('0'+(ix+1)).slice(-2);}
       return 'unknown';
     }
-    var d=new Date(ms);
-    return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2);
+    // Manila month (UTC+8, no daylight saving), whatever the device's time zone (Sep 2026).
+    var d=new Date(ms+8*3600000);
+    return d.getUTCFullYear()+'-'+('0'+(d.getUTCMonth()+1)).slice(-2);
   }
   /* The last millisecond of that month, so the correction lands in the period it belongs to. */
   function monthEnd(key,now){
     var parts=/^(\d{4})-(\d{2})$/.exec(String(key));
     if(!parts)return n(now)||Date.now();
-    var end=new Date(Number(parts[1]),Number(parts[2]),0,23,59,59,0).getTime();
+    var lastDay=new Date(Date.UTC(Number(parts[1]),Number(parts[2]),0)).getUTCDate(),end=Date.parse(parts[1]+'-'+parts[2]+'-'+('0'+lastDay).slice(-2)+'T23:59:59+08:00');
     var stamp=n(now)||Date.now();
     return end>stamp?stamp:end;
   }

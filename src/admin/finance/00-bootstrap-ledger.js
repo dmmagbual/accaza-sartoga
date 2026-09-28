@@ -6,7 +6,9 @@ function peso(n){n=Number(n)||0;return '₱'+n.toLocaleString('en-PH',{minimumFr
 function uid(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
 function isTab(n){var el=document.getElementById('tab-'+n);return el&&el.style.display!=='none';}
 function pad(n){return(n<10?'0':'')+n;}
-function todayStr(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+// Business dates are Manila dates (UTC+8, no daylight saving), whatever the device's time zone (Sep 2026).
+function manilaKey(ts){var n=typeof ts==='number'?ts:new Date(ts).getTime();return isFinite(n)?new Date(n+28800000).toISOString().slice(0,10):'';}
+function todayStr(){return manilaKey(Date.now());}
 function chLbl(c){return c==='grabfood'?'GrabFood':c==='foodpanda'?'FoodPanda':c;}
 var accountsMap={},ledgerMap={},financialMovementsMap={},cashBalancesMap={},cashBalancesReady=false,cashRegisterGross=0,chartMap={},custodyMap={},arMap={},apMap={},payoutsMapCF={},ordersMapCF={},archMapCF={},financialAudit=null,registerFloatAmount=4000;
 var cashBalanceRefresh=null;
@@ -42,7 +44,7 @@ function isCashM(m){return String(m||'').toLowerCase()==='cash';}
 function methodAcct(m){var mm=String(m||'').toLowerCase();var found=null;accList().forEach(function(x){(x.feedMethods||[]).forEach(function(z){if(String(z).toLowerCase()===mm)found=x.id;});});return found;}
 function orderPays(o){return (o.payments&&o.payments.length)?o.payments:[{method:o.payment,amount:o.total}];}
 function unmappedMethods(){var seen={};[ordersMapCF,archMapCF].forEach(function(m){Object.keys(m).forEach(function(k){var o=m[k];if(!o||['pos','online'].indexOf(o.source)<0||['grabfood','foodpanda'].indexOf(o.channel)>=0)return;orderPays(o).forEach(function(p){if(!isCashM(p.method)&&!methodAcct(p.method))seen[p.method]=1;});});});return Object.keys(seen);}
-function dateFromTs(ts){var d=new Date(ts||Date.now());return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+function dateFromTs(ts){return manilaKey(ts||Date.now());}
 function cfPick(opts,cb){
   if(!accList().length&&!opts.includeCashSources){alert('Add a bank / e-wallet account first in Finance Books → Cash Flow.');return;}
   var mask=document.createElement('div');mask.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';

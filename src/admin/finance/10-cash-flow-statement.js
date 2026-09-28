@@ -1,7 +1,7 @@
 
 /* ══════════ 3D structured cash flow statement (frontend projection of the immutable 3C ledger) ══════════ */
 var stmtFrom=null,stmtTo=null,cfOpen={};
-function monthStartStr(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-01';}
+function monthStartStr(){return todayStr().slice(0,7)+'-01';}
 function stmtRange(){return {from:stmtFrom||monthStartStr(),to:stmtTo||todayStr()};}
 function isCashAcct(a){a=String(a||'');return a==='asset:register_cash'||a==='asset:cash_awaiting_deposit'||a==='asset:petty_cash'||a.indexOf('asset:cash_account:')===0;}
 function r2(n){return Math.round((Number(n)||0)*100)/100;}

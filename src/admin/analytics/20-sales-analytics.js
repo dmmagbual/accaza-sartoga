@@ -151,7 +151,7 @@ function chartObj(obj){var keys=Object.keys(obj).sort(function(a,b){return obj[b
 function pad(n){return(n<10?'0':'')+n;}
 
 /* ══════════ P&L ══════════ */
-function monthKey(ts){var d=new Date(ts);return d.getFullYear()+'-'+pad(d.getMonth()+1);}
+function monthKey(ts){return businessDate(ts).slice(0,7);}
 function monthLabel(mk){var p=mk.split('-');return new Date(p[0],p[1]-1,1).toLocaleDateString('en-PH',{month:'long',year:'numeric'});}
 function prevMonthKey(mk){var p=mk.split('-');var d=new Date(p[0],p[1]-1,1);d.setMonth(d.getMonth()-1);return d.getFullYear()+'-'+pad(d.getMonth()+1);}
 function usageNameFor(id){ if(id==='staff')return 'Staff consumption'; if(id==='rnd')return 'R&D / Testing'; var nm=null; Object.keys(usageMap).some(function(k){var u=usageMap[k];if(u&&u.kind===id&&u.kindName){nm=u.kindName;return true;}return false;}); return nm||id; }

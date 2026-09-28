@@ -51,7 +51,8 @@ function compressImage(file,cb){
   rd.readAsDataURL(file);
 }
 function nextVoucherNo(cb){
-  var d=new Date();var key=d.getFullYear()+String(d.getMonth()+1).padStart(2,'0');var a=A();
+  // Voucher numbers follow the Manila month, whatever the device's time zone (Sep 2026).
+  var key=new Date(Date.now()+28800000).toISOString().slice(0,7).replace('-','');var a=A();
   a.runTransaction(a.ref(a.db,'pettyCashCounter/'+key),function(cur){return (Number(cur)||0)+1;}).then(function(res){var n=(res.snapshot&&res.snapshot.val())||1;cb('PV-'+key+'-'+String(n).padStart(4,'0'));}).catch(function(){cb('PV-'+key+'-'+Date.now().toString().slice(-4));});
 }
 function renderPetty(){

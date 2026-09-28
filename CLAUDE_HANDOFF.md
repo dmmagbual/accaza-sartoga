@@ -1,7 +1,7 @@
 # Accaza Coffee House — Authoritative Project Handoff
 
 **Prepared:** 10 August 2026 (Release 7H); header refreshed 28 September 2026  
-**Current builds:** read `release-manifest.json` → `builds` (28 Sep 2026: admin v611, Finance Books v133, customer v85, service-worker cache v596). Build numbers in older sections of this file are historical.  
+**Current builds:** read `release-manifest.json` → `builds` (28 Sep 2026: admin v612, Finance Books v134, customer v85, service-worker cache v597). Build numbers in older sections of this file are historical.  
 **Truth source:** current workspace plus `release-manifest.json`  
 **Pending production evidence:** see `docs/PRODUCTION_EVIDENCE_CHECKLIST.md`
 
@@ -171,6 +171,9 @@ Use `OPERATIONS_RELEASE_RUNBOOK.md`. Change the manifest to `production_verified
 ## Known limitations
 
 - JavaScript byte budgets live in one place, `tests/bundle-budgets.mjs`. Tests warn once less than 2.5% of a budget is left and fail above it; guarded source sections (70 KB) and static test modules (50 KB) warn above 95%. Split code rather than raising a ceiling without review.
+- Business dates are Manila dates (Asia/Manila, UTC+8, no daylight saving) on every device; the owner often works from Port Moresby (UTC+10). `tests/manila-business-date-check.mjs` blocks new device-local calendar code and checks the date helpers in four time zones across New Year. Display formatting of timestamps (for example `toLocaleString`) still uses the viewing device's time zone, so times read two hours ahead from Port Moresby; reservation calendars pick calendar days in the device's calendar.
+- Calendar-year close: Finance Books carries completed years as retained earnings and the balance-sheet year's earlier months as current-year net income (`openingCarry` in `assets/js/books/live-pos.mjs`, browser test `tests/e2e/books-year-end.spec.mjs`). No closing journal is posted; Retained Earnings (3900) is derived.
+- A shift that closes after midnight: the Financial Close report assigns its sales to the shift's opening day, while each ledger posting (including a cash over/short at close) keeps its own Manila date. On 1 January that variance lands in the new year.
 - Two September 2026 optimizations were deliberately held: cache-first service-worker loading (can leave a till on old code; needs the production performance review first) and a Finance Books journal delta cache (every journal writer would need a change stamp; a missed one would show stale amounts).
 
 - Production timing evidence for v173 is pending; local tests cannot prove real cashier-device speed.
