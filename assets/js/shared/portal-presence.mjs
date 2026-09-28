@@ -32,12 +32,12 @@ function startPortalPresence(fb, {uid, app, build}) {
   });
   // stop({signedOut:true}) when the person signs out; stop() when only this page's presence ends.
   return function stopPortalPresence(options) {
-    if (stopped) return;
+    if (stopped) return Promise.resolve();
     stopped = true;
     stopWatch();
     // Write first, then disarm. If the writes are refused (the session already ended in another
     // tab), the armed handlers stay in place so Firebase still clears presence when the page closes.
-    Promise.all([set(lastSeen, seen(!!(options && options.signedOut))), remove(node)])
+    return Promise.all([set(lastSeen, seen(!!(options && options.signedOut))), remove(node)])
       .then(() => Promise.all([onDisconnect(node).cancel(), onDisconnect(lastSeen).cancel()]))
       .catch(() => {});
   };

@@ -12,10 +12,10 @@
     "productionDomain": "https://accazacoffee.com"
   },
   "builds": {
-    "admin": 618,
-    "books": 135,
+    "admin": 619,
+    "books": 136,
     "customer": 85,
-    "serviceWorkerCache": 603
+    "serviceWorkerCache": 604
   },
   "authoritativeFiles": [
     "assets/js/admin/historical-period-store.mjs",
@@ -153,6 +153,7 @@
     "functions/lib/historical-archive.js",
     "assets/js/shared/costing.js",
     "assets/js/shared/portal-presence.mjs",
+    "assets/js/shared/portal-idle.mjs",
     "assets/js/shared/business-date.js",
     "assets/js/shared/sales-authority.js",
     "assets/css/admin-backoffice.css",
@@ -220,6 +221,7 @@
     "tests/staff-module-access-check.mjs",
     "tests/staff-screen-data-access-check.mjs",
     "tests/portal-presence-check.mjs",
+    "tests/portal-idle-check.mjs",
     "tests/security-accounting-assurance-check.mjs",
     "tests/final-stabilization-check.mjs",
     "tests/static/00-context.mjs",

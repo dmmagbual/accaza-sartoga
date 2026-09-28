@@ -34,8 +34,7 @@ connected({val: () => true}); await tick();
 connected({val: () => true}); await tick();
 const armed = ['arm portalPresence/u1/conn1', 'arm-seen portalLastSeen/u1 SERVER_TIME signedOut=false', 'set portalPresence/u1/conn1 admin 606 SERVER_TIME'];
 assert.deepEqual(log, [...armed, ...armed], 'presence and last-seen are armed before each write');
-stop({signedOut: true}); stop();
-await tick(); await tick();
+await stop({signedOut: true}); await stop();
 assert.deepEqual(log.slice(6), ['unwatch', 'set portalLastSeen/u1 admin 606 SERVER_TIME signedOut=true', 'remove portalPresence/u1/conn1', 'cancel portalPresence/u1/conn1', 'cancel portalLastSeen/u1'], 'sign-out is recorded first, then the disconnect handlers are disarmed; stop is idempotent');
 assert.equal(typeof startPortalPresence(fb, {uid: '', app: 'admin', build: 1}), 'function', 'no uid writes nothing');
 // A refused last-seen write must not stop presence (portalLastSeen rules may deploy after the page).
@@ -47,12 +46,12 @@ assert.deepEqual(log2, ['portalPresence/u2/conn1'], 'presence is written even wh
 
 // 3. Admin/POS and Finance Books start presence after sign-in and end it before every sign-out.
 const auth = read('assets/js/admin/portal-auth.mjs');
-assert.ok(auth.includes("watchSessionCutoff(user);beginPresence(user.uid);"), 'Admin starts presence once authorized');
-assert.ok(auth.includes("endPresence(true);try{await signOut(auth);}catch(_o){}") && auth.includes('window.logoutAdmin=function(){\n    endPresence(true);'), 'Admin ends presence before signing out');
+assert.ok(auth.includes("watchSessionCutoff(user);await beginPresence(user.uid);beginIdle(user.uid);"), 'Admin starts presence and inactivity control once authorized');
+assert.ok(auth.includes("endIdle();await endPresence(true);try{await signOut(auth);}catch(_o){}") && auth.includes('window.logoutAdmin=async function(){\n    endIdle();await endPresence(true);'), 'Admin waits for presence cleanup before signing out');
 assert.ok(auth.includes("mine=control.users&&control.users[user.uid]"), 'Admin honours the per-account sign-out');
 const books = read('assets/js/books/live-pos.mjs');
 assert.ok(books.includes('app:"books",build:runningBuild(document,"accaza-books-build")'), 'Books reports its own build');
-assert.ok(books.includes('window.__booksSignOut=()=>{ endPresence(true); return signOut(auth); };') && books.includes('watchValue(ref(db,"/sessionControl/users/"+user.uid)'), 'Books ends presence and honours the per-account sign-out');
+assert.ok(books.includes('window.__booksSignOut=async()=>{ endIdle();await endPresence(true);return signOut(auth); };') && books.includes('watchValue(ref(db,"/sessionControl/users/"+user.uid)'), 'Books waits for presence cleanup and honours the per-account sign-out');
 
 // 4. Rules: each account writes only its own presence; only a Super Admin reads the list.
 const rulesLine = read('database.rules.json').split('\n').find(line => line.includes('"portalPresence"'));
@@ -67,12 +66,13 @@ const portalAuth = (read('src/functions/20-portal-auth.js')+read('src/functions/
 assert.ok(portalAuth.includes('if (userCutoff && signedInAt < userCutoff) throw new HttpsError("unauthenticated"'), 'callables refuse a signed-out account');
 const accounts = read('src/functions/20b-portal-accounts.js');
 const signOutAction = accounts.slice(accounts.indexOf('if (action === "sign_out")'), accounts.indexOf('if (action === "normalize_legacy")'));
-for (const marker of ['if (uid === actor.uid)', 'reason.length < 5', 'revokeRefreshTokens(uid)', '[`sessionControl/users/${uid}`]', 'portal_account_signed_out']) assert.ok(signOutAction.includes(marker), `sign_out is missing ${marker}`);
+for (const marker of ['if (uid === actor.uid)', 'reason.length < 5', 'revokeRefreshTokens(uid)', '[`sessionControl/users/${uid}`]', '[`portalPresence/${uid}`]: null', '[`portalLastSeen/${uid}`]', 'signedOut:true', 'portal_account_signed_out']) assert.ok(signOutAction.includes(marker), `sign_out is missing ${marker}`);
 assert.ok(accounts.indexOf('const db = getDatabase(), actor = await requireSuperAdmin(db, request)') > -1, 'account management stays Super Admin only');
 
 // 6. Firebase usage: presence is read only by the User Accounts screen, while it is open.
 const screen = read('assets/js/admin/staff-access.js');
 assert.ok(screen.includes("a.hub.subscribe('portalPresence',function(snap){state.presence=snap.val()||{};paintPresence();},{scopes:['staffaccounts']})"), 'presence attaches only on User Accounts');
+assert.ok(screen.includes("a.hub.subscribe('sessionControl',function(snap){state.sessionControl=snap.val()||{};paintPresence();},{scopes:['staffaccounts']})"), 'the account screen follows forced sign-out cutoffs');
 assert.ok(screen.includes("fetch('/build-version.json',{cache:'no-store',credentials:'omit'})"), 'latest builds come from GitHub Pages, not Firebase');
 const readers = [];
 for (const dir of ['assets/js/admin', 'assets/js/books', 'assets/js/customer', 'assets/js/shared']) for (const file of fs.readdirSync(new URL(`../${dir}`, import.meta.url))) {
@@ -99,8 +99,9 @@ assert.deepEqual(log3, [], 'handlers are not disarmed when the sign-out writes f
 // 9. Three honest states: Online, Inactive (signed in, device not connected), Signed out.
 assert.ok(screen.includes('>Inactive</span>') && screen.includes('>Signed out</span>') && screen.includes("'<small>Not connected since '"), 'Inactive and Signed out states are shown');
 assert.ok(screen.includes('if(seen&&seen.signedOut&&Number(seen.at)>=Number(till&&till.lastContactAt||0))'), 'Signed out only when a Log out is recorded after the last activity');
-assert.ok(auth.includes('window.logoutAdmin=function(){\n    endPresence(true);') && auth.includes('endPresence(false);stopPresence=startPortalPresence('), 'Admin records real sign-outs only');
-assert.ok(books.includes('window.__booksSignOut=()=>{ endPresence(true); return signOut(auth); };'), 'Books records real sign-outs');
+assert.ok(screen.includes('Number(row.connectedAt||0)>=cutoff') && screen.includes('if(cutoff&&cutoff>=lastActive)'), 'stale presence before a forced sign-out cannot keep an account Online');
+assert.ok(auth.includes('window.logoutAdmin=async function(){\n    endIdle();await endPresence(true);') && auth.includes('await endPresence(false);stopPresence=startPortalPresence('), 'Admin records real sign-outs only');
+assert.ok(books.includes('window.__booksSignOut=async()=>{ endIdle();await endPresence(true);return signOut(auth); };'), 'Books records real sign-outs');
 assert.ok(read('database.rules.json').includes('"signedOut": { ".validate": "newData.isBoolean()" }'), 'signedOut is validated');
 
 console.log('PASS: portal presence shows who is online with app, build and device; only the Super Admin reads it; sign out works per account.');

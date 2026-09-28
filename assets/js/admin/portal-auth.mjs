@@ -1,5 +1,6 @@
 import{auth,db,ref,get,set,push,remove,onValue,onDisconnect,serverTimestamp,signInWithEmailAndPassword,signOut,onAuthStateChanged,setPersistence,browserLocalPersistence}from"./firebase-client.mjs";
 import{startPortalPresence,runningBuild}from"../shared/portal-presence.mjs";
+import{startPortalIdle}from"../shared/portal-idle.mjs";
 
 function portalRole(raw){
   if(raw&&typeof raw==='object'&&(raw.disabled===true||raw.active===false))return null;
@@ -23,9 +24,11 @@ function installPortalAuth(options){
   // cart in progress gets a short, capped grace window to finish or clear before the device is
   // dropped; every other session (nothing in the cart, or not on the POS screen) signs out at
   // once as before. The cap keeps this a true emergency stop, not a standing exemption.
-  var stopCutoffWatch=null,cutoffSignOut=false,cutoffPending=false,stopPresence=null;
-  function endPresence(signedOut){if(stopPresence){stopPresence({signedOut:signedOut===true});stopPresence=null;}}
-  function beginPresence(uid){endPresence(false);stopPresence=startPortalPresence({db,ref,onValue,onDisconnect,set,push,remove,serverTimestamp},{uid:uid,app:'admin',build:runningBuild(document,'accaza-admin-build')});}
+  var stopCutoffWatch=null,cutoffSignOut=false,cutoffPending=false,stopPresence=null,idleController=null;
+  function endPresence(signedOut){var stop=stopPresence;stopPresence=null;return stop?stop({signedOut:signedOut===true}):Promise.resolve();}
+  async function beginPresence(uid){await endPresence(false);stopPresence=startPortalPresence({db,ref,onValue,onDisconnect,set,push,remove,serverTimestamp},{uid:uid,app:'admin',build:runningBuild(document,'accaza-admin-build')});}
+  function endIdle(){if(idleController){idleController.stop();idleController=null;}}
+  function beginIdle(uid){endIdle();idleController=startPortalIdle({uid:uid,getShift:function(){return window.__posShift||null;},onTimeout:function(){return window.logoutAdmin();}});}
   var CUTOFF_CART_GRACE_MS=90000,CUTOFF_CART_POLL_MS=2000;
   function cutoffBanner(msg){
     var b=document.getElementById('sessionCutoffBanner');
@@ -36,14 +39,14 @@ function installPortalAuth(options){
   function cartInProgress(){try{return !!(window.__pos&&window.__pos.hasItems&&window.__pos.hasItems());}catch(_e){return false;}}
   async function finishCutoffSignOut(user,cutoff){
     cutoffSignOut=true;cutoffBanner(null);try{sessionStorage.removeItem('accaza_admin_session');}catch(_s){}
-    endPresence(true);try{await signOut(auth);}catch(_o){}
+    endIdle();await endPresence(true);try{await signOut(auth);}catch(_o){}
     cutoffSignOut=false;var le=document.getElementById('loginErr');if(le){le.textContent=(cutoff.single?'A Super Admin signed this account out':'A Super Admin signed every device out')+(cutoff.reason?(': '+cutoff.reason):'')+'. Sign in again.';le.style.display='block';le.style.whiteSpace='normal';}openLogin();
   }
   function watchSessionCutoff(user){
     if(stopCutoffWatch)stopCutoffWatch();
     stopCutoffWatch=subscriptionHub.subscribe('sessionControl',async function(snap){
       // The later of the everyone cutoff and this account's own cutoff (Sign out this user).
-      var control=snap.val()||{},all=control.cutoff||null,mine=control.users&&control.users[user.uid]||null,cutoff=Number(mine&&mine.at)>Number(all&&all.at||0)?Object.assign({single:true},mine):all,at=Number(cutoff&&cutoff.at)||0;if(!at||cutoffSignOut||cutoffPending||!auth.currentUser||auth.currentUser.uid!==user.uid)return;
+      var control=snap.val()||{};window.__accazaSessionControl=control;var all=control.cutoff||null,mine=control.users&&control.users[user.uid]||null,cutoff=Number(mine&&mine.at)>Number(all&&all.at||0)?Object.assign({single:true},mine):all,at=Number(cutoff&&cutoff.at)||0;if(!at||cutoffSignOut||cutoffPending||!auth.currentUser||auth.currentUser.uid!==user.uid)return;
       var signedInAt=0;try{signedInAt=Date.parse((await user.getIdTokenResult()).authTime)||0;}catch(_e){return;}
       if(!signedInAt||signedInAt>=at)return;
       cutoffPending=true;
@@ -66,7 +69,7 @@ function installPortalAuth(options){
       if(!mapped)throw new Error('This Firebase account is not authorized for the Accaza portal.');
       var display=(user.displayName||user.email||user.uid);if(nameSnap&&nameSnap.exists()&&nameSnap.val())display=nameSnap.val();
       var raw=roleSnap.val(),profile={name:(raw&&typeof raw==='object'&&raw.name)||display,title:(raw&&typeof raw==='object'&&raw.title)||(mapped.server==='superadmin'?'Systems Administrator':''),email:user.email||''};
-      await onAuthorized(mapped.ui,display,user.uid,mapped.server,profile);portalAuthUid=user.uid;authGateResolved=true;watchSessionCutoff(user);beginPresence(user.uid);
+      await onAuthorized(mapped.ui,display,user.uid,mapped.server,profile);portalAuthUid=user.uid;authGateResolved=true;watchSessionCutoff(user);await beginPresence(user.uid);beginIdle(user.uid);
       if(location.hash)setTimeout(function(){var t=document.getElementById(location.hash.slice(1));if(t)t.scrollIntoView();},450);
     })();
     try{return await portalAuthPromise;}finally{portalAuthPromise=null;}
@@ -74,7 +77,7 @@ function installPortalAuth(options){
   onAuthStateChanged(auth,async function(user){
     // A shared anonymous session (created by the public site on the same origin) must never
     // drive the admin portal — treat it as signed-out so it can't hijack the admin login.
-    if(!user||user.isAnonymous){endPresence(true);authGateResolved=true;portalAuthUid=null;window.__accazaAuthz=null;subscriptionHub.deauthorize();if(onSignedOut)onSignedOut();return;}
+    if(!user||user.isAnonymous){endIdle();await endPresence(true);authGateResolved=true;portalAuthUid=null;window.__accazaAuthz=null;window.__accazaSessionControl=null;subscriptionHub.deauthorize();if(onSignedOut)onSignedOut();return;}
     try{await authorizePortalUser(user);}catch(e){authGateResolved=true;console.error('ACCAZA AUTHORIZATION ERROR',e);try{await signOut(auth);}catch(_so){}try{sessionStorage.removeItem('accaza_admin_session');}catch(_ss){}var le=document.getElementById('loginErr');if(le){le.textContent=(e&&e.message)||'This account is not authorized.';le.style.display='block';le.style.whiteSpace='normal';}openLogin();}
   });
   window.checkLogin=async function(){
@@ -82,8 +85,8 @@ function installPortalAuth(options){
     if(!username||username.indexOf('@')<1||!pass){_le.textContent='Enter your Firebase account email and password.';_le.style.display='block';return;}_le.style.display='none';if(_btn){_btn.disabled=true;_btn.textContent='Signing in…';}
     try{try{await setPersistence(auth,browserLocalPersistence);}catch(_p){}var cred=await signInWithEmailAndPassword(auth,username,pass);await authorizePortalUser(cred.user);}catch(_e){console.error('ACCAZA AUTH ERROR',_e);_le.textContent=(_e&&_e.message&&_e.message.indexOf('not authorized')>-1)?_e.message:'Login failed. Check the email and password.';_le.style.display='block';document.getElementById('adminPass').value='';}finally{if(_btn){_btn.disabled=false;_btn.textContent='Log In';}}
   };
-  window.logoutAdmin=function(){
-    endPresence(true);try{sessionStorage.removeItem('accaza_admin_session');}catch(e){}portalAuthUid=null;window.__accazaAuthz=null;subscriptionHub.deauthorize();if(onSignedOut)onSignedOut();var go=function(){window.location.href='index.html';};try{signOut(auth).then(go).catch(go);}catch(e){go();}
+  window.logoutAdmin=async function(){
+    endIdle();await endPresence(true);try{sessionStorage.removeItem('accaza_admin_session');}catch(e){}portalAuthUid=null;window.__accazaAuthz=null;window.__accazaSessionControl=null;subscriptionHub.deauthorize();if(onSignedOut)onSignedOut();var go=function(){window.location.href='index.html';};try{await signOut(auth);}catch(e){}go();
   };
   return {authorizePortalUser:authorizePortalUser};
 }

@@ -1,6 +1,6 @@
 (function(){
 'use strict';
-var state={accounts:[],openShift:null,editing:'',busy:false,presence:{},latest:{},stopPresence:null};
+var state={accounts:[],openShift:null,editing:'',busy:false,presence:{},sessionControl:{},latest:{},stopPresence:null,stopSessionControl:null};
 var ROLES=[['superadmin','Super Admin'],['admin','Admin'],['manager','Manager'],['cashier','Cashier'],['kitchen','Kitchen'],['finance','Finance'],['staff','Staff']];
 // Module access mirrors the Admin navigation: one box per nav group, one row per tab.
 // key = grantable permission (must match PORTAL_PERMISSION_KEYS on the server); always = every
@@ -40,12 +40,13 @@ function formHtml(account){var edit=!!account,role=account&&account.role!=='disa
 // each open Admin/POS or Finance Books page and removed by Firebase when it disconnects.
 var APP_LABEL={admin:'Admin & POS',books:'Finance Books'};
 function when(value){var date=new Date(value);if(!value||isNaN(date.getTime()))return '';var today=new Date(),sameDay=date.toDateString()===today.toDateString();return (sameDay?'today ':date.toLocaleDateString(undefined,{day:'numeric',month:'short'})+' ')+date.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});}
+function sessionCutoff(uid){var control=state.sessionControl||{},all=Number(control.cutoff&&control.cutoff.at)||0,mine=Number(control.users&&control.users[uid]&&control.users[uid].at)||0;return Math.max(all,mine);}
 // Online means a device signed in as this account is connected now, with or without a shift.
 // Source 1: live presence (build 606+, any screen). Source 2: a POS on the open shift reports to the
 // server every 2 minutes (10 when idle) on every build, so a report in the last 12 minutes proves
 // a connected till even before it is refreshed to a build that sends presence.
 var TILL_ONLINE_MS=12*60000;
-function presenceParts(account){var rows=Object.values(state.presence[account.uid]||{}).filter(function(row){return row&&row.app;}).sort(function(a,b){return Number(b.connectedAt||0)-Number(a.connectedAt||0);});
+function presenceParts(account){var cutoff=sessionCutoff(account.uid),rows=Object.values(state.presence[account.uid]||{}).filter(function(row){return row&&row.app&&(!cutoff||Number(row.connectedAt||0)>=cutoff);}).sort(function(a,b){return Number(b.connectedAt||0)-Number(a.connectedAt||0);});
   var till=account.till,tillLive=!!(till&&till.lastContactAt&&Date.now()-till.lastContactAt<TILL_ONLINE_MS),hasPos=rows.some(function(row){return row.app==='admin';});
   var password=account.lastSignInAt?'<small>Password entered '+esc(when(account.lastSignInAt))+'</small>':'<small>Password never entered</small>';
   var tillLine=tillLive&&!hasPos?'<small class="account-device">POS till on the open shift · last report '+esc(when(till.lastContactAt))+(till.idle?' (idle)':'')+' <b class="account-stale" title="This till reports to the server but runs a build older than 606, so it cannot show its device and build. Refresh it (Ctrl+Shift+R).">Older build — refresh</b></small>':'';
@@ -54,6 +55,7 @@ function presenceParts(account){var rows=Object.values(state.presence[account.ui
   // Not connected now. Signed out = a real Log out was recorded after the last activity.
   // Inactive = still signed in on a device that is asleep, closed or offline (reconnects on its own).
   var seen=account.lastSeen||null,lastActive=Math.max(Number(seen&&seen.at||0),Number(till&&till.lastContactAt||0)),device=seen&&seen.at>=Number(till&&till.lastContactAt||0)?(APP_LABEL[seen.app]||seen.app||'')+' · build '+(seen.build||'?')+' · '+(seen.device||''):'POS till on the open shift';
+  if(cutoff&&cutoff>=lastActive)return {badge:'<span class="account-presence off" title="A Super Admin ended this account session. The device needs the password again.">Signed out</span>',details:'<small>Signed out '+esc(when(cutoff))+' · all portal devices</small>'+password};
   if(seen&&seen.signedOut&&Number(seen.at)>=Number(till&&till.lastContactAt||0))return {badge:'<span class="account-presence off" title="This person pressed Log out. The device needs the password again.">Signed out</span>',details:'<small>Signed out '+esc(when(seen.at))+' · '+esc(device)+'</small>'+password};
   if(lastActive)return {badge:'<span class="account-presence idle" title="Still signed in on a device that is not connected right now: asleep, closed or offline. It reconnects by itself when woken.">Inactive</span>',details:'<small>Not connected since '+esc(when(lastActive))+' · '+esc(device)+'</small>'+password};
   return {badge:'<span class="account-presence off" title="No connection has been recorded for this account yet.">Offline</span>',details:password};}
@@ -64,6 +66,7 @@ function statusHtml(account){var disabled=!account.active,shift=account.onOpenSh
 function paintPresence(){var host=root();if(!host)return;state.accounts.forEach(function(account){var cell=host.querySelector('[data-account-presence="'+account.uid+'"]');if(cell)cell.innerHTML=statusHtml(account);});}
 function watchPresence(){var a=A();if(state.stopPresence||!a||!a.hub||!a.hub.subscribe)return;
   state.stopPresence=a.hub.subscribe('portalPresence',function(snap){state.presence=snap.val()||{};paintPresence();},{scopes:['staffaccounts']});
+  state.stopSessionControl=a.hub.subscribe('sessionControl',function(snap){state.sessionControl=snap.val()||{};paintPresence();},{scopes:['staffaccounts']});
   // Latest published builds come from GitHub Pages (/build-version.json), not Firebase.
   if(window.fetch)fetch('/build-version.json',{cache:'no-store',credentials:'omit'}).then(function(r){return r.ok?r.json():null;}).then(function(data){state.latest=data&&data.builds||{};paintPresence();}).catch(function(){});}
 function accountCard(account){var disabled=!account.active,shift=account.onOpenShift,legacy=account.legacyRole;return'<article class="account-row'+(disabled?' disabled':'')+'" data-account-uid="'+esc(account.uid)+'">'
