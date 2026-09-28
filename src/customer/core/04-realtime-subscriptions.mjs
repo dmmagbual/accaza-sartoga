@@ -214,7 +214,7 @@ function playReadyChime(){
 function triggerReadyAlert(o){
   var el=document.getElementById('orderReadyAlert');if(!el)return;
   var sub=document.getElementById('orderReadySub');
-  if(sub)sub.textContent='Order #'+(o.id||'')+' \u2014 '+((o.type==='Delivery')?'ready for delivery':'ready for pick-up');
+  if(sub)sub.textContent='Order #'+(o.id||'')+' \u2014 '+((o.type==='Delivery')?'ready for courier pick-up':'ready for pick-up');
   el.style.display='flex';
   try{playReadyChime();}catch(e){}
   stopReadyAlert();

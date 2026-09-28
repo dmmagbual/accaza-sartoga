@@ -143,8 +143,8 @@ exports.notifyOnComplete = onValueUpdated(
     const isDelivery = o.type === "Delivery";
     const title = SHOP_NAME;
     const body = isDelivery
-      ? `Hi ${first}! Your order #${orderId} is ready for delivery. ` +
-        `Kindly let us know once you've booked your preferred delivery/courier service so we can hand it over. Maraming salamat!`
+      ? `Hi ${first}! Your order #${orderId} is ready for your courier to collect. ` +
+        `Please send your booked courier (e.g. Lalamove or Grab Express) to ${PICKUP_ADDR}. Maraming salamat!`
       : `Hi ${first}! Your order #${orderId} is now ready for pick-up. See you soon at ${PICKUP_ADDR}. Thank you!`;
 
     try {
