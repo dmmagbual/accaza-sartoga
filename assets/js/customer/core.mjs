@@ -468,7 +468,7 @@ function playReadyChime(){
 function triggerReadyAlert(o){
   var el=document.getElementById('orderReadyAlert');if(!el)return;
   var sub=document.getElementById('orderReadySub');
-  if(sub)sub.textContent='Order #'+(o.id||'')+' \u2014 '+((o.type==='Delivery')?'ready for delivery':'ready for pick-up');
+  if(sub)sub.textContent='Order #'+(o.id||'')+' \u2014 '+((o.type==='Delivery')?'ready for courier pick-up':'ready for pick-up');
   el.style.display='flex';
   try{playReadyChime();}catch(e){}
   stopReadyAlert();
@@ -953,19 +953,19 @@ function renderCustomerOrders(){
   const el=document.getElementById('activeOrdersList');
   if(!active.length){el.innerHTML='<div style="text-align:center;padding:3rem;color:var(--tl);"><p style="font-size:2.5rem;margin-bottom:0.75rem;">☕</p><p style="font-size:0.95rem;font-weight:500;color:var(--bd);margin-bottom:0.3rem;">No active orders yet</p><p style="font-size:0.85rem;">Place an order above and it will appear here!</p></div>';return;}
   el.innerHTML=active.map(function(o){const s=statusConfig[o.status]||statusConfig.Pending;const isDelivery=o.type==='Delivery';
-    var _msg=(o.status==='Ready')?(isDelivery?'Your order is now ready for delivery! 🎉':'Your order is now ready for pick-up! Please proceed to the counter. 🎉'):s.msg;
+    var _msg=(o.status==='Ready')?(isDelivery?'Ready for your courier to collect! 🎉':'Your order is now ready for pick-up! Please proceed to the counter. 🎉'):s.msg;
     return'<div style="background:#fff;border:2px solid #a8d5b5;border-radius:12px;overflow:hidden;margin-bottom:1.25rem;">'
       +'<div style="background:var(--bd);padding:1rem 1.25rem;text-align:center;">'
       +'<p style="font-size:0.72rem;color:rgba(224,212,198,0.6);text-transform:uppercase;letter-spacing:0.15em;margin-bottom:0.25rem;">Order ID</p>'
       +'<p style="font-family:\'Playfair Display\',serif;font-size:1.8rem;color:#fff;font-weight:600;">'+escHtml(o.id)+'</p>'
       +'<p style="font-size:0.72rem;color:rgba(224,212,198,0.5);margin-top:0.25rem;">🛒 '+escHtml(o.items)+'</p>'
       +'<p style="font-size:0.75rem;color:#c9a36a;">💰 ₱'+(Number(o.total)||0).toLocaleString()+' · '+escHtml(o.payment)+'</p>'
-      +'<p style="font-size:0.75rem;margin-top:0.3rem;padding:0.25rem 0.75rem;display:inline-block;border-radius:999px;background:'+(isDelivery?'rgba(13,110,253,0.2)':'rgba(45,158,95,0.2)')+';color:'+(isDelivery?'#90caf9':'#a5d6a7')+';">'+(isDelivery?'🛵 For Delivery':'🏠 For Pick-up')+'</p></div>'
+      +'<p style="font-size:0.75rem;margin-top:0.3rem;padding:0.25rem 0.75rem;display:inline-block;border-radius:999px;background:'+(isDelivery?'rgba(13,110,253,0.2)':'rgba(45,158,95,0.2)')+';color:'+(isDelivery?'#90caf9':'#a5d6a7')+';">'+(isDelivery?'🛵 Courier pick-up':'🏠 For Pick-up')+'</p></div>'
       +'<div style="padding:1rem 1.25rem;background:'+s.bg+';"><p style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.15em;color:'+s.color+';margin-bottom:0.4rem;font-weight:600;">Order Status</p>'
       +'<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;"><span style="font-size:1.3rem;">'+s.icon+'</span><span style="font-size:1rem;font-weight:700;color:'+s.color+';">'+escHtml(o.status)+'</span></div>'
       +'<p style="font-size:0.82rem;color:'+s.color+';line-height:1.5;">'+_msg+'</p></div>'
       +'<div style="padding:1rem 1.25rem;background:#ece4d8;text-align:center;">'
-      +(o.status==='Ready'?'<p style="font-size:0.95rem;font-weight:700;color:#155724;margin-bottom:.55rem;">'+(isDelivery?'🛵 Your delivery is on the way!':'🏠 Your order is ready — for pick-up!')+'</p><button data-orderid="'+escHtml(o.id)+'" class="confirm-recv-btn" style="background:#2d9e5f;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:pointer;width:100%;">✅ Yes, I Received My Order</button>'
+      +(o.status==='Ready'?'<p style="font-size:0.95rem;font-weight:700;color:#155724;margin-bottom:.55rem;">'+(isDelivery?'🛵 Ready for your courier':'🏠 Your order is ready — for pick-up!')+'</p><button data-orderid="'+escHtml(o.id)+'" class="confirm-recv-btn" style="background:#2d9e5f;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:pointer;width:100%;">✅ Yes, I Received My Order</button>'
         :'<p style="font-size:0.82rem;color:var(--tl);">This button will be enabled once your order is marked <strong>Completed</strong>.</p><button disabled style="background:#ccc;color:#fff;border:none;border-radius:8px;padding:0.65rem 1.5rem;font-size:0.88rem;cursor:not-allowed;width:100%;margin-top:0.5rem;opacity:0.6;">Waiting for Completion...</button>')
       +'</div></div>';
   }).join('')+'<p style="font-size:0.72rem;color:var(--tl);text-align:center;margin-top:0.25rem;">🔥 Your order status updates automatically — no refresh needed!</p>';
@@ -1165,7 +1165,7 @@ const botReplies=[
   {keys:['hour','open','close','time','schedule'],reply:'🕐 We are open every day — <strong>Monday to Sunday, 6:00 AM to 12:00 Midnight</strong>. ☕'},
   {keys:['location','address','where','find'],reply:"📍 <strong>Saratoga Avenue, La Mediterranea Subdivision, Governor's Drive, Dasmariñas, Cavite</strong>. Near SM Dasmariñas! 😊"},
   {keys:['gcash','pay','payment','bank','bdo'],reply:'💳 We accept <strong>GCash, BDO, and UnionBank</strong>. GCash: <strong>0927 692 4831</strong> (ACCAZA).'},
-  {keys:['delivery','deliver'],reply:'🛵 We deliver within <strong>Dasmariñas, Cavite</strong> only. Outside? Try <strong>🟠 foodpanda</strong> or <strong>🟢 GrabFood</strong>.'},
+  {keys:['delivery','deliver'],reply:'🛵 We don\'t deliver. Dasmariñas only: pick up, or book and pay your own courier. Outside? <strong>🟠 foodpanda</strong> or <strong>🟢 GrabFood</strong>.'},
   {keys:['menu','food','drink','coffee','frappe','pastry'],reply:'🍽️ We serve <strong>Coffee, Non-Coffee, Iced Blended, Soda Refreshers, and Pastries</strong>. Check our menu above! ☕'},
   {keys:['reserve','reservation','book','table'],reply:'📅 Use our <strong>Reservations section</strong> — pick a date, time slot, and fill in your details. Our staff will confirm! 😊'},
   {keys:['wifi','internet'],reply:'📶 Yes, we have free WiFi! Ask our staff for the password. 😊'},

@@ -34,7 +34,7 @@
 <link rel="icon" type="image/png" sizes="512x512" href="/favicon_512x512.png"/>
 <link rel="manifest" href="/manifest.json"/>
 <meta name="theme-color" content="#19241b"/>
-<meta name="accaza-customer-build" content="82"/>
+<meta name="accaza-customer-build" content="83"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -95,7 +95,7 @@
 <link rel="stylesheet" href="assets/css/customer/site.css"/>
 </head>
 <body>
-<!-- accaza-index build v82 -->
+<!-- accaza-index build v83 -->
 <div class="fb-sync" id="fbSync" role="status" aria-live="polite">Connecting to Firebase…</div>
 <div class="order-toast" id="orderToast" onclick="ackNewOrders()">
   <span class="ot-bell">🔔</span>
@@ -266,7 +266,7 @@
       <p class="section-label" style="color:var(--bl);">Place Your Order</p>
       <h2 style="font-family:'Playfair Display',serif;font-size:clamp(2rem,4vw,2.8rem);color:var(--bd);margin-bottom:0.75rem;">Order Online</h2>
       <p style="color:var(--tm);max-width:480px;margin:0 auto;font-size:0.95rem;">Pick your items, customize, choose delivery or pick-up, then pay via GCash or bank transfer.</p>
-      <div style="background:#fff3cd;border:1px solid #f0ad4e;border-radius:8px;padding:0.85rem 1.25rem;margin-top:1rem;max-width:600px;margin-left:auto;margin-right:auto;"><p style="font-size:0.85rem;color:#856404;line-height:1.6;text-align:center;">🛵 <strong>Delivery Notice:</strong> We only deliver within <strong>Dasmariñas, Cavite</strong>. Delivery fees shall be shouldered by the customer. Customers may arrange delivery through their preferred courier service. For orders outside Dasmariñas, please order through <strong>🟠 foodpanda</strong> or <strong>🟢 GrabFood</strong>.</p></div>
+      <div style="background:#fff3cd;border:1px solid #f0ad4e;border-radius:8px;padding:0.85rem 1.25rem;margin-top:1rem;max-width:600px;margin-left:auto;margin-right:auto;"><p style="font-size:0.85rem;color:#856404;line-height:1.6;text-align:center;">📋 <strong>Online Order Terms</strong><br>We accept online orders from customers within <strong>Dasmariñas, Cavite</strong> only.<br><strong>We do not deliver.</strong> Collect your order at the counter, or book your own courier (e.g. Lalamove or Grab Express) to collect it for you. <strong>The courier fee is paid by you</strong> directly to the courier.<br>Outside Dasmariñas? Order through <strong>🟠 foodpanda</strong> or <strong>🟢 GrabFood</strong>.</p></div>
     </div>
     <div class="order-layout">
       <div>
@@ -295,9 +295,9 @@
           <h3 class="order-section-title">3. Delivery or Pick-up?</h3>
           <div class="order-type-btns">
             <button class="type-btn active" id="btnPickup" onclick="setType('pickup')">🏠 Pick-up</button>
-            <button class="type-btn" id="btnDelivery" onclick="setType('delivery')">🛵 Delivery</button>
+            <button class="type-btn" id="btnDelivery" onclick="setType('delivery')">🛵 Courier pick-up (you book)</button>
           </div>
-          <div id="deliveryField" style="display:none;margin-top:1rem;"><label class="field-label">Delivery Address</label><textarea id="deliveryAddr" rows="2" placeholder="Enter your full delivery address..."></textarea><p style="font-size:0.78rem;color:#856404;background:#fff3cd;border:1px solid #f0ad4e;border-radius:6px;padding:0.55rem 0.85rem;margin-top:0.5rem;line-height:1.5;">📦 Delivery fees shall be shouldered by the customer. You may arrange delivery through your preferred courier service.</p></div>
+          <div id="deliveryField" style="display:none;margin-top:1rem;"><label class="field-label">Courier Drop-off Address</label><textarea id="deliveryAddr" rows="2" placeholder="Enter your full delivery address..."></textarea><p style="font-size:0.78rem;color:#856404;background:#fff3cd;border:1px solid #f0ad4e;border-radius:6px;padding:0.55rem 0.85rem;margin-top:0.5rem;line-height:1.5;">📦 You book and pay the courier (e.g. Lalamove or Grab Express). We'll have your order ready for them to collect.</p></div>
           <h3 class="order-section-title" style="margin-top:1.5rem;">4. Your Details</h3><div id="appUserIndicator" style="display:none;background:rgba(176,141,87,0.12);border:1px solid rgba(176,141,87,0.4);border-radius:8px;padding:0.55rem 0.85rem;margin-bottom:0.75rem;font-size:0.8rem;color:var(--tm);">👋 Signed in as <strong id="appUserName"></strong> <a onclick="appLogout()" style="color:var(--bd);cursor:pointer;text-decoration:underline;margin-left:0.35rem;">Not you?</a></div><button id="enableNotifyBtn" onclick="enableNotifications()" style="display:none;width:100%;margin-bottom:0.75rem;background:#19241b;color:#fff;border:none;border-radius:8px;padding:0.6rem 0.9rem;font-size:0.82rem;cursor:pointer;font-family:'Inter',sans-serif;">🔔 Enable order-ready notifications</button>
           <label class="field-label">Full Name</label><input type="text" id="custName" placeholder="e.g. Maria Santos" style="margin-bottom:0.75rem;"/>
           <label class="field-label">Phone Number</label><input type="text" id="custPhone" placeholder="e.g. 09XX XXX XXXX" style="margin-bottom:0.75rem;"/>
@@ -516,7 +516,7 @@
     <div class="footer-logo">Accaza Coffee House</div>
     <p>Saratoga Ave, La Mediterranea, Dasmariñas, Cavite · Open daily 6AM–12MN</p>
     <div class="footer-links"><a href="#menu">Menu</a><a href="#order">Order</a><a href="#reserve">Reserve</a><a href="#reviews">Reviews</a><a href="#feedback">Feedback</a><a href="#gallery">Gallery</a><a href="#contact">Contact</a><a href="about.html">About</a><a href="reservations.html">Reservations</a><a href="contact.html">Visit</a></div>
-    <p class="footer-copy">© 2026 Accaza Coffee House. All rights reserved.<span class="footer-version">Website version 82</span></p>
+    <p class="footer-copy">© 2026 Accaza Coffee House. All rights reserved.<span class="footer-version">Website version 83</span></p>
   </div>
 </footer>
 
@@ -547,7 +547,7 @@
     <button class="chat-quick-btn" onclick="quickMsg('Opening hours?')">🕐 Hours</button>
     <button class="chat-quick-btn" onclick="quickMsg('Where are you located?')">📍 Location</button>
     <button class="chat-quick-btn" onclick="quickMsg('Do you accept GCash?')">💳 Payment</button>
-    <button class="chat-quick-btn" onclick="quickMsg('Do you have delivery?')">🛵 Delivery</button>
+    <button class="chat-quick-btn" onclick="quickMsg('Do you deliver?')">🛵 Do you deliver?</button>
     <button class="chat-quick-btn" onclick="quickMsg('How do I reserve a table?')">📅 Reserve</button>
     <button class="chat-quick-btn" onclick="quickMsg('What is on your menu?')">🍽️ Menu</button>
   </div>
