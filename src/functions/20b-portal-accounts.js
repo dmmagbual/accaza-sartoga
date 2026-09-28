@@ -5,7 +5,7 @@ const PORTAL_ACCOUNT_ROLES = new Set(["superadmin", "admin", "manager", "staff",
 const PORTAL_PERMISSION_KEYS = ["dashboard", "liveoperations", "orders", "reservations", "pos", "inventory", "purchases", "recipes", "usage", "registerOps", "reviews", "appcustomers", "availability", "comments", "analytics", "saleshistory", "dailyreport", "discrepancy", "petty", "undeposited", "channelpricing", "cashflow", "stockvalue"];
 // Tabs that were visible to every staff account before they had their own key. A stored
 // record without the key keeps its old behaviour until a Super Admin saves the account.
-const PORTAL_PERMISSION_LEGACY = {dashboard: true, saleshistory: ["orders"], undeposited: ["petty", "cashflow"]};
+const PORTAL_PERMISSION_LEGACY = {saleshistory: ["orders"], undeposited: ["petty", "cashflow"]};
 
 function canonicalPortalAccountRole(raw) {
   const role = portalRoleValue(raw);
@@ -22,7 +22,7 @@ function portalAccountPermissions(value, legacy) {
   const source = value && typeof value === "object" ? value : {};
   return PORTAL_PERMISSION_KEYS.reduce((result, key) => {
     const inherited = legacy && source[key] === undefined && PORTAL_PERMISSION_LEGACY[key];
-    result[key] = inherited ? (inherited === true || inherited.some((from) => source[from] === true)) : source[key] === true;
+    result[key] = inherited ? inherited.some((from) => source[from] === true) : source[key] === true;
     return result;
   }, {});
 }

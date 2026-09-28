@@ -1410,7 +1410,7 @@ const PORTAL_ACCOUNT_ROLES = new Set(["superadmin", "admin", "manager", "staff",
 const PORTAL_PERMISSION_KEYS = ["dashboard", "liveoperations", "orders", "reservations", "pos", "inventory", "purchases", "recipes", "usage", "registerOps", "reviews", "appcustomers", "availability", "comments", "analytics", "saleshistory", "dailyreport", "discrepancy", "petty", "undeposited", "channelpricing", "cashflow", "stockvalue"];
 // Tabs that were visible to every staff account before they had their own key. A stored
 // record without the key keeps its old behaviour until a Super Admin saves the account.
-const PORTAL_PERMISSION_LEGACY = {dashboard: true, saleshistory: ["orders"], undeposited: ["petty", "cashflow"]};
+const PORTAL_PERMISSION_LEGACY = {saleshistory: ["orders"], undeposited: ["petty", "cashflow"]};
 
 function canonicalPortalAccountRole(raw) {
   const role = portalRoleValue(raw);
@@ -1427,7 +1427,7 @@ function portalAccountPermissions(value, legacy) {
   const source = value && typeof value === "object" ? value : {};
   return PORTAL_PERMISSION_KEYS.reduce((result, key) => {
     const inherited = legacy && source[key] === undefined && PORTAL_PERMISSION_LEGACY[key];
-    result[key] = inherited ? (inherited === true || inherited.some((from) => source[from] === true)) : source[key] === true;
+    result[key] = inherited ? inherited.some((from) => source[from] === true) : source[key] === true;
     return result;
   }, {});
 }
@@ -7078,7 +7078,7 @@ exports.readHistoricalSalesRollup = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => {
     const db = getDatabase();
-    const actor = await requirePortalPermission(db, request, ["orders", "saleshistory"]);
+    const actor = await requirePortalPermission(db, request, ["orders", "saleshistory", "dashboard"]);
     const data = request.data || {}, from = financeText(data.from, 7), to = financeText(data.to, 7);
     if (!/^\d{4}-\d{2}$/.test(from) || !/^\d{4}-\d{2}$/.test(to) || from > to) throw new HttpsError("invalid-argument", "Choose a valid monthly reporting range.");
     const start = new Date(`${from}-01T00:00:00Z`), end = new Date(`${to}-01T00:00:00Z`);

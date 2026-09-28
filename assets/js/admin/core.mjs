@@ -1,11 +1,11 @@
 import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
-import{createSubscriptionHub}from"./realtime-hub.mjs?v=603";
+import{createSubscriptionHub}from"./realtime-hub.mjs?v=604";
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=603";
-import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=603";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=604";
+import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=604";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -408,8 +408,8 @@ subscriptionHub.subscribe('activeOrders',snap=>{
   if(adminLoggedIn||staffLoggedIn){var ot=document.getElementById('tab-orders'),dt=document.getElementById('tab-dashboard'),ct=document.getElementById('tab-appcustomers');if(ot&&ot.style.display!=='none')patchOrderCards(previousOrders,adminOrdersMap);if(dt&&dt.style.display!=='none')renderDashboard();if(ct&&ct.style.display!=='none')renderAppCustomers();}
   updateStats();renderCustomerOrders();checkMyReadyOrders();
 });
-subscriptionHub.subscribe('orders',snap=>{overviewOrdersMap=snap.val()||{};overviewOrdersLoaded=true;if(adminLoggedIn){var dt=document.getElementById('tab-dashboard');if(dt&&dt.style.display!=='none')renderDashboard();}});
-subscriptionHub.subscribe('archivedOrders',snap=>{archivedOrdersMap=snap.val()||{};archivedOrdersLoaded=true;if(adminLoggedIn)renderDashboard();if(adminLoggedIn||staffLoggedIn)renderAppCustomers();var _ap=document.getElementById('archivePanel');if(_ap&&_ap.style.display!=='none'){try{renderArchive();}catch(e){}}});
+subscriptionHub.subscribe('orders',snap=>{overviewOrdersMap=snap.val()||{};overviewOrdersLoaded=true;if(dashboardAllowed()){var dt=document.getElementById('tab-dashboard');if(dt&&dt.style.display!=='none')renderDashboard();}});
+subscriptionHub.subscribe('archivedOrders',snap=>{archivedOrdersMap=snap.val()||{};archivedOrdersLoaded=true;if(dashboardAllowed())renderDashboard();if(adminLoggedIn||staffLoggedIn)renderAppCustomers();var _ap=document.getElementById('archivePanel');if(_ap&&_ap.style.display!=='none'){try{renderArchive();}catch(e){}}});
 subscriptionHub.subscribe('feedbacks',snap=>{feedbacksMap=snap.val()||{};if(adminLoggedIn||staffLoggedIn)renderComments();});
 subscriptionHub.subscribe('reviews',snap=>{
   const saved=snap.val();
@@ -867,7 +867,7 @@ function renderPublicReviews(){
 
 if(window.AccazaAdminPeriods)window.AccazaAdminPeriods.setWaiter(function(){var scope=subscriptionHub.stats().activeScope,paths=scope==='saleshistory'?['orders','archivedOrders','financialMovements']:['orders'];return subscriptionHub.whenReady(paths);});
 function renderDashboard(){
-  if(!adminLoggedIn||subscriptionHub.stats().activeScope!=='dashboard'){overviewInsights.stop();return;}
+  if(!dashboardAllowed()||subscriptionHub.stats().activeScope!=='dashboard'){overviewInsights.stop();return;}
   function _rows(map){return Object.entries(map||{}).map(function(pair){var o=pair[1];return o&&o.id?o:Object.assign({_overviewKey:pair[0]},o||{});});}
   function _mergedMap(snapshot,live){return Object.assign({},snapshot||{},live||{});}
   const active=_rows(adminOrdersMap);
@@ -1035,10 +1035,13 @@ window.selectLoginRole=function(role){
 };
 
 // Staff-level module access. Keys must match PORTAL_PERMISSION_KEYS in src/functions/20b-portal-accounts.js.
-var DEFAULT_STAFF_PERMS={dashboard:true,liveoperations:false,orders:true,reservations:true,pos:true,inventory:true,purchases:false,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,saleshistory:true,dailyreport:false,discrepancy:false,petty:true,undeposited:false,channelpricing:false,cashflow:false,stockvalue:false},roleLandingDone=false;
+var DEFAULT_STAFF_PERMS={dashboard:false,liveoperations:false,orders:true,reservations:true,pos:true,inventory:true,purchases:false,recipes:true,usage:true,registerOps:true,availability:true,comments:true,reviews:true,appcustomers:true,analytics:false,saleshistory:true,dailyreport:false,discrepancy:false,petty:true,undeposited:false,channelpricing:false,cashflow:false,stockvalue:false},roleLandingDone=false;
 // Tabs every staff account could see before they had their own key; an unsaved record keeps that.
-var LEGACY_STAFF_PERMS={dashboard:true,saleshistory:['orders'],undeposited:['petty','cashflow']};
-function staffPermsFrom(stored){var perms=Object.assign({},DEFAULT_STAFF_PERMS,stored||{});if(stored)Object.keys(LEGACY_STAFF_PERMS).forEach(function(key){if(stored[key]===undefined)perms[key]=LEGACY_STAFF_PERMS[key]===true||LEGACY_STAFF_PERMS[key].some(function(from){return stored[from]===true;});});return perms;}
+var LEGACY_STAFF_PERMS={saleshistory:['orders'],undeposited:['petty','cashflow']};
+// Admin roles always see the Dashboard; staff-level roles only with the Dashboard tick.
+var staffDashboardAllowed=false;
+function dashboardAllowed(){return adminLoggedIn||(staffLoggedIn&&staffDashboardAllowed);}
+function staffPermsFrom(stored){var perms=Object.assign({},DEFAULT_STAFF_PERMS,stored||{});if(stored)Object.keys(LEGACY_STAFF_PERMS).forEach(function(key){if(stored[key]===undefined)perms[key]=LEGACY_STAFF_PERMS[key].some(function(from){return stored[from]===true;});});return perms;}
 var _permTabMap={"'dashboard'":'dashboard',"'liveoperations'":'liveoperations',"'orders'":'orders',"'reservations'":'reservations',"'calendar'":'reservations',"'availSection'":'availability',"'commentsSection'":'comments',"'reviews'":'reviews',"'appcustomers'":'appcustomers',"'pos'":'pos',"'inventory'":'inventory',"'purchases'":'purchases',"'recipes'":'recipes',"'usage'":'usage',"'discrepancy'":'discrepancy',"'petty'":'petty',"'channelpricing'":'channelpricing',"'stockvalue'":'stockvalue',"'dailyreport'":'dailyreport',"'analytics'":'analytics',"'saleshistory'":'saleshistory',"'undeposited'":'undeposited',"'ops'":'registerOps'};
 // Settings is locked for staff-level roles except Channel Pricing (ticked per account) and Change Password.
 var _permAlwaysHide=["'payment'","'staffaccounts'","'packages'","'operations'","'possettings'","'accountingperiods'","'dedupe'","'payouts'"];
@@ -1054,6 +1057,7 @@ window.showAdminSection=function(id,btn){
   else { if(av)av.style.display='none'; if(cm)cm.style.display='none'; window.scrollTo({top:0,behavior:'smooth'}); }
 };
 function applyStaffPerms(perms){
+  staffDashboardAllowed=perms.dashboard===true;
   document.querySelectorAll('.admin-tab').forEach(function(btn){
     var oc=btn.getAttribute('onclick')||'';
     if(_permAlwaysHide.some(t=>oc.includes(t))){btn.style.display='none';return;}
@@ -1065,10 +1069,13 @@ function applyStaffPerms(perms){
   var curG=document.querySelector('.admin-group.active');
   if(!curG||curG.style.display==='none'){var fg=null;document.querySelectorAll('.admin-group').forEach(function(gb){if(!fg&&gb.style.display!=='none')fg=gb;});if(fg)window.showTabGroup(fg.getAttribute('data-grp'),fg);}
   landRoleHome();
+  // Saved ticks load after sign-in; draw the Dashboard once it becomes allowed and visible.
+  if(dashboardAllowed()){var dashTab=document.getElementById('tab-dashboard');if(dashTab&&dashTab.style.display!=='none')renderDashboard();}
 }
 function landRoleHome(){
   if(roleLandingDone||!currentUser||!window.showTabGroup)return;
-  var target={cashier:'pos',kitchen:'orders',finance:'finance'}[String(currentUser.serverRole||'').toLowerCase()];
+  // Staff and Cashier start on POS even when the Dashboard is ticked.
+  var target={cashier:'pos',kitchen:'orders',finance:'finance',staff:'pos'}[String(currentUser.serverRole||'').toLowerCase()];
   if(!target)return;
   var group=document.querySelector('.admin-group[data-grp="'+target+'"]'),row=document.querySelector('.tabgrp[data-grp="'+target+'"]');
   if(!group||group.style.display==='none'||!row)return;
@@ -1080,7 +1087,7 @@ async function loginSuccess(role,username,uid,serverRole,profile){
   currentUser={role,serverRole:serverRole||role,username,uid,title:profile&&profile.title||''};
   var effectiveRole=String(serverRole||role).toLowerCase();
   window.__accazaAuthz={uid,role:effectiveRole,isPrivileged:['owner','superadmin','admin','manager'].indexOf(effectiveRole)>-1};
-  subscriptionHub.activate(effectiveRole==='cashier'?'pos':'dashboard');subscriptionHub.authorize();
+  subscriptionHub.activate(effectiveRole==='cashier'||effectiveRole==='staff'?'pos':'dashboard');subscriptionHub.authorize();
   ensureActiveOrdersCall({}).catch(function(e){console.warn('Active-order projection sweep deferred',e&&e.code);});
   try{sessionStorage.setItem('accaza_admin_session',JSON.stringify({username:username,uid:uid||null}));}catch(e){}
   try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}
@@ -1125,7 +1132,7 @@ async function loginSuccess(role,username,uid,serverRole,profile){
   workspaceShell.update('dashboard');
 }
 
-installPortalAuth({subscriptionHub:subscriptionHub,onAuthorized:loginSuccess,openLogin:window.openAdmin,onSignedOut:function(){adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;currentUser=null;currentLoginRole=null;window.__posShift=null;if(window.__refreshWorkspaceStatus)window.__refreshWorkspaceStatus();}});
+installPortalAuth({subscriptionHub:subscriptionHub,onAuthorized:loginSuccess,openLogin:window.openAdmin,onSignedOut:function(){adminLoggedIn=false;superAdminLoggedIn=false;staffLoggedIn=false;staffDashboardAllowed=false;currentUser=null;currentLoginRole=null;window.__posShift=null;if(window.__refreshWorkspaceStatus)window.__refreshWorkspaceStatus();}});
 const workspaceShell=installWorkspaceShell({currentUser:function(){return currentUser;},subscriptionHub:subscriptionHub});
 // Admin screens that moved to Finance Books. Opening one here would hide every Admin tab and
 // leave a blank page, so they open the matching Books page instead.

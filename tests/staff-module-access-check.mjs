@@ -66,9 +66,10 @@ const serverLegacy = evalIn(`(${grab(serverSource, /const PORTAL_PERMISSION_LEGA
 const serverPerms = evalIn(`${grab(serverSource, /(function portalAccountPermissions\(value, legacy\) \{[\s\S]*?\n\})/, 'server permission builder')}; portalAccountPermissions`, {PORTAL_PERMISSION_KEYS: serverKeys, PORTAL_PERMISSION_LEGACY: serverLegacy});
 const staffPermsFrom = evalIn(`var DEFAULT_STAFF_PERMS=${JSON.stringify(coreDefaults)};${grab(coreSource, /(var LEGACY_STAFF_PERMS=[^;]*;)/, 'Admin legacy')}${grab(coreSource, /(function staffPermsFrom\(stored\)\{[^\n]*\})/, 'Admin permission builder')};staffPermsFrom`);
 const cases = [
-  [{orders: true, pos: true}, {saleshistory: true, undeposited: false, dashboard: true, liveoperations: false}],
-  [{orders: false, petty: true}, {saleshistory: false, undeposited: true, dashboard: true}],
-  [{cashflow: true}, {undeposited: true, dashboard: true}],
+  [{orders: true, pos: true}, {saleshistory: true, undeposited: false, dashboard: false, liveoperations: false}],
+  [{orders: false, petty: true}, {saleshistory: false, undeposited: true, dashboard: false}],
+  [{dashboard: true, pos: true}, {dashboard: true}],
+  [{cashflow: true}, {undeposited: true, dashboard: false}],
   [{orders: true, saleshistory: false, dashboard: false, undeposited: true}, {saleshistory: false, dashboard: false, undeposited: true}],
 ];
 for (const [stored, expected] of cases) {
@@ -84,7 +85,8 @@ assert.ok(serverSource.includes('permissions: portalAccountPermissions(permissio
 
 // 6. A ticked tab works on its own: the server calls and database rules accept its key.
 assert.ok(undepositedSource.includes('requirePortalPermission(db,request,["petty","cashflow","undeposited"])') && undepositedSource.includes('requirePortalPermission(db, request, ["petty", "cashflow", "undeposited"])'), 'Undeposited Collection services must accept the undeposited key');
-assert.equal((historySource.match(/requirePortalPermission\(db, request, \["orders", "saleshistory"\]\)/g) || []).length, 2, 'Sales History services must accept the saleshistory key');
+assert.ok(historySource.slice(historySource.indexOf('exports.readHistoricalOrders'), historySource.indexOf('exports.readHistoricalSalesRollup')).includes('requirePortalPermission(db, request, ["orders", "saleshistory"])'), 'Sales History orders service must accept the saleshistory key');
+assert.ok(historySource.includes('requirePortalPermission(db, request, ["orders", "saleshistory", "dashboard"])'), 'Sales History summaries must accept the saleshistory key');
 const ruleLine = node => rules.split('\n').find(l => new RegExp(`^\\s+"${node}"`).test(l)) || '';
 const readOf = node => { const l = rules.split('\n').slice(rules.split('\n').findIndex(x => new RegExp(`^\\s+"${node}"`).test(x))).find(x => x.includes('".read"')); return l.slice(l.indexOf('".read"')).split('", "')[0]; };
 const perm = key => `root.child('adminPerms').child(auth.uid).child('${key}').val() === true`;
@@ -95,5 +97,21 @@ assert.ok(readOf('activeOrders').includes(perm('liveoperations')) && readOf('pos
 const channel = ruleLine('channelPrices'), channelRead = channel.slice(channel.indexOf('".read"'), channel.indexOf('".write"')), channelWrite = channel.slice(channel.indexOf('".write"'));
 assert.ok(channelRead.includes(perm('pos')), 'POS access must still read channel prices');
 assert.ok(channelWrite.includes(perm('channelpricing')) && !channelWrite.includes(perm('pos')), 'only Channel Pricing may edit channel prices');
+
+// 8. Dashboard: admins always; staff only with the Dashboard tick (off by default). It must add no
+// raw order access: only the aggregate monthly summary service accepts the dashboard key.
+assert.equal(coreDefaults.dashboard, false, 'Dashboard must be off by default for staff');
+assert.ok(!('dashboard' in serverLegacy), 'existing staff accounts must not inherit the Dashboard');
+assert.ok(coreSource.includes('function dashboardAllowed(){return adminLoggedIn||(staffLoggedIn&&staffDashboardAllowed);}') && coreSource.includes('staffDashboardAllowed=perms.dashboard===true;'), 'Dashboard gate must follow the Dashboard tick');
+assert.ok(coreSource.includes("if(!dashboardAllowed()||subscriptionHub.stats().activeScope!=='dashboard'){overviewInsights.stop();return;}") && !coreSource.includes("if(!adminLoggedIn||subscriptionHub.stats().activeScope!=='dashboard')"), 'renderDashboard must use the shared gate');
+const rollupGate = historySource.slice(historySource.indexOf('exports.readHistoricalSalesRollup'), historySource.indexOf('exports.manageHistoricalOrderArchive'));
+assert.ok(rollupGate.includes('requirePortalPermission(db, request, ["orders", "saleshistory", "dashboard"])'), 'Dashboard summaries must accept the dashboard key');
+const ordersGate = historySource.slice(historySource.indexOf('exports.readHistoricalOrders'), historySource.indexOf('exports.readHistoricalSalesRollup'));
+assert.ok(!ordersGate.includes('"dashboard"'), 'the Dashboard key must not unlock individual historical orders');
+for (const node of ['orders', 'archivedOrders']) assert.ok(!readOf(node).includes(perm('dashboard')), `the Dashboard key must not unlock raw ${node}`);
+
+// 9. Staff and Cashier start on POS, and their first data scope is POS (no Dashboard download at sign-in).
+assert.ok(coreSource.includes("var target={cashier:'pos',kitchen:'orders',finance:'finance',staff:'pos'}"), 'Staff must land on POS');
+assert.ok(coreSource.includes("subscriptionHub.activate(effectiveRole==='cashier'||effectiveRole==='staff'?'pos':'dashboard');subscriptionHub.authorize();"), 'Staff sign-in must start on the POS data scope');
 
 console.log('PASS: staff module access mirrors the Admin navigation, Settings stays locked except Channel Pricing and Change Password, and every ticked tab works on its own.');
