@@ -3,11 +3,14 @@ import {createContext} from './static/00-context.mjs';
 import {run as syntax} from './static/10-syntax-rendering.mjs';
 import {run as access} from './static/20-access-customer.mjs';
 import {run as release} from './static/30-server-release.mjs';
-import {run as operations} from './static/40-operations-ui.mjs';
+import {run as operationsCore} from './static/40-operations-ui.mjs';
+import {run as operationsContinued} from './static/45-operations-ui-continued.mjs';
 import {run as regressions} from './static/50-executable-regressions.mjs';
 import {run as finance} from './static/60-finance-books.mjs';
 import {run as summary} from './static/70-xss-reconciliation-summary.mjs';
 
+// The operations domain spans two modules since the Sep 2026 split at the 50 KB module bound.
+const operations=context=>{operationsCore(context);operationsContinued(context);};
 const domains=[
   {name:'syntax',run:syntax,requires:[]},
   {name:'access',run:access,requires:[]},

@@ -11,7 +11,7 @@ const insights=fs.readFileSync('src/books/business-intelligence.js','utf8');
 for(const kind of ['insights','transactions','journal','ledger','pl','bs','cashflow','tb']){
   if(!csv.includes(`${kind}:`))throw new Error(`Missing CSV exporter route: ${kind}`);
 }
-if(!html.includes('<script src="src/books/csv-exports.js"></script>'))throw new Error('Finance CSV exporter is not loaded');
+if(!/<script src="src\/books\/csv-exports\.js(?:\?v=\d+)?"><\/script>/.test(html))throw new Error('Finance CSV exporter is not loaded');
 for(const kind of ['journal','ledger','pl','bs','cashflow','tb']){
   if(!pages.includes(`csvButton('${kind}')`))throw new Error(`Missing CSV control on Finance page: ${kind}`);
 }

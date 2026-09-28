@@ -1,4 +1,5 @@
 // Server authority, deployment, cache, and release wiring.
+import {BUNDLE_BUDGETS} from '../bundle-budgets.mjs';
 export function run(context){
 const {fs,path,vm,spawnSync,root,require,htmlFiles,temp,state,fail,section,adminScripts,customerScripts,booksScripts,adminStyles,customerStyles,adminHtml,customerHtml,booksPageHtml,adminSource,customerSource,booksSource,financialSource}=context;
 const {rulesRaw}=context;
@@ -81,7 +82,7 @@ const phase4cCore=adminScripts.find(item=>item.name==='core.mjs');
 if(phase4cCore&&(/function isAppMode\(\)|\bmyOrderIds\b|const statusConfig=/.test(phase4cCore.source)))fail('Phase 4C customer session or tracker state leaked back into admin core');
 if(!adminSource.includes('const callableNames=')||!adminSource.includes('function createSubscriptionHub(database,ops)'))fail('Phase 4 service registry or subscription engine missing');
 const adminCoreItem=adminScripts.find(item=>item.name==='core.mjs');
-if(!adminCoreItem||Buffer.byteLength(adminCoreItem.source,'utf8')>126000)fail('Phase 4C core module has regrown beyond the 126 KB guard');
+if(!adminCoreItem||Buffer.byteLength(adminCoreItem.source,'utf8')>BUNDLE_BUDGETS['assets/js/admin/core.mjs'])fail('Phase 4C core module has regrown beyond its guard (tests/bundle-budgets.mjs)');
 const firebaseImportOwners=adminScripts.filter(item=>item.source.includes('gstatic.com/firebasejs')).map(item=>item.name);
 if(firebaseImportOwners.length!==1||firebaseImportOwners[0]!=='firebase-client.mjs')fail('Firebase SDK imports must be centralized in firebase-client.mjs');
 for(const item of adminScripts){for(const match of item.source.matchAll(/from["']\.\/([^"']+)["']/g)){var importedFile=match[1].split('?')[0];if(!fs.existsSync(path.join(root,'assets','js','admin',importedFile)))fail(`${item.name} imports missing local module ${match[1]}`);}}

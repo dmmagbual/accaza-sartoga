@@ -20,6 +20,9 @@ if(!admin.includes(`name="accaza-admin-build" content="${manifest.builds.admin}"
 if(!books.includes(`Coffee-shop accounting · build v${manifest.builds.books}`))fail('Books visible build marker differs from release manifest');
 if(!books.includes(`name="accaza-books-build" content="${manifest.builds.books}"`))fail('Books telemetry build marker differs from release manifest');
 if(!books.includes(`Accaza Books · build v${manifest.builds.books}`))fail('Books footer build marker differs from release manifest');
+// Every local Books script and stylesheet carries the current Books build as its cache key, so a
+// release can never pair new page code with an older cached app.js or live-pos.mjs (Sep 2026).
+for(const [,url,version] of books.matchAll(/(?:<script[^>]*\ssrc|<link[^>]*\shref)="((?!https?:|\/\/)[^"?#]+\.(?:m?js|css))(?:\?v=([^"]*))?"/g))if(version!==String(manifest.builds.books))fail(`books.html loads ${url} with cache key v=${version||'(none)'}; expected v=${manifest.builds.books}`);
 if(!customer.includes(`accaza-index build v${manifest.builds.customer}`))fail('Customer build marker differs from release manifest');
 if(!customer.includes(`name="accaza-customer-build" content="${manifest.builds.customer}"`))fail('Customer telemetry build marker differs from release manifest');
 if(!customer.includes(`>Website version ${manifest.builds.customer}</span>`))fail('Visible customer footer version differs from release manifest');
