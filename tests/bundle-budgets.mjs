@@ -28,8 +28,8 @@ export const BUNDLE_BUDGETS=Object.freeze({
   // preventing a stale browser count from blocking a cashier after all sales have synced.
   // Build 582 adds the shift crew till lock (join prompt, seller stamp on each sale).
   // Sep 2026 re-baseline under the budget policy above: reviewed 526,141 bytes (admin 611).
-  // Build 615 (+23.0 KB, 526.3 -> 549.3 KB) adds the serving queue: left queue column, Served now /
-  // Queue charge card, Undo, Bar view, not-collected review and the close-of-shift review. The 2.5%
+  // Build 615 (+23.0 KB, 526.3 -> 549.3 KB) adds the serving queue: left queue column, preparation
+  // controls, Bar view, not-collected review and the close-of-shift review. The 2.5%
   // warning fired at 552,500; re-baselined under the budget policy to ~5% above the reviewed size.
   'assets/js/admin/pos.js':576800,
   // Build 497 adds the visible cash-refund tag and preserved refund detail to shift reports.

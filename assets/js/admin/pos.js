@@ -3199,8 +3199,8 @@ function buildPOS(){
   if(posCat!=='ALL'&&!cats.some(function(c){return c.id===posCat;}))posCat='ALL';
   var chips='<button type="button" class="pz-chip '+(posCat==='ALL'?'on':'')+'" data-cat="ALL">All</button>'+cats.map(function(c){return '<button type="button" class="pz-chip '+(posCat===c.id?'on':'')+'" data-cat="'+esc(c.id)+'">'+esc(c.icon||'')+' '+esc(c.label)+'</button>';}).join('');
   var incoming=onlineOrderRows().filter(function(o){return !o.shiftId&&o.status!=='Rejected';}).length;
-  var activeCount=sqRows().length;
-  root.innerHTML='<div class="pos-shell"><aside id="posServeQueue" class="pos-serve-queue" aria-label="Serving queue"></aside><div class="pos-shell-main"><div class="pos-channel-switch" role="tablist" aria-label="POS sales channels"><button type="button" class="pz-btn '+(posView==='counter'?'ok':'sec')+'" data-pos-view="counter" role="tab" aria-selected="'+(posView==='counter')+'">🏪 In-store</button><button type="button" class="pz-btn '+(posView==='online'?'ok':'sec')+'" data-pos-view="online" role="tab" aria-selected="'+(posView==='online')+'">🌐 Online Orders <span id="posOnlineCount" class="pos-online-count"'+(incoming?'':' hidden')+'>'+incoming+'</span></button><button type="button" class="pz-btn '+(posView==='active'?'ok':'sec')+'" data-pos-view="active" role="tab" aria-selected="'+(posView==='active')+'">🧾 Shift Orders <span id="posActiveCount" title="Orders waiting to be served" class="pos-active-count"'+(activeCount?'':' hidden')+'>'+activeCount+'</span></button></div>'
+  var activeCount=shiftOrderRows().length;
+  root.innerHTML='<div class="pos-shell"><aside id="posServeQueue" class="pos-serve-queue" aria-label="Serving queue"></aside><div class="pos-shell-main"><div class="pos-channel-switch" role="tablist" aria-label="POS sales channels"><button type="button" class="pz-btn '+(posView==='counter'?'ok':'sec')+'" data-pos-view="counter" role="tab" aria-selected="'+(posView==='counter')+'">🏪 In-store</button><button type="button" class="pz-btn '+(posView==='online'?'ok':'sec')+'" data-pos-view="online" role="tab" aria-selected="'+(posView==='online')+'">🌐 Online Orders <span id="posOnlineCount" class="pos-online-count"'+(incoming?'':' hidden')+'>'+incoming+'</span></button><button type="button" class="pz-btn '+(posView==='active'?'ok':'sec')+'" data-pos-view="active" role="tab" aria-selected="'+(posView==='active')+'">🧾 Shift Orders <span id="posActiveCount" title="Orders in the current shift" class="pos-active-count"'+(activeCount?'':' hidden')+'>'+activeCount+'</span></button></div>'
     +(posView==='online'?'<div id="posOnlineOrdersPanel"></div>':posView==='active'?'<div id="posActiveOrdersPanel"></div>':(
     '<div class="pos-counter-head"><div><div class="pz-h" style="margin:0;">Counter service</div><p class="pz-sub" style="margin:.2rem 0 0;">Find an item, check the ticket, then take payment.</p></div></div>'
     +'<div class="pz-posgrid" style="display:grid;grid-template-columns:1.7fr 1fr;gap:1rem;align-items:start;">'
@@ -3219,7 +3219,7 @@ function onlineOrderRows(){return Object.keys(onlineOrdersMap).map(function(id){
 function updateOnlineOrderCount(){var badge=document.getElementById('posOnlineCount');if(!badge)return;var count=onlineOrderRows().filter(function(o){return !o.shiftId&&o.status!=='Rejected';}).length;badge.textContent=count;badge.hidden=!count;}
 function shiftOrderRows(){var shift=window.__posShift||null;return Object.keys(onlineOrdersMap).map(function(id){return Object.assign({id:id},onlineOrdersMap[id]||{});}).filter(function(o){return o.shiftId&&shift&&o.shiftId===shift.id;}).sort(function(a,b){return(Number(b.timestamp)||0)-(Number(a.timestamp)||0);});}
 function activeOrderRows(){return shiftOrderRows().filter(function(o){return o.channel==='online'&&!o.voided&&['Pending','Confirmed','Preparing','Ready'].indexOf(o.status)>=0;}).sort(function(a,b){var rank={Ready:0,Preparing:1,Confirmed:2,Pending:3};return(rank[a.status]-rank[b.status])||((Number(a.timestamp)||0)-(Number(b.timestamp)||0));});}
-function updateActiveOrderCount(){var badge=document.getElementById('posActiveCount');if(!badge)return;var count=sqRows().length;badge.textContent=count;badge.hidden=!count;}
+function updateActiveOrderCount(){var badge=document.getElementById('posActiveCount');if(!badge)return;var count=shiftOrderRows().length;badge.textContent=count;badge.hidden=!count;}
 function updatePosOrderCounts(){updateOnlineOrderCount();updateActiveOrderCount();}
 function activeChannelLabel(o){return o.channel==='online'?'Online':o.channel==='grabfood'?'GrabFood':o.channel==='foodpanda'?'FoodPanda':'In-store';}
 function paymentVerificationSignature(payments,total){
@@ -3778,15 +3778,15 @@ function showReceipt(o){
 /* ══════════ SERVING QUEUE (29 Sep 2026) ══════════
    A paid order is not a served order. Every sale the server accepts is queued for serving
    (functions/lib/order-service.js) and waits in the left-hand column until staff tap Served.
-   After Charge & complete a card offers Served now / Queue; with no tap it queues itself after
-   five seconds of the POS being on screen, and starting the next sale queues it at once.
+   After Charge & complete the order goes straight into the queue. PREPARE opens one centered
+   detail card; Served/Picked up clears it, while Back to queue leaves it waiting.
    Serving is operational only: revenue, tender, stock, COGS and Finance Books already posted
    at payment and are never touched here. Website orders complete through their status flow. */
-var SQ_WARN_MS=5*60000,SQ_LATE_MS=10*60000,SQ_CARD_MS=5000,SQ_UNDO_MS=5000,SQ_RETRY_CODES=['unavailable','deadline-exceeded','internal','unknown','resource-exhausted','aborted'];
-var sqState={card:null,undo:{},memPending:{},sending:{},tick:null,folded:false,bar:false,loaded:false};
+var SQ_WARN_MS=5*60000,SQ_LATE_MS=10*60000,SQ_RETRY_CODES=['unavailable','deadline-exceeded','internal','unknown','resource-exhausted','aborted'];
+var sqState={prep:null,recent:{},memPending:{},sending:{},tick:null,folded:false,bar:false,loaded:false};
 function sqPref(k,v){try{if(arguments.length<2){var x=localStorage.getItem('accazaServeQueue_'+k);return x==null?null:JSON.parse(x);}localStorage.setItem('accazaServeQueue_'+k,JSON.stringify(v));}catch(_e){}return null;}
 function sqLoadPrefs(){if(sqState.loaded)return;sqState.loaded=true;sqState.folded=sqPref('folded')===true;sqState.bar=sqPref('bar')===true;var p=sqPref('pending');if(p&&typeof p==='object')sqState.memPending=p;}
-// Served taps that finished their Undo window and wait for the server (or for the sale to sync).
+// Served/Picked up actions remain on this device until the server confirms them (or the sale syncs).
 function sqPending(){sqLoadPrefs();return sqState.memPending;}
 function sqSavePending(){sqPref('pending',sqState.memPending);}
 function sqReqId(prefix){return prefix+'_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10);}
@@ -3806,9 +3806,10 @@ function sqUnsyncedRows(){var out=[],now=Date.now();((_offState&&_offState.rows)
   if(r.status==='synced'&&now-Number(r.syncedAt||0)>120000)return;out.push(Object.assign({},o,{unsynced:r.status!=='synced',service:{state:'queued',queuedAt:Number(o.timestamp)||now}}));});return out;}
 function sqRows(){
   var rows=[],seen={},pend=sqPending();
-  Object.keys(onlineOrdersMap||{}).forEach(function(id){var o=Object.assign({},onlineOrdersMap[id]||{},{id:id});seen[id]=1;if(sqNeedsService(o))rows.push(o);});
+  Object.keys(onlineOrdersMap||{}).forEach(function(id){var o=Object.assign({},onlineOrdersMap[id]||{},{id:id});seen[id]=1;delete sqState.recent[id];if(sqNeedsService(o))rows.push(o);});
   sqUnsyncedRows().forEach(function(o){if(!seen[o.id]){seen[o.id]=1;rows.push(o);}});
-  return rows.filter(function(o){return !pend[o.id]&&!sqState.undo[o.id]&&!(sqState.card&&sqState.card.o.id===o.id);}).sort(function(a,b){return sqQueuedAt(a)-sqQueuedAt(b);});
+  Object.keys(sqState.recent).forEach(function(id){var o=sqState.recent[id];if(!o||Date.now()-sqQueuedAt(o)>120000){delete sqState.recent[id];return;}if(!seen[id])rows.push(o);});
+  return rows.filter(function(o){return !pend[o.id]&&!(sqState.prep&&sqState.prep.o.id===o.id);}).sort(function(a,b){return sqQueuedAt(a)-sqQueuedAt(b);});
 }
 function sqAgeClass(ms){return ms>=SQ_LATE_MS?'late':ms>=SQ_WARN_MS?'warn':'ok';}
 function sqAgeText(ms){var m=Math.max(0,Math.floor(ms/60000));return m<1?'now':m<60?m+'m':Math.floor(m/60)+'h '+(m%60)+'m';}
@@ -3819,8 +3820,8 @@ function sqItemsHtml(o){var lines=o.correctedLineItems||o.lineItems||[];if(!line
 function sqCardHtml(o,now){var age=now-sqQueuedAt(o),ch=sqChannel(o);
   return '<li class="sq-card age-'+sqAgeClass(age)+'" data-sq-id="'+esc(o.id)+'"><div class="sq-card-head"><span class="sq-ch" title="'+esc(ch[1])+'">'+esc(ch[0])+'</span><b class="sq-name">'+esc(sqLabel(o))+'</b><span class="sq-age">'+sqAgeText(age)+'</span></div>'
     +'<div class="sq-ref">'+esc(o.platformRef||o.id)+' · '+esc(ch[1])+(o.unsynced?' · <span class="sq-unsynced">not synced yet</span>':'')+'</div><ul class="sq-items">'+sqItemsHtml(o)+'</ul>'
-    +'<div class="sq-actions"><button type="button" class="pz-btn ok sq-serve" data-sq-serve="'+esc(o.id)+'">'+sqServeWord(o)+'</button>'+(o.unsynced?'':'<button type="button" class="sq-link" data-sq-nc="'+esc(o.id)+'">Not collected</button>')+'</div></li>';}
-function sqFind(id){if(!id)return null;if(onlineOrdersMap&&onlineOrdersMap[id])return Object.assign({},onlineOrdersMap[id],{id:id});return sqUnsyncedRows().filter(function(o){return o.id===id;})[0]||null;}
+    +'<div class="sq-actions"><button type="button" class="pz-btn sq-prepare-btn" data-sq-prepare="'+esc(o.id)+'">PREPARE</button>'+(o.unsynced?'':'<button type="button" class="sq-link" data-sq-nc="'+esc(o.id)+'">Not collected</button>')+'</div></li>';}
+function sqFind(id){if(!id)return null;if(onlineOrdersMap&&onlineOrdersMap[id])return Object.assign({},onlineOrdersMap[id],{id:id});return sqUnsyncedRows().filter(function(o){return o.id===id;})[0]||sqState.recent[id]||null;}
 function renderServeQueue(){
   sqLoadPrefs();var host=document.getElementById('posServeQueue');if(document.body)document.body.classList.toggle('pos-bar-view',!!sqState.bar&&!!host);updateActiveOrderCount();if(!host)return;
   var rows=sqRows(),now=Date.now(),waiting=Object.keys(sqPending()).length,folded=sqState.folded&&!sqState.bar,oldest=rows.length?now-sqQueuedAt(rows[0]):0;
@@ -3832,14 +3833,12 @@ function renderServeQueue(){
   if(!sqState.tick)sqState.tick=setInterval(function(){if(document.getElementById('posServeQueue'))renderServeQueue();sqFlush();},20000);
 }
 function sqOnOrdersChanged(){renderServeQueue();sqFlush();}
-// ── Served + Undo ──
-function sqServe(o){if(!o||!o.id||sqState.undo[o.id])return;var t=document.createElement('div');t.className='sq-undo';t.setAttribute('role','status');t.innerHTML='<span>✓ '+esc(sqLabel(o))+' '+esc(sqServeWord(o).toLowerCase())+'</span><button type="button" class="pz-btn sec">Undo</button>';
-  var wrap=document.getElementById('sqUndoWrap');if(!wrap){wrap=document.createElement('div');wrap.id='sqUndoWrap';wrap.className='sq-undo-wrap';document.body.appendChild(wrap);}wrap.appendChild(t);
-  sqState.undo[o.id]={o:o,el:t,timer:setTimeout(function(){sqCommit(o.id);},SQ_UNDO_MS)};t.querySelector('button').onclick=function(){sqUndo(o.id);};renderServeQueue();}
-function sqUndo(id){var u=sqState.undo[id];if(!u)return;clearTimeout(u.timer);if(u.el&&u.el.parentNode)u.el.remove();delete sqState.undo[id];renderServeQueue();}
-// After the Undo window the tap is kept on this device until the server confirms it.
-function sqCommit(id){var u=sqState.undo[id];if(!u)return;clearTimeout(u.timer);if(u.el&&u.el.parentNode)u.el.remove();delete sqState.undo[id];sqPending()[id]={requestId:sqReqId('serve'),at:Date.now(),online:sqIsOnline(u.o),name:String(u.o.name||'').slice(0,60)};sqSavePending();renderServeQueue();sqFlush();}
-function sqCommitAllUndo(){Object.keys(sqState.undo).forEach(sqCommit);}
+// ── Prepare card + immediate Served/Picked up action ──
+function sqClosePrepare(){var p=sqState.prep;if(!p)return;sqState.prep=null;if(p.el&&p.el.parentNode)p.el.remove();renderServeQueue();}
+function sqServeNow(o){if(!o||!o.id||sqPending()[o.id])return;sqPending()[o.id]={requestId:sqReqId('serve'),at:Date.now(),online:sqIsOnline(o),name:String(o.name||'').slice(0,60)};sqSavePending();sqClosePrepare();renderServeQueue();sqFlush();}
+function sqOpenPrepare(o){if(!o||!o.id)return;sqClosePrepare();var now=Date.now(),ch=sqChannel(o),mask=document.createElement('div');mask.className='sq-prepare-mask';mask.setAttribute('role','presentation');
+  mask.innerHTML='<section class="sq-prepare-card" role="dialog" aria-modal="true" aria-labelledby="sqPrepareTitle"><div class="sq-prepare-head"><span class="sq-ch" title="'+esc(ch[1])+'">'+esc(ch[0])+'</span><div><h3 id="sqPrepareTitle">'+esc(sqLabel(o))+'</h3><p>'+esc(o.platformRef||o.id)+' · '+esc(ch[1])+' · waiting '+sqAgeText(now-sqQueuedAt(o))+(o.unsynced?' · not synced yet':'')+'</p></div></div><div class="sq-prepare-section"><b>Order details</b><ul class="sq-items">'+sqItemsHtml(o)+'</ul></div><div class="sq-prepare-total"><span>Total</span><b>'+peso(o.total)+'</b></div><div class="sq-prepare-actions"><button type="button" class="pz-btn sq-complete-btn" data-sq-prepared-served>'+(sqIsPlatform(o)?'PICKED UP NOW':'SERVED')+'</button><button type="button" class="pz-btn sec" data-sq-prepared-back>BACK TO QUEUE</button></div></section>';
+  document.body.appendChild(mask);sqState.prep={o:o,el:mask};var served=mask.querySelector('[data-sq-prepared-served]'),back=mask.querySelector('[data-sq-prepared-back]');served.onclick=function(){sqServeNow(o);};back.onclick=sqClosePrepare;if(served.focus)served.focus();}
 function sqDropPending(id){delete sqPending()[id];sqSavePending();}
 function sqFlush(){
   var p=sqPending(),ids=Object.keys(p),a=A();if(!ids.length||window.__online===false||!a)return;
@@ -3853,22 +3852,9 @@ function sqFlush(){
   });
 }
 window.addEventListener('online',function(){setTimeout(sqFlush,1500);});
-// ── Charge card: Served now / Queue; queues itself after five seconds on screen ──
-function sqAfterCharge(o){
-  if(!o||!o.id)return;sqCloseCard('queue');var ch=sqChannel(o),card=document.createElement('div');card.className='sq-charge-card';card.setAttribute('role','dialog');card.setAttribute('aria-label','Order paid: serve now or queue');
-  card.innerHTML='<div class="sq-charge-head"><span class="sq-ch">'+esc(ch[0])+'</span><div><b>Paid · '+esc(sqLabel(o))+'</b><small>'+esc(o.platformRef||o.id)+' · '+esc(ch[1])+'</small></div></div><ul class="sq-items">'+sqItemsHtml(o)+'</ul><div class="sq-charge-bar"><span></span></div><div class="sq-charge-actions"><button type="button" class="pz-btn ok" data-sq-card="served">'+(sqIsPlatform(o)?'Picked up now':'Served now')+'</button><button type="button" class="pz-btn sec" data-sq-card="queue">Queue</button></div><div class="sq-charge-hint">Goes to the queue automatically in <b data-sq-left>5</b>s</div>';
-  document.body.appendChild(card);var c={o:o,el:card,left:SQ_CARD_MS,last:Date.now()};sqState.card=c;
-  card.querySelectorAll('[data-sq-card]').forEach(function(b){b.onclick=function(ev){ev.stopPropagation();sqCloseCard(b.getAttribute('data-sq-card'));};});
-  c.iv=setInterval(function(){var now=Date.now(),dt=now-c.last;c.last=now;
-    // Count only while the POS is on screen; a receipt pop-up pauses the countdown.
-    if(document.visibilityState!=='hidden'&&(typeof document.hasFocus!=='function'||document.hasFocus()))c.left-=dt;
-    var bar=card.querySelector('.sq-charge-bar span'),left=card.querySelector('[data-sq-left]');if(bar)bar.style.width=Math.max(0,c.left/SQ_CARD_MS*100)+'%';if(left)left.textContent=Math.max(0,Math.ceil(c.left/1000));
-    if(c.left<=0)sqCloseCard('queue');},200);
-  renderServeQueue();
-}
-function sqCloseCard(mode){var c=sqState.card;if(!c)return;clearInterval(c.iv);sqState.card=null;if(c.el&&c.el.parentNode)c.el.remove();if(mode==='served')sqServe(c.o);else renderServeQueue();}
-// Starting anything else (the next sale) queues the open card straight away.
-document.addEventListener('pointerdown',function(ev){var c=sqState.card;if(c&&c.el&&!c.el.contains(ev.target))sqCloseCard('queue');},true);
+// A confirmed sale is already server-queued. Keep a short local copy so it appears immediately
+// while the active-order subscription catches up; live server data replaces it automatically.
+function sqAfterCharge(o){if(!o||!o.id)return;sqClosePrepare();sqState.recent[o.id]=Object.assign({},o,{service:{state:'queued',queuedAt:Number(o.timestamp)||Date.now()}});renderServeQueue();}
 // ── Not collected, manager review, return to queue ──
 function sqServiceCall(command){var a=A();if(!a||!a.callables||!a.callables.manageOrderService)return Promise.reject(new Error('Refresh the portal to load the serving queue service.'));return a.callables.manageOrderService(command);}
 function sqCancelled(e){return String((e&&e.message)||e).toLowerCase().indexOf('cancel')>=0;}
@@ -3884,15 +3870,16 @@ function sqWireShiftOrders(root){
   root.querySelectorAll('[data-sq-review]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-sq-review'),o=sqFind(id);if(!o)return;sqForm({title:'Review order not collected',subtitle:sqLabel(o)+' · '+(o.platformRef||o.id)+' · '+peso(o.total),submitLabel:'Mark reviewed',busyLabel:'Saving…',fields:[{name:'note',label:'Decision',type:'textarea',required:true,maxLength:300,placeholder:'Example: refunded through Voids & Refunds / remade / kept as waste'}]},function(v){return{action:'review_not_collected',orderId:id,requestId:sqReqId('rv'),note:v.note};},'Review recorded','Could not record the review: ');};});
 }
 // ── Queue column events (delegated) ──
-document.addEventListener('click',function(ev){var t=ev.target&&ev.target.closest?ev.target.closest('[data-sq-serve],[data-sq-nc],[data-sq-fold],[data-sq-bar]'):null;if(!t||!t.closest('#posServeQueue'))return;
+document.addEventListener('click',function(ev){var t=ev.target&&ev.target.closest?ev.target.closest('[data-sq-prepare],[data-sq-nc],[data-sq-fold],[data-sq-bar]'):null;if(!t||!t.closest('#posServeQueue'))return;
   if(t.hasAttribute('data-sq-fold')){sqState.folded=!sqState.folded;sqPref('folded',sqState.folded);renderServeQueue();return;}
   if(t.hasAttribute('data-sq-bar')){sqState.bar=!sqState.bar;sqPref('bar',sqState.bar);renderServeQueue();return;}
-  var o=sqFind(t.getAttribute('data-sq-serve')||t.getAttribute('data-sq-nc'));if(!o)return;
-  if(t.hasAttribute('data-sq-serve'))sqServe(o);else sqNotCollected(o);});
+  var o=sqFind(t.getAttribute('data-sq-prepare')||t.getAttribute('data-sq-nc'));if(!o)return;
+  if(t.hasAttribute('data-sq-prepare'))sqOpenPrepare(o);else sqNotCollected(o);});
+document.addEventListener('keydown',function(ev){if(ev.key==='Escape'&&sqState.prep){ev.preventDefault();sqClosePrepare();}});
 // ── Close-of-shift review: every unserved order gets an outcome; it never blocks the Z report ──
 function sqReviewCounts(items){return{served:items.filter(function(x){return x.outcome==='served';}).length,handover:items.filter(function(x){return x.outcome==='handover';}).length,notCollected:items.filter(function(x){return x.outcome==='not_collected';}).length};}
 function sqCloseReview(shift){
-  sqCloseCard('queue');sqCommitAllUndo();var rows=sqRows();if(!rows.length)return Promise.resolve(null);
+  sqClosePrepare();var rows=sqRows();if(!rows.length)return Promise.resolve(null);
   return new Promise(function(resolve){
     var mask=document.createElement('div'),now=Date.now(),done=false;mask.className='sq-review-mask';document.body.appendChild(mask);
     function finish(result){if(done)return;done=true;if(mask.parentNode)mask.remove();resolve(result);}
