@@ -110,4 +110,8 @@ const ordersGate = historySource.slice(historySource.indexOf('exports.readHistor
 assert.ok(!ordersGate.includes('"dashboard"'), 'the Dashboard key must not unlock individual historical orders');
 for (const node of ['orders', 'archivedOrders']) assert.ok(!readOf(node).includes(perm('dashboard')), `the Dashboard key must not unlock raw ${node}`);
 
+// 9. Staff and Cashier start on POS, and their first data scope is POS (no Dashboard download at sign-in).
+assert.ok(coreSource.includes("var target={cashier:'pos',kitchen:'orders',finance:'finance',staff:'pos'}"), 'Staff must land on POS');
+assert.ok(coreSource.includes("subscriptionHub.activate(effectiveRole==='cashier'||effectiveRole==='staff'?'pos':'dashboard');subscriptionHub.authorize();"), 'Staff sign-in must start on the POS data scope');
+
 console.log('PASS: staff module access mirrors the Admin navigation, Settings stays locked except Channel Pricing and Change Password, and every ticked tab works on its own.');

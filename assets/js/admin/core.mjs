@@ -1074,7 +1074,8 @@ function applyStaffPerms(perms){
 }
 function landRoleHome(){
   if(roleLandingDone||!currentUser||!window.showTabGroup)return;
-  var target={cashier:'pos',kitchen:'orders',finance:'finance'}[String(currentUser.serverRole||'').toLowerCase()];
+  // Staff and Cashier start on POS even when the Dashboard is ticked.
+  var target={cashier:'pos',kitchen:'orders',finance:'finance',staff:'pos'}[String(currentUser.serverRole||'').toLowerCase()];
   if(!target)return;
   var group=document.querySelector('.admin-group[data-grp="'+target+'"]'),row=document.querySelector('.tabgrp[data-grp="'+target+'"]');
   if(!group||group.style.display==='none'||!row)return;
@@ -1086,7 +1087,7 @@ async function loginSuccess(role,username,uid,serverRole,profile){
   currentUser={role,serverRole:serverRole||role,username,uid,title:profile&&profile.title||''};
   var effectiveRole=String(serverRole||role).toLowerCase();
   window.__accazaAuthz={uid,role:effectiveRole,isPrivileged:['owner','superadmin','admin','manager'].indexOf(effectiveRole)>-1};
-  subscriptionHub.activate(effectiveRole==='cashier'?'pos':'dashboard');subscriptionHub.authorize();
+  subscriptionHub.activate(effectiveRole==='cashier'||effectiveRole==='staff'?'pos':'dashboard');subscriptionHub.authorize();
   ensureActiveOrdersCall({}).catch(function(e){console.warn('Active-order projection sweep deferred',e&&e.code);});
   try{sessionStorage.setItem('accaza_admin_session',JSON.stringify({username:username,uid:uid||null}));}catch(e){}
   try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}
