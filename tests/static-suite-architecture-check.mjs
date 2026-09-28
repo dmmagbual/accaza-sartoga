@@ -33,6 +33,8 @@ const guardSource=combined.split(/\r?\n/).filter(line=>/\bfail\(|spawnSync\(/.te
 const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // Sep 2026: the Phase 6 customer-runtime and Phase 4C admin-core size guards now read their ceilings from
 // tests/bundle-budgets.mjs instead of separate literals; guard count and every other guard line are unchanged.
-if(guardDigest!=='bff04edb2720ff14c84e77e3a657d3452a46640107b5101ff75b6736f4af35fa')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// Sep 2026 (year-end close): the Books carry marker became openingCarry(month, because the carry now
+// also takes the balance-sheet year; the guard's meaning is unchanged.
+if(guardDigest!=='15b4799079595aa0be9f125789a8103b17c930773533ca32a89c319ee3ac7566')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 548 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');

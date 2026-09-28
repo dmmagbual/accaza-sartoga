@@ -12,7 +12,7 @@ for(const marker of [
   'function syncOptionalFeeds()',
   'else stopOptionalFeed(name)',
   'startAt(monthStart)',
-  'openingCarry(month)',
+  'openingCarry(month,',
   'ref(db,"/books/monthlyNet")',
   "financialMovements:{tabs:['cashflow']",
   "platformPayouts:{tabs:['cashflow']",

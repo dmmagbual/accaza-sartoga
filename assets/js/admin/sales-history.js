@@ -16,7 +16,7 @@ function amounts(x){var v=window.AccazaSales.amounts(x.o);return{gross:v.gross,d
 function periodBounds(){
   var shared=window.AccazaAdminPeriods&&window.AccazaAdminPeriods.get&&window.AccazaAdminPeriods.get('sales');
   if(shared&&Number(shared.startAt)&&Number(shared.endAt))return{start:Number(shared.startAt),end:Number(shared.endAt)};
-  var d=new Date(),end=Date.now()+1,start=new Date(d.getFullYear(),d.getMonth(),1).getTime();
+  var end=Date.now()+1,start=Date.parse(new Date(Date.now()+28800000).toISOString().slice(0,7)+'-01T00:00:00+08:00');
   return{start:start,end:end};
 }
 function monthKey(timestamp){var d=new Date(Number(timestamp)+8*3600000);return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0');}

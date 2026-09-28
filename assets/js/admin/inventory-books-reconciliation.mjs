@@ -25,7 +25,7 @@ function sourceIsAfterCutoff(source,cutoff){
     const date=String(source&&source.date||'');
     if(/^\d{4}-\d{2}-\d{2}$/.test(date))return date>cutoff;
     const occurredAt=Number(source&&source.occurredAt)||0;
-    return occurredAt>0&&new Date(occurredAt).toISOString().slice(0,10)>cutoff;
+    return occurredAt>0&&new Date(occurredAt+8*3600000).toISOString().slice(0,10)>cutoff;
   }
   const occurredAt=Number(source&&source.occurredAt)||0;
   return Number.isFinite(cutoff)&&occurredAt>=cutoff;

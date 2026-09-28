@@ -9,7 +9,7 @@ const orders=read('src/functions/30-orders.js');
 
 if(portal.includes('db.ref("/books/journal").get()')&&!portal.includes('if (!booksMonthlyNetMetaSnap.exists())'))throw new Error('Recurring health scan downloads the full journal without a one-time migration guard.');
 for(const marker of ['/books/monthlyNet','/books/monthlyNetMeta'])if(!bridge.includes(marker))throw new Error(`Monthly journal summary missing: ${marker}`);
-for(const marker of ['startAt(monthStart)','openingCarry(month)','else stopOptionalFeed(name)'])if(!books.includes(marker))throw new Error(`Books bandwidth guard missing: ${marker}`);
+for(const marker of ['startAt(monthStart)','openingCarry(month,','else stopOptionalFeed(name)'])if(!books.includes(marker))throw new Error(`Books bandwidth guard missing: ${marker}`);
 for(const marker of ['VERSIONED_MASTER_PATHS','publicCatalogVersion','MASTER_CACHE_KEY'])if(!hub.includes(marker))throw new Error(`Admin master-data cache guard missing: ${marker}`);
 for(const marker of ["MASTER_CACHE_KEY='accaza_admin_master_v2'","entry.path!=='optionGroups'||Object.keys(cache[entry.path]).length",'var fresh=readMasterCache()'])if(!hub.includes(marker))throw new Error(`Cashier catalog cache self-repair missing: ${marker}`);
 for(const marker of ["entry.path==='optionGroups'&&!Object.keys(value).length",'using the last known safe catalog','return cache.optionGroups'])if(!hub.includes(marker))throw new Error(`POS option-catalog continuity safeguard missing: ${marker}`);

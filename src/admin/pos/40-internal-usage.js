@@ -1,7 +1,8 @@
 function usageCost(usage){var c=0;Object.keys(usage||{}).forEach(function(ing){c+=usage[ing]*ingCost(ing);});return c;}
 function usageMovements(usage,sign,type,sourceId,note,usageAccount,usageKind){return Object.keys(usage||{}).map(function(ing){return {movementId:movementId(type,sourceId,ing),itemId:ing,type:type,qty:sign*(Number(usage[ing])||0),unitCost:ingCost(ing),sourceType:'internal-usage',sourceId:sourceId,note:note||'',usageAccount:usageAccount||'',usageKind:usageKind||'',actorName:(window.__posShift&&window.__posShift.staff)||'Admin',occurredAt:Date.now()};});}
 function usageEntries(){return Object.keys(usageMap).map(function(k){return Object.assign({id:k},usageMap[k]);}).sort(function(a,b){return (b.ts||0)-(a.ts||0);});}
-function usageThisMonth(){var now=new Date(),y=now.getFullYear(),m=now.getMonth();return usageEntries().filter(function(u){var d=new Date(u.ts);return d.getFullYear()===y&&d.getMonth()===m;});}
+// Manila month (UTC+8, no daylight saving), whatever the device's time zone (Sep 2026).
+function usageThisMonth(){var month=new Date(Date.now()+28800000).toISOString().slice(0,7);return usageEntries().filter(function(u){var n=Number(u.ts)||0;return new Date(n+28800000).toISOString().slice(0,7)===month;});}
 function ingRowsHtml(tag){
   var rows=usageRows[tag]||[]; var allIng=ingsActive();
   var body=rows.map(function(r,ix){

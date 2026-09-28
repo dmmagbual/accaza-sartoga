@@ -1,11 +1,11 @@
 import{app,db,auth,callables,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider}from"./firebase-client.mjs";
-import{createSubscriptionHub}from"./realtime-hub.mjs?v=611";
+import{createSubscriptionHub}from"./realtime-hub.mjs?v=612";
 import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=611";
-import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=611";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=612";
+import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=612";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
 import{createCatalogAdmin}from"./catalog-admin.mjs";
@@ -878,10 +878,10 @@ function renderDashboard(){
   const outcomes=mergeOverviewOrders(active,historyOrders,archived);
   const reconciledSales=mergeOverviewOrders([],historyOrders,archived);
   const sales=reconciledSales.filter(_isSale);
-  const now2=new Date();
-  const startToday=new Date(now2.getFullYear(),now2.getMonth(),now2.getDate()).getTime();
-  const _sow=new Date(now2);_sow.setDate(now2.getDate()-now2.getDay());_sow.setHours(0,0,0,0);const startWeek=_sow.getTime();
-  const startMonth=new Date(now2.getFullYear(),now2.getMonth(),1).getTime();
+  // Today / week (from Sunday) / month start at Manila midnight, whatever the device's time zone.
+  const todayKey=new Date(Date.now()+28800000).toISOString().slice(0,10),startToday=Date.parse(todayKey+'T00:00:00+08:00');
+  const startWeek=startToday-new Date(todayKey+'T12:00:00Z').getUTCDay()*86400000;
+  const startMonth=Date.parse(todayKey.slice(0,7)+'-01T00:00:00+08:00');
   function sumOrders(arr){return{rev:arr.reduce((s,o)=>s+window.AccazaSales.amounts(o).net,0),cnt:arr.length};}
   const t=sumOrders(sales.filter(o=>_tsOf(o)>=startToday)),w=sumOrders(sales.filter(o=>_tsOf(o)>=startWeek)),m=sumOrders(sales.filter(o=>_tsOf(o)>=startMonth)),a=sumOrders(sales);
   function setCard(id,rev,cnt){const el=document.getElementById(id);if(el)el.textContent='â‚±'+rev.toLocaleString();const cel=document.getElementById(id+'Count');if(cel)cel.textContent=cnt+' order'+(cnt!==1?'s':'');}
@@ -1212,10 +1212,10 @@ setTimeout(function(){if(!chatOpen)document.getElementById('chatNotif').style.di
 
 renderCustomerCalendar();
 renderCustomerOrders();
-const nm=new Date();
+const nmKey=new Date(Date.now()+28800000).toISOString().slice(0,10);
 const archFrom=document.getElementById('archiveFrom'),archTo=document.getElementById('archiveTo');
-if(archFrom)archFrom.value=new Date(nm.getFullYear(),nm.getMonth(),1).toISOString().slice(0,10);
-if(archTo)archTo.value=nm.toISOString().slice(0,10);
+if(archFrom)archFrom.value=nmKey.slice(0,7)+'-01';
+if(archTo)archTo.value=nmKey;
 setTimeout(function(){if(Object.keys(menuItemsMap).length)renderMenuSection();},1000);
 window.setPricingType = function(type) {
   var sized = document.getElementById('priceSizedFields');

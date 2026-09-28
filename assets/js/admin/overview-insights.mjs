@@ -58,7 +58,7 @@ function createOverviewInsights(deps){
   var state={metric:'units',latest:null,bound:false,rankingFrom:'',rankingTo:'',rankingOpen:false,lastFocus:null,rankingSales:null,rankingMonths:null,rankingKey:'',rankingRequest:0,rankingError:'',yearSales:null,yearMonths:null,yearKey:'',yearRequest:0,yearError:'',summaryMonths:null,summaryKey:'',summaryRequest:0,summaryLoading:false,summaryError:''};
   function reportPeriod(){if(window.AccazaAdminPeriods&&window.AccazaAdminPeriods.get)return window.AccazaAdminPeriods.get('sales');var end=overviewDateKey();return{from:end.slice(0,7)+'-01',to:end,label:end.slice(0,7)+'-01 to '+end,startAt:Date.parse(end.slice(0,7)+'-01T00:00:00+08:00'),endAt:Date.parse(end+'T23:59:59.999+08:00')};}
   function stamp(o){return window.AccazaSales.stamp(o);}
-  function dayStart(d){var x=new Date(d);x.setHours(0,0,0,0);return x.getTime();}
+  function dayStart(d){var n=new Date(d).getTime();return isFinite(n)?Date.parse(new Date(n+28800000).toISOString().slice(0,10)+'T00:00:00+08:00'):n;}
   function range(){var p=reportPeriod(),start=Number(p.startAt)||dayStart(new Date()),end=Number(p.endAt)||Date.now();return{start:start,end:end,label:p.label||'Current month'};}
   function inRange(o,r){var t=stamp(o);return t>=r.start&&t<=r.end;}
   function outcome(o){

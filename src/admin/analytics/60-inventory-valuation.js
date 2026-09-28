@@ -1,9 +1,9 @@
 
 /* ══════════ STOCK VALUE / STOCK CARD ══════════ */
-function svRange(){var f=svFrom,t=svTo;if(!f&&!t){var d=new Date();f=new Date(d.getFullYear(),d.getMonth(),1);f=f.getFullYear()+'-'+pad(f.getMonth()+1)+'-'+pad(f.getDate());t=new Date();t=t.getFullYear()+'-'+pad(t.getMonth()+1)+'-'+pad(t.getDate());}return {f:f||'',t:t||''};}
+function svRange(){var f=svFrom,t=svTo;if(!f&&!t){t=businessDate(Date.now());f=t.slice(0,7)+'-01';}return {f:f||'',t:t||''};}
 function fq(n){n=Number(n)||0;return (Math.round(n*1000)/1000).toLocaleString('en-PH');}
 function invItems(){return Object.keys(invMap).map(function(k){return Object.assign({id:k},invMap[k]);}).sort(function(a,b){return (a.name||'').localeCompare(b.name||'');});}
-function tsToDate(ts){var d=new Date(ts||0);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+function tsToDate(ts){return businessDate(ts||0);}
 function inRng(d,rng){return (!rng.f||d>=rng.f)&&(!rng.t||d<=rng.t);}
 function itemPeriod(id,cost,rng){var pQ=0,pV=0,uQ=0;
   Object.keys(receiptsMap).forEach(function(k){var r=receiptsMap[k];if(!r||r.ing!==id)return;var d=r.date||tsToDate(r.ts);if(inRng(d,rng)){pQ+=Number(r.qty)||0;pV+=Number(r.total)||0;}});
