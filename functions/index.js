@@ -5275,8 +5275,11 @@ exports.processOrderAdjustment = onCall(
 );
 
 // Re-key a missed Grab/FoodPanda order from the Payout Reconciliation screen.
-// Amount-only (no line items, no COGS/inventory deduction — by design). Books
-// revenue + commission + the platform receivable, dated on the real order date.
+// Books revenue + commission + the platform receivable, dated on the real order date.
+// Since 29 Sep 2026 the items sold are required: an amount-only entry left the stock it used
+// out of the inventory ledger and its cost out of COGS (GF-LATE-* review, 28 Sep 2026). The
+// items are stored as the order's line items, so the standard order finalization deducts
+// stock and records COGS exactly as for a till sale.
 // Duplicate-safe via platformRefIndex; requires a privileged approval (managers
 // self-approve on the client, other roles need a manager sign-in).
 exports.recordPlatformCatchup = onCall(
@@ -5300,6 +5303,18 @@ exports.recordPlatformCatchup = onCall(
     if (!parsedTs) throw new HttpsError("invalid-argument", "A valid order date (YYYY-MM-DD) is required.");
     if (parsedTs > Date.now() + 86400000) throw new HttpsError("invalid-argument", "Order date cannot be in the future.");
     const reference = financeText(data.reference, 200);
+    const rawLines = Array.isArray(data.lineItems) ? data.lineItems : [];
+    if (!rawLines.length) throw new HttpsError("invalid-argument", "Enter the items on this order so its stock and cost are recorded.");
+    if (rawLines.length > 20) throw new HttpsError("invalid-argument", "A missed order can hold at most 20 item lines.");
+    const lineItems = [];
+    for (const [index, row] of rawLines.entries()) {
+      const itemKey = financeKey(row && row.itemKey, `Item ${index + 1}`), size = financeText(row && row.size, 1).toUpperCase() || "M", qty = Math.floor(Number(row && row.qty) || 0);
+      if (!["S", "M", "L"].includes(size)) throw new HttpsError("invalid-argument", `Item ${index + 1} needs a size of S, M or L.`);
+      if (!(qty >= 1 && qty <= 50)) throw new HttpsError("invalid-argument", `Item ${index + 1} needs a quantity from 1 to 50.`);
+      const menuItem = (await db.ref(`/menuItems/${itemKey}`).get()).val();
+      if (!menuItem) throw new HttpsError("failed-precondition", `Item ${index + 1} is not on the menu.`);
+      lineItems.push({itemKey, name: `${financeText(menuItem.name, 120) || itemKey} (${size})`, optLabels: [], qty, size, unitTotal: 0});
+    }
     const key = platformRefKey(ref);
     const historical = await existingPlatformOrder(db, channel, ref);
     if (historical) throw new HttpsError("already-exists", `${ref} was already recorded (order ${historical.id}). A platform reference can only be used once.`);
@@ -5316,7 +5331,7 @@ exports.recordPlatformCatchup = onCall(
       netSalesPlatform: gross, netPlatform: net, total: gross,
       settlementStatus: "unsettled", payoutId: "",
       status: "Completed", paymentStatus: "confirmed", receivedByCustomer: true,
-      lateEntry: true, catchup: true, enteredVia: "payout-rekey", cogsSkipped: true,
+      lateEntry: true, catchup: true, enteredVia: "payout-rekey", lineItems, items: lineItems.map((line) => `${line.name} x${line.qty}`).join(", "),
       reference, catchupBy: actor.uid, catchupByRole: actor.role, catchupApprovalId: approval.id,
       staff: actor.email || actor.role, onDuty: actor.email || actor.role,
       date: d.toLocaleDateString("en-PH", {year: "numeric", month: "long", day: "numeric", timeZone: "Asia/Manila"}),
