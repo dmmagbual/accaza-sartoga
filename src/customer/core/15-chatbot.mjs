@@ -4,7 +4,7 @@ const botReplies=[
   {keys:['hour','open','close','time','schedule'],reply:'🕐 We are open every day — <strong>Monday to Sunday, 6:00 AM to 12:00 Midnight</strong>. ☕'},
   {keys:['location','address','where','find'],reply:"📍 <strong>Saratoga Avenue, La Mediterranea Subdivision, Governor's Drive, Dasmariñas, Cavite</strong>. Near SM Dasmariñas! 😊"},
   {keys:['gcash','pay','payment','bank','bdo'],reply:'💳 We accept <strong>GCash, BDO, and UnionBank</strong>. GCash: <strong>0927 692 4831</strong> (ACCAZA).'},
-  {keys:['delivery','deliver'],reply:'🛵 We don\'t deliver. Dasmariñas only: pick up, or book and pay your own courier. Outside? <strong>🟠 foodpanda</strong> or <strong>🟢 GrabFood</strong>.'},
+  {keys:['delivery','deliver'],reply:'🛵 No delivery. Dasmariñas only: pick up, or book and pay your own courier. Or order on <b><b style=color:#d70f64>●</b> foodpanda</b> or <b>🟢 GrabFood</b>.'},
   {keys:['menu','food','drink','coffee','frappe','pastry'],reply:'🍽️ We serve <strong>Coffee, Non-Coffee, Iced Blended, Soda Refreshers, and Pastries</strong>. Check our menu above! ☕'},
   {keys:['reserve','reservation','book','table'],reply:'📅 Use our <strong>Reservations section</strong> — pick a date, time slot, and fill in your details. Our staff will confirm! 😊'},
   {keys:['wifi','internet'],reply:'📶 Yes, we have free WiFi! Ask our staff for the password. 😊'},
