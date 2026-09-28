@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import {createRequire} from 'node:module';
 import assert from 'node:assert/strict';
 const require=createRequire(import.meta.url),OrderRecords=require('../functions/lib/order-records.js');
-const inventory=fs.readFileSync('src/functions/50-inventory.js','utf8'),portal=fs.readFileSync('src/functions/20-portal-auth.js','utf8'),notifications=fs.readFileSync('src/functions/00-bootstrap-notifications.js','utf8'),bridge=fs.readFileSync('src/functions/10-books-bridge.js','utf8'),orderRecords=fs.readFileSync('functions/lib/order-records.js','utf8');
+const inventory=fs.readFileSync('src/functions/50-inventory.js','utf8'),portal=(fs.readFileSync('src/functions/20-portal-auth.js','utf8')+fs.readFileSync('src/functions/20-portal-operations.js','utf8')),notifications=fs.readFileSync('src/functions/00-bootstrap-notifications.js','utf8'),bridge=fs.readFileSync('src/functions/10-books-bridge.js','utf8'),orderRecords=fs.readFileSync('functions/lib/order-records.js','utf8');
 const audit=fs.readFileSync('src/functions/44-reconciliation.js','utf8');
 const must=(source,marker,message)=>{if(!source.includes(marker))throw new Error(`${message}: ${marker}`);};
 for(const marker of ['function isAuthoritativeOrder','function isOnlyAttemptedMetadata','await ref.update(metadata)','if (isOnlyAttemptedMetadata(after, metadata))','await ref.remove()','has no authoritative live or archived record'])must(orderRecords,marker,'Shared authoritative-order update guard missing');

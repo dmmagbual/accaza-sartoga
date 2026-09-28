@@ -50,7 +50,7 @@ for (const part of ["purchaseInvoices (2)", "payables (1)", "shiftAdvances (2)"]
 }
 
 // 5. The callable's own guards.
-const source = fs.readFileSync(path.join(__dirname, "..", "src", "functions", "20-portal-auth.js"), "utf8");
+const source = ["20-portal-auth.js", "20-portal-operations.js"].map((name) => fs.readFileSync(path.join(__dirname, "..", "src", "functions", name), "utf8")).join("");
 const guards = [
   ['["merge","delete"].includes(action)&&actor.role!=="superadmin"', "merge and delete must be Super-Admin-level"],
   ['if(!reason)throw new HttpsError("invalid-argument","A merge reason is required.")', "a merge must record why"],

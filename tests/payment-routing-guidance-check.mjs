@@ -17,8 +17,11 @@ const failures = [];
 const must = (source, marker, message) => { if (!source.includes(marker)) failures.push(message); };
 
 /* Purchases is the destination for anything received as goods or an itemised invoice. */
+// The Purchases source is split across 20-purchasing.js, 20a-purchase-posting.js and
+// 20b-ingredient-maintenance.js; the source check reads all three in bundle order.
+const purchasingSource = () => ['src/admin/pos/20-purchasing.js', 'src/admin/pos/20a-purchase-posting.js', 'src/admin/pos/20b-ingredient-maintenance.js'].map(read).join('');
 for (const file of ['assets/js/admin/pos.js', 'src/admin/pos/20-purchasing.js']) {
-  const s = read(file);
+  const s = file === 'src/admin/pos/20-purchasing.js' ? purchasingSource() : read(file);
   must(s, 'Receiving goods or an itemised supplier invoice? Record it here',
     `${file}: Purchases must state that goods and itemised invoices belong here.`);
   must(s, 'Settling a bill already raised: Finance Books → Payables.',

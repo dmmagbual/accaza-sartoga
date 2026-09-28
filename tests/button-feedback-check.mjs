@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 
 const read=file=>fs.readFileSync(file,'utf8');
-const recipe=read('src/admin/pos/30-recipes.js')+read('src/admin/pos/31-recipe-save.js');
+const recipe=(read('src/admin/pos/30-recipes.js')+read('src/admin/pos/30a-recipe-editor.js')+read('src/admin/pos/30b-cost-sheet-and-consumables.js'))+read('src/admin/pos/31-recipe-save.js');
 const adminCss=read('assets/css/admin/site.css');
 const booksCss=read('assets/css/books.css');
 

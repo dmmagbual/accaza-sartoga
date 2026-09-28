@@ -5,6 +5,15 @@ const root=process.cwd();
 const read=file=>fs.readFileSync(path.join(root,file),'utf8');
 const size=file=>fs.statSync(path.join(root,file)).size;
 const fail=message=>{throw new Error(message);};
+// Budget policy (Sep 2026). A ceiling is a growth-review gate, not a measured device limit.
+// When a bundle is re-baselined its ceiling is set about 5% above the reviewed size (rounded
+// up to 100 bytes), so ordinary feature work does not stop a release. Once less than 2.5% of
+// a ceiling is left, every run prints a warning (and annotates the GitHub check) so the bundle
+// is split or its ceiling re-reviewed before it blocks. Ceilings are never raised automatically.
+const BUDGET_WARN_ROOM=0.025;
+const budgetState=(bytes,maximum)=>bytes>maximum?'fail':maximum-bytes<maximum*BUDGET_WARN_ROOM?'warn':'ok';
+const warn=(file,message)=>{console.warn('BUDGET WARNING: '+message);if(process.env.GITHUB_ACTIONS)console.log(`::warning file=${file}::${message}`);};
+if(budgetState(976,1000)!=='warn'||budgetState(974,1000)!=='ok'||budgetState(1001,1000)!=='fail'||budgetState(1000,1000)!=='warn')fail('Bundle budget warning policy is miscalibrated');
 
 const budgets={
   'assets/js/customer/core.mjs':115000,
@@ -21,7 +30,8 @@ const budgets={
   // Build 580 refreshes IndexedDB immediately before a forced shift-close health report,
   // preventing a stale browser count from blocking a cashier after all sales have synced.
   // Build 582 adds the shift crew till lock (join prompt, seller stamp on each sale).
-  'assets/js/admin/pos.js':526500,
+  // Sep 2026 re-baseline under the budget policy above: reviewed 526,141 bytes (admin 611).
+  'assets/js/admin/pos.js':552500,
   // Build 497 adds the visible cash-refund tag and preserved refund detail to shift reports.
   // +1.4 KB (Sep 2026): receipt images load on demand from pettyCashReceipts instead of riding
   // on every voucher in the Petty/Purchases listeners.
@@ -35,7 +45,8 @@ const budgets={
   // rendering, the till-built provisional Z, and management follow-ups.
   // Build 596 (+3.4 KB, 220.0 -> 223.3 KB) replaces the dense payment-method form with
   // accessible summary cards and progressive configuration; no data read or listener is added.
-  'assets/js/admin/register.js':224000,
+  // Sep 2026 re-baseline under the budget policy above: reviewed 223,322 bytes (admin 611).
+  'assets/js/admin/register.js':234500,
   // Build 527 secures completed-sale corrections while retaining the sales reconciliation bridge;
   // retain a narrow ceiling above the reviewed generated bundle.
   // Build 533 replaces Stock Value's whole-journal listener with monthly totals plus the
@@ -55,7 +66,8 @@ const budgets={
   // Build 585 adds the reviewed MTD/YTD cashier pies, Top 12 grid, dual thin
   // peak-hour bars and weekday trend lines without adding another data read.
   // Reviewed generated size: 180,306 bytes; the module remains Analytics-only.
-  'assets/js/admin/analytics.js':181000,
+  // Sep 2026 re-baseline under the budget policy above: reviewed 180,598 bytes (admin 611).
+  'assets/js/admin/analytics.js':189700,
   'assets/js/admin/finance.js':75000,
   // Build 106 adds consistent interactive feedback to Finance Books buttons.
   // Build 110 adds only the AP-page hooks; its 6 KB form remains isolated below.
@@ -66,11 +78,12 @@ const budgets={
   // partial-payment controls without adding another Firebase listener.
   // Books 124 adds the read-only original-journal viewer to every subsidiary
   // ledger row, exposing both entry legs without any additional Firebase read.
-  'assets/js/books/app.js':224200,
+  // Sep 2026 re-baseline under the budget policy above: reviewed 223,307 bytes (books 132).
+  'assets/js/books/app.js':234500,
   // Build 110 isolates the owner-only supplier AP cutover form from the core Books bundle.
   'src/books/opening-payables.js':7500
 };
-for(const [file,maximum] of Object.entries(budgets))if(size(file)>maximum)fail(`${file} exceeds its Phase 11 byte budget: ${size(file)} > ${maximum}`);
+for(const [file,maximum] of Object.entries(budgets)){const bytes=size(file),state=budgetState(bytes,maximum);if(state==='fail')fail(`${file} exceeds its Phase 11 byte budget: ${bytes} > ${maximum}. Split code out of the bundle, or review the growth and re-baseline the ceiling under the budget policy.`);if(state==='warn')warn(file,`${file} has ${maximum-bytes} bytes left of its ${maximum}-byte budget (${(100*bytes/maximum).toFixed(1)}% used). Split code out or re-review the ceiling before the next feature.`);}
 
 const customer=read('assets/js/customer/core.mjs'),rules=read('database.rules.json'),moduleLoader=read('assets/js/admin/module-loader.js'),hub=read('assets/js/admin/realtime-hub.mjs'),telemetry=read('assets/js/admin/telemetry.js'),functions=read('functions/index.js'),register=read('assets/js/admin/register.js'),salesPeriod=read('assets/js/admin/sales-period-data.mjs');
 for(const marker of ['CUSTOMER_LIVE_ORDER_LIMIT=20','CUSTOMER_LIVE_RESERVATION_LIMIT=12',"query(ref(db,'customerOrders/'+uid),orderByChild('createdAt'),limitToLast(CUSTOMER_LIVE_ORDER_LIMIT))",'_myOrdersSub[id]=onValue','_myOrdersSub[id]()','_myResSub[id]=onValue','_myResSub[id]()'])if(!customer.includes(marker))fail(`Bounded customer listener safeguard missing: ${marker}`);

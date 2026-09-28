@@ -63,7 +63,7 @@ assert.ok(rulesLine.includes('".write": "auth != null && auth.uid === $uid && ro
 assert.ok(rulesLine.includes('"connectedAt": { ".validate": "newData.val() === now" }') && rulesLine.includes('"$other": { ".validate": false }'), 'presence records are validated');
 
 // 5. Server: per-account cutoff on every callable, and a Super Admin sign-out action.
-const portalAuth = read('src/functions/20-portal-auth.js');
+const portalAuth = (read('src/functions/20-portal-auth.js')+read('src/functions/20-portal-operations.js'));
 assert.ok(portalAuth.includes('if (userCutoff && signedInAt < userCutoff) throw new HttpsError("unauthenticated"'), 'callables refuse a signed-out account');
 const accounts = read('src/functions/20b-portal-accounts.js');
 const signOutAction = accounts.slice(accounts.indexOf('if (action === "sign_out")'), accounts.indexOf('if (action === "normalize_legacy")'));

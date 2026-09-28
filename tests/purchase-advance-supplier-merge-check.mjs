@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const root=path.join(import.meta.dirname,'..');
 const read=(file)=>fs.readFileSync(path.join(root,file),'utf8');
 const source=read('src/admin/pos/11h-purchase-workspace.js');
-const purchaseUi=read('src/admin/pos/20-purchasing.js');
+const purchaseUi=(read('src/admin/pos/20-purchasing.js')+read('src/admin/pos/20a-purchase-posting.js')+read('src/admin/pos/20b-ingredient-maintenance.js'));
 const bundle=read('assets/js/admin/pos.js');
 const hub=read('assets/js/admin/realtime-hub.mjs');
 const failures=[];

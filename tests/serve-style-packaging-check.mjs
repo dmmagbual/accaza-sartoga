@@ -124,7 +124,7 @@ check(missing.cogsCovered===false,'an unmapped serve style marks the order as no
 const inv=fs.readFileSync('src/functions/50-inventory.js','utf8');
 check(/readCatalogKeyed\(db,\["recipes","inventory","menuItems","optionGroups","packagingRules"\]/.test(inv),'the authoritative server costing reads the packaging table (the rules the order uses)');
 check(/packagingRules:maps\.packagingRules/.test(inv),'the server passes packaging into the costing engine');
-check(/orderInventoryPlans/.test(fs.readFileSync('src/functions/20-portal-auth.js','utf8')),'the order repair path uses the immutable sale-time plan instead of current packaging');
+check(/orderInventoryPlans/.test((fs.readFileSync('src/functions/20-portal-auth.js','utf8')+fs.readFileSync('src/functions/20-portal-operations.js','utf8'))),'the order repair path uses the immutable sale-time plan instead of current packaging');
 check(/packagingRules/.test(fs.readFileSync('functions/index.js','utf8')),'the built Functions bundle carries it');
 const state=fs.readFileSync('src/admin/pos/00-shared-state.js','utf8');
 check(/subscribe\('packagingRules'/.test(state),'the admin portal subscribes to the packaging table');
@@ -168,7 +168,7 @@ check(/styles:draft/.test(ui2),'costs and assignments follow the edited styles, 
 check(/packAddStyle/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built admin bundle carries the editor');
 
 /* 9. the recipe calculator must show exactly what the sale-costing engine will post */
-const recipeUi=fs.readFileSync('src/admin/pos/29a-recipe-cost-coverage.js','utf8')+fs.readFileSync('src/admin/pos/30-recipes.js','utf8');
+const recipeUi=fs.readFileSync('src/admin/pos/29a-recipe-cost-coverage.js','utf8')+(fs.readFileSync('src/admin/pos/30-recipes.js','utf8')+fs.readFileSync('src/admin/pos/30a-recipe-editor.js','utf8')+fs.readFileSync('src/admin/pos/30b-cost-sheet-and-consumables.js','utf8'));
 const choiceScope=fs.readFileSync('src/admin/pos/29-recipe-choice-scope.js','utf8');
 const costingSource=fs.readFileSync('assets/js/shared/costing.js','utf8');
 check(/costingContext\(\)/.test(recipeUi)&&/packagingRules:packagingRulesMap/.test(fs.readFileSync('src/admin/pos/00-shared-state.js','utf8')),'the recipe calculator includes assigned packaging in its total');

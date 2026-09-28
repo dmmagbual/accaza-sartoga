@@ -30,7 +30,9 @@ const retiredLargeSections=[
 for(const file of retiredLargeSections)if(fs.existsSync(path.join(root,file)))throw new Error(`Retired large source section returned: ${file}`);
 for(const folder of ['src/admin/pos','src/functions'])for(const name of fs.readdirSync(path.join(root,folder)).filter(name=>/\.m?js$/.test(name))){
   const bytes=fs.statSync(path.join(root,folder,name)).size;
-  if(bytes>70000)throw new Error(`Financially sensitive source section exceeds the 70 KB Phase 9 ceiling: ${folder}/${name}`);
+  if(bytes>70000)throw new Error(`Financially sensitive source section exceeds the 70 KB Phase 9 ceiling: ${folder}/${name}. Split it at a function boundary into a new section that sorts right after it; the built bundle stays byte-identical.`);
+  // Early warning (Sep 2026): above 95% of the ceiling, split before the next feature blocks a release.
+  if(bytes>66500){const message=`${folder}/${name} is ${bytes} bytes, ${(bytes/700).toFixed(1)}% of the 70 KB section ceiling. Split it at a function boundary before the next feature.`;console.warn('SECTION SIZE WARNING: '+message);if(process.env.GITHUB_ACTIONS)console.log(`::warning file=${folder}/${name}::${message}`);}
 }
 console.log('PASS: retired checkout/inventory/financial monoliths remain decomposed and no guarded source section exceeds 70 KB.');
 
