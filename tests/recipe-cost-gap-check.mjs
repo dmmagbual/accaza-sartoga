@@ -4,7 +4,7 @@ import vm from 'node:vm';
 let failures=0;
 function check(condition,message){if(!condition){failures++;console.error('✗ '+message);}else console.log('✓ '+message);}
 
-const recipeSource=fs.readFileSync('src/admin/pos/30-recipes.js','utf8');
+const recipeSource=(fs.readFileSync('src/admin/pos/30-recipes.js','utf8')+fs.readFileSync('src/admin/pos/30a-recipe-editor.js','utf8')+fs.readFileSync('src/admin/pos/30b-cost-sheet-and-consumables.js','utf8'));
 const coverageSource=fs.readFileSync('src/admin/pos/29a-recipe-cost-coverage.js','utf8');
 const source=coverageSource+'\n'+recipeSource;
 const choiceScopeSource=fs.readFileSync('src/admin/pos/29-recipe-choice-scope.js','utf8');

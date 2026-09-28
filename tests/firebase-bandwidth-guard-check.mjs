@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 
 const read=(path)=>fs.readFileSync(path,'utf8');
-const portal=read('src/functions/20-portal-auth.js');
+const portal=(read('src/functions/20-portal-auth.js')+read('src/functions/20-portal-operations.js'));
 const bridge=read('src/functions/10-books-bridge.js');
 const books=read('assets/js/books/live-pos.mjs');
 const hub=read('assets/js/admin/realtime-hub.mjs');

@@ -85,7 +85,7 @@ const shell=fs.readFileSync('admin.html','utf8');
 check(/option-library-plan\.js/.test(shell),'admin.html loads the planner');
 check(/option-library-plan\.js/.test(fs.readFileSync('sw.js','utf8')),'the service worker caches it');
 check(/optLibApply/.test(fs.readFileSync('assets/js/admin/pos.js','utf8')),'the built admin bundle carries the screen');
-check(/optlibrary/.test(fs.readFileSync('src/admin/pos/30-recipes.js','utf8')),'the Recipes tab offers it');
+check(/optlibrary/.test((fs.readFileSync('src/admin/pos/30-recipes.js','utf8')+fs.readFileSync('src/admin/pos/30a-recipe-editor.js','utf8')+fs.readFileSync('src/admin/pos/30b-cost-sheet-and-consumables.js','utf8'))),'the Recipes tab offers it');
 
 console.log(failures?`\n${failures} check(s) failed.`:'\nAll option library checks passed.');
 process.exit(failures?1:0);

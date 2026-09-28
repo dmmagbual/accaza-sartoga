@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 
 const server=fs.readFileSync('src/functions/42c-financial-command-controls.js','utf8');
-const auth=fs.readFileSync('src/functions/20-portal-auth.js','utf8');
+const auth=(fs.readFileSync('src/functions/20-portal-auth.js','utf8')+fs.readFileSync('src/functions/20-portal-operations.js','utf8'));
 const vouchers=fs.readFileSync('src/functions/41-expense-assets.js','utf8');
 const journal=fs.readFileSync('src/books/app/30-statements-pages.js','utf8');
 const ui=fs.readFileSync('src/books/app/50-controlled-transactions.js','utf8');

@@ -153,7 +153,7 @@ assert.ok(live.includes('query(base,orderByChild("status"),endBefore("reviewed")
 assert.ok(live.includes('query(ref(db,"/cashCustody"),orderByChild("remaining"),startAt(0.005))'), 'Cash Flow reads only custody that still holds cash');
 assert.ok(live.includes('orderByChild("depositMovementId"),equalTo(null)'), 'Cash Flow reads only payouts not yet deposited');
 assert.ok(live.includes('query(ref(db,"/purchaseInvoices"),orderByChild("date"),startAt('), 'the Purchases register reads the selected period');
-assert.ok(read('src/admin/pos/20-purchasing.js').includes("a.orderByChild('ing'),a.equalTo(id)"), 'brand breakdown reads one item\'s receipts');
+assert.ok((read('src/admin/pos/20-purchasing.js')+read('src/admin/pos/20a-purchase-posting.js')+read('src/admin/pos/20b-ingredient-maintenance.js')).includes("a.orderByChild('ing'),a.equalTo(id)"), 'brand breakdown reads one item\'s receipts');
 // Admin Cash Flow attaches custody through the remaining index.
 {
   const attached = [];
@@ -217,7 +217,7 @@ assert.ok(read('src/admin/pos/20-purchasing.js').includes("a.orderByChild('ing')
 // per-reader receipt index that replaced the whole-node receipt listener.
 {
   assert.ok(!/\bonValue\s*\(/.test(read('assets/js/books/suspense-advance.mjs')), 'Finance Books must not listen to the whole conversions node');
-  const auth = read('src/functions/20-portal-auth.js');
+  const auth = (read('src/functions/20-portal-auth.js')+read('src/functions/20-portal-operations.js'));
   assert.ok(auth.includes('staffReceiptIndex/${actor.uid}/${messageId}'), 'manageStaffMessage must maintain the reader\'s own receipt index');
   assert.ok(read('database.rules.json').includes('"staffReceiptIndex"'), 'the receipt index needs a rules block');
 }

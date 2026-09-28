@@ -112,7 +112,7 @@ Object.keys(result.updates).forEach(function(path){
 ok('the repair only writes temperature choices - the base recipe is never overwritten');
 
 /* the admin surface must offer the restore point before it offers the repair */
-const recipesUi=fs.readFileSync('src/admin/pos/31-recipe-temperature-repair.js','utf8')+fs.readFileSync('src/admin/pos/30-recipes.js','utf8');
+const recipesUi=fs.readFileSync('src/admin/pos/31-recipe-temperature-repair.js','utf8')+(fs.readFileSync('src/admin/pos/30-recipes.js','utf8')+fs.readFileSync('src/admin/pos/30a-recipe-editor.js','utf8')+fs.readFileSync('src/admin/pos/30b-cost-sheet-and-consumables.js','utf8'));
 check(/recTempSnapshot/.test(recipesUi),'the repair screen offers a restore point download');
 check(/recTempRestore/.test(recipesUi),'the repair screen offers a restore from file');
 check(/recTempApply/.test(recipesUi),'the repair screen offers the repair itself');

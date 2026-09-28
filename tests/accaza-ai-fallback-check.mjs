@@ -7,7 +7,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const source=fs.readFileSync(path.join(root,'src/functions/62-accaza-ai.js'),'utf8');
+const source=(fs.readFileSync(path.join(root,'src/functions/62-accaza-ai.js'),'utf8')+fs.readFileSync(path.join(root,'src/functions/62-accaza-chat.js'),'utf8'));
 assert.ok(source.includes('const ACCAZA_AI_JEV_TIMEOUT_MS = 15000'),'Jev Router needs a short independent timeout');
 assert.ok(source.includes('provider:{zdr:true,data_collection:"deny"}'),'Jev Router must enforce zero retention and deny data collection');
 assert.ok(source.includes('routedModel:accazaAiText(body&&body.model,120)'),'Jev Router must retain the selected downstream model for audit');

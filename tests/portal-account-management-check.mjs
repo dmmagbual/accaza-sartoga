@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 const read=file=>fs.readFileSync(new URL('../'+file,import.meta.url),'utf8');
 const server=read('src/functions/20b-portal-accounts.js');
-const auth=read('src/functions/20-portal-auth.js');
+const auth=(read('src/functions/20-portal-auth.js')+read('src/functions/20-portal-operations.js'));
 const client=read('assets/js/admin/staff-access.js');
 const portal=read('assets/js/admin/portal-auth.mjs');
 const html=read('src/html/admin/50-admin-workspace.html');

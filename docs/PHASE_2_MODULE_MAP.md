@@ -6,8 +6,12 @@ The deployed POS and Firebase Functions remain single runtime bundles to preserv
 
 - `src/admin/pos/00-shared-state.js` — shared state, costing helpers, offline queue, Firebase subscriptions, and module boot.
 - `10-inventory.js` and `11-inventory-skus.js` — inventory views, migration controls, approved brands, and stock adjustment workflows.
-- `20-purchasing.js` — purchasing, supplier invoices, WAC inputs, payable links, and purchase correction/reversal UI.
-- `30-recipes.js` — recipe costing, options, consumables, validation, and exports.
+- `20-purchasing.js` — purchase form: supplier invoices, WAC inputs, payable links, and purchase correction/reversal UI.
+- `20a-purchase-posting.js` — purchase preview totals and posting.
+- `20b-ingredient-maintenance.js` — ingredient edit/delete, brand breakdown, category manager, unit migration, and the low-stock badge.
+- `30-recipes.js` — recipe list, costing results, shared ingredients, and opening a recipe.
+- `30a-recipe-editor.js` — the recipe editor.
+- `30b-cost-sheet-and-consumables.js` — cost-sheet export, option costing, and consumables.
 - `40-internal-usage.js` — staff/R&D usage, inventory movements, Finance classification, reversal, and audit views.
 - `50-register-checkout.js` — live register, online orders, payment verification, discounts, checkout, offline persistence, inventory usage, and receipts.
 
@@ -17,7 +21,8 @@ Generated runtime: `assets/js/admin/pos.js`.
 
 - `src/functions/00-bootstrap-notifications.js` — SDK initialization and customer/staff notifications.
 - `10-books-bridge.js` — Finance Books mirror, historical reconciliation helpers, cash-float controls, and platform reference indexing.
-- `20-portal-auth.js` — callable configuration, authentication, permissions, telemetry, and manager approvals.
+- `20-portal-auth.js` — callable configuration, authentication, permissions, periods, staff messages, and incidents.
+- `20-portal-operations.js` — telemetry, the operational exception scan, dead letters, certification/validation, order-status and online-order acceptance commands, and manager approvals.
 - `21-operational-controls.js` — archive, discrepancy, petty-cash, custody, and operational repair controls.
 - `22-close-controls.js` — undeposited cash, accounting-period, and certified close controls.
 - `30-orders.js` — offline POS synchronization, server pricing, online orders, payment proof, and active-order projections.

@@ -53,7 +53,7 @@ if (trimmed.exceptions.length !== 2 || trimmed.counts.critical !== 1 || trimmed.
 if (R.withoutException(saved, 'zzz') !== saved) fail('An unknown ID must leave the saved scan untouched.');
 
 // 4. Wiring.
-const src = read('src/functions/20-portal-auth.js'), built = read('functions/index.js');
+const src = (read('src/functions/20-portal-auth.js')+read('src/functions/20-portal-operations.js')), built = read('functions/index.js');
 for (const marker of ['exports.resolveBackgroundFailure = onCall', 'await verifyOpenDeadLetters(db, deadLetters, now);', 'check.state === "incomplete"', 'dropFromCachedOperationalScan', 'current === null ? null : DeadLetterResolution.closeIfOpen(current, fields)', '"resolve_background_failure"', 'MAX_VERIFY_PER_SCAN']) {
   if (!src.includes(marker)) fail(`Server source is missing ${marker}`);
   if (!built.includes(marker)) fail(`Built functions/index.js is missing ${marker}; run npm run build:artifacts`);
