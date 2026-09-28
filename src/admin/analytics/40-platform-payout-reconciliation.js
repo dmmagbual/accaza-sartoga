@@ -12,6 +12,12 @@ function refEq(a,b){var x=refNorm(a),y=refNorm(b);if(!x||!y)return false;if(x===
 function settledPayoutOrderIds(){var ids={};Object.keys(payoutsMap).forEach(function(k){var p=payoutsMap[k]||{};if(p.reversed)return;(p.orderIds||[]).forEach(function(id){if(id)ids[id]=k;});});return ids;}
 function platEntries(){var out=[];Object.keys(ordersMap).forEach(function(k){var o=ordersMap[k];if(o&&o.source==='pos'&&o.channel&&o.channel!=='instore'&&!o.voided)out.push({key:k,node:'orders',o:o});});Object.keys(archMap).forEach(function(k){var o=archMap[k];if(o&&o.source==='pos'&&o.channel&&o.channel!=='instore'&&!o.voided)out.push({key:k,node:'archivedOrders',o:o});});return out;}
 function poUnsettled(ch){var paid=settledPayoutOrderIds();return platEntries().filter(function(e){var id=e.o.id||e.key;return e.o.channel===ch&&(e.o.settlementStatus||'unsettled')!=='settled'&&!paid[id];});}
+/* Items sold on a missed platform order (required since 29 Sep 2026) so its stock and cost post. */
+var CATCHUP_ITEM_ROWS=5;
+function catchupItemFields(){var menu=(A()&&A().menuItemsMap)||{},opts=[{value:'',label:'— none —'}].concat(Object.keys(menu).filter(function(k){return menu[k]&&menu[k].name;}).sort(function(x,y){return String(menu[x].name).localeCompare(String(menu[y].name));}).map(function(k){return {value:k,label:menu[k].name};})),out=[];
+  for(var n=1;n<=CATCHUP_ITEM_ROWS;n++){out.push({name:'item'+n,label:'Item '+n+(n===1?' (required)':''),type:'select',required:n===1,options:opts});out.push({name:'size'+n,label:'Size '+n,type:'select',options:[{value:'M',label:'M'},{value:'S',label:'S'},{value:'L',label:'L'}],value:'M'});out.push({name:'qty'+n,label:'Quantity '+n,type:'number',min:0,value:n===1?1:0});}
+  return out;}
+function catchupLines(v){var lines=[];for(var n=1;n<=CATCHUP_ITEM_ROWS;n++){var key=v['item'+n],qty=Math.floor(Number(v['qty'+n])||0);if(key&&qty>0)lines.push({itemKey:key,size:v['size'+n]||'M',qty:qty});}if(!lines.length)throw new Error('Enter at least one item with a quantity.');return lines;}
 function reKeyMissedOrder(ch,chLbl){
   if(!window.AccazaFormDialog){alert('Form service unavailable. Refresh the portal.');return;}
   var a=A();
@@ -19,7 +25,7 @@ function reKeyMissedOrder(ch,chLbl){
   var rate=(typeof channelRate==='function')?(Number(channelRate(ch))||0):0;
   window.AccazaFormDialog.run({
     title:'Re-key a missed '+chLbl+' order',
-    subtitle:'Records a '+chLbl+' order that was never entered in the POS. Books revenue, commission and the receivable on the order date. Stock is NOT deducted — reconcile small differences in inventory.',
+    subtitle:'Records a '+chLbl+' order that was never entered in the POS. Books revenue, commission and the receivable on the order date, and deducts the stock the items used so their cost is recorded. Enter every item on the order.',
     submitLabel:'Record missed order',
     busyLabel:'Recording…',
     fields:[
@@ -28,10 +34,10 @@ function reKeyMissedOrder(ch,chLbl){
       {name:'gross',label:'Gross amount (₱)',type:'number',required:true,min:0.01},
       {name:'commission',label:'Commission (₱)'+(rate?(' — about '+(rate*100).toFixed(1)+'% of gross'):''),type:'number',required:true,min:0,validate:function(v,vals){if(Number(v)>Number(vals.gross||0)+0.009)return 'Commission cannot exceed the gross amount.';}},
       {name:'reference',label:'Reference / reason (audit trail)',type:'text',required:true,maxLength:200,value:'Missed '+chLbl+' order — late entry'}
-    ]
+    ].concat(catchupItemFields())
   },function(v){
-    return a.managerApproval('rekey_platform_order',v.ref,Number(v.gross),v.reference).then(function(ap){
-      return a.recordPlatformCatchup({channel:ch,platformRef:v.ref,date:v.date,gross:Number(v.gross),commission:Number(v.commission),commissionRate:rate,reference:v.reference,approvalId:ap.approvalId});
+    var lines;return Promise.resolve().then(function(){lines=catchupLines(v);return a.managerApproval('rekey_platform_order',v.ref,Number(v.gross),v.reference);}).then(function(ap){
+      return a.recordPlatformCatchup({channel:ch,platformRef:v.ref,date:v.date,gross:Number(v.gross),commission:Number(v.commission),commissionRate:rate,reference:v.reference,lineItems:lines,approvalId:ap.approvalId});
     }).then(function(r){return (r&&r.data)||r||{};});
   }).then(function(d){
     if(!d)return;
