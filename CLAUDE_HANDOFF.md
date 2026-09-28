@@ -1,9 +1,9 @@
 # Accaza Coffee House — Authoritative Project Handoff
 
-**Prepared:** 10 August 2026  
-**Release candidate:** Release 7H  
-**Local builds:** admin v180, customer v46, service-worker cache v77
-**Truth source:** current workspace plus `release-manifest.json`
+**Prepared:** 10 August 2026 (Release 7H); header refreshed 28 September 2026  
+**Current builds:** read `release-manifest.json` → `builds` (28 Sep 2026: admin v611, Finance Books v133, customer v85, service-worker cache v596). Build numbers in older sections of this file are historical.  
+**Truth source:** current workspace plus `release-manifest.json`  
+**Pending production evidence:** see `docs/PRODUCTION_EVIDENCE_CHECKLIST.md`
 
 ## Deployment truth
 
@@ -169,6 +169,9 @@ The release is not fully verified until every pending field in `release-manifest
 Use `OPERATIONS_RELEASE_RUNBOOK.md`. Change the manifest to `production_verified` only after all verification values are no longer `pending`.
 
 ## Known limitations
+
+- JavaScript byte budgets live in one place, `tests/bundle-budgets.mjs`. Tests warn once less than 2.5% of a budget is left and fail above it; guarded source sections (70 KB) and static test modules (50 KB) warn above 95%. Split code rather than raising a ceiling without review.
+- Two September 2026 optimizations were deliberately held: cache-first service-worker loading (can leave a till on old code; needs the production performance review first) and a Finance Books journal delta cache (every journal writer would need a change stamp; a missed one would show stale amounts).
 
 - Production timing evidence for v173 is pending; local tests cannot prove real cashier-device speed.
 - The telemetry schema does not retain individual samples, device segmentation, or percentiles.
