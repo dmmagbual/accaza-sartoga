@@ -60,6 +60,8 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('getUndepositedCo
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('backupDatabaseDaily'),0,'markBackupDirtyArchivedOrders','markBackupDirtyInventoryMovements','markBackupDirtyOrderInventoryPlans','markBackupDirtyFinancialMovements','markBackupDirtyCashBalanceApplied','markBackupDirtyBooksJournal','markBackupDirtyShifts','markBackupDirtyOperationalAudit','markBackupDirtyFinancialCommandClaims','markBackupDirtyInventoryAccounting','markBackupDirtyFinancialApprovals','markBackupDirtyActivityLog','markBackupDirtyCfLedger','markBackupDirtyPettyCashReceipts','markBackupDirtyStockReceipts','markBackupDirtyPurchaseInvoices','markBackupDirtyPlatformPayouts','markBackupDirtyInternalUsage','markBackupDirtyInventoryAdjustments','markBackupDirtyPettyCashVouchers','markBackupDirtyPettyCashReplenishments','markBackupDirtyReceivables','markBackupDirtyPayables','markBackupDirtySuppliers','markBackupDirtyInventorySku','markBackupDirtyAppCustomers','markBackupDirtyReviews','markBackupDirtyFeedbacks','markBackupDirtyPackages');
 // 24 Sep 2026: sales without a usable recipe are flagged and costed later by a manager.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('recordPlatformCatchup')+1,0,'manageUncostedSales');
+// 28 Sep 2026: manager repair for Z-declared tips that pre-date the automatic close posting.
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('repairClosedShiftTurnover')+1,0,'repairShiftDeclaredTips');
 expectedFunctionExports.push('askAccazaAI');
 expectedFunctionExports.push('manageAccazaAiKnowledge');
 expectedFunctionExports.push('manageAccazaAiIssue');

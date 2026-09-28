@@ -81,6 +81,7 @@ const SharedChoiceValidation = require("./lib/shared-choice-validation");
 const HistoricalArchive = require("./lib/historical-archive");
 const UncostedSales = require("./lib/uncosted-sales");
 const TrackedRead = require("./lib/tracked-read");
+const RegisterDrawer = require("./lib/register-drawer");
 
 initializeApp();
 
@@ -1322,7 +1323,7 @@ const MANAGER_APPROVAL_ACTIONS = new Set([
   "delete_archived_order", "review_discrepancy", "approve_petty_voucher", "correct_petty_voucher",
   "reject_petty_voucher", "void_petty_voucher", "return_supplier_payment", "manual_discount", "cash_in", "purchase_cash_advance", "fixed_float_exception", "reverse_purchase",
   "rekey_platform_order", "reverse_platform_payout", "correct_platform_presettlement", "set_undeposited_opening_balance", "retire_revolving_fund",
-  "repair_closed_shift_turnover", "repair_reversed_payout_deposit", "reconcile_undeposited_custody", "certify_financial_close",
+  "repair_closed_shift_turnover", "repair_shift_declared_tips", "repair_reversed_payout_deposit", "reconcile_undeposited_custody", "certify_financial_close",
   "convert_suspense_supplier_advance", "adopt_journal_staff_advance", "correct_completed_order", "completed_order_cash_refund", "liquidate_staff_advance", "reverse_staff_advance_settlement",
 ]);
 function transactionCurrent(current, initial, state) {
@@ -1742,6 +1743,7 @@ exports.reviewDiscrepancy = onCall(
       const note=financeText(data.note,500);if(!note)throw new HttpsError("invalid-argument","A case explanation is required.");approval=await claimManagerApproval(db,data,"review_discrepancy",id,null,`review_discrepancy_${id}_${revision}`);reviewedBy=approval.record.approvedName||approval.record.approvedEmail||approval.record.approvedRole;
       const accounts=(await db.ref("/cfAccounts").get()).val()||{},booksChart=await ensureBooksChart(db),shiftRow=(await db.ref(`/shifts/${shiftId}`).get()).val()||{},varianceAt=shiftVarianceTime(shiftRow,row,now),movements=await discrepancyCandidateMovements(db,shiftId,shiftRow,row,raw),purchasePayouts=Array.isArray(shiftRow.payOuts)?shiftRow.payOuts.slice():[],pending=short?"asset:cash_shortage_pending":"liability:cash_overage_pending",legacyMovement=movements[`shift_variance_${shiftId}`]||{},source=legacyMovement.type==="shift_cash_variance"?(short?"expense:cash_shortage":"revenue:cash_overage"):pending,newLines=[],recoveredLines=[],recoveredAllocationIds=new Set(),writes=Object.assign({},approval.usedWrites),allocationRecords={},offsetCases={};
       function text(v,n){return financeText(v,n||160);}function cashAccount(destination){if(destination==="undeposited")return"asset:cash_awaiting_deposit";if(destination==="register")return"asset:register_cash";const key=financeKey(destination,"Cash destination");if(!accounts[key]||accounts[key].active===false)throw new HttpsError("failed-precondition","The selected receiving cash account is inactive or missing.");return`asset:cash_account:${key}`;}
+      const countCustody={rows:null,used:{}};
       for(const allocation of allocations){const d=allocation.details||{},v=allocation.amount,label=`${short?"Shortage":"Overage"} · ${allocation.treatment}`,record={id:allocation.id,treatment:allocation.treatment,amount:v,details:{},approvedAt:now,approvedBy:reviewedBy,approvalId:approval.id};
         if(allocation.treatment==="cash_recovered"){
           const destination=text(d.destination||"undeposited",160),asset=cashAccount(destination),requested=text(d.correctionMovementId,160),reference=text(d.reference,120);if(!reference)throw new HttpsError("invalid-argument","Recovered cash requires a return, acknowledgement, shift, or manager control reference.");let linked=requested&&movements[requested]?requested:"";
@@ -1770,7 +1772,20 @@ exports.reviewDiscrepancy = onCall(
         }else if(allocation.treatment==="unexplained_overage"){
           const investigation=text(d.investigation,400);if(!investigation)throw new HttpsError("invalid-argument","Document the investigation before recognizing unexplained overage income.");newLines.push(Financial.line(source,v,0,label),Financial.line("revenue:unexplained_cash_overage",0,v,"Unexplained cash overage"));record.details={investigation};
         }else if(allocation.treatment==="counting_error"){
-          const evidence=text(d.evidence,300);if(!evidence)throw new HttpsError("invalid-argument","Counting correction requires recount evidence.");newLines.push(short?Financial.line("asset:register_cash",v,0,"Correct understated cash count"):Financial.line(source,v,0,label),short?Financial.line(source,0,v,label):Financial.line("asset:register_cash",0,v,"Correct overstated cash count"));record.details={evidence,correctedCount:Financial.money(d.correctedCount)};
+          const evidence=text(d.evidence,300);if(!evidence)throw new HttpsError("invalid-argument","Counting correction requires recount evidence.");
+          // Undeposited Collection pool model: at close the counted cash above the float left the drawer
+          // with the handover, and the drawer now belongs to a later shift. A recount correction therefore
+          // adjusts the handed-over cash in Undeposited Collection (with its custody record), never the
+          // drawer. Only legacy final variances from the old drawer-pool model still correct the register.
+          const legacyDrawer=legacyMovement.type==="shift_cash_variance",countAsset=legacyDrawer?"asset:register_cash":"asset:cash_awaiting_deposit";
+          newLines.push(short?Financial.line(countAsset,v,0,"Correct understated cash count"):Financial.line(source,v,0,label),short?Financial.line(source,0,v,label):Financial.line(countAsset,0,v,"Correct overstated cash count"));record.details={evidence,correctedCount:Financial.money(d.correctedCount),cashAccount:legacyDrawer?"register":"undeposited"};
+          if(!legacyDrawer&&short){const custodyId=`count_correction_${id}_${allocation.id}`;writes[`cashCustody/${custodyId}`]={shiftId,staff:`Recount correction · ${text(row.staff,80)||"Cashier"}`,amount:v,depositedAmount:0,remaining:v,retainedFloat:0,status:"awaiting_deposit",closedAt:varianceAt,movementId:`cash_difference_${id}_${revision}`,source:"cash_count_correction",reference:evidence.slice(0,120),discrepancyId:id,allocationId:allocation.id,schemaVersion:3};record.recountCustodyId=custodyId;}
+          else if(!legacyDrawer){
+            countCustody.rows=countCustody.rows||await custodyRowsForShift(db,shiftId);const rows=countCustody.rows,key=Object.keys(rows).find((k)=>Financial.money((rows[k]&&rows[k].remaining!=null?rows[k].remaining:rows[k]&&rows[k].amount)||0)-Financial.money(countCustody.used[k]||0)>=v-.009);
+            if(!key)throw new HttpsError("failed-precondition","This shift's handed-over cash has already been deposited, so the overstated count cannot be removed from Undeposited Collection here. Record the difference against the bank deposit instead.");
+            const custodyRow=rows[key]||{},used=Financial.money((countCustody.used[key]||0)+v),remaining=Financial.money(Financial.money(custodyRow.remaining!=null?custodyRow.remaining:custodyRow.amount)-used),amountAfter=Financial.money(Financial.money(custodyRow.amount)-used);countCustody.used[key]=used;
+            writes[`cashCustody/${key}/remaining`]=remaining;writes[`cashCustody/${key}/amount`]=amountAfter;if(!(remaining>0))writes[`cashCustody/${key}/status`]="deposited";writes[`cashCustody/${key}/countCorrections/${id}_${allocation.id}`]={amount:v,discrepancyId:id,allocationId:allocation.id,movementId:`cash_difference_${id}_${revision}`,approvalId:approval.id,correctedAt:now};record.recountCustodyId=key;
+          }
         }else if(allocation.treatment==="offset_prior_overage"||allocation.treatment==="offset_prior_shortage"){
           if(legacyMovement.type==="shift_cash_variance")throw new HttpsError("failed-precondition","This legacy final variance cannot be offset automatically. Use a documented Finance correction so its original audit trail remains intact.");
           const otherId=financeKey(d.oppositeDiscrepancyId,"Opposite cash variance ID");if(otherId===id||offsetCases[otherId])throw new HttpsError("invalid-argument","Select one different opposite cash variance for each offset allocation.");const other=(await db.ref(`/discrepancies/${otherId}`).get()).val()||{};
@@ -2395,6 +2410,35 @@ exports.repairClosedShiftTurnover = onCall(
     const writes = Object.assign({}, approval.usedWrites, {[`cashCustody/${shiftId}`]:{shiftId,staff:financeText(shift.staff,100),amount,depositedAmount:0,remaining:amount,retainedFloat:Financial.money(shift.retainedFloat),status:"awaiting_deposit",closedAt:Number(shift.closeAt||now),movementId,source:"closed_shift_turnover_repair",schemaVersion:2},[`shifts/${shiftId}/turnoverCorrection`]:{amount,movementId,postedAt:now,postedBy:actor.uid,approvedBy,approvalId:approval.id,reason:"Confirmed cash received into Undeposited Collection",schemaVersion:1},[`operationalAudit/${now}_${shiftId}_turnover_repair`]:operationalAuditRecord("repair_closed_shift_turnover","shift",shiftId,actor,{amount,movementId,approvalId:approval.id,approvedBy})});
     const committed = await commitFinancial(db,movementId,movement,actor,writes);
     return {shiftId,amount,movementId,duplicate:committed.duplicate,repaired:!committed.duplicate};
+  },
+);
+
+// Recognizes tips a closed shift declared in its Z report when the automatic close posting never
+// ran (shifts closed before tips were posted). The same deterministic shift_tips_<id> movement as
+// the close trigger is used, so it can never post twice. It is refused unless the shift's own
+// Register Cash postings still show exactly that gap, so a difference already absorbed by another
+// correction is never recognized a second time.
+exports.repairShiftDeclaredTips = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["cashflow", "registerOps"]), data = request.data || {}, shiftId = financeKey(data.shiftId, "Shift ID"), movementId = `shift_tips_${shiftId}`;
+    const [shiftSnap, movementSnap] = await Promise.all([db.ref(`/shifts/${shiftId}`).get(), db.ref(`/financialMovements/${movementId}`).get()]);
+    const shift = shiftSnap.val() || null;
+    if (!shift || shift.status !== "closed") throw new HttpsError("failed-precondition", "Select a closed shift.");
+    const tips = shiftDeclaredTips(shift);
+    if (!(tips > 0)) throw new HttpsError("failed-precondition", "This shift's Z report declares no tips.");
+    if (movementSnap.exists()) return {shiftId, amount: tips, duplicate: true, preview: data.preview === true};
+    if (Number(shift.closeAt || 0) < RegisterDrawer.PER_SHIFT_CONTROL_FROM) throw new HttpsError("failed-precondition", "This shift closed under the old drawer model, whose register differences were settled by the historical register reset. Use a documented Finance correction if one is still needed.");
+    const anchor = Number(shift.openAt || shift.closeAt || 0), windowSnap = /* download-ok: manual tips repair reads only the shift's posting window */ await db.ref("/financialMovements").orderByChild("occurredAt").startAt(Math.max(0, anchor - 86400000)).get();
+    const registerNet = RegisterDrawer.shiftRegisterNet(shiftId, shift, windowSnap.val() || {}).net;
+    if (Math.abs(registerNet + tips) > 0.009) throw new HttpsError("failed-precondition", `Register Cash for this shift nets to ${registerNet.toFixed(2)}, not -${tips.toFixed(2)}. The tips are already reflected, or another difference on this shift must be resolved first.`);
+    const shiftReference = financeText(shift.shiftReference, 80) || shiftId;
+    if (data.preview === true) return {shiftId, shiftReference, amount: tips, staff: financeText(shift.staff, 100), closedAt: Number(shift.closeAt || 0), registerNet, preview: true, duplicate: false};
+    const approval = await claimManagerApproval(db, data, "repair_shift_declared_tips", shiftId, tips, movementId), now = Date.now(), approvedBy = approval.record.approvedName || approval.record.approvedEmail || approval.record.approvedRole;
+    const movement = shiftTipsMovement(shift, shiftId, shiftReference, {actorName: approvedBy, approvalId: approval.id, repair: true, controlReason: "Tips declared in the Z report left the drawer with the shift turnover but were never recognized"});
+    const writes = Object.assign({}, approval.usedWrites, {[`operationalAudit/${now}_${shiftId}_tips_repair`]: operationalAuditRecord("repair_shift_declared_tips", "shift", shiftId, actor, {amount: tips, movementId, approvalId: approval.id, approvedBy, accounting: "Dr Cash in Register / Cr Other Income at the shift's closing time"})});
+    const committed = await commitFinancial(db, movementId, movement, actor, writes);
+    return {shiftId, amount: tips, movementId, duplicate: committed.duplicate, repaired: !committed.duplicate};
   },
 );
 
@@ -4114,7 +4158,28 @@ exports.onShiftOpenFinancial = onValueWritten({ref: "/shifts/{shiftId}", region:
 function durableShiftReference(shift,id) { const existing=financeText(shift&&shift.shiftReference,80); if(existing)return existing; const day=financeDateFromTimestamp(Number(shift&&shift.openAt)||Date.now()).replace(/-/g,""); return `SHIFT-${day}-LEGACY-${financeKey(id,"Shift ID").slice(-8).toUpperCase()}`; }
 async function ensureShiftReferenceRecord(db,id,shift) { const shiftReference=durableShiftReference(shift,id),refKey=financeKey(shiftReference,"Shift reference"),indexRef=db.ref(`/shiftReferenceIndex/${refKey}`),claim=await indexRef.transaction((current)=>{if(current&&current.shiftId!==id)return;return current||{shiftId:id,shiftReference,openedAt:Number(shift.openAt||0),closedAt:Number(shift.closeAt||0)||null};},undefined,false);if(!claim.committed)throw new HttpsError("already-exists",`Shift reference ${shiftReference} is already linked to another shift.`);const custody=(await db.ref(`/cashCustody/${id}`).get()).val()||null,writes={[`shifts/${id}/shiftReference`]:shiftReference,[`shifts/${id}/zReport/shiftReference`]:shiftReference};if(custody)Object.assign(writes,{[`cashCustody/${id}/shiftReference`]:shiftReference,[`cashCustody/${id}/reference`]:shiftReference});await db.ref().update(writes);return shiftReference; }
 exports.ensureShiftReference = onCall({region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"}, async (request) => {const db=getDatabase(),actor=await requirePortalPermission(db,request,["registerOps"]),id=financeKey((request.data||{}).shiftId,"Shift ID"),shift=(await db.ref(`/shifts/${id}`).get()).val();if(!shift)throw new HttpsError("not-found","Shift not found.");const shiftReference=await ensureShiftReferenceRecord(db,id,shift);return{shiftId:id,shiftReference,updatedBy:actor.uid};});
-exports.onShiftCloseFinancial = onValueWritten({ref: "/shifts/{shiftId}/status", region: ORDER_REGION, retry: true}, async (event) => {if (!["closed","handover_pending"].includes(event.data.after.val()) || event.data.before.val() === "closed") return; const db = getDatabase(), id=event.params.shiftId, shift = (await db.ref(`/shifts/${id}`).get()).val() || {}, actor={uid:"server",role:"server"}, occurredAt=Number(shift.closeAt||Date.now()), shiftReference=await ensureShiftReferenceRecord(db,id,shift); const remittable=Financial.money(Math.max(0,Number(shift.cashToSettle)||0)); if (remittable>0) {const label=`${shiftReference} · closed shift cash to settle`,custody=Financial.movement("shift_cash_to_custody","shift",id,[Financial.line("asset:cash_awaiting_deposit",remittable,0,label),Financial.line("asset:register_cash",0,remittable,label)],{occurredAt,actorName:shift.staff||"Register",shiftReference,retainedFloat:Financial.money(shift.actualFloatRetained!=null?shift.actualFloatRetained:shift.retainedFloat)}); await commitFinancial(db,`shift_custody_${id}`,custody,actor,{[`cashCustody/${id}`]:{shiftId:id,shiftReference,staff:financeText(shift.staff,100),amount:remittable,depositedAmount:0,remaining:remittable,retainedFloat:Financial.money(shift.actualFloatRetained!=null?shift.actualFloatRetained:shift.retainedFloat),floatShortfall:Financial.money(shift.floatShortfall),status:"awaiting_deposit",closedAt:occurredAt,movementId:`shift_custody_${id}`,reference:shiftReference,schemaVersion:4}});} if(shift.status==="handover_pending")return; const value = Financial.money(Math.abs(Number(shift.variance) || 0)); if (!(value > 0)) return; const short = Number(shift.variance) < 0, label=`${shiftReference} · ${short?"Cash shortage pending manager reconciliation":"Cash overage pending manager reconciliation"}`, lines = short ? [Financial.line("asset:cash_shortage_pending", value, 0, label), Financial.line("asset:register_cash", 0, value, label)] : [Financial.line("asset:register_cash", value, 0, label), Financial.line("liability:cash_overage_pending", 0, value, label)]; const movement = Financial.movement("shift_cash_variance_pending", "shift", id, lines, {occurredAt,actorName:shift.staff||"Register",shiftReference,status:"pending_manager_reconciliation"}); await commitFinancial(db,`shift_variance_${id}`,movement,actor);});
+// Tips the cashier declared in the POS (change kept as a tip) are counted in the Z report's
+// expected cash and leave the drawer with the closed-shift turnover. Owner rule (Sep 2026):
+// tips declared in the Z report belong to the business. Recognize them once per shift, at the
+// shift's closing time, as Other Income; the drawer debit makes Cash in Register agree with
+// the physical count that funded the custody handover.
+function shiftDeclaredTips(shift) {
+  shift = shift || {};
+  const z = shift.zReport || {};
+  return Financial.money(Math.max(0, Number(shift.tips != null ? shift.tips : z.tips) || 0));
+}
+function shiftTipsMovement(shift, shiftId, shiftReference, extra) {
+  const tips = shiftDeclaredTips(shift);
+  if (!(tips > 0)) return null;
+  const label = `${shiftReference || shiftId} · customer tips declared in Z report`;
+  return Financial.movement("shift_tips_declared", "shift", shiftId, [Financial.line("asset:register_cash", tips, 0, label), Financial.line("revenue:pos_tips", 0, tips, label)], Object.assign({occurredAt: Number(shift.closeAt || Date.now()), actorName: shift.staff || "Register", shiftReference: shiftReference || ""}, extra || {}));
+}
+async function postShiftDeclaredTips(db, shiftId, shift, actor, shiftReference) {
+  const movement = shiftTipsMovement(shift, shiftId, shiftReference);
+  if (!movement) return {skipped: true};
+  return commitFinancial(db, `shift_tips_${shiftId}`, movement, actor);
+}
+exports.onShiftCloseFinancial = onValueWritten({ref: "/shifts/{shiftId}/status", region: ORDER_REGION, retry: true}, async (event) => {if (!["closed","handover_pending"].includes(event.data.after.val()) || event.data.before.val() === "closed") return; const db = getDatabase(), id=event.params.shiftId, shift = (await db.ref(`/shifts/${id}`).get()).val() || {}, actor={uid:"server",role:"server"}, occurredAt=Number(shift.closeAt||Date.now()), shiftReference=await ensureShiftReferenceRecord(db,id,shift); const remittable=Financial.money(Math.max(0,Number(shift.cashToSettle)||0)); if (remittable>0) {const label=`${shiftReference} · closed shift cash to settle`,custody=Financial.movement("shift_cash_to_custody","shift",id,[Financial.line("asset:cash_awaiting_deposit",remittable,0,label),Financial.line("asset:register_cash",0,remittable,label)],{occurredAt,actorName:shift.staff||"Register",shiftReference,retainedFloat:Financial.money(shift.actualFloatRetained!=null?shift.actualFloatRetained:shift.retainedFloat)}); await commitFinancial(db,`shift_custody_${id}`,custody,actor,{[`cashCustody/${id}`]:{shiftId:id,shiftReference,staff:financeText(shift.staff,100),amount:remittable,depositedAmount:0,remaining:remittable,retainedFloat:Financial.money(shift.actualFloatRetained!=null?shift.actualFloatRetained:shift.retainedFloat),floatShortfall:Financial.money(shift.floatShortfall),status:"awaiting_deposit",closedAt:occurredAt,movementId:`shift_custody_${id}`,reference:shiftReference,schemaVersion:4}});} if(shift.status==="handover_pending")return; await postShiftDeclaredTips(db,id,shift,actor,shiftReference); const value = Financial.money(Math.abs(Number(shift.variance) || 0)); if (!(value > 0)) return; const short = Number(shift.variance) < 0, label=`${shiftReference} · ${short?"Cash shortage pending manager reconciliation":"Cash overage pending manager reconciliation"}`, lines = short ? [Financial.line("asset:cash_shortage_pending", value, 0, label), Financial.line("asset:register_cash", 0, value, label)] : [Financial.line("asset:register_cash", value, 0, label), Financial.line("liability:cash_overage_pending", 0, value, label)]; const movement = Financial.movement("shift_cash_variance_pending", "shift", id, lines, {occurredAt,actorName:shift.staff||"Register",shiftReference,status:"pending_manager_reconciliation"}); await commitFinancial(db,`shift_variance_${id}`,movement,actor);});
 
 function advanceFundingAccount(row) {
   const id = financeText(row && row.fundingAccountId, 120) || "undeposited";
@@ -5774,6 +5839,9 @@ function financialControlResolution(issue) {
     holding_account_balance:["Open the original operational workflow named in the account description and finish its allocation, settlement, or variance resolution. Do not clear control accounts with a free-form journal.","books_transactions","Open Finance Books"],
     balance_off_chart:["Open Chart of Accounts, restore the account definition, and then review the linked posting before changing its account mapping.","books_transactions","Open Chart of Accounts"],
     balance_on_inactive_account:["Open Chart of Accounts and either reactivate the account while its balance is resolved, or complete the controlled transfer from its original source workflow.","books_transactions","Open Chart of Accounts"],
+    register_cash_drawer_mismatch:["Cash in Register must hold only the float plus the open shift's takings. Check the closed shifts listed with it and correct each one from its own workflow; never journal Cash in Register directly.","admin_finance","Open Undeposited Collection"],
+    shift_tips_not_recognized:["Open Undeposited Collection and use Recognize shift tips for this shift. It posts the declared tips as Other Income at the shift's closing time, once.","admin_finance","Open Undeposited Collection"],
+    shift_register_not_cleared:["If the cash was handed over, use Repair closed-shift turnover in Undeposited Collection. If it was a counting or cash difference, resolve it from Discrepancies. Never journal Cash in Register directly.","admin_finance","Open Undeposited Collection"],
     unreviewed_discrepancies:["Open Admin Discrepancies, select the actual cause, and complete the linked Finance treatment. Each option records the operational and accounting resolution together.","admin_discrepancies","Open Discrepancies"],
   };
   const resolution = resolutions[issue.kind] || ["Open the linked source record, verify the supporting evidence, and use its controlled correction workflow. The audit trail must remain intact.","books_cashflow","Review source"];
@@ -5835,6 +5903,15 @@ exports.auditFinancialControls = onCall(
     try {
       const petty=/* download-ok: manual control audit */(await db.ref("/pettyCashVouchers").get()).val()||{};Object.keys(petty).forEach((id)=>{const voucher=petty[id]||{};if(voucher.status==="approved"&&!voucher.voided&&!movements[`petty_${id}`])issues.push({severity:"critical",kind:"cash_payment_missing_custody",source:id,detail:`Approved cash payment ${financeText(voucher.voucherNo||id,80)} has not reduced Undeposited Collection.`,amount:Financial.money(voucher.amount)});});
     } catch(e){logger.warn("auditFinancialControls: cash-payment custody check skipped",{error:String(e)});}
+    try {
+      // Register Cash (Books 1000) must equal the float plus the open shift's takings; every closed
+      // shift's register postings must net to zero because its cash left with the handover.
+      const shifts=(await db.ref("/shifts").orderByChild("openAt").startAt(RegisterDrawer.PER_SHIFT_CONTROL_FROM-7*86400000).get()).val()||{},orderShift={};
+      Object.keys(shifts).forEach((sid)=>{const row=shifts[sid]||{};RegisterDrawer.shiftOrderIds(row).forEach((oid)=>{orderShift[oid]=sid;});});
+      const control=RegisterDrawer.registerDrawerControl({movements,orderShiftOf:(oid)=>(orders[oid]&&orders[oid].shiftId)||orderShift[oid]||"",floatAmount:floatControl.amount,activeShift:snaps[10].val()||{},shifts});
+      if(Math.abs(control.residual)>0.009)issues.push({severity:"critical",kind:"register_cash_drawer_mismatch",source:"register_cash",sourceLabel:"Cash in Register (Books 1000)",detail:`Cash in Register holds ${control.registerGross.toFixed(2)}; the float is ${control.floatAmount.toFixed(2)} and the open shift has taken ${control.openShiftNet.toFixed(2)} in cash${control.awaitingFinalZNet?`, with ${control.awaitingFinalZNet.toFixed(2)} awaiting a final Z report`:""}. ${Math.abs(control.residual).toFixed(2)} is ${control.residual>0?"recorded in the drawer but is not there":"missing from the drawer record"}.`,amount:control.residual});
+      control.shiftsOff.slice(0,20).forEach((row)=>{const shift=shifts[row.shiftId]||{},ref=financeText(shift.shiftReference,80)||row.shiftId,tipsGap=row.tips>0&&Math.abs(row.net+row.tips)<0.009;issues.push({severity:"critical",kind:tipsGap?"shift_tips_not_recognized":"shift_register_not_cleared",source:row.shiftId,sourceLabel:`Shift ${ref} · ${financeText(row.staff,80)||"cashier"} · closed ${financeDateFromTimestamp(row.closedAt)}`,detail:tipsGap?`Tips of ${row.tips.toFixed(2)} declared in the Z report left the drawer with the handover but were never recognized in Finance Books.`:row.net>0?`Cash in Register still holds ${row.net.toFixed(2)} from this closed shift that never moved to Undeposited Collection.`:`Cash in Register was reduced by ${Math.abs(row.net).toFixed(2)} more than this shift took in.`,amount:row.net});});
+    } catch(e){logger.warn("auditFinancialControls: register drawer check skipped",{error:String(e)});}
     // Never expose an internal key as the business-facing reference. Keep the
     // raw source for controlled actions, but present the actual transaction
     // context a manager can recognise from Admin or Finance Books.

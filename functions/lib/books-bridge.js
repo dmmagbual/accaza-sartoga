@@ -68,6 +68,8 @@ function mapAccount(posAccount, channel, cashAccountMap) {
     // source record but translate it to the overage control account on rebuild.
     "revenue:cash_overage": "2100", "revenue:payment_overage": "2100",
     "revenue:unexplained_cash_overage": "4990",
+    // Customer tips declared in the POS Z report belong to the business (owner rule, Sep 2026).
+    "revenue:pos_tips": "4990",
     "expense:cash_shortage": "6110", "equity:owner_draw": "3100", "expense:platform_commission": "6040",
     "expense:platform_variance:va_ads": "6050", "expense:platform_variance:va_marketing_success": "6050",
     "expense:platform_variance:va_promo": "6045", "expense:platform_variance:va_fees": "6080",
