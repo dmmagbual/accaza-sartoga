@@ -136,7 +136,7 @@ exports.getCurrentCashBalances = onCall(
   {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
     const db = getDatabase();
-    await requirePortalPermission(db, request, ["purchases", "cashflow", "payables"]);
+    await requirePortalPermission(db, request, ["purchases", "cashflow", "payables", "petty"]);
     const [settings, activeShiftSnap] = await Promise.all([readPosSettings(db, ["fixedFloat"]), db.ref("/posActiveShift").get()]);
     const summary = await ensureCashBalanceSummary(db);
     return CashBalances.clientBalances(summary, settings, activeShiftSnap.val() || {});

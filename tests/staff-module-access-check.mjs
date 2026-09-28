@@ -85,7 +85,7 @@ assert.ok(serverSource.includes('permissions: portalAccountPermissions(permissio
 
 // 6. A ticked tab works on its own: the server calls and database rules accept its key.
 assert.ok(undepositedSource.includes('requirePortalPermission(db,request,["petty","cashflow","undeposited"])') && undepositedSource.includes('requirePortalPermission(db, request, ["petty", "cashflow", "undeposited"])'), 'Undeposited Collection services must accept the undeposited key');
-assert.ok(historySource.slice(historySource.indexOf('exports.readHistoricalOrders'), historySource.indexOf('exports.readHistoricalSalesRollup')).includes('requirePortalPermission(db, request, ["orders", "saleshistory"])'), 'Sales History orders service must accept the saleshistory key');
+assert.ok(/requirePortalPermission\(db, request, \["orders", "saleshistory"[^\]]*\]\)/.test(historySource.slice(historySource.indexOf('exports.readHistoricalOrders'), historySource.indexOf('exports.readHistoricalSalesRollup'))), 'Sales History orders service must accept the saleshistory key');
 assert.ok(historySource.includes('requirePortalPermission(db, request, ["orders", "saleshistory", "dashboard"])'), 'Sales History summaries must accept the saleshistory key');
 const ruleLine = node => rules.split('\n').find(l => new RegExp(`^\\s+"${node}"`).test(l)) || '';
 const readOf = node => { const l = rules.split('\n').slice(rules.split('\n').findIndex(x => new RegExp(`^\\s+"${node}"`).test(x))).find(x => x.includes('".read"')); return l.slice(l.indexOf('".read"')).split('", "')[0]; };
@@ -98,17 +98,14 @@ const channel = ruleLine('channelPrices'), channelRead = channel.slice(channel.i
 assert.ok(channelRead.includes(perm('pos')), 'POS access must still read channel prices');
 assert.ok(channelWrite.includes(perm('channelpricing')) && !channelWrite.includes(perm('pos')), 'only Channel Pricing may edit channel prices');
 
-// 8. Dashboard: admins always; staff only with the Dashboard tick (off by default). It must add no
-// raw order access: only the aggregate monthly summary service accepts the dashboard key.
+// 8. Dashboard: admins always; staff only with the Dashboard tick (off by default). Its data access
+// follows the staff-screen rule in tests/staff-screen-data-access-check.mjs.
 assert.equal(coreDefaults.dashboard, false, 'Dashboard must be off by default for staff');
 assert.ok(!('dashboard' in serverLegacy), 'existing staff accounts must not inherit the Dashboard');
 assert.ok(coreSource.includes('function dashboardAllowed(){return adminLoggedIn||(staffLoggedIn&&staffDashboardAllowed);}') && coreSource.includes('staffDashboardAllowed=perms.dashboard===true;'), 'Dashboard gate must follow the Dashboard tick');
 assert.ok(coreSource.includes("if(!dashboardAllowed()||subscriptionHub.stats().activeScope!=='dashboard'){overviewInsights.stop();return;}") && !coreSource.includes("if(!adminLoggedIn||subscriptionHub.stats().activeScope!=='dashboard')"), 'renderDashboard must use the shared gate');
 const rollupGate = historySource.slice(historySource.indexOf('exports.readHistoricalSalesRollup'), historySource.indexOf('exports.manageHistoricalOrderArchive'));
 assert.ok(rollupGate.includes('requirePortalPermission(db, request, ["orders", "saleshistory", "dashboard"])'), 'Dashboard summaries must accept the dashboard key');
-const ordersGate = historySource.slice(historySource.indexOf('exports.readHistoricalOrders'), historySource.indexOf('exports.readHistoricalSalesRollup'));
-assert.ok(!ordersGate.includes('"dashboard"'), 'the Dashboard key must not unlock individual historical orders');
-for (const node of ['orders', 'archivedOrders']) assert.ok(!readOf(node).includes(perm('dashboard')), `the Dashboard key must not unlock raw ${node}`);
 
 // 9. Staff and Cashier start on POS, and their first data scope is POS (no Dashboard download at sign-in).
 assert.ok(coreSource.includes("var target={cashier:'pos',kitchen:'orders',finance:'finance',staff:'pos'}"), 'Staff must land on POS');
