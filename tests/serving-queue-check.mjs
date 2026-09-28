@@ -126,10 +126,14 @@ const fixtures=[aOrder,read(`/orders/${a.order.id}`),read(`/orders/${v.order.id}
 for(const o of fixtures)assert.equal(ctx.sqNeedsService(o?structuredClone(o):o),Service.needsService(o),'POS queue and server disagree on '+(o&&o.id));
 
 // 12. Wiring: charge hook, queue column in every POS view, close review before the cash count, Z section.
-const pos=fs.readFileSync(new URL('../assets/js/admin/pos.js',import.meta.url),'utf8'),register=fs.readFileSync(new URL('../assets/js/admin/register.js',import.meta.url),'utf8'),fn=fs.readFileSync(new URL('../functions/index.js',import.meta.url),'utf8');
-assert.ok(pos.includes('showReceipt(receipt); sqAfterCharge(receipt);'),'charge opens the Served now / Queue card');
+const pos=fs.readFileSync(new URL('../assets/js/admin/pos.js',import.meta.url),'utf8'),register=fs.readFileSync(new URL('../assets/js/admin/register.js',import.meta.url),'utf8'),fn=fs.readFileSync(new URL('../functions/index.js',import.meta.url),'utf8'),posCss=fs.readFileSync(new URL('../assets/css/admin/pos-workflow.css',import.meta.url),'utf8');
+assert.ok(pos.includes('showReceipt(receipt); sqAfterCharge(receipt);'),'charge sends the confirmed sale straight to the serving queue');
 assert.ok(pos.includes('<aside id="posServeQueue"')&&pos.includes("+'</div>'))+'</div></div>';"),'queue column wraps every POS view');
-assert.ok(/SQ_CARD_MS=5000/.test(pos)&&pos.includes("document.addEventListener('pointerdown'"),'five-second auto-queue and next-sale auto-queue');
+assert.ok(!/SQ_CARD_MS|sq-charge-card|data-sq-card/.test(pos)&&pos.includes("sqState.recent[o.id]")&&pos.includes('data-sq-prepare'),'there is no post-charge wait; the sale appears immediately with PREPARE');
+assert.ok(pos.includes("mask.className='sq-prepare-mask'")&&pos.includes('data-sq-prepared-served')&&pos.includes('data-sq-prepared-back'),'PREPARE opens one centered Served / Back to queue decision');
+assert.ok(pos.includes("sqIsPlatform(o)?'PICKED UP NOW':'SERVED'"),'platform preparation cards say PICKED UP NOW and other orders say SERVED');
+assert.ok(pos.includes('class="pz-btn sq-complete-btn"'),'SERVED and PICKED UP NOW use the dedicated green completion button');
+assert.ok(posCss.includes('body.admin-pos-workspace button:not(:disabled):active')&&posCss.includes('translateY(2px) scale(.985)')&&posCss.includes('button:focus-visible'),'every enabled POS button has visible pressed and keyboard-focus feedback');
 assert.ok(register.indexOf('window.__serveQueueCloseReview')<register.indexOf('var recon=denomTrackingOnR()'),'review happens before the cash count');
 assert.ok(register.includes('zServiceReviewHtml(z.serviceReview||shift.serviceReview)'),'Z report prints the review');
 assert.ok(/function shouldProjectOrder[\s\S]{0,700}OrderService\.keepsOrderLive\(order\)/.test(fn),'queued orders are not archived at shift close');
