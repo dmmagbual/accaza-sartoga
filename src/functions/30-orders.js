@@ -16,6 +16,9 @@ function activeOrderProjection(order) {
 function shouldProjectOrder(order, activeShift, now = Date.now()) {
   if (!order || typeof order !== "object") return false;
   if (order.inventoryReversalRequested === true && order.inventoryReversed !== true) return true;
+  // Serving queue: a paid order waiting to be served (or a "not collected" order awaiting a
+  // manager) stays live across shift changes instead of being archived at close.
+  if (OrderService.keepsOrderLive(order)) return true;
   const status = String(order.status || "Pending");
   if (["Pending", "Confirmed", "Preparing", "Ready"].includes(status)) return true;
   if (["pending", "cashier_verified"].includes(order.paymentStatus)) return true;

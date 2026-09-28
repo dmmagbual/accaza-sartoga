@@ -3,6 +3,7 @@ const {HttpsError} = require("firebase-functions/v2/https");
 const PaymentVerification = require("./payment-verification");
 const Handover = require("./shift-handover");
 const ShiftCrew = require("./shift-crew");
+const OrderService = require("./order-service");
 
 const POS_DENOM_KEYS = new Set(["b1000", "b500", "b200", "b100", "b50", "p20", "c10", "c5", "c1", "c25", "c10s", "c5s"]);
 const POS_DENOM_VALUES = {b1000:1000,b500:500,b200:200,b100:100,b50:50,p20:20,c10:10,c5:5,c1:1,c25:.25,c10s:.1,c5s:.05};
@@ -194,6 +195,9 @@ async function syncOfflinePosSaleCommand(ctx) {
   // use the indexed "unsettled" subset instead of downloading every archived order.
   const settlementDefault = platform && !raw.settlementStatus ? {settlementStatus: "unsettled"} : {};
   const order = Object.assign({}, raw, settlementDefault, paymentControl, {id: orderId, shiftId, total, lineItems: lines, clientTxnId: transactionId, syncState: "synced", syncedAt: existing && existing.syncedAt ? existing.syncedAt : now, syncedByUid: actor.uid, soldByUid: seller.uid, soldByStaffId: seller.staffId, soldBy: seller.staff, soldByRole: seller.role, recoveredBy: ctx.recovery ? ctx.recovery.managerUid : null, schemaVersion: Math.max(2, Number(raw.schemaVersion) || 0)}); delete order.cashierVerificationIntent;
+  // Serving queue (29 Sep 2026): the server, not the device, puts every newly accepted sale in the
+  // serving queue. Management recovery of a past shift's sale is history, so it is not queued.
+  delete order.service; if (!existing && !ctx.recovery && !lateClosed) order.service = OrderService.initialService(raw, now);
   const prepared=!existing&&ctx.prepareOrder?await ctx.prepareOrder(order,now):{order},durableOrder=prepared&&prepared.order||order;
   let shiftResult;if(prepaid&&!existing){const reservation=await db.ref(`/offlinePosSync/${transactionId}`).transaction((row)=>{if(row&&row.orderId&&row.orderId!==orderId)return;return row||{orderId,shiftId,state:"refund-reserved",createdAt:Number(raw.timestamp)||now,updatedAt:now,actorUid:actor.uid};},undefined,false);if(!reservation.committed)throw new HttpsError("already-exists","This POS transaction is already linked to another order.");shiftResult=await db.ref(`/shifts/${shiftId}`).transaction((row)=>applyDrawerDelta(row,transactionId,delta,now,actor),undefined,false);if(!shiftResult.committed||!shiftResult.snapshot.exists())throw new HttpsError("failed-precondition","The drawer no longer has enough cash for this refund. Recheck the denominations.");}
   if (!existing){const writes={[`orders/${orderId}`]:durableOrder,[`activeOrders/${orderId}`]:activeOrderProjection(durableOrder),[`offlinePosSync/${transactionId}`]:{orderId,shiftId,state:"order-written",createdAt:Number(raw.timestamp)||now,updatedAt:now,actorUid:actor.uid}};if(prepaid)writes[`operationalAudit/${now}_precompletion_cash_refund_${orderId}`]={action:"complete_instore_prepaid_cash_refund",sourceType:"order",sourceId:orderId,amount:prepaid.amount,confirmedElectronicAmount:prepaid.paidAmount,correctedOrderTotal:total,reason:prepaid.reason,customerAcknowledgement:prepaid.customerAcknowledgement,shiftId,actorUid:actor.uid,actorRole:actor.role,ts:now,schemaVersion:1};if(prepared&&prepared.inventoryPlan)writes[`orderInventoryPlans/${orderId}`]=prepared.inventoryPlan;await db.ref().update(writes);}

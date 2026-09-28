@@ -20,6 +20,7 @@ callableNames.unshift('manageAccazaAiIssue');
 callableNames.unshift('managePosStaffIdentity','openLinkedPosShift');
 callableNames.unshift('managePosShiftCrew','managePosSaleRecovery');
 callableNames.unshift('manageUncostedSales');
+callableNames.unshift('manageOrderService');
 callableNames.unshift('repairShiftDeclaredTips');
 callableNames.unshift('managePortalAccount');
 // Accaza AI may try up to four providers inside its 120 s server limit; the SDK default

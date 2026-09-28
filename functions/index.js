@@ -24,6 +24,7 @@ const OfflineSync = require("./lib/offline-sync");
 const PaymentVerification = require("./lib/payment-verification");
 const OrderCorrection = require("./lib/order-correction");
 const OrderStatus = require("./lib/order-status");
+const OrderService = require("./lib/order-service");
 const SupplierMaster = require("./lib/supplier-master");
 const OperationalExceptions = require("./lib/operational-exceptions");
 const BooksBridge = require("./lib/books-bridge");
@@ -1680,6 +1681,7 @@ exports.manageOrderArchive = onCall(
       if (!["Completed", "Received", "Rejected"].includes(String(order.status || "")) && order.voided !== true) {
         throw new HttpsError("failed-precondition", "Only completed, received, rejected, or voided orders can be archived.");
       }
+      if (OrderService.keepsOrderLive(order)) throw new HttpsError("failed-precondition", "This order is still in the serving queue. Mark it served or not collected first.");
       const archived = archivedOrderRecord(order, now, "manual-server");
       await db.ref().update({
         [`archivedOrders/${orderId}`]: archived,
@@ -3244,6 +3246,9 @@ function activeOrderProjection(order) {
 function shouldProjectOrder(order, activeShift, now = Date.now()) {
   if (!order || typeof order !== "object") return false;
   if (order.inventoryReversalRequested === true && order.inventoryReversed !== true) return true;
+  // Serving queue: a paid order waiting to be served (or a "not collected" order awaiting a
+  // manager) stays live across shift changes instead of being archived at close.
+  if (OrderService.keepsOrderLive(order)) return true;
   const status = String(order.status || "Pending");
   if (["Pending", "Confirmed", "Preparing", "Ready"].includes(status)) return true;
   if (["pending", "cashier_verified"].includes(order.paymentStatus)) return true;
@@ -5623,6 +5628,17 @@ exports.manageUncostedSales = onCall(
     }
     if (action === "scan") return scanUncostedSales(db, data);
     throw new HttpsError("invalid-argument", "Choose a supported action.");
+  },
+);
+
+// Serving queue (29 Sep 2026): mark POS sales served, return them to the queue, record an
+// order the customer did not collect, a manager's review of it, and the close-of-shift review.
+// Operational state only: no revenue, tender, inventory, COGS or Finance Books effect.
+exports.manageOrderService = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["pos", "registerOps", "orders"]);
+    return OrderService.manageOrderServiceCommand({db, actor, data: request.data || {}, activeOrderProjection, shouldProjectOrder, error: (code, message) => new HttpsError(code, message)});
   },
 );
 

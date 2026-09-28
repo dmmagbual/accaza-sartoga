@@ -24,6 +24,7 @@ const OfflineSync = require("./lib/offline-sync");
 const PaymentVerification = require("./lib/payment-verification");
 const OrderCorrection = require("./lib/order-correction");
 const OrderStatus = require("./lib/order-status");
+const OrderService = require("./lib/order-service");
 const SupplierMaster = require("./lib/supplier-master");
 const OperationalExceptions = require("./lib/operational-exceptions");
 const BooksBridge = require("./lib/books-bridge");

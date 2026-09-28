@@ -35,6 +35,7 @@ exports.manageOrderArchive = onCall(
       if (!["Completed", "Received", "Rejected"].includes(String(order.status || "")) && order.voided !== true) {
         throw new HttpsError("failed-precondition", "Only completed, received, rejected, or voided orders can be archived.");
       }
+      if (OrderService.keepsOrderLive(order)) throw new HttpsError("failed-precondition", "This order is still in the serving queue. Mark it served or not collected first.");
       const archived = archivedOrderRecord(order, now, "manual-server");
       await db.ref().update({
         [`archivedOrders/${orderId}`]: archived,

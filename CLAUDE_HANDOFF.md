@@ -54,6 +54,8 @@ The application intentionally remains a lightweight native HTML/JavaScript Fireb
 
 `/orders` is authoritative. `/activeOrders` is a bounded projection for live screens. Closed/resolved orders leave the active projection while authoritative history remains available through bounded/paginated reads.
 
+Serving queue (admin 615, 29 Sep 2026): every POS sale the server accepts (`syncOfflinePosSale`) is stamped `service.state: queued`; staff clear it with Served (`manageOrderService`), or record it as not collected (manager review). Queued and unreviewed not-collected orders stay in `/orders` and `/activeOrders` across shift close (`OrderService.keepsOrderLive` in `shouldProjectOrder`). Shift close asks for an outcome for every unserved order before the cash count and prints it on the Z report; it never blocks the close. Serving state is operational only: no revenue, tender, inventory, COGS or Finance Books effect. Website orders complete through `updateOrderStatus`. Logic: `functions/lib/order-service.js`, `src/admin/pos/51-serve-queue.js`; test `tests/serving-queue-check.mjs`.
+
 The browser previews prices and COGS. Cloud Functions are authoritative for customer pricing, portal order-status transitions, inventory movements, COGS snapshots, financial movements, sensitive approvals, payout settlement, archive decisions, and offline sale replay. Existing order status can no longer be changed directly by a browser; `updateOrderStatus` records the actor, transition history, idempotency claim, and operational audit.
 
 ## Authentication and roles

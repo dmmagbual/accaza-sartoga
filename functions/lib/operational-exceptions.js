@@ -1,6 +1,7 @@
 "use strict";
 
 const {MAX_FAILED_EVENTS_PER_DAY} = require("./retry-guard");
+const OrderService = require("./order-service");
 
 const TERMINAL = new Set(["Completed", "Received", "Rejected", "Archived"]);
 const FINALIZED = new Set(["Completed", "Received"]);
@@ -101,6 +102,11 @@ function buildOperationalExceptions(input, now = Date.now()) {
   const financial = input.financialMovements || {},inventoryEvidence=input.inventoryMovementEvidence||{}, offline = rows(input.offlinePosSync), custody = rows(input.cashCustody);
   const thirtyMinutes = 1800000, fiveMinutes = 300000;
   active.forEach((order) => {const at = stamp(order), status = String(order.status || "Pending");if (!TERMINAL.has(status) && at && now - at > thirtyMinutes) exceptions.push(item("stuck_order", now - at > 7200000 ? "critical" : "warning", order.id, `Order ${order.id} is still ${status}`, "Review the live order and confirm its correct status.", at, "orders"));});
+  // Serving queue (29 Sep 2026): a paid POS sale still waiting after three hours, or an order
+  // recorded as not collected that no manager has reviewed yet.
+  active.forEach((order) => {if (order.voided === true || !order.service) return;const s = order.service, state = String(s.state || "");
+    if (state === "queued" && OrderService.needsService(order)) {const at = Number(s.queuedAt || order.timestamp || 0);if (at && now - at > 3 * 3600000) exceptions.push(item("unserved_order", "warning", `serve_${order.id}`, `Order ${order.id} (${order.name || "Walk-in"}) is still in the serving queue`, "Confirm with the staff on duty whether it was handed over; mark it served or record it as not collected from the POS serving queue.", at, "pos"));}
+    else if (state === "not_collected" && !s.reviewedAt) exceptions.push(item("uncollected_order", "warning", `uncollected_${order.id}`, `Order ${order.id} (${order.name || "Walk-in"}) was not collected`, `${String(s.notCollectedReason || "No reason given").slice(0, 160)}. Decide on a refund, remake or waste, then mark it reviewed in POS Shift Orders.`, Number(s.notCollectedAt || 0), "pos"));});
   offline.forEach((sync) => {const at = stamp(sync), state = String(sync.state || "unknown");if (state !== "synced" && at && now - at > fiveMinutes) exceptions.push(item("offline_sync", "critical", sync.id, `Offline sale ${sync.id} did not finish`, `Server sync remains ${state}. Use the POS offline queue to retry from the originating device.`, at, "pos"));});
   orders.forEach((order) => {const status = String(order.status || ""), at = stamp(order);if (!FINALIZED.has(status) || order.voided === true) return;if (order.inventoryDeducted !== true || order.inventoryLedgerVersion !== 1){if(inventoryEvidence[order.id])exceptions.push(item("inventory_marker_gap","warning",order.id,`Inventory confirmation marker missing for order ${order.id}`,"Some order-specific inventory movements exist. Use Complete inventory posting to verify the existing evidence and post only proven missing ingredients once.",at,"inventory"));else exceptions.push(item("inventory_gap", "critical", order.id, `Inventory posting missing for order ${order.id}`, "The completed order has no confirmed server inventory deduction or order-specific movement evidence. Investigate before manually adjusting stock.", at, "inventory"));}if (order.paymentStatus !== "pending" && !financial[`sale_${order.id}`]) exceptions.push(item("financial_gap", "critical", order.id, `Accounting posting missing for order ${order.id}`, "The completed order has no immutable sale movement. Open Finance Books → Cash Flow and select Run control audit.", at,"cashflow"));});
   // A positive Undeposited Collection balance is normal custody, not an
