@@ -11,6 +11,7 @@ const revoked = [];
 const authStub = {getAuth: () => ({revokeRefreshTokens: async (uid) => { if (uid === 'ghost_user') { const e = new Error('gone'); e.code = 'auth/user-not-found'; throw e; } revoked.push(uid); }})};
 const db = createFakeDatabase({
   admins: {owner_uid1: 'owner', cashier_uid: {role: 'cashier'}, manager_uid: 'manager', ghost_user: 'staff'},
+  portalPresence: {owner_uid1: {owner_tab: {app: 'admin'}}, cashier_uid: {cashier_tab: {app: 'admin'}}},
   appCustomers: {'09170000000': {name: 'Customer'}},
 });
 const {exports: fx} = loadFunctions(db, {libOverrides: {'firebase-admin/auth': authStub}});
@@ -29,6 +30,11 @@ assert.deepEqual(revoked.sort(), ['cashier_uid', 'manager_uid', 'owner_uid1'], '
 assert.equal(result.accounts, 4); assert.equal(result.revoked, 3); assert.equal(result.failed, 0, 'an account already deleted is not a failure');
 const cutoff = (await db.ref('/sessionControl/cutoff').get()).val();
 assert.equal(cutoff.reason, 'Download spike from old tabs'); assert.equal(cutoff.by, 'owner_uid1'); assert.equal(cutoff.at % 1000, 0, 'the cutoff is whole seconds, like token times');
+assert.equal((await db.ref('/portalPresence').get()).val(), null, 'emergency sign-out clears stale online devices immediately');
+for (const uid of ['owner_uid1', 'cashier_uid', 'manager_uid', 'ghost_user']) {
+  const seen = (await db.ref(`/portalLastSeen/${uid}`).get()).val();
+  assert.equal(seen.signedOut, true, `${uid} is visibly marked signed out`); assert.equal(seen.at, cutoff.at);
+}
 const audit = Object.entries((await db.ref('/operationalAudit').get()).val() || {}).find(([k]) => k.endsWith('_sign_out_all_sessions'));
 assert.ok(audit, 'the action is audited');
 assert.ok((await db.ref('/appCustomers/09170000000').get()).exists(), 'customer records are untouched');

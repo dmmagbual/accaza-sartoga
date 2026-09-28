@@ -37,7 +37,9 @@ exports.signOutAllPortalSessions=onCall({region:ORDER_REGION,enforceAppCheck:ENF
   let revoked=0;const failed=[];
   for(const uid of uids){try{await getAdminAuth().revokeRefreshTokens(uid);revoked++;}catch(error){if(String(error&&error.code||'')!=='auth/user-not-found')failed.push(uid);}}
   const record={at:now,by:actor.uid,byName:actor.name,reason,accounts:uids.length,revoked,failed:failed.length,schemaVersion:1};
-  await db.ref().update({'sessionControl/cutoff':record,[`operationalAudit/${now}_sign_out_all_sessions`]:operationalAuditRecord('sign_out_all_sessions','sessionControl','cutoff',actor,{reason,accounts:uids.length,revoked,failed:failed.length})});
+  const writes={'sessionControl/cutoff':record,portalPresence:null,[`operationalAudit/${now}_sign_out_all_sessions`]:operationalAuditRecord('sign_out_all_sessions','sessionControl','cutoff',actor,{reason,accounts:uids.length,revoked,failed:failed.length})};
+  uids.forEach(uid=>{writes[`portalLastSeen/${uid}`]={app:'admin',build:0,device:'All portal devices',signedOut:true,at:now};});
+  await db.ref().update(writes);
   sessionCutoffCache={at:now,loadedAt:Date.now()};
   return record;
 });

@@ -8,7 +8,7 @@ if(!rulesRaw.includes('auth != null && (!data.exists() || ('))fail('create-only 
 if(!rulesRaw.includes("newData.child('message').val().length <= 800"))fail('feedback message limit missing');
 if(!rulesRaw.includes("newData.child('notes').val().length <= 500"))fail('reservation note limit missing');
 
-const loginBlock=section(adminSource,'function portalRole(raw)','window.logoutAdmin=function()');
+const loginBlock=section(adminSource,'function portalRole(raw)','window.logoutAdmin=async function()');
 if(!loginBlock.includes('onAuthStateChanged(auth'))fail('Firebase-auth portal gate missing');
 if(!loginBlock.includes("get(ref(db,'admins/'+user.uid))"))fail('server-backed role lookup missing');
 if(/sessionStorage\.getItem\([^)]*accaza_admin_session/.test(loginBlock))fail('browser session still restores portal authority');

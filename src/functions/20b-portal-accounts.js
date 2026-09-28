@@ -200,6 +200,8 @@ exports.managePortalAccount = onCall(
       await getAdminAuth().revokeRefreshTokens(uid);
       await db.ref().update({
         [`sessionControl/users/${uid}`]: {at, by: actor.uid, byName: actor.name, reason, schemaVersion: 1},
+        [`portalPresence/${uid}`]: null,
+        [`portalLastSeen/${uid}`]: {app:"admin",build:0,device:"All portal devices",signedOut:true,at},
         [`operationalAudit/${now}_portal_account_sign_out_${uid}`]: operationalAuditRecord("portal_account_signed_out", "portalAccount", uid, actor, {reason}),
       });
       return {uid, signedOut: true, at};

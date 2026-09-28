@@ -3,8 +3,10 @@ import {getDatabase, ref, get, set, push, remove, onDisconnect, serverTimestamp,
 import {getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {getFunctions, httpsCallable} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 import {startPortalPresence, runningBuild} from "../shared/portal-presence.mjs";
-let stopPresence=null;
-function endPresence(signedOut){ if(stopPresence){ stopPresence({signedOut:signedOut===true}); stopPresence=null; } }
+import {startPortalIdle} from "../shared/portal-idle.mjs";
+let stopPresence=null,idleController=null,booksShift=null;
+function endPresence(signedOut){ const stop=stopPresence;stopPresence=null;return stop?stop({signedOut:signedOut===true}):Promise.resolve(); }
+function endIdle(){if(idleController){idleController.stop();idleController=null;}}
 const cfg={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 function setPill(text,cls){ const el=document.getElementById("liveStatus"); if(el){ el.textContent=text; el.className="live-pill "+cls; } }
 let app,db,auth;
@@ -15,7 +17,7 @@ if(typeof fns!=="undefined")window.__manageSupplier=function(payload){return htt
 if(auth){
   setPersistence(auth, browserLocalPersistence).catch(()=>{});
   window.__booksSignIn=(email,pw)=>{ signInWithEmailAndPassword(auth,email,pw).then(()=>window.App&&App.closeModal()).catch(e=>alert("Sign-in failed: "+e.message)); };
-  window.__booksSignOut=()=>{ endPresence(true); return signOut(auth); };
+  window.__booksSignOut=async()=>{ endIdle();await endPresence(true);return signOut(auth); };
   let journalCache={}, monthlyNetCache={}, reviewCache={}, booksStops=[], optionalStops={}, currentTab=(window.__booksCurrentTab||'dashboard');
   const OPTIONAL_FEEDS={
     // Cash Flow downloads only the selected period's movements. Opening cash comes from
@@ -127,20 +129,23 @@ if(auth){
     
   }
   window.__booksRebindPeriod=function(){bindPeriodJournal();bindPeriodFinancial();};
-  onAuthStateChanged(auth, user=>{
+  onAuthStateChanged(auth, async user=>{
     window.__booksUser = user?(user.email||"signed in"):null;
     window.__booksChartManager = !!(user && user.email && ["danilomagbual@gmail.com","contact.mariadaniela@gmail.com"].indexOf(String(user.email).toLowerCase())>=0);
     if(user && window.__booksChartManager && window.__manageBooksAccount){ window.__manageBooksAccount({action:'initialize'}).catch(function(){}); }
-    endPresence(!user);stopBooksFeeds();orderStops.splice(0).forEach(function(stop){stop();});
+    endIdle();await endPresence(!user);booksShift=null;stopBooksFeeds();orderStops.splice(0).forEach(function(stop){stop();});
     if(journalUnsub){journalUnsub();journalUnsub=null;}
     if(user){ setPill("● Live · "+(user.email||"synced"),"ok");if(window.__manageSupplier)window.__manageSupplier({action:"initialize_legacy"}).catch(function(){});
       bindPeriodJournal();
       // Owner emergency sign-out: end this session if it signed in before the cutoff.
       stopPresence=startPortalPresence({db,ref,onValue,onDisconnect,set,push,remove,serverTimestamp},{uid:user.uid,app:"books",build:runningBuild(document,"accaza-books-build")});
-      const endIfBefore=async(c,single)=>{ const at=Number(c&&c.at)||0; if(!at||!auth.currentUser||auth.currentUser.uid!==user.uid)return; let signedInAt=0; try{signedInAt=Date.parse((await user.getIdTokenResult()).authTime)||0;}catch(_e){return;} if(signedInAt&&signedInAt<at){ endPresence(true); try{await signOut(auth);}catch(_o){} alert((single?"A Super Admin signed this account out":"The owner signed every device out")+(c.reason?(": "+c.reason):"")+". Sign in again."); } };
+      idleController=startPortalIdle({uid:user.uid,getShift:()=>booksShift,onTimeout:()=>window.__booksSignOut()});
+      const endIfBefore=async(c,single)=>{ const at=Number(c&&c.at)||0; if(!at||!auth.currentUser||auth.currentUser.uid!==user.uid)return; let signedInAt=0; try{signedInAt=Date.parse((await user.getIdTokenResult()).authTime)||0;}catch(_e){return;} if(signedInAt&&signedInAt<at){ endIdle();await endPresence(true); try{await signOut(auth);}catch(_o){} alert((single?"A Super Admin signed this account out":"The owner signed every device out")+(c.reason?(": "+c.reason):"")+". Sign in again."); } };
       watchValue(ref(db,"/sessionControl/cutoff"), s=>endIfBefore(s.val()||{},false), ()=>{});
       // This account only: Super Admin "Sign out this user".
       watchValue(ref(db,"/sessionControl/users/"+user.uid), s=>endIfBefore(s.val()||{},true), ()=>{});
+      // One bounded live record decides whether this browser opened or joined the active shift.
+      watchValue(ref(db,"/posActiveShift"),s=>{booksShift=s.val()||null;if(idleController)idleController.checkNow();},()=>{});
       watchValue(ref(db,"/books/monthlyNet"), s=>{ monthlyNetCache=s.val()||{}; scheduleJournalRefresh(); }, ()=>{});
       watchValue(ref(db,"/accountingPeriods"), s=>{ window.__accountingPeriods=s.val()||{}; window.__isAccountingPeriodClosed=function(date){var record=(window.__accountingPeriods||{})[String(date||'').slice(0,7)]||{};return record.status==='closed';}; if(window.App&&App.render)App.render(); }, ()=>{});
       reviewCache={};window.__booksReviewQueue={};

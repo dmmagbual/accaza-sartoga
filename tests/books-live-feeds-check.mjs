@@ -35,13 +35,16 @@ const context = {
   // Portal presence writes one small record and is covered by tests/portal-presence-check.mjs.
   set: async () => {}, push: (target) => ({path: `${target.path}/conn`}), remove: async () => {}, onDisconnect: () => ({remove: async () => {}, cancel: async () => {}}), serverTimestamp: () => 0,
   startPortalPresence: () => () => {}, runningBuild: () => 130,
+  // Browser binding and inactivity are exercised in tests/portal-idle-check.mjs. This harness
+  // only verifies that Finance Books keeps its Firebase reads bounded.
+  startPortalIdle: () => ({stop() {}, checkNow() {}}),
 };
 context.globalThis = context;
 vm.createContext(context);
 vm.runInContext(source, context);
 context.App = win.App;
 assert.ok(authCallback, 'Books waits for sign-in');
-authCallback({email: 'owner@example.com'});
+await authCallback({uid: 'owner_uid', email: 'owner@example.com', getIdTokenResult: async () => ({authTime: new Date().toISOString()})});
 const active = () => listeners.filter((l) => l.active).map((l) => l.target);
 const tab = (id) => windowListeners['accaza-books-tab']({detail: {id}});
 
