@@ -3,7 +3,8 @@
    /portalPresence/<uid>/<connection> while it is connected. Firebase removes it on its own when
    the page closes or the connection drops (onDisconnect), so nothing piles up. Pages never read
    presence; only the Super Admin's User Accounts screen does, and only while it is open.
-   portalLastSeen/<uid> keeps the moment the account's last page disconnected (server clock).
+   portalLastSeen/<uid> keeps the moment the account's last page disconnected (server clock) and
+   whether that was a real sign-out (signedOut:true) or just a sleeping/closed/offline device.
    The Firebase functions are passed in so Admin and Books share this code with their own SDK. */
 
 function describeDevice(nav) {
@@ -19,7 +20,7 @@ function startPortalPresence(fb, {uid, app, build}) {
   const node = push(ref(db, `portalPresence/${uid}`)), lastSeen = ref(db, `portalLastSeen/${uid}`);
   const device = describeDevice(typeof navigator !== 'undefined' ? navigator : null);
   const record = {app, build: Number(build) || 0, device, connectedAt: serverTimestamp()};
-  const seen = () => ({app, build: Number(build) || 0, device, at: serverTimestamp()});
+  const seen = (signedOut) => ({app, build: Number(build) || 0, device, signedOut: signedOut === true, at: serverTimestamp()});
   let stopped = false;
   // Re-arm on every reconnect: Firebase clears onDisconnect handlers once they fire. On disconnect
   // the server removes the presence record and stamps portalLastSeen with its own clock.
@@ -27,16 +28,18 @@ function startPortalPresence(fb, {uid, app, build}) {
     if (stopped || snap.val() !== true) return;
     // Independent: a refused last-seen write (e.g. rules not yet deployed) must never stop presence.
     onDisconnect(node).remove().then(() => (stopped ? null : set(node, record))).catch(() => {});
-    onDisconnect(lastSeen).set(seen()).catch(() => {});
+    onDisconnect(lastSeen).set(seen(false)).catch(() => {});
   });
-  return function stopPortalPresence() {
+  // stop({signedOut:true}) when the person signs out; stop() when only this page's presence ends.
+  return function stopPortalPresence(options) {
     if (stopped) return;
     stopped = true;
     stopWatch();
-    onDisconnect(node).cancel().catch(() => {});
-    onDisconnect(lastSeen).cancel().catch(() => {});
-    set(lastSeen, seen()).catch(() => {});
-    remove(node).catch(() => {});
+    // Write first, then disarm. If the writes are refused (the session already ended in another
+    // tab), the armed handlers stay in place so Firebase still clears presence when the page closes.
+    Promise.all([set(lastSeen, seen(!!(options && options.signedOut))), remove(node)])
+      .then(() => Promise.all([onDisconnect(node).cancel(), onDisconnect(lastSeen).cancel()]))
+      .catch(() => {});
   };
 }
 

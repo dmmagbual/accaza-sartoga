@@ -4,7 +4,7 @@ import {getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPer
 import {getFunctions, httpsCallable} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 import {startPortalPresence, runningBuild} from "../shared/portal-presence.mjs";
 let stopPresence=null;
-function endPresence(){ if(stopPresence){ stopPresence(); stopPresence=null; } }
+function endPresence(signedOut){ if(stopPresence){ stopPresence({signedOut:signedOut===true}); stopPresence=null; } }
 const cfg={apiKey:"AIzaSyAsh6j1T0tC-v2avj1J2mfCDdFG88FcpUM",authDomain:"accaza-sartoga.firebaseapp.com",databaseURL:"https://accaza-sartoga-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"accaza-sartoga",storageBucket:"accaza-sartoga.firebasestorage.app",messagingSenderId:"315522485228",appId:"1:315522485228:web:64ed3b7facef5a39148ec9"};
 function setPill(text,cls){ const el=document.getElementById("liveStatus"); if(el){ el.textContent=text; el.className="live-pill "+cls; } }
 let app,db,auth;
@@ -15,7 +15,7 @@ if(typeof fns!=="undefined")window.__manageSupplier=function(payload){return htt
 if(auth){
   setPersistence(auth, browserLocalPersistence).catch(()=>{});
   window.__booksSignIn=(email,pw)=>{ signInWithEmailAndPassword(auth,email,pw).then(()=>window.App&&App.closeModal()).catch(e=>alert("Sign-in failed: "+e.message)); };
-  window.__booksSignOut=()=>{ endPresence(); return signOut(auth); };
+  window.__booksSignOut=()=>{ endPresence(true); return signOut(auth); };
   let journalCache={}, monthlyNetCache={}, reviewCache={}, booksStops=[], optionalStops={}, currentTab=(window.__booksCurrentTab||'dashboard');
   const OPTIONAL_FEEDS={
     // Cash Flow downloads only the selected period's movements. Opening cash comes from
@@ -122,13 +122,13 @@ if(auth){
     window.__booksUser = user?(user.email||"signed in"):null;
     window.__booksChartManager = !!(user && user.email && ["danilomagbual@gmail.com","contact.mariadaniela@gmail.com"].indexOf(String(user.email).toLowerCase())>=0);
     if(user && window.__booksChartManager && window.__manageBooksAccount){ window.__manageBooksAccount({action:'initialize'}).catch(function(){}); }
-    endPresence();stopBooksFeeds();orderStops.splice(0).forEach(function(stop){stop();});
+    endPresence(!user);stopBooksFeeds();orderStops.splice(0).forEach(function(stop){stop();});
     if(journalUnsub){journalUnsub();journalUnsub=null;}
     if(user){ setPill("● Live · "+(user.email||"synced"),"ok");if(window.__manageSupplier)window.__manageSupplier({action:"initialize_legacy"}).catch(function(){});
       bindPeriodJournal();
       // Owner emergency sign-out: end this session if it signed in before the cutoff.
       stopPresence=startPortalPresence({db,ref,onValue,onDisconnect,set,push,remove,serverTimestamp},{uid:user.uid,app:"books",build:runningBuild(document,"accaza-books-build")});
-      const endIfBefore=async(c,single)=>{ const at=Number(c&&c.at)||0; if(!at||!auth.currentUser||auth.currentUser.uid!==user.uid)return; let signedInAt=0; try{signedInAt=Date.parse((await user.getIdTokenResult()).authTime)||0;}catch(_e){return;} if(signedInAt&&signedInAt<at){ endPresence(); try{await signOut(auth);}catch(_o){} alert((single?"A Super Admin signed this account out":"The owner signed every device out")+(c.reason?(": "+c.reason):"")+". Sign in again."); } };
+      const endIfBefore=async(c,single)=>{ const at=Number(c&&c.at)||0; if(!at||!auth.currentUser||auth.currentUser.uid!==user.uid)return; let signedInAt=0; try{signedInAt=Date.parse((await user.getIdTokenResult()).authTime)||0;}catch(_e){return;} if(signedInAt&&signedInAt<at){ endPresence(true); try{await signOut(auth);}catch(_o){} alert((single?"A Super Admin signed this account out":"The owner signed every device out")+(c.reason?(": "+c.reason):"")+". Sign in again."); } };
       watchValue(ref(db,"/sessionControl/cutoff"), s=>endIfBefore(s.val()||{},false), ()=>{});
       // This account only: Super Admin "Sign out this user".
       watchValue(ref(db,"/sessionControl/users/"+user.uid), s=>endIfBefore(s.val()||{},true), ()=>{});
