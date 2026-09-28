@@ -21,6 +21,8 @@
   function sectionTitle(number,title,help){return '<div style="margin:1.2rem 0 .75rem;"><div style="font-size:.68rem;font-weight:800;color:var(--tl);letter-spacing:.08em;">'+number+'</div><h3 style="font-family:\'Playfair Display\',serif;color:var(--bd);margin:.12rem 0;">'+esc(title)+'</h3><p style="font-size:.78rem;color:var(--tl);margin:.2rem 0 0;">'+esc(help)+'</p></div>';}
   function issueGuidance(x){var map={
     stuck_order:{owner:'Shift manager',action:'Open Orders, confirm what happened with the customer, then complete, reject, or correct the order.'},
+    unserved_order:{owner:'Shift manager',action:'Ask the staff on duty whether the order was handed over. In the POS serving queue, mark it served, or record it as not collected with the reason.'},
+    uncollected_order:{owner:'Shift manager',action:'Decide on a refund (existing refund process), a remake, or waste. Then open POS → Shift Orders and mark it reviewed with the decision.'},
     offline_sync:{owner:'Cashier who made the sale + shift manager',action:'Reconnect the originating POS device and retry its offline queue. Do not enter the sale again.'},
     inventory_gap:{owner:'Inventory manager',action:'Open Inventory and investigate the sale movements. Do not manually reduce stock until the missing posting is understood.'},
     inventory_marker_gap:{owner:'Inventory manager',action:'Use Complete inventory posting. The server verifies existing movements, posts only proven missing ingredients once, and then completes the linked COGS evidence.'},
@@ -75,7 +77,7 @@
   // that can move it off WORKING NORMALLY. Red is reserved for listed critical categories/checks.
   var DOMAINS=[
     {name:'Frontend & customer app',tab:'operations',cats:['client_error'],monitor:function(id){return id==='client_errors'||id.indexOf('performance_')===0;},note:'Customer pages, POS screen speed, and browser errors.'},
-    {name:'POS & order service',tab:'pos',cats:['offline_sync','stuck_order','pos_sale_rejected','shift_handover_pending','shift_close_follow_up'],badCats:['offline_sync','stuck_order','pos_sale_rejected'],checks:['order_availability','order_tracker_projection','customer_journey','pwa_offline'],note:'Sales, order acceptance, shift close, and offline recovery.'},
+    {name:'POS & order service',tab:'pos',cats:['offline_sync','stuck_order','unserved_order','uncollected_order','pos_sale_rejected','shift_handover_pending','shift_close_follow_up'],badCats:['offline_sync','stuck_order','pos_sale_rejected'],checks:['order_availability','order_tracker_projection','customer_journey','pwa_offline'],note:'Sales, order acceptance, shift close, and offline recovery.'},
     {name:'Cash & payment systems',tab:'undeposited',cats:['financial_gap','payment_proof','payment_routing'],badCats:['financial_gap','payment_routing'],checks:['payment_configuration','finance_reconciliation'],badChecks:['payment_configuration'],note:'Payment setup, proof access, cash custody, and settlement controls.'},
     {name:'Inventory systems',tab:'inventory',cats:['inventory_gap','inventory_marker_gap'],badCats:['inventory_gap'],note:'Stock deductions and order-linked inventory evidence.'},
     {name:'Recipes & costing',tab:'recipes',cats:['uncosted_sale'],checks:['customer_catalog'],note:'Recipe setup, ingredient mapping, packaging, and sale costing.'},
