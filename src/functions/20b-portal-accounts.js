@@ -175,6 +175,23 @@ exports.managePortalAccount = onCall(
       try { await db.ref().update({[`admins/${uid}`]: Object.assign({}, raw, {role, previousRole: null, active: true, disabled: null, disabledAt: null, disabledBy: null, updatedAt: now, updatedBy: actor.uid}), [`operationalAudit/${now}_portal_account_reactivate_${uid}`]: operationalAuditRecord("portal_account_reactivated", "portalAccount", uid, actor, {role})}); } catch (error) { try { await getAdminAuth().updateUser(uid, {disabled: true}); } catch (_rollbackError) {} throw error; }
       return {uid, role, reactivated: true};
     }
+    if (action === "sign_out") {
+      // Signs one account out of every device: refresh tokens are revoked, open Admin/POS and
+      // Finance Books pages sign out through /sessionControl/users/<uid>, and callables refuse
+      // any session that signed in before the cutoff.
+      const uid = financeKey(data.uid, "Account"), reason = financeText(data.reason, 200).trim();
+      if (uid === actor.uid) throw new HttpsError("failed-precondition", "Use Log out to end your own session.");
+      if (reason.length < 5) throw new HttpsError("invalid-argument", "Enter the reason for signing this account out.");
+      const raw = (await db.ref(`/admins/${uid}`).get()).val();
+      if (!raw) throw new HttpsError("not-found", "Portal account not found.");
+      const at = Math.floor(now / 1000) * 1000;
+      await getAdminAuth().revokeRefreshTokens(uid);
+      await db.ref().update({
+        [`sessionControl/users/${uid}`]: {at, by: actor.uid, byName: actor.name, reason, schemaVersion: 1},
+        [`operationalAudit/${now}_portal_account_sign_out_${uid}`]: operationalAuditRecord("portal_account_signed_out", "portalAccount", uid, actor, {reason}),
+      });
+      return {uid, signedOut: true, at};
+    }
     if (action === "normalize_legacy") {
       const shift = (await db.ref("/posActiveShift").get()).val();
       if (shift && shift.status !== "closed") throw new HttpsError("failed-precondition", "Close the active POS shift before normalizing legacy account roles.");

@@ -47,11 +47,24 @@ async function portalSessionCutoff(db) {
   } catch (_error) { /* keep the last known cutoff; never block sign-in on a read failure */ }
   return sessionCutoffCache.at;
 }
+// Super Admin "Sign out this user": /sessionControl/users/<uid>/at, cached per account like the
+// everyone cutoff so a callable costs at most one small read per account per minute.
+const userCutoffCache = new Map();
+async function portalUserSessionCutoff(db, uid) {
+  const cached = userCutoffCache.get(uid);
+  if (cached && Date.now() - cached.loadedAt < SESSION_CUTOFF_CACHE_MS) return cached.at;
+  let at = cached ? cached.at : 0;
+  try { at = Number((await db.ref(`/sessionControl/users/${uid}/at`).get()).val()) || 0; } catch (_error) { /* keep the last known cutoff */ }
+  userCutoffCache.set(uid, {at, loadedAt: Date.now()});
+  return at;
+}
 function sessionSignedInAt(request) { return (Number(request && request.auth && request.auth.token && request.auth.token.auth_time) || 0) * 1000; }
 async function requirePortalUser(db, request) {
   if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "Staff login is required.");
   const signedInAt = sessionSignedInAt(request), cutoff = signedInAt ? await portalSessionCutoff(db) : 0;
   if (cutoff && signedInAt < cutoff) throw new HttpsError("unauthenticated", "A Super Admin signed every device out. Sign in again.");
+  const userCutoff = signedInAt ? await portalUserSessionCutoff(db, request.auth.uid) : 0;
+  if (userCutoff && signedInAt < userCutoff) throw new HttpsError("unauthenticated", "A Super Admin signed this account out. Sign in again.");
   const snap = await db.ref(`/admins/${request.auth.uid}`).get();
   const raw=snap.val(),role = portalRoleValue(raw);
   if (raw && typeof raw === "object" && (raw.disabled === true || raw.active === false)) throw new HttpsError("permission-denied", "This Accaza account is disabled.");

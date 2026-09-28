@@ -1,5 +1,5 @@
 import{initializeApp,deleteApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import{getDatabase,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import{getDatabase,ref,set,get,push,update,remove,onValue,onDisconnect,serverTimestamp,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import{getMessaging,getToken,onMessage,isSupported}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
 import{getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider,setPersistence,browserLocalPersistence,inMemoryPersistence}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import{getFunctions,httpsCallable}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
@@ -26,4 +26,4 @@ callableNames.unshift('managePortalAccount');
 const CALLABLE_TIMEOUTS={askAccazaAI:130000};
 const callables=Object.fromEntries(callableNames.map(function(name){return [name,CALLABLE_TIMEOUTS[name]?httpsCallable(functions,name,{timeout:CALLABLE_TIMEOUTS[name]}):httpsCallable(functions,name)];}));
 
-export{firebaseConfig,app,db,auth,callables,initializeApp,deleteApp,ref,set,get,push,update,remove,onValue,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider,setPersistence,browserLocalPersistence,inMemoryPersistence};
+export{firebaseConfig,app,db,auth,callables,initializeApp,deleteApp,ref,set,get,push,update,remove,onValue,onDisconnect,serverTimestamp,onChildAdded,onChildChanged,onChildRemoved,runTransaction,query,orderByChild,equalTo,limitToLast,startAt,endAt,endBefore,getMessaging,getToken,onMessage,isSupported,getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendPasswordResetEmail,updatePassword,reauthenticateWithCredential,EmailAuthProvider,setPersistence,browserLocalPersistence,inMemoryPersistence};

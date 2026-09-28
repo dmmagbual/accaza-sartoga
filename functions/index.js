@@ -818,11 +818,24 @@ async function portalSessionCutoff(db) {
   } catch (_error) { /* keep the last known cutoff; never block sign-in on a read failure */ }
   return sessionCutoffCache.at;
 }
+// Super Admin "Sign out this user": /sessionControl/users/<uid>/at, cached per account like the
+// everyone cutoff so a callable costs at most one small read per account per minute.
+const userCutoffCache = new Map();
+async function portalUserSessionCutoff(db, uid) {
+  const cached = userCutoffCache.get(uid);
+  if (cached && Date.now() - cached.loadedAt < SESSION_CUTOFF_CACHE_MS) return cached.at;
+  let at = cached ? cached.at : 0;
+  try { at = Number((await db.ref(`/sessionControl/users/${uid}/at`).get()).val()) || 0; } catch (_error) { /* keep the last known cutoff */ }
+  userCutoffCache.set(uid, {at, loadedAt: Date.now()});
+  return at;
+}
 function sessionSignedInAt(request) { return (Number(request && request.auth && request.auth.token && request.auth.token.auth_time) || 0) * 1000; }
 async function requirePortalUser(db, request) {
   if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "Staff login is required.");
   const signedInAt = sessionSignedInAt(request), cutoff = signedInAt ? await portalSessionCutoff(db) : 0;
   if (cutoff && signedInAt < cutoff) throw new HttpsError("unauthenticated", "A Super Admin signed every device out. Sign in again.");
+  const userCutoff = signedInAt ? await portalUserSessionCutoff(db, request.auth.uid) : 0;
+  if (userCutoff && signedInAt < userCutoff) throw new HttpsError("unauthenticated", "A Super Admin signed this account out. Sign in again.");
   const snap = await db.ref(`/admins/${request.auth.uid}`).get();
   const raw=snap.val(),role = portalRoleValue(raw);
   if (raw && typeof raw === "object" && (raw.disabled === true || raw.active === false)) throw new HttpsError("permission-denied", "This Accaza account is disabled.");
@@ -1579,6 +1592,23 @@ exports.managePortalAccount = onCall(
       await getAdminAuth().updateUser(uid, {disabled: false});
       try { await db.ref().update({[`admins/${uid}`]: Object.assign({}, raw, {role, previousRole: null, active: true, disabled: null, disabledAt: null, disabledBy: null, updatedAt: now, updatedBy: actor.uid}), [`operationalAudit/${now}_portal_account_reactivate_${uid}`]: operationalAuditRecord("portal_account_reactivated", "portalAccount", uid, actor, {role})}); } catch (error) { try { await getAdminAuth().updateUser(uid, {disabled: true}); } catch (_rollbackError) {} throw error; }
       return {uid, role, reactivated: true};
+    }
+    if (action === "sign_out") {
+      // Signs one account out of every device: refresh tokens are revoked, open Admin/POS and
+      // Finance Books pages sign out through /sessionControl/users/<uid>, and callables refuse
+      // any session that signed in before the cutoff.
+      const uid = financeKey(data.uid, "Account"), reason = financeText(data.reason, 200).trim();
+      if (uid === actor.uid) throw new HttpsError("failed-precondition", "Use Log out to end your own session.");
+      if (reason.length < 5) throw new HttpsError("invalid-argument", "Enter the reason for signing this account out.");
+      const raw = (await db.ref(`/admins/${uid}`).get()).val();
+      if (!raw) throw new HttpsError("not-found", "Portal account not found.");
+      const at = Math.floor(now / 1000) * 1000;
+      await getAdminAuth().revokeRefreshTokens(uid);
+      await db.ref().update({
+        [`sessionControl/users/${uid}`]: {at, by: actor.uid, byName: actor.name, reason, schemaVersion: 1},
+        [`operationalAudit/${now}_portal_account_sign_out_${uid}`]: operationalAuditRecord("portal_account_signed_out", "portalAccount", uid, actor, {reason}),
+      });
+      return {uid, signedOut: true, at};
     }
     if (action === "normalize_legacy") {
       const shift = (await db.ref("/posActiveShift").get()).val();

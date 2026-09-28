@@ -57,6 +57,7 @@ const ACCEPTED = {
   'pettyCashReplenishments': 'revolving fund replenishments, Cash Payments page only',
   'inventory': 'stock item master, attached per child (incremental)',
   'activeOrders': 'open orders only, attached per child (incremental)',
+  'portalPresence': 'one small record per open device, deleted by Firebase on disconnect so it never grows; Super Admin User Accounts page only',
 };
 const KINDS = /download-ok:\s*(manual|action|catalog|bounded|fallback|migration)\b/;
 // A read of a single named record under an otherwise-growing node (systemHealth/backups/latest)

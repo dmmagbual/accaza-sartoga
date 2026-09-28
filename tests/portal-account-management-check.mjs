@@ -10,7 +10,7 @@ const html=read('src/html/admin/50-admin-workspace.html');
 const rules=read('database.rules.json');
 
 for(const marker of ['exports.managePortalAccount','requireSuperAdmin','claimPortalAccountMutation','portalAccountMutationLock','activeSuperAdminCount','assertAccountNotOnOpenShift','normalize_legacy','revokeRefreshTokens','portal_account_disabled','Systems Administrator'])assert.ok(server.includes(marker),`Portal-account server control missing: ${marker}`);
-assert.equal((server.match(/financeKey\(data\.uid, "Account"\)/g)||[]).length,3,'Every account mutation must reject path-like Firebase UIDs');
+assert.equal((server.match(/financeKey\(data\.uid, "Account"\)/g)||[]).length,4,'Every account mutation must reject path-like Firebase UIDs');
 assert.ok(server.includes('Portal account mutation lock cleanup failed'),'A successful account change must not be reported as failed only because lock cleanup needs retrying');
 for(const marker of ['Username','Role / position','Access level','Super Admin','On active shift','Reset password','Normalize roles'])assert.ok(client.includes(marker),`Account-access interface missing: ${marker}`);
 assert.ok(html.includes("posSwitchTab('staffaccounts'")&&html.includes('User Accounts &amp; Access')&&html.includes('accountAccessRoot'),'Unified account-management tab is missing');
