@@ -35,4 +35,3 @@ function showReceipt(o){
     +'</body></html>');
   w.document.close();
 }
-})();

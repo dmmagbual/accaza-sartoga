@@ -141,3 +141,4 @@ function sqCloseReview(shift){
   });
 }
 window.__serveQueueCloseReview=sqCloseReview;
+})();

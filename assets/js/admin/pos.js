@@ -3775,7 +3775,6 @@ function showReceipt(o){
     +'</body></html>');
   w.document.close();
 }
-})();
 /* ══════════ SERVING QUEUE (29 Sep 2026) ══════════
    A paid order is not a served order. Every sale the server accepts is queued for serving
    (functions/lib/order-service.js) and waits in the left-hand column until staff tap Served.
@@ -3919,3 +3918,4 @@ function sqCloseReview(shift){
   });
 }
 window.__serveQueueCloseReview=sqCloseReview;
+})();
