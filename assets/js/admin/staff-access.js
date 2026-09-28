@@ -8,7 +8,7 @@ var ROLES=[['superadmin','Super Admin'],['admin','Admin'],['manager','Manager'],
 // roles except Channel Pricing (grantable) and Change Password (always).
 var NAV=[
   {group:'POS',tabs:[{label:'Point of Sale',key:'pos'},{label:'Shift & Register',key:'registerOps'},{label:'Staff Inbox',always:true}]},
-  {group:'Home',tabs:[{label:'Dashboard',key:'dashboard',hint:'Live figures also need Orders or POS'},{label:'Live Operations',key:'liveoperations'},{label:'Operations Center',locked:true}]},
+  {group:'Home',tabs:[{label:'Dashboard',key:'dashboard'},{label:'Live Operations',key:'liveoperations'},{label:'Operations Center',locked:true}]},
   {group:'Sales & Service',tabs:[{label:'Orders',key:'orders'},{label:'Reservations & Calendar',key:'reservations'},{label:'Menu Availability',key:'availability'}]},
   {group:'Reports',tabs:[{label:'Sales History',key:'saleshistory'},{label:'Sales Analytics',key:'analytics'},{label:'Daily Report',key:'dailyreport'}]},
   {group:'Inventory',tabs:[{label:'Stock Items',key:'inventory'},{label:'Inventory (stock value)',key:'stockvalue'},{label:'Purchases',key:'purchases'},{label:'Recipes',key:'recipes'},{label:'Internal Usage',key:'usage'},{label:'Packages',locked:true}]},
