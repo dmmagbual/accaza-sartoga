@@ -1533,7 +1533,7 @@ async function portalAccountList(db) {
       onOpenShift: !!(shift && shift.status !== "closed" && (shift.accountUid === uid || (crew && !crew.leftAt))),
       shift: shiftOpen && (shift.accountUid === uid || (crew && !crew.leftAt)) ? {how: shift.accountUid === uid ? "opened" : "crew", cashier: financeText(shift.staff, 120), openAt: Number(shift.openAt) || 0, crewStaff: crew ? financeText(crew.staff, 120) : "", joinedAt: crew ? Number(crew.joinedAt || crew.at) || 0 : 0} : null,
       till: (() => { const row = shiftOpen ? tillFor(uid) : null; return row ? {lastContactAt: Number(row.lastContactAt) || 0, idle: row.idle === true} : null; })(),
-      lastSeen: lastSeen[uid] && typeof lastSeen[uid] === "object" ? {at: Number(lastSeen[uid].at) || 0, app: financeText(lastSeen[uid].app, 20), build: Number(lastSeen[uid].build) || 0, device: financeText(lastSeen[uid].device, 80)} : null,
+      lastSeen: lastSeen[uid] && typeof lastSeen[uid] === "object" ? {at: Number(lastSeen[uid].at) || 0, app: financeText(lastSeen[uid].app, 20), build: Number(lastSeen[uid].build) || 0, device: financeText(lastSeen[uid].device, 80), signedOut: lastSeen[uid].signedOut === true} : null,
       legacyRole: raw === true || String(raw || "").toLowerCase() === "owner" || (raw && typeof raw === "object" && String(raw.role || "").toLowerCase() === "owner"),
     };
   }));

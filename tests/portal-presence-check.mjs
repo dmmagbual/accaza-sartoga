@@ -22,8 +22,8 @@ const fb = {
   push: r => ({path: `${r.path}/conn1`}),
   serverTimestamp: () => 'SERVER_TIME',
   onValue: (r, cb) => { assert.equal(r.path, '.info/connected'); connected = cb; return () => log.push('unwatch'); },
-  onDisconnect: r => ({remove: () => { log.push(`arm ${r.path}`); return Promise.resolve(); }, set: (v) => { log.push(`arm-seen ${r.path} ${v.at}`); return Promise.resolve(); }, cancel: () => { log.push(`cancel ${r.path}`); return Promise.resolve(); }}),
-  set: (r, v) => { log.push(`set ${r.path} ${v.app} ${v.build} ${v.connectedAt || v.at}`); return Promise.resolve(); },
+  onDisconnect: r => ({remove: () => { log.push(`arm ${r.path}`); return Promise.resolve(); }, set: (v) => { log.push(`arm-seen ${r.path} ${v.at} signedOut=${v.signedOut}`); return Promise.resolve(); }, cancel: () => { log.push(`cancel ${r.path}`); return Promise.resolve(); }}),
+  set: (r, v) => { log.push(`set ${r.path} ${v.app} ${v.build} ${v.connectedAt || v.at}${'signedOut' in v ? ` signedOut=${v.signedOut}` : ''}`); return Promise.resolve(); },
   remove: r => { log.push(`remove ${r.path}`); return Promise.resolve(); },
 };
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -32,10 +32,11 @@ connected({val: () => false}); await tick();
 assert.deepEqual(log, [], 'nothing is written while offline');
 connected({val: () => true}); await tick();
 connected({val: () => true}); await tick();
-const armed = ['arm portalPresence/u1/conn1', 'arm-seen portalLastSeen/u1 SERVER_TIME', 'set portalPresence/u1/conn1 admin 606 SERVER_TIME'];
+const armed = ['arm portalPresence/u1/conn1', 'arm-seen portalLastSeen/u1 SERVER_TIME signedOut=false', 'set portalPresence/u1/conn1 admin 606 SERVER_TIME'];
 assert.deepEqual(log, [...armed, ...armed], 'presence and last-seen are armed before each write');
-stop(); stop();
-assert.deepEqual(log.slice(6), ['unwatch', 'cancel portalPresence/u1/conn1', 'cancel portalLastSeen/u1', 'set portalLastSeen/u1 admin 606 SERVER_TIME', 'remove portalPresence/u1/conn1'], 'stop is idempotent, stamps last seen and cleans up');
+stop({signedOut: true}); stop();
+await tick(); await tick();
+assert.deepEqual(log.slice(6), ['unwatch', 'set portalLastSeen/u1 admin 606 SERVER_TIME signedOut=true', 'remove portalPresence/u1/conn1', 'cancel portalPresence/u1/conn1', 'cancel portalLastSeen/u1'], 'sign-out is recorded first, then the disconnect handlers are disarmed; stop is idempotent');
 assert.equal(typeof startPortalPresence(fb, {uid: '', app: 'admin', build: 1}), 'function', 'no uid writes nothing');
 // A refused last-seen write must not stop presence (portalLastSeen rules may deploy after the page).
 const log2 = []; let connected2 = null;
@@ -47,11 +48,11 @@ assert.deepEqual(log2, ['portalPresence/u2/conn1'], 'presence is written even wh
 // 3. Admin/POS and Finance Books start presence after sign-in and end it before every sign-out.
 const auth = read('assets/js/admin/portal-auth.mjs');
 assert.ok(auth.includes("watchSessionCutoff(user);beginPresence(user.uid);"), 'Admin starts presence once authorized');
-assert.ok(auth.includes("endPresence();try{await signOut(auth);}catch(_o){}") && auth.includes('window.logoutAdmin=function(){\n    endPresence();'), 'Admin ends presence before signing out');
+assert.ok(auth.includes("endPresence(true);try{await signOut(auth);}catch(_o){}") && auth.includes('window.logoutAdmin=function(){\n    endPresence(true);'), 'Admin ends presence before signing out');
 assert.ok(auth.includes("mine=control.users&&control.users[user.uid]"), 'Admin honours the per-account sign-out');
 const books = read('assets/js/books/live-pos.mjs');
 assert.ok(books.includes('app:"books",build:runningBuild(document,"accaza-books-build")'), 'Books reports its own build');
-assert.ok(books.includes('window.__booksSignOut=()=>{ endPresence(); return signOut(auth); };') && books.includes('watchValue(ref(db,"/sessionControl/users/"+user.uid)'), 'Books ends presence and honours the per-account sign-out');
+assert.ok(books.includes('window.__booksSignOut=()=>{ endPresence(true); return signOut(auth); };') && books.includes('watchValue(ref(db,"/sessionControl/users/"+user.uid)'), 'Books ends presence and honours the per-account sign-out');
 
 // 4. Rules: each account writes only its own presence; only a Super Admin reads the list.
 const rulesLine = read('database.rules.json').split('\n').find(line => line.includes('"portalPresence"'));
@@ -87,5 +88,19 @@ assert.ok(screen.includes('<small>Password entered ') && !screen.includes('Last 
 for (const marker of ['portalLastSeen', 'tillFor(uid)', 'how: shift.accountUid === uid ? "opened" : "crew"', 'posDeviceHealth/${financeKey(shift.id, "Shift")}']) assert.ok(accounts.includes(marker), `account list is missing ${marker}`);
 const seenRule = read('database.rules.json').split('\n').find(line => line.includes('"portalLastSeen"'));
 assert.ok(seenRule && seenRule.includes('auth.uid === $uid') && seenRule.includes('"at": { ".validate": "newData.isNumber() && newData.val() <= now" }'), 'last seen is own-write and validated');
+
+// 8. If the sign-out writes are refused (session already ended in another tab), the disconnect
+// handlers stay armed so Firebase still clears presence when the page closes.
+const log3 = []; let connected3 = null;
+const fb3 = Object.assign({}, fb, {onValue: (_r, cb) => { connected3 = cb; return () => {}; }, onDisconnect: r => ({remove: () => Promise.resolve(), set: () => Promise.resolve(), cancel: () => { log3.push(`cancel ${r.path}`); return Promise.resolve(); }}), set: () => Promise.reject(new Error('PERMISSION_DENIED')), remove: () => Promise.reject(new Error('PERMISSION_DENIED'))});
+const stop3 = startPortalPresence(fb3, {uid: 'u3', app: 'admin', build: 609});
+connected3({val: () => true}); await tick(); stop3({signedOut: true}); await tick(); await tick();
+assert.deepEqual(log3, [], 'handlers are not disarmed when the sign-out writes fail');
+// 9. Three honest states: Online, Inactive (signed in, device not connected), Signed out.
+assert.ok(screen.includes('>Inactive</span>') && screen.includes('>Signed out</span>') && screen.includes("'<small>Not connected since '"), 'Inactive and Signed out states are shown');
+assert.ok(screen.includes('if(seen&&seen.signedOut&&Number(seen.at)>=Number(till&&till.lastContactAt||0))'), 'Signed out only when a Log out is recorded after the last activity');
+assert.ok(auth.includes('window.logoutAdmin=function(){\n    endPresence(true);') && auth.includes('endPresence(false);stopPresence=startPortalPresence('), 'Admin records real sign-outs only');
+assert.ok(books.includes('window.__booksSignOut=()=>{ endPresence(true); return signOut(auth); };'), 'Books records real sign-outs');
+assert.ok(read('database.rules.json').includes('"signedOut": { ".validate": "newData.isBoolean()" }'), 'signedOut is validated');
 
 console.log('PASS: portal presence shows who is online with app, build and device; only the Super Admin reads it; sign out works per account.');
