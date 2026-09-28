@@ -69,7 +69,9 @@ assert.equal(read('/orders/POS-TEST'),undefined);
 const source=fs.readFileSync(new URL('../src/functions/40-sales-finance.js',import.meta.url),'utf8');
 const trigger=source.split('\n').find(l=>l.startsWith('exports.onShiftCloseFinancial ='));
 const movements={},financeCtx={exports:{},onValueWritten:(_o,fn)=>fn,ORDER_REGION:'test',getDatabase:()=>db,Date,Financial,financeText:x=>x,ensureShiftReferenceRecord:async()=> 'SHIFT-TEST',commitFinancial:async(_db,id,m)=>{Financial.assertBalanced(m.lines);movements[id]??=m;}};
-vm.createContext(financeCtx);vm.runInContext(trigger,financeCtx);
+// The trigger also posts Z-declared tips through its helpers (28 Sep 2026); load them with it.
+const tipsHelpers=source.slice(source.indexOf('function shiftDeclaredTips('),source.indexOf('exports.onShiftCloseFinancial ='));
+vm.createContext(financeCtx);vm.runInContext(tipsHelpers+'\n'+trigger,financeCtx);
 write('/shifts/SH-TEST/status','handover_pending');write('/shifts/SH-TEST/variance',25);
 const event=status=>({params:{shiftId:shift.id},data:{before:{val:()=> 'open'},after:{val:()=>status}}});
 await financeCtx.exports.onShiftCloseFinancial(event('handover_pending'));

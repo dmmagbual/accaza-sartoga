@@ -29,6 +29,35 @@ exports.repairClosedShiftTurnover = onCall(
   },
 );
 
+// Recognizes tips a closed shift declared in its Z report when the automatic close posting never
+// ran (shifts closed before tips were posted). The same deterministic shift_tips_<id> movement as
+// the close trigger is used, so it can never post twice. It is refused unless the shift's own
+// Register Cash postings still show exactly that gap, so a difference already absorbed by another
+// correction is never recognized a second time.
+exports.repairShiftDeclaredTips = onCall(
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(), actor = await requirePortalPermission(db, request, ["cashflow", "registerOps"]), data = request.data || {}, shiftId = financeKey(data.shiftId, "Shift ID"), movementId = `shift_tips_${shiftId}`;
+    const [shiftSnap, movementSnap] = await Promise.all([db.ref(`/shifts/${shiftId}`).get(), db.ref(`/financialMovements/${movementId}`).get()]);
+    const shift = shiftSnap.val() || null;
+    if (!shift || shift.status !== "closed") throw new HttpsError("failed-precondition", "Select a closed shift.");
+    const tips = shiftDeclaredTips(shift);
+    if (!(tips > 0)) throw new HttpsError("failed-precondition", "This shift's Z report declares no tips.");
+    if (movementSnap.exists()) return {shiftId, amount: tips, duplicate: true, preview: data.preview === true};
+    if (Number(shift.closeAt || 0) < RegisterDrawer.PER_SHIFT_CONTROL_FROM) throw new HttpsError("failed-precondition", "This shift closed under the old drawer model, whose register differences were settled by the historical register reset. Use a documented Finance correction if one is still needed.");
+    const anchor = Number(shift.openAt || shift.closeAt || 0), windowSnap = /* download-ok: manual tips repair reads only the shift's posting window */ await db.ref("/financialMovements").orderByChild("occurredAt").startAt(Math.max(0, anchor - 86400000)).get();
+    const registerNet = RegisterDrawer.shiftRegisterNet(shiftId, shift, windowSnap.val() || {}).net;
+    if (Math.abs(registerNet + tips) > 0.009) throw new HttpsError("failed-precondition", `Register Cash for this shift nets to ${registerNet.toFixed(2)}, not -${tips.toFixed(2)}. The tips are already reflected, or another difference on this shift must be resolved first.`);
+    const shiftReference = financeText(shift.shiftReference, 80) || shiftId;
+    if (data.preview === true) return {shiftId, shiftReference, amount: tips, staff: financeText(shift.staff, 100), closedAt: Number(shift.closeAt || 0), registerNet, preview: true, duplicate: false};
+    const approval = await claimManagerApproval(db, data, "repair_shift_declared_tips", shiftId, tips, movementId), now = Date.now(), approvedBy = approval.record.approvedName || approval.record.approvedEmail || approval.record.approvedRole;
+    const movement = shiftTipsMovement(shift, shiftId, shiftReference, {actorName: approvedBy, approvalId: approval.id, repair: true, controlReason: "Tips declared in the Z report left the drawer with the shift turnover but were never recognized"});
+    const writes = Object.assign({}, approval.usedWrites, {[`operationalAudit/${now}_${shiftId}_tips_repair`]: operationalAuditRecord("repair_shift_declared_tips", "shift", shiftId, actor, {amount: tips, movementId, approvalId: approval.id, approvedBy, accounting: "Dr Cash in Register / Cr Other Income at the shift's closing time"})});
+    const committed = await commitFinancial(db, movementId, movement, actor, writes);
+    return {shiftId, amount: tips, movementId, duplicate: committed.duplicate, repaired: !committed.duplicate};
+  },
+);
+
 // Links a historical Finance journal that increased Undeposited Collection
 // without creating the matching physical-cash custody record. This repairs
 // only the subledger: the existing balanced journal remains the sole GL entry.

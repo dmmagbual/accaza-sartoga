@@ -82,6 +82,7 @@ function stmtCategory(m,net){
     case 'receivable_collected':return 'Receivable collections';
     case 'payable_paid':return 'Supplier / bill payments';
     case 'shift_payin':return 'Register cash-ins';
+    case 'shift_tips_declared':return 'Customer tips declared in Z report';
     case 'shift_payout':return 'Register pay-outs';
     case 'shift_cash_variance':return net>0?'Cash overage':'Cash shortage';
     case 'petty_cash_expense':return 'Cash expenses from Undeposited Collection';
