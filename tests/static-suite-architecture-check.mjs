@@ -10,6 +10,7 @@ const expected=[
   '20-access-customer.mjs',
   '30-server-release.mjs',
   '40-operations-ui.mjs',
+  '45-operations-ui-continued.mjs',
   '50-executable-regressions.mjs',
   '60-finance-books.mjs',
   '70-xss-reconciliation-summary.mjs'
@@ -21,13 +22,17 @@ let combined='';
 for(const file of expected){
   const source=fs.readFileSync(path.join(directory,file),'utf8');
   combined+=source+'\n';
-  if(Buffer.byteLength(source,'utf8')>50000)throw new Error(`Static-check domain regrew beyond 50 KB: ${file}`);
+  if(Buffer.byteLength(source,'utf8')>50000)throw new Error(`Static-check domain regrew beyond 50 KB: ${file}. Split it at a statement boundary into a new module (see 45-operations-ui-continued.mjs).`);
+  // Early warning (Sep 2026): above 95% of the bound, split before the next guard blocks a release.
+  if(Buffer.byteLength(source,'utf8')>47500){const message=`tests/static/${file} is ${Buffer.byteLength(source,'utf8')} bytes of its 50 KB bound. Split it before adding more guards.`;console.warn('STATIC MODULE SIZE WARNING: '+message);if(process.env.GITHUB_ACTIONS)console.log(`::warning file=tests/static/${file}::${message}`);}
   if(file!=='00-context.mjs'&&!runner.includes(`./static/${file}`))throw new Error(`Static-check runner omits domain: ${file}`);
 }
 if((combined.match(/\bfail\(/g)||[]).length!==548)throw new Error('Static-check failure-guard inventory changed from the reviewed baseline of 548');
 if((combined.match(/spawnSync\(/g)||[]).length!==33)throw new Error('Static-check executable-check inventory changed from the reviewed baseline of 33');
 const guardSource=combined.split(/\r?\n/).filter(line=>/\bfail\(|spawnSync\(/.test(line)).map(line=>line.trim()).join('\n');
 const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
-if(guardDigest!=='bdcde6abc28220c82a1f6848209672f9649a89b50242bb83ad09affe0a7705a0')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// Sep 2026: the Phase 6 customer-runtime and Phase 4C admin-core size guards now read their ceilings from
+// tests/bundle-budgets.mjs instead of separate literals; guard count and every other guard line are unchanged.
+if(guardDigest!=='bff04edb2720ff14c84e77e3a657d3452a46640107b5101ff75b6736f4af35fa')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 548 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');

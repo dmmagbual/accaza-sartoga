@@ -1,4 +1,5 @@
 // HTML/script syntax and customer-field rendering containment.
+import {BUNDLE_BUDGETS} from '../bundle-budgets.mjs';
 export function run(context){
 const {fs,path,vm,spawnSync,root,require,htmlFiles,temp,state,fail,section,adminScripts,customerScripts,booksScripts,adminStyles,customerStyles,adminHtml,customerHtml,booksPageHtml,adminSource,customerSource,booksSource,financialSource}=context;
 for(const file of htmlFiles){
@@ -42,7 +43,7 @@ for(const file of htmlFiles){
       if(appSource.includes(forbidden))fail(`customer runtime retains privileged Admin implementation: ${forbidden}`);
     }
     const customerCore=customerScripts.find(item=>item.name==='core.mjs');
-    if(!customerCore||Buffer.byteLength(customerCore.source,'utf8')>110000)fail('customer runtime has regrown beyond the 110 KB Phase 6 guard');
+    if(!customerCore||Buffer.byteLength(customerCore.source,'utf8')>BUNDLE_BUDGETS['assets/js/customer/core.mjs'])fail('customer runtime has regrown beyond its Phase 6 guard (tests/bundle-budgets.mjs)');
   }
 }
 

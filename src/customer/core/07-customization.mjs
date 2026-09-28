@@ -6,7 +6,7 @@ window.openCustomize=function(itemKey){
   custSize=null;custSel={};custQty=1;
   document.getElementById('custItemName').textContent=custItem.name;
   const imgWrap=document.getElementById('custItemImgWrap');
-  imgWrap.innerHTML=custItem.img?'<img src="'+custItem.img+'" alt="" style="width:100%;height:160px;object-fit:cover;" onerror="this.style.display=\'none\'"/>'
+  imgWrap.innerHTML=custItem.img?'<img src="'+escHtml(custItem.img)+'" alt="" style="width:100%;height:160px;object-fit:cover;" onerror="this.style.display=\'none\'"/>'
     :'<div class="customize-img-placeholder">'+getCatIcon(custItem.cat)+'</div>';
   let html='';
   if(custItem.labelS&&custItem.labelL&&custItem.priceL){
