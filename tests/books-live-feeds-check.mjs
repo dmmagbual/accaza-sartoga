@@ -32,6 +32,9 @@ const context = {
   onChildChanged: () => () => {}, onChildRemoved: () => () => {},
   onAuthStateChanged: (_auth, cb) => { authCallback = cb; },
   signInWithEmailAndPassword: async () => {}, signOut: async () => {}, setPersistence: async () => {}, browserLocalPersistence: {},
+  // Portal presence writes one small record and is covered by tests/portal-presence-check.mjs.
+  set: async () => {}, push: (target) => ({path: `${target.path}/conn`}), remove: async () => {}, onDisconnect: () => ({remove: async () => {}, cancel: async () => {}}), serverTimestamp: () => 0,
+  startPortalPresence: () => () => {}, runningBuild: () => 130,
 };
 context.globalThis = context;
 vm.createContext(context);
