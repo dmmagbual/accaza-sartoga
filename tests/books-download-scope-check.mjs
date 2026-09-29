@@ -29,6 +29,7 @@ for(const marker of [
 if(live.includes('httpsCallable(fns,"readHistoricalOrders")')||live.includes("mode:'period'"))throw new Error('Finance Books Insights restored raw historical Firestore paging');
 
 for(const broad of [
+  'watchValue(ref(db,"/posActiveShift")',
   'booksStops.push(watchMap(ref(db,"/financialMovements")',
   'booksStops.push(watchMap(ref(db,"/platformPayouts")',
   'booksStops.push(watchMap(ref(db,"/cashCustody")',
@@ -38,6 +39,10 @@ for(const broad of [
   'booksStops.push(watchMap(ref(db,"/personalFundings")'
 ]){
   if(live.includes(broad))throw new Error(`Optional Books feed still attaches at sign-in: ${broad}`);
+}
+
+for(const narrow of ['ref(db,"/posActiveShift/status")','ref(db,"/posActiveShift/accountUid")','ref(db,"/posActiveShift/crew/"+user.uid)']){
+  if(!live.includes(narrow))throw new Error(`Books shift-membership safeguard missing: ${narrow}`);
 }
 
 console.log('Finance Books download-scope checks passed.');

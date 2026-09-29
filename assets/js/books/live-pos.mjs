@@ -144,8 +144,14 @@ if(auth){
       watchValue(ref(db,"/sessionControl/cutoff"), s=>endIfBefore(s.val()||{},false), ()=>{});
       // This account only: Super Admin "Sign out this user".
       watchValue(ref(db,"/sessionControl/users/"+user.uid), s=>endIfBefore(s.val()||{},true), ()=>{});
-      // One bounded live record decides whether this browser opened or joined the active shift.
-      watchValue(ref(db,"/posActiveShift"),s=>{booksShift=s.val()||null;if(idleController)idleController.checkNow();},()=>{});
+      // Inactivity needs only shift status, owner and this user's crew membership. Never
+      // attach Books to the complete live shift: its drawer and offlineSyncApplied map change
+      // on every sale and grow for the life of the shift.
+      let shiftStatus=null,shiftOwnerUid=null,shiftCrew=null;
+      const publishShiftMembership=()=>{booksShift=(shiftStatus||shiftOwnerUid||shiftCrew)?{status:shiftStatus,accountUid:shiftOwnerUid,crew:shiftCrew?{[user.uid]:shiftCrew}:{}}:null;if(idleController)idleController.checkNow();};
+      watchValue(ref(db,"/posActiveShift/status"),s=>{shiftStatus=s.val()||null;publishShiftMembership();},()=>{});
+      watchValue(ref(db,"/posActiveShift/accountUid"),s=>{shiftOwnerUid=s.val()||null;publishShiftMembership();},()=>{});
+      watchValue(ref(db,"/posActiveShift/crew/"+user.uid),s=>{shiftCrew=s.val()||null;publishShiftMembership();},()=>{});
       watchValue(ref(db,"/books/monthlyNet"), s=>{ monthlyNetCache=s.val()||{}; scheduleJournalRefresh(); }, ()=>{});
       watchValue(ref(db,"/accountingPeriods"), s=>{ window.__accountingPeriods=s.val()||{}; window.__isAccountingPeriodClosed=function(date){var record=(window.__accountingPeriods||{})[String(date||'').slice(0,7)]||{};return record.status==='closed';}; if(window.App&&App.render)App.render(); }, ()=>{});
       reviewCache={};window.__booksReviewQueue={};
