@@ -3708,7 +3708,7 @@ function beginCompletedOrderCorrection(o){
   if(o.source!=='pos'||(o.channel||'instore')!=='instore'||o.status!=='Completed')return alert('Only a completed in-store POS sale can use this correction.');
   if(o.preparationStatus!=='not_prepared'||o.preparationStartedAt)return alert('This order is already being prepared and can no longer be changed.');
   if(o.completedOrderCorrectionId||Number(o.refundAmount)>0)return alert('This order was already corrected or refunded.');
-  if(Number(o.discount)>0||(o.packages&&o.packages.length))return alert('Discounted or packaged sales require the manager correction workflow.');
+  if(Number(o.discount)>0||Number(o.loyaltyDiscount)>0||(o.packages&&o.packages.length))return alert('Discounted or packaged sales require the manager correction workflow.');
   var kind=completedCorrectionPaymentKind(o),payments=o.payments&&o.payments.length?o.payments:[{method:o.payment,amount:o.total}];if(!kind)return alert('This feature requires one verified bank or configured e-wallet payment.');
   if(['cashier_verified','manager_validated','confirmed'].indexOf(o.paymentStatus)<0||!String((payments[0]||{}).ref||'').trim())return alert('The electronic payment must be verified with its transaction reference first.');
   if(o.inventoryDeducted!==true)return alert('Inventory is still posting for this sale. Wait a moment, refresh, and try again.');
@@ -3764,6 +3764,7 @@ function showReceipt(o){
     +'<table><tr><td>Subtotal</td><td style="text-align:right;">'+peso(o.subtotal||o.total)+'</td></tr>'
     +((o.discountLines&&o.discountLines.length)?o.discountLines.map(function(d){var lbl={senior:'Senior 20%',pwd:'PWD 20%',athlete:'Athlete 20%',promo5:'Promo 5%'}[d.type]||d.type;return '<tr><td>'+esc(lbl)+(d.idNumber?' · '+esc(d.idNumber):'')+'</td><td style="text-align:right;">-'+peso(d.value)+'</td></tr>';}).join(''):'')
     +(function(){var sc=(o.discountLines||[]).reduce(function(s,d){return s+(Number(d.value)||0);},0);var man=(Number(o.discount)||0)-sc;return man>0.005?'<tr><td>Discount</td><td style="text-align:right;">-'+peso(man)+'</td></tr>':'';})()
+    +(Number(o.loyaltyDiscount)>0?'<tr><td>Loyalty reward'+(o.loyaltyRewardName?' · '+esc(o.loyaltyRewardName):'')+'</td><td style="text-align:right;">-'+peso(o.loyaltyDiscount)+'</td></tr>':'')
     +'<tr><td><b>TOTAL</b></td><td style="text-align:right;"><b>'+peso(o.total)+'</b></td></tr>'
     +'<tr><td>Payment</td><td style="text-align:right;">'+esc(o.payment)+'</td></tr>'
     +(o.completedOrderCorrection?'<tr><td>Original electronic payment</td><td style="text-align:right;">'+peso(o.originalPaidTotal)+'</td></tr>'+(Number(o.refundAmount)>0?'<tr><td>Cash refund</td><td style="text-align:right;">-'+peso(o.refundAmount)+'</td></tr>':''):'')

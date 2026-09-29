@@ -74,8 +74,8 @@ function orderPosting(order, accounts) {
     if (Math.abs(debits - gross) > 0.009) lines.push(line(debits < gross ? "expense:platform_estimate_variance" : "revenue:platform_estimate_variance", debits < gross ? money(gross - debits) : 0, debits > gross ? money(debits - gross) : 0, "Platform estimate rounding/variance"));
     lines.push(line("revenue:sales", 0, gross, "Platform gross sales"));
   } else {
-    const payments = paymentRows(order), total = money(order.total), discount = money(order.discount), prepaidRefund = money(order.preCompletionCashRefund && order.preCompletionCashRefund.amount);
-    const gross = money(order.subtotal != null ? order.subtotal : total + discount);
+    const payments = paymentRows(order), total = money(order.total), discount = money(order.discount), loyaltyDiscount = money(order.loyaltyDiscount), prepaidRefund = money(order.preCompletionCashRefund && order.preCompletionCashRefund.amount);
+    const gross = money(order.subtotal != null ? order.subtotal : total + discount + loyaltyDiscount);
     payments.forEach((payment, index) => {
       const isCash = payment.method.toLowerCase() === "cash";
       const accountId = isCash ? "" : accountForPayment(payment, accounts);
@@ -90,6 +90,7 @@ function orderPosting(order, accounts) {
       lines.push(line(`liability:customer_change_refund:${id}`, 0, prepaidRefund, "Confirmed overpayment due back to customer"));
     } else if (Math.abs(paid - total) > 0.009) lines.push(line(paid < total ? "asset:unmapped_payment:balance" : "revenue:payment_overage", paid < total ? money(total - paid) : 0, paid > total ? money(paid - total) : 0, "Payment allocation difference"));
     if (discount) lines.push(line("expense:customer_discount", discount, 0, "Customer discount"));
+    if (loyaltyDiscount) lines.push(line("expense:loyalty_discount", loyaltyDiscount, 0, order.loyaltyRewardId ? `Loyalty reward · ${safe(order.loyaltyRewardId)}` : "Loyalty reward discount"));
     lines.push(line("revenue:sales", 0, gross, channel === "online" ? "Online order gross sales" : "In-store gross sales"));
   }
   const sum = assertBalanced(lines);
@@ -152,7 +153,7 @@ function orderNetSales(order) {
   order = order || {};
   const channel=safe(order.channel).toLowerCase(),platform=channel==="grabfood"||channel==="foodpanda";
   const gross = money(platform&&order.grossPlatform!=null?order.grossPlatform:(order.subtotal != null ? order.subtotal : order.total));
-  const discount=platform?(order.netSalesPlatform!=null?money(Math.max(0,gross-money(order.netSalesPlatform))):money(order.platformDiscount)):money(order.discount);
+  const discount=platform?(order.netSalesPlatform!=null?money(Math.max(0,gross-money(order.netSalesPlatform))):money(order.platformDiscount)):money(money(order.discount)+money(order.loyaltyDiscount));
   return money(Math.max(0, gross - discount - money(order.refundAmount)));
 }
 
@@ -162,7 +163,7 @@ function sourceNetSales(movements, sourceId) {
     (item.lines || []).forEach((entry) => {
       const account = safe(entry.account), debit = money(entry.debit), credit = money(entry.credit);
       if (account === "revenue:sales") gross = money(gross + credit - debit);
-      else if (["expense:customer_discount", "expense:platform_discount", "revenue:platform_discount"].includes(account)) discounts = money(discounts + debit - credit);
+      else if (["expense:customer_discount", "expense:platform_discount", "revenue:platform_discount", "expense:loyalty_discount"].includes(account)) discounts = money(discounts + debit - credit);
       else if (account === "revenue:sales_reversal") reversals = money(reversals + debit - credit);
     });
   });

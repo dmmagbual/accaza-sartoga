@@ -70,7 +70,7 @@ exports.processOrderAdjustment = onCall(
       if(found.node!=="orders"||o.source!=="pos"||String(o.channel||"instore").toLowerCase()!=="instore"||o.status!=="Completed")throw new HttpsError("failed-precondition","Only a current completed in-store POS sale can be corrected here.");
       if(o.preparationStatus!=="not_prepared"||o.preparationStartedAt)throw new HttpsError("failed-precondition","This order has already entered preparation and can no longer be changed.");
       if(o.completedOrderCorrectionId||(o.correctionPending&&o.correctionPending!==requestId)||Financial.money(o.refundAmount)>0)throw new HttpsError("failed-precondition","This order was already corrected or refunded.");
-      if(Financial.money(o.discount)>0||(Array.isArray(o.packages)&&o.packages.length))throw new HttpsError("failed-precondition","Discounted or packaged sales require the manager correction workflow.");
+      if(Financial.money(o.discount)>0||Financial.money(o.loyaltyDiscount)>0||(Array.isArray(o.packages)&&o.packages.length))throw new HttpsError("failed-precondition","Discounted or packaged sales require the manager correction workflow.");
       const payments=Array.isArray(o.payments)&&o.payments.length?o.payments:[{method:o.payment,amount:o.total}],payment=payments[0]||{};
       if(!["cashier_verified","manager_validated","confirmed"].includes(String(o.paymentStatus||""))||!financeText(payment.ref,120))throw new HttpsError("failed-precondition","The electronic payment must remain verified with its transaction reference.");
       if(Math.abs(Financial.money(payment.amount)-Financial.money(o.total))>.009)throw new HttpsError("failed-precondition","The original payment must exactly match the posted sale before item correction.");
