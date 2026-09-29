@@ -3,7 +3,8 @@
   var PREFIX='accaza_pos_tab_primary_v1_',LEASE_MS=15000,HEARTBEAT_MS=3000,STANDBY_MS=30*60000;
   var tabId='',leaseKey='',primary=true,available=true,timer=null,lastInput=Date.now(),standby=false,devicePrimary=null,deviceShift='';
   try{tabId='tab_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10);localStorage.setItem('__accaza_pos_guard_probe__','1');localStorage.removeItem('__accaza_pos_guard_probe__');}catch(_error){available=false;tabId='uncoordinated';}
-  function scope(){var shift=global.__posShift||{},authz=global.__accazaAuthz||{};return shift.id&&authz.uid?PREFIX+authz.uid+'_'+shift.id:'';}
+  function participant(){var shift=global.__posShift||{},uid=(global.__accazaAuthz||{}).uid||'',crew=shift.crew&&shift.crew[uid];return !!(shift.id&&uid&&(!shift.accountUid||shift.accountUid===uid||(crew&&!crew.leftAt)));}
+  function scope(){var shift=global.__posShift||{},uid=(global.__accazaAuthz||{}).uid||'';return participant()?PREFIX+uid+'_'+shift.id:'';}
   function read(key){try{return JSON.parse(localStorage.getItem(key)||'null');}catch(_error){return null;}}
   function write(key,value){try{localStorage.setItem(key,JSON.stringify(value));return true;}catch(_error){available=false;return false;}}
   function release(key){if(!available||!key)return;try{var row=read(key);if(row&&row.tabId===tabId)localStorage.removeItem(key);}catch(_error){}}
@@ -30,12 +31,12 @@
     publish(!!current&&current.tabId===tabId);return primary;
   }
   function explain(){paint();alert(devicePrimary===false&&global.__online!==false?'Another browser or device currently controls this POS. Use it, or choose “Use this device instead”. No sale has been recorded yet.':'This browser already has an active POS tab. Use that tab, or choose “Use this tab instead”. No sale has been recorded yet.');}
-  function canCharge(){wake();return claim(false)&&(global.__online===false||devicePrimary!==false);}
-  function updateDeviceAuthority(result,shiftId){if(deviceShift&&shiftId&&deviceShift!==shiftId)devicePrimary=null;deviceShift=shiftId||deviceShift;devicePrimary=result&&typeof result.primaryDevice==='boolean'?result.primaryDevice:null;paint();return devicePrimary;}
-  function beat(){claim(false);if(primary&&Date.now()-lastInput>=STANDBY_MS)setStandby(true);}
+  function canCharge(){if(!participant())return true;wake();return claim(false)&&(global.__online===false||devicePrimary!==false);}
+  function updateDeviceAuthority(result,shiftId){if(!participant()){devicePrimary=null;deviceShift='';claim(false);paint();return null;}if(deviceShift&&shiftId&&deviceShift!==shiftId)devicePrimary=null;deviceShift=shiftId||deviceShift;devicePrimary=result&&typeof result.primaryDevice==='boolean'?result.primaryDevice:null;paint();return devicePrimary;}
+  function beat(){claim(false);if(!leaseKey){if(standby)setStandby(false);return;}if(primary&&Date.now()-lastInput>=STANDBY_MS)setStandby(true);}
   timer=setInterval(beat,HEARTBEAT_MS);if(timer&&timer.unref)timer.unref();
   if(global.addEventListener){global.addEventListener('storage',function(event){if(event.key===leaseKey)claim(false);});global.addEventListener('beforeunload',function(){release(leaseKey);});['pointerdown','keydown','touchstart'].forEach(function(name){global.addEventListener(name,wake,{passive:true,capture:true});});}
   if(global.document&&document.addEventListener)document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible')wake();});
-  global.AccazaPosTabGuard={canCharge:canCharge,explain:explain,takeControl:function(){wake();return claim(true);},updateDeviceAuthority:updateDeviceAuthority,isPrimary:function(){return primary&&(global.__online===false||devicePrimary!==false);},isStandby:function(){return standby;},available:function(){return available;},tabId:function(){return tabId;},stop:function(){if(timer)clearInterval(timer);release(leaseKey);}};
+  global.AccazaPosTabGuard={canCharge:canCharge,explain:explain,takeControl:function(){if(!participant())return false;wake();return claim(true);},updateDeviceAuthority:updateDeviceAuthority,isPrimary:function(){return !participant()||primary&&(global.__online===false||devicePrimary!==false);},isStandby:function(){return standby;},participates:participant,available:function(){return available;},tabId:function(){return tabId;},stop:function(){if(timer)clearInterval(timer);release(leaseKey);}};
   beat();
 })(window);
