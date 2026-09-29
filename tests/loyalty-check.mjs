@@ -70,24 +70,40 @@ assert(!L.evaluateEarningRules(rules,{netAmount:1500}).some(a=>a.qty===99),'a di
   assert(totalRed===5,`stacked red total should be 1+1+3=5, got ${totalRed}`);
 }
 
-// ---- Daily cap: RED ONLY, yellow uncapped (confirmed 2026-09-29) ----
+// ---- Daily caps: PER CURRENCY. The seeded pair still behaves exactly as before
+// ---- (red capped at 2/day, yellow uncapped) — the cap is now config, not code.
+const SEEDED_CAPS={red:2}; // yellow absent = uncapped, same as the original behaviour
 {
   const awards=[{ruleId:'r1',currency:'red',qty:1},{ruleId:'r2',currency:'red',qty:1},{ruleId:'y1',currency:'yellow',qty:10}];
-  const result=L.applyDailyRedCap(awards,0,2);
+  const result=L.applyDailyCaps(awards,{},SEEDED_CAPS);
   assert(result.applied.filter(a=>a.currency==='red').reduce((s,a)=>s+a.qty,0)===2,'red should cap at 2/day');
   assert(result.applied.find(a=>a.currency==='yellow').qty===10,'yellow must remain uncapped');
   assert(result.cappedOut===false,'exactly hitting the cap should not report cappedOut for this case');
+  assert(result.counts.red===2,'the returned counter should carry the day total for a capped currency');
 }
 {
   // Already at 1/2 red today; a 3-red award should be trimmed to 1, not dropped whole or granted in full.
-  const result=L.applyDailyRedCap([{ruleId:'r1',currency:'red',qty:3}],1,2);
+  const result=L.applyDailyCaps([{ruleId:'r1',currency:'red',qty:3}],{red:1},SEEDED_CAPS);
   assert(result.applied.length===1&&result.applied[0].qty===1,`partial red-cap grant is wrong: ${JSON.stringify(result.applied)}`);
   assert(result.cappedOut===true,'partial grant should report cappedOut');
 }
 {
   // Already at cap: 6th order in one day earns no further red, order-level concern (charging) is out of scope here.
-  const result=L.applyDailyRedCap([{ruleId:'r1',currency:'red',qty:1}],2,2);
+  const result=L.applyDailyCaps([{ruleId:'r1',currency:'red',qty:1}],{red:2},SEEDED_CAPS);
   assert(result.applied.length===0,'red award should be fully suppressed once the daily cap is already reached');
+}
+{
+  // A newly added stamp gets its own independent cap and its own counter.
+  const result=L.applyDailyCaps([{ruleId:'g1',currency:'green',qty:5},{ruleId:'r1',currency:'red',qty:5}],{red:0,green:1},{red:2,green:3});
+  assert(result.applied.find(a=>a.currency==='green').qty===2,'a new capped stamp should be trimmed against its own cap');
+  assert(result.applied.find(a=>a.currency==='red').qty===2,"one stamp's cap must not affect another's");
+  assert(result.counts.green===3&&result.counts.red===2,'each stamp keeps its own day counter');
+}
+{
+  // The counter node also stores bookkeeping keys; they must never be read as a stamp count.
+  const result=L.applyDailyCaps([{ruleId:'r1',currency:'red',qty:1}],{red:0,_applied:[{ruleId:'x'}]},SEEDED_CAPS);
+  assert(result.applied.length===1&&result.applied[0].qty===1,'a non-numeric bookkeeping key must not break cap maths');
+  assert(result.counts._applied===undefined,'bookkeeping keys must not be echoed back as counts');
 }
 
 // ---- Reward catalog validation — cannot submit an uncapped reward (spec §4) ----
@@ -115,4 +131,4 @@ assert(!L.evaluateEarningRules(rules,{netAmount:1500}).some(a=>a.qty===99),'a di
   assert(L.computeRewardDiscount({grantType:'fixed_off_capped',cap:50},0,30)===30,'fixed-off should not exceed order net');
 }
 
-console.log('PASS: Loyalty earning rules engine (bounded triggers, flat yellow tiers, signup bonus, promotion stacking), red-only daily cap, and reward-builder cap validation all behave per spec.');
+console.log('PASS: Loyalty earning rules engine (bounded triggers, flat yellow tiers, signup bonus, promotion stacking), per-currency daily caps (the seeded pair still capping red at 2/day and leaving yellow uncapped), and reward-builder cap validation all behave per spec.');

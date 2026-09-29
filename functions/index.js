@@ -3332,8 +3332,16 @@ async function sendLoyaltySms(phoneE164, message) {
 async function ensureLoyaltyDefaults(db) {
   // Both reads are admin-configured rules/catalog — sized like chartOfAccounts (a handful
   // of rows), never like order/ledger history — so a whole-node read never grows with sales.
-  const [rulesSnap, catalogSnap] = await Promise.all([/* download-ok: bounded admin-configured rules, not history */ db.ref("/loyaltyEarningRules").get(), /* download-ok: bounded admin-configured catalog, not history */ db.ref("/loyaltyRewardCatalog").get()]);
+  const [rulesSnap, catalogSnap, currenciesSnap] = await Promise.all([/* download-ok: bounded admin-configured rules, not history */ db.ref("/loyaltyEarningRules").get(), /* download-ok: bounded admin-configured catalog, not history */ db.ref("/loyaltyRewardCatalog").get(), /* download-ok: bounded admin-configured stamp currencies, not history */ db.ref("/loyaltyCurrencies").get()]);
   const writes = {};
+  if (!currenciesSnap.exists()) {
+    // Seeds the two stamps the shop already runs. They are config from here on:
+    // more can be added, relabelled, recoloured or capped without a code change.
+    const now = Date.now();
+    Loyalty.DEFAULT_CURRENCIES.forEach((currency) => {
+      writes[`loyaltyCurrencies/${currency.code}`] = Object.assign({}, currency, {createdAt: now});
+    });
+  }
   if (!rulesSnap.exists()) {
     const now = Date.now();
     Object.assign(writes, {
@@ -3417,15 +3425,21 @@ exports.completeLoyaltySignup = onCall(
 // Badge scan (earn context) + phone-lookup fallback (earn-only, never redeem)
 // ---------------------------------------------------------------------------
 async function loyaltyMemberSnapshot(db, memberId) {
-  const [memberSnap, balSnap] = await Promise.all([db.ref(`/loyaltyMembers/${memberId}`).get(), db.ref(`/loyaltyBalances/${memberId}`).get()]);
+  const [memberSnap, balSnap, currenciesSnap] = await Promise.all([db.ref(`/loyaltyMembers/${memberId}`).get(), db.ref(`/loyaltyBalances/${memberId}`).get(), /* download-ok: bounded admin-configured stamp currencies, not history */ db.ref("/loyaltyCurrencies").get()]);
   const member = memberSnap.val();
   if (!member || member.status === "blocked") return null;
-  const balances = balSnap.val() || {redBalance: 0, yellowBalance: 0};
+  const balances = balSnap.val() || {};
+  const currencies = Loyalty.normalizeCurrencies(currenciesSnap.val());
   const rewardsSnap = await db.ref(`/loyaltyRewards/${memberId}`).orderByChild("status").equalTo("available").get();
   const rewards = rewardsSnap.val() || {};
   const now = Date.now();
   const availableRewards = Object.keys(rewards).filter((id) => Number(rewards[id].expiresAt || 0) > now).map((id) => Object.assign({id}, rewards[id]));
-  const redBalance = Loyalty.positiveInt(balances.redBalance, 0), yellowBalance = Loyalty.positiveInt(balances.yellowBalance, 0);
+  // One entry per configured stamp, carrying what a screen needs to render it (label +
+  // colour), so no client has to know the stamp names. redBalance/yellowBalance are still
+  // returned below for the surfaces that read them today.
+  const balanceOf = (code) => Loyalty.positiveInt(balances[Loyalty.balanceField(code)], 0);
+  const stamps = currencies.map((currency) => Object.assign({}, currency, {balance: balanceOf(currency.code)}));
+  const redBalance = balanceOf("red"), yellowBalance = balanceOf("yellow");
   // What this member could redeem right now. The till cannot read the catalog itself —
   // manageLoyaltyRewardCatalog is loyaltyAdmin-only — so without this a cashier has no way
   // to know what rewards exist or what they cost. One small bounded read of admin config,
@@ -3435,9 +3449,9 @@ async function loyaltyMemberSnapshot(db, memberId) {
   const catalog = (await /* download-ok: bounded admin-configured catalog, not history */ db.ref("/loyaltyRewardCatalog").get()).val() || {};
   const redeemable = Object.keys(catalog).map((id) => Object.assign({rewardId: id}, catalog[id]))
     .filter((r) => r.enabled !== false)
-    .filter((r) => (r.costCurrency === "red" ? redBalance : yellowBalance) >= Loyalty.positiveInt(r.costQty, 0))
-    .map((r) => ({rewardId: r.rewardId, name: r.name || r.rewardId, costCurrency: r.costCurrency, costQty: Loyalty.positiveInt(r.costQty, 0), grantType: r.grantType, cap: r.cap == null ? null : Number(r.cap), percent: r.percent == null ? null : Number(r.percent), stackingAllowed: r.stackingAllowed === true}));
-  return {memberId, firstName: financeText(member.name, 80).split(/\s+/)[0] || "", maskedPhone: Loyalty.maskPhone(member.phone), redBalance, yellowBalance, availableRewards, redeemable, memberSince: Number(member.createdAt) || null};
+    .filter((r) => balanceOf(r.costCurrency) >= Loyalty.positiveInt(r.costQty, 0))
+    .map((r) => ({rewardId: r.rewardId, name: r.name || r.rewardId, costCurrency: r.costCurrency, costCurrencyLabel: (currencies.find((c) => c.code === r.costCurrency) || {}).label || r.costCurrency, costQty: Loyalty.positiveInt(r.costQty, 0), grantType: r.grantType, cap: r.cap == null ? null : Number(r.cap), percent: r.percent == null ? null : Number(r.percent), stackingAllowed: r.stackingAllowed === true}));
+  return {memberId, firstName: financeText(member.name, 80).split(/\s+/)[0] || "", maskedPhone: Loyalty.maskPhone(member.phone), stamps, redBalance, yellowBalance, availableRewards, redeemable, memberSince: Number(member.createdAt) || null};
 }
 
 exports.scanLoyaltyBadge = onCall(
@@ -3630,21 +3644,23 @@ async function postLoyaltyEarning(db, order) {
   if ((await ledgerRef.get()).exists()) return {duplicate: true}; // idempotent — a re-fired trigger never double-earns
   const occurredAt = Number(order.completedAt || order.receivedAt || order.timestamp || Date.now());
   const businessDate = financeDateFromTimestamp(occurredAt);
-  const [rulesSnap, member] = await Promise.all([/* download-ok: bounded admin-configured rules, not history */ db.ref("/loyaltyEarningRules").get(), db.ref(`/loyaltyMembers/${memberId}`).get().then((s) => s.val())]);
+  const [rulesSnap, currenciesSnap, member] = await Promise.all([/* download-ok: bounded admin-configured rules, not history */ db.ref("/loyaltyEarningRules").get(), /* download-ok: bounded admin-configured stamp currencies, not history */ db.ref("/loyaltyCurrencies").get(), db.ref(`/loyaltyMembers/${memberId}`).get().then((s) => s.val())]);
+  const currencies = Loyalty.normalizeCurrencies(currenciesSnap.val());
+  const currencyCaps = Loyalty.capsByCurrency(currencies);
   if (!member || member.status === "blocked") return {skipped: true};
   const netAmount = Loyalty.money(order.total);
   const isFirstOrder = !(await db.ref(`/loyaltyLedger/${memberId}`).orderByChild("type").equalTo("earn").limitToFirst(1).get()).exists();
-  const awards = Loyalty.evaluateEarningRules(rulesSnap.val() || {}, {netAmount, isFirstOrderAfterSignup: isFirstOrder, occurredAt});
+  const awards = Loyalty.evaluateEarningRules(rulesSnap.val() || {}, {netAmount, isFirstOrderAfterSignup: isFirstOrder, occurredAt}, Loyalty.currencyCodes(currencies));
   if (!awards.length) return {skipped: true};
   const counterRef = db.ref(`/loyaltyDailyCounters/${memberId}/${businessDate}`);
   const capResult = await counterRef.transaction((current) => {
-    current = current || {red: 0};
-    const {applied, redEarnedToday} = Loyalty.applyDailyRedCap(awards, current.red, 2);
-    return Object.assign({}, current, {red: redEarnedToday, _applied: applied});
+    current = current || {};
+    const {applied, counts} = Loyalty.applyDailyCaps(awards, current, currencyCaps);
+    return Object.assign({}, current, counts, {_applied: applied});
   }, undefined, false);
   const applied = (capResult.committed && capResult.snapshot.val() && capResult.snapshot.val()._applied) || [];
   if (!applied.length) return {skipped: true, cappedOut: true};
-  const totals = {red: 0, yellow: 0};
+  const totals = {};
   applied.forEach((award) => { totals[award.currency] = (totals[award.currency] || 0) + award.qty; });
   const cashierUid = order.onDuty || order.staff || "", cashierKey = loyaltyStatKey(cashierUid);
   // The ledger entry (this function's own idempotency guard, checked at the top), the balance
@@ -3658,11 +3674,21 @@ async function postLoyaltyEarning(db, order) {
   // remaining race (two genuinely concurrent completions for the same member) as small as this
   // API allows — an acceptable trade for Phase 1's single-till, one-order-at-a-time POS scope.
   const [balancesSnap, statsSnap] = await Promise.all([db.ref(`/loyaltyBalances/${memberId}`).get(), db.ref(`/loyaltyStats/stampsByCashier/${cashierKey}`).get()]);
-  const balances = balancesSnap.val() || {redBalance: 0, yellowBalance: 0}, stats = statsSnap.val() || {red: 0, yellow: 0};
+  const balances = balancesSnap.val() || {}, stats = statsSnap.val() || {};
+  // One field per currency: redBalance/yellowBalance ARE the seeded pair, and a new stamp
+  // simply adds its own {code}Balance -- nothing to migrate. Merging rather than replacing
+  // keeps every other currency's balance (and the per-cashier tallies) intact.
+  const nextBalances = Object.assign({}, balances), nextStats = Object.assign({}, stats);
+  Object.keys(totals).forEach((code) => {
+    const field = Loyalty.balanceField(code);
+    nextBalances[field] = Loyalty.positiveInt(nextBalances[field], 0) + totals[code];
+    nextStats[code] = Loyalty.positiveInt(nextStats[code], 0) + totals[code];
+  });
+  nextBalances.updatedAt = Date.now();
   const writes = {
     [`loyaltyLedger/${memberId}/${ledgerKey}`]: {type: "earn", orderId: order.id, occurredAt, businessDate, awards: applied, cashierUid, schemaVersion: 1},
-    [`loyaltyBalances/${memberId}`]: {redBalance: Loyalty.positiveInt(balances.redBalance, 0) + totals.red, yellowBalance: Loyalty.positiveInt(balances.yellowBalance, 0) + totals.yellow, updatedAt: Date.now()},
-    [`loyaltyStats/stampsByCashier/${cashierKey}`]: {red: Loyalty.positiveInt(stats.red, 0) + totals.red, yellow: Loyalty.positiveInt(stats.yellow, 0) + totals.yellow},
+    [`loyaltyBalances/${memberId}`]: nextBalances,
+    [`loyaltyStats/stampsByCashier/${cashierKey}`]: nextStats,
   };
   await db.ref().update(writes);
   return {applied, totals};
@@ -3890,7 +3916,8 @@ exports.manageLoyaltyEarningRule = onCall(
     if (action === "list") return {rules: (await /* download-ok: bounded admin-configured rules, not history */ db.ref("/loyaltyEarningRules").get()).val() || {}};
     const trigger = String(data.trigger || "");
     if (!Loyalty.TRIGGER_TYPES.includes(trigger)) throw new HttpsError("invalid-argument", "Trigger type is invalid.");
-    if (!Loyalty.isCurrency(data.currency)) throw new HttpsError("invalid-argument", "Currency must be red or yellow.");
+    const ruleCodes = Loyalty.currencyCodes(Loyalty.normalizeCurrencies((await /* download-ok: bounded admin-configured stamp currencies, not history */ db.ref("/loyaltyCurrencies").get()).val()));
+    if (!Loyalty.isCurrency(data.currency, ruleCodes)) throw new HttpsError("invalid-argument", `Stamp must be one of the configured stamps: ${ruleCodes.join(", ")}.`);
     const qty = Loyalty.positiveInt(data.qty, 0);
     if (!(qty > 0)) throw new HttpsError("invalid-argument", "Quantity must be a positive whole number.");
     const ruleId = data.ruleId ? loyaltyKey(data.ruleId) : `rule_${crypto.randomBytes(8).toString("hex")}`;
@@ -3914,13 +3941,62 @@ exports.manageLoyaltyRewardCatalog = onCall(
       await db.ref(`/operationalAudit/${now}_loyalty_catalog_${rewardId}`).set(operationalAuditRecord(`${action}_loyalty_reward`, "loyaltyRewardCatalog", rewardId, actor, {}));
       return {rewardId, enabled: action === "enable"};
     }
-    const validated = Loyalty.validateRewardDefinition(data);
+    const catalogCodes = Loyalty.currencyCodes(Loyalty.normalizeCurrencies((await /* download-ok: bounded admin-configured stamp currencies, not history */ db.ref("/loyaltyCurrencies").get()).val()));
+    const validated = Loyalty.validateRewardDefinition(data, catalogCodes);
     if (!validated.ok) throw new HttpsError("invalid-argument", validated.errors.join(" "));
     const rewardId = data.rewardId ? loyaltyKey(data.rewardId) : `reward_${crypto.randomBytes(8).toString("hex")}`;
     const now = Date.now();
     await db.ref(`/loyaltyRewardCatalog/${rewardId}`).update(Object.assign({}, validated.reward, {updatedAt: now, updatedBy: actor.uid}));
     await db.ref(`/operationalAudit/${now}_loyalty_catalog_${rewardId}`).set(operationalAuditRecord("manage_loyalty_reward_catalog", "loyaltyRewardCatalog", rewardId, actor, validated.reward));
     return {rewardId};
+  },
+);
+
+// Admin: the stamp currencies themselves. A stamp can be added, relabelled, recoloured,
+// recapped, enabled or disabled -- but NEVER deleted and NEVER renamed, because its code
+// names the field holding real member balances (loyaltyBalances/{member}.{code}Balance).
+// Deleting or renaming one would strand every stamp a member is holding in it.
+//
+// Disabling is refused while an enabled rule still awards it or an enabled reward still
+// costs it: earning silently ignores awards in an unknown currency, so disabling out from
+// under a live rule would drop stamps customers had earned with nobody noticing.
+exports.manageLoyaltyCurrency = onCall(
+  {region: LOYALTY_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 20, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["loyaltyAdmin"]);
+    const data = request.data || {}; const action = String(data.action || "");
+    if (action === "list") {
+      return {
+        currencies: (await /* download-ok: bounded admin-configured stamp currencies, not history */ db.ref("/loyaltyCurrencies").get()).val() || {},
+        colors: Loyalty.STAMP_COLORS, // the fixed palette a stamp's colour must come from
+      };
+    }
+    if (action === "disable" || action === "enable") {
+      const code = Loyalty.currencyCode(data.code);
+      if (!code) throw new HttpsError("invalid-argument", "Stamp code is invalid.");
+      if (!(await db.ref(`/loyaltyCurrencies/${code}`).get()).exists()) throw new HttpsError("not-found", "That stamp does not exist.");
+      if (action === "disable") {
+        const [rulesSnap, catalogSnap] = await Promise.all([/* download-ok: bounded admin-configured rules, not history */ db.ref("/loyaltyEarningRules").get(), /* download-ok: bounded admin-configured catalog, not history */ db.ref("/loyaltyRewardCatalog").get()]);
+        const rules = rulesSnap.val() || {}, catalog = catalogSnap.val() || {};
+        const usedByRule = Object.keys(rules).some((id) => rules[id] && rules[id].enabled !== false && rules[id].currency === code);
+        const usedByReward = Object.keys(catalog).some((id) => catalog[id] && catalog[id].enabled !== false && catalog[id].costCurrency === code);
+        if (usedByRule) throw new HttpsError("failed-precondition", "Turn off the earning rules that award this stamp first - otherwise customers would keep qualifying for it and the stamps would be dropped without anyone noticing.");
+        if (usedByReward) throw new HttpsError("failed-precondition", "Turn off the rewards that cost this stamp first - otherwise members holding it would have nothing to spend it on.");
+      }
+      const now = Date.now();
+      await db.ref(`/loyaltyCurrencies/${code}/enabled`).set(action === "enable");
+      await db.ref(`/operationalAudit/${now}_loyalty_currency_${code}`).set(operationalAuditRecord(`${action}_loyalty_currency`, "loyaltyCurrencies", code, actor, {}));
+      return {code, enabled: action === "enable"};
+    }
+    const validated = Loyalty.validateCurrencyDefinition(data);
+    if (!validated.ok) throw new HttpsError("invalid-argument", validated.errors.join(" "));
+    const currency = validated.currency, now = Date.now();
+    const existing = (await db.ref(`/loyaltyCurrencies/${currency.code}`).get()).val();
+    // update() so an existing stamp keeps createdAt and its system flag: saving is an edit
+    // of label/colour/cap/order only, never a re-creation.
+    await db.ref(`/loyaltyCurrencies/${currency.code}`).update(Object.assign({}, currency, existing ? {} : {createdAt: now}, {updatedAt: now, updatedBy: actor.uid}));
+    await db.ref(`/operationalAudit/${now}_loyalty_currency_${currency.code}`).set(operationalAuditRecord("manage_loyalty_currency", "loyaltyCurrencies", currency.code, actor, currency));
+    return {code: currency.code, created: !existing};
   },
 );
 
