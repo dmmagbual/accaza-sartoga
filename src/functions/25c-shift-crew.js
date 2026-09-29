@@ -17,6 +17,9 @@ async function mirrorCrewMember(db,shiftId,uid,mirror){
     return Object.assign({},row,{crew});
   },undefined,false);
   await db.ref(`/shifts/${shiftId}/crew/${uid}`).update(mirror?Object.assign({},mirror,{leftAt:null}):{leftAt:Date.now()});
+  // reportPosDeviceHealth caches the open shift briefly to avoid repeated downloads.
+  // Invalidate it immediately so a join can claim a device and a leave cannot refresh one.
+  posHealthShiftMemo={at:0,shift:null};
 }
 exports.managePosShiftCrew=onCall({region:ORDER_REGION,enforceAppCheck:ENFORCE_APP_CHECK,timeoutSeconds:30,memory:'256MiB'},async request=>{
   const db=getDatabase(),actor=await requirePortalPermission(db,request,['pos','registerOps']),data=request.data||{},action=String(data.action||'');

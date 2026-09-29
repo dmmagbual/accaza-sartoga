@@ -14,7 +14,7 @@ const doc = {visibilityState: 'visible', addEventListener: (name, fn) => { (docL
 const state = {pending: 0, syncing: 0, failed: 0, rows: []};
 const win = {
   document: doc, localStorage: {getItem: () => 'pos_test', setItem() {}},
-  __online: true, __posShift: {id: 'SH1'}, __posOfflineState: () => state,
+  __online: true, __posShift: {id: 'SH1', accountUid: 'u1', crew: {}}, __accazaAuthz: {uid: 'u1'}, __posOfflineState: () => state,
   __accaza: {callables: {reportPosDeviceHealth: (payload) => { calls.push({at: now, ...payload}); return Promise.resolve({}); }}},
   addEventListener: (name, fn) => { (listeners[name] = listeners[name] || []).push(fn); },
 };
@@ -60,4 +60,13 @@ assert.ok(calls.length < 90 * 0.5, `an unattended visible POS slows down (got ${
 calls.length = 0;
 listeners.pointerdown.forEach((fn) => fn());
 assert.equal(calls.length, 1, 'the first tap after an idle spell reports at once');
+
+// Viewing another cashier's shift creates no health row or primary-device claim.
+win.__accazaAuthz.uid = 'manager';
+calls.length = 0;
+minutes(10);
+assert.equal(calls.length, 0, 'a manager viewing another cashier shift sends no POS heartbeat');
+win.__posShift.crew.manager = {staff: 'Manager', leftAt: null};
+await win.AccazaPosSyncHealth.refresh();
+assert.equal(calls.length, 1, 'joining the shift starts device health immediately');
 console.log('PASS: POS heartbeat reports every two minutes while in use or with unsynced sales, every ten minutes (flagged idle) otherwise, and at once on return.');

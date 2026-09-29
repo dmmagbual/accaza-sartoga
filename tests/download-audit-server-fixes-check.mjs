@@ -35,10 +35,10 @@ for (const name of ['markBackupDirtyStockReceipts', 'markBackupDirtyPurchaseInvo
 
 // ── F-5: the health stop-watch path pays its reads once per TTL window, not once a minute ──
 const db = createFakeDatabase({
-  admins: {u1: {role: 'cashier', name: 'Cashier One'}},
-  adminPerms: {u1: {pos: true}},
+  admins: {u1: {role: 'cashier', name: 'Cashier One'}, u2: {role: 'manager', name: 'Manager Two'}},
+  adminPerms: {u1: {pos: true}, u2: {pos: true}},
   sessionControl: {cutoff: {at: 0}},
-  posActiveShift: {id: 'SH1', staff: 'Cashier One', staffId: 'u1', status: 'open'},
+  posActiveShift: {id: 'SH1', staff: 'Cashier One', staffId: 'u1', accountUid: 'u1', crew: {}, status: 'open'},
 });
 const fns = loadFunctions(db);
 const ping = (shiftId) => fns.exports.reportPosDeviceHealth({auth: {uid: 'u1'}, data: {shiftId, deviceId: 'pos_a', pending: 0, syncing: 0, failed: 0, idle: false}});
@@ -72,5 +72,11 @@ const health = (await db.ref('/posDeviceHealth/SH1/pos_a').get()).val();
 db.resetReads();
 assert.equal(health.schemaVersion, 3, 'the health row uses the primary-device ownership schema');
 assert.equal(health.shiftId, 'SH1', 'the health row is filed under the reported shift');
+
+let viewerRejected = null;
+try { await fns.exports.reportPosDeviceHealth({auth: {uid: 'u2'}, data: {shiftId: 'SH1', deviceId: 'pos_viewer', pending: 0, syncing: 0, failed: 0}}); } catch (error) { viewerRejected = error; }
+assert.ok(viewerRejected && viewerRejected.code === 'permission-denied', 'a manager who did not join cannot register as a shift POS');
+assert.equal((await db.ref('/posDeviceHealth/SH1/pos_viewer').get()).exists(), false, 'a viewing manager creates no device health row');
+assert.equal((await db.ref('/posDeviceSessions/SH1/u2').get()).exists(), false, 'a viewing manager creates no primary-device claim');
 
 console.log('Audit server fixes: backup tracks the five ledgers with a forced full run; the POS health ping reads once per TTL.');
