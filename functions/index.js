@@ -3436,6 +3436,27 @@ exports.scanLoyaltyBadge = onCall(
   },
 );
 
+// The member reading their OWN card from the Rewards page. Same badge-code proof as
+// scanLoyaltyBadge, minus the staff permission: holding the device that can derive the
+// current 60-second code IS the proof of ownership, so this needs no separate customer
+// login. Read-only, and every read is a single record or an indexed status query, so the
+// cost does not grow with the member base. The Rewards page calls this once when it opens
+// and never subscribes — loyalty balances only move when a sale completes or a reward is
+// claimed, and the page can refresh explicitly at those moments.
+exports.getLoyaltyMemberCard = onCall(
+  {region: LOYALTY_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 20, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase();
+    const data = request.data || {}; const memberId = loyaltyKey(data.memberId, "Member ID"), code = String(data.code || "");
+    const member = (await db.ref(`/loyaltyMembers/${memberId}`).get()).val();
+    if (!member) throw new HttpsError("not-found", "Badge not recognized.");
+    if (!loyaltyVerifyBadgeCode(memberId, member.badgeSecret, code, Date.now())) throw new HttpsError("permission-denied", "Badge code is invalid or expired. Refresh the page and try again.");
+    const snapshot = await loyaltyMemberSnapshot(db, memberId);
+    if (!snapshot) throw new HttpsError("failed-precondition", "This member account is blocked. Please talk to our staff.");
+    return Object.assign({verifiedBy: "badge_self"}, snapshot);
+  },
+);
+
 exports.lookupLoyaltyMemberByPhone = onCall(
   {region: LOYALTY_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 20, memory: "256MiB"},
   async (request) => {

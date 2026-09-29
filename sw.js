@@ -36,12 +36,16 @@ self.addEventListener('notificationclick',function(e){
 /* Versioned customer + POS app shells. Installation downloads only the customer
    shell. Admin explicitly warms its larger offline shell after opening Admin;
    authenticated POS cash sales use the durable IndexedDB continuity queue. */
-const CACHE='accaza-v609';
+const CACHE='accaza-v610';
 const ASSETS=[
   '/index.html','/manifest.json',
   '/favicon.ico','/favicon_32x32.png','/favicon_180x180.png','/favicon_192x192.png',
   '/assets/js/pwa-register.js','/assets/js/shared/build-freshness.js','/build-version.json','/assets/css/customer/app-shell.css','/assets/css/customer/retired-admin.css','/assets/css/customer/site.css','/assets/css/customer/packages.css',
-  '/assets/js/customer/core.mjs','/assets/js/customer/navigation.js','/assets/js/customer/ui.js','/assets/js/customer/order-tracker.js','/assets/js/customer/packages.js','/assets/js/customer/order-availability.mjs'
+  '/assets/js/customer/core.mjs','/assets/js/customer/navigation.js','/assets/js/customer/ui.js','/assets/js/customer/order-tracker.js','/assets/js/customer/packages.js','/assets/js/customer/order-availability.mjs',
+  // Rewards badge: precached on purpose. The member shows this at the counter, where
+  // the signal is worst, and the badge is derived on-device so it needs no network at
+  // all once these three files are cached.
+  '/rewards.html','/assets/js/customer/rewards.js','/assets/js/customer/qr-encoder.mjs'
 ];
 const ADMIN_ASSETS=[
   '/assets/js/admin/historical-period-store.mjs',
