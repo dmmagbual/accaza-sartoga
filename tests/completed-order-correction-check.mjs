@@ -25,7 +25,7 @@ assert(movement.lines.some(line=>line.account==='coa:5030'&&line.debit===20));
 assert(movement.lines.some(line=>line.account==='coa:1220'&&line.credit===20));
 
 assert.equal(Correction.currentLines({...base,correctedLineItems:[{itemKey:'americano'}]})[0].itemKey,'americano');
-const adjustments=fs.readFileSync('src/functions/43g-order-adjustments.js','utf8'),inventory=fs.readFileSync('src/functions/50-inventory.js','utf8'),rules=fs.readFileSync('database.rules.json','utf8'),shiftOrders=fs.readFileSync('src/admin/pos/50a-register-shell.js','utf8');
+const adjustments=fs.readFileSync('src/functions/43g-order-adjustments.js','utf8'),inventory=fs.readFileSync('src/functions/50-inventory.js','utf8'),rules=fs.readFileSync('database.rules.json','utf8'),shiftOrders=fs.readFileSync('src/admin/pos/50a-register-shell.js','utf8'),receipt=fs.readFileSync('src/admin/pos/50h-receipt.js','utf8');
 assert(adjustments.includes('correctedInventoryUsage:correctedMeta.inventoryUsage'));
 assert(adjustments.includes('correctionInventoryToken:token'));
 for(const marker of ['claimManagerApproval(db,data,"correct_completed_order"','"completed_order_cash_refund"','actor.uid','correctionApprovalId','cashRefundApprovalId','approvalMode:"independent_manager"','correctionInitiatedByStaff','initiatedByStaff'])assert(adjustments.includes(marker),`completed correction approval safeguard missing: ${marker}`);
@@ -37,7 +37,11 @@ const completedCard=(shiftOrders.match(/function completedCard\(o\)\{([\s\S]*?)f
 assert(completedCard,'completed-sale card renderer must remain covered');
 assert(!completedCard.includes('Start preparing'),'completed sales must not expose a start-preparing action');
 assert(!completedCard.includes('Not prepared'),'completed sales must not be relabelled as not prepared');
+assert(completedCard.includes('data-completed-receipt'),'every completed sale keeps a customer receipt reprint action');
 assert(completedCard.includes('data-completed-correction'),'eligible completed-sale correction remains available');
+assert(shiftOrders.includes("querySelectorAll('[data-completed-receipt]')")&&shiftOrders.includes('showReceipt(o)'),'completed receipt reprint must use the stored order without another posting command');
+assert(!receipt.includes("li.optLabels.join(', ')"),'customer receipts must show sold menu lines, not recipe-like option rows');
+assert(receipt.includes('name.toLowerCase().indexOf')&&receipt.includes('<meta charset="UTF-8"/>'),'customer receipt reprints must preserve item size and declare UTF-8');
 const persistence=fs.readFileSync('src/admin/pos/50f-sale-persistence.js','utf8'),helper=(persistence.match(/function completedCorrectionPaymentKind\(o\)\{[\s\S]*?\n\}/)||[])[0];
 const context={paymentAccountsMap:{wallet:{name:'G-Cash',type:'ewallet'},bank:{name:'BDO',type:'bank'}},result:null};vm.createContext(context);vm.runInContext(`${helper};result=completedCorrectionPaymentKind;`,context);
 assert.equal(context.result({payments:[{method:'E-Wallet · G-Cash',paymentMethod:'E-Wallet',receivingAccountId:'wallet',receivingAccountName:'G-Cash'}]}),'G-Cash');

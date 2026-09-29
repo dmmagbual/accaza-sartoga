@@ -36,8 +36,10 @@ const escHtmlLine=sharedUiSource&&sharedUiSource.source.split(/\r?\n/).find(line
 if(!escHtmlLine)fail('shared-ui.mjs escHtml helper missing');
 const ticketPayload='img src=x onerror="window.__ticketPwn(1)"';
 const kitchenOrders={
-  poisoned:{id:'PWN-1',type:'Delivery',total:2,items:'Espresso <'+ticketPayload+'>, Mocha <'+ticketPayload+'>',address:'12 Oz Lane <'+ticketPayload+'>',date:'<'+ticketPayload+'>',time:'<'+ticketPayload+'>',notes:'Ring the bell <'+ticketPayload+'>',name:'Mallory <'+ticketPayload+'>',phone:'0917 <'+ticketPayload+'>',contact:'<'+ticketPayload+'>',onDuty:'Duty <'+ticketPayload+'>',payment:'GCash <'+ticketPayload+'>'},
-  clean:{id:'PWN-1',type:'Delivery',total:2,items:'Espresso, Mocha',address:'12 Oz Lane',date:'Aug 29',time:'2:30 PM',notes:'Ring the bell',name:'Mallory',phone:'0917 000 0000',contact:'0906 000 0000',onDuty:'Duty',payment:'GCash'}
+  poisoned:{id:'PWN-1',type:'Delivery',total:2,lineItems:[{name:'Espresso <'+ticketPayload+'>',size:'L',qty:1,optLabels:['Internal option <'+ticketPayload+'>']}],address:'12 Oz Lane <'+ticketPayload+'>',date:'<'+ticketPayload+'>',time:'<'+ticketPayload+'>',notes:'Ring the bell <'+ticketPayload+'>',name:'Mallory <'+ticketPayload+'>',phone:'0917 <'+ticketPayload+'>',contact:'<'+ticketPayload+'>',onDuty:'Duty <'+ticketPayload+'>',payment:'GCash <'+ticketPayload+'>'},
+  clean:{id:'PWN-1',type:'Delivery',total:2,lineItems:[{name:'Espresso',size:'L',qty:1,optLabels:['Internal option']}],address:'12 Oz Lane',date:'Aug 29',time:'2:30 PM',notes:'Ring the bell',name:'Mallory',phone:'0917 000 0000',contact:'0906 000 0000',onDuty:'Duty',payment:'GCash'},
+  sold:{id:'SALE-1',type:'Walk-in',total:950,lineItems:[{name:'Vanilla Iced Blended (L)',size:'L',qty:1,optLabels:['Regular','Whole Milk','With Whipped Cream']},{name:'Cookie, Cream Frappe',size:'M',qty:2,optLabels:['Regular']}],name:'Walk-in',staff:'Alex',payment:'Cash'},
+  legacy:{id:'OLD-1',type:'Walk-in',total:300,items:'Vanilla Iced Blended (L) (Regular, Whole Milk) x1, Mocha (M) x2',name:'Walk-in',staff:'Alex',payment:'Cash'}
 };
 const kitchenTickets=[];
 const kitchenSandbox={
@@ -46,9 +48,10 @@ const kitchenSandbox={
   setTimeout:function(){}
 };
 try{
-  vm.runInNewContext(escHtmlLine+'\n'+printOrderSource+'\nwindow.printOrder("poisoned");window.printOrder("clean");',kitchenSandbox);
+  vm.runInNewContext(escHtmlLine+'\n'+printOrderSource+'\nwindow.printOrder("poisoned");window.printOrder("clean");window.printOrder("sold");window.printOrder("legacy");',kitchenSandbox);
 }catch(error){fail('kitchen-ticket printOrder threw while rendering: '+error.message);}
-if(kitchenTickets.length!==2)fail('kitchen-ticket regression could not render both tickets');
+if(kitchenTickets.length!==4)fail('kitchen-ticket regression could not render structured and legacy tickets');
+if(/[âÂð�]/u.test(printOrderSource))fail('kitchen-ticket print source contains mojibake or replacement characters');
 const decodeTicketText=text=>text.replace(/&(amp|lt|gt|quot|#39);/g,(match,entity)=>({amp:'&',lt:'<',gt:'>',quot:'"','#39':"'"}[entity]));
 function ticketEvents(html){
   const events=[];let index=0;
@@ -89,6 +92,10 @@ const ticketShape=events=>events.filter(event=>event.type!=='text').map(event=>e
 if(JSON.stringify(ticketShape(poisonedEvents))!==JSON.stringify(ticketShape(cleanEvents)))fail('poisoned kitchen-ticket DOM structure differs from a clean order ticket DOM');
 const poisonedText=poisonedEvents.filter(event=>event.type==='text').map(event=>event.text).join('\n');
 if(!poisonedText.includes(ticketPayload))fail('kitchen-ticket print path dropped order data instead of escaping it');
+const soldTicket=kitchenTickets[2],legacyTicket=kitchenTickets[3];
+if(!soldTicket.includes('<b>1&times;</b> Vanilla Iced Blended (L)')||!soldTicket.includes('<b>2&times;</b> Cookie, Cream Frappe (M)'))fail('kitchen ticket must print each structured sold menu line with its quantity and size');
+if(/Regular|Whole Milk|With Whipped Cream/.test(soldTicket))fail('kitchen ticket exposed option or recipe-like details instead of sold menu lines');
+if((legacyTicket.match(/class="items"/g)||[]).length!==1||!legacyTicket.includes('Vanilla Iced Blended (L) (Regular, Whole Milk)'))fail('legacy kitchen-ticket fallback split comma-delimited details into false item rows');
 
 const reconciliation=require(path.join(root,'functions','lib','reconciliation-controls.js'));
 const rules=reconciliation.DEFAULT_ACCOUNT_RULES,legacyJournal={old_a:{date:'2026-08-29',lines:[{code:'1900',debit:0,credit:100}]},old_b:{date:'2026-08-30',lines:[{code:'1900',debit:25,credit:0}]},new_a:{date:'2026-08-31',lines:[{code:'1900',debit:10,credit:0}]}},before=JSON.stringify(legacyJournal);
@@ -105,7 +112,7 @@ console.log('PASS: customer-field rendering containment checks passed.');
 console.log('PASS: database rule structure and Release 1A limits are present.');
 console.log('PASS: Release 1B authentication and role-enforcement guards are present.');
 console.log('PASS: Release 1C server-pricing and customer-ownership guards are present.');
-console.log('PASS: kitchen-ticket print path escapes every customer-supplied field; a poisoned ticket DOM matches a clean order.');
+console.log('PASS: kitchen-ticket print path shows sold menu lines, hides recipe-like options, preserves legacy grouped details, and escapes every customer-supplied field.');
 process.stdout.write(pricing.stdout);
 process.stdout.write(proofCheck.stdout);
 process.stdout.write(activeOrdersCheck.stdout);
