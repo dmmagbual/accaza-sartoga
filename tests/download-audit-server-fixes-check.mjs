@@ -67,10 +67,10 @@ db.resetReads();
 await ping('SH1');
 assert.equal(db.reads.filter((r) => r.path === 'posActiveShift').length, 0, 'the refreshed shift memo serves the next ping');
 
-// The written health row keeps its schema.
+// The written health row carries the primary-device ownership fields added in schema 3.
 const health = (await db.ref('/posDeviceHealth/SH1/pos_a').get()).val();
 db.resetReads();
-assert.equal(health.schemaVersion, 2, 'the health row schema is unchanged');
+assert.equal(health.schemaVersion, 3, 'the health row uses the primary-device ownership schema');
 assert.equal(health.shiftId, 'SH1', 'the health row is filed under the reported shift');
 
 console.log('Audit server fixes: backup tracks the five ledgers with a forced full run; the POS health ping reads once per TTL.');

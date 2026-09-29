@@ -89,7 +89,7 @@ function createSubscriptionHub(database,ops){
   // query keeps the live listener instead of detaching and re-downloading the whole page.
   function targetKey(path,scope){if(!HISTORY_BOUNDS[path])return 'static';var p=selectedPeriod(scope),rp=reportPeriod(scope);if(path==='archivedOrders'||salesPath(path))return p?'period:'+periodKey(p):'latest';if(path==='financialMovements'){if(p&&scope==='saleshistory')return 'saleshistory:'+periodKey(rp);return rp&&Number(rp.startAt)&&Number(rp.endAt)?'period:'+periodKey(rp):'latest';}return 'latest';}
   function liveTarget(path){var base=ref(database,path),spec=HISTORY_BOUNDS[path],period=reportPeriod();if(WINDOWED_PATHS[path]){var win=WINDOWED_PATHS[path];return query(base,orderByChild(win.field),startAt(Date.now()-win.windowMs));}if(CURRENT_MONTH_PATHS[path])return query(base,orderByChild(CURRENT_MONTH_PATHS[path]),startAt(manilaMonthStart()));if(OPEN_ROW_PATHS[path])return query(base,orderByChild(OPEN_ROW_PATHS[path].field),startAt(OPEN_ROW_PATHS[path].start));if(!spec)return base;if(period&&path==='financialMovements'&&Number(period.startAt)&&Number(period.endAt))return query(base,orderByChild(spec.field),startAt(Number(period.startAt)),endAt(Number(period.endAt)));return query(base,orderByChild(spec.field),limitToLast(spec.limit));}
-  var entries={},authorized=false,activeScope='dashboard',nextId=1,liveStartedAt=0,liveReadyRecorded=false;
+  var entries={},authorized=false,activeScope='dashboard',nextId=1,liveStartedAt=0,liveReadyRecorded=false,pageVisible=typeof document==='undefined'||document.visibilityState!=='hidden',hiddenTimer=null,posStandby=false;
   var rollingStops=new Set();
   // Saved Sales History catches up from the durable change log by exact order ID:
   // a small RTDB read of order IDs replaces re-downloading 100-record pages.
@@ -112,7 +112,7 @@ function createSubscriptionHub(database,ops){
     pettyCashVouchers:['petty','purchases'],pettyCashReplenishments:['petty'],pettyCashSettings:['petty'],cfAccounts:['dashboard','pos','purchases','petty','cashflow','receivables','payables','payouts','undeposited','possettings'],cfLedger:['cashflow'],'books/journal':['stockvalue'],'books/monthlyNet':['stockvalue'],financialMovements:['purchases','cashflow','receivables','payables','payouts','saleshistory','discrepancy'],chartOfAccounts:['cashflow'],cashCustody:['cashflow'],receivables:['receivables'],payables:['payables'],accountingPeriods:['accountingperiods']
   };
   function policy(path,opts){opts=opts||{};return {critical:opts.critical===true||critical[path]===1,scopes:opts.scopes||scopes[path]||[]};}
-  function consumerActive(c){return authorized&&(c.critical||c.scopes.indexOf(activeScope)>-1);}
+  function consumerActive(c){return authorized&&(c.critical||(pageVisible&&!posStandby&&c.scopes.indexOf(activeScope)>-1));}
   function reportError(path,error){console.error('ACCAZA LIVE DATA ERROR ['+path+']',error);try{(window.accazaToast||function(){})('Live data failed for '+path+'. Check connection or access.','err');}catch(_e){}}
   // Bounded report paths always handed consumers an object. Whole nodes attached per child
   // (activeOrders, inventory, posActiveShift, growing nodes) behave like a real snapshot: an
@@ -217,12 +217,26 @@ function createSubscriptionHub(database,ops){
   function entryNeeded(entry){return Object.keys(entry.consumers).some(function(id){return consumerActive(entry.consumers[id]);});}
   function release(entry){
     if(!entry.unsub||entry.lingerTimer)return;
+    if(!pageVisible||posStandby){resetEntry(entry);return;}
     if(!authorized||!(LINGER_MS>0)||!LINGER_OK(entry.path)){resetEntry(entry);return;}
     entry.lingerTimer=setTimeout(function(){entry.lingerTimer=null;if(!entryNeeded(entry))resetEntry(entry);},LINGER_MS);
     if(entry.lingerTimer&&entry.lingerTimer.unref)entry.lingerTimer.unref();
   }
   function reconcileEntry(entry){var ids=Object.keys(entry.consumers),needed=entryNeeded(entry);if(needed){clearLinger(entry);if(entry.unsub&&HISTORY_BOUNDS[entry.path]&&(entry.error||entry.targetKey!==targetKey(entry.path,activeScope)))resetEntry(entry);}var wasAttached=!!entry.unsub;if(needed&&!entry.unsub)attach(entry);if(!needed&&entry.unsub)release(entry);ids.forEach(function(id){var c=entry.consumers[id],now=consumerActive(c),becameActive=now&&!c.wasActive;c.wasActive=now;if(becameActive&&wasAttached&&entry.last){try{c.callback(entry.last);}catch(e){console.error('ACCAZA RENDER ERROR ['+entry.path+']',e);}}});}
   function reconcile(){Object.keys(entries).forEach(function(path){reconcileEntry(entries[path]);});}
+  // A background Admin/POS tab keeps the connection, active shift and queue safety signals,
+  // but after two minutes it releases screen-only feeds. Returning to the tab reattaches the
+  // bounded feeds. The grace avoids a detach/re-download cycle during ordinary tab switching.
+  if(typeof document!=='undefined'&&document.addEventListener)document.addEventListener('visibilitychange',function(){
+    if(document.visibilityState==='hidden'){
+      if(hiddenTimer)clearTimeout(hiddenTimer);
+      hiddenTimer=setTimeout(function(){hiddenTimer=null;pageVisible=false;reconcile();},2*60000);
+    }else{
+      if(hiddenTimer){clearTimeout(hiddenTimer);hiddenTimer=null;}
+      if(!pageVisible){pageVisible=true;reconcile();}
+    }
+  });
+  if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('accaza-pos-standby',function(event){posStandby=!!(event.detail&&event.detail.standby);reconcile();});
   if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('accaza-admin-period',function(event){if(!event.detail||event.detail.scope!=='sales'||['dashboard','saleshistory','analytics'].indexOf(activeScope)<0)return;var affected=Object.keys(entries).filter(function(path){return HISTORY_BOUNDS[path]&&entries[path].unsub;}).map(function(path){return entries[path];});affected.forEach(resetEntry);affected.filter(entryNeeded).forEach(attach);});
   return {
     invalidateMasterCache:invalidateMasterCache,
