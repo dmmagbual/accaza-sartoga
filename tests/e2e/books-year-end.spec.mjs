@@ -31,11 +31,20 @@ async function openBooks(page,now){
 
 async function equity(page,period){
   await page.evaluate(p=>{if(p.month)window.AccazaReportPeriod.setMonth(p.month);else window.AccazaReportPeriod.set({mode:'custom',customFrom:p.from,customTo:p.to});window.App.go('bs');},period);
-  let rows=[];
+  // The equity rows appear as soon as the balance sheet paints, which can be before the selected
+  // period's journal has arrived: live-pos.mjs clears __booksLiveLoading on any feed delivery, not
+  // only the journal's, so a monthlyNet update can reveal a carry-only page for a frame. Waiting
+  // for three rows alone therefore reads a partially loaded period. Wait for figures that are both
+  // fully formed and unchanged between samples, so the assertion sees the settled period.
+  const shaped=text=>/^(Retained earnings|Current-year net|Total equity).* ₱[\d,]+\.\d{2}$/.test(text);
+  let rows=[],previous=null;
   await expect.poll(async()=>{
-    rows=await page.locator('#page tr').evaluateAll(list=>list.map(row=>row.innerText.replace(/\s+/g,' ').trim()).filter(text=>/^(Retained earnings|Current-year net|Total equity)/.test(text)));
-    return rows.length;
-  },{timeout:15000}).toBe(3);
+    const current=await page.locator('#page tr').evaluateAll(list=>list.map(row=>row.innerText.replace(/\s+/g,' ').trim()).filter(text=>/^(Retained earnings|Current-year net|Total equity)/.test(text)));
+    const settled=current.length===3&&current.every(shaped)&&previous!==null&&JSON.stringify(current)===JSON.stringify(previous);
+    previous=current;
+    if(settled)rows=current;
+    return settled;
+  },{timeout:15000}).toBe(true);
   await expect(page.locator('#page')).toContainText('Balanced');
   return rows;
 }
