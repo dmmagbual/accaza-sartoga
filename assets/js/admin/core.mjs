@@ -4,7 +4,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=621";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=622";
 import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=616";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
@@ -1282,11 +1282,31 @@ window.printOrder = function(orderId) {
   var isDelivery = o.type === 'Delivery';
   var now = new Date();
   var printTime = now.toLocaleString('en-PH', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit', hour12:true });
-  var itemsHtml = (o.items || '').split(',').map(function(s){ return '<div>' + escHtml(s.trim()) + '</div>'; }).join('');
+  function legacyItemLines(text) {
+    var out=[],buf='',depth=0;
+    String(text||'').split('').forEach(function(ch){
+      if(ch==='(') depth++;
+      if(ch===')'&&depth>0) depth--;
+      if(ch===','&&depth===0){ if(buf.trim()) out.push(buf.trim()); buf=''; }
+      else buf+=ch;
+    });
+    if(buf.trim()) out.push(buf.trim());
+    return out;
+  }
+  var sourceLines = Array.isArray(o.correctedLineItems)&&o.correctedLineItems.length ? o.correctedLineItems : o.lineItems;
+  var soldLines = Array.isArray(sourceLines)&&sourceLines.length ? sourceLines.map(function(li){
+    var name=String(li.name||li.itemKey||'Item'),size=String(li.size||''),qty=Math.max(1,Number(li.qty)||1);
+    if(size&&name.toLowerCase().indexOf('('+size.toLowerCase()+')')<0) name+=' ('+size+')';
+    return {name:name,qty:qty};
+  }) : legacyItemLines(o.correctedItems||o.items).map(function(text){
+    var match=text.match(/\s+x(\d+)\s*$/i);
+    return {name:match?text.slice(0,match.index).trim():text,qty:match?Math.max(1,Number(match[1])||1):1};
+  });
+  var itemsHtml = soldLines.length ? soldLines.map(function(line){ return '<div><b>' + escHtml(line.qty) + '&times;</b> ' + escHtml(line.name) + '</div>'; }).join('') : '<div>No item details recorded</div>';
   var addrRow = (isDelivery && o.address) ? '<div class="row"><span class="lbl">Address</span><span>' + escHtml(o.address) + '</span></div>' : '';
   var schedRow = (o.date || o.time) ? '<div class="row"><span class="lbl">Schedule</span><span>' + escHtml(o.date||'') + ' ' + escHtml(o.time||'') + '</span></div>' : '';
   var notesRow = o.notes ? '<div class="row"><span class="lbl">Notes</span><span>' + escHtml(o.notes) + '</span></div><hr/>' : '';
-  var ticketHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Order #' + escHtml(o.id) + ' â€” Kitchen Ticket</title>'
+  var ticketHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Order #' + escHtml(o.id) + ' - Kitchen Ticket</title>'
     + '<style>'
     + '* { box-sizing:border-box; margin:0; padding:0; }'
     + 'body { font-family:"Courier New",Courier,monospace; font-size:13px; color:#000; background:#fff; padding:12px 16px; max-width:380px; }'
@@ -1301,26 +1321,26 @@ window.printOrder = function(orderId) {
     + '.footer { text-align:center; font-size:10px; margin-top:14px; color:#555; }'
     + '@media print { body { max-width:none; } @page { margin:6mm; } }'
     + '</style></head><body>'
-    + '<div class="logo">â˜• ACCAZA</div>'
-    + '<div class="sub">Coffee House â€” Kitchen Ticket</div>'
+    + '<div class="logo">ACCAZA</div>'
+    + '<div class="sub">Coffee House - Kitchen Ticket</div>'
     + '<hr/>'
     + '<div class="row"><span class="lbl">Order #</span><span>' + escHtml(o.id) + '</span></div>'
     + '<div class="row"><span class="lbl">Printed</span><span>' + printTime + '</span></div>'
     + '<hr/>'
-    + '<div class="row"><span class="lbl">Customer</span><span>' + escHtml(o.name||'â€”') + '</span></div>'
-    + '<div class="row"><span class="lbl">Contact</span><span>' + escHtml(o.phone||'â€”') + (o.contact?' / '+escHtml(o.contact):'') + '</span></div>'
-    + '<div class="badge">' + (isDelivery ? 'ðŸ›µ DELIVERY' : 'ðŸ  PICK-UP') + '</div>'
+    + '<div class="row"><span class="lbl">Customer</span><span>' + escHtml(o.name||'-') + '</span></div>'
+    + '<div class="row"><span class="lbl">Contact</span><span>' + escHtml(o.phone||'-') + (o.contact?' / '+escHtml(o.contact):'') + '</span></div>'
+    + '<div class="badge">' + (isDelivery ? 'DELIVERY' : 'PICK-UP') + '</div>'
     + addrRow + schedRow
     + '<hr/>'
     + '<div class="lbl">Items:</div>'
     + '<div class="items">' + itemsHtml + '</div>'
     + '<hr/>'
     + notesRow
-    + '<div class="row"><span class="lbl">On Duty</span><span>' + escHtml(o.onDuty||o.staff||'â€”') + '</span></div>'
-    + '<div class="row"><span class="lbl">Payment</span><span>' + escHtml(o.payment||'â€”') + '</span></div>'
-    + '<div class="total">TOTAL: â‚±' + (o.total||0).toLocaleString() + '</div>'
+    + '<div class="row"><span class="lbl">On Duty</span><span>' + escHtml(o.onDuty||o.staff||'-') + '</span></div>'
+    + '<div class="row"><span class="lbl">Payment</span><span>' + escHtml(o.payment||'-') + '</span></div>'
+    + '<div class="total">TOTAL: &#8369;' + (o.total||0).toLocaleString() + '</div>'
     + '<hr/>'
-    + '<div class="footer">â€” Thank you! Pass this to the kitchen. â€”</div>'
+    + '<div class="footer">Thank you! Pass this to the kitchen.</div>'
     + '</body></html>';
   var win = window.open('', '_blank', 'width=440,height=640');
   win.document.write(ticketHtml);

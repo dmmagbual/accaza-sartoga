@@ -11,10 +11,10 @@ function ensureModals(){
 function showReceipt(o){
   var addr='Saratoga Ave, La Mediterranea Subd., Governor\'s Drive, Dasmariñas';
   var dispRef=o.platformRef||o.id;
-  var currentLines=o.correctedLineItems||o.lineItems||[],rows=currentLines.map(function(li){return '<tr><td>'+esc(li.name)+' ×'+li.qty+'</td><td style="text-align:right;">'+peso(li.qty*li.unitTotal)+'</td></tr>'+(li.optLabels&&li.optLabels.length?'<tr><td colspan="2" style="font-size:0.7rem;color:#777;padding-top:0;">'+esc(li.optLabels.join(', '))+'</td></tr>':'');}).join('');
+  var currentLines=o.correctedLineItems||o.lineItems||[],rows=currentLines.map(function(li){var name=String(li.name||li.itemKey||'Item'),size=String(li.size||'');if(size&&name.toLowerCase().indexOf('('+size.toLowerCase()+')')<0)name+=' ('+size+')';return '<tr><td>'+esc(name)+' ×'+li.qty+'</td><td style="text-align:right;">'+peso(li.qty*li.unitTotal)+'</td></tr>';}).join('');
   var w=window.open('','_blank','width=360,height=640');
   if(!w){alert('Allow pop-ups to print the receipt. Sale was saved.');return;}
-  w.document.write('<html><head><title>Receipt '+esc(dispRef)+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2{text-align:center;margin:0 0 2px;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
+  w.document.write('<!doctype html><html><head><meta charset="UTF-8"/><title>Receipt '+esc(dispRef)+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2{text-align:center;margin:0 0 2px;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
     +'<h2>Accaza Coffee House</h2><div style="text-align:center;">'+esc(addr)+'</div><hr>'
     +'<div>Order: '+esc(dispRef)+'</div>'+(o.completedOrderCorrection?'<div>Corrects original order: '+esc(o.originalOrderId)+'</div>':'')+'<div>'+esc(o.date)+' '+esc(o.time)+'</div><div>On Duty: '+esc(o.onDuty||o.staff||'-')+'</div><div>Customer: '+esc(o.name||'Walk-in')+'</div>'
     +'<hr>'
