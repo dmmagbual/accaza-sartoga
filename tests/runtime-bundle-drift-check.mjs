@@ -58,6 +58,10 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('syncOfflinePosSa
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('managePosSaleRecovery')+1,0,'startLoyaltySignup','completeLoyaltySignup','scanLoyaltyBadge','getLoyaltyMemberCard','lookupLoyaltyMemberByPhone','onOrderLoyaltyEarning','claimLoyaltyReward','finalizeLoyaltyRedemption','releaseLoyaltyClaim','startLoyaltyRedeemOtp','manageLoyaltyEarningRule','manageLoyaltyRewardCatalog','manageLoyaltyMemberStatus','getLoyaltyReports');
 // 30 Sep 2026: customer account <-> membership link (device -> durable membership) + own-card read.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('lookupLoyaltyMemberByPhone')+1,0,'getMyLoyaltyCard','linkLoyaltyByBadge','startLoyaltyLinkOtp','confirmLoyaltyLinkOtp','unlinkLoyaltyFromDevice');
+// 30 Sep 2026: stamp currencies are configurable (label/colour/daily cap), so the two
+// seeded stamps are config rather than code. Add/relabel/recolour/enable/disable only --
+// never delete or rename, because a code names the field holding real member balances.
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageLoyaltyRewardCatalog')+1,0,'manageLoyaltyCurrency');
 // Sep 2026: owner emergency sign-out of every portal session.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('onShiftCloseAssurance'),0,'signOutAllPortalSessions');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('getUndepositedControlSnapshot')+1,0,'syncUndepositedLedgerPageIndex','syncPettyVoucherAttentionIndex','syncCashCustodyPageIndex','getUndepositedPage');
