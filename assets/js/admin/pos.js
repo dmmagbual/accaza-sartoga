@@ -3460,6 +3460,7 @@ function renderPosCart(options){
       +'<div style="display:flex;justify-content:space-between;font-size:0.82rem;margin-bottom:0.3rem;"><span>Subtotal</span><span>'+peso(sub)+'</span></div>'
       +(isPlat?'':correction?'':'<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.82rem;margin-bottom:0.3rem;"><span>Discount ₱</span><input class="pz-in" id="posDisc" type="number" step="any" style="width:100px;text-align:right;" value="0"/></div>'
       +'<button class="pz-btn sec" id="posDiscBtn" style="width:100%;margin-bottom:0.4rem;font-size:0.8rem;">🧾 PWD / Senior / Athlete / Promo</button>'
+      +posLoyaltyCartRow()
       +(posScopedDisc.length?('<div style="font-size:0.76rem;margin-bottom:0.4rem;">'+posScopedDisc.map(function(d,ix){return '<div style="display:flex;justify-content:space-between;align-items:center;color:#155724;margin-bottom:0.15rem;"><span>'+esc((DISC_TYPES[d.type]||{}).label||d.type)+' · '+esc(d.name)+(d.idNumber?' ('+esc(d.idNumber)+')':'')+'</span><span style="white-space:nowrap;">−'+peso(d.value)+' <button class="pz-btn warn" data-sdrm="'+ix+'" style="padding:0 0.35rem;">✕</button></span></div>';}).join('')+'</div>'):'')
       +(posMeta.cashRounding?'<div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;"><span>Cash rounding</span><span id="posRound">₱0.00</span></div>':''))
       +'<div style="display:flex;justify-content:space-between;font-weight:700;color:var(--bd);font-size:1rem;border-top:1px solid var(--cd);padding-top:0.4rem;"><span>'+(isPlat?'Gross':'Total')+'</span><span id="posTotal">'+peso(sub)+'</span></div>'
@@ -3586,9 +3587,10 @@ function renderPosCart(options){
   updateOfflineUI();
   var _sb=document.getElementById('posShiftBar'); if(_sb)_sb.innerHTML=shiftBar; renderOfflineUI();
   var _db=document.getElementById('posDiscBtn'); if(_db)_db.onclick=openDiscountModal;
+  posLoyaltyWireCart(p);
   p.querySelectorAll('[data-sdrm]').forEach(function(b){b.onclick=function(){posScopedDisc.splice(+b.getAttribute('data-sdrm'),1);renderPosCart();};});
   var _pb=document.getElementById('posPkgBtn');if(_pb)_pb.onclick=function(){ if(window.__openPackagePicker)window.__openPackagePicker(); else alert('Packages module still loading \u2014 try again.'); };
-  document.getElementById('posClear').onclick=function(){if(correction){if(confirm('Cancel this correction? The original completed order will remain unchanged.')){posCompletedCorrection=null;posCart={};posDraft={};posPaymentVerification=null;window.__posPkgs=[];posScopedDisc=[];renderPosCart({fresh:true});}return;}if(Object.keys(posCart).length&&confirm('Clear this sale?')){posCart={};posDraft={};posPaymentVerification=null;window.__posPkgs=[];posScopedDisc=[];renderPosCart({fresh:true});}};
+  document.getElementById('posClear').onclick=function(){if(correction){if(confirm('Cancel this correction? The original completed order will remain unchanged.')){posCompletedCorrection=null;posCart={};posDraft={};posPaymentVerification=null;window.__posPkgs=[];posScopedDisc=[];posLoyaltyReset();renderPosCart({fresh:true});}return;}if(Object.keys(posCart).length&&confirm('Clear this sale?')){posCart={};posDraft={};posPaymentVerification=null;window.__posPkgs=[];posScopedDisc=[];posLoyaltyReset();renderPosCart({fresh:true});}};
   var _join=document.getElementById('posJoinShift'); if(_join)_join.onclick=function(){joinPosShift();};
   var _hold=document.getElementById('posHold'); if(_hold)_hold.onclick=function(){ if(!Object.keys(posCart).length)return; var a=A(); a.set(a.ref(a.db,'heldOrders/'+uid('hold_')),{cart:posCart,ts:Date.now(),staff:(window.__posShift&&window.__posShift.staff)||'—',note:(document.getElementById('posCust').value||'').trim()}); posCart={};posDraft={};posPaymentVerification=null;window.__posPkgs=[]; renderPosCart({fresh:true}); alert('Order held. Recall it from Register Ops.'); };
   document.getElementById('posCharge').onclick=async function(){
@@ -3681,7 +3683,7 @@ function chargeSale(sub,total,payments,platform,discountApproval,cashierVerifica
   var payLabel=isPlat?channelLabel(platform.channel):(payments.length>1?'Split':payments[0].method);
   var _pendingPay=(!isPlat)&&directPaymentRows(payments).length>0,_verificationPolicy=_pendingPay?paymentVerificationPolicy(payments):null;
   var now=new Date();
-  var order={id:oid,clientTxnId:txnId,schemaVersion:2,syncState:'pending',name:cust,phone:'',type:(isPlat?channelLabel(platform.channel):'Walk-in'),address:'',payment:payLabel,payments:payments,contact:'',contactMethod:'',items:itemsStr,lineItems:lineItems,subtotal:sub,discount:disc,discountLines:_scoped,total:total,tendered:tendered,change:change,notes:'',status:'Completed',source:'pos',channel:(isPlat?platform.channel:'instore'),staff:staff,soldBy:seller.staff,soldByStaffId:seller.staffId,soldByUid:seller.uid,soldByRole:seller.role,shiftId:shift.id,packages:_pkgs,extraCost:_extra,paymentStatus:(_pendingPay?(_verificationPolicy==='manager_only'?'pending':'cashier_verified'):'confirmed'),paymentVerificationPolicy:_verificationPolicy,cashierVerificationIntent:!!(_pendingPay&&_verificationPolicy==='cashier_manager'&&cashierVerification&&cashierVerification.required),receivedByCustomer:true,preparationStatus:isPlat?'not_applicable':'not_prepared',tipRounding:tipTotal,time:now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:now.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
+  var order={id:oid,clientTxnId:txnId,schemaVersion:2,syncState:'pending',name:cust,phone:'',type:(isPlat?channelLabel(platform.channel):'Walk-in'),address:'',payment:payLabel,payments:payments,contact:'',contactMethod:'',items:itemsStr,lineItems:lineItems,subtotal:sub,discount:disc,discountLines:_scoped,total:total,tendered:tendered,change:change,notes:'',status:'Completed',source:'pos',channel:(isPlat?platform.channel:'instore'),staff:staff,soldBy:seller.staff,soldByStaffId:seller.staffId,soldByUid:seller.uid,soldByRole:seller.role,shiftId:shift.id,loyaltyMemberId:((!isPlat&&posLoyaltyMember&&posLoyaltyMember.memberId)||''),packages:_pkgs,extraCost:_extra,paymentStatus:(_pendingPay?(_verificationPolicy==='manager_only'?'pending':'cashier_verified'):'confirmed'),paymentVerificationPolicy:_verificationPolicy,cashierVerificationIntent:!!(_pendingPay&&_verificationPolicy==='cashier_manager'&&cashierVerification&&cashierVerification.required),receivedByCustomer:true,preparationStatus:isPlat?'not_applicable':'not_prepared',tipRounding:tipTotal,time:now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:now.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
   if(preCompletionRefund){order.preCompletionCashRefund=preCompletionRefund;order.refundPayments={Cash:preCompletionRefund.amount};order.refunded=true;order.refundedAt=order.timestamp;order.refundedBy=staff;order.refundReason=preCompletionRefund.reason;order.cashRefundReviewStatus='pending_shift_review';order.cashRefundShiftId=shift.id;if(preCompletionRefund.denoms&&Object.keys(preCompletionRefund.denoms).length)order.cashChange=Object.assign({},preCompletionRefund.denoms);}
   if(discountApproval){order.discountApprovalId=discountApproval.approvalId;order.discountApprovedBy=discountApproval.approvedBy;order.discountApprovedByUid=discountApproval.approvedByUid;order.discountApprovedRole=discountApproval.approvedRole;order.discountApprovalSource=discountApproval.sourceId;}
   if(isPlat){ order.platformRef=platform.platformRef; order.grossPlatform=platform.gross; order.platformDiscountPct=Number(platform.discountPct)||0; order.platformDiscount=Number(platform.discountAmt)||0; order.platformDiscountLines=platform.discountLines||[]; order.platformMerchantPromo=Number(platform.merchantPromo)||0; order.platformDeliveryFeeDiscount=Number(platform.deliveryFeeDiscount)||0; order.netSalesPlatform=Number(platform.netSales!=null?platform.netSales:total)||0; order.commission=platform.commission; order.commissionRate=platform.commissionRate; order.platformWht=Number(platform.wht)||0; order.platformWhtRate=Number(platform.whtRate)||0; order.platformVat=Number(platform.vat)||0; order.platformVatRate=Number(platform.vatRate)||0; order.netPlatform=platform.net; order.settlementStatus='unsettled'; order.payoutId=''; }
@@ -3699,7 +3701,7 @@ function chargeSale(sub,total,payments,platform,discountApproval,cashierVerifica
   var _chargeStarted=performance.now(),savePromise;if(preCompletionRefund){var aa=A();if(!aa||!aa.syncOfflinePosSale)return Promise.reject(new Error('The online POS transaction service is unavailable.'));savePromise=aa.syncOfflinePosSale({transactionId:order.clientTxnId,order:order,drawerDelta:offlineQueue().drawerDelta(order)}).then(function(response){return{mode:'server',response:response};});}else savePromise=persistPosSale(order);return savePromise.then(function(saved){
     telemetry().metric('charge_to_durable',performance.now()-_chargeStarted,saved.mode!=='server');
     if(window.__posLog)window.__posLog(saved.mode==='server'?'sale-server-recovered':'sale-queued',oid,'₱'+total+' · '+payLabel+(order.offlineRung?' · OFFLINE':'')+' · '+txnId);
-    var receipt=Object.assign({},order),serverData=(saved.response&&saved.response.data)||saved.response||{};if(preCompletionRefund&&serverData.duplicate)alert('This sale/refund was already recorded. Check the receipt and drawer before handing over any more cash.');else if(preCompletionRefund){if(preCompletionRefund.denoms&&Object.keys(preCompletionRefund.denoms).length){var nd=shiftDrawer();Object.keys(preCompletionRefund.denoms).forEach(function(k){nd[k]=(Number(nd[k])||0)-(Number(preCompletionRefund.denoms[k])||0);});window.__posShift.drawer=nd;}alert('POS confirmed the corrected sale and '+peso(preCompletionRefund.amount)+' cash refund. Hand the cash to the customer now.');}posCart={};posDraft={};posPaymentVerification=null; window.__posPkgs=[]; posScopedDisc=[]; renderPosCart({fresh:true}); showReceipt(receipt); sqAfterCharge(receipt); if(saved.mode==='server'){(window.accazaToast||function(){})(preCompletionRefund?'Corrected sale and cash refund saved':'Sale saved to the server. Browser storage was recovered safely.','ok');checkPosStorageHealth();}else flushOfflineQueue();
+    var receipt=Object.assign({},order),serverData=(saved.response&&saved.response.data)||saved.response||{};if(preCompletionRefund&&serverData.duplicate)alert('This sale/refund was already recorded. Check the receipt and drawer before handing over any more cash.');else if(preCompletionRefund){if(preCompletionRefund.denoms&&Object.keys(preCompletionRefund.denoms).length){var nd=shiftDrawer();Object.keys(preCompletionRefund.denoms).forEach(function(k){nd[k]=(Number(nd[k])||0)-(Number(preCompletionRefund.denoms[k])||0);});window.__posShift.drawer=nd;}alert('POS confirmed the corrected sale and '+peso(preCompletionRefund.amount)+' cash refund. Hand the cash to the customer now.');}posCart={};posDraft={};posPaymentVerification=null; window.__posPkgs=[]; posScopedDisc=[]; posLoyaltyReset(); renderPosCart({fresh:true}); showReceipt(receipt); sqAfterCharge(receipt); if(saved.mode==='server'){(window.accazaToast||function(){})(preCompletionRefund?'Corrected sale and cash refund saved':'Sale saved to the server. Browser storage was recovered safely.','ok');checkPosStorageHealth();}else flushOfflineQueue();
   }).catch(function(error){telemetry().metric('charge_to_durable',performance.now()-_chargeStarted,false);alert('Sale was NOT saved. Durable storage failed: '+String(error&&error.message||error));return {failed:true};});
 }
 function completedCorrectionPaymentKind(o){var p=(o.payments&&o.payments.length?o.payments:[{method:o.payment,amount:o.total}]);if(p.length!==1)return'';var row=p[0]||{},base=String(row.paymentMethod||row.method||'').split(' · ')[0].trim(),account=row.receivingAccountId&&(paymentAccountsMap[row.receivingAccountId]||{}),type=String(account&&account.type||'').toLowerCase(),name=String(row.receivingAccountName||(account&&account.name)||'').trim();if(base.toLowerCase()==='bank transfer'||type==='bank')return 'Bank Transfer'+(name?' · '+name:'');if(/gcash|g-cash|maya|paymaya|e-wallet|ewallet|wallet/i.test(base+' '+name)||type==='ewallet')return name||base;return'';}
@@ -3754,6 +3756,123 @@ function ensureModals(){
 function showReceipt(o){
   if(window.printOrder)return window.printOrder(o);
   alert('Receipt printing is unavailable. Refresh the Admin portal and try again.');
+}
+// Attaching a Rewards member to the sale in progress. This is the piece that makes the
+// loyalty program actually do something: onOrderLoyaltyEarning only fires for an order
+// that carries loyaltyMemberId, so until a member is attached here no stamp can be earned.
+//
+// Two ways in, both deliberate (spec 1 and 8):
+//   * Badge payload - "ACZ1:<memberId>:<code>" from a barcode/QR scanner typing into the
+//     focused field, or pasted. Verified server-side by scanLoyaltyBadge, which proves the
+//     member's device was present. This is the path that may later also redeem.
+//   * Phone lookup - EARN ONLY, never redemption. Looking someone up from memory gives
+//     away nothing, so the worst case is a real sale credited to the right person. It must
+//     never unlock a reward, because that hands over product with nobody verified present.
+//
+// Read cost: one callable per attach. No listeners, no member list is ever downloaded -
+// the till must never hold anything that grows with the member base.
+var posLoyaltyMember = null;
+
+function posLoyaltyCallable(name) {
+  var a = A();
+  return (a && a.callables && a.callables[name]) || null;
+}
+
+function posLoyaltyReset() { posLoyaltyMember = null; }
+
+// Accepts the scanner's full payload. Anything that is not an Accaza badge is rejected
+// outright rather than guessed at, because a keyboard-wedge scanner will happily type any
+// barcode that crosses it - a product code, a delivery label - into whatever has focus.
+function posLoyaltyParseBadge(raw) {
+  var parts = String(raw || '').trim().split(':');
+  if (parts.length !== 3 || parts[0] !== 'ACZ1') return null;
+  if (!parts[1] || !/^[0-9a-f]{12}$/i.test(parts[2])) return null;
+  return {memberId: parts[1], code: parts[2].toLowerCase()};
+}
+
+function posLoyaltySummary(m) {
+  if (!m) return '';
+  return esc(m.firstName || 'Member') + ' · ' + esc(m.maskedPhone || '') +
+    ' · ' + (Number(m.redBalance) || 0) + ' red / ' + (Number(m.yellowBalance) || 0) + ' yellow';
+}
+
+// Rendered into the cart under the discount controls, so the cashier can see at a glance
+// whether this sale will earn and for whom.
+function posLoyaltyCartRow() {
+  if (posLoyaltyMember) {
+    var rewards = (posLoyaltyMember.availableRewards || []).length;
+    return '<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.76rem;color:#155724;background:#e8f5ec;border:1px solid #b8dfc4;border-radius:6px;padding:0.35rem 0.5rem;margin-bottom:0.4rem;">'
+      + '<span>⭐ ' + posLoyaltySummary(posLoyaltyMember)
+      + (rewards ? '<br><b>' + rewards + ' reward' + (rewards > 1 ? 's' : '') + ' available</b>' : '')
+      + (posLoyaltyMember.verifiedBy === 'phone_lookup' ? '<br><span style="color:#8a6d00;">Phone lookup — earns stamps, cannot redeem</span>' : '')
+      + '</span>'
+      + '<button class="pz-btn warn" id="posLoyaltyClear" style="padding:0 0.35rem;">✕</button>'
+      + '</div>';
+  }
+  return '<button class="pz-btn sec" id="posLoyaltyBtn" style="width:100%;margin-bottom:0.4rem;font-size:0.8rem;">⭐ Rewards member</button>';
+}
+
+function posLoyaltyWireCart(scope) {
+  var open = (scope || document).querySelector('#posLoyaltyBtn');
+  if (open) open.onclick = openLoyaltyMemberModal;
+  var clear = (scope || document).querySelector('#posLoyaltyClear');
+  if (clear) clear.onclick = function () { posLoyaltyReset(); renderPosCart(); };
+}
+
+function openLoyaltyMemberModal() {
+  var mask = document.createElement('div');
+  mask.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
+  mask.innerHTML = '<div style="background:#fff;border-radius:10px;max-width:420px;width:100%;padding:1rem;">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;"><b>Rewards member</b><button class="pz-btn warn" id="lmClose" style="padding:0 0.5rem;">✕</button></div>'
+    + '<div style="font-size:0.78rem;color:var(--tl);margin-bottom:0.35rem;">Scan the member’s badge, or paste it here.</div>'
+    + '<input class="pz-in" id="lmBadge" placeholder="Scan badge" style="width:100%;margin-bottom:0.6rem;" autocomplete="off"/>'
+    + '<div style="border-top:1px solid var(--cd);padding-top:0.6rem;font-size:0.78rem;color:var(--tl);margin-bottom:0.35rem;">No badge? Look them up by mobile number. This earns stamps but <b>cannot redeem a reward</b>.</div>'
+    + '<div style="display:flex;gap:0.4rem;"><input class="pz-in" id="lmPhone" placeholder="09XX XXX XXXX" inputmode="tel" style="flex:1;" autocomplete="off"/><button class="pz-btn ok" id="lmLookup">Find</button></div>'
+    + '<div id="lmMsg" style="font-size:0.78rem;margin-top:0.6rem;min-height:1.1em;"></div>'
+    + '</div>';
+  document.body.appendChild(mask);
+
+  var msg = mask.querySelector('#lmMsg');
+  function say(text, bad) { msg.textContent = text; msg.style.color = bad ? '#a4302a' : '#155724'; }
+  function close() { if (mask.parentNode) mask.parentNode.removeChild(mask); }
+  function attach(member, how) {
+    posLoyaltyMember = Object.assign({verifiedBy: how}, member);
+    close();
+    renderPosCart();
+    (window.accazaToast || function () {})('Rewards: ' + (member.firstName || 'member') + ' attached to this sale', 'ok');
+    if (window.__posLog) window.__posLog('loyalty-attach', member.memberId, how);
+  }
+
+  mask.querySelector('#lmClose').onclick = close;
+  mask.onclick = function (e) { if (e.target === mask) close(); };
+
+  // A keyboard-wedge scanner types the whole payload and then presses Enter, so the badge
+  // field reacts to Enter rather than to every keystroke. Pasting behaves identically.
+  var badge = mask.querySelector('#lmBadge');
+  badge.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    var parsed = posLoyaltyParseBadge(badge.value);
+    if (!parsed) { say('That is not an Accaza badge. Scan the QR on the member’s Rewards page.', true); badge.select(); return; }
+    var scan = posLoyaltyCallable('scanLoyaltyBadge');
+    if (!scan) { say('Refresh the POS to load the Rewards service.', true); return; }
+    say('Checking badge…');
+    scan(parsed).then(function (r) { attach(r.data || {}, 'badge_scan'); })
+      .catch(function (err) { say((err && err.message) || 'Badge could not be verified.', true); badge.select(); });
+  });
+  setTimeout(function () { badge.focus(); }, 30);
+
+  function lookup() {
+    var phone = String(mask.querySelector('#lmPhone').value || '').trim();
+    if (!phone) { say('Enter the member’s mobile number.', true); return; }
+    var find = posLoyaltyCallable('lookupLoyaltyMemberByPhone');
+    if (!find) { say('Refresh the POS to load the Rewards service.', true); return; }
+    say('Looking up…');
+    find({phone: phone}).then(function (r) { attach(r.data || {}, 'phone_lookup'); })
+      .catch(function (err) { say((err && err.message) || 'No member found for that number.', true); });
+  }
+  mask.querySelector('#lmLookup').onclick = lookup;
+  mask.querySelector('#lmPhone').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); lookup(); } });
 }
 /* ══════════ SERVING QUEUE (29 Sep 2026) ══════════
    A paid order is not a served order. Every sale the server accepts is queued for serving
