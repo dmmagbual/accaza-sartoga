@@ -39,6 +39,9 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // recipe-like options, preserve grouped legacy details, and reject mojibake in the print source.
 // Sep 2026 (receipt parity): two reviewed guards require Completed Orders to use the same priced
 // customer receipt as Shift Orders and prevent the retired kitchen-ticket template from returning.
-if(guardDigest!=='a09792494b2464972a67868305d7fa70de9994d89a550edebad63d5fb05131bb')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// Sep 2026 (Rewards at the till): one reviewed guard now also requires the completed-sale reset to
+// drop the attached Rewards member, so the next customer can never be credited for this sale. The
+// guard count is unchanged at 554 - this is the same assertion, widened, not a new or weaker one.
+if(guardDigest!=='0d5b1d5b27e525587ec89bbc723cc82add3eea828986c438b483e6174e53eddd')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 554 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');
