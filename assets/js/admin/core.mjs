@@ -4,7 +4,7 @@ import{createHistoryPager}from"./history-pager.mjs";
 import{requestManagerApproval}from"./manager-approval.mjs";
 import{installPortalAuth}from"./portal-auth.mjs";
 import{createOrderAdmin,archiveOutcome,shouldAlertOrder}from"./admin-orders.mjs";
-import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=622";
+import{createOverviewInsights,mergeOverviewOrders}from"./overview-insights.mjs?v=623";
 import{summarizeHistoricalSales,addLiveSales,reconcileCashierSales}from"./historical-sales-summary.mjs?v=616";
 import{createCustomerRegistry}from"./customer-registry.mjs";
 import{createReservationManager}from"./reservations.mjs";
@@ -1277,11 +1277,11 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 });
 window.printOrder = function(orderId) {
-  var o = adminOrdersMap[orderId];
+  var o = orderId&&typeof orderId==='object' ? orderId : adminOrdersMap[orderId];
   if (!o) return;
-  var isDelivery = o.type === 'Delivery';
-  var now = new Date();
-  var printTime = now.toLocaleString('en-PH', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit', hour12:true });
+  var addr='Saratoga Ave, La Mediterranea Subd., Governor\'s Drive, Dasmariñas';
+  var dispRef=o.platformRef||o.id;
+  function receiptPeso(n){n=Number(n)||0;return'&#8369;'+n.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});}
   function legacyItemLines(text) {
     var out=[],buf='',depth=0;
     String(text||'').split('').forEach(function(ch){
@@ -1295,56 +1295,36 @@ window.printOrder = function(orderId) {
   }
   var sourceLines = Array.isArray(o.correctedLineItems)&&o.correctedLineItems.length ? o.correctedLineItems : o.lineItems;
   var soldLines = Array.isArray(sourceLines)&&sourceLines.length ? sourceLines.map(function(li){
-    var name=String(li.name||li.itemKey||'Item'),size=String(li.size||''),qty=Math.max(1,Number(li.qty)||1);
+    var name=String(li.name||li.itemKey||'Item'),size=String(li.size||''),qty=Math.max(1,Number(li.qty)||1),unitTotal=Number(li.unitTotal);
     if(size&&name.toLowerCase().indexOf('('+size.toLowerCase()+')')<0) name+=' ('+size+')';
-    return {name:name,qty:qty};
+    return {name:name,qty:qty,total:Number.isFinite(unitTotal)?qty*unitTotal:null};
   }) : legacyItemLines(o.correctedItems||o.items).map(function(text){
     var match=text.match(/\s+x(\d+)\s*$/i);
-    return {name:match?text.slice(0,match.index).trim():text,qty:match?Math.max(1,Number(match[1])||1):1};
+    return {name:match?text.slice(0,match.index).trim():text,qty:match?Math.max(1,Number(match[1])||1):1,total:null};
   });
-  var itemsHtml = soldLines.length ? soldLines.map(function(line){ return '<div><b>' + escHtml(line.qty) + '&times;</b> ' + escHtml(line.name) + '</div>'; }).join('') : '<div>No item details recorded</div>';
-  var addrRow = (isDelivery && o.address) ? '<div class="row"><span class="lbl">Address</span><span>' + escHtml(o.address) + '</span></div>' : '';
-  var schedRow = (o.date || o.time) ? '<div class="row"><span class="lbl">Schedule</span><span>' + escHtml(o.date||'') + ' ' + escHtml(o.time||'') + '</span></div>' : '';
-  var notesRow = o.notes ? '<div class="row"><span class="lbl">Notes</span><span>' + escHtml(o.notes) + '</span></div><hr/>' : '';
-  var ticketHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Order #' + escHtml(o.id) + ' - Kitchen Ticket</title>'
-    + '<style>'
-    + '* { box-sizing:border-box; margin:0; padding:0; }'
-    + 'body { font-family:"Courier New",Courier,monospace; font-size:13px; color:#000; background:#fff; padding:12px 16px; max-width:380px; }'
-    + '.logo { font-size:18px; font-weight:bold; text-align:center; letter-spacing:2px; margin-bottom:2px; }'
-    + '.sub  { text-align:center; font-size:10px; margin-bottom:10px; color:#555; }'
-    + 'hr    { border:none; border-top:1px dashed #000; margin:8px 0; }'
-    + '.row  { display:flex; justify-content:space-between; margin:3px 0; font-size:12px; }'
-    + '.lbl  { font-weight:bold; }'
-    + '.items { margin:4px 0; line-height:1.6; font-size:12px; }'
-    + '.total { font-size:16px; font-weight:bold; text-align:right; margin-top:6px; }'
-    + '.badge { display:inline-block; padding:2px 8px; border:1px solid #000; border-radius:3px; font-weight:bold; font-size:12px; margin-bottom:4px; }'
-    + '.footer { text-align:center; font-size:10px; margin-top:14px; color:#555; }'
-    + '@media print { body { max-width:none; } @page { margin:6mm; } }'
-    + '</style></head><body>'
-    + '<div class="logo">ACCAZA</div>'
-    + '<div class="sub">Coffee House - Kitchen Ticket</div>'
-    + '<hr/>'
-    + '<div class="row"><span class="lbl">Order #</span><span>' + escHtml(o.id) + '</span></div>'
-    + '<div class="row"><span class="lbl">Printed</span><span>' + printTime + '</span></div>'
-    + '<hr/>'
-    + '<div class="row"><span class="lbl">Customer</span><span>' + escHtml(o.name||'-') + '</span></div>'
-    + '<div class="row"><span class="lbl">Contact</span><span>' + escHtml(o.phone||'-') + (o.contact?' / '+escHtml(o.contact):'') + '</span></div>'
-    + '<div class="badge">' + (isDelivery ? 'DELIVERY' : 'PICK-UP') + '</div>'
-    + addrRow + schedRow
-    + '<hr/>'
-    + '<div class="lbl">Items:</div>'
-    + '<div class="items">' + itemsHtml + '</div>'
-    + '<hr/>'
-    + notesRow
-    + '<div class="row"><span class="lbl">On Duty</span><span>' + escHtml(o.onDuty||o.staff||'-') + '</span></div>'
-    + '<div class="row"><span class="lbl">Payment</span><span>' + escHtml(o.payment||'-') + '</span></div>'
-    + '<div class="total">TOTAL: &#8369;' + (o.total||0).toLocaleString() + '</div>'
-    + '<hr/>'
-    + '<div class="footer">Thank you! Pass this to the kitchen.</div>'
-    + '</body></html>';
-  var win = window.open('', '_blank', 'width=440,height=640');
-  win.document.write(ticketHtml);
+  var rows=soldLines.length?soldLines.map(function(line){return'<tr><td>'+escHtml(line.name)+' &times;'+escHtml(line.qty)+'</td><td style="text-align:right;">'+(line.total==null?'':receiptPeso(line.total))+'</td></tr>';}).join(''):'<tr><td colspan="2">No item details recorded</td></tr>';
+  var receiptHtml='<!doctype html><html><head><meta charset="UTF-8"/><title>Receipt '+escHtml(dispRef)+'</title><style>*{font-family:monospace;font-size:12px;color:#000;}body{padding:10px;}h2{text-align:center;margin:0 0 2px;}table{width:100%;border-collapse:collapse;}td{padding:2px 0;}hr{border:none;border-top:1px dashed #000;}@media print{button{display:none;}}</style></head><body>'
+    +'<h2>Accaza Coffee House</h2><div style="text-align:center;">'+escHtml(addr)+'</div><hr>'
+    +'<div>Order: '+escHtml(dispRef)+'</div>'+(o.completedOrderCorrection?'<div>Corrects original order: '+escHtml(o.originalOrderId)+'</div>':'')+'<div>'+escHtml(o.date||'')+' '+escHtml(o.time||'')+'</div><div>On Duty: '+escHtml(o.onDuty||o.staff||'-')+'</div><div>Customer: '+escHtml(o.name||'Walk-in')+'</div>'
+    +'<hr><table>'+rows+'</table><hr>'
+    +'<table><tr><td>Subtotal</td><td style="text-align:right;">'+receiptPeso(o.subtotal!=null?o.subtotal:o.total)+'</td></tr>'
+    +((o.discountLines&&o.discountLines.length)?o.discountLines.map(function(d){var lbl={senior:'Senior 20%',pwd:'PWD 20%',athlete:'Athlete 20%',promo5:'Promo 5%'}[d.type]||d.type;return'<tr><td>'+escHtml(lbl)+(d.idNumber?' · '+escHtml(d.idNumber):'')+'</td><td style="text-align:right;">-'+receiptPeso(d.value)+'</td></tr>';}).join(''):'')
+    +(function(){var sc=(o.discountLines||[]).reduce(function(s,d){return s+(Number(d.value)||0);},0);var man=(Number(o.discount)||0)-sc;return man>0.005?'<tr><td>Discount</td><td style="text-align:right;">-'+receiptPeso(man)+'</td></tr>':'';})()
+    +(Number(o.loyaltyDiscount)>0?'<tr><td>Loyalty reward'+(o.loyaltyRewardName?' · '+escHtml(o.loyaltyRewardName):'')+'</td><td style="text-align:right;">-'+receiptPeso(o.loyaltyDiscount)+'</td></tr>':'')
+    +'<tr><td><b>TOTAL</b></td><td style="text-align:right;"><b>'+receiptPeso(o.total)+'</b></td></tr>'
+    +'<tr><td>Payment</td><td style="text-align:right;">'+escHtml(o.payment||'-')+'</td></tr>'
+    +(o.completedOrderCorrection?'<tr><td>Original electronic payment</td><td style="text-align:right;">'+receiptPeso(o.originalPaidTotal)+'</td></tr>'+(Number(o.refundAmount)>0?'<tr><td>Cash refund</td><td style="text-align:right;">-'+receiptPeso(o.refundAmount)+'</td></tr>':''):'')
+    +(o.preCompletionCashRefund?'<tr><td>Electronic amount received</td><td style="text-align:right;">'+receiptPeso(o.preCompletionCashRefund.paidAmount)+'</td></tr><tr><td>Cash refund</td><td style="text-align:right;">-'+receiptPeso(o.preCompletionCashRefund.amount)+'</td></tr>':'')
+    +(o.platformRef?'<tr><td>Net (after comm.)</td><td style="text-align:right;">'+receiptPeso(o.netPlatform||0)+'</td></tr>':'')
+    +(o.tendered?'<tr><td>Cash</td><td style="text-align:right;">'+receiptPeso(o.tendered)+'</td></tr><tr><td>Change</td><td style="text-align:right;">'+receiptPeso(o.change)+'</td></tr>':'')
+    +(o.tipRounding?'<tr><td>Tip / kept change</td><td style="text-align:right;">'+receiptPeso(o.tipRounding)+'</td></tr>':'')
+    +'</table><hr><div style="text-align:center;">Salamat! Please come again.</div>'
+    +'<div style="text-align:center;font-size:9px;margin-top:4px;">This is not an official BIR receipt.</div>'
+    +'<div style="text-align:center;margin-top:8px;"><button id="receiptPrint" type="button">Print</button></div></body></html>';
+  var win = window.open('', '_blank', 'width=360,height=640');
+  if(!win){alert('Allow pop-ups to print the receipt.');return;}
+  win.document.write(receiptHtml);
   win.document.close();
-  win.focus();
-  setTimeout(function() { win.print(); }, 400);
+  var printButton=win.document.getElementById&&win.document.getElementById('receiptPrint');
+  if(printButton)printButton.addEventListener('click',function(){win.print();});
 };
