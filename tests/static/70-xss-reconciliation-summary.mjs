@@ -38,7 +38,7 @@ const ticketPayload='img src=x onerror="window.__ticketPwn(1)"';
 const kitchenOrders={
   poisoned:{id:'PWN-1',type:'Delivery',total:2,lineItems:[{name:'Espresso <'+ticketPayload+'>',size:'L',qty:1,optLabels:['Internal option <'+ticketPayload+'>']}],address:'12 Oz Lane <'+ticketPayload+'>',date:'<'+ticketPayload+'>',time:'<'+ticketPayload+'>',notes:'Ring the bell <'+ticketPayload+'>',name:'Mallory <'+ticketPayload+'>',phone:'0917 <'+ticketPayload+'>',contact:'<'+ticketPayload+'>',onDuty:'Duty <'+ticketPayload+'>',payment:'GCash <'+ticketPayload+'>'},
   clean:{id:'PWN-1',type:'Delivery',total:2,lineItems:[{name:'Espresso',size:'L',qty:1,optLabels:['Internal option']}],address:'12 Oz Lane',date:'Aug 29',time:'2:30 PM',notes:'Ring the bell',name:'Mallory',phone:'0917 000 0000',contact:'0906 000 0000',onDuty:'Duty',payment:'GCash'},
-  sold:{id:'SALE-1',type:'Walk-in',total:950,lineItems:[{name:'Vanilla Iced Blended (L)',size:'L',qty:1,optLabels:['Regular','Whole Milk','With Whipped Cream']},{name:'Cookie, Cream Frappe',size:'M',qty:2,optLabels:['Regular']}],name:'Walk-in',staff:'Alex',payment:'Cash'},
+  sold:{id:'SALE-1',type:'Walk-in',subtotal:950,total:950,tendered:1000,change:50,lineItems:[{name:'Vanilla Iced Blended (L)',size:'L',qty:1,unitTotal:225,optLabels:['Regular','Whole Milk','With Whipped Cream']},{name:'Butterscotch Iced Blended (L)',size:'L',qty:1,unitTotal:245,optLabels:['With Whipped Cream']},{name:'Nougat (L)',size:'L',qty:1,unitTotal:245,optLabels:['Regular','Whole Milk']},{name:'White Chocolate (L)',size:'L',qty:1,unitTotal:235,optLabels:['Regular','Whole Milk']}],name:'Walk-in',staff:'Alex',payment:'Cash'},
   legacy:{id:'OLD-1',type:'Walk-in',total:300,items:'Vanilla Iced Blended (L) (Regular, Whole Milk) x1, Mocha (M) x2',name:'Walk-in',staff:'Alex',payment:'Cash'}
 };
 const kitchenTickets=[];
@@ -84,18 +84,20 @@ function ticketEvents(html){
 const poisonedEvents=ticketEvents(kitchenTickets[0]),cleanEvents=ticketEvents(kitchenTickets[1]);
 for(const event of poisonedEvents){
   if(event.type!=='open')continue;
-  if(event.tag==='img')fail('kitchen-ticket print path injected a raw <img> element from order data');
-  if('onerror' in event.attrs)fail('kitchen-ticket print path injected an onerror attribute from order data');
-  for(const attribute of Object.keys(event.attrs))if(/^on/i.test(attribute))fail(`kitchen-ticket print path injected a ${attribute} handler attribute from order data`);
+  if(event.tag==='img')fail('shared customer-receipt path injected a raw <img> element from order data');
+  if('onerror' in event.attrs)fail('shared customer-receipt path injected an onerror attribute from order data');
+  for(const attribute of Object.keys(event.attrs))if(/^on/i.test(attribute))fail(`shared customer-receipt path injected a ${attribute} handler attribute from order data`);
 }
 const ticketShape=events=>events.filter(event=>event.type!=='text').map(event=>event.type==='open'?{type:'open',tag:event.tag,attrs:Object.keys(event.attrs).sort().map(key=>key+'='+event.attrs[key]).join('&')}:event);
 if(JSON.stringify(ticketShape(poisonedEvents))!==JSON.stringify(ticketShape(cleanEvents)))fail('poisoned kitchen-ticket DOM structure differs from a clean order ticket DOM');
 const poisonedText=poisonedEvents.filter(event=>event.type==='text').map(event=>event.text).join('\n');
-if(!poisonedText.includes(ticketPayload))fail('kitchen-ticket print path dropped order data instead of escaping it');
+if(!poisonedText.includes(ticketPayload))fail('shared customer-receipt path dropped order data instead of escaping it');
 const soldTicket=kitchenTickets[2],legacyTicket=kitchenTickets[3];
-if(!soldTicket.includes('<b>1&times;</b> Vanilla Iced Blended (L)')||!soldTicket.includes('<b>2&times;</b> Cookie, Cream Frappe (M)'))fail('kitchen ticket must print each structured sold menu line with its quantity and size');
-if(/Regular|Whole Milk|With Whipped Cream/.test(soldTicket))fail('kitchen ticket exposed option or recipe-like details instead of sold menu lines');
-if((legacyTicket.match(/class="items"/g)||[]).length!==1||!legacyTicket.includes('Vanilla Iced Blended (L) (Regular, Whole Milk)'))fail('legacy kitchen-ticket fallback split comma-delimited details into false item rows');
+if(!soldTicket.includes('Vanilla Iced Blended (L) &times;1')||!soldTicket.includes('White Chocolate (L) &times;1'))fail('customer receipt must print each structured sold menu line with its quantity and size');
+if(!soldTicket.includes('Subtotal')||!soldTicket.includes('TOTAL')||!soldTicket.includes('Cash')||!soldTicket.includes('Change')||!soldTicket.includes('&#8369;1,000.00')||!soldTicket.includes('&#8369;50.00'))fail('Completed Orders must use the same priced customer receipt as Shift Orders');
+if(soldTicket.includes('Kitchen Ticket')||!soldTicket.includes('Salamat! Please come again.'))fail('Completed Orders still uses the old kitchen-ticket template');
+if(/Regular|Whole Milk|With Whipped Cream/.test(soldTicket))fail('customer receipt exposed option or recipe-like details instead of sold menu lines');
+if(!legacyTicket.includes('Vanilla Iced Blended (L) (Regular, Whole Milk) &times;1')||!legacyTicket.includes('Mocha (M) &times;2'))fail('legacy customer-receipt fallback split comma-delimited details into false item rows');
 
 const reconciliation=require(path.join(root,'functions','lib','reconciliation-controls.js'));
 const rules=reconciliation.DEFAULT_ACCOUNT_RULES,legacyJournal={old_a:{date:'2026-08-29',lines:[{code:'1900',debit:0,credit:100}]},old_b:{date:'2026-08-30',lines:[{code:'1900',debit:25,credit:0}]},new_a:{date:'2026-08-31',lines:[{code:'1900',debit:10,credit:0}]}},before=JSON.stringify(legacyJournal);
@@ -112,7 +114,7 @@ console.log('PASS: customer-field rendering containment checks passed.');
 console.log('PASS: database rule structure and Release 1A limits are present.');
 console.log('PASS: Release 1B authentication and role-enforcement guards are present.');
 console.log('PASS: Release 1C server-pricing and customer-ownership guards are present.');
-console.log('PASS: kitchen-ticket print path shows sold menu lines, hides recipe-like options, preserves legacy grouped details, and escapes every customer-supplied field.');
+console.log('PASS: Completed Orders and Shift Orders share one priced customer receipt, hide recipe-like options, preserve legacy grouped details, and escape every customer-supplied field.');
 process.stdout.write(pricing.stdout);
 process.stdout.write(proofCheck.stdout);
 process.stdout.write(activeOrdersCheck.stdout);
