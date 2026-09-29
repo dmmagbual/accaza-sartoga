@@ -1,4 +1,5 @@
 function chargeSale(sub,total,payments,platform,discountApproval,cashierVerification,preCompletionRefund){
+  if(window.AccazaPosTabGuard&&!window.AccazaPosTabGuard.canCharge()){window.AccazaPosTabGuard.explain();return;}
   var keys=Object.keys(posCart); if(!keys.length)return;
   var shift=window.__posShift; if(!shift){alert('Open a shift first.');return;}
   var seller=posSellerState(); if(!seller.ok){alert('This shift belongs to '+seller.owner+'. Join the shift before taking payment.');return;}

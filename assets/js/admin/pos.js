@@ -3591,6 +3591,7 @@ function renderPosCart(options){
   var _join=document.getElementById('posJoinShift'); if(_join)_join.onclick=function(){joinPosShift();};
   var _hold=document.getElementById('posHold'); if(_hold)_hold.onclick=function(){ if(!Object.keys(posCart).length)return; var a=A(); a.set(a.ref(a.db,'heldOrders/'+uid('hold_')),{cart:posCart,ts:Date.now(),staff:(window.__posShift&&window.__posShift.staff)||'—',note:(document.getElementById('posCust').value||'').trim()}); posCart={};posDraft={};posPaymentVerification=null;window.__posPkgs=[]; renderPosCart({fresh:true}); alert('Order held. Recall it from Register Ops.'); };
   document.getElementById('posCharge').onclick=async function(){
+    if(window.AccazaPosTabGuard&&!window.AccazaPosTabGuard.canCharge()){window.AccazaPosTabGuard.explain();return;}
     var chargeButton=this;if(posChargeBusy)return;posChargeBusy=true;chargeButton.disabled=true;chargeButton.textContent='Processing…';
     try{return await (async function(){
     if(!window.__posShift){alert('Open a shift first (Register Ops tab).');return;}
@@ -3655,6 +3656,7 @@ function renderPosCart(options){
   };
 }
 function chargeSale(sub,total,payments,platform,discountApproval,cashierVerification,preCompletionRefund){
+  if(window.AccazaPosTabGuard&&!window.AccazaPosTabGuard.canCharge()){window.AccazaPosTabGuard.explain();return;}
   var keys=Object.keys(posCart); if(!keys.length)return;
   var shift=window.__posShift; if(!shift){alert('Open a shift first.');return;}
   var seller=posSellerState(); if(!seller.ok){alert('This shift belongs to '+seller.owner+'. Join the shift before taking payment.');return;}
