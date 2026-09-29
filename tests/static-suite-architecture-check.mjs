@@ -42,6 +42,10 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // Sep 2026 (Rewards at the till): one reviewed guard now also requires the completed-sale reset to
 // drop the attached Rewards member, so the next customer can never be credited for this sale. The
 // guard count is unchanged at 554 - this is the same assertion, widened, not a new or weaker one.
-if(guardDigest!=='0d5b1d5b27e525587ec89bbc723cc82add3eea828986c438b483e6174e53eddd')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// Sep 2026 (Rewards redemption): that same guard now pins posLoyaltyFinalize(oid) in the completed-sale
+// sequence instead of posLoyaltyReset(). A finished sale must CLOSE the claimed reward against its
+// order id, not release it - releasing would hand the stamps back for a drink already handed over.
+// Still the same single guard, still 554.
+if(guardDigest!=='04faf582349acf88270d9a59699c2d8b2d953e9ee004a096e7535f75c995fba9')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 554 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');

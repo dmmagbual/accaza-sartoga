@@ -178,7 +178,19 @@ async function loyaltyMemberSnapshot(db, memberId) {
   const rewards = rewardsSnap.val() || {};
   const now = Date.now();
   const availableRewards = Object.keys(rewards).filter((id) => Number(rewards[id].expiresAt || 0) > now).map((id) => Object.assign({id}, rewards[id]));
-  return {memberId, firstName: financeText(member.name, 80).split(/\s+/)[0] || "", maskedPhone: Loyalty.maskPhone(member.phone), redBalance: Loyalty.positiveInt(balances.redBalance, 0), yellowBalance: Loyalty.positiveInt(balances.yellowBalance, 0), availableRewards, memberSince: Number(member.createdAt) || null};
+  const redBalance = Loyalty.positiveInt(balances.redBalance, 0), yellowBalance = Loyalty.positiveInt(balances.yellowBalance, 0);
+  // What this member could redeem right now. The till cannot read the catalog itself —
+  // manageLoyaltyRewardCatalog is loyaltyAdmin-only — so without this a cashier has no way
+  // to know what rewards exist or what they cost. One small bounded read of admin config,
+  // filtered to what the member can actually afford, so the cashier is never offered
+  // something the server will refuse. Only the two scan paths reach here; the earn-only
+  // phone lookup builds its own reply and deliberately carries no redeemable list at all.
+  const catalog = (await /* download-ok: bounded admin-configured catalog, not history */ db.ref("/loyaltyRewardCatalog").get()).val() || {};
+  const redeemable = Object.keys(catalog).map((id) => Object.assign({rewardId: id}, catalog[id]))
+    .filter((r) => r.enabled !== false)
+    .filter((r) => (r.costCurrency === "red" ? redBalance : yellowBalance) >= Loyalty.positiveInt(r.costQty, 0))
+    .map((r) => ({rewardId: r.rewardId, name: r.name || r.rewardId, costCurrency: r.costCurrency, costQty: Loyalty.positiveInt(r.costQty, 0), grantType: r.grantType, cap: r.cap == null ? null : Number(r.cap), percent: r.percent == null ? null : Number(r.percent), stackingAllowed: r.stackingAllowed === true}));
+  return {memberId, firstName: financeText(member.name, 80).split(/\s+/)[0] || "", maskedPhone: Loyalty.maskPhone(member.phone), redBalance, yellowBalance, availableRewards, redeemable, memberSince: Number(member.createdAt) || null};
 }
 
 exports.scanLoyaltyBadge = onCall(

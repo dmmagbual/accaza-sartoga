@@ -3461,6 +3461,8 @@ function renderPosCart(options){
       +(isPlat?'':correction?'':'<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.82rem;margin-bottom:0.3rem;"><span>Discount ₱</span><input class="pz-in" id="posDisc" type="number" step="any" style="width:100px;text-align:right;" value="0"/></div>'
       +'<button class="pz-btn sec" id="posDiscBtn" style="width:100%;margin-bottom:0.4rem;font-size:0.8rem;">🧾 PWD / Senior / Athlete / Promo</button>'
       +posLoyaltyCartRow()
+      +posLoyaltyRedeemButton()
+      +posLoyaltyClaimRow()
       +(posScopedDisc.length?('<div style="font-size:0.76rem;margin-bottom:0.4rem;">'+posScopedDisc.map(function(d,ix){return '<div style="display:flex;justify-content:space-between;align-items:center;color:#155724;margin-bottom:0.15rem;"><span>'+esc((DISC_TYPES[d.type]||{}).label||d.type)+' · '+esc(d.name)+(d.idNumber?' ('+esc(d.idNumber)+')':'')+'</span><span style="white-space:nowrap;">−'+peso(d.value)+' <button class="pz-btn warn" data-sdrm="'+ix+'" style="padding:0 0.35rem;">✕</button></span></div>';}).join('')+'</div>'):'')
       +(posMeta.cashRounding?'<div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;"><span>Cash rounding</span><span id="posRound">₱0.00</span></div>':''))
       +'<div style="display:flex;justify-content:space-between;font-weight:700;color:var(--bd);font-size:1rem;border-top:1px solid var(--cd);padding-top:0.4rem;"><span>'+(isPlat?'Gross':'Total')+'</span><span id="posTotal">'+peso(sub)+'</span></div>'
@@ -3485,7 +3487,7 @@ function renderPosCart(options){
   var disc=document.getElementById('posDisc');
   var splitRows=[];
   var pay=null, splitChk=null;
-  function grandTotal(){ var d=isPlat?0:((Number(disc&&disc.value)||0)+scopedDiscTotal()); var tot=Math.max(0,sub-d); if(!isPlat&&posMeta.cashRounding){var r=Math.round(tot); var pr=document.getElementById('posRound'); if(pr)pr.textContent=peso(r-tot); tot=r;} var tEl=document.getElementById('posTotal'); if(tEl)tEl.textContent=peso(tot); return tot; }
+  function grandTotal(){ var d=isPlat?0:((Number(disc&&disc.value)||0)+scopedDiscTotal()+posLoyaltyDiscount()); var tot=Math.max(0,sub-d); if(!isPlat&&posMeta.cashRounding){var r=Math.round(tot); var pr=document.getElementById('posRound'); if(pr)pr.textContent=peso(r-tot); tot=r;} var tEl=document.getElementById('posTotal'); if(tEl)tEl.textContent=peso(tot); return tot; }
   function draftElectronicPayments(){
     if(isPlat)return[];
     var tot=grandTotal();
@@ -3588,6 +3590,10 @@ function renderPosCart(options){
   var _sb=document.getElementById('posShiftBar'); if(_sb)_sb.innerHTML=shiftBar; renderOfflineUI();
   var _db=document.getElementById('posDiscBtn'); if(_db)_db.onclick=openDiscountModal;
   posLoyaltyWireCart(p);
+  posLoyaltyWireRedeem(p);
+  // A reward priced on a different cart is not a discount we may charge, so this runs on
+  // every render and hands the stamps back rather than quietly adjusting the amount.
+  posLoyaltyCheckStale();
   p.querySelectorAll('[data-sdrm]').forEach(function(b){b.onclick=function(){posScopedDisc.splice(+b.getAttribute('data-sdrm'),1);renderPosCart();};});
   var _pb=document.getElementById('posPkgBtn');if(_pb)_pb.onclick=function(){ if(window.__openPackagePicker)window.__openPackagePicker(); else alert('Packages module still loading \u2014 try again.'); };
   document.getElementById('posClear').onclick=function(){if(correction){if(confirm('Cancel this correction? The original completed order will remain unchanged.')){posCompletedCorrection=null;posCart={};posDraft={};posPaymentVerification=null;window.__posPkgs=[];posScopedDisc=[];posLoyaltyReset();renderPosCart({fresh:true});}return;}if(Object.keys(posCart).length&&confirm('Clear this sale?')){posCart={};posDraft={};posPaymentVerification=null;window.__posPkgs=[];posScopedDisc=[];posLoyaltyReset();renderPosCart({fresh:true});}};
@@ -3683,7 +3689,7 @@ function chargeSale(sub,total,payments,platform,discountApproval,cashierVerifica
   var payLabel=isPlat?channelLabel(platform.channel):(payments.length>1?'Split':payments[0].method);
   var _pendingPay=(!isPlat)&&directPaymentRows(payments).length>0,_verificationPolicy=_pendingPay?paymentVerificationPolicy(payments):null;
   var now=new Date();
-  var order={id:oid,clientTxnId:txnId,schemaVersion:2,syncState:'pending',name:cust,phone:'',type:(isPlat?channelLabel(platform.channel):'Walk-in'),address:'',payment:payLabel,payments:payments,contact:'',contactMethod:'',items:itemsStr,lineItems:lineItems,subtotal:sub,discount:disc,discountLines:_scoped,total:total,tendered:tendered,change:change,notes:'',status:'Completed',source:'pos',channel:(isPlat?platform.channel:'instore'),staff:staff,soldBy:seller.staff,soldByStaffId:seller.staffId,soldByUid:seller.uid,soldByRole:seller.role,shiftId:shift.id,loyaltyMemberId:((!isPlat&&posLoyaltyMember&&posLoyaltyMember.memberId)||''),packages:_pkgs,extraCost:_extra,paymentStatus:(_pendingPay?(_verificationPolicy==='manager_only'?'pending':'cashier_verified'):'confirmed'),paymentVerificationPolicy:_verificationPolicy,cashierVerificationIntent:!!(_pendingPay&&_verificationPolicy==='cashier_manager'&&cashierVerification&&cashierVerification.required),receivedByCustomer:true,preparationStatus:isPlat?'not_applicable':'not_prepared',tipRounding:tipTotal,time:now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:now.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
+  var order={id:oid,clientTxnId:txnId,schemaVersion:2,syncState:'pending',name:cust,phone:'',type:(isPlat?channelLabel(platform.channel):'Walk-in'),address:'',payment:payLabel,payments:payments,contact:'',contactMethod:'',items:itemsStr,lineItems:lineItems,subtotal:sub,discount:disc,discountLines:_scoped,total:total,tendered:tendered,change:change,notes:'',status:'Completed',source:'pos',channel:(isPlat?platform.channel:'instore'),staff:staff,soldBy:seller.staff,soldByStaffId:seller.staffId,soldByUid:seller.uid,soldByRole:seller.role,shiftId:shift.id,loyaltyMemberId:((!isPlat&&posLoyaltyMember&&posLoyaltyMember.memberId)||''),loyaltyDiscount:(isPlat?0:posLoyaltyDiscount()),loyaltyRewardId:((!isPlat&&posLoyaltyClaim&&posLoyaltyClaim.rewardId)||''),loyaltyRewardName:((!isPlat&&posLoyaltyClaim&&posLoyaltyClaim.name)||''),packages:_pkgs,extraCost:_extra,paymentStatus:(_pendingPay?(_verificationPolicy==='manager_only'?'pending':'cashier_verified'):'confirmed'),paymentVerificationPolicy:_verificationPolicy,cashierVerificationIntent:!!(_pendingPay&&_verificationPolicy==='cashier_manager'&&cashierVerification&&cashierVerification.required),receivedByCustomer:true,preparationStatus:isPlat?'not_applicable':'not_prepared',tipRounding:tipTotal,time:now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'}),date:now.toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'}),timestamp:Date.now()};
   if(preCompletionRefund){order.preCompletionCashRefund=preCompletionRefund;order.refundPayments={Cash:preCompletionRefund.amount};order.refunded=true;order.refundedAt=order.timestamp;order.refundedBy=staff;order.refundReason=preCompletionRefund.reason;order.cashRefundReviewStatus='pending_shift_review';order.cashRefundShiftId=shift.id;if(preCompletionRefund.denoms&&Object.keys(preCompletionRefund.denoms).length)order.cashChange=Object.assign({},preCompletionRefund.denoms);}
   if(discountApproval){order.discountApprovalId=discountApproval.approvalId;order.discountApprovedBy=discountApproval.approvedBy;order.discountApprovedByUid=discountApproval.approvedByUid;order.discountApprovedRole=discountApproval.approvedRole;order.discountApprovalSource=discountApproval.sourceId;}
   if(isPlat){ order.platformRef=platform.platformRef; order.grossPlatform=platform.gross; order.platformDiscountPct=Number(platform.discountPct)||0; order.platformDiscount=Number(platform.discountAmt)||0; order.platformDiscountLines=platform.discountLines||[]; order.platformMerchantPromo=Number(platform.merchantPromo)||0; order.platformDeliveryFeeDiscount=Number(platform.deliveryFeeDiscount)||0; order.netSalesPlatform=Number(platform.netSales!=null?platform.netSales:total)||0; order.commission=platform.commission; order.commissionRate=platform.commissionRate; order.platformWht=Number(platform.wht)||0; order.platformWhtRate=Number(platform.whtRate)||0; order.platformVat=Number(platform.vat)||0; order.platformVatRate=Number(platform.vatRate)||0; order.netPlatform=platform.net; order.settlementStatus='unsettled'; order.payoutId=''; }
@@ -3701,7 +3707,7 @@ function chargeSale(sub,total,payments,platform,discountApproval,cashierVerifica
   var _chargeStarted=performance.now(),savePromise;if(preCompletionRefund){var aa=A();if(!aa||!aa.syncOfflinePosSale)return Promise.reject(new Error('The online POS transaction service is unavailable.'));savePromise=aa.syncOfflinePosSale({transactionId:order.clientTxnId,order:order,drawerDelta:offlineQueue().drawerDelta(order)}).then(function(response){return{mode:'server',response:response};});}else savePromise=persistPosSale(order);return savePromise.then(function(saved){
     telemetry().metric('charge_to_durable',performance.now()-_chargeStarted,saved.mode!=='server');
     if(window.__posLog)window.__posLog(saved.mode==='server'?'sale-server-recovered':'sale-queued',oid,'₱'+total+' · '+payLabel+(order.offlineRung?' · OFFLINE':'')+' · '+txnId);
-    var receipt=Object.assign({},order),serverData=(saved.response&&saved.response.data)||saved.response||{};if(preCompletionRefund&&serverData.duplicate)alert('This sale/refund was already recorded. Check the receipt and drawer before handing over any more cash.');else if(preCompletionRefund){if(preCompletionRefund.denoms&&Object.keys(preCompletionRefund.denoms).length){var nd=shiftDrawer();Object.keys(preCompletionRefund.denoms).forEach(function(k){nd[k]=(Number(nd[k])||0)-(Number(preCompletionRefund.denoms[k])||0);});window.__posShift.drawer=nd;}alert('POS confirmed the corrected sale and '+peso(preCompletionRefund.amount)+' cash refund. Hand the cash to the customer now.');}posCart={};posDraft={};posPaymentVerification=null; window.__posPkgs=[]; posScopedDisc=[]; posLoyaltyReset(); renderPosCart({fresh:true}); showReceipt(receipt); sqAfterCharge(receipt); if(saved.mode==='server'){(window.accazaToast||function(){})(preCompletionRefund?'Corrected sale and cash refund saved':'Sale saved to the server. Browser storage was recovered safely.','ok');checkPosStorageHealth();}else flushOfflineQueue();
+    var receipt=Object.assign({},order),serverData=(saved.response&&saved.response.data)||saved.response||{};if(preCompletionRefund&&serverData.duplicate)alert('This sale/refund was already recorded. Check the receipt and drawer before handing over any more cash.');else if(preCompletionRefund){if(preCompletionRefund.denoms&&Object.keys(preCompletionRefund.denoms).length){var nd=shiftDrawer();Object.keys(preCompletionRefund.denoms).forEach(function(k){nd[k]=(Number(nd[k])||0)-(Number(preCompletionRefund.denoms[k])||0);});window.__posShift.drawer=nd;}alert('POS confirmed the corrected sale and '+peso(preCompletionRefund.amount)+' cash refund. Hand the cash to the customer now.');}posCart={};posDraft={};posPaymentVerification=null; window.__posPkgs=[]; posScopedDisc=[]; posLoyaltyFinalize(oid); renderPosCart({fresh:true}); showReceipt(receipt); sqAfterCharge(receipt); if(saved.mode==='server'){(window.accazaToast||function(){})(preCompletionRefund?'Corrected sale and cash refund saved':'Sale saved to the server. Browser storage was recovered safely.','ok');checkPosStorageHealth();}else flushOfflineQueue();
   }).catch(function(error){telemetry().metric('charge_to_durable',performance.now()-_chargeStarted,false);alert('Sale was NOT saved. Durable storage failed: '+String(error&&error.message||error));return {failed:true};});
 }
 function completedCorrectionPaymentKind(o){var p=(o.payments&&o.payments.length?o.payments:[{method:o.payment,amount:o.total}]);if(p.length!==1)return'';var row=p[0]||{},base=String(row.paymentMethod||row.method||'').split(' · ')[0].trim(),account=row.receivingAccountId&&(paymentAccountsMap[row.receivingAccountId]||{}),type=String(account&&account.type||'').toLowerCase(),name=String(row.receivingAccountName||(account&&account.name)||'').trim();if(base.toLowerCase()==='bank transfer'||type==='bank')return 'Bank Transfer'+(name?' · '+name:'');if(/gcash|g-cash|maya|paymaya|e-wallet|ewallet|wallet/i.test(base+' '+name)||type==='ewallet')return name||base;return'';}
@@ -3778,7 +3784,33 @@ function posLoyaltyCallable(name) {
   return (a && a.callables && a.callables[name]) || null;
 }
 
-function posLoyaltyReset() { posLoyaltyMember = null; }
+// Clearing or finishing a sale drops the member AND gives back any reward that was
+// claimed for it but never charged. Dropping the member while silently keeping the claim
+// would spend the customer's stamps on a sale that never happened.
+function posLoyaltyReset() {
+  if (posLoyaltyClaim) posLoyaltyReleaseClaim('Sale cleared before payment');
+  posLoyaltyMember = null;
+}
+
+// After the sale is safely stored: the claim becomes a real redemption, stamped with the
+// order it paid for. Called instead of posLoyaltyReset on the completed path, because
+// here the reward was actually given - releasing it would hand the stamps back for
+// product the customer already walked away with.
+function posLoyaltyFinalize(orderId) {
+  var claim = posLoyaltyClaim;
+  posLoyaltyClaim = null;
+  posLoyaltyMember = null;
+  if (!claim || !orderId) return;
+  var finalize = posLoyaltyCallable('finalizeLoyaltyRedemption');
+  if (!finalize) return;
+  finalize({memberId: claim.memberId, rewardInstanceId: claim.rewardInstanceId, orderId: orderId})
+    .then(function () { if (window.__posLog) window.__posLog('loyalty-finalize', claim.rewardInstanceId, orderId); })
+    .catch(function (e) {
+      // The sale and its 4920 posting are already durable; only the reward's own record
+      // lags. Say so plainly rather than leaving the cashier to wonder.
+      alert('The sale is saved, but marking the reward as redeemed failed: ' + ((e && e.message) || e) + '\n\nThe discount is recorded on the order. Tell a manager so the reward can be closed off.');
+    });
+}
 
 // Accepts the scanner's full payload. Anything that is not an Accaza badge is rejected
 // outright rather than guessed at, because a keyboard-wedge scanner will happily type any
@@ -3873,6 +3905,229 @@ function openLoyaltyMemberModal() {
   }
   mask.querySelector('#lmLookup').onclick = lookup;
   mask.querySelector('#lmPhone').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); lookup(); } });
+}
+
+// ---------------------------------------------------------------------------
+// Redemption. The reward's peso value is computed SERVER-SIDE at claim time from
+// what the order was worth then, so the claim is only valid for that basis. If the
+// cart moves afterwards the attached discount is stale, and charging a stale
+// discount is charging the customer the wrong amount.
+//
+// So the claim carries the basis it was priced on, every re-render checks it, and a
+// change releases the claim and says so. Releasing is safe now that the stamps come
+// back (releaseLoyaltyClaim) - before that this would have silently burned them.
+// ---------------------------------------------------------------------------
+var posLoyaltyClaim = null; // {rewardInstanceId, rewardId, name, discountAmount, memberId, basis, cartKey}
+
+function posLoyaltyDiscount() {
+  return posLoyaltyClaim ? (Number(posLoyaltyClaim.discountAmount) || 0) : 0;
+}
+
+// The order value a reward is priced against: the cart net of every OTHER discount,
+// never of the loyalty one itself, which would be circular.
+function posLoyaltyOrderNet() {
+  var sub = Object.keys(posCart).reduce(function (s, k) { var c = posCart[k]; return s + (Number(c.unitTotal) || 0) * (Number(c.qty) || 0); }, 0);
+  var manual = Number((document.getElementById('posDisc') || {}).value) || 0;
+  return Math.max(0, sub - manual - scopedDiscTotal());
+}
+
+// What the live cart says this claim should have been priced on.
+function posLoyaltyBasisNow(claim) {
+  if (!claim) return null;
+  if (claim.cartKey) { var line = posCart[claim.cartKey]; return line ? (Number(line.unitTotal) || 0) : null; }
+  return posLoyaltyOrderNet();
+}
+
+// Gives the stamps back. Fire-and-report: the claim is dropped locally either way,
+// because leaving a stale discount attached to a live sale is the worse failure. A
+// release that did not reach the server leaves the reward "claimed", which expires on
+// its own and is visible in the member's ledger.
+function posLoyaltyReleaseClaim(reason, quiet) {
+  var claim = posLoyaltyClaim;
+  posLoyaltyClaim = null;
+  if (!claim) return Promise.resolve();
+  var release = posLoyaltyCallable('releaseLoyaltyClaim');
+  if (!release) return Promise.resolve();
+  return release({memberId: claim.memberId, rewardInstanceId: claim.rewardInstanceId, reason: reason || 'Sale not completed'})
+    .then(function () {
+      if (!quiet) (window.accazaToast || function () {})('Reward returned — stamps are back on the member’s account', 'ok');
+      if (window.__posLog) window.__posLog('loyalty-release', claim.rewardInstanceId, reason || '');
+    })
+    .catch(function (e) {
+      alert('The reward was removed from this sale, but returning the stamps failed: ' + ((e && e.message) || e) + '\n\nThe reward stays on the member’s account as an open claim and expires on its own. Tell a manager if the member asks.');
+    });
+}
+
+// Called on every cart render. A claim priced on a different cart is not a discount we
+// may charge, so it goes back rather than being quietly adjusted.
+function posLoyaltyCheckStale() {
+  if (!posLoyaltyClaim) return;
+  var now = posLoyaltyBasisNow(posLoyaltyClaim);
+  if (now !== null && Math.abs(now - posLoyaltyClaim.basis) < 0.005) return;
+  var name = posLoyaltyClaim.name;
+  posLoyaltyReleaseClaim('Sale changed after the reward was applied', true).then(function () {
+    (window.accazaToast || function () {})('“' + name + '” was removed because the sale changed. Stamps are back — apply it again once the order is final.', 'warn');
+    renderPosCart();
+  });
+}
+
+function posLoyaltyClaimRow() {
+  if (!posLoyaltyClaim) return '';
+  return '<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.76rem;color:#155724;margin-bottom:0.3rem;">'
+    + '<span>⭐ ' + esc(posLoyaltyClaim.name) + '</span>'
+    + '<span style="white-space:nowrap;">−' + peso(posLoyaltyDiscount())
+    + ' <button class="pz-btn warn" id="posLoyaltyRewardRm" style="padding:0 0.35rem;">✕</button></span>'
+    + '</div>';
+}
+
+// Offered only when a member is attached AND their presence was actually proved. A
+// phone-lookup member earns but can never redeem (spec 1) - the server refuses it too,
+// this just avoids offering something that will be refused.
+function posLoyaltyRedeemButton() {
+  if (!posLoyaltyMember || posLoyaltyClaim) return '';
+  if (posLoyaltyMember.verifiedBy === 'phone_lookup') return '';
+  var offers = posLoyaltyMember.redeemable || [];
+  if (!offers.length) return '';
+  return '<button class="pz-btn sec" id="posLoyaltyRedeemBtn" style="width:100%;margin-bottom:0.4rem;font-size:0.8rem;">🎁 Redeem reward (' + offers.length + ')</button>';
+}
+
+function posLoyaltyWireRedeem(scope) {
+  var open = (scope || document).querySelector('#posLoyaltyRedeemBtn');
+  if (open) open.onclick = openLoyaltyRedeemModal;
+  var remove = (scope || document).querySelector('#posLoyaltyRewardRm');
+  if (remove) remove.onclick = function () {
+    posLoyaltyReleaseClaim('Cashier removed the reward from this sale').then(function () { renderPosCart(); });
+  };
+}
+
+function posLoyaltyIsFreeItem(reward) {
+  return reward && (reward.grantType === 'free_item_capped' || reward.grantType === 'free_item_no_sub');
+}
+
+function openLoyaltyRedeemModal() {
+  if (!posLoyaltyMember) return alert('Attach a Rewards member first.');
+  if (!Object.keys(posCart).length) return alert('Ring the whole order first, then apply the reward. The discount is worked out from the finished order.');
+  var offers = (posLoyaltyMember.redeemable || []);
+  if (!offers.length) return alert('This member has no reward they can claim yet.');
+
+  var mask = document.createElement('div');
+  mask.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:1rem;';
+  var chosen = null, otpToken = null;
+
+  function drinkLines() {
+    return Object.keys(posCart).filter(function (k) { return lineCat(k) === 'drink'; });
+  }
+
+  function draw() {
+    var stacked = posScopedDisc.length > 0 || (Number((document.getElementById('posDisc') || {}).value) || 0) > 0;
+    var blocked = stacked && !(chosen && chosen.stackingAllowed);
+    mask.innerHTML = '<div style="background:#fff;border-radius:10px;max-width:440px;width:100%;padding:1rem;max-height:86vh;overflow:auto;">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;"><b>Redeem a reward</b><button class="pz-btn warn" id="rdClose" style="padding:0 0.5rem;">✕</button></div>'
+      + '<div style="font-size:0.78rem;color:var(--tl);margin-bottom:0.5rem;">' + esc(posLoyaltyMember.firstName || 'Member') + ' · '
+      + (Number(posLoyaltyMember.redBalance) || 0) + ' red / ' + (Number(posLoyaltyMember.yellowBalance) || 0) + ' yellow</div>'
+      + (blocked ? '<div style="font-size:0.78rem;color:#8a6d00;background:#fff6e5;border:1px solid #f0dcae;border-radius:6px;padding:0.5rem;margin-bottom:0.5rem;">This sale already has a Senior / PWD or manual discount. A loyalty reward cannot be combined with it — remove the other discount first.</div>' : '')
+      + offers.map(function (r, ix) {
+        var on = chosen && chosen.rewardId === r.rewardId;
+        return '<button class="pz-btn ' + (on ? 'ok' : 'sec') + '" data-rd="' + ix + '" style="width:100%;text-align:left;margin-bottom:0.3rem;font-size:0.82rem;">'
+          + esc(r.name) + '<div style="font-size:0.72rem;opacity:.8;">costs ' + r.costQty + ' ' + esc(r.costCurrency) + ' stamps</div></button>';
+      }).join('');
+
+    // A free-item reward is worth whatever drink it is put against, so the cashier picks
+    // the line. Without that there is no price to compute the discount from.
+    if (posLoyaltyIsFreeItem(chosen)) {
+      var lines = drinkLines();
+      mask.querySelector('div').insertAdjacentHTML('beforeend',
+        '<div style="border-top:1px solid var(--cd);margin-top:0.5rem;padding-top:0.5rem;font-size:0.78rem;color:var(--tl);">Which drink is free?</div>'
+        + (lines.length ? lines.map(function (k) {
+          var c = posCart[k], on = chosen.cartKey === k;
+          return '<button class="pz-btn ' + (on ? 'ok' : 'sec') + '" data-rdline="' + esc(k) + '" style="width:100%;text-align:left;margin-top:0.25rem;font-size:0.8rem;">'
+            + esc(c.name) + (c.size ? ' (' + esc(c.size) + ')' : '') + ' · ' + peso(c.unitTotal) + '</button>';
+        }).join('') : '<div style="font-size:0.78rem;color:#a4302a;margin-top:0.3rem;">There is no drink on this order to make free.</div>'));
+    }
+
+    var ready = chosen && !blocked && (!posLoyaltyIsFreeItem(chosen) || chosen.cartKey);
+    mask.querySelector('div').insertAdjacentHTML('beforeend',
+      '<div style="border-top:1px solid var(--cd);margin-top:0.6rem;padding-top:0.6rem;">'
+      + '<div style="font-size:0.78rem;color:var(--tl);margin-bottom:0.35rem;">The member must be here. Scan their badge, or text them a code.</div>'
+      + '<input class="pz-in" id="rdBadge" placeholder="Scan badge" style="width:100%;margin-bottom:0.4rem;" autocomplete="off"' + (ready ? '' : ' disabled') + '/>'
+      + '<div style="display:flex;gap:0.4rem;"><button class="pz-btn sec" id="rdSendOtp" style="flex:1;"' + (ready ? '' : ' disabled') + '>Text a code</button></div>'
+      + '<div id="rdOtpWrap" style="display:none;margin-top:0.4rem;"><div style="display:flex;gap:0.4rem;"><input class="pz-in" id="rdOtp" placeholder="6-digit code" inputmode="numeric" maxlength="6" style="flex:1;"/><button class="pz-btn ok" id="rdOtpGo">Redeem</button></div></div>'
+      + '<div id="rdMsg" style="font-size:0.78rem;margin-top:0.5rem;min-height:1.1em;"></div></div>');
+    wire();
+  }
+
+  function say(text, bad) {
+    var m = mask.querySelector('#rdMsg');
+    if (m) { m.textContent = text; m.style.color = bad ? '#a4302a' : '#155724'; }
+  }
+  function close() { if (mask.parentNode) mask.parentNode.removeChild(mask); }
+
+  // The basis is captured here and sent with the claim, so the discount the server prices
+  // and the cart it was priced against are the same thing. posLoyaltyCheckStale compares
+  // the live cart back to it on every render.
+  function claim(proof) {
+    var free = posLoyaltyIsFreeItem(chosen);
+    var basis = free ? (Number(posCart[chosen.cartKey].unitTotal) || 0) : posLoyaltyOrderNet();
+    var call = posLoyaltyCallable('claimLoyaltyReward');
+    if (!call) { say('Refresh the POS to load the Rewards service.', true); return; }
+    say('Claiming…');
+    call(Object.assign({memberId: posLoyaltyMember.memberId, rewardId: chosen.rewardId, itemPrice: free ? basis : null, orderNet: free ? null : basis}, proof))
+      .then(function (r) {
+        var d = r.data || {};
+        posLoyaltyClaim = {rewardInstanceId: d.rewardInstanceId, rewardId: chosen.rewardId, name: d.name || chosen.name, discountAmount: Number(d.discountAmount) || 0, memberId: posLoyaltyMember.memberId, basis: basis, cartKey: free ? chosen.cartKey : null};
+        close();
+        renderPosCart();
+        (window.accazaToast || function () {})('Reward applied — −' + peso(posLoyaltyClaim.discountAmount), 'ok');
+        if (window.__posLog) window.__posLog('loyalty-claim', d.rewardInstanceId, posLoyaltyClaim.name + ' −' + peso(posLoyaltyClaim.discountAmount));
+      })
+      .catch(function (e) { say((e && e.message) || 'The reward could not be claimed.', true); });
+  }
+
+  function wire() {
+    mask.querySelector('#rdClose').onclick = close;
+    mask.querySelectorAll('[data-rd]').forEach(function (b) {
+      b.onclick = function () {
+        var picked = offers[+b.getAttribute('data-rd')];
+        chosen = (chosen && chosen.rewardId === picked.rewardId) ? null : Object.assign({}, picked);
+        draw();
+      };
+    });
+    mask.querySelectorAll('[data-rdline]').forEach(function (b) {
+      b.onclick = function () { chosen.cartKey = b.getAttribute('data-rdline'); draw(); };
+    });
+
+    var badge = mask.querySelector('#rdBadge');
+    if (badge && !badge.disabled) badge.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      var parsed = posLoyaltyParseBadge(badge.value);
+      if (!parsed) { say('That is not an Accaza badge.', true); badge.select(); return; }
+      if (parsed.memberId !== posLoyaltyMember.memberId) { say('That badge belongs to a different member than the one on this sale.', true); badge.select(); return; }
+      claim({verifiedBy: 'badge_scan', code: parsed.code});
+    });
+
+    var send = mask.querySelector('#rdSendOtp');
+    if (send && !send.disabled) send.onclick = function () {
+      var start = posLoyaltyCallable('startLoyaltyRedeemOtp');
+      if (!start) { say('Refresh the POS to load the Rewards service.', true); return; }
+      send.disabled = true; say('Sending a code…');
+      start({memberId: posLoyaltyMember.memberId})
+        .then(function (r) { otpToken = (r.data || {}).otpToken; mask.querySelector('#rdOtpWrap').style.display = 'block'; mask.querySelector('#rdOtp').focus(); say('Code sent. Ask the member to read it out.'); })
+        .catch(function (e) { say((e && e.message) || 'The code could not be sent.', true); })
+        .finally(function () { send.disabled = false; });
+    };
+
+    var go = mask.querySelector('#rdOtpGo');
+    if (go) go.onclick = function () {
+      var otp = String(mask.querySelector('#rdOtp').value || '').trim();
+      if (!/^\d{6}$/.test(otp)) { say('Enter the 6-digit code.', true); return; }
+      claim({verifiedBy: 'otp', otpToken: otpToken, otp: otp});
+    };
+  }
+
+  document.body.appendChild(mask);
+  mask.onclick = function (e) { if (e.target === mask) close(); };
+  draw();
 }
 /* ══════════ SERVING QUEUE (29 Sep 2026) ══════════
    A paid order is not a served order. Every sale the server accepts is queued for serving

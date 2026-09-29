@@ -36,6 +36,8 @@ function renderPosCart(options){
       +(isPlat?'':correction?'':'<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.82rem;margin-bottom:0.3rem;"><span>Discount ₱</span><input class="pz-in" id="posDisc" type="number" step="any" style="width:100px;text-align:right;" value="0"/></div>'
       +'<button class="pz-btn sec" id="posDiscBtn" style="width:100%;margin-bottom:0.4rem;font-size:0.8rem;">🧾 PWD / Senior / Athlete / Promo</button>'
       +posLoyaltyCartRow()
+      +posLoyaltyRedeemButton()
+      +posLoyaltyClaimRow()
       +(posScopedDisc.length?('<div style="font-size:0.76rem;margin-bottom:0.4rem;">'+posScopedDisc.map(function(d,ix){return '<div style="display:flex;justify-content:space-between;align-items:center;color:#155724;margin-bottom:0.15rem;"><span>'+esc((DISC_TYPES[d.type]||{}).label||d.type)+' · '+esc(d.name)+(d.idNumber?' ('+esc(d.idNumber)+')':'')+'</span><span style="white-space:nowrap;">−'+peso(d.value)+' <button class="pz-btn warn" data-sdrm="'+ix+'" style="padding:0 0.35rem;">✕</button></span></div>';}).join('')+'</div>'):'')
       +(posMeta.cashRounding?'<div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--tl);margin-bottom:0.3rem;"><span>Cash rounding</span><span id="posRound">₱0.00</span></div>':''))
       +'<div style="display:flex;justify-content:space-between;font-weight:700;color:var(--bd);font-size:1rem;border-top:1px solid var(--cd);padding-top:0.4rem;"><span>'+(isPlat?'Gross':'Total')+'</span><span id="posTotal">'+peso(sub)+'</span></div>'
@@ -60,7 +62,7 @@ function renderPosCart(options){
   var disc=document.getElementById('posDisc');
   var splitRows=[];
   var pay=null, splitChk=null;
-  function grandTotal(){ var d=isPlat?0:((Number(disc&&disc.value)||0)+scopedDiscTotal()); var tot=Math.max(0,sub-d); if(!isPlat&&posMeta.cashRounding){var r=Math.round(tot); var pr=document.getElementById('posRound'); if(pr)pr.textContent=peso(r-tot); tot=r;} var tEl=document.getElementById('posTotal'); if(tEl)tEl.textContent=peso(tot); return tot; }
+  function grandTotal(){ var d=isPlat?0:((Number(disc&&disc.value)||0)+scopedDiscTotal()+posLoyaltyDiscount()); var tot=Math.max(0,sub-d); if(!isPlat&&posMeta.cashRounding){var r=Math.round(tot); var pr=document.getElementById('posRound'); if(pr)pr.textContent=peso(r-tot); tot=r;} var tEl=document.getElementById('posTotal'); if(tEl)tEl.textContent=peso(tot); return tot; }
   function draftElectronicPayments(){
     if(isPlat)return[];
     var tot=grandTotal();
@@ -163,6 +165,10 @@ function renderPosCart(options){
   var _sb=document.getElementById('posShiftBar'); if(_sb)_sb.innerHTML=shiftBar; renderOfflineUI();
   var _db=document.getElementById('posDiscBtn'); if(_db)_db.onclick=openDiscountModal;
   posLoyaltyWireCart(p);
+  posLoyaltyWireRedeem(p);
+  // A reward priced on a different cart is not a discount we may charge, so this runs on
+  // every render and hands the stamps back rather than quietly adjusting the amount.
+  posLoyaltyCheckStale();
   p.querySelectorAll('[data-sdrm]').forEach(function(b){b.onclick=function(){posScopedDisc.splice(+b.getAttribute('data-sdrm'),1);renderPosCart();};});
   var _pb=document.getElementById('posPkgBtn');if(_pb)_pb.onclick=function(){ if(window.__openPackagePicker)window.__openPackagePicker(); else alert('Packages module still loading \u2014 try again.'); };
   document.getElementById('posClear').onclick=function(){if(correction){if(confirm('Cancel this correction? The original completed order will remain unchanged.')){posCompletedCorrection=null;posCart={};posDraft={};posPaymentVerification=null;window.__posPkgs=[];posScopedDisc=[];posLoyaltyReset();renderPosCart({fresh:true});}return;}if(Object.keys(posCart).length&&confirm('Clear this sale?')){posCart={};posDraft={};posPaymentVerification=null;window.__posPkgs=[];posScopedDisc=[];posLoyaltyReset();renderPosCart({fresh:true});}};
