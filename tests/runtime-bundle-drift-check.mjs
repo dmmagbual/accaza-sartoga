@@ -55,7 +55,7 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('managePosShiftCr
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('syncOfflinePosSale')+1,0,'getSupplierAdvanceDetails');
 // 29 Sep 2026: Loyalty Program (Red/Yellow Stamps) Phase 1 backend foundation —
 // signup/OTP, badge scan, earning-rules engine, redemption claims, admin CRUD/reports.
-expectedFunctionExports.splice(expectedFunctionExports.indexOf('managePosSaleRecovery')+1,0,'startLoyaltySignup','completeLoyaltySignup','scanLoyaltyBadge','getLoyaltyMemberCard','lookupLoyaltyMemberByPhone','onOrderLoyaltyEarning','claimLoyaltyReward','finalizeLoyaltyRedemption','startLoyaltyRedeemOtp','manageLoyaltyEarningRule','manageLoyaltyRewardCatalog','manageLoyaltyMemberStatus','getLoyaltyReports');
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('managePosSaleRecovery')+1,0,'startLoyaltySignup','completeLoyaltySignup','scanLoyaltyBadge','getLoyaltyMemberCard','lookupLoyaltyMemberByPhone','onOrderLoyaltyEarning','claimLoyaltyReward','finalizeLoyaltyRedemption','releaseLoyaltyClaim','startLoyaltyRedeemOtp','manageLoyaltyEarningRule','manageLoyaltyRewardCatalog','manageLoyaltyMemberStatus','getLoyaltyReports');
 // Sep 2026: owner emergency sign-out of every portal session.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('onShiftCloseAssurance'),0,'signOutAllPortalSessions');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('getUndepositedControlSnapshot')+1,0,'syncUndepositedLedgerPageIndex','syncPettyVoucherAttentionIndex','syncCashCustodyPageIndex','getUndepositedPage');

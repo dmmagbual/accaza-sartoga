@@ -3595,11 +3595,20 @@ exports.claimLoyaltyReward = onCall(
     if (!debit.committed) throw new HttpsError("failed-precondition", `Not enough ${catalog.costCurrency} stamps.`);
     const discountAmount = Loyalty.computeRewardDiscount(catalog, data.itemPrice, data.orderNet);
     const writes = {
-      [`loyaltyRewards/${memberId}/${rewardInstanceId}`]: {rewardId, status: "claimed", issuedAt: now, expiresAt: now + catalog.expiryDays * 86400000, claimedAt: now, claimedBy: actor.uid, verifiedBy, discountAmount, grantType: catalog.grantType, name: catalog.name || rewardId, schemaVersion: 1},
+      // costCurrency/costQty are recorded on the claim itself, not re-derived from the
+      // catalog later: the catalog is admin-editable, so a release that re-read it could
+      // refund a different number of stamps than were actually taken. What was charged is
+      // a fact about this claim, the same reason a posted journal line keeps its own amount.
+      [`loyaltyRewards/${memberId}/${rewardInstanceId}`]: {rewardId, status: "claimed", issuedAt: now, expiresAt: now + catalog.expiryDays * 86400000, claimedAt: now, claimedBy: actor.uid, verifiedBy, discountAmount, grantType: catalog.grantType, name: catalog.name || rewardId, costCurrency: catalog.costCurrency, costQty: catalog.costQty, schemaVersion: 1},
       [`loyaltyLedger/${memberId}/redeem_${rewardInstanceId}`]: {type: "redeem_claim", rewardId, rewardInstanceId, occurredAt: now, cashierUid: actor.uid, currency: catalog.costCurrency, qty: catalog.costQty, schemaVersion: 1},
     };
     await db.ref().update(writes);
-    await loyaltyStatIncrement(db, `/loyaltyStats/redemptionsByCashier/${loyaltyStatKey(actor.uid)}`, 1);
+    // The per-cashier redemption count is NOT incremented here. It is one half of the
+    // spec §10 control (redemptions per cashier against their sales volume), and a claim
+    // that is later released gave no product away — counting it would overstate the
+    // control and put noise in the one number meant to make give-aways visible. It is
+    // booked in finalizeLoyaltyRedemption instead, alongside the cost, so both halves of
+    // the control measure the same event: a redemption that actually happened.
     logger.info("Loyalty reward claimed", {memberId, rewardId, rewardInstanceId});
     return {rewardInstanceId, discountAmount, grantType: catalog.grantType, name: catalog.name || rewardId, expiresAt: writes[`loyaltyRewards/${memberId}/${rewardInstanceId}`].expiresAt};
   },
@@ -3639,7 +3648,64 @@ exports.finalizeLoyaltyRedemption = onCall(
     // order completes) and excluding claims that were abandoned before the order finalized.
     const finalized = result.snapshot.val() || {};
     await loyaltyRedemptionCostIncrement(db, finalized.rewardId, finalized.name, Number(finalized.discountAmount) || 0);
+    // Booked here rather than at claim time so the spec §10 control counts give-aways that
+    // really happened. Attributed to whoever authorised the claim, not whoever happened to
+    // finalize it — a shift can change hands between ringing the reward and taking payment,
+    // and the control is about who handed the product over.
+    if (finalized.claimedBy) await loyaltyStatIncrement(db, `/loyaltyStats/redemptionsByCashier/${loyaltyStatKey(finalized.claimedBy)}`, 1);
     return {ok: true};
+  },
+);
+
+/**
+ * Gives a claimed reward back when the sale it was claimed for never happens — the
+ * customer changes their mind, the card is declined, the cashier clears the ticket.
+ *
+ * Without this the stamps were simply gone: claimLoyaltyReward debits the balance
+ * immediately, and a reward left at "claimed" is not returned by loyaltyMemberSnapshot
+ * (which only lists "available"), so the member had paid 10 stamps and had nothing to
+ * show for it, with no way back. A redemption that can be taken must be able to be
+ * given back, the same way any posted amount must be reversible.
+ *
+ * Idempotent by construction: only a "claimed" reward moves to "released", so a retry,
+ * a double-tap, or two tills racing each other credits the stamps exactly once.
+ */
+exports.releaseLoyaltyClaim = onCall(
+  {region: LOYALTY_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 20, memory: "256MiB"},
+  async (request) => {
+    const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["pos"]);
+    const data = request.data || {};
+    const memberId = loyaltyKey(data.memberId, "Member ID"), rewardInstanceId = loyaltyKey(data.rewardInstanceId, "Reward instance ID");
+    const reason = financeText(data.reason, 120) || "Sale not completed";
+    const rewardRef = db.ref(`/loyaltyRewards/${memberId}/${rewardInstanceId}`);
+    // Same Admin SDK cold-cache hazard as claim/finalize: the first callback on a fresh
+    // instance sees null even though the record exists, and treating that as "nothing to
+    // release" would hard-abort without retry.
+    const initialReward = (await rewardRef.get()).val();
+    const releaseState = {seen: false};
+    const result = await rewardRef.transaction((current) => {
+      current = transactionCurrent(current, initialReward, releaseState);
+      if (!current || current.status !== "claimed") return; // already redeemed, released or expired — never give stamps back twice
+      return Object.assign({}, current, {status: "released", releasedAt: Date.now(), releasedBy: actor.uid, releaseReason: reason});
+    }, undefined, false);
+    if (!result.committed) throw new HttpsError("failed-precondition", "This reward is no longer an open claim — it was already completed or released.");
+
+    const released = result.snapshot.val() || {};
+    // What was actually charged, taken from the claim record rather than the live catalog.
+    const currency = released.costCurrency === "yellow" ? "yellow" : released.costCurrency === "red" ? "red" : null;
+    const qty = Loyalty.positiveInt(released.costQty, 0);
+    if (currency && qty > 0) {
+      const field = currency === "red" ? "redBalance" : "yellowBalance";
+      const balances = (await db.ref(`/loyaltyBalances/${memberId}`).get()).val() || {redBalance: 0, yellowBalance: 0};
+      const creditState = {seen: false};
+      await db.ref(`/loyaltyBalances/${memberId}`).transaction((current) => {
+        current = transactionCurrent(current, balances, creditState) || {redBalance: 0, yellowBalance: 0};
+        return Object.assign({}, current, {[field]: Loyalty.positiveInt(current[field], 0) + qty, updatedAt: Date.now()});
+      }, undefined, false);
+      await db.ref(`/loyaltyLedger/${memberId}/release_${rewardInstanceId}`).set({type: "redeem_release", rewardId: released.rewardId || "", rewardInstanceId, occurredAt: Date.now(), cashierUid: actor.uid, currency, qty, reason, schemaVersion: 1});
+    }
+    logger.info("Loyalty claim released", {memberId, rewardInstanceId, currency, qty});
+    return {ok: true, currency, qty};
   },
 );
 
