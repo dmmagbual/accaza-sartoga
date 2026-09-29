@@ -21,7 +21,7 @@ intervals.splice(0).forEach(f=>f()); // the POS init poll
 assert.equal(typeof subs.activeOrders,'function','POS subscribes to the live order feed');
 ctx.__posShift={id:'S1',status:'open',staff:'Maria'};
 ctx.__posHandler('pos');
-assert.match(els.posServeQueue.innerHTML,/Serving queue/,'queue column renders on the POS tab');
+assert.match(els.posServeQueue.innerHTML,/Order flow/,'order-flow rail renders on the POS tab');
 const now=Date.now();
 subs.activeOrders({val:()=>({
   'POS-A1':{source:'pos',channel:'instore',shiftId:'S1',status:'Completed',name:'Ana',total:150,timestamp:now-700000,lineItems:[{name:'Latte (L)',qty:2,optLabels:['Oat']}],service:{state:'queued',queuedAt:now-700000}},
@@ -33,8 +33,8 @@ const html=els.posServeQueue.innerHTML;
 assert.equal((html.match(/class="sq-card /g)||[]).length,3,'queued walk-in, Grab and accepted website order are listed; served order is not');
 assert.ok(html.indexOf('Ana')<html.indexOf('GF-123'),'oldest first');
 assert.match(html,/age-late/,'an order waiting over 10 minutes is red');
-assert.equal((html.match(/>PREPARE<\/button>/g)||[]).length,3,'every queued order has one PREPARE button');
-assert.doesNotMatch(html,/data-sq-serve|Served now|Picked up now/,'the queue does not offer service completion before PREPARE');
+assert.equal((html.match(/>Start prep<\/button>/g)||[]).length,3,'every queued order has one Start prep action');
+assert.doesNotMatch(html,/data-sq-prepare|PREPARE|Picked up now/,'the rail has no obsolete prepare modal action');
 assert.match(html,/Americano \(M\)/,'website order sizes are shown');
 assert.equal(String(els.posActiveCount.textContent),'4','Shift Orders badge counts every current-shift order, including an order already served');
 assert.equal(typeof ctx.__serveQueueCloseReview,'function','close review is exposed to the register module');
