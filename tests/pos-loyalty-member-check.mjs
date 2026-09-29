@@ -44,8 +44,13 @@ assert.ok(persistence.includes("channel:(isPlat?platform.channel:'instore')"),
 // --- the member never carries over to the next customer ---------------------
 // Crediting the previous customer for this sale is worse than crediting nobody, so every
 // path that empties the cart must also drop the member.
-const resets = persistence.match(/posLoyaltyReset\(\)/g) || [];
-assert.ok(resets.length >= 1, 'a completed sale must clear the attached member');
+// A completed sale clears the member through posLoyaltyFinalize (which also closes the
+// reward); every other exit clears it through posLoyaltyReset (which hands stamps back).
+// Either way the next customer starts clean.
+assert.ok(/posLoyaltyFinalize\(oid\)/.test(persistence),
+  'a completed sale must clear the attached member as it finalizes the reward');
+assert.ok(/posLoyaltyMember = null;/.test(source) && (source.match(/posLoyaltyMember = null;/g) || []).length >= 2,
+  'both the reset and the finalize path must drop the member');
 assert.ok((cart.match(/posLoyaltyReset\(\)/g) || []).length >= 2,
   'both the clear-sale and cancel-correction paths must drop the attached member');
 
@@ -69,3 +74,63 @@ assert.ok(bundle.includes('function posLoyaltyParseBadge'), 'the built POS bundl
 assert.ok(bundle.includes('posLoyaltyCartRow()'), 'the cart must render the Rewards member control');
 
 console.log('PASS: the till attaches a Rewards member by badge scan or phone lookup, refuses stray barcodes, writes loyaltyMemberId onto the sale, drops the member afterwards, and reads nothing unbounded.');
+
+// --- redemption: the money path ---------------------------------------------
+const cartSrc = cart, posSrc = source;
+
+// The discount must actually come off what the customer pays, and must be recorded
+// separately from the Senior/PWD discount so it posts to 4920 rather than 4900.
+assert.ok(/scopedDiscTotal\(\)\+posLoyaltyDiscount\(\)/.test(cartSrc),
+  'the loyalty reward must reduce the charged total, not just decorate the cart');
+assert.ok(/loyaltyDiscount:\(isPlat\?0:posLoyaltyDiscount\(\)\)/.test(persistence),
+  'the saved order must carry loyaltyDiscount separately - that is what posts to 4920');
+assert.ok(persistence.includes('loyaltyRewardId:') && persistence.includes('loyaltyRewardName:'),
+  'the order must name which reward was given, so redemption cost is reportable by reward');
+
+// A reward is priced by the server against the order as it was at claim time. If the cart
+// then changes, that discount is simply wrong for this sale - charging it would take the
+// wrong amount from the customer.
+assert.ok(posSrc.includes('function posLoyaltyCheckStale'), 'a stale claim must be detected');
+assert.ok(/posLoyaltyCheckStale\(\)/.test(cartSrc), 'staleness must be checked on every cart render');
+assert.ok(/basis: basis/.test(posSrc), 'the claim must remember what it was priced against');
+assert.ok(/Math\.abs\(now - posLoyaltyClaim\.basis\) < 0\.005/.test(posSrc),
+  'the basis comparison must tolerate float noise but nothing larger');
+
+// Releasing is what makes that safe: the stamps go back rather than being burned.
+assert.ok(posSrc.includes("posLoyaltyReleaseClaim('Sale changed after the reward was applied'"),
+  'a cart change must hand the stamps back, not silently drop the reward');
+assert.ok(posSrc.includes("posLoyaltyReleaseClaim('Sale cleared before payment')"),
+  'clearing a sale must hand the stamps back');
+
+// A completed sale is the one case where the reward must NOT be released - the customer
+// already walked away with the drink. It is finalized against the real order id instead.
+assert.ok(/posLoyaltyFinalize\(oid\)/.test(persistence),
+  'a completed sale must finalize the reward against its order id, never release it');
+assert.ok(!/posLoyaltyReset\(\);\s*renderPosCart\(\{fresh:true\}\);\s*showReceipt/.test(persistence),
+  'the completed-sale path must not release a reward the customer already received');
+
+// Presence checks. Phone lookup earns but can never redeem (spec 1); the server refuses it
+// too, this keeps the till from offering something that will be refused.
+assert.ok(/verifiedBy === 'phone_lookup'\) return '';/.test(posSrc),
+  'a phone-lookup member must not be offered a redeem button');
+assert.ok(/verifiedBy: 'badge_scan'/.test(posSrc) && /verifiedBy: 'otp'/.test(posSrc),
+  'redemption must offer both presence proofs the server accepts');
+assert.ok(posSrc.includes('belongs to a different member'),
+  'a badge scanned at redemption must be the badge of the member on this sale');
+
+// No stacking with Senior/PWD unless the reward itself allows it (spec 1).
+assert.ok(/posScopedDisc\.length > 0 \|\| \(Number\(\(document\.getElementById\('posDisc'\)/.test(posSrc),
+  'an existing Senior/PWD or manual discount must block a non-stacking reward');
+assert.ok(/chosen && chosen\.stackingAllowed/.test(posSrc),
+  'the reward catalog decides whether stacking is allowed, not a hardcoded rule');
+
+// The order value a reward is priced on must exclude the loyalty discount itself.
+assert.ok(/sub - manual - scopedDiscTotal\(\)/.test(posSrc),
+  'the pricing basis must net off other discounts but never the loyalty one - that is circular');
+
+// Still nothing unbounded, now that redemption reads a catalog: it comes down with the
+// member snapshot, which the till already fetches.
+assert.ok(posSrc.includes('posLoyaltyMember.redeemable'),
+  'redeemable rewards must come from the member snapshot the till already has');
+
+console.log('PASS: a reward reduces the charged total, posts separately for 4920, is priced against a recorded basis that is rechecked every render, hands stamps back when the sale changes or is cleared, finalizes only on a completed sale, and cannot be redeemed without proof the member was present.');
