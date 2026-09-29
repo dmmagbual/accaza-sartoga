@@ -40,9 +40,8 @@ function loyaltyKey(value, label = "ID") {
   if (!/^[A-Za-z0-9_-]{1,160}$/.test(key)) throw new HttpsError("invalid-argument", `${label} is invalid.`);
   return key;
 }
-function loyaltyMemberId(phoneE164) {
-  return `mem_${crypto.createHash("sha256").update(phoneE164).digest("hex").slice(0, 24)}`;
-}
+// Member ids are opaque random values minted at signup start (see startLoyaltySignup) --
+// never derived from the phone, so a member can change their number without changing identity.
 function loyaltyBadgeWindow(atMs) { return Math.floor((Number(atMs) || Date.now()) / (LOYALTY_BADGE_WINDOW_SECONDS * 1000)); }
 function loyaltyBadgeCode(memberId, badgeSecret, timeWindow) {
   return crypto.createHmac("sha256", String(badgeSecret || "")).update(`${memberId}:${timeWindow}`).digest("hex").slice(0, 12);
@@ -130,7 +129,11 @@ exports.startLoyaltySignup = onCall(
     if (existingIndex && existingIndex.memberId) throw new HttpsError("already-exists", "This phone number is already registered. Use Recover Badge instead (or contact staff).");
     const otpSalt = crypto.randomBytes(8).toString("hex"), otp = loyaltyOtpCode(), now = Date.now();
     const signupToken = crypto.randomBytes(16).toString("hex");
-    await db.ref(`/loyaltyOtp/${signupToken}`).set({purpose: "signup", phone, name, otpHash: loyaltyOtpHash(otp, otpSalt), otpSalt, attempts: 0, createdAt: now, expiresAt: now + LOYALTY_OTP_TTL_MS});
+    // Opaque member id, minted here (not derived from the phone) so a member can change their
+    // number later without their identity/stamps changing. Carried on the OTP record so a retry
+    // of completeLoyaltySignup reuses the same id -- self-healing, as the old phone-hash was.
+    const memberId = `mem_${crypto.randomBytes(16).toString("hex")}`;
+    await db.ref(`/loyaltyOtp/${signupToken}`).set({purpose: "signup", memberId, phone, name, otpHash: loyaltyOtpHash(otp, otpSalt), otpSalt, attempts: 0, createdAt: now, expiresAt: now + LOYALTY_OTP_TTL_MS});
     await sendLoyaltySms(phone, `Your Accaza Rewards signup code is ${otp}. It expires in 5 minutes.`);
     logger.info("Loyalty signup OTP sent", {maskedPhone: Loyalty.maskPhone(phone)});
     return {signupToken, expiresInSeconds: LOYALTY_OTP_TTL_MS / 1000};
@@ -152,7 +155,10 @@ exports.completeLoyaltySignup = onCall(
       await otpRef.child("attempts").set(Number(record.attempts || 0) + 1);
       throw new HttpsError("invalid-argument", "Incorrect code.");
     }
-    const phone = record.phone, memberId = loyaltyMemberId(phone), phoneKeyId = crypto.createHash("sha256").update(Loyalty.phoneKey(phone)).digest("hex").slice(0, 32);
+    const phone = record.phone, phoneKeyId = crypto.createHash("sha256").update(Loyalty.phoneKey(phone)).digest("hex").slice(0, 32);
+    // Reuse the opaque id minted at signup start (idempotent on retry). The fallback covers an
+    // in-flight OTP created by the previous deploy that predates the memberId field.
+    const memberId = record.memberId ? loyaltyKey(record.memberId, "Member ID") : `mem_${crypto.randomBytes(16).toString("hex")}`;
     const now = Date.now(), badgeSecret = crypto.randomBytes(24).toString("hex");
     const memberRef = db.ref(`/loyaltyMembers/${memberId}`);
     const claim = await db.ref(`/loyaltyMembersByPhone/${phoneKeyId}`).transaction((current) => current && current.memberId ? current : {memberId, claimedAt: now});
@@ -242,6 +248,129 @@ exports.lookupLoyaltyMemberByPhone = onCall(
     const member = (await db.ref(`/loyaltyMembers/${index.memberId}`).get()).val();
     if (!member || member.status === "blocked") throw new HttpsError("not-found", "No member found for this number.");
     return {memberId: index.memberId, firstName: financeText(member.name, 80).split(/\s+/)[0] || "", maskedPhone: Loyalty.maskPhone(member.phone), verifiedBy: "phone_lookup", redeemAllowed: false};
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Customer account <-> membership link (device -> durable membership)
+//
+// The customer portal signs in ANONYMOUSLY, so its uid is a per-browser id, not a durable
+// person. The durable identity is the loyalty membership (phone + badge). So the link is
+// stored on the many-side -- appCustomers/{uid}.loyaltyMemberId -- pointing at the one
+// durable member: one member can be reached from many devices. Every link is verified
+// (badge possession, or an OTP to the member's own phone), so a recycled phone number can
+// never silently inherit someone else's stamps. No stamp value is booked at issuance
+// (recognize-on-redemption), so this link is an operational convenience, never a GL balance.
+// See claude/loyalty-accounting-identity-2026-09-30.md.
+// ---------------------------------------------------------------------------
+async function setLoyaltyDeviceLink(db, uid, memberId, via) {
+  const member = (await db.ref(`/loyaltyMembers/${memberId}`).get()).val();
+  if (!member || member.status === "blocked") throw new HttpsError("failed-precondition", "This membership is not available.");
+  await db.ref(`/appCustomers/${uid}`).transaction((current) => {
+    const profile = current || {};
+    return Object.assign({}, profile, {loyaltyMemberId: memberId, loyaltyLinkedAt: Date.now(), loyaltyLinkedVia: via});
+  });
+  logger.info("Loyalty membership linked to a customer device", {via});
+  return member;
+}
+
+// The portal showing "your stamps" for a linked device. Authenticated by the anonymous
+// customer session alone -- the stored link IS the proof, no badge needed -- so a member who
+// linked by OTP on a new phone still sees their card. One indexed read, no listeners.
+exports.getMyLoyaltyCard = onCall(
+  {region: LOYALTY_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 20, memory: "256MiB"},
+  async (request) => {
+    if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "Customer session is not ready. Refresh and try again.");
+    const db = getDatabase();
+    const linkedId = (await db.ref(`/appCustomers/${request.auth.uid}/loyaltyMemberId`).get()).val();
+    if (!linkedId) return {linked: false};
+    const snapshot = await loyaltyMemberSnapshot(db, loyaltyKey(linkedId, "Member ID"));
+    if (!snapshot) return {linked: false, unavailable: true};
+    return Object.assign({linked: true, verifiedBy: "account_link"}, snapshot);
+  },
+);
+
+// Same-device link, free (no SMS): the browser already holds the badge, so it can derive the
+// current 60s code -- possession IS the proof. The server only re-verifies the code.
+exports.linkLoyaltyByBadge = onCall(
+  {region: LOYALTY_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 20, memory: "256MiB"},
+  async (request) => {
+    if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "Customer session is not ready. Refresh and try again.");
+    const db = getDatabase();
+    const data = request.data || {}; const memberId = loyaltyKey(data.memberId, "Member ID"), code = String(data.code || "");
+    const member = (await db.ref(`/loyaltyMembers/${memberId}`).get()).val();
+    if (!member) throw new HttpsError("not-found", "Membership not recognized.");
+    if (!loyaltyVerifyBadgeCode(memberId, member.badgeSecret, code, Date.now())) throw new HttpsError("permission-denied", "Badge code is invalid or expired. Refresh your Rewards badge and try again.");
+    await setLoyaltyDeviceLink(db, request.auth.uid, memberId, "badge");
+    const snapshot = await loyaltyMemberSnapshot(db, memberId);
+    return Object.assign({linked: true, verifiedBy: "badge"}, snapshot || {});
+  },
+);
+
+// Cross-device link (fallback, costs one SMS): send an OTP to the membership's phone. Only a
+// phone already registered as a member can receive one, and a 60s per-phone cooldown keeps
+// this from being used to spam-text a member.
+exports.startLoyaltyLinkOtp = onCall(
+  {region: LOYALTY_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB", secrets: [SEMAPHORE_API_KEY]},
+  async (request) => {
+    if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "Customer session is not ready. Refresh and try again.");
+    const db = getDatabase(); const uid = request.auth.uid;
+    const phone = Loyalty.normalizePhonePH((request.data || {}).phone);
+    if (!phone) throw new HttpsError("invalid-argument", "Enter a valid Philippine mobile number.");
+    const phoneKeyId = crypto.createHash("sha256").update(Loyalty.phoneKey(phone)).digest("hex").slice(0, 32);
+    const index = (await db.ref(`/loyaltyMembersByPhone/${phoneKeyId}`).get()).val();
+    if (!index || !index.memberId) throw new HttpsError("not-found", "No Rewards membership was found for that number.");
+    const now = Date.now();
+    const lastAt = Number(((await db.ref(`/loyaltyLinkThrottle/${phoneKeyId}`).get()).val() || {}).lastAt || 0);
+    if (lastAt + 60000 > now) throw new HttpsError("resource-exhausted", "Please wait a minute before requesting another code.");
+    await db.ref(`/loyaltyLinkThrottle/${phoneKeyId}`).set({lastAt: now});
+    const otpSalt = crypto.randomBytes(8).toString("hex"), otp = loyaltyOtpCode();
+    const linkToken = crypto.randomBytes(16).toString("hex");
+    await db.ref(`/loyaltyOtp/${linkToken}`).set({purpose: "link", memberId: index.memberId, uid, otpHash: loyaltyOtpHash(otp, otpSalt), otpSalt, attempts: 0, createdAt: now, expiresAt: now + LOYALTY_OTP_TTL_MS});
+    await sendLoyaltySms(phone, `Your Accaza Rewards linking code is ${otp}. It expires in 5 minutes.`);
+    logger.info("Loyalty link OTP sent");
+    return {linkToken, expiresInSeconds: LOYALTY_OTP_TTL_MS / 1000};
+  },
+);
+
+exports.confirmLoyaltyLinkOtp = onCall(
+  {region: LOYALTY_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 20, memory: "256MiB"},
+  async (request) => {
+    if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "Customer session is not ready. Refresh and try again.");
+    const db = getDatabase(); const uid = request.auth.uid;
+    const data = request.data || {};
+    const linkToken = loyaltyKey(data.linkToken, "Link token");
+    const otpRef = db.ref(`/loyaltyOtp/${linkToken}`);
+    const record = (await otpRef.get()).val();
+    if (!record || record.purpose !== "link") throw new HttpsError("not-found", "Linking session was not found. Start over.");
+    if (record.uid !== uid) throw new HttpsError("permission-denied", "This linking code was requested from a different session.");
+    if (Date.now() > Number(record.expiresAt)) { await otpRef.remove(); throw new HttpsError("deadline-exceeded", "That code expired. Start over."); }
+    if (Number(record.attempts || 0) >= LOYALTY_OTP_MAX_ATTEMPTS) { await otpRef.remove(); throw new HttpsError("resource-exhausted", "Too many incorrect attempts. Start over."); }
+    const code = String(data.otp || "").trim();
+    if (loyaltyOtpHash(code, record.otpSalt) !== record.otpHash) {
+      await otpRef.child("attempts").set(Number(record.attempts || 0) + 1);
+      throw new HttpsError("invalid-argument", "Incorrect code.");
+    }
+    const memberId = loyaltyKey(record.memberId, "Member ID");
+    await setLoyaltyDeviceLink(db, uid, memberId, "otp");
+    await otpRef.remove();
+    const snapshot = await loyaltyMemberSnapshot(db, memberId);
+    return Object.assign({linked: true, verifiedBy: "otp"}, snapshot || {});
+  },
+);
+
+// A device dropping its link (a shared tablet, or "not me"). Forgetting a link on your own
+// device needs no verification; re-linking always re-verifies.
+exports.unlinkLoyaltyFromDevice = onCall(
+  {region: LOYALTY_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 20, memory: "256MiB"},
+  async (request) => {
+    if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "Customer session is not ready.");
+    const db = getDatabase();
+    await db.ref(`/appCustomers/${request.auth.uid}`).transaction((current) => {
+      if (!current) return current;
+      const next = Object.assign({}, current); delete next.loyaltyMemberId; delete next.loyaltyLinkedAt; delete next.loyaltyLinkedVia; return next;
+    });
+    return {linked: false};
   },
 );
 
