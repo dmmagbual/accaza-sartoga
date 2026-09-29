@@ -97,6 +97,21 @@ balanced(discounted,'discounted in-store sale');
 assert(discounted.lines.some(x=>x.account==='revenue:sales'&&x.credit===125),'discounted sale did not recognize gross revenue');
 assert(discounted.lines.some(x=>x.account==='expense:customer_discount'&&x.debit===25),'discounted sale did not classify the customer discount');
 
+// Loyalty redemptions post to their own GL line (expense:loyalty_discount -> Books 4920),
+// separate from the general customer-discount line — owner's explicit instruction 2026-09-29
+// ("separate discount for this kind of loyalty program so we know how much we are spending on it").
+const loyaltyOnly=F.orderPosting({id:'LOY1',channel:'instore',total:88,loyaltyDiscount:12,loyaltyRewardId:'rwd_abc123',payment:'Cash'},accounts);
+balanced(loyaltyOnly,'loyalty-only discounted sale');
+assert(loyaltyOnly.lines.some(x=>x.account==='revenue:sales'&&x.credit===100),'loyalty-discounted sale did not gross up to the pre-discount subtotal (total+discount+loyaltyDiscount fallback)');
+assert(loyaltyOnly.lines.some(x=>x.account==='expense:loyalty_discount'&&x.debit===12&&x.label.includes('rwd_abc123')),'loyalty discount was not posted to its own account with reward attribution in the label');
+assert(!loyaltyOnly.lines.some(x=>x.account==='expense:customer_discount'),'a loyalty-only sale incorrectly also posted to the general customer-discount account');
+const bothDiscounts=F.orderPosting({id:'LOY2',channel:'instore',subtotal:200,total:150,discount:30,loyaltyDiscount:20,payment:'Cash'},accounts);
+balanced(bothDiscounts,'sale with both a general and a loyalty discount');
+assert(bothDiscounts.lines.some(x=>x.account==='expense:customer_discount'&&x.debit===30),'general discount line was dropped once a loyalty discount was also present');
+assert(bothDiscounts.lines.some(x=>x.account==='expense:loyalty_discount'&&x.debit===20),'loyalty discount line was dropped once a general discount was also present');
+assert(F.sourceNetSales([loyaltyOnly],'LOY1')===88,'Finance source net sales did not deduct the loyalty discount line');
+assert(F.orderNetSales({subtotal:200,discount:30,loyaltyDiscount:20})===150,'Admin net-sales helper did not fold order.loyaltyDiscount in alongside order.discount');
+
 const orphanOriginal=F.orderPosting({id:'ORPHAN1',channel:'instore',total:995,payment:'Cash'},accounts);
 orphanOriginal.id='sale_ORPHAN1';orphanOriginal.occurredAt=12345;
 const orphanReverse=F.reverseMovement(orphanOriginal,'orphan_order_reversal','Reverse orphaned sale');

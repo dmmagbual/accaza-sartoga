@@ -379,7 +379,19 @@
     "managePosShiftCrew",
     "managePortalAccount",
     "managePosSaleRecovery",
-    "resolveBackgroundFailure"
+    "resolveBackgroundFailure",
+    "startLoyaltySignup",
+    "completeLoyaltySignup",
+    "scanLoyaltyBadge",
+    "lookupLoyaltyMemberByPhone",
+    "onOrderLoyaltyEarning",
+    "claimLoyaltyReward",
+    "finalizeLoyaltyRedemption",
+    "startLoyaltyRedeemOtp",
+    "manageLoyaltyEarningRule",
+    "manageLoyaltyRewardCatalog",
+    "manageLoyaltyMemberStatus",
+    "getLoyaltyReports"
   ],
   "requiredProtectedNodes": [
     "activeOrders",
@@ -428,7 +440,17 @@
     "platformRefIndex",
     "platformRefDuplicates",
     "staffMessages",
-    "staffMessageReceipts"
+    "staffMessageReceipts",
+    "loyaltyMembers",
+    "loyaltyMembersByPhone",
+    "loyaltyLedger",
+    "loyaltyDailyCounters",
+    "loyaltyBalances",
+    "loyaltyEarningRules",
+    "loyaltyRewardCatalog",
+    "loyaltyRewards",
+    "loyaltyOtp",
+    "loyaltyStats"
   ],
   "verification": {
     "localQualityGate": "passed_2026-08-14",

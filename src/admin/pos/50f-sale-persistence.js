@@ -51,7 +51,7 @@ function beginCompletedOrderCorrection(o){
   if(o.source!=='pos'||(o.channel||'instore')!=='instore'||o.status!=='Completed')return alert('Only a completed in-store POS sale can use this correction.');
   if(o.preparationStatus!=='not_prepared'||o.preparationStartedAt)return alert('This order is already being prepared and can no longer be changed.');
   if(o.completedOrderCorrectionId||Number(o.refundAmount)>0)return alert('This order was already corrected or refunded.');
-  if(Number(o.discount)>0||(o.packages&&o.packages.length))return alert('Discounted or packaged sales require the manager correction workflow.');
+  if(Number(o.discount)>0||Number(o.loyaltyDiscount)>0||(o.packages&&o.packages.length))return alert('Discounted or packaged sales require the manager correction workflow.');
   var kind=completedCorrectionPaymentKind(o),payments=o.payments&&o.payments.length?o.payments:[{method:o.payment,amount:o.total}];if(!kind)return alert('This feature requires one verified bank or configured e-wallet payment.');
   if(['cashier_verified','manager_validated','confirmed'].indexOf(o.paymentStatus)<0||!String((payments[0]||{}).ref||'').trim())return alert('The electronic payment must be verified with its transaction reference first.');
   if(o.inventoryDeducted!==true)return alert('Inventory is still posting for this sale. Wait a moment, refresh, and try again.');

@@ -118,7 +118,7 @@ function reportingContribution(order) {
     (order.subtotal != null ? order.subtotal : order.total)) || 0;
   const platformDiscount = order.netSalesPlatform != null ? Math.max(0, gross - (Number(order.netSalesPlatform) || 0)) :
     (Number(order.platformDiscount) || 0);
-  const discount = platform ? platformDiscount : (Number(order.discount) || 0), refund = Number(order.refundAmount) || 0;
+  const discount = platform ? platformDiscount : ((Number(order.discount) || 0) + (Number(order.loyaltyDiscount) || 0)), refund = Number(order.refundAmount) || 0;
   const grossCents = Math.round(gross * 100), discountCents = Math.round(discount * 100), refundCents = Math.round(refund * 100);
   const netCents = Math.max(0, grossCents - discountCents - refundCents);
   const cashier = reportingCashier(order);
@@ -197,7 +197,7 @@ function salesLedgerSummary(input) {
     (movement.lines || []).forEach((line) => {
       const account = String(line.account || ""), debit = Math.round((Number(line.debit) || 0) * 100), credit = Math.round((Number(line.credit) || 0) * 100);
       if (account === "revenue:sales") grossCents += credit - debit;
-      else if (["expense:platform_discount", "expense:customer_discount", "revenue:platform_discount"].includes(account)) discountCents += debit - credit;
+      else if (["expense:platform_discount", "expense:customer_discount", "revenue:platform_discount", "expense:loyalty_discount"].includes(account)) discountCents += debit - credit;
       else if (account === "revenue:sales_reversal") reversalCents += debit - credit;
     });
   });

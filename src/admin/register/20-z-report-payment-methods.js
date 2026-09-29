@@ -6,7 +6,7 @@ function computeZ(shift,sourceOrders){
   source.forEach(function(o){if(!o||o.shiftId!==shift.id)return;
     if(o.voided){z.voidCount++;z.voidAmt+=Number(o.total)||0;return;}
     if(['Completed','Received'].indexOf(o.status)<0)return;
-    var gross=(o.subtotal!=null?Number(o.subtotal):Number(o.total))||0;var disc=Number(o.discount)||0;var ref=Number(o.refundAmount)||0;
+    var gross=(o.subtotal!=null?Number(o.subtotal):Number(o.total))||0;var disc=(Number(o.discount)||0)+(Number(o.loyaltyDiscount)||0);var ref=Number(o.refundAmount)||0;
     z.tx++;z.gross+=gross;z.discounts+=disc;z.refunds+=ref;z.cashRefunds+=Number((o.refundPayments||{}).Cash)||(ref&&(!o.refundPayments)&&(o.payment==='Cash'||paysOf(o).some(function(p){return p.method==='Cash';}))?ref:0);z.net+=gross-disc-ref;
     z.tips+=Number(o.tipRounding)||0;
     var _ch=(o.channel&&z.byChannel[o.channel]!=null)?o.channel:'instore';z.byChannel[_ch]+=gross-disc-ref;

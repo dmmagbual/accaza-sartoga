@@ -17,7 +17,7 @@ const { BALANCE_EPSILON } = require("./financial");
    ============================================================ */
 
 const CHANNEL_SALES = {instore: "4000", online: "4010", grabfood: "4020", foodpanda: "4030"};
-const SALES_CODES = new Set([...Object.values(CHANNEL_SALES), "4900", "4910"]);
+const SALES_CODES = new Set([...Object.values(CHANNEL_SALES), "4900", "4910", "4920"]);
 // Finance chart-account id -> Accaza Books COA (bills, manual expenses, owner capital/draw, etc.)
 const CHART_COA = {
   rent: "6010", utilities: "6020", salaries: "6000", "bank charges": "6080", bank_charges: "6080",
@@ -75,7 +75,7 @@ function mapAccount(posAccount, channel, cashAccountMap) {
     "expense:platform_variance:va_promo": "6045", "expense:platform_variance:va_fees": "6080",
     "expense:platform_variance:va_penalty": "6085", "expense:platform_variance:va_refund": "6085",
     "revenue:platform_variance:va_incentive": "4990", "revenue:platform_variance:va_refund_recovery": "4990",
-    "expense:customer_discount": "4900", "expense:platform_discount": "4900", "revenue:platform_discount": "4900", "expense:platform_merchant_funded_promo": "6045", "expense:platform_delivery_fee_discount": "6045", "expense:platform_service_vat": "6046",
+    "expense:customer_discount": "4900", "expense:platform_discount": "4900", "revenue:platform_discount": "4900", "expense:loyalty_discount": "4920", "expense:platform_merchant_funded_promo": "6045", "expense:platform_delivery_fee_discount": "6045", "expense:platform_service_vat": "6046",
     "expense:platform_estimate_variance": "6100", "revenue:platform_estimate_variance": "4990",
     "equity:owner_capital": "3000", "equity:opening_balance": "3000", "equity:cash_float_source": "3000",
     "cogs:beverage": "5000", "cogs:food": "5030", "cogs:packaging": "5040", "cogs:other": "5000", "inventory:control": "1200",
