@@ -9,7 +9,7 @@ const source = fs.readFileSync(new URL('../assets/js/books/live-pos.mjs', import
   .replace(/^import\s*\{([^}]*)\}\s*from\s*"[^"]+";/gm, '');
 const listeners = [], gets = [], data = {purchaseInvoices: {PI1: {date: '2026-09-02', total: 10}, PI2: {date: '2026-08-01', total: 20}}};
 const describe = (target) => (target.path + (target.constraints || []).map((c) => `|${Object.entries(c).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(',')}`).join(''));
-let authCallback = null;
+let authCallback = null, idleOptions = null;
 const windowListeners = {};
 const win = {
   App: {render() {}, rebuildPeriodSel() {}},
@@ -27,7 +27,7 @@ const context = {
   orderByChild: (f) => ({orderByChild: f}), orderByKey: () => ({orderByKey: true}), equalTo: (v) => ({equalTo: v}),
   startAt: (v) => ({startAt: v}), endAt: (v) => ({endAt: v}), endBefore: (v) => ({endBefore: v}), startAfter: (v) => ({startAfter: v}),
   get: async (target) => { gets.push(describe(target)); const parts = target.path.split('/'); const value = parts.reduce((n, p) => n && n[p], data); return snapshot(parts.at(-1), value ?? null); },
-  onValue: (target) => { listeners.push({kind: 'value', target: describe(target), active: true}); const l = listeners.at(-1); return () => { l.active = false; }; },
+  onValue: (target, cb) => { listeners.push({kind: 'value', target: describe(target), callback: cb, active: true}); const l = listeners.at(-1); return () => { l.active = false; }; },
   onChildAdded: (target, cb) => { listeners.push({kind: 'child', target: describe(target), active: true}); const l = listeners.at(-1); return () => { l.active = false; }; },
   onChildChanged: () => () => {}, onChildRemoved: () => () => {},
   onAuthStateChanged: (_auth, cb) => { authCallback = cb; },
@@ -37,7 +37,7 @@ const context = {
   startPortalPresence: () => () => {}, runningBuild: () => 130,
   // Browser binding and inactivity are exercised in tests/portal-idle-check.mjs. This harness
   // only verifies that Finance Books keeps its Firebase reads bounded.
-  startPortalIdle: () => ({stop() {}, checkNow() {}}),
+  startPortalIdle: (options) => { idleOptions = options; return {stop() {}, checkNow() {}}; },
 };
 context.globalThis = context;
 vm.createContext(context);
@@ -51,6 +51,15 @@ const tab = (id) => windowListeners['accaza-books-tab']({detail: {id}});
 // Base feeds after sign-in: no review queue, orders only through indexed queries.
 assert.ok(!active().some((t) => t.startsWith('books/reviewQueue')), 'the unused review queue is not downloaded');
 assert.ok(active().every((t) => !/^(orders|archivedOrders|financialMovements|purchaseInvoices|discrepancies|platformPayouts|cashCustody)$/.test(t)), `no growing node is attached in full: ${active().join(' ; ')}`);
+assert.ok(!active().includes('posActiveShift'), 'Books never downloads the complete live shift');
+for (const target of ['posActiveShift/status', 'posActiveShift/accountUid', 'posActiveShift/crew/owner_uid']) {
+  assert.ok(active().includes(target), `Books inactivity control needs only ${target}`);
+}
+const emit = (target, value) => listeners.find((l) => l.active && l.target === target)?.callback(snapshot(target.split('/').at(-1), value));
+emit('posActiveShift/status', 'open');
+emit('posActiveShift/accountUid', 'owner_uid');
+emit('posActiveShift/crew/owner_uid', {staff: 'Owner', leftAt: 0});
+assert.equal(JSON.stringify(idleOptions.getShift()), JSON.stringify({status: 'open', accountUid: 'owner_uid', crew: {owner_uid: {staff: 'Owner', leftAt: 0}}}), 'the narrow fields rebuild only the membership facts inactivity control needs');
 
 tab('journal');
 assert.ok(active().includes('discrepancies|orderByChild="status"|endBefore="reviewed"') && active().includes('discrepancies|orderByChild="status"|startAfter="reviewed"'), 'journal lists only open cash variances');
