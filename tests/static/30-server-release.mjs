@@ -171,7 +171,7 @@ if(fs.readFileSync(path.join(root,'assets','js','customer','navigation.js'),'utf
 if((pwaRegister.match(/beforeinstallprompt/g)||[]).length!==1||!pwaRegister.includes('window.accazaInstallApp=function'))fail('Phase 5C shared install controller missing or duplicated');
 if(!adminHtml.includes('data-accaza-install')||!adminHtml.includes('Install Accaza POS App'))fail('Phase 5C visible POS install controls missing');
 if(fs.readFileSync(path.join(root,'assets','js','customer','navigation.js'),'utf8').includes('beforeinstallprompt'))fail('Phase 5C legacy customer install owner remains');
-if(!pwaRegister.includes("window.addEventListener('appinstalled'")||!pwaRegister.includes('accazaUpdateReady'))fail('Phase 5C install completion or update-ready UX missing');
+if(!pwaRegister.includes("window.addEventListener('appinstalled'")||!pwaRegister.includes("new CustomEvent('accaza:update-ready')"))fail('Phase 5C install completion or update-ready UX missing');
 for(const shellAsset of ['/admin.html','/assets/js/admin/core.mjs','/assets/js/admin/pos.js','/assets/js/admin/register.js'])if(!adminPrecache.includes(shellAsset))fail(`Phase 5A POS shell asset missing from Admin cache: ${shellAsset}`);
 if(!swSource.includes("url.pathname.indexOf('/admin')===0?'/admin.html':'/index.html'"))fail('Phase 5A navigation fallback can redirect admin/POS to the customer shell');
 if(!swSource.includes("new Response('Offline asset unavailable',{status:503"))fail('Phase 5A missing offline asset failure response');

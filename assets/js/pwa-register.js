@@ -30,22 +30,17 @@
   if(!('serviceWorker' in navigator))return;
   window.addEventListener('load',function(){
     navigator.serviceWorker.register('/sw.js',{scope:'/'}).then(function(registration){
-      registration.update();
       if(isAdmin()){
         var warmAdminShell=function(){var worker=registration.active||registration.waiting;if(worker)worker.postMessage({type:'ACCAZA_PRECACHE_ADMIN'});};
         warmAdminShell();
         navigator.serviceWorker.ready.then(warmAdminShell);
         navigator.serviceWorker.addEventListener('controllerchange',warmAdminShell);
       }
-      registration.addEventListener('updatefound',function(){
-        var worker=registration.installing;if(!worker)return;
-        worker.addEventListener('statechange',function(){
-          if(worker.state==='installed'&&navigator.serviceWorker.controller){
-            window.dispatchEvent(new CustomEvent('accaza:update-ready'));
-            if(!document.getElementById('accazaUpdateReady')){var bar=document.createElement('div');bar.id='accazaUpdateReady';bar.style.cssText='position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:29000;background:#19241b;color:#fff;border:1px solid #b08d57;border-radius:10px;padding:.7rem 1rem;box-shadow:0 6px 24px rgba(0,0,0,.35);font:13px Inter,sans-serif;';bar.innerHTML='A new Accaza version is ready. <button style="margin-left:.6rem;background:#b08d57;color:#fff;border:0;border-radius:6px;padding:.35rem .65rem;cursor:pointer;">Reload</button>';bar.querySelector('button').onclick=function(){location.reload();};document.body.appendChild(bar);}
-          }
-        });
-      });
+      function announceUpdate(){if(navigator.serviceWorker.controller)window.dispatchEvent(new CustomEvent('accaza:update-ready'));}
+      function watchUpdate(worker){if(!worker)return;if(worker.state==='installed'){announceUpdate();return;}worker.addEventListener('statechange',function(){if(worker.state==='installed')announceUpdate();});}
+      registration.addEventListener('updatefound',function(){watchUpdate(registration.installing);});
+      watchUpdate(registration.waiting||registration.installing);
+      registration.update();
     }).catch(function(error){console.warn('Accaza offline shell unavailable',error);});
   });
 })();

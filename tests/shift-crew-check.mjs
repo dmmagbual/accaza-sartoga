@@ -115,6 +115,8 @@ assert.equal(read(`/posSyncAlerts/${junk.transactionId}/state`),'dismissed');
 // 8. The till itself refuses payment before money is taken (the server re-checks anyway).
 const cart=fs.readFileSync(new URL('../src/admin/pos/50e-cart-checkout.js',import.meta.url),'utf8'),persist=fs.readFileSync(new URL('../src/admin/pos/50f-sale-persistence.js',import.meta.url),'utf8');
 assert.ok(cart.includes("button.disabled=posChargeBusy||!keys.length||!shift||!posSellerState().ok"),'Charge must be disabled for anyone not on the shift');
+assert.ok(persist.includes('hasItems:function(){return !!posCompletedCorrection||Object.keys(posCart).length>0;}'),'the update guard must retain an empty completed-order correction as unsaved work');
+assert.ok(persist.includes('busy:function(){return posChargeBusy;}'),'the update guard must see the same single-flight payment lock as the Charge button');
 assert.ok(cart.includes("var _seller=posSellerState();if(!_seller.ok)"),'Charge click must refuse anyone not on the shift');
 assert.ok(cart.includes('id="posJoinShift"')&&cart.includes('joinPosShift()'),'The till must offer Join shift');
 const offline=fs.readFileSync(new URL('../src/admin/pos/00-shared-state.js',import.meta.url),'utf8');

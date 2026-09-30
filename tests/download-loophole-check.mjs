@@ -261,26 +261,32 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   assert.ok(/-\s*release-manifest\.json/.test(jekyllExcludes) && !/build-version/.test(jekyllExcludes), 'build-version.json must be published while the release manifest stays private');
   assert.ok(read('sw.js').includes("'/assets/js/shared/build-freshness.js'") && read('sw.js').includes("'/build-version.json'"), 'the guard is part of the offline shell');
   const source = read('assets/js/shared/build-freshness.js');
-  function run({app = 'admin', running = 533, published = 534, cart = false, syncing = 0, edited = false, online = true, storage = true, reloadedFor = ''} = {}) {
+  function run({app = 'admin', running = 533, published = 534, cart = false, busy = false, pending = 0, syncing = 0, failed = 0, offlineError = false, offlineStateAvailable = true, edited = false, inputType = 'text', online = true, storage = true, reloadedFor = ''} = {}) {
     let now = Date.UTC(2026, 8, 16, 4), interval = null, reloads = 0, fetches = 0;
     const store = new Map(reloadedFor ? [['accazaFreshnessReloadedFor', String(reloadedFor)]] : []);
-    const listeners = {}, body = {children: [], appendChild(n) { this.children.push(n); }};
-    const field = {isConnected: true, type: 'text', value: edited ? 'draft' : '', defaultValue: '', getClientRects: () => [1], closest: () => null};
-    const el = () => ({style: {}, setAttribute() {}, appendChild() {}, textContent: ''});
+    const listeners = {}, windowListeners = {}, body = {children: [], appendChild(n) { this.children.push(n); }};
+    const safety = {cart, busy, pending, syncing, failed, offlineError, online};
+    const field = {isConnected: true, type: inputType, value: edited ? 'draft' : '', defaultValue: '', getClientRects: () => [1], closest: () => null};
+    const el = () => ({style: {}, children: [], setAttribute() {}, appendChild(child) { this.children.push(child); }, textContent: ''});
     const document = {body, visibilityState: 'hidden', querySelector: (sel) => sel === `meta[name="accaza-${app}-build"]` ? {getAttribute: () => String(running)} : null,
       getElementById: (id) => body.children.find((c) => c.id === id) || null, createElement: el, addEventListener: (type, fn) => { (listeners[type] = listeners[type] || []).push(fn); }};
     class FakeDate extends Date { static now() { return now; } }
     const sessionStorage = {getItem: (k) => { if (!storage) throw new Error('blocked'); return store.has(k) ? store.get(k) : null; }, setItem: (k, v) => { if (!storage) throw new Error('blocked'); store.set(k, String(v)); }, removeItem: (k) => store.delete(k)};
-    const win = {document, sessionStorage, navigator: {onLine: online}, location: {reload: () => { reloads += 1; }}, addEventListener() {}, setInterval: (fn, ms) => { interval = {fn, ms}; },
+    const win = {document, sessionStorage, navigator: {get onLine() { return safety.online; }}, location: {reload: () => { reloads += 1; }}, addEventListener: (type, fn) => { (windowListeners[type] = windowListeners[type] || []).push(fn); }, setInterval: (fn, ms) => { interval = {fn, ms}; },
       fetch: async (url, opts) => { fetches += 1; assert.equal(url, '/build-version.json'); assert.equal(opts.cache, 'no-store'); return {ok: true, json: async () => ({builds: {[app]: published}})}; },
-      __pos: {hasItems: () => cart}, __posOfflineState: () => ({syncing})};
+      __pos: {hasItems: () => safety.cart, busy: () => safety.busy}};
+    if (offlineStateAvailable) win.__posOfflineState = () => ({pending: safety.pending, syncing: safety.syncing, failed: safety.failed, error: safety.offlineError ? 'storage failed' : ''});
     const context = vm.createContext({window: win, Date: FakeDate, String, Number, Boolean});
     vm.runInContext(source, context);
     if (edited) listeners.input.forEach((fn) => fn({target: field}));
+    const bar = () => body.children.find((c) => c.id === 'accazaUpdateReady');
     return {
-      interval, get reloads() { return reloads; }, get fetches() { return fetches; }, store, bar: () => body.children.find((c) => c.id === 'accazaUpdateReady'),
+      interval, get reloads() { return reloads; }, get fetches() { return fetches; }, store, bar,
       async tick(ms) { now += ms; interval.fn(); for (let i = 0; i < 5; i += 1) await tick(); },
       touch() { listeners.pointerdown.forEach((fn) => fn({})); },
+      clickReload() { bar().children[0].onclick(); },
+      setSafety(next) { Object.assign(safety, next); },
+      signalUpdateReady() { (windowListeners['accaza:update-ready'] || []).forEach((fn) => fn()); },
     };
   }
   let t = run();
@@ -293,15 +299,45 @@ const ruleIndexes = (node) => { const m = read('database.rules.json').match(new 
   assert.equal(t.store.get('accazaFreshnessReloadedFor'), '534');
   t = run({reloadedFor: 534}); await t.tick(20 * 60 * 1000);
   assert.equal(t.reloads, 0, 'a tab reloads at most once per published build (no reload loop if the page lags the manifest)');
-  for (const [label, opts] of [['POS sale in progress', {cart: true}], ['offline sale syncing', {syncing: 1}], ['edited field on screen', {edited: true}], ['offline', {online: false}], ['storage unavailable', {storage: false}], ['customer page', {app: 'customer', running: 71, published: 72}]]) {
+  for (const [label, opts] of [['POS sale in progress', {cart: true}], ['payment processing', {busy: true}], ['offline sale pending', {pending: 1}], ['offline sale syncing', {syncing: 1}], ['offline sale failed', {failed: 1}], ['offline storage error', {offlineError: true}], ['offline state unavailable after POS starts', {offlineStateAvailable: false}], ['edited field on screen', {edited: true}], ['selected file on screen', {edited: true, inputType: 'file'}], ['offline', {online: false}], ['storage unavailable', {storage: false}], ['customer page', {app: 'customer', running: 71, published: 72}]]) {
     t = run(opts); await t.tick(20 * 60 * 1000);
     assert.equal(t.reloads, 0, `no automatic reload: ${label}`);
     assert.ok(t.bar(), `the reload bar still shows: ${label}`);
   }
+  t = run({pending: 1}); await t.tick(5 * 60 * 1000); t.clickReload();
+  assert.equal(t.reloads, 0, 'the update button cannot reload while a local sale is pending');
+  t.setSafety({pending: 0}); t.clickReload();
+  assert.equal(t.reloads, 1, 'the same update button reloads once the POS is safe');
+  t = run({running: 534, published: 534}); t.signalUpdateReady();
+  assert.ok(t.bar(), 'a prepared service-worker update uses the shared safe update bar');
   t = run({running: 534, published: 534}); await t.tick(20 * 60 * 1000);
   assert.equal(t.reloads + (t.bar() ? 1 : 0), 0, 'a current tab does nothing');
   t = run(); t.touch(); await t.tick(60 * 1000); await t.tick(30 * 1000);
   assert.equal(t.fetches, 1, 'checks are throttled to one a minute');
+}
+
+// The service-worker bridge announces a prepared update but never creates its own unsafe reload path.
+{
+  const source = read('assets/js/pwa-register.js');
+  async function runBridge({waiting = false} = {}) {
+    let load, updateFound, stateChange, appended = 0;
+    const events = [];
+    const worker = {state: waiting ? 'installed' : 'installing', postMessage() {}, addEventListener(type, fn) { if (type === 'statechange') stateChange = fn; }};
+    const registration = {installing: waiting ? null : worker, active: {postMessage() {}}, waiting: waiting ? worker : null, update() {}, addEventListener(type, fn) { if (type === 'updatefound') updateFound = fn; }};
+    const serviceWorker = {controller: {}, ready: Promise.resolve(registration), register: async () => registration, addEventListener() {}};
+    const body = {appendChild() { appended += 1; }};
+    const document = {readyState: 'complete', body, querySelectorAll: () => [], getElementById: () => null, createElement: () => ({style: {}, querySelector: () => ({})})};
+    const win = {document, navigator: {serviceWorker, standalone: false}, matchMedia: () => ({matches: false}), addEventListener(type, fn) { if (type === 'load') load = fn; }, dispatchEvent(event) { events.push(event.type); }};
+    vm.runInContext(source, vm.createContext({window: win, document, navigator: win.navigator, location: {pathname: '/admin.html', search: ''}, CustomEvent: class { constructor(type) { this.type = type; } }, Array, Promise, console}));
+    load(); for (let i = 0; i < 3; i += 1) await tick();
+    if (!waiting) { updateFound(); worker.state = 'installed'; stateChange(); }
+    return {events, appended};
+  }
+  let bridge = await runBridge();
+  assert.deepEqual(bridge.events, ['accaza:update-ready'], 'a newly prepared worker announces one shared update-ready event');
+  bridge = await runBridge({waiting: true});
+  assert.deepEqual(bridge.events, ['accaza:update-ready'], 'a worker that was already waiting still announces the prepared update');
+  assert.equal(bridge.appended, 0, 'the service-worker bridge cannot create a second direct-reload bar');
 }
 
 // 10. The daily backup downloads the whole database; its growth is flagged long before the free allowance.

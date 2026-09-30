@@ -64,6 +64,8 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // authorization boundary to log only the signed-in uid, resolved role and Boolean App Check
 // presence. This measures every real staff callable before enforcement without exposing tokens or
 // adding an anonymous telemetry endpoint. Reviewed guard count 559 -> 560.
-if(guardDigest!=='1bfff75c2a3035b53b1e62d6b20dcc143ea3e807b5a3d73c29e61bd0daecae19')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// Oct 2026 (safe update delivery): the existing PWA update guard now pins the shared update-ready
+// event instead of a second direct-reload bar. The guard count is unchanged.
+if(guardDigest!=='950469eaca8cf9b14145b8a83c6a9da4483905ce7b0feec516c7f9a0969aa29f')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
 console.log('PASS: all 560 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');
