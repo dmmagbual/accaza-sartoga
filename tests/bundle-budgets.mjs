@@ -46,7 +46,11 @@ export const BUNDLE_BUDGETS=Object.freeze({
   // Build 596 (+3.4 KB, 220.0 -> 223.3 KB) replaces the dense payment-method form with
   // accessible summary cards and progressive configuration; no data read or listener is added.
   // Sep 2026 re-baseline under the budget policy above: reviewed 223,322 bytes (admin 611).
-  'assets/js/admin/register.js':234500,
+  // 30 Sep 2026 (+14.9 KB, 225.1 -> 240.0 KB) adds the Rewards stamps card to POS Settings:
+  // the stamp list, the add/edit form and the fixed six-colour picker. It is config-only --
+  // no listener and no loyalty history read -- and rides the already lazy-loaded register
+  // bundle. Re-baselined under the budget policy to ~5% above the reviewed 240,003 bytes.
+  'assets/js/admin/register.js':252100,
   // Build 527 secures completed-sale corrections while retaining the sales reconciliation bridge;
   // retain a narrow ceiling above the reviewed generated bundle.
   // Build 533 replaces Stock Value's whole-journal listener with monthly totals plus the
