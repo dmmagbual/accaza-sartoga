@@ -3439,7 +3439,7 @@ function renderPosCart(options){
     ? '<div style="background:#fde8e8;border:1px solid #f5c6c6;border-radius:6px;padding:0.4rem 0.6rem;font-size:0.76rem;color:#721c24;">🔴 No open shift — open one in <b>Register Ops</b> to start selling.</div>'
     : seller.ok
       ? '<div style="background:#e8f5ec;border:1px solid #b8dfc4;border-radius:6px;padding:0.4rem 0.6rem;font-size:0.76rem;color:#155724;">🟢 Shift open · Cashier <b>'+esc(shift.staff)+'</b>'+(seller.role==='crew'?' · You are ringing as <b>'+esc(seller.staff)+'</b> (crew)':'')+(crewNames.length?'<div style="font-size:0.7rem;margin-top:0.15rem;">Crew: '+esc(crewNames.join(', '))+'</div>':'')+'</div>'
-      : '<div style="background:#fff4e5;border:1px solid #f2c078;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;color:#8a5a00;">🟠 This shift belongs to <b>'+esc(seller.owner)+'</b>. Join the shift to take payments under your own name. <button class="pz-btn ok" id="posJoinShift" style="margin-top:0.35rem;padding:0.25rem 0.6rem;font-size:0.74rem;">Join shift</button></div>';
+      : '<div style="display:flex;align-items:center;gap:0.4rem;min-width:0;font-size:0.76rem;color:#8a5a00;"><button class="pz-btn ok" id="posJoinShift" style="flex:none;padding:0.25rem 0.6rem;font-size:0.74rem;">Join shift</button><span style="min-width:0;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;">🟠 This shift belongs to <b>'+esc(seller.owner)+'</b>. Join the shift to take payments under your own name.</span></div>';
   var isPlat=posIsPlatform();
   var _ccfg=channelsCfg();
   var chanOpts=[{k:'instore',lbl:'🏪 In-store'}].concat(POS_CHANNELS.filter(function(d){return _ccfg[d.k].active!==false;}).map(function(d){return {k:d.k,lbl:(d.k==='grabfood'?'🟢 ':'🩷 ')+_ccfg[d.k].label};}));
@@ -3451,7 +3451,7 @@ function renderPosCart(options){
   // The shift/crew banner and the sync status sit at the top of the sale panel so the
   // cashier sees them before taking payment (their containers were lost in a redesign).
   p.innerHTML=
-    '<div id="posShiftBar" style="margin-bottom:0.5rem;"></div><div id="posOfflineBar" style="margin-bottom:0.6rem;"></div>'
+    '<div style="display:flex;align-items:center;gap:0.45rem;flex-wrap:wrap;margin-bottom:0.6rem;"><div id="posOfflineBar" style="flex:none;margin:0;"></div><div id="posShiftBar" style="flex:1 1 220px;min-width:0;margin:0;"></div></div>'
     +chanSel
     +'<div style="margin-bottom:0.6rem;"><span class="pz-lbl">Customer\'s name</span><input class="pz-in" id="posCust" placeholder="Walk-in"'+(correction?' readonly':'')+'/></div>'
     +(shift&&!isPlat&&!correction?'<button class="pz-btn sec" id="posPkgBtn" style="width:100%;margin-bottom:0.6rem;">🎁 Add Package / Promo</button>':'')+'<div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">🛒 '+(correction?'Corrected coffee order':'Current sale')+'</div>'
@@ -4145,7 +4145,7 @@ function openLoyaltyRedeemModal() {
    Serving is operational only: revenue, tender, stock, COGS and Finance Books already posted
    at payment and are never touched here. Website orders complete through their status flow. */
 var SQ_WARN_MS=5*60000,SQ_LATE_MS=10*60000,SQ_RETRY_CODES=['unavailable','deadline-exceeded','internal','unknown','resource-exhausted','aborted'];
-var sqState={recent:{},memPending:{},sending:{},tick:null,folded:false,bar:false,loaded:false};
+var sqState={recent:{},memPending:{},sending:{},confirmed:{},tick:null,folded:false,bar:false,loaded:false};
 function sqPref(k,v){try{if(arguments.length<2){var x=localStorage.getItem('accazaServeQueue_'+k);return x==null?null:JSON.parse(x);}localStorage.setItem('accazaServeQueue_'+k,JSON.stringify(v));}catch(_e){}return null;}
 function sqLoadPrefs(){if(sqState.loaded)return;sqState.loaded=true;sqState.folded=sqPref('folded')===true;sqState.bar=sqPref('bar')===true;var p=sqPref('pending');if(p&&typeof p==='object')sqState.memPending=p;}
 // A stage action remains on this device until the server confirms it (or the sale syncs).
@@ -4169,7 +4169,7 @@ function sqUnsyncedRows(){var out=[],now=Date.now();((_offState&&_offState.rows)
   if(r.status==='synced'&&now-Number(r.syncedAt||0)>120000)return;out.push(Object.assign({},o,{unsynced:r.status!=='synced',service:{state:'queued',queuedAt:Number(o.timestamp)||now}}));});return out;}
 function sqRows(){
   var rows=[],seen={},pend=sqPending();
-  Object.keys(onlineOrdersMap||{}).forEach(function(id){var o=Object.assign({},onlineOrdersMap[id]||{},{id:id});seen[id]=1;delete sqState.recent[id];if(sqNeedsService(o))rows.push(o);});
+  Object.keys(onlineOrdersMap||{}).forEach(function(id){var source=onlineOrdersMap[id]||{},confirmed=sqState.confirmed[id],liveState=String(source.service&&source.service.state||'');if(confirmed&&liveState===confirmed){delete sqState.confirmed[id];confirmed='';}var o=Object.assign({},source,{id:id});if(confirmed)o.service=Object.assign({},source.service||{},{state:confirmed});seen[id]=1;delete sqState.recent[id];if(sqNeedsService(o))rows.push(o);});
   sqUnsyncedRows().forEach(function(o){if(!seen[o.id]){seen[o.id]=1;rows.push(o);}});
   Object.keys(sqState.recent).forEach(function(id){var o=sqState.recent[id];if(!o||Date.now()-sqQueuedAt(o)>120000){delete sqState.recent[id];return;}if(!seen[id])rows.push(o);});
   return rows.filter(function(o){return !pend[o.id];}).sort(function(a,b){return sqQueuedAt(a)-sqQueuedAt(b);});
@@ -4200,6 +4200,7 @@ function renderServeQueue(){
 function sqOnOrdersChanged(){renderServeQueue();sqFlush();}
 function sqAdvance(o){if(!o||!o.id||sqPending()[o.id]||o.unsynced)return;var next=sqStageAction(o);sqPending()[o.id]={requestId:sqReqId(next.action),at:Date.now(),online:sqIsOnline(o),action:next.action,name:String(o.name||'').slice(0,60)};sqSavePending();renderServeQueue();sqFlush();}
 function sqDropPending(id){delete sqPending()[id];sqSavePending();}
+function sqRememberConfirmed(id,state){sqState.confirmed[id]=state;var ids=Object.keys(sqState.confirmed);while(ids.length>200)delete sqState.confirmed[ids.shift()];}
 function sqFlush(){
   var p=sqPending(),ids=Object.keys(p),a=A();if(!ids.length||window.__online===false||!a)return;
   ids.forEach(function(id){if(sqState.sending[id])return;var e=p[id],live=onlineOrdersMap&&onlineOrdersMap[id];
@@ -4209,7 +4210,7 @@ function sqFlush(){
     var onlineStatus={start_preparing:'Preparing',mark_ready:'Ready',serve:'Completed'}[e.action];
     var call=sqIsOnline(o)?(a.updateOrderStatus&&a.updateOrderStatus({orderId:id,status:onlineStatus,expectedStatus:o.status||'',requestId:e.requestId})):(a.callables&&a.callables.manageOrderService&&a.callables.manageOrderService({action:e.action,orderId:id,requestId:e.requestId}));
     if(!call)return;sqState.sending[id]=1;
-    Promise.resolve(call).then(function(){sqDropPending(id);}).catch(function(err){var code=String(err&&err.code||'').replace(/^functions\//,'');if(SQ_RETRY_CODES.indexOf(code)<0){sqDropPending(id);(window.accazaToast||function(){})('Could not mark '+sqLabel(o)+' served: '+((err&&err.message)||err),'err');}}).then(function(){delete sqState.sending[id];renderServeQueue();});
+    Promise.resolve(call).then(function(result){var payload=(result&&result.data)||result||{},confirmed=String(payload.state||'');if(!sqIsOnline(o)&&confirmed)sqRememberConfirmed(id,confirmed);sqDropPending(id);}).catch(function(err){var code=String(err&&err.code||'').replace(/^functions\//,'');if(SQ_RETRY_CODES.indexOf(code)<0){sqDropPending(id);(window.accazaToast||function(){})('Could not mark '+sqLabel(o)+' served: '+((err&&err.message)||err),'err');}}).then(function(){delete sqState.sending[id];renderServeQueue();});
   });
 }
 window.addEventListener('online',function(){setTimeout(sqFlush,1500);});
