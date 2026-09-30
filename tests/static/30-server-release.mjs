@@ -20,6 +20,8 @@ if(staffFlagDecl>functionsSource.indexOf('enforceAppCheck:'))fail('App Check fla
 if(/const ENFORCE_APP_CHECK_ORDERS = ENFORCE_APP_CHECK\b/.test(functionsSource))fail('ENFORCE_APP_CHECK_ORDERS must stay independent so the staff surface can enforce while the public order path stays in monitor mode');
 const appCheckEnvReads=functionsSource.split('process.env.ENFORCE_APP_CHECK').length-1;
 if(appCheckEnvReads!==2)fail(`App Check flags must read process.env exactly twice, once per flag, in src/functions/00-app-check-flags.js (found ${appCheckEnvReads}); every callable must use the shared constant so one committed default flips the whole staff surface`);
+const portalAuthSection=section(functionsSource,'async function requirePortalUser(db, request) {','async function requirePortalPermission(db, request, permissions) {');
+if(!portalAuthSection.includes('logger.info("Staff App Check status", {uid: request.auth.uid, role, appCheck: Boolean(request.app)});'))fail('staff authorization must log privacy-safe App Check presence for the enforcement readiness review');
 if(!functionsSource.includes('pricingVersion: "server-v1"'))fail('server pricing stamp missing');
 if(!functionsSource.includes('ownerUid: uid'))fail('server order owner stamp missing');
 if(!functionsSource.includes('exports.confirmOrderReceived = onCall'))fail('confirmOrderReceived callable missing');

@@ -27,7 +27,7 @@ for(const file of expected){
   if(Buffer.byteLength(source,'utf8')>47500){const message=`tests/static/${file} is ${Buffer.byteLength(source,'utf8')} bytes of its 50 KB bound. Split it before adding more guards.`;console.warn('STATIC MODULE SIZE WARNING: '+message);if(process.env.GITHUB_ACTIONS)console.log(`::warning file=tests/static/${file}::${message}`);}
   if(file!=='00-context.mjs'&&!runner.includes(`./static/${file}`))throw new Error(`Static-check runner omits domain: ${file}`);
 }
-if((combined.match(/\bfail\(/g)||[]).length!==559)throw new Error('Static-check failure-guard inventory changed from the reviewed baseline of 559');
+if((combined.match(/\bfail\(/g)||[]).length!==560)throw new Error('Static-check failure-guard inventory changed from the reviewed baseline of 560');
 if((combined.match(/spawnSync\(/g)||[]).length!==33)throw new Error('Static-check executable-check inventory changed from the reviewed baseline of 33');
 const guardSource=combined.split(/\r?\n/).filter(line=>/\bfail\(|spawnSync\(/.test(line)).map(line=>line.trim()).join('\n');
 const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
@@ -60,6 +60,10 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // shared "$only" list and that the list is still exactly the 44 idempotent retry functions, and the
 // full-deploy guard now checks every full deploy line rather than only the first. Guard count is
 // unchanged by this reshape.
-if(guardDigest!=='9b3e4873bf7b4be78f102a78b879788eba4d31ccbf353e2a909c0e21a44e8661')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// Oct 2026 (staff App Check observability): one reviewed guard requires the shared staff
+// authorization boundary to log only the signed-in uid, resolved role and Boolean App Check
+// presence. This measures every real staff callable before enforcement without exposing tokens or
+// adding an anonymous telemetry endpoint. Reviewed guard count 559 -> 560.
+if(guardDigest!=='1bfff75c2a3035b53b1e62d6b20dcc143ea3e807b5a3d73c29e61bd0daecae19')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
-console.log('PASS: all 559 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');
+console.log('PASS: all 560 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');

@@ -69,6 +69,7 @@ async function requirePortalUser(db, request) {
   if (!["superadmin", "admin", "manager", "staff", "cashier", "kitchen", "finance"].includes(role)) {
     throw new HttpsError("permission-denied", "This account is not authorized for the Accaza portal.");
   }
+  logger.info("Staff App Check status", {uid: request.auth.uid, role, appCheck: Boolean(request.app)});
   return {uid: request.auth.uid, role, name:financeText(raw&&typeof raw==="object"&&(raw.name||raw.displayName||raw.email)||request.auth.token&&request.auth.token.email||role,120)};
 }
 
