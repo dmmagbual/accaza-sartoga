@@ -3822,10 +3822,19 @@ function posLoyaltyParseBadge(raw) {
   return {memberId: parts[1], code: parts[2].toLowerCase()};
 }
 
+// Every configured stamp, from the server's own list (code/label/colour/balance), so a new
+// stamp type shows up at the till the moment it is configured - no code change. Falls back to
+// the seeded pair if an older server response arrives during a deploy.
+function posLoyaltyStampsText(m) {
+  var stamps = (m && m.stamps) || [];
+  if (stamps.length) return stamps.map(function (s) { return (Number(s.balance) || 0) + ' ' + esc(String(s.label || s.code)); }).join(' / ');
+  return (Number(m && m.redBalance) || 0) + ' red / ' + (Number(m && m.yellowBalance) || 0) + ' yellow';
+}
+
 function posLoyaltySummary(m) {
   if (!m) return '';
   return esc(m.firstName || 'Member') + ' · ' + esc(m.maskedPhone || '') +
-    ' · ' + (Number(m.redBalance) || 0) + ' red / ' + (Number(m.yellowBalance) || 0) + ' yellow';
+    ' · ' + posLoyaltyStampsText(m);
 }
 
 // Rendered into the cart under the discount controls, so the cashier can see at a glance
@@ -4024,12 +4033,12 @@ function openLoyaltyRedeemModal() {
     mask.innerHTML = '<div style="background:#fff;border-radius:10px;max-width:440px;width:100%;padding:1rem;max-height:86vh;overflow:auto;">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;"><b>Redeem a reward</b><button class="pz-btn warn" id="rdClose" style="padding:0 0.5rem;">✕</button></div>'
       + '<div style="font-size:0.78rem;color:var(--tl);margin-bottom:0.5rem;">' + esc(posLoyaltyMember.firstName || 'Member') + ' · '
-      + (Number(posLoyaltyMember.redBalance) || 0) + ' red / ' + (Number(posLoyaltyMember.yellowBalance) || 0) + ' yellow</div>'
+      + posLoyaltyStampsText(posLoyaltyMember) + '</div>'
       + (blocked ? '<div style="font-size:0.78rem;color:#8a6d00;background:#fff6e5;border:1px solid #f0dcae;border-radius:6px;padding:0.5rem;margin-bottom:0.5rem;">This sale already has a Senior / PWD or manual discount. A loyalty reward cannot be combined with it — remove the other discount first.</div>' : '')
       + offers.map(function (r, ix) {
         var on = chosen && chosen.rewardId === r.rewardId;
         return '<button class="pz-btn ' + (on ? 'ok' : 'sec') + '" data-rd="' + ix + '" style="width:100%;text-align:left;margin-bottom:0.3rem;font-size:0.82rem;">'
-          + esc(r.name) + '<div style="font-size:0.72rem;opacity:.8;">costs ' + r.costQty + ' ' + esc(r.costCurrency) + ' stamps</div></button>';
+          + esc(r.name) + '<div style="font-size:0.72rem;opacity:.8;">costs ' + r.costQty + ' × ' + esc(String(r.costCurrencyLabel || r.costCurrency)) + '</div></button>';
       }).join('');
 
     // A free-item reward is worth whatever drink it is put against, so the cashier picks

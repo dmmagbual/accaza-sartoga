@@ -54,8 +54,8 @@
   .rw-stamp{flex:1;text-align:center;border-radius:14px;padding:1rem .5rem;background:#f6f7f4;}
   .rw-stamp b{display:block;font-size:2rem;font-family:'Playfair Display',serif;line-height:1;}
   .rw-stamp span{font-size:.78rem;color:#5c6b5e;}
-  .rw-stamp.red b{color:#a4302a;}
-  .rw-stamp.yellow b{color:#b8860b;}
+  /* A stamp's colour is set inline from the configured palette, so there are no
+     per-stamp rules here; the label is always shown beside it. */
   .rw-rewards{margin:1.4rem 0 0;padding:1rem 1.1rem;background:#f6f7f4;border-radius:14px;}
   .rw-rewards h3{margin:0 0 .5rem;font-size:.92rem;color:#19241b;}
   .rw-rewards ul{margin:0;padding-left:1.1rem;font-size:.88rem;color:#3d4a3f;line-height:1.7;}
@@ -135,10 +135,9 @@
     <div class="rw-qr" id="qrHolder"></div>
     <p class="rw-code" id="badgeCode"></p>
     <p class="rw-muted" style="text-align:center;" id="badgeCountdown"></p>
-    <div class="rw-stamps">
-      <div class="rw-stamp red"><b id="redBalance">0</b><span>red stamps</span></div>
-      <div class="rw-stamp yellow"><b id="yellowBalance">0</b><span>yellow stamps</span></div>
-    </div>
+    <!-- One tile per configured stamp, filled by paintStampBalances from the server's own
+         stamp list, so a new stamp type appears here without an edit to this page. -->
+    <div class="rw-stamps" id="stampBalances"></div>
     <div class="rw-rewards" id="rewardsBlock" hidden>
       <h3>Ready to claim</h3>
       <ul id="rewardList"></ul>

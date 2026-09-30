@@ -137,9 +137,35 @@ async function paintBadge(member) {
   badgeTimer = setInterval(() => { tick().catch(() => {}); }, 1000);
 }
 
+// One tile per configured stamp, built from the server's own stamp list, so adding a stamp
+// type needs no change here. Colour comes from the configured palette and the label is always
+// rendered beside it, so stamps are never told apart by colour alone. Text goes in through
+// textContent, never innerHTML - a label is admin-entered. Falls back to the seeded pair if
+// an older server response arrives during a deploy.
+function paintStampBalances(card) {
+  const holder = el("stampBalances");
+  if (!holder) return;
+  const stamps = (card.stamps && card.stamps.length) ? card.stamps : [
+    {code: "red", label: "red stamps", color: "#a4302a", balance: card.redBalance || 0},
+    {code: "yellow", label: "yellow stamps", color: "#b8860b", balance: card.yellowBalance || 0},
+  ];
+  holder.innerHTML = "";
+  stamps.forEach((stamp) => {
+    const tile = document.createElement("div");
+    tile.className = "rw-stamp";
+    const count = document.createElement("b");
+    count.textContent = String(Number(stamp.balance) || 0);
+    if (stamp.color) count.style.color = stamp.color;
+    const label = document.createElement("span");
+    label.textContent = String(stamp.label || stamp.code || "stamps");
+    tile.appendChild(count);
+    tile.appendChild(label);
+    holder.appendChild(tile);
+  });
+}
+
 function paintCard(card) {
-  setText("redBalance", String(card.redBalance || 0));
-  setText("yellowBalance", String(card.yellowBalance || 0));
+  paintStampBalances(card);
   setText("tenureNote", tenureLine(card.memberSince));
   const list = el("rewardList"), rewards = (card.availableRewards || []);
   if (!list) return;
