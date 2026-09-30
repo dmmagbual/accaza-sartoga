@@ -1,11 +1,6 @@
 const ORDER_REGION = "asia-southeast1";
-// CallableOptions requires a real Boolean. Passing a defineBoolean parameter
-// object is truthy at runtime and accidentally enforces App Check even when
-// ENFORCE_APP_CHECK=false.
-const ENFORCE_APP_CHECK = String(process.env.ENFORCE_APP_CHECK || "false").toLowerCase() === "true";
-// Staged enforcement: the public, bot-targeted order path can be enforced before the
-// staff surface. ENFORCE_APP_CHECK=true always implies the order path as well.
-const ENFORCE_APP_CHECK_ORDERS = ENFORCE_APP_CHECK || String(process.env.ENFORCE_APP_CHECK_ORDERS || "false").toLowerCase() === "true";
+// ENFORCE_APP_CHECK and ENFORCE_APP_CHECK_ORDERS are declared in 00-app-check-flags.js,
+// which sorts ahead of every section that reads them.
 const ORDER_LOCK_MS = 90 * 1000;
 // Keep a 5 MB server ceiling during the v41 -> v42 cache transition. New v42
 // browsers compress to roughly 1.3 MB before calling this function.

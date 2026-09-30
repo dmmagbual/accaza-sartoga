@@ -185,7 +185,7 @@ exports.mirrorPosCogsToBooks = onValueWritten(
 // one-time historical gap left by movements created before the Books trigger
 // existed, and is safe to rerun because journal keys and daily source ids are stable.
 exports.ensureBooksJournal = onCall(
-  {region: "asia-southeast1", enforceAppCheck: process.env.ENFORCE_APP_CHECK === "true", timeoutSeconds: 540, memory: "512MiB"},
+  {region: "asia-southeast1", enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 540, memory: "512MiB"},
   async (request) => {
     const db = getDatabase(); const actor = await requirePortalPermission(db, request, ["cashflow", "receivables", "payables"]);
     await ensureBooksChart(db);
@@ -363,7 +363,7 @@ exports.syncActiveRegisterCashFloat = onValueWritten(
 // Finance / Books owns cash-account maintenance. Opening changes are posted as
 // append-only adjustments so later activity and the audit trail are preserved.
 exports.manageCashAccount = onCall(
-  {region: "asia-southeast1", enforceAppCheck: process.env.ENFORCE_APP_CHECK === "true", timeoutSeconds: 60, memory: "256MiB"},
+  {region: "asia-southeast1", enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
     const db = getDatabase(), actor = await requirePortalPermission(db, request, ["cashflow"]), data = request.data || {};
     if (financeText(data.action, 20) !== "upsert") throw new HttpsError("invalid-argument", "Unsupported cash-account action.");

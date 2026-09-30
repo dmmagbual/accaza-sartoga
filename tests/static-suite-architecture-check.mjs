@@ -27,7 +27,7 @@ for(const file of expected){
   if(Buffer.byteLength(source,'utf8')>47500){const message=`tests/static/${file} is ${Buffer.byteLength(source,'utf8')} bytes of its 50 KB bound. Split it before adding more guards.`;console.warn('STATIC MODULE SIZE WARNING: '+message);if(process.env.GITHUB_ACTIONS)console.log(`::warning file=tests/static/${file}::${message}`);}
   if(file!=='00-context.mjs'&&!runner.includes(`./static/${file}`))throw new Error(`Static-check runner omits domain: ${file}`);
 }
-if((combined.match(/\bfail\(/g)||[]).length!==554)throw new Error('Static-check failure-guard inventory changed from the reviewed baseline of 554');
+if((combined.match(/\bfail\(/g)||[]).length!==559)throw new Error('Static-check failure-guard inventory changed from the reviewed baseline of 559');
 if((combined.match(/spawnSync\(/g)||[]).length!==33)throw new Error('Static-check executable-check inventory changed from the reviewed baseline of 33');
 const guardSource=combined.split(/\r?\n/).filter(line=>/\bfail\(|spawnSync\(/.test(line)).map(line=>line.trim()).join('\n');
 const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
@@ -46,6 +46,20 @@ const guardDigest=crypto.createHash('sha256').update(guardSource).digest('hex');
 // sequence instead of posLoyaltyReset(). A finished sale must CLOSE the claimed reward against its
 // order id, not release it - releasing would hand the stamps back for a drink already handed over.
 // Still the same single guard, still 554.
-if(guardDigest!=='04faf582349acf88270d9a59699c2d8b2d953e9ee004a096e7535f75c995fba9')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
+// Oct 2026 (App Check lever): five new reviewed guards in 30-server-release.mjs pin enforcement to
+// the committed defaults in src/functions/00-app-check-flags.js. The Functions bundle is a plain
+// concatenation, so a flag declared after the first onCall options object that reads it is still in
+// the temporal dead zone and throws at load. The guards therefore require the staff flag to be
+// declared before any enforceAppCheck: use, require the order flag to keep its own committed default
+// rather than inheriting the staff flag (so the staff surface can enforce while the public order path
+// stays in monitor mode), and require process.env to be read exactly twice so no callable can drift
+// back to a private raw read. Reviewed guard count 554 -> 559; executable checks unchanged at 33.
+// Oct 2026 (deploy retry): the two reviewed --force guards were reshaped, not weakened, so both
+// firebase deploy steps can retry once after a transient Cloud Functions API error. The count guard
+// used to require exactly one --force line; it now requires that every --force deploy targets the
+// shared "$only" list and that the list is still exactly the 44 idempotent retry functions, and the
+// full-deploy guard now checks every full deploy line rather than only the first. Guard count is
+// unchanged by this reshape.
+if(guardDigest!=='9b3e4873bf7b4be78f102a78b879788eba4d31ccbf353e2a909c0e21a44e8661')throw new Error('Static-check guard source changed; review the assertion-level change and update the baseline deliberately');
 for(const domain of ['syntax','access','release','operations','regressions','finance','summary'])if(!runner.includes(`name:'${domain}'`))throw new Error(`Static-check domain routing missing: ${domain}`);
-console.log('PASS: all 554 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');
+console.log('PASS: all 559 static guards and 33 executable checks remain byte-equivalent and routed through bounded domain modules.');

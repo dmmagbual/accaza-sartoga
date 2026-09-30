@@ -25,7 +25,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 25
+    # Both deploy steps can now retry once after a transient Cloud Functions API error.
+    # The previous 25 minutes left no headroom for that, and a timeout kill in the middle
+    # of a deploy is worse than a longer wait.
+    timeout-minutes: 35
     steps:
       - name: Check out repo
         uses: actions/checkout@v5
@@ -68,16 +71,40 @@ jobs:
       # retry-on-failure. Keep --force scoped to these named functions so the
       # full deployment cannot silently delete unrelated production functions.
       - name: Acknowledge retry policy for idempotent retry functions
-        run: firebase deploy --only functions:preservePostedOrderOnDelete,functions:replicateArchivedOrderToFirestore,functions:refreshHistoricalOrderAfterJournal,functions:refreshHistoricalOrderAfterInventoryPlan,functions:updateBooksMonthlyNet,functions:updateCashBalanceSummary,functions:updatePublicCatalogVersionOnCategories,functions:updatePublicCatalogVersionOnMenuItems,functions:updatePublicCatalogVersionOnOptionGroups,functions:updatePublicCatalogVersionOnPackages,functions:onShiftCloseAssurance,functions:syncUndepositedLedgerPageIndex,functions:syncPettyVoucherAttentionIndex,functions:syncCashCustodyPageIndex,functions:onOrderLoyaltyEarning,functions:markBackupDirtyArchivedOrders,functions:markBackupDirtyInventoryMovements,functions:markBackupDirtyOrderInventoryPlans,functions:markBackupDirtyFinancialMovements,functions:markBackupDirtyCashBalanceApplied,functions:markBackupDirtyBooksJournal,functions:markBackupDirtyShifts,functions:markBackupDirtyOperationalAudit,functions:markBackupDirtyFinancialCommandClaims,functions:markBackupDirtyInventoryAccounting,functions:markBackupDirtyFinancialApprovals,functions:markBackupDirtyActivityLog,functions:markBackupDirtyCfLedger,functions:markBackupDirtyPettyCashReceipts,functions:markBackupDirtyStockReceipts,functions:markBackupDirtyPurchaseInvoices,functions:markBackupDirtyPlatformPayouts,functions:markBackupDirtyInternalUsage,functions:markBackupDirtyInventoryAdjustments,functions:markBackupDirtyPettyCashVouchers,functions:markBackupDirtyPettyCashReplenishments,functions:markBackupDirtyReceivables,functions:markBackupDirtyPayables,functions:markBackupDirtySuppliers,functions:markBackupDirtyInventorySku,functions:markBackupDirtyAppCustomers,functions:markBackupDirtyReviews,functions:markBackupDirtyFeedbacks,functions:markBackupDirtyPackages --project accaza-sartoga --non-interactive --force
+        run: |
+          only="functions:preservePostedOrderOnDelete,functions:replicateArchivedOrderToFirestore,functions:refreshHistoricalOrderAfterJournal,functions:refreshHistoricalOrderAfterInventoryPlan,functions:updateBooksMonthlyNet,functions:updateCashBalanceSummary,functions:updatePublicCatalogVersionOnCategories,functions:updatePublicCatalogVersionOnMenuItems,functions:updatePublicCatalogVersionOnOptionGroups,functions:updatePublicCatalogVersionOnPackages,functions:onShiftCloseAssurance,functions:syncUndepositedLedgerPageIndex,functions:syncPettyVoucherAttentionIndex,functions:syncCashCustodyPageIndex,functions:onOrderLoyaltyEarning,functions:markBackupDirtyArchivedOrders,functions:markBackupDirtyInventoryMovements,functions:markBackupDirtyOrderInventoryPlans,functions:markBackupDirtyFinancialMovements,functions:markBackupDirtyCashBalanceApplied,functions:markBackupDirtyBooksJournal,functions:markBackupDirtyShifts,functions:markBackupDirtyOperationalAudit,functions:markBackupDirtyFinancialCommandClaims,functions:markBackupDirtyInventoryAccounting,functions:markBackupDirtyFinancialApprovals,functions:markBackupDirtyActivityLog,functions:markBackupDirtyCfLedger,functions:markBackupDirtyPettyCashReceipts,functions:markBackupDirtyStockReceipts,functions:markBackupDirtyPurchaseInvoices,functions:markBackupDirtyPlatformPayouts,functions:markBackupDirtyInternalUsage,functions:markBackupDirtyInventoryAdjustments,functions:markBackupDirtyPettyCashVouchers,functions:markBackupDirtyPettyCashReplenishments,functions:markBackupDirtyReceivables,functions:markBackupDirtyPayables,functions:markBackupDirtySuppliers,functions:markBackupDirtyInventorySku,functions:markBackupDirtyAppCustomers,functions:markBackupDirtyReviews,functions:markBackupDirtyFeedbacks,functions:markBackupDirtyPackages"
+          # A transient Cloud Functions API error (HTTP 429 mutation quota, or an HTML error
+          # page the CLI cannot parse as JSON) leaves one straggler function behind and fails
+          # the run even though everything else deployed. Runs 411 and 412 both failed this way
+          # with 176 of 177 functions already updated. One retry after the per-minute quota
+          # window clears resolves it without anyone having to notice and click Re-run.
+          set +e
+          firebase deploy --only "$only" --project accaza-sartoga --non-interactive --force
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "::warning title=Retry acknowledgement deploy::firebase deploy exited ${status}; waiting 60s for the Cloud Functions quota window to clear then retrying once."
+            sleep 60
+            firebase deploy --only "$only" --project accaza-sartoga --non-interactive --force
+          fi
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
 
+      # App Check enforcement is deliberately NOT configured here. A step's env: is shell
+      # environment for the firebase CLI process only and is never forwarded into a deployed
+      # function's runtime configuration, and functions/.env.accaza-sartoga is git-ignored so
+      # it does not exist on this runner. The real lever is the committed default in
+      # src/functions/00-app-check-flags.js - see APP_CHECK_ENFORCEMENT_RUNBOOK.md section 1.
       - name: Deploy Functions and rules
-        run: firebase deploy --only functions,database,firestore,storage --project accaza-sartoga --non-interactive
+        run: |
+          set +e
+          firebase deploy --only functions,database,firestore,storage --project accaza-sartoga --non-interactive
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "::warning title=Retry functions and rules deploy::firebase deploy exited ${status}; the usual cause is a Cloud Functions mutation-quota straggler, so waiting 60s then retrying once."
+            sleep 60
+            firebase deploy --only functions,database,firestore,storage --project accaza-sartoga --non-interactive
+          fi
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-          # App Check stays in monitor mode until the gate in APP_CHECK_ENFORCEMENT_RUNBOOK.md
-          # is met. Flip a flag here (committed) AND in functions/.env.accaza-sartoga together;
-          # the value is baked at deploy time, so it takes effect on the next functions deploy.
-          ENFORCE_APP_CHECK: "false"
-          ENFORCE_APP_CHECK_ORDERS: "false"
