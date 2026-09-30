@@ -54,8 +54,8 @@
   .rw-stamp{flex:1;text-align:center;border-radius:14px;padding:1rem .5rem;background:#f6f7f4;}
   .rw-stamp b{display:block;font-size:2rem;font-family:'Playfair Display',serif;line-height:1;}
   .rw-stamp span{font-size:.78rem;color:#5c6b5e;}
-  .rw-stamp.red b{color:#a4302a;}
-  .rw-stamp.yellow b{color:#b8860b;}
+  /* A stamp's colour is set inline from the configured palette, so there are no
+     per-stamp rules here; the label is always shown beside it. */
   .rw-rewards{margin:1.4rem 0 0;padding:1rem 1.1rem;background:#f6f7f4;border-radius:14px;}
   .rw-rewards h3{margin:0 0 .5rem;font-size:.92rem;color:#19241b;}
   .rw-rewards ul{margin:0;padding-left:1.1rem;font-size:.88rem;color:#3d4a3f;line-height:1.7;}
@@ -103,6 +103,8 @@
         <span>I agree that Accaza Coffee House may keep my name and mobile number to run my Rewards account. You can ask us to delete it at any time.</span>
       </label>
       <button class="rw-btn" id="sendCodeBtn" type="submit">Send code</button>
+      <!-- Already a member on another phone: link this one and see the stamps again. -->
+      <button class="rw-btn ghost" id="linkDeviceBtn" type="button">Already a member? Link this phone</button>
       <p class="rw-err" id="signupError"></p>
     </form>
     <ol class="rw-note rw-how">
@@ -110,6 +112,22 @@
       <li>Yellow stamps come with bigger orders &mdash; 30 yellow is 20% off.</li>
       <li>We text you a code to confirm the number is yours. That is the only text you get unless you ask for more.</li>
     </ol>
+  </section>
+
+  <!-- Linking an extra phone to a membership that already exists. The code goes to the
+       number on the membership, so only the person holding that number can link. -->
+  <section id="screenLink" class="rw-card" hidden>
+    <h2>Link this phone</h2>
+    <p class="rw-lead">Enter the mobile number on your Rewards account. We will text a code to that number.</p>
+    <form id="linkForm" novalidate>
+      <div class="rw-field">
+        <label for="lkPhone">Mobile number</label>
+        <input id="lkPhone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="09XX XXX XXXX" required/>
+      </div>
+      <button class="rw-btn" id="linkSendBtn" type="submit">Send code</button>
+      <button class="rw-btn ghost" id="linkBackBtn" type="button">Back</button>
+      <p class="rw-err" id="linkError"></p>
+    </form>
   </section>
 
   <section id="screenOtp" class="rw-card" hidden>
@@ -135,18 +153,22 @@
     <div class="rw-qr" id="qrHolder"></div>
     <p class="rw-code" id="badgeCode"></p>
     <p class="rw-muted" style="text-align:center;" id="badgeCountdown"></p>
-    <div class="rw-stamps">
-      <div class="rw-stamp red"><b id="redBalance">0</b><span>red stamps</span></div>
-      <div class="rw-stamp yellow"><b id="yellowBalance">0</b><span>yellow stamps</span></div>
-    </div>
+    <!-- One tile per configured stamp, filled by paintStampBalances from the server's own
+         stamp list, so a new stamp type appears here without an edit to this page. -->
+    <div class="rw-stamps" id="stampBalances"></div>
     <div class="rw-rewards" id="rewardsBlock" hidden>
       <h3>Ready to claim</h3>
       <ul id="rewardList"></ul>
     </div>
     <p class="rw-err" id="cardStatus"></p>
     <button class="rw-btn ghost" id="refreshBtn" type="button">Refresh my stamps</button>
+    <!-- Shown when this phone is linked to a membership but does not hold the badge
+         itself: the stamps are real and spendable at the counter, there is just no QR
+         to show from here. -->
+    <p class="rw-note" id="linkedNote" hidden>This phone is linked to your Rewards account, so you can see your stamps here. Your badge lives on the phone you signed up with. At the counter, just give your mobile number &mdash; our staff can look you up to add stamps, and send you a code when you want to spend them.</p>
+    <button class="rw-btn ghost" id="unlinkBtn" type="button" hidden>Unlink this phone</button>
     <p class="rw-note" id="tenureNote"></p>
-    <p class="rw-note">Show this screen at the counter. The code changes every minute, so a screenshot will not work. Keep this page on your phone &mdash; it is your badge.</p>
+    <p class="rw-note" id="badgeNote">Show this screen at the counter. The code changes every minute, so a screenshot will not work. Keep this page on your phone &mdash; it is your badge.</p>
   </section>
 
 </div>
