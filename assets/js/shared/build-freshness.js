@@ -8,14 +8,14 @@
    manifest itself is excluded from the site). When a newer build
    is live it shows a reload bar. Admin and Books reload by themselves only
    when nothing can be lost: online, untouched for 15 minutes, no edited form
-   field still on screen, no POS sale in progress and no offline sale syncing.
-   Customer pages only show the bar. */
+   field still on screen, no POS sale or payment in progress and no unresolved
+   offline sale. Customer pages only show the bar. */
 (function(global){
   'use strict';
   var CHECK_MS=15*60*1000,IDLE_MS=15*60*1000,MANIFEST='/build-version.json';
   var APPS=[['admin','accaza-admin-build'],['books','accaza-books-build'],['customer','accaza-customer-build']];
   var AUTO_RELOAD_APPS={admin:true,books:true};
-  var SKIP_TYPES={hidden:1,button:1,submit:1,reset:1,image:1,file:1,search:1,password:1};
+  var SKIP_TYPES={hidden:1,button:1,submit:1,reset:1,image:1,search:1,password:1};
 
   function runningBuild(doc){
     for(var i=0;i<APPS.length;i++){var meta=doc.querySelector('meta[name="'+APPS[i][1]+'"]');if(meta)return{app:APPS[i][0],build:Number(meta.getAttribute('content'))||0};}
@@ -51,13 +51,17 @@
   }
   function unsavedWork(){
     try{
-      if(global.__pos&&typeof global.__pos.hasItems==='function'&&global.__pos.hasItems())return true;
-      var off=typeof global.__posOfflineState==='function'?global.__posOfflineState():null;
-      if(off&&Number(off.syncing)>0)return true;
+      var pos=global.__pos,hasOfflineState=typeof global.__posOfflineState==='function';
+      if(pos&&typeof pos.hasItems==='function'&&pos.hasItems())return true;
+      if(pos&&typeof pos.busy==='function'&&pos.busy())return true;
+      if(pos&&!hasOfflineState)return true;
+      var off=hasOfflineState?global.__posOfflineState():null;
+      if(off&&(off.error||Number(off.pending||0)+Number(off.syncing||0)+Number(off.failed||0)>0))return true;
       if(typeof global.__accazaHasUnsavedWork==='function'&&global.__accazaHasUnsavedWork())return true;
     }catch(_e){return true;}
     return false;
   }
+  function safeToReload(){return global.navigator.onLine!==false&&!editedFieldsOnScreen()&&!unsavedWork();}
   var RELOAD_KEY='accazaFreshnessReloadedFor';
   function reloadedFor(){try{return Number(global.sessionStorage.getItem(RELOAD_KEY))||0;}catch(_e){return 0;}}
   function markReload(build){try{global.sessionStorage.setItem(RELOAD_KEY,String(build));return global.sessionStorage.getItem(RELOAD_KEY)===String(build);}catch(_e){return false;}}
@@ -69,9 +73,10 @@
     bar.textContent='A new Accaza version is ready. ';
     var button=doc.createElement('button');button.type='button';button.textContent='Reload';
     button.style.cssText='margin-left:.6rem;background:#b08d57;color:#fff;border:0;border-radius:6px;padding:.35rem .65rem;cursor:pointer;';
-    button.onclick=function(){global.location.reload();};
+    button.onclick=function(){if(safeToReload())global.location.reload();else button.textContent='Finish sale or sync first';};
     bar.appendChild(button);doc.body.appendChild(bar);
   }
+  global.addEventListener('accaza:update-ready',showBar);
   function check(){
     if(checking||Date.now()-lastCheck<60000)return;
     checking=true;lastCheck=Date.now();

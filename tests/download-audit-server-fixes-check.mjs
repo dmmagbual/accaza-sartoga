@@ -41,7 +41,7 @@ const db = createFakeDatabase({
   posActiveShift: {id: 'SH1', staff: 'Cashier One', staffId: 'u1', accountUid: 'u1', crew: {}, status: 'open'},
 });
 const fns = loadFunctions(db);
-const ping = (shiftId) => fns.exports.reportPosDeviceHealth({auth: {uid: 'u1'}, data: {shiftId, deviceId: 'pos_a', pending: 0, syncing: 0, failed: 0, idle: false}});
+const ping = (shiftId) => fns.exports.reportPosDeviceHealth({auth: {uid: 'u1'}, data: {shiftId, deviceId: 'pos_a', pending: 0, syncing: 0, failed: 0, idle: false, adminBuild: 632}});
 
 await ping('SH1');
 const firstCallReads = db.reads.map((r) => r.path);
@@ -67,11 +67,12 @@ db.resetReads();
 await ping('SH1');
 assert.equal(db.reads.filter((r) => r.path === 'posActiveShift').length, 0, 'the refreshed shift memo serves the next ping');
 
-// The written health row carries the primary-device ownership fields added in schema 3.
+// The written health row carries primary-device ownership and the running Admin build.
 const health = (await db.ref('/posDeviceHealth/SH1/pos_a').get()).val();
 db.resetReads();
-assert.equal(health.schemaVersion, 3, 'the health row uses the primary-device ownership schema');
+assert.equal(health.schemaVersion, 4, 'the health row uses the running-build schema');
 assert.equal(health.shiftId, 'SH1', 'the health row is filed under the reported shift');
+assert.equal(health.adminBuild, 632, 'the health row identifies the Admin build running on this till');
 
 let viewerRejected = null;
 try { await fns.exports.reportPosDeviceHealth({auth: {uid: 'u2'}, data: {shiftId: 'SH1', deviceId: 'pos_viewer', pending: 0, syncing: 0, failed: 0}}); } catch (error) { viewerRejected = error; }

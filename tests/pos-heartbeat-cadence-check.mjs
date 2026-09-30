@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 const source = fs.readFileSync(new URL('../assets/js/admin/pos-sync-health.js', import.meta.url), 'utf8');
 let now = Date.parse('2026-09-17T08:00:00Z');
 const timers = [], listeners = {}, docListeners = {}, calls = [];
-const doc = {visibilityState: 'visible', addEventListener: (name, fn) => { (docListeners[name] = docListeners[name] || []).push(fn); }};
+const doc = {visibilityState: 'visible', querySelector: (selector) => selector === 'meta[name="accaza-admin-build"]' ? {getAttribute: () => '632'} : null, addEventListener: (name, fn) => { (docListeners[name] = docListeners[name] || []).push(fn); }};
 const state = {pending: 0, syncing: 0, failed: 0, rows: []};
 const win = {
   document: doc, localStorage: {getItem: () => 'pos_test', setItem() {}},
@@ -31,6 +31,7 @@ calls.length = 0;
 minutes(10);
 assert.equal(calls.length, 5, 'an attended POS reports every two minutes');
 assert.ok(calls.every((c) => c.idle === false));
+assert.ok(calls.every((c) => c.adminBuild === 632), 'every health report identifies the running Admin build');
 
 // Backgrounded with nothing to sync: about every ten minutes, flagged idle.
 doc.visibilityState = 'hidden';
