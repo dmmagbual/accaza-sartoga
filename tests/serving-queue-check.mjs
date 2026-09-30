@@ -46,12 +46,18 @@ assert.equal(read('/orders/GF-SQ1/service/state'),'queued','platform orders wait
 const rec=sale();await sync(rec,{recovery:{managerUid:MANAGER.uid}}).catch(()=>{});
 if(read(`/orders/${rec.order.id}`))assert.equal(read(`/orders/${rec.order.id}/service`),undefined,'recovered sales are not queued');
 
-// 3. Served: idempotent, locks completed-order correction, audited, no finance/inventory fields.
+// 3. POS order flow: queued -> preparing -> ready -> served is server-enforced, audited and
+// never changes finance/inventory fields.
 const before=read(`/orders/${a.order.id}`);
+await call({action:'start_preparing',orderId:a.order.id,requestId:'prep_req_0001'},BAR,now+50000);
+assert.equal(read(`/orders/${a.order.id}/service/state`),'preparing');
+assert.equal(read(`/orders/${a.order.id}/preparationStatus`),'preparing');
+await call({action:'mark_ready',orderId:a.order.id,requestId:'ready_req_0001'},BAR,now+55000);
+assert.equal(read(`/orders/${a.order.id}/service/state`),'ready');
 const r1=await call({action:'serve',orderId:a.order.id,requestId:'serve_req_0001'},BAR,now+60000);
 assert.equal(r1.state,'served');assert.equal(r1.duplicate,false);
 const served=read(`/orders/${a.order.id}`);
-assert.equal(served.service.servedByName,'Joy');assert.equal(served.preparationStartedAt,now+60000,'correction locks once served');assert.equal(served.preparationStatus,'served');
+assert.equal(served.service.servedByName,'Joy');assert.equal(served.preparationStartedAt,now+50000,'correction locks when preparation starts');assert.equal(served.preparationStatus,'served');
 assert.equal(served.status,'Completed');assert.equal(served.total,150);
 for(const k of ['total','subtotal','payments','lineItems','payment','shiftId','soldByUid'])assert.deepEqual(served[k],before[k],'serving never changes '+k);
 assert.equal((await call({action:'serve',orderId:a.order.id,requestId:'serve_req_0001'},BAR,now+61000)).duplicate,true,'a retried tap is a duplicate');
@@ -63,7 +69,7 @@ await assert.rejects(call({action:'return_to_queue',orderId:a.order.id,requestId
 
 // 4. Return to queue keeps the correction lock.
 await call({action:'return_to_queue',orderId:a.order.id,requestId:'return_req_0001',reason:'tapped by mistake'},CASHIER,now+70000);
-assert.equal(read(`/orders/${a.order.id}/service/state`),'queued');assert.equal(read(`/orders/${a.order.id}/preparationStartedAt`),now+60000);
+assert.equal(read(`/orders/${a.order.id}/service/state`),'queued');assert.equal(read(`/orders/${a.order.id}/preparationStartedAt`),now+50000);
 
 // 5. Voided and fully refunded orders leave the queue and cannot be served.
 const v=sale();await sync(v);write(`/orders/${v.order.id}/voided`,true);
@@ -83,12 +89,14 @@ await assert.rejects(call({action:'review_not_collected',orderId:nc.order.id,req
 await call({action:'review_not_collected',orderId:nc.order.id,requestId:'rv_req_00001',note:'Refunded through Voids & Refunds'},MANAGER,now+90000);
 assert.equal(Service.keepsOrderLive(read(`/orders/${nc.order.id}`)),false,'reviewed: free to archive');
 
-// 7. Carry-over: a queued sale stays live after its shift closes; a served one does not.
+// 7. Carry-over: every unfinished stage stays live after its shift closes; a served one does not.
 const q=sale({name:'Ben'});await sync(q);
 const nextShift={id:'SH-NEXT',status:'open'};
 assert.equal(project(read(`/orders/${q.order.id}`),nextShift),true,'queued order survives shift close');
 assert.equal(project(read(`/orders/${nc.order.id}`),nextShift),false);
 write('/posActiveShift',nextShift);
+await call({action:'start_preparing',orderId:'GF-SQ1',requestId:'prep_gf_0001'},BAR,now+90000);
+await call({action:'mark_ready',orderId:'GF-SQ1',requestId:'ready_gf_0001'},BAR,now+95000);
 await call({action:'serve',orderId:'GF-SQ1',requestId:'serve_gf_0001'},BAR,now+100000);
 assert.equal(project(read('/orders/GF-SQ1'),nextShift),false,'served order is archived with its shift');
 assert.equal(read('/activeOrders/GF-SQ1'),undefined,'projection removed once served after the shift changed');
@@ -118,6 +126,9 @@ active[s2.order.id].service=Object.assign({},active[s2.order.id].service,{queued
 const ex=Exceptions.buildOperationalExceptions({activeOrders:active,orders:{}},now);
 assert.ok(ex.exceptions?.some?.(x=>x.category==='unserved_order')||ex.some?.(x=>x.category==='unserved_order'),'stale queued order is flagged');
 assert.ok((ex.exceptions||ex).some(x=>x.category==='uncollected_order'),'not collected order is flagged for a manager');
+const readyActive={[q.order.id]:Object.assign({},read(`/orders/${q.order.id}`),{service:{state:'ready',queuedAt:now-3600000,readyAt:now-11*60000}})};
+const readyEx=Exceptions.buildOperationalExceptions({activeOrders:readyActive,orders:{}},now);
+assert.ok((readyEx.exceptions||readyEx).some(x=>x.category==='unserved_order'&&x.severity==='critical'),'a ready order waiting over ten minutes is escalated first');
 
 // 11. The POS column uses the same rule as the server.
 const posSource=fs.readFileSync(new URL('../src/admin/pos/51-serve-queue.js',import.meta.url),'utf8');
@@ -128,12 +139,11 @@ for(const o of fixtures)assert.equal(ctx.sqNeedsService(o?structuredClone(o):o),
 
 // 12. Wiring: charge hook, queue column in every POS view, close review before the cash count, Z section.
 const pos=fs.readFileSync(new URL('../assets/js/admin/pos.js',import.meta.url),'utf8'),register=fs.readFileSync(new URL('../assets/js/admin/register.js',import.meta.url),'utf8'),fn=fs.readFileSync(new URL('../functions/index.js',import.meta.url),'utf8'),posCss=fs.readFileSync(new URL('../assets/css/admin/pos-workflow.css',import.meta.url),'utf8'),workspaceCss=fs.readFileSync(new URL('../assets/css/admin-backoffice.css',import.meta.url),'utf8');
-assert.ok(pos.includes('showReceipt(receipt); sqAfterCharge(receipt);'),'charge sends the confirmed sale straight to the serving queue');
+assert.ok(pos.includes('showReceipt(receipt); sqAfterCharge(receipt);'),'charge sends the confirmed sale straight to the order queue');
 assert.ok(pos.includes('<aside id="posServeQueue"')&&pos.includes("+'</div>'))+'</div></div>';"),'queue column wraps every POS view');
-assert.ok(!/SQ_CARD_MS|sq-charge-card|data-sq-card/.test(pos)&&pos.includes("sqState.recent[o.id]")&&pos.includes('data-sq-prepare'),'there is no post-charge wait; the sale appears immediately with PREPARE');
-assert.ok(pos.includes("mask.className='sq-prepare-mask'")&&pos.includes('data-sq-prepared-served')&&pos.includes('data-sq-prepared-back'),'PREPARE opens one centered Served / Back to queue decision');
-assert.ok(pos.includes("sqIsPlatform(o)?'PICKED UP NOW':'SERVED'"),'platform preparation cards say PICKED UP NOW and other orders say SERVED');
-assert.ok(pos.includes('class="pz-btn sq-complete-btn"'),'SERVED and PICKED UP NOW use the dedicated green completion button');
+assert.ok(!/SQ_CARD_MS|sq-charge-card|data-sq-card/.test(pos)&&pos.includes("sqState.recent[o.id]")&&pos.includes('data-sq-stage'),'there is no post-charge wait; the sale appears immediately in Order queue');
+assert.ok(pos.includes("{action:'start_preparing',label:'Start prep'}")&&pos.includes("{action:'mark_ready',label:'Mark ready'}"),'the visible rail has the queued-to-preparing-to-ready actions');
+assert.ok(pos.includes("return sqIsPlatform(o)?'Picked up':'Served';"),'platform cards say Picked up and other orders say Served');
 assert.ok(posCss.includes('body.admin-pos-workspace button:not(:disabled):active')&&posCss.includes('translateY(2px) scale(.985)')&&posCss.includes('button:focus-visible'),'every enabled POS button has visible pressed and keyboard-focus feedback');
 assert.ok(workspaceCss.includes('body.admin-pos-workspace #adminServiceStrip{color:#62564d;font-size:.78rem}')&&workspaceCss.includes('#adminServiceQueue.ok strong{color:#07913b}'),'POS status line keeps readable dark text and strong green healthy states');
 assert.ok(register.indexOf('window.__serveQueueCloseReview')<register.indexOf('var recon=denomTrackingOnR()'),'review happens before the cash count');

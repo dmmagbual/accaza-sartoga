@@ -1,15 +1,17 @@
 "use strict";
 
-// Serving queue (29 Sep 2026). A paid order is not the same as a served order: every POS
-// sale (walk-in, GrabFood, FoodPanda) enters the serving queue when the server accepts it,
-// and leaves only when staff mark it served, record it as not collected, or it is voided or
+// Order flow. A paid order is not the same as a served order: every POS sale (walk-in,
+// GrabFood, FoodPanda) enters the order queue when the server accepts it and progresses
+// through queued -> preparing -> ready -> served. GrabFood/FoodPanda use the same terminal
+// state but the POS labels it "Picked up". It leaves only when staff complete that handover,
+// record it as not collected, or it is voided or fully refunded.
 // fully refunded. Website orders use their own status flow (Confirmed -> Completed) and only
 // borrow the "not collected" outcome from here.
 //
 // Serving state is operational only. It never changes the sale status, revenue, tender,
 // inventory, COGS or any Finance Books posting; those still post when the sale is paid.
 
-const SERVICE_VERSION = 1;
+const SERVICE_VERSION = 2;
 const MANAGER_ROLES = new Set(["owner", "superadmin", "admin", "manager"]);
 const SERVICE_CHANNELS = new Set(["instore", "grabfood", "foodpanda"]);
 const ONLINE_OPEN = new Set(["Confirmed", "Preparing", "Ready"]);
@@ -40,13 +42,13 @@ function initialService(order, now) {
   return {state: "queued", queuedAt: at, version: SERVICE_VERSION};
 }
 
-// Does this order still wait to be handed to the customer? Shared rule for the server
-// projection, the Exception Center and (mirrored) the POS queue column.
+// Does this order still require operational fulfilment? Shared rule for the server
+// projection, the Exception Center and the single POS order-flow rail.
 function needsService(order) {
   if (!order || order.voided === true || fullyRefunded(order)) return false;
   const state = serviceState(order);
   if (isOnlineOrder(order)) return state !== "not_collected" && order.posCaptured === true && !!order.shiftId && ONLINE_OPEN.has(String(order.status || ""));
-  return isServiceChannelOrder(order) && state === "queued";
+  return isServiceChannelOrder(order) && ["queued", "preparing", "ready"].includes(state);
 }
 
 // Keep an order in /orders and /activeOrders while it is waiting to be served or while a
@@ -79,17 +81,34 @@ function transition(options, order, action, requestId, actor, now, detail = {}) 
   const who = actorStamp(actor), online = isOnlineOrder(order);
   const entry = {action, at: now, byUid: who.uid, byRole: who.role, byName: who.name};
   let next, extra = {};
-  if (action === "serve") {
+  if (action === "start_preparing") {
+    if (online) fail(options, "failed-precondition", "Use the website order status flow for online orders.");
+    if (!isServiceChannelOrder(order)) fail(options, "failed-precondition", "Only POS sales use the order flow.");
+    if (state === "preparing") return {service: current, extra: {}, duplicate: true};
+    if (state !== "queued") fail(options, "failed-precondition", `Order ${order.id} is not waiting in the order queue.`);
+    next = Object.assign({}, current, {state: "preparing", preparingAt: now, preparingByUid: who.uid, preparingByRole: who.role, preparingByName: who.name});
+    // Preparation is now a real staff action, so it is also the controlled point at which a
+    // completed in-store sale can no longer be rewritten through the correction workflow.
+    if (!order.preparationStartedAt) extra.preparationStartedAt = now;
+    if (order.preparationStatus === "not_prepared") extra.preparationStatus = "preparing";
+  } else if (action === "mark_ready") {
+    if (online) fail(options, "failed-precondition", "Use the website order status flow for online orders.");
+    if (!isServiceChannelOrder(order)) fail(options, "failed-precondition", "Only POS sales use the order flow.");
+    if (state === "ready") return {service: current, extra: {}, duplicate: true};
+    if (state !== "preparing") fail(options, "failed-precondition", `Order ${order.id} is not being prepared.`);
+    next = Object.assign({}, current, {state: "ready", readyAt: now, readyByUid: who.uid, readyByRole: who.role, readyByName: who.name});
+    if (order.preparationStatus === "preparing") extra.preparationStatus = "ready";
+  } else if (action === "serve") {
     if (online) fail(options, "failed-precondition", "Complete website orders through the order status (Served completes the order).");
     if (!isServiceChannelOrder(order)) fail(options, "failed-precondition", "Only POS sales use the serving queue.");
     if (state === "served") return {service: current, extra: {}, duplicate: true};
-    if (state !== "queued") fail(options, "failed-precondition", `Order ${order.id} is not waiting in the serving queue.`);
+    if (state !== "ready" && detail.closeReview !== true) fail(options, "failed-precondition", `Order ${order.id} must be marked ready before it is handed over.`);
     next = Object.assign({}, current, {state: "served", servedAt: now, servedByUid: who.uid, servedByRole: who.role, servedByName: who.name});
     // Serving is the latest point preparation can have started: lock completed-order corrections.
     if (!order.preparationStartedAt) extra.preparationStartedAt = now;
-    if (order.preparationStatus === "not_prepared") extra.preparationStatus = "served";
+    if (order.preparationStatus === "not_prepared" || order.preparationStatus === "preparing" || order.preparationStatus === "ready") extra.preparationStatus = "served";
   } else if (action === "return_to_queue") {
-    if (!isServiceChannelOrder(order)) fail(options, "failed-precondition", "Only POS sales can be returned to the serving queue.");
+    if (!isServiceChannelOrder(order)) fail(options, "failed-precondition", "Only POS sales can be returned to the order queue.");
     if (state === "queued") return {service: current, extra: {}, duplicate: true};
     if (state !== "served") fail(options, "failed-precondition", `Order ${order.id} was not marked served.`);
     const reason = cleanText(detail.reason, 300);
@@ -170,7 +189,9 @@ async function closeReview(options, data, now) {
       out.channel = out.channel || String(order.channel || (isOnlineOrder(order) ? "online" : "instore"));
       out.name = out.name || cleanText(order.name, 80);
       out.queuedAt = out.queuedAt || Number(order.service && order.service.queuedAt) || Number(order.timestamp) || 0;
-      if (outcome === "served" && !isOnlineOrder(order)) await applyAction(options, order, "serve", `${requestId}_${i}`, {}, now);
+      // Closing review records a staff-confirmed handover even if the earlier preparation
+      // taps were missed. The normal live POS button still requires Ready first.
+      if (outcome === "served" && !isOnlineOrder(order)) await applyAction(options, order, "serve", `${requestId}_${i}`, {closeReview: true}, now);
       else if (outcome === "not_collected") await applyAction(options, order, "not_collected", `${requestId}_${i}`, {reason}, now);
       out.applied = true;
     } catch (error) {out.error = cleanText(error && error.message || error, 200);}
@@ -187,7 +208,7 @@ async function closeReview(options, data, now) {
 async function manageOrderServiceCommand(options) {
   const data = options.data || {}, now = Number(options.now) || Date.now(), action = String(data.action || "");
   if (action === "close_review") return closeReview(options, data, now);
-  if (!["serve", "return_to_queue", "not_collected", "review_not_collected"].includes(action)) fail(options, "invalid-argument", "Unknown serving action.");
+  if (!["start_preparing", "mark_ready", "serve", "return_to_queue", "not_collected", "review_not_collected"].includes(action)) fail(options, "invalid-argument", "Unknown order-flow action.");
   const orderId = cleanKey(options, data.orderId, "Order ID");
   const requestId = cleanKey(options, data.requestId, "Request ID", /^[A-Za-z0-9_-]{8,120}$/);
   const order = await readLiveOrder(options, orderId);

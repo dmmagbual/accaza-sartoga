@@ -3200,11 +3200,10 @@ function buildPOS(){
   var chips='<button type="button" class="pz-chip '+(posCat==='ALL'?'on':'')+'" data-cat="ALL">All</button>'+cats.map(function(c){return '<button type="button" class="pz-chip '+(posCat===c.id?'on':'')+'" data-cat="'+esc(c.id)+'">'+esc(c.icon||'')+' '+esc(c.label)+'</button>';}).join('');
   var incoming=onlineOrderRows().filter(function(o){return !o.shiftId&&o.status!=='Rejected';}).length;
   var activeCount=shiftOrderRows().length;
-  root.innerHTML='<div class="pos-shell"><aside id="posServeQueue" class="pos-serve-queue" aria-label="Serving queue"></aside><div class="pos-shell-main"><div class="pos-channel-switch" role="tablist" aria-label="POS sales channels"><button type="button" class="pz-btn '+(posView==='counter'?'ok':'sec')+'" data-pos-view="counter" role="tab" aria-selected="'+(posView==='counter')+'">🏪 In-store</button><button type="button" class="pz-btn '+(posView==='online'?'ok':'sec')+'" data-pos-view="online" role="tab" aria-selected="'+(posView==='online')+'">🌐 Online Orders <span id="posOnlineCount" class="pos-online-count"'+(incoming?'':' hidden')+'>'+incoming+'</span></button><button type="button" class="pz-btn '+(posView==='active'?'ok':'sec')+'" data-pos-view="active" role="tab" aria-selected="'+(posView==='active')+'">🧾 Shift Orders <span id="posActiveCount" title="Orders in the current shift" class="pos-active-count"'+(activeCount?'':' hidden')+'>'+activeCount+'</span></button></div>'
+  root.innerHTML='<div class="pos-shell"><aside id="posServeQueue" class="pos-serve-queue" aria-label="Order flow"></aside><div class="pos-shell-main"><div class="pos-channel-switch" role="tablist" aria-label="POS sales channels"><button type="button" class="pz-btn '+(posView==='counter'?'ok':'sec')+'" data-pos-view="counter" role="tab" aria-selected="'+(posView==='counter')+'">🏪 In-store</button><button type="button" class="pz-btn '+(posView==='online'?'ok':'sec')+'" data-pos-view="online" role="tab" aria-selected="'+(posView==='online')+'">🌐 Online Orders <span id="posOnlineCount" class="pos-online-count"'+(incoming?'':' hidden')+'>'+incoming+'</span></button><button type="button" class="pz-btn '+(posView==='active'?'ok':'sec')+'" data-pos-view="active" role="tab" aria-selected="'+(posView==='active')+'">🧾 Shift Orders <span id="posActiveCount" title="Orders in the current shift" class="pos-active-count"'+(activeCount?'':' hidden')+'>'+activeCount+'</span></button></div>'
     +(posView==='online'?'<div id="posOnlineOrdersPanel"></div>':posView==='active'?'<div id="posActiveOrdersPanel"></div>':(
-    '<div class="pos-counter-head"><div><div class="pz-h" style="margin:0;">Counter service</div><p class="pz-sub" style="margin:.2rem 0 0;">Find an item, check the ticket, then take payment.</p></div></div>'
-    +'<div class="pz-posgrid" style="display:grid;grid-template-columns:1.7fr 1fr;gap:1rem;align-items:start;">'
-      +'<div class="pos-menu-deck"><label class="pos-menu-search"><span>Find an item</span><input class="pz-in" id="posMenuSearch" type="search" autocomplete="off" placeholder="Search coffee, pastry, package…" value="'+esc(posSearch)+'"/></label><div id="posChips" class="pos-category-rail">'+chips+'</div><div id="posItems" class="pos-item-grid"></div></div>'
+    '<div class="pz-posgrid pos-selling-grid" style="display:grid;grid-template-columns:1.7fr 1fr;gap:1rem;align-items:start;">'
+      +'<div class="pos-menu-deck"><label class="pos-menu-search"><input class="pz-in" id="posMenuSearch" type="search" aria-label="Search menu items" autocomplete="off" placeholder="Search menu items" value="'+esc(posSearch)+'"/></label><div id="posChips" class="pos-category-rail">'+chips+'</div><div id="posItems" class="pos-item-grid"></div></div>'
       +'<div class="pz-card" id="posCartPanel" style="position:sticky;top:1rem;"></div>'
     +'</div>'))+'</div></div>';
   root.querySelectorAll('[data-pos-view]').forEach(function(button){button.onclick=function(){posView=button.getAttribute('data-pos-view');buildPOS();};});
@@ -3297,7 +3296,8 @@ function drawPosItems(){
     else { pr=it.priceM?('S '+it.priceS+' · M '+it.priceM+' · L '+it.priceL):('₱'+(it.priceS||0)); }
     var cat=(A().getCatLabel?A().getCatLabel(it.cat):'')||it.cat||'Menu';
     if(!posIsAvail(it.name)){ return '<button class="pz-item" disabled style="opacity:0.45;cursor:not-allowed;'+(tileBg?'background:'+tileBg+';border-color:'+tileBd+';':'')+'"><span class="pos-item-cat">'+esc(cat)+'</span><div class="n">'+esc(it.name)+'</div><div class="p" style="color:#c0392b;">Unavailable</div></button>'; }
-    return '<button class="pz-item"'+st+' data-item="'+esc(it.key)+'"><span class="pos-item-cat">'+esc(cat)+'</span><div class="n">'+esc(it.name)+'</div><div class="p">'+esc(pr)+'</div><span class="pos-item-add" aria-hidden="true">＋</span></button>';}).join('');
+    var image=it.img?'<img class="pos-item-photo" src="'+esc(it.img)+'" alt="" loading="lazy" decoding="async"/>':'';
+    return '<button class="pz-item'+(image?' has-photo':'')+'"'+st+' data-item="'+esc(it.key)+'">'+image+'<span class="pos-item-cat">'+esc(cat)+'</span><div class="n">'+esc(it.name)+'</div><div class="p">'+esc(pr)+'</div><span class="pos-item-add" aria-hidden="true">＋</span></button>';}).join('');
   wrap.querySelectorAll('[data-item]').forEach(function(b){b.onclick=function(){openPosItem(b.getAttribute('data-item'));};});
 }
 // ---- item customize modal ----
@@ -4129,31 +4129,31 @@ function openLoyaltyRedeemModal() {
   mask.onclick = function (e) { if (e.target === mask) close(); };
   draw();
 }
-/* ══════════ SERVING QUEUE (29 Sep 2026) ══════════
-   A paid order is not a served order. Every sale the server accepts is queued for serving
-   (functions/lib/order-service.js) and waits in the left-hand column until staff tap Served.
-   After Charge & complete the order goes straight into the queue. PREPARE opens one centered
-   detail card; Served/Picked up clears it, while Back to queue leaves it waiting.
+/* ══════════ POS ORDER FLOW ══════════
+   A paid order is not a handed-over order. Every accepted POS sale enters the Order queue and
+   moves bottom-to-top through Now preparing, Ready to serve, then Served/Picked up.
+   The same compact rail stays visible beside the selling screen; it is never a second listener.
    Serving is operational only: revenue, tender, stock, COGS and Finance Books already posted
    at payment and are never touched here. Website orders complete through their status flow. */
 var SQ_WARN_MS=5*60000,SQ_LATE_MS=10*60000,SQ_RETRY_CODES=['unavailable','deadline-exceeded','internal','unknown','resource-exhausted','aborted'];
-var sqState={prep:null,recent:{},memPending:{},sending:{},tick:null,folded:false,bar:false,loaded:false};
+var sqState={recent:{},memPending:{},sending:{},tick:null,folded:false,bar:false,loaded:false};
 function sqPref(k,v){try{if(arguments.length<2){var x=localStorage.getItem('accazaServeQueue_'+k);return x==null?null:JSON.parse(x);}localStorage.setItem('accazaServeQueue_'+k,JSON.stringify(v));}catch(_e){}return null;}
 function sqLoadPrefs(){if(sqState.loaded)return;sqState.loaded=true;sqState.folded=sqPref('folded')===true;sqState.bar=sqPref('bar')===true;var p=sqPref('pending');if(p&&typeof p==='object')sqState.memPending=p;}
-// Served/Picked up actions remain on this device until the server confirms them (or the sale syncs).
+// A stage action remains on this device until the server confirms it (or the sale syncs).
 function sqPending(){sqLoadPrefs();return sqState.memPending;}
 function sqSavePending(){sqPref('pending',sqState.memPending);}
 function sqReqId(prefix){return prefix+'_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10);}
 function sqIsOnline(o){return !!o&&(o.source==='online'||o.channel==='online');}
 function sqIsPlatform(o){var c=String(o&&o.channel||'').toLowerCase();return c==='grabfood'||c==='foodpanda';}
-// Mirrors needsService() in functions/lib/order-service.js (tests/serving-queue-check.mjs keeps them equal).
+// Mirrors needsService() in functions/lib/order-service.js (tests keep them equal).
 function sqNeedsService(o){
   if(!o||o.voided===true)return false;
   var total=Math.round((Number(o.total)||0)*100)/100,refund=Math.round((Number(o.refundAmount)||0)*100)/100;if(refund>0&&refund>=total-.009)return false;
   var st=String(o.service&&o.service.state||'');
   if(sqIsOnline(o))return st!=='not_collected'&&o.posCaptured===true&&!!o.shiftId&&['Confirmed','Preparing','Ready'].indexOf(String(o.status||''))>=0;
-  return o.source==='pos'&&['instore','grabfood','foodpanda'].indexOf(String(o.channel||'instore').toLowerCase())>=0&&st==='queued';
+  return o.source==='pos'&&['instore','grabfood','foodpanda'].indexOf(String(o.channel||'instore').toLowerCase())>=0&&['queued','preparing','ready'].indexOf(st)>=0;
 }
+function sqStage(o){if(sqIsOnline(o)){var status=String(o.status||'');return status==='Ready'?'ready':status==='Preparing'?'preparing':'queued';}return String(o&&o.service&&o.service.state||'queued');}
 function sqQueuedAt(o){return Number(o&&o.service&&o.service.queuedAt)||Number(o&&o.timestamp)||0;}
 function sqUnsyncedRows(){var out=[],now=Date.now();((_offState&&_offState.rows)||[]).forEach(function(r){var o=r&&r.order;if(!o||!o.id||o.voided||o.source!=='pos')return;
   // A just-synced sale may reach this device's live feed a moment later; keep it visible meanwhile.
@@ -4163,7 +4163,7 @@ function sqRows(){
   Object.keys(onlineOrdersMap||{}).forEach(function(id){var o=Object.assign({},onlineOrdersMap[id]||{},{id:id});seen[id]=1;delete sqState.recent[id];if(sqNeedsService(o))rows.push(o);});
   sqUnsyncedRows().forEach(function(o){if(!seen[o.id]){seen[o.id]=1;rows.push(o);}});
   Object.keys(sqState.recent).forEach(function(id){var o=sqState.recent[id];if(!o||Date.now()-sqQueuedAt(o)>120000){delete sqState.recent[id];return;}if(!seen[id])rows.push(o);});
-  return rows.filter(function(o){return !pend[o.id]&&!(sqState.prep&&sqState.prep.o.id===o.id);}).sort(function(a,b){return sqQueuedAt(a)-sqQueuedAt(b);});
+  return rows.filter(function(o){return !pend[o.id];}).sort(function(a,b){return sqQueuedAt(a)-sqQueuedAt(b);});
 }
 function sqAgeClass(ms){return ms>=SQ_LATE_MS?'late':ms>=SQ_WARN_MS?'warn':'ok';}
 function sqAgeText(ms){var m=Math.max(0,Math.floor(ms/60000));return m<1?'now':m<60?m+'m':Math.floor(m/60)+'h '+(m%60)+'m';}
@@ -4171,28 +4171,25 @@ function sqLabel(o){var n=String(o&&o.name||'').trim(),ref=String(o&&(o.platform
 function sqChannel(o){var c=sqIsOnline(o)?'online':String(o&&o.channel||'instore').toLowerCase();return({instore:['🏪','Walk-in'],online:['🌐','Online'],grabfood:['GF','GrabFood'],foodpanda:['FP','FoodPanda']})[c]||['🏪','Walk-in'];}
 function sqServeWord(o){return sqIsPlatform(o)?'Picked up':'Served';}
 function sqItemsHtml(o){var lines=o.correctedLineItems||o.lineItems||[];if(!lines.length)return o.items?'<li>'+esc(o.items)+'</li>':'';return lines.map(function(li){var name=String(li.name||''),size=li.size&&sqIsOnline(o)&&name.indexOf('('+li.size+')')<0?' ('+li.size+')':'',opts=(li.optLabels||[]).filter(Boolean);return '<li><b>'+(Number(li.qty)||1)+'×</b> '+esc(name+size)+(opts.length?'<small>'+esc(opts.join(', '))+'</small>':'')+'</li>';}).join('');}
-function sqCardHtml(o,now){var age=now-sqQueuedAt(o),ch=sqChannel(o);
+function sqStageAction(o){var stage=sqStage(o);if(stage==='queued')return {action:'start_preparing',label:'Start prep'};if(stage==='preparing')return {action:'mark_ready',label:'Mark ready'};return {action:'serve',label:sqServeWord(o)};}
+function sqCardHtml(o,now){var age=now-sqQueuedAt(o),ch=sqChannel(o),next=sqStageAction(o);
   return '<li class="sq-card age-'+sqAgeClass(age)+'" data-sq-id="'+esc(o.id)+'"><div class="sq-card-head"><span class="sq-ch" title="'+esc(ch[1])+'">'+esc(ch[0])+'</span><b class="sq-name">'+esc(sqLabel(o))+'</b><span class="sq-age">'+sqAgeText(age)+'</span></div>'
     +'<div class="sq-ref">'+esc(o.platformRef||o.id)+' · '+esc(ch[1])+(o.unsynced?' · <span class="sq-unsynced">not synced yet</span>':'')+'</div><ul class="sq-items">'+sqItemsHtml(o)+'</ul>'
-    +'<div class="sq-actions"><button type="button" class="pz-btn sq-prepare-btn" data-sq-prepare="'+esc(o.id)+'">PREPARE</button>'+(o.unsynced?'':'<button type="button" class="sq-link" data-sq-nc="'+esc(o.id)+'">Not collected</button>')+'</div></li>';}
+    +'<div class="sq-actions"><button type="button" class="pz-btn sq-stage-btn stage-'+esc(sqStage(o))+'" data-sq-stage="'+esc(o.id)+'"'+(o.unsynced?' disabled title="Wait for this sale to sync"':'')+'>'+esc(next.label)+'</button>'+(!o.unsynced&&sqStage(o)==='ready'?'<button type="button" class="sq-link" data-sq-nc="'+esc(o.id)+'">Not collected</button>':'')+'</div></li>';}
 function sqFind(id){if(!id)return null;if(onlineOrdersMap&&onlineOrdersMap[id])return Object.assign({},onlineOrdersMap[id],{id:id});return sqUnsyncedRows().filter(function(o){return o.id===id;})[0]||sqState.recent[id]||null;}
 function renderServeQueue(){
   sqLoadPrefs();var host=document.getElementById('posServeQueue');if(document.body)document.body.classList.toggle('pos-bar-view',!!sqState.bar&&!!host);updateActiveOrderCount();if(!host)return;
   var rows=sqRows(),now=Date.now(),waiting=Object.keys(sqPending()).length,folded=sqState.folded&&!sqState.bar,oldest=rows.length?now-sqQueuedAt(rows[0]):0;
   host.classList.toggle('is-folded',folded);var shell=host.parentNode;if(shell&&shell.classList)shell.classList.toggle('sq-folded',folded);
-  if(folded)host.innerHTML='<button type="button" class="sq-folded-bar age-'+(rows.length?sqAgeClass(oldest):'ok')+'" data-sq-fold aria-expanded="false" aria-label="Open serving queue, '+rows.length+' waiting"><span class="sq-count">'+rows.length+'</span><span class="sq-folded-age">'+(rows.length?sqAgeText(oldest):'✓')+'</span><span aria-hidden="true">»</span></button>';
-  else host.innerHTML='<div class="sq-head"><div><b>Serving queue</b> <span class="sq-count">'+rows.length+'</span></div><div class="sq-tools"><button type="button" class="sq-tool" data-sq-bar>'+(sqState.bar?'Exit bar view':'Bar view')+'</button>'+(sqState.bar?'':'<button type="button" class="sq-tool" data-sq-fold aria-expanded="true" aria-label="Fold the serving queue">«</button>')+'</div></div>'
+  var sections=[{stage:'ready',title:'Ready to serve'},{stage:'preparing',title:'Now preparing'},{stage:'queued',title:'Order queue'}];
+  if(folded)host.innerHTML='<button type="button" class="sq-folded-bar age-'+(rows.length?sqAgeClass(oldest):'ok')+'" data-sq-fold aria-expanded="false" aria-label="Open order flow, '+rows.length+' active"><span class="sq-count">'+rows.length+'</span><span class="sq-folded-age">'+(rows.length?sqAgeText(oldest):'✓')+'</span><span aria-hidden="true">»</span></button>';
+  else host.innerHTML='<div class="sq-head"><div><b>Order flow</b> <span class="sq-count">'+rows.length+'</span></div><div class="sq-tools"><button type="button" class="sq-tool" data-sq-bar>'+(sqState.bar?'Exit bar view':'Bar view')+'</button>'+(sqState.bar?'':'<button type="button" class="sq-tool" data-sq-fold aria-expanded="true" aria-label="Fold order flow">«</button>')+'</div></div>'
     +(waiting?'<div class="sq-note">'+waiting+' served · sending'+(window.__online===false?' when back online':'')+'…</div>':'')
-    +(rows.length?'<ol class="sq-list">'+rows.map(function(o){return sqCardHtml(o,now);}).join('')+'</ol>':'<div class="sq-empty">✓ Nothing waiting to be served</div>');
+    +(rows.length?sections.map(function(section){var list=rows.filter(function(o){return sqStage(o)===section.stage;});return '<section class="sq-stage-section sq-stage-'+section.stage+'"><div class="sq-stage-head"><b>'+section.title+'</b><span>'+list.length+'</span></div>'+(list.length?'<ol class="sq-list">'+list.map(function(o){return sqCardHtml(o,now);}).join('')+'</ol>':'<div class="sq-stage-empty">None</div>')+'</section>';}).join(''):'<div class="sq-empty">✓ No active orders</div>');
   if(!sqState.tick)sqState.tick=setInterval(function(){if(document.getElementById('posServeQueue'))renderServeQueue();sqFlush();},20000);
 }
 function sqOnOrdersChanged(){renderServeQueue();sqFlush();}
-// ── Prepare card + immediate Served/Picked up action ──
-function sqClosePrepare(){var p=sqState.prep;if(!p)return;sqState.prep=null;if(p.el&&p.el.parentNode)p.el.remove();renderServeQueue();}
-function sqServeNow(o){if(!o||!o.id||sqPending()[o.id])return;sqPending()[o.id]={requestId:sqReqId('serve'),at:Date.now(),online:sqIsOnline(o),name:String(o.name||'').slice(0,60)};sqSavePending();sqClosePrepare();renderServeQueue();sqFlush();}
-function sqOpenPrepare(o){if(!o||!o.id)return;sqClosePrepare();var now=Date.now(),ch=sqChannel(o),mask=document.createElement('div');mask.className='sq-prepare-mask';mask.setAttribute('role','presentation');
-  mask.innerHTML='<section class="sq-prepare-card" role="dialog" aria-modal="true" aria-labelledby="sqPrepareTitle"><div class="sq-prepare-head"><span class="sq-ch" title="'+esc(ch[1])+'">'+esc(ch[0])+'</span><div><h3 id="sqPrepareTitle">'+esc(sqLabel(o))+'</h3><p>'+esc(o.platformRef||o.id)+' · '+esc(ch[1])+' · waiting '+sqAgeText(now-sqQueuedAt(o))+(o.unsynced?' · not synced yet':'')+'</p></div></div><div class="sq-prepare-section"><b>Order details</b><ul class="sq-items">'+sqItemsHtml(o)+'</ul></div><div class="sq-prepare-total"><span>Total</span><b>'+peso(o.total)+'</b></div><div class="sq-prepare-actions"><button type="button" class="pz-btn sq-complete-btn" data-sq-prepared-served>'+(sqIsPlatform(o)?'PICKED UP NOW':'SERVED')+'</button><button type="button" class="pz-btn sec" data-sq-prepared-back>BACK TO QUEUE</button></div></section>';
-  document.body.appendChild(mask);sqState.prep={o:o,el:mask};var served=mask.querySelector('[data-sq-prepared-served]'),back=mask.querySelector('[data-sq-prepared-back]');served.onclick=function(){sqServeNow(o);};back.onclick=sqClosePrepare;if(served.focus)served.focus();}
+function sqAdvance(o){if(!o||!o.id||sqPending()[o.id]||o.unsynced)return;var next=sqStageAction(o);sqPending()[o.id]={requestId:sqReqId(next.action),at:Date.now(),online:sqIsOnline(o),action:next.action,name:String(o.name||'').slice(0,60)};sqSavePending();renderServeQueue();sqFlush();}
 function sqDropPending(id){delete sqPending()[id];sqSavePending();}
 function sqFlush(){
   var p=sqPending(),ids=Object.keys(p),a=A();if(!ids.length||window.__online===false||!a)return;
@@ -4200,7 +4197,8 @@ function sqFlush(){
     // Not in the live feed: the sale is still syncing (wait), or it was closed elsewhere long ago.
     if(!live){if(!sqUnsyncedRows().some(function(o){return o.id===id;})&&Date.now()-Number(e.at||0)>10*60000)sqDropPending(id);return;}
     var o=Object.assign({},live,{id:id});if(!sqNeedsService(o)){sqDropPending(id);return;} // already served, voided or refunded
-    var call=sqIsOnline(o)?(a.updateOrderStatus&&a.updateOrderStatus({orderId:id,status:'Completed',expectedStatus:o.status||'',requestId:e.requestId})):(a.callables&&a.callables.manageOrderService&&a.callables.manageOrderService({action:'serve',orderId:id,requestId:e.requestId}));
+    var onlineStatus={start_preparing:'Preparing',mark_ready:'Ready',serve:'Completed'}[e.action];
+    var call=sqIsOnline(o)?(a.updateOrderStatus&&a.updateOrderStatus({orderId:id,status:onlineStatus,expectedStatus:o.status||'',requestId:e.requestId})):(a.callables&&a.callables.manageOrderService&&a.callables.manageOrderService({action:e.action,orderId:id,requestId:e.requestId}));
     if(!call)return;sqState.sending[id]=1;
     Promise.resolve(call).then(function(){sqDropPending(id);}).catch(function(err){var code=String(err&&err.code||'').replace(/^functions\//,'');if(SQ_RETRY_CODES.indexOf(code)<0){sqDropPending(id);(window.accazaToast||function(){})('Could not mark '+sqLabel(o)+' served: '+((err&&err.message)||err),'err');}}).then(function(){delete sqState.sending[id];renderServeQueue();});
   });
@@ -4208,13 +4206,13 @@ function sqFlush(){
 window.addEventListener('online',function(){setTimeout(sqFlush,1500);});
 // A confirmed sale is already server-queued. Keep a short local copy so it appears immediately
 // while the active-order subscription catches up; live server data replaces it automatically.
-function sqAfterCharge(o){if(!o||!o.id)return;sqClosePrepare();sqState.recent[o.id]=Object.assign({},o,{service:{state:'queued',queuedAt:Number(o.timestamp)||Date.now()}});renderServeQueue();}
+function sqAfterCharge(o){if(!o||!o.id)return;sqState.recent[o.id]=Object.assign({},o,{service:{state:'queued',queuedAt:Number(o.timestamp)||Date.now()}});renderServeQueue();}
 // ── Not collected, manager review, return to queue ──
 function sqServiceCall(command){var a=A();if(!a||!a.callables||!a.callables.manageOrderService)return Promise.reject(new Error('Refresh the portal to load the serving queue service.'));return a.callables.manageOrderService(command);}
 function sqCancelled(e){return String((e&&e.message)||e).toLowerCase().indexOf('cancel')>=0;}
 function sqForm(config,command,okText,failText){try{F();}catch(e){alert(e.message);return;}F().run(config,function(v){return sqServiceCall(command(v));}).then(function(){(window.accazaToast||function(){})(okText,'ok');}).catch(function(e){if(!sqCancelled(e))alert(failText+((e&&e.message)||e));});}
 function sqNotCollected(o){if(!o)return;sqForm({title:'Order not collected',subtitle:sqLabel(o)+' · '+(o.platformRef||o.id)+' · '+peso(o.total),submitLabel:'Record not collected',busyLabel:'Recording…',fields:[{name:'reason',label:'What happened?',type:'textarea',required:true,maxLength:300,placeholder:'Example: customer left before the drink was ready'}]},function(v){return{action:'not_collected',orderId:o.id,requestId:sqReqId('nc'),reason:v.reason};},sqLabel(o)+' recorded as not collected · manager review','Could not record: ');}
-function sqServiceTag(o){var s=o&&o.service;if(!s||sqIsOnline(o))return '';if(s.state==='queued')return '<span class="sq-tag wait">⏳ Waiting to serve</span>';if(s.state==='served')return '<span class="sq-tag done">'+esc(sqServeWord(o))+(s.servedAt?' '+esc(new Date(s.servedAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})):'')+(s.servedByName?' · '+esc(s.servedByName):'')+'</span>';if(s.state==='not_collected')return '<span class="sq-tag nc">Not collected</span>';return '';}
+function sqServiceTag(o){var s=o&&o.service;if(!s||sqIsOnline(o))return '';if(s.state==='queued')return '<span class="sq-tag wait">Order queue</span>';if(s.state==='preparing')return '<span class="sq-tag prep">Now preparing</span>';if(s.state==='ready')return '<span class="sq-tag ready">Ready to serve</span>';if(s.state==='served')return '<span class="sq-tag done">'+esc(sqServeWord(o))+(s.servedAt?' '+esc(new Date(s.servedAt).toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit'})):'')+(s.servedByName?' · '+esc(s.servedByName):'')+'</span>';if(s.state==='not_collected')return '<span class="sq-tag nc">Not collected</span>';return '';}
 function sqCompletedActions(o){var s=o&&o.service;return s&&s.state==='served'&&!sqIsOnline(o)?'<button class="pz-btn sec" data-sq-return="'+esc(o.id)+'">Return to queue</button>':'';}
 function sqNotCollectedRows(){return Object.keys(onlineOrdersMap||{}).map(function(id){return Object.assign({},onlineOrdersMap[id]||{},{id:id});}).filter(function(o){return o.service&&o.service.state==='not_collected'&&!o.service.reviewedAt&&!o.voided;}).sort(function(a,b){return Number(a.service.notCollectedAt||0)-Number(b.service.notCollectedAt||0);});}
 function sqNotCollectedHtml(){var rows=sqNotCollectedRows();if(!rows.length)return '';var mgr=!!(window.__accazaAuthz&&window.__accazaAuthz.isPrivileged);
@@ -4223,17 +4221,16 @@ function sqWireShiftOrders(root){
   root.querySelectorAll('[data-sq-return]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-sq-return'),o=sqFind(id);if(!o)return;sqForm({title:'Return to serving queue',subtitle:sqLabel(o)+' · '+(o.platformRef||o.id),submitLabel:'Return to queue',busyLabel:'Returning…',fields:[{name:'reason',label:'Why?',required:true,maxLength:300,placeholder:'Example: marked served by mistake'}]},function(v){return{action:'return_to_queue',orderId:id,requestId:sqReqId('rq'),reason:v.reason};},sqLabel(o)+' is back in the serving queue','Could not return the order: ');};});
   root.querySelectorAll('[data-sq-review]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-sq-review'),o=sqFind(id);if(!o)return;sqForm({title:'Review order not collected',subtitle:sqLabel(o)+' · '+(o.platformRef||o.id)+' · '+peso(o.total),submitLabel:'Mark reviewed',busyLabel:'Saving…',fields:[{name:'note',label:'Decision',type:'textarea',required:true,maxLength:300,placeholder:'Example: refunded through Voids & Refunds / remade / kept as waste'}]},function(v){return{action:'review_not_collected',orderId:id,requestId:sqReqId('rv'),note:v.note};},'Review recorded','Could not record the review: ');};});
 }
-// ── Queue column events (delegated) ──
-document.addEventListener('click',function(ev){var t=ev.target&&ev.target.closest?ev.target.closest('[data-sq-prepare],[data-sq-nc],[data-sq-fold],[data-sq-bar]'):null;if(!t||!t.closest('#posServeQueue'))return;
+// ── Order-flow rail events (delegated) ──
+document.addEventListener('click',function(ev){var t=ev.target&&ev.target.closest?ev.target.closest('[data-sq-stage],[data-sq-nc],[data-sq-fold],[data-sq-bar]'):null;if(!t||!t.closest('#posServeQueue'))return;
   if(t.hasAttribute('data-sq-fold')){sqState.folded=!sqState.folded;sqPref('folded',sqState.folded);renderServeQueue();return;}
   if(t.hasAttribute('data-sq-bar')){sqState.bar=!sqState.bar;sqPref('bar',sqState.bar);renderServeQueue();return;}
-  var o=sqFind(t.getAttribute('data-sq-prepare')||t.getAttribute('data-sq-nc'));if(!o)return;
-  if(t.hasAttribute('data-sq-prepare'))sqOpenPrepare(o);else sqNotCollected(o);});
-document.addEventListener('keydown',function(ev){if(ev.key==='Escape'&&sqState.prep){ev.preventDefault();sqClosePrepare();}});
+  var o=sqFind(t.getAttribute('data-sq-stage')||t.getAttribute('data-sq-nc'));if(!o)return;
+  if(t.hasAttribute('data-sq-stage'))sqAdvance(o);else sqNotCollected(o);});
 // ── Close-of-shift review: every unserved order gets an outcome; it never blocks the Z report ──
 function sqReviewCounts(items){return{served:items.filter(function(x){return x.outcome==='served';}).length,handover:items.filter(function(x){return x.outcome==='handover';}).length,notCollected:items.filter(function(x){return x.outcome==='not_collected';}).length};}
 function sqCloseReview(shift){
-  sqClosePrepare();var rows=sqRows();if(!rows.length)return Promise.resolve(null);
+  var rows=sqRows();if(!rows.length)return Promise.resolve(null);
   return new Promise(function(resolve){
     var mask=document.createElement('div'),now=Date.now(),done=false;mask.className='sq-review-mask';document.body.appendChild(mask);
     function finish(result){if(done)return;done=true;if(mask.parentNode)mask.remove();resolve(result);}
@@ -4250,7 +4247,7 @@ function sqCloseReview(shift){
         items.push({orderId:o.id,outcome:c,reason:c==='not_collected'?reason:'',name:sqLabel(o),channel:sqIsOnline(o)?'online':String(o.channel||'instore'),queuedAt:sqQueuedAt(o),unsynced:!!o.unsynced,online:sqIsOnline(o)});}
       ok.disabled=true;ok.textContent='Recording…';err.textContent='';
       // Served website orders complete through their status; served unsynced sales apply after sync.
-      items.forEach(function(x){if(x.outcome==='served'&&(x.unsynced||x.online))sqPending()[x.orderId]={requestId:sqReqId('serve'),at:Date.now(),online:x.online,name:x.name};});sqSavePending();sqFlush();
+      items.forEach(function(x){if(x.outcome==='served'&&(x.unsynced||x.online))sqPending()[x.orderId]={requestId:sqReqId('serve'),at:Date.now(),online:x.online,action:'serve',name:x.name};});sqSavePending();sqFlush();
       var local={recorded:false,at:Date.now(),byName:(window.__posShift&&window.__posShift.staff)||'',counts:sqReviewCounts(items),items:items.map(function(x){return{orderId:x.orderId,outcome:x.outcome,reason:x.reason,name:x.name,channel:x.channel,queuedAt:x.queuedAt,applied:false,error:''};})};
       var a=A(),call=a&&a.callables&&a.callables.manageOrderService&&window.__online!==false?a.callables.manageOrderService({action:'close_review',shiftId:shift&&shift.id,requestId:sqReqId('review'),items:items.map(function(x){return{orderId:x.orderId,outcome:x.outcome,reason:x.reason,name:x.name,channel:x.channel,queuedAt:x.queuedAt,unsynced:x.unsynced};})}):null;
       if(!call){local.error='Offline: recorded on this till only.';finish(local);return;}
