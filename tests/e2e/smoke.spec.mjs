@@ -65,7 +65,7 @@ test('customer live runtime initializes ordering, tracker, reservations, and rev
   await page.locator('#reviews').scrollIntoViewIfNeeded();
   await expect(page.locator('.review-card').first()).toBeVisible({timeout:20000});
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href','/manifest.json');
-  await expect(page.locator('script[src="assets/js/pwa-register.js"]')).toHaveCount(1);
+  await expect(page.locator('script[src^="assets/js/pwa-register.js"]')).toHaveCount(1);
   await expect.poll(async()=>page.evaluate(async()=>!!(await navigator.serviceWorker.getRegistration('/'))),{timeout:10000}).toBeTruthy();
   expect(pageErrors).toEqual([]);
 });
