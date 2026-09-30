@@ -10,7 +10,7 @@ assert.ok(src.trimEnd().endsWith('})();'),'the POS bundle must end with its clos
 assert.equal((src.match(/^\}\)\(\);$/gm)||[]).length,1,'the POS IIFE closes exactly once, at the end');
 function el(id){return {id,innerHTML:'',style:{},hidden:false,disabled:false,classList:{toggle(){},add(){},remove(){},contains(){return false;}},parentNode:{classList:{toggle(){}}},querySelectorAll(){return [];},querySelector(){return el('q');},setAttribute(){},getAttribute(){return '';},hasAttribute(){return false;},appendChild(){},remove(){},contains(){return false;},addEventListener(){},focus(){},textContent:'',value:'',checked:false,options:[]};}
 const els={},subs={},intervals=[];
-const document={getElementById(id){return els[id]||(els[id]=el(id));},createElement:t=>el(t),body:el('body'),head:el('head'),addEventListener(){},querySelector(){return null;},querySelectorAll(){return [];},visibilityState:'visible',hasFocus(){return true;}};
+let posClick;const document={getElementById(id){return els[id]||(els[id]=el(id));},createElement:t=>el(t),body:el('body'),head:el('head'),addEventListener(type,fn){if(type==='click')posClick=fn;},querySelector(){return null;},querySelectorAll(){return [];},visibilityState:'visible',hasFocus(){return true;}};
 const ctx={document,console,setInterval:f=>{intervals.push(f);return intervals.length;},clearInterval(){},setTimeout:()=>0,clearTimeout(){},performance:{now:()=>Date.now()},localStorage:{getItem(){return null;},setItem(){}},navigator:{onLine:true},alert(m){throw new Error('unexpected alert: '+m);},Intl,Date,Math,JSON,Object,Array,String,Number,Promise,RegExp,Error,Set,Map};
 ctx.window=ctx;ctx.addEventListener=()=>{};ctx.__accazaRegisterModule=(name,handler)=>{if(name==='pos')ctx.__posHandler=handler;};
 ctx.__accaza={getCats:()=>[],menuItemsMap:{},subscribe(path,cb){subs[path]=cb;},callables:{}};
@@ -38,4 +38,10 @@ assert.doesNotMatch(html,/data-sq-prepare|PREPARE|Picked up now/,'the rail has n
 assert.match(html,/Americano \(M\)/,'website order sizes are shown');
 assert.equal(String(els.posActiveCount.textContent),'4','Shift Orders badge counts every current-shift order, including an order already served');
 assert.equal(typeof ctx.__serveQueueCloseReview,'function','close review is exposed to the register module');
+subs.activeOrders({val:()=>( {'POS-READY':{source:'pos',channel:'instore',shiftId:'S1',status:'Completed',name:'Lana',total:150,timestamp:now,lineItems:[{name:'Spanish Latte (L)',qty:1}],service:{state:'ready',queuedAt:now}} })});
+ctx.__accaza.callables.manageOrderService=command=>{assert.equal(command.action,'serve');assert.equal(command.orderId,'POS-READY');return Promise.resolve({data:{state:'served'}});};
+const servedButton={closest(){return this;},hasAttribute(name){return name==='data-sq-stage';},getAttribute(name){return name==='data-sq-stage'?'POS-READY':'';}};
+posClick({target:{closest(){return servedButton;}}});
+await new Promise(resolve=>setImmediate(resolve));
+assert.doesNotMatch(els.posServeQueue.innerHTML,/POS-READY|Lana/,'a server-confirmed Served action stays out of Order Flow even before the next Firebase snapshot');
 console.log('PASS: the built POS bundle loads, opens the POS tab and renders the serving queue from live orders.');
