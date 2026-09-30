@@ -3439,7 +3439,7 @@ function renderPosCart(options){
     ? '<div style="background:#fde8e8;border:1px solid #f5c6c6;border-radius:6px;padding:0.4rem 0.6rem;font-size:0.76rem;color:#721c24;">🔴 No open shift — open one in <b>Register Ops</b> to start selling.</div>'
     : seller.ok
       ? '<div style="background:#e8f5ec;border:1px solid #b8dfc4;border-radius:6px;padding:0.4rem 0.6rem;font-size:0.76rem;color:#155724;">🟢 Shift open · Cashier <b>'+esc(shift.staff)+'</b>'+(seller.role==='crew'?' · You are ringing as <b>'+esc(seller.staff)+'</b> (crew)':'')+(crewNames.length?'<div style="font-size:0.7rem;margin-top:0.15rem;">Crew: '+esc(crewNames.join(', '))+'</div>':'')+'</div>'
-      : '<div style="background:#fff4e5;border:1px solid #f2c078;border-radius:6px;padding:0.45rem 0.6rem;font-size:0.76rem;color:#8a5a00;">🟠 This shift belongs to <b>'+esc(seller.owner)+'</b>. Join the shift to take payments under your own name. <button class="pz-btn ok" id="posJoinShift" style="margin-top:0.35rem;padding:0.25rem 0.6rem;font-size:0.74rem;">Join shift</button></div>';
+      : '<div style="display:flex;align-items:center;gap:0.4rem;min-width:0;font-size:0.76rem;color:#8a5a00;"><button class="pz-btn ok" id="posJoinShift" style="flex:none;padding:0.25rem 0.6rem;font-size:0.74rem;">Join shift</button><span style="min-width:0;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;">🟠 This shift belongs to <b>'+esc(seller.owner)+'</b>. Join the shift to take payments under your own name.</span></div>';
   var isPlat=posIsPlatform();
   var _ccfg=channelsCfg();
   var chanOpts=[{k:'instore',lbl:'🏪 In-store'}].concat(POS_CHANNELS.filter(function(d){return _ccfg[d.k].active!==false;}).map(function(d){return {k:d.k,lbl:(d.k==='grabfood'?'🟢 ':'🩷 ')+_ccfg[d.k].label};}));
@@ -3451,7 +3451,7 @@ function renderPosCart(options){
   // The shift/crew banner and the sync status sit at the top of the sale panel so the
   // cashier sees them before taking payment (their containers were lost in a redesign).
   p.innerHTML=
-    '<div id="posShiftBar" style="margin-bottom:0.5rem;"></div><div id="posOfflineBar" style="margin-bottom:0.6rem;"></div>'
+    '<div style="display:flex;align-items:center;gap:0.45rem;flex-wrap:wrap;margin-bottom:0.6rem;"><div id="posOfflineBar" style="flex:none;margin:0;"></div><div id="posShiftBar" style="flex:1 1 220px;min-width:0;margin:0;"></div></div>'
     +chanSel
     +'<div style="margin-bottom:0.6rem;"><span class="pz-lbl">Customer\'s name</span><input class="pz-in" id="posCust" placeholder="Walk-in"'+(correction?' readonly':'')+'/></div>'
     +(shift&&!isPlat&&!correction?'<button class="pz-btn sec" id="posPkgBtn" style="width:100%;margin-bottom:0.6rem;">🎁 Add Package / Promo</button>':'')+'<div style="font-weight:600;color:var(--bd);margin-bottom:0.5rem;">🛒 '+(correction?'Corrected coffee order':'Current sale')+'</div>'
