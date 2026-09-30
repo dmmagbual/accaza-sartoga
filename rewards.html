@@ -103,6 +103,8 @@
         <span>I agree that Accaza Coffee House may keep my name and mobile number to run my Rewards account. You can ask us to delete it at any time.</span>
       </label>
       <button class="rw-btn" id="sendCodeBtn" type="submit">Send code</button>
+      <!-- Already a member on another phone: link this one and see the stamps again. -->
+      <button class="rw-btn ghost" id="linkDeviceBtn" type="button">Already a member? Link this phone</button>
       <p class="rw-err" id="signupError"></p>
     </form>
     <ol class="rw-note rw-how">
@@ -110,6 +112,22 @@
       <li>Yellow stamps come with bigger orders &mdash; 30 yellow is 20% off.</li>
       <li>We text you a code to confirm the number is yours. That is the only text you get unless you ask for more.</li>
     </ol>
+  </section>
+
+  <!-- Linking an extra phone to a membership that already exists. The code goes to the
+       number on the membership, so only the person holding that number can link. -->
+  <section id="screenLink" class="rw-card" hidden>
+    <h2>Link this phone</h2>
+    <p class="rw-lead">Enter the mobile number on your Rewards account. We will text a code to that number.</p>
+    <form id="linkForm" novalidate>
+      <div class="rw-field">
+        <label for="lkPhone">Mobile number</label>
+        <input id="lkPhone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="09XX XXX XXXX" required/>
+      </div>
+      <button class="rw-btn" id="linkSendBtn" type="submit">Send code</button>
+      <button class="rw-btn ghost" id="linkBackBtn" type="button">Back</button>
+      <p class="rw-err" id="linkError"></p>
+    </form>
   </section>
 
   <section id="screenOtp" class="rw-card" hidden>
@@ -144,8 +162,13 @@
     </div>
     <p class="rw-err" id="cardStatus"></p>
     <button class="rw-btn ghost" id="refreshBtn" type="button">Refresh my stamps</button>
+    <!-- Shown when this phone is linked to a membership but does not hold the badge
+         itself: the stamps are real and spendable at the counter, there is just no QR
+         to show from here. -->
+    <p class="rw-note" id="linkedNote" hidden>This phone is linked to your Rewards account, so you can see your stamps here. Your badge lives on the phone you signed up with. At the counter, just give your mobile number &mdash; our staff can look you up to add stamps, and send you a code when you want to spend them.</p>
+    <button class="rw-btn ghost" id="unlinkBtn" type="button" hidden>Unlink this phone</button>
     <p class="rw-note" id="tenureNote"></p>
-    <p class="rw-note">Show this screen at the counter. The code changes every minute, so a screenshot will not work. Keep this page on your phone &mdash; it is your badge.</p>
+    <p class="rw-note" id="badgeNote">Show this screen at the counter. The code changes every minute, so a screenshot will not work. Keep this page on your phone &mdash; it is your badge.</p>
   </section>
 
 </div>

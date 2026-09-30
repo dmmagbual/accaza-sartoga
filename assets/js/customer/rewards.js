@@ -30,18 +30,27 @@ let callablesPromise = null;
 function callables() {
   if (callablesPromise) return callablesPromise;
   callablesPromise = (async () => {
-    const [{initializeApp}, {getFunctions, httpsCallable}, {initializeAppCheck, ReCaptchaEnterpriseProvider}] = await Promise.all([
+    const [{initializeApp}, {getFunctions, httpsCallable}, {initializeAppCheck, ReCaptchaEnterpriseProvider}, {getAuth, signInAnonymously}] = await Promise.all([
       import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"),
       import("https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js"),
       import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js"),
+      import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js"),
     ]);
     const app = initializeApp(firebaseConfig);
     try { initializeAppCheck(app, {provider: new ReCaptchaEnterpriseProvider(APP_CHECK_SITE_KEY), isTokenAutoRefreshEnabled: true}); } catch (e) { console.warn("App Check init failed", e); }
     const functions = getFunctions(app, "asia-southeast1");
+    const auth = getAuth(app);
     return {
       startSignup: httpsCallable(functions, "startLoyaltySignup"),
       completeSignup: httpsCallable(functions, "completeLoyaltySignup"),
       getMemberCard: httpsCallable(functions, "getLoyaltyMemberCard"),
+      // Linking this phone to an existing membership. These four need a customer session,
+      // so they sit behind ensureSession(); signup and the badge itself never do.
+      getMyCard: httpsCallable(functions, "getMyLoyaltyCard"),
+      startLink: httpsCallable(functions, "startLoyaltyLinkOtp"),
+      confirmLink: httpsCallable(functions, "confirmLoyaltyLinkOtp"),
+      unlinkDevice: httpsCallable(functions, "unlinkLoyaltyFromDevice"),
+      ensureSession: async () => { if (!auth.currentUser) await signInAnonymously(auth); return auth.currentUser; },
     };
   })().catch((error) => { callablesPromise = null; throw error; }); // a failed load must not poison later retries
   return callablesPromise;
@@ -203,16 +212,52 @@ async function refreshCard(member, quiet) {
 
 // --- Screens --------------------------------------------------------------
 function goto(screen) {
-  ["screenLoading", "screenSignup", "screenOtp", "screenBadge"].forEach((id) => show(id, id === screen));
+  ["screenLoading", "screenSignup", "screenLink", "screenOtp", "screenBadge"].forEach((id) => show(id, id === screen));
 }
 
+// Badge mode: this device holds the secret, so it can show the rotating QR.
 async function showBadge(member) {
   goto("screenBadge");
+  badgeChrome(true);
   await paintBadge(member);
   await refreshCard(member, false);
 }
 
+// Linked mode: this phone is tied to the membership but does not hold the badge secret,
+// so there is no QR to show. The stamps are still real - staff look the member up by
+// number to add them, and send a code to spend them - so the copy says exactly that
+// instead of implying a badge that cannot be drawn here.
+function showLinkedCard(card) {
+  goto("screenBadge");
+  badgeChrome(false);
+  setText("badgeName", (card.firstName ? card.firstName + "'s stamps" : "Your stamps"));
+  setText("badgePhone", card.maskedPhone || "");
+  if (badgeTimer) { clearInterval(badgeTimer); badgeTimer = null; }
+  paintCard(card);
+}
+
+// The badge-only furniture: QR, rolling code, countdown and the "show this at the
+// counter" line. Hidden in linked mode; the unlink control appears instead.
+function badgeChrome(on) {
+  ["qrHolder", "badgeCode", "badgeCountdown", "badgeNote"].forEach((id) => {
+    const node = el(id); if (node) node.hidden = !on;
+  });
+  show("linkedNote", !on);
+  show("unlinkBtn", !on);
+}
+
 let pendingSignup = null;
+let pendingLink = null;
+// Remembered so a linked phone goes straight back to its stamps next visit. Without it the
+// page would show the signup form again and the member would think the link was lost. A
+// first-time visitor has no flag, so the page still makes no network call on open.
+const LINK_FLAG = "accaza_loyalty_linked";
+function markLinked(on) {
+  try { if (on) localStorage.setItem(LINK_FLAG, "1"); else localStorage.removeItem(LINK_FLAG); } catch (e) { /* private mode */ }
+}
+function wasLinked() {
+  try { return localStorage.getItem(LINK_FLAG) === "1"; } catch (e) { return false; }
+}
 
 async function onSendCode(event) {
   event.preventDefault();
@@ -239,11 +284,13 @@ async function onSendCode(event) {
 
 async function onVerify(event) {
   event.preventDefault();
-  if (!pendingSignup) { goto("screenSignup"); return; }
+  if (!pendingSignup && !pendingLink) { goto("screenSignup"); return; }
   const button = el("verifyBtn"), otp = String((el("otpInput") || {}).value || "").trim();
   setText("otpError", "");
   if (!/^\d{6}$/.test(otp)) { setText("otpError", "Enter the 6-digit code."); return; }
   button.disabled = true; button.textContent = "Verifying…";
+  // The same code screen serves both flows; which one is pending decides what the code does.
+  if (pendingLink) { await finishLink(otp, button); return; }
   try {
     const {completeSignup} = await callables();
     const result = await completeSignup({signupToken: pendingSignup.signupToken, otp});
@@ -267,8 +314,90 @@ async function onVerify(event) {
 function onStartOver(event) {
   event.preventDefault();
   pendingSignup = null;
+  pendingLink = null;
   setText("signupError", "");
   goto("screenSignup");
+}
+
+// --- Linking an extra phone to an existing membership ----------------------
+// The code goes to the number already on the membership, so only someone holding that
+// number can link a phone to it. That is what stops a recycled mobile number, or a
+// guess, from picking up somebody else's stamps.
+function onLinkOpen(event) {
+  event.preventDefault();
+  pendingSignup = null;
+  setText("linkError", "");
+  goto("screenLink");
+  const input = el("lkPhone"); if (input) input.focus();
+}
+
+async function onLinkSend(event) {
+  event.preventDefault();
+  const button = el("linkSendBtn"), phone = String((el("lkPhone") || {}).value || "").trim();
+  setText("linkError", "");
+  if (!phone) { setText("linkError", "Please enter your mobile number."); return; }
+  button.disabled = true; button.textContent = "Sending…";
+  try {
+    const api = await callables();
+    await api.ensureSession();
+    const result = await api.startLink({phone});
+    pendingLink = {linkToken: (result.data || {}).linkToken};
+    setText("otpSentTo", "We sent a 6-digit code to " + phone + ".");
+    goto("screenOtp");
+    const input = el("otpInput"); if (input) { input.value = ""; input.focus(); }
+  } catch (error) {
+    setText("linkError", errorMessage(error));
+  } finally {
+    button.disabled = false; button.textContent = "Send code";
+  }
+}
+
+async function finishLink(otp, button) {
+  try {
+    const api = await callables();
+    await api.ensureSession();
+    const result = await api.confirmLink({linkToken: pendingLink.linkToken, otp});
+    pendingLink = null;
+    markLinked(true);
+    showLinkedCard(result.data || {});
+  } catch (error) {
+    setText("otpError", errorMessage(error));
+  } finally {
+    button.disabled = false; button.textContent = "Verify";
+  }
+}
+
+async function onUnlink(event) {
+  event.preventDefault();
+  const button = el("unlinkBtn");
+  button.disabled = true; button.textContent = "Unlinking…";
+  try {
+    const api = await callables();
+    await api.ensureSession();
+    await api.unlinkDevice({});
+    markLinked(false);
+    goto("screenSignup");
+  } catch (error) {
+    setText("cardStatus", errorMessage(error));
+  } finally {
+    button.disabled = false; button.textContent = "Unlink this phone";
+  }
+}
+
+// Only a phone that linked before pays for this check, so a first-time visitor still
+// opens the page with no network call at all.
+async function restoreLinkedCard() {
+  try {
+    const api = await callables();
+    await api.ensureSession();
+    const result = await api.getMyCard({});
+    const card = result.data || {};
+    if (!card.linked) { markLinked(false); goto("screenSignup"); return; }
+    showLinkedCard(card);
+  } catch (error) {
+    goto("screenSignup");
+    setText("signupError", errorMessage(error));
+  }
 }
 
 // --- Boot -----------------------------------------------------------------
@@ -276,14 +405,21 @@ function boot() {
   const signupForm = el("signupForm"); if (signupForm) signupForm.addEventListener("submit", onSendCode);
   const otpForm = el("otpForm"); if (otpForm) otpForm.addEventListener("submit", onVerify);
   const startOver = el("startOverBtn"); if (startOver) startOver.addEventListener("click", onStartOver);
+  const linkOpen = el("linkDeviceBtn"); if (linkOpen) linkOpen.addEventListener("click", onLinkOpen);
+  const linkForm = el("linkForm"); if (linkForm) linkForm.addEventListener("submit", onLinkSend);
+  const linkBack = el("linkBackBtn"); if (linkBack) linkBack.addEventListener("click", onStartOver);
+  const unlink = el("unlinkBtn"); if (unlink) unlink.addEventListener("click", onUnlink);
   const refreshBtn = el("refreshBtn");
   if (refreshBtn) refreshBtn.addEventListener("click", () => {
     const member = loadMember();
-    if (member) refreshCard(member, false);
+    // A badge device refreshes with its own badge proof; a linked phone refreshes by session.
+    if (member) refreshCard(member, false); else restoreLinkedCard();
   });
 
   const member = loadMember();
   if (member) { showBadge(member).catch(() => goto("screenSignup")); return; }
+  // A phone that linked before goes straight back to its stamps.
+  if (wasLinked()) { goto("screenLoading"); restoreLinkedCard(); return; }
   goto("screenSignup");
 }
 
