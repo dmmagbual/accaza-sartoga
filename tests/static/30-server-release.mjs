@@ -10,6 +10,16 @@ const booksBridgeSource=fs.readFileSync(path.join(root,'functions','lib','books-
 if(!functionsSource.includes('exports.createOnlineOrder = onCall'))fail('createOnlineOrder callable missing');
 if(functionsSource.includes('defineBoolean("ENFORCE_APP_CHECK"'))fail('App Check enforcement must be passed to CallableOptions as a real Boolean, not a truthy parameter object');
 if(!functionsSource.includes('process.env.ENFORCE_APP_CHECK'))fail('App Check enforcement environment Boolean guard missing');
+// The flags live in src/functions/00-app-check-flags.js. That section must sort ahead of every
+// section that reads them: the bundle is a plain concatenation, so a const referenced by an
+// earlier onCall options object is still in the temporal dead zone and throws at load time.
+const staffFlagDecl=functionsSource.indexOf('const ENFORCE_APP_CHECK = String(process.env.ENFORCE_APP_CHECK || "false")');
+if(staffFlagDecl<0)fail('App Check staff flag must be declared from its committed default in src/functions/00-app-check-flags.js');
+if(!functionsSource.includes('const ENFORCE_APP_CHECK_ORDERS = String(process.env.ENFORCE_APP_CHECK_ORDERS || "false")'))fail('App Check order flag must be declared from its own committed default, not derived from the staff flag');
+if(staffFlagDecl>functionsSource.indexOf('enforceAppCheck:'))fail('App Check flags must be declared before the first onCall options object reads them');
+if(/const ENFORCE_APP_CHECK_ORDERS = ENFORCE_APP_CHECK\b/.test(functionsSource))fail('ENFORCE_APP_CHECK_ORDERS must stay independent so the staff surface can enforce while the public order path stays in monitor mode');
+const appCheckEnvReads=functionsSource.split('process.env.ENFORCE_APP_CHECK').length-1;
+if(appCheckEnvReads!==2)fail(`App Check flags must read process.env exactly twice, once per flag, in src/functions/00-app-check-flags.js (found ${appCheckEnvReads}); every callable must use the shared constant so one committed default flips the whole staff surface`);
 if(!functionsSource.includes('pricingVersion: "server-v1"'))fail('server pricing stamp missing');
 if(!functionsSource.includes('ownerUid: uid'))fail('server order owner stamp missing');
 if(!functionsSource.includes('exports.confirmOrderReceived = onCall'))fail('confirmOrderReceived callable missing');
@@ -108,11 +118,16 @@ const deployWorkflow=fs.readFileSync(path.join(root,'.github','workflows','deplo
 if(!deployWorkflow.includes('branches: [main]'))fail('production Firebase deployment is not restricted to main');
 const forcedDeployLines=deployWorkflow.split(/\r?\n/).filter(line=>line.includes('firebase deploy')&&line.includes('--force'));
 const retryPolicyFunctions=['preservePostedOrderOnDelete','replicateArchivedOrderToFirestore','refreshHistoricalOrderAfterJournal','refreshHistoricalOrderAfterInventoryPlan','updateBooksMonthlyNet','updateCashBalanceSummary','updatePublicCatalogVersionOnCategories','updatePublicCatalogVersionOnMenuItems','updatePublicCatalogVersionOnOptionGroups','updatePublicCatalogVersionOnPackages','onShiftCloseAssurance','syncUndepositedLedgerPageIndex','syncPettyVoucherAttentionIndex','syncCashCustodyPageIndex','onOrderLoyaltyEarning','markBackupDirtyArchivedOrders','markBackupDirtyInventoryMovements','markBackupDirtyOrderInventoryPlans','markBackupDirtyFinancialMovements','markBackupDirtyCashBalanceApplied','markBackupDirtyBooksJournal','markBackupDirtyShifts','markBackupDirtyOperationalAudit','markBackupDirtyFinancialCommandClaims','markBackupDirtyInventoryAccounting','markBackupDirtyFinancialApprovals','markBackupDirtyActivityLog','markBackupDirtyCfLedger','markBackupDirtyPettyCashReceipts','markBackupDirtyStockReceipts','markBackupDirtyPurchaseInvoices','markBackupDirtyPlatformPayouts','markBackupDirtyInternalUsage','markBackupDirtyInventoryAdjustments','markBackupDirtyPettyCashVouchers','markBackupDirtyPettyCashReplenishments','markBackupDirtyReceivables','markBackupDirtyPayables','markBackupDirtySuppliers','markBackupDirtyInventorySku','markBackupDirtyAppCustomers','markBackupDirtyReviews','markBackupDirtyFeedbacks','markBackupDirtyPackages'];
-const forcedTargets=forcedDeployLines.length===1?((forcedDeployLines[0].match(/--only\s+([^\s]+)/)||[])[1]||'').split(',').sort():[];
+// The acknowledgement step may retry once after a transient Cloud Functions API error, so this guard
+// no longer counts --force deploy lines. It requires instead that every one of them targets the shared
+// "$only" list and that the list is exactly the idempotent retry functions: a retry must never widen
+// the scope of --force, which is the whole reason the acknowledgement is scoped at all.
+const forcedScopes=[...new Set(forcedDeployLines.map(line=>(line.match(/--only\s+([^\s]+)/)||[])[1]||''))].join('|');
+const onlyAssignment=(deployWorkflow.match(/^\s*only="([^"]+)"/m)||[])[1]||'';
 const expectedForcedTargets=retryPolicyFunctions.map(name=>`functions:${name}`).sort();
-if(forcedDeployLines.length!==1||JSON.stringify(forcedTargets)!==JSON.stringify(expectedForcedTargets))fail('retry-policy acknowledgement must use one --force deploy scoped to the exact idempotent retry functions');
-const fullDeployLine=deployWorkflow.split(/\r?\n/).find(line=>line.includes('firebase deploy')&&line.includes('--only functions,database,firestore,storage'))||'';
-if(!fullDeployLine||fullDeployLine.includes('--force'))fail('full production Firebase deployment must never use --force');
+if(!forcedDeployLines.length||forcedScopes!=='"$only"'||JSON.stringify(onlyAssignment.split(',').sort())!==JSON.stringify(expectedForcedTargets))fail('retry-policy acknowledgement must deploy with --force scoped to the exact idempotent retry functions through the shared "$only" list');
+const fullDeployLines=deployWorkflow.split(/\r?\n/).filter(line=>line.includes('firebase deploy')&&line.includes('--only functions,database,firestore,storage'));
+if(!fullDeployLines.length||fullDeployLines.some(line=>line.includes('--force')))fail('full production Firebase deployment must never use --force');
 for(const name of retryPolicyFunctions)if(!functionsSource.includes(`exports.${name} = `)&&!functionsSource.includes(`exports.${name}=`))fail(`retry-policy deployment target is not exported: ${name}`);
 for(const marker of ['exports.backupDatabaseDaily = onSchedule(','exports.runDatabaseBackupNow = onCall(']){
   const backupDeclaration=section(functionsSource,marker,');');
