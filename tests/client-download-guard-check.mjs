@@ -16,7 +16,7 @@ const walk = (dir) => fs.readdirSync(path.join(root, dir), {withFileTypes: true}
 // they are generated from the src/ sections that are already listed here (the drift check
 // proves they match). The 2026-09-16 audit found whole-node listeners in assets/js/admin and
 // assets/js/books files that this list used to skip entirely.
-const BUILT = new Set(['assets/js/admin/pos.js', 'assets/js/admin/register.js', 'assets/js/admin/analytics.js', 'assets/js/admin/finance.js', 'assets/js/books/app.js', 'assets/js/customer/core.mjs']);
+const BUILT = new Set(['assets/js/admin/pos.js', 'assets/js/admin/register.js', 'assets/js/admin/rewards.js', 'assets/js/admin/analytics.js', 'assets/js/admin/finance.js', 'assets/js/books/app.js', 'assets/js/customer/core.mjs']);
 const FILES = [...new Set([...walk('src/admin'), ...walk('src/books'), ...walk('src/customer'), ...walk('assets/js/admin'), ...walk('assets/js/books'), ...walk('assets/js/customer'), ...walk('assets/js/shared')])].filter((f) => !BUILT.has(f));
 
 // Small configuration or single-record nodes.

@@ -7,6 +7,9 @@
 //   * Balances come from one getLoyaltyMemberCard call when the page opens (and on
 //     an explicit tap of Refresh). Loyalty figures only move when a sale completes
 //     or a reward is claimed, so there is nothing worth streaming.
+//   * The redeem-now list and the progress bars ride on that same card reply, and
+//     badge recovery is two OTP-gated callables like linking - no new reads beyond
+//     the single member record each already touched.
 //
 // Badge QR payload format: "ACZ1:<memberId>:<code>"
 //   ACZ1 marks it as an Accaza loyalty badge v1 so the till can tell it apart from
@@ -50,6 +53,10 @@ function callables() {
       startLink: httpsCallable(functions, "startLoyaltyLinkOtp"),
       confirmLink: httpsCallable(functions, "confirmLoyaltyLinkOtp"),
       unlinkDevice: httpsCallable(functions, "unlinkLoyaltyFromDevice"),
+      // Recovering a badge onto a new or cleared phone. Also session-gated: the recovery
+      // token is bound to this session, so a stolen OTP text cannot complete elsewhere.
+      startRecovery: httpsCallable(functions, "startLoyaltyBadgeRecovery"),
+      confirmRecovery: httpsCallable(functions, "confirmLoyaltyBadgeRecovery"),
       ensureSession: async () => { if (!auth.currentUser) await signInAnonymously(auth); return auth.currentUser; },
     };
   })().catch((error) => { callablesPromise = null; throw error; }); // a failed load must not poison later retries
@@ -77,7 +84,7 @@ function saveMember(member) {
 function errorMessage(error) {
   const code = String((error && error.code) || "").replace(/^functions\//, "");
   const message = String((error && error.message) || "").trim();
-  if (code === "already-exists") return "That number is already signed up. Please ask our staff to help you get your badge back.";
+  if (code === "already-exists") return "That number is already signed up. Tap \u201CLost your badge? Get it back\u201D to move your badge to this phone.";
   if (code === "deadline-exceeded") return "That code expired. Tap Send code again to get a new one.";
   if (code === "resource-exhausted") return "Too many wrong codes. Please start again.";
   if (code === "not-found") return "We could not find that sign-up. Please start again.";
@@ -176,7 +183,14 @@ function paintStampBalances(card) {
 function paintCard(card) {
   paintStampBalances(card);
   setText("tenureNote", tenureLine(card.memberSince));
-  const list = el("rewardList"), rewards = (card.availableRewards || []);
+  paintClaimedRewards(card.availableRewards || []);
+  paintRedeemable(card);
+}
+
+// Rewards already granted to this member. Names are admin-entered, so they go in through
+// textContent, never innerHTML.
+function paintClaimedRewards(rewards) {
+  const list = el("rewardList");
   if (!list) return;
   list.innerHTML = "";
   show("rewardsBlock", rewards.length > 0);
@@ -192,6 +206,56 @@ function paintCard(card) {
       item.appendChild(note);
     }
     list.appendChild(item);
+  });
+}
+
+// What the member's stamps can buy right now (redeemable, affordability checked by the
+// server) and how close they are to every other reward (catalog, from the same card reply —
+// one call already carries both, so progress costs no extra reads). An older server during
+// a deploy sends only the affordable slice; the progress block simply stays hidden then.
+function paintRedeemable(card) {
+  const redeemList = el("redeemList"), progressList = el("progressList");
+  if (!redeemList || !progressList) return;
+  redeemList.innerHTML = "";
+  progressList.innerHTML = "";
+  const redeemable = card.redeemable || [];
+  const catalog = card.catalog || [];
+  const affordable = new Set(redeemable.map((r) => r.rewardId));
+  const working = catalog.filter((r) => !affordable.has(r.rewardId));
+  const stampLabel = (reward) => (reward.costQty || 0) + " " + (reward.costCurrencyLabel || reward.costCurrency || "stamps");
+  const balanceOf = (code) => Number(((card.stamps || []).find((s) => s.code === code) || {}).balance) || 0;
+
+  show("redeemBlock", redeemable.length > 0);
+  redeemable.forEach((reward) => {
+    const item = document.createElement("li");
+    const name = document.createElement("b");
+    name.textContent = reward.name || "Reward";
+    item.appendChild(name);
+    const note = document.createElement("span");
+    note.textContent = " · " + stampLabel(reward);
+    item.appendChild(note);
+    redeemList.appendChild(item);
+  });
+
+  show("progressBlock", working.length > 0);
+  working.forEach((reward) => {
+    const cost = Math.max(1, Number(reward.costQty) || 1);
+    const balance = Math.max(0, balanceOf(reward.costCurrency));
+    const item = document.createElement("li");
+    const name = document.createElement("b");
+    name.textContent = reward.name || "Reward";
+    item.appendChild(name);
+    const bar = document.createElement("div");
+    bar.className = "rw-progress";
+    const fill = document.createElement("i");
+    fill.style.width = Math.min(100, Math.round((balance / cost) * 100)) + "%";
+    bar.appendChild(fill);
+    item.appendChild(bar);
+    const note = document.createElement("span");
+    note.className = "rw-progress-note";
+    note.textContent = balance + " of " + cost + " " + (reward.costCurrencyLabel || reward.costCurrency || "stamps");
+    item.appendChild(note);
+    progressList.appendChild(item);
   });
 }
 
@@ -212,7 +276,7 @@ async function refreshCard(member, quiet) {
 
 // --- Screens --------------------------------------------------------------
 function goto(screen) {
-  ["screenLoading", "screenSignup", "screenLink", "screenOtp", "screenBadge"].forEach((id) => show(id, id === screen));
+  ["screenLoading", "screenSignup", "screenLink", "screenRecover", "screenOtp", "screenBadge"].forEach((id) => show(id, id === screen));
 }
 
 // Badge mode: this device holds the secret, so it can show the rotating QR.
@@ -248,6 +312,7 @@ function badgeChrome(on) {
 
 let pendingSignup = null;
 let pendingLink = null;
+let pendingRecovery = null;
 // Remembered so a linked phone goes straight back to its stamps next visit. Without it the
 // page would show the signup form again and the member would think the link was lost. A
 // first-time visitor has no flag, so the page still makes no network call on open.
@@ -284,13 +349,14 @@ async function onSendCode(event) {
 
 async function onVerify(event) {
   event.preventDefault();
-  if (!pendingSignup && !pendingLink) { goto("screenSignup"); return; }
+  if (!pendingSignup && !pendingLink && !pendingRecovery) { goto("screenSignup"); return; }
   const button = el("verifyBtn"), otp = String((el("otpInput") || {}).value || "").trim();
   setText("otpError", "");
   if (!/^\d{6}$/.test(otp)) { setText("otpError", "Enter the 6-digit code."); return; }
   button.disabled = true; button.textContent = "Verifying…";
-  // The same code screen serves both flows; which one is pending decides what the code does.
+  // The same code screen serves all three flows; which one is pending decides what the code does.
   if (pendingLink) { await finishLink(otp, button); return; }
+  if (pendingRecovery) { await finishRecovery(otp, button); return; }
   try {
     const {completeSignup} = await callables();
     const result = await completeSignup({signupToken: pendingSignup.signupToken, otp});
@@ -315,6 +381,7 @@ function onStartOver(event) {
   event.preventDefault();
   pendingSignup = null;
   pendingLink = null;
+  pendingRecovery = null;
   setText("signupError", "");
   goto("screenSignup");
 }
@@ -367,6 +434,62 @@ async function finishLink(otp, button) {
   }
 }
 
+// --- Recovering a badge onto this phone -------------------------------------
+// The code goes to the number already on the membership, so only the person holding that
+// number can take the badge over. Confirming ROTATES the secret server-side: the badge on
+// the lost phone stops deriving valid codes the moment the new one lands here, so a
+// recovered badge is never a shared badge.
+function onRecoverOpen(event) {
+  event.preventDefault();
+  pendingSignup = null;
+  pendingLink = null;
+  setText("recoverError", "");
+  goto("screenRecover");
+  const input = el("rcPhone"); if (input) input.focus();
+}
+
+async function onRecoverSend(event) {
+  event.preventDefault();
+  const button = el("recoverSendBtn"), phone = String((el("rcPhone") || {}).value || "").trim();
+  setText("recoverError", "");
+  if (!phone) { setText("recoverError", "Please enter your mobile number."); return; }
+  button.disabled = true; button.textContent = "Sending…";
+  try {
+    const api = await callables();
+    await api.ensureSession();
+    const result = await api.startRecovery({phone});
+    pendingRecovery = {recoveryToken: (result.data || {}).recoveryToken};
+    setText("otpSentTo", "We sent a 6-digit code to " + phone + ".");
+    goto("screenOtp");
+    const input = el("otpInput"); if (input) { input.value = ""; input.focus(); }
+  } catch (error) {
+    setText("recoverError", errorMessage(error));
+  } finally {
+    button.disabled = false; button.textContent = "Send code";
+  }
+}
+
+async function finishRecovery(otp, button) {
+  try {
+    const api = await callables();
+    await api.ensureSession();
+    // Same reply shape as sign-up, so it is stored exactly like a fresh badge.
+    const result = await api.confirmRecovery({recoveryToken: pendingRecovery.recoveryToken, otp});
+    pendingRecovery = null;
+    const member = result.data || {};
+    if (!member.memberId || !member.badgeSecret) throw new Error("Recovery did not complete. Please try again.");
+    if (!saveMember(member)) {
+      setText("otpError", "Your browser is blocking storage, so we cannot keep your badge on this phone. Turn off private browsing and try again.");
+      return;
+    }
+    await showBadge(member);
+  } catch (error) {
+    setText("otpError", errorMessage(error));
+  } finally {
+    button.disabled = false; button.textContent = "Verify";
+  }
+}
+
 async function onUnlink(event) {
   event.preventDefault();
   const button = el("unlinkBtn");
@@ -408,6 +531,9 @@ function boot() {
   const linkOpen = el("linkDeviceBtn"); if (linkOpen) linkOpen.addEventListener("click", onLinkOpen);
   const linkForm = el("linkForm"); if (linkForm) linkForm.addEventListener("submit", onLinkSend);
   const linkBack = el("linkBackBtn"); if (linkBack) linkBack.addEventListener("click", onStartOver);
+  const recoverOpen = el("recoverBtn"); if (recoverOpen) recoverOpen.addEventListener("click", onRecoverOpen);
+  const recoverForm = el("recoverForm"); if (recoverForm) recoverForm.addEventListener("submit", onRecoverSend);
+  const recoverBack = el("recoverBackBtn"); if (recoverBack) recoverBack.addEventListener("click", onStartOver);
   const unlink = el("unlinkBtn"); if (unlink) unlink.addEventListener("click", onUnlink);
   const refreshBtn = el("refreshBtn");
   if (refreshBtn) refreshBtn.addEventListener("click", () => {

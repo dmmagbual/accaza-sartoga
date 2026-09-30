@@ -22,7 +22,7 @@ function loyaltyStampsCard() {
   return card;
 }
 
-function loyaltyStampsApi() { var a = A(); return (a && a.manageLoyaltyCurrency) ? a : null; }
+function loyaltyStampsApi() { var a = A(); return (a && a.callables && a.callables.manageLoyaltyCurrency) ? a.callables : null; }
 
 function loyaltyStampCapLabel(row) {
   var cap = (row && row.dailyCap != null && row.dailyCap !== '') ? Number(row.dailyCap) : null;

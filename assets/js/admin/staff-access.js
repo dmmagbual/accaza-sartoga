@@ -13,7 +13,7 @@ var NAV=[
   {group:'Reports',tabs:[{label:'Sales History',key:'saleshistory'},{label:'Sales Analytics',key:'analytics'},{label:'Daily Report',key:'dailyreport'}]},
   {group:'Inventory',tabs:[{label:'Stock Items',key:'inventory'},{label:'Inventory (stock value)',key:'stockvalue'},{label:'Purchases',key:'purchases'},{label:'Recipes',key:'recipes'},{label:'Internal Usage',key:'usage'},{label:'Packages',locked:true}]},
   {group:'Cash & Controls',tabs:[{label:'Cash Payments',key:'petty'},{label:'Undeposited Collection',key:'undeposited'},{label:'Platform Payouts',locked:true},{label:'Reconciliation Issues',key:'discrepancy'}]},
-  {group:'Customers',tabs:[{label:'Customer List',key:'appcustomers'},{label:'Reviews',key:'reviews'},{label:'Comments',key:'comments'}]},
+  {group:'Customers',tabs:[{label:'Rewards Program',locked:true},{label:'Customer List',key:'appcustomers'},{label:'Reviews',key:'reviews'},{label:'Comments',key:'comments'}]},
   {group:'Settings',tabs:[{label:'Channel Pricing',key:'channelpricing'},{label:'Change Password',always:true},{label:'POS Settings',locked:true},{label:'Accounting Periods',locked:true},{label:'Menu Maintenance',locked:true},{label:'Payment Details',locked:true},{label:'User Accounts & Access',locked:true}]},
   {group:'Outside Admin',tabs:[{label:'Finance Books app',key:'cashflow'}]}
 ];

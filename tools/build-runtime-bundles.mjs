@@ -5,6 +5,7 @@ const root=process.cwd();
 const bundles=[
   {source:'src/admin/pos',target:'assets/js/admin/pos.js'},
   {source:'src/admin/register',target:'assets/js/admin/register.js'},
+  {source:'src/admin/rewards',target:'assets/js/admin/rewards.js'},
   {source:'src/admin/analytics',target:'assets/js/admin/analytics.js'},
   {source:'src/admin/finance',target:'assets/js/admin/finance.js'},
   {source:'src/customer/core',target:'assets/js/customer/core.mjs'},

@@ -5,6 +5,7 @@ const root=process.cwd();
 const bundles=[
   {source:'src/admin/pos',target:'assets/js/admin/pos.js'},
   {source:'src/admin/register',target:'assets/js/admin/register.js'},
+  {source:'src/admin/rewards',target:'assets/js/admin/rewards.js'},
   {source:'src/admin/analytics',target:'assets/js/admin/analytics.js'},
   {source:'src/admin/finance',target:'assets/js/admin/finance.js'},
   {source:'src/customer/core',target:'assets/js/customer/core.mjs'},
@@ -19,7 +20,7 @@ for(const bundle of bundles){
   const actual=fs.readFileSync(path.join(root,bundle.target),'utf8');
   if(actual!==expected)throw new Error(`${bundle.target} has drifted from ${bundle.source}. Run npm run build:runtime.`);
 }
-console.log('PASS: POS, Admin operations, customer core, Finance Books, and Functions runtime bundles exactly match their ordered source sections.');
+console.log('PASS: POS, Admin operations, Rewards admin, customer core, Finance Books, and Functions runtime bundles exactly match their ordered source sections.');
 
 const retiredLargeSections=[
   'src/admin/pos/11-inventory-skus.js',
@@ -62,6 +63,11 @@ expectedFunctionExports.splice(expectedFunctionExports.indexOf('lookupLoyaltyMem
 // seeded stamps are config rather than code. Add/relabel/recolour/enable/disable only --
 // never delete or rename, because a code names the field holding real member balances.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('manageLoyaltyRewardCatalog')+1,0,'manageLoyaltyCurrency');
+// 30 Sep 2026: loyalty member management — support search (exact phone via the private
+// hash index, or member id; single-record reads only), badge recovery for a member who
+// lost their device (OTP to their own number + secret rotation), and one-way anonymize
+// (PII stripped, ledger/balances kept for accounting).
+expectedFunctionExports.splice(expectedFunctionExports.indexOf('getLoyaltyReports')+1,0,'searchLoyaltyMembers','startLoyaltyBadgeRecovery','confirmLoyaltyBadgeRecovery','manageLoyaltyMemberAnonymize');
 // Sep 2026: owner emergency sign-out of every portal session.
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('onShiftCloseAssurance'),0,'signOutAllPortalSessions');
 expectedFunctionExports.splice(expectedFunctionExports.indexOf('getUndepositedControlSnapshot')+1,0,'syncUndepositedLedgerPageIndex','syncPettyVoucherAttentionIndex','syncCashCustodyPageIndex','getUndepositedPage');
