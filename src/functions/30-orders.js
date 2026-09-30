@@ -265,7 +265,7 @@ async function enforceOrderRateLimit(db, uid) {
   if (limited) throw new HttpsError("resource-exhausted", "Too many order attempts. Please wait one minute and try again.");
 }
 exports.createOnlineOrder = onCall(
-  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 60, memory: "256MiB"},
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK_ORDERS, timeoutSeconds: 60, memory: "256MiB"},
   async (request) => {
     if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "Customer session is not ready. Refresh and try again.");
     if (!request.app) logger.warn("createOnlineOrder called without App Check", {uid: request.auth.uid});
@@ -379,7 +379,7 @@ exports.getPaymentProof = onCall(
 );
 
 exports.confirmOrderReceived = onCall(
-  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK, timeoutSeconds: 30, memory: "256MiB"},
+  {region: ORDER_REGION, enforceAppCheck: ENFORCE_APP_CHECK_ORDERS, timeoutSeconds: 30, memory: "256MiB"},
   async (request) => {
     if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "Customer session is not ready.");
     const orderId = textField(request.data && request.data.orderId, "Order ID", 80, true);

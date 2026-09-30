@@ -76,3 +76,8 @@ jobs:
         run: firebase deploy --only functions,database,firestore,storage --project accaza-sartoga --non-interactive
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          # App Check stays in monitor mode until the gate in APP_CHECK_ENFORCEMENT_RUNBOOK.md
+          # is met. Flip a flag here (committed) AND in functions/.env.accaza-sartoga together;
+          # the value is baked at deploy time, so it takes effect on the next functions deploy.
+          ENFORCE_APP_CHECK: "false"
+          ENFORCE_APP_CHECK_ORDERS: "false"
