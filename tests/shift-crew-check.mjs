@@ -117,6 +117,8 @@ const cart=fs.readFileSync(new URL('../src/admin/pos/50e-cart-checkout.js',impor
 assert.ok(cart.includes("button.disabled=posChargeBusy||!keys.length||!shift||!posSellerState().ok"),'Charge must be disabled for anyone not on the shift');
 assert.ok(cart.includes("var _seller=posSellerState();if(!_seller.ok)"),'Charge click must refuse anyone not on the shift');
 assert.ok(cart.includes('id="posJoinShift"')&&cart.includes('joinPosShift()'),'The till must offer Join shift');
+const offline=fs.readFileSync(new URL('../src/admin/pos/00-shared-state.js',import.meta.url),'utf8');
+assert.match(offline,/class="pz-btn" style="[^"]*padding:0\.25rem 0\.6rem;font-size:0\.74rem/,'The sync badge must use Join shift button padding and font size so their rendered heights stay equal');
 assert.ok(cart.includes('<div id="posShiftBar"')&&cart.includes('<div id="posOfflineBar"'),'The sale panel must render the shift/crew banner and the sync status (their containers were missing after a redesign)');
 assert.ok(cart.includes("Join the shift to take payment"),'A locked Charge button must say why');
 assert.ok(persist.includes("var seller=posSellerState(); if(!seller.ok)")&&persist.includes('soldByUid:seller.uid'),'chargeSale must refuse and stamp the seller');
