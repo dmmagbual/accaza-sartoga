@@ -206,11 +206,15 @@ async function loyaltyMemberSnapshot(db, memberId) {
   // something the server will refuse. Only the two scan paths reach here; the earn-only
   // phone lookup builds its own reply and deliberately carries no redeemable list at all.
   const catalog = (await /* download-ok: bounded admin-configured catalog, not history */ db.ref("/loyaltyRewardCatalog").get()).val() || {};
-  const redeemable = Object.keys(catalog).map((id) => Object.assign({rewardId: id}, catalog[id]))
+  // The whole enabled list rides along so the Rewards page can show progress toward every
+  // reward, not just the affordable ones. It comes from the same single catalog read the
+  // affordability filter already paid for, so widening the customer screen costs no extra
+  // download. redeemable stays the affordable subset the till offers.
+  const catalogList = Object.keys(catalog).map((id) => Object.assign({rewardId: id}, catalog[id]))
     .filter((r) => r.enabled !== false)
-    .filter((r) => balanceOf(r.costCurrency) >= Loyalty.positiveInt(r.costQty, 0))
     .map((r) => ({rewardId: r.rewardId, name: r.name || r.rewardId, costCurrency: r.costCurrency, costCurrencyLabel: (currencies.find((c) => c.code === r.costCurrency) || {}).label || r.costCurrency, costQty: Loyalty.positiveInt(r.costQty, 0), grantType: r.grantType, cap: r.cap == null ? null : Number(r.cap), percent: r.percent == null ? null : Number(r.percent), stackingAllowed: r.stackingAllowed === true}));
-  return {memberId, firstName: financeText(member.name, 80).split(/\s+/)[0] || "", maskedPhone: Loyalty.maskPhone(member.phone), stamps, redBalance, yellowBalance, availableRewards, redeemable, memberSince: Number(member.createdAt) || null};
+  const redeemable = catalogList.filter((r) => balanceOf(r.costCurrency) >= r.costQty);
+  return {memberId, firstName: financeText(member.name, 80).split(/\s+/)[0] || "", maskedPhone: Loyalty.maskPhone(member.phone), stamps, redBalance, yellowBalance, availableRewards, redeemable, catalog: catalogList, memberSince: Number(member.createdAt) || null};
 }
 
 exports.scanLoyaltyBadge = onCall(
@@ -767,6 +771,10 @@ exports.manageLoyaltyMemberStatus = onCall(
     if (!["active", "blocked"].includes(status)) throw new HttpsError("invalid-argument", "Status must be active or blocked.");
     const member = (await db.ref(`/loyaltyMembers/${memberId}`).get()).val();
     if (!member) throw new HttpsError("not-found", "Member not found.");
+    // An anonymized member is a closed book: unblocking the stub would return an empty
+    // shell to "active" and re-count it in activeMembers, implying a person who was
+    // deliberately forgotten. There is nothing left to manage on this record.
+    if (member.anonymizedAt) throw new HttpsError("failed-precondition", "This member was anonymized and can no longer be changed.");
     const now = Date.now(), wasActive = member.status !== "blocked";
     await db.ref(`/loyaltyMembers/${memberId}/status`).set(status);
     // Keep the maintained activeMembers count (read by getLoyaltyReports) in step with the
@@ -795,13 +803,18 @@ exports.getLoyaltyReports = onCall(
     // never a whole-node download of loyaltyMembers/loyaltyRewards/loyaltyLedger, which grow
     // without bound across the business's lifetime (Sep 2026 whole-node download audit).
     const now = Date.now();
-    const [activeMembersSnap, costSnap, stampsSnap, redemptionsSnap, ...tenureSnaps] = await Promise.all([
+    const [activeMembersSnap, costSnap, stampsSnap, redemptionsSnap, staffSnap, ...tenureSnaps] = await Promise.all([
       db.ref("/loyaltyStats/activeMembers").get(),
       db.ref("/loyaltyStats/redemptionCostByReward").get(),
       db.ref("/loyaltyStats/stampsByCashier").get(),
       db.ref("/loyaltyStats/redemptionsByCashier").get(),
+      /* download-ok: bounded staff roster - readable names for the cashier tallies */ db.ref("/posStaff").get(),
       ...LOYALTY_TENURE_MILESTONES.map(({days}) => db.ref("/loyaltyMembers").orderByChild("createdAt").startAt(now - days * 86400000 - LOYALTY_TENURE_LOOKBACK_MS).endAt(now - days * 86400000).get()),
     ]);
+    // The cashier tallies are keyed by sanitized staff uid; the roster supplies the name
+    // so the report reads like people, not identifiers.
+    const cashierNames = {};
+    Object.values(staffSnap.val() || {}).forEach((row) => { if (row && row.accountUid) cashierNames[loyaltyStatKey(row.accountUid)] = String(row.name || row.displayName || "").slice(0, 60); });
     const tenureMilestones = [];
     LOYALTY_TENURE_MILESTONES.forEach(({key}, i) => {
       const rows = tenureSnaps[i].val() || {};
@@ -815,6 +828,7 @@ exports.getLoyaltyReports = onCall(
       redemptionCostByReward: costSnap.val() || {},
       stampsByCashier: stampsSnap.val() || {},
       redemptionsByCashier: redemptionsSnap.val() || {},
+      cashierNames,
       tenureMilestones,
     };
   },

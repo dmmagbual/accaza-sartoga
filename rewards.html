@@ -59,6 +59,11 @@
   .rw-rewards{margin:1.4rem 0 0;padding:1rem 1.1rem;background:#f6f7f4;border-radius:14px;}
   .rw-rewards h3{margin:0 0 .5rem;font-size:.92rem;color:#19241b;}
   .rw-rewards ul{margin:0;padding-left:1.1rem;font-size:.88rem;color:#3d4a3f;line-height:1.7;}
+  .rw-rewards .rw-muted{margin:.6rem 0 0;font-size:.78rem;}
+  #progressList li{margin-bottom:.75rem;}
+  .rw-progress{margin:.45rem 0 .15rem;background:#eceee9;border-radius:999px;height:8px;overflow:hidden;}
+  .rw-progress i{display:block;height:100%;background:#c9a36a;border-radius:999px;}
+  .rw-progress-note{display:block;font-size:.76rem;color:#8a978c;}
   .rw-how{margin-top:1.6rem;}
   .rw-how li{margin-bottom:.45rem;line-height:1.55;}
 </style>
@@ -105,6 +110,9 @@
       <button class="rw-btn" id="sendCodeBtn" type="submit">Send code</button>
       <!-- Already a member on another phone: link this one and see the stamps again. -->
       <button class="rw-btn ghost" id="linkDeviceBtn" type="button">Already a member? Link this phone</button>
+      <!-- New phone or cleared browser: recovery re-issues the badge HERE after a code to the
+           number on the membership, and the badge left on the old phone stops working. -->
+      <button class="rw-btn ghost" id="recoverBtn" type="button">Lost your badge? Get it back</button>
       <p class="rw-err" id="signupError"></p>
     </form>
     <ol class="rw-note rw-how">
@@ -128,6 +136,24 @@
       <button class="rw-btn ghost" id="linkBackBtn" type="button">Back</button>
       <p class="rw-err" id="linkError"></p>
     </form>
+  </section>
+
+  <!-- Recovering a badge on a new or cleared phone. The code goes to the number already on
+       the membership, so only the person holding that number can move the badge. Confirming
+       rotates the badge secret: the old phone's badge stops deriving valid codes instantly. -->
+  <section id="screenRecover" class="rw-card" hidden>
+    <h2>Recover your badge</h2>
+    <p class="rw-lead">New phone, or cleared your browser? Enter the mobile number on your Rewards account and we will text you a code. Confirming it moves your badge to this phone; the badge on the old phone stops working.</p>
+    <form id="recoverForm" novalidate>
+      <div class="rw-field">
+        <label for="rcPhone">Mobile number</label>
+        <input id="rcPhone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="09XX XXX XXXX" required/>
+      </div>
+      <button class="rw-btn" id="recoverSendBtn" type="submit">Send code</button>
+      <button class="rw-btn ghost" id="recoverBackBtn" type="button">Back</button>
+      <p class="rw-err" id="recoverError"></p>
+    </form>
+    <p class="rw-note">Your stamps and rewards are safe &mdash; they live in your Rewards account, not on the phone.</p>
   </section>
 
   <section id="screenOtp" class="rw-card" hidden>
@@ -156,9 +182,23 @@
     <!-- One tile per configured stamp, filled by paintStampBalances from the server's own
          stamp list, so a new stamp type appears here without an edit to this page. -->
     <div class="rw-stamps" id="stampBalances"></div>
+    <!-- Rewards already granted to this member, each with its own expiry. -->
     <div class="rw-rewards" id="rewardsBlock" hidden>
-      <h3>Ready to claim</h3>
+      <h3>Your rewards, ready to use</h3>
       <ul id="rewardList"></ul>
+      <p class="rw-muted">Show them at the counter before they expire.</p>
+    </div>
+    <!-- What this member's stamps can buy right now; the server checks affordability, so
+         the list only ever holds rewards the till will actually honour. -->
+    <div class="rw-rewards" id="redeemBlock" hidden>
+      <h3>Your stamps can buy now</h3>
+      <ul id="redeemList"></ul>
+      <p class="rw-muted">Ask our staff to redeem these when you order.</p>
+    </div>
+    <!-- Every other enabled reward, with how close this member's stamps are. -->
+    <div class="rw-rewards" id="progressBlock" hidden>
+      <h3>Keep collecting</h3>
+      <ul id="progressList"></ul>
     </div>
     <p class="rw-err" id="cardStatus"></p>
     <button class="rw-btn ghost" id="refreshBtn" type="button">Refresh my stamps</button>

@@ -16,6 +16,7 @@ callableNames.unshift('getUndepositedPage','manageShiftHandover');
 callableNames.unshift('signOutAllPortalSessions');
 callableNames.unshift('askAccazaAI');
 callableNames.unshift('manageAccazaAiKnowledge');
+callableNames.unshift('manageLoyaltyEarningRule','manageLoyaltyRewardCatalog','manageLoyaltyMemberStatus','getLoyaltyReports','searchLoyaltyMembers','manageLoyaltyMemberAnonymize');
 callableNames.unshift('manageAccazaAiIssue');
 callableNames.unshift('managePosStaffIdentity','openLinkedPosShift');
 // 30 Sep 2026: Rewards stamp types are admin-configurable (label/colour/daily limit).
