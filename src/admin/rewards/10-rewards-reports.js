@@ -12,7 +12,7 @@ function rewardsMilestoneLabel(key) {
 
 function rewardsReportsHtml() {
   if (!_rewardsState.reports) {
-    return '<div style="padding:1rem;text-align:center;color:#666;font-size:.82rem;">' +
+    return '<div class="rw-loading">' +
       (_rewardsState.busy ? 'Loading reports…' : 'Press Refresh to load the program totals.') + '</div>';
   }
   var r = _rewardsState.reports;
@@ -27,28 +27,30 @@ function rewardsReportsHtml() {
     return sum + (Number(r.redemptionsByCashier[key]) || 0);
   }, 0);
 
-  var html = '<div style="display:flex;gap:.6rem;flex-wrap:wrap;">' +
+  var html = '<div class="rw-stats">' +
     rewardsStatCard('Active members', String(r.activeMembers || 0), 'members not blocked or anonymized') +
     rewardsStatCard('Rewards redeemed', String(totalRedemptions), 'all cashiers, all time') +
     rewardsStatCard('Redemption cost', rewardsPeso(totalRedemptionCost), 'list price of free items and discounts given') +
     '</div>';
 
   // --- redemption cost by reward ---------------------------------------------
-  html += '<h4 style="margin:1.2rem 0 .4rem;font-size:.85rem;color:var(--bd);">Redemption cost by reward</h4>';
+  html += '<div class="rw-card"><div class="rw-card-head"><h4 class="rw-card-title">Redemption cost by reward</h4></div>';
   if (!costRows.length) {
-    html += '<div style="padding:.6rem;color:#666;font-size:.8rem;">No reward has been redeemed yet.</div>';
+    html += '<div class="rw-empty"><div class="rw-empty-ic">🎁</div>' +
+      '<div class="rw-empty-t">No reward has been redeemed yet</div>' +
+      '<div class="rw-empty-s">Costs appear here the first time a member claims a reward.</div></div>';
   } else {
-    html += '<table style="width:100%;border-collapse:collapse;font-size:.8rem;">' +
-      '<thead><tr style="text-align:left;border-bottom:2px solid #eee;">' +
-      '<th style="padding:.4rem .3rem;">Reward</th><th style="padding:.4rem .3rem;text-align:right;">Total cost</th>' +
+    html += '<table class="rw-table"><thead><tr>' +
+      '<th>Reward</th><th style="text-align:right;">Total cost</th>' +
       '</tr></thead><tbody>' +
       costRows.map(function (row) {
-        return '<tr style="border-bottom:1px solid #eee;">' +
-          '<td style="padding:.4rem .3rem;">' + rewardsEscape(row.name) + '</td>' +
-          '<td style="padding:.4rem .3rem;text-align:right;">' + rewardsPeso(row.totalCost) + '</td></tr>';
+        return '<tr><td>' + rewardsEscape(row.name) + '</td>' +
+          '<td class="rw-amount">' + rewardsPeso(row.totalCost) + '</td></tr>';
       }).join('') +
+      '<tr class="rw-total"><td>Total</td><td class="rw-amount">' + rewardsPeso(totalRedemptionCost) + '</td></tr>' +
       '</tbody></table>';
   }
+  html += '</div>';
 
   // --- cashier activity -------------------------------------------------------
   // stampsByCashier rows look like {red: 12, yellow: 3, updatedAt: <ms>} — updatedAt
@@ -71,58 +73,62 @@ function rewardsReportsHtml() {
     };
   }).sort(function (a, b) { return a.name.localeCompare(b.name); });
 
-  html += '<h4 style="margin:1.2rem 0 .4rem;font-size:.85rem;color:var(--bd);">Cashier activity</h4>';
+  html += '<div class="rw-card"><div class="rw-card-head"><h4 class="rw-card-title">Cashier activity</h4></div>';
   if (!cashiers.length) {
-    html += '<div style="padding:.6rem;color:#666;font-size:.8rem;">No cashier has stamped or redeemed yet.</div>';
+    html += '<div class="rw-empty"><div class="rw-empty-ic">☕</div>' +
+      '<div class="rw-empty-t">No cashier has stamped or redeemed yet</div>' +
+      '<div class="rw-empty-s">Stamp and redemption counts per cashier appear here once the program is in use.</div></div>';
   } else {
-    html += '<table style="width:100%;border-collapse:collapse;font-size:.8rem;">' +
-      '<thead><tr style="text-align:left;border-bottom:2px solid #eee;">' +
-      '<th style="padding:.4rem .3rem;">Cashier</th>' +
+    html += '<table class="rw-table"><thead><tr>' +
+      '<th>Cashier</th>' +
       currencyCodes.map(function (code) {
-        return '<th style="padding:.4rem .3rem;text-align:right;">' + rewardsEscape(rewardsCurrencyLabel(code)) + '</th>';
+        return '<th style="text-align:right;">' + rewardsEscape(rewardsCurrencyLabel(code)) + '</th>';
       }).join('') +
-      '<th style="padding:.4rem .3rem;text-align:right;">Redemptions</th>' +
-      '<th style="padding:.4rem .3rem;text-align:right;">Last stamped</th>' +
+      '<th style="text-align:right;">Redemptions</th>' +
+      '<th style="text-align:right;">Last stamped</th>' +
       '</tr></thead><tbody>' +
       cashiers.map(function (row) {
         var qtyByCode = {};
         row.stamps.forEach(function (cell) { qtyByCode[cell.code] = cell.qty; });
-        return '<tr style="border-bottom:1px solid #eee;">' +
-          '<td style="padding:.4rem .3rem;">' + rewardsEscape(row.name) + '</td>' +
+        return '<tr><td>' + rewardsEscape(row.name) + '</td>' +
           currencyCodes.map(function (code) {
             var qty = qtyByCode[code] || 0;
-            return '<td style="padding:.4rem .3rem;text-align:right;">' + (qty ? String(qty) : '—') + '</td>';
+            return '<td class="rw-amount">' + (qty ? String(qty) : '—') + '</td>';
           }).join('') +
-          '<td style="padding:.4rem .3rem;text-align:right;">' + (row.redemptions ? String(row.redemptions) : '—') + '</td>' +
-          '<td style="padding:.4rem .3rem;text-align:right;">' + (row.updatedAt ? rewardsDate(row.updatedAt) : '—') + '</td></tr>';
+          '<td class="rw-amount">' + (row.redemptions ? String(row.redemptions) : '—') + '</td>' +
+          '<td class="rw-amount rw-nowrap">' + (row.updatedAt ? rewardsDate(row.updatedAt) : '—') + '</td></tr>';
       }).join('') +
       '</tbody></table>';
   }
+  html += '</div>';
 
   // --- tenure milestones --------------------------------------------------------
   var milestones = (r.tenureMilestones || []).slice().sort(function (a, b) {
     return (Number(b.tenureDays) || 0) - (Number(a.tenureDays) || 0);
   });
-  html += '<h4 style="margin:1.2rem 0 .4rem;font-size:.85rem;color:var(--bd);">Membership milestones (last 30 days)</h4>';
+  html += '<div class="rw-card"><div class="rw-card-head"><h4 class="rw-card-title">Membership milestones (last 30 days)</h4></div>';
   if (!milestones.length) {
-    html += '<div style="padding:.6rem;color:#666;font-size:.8rem;">No member crossed the 6-month or 1-year mark in the last 30 days.</div>';
+    html += '<div class="rw-empty"><div class="rw-empty-ic">🏆</div>' +
+      '<div class="rw-empty-t">No membership milestone in the last 30 days</div>' +
+      '<div class="rw-empty-s">Members crossing their 6-month or 1-year mark are celebrated here.</div></div>';
   } else {
-    html += '<ul style="margin:0;padding-left:1.2rem;font-size:.8rem;">' +
-      milestones.map(function (row) {
-        return '<li style="padding:.2rem 0;">' + rewardsEscape(row.firstName || 'Member') +
-          ' reached the ' + rewardsEscape(rewardsMilestoneLabel(row.milestone)) +
-          ' mark (' + (Number(row.tenureDays) || 0) + ' days).</li>';
-      }).join('') + '</ul>';
+    html += milestones.map(function (row) {
+      var initial = rewardsEscape(String(row.firstName || 'M').trim().charAt(0).toUpperCase());
+      return '<div class="rw-mile"><span class="rw-ava">' + initial + '</span>' +
+        '<span>' + rewardsEscape(row.firstName || 'Member') +
+        ' reached the ' + rewardsEscape(rewardsMilestoneLabel(row.milestone)) + ' mark.</span>' +
+        '<span class="rw-badge off" style="margin-left:auto;">' + (Number(row.tenureDays) || 0) + ' days</span></div>';
+    }).join('');
   }
+  html += '</div>';
 
   return html;
 }
 
 function rewardsStatCard(label, value, hint) {
-  return '<div style="flex:1 1 140px;min-width:140px;padding:.7rem .8rem;border:1px solid #e3e3e3;border-radius:10px;background:#fafafa;">' +
-    '<div style="font-size:.7rem;color:#666;text-transform:uppercase;letter-spacing:.04em;">' + rewardsEscape(label) + '</div>' +
-    '<div style="font-size:1.3rem;font-weight:600;color:var(--bd);margin-top:.15rem;">' + rewardsEscape(value) + '</div>' +
-    '<div style="font-size:.68rem;color:#666;margin-top:.15rem;">' + rewardsEscape(hint) + '</div></div>';
+  return '<div class="rw-stat"><span class="rw-stat-num">' + rewardsEscape(value) + '</span>' +
+    '<span class="rw-stat-lbl">' + rewardsEscape(label) + '</span>' +
+    '<span class="rw-stat-hint">' + rewardsEscape(hint) + '</span></div>';
 }
 
 function rewardsReportsLoad() {

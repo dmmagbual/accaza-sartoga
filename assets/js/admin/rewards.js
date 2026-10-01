@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
 // Rewards program admin screen (Phase 2, 30 Sep 2026).
 //
-// One tab, four sections: reports, the reward catalog, earning rules, and
-// member support. One discipline holds the whole screen together: every read
+// One tab, five sections: reports, stamps, the reward catalog, earning rules,
+// and member support. One discipline holds the whole screen together: every read
 // goes through a callable that touches only small config or maintained
 // aggregates. The screen never reads loyaltyMembers, loyaltyLedger,
 // loyaltyBalances or loyaltyRewards directly - those grow with the business
@@ -10,10 +10,13 @@
 // requests like that off the client. Member lookup is a search (exact phone
 // or member id) that resolves a single record server-side, never a browse.
 //
-// Server authority: getLoyaltyReports, manageLoyaltyRewardCatalog,
-// manageLoyaltyEarningRule, searchLoyaltyMembers, manageLoyaltyMemberStatus,
-// manageLoyaltyMemberAnonymize, manageLoyaltyCurrency (all loyaltyAdmin).
+// Server authority: getLoyaltyReports, manageLoyaltyCurrency,
+// manageLoyaltyRewardCatalog, manageLoyaltyEarningRule, searchLoyaltyMembers,
+// manageLoyaltyMemberStatus, manageLoyaltyMemberAnonymize (all loyaltyAdmin).
 // Refusals are shown verbatim - the message names the reason.
+//
+// Presentation: every section renders with the shared classes in
+// assets/css/admin/rewards.css (rw-*) so the screen keeps one visual language.
 // ---------------------------------------------------------------------------
 var _rewardsState = {
   view: 'reports',
@@ -67,25 +70,25 @@ function rewardsDate(ms) {
 
 function rewardsNoteHtml() {
   if (!_rewardsState.note) return '';
-  return '<div style="margin-top:.7rem;padding:.5rem .6rem;border-radius:8px;font-size:.78rem;' +
-    (_rewardsState.noteBad ? 'background:#fde8e8;color:#721c24;' : 'background:#e8f5e9;color:#1b5e20;') +
-    '">' + rewardsEscape(_rewardsState.note) + '</div>';
+  return '<div class="rw-note ' + (_rewardsState.noteBad ? 'bad' : 'ok') + '">' + rewardsEscape(_rewardsState.note) + '</div>';
 }
 
 function rewardsSubtabsHtml() {
   var tabs = [
     {id: 'reports', label: 'Reports'},
+    {id: 'stamps', label: 'Stamps'},
     {id: 'catalog', label: 'Reward catalog'},
     {id: 'rules', label: 'Earning rules'},
     {id: 'members', label: 'Members'}
   ];
   return tabs.map(function (tab) {
     var on = _rewardsState.view === tab.id;
-    return '<button type="button" data-rewardstab="' + tab.id + '"' + (on ? ' style="background:#19241b;color:#fff;border-color:#19241b;"' : '') + '>' + tab.label + '</button>';
+    return '<button type="button" class="rw-tab' + (on ? ' on' : '') + '" data-rewardstab="' + tab.id + '">' + tab.label + '</button>';
   }).join('');
 }
 
 function rewardsBodyHtml() {
+  if (_rewardsState.view === 'stamps') return rewardsStampsHtml();
   if (_rewardsState.view === 'catalog') return rewardsCatalogHtml();
   if (_rewardsState.view === 'rules') return rewardsRulesHtml();
   if (_rewardsState.view === 'members') return rewardsMembersHtml();
@@ -93,19 +96,19 @@ function rewardsBodyHtml() {
 }
 
 function rewardsMarkup() {
-  return '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.6rem;flex-wrap:wrap;">' +
-    '<div><h3 style="margin:0;font-family:\'Playfair Display\',serif;color:var(--bd);">Rewards program</h3>' +
-    '<p style="font-size:.78rem;color:#666;margin:.25rem 0 0;">The reward catalog, how stamps are earned, program totals and member support.</p></div>' +
-    '<button type="button" id="rewardsRefresh" style="flex:0 0 auto;"' + (_rewardsState.busy ? ' disabled' : '') + '>' + (_rewardsState.busy ? 'Working…' : 'Refresh') + '</button></div>' +
-    '<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.8rem;">' + rewardsSubtabsHtml() + '</div>' +
+  return '<div class="rw-head">' +
+    '<div><h3 class="rw-title">Rewards program</h3>' +
+    '<p class="rw-sub">The stamp types, the reward catalog, how stamps are earned, program totals and member support.</p></div>' +
+    '<button type="button" id="rewardsRefresh" class="rw-btn sec"' + (_rewardsState.busy ? ' disabled' : '') + '>' + (_rewardsState.busy ? 'Working…' : 'Refresh') + '</button></div>' +
+    '<div class="rw-tabs">' + rewardsSubtabsHtml() + '</div>' +
     rewardsNoteHtml() +
-    '<div id="rewardsBody" style="margin-top:.8rem;">' + rewardsBodyHtml() + '</div>';
+    '<div id="rewardsBody">' + rewardsBodyHtml() + '</div>';
 }
 
 function renderRewards() {
   var root = document.getElementById('rewardsRoot'); if (!root) return;
   if (!rewardsApi()) {
-    root.innerHTML = '<div style="padding:.8rem;border-radius:10px;background:#fde8e8;color:#721c24;font-size:.82rem;">Rewards administration is unavailable right now. Refresh the portal and try again.</div>';
+    root.innerHTML = '<div class="rw-fatal">Rewards administration is unavailable right now. Refresh the portal and try again.</div>';
     return;
   }
   root.innerHTML = rewardsMarkup();
@@ -117,7 +120,8 @@ function rewardsWire(root) {
   var refresh = root.querySelector('#rewardsRefresh');
   if (refresh) refresh.onclick = function () {
     _rewardsState.note = '';
-    if (_rewardsState.view === 'catalog') { _rewardsState.catalogLoaded = false; rewardsCatalogLoad(); }
+    if (_rewardsState.view === 'stamps') { _rewardsStampsState.loaded = false; rewardsStampsLoad(); }
+    else if (_rewardsState.view === 'catalog') { _rewardsState.catalogLoaded = false; rewardsCatalogLoad(); }
     else if (_rewardsState.view === 'rules') { _rewardsState.rulesLoaded = false; rewardsRulesLoad(); }
     else if (_rewardsState.view === 'members') { rewardsMembersRenderOnly(); }
     else { _rewardsState.reportsLoaded = false; rewardsReportsLoad(); }
@@ -127,19 +131,21 @@ function rewardsWire(root) {
       _rewardsState.view = button.getAttribute('data-rewardstab');
       _rewardsState.note = '';
       renderRewards();
-      if (_rewardsState.view === 'catalog' && !_rewardsState.catalogLoaded) rewardsCatalogLoad();
+      if (_rewardsState.view === 'stamps' && !_rewardsStampsState.loaded) rewardsStampsLoad();
+      else if (_rewardsState.view === 'catalog' && !_rewardsState.catalogLoaded) rewardsCatalogLoad();
       else if (_rewardsState.view === 'rules' && !_rewardsState.rulesLoaded) rewardsRulesLoad();
       else if (_rewardsState.view === 'reports' && !_rewardsState.reportsLoaded) rewardsReportsLoad();
     };
   });
   var body = root.querySelector('#rewardsBody');
-  if (body && _rewardsState.view === 'catalog') rewardsCatalogWire(body);
+  if (body && _rewardsState.view === 'stamps') rewardsStampsWire(body);
+  else if (body && _rewardsState.view === 'catalog') rewardsCatalogWire(body);
   else if (body && _rewardsState.view === 'rules') rewardsRulesWire(body);
   else if (body && _rewardsState.view === 'members') rewardsMembersWire(body);
 }
 
 // The stamp list (labels, colours, order) comes from the same server config the
-// stamps card manages - the screen offers only currencies the server accepts.
+// stamps screen manages - the tab offers only currencies the server accepts.
 function rewardsLoadCurrencies() {
   var api = rewardsApi(); if (!api) return;
   _rewardsState.busy = true; renderRewards();
@@ -152,6 +158,7 @@ function rewardsLoadCurrencies() {
   }).then(function () {
     _rewardsState.busy = false; renderRewards();
     if (_rewardsState.view === 'reports' && !_rewardsState.reportsLoaded) rewardsReportsLoad();
+    else if (_rewardsState.view === 'stamps' && !_rewardsStampsState.loaded) rewardsStampsLoad();
     else if (_rewardsState.view === 'catalog' && !_rewardsState.catalogLoaded) rewardsCatalogLoad();
     else if (_rewardsState.view === 'rules' && !_rewardsState.rulesLoaded) rewardsRulesLoad();
   });
@@ -170,7 +177,7 @@ function rewardsMilestoneLabel(key) {
 
 function rewardsReportsHtml() {
   if (!_rewardsState.reports) {
-    return '<div style="padding:1rem;text-align:center;color:#666;font-size:.82rem;">' +
+    return '<div class="rw-loading">' +
       (_rewardsState.busy ? 'Loading reports…' : 'Press Refresh to load the program totals.') + '</div>';
   }
   var r = _rewardsState.reports;
@@ -185,28 +192,30 @@ function rewardsReportsHtml() {
     return sum + (Number(r.redemptionsByCashier[key]) || 0);
   }, 0);
 
-  var html = '<div style="display:flex;gap:.6rem;flex-wrap:wrap;">' +
+  var html = '<div class="rw-stats">' +
     rewardsStatCard('Active members', String(r.activeMembers || 0), 'members not blocked or anonymized') +
     rewardsStatCard('Rewards redeemed', String(totalRedemptions), 'all cashiers, all time') +
     rewardsStatCard('Redemption cost', rewardsPeso(totalRedemptionCost), 'list price of free items and discounts given') +
     '</div>';
 
   // --- redemption cost by reward ---------------------------------------------
-  html += '<h4 style="margin:1.2rem 0 .4rem;font-size:.85rem;color:var(--bd);">Redemption cost by reward</h4>';
+  html += '<div class="rw-card"><div class="rw-card-head"><h4 class="rw-card-title">Redemption cost by reward</h4></div>';
   if (!costRows.length) {
-    html += '<div style="padding:.6rem;color:#666;font-size:.8rem;">No reward has been redeemed yet.</div>';
+    html += '<div class="rw-empty"><div class="rw-empty-ic">🎁</div>' +
+      '<div class="rw-empty-t">No reward has been redeemed yet</div>' +
+      '<div class="rw-empty-s">Costs appear here the first time a member claims a reward.</div></div>';
   } else {
-    html += '<table style="width:100%;border-collapse:collapse;font-size:.8rem;">' +
-      '<thead><tr style="text-align:left;border-bottom:2px solid #eee;">' +
-      '<th style="padding:.4rem .3rem;">Reward</th><th style="padding:.4rem .3rem;text-align:right;">Total cost</th>' +
+    html += '<table class="rw-table"><thead><tr>' +
+      '<th>Reward</th><th style="text-align:right;">Total cost</th>' +
       '</tr></thead><tbody>' +
       costRows.map(function (row) {
-        return '<tr style="border-bottom:1px solid #eee;">' +
-          '<td style="padding:.4rem .3rem;">' + rewardsEscape(row.name) + '</td>' +
-          '<td style="padding:.4rem .3rem;text-align:right;">' + rewardsPeso(row.totalCost) + '</td></tr>';
+        return '<tr><td>' + rewardsEscape(row.name) + '</td>' +
+          '<td class="rw-amount">' + rewardsPeso(row.totalCost) + '</td></tr>';
       }).join('') +
+      '<tr class="rw-total"><td>Total</td><td class="rw-amount">' + rewardsPeso(totalRedemptionCost) + '</td></tr>' +
       '</tbody></table>';
   }
+  html += '</div>';
 
   // --- cashier activity -------------------------------------------------------
   // stampsByCashier rows look like {red: 12, yellow: 3, updatedAt: <ms>} — updatedAt
@@ -229,58 +238,62 @@ function rewardsReportsHtml() {
     };
   }).sort(function (a, b) { return a.name.localeCompare(b.name); });
 
-  html += '<h4 style="margin:1.2rem 0 .4rem;font-size:.85rem;color:var(--bd);">Cashier activity</h4>';
+  html += '<div class="rw-card"><div class="rw-card-head"><h4 class="rw-card-title">Cashier activity</h4></div>';
   if (!cashiers.length) {
-    html += '<div style="padding:.6rem;color:#666;font-size:.8rem;">No cashier has stamped or redeemed yet.</div>';
+    html += '<div class="rw-empty"><div class="rw-empty-ic">☕</div>' +
+      '<div class="rw-empty-t">No cashier has stamped or redeemed yet</div>' +
+      '<div class="rw-empty-s">Stamp and redemption counts per cashier appear here once the program is in use.</div></div>';
   } else {
-    html += '<table style="width:100%;border-collapse:collapse;font-size:.8rem;">' +
-      '<thead><tr style="text-align:left;border-bottom:2px solid #eee;">' +
-      '<th style="padding:.4rem .3rem;">Cashier</th>' +
+    html += '<table class="rw-table"><thead><tr>' +
+      '<th>Cashier</th>' +
       currencyCodes.map(function (code) {
-        return '<th style="padding:.4rem .3rem;text-align:right;">' + rewardsEscape(rewardsCurrencyLabel(code)) + '</th>';
+        return '<th style="text-align:right;">' + rewardsEscape(rewardsCurrencyLabel(code)) + '</th>';
       }).join('') +
-      '<th style="padding:.4rem .3rem;text-align:right;">Redemptions</th>' +
-      '<th style="padding:.4rem .3rem;text-align:right;">Last stamped</th>' +
+      '<th style="text-align:right;">Redemptions</th>' +
+      '<th style="text-align:right;">Last stamped</th>' +
       '</tr></thead><tbody>' +
       cashiers.map(function (row) {
         var qtyByCode = {};
         row.stamps.forEach(function (cell) { qtyByCode[cell.code] = cell.qty; });
-        return '<tr style="border-bottom:1px solid #eee;">' +
-          '<td style="padding:.4rem .3rem;">' + rewardsEscape(row.name) + '</td>' +
+        return '<tr><td>' + rewardsEscape(row.name) + '</td>' +
           currencyCodes.map(function (code) {
             var qty = qtyByCode[code] || 0;
-            return '<td style="padding:.4rem .3rem;text-align:right;">' + (qty ? String(qty) : '—') + '</td>';
+            return '<td class="rw-amount">' + (qty ? String(qty) : '—') + '</td>';
           }).join('') +
-          '<td style="padding:.4rem .3rem;text-align:right;">' + (row.redemptions ? String(row.redemptions) : '—') + '</td>' +
-          '<td style="padding:.4rem .3rem;text-align:right;">' + (row.updatedAt ? rewardsDate(row.updatedAt) : '—') + '</td></tr>';
+          '<td class="rw-amount">' + (row.redemptions ? String(row.redemptions) : '—') + '</td>' +
+          '<td class="rw-amount rw-nowrap">' + (row.updatedAt ? rewardsDate(row.updatedAt) : '—') + '</td></tr>';
       }).join('') +
       '</tbody></table>';
   }
+  html += '</div>';
 
   // --- tenure milestones --------------------------------------------------------
   var milestones = (r.tenureMilestones || []).slice().sort(function (a, b) {
     return (Number(b.tenureDays) || 0) - (Number(a.tenureDays) || 0);
   });
-  html += '<h4 style="margin:1.2rem 0 .4rem;font-size:.85rem;color:var(--bd);">Membership milestones (last 30 days)</h4>';
+  html += '<div class="rw-card"><div class="rw-card-head"><h4 class="rw-card-title">Membership milestones (last 30 days)</h4></div>';
   if (!milestones.length) {
-    html += '<div style="padding:.6rem;color:#666;font-size:.8rem;">No member crossed the 6-month or 1-year mark in the last 30 days.</div>';
+    html += '<div class="rw-empty"><div class="rw-empty-ic">🏆</div>' +
+      '<div class="rw-empty-t">No membership milestone in the last 30 days</div>' +
+      '<div class="rw-empty-s">Members crossing their 6-month or 1-year mark are celebrated here.</div></div>';
   } else {
-    html += '<ul style="margin:0;padding-left:1.2rem;font-size:.8rem;">' +
-      milestones.map(function (row) {
-        return '<li style="padding:.2rem 0;">' + rewardsEscape(row.firstName || 'Member') +
-          ' reached the ' + rewardsEscape(rewardsMilestoneLabel(row.milestone)) +
-          ' mark (' + (Number(row.tenureDays) || 0) + ' days).</li>';
-      }).join('') + '</ul>';
+    html += milestones.map(function (row) {
+      var initial = rewardsEscape(String(row.firstName || 'M').trim().charAt(0).toUpperCase());
+      return '<div class="rw-mile"><span class="rw-ava">' + initial + '</span>' +
+        '<span>' + rewardsEscape(row.firstName || 'Member') +
+        ' reached the ' + rewardsEscape(rewardsMilestoneLabel(row.milestone)) + ' mark.</span>' +
+        '<span class="rw-badge off" style="margin-left:auto;">' + (Number(row.tenureDays) || 0) + ' days</span></div>';
+    }).join('');
   }
+  html += '</div>';
 
   return html;
 }
 
 function rewardsStatCard(label, value, hint) {
-  return '<div style="flex:1 1 140px;min-width:140px;padding:.7rem .8rem;border:1px solid #e3e3e3;border-radius:10px;background:#fafafa;">' +
-    '<div style="font-size:.7rem;color:#666;text-transform:uppercase;letter-spacing:.04em;">' + rewardsEscape(label) + '</div>' +
-    '<div style="font-size:1.3rem;font-weight:600;color:var(--bd);margin-top:.15rem;">' + rewardsEscape(value) + '</div>' +
-    '<div style="font-size:.68rem;color:#666;margin-top:.15rem;">' + rewardsEscape(hint) + '</div></div>';
+  return '<div class="rw-stat"><span class="rw-stat-num">' + rewardsEscape(value) + '</span>' +
+    '<span class="rw-stat-lbl">' + rewardsEscape(label) + '</span>' +
+    '<span class="rw-stat-hint">' + rewardsEscape(hint) + '</span></div>';
 }
 
 function rewardsReportsLoad() {
@@ -294,6 +307,222 @@ function rewardsReportsLoad() {
     _rewardsState.noteBad = true;
   }).then(function () {
     _rewardsState.busy = false; renderRewards();
+  });
+}
+// ---------------------------------------------------------------------------
+// Rewards · Stamps (loyalty currencies).
+//
+// Server authority: manageLoyaltyCurrency (loyaltyAdmin). This screen deliberately
+// offers only what the server will accept, so the UI can never imply a capability the
+// server refuses:
+//   - colour is picked from the server's fixed palette, never a free colour picker;
+//   - a stamp is never deleted, only disabled - members hold real balances in it;
+//   - the code is write-once. It names the balance field ({code}Balance) holding real
+//     member stamps, so renaming it would strand every stamp a member is holding.
+//
+// Server refusals are shown verbatim rather than reworded: the message names exactly
+// what to turn off first (for example a live earning rule that still awards the stamp),
+// and softening it would hide the reason stamps would otherwise be dropped silently.
+// ---------------------------------------------------------------------------
+var _rewardsStampsState = {rows: {}, colors: [], loaded: false, busy: false, note: '', noteBad: false, editing: null};
+
+function rewardsStampsApi() { var a = A(); return (a && a.callables && a.callables.manageLoyaltyCurrency) ? a.callables : null; }
+
+function rewardsStampCapLabel(row) {
+  var cap = (row && row.dailyCap != null && row.dailyCap !== '') ? Number(row.dailyCap) : null;
+  return (cap && cap > 0) ? (cap + ' per day') : 'No daily limit';
+}
+
+function rewardsStampsRowsHtml() {
+  var rows = _rewardsStampsState.rows, codes = Object.keys(rows);
+  if (!codes.length) return '';
+  codes.sort(function (a, b) { return (Number(rows[a].order) || 99) - (Number(rows[b].order) || 99) || a.localeCompare(b); });
+  return codes.map(function (code) {
+    var row = rows[code] || {}, off = row.enabled === false;
+    var swatch = '<span class="rw-swatch" style="background:' + rewardsEscape(String(row.color || '#ccc')) + ';"></span>';
+    // Label always accompanies the colour - a stamp is never identified by colour alone.
+    return '<tr class="' + (off ? 'rw-off' : '') + '">' +
+      '<td>' + swatch + '<span class="rw-nowrap">' + rewardsEscape(row.label || code) + '</span>' +
+      '<div class="rw-cell-sub">' + 'code: ' + rewardsEscape(code) + (off ? ' · disabled' : '') + '</div></td>' +
+      '<td class="rw-nowrap">' + rewardsStampCapLabel(row) + '</td>' +
+      '<td class="rw-nowrap">' + (Number(row.order) || 99) + '</td>' +
+      '<td class="rw-actions">' +
+      '<button type="button" class="rw-btn sm sec" data-stampedit="' + rewardsEscape(code) + '">Edit</button>' +
+      '<button type="button" class="rw-btn sm ' + (off ? 'sec' : 'danger') + '" data-stamptoggle="' + rewardsEscape(code) + '">' + (off ? 'Enable' : 'Disable') + '</button>' +
+      '</td></tr>';
+  }).join('');
+}
+
+function rewardsStampsColorPicker(selected) {
+  var colors = _rewardsStampsState.colors || [];
+  if (!colors.length) return '<div class="rw-cell-sub">Loading colours…</div>';
+  return '<div class="rw-colors">' + colors.map(function (color) {
+    var on = String(color.hex || '').toLowerCase() === String(selected || '').toLowerCase();
+    return '<button type="button" class="rw-color' + (on ? ' on' : '') + '" data-stampcolor="' + rewardsEscape(color.hex) + '" title="' + rewardsEscape(color.name) + '">' +
+      '<span class="rw-swatch" style="background:' + rewardsEscape(color.hex) + ';"></span>' +
+      '<span>' + rewardsEscape(color.name) + (on ? ' ✓' : '') + '</span></button>';
+  }).join('') + '</div>';
+}
+
+function rewardsStampsFormHtml() {
+  var editing = _rewardsStampsState.editing;
+  if (!editing) {
+    return '<div class="rw-form-actions" style="margin-top:1rem;"><button type="button" id="stampAdd" class="rw-btn ok"' + (_rewardsStampsState.busy ? ' disabled' : '') + '>Add a stamp</button></div>';
+  }
+  var isNew = editing.isNew === true;
+  return '<div class="rw-form">' +
+    '<div class="rw-form-title">' + (isNew ? 'Add a stamp' : 'Edit ' + rewardsEscape(editing.label || editing.code)) + '</div>' +
+    '<div class="rw-fields">' +
+    '<div class="rw-field"><label>Code</label>' +
+    '<input id="stampCode" value="' + rewardsEscape(editing.code || '') + '"' + (isNew ? '' : ' disabled') +
+    ' placeholder="e.g. green"></div>' +
+    '<div class="rw-field"><label>Label</label>' +
+    '<input id="stampLabel" value="' + rewardsEscape(editing.label || '') + '" placeholder="e.g. Green stamp"></div>' +
+    '<div class="rw-field"><label>Daily limit (blank = none)</label>' +
+    '<input id="stampCap" value="' + rewardsEscape(editing.dailyCap == null ? '' : editing.dailyCap) + '" placeholder="none"></div>' +
+    '<div class="rw-field"><label>Order</label>' +
+    '<input id="stampOrder" value="' + rewardsEscape(editing.order == null ? '' : editing.order) + '" placeholder="99"></div>' +
+    '</div>' +
+    (isNew ? '<div class="rw-warn">The code is permanent - it names the field that holds members\' stamps, so it can never be renamed later.</div>' : '') +
+    '<div class="rw-field-label">Colour</div>' +
+    '<div id="stampColors">' + rewardsStampsColorPicker(editing.color) + '</div>' +
+    '<div class="rw-form-actions">' +
+    '<button type="button" id="stampSave" class="rw-btn ok"' + (_rewardsStampsState.busy ? ' disabled' : '') + '>' + (_rewardsStampsState.busy ? 'Saving…' : 'Save stamp') + '</button>' +
+    '<button type="button" id="stampCancel" class="rw-btn sec">Cancel</button>' +
+    '</div></div>';
+}
+
+function rewardsStampsHtml() {
+  if (!rewardsStampsApi()) {
+    return '<div class="rw-fatal">Rewards stamp settings are unavailable right now. Refresh the portal and try again.</div>';
+  }
+  if (!_rewardsStampsState.loaded) {
+    return '<div class="rw-loading">' + (_rewardsStampsState.busy ? 'Loading stamps…' : 'Press Refresh to load the stamp list.') + '</div>';
+  }
+  var note = _rewardsStampsState.note;
+  var codes = Object.keys(_rewardsStampsState.rows);
+  var table = codes.length
+    ? '<table class="rw-table"><thead><tr>' +
+      '<th>Stamp</th><th>Daily limit</th><th>Order</th><th></th>' +
+      '</tr></thead><tbody>' + rewardsStampsRowsHtml() + '</tbody></table>'
+    : '<div class="rw-empty"><div class="rw-empty-ic">🥇</div><div class="rw-empty-t">No stamps configured yet.</div>' +
+      '<div class="rw-empty-s">Stamps are what members collect — create your first stamp type below.</div></div>';
+  return '<div class="rw-fineprint" style="margin-top:0;">The stamp types your program awards. A stamp can be relabelled, recoloured or limited at any time. It can be turned off, but never deleted or renamed - members hold real balances in it.</div>' +
+    (note ? '<div class="rw-note ' + (_rewardsStampsState.noteBad ? 'bad' : 'ok') + '" style="margin-top:.8rem;">' + rewardsEscape(note) + '</div>' : '') +
+    table + rewardsStampsFormHtml();
+}
+
+function rewardsStampsWire(body) {
+  var add = body.querySelector('#stampAdd');
+  if (add) add.onclick = function () {
+    var palette = _rewardsStampsState.colors || [];
+    _rewardsStampsState.editing = {isNew: true, code: '', label: '', color: palette.length ? palette[0].hex : '', dailyCap: '', order: ''};
+    _rewardsStampsState.note = ''; renderRewards();
+  };
+  var cancel = body.querySelector('#stampCancel');
+  if (cancel) cancel.onclick = function () { _rewardsStampsState.editing = null; renderRewards(); };
+  var save = body.querySelector('#stampSave');
+  if (save) save.onclick = function () { rewardsStampsSave(body); };
+  body.querySelectorAll('[data-stampcolor]').forEach(function (button) {
+    button.onclick = function () {
+      if (!_rewardsStampsState.editing) return;
+      _rewardsStampsState.editing.color = button.getAttribute('data-stampcolor');
+      // Keep whatever the operator has already typed while re-rendering the swatches.
+      rewardsStampsCaptureForm(body); renderRewards();
+    };
+  });
+  body.querySelectorAll('[data-stampedit]').forEach(function (button) {
+    button.onclick = function () {
+      var code = button.getAttribute('data-stampedit'), row = _rewardsStampsState.rows[code] || {};
+      _rewardsStampsState.editing = {isNew: false, code: code, label: row.label || '', color: row.color || '', dailyCap: row.dailyCap == null ? '' : row.dailyCap, order: row.order == null ? '' : row.order};
+      _rewardsStampsState.note = ''; renderRewards();
+    };
+  });
+  body.querySelectorAll('[data-stamptoggle]').forEach(function (button) {
+    button.onclick = function () {
+      var code = button.getAttribute('data-stamptoggle'), row = _rewardsStampsState.rows[code] || {};
+      rewardsStampsToggle(code, row.enabled === false ? 'enable' : 'disable');
+    };
+  });
+}
+
+// Preserve in-progress typing across a re-render (choosing a colour re-renders the form).
+function rewardsStampsCaptureForm(body) {
+  var editing = _rewardsStampsState.editing; if (!editing) return;
+  var code = body.querySelector('#stampCode'), label = body.querySelector('#stampLabel');
+  var cap = body.querySelector('#stampCap'), order = body.querySelector('#stampOrder');
+  if (code && !code.disabled) editing.code = code.value;
+  if (label) editing.label = label.value;
+  if (cap) editing.dailyCap = cap.value;
+  if (order) editing.order = order.value;
+}
+
+function rewardsStampsLoad() {
+  var api = rewardsStampsApi(); if (!api) return;
+  _rewardsStampsState.busy = true;
+  api.manageLoyaltyCurrency({action: 'list'}).then(function (result) {
+    var payload = (result && result.data) || {};
+    _rewardsStampsState.rows = payload.currencies || {};
+    // The palette is whatever the server offers - the screen never invents a colour.
+    _rewardsStampsState.colors = payload.colors || [];
+    _rewardsStampsState.loaded = true;
+    // The shared currency labels feed the catalog and rules screens - refresh them too.
+    _rewardsState.currenciesLoaded = false;
+  }).catch(function (error) {
+    _rewardsStampsState.note = rewardsMessage(error, 'Could not load the stamp list.');
+    _rewardsStampsState.noteBad = true;
+  }).then(function () {
+    _rewardsStampsState.busy = false; renderRewards();
+  });
+}
+
+function rewardsStampsSave(body) {
+  var api = rewardsStampsApi(); if (!api || _rewardsStampsState.busy) return;
+  rewardsStampsCaptureForm(body);
+  var editing = _rewardsStampsState.editing; if (!editing) return;
+  var payload = {
+    action: 'save',
+    code: String(editing.code || '').trim(),
+    label: String(editing.label || '').trim(),
+    color: editing.color || '',
+    dailyCap: String(editing.dailyCap == null ? '' : editing.dailyCap).trim(),
+    order: String(editing.order == null ? '' : editing.order).trim(),
+  };
+  if (!payload.order) delete payload.order;
+  _rewardsStampsState.busy = true; renderRewards();
+  api.manageLoyaltyCurrency(payload).then(function (result) {
+    var data = (result && result.data) || {};
+    _rewardsStampsState.note = data.created ? ('Added the ' + payload.label + ' stamp.') : ('Saved the ' + payload.label + ' stamp.');
+    _rewardsStampsState.noteBad = false;
+    _rewardsStampsState.editing = null; _rewardsStampsState.loaded = false;
+    _rewardsState.currenciesLoaded = false;
+  }).catch(function (error) {
+    // Validation errors come back from the server (palette colour, code shape, cap) and
+    // are shown as written - the operator needs the exact reason.
+    _rewardsStampsState.note = rewardsMessage(error, 'Could not save that stamp.');
+    _rewardsStampsState.noteBad = true;
+  }).then(function () {
+    _rewardsStampsState.busy = false;
+    if (!_rewardsStampsState.loaded && !_rewardsStampsState.noteBad) rewardsStampsLoad(); else renderRewards();
+  });
+}
+
+function rewardsStampsToggle(code, action) {
+  var api = rewardsStampsApi(); if (!api || _rewardsStampsState.busy) return;
+  if (action === 'disable' && !confirm('Turn this stamp off? Members keep the stamps they already hold, and it can be turned back on at any time.')) return;
+  _rewardsStampsState.busy = true; _rewardsStampsState.note = ''; renderRewards();
+  api.manageLoyaltyCurrency({action: action, code: code}).then(function () {
+    _rewardsStampsState.note = action === 'enable' ? 'Stamp turned on.' : 'Stamp turned off. Members keep any stamps they already hold.';
+    _rewardsStampsState.noteBad = false; _rewardsStampsState.loaded = false;
+    _rewardsState.currenciesLoaded = false;
+  }).catch(function (error) {
+    // A refusal here is a real safeguard (a live rule still awards it, or a live reward
+    // still costs it). Show the server's wording: it names what to turn off first.
+    _rewardsStampsState.note = rewardsMessage(error, 'Could not change that stamp.');
+    _rewardsStampsState.noteBad = true;
+  }).then(function () {
+    _rewardsStampsState.busy = false;
+    if (!_rewardsStampsState.loaded && !_rewardsStampsState.noteBad) rewardsStampsLoad(); else renderRewards();
   });
 }
 // ---------------------------------------------------------------------------
@@ -332,40 +561,40 @@ function rewardsGrantDetail(row) {
 function rewardsCatalogHtml() {
   var rows = _rewardsState.catalog, ids = Object.keys(rows);
   if (!_rewardsState.catalogLoaded) {
-    return '<div style="padding:1rem;text-align:center;color:#666;font-size:.82rem;">' +
-      (_rewardsState.busy ? 'Loading the catalog…' : 'Press Refresh to load the reward catalog.') + '</div>';
+    return '<div class="rw-loading">' + (_rewardsState.busy ? 'Loading the catalog…' : 'Press Refresh to load the reward catalog.') + '</div>';
   }
   ids.sort(function (a, b) {
     return String((rows[a] && rows[a].name) || a).localeCompare(String((rows[b] && rows[b].name) || b));
   });
   var body = ids.length ? ids.map(function (rewardId) {
     var row = rows[rewardId] || {}, off = row.enabled === false;
-    return '<tr style="border-bottom:1px solid #eee;' + (off ? 'opacity:.55;' : '') + '">' +
-      '<td style="padding:.4rem .3rem;"><strong>' + rewardsEscape(row.name || rewardId) + '</strong>' +
-      '<div style="font-size:.72rem;color:#777;">id: ' + rewardsEscape(rewardId) + (row.system ? ' · built-in' : '') + (off ? ' · disabled' : '') + '</div></td>' +
-      '<td style="padding:.4rem .3rem;font-size:.8rem;white-space:nowrap;">' +
-      rewardsEscape(rewardsCurrencyLabel(row.costCurrency)) + ' × ' + (Number(row.costQty) || 0) + '</td>' +
-      '<td style="padding:.4rem .3rem;font-size:.8rem;">' + rewardsGrantDetail(row) +
-      (row.stackingAllowed === true ? '<div style="font-size:.72rem;color:#777;">stacks with discounts</div>' : '') + '</td>' +
-      '<td style="padding:.4rem .3rem;font-size:.8rem;white-space:nowrap;">' + (Number(row.expiryDays) || 0) + ' days</td>' +
-      '<td style="padding:.4rem .3rem;text-align:right;white-space:nowrap;">' +
-      '<button type="button" data-rewardedit="' + rewardsEscape(rewardId) + '" style="margin-right:.35rem;">Edit</button>' +
-      '<button type="button" data-rewardtoggle="' + rewardsEscape(rewardId) + '">' + (off ? 'Enable' : 'Disable') + '</button>' +
+    return '<tr class="' + (off ? 'rw-off' : '') + '">' +
+      '<td><span class="rw-nowrap">' + rewardsEscape(row.name || rewardId) + '</span>' +
+      '<div class="rw-cell-sub">' + 'id: ' + rewardsEscape(rewardId) + (row.system ? ' · built-in' : '') + (off ? ' · disabled' : '') + '</div></td>' +
+      '<td class="rw-nowrap">' + rewardsEscape(rewardsCurrencyLabel(row.costCurrency)) + ' × ' + (Number(row.costQty) || 0) + '</td>' +
+      '<td>' + rewardsGrantDetail(row) +
+      (row.stackingAllowed === true ? '<div class="rw-cell-sub">stacks with discounts</div>' : '') + '</td>' +
+      '<td class="rw-nowrap">' + (Number(row.expiryDays) || 0) + ' days</td>' +
+      '<td class="rw-actions">' +
+      '<button type="button" class="rw-btn sm sec" data-rewardedit="' + rewardsEscape(rewardId) + '">Edit</button>' +
+      '<button type="button" class="rw-btn sm ' + (off ? 'sec' : 'danger') + '" data-rewardtoggle="' + rewardsEscape(rewardId) + '">' + (off ? 'Enable' : 'Disable') + '</button>' +
       '</td></tr>';
-  }).join('') : '<tr><td colspan="5" style="padding:.6rem;color:#666;">No rewards configured yet.</td></tr>';
+  }).join('') : '';
 
-  return '<table style="width:100%;border-collapse:collapse;font-size:.82rem;">' +
-    '<thead><tr style="text-align:left;border-bottom:2px solid #eee;color:#666;font-size:.74rem;">' +
-    '<th style="padding:.4rem .3rem;">Reward</th><th style="padding:.4rem .3rem;">Cost</th>' +
-    '<th style="padding:.4rem .3rem;">Grant</th><th style="padding:.4rem .3rem;">Claim expires</th><th></th>' +
-    '</tr></thead><tbody>' + body + '</tbody></table>' +
-    '<div style="margin-top:.9rem;">' + rewardsCatalogFormHtml() + '</div>';
+  var table = ids.length
+    ? '<table class="rw-table"><thead><tr>' +
+      '<th>Reward</th><th>Cost</th><th>Grant</th><th>Claim expires</th><th></th>' +
+      '</tr></thead><tbody>' + body + '</tbody></table>'
+    : '<div class="rw-empty"><div class="rw-empty-ic">🎁</div><div class="rw-empty-t">No rewards configured yet.</div>' +
+      '<div class="rw-empty-s">Add your first reward below so members have something to save their stamps for.</div></div>';
+
+  return table + rewardsCatalogFormHtml();
 }
 
 function rewardsCatalogFormHtml() {
   var editing = _rewardsState.catalogEditing;
   if (!editing) {
-    return '<button type="button" id="rewardAdd"' + (_rewardsState.busy ? ' disabled' : '') + '>Add a reward</button>';
+    return '<div class="rw-form-actions" style="margin-top:1rem;"><button type="button" id="rewardAdd" class="rw-btn ok"' + (_rewardsState.busy ? ' disabled' : '') + '>Add a reward</button></div>';
   }
   var isNew = editing.isNew === true;
   var currencyOptions = rewardsCurrencyCodes().map(function (code) {
@@ -380,25 +609,25 @@ function rewardsCatalogFormHtml() {
   var needsPercent = editing.grantType === 'percent_off_capped';
   var needsItem = editing.grantType === 'free_item_no_sub';
 
-  return '<div style="border:1px solid #e3e3e3;border-radius:10px;padding:.8rem;background:#fafafa;">' +
-    '<div style="font-size:.8rem;font-weight:600;margin-bottom:.5rem;">' + (isNew ? 'Add a reward' : 'Edit ' + rewardsEscape(editing.name || editing.rewardId)) + '</div>' +
-    '<div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end;">' +
-    '<label style="font-size:.76rem;">Name<input id="rewardName" value="' + rewardsEscape(editing.name || '') + '" placeholder="e.g. Free drink" style="display:block;width:180px;"></label>' +
-    '<label style="font-size:.76rem;">Costs<select id="rewardCostCurrency" style="display:block;width:130px;">' + currencyOptions + '</select></label>' +
-    '<label style="font-size:.76rem;">Stamps<input id="rewardCostQty" value="' + rewardsEscape(editing.costQty == null ? '' : editing.costQty) + '" placeholder="10" style="display:block;width:80px;"></label>' +
-    '<label style="font-size:.76rem;">Grant type<select id="rewardGrantType" style="display:block;width:230px;">' + grantOptions + '</select></label>' +
-    (needsCap ? '<label style="font-size:.76rem;">Peso cap<input id="rewardCap" value="' + rewardsEscape(editing.cap == null ? '' : editing.cap) + '" placeholder="120" style="display:block;width:90px;"></label>' : '') +
-    (needsPercent ? '<label style="font-size:.76rem;">Percent (1-100)<input id="rewardPercent" value="' + rewardsEscape(editing.percent == null ? '' : editing.percent) + '" placeholder="20" style="display:block;width:90px;"></label>' : '') +
-    (needsItem ? '<label style="font-size:.76rem;">Item id<input id="rewardItemId" value="' + rewardsEscape(editing.itemId || '') + '" placeholder="item id from the menu" style="display:block;width:160px;"></label>' : '') +
-    '<label style="font-size:.76rem;">Claim expiry (days)<input id="rewardExpiry" value="' + rewardsEscape(editing.expiryDays == null ? '' : editing.expiryDays) + '" placeholder="30" style="display:block;width:110px;"></label>' +
+  return '<div class="rw-form">' +
+    '<div class="rw-form-title">' + (isNew ? 'Add a reward' : 'Edit ' + rewardsEscape(editing.name || editing.rewardId)) + '</div>' +
+    '<div class="rw-fields">' +
+    '<div class="rw-field"><label>Name</label><input id="rewardName" value="' + rewardsEscape(editing.name || '') + '" placeholder="e.g. Free drink"></div>' +
+    '<div class="rw-field"><label>Costs</label><select id="rewardCostCurrency">' + currencyOptions + '</select></div>' +
+    '<div class="rw-field"><label>Stamps</label><input id="rewardCostQty" value="' + rewardsEscape(editing.costQty == null ? '' : editing.costQty) + '" placeholder="10"></div>' +
+    '<div class="rw-field"><label>Grant type</label><select id="rewardGrantType">' + grantOptions + '</select></div>' +
+    (needsCap ? '<div class="rw-field"><label>Peso cap</label><input id="rewardCap" value="' + rewardsEscape(editing.cap == null ? '' : editing.cap) + '" placeholder="120"></div>' : '') +
+    (needsPercent ? '<div class="rw-field"><label>Percent (1-100)</label><input id="rewardPercent" value="' + rewardsEscape(editing.percent == null ? '' : editing.percent) + '" placeholder="20"></div>' : '') +
+    (needsItem ? '<div class="rw-field"><label>Item id</label><input id="rewardItemId" value="' + rewardsEscape(editing.itemId || '') + '" placeholder="item id from the menu"></div>' : '') +
+    '<div class="rw-field"><label>Claim expiry (days)</label><input id="rewardExpiry" value="' + rewardsEscape(editing.expiryDays == null ? '' : editing.expiryDays) + '" placeholder="30"></div>' +
     '</div>' +
-    '<div style="display:flex;gap:1rem;margin-top:.5rem;font-size:.78rem;">' +
+    '<div class="rw-checks">' +
     '<label><input type="checkbox" id="rewardStacking"' + (editing.stackingAllowed === true ? ' checked' : '') + '> Can stack with other discounts</label>' +
     '<label><input type="checkbox" id="rewardEnabled"' + (editing.enabled !== false ? ' checked' : '') + '> Enabled</label>' +
     '</div>' +
-    '<div style="margin-top:.7rem;">' +
-    '<button type="button" id="rewardSave"' + (_rewardsState.busy ? ' disabled' : '') + '>' + (_rewardsState.busy ? 'Saving…' : 'Save reward') + '</button> ' +
-    '<button type="button" id="rewardCancel">Cancel</button>' +
+    '<div class="rw-form-actions">' +
+    '<button type="button" id="rewardSave" class="rw-btn ok"' + (_rewardsState.busy ? ' disabled' : '') + '>' + (_rewardsState.busy ? 'Saving…' : 'Save reward') + '</button>' +
+    '<button type="button" id="rewardCancel" class="rw-btn sec">Cancel</button>' +
     '</div></div>';
 }
 
@@ -584,39 +813,39 @@ function rewardsToDatetimeLocal(ms) {
 function rewardsRulesHtml() {
   var rows = _rewardsState.rules, ids = Object.keys(rows);
   if (!_rewardsState.rulesLoaded) {
-    return '<div style="padding:1rem;text-align:center;color:#666;font-size:.82rem;">' +
-      (_rewardsState.busy ? 'Loading rules…' : 'Press Refresh to load the earning rules.') + '</div>';
+    return '<div class="rw-loading">' + (_rewardsState.busy ? 'Loading rules…' : 'Press Refresh to load the earning rules.') + '</div>';
   }
   ids.sort(function (a, b) {
     return String((rows[a] && rows[a].name) || a).localeCompare(String((rows[b] && rows[b].name) || b));
   });
   var body = ids.length ? ids.map(function (ruleId) {
     var row = rows[ruleId] || {}, off = row.enabled === false;
-    return '<tr style="border-bottom:1px solid #eee;' + (off ? 'opacity:.55;' : '') + '">' +
-      '<td style="padding:.4rem .3rem;"><strong>' + rewardsEscape(row.name || ruleId) + '</strong>' +
-      '<div style="font-size:.72rem;color:#777;">id: ' + rewardsEscape(ruleId) + (row.system ? ' · built-in' : '') + (off ? ' · disabled' : '') + '</div></td>' +
-      '<td style="padding:.4rem .3rem;font-size:.8rem;">' + rewardsEscape(rewardsTriggerLabel(row.trigger)) +
-      '<div style="font-size:.72rem;color:#777;">' + rewardsEscape(rewardsConditionSummary(row)) + '</div></td>' +
-      '<td style="padding:.4rem .3rem;font-size:.8rem;white-space:nowrap;">' +
-      rewardsEscape(rewardsCurrencyLabel(row.currency)) + ' × ' + (Number(row.qty) || 0) + '</td>' +
-      '<td style="padding:.4rem .3rem;font-size:.8rem;">' + rewardsEscape(rewardsScheduleSummary(row)) + '</td>' +
-      '<td style="padding:.4rem .3rem;text-align:right;white-space:nowrap;">' +
-      '<button type="button" data-ruleedit="' + rewardsEscape(ruleId) + '">Edit</button>' +
+    return '<tr class="' + (off ? 'rw-off' : '') + '">' +
+      '<td><span class="rw-nowrap">' + rewardsEscape(row.name || ruleId) + '</span>' +
+      '<div class="rw-cell-sub">' + 'id: ' + rewardsEscape(ruleId) + (row.system ? ' · built-in' : '') + (off ? ' · disabled' : '') + '</div></td>' +
+      '<td>' + rewardsEscape(rewardsTriggerLabel(row.trigger)) +
+      '<div class="rw-cell-sub">' + rewardsEscape(rewardsConditionSummary(row)) + '</div></td>' +
+      '<td class="rw-nowrap">' + rewardsEscape(rewardsCurrencyLabel(row.currency)) + ' × ' + (Number(row.qty) || 0) + '</td>' +
+      '<td class="rw-nowrap">' + rewardsEscape(rewardsScheduleSummary(row)) + '</td>' +
+      '<td class="rw-actions">' +
+      '<button type="button" class="rw-btn sm sec" data-ruleedit="' + rewardsEscape(ruleId) + '">Edit</button>' +
       '</td></tr>';
-  }).join('') : '<tr><td colspan="5" style="padding:.6rem;color:#666;">No earning rules configured yet.</td></tr>';
+  }).join('') : '';
 
-  return '<table style="width:100%;border-collapse:collapse;font-size:.82rem;">' +
-    '<thead><tr style="text-align:left;border-bottom:2px solid #eee;color:#666;font-size:.74rem;">' +
-    '<th style="padding:.4rem .3rem;">Rule</th><th style="padding:.4rem .3rem;">When</th>' +
-    '<th style="padding:.4rem .3rem;">Awards</th><th style="padding:.4rem .3rem;">Schedule</th><th></th>' +
-    '</tr></thead><tbody>' + body + '</tbody></table>' +
-    '<div style="margin-top:.9rem;">' + rewardsRulesFormHtml() + '</div>';
+  var table = ids.length
+    ? '<table class="rw-table"><thead><tr>' +
+      '<th>Rule</th><th>When</th><th>Awards</th><th>Schedule</th><th></th>' +
+      '</tr></thead><tbody>' + body + '</tbody></table>'
+    : '<div class="rw-empty"><div class="rw-empty-ic">📌</div><div class="rw-empty-t">No earning rules configured yet.</div>' +
+      '<div class="rw-empty-s">Rules decide how members earn stamps — for example one stamp per completed order.</div></div>';
+
+  return table + rewardsRulesFormHtml();
 }
 
 function rewardsRulesFormHtml() {
   var editing = _rewardsState.rulesEditing;
   if (!editing) {
-    return '<button type="button" id="ruleAdd"' + (_rewardsState.busy ? ' disabled' : '') + '>Add a rule</button>';
+    return '<div class="rw-form-actions" style="margin-top:1rem;"><button type="button" id="ruleAdd" class="rw-btn ok"' + (_rewardsState.busy ? ' disabled' : '') + '>Add a rule</button></div>';
   }
   var isNew = editing.isNew === true;
   var currencyOptions = rewardsCurrencyCodes().map(function (code) {
@@ -629,31 +858,31 @@ function rewardsRulesFormHtml() {
   }).join('');
   var conditionField = '';
   if (editing.trigger === 'amount_threshold') {
-    conditionField = '<label style="font-size:.76rem;">Minimum net amount (₱)<input id="ruleMinNet" value="' + rewardsEscape(editing.minNetAmount == null ? '' : editing.minNetAmount) + '" placeholder="500" style="display:block;width:130px;"></label>';
+    conditionField = '<div class="rw-field"><label>Minimum net amount (₱)</label><input id="ruleMinNet" value="' + rewardsEscape(editing.minNetAmount == null ? '' : editing.minNetAmount) + '" placeholder="500"></div>';
   } else if (editing.trigger === 'order_count') {
-    conditionField = '<label style="font-size:.76rem;">Every N orders<input id="ruleEvery" value="' + rewardsEscape(editing.every == null ? '' : editing.every) + '" placeholder="5" style="display:block;width:110px;"></label>';
+    conditionField = '<div class="rw-field"><label>Every N orders</label><input id="ruleEvery" value="' + rewardsEscape(editing.every == null ? '' : editing.every) + '" placeholder="5"></div>';
   }
 
-  return '<div style="border:1px solid #e3e3e3;border-radius:10px;padding:.8rem;background:#fafafa;">' +
-    '<div style="font-size:.8rem;font-weight:600;margin-bottom:.5rem;">' + (isNew ? 'Add an earning rule' : 'Edit ' + rewardsEscape(editing.name || editing.ruleId)) + '</div>' +
-    '<div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end;">' +
-    '<label style="font-size:.76rem;">Name<input id="ruleName" value="' + rewardsEscape(editing.name || '') + '" placeholder="e.g. Yellow stamp · net over ₱500" style="display:block;width:210px;"></label>' +
-    '<label style="font-size:.76rem;">When<select id="ruleTrigger" style="display:block;width:190px;">' + triggerOptions + '</select></label>' +
-    '<label style="font-size:.76rem;">Award<select id="ruleCurrency" style="display:block;width:130px;">' + currencyOptions + '</select></label>' +
-    '<label style="font-size:.76rem;">Stamps<input id="ruleQty" value="' + rewardsEscape(editing.qty == null ? '' : editing.qty) + '" placeholder="1" style="display:block;width:80px;"></label>' +
+  return '<div class="rw-form">' +
+    '<div class="rw-form-title">' + (isNew ? 'Add an earning rule' : 'Edit ' + rewardsEscape(editing.name || editing.ruleId)) + '</div>' +
+    '<div class="rw-fields">' +
+    '<div class="rw-field"><label>Name</label><input id="ruleName" value="' + rewardsEscape(editing.name || '') + '" placeholder="e.g. Yellow stamp · net over ₱500"></div>' +
+    '<div class="rw-field"><label>When</label><select id="ruleTrigger">' + triggerOptions + '</select></div>' +
+    '<div class="rw-field"><label>Award</label><select id="ruleCurrency">' + currencyOptions + '</select></div>' +
+    '<div class="rw-field"><label>Stamps</label><input id="ruleQty" value="' + rewardsEscape(editing.qty == null ? '' : editing.qty) + '" placeholder="1"></div>' +
     conditionField +
     '</div>' +
-    '<div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end;margin-top:.5rem;">' +
-    '<label style="font-size:.76rem;">Starts (optional)<input id="ruleStart" type="datetime-local" value="' + rewardsEscape(rewardsToDatetimeLocal(editing.startAt)) + '" style="display:block;width:190px;"></label>' +
-    '<label style="font-size:.76rem;">Ends (optional)<input id="ruleEnd" type="datetime-local" value="' + rewardsEscape(rewardsToDatetimeLocal(editing.endAt)) + '" style="display:block;width:190px;"></label>' +
-    '<label style="font-size:.78rem;"><input type="checkbox" id="ruleEnabled"' + (editing.enabled !== false ? ' checked' : '') + '> Enabled</label>' +
+    '<div class="rw-fields">' +
+    '<div class="rw-field"><label>Starts (optional)</label><input id="ruleStart" type="datetime-local" value="' + rewardsEscape(rewardsToDatetimeLocal(editing.startAt)) + '"></div>' +
+    '<div class="rw-field"><label>Ends (optional)</label><input id="ruleEnd" type="datetime-local" value="' + rewardsEscape(rewardsToDatetimeLocal(editing.endAt)) + '"></div>' +
+    '<div class="rw-field rw-field-inline"><label>&nbsp;</label><label class="rw-check-label"><input type="checkbox" id="ruleEnabled"' + (editing.enabled !== false ? ' checked' : '') + '> Enabled</label></div>' +
     '</div>' +
     (editing.trigger === 'amount_threshold'
-      ? '<div style="font-size:.72rem;color:#8a6d3b;margin-top:.5rem;">Amount rules are a ladder, not a stack: when an order crosses several amounts for the same stamp, only the highest one fires. Enter each tier as its own rule.</div>'
+      ? '<div class="rw-warn">Amount rules are a ladder, not a stack: when an order crosses several amounts for the same stamp, only the highest one fires. Enter each tier as its own rule.</div>'
       : '') +
-    '<div style="margin-top:.7rem;">' +
-    '<button type="button" id="ruleSave"' + (_rewardsState.busy ? ' disabled' : '') + '>' + (_rewardsState.busy ? 'Saving…' : 'Save rule') + '</button> ' +
-    '<button type="button" id="ruleCancel">Cancel</button>' +
+    '<div class="rw-form-actions">' +
+    '<button type="button" id="ruleSave" class="rw-btn ok"' + (_rewardsState.busy ? ' disabled' : '') + '>' + (_rewardsState.busy ? 'Saving…' : 'Save rule') + '</button>' +
+    '<button type="button" id="ruleCancel" class="rw-btn sec">Cancel</button>' +
     '</div></div>';
 }
 
@@ -784,26 +1013,26 @@ function rewardsRulesSave(body) {
 // ---------------------------------------------------------------------------
 function rewardsMembersHtml() {
   var query = _rewardsState.memberQuery || {phone: '', memberId: ''};
-  var html = '<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end;">' +
-    '<label style="font-size:.76rem;">Mobile number<input id="memberSearchPhone" value="' + rewardsEscape(query.phone) + '" placeholder="09… or +63…" style="display:block;width:160px;"></label>' +
-    '<label style="font-size:.76rem;">or Member ID<input id="memberSearchId" value="' + rewardsEscape(query.memberId) + '" placeholder="mem_…" style="display:block;width:180px;"></label>' +
-    '<button type="button" id="memberSearch"' + (_rewardsState.busy ? ' disabled' : '') + '>' + (_rewardsState.busy ? 'Searching…' : 'Look up') + '</button>' +
+  var html = '<div class="rw-search">' +
+    '<div class="rw-field"><label>Mobile number</label><input id="memberSearchPhone" value="' + rewardsEscape(query.phone) + '" placeholder="09… or +63…"></div>' +
+    '<div class="rw-field"><label>or Member ID</label><input id="memberSearchId" value="' + rewardsEscape(query.memberId) + '" placeholder="mem_…"></div>' +
+    '<div class="rw-field rw-field-inline"><label>&nbsp;</label><button type="button" id="memberSearch" class="rw-btn ok"' + (_rewardsState.busy ? ' disabled' : '') + '>' + (_rewardsState.busy ? 'Searching…' : 'Look up') + '</button></div>' +
     '</div>' +
-    '<div style="font-size:.72rem;color:#666;margin-top:.35rem;">Find one member by exact mobile number or member ID. Browsing the member list is intentionally not possible.</div>';
-  if (_rewardsState.member) html += '<div style="margin-top:.9rem;">' + rewardsMemberCardHtml(_rewardsState.member) + '</div>';
+    '<div class="rw-fineprint">Find one member by exact mobile number or member ID. Browsing the member list is intentionally not possible.</div>';
+  if (_rewardsState.member) html += rewardsMemberCardHtml(_rewardsState.member);
   return html;
 }
 
 function rewardsStatusBadge(status) {
-  var palette = {active: ['#e8f5e9', '#1b5e20', 'Active'], blocked: ['#fde8e8', '#721c24', 'Blocked'], anonymized: ['#eee', '#444', 'Anonymized']};
-  var row = palette[status] || palette.active;
-  return '<span style="display:inline-block;padding:.15rem .5rem;border-radius:999px;font-size:.72rem;background:' + row[0] + ';color:' + row[1] + ';">' + row[2] + '</span>';
+  var cls = {active: 'ok', blocked: 'bad', anonymized: 'off'}[status] || 'ok';
+  var label = {active: 'Active', blocked: 'Blocked', anonymized: 'Anonymized'}[status] || 'Active';
+  return '<span class="rw-badge ' + cls + '">' + label + '</span>';
 }
 
 function rewardsMemberCardHtml(member) {
   var stampsHtml = (member.stamps || []).map(function (currency) {
-    return '<span style="display:inline-flex;align-items:center;margin:0 .8rem .4rem 0;font-size:.82rem;">' +
-      '<span style="display:inline-block;width:13px;height:13px;border-radius:50%;margin-right:.35rem;border:1px solid rgba(0,0,0,.2);background:' + rewardsEscape(currency.color || '#ccc') + ';"></span>' +
+    return '<span class="rw-stamp">' +
+      '<span class="rw-swatch" style="background:' + rewardsEscape(currency.color || '#ccc') + ';"></span>' +
       rewardsEscape(currency.label || currency.code) + ': <strong>&nbsp;' + (Number(currency.balance) || 0) + '</strong></span>';
   }).join('');
   var rows = [
@@ -812,39 +1041,39 @@ function rewardsMemberCardHtml(member) {
     ['Member since', member.memberSince ? rewardsDate(member.memberSince) : '—'],
     ['Open reward claims', String(Number(member.openRewards) || 0)],
   ];
-  var html = '<div style="border:1px solid #e3e3e3;border-radius:12px;padding:.9rem;background:#fff;">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap;">' +
-    '<div style="font-size:.95rem;font-weight:600;color:var(--bd);">' + rewardsEscape(member.name || '(name removed)') + '</div>' +
+  var html = '<div class="rw-member">' +
+    '<div class="rw-member-top">' +
+    '<div class="rw-member-name">' + rewardsEscape(member.name || '(name removed)') + '</div>' +
     rewardsStatusBadge(member.status) + '</div>' +
-    '<table style="margin-top:.5rem;border-collapse:collapse;font-size:.8rem;">' +
+    '<div class="rw-kv">' +
     rows.map(function (row) {
-      return '<tr><td style="padding:.15rem .6rem .15rem 0;color:#666;white-space:nowrap;">' + row[0] + '</td><td style="padding:.15rem 0;">' + row[1] + '</td></tr>';
-    }).join('') + '</table>' +
-    '<div style="margin-top:.6rem;font-size:.76rem;color:#666;">Stamps held</div>' +
-    '<div style="margin-top:.25rem;">' + (stampsHtml || '<span style="font-size:.8rem;color:#666;">None.</span>') + '</div>';
+      return '<div class="rw-kv-row"><span class="rw-kv-key">' + row[0] + '</span><span class="rw-kv-val">' + row[1] + '</span></div>';
+    }).join('') + '</div>' +
+    '<div class="rw-stamplist-label">Stamps held</div>' +
+    '<div class="rw-stamplist">' + (stampsHtml || '<span class="rw-cell-sub">None.</span>') + '</div>';
 
   if (member.status === 'anonymized') {
-    html += '<div style="margin-top:.8rem;padding:.6rem;border-radius:8px;background:#eee;color:#444;font-size:.78rem;">' +
+    html += '<div class="rw-mutedbox">' +
       'Personal data was removed' + (member.anonymizedAt ? (' on ' + rewardsDate(member.anonymizedAt)) : '') +
       '. The ledger, balances and reward claims are kept for accounting, and no further change is possible on this record.</div>';
   } else if (_rewardsState.anonymizeArmed === member.memberId) {
-    html += '<div style="margin-top:.8rem;border:1px solid #b35b5b;border-radius:10px;padding:.7rem;background:#fdf3f3;">' +
-      '<div style="font-size:.8rem;font-weight:600;color:#721c24;">Erase personal data — permanent</div>' +
-      '<div style="font-size:.74rem;color:#555;margin-top:.3rem;">This deletes the member\'s name, mobile number and badge forever. Any stamps they still hold are forfeited. ' +
+    html += '<div class="rw-dangerbox">' +
+      '<div class="rw-dangerbox-title">Erase personal data — permanent</div>' +
+      '<div class="rw-dangerbox-body">This deletes the member\'s name, mobile number and badge forever. Any stamps they still hold are forfeited. ' +
       'Ledger entries, balances and reward claims are kept for accounting, but the person behind the record can never be identified or restored.</div>' +
-      '<label style="font-size:.76rem;margin-top:.5rem;display:block;">Type ANONYMIZE (all caps) to continue:' +
-      '<input id="memberAnonymizeWord" autocomplete="off" style="display:block;width:170px;margin-top:.25rem;"></label>' +
-      '<div style="display:flex;gap:.4rem;margin-top:.5rem;">' +
-      '<button type="button" id="memberAnonymizeConfirm"' + (_rewardsState.busy ? ' disabled' : '') + ' style="border-color:#b35b5b;color:#721c24;background:#fff;">' + (_rewardsState.busy ? 'Erasing…' : 'Erase forever') + '</button>' +
-      '<button type="button" id="memberAnonymizeCancel"' + (_rewardsState.busy ? ' disabled' : '') + '>Cancel</button></div></div>';
+      '<div class="rw-field"><label>Type ANONYMIZE (all caps) to continue:</label>' +
+      '<input id="memberAnonymizeWord" autocomplete="off"></div>' +
+      '<div class="rw-form-actions">' +
+      '<button type="button" id="memberAnonymizeConfirm" class="rw-btn danger"' + (_rewardsState.busy ? ' disabled' : '') + '>' + (_rewardsState.busy ? 'Erasing…' : 'Erase forever') + '</button>' +
+      '<button type="button" id="memberAnonymizeCancel" class="rw-btn sec"' + (_rewardsState.busy ? ' disabled' : '') + '>Cancel</button></div></div>';
   } else {
-    html += '<div style="margin-top:.8rem;display:flex;gap:.4rem;flex-wrap:wrap;">' +
+    html += '<div class="rw-actions-row">' +
       (member.status === 'blocked'
-        ? '<button type="button" data-memberunblock="' + rewardsEscape(member.memberId) + '"' + (_rewardsState.busy ? ' disabled' : '') + '>Unblock member</button>'
-        : '<button type="button" data-memberblock="' + rewardsEscape(member.memberId) + '"' + (_rewardsState.busy ? ' disabled' : '') + '>Block member</button>') +
-      '<button type="button" data-memberanonymize="' + rewardsEscape(member.memberId) + '"' + (_rewardsState.busy ? ' disabled' : '') + ' style="border-color:#b35b5b;color:#721c24;background:#fff;">Erase personal data…</button>' +
+        ? '<button type="button" class="rw-btn sec" data-memberunblock="' + rewardsEscape(member.memberId) + '"' + (_rewardsState.busy ? ' disabled' : '') + '>Unblock member</button>'
+        : '<button type="button" class="rw-btn sec" data-memberblock="' + rewardsEscape(member.memberId) + '"' + (_rewardsState.busy ? ' disabled' : '') + '>Block member</button>') +
+      '<button type="button" class="rw-btn danger" data-memberanonymize="' + rewardsEscape(member.memberId) + '"' + (_rewardsState.busy ? ' disabled' : '') + '>Erase personal data…</button>' +
       '</div>' +
-      '<div style="font-size:.72rem;color:#666;margin-top:.4rem;">Blocking keeps every stamp and only pauses earning and redemption. Erasing is permanent: the member\'s name, number and badge are deleted, and any stamps still held are forfeited.</div>';
+      '<div class="rw-fineprint">Blocking keeps every stamp and only pauses earning and redemption. Erasing is permanent: the member\'s name, number and badge are deleted, and any stamps still held are forfeited.</div>';
   }
   return html + '</div>';
 }

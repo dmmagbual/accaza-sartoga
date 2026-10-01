@@ -53,39 +53,39 @@ function rewardsToDatetimeLocal(ms) {
 function rewardsRulesHtml() {
   var rows = _rewardsState.rules, ids = Object.keys(rows);
   if (!_rewardsState.rulesLoaded) {
-    return '<div style="padding:1rem;text-align:center;color:#666;font-size:.82rem;">' +
-      (_rewardsState.busy ? 'Loading rules…' : 'Press Refresh to load the earning rules.') + '</div>';
+    return '<div class="rw-loading">' + (_rewardsState.busy ? 'Loading rules…' : 'Press Refresh to load the earning rules.') + '</div>';
   }
   ids.sort(function (a, b) {
     return String((rows[a] && rows[a].name) || a).localeCompare(String((rows[b] && rows[b].name) || b));
   });
   var body = ids.length ? ids.map(function (ruleId) {
     var row = rows[ruleId] || {}, off = row.enabled === false;
-    return '<tr style="border-bottom:1px solid #eee;' + (off ? 'opacity:.55;' : '') + '">' +
-      '<td style="padding:.4rem .3rem;"><strong>' + rewardsEscape(row.name || ruleId) + '</strong>' +
-      '<div style="font-size:.72rem;color:#777;">id: ' + rewardsEscape(ruleId) + (row.system ? ' · built-in' : '') + (off ? ' · disabled' : '') + '</div></td>' +
-      '<td style="padding:.4rem .3rem;font-size:.8rem;">' + rewardsEscape(rewardsTriggerLabel(row.trigger)) +
-      '<div style="font-size:.72rem;color:#777;">' + rewardsEscape(rewardsConditionSummary(row)) + '</div></td>' +
-      '<td style="padding:.4rem .3rem;font-size:.8rem;white-space:nowrap;">' +
-      rewardsEscape(rewardsCurrencyLabel(row.currency)) + ' × ' + (Number(row.qty) || 0) + '</td>' +
-      '<td style="padding:.4rem .3rem;font-size:.8rem;">' + rewardsEscape(rewardsScheduleSummary(row)) + '</td>' +
-      '<td style="padding:.4rem .3rem;text-align:right;white-space:nowrap;">' +
-      '<button type="button" data-ruleedit="' + rewardsEscape(ruleId) + '">Edit</button>' +
+    return '<tr class="' + (off ? 'rw-off' : '') + '">' +
+      '<td><span class="rw-nowrap">' + rewardsEscape(row.name || ruleId) + '</span>' +
+      '<div class="rw-cell-sub">' + 'id: ' + rewardsEscape(ruleId) + (row.system ? ' · built-in' : '') + (off ? ' · disabled' : '') + '</div></td>' +
+      '<td>' + rewardsEscape(rewardsTriggerLabel(row.trigger)) +
+      '<div class="rw-cell-sub">' + rewardsEscape(rewardsConditionSummary(row)) + '</div></td>' +
+      '<td class="rw-nowrap">' + rewardsEscape(rewardsCurrencyLabel(row.currency)) + ' × ' + (Number(row.qty) || 0) + '</td>' +
+      '<td class="rw-nowrap">' + rewardsEscape(rewardsScheduleSummary(row)) + '</td>' +
+      '<td class="rw-actions">' +
+      '<button type="button" class="rw-btn sm sec" data-ruleedit="' + rewardsEscape(ruleId) + '">Edit</button>' +
       '</td></tr>';
-  }).join('') : '<tr><td colspan="5" style="padding:.6rem;color:#666;">No earning rules configured yet.</td></tr>';
+  }).join('') : '';
 
-  return '<table style="width:100%;border-collapse:collapse;font-size:.82rem;">' +
-    '<thead><tr style="text-align:left;border-bottom:2px solid #eee;color:#666;font-size:.74rem;">' +
-    '<th style="padding:.4rem .3rem;">Rule</th><th style="padding:.4rem .3rem;">When</th>' +
-    '<th style="padding:.4rem .3rem;">Awards</th><th style="padding:.4rem .3rem;">Schedule</th><th></th>' +
-    '</tr></thead><tbody>' + body + '</tbody></table>' +
-    '<div style="margin-top:.9rem;">' + rewardsRulesFormHtml() + '</div>';
+  var table = ids.length
+    ? '<table class="rw-table"><thead><tr>' +
+      '<th>Rule</th><th>When</th><th>Awards</th><th>Schedule</th><th></th>' +
+      '</tr></thead><tbody>' + body + '</tbody></table>'
+    : '<div class="rw-empty"><div class="rw-empty-ic">📌</div><div class="rw-empty-t">No earning rules configured yet.</div>' +
+      '<div class="rw-empty-s">Rules decide how members earn stamps — for example one stamp per completed order.</div></div>';
+
+  return table + rewardsRulesFormHtml();
 }
 
 function rewardsRulesFormHtml() {
   var editing = _rewardsState.rulesEditing;
   if (!editing) {
-    return '<button type="button" id="ruleAdd"' + (_rewardsState.busy ? ' disabled' : '') + '>Add a rule</button>';
+    return '<div class="rw-form-actions" style="margin-top:1rem;"><button type="button" id="ruleAdd" class="rw-btn ok"' + (_rewardsState.busy ? ' disabled' : '') + '>Add a rule</button></div>';
   }
   var isNew = editing.isNew === true;
   var currencyOptions = rewardsCurrencyCodes().map(function (code) {
@@ -98,31 +98,31 @@ function rewardsRulesFormHtml() {
   }).join('');
   var conditionField = '';
   if (editing.trigger === 'amount_threshold') {
-    conditionField = '<label style="font-size:.76rem;">Minimum net amount (₱)<input id="ruleMinNet" value="' + rewardsEscape(editing.minNetAmount == null ? '' : editing.minNetAmount) + '" placeholder="500" style="display:block;width:130px;"></label>';
+    conditionField = '<div class="rw-field"><label>Minimum net amount (₱)</label><input id="ruleMinNet" value="' + rewardsEscape(editing.minNetAmount == null ? '' : editing.minNetAmount) + '" placeholder="500"></div>';
   } else if (editing.trigger === 'order_count') {
-    conditionField = '<label style="font-size:.76rem;">Every N orders<input id="ruleEvery" value="' + rewardsEscape(editing.every == null ? '' : editing.every) + '" placeholder="5" style="display:block;width:110px;"></label>';
+    conditionField = '<div class="rw-field"><label>Every N orders</label><input id="ruleEvery" value="' + rewardsEscape(editing.every == null ? '' : editing.every) + '" placeholder="5"></div>';
   }
 
-  return '<div style="border:1px solid #e3e3e3;border-radius:10px;padding:.8rem;background:#fafafa;">' +
-    '<div style="font-size:.8rem;font-weight:600;margin-bottom:.5rem;">' + (isNew ? 'Add an earning rule' : 'Edit ' + rewardsEscape(editing.name || editing.ruleId)) + '</div>' +
-    '<div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end;">' +
-    '<label style="font-size:.76rem;">Name<input id="ruleName" value="' + rewardsEscape(editing.name || '') + '" placeholder="e.g. Yellow stamp · net over ₱500" style="display:block;width:210px;"></label>' +
-    '<label style="font-size:.76rem;">When<select id="ruleTrigger" style="display:block;width:190px;">' + triggerOptions + '</select></label>' +
-    '<label style="font-size:.76rem;">Award<select id="ruleCurrency" style="display:block;width:130px;">' + currencyOptions + '</select></label>' +
-    '<label style="font-size:.76rem;">Stamps<input id="ruleQty" value="' + rewardsEscape(editing.qty == null ? '' : editing.qty) + '" placeholder="1" style="display:block;width:80px;"></label>' +
+  return '<div class="rw-form">' +
+    '<div class="rw-form-title">' + (isNew ? 'Add an earning rule' : 'Edit ' + rewardsEscape(editing.name || editing.ruleId)) + '</div>' +
+    '<div class="rw-fields">' +
+    '<div class="rw-field"><label>Name</label><input id="ruleName" value="' + rewardsEscape(editing.name || '') + '" placeholder="e.g. Yellow stamp · net over ₱500"></div>' +
+    '<div class="rw-field"><label>When</label><select id="ruleTrigger">' + triggerOptions + '</select></div>' +
+    '<div class="rw-field"><label>Award</label><select id="ruleCurrency">' + currencyOptions + '</select></div>' +
+    '<div class="rw-field"><label>Stamps</label><input id="ruleQty" value="' + rewardsEscape(editing.qty == null ? '' : editing.qty) + '" placeholder="1"></div>' +
     conditionField +
     '</div>' +
-    '<div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end;margin-top:.5rem;">' +
-    '<label style="font-size:.76rem;">Starts (optional)<input id="ruleStart" type="datetime-local" value="' + rewardsEscape(rewardsToDatetimeLocal(editing.startAt)) + '" style="display:block;width:190px;"></label>' +
-    '<label style="font-size:.76rem;">Ends (optional)<input id="ruleEnd" type="datetime-local" value="' + rewardsEscape(rewardsToDatetimeLocal(editing.endAt)) + '" style="display:block;width:190px;"></label>' +
-    '<label style="font-size:.78rem;"><input type="checkbox" id="ruleEnabled"' + (editing.enabled !== false ? ' checked' : '') + '> Enabled</label>' +
+    '<div class="rw-fields">' +
+    '<div class="rw-field"><label>Starts (optional)</label><input id="ruleStart" type="datetime-local" value="' + rewardsEscape(rewardsToDatetimeLocal(editing.startAt)) + '"></div>' +
+    '<div class="rw-field"><label>Ends (optional)</label><input id="ruleEnd" type="datetime-local" value="' + rewardsEscape(rewardsToDatetimeLocal(editing.endAt)) + '"></div>' +
+    '<div class="rw-field rw-field-inline"><label>&nbsp;</label><label class="rw-check-label"><input type="checkbox" id="ruleEnabled"' + (editing.enabled !== false ? ' checked' : '') + '> Enabled</label></div>' +
     '</div>' +
     (editing.trigger === 'amount_threshold'
-      ? '<div style="font-size:.72rem;color:#8a6d3b;margin-top:.5rem;">Amount rules are a ladder, not a stack: when an order crosses several amounts for the same stamp, only the highest one fires. Enter each tier as its own rule.</div>'
+      ? '<div class="rw-warn">Amount rules are a ladder, not a stack: when an order crosses several amounts for the same stamp, only the highest one fires. Enter each tier as its own rule.</div>'
       : '') +
-    '<div style="margin-top:.7rem;">' +
-    '<button type="button" id="ruleSave"' + (_rewardsState.busy ? ' disabled' : '') + '>' + (_rewardsState.busy ? 'Saving…' : 'Save rule') + '</button> ' +
-    '<button type="button" id="ruleCancel">Cancel</button>' +
+    '<div class="rw-form-actions">' +
+    '<button type="button" id="ruleSave" class="rw-btn ok"' + (_rewardsState.busy ? ' disabled' : '') + '>' + (_rewardsState.busy ? 'Saving…' : 'Save rule') + '</button>' +
+    '<button type="button" id="ruleCancel" class="rw-btn sec">Cancel</button>' +
     '</div></div>';
 }
 

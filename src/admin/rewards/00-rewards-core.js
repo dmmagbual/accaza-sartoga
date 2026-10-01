@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
 // Rewards program admin screen (Phase 2, 30 Sep 2026).
 //
-// One tab, four sections: reports, the reward catalog, earning rules, and
-// member support. One discipline holds the whole screen together: every read
+// One tab, five sections: reports, stamps, the reward catalog, earning rules,
+// and member support. One discipline holds the whole screen together: every read
 // goes through a callable that touches only small config or maintained
 // aggregates. The screen never reads loyaltyMembers, loyaltyLedger,
 // loyaltyBalances or loyaltyRewards directly - those grow with the business
@@ -10,10 +10,13 @@
 // requests like that off the client. Member lookup is a search (exact phone
 // or member id) that resolves a single record server-side, never a browse.
 //
-// Server authority: getLoyaltyReports, manageLoyaltyRewardCatalog,
-// manageLoyaltyEarningRule, searchLoyaltyMembers, manageLoyaltyMemberStatus,
-// manageLoyaltyMemberAnonymize, manageLoyaltyCurrency (all loyaltyAdmin).
+// Server authority: getLoyaltyReports, manageLoyaltyCurrency,
+// manageLoyaltyRewardCatalog, manageLoyaltyEarningRule, searchLoyaltyMembers,
+// manageLoyaltyMemberStatus, manageLoyaltyMemberAnonymize (all loyaltyAdmin).
 // Refusals are shown verbatim - the message names the reason.
+//
+// Presentation: every section renders with the shared classes in
+// assets/css/admin/rewards.css (rw-*) so the screen keeps one visual language.
 // ---------------------------------------------------------------------------
 var _rewardsState = {
   view: 'reports',
@@ -67,25 +70,25 @@ function rewardsDate(ms) {
 
 function rewardsNoteHtml() {
   if (!_rewardsState.note) return '';
-  return '<div style="margin-top:.7rem;padding:.5rem .6rem;border-radius:8px;font-size:.78rem;' +
-    (_rewardsState.noteBad ? 'background:#fde8e8;color:#721c24;' : 'background:#e8f5e9;color:#1b5e20;') +
-    '">' + rewardsEscape(_rewardsState.note) + '</div>';
+  return '<div class="rw-note ' + (_rewardsState.noteBad ? 'bad' : 'ok') + '">' + rewardsEscape(_rewardsState.note) + '</div>';
 }
 
 function rewardsSubtabsHtml() {
   var tabs = [
     {id: 'reports', label: 'Reports'},
+    {id: 'stamps', label: 'Stamps'},
     {id: 'catalog', label: 'Reward catalog'},
     {id: 'rules', label: 'Earning rules'},
     {id: 'members', label: 'Members'}
   ];
   return tabs.map(function (tab) {
     var on = _rewardsState.view === tab.id;
-    return '<button type="button" data-rewardstab="' + tab.id + '"' + (on ? ' style="background:#19241b;color:#fff;border-color:#19241b;"' : '') + '>' + tab.label + '</button>';
+    return '<button type="button" class="rw-tab' + (on ? ' on' : '') + '" data-rewardstab="' + tab.id + '">' + tab.label + '</button>';
   }).join('');
 }
 
 function rewardsBodyHtml() {
+  if (_rewardsState.view === 'stamps') return rewardsStampsHtml();
   if (_rewardsState.view === 'catalog') return rewardsCatalogHtml();
   if (_rewardsState.view === 'rules') return rewardsRulesHtml();
   if (_rewardsState.view === 'members') return rewardsMembersHtml();
@@ -93,19 +96,19 @@ function rewardsBodyHtml() {
 }
 
 function rewardsMarkup() {
-  return '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.6rem;flex-wrap:wrap;">' +
-    '<div><h3 style="margin:0;font-family:\'Playfair Display\',serif;color:var(--bd);">Rewards program</h3>' +
-    '<p style="font-size:.78rem;color:#666;margin:.25rem 0 0;">The reward catalog, how stamps are earned, program totals and member support.</p></div>' +
-    '<button type="button" id="rewardsRefresh" style="flex:0 0 auto;"' + (_rewardsState.busy ? ' disabled' : '') + '>' + (_rewardsState.busy ? 'Working…' : 'Refresh') + '</button></div>' +
-    '<div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.8rem;">' + rewardsSubtabsHtml() + '</div>' +
+  return '<div class="rw-head">' +
+    '<div><h3 class="rw-title">Rewards program</h3>' +
+    '<p class="rw-sub">The stamp types, the reward catalog, how stamps are earned, program totals and member support.</p></div>' +
+    '<button type="button" id="rewardsRefresh" class="rw-btn sec"' + (_rewardsState.busy ? ' disabled' : '') + '>' + (_rewardsState.busy ? 'Working…' : 'Refresh') + '</button></div>' +
+    '<div class="rw-tabs">' + rewardsSubtabsHtml() + '</div>' +
     rewardsNoteHtml() +
-    '<div id="rewardsBody" style="margin-top:.8rem;">' + rewardsBodyHtml() + '</div>';
+    '<div id="rewardsBody">' + rewardsBodyHtml() + '</div>';
 }
 
 function renderRewards() {
   var root = document.getElementById('rewardsRoot'); if (!root) return;
   if (!rewardsApi()) {
-    root.innerHTML = '<div style="padding:.8rem;border-radius:10px;background:#fde8e8;color:#721c24;font-size:.82rem;">Rewards administration is unavailable right now. Refresh the portal and try again.</div>';
+    root.innerHTML = '<div class="rw-fatal">Rewards administration is unavailable right now. Refresh the portal and try again.</div>';
     return;
   }
   root.innerHTML = rewardsMarkup();
@@ -117,7 +120,8 @@ function rewardsWire(root) {
   var refresh = root.querySelector('#rewardsRefresh');
   if (refresh) refresh.onclick = function () {
     _rewardsState.note = '';
-    if (_rewardsState.view === 'catalog') { _rewardsState.catalogLoaded = false; rewardsCatalogLoad(); }
+    if (_rewardsState.view === 'stamps') { _rewardsStampsState.loaded = false; rewardsStampsLoad(); }
+    else if (_rewardsState.view === 'catalog') { _rewardsState.catalogLoaded = false; rewardsCatalogLoad(); }
     else if (_rewardsState.view === 'rules') { _rewardsState.rulesLoaded = false; rewardsRulesLoad(); }
     else if (_rewardsState.view === 'members') { rewardsMembersRenderOnly(); }
     else { _rewardsState.reportsLoaded = false; rewardsReportsLoad(); }
@@ -127,19 +131,21 @@ function rewardsWire(root) {
       _rewardsState.view = button.getAttribute('data-rewardstab');
       _rewardsState.note = '';
       renderRewards();
-      if (_rewardsState.view === 'catalog' && !_rewardsState.catalogLoaded) rewardsCatalogLoad();
+      if (_rewardsState.view === 'stamps' && !_rewardsStampsState.loaded) rewardsStampsLoad();
+      else if (_rewardsState.view === 'catalog' && !_rewardsState.catalogLoaded) rewardsCatalogLoad();
       else if (_rewardsState.view === 'rules' && !_rewardsState.rulesLoaded) rewardsRulesLoad();
       else if (_rewardsState.view === 'reports' && !_rewardsState.reportsLoaded) rewardsReportsLoad();
     };
   });
   var body = root.querySelector('#rewardsBody');
-  if (body && _rewardsState.view === 'catalog') rewardsCatalogWire(body);
+  if (body && _rewardsState.view === 'stamps') rewardsStampsWire(body);
+  else if (body && _rewardsState.view === 'catalog') rewardsCatalogWire(body);
   else if (body && _rewardsState.view === 'rules') rewardsRulesWire(body);
   else if (body && _rewardsState.view === 'members') rewardsMembersWire(body);
 }
 
 // The stamp list (labels, colours, order) comes from the same server config the
-// stamps card manages - the screen offers only currencies the server accepts.
+// stamps screen manages - the tab offers only currencies the server accepts.
 function rewardsLoadCurrencies() {
   var api = rewardsApi(); if (!api) return;
   _rewardsState.busy = true; renderRewards();
@@ -152,6 +158,7 @@ function rewardsLoadCurrencies() {
   }).then(function () {
     _rewardsState.busy = false; renderRewards();
     if (_rewardsState.view === 'reports' && !_rewardsState.reportsLoaded) rewardsReportsLoad();
+    else if (_rewardsState.view === 'stamps' && !_rewardsStampsState.loaded) rewardsStampsLoad();
     else if (_rewardsState.view === 'catalog' && !_rewardsState.catalogLoaded) rewardsCatalogLoad();
     else if (_rewardsState.view === 'rules' && !_rewardsState.rulesLoaded) rewardsRulesLoad();
   });

@@ -34,40 +34,40 @@ function rewardsGrantDetail(row) {
 function rewardsCatalogHtml() {
   var rows = _rewardsState.catalog, ids = Object.keys(rows);
   if (!_rewardsState.catalogLoaded) {
-    return '<div style="padding:1rem;text-align:center;color:#666;font-size:.82rem;">' +
-      (_rewardsState.busy ? 'Loading the catalog…' : 'Press Refresh to load the reward catalog.') + '</div>';
+    return '<div class="rw-loading">' + (_rewardsState.busy ? 'Loading the catalog…' : 'Press Refresh to load the reward catalog.') + '</div>';
   }
   ids.sort(function (a, b) {
     return String((rows[a] && rows[a].name) || a).localeCompare(String((rows[b] && rows[b].name) || b));
   });
   var body = ids.length ? ids.map(function (rewardId) {
     var row = rows[rewardId] || {}, off = row.enabled === false;
-    return '<tr style="border-bottom:1px solid #eee;' + (off ? 'opacity:.55;' : '') + '">' +
-      '<td style="padding:.4rem .3rem;"><strong>' + rewardsEscape(row.name || rewardId) + '</strong>' +
-      '<div style="font-size:.72rem;color:#777;">id: ' + rewardsEscape(rewardId) + (row.system ? ' · built-in' : '') + (off ? ' · disabled' : '') + '</div></td>' +
-      '<td style="padding:.4rem .3rem;font-size:.8rem;white-space:nowrap;">' +
-      rewardsEscape(rewardsCurrencyLabel(row.costCurrency)) + ' × ' + (Number(row.costQty) || 0) + '</td>' +
-      '<td style="padding:.4rem .3rem;font-size:.8rem;">' + rewardsGrantDetail(row) +
-      (row.stackingAllowed === true ? '<div style="font-size:.72rem;color:#777;">stacks with discounts</div>' : '') + '</td>' +
-      '<td style="padding:.4rem .3rem;font-size:.8rem;white-space:nowrap;">' + (Number(row.expiryDays) || 0) + ' days</td>' +
-      '<td style="padding:.4rem .3rem;text-align:right;white-space:nowrap;">' +
-      '<button type="button" data-rewardedit="' + rewardsEscape(rewardId) + '" style="margin-right:.35rem;">Edit</button>' +
-      '<button type="button" data-rewardtoggle="' + rewardsEscape(rewardId) + '">' + (off ? 'Enable' : 'Disable') + '</button>' +
+    return '<tr class="' + (off ? 'rw-off' : '') + '">' +
+      '<td><span class="rw-nowrap">' + rewardsEscape(row.name || rewardId) + '</span>' +
+      '<div class="rw-cell-sub">' + 'id: ' + rewardsEscape(rewardId) + (row.system ? ' · built-in' : '') + (off ? ' · disabled' : '') + '</div></td>' +
+      '<td class="rw-nowrap">' + rewardsEscape(rewardsCurrencyLabel(row.costCurrency)) + ' × ' + (Number(row.costQty) || 0) + '</td>' +
+      '<td>' + rewardsGrantDetail(row) +
+      (row.stackingAllowed === true ? '<div class="rw-cell-sub">stacks with discounts</div>' : '') + '</td>' +
+      '<td class="rw-nowrap">' + (Number(row.expiryDays) || 0) + ' days</td>' +
+      '<td class="rw-actions">' +
+      '<button type="button" class="rw-btn sm sec" data-rewardedit="' + rewardsEscape(rewardId) + '">Edit</button>' +
+      '<button type="button" class="rw-btn sm ' + (off ? 'sec' : 'danger') + '" data-rewardtoggle="' + rewardsEscape(rewardId) + '">' + (off ? 'Enable' : 'Disable') + '</button>' +
       '</td></tr>';
-  }).join('') : '<tr><td colspan="5" style="padding:.6rem;color:#666;">No rewards configured yet.</td></tr>';
+  }).join('') : '';
 
-  return '<table style="width:100%;border-collapse:collapse;font-size:.82rem;">' +
-    '<thead><tr style="text-align:left;border-bottom:2px solid #eee;color:#666;font-size:.74rem;">' +
-    '<th style="padding:.4rem .3rem;">Reward</th><th style="padding:.4rem .3rem;">Cost</th>' +
-    '<th style="padding:.4rem .3rem;">Grant</th><th style="padding:.4rem .3rem;">Claim expires</th><th></th>' +
-    '</tr></thead><tbody>' + body + '</tbody></table>' +
-    '<div style="margin-top:.9rem;">' + rewardsCatalogFormHtml() + '</div>';
+  var table = ids.length
+    ? '<table class="rw-table"><thead><tr>' +
+      '<th>Reward</th><th>Cost</th><th>Grant</th><th>Claim expires</th><th></th>' +
+      '</tr></thead><tbody>' + body + '</tbody></table>'
+    : '<div class="rw-empty"><div class="rw-empty-ic">🎁</div><div class="rw-empty-t">No rewards configured yet.</div>' +
+      '<div class="rw-empty-s">Add your first reward below so members have something to save their stamps for.</div></div>';
+
+  return table + rewardsCatalogFormHtml();
 }
 
 function rewardsCatalogFormHtml() {
   var editing = _rewardsState.catalogEditing;
   if (!editing) {
-    return '<button type="button" id="rewardAdd"' + (_rewardsState.busy ? ' disabled' : '') + '>Add a reward</button>';
+    return '<div class="rw-form-actions" style="margin-top:1rem;"><button type="button" id="rewardAdd" class="rw-btn ok"' + (_rewardsState.busy ? ' disabled' : '') + '>Add a reward</button></div>';
   }
   var isNew = editing.isNew === true;
   var currencyOptions = rewardsCurrencyCodes().map(function (code) {
@@ -82,25 +82,25 @@ function rewardsCatalogFormHtml() {
   var needsPercent = editing.grantType === 'percent_off_capped';
   var needsItem = editing.grantType === 'free_item_no_sub';
 
-  return '<div style="border:1px solid #e3e3e3;border-radius:10px;padding:.8rem;background:#fafafa;">' +
-    '<div style="font-size:.8rem;font-weight:600;margin-bottom:.5rem;">' + (isNew ? 'Add a reward' : 'Edit ' + rewardsEscape(editing.name || editing.rewardId)) + '</div>' +
-    '<div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end;">' +
-    '<label style="font-size:.76rem;">Name<input id="rewardName" value="' + rewardsEscape(editing.name || '') + '" placeholder="e.g. Free drink" style="display:block;width:180px;"></label>' +
-    '<label style="font-size:.76rem;">Costs<select id="rewardCostCurrency" style="display:block;width:130px;">' + currencyOptions + '</select></label>' +
-    '<label style="font-size:.76rem;">Stamps<input id="rewardCostQty" value="' + rewardsEscape(editing.costQty == null ? '' : editing.costQty) + '" placeholder="10" style="display:block;width:80px;"></label>' +
-    '<label style="font-size:.76rem;">Grant type<select id="rewardGrantType" style="display:block;width:230px;">' + grantOptions + '</select></label>' +
-    (needsCap ? '<label style="font-size:.76rem;">Peso cap<input id="rewardCap" value="' + rewardsEscape(editing.cap == null ? '' : editing.cap) + '" placeholder="120" style="display:block;width:90px;"></label>' : '') +
-    (needsPercent ? '<label style="font-size:.76rem;">Percent (1-100)<input id="rewardPercent" value="' + rewardsEscape(editing.percent == null ? '' : editing.percent) + '" placeholder="20" style="display:block;width:90px;"></label>' : '') +
-    (needsItem ? '<label style="font-size:.76rem;">Item id<input id="rewardItemId" value="' + rewardsEscape(editing.itemId || '') + '" placeholder="item id from the menu" style="display:block;width:160px;"></label>' : '') +
-    '<label style="font-size:.76rem;">Claim expiry (days)<input id="rewardExpiry" value="' + rewardsEscape(editing.expiryDays == null ? '' : editing.expiryDays) + '" placeholder="30" style="display:block;width:110px;"></label>' +
+  return '<div class="rw-form">' +
+    '<div class="rw-form-title">' + (isNew ? 'Add a reward' : 'Edit ' + rewardsEscape(editing.name || editing.rewardId)) + '</div>' +
+    '<div class="rw-fields">' +
+    '<div class="rw-field"><label>Name</label><input id="rewardName" value="' + rewardsEscape(editing.name || '') + '" placeholder="e.g. Free drink"></div>' +
+    '<div class="rw-field"><label>Costs</label><select id="rewardCostCurrency">' + currencyOptions + '</select></div>' +
+    '<div class="rw-field"><label>Stamps</label><input id="rewardCostQty" value="' + rewardsEscape(editing.costQty == null ? '' : editing.costQty) + '" placeholder="10"></div>' +
+    '<div class="rw-field"><label>Grant type</label><select id="rewardGrantType">' + grantOptions + '</select></div>' +
+    (needsCap ? '<div class="rw-field"><label>Peso cap</label><input id="rewardCap" value="' + rewardsEscape(editing.cap == null ? '' : editing.cap) + '" placeholder="120"></div>' : '') +
+    (needsPercent ? '<div class="rw-field"><label>Percent (1-100)</label><input id="rewardPercent" value="' + rewardsEscape(editing.percent == null ? '' : editing.percent) + '" placeholder="20"></div>' : '') +
+    (needsItem ? '<div class="rw-field"><label>Item id</label><input id="rewardItemId" value="' + rewardsEscape(editing.itemId || '') + '" placeholder="item id from the menu"></div>' : '') +
+    '<div class="rw-field"><label>Claim expiry (days)</label><input id="rewardExpiry" value="' + rewardsEscape(editing.expiryDays == null ? '' : editing.expiryDays) + '" placeholder="30"></div>' +
     '</div>' +
-    '<div style="display:flex;gap:1rem;margin-top:.5rem;font-size:.78rem;">' +
+    '<div class="rw-checks">' +
     '<label><input type="checkbox" id="rewardStacking"' + (editing.stackingAllowed === true ? ' checked' : '') + '> Can stack with other discounts</label>' +
     '<label><input type="checkbox" id="rewardEnabled"' + (editing.enabled !== false ? ' checked' : '') + '> Enabled</label>' +
     '</div>' +
-    '<div style="margin-top:.7rem;">' +
-    '<button type="button" id="rewardSave"' + (_rewardsState.busy ? ' disabled' : '') + '>' + (_rewardsState.busy ? 'Saving…' : 'Save reward') + '</button> ' +
-    '<button type="button" id="rewardCancel">Cancel</button>' +
+    '<div class="rw-form-actions">' +
+    '<button type="button" id="rewardSave" class="rw-btn ok"' + (_rewardsState.busy ? ' disabled' : '') + '>' + (_rewardsState.busy ? 'Saving…' : 'Save reward') + '</button>' +
+    '<button type="button" id="rewardCancel" class="rw-btn sec">Cancel</button>' +
     '</div></div>';
 }
 
